@@ -32,7 +32,7 @@ def prepare(rung, pose_frame=None):
         scene.frame_set(pose_frame)
     ld.setup_render(resolution=560, samples=48)
     ld.review_lighting()
-    ld.ground_disc(radius=30, z=-0.42)
+    ld.ground_disc(radius=200, z=-0.42)
     ld.camera(lens=55)
 
 
