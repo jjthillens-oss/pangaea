@@ -137,3 +137,25 @@ func test_points_are_earned_by_eating_and_surviving_not_by_energy() -> void:
 	check_eq(Lineage.survival_points(0.0, NAN), 0, "NaN earns nothing")
 	check_eq(Lineage.earn(save, -5), 0, "negative earns nothing")
 	check_eq(save.adaptation_points, 42, "unchanged")
+
+
+func test_starting_body_of_names_each_body_until_it_is_edited() -> void:
+	for body in catalog.starting_bodies:
+		var r := Lineage.found(5, "test+dev", catalog, body)
+		check(r.ok, "%s founds" % body)
+		if not r.ok:
+			continue
+		var genome: Genome = r.save.genome
+		check_eq(Lineage.starting_body_of(genome, catalog), body, "%s recognized" % body)
+		genome.parts.reverse()
+		check_eq(Lineage.starting_body_of(genome, catalog), body, "%s recognized in any part order" % body)
+		var moved := Genome.from_dict(genome.to_dict())
+		moved.parts[0]["angle"] = float(moved.parts[0]["angle"]) + 0.1
+		check_eq(Lineage.starting_body_of(moved, catalog), "", "%s with a moved part is no longer a starting body" % body)
+		var grown := Genome.from_dict(genome.to_dict())
+		grown.add_part("eye_spot", -1.0)
+		check_eq(Lineage.starting_body_of(grown, catalog), "", "%s with an extra part is no longer a starting body" % body)
+		var scaled := Genome.from_dict(genome.to_dict())
+		scaled.parts[0]["scale"] = 1.5
+		check_eq(Lineage.starting_body_of(scaled, catalog), "", "%s with a resized part is no longer a starting body" % body)
+	check_eq(Lineage.starting_body_of(save.genome, catalog), "", "the test body is not a starting body")

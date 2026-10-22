@@ -189,3 +189,35 @@ func test_ram_cooldown_is_per_target_and_defense_applies() -> void:
 	var rb := InteractionResolver.ram(rammer, b, speed, 0.2)
 	check(rb.allowed, "another target")
 	check_near(rb.effect.get("damage", -1.0), 6.0 * 0.75, 0.0001, "defense blocks a quarter")
+
+
+func test_a_cell_without_room_for_half_the_food_is_not_hungry() -> void:
+	var grazer := _actor("a", [["mouth_filter", 0.0]])
+	var food := _plant(Vector2(0.7, 0.0))
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, food, 0.0, 0.0), "not hungry")
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, food, 0.0, 5.99), "not hungry")
+	var r := InteractionResolver.feed(grazer, food, 0.0, 6.0)
+	check(r.allowed, "room for exactly half the food's energy is enough: %s" % r.reason)
+	check_near(r.effect.get("energy", 0.0), 12.0, 0.0001, "the effect is still the whole food")
+
+
+func test_feed_refusals_come_in_a_fixed_order() -> void:
+	var grazer := _actor("a", [["mouth_filter", 0.0]])
+	var far_behind_meat := _meat(Vector2(-3.0, 0.0))
+	var far_behind := _plant(Vector2(-3.0, 0.0))
+	var near_behind := _plant(Vector2(-0.7, 0.0))
+	var in_front := _plant(Vector2(0.7, 0.0))
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, far_behind_meat, 0.0, 0.0), "needs a jaw")
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, far_behind, 0.0, 0.0), "out of reach")
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, near_behind, 0.0, 0.0), "mouth is not facing it")
+	check(InteractionResolver.feed(grazer, in_front, 1.0).allowed, "a meal starts the cooldown")
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, in_front, 1.1, 0.0), "not hungry")
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, in_front, 1.1, 100.0), "still swallowing")
+
+
+func test_a_full_stomach_refusal_starts_no_cooldown() -> void:
+	var grazer := _actor("a", [["mouth_filter", 0.0]])
+	var food := _plant(Vector2(0.7, 0.0))
+	_check_refused(grazer, InteractionResolver.feed.bind(grazer, food, 2.0, 1.0), "not hungry")
+	check(grazer.cooldowns.is_empty(), "no cooldown recorded")
+	check(InteractionResolver.feed(grazer, food, 2.0, 50.0).allowed, "eats in the same instant once there is room")
