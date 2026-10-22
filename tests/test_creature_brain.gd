@@ -382,9 +382,12 @@ func test_a_strike_holds_its_locked_heading_however_the_target_moves() -> void:
 	var moving := _ambush()
 	moving.energy_share = 0.5
 	var u := 0
-	while moving.mem.target.is_empty():
+	while u < 600 and moving.mem.target.is_empty():
 		_tick(moving, u, [_percept(moving, "a", Vector2(2.75, 0.0), {"velocity": Vector2(0.0, 0.9)})], false)
 		u += 1
+	check(not moving.mem.target.is_empty(), "the moving target is noticed within 10 s")
+	if moving.mem.target.is_empty():
+		return
 	CreatureBrain.begin_tell(moving.mem, moving.view(), u - 1)
 	check_near(moving.mem.lock_heading, lead.angle(), 1e-6, "lead 1.2 s x 0.9 m/s, capped at 1.0 m")
 
@@ -729,9 +732,13 @@ func test_a_blocked_charge_dazes_the_rammer_for_its_blocked_recover_time() -> vo
 		_tick(c, t, [_percept(c, "a", Vector2(0.0, 2.0))], false)
 		t += 1
 	CreatureBrain.begin_tell(c.mem, c.view(), t)
-	while c.mem.phase != "strike":
+	var told := t
+	while t < told + 400 and c.mem.phase != "strike":
 		t += 1
 		_tick(c, t, [_percept(c, "a", Vector2(0.0, 2.0))], false)
+	check_eq(c.mem.phase, "strike", "the puff ends in a charge")
+	if c.mem.phase != "strike":
+		return
 	CreatureBrain.on_blocked(c.mem, t)
 	_collect(c, t)
 	check_eq(c.mem.outcome, "blocked", "outcome")
@@ -878,9 +885,12 @@ func test_three_failed_returns_home_mark_the_creature_stuck() -> void:
 	var c := _ambush()
 	c.m.position = Vector2(5.0, 0.0)
 	var t := 0
-	while c.label() != "wander/return":
+	while t < 2000 and c.label() != "wander/return":
 		_tick(c, t, [], false)
 		t += 1
+	check_eq(c.label(), "wander/return", "pushed 5 m off home, it swims back")
+	if c.label() != "wander/return":
+		return
 	var start := c.mem.phase_tick
 	for i in 2 * 1200:
 		_tick(c, t, [], false)
