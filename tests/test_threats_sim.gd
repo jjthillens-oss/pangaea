@@ -1260,7 +1260,7 @@ func test_every_fed_body_swims_past_the_lair_se_hunter_at_full_speed_and_is_neve
 
 func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed_does_not() -> void:
 	var runs := []
-	for seed_value in [77, 77, 78]:
+	for seed_value in [78, 78, 79]:
 		var sim := _sim("hunter", seed_value, Vector2.INF, 0.0, layout, species)
 		check(sim.debug_spawn_threat_ahead("ambush_hunter"), "a threat ahead")
 		var c: CreatureField.Creature = sim.creatures.creatures[-1]
@@ -1271,8 +1271,8 @@ func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed
 	for t in 3600:
 		for run in runs:
 			var sim: PoolSim = run.sim
-			if run.seed == 78 and t >= 600:
-				continue   # seed 78 only has to differ by tick 600
+			if run.seed == 79 and t >= 600:
+				continue   # seed 79 only has to differ by tick 600
 			sim.step(run.bot.next_intent(sim))
 			for e in sim.drain_events():
 				if e.type == "died" or e.type == "creature_died":
@@ -1281,8 +1281,8 @@ func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed
 				run.engaged += 1
 			if sim.tick % 60 == 0:
 				run.hashes.append(sim.state_hash())
-	check_eq(runs[0].hashes, runs[1].hashes, "seed 77 twice: the same hash every 60 ticks")
-	check(runs[0].hashes.slice(0, 10) != runs[2].hashes.slice(0, 10), "seed 78 differs by tick 600")
+	check_eq(runs[0].hashes, runs[1].hashes, "seed 78 twice: the same hash every 60 ticks")
+	check(runs[0].hashes.slice(0, 10) != runs[2].hashes.slice(0, 10), "seed 79 differs by tick 600")
 	check(runs[0].engaged > 0, "the run included a chase on the cell (%d ticks engaged)" % runs[0].engaged)
 	var stats: Dictionary = runs[0].sim.stats
 	check(stats.hits_taken > 0 and runs[0].kills > 0, "and a kill: %d hits taken, %d deaths" % [stats.hits_taken, runs[0].kills])

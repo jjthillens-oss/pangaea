@@ -806,10 +806,16 @@ static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolAren
 	if mem.phase == AIM:
 		return _turn(mem, _face(me, target_at), share)
 	# The stand-off point: on the line from the target through the creature, standoff_m out. From
-	# too close this lies behind it, so it swims out first (a run-up).
+	# too close this lies behind it, so it swims out first (a run-up). A point past the leash is
+	# taken in to the leash circle: there it stops and turns to aim, instead of pressing outward
+	# against the clamp, facing away from its target (the threat fuzz, invariant 7).
 	var away := at - target_at
 	var out := away / away.length() if away.length() > 1e-6 else Vector2.from_angle(float(me.heading) + PI)
 	var standoff := target_at + out * float(mem.cfg.attack.standoff_m)
+	var disc := leash_disc(mem)
+	var reach: Vector2 = standoff - disc.center
+	if reach.length() > float(disc.radius):
+		standoff = disc.center + reach / reach.length() * float(disc.radius)
 	if at.distance_to(standoff) <= FACE_AT_STANDOFF_M:
 		return _turn(mem, _face(me, target_at), share)
 	return _seek(mem, me, standoff, share, arena, true)

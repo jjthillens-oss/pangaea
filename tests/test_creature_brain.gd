@@ -934,6 +934,23 @@ func test_a_target_too_close_gets_a_run_up_to_the_stand_off_point_first() -> voi
 		check(farthest >= float(a.start_min_m), "%s: it backed off first (%.2f m)" % [kind, farthest])
 
 
+func test_a_run_up_past_the_leash_ends_on_the_leash_circle_turned_to_aim_and_tell() -> void:
+	# A rammer 0.5 m inside its 11 m leash disc, facing out, with an intruder 3 m further in: its
+	# 4 m stand-off point lies 0.5 m past the leash. It goes to the circle, turns and charges.
+	var c := _rammer(Vector2.ZERO, 0.0)
+	var disc := CreatureBrain.leash_disc(c.mem)
+	c.m.position = Vector2(float(disc.radius) - 0.5, 0.0)
+	var at := c.m.position - Vector2(3.0, 0.0)
+	var t := 0
+	while t < 600 and c.of("creature_tell").is_empty() and c.of("creature_gave_up").is_empty():
+		_tick(c, t, [_percept(c, "a", at)])
+		t += 1
+	check_eq(c.of("creature_gave_up").size(), 0, "no give-up while it can still aim")
+	check_eq(c.of("creature_tell").size(), 1, "a tell from the leash circle")
+	check(c.m.position.distance_to(disc.center) <= float(disc.radius) + 1e-3, "inside its leash")
+	check(t < 300, "within 5 s (%d ticks)" % t)
+
+
 func test_a_creature_left_alone_reaches_its_tell_from_any_side_and_distance() -> void:
 	for kind in ["ambush", "rammer"]:
 		for dist in ([1.0, 2.0, 2.75, 4.0, 7.0] if kind == "ambush" else [1.5, 3.0, 4.0, 6.0]):
