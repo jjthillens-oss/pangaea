@@ -80,6 +80,11 @@ func test_a_zone_near_the_soft_wall_is_refused() -> void:
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.zones[1].center = [0.0, -30.0]), "soft wall")
 
 
+func test_a_zone_too_small_to_show_one_plankton_item_is_refused() -> void:
+	check_has_error(_errors_after(func(d: Dictionary) -> void: d.zones[0].capacity = 7.9), "one plankton unit")
+	check(_errors_after(func(d: Dictionary) -> void: d.zones[0].capacity = 8.0).is_empty(), "room for one item is enough")
+
+
 func test_a_rock_outside_the_pool_is_refused() -> void:
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.rocks[6].center = [39.5, 0.0]), "not inside the pool")
 

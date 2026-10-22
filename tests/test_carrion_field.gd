@@ -3,6 +3,8 @@ extends TestCase
 ## their lifetime, and step 3 kills can already drop carrion through the same call.
 
 const DT := 1.0 / 60.0
+## One zone with a rock inside it and one zone a rock covers completely; the supply runs every second.
+const ROCKY_FIXTURE := "res://tests/fixtures/pool_test_rocks.json"
 
 var layout: PoolLayout
 var arena: PoolArena
@@ -51,6 +53,31 @@ func test_interim_carrion_lands_clear_inside_a_zone() -> void:
 		for z in layout.zones:
 			inside = inside or p.distance_to(z.center) <= z.radius + 1e-6
 		check(inside and arena.is_clear(p, layout.carrion.item_radius), "%s is clear and inside a zone" % p)
+
+
+func test_interim_carrion_never_lands_on_a_rock_inside_a_zone() -> void:
+	var rocky := PoolLayout.load_from(ROCKY_FIXTURE)
+	var rocky_arena := rocky.build_arena()
+	var rocky_region := rocky.build_region(1)
+	var open_zone := rocky.zone("z_rock")
+	var field := CarrionField.create(rocky.carrion, 38)
+	var spawned := 0
+	for i in roundi(120.0 / DT):
+		field.tick(DT, i * DT, rocky_region, rocky_arena)
+		for e in field.events:
+			if e.type != "carrion_spawned":
+				continue
+			spawned += 1
+			var p: Vector2 = e.position
+			# The other zone is all rock, so every spawn must land in the open part of z_rock.
+			if p.distance_to(open_zone.center) > open_zone.radius + 1e-6 or not rocky_arena.is_clear(p, field.item_radius):
+				check(false, "spawn %d at %s is on a rock or outside the open zone" % [spawned, p])
+				return
+		field.events.clear()
+		# Eaten at once, so max_live never holds the supply back.
+		for item in field.items.duplicate():
+			field.consume(item.id)
+	check(spawned >= 60, "the supply kept spawning around the rocks (%d)" % spawned)
 
 
 func test_the_supply_never_exceeds_max_live() -> void:

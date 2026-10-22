@@ -13,7 +13,8 @@ const SPAWN_TRIES := 8
 const COUNT_EPSILON := 1e-6           ## 23.9999999 energy still shows three 8-energy items
 const GOLDEN_ANGLE := 2.399963229728653
 const GOLDEN_RATIO_FRACTION := 0.6180339887498949
-const REGROWN_LATCH_SHARE := 0.5      ## an emptied zone can report "empty" again once back to half capacity
+## An emptied zone can report "empty" again once back to half capacity (and to at least one unit).
+const REGROWN_LATCH_SHARE := 0.5
 
 var unit_energy := 8.0
 var points := 1
@@ -168,7 +169,9 @@ func _remove_newest(zone_id: String) -> void:
 
 
 ## "zone_empty" when a zone has no items and less than one unit of stock; latched until the zone
-## is back to half capacity. "zone_regrown" when an emptied zone shows all its items again.
+## is back to half capacity. Never below one unit: half of a zone with room for one item is still
+## too little to show it, and re-arming there would report "empty" again every other tick.
+## "zone_regrown" when an emptied zone shows all its items again.
 func _update_flags(zone: Dictionary, have: int) -> void:
 	var id: String = zone.id
 	if not _empty_latched.has(id):
@@ -176,7 +179,7 @@ func _update_flags(zone: Dictionary, have: int) -> void:
 			_empty_latched[id] = true
 			_regrowing[id] = true
 			events.append({"type": "zone_empty", "zone": id})
-	elif zone.amount >= zone.capacity * REGROWN_LATCH_SHARE:
+	elif zone.amount >= maxf(unit_energy, zone.capacity * REGROWN_LATCH_SHARE):
 		_empty_latched.erase(id)
 	if _regrowing.has(id) and have >= max_count(zone):
 		_regrowing.erase(id)
