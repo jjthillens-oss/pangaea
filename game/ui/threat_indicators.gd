@@ -25,10 +25,10 @@ const PULSE_GROW := 0.25            ## a telling arrow grows this much at the to
 const BADGE_COLOR := Color(0.03, 0.11, 0.13, 0.9)
 const THREAT_COLOR := Color(0.851, 0.275, 0.42)       ## threat #D9466B (docs/art/ART_DIRECTION.md)
 const GLYPH_COLOR := Color(0.957, 0.918, 0.824)       ## cream highlight #F4EAD2
-## The "!" of a notice or a tell: a bar over a dot, MARK_PX tall, upright wherever the arrow is, MARK_GAP_PX from
-## the badge: beside it toward the screen's middle on the top and bottom edges, so an arrow there
-## keeps to the band along its edge, and on the side away from the edge on the left and right. Drawn
-## as shapes, so no font can shrink it.
+## The "!" of a notice or a tell: a bar over a dot, MARK_PX tall, upright wherever the arrow is,
+## MARK_GAP_PX from the badge: beside it toward the screen's middle on the top and bottom edges, so
+## an arrow there keeps to the band along its edge, and on the side away from the edge on the left
+## and right. Drawn as shapes, so no font can shrink it.
 const MARK_PX := 34.0
 const MARK_BAR_SHARE := 0.26        ## the bar's (and the dot's) width, as a share of the mark's height
 const MARK_GAP_PX := 8.0
