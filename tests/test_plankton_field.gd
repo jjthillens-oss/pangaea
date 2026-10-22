@@ -3,6 +3,8 @@ extends TestCase
 ## spawn inside their zone clear of rocks, and they are the same for the same seed.
 
 const DT := 1.0 / 60.0
+## One zone with a rock inside it and one zone a rock covers completely.
+const ROCKY_FIXTURE := "res://tests/fixtures/pool_test_rocks.json"
 ## Chance per tick of a meal and of a take in the random test (60 ticks a second).
 const RANDOM_EAT_SHARE := 0.01
 const RANDOM_TAKE_SHARE := 0.01
@@ -154,6 +156,32 @@ func test_items_spawn_inside_their_zone_and_clear_of_rocks() -> void:
 				check(false, "tick %d: %s at %s is outside %s or touching a rock" % [i, item.id, item.position, z.id])
 				return
 	check(field.items.size() > 30, "zones regrew (%d items)" % field.items.size())
+
+
+func test_items_never_spawn_on_or_drift_into_a_rock_inside_their_zone() -> void:
+	var rocky := PoolLayout.load_from(ROCKY_FIXTURE)
+	check(rocky.validate().is_empty(), "the fixture is a valid layout: %s" % [rocky.validate()])
+	var rocky_arena := rocky.build_arena()
+	var region := rocky.build_region(11)
+	var field := PlanktonField.create(rocky.plankton)
+	field.fill(region, rocky_arena, 0, 0.0)
+	var anchor_clearance := field.item_radius + field.drift_reach()
+	for i in 2400:
+		# Eating the oldest item three times a second keeps the zone spawning new ones.
+		if i % 20 == 0 and not field.items.is_empty():
+			_eat(field, region, field.items[0])
+		region.tick(DT)
+		field.tick(region, rocky_arena, i, i * DT)
+		for item in field.items:
+			var z := region.zone(item.zone)
+			if not rocky_arena.is_clear(item.anchor, anchor_clearance):
+				check(false, "tick %d: %s anchored at %s is within its drift of a rock" % [i, item.id, item.anchor])
+				return
+			if item.position.distance_to(z.center) > z.radius + 1e-6 or not rocky_arena.is_clear(item.position, field.item_radius):
+				check(false, "tick %d: %s at %s is outside %s or touching a rock" % [i, item.id, item.position, z.id])
+				return
+	check(field.next_number - 1 >= 100, "the zone kept spawning around its rock (%d items)" % (field.next_number - 1))
+	check_eq(field.count_in("z_covered"), 0, "a zone a rock covers shows no items")
 
 
 func test_the_same_seed_gives_the_same_positions() -> void:
