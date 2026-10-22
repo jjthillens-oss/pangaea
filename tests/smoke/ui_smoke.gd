@@ -1,18 +1,23 @@
 extends SceneTree
-## HUD layout smoke (M1 step 2). The top center of the HUD (the starving banner and one-off
-## messages) must never run under the status panel (top left) or the points panel (top right).
-## tools/check.sh runs it after the play smoke. It prints one PASS or FAIL line per check, and the
-## exit code is 0 when every check passes, 1 otherwise.
+## UI smoke (M1 step 2): focus and layout checks on the real screens. tools/check.sh runs it after
+## the play smoke. It prints one PASS or FAIL line per check, and the exit code is 0 when every
+## check passes, 1 otherwise.
 ##
-##   For each starting body, Main starts a lineage on a slot whose folder cannot be created, so
-##   the HUD shows the real "Not saved yet: ..." message, and the cell's energy is emptied, so the
-##   starving banner shows too. Then an unbound HUD gets the longest texts it can be given.
+##   confirm: with a saved lineage, Start on the body picker asks first, with Cancel focused, so
+##            pressing Enter through the screens never replaces the lineage.
+##   hud:     the top center of the HUD (the starving banner and one-off messages) never runs
+##            under the status panel (top left) or the points panel (top right). For each starting
+##            body, Main starts a lineage on a slot whose folder cannot be created, so the HUD
+##            shows the real "Not saved yet: ..." message, and the cell's energy is emptied, so
+##            the starving banner shows too. Then an unbound HUD gets the longest texts it can be
+##            given.
 ##
 ## The canvas is 1920 x 1080 at every window size (stretch mode canvas_items), so one layout covers
 ## the 1280 x 720 window and full screen. Saves stay under user://smoke/.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const HUD_SCENE := "res://game/ui/hud.tscn"
+const CONFIRM_SLOT := "user://smoke/ui_confirm.json"
 ## A file where the slot's folder should be, so no save can be written.
 const BLOCKED_DIR := "user://smoke/hud_layout_blocked"
 const VIEW_SIZE := Vector2(1920, 1080)
@@ -28,15 +33,16 @@ var _finished := false
 
 
 func _initialize() -> void:
-	print("HUD layout smoke, build %s" % BuildInfo.build_id())
+	print("UI smoke, build %s" % BuildInfo.build_id())
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BLOCKED_DIR.get_base_dir()))
+	main = (load(MAIN_SCENE) as PackedScene).instantiate()
+	root.add_child(main)
+	await _frames(2)
+	await _check_replace_confirm()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(BLOCKED_DIR))
 	var blocker := FileAccess.open(BLOCKED_DIR, FileAccess.WRITE)
 	blocker.store_string("not a folder")
 	blocker.close()
-	main = (load(MAIN_SCENE) as PackedScene).instantiate()
-	root.add_child(main)
-	await _frames(2)
 	main.open_session(BLOCKED_DIR.path_join("slot_1.json"))
 	await _frames(1)
 	for body in BodyText.ORDER:
@@ -61,6 +67,36 @@ func _finalize() -> void:
 	if not _finished:
 		print("FAIL the game quit before the smoke finished")
 		quit(1)
+
+
+## A player with a saved lineage presses Enter on New lineage, on the focused card and on Start:
+## the confirm opens on Cancel, so one more Enter keeps the lineage.
+func _check_replace_confirm() -> void:
+	for path in [CONFIRM_SLOT, CONFIRM_SLOT + ".bak"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	main.open_session(CONFIRM_SLOT)
+	var founded := main.start_new("grazer", 4242)
+	await _frames(1)
+	var lineage: String = main.session.sim.save.lineage_id
+	main.show_start()
+	await _frames(2)
+	var start := main.start_screen
+	start.new_button.grab_focus()
+	for i in 3:
+		await _press(&"ui_accept")
+	var confirm := start.confirm
+	_check(founded.saved and confirm.is_open() and confirm.choice_ids() == PackedStringArray(["start", "cancel"]),
+		"Start with a saved lineage asks first (%s)" % confirm.choice_ids())
+	_check(_focus() == confirm.button_for("cancel"), "the confirm opens with Cancel focused (%s)" % _focus_name())
+	_check(confirm.button_for("start").theme_type_variation == &"PrimaryButton", "Start new lineage is still drawn as the main action")
+	await _press(&"ui_accept")
+	await _frames(2)
+	var peek := GameSession.new(CONFIRM_SLOT).peek_slot()
+	_check(main.screen == main.start_screen and not confirm.is_open() and peek.ok and peek.summary.lineage_id == lineage,
+		"Enter on the confirm keeps the lineage and the start screen")
+	_check(is_instance_valid(start) and _focus() == start.start_button, "and focus goes back to Start (%s)" % _focus_name())
+	for path in [CONFIRM_SLOT, CONFIRM_SLOT + ".bak"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 ## An evolved lineage at generation 999 with the widest tag, a five-digit points count and a
@@ -117,6 +153,27 @@ func _span(r: Rect2) -> String:
 func _frames(count: int) -> void:
 	for i in count:
 		await process_frame
+
+
+## A key press and release of `action`, as the player's keyboard sends it.
+func _press(action: StringName) -> void:
+	var down := InputEventAction.new()
+	down.action = action
+	down.pressed = true
+	Input.parse_input_event(down)
+	await _frames(1)
+	var up := InputEventAction.new()
+	up.action = action
+	Input.parse_input_event(up)
+	await _frames(2)
+
+
+func _focus() -> Control:
+	return root.gui_get_focus_owner()
+
+
+func _focus_name() -> String:
+	return str(_focus().name) if _focus() != null else "nothing"
 
 
 func _check(ok: bool, what: String) -> void:
