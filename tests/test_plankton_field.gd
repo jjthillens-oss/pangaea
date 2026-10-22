@@ -3,6 +3,9 @@ extends TestCase
 ## spawn inside their zone clear of rocks, and they are the same for the same seed.
 
 const DT := 1.0 / 60.0
+## Chance per tick of a meal and of a take in the random test (60 ticks a second).
+const RANDOM_EAT_SHARE := 0.01
+const RANDOM_TAKE_SHARE := 0.01
 
 var layout: PoolLayout
 var arena: PoolArena
@@ -27,6 +30,26 @@ func _counts_match(field: PlanktonField, region: EcologyRegion) -> bool:
 	return true
 
 
+## Items above stock in each zone: count minus target (negative while a zone is short).
+func _excess(field: PlanktonField, region: EcologyRegion) -> Dictionary:
+	var counts := {}
+	for item in field.items:
+		counts[item.zone] = int(counts.get(item.zone, 0)) + 1
+	var out := {}
+	for z in region.zones:
+		out[z.id] = int(counts.get(z.id, 0)) - field.target_count(z)
+	return out
+
+
+## Ids of a zone's items, oldest first.
+func _ids_in(field: PlanktonField, zone_id: String) -> Array:
+	var ids := []
+	for item in field.items:
+		if item.zone == zone_id:
+			ids.append(item.id)
+	return ids
+
+
 ## Eats the way PoolSim does: stock first, then the item.
 func _eat(field: PlanktonField, region: EcologyRegion, item: Dictionary) -> void:
 	region.take(item.zone, item.energy)
@@ -47,23 +70,55 @@ func test_after_random_meals_takes_and_ticks_the_items_follow_the_stock() -> voi
 	var field := _field(region)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 404
+	var over_stock_ticks := 0
 	for i in 3000:
+		# Rates low enough that the zones stay stocked, so takes keep leaving items above stock.
 		var roll := rng.randf()
-		if roll < 0.05 and not field.items.is_empty():
+		if roll < RANDOM_EAT_SHARE and not field.items.is_empty():
 			_eat(field, region, field.items[rng.randi_range(0, field.items.size() - 1)])
-		elif roll < 0.07:
+		elif roll < RANDOM_EAT_SHARE + RANDOM_TAKE_SHARE:
 			# Something else grazing the zone (creatures, later) without touching an item.
 			region.take(region.zones[rng.randi_range(0, region.zones.size() - 1)].id, rng.randf_range(0.0, 20.0))
+		var excess_before := _excess(field, region)
 		region.tick(DT)
 		field.tick(region, arena, i, i * DT)
+		var excess := _excess(field, region)
 		for z in region.zones:
-			if field.count_in(z.id) > field.max_count(z):
+			if excess[z.id] + field.target_count(z) > field.max_count(z):
 				check(false, "tick %d: %s shows more than its maximum" % [i, z.id])
 				return
+			# A zone above its stock drops one item a tick; regrowth can only close the gap faster.
+			if excess_before[z.id] > 0:
+				over_stock_ticks += 1
+			if excess[z.id] > maxi(0, excess_before[z.id] - 1):
+				check(false, "tick %d: %s is %d items above its stock, %d before the tick"
+					% [i, z.id, excess[z.id], excess_before[z.id]])
+				return
+	check(over_stock_ticks >= 10, "takes left zones above their stock (%d zone-ticks)" % over_stock_ticks)
 	for i in 20:
 		region.tick(DT)
 		field.tick(region, arena, 3000 + i, (3000 + i) * DT)
+	var stocked := 0
+	for z in region.zones:
+		stocked += field.target_count(z)
+	check(stocked >= 20, "the zones still hold food at the end (%d items' worth)" % stocked)
 	check(_counts_match(field, region), "items = min(max, floor(amount / unit)) once settled")
+
+
+func test_a_zone_grazed_below_its_items_drops_its_newest_item_each_tick() -> void:
+	var region := layout.build_region(1)
+	var field := _field(region)
+	var before := _ids_in(field, "z_center")
+	check_eq(before.size(), 6, "a full centre zone shows six items")
+	# Something else grazing takes 20 of the 48 energy without touching an item: 28 shows three.
+	region.take("z_center", 20.0)
+	var z := region.zone("z_center")
+	for i in 4:
+		region.tick(DT)
+		field.tick(region, arena, i, i * DT)
+		check_eq(field.target_count(z), 3, "tick %d: the stock still shows three items" % i)
+		check_eq(field.count_in("z_center"), maxi(3, 5 - i), "tick %d: one item fewer until it matches" % i)
+	check_eq(_ids_in(field, "z_center"), before.slice(0, 3), "the three oldest items stay")
 
 
 func test_eating_never_leaves_more_items_than_stock() -> void:
