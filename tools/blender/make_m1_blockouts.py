@@ -67,7 +67,17 @@ FLOOR_MOTTLE = 0.05              # gentle light and dark mottling of the sand, a
 # Rocks: a squared-off, displaced icosphere, buried in the floor, top above the swim plane.
 ROCK_TOP = 0.58
 ROCK_BOTTOM = -2.0
-ROCK_MAX_RADIUS = 1.05    # widest point; collisions use ROCK_FOOTPRINT_RADIUS
+ROCK_MAX_RADIUS = 1.05    # widest point of the swim band outline; collisions use ROCK_FOOTPRINT_RADIUS
+ROCK_EQUATOR = -0.2       # height of the rock's widest ring, just under the swim plane
+# The swim band is the cell's height around the swim plane (|z| <= 0.45). There the outline must
+# stay within ROCK_OUTLINE of the collision circle at every azimuth, so the cell never stops short
+# of a narrow side. Only ROCK_BAND_KEEP of the stretch, lobes and bumps shows in the band (as a
+# power, so 0 is a round band); the full shape returns over ROCK_BAND_EASE above and below it.
+ROCK_BAND = 0.45
+ROCK_BAND_EASE = 0.35
+ROCK_BAND_KEEP = 0.35
+ROCK_OUTLINE = (0.85, 1.15)
+ROCK_OUTLINE_HEIGHTS = [ROCK_BAND * (i / 4.0 - 1.0) for i in range(9)]  # -0.45 .. 0.45
 ROCK_VARIANTS = {
     "rock_a": {"squareness": 0.6, "stretch": (1.0, 0.92), "lobes": (0.04, 0.0), "tilt": (0.06, 0.03),
                "bumps": 0.09, "offset": (3.1, -7.4, 1.7), "turn_deg": 0.0},
@@ -237,6 +247,30 @@ def build_pool_floor():
 # --- Rocks ------------------------------------------------------------------------------------
 
 
+def band_outline(pts, faces, heights, bins=360):
+    """The rock's outline seen from above over a height band: for each azimuth bin (1 degree),
+    the farthest point of any horizontal section of the triangles at `heights`. 0 where no section
+    reaches that azimuth. Sections are sampled densely along each cut, not just at vertices."""
+    best = [0.0] * bins
+    for f in faces:
+        for h in heights:
+            cut = []
+            for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+                pa, pb = pts[a], pts[b]
+                if (pa.z - h) * (pb.z - h) <= 0.0 and pa.z != pb.z:
+                    cut.append(pa.lerp(pb, (h - pa.z) / (pb.z - pa.z)))
+            if len(cut) < 2:
+                continue
+            p, q = cut[0], cut[1]
+            span = abs(math.degrees(math.atan2(p.x * q.y - p.y * q.x, p.x * q.x + p.y * q.y)))
+            steps = int(span * 4.0) + 1
+            for k in range(steps + 1):
+                c = p.lerp(q, k / steps)
+                i = int(math.degrees(math.atan2(c.y, c.x)) % 360.0 * bins / 360.0) % bins
+                best[i] = max(best[i], math.hypot(c.x, c.y))
+    return best
+
+
 def build_rock(asset_id):
     v = ROCK_VARIANTS[asset_id]
     stone = bc.material("M_RockStone", (0.30, 0.25, 0.20), 0.9)
@@ -244,7 +278,7 @@ def build_rock(asset_id):
     e = v["squareness"]
     offset = Vector(v["offset"])
     turn = math.radians(v["turn_deg"])
-    pts = []
+    pts, profile, shape = [], [], []
     for co in unit:
         n = Vector(co).normalized()
         az = math.atan2(n.y, n.x)
@@ -260,28 +294,45 @@ def build_rock(asset_id):
         if z > 0.0:
             z += z * (v["tilt"][0] * x + v["tilt"][1] * y)
         pts.append(Vector((x * math.cos(turn) - y * math.sin(turn), x * math.sin(turn) + y * math.cos(turn), z)))
-    # Fit exactly: top at ROCK_TOP, bottom at ROCK_BOTTOM, widest point at ROCK_MAX_RADIUS.
+        profile.append(rh)
+        shape.append(math.hypot(x, y) / rh if rh > 1e-6 else 1.0)
+    # Fit the height exactly: top at ROCK_TOP, bottom at ROCK_BOTTOM, widest ring at ROCK_EQUATOR.
     z_top = max(p.z for p in pts)
     z_bottom = min(p.z for p in pts)
-    mid = (ROCK_TOP + ROCK_BOTTOM) / 2.0
-    widest = _horizontal_radius(pts)
+    mid = ROCK_EQUATOR
     for p in pts:
         p.z = mid + (p.z / z_top) * (ROCK_TOP - mid) if p.z > 0.0 else mid + (p.z / -z_bottom) * (mid - ROCK_BOTTOM)
+    # Calm the horizontal shape in the swim band: keep its direction, compress its variation.
+    for p, rh, h in zip(pts, profile, shape):
+        band = 1.0 - bc.smoothstep((abs(p.z) - ROCK_BAND) / ROCK_BAND_EASE)
+        r = rh * h ** (1.0 - band * (1.0 - ROCK_BAND_KEEP))
+        if p.x != 0.0 or p.y != 0.0:
+            p.xy = Vector((p.x, p.y)).normalized() * r
+    # Fit the width: the swim band outline's widest point at ROCK_MAX_RADIUS.
+    widest = max(band_outline(pts, faces, ROCK_OUTLINE_HEIGHTS))
+    for p in pts:
         p.x *= ROCK_MAX_RADIUS / widest
         p.y *= ROCK_MAX_RADIUS / widest
     bc.mesh_object("Rock", pts, faces, [stone],
                    uv=lambda co: (0.5 + 0.5 * math.atan2(co.y, co.x) / math.pi, (co.z - ROCK_BOTTOM) / (ROCK_TOP - ROCK_BOTTOM)))
-    band = [p for p in pts if abs(p.z) <= 0.45]
-    swim_band_radius = _horizontal_radius(band)
+    outline = band_outline(pts, faces, ROCK_OUTLINE_HEIGHTS)
+    at_plane = band_outline(pts, faces, [0.0])
+    lo, hi = (k * ROCK_FOOTPRINT_RADIUS for k in ROCK_OUTLINE)
     _check(abs(_horizontal_radius(pts) - ROCK_FOOTPRINT_RADIUS) <= 0.15 * ROCK_FOOTPRINT_RADIUS, f"{asset_id}: footprint")
-    _check(swim_band_radius >= 0.85 * ROCK_FOOTPRINT_RADIUS, f"{asset_id}: as wide as its footprint at the swim plane")
+    _check(lo <= min(outline) and max(outline) <= hi,
+           f"{asset_id}: swim band outline {min(outline):.3f}-{max(outline):.3f} m, within {lo}-{hi} m at every azimuth")
+    _check(lo <= min(at_plane) and max(at_plane) <= hi,
+           f"{asset_id}: swim plane section {min(at_plane):.3f}-{max(at_plane):.3f} m, within {lo}-{hi} m at every azimuth")
     return {
         "purpose": "M1 step 2 pool rock, an obstacle the cell slides around. Placed by game/data/pool_m1.json with yaw and uniform scale.",
         "category": "rock",
+        "revision": 2,
         "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
         "footprint_radius_m": ROCK_FOOTPRINT_RADIUS,
         "max_radius_m": round(_horizontal_radius(pts), 3),
-        "swim_band_radius_m": round(swim_band_radius, 3),
+        "swim_band_radius_m": round(max(outline), 3),
+        "swim_band_min_radius_m": round(min(outline), 3),
+        "swim_plane_radius_range_m": [round(min(at_plane), 3), round(max(at_plane), 3)],
         "top_m": ROCK_TOP,
         "bottom_m": ROCK_BOTTOM,
     }

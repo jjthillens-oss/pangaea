@@ -20,6 +20,10 @@ const FOOD_LAYOUT_KEYS := {"plankton": "plankton", "carrion": "carrion"}
 const SCREEN_ASPECT := 16.0 / 9.0
 ## The pool floor's shelf starts here; past it the floor is flat at about +1.0 m.
 const FLOOR_SHELF_R := 45.0
+## The cell's height band around the swim plane: it reaches 0.39 m above and below it.
+const SWIM_BAND_M := 0.45
+## Section heights through the swim band, for rock outlines.
+const SWIM_BAND_HEIGHTS: Array[float] = [-0.45, -0.3375, -0.225, -0.1125, 0.0, 0.1125, 0.225, 0.3375, 0.45]
 
 
 ## Top-level records only: get_files_at lists no folders, so assets/records/placeholders/ is skipped.
@@ -99,6 +103,42 @@ func _vertices(root: Node3D) -> PackedVector3Array:
 			for v in verts:
 				out.append(t * v)
 	return out
+
+
+## The outline of `root`'s triangles seen from above over `heights`: for each 1-degree azimuth
+## bin, the farthest point of any horizontal section at those heights (0 where none reaches).
+## Each cut is sampled densely, so sparse vertices never read as a narrow side.
+func _section_outline(root: Node3D, heights: Array[float]) -> PackedFloat32Array:
+	var best := PackedFloat32Array()
+	best.resize(360)
+	for mi in _mesh_instances(root):
+		var t := _relative(mi, root)
+		for s in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+			if indices.is_empty():
+				indices.resize(verts.size())
+				for i in verts.size():
+					indices[i] = i
+			for k in range(0, indices.size() - 2, 3):
+				var tri := [t * verts[indices[k]], t * verts[indices[k + 1]], t * verts[indices[k + 2]]]
+				for h in heights:
+					var cut: Array[Vector2] = []
+					for e in 3:
+						var a: Vector3 = tri[e]
+						var b: Vector3 = tri[(e + 1) % 3]
+						if (a.y - h) * (b.y - h) <= 0.0 and a.y != b.y:
+							var c := a.lerp(b, (h - a.y) / (b.y - a.y))
+							cut.append(Vector2(c.x, c.z))
+					if cut.size() < 2:
+						continue
+					var steps := int(rad_to_deg(absf(cut[0].angle_to(cut[1]))) * 4.0) + 1
+					for j in steps + 1:
+						var c := cut[0].lerp(cut[1], float(j) / steps)
+						var bin := int(fposmod(rad_to_deg(c.angle()), 360.0)) % 360
+						best[bin] = maxf(best[bin], c.length())
+	return best
 
 
 ## Widest distance of any point from the vertical axis through the origin.
@@ -248,12 +288,21 @@ func test_rocks_fit_their_footprint_and_stay_low_enough_to_read_as_obstacles() -
 		# Pivot on the swim plane at the footprint centre, buried to the bowl's deepest point (-1.6 m).
 		check(box.position.y <= -1.6 and box.end.y > 0.0, "%s spans the swim plane down to the floor" % id)
 		check(Vector2(box.get_center().x, box.get_center().z).length() <= 0.15, "%s is centred on its pivot" % id)
-		# What the cell sees around its own height is about as wide as the collision circle.
-		var band := PackedVector3Array()
-		for v in verts:
-			if absf(v.y) <= 0.45:
-				band.append(v)
-		check(_horizontal_radius(band) >= 0.85 * footprint, "%s is as wide as its footprint at the swim plane" % id)
+		# What the cell sees around its own height is about as wide as the collision circle, on
+		# every side: over the swim band, and in the swim plane where the cell is widest.
+		for heights: Array[float] in [SWIM_BAND_HEIGHTS, [0.0] as Array[float]]:
+			var outline := _section_outline(node, heights)
+			var narrow := 0
+			var wide := 0
+			for r in outline:
+				narrow += 1 if r < 0.85 * footprint else 0
+				wide += 1 if r > 1.15 * footprint else 0
+			var where := "swim band" if heights.size() > 1 else "swim plane"
+			check(narrow == 0 and wide == 0,
+				"%s %s outline is %.3f-%.3f m, within 15%% of the %.2f m footprint at every azimuth (%d degrees narrow, %d wide)"
+				% [id, where, Array(outline).min(), Array(outline).max(), footprint, narrow, wide])
+		var record := _record(id)
+		check(float(record.get("swim_band_min_radius_m", 0.0)) >= 0.85 * footprint, "%s record swim_band_min_radius_m" % id)
 		node.free()
 
 
