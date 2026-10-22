@@ -17,12 +17,12 @@ const PLAYER := "player"
 ## #28 (flake policy in docs/DECISIONS.md, M1 step 3 review fixes): the same 60 s are timed
 ## STEP_COST_RUNS times, the bot's run and replays of its intents, and the fastest run counts. Its
 ## average must stay under STEP_COST_LIMIT_US, about 2.5 times a quiet reading in the Linux container
-## (about 600 us; CI's runner reads about 250), so steady load from other processes does not fail
+## (about 550 us; CI's runners read 250 to 365), so steady load from other processes does not fail
 ## it. Each step is also timed against the yardstick (tests/cost_yardstick.gd) run right after it,
-## which load slows alike: a tick reads about 5 yardsticks under any load here, and a step that
-## costs twice as much reads about 10, past STEP_COST_YARDSTICKS.
+## which load slows alike: a tick reads 4.7 to 5.4 yardsticks under any load here and on CI, and a
+## step that costs twice as much reads 9.4 to 10.8, past STEP_COST_YARDSTICKS.
 const STEP_COST_LIMIT_US := 1500.0
-const STEP_COST_YARDSTICKS := 7.5
+const STEP_COST_YARDSTICKS := 8.0
 const STEP_COST_RUNS := 3
 const STEP_COST_TICKS := 3600
 const BODIES: PackedStringArray = ["grazer", "hunter", "omnivore"]

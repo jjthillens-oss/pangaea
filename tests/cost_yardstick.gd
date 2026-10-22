@@ -4,8 +4,9 @@ extends RefCounted
 ## 120 us right after a sim step has filled the caches) that a gate times right after each timed
 ## step, on the same thread. Load from other processes slows the step and the yardstick alike, so
 ## the ratio of their times holds where the microseconds do not: under steady load from three other
-## test runs, or pinned to one core beside a busy loop, the 7-creature tick read 4.7 to 5.3
-## yardsticks while its microseconds doubled, and a step made twice as costly read 9.4 to 10.8.
+## test runs, or pinned to one core beside a busy loop, the 7-creature tick read 4.7 to 5.4
+## yardsticks while its microseconds doubled (5.4 on CI's runner too), and a step made twice as
+## costly read 9.4 to 10.8.
 ##
 ##     const Yardstick := preload("res://tests/cost_yardstick.gd")
 ##     var yard_us := Yardstick.time_once()

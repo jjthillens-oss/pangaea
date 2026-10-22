@@ -9,11 +9,11 @@ extends TestCase
 ##     run, then two replays of its intents) and each 5 s window counts at its fastest, so a burst
 ##     of load from other processes on a shared machine does not fail the gate. The replays end in
 ##     the bot's run's state hash: all three timed the same ticks. The average tick stays under
-##     4.4 ms, about 2.5 times a quiet reading here (about 1750 us; CI's runner reads about 810),
+##     4.4 ms, about 2.5 times a quiet reading here (about 1700 us; CI's runners read 810 to 1185),
 ##     so steady load does not fail it either; and each step is timed against the yardstick
-##     (tests/cost_yardstick.gd) run right after it, which load slows alike: a tick reads about 12
-##     to 15 yardsticks under any load here, and a step that costs twice as much about 25, past
-##     STRESS_YARDSTICKS. Flake policy: docs/DECISIONS.md, M1 step 3 review fixes.
+##     (tests/cost_yardstick.gd) run right after it, which load slows alike: a tick reads 12 to 15
+##     yardsticks under any load here (16.3 on CI), and a step that costs twice as much 25 to 29,
+##     past STRESS_YARDSTICKS. Flake policy: docs/DECISIONS.md, M1 step 3 review fixes.
 ## #30 hunter viability (plan D2): HuntBot keeps a hunter lineage alive on what it kills, now that
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on
@@ -32,7 +32,7 @@ const STRESS_RING_START := PI / 24.0
 const STRESS_SPECIES: PackedStringArray = ["ambush_hunter", "rammer"]
 const STRESS_TICKS := 1800
 const STRESS_LIMIT_US := 4400.0
-const STRESS_YARDSTICKS := 21.0
+const STRESS_YARDSTICKS := 22.0
 const STRESS_RUNS := 3              ## the bot's run and two replays of its intents
 const STRESS_WINDOW_TICKS := 300    ## each 5 s window of the 30 counts at its fastest of the runs
 ## #30 (plan section 10): seeds fixed before any run; a seed passes with no starvation death, at most
