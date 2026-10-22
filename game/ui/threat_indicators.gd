@@ -23,7 +23,11 @@ const PULSE_GROW := 0.25            ## a telling arrow grows this much at the to
 const BADGE_COLOR := Color(0.03, 0.11, 0.13, 0.9)
 const THREAT_COLOR := Color(0.851, 0.275, 0.42)       ## threat #D9466B (docs/art/ART_DIRECTION.md)
 const GLYPH_COLOR := Color(0.957, 0.918, 0.824)       ## cream highlight #F4EAD2
-const MARK_FONT_SIZE := 30
+## The tell's "!": a bar over a dot, MARK_PX tall, MARK_GAP_PX beyond the badge on the side away
+## from the screen edge, upright wherever the arrow is. Drawn as shapes, so no font can shrink it.
+const MARK_PX := 34.0
+const MARK_GAP_PX := 8.0
+const MARK_OUTLINE_PX := 3.0
 ## The glyph for each behavior; anything else gets the jaw.
 const GLYPHS := {"ambush": "jaw", "territorial": "star"}
 
@@ -122,7 +126,6 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var pulse := 0.5 - 0.5 * cos(_pulse_t * PULSE_HZ * TAU)
-	var font := get_theme_default_font()
 	for ind in indicators:
 		var c: Vector2 = ind.position
 		var dir: Vector2 = ind.direction
@@ -139,7 +142,20 @@ func _draw() -> void:
 		var g := GLYPH_PX * grow
 		HudIcon.draw_shape(self, ind.glyph, Rect2(c - Vector2(g, g) * 0.5, Vector2(g, g)), GLYPH_COLOR, BADGE_COLOR)
 		if ind.telling:
-			# "!" beside the badge, on the side away from the screen edge.
-			var mark := c - dir * (r + MARK_FONT_SIZE * 0.6) + Vector2(-MARK_FONT_SIZE * 0.2, MARK_FONT_SIZE * 0.35)
-			draw_string_outline(font, mark, "!", HORIZONTAL_ALIGNMENT_LEFT, -1, MARK_FONT_SIZE, 8, BADGE_COLOR)
-			draw_string(font, mark, "!", HORIZONTAL_ALIGNMENT_LEFT, -1, MARK_FONT_SIZE, THREAT_COLOR)
+			# The mark's center sits far enough along -dir that its upright box clears the badge.
+			var h := MARK_PX * grow
+			var reach := absf(dir.x) * h * 0.3 + absf(dir.y) * h * 0.5
+			_draw_mark(c - dir * (r + MARK_GAP_PX + reach), h)
+
+
+## An upright "!" of height `h` centered on `at`: a bar, a gap and a dot, outlined in the badge's colour.
+func _draw_mark(at: Vector2, h: float) -> void:
+	var w := h * 0.26
+	var top := at.y - h * 0.5
+	var bar := Rect2(at.x - w * 0.5, top, w, h - w * 1.7)
+	var dot := Vector2(at.x, at.y + h * 0.5 - w * 0.5)
+	var o := MARK_OUTLINE_PX
+	draw_rect(bar.grow(o), BADGE_COLOR)
+	draw_circle(dot, w * 0.5 + o, BADGE_COLOR)
+	draw_rect(bar, THREAT_COLOR)
+	draw_circle(dot, w * 0.5, THREAT_COLOR)
