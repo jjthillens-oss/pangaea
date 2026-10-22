@@ -4,6 +4,10 @@ extends Node
 ## The report holds the average FPS, the 1% low, the longest frame, the adapter, driver,
 ## resolution and vsync. It uses its own save slot unless --slot is given, so the player's
 ## lineage is never touched. Main loads it by path when the flag is given.
+##
+## Frames are timed by the wall clock, not the process delta: the engine smooths delta and caps it
+## near (max_physics_steps_per_frame + 1) physics ticks, about 150 ms, so a longer stall would read
+## short and its lost time would drop out of the averages. DURATION_S and WARM_UP_S are wall time.
 
 const DURATION_S := 90.0
 const WARM_UP_S := 2.0             ## the first frames (shader warm-up, fade-in) are not measured
@@ -15,9 +19,12 @@ const BOT_PATH := "res://game/dev/forage_bot.gd"
 
 var main: Node
 var report_path := ""
-var _frame_ms := PackedFloat32Array()
-var _t := 0.0
+## The measured frame times in ms, by the wall clock.
+var frame_ms := PackedFloat32Array()
 var _running := false
+var _warm_up_end_usec := -1        ## set by the first sample
+var _last_usec := -1               ## the previous measured frame; -1 until the warm-up is over
+var _measured_ms := 0.0
 
 
 func attach(p_main: Node) -> void:
@@ -65,20 +72,30 @@ func _begin() -> void:
 	print("Perf tour: measuring %d s after a %d s warm-up." % [DURATION_S, WARM_UP_S])
 
 
-func _process(delta: float) -> void:
-	if not _running:
-		return
-	_t += delta
-	if _t <= WARM_UP_S:
-		return
-	_frame_ms.append(delta * 1000.0)
-	if _t >= WARM_UP_S + DURATION_S:
+## Takes one frame's wall clock reading (Time.get_ticks_usec()). The first sample starts the
+## warm-up; the first one after it starts the clock, and each later one records the time since
+## the one before. Returns whether DURATION_S of frames have been measured.
+func sample(now_usec: int) -> bool:
+	if _warm_up_end_usec < 0:
+		_warm_up_end_usec = now_usec + int(WARM_UP_S * 1e6)
+	if now_usec < _warm_up_end_usec:
+		return false
+	if _last_usec >= 0:
+		var ms := (now_usec - _last_usec) / 1000.0
+		frame_ms.append(ms)
+		_measured_ms += ms
+	_last_usec = now_usec
+	return _measured_ms >= DURATION_S * 1000.0
+
+
+func _process(_delta: float) -> void:
+	if _running and sample(Time.get_ticks_usec()):
 		_finish()
 
 
 func _finish() -> void:
 	_running = false
-	var report := summarize(_frame_ms)
+	var report := summarize(frame_ms)
 	var headless := DisplayServer.get_name() == "headless"
 	var window := Vector2i.ZERO if headless else DisplayServer.window_get_size()
 	report.merge({

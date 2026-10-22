@@ -3,7 +3,10 @@ extends TestCase
 ## by path; there are no autoloads (they would also run under the test and smoke scripts); every
 ## action is bound by physical key, so the layout is the same on any keyboard; and the dev tools
 ## (debug panel, dev keys, forage bot) reach only the dev exe: the release export leaves game/dev
-## out, and nothing the release build runs refers to game/dev except Main's guarded loader.
+## out, nothing the release build runs refers to game/dev except Main's guarded loaders, nothing
+## preloads a dev file, and no dev script (in game/dev or a subfolder) has a class_name. These
+## checks read the text; tools/check_release.sh, run by check.sh and by CI after the export, starts
+## the release pack itself.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const BOOT_SCENE := "res://game/scenes/boot.tscn"
@@ -15,7 +18,22 @@ const DEV_DIR := "res://game/dev"
 const GAME_DIR := "res://game"
 ## The one file outside game/dev that may name it: Main loads the dev layer by path in debug builds.
 const DEV_LOADER := "res://game/scenes/main.gd"
+## Main's functions that may use its dev paths, each with the guard its first line must hold.
+const DEV_LOADER_GUARDS := {
+	"_add_dev_layer": "if not OS.is_debug_build()",
+	"_start_perf_tour": "if dev_layer == null",
+}
 const SCAN_EXTENSIONS := ["gd", "tscn", "tres", "json", "cfg"]
+## Where a file in game/dev carries its uid, by extension.
+const UID_PATTERNS := {
+	"uid": "^(uid://[0-9a-z]+)",
+	"tscn": "^\\[gd_scene[^\\]]*uid=\"(uid://[0-9a-z]+)\"",
+	"tres": "^\\[gd_resource[^\\]]*uid=\"(uid://[0-9a-z]+)\"",
+	"import": "(?m)^uid=\"(uid://[0-9a-z]+)\"",
+}
+const CHECK_SCRIPT := "res://tools/check.sh"
+const CI_WORKFLOW := "res://.github/workflows/ci.yml"
+const RELEASE_CHECK := "tools/check_release.sh"
 ## Default bindings (plan section 11), by physical key.
 const KEY_ACTIONS := {
 	"move_up": [KEY_W, KEY_UP],
@@ -79,24 +97,83 @@ func _filters(preset: Dictionary, key: String) -> PackedStringArray:
 	return out
 
 
-func _files_under(dir: String, out: PackedStringArray) -> void:
+## Every file under dir, subfolders included, with one of the extensions.
+func _files_under(dir: String, extensions: Array, out: PackedStringArray) -> void:
 	for file in DirAccess.get_files_at(dir):
-		if file.get_extension() in SCAN_EXTENSIONS:
+		if file.get_extension() in extensions:
 			out.append(dir.path_join(file))
 	for sub in DirAccess.get_directories_at(dir):
-		_files_under(dir.path_join(sub), out)
+		_files_under(dir.path_join(sub), extensions, out)
 
 
-## The uid:// ids of the files in game/dev, from their .uid files and scene headers.
+## The uid:// ids of the files in game/dev and its subfolders, from their .uid and .import files
+## and scene and resource headers.
 func _dev_uids() -> PackedStringArray:
+	var files := PackedStringArray()
+	_files_under(DEV_DIR, UID_PATTERNS.keys(), files)
 	var out := PackedStringArray()
-	var patterns := {"uid": "^(uid://[0-9a-z]+)", "tscn": "^\\[gd_scene[^\\]]*uid=\"(uid://[0-9a-z]+)\""}
-	for file in DirAccess.get_files_at(DEV_DIR):
-		if patterns.has(file.get_extension()):
-			var re := RegEx.create_from_string(patterns[file.get_extension()])
-			var found := re.search(FileAccess.get_file_as_string(DEV_DIR.path_join(file)))
-			if found != null:
-				out.append(found.get_string(1))
+	for path in files:
+		var re := RegEx.create_from_string(UID_PATTERNS[path.get_extension()])
+		var found := re.search(FileAccess.get_file_as_string(path))
+		if found != null:
+			out.append(found.get_string(1))
+	return out
+
+
+## Whether text names a dev file: a game/dev path, a dev uid, or one of `constants` (whole words).
+func _names_dev_file(text: String, uids: PackedStringArray, constants: PackedStringArray) -> bool:
+	if text.contains("game/dev"):
+		return true
+	for uid in uids:
+		if text.contains(uid):
+			return true
+	for constant in constants:
+		if _mentions(text, constant):
+			return true
+	return false
+
+
+func _mentions(text: String, word: String) -> bool:
+	return RegEx.create_from_string("\\b%s\\b" % word).search(text) != null
+
+
+## The constants a script declares that hold a dev file's path or uid, directly or through
+## another such constant (`const A := "res://game/dev/x.gd"`, `const B := preload(A)`).
+func _dev_constants(text: String, uids: PackedStringArray) -> PackedStringArray:
+	var declarations := RegEx.create_from_string("(?m)^\\s*(?:static\\s+)?const\\s+(\\w+)[^=\\n]*=(.*)$").search_all(text)
+	var out := PackedStringArray()
+	var grew := true
+	while grew:
+		grew = false
+		for declaration in declarations:
+			var constant := declaration.get_string(1)
+			if not constant in out and _names_dev_file(declaration.get_string(2), uids, out):
+				out.append(constant)
+				grew = true
+	return out
+
+
+## The argument of every preload() in a script.
+func _preload_args(text: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for found in RegEx.create_from_string("\\bpreload\\s*\\(([^)]*)\\)").search_all(text):
+		out.append(found.get_string(1).strip_edges())
+	return out
+
+
+## The code lines of a script as [function, line], where function is the top-level function the
+## line is in ("" outside functions, inner classes included). Comment lines are left out.
+func _lines_by_function(text: String) -> Array:
+	var header := RegEx.create_from_string("^(?:static\\s+)?func\\s+(\\w+)")
+	var out := []
+	var function := ""
+	for line in text.split("\n"):
+		if line.strip_edges().is_empty() or line.strip_edges().begins_with("#"):
+			continue
+		if not (line.begins_with("\t") or line.begins_with(" ")):
+			var found := header.search(line)
+			function = found.get_string(1) if found != null else ""
+		out.append([function, line])
 	return out
 
 
@@ -198,9 +275,11 @@ func test_the_dev_export_is_the_release_export_with_the_dev_tools() -> void:
 
 func test_only_mains_guarded_loader_refers_to_the_dev_tools() -> void:
 	var files := PackedStringArray()
-	_files_under(GAME_DIR, files)
+	_files_under(GAME_DIR, SCAN_EXTENSIONS, files)
 	var uids := _dev_uids()
 	check(uids.size() >= 5, "found the uids of the dev files (%d)" % uids.size())
+	var main_paths := _dev_constants(FileAccess.get_file_as_string(DEV_LOADER), uids)
+	check(main_paths.size() >= 4, "found Main's dev paths (%s)" % ", ".join(main_paths))
 	var scanned := 0
 	for path in files:
 		if path.begins_with(DEV_DIR + "/"):
@@ -209,20 +288,71 @@ func test_only_mains_guarded_loader_refers_to_the_dev_tools() -> void:
 		var text := FileAccess.get_file_as_string(path)
 		if path != DEV_LOADER:
 			check(not text.contains("res://game/dev/"), "%s refers to res://game/dev/" % path)
+			for constant in main_paths:
+				check(not _mentions(text, constant), "%s uses Main.%s" % [path, constant])
 		for uid in uids:
 			check(not text.contains(uid), "%s refers to a dev file by %s" % [path, uid])
 	check(scanned >= 40, "scanned the game files outside game/dev (%d)" % scanned)
-	var loader := FileAccess.get_file_as_string(DEV_LOADER)
-	check(not loader.contains("preload(\"res://game/dev/"), "Main never preloads a dev file, so the release export can leave them out")
-	check(loader.contains("OS.is_debug_build()"), "Main loads the dev layer only in debug builds")
 
 
-func test_the_dev_tools_have_no_class_name() -> void:
-	var count := 0
-	for file in DirAccess.get_files_at(DEV_DIR):
-		if file.get_extension() != "gd":
+func test_nothing_outside_the_dev_tools_preloads_a_dev_file() -> void:
+	var files := PackedStringArray()
+	_files_under(GAME_DIR, ["gd", "tscn"], files)
+	var uids := _dev_uids()
+	var main_paths := _dev_constants(FileAccess.get_file_as_string(DEV_LOADER), uids)
+	var preloads := 0
+	for path in files:
+		if path.begins_with(DEV_DIR + "/"):
 			continue
-		count += 1
-		var re := RegEx.create_from_string("(?m)^\\s*class_name\\b")
-		check(re.search(FileAccess.get_file_as_string(DEV_DIR.path_join(file))) == null, "%s declares a class_name" % file)
-	check(count >= 5, "checked the dev scripts (%d)" % count)
+		var text := FileAccess.get_file_as_string(path)
+		var constants := _dev_constants(text, uids)
+		constants.append_array(main_paths)
+		for arg in _preload_args(text):
+			preloads += 1
+			check(not _names_dev_file(arg, uids, constants),
+				"%s preloads a dev file with preload(%s), so the release build cannot parse it" % [path, arg])
+	check(preloads >= 10, "checked the game's preloads (%d)" % preloads)
+
+
+func test_main_names_the_dev_tools_only_in_its_guarded_loaders() -> void:
+	var loader := FileAccess.get_file_as_string(DEV_LOADER)
+	var constants := _dev_constants(loader, _dev_uids())
+	var declaration := RegEx.create_from_string("^const\\s+\\w+\\s*(:\\s*String\\s*)?:?=\\s*\"res://game/dev/[^\"]+\"$")
+	var first_lines := {}
+	var uses := 0
+	for entry in _lines_by_function(loader):
+		var function: String = entry[0]
+		var line: String = entry[1]
+		if function in DEV_LOADER_GUARDS and not first_lines.has(function) and line.begins_with("\t"):
+			first_lines[function] = line.strip_edges()
+		if not _names_dev_file(line, PackedStringArray(), constants):
+			continue
+		if function.is_empty():
+			check(declaration.search(line.strip_edges()) != null,
+				"Main names a dev file outside its guarded loaders, other than as a plain path: %s" % line.strip_edges())
+		else:
+			uses += 1
+			check(function in DEV_LOADER_GUARDS, "Main.%s names a dev file: %s" % [function, line.strip_edges()])
+	check(uses >= 3, "found Main's guarded loads (%d lines)" % uses)
+	for function in DEV_LOADER_GUARDS:
+		check(str(first_lines.get(function, "")).begins_with(DEV_LOADER_GUARDS[function]),
+			"Main.%s starts with its guard '%s' (%s)" % [function, DEV_LOADER_GUARDS[function], first_lines.get(function, "missing")])
+
+
+func test_no_script_in_game_dev_or_its_subfolders_declares_a_class_name() -> void:
+	var scripts := PackedStringArray()
+	_files_under(DEV_DIR, ["gd"], scripts)
+	var re := RegEx.create_from_string("(?m)^\\s*class_name\\b")
+	for path in scripts:
+		check(re.search(FileAccess.get_file_as_string(path)) == null, "%s declares a class_name" % path)
+	check(scripts.size() >= 5, "checked the dev scripts (%d)" % scripts.size())
+
+
+func test_check_sh_and_ci_start_the_release_pack() -> void:
+	check(FileAccess.get_file_as_string(CHECK_SCRIPT).contains(RELEASE_CHECK), "check.sh runs %s" % RELEASE_CHECK)
+	var ci := FileAccess.get_file_as_string(CI_WORKFLOW)
+	var export_at := ci.find("run: tools/export_windows.sh")
+	var release_at := ci.find("run: " + RELEASE_CHECK, maxi(export_at, 0))
+	check(export_at >= 0 and release_at > export_at, "CI runs %s after the export step" % RELEASE_CHECK)
+	var line := ci.substr(release_at, ci.find("\n", release_at) - release_at) if release_at >= 0 else ""
+	check(line.ends_with(" builds/windows/Pangaea.exe"), "CI checks the exported exe it uploads (%s)" % line)
