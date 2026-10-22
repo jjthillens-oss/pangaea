@@ -15,7 +15,7 @@ Pinned in `tools/toolchain.env`. Inspected and verified on 2026-10-22.
 - Boot smoke check passes headless; a rendered frame (OpenGL under Xvfb) is in `docs/evidence/`.
 - `--export-release "Windows Desktop"` produces `builds/windows/Pangaea.exe` (single file, embedded pack).
 
-**Windows gate status: exported but not Windows-verified.** The build has not yet been launched on Windows.
+**Windows gate status: passed (launch check).** On 2026-10-22 the owner launched the exported `Pangaea.exe` (built from commit 678ce8b plus the M0 working tree) on his Windows PC and saw the sample cell rotating with four PASS lines. Hardware was not recorded; record it once a baseline PC is named for the performance gate.
 
 ## Owner setup on Windows
 

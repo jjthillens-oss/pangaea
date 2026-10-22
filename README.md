@@ -8,7 +8,7 @@ Built with **Godot 4.7.2** and **Blender 5.2.2 LTS**. The design authority is th
 
 | Milestone | State |
 | --- | --- |
-| M0 Foundations: separate project, pinned toolchain, save schema, Blender export pipeline | Implemented, Windows launch pending |
+| M0 Foundations: separate project, pinned toolchain, save schema, Blender export pipeline | Implemented; Windows launch verified by owner |
 | M1 First life: microscopic feeding, threats, reproduction, bounded editor | Not started |
 
 Opening the project runs the M0 check scene: it loads the Blender sample creature and verifies the build, part data, asset loading and a save round trip.
