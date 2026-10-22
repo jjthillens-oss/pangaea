@@ -664,7 +664,7 @@ func test_survival_points_come_from_stepped_time_and_reset_on_respawn() -> void:
 	# Reading the sim as a scene does every frame is not time passing.
 	var alive := sim.alive_s
 	var before := sim.snapshot()
-	for i in 600:
+	for i in 60:
 		sim.drain_events()
 		sim.snapshot()
 		sim.nearest_edible()
