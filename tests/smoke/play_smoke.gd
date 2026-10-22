@@ -8,9 +8,10 @@ extends SceneTree
 ##
 ##   -- --phase=found --slot=user://smoke/slot_1.json --seed=4242
 ##       Clears user://smoke/ and opens the start screen. A grazer lineage eats, starves and
-##       recovers, dies and continues, pauses and resumes, then saves and quits to the title, and
-##       expect.json records what Continue must bring back. Hunter and omnivore lineages on their
-##       own slots eat too.
+##       recovers, dies and continues, pauses and resumes, then saves and quits to the title.
+##       Hunter and omnivore lineages on their own slots eat too. Then the grazer continues and
+##       swims, and the window's close button saves and quits through "Save first?", which ends
+##       the process; expect.json records what Continue must bring back.
 ##   -- --phase=continue --slot=user://smoke/slot_1.json
 ##       A new process: Continue must bring back the lineage, body, parts, points and place in
 ##       user://smoke/expect.json, and the run must play.
@@ -56,6 +57,8 @@ var main: Main
 var _failures := 0
 var _checks := 0
 var _finished := false
+## The next quit is the game's own (Save and quit in "Save first?"), so _finalize reports.
+var _quit_expected := false
 var _step_name := ""
 var _step_msec := 0
 var _numbers := RegEx.create_from_string("-?\\d+(\\.\\d+)?")
@@ -83,15 +86,26 @@ func _initialize() -> void:
 		_:
 			_check(false, "--phase is found or continue (got '%s')" % phase)
 	_finished = true
+	_report()
+
+
+## The game quit: as the found phase expects after "Save first?", or before the smoke finished
+## (a quit with exit code 0 would hide that).
+func _finalize() -> void:
+	if _finished:
+		return
+	_finished = true
+	if _quit_expected:
+		_check(true, "Save and quit closes the game")
+		_report()
+		return
+	print("FAIL the game quit before the smoke finished (step '%s')" % _step_name)
+	quit(1)
+
+
+func _report() -> void:
 	print("\n%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 or _checks == 0 else 0)
-
-
-## Something quit the game before the smoke finished (a quit with exit code 0 would hide it).
-func _finalize() -> void:
-	if not _finished:
-		print("FAIL the game quit before the smoke finished (step '%s')" % _step_name)
-		quit(1)
 
 
 # Found phase
@@ -160,6 +174,10 @@ func _found() -> void:
 		await _brief_run(body)
 	_check_slot_kept(expect)
 	_end()
+
+	# Last, because Save and quit in "Save first?" ends the process.
+	_begin("close the window and save")
+	await _continue_and_close_window(expect)
 
 
 ## Every body card shows the stats Phenotype.derive gives its starting genome.
@@ -289,7 +307,8 @@ func _starve_and_recover(pool: PoolScene) -> void:
 
 
 ## A drained cell parked away from food dies; the notice names the points the death takes and
-## its Continue puts the cell back at the start, and play goes on.
+## keeps the pause key, the window's close button offers no save while the cell is dead, and
+## the notice's Continue puts the cell back at the start and play goes on.
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
@@ -312,6 +331,15 @@ func _die_and_continue(pool: PoolScene) -> void:
 	_check(not main.pause_menu.is_open() and notice.is_open(), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
 	_check(button != null and _focus() == button, "the notice's Continue has the keyboard focus")
+	var dialog := main.quit_dialog
+	root.propagate_notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	await _frames(1)
+	_check(_shown(dialog) and dialog.choice_ids() == PackedStringArray(["quit", "cancel"]) and _focus() == dialog.button_for("cancel"),
+		"the window's close button asks 'Save first?' with no save choice while the cell is dead (%s)" % dialog.choice_ids())
+	if not _click(dialog.button_for("cancel"), "the dialog's Cancel"):
+		dialog.choose("cancel")
+	await _frames(1)
+	_check(not dialog.is_open() and _shown(notice) and button != null and _focus() == button, "Cancel goes back to the death notice")
 	if not _click(button, "the notice's Continue"):
 		main.continue_after_death()
 	await _frames(2)
@@ -372,10 +400,19 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var position := PlaneSpace.from_save(save.player.position)
 	_check(position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M, "the save holds the cell's position")
 	_check(not start.continue_button.disabled and _focus() == start.continue_button, "Continue is on and has the keyboard focus")
+	var expect := _expect_from(save)
+	var wrote := _write_expect(expect)
+	_check(wrote, "wrote %s" % EXPECT_PATH)
+	return expect if wrote else {}
+
+
+## What Continue must bring back from `save`, the grazer's running save just written.
+func _expect_from(save: SaveGame) -> Dictionary:
 	var parts := []
 	for part in save.genome.parts:
 		parts.append({"type": str(part.get("type", "")), "angle": float(part.get("angle", 0.0))})
-	var expect := {
+	var position := PlaneSpace.from_save(save.player.position)
+	return {
 		"lineage_id": save.lineage_id,
 		"lineage_tag": GameSession.lineage_tag(save.lineage_id),
 		"genome_id": save.genome.genome_id,
@@ -386,13 +423,15 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 		"position": [position.x, position.y],
 		"world_seed": save.world_seed,
 	}
+
+
+func _write_expect(expect: Dictionary) -> bool:
 	var file := FileAccess.open(EXPECT_PATH, FileAccess.WRITE)
-	_check(file != null, "wrote %s" % EXPECT_PATH)
 	if file == null:
-		return {}
+		return false
 	file.store_string(JSON.stringify(expect, "\t", true, true))
 	file.close()
-	return expect
+	return true
 
 
 ## A new lineage of `body` on its own slot eats something it can eat within 40 s.
@@ -424,6 +463,57 @@ func _check_slot_kept(expect: Dictionary) -> void:
 	var peek := GameSession.new(slot).peek_slot()
 	_check(peek.ok and peek.summary.lineage_id == expect.lineage_id and peek.summary.body == "grazer",
 		"the other runs left %s alone" % slot)
+
+
+## Continue on the title brings back what Save and quit to title wrote. The grazer swims away
+## from that place (unsaved progress), then the window's close button asks "Save first?". Its Save
+## and quit writes the slot and quits the game at the end of that frame, so the slot is checked in
+## the same frame and expect.json records it for the continue phase.
+func _continue_and_close_window(expect: Dictionary) -> void:
+	main.open_session(RunFlags.current().slot)
+	await _frames(1)
+	main.intent_provider = ForageBot.new()
+	if not _click(main.start_screen.continue_button, "Continue"):
+		main.continue_run()
+	await _frames(2)
+	var pool := main.pool
+	_check(pool != null and main.last_run.get("source", "") == "primary", "Continue opens the grazer's slot %s" % main.last_run)
+	if pool == null:
+		_end()
+		return
+	var sim := pool.sim
+	var saved := Vector2(expect.position[0], expect.position[1])
+	# The bot has already swum a tick, so the place is read from the loaded save.
+	_check(sim.save.lineage_id == expect.lineage_id and sim.save.adaptation_points == int(expect.points)
+		and PlaneSpace.from_save(sim.save.player.position).distance_to(saved) <= POSITION_TOLERANCE_M,
+		"Continue loads the lineage, points and place that Save and quit to title wrote")
+	var away := func(): return sim.motion.position.distance_to(saved) > GameSession.DIRTY_MOVE_M
+	var ticks := await _ticks_until(sim, away, MEAL_TICKS)
+	_check(away.call() and main.session.dirty, "the grazer swam away from its saved place in %.1f s" % (ticks * PoolSim.DT))
+	var dialog := main.quit_dialog
+	root.propagate_notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	await _frames(1)
+	_check(_shown(dialog) and pool.paused and dialog.choice_ids() == PackedStringArray(["save_quit", "quit", "cancel"])
+		and _focus() == dialog.button_for("save_quit"),
+		"the window's close button pauses and asks 'Save first?' with Save and quit focused (%s)" % dialog.choice_ids())
+	_quit_expected = true
+	if not _click(dialog.button_for("save_quit"), "the dialog's Save and quit"):
+		_quit_expected = false
+		_end()
+		return
+	var session := main.session
+	_check(session.last_save.get("ok", false) and not session.dirty, "Save and quit saved the run %s" % session.last_save)
+	var loaded := session.persistence.load_from(session.slot)
+	var position := PlaneSpace.from_save(loaded.save.player.position) if loaded.ok else Vector2.INF
+	_check(loaded.ok and loaded.save.lineage_id == expect.lineage_id and loaded.save.adaptation_points == sim.save.adaptation_points
+		and position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M,
+		"the slot holds the run's %d points and new place (%.2f m from the last save)" % [sim.save.adaptation_points, position.distance_to(saved)])
+	_check(_write_expect(_expect_from(sim.save)), "wrote %s again" % EXPECT_PATH)
+	_end()
+	# The game quits at the end of this frame and _finalize reports; still running means it did not.
+	await _frames(2)
+	_quit_expected = false
+	_check(false, "Save and quit closes the game")
 
 
 # Continue phase
