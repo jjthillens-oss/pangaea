@@ -22,7 +22,7 @@ The owner set all seven decisions in the M1 brief (https://claude.ai/artifact/Dj
 4. **Death rule:** respawn at the last generation checkpoint, keeping the lineage; unspent adaptation points drop by a quarter (`Lineage.DEATH_POINT_LOSS`).
 5. **Difficulty:** one forgiving preset for M1; more presets later.
 6. **Era names:** the seven names from Bible section 4 stay as working names.
-7. **Baseline Windows PC:** the owner's own PC. Specs (CPU, graphics card, RAM) still to be recorded.
+7. **Baseline Windows PC:** the owner's own PC: AMD Ryzen 7 9800X3D, NVIDIA GeForce RTX 5070 (12 GB), 32 GB RAM, Windows 64-bit. It also has AMD integrated graphics; performance checks must run on the RTX 5070. This is a high-end machine, so a lower minimum spec should be chosen later (around the M2 visual benchmark).
 
 ## 2026-10-22 · Save schema v2 (IMPLEMENTED)
 Adds `adaptation_points` (unspent, never negative). `SaveMigrations.v1_to_v2` upgrades M0 saves in memory with 0 points; `tests/fixtures/save_v1.json` covers it. Approved as part of the M1 brief (the brief lists adaptation points as a saved resource).
@@ -35,7 +35,7 @@ The owner offered to buy Spore and extract its files for formats. Declined: we d
 
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
-- Baseline Windows PC specs (owner's PC approved as the baseline; specs not yet recorded).
+- Minimum supported PC spec (below the owner's high-end baseline).
 - Difficulty presets beyond M1's single forgiving preset.
 - Final era names and boundaries (working names approved for now).
 - Git LFS for large `.blend` sources.
