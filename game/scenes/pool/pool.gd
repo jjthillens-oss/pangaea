@@ -50,6 +50,8 @@ var _starve_pulse_t := 0.0
 @onready var target_ring: TargetRing = %TargetRing
 @onready var starving_arrow: StarvingArrow = %StarvingArrow
 @onready var _fade: ColorRect = %Fade
+@onready var _sun: DirectionalLight3D = $Sun
+@onready var _world: WorldEnvironment = $WorldEnvironment
 
 
 ## Starts drawing the session's running sim. `provider` defaults to the player's SwimInput.
@@ -66,6 +68,8 @@ func setup(p_session: GameSession, provider: Object = null) -> void:
 func _ready() -> void:
 	for node in floor_node.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The light is tuned for Forward+; the Compatibility renderer gets its own values (pool_look.gd).
+	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world, floor_node)
 	swim_input.camera = camera
 	if session != null and not _built:
 		_build()
@@ -116,7 +120,7 @@ func _build() -> void:
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
-	feedback.setup(session.layout.zones)
+	feedback.setup(session.layout.zones, camera)
 	camera.configure(session.layout.camera)
 	camera.snap_to(cell_view.position)
 	_draw_food(1.0)
@@ -245,6 +249,7 @@ func _update_starving(delta: float) -> void:
 	var cell_at := cell_view.position
 	var food_at := PlaneSpace.to_world(food.position)
 	var cell_px := camera.unproject_position(cell_at)
+	var cell_radius_px := camera.unproject_position(cell_at + Vector3.RIGHT * sim.phenotype.radius).distance_to(cell_px)
 	# One meter toward the food is always in front of the camera, so it gives the screen direction.
 	var toward := cell_at + (food_at - cell_at).normalized()
 	var direction := camera.unproject_position(toward) - cell_px
@@ -253,7 +258,7 @@ func _update_starving(delta: float) -> void:
 		var p := camera.unproject_position(food_at)
 		if starving_arrow.get_rect().has_point(p):
 			food_px = p
-	starving_arrow.point(cell_px, direction, food_px, cell_at.distance_to(food_at))
+	starving_arrow.point(cell_px, direction, food_px, cell_at.distance_to(food_at), cell_radius_px)
 
 
 func _update_target_ring() -> void:

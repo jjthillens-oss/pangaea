@@ -59,7 +59,10 @@ FLOOR_RIM_NOISE = 0.10    # rocky rim, faded in from r = 40
 # a metre or two instead of switching at a face edge of the radial grid.
 FLOOR_SAND = (0.46, 0.40, 0.28)
 FLOOR_SILT = (0.24, 0.22, 0.15)
-FLOOR_STONE = (0.70, 0.68, 0.62)
+# Weathered grey stone, darker than the sand (luminance 0.35): the dry lip takes the full sun,
+# and the old pale stone (0.70, 0.68, 0.62) rendered near-white there, the brightest thing on
+# screen (tests/test_pool_look.gd keeps it under RIM_MAX_LUMINANCE).
+FLOOR_STONE = (0.36, 0.35, 0.33)
 FLOOR_SILT_EDGE = (0.12, 0.28)   # patch noise over which the sand turns to silt
 FLOOR_STONE_EDGE_M = 0.6         # width of the fade at each side of the stone band
 FLOOR_MOTTLE = 0.05              # gentle light and dark mottling of the sand, as a share of its colour
@@ -207,7 +210,7 @@ def build_pool_floor():
     for i in range(len(FLOOR_RINGS) - 1):
         for j in range(FLOOR_SEGMENTS):
             faces.append((ring(i, j), ring(i + 1, j), ring(i + 1, j + 1), ring(i, j + 1)))
-    # Colours per vertex: pale stone on the lip, silt patches and a silty deep centre, sand elsewhere.
+    # Colours per vertex: grey stone on the lip, silt patches and a silty deep centre, sand elsewhere.
     colors = [floor_color(v[0], v[1]) for v in verts]
     edge = FLOOR_RINGS[-1]
     floor = bc.mesh_object("PoolFloor", verts, faces, [floor_mat], fix_normals=False,
@@ -219,17 +222,19 @@ def build_pool_floor():
     _check(max(v[2] for v in inner) <= -0.45, "pool_floor: at or below -0.45 m inside r = 39")
     _check(min(v[2] for v in rim) > 0.8, "pool_floor: rim above +0.8 m over r 41.5-43")
     return {
-        "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out past the edge of the camera view.",
+        "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a grey stone rim lip and a shelf out past the edge of the camera view.",
         "category": "floor",
-        "revision": 2,
-        "dependencies": ["assets/export/M_PoolFloor.tres"],
+        "revision": 3,
+        # The engine material and the procedural caustic and water passes drawn after it.
+        "dependencies": ["assets/export/M_PoolFloor.tres", "assets/export/M_PoolCaustics.tres", "assets/export/pool_caustics.gdshader",
+                         "assets/export/M_PoolWater.tres", "assets/export/pool_water.gdshader"],
         "vertex_colors_attribute": "FloorColor",
         "pivot": "pool centre on the swim plane (Godot y = 0)",
         "radius_m": FLOOR_RINGS[-1],
         "vertex_colors": {
             "attribute": "FloorColor",
             "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_PoolFloor.tres)",
-            "note": "Sand with soft silt patches and a silty centre, and a pale stone band on the rim lip, blended per vertex.",
+            "note": "Sand with soft silt patches and a silty centre, and a grey stone band on the rim lip, blended per vertex.",
             "sand": list(FLOOR_SAND),
             "silt": list(FLOOR_SILT),
             "stone": list(FLOOR_STONE),

@@ -29,9 +29,10 @@ In this order; any failure stops it. It takes about 40 s in the Linux container.
 4. Launch run: the main scene for 300 frames (`--fixed-fps 60 --quit-after 300`). It must open with no engine or script errors.
 5. Play smoke, found phase (`tests/smoke/play_smoke.gd -- --phase=found --seed=4242`): a grazer lineage is started from the start screen, eats, starves and recovers, dies and continues, then saves and quits to the title. Hunter and omnivore lineages eat too.
 6. Play smoke, continue phase, in a new process: Continue brings back the same lineage, body, parts, points and place.
-7. Error-log gate: fails if any `builds/smoke/*.log` has `SCRIPT ERROR` or a line starting `ERROR:`.
+7. UI smoke (`tests/smoke/ui_smoke.gd`): with a saved lineage, pressing Enter through New lineage, the body card, Start and the replace-lineage confirm keeps the lineage, because the confirm opens on Cancel. Then, for every starting body, the starving banner and a real "Not saved yet" message stay clear of the HUD's status and points panels, compared by their global rects.
+8. Error-log gate: fails if any `builds/smoke/*.log` has `SCRIPT ERROR` or a line starting `ERROR:`.
 
-Steps 4 to 6 write `builds/smoke/launch.log`, `found.log` and `continue.log`. Smoke saves go to `user://smoke/`, never to the player's slot. Run `tools/write_build_info.sh` first if the build id should name the commit; otherwise it says `dev`. To keep a check run away from your own Godot user data, set `XDG_DATA_HOME` to a scratch folder.
+Steps 4 to 7 write `builds/smoke/launch.log`, `found.log`, `continue.log` and `ui.log`. Smoke saves go to `user://smoke/`, never to the player's slot. Run `tools/write_build_info.sh` first if the build id should name the commit; otherwise it says `dev`. To keep a check run away from your own Godot user data, set `XDG_DATA_HOME` to a scratch folder.
 
 ## Windows builds
 
@@ -69,7 +70,16 @@ xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86
 - `shot.gd` is a small `SceneTree` script that sets up the scene, waits for the frames it needs, then saves `root.get_viewport().get_texture().get_image()` with `save_png`. No such script is in the repository yet.
 - Wait at least 24 frames after the pool opens, so its 0.3 s fade-in is gone.
 - Set the pool's `pause_on_focus_loss` to false, or Xvfb focus changes can pause it.
-- These renders show the Compatibility renderer only. The game uses Forward+ on Windows, which looks different.
+- These renders show the Compatibility renderer, which tonemaps each pass on its own and adds each shadowed light to the rest in sRGB. The pool gives it its own light (`game/scenes/pool/pool_look.gd`), so its floor comes within about 8 CIE76 of the game on Windows (Forward+), but its frames stay a little darker and greener, with paler plankton tops.
+
+To judge the look, render with Forward+ on Mesa's software Vulkan driver (lavapipe). It takes about 30 s a frame at 1080p on 4 CPUs. Unpack the driver package that matches the installed Mesa and point the Vulkan loader at it:
+
+```bash
+apt-get download mesa-vulkan-drivers && dpkg-deb -x mesa-vulkan-drivers_*.deb /tmp/lvp
+echo '{"file_format_version": "1.0.1", "ICD": {"library_path": "/tmp/lvp/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so", "api_version": "1.4.318"}}' > /tmp/lvp/lvp_icd.json
+VK_ICD_FILENAMES=/tmp/lvp/lvp_icd.json xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . \
+  --rendering-method forward_plus --rendering-driver vulkan --resolution 1920x1080 --fixed-fps 60 --script path/to/shot.gd
+```
 
 ## Owner setup on Windows
 
