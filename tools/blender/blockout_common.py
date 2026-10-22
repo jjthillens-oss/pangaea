@@ -25,12 +25,12 @@ REVIEW_STATE = "blockout - M1 step 2, not visually approved"
 GENERATOR = "tools/blender/make_m1_blockouts.py"
 
 
-def provenance(generator):
+def provenance_for(generator):
     """The record's provenance line for assets built by `generator`."""
     return f"Authored procedurally in Blender by {generator}; no external or generated meshes."
 
 
-PROVENANCE = provenance(GENERATOR)
+PROVENANCE = provenance_for(GENERATOR)
 
 
 def paths(asset_id):
@@ -266,13 +266,14 @@ def world_bounds():
     return lo, hi
 
 
-def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR):
+def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=None):
     """Saves the .blend, exports the GLB and writes the record. Fails if over the triangle budget.
 
     `fields` holds the asset-specific record keys (purpose, category and the gameplay contract
-    values that tests check, such as footprint_radius_m or item_radius_m). `review_state` and
-    `generator` (the script's path from the repository root, which also names it in the
-    provenance) default to the step 2 values.
+    values that tests check, such as footprint_radius_m or item_radius_m). Other generators
+    pass their own review state and generator (the script's path from the repository root); the
+    provenance line defaults to one naming that generator. Production generators also pass their
+    own provenance and list baked images in fields["textures"].
     """
     bpy.context.view_layer.update()
     tris = triangle_count()
@@ -317,7 +318,7 @@ def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERA
         "dimensions_m": {"x": round(size.x, 3), "y_forward": round(size.y, 3), "z_up": round(size.z, 3)},
         "triangles": tris,
         "triangle_budget": budget,
-        "textures": [],
+        "textures": fields.pop("textures", []),
         "materials": sorted(m.name for m in bpy.data.materials if m.users),
         "rig_family": None,
         "animations": [],
@@ -325,7 +326,7 @@ def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERA
         "nodes": sorted(o.name for o in bpy.data.objects),
     }
     record.update(fields)
-    record["provenance"] = provenance(generator)
+    record["provenance"] = provenance if provenance is not None else provenance_for(generator)
     with open(record_path, "w") as f:
         json.dump(record, f, indent=2)
         f.write("\n")

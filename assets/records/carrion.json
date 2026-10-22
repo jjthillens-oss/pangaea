@@ -2,27 +2,55 @@
   "id": "carrion",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 carrion food item (static, sinks, no drift), drawn with one MultiMesh.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 carrion food item (static, sinks, no drift): a torn, marbled flesh chunk with a pale sinew band and fat beads, drawn with one MultiMesh.",
   "category": "food",
   "source_blend": "assets/source/blender/carrion.blend",
-  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/carrion.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.577,
-    "y_forward": 0.501,
-    "z_up": 0.286
+    "x": 0.496,
+    "y_forward": 0.504,
+    "z_up": 0.268
   },
-  "triangles": 320,
+  "triangles": 300,
   "triangle_budget": 400,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_Carrion_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_Carrion_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_Carrion_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
-    "M_CarrionFlesh",
-    "M_CarrionStreak"
+    "M_Carrion",
+    "M_CarrionProc"
   ],
   "rig_family": null,
   "animations": [],
@@ -34,5 +62,11 @@
   "pivot": "centre of the item",
   "item_radius_m": 0.3,
   "mesh_radius_m": 0.31,
-  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 320,
+    "triangles_after": 300
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -2,29 +2,61 @@
   "id": "sample_cell",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "sample - pipeline validation only, not visually approved",
-  "purpose": "M0 Blender-to-Godot pipeline check: scale, orientation, materials, sockets.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 player cell body in the approved art direction (quality-ladder look): a coral pebble body with lidded eyes, organelle beads, lips and a flagellum. The pool hides Body/Mouth and Body/Flagellum (genome parts replace them).",
+  "category": "creature",
   "source_blend": "assets/source/blender/sample_cell.blend",
-  "generator_script": "tools/blender/make_sample_cell.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/sample_cell.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.92,
-    "y_forward": 1.658,
-    "z_up": 0.78
+    "x": 0.928,
+    "y_forward": 1.851,
+    "z_up": 0.76
   },
-  "triangles": 13056,
-  "textures": [],
+  "triangles": 5607,
+  "triangle_budget": 8000,
+  "textures": [
+    {
+      "name": "T_PlayerCell_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_PlayerCell_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PlayerCell_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
-    "M_CellMembrane",
-    "M_CellNucleus",
-    "M_EyePupil",
-    "M_EyeWhite",
-    "M_Flagellum",
-    "M_MouthLip"
+    "M_IrisProc",
+    "M_LidProc",
+    "M_LipsProc",
+    "M_Membrane_Procedural",
+    "M_OrganelleProc",
+    "M_PlayerCell",
+    "M_PupilProc",
+    "M_ScleraProc"
   ],
   "rig_family": null,
   "animations": [],
@@ -35,5 +67,31 @@
     "socket_tail",
     "socket_top"
   ],
-  "provenance": "Authored procedurally in Blender by tools/blender/make_sample_cell.py; no external or generated meshes."
+  "nodes": [
+    "Body",
+    "Eye_L",
+    "Eye_R",
+    "Flagellum",
+    "Iris_L",
+    "Iris_R",
+    "LidLower_L",
+    "LidLower_R",
+    "LidUpper_L",
+    "LidUpper_R",
+    "Mouth",
+    "Pupil_L",
+    "Pupil_R",
+    "socket_mouth",
+    "socket_side_L",
+    "socket_side_R",
+    "socket_tail",
+    "socket_top"
+  ],
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 9412,
+    "triangles_after": 5607
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

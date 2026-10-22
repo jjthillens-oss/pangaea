@@ -2,25 +2,54 @@
   "id": "part_flagellum",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 flagellum part (propulsion): a tapered S-curve whip.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 flagellum part (propulsion): a tapered, spiral-fluted whip, rust at the collar bead to cream at the tip.",
   "category": "part",
   "source_blend": "assets/source/blender/part_flagellum.blend",
-  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/part_flagellum.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.151,
-    "y_forward": 0.793,
-    "z_up": 0.116
+    "x": 0.146,
+    "y_forward": 0.79,
+    "z_up": 0.12
   },
-  "triangles": 384,
+  "triangles": 558,
   "triangle_budget": 1500,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_PartFlagellum_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_PartFlagellum_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFlagellum_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
+    "M_FlagellumProc",
     "M_PartFlagellum"
   ],
   "rig_family": null,
@@ -35,5 +64,11 @@
     "outward_axis": "Blender +Y (Godot -Z)",
     "embed_m": 0.03
   },
-  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0006,
+    "triangles_before": 1056,
+    "triangles_after": 558
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -5,6 +5,12 @@ extends TestCase
 const RECORDS_DIR := "res://assets/records"
 const LAYOUT_PATH := "res://game/data/pool_m1.json"
 const BLOCKOUT_REVIEW := "blockout - M1 step 2, not visually approved"
+## Production replacements (tools/blender/make_m1_production.py) keep the blockout's id, contract
+## and budget; they are PROPOSED until Joshua reviews the look.
+const PRODUCTION_REVIEW := "production rev 1 - M1, awaiting owner look review"
+## Texture sizes allowed by the art direction (section 4): 512 px for microscopic creatures and
+## props, up to 2048 px for prominent assets.
+const MAX_TEXTURE_PX := 2048
 ## Triangle budgets from the M1 step 2 plan, kept here so a record cannot loosen its own.
 const BLOCKOUT_BUDGETS := {
 	"pool_floor": 20000,
@@ -258,7 +264,7 @@ func test_blockout_records_are_proposed_unapproved_and_within_budget() -> void:
 			check(false, "%s has a record" % id)
 			continue
 		check_eq(record.get("status"), "PROPOSED", "%s status" % id)
-		check_eq(record.get("review_state"), BLOCKOUT_REVIEW, "%s review state" % id)
+		check(record.get("review_state") in [BLOCKOUT_REVIEW, PRODUCTION_REVIEW], "%s review state is blockout or production, got %s" % [id, record.get("review_state")])
 		check(String(record.get("provenance", "")).contains("procedurally"), "%s provenance is procedural" % id)
 		var tris := int(record.get("triangles", 1 << 30))
 		check(tris > 0 and tris <= BLOCKOUT_BUDGETS[id], "%s has %d triangles, budget %d" % [id, tris, BLOCKOUT_BUDGETS[id]])
@@ -758,3 +764,31 @@ func test_threat_bodies_draw_their_vertex_colours_a_dark_ambusher_and_a_banded_r
 		in_band = v.y < 0.1
 	check(line.size() > 20, "the rammer has vertices along the top of its back")
 	check_eq(bands, 3, "dark bands across the rammer's back")
+
+
+func test_production_assets_carry_textures_and_log_every_outside_source() -> void:
+	for record in _records():
+		if record.get("review_state") != PRODUCTION_REVIEW:
+			continue
+		var id: String = record.id
+		var textures: Array = record.get("textures", [])
+		check(not textures.is_empty(), "%s lists its baked textures" % id)
+		for tex: Dictionary in textures:
+			var size: Array = tex.get("size", [0, 0])
+			check(int(size[0]) > 0 and int(size[0]) <= MAX_TEXTURE_PX and int(size[0]) == int(size[1]), "%s texture %s is square and at most %d px" % [id, tex.get("name"), MAX_TEXTURE_PX])
+		# Every outside source is CC0, named by URL and kept in the repo (art direction section 8).
+		for dep: Variant in record.get("dependencies", []):
+			if dep is Dictionary:
+				check(String(dep.get("license", "")).begins_with("CC0"), "%s dependency %s is CC0" % [id, dep.get("asset")])
+				check(String(dep.get("source_url", "")).begins_with("https://"), "%s dependency %s has a source URL" % [id, dep.get("asset")])
+				check(DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("res://" + String(dep.get("path", "")))), "%s dependency %s is kept in the repo" % [id, dep.get("asset")])
+		# The imported scene has textured materials, not flat colours.
+		var node := _load_scene("res://" + String(record.export_path))
+		if node == null:
+			check(false, "%s loads" % id)
+			continue
+		for mi in _mesh_instances(node):
+			for s in mi.mesh.get_surface_count():
+				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				check(mat != null and mat.albedo_texture != null, "%s %s surface %d has an albedo texture" % [id, mi.name, s])
+		node.free()
