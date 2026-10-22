@@ -156,7 +156,7 @@ func _begin_tell(sim: PoolSim, c: CreatureField.Creature) -> void:
 		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
 	c.brain.engaged_tick = sim.tick
 	CreatureBrain.begin_tell(c.brain, sim.creatures.self_view_of(c), sim.tick)
-	sim.creatures.update_token(c)
+	sim.creatures.update_token(c, sim.tick)
 
 
 ## How far the cell's center is from where the creature's strike would be allowed now: the nearest
@@ -431,7 +431,7 @@ func _engage(sim: PoolSim, c: CreatureField.Creature) -> void:
 		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
 	CreatureBrain._notice(c.brain, PLAYER, "sight", sim.tick)
 	CreatureBrain._chase(c.brain, sim.creatures.self_view_of(c), CreatureBrain.PURSUE, sim.tick, true)
-	sim.creatures.update_token(c)
+	sim.creatures.update_token(c, sim.tick)
 	sim.drain_events()
 
 
@@ -447,7 +447,8 @@ func test_every_strike_comes_exactly_1_2_s_after_its_tell_and_hits_only_inside_i
 			var to := c.motion.position - s.motion.position
 			return SimIntent.new(to.normalized() * 0.25 if to.length() > c.phenotype.radius + s.phenotype.radius + 0.1 else Vector2.ZERO)
 		var tells: Array[int] = []
-		var strikes: Array[Dictionary] = []   # {"tick", "heading", "hits"}
+		var lanes: Array[Dictionary] = []     # each tell's lane, as the view draws it
+		var strikes: Array[Dictionary] = []   # {"tick", "heading", "position", "hits", "hit_at"}
 		var stray_hits: Array[int] = []
 		var turned := ""
 		var reach := c.phenotype.radius + sim.phenotype.radius + float(attack.reach)
@@ -459,11 +460,13 @@ func test_every_strike_comes_exactly_1_2_s_after_its_tell_and_hits_only_inside_i
 			for e in sim.drain_events():
 				if e.get("id", "") == c.id and e.type == "creature_tell":
 					tells.append(t)
+					lanes.append(e.lane)
 				elif e.get("id", "") == c.id and e.type == "creature_strike":
-					strikes.append({"tick": t, "heading": float(e.heading), "hits": 0})
+					strikes.append({"tick": t, "heading": float(e.heading), "position": Vector2(e.position), "hits": 0, "hit_at": []})
 				elif e.type == "hit" and e.attacker == c.id:
 					if not strikes.is_empty() and t >= int(strikes[-1].tick) and t < int(strikes[-1].tick) + window:
 						strikes[-1].hits += 1
+						strikes[-1].hit_at.append(Vector2(e.position))
 					else:
 						stray_hits.append(t)
 			if CreatureBrain.is_striking(c.brain) and not strikes.is_empty() \
@@ -480,6 +483,17 @@ func test_every_strike_comes_exactly_1_2_s_after_its_tell_and_hits_only_inside_i
 			check(i < tells.size() and int(strikes[i].tick) - tells[i] == int(attack.tell_ticks),
 				"%s strike %d comes %d ticks after its tell" % [species_id, i, int(strikes[i].tick) - (tells[i] if i < tells.size() else 0)])
 			check(int(strikes[i].hits) <= 1, "%s strike %d hit at most once (%d)" % [species_id, i, strikes[i].hits])
+			if i >= lanes.size():
+				continue
+			# F1: the strike runs along the lane its tell showed, from its origin (the cell stops short of
+			# touching, so nothing pushes the creature through its tell), and lands only inside it.
+			var lane: Dictionary = lanes[i]
+			check(absf(angle_difference(float(strikes[i].heading), float(lane.heading))) <= 1e-6,
+				"%s strike %d runs along its tell's lane (%.4f vs %.4f)" % [species_id, i, strikes[i].heading, lane.heading])
+			check(Vector2(strikes[i].position).distance_to(lane.origin) <= 1e-3, "%s strike %d starts at its lane's origin (%.4f m off)" % [
+				species_id, i, Vector2(strikes[i].position).distance_to(lane.origin)])
+			for at in strikes[i].hit_at:
+				check(CreatureBrain.lane_contains(lane, at), "%s strike %d hit the cell at %s, inside its lane" % [species_id, i, at])
 		check(stray_hits.is_empty(), "%s: no hit outside a strike's burst and glide (%s)" % [species_id, stray_hits])
 		check(turned.is_empty(), "%s: the heading held over every strike (%s)" % [species_id, turned])
 

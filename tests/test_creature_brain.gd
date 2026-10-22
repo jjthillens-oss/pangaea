@@ -306,6 +306,44 @@ func test_a_watching_hunter_aims_only_at_a_target_in_its_window_in_front_that_it
 			check(not labels.has("chase/aim"), "%s: never aims" % case[0])
 
 
+func test_a_sated_hunter_pushed_off_its_home_swims_back_past_prey_in_view_and_notices_it_once_home() -> void:
+	# A sated hunter 2 m from home (a missed lunge, a shove) with prey in view all the way: it does
+	# not stop to notice prey it would not chase, so it gets home, then notices it once and watches.
+	var cases := [
+		["pushed back", Vector2(-2.0, 0.0), Vector2(4.0, 0.0)],
+		["pushed sideways", Vector2(0.0, 2.0), Vector2(3.5, 1.0)],
+		["pushed forward, the prey to one side", Vector2(2.0, 0.0), Vector2(2.0, -4.0)],
+	]
+	for case in cases:
+		var c := _ambush()
+		c.m.position = case[1]
+		var home_at := -1
+		for t in 900:
+			_tick(c, t, [_percept(c, "a", case[2])])
+			if home_at < 0 and c.m.position.distance_to(c.mem.home) <= CreatureBrain.ARRIVE_HOME_M:
+				home_at = t
+		var noticed := c.of("creature_noticed")
+		check(home_at >= 0, "%s: home within 15 s (%.2f m off, %d notices)" % [case[0], c.m.position.distance_to(c.mem.home), noticed.size()])
+		check(noticed.size() <= 1, "%s: at most one notice (%d)" % [case[0], noticed.size()])
+		if not noticed.is_empty():
+			check(int(noticed[0].tick) >= home_at, "%s: the notice came once it was home (tick %d, home at %d)" % [case[0], noticed[0].tick, home_at])
+		check_eq(c.label(), "rest/watch", "%s: it watches the prey from home" % case[0])
+	# Prey that hurt it, or that it bit before, is still noticed on the way home, even behind other prey.
+	var hurt := _ambush()
+	hurt.m.position = Vector2(-2.0, 0.0)
+	hurt.mem.attacker = "a"
+	_tick(hurt, 5, [_percept(hurt, "b", Vector2(1.0, 0.0)), _percept(hurt, "a", Vector2(4.0, 0.0))])
+	_tick(hurt, 11, [_percept(hurt, "b", Vector2(1.0, 0.0)), _percept(hurt, "a", Vector2(4.0, 0.0))])
+	check_eq(hurt.label(), "notice", "its attacker is noticed away from home")
+	check_eq(hurt.mem.target, "a", "the attacker, not the nearer prey")
+	var bitten := _ambush()
+	bitten.m.position = Vector2(-2.0, 0.0)
+	bitten.mem.landed_on["a"] = 0
+	_tick(bitten, 5, [_percept(bitten, "a", Vector2(4.0, 0.0))])
+	_tick(bitten, 11, [_percept(bitten, "a", Vector2(4.0, 0.0))])
+	check_eq(bitten.label(), "notice", "prey it bit before is noticed away from home")
+
+
 # --- 3. phases ---
 
 func test_a_tell_starts_only_when_nearly_still_in_the_window_and_aimed() -> void:
@@ -382,9 +420,12 @@ func test_a_strike_holds_its_locked_heading_however_the_target_moves() -> void:
 	var moving := _ambush()
 	moving.energy_share = 0.5
 	var u := 0
-	while moving.mem.target.is_empty():
+	while u < 600 and moving.mem.target.is_empty():
 		_tick(moving, u, [_percept(moving, "a", Vector2(2.75, 0.0), {"velocity": Vector2(0.0, 0.9)})], false)
 		u += 1
+	check(not moving.mem.target.is_empty(), "the moving target is noticed within 10 s")
+	if moving.mem.target.is_empty():
+		return
 	CreatureBrain.begin_tell(moving.mem, moving.view(), u - 1)
 	check_near(moving.mem.lock_heading, lead.angle(), 1e-6, "lead 1.2 s x 0.9 m/s, capped at 1.0 m")
 
@@ -722,6 +763,34 @@ func test_a_puff_is_cancelled_when_the_target_is_seen_leaving_the_territory() ->
 			check_eq(c.first_tick("creature_strike") - tell, 72, "so it charges")
 
 
+func test_a_rammer_lets_an_intruder_go_rather_than_puff_at_it_past_its_territory_exit() -> void:
+	# The chase follows an intruder out to territory + leash (11 m), but a puff at a target seen past
+	# territory + exit (9 m) is cancelled at once. So a rammer that would start a puff out there
+	# gives the intruder up instead: no tell that is called off 3 ticks later.
+	for case in [[9.5, false], [10.5, false], [8.5, true]]:
+		var c := _rammer()
+		var stop: float = case[0]
+		var at := Vector2(0.0, 5.0)
+		for t in 900:
+			var v := Vector2(0.0, 2.0) if at.y < stop else Vector2.ZERO
+			at.y = minf(at.y + v.y * DT, stop)
+			_tick(c, t, [_percept(c, "a", at, {"velocity": v})])
+			if not c.of("creature_gave_up").is_empty() or not c.of("creature_strike").is_empty():
+				break
+		var name := "the intruder stopped %.1f m from the center" % stop
+		check(c.of("tell_cancelled").is_empty(), name + ": no puff called off")
+		if case[1]:
+			check_eq(c.of("creature_tell").size(), 1, name + ": inside the exit it puffs")
+			check_eq(c.of("creature_strike").size(), 1, name + ": and charges")
+			continue
+		check(c.of("creature_tell").is_empty(), name + ": no puff")
+		var gave_up := c.of("creature_gave_up")
+		check_eq(gave_up.size(), 1, name + ": it gives the intruder up")
+		if not gave_up.is_empty():
+			check_eq(gave_up[0].reason, "left_territory", name + ": reason")
+			check_eq(c.mem.ignore.get("a", -1), int(gave_up[0].tick) + 180, name + ": and ignores it for its refractory time")
+
+
 func test_a_blocked_charge_dazes_the_rammer_for_its_blocked_recover_time() -> void:
 	var c := _rammer()
 	var t := 0
@@ -729,9 +798,13 @@ func test_a_blocked_charge_dazes_the_rammer_for_its_blocked_recover_time() -> vo
 		_tick(c, t, [_percept(c, "a", Vector2(0.0, 2.0))], false)
 		t += 1
 	CreatureBrain.begin_tell(c.mem, c.view(), t)
-	while c.mem.phase != "strike":
+	var told := t
+	while t < told + 400 and c.mem.phase != "strike":
 		t += 1
 		_tick(c, t, [_percept(c, "a", Vector2(0.0, 2.0))], false)
+	check_eq(c.mem.phase, "strike", "the puff ends in a charge")
+	if c.mem.phase != "strike":
+		return
 	CreatureBrain.on_blocked(c.mem, t)
 	_collect(c, t)
 	check_eq(c.mem.outcome, "blocked", "outcome")
@@ -878,9 +951,12 @@ func test_three_failed_returns_home_mark_the_creature_stuck() -> void:
 	var c := _ambush()
 	c.m.position = Vector2(5.0, 0.0)
 	var t := 0
-	while c.label() != "wander/return":
+	while t < 2000 and c.label() != "wander/return":
 		_tick(c, t, [], false)
 		t += 1
+	check_eq(c.label(), "wander/return", "pushed 5 m off home, it swims back")
+	if c.label() != "wander/return":
+		return
 	var start := c.mem.phase_tick
 	for i in 2 * 1200:
 		_tick(c, t, [], false)
@@ -1083,6 +1159,56 @@ func test_the_strike_lane_holds_every_point_where_the_strike_could_hit() -> void
 							outside += 1
 		check(allowed > 200, "%s: the sample finds hits (%d)" % [kind, allowed])
 		check_eq(outside, 0, "%s: every allowed hit on a still prey lies in the lane" % kind)
+
+
+func test_the_lane_a_tell_shows_is_the_lane_its_strike_runs() -> void:
+	# F1: creature_tell's lane is the strike's own: from where the tell starts, along the locked
+	# heading (which leads a moving target, so it is not the body's heading), and as wide as the
+	# strike reaches a prey of the target's size. The strike then starts there, along it.
+	var prey_r := 0.4
+	for kind in ["ambush", "rammer"]:
+		var c := _ambush() if kind == "ambush" else _rammer(Vector2.ZERO, 0.0)
+		c.energy_share = 0.5
+		var at := Vector2(2.75, 0.0) if kind == "ambush" else Vector2(4.0, 0.0)
+		var prey := {"velocity": Vector2(0.0, 0.9), "radius": prey_r}
+		var t := 0
+		while t < 60 and c.mem.target.is_empty():
+			_tick(c, t, [_percept(c, "a", at, prey)], false)
+			t += 1
+		check_eq(c.mem.target, "a", kind + ": the prey is noticed")
+		if c.mem.target.is_empty():
+			continue
+		var origin := c.m.position
+		CreatureBrain.begin_tell(c.mem, c.view(), t)
+		_collect(c, t)
+		var told := c.of("creature_tell")
+		check_eq(told.size(), 1, kind + ": a tell")
+		if told.is_empty():
+			continue
+		var lane: Dictionary = told[0].lane
+		var a: Dictionary = c.mem.cfg.attack
+		var half: float = c.p.radius + float(a.reach) + prey_r
+		check(absf(angle_difference(c.mem.lock_heading, c.m.heading)) > deg_to_rad(10.0),
+			"%s: the lock leads the target, %.1f degrees off the body's heading" % [kind, rad_to_deg(absf(angle_difference(c.mem.lock_heading, c.m.heading)))])
+		check_near(float(lane.heading), c.mem.lock_heading, 1e-9, kind + ": the lane runs along the lock")
+		check(Vector2(lane.origin).distance_to(origin) < 1e-9, kind + ": from where the tell starts")
+		check_near(float(lane.half_width), half, 1e-9, kind + ": as wide as its radius, its reach and the prey's radius")
+		check_near(float(lane.travel), float(a.travel), 1e-9, kind + ": as long as the strike travels")
+		check_near(float(lane.length), float(a.travel) + half, 1e-9, kind + ": plus the reach at its end")
+		check_eq(lane, CreatureBrain.strike_lane(a, c.p.radius, prey_r, origin, c.mem.lock_heading), kind + ": strike_lane() of the lock")
+		var struck := {}
+		while t < 400 and struck.is_empty():
+			t += 1
+			at += Vector2(prey.velocity) * DT
+			_tick(c, t, [_percept(c, "a", at, prey)])
+			var strikes := c.of("creature_strike")
+			if not strikes.is_empty():
+				struck = strikes[0]
+		check(not struck.is_empty(), kind + ": it strikes")
+		if struck.is_empty():
+			continue
+		check_near(float(struck.heading), float(lane.heading), 1e-9, kind + ": the strike runs along the lane")
+		check(Vector2(struck.position).distance_to(lane.origin) < 1e-6, kind + ": from the lane's origin")
 
 
 # --- the schedule, foraging and the respawn hooks ---

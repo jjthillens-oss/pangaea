@@ -27,8 +27,9 @@ extends RefCounted
 ## - Hooks: on_hurt() for every landed hit on it; on_strike_landed() and on_blocked() during a strike;
 ##   on_target_gone() when a body it may remember dies, is removed or is concealed; forget() and
 ##   force_return() at the player's respawn.
-## - The token: before a think, set the player percept's "engageable"; after a think or a hook, read
-##   is_engaged_with().
+## - The token: before a think, set "engageable" on the player's percept and on its entry in `seen`
+##   (decisions read the remembered entry, which may be older than the token's last change); after a
+##   think or a hook, read is_engaged_with().
 
 const TICKS_PER_SECOND := 60
 const DT := 1.0 / 60.0
@@ -582,7 +583,13 @@ static func _think_watch(mem: Memory, me: Dictionary, tick: int) -> void:
 
 
 static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: int, arena: PoolArena) -> void:
-	var found := _pick_new_target(mem, me, percepts, tick)
+	var looking := percepts
+	if mem.behavior == AMBUSH and mem.phase == RETURN_HOME and not _hungry(mem, me):
+		# A sated hunter on its way home does not stop for prey it would not chase (it would notice,
+		# watch from off its home, set off again and notice again); it notices it once home. Prey
+		# that hurt it or that it bit is still worth a chase.
+		looking = percepts.filter(func(p: Dictionary) -> bool: return mem.landed_on.has(p.id) or p.id == mem.attacker)
+	var found := _pick_new_target(mem, me, looking, tick)
 	if not found.is_empty():
 		_notice(mem, found.id, found.by, tick)
 		return
@@ -711,6 +718,11 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 			_enter(mem, CHASE, AIM, tick)
 		return
 	if _tell_ok(mem, me, tick):
+		# A puff at a target past the territory exit would be cancelled on the next think: a rammer
+		# lets it go there instead of telling for nothing.
+		if mem.behavior == TERRITORIAL and _past_exit(mem, Vector2(mem.seen[mem.target].position)):
+			_give_up(mem, "left_territory", tick)
+			return
 		begin_tell(mem, me, tick)
 		return
 	if _in_window(mem, me, tick) or _approaching(mem, me, tick):
@@ -729,8 +741,7 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 static func _think_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 	if mem.phase == TELL:
 		if mem.behavior == TERRITORIAL and _fresh(mem, mem.target, tick):
-			var at: Vector2 = mem.seen[mem.target].position
-			if at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.territory_exit_m):
+			if _past_exit(mem, Vector2(mem.seen[mem.target].position)):
 				_emit(mem, {"type": "tell_cancelled", "target": mem.target, "reason": "left_territory"})
 				_recover(mem, "cancelled", tick)
 		return
@@ -1000,6 +1011,11 @@ static func _aimed(mem: Memory, me: Dictionary, tick: int) -> bool:
 ## landed a hit on the target.
 static func _wants_chase(mem: Memory, me: Dictionary) -> bool:
 	return _hungry(mem, me) or mem.landed_on.has(mem.target) or mem.target == mem.attacker
+
+
+## A territorial brain's puff rule: a target seen beyond territory_r + territory_exit_m is leaving.
+static func _past_exit(mem: Memory, at: Vector2) -> bool:
+	return at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.territory_exit_m)
 
 
 static func _intruding(mem: Memory, id: String, tick: int) -> bool:
