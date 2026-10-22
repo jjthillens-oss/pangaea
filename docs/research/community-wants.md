@@ -36,8 +36,8 @@ is unusually strong (for example, the 2008 Joystiq poll for the editors).
   read-only mirrors (refs 15, 34). Reddit is therefore under-represented compared with Steam forums. The Steam
   forums and r/Spore both skew toward long-time, hardcore fans who still play a 2008 game.
 - **Nostalgia.** Spore's Steam rating (92% positive of about 38,000 English reviews, ref 10) is much warmer than its
-  2008 critical reception of "shallow". Recent players often remember childhood fondly; bit-tech (ref 3) makes the
-  same point.
+  2008 critical reception of "shallow". Nostalgia may explain part of the gap; bit-tech (ref 3) raises this as one
+  possible explanation but says the answer is "more complex".
 - **Survivorship.** People who disliked Spore mostly stopped talking about it. Complaints here come from people who
   liked it enough to want more.
 - **Self-selection on Thrive.** The Thrive forums are written by developers and committed fans, so they lean toward
@@ -57,9 +57,9 @@ is unusually strong (for example, the 2008 Joystiq poll for the editors).
 | # | Theme | Freq. | Strength | Representative paraphrase | Refs | Relevance to GENESIS |
 |---|---|---|---|---|---|---|
 | 1 | Every stage needs real depth; Spore felt like "five shallow minigames" | 13 | High | Critics and fans agree each stage was too simple to stand alone; Wright called it "much more of a toy than a game". | 1, 2, 3, 4, 5, 6, 17, 18, 22, 27, 28, 31, 36 | §3, §4, §25 risk "Seven eras become separate games". Directly supports the Bible's transition contract. |
-| 2 | Keep and expand the creature creator and editors | 12 | High | The creature editor is the most-loved part (4.37 of 5 in a 2008 poll); fans want more parts, a higher complexity cap, undo. | 3, 4, 6, 17, 19, 24, 26, 29, 31, 38, 41, 47 | §2 "Creation integrated with play", §12 editor (undo, redo, mirroring). |
+| 2 | Keep and expand the creature creator and editors | 12 | High | The editors are the most-loved part (editors averaged 4.37 of 5 in a 2008 reader poll; 68.6% named the creature editor favourite); fans want more parts, a higher complexity cap, undo. | 3, 4, 6, 17, 19, 24, 26, 29, 31, 38, 41, 47 | §2 "Creation integrated with play", §12 editor (undo, redo, mirroring). |
 | 3 | Science-accurate versus cartoon fun: the community is split | 10 | High | One camp wants real evolution and a less childish look; the other wants charm and fun. Spore's own team split the same way. | 2, 11, 16, 20, 21, 23, 24, 28, 31, 32 | §15 art direction (Spore-like stylised, CONFIRMED), §2 pillars. |
-| 4 | Space stage: loved for scale, hated for interruptions and repetition | 12 | High | Exploring the galaxy is a highlight, but constant eco-disasters, pirate raids and an unbeatable rival empire wear people out. | 3, 6, 7, 14, 17, 19, 22, 24, 25, 30, 34, 37 | §11 interstellar, §2 "no hidden random punishment", §13 bounded simulation. |
+| 4 | Space stage: loved for scale, hated for interruptions and repetition | 12 | High | Exploring the galaxy is a highlight, but constant eco-disasters, pirate raids and an unbeatable rival empire wear people out. | 3, 6, 7, 14, 17, 19, 22, 24, 25, 30, 34 (dissent), 37 | §11 interstellar, §2 "no hidden random punishment", §13 bounded simulation. |
 | 5 | Real evolution and a living ecosystem, not a parts shop | 9 | Medium-High | Fans want selection, variation and AI species that also evolve, instead of buying parts with points. | 1, 12, 16, 18, 20, 21, 33, 43, 46 | §12 genome and lineage, §13 ecology. Partly conflicts with §3 player-directed editing (see detail). |
 | 6 | Bring back the cut aquatic stage and other removed features | 9 | Medium-High | Underwater life was "one of the most hyped and requested" missing features. | 1, 5, 6, 15, 16, 21, 26, 44, 47 | §6 aquatic era already proposed. Also §7 shore transition. |
 | 7 | Body design should change how you play, not just stats | 8 | High | Part looks and placement barely mattered after the cell stage; parts became stat sticks. | 2, 8, 11, 15, 16, 26, 36, 37 | §2 "understandable tradeoffs", §12 anatomy table. CONFIRMED requirement that anatomy influences gameplay. |
@@ -113,7 +113,8 @@ Space is often named the best stage: it led the 2008 poll with 36% (ref 19), and
 (ref 3). The complaints are specific. Eco-disasters and pirate raids interrupt exploration so often that players
 wrote mods to remove them (ref 7). A 2015 thread lists repetition, constant attacks that force returns home, low-value
 fetch tasks, and an endgame grind (ref 25). The dominant hostile empire is described as nearly impossible to defeat or
-befriend (refs 24, 34). Players on Steam recommend Stellaris as "basically" a fuller space stage (ref 30).
+befriend (ref 24); a 2024 r/Spore post shares a strategy for beating it that is "working very well", so this is
+contested (ref 34). Players on Steam recommend Stellaris as "basically" a fuller space stage (ref 30).
 **Disagreement:** defenders say the stage is rich and critics should play differently (ref 25).
 
 ### 5. Real evolution and a living ecosystem (9 sources, medium-high)
@@ -129,7 +130,8 @@ nudge" middle ground is close to what ref 1 asks for.
 ### 6. Bring back the aquatic stage and cut features (9 sources, medium-high)
 
 The aquatic stage shown in 2005 was cut for navigation and animation problems (ref 44). It is still requested in
-threads from 2008 to 2022 (refs 1, 5, 21, 26), and Elysian Eclipse built one because fans asked (ref 47). Other wanted
+threads from 2008 to 2022 (refs 1, 5, 21, 26), and the Elysian Eclipse developers built one, calling it "one of the most hyped and requested features for Spore"
+(ref 47). Other wanted
 cut features include several eggs and baby care, carrying food, and underwater cities (refs 1, 44). Reddit commenters
 connect the cuts to disappointment after the 2005 demo (ref 15). **Disagreement:** a 2008 CivFanatics poster argued a
 separate sea stage would overlap with the cell stage and cost too much (ref 5).
@@ -186,7 +188,8 @@ for more depth or replayability (ref 45).
 
 ### 14. Monetisation, DRM and always-online (5 sources, medium)
 
-Spore's undisclosed SecuROM DRM caused mass one-star reviews and made it the most torrented game of 2008 (ref 31).
+Spore's SecuROM DRM drew mass one-star Amazon ratings (2,016 of 2,216 by 14 Sep 2008), and Spore was the most
+torrented game of 2008 (ref 31; Wikipedia does not say the DRM caused the piracy).
 Fans still expect EA would add microtransactions or always-online checks to a sequel (refs 1, 26), and the Fandom
 article asks a successor to avoid free-to-play models (ref 6). Today's Steam complaints focus on the EA launcher and
 log-ins (ref 14). This theme aligns with the Bible's exclusions.
