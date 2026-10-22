@@ -4,8 +4,10 @@ extends MultiMeshInstance3D
 ## ("plant") or carrion ("meat"). The mesh comes from the item's Blender asset. sync() writes the
 ## whole instance buffer once per frame.
 ##
-## Drawn only: plankton bobs and spins and grows in when it appears; carrion lies still, turned by
-## its id, and shrinks over the last seconds before it rots away. None of this changes the items.
+## Drawn only: plankton bobs and spins and grows in when it appears; carrion sinks onto the floor
+## and grows to full size when it appears, then lies still, turned by its id, and shrinks over the
+## last seconds before it rots away. Food of the starting world is simply there. None of this
+## changes the items.
 
 const FLOATS_PER_INSTANCE := 12   ## a 3x4 transform, row by row
 const MIN_CAPACITY := 16
@@ -14,6 +16,9 @@ const PLANT_BOB_HZ := 0.25
 const PLANT_SPIN_RAD_S := 0.35
 const PLANT_GROW_S := 0.6
 const MEAT_Y := -0.04
+const MEAT_SETTLE_S := 0.6        ## new carrion sinks and grows in over this long...
+const MEAT_SINK_M := 0.5          ## ...from this far above the floor...
+const MEAT_SETTLE_SCALE := 0.3    ## ...and this share of its size
 const MEAT_SHRINK_S := 10.0       ## carrion shrinks over its last this many seconds
 const MEAT_MIN_SCALE := 0.15
 const GOLDEN_ANGLE := 2.399963229728653
@@ -76,10 +81,14 @@ func _transform_for(item: Dictionary, now: float) -> Transform3D:
 		var bob := PLANT_BOB_M * sin(now * TAU * PLANT_BOB_HZ + phase.x)
 		var basis := Basis(Vector3.UP, phase.y + now * PLANT_SPIN_RAD_S).scaled(Vector3.ONE * maxf(grow, 0.01))
 		return Transform3D(basis, PlaneSpace.to_world(p, PlaneSpace.SWIM_Y + bob))
-	var left := float(item.get("lifetime", 0.0)) - float(item.get("age", 0.0))
+	var age := float(item.get("age", 0.0))
+	var left := float(item.get("lifetime", 0.0)) - age
 	var shrink := clampf(left / MEAT_SHRINK_S, MEAT_MIN_SCALE, 1.0)
+	var settle := 1.0 if item.get("source", "") == "initial" else ease(clampf(age / MEAT_SETTLE_S, 0.0, 1.0), 0.4)
 	var yaw := fposmod(str(item.get("id", "")).hash() * GOLDEN_ANGLE, TAU)
-	return Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * shrink), PlaneSpace.to_world(p, MEAT_Y))
+	var size := shrink * lerpf(MEAT_SETTLE_SCALE, 1.0, settle)
+	return Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size),
+		PlaneSpace.to_world(p, MEAT_Y + MEAT_SINK_M * (1.0 - settle)))
 
 
 func _write(i: int, t: Transform3D) -> void:

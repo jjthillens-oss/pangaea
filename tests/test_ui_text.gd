@@ -5,6 +5,7 @@ extends TestCase
 ## points the death rule takes. The running screens are covered by the scene smoke.
 
 const PERF_TOUR := "res://game/dev/perf_tour.gd"
+const THEME := "res://game/ui/theme/pangaea_theme.tres"
 const PERF_STALL_MS := 100           ## a real stall, far longer than the one-tick delta it comes with
 
 var catalog := PartCatalog.load_from()
@@ -50,7 +51,8 @@ func test_each_body_has_a_name_a_role_and_a_diet_from_its_mouths() -> void:
 	for body in BodyText.ORDER:
 		check(not BodyText.role(body).is_empty(), "%s has a role line" % body)
 	check_eq(BodyText.body_name(""), "Evolved cell", "an edited body")
-	check_eq(BodyText.lineage_line("hunter", "3F9A-1C07", 2), "Hunter lineage 3F9A-1C07 · Generation 2", "lineage line")
+	check_eq(BodyText.lineage_line("hunter", "3F9A-1C07", 2), "Hunter lineage 3F9A-1C07 · Generation\u00a02",
+		"lineage line, with a no-break space before the generation number")
 
 
 func test_the_hud_names_energy_health_and_hunger_as_the_rules_count_them() -> void:
@@ -62,6 +64,40 @@ func test_the_hud_names_energy_health_and_hunger_as_the_rules_count_them() -> vo
 	check_eq(Hud.state_name(_state(24.9, 30.0)), "Hungry", "below a quarter")
 	check_eq(Hud.state_name(_state(0.0, 30.0)), "Starving", "empty")
 	check_eq(Hud.rested_line(ActorState.fresh(_phenotype("hunter"))), "Your cell rested: Energy 60%, Health full", "after continue")
+
+
+## The lines `text` wraps into at `width`, as a Label with AUTOWRAP_WORD_SMART breaks them.
+func _wrapped(text: String, font: Font, size: int, width: float) -> PackedStringArray:
+	var para := TextParagraph.new()
+	para.break_flags = Hud.WRAP_FLAGS
+	para.add_string(text, font, size)
+	para.width = width
+	var lines := PackedStringArray()
+	for i in para.get_line_count():
+		var r := para.get_line_range(i)
+		lines.append(text.substr(r.x, r.y - r.x))
+	return lines
+
+
+func test_top_center_texts_wrap_at_spaces_into_even_lines_within_the_width_they_are_given() -> void:
+	var theme: Theme = load(THEME)
+	var font := theme.get_font(&"font", &"Label")
+	var size := theme.get_font_size(&"font_size", &"Label")
+	var short := "Back at the start: 2 adaptation points lost."
+	var w := Hud.wrap_width(short, font, size, 800.0)
+	check(w < 800.0 and _wrapped(short, font, size, w).size() == 1, "a short message keeps its own width (%.0f px)" % w)
+	var failed := "Not saved yet: Could not save to user://saves/slot_1.json: Can't open file."
+	var plain := _wrapped(failed, font, size, 870.0)
+	check(plain.size() == 2 and plain[1].split(" ").size() == 1, "at 870 px a plain wrap leaves one word on the last line: %s" % plain)
+	w = Hud.wrap_width(failed, font, size, 870.0)
+	var lines := _wrapped(failed, font, size, w)
+	check(w <= 870.0 and lines.size() == 2, "a failed save wraps onto two lines within 870 px (%.0f px: %s)" % [w, lines])
+	check(lines.size() == 2 and lines[1].split(" ").size() > 1, "the last line is more than one word: %s" % lines)
+	check(lines.size() == 2 and lines[0].contains("user://saves/slot_1.json:"), "the save path is whole on one line: %s" % lines)
+	var large := theme.get_font_size(&"font_size", &"LargeLabel")
+	var banner := Hud.wrap_width(Hud.STARVING_TEXT, font, large, 800.0)
+	check(banner < 800.0 and _wrapped(Hud.STARVING_TEXT, font, large, banner).size() == 2,
+		"the starving banner keeps its two lines as written (%.0f px)" % banner)
 
 
 func test_points_and_meal_toasts_name_what_was_earned() -> void:

@@ -112,11 +112,12 @@ func select(body: String) -> void:
 	picker_preview.show_genome(_genomes[body], card.phenotype)
 
 
-## Start on the picker: asks first when a save would be replaced.
+## Start on the picker: asks first when a save would be replaced. Cancel has focus, so a player
+## pressing Enter through the screens does not replace the lineage by accident.
 func request_start() -> void:
 	if bool(peek.get("exists", false)):
 		confirm.open("Start a new lineage?", REPLACE_TEXT, [["start", "Start new lineage", true], ["cancel", "Cancel"]],
-			"start", "cancel")
+			"cancel", "cancel")
 	else:
 		new_requested.emit(selected_body)
 
