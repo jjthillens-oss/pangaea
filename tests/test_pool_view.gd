@@ -146,6 +146,28 @@ func test_a_new_meal_label_pushes_the_rising_labels_near_it_up_a_line_without_cr
 	fx.free()
 
 
+func test_the_food_arrow_label_never_covers_the_cell_and_stays_by_its_arrow() -> void:
+	var arrow := StarvingArrow.new()
+	arrow.size = Vector2(1920, 1080)
+	var cell := Vector2(960, 540)
+	var closest := INF
+	var farthest := 0.0
+	for radius in [47.0, 66.0]:   # the cell's radius at the default zoom and fully zoomed in
+		for k in 16:
+			var direction := Vector2.RIGHT.rotated(TAU * k / 16.0)
+			for food_px in [110.0, 140.0, 170.0, 220.0, 400.0]:
+				arrow.point(cell, direction, cell + direction * food_px, food_px / 94.0, radius)
+				var r := arrow.label_rect()
+				closest = minf(closest, cell.clamp(r.position, r.end).distance_to(cell) - radius * StarvingArrow.CELL_CLEAR)
+				farthest = maxf(farthest, r.get_center().distance_to(arrow.arrow_position))
+	check(closest >= 0.0, "the label keeps clear of the cell, its mouth and eyes (closest %.1f px)" % closest)
+	check(farthest < 110.0, "and stays next to its arrow (farthest %.0f px)" % farthest)
+	arrow.point(cell, Vector2.RIGHT, Vector2.INF, 12.0, 47.0)
+	check(arrow.label_rect().get_center().x < arrow.arrow_position.x and absf(arrow.label_rect().get_center().y - cell.y) < 1.0,
+		"far from the cell the label sits behind the arrow, on its axis")
+	arrow.free()
+
+
 func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -> void:
 	var plants := FoodView.new()
 	plants.kind = "plant"
