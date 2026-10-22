@@ -1,0 +1,222 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://game/ui/hud.gd" id="1_hud"]
+[ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://game/ui/hud_icon.gd" id="3_icon"]
+
+[node name="Hud" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_hud")
+
+[node name="Frame" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 28
+
+[node name="Status" type="PanelContainer" parent="Frame"]
+custom_minimum_size = Vector2(480, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_type_variation = &"HudPanel"
+
+[node name="Box" type="VBoxContainer" parent="Frame/Status"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnergyRow" type="HBoxContainer" parent="Frame/Status/Box"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="EnergyText" type="Label" parent="Frame/Status/Box/EnergyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Energy 60 / 100"
+
+[node name="StateChip" type="PanelContainer" parent="Frame/Status/Box/EnergyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"ChipFed"
+
+[node name="StateText" type="Label" parent="Frame/Status/Box/EnergyRow/StateChip"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"ChipLabel"
+text = "Fed"
+
+[node name="EnergyBar" type="ProgressBar" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_type_variation = &"EnergyBar"
+value = 60.0
+show_percentage = false
+
+[node name="HealthRow" type="VBoxContainer" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HealthText" type="Label" parent="Frame/Status/Box/HealthRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Health 30 / 30"
+
+[node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box/HealthRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_type_variation = &"HealthBar"
+max_value = 30.0
+value = 30.0
+show_percentage = false
+
+[node name="LineageText" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+text = "Grazer lineage 0000-0000 · Generation 1"
+
+[node name="Right" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 0
+theme_override_constants/separation = 10
+
+[node name="Points" type="PanelContainer" parent="Frame/Right"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_type_variation = &"HudPanel"
+
+[node name="Row" type="HBoxContainer" parent="Frame/Right/Points"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Diamond" type="Control" parent="Frame/Right/Points/Row"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("3_icon")
+
+[node name="PointsText" type="Label" parent="Frame/Right/Points/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "0 adaptation points"
+
+[node name="PointsFlash" type="Label" parent="Frame/Right/Points/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(56, 0)
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+
+[node name="Toasts" type="VBoxContainer" parent="Frame/Right"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 8
+theme_override_constants/separation = 8
+
+[node name="Center" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+theme_override_constants/separation = 12
+
+[node name="StarvingBanner" type="PanelContainer" parent="Frame/Center"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"BannerPanel"
+
+[node name="Row" type="HBoxContainer" parent="Frame/Center/StarvingBanner"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Warning" type="Control" parent="Frame/Center/StarvingBanner/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(36, 32)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("3_icon")
+shape = "warning"
+
+[node name="BannerText" type="Label" parent="Frame/Center/StarvingBanner/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LargeLabel"
+text = "Starving"
+
+[node name="Message" type="PanelContainer" parent="Frame/Center"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"HudPanel"
+
+[node name="MessageText" type="Label" parent="Frame/Center/Message"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="BottomCenter" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+
+[node name="Hint" type="PanelContainer" parent="Frame/BottomCenter"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"HudPanel"
+
+[node name="HintText" type="Label" parent="Frame/BottomCenter/Hint"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+horizontal_alignment = 1
+
+[node name="Gap" type="Control" parent="Frame/BottomCenter"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="Controls" type="PanelContainer" parent="Frame"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(500, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 8
+theme_type_variation = &"HudPanel"
+
+[node name="Box" type="VBoxContainer" parent="Frame/Controls"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Frame/Controls/Box"]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+text = "Controls"
+
+[node name="ControlsText" type="Label" parent="Frame/Controls/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+
+[node name="FirstMealText" type="Label" parent="Frame/Controls/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+autowrap_mode = 3
