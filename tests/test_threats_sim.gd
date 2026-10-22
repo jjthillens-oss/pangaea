@@ -759,7 +759,7 @@ func test_the_forage_bot_minding_threats_passes_over_food_by_a_creature_steers_c
 		events.append_array(lunge.drain_events())
 	check(bot.evade != null and bot.evade.tells_seen == 1, "it saw the tell")
 	check_eq(bot.evade.reacted_at if bot.evade != null else -1, tell_tick + EvadeBot.REACTION_TICKS, "and reacted 24 ticks after it")
-	check(absf(dodge.dot(Vector2.RIGHT)) < 1e-3 and dodge.length() > 0.99, "sideways to the lane, at full throttle (%s)" % dodge)
+	check(absf(dodge.dot(Vector2.RIGHT)) < 1e-3 and dodge.length() > 0.99, "perpendicular to the lane, at full throttle (%s)" % dodge)
 	var recovered := _of(events, "creature_recovered")
 	check(not recovered.is_empty() and recovered[0].outcome == "missed", "the lunge missed")
 	check(_of(events, "hit").is_empty(), "and nothing hit the cell")
@@ -1435,7 +1435,7 @@ func test_only_one_creature_engages_the_cell_at_a_time_and_the_other_waits_until
 
 func test_a_starving_hunter_cell_kills_a_rammer_and_eats_before_it_starves() -> void:
 	# Plan #22: HuntBot closes on the resting rammer from behind and keeps biting, dodges any charge
-	# sideways, then eats the carcass.
+	# out of its line on the side the cell faces, then eats the carcass.
 	var sim := _sim("hunter", 221, STRIKE_ORIGIN - Vector2(6.0, 0.0), 0.0)
 	sim.debug_set_energy(0.0)
 	var r := _creature(sim, "rammer", STRIKE_ORIGIN, 0.0)
