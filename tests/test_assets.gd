@@ -34,6 +34,8 @@ const SWIM_BAND_HEIGHTS: Array[float] = [-0.45, -0.3375, -0.225, -0.1125, 0.0, 0
 ## triangle budgets, kept here so a record cannot loosen its own.
 const THREAT_REVIEW := "blockout - M1 step 3, not visually approved"
 const THREAT_GENERATOR := "tools/blender/make_m1_threats.py"
+## The production swaps (M1 production art) keep the blockouts' contract and name their own generator.
+const THREAT_PRODUCTION_GENERATOR := "tools/blender/make_m1_production.py"
 const THREAT_BUDGETS := {"creature_ambush_body": 4000, "creature_rammer_body": 4000, "part_spike": 600}
 ## Nodes under Body that the creature view poses, by body.
 const THREAT_POSE_NODES := {
@@ -577,9 +579,11 @@ func test_threat_blockouts_are_proposed_unapproved_and_within_their_step_3_budge
 			check(false, "%s has a record" % id)
 			continue
 		check_eq(record.get("status"), "PROPOSED", "%s status" % id)
-		check_eq(record.get("review_state"), THREAT_REVIEW, "%s review state" % id)
-		check_eq(record.get("generator_script"), THREAT_GENERATOR, "%s generator" % id)
-		check(String(record.get("provenance", "")).contains("procedurally") and String(record.get("provenance", "")).contains(THREAT_GENERATOR),
+		var production: bool = record.get("review_state") == PRODUCTION_REVIEW
+		check(production or record.get("review_state") == THREAT_REVIEW, "%s review state is the step 3 blockout's or production, got %s" % [id, record.get("review_state")])
+		var generator := THREAT_PRODUCTION_GENERATOR if production else THREAT_GENERATOR
+		check_eq(record.get("generator_script"), generator, "%s generator" % id)
+		check(String(record.get("provenance", "")).contains("procedurally") and String(record.get("provenance", "")).contains(generator),
 			"%s provenance is procedural and names its generator" % id)
 		var tris := int(record.get("triangles", 1 << 30))
 		check(tris > 0 and tris <= THREAT_BUDGETS[id], "%s has %d triangles, budget %d" % [id, tris, THREAT_BUDGETS[id]])
