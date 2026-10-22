@@ -1,0 +1,61 @@
+{
+  "id": "cell_ladder_2_surfaced",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "look approved by the owner on 2026-10-22; reference demo for the art direction, not a gameplay asset",
+  "purpose": "Quality-ladder demo rung 2_surfaced (docs/art/quality_ladder.md).",
+  "ladder_rung": "2_surfaced",
+  "art_role": "surfacing",
+  "source_blend": "assets/source/blender/cell_ladder_2_surfaced.blend",
+  "generator_script": "tools/blender/cell_ladder.py",
+  "export_path": "assets/export/cell_ladder_2_surfaced.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.908,
+    "y_forward": 1.882,
+    "z_up": 0.756
+  },
+  "triangles": 10228,
+  "textures": [
+    {
+      "name": "T_CellLadder_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB"
+    },
+    {
+      "name": "T_CellLadder_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    }
+  ],
+  "materials": [
+    "M_CellMembrane",
+    "M_EyeIris",
+    "M_EyePupil",
+    "M_EyeSclera",
+    "M_Lid",
+    "M_Lips",
+    "M_Organelle"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [
+    "socket_mouth",
+    "socket_side_L",
+    "socket_side_R",
+    "socket_tail",
+    "socket_top"
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/cell_ladder.py; no external or generated meshes or images."
+}

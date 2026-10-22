@@ -12,3 +12,6 @@ node_modules/
 shots/
 __pycache__/
 .toolchain/
+# Turntable frames: only contact sheets and silhouettes are kept
+docs/art/renders/*_clay_*.png
+docs/art/renders/*_beauty_*.png
