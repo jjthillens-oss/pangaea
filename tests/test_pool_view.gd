@@ -89,6 +89,85 @@ func test_the_meal_label_names_energy_and_points() -> void:
 	check_eq(FeedbackFx.meal_text({"absorbed": 4.0, "points": 0}), "+4 energy", "no points")
 
 
+func _meal(at: Vector2) -> Dictionary:
+	return {"type": "ate", "kind": "plant", "position": at, "absorbed": 8.0, "points": 1}
+
+
+func _feedback() -> FeedbackFx:
+	var fx := FeedbackFx.new()
+	var zones: Array[Dictionary] = []
+	fx.setup(zones)
+	return fx
+
+
+func test_a_quick_second_meal_close_by_adds_to_the_first_meal_label() -> void:
+	var fx := _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.3)
+	fx.show_meal(_meal(Vector2(0.8, 0.5)))
+	var labels := fx.meal_labels()
+	check_eq(labels.size(), 1, "one label for both meals")
+	if labels.size() == 1:
+		check_eq(labels[0].text, "+16 energy · +2", "the label sums the meals")
+		check(labels[0].position.is_equal_approx(PlaneSpace.to_world(Vector2(0.8, 0.5), FeedbackFx.MEAL_START_Y)),
+			"and rises again from the newer meal (%s)" % labels[0].position)
+	fx._process(FeedbackFx.MEAL_MERGE_S + 0.05)
+	fx.show_meal(_meal(Vector2(0.8, 0.5)))
+	check_eq(fx.meal_labels().size(), 2, "a meal after the merge window gets its own label")
+	fx.free()
+
+
+func test_a_new_meal_label_pushes_the_rising_labels_near_it_up_a_line_without_crossing() -> void:
+	var fx := _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.1)
+	fx.show_meal(_meal(Vector2(2.0, 0.0)))   # too far to merge, near enough to collide
+	var labels := fx.meal_labels()
+	check_eq(labels.size(), 2, "two labels")
+	if labels.size() != 2:
+		fx.free()
+		return
+	var closest := INF
+	for frame in 12:
+		fx._process(1.0 / 60.0)
+		closest = minf(closest, labels[0].position.y - labels[1].position.y)
+	check(closest > 0.0, "the older label never drops to the newer one (closest %.3f m)" % closest)
+	var gap := labels[0].position.y - labels[1].position.y
+	check(gap >= FeedbackFx.MEAL_LINE_M * 0.95, "after 0.2 s the older label is a line above (%.3f m)" % gap)
+	fx.free()
+	fx = _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.1)
+	fx.show_meal(_meal(Vector2(FeedbackFx.MEAL_NEAR_M + 1.0, 0.0)))
+	fx._process(0.2)
+	var far := fx.meal_labels()[0]
+	check_near(far.position.y, FeedbackFx.MEAL_START_Y + FeedbackFx.MEAL_RISE_M * ease(0.3 / FeedbackFx.MEAL_LIFE_S, 0.4), 1e-4,
+		"a label far from the new one stays where it was")
+	fx.free()
+
+
+func test_the_food_arrow_label_never_covers_the_cell_and_stays_by_its_arrow() -> void:
+	var arrow := StarvingArrow.new()
+	arrow.size = Vector2(1920, 1080)
+	var cell := Vector2(960, 540)
+	var closest := INF
+	var farthest := 0.0
+	for radius in [47.0, 66.0]:   # the cell's radius at the default zoom and fully zoomed in
+		for k in 16:
+			var direction := Vector2.RIGHT.rotated(TAU * k / 16.0)
+			for food_px in [110.0, 140.0, 170.0, 220.0, 400.0]:
+				arrow.point(cell, direction, cell + direction * food_px, food_px / 94.0, radius)
+				var r := arrow.label_rect()
+				closest = minf(closest, cell.clamp(r.position, r.end).distance_to(cell) - radius * StarvingArrow.CELL_CLEAR)
+				farthest = maxf(farthest, r.get_center().distance_to(arrow.arrow_position))
+	check(closest >= 0.0, "the label keeps clear of the cell, its mouth and eyes (closest %.1f px)" % closest)
+	check(farthest < 110.0, "and stays next to its arrow (farthest %.0f px)" % farthest)
+	arrow.point(cell, Vector2.RIGHT, Vector2.INF, 12.0, 47.0)
+	check(arrow.label_rect().get_center().x < arrow.arrow_position.x and absf(arrow.label_rect().get_center().y - cell.y) < 1.0,
+		"far from the cell the label sits behind the arrow, on its axis")
+	arrow.free()
+
+
 func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -> void:
 	var plants := FoodView.new()
 	plants.kind = "plant"
@@ -108,4 +187,28 @@ func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -
 	check_near(meat._transform_for(fresh, 0.0).basis.get_scale().x, 1.0, 1e-5, "fresh carrion is full size")
 	check_near(meat._transform_for(rotting, 0.0).basis.get_scale().x, 0.5, 1e-5, "half size five seconds before rotting")
 	check(meat._transform_for(fresh, 0.0).origin.is_equal_approx(meat._transform_for(fresh, 7.0).origin), "carrion lies still")
+	meat.free()
+
+
+func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there() -> void:
+	var meat := FoodView.new()
+	meat.kind = "meat"
+	var start := {"id": "cr_2", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "initial"}
+	var t := meat._transform_for(start, 0.0)
+	check_near(t.basis.get_scale().x, 1.0, 1e-5, "starting carrion is full size")
+	check_near(t.origin.y, FoodView.MEAT_Y, 1e-6, "and on the floor")
+	var dropped := {"id": "cr_3", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "interim"}
+	t = meat._transform_for(dropped, 0.0)
+	check(t.basis.get_scale().x < 0.5 and t.origin.y > FoodView.MEAT_Y + 0.3,
+		"new carrion appears small and above the floor (scale %.2f, y %.2f)" % [t.basis.get_scale().x, t.origin.y])
+	var steady := true
+	var last := t
+	for tick in range(1, 37):
+		dropped.age = tick / 60.0
+		t = meat._transform_for(dropped, 0.0)
+		steady = steady and t.basis.get_scale().x >= last.basis.get_scale().x - 1e-6 and t.origin.y <= last.origin.y + 1e-6
+		last = t
+	check(steady, "it only grows and sinks")
+	check_near(t.basis.get_scale().x, 1.0, 1e-5, "full size after %.1f s" % FoodView.MEAT_SETTLE_S)
+	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and on the floor where it landed")
 	meat.free()

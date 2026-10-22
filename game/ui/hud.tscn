@@ -93,6 +93,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
 text = "Grazer lineage 0000-0000 · Generation 1"
+autowrap_mode = 3
 
 [node name="Right" type="VBoxContainer" parent="Frame"]
 layout_mode = 2
@@ -161,6 +162,7 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
 text = "Starving"
+autowrap_mode = 3
 
 [node name="Message" type="PanelContainer" parent="Frame/Center"]
 unique_name_in_owner = true
@@ -171,6 +173,7 @@ theme_type_variation = &"HudPanel"
 [node name="MessageText" type="Label" parent="Frame/Center/Message"]
 unique_name_in_owner = true
 layout_mode = 2
+autowrap_mode = 3
 
 [node name="BottomCenter" type="VBoxContainer" parent="Frame"]
 layout_mode = 2

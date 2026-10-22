@@ -51,6 +51,7 @@ static func stat_rows(p: Phenotype) -> Array[PackedStringArray]:
 	]
 
 
-## "Grazer lineage 3F9A-1C07 · Generation 1".
+## "Grazer lineage 3F9A-1C07 · Generation 1". A no-break space keeps the generation and its
+## number together when the HUD wraps the line.
 static func lineage_line(body: String, tag: String, generation: int) -> String:
-	return "%s lineage %s · Generation %d" % [body_name(body), tag, generation]
+	return "%s lineage %s · Generation\u00a0%d" % [body_name(body), tag, generation]

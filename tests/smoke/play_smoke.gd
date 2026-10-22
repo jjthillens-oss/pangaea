@@ -32,6 +32,9 @@ const PITCH_DEG := 55.0
 const HUD_LAG_FRAMES := 8           ## HUD labels refresh at 10 Hz (6 frames), plus slack
 const RUN_FRAMES := 10              ## frames watched to see the sim stand still or run
 const FADE_SLACK_FRAMES := 2        ## the pool's fade-in may still show this long after FADE_IN_S
+## The bot swims this close to food with the arrow showing, where a label behind the arrow would
+## sit on the cell.
+const ARROW_CLOSE_M := 2.0
 ## A deliberate stall: the debug panel must show it at its wall-clock length, not the ~150 ms
 ## the engine's delta caps it at (here, under --fixed-fps, delta is always one tick).
 const STALL_MS := 400
@@ -294,7 +297,8 @@ func _check_debug_panel(sim: PoolSim) -> void:
 
 
 ## Back at the spawn, away from food, F6 drains the cell: the starving banner, health bar and
-## food arrow show; the bot swims to food, eats, and they go away.
+## food arrow show; the bot swims to food, eats, and they go away. All the way in, the arrow's
+## distance label stays off the cell.
 func _starve_and_recover(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var hud := main.hud
@@ -318,6 +322,9 @@ func _starve_and_recover(pool: PoolScene) -> void:
 		"the bot found food and stopped starving after %.1f s" % (ticks * PoolSim.DT))
 	await _frames(2)
 	_check(not hud.starving_banner.visible and not pool.starving_arrow.visible, "the banner and the arrow are gone")
+	_check(_view.arrow_frames > 0 and _view.arrow_nearest_m < ARROW_CLOSE_M and _view.arrow_label_clear_px >= 0.0,
+		"the arrow's distance label never covered the cell, down to %.1f m from the food (%.0f px clear at the closest)"
+		% [_view.arrow_nearest_m, _view.arrow_label_clear_px])
 	_check(hud.state_text.text != "Starving", "the HUD no longer says Starving (%s)" % hud.state_text.text)
 
 
@@ -625,7 +632,8 @@ func _watch(pool: PoolScene) -> void:
 	_hud_meal_mismatches.clear()
 	_view = {"frames": 0, "rect": Vector2.ZERO, "worst_offset": 0.0, "behind": 0, "food_mismatch": 0,
 		"plankton_drawn": 0, "carrion_drawn": 0, "food_misplaced": 0, "fade_late": 0,
-		"hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0}
+		"hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0,
+		"arrow_frames": 0, "arrow_nearest_m": INF, "arrow_label_clear_px": INF}
 	pool.sim_event.connect(_on_sim_event)
 
 
@@ -671,6 +679,15 @@ func _probe_frame() -> void:
 	_view.hud_lag = _view.hud_lag + 1 if stale else 0
 	_view.hud_worst_lag = maxi(_view.hud_worst_lag, _view.hud_lag)
 	_view.bar_worst = maxf(_view.bar_worst, absf(main.hud.energy_bar.value - sim.state.energy))
+	# The food arrow's distance label, against the cell's disc as this camera draws it.
+	if pool.starving_arrow.visible:
+		var cell_px := pool.camera.unproject_position(at)
+		var radius_px := pool.camera.unproject_position(at + Vector3.RIGHT * sim.phenotype.radius).distance_to(cell_px)
+		var label := pool.starving_arrow.label_rect()
+		_view.arrow_frames += 1
+		_view.arrow_nearest_m = minf(_view.arrow_nearest_m, pool.starving_arrow.distance_m)
+		_view.arrow_label_clear_px = minf(_view.arrow_label_clear_px,
+			cell_px.clamp(label.position, label.end).distance_to(cell_px) - radius_px)
 
 
 ## Every one of `items` sits at its sim position (x and z) in the view's instance buffer, which is

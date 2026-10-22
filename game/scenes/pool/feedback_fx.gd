@@ -3,11 +3,22 @@ extends Node3D
 ## World-space feedback that follows confirmed sim events (M1 step 2, Bible 20): a "+8 energy · +1"
 ## label rising from each meal, and a "Regrowing" label over every emptied plankton zone until it
 ## is full again. Labels are pooled Label3D nodes; nothing here changes the sim.
+##
+## Meals often come in quick runs through a plankton cluster. A meal soon after and close to the
+## last one adds to its label ("+16 energy · +2") instead of drawing a second one on top of it,
+## and a new label pushes the still-rising labels near it up one line, so they never cross.
 
 const MEAL_LABELS := 6
 const MEAL_RISE_M := 0.9
 const MEAL_LIFE_S := 1.2
 const MEAL_START_Y := 0.6
+const MEAL_MERGE_S := 0.6         ## a meal this soon after the last one...
+const MEAL_MERGE_M := 1.5         ## ...and this close to it adds to its label
+const MEAL_NEAR_M := 3.0          ## a new label pushes up the labels this close to it...
+## ...by one line of text as the pool camera sees it: from 55° above, a world height shows at
+## about cos 55° = 0.57 of its size.
+const MEAL_LINE_M := 0.7
+const MEAL_LIFT_RATE := 18.0      ## how fast a pushed label moves up (1/s, exponential)
 const ZONE_LABEL_Y := 1.2
 const ZONE_REFRESH_S := 0.25
 const FONT_SIZE := 64
@@ -19,6 +30,11 @@ const OUTLINE_COLOR := Color(0.03, 0.13, 0.15, 0.9)
 
 var _meal_labels: Array[Label3D] = []
 var _meal_ages := PackedFloat32Array()
+var _meal_at := PackedVector2Array()        ## plane position of each label's last meal
+var _meal_energy := PackedFloat32Array()    ## energy and points each label shows
+var _meal_points := PackedInt32Array()
+var _meal_lift := PackedFloat32Array()      ## how far newer labels pushed each label up
+var _meal_lift_shown := PackedFloat32Array()
 var _next_meal := 0
 var _zone_labels := {}   ## zone id -> Label3D
 var _zone_refresh := 0.0
@@ -30,13 +46,23 @@ func setup(zones: Array[Dictionary]) -> void:
 		remove_child(child)
 		child.queue_free()
 	_meal_labels.clear()
-	_meal_ages.clear()
 	_zone_labels.clear()
 	for i in MEAL_LABELS:
 		var label := _make_label(MEAL_COLOR)
 		label.name = "Meal%d" % i
 		_meal_labels.append(label)
-		_meal_ages.append(MEAL_LIFE_S)
+	_meal_ages.resize(MEAL_LABELS)
+	_meal_ages.fill(MEAL_LIFE_S)
+	_meal_at.resize(MEAL_LABELS)
+	_meal_at.fill(Vector2.ZERO)
+	_meal_energy.resize(MEAL_LABELS)
+	_meal_energy.fill(0.0)
+	_meal_points.resize(MEAL_LABELS)
+	_meal_points.fill(0)
+	_meal_lift.resize(MEAL_LABELS)
+	_meal_lift.fill(0.0)
+	_meal_lift_shown.resize(MEAL_LABELS)
+	_meal_lift_shown.fill(0.0)
 	for z in zones:
 		var label := _make_label(ZONE_COLOR)
 		label.name = "Regrowing_%s" % z.id
@@ -44,15 +70,31 @@ func setup(zones: Array[Dictionary]) -> void:
 		_zone_labels[z.id] = label
 
 
-## A meal label for an "ate" event: energy absorbed and points earned.
+## A meal label for an "ate" event: energy absorbed and points earned. It adds to the last label
+## when that one is younger than MEAL_MERGE_S and within MEAL_MERGE_M.
 func show_meal(event: Dictionary) -> void:
 	if _meal_labels.is_empty():
 		return
-	var label := _meal_labels[_next_meal]
-	_meal_ages[_next_meal] = 0.0
-	_next_meal = (_next_meal + 1) % _meal_labels.size()
-	label.text = meal_text(event)
-	label.position = PlaneSpace.to_world(event.position, MEAL_START_Y)
+	var at: Vector2 = event.position
+	var i := posmod(_next_meal - 1, _meal_labels.size())
+	if _meal_labels[i].visible and _meal_ages[i] < MEAL_MERGE_S and _meal_at[i].distance_to(at) <= MEAL_MERGE_M:
+		_meal_energy[i] += float(event.get("absorbed", 0.0))
+		_meal_points[i] += int(event.get("points", 0))
+	else:
+		i = _next_meal
+		_next_meal = (_next_meal + 1) % _meal_labels.size()
+		for j in _meal_labels.size():
+			if j != i and _meal_labels[j].visible and _meal_at[j].distance_to(at) <= MEAL_NEAR_M:
+				_meal_lift[j] += MEAL_LINE_M
+		_meal_energy[i] = float(event.get("absorbed", 0.0))
+		_meal_points[i] = int(event.get("points", 0))
+		_meal_lift[i] = 0.0
+		_meal_lift_shown[i] = 0.0
+	var label := _meal_labels[i]
+	_meal_ages[i] = 0.0
+	_meal_at[i] = at
+	label.text = meal_text({"absorbed": _meal_energy[i], "points": _meal_points[i]})
+	label.position = PlaneSpace.to_world(at, MEAL_START_Y + _meal_lift_shown[i])
 	label.modulate.a = 1.0
 	label.outline_modulate.a = OUTLINE_COLOR.a
 	label.visible = true
@@ -82,6 +124,19 @@ func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float) 
 			label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
 
 
+## The meal labels on screen now, oldest first (for checks).
+func meal_labels() -> Array[Label3D]:
+	var order: Array[int] = []
+	for i in _meal_labels.size():
+		if _meal_labels[i].visible:
+			order.append(i)
+	order.sort_custom(func(a: int, b: int): return _meal_ages[a] > _meal_ages[b])
+	var out: Array[Label3D] = []
+	for i in order:
+		out.append(_meal_labels[i])
+	return out
+
+
 ## Label of a zone, for tests and the smoke check.
 func zone_label(zone_id: String) -> Label3D:
 	return _zone_labels.get(zone_id)
@@ -94,7 +149,8 @@ func _process(delta: float) -> void:
 		_meal_ages[i] += delta
 		var k := clampf(_meal_ages[i] / MEAL_LIFE_S, 0.0, 1.0)
 		var label := _meal_labels[i]
-		label.position.y = MEAL_START_Y + MEAL_RISE_M * ease(k, 0.4)
+		_meal_lift_shown[i] = lerpf(_meal_lift_shown[i], _meal_lift[i], minf(delta * MEAL_LIFT_RATE, 1.0))
+		label.position.y = MEAL_START_Y + _meal_lift_shown[i] + MEAL_RISE_M * ease(k, 0.4)
 		label.modulate.a = 1.0 - k * k
 		label.outline_modulate.a = OUTLINE_COLOR.a * label.modulate.a
 		if k >= 1.0:
