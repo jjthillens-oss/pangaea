@@ -70,7 +70,7 @@ xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86
 - `shot.gd` is a small `SceneTree` script that sets up the scene, waits for the frames it needs, then saves `root.get_viewport().get_texture().get_image()` with `save_png`. No such script is in the repository yet.
 - Wait at least 24 frames after the pool opens, so its 0.3 s fade-in is gone.
 - Set the pool's `pause_on_focus_loss` to false, or Xvfb focus changes can pause it.
-- These renders show the Compatibility renderer, which looks different from the game on Windows (Forward+): it adds each shadowed light to the rest in sRGB, so lit surfaces come out brighter and more saturated.
+- These renders show the Compatibility renderer, which tonemaps each pass on its own and adds each shadowed light to the rest in sRGB. The pool gives it its own light (`game/scenes/pool/pool_look.gd`), so its floor comes within about 8 CIE76 of the game on Windows (Forward+), but its frames stay a little darker and greener, with paler plankton tops.
 
 To judge the look, render with Forward+ on Mesa's software Vulkan driver (lavapipe). It takes about 30 s a frame at 1080p on 4 CPUs. Unpack the driver package that matches the installed Mesa and point the Vulkan loader at it:
 

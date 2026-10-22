@@ -12,9 +12,9 @@ const HABITAT_MAX_SATURATION := 0.55    ## docs/art/ART_DIRECTION.md section 3 (
 const FLOOR_SCENE := "res://assets/export/pool_floor.glb"
 const RIM_LIP_M := Vector2(41.5, 43.0)    ## the dry lip's radii, as test_assets.gd and the generator check it
 ## The lip's linear albedo luminance at most (PROPOSED). The highlight is cream and never white,
-## and living things read first: the old pale stone (0.68) rendered at L* 94 in Forward+, the
-## brightest thing on screen and lighter than the plankton's glow (L* 87); stone at 0.39 rendered
-## at L* 83. Renders of both renderers are in docs/DECISIONS.md, "Pool lighting pass".
+## and living things read first: the old pale stone (0.68) rendered at L* 92 to 95 in Forward+,
+## the brightest thing on screen and lighter than the plankton's glow (L* 87); stone at 0.39
+## rendered at L* 83. Renders of both renderers are in docs/DECISIONS.md, "Pool lighting pass".
 const RIM_MAX_LUMINANCE := 0.40
 
 
