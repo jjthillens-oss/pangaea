@@ -210,8 +210,11 @@ func test_a_stuck_creature_is_removed_and_requeued_only_where_the_player_cannot_
 	field.take_events()
 	var c := field.find("c_1")
 	c.brain.stuck = true
-	field.remove_stuck(Vector2(14.0, 12.0), 50)
-	check(field.find("c_1") != null, "kept while the player is within 20 m")
+	var margin: float = float(layout.camera.look_ahead_max) + float(species.fairness.spawn_view_margin_m) + c.phenotype.radius
+	check(not ViewFootprint.contains(NORTH_OF_LAIR_SE, c.motion.position, layout.camera, float(layout.camera.zoom_max),
+		float(species.fairness.spawn_view_aspect), margin), "13.6 m north of lair_se it is out of view")
+	field.remove_stuck(NORTH_OF_LAIR_SE, 50)
+	check(field.find("c_1") != null, "kept while the player is within 20 m, even out of view")
 	field.remove_stuck(BESIDE_LAIR_SE, 51)
 	check(field.find("c_1") != null, "kept while the player could see it")
 	field.remove_stuck(layout.spawn, 52)
