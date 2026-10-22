@@ -74,7 +74,7 @@
 | # | Promise | How it is enforced |
 |---|---|---|
 | F1 | **You always see it coming.** Every attack has a tell of at least 1.2 s, shown by pose, sound, a "!" marker, a floor lane, and an edge arrow when the creature is off-screen. The strike line locks when the tell starts and never tracks you afterwards. | SpeciesCatalog rules 4 and 13; test_creature_brain #3; threats_sim #6 (exact ticks); fuzz invariants 4–5 |
-| F2 | **A 0.4 s reaction is enough.** Swimming sideways, out of the line, 24 ticks after the tell starts avoids the strike. The only budgeted exceptions are swimming head-on into it while starving. | threats_sim #2–4 (the S5 grid: EvadeBot, clearance margins) |
+| F2 | **A 0.4 s reaction is enough.** Swimming out of the line on the side you are facing (a turn of at most 90°), 24 ticks after the tell starts, avoids the strike. The only budgeted exceptions are swimming head-on into it while starving. The other side is not promised: turning all the way round takes longer than the 1.2 s tell. Measured every 5°, a dodge to the side behind the cell is never hit below a 120° turn while the cell faces away from the creature, but facing it (150–210°) the lunge hits from a turn of about 100° (98° fed, 96° starving). (Worded by the step 3 review fixes: the first wording, "sideways", did not say which side.) | threats_sim #2–4 (the S5 grid: EvadeBot on the side the cell faces, clearance margins); slow gates: the same side every 5° through the head-on sector, and the side behind the cell as measured |
 | F3 | **A fed cell can always outswim a chase, and every chase ends.** Pursuit speed is at most 0.9 × the slowest fed starting body. Every chase ends by timer, lost sight, leash, territory or unreachable. A starving cell that swims straight away is never hit, and the threat gives up. | SpeciesCatalog rule 3; test_creature_brain #4; threats_sim #5 (S6), #18–19; fuzz invariant 6 |
 | F4 | **One at a time.** At most 1 creature is engaged (chase or attack) with you. | Token; threats_sim #21 (T6); fuzz invariant 8 |
 | F5 | **Hits land only when they look like hits.** Damage happens only inside a strike that followed a full tell, at most once per strike. No single hit takes 50% of a starting body's health. | SpeciesCatalog rule 5; threats_sim #6; fuzz invariants 4–5 |
@@ -195,7 +195,7 @@ These come from `Phenotype.derive`, and from the size rule (section 6) ported to
 
 **Other runs that set the numbers** (*verified*, same harness):
 - **Reaction time, lunge.** At 15 ticks every case clears by ≥ 0.17 m. At 30 ticks, 2 head-on grazing cases are hit.
-- **Escape direction.** Swimming **straight away** at 24 ticks is hit 5–9 times per body. **So every tip says "sideways, out of its line"**, which is what the tests prove.
+- **Escape direction.** Swimming **straight away** at 24 ticks is hit 5–9 times per body. **So every tip says "out of its line on the side you face"**, which is what the tests prove. (The first tips said "sideways, out of its line". The review fixes measured the other side: the side behind a cell needs a turn of 90–180°, facing the creature it is hit from a turn of about 100°, and a still cell that must turn round is hit, so the tips name the side; see F2 and `docs/DECISIONS.md`.)
 - **A 1.0 s lunge tell** gives 2–3 hits per body for fed reacting prey, all head-on, so 1.2 s is chosen.
 - **A lunge from 2.0 m:** still head-on clearance falls to 0.01–0.05 m, and one omnivore is hit grazing head-on. So `start_min_m` is 2.5.
 - **A 1.0 s puff** passes at 4–5 m (starving grazing clearance ≥ 0.16 m) but degrades at 3–3.5 m, so 1.2 s is chosen.
@@ -287,7 +287,7 @@ North-up camera, pitch 55°, vertical FOV 45°, plane trapezoid relative to the 
 | 8 | No off-screen indicators | `ThreatIndicators`: a pure `edge_point()` plus HUD arrows. **Never cut** |
 | 9 | No engagement limit | Token with `max_engaged_on_player` 1, assigned on the sim side through the percept flag `engageable` |
 | 10 | Keep D8 (death save) as an owner decision; no "no saving while hunted" | OD1, with a recommendation; the fallback stays compilable and tested; "no saving while hunted" rejected |
-| 11 | Death tips must match the tested dodge | Tips say "sideways, out of its line". The puff tip adds "or leave its patch" (the cancel is tested) |
+| 11 | Death tips must match the tested dodge | Tips say "out of its line on the side you face" (first "sideways, out of its line"; reworded by the review fixes, F2). The puff tip adds "or leave its patch" (the cancel is tested) |
 | 12 | Smoke second death reused lair_se (killer ignore) | The second quick death uses lair_sw |
 | 13 | The static `"player"` scan cannot use `_code_only` | A new `_code_keep_strings` helper scans raw code with strings kept. Identifier scans cover `PoolSim`, `sim.`, `CreatureField` and `roster` |
 | 14 | The symmetry test needs a harness | A scripted brainless decoy `"lineage"` creature with the player's phenotype and the same hit and knockback path. T5 invariance is the primary proof |
@@ -419,7 +419,7 @@ This file is separate from `pool_m1.json`, so `PoolLayout` and its schema do not
     "ambush_hunter": {
       "name": "ambush hunter",
       "death_reason": "Caught by an ambush hunter",
-      "death_tip": "Ambush hunters wait at the rims. When one coils, swim sideways, out of its line.",
+      "death_tip": "Ambush hunters wait at the rims. When one coils, swim out of its line on the side you face; turning round takes too long.",
       "behavior": "ambush", "body_asset": "creature_ambush_body", "body_size": 1.5,
       "parts": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
       "niche": {"role": "ambush", "cap": 3, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
@@ -440,7 +440,7 @@ This file is separate from `pool_m1.json`, so `PoolLayout` and its schema do not
     "rammer": {
       "name": "territorial rammer",
       "death_reason": "Rammed by a territorial rammer",
-      "death_tip": "Rammers guard the richest patches. When one puffs up, swim sideways out of its line, or leave its patch.",
+      "death_tip": "Rammers guard the richest patches. When one puffs up, swim out of its line on the side you face, or leave its patch.",
       "behavior": "territorial", "body_asset": "creature_rammer_body", "body_size": 1.25,
       "parts": [{"type": "mouth_filter", "angle": 0.0},
                 {"type": "spike", "angle": 0.3, "scale": 0.8}, {"type": "spike", "angle": -0.3, "scale": 0.8},
@@ -1206,7 +1206,7 @@ Every signal uses at least two of shape, motion, text and sound. Colour is never
 
   - `Main.death_title(cause, reason := "")` returns the title.
   - `Main.death_text(cause, lost, tip := "", saved := true)` returns one sentence and a tip line. For example: "The lineage continues from the start of generation 1. You lost a quarter of your unspent adaptation points (−3). Saved." plus the species `death_tip`.
-  - The starvation tip is "Plankton regrows in the sunlit patches; slow down when energy runs low."
+  - The starvation tip names only food the body can eat (`GameSession.starved_tip`, a review fix): "Plankton regrows in the sunlit patches; slow down when energy runs low." for a body that eats plankton, "More carrion comes only from kills: bite a rammer from behind, jaw first, and keep biting until it dies, then eat what it drops. Slow down when energy runs low." for one that eats only carrion, and "Slow down when energy runs low." otherwise.
   - The step 2 phrasing "You lose" becomes "You lost", because the loss is already applied.
   - When the save failed, "Saved." becomes "Could not save: <error>". With the OD1 fallback, "Saved." is omitted.
   - Continue toast: "Back at the generation start · sheltered for 5 s."
@@ -1715,7 +1715,7 @@ The step is one PR. Agents commit in this order and **push after every commit**.
 
 | Item (brief) | Player path | Automated proof |
 |---|---|---|
-| Two threat behaviors, readable shapes, tells before attacking | South-east or south-west rim: a big flat dark cell turns to watch; swim within 3 m in front and it stops, coils for 1.2 s with a lane, then lunges along it. North zones: a spiked pale cell approaches, puffs for 1.2 s, then charges. Sideways input at the tell escapes | threats_sim #1–8, pool_view poses, smoke "caught", test_assets silhouettes |
+| Two threat behaviors, readable shapes, tells before attacking | South-east or south-west rim: a big flat dark cell turns to watch; swim within 3 m in front and it stops, coils for 1.2 s with a lane, then lunges along it. North zones: a spiked pale cell approaches, puffs for 1.2 s, then charges. Swimming out of the lane on the side the cell faces at the tell escapes | threats_sim #1–8, pool_view poses, smoke "caught", test_assets silhouettes |
 | AI states wander, forage, notice, chase, attack, flee, rest; own senses, not your coordinates | Hide behind the north-west rock and nothing notices you. Bump one from behind and it turns | brain #1–12, senses, threats_sim #14–17 (T5, decoy, static scan), fuzz 9 |
 | Every chase has a give-up time; **tests: AI give-up and recovery** | Swim away: an ambush hunter stops at its 9 m leash, a rammer at its territory edge | brain #4–5, #12; threats_sim #5, #18–20; fuzz 2, 6, 7 |
 | Spawns by niche, not around the player | Kill a rammer: another appears at its patrol site about 30 s later, never in view | test_creature_field #1–3, #5–7; slow #31 |
@@ -1726,8 +1726,8 @@ The step is one PR. Agents commit in this order and **push after every commit**.
 | Save round trips | Quit at the death notice, relaunch, Continue: back at the start with the loss applied | test_checkpoints #2, #8; two-process smoke; test_game_session |
 
 **Owner Windows checklist** (record the commit, resolution and FPS in M1.md):
-1. Start a grazer. Swim to the north zone, watch a rammer puff, and swim sideways out of its line. Then try leaving its patch during a puff.
-2. Swim along the south-east rim and watch the ambush hunter track you. Go within 3 m in front of it, watch the coil and lane, and dodge sideways.
+1. Start a grazer. Swim to the north zone, watch a rammer puff, and swim out of its line on the side you face. Then try leaving its patch during a puff.
+2. Swim along the south-east rim and watch the ambush hunter track you. Go within 3 m in front of it, watch the coil and lane, and dodge out of its line on the side you face.
 3. Get caught by each threat. Read the title and tip. Continue: "Sheltered 5". Die again quickly at the other lair: "Sheltered 8".
 4. Start a hunter. Kill a rammer from behind and eat the chunks.
 5. Die, quit at the notice, relaunch, Continue: at the start, points reduced.
@@ -1746,7 +1746,7 @@ The step is one PR. Agents commit in this order and **push after every commit**.
 | D3 | **Size rule** `Phenotype.derive(..., body_size)`. Size 1 changes nothing; the player is always size 1 in M1 | No |
 | D4 | Creature metabolism shares: ambush 10%, rammer 25%. Starved creatures leave no carcass | No |
 | D5 | **Combat is automatic on contact** (jaw bites, spikes ram); no attack key | **OD3** (controls) |
-| D6 | **Tells are locked lines:** heading locked at tell start toward a capped lead point, no homing, a burst plus glide, started from rest. Both tells are 1.2 s, with a validated floor of 1.2 s. The probe's head-on approaches (150–210°) are the documented hard case, covered by the notice cue, the lane and the tip | No |
+| D6 | **Tells are locked lines:** heading locked at tell start toward a capped lead point, no homing, a burst plus glide, started from rest. Both tells are 1.2 s, with a validated floor of 1.2 s. A 0.4 s reaction out of the line on the side the cell faces (a turn of at most 90°) avoids the strike. The other side is not promised: turning all the way round takes longer than the tell, and facing the creature that side is hit from a turn of about 100° (review fix). The probe's head-on approaches (150–210°) are the documented hard case, covered by the notice cue, the lane and the tip | No |
 | D7 | **Forgiving two-hit rule:** no single hit reaches 50% of starting health, validated at load | No |
 | D8 | **The checkpoint is the generation start** (derived; **no schema change**) | No |
 | D9 | Fairness numbers: spawn-safe 20 m plus the zoom-max view footprint, respawn-clear 12 m, shelter 5/8/10 s, respawn energy 0.6/0.8/1.0, streak window 90 s, killer ignore 30 s, start and continue shelter 5 s | No |
@@ -1807,7 +1807,7 @@ Each one changes what the approved brief says, or could. The plan builds and shi
 | Threats feel toothless (sated ambush hunters only watch; the token limits pressure) | Owner checklist; few deaths in play | Hunger thresholds, metabolism share, `start_max_m` (≤ 3.0 by probe) and `max_engaged_on_player` are data. Raise pressure by hunger, not by shortening tells |
 | Emergent predation empties a niche, or the pool turns chaotic | Slow #31 prints; owner says "nothing to hunt" | Prey radius share, refractory and leash in data |
 | A tell is readable in the sim but not on screen | Owner cannot see the coil from the camera | Pose amplitudes are view constants; the lane, eye glow, positional cue and edge arrow are redundant channels |
-| Head-on approaches feel unfair | Deaths cluster on players swimming into threats | The documented hard case (D6). The notice cue and watch phase come first; the tip says to swim sideways. The `start_min_m` and aim data can narrow it further |
+| Head-on approaches feel unfair | Deaths cluster on players swimming into threats | The documented hard case (D6). The notice cue and watch phase come first; the tip says to swim out of its line on the side you face. The `start_min_m` and aim data can narrow it further |
 | GDScript cost grows with creatures | #28 above 600 µs | The rock grid first (section 20) |
 | Determinism drift (Vector2 in snapshots, dictionary order, unstable sorts) | #24 or #25 fails | `_pair` everywhere, sorted dictionaries, id tie-breaks, per-creature seeds |
 | Separation jitter against rocks with several bodies | Visible shiver in the smoke frame probe | One separation pass, then `settle`, then the clamp. The band rule keeps the clamp off rocks |

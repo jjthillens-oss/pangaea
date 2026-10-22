@@ -7,8 +7,9 @@ extends RefCounted
 ## hunting is swimming into the prey jaw first.
 ##
 ## Its priorities, highest first (plan section 16):
-##  1. the EvadeBot reaction: a tell aimed at the cell is dodged sideways 0.4 s after it starts and
-##     held until the strike is over (it wraps an EvadeBot, which hears the sim's events);
+##  1. the EvadeBot reaction: a tell aimed at the cell is dodged out of its line on the side the cell
+##     faces 0.4 s after it starts and held until the strike is over (it wraps an EvadeBot, which
+##     hears the sim's events);
 ##  2. eat the carrion it can see (on screen at the default zoom), nearest first, and wait beside it
 ##     while too full to eat;
 ##  3. hurt below RETREAT_BELOW of its health, while it can still heal (energy above half), swim to
