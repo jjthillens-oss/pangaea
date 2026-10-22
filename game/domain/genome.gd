@@ -1,7 +1,7 @@
 class_name Genome
 extends RefCounted
 ## Inheritable body design: parts, placement and appearance. Plain data with validation;
-## no scene, UI or file access (Bible sections 12 and 17). Phenotype derivation is M1 work.
+## no scene, UI or file access (Bible sections 12 and 17). Stats come from Phenotype.derive().
 
 const SCHEMA_VERSION := 1
 
@@ -13,6 +13,8 @@ var appearance: Dictionary = {"hue": 0.45, "pattern": "plain"}
 ## Each part: {"id": String, "type": String, "angle": float (radians, 0 = front), "scale": float}
 var parts: Array[Dictionary] = []
 var next_part_number: int = 1
+## Type problems found by from_dict (not saved). validate() reports them.
+var load_problems: Array = []
 
 
 static func create(p_lineage_id: String) -> Genome:
@@ -47,7 +49,7 @@ func count_of(type_id: String) -> int:
 
 ## Returns human-readable problems. An empty array means the genome is valid.
 func validate(catalog: PartCatalog) -> PackedStringArray:
-	var errors := PackedStringArray()
+	var errors := PackedStringArray(load_problems)
 	if not StableId.is_valid(genome_id, "genome"):
 		errors.append("Genome has an invalid id '%s'." % genome_id)
 	if not StableId.is_valid(lineage_id, "lineage"):
@@ -60,11 +62,15 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 	var counts := {}
 	var categories := {}
 	for part in parts:
-		var part_id := str(part.get("id", ""))
-		var type_id := str(part.get("type", ""))
-		if part_id.is_empty() or seen_ids.has(part_id):
-			errors.append("Part id '%s' is missing or repeated." % part_id)
+		var raw_id = part.get("id")
+		var part_id := str(raw_id)
+		if not (raw_id is String) or part_id.is_empty() or seen_ids.has(part_id):
+			errors.append("Part id '%s' is missing, repeated or not text." % part_id)
 		seen_ids[part_id] = true
+		if _part_number(part_id) >= next_part_number:
+			errors.append("Part '%s' is not below the next part number %d; new parts would reuse its id." % [part_id, next_part_number])
+		var raw_type = part.get("type")
+		var type_id := str(raw_type) if raw_type is String else ""
 		if not catalog.has_part(type_id):
 			errors.append("Part '%s' has unknown type '%s'." % [part_id, type_id])
 			continue
@@ -74,7 +80,7 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 		if not (angle is float or angle is int) or not is_finite(angle) or absf(angle) > PI + 0.0001:
 			errors.append("Part '%s' has an angle outside -PI..PI." % part_id)
 		var scale = part.get("scale")
-		if not (scale is float or scale is int) or scale < catalog.min_scale or scale > catalog.max_scale:
+		if not (scale is float or scale is int) or not is_finite(scale) or scale < catalog.min_scale or scale > catalog.max_scale:
 			errors.append("Part '%s' has a scale outside %.2f..%.2f." % [part_id, catalog.min_scale, catalog.max_scale])
 	for type_id in counts:
 		if counts[type_id] > catalog.max_count_of(type_id):
@@ -99,15 +105,36 @@ func to_dict() -> Dictionary:
 
 
 ## Copies every field as stored. Unknown or invalid parts are kept so that validate()
-## reports them; loading never silently drops body parts (Bible section 18).
+## reports them; loading never silently drops body parts (Bible section 18). Fields of the wrong
+## type are recorded in load_problems.
 static func from_dict(data: Dictionary) -> Genome:
 	var genome := Genome.new()
-	genome.genome_id = str(data.get("genome_id", ""))
-	genome.lineage_id = str(data.get("lineage_id", ""))
-	genome.parent_genome_id = str(data.get("parent_genome_id", ""))
-	genome.generation = int(data.get("generation", 0))
-	genome.appearance = Dictionary(data.get("appearance", {})).duplicate(true)
-	for part in data.get("parts", []):
-		genome.parts.append(Dictionary(part).duplicate(true))
-	genome.next_part_number = int(data.get("next_part_number", genome.parts.size() + 1))
+	var problems := genome.load_problems
+	genome.genome_id = JsonValues.text(data, "genome_id", problems)
+	genome.lineage_id = JsonValues.text(data, "lineage_id", problems)
+	genome.parent_genome_id = JsonValues.text(data, "parent_genome_id", problems)
+	genome.generation = JsonValues.whole(data, "generation", problems)
+	genome.appearance = JsonValues.dict(data, "appearance", problems)
+	for part in JsonValues.array(data, "parts", problems):
+		if part is Dictionary:
+			genome.parts.append(part)
+		else:
+			# Kept as an id-less part so validate() reports it too; never dropped.
+			problems.append("A body part entry is not an object.")
+			genome.parts.append({"id": "", "type": "", "raw": part})
+	var highest := 0
+	for part in genome.parts:
+		highest = maxi(highest, _part_number(str(part.get("id"))))
+	if data.has("next_part_number"):
+		genome.next_part_number = JsonValues.whole(data, "next_part_number", problems)
+	if not data.has("next_part_number") or genome.next_part_number <= 0:
+		genome.next_part_number = highest + 1
 	return genome
+
+
+## The N of a "part_N" id, or 0 for any other id.
+static func _part_number(part_id: String) -> int:
+	if not part_id.begins_with("part_"):
+		return 0
+	var digits := part_id.trim_prefix("part_")
+	return digits.to_int() if digits.is_valid_int() else 0

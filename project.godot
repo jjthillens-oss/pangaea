@@ -7,7 +7,7 @@ config_version=5
 
 config/name="Pangaea"
 config/description="Pangaea (codename GENESIS): an original seven-era evolution game."
-config/version="0.0.1-m0"
+config/version="0.0.2-m1"
 run/main_scene="res://game/scenes/boot.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Pangaea"
