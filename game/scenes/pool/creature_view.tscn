@@ -1,0 +1,38 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://game/scenes/pool/creature_view.gd" id="1_view"]
+
+[sub_resource type="QuadMesh" id="QuadMesh_lane"]
+orientation = 1
+size = Vector2(1, 1)
+
+[node name="CreatureView" type="Node3D"]
+script = ExtResource("1_view")
+
+[node name="Pivot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Model" type="Node3D" parent="Pivot"]
+unique_name_in_owner = true
+
+[node name="Parts" type="Node3D" parent="Pivot/Model"]
+unique_name_in_owner = true
+
+[node name="Lane" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+top_level = true
+visible = false
+cast_shadow = 0
+mesh = SubResource("QuadMesh_lane")
+
+[node name="Marker" type="Label3D" parent="."]
+unique_name_in_owner = true
+visible = false
+cast_shadow = 0
+pixel_size = 0.0075
+billboard = 1
+no_depth_test = true
+fixed_size = false
+text = "!"
+font_size = 112
+outline_size = 22

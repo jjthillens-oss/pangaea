@@ -1,8 +1,15 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://game/ui/hud.gd" id="1_hud"]
 [ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
 [ext_resource type="Script" path="res://game/ui/hud_icon.gd" id="3_icon"]
+[ext_resource type="Script" path="res://game/ui/threat_indicators.gd" id="4_indicators"]
+[ext_resource type="Shader" path="res://game/ui/hurt_vignette.gdshader" id="5_vignette"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_vignette"]
+resource_local_to_scene = true
+shader = ExtResource("5_vignette")
+shader_parameter/strength = 0.0
 
 [node name="Hud" type="Control"]
 layout_mode = 3
@@ -14,6 +21,17 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_hud")
+
+[node name="HurtVignette" type="ColorRect" parent="."]
+unique_name_in_owner = true
+material = SubResource("ShaderMaterial_vignette")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="Frame" type="MarginContainer" parent="."]
 layout_mode = 1
@@ -68,6 +86,30 @@ layout_mode = 2
 theme_type_variation = &"EnergyBar"
 value = 60.0
 show_percentage = false
+
+[node name="ShelterChip" type="PanelContainer" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
+theme_type_variation = &"ChipShelter"
+
+[node name="Row" type="HBoxContainer" parent="Frame/Status/Box/ShelterChip"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Ring" type="Control" parent="Frame/Status/Box/ShelterChip/Row"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 4
+script = ExtResource("3_icon")
+shape = "ring"
+color = Color(0.62, 0.98, 1, 1)
+
+[node name="ShelterText" type="Label" parent="Frame/Status/Box/ShelterChip/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"ChipLabel"
+text = "Sheltered 5"
 
 [node name="HealthRow" type="VBoxContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -223,3 +265,14 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 autowrap_mode = 3
+
+[node name="ThreatIndicators" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_indicators")

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "M1 step 2 pool: layout and food tuning. All numbers are PROPOSED tuning data; change them here, not in code. Positions are plane [x, y] in meters (world x, z). The carrion interim_supply is temporary: step 3 turns it off so carrion comes from kills.",
+  "note": "M1 step 2 pool: layout and food tuning. All numbers are PROPOSED tuning data; change them here, not in code. Positions are plane [x, y] in meters (world x, z). Since M1 step 3 carrion comes from kills: the interim_supply is off (kept, so turning it back on stays a data change) and the world-start carrion lies outside the rammer territories.",
   "pool": {"radius": 40.0, "soft_start": 36.0, "hard_radius": 39.5, "return_speed": 1.0},
   "spawn": {"position": [0.0, 9.0], "heading": -1.5708},
   "plankton": {"unit_energy": 8.0, "points": 1, "item_radius": 0.18, "max_items_per_zone": 12,
@@ -16,8 +16,8 @@
     {"id": "z_nw",     "center": [-19.1, -11.0], "radius": 6.0, "capacity": 96.0, "growth_rate": 0.08}
   ],
   "carrion": {"energy": 24.0, "points": 3, "item_radius": 0.3, "lifetime_s": 120.0,
-              "initial": [[1.5, 4.0], [-14.0, -6.0], [12.0, -14.0]],
-              "interim_supply": {"enabled": true, "interim": true, "interval_s": 10.0, "jitter_s": 3.0,
+              "initial": [[1.5, 4.0], [-10.5, -4.5], [10.5, -4.5]],
+              "interim_supply": {"enabled": false, "interim": true, "interval_s": 10.0, "jitter_s": 3.0,
                                  "max_live": 15, "placement": "in_zone"}},
   "rocks": [
     {"id": "rock_01", "asset": "rock_a", "center": [12.0, 0.0],    "yaw_deg": 20,  "scale": 1.2},

@@ -163,3 +163,53 @@ func test_asking_straight_behind_gives_no_forward_thrust_until_past_ninety_degre
 	check(past_ninety, "turned past 90 degrees within 2 s")
 	check(_forward_speed(m) > 0.0, "then swims")
 	check(m.position.x < 0.0, "toward where it was asked to go")
+
+
+# --- Strikes (M1 step 3) ---
+
+func test_a_burst_sets_the_heading_and_the_whole_velocity_along_it() -> void:
+	var p := _body("grazer")
+	for heading in [0.0, 1.0472, -2.9258, PI - 0.001, -PI + 0.001]:
+		var m := Locomotion.MotionState.new(Vector2.ZERO, 0.5)
+		for i in 30:
+			_tick(m, Vector2.from_angle(2.0), p)   # moving and turning another way first
+		Locomotion.burst(m, heading, 4.5)
+		check_eq(m.heading, heading, "heading snaps to the lock")
+		check_near(m.velocity.length(), 4.5, VECTOR_EPSILON, "speed is the burst speed, not the body's %.2f" % p.speed)
+		check_near(absf(angle_difference(m.velocity.angle(), heading)), 0.0, VECTOR_EPSILON, "no sideways drift left")
+	var wrapped := Locomotion.MotionState.new()
+	Locomotion.burst(wrapped, 3.0 * PI / 2.0, 1.0)
+	check_near(wrapped.heading, -PI / 2.0, 1e-12, "the heading wraps into -PI..PI")
+
+
+func test_a_glide_decays_exponentially_and_holds_the_heading() -> void:
+	for case in [[4.5, 6.0, 15], [4.0, 5.0, 18], [6.0, 6.0, 60]]:
+		var m := Locomotion.MotionState.new(Vector2.ZERO, 0.0)
+		Locomotion.burst(m, -2.0, case[0])
+		var direction := m.velocity.normalized()
+		for n in range(1, case[2] + 1):
+			Locomotion.glide(m, case[1], DT)
+			var expected: float = case[0] * exp(-case[1] * n / 60.0)
+			# Vector2 holds 32-bit floats, so the match is to float32 rounding, not 1e-9.
+			if absf(m.velocity.length() - expected) > VECTOR_EPSILON:
+				check(false, "drag %.1f tick %d: %.7f, expected %.7f" % [case[1], n, m.velocity.length(), expected])
+				return
+			check_eq(m.heading, -2.0, "heading holds")
+		check(m.velocity.normalized().distance_to(direction) < VECTOR_EPSILON, "direction holds")
+
+
+func test_strike_travel_is_the_per_tick_sum_of_the_burst_and_the_glide() -> void:
+	for case in [[4.5, 21, 6.0, 15], [4.0, 54, 5.0, 18], [3.0, 0, 4.0, 10], [2.0, 10, 1.0, 0]]:
+		var m := Locomotion.MotionState.new()
+		Locomotion.burst(m, 0.7, case[0])   # the glide starts from the burst speed even with no burst ticks
+		for i in case[1]:
+			Locomotion.burst(m, 0.7, case[0])
+			m.position += m.velocity * DT
+		for i in case[3]:
+			Locomotion.glide(m, case[2], DT)
+			m.position += m.velocity * DT
+		var travel := Locomotion.strike_travel(case[0], case[1], case[2], case[3], DT)
+		check_near(m.position.length(), travel, 1e-4, "burst %.1f m/s x %d, glide drag %.1f x %d" % case)
+	# The probed strikes: the lunge and the charge, a few centimetres short of the integrals 2.16 and 4.22.
+	check_near(Locomotion.strike_travel(4.5, 21, 6.0, 15, DT), 2.129, 0.001, "lunge travel")
+	check_near(Locomotion.strike_travel(4.0, 54, 5.0, 18, DT), 4.196, 0.001, "charge travel")

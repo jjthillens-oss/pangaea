@@ -5,6 +5,8 @@ extends TestCase
 
 const ReachGrid := preload("res://tests/reach_grid.gd")
 const RECORDS_DIR := "res://assets/records"
+## The threat tests' open pool: one zone and a wall of five overlapping rocks (M1 step 3).
+const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const FOOTPRINT_TOLERANCE := 0.15
 ## A starving cell should reach food using at most this share of the distance it can swim
 ## before it dies.
@@ -69,6 +71,47 @@ func test_the_spawn_faces_the_centre_zone_with_carrion_close_by() -> void:
 	check_near(nearest, 5.2, 0.05, "a hunter's first carrion is about 5.2 m away")
 	for rock in layout.rocks:
 		check(layout.spawn.distance_to(rock.center) - rock.radius >= 3.0, "spawn is 3 m clear of %s" % rock.id)
+
+
+## M1 step 3: carrion comes from kills and the three world-start carcasses, so the interim supply
+## is off, and those carcasses lie outside every rammer territory (zone radius plus the rammer's
+## territory margin), where a player going for them would be charged. If the owner brings the
+## trickle back (OD2), the first guard changes with it.
+func test_the_interim_supply_is_off_and_no_world_start_carrion_lies_in_a_rammer_territory() -> void:
+	var layout := PoolLayout.load_from()
+	check(not layout.carrion.interim_supply.enabled, "the interim carrion supply is off")
+	var species := SpeciesCatalog.load_from()
+	var guarded := {}
+	for s in species.sites:
+		var territory := species.territory_of(s, layout)
+		if territory.is_empty():
+			continue
+		var r: float = territory.radius + float(species.species[s.species].territory_margin_m)
+		guarded[s.territory_zone] = r
+		for p in layout.carrion.initial:
+			check(p.distance_to(territory.center) > r, "carrion at %s is outside the %.0f m territory of %s (%.2f m)"
+				% [p, r, s.territory_zone, p.distance_to(territory.center)])
+	check_eq(guarded, {"z_n": 8.0, "z_nw": 8.0, "z_ne": 8.0}, "the rammers guard the three rich north zones, 8 m each")
+
+
+func test_the_threat_fixture_wall_stops_every_body_and_every_line_of_sight() -> void:
+	var fixture := PoolLayout.load_from(THREATS_FIXTURE)
+	var errors := fixture.validate()
+	check(errors.is_empty(), "the fixture is a valid layout: %s" % [errors])
+	check_eq(fixture.zone("z_a").center, Vector2.ZERO, "zone z_a at the center")
+	check_eq(fixture.spawn, Vector2(0.0, 25.0), "the spawn 25 m south of it")
+	var arena := fixture.build_arena()
+	for i in arena.rocks.size() - 1:
+		var a: Dictionary = arena.rocks[i]
+		var b: Dictionary = arena.rocks[i + 1]
+		check(a.center.distance_to(b.center) < (a.radius + b.radius) * PoolArena.SIGHT_SHRINK,
+			"%s and %s overlap even at the sight shrink" % [a.id, b.id])
+	for i in 81:
+		var x := -4.0 + i * 0.1
+		check(not arena.segment_clear(Vector2(x, 0.0), Vector2(x, 16.0)), "no sight straight across at x %.1f" % x)
+		check(not arena.segment_clear(Vector2(x - 2.0, 0.0), Vector2(x + 2.0, 16.0)), "nor slanting across at x %.1f" % x)
+		check(not arena.is_clear(Vector2(x, 8.0), PoolLayout.CELL_RADIUS), "no room for a body in the wall at x %.1f" % x)
+	check(arena.segment_clear(Vector2(-8.0, 0.0), Vector2(-8.0, 16.0)), "beside the wall the view is open")
 
 
 func test_repeated_ids_are_refused() -> void:

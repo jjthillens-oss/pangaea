@@ -8,6 +8,38 @@ extends RefCounted
 ## Tick order (tests depend on it): steer, move, metabolism, ecology, sync the resolver actor,
 ## feed, advance the tick. A dead cell skips steering, moving, metabolism and feeding; the world
 ## keeps living behind the death notice.
+##
+## Threats (M1 step 3) join only when species data is given (create(..., species)); without it the
+## tick is exactly step 2's. With it the tick runs, in this fixed order:
+##  1. the senses' body snapshot, once, before anything moves (the player, then creatures in number
+##     order);
+##  2. each creature in number order: think when due (it perceives the snapshot through its own
+##     senses; the token decides whether the player is engageable to it), drive, and set its
+##     velocity by the drive (steer, tell, burst or glide). A frozen creature (dev) coasts;
+##  3. the player steers;
+##  4. the player moves, then each creature;
+##  5. contacts: overlapping bodies are pushed apart once (positions only, by inverse mass), each
+##     pushed body settles against rocks and the wall, every creature is clamped to its leash disc
+##     last, and a striking creature touching a rock ahead is blocked;
+##  6. metabolism: the player as in step 2, creatures at their species' metabolism share (a
+##     starved creature dies and leaves no carcass);
+##  7. ecology, then the creature field's respawn queue and stuck removals;
+##  8. sync the resolver actors; 9. feeding: the player, then each creature eating by its drive;
+## 10. combat, only through InteractionResolver: (a) the cell's automatic bite and ram on the
+##     creatures it touches, (b) creature strikes in number order (only in a strike's burst or
+##     glide, at most one hit per strike), each landed hit with its knockback and the speed clamp
+##     (c), then (d) deaths: the cell first, then creatures in number order (carcass, removal,
+##     queue). Every body alive when combat begins may attack, so a mutual kill kills both (T12);
+## 11. dodges: a strike on the cell that ended this tick without a hit (missed or blocked);
+## 12. shelter: when its last tick passes, grace_ended {reason: "timeout"}.
+## Creatures are not saved; every timer is a whole tick and every RNG is seeded from the world seed.
+##
+## Checkpoints (plan section 13): a death returns the cell to checkpoint(), the generation start.
+## With creatures, respawn_player() follows rules C1-C5: the cell at the checkpoint (or the nearest
+## clear point), every creature within respawn_clear_m sent home, every brain forgetting the cell
+## (its killer ignores it for killer_ignore_s), fresh condition with the streak's energy share, and
+## the streak's shelter. Sheltered, the cell is concealed (no creature senses it) and no strike
+## hits it; a new lineage and a continued run start sheltered too. Its own landed hit ends shelter.
 
 const DT := 1.0 / 60.0
 const MAX_FOOD_RADIUS := 0.3          ## the largest food item; the reach search includes it
@@ -18,9 +50,24 @@ const FEED_LOG_SIZE := 6
 const SEED_STRIDE := 1000003
 const REGION_SEED_OFFSET := 1
 const CARRION_SEED_OFFSET := 2
+const ENCOUNTER_SEED_OFFSET := 3       ## the creature field's stream: respawn delays and brain seeds
 const DEBUG_CARRION_AHEAD_M := 4.0
+## m: debug_spawn_threat_ahead places the creature this far in front of the cell, facing it, so it
+## is in view and inside the ambush hunter's sight.
+const DEBUG_THREAT_AHEAD_M := 6.0
+const DEBUG_KILLER := "debug"           ## `by` for a death caused by a dev command
 ## Refusals never reported: no food in reach is normal, and swallowing is a meal in progress.
 const QUIET_REASONS: PackedStringArray = ["out of reach", "still swallowing"]
+## Attack refusals never reported (plan section 9): contact without a weapon, a weapon cooling down
+## or a body backing away are normal and say nothing the player can act on. The others ("jaw is not
+## facing it", "no spike points at it", "too big to bite") become hints.
+const ATTACK_QUIET_REASONS: PackedStringArray = ["out of reach", "jaw is recovering", "spikes are recovering",
+	"not moving toward it", "needs a jaw", "needs a spike"]
+const ATTACK_LOG_SIZE := 6              ## a bite and a ram for the last three ticks, like FEED_LOG_SIZE
+## m: when the checkpoint is not clear (never for the real layout), the cell goes to the nearest
+## clear point on rings this far apart (rule C1), up to CLEAR_SPIRAL_RINGS rings out.
+const CLEAR_SPIRAL_STEP_M := 0.5
+const CLEAR_SPIRAL_RINGS := 40
 
 var tick := 0
 var save: SaveGame
@@ -36,22 +83,47 @@ var plankton: PlanktonField
 var carrion: CarrionField
 var alive_s := 0.0                     ## since spawn, respawn or continue; drives survival points
 var dead := false
+## Why the cell died, while it is dead: {"cause": "starved"|"killed", "by" (creature id, "debug" or
+## ""), "by_species", "reason" (the killer species' death_reason, or "")}. {} while alive.
+var death := {}
+var species: SpeciesCatalog            ## null: the step 2 pool, with no creatures
+var creatures: CreatureField           ## null without species
+## Dev switches (debug_set_ai_frozen, debug_set_hidden); part of the state, so they are hashed.
+var dev_ai_frozen := false
+var dev_hidden := false
+## Shelter (rule C5): the cell is concealed from every creature, and no strike hits it, on every
+## tick before this one. Set when a lineage starts or continues and at every respawn; -1 without
+## creatures. Not saved (D16).
+var grace_until := -1
+## Deaths in a row, each within streak_window_s of the last respawn (RespawnRules.streak_after); it
+## picks the shelter and the energy of the next respawn. 0 before the first death; not saved (D16).
+var death_streak := 0
 var stats := {"plankton_eaten": 0, "carrion_eaten": 0, "plant_taken": 0.0, "energy_supplied": 0.0,
-	"energy_absorbed": 0.0, "points_food": 0, "points_survival": 0, "distance_m": 0.0}
+	"energy_absorbed": 0.0, "points_food": 0, "points_survival": 0, "distance_m": 0.0,
+	"kills": 0, "hits_dealt": 0, "hits_taken": 0, "damage_dealt": 0.0, "damage_taken": 0.0, "dodges": 0,
+	"creature_meals": 0, "creature_deaths": 0}
 ## The last FEED_LOG_SIZE reported feeding results, newest last:
 ## {"tick", "food_id", "kind", "allowed", "reason"}
 var feed_log: Array[Dictionary] = []
+## The cell's last ATTACK_LOG_SIZE attack results on the nearest creature it touches, quiet
+## refusals included, newest last: {"tick", "target", "kind", "allowed", "reason"} (debug panel, tests).
+var attack_log: Array[Dictionary] = []
 
 var _events: Array[Dictionary] = []
 var _alive_ticks := 0
 var _was_starving := false
 var _last_refusal := {}    ## {"food_id", "reason", "touching", "at"}
 var _contact := {}         ## {"food_id", "since"}: the food being touched, and since when
+var _last_attack_refusal := {}   ## kind -> {"target", "reason", "at"}: the attack refusal throttle
+var _killer := ""          ## the creature whose hit on the cell landed last this tick
+## Strikes on the cell that ended this tick without a hit, {"id", "species"}; dodged at step 11.
+var _dodges: Array[Dictionary] = []
 
 
 ## Builds the pool for a save. The save's position is used when it is a clear place inside the
-## soft wall; otherwise the cell starts at the layout spawn.
-static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout) -> PoolSim:
+## soft wall; otherwise the cell starts at the layout spawn. With `p_species` the pool has creatures:
+## every site that passes the spawn check from the cell's place is filled, the others wait.
+static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout, p_species: SpeciesCatalog = null) -> PoolSim:
 	var sim := PoolSim.new()
 	sim.save = p_save
 	sim.catalog = p_catalog
@@ -76,9 +148,19 @@ static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayou
 	sim.plankton.fill(sim.region, sim.arena, 0, 0.0)
 	sim.carrion = CarrionField.create(p_layout.carrion, p_save.world_seed * SEED_STRIDE + CARRION_SEED_OFFSET)
 	sim.carrion.place_initial(sim.arena)
+	if p_species != null:
+		sim.species = p_species
+		sim.creatures = CreatureField.create(p_species, p_catalog, p_layout, sim.region,
+			p_save.world_seed * SEED_STRIDE + ENCOUNTER_SEED_OFFSET)
+		sim.creatures.populate(sim.arena, sim.motion.position, 0)
+		# A new lineage and a continued run both start sheltered, so a load never drops the cell
+		# into danger.
+		sim.grace_until = p_species.start_grace_ticks
 	# The starting world is not news.
 	sim.plankton.events.clear()
 	sim.carrion.events.clear()
+	if sim.creatures != null:
+		sim.creatures.take_events()
 	sim._was_starving = sim.state.is_starving()
 	return sim
 
@@ -89,32 +171,70 @@ func now() -> float:
 
 
 func step(intent: SimIntent) -> void:
+	if creatures != null:
+		_creatures_act(creatures.bodies(player_body()))
+	var moved := 0.0
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
 		Locomotion.steer(motion, move, phenotype, state.speed_multiplier(), DT)
-		var moved := arena.move(motion, phenotype.radius, DT)
+		moved = arena.move(motion, phenotype.radius, DT)
 		stats.distance_m += moved
-		_metabolism(moved)
 	else:
 		motion.prev_position = motion.position
 		motion.prev_heading = motion.heading
+	var creature_moved: Array[float] = []
+	var swim := {}
+	if creatures != null:
+		creature_moved = _move_creatures()
+		swim = _swim_velocities()
+		_contacts()
+	if not dead:
+		_metabolism(moved)
+	if creatures != null:
+		_creature_metabolism(creature_moved)
 	region.tick(DT)
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
+	if creatures != null:
+		creatures.tick_spawns(arena, _player_place(), tick)
+		creatures.remove_stuck(_player_place(), tick)
 	_take_field_events()
 	_sync_actor()
+	if creatures != null:
+		_sync_creatures()
 	if not dead:
 		_try_feed()
+	if creatures != null:
+		_creatures_feed()
+		_take_field_events()
+		_combat(swim)
+		_emit_dodges()
+		if not dead and grace_until == tick + 1:
+			_emit({"type": "grace_ended", "reason": "timeout"})   # this was the shelter's last tick
 	tick += 1
 
 
 ## Events since the last call, oldest first. Each has a "type":
 ##   ate {kind, food_id, zone, supplied, absorbed, points, position}
 ##   refused {kind, food_id, reason, touching, contact_s}
-##   earned {points, reason}; starving_started; starving_ended; died {cause}; respawned
+##   earned {points, reason}; starving_started; starving_ended
+##   respawned {grace_s, energy, relocated (creature ids sent home), streak}
+##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
+##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)
 ##   zone_empty {zone}; zone_regrown {zone}
 ##   carrion_spawned {source, food_id, position}; carrion_expired {food_id, position}
 ##   debug {command, ...}
+## With creatures (M1 step 3), from the field and the brains (each with the creature's id):
+##   creature_spawned {id, species, site, position, heading, debug}
+##   creature_removed {id, species, reason}
+##   creature_noticed {id, target, by, position}; creature_gave_up {id, target, reason, position}
+##   creature_tell {id, target, kind, ticks, lane, position}; tell_cancelled {id, target, reason, position}
+##   creature_strike {id, target, kind, position, heading}
+##   creature_recovered {id, target, outcome, position}; creature_fled {id, from, position}
+## and from the sim: creature_ate {id, kind, food_id}; creature_died {id, species, cause, by, position, carcass}
+##   hit {attacker, target, kind, damage, dealt, target_health, knockback, position} (every landed hit,
+##     either way; position is the target's); attack_refused {target, kind, reason} (the cell only,
+##     throttled, quiet reasons never); dodged {id, species} (a strike on the cell ended without a hit)
 func drain_events() -> Array[Dictionary]:
 	_take_field_events()
 	var out := _events
@@ -135,7 +255,7 @@ func snapshot() -> Dictionary:
 	for item in carrion.items:
 		meats.append({"id": item.id, "position": _pair(item.position), "age": item.age, "energy": item.energy,
 			"source": item.source})
-	return {
+	var out := {
 		"tick": tick,
 		"alive_ticks": _alive_ticks,
 		"dead": dead,
@@ -155,7 +275,17 @@ func snapshot() -> Dictionary:
 		"carrion_rng": carrion.rng.state,
 		"next_supply_at": carrion.next_supply_at if is_finite(carrion.next_supply_at) else -1.0,
 		"stats": stats.duplicate(),
+		"death": death.duplicate(),
+		"dev_ai_frozen": dev_ai_frozen,
+		"dev_hidden": dev_hidden,
 	}
+	if creatures != null:
+		# creatures, creature_next, creature_rng, spawn_queue, engaged_on_player
+		out.merge(creatures.snapshot())
+		out["niches"] = region.niches.duplicate(true)
+		out["grace_until"] = grace_until
+		out["death_streak"] = death_streak
+	return out
 
 
 func state_hash() -> int:
@@ -177,24 +307,75 @@ func nearest_edible() -> Dictionary:
 	return {} if best.is_empty() else {"id": best.id, "kind": best.kind, "position": best.position}
 
 
-## The interim death checkpoint: back to the layout spawn with fresh condition and no cooldowns.
-## The world is kept.
+## Brings the cell back at its checkpoint after a death (plan section 13); the world is kept. The
+## cell is placed at checkpoint() facing its heading, or at the nearest clear point when the
+## checkpoint is not clear (C1), with fresh condition, no cooldowns and the alive timer reset.
+## With creatures, also: the death streak grows by one when this life was shorter than
+## streak_window_s, else it starts again at 1; the energy is the streak's respawn_energy_share of
+## capacity (C4); every creature within respawn_clear_m of the cell is sent home and every brain
+## forgets the cell, the one that killed it ignoring it for killer_ignore_s (C2, C3); and the
+## streak's shelter starts (C5). Emits respawned {grace_s, energy, relocated, streak}.
 func respawn_player() -> void:
-	motion.place(layout.spawn, layout.spawn_heading)
+	var killer := str(death.get("by", ""))
+	var cp := checkpoint()
+	motion.place(_clear_point_near(cp.position, phenotype.radius), cp.heading)
 	state = ActorState.fresh(phenotype)
 	actor.cooldowns.clear()
 	_sync_actor()
+	var relocated := PackedStringArray()
+	var grace := 0
+	if creatures != null:
+		death_streak = RespawnRules.streak_after(death_streak, _alive_ticks, species.streak_window_ticks)
+		state.energy = state.energy_capacity * RespawnRules.pick(species.respawn_energy_share, death_streak)
+		grace = int(RespawnRules.pick(species.grace_ticks, death_streak))
+		grace_until = tick + grace
+		relocated = _clear_checkpoint(motion.position, killer)
 	alive_s = 0.0
 	_alive_ticks = 0
 	dead = false
+	death = {}
 	_update_starving()   # a cell that starved to death comes back fed
 	_contact.clear()
 	_last_refusal.clear()
-	_emit({"type": "respawned"})
+	_last_attack_refusal.clear()
+	_emit({"type": "respawned", "grace_s": float(grace) / CreatureBrain.TICKS_PER_SECOND, "energy": state.energy,
+		"relocated": Array(relocated), "streak": death_streak})
 
 
+## Writes position_for_save() into the save (the checkpoint while the cell is dead, never its body).
 func write_position_to_save() -> void:
-	save.player["position"] = PlaneSpace.to_save(motion.position)
+	save.player["position"] = PlaneSpace.to_save(position_for_save())
+
+
+## Where the lineage returns after a death: the generation start, which in M1 is the layout spawn
+## (derived, never saved; step 4 makes it the generation's spawning spot). {"position", "heading"}.
+func checkpoint() -> Dictionary:
+	return {"position": layout.spawn, "heading": layout.spawn_heading}
+
+
+## Where a save puts the cell: its checkpoint while it is dead (a death resolves to a respawn
+## there), else where it is.
+func position_for_save() -> Vector2:
+	return checkpoint().position if dead else motion.position
+
+
+## True while the living cell is sheltered (rule C5): after a start, a continue or a respawn, until
+## grace_until or its own first landed hit. Sheltered, it is concealed from every creature.
+func is_sheltered() -> bool:
+	return not dead and tick < grace_until
+
+
+## The cell in the senses' body format (CreatureSenses), as creatures may perceive it this tick.
+func player_body() -> Dictionary:
+	return {"id": CreatureField.PLAYER_ID, "species": SpeciesCatalog.PLAYER_SPECIES, "position": motion.position,
+		"velocity": motion.velocity, "radius": phenotype.radius, "alive": not dead, "concealed": is_concealed(),
+		"engageable": true, "bite": phenotype.bite_damage > 0.0, "spikes": phenotype.spikes.size()}
+
+
+## True while no creature can sense or strike the cell: it is sheltered, or the dev "hide from AI"
+## switch is on.
+func is_concealed() -> bool:
+	return dev_hidden or is_sheltered()
 
 
 ## Movement over the last tick, per second (for camera look-ahead).
@@ -244,6 +425,79 @@ func debug_spawn_carrion_ahead() -> bool:
 	return true
 
 
+## Places a dev creature (debug: outside the niche count, never respawned) at a clear point.
+func debug_spawn_creature(species_id: String, p: Vector2, heading: float) -> bool:
+	if creatures == null or not species.has_species(species_id) or not is_finite(heading):
+		return false
+	if not arena.is_clear(p, species.phenotype(species_id, catalog).radius):
+		return false
+	var c := creatures.spawn_at(species_id, p, heading, "", tick, true)
+	if c == null:
+		return false
+	_take_field_events()
+	_emit({"type": "debug", "command": "spawn_creature", "species": species_id, "id": c.id, "position": p})
+	return true
+
+
+## Places a dev creature DEBUG_THREAT_AHEAD_M in front of the cell, facing it.
+func debug_spawn_threat_ahead(species_id: String) -> bool:
+	var p := motion.position + Vector2.from_angle(motion.heading) * DEBUG_THREAT_AHEAD_M
+	return debug_spawn_creature(species_id, p, (motion.position - p).angle())
+
+
+## Freezes every brain: creatures think and drive nothing and coast (their timers keep counting).
+func debug_set_ai_frozen(on: bool) -> bool:
+	if creatures == null:
+		return false
+	dev_ai_frozen = on
+	_emit({"type": "debug", "command": "freeze_ai", "on": on})
+	return true
+
+
+## Hides the cell from every creature: it is concealed, so the senses skip it, and every brain
+## forgets it now (an engagement with it gives up, target_gone).
+func debug_set_hidden(on: bool) -> bool:
+	if creatures == null:
+		return false
+	dev_hidden = on
+	if on:
+		_forget_player_everywhere()
+	_emit({"type": "debug", "command": "hide_from_ai", "on": on})
+	return true
+
+
+## Kills the creature nearest the cell (ties by id) as if by a hit: cause "killed", by "debug". It
+## leaves its carcass and its site is queued.
+func debug_kill_nearest_creature() -> bool:
+	if creatures == null:
+		return false
+	var best: CreatureField.Creature = null
+	var best_d := INF
+	for c in creatures.creatures:
+		var d := motion.position.distance_squared_to(c.motion.position)
+		if d < best_d or (d == best_d and best != null and c.id < best.id):
+			best_d = d
+			best = c
+	if best == null:
+		return false
+	_emit({"type": "debug", "command": "kill_nearest", "id": best.id, "species": best.species_id})
+	best.state.take_damage(best.state.health)
+	best.last_hit_by = DEBUG_KILLER
+	_creature_dies(best, "killed", DEBUG_KILLER)
+	return true
+
+
+## Takes `amount` health from the living cell as if by a hit; at 0 it dies (killed, by "debug").
+func debug_hurt_player(amount: float) -> bool:
+	if dead or not is_finite(amount) or amount <= 0.0:
+		return false
+	var dealt := state.take_damage(amount)
+	_emit({"type": "debug", "command": "hurt_player", "amount": dealt, "health": state.health})
+	if not state.is_alive():
+		_player_dies("killed", DEBUG_KILLER, "", "")
+	return true
+
+
 ## Moves the cell to a clear point at rest; keeps the heading unless one is given.
 func debug_teleport(p: Vector2, heading: float = NAN) -> bool:
 	if not arena.is_clear(p, phenotype.radius):
@@ -259,9 +513,7 @@ func _metabolism(moved: float) -> void:
 	state.tick(phenotype, DT, moved)
 	_update_starving()
 	if not state.is_alive():
-		dead = true
-		motion.velocity = Vector2.ZERO
-		_emit({"type": "died", "cause": "starved"})
+		_player_dies("starved", "", "", "")
 		return
 	var before := alive_s
 	_alive_ticks += 1
@@ -270,6 +522,17 @@ func _metabolism(moved: float) -> void:
 	if earned > 0:
 		stats.points_survival += earned
 		_emit({"type": "earned", "points": earned, "reason": "survival"})
+
+
+## The cell dies: it stops where it is, `death` records why and `died` reports it. The cell leaves
+## no carrion (plan D12).
+func _player_dies(cause: String, by: String, by_species: String, reason: String) -> void:
+	dead = true
+	motion.velocity = Vector2.ZERO
+	death = {"cause": cause, "by": by, "by_species": by_species, "reason": reason}
+	_emit({"type": "died", "cause": cause, "by": by, "by_species": by_species, "reason": reason, "position": motion.position})
+	if creatures != null:
+		_forget_player_everywhere()   # a dead body is gone to every brain (target_gone); the token is freed
 
 
 func _update_starving() -> void:
@@ -313,14 +576,8 @@ func _closer_then_id(a: Dictionary, b: Dictionary) -> bool:
 
 func _commit_feed(food: Dictionary, effect: Dictionary) -> void:
 	var wanted := float(effect.energy)
-	var supplied := wanted
-	var zone := ""
-	if food.kind == "plant":
-		zone = food.zone
-		supplied = region.take(zone, wanted)   # stock first
-		plankton.consume(food.id)
-	else:
-		carrion.consume(food.id)
+	var zone: String = food.zone if food.kind == "plant" else ""
+	var supplied := _take_food(food, wanted)
 	_contact.clear()
 	_last_refusal.clear()
 	if supplied <= 0.0:
@@ -362,6 +619,18 @@ func _note_refusal(food: Dictionary, reason: String) -> void:
 		"touching": touching, "contact_s": contact_s})
 
 
+## Takes an eaten item out of the world and returns the energy it supplies: a plant draws on its
+## zone's stock first (a stale item supplies nothing), meat supplies what it holds. Shared by the
+## cell and the creatures; points are the caller's business.
+func _take_food(food: Dictionary, wanted: float) -> float:
+	if food.kind == "plant":
+		var supplied := region.take(food.zone, wanted)   # stock first
+		plankton.consume(food.id)
+		return supplied
+	carrion.consume(food.id)
+	return wanted
+
+
 func _log_feed(food: Dictionary, allowed: bool, reason: String) -> void:
 	feed_log.append({"tick": tick, "food_id": food.id, "kind": food.kind, "allowed": allowed, "reason": reason})
 	if feed_log.size() > FEED_LOG_SIZE:
@@ -389,6 +658,418 @@ func _take_field_events() -> void:
 	plankton.events.clear()
 	_events.append_array(carrion.events)
 	carrion.events.clear()
+	if creatures != null:
+		var taken := creatures.take_events()
+		for e in taken:
+			if e.type == "creature_recovered" and e.target == CreatureField.PLAYER_ID \
+					and (e.outcome == "missed" or e.outcome == "blocked"):
+				var c := creatures.find(e.id)
+				_dodges.append({"id": e.id, "species": c.species_id if c != null else ""})
+		_events.append_array(taken)
+
+
+## Where the field measures spawn safety from: the cell, or its checkpoint while it is dead.
+func _player_place() -> Vector2:
+	return position_for_save()
+
+
+## Rule C1: `p` when a body of radius `r` fits there, else the first clear point on rings
+## CLEAR_SPIRAL_STEP_M apart going out from it (each ring in angle order from +x), else `p`.
+func _clear_point_near(p: Vector2, r: float) -> Vector2:
+	if arena.is_clear(p, r):
+		return p
+	for ring in range(1, CLEAR_SPIRAL_RINGS + 1):
+		var d := ring * CLEAR_SPIRAL_STEP_M
+		var n := ceili(TAU * d / CLEAR_SPIRAL_STEP_M)
+		for k in n:
+			var q := p + Vector2.from_angle(k * TAU / n) * d
+			if arena.is_clear(q, r):
+				return q
+	return p
+
+
+## Rules C2 and C3 at a respawn at `at`: every creature within respawn_clear_m goes back to its
+## home and heading now, and every brain forgets the cell, `killer` ignoring it for killer_ignore_s;
+## the token is freed. Returns the ids sent home, sorted. A scripted body has no home and stays.
+func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
+	var minded: Array[Dictionary] = []
+	for c in creatures.creatures:
+		if c.brain != null:
+			minded.append(creatures.body_of(c))
+	var ids := RespawnRules.to_relocate(at, float(species.fairness.respawn_clear_m), minded)
+	for c in creatures.creatures:
+		if c.brain == null:
+			continue
+		var until := tick + species.killer_ignore_ticks if c.id == killer else 0
+		if ids.has(c.id):
+			c.motion.place(c.brain.home, c.brain.home_heading)
+			c.actor.position = c.motion.position
+			c.actor.heading = c.motion.heading
+			CreatureBrain.force_return(c.brain, CreatureField.PLAYER_ID, until, tick)
+		else:
+			CreatureBrain.forget(c.brain, CreatureField.PLAYER_ID, until, tick)
+		creatures.update_token(c)
+	_take_field_events()
+	return ids
+
+
+# --- creatures (M1 step 3) ---
+
+## Tick steps 1-2: each creature in number order thinks when due (on `snapshot`, the bodies as
+## they were at the start of the tick), drives, and sets its velocity. Scripted bodies swim by
+## their script; frozen creatures coast.
+func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
+	var food: Array = []
+	var food_listed := false
+	for c in creatures.creatures:
+		var speed_mul := c.state.speed_multiplier()
+		if c.scripted:
+			Locomotion.steer(c.motion, c.script_move, c.phenotype, speed_mul, DT)
+			continue
+		if dev_ai_frozen:
+			c.drive = CreatureField.idle_drive(c.motion.heading)
+			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
+			continue
+		var self_view := creatures.self_view_of(c)
+		if creatures.think_due(c, tick):
+			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
+				food = plankton.items + carrion.items
+				food_listed = true
+			creatures.think(c, snapshot_bodies, food, arena, tick, self_view)
+		var d := creatures.drive(c, arena, tick, self_view)
+		CreatureBrain.move_body(c.brain, c.motion, d, c.phenotype, speed_mul, DT)
+	_take_field_events()
+
+
+## Tick step 4 for creatures: each moves by its velocity. Returns the distances, in creature order.
+func _move_creatures() -> Array[float]:
+	var out: Array[float] = []
+	for c in creatures.creatures:
+		out.append(arena.move(c.motion, c.phenotype.radius, DT))
+	return out
+
+
+## Tick step 5: one separation pass over every overlapping pair (the cell first, then creatures in
+## number order), each pushed body settled against rocks and the wall, then every creature clamped
+## to its leash disc (last, so the leash holds at the end of every tick), then a strike that runs
+## into a rock ahead is blocked.
+func _contacts() -> void:
+	var motions: Array[Locomotion.MotionState] = []
+	var radii := PackedFloat64Array()
+	var masses := PackedFloat64Array()
+	if not dead:
+		motions.append(motion)
+		radii.append(phenotype.radius)
+		masses.append(phenotype.mass)
+	for c in creatures.creatures:
+		motions.append(c.motion)
+		radii.append(c.phenotype.radius)
+		masses.append(c.phenotype.mass)
+	var n := motions.size()
+	# The positions again, packed: the pair loop reads them n x n times. A push updates both entries.
+	var at := PackedVector2Array()
+	for m in motions:
+		at.append(m.position)
+	var pushed := PackedByteArray()
+	pushed.resize(n)
+	for i in n:
+		var ri := radii[i]
+		var at_i := at[i]
+		for j in range(i + 1, n):
+			var reach := ri + radii[j]
+			if at_i.distance_squared_to(at[j]) >= reach * reach:
+				continue   # apart: the common case, checked here without a call
+			if PoolArena.separate(motions[i], ri, masses[i], motions[j], radii[j], masses[j]):
+				pushed[i] = 1
+				pushed[j] = 1
+				at_i = motions[i].position
+				at[i] = at_i
+				at[j] = motions[j].position
+	for i in n:
+		if pushed[i] == 1:
+			arena.settle(motions[i], radii[i])
+	for c in creatures.creatures:
+		if c.brain == null:
+			continue
+		var disc := CreatureBrain.leash_disc(c.brain)
+		PoolArena.clamp_to_disc(c.motion, disc.center, disc.radius)
+		if CreatureBrain.is_striking(c.brain):
+			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
+				CreatureBrain.BLOCKED_BEARING)
+			if not rock.is_empty():
+				CreatureBrain.on_blocked(c.brain, tick)
+	_take_field_events()
+
+
+## Tick step 6 for creatures: metabolism at the species' share of the cell's rates (upkeep, moving,
+## starving and regrowth together); a scripted body uses the cell's own rates. `moved` is in
+## creature order. A creature that starves dies.
+func _creature_metabolism(moved: Array[float]) -> void:
+	var list := creatures.creatures.duplicate()
+	for i in list.size():
+		var c: CreatureField.Creature = list[i]
+		var share := 1.0 if c.scripted else float(species.species[c.species_id].metabolism_share)
+		c.state.tick(c.phenotype, DT * share, moved[i] * share)
+		if not c.state.is_alive():
+			_creature_dies(c, "starved", "")
+
+
+## A creature dies: creature_died reports it (with its carcass's food ids) and the field removes it,
+## freeing its niche slot and queueing its site. Only a kill leaves a carcass, unless the species'
+## carcass.on_starve says otherwise; a scripted body leaves none.
+func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> void:
+	_take_field_events()   # its brain's last events come before its death
+	var carcass := PackedStringArray()
+	if not c.scripted and (cause == "killed" or bool(species.species[c.species_id].carcass.on_starve)):
+		carcass = creatures.drop_carcass(c, carrion, arena)
+	stats.creature_deaths += 1
+	if by == CreatureField.PLAYER_ID:
+		stats.kills += 1
+	_emit({"type": "creature_died", "id": c.id, "species": c.species_id, "cause": cause, "by": by,
+		"position": c.motion.position, "carcass": Array(carcass)})
+	creatures.remove(c, cause, tick, true)
+	_take_field_events()
+
+
+func _sync_creatures() -> void:
+	for c in creatures.creatures:
+		c.actor.position = c.motion.position
+		c.actor.heading = c.motion.heading
+
+
+## Tick step 9 for creatures: each one whose drive names a food item eats it through the resolver,
+## after the cell has fed. No points: those are the lineage's alone.
+func _creatures_feed() -> void:
+	for c in creatures.creatures:
+		var food_id := str(c.drive.get("feed", ""))
+		if food_id.is_empty():
+			continue
+		var food := _food_item(food_id)
+		if food.is_empty():
+			continue
+		var r := InteractionResolver.feed(c.actor, food, now(), c.state.energy_capacity - c.state.energy)
+		if not r.allowed:
+			continue
+		var supplied := _take_food(food, float(r.effect.energy))
+		if supplied <= 0.0:
+			continue
+		c.state.eat(supplied)
+		stats.creature_meals += 1
+		_emit({"type": "creature_ate", "id": c.id, "kind": food.kind, "food_id": food.id})
+
+
+## Every body's velocity after this tick's motion and before contacts, by id: a ram's closing speed
+## comes from these (plan section 9), not from what separation or a leash clamp left.
+func _swim_velocities() -> Dictionary:
+	var out := {}
+	if not dead:
+		out[CreatureField.PLAYER_ID] = motion.velocity
+	for c in creatures.creatures:
+		out[c.id] = c.motion.velocity
+	return out
+
+
+## Tick step 10: combat. Who may attack is fixed when it begins: the living cell (a), and every
+## living creature in a strike's burst or glide that has not hit yet in this strike (b). A body at
+## 0 health is never a target, so nothing is hit twice after its death blow. Deaths come last (d).
+func _combat(swim: Dictionary) -> void:
+	_killer = ""
+	var striking: Array[CreatureField.Creature] = []
+	for c in creatures.creatures:
+		if c.brain == null or not c.state.is_alive():
+			continue
+		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
+			c.strike_hit = false   # a new strike
+		if CreatureBrain.is_striking(c.brain) and bool(c.drive.get("strike", false)) and not c.strike_hit:
+			striking.append(c)
+	if not dead:
+		_player_attacks(swim)
+	for c in striking:
+		_creature_strike(c, swim)
+	_deaths()
+
+
+## Step 10a: the cell bites and rams what it touches, with no key (OD3): the creatures within its
+## radius + theirs + RAM_REACH, nearest first (ties by id); the first allowed bite and the first
+## allowed ram, at most one of each. A refusal on the nearest one is reported (throttled) unless
+## its reason is quiet. A landed hit ends the cell's shelter (grace_ended {reason: "attacked"}).
+func _player_attacks(swim: Dictionary) -> void:
+	var near: Array[Dictionary] = []
+	for c in creatures.creatures:
+		if not c.state.is_alive():
+			continue
+		var d := motion.position.distance_to(c.motion.position)
+		if d <= phenotype.radius + c.phenotype.radius + InteractionResolver.RAM_REACH:
+			near.append({"d": d, "c": c})
+	if near.is_empty():
+		return
+	near.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d if a.d != b.d else a.c.id < b.c.id)
+	var nearest: CreatureField.Creature = near[0].c
+	var on_nearest := {}   # kind -> reason
+	var landed := {}       # kind -> true
+	for entry in near:
+		var c: CreatureField.Creature = entry.c
+		for kind in ["bite", "ram"]:
+			if landed.has(kind) or not c.state.is_alive():
+				continue
+			var r: Dictionary
+			if kind == "bite":
+				r = InteractionResolver.bite(actor, c.actor, now())
+			else:
+				r = InteractionResolver.ram(actor, c.actor, _closing(swim, CreatureField.PLAYER_ID, motion, c.id, c.motion), now())
+			if c == nearest:
+				on_nearest[kind] = r.reason
+				_log_attack(c.id, kind, r.allowed, r.reason)
+			if not r.allowed:
+				continue
+			landed[kind] = true
+			if is_sheltered():
+				# Attacking gives up the shelter (rule C5): from now on creatures sense the cell.
+				grace_until = tick
+				_emit({"type": "grace_ended", "reason": "attacked"})
+			var knockback := float(species.combat.player_bite_knockback if kind == "bite" else species.combat.player_ram_knockback)
+			var dealt := _apply_hit(CreatureField.PLAYER_ID, motion, c.id, c.motion, c.state, kind, float(r.effect.damage), knockback)
+			c.last_hit_by = CreatureField.PLAYER_ID
+			stats.hits_dealt += 1
+			stats.damage_dealt += dealt
+			if c.brain != null:
+				CreatureBrain.on_hurt(c.brain, player_body(), tick)
+			_take_field_events()
+	for kind in ["bite", "ram"]:
+		if not landed.has(kind) and on_nearest.has(kind) and not ATTACK_QUIET_REASONS.has(on_nearest[kind]):
+			_note_attack_refusal(nearest.id, kind, on_nearest[kind])
+
+
+## Step 10b: one creature's strike at its target, through the resolver. A concealed, dead or gone
+## target is skipped. A refused strike carries on until its ticks run out.
+func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
+	var target_id := str(c.drive.get("target", ""))
+	var kind := str(c.brain.cfg.attack.kind)
+	var knockback := float(c.brain.cfg.attack.knockback)
+	if target_id == CreatureField.PLAYER_ID:
+		if dead or is_concealed() or not state.is_alive():
+			return
+		var r: Dictionary
+		if kind == "bite":
+			r = InteractionResolver.bite(c.actor, actor, now())
+		else:
+			r = InteractionResolver.ram(c.actor, actor, _closing(swim, c.id, c.motion, CreatureField.PLAYER_ID, motion), now())
+		if not r.allowed:
+			return
+		var dealt := _apply_hit(c.id, c.motion, CreatureField.PLAYER_ID, motion, state, kind, float(r.effect.damage), knockback)
+		c.strike_hit = true
+		_killer = c.id
+		stats.hits_taken += 1
+		stats.damage_taken += dealt
+		CreatureBrain.on_strike_landed(c.brain, tick)
+		_take_field_events()
+		return
+	var t := creatures.find(target_id)
+	if t == null or t == c or not t.state.is_alive():
+		return
+	var rt: Dictionary
+	if kind == "bite":
+		rt = InteractionResolver.bite(c.actor, t.actor, now())
+	else:
+		rt = InteractionResolver.ram(c.actor, t.actor, _closing(swim, c.id, c.motion, t.id, t.motion), now())
+	if not rt.allowed:
+		return
+	_apply_hit(c.id, c.motion, t.id, t.motion, t.state, kind, float(rt.effect.damage), knockback)
+	c.strike_hit = true
+	t.last_hit_by = c.id
+	CreatureBrain.on_strike_landed(c.brain, tick)
+	if t.brain != null:
+		CreatureBrain.on_hurt(t.brain, creatures.body_of(c), tick)
+	_take_field_events()
+
+
+## One landed hit (steps 10a-c): the damage, a knockback of `knockback` m/s on the target away from
+## the attacker, both speeds clamped to combat.max_speed_after_hit (the tunnelling bound, T10), and
+## the hit event. Returns the health taken.
+func _apply_hit(attacker_id: String, a: Locomotion.MotionState, target_id: String, t: Locomotion.MotionState,
+		t_state: ActorState, kind: String, damage: float, knockback: float) -> float:
+	var dealt := t_state.take_damage(damage)
+	var away := t.position - a.position
+	var dir := away / away.length() if away.length() > 1e-6 else Vector2.from_angle(a.heading)
+	t.velocity += dir * knockback
+	var top := float(species.combat.max_speed_after_hit)
+	for m in [a, t]:
+		if m.velocity.length() > top:
+			m.velocity = m.velocity.normalized() * top
+	_emit({"type": "hit", "attacker": attacker_id, "target": target_id, "kind": kind, "damage": damage, "dealt": dealt,
+		"target_health": t_state.health, "knockback": knockback, "position": t.position})
+	return dealt
+
+
+## Closing speed of `a` on `b`: their relative swim velocity along the line from a to b.
+func _closing(swim: Dictionary, a_id: String, a: Locomotion.MotionState, b_id: String, b: Locomotion.MotionState) -> float:
+	var line := b.position - a.position
+	if line.length() <= 1e-6:
+		return 0.0
+	var va: Vector2 = swim.get(a_id, a.velocity)
+	var vb: Vector2 = swim.get(b_id, b.velocity)
+	return (va - vb).dot(line / line.length())
+
+
+## Step 10d: the cell first (killed by the last creature that hit it this tick, with that species'
+## death_reason), then creatures in number order.
+func _deaths() -> void:
+	if not dead and not state.is_alive():
+		var by := creatures.find(_killer)
+		var sp := by.species_id if by != null else ""
+		_player_dies("killed", _killer, sp, str(species.species[sp].death_reason) if species.has_species(sp) else "")
+	var fallen: Array[CreatureField.Creature] = []
+	for c in creatures.creatures:
+		if not c.state.is_alive():
+			fallen.append(c)
+	for c in fallen:
+		_creature_dies(c, "killed", c.last_hit_by)
+
+
+## Step 11: every strike on the living cell that ended this tick without a hit. A strike that
+## ended while the cell was concealed (sheltered or hidden) was no dodge: nothing could hit it.
+func _emit_dodges() -> void:
+	_take_field_events()
+	if dead or is_concealed():
+		_dodges.clear()
+	for d in _dodges:
+		stats.dodges += 1
+		_emit({"type": "dodged", "id": d.id, "species": d.species})
+	_dodges.clear()
+
+
+## Reports an attack refusal when the (target, reason) pair of that kind changes, or every
+## REFUSAL_REPEAT_S while it lasts (the feeding throttle).
+func _note_attack_refusal(target_id: String, kind: String, reason: String) -> void:
+	var last: Dictionary = _last_attack_refusal.get(kind, {})
+	if last.get("target", "") == target_id and last.get("reason", "") == reason \
+			and now() - float(last.at) < REFUSAL_REPEAT_S - 1e-9:
+		return
+	_last_attack_refusal[kind] = {"target": target_id, "reason": reason, "at": now()}
+	_emit({"type": "attack_refused", "target": target_id, "kind": kind, "reason": reason})
+
+
+func _log_attack(target_id: String, kind: String, allowed: bool, reason: String) -> void:
+	attack_log.append({"tick": tick, "target": target_id, "kind": kind, "allowed": allowed, "reason": reason})
+	if attack_log.size() > ATTACK_LOG_SIZE:
+		attack_log.pop_front()
+
+
+func _food_item(id: String) -> Dictionary:
+	for list in [plankton.items, carrion.items]:
+		for item in list:
+			if item.id == id:
+				return item
+	return {}
+
+
+## Every brain forgets the cell, as if it had left the world (target_gone), and the token is freed.
+func _forget_player_everywhere() -> void:
+	for c in creatures.creatures:
+		if c.brain != null:
+			CreatureBrain.on_target_gone(c.brain, CreatureField.PLAYER_ID, tick)
+			creatures.update_token(c)
+	_take_field_events()
 
 
 func _emit(event: Dictionary) -> void:

@@ -146,6 +146,38 @@ func test_a_new_meal_label_pushes_the_rising_labels_near_it_up_a_line_without_cr
 	fx.free()
 
 
+func test_a_hit_on_or_by_the_cell_rises_as_a_number_and_a_dodge_says_so() -> void:
+	var fx := _feedback()
+	var taken := {"type": "hit", "attacker": "c_1", "target": CreatureField.PLAYER_ID, "kind": "bite",
+		"damage": 12.0, "dealt": 12.0, "position": Vector2(1.0, 2.0)}
+	fx.show_hit(taken)
+	var labels := fx.hit_labels()
+	check_eq(labels.size(), 1, "a hit on the cell shows a number")
+	if labels.size() == 1:
+		check_eq(labels[0].text, "−12", "the health it took")
+		check(labels[0].modulate.is_equal_approx(FeedbackFx.HIT_TAKEN_COLOR), "in the taken colour")
+		check(labels[0].position.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FeedbackFx.HIT_START_Y)), "over the cell")
+	fx.show_hit({"type": "hit", "attacker": CreatureField.PLAYER_ID, "target": "c_2", "kind": "bite", "damage": 8.0,
+		"dealt": 7.6, "position": Vector2.ZERO})
+	check_eq(fx.hit_labels().size(), 2, "a hit by the cell shows one too")
+	if fx.hit_labels().size() == 2:
+		check(fx.hit_labels()[1].modulate.is_equal_approx(FeedbackFx.HIT_DEALT_COLOR) and fx.hit_labels()[1].text == "−8",
+			"in the dealt colour, rounded")
+	fx.show_hit({"type": "hit", "attacker": "c_3", "target": "c_2", "kind": "ram", "damage": 9.0, "dealt": 9.0, "position": Vector2.ZERO})
+	check_eq(fx.hit_labels().size(), 2, "hits between creatures show nothing")
+	check_eq(FeedbackFx.hit_text({"dealt": 0.3}), "−1", "a scratch shows at least 1")
+	fx._process(FeedbackFx.HIT_LIFE_S + 0.01)
+	check_eq(fx.hit_labels().size(), 0, "the numbers are gone after their life")
+	check(not fx.dodged_label().visible, "no dodge yet")
+	fx.show_dodged(Vector2(3.0, -1.0))
+	check(fx.dodged_label().visible and fx.dodged_label().text == "Dodged!", "a dodge shows 'Dodged!'")
+	fx._process(FeedbackFx.DODGED_LIFE_S * 0.5)
+	check(fx.dodged_label().visible and fx.dodged_label().position.y > FeedbackFx.DODGED_START_Y, "rising")
+	fx._process(FeedbackFx.DODGED_LIFE_S * 0.5 + 0.01)
+	check(not fx.dodged_label().visible, "gone after 0.8 s")
+	fx.free()
+
+
 func test_the_food_arrow_label_never_covers_the_cell_and_stays_by_its_arrow() -> void:
 	var arrow := StarvingArrow.new()
 	arrow.size = Vector2(1920, 1080)
@@ -212,3 +244,393 @@ func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there(
 	check_near(t.basis.get_scale().x, 1.0, 1e-5, "full size after %.1f s" % FoodView.MEAT_SETTLE_S)
 	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and on the floor where it landed")
 	meat.free()
+
+
+# --- threats (M1 step 3): creature views, the creature layer, the player's hurt and shelter ---
+
+const CREATURE_VIEW := "res://game/scenes/pool/creature_view.tscn"
+const CELL_VIEW := "res://game/scenes/pool/player_cell_view.tscn"
+## Every brain label a creature can show, for the pose sweeps.
+const PHASES: PackedStringArray = ["rest/lurk", "rest/watch", "rest", "wander/patrol", "wander/return", "forage/seek",
+	"forage/eat", "notice", "notice/wait", "chase/pursue", "chase/aim", "attack/tell", "attack/strike", "attack/glide",
+	"attack/recover", "flee"]
+
+
+## A pool with the real layout and species (seven creatures at their sites) for a new grazer.
+func _threat_sim(seed_value := 4242) -> PoolSim:
+	var catalog := PartCatalog.load_from()
+	var layout := PoolLayout.load_from()
+	var r := Lineage.found(seed_value, "test+dev", catalog, "grazer")
+	r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+	var sim := PoolSim.create(r.save, catalog, layout, SpeciesCatalog.load_from())
+	sim.drain_events()
+	return sim
+
+
+func _creature_view(species_id: String) -> CreatureView:
+	var view := (load(CREATURE_VIEW) as PackedScene).instantiate() as CreatureView
+	view.build(SpeciesCatalog.load_from(), species_id, PartCatalog.load_from(), "c_test")
+	return view
+
+
+func test_an_ambush_hunter_coils_over_its_tell_and_stretches_only_in_its_strike() -> void:
+	var rest := CreatureView.pose("ambush", "attack/tell", 0.0)
+	check(rest.scale.is_equal_approx(Vector3.ONE), "neutral at the tell's start (%s)" % rest.scale)
+	check_near(rest.jaw_open, 0.0, 1e-9, "jaw shut at the start")
+	var coil := CreatureView.pose("ambush", "attack/tell", 1.0)
+	check_near(coil.scale.z, 0.82, 1e-6, "coiled along its length at the tell's end")
+	check_near(coil.scale.x, 1.08, 1e-6, "and wider")
+	check_near(coil.jaw_open, 1.0, 1e-9, "jaw open")
+	check_near(coil.eye_glow, 1.0, 1e-9, "eyes at full glow")
+	check_eq(coil.stretch, 0.0, "a coil is not a stretch")
+	var early := CreatureView.pose("ambush", "attack/tell", 24.0 / 72.0)
+	check(early.scale.z < 0.92 and early.jaw_open > 0.4,
+		"the coil already shows at the 0.4 s a player needs to react (z %.3f, jaw %.2f)" % [early.scale.z, early.jaw_open])
+	var deeper := true
+	var last := rest
+	for i in range(1, 73):
+		var p := CreatureView.pose("ambush", "attack/tell", i / 72.0)
+		deeper = deeper and p.scale.z <= last.scale.z + 1e-9 and p.eye_glow >= last.eye_glow - 1e-9
+		last = p
+	check(deeper, "the coil only deepens and the eyes only brighten over the tell")
+	var lunge := CreatureView.pose("ambush", "attack/strike", 0.5)
+	check_near(lunge.scale.z, 1.15, 1e-6, "stretched along the lunge")
+	check_eq(lunge.stretch, 1.0, "the strike stretches")
+	check_eq(CreatureView.pose("ambush", "attack/glide", 0.5).stretch, 1.0, "so does the glide")
+	check(CreatureView.pose("ambush", "rest/watch", 0.0).eye_glow > CreatureView.pose("ambush", "rest/lurk", 0.0).eye_glow,
+		"watching eyes glow brighter than lurking ones")
+
+
+func test_a_rammer_puffs_up_over_its_tell_with_its_crest_and_spikes_raised() -> void:
+	var rest := CreatureView.pose("territorial", "attack/tell", 0.0)
+	check(rest.scale.is_equal_approx(Vector3.ONE) and rest.hood == 0.0 and rest.spike_raise == 0.0, "neutral at the tell's start")
+	var puff := CreatureView.pose("territorial", "attack/tell", 1.0)
+	check(puff.scale.is_equal_approx(Vector3.ONE * 1.25), "puffed to 1.25 at the tell's end (%s)" % puff.scale)
+	check_near(puff.spike_raise, 1.0, 1e-9, "spikes raised")
+	check_near(puff.hood, 1.0, 1e-9, "crest raised")
+	var charge := CreatureView.pose("territorial", "attack/strike", 0.3)
+	check(charge.scale.is_equal_approx(Vector3.ONE * 1.2) and charge.spike_raise == 1.0, "held puffed through the charge")
+	check_eq(CreatureView.pose("territorial", "attack/tell", 1.0).eye_glow, 0.0, "a rammer's eyes never glow")
+
+
+func test_no_pose_stretches_outside_a_strike_and_recovery_returns_to_rest() -> void:
+	var stretched := PackedStringArray()
+	for behavior in ["ambush", "territorial"]:
+		for phase in PHASES:
+			for i in 11:
+				var p := CreatureView.pose(behavior, phase, i / 10.0, "missed", 1.0)
+				var striking := phase == "attack/strike" or phase == "attack/glide"
+				if p.stretch != 0.0 and not (striking and behavior == "ambush"):
+					stretched.append("%s %s %.1f" % [behavior, phase, i / 10.0])
+	check(stretched.is_empty(), "stretch only in an ambush strike: %s" % stretched)
+	for behavior in ["ambush", "territorial"]:
+		for outcome in ["hit", "missed", "blocked", "cancelled", "interrupted"]:
+			var start := CreatureView.pose(behavior, "attack/recover", 0.0, outcome, 2.0)
+			var done := CreatureView.pose(behavior, "attack/recover", 1.0, outcome, 2.0)
+			var calm := CreatureView.pose(behavior, "rest/watch", 0.0)
+			check(not start.scale.is_equal_approx(Vector3.ONE), "%s %s recover starts from the attack's pose" % [behavior, outcome])
+			check(done.scale.is_equal_approx(Vector3.ONE) and done.jaw_open == 0.0 and done.spike_raise == 0.0 \
+				and done.hood == 0.0 and absf(done.wobble) < 1e-9 and is_equal_approx(done.eye_glow, calm.eye_glow),
+				"%s %s recover ends at rest" % [behavior, outcome])
+	var wobbles := false
+	for i in 18:
+		wobbles = wobbles or absf(CreatureView.pose("territorial", "attack/recover", i / 120.0, "blocked", 2.0).wobble) > 0.05
+	check(wobbles, "a rammer blocked by a rock wobbles at the start of its recover")
+	check_eq(CreatureView.pose("territorial", "attack/recover", 0.2, "missed", 1.2).wobble, 0.0, "a miss does not wobble")
+
+
+func test_the_pose_progress_follows_the_sim_tick_and_the_draw_fraction() -> void:
+	var sim := _threat_sim()
+	var c: CreatureField.Creature = sim.creatures.creatures[0]
+	c.brain.state = CreatureBrain.ATTACK
+	c.brain.phase = CreatureBrain.TELL
+	c.brain.phase_tick = 100
+	check_eq(CreatureView.phase_ticks(c.brain), 72, "a tell lasts its 72 ticks")
+	# The step that entered the tell ran at tick 100, so the sim's tick is now 101.
+	check_near(CreatureView.phase_progress(c.brain, 101, 0.0), 0.0, 1e-9, "the drawn moment before that step's motion")
+	check_near(CreatureView.phase_progress(c.brain, 101, 1.0), 1.0 / 72.0, 1e-9, "after one tick of it")
+	check_near(CreatureView.phase_progress(c.brain, 136, 0.5), 35.5 / 72.0, 1e-9, "halfway through a tick")
+	check_near(CreatureView.phase_progress(c.brain, 172, 1.0), 1.0, 1e-9, "full on the tick the strike starts")
+	c.brain.phase = CreatureBrain.STRIKE
+	check_eq(CreatureView.phase_ticks(c.brain), 21, "the lunge's burst")
+	c.brain.state = CreatureBrain.REST
+	c.brain.phase = CreatureBrain.LURK
+	check_eq(CreatureView.phase_progress(c.brain, 500, 0.5), 0.0, "an untimed phase has no progress")
+
+
+func test_a_creature_view_builds_its_species_body_parts_and_its_own_eye_glow() -> void:
+	var ambush := _creature_view("ambush_hunter")
+	var parts := ambush.get_node("%Parts").get_children()
+	check_eq(parts.size(), 3, "a jaw and two flagella")
+	check(ambush.get_node_or_null("%Model/Body/Body/Eye_L") != null, "the ambush body blockout with its eyes")
+	check(ambush.get_node("%Model").scale.is_equal_approx(Vector3.ONE * 1.5), "scaled by its body_size")
+	var rammer := _creature_view("rammer")
+	var spikes := rammer.get_node("%Parts").get_children().filter(func(n: Node) -> bool: return n.get_meta("part_type") == "spike")
+	check_eq(spikes.size(), 4, "four spike holders")
+	check(spikes.all(func(n: Node) -> bool: return n.get_child_count() == 1), "each with the spike model")
+	check(rammer.get_node_or_null("%Model/Body/Body/Hood") != null, "the rammer body with its crest")
+	var other := _creature_view("ambush_hunter")
+	other.show_brain(_memory_in(other, "attack", "tell"), 173, 1.0)
+	var eye := ambush.get_node("%Model/Body/Body/Eye_L") as MeshInstance3D
+	var other_eye := other.get_node("%Model/Body/Body/Eye_L") as MeshInstance3D
+	var mine := eye.get_active_material(0) as StandardMaterial3D
+	var theirs := other_eye.get_active_material(0) as StandardMaterial3D
+	check(mine != theirs, "each view has its own eye material")
+	ambush._apply_pose(ambush.shown_pose)
+	other._apply_pose(other.shown_pose)
+	check_near(theirs.emission_energy_multiplier, 1.0 / 0.4, 1e-4, "a coiled hunter's eyes glow at full strength")
+	check_near(mine.emission_energy_multiplier, 0.2 / 0.4, 1e-4, "a lurking one's stay dim")
+	for view in [ambush, rammer, other]:
+		view.free()
+
+
+## A brain in `state`/`phase` that entered it at tick 100 (for posing a view without a sim).
+func _memory_in(view: CreatureView, state: String, phase: String) -> CreatureBrain.Memory:
+	var species := SpeciesCatalog.load_from()
+	var cfg := species.brain_config(view.species_id)
+	var mem := CreatureBrain.create(cfg.behavior, cfg, Vector2.ZERO, 0.0, {}, 1, 0)
+	mem.state = state
+	mem.phase = phase
+	mem.phase_tick = 100
+	return mem
+
+
+func test_a_creature_view_draws_the_sim_position_and_heading() -> void:
+	var view := _creature_view("rammer")
+	var motion := Locomotion.MotionState.new(Vector2(-2.5, -22.0), 1.0)
+	motion.position = Vector2(-2.45, -21.9)
+	motion.heading = 1.1
+	view.show_motion(motion, 1.0)
+	check(view.position.distance_to(PlaneSpace.to_world(motion.position)) < 0.001, "within a millimetre at fraction 1")
+	check_near((view.get_node("%Pivot") as Node3D).rotation.y, PlaneSpace.yaw_for_heading(1.1), 1e-5, "facing the heading")
+	view.show_motion(motion, 0.0)
+	check(view.position.distance_to(PlaneSpace.to_world(motion.prev_position)) < 0.001, "at the previous tick at fraction 0")
+	view.free()
+
+
+func test_the_creature_layer_builds_a_view_per_creature_and_lets_a_dead_one_go() -> void:
+	var sim := _threat_sim()
+	var layer := CreatureLayer.new()
+	layer.attach(sim)
+	check_eq(sim.creatures.creatures.size(), 7, "seven creatures at their sites")
+	check_eq(layer.views().size(), 7, "one view each")
+	var placed := true
+	for c in sim.creatures.creatures:
+		var view := layer.view_of(c.id)
+		placed = placed and view != null and view.position.distance_to(PlaneSpace.to_world(c.motion.position)) < 0.001 \
+			and view.species_id == c.species_id
+	check(placed, "each view is its creature's species, at its place")
+	sim.debug_teleport(Vector2(24.0, 12.0), 0.0)   # nearest to lair_se
+	check(sim.debug_kill_nearest_creature(), "a dev kill")
+	var died := ""
+	for e in sim.drain_events():
+		layer.on_event(e)
+		if e.type == "creature_died":
+			died = str(e.id)
+	check(died != "", "the creature died")
+	check(layer.view_of(died) == null, "its view is let go")
+	check_eq(layer.views().size(), 6, "six live views")
+	var dying := layer.get_node_or_null(NodePath(died)) as CreatureView
+	check(dying != null and dying.dying, "the view stays to shrink away")
+	if dying != null:
+		dying._process(CreatureView.DIE_S + 0.01)
+		check(dying.is_queued_for_deletion(), "and frees itself once its death pose has played")
+	var c := sim.creatures.spawn_at("rammer", Vector2(5.0, 5.0), 0.0, "", sim.tick, true)
+	for e in sim.drain_events():
+		layer.on_event(e)
+	var spawned := layer.view_of(c.id)
+	check(spawned != null, "a spawned creature gets a view")
+	if spawned != null:
+		check_near(spawned.get_node("%Model").scale.x, 1.25 * CreatureView.SPAWN_SCALE, 1e-4, "that grows in as it fades in")
+	sim.creatures.remove(c, "stuck", sim.tick, false)
+	for e in sim.drain_events():
+		layer.on_event(e)
+	check(layer.view_of(c.id) == null and layer.get_node_or_null(NodePath(c.id)) == null, "a removed creature's view goes at once")
+	layer.free()
+
+
+func test_the_creature_layer_shows_the_marker_lane_and_flash_its_events_ask_for() -> void:
+	var sim := _threat_sim()
+	var layer := CreatureLayer.new()
+	layer.attach(sim)
+	var hunter := sim.creatures.creatures.filter(func(x: CreatureField.Creature) -> bool: return x.species_id == "ambush_hunter")[0] as CreatureField.Creature
+	var view := layer.view_of(hunter.id)
+	var marker := view.get_node("%Marker") as Label3D
+	var lane := CreatureBrain.strike_lane(sim.species.brain_config("ambush_hunter").attack, 0.75, 0.5, hunter.motion.position, 0.0)
+	layer.on_event({"type": "creature_noticed", "id": hunter.id, "target": "c_other", "by": "sight"})
+	check(not marker.visible, "no marker when it notices another creature")
+	layer.on_event({"type": "creature_noticed", "id": hunter.id, "target": CreatureField.PLAYER_ID, "by": "sight"})
+	check(marker.visible, "a marker when it notices the player")
+	view._process(CreatureView.MARKER_S + 0.01)
+	check(not marker.visible, "for %.1f s" % CreatureView.MARKER_S)
+	layer.on_event({"type": "creature_tell", "id": hunter.id, "target": "c_other", "kind": "lunge", "lane": lane})
+	check(not view.lane_visible(), "no lane for a tell on another creature")
+	layer.on_event({"type": "creature_tell", "id": hunter.id, "target": CreatureField.PLAYER_ID, "kind": "lunge", "lane": lane})
+	check(view.lane_visible(), "a lane for a tell on the player")
+	layer.on_event({"type": "tell_cancelled", "id": hunter.id})
+	check(not view.lane_visible(), "taken down when the tell is cancelled")
+	layer.on_event({"type": "creature_tell", "id": hunter.id, "target": CreatureField.PLAYER_ID, "kind": "lunge", "lane": lane})
+	layer.on_event({"type": "creature_recovered", "id": hunter.id, "outcome": "missed"})
+	check(view.lane_visible(), "a finished strike's lane fades instead of vanishing")
+	view._process(CreatureView.LANE_FADE_S + 0.01)
+	check(not view.lane_visible(), "and is gone after %.1f s" % CreatureView.LANE_FADE_S)
+	layer.on_event({"type": "hit", "attacker": CreatureField.PLAYER_ID, "target": hunter.id, "kind": "bite"})
+	view._process(0.03)
+	check(view.get_node("%Model").scale.y < view.body_size - 0.01, "a hit on it squashes it")
+	layer.free()
+
+
+func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() -> void:
+	var view := _creature_view("ambush_hunter")
+	var sim := _threat_sim()
+	var species := sim.species
+	var cfg := species.brain_config("ambush_hunter")
+	var lane := CreatureBrain.strike_lane(cfg.attack, 0.75, 0.5, Vector2(3.0, -4.0), 0.6)
+	view.show_lane(lane)
+	var node := view.get_node("%Lane") as MeshInstance3D
+	check(view.lane_visible(), "the lane shows")
+	# The unit quad's corners land on the lane rectangle: from its origin forward along its heading.
+	var t := node.transform   # the lane is top_level, so this is its world transform
+	check(node.top_level, "the lane does not turn with the creature")
+	var far_left := PlaneSpace.to_plane(t * Vector3(-0.5, 0.0, -0.5))
+	var near_right := PlaneSpace.to_plane(t * Vector3(0.5, 0.0, 0.5))
+	var ahead := Vector2.from_angle(0.6)
+	var side := ahead.orthogonal()
+	var far_corner := Vector2(3.0, -4.0) + ahead * float(lane.length) - side * float(lane.half_width)
+	var near_corner := Vector2(3.0, -4.0) + side * float(lane.half_width)
+	check(far_left.distance_to(far_corner) < 0.001 or far_left.distance_to(far_corner + 2.0 * side * float(lane.half_width)) < 0.001,
+		"the far end is the lane's length ahead (%s vs %s)" % [far_left, far_corner])
+	check(near_right.distance_to(near_corner) < 0.001 or near_right.distance_to(near_corner - 2.0 * side * float(lane.half_width)) < 0.001,
+		"the near end is at the creature (%s vs %s)" % [near_right, near_corner])
+	check(t.basis.get_scale().is_equal_approx(Vector3(2.0 * float(lane.half_width), 1.0, float(lane.length))), "the lane's size")
+	check(t.origin.y < 0.0 and t.origin.y > -0.1, "just under the swim plane")
+	var material := node.material_override as ShaderMaterial
+	view.show_brain(_memory_in(view, "attack", "tell"), 137, 0.0)
+	check_near(material.get_shader_parameter("fill"), 36.0 / 72.0, 1e-6, "filled halfway through the tell")
+	view.hide_lane()
+	check(not view.lane_visible(), "a cancelled tell takes the lane down at once")
+	view.show_lane(lane)
+	view.hide_lane(0.3)
+	view._process(0.15)
+	check(view.lane_visible() and material.get_shader_parameter("strength") < 0.6, "a finished strike fades it out")
+	view._process(0.2)
+	check(not view.lane_visible(), "and then it is gone")
+	view.free()
+
+
+func test_the_lane_shader_never_draws_above_a_quarter_alpha() -> void:
+	var code := (load("res://game/scenes/pool/threat_lane.gdshader") as Shader).code
+	check(code.contains("const float MAX_ALPHA = 0.25;"), "the lane's alpha cap is 0.25 (plan section 14)")
+	check(code.contains("ALPHA = min(a, MAX_ALPHA) * strength;"), "and every pixel is capped by it")
+	var writes := Array(code.split("\n")).filter(func(line: String) -> bool: return line.strip_edges().begins_with("ALPHA"))
+	check_eq(writes.size(), 1, "with no other alpha written")
+	for name in ["BASE_ALPHA", "FILL_ALPHA", "CHEVRON_ALPHA"]:
+		var at := code.find("const float %s = " % name)
+		var value := float(code.substr(at).get_slice("=", 1).get_slice(";", 0))
+		check(at >= 0 and value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
+
+
+func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:
+	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
+	var catalog := PartCatalog.load_from()
+	var genome: Genome = Lineage.found(1, "test+dev", catalog, "grazer").save.genome
+	genome.add_part("spike", 1.2)
+	view.build(genome, Phenotype.derive(genome, catalog))
+	var holder := view.part_nodes().back() as Node3D
+	check_eq(holder.get_meta("part_type"), "spike", "the spike's holder")
+	check_eq(holder.get_child_count(), 1, "with its model")
+	if holder.get_child_count() == 1:
+		check_eq(String(holder.get_child(0).scene_file_path), "res://assets/export/part_spike.glb", "the part_spike blockout")
+	check(holder.transform.is_equal_approx(PartPlacement.transform_for(1.2, "spike")), "placed by PartPlacement")
+	view.free()
+
+
+func test_a_hit_flashes_and_flinches_the_cell_and_shelter_rims_it_softly() -> void:
+	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
+	var catalog := PartCatalog.load_from()
+	var r := Lineage.found(1, "test+dev", catalog, "grazer")
+	view.build(r.save.genome, Phenotype.derive(r.save.genome, catalog))
+	view._process(0.01)
+	check_eq((view.overlay_colors().tint as Color).a, 0.0, "no tint on a healthy cell")
+	view.hurt()
+	view._process(0.03)
+	var tint: Color = view.overlay_colors().tint
+	check(tint.a > 0.3 and tint.r > tint.g * 2.0, "a hit flashes the cell red (%s)" % tint)
+	check(not (view.get_node("%Pivot") as Node3D).scale.is_equal_approx(Vector3.ONE), "and it flinches")
+	view._process(0.2)
+	check_eq((view.overlay_colors().tint as Color).a, 0.0, "the flash is gone after 0.15 s")
+	check((view.get_node("%Pivot") as Node3D).scale.is_equal_approx(Vector3.ONE), "and so is the flinch")
+	view.set_sheltered(true)
+	var top := 0.0
+	var low := 1.0
+	for i in 120:
+		view._process(1.0 / 60.0)
+		var a := (view.overlay_colors().rim as Color).a
+		if i >= 30:
+			top = maxf(top, a)
+			low = minf(low, a)
+	check(top <= 0.25 + 1e-6 and top > 0.2, "the shelter rim pulses up to a quarter alpha (%.3f)" % top)
+	check(low < top - 0.1, "and back down, once a second (%.3f)" % low)
+	view.set_sheltered(false)
+	for i in 30:
+		view._process(1.0 / 60.0)
+	check_eq((view.overlay_colors().rim as Color).a, 0.0, "the rim fades out when shelter ends")
+	view.free()
+
+
+func test_the_footprint_contains_every_floor_point_the_pool_camera_shows() -> void:
+	var layout := PoolLayout.load_from()
+	var camera := PoolCamera.new()
+	camera.configure(layout.camera)
+	var target := Vector2(3.0, 9.0)
+	var size := Vector2(1920.0, 1080.0)
+	var screen := Rect2(Vector2.ZERO, size)
+	for zoom in [14.0, 20.0]:
+		camera.distance = zoom
+		camera.snap_to(PlaneSpace.to_world(target))
+		var shown := 0
+		var missed := PackedStringArray()
+		for i in 20:
+			for j in 10:
+				var p := target + Vector2(-36.0 + 72.0 * i / 19.0, -22.0 + 34.0 * j / 9.0)
+				var px := _unproject(camera, PlaneSpace.to_world(p), size)
+				if px.x != px.x or not screen.has_point(px):   # NaN: behind the camera
+					continue
+				shown += 1
+				if not ViewFootprint.contains(target, p, layout.camera, zoom, size.aspect(), 0.01):
+					missed.append(str(p))
+		check(shown > 20 and shown < 180, "zoom %d: the sample has points on and off the screen (%d on)" % [zoom, shown])
+		check(missed.is_empty(), "zoom %d: shown but outside the footprint: %s" % [zoom, missed])
+		var quad := ViewFootprint.corners(target, layout.camera, zoom, size.aspect())
+		var center := (quad[0] + quad[1] + quad[2] + quad[3]) / 4.0
+		var corners_shown := true
+		for q in quad:
+			corners_shown = corners_shown and screen.grow(1.0).has_point(_unproject(camera, PlaneSpace.to_world(q.lerp(center, 0.01)), size))
+		check(corners_shown, "zoom %d: the footprint's corners are the screen's" % zoom)
+	camera.free()
+
+
+## Camera3D.unproject_position for a camera outside the scene tree (the test runner has no live
+## viewport): the projection Camera3D builds for its keep-height fov, from the PoolCamera node's own
+## fov, clip planes and transform. A live 1920x1080 SubViewport agreed with it within 0.001 px at
+## zooms 14 and 20. A point behind the camera comes back as NaN.
+func _unproject(camera: Camera3D, world: Vector3, size: Vector2) -> Vector2:
+	var view := camera.transform.affine_inverse() * world
+	if view.z >= 0.0:
+		return Vector2(NAN, NAN)
+	var clip := Projection.create_perspective(camera.fov, size.aspect(), camera.near, camera.far) * Vector4(view.x, view.y, view.z, 1.0)
+	var ndc := Vector2(clip.x, clip.y) / clip.w
+	return Vector2((ndc.x + 1.0) * 0.5 * size.x, (1.0 - ndc.y) * 0.5 * size.y)
+
+
+func test_the_tell_cues_last_as_long_as_the_species_tells() -> void:
+	var lengths := PoolScene.tell_lengths(SpeciesCatalog.load_from())
+	check_eq(lengths, {"lunge": 1.2, "puff": 1.2}, "both tells are 1.2 s in the data")
+	var audio := PlaceholderAudio.new()
+	check_near(audio.length_of("tell_lunge"), 1.2, 0.001, "the growl lasts the default tell")
+	audio.configure_tells({"lunge": 1.5, "puff": 1.3})
+	check_near(audio.length_of("tell_lunge"), 1.5, 0.001, "the growl follows the lunge tell")
+	check_near(audio.length_of("tell_puff"), 1.3, 0.001, "the hiss follows the puff tell")
+	for cue in PlaceholderAudio.CUES:
+		check(audio.length_of(cue) > 0.05, "%s is synthesized" % cue)
+	audio.free()

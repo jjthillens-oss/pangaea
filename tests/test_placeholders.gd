@@ -24,7 +24,9 @@ const PRIMITIVE_TYPES := [
 ]
 ## Holds instances of another mesh and no geometry of its own.
 const NOT_GEOMETRY := ["MultiMesh"]
-const AUDIO_CUES := ["sfx_eat_plant", "sfx_eat_meat", "sfx_refuse", "sfx_starve_pulse", "amb_pool_loop"]
+const AUDIO_CUES := ["sfx_eat_plant", "sfx_eat_meat", "sfx_refuse", "sfx_starve_pulse", "amb_pool_loop",
+	"sfx_notice", "sfx_tell_lunge", "sfx_tell_puff", "sfx_bite", "sfx_ram", "sfx_hurt", "sfx_dodged", "sfx_creature_die",
+	"sfx_respawn"]
 
 var _primitive_re := RegEx.create_from_string("\\b(%s)\\b" % "|".join(PackedStringArray(PRIMITIVE_TYPES)))
 ## Meshes built in code (ArrayMesh, ImmediateMesh, any *Mesh) and SurfaceTool.
@@ -225,6 +227,19 @@ func test_the_inventory_lists_the_synthesized_audio_and_the_functional_primitive
 		for entry: Dictionary in inventory.get("functional", []):
 			found = found or type in entry.get("types", [])
 		check(found, "%s is listed as functional" % type)
+
+
+func test_every_cue_the_placeholder_audio_synthesizes_is_listed_as_a_placeholder() -> void:
+	var listed := {}
+	for entry: Dictionary in _inventory().get("placeholders", []):
+		if entry.get("kind") == "audio":
+			listed[String(entry.get("asset_id", ""))] = entry
+	for cue in PlaceholderAudio.CUES:
+		var id := "sfx_%s" % cue
+		check(listed.has(id), "the %s cue is listed as %s" % [cue, id])
+		if listed.has(id):
+			check(listed[id].get("files", []).has("game/scenes/audio/placeholder_audio.gd"), "%s names the file that makes it" % id)
+			check(String(listed[id].get("visual_equivalent", "")) != "", "%s names its visual equivalent (Bible 20)" % id)
 
 
 func test_every_mesh_in_game_code_is_listed_and_no_placeholder_outlived_its_asset() -> void:

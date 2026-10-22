@@ -4,11 +4,19 @@ extends CanvasLayer
 ## dev commands. F3 shows and hides it (dev_keys.gd); it refreshes at 4 Hz while shown. Every
 ## sim command goes through a PoolSim debug_* method, which logs a "debug" event.
 ##
+## M1 step 3 adds the AI section (ai_lines(): two lines per creature with its state and phase
+## timer, what it remembers of its target, its give-up timer and the token; then the niches, the
+## respawn queue and the token; then the cell's shelter, streak, last death and checkpoint) and the
+## threat commands: F9 spawns a threat ahead (the species alternate), F10 kills the nearest
+## creature, and buttons freeze every brain, hide the cell from them and hurt the cell.
+##
 ## Main loads it by path from its guarded dev loader (no class_name, so nothing outside game/dev
 ## can depend on it). `fields` keeps the latest shown values by name, for checks.
 
 const REFRESH_S := 0.25
 const FRAME_WINDOW := 60            ## frames the longest-frame figure looks back over
+## Health the Hurt button takes from the cell (plan section 16).
+const HURT_SELF_HP := 10.0
 const VSYNC_NAMES := {
 	DisplayServer.VSYNC_DISABLED: "off", DisplayServer.VSYNC_ENABLED: "on",
 	DisplayServer.VSYNC_ADAPTIVE: "adaptive", DisplayServer.VSYNC_MAILBOX: "mailbox",
@@ -16,7 +24,9 @@ const VSYNC_NAMES := {
 
 var main: Node
 ## The latest shown values by name: build_id, genome_id, lineage_id, world_seed, slot, tick,
-## fps, longest_frame_ms, draw_calls, adapter, driver, vsync, energy, position, and so on.
+## fps, longest_frame_ms, draw_calls, adapter, driver, vsync, energy, position, and so on. The AI
+## section adds ai_creatures (the ids it lists, in order), ai_summary (the niche, queue and token
+## line) and ai_player (the cell's line); spawn_threat adds last_threat (the species spawned).
 var fields := {}
 
 var _refresh_t := 0.0
@@ -25,6 +35,7 @@ var _frame_ms := PackedFloat32Array()
 var _last_frame_usec := -1
 var _zone_rows := {}                 ## zone id -> {"bar": ProgressBar, "text": Label}
 var _zones_sim: PoolSim              ## the sim the zone rows were built for
+var _threat_turn := 0                ## which species the next spawn_threat places
 
 @onready var _identity: Label = %Identity
 @onready var _sim: Label = %Sim
@@ -34,9 +45,12 @@ var _zones_sim: PoolSim              ## the sim the zone rows were built for
 @onready var _feeding: Label = %Feeding
 @onready var _zones: GridContainer = %Zones
 @onready var _carrion: Label = %Carrion
+@onready var _ai: Label = %AI
 @onready var _buttons := {
 	"fill": %Fill, "drain": %Drain, "empty_zone": %EmptyZone, "spawn_carrion": %SpawnCarrion,
 	"teleport": %Teleport, "gizmos": %Gizmos, "vsync": %VSync, "copy": %Copy,
+	"spawn_threat": %SpawnThreat, "kill_nearest": %KillNearest, "freeze_ai": %FreezeAI,
+	"hide_from_ai": %HideFromAI, "hurt_self": %HurtSelf,
 }
 
 
@@ -60,7 +74,9 @@ func toggle() -> void:
 
 
 ## Runs a dev command by name: fill, drain, empty_zone, spawn_carrion, teleport (to the layout
-## spawn), gizmos, vsync or copy. Returns whether it applied.
+## spawn), gizmos, vsync, copy, spawn_threat (a creature DEBUG_THREAT_AHEAD_M ahead, facing the
+## cell; each one that lands is the next species in id order), kill_nearest, freeze_ai and
+## hide_from_ai (toggles) or hurt_self (HURT_SELF_HP). Returns whether it applied.
 func run(command: String) -> bool:
 	var sim := _current_sim()
 	var applied := false
@@ -87,6 +103,16 @@ func run(command: String) -> bool:
 				applied = true
 		"copy":
 			applied = _copy()
+		"spawn_threat":
+			applied = sim != null and _spawn_threat(sim)
+		"kill_nearest":
+			applied = sim != null and sim.debug_kill_nearest_creature()
+		"freeze_ai":
+			applied = sim != null and sim.debug_set_ai_frozen(not sim.dev_ai_frozen)
+		"hide_from_ai":
+			applied = sim != null and sim.debug_set_hidden(not sim.dev_hidden)
+		"hurt_self":
+			applied = sim != null and sim.debug_hurt_player(HURT_SELF_HP)
 	refresh()
 	return applied
 
@@ -105,13 +131,17 @@ func refresh() -> void:
 		_stats.text = "No run."
 		_feeding.text = "No run."
 		_carrion.text = ""
+		_ai.text = "No run."
 		_build_zone_rows(null)
+		_update_toggles(null)
 		return
 	_sim.text = "\n".join(_sim_lines(sim))
 	_actor.text = "\n".join(_actor_lines(sim))
 	_stats.text = "\n".join(_stat_lines(sim))
 	_feeding.text = "\n".join(_feeding_lines(sim))
 	_update_ecology(sim)
+	_update_ai(sim)
+	_update_toggles(sim)
 
 
 func _process(delta: float) -> void:
@@ -281,6 +311,138 @@ func _build_zone_rows(sim: PoolSim) -> void:
 		_zones.add_child(bar)
 		_zones.add_child(text)
 		_zone_rows[z.id] = {"bar": bar, "text": text}
+
+
+func _update_ai(sim: PoolSim) -> void:
+	var lines := ai_lines(sim)
+	_ai.text = "\n".join(lines)
+	var ids := []
+	if sim.creatures != null:
+		for c in sim.creatures.creatures:
+			ids.append(c.id)
+	fields.ai_creatures = ids
+	fields.ai_summary = summary_line(sim) if sim.creatures != null else ""
+	fields.ai_player = player_line(sim)
+
+
+## The toggle buttons name the switch's state.
+func _update_toggles(sim: PoolSim) -> void:
+	var frozen := sim != null and sim.dev_ai_frozen
+	var hidden := sim != null and sim.dev_hidden
+	(_buttons.freeze_ai as Button).text = "Freeze AI: %s" % ("on" if frozen else "off")
+	(_buttons.hide_from_ai as Button).text = "Hide from AI: %s" % ("on" if hidden else "off")
+
+
+## Spawns the next threat species ahead of the cell; the turn moves on only when one lands.
+func _spawn_threat(sim: PoolSim) -> bool:
+	if sim.species == null or sim.creatures == null:
+		return false
+	var ids := sim.species.species_ids()
+	if ids.is_empty():
+		return false
+	var species_id := ids[_threat_turn % ids.size()]
+	if not sim.debug_spawn_threat_ahead(species_id):
+		return false
+	_threat_turn += 1
+	fields.last_threat = species_id
+	return true
+
+
+## The AI section: two lines per creature in number order (creature_lines), then the niche, queue
+## and token line, then the cell's line. A pool without creatures says so.
+static func ai_lines(sim: PoolSim) -> PackedStringArray:
+	if sim.creatures == null:
+		return PackedStringArray(["No creatures in this pool.", player_line(sim)])
+	var lines := PackedStringArray()
+	for c in sim.creatures.creatures:
+		lines.append_array(creature_lines(sim, c))
+	lines.append(summary_line(sim))
+	lines.append(player_line(sim))
+	return lines
+
+
+## One creature: id, species and site; state/phase with the time in the phase over its length;
+## its target as it remembers it (how it last sensed it and how long ago) or its goal; the give-up
+## timer while engaged; [token] while it holds the player's token. Then health, energy, distance
+## from home and whom it ignores, for how much longer.
+static func creature_lines(sim: PoolSim, c: CreatureField.Creature) -> PackedStringArray:
+	var site := c.site_id if not c.site_id.is_empty() else ("dev" if c.debug else "-")
+	var head := "%s %s @%s" % [c.id, c.species_id, site]
+	var body := "    hp %s/%s  en %d%%" % [String.num(c.state.health, 1), String.num(c.state.max_health, 1),
+		roundi(100.0 * c.state.energy / maxf(c.state.energy_capacity, 1e-6))]
+	var mem := c.brain
+	if mem == null:
+		return PackedStringArray([head + "  scripted", body])
+	var state := mem.state if mem.phase.is_empty() else "%s/%s" % [mem.state, mem.phase]
+	head += "  " + state
+	var length := CreatureView.phase_ticks(mem)
+	if length > 0:
+		head += " %.2f/%.2f s" % [_seconds(sim.tick - mem.phase_tick), _seconds(length)]
+	if not mem.target.is_empty():
+		var seen: Dictionary = mem.seen.get(mem.target, {})
+		var how := "not remembered" if seen.is_empty() else "%s, %.1f s ago" % [seen.by, _seconds(sim.tick - int(seen.tick))]
+		head += "  → %s (%s)" % [mem.target, how]
+	elif mem.goal.is_finite():
+		head += "  goal (%.1f, %.1f)" % [mem.goal.x, mem.goal.y]
+	if mem.state in [CreatureBrain.NOTICE, CreatureBrain.CHASE, CreatureBrain.ATTACK] and mem.engaged_tick >= 0:
+		head += "  give-up %.1f/%.1f s" % [_seconds(sim.tick - mem.engaged_tick), _seconds(int(mem.cfg.give_up_ticks))]
+	if c.id in sim.creatures.engaged_on_player:
+		head += "  [token]"
+	if mem.stuck:
+		head += "  [stuck]"
+	var ignores := PackedStringArray()
+	if mem.ignore_all_until > sim.tick:
+		ignores.append("all %.1f s (settling)" % _seconds(mem.ignore_all_until - sim.tick))
+	var ignored: Array = mem.ignore.keys()
+	ignored.sort()
+	for id: String in ignored:
+		if int(mem.ignore[id]) > sim.tick:
+			ignores.append("%s %.1f s" % [id, _seconds(int(mem.ignore[id]) - sim.tick)])
+	body += "  home %.1f m  ignore: %s" % [c.motion.position.distance_to(mem.home), ", ".join(ignores) if not ignores.is_empty() else "-"]
+	return PackedStringArray([head, body])
+
+
+## Each niche's count over its cap (roles in name order), the respawn queue (soonest first, ties by
+## site) and the creatures holding the player's token.
+static func summary_line(sim: PoolSim) -> String:
+	var niches := PackedStringArray()
+	var roles: Array = sim.region.niches.keys()
+	roles.sort()
+	for role: String in roles:
+		niches.append("%s %d/%d" % [role, int(sim.region.niches[role].count), int(sim.region.niches[role].cap)])
+	var queue := sim.creatures.queue.duplicate()
+	queue.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return a.at_tick < b.at_tick or (a.at_tick == b.at_tick and str(a.site) < str(b.site)))
+	var waiting := PackedStringArray()
+	for q: Dictionary in queue:
+		waiting.append("%s in %.1f s" % [q.site, _seconds(maxi(int(q.at_tick) - sim.tick, 0))])
+	var token := sim.creatures.engaged_on_player
+	return "niches: %s   queue: %s   token: %s" % [" ".join(niches) if not niches.is_empty() else "-",
+		", ".join(waiting) if not waiting.is_empty() else "-", ", ".join(token) if not token.is_empty() else "-"]
+
+
+## The cell: its shelter, death streak, last death, checkpoint and the dev switches that are on.
+static func player_line(sim: PoolSim) -> String:
+	var shelter := "sheltered %.1f s" % _seconds(sim.grace_until - sim.tick) if sim.is_sheltered() else "not sheltered"
+	var last := "-"
+	for i in range(sim.save.lineage_history.size() - 1, -1, -1):
+		var entry: Dictionary = sim.save.lineage_history[i]
+		if entry.get("event") == "died":
+			last = str(entry.get("cause", "?"))
+			break
+	var at: Vector2 = sim.checkpoint().position
+	var line := "player: %s  streak %d  last death %s  checkpoint (%.1f, %.1f)" % [shelter, sim.death_streak, last, at.x, at.y]
+	if sim.dead:
+		line += "  dead"
+	if sim.dev_ai_frozen:
+		line += "  AI frozen"
+	if sim.dev_hidden:
+		line += "  hidden from AI"
+	return line
+
+
+static func _seconds(ticks: int) -> float:
+	return ticks / float(CreatureBrain.TICKS_PER_SECOND)
 
 
 ## Copies the seed, build, genome id and position, where the platform has a clipboard.

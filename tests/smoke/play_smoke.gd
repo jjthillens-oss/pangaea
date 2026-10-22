@@ -8,13 +8,28 @@ extends SceneTree
 ##
 ##   -- --phase=found --slot=user://smoke/slot_1.json --seed=4242
 ##       Clears user://smoke/ and opens the start screen. A grazer lineage eats, starves and
-##       recovers, dies and continues, pauses and resumes, then saves and quits to the title.
-##       Hunter and omnivore lineages on their own slots eat too. Then the grazer continues and
-##       swims, and the window's close button saves and quits through "Save first?", which ends
-##       the process; expect.json records what Continue must bring back.
+##       recovers, dies and continues. Then the threats (M1 step 3, plan section 19): every
+##       creature is drawn where the sim has it and listed in the debug panel, F9 and F10 place
+##       and kill threats, lair_se's ambush hunter catches the cell parked in front of it (its
+##       tell on its body and the floor, the hit on the HUD, the notice, the death already on
+##       disk), Continue brings it back sheltered, lair_sw's hunter catches it again soon after (a
+##       longer shelter), and a hunter just below the screen gets an edge arrow. Then the grazer
+##       pauses and resumes, saves and quits to the title. Hunter and omnivore lineages on their
+##       own slots eat too. Then the grazer continues and swims, and the window's close button
+##       saves and quits through "Save first?", which ends the process; expect.json records what
+##       Continue must bring back.
 ##   -- --phase=continue --slot=user://smoke/slot_1.json
-##       A new process: Continue must bring back the lineage, body, parts, points and place in
-##       user://smoke/expect.json, and the run must play.
+##       A new process: Continue must bring back the lineage, body, parts, points, deaths and
+##       place in user://smoke/expect.json, repopulate the creatures and start sheltered, and the
+##       run must play.
+##   -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243
+##       A new omnivore eats two pieces of dev carrion (F8), is hurt with the dev command, and
+##       lair_se's hunter catches it. The death is saved when it happens (SAVE_ON_DEATH), so the
+##       window's close button at the death notice quits at once with no dialog;
+##       death_expect.json records what the slot must hold.
+##   -- --phase=after_death --slot=user://smoke/death.json
+##       A new process (rule C7): the Continue card shows the points the death left, and Continue
+##       puts the cell at its checkpoint, sheltered, with the death last in its history.
 ##
 ## Nodes are awaited into the tree before use. Saves stay under user://smoke/: the smoke stops
 ## before playing if --slot points anywhere else.
@@ -23,6 +38,7 @@ const MAIN_SCENE := "res://game/scenes/main.tscn"
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const SMOKE_DIR := "user://smoke"
 const EXPECT_PATH := "user://smoke/expect.json"
+const DEATH_EXPECT_PATH := "user://smoke/death_expect.json"
 const MEAL_TICKS := 2400            ## each body must eat within 40 s of sim time
 const RECOVER_TICKS := 1200         ## a starving cell dies after 20 s, so it must eat sooner
 const DEATH_TICKS := 1500
@@ -45,6 +61,20 @@ const POSITION_TOLERANCE_M := 1e-3
 const ANGLE_TOLERANCE := 1e-6
 ## Half of the last shown digit of each body card stat: speed, turning, upkeep, sight, max energy.
 const STAT_ROUNDING: PackedFloat64Array = [0.05, 0.5, 0.005, 0.5, 0.5]
+## Threats (M1 step 3, plan section 19).
+const PLAYER := "player"
+const IN_FRONT_M := 2.75            ## the cell is placed this far in front of a hunter: its lunge window
+const CAUGHT_TICKS := 3600          ## a cell parked in front of a hunter is caught within 60 s
+const SHELTER_TICKS := 900          ## the longest shelter (10 s), plus slack
+const TELL_POSE_FRAMES := 20        ## a third into the tell its fast-starting curve shows the coil
+const COIL_SHOWN := 0.95            ## the coiled body is shorter than this share of its size
+const OFF_SCREEN_SOUTH_M := 5.8     ## south of the cell: below the 5.49 m screen edge, within sight
+const NOTICE_TICKS := 1200          ## the new hunter settles 3 s and the shelter lasts up to 10 s
+const CARRION_MEALS := 2            ## die_and_quit eats this many pieces of dev carrion
+## die_and_quit hurts the omnivore down to this health before the hunter: well under one bite (12),
+## with its regeneration (0.6 a second) while the hunter tells. Held in front of the lair, an
+## omnivore bites back on contact (OD3) and wins the fight.
+const WEAK_HEALTH := 4.0
 
 
 ## Calls back after every other node's _process each frame (the highest process_priority), so
@@ -60,17 +90,26 @@ class FrameProbe extends Node:
 		on_frame.call()
 
 
+## Intent zero: the cell holds still, as a player who lets go of the keys.
+class Still:
+	func next_intent(_sim: PoolSim) -> SimIntent:
+		return SimIntent.new()
+
+
 var main: Main
 var _failures := 0
 var _checks := 0
 var _finished := false
-## The next quit is the game's own (Save and quit in "Save first?"), so _finalize reports.
+## The next quit is the game's own (Save and quit in "Save first?", or the close button at a saved
+## death's notice), so _finalize reports it as _quit_check.
 var _quit_expected := false
+var _quit_check := "Save and quit closes the game"
 var _step_name := ""
 var _step_msec := 0
 var _numbers := RegEx.create_from_string("-?\\d+(\\.\\d+)?")
-## Sim events seen in the current run, by type, and the meals among them.
+## Sim events seen in the current run, by type, every one in order, and the meals among them.
 var _events := {}
+var _log: Array[Dictionary] = []
 var _meals: Array[Dictionary] = []
 var _event_points := 0
 var _hud_meal_mismatches := PackedStringArray()
@@ -90,8 +129,12 @@ func _initialize() -> void:
 			await _found()
 		"continue":
 			await _continue()
+		"die_and_quit":
+			await _die_and_quit()
+		"after_death":
+			await _after_death()
 		_:
-			_check(false, "--phase is found or continue (got '%s')" % phase)
+			_check(false, "--phase is found, continue, die_and_quit or after_death (got '%s')" % phase)
 	_finished = true
 	_report()
 
@@ -103,7 +146,7 @@ func _finalize() -> void:
 		return
 	_finished = true
 	if _quit_expected:
-		_check(true, "Save and quit closes the game")
+		_check(true, _quit_check)
 		_report()
 		return
 	print("FAIL the game quit before the smoke finished (step '%s')" % _step_name)
@@ -138,7 +181,7 @@ func _found() -> void:
 	await _frames(1)
 	_check(_shown(start.picker_view) and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
 	start.select("grazer")
-	main.intent_provider = ForageBot.new()
+	main.intent_provider = _bot()
 	if not _click(start.start_button, "the picker's Start"):
 		start.request_start()
 	await _frames(2)
@@ -168,6 +211,35 @@ func _found() -> void:
 	_begin("death notice")
 	await _die_and_continue(pool)
 	_check_view_record("the grazer run, starving, death and respawn included")
+	_end()
+
+	_begin("creatures drawn, F9 and F10")
+	await _check_creatures(pool)
+	_end()
+
+	_begin("caught by an ambush hunter")
+	var caught := await _caught_at(pool, "lair_se", true)
+	if caught.is_empty():
+		_end()
+		return
+	var respawn_tick := await _continue_sheltered(pool)
+	var streak := sim.death_streak
+	var shelter := sim.grace_until - respawn_tick
+	_end()
+
+	_begin("a second death soon after")
+	var again := await _caught_at(pool, "lair_sw", false)
+	var window := sim.species.streak_window_ticks
+	_check(not again.is_empty() and sim.tick - respawn_tick < window,
+		"the second death came %.1f s after the respawn, inside the %.0f s streak window" % [(sim.tick - respawn_tick) * PoolSim.DT, window * PoolSim.DT])
+	if not again.is_empty():
+		var second_tick := await _continue_sheltered(pool)
+		_check(sim.death_streak == streak + 1 and sim.grace_until - second_tick > shelter,
+			"so the streak grows to %d and the shelter is longer: %.0f s after %.0f s" % [sim.death_streak, (sim.grace_until - second_tick) * PoolSim.DT, shelter * PoolSim.DT])
+	_end()
+
+	_begin("off-screen threat arrow")
+	await _check_off_screen_arrow(pool)
 	_end()
 
 	_begin("save and quit to title")
@@ -328,9 +400,10 @@ func _starve_and_recover(pool: PoolScene) -> void:
 	_check(hud.state_text.text != "Starving", "the HUD no longer says Starving (%s)" % hud.state_text.text)
 
 
-## A drained cell parked away from food dies; the notice names the points the death takes and
-## keeps the pause key, the window's close button offers no save while the cell is dead, and
-## the notice's Continue puts the cell back at the start and play goes on.
+## A drained cell parked away from food dies; the death is applied at once and the notice names
+## the points it took and keeps the pause key. This death runs the OD1 fallback (save_on_death
+## false: nothing is written at death), so the window's close button still offers no save while
+## the cell is dead; the notice's Continue puts the cell back at the start and play goes on.
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
@@ -340,15 +413,25 @@ func _die_and_continue(pool: PoolScene) -> void:
 		"the grazer kept eating to %d points in %.1f s" % [sim.save.adaptation_points, ticks * PoolSim.DT])
 	_check(sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading), "the cell goes back to the spawn, away from food")
 	bot.park_at = sim.layout.spawn
+	main.session.save_on_death = false
+	var saved_points := _slot_points(main.session.slot)
 	sim.debug_set_energy(0.0)
 	var deaths_before := int(_events.get("died", 0))
 	ticks = await _ticks_until(sim, func(): return sim.dead, DEATH_TICKS)
 	await _frames(2)
 	_check(sim.dead and int(_events.get("died", 0)) == deaths_before + 1, "the starving cell died once, after %.1f s" % (ticks * PoolSim.DT))
 	var notice := main.death_notice
-	var points := sim.save.adaptation_points
-	var loss := Lineage.death_loss(points)
-	_check(_shown(notice) and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
+	var resolved: Dictionary = main.session.death
+	var loss := int(resolved.get("lost", -1))
+	# The death was applied when it happened, so the points before it are today's plus the loss.
+	var points := sim.save.adaptation_points + loss
+	_check(not resolved.is_empty() and loss == Lineage.death_loss(points) and str(sim.save.lineage_history.back().get("cause", "")) == "starved",
+		"the death was applied at once: %d of %d points and a 'starved' history entry" % [loss, points])
+	_check(_shown(notice) and notice.title_text() == Main.death_title("starved") and notice.body_text().contains("(−%d)" % loss)
+		and notice.body_text().contains(GameSession.STARVED_TIP), "the death notice names the loss and the starving tip: %s" % notice.body_text())
+	_check(not bool(resolved.get("saved", {}).get("attempted", true)) and not notice.body_text().contains("Saved.")
+		and _slot_points(main.session.slot) == saved_points and main.session.dirty,
+		"with the OD1 fallback nothing was written at the death and the run has unsaved progress")
 	await _press(&"pause")
 	_check(not main.pause_menu.is_open() and _shown(notice), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
@@ -370,8 +453,199 @@ func _die_and_continue(pool: PoolScene) -> void:
 		"the lineage lost %d of %d points and its history records the death" % [loss, points])
 	_check(sim.motion.position.distance_to(sim.layout.spawn) <= POSITION_TOLERANCE_M and sim.state.health == sim.state.max_health,
 		"the cell is back at the start with full health")
+	_check(_shown(main.hud.message) and main.hud.message_text.text == Main.respawn_text(Hud.shelter_seconds(sim))
+		and main.hud.message_text.text.begins_with("Back at the generation start"), "the HUD says '%s'" % main.hud.message_text.text)
+	main.session.save_on_death = GameSession.SAVE_ON_DEATH
 	bot.park_at = Vector2.INF
 	await _check_running(pool, "play goes on after the death", 30)
+
+
+# Threats (M1 step 3, plan section 19)
+
+## Every creature has one view, drawn at fraction 1 within 1 mm of its sim position, and the debug
+## panel has an AI line for each, then the niche and token line. At the spawn F9 places a threat
+## 6 m ahead, the next species each time, and F10 kills the nearest creature.
+func _check_creatures(pool: PoolScene) -> void:
+	var sim := pool.sim
+	var sites := 0
+	for role: String in sim.region.niches:
+		sites += int(sim.region.niches[role].cap)
+	var count := sim.creatures.creatures.size()
+	_check(count == sites, "the pool has its %d creatures, one per site (%d)" % [sites, count])
+	pool.creature_layer.sync(1.0)
+	var worst := 0.0
+	var missing := PackedStringArray()
+	var ids := []
+	for c in sim.creatures.creatures:
+		ids.append(c.id)
+		var view := pool.creature_layer.view_of(c.id)
+		if view == null:
+			missing.append(c.id)
+		else:
+			worst = maxf(worst, view.global_position.distance_to(PlaneSpace.to_world(c.motion.position)))
+	_check(missing.is_empty() and pool.creature_layer.views().size() == count,
+		"each creature has one view (%d views, none for %s)" % [pool.creature_layer.views().size(), missing])
+	_check(worst <= POSITION_TOLERANCE_M, "each creature view drawn at fraction 1 is within 1 mm of its sim position (%.6f m)" % worst)
+	var panel: CanvasLayer = main.debug_panel
+	panel.call("refresh")
+	var fields: Dictionary = panel.get("fields")
+	var summary := str(fields.get("ai_summary", ""))
+	var lines := (panel.get_node("%AI") as Label).text.split("\n")
+	_check(fields.get("ai_creatures", []) == ids and lines.size() == count * 2 + 2 and summary.begins_with("niches: ") and summary.contains("token: "),
+		"the debug panel has AI lines for %s, then the niches and the token: %s" % [ids, summary])
+
+	# F9 and F10, the cell still at the spawn so the spot ahead is open water.
+	var bot: Object = pool.intent_provider
+	pool.intent_provider = Still.new()
+	_check(sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading), "the cell goes back to the spawn, facing open water")
+	var ahead := sim.layout.spawn + Vector2.from_angle(sim.layout.spawn_heading) * PoolSim.DEBUG_THREAT_AHEAD_M
+	var placed := PackedStringArray()
+	for i in sim.species.species_ids().size():
+		await _press(&"dev_spawn_threat")
+		var c: CreatureField.Creature = sim.creatures.creatures.back()
+		if sim.creatures.creatures.size() == count + i + 1 and c.debug and c.motion.position.distance_to(ahead) <= 1.0:
+			placed.append(c.species_id)
+	_check(placed == sim.species.species_ids(), "F9 places a threat 6 m ahead, the next species each time (%s)" % placed)
+	for i in placed.size():
+		await _press(&"dev_kill_nearest")
+	_check(sim.creatures.creatures.size() == count and sim.creatures.creatures.all(func(c: CreatureField.Creature) -> bool: return not c.debug),
+		"F10 kills the nearest creature each time, back to the %d" % count)
+	pool.intent_provider = bot
+
+
+## Caught (plan section 19): once the shelter is over the cell is placed IN_FRONT_M in front of
+## `site`'s ambush hunter, facing away, and holds that spot until it dies. A hit knocks it out of
+## the lunge window and a fed hunter does not chase it, so a parked forage bot swims it back, as
+## in test_checkpoints (a cell left still would sit out of reach). With `cues`: a third into the
+## tell the hunter has coiled, its eyes glow and its lane shows on the floor, and a hit pulses the
+## hurt vignette and shows the health bar. The notice names the hunter, gives its tip and says the
+## death was saved, and the slot on disk already holds it (OD1). Returns the died event, {} if none
+## came.
+func _caught_at(pool: PoolScene, site: String, cues: bool) -> Dictionary:
+	var sim := pool.sim
+	var hunter := _at_site(sim, site)
+	_check(hunter != null and hunter.species_id == "ambush_hunter", "%s has its ambush hunter" % site)
+	if hunter == null:
+		return {}
+	await _ticks_until(sim, func(): return not sim.is_sheltered(), SHELTER_TICKS)
+	# In front of where it lies now (it may have gone foraging), else of its lair.
+	var heading := hunter.motion.heading
+	var spot := hunter.motion.position + Vector2.from_angle(heading) * IN_FRONT_M
+	if not sim.arena.is_clear(spot, sim.phenotype.radius):
+		heading = hunter.brain.home_heading
+		spot = hunter.brain.home + Vector2.from_angle(heading) * IN_FRONT_M
+	_check(not sim.is_sheltered() and sim.debug_teleport(spot, heading),
+		"once the shelter is over the cell is placed %.2f m in front of %s's hunter, facing away" % [IN_FRONT_M, site])
+	var bot: Object = pool.intent_provider
+	var hold := ForageBot.new()
+	hold.park_at = spot
+	pool.intent_provider = hold
+	var from := sim.tick
+	if cues:
+		var tell := await _await_event(sim, "creature_tell", func(e: Dictionary) -> bool: return e.id == hunter.id and e.target == PLAYER, CAUGHT_TICKS)
+		_check(not tell.is_empty(), "the hunter starts its tell on the cell after %.1f s" % ((sim.tick - from) * PoolSim.DT))
+		await _frames(TELL_POSE_FRAMES)
+		var view := pool.creature_layer.view_of(hunter.id)
+		var telling := hunter.brain.state == CreatureBrain.ATTACK and hunter.brain.phase == CreatureBrain.TELL
+		var model := view.get_node("Pivot/Model") as Node3D if view != null else null
+		var eye := view.find_child("Eye_L", true, false) as MeshInstance3D if view != null else null
+		var material := eye.get_surface_override_material(0) as StandardMaterial3D if eye != null else null
+		var coil := model.scale.z / view.body_size if model != null else 1.0
+		var glow := material.emission_energy_multiplier if material != null else 0.0
+		_check(telling and coil < COIL_SHOWN, "%d frames into the tell the hunter has coiled to %.2f of its length" % [TELL_POSE_FRAMES, coil])
+		_check(glow > CreatureView.EYE_GLOW_ALERT / CreatureView.EYE_EMISSION_REST, "its eyes glow brighter than when it watches (%.2f)" % glow)
+		_check(view != null and view.lane_visible(), "its strike lane shows on the floor")
+		var hit := await _await_event(sim, "hit", func(e: Dictionary) -> bool: return e.target == PLAYER, CAUGHT_TICKS)
+		await _frames(1)
+		var hud := main.hud
+		_check(not hit.is_empty() and hud.vignette_alpha() > 0.0 and _shown(hud.hurt_vignette),
+			"a hit on the cell (%.0f) pulses the hurt vignette (%.2f)" % [float(hit.get("dealt", 0.0)), hud.vignette_alpha()])
+		_check(_shown(hud.health_row) and hud.health_text.text == Hud.health_line(sim.state), "and the health bar shows '%s'" % hud.health_text.text)
+	var died := await _await_event(sim, "died", func(_e: Dictionary) -> bool: return true, CAUGHT_TICKS)
+	await _frames(2)
+	pool.intent_provider = bot
+	_check(not died.is_empty() and died.cause == "killed" and died.by == hunter.id,
+		"%s's hunter kills the cell holding its spot %.1f s after it was placed" % [site, (sim.tick - from) * PoolSim.DT])
+	if died.is_empty():
+		return {}
+	var data: Dictionary = sim.species.species[hunter.species_id]
+	var notice := main.death_notice
+	_check(_shown(notice) and notice.title_text() == str(data.death_reason), "the death notice reads '%s'" % notice.title_text())
+	_check(notice.body_text().contains("\n" + str(data.death_tip)) and notice.body_text().contains("Saved."),
+		"it gives the hunter's tip and says the death was saved: %s" % notice.body_text())
+	var loaded := main.session.persistence.load_from(main.session.slot)
+	var last: Dictionary = loaded.save.lineage_history.back() if loaded.ok and not loaded.save.lineage_history.is_empty() else {}
+	var at := PlaneSpace.from_save(loaded.save.player.position) if loaded.ok else Vector2.INF
+	_check(loaded.ok and loaded.save.adaptation_points == sim.save.adaptation_points and str(last.get("cause", "")) == "killed:ambush_hunter"
+		and at.distance_to(sim.checkpoint().position) <= POSITION_TOLERANCE_M and not main.session.dirty,
+		"before Continue the slot on disk holds the death: %d points, 'killed:ambush_hunter', the cell at its checkpoint" % sim.save.adaptation_points)
+	return died
+
+
+## The notice's Continue puts the cell back at its checkpoint with no creature within
+## respawn_clear_m. The HUD chip shows the shelter its death streak gives, in whole seconds, and a
+## second later one less. Returns the respawn's tick.
+func _continue_sheltered(pool: PoolScene) -> int:
+	var sim := pool.sim
+	var hud := main.hud
+	var button := main.death_notice.button_for("continue")
+	_check(button != null and _focus() == button, "the notice's Continue has the keyboard focus")
+	if not _click(button, "the notice's Continue"):
+		main.continue_after_death()
+	var respawn_tick := sim.tick
+	# Read before the forage bot swims on.
+	var back := not sim.dead and sim.motion.position.distance_to(sim.checkpoint().position) <= POSITION_TOLERANCE_M
+	await _frames(2)
+	var shelter_s := roundi(RespawnRules.pick(sim.species.grace_ticks, sim.death_streak) * PoolSim.DT)
+	_check(back, "Continue puts the cell at its checkpoint")
+	_check(_shown(hud.shelter_chip) and hud.shelter_text.text == Hud.grace_text(shelter_s),
+		"the HUD chip reads '%s' (streak %d)" % [hud.shelter_text.text, sim.death_streak])
+	var clear := float(sim.species.fairness.respawn_clear_m)
+	var nearest := INF
+	for c in sim.creatures.creatures:
+		nearest = minf(nearest, c.motion.position.distance_to(sim.motion.position))
+	_check(nearest > clear, "no creature within %.0f m (the nearest is %.1f m away)" % [clear, nearest])
+	var later := Hud.grace_text(shelter_s - 1)
+	await _ticks_until(sim, func(): return hud.shelter_text.text == later, 90)
+	_check(_shown(hud.shelter_chip) and hud.shelter_text.text == later, "a second later it reads '%s'" % hud.shelter_text.text)
+	return respawn_tick
+
+
+## An ambush hunter placed south of the still cell, below the screen's edge and facing it, notices
+## the cell once the shelter is over: the HUD shows one arrow for it, at the bottom edge with the
+## jaw glyph. F10 kills it and the arrow goes. Then the forage bot swims on until there is unsaved
+## progress again.
+func _check_off_screen_arrow(pool: PoolScene) -> void:
+	var sim := pool.sim
+	var bot: Object = pool.intent_provider
+	pool.intent_provider = Still.new()
+	var checkpoint: Dictionary = sim.checkpoint()
+	sim.debug_teleport(checkpoint.position, checkpoint.heading)
+	var at := sim.motion.position + Vector2(0.0, OFF_SCREEN_SOUTH_M)
+	var placed := sim.debug_spawn_creature("ambush_hunter", at, -PI / 2.0)
+	var c: CreatureField.Creature = sim.creatures.creatures.back() if placed else null
+	_check(placed and c.debug, "an ambush hunter is placed %.1f m south of the still cell, facing it" % OFF_SCREEN_SOUTH_M)
+	if c == null:
+		pool.intent_provider = bot
+		return
+	var noticed := await _await_event(sim, "creature_noticed", func(e: Dictionary) -> bool: return e.id == c.id and e.target == PLAYER, NOTICE_TICKS)
+	await _frames(2)
+	var arrows: ThreatIndicators = main.hud.threat_indicators
+	arrows.refresh()
+	var rect := arrows.get_viewport_rect()
+	var body := PlaneSpace.to_world(c.motion.position)
+	var off := pool.camera.is_position_behind(body) or not rect.has_point(pool.camera.unproject_position(body))
+	_check(not noticed.is_empty() and off, "once the shelter is over it notices the cell from below the screen's edge")
+	var shown: Array[Dictionary] = arrows.indicators
+	var bottom := rect.end.y - ThreatIndicators.MARGIN_PX
+	_check(shown.size() == 1 and shown[0].id == c.id and shown[0].glyph == "jaw" and absf(float(shown[0].position.y) - bottom) <= 1.0,
+		"the HUD shows one arrow for it, at the bottom edge with the jaw glyph %s" % [shown])
+	await _press(&"dev_kill_nearest")
+	arrows.refresh()
+	_check(sim.creatures.find(c.id) == null and arrows.indicators.is_empty(), "F10 kills it and the arrow goes")
+	pool.intent_provider = bot
+	var ticks := await _ticks_until(sim, func(): return main.session.dirty, MEAL_TICKS)
+	_check(main.session.dirty, "the forage bot swims on and the run has unsaved progress again after %.1f s" % (ticks * PoolSim.DT))
 
 
 ## The pause key opens the pause menu and the sim stands still; the pause key and Resume each
@@ -446,7 +720,13 @@ func _expect_from(sim: PoolSim) -> Dictionary:
 		"points": save.adaptation_points,
 		"position": [position.x, position.y],
 		"world_seed": save.world_seed,
+		"died": _deaths(save),
 	}
+
+
+## How many deaths the lineage's history records.
+func _deaths(save: SaveGame) -> int:
+	return save.lineage_history.filter(func(h: Dictionary) -> bool: return h.get("event") == "died").size()
 
 
 func _write_expect(expect: Dictionary) -> bool:
@@ -462,7 +742,7 @@ func _write_expect(expect: Dictionary) -> bool:
 func _brief_run(body: String) -> void:
 	main.open_session("%s/%s.json" % [SMOKE_DIR, body])
 	await _frames(1)
-	main.intent_provider = ForageBot.new()
+	main.intent_provider = _bot()
 	main.start_new(body)
 	await _frames(1)
 	var started: bool = await _check_run_started(body)
@@ -496,7 +776,7 @@ func _check_slot_kept(expect: Dictionary) -> void:
 func _continue_and_close_window(expect: Dictionary) -> void:
 	main.open_session(RunFlags.current().slot)
 	await _frames(1)
-	main.intent_provider = ForageBot.new()
+	main.intent_provider = _bot()
 	if not _click(main.start_screen.continue_button, "Continue"):
 		main.continue_run()
 	await _frames(2)
@@ -586,6 +866,23 @@ func _continue() -> void:
 	var saved := Vector2(expect.position[0], expect.position[1])
 	_check(sim.motion.position.distance_to(saved) <= POSITION_TOLERANCE_M,
 		"the cell is where it was saved (%.6f m away)" % sim.motion.position.distance_to(saved))
+	_check(_deaths(sim.save) == int(expect.get("died", -1)), "the history keeps the %d deaths" % _deaths(sim.save))
+	# Creatures are not saved: the run repopulates from the restored place (plan section 19).
+	var drawn := 0
+	var wrong := PackedStringArray()
+	for s in sim.species.sites:
+		var c := _at_site(sim, s.id)
+		if c != null:
+			if pool.creature_layer.view_of(c.id) != null:
+				drawn += 1
+			else:
+				wrong.append("%s has no view" % s.id)
+		elif sim.creatures.spawn_blocker(s, sim.arena, sim.motion.position).is_empty():
+			wrong.append("%s passes the spawn check but is empty" % s.id)
+	_check(drawn > 0 and wrong.is_empty(), "every site that passes the spawn check from the restored place has its creature, drawn (%d; %s)" % [drawn, wrong])
+	var start_s := roundi(sim.species.start_grace_ticks * PoolSim.DT)
+	_check(sim.is_sheltered() and _shown(main.hud.shelter_chip) and main.hud.shelter_text.text == Hud.grace_text(start_s),
+		"the continued run starts sheltered: '%s'" % main.hud.shelter_text.text)
 	_check_cell_view(pool)
 	_check(_shown(main.hud.message) and main.hud.message_text.text.begins_with("Your cell rested"),
 		"the HUD says the cell rested: %s" % main.hud.message_text.text)
@@ -593,6 +890,117 @@ func _continue() -> void:
 	_check_view_record("the continued run")
 	await _press(&"pause")
 	_check(_shown(main.pause_menu) and pool.paused, "the pause key reaches the continued run and opens the pause menu")
+	_end()
+
+
+# Death-save phases (plan section 19: rule C7 across two processes)
+
+## A new omnivore eats two pieces of dev carrion (F8, each dropped ahead of it in open water south
+## of the spawn), then, hurt to WEAK_HEALTH, lair_se's hunter catches it. The death is saved when
+## it happens, so at the death notice the window's close button quits at once, with no dialog.
+## death_expect.json records what the slot must hold.
+func _die_and_quit() -> void:
+	_begin("die, saved, and quit at the notice")
+	var slot := RunFlags.current().slot
+	_check(slot.begins_with(SMOKE_DIR + "/"), "the smoke plays on a slot under %s/ (%s)" % [SMOKE_DIR, slot])
+	if not slot.begins_with(SMOKE_DIR + "/"):
+		return
+	# A fresh slot: no earlier run's save, backup or expectations.
+	for path in [slot, slot + PersistenceService.BACKUP_SUFFIX, slot + PersistenceService.TEMP_SUFFIX, DEATH_EXPECT_PATH]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	await _open_main()
+	var bot := _bot()
+	main.intent_provider = bot
+	main.start_new("omnivore")
+	await _frames(1)
+	var started: bool = await _check_run_started("omnivore")
+	if not started:
+		return
+	var pool := main.pool
+	var sim := pool.sim
+	var south := PI / 2.0
+	for i in CARRION_MEALS:
+		_check(sim.debug_teleport(sim.layout.spawn, south), "the cell waits at the spawn facing south, away from the plankton")
+		var meals := _meals.size()
+		var pieces := sim.carrion.items.size()
+		await _press(&"dev_spawn_carrion")
+		_check(sim.carrion.items.size() == pieces + 1, "F8 drops carrion ahead of the cell")
+		if sim.carrion.items.size() == pieces:
+			return
+		bot.park_at = sim.carrion.items.back().position
+		await _ticks_until(sim, func(): return _meals.size() > meals, MEAL_TICKS)
+	bot.park_at = Vector2.INF
+	var kinds := PackedStringArray()
+	for meal in _meals:
+		kinds.append(meal.kind)
+	var points := CARRION_MEALS * sim.carrion.points
+	_check(kinds == PackedStringArray(["meat", "meat"]) and sim.save.adaptation_points == points,
+		"the omnivore ate the %d pieces (%s) for %d points" % [CARRION_MEALS, kinds, sim.save.adaptation_points])
+	_check(sim.debug_hurt_player(sim.state.health - WEAK_HEALTH), "the dev hurt command leaves the omnivore %.0f health" % sim.state.health)
+	var died := await _caught_at(pool, "lair_se", false)
+	if died.is_empty():
+		return
+	var left := points - Lineage.death_loss(points)
+	_check(sim.save.adaptation_points == left, "the death left %d of the %d points" % [sim.save.adaptation_points, points])
+	var file := FileAccess.open(DEATH_EXPECT_PATH, FileAccess.WRITE)
+	_check(file != null, "wrote %s" % DEATH_EXPECT_PATH)
+	if file == null:
+		return
+	file.store_string(JSON.stringify({"lineage_id": sim.save.lineage_id, "generation": sim.save.genome.generation,
+		"points": sim.save.adaptation_points, "cause": "killed:ambush_hunter"}, "\t", true, true))
+	file.close()
+	_check(main.death_notice.is_open() and not main.session.dirty, "the notice is open and nothing is unsaved")
+	_quit_expected = true
+	_quit_check = "the window's close button at the saved death's notice quits the game"
+	root.propagate_notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	_check(not main.quit_dialog.is_open(), "the close button asks nothing: the death is saved")
+	_end()
+	# The game quits at the end of this frame and _finalize reports; still running means it did not.
+	await _frames(2)
+	_quit_expected = false
+	_check(false, "the close button quits the game")
+
+
+## A new process continues the slot the death was saved to (rule C7): the Continue card shows the
+## points the death left, and Continue puts the cell at its checkpoint, sheltered, with the death
+## last in the lineage's history.
+func _after_death() -> void:
+	_begin("continue after a saved death")
+	var text := FileAccess.get_file_as_string(DEATH_EXPECT_PATH) if FileAccess.file_exists(DEATH_EXPECT_PATH) else ""
+	var expect: Variant = JSON.parse_string(text) if not text.is_empty() else null
+	_check(expect is Dictionary, "the die_and_quit phase left %s" % DEATH_EXPECT_PATH)
+	if not expect is Dictionary:
+		return
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	var start := main.start_screen
+	_check(start != null and not start.continue_button.disabled, "Continue is on")
+	if start == null:
+		return
+	var lines := start.continue_lines()
+	_check(lines.size() >= 3 and lines[2] == "Generation %d · %s" % [int(expect.generation), Hud.points_line(int(expect.points))],
+		"the Continue card shows the %d points the death left %s" % [int(expect.points), lines])
+	if not _click(start.continue_button, "Continue"):
+		main.continue_run()
+	await _frames(2)
+	var pool := main.pool
+	_check(pool != null and main.last_run.get("ok", false), "Continue opens the pool %s" % main.last_run)
+	if pool == null:
+		return
+	var sim := pool.sim
+	var history := sim.save.lineage_history
+	var last: Dictionary = history.back() if not history.is_empty() else {}
+	_check(sim.save.lineage_id == expect.lineage_id and sim.save.adaptation_points == int(expect.points),
+		"the lineage is back with its %d points" % sim.save.adaptation_points)
+	_check(str(last.get("event", "")) == "died" and str(last.get("cause", "")) == str(expect.cause),
+		"its history ends with the death %s" % last)
+	_check(sim.motion.position.distance_to(sim.checkpoint().position) <= POSITION_TOLERANCE_M, "the cell is at its checkpoint")
+	main.hud.refresh()
+	var start_s := roundi(sim.species.start_grace_ticks * PoolSim.DT)
+	_check(sim.is_sheltered() and _shown(main.hud.shelter_chip) and main.hud.shelter_text.text == Hud.grace_text(start_s),
+		"and sheltered: '%s'" % main.hud.shelter_text.text)
 	_end()
 
 
@@ -617,6 +1025,12 @@ func _open_main() -> void:
 	await _frames(2)
 
 
+## The adaptation points the slot's file holds now, or -1 when it cannot be read.
+func _slot_points(slot: String) -> int:
+	var loaded := main.session.persistence.load_from(slot)
+	return loaded.save.adaptation_points if loaded.ok else -1
+
+
 ## Refuses to play unless the session uses a slot under user://smoke/.
 func _slot_is_safe() -> bool:
 	var safe := main.session.slot.begins_with(SMOKE_DIR + "/")
@@ -627,6 +1041,7 @@ func _slot_is_safe() -> bool:
 ## Starts listening to a pool's events and clears what the last run recorded.
 func _watch(pool: PoolScene) -> void:
 	_events.clear()
+	_log.clear()
 	_meals.clear()
 	_event_points = 0
 	_hud_meal_mismatches.clear()
@@ -640,6 +1055,7 @@ func _watch(pool: PoolScene) -> void:
 ## Runs after the HUD's own handler, so the HUD has already refreshed for this event.
 func _on_sim_event(event: Dictionary) -> void:
 	_events[event.type] = int(_events.get(event.type, 0)) + 1
+	_log.append(event)
 	match event.type:
 		"ate":
 			_meals.append(event)
@@ -704,6 +1120,38 @@ func _food_placed(view: FoodView, items: Array[Dictionary]) -> bool:
 				or absf(buffer[o + 11] - want.z) > POSITION_TOLERANCE_M:
 			return false
 	return true
+
+
+## The forage bot as every bot-driven step uses it: keeping clear of threats (plan section 19).
+func _bot() -> ForageBot:
+	var bot := ForageBot.new()
+	bot.avoid_threats = true
+	return bot
+
+
+## The creature living at `site`, or null.
+func _at_site(sim: PoolSim, site: String) -> CreatureField.Creature:
+	for c in sim.creatures.creatures:
+		if c.site_id == site:
+			return c
+	return null
+
+
+## Waits for the pool to report an event of `type` that `accept` takes, or `max_ticks` sim ticks.
+## Only events from now on count. Returns the event, or {} when none came.
+func _await_event(sim: PoolSim, type: String, accept: Callable, max_ticks: int) -> Dictionary:
+	var from := sim.tick
+	var next := _log.size()
+	var frames := 0
+	while sim.tick - from <= max_ticks and frames < max_ticks * 2:
+		while next < _log.size():
+			var event: Dictionary = _log[next]
+			next += 1
+			if event.type == type and accept.call(event):
+				return event
+		await process_frame
+		frames += 1
+	return {}
 
 
 ## Waits for `done` or `max_ticks` sim ticks, whichever comes first. Returns the ticks waited.

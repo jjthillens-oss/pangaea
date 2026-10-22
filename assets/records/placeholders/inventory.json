@@ -77,6 +77,141 @@
       "node": "Pool/Audio",
       "visual_equivalent": "None needed: the ambience carries no information",
       "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_notice",
+      "asset_id": "sfx_notice",
+      "kind": "audio",
+      "description": "Short rising chirp when a creature notices the cell, played where the creature is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The \"!\" marker over the creature",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_tell_lunge",
+      "asset_id": "sfx_tell_lunge",
+      "kind": "audio",
+      "description": "Low rising growl as long as the ambush hunter's tell (creatures_m1.json tell_s), played where it is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The coil pose, the floor lane and the glowing eyes",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_tell_puff",
+      "asset_id": "sfx_tell_puff",
+      "kind": "audio",
+      "description": "Inflating hiss as long as the rammer's tell (creatures_m1.json tell_s), played where it is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The puff pose, the raised crest and spikes, and the floor lane",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_bite",
+      "asset_id": "sfx_bite",
+      "kind": "audio",
+      "description": "Snap when a bite lands on a creature, played where it is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The creature's hurt flash and squash",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_ram",
+      "asset_id": "sfx_ram",
+      "kind": "audio",
+      "description": "Thud when a ram lands on a creature, played where it is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The creature's hurt flash and squash",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_hurt",
+      "asset_id": "sfx_hurt",
+      "kind": "audio",
+      "description": "Dull thump with a high tick when the cell is hit. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The cell's red flash and flinch, and the health bar",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_dodged",
+      "asset_id": "sfx_dodged",
+      "kind": "audio",
+      "description": "Light ping when a strike on the cell ends without a hit. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The floor lane fading with no hit taken",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_creature_die",
+      "asset_id": "sfx_creature_die",
+      "kind": "audio",
+      "description": "Falling tone when a creature dies, played where it is. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The creature shrinking away and its carcass chunks",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_respawn",
+      "asset_id": "sfx_respawn",
+      "kind": "audio",
+      "description": "Soft two-note chime when the cell returns to the checkpoint. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "The camera at the generation start and the shelter rim",
+      "remove_by": "M1 step 5"
     }
   ],
   "functional": [
@@ -97,7 +232,7 @@
     {
       "id": "feedback_labels",
       "kind": "label",
-      "description": "Pooled Label3D for meal toasts such as \"+8 energy\" and the \"Regrowing\" labels. Text, not geometry.",
+      "description": "Pooled Label3D for meal toasts such as \"+8 energy\", the \"Regrowing\" labels and the \"−12\" hit numbers. Text, not geometry.",
       "types": [
         "Label3D"
       ],
@@ -117,6 +252,71 @@
         "game/dev/dev_gizmos.gd"
       ],
       "node": "DevLayer/DevGizmos"
+    },
+    {
+      "id": "threat_lane",
+      "kind": "ui",
+      "description": "The floor lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (alpha at most 0.25). Gameplay UI drawn on the swim plane, not a model.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/creature_view.tscn"
+      ],
+      "node": "Pool/Creatures/<id>/Lane"
+    },
+    {
+      "id": "threat_marker",
+      "kind": "label",
+      "description": "Label3D \"!\" over a creature for 0.6 s when it notices the cell. Text, not geometry.",
+      "types": [
+        "Label3D"
+      ],
+      "files": [
+        "game/scenes/pool/creature_view.tscn"
+      ],
+      "node": "Pool/Creatures/<id>/Marker"
+    },
+    {
+      "id": "dodged_label",
+      "kind": "label",
+      "description": "Label3D \"Dodged!\" rising over the cell for 0.8 s when a strike on it ends without a hit. Text, not geometry.",
+      "types": [
+        "Label3D"
+      ],
+      "files": [
+        "game/scenes/pool/feedback_fx.gd"
+      ],
+      "node": "Pool/Feedback/Dodged"
+    },
+    {
+      "id": "hurt_vignette",
+      "kind": "ui",
+      "description": "A full-screen ColorRect with hurt_vignette.gdshader: a dark red glow at the screen edges, one pulse per hit on the cell (alpha at most 0.35, gone in 0.4 s). Gameplay UI, not a model.",
+      "types": [
+        "ColorRect",
+        "ShaderMaterial"
+      ],
+      "files": [
+        "game/ui/hud.tscn",
+        "game/ui/hurt_vignette.gdshader",
+        "game/ui/hud.gd"
+      ],
+      "node": "Pool/UI/Hud/HurtVignette"
+    },
+    {
+      "id": "threat_arrows",
+      "kind": "ui",
+      "description": "Off-screen threat arrows drawn with CanvasItem draw calls: a badge with the species glyph (HudIcon jaw or star) and a pointer on the screen edge, pulsing with \"!\" during a tell. Gameplay UI, not a model.",
+      "types": [
+        "Control"
+      ],
+      "files": [
+        "game/ui/threat_indicators.gd",
+        "game/ui/hud_icon.gd",
+        "game/ui/hud.tscn"
+      ],
+      "node": "Pool/UI/Hud/ThreatIndicators"
     }
   ]
 }
