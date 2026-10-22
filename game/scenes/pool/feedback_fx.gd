@@ -344,15 +344,15 @@ func _process(delta: float) -> void:
 		if _hit_ages[i] >= HIT_LIFE_S:
 			continue
 		_hit_ages[i] += delta
-		_rise(_hit_labels[i], _hit_ages[i] / HIT_LIFE_S, HIT_START_Y, HIT_RISE_M)
+		_rise_label(_hit_labels[i], _hit_ages[i] / HIT_LIFE_S, HIT_START_Y, HIT_RISE_M)
 	if _dodged != null and _dodged_age < DODGED_LIFE_S:
 		_dodged_age += delta
-		_rise(_dodged, _dodged_age / DODGED_LIFE_S, DODGED_START_Y, DODGED_RISE_M)
+		_rise_label(_dodged, _dodged_age / DODGED_LIFE_S, DODGED_START_Y, DODGED_RISE_M)
 
 
 ## Moves a floating label `k` (0..1) of its way up from `start_y` by `rise`, fading it out; hides it
 ## at the end.
-func _rise(label: Label3D, k: float, start_y: float, rise: float) -> void:
+func _rise_label(label: Label3D, k: float, start_y: float, rise: float) -> void:
 	k = clampf(k, 0.0, 1.0)
 	label.position.y = start_y + rise * ease(k, 0.4)
 	label.modulate.a = 1.0 - k * k
