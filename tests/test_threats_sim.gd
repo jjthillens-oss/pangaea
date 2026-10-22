@@ -20,7 +20,7 @@ const PLAYER := "player"
 ## (about 550 us; CI's runners read 250 to 365), so moderate load from other processes does not fail
 ## it. Each step is also timed against the yardstick (tests/cost_yardstick.gd) run right after it,
 ## and the median run's step time over its yardstick time must stay under STEP_COST_YARDSTICKS: a
-## tick reads 4.7 to 5.1 yardsticks at load 2 to 7 here and beside a busy loop or a cache-thrashing
+## tick reads 4.7 to 5.4 yardsticks at load 2 to 7 here and beside a busy loop or a cache-thrashing
 ## process (4.6 on CI), and a step that costs twice as much 9.5 to 10.2. Heavy load can still move
 ## the count, so only a pass on a quiet machine or on CI rules a regression out.
 const STEP_COST_LIMIT_US := 1500.0

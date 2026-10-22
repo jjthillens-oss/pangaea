@@ -5,7 +5,7 @@ extends RefCounted
 ## Time-slicing by other processes lands on the step and the yardstick in proportion to their
 ## length, so the ratio of their times holds where the microseconds do not: pinned to one core
 ## beside a busy loop, the microseconds doubled while the 7-creature tick read 5.0 yardsticks and the
-## 24-creature tick 15.8, as at load 2 to 7 (4.7 to 5.0, 15.1 to 16.3), and a step made twice as
+## 24-creature tick 15.8, as at load 2 to 7 (4.7 to 5.4, 15.1 to 16.5), and a step made twice as
 ## costly read 9.5 to 10.2 and 28.2 to 33.3. Load that pushes the step's data out of the caches
 ## still raises the ratio a little (5.1 and 16.9 beside a cache-thrashing process): see the flake
 ## policy in docs/DECISIONS.md, M1 step 3 review fixes.
