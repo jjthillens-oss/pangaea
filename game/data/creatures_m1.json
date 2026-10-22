@@ -67,7 +67,7 @@
   "sites": [
     {"id": "lair_se",  "species": "ambush_hunter", "home": [26.4, 12.6],  "heading": -2.9258},
     {"id": "lair_sw",  "species": "ambush_hunter", "home": [-24.1, 16.6], "heading": -0.8419},
-    {"id": "lair_gap", "species": "ambush_hunter", "home": [-9.4, -16.3], "heading": 1.0472},
+    {"id": "lair_s",   "species": "ambush_hunter", "home": [5.0, 31.0],    "heading": -2.0779},
     {"id": "terr_n_a", "species": "rammer", "home": [-2.5, -22.0], "heading": 1.5708, "territory_zone": "z_n"},
     {"id": "terr_n_b", "species": "rammer", "home": [2.5, -22.0],  "heading": 1.5708, "territory_zone": "z_n"},
     {"id": "terr_nw",  "species": "rammer", "home": [-19.1, -11.0], "heading": 0.5226, "territory_zone": "z_nw"},

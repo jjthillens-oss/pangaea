@@ -9,7 +9,7 @@ const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const SEED := 77
 ## Real sites in data order, as populate() numbers them.
-const SITE_ORDER := ["lair_se", "lair_sw", "lair_gap", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
+const SITE_ORDER := ["lair_se", "lair_sw", "lair_s", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
 ## 20.5 m west of lair_se, which the widest view still shows.
 const BESIDE_LAIR_SE := Vector2(5.9, 12.6)
 ## 13.6 m north of lair_se, out of its view but under 20 m.
