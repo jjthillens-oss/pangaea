@@ -1,6 +1,7 @@
 extends TestCase
 ## Save, quit and continue bring back the same lineage, body, points and place, using the
-## existing v2 save schema. Saves go to a per-process folder under user://test_saves.
+## existing v2 save schema; a death is applied once (test_checkpoints covers the death flow in
+## full). Saves go to a per-process folder under user://test_saves.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -214,6 +215,58 @@ func test_unsaved_changes_are_tracked() -> void:
 	check(not session.dirty, "saved")
 	Lineage.earn(session.sim.save, 1)
 	check(session.dirty, "points changed")
+
+
+func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more() -> void:
+	# Plan section 13: resolve_death() applies the death (and saves it, OD1); respawn_after_death()
+	# only brings the cell back. A step 2 caller that only respawns still pays once (test_pool_sim).
+	var session := GameSession.new(slot)
+	check(session.start_new("grazer", 8).ok, "started")
+	var sim := session.sim
+	Lineage.earn(sim.save, 20)
+	check_eq(session.resolve_death(), {}, "nothing to resolve while alive")
+	check_eq(session.respawn_after_death(), 0, "nor to respawn")
+	sim.debug_set_energy(0.0)
+	for i in 25 * 60:
+		sim.step(SimIntent.new())
+		if sim.dead:
+			break
+	check(sim.dead, "starved")
+	var resolved := session.resolve_death()
+	check_eq(resolved.cause, "starved", "the history cause")
+	check_eq(resolved.lost, 5, "a quarter of 20")
+	check_eq(resolved.reason, "", "no killer's reason")
+	check_eq(resolved.tip, GameSession.STARVED_TIP, "the starving tip")
+	check(resolved.saved.attempted and resolved.saved.ok, "saved at once")
+	check_eq(session.resolve_death(), resolved, "resolving again changes nothing")
+	check_eq(sim.save.adaptation_points, 15, "applied once")
+	check_eq(session.respawn_after_death(), 5, "the respawn reports the loss")
+	check_eq(sim.save.adaptation_points, 15, "and takes nothing more")
+	var deaths := sim.save.lineage_history.filter(func(e: Dictionary) -> bool: return e.event == "died")
+	check_eq(deaths.size(), 1, "one death in the history")
+	check(not sim.dead and session.death.is_empty(), "alive, with no death pending")
+	check_eq(session.respawn_after_death(), 0, "a second respawn does nothing")
+
+
+func test_a_session_runs_the_threats_by_default_and_the_step_2_pool_without_species_data() -> void:
+	var session := GameSession.new(slot)
+	check(session.species != null and session.start_new("grazer", 10).ok, "started with the species data")
+	check(session.sim.creatures != null and session.sim.creatures.creatures.size() == 7, "seven creatures")
+	check(session.sim.is_sheltered(), "the new lineage starts sheltered")
+	var plain := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "")
+	check(plain.species == null and plain.continue_run().ok, "continued without species data")
+	check(plain.sim.creatures == null and not plain.sim.is_sheltered(), "the step 2 pool: no creatures, no shelter")
+
+
+func test_unusable_species_data_stops_a_new_lineage_and_a_continue() -> void:
+	check(GameSession.new(slot).start_new("grazer", 11).ok, "a save to continue")
+	var broken := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "res://tests/fixtures/no_such_species.json")
+	var r := broken.start_new("grazer", 11)
+	check(not r.ok and broken.sim == null, "no new lineage")
+	check_has_error(r.errors, "missing or not readable")
+	var c := broken.continue_run()
+	check(not c.ok and broken.sim == null, "no continue")
+	check_has_error(c.errors, "missing or not readable")
 
 
 func test_starting_needs_a_known_body_and_picks_a_seed_when_none_is_given() -> void:
