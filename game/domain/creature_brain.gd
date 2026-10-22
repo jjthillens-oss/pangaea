@@ -27,8 +27,9 @@ extends RefCounted
 ## - Hooks: on_hurt() for every landed hit on it; on_strike_landed() and on_blocked() during a strike;
 ##   on_target_gone() when a body it may remember dies, is removed or is concealed; forget() and
 ##   force_return() at the player's respawn.
-## - The token: before a think, set the player percept's "engageable"; after a think or a hook, read
-##   is_engaged_with().
+## - The token: before a think, set "engageable" on the player's percept and on its entry in `seen`
+##   (decisions read the remembered entry, which may be older than the token's last change); after a
+##   think or a hook, read is_engaged_with().
 
 const TICKS_PER_SECOND := 60
 const DT := 1.0 / 60.0

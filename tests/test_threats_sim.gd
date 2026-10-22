@@ -156,7 +156,7 @@ func _begin_tell(sim: PoolSim, c: CreatureField.Creature) -> void:
 		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
 	c.brain.engaged_tick = sim.tick
 	CreatureBrain.begin_tell(c.brain, sim.creatures.self_view_of(c), sim.tick)
-	sim.creatures.update_token(c)
+	sim.creatures.update_token(c, sim.tick)
 
 
 ## How far the cell's center is from where the creature's strike would be allowed now: the nearest
@@ -431,7 +431,7 @@ func _engage(sim: PoolSim, c: CreatureField.Creature) -> void:
 		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
 	CreatureBrain._notice(c.brain, PLAYER, "sight", sim.tick)
 	CreatureBrain._chase(c.brain, sim.creatures.self_view_of(c), CreatureBrain.PURSUE, sim.tick, true)
-	sim.creatures.update_token(c)
+	sim.creatures.update_token(c, sim.tick)
 	sim.drain_events()
 
 

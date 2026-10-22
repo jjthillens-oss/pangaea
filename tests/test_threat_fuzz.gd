@@ -17,7 +17,8 @@ extends TestCase
 ##     rest or the creature's own hit); every notice within notice plus give-up
 ##  7  no stall: 150 ticks in chase/pursue, wander/* or forage/seek (toward one goal) move the
 ##     creature 0.25 m
-##  8  at most one creature engaged (chase or attack) on the cell
+##  8  at most one creature engaged (chase or attack) on the cell, and the token list within its limit
+##     and holding every engaged creature
 ##  9  a creature that first targets the cell sensed it on that tick (CreatureSenses, from the bodies
 ##     before the step) or was hurt by it within its memory
 ## 10  health and energy within range, for the cell and every creature
@@ -200,6 +201,13 @@ func _check_bodies(sim: PoolSim, where: String) -> void:
 			live[c.role] = int(live.get(c.role, 0)) + 1
 	if engaged.size() > 1:
 		_fail(8, "%s: %s all engaged on the cell" % [where, engaged])
+	# The token list itself: within its limit, and holding every creature engaged on the cell.
+	var token := sim.creatures.engaged_on_player
+	if token.size() > int(species.fairness.max_engaged_on_player):
+		_fail(8, "%s: the token list holds %s" % [where, token])
+	for id in engaged:
+		if not token.has(id):
+			_fail(8, "%s: %s is engaged on the cell without the token (%s)" % [where, id, token])
 	for role in sim.region.niches:
 		var niche: Dictionary = sim.region.niches[role]
 		if int(niche.count) != int(live.get(role, 0)) or int(niche.count) > int(niche.cap):
