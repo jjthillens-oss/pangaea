@@ -70,7 +70,7 @@ PLANKTON_MESH_RADIUS = 0.185
 PLANKTON_HALF_HEIGHT = 0.1
 CARRION_MESH_RADIUS = 0.31
 
-# Parts: how far each part sinks into the body at its attachment point.
+# Parts. PART_EMBED is how far each part sinks into the body behind its attachment point.
 PART_EMBED = 0.03
 FILTER_RIM_RADIUS = 0.12
 JAW_HINGE = (0.075, 0.035)
