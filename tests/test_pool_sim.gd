@@ -19,6 +19,8 @@ const LATE_RUN_POINTS := 2
 const LATE_RUN_POINT_SPACING_M := 10.0
 const LATE_RUN_MISSES_ALLOWED := 1
 const APPROACH_M := 4.0       ## a cell swimming at food starts this far away
+const SHORT_CARRION_LIFETIME_S := 1.0
+const LONE_CARRION_AT := Vector2(8.0, 0.0)   ## clear of the fixture zone and its plankton
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -367,6 +369,73 @@ func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() 
 	check_eq(_events_of(sim.drain_events(), "respawned").size(), 1, "respawned reported")
 
 
+## A dead cell skips feeding (tick order): food in front of it stays put and earns nothing while
+## the death notice is up.
+func test_a_cell_that_dies_facing_food_eats_none_of_it() -> void:
+	var sims: Array[PoolSim] = []
+	for i in 2:
+		var sim := _sim("grazer", 51)
+		var food := _lonely_plant(sim, "z_n")
+		check(not food.is_empty() and _beside(sim, food, 0.0), "grazer placed facing plankton")
+		sim.debug_set_energy(0.0)
+		sim.drain_events()
+		sims.append(sim)
+	var living := sims[0]
+	living.step(SimIntent.new())
+	check_eq(_events_of(living.drain_events(), "ate").size(), 1, "a starving cell placed there eats on the first tick")
+	var dying := sims[1]
+	var food_id: String = _lonely_plant(dying, "z_n").id
+	dying.state.health = ActorState.STARVATION_DAMAGE * DT   # one tick of starving left
+	var points := dying.save.adaptation_points
+	dying.step(SimIntent.new())
+	check(dying.dead, "it died on the first tick")
+	var meals := _events_of(dying.drain_events(), "ate").size()
+	for i in 60:
+		dying.step(SimIntent.new())
+		meals += _events_of(dying.drain_events(), "ate").size()
+	check_eq(meals, 0, "a dead cell eats nothing")
+	check(not _item(dying, food_id).is_empty(), "the food is still there")
+	check_eq(dying.stats.plankton_eaten, 0, "nothing counted as eaten")
+	check_eq(dying.state.energy, 0.0, "no energy gained")
+	check_eq(dying.save.adaptation_points, points, "no points earned")
+
+
+## Ecology runs before feeding (tick order), so carrion that rots on a tick is gone before the
+## cell can bite it on that tick.
+func test_carrion_that_rots_on_a_tick_cannot_be_eaten_on_that_tick() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE))
+	data.carrion.lifetime_s = SHORT_CARRION_LIFETIME_S
+	data.carrion.initial = [[LONE_CARRION_AT.x, LONE_CARRION_AT.y]]
+	var short_lived := PoolLayout.from_dict(data)
+	check(short_lived.validate().is_empty(), "a valid pool with one short-lived carrion")
+	# The tick it rots on, seen from a cell that leaves it alone.
+	var watch := _sim("hunter", 63, short_lived)
+	var rot_tick := -1
+	for i in roundi(SHORT_CARRION_LIFETIME_S / DT) + 60:
+		watch.step(SimIntent.new())
+		if not _events_of(watch.drain_events(), "carrion_expired").is_empty():
+			rot_tick = i
+			break
+	check(rot_tick > 0, "it rots on tick %d" % rot_tick)
+	for hungry_on in [rot_tick - 1, rot_tick]:
+		var sim := _sim("hunter", 63, short_lived)
+		var food: Dictionary = sim.carrion.items[0] if sim.carrion.items.size() == 1 else {}
+		check(not food.is_empty() and _beside(sim, food, 0.0), "hunter placed facing the carrion")
+		for i in hungry_on:
+			sim.debug_set_energy(sim.state.energy_capacity)   # full: it refuses the carrion
+			sim.step(SimIntent.new())
+		sim.debug_set_energy(sim.state.energy_capacity * 0.5)
+		sim.drain_events()
+		sim.step(SimIntent.new())
+		var events := sim.drain_events()
+		var ate := _events_of(events, "ate")
+		if hungry_on < rot_tick:
+			check(ate.size() == 1 and ate[0].food_id == food.id, "hungry the tick before it rots, it eats it: %s" % [events])
+		else:
+			check(ate.is_empty(), "hungry on the tick it rots, it eats nothing: %s" % [events])
+			check_eq(_events_of(events, "carrion_expired").size(), 1, "it rotted on that tick")
+
+
 ## Starving events follow every change of the starving state as it happens, so a consumer driven
 ## by them alone agrees with is_starving(), across a death and respawn too.
 func test_starving_events_alternate_across_a_death_and_respawn() -> void:
@@ -549,7 +618,15 @@ func test_survival_points_come_from_stepped_time_and_reset_on_respawn() -> void:
 	check(earned.all(func(e: Dictionary) -> bool: return e.reason == "survival" and e.points == 1), "for survival")
 	check_eq(sim.stats.points_survival, 2, "counted as survival points")
 	check_near(sim.alive_s, 61.0, 1e-9, "alive time is sim time")
-	check_eq(sim.save.adaptation_points, 2, "time that is not stepped earns nothing")
+	# Reading the sim as a scene does every frame is not time passing.
+	var alive := sim.alive_s
+	var before := sim.snapshot()
+	for i in 600:
+		sim.drain_events()
+		sim.snapshot()
+		sim.nearest_edible()
+	check_eq(sim.alive_s, alive, "time that is not stepped is not alive time")
+	check_eq(sim.snapshot(), before, "and earns nothing and changes nothing")
 	sim.respawn_player()
 	check_eq(sim.alive_s, 0.0, "timer reset on respawn")
 	for i in 29 * 60:
