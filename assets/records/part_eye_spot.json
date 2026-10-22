@@ -2,34 +2,52 @@
   "id": "part_eye_spot",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 eye spot part (sight): an orange pigment dome with a dark lens on a short stalk.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 eye spot part (sight): a glossy amber eye with a dark lens in a coral cup on a short stalk, under a rust petal lid.",
   "category": "part",
   "source_blend": "assets/source/blender/part_eye_spot.blend",
-  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/part_eye_spot.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.118,
-    "y_forward": 0.18,
-    "z_up": 0.118
+    "y_forward": 0.206,
+    "z_up": 0.119
   },
-  "triangles": 288,
+  "triangles": 1256,
   "triangle_budget": 1500,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_PartEyeSpot_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_PartEyeSpot_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    }
+  ],
   "materials": [
-    "M_EyeSpotLens",
-    "M_EyeSpotPigment",
-    "M_EyeSpotStalk"
+    "M_PartEyeSpot"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
-    "EyeSpot"
+    "EyeSpot",
+    "EyeSpotLid"
   ],
   "part_type": "eye_spot",
   "attachment": {
@@ -37,5 +55,5 @@
     "outward_axis": "Blender +Y (Godot -Z)",
     "embed_m": 0.03
   },
-  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

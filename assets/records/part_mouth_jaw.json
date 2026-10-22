@@ -2,27 +2,45 @@
   "id": "part_mouth_jaw",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 jaw mouth part (eats carrion): twin dark mandibles on a collar.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 jaw mouth part (eats carrion): twin serrated chitin mandibles on hinges, threat-pink at the gum, on a coral collar.",
   "category": "part",
   "source_blend": "assets/source/blender/part_mouth_jaw.blend",
-  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/part_mouth_jaw.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.3,
-    "y_forward": 0.265,
+    "x": 0.311,
+    "y_forward": 0.27,
     "z_up": 0.2
   },
-  "triangles": 508,
+  "triangles": 1084,
   "triangle_budget": 1500,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_PartMouthJaw_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_PartMouthJaw_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    }
+  ],
   "materials": [
-    "M_JawCollar",
-    "M_JawMandible"
+    "M_PartMouthJaw"
   ],
   "rig_family": null,
   "animations": [],
@@ -38,5 +56,5 @@
     "outward_axis": "Blender +Y (Godot -Z)",
     "embed_m": 0.03
   },
-  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
