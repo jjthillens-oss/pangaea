@@ -7,6 +7,7 @@ const ENV_PATH := "res://game/scenes/pool/pool_environment.tres"
 const POOL_SCENE := "res://game/scenes/pool/pool.tscn"
 const FLOOR_MATERIAL := "res://assets/export/M_PoolFloor.tres"
 const FLOOR_RECORD := "res://assets/records/pool_floor.json"
+const LAYOUT_PATH := "res://game/data/pool_m1.json"
 const HABITAT_MAX_SATURATION := 0.55    ## docs/art/ART_DIRECTION.md section 3 (HSL)
 
 
@@ -115,7 +116,13 @@ func test_the_pool_keeps_one_shadowed_key_light_and_no_costly_screen_effects() -
 		check_eq(lights[0].type, "DirectionalLight3D", "a directional key light")
 		check(lights[0].get("shadow_enabled", false), "that casts shadows")
 		check_eq(lights[0].get("directional_shadow_mode", 2), DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS, "in two splits")
-		check_near(float(lights[0].get("directional_shadow_max_distance", 100.0)), 40.0, 1e-6, "out to 40 m")
+		var reach := float(lights[0].get("directional_shadow_max_distance", 100.0))
+		check_near(reach, 40.0, 1e-6, "out to 40 m")
+		# The sharper first split must reach the cell at the widest zoom plus the look-ahead, or
+		# its shadow turns to stair steps as the player zooms out.
+		var camera: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(LAYOUT_PATH)).get("camera", {})
+		var cell_m := float(camera.get("zoom_max", 0.0)) + float(camera.get("look_ahead_max", 0.0))
+		check(float(lights[0].get("directional_shadow_split_1", 0.1)) * reach >= cell_m, "the first shadow split reaches the cell at %.1f m" % cell_m)
 	var env := _env()
 	for key in ["ssr_enabled", "ssao_enabled", "ssil_enabled", "sdfgi_enabled", "volumetric_fog_enabled"]:
 		check(not env.get(key), "%s is off" % key)
