@@ -344,7 +344,7 @@ func test_a_zone_drained_again_before_half_capacity_reports_empty_only_once() ->
 func test_carrion_spawns_never_draw_from_the_region_rng() -> void:
 	var region := layout.build_region(9)
 	var field := _field(region)
-	var carrion := CarrionField.create(layout.carrion, 10)
+	var carrion := CarrionField.create(_supply_on(), 10)
 	carrion.place_initial(arena)
 	var before := region.rng.state
 	for i in 60 * 60:
@@ -356,3 +356,11 @@ func test_carrion_spawns_never_draw_from_the_region_rng() -> void:
 			interim += 1
 	check(interim >= 3, "the interim supply did spawn (%d)" % interim)
 	check(field.items.size() == 61, "plankton untouched")
+
+
+## The real carrion data with the interim supply switched back on (the real data turns it off
+## since M1 step 3; the supply itself stays, so its tests run it).
+func _supply_on() -> Dictionary:
+	var data := layout.carrion.duplicate(true)
+	data.interim_supply.enabled = true
+	return data

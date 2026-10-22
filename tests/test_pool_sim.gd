@@ -10,17 +10,6 @@ const FIXTURE := "res://tests/fixtures/pool_test_small.json"
 const DT := PoolSim.DT
 const SPEED_EPSILON := 0.01   ## m/s
 const STEP_COST_LIMIT_US := 1000.0
-## Late-run hunter recovery (test_a_hunter_starving_late_in_a_run_still_finds_carrion explains the
-## numbers): the hunter starts starving this long after the initial carrion has rotted (at the
-## data's lifetime_s).
-const LATE_RUN_AFTER_ROT_S := 5.0
-const LATE_RUN_SEEDS := [101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
-	116, 117, 118, 119, 120]
-const LATE_RUN_RIM_POINTS := 6
-const LATE_RUN_POINTS := 3
-const LATE_RUN_POINT_SPACING_M := 10.0
-const LATE_RUN_MISSES_ALLOWED := 6
-const LATE_RUN_ROTTED_ALLOWED := 10
 const APPROACH_M := 4.0       ## a cell swimming at food starts this far away
 const SHORT_CARRION_LIFETIME_S := 1.0
 const LONE_CARRION_AT := Vector2(8.0, 0.0)   ## clear of the fixture zone and its plankton
@@ -84,88 +73,6 @@ func _lonely_plant(sim: PoolSim, zone_id: String, room: float = 2.0) -> Dictiona
 		if alone:
 			return item
 	return {}
-
-
-## The `count` open points furthest (walking) from any zone, each at least `spacing` m from the
-## ones already picked. Ties go to the lower grid index, so the choice is stable.
-func _furthest_points(grid: ReachGrid, to_food: PackedFloat32Array, count: int, spacing: float) -> Array[Vector2]:
-	var order: Array[int] = []
-	for i in grid.open.size():
-		if grid.open[i] == 1 and is_finite(to_food[i]):
-			order.append(i)
-	order.sort_custom(func(a: int, b: int) -> bool: return to_food[a] > to_food[b] if to_food[a] != to_food[b] else a < b)
-	var picked: Array[Vector2] = []
-	for i in order:
-		var p: Vector2 = grid.point(i)
-		if picked.all(func(q: Vector2) -> bool: return p.distance_to(q) >= spacing):
-			picked.append(p)
-			if picked.size() == count:
-				break
-	return picked
-
-
-## The `count` rim points with the least carrion in reach of a starving hunter. The candidates are
-## the LATE_RUN_RIM_POINTS furthest points (the bays between the outer zones), which are all about
-## 14.3 m from a zone, so walking distance cannot rank them. The interim supply drops carrion into
-## zones in proportion to their capacity, so they are ranked by the zone capacity within `reach`
-## m of them. Ties keep the order the candidates were found in.
-func _hardest_points(grid: ReachGrid, to_food: PackedFloat32Array, count: int, spacing: float, reach: float) -> Array[Vector2]:
-	var candidates := _furthest_points(grid, to_food, LATE_RUN_RIM_POINTS, spacing)
-	var in_reach: Array[float] = []
-	for p in candidates:
-		in_reach.append(_capacity_in_reach(grid, p, reach))
-	var order: Array[int] = []
-	order.assign(range(candidates.size()))
-	order.sort_custom(func(a: int, b: int) -> bool: return in_reach[a] < in_reach[b] if in_reach[a] != in_reach[b] else a < b)
-	var picked: Array[Vector2] = []
-	for i in order.slice(0, count):
-		picked.append(candidates[i])
-	return picked
-
-
-## Zone capacity within `reach` m (walking) of `p`. Carrion lands anywhere in a zone, so each zone
-## counts in proportion to the share of its open points in reach.
-func _capacity_in_reach(grid: ReachGrid, p: Vector2, reach: float) -> float:
-	var from_p := grid.distances_from(PackedInt32Array([grid.index_near(p)]), reach)
-	var total := 0.0
-	for z in layout.zones:
-		var inside := grid.points_in_circle(z.center, z.radius)
-		var near := 0
-		for i in inside:
-			if from_p[i] <= reach:
-				near += 1
-		total += z.capacity * near / float(inside.size())
-	return total
-
-
-## Lets the world run for `seconds` while the cell rests where it is, kept full so it never
-## starves and never eats (a full cell refuses food).
-func _wait_full(sim: PoolSim, seconds: float) -> void:
-	var bot = ForageBot.new()
-	bot.park_at = sim.motion.position
-	for i in roundi(seconds / DT):
-		if i % 60 == 0:
-			sim.debug_set_energy(sim.state.energy_capacity)
-		sim.step(bot.next_intent(sim))
-	sim.drain_events()
-
-
-## The same carrion as _wait_full in a small fraction of the time: runs only the carrion field, as
-## step() runs it, and moves the sim clock on to match. While the cell rests and eats nothing, the
-## carrion reads only the clock, its own RNG, the zones and the rocks. The late-run test checks
-## that the two agree. The rest of the world stays where it started.
-func _age_carrion(sim: PoolSim, seconds: float) -> void:
-	for i in roundi(seconds / DT):
-		sim.carrion.tick(DT, sim.now(), sim.region, sim.arena)
-		sim.tick += 1
-	sim.carrion.events.clear()
-
-
-## The carrion part of a snapshot.
-func _carrion_state(sim: PoolSim) -> Dictionary:
-	var all := sim.snapshot()
-	return {"tick": all.tick, "carrion": all.carrion, "next": all.carrion_next, "rng": all.carrion_rng,
-		"next_supply_at": all.next_supply_at}
 
 
 ## Puts the cell `dist` from a plankton item with the item at `relative_angle` from its heading.
@@ -364,68 +271,6 @@ func test_a_starving_hunter_recovers_from_the_worst_point_in_the_pool() -> void:
 				break
 		check(ate and not sim.dead, "seed %d: the hunter found carrion before dying" % seed_value)
 		check(not sim.state.is_starving(), "seed %d: no longer starving" % seed_value)
-
-
-## After the initial carrion has rotted, only the interim supply feeds a hunter. A hunter that
-## starts starving then, at the rim points with the least carrion in reach, must still find
-## carrion, and the carrion it swims for must rarely rot before it gets there.
-##
-## The bounds are PROPOSED and come from 600 runs (seeds 1001-1200) at the same three points,
-## (-17, 31), (35.5, 0) and (17, 31) with this pool data, 5 s after the initial carrion rots:
-##   - this data: 3.3% starve and 8.3% lose the carrion they swim for to rot;
-##   - the rejected burst supply (interval_s 3 +/- 1, the rest unchanged): 5.8% and 28.8%.
-## Starving is too rare to tell those apart in 60 runs (the burst supply passes the starving bound
-## 94% of the time), so that bound catches large regressions: the earlier data (6 live, 90 s),
-## a cap of 6 and no supply all fail it. The rot bound tells them apart: a supply that fills up in
-## a burst also rots in a burst, right after the initial carrion, which is why the test runs then
-## (200 s is not measurably harder for this data: 4.2% starve there). Counting runs as
-## independent, this data passes both bounds about 99% of the time and the burst supply passes
-## the rot bound about 2% of the time. A change that only reshuffles the hunter's paths
-## (ForageBot, rocks, locomotion) therefore turns this red about once in 75 such changes: if it
-## fails, re-run it on other seeds before retuning carrion.interim_supply or lifetime_s in the
-## pool data, and do not loosen the bounds to make it pass.
-func test_a_hunter_starving_late_in_a_run_still_finds_carrion() -> void:
-	var grid := ReachGrid.new(layout, PoolLayout.CELL_RADIUS)
-	var to_food := grid.distances_from(grid.zone_points())
-	var first := _sim("hunter", LATE_RUN_SEEDS[0])
-	# How far a starving hunter swims before it dies.
-	var reach := first.phenotype.speed * ActorState.STARVING_SPEED * first.state.max_health / ActorState.STARVATION_DAMAGE
-	var points := _hardest_points(grid, to_food, LATE_RUN_POINTS, LATE_RUN_POINT_SPACING_M, reach)
-	check_eq(points.size(), LATE_RUN_POINTS, "hardest points found")
-	var late_s: float = layout.carrion.lifetime_s + LATE_RUN_AFTER_ROT_S
-	var whole := _sim("hunter", LATE_RUN_SEEDS[0])
-	_wait_full(whole, late_s)
-	check_eq(whole.stats.carrion_eaten, 0, "the resting cell ate nothing")
-	_age_carrion(first, late_s)
-	check_eq(_carrion_state(first), _carrion_state(whole), "running only the carrion leaves the carrion the whole pool does")
-	var misses: Array[String] = []
-	var rotted: Array[String] = []
-	for seed_value in LATE_RUN_SEEDS:
-		for p in points:
-			var sim := _sim("hunter", seed_value)
-			_age_carrion(sim, late_s)
-			check(sim.carrion.items.all(func(c: Dictionary) -> bool: return c.source != "initial"),
-				"seed %d: the initial carrion has rotted by %.0f s" % [seed_value, late_s])
-			check(sim.debug_teleport(p), "seed %d: hunter placed at %s" % [seed_value, p])
-			sim.debug_set_energy(0.0)
-			var bot = ForageBot.new()
-			var ate := false
-			var lost := false
-			for i in 25 * 60:
-				sim.step(bot.next_intent(sim))
-				for e in sim.drain_events():
-					ate = ate or e.type == "ate"
-					lost = lost or (e.type == "carrion_expired" and e.food_id == bot.target_id())
-				if ate or sim.dead:
-					break
-			if not ate or sim.dead:
-				misses.append("seed %d at %s" % [seed_value, p])
-			if lost:
-				rotted.append("seed %d at %s" % [seed_value, p])
-	var cases := LATE_RUN_SEEDS.size() * points.size()
-	check(misses.size() <= LATE_RUN_MISSES_ALLOWED, "starved before finding carrion in %d of %d: %s" % [misses.size(), cases, misses])
-	check(rotted.size() <= LATE_RUN_ROTTED_ALLOWED,
-		"the carrion it swam for rotted on the way in %d of %d: %s" % [rotted.size(), cases, rotted])
 
 
 ## The starving arrow points at the nearest food the body can eat (by distance, then id). At the
