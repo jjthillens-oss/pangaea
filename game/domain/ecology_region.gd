@@ -5,7 +5,9 @@ extends RefCounted
 ## many creatures of a role live here, so spawning follows the habitat, not the player.
 ## Seeded: the same seed gives the same placements.
 
-const REGROW_FLOOR := 0.05   ## share of capacity regrown per second even when a zone is empty
+## Extra regrowth per second, as a share of capacity times the zone's growth rate. It keeps an
+## emptied zone recovering (pure logistic growth would stay at zero).
+const REGROW_FLOOR := 0.05
 
 ## [{"id", "center": Vector2, "radius", "capacity", "growth_rate", "amount"}]
 var zones: Array[Dictionary] = []
@@ -20,8 +22,12 @@ static func create(seed: int) -> EcologyRegion:
 	return region
 
 
-func add_zone(id: String, center: Vector2, radius: float, capacity: float, growth_rate: float) -> void:
+## Returns false (and adds nothing) for a repeated id or a zone that could never hold or regrow food.
+func add_zone(id: String, center: Vector2, radius: float, capacity: float, growth_rate: float) -> bool:
+	if not zone(id).is_empty() or not (radius > 0.0 and capacity > 0.0 and growth_rate > 0.0):
+		return false
 	zones.append({"id": id, "center": center, "radius": radius, "capacity": capacity, "growth_rate": growth_rate, "amount": capacity})
+	return true
 
 
 func zone(id: String) -> Dictionary:
@@ -41,7 +47,7 @@ func tick(dt: float) -> void:
 ## Takes up to `amount` from a zone. Returns what was actually taken (never below zero).
 func take(zone_id: String, amount: float) -> float:
 	var z := zone(zone_id)
-	if z.is_empty():
+	if z.is_empty() or not is_finite(amount) or amount <= 0.0:
 		return 0.0
 	var taken := minf(amount, z.amount)
 	z.amount -= taken
@@ -49,8 +55,11 @@ func take(zone_id: String, amount: float) -> float:
 
 
 ## A spawn point inside the zone, deterministic for the region's seed.
+## Returns Vector2.INF for an unknown zone, without using up a random draw.
 func random_point_in(zone_id: String) -> Vector2:
 	var z := zone(zone_id)
+	if z.is_empty():
+		return Vector2.INF
 	var angle := rng.randf() * TAU
 	var dist := sqrt(rng.randf()) * float(z.radius)
 	return z.center + Vector2.from_angle(angle) * dist

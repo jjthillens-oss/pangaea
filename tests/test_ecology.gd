@@ -30,13 +30,33 @@ func test_an_emptied_zone_regrows_to_capacity_and_no_further() -> void:
 
 
 func test_growth_is_fastest_at_half_capacity() -> void:
-	var low := _region()
-	low.take("shallows", 95.0)
-	var mid := _region()
-	mid.take("shallows", 50.0)
-	low.tick(0.1)
-	mid.tick(0.1)
-	check(mid.zone("shallows").amount - 50.0 > low.zone("shallows").amount - 5.0, "logistic growth")
+	var gains := {}
+	for fill in [5.0, 50.0, 95.0]:
+		var region := _region()
+		region.take("shallows", 100.0 - fill)
+		region.tick(0.1)
+		gains[fill] = region.zone("shallows").amount - fill
+	check(gains[50.0] > gains[5.0], "faster at half than nearly empty")
+	check(gains[50.0] > gains[95.0], "faster at half than nearly full (not plain exponential growth)")
+
+
+func test_zones_that_could_never_feed_are_refused() -> void:
+	var region := _region()
+	check(not region.add_zone("dead", Vector2.ZERO, 3.0, 0.0, 0.2), "zero capacity")
+	check(not region.add_zone("frozen", Vector2.ZERO, 3.0, 50.0, 0.0), "no growth")
+	check(not region.add_zone("dot", Vector2.ZERO, 0.0, 50.0, 0.2), "no area")
+	check(not region.add_zone("shallows", Vector2.ZERO, 3.0, 50.0, 0.2), "repeated id")
+	check_eq(region.zones.size(), 1, "nothing added")
+	check_eq(region.take("shallows", NAN), 0.0, "NaN request takes nothing")
+	check_eq(region.take("shallows", -5.0), 0.0, "negative request takes nothing")
+	check_near(region.zone("shallows").amount, 100.0, 0.0001, "zone untouched")
+
+
+func test_unknown_zone_spawn_point_uses_no_random_draw() -> void:
+	var a := _region(11)
+	var b := _region(11)
+	check_eq(a.random_point_in("nowhere"), Vector2.INF, "unknown zone")
+	check(a.random_point_in("shallows").is_equal_approx(b.random_point_in("shallows")), "sequence unchanged")
 
 
 func test_same_seed_gives_same_spawn_points() -> void:

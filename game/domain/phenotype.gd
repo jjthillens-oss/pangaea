@@ -4,8 +4,9 @@ extends RefCounted
 ## the editor preview, the HUD and gameplay all read these numbers.
 ##
 ## Rules: each part type adds its effects; every further copy adds diminishing_factor times the
-## previous copy's share; mass slows speed and acceleration; stats are capped. Directional parts
-## keep their angle so interactions can check facing.
+## previous copy's share (copies are ranked largest first, so part order never matters); upkeep
+## and mass are paid in full for every copy; mass slows speed and acceleration; stats are capped.
+## Directional parts keep their angle so interactions can check facing.
 
 var speed: float = 0.0          ## m/s at full health and energy
 var acceleration: float = 0.0   ## m/s^2
@@ -19,9 +20,12 @@ var mass: float = 1.0
 var radius: float = 0.5         ## m
 var defense: float = 0.0        ## share of incoming damage blocked, 0..cap
 var bite_damage: float = 0.0
-var ram_damage: float = 0.0     ## per spike hit
+var ram_damage: float = 0.0     ## all spikes hitting at once; a real ram uses only the spikes facing the target
+## When several spikes hit at once, each further one (strongest first) adds this share of the previous.
+var spike_stacking: float = 1.0
 var diets: PackedStringArray = []
 ## Facing data for interactions: [{"type", "angle", "arc"}] with angles in radians, 0 = front.
+## Mouths also carry "diet"; spikes also carry "damage" (that spike's own ram damage at its size).
 var mouths: Array[Dictionary] = []
 var spikes: Array[Dictionary] = []
 
@@ -29,26 +33,23 @@ var spikes: Array[Dictionary] = []
 static func derive(genome: Genome, catalog: PartCatalog) -> Phenotype:
 	var p := Phenotype.new()
 	var sums := {}
-	var copies := {}
-	for part in genome.parts:
+	for part in _ranked_parts(genome, catalog):
 		var type_id: String = part["type"]
-		if not catalog.has_part(type_id):
-			continue
-		var n: int = copies.get(type_id, 0)
-		copies[type_id] = n + 1
-		var share := pow(catalog.diminishing_factor, n) * float(part.get("scale", 1.0))
+		var scale := float(part.get("scale", 1.0))
+		var share := pow(catalog.diminishing_factor, int(part["rank"])) * scale
 		var def: Dictionary = catalog.parts[type_id]
 		for stat in def["effects"]:
 			# Costs (upkeep, mass) are paid in full for every copy; only benefits diminish.
 			var full_cost: bool = stat == "upkeep" or stat == "mass"
-			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (float(part.get("scale", 1.0)) if full_cost else share)
+			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (scale if full_cost else share)
 		var arc := deg_to_rad(def["arc_deg"])
 		if def["category"] == "mouth":
 			p.mouths.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "diet": def["diet"]})
 			if not p.diets.has(def["diet"]):
 				p.diets.append(def["diet"])
 		elif type_id == "spike":
-			p.spikes.append({"type": type_id, "angle": float(part["angle"]), "arc": arc})
+			var damage: float = def["effects"].get("ram_damage", 0.0) * scale
+			p.spikes.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "damage": damage})
 
 	p.mass = catalog.base("mass", 1.0) + sums.get("mass", 0.0)
 	p.radius = catalog.base("radius", 0.5)
@@ -62,8 +63,30 @@ static func derive(genome: Genome, catalog: PartCatalog) -> Phenotype:
 	p.sight = _cap(catalog, "sight", catalog.base("sight") + sums.get("sight", 0.0))
 	p.defense = _cap(catalog, "defense", sums.get("defense", 0.0))
 	p.bite_damage = sums.get("bite_damage", 0.0)
-	p.ram_damage = sums.get("ram_damage", 0.0) / maxf(1.0, p.spikes.size())
+	p.ram_damage = sums.get("ram_damage", 0.0)
+	p.spike_stacking = catalog.diminishing_factor
 	return p
+
+
+## Known parts, each with "rank": its position among parts of the same type, largest first.
+## Ranking by size (then id) keeps the stats independent of the order parts were added in.
+static func _ranked_parts(genome: Genome, catalog: PartCatalog) -> Array[Dictionary]:
+	var by_type := {}
+	for part in genome.parts:
+		if catalog.has_part(str(part.get("type", ""))):
+			by_type.get_or_add(part["type"], []).append(part)
+	var ranked: Array[Dictionary] = []
+	for type_id in by_type:
+		var group: Array = by_type[type_id]
+		group.sort_custom(func(a, b):
+			var sa := float(a.get("scale", 1.0))
+			var sb := float(b.get("scale", 1.0))
+			return sa > sb if sa != sb else str(a.get("id", "")) < str(b.get("id", "")))
+		for i in group.size():
+			var entry: Dictionary = group[i].duplicate()
+			entry["rank"] = i
+			ranked.append(entry)
+	return ranked
 
 
 static func _cap(catalog: PartCatalog, stat: String, value: float) -> float:

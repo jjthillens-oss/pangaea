@@ -6,6 +6,7 @@ extends RefCounted
 
 const REPRODUCE_ENERGY_SHARE := 0.7   ## energy needed, as a share of capacity
 const DEATH_POINT_LOSS := 0.25        ## approved 2026-10-22: unspent points drop by a quarter
+const SURVIVAL_INTERVAL := 30.0       ## seconds alive per survival point (PROPOSED)
 
 
 ## Starts a new lineage with one of the catalog's starting bodies (approved 2026-10-22: grazer,
@@ -32,10 +33,16 @@ static func can_reproduce(state: ActorState) -> Dictionary:
 
 
 ## Commits the session into the save as the next generation. Returns {"ok", "errors"}.
-## Nothing in the save changes unless the commit succeeds.
-static func reproduce(save: SaveGame, session: EditorSession) -> Dictionary:
+## Refused, with nothing in the save changed, when the actor cannot reproduce, the session is for
+## another genome, or the session's points no longer match the save (for example after a death).
+static func reproduce(save: SaveGame, session: EditorSession, state: ActorState) -> Dictionary:
+	var gate := can_reproduce(state)
+	if not gate.ok:
+		return {"ok": false, "errors": PackedStringArray(["Cannot reproduce: %s." % gate.reason])}
 	if session.original.genome_id != save.genome.genome_id:
 		return {"ok": false, "errors": PackedStringArray(["Editor session is for a different genome."])}
+	if session.available_points != save.adaptation_points:
+		return {"ok": false, "errors": PackedStringArray(["Editor session is out of date: points changed since it opened."])}
 	var result := session.commit()
 	if not result.ok:
 		return {"ok": false, "errors": result.errors}
@@ -50,6 +57,22 @@ static func reproduce(save: SaveGame, session: EditorSession) -> Dictionary:
 		"part_count": child.parts.size(),
 	})
 	return {"ok": true, "errors": PackedStringArray()}
+
+
+## Adaptation points earned by staying alive from `alive_before` to `alive_after` seconds
+## (one point per SURVIVAL_INTERVAL crossed). Eating earns the food's own points.
+static func survival_points(alive_before: float, alive_after: float) -> int:
+	if not (is_finite(alive_before) and is_finite(alive_after)) or alive_after <= alive_before:
+		return 0
+	return maxi(0, floori(alive_after / SURVIVAL_INTERVAL) - floori(maxf(alive_before, 0.0) / SURVIVAL_INTERVAL))
+
+
+## Adds earned points to the save. Returns the points added (negative or bad amounts add nothing).
+static func earn(save: SaveGame, points: int) -> int:
+	if points <= 0:
+		return 0
+	save.adaptation_points += points
+	return points
 
 
 ## Applies the death rule and records it. Returns the points lost.

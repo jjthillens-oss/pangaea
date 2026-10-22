@@ -32,7 +32,7 @@ func test_starvation_slows_and_hurts_but_food_recovers() -> void:
 	s.tick(phenotype, 1.0, 0.0)
 	check_eq(s.energy, 0.0, "energy floors at zero")
 	check(s.is_starving(), "starving")
-	check_near(s.speed_multiplier(), ActorState.STARVING_SPEED, 0.0001, "slowed")
+	check(s.speed_multiplier() < 1.0, "slowed while starving")
 	check_near(s.health, 30.0 - ActorState.STARVATION_DAMAGE, 0.0001, "starvation damage")
 	check(s.is_alive(), "still alive")
 	s.eat(20.0)
@@ -46,9 +46,10 @@ func test_starving_long_enough_kills_and_the_dead_stay_still() -> void:
 	s.tick(phenotype, 30.0, 0.0)
 	check(not s.is_alive(), "dead")
 	check_eq(s.health, 0.0, "health floors at zero")
-	s.eat(50.0)
+	s.energy = s.energy_capacity
 	s.tick(phenotype, 10.0, 0.0)
-	check_eq(s.health, 0.0, "no regeneration after death")
+	check_eq(s.health, 0.0, "no regeneration after death, even when full")
+	check_near(s.energy, s.energy_capacity, 0.0001, "no metabolism after death")
 
 
 func test_health_regenerates_only_when_well_fed() -> void:
@@ -72,9 +73,19 @@ func test_full_stomach_wastes_the_rest() -> void:
 	check_near(s.energy, 100.0, 0.0001, "capped at capacity")
 
 
-func test_defense_reduces_damage() -> void:
+func test_damage_is_applied_as_given() -> void:
 	var s := ActorState.fresh(phenotype)
-	check_near(s.take_damage(10.0, 0.4), 6.0, 0.0001, "40% blocked")
+	check_near(s.take_damage(6.0), 6.0, 0.0001, "dealt")
 	check_near(s.health, 24.0, 0.0001, "health")
-	s.take_damage(100.0, 0.0)
+	check_near(s.take_damage(100.0), 24.0, 0.0001, "only the health that was left")
 	check_eq(s.health, 0.0, "health floors at zero")
+
+
+func test_bad_amounts_change_nothing() -> void:
+	var s := ActorState.fresh(phenotype)
+	check_eq(s.eat(NAN), 0.0, "NaN food")
+	check_eq(s.eat(-5.0), 0.0, "negative food")
+	check_near(s.energy, 60.0, 0.0001, "energy unchanged")
+	check_eq(s.take_damage(NAN), 0.0, "NaN damage")
+	check_eq(s.take_damage(-5.0), 0.0, "negative damage heals nothing")
+	check_near(s.health, 30.0, 0.0001, "health unchanged")

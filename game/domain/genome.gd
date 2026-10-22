@@ -74,7 +74,7 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 		if not (angle is float or angle is int) or not is_finite(angle) or absf(angle) > PI + 0.0001:
 			errors.append("Part '%s' has an angle outside -PI..PI." % part_id)
 		var scale = part.get("scale")
-		if not (scale is float or scale is int) or scale < catalog.min_scale or scale > catalog.max_scale:
+		if not (scale is float or scale is int) or not is_finite(scale) or scale < catalog.min_scale or scale > catalog.max_scale:
 			errors.append("Part '%s' has a scale outside %.2f..%.2f." % [part_id, catalog.min_scale, catalog.max_scale])
 	for type_id in counts:
 		if counts[type_id] > catalog.max_count_of(type_id):
@@ -105,9 +105,10 @@ static func from_dict(data: Dictionary) -> Genome:
 	genome.genome_id = str(data.get("genome_id", ""))
 	genome.lineage_id = str(data.get("lineage_id", ""))
 	genome.parent_genome_id = str(data.get("parent_genome_id", ""))
-	genome.generation = int(data.get("generation", 0))
-	genome.appearance = Dictionary(data.get("appearance", {})).duplicate(true)
-	for part in data.get("parts", []):
-		genome.parts.append(Dictionary(part).duplicate(true))
-	genome.next_part_number = int(data.get("next_part_number", genome.parts.size() + 1))
+	genome.generation = JsonValues.whole(data.get("generation"), 0)
+	genome.appearance = JsonValues.dict(data.get("appearance"))
+	for part in JsonValues.array(data.get("parts")):
+		# A malformed entry is kept as an id-less part so validate() reports it; never dropped.
+		genome.parts.append(part if part is Dictionary else {"id": "", "type": "", "raw": part})
+	genome.next_part_number = JsonValues.whole(data.get("next_part_number"), genome.parts.size() + 1)
 	return genome

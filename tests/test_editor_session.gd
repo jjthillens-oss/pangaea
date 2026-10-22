@@ -82,6 +82,11 @@ func test_refused_edits_change_nothing() -> void:
 	var s := _session()
 	var before := _snapshot(s.working)
 	check_eq(s.add_part("shell_plate", 1.0).reason, "shell_plate is not available yet", "locked part")
+	check_eq(s.add_part("toxin_gland", 1.0).reason, "toxin_gland is not available yet", "locked part")
+	check_eq(s.add_part("eye_spot", 0.5, NAN).reason, "size out of range", "NaN size")
+	check_eq(s.add_part("eye_spot", NAN).reason, "bad position", "NaN position")
+	check_eq(s.scale_part(tail_id, NAN).reason, "size out of range", "NaN rescale")
+	check_eq(s.move_part(tail_id, INF).reason, "bad position", "infinite move")
 	check_eq(s.add_part("mouth_filter", 0.5).reason, "limit of 1 reached", "per-type limit")
 	check_eq(s.add_part("eye_spot", 0.5, 3.0).reason, "size out of range", "too big")
 	check_eq(s.scale_part(tail_id, 0.1).reason, "size out of range", "too small")
@@ -140,3 +145,21 @@ func test_failed_commit_keeps_the_original_and_points() -> void:
 	check(not invalid.ok, "no mouth")
 	check_has_error(invalid.errors, "mouth")
 	check_eq(_snapshot(genome), before, "original untouched")
+
+
+func test_exactly_six_parts_are_in_the_editor() -> void:
+	var available := []
+	for type_id in catalog.parts:
+		if catalog.in_editor(type_id):
+			available.append(type_id)
+	available.sort()
+	check_eq(available, ["cilia", "eye_spot", "flagellum", "mouth_filter", "mouth_jaw", "spike"], "approved M1 editor parts")
+
+
+func test_exactly_enough_points_is_enough() -> void:
+	var s := _session(15)
+	s.add_part("flagellum", 2.6)
+	check(s.preview().affordable, "affordable at exactly the cost")
+	var result := s.commit()
+	check(result.ok, "commit: %s" % [result.errors])
+	check_eq(result.points_left, 0, "nothing left")

@@ -52,13 +52,18 @@ func tick(p: Phenotype, dt: float, distance_m: float) -> void:
 
 ## Returns the energy actually absorbed (a full stomach wastes the rest).
 func eat(amount: float) -> float:
+	if not is_finite(amount) or amount <= 0.0:
+		return 0.0
 	var absorbed := minf(amount, energy_capacity - energy)
 	energy += absorbed
 	return absorbed
 
 
-## Returns the damage actually taken after defense.
-func take_damage(amount: float, defense: float) -> float:
-	var dealt := amount * (1.0 - clampf(defense, 0.0, 0.95))
-	health = maxf(0.0, health - dealt)
+## Applies damage as given (InteractionResolver has already applied the target's defense).
+## Returns the health actually lost.
+func take_damage(amount: float) -> float:
+	if not is_finite(amount) or amount <= 0.0:
+		return 0.0
+	var dealt := minf(amount, health)
+	health -= dealt
 	return dealt

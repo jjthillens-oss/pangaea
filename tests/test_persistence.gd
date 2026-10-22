@@ -1,7 +1,8 @@
 extends TestCase
 
-const DIR := "user://test_saves"
-const PATH := DIR + "/slot.json"
+## Per-process folder so two test runs at once cannot touch each other's files.
+var DIR := "user://test_saves_%d" % OS.get_process_id()
+var PATH := DIR + "/slot.json"
 
 var catalog: PartCatalog
 var service: PersistenceService
@@ -23,6 +24,7 @@ func _clear() -> void:
 		return
 	for f in DirAccess.get_files_at(DIR):
 		DirAccess.remove_absolute(DIR + "/" + f)
+	DirAccess.remove_absolute(DIR)
 
 
 func _new_save() -> SaveGame:
@@ -188,3 +190,22 @@ func test_adaptation_points_round_trip() -> void:
 	check(result.ok, "loads")
 	if result.ok:
 		check_eq(result.save.adaptation_points, 37, "points kept")
+
+
+func test_wrong_types_in_a_save_fail_cleanly_and_fall_back_to_the_backup() -> void:
+	var save := _new_save()
+	save.adaptation_points = 12
+	service.save_to(PATH, save)
+	service.save_to(PATH, save)
+	var data := save.to_dict()
+	data["adaptation_points"] = null
+	data["lineage_history"] = "oops"
+	data["player"] = 7
+	data["genome"]["parts"] = null
+	_write_raw(PATH, JSON.stringify(data))
+	var result := service.load_from(PATH)
+	check(result.ok, "backup loads: %s" % [result.errors])
+	check_eq(result.source, "backup", "from the backup")
+	check_has_error(result.errors, "must not be negative")
+	if result.ok:
+		check_eq(result.save.adaptation_points, 12, "backup points")

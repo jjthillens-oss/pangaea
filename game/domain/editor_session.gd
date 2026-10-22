@@ -37,6 +37,10 @@ func _checkpoint() -> void:
 	_redo.clear()
 
 
+func _scale_ok(scale: float) -> bool:
+	return is_finite(scale) and scale >= catalog.min_scale and scale <= catalog.max_scale
+
+
 func _find(part_id: String) -> Dictionary:
 	for part in working.parts:
 		if part.id == part_id:
@@ -51,8 +55,10 @@ func add_part(type_id: String, angle: float, scale: float = 1.0) -> Dictionary:
 		return _no("limit of %d reached" % catalog.max_count_of(type_id))
 	if working.parts.size() >= catalog.max_parts:
 		return _no("no free part slots")
-	if scale < catalog.min_scale or scale > catalog.max_scale:
+	if not _scale_ok(scale):
 		return _no("size out of range")
+	if not is_finite(angle):
+		return _no("bad position")
 	_checkpoint()
 	var part_id := working.add_part(type_id, wrapf(angle, -PI, PI), scale)
 	return _ok({"part_id": part_id})
@@ -70,15 +76,17 @@ func move_part(part_id: String, angle: float) -> Dictionary:
 	var part := _find(part_id)
 	if part.is_empty():
 		return _no("no such part")
+	if not is_finite(angle):
+		return _no("bad position")
 	_checkpoint()
-	_find(part_id).angle = wrapf(angle, -PI, PI)
+	part.angle = wrapf(angle, -PI, PI)
 	return _ok()
 
 
 func scale_part(part_id: String, scale: float) -> Dictionary:
 	if _find(part_id).is_empty():
 		return _no("no such part")
-	if scale < catalog.min_scale or scale > catalog.max_scale:
+	if not _scale_ok(scale):
 		return _no("size out of range")
 	_checkpoint()
 	_find(part_id).scale = scale

@@ -81,3 +81,24 @@ func test_loading_keeps_invalid_parts_for_validation_to_report() -> void:
 	var loaded := Genome.from_dict(data)
 	check_eq(loaded.parts.size(), 3, "no part is silently dropped")
 	check_has_error(loaded.validate(catalog), "retired_part")
+
+
+func test_non_finite_scale_is_rejected() -> void:
+	var genome := Genome.create(StableId.generate("lineage"))
+	genome.add_part("mouth_filter", 0.0)
+	genome.add_part("eye_spot", 0.5, NAN)
+	check_has_error(genome.validate(PartCatalog.load_from()), "scale outside")
+
+
+func test_malformed_parts_are_kept_for_validation_to_report() -> void:
+	var catalog := PartCatalog.load_from()
+	var data := {"genome_id": StableId.generate("genome"), "lineage_id": StableId.generate("lineage"), "generation": 1,
+		"parts": [{"id": "part_1", "type": "mouth_filter", "angle": 0.0, "scale": 1.0}, "not a part"], "next_part_number": 3}
+	var genome := Genome.from_dict(data)
+	check_eq(genome.parts.size(), 2, "malformed entry kept, not dropped")
+	check_has_error(genome.validate(catalog), "missing or repeated")
+	data["parts"] = null
+	data["generation"] = null
+	var empty := Genome.from_dict(data)
+	check_eq(empty.parts.size(), 0, "null parts load as none")
+	check_has_error(empty.validate(catalog), "Generation must be 1 or higher")

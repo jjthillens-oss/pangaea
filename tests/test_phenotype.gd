@@ -51,11 +51,31 @@ func test_extra_mass_slows_the_same_propulsion() -> void:
 	check(heavy.move_cost > light.move_cost, "moving a heavier body costs more")
 
 
-func test_scale_multiplies_the_benefit() -> void:
+func test_scale_multiplies_the_benefit_and_the_cost() -> void:
 	var small := _derive([["mouth_filter", 0.0], ["eye_spot", 0.5, 0.5]])
 	var big := _derive([["mouth_filter", 0.0], ["eye_spot", 0.5, 2.0]])
 	check_near(small.sight, 6.0 + 1.5, 0.0001, "half size")
 	check_near(big.sight, 6.0 + 6.0, 0.0001, "double size")
+	check_near(small.upkeep, 0.55 + 0.05, 0.0001, "half size, half upkeep")
+	check_near(big.upkeep, 0.55 + 0.2, 0.0001, "double size, double upkeep")
+	check_near(big.mass - small.mass, 0.02 * 1.5, 0.0001, "mass scales too")
+	var spike := _derive([["mouth_filter", 0.0], ["spike", 0.0, 2.0]])
+	check_near(spike.spikes[0].damage, 12.0, 0.0001, "spike damage scales with size")
+
+
+func test_every_part_carries_a_cost() -> void:
+	for type_id in catalog.parts:
+		var effects: Dictionary = catalog.parts[type_id]["effects"]
+		check(effects.get("upkeep", 0.0) > 0.0, "%s has upkeep" % type_id)
+		check(effects.get("mass", 0.0) > 0.0, "%s has mass" % type_id)
+		check(catalog.cost_of(type_id) > 0, "%s costs points" % type_id)
+
+
+func test_part_order_does_not_change_stats() -> void:
+	var a := _derive([["mouth_filter", 0.0], ["eye_spot", 0.5, 2.0], ["eye_spot", -0.5, 0.5], ["spike", 0.0, 0.5], ["spike", PI, 1.5]])
+	var b := _derive([["spike", PI, 1.5], ["eye_spot", -0.5, 0.5], ["spike", 0.0, 0.5], ["eye_spot", 0.5, 2.0], ["mouth_filter", 0.0]])
+	check_eq(JSON.stringify(a.to_dict()), JSON.stringify(b.to_dict()), "same parts, same stats")
+	check_near(a.sight, 6.0 + 6.0 + 1.5 * 0.6, 0.0001, "largest copy counts in full")
 
 
 func test_stats_are_capped() -> void:
@@ -77,7 +97,9 @@ func test_directional_parts_keep_their_angles() -> void:
 	check_eq(p.spikes.size(), 2, "two spikes")
 	check_near(p.spikes[1].angle, PI, 0.0001, "rear spike angle")
 	check_near(p.bite_damage, 8.0, 0.0001, "bite")
-	check_near(p.ram_damage, (6.0 + 3.6) / 2.0, 0.0001, "ram damage is per spike, with diminishing returns")
+	check_near(p.ram_damage, 6.0 + 3.6, 0.0001, "both spikes together, with diminishing returns")
+	check_near(p.spikes[0].damage, 6.0, 0.0001, "each spike keeps its own full damage")
+	check_near(p.spike_stacking, 0.6, 0.0001, "stacking share for spikes hitting together")
 
 
 func test_omnivore_with_two_mouths_eats_both() -> void:
