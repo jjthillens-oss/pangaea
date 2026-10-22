@@ -7,8 +7,9 @@ code change; `tests/test_assets.gd` and `tests/test_part_placement.gd` check the
 
 Built by `tools/blender/make_m1_production.py` (shaders and baking in `tools/blender/surfacing.py`),
 review sheets by `tools/blender/render_production.py`, in-game frames by
-`tools/godot/capture_pool.gd`. The pool floor and pool lighting wait for engineering's lighting
-pass (fix2-look) and are still the blockout.
+`tools/godot/capture_pool.gd`. The pool lighting is engineering's (`game/scenes/pool/pool_look.gd`,
+DECISIONS "Pool lighting pass"); the floor's production pass keeps its geometry contract, vertex
+colours and lighting passes and adds detail on top.
 
 ## What each asset became
 
@@ -24,6 +25,7 @@ pass (fix2-look) and are still the blockout.
 | `creature_ambush_body` | Engineering's step 3 ambusher (flat dark mottled pebble, amber eyes, heavy brow) with a warty, pebbled hide, wet glowing eyes with fine grain and a wrinkled brow. Vertex-colour pattern, nodes, frame and M_AmbushEye unchanged. |
 | `creature_rammer_body` | Engineering's step 3 rammer (pale banded dome, crest, frowning lids) with leathery plates and pores, a veined crest membrane and keratin-streaked threat points. Bands, Hood pivot and frame unchanged. |
 | `part_spike` | The thorn with growth rings on its threat-coloured shaft, a knurled bone collar and a glossy dark point. Same length, attachment and reach. |
+| `pool_floor` | Engineering's bowl, sand, silt patches and grey stone rim lip (vertex colours, unchanged), with sand ripples from a CC0 normal map on `M_PoolFloor.tres` (tiled every 5 m), so the caustics catch on them. Reduced only where the silt still fades softly. |
 | `rock_a`, `rock_b`, `rock_c` | Cool stone with grain and height from a CC0 scan, algae on the lit tops, a wet band at the water line and warm mineral flecks. Swim-band outline contract unchanged. |
 
 ## Triangles and textures
@@ -44,6 +46,7 @@ is baked into the normal map.
 | `creature_ambush_body` | 3,264 (normals from a 6,000-triangle body) | 2,922 | 4000 | 1.5 mm body, 0.6 mm eyes and brow | Detail 1024, ORM 1024, Normal 1024 |
 | `creature_rammer_body` | 3,800 (normals from a 5,000-triangle body) | 3,428 | 4000 | 1.5 mm body, 0.6 mm eyes, lids and crest | Detail 1024, ORM 1024, Normal 1024 |
 | `part_spike` | 1,056 | 282 | 600 | 0.6 mm | Detail 512, ORM 512, Normal 512 |
+| `pool_floor` | 17,536 | 13,802 | 20000 | 5 mm | Normal 1024 (engine material, tiled) |
 | `rock_a` | 1,280 | 600 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
 | `rock_b` | 1,280 | 690 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
 | `rock_c` | 1,280 | 660 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
@@ -61,6 +64,7 @@ cilia are already thin, so it reduces least.
 
 | Source | License | Used for |
 | --- | --- | --- |
+| [Poly Haven, Aerial Beach 01](https://polyhaven.com/a/aerial_beach_01) (Rob Tuytel), 1k OpenGL normal map, kept in `assets/source/textures/cc0/polyhaven_aerial_beach_01/` | CC0 1.0 | Pool floor sand ripples (`assets/export/T_PoolFloor_Normal.png`) |
 | [Poly Haven, Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry) (Dimitrios Savva, Rico Cilliers), 1k diffuse and displacement, kept in `assets/source/textures/cc0/polyhaven_rock_boulder_dry/` | CC0 1.0 | Rock grain and height under the palette recolour |
 
 ## Known gaps
@@ -68,8 +72,6 @@ cilia are already thin, so it reduces least.
 - Judged in Blender's Cycles and in Godot's Compatibility renderer under a virtual display. A
   Forward+ frame on Joshua's RTX 5070 is still needed.
 - The cell's rig (idle, swim, eat, hurt, die) comes in M1 step 5; the M1 cell is animated in code.
-- The pool floor and lighting are still the blockout, so the in-game frames look flat around the
-  assets until engineering's lighting pass lands.
 - Textures come from Cycles bakes, so rebuilding can change a few noise values in them; geometry
   and contract values are deterministic.
 

@@ -786,7 +786,8 @@ func test_production_assets_carry_textures_and_log_every_outside_source() -> voi
 				check(String(dep.get("license", "")).begins_with("CC0"), "%s dependency %s is CC0" % [id, dep.get("asset")])
 				check(String(dep.get("source_url", "")).begins_with("https://"), "%s dependency %s has a source URL" % [id, dep.get("asset")])
 				check(DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("res://" + String(dep.get("path", "")))), "%s dependency %s is kept in the repo" % [id, dep.get("asset")])
-		# The imported scene has textured materials, not flat colours.
+		# The imported scene has textured materials, not flat colours: an albedo texture, or (the
+		# pool floor) vertex colours with a detail normal map.
 		var node := _load_scene("res://" + String(record.export_path))
 		if node == null:
 			check(false, "%s loads" % id)
@@ -794,5 +795,6 @@ func test_production_assets_carry_textures_and_log_every_outside_source() -> voi
 		for mi in _mesh_instances(node):
 			for s in mi.mesh.get_surface_count():
 				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
-				check(mat != null and mat.albedo_texture != null, "%s %s surface %d has an albedo texture" % [id, mi.name, s])
+				var textured := mat != null and (mat.albedo_texture != null or (mat.vertex_color_use_as_albedo and mat.normal_texture != null))
+				check(textured, "%s %s surface %d has an albedo texture, or vertex colours and a normal map" % [id, mi.name, s])
 		node.free()
