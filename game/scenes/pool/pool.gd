@@ -27,6 +27,11 @@ signal died(cause: String, reason: String)
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 const FADE_IN_S := 0.3
+## The shader warm-up under the fade draws on the camera's view axis this deep (m): in the frustum
+## at every zoom and inside the far plane, so it is really drawn, yet hidden behind opaque ground,
+## the floor today and the fluid's backdrop (y −40) once the floor goes. Occlusion culling is off;
+## turning it on would cull the hidden draw, nothing would compile, and this point must move.
+const WARM_UP_Y := -45.0
 const STARVE_PULSE_S := 1.0
 
 ## Pause when the window loses focus (Bible 19). Off for tools that render without focus.
@@ -140,14 +145,23 @@ func _build() -> void:
 
 
 ## A short fade from the water colour hides the first frames, while the eat burst and both food
-## meshes draw once, under the floor, so their shaders are ready before play.
+## meshes draw once out of sight (warm_up_point), so their shaders are ready before play.
 func _fade_in() -> void:
 	_fade.visible = true
 	_fade.modulate.a = 1.0
-	cell_view.warm_up([plankton_view.food_mesh(), carrion_view.food_mesh()] as Array[Mesh])
+	var hidden := warm_up_point(camera.global_transform)
+	cell_view.warm_up([plankton_view.food_mesh(), carrion_view.food_mesh()] as Array[Mesh], hidden)
 	var tween := _fade.create_tween()
 	tween.tween_property(_fade, "modulate:a", 0.0, FADE_IN_S)
 	tween.tween_callback(_fade.hide)
+
+
+## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at
+## WARM_UP_Y. It does not rely on the floor lying under the cell, only on something opaque lying
+## between the point and the camera.
+static func warm_up_point(view: Transform3D) -> Vector3:
+	var forward := -view.basis.z
+	return view.origin + forward * ((view.origin.y - WARM_UP_Y) / -forward.y)
 
 
 func _physics_process(_delta: float) -> void:
