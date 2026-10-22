@@ -254,7 +254,7 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 			_spikes.append(holder)
 			_spike_rest.append(holder.transform)
 		parts.add_child(holder)
-	# Bodies cast shadows; parts do not (plan section 20).
+	# Bodies cast shadows (all but the rammer's crest, in _find_pose_nodes); parts do not (plan section 20).
 	for node in parts.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_hurt_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -287,6 +287,9 @@ func _find_pose_nodes(body: Node3D) -> void:
 				_eye_material = material.duplicate() as StandardMaterial3D
 			eye.set_surface_override_material(0, _eye_material)
 	_hood = body.get_node_or_null(HOOD_PATH) as Node3D
+	# The crest is a thin blade: its shadow on the back reads as a dark hole, not as its shape.
+	if _hood is GeometryInstance3D:
+		(_hood as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_brow = body.get_node_or_null(BROW_PATH) as Node3D
 	_brow_rest = _brow.position if _brow != null else Vector3.ZERO
 

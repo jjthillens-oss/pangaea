@@ -519,6 +519,13 @@ func test_a_creature_view_builds_its_species_body_parts_and_its_own_eye_glow() -
 	check_eq(spikes.size(), 4, "four spike holders")
 	check(spikes.all(func(n: Node) -> bool: return n.get_child_count() == 1), "each with the spike model")
 	check(rammer.get_node_or_null("%Model/Body/Body/Hood") != null, "the rammer body with its crest")
+	# The thin crest's shadow read as a dark hole in the pale back; the bodies keep theirs.
+	var hood := rammer.get_node_or_null("%Model/Body/Body/Hood") as GeometryInstance3D
+	check(hood != null and hood.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the crest casts no shadow")
+	for view in [ambush, rammer]:
+		var body := view.get_node("%Model/Body/Body") as GeometryInstance3D
+		check(body.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "the %s body casts its shadow" % view.species_id)
+	check(ambush.get_node_or_null("%Model/Body/Body/Hood") == null, "an ambush body has no crest and builds without one")
 	var other := _creature_view("ambush_hunter")
 	other.show_brain(_memory_in(other, "attack", "tell"), 173, 1.0)
 	var eye := ambush.get_node("%Model/Body/Body/Eye_L") as MeshInstance3D
