@@ -33,9 +33,43 @@ Part costs, effects, diminishing returns (each further copy gives 60% of the pre
 ## 2026-10-22 · Spore files are not used (CONFIRMED)
 The owner offered to buy Spore and extract its files for formats. Declined: we do not need EA's formats, and reading data out of their files would risk Pangaea being treated as derived from them. Playing the game for design notes written in our own words is fine.
 
+## 2026-10-22 · Studio operating model (CONFIRMED)
+The owner set how the studio works:
+- The lead agent runs the project as a studio. Engineering, research and design, and art run as parallel threads.
+- Every commit is pushed right away (`git push -u origin HEAD`).
+- Research runs as a daily digest.
+- Changes to the vision or the scope still need the owner's approval.
+
+## 2026-10-22 · Minimum visual quality bar (CONFIRMED)
+The Steam store page of Spore (2008) is the minimum visual quality bar. Pangaea must reach at least that polish, but it never copies Spore's designs: no creature, part or interface design. Impact: the M1 step 2 blockouts are below this bar; they stay blockouts until the step 5 art pass.
+
+## 2026-10-22 · CC0 resources by default (CONFIRMED)
+Art may use CC0 resources by default, from sources such as Poly Haven and ambientCG. Each one used is logged in the record of the asset that uses it. Reason: CC0 puts no terms on the game.
+
+## 2026-10-22 · M1 step 2 decisions (PROPOSED)
+These came with the final step 2 plan (`docs/milestones/m1-step2-plan.md`, section 20) or were made during the build. They are built and tested, but the owner has not approved them yet. None changes the approved M1 goal. Numbers live in `game/data/pool_m1.json` and the constants at the top of each file.
+
+1. **Plane convention.** Plane point (x, y) is world (x, 0, y), so plane +y is world +Z, which is screen-down with the north-up camera. Heading 0 faces +X. Positive part angles are on the cell's right. `PlaneSpace` is the only mapping; the step 4 editor and mirroring must match it.
+2. **Full-stomach rule.** A cell refuses food ("not hungry", shown as "Full") when it has room for less than half the food's energy (`InteractionResolver.FEED_MIN_ROOM_SHARE` 0.5; 0 turns it off). Reason: refusing only at full capacity still let a full cell eat about one item a second, strip zones and farm points.
+3. **Survival points are live.** The step 1 rule (one point per 30 s alive, `Lineage.SURVIVAL_INTERVAL`) now pays in play. The timer restarts on respawn and on Continue. All points go through `Lineage.earn`.
+4. **Interim carrion.** Until step 3, carrion also appears by itself: three pieces at fixed points at the start, then one every 10 ± 3 s inside a zone (picked at random, weighted by plankton capacity) while fewer than 12 are live. Each piece rots after 120 s. `CarrionField.spawn()` is the only way carrion enters the world; step 3 kills call `spawn(victim_pos, "kill", victim_energy)`. Step 3 sets `interim_supply.enabled` to false so carrion comes only from kills; keeping a trickle after step 3 needs owner approval. Reason for 120 s / 12 / 10 ± 3 s (the plan had 90 s / 6 / 9 ± 3 s): a hunter starving from the rim right after the first carrion rotted missed food in a third of runs; now the worst measured rate is 5%. Impact: about 11 pieces are live when nobody eats, above the readability guide of about 8. A "spread" placement is proposed in `docs/milestones/M1.md`, not built.
+5. **Interim death handling.** On death, `Lineage.apply_death` takes a quarter of the unspent points and records the death; then the cell respawns at the layout spawn (the generation 1 start) with fresh energy and health. The world is kept. This applies the approved death rule at the only checkpoint step 2 has, until step 3 checkpoints. Quitting without saving after a death skips the penalty until step 4 autosave.
+6. **Energy, health and heading are not saved.** Continue gives 60% energy and full health, faces the nearest zone and restarts the world from its seed; the HUD says the cell rested. The save schema stays v2. Saving them would be schema v3, decided in step 4.
+7. **Dev tools only in a dev exe.** The debug panel, dev keys, gizmos, forage bot and perf tour live in `game/dev/` and load only when `OS.is_debug_build()` is true. The release export leaves out `game/dev/*`; CI also exports `Pangaea-dev.exe`. Reason: the Bible and the brief keep debug tools to development builds.
+8. **Main scene is `game/scenes/main.tscn`.** The M0 checks still run from `game/scenes/boot.tscn` by path (`tools/check.sh` does this).
+9. **Starving arrow.** While starving, an arrow points to the nearest food this body can eat. It is an assist for the forgiving preset, switched by `assists.starving_food_arrow` in the layout data.
+10. **Camera.** Pitch 55 degrees, vertical field of view 45 degrees, distance 14 m, zoom 10 to 20 m in 2 m steps, yaw fixed north-up, no shake or roll. This follows the approved brief (about 55 degrees, following the cell).
+11. **Pool floor is one vertex-coloured material.** `pool_floor` uses one material, `M_PoolFloor`, coloured per vertex so sand, silt and rim stone fade into each other. It replaces three materials assigned per face, whose silt patches had stair-step edges. The floor now reaches r 66 m (was 58), because the widest view from the wall reaches about r 64.9. Impact: the floor is one mesh surface with one material. Godot's glTF import leaves the vertex colours out of the material, so `pool_floor.glb.import` points the material at `assets/export/M_PoolFloor.tres`. The colours are stored sRGB-encoded, so other glTF viewers show the floor lighter than the game does.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
 - Difficulty presets beyond M1's single forgiving preset.
 - Final era names and boundaries (working names approved for now).
 - Git LFS for large `.blend` sources.
+
+## Open decisions (from M1 step 2)
+- Interim carrion density: keep about 11 live pieces, or add the "spread" placement now.
+- Whether energy and health are saved (schema v3), in step 4.
+- A rule for eye spots above about scale 1.2, which reach into the sample cell's baked eyes, before the step 4 editor.
+- A console wrapper for `Pangaea-dev.exe` (needs the console templates in the toolchain setup and CI).
