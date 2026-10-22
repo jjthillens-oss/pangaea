@@ -36,7 +36,7 @@ var _away := {}              ## {"from": Vector2, "until": tick}
 
 
 ## The intent for the coming tick. `events` are the ones the sim reported since the last call (they
-## happened on tick sim.tick - 1).
+## happened on tick sim.tick - 1, unless an event names its own "tick").
 func next_intent(sim: PoolSim, events: Array) -> SimIntent:
 	_observe(sim.tick - 1, events)
 	if sim.dead:
@@ -79,10 +79,11 @@ func _observe(tick: int, events: Array) -> void:
 				if e.get("target", "") != PLAYER_ID:
 					continue
 				var lane: Dictionary = e.lane
+				var at := int(e.get("tick", tick))
 				_threat = {"id": e.id, "heading": float(lane.heading), "origin": lane.origin,
-					"react_at": tick + reaction_ticks, "dir": Vector2.ZERO}
+					"react_at": at + reaction_ticks, "dir": Vector2.ZERO}
 				_away = {}
-				tell_tick = tick
+				tell_tick = at
 				tells_seen += 1
 			"creature_recovered", "tell_cancelled", "dodged":
 				if _threat.is_empty() or e.get("id", "") != _threat.id:

@@ -565,6 +565,71 @@ func test_the_evade_bot_stops_dodging_once_the_creature_telling_at_it_is_gone() 
 	check(not bot.is_dodging(), "and stopped once it was gone")
 
 
+func test_the_forage_bot_minding_threats_passes_over_food_by_a_creature_steers_clear_and_dodges_a_tell() -> void:
+	# ForageBot's avoid_threats (plan section 16), which the smoke phases use. Food: the nearer meat
+	# lies 4 m from a rammer, the farther one 14 m.
+	var sim := _sim("hunter", 83, STRIKE_ORIGIN - Vector2(10.0, 0.0), PI)
+	var near: Dictionary = sim.carrion.spawn(STRIKE_ORIGIN - Vector2(6.0, 0.0), "debug")
+	var far: Dictionary = sim.carrion.spawn(STRIKE_ORIGIN - Vector2(16.0, 0.0), "debug")
+	_creature(sim, "rammer", STRIKE_ORIGIN - Vector2(2.0, 0.0), PI)
+	var plain = ForageBot.new()
+	plain.next_intent(sim)
+	check_eq(plain.target_id(), near.id, "without avoid_threats it swims for the nearer meat")
+	var wary = ForageBot.new()
+	wary.avoid_threats = true
+	wary.next_intent(sim)
+	check_eq(wary.target_id(), far.id, "minding threats it passes over the meat beside the rammer")
+
+	# Parked, with a creature 3 m east: pushed west, half the way from THREAT_AVOID_M times the gain.
+	var calm := _sim("grazer", 84, STRIKE_ORIGIN, 0.0)
+	_creature(calm, "rammer", STRIKE_ORIGIN + Vector2(3.0, 0.0), PI)
+	var parked = ForageBot.new()
+	parked.park_at = STRIKE_ORIGIN
+	check_eq(parked.next_intent(calm).move, Vector2.ZERO, "parked and not minding threats it holds still")
+	parked.avoid_threats = true
+	var away: Vector2 = parked.next_intent(calm).move
+	check(away.x < -0.99 and absf(away.y) < 1e-6, "minding threats it swims straight away west (%s)" % away)
+
+	# A lunge at it: the EvadeBot reaction, 0.4 s after the tell, perpendicular to the lane; it misses.
+	var lunge := _sim("grazer", 85, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0)
+	var c := _creature(lunge, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	_begin_tell(lunge, c)
+	var tell_tick := lunge.tick
+	var bot = ForageBot.new()
+	bot.avoid_threats = true
+	bot.park_at = lunge.motion.position
+	var events: Array[Dictionary] = []
+	var dodge := Vector2.ZERO
+	for i in 200:
+		var intent: SimIntent = bot.next_intent(lunge)
+		if lunge.tick == tell_tick + EvadeBot.REACTION_TICKS:
+			dodge = intent.move
+		lunge.step(intent)
+		events.append_array(lunge.drain_events())
+	check(bot.evade != null and bot.evade.tells_seen == 1, "it saw the tell")
+	check_eq(bot.evade.reacted_at if bot.evade != null else -1, tell_tick + EvadeBot.REACTION_TICKS, "and reacted 24 ticks after it")
+	check(absf(dodge.dot(Vector2.RIGHT)) < 1e-3 and dodge.length() > 0.99, "sideways to the lane, at full throttle (%s)" % dodge)
+	var recovered := _of(events, "creature_recovered")
+	check(not recovered.is_empty() and recovered[0].outcome == "missed", "the lunge missed")
+	check(_of(events, "hit").is_empty(), "and nothing hit the cell")
+
+
+func test_the_forage_bot_minding_threats_feeds_a_grazer_in_the_real_pool_for_two_minutes_untouched() -> void:
+	# The smoke phases' driver, in the real pool with every site filled: it eats and is never hit.
+	var sim := _sim("grazer", 4242, Vector2.INF, 0.0, layout, species)
+	check_eq(sim.creatures.creatures.size(), 7, "every site filled")
+	var bot = ForageBot.new()
+	bot.avoid_threats = true
+	var events := _run(sim, 120 * 60, func(s: PoolSim) -> SimIntent: return bot.next_intent(s))
+	var hits := _of(events, "hit").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+	var meals := _of(events, "ate").size()
+	var noticed := _of(events, "creature_noticed").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+	print("test-threats-wary-forage: %d meals, %d notices, %d hits, dead %s" % [meals, noticed.size(), hits.size(), sim.dead])
+	check(meals >= 10, "it ate (%d meals)" % meals)
+	check(hits.is_empty(), "nothing hit it")
+	check(not sim.dead, "and it lived")
+
+
 # --- combat both ways (plan threats_sim #9-13) ---
 
 func test_a_hunter_cell_kills_a_rammer_in_five_bites_and_its_carcass_feeds_the_cell_the_next_tick() -> void:
