@@ -17,8 +17,9 @@ Running the project starts the game (`game/scenes/main.tscn`): a start screen, t
 
 ```bash
 tools/setup_toolchain.sh --templates   # Linux: pinned Godot + Windows templates
-tools/check.sh                         # import, tests, M0 boot check, launch run, play smoke, error-log gate
+tools/check.sh                         # import, tests, M0 boot check, launch run, play smoke, error-log gate, release pack
 tools/export_windows.sh                # builds/windows/Pangaea.exe and Pangaea-dev.exe
+tools/check_release.sh                 # start the release pack, without game/dev (check.sh runs it too)
 ```
 
 On Windows, open `project.godot` in Godot 4.7.2. CI builds the Windows executables for every pull request and every push to `main`; download them from the run's artifacts. `Pangaea.exe` is the game; `Pangaea-dev.exe` adds the debug panel (F3), dev keys and the perf tour.

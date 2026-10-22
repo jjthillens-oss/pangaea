@@ -16,11 +16,13 @@ const VSYNC_NAMES := {
 
 var main: Node
 ## The latest shown values by name: build_id, genome_id, lineage_id, world_seed, slot, tick,
-## fps, draw_calls, adapter, driver, vsync, energy, position, and so on.
+## fps, longest_frame_ms, draw_calls, adapter, driver, vsync, energy, position, and so on.
 var fields := {}
 
 var _refresh_t := 0.0
+## Wall-clock frame times in ms, as in perf_tour.gd (the process delta caps a stall near 150 ms).
 var _frame_ms := PackedFloat32Array()
+var _last_frame_usec := -1
 var _zone_rows := {}                 ## zone id -> {"bar": ProgressBar, "text": Label}
 var _zones_sim: PoolSim              ## the sim the zone rows were built for
 
@@ -113,9 +115,12 @@ func refresh() -> void:
 
 
 func _process(delta: float) -> void:
-	_frame_ms.append(delta * 1000.0)
-	if _frame_ms.size() > FRAME_WINDOW:
-		_frame_ms.remove_at(0)
+	var now := Time.get_ticks_usec()
+	if _last_frame_usec >= 0:
+		_frame_ms.append((now - _last_frame_usec) / 1000.0)
+		if _frame_ms.size() > FRAME_WINDOW:
+			_frame_ms.remove_at(0)
+	_last_frame_usec = now
 	if not visible:
 		return
 	_refresh_t -= delta
@@ -175,6 +180,7 @@ func _render_lines() -> PackedStringArray:
 		worst = maxf(worst, ms)
 	var fps := Engine.get_frames_per_second()
 	fields.fps = fps
+	fields.longest_frame_ms = worst
 	fields.draw_calls = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	fields.adapter = "%s (%s)" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor()]
 	fields.driver = "%s, %s" % [RenderingServer.get_current_rendering_driver_name(), RenderingServer.get_current_rendering_method()]

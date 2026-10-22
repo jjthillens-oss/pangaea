@@ -32,6 +32,9 @@ const PITCH_DEG := 55.0
 const HUD_LAG_FRAMES := 8           ## HUD labels refresh at 10 Hz (6 frames), plus slack
 const RUN_FRAMES := 10              ## frames watched to see the sim stand still or run
 const FADE_SLACK_FRAMES := 2        ## the pool's fade-in may still show this long after FADE_IN_S
+## A deliberate stall: the debug panel must show it at its wall-clock length, not the ~150 ms
+## the engine's delta caps it at (here, under --fixed-fps, delta is always one tick).
+const STALL_MS := 400
 const BAR_STEP := 0.01              ## the HUD bars round their value to this step
 ## Points before the death, so the death rule's quarter of them takes at least 1.
 const POINTS_BEFORE_DEATH := 4
@@ -267,7 +270,8 @@ func _check_view_record(run: String) -> void:
 	_check(_view.hud_worst_lag <= HUD_LAG_FRAMES, "the HUD energy text never lagged the sim by more than %d frames in %s (%d)" % [HUD_LAG_FRAMES, run, _view.hud_worst_lag])
 
 
-## F3 opens the debug panel, which names the genome and the world seed.
+## F3 opens the debug panel, which names the genome and the world seed, and shows a stalled
+## frame as its longest.
 func _check_debug_panel(sim: PoolSim) -> void:
 	var panel: CanvasLayer = main.debug_panel
 	_check(panel != null and main.dev_layer != null, "the debug build has the dev layer and debug panel")
@@ -279,6 +283,12 @@ func _check_debug_panel(sim: PoolSim) -> void:
 	var identity := (panel.get_node("%Identity") as Label).text
 	_check(identity.contains("Genome %s" % sim.save.genome.genome_id) and identity.contains("World seed %d" % sim.save.world_seed),
 		"the debug panel names genome %s and world seed %d" % [sim.save.genome.genome_id, sim.save.world_seed])
+	OS.delay_msec(STALL_MS)
+	await _frames(2)
+	panel.call("refresh")
+	var longest: float = panel.get("fields").get("longest_frame_ms", 0.0)
+	_check(longest >= STALL_MS * 0.95 and longest < STALL_MS * 2.0,
+		"the debug panel shows a %d ms stall as its longest frame (%.1f ms)" % [STALL_MS, longest])
 	await _press(&"toggle_debug")
 	_check(not panel.visible, "F3 hides it again")
 
