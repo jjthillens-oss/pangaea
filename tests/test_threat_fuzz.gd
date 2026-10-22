@@ -15,7 +15,8 @@ extends TestCase
 ##  5  every creature's hit lands inside its own strike or glide, at most one per strike
 ##  6  every chase ends within give-up plus one attack cycle of its start (a notice, a chase from
 ##     rest or the creature's own hit); every notice within notice plus give-up
-##  7  no stall: 150 ticks in chase/pursue, wander/* or forage/seek move the creature 0.25 m
+##  7  no stall: 150 ticks in chase/pursue, wander/* or forage/seek (toward one goal) move the
+##     creature 0.25 m
 ##  8  at most one creature engaged (chase or attack) on the cell
 ##  9  a creature that first targets the cell sensed it on that tick (CreatureSenses, from the bodies
 ##     before the step) or was hurt by it within its memory
@@ -259,10 +260,13 @@ func _check_engagement(c: CreatureField.Creature, t: int, where: String, was: St
 			_fail(6, "%s: %s noticing %d ticks (bound %d)" % [where, c.id, noticed, notice_bound])
 
 
-## Invariant 7: the same phase visit (state, phase and its start) for STALL_TICKS moves the creature.
-## Each creature's last STALL_TICKS + 1 positions are kept in a ring.
+## Invariant 7: one leg (the same phase visit, by its start tick, and the same goal, by the tick it
+## was set) for STALL_TICKS moves the creature. A new goal starts a new leg like a new phase does: a
+## patrol that times out and turns back for another point is not a stall, while a meal drifting
+## under the same goal is the same leg. Each creature's last STALL_TICKS + 1 positions are kept in a
+## ring.
 func _check_stall(c: CreatureField.Creature, t: int, where: String, label: String, k: Dictionary) -> void:
-	var visit := "%s@%d" % [label, c.brain.phase_tick]
+	var visit := "%s@%d/%d" % [label, c.brain.phase_tick, c.brain.goal_tick]
 	if str(k.visit.get(c.id, "")) != visit:
 		k.visit[c.id] = visit
 		k.label_since[c.id] = t
