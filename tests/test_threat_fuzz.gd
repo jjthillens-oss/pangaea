@@ -22,7 +22,9 @@ extends TestCase
 ##  8  at most one creature engaged (chase or attack) on the cell, and the token list within its limit
 ##     and holding every engaged creature
 ##  9  a creature that first targets the cell sensed it on that tick (CreatureSenses, from the bodies
-##     before the step) or was hurt by it within its memory
+##     before the step) or was hurt by it within its memory; and on every tick, whatever the creature
+##     is doing, any change to its memory of the cell is a percept its senses give from where it
+##     looked before the step (the same sense, position and velocity) or a hurt by the cell then
 ## 10  health and energy within range, for the cell and every creature
 ## 11  each niche counts exactly its live data creatures, within its cap
 
@@ -57,6 +59,8 @@ const MIN_TELLS := 10
 const MIN_GIVE_UPS := 3
 const MIN_HITS_ON_CELL := 1
 const MIN_FLEES := 1
+## Invariant 9's floor: changed memories of the cell checked over the four seeds (3333 measured).
+const MIN_MEMORY_CHECKS := 2000
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -72,12 +76,13 @@ func before_each() -> void:
 
 
 func test_kiting_round_the_real_creatures_for_four_minutes_breaks_no_fairness_or_physics_rule_on_any_tick() -> void:
-	var totals := {"tells": 0, "strikes": 0, "hits_on_cell": 0, "give_ups": 0, "flees": 0}
+	var totals := {"tells": 0, "strikes": 0, "hits_on_cell": 0, "give_ups": 0, "flees": 0, "memory_checks": 0}
 	for i in SEEDS.size():
 		var counts := _fuzz(SEEDS[i], BODIES[i], STARTS[i])
 		print("test-threat-fuzz: seed %d (%s): %d tells, %d strikes, %d hits on the cell, %d by the cell, %d give-ups, %d flees, %d notices, %d cell deaths, %d creature deaths, %d visits; strikes up to %.3f m from their lanes' origins" % [
 			SEEDS[i], BODIES[i], counts.tells, counts.strikes, counts.hits_on_cell, counts.hits_by_cell, counts.give_ups,
 			counts.flees, counts.notices, counts.deaths, counts.creature_deaths, counts.visits, counts.drift])
+		print("test-threat-fuzz: seed %d: %d changed memories of the cell checked against the senses" % [SEEDS[i], counts.memory_checks])
 		for key in totals.keys():
 			totals[key] += int(counts[key])
 	for inv in range(1, 12):
@@ -87,6 +92,40 @@ func test_kiting_round_the_real_creatures_for_four_minutes_breaks_no_fairness_or
 	check(totals.give_ups >= MIN_GIVE_UPS, "at least %d give-ups (%d)" % [MIN_GIVE_UPS, totals.give_ups])
 	check(totals.hits_on_cell >= MIN_HITS_ON_CELL, "at least %d hit on the cell (%d)" % [MIN_HITS_ON_CELL, totals.hits_on_cell])
 	check(totals.flees >= MIN_FLEES, "at least %d flee (%d)" % [MIN_FLEES, totals.flees])
+	check(totals.memory_checks >= MIN_MEMORY_CHECKS, "at least %d memories of the cell checked (%d)" % [MIN_MEMORY_CHECKS, totals.memory_checks])
+
+
+func test_invariant_9_fails_a_memory_of_the_cell_that_its_senses_did_not_give() -> void:
+	# Invariant 9's check on memories made up for the lair_se hunter at home: what its senses give
+	# passes; a percept from behind it, one 1 cm off the cell, an old one moved, or pain with no hit
+	# fails.
+	var r := Lineage.found(SEEDS[0], "test+dev", catalog, "hunter")
+	r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+	var sim := PoolSim.create(r.save, catalog, layout, species)
+	var c: CreatureField.Creature = sim.creatures.creatures[0]
+	var looked := {"target": "", "position": c.motion.position, "heading": c.motion.heading, "memory": {}}
+	var ahead: Vector2 = c.motion.position + Vector2.from_angle(c.motion.heading) * 3.0
+	var behind: Vector2 = c.motion.position - Vector2.from_angle(c.motion.heading) * 3.0
+	var t := sim.tick + 100
+	var cases := [   # [what, the cell at, remembered at, by, remembered tick, hurt by the cell at, fails]
+		["seen ahead, as its senses give it", ahead, ahead, "sight", t, -1, false],
+		["seen behind it, outside its field of view", behind, behind, "sight", t, -1, true],
+		["seen ahead 1 cm off where the cell is", ahead, ahead + Vector2(0.01, 0.0), "sight", t, -1, true],
+		["an older percept moved onto the cell", ahead, ahead, "sight", t - 5, -1, true],
+		["pain with no hit by the cell", behind, behind, "pain", t, -1, true],
+		["pain from the cell's hit on this tick", behind, behind, "pain", t, t, false],
+	]
+	for case in cases:
+		_bad = {}
+		var cell := {"id": CreatureField.PLAYER_ID, "species": SpeciesCatalog.PLAYER_SPECIES, "position": case[1],
+			"velocity": Vector2.ZERO, "radius": sim.phenotype.radius, "alive": true, "concealed": false, "engageable": true}
+		c.brain.seen[CreatureField.PLAYER_ID] = {"position": case[2], "velocity": Vector2.ZERO, "tick": case[4], "by": case[3],
+			"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
+		var k := {"hurt_by_cell": {c.id: case[5]}, "memory_checks": 0}
+		_check_memory(c, t, "self-test", looked, cell, sim.arena, k)
+		check_eq(_bad.has(9), case[6], "%s: %s" % [case[0], "fails" if case[6] else "passes"])
+		check_eq(k.memory_checks, 1, "%s: counted" % case[0])
+	_bad = {}
 
 
 ## One seed's run, the cell starting at `start` (the checkpoint when not finite). Returns its event
@@ -101,10 +140,11 @@ func _fuzz(seed_value: int, body: String, start: Vector2) -> Dictionary:
 	sim.drain_events()
 	var bot = KiterBot.new(seed_value)
 	var counts := {"tells": 0, "strikes": 0, "hits_on_cell": 0, "hits_by_cell": 0, "give_ups": 0, "flees": 0,
-		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0, "drift": 0.0}
+		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0, "drift": 0.0, "memory_checks": 0}
 	var k := {
 		"tell_at": {}, "tell_since": {}, "striking": {}, "strike_hits": {}, "engaged_from": {}, "noticed_at": {},
 		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {}, "lane": {}, "strike_lane": {},
+		"memory_checks": 0,
 	}
 	var dead_since := -1
 	for i in RUN_TICKS:
@@ -124,16 +164,18 @@ func _fuzz(seed_value: int, body: String, start: Vector2) -> Dictionary:
 		_check_bodies(sim, where)
 		_check_creatures(sim, t, where, before, k)
 	counts.visits = bot.visits
+	counts.memory_checks = k.memory_checks
 	return counts
 
 
-## What invariant 9 needs from before the step: each creature's target and where it looked from, and
-## the cell's body as creatures may perceive it.
+## What invariant 9 needs from before the step: each creature's target, where it looked from and
+## what it remembered of the cell, and the cell's body as creatures may perceive it.
 func _before(sim: PoolSim) -> Dictionary:
 	var looks := {}
 	for c in sim.creatures.creatures:
 		if c.brain != null:
-			looks[c.id] = {"target": c.brain.target, "position": c.motion.position, "heading": c.motion.heading}
+			looks[c.id] = {"target": c.brain.target, "position": c.motion.position, "heading": c.motion.heading,
+				"memory": _sensed_part(c.brain.seen.get(CreatureField.PLAYER_ID, {}))}
 	var cell := {"id": CreatureField.PLAYER_ID, "species": SpeciesCatalog.PLAYER_SPECIES, "position": sim.motion.position,
 		"velocity": sim.motion.velocity, "radius": sim.phenotype.radius, "alive": not sim.dead,
 		"concealed": sim.dev_hidden or sim.tick < sim.grace_until, "engageable": true}
@@ -285,6 +327,9 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		var looked: Dictionary = before.looks.get(c.id, {})
 		if b.target == CreatureField.PLAYER_ID and not looked.is_empty() and looked.target != CreatureField.PLAYER_ID:
 			_check_sensed(c, t, where, looked, before.cell, sim.arena, k)
+		var memory := _sensed_part(b.seen.get(CreatureField.PLAYER_ID, {}))
+		if not looked.is_empty() and not memory.is_empty() and memory != looked.memory:
+			_check_memory(c, t, where, looked, before.cell, sim.arena, k)
 		k.label[c.id] = label
 
 
@@ -340,16 +385,54 @@ func _check_stall(c: CreatureField.Creature, t: int, where: String, label: Strin
 ## body alone (other bodies never hide it; only rocks do).
 func _check_sensed(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
 		k: Dictionary) -> void:
-	var senses: Dictionary = species.species[c.species_id].senses
-	var viewer := {"id": c.id, "species": c.species_id, "position": looked.position, "heading": looked.heading,
-		"radius": c.phenotype.radius, "sight": c.phenotype.sight, "fov": deg_to_rad(float(senses.fov_deg)),
-		"near": float(senses.near_m)}
-	if not CreatureSenses.perceive(viewer, [cell], arena).is_empty():
+	if not CreatureSenses.perceive(_viewer(c, looked), [cell], arena).is_empty():
 		return
 	var hurt: int = int(k.hurt_by_cell.get(c.id, -1))
 	if hurt >= 0 and t - hurt <= int(c.brain.cfg.memory_ticks):
 		return
 	_fail(9, "%s: %s targeted the cell without sensing it (hurt by it at %d)" % [where, c.id, hurt])
+
+
+## Invariant 9 on every tick: the creature's memory of the cell changed this step, so it must be a
+## fresh percept that CreatureSenses gives from where the creature looked before the step (the same
+## sense, position and velocity), or the pain of a hit by the cell on this tick. A memory that moved
+## without a new percept, or a percept the senses would not give (an eye in the back of its head,
+## a memory that follows the cell), fails.
+func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
+		k: Dictionary) -> void:
+	k.memory_checks += 1
+	var e: Dictionary = c.brain.seen[CreatureField.PLAYER_ID]
+	var by := str(e.by)
+	if int(e.tick) != t:
+		_fail(9, "%s: %s's memory of the cell changed with no percept on this tick (%s at %d)" % [where, c.id, by, int(e.tick)])
+		return
+	if by == "pain":
+		if int(k.hurt_by_cell.get(c.id, -1)) != t:
+			_fail(9, "%s: %s felt the cell's pain without a hit by it" % [where, c.id])
+		return
+	var got := CreatureSenses.perceive(_viewer(c, looked), [cell], arena)
+	if got.is_empty():
+		_fail(9, "%s: %s holds a %s percept of the cell its senses do not give from %s" % [where, c.id, by, looked.position])
+	elif got[0].by != by or not Vector2(got[0].position).is_equal_approx(e.position) \
+			or not Vector2(got[0].velocity).is_equal_approx(e.velocity):
+		_fail(9, "%s: %s's percept (%s at %s) is not what its senses give (%s at %s)" % [where, c.id, by, e.position,
+			got[0].by, got[0].position])
+
+
+## The creature as CreatureSenses' viewer, where it looked from before the step.
+func _viewer(c: CreatureField.Creature, looked: Dictionary) -> Dictionary:
+	var senses: Dictionary = species.species[c.species_id].senses
+	return {"id": c.id, "species": c.species_id, "position": looked.position, "heading": looked.heading,
+		"radius": c.phenotype.radius, "sight": c.phenotype.sight, "fov": deg_to_rad(float(senses.fov_deg)),
+		"near": float(senses.near_m)}
+
+
+## What only the senses (or a hurt) write in a memory of the cell: all of it but the token's flag,
+## which CreatureField sets before every think.
+static func _sensed_part(memory: Dictionary) -> Dictionary:
+	var out := memory.duplicate()
+	out.erase("engageable")
+	return out
 
 
 ## Invariant 1 for one body.
