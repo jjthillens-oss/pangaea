@@ -3,10 +3,10 @@ extends RefCounted
 ## Swimming on the movement plane, driven by Phenotype stats (M1 step 2). Custom kinematics, no
 ## physics bodies: deterministic, headless and shared with creature AI later.
 ##
-## `speed` is the top speed (ActorState.speed_multiplier() halves it while starving),
-## `acceleration` is the m/s^2 rate and `turn_rate` caps the heading change per tick. The cell
-## turns first and then swims: thrust follows how well the heading matches the wanted direction.
-## steer() only changes velocity; PoolArena.move() moves the cell.
+## `speed` is the top speed, sideways drift included (ActorState.speed_multiplier() halves it
+## while starving), `acceleration` is the m/s^2 rate and `turn_rate` caps the heading change per
+## tick. The cell turns first and then swims: thrust follows how well the heading matches the
+## wanted direction. steer() only changes velocity; PoolArena.move() moves the cell.
 
 const INPUT_DEADZONE := 0.05
 const ALIGN_POWER := 2.0       ## thrust share = max(0, cos(heading error))^ALIGN_POWER
@@ -52,5 +52,9 @@ static func steer(m: MotionState, move: Vector2, p: Phenotype, speed_mul: float,
 	var side := fwd.orthogonal()
 	var u := m.velocity.dot(fwd)
 	var w := m.velocity.dot(side) * exp(-LATERAL_DAMPING * dt)
+	# While turning, part of the speed is still sideways; thrust only up to what keeps the total
+	# within the top speed.
+	var top := p.speed * speed_mul
+	target = minf(target, sqrt(maxf(0.0, top * top - w * w)))
 	u = minf(target, u + p.acceleration * dt) if u < target else maxf(target, u - slow * dt)
 	m.velocity = fwd * u + side * w

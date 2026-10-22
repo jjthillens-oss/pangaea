@@ -50,6 +50,23 @@ func test_each_body_reaches_its_top_speed_and_never_exceeds_it() -> void:
 		check(t90 >= 0.5 and t90 <= 1.5, "%s: 90%% speed after %.2f s, wanted 0.5..1.5" % [body_name, t90])
 
 
+func test_turning_never_pushes_the_total_speed_past_the_top_speed() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for mul in [1.0, ActorState.STARVING_SPEED]:
+		for body_name in ["grazer", "hunter"]:
+			var p := _body(body_name)
+			var m := Locomotion.MotionState.new()
+			var move := Vector2.RIGHT
+			for i in 3000:
+				if i % 30 == 0:
+					move = Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.5, 1.0)
+				_tick(m, move, p, mul)
+				if m.velocity.length() > p.speed * mul + VECTOR_EPSILON:
+					check(false, "%s x%.1f tick %d: %.4f m/s, top %.4f" % [body_name, mul, i, m.velocity.length(), p.speed * mul])
+					return
+
+
 func test_starving_halves_top_speed() -> void:
 	var p := _body("grazer")
 	var m := Locomotion.MotionState.new()
