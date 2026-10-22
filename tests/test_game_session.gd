@@ -51,10 +51,13 @@ func test_continue_brings_back_the_same_lineage_body_points_and_place() -> void:
 	var saved := session.save_now()
 	check(saved.ok, "saved: %s" % saved.error)
 	var position := session.sim.motion.position
+	# The slot holds this save and the backup holds the start, so a re-save would change both.
+	var files := _files()
 
 	var again := GameSession.new(slot)
 	var r := again.continue_run()
 	check(r.ok, "continued: %s" % [r.errors])
+	check_eq(_files(), files, "continuing rewrote nothing: file list, times and contents")
 	if not r.ok:
 		return
 	check_eq(r.source, "primary", "from the primary file")
@@ -95,6 +98,7 @@ func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
 	var f := FileAccess.open(slot, FileAccess.WRITE)
 	f.store_string("{ not a save")
 	f.close()
+	var files := _files()
 	var again := GameSession.new(slot)
 	var peek := again.peek_slot()
 	check(peek.exists and peek.ok, "peek finds a usable save")
@@ -103,6 +107,7 @@ func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
 	var r := again.continue_run()
 	check(r.ok, "continued")
 	check_eq(r.source, "backup", "from the backup")
+	check_eq(_files(), files, "the damaged file stays as it was until the player saves")
 	if r.ok:
 		check_eq(again.sim.save.lineage_id, lineage, "the same lineage")
 		check_eq(again.load_source, "backup", "load source kept for the debug panel")
