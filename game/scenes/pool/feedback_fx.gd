@@ -7,11 +7,11 @@ extends Node3D
 ## Meals often come in quick runs through a plankton cluster. A meal soon after and close to the
 ## last one adds to its label ("+16 energy · +2") instead of drawing a second one on top of it.
 ## Other labels are kept a line apart in the order the pool camera shows them, not by height alone:
-## seen from above at an angle, a label 1 m nearer the camera shows tan(pitch) m of height lower.
-## An older label that shows below a new one stays below it (the new one starts higher if they
-## would touch), and one that shows above it is pushed up a line clear of it (see _stack). They
-## keep that order as they rise, so they never cross. The view is treated as parallel: perspective
-## and camera motion can shift labels by a small part of a line.
+## seen from above at an angle, a label 1 m nearer the camera shows about tan(pitch) m of height
+## lower. An older label that shows below a new one stays below it (the new one starts higher if
+## they would touch), and one that shows above it is pushed up a line clear of it (see _stack).
+## Every frame, labels that have come closer than a line on screen, as the camera moves, are moved
+## apart again (see _keep_apart). Labels only ever move up, so they never cross.
 
 const MEAL_LABELS := 6
 const MEAL_RISE_M := 0.9
@@ -107,47 +107,85 @@ func show_meal(event: Dictionary) -> void:
 
 ## Places label i, which starts rising at _meal_at[i], among the visible labels it could overlap
 ## sideways, comparing heights as the pool camera shows them. Going up the screen: a label below
-## label i's start but within a line of it makes label i start a line above it; a label above it
-## is pushed up until it is a line clear of label i before either rises (the older one always
-## rises at least as far, so the line stays); and a pushed label carries up the labels stacked on
-## it as far as it must to keep their gap. Labels only ever move up, so none passes another.
+## label i's start but within a line of it makes label i start a line above it, and a label above
+## it is pushed up until it is a line clear of label i before either rises. The older one always
+## rises at least as far as the newer one, so the line stays. Labels stacked on a pushed one move
+## with it (_keep_apart).
 func _stack(i: int) -> void:
-	var pitch := deg_to_rad(_camera.pitch_degrees())
-	var shown := cos(pitch)   # a world height shows on screen at this share of its size
-	var others: Array[int] = []
-	for j in _meal_labels.size():
-		if j != i and _meal_labels[j].visible:
-			others.append(j)
-	others.sort_custom(func(a: int, b: int) -> bool: return _screen_y(a, pitch, true) < _screen_y(b, pitch, true))
+	var eye := _eye()
 	_meal_lift[i] = 0.0
-	var start := _screen_y(i, pitch, false)
-	var push := {}   # label -> world height it moves up
-	for j in others:
-		var y := _screen_y(j, pitch, true)
-		var base := _screen_y(j, pitch, false)
-		var move := 0.0
-		for k in push:
-			if _sideways(j, k):
-				var room := minf(base - _screen_y(k, pitch, false), y - _screen_y(k, pitch, true)) - MEAL_LINE_M
-				move = maxf(move, push[k] - room / shown)
-		if _sideways(j, i):
-			var top := start + _meal_lift[i] * shown
-			if y < top:
-				_meal_lift[i] = maxf(_meal_lift[i], (y + MEAL_LINE_M - start) / shown)
-			else:
-				move = maxf(move, (top + MEAL_LINE_M - base) / shown)
-		if move > 0.0:
-			push[j] = move
-	for j in push:
-		_meal_lift[j] += push[j]
+	for j in _by_height(eye, i):
+		if not _sideways(i, j):
+			continue
+		var start := _seen(eye, _point(i, false))
+		var now := _seen(eye, _point(j, true))
+		if now.x < start.x:
+			_meal_lift[i] += maxf(0.0, _raise_to(eye, _point(i, false), now.x + _line(now, start)))
+		else:
+			var base := _seen(eye, _point(j, false))
+			_meal_lift[j] += maxf(0.0, _raise_to(eye, _point(j, false), start.x + _line(base, start)))
+	_keep_apart(eye)
 	_meal_lift_shown[i] = _meal_lift[i]
 
 
-## How high label i shows on screen, in meters of its camera-facing plane (plane +y is toward the
-## camera, so lower on screen), with or without what it has risen so far.
-func _screen_y(i: int, pitch: float, risen: bool) -> float:
-	var height := MEAL_START_Y + _meal_lift[i] + (_rise(_meal_ages[i]) if risen else 0.0)
-	return height * cos(pitch) - _meal_at[i].y * sin(pitch)
+## Keeps every two labels that overlap sideways at least a line apart on screen as they are now,
+## since the camera moves and nearer labels show larger: going up the screen, a label that is too
+## close above a lower one moves up.
+func _keep_apart(eye: Transform3D) -> void:
+	var order := _by_height(eye, -1)
+	for n in order.size():
+		var j := order[n]
+		for k in order.slice(0, n):
+			if not _sideways(j, k):
+				continue
+			var now := _seen(eye, _point(j, true))
+			var below := _seen(eye, _point(k, true))
+			var want := below.x + _line(below, now)
+			if now.x < want:
+				_meal_lift[j] += _raise_to(eye, _point(j, true), want)
+
+
+## The visible labels other than `skip`, lowest on screen first.
+func _by_height(eye: Transform3D, skip: int) -> Array[int]:
+	var order: Array[int] = []
+	for j in _meal_labels.size():
+		if j != skip and _meal_labels[j].visible:
+			order.append(j)
+	order.sort_custom(func(a: int, b: int) -> bool: return _seen(eye, _point(a, true)).x < _seen(eye, _point(b, true)).x)
+	return order
+
+
+## The pool camera in this node's space. Outside the tree (tests) it is the camera's own transform:
+## both nodes are children of the pool.
+func _eye() -> Transform3D:
+	if is_inside_tree() and _camera.is_inside_tree():
+		return global_transform.affine_inverse() * _camera.global_transform
+	return _camera.transform
+
+
+## Where label i's anchor is, at its stacked height, with or without what it has risen so far.
+func _point(i: int, risen: bool) -> Vector3:
+	return PlaneSpace.to_world(_meal_at[i], MEAL_START_Y + _meal_lift[i] + (_rise(_meal_ages[i]) if risen else 0.0))
+
+
+## Where point p shows through the camera `eye`: x is how high on screen, as the tangent of its
+## angle above the view axis, and y is its depth along that axis.
+static func _seen(eye: Transform3D, p: Vector3) -> Vector2:
+	var d := p - eye.origin
+	var depth := -d.dot(eye.basis.z)
+	return Vector2(d.dot(eye.basis.y) / depth, depth)
+
+
+## How far point p must move up (world height) to show at height `up` (as _seen's x).
+static func _raise_to(eye: Transform3D, p: Vector3, up: float) -> float:
+	var d := p - eye.origin
+	return (up * -d.dot(eye.basis.z) - d.dot(eye.basis.y)) / (eye.basis.y.y + up * eye.basis.z.y)
+
+
+## One line between two labels as _seen sees them, in _seen's units of height: half a line at
+## each label's depth.
+static func _line(a: Vector2, b: Vector2) -> float:
+	return MEAL_LINE_M * 0.5 * (1.0 / a.y + 1.0 / b.y)
 
 
 ## Whether labels i and j are close enough sideways to overlap; screen right is plane +x.
@@ -204,11 +242,15 @@ func zone_label(zone_id: String) -> Label3D:
 
 func _process(delta: float) -> void:
 	for i in _meal_labels.size():
-		if _meal_ages[i] >= MEAL_LIFE_S:
-			continue
-		_meal_ages[i] += delta
-		var k := clampf(_meal_ages[i] / MEAL_LIFE_S, 0.0, 1.0)
+		if _meal_labels[i].visible:
+			_meal_ages[i] = minf(_meal_ages[i] + delta, MEAL_LIFE_S)
+	if _camera != null:
+		_keep_apart(_eye())
+	for i in _meal_labels.size():
 		var label := _meal_labels[i]
+		if not label.visible:
+			continue
+		var k := _meal_ages[i] / MEAL_LIFE_S
 		_meal_lift_shown[i] = lerpf(_meal_lift_shown[i], _meal_lift[i], minf(delta * MEAL_LIFT_RATE, 1.0))
 		label.position.y = MEAL_START_Y + _meal_lift_shown[i] + _rise(_meal_ages[i])
 		label.modulate.a = 1.0 - k * k

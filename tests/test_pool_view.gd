@@ -108,12 +108,19 @@ func _on_screen(camera: Camera3D, p: Vector3) -> Vector2:
 	return Vector2(clip.x / clip.w + 1.0, 1.0 - clip.y / clip.w) * Vector2(960.0, 540.0)
 
 
+## How far label a's centre shows above label b's through `camera`, in lines of text (the font's
+## height, as the camera shows it between them); negative is below.
+func _lines_above(camera: Camera3D, a: Label3D, b: Label3D) -> float:
+	var line_m := ThemeDB.fallback_font.get_height(FeedbackFx.FONT_SIZE) * FeedbackFx.PIXEL_SIZE
+	var middle := (a.position + b.position) / 2.0
+	var line_px := _on_screen(camera, middle).distance_to(_on_screen(camera, middle + camera.basis.y * line_m))
+	return (_on_screen(camera, b.position).y - _on_screen(camera, a.position).y) / line_px
+
+
 ## A meal at `older`, then `age` s later one at the plane origin, with the pool camera looking at
 ## it. Follows both labels at 60 Hz for `frames` frames from the newer label's first, or until the
-## older one is gone: "apart" is how far the older label's centre shows above the newer one's, in
-## lines of text (the font's height, as the camera shows it between them; negative is below), and
-## "older_y" is the older label's height. The stacking treats the view as parallel, so checks of
-## "apart" allow 5% for perspective.
+## older one is gone: "apart" is how far the older label shows above the newer one (_lines_above),
+## and "older_y" is the older label's height.
 func _follow_two_labels(older: Vector2, age: float, frames: int) -> Dictionary:
 	var camera := _camera()
 	camera.snap_to(Vector3.ZERO)
@@ -124,15 +131,10 @@ func _follow_two_labels(older: Vector2, age: float, frames: int) -> Dictionary:
 	var labels := fx.meal_labels()
 	var out := {"apart": PackedFloat32Array(), "older_y": PackedFloat32Array()}
 	if labels.size() == 2:
-		var line_m := ThemeDB.fallback_font.get_height(FeedbackFx.FONT_SIZE) * FeedbackFx.PIXEL_SIZE
 		for frame in frames:
 			if not labels[0].visible:
 				break
-			var a := _on_screen(camera, labels[0].position)
-			var b := _on_screen(camera, labels[1].position)
-			var middle := (labels[0].position + labels[1].position) / 2.0
-			var line_px := _on_screen(camera, middle).distance_to(_on_screen(camera, middle + camera.basis.y * line_m))
-			out.apart.append((b.y - a.y) / line_px)
+			out.apart.append(_lines_above(camera, labels[0], labels[1]))
 			out.older_y.append(labels[0].position.y)
 			fx._process(1.0 / 60.0)
 	fx.free()
@@ -203,7 +205,7 @@ func test_an_older_meal_label_nearer_the_camera_stays_a_line_below_a_new_one_on_
 		var closest := INF
 		for d in apart:
 			closest = minf(closest, -d)
-		check(closest >= 0.95, "an older label at %s, %.2f s old, shows a line below the new one on every frame (closest %.2f lines)"
+		check(closest >= 1.0, "an older label at %s, %.2f s old, shows a line below the new one on every frame (closest %.2f lines)"
 			% [case[0], case[1], closest])
 
 
@@ -214,7 +216,7 @@ func test_an_older_meal_label_farther_from_the_camera_stays_a_line_above_and_mov
 	var closest := INF
 	for d in far.apart:
 		closest = minf(closest, d)
-	check(closest >= 0.95, "a label 1 m farther away shows a line above on every frame (closest %.2f lines)" % closest)
+	check(closest >= 1.0, "a label 1 m farther away shows a line above on every frame (closest %.2f lines)" % closest)
 	for frame in far.older_y.size():
 		var rise := FeedbackFx.MEAL_RISE_M * ease((0.1 + frame / 60.0) / FeedbackFx.MEAL_LIFE_S, 0.4)
 		if absf(far.older_y[frame] - (FeedbackFx.MEAL_START_Y + rise)) > 1e-4:
@@ -230,7 +232,7 @@ func test_an_older_meal_label_farther_from_the_camera_stays_a_line_above_and_mov
 		if frame >= 12:
 			settled = minf(settled, near.apart[frame])
 	check(closest > 0.0, "a label 0.3 m farther away never shows below the new one (closest %.2f lines)" % closest)
-	check(settled >= 0.95, "and is a line above it from 0.2 s on (closest %.2f lines)" % settled)
+	check(settled >= 1.0, "and is a line above it from 0.2 s on (closest %.2f lines)" % settled)
 
 
 func test_a_pushed_meal_label_carries_up_the_labels_stacked_above_it() -> void:
@@ -249,16 +251,45 @@ func test_a_pushed_meal_label_carries_up_the_labels_stacked_above_it() -> void:
 		fx.free()
 		camera.free()
 		return
-	var line := FeedbackFx.MEAL_LINE_M / cos(deg_to_rad(camera.pitch_degrees()))   # as a world height
 	var closest := INF
 	for frame in 30:
 		fx._process(1.0 / 60.0)
-		closest = minf(closest, labels[0].position.y - labels[1].position.y)
-	check(closest > 0.0, "the first label never drops to the middle one (closest %.3f m)" % closest)
-	check(labels[0].position.y - labels[1].position.y >= line * 0.95,
-		"after 0.5 s the first label is still a line above the middle one (%.3f m)" % (labels[0].position.y - labels[1].position.y))
-	check(labels[1].position.y - labels[2].position.y >= line * 0.95,
-		"and the middle one a line above the last (%.3f m)" % (labels[1].position.y - labels[2].position.y))
+		closest = minf(closest, _lines_above(camera, labels[0], labels[1]))
+	check(closest > 0.0, "the first label never shows below the middle one (closest %.2f lines)" % closest)
+	check(_lines_above(camera, labels[0], labels[1]) >= 1.0,
+		"after 0.5 s the first label shows a line above the middle one (%.2f lines)" % _lines_above(camera, labels[0], labels[1]))
+	check(_lines_above(camera, labels[1], labels[2]) >= 1.0,
+		"and the middle one a line above the last (%.2f lines)" % _lines_above(camera, labels[1], labels[2]))
+	fx.free()
+	camera.free()
+
+
+func test_meal_labels_that_the_moving_camera_brings_closer_than_a_line_move_apart_again() -> void:
+	# The new label starts a line above an older one 1 m nearer the camera. When the camera moves
+	# south and zooms in, both show higher up and the nearer one grows more, so it closes on the
+	# label above it.
+	var camera := _camera()
+	camera.snap_to(Vector3.ZERO)
+	var fx := _feedback(camera)
+	fx.show_meal(_meal(Vector2(1.6, 1.0)))
+	fx._process(0.65)
+	fx.show_meal(_meal(Vector2.ZERO))
+	var labels := fx.meal_labels()
+	check_eq(labels.size(), 2, "two labels")
+	if labels.size() != 2:
+		fx.free()
+		camera.free()
+		return
+	check(_lines_above(camera, labels[1], labels[0]) >= 1.0,
+		"the new label starts a line above the older one (%.2f lines)" % _lines_above(camera, labels[1], labels[0]))
+	camera.zoom_by(-2)
+	camera.snap_to(Vector3(0.0, 0.0, 4.0))
+	var closest := INF
+	for frame in 30:
+		fx._process(1.0 / 60.0)
+		if frame >= 12:
+			closest = minf(closest, _lines_above(camera, labels[1], labels[0]))
+	check(closest >= 1.0, "after the camera moves they are a line apart again within 0.2 s (closest %.2f lines)" % closest)
 	fx.free()
 	camera.free()
 
