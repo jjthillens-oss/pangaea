@@ -3,15 +3,18 @@ extends SceneTree
 ## frame is exactly one sim tick and 2400 frames are 40 s of sim time. It drives the real main
 ## scene through the methods, buttons and keys a player uses, with the dev ForageBot swimming
 ## instead of the player, and prints one PASS or FAIL line per check and a TIME line per step.
-## Exit code 0 when every check passes, 1 otherwise.
+## Buttons are clicked with the mouse through the viewport, and only when a player could click
+## them: on screen, enabled and not covered. Exit code 0 when every check passes, 1 otherwise.
 ##
 ##   -- --phase=found --slot=user://smoke/slot_1.json --seed=4242
 ##       Clears user://smoke/ and opens the start screen. A grazer lineage eats, starves and
-##       recovers, dies and continues, then saves and quits to the title, and expect.json records
-##       what Continue must bring back. Hunter and omnivore lineages on their own slots eat too.
+##       recovers, dies and continues, pauses and resumes, then saves and quits to the title.
+##       Hunter and omnivore lineages on their own slots eat too. Then the grazer continues and
+##       swims, and the window's close button saves and quits through "Save first?", which ends
+##       the process; expect.json records what Continue must bring back.
 ##   -- --phase=continue --slot=user://smoke/slot_1.json
 ##       A new process: Continue must bring back the lineage, body, parts, points and place in
-##       user://smoke/expect.json.
+##       user://smoke/expect.json, and the run must play.
 ##
 ## Nodes are awaited into the tree before use. Saves stay under user://smoke/: the smoke stops
 ## before playing if --slot points anywhere else.
@@ -27,6 +30,11 @@ const VIEW_SIZE := Vector2(1920, 1080)
 const CENTRAL_SHARE := 0.4          ## the cell stays inside the central 40% of the view
 const PITCH_DEG := 55.0
 const HUD_LAG_FRAMES := 8           ## HUD labels refresh at 10 Hz (6 frames), plus slack
+const RUN_FRAMES := 10              ## frames watched to see the sim stand still or run
+const FADE_SLACK_FRAMES := 2        ## the pool's fade-in may still show this long after FADE_IN_S
+## A deliberate stall: the debug panel must show it at its wall-clock length, not the ~150 ms
+## the engine's delta caps it at (here, under --fixed-fps, delta is always one tick).
+const STALL_MS := 400
 const BAR_STEP := 0.01              ## the HUD bars round their value to this step
 ## Points before the death, so the death rule's quarter of them takes at least 1.
 const POINTS_BEFORE_DEATH := 4
@@ -53,6 +61,8 @@ var main: Main
 var _failures := 0
 var _checks := 0
 var _finished := false
+## The next quit is the game's own (Save and quit in "Save first?"), so _finalize reports.
+var _quit_expected := false
 var _step_name := ""
 var _step_msec := 0
 var _numbers := RegEx.create_from_string("-?\\d+(\\.\\d+)?")
@@ -80,15 +90,26 @@ func _initialize() -> void:
 		_:
 			_check(false, "--phase is found or continue (got '%s')" % phase)
 	_finished = true
+	_report()
+
+
+## The game quit: as the found phase expects after "Save first?", or before the smoke finished
+## (a quit with exit code 0 would hide that).
+func _finalize() -> void:
+	if _finished:
+		return
+	_finished = true
+	if _quit_expected:
+		_check(true, "Save and quit closes the game")
+		_report()
+		return
+	print("FAIL the game quit before the smoke finished (step '%s')" % _step_name)
+	quit(1)
+
+
+func _report() -> void:
 	print("\n%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 or _checks == 0 else 0)
-
-
-## Something quit the game before the smoke finished (a quit with exit code 0 would hide it).
-func _finalize() -> void:
-	if not _finished:
-		print("FAIL the game quit before the smoke finished (step '%s')" % _step_name)
-		quit(1)
 
 
 # Found phase
@@ -109,12 +130,14 @@ func _found() -> void:
 	_end()
 
 	_begin("grazer eats")
-	start.open_picker()
+	if not _click(start.new_button, "New lineage"):
+		start.open_picker()
 	await _frames(1)
-	_check(start.picker_view.visible and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
+	_check(_shown(start.picker_view) and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
 	start.select("grazer")
 	main.intent_provider = ForageBot.new()
-	start.start_button.pressed.emit()
+	if not _click(start.start_button, "the picker's Start"):
+		start.request_start()
 	await _frames(2)
 	var started: bool = await _check_run_started("grazer")
 	if not started:
@@ -156,6 +179,10 @@ func _found() -> void:
 	_check_slot_kept(expect)
 	_end()
 
+	# Last, because Save and quit in "Save first?" ends the process.
+	_begin("close the window and save")
+	await _continue_and_close_window(expect)
+
 
 ## Every body card shows the stats Phenotype.derive gives its starting genome.
 func _check_body_cards(start: StartScreen) -> void:
@@ -196,14 +223,14 @@ func _check_run_started(body: String) -> bool:
 	return true
 
 
-## The HUD labels name the sim's energy and points once they have refreshed.
+## The HUD labels are on screen and name the sim's energy and points once they have refreshed.
 func _check_hud_now(sim: PoolSim) -> void:
 	await _frames(HUD_LAG_FRAMES)
 	var hud := main.hud
 	var energy_ok := absf(_first_number(hud.energy_text.text) - sim.state.energy) <= 1.0
-	_check(energy_ok and hud.energy_text.text.ends_with("/ %d" % roundi(sim.state.energy_capacity)),
+	_check(_shown(hud.energy_text) and energy_ok and hud.energy_text.text.ends_with("/ %d" % roundi(sim.state.energy_capacity)),
 		"the HUD shows '%s' for sim energy %.2f / %.0f" % [hud.energy_text.text, sim.state.energy, sim.state.energy_capacity])
-	_check(hud.points_text.text == Hud.points_line(sim.save.adaptation_points)
+	_check(_shown(hud.points_text) and hud.points_text.text == Hud.points_line(sim.save.adaptation_points)
 		and int(_first_number(hud.points_text.text)) == sim.save.adaptation_points, "the HUD shows '%s'" % hud.points_text.text)
 
 
@@ -235,11 +262,16 @@ func _check_view_record(run: String) -> void:
 	_check(_view.food_mismatch == 0 and _view.plankton_drawn > 0,
 		"the food views drew the sim's plankton and carrion counts every frame of %s (%d misses; last %d plankton, %d carrion)"
 		% [run, _view.food_mismatch, _view.plankton_drawn, _view.carrion_drawn])
+	_check(_view.food_misplaced == 0,
+		"the food views drew every plankton and carrion item at its sim position every frame of %s (%d misses)" % [run, _view.food_misplaced])
+	_check(_view.fade_late == 0,
+		"the pool's fade-in cleared after %.1f s in %s (shown %d frames late)" % [PoolScene.FADE_IN_S, run, _view.fade_late])
 	_check(_view.bar_worst <= BAR_STEP + 1e-6, "the energy bar showed the sim energy every frame of %s (worst %.3f off)" % [run, _view.bar_worst])
 	_check(_view.hud_worst_lag <= HUD_LAG_FRAMES, "the HUD energy text never lagged the sim by more than %d frames in %s (%d)" % [HUD_LAG_FRAMES, run, _view.hud_worst_lag])
 
 
-## F3 opens the debug panel, which names the genome and the world seed.
+## F3 opens the debug panel, which names the genome and the world seed, and shows a stalled
+## frame as its longest.
 func _check_debug_panel(sim: PoolSim) -> void:
 	var panel: CanvasLayer = main.debug_panel
 	_check(panel != null and main.dev_layer != null, "the debug build has the dev layer and debug panel")
@@ -251,6 +283,12 @@ func _check_debug_panel(sim: PoolSim) -> void:
 	var identity := (panel.get_node("%Identity") as Label).text
 	_check(identity.contains("Genome %s" % sim.save.genome.genome_id) and identity.contains("World seed %d" % sim.save.world_seed),
 		"the debug panel names genome %s and world seed %d" % [sim.save.genome.genome_id, sim.save.world_seed])
+	OS.delay_msec(STALL_MS)
+	await _frames(2)
+	panel.call("refresh")
+	var longest: float = panel.get("fields").get("longest_frame_ms", 0.0)
+	_check(longest >= STALL_MS * 0.95 and longest < STALL_MS * 2.0,
+		"the debug panel shows a %d ms stall as its longest frame (%.1f ms)" % [STALL_MS, longest])
 	await _press(&"toggle_debug")
 	_check(not panel.visible, "F3 hides it again")
 
@@ -271,9 +309,9 @@ func _starve_and_recover(pool: PoolScene) -> void:
 	await _ticks_until(sim, func(): return sim.state.is_starving(), 10)
 	await _frames(1)
 	_check(sim.state.is_starving() and sim.state.speed_multiplier() <= 0.5, "the cell starves at half speed")
-	_check(hud.starving_banner.visible and hud.banner_text.text == Hud.STARVING_TEXT, "the starving banner shows")
-	_check(hud.state_text.text == "Starving" and hud.health_row.visible, "the HUD says Starving and shows health")
-	_check(pool.starving_arrow.visible, "the arrow points to food")
+	_check(_shown(hud.starving_banner) and _shown(hud.banner_text) and hud.banner_text.text == Hud.STARVING_TEXT, "the starving banner shows")
+	_check(_shown(hud.state_text) and hud.state_text.text == "Starving" and _shown(hud.health_row), "the HUD says Starving and shows health")
+	_check(_shown(pool.starving_arrow), "the arrow points to food")
 	var meals_before := _meals.size()
 	var ticks := await _ticks_until(sim, func(): return not sim.state.is_starving() or sim.dead, RECOVER_TICKS)
 	_check(not sim.dead and not sim.state.is_starving() and _meals.size() > meals_before,
@@ -284,7 +322,8 @@ func _starve_and_recover(pool: PoolScene) -> void:
 
 
 ## A drained cell parked away from food dies; the notice names the points the death takes and
-## its Continue puts the cell back at the start.
+## keeps the pause key, the window's close button offers no save while the cell is dead, and
+## the notice's Continue puts the cell back at the start and play goes on.
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
@@ -302,15 +341,22 @@ func _die_and_continue(pool: PoolScene) -> void:
 	var notice := main.death_notice
 	var points := sim.save.adaptation_points
 	var loss := Lineage.death_loss(points)
-	_check(notice.is_open() and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
+	_check(_shown(notice) and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
 	await _press(&"pause")
-	_check(not main.pause_menu.is_open() and notice.is_open(), "the pause key leaves the death notice in charge")
+	_check(not main.pause_menu.is_open() and _shown(notice), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
 	_check(button != null and _focus() == button, "the notice's Continue has the keyboard focus")
-	if button == null:
+	var dialog := main.quit_dialog
+	root.propagate_notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	await _frames(1)
+	_check(_shown(dialog) and dialog.choice_ids() == PackedStringArray(["quit", "cancel"]) and _focus() == dialog.button_for("cancel"),
+		"the window's close button asks 'Save first?' with no save choice while the cell is dead (%s)" % dialog.choice_ids())
+	if not _click(dialog.button_for("cancel"), "the dialog's Cancel"):
+		dialog.choose("cancel")
+	await _frames(1)
+	_check(not dialog.is_open() and _shown(notice) and button != null and _focus() == button, "Cancel goes back to the death notice")
+	if not _click(button, "the notice's Continue"):
 		main.continue_after_death()
-	else:
-		button.pressed.emit()
 	await _frames(2)
 	_check(not sim.dead and not notice.is_open(), "Continue brings the cell back")
 	_check(loss >= 1 and sim.save.adaptation_points == points - loss and str(sim.save.lineage_history.back().get("event", "")) == "died",
@@ -318,31 +364,47 @@ func _die_and_continue(pool: PoolScene) -> void:
 	_check(sim.motion.position.distance_to(sim.layout.spawn) <= POSITION_TOLERANCE_M and sim.state.health == sim.state.max_health,
 		"the cell is back at the start with full health")
 	bot.park_at = Vector2.INF
-	await _frames(30)
-	_check(not pool.paused, "play goes on after the death")
+	await _check_running(pool, "play goes on after the death", 30)
 
 
-## The pause key opens the pause menu; Quit asks first because of the unsaved progress; Save and quit to
-## title saves and shows the title with Continue. Returns what expect.json records ({} on failure).
+## The pause key opens the pause menu and the sim stands still; the pause key and Resume each
+## close it and the sim runs again. Quit asks first because of the unsaved progress; Save and
+## quit to title saves and shows the title with Continue. Returns what expect.json records ({} on
+## failure).
 func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var sim := pool.sim
 	await _press(&"pause")
 	var menu := main.pause_menu
-	_check(menu.is_open() and pool.paused, "the pause key opens the pause menu and pauses the pool")
+	_check(_shown(menu) and pool.paused, "the pause key opens the pause menu and pauses the pool")
 	_check(_focus() == menu.resume_button, "Resume has the keyboard focus")
+	var still := await _ticks_in(sim, RUN_FRAMES)
+	_check(still == 0, "the sim stands still under the pause menu (%d ticks in %d frames)" % [still, RUN_FRAMES])
+	await _press(&"pause")
+	await _check_running(pool, "the pause key closes the pause menu and the sim runs again")
+	await _press(&"pause")
+	if not _click(menu.resume_button, "Resume"):
+		main.resume()
+	await _check_running(pool, "Resume closes the pause menu and the sim runs again")
+	await _press(&"pause")
+	_check(_shown(menu) and pool.paused and _focus() == menu.resume_button, "the pause key opens the pause menu again, with Resume focused")
 	_check(menu.footer_text() == "Seed %d · build %s" % [sim.save.world_seed, BuildInfo.build_id()], "the footer reads '%s'" % menu.footer_text())
+	_check(not menu.save_button.disabled and not menu.save_quit_button.disabled, "a living cell can save from the pause menu")
 	if main.session.dirty:
-		menu.quit_button.pressed.emit()
+		if not _click(menu.quit_button, "Quit to desktop"):
+			main.quit_to_desktop()
 		await _frames(2)
-		var choices := main.quit_dialog.choice_ids()
-		_check(main.quit_dialog.is_open() and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
+		var dialog := main.quit_dialog
+		var choices := dialog.choice_ids()
+		_check(_shown(dialog) and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
 			"Quit to desktop asks 'Save first?' with %s" % choices)
-		main.quit_dialog.choose("cancel")
+		if not _click(dialog.button_for("cancel"), "the dialog's Cancel"):
+			dialog.choose("cancel")
 		await _frames(1)
-		_check(not main.quit_dialog.is_open() and menu.is_open() and pool.paused, "Cancel returns to the pause menu")
+		_check(not dialog.is_open() and _shown(menu) and pool.paused, "Cancel returns to the pause menu")
 	else:
 		_check(false, "the run has unsaved progress before Save and quit")
-	menu.save_quit_button.pressed.emit()
+	if not _click(menu.save_quit_button, "Save and quit to title"):
+		main.save_and_quit_to_title()
 	await _frames(2)
 	var start := main.start_screen
 	_check(start != null and main.screen == start and main.pool == null, "Save and quit to title shows the title")
@@ -353,10 +415,21 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var position := PlaneSpace.from_save(save.player.position)
 	_check(position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M, "the save holds the cell's position")
 	_check(not start.continue_button.disabled and _focus() == start.continue_button, "Continue is on and has the keyboard focus")
+	var expect := _expect_from(sim)
+	var wrote := _write_expect(expect)
+	_check(wrote, "wrote %s" % EXPECT_PATH)
+	return expect if wrote else {}
+
+
+## What Continue must bring back after the grazer's run was saved: the run as it is now, not
+## what its save holds, so a save that wrote nothing fails the continue phase.
+func _expect_from(sim: PoolSim) -> Dictionary:
+	var save := sim.save
 	var parts := []
 	for part in save.genome.parts:
 		parts.append({"type": str(part.get("type", "")), "angle": float(part.get("angle", 0.0))})
-	var expect := {
+	var position := sim.motion.position
+	return {
 		"lineage_id": save.lineage_id,
 		"lineage_tag": GameSession.lineage_tag(save.lineage_id),
 		"genome_id": save.genome.genome_id,
@@ -367,13 +440,15 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 		"position": [position.x, position.y],
 		"world_seed": save.world_seed,
 	}
+
+
+func _write_expect(expect: Dictionary) -> bool:
 	var file := FileAccess.open(EXPECT_PATH, FileAccess.WRITE)
-	_check(file != null, "wrote %s" % EXPECT_PATH)
 	if file == null:
-		return {}
+		return false
 	file.store_string(JSON.stringify(expect, "\t", true, true))
 	file.close()
-	return expect
+	return true
 
 
 ## A new lineage of `body` on its own slot eats something it can eat within 40 s.
@@ -407,6 +482,57 @@ func _check_slot_kept(expect: Dictionary) -> void:
 		"the other runs left %s alone" % slot)
 
 
+## Continue on the title brings back what Save and quit to title wrote. The grazer swims away
+## from that place (unsaved progress), then the window's close button asks "Save first?". Its Save
+## and quit writes the slot and quits the game at the end of that frame, so the slot is checked in
+## the same frame and expect.json records it for the continue phase.
+func _continue_and_close_window(expect: Dictionary) -> void:
+	main.open_session(RunFlags.current().slot)
+	await _frames(1)
+	main.intent_provider = ForageBot.new()
+	if not _click(main.start_screen.continue_button, "Continue"):
+		main.continue_run()
+	await _frames(2)
+	var pool := main.pool
+	_check(pool != null and main.last_run.get("source", "") == "primary", "Continue opens the grazer's slot %s" % main.last_run)
+	if pool == null:
+		_end()
+		return
+	var sim := pool.sim
+	var saved := Vector2(expect.position[0], expect.position[1])
+	# The bot has already swum a tick, so the place is read from the loaded save.
+	_check(sim.save.lineage_id == expect.lineage_id and sim.save.adaptation_points == int(expect.points)
+		and PlaneSpace.from_save(sim.save.player.position).distance_to(saved) <= POSITION_TOLERANCE_M,
+		"Continue loads the lineage, points and place that Save and quit to title wrote")
+	var away := func(): return sim.motion.position.distance_to(saved) > GameSession.DIRTY_MOVE_M
+	var ticks := await _ticks_until(sim, away, MEAL_TICKS)
+	_check(away.call() and main.session.dirty, "the grazer swam away from its saved place in %.1f s" % (ticks * PoolSim.DT))
+	var dialog := main.quit_dialog
+	root.propagate_notification(Node.NOTIFICATION_WM_CLOSE_REQUEST)
+	await _frames(1)
+	_check(_shown(dialog) and pool.paused and dialog.choice_ids() == PackedStringArray(["save_quit", "quit", "cancel"])
+		and _focus() == dialog.button_for("save_quit"),
+		"the window's close button pauses and asks 'Save first?' with Save and quit focused (%s)" % dialog.choice_ids())
+	_quit_expected = true
+	if not _click(dialog.button_for("save_quit"), "the dialog's Save and quit"):
+		_quit_expected = false
+		_end()
+		return
+	var session := main.session
+	_check(session.last_save.get("ok", false) and not session.dirty, "Save and quit saved the run %s" % session.last_save)
+	var loaded := session.persistence.load_from(session.slot)
+	var position := PlaneSpace.from_save(loaded.save.player.position) if loaded.ok else Vector2.INF
+	_check(loaded.ok and loaded.save.lineage_id == expect.lineage_id and loaded.save.adaptation_points == sim.save.adaptation_points
+		and position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M,
+		"the slot holds the run's %d points and new place (%.2f m from the last save)" % [sim.save.adaptation_points, position.distance_to(saved)])
+	_check(_write_expect(_expect_from(sim)), "wrote %s again" % EXPECT_PATH)
+	_end()
+	# The game quits at the end of this frame and _finalize reports; still running means it did not.
+	await _frames(2)
+	_quit_expected = false
+	_check(false, "Save and quit closes the game")
+
+
 # Continue phase
 
 func _continue() -> void:
@@ -432,7 +558,8 @@ func _continue() -> void:
 	_end()
 
 	_begin("continue run")
-	start.continue_button.pressed.emit()
+	if not _click(start.continue_button, "Continue"):
+		main.continue_run()
 	await _frames(2)
 	var pool := main.pool
 	_check(pool != null and main.screen == pool and main.last_run.get("ok", false) and main.last_run.get("source", "") == "primary",
@@ -453,10 +580,12 @@ func _continue() -> void:
 	_check(sim.motion.position.distance_to(saved) <= POSITION_TOLERANCE_M,
 		"the cell is where it was saved (%.6f m away)" % sim.motion.position.distance_to(saved))
 	_check_cell_view(pool)
-	_check(main.hud.message.visible and main.hud.message_text.text.begins_with("Your cell rested"),
+	_check(_shown(main.hud.message) and main.hud.message_text.text.begins_with("Your cell rested"),
 		"the HUD says the cell rested: %s" % main.hud.message_text.text)
-	await _frames(60)
+	await _check_running(pool, "the continued run plays", 60)
 	_check_view_record("the continued run")
+	await _press(&"pause")
+	_check(_shown(main.pause_menu) and pool.paused, "the pause key reaches the continued run and opens the pause menu")
 	_end()
 
 
@@ -495,7 +624,8 @@ func _watch(pool: PoolScene) -> void:
 	_event_points = 0
 	_hud_meal_mismatches.clear()
 	_view = {"frames": 0, "rect": Vector2.ZERO, "worst_offset": 0.0, "behind": 0, "food_mismatch": 0,
-		"plankton_drawn": 0, "carrion_drawn": 0, "hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0}
+		"plankton_drawn": 0, "carrion_drawn": 0, "food_misplaced": 0, "fade_late": 0,
+		"hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0}
 	pool.sim_event.connect(_on_sim_event)
 
 
@@ -532,10 +662,31 @@ func _probe_frame() -> void:
 	_view.carrion_drawn = pool.carrion_view.shown_count()
 	if _view.plankton_drawn != sim.plankton.items.size() or _view.carrion_drawn != sim.carrion.items.size():
 		_view.food_mismatch += 1
+	if not _food_placed(pool.plankton_view, sim.plankton.items) or not _food_placed(pool.carrion_view, sim.carrion.items):
+		_view.food_misplaced += 1
+	# _view.frames starts a frame or more after the pool's fade-in starts.
+	if _view.frames > ceili(PoolScene.FADE_IN_S / PoolSim.DT) + FADE_SLACK_FRAMES and _shown(pool.get_node("%Fade") as CanvasItem):
+		_view.fade_late += 1
 	var stale := not pool.paused and absf(_first_number(main.hud.energy_text.text) - sim.state.energy) > 1.0
 	_view.hud_lag = _view.hud_lag + 1 if stale else 0
 	_view.hud_worst_lag = maxi(_view.hud_worst_lag, _view.hud_lag)
 	_view.bar_worst = maxf(_view.bar_worst, absf(main.hud.energy_bar.value - sim.state.energy))
+
+
+## Every one of `items` sits at its sim position (x and z) in the view's instance buffer, which is
+## what the renderer draws. MultiMesh.get_instance_transform() reads identity under --headless,
+## but the buffer reads back as written.
+func _food_placed(view: FoodView, items: Array[Dictionary]) -> bool:
+	if items.is_empty():
+		return true
+	var buffer := view.multimesh.buffer
+	for i in items.size():
+		var want := PlaneSpace.to_world(items[i].position)
+		var o: int = i * FoodView.FLOATS_PER_INSTANCE
+		if o + 11 >= buffer.size() or absf(buffer[o + 3] - want.x) > POSITION_TOLERANCE_M \
+				or absf(buffer[o + 11] - want.z) > POSITION_TOLERANCE_M:
+			return false
+	return true
 
 
 ## Waits for `done` or `max_ticks` sim ticks, whichever comes first. Returns the ticks waited.
@@ -551,6 +702,66 @@ func _ticks_until(sim: PoolSim, done: Callable, max_ticks: int) -> int:
 func _frames(count: int) -> void:
 	for i in count:
 		await process_frame
+
+
+## The sim ticks run in `count` frames.
+func _ticks_in(sim: PoolSim, count: int) -> int:
+	var from := sim.tick
+	await _frames(count)
+	return sim.tick - from
+
+
+## The pause menu is closed, the pool is not paused and every frame runs one sim tick.
+func _check_running(pool: PoolScene, what: String, count: int = RUN_FRAMES) -> void:
+	var ticks := await _ticks_in(pool.sim, count)
+	_check(not main.pause_menu.is_open() and not pool.paused and ticks == count, "%s (%d ticks in %d frames)" % [what, ticks, count])
+
+
+## Clicks `button` with the mouse at its centre, through the viewport's GUI input, as a player does.
+## It must be on screen, enabled and able to take keyboard focus, and the click must reach it, so a
+## control drawn over it fails the check. Returns whether the button was pressed; when the player
+## could not press it, nothing is clicked.
+func _click(button: BaseButton, what: String) -> bool:
+	var at := button.get_global_rect().get_center() if button != null else Vector2.INF
+	var why := ""
+	if button == null:
+		why = "missing"
+	elif not _shown(button):
+		why = "hidden"
+	elif button.disabled:
+		why = "disabled"
+	elif button.focus_mode != Control.FOCUS_ALL:
+		why = "takes no keyboard focus"
+	elif button.mouse_filter != Control.MOUSE_FILTER_STOP or not root.get_visible_rect().has_point(at):
+		why = "takes no clicks"
+	var pressed := [false]
+	if why.is_empty():
+		var note := func(): pressed[0] = true
+		button.pressed.connect(note)
+		for down in [true, false]:
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = down
+			click.position = at
+			click.global_position = at
+			root.push_input(click, true)
+		button.pressed.disconnect(note)
+		why = "" if pressed[0] else "covered"
+	_check(pressed[0], "a click presses %s%s" % [what, "" if why.is_empty() else " (%s)" % why])
+	return pressed[0]
+
+
+## On screen: visible up the tree (CanvasLayers included) and not faded out by its own or any
+## ancestor's modulate.
+func _shown(item: CanvasItem) -> bool:
+	if item == null or not item.is_visible_in_tree() or item.self_modulate.a <= 0.01:
+		return false
+	var node: Node = item
+	while node is CanvasItem:
+		if (node as CanvasItem).modulate.a <= 0.01:
+			return false
+		node = node.get_parent()
+	return true
 
 
 ## A key press and release of `action`, as the player's keyboard sends it.
