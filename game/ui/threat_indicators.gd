@@ -9,7 +9,8 @@ extends Control
 ## a tell the arrow pulses at PULSE_HZ and shows "!", so shape, motion and text carry it, and the
 ## tell's own sound is positional.
 ##
-## It only reads the sim and the pool camera, at REFRESH_HZ. The HUD binds it to the pool.
+## It only reads the sim and the pool camera, at REFRESH_HZ. The HUD binds it to the pool and draws
+## it over everything else, and keeps its bottom hint out of the bottom arrows' band (band_px).
 
 const REFRESH_HZ := 30.0
 ## px: arrows sit this far inside the screen edge (the badge and its pointer fit).
@@ -23,8 +24,10 @@ const PULSE_GROW := 0.25            ## a telling arrow grows this much at the to
 const BADGE_COLOR := Color(0.03, 0.11, 0.13, 0.9)
 const THREAT_COLOR := Color(0.851, 0.275, 0.42)       ## threat #D9466B (docs/art/ART_DIRECTION.md)
 const GLYPH_COLOR := Color(0.957, 0.918, 0.824)       ## cream highlight #F4EAD2
-## The tell's "!": a bar over a dot, MARK_PX tall, MARK_GAP_PX beyond the badge on the side away
-## from the screen edge, upright wherever the arrow is. Drawn as shapes, so no font can shrink it.
+## The tell's "!": a bar over a dot, MARK_PX tall, upright wherever the arrow is, MARK_GAP_PX from
+## the badge: beside it toward the screen's middle on the top and bottom edges, so an arrow there
+## keeps to the band along its edge, and on the side away from the edge on the left and right. Drawn
+## as shapes, so no font can shrink it.
 const MARK_PX := 34.0
 const MARK_BAR_SHARE := 0.26        ## the bar's (and the dot's) width, as a share of the mark's height
 const MARK_GAP_PX := 8.0
@@ -87,6 +90,12 @@ static func indicator_for(id: String, species: String, mem: CreatureBrain.Memory
 	return {"id": id, "species": species, "glyph": GLYPHS.get(mem.behavior, "jaw"), "position": edge,
 		"direction": direction.normalized() if direction.length() > 1e-6 else Vector2.DOWN,
 		"telling": is_telling(mem)}
+
+
+## How far from the top or bottom screen edge an arrow there reaches, its "!" and pulse included:
+## the HUD keeps its bottom hint above this band.
+static func band_px() -> float:
+	return MARGIN_PX + BADGE_RADIUS_PX * (1.0 + PULSE_GROW)
 
 
 ## True when the brain's attention is on the cell: noticing it, watching it (an ambush hunter at
@@ -162,8 +171,15 @@ static func arrow_shape(ind: Dictionary, pulse: float, rect: Rect2) -> Dictionar
 		return out
 	var h := MARK_PX * grow
 	var half := Vector2(h * MARK_BAR_SHARE * 0.5 + MARK_OUTLINE_PX, h * 0.5 + MARK_OUTLINE_PX)
-	# The mark's center sits far enough along -dir that its upright box clears the badge.
-	var at := c - dir * (r + MARK_GAP_PX + absf(dir.x) * h * 0.3 + absf(dir.y) * h * 0.5)
+	var at := c
+	if absf(c.y - rect.get_center().y) >= rect.size.y * 0.5 - MARGIN_PX - 0.5:
+		# On the top or bottom edge: beside the badge, toward the screen's middle, so the arrow keeps
+		# to its band along the edge (band_px) and the "!" stays on screen in a corner.
+		var toward := 1.0 if c.x <= rect.get_center().x else -1.0
+		at = c + Vector2(toward * (r + MARK_GAP_PX + half.x), 0.0)
+	else:
+		# On a side edge: inward, far enough along -dir that its upright box clears the badge.
+		at = c - dir * (r + MARK_GAP_PX + absf(dir.x) * h * 0.3 + absf(dir.y) * h * 0.5)
 	out.mark_at = at
 	out.mark_h = h
 	out.mark = Rect2(at - half, half * 2.0)

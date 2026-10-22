@@ -75,6 +75,11 @@ const NOTICE_TICKS := 1200          ## the new hunter settles 3 s and the shelte
 const ARROW_FRAMES := 6
 ## The camera is moved this far north of the cell mid-tell, so the telling hunter is off screen.
 const CAMERA_AWAY_M := 30.0
+## The window sizes the bottom hint is checked clear of the edge arrows at (the canvas stays 1920 x
+## 1080 under canvas_items stretch, so they lay out the same; the check keeps that true).
+const HINT_WINDOWS: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1920, 1080)]
+## Arrow positions along each screen edge are swept this far apart.
+const ARROW_SWEEP_PX := 10
 const CARRION_MEALS := 2            ## die_and_quit eats this many pieces of dev carrion
 ## die_and_quit hurts the omnivore down to this health before the hunter: well under one bite (12),
 ## with its regeneration (0.6 a second) while the hunter tells. Held in front of the lair, an
@@ -627,8 +632,9 @@ func _continue_sheltered(pool: PoolScene) -> int:
 
 ## An ambush hunter placed south of the still cell, below the screen's edge and facing it, notices
 ## the cell once the shelter is over: the HUD's own refresh brings up one arrow for it, at the
-## bottom edge with the jaw glyph, and draws it on screen. F10 kills it and the arrow goes by
-## itself. Then the forage bot swims on until there is unsaved progress again.
+## bottom edge with the jaw glyph, and draws it on screen, clear of every refusal hint at both window
+## sizes. F10 kills it and the arrow goes by itself. Then the forage bot swims on until there is
+## unsaved progress again.
 func _check_off_screen_arrow(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot: Object = pool.intent_provider
@@ -655,6 +661,7 @@ func _check_off_screen_arrow(pool: PoolScene) -> void:
 		"the HUD shows one arrow for it by itself, at the bottom edge with the jaw glyph %s" % [shown])
 	_check(_shown(arrows) and arrows.drawn.size() == 1 and arrows.drawn[0].id == c.id,
 		"and draws it on screen within %d frames (%d drawn)" % [frames, arrows.drawn.size()])
+	await _check_hint_clear_of_arrows(arrows)
 	await _press(&"dev_kill_nearest")
 	var gone := await _frames_until(func() -> bool: return arrows.indicators.is_empty() and arrows.drawn.is_empty(), ARROW_FRAMES)
 	_check(sim.creatures.find(c.id) == null and arrows.indicators.is_empty() and arrows.drawn.is_empty(),
@@ -662,6 +669,55 @@ func _check_off_screen_arrow(pool: PoolScene) -> void:
 	pool.intent_provider = bot
 	var ticks := await _ticks_until(sim, func(): return main.session.dirty, MEAL_TICKS)
 	_check(main.session.dirty, "the forage bot swims on and the run has unsaved progress again after %.1f s" % (ticks * PoolSim.DT))
+
+
+## Every refusal hint at the bottom center stays clear of the edge arrows, at each of HINT_WINDOWS:
+## the arrows drawn now, and an arrow at any place on any screen edge, telling at the top of its
+## pulse, with its "!" (ThreatIndicators.arrow_shape, the shapes _draw draws).
+func _check_hint_clear_of_arrows(arrows: ThreatIndicators) -> void:
+	var hud := main.hud
+	var texts: Array = RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values()
+	var window := root.size
+	for size in HINT_WINDOWS:
+		root.size = size
+		var hits := PackedStringArray()
+		var widest := Rect2()
+		var shown := true
+		for text: String in texts:
+			hud.show_hint(text)
+			await _frames(2)
+			var hint := hud.hint.get_global_rect()
+			shown = shown and _shown(hud.hint) and hud.hint_text.text == text
+			if hint.size.x > widest.size.x:
+				widest = hint
+			for d in arrows.drawn:
+				for part in ["badge", "mark"]:
+					if (d[part] as Rect2).intersects(hint):
+						hits.append("'%s' under the drawn %s %s" % [text, part, d[part]])
+			var rect := arrows.get_viewport_rect()
+			var inner := rect.grow(-ThreatIndicators.MARGIN_PX)
+			var places: Array[Vector2] = []
+			for x in range(int(inner.position.x), int(inner.end.x) + 1, ARROW_SWEEP_PX):
+				places.append_array([Vector2(x, inner.position.y), Vector2(x, inner.end.y)])
+			for y in range(int(inner.position.y), int(inner.end.y) + 1, ARROW_SWEEP_PX):
+				places.append_array([Vector2(inner.position.x, y), Vector2(inner.end.x, y)])
+			for at in places:
+				var ind := {"position": at, "direction": (at - rect.get_center()).normalized(), "telling": true}
+				var shape := ThreatIndicators.arrow_shape(ind, 1.0, rect)
+				for part in ["badge", "mark"]:
+					if (shape[part] as Rect2).intersects(hint):
+						hits.append("'%s' under a %s at %s" % [text, part, at])
+		_check(root.size == size and shown and hits.is_empty(),
+			"in a %dx%d window every refusal hint (%s at the widest) stays clear of the edge arrows: %s"
+			% [root.size.x, root.size.y, _span(widest), hits.slice(0, 4)])
+	root.size = window
+	hud.hint.visible = false
+	await _frames(1)
+
+
+## "x 630..1289, y 888..952", for messages.
+func _span(r: Rect2) -> String:
+	return "x %d..%d, y %d..%d" % [roundi(r.position.x), roundi(r.end.x), roundi(r.position.y), roundi(r.end.y)]
 
 
 ## The pause key opens the pause menu and the sim stands still; the pause key and Resume each

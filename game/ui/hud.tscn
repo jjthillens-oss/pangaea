@@ -235,7 +235,7 @@ theme_type_variation = &"AccentLabel"
 horizontal_alignment = 1
 
 [node name="Gap" type="Control" parent="Frame/BottomCenter"]
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
 
 [node name="Controls" type="PanelContainer" parent="Frame"]

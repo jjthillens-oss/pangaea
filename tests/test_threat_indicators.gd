@@ -182,3 +182,21 @@ func test_the_hud_draws_the_arrows_last_and_never_hides_them() -> void:
 		check_eq(arrows.get_index(), hud.get_child_count() - 1, "the last child, so it draws over the rest of the HUD")
 		check(arrows.anchor_right == 1.0 and arrows.anchor_bottom == 1.0, "and spans the screen")
 	hud.free()
+
+
+func test_top_and_bottom_arrows_keep_to_their_band_with_the_mark_beside_the_badge() -> void:
+	var band := ThreatIndicators.band_px()
+	check_near(band, 70.0 + 30.0 * 1.25, 1e-4, "the band is the margin plus a badge at the top of its pulse")
+	var bad := PackedStringArray()
+	for x in range(int(INNER.position.x), int(INNER.end.x) + 1, 5):
+		for y in [INNER.position.y, INNER.end.y]:
+			var at := Vector2(x, y)
+			for pulse in [0.0, 1.0]:
+				var shape := ThreatIndicators.arrow_shape(_row(at, true), pulse, RECT)
+				var reach: Rect2 = (shape.badge as Rect2).merge(shape.mark)
+				var from_edge: float = RECT.end.y - reach.position.y if y > RECT.get_center().y else reach.end.y - RECT.position.y
+				var mark_at: Vector2 = shape.mark_at
+				var inward := mark_at.x > x if x <= RECT.get_center().x else mark_at.x < x
+				if from_edge > band + 1e-3 or not RECT.encloses(reach) or absf(mark_at.y - y) > 1e-3 or not inward:
+					bad.append("%s pulse %.0f: reach %s, mark at %s" % [at, pulse, reach, mark_at])
+	check(bad.is_empty(), "every top and bottom arrow stays within %.1f px of its edge, its '!' beside the badge toward the middle: %s" % [band, bad.slice(0, 4)])

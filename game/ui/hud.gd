@@ -8,7 +8,8 @@ extends Control
 ##                 (whenever health is below full, or while starving) and the lineage line
 ##   top right:    adaptation points with a "+N" flash, and meal and survival toasts
 ##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
-##   bottom center: refusal hints, worded by RefusalHints
+##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
+##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
 ##   bottom left:  the controls, from the key bindings, until the first meal or for 30 s
 ##
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
