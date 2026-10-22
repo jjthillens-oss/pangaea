@@ -111,3 +111,26 @@ next starts. The demo in `docs/art/quality_ladder.md` takes one cell through all
 | 1 Form | Modeler | Clean topology, petals and beads in place, sockets kept. Clay still reads well. |
 | 2 Surfaced | Surfacing | UVs, baked albedo and ORM, palette applied, glTF-safe materials. |
 | 3 Target | Rigging and animation, then technical artist | Armature, idle and swim cycles, triangle budget met, GLB checked in Godot. |
+
+## 8. Polish bar and outside resources
+
+Joshua set the minimum polish bar: at least what Spore's Steam store page shows. We match that
+level of finish, never its designs, creatures, shapes, UI or names.
+
+Free CC0 resources are used by default where they raise quality: Poly Haven and ambientCG
+textures and HDRIs for surfacing detail and review lighting. Each one is finished in Blender
+and logged in the asset record (`dependencies` with source URL, license and date). Generated or
+downloaded meshes still need owner approval (Bible section 15). Those hosts are currently
+blocked by the cloud environment's network policy, so everything so far is procedural.
+
+## 9. Next for the art team
+
+1. Joshua reviews the ladder renders and this draft; his notes and concept images reset the
+   direction before anything else is built.
+2. Procedural creature body and bone system for the editor stages: a Blender-authored body
+   kit (spine segments, limb and part meshes with sockets) that the game deforms and skins at
+   runtime, inside an approved boundary (Bible section 15). This needs a design brief and an
+   engineering contract with the engineering thread first.
+3. Detail normal maps and CC0 detail textures once the hosts are allowed.
+4. The rest of the M2 reference package: three compatible creature variants, a habitat
+   composition, a scale lineup, a lighting test and an in-engine Forward+ benchmark frame.

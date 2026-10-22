@@ -5,7 +5,8 @@ docs/art/renders/:
   <rung>_clay_NN.png and (from rung 2) <rung>_beauty_NN.png   eight-view turntable frames
   <rung>_silhouette.png                                        gameplay-camera readability check
   <rung>_sheet.jpg                                             contact sheet of the above
-Contact sheets need ImageMagick's `montage` (a review tool only, not a game dependency).
+  <rung>_swim.gif                                              swim clip, for rigged rungs
+Contact sheets need ImageMagick's `montage` and the GIF needs ffmpeg (a review tool only, not a game dependency).
 
 Run: python tools/blender/render_ladder.py [rung ...]   (after tools/blender/cell_ladder.py)
 """
@@ -49,14 +50,37 @@ def sheet(rung, beauty):
                     "-background", "#22303A", "-quality", "88", f"{prefix}_sheet.jpg"], check=True)
 
 
+def swim_gif(rung, clip="swim"):
+    """Animated review of a clip from the hero angle (needs ffmpeg; review tool only)."""
+    arm = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
+    action = bpy.data.actions.get(clip)
+    if arm is None or action is None or not shutil.which("ffmpeg"):
+        return
+    scene = bpy.context.scene
+    arm.animation_data.action = action
+    scene.render.resolution_x = scene.render.resolution_y = 360
+    scene.cycles.samples = 24
+    ld.aim(scene.camera, TARGET, 3.4, 40, 30)
+    frames_dir = os.path.join(ld.RENDER_DIR, f"_{clip}_frames")
+    end = int(action.frame_range[1])
+    for f in range(0, end):
+        scene.frame_set(f)
+        ld.render_to(os.path.join(frames_dir, f"{f:03d}.png"))
+    out = os.path.join(ld.RENDER_DIR, f"{cl.asset_id(rung)}_{clip}.gif")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(scene.render.fps), "-i",
+                    os.path.join(frames_dir, "%03d.png"), "-vf",
+                    "split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse", out], check=True)
+    shutil.rmtree(frames_dir)
+
+
 def render(rung):
     beauty = rung >= "2"
-    # Animated rungs are posed mid-swim so the turntable shows the rig at work.
-    prepare(rung, pose_frame=None)
+    prepare(rung)
     prefix = cl.asset_id(rung)
     ld.turntable(prefix, target=TARGET, distance=3.4, frames=8, pitch=20, clay=True, beauty=beauty)
     ld.silhouette(prefix, target=TARGET)
     sheet(rung, beauty)
+    swim_gif(rung)
 
 
 def main(argv):

@@ -33,6 +33,9 @@ Part costs, effects, diminishing returns (each further copy gives 60% of the pre
 ## 2026-10-22 · Spore files are not used (CONFIRMED)
 The owner offered to buy Spore and extract its files for formats. Declined: we do not need EA's formats, and reading data out of their files would risk Pangaea being treated as derived from them. Playing the game for design notes written in our own words is fine.
 
+## 2026-10-22 · Art direction draft and quality ladder (PROPOSED, owner review pending)
+`docs/art/ART_DIRECTION.md` proposes the look ("soft life hardens"; pebble, petal and bead shape language; palette; glTF-safe material families; scale classes; review lighting). `docs/art/quality_ladder.md` takes one cell through four rungs (blockout, form, surfaced, rigged target) as separate `cell_ladder_*` assets. Nothing replaces gameplay placeholders until the owner approves the look. The owner set the polish bar: at least Spore's Steam store page (match its polish, never its designs), with free CC0 resources (Poly Haven, ambientCG) used by default, finished in Blender and logged in asset records. Those hosts are blocked in the current cloud environment.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
