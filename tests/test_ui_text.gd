@@ -65,32 +65,37 @@ func test_the_hud_names_energy_health_and_hunger_as_the_rules_count_them() -> vo
 	check_eq(Hud.rested_line(ActorState.fresh(_phenotype("hunter"))), "Your cell rested: Energy 60%, Health full", "after continue")
 
 
-func test_top_center_texts_wrap_at_spaces_within_the_width_they_are_given() -> void:
+## The lines `text` wraps into at `width`, as a Label with AUTOWRAP_WORD_SMART breaks them.
+func _wrapped(text: String, font: Font, size: int, width: float) -> PackedStringArray:
+	var para := TextParagraph.new()
+	para.break_flags = Hud.WRAP_FLAGS
+	para.add_string(text, font, size)
+	para.width = width
+	var lines := PackedStringArray()
+	for i in para.get_line_count():
+		var r := para.get_line_range(i)
+		lines.append(text.substr(r.x, r.y - r.x))
+	return lines
+
+
+func test_top_center_texts_wrap_at_spaces_into_even_lines_within_the_width_they_are_given() -> void:
 	var theme: Theme = load(THEME)
 	var font := theme.get_font(&"font", &"Label")
 	var size := theme.get_font_size(&"font_size", &"Label")
 	var short := "Back at the start: 2 adaptation points lost."
 	var w := Hud.wrap_width(short, font, size, 800.0)
-	check(w < 800.0 and w >= font.get_string_size(short, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x,
-		"a short message keeps its own width (%.0f px)" % w)
+	check(w < 800.0 and _wrapped(short, font, size, w).size() == 1, "a short message keeps its own width (%.0f px)" % w)
 	var failed := "Not saved yet: Could not save to user://saves/slot_1.json: Can't open file."
-	check(font.get_string_size(failed, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > 800.0, "a failed save's message is too wide for one line")
-	w = Hud.wrap_width(failed, font, size, 800.0)
-	var para := TextParagraph.new()
-	para.break_flags = Hud.WRAP_FLAGS
-	para.add_string(failed, font, size)
-	para.width = w
-	var lines := PackedStringArray()
-	for i in para.get_line_count():
-		var r := para.get_line_range(i)
-		lines.append(failed.substr(r.x, r.y - r.x))
-	check(w <= 800.0 and lines.size() == 2, "it wraps onto two lines within 800 px (%.0f px: %s)" % [w, lines])
-	check(Hud.breaks_at_spaces(para, failed) and lines.size() == 2 and lines[0].contains("user://saves/slot_1.json:"),
-		"between words, with the save path whole on one line: %s" % lines)
+	var plain := _wrapped(failed, font, size, 870.0)
+	check(plain.size() == 2 and plain[1].split(" ").size() == 1, "at 870 px a plain wrap leaves one word on the last line: %s" % plain)
+	w = Hud.wrap_width(failed, font, size, 870.0)
+	var lines := _wrapped(failed, font, size, w)
+	check(w <= 870.0 and lines.size() == 2, "a failed save wraps onto two lines within 870 px (%.0f px: %s)" % [w, lines])
 	check(lines.size() == 2 and lines[1].split(" ").size() > 1, "the last line is more than one word: %s" % lines)
+	check(lines.size() == 2 and lines[0].contains("user://saves/slot_1.json:"), "the save path is whole on one line: %s" % lines)
 	var large := theme.get_font_size(&"font_size", &"LargeLabel")
 	var banner := Hud.wrap_width(Hud.STARVING_TEXT, font, large, 800.0)
-	check(banner < 800.0 and banner >= font.get_string_size(Hud.STARVING_TEXT.get_slice("\n", 0), HORIZONTAL_ALIGNMENT_LEFT, -1, large).x,
+	check(banner < 800.0 and _wrapped(Hud.STARVING_TEXT, font, large, banner).size() == 2,
 		"the starving banner keeps its two lines as written (%.0f px)" % banner)
 
 
