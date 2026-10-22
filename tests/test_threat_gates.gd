@@ -10,10 +10,12 @@ extends TestCase
 ##     of load from other processes on a shared machine does not fail the gate. The replays end in
 ##     the bot's run's state hash: all three timed the same ticks. The average tick stays under
 ##     4.4 ms, about 2.5 times a quiet reading here (about 1700 us; CI's runners read 810 to 1185),
-##     so steady load does not fail it either; and each step is timed against the yardstick
-##     (tests/cost_yardstick.gd) run right after it, which load slows alike: a tick reads 12 to 15
-##     yardsticks under any load here (16.3 on CI), and a step that costs twice as much 25 to 29,
-##     past STRESS_YARDSTICKS. Flake policy: docs/DECISIONS.md, M1 step 3 review fixes.
+##     so moderate load does not fail it either; and each step is timed against the yardstick
+##     (tests/cost_yardstick.gd) run right after it: in the median run a tick reads 15.2 to 15.8
+##     yardsticks at load 5 to 6 here and pinned beside a busy loop, and a step that costs twice as
+##     much 28.2 to 31.9, past STRESS_YARDSTICKS. Heavy load can still move the count, so only a pass
+##     on a quiet machine or on CI rules a regression out. Flake policy: docs/DECISIONS.md, M1 step 3
+##     review fixes.
 ## #30 hunter viability (plan D2): HuntBot keeps a hunter lineage alive on what it kills, now that
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on
@@ -77,11 +79,12 @@ func _sim(body: String, seed_value: int, p_species: SpeciesCatalog = null) -> Po
 	return sim
 
 
-func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick() -> void:
+func test_slow_twenty_four_creatures_cost_about_two_milliseconds_a_tick() -> void:
 	# Plan #29: the real species placed as dev creatures (outside the niche caps, so none need
-	# raising), with the cell foraging at the spawn while minding them. Only sim.step and the
-	# yardstick are timed; each run's yardstick count is its step time over its yardstick time, and
-	# the lowest counts.
+	# raising), with the cell foraging at the spawn while minding them. The name gives the expected
+	# cost (about 1.7 ms here, 0.8 to 1.2 on CI); the limits are STRESS_LIMIT_US and
+	# STRESS_YARDSTICKS. Only sim.step and the yardstick are timed; each run's yardstick count is its
+	# step time over its yardstick time, and the median counts.
 	var windows := ceili(float(STRESS_TICKS) / STRESS_WINDOW_TICKS)
 	var best := PackedInt64Array()
 	best.resize(windows)
@@ -131,12 +134,12 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 	for w in windows:
 		average += best[w]
 	average /= float(STRESS_TICKS)
-	var ratio: float = ratios.min()
-	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left); %.2f yardsticks (%s)" % [
+	var ratio := Yardstick.median(ratios)
+	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left); %.2f yardsticks, the median run (%s)" % [
 		average, STRESS_TICKS, STRESS_CREATURES, STRESS_RUNS, first_average, deaths, left, ratio,
 		", ".join(ratios.map(func(r: float) -> String: return "%.2f" % r))])
 	check(average <= STRESS_LIMIT_US, "average %.1f us per tick (limit %.0f)" % [average, STRESS_LIMIT_US])
-	check(ratio <= STRESS_YARDSTICKS, "a tick costs %.2f yardsticks (limit %.1f)" % [ratio, STRESS_YARDSTICKS])
+	check(ratio <= STRESS_YARDSTICKS, "a tick costs %.2f yardsticks in the median run (limit %.1f)" % [ratio, STRESS_YARDSTICKS])
 
 
 ## The #29 pool: a new omnivore lineage at the spawn, and the ring of creatures facing in.

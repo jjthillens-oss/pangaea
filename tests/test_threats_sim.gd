@@ -17,10 +17,12 @@ const PLAYER := "player"
 ## #28 (flake policy in docs/DECISIONS.md, M1 step 3 review fixes): the same 60 s are timed
 ## STEP_COST_RUNS times, the bot's run and replays of its intents, and the fastest run counts. Its
 ## average must stay under STEP_COST_LIMIT_US, about 2.5 times a quiet reading in the Linux container
-## (about 550 us; CI's runners read 250 to 365), so steady load from other processes does not fail
+## (about 550 us; CI's runners read 250 to 365), so moderate load from other processes does not fail
 ## it. Each step is also timed against the yardstick (tests/cost_yardstick.gd) run right after it,
-## which load slows alike: a tick reads 4.7 to 5.4 yardsticks under any load here and on CI, and a
-## step that costs twice as much reads 9.4 to 10.8, past STEP_COST_YARDSTICKS.
+## and the median run's step time over its yardstick time must stay under STEP_COST_YARDSTICKS: a
+## tick reads 4.8 to 5.0 yardsticks at load 5 to 6 here and pinned beside a busy loop, and a step
+## that costs twice as much 9.5 to 10.1. Heavy load can still move the count, so only a pass on a
+## quiet machine or on CI rules a regression out.
 const STEP_COST_LIMIT_US := 1500.0
 const STEP_COST_YARDSTICKS := 8.0
 const STEP_COST_RUNS := 3
@@ -1531,9 +1533,11 @@ func test_creatures_and_their_respawns_never_draw_from_the_region_rng() -> void:
 
 
 func test_a_tick_with_seven_creatures_costs_well_under_a_millisecond() -> void:
-	# Plan #28 with the real data. Only sim.step and the yardstick are timed; the replays end in
-	# the bot's run's state hash, so all the runs timed the same ticks. Each run's yardstick count
-	# is its step time over its yardstick time, and the lowest counts.
+	# Plan #28 with the real data. The name gives the expected cost (about 550 us here, 250 to 365
+	# on CI); the limits are STEP_COST_LIMIT_US and STEP_COST_YARDSTICKS. Only sim.step and the
+	# yardstick are timed; the replays end in the bot's run's state hash, so all the runs timed the
+	# same ticks. Each run's yardstick count is its step time over its yardstick time, and the
+	# median counts.
 	var intents: Array[Vector2] = []
 	var averages: Array[float] = []
 	var ratios: Array[float] = []
@@ -1565,11 +1569,11 @@ func test_a_tick_with_seven_creatures_costs_well_under_a_millisecond() -> void:
 		else:
 			check_eq(sim.state_hash(), end_hash, "replay %d ended in the bot's run's state, so it timed the same ticks" % run)
 	var average: float = averages.min()
-	var ratio: float = ratios.min()
-	print("test-threats-step-cost: %.1f us per tick over %d ticks with %d creatures, the fastest of %d timed runs (%s); %.2f yardsticks (%s)" % [
+	var ratio := Yardstick.median(ratios)
+	print("test-threats-step-cost: %.1f us per tick over %d ticks with %d creatures, the fastest of %d timed runs (%s); %.2f yardsticks, the median run (%s)" % [
 		average, STEP_COST_TICKS, left, STEP_COST_RUNS, _joined(averages, "%.1f"), ratio, _joined(ratios, "%.2f")])
 	check(average <= STEP_COST_LIMIT_US, "average %.1f us per tick (limit %.0f)" % [average, STEP_COST_LIMIT_US])
-	check(ratio <= STEP_COST_YARDSTICKS, "a tick costs %.2f yardsticks (limit %.1f)" % [ratio, STEP_COST_YARDSTICKS])
+	check(ratio <= STEP_COST_YARDSTICKS, "a tick costs %.2f yardsticks in the median run (limit %.1f)" % [ratio, STEP_COST_YARDSTICKS])
 
 
 static func _joined(values: Array[float], format: String) -> String:
