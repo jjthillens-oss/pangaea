@@ -20,21 +20,42 @@
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests) and starts it
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
+# Every Godot run has a time limit (the import 600 s, the unit suite 900 s, each other run 300 s,
+# about three times its usual length on the shared 4-CPU container), so a hang fails the check
+# with exit code 124 and the output so far instead of running until CI's job timeout.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/toolchain.env
 GODOT="${1:-${GODOT:-.toolchain/Godot_v${GODOT_RELEASE}_linux.x86_64}}"
-"$GODOT" --headless --path . --import
-"$GODOT" --headless --path . --script res://tests/run_tests.gd
-"$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
+
+# bounded SECONDS COMMAND...: runs COMMAND, stopped after SECONDS (killed 10 s later if it ignores
+# the stop). Without coreutils' timeout (macOS) it runs with no limit.
+bounded() {
+  local limit="$1"
+  shift
+  if ! command -v timeout > /dev/null; then
+    "$@"
+    return
+  fi
+  local status=0
+  timeout --kill-after=10 "$limit" "$@" || status=$?
+  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+    echo "Stopped after its ${limit} s limit: $*"
+  fi
+  return "$status"
+}
+
+bounded 600 "$GODOT" --headless --path . --import
+bounded 900 "$GODOT" --headless --path . --script res://tests/run_tests.gd
+bounded 300 "$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
 rm -rf builds/smoke
 mkdir -p builds/smoke
-"$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
-"$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
-"$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
-"$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
-"$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
-"$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1
