@@ -297,12 +297,15 @@ func test_the_brain_reaches_the_probed_strike_by_itself_and_a_sideways_dodge_sti
 				var hits := 0
 				var told := 0
 				var unfinished := 0
+				var unaimed := 0
 				var clear := INF
 				var clear_out := INF
 				for k in [0, 3, 6, 9]:
 					var r := _natural_strike(species_id, body, k * TAU / 12.0, 0.0 if base == "still" else GRAZE)
 					if r.told:
 						told += 1
+						if not r.aimed:
+							unaimed += 1
 					elif r.engaged:
 						unfinished += 1
 					if r.hit:
@@ -318,6 +321,7 @@ func test_the_brain_reaches_the_probed_strike_by_itself_and_a_sideways_dodge_sti
 				else:
 					graze_tells += told
 				check_eq(unfinished, 0, "a run without a tell ended its engagement: " + text)
+				check_eq(unaimed, 0, "every tell came from aim with the creature nearly still: " + text)
 				check_eq(hits, 0, "no hits: " + text)
 				var floor_ok := clear >= 0.15 if base == "still" or species_id == "rammer" else clear_out >= 0.15
 				check(floor_ok, "clearance as in the grid: " + text)
@@ -327,8 +331,9 @@ func test_the_brain_reaches_the_probed_strike_by_itself_and_a_sideways_dodge_sti
 ## One natural engagement: the creature at rest at STRIKE_ORIGIN facing +x (an ambush hunter
 ## hungry), the cell ahead of it heading `h`, swimming on at `throttle` with EvadeBot. Runs until the
 ## first strike is over (or 900 ticks). {"told", "hit", "clearance", "head_on" (the cell swam into
-## the lane at the tell: heading within 30 degrees of straight at the creature), "engaged" (still
-## engaged with the cell at the end)}.
+## the lane at the tell: heading within 30 degrees of straight at the creature), "aimed" (on the
+## tick before the tell the brain was in aim and the creature at most tell_start_max_speed), "engaged"
+## (still engaged with the cell at the end)}.
 func _natural_strike(species_id: String, body: String, h: float, throttle: float) -> Dictionary:
 	var ahead := 5.0 if species_id == "ambush_hunter" else 4.5
 	var sim := _sim(body, 41, STRIKE_ORIGIN + Vector2(ahead, 0.0), h)
@@ -337,15 +342,18 @@ func _natural_strike(species_id: String, body: String, h: float, throttle: float
 	var swim_on := SimIntent.new(Vector2.from_angle(h) * throttle)
 	var bot = EvadeBot.new()
 	bot.base = func(_s: PoolSim) -> SimIntent: return swim_on
-	var out := {"told": false, "hit": false, "clearance": INF, "head_on": false, "engaged": false}
+	var out := {"told": false, "hit": false, "clearance": INF, "head_on": false, "aimed": false, "engaged": false}
 	var struck := false
 	var pending: Array[Dictionary] = []
 	for i in 900:
+		var was_aiming: bool = c.brain.phase == CreatureBrain.AIM
+		var was_still: bool = c.motion.velocity.length() <= float(c.brain.cfg.tell_start_max_speed) + 1e-6
 		sim.step(bot.next_intent(sim, pending))
 		pending = sim.drain_events()
 		for e in pending:
 			if e.type == "creature_tell" and e.id == c.id and not out.told:
 				out.told = true
+				out.aimed = was_aiming and was_still
 				out.head_on = absf(angle_difference(float(e.lane.heading), sim.motion.heading)) >= 5.0 * PI / 6.0 - 1e-6
 			elif e.type == "creature_strike" and e.id == c.id:
 				struck = true
@@ -361,6 +369,7 @@ func _natural_strike(species_id: String, body: String, h: float, throttle: float
 
 func test_a_cell_swimming_straight_away_outpaces_a_pursuer_when_fed_and_is_never_hit_when_starving() -> void:
 	# S6 escape (plan #5, F3): the creature starts 4 m behind the cell, already pursuing it.
+	var slowest_fed: float = SpeciesCatalog._starting_bodies(catalog).slowest_fed
 	for species_id in ["ambush_hunter", "rammer"]:
 		for body in BODIES:
 			for starving in [false, true]:
@@ -373,6 +382,7 @@ func test_a_cell_swimming_straight_away_outpaces_a_pursuer_when_fed_and_is_never
 				_engage(sim, c)
 				c.motion.velocity = Vector2.RIGHT * c.phenotype.speed * float(c.brain.cfg.speeds.pursue)
 				var gaps: Array[float] = []
+				var cell_speed: float = sim.phenotype.speed * sim.state.speed_multiplier()
 				var attack: Dictionary = c.brain.cfg.attack
 				var bound: int = c.brain.cfg.give_up_ticks + attack.tell_ticks + attack.burst_ticks + attack.glide_ticks + attack.recover_ticks
 				var ended := -1   # the engagement is over: a give-up, or the attack ends without a reason to go on
@@ -396,6 +406,16 @@ func test_a_cell_swimming_straight_away_outpaces_a_pursuer_when_fed_and_is_never
 						if shrunk.is_empty() and gaps[t] < gaps[t - 60] - 0.05:
 							shrunk = "tick %d: %.2f m -> %.2f m" % [t, gaps[t - 60], gaps[t]]
 					check(shrunk.is_empty(), "%s: after the first second the gap never shrinks over a second (%s)" % [label, shrunk])
+					# F3 measured in the sim: the pursuer is no faster than the escape rule's share of the
+					# slowest fed starting body, so every second the gap opens by at least the cell's speed
+					# minus that bound (less the same 0.05 m tolerance).
+					var bound_speed: float = float(sim.species.fairness.max_pursue_share_of_slowest_fed) * slowest_fed
+					var opens := INF
+					for t in range(120, gaps.size()):
+						opens = minf(opens, gaps[t] - gaps[t - 60])
+					print("test-threats-escape: %s opens at least %.3f m/s (rule margin %.3f)" % [label, opens, cell_speed - bound_speed])
+					check(opens >= cell_speed - bound_speed - 0.05,
+						"%s: the gap opens by at least %.3f m every second (worst %.3f m)" % [label, cell_speed - bound_speed - 0.05, opens])
 					check(gaps.size() >= 120, "%s: the chase lasted past the first two seconds (%d ticks)" % [label, gaps.size()])
 
 
@@ -962,6 +982,25 @@ func test_a_creature_stays_inside_its_leash_and_bodies_never_overlap_in_open_wat
 	check(chased[0], "it chased the cell")
 	check(worst_leash[0] <= 1e-3, "never past its leash (worst %.4f m)" % worst_leash[0])
 	check(worst_overlap[0] <= 1e-3, "the bodies never overlap at the end of a tick (worst %.4f m)" % worst_overlap[0])
+	# Shoved outward at the leash's edge: a hunter cell inside the disc bites and pushes it straight
+	# out for 2 s. The hard clamp keeps it on the disc however the hits and contacts push it.
+	var shove := _sim("hunter", 23)
+	var h := _creature(shove, "ambush_hunter", Vector2(0.0, -20.0), PI / 2.0, 1.0)
+	var edge := CreatureBrain.leash_disc(h.brain)
+	var out_dir := Vector2.DOWN
+	h.motion.position = Vector2(edge.center) + out_dir * float(edge.radius)
+	h.motion.heading = out_dir.angle()
+	check(shove.debug_teleport(h.motion.position - out_dir * (h.phenotype.radius + shove.phenotype.radius + 0.2),
+		out_dir.angle()), "the cell placed inside the disc behind it")
+	shove.drain_events()
+	var shoved := [0.0]
+	var shove_watch := func(_s: PoolSim, _t: int) -> bool:
+		shoved[0] = maxf(shoved[0], h.motion.position.distance_to(edge.center) - float(edge.radius))
+		return false
+	var events := _run(shove, 120, func(_s: PoolSim) -> SimIntent: return SimIntent.new(out_dir), shove_watch)
+	var bites := _of(events, "hit").filter(func(e: Dictionary) -> bool: return e.attacker == PLAYER)
+	check(not bites.is_empty(), "the cell bit it outward")
+	check(shoved[0] <= 1e-3, "shoved outward it stays on its leash (worst %.4f m past)" % shoved[0])
 
 
 # --- dev commands ---
