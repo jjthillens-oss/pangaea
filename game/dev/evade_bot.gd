@@ -7,8 +7,10 @@ extends RefCounted
 ##     contract's reaction, F2) from the tell's tick.
 ##  2. Then it swims perpendicular to the tell's lane, on the side with the shorter turn from its
 ##     heading; on a tie (within TIE_RAD) the side of the lane's centre line it is already on.
-##  3. It holds that until the same creature's creature_recovered, dodged or tell_cancelled.
-##  4. Then it swims straight away from the creature for AWAY_TICKS and returns to its base intent.
+##  3. It holds that until the same creature's creature_recovered, dodged or tell_cancelled, or
+##     until that creature dies or is removed.
+##  4. Then it swims straight away from the creature for `away_ticks` (AWAY_TICKS unless a driver
+##     that closes in after a strike sets it lower) and returns to its base intent.
 ##
 ## Between threats it follows `base` (a Callable(sim) -> SimIntent; none: it stays still), for
 ## example a heading and throttle, or ForageBot's next_intent.
@@ -23,6 +25,7 @@ const AWAY_TICKS := 60       ## 1.0 s straight away from the creature once its s
 const TIE_RAD := 1e-3        ## turns this close count as equal (then the lane side decides)
 
 var reaction_ticks := REACTION_TICKS
+var away_ticks := AWAY_TICKS
 var base := Callable()
 var throttle := 1.0          ## of the dodge and of the swim away
 var reacted_at := -1         ## the sim tick of its first dodge intent (tests guard the latency)
@@ -85,5 +88,9 @@ func _observe(tick: int, events: Array) -> void:
 				if _threat.is_empty() or e.get("id", "") != _threat.id:
 					continue
 				var from: Vector2 = e.get("position", _threat.origin)
-				_away = {"from": from, "until": tick + 1 + AWAY_TICKS}
+				_away = {"from": from, "until": tick + 1 + away_ticks} if away_ticks > 0 else {}
 				_threat = {}
+			"creature_died", "creature_removed":
+				# Gone mid-tell or mid-strike (killed by another body): nothing is coming any more.
+				if not _threat.is_empty() and e.get("id", "") == _threat.id:
+					_threat = {}

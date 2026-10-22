@@ -8,6 +8,7 @@ extends TestCase
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
@@ -543,6 +544,25 @@ func test_a_dodged_lunge_on_the_cell_reports_one_dodge_and_one_on_a_creature_rep
 	var missed := _of(on_decoy, "creature_recovered").filter(func(e: Dictionary) -> bool: return e.target == decoy.id)
 	check(not missed.is_empty() and missed[0].outcome == "missed", "the lunge at the decoy missed")
 	check(_of(on_decoy, "dodged").is_empty(), "no dodge for a creature target")
+
+
+func test_the_evade_bot_stops_dodging_once_the_creature_telling_at_it_is_gone() -> void:
+	# A guard on the dev driver: a creature killed in its tell never recovers, and the dodge still ends.
+	var sim := _sim("grazer", 82, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0)
+	var c := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	_begin_tell(sim, c)
+	var bot = EvadeBot.new()
+	var pending: Array[Dictionary] = []
+	var dodging_at_kill := false
+	for t in 60:
+		if t == 40:
+			dodging_at_kill = bot.is_dodging()
+			check(sim.debug_kill_nearest_creature(), "the hunter killed in its tell")
+			pending.append_array(sim.drain_events())
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+	check(dodging_at_kill, "the cell was dodging when the hunter died")
+	check(not bot.is_dodging(), "and stopped once it was gone")
 
 
 # --- combat both ways (plan threats_sim #9-13) ---
@@ -1198,18 +1218,13 @@ func test_only_one_creature_engages_the_cell_at_a_time_and_the_other_waits_until
 
 
 func test_a_starving_hunter_cell_kills_a_rammer_and_eats_before_it_starves() -> void:
-	# Plan #22, with an in-test driver until HuntBot (plan commit 11): it closes on the resting
-	# rammer from behind and keeps biting, dodges any charge sideways, then eats the carcass.
+	# Plan #22: HuntBot closes on the resting rammer from behind and keeps biting, dodges any charge
+	# sideways, then eats the carcass.
 	var sim := _sim("hunter", 221, STRIKE_ORIGIN - Vector2(6.0, 0.0), 0.0)
 	sim.debug_set_energy(0.0)
 	var r := _creature(sim, "rammer", STRIKE_ORIGIN, 0.0)
 	r.state.energy = r.state.energy_capacity
-	var forage = ForageBot.new()
-	var bot = EvadeBot.new()
-	bot.base = func(s: PoolSim) -> SimIntent:
-		if s.creatures.find(r.id) != null:
-			return SimIntent.new((r.motion.position - s.motion.position).normalized())
-		return forage.next_intent(s)
+	var bot = HuntBot.new()
 	var pending: Array[Dictionary] = []
 	var killed := -1
 	var ate := -1
