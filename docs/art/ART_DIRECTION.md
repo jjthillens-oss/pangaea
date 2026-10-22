@@ -31,7 +31,7 @@ each era its own look without starting a new style every time.
 
 ## 3. Palette
 
-Values are a starting board, PROPOSED. Swatches: `docs/art/renders/palette.png`; material spheres (left to right: clay, membrane, teal membrane, organelle, eye, lid and lip, food, threat): `docs/art/renders/material_sheet.png`. Both come from `tools/blender/render_material_sheet.py`. Habitats are cool and slightly desaturated; living
+Values are a starting board, PROPOSED. Swatches: `docs/art/renders/palette.png`; material spheres (left to right: clay, membrane, teal membrane, organelle, eye, lid and lip, food, threat): `docs/art/renders/material_sheet.jpg`. Both come from `tools/blender/render_material_sheet.py`. Habitats are cool and slightly desaturated; living
 things and anything interactive are warmer and more saturated, so they read against the
 background before detail does. Color is never the only signal (Bible section 20): food, threat
 and mate also differ in shape and motion.

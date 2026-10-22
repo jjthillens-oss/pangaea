@@ -1,6 +1,6 @@
 """Render the art-direction material sphere sheet and palette board (Bible section 15).
 
-Writes docs/art/renders/material_sheet.png and docs/art/renders/palette.png.
+Writes docs/art/renders/material_sheet.jpg and docs/art/renders/palette.png.
 Run: python tools/blender/render_material_sheet.py  (bpy 5.2.2) or blender --background --python ...
 """
 import os
@@ -43,7 +43,9 @@ def material_sheet():
     cam.data.ortho_scale = spacing * len(SPHERES) + 0.2
     cam.location = (0, -8, 0.6)
     cam.rotation_euler = (cam.location * -1).to_track_quat("-Z", "Y").to_euler()
-    ld.render_to(os.path.join(ld.RENDER_DIR, "material_sheet.png"))
+    scene.render.image_settings.file_format = "JPEG"
+    scene.render.image_settings.quality = 90
+    ld.render_to(os.path.join(ld.RENDER_DIR, "material_sheet.jpg"))
 
 
 def palette_board():

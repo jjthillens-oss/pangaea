@@ -4,7 +4,7 @@ For each rung it opens the rung's .blend, adds the section 6 review lighting and
 docs/art/renders/:
   <rung>_clay_NN.png and (from rung 2) <rung>_beauty_NN.png   eight-view turntable frames
   <rung>_silhouette.png                                        gameplay-camera readability check
-  <rung>_sheet.png                                             contact sheet of the above
+  <rung>_sheet.jpg                                             contact sheet of the above
 Contact sheets need ImageMagick's `montage` (a review tool only, not a game dependency).
 
 Run: python tools/blender/render_ladder.py [rung ...]   (after tools/blender/cell_ladder.py)
@@ -46,7 +46,7 @@ def sheet(rung, beauty):
         rows.append(sorted(glob.glob(f"{prefix}_beauty_*.png")))
     tiles = [p for row in rows for p in row[:4]] + [p for row in rows for p in row[4:8]]
     subprocess.run(["montage", *tiles, "-tile", f"4x{len(tiles) // 4}", "-geometry", "280x280+2+2",
-                    "-background", "#22303A", f"{prefix}_sheet.png"], check=True)
+                    "-background", "#22303A", "-quality", "88", f"{prefix}_sheet.jpg"], check=True)
 
 
 def render(rung):
