@@ -377,3 +377,95 @@ func test_swimming_out_against_a_disc_clamp_slides_along_its_edge() -> void:
 		worst = maxf(worst, m.position.distance_to(center))
 	check(worst <= 3.0 + 1e-3, "never past the disc: %.5f" % worst)
 	check(travelled > 3.0 + 1.0, "it kept sliding along the edge (%.2f m)" % travelled)
+
+
+# --- The rock grid (plan section 20) ---
+
+func test_the_rock_grid_never_rules_out_a_rock_a_body_could_touch() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2020
+	var ruled_out := 0
+	var kept := 0
+	for arena: PoolArena in [PoolLayout.load_from().build_arena(), _crowded()]:
+		# Random points across the pool and past its edge (beyond the grid), up to larger bodies
+		# than the grid serves.
+		var reach := arena.radius + 4.0
+		for i in 20000:
+			var p := Vector2(rng.randf_range(-reach, reach), rng.randf_range(-reach, reach))
+			var r := rng.randf_range(0.0, PoolArena.GRID_BODY_R + 0.5)
+			if arena.rocks_near(p, r):
+				kept += 1
+				continue
+			ruled_out += 1
+			for rock in arena.rocks:
+				if p.distance_to(rock.center) < rock.radius + r:
+					check(false, "a body of radius %.3f at %s touches %s, but the grid ruled it out" % [r, p, rock.id])
+					return
+		# Just inside touching distance, all round every rock, with the largest body the grid serves.
+		for rock in arena.rocks:
+			for k in 360:
+				var p: Vector2 = rock.center + Vector2.from_angle(k * TAU / 360.0) * (rock.radius + PoolArena.GRID_BODY_R - 1e-3)
+				if not arena.rocks_near(p, PoolArena.GRID_BODY_R):
+					check(false, "%s at %d deg, just inside touching distance, was ruled out" % [rock.id, k])
+					return
+	check(ruled_out > 10000 and kept > 1000, "the grid ruled out %d points and kept %d" % [ruled_out, kept])
+
+
+func test_swimming_settling_and_sight_come_out_the_same_to_the_bit_with_the_rock_grid_as_without_it() -> void:
+	var grid := PoolLayout.load_from().build_arena()
+	var plain := PoolLayout.load_from().build_arena()
+	plain.rock_grid = false
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2021
+	var p := _fastest()
+	var a := Locomotion.MotionState.new(Vector2(9.0, 2.0))
+	var b := Locomotion.MotionState.new(Vector2(9.0, 2.0))
+	var move := Vector2.ZERO
+	var touching := 0
+	var resting := 0
+	var in_band := 0
+	for i in 30000:
+		if i % 40 == 0:
+			move = Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.3, 1.0)
+		Locomotion.steer(a, move, p, 1.0, DT)
+		Locomotion.steer(b, move, p, 1.0, DT)
+		if i % 300 < 30:
+			a.velocity = Vector2.ZERO   # at rest, as a waiting creature is
+			b.velocity = Vector2.ZERO
+		if i % 97 == 0:
+			# A push as separation gives, into rocks and the wall at times, then the settle after it.
+			var push := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 0.5)
+			a.position += push
+			b.position += push
+			grid.settle(a, BODY_R)
+			plain.settle(b, BODY_R)
+		var moved_a := grid.move(a, BODY_R, DT)
+		var moved_b := plain.move(b, BODY_R, DT)
+		if moved_a != moved_b or a.position != b.position or a.velocity != b.velocity or a.prev_position != b.prev_position:
+			check(false, "tick %d: with the grid %s %s moved %.9f, without %s %s moved %.9f" % [
+				i, a.position, a.velocity, moved_a, b.position, b.velocity, moved_b])
+			return
+		var contact := grid.rock_contact(a.position, BODY_R)
+		if contact != plain.rock_contact(b.position, BODY_R) or grid.is_clear(a.position, BODY_R) != plain.is_clear(b.position, BODY_R):
+			check(false, "tick %d: the rock contact or the clear test differs at %s" % [i, a.position])
+			return
+		if not contact.is_empty():
+			touching += 1
+		if moved_a == 0.0 and a.velocity == Vector2.ZERO:
+			resting += 1
+		if a.position.length() > grid.soft_start:
+			in_band += 1
+	check(touching > 200 and resting > 1000 and in_band > 100, "the swim touched rocks on %d ticks, rested on %d, was in the soft band on %d" % [
+		touching, resting, in_band])
+	# Lines of sight, which skip the rocks outside a segment's box.
+	var blocked := 0
+	for i in 20000:
+		var from := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 38.0)
+		var to := from + Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.0, 20.0)
+		var seen := grid.segment_clear(from, to)
+		if seen != plain.segment_clear(from, to):
+			check(false, "the line of sight from %s to %s differs" % [from, to])
+			return
+		if not seen:
+			blocked += 1
+	check(blocked > 500, "rocks blocked %d of the lines of sight" % blocked)
