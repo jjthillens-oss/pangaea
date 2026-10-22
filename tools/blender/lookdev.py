@@ -302,3 +302,39 @@ def membrane_material(name, back="rust", body="coral", belly="cream", spots="min
     links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
     bsdf.inputs["Metallic"].default_value = 0.0
     return mat
+
+
+def tint_region(mat, centre, radius, tint, strength=1.0, axis=None):
+    """Blend `tint` into a membrane's base color near `centre` (object space).
+
+    With `axis` ("X", "Y" or "Z") the blend runs along that axis instead, from `centre` (that
+    axis' coordinate, no tint) to `centre + radius` (full tint); radius may be negative.
+    """
+    nt = mat.node_tree
+    nodes, links = nt.nodes, nt.links
+    bsdf = nodes["Principled BSDF"]
+    source = bsdf.inputs["Base Color"].links[0].from_socket
+    coords = next(n for n in nodes if n.bl_idname == "ShaderNodeTexCoord")
+    falloff = nodes.new("ShaderNodeMapRange")
+    if axis:
+        xyz = nodes.new("ShaderNodeSeparateXYZ")
+        links.new(coords.outputs["Object"], xyz.inputs["Vector"])
+        links.new(xyz.outputs[axis], falloff.inputs["Value"])
+        falloff.inputs["From Min"].default_value, falloff.inputs["From Max"].default_value = centre, centre + radius
+        falloff.inputs["To Max"].default_value = strength
+    else:
+        dist = nodes.new("ShaderNodeVectorMath")
+        dist.operation = "DISTANCE"
+        dist.inputs[1].default_value = centre
+        links.new(coords.outputs["Object"], dist.inputs[0])
+        links.new(dist.outputs["Value"], falloff.inputs["Value"])
+        falloff.inputs["From Min"].default_value, falloff.inputs["From Max"].default_value = 0.0, radius
+        falloff.inputs["To Min"].default_value, falloff.inputs["To Max"].default_value = strength, 0.0
+    falloff.interpolation_type = "SMOOTHSTEP"
+    blend = nodes.new("ShaderNodeMix")
+    blend.data_type = "RGBA"
+    blend.inputs["B"].default_value = tint
+    links.new(falloff.outputs["Result"], blend.inputs["Factor"])
+    links.new(source, blend.inputs["A"])
+    links.new(blend.outputs["Result"], bsdf.inputs["Base Color"])
+    return blend

@@ -164,7 +164,7 @@ def add_eye(side, body):
     bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=EYE_RADIUS, location=centre)
     parts["eye"] = name_obj(bpy.context.active_object, f"Eye_{side}")
     rot = gaze.to_track_quat("Z", "Y").to_euler()
-    for name, radius, depth, flat in (("Iris", 0.068, EYE_RADIUS - 0.018, 0.4), ("Pupil", 0.034, EYE_RADIUS - 0.003, 0.35)):
+    for name, radius, depth, flat in (("Iris", 0.068, EYE_RADIUS - 0.018, 0.4), ("Pupil", 0.036, EYE_RADIUS + 0.004, 0.35)):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=8, radius=radius, location=centre + gaze * depth)
         cap = name_obj(bpy.context.active_object, f"{name}_{side}")
         cap.scale = (1, 1, flat)
@@ -270,6 +270,150 @@ def build_form():
     return objs
 
 
+# --- Rung 2: surfaced ----------------------------------------------------------------------
+
+TEXTURE_SIZE = 512  # Microscopic creature budget (art direction section 4).
+
+
+def select_only(obj):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+
+def join_into(target, others):
+    """Join meshes into `target` so the skinned body is one mesh with one texture set."""
+    select_only(target)
+    for obj in others:
+        obj.select_set(True)
+    bpy.ops.object.join()
+    return target
+
+
+def unwrap(obj):
+    select_only(obj)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.012, scale_to_bounds=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def body_membrane():
+    mat = ld.membrane_material("M_Membrane_Procedural")
+    mouth = ellipsoid_point(MOUTH_DIR)
+    ld.tint_region(mat, tuple(mouth - MOUTH_DIR * 0.06), 0.09, ld.color("#5A2230"), 0.95)   # mouth interior
+    ld.tint_region(mat, -0.5, -0.8, ld.color("cream"), 0.7, axis="Y")                       # flagellum tip
+    for d in EYE_DIR.values():
+        ld.tint_region(mat, tuple(ellipsoid_point(d)), 0.17, ld.color("rust"), 0.35)       # eye shadow
+    return mat
+
+
+def bake(obj, mat, kind, image, pass_filter=None):
+    nodes = mat.node_tree.nodes
+    node = nodes.new("ShaderNodeTexImage")
+    node.image = image
+    nodes.active = node
+    select_only(obj)
+    scene = bpy.context.scene
+    scene.render.bake.margin = 6
+    kwargs = {"type": kind, "use_clear": True}
+    if pass_filter:
+        kwargs["pass_filter"] = pass_filter
+    bpy.ops.object.bake(**kwargs)
+    nodes.remove(node)
+
+
+def new_image(name, colorspace):
+    img = bpy.data.images.new(name, TEXTURE_SIZE, TEXTURE_SIZE, alpha=False)
+    img.colorspace_settings.name = colorspace
+    return img
+
+
+def bake_body(body):
+    """Bake the procedural membrane to an albedo and an ORM texture, then swap in a glTF-safe material."""
+    scene = bpy.context.scene
+    ld.setup_render(samples=16)
+    proc = body_membrane()
+    body.data.materials.clear()
+    body.data.materials.append(proc)
+    albedo = new_image("T_CellLadder_Albedo", "sRGB")
+    rough = new_image("T_CellLadder_Roughness", "Non-Color")
+    ao = new_image("T_CellLadder_AO", "Non-Color")
+    bake(body, proc, "DIFFUSE", albedo, {"COLOR"})
+    bake(body, proc, "ROUGHNESS", rough)
+    scene.cycles.samples = 64
+    bake(body, proc, "AO", ao)
+    # ORM: R occlusion, G roughness, B metallic (0). Albedo gets a soft cavity darkening from the
+    # AO so the form holds in Godot even without an occlusion map.
+    import numpy as np
+    n = TEXTURE_SIZE * TEXTURE_SIZE * 4
+    a, r, o = (np.empty(n, dtype=np.float32) for _ in range(3))
+    albedo.pixels.foreach_get(a)
+    rough.pixels.foreach_get(r)
+    ao.pixels.foreach_get(o)
+    occ = o.reshape(-1, 4)[:, 0]
+    rgba = a.reshape(-1, 4)
+    rgba[:, :3] *= (0.7 + 0.3 * occ)[:, None]
+    albedo.pixels.foreach_set(rgba.ravel())
+    orm = new_image("T_CellLadder_ORM", "Non-Color")
+    packed = np.stack([occ, r.reshape(-1, 4)[:, 0], np.zeros_like(occ), np.ones_like(occ)], axis=1)
+    orm.pixels.foreach_set(packed.ravel())
+    bpy.data.images.remove(rough)
+    bpy.data.images.remove(ao)
+    for img in (albedo, orm):
+        img.file_format = "PNG"
+        img.pack()
+
+    mat = bpy.data.materials.new("M_CellMembrane")
+    mat.use_nodes = True
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes["Principled BSDF"]
+    tex_a = nodes.new("ShaderNodeTexImage")
+    tex_a.image = albedo
+    links.new(tex_a.outputs["Color"], bsdf.inputs["Base Color"])
+    tex_orm = nodes.new("ShaderNodeTexImage")
+    tex_orm.image = orm
+    split = nodes.new("ShaderNodeSeparateColor")
+    links.new(tex_orm.outputs["Color"], split.inputs["Color"])
+    links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
+    links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
+    body.data.materials.clear()
+    body.data.materials.append(mat)
+    bpy.data.materials.remove(proc)
+    return [{"name": img.name, "size": [TEXTURE_SIZE, TEXTURE_SIZE], "colorspace": img.colorspace_settings.name,
+             "packing": "albedo RGB" if img is albedo else "R occlusion, G roughness, B metallic"}
+            for img in (albedo, orm)]
+
+
+def surface_parts(objs):
+    mats = {
+        "eye": ld.principled("M_EyeSclera", ld.color("cream"), 0.08),
+        "iris": ld.principled("M_EyeIris", ld.color("pool_teal"), 0.25),
+        "pupil": ld.principled("M_EyePupil", ld.color("#0E1A26"), 0.05),
+        "lidupper": ld.principled("M_Lid", ld.color("rust"), 0.62),
+        "lips": ld.principled("M_Lips", ld.color("#8E3A33"), 0.55),
+        "organelle": ld.principled("M_Organelle", ld.color("mineral_amber"), 0.45, ld.color("mineral_amber"), 0.5),
+    }
+    mats["lidlower"] = mats["lidupper"]
+    for key, obj in objs.items():
+        family = key.split("_")[0]
+        if family in mats:
+            obj.data.materials.clear()
+            obj.data.materials.append(mats[family])
+
+
+def build_surfaced():
+    objs = build_form()
+    body = join_into(objs["body"], [objs.pop("flagellum"), objs.pop("collar")])
+    unwrap(body)
+    textures = bake_body(body)
+    surface_parts(objs)
+    clay = bpy.data.materials.get("M_Clay")
+    if clay:
+        bpy.data.materials.remove(clay)
+    return objs, {"textures": textures}
+
+
 # --- Export and record ---------------------------------------------------------------------
 
 def export(rung, objs, extra=None):
@@ -321,13 +465,14 @@ def export(rung, objs, extra=None):
     return record
 
 
-BUILDERS = {"0_blockout": build_blockout, "1_form": build_form}
+BUILDERS = {"0_blockout": build_blockout, "1_form": build_form, "2_surfaced": build_surfaced}
 
 
 def build(rung):
     reset_scene()
-    objs = BUILDERS[rung]()
-    return export(rung, objs)
+    result = BUILDERS[rung]()
+    objs, extra = result if isinstance(result, tuple) else (result, {})
+    return export(rung, objs, extra)
 
 
 def main(argv):
