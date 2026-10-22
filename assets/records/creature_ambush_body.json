@@ -1,0 +1,68 @@
+{
+  "id": "creature_ambush_body",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - M1 step 3, not visually approved",
+  "purpose": "M1 step 3 ambush hunter body (role: ambush): a big, flat, dark mottled pebble with glowing amber eyes under a heavy brow. Body only; its parts come from the part GLBs.",
+  "category": "creature_body",
+  "source_blend": "assets/source/blender/creature_ambush_body.blend",
+  "generator_script": "tools/blender/make_m1_threats.py",
+  "export_path": "assets/export/creature_ambush_body.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    "assets/export/M_AmbushBody.tres"
+  ],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.92,
+    "y_forward": 1.0,
+    "z_up": 0.276
+  },
+  "triangles": 3264,
+  "triangle_budget": 4000,
+  "textures": [],
+  "materials": [
+    "M_AmbushBody",
+    "M_AmbushBrow",
+    "M_AmbushEye",
+    "M_AmbushPupil"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Body",
+    "Brow",
+    "Eye_L",
+    "Eye_R",
+    "Pupil_L",
+    "Pupil_R"
+  ],
+  "frame": {
+    "equator_rx_m": 0.46,
+    "equator_rz_m": 0.5,
+    "source": "game/scenes/pool/part_placement.gd RX and RZ; the part GLBs sit on this outline at the swim plane"
+  },
+  "top_m": 0.176,
+  "bottom_m": 0.1,
+  "height_to_width": 0.3,
+  "pivot": "body centre on the swim plane (Godot y = 0); built at size 1, the creature view scales it by the species' body_size",
+  "pose_nodes": {
+    "Eye_L": "child of Body, origin at the eye's centre; material M_AmbushEye, whose emission the creature view drives",
+    "Eye_R": "as Eye_L",
+    "Brow": "child of Body, origin at the middle of the ridge"
+  },
+  "eye_material": "M_AmbushEye",
+  "eye_emission_rest": 0.4,
+  "vertex_colors": {
+    "attribute": "AmbushColor",
+    "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_AmbushBody.tres)",
+    "note": "Dark olive-brown back with blue-leaning mottles and light olive flecks, dark rings round the eye sockets, a cream belly.",
+    "back": "#5B4D31",
+    "mottle": "#2C2F3B",
+    "fleck": "#7D6E45",
+    "belly": "#F4EAD2"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_threats.py; no external or generated meshes."
+}

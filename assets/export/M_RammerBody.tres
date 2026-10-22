@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; The territorial rammer body's material (assets/records/creature_rammer_body.json). Its colour is
+; the mesh's vertex colours, which the glTF importer would leave unused: pale sand with three dark
+; bands and a cream belly, stored sRGB-encoded so both renderers shade them like an albedo colour.
+; Roughness matches the Blender material M_RammerBody. creature_rammer_body.glb.import points the
+; imported material here.
+
+[resource]
+resource_name = "M_RammerBody"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+roughness = 0.5

@@ -1,0 +1,13 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; The ambush hunter body's material (assets/records/creature_ambush_body.json). Its colour is the
+; mesh's vertex colours, which the glTF importer would leave unused: a dark mottled olive-brown back
+; and a cream belly, stored sRGB-encoded so both renderers shade them like an albedo colour.
+; Roughness matches the Blender material M_AmbushBody. creature_ambush_body.glb.import points the
+; imported material here.
+
+[resource]
+resource_name = "M_AmbushBody"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+roughness = 0.55
