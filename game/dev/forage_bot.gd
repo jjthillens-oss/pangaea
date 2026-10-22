@@ -22,6 +22,11 @@ var park_at := Vector2.INF
 var _target_id := ""
 
 
+## The id of the food the last intent swam for, or "" when there was none.
+func target_id() -> String:
+	return _target_id
+
+
 func next_intent(sim: PoolSim) -> SimIntent:
 	if sim.dead:
 		return SimIntent.new()
