@@ -147,4 +147,37 @@ Impact: the mint sample cell is now close in hue to the water and reads by value
 ## Open decisions (from M1 step 3)
 - OD3 (combat on contact): the owner's answer only adds a key in step 4; the recommended option is built. OD1 (save the death at once) is CONFIRMED as built.
 - OD2 (hunter fallback) is raised only if the hunter viability gate fails after data tuning; it passes now.
-- Threat pressure: sated ambush hunters mostly watch, and HuntBot's hunter took no hits in 240 s on any gate seed. Whether threats need more pressure (hunger, metabolism, `start_max_m` or `max_engaged_on_player` in the data, never shorter tells) is for the owner's play test.
+- Threat pressure: sated ambush hunters mostly watch, and HuntBot's hunter took no hits in 240 s on any gate seed. How much pressure the threats bring is for the owner's play test (never shorter tells). For a cell by the spawn the levers are z_center's regrowth and lair_s's place ("M1 step 3 review fixes: pressure", below); hunger, metabolism, `start_max_m` and `max_engaged_on_player` act only where a creature already reaches.
+
+## 2026-10-22 · M1 step 3 review fixes: pressure (PROPOSED)
+The step 3 review found that a cell feeding by the spawn never had to meet a threat. z_center and z_s each fed a grazer or an omnivore for ever, and both lay outside every creature's reach: the nearest reach disc (leash or territory plus leash, plus the body) ended 4.1 m from z_center and 8.9 m from z_s. Hunger, metabolism, the lunge window and the token act only inside a reach, so none of them could change that. Two data changes close the gap; how much pressure the pool should have stays the owner's call after he plays. Tells stay 1.2 s, and D20, D21 and every SpeciesCatalog and layout rule are unchanged.
+
+1. **lair_gap moves to the south rim as lair_s** (`creatures_m1.json`): home (5.0, 31.0), heading −2.0779 (facing z_s's centre), was (−9.4, −16.3) in the north-west rock gap. Its 9 m leash disc reaches 5.45 m into z_s, and from home its hunter sees z_s's edge 4.30 m away (sight 6 m). Its reach keeps 12.81 m from the checkpoint (rule 8 needs 12; every other site keeps 15.5 m or more), its home is 22.56 m away and outside the widest view, and it passes rules 9 and 10 with rock_15 and rock_08 outside its disc. Why this site:
+   - A lair north of z_center must sit at least 7.75 m from it (rule 8), beyond the hunters' 6 m sight. A probe lair at (0, −13) noticed the omnivore twice in twelve five-minute runs, six of them dodging.
+   - West of z_s, rock_15 leaves 0.38 m to the soft wall (rule 10).
+   - A rammer's territory can never touch z_center: rule 8 keeps its edge 1.6 m short.
+   - Moving lair_sw or lair_se would free z_sw or z_se. In a probe with lair_sw moved, a grazer then lived in z_sw for 5 minutes and met nothing.
+   - lair_gap guarded no zone. The north keeps its four rammers, and all three ambush hunters now wait at rims, as their death tip says.
+2. **z_center regrows at 0.08 a second, was 0.10** (`pool_m1.json`; z_n, z_se and z_nw already use 0.08). Its most sustained yield, r × K × (1/4 + 0.05), falls from 1.44 to 1.15 energy a second. That is below what a foraging cell eats, about 1.4 a second (53 meals of 8 in 5 minutes for both bodies). So z_center alone no longer feeds a cell, and a forager by the spawn also feeds where threats live. No reach can make z_center itself dangerous: rule 8 keeps every reach short of all but its far 2 m, beyond any lair's sight. An emptied z_center now shows its first item after 19.1 s and all 6 after 70.5 s (was 15.3 s and 56.4 s). Every zone is still full at world start.
+3. **Pressure gate** (`tests/test_threat_gates.gd` #32, slow):
+   - The forager is ForageBot (nearest food, minds no creature) under EvadeBot's dodge, 0.4 s after each tell (F2).
+   - It runs from the spawn for 300 s on seeds 501 to 503, fixed before any run, for the grazer and the omnivore.
+   - Notices of the cell plus tells at it must come at least 1.0 a minute for each body (pressure exists).
+   - The cell may die at most 0.5 times per 5 minutes over the six runs (a careful player is not worn down), and it must never starve.
+   - A fast test (`test_species_catalog`, `test_an_ambush_lair_reaches_into_z_s_and_sees_it_from_home`) keeps a lair reaching at least 2 m into z_s and seeing its edge from home.
+
+Measured: a greedy forager from the real spawn, 300 s, probe seeds 1 to 6. Meetings are notices of the cell plus tells at it. Each cell gives the runs that met a threat, meetings a minute, then deaths per 5 minutes.
+
+| Forager | Before | lair_s only | Built (lair_s and z_center 0.08) |
+| --- | --- | --- | --- |
+| Grazer, no dodging | 4 of 6; 1.73; 1.00 | 6 of 6; 1.83; 0.83 | 6 of 6; 4.03; 2.50 |
+| Omnivore, no dodging | 0 of 6; 0; 0 | 0 of 6; 0; 0 | 6 of 6; 2.10; 1.00 |
+| Grazer, dodging each tell | 4 of 6; 4.30; 0 | 6 of 6; 4.80; 0 | 6 of 6; 8.37; 0 |
+| Omnivore, dodging each tell | 0 of 6; 0; 0 | 0 of 6; 0; 0 | 6 of 6; 4.50; 0 |
+
+- Before, the omnivore stayed in z_center 99% of the time, and two of the six grazers lived in z_s. Built, the grazers that live in z_s meet lair_s once it is hungry (first at 152 and 184 s). The omnivore leaves z_center when it runs short and meets the rammers, lair_se or lair_s (first at 104 to 207 s).
+- Gate seeds, built: grazer 8.80 meetings a minute and omnivore 5.73, each met in 3 of 3 seeds; 0 deaths; 0 starved. With the data before the fix: grazer 3.60 (met in 2 of 3) and omnivore 0.00, so the gate fails. With lair_s alone: grazer 4.27 and omnivore 0.00, so it fails too.
+- The other gates, built: hunter viability 6 of 6 seeds (6 or 7 kills, 20 to 22 meat, 0 hits taken; D2 needs 5); predation balance 0 predation deaths and no niche empty in seeds 1 to 4; threat fuzz seeds 401 to 404: 16 tells, 17 give-ups, 5 hits on the cell and 2 flees, against floors of 10, 3, 1 and 1.
+- A probe with z_center at 0.09 (lair_sw moved instead of lair_gap) met the dodging omnivore in only 3 of 6 runs (1.23 a minute).
+
+Impact: a first-time player who eats by the spawn now meets a tell within a few minutes. One who never reacts to a tell dies 1 to 2.5 times per 5 minutes; one who dodges each tell does not die. The gate takes about 90 s on its own here (4 shared CPUs at load 10), and `tools/check.sh` took 6 min 14 s with it. Approval: tuning values, owner review pending.
