@@ -328,9 +328,10 @@ func _starve_and_recover(pool: PoolScene) -> void:
 	_check(hud.state_text.text != "Starving", "the HUD no longer says Starving (%s)" % hud.state_text.text)
 
 
-## A drained cell parked away from food dies; the notice names the points the death takes and
-## keeps the pause key, the window's close button offers no save while the cell is dead, and
-## the notice's Continue puts the cell back at the start and play goes on.
+## A drained cell parked away from food dies; the death is applied at once and the notice names
+## the points it took and keeps the pause key. This death runs the OD1 fallback (save_on_death
+## false: nothing is written at death), so the window's close button still offers no save while
+## the cell is dead; the notice's Continue puts the cell back at the start and play goes on.
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
@@ -340,15 +341,25 @@ func _die_and_continue(pool: PoolScene) -> void:
 		"the grazer kept eating to %d points in %.1f s" % [sim.save.adaptation_points, ticks * PoolSim.DT])
 	_check(sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading), "the cell goes back to the spawn, away from food")
 	bot.park_at = sim.layout.spawn
+	main.session.save_on_death = false
+	var saved_points := _slot_points(main.session.slot)
 	sim.debug_set_energy(0.0)
 	var deaths_before := int(_events.get("died", 0))
 	ticks = await _ticks_until(sim, func(): return sim.dead, DEATH_TICKS)
 	await _frames(2)
 	_check(sim.dead and int(_events.get("died", 0)) == deaths_before + 1, "the starving cell died once, after %.1f s" % (ticks * PoolSim.DT))
 	var notice := main.death_notice
-	var points := sim.save.adaptation_points
-	var loss := Lineage.death_loss(points)
-	_check(_shown(notice) and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
+	var resolved: Dictionary = main.session.death
+	var loss := int(resolved.get("lost", -1))
+	# The death was applied when it happened, so the points before it are today's plus the loss.
+	var points := sim.save.adaptation_points + loss
+	_check(not resolved.is_empty() and loss == Lineage.death_loss(points) and str(sim.save.lineage_history.back().get("cause", "")) == "starved",
+		"the death was applied at once: %d of %d points and a 'starved' history entry" % [loss, points])
+	_check(_shown(notice) and notice.title_text() == Main.death_title("starved") and notice.body_text().contains("(−%d)" % loss)
+		and notice.body_text().contains(GameSession.STARVED_TIP), "the death notice names the loss and the starving tip: %s" % notice.body_text())
+	_check(not bool(resolved.get("saved", {}).get("attempted", true)) and not notice.body_text().contains("Saved.")
+		and _slot_points(main.session.slot) == saved_points and main.session.dirty,
+		"with the OD1 fallback nothing was written at the death and the run has unsaved progress")
 	await _press(&"pause")
 	_check(not main.pause_menu.is_open() and _shown(notice), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
@@ -370,6 +381,9 @@ func _die_and_continue(pool: PoolScene) -> void:
 		"the lineage lost %d of %d points and its history records the death" % [loss, points])
 	_check(sim.motion.position.distance_to(sim.layout.spawn) <= POSITION_TOLERANCE_M and sim.state.health == sim.state.max_health,
 		"the cell is back at the start with full health")
+	_check(_shown(main.hud.message) and main.hud.message_text.text == Main.respawn_text(Hud.shelter_seconds(sim))
+		and main.hud.message_text.text.begins_with("Back at the generation start"), "the HUD says '%s'" % main.hud.message_text.text)
+	main.session.save_on_death = GameSession.SAVE_ON_DEATH
 	bot.park_at = Vector2.INF
 	await _check_running(pool, "play goes on after the death", 30)
 
@@ -615,6 +629,12 @@ func _open_main() -> void:
 	main = (load(MAIN_SCENE) as PackedScene).instantiate()
 	root.add_child(main)
 	await _frames(2)
+
+
+## The adaptation points the slot's file holds now, or -1 when it cannot be read.
+func _slot_points(slot: String) -> int:
+	var loaded := main.session.persistence.load_from(slot)
+	return loaded.save.adaptation_points if loaded.ok else -1
 
 
 ## Refuses to play unless the session uses a slot under user://smoke/.

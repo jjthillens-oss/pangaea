@@ -185,6 +185,19 @@ static func survival_toast(points: int, alive_s: float) -> String:
 	return "+%d point%s · survived %d s" % [points, "" if points == 1 else "s", roundi(alive_s)]
 
 
+## "Sheltered 5": the shelter chip's words, in whole seconds of shelter left.
+static func grace_text(seconds: int) -> String:
+	return "Sheltered %d" % seconds
+
+
+## Whole seconds of shelter the living cell has left, rounded up; 0 when it is not sheltered (or
+## the pool has no creatures, so no shelter).
+static func shelter_seconds(sim: PoolSim) -> int:
+	if sim == null or not sim.is_sheltered():
+		return 0
+	return ceili((sim.grace_until - sim.tick) / float(CreatureBrain.TICKS_PER_SECOND))
+
+
 ## What Continue restores: energy and health restart (they are not saved).
 static func rested_line(state: ActorState) -> String:
 	var health := "full" if state.health >= state.max_health else "%d%%" % roundi(100.0 * state.health / state.max_health)

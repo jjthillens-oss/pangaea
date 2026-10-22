@@ -2,7 +2,8 @@ extends TestCase
 ## The words and numbers the menus and HUD show (M1 step 2). Body cards must show exactly the
 ## stats Phenotype.derive gives, the HUD must name the sim's energy, health and points as the
 ## rules count them, controls are named from the key bindings, and the death notice names the
-## points the death rule takes. The running screens are covered by the scene smoke.
+## points the death rule took, the killer, its tip and whether the death was saved. The running
+## screens are covered by the scene smoke.
 
 const PERF_TOUR := "res://game/dev/perf_tour.gd"
 const THEME := "res://game/ui/theme/pangaea_theme.tres"
@@ -123,10 +124,75 @@ func test_controls_are_named_from_the_key_bindings() -> void:
 
 func test_the_death_notice_names_the_points_the_death_rule_takes() -> void:
 	check_eq(Main.death_text("starved", Lineage.death_loss(9)),
-		"Your cell starved. The lineage continues. You lose a quarter of your unspent adaptation points (−2).", "starved")
+		"The lineage continues from the start of generation 1. You lost a quarter of your unspent adaptation points (−2).\n"
+		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the starving tip follows")
 	check_eq(Main.death_title("starved"), "Out of energy", "the title does not repeat the body")
 	check_eq(Main.save_status_text({"ok": false, "error": "Could not save to x: disk full."}), "Could not save to x: disk full.", "errors as given")
 	check(Main.save_status_text({"ok": true, "error": ""}).begins_with("Saved "), "a save names its time")
+
+
+func test_a_kill_notice_names_the_killer_the_saved_loss_and_the_species_tip() -> void:
+	var species := SpeciesCatalog.load_from()
+	var reason := str(species.species.ambush_hunter.death_reason)
+	var tip := str(species.species.ambush_hunter.death_tip)
+	check_eq(reason, "Caught by an ambush hunter", "the ambush hunter's death reason")
+	check_eq(Main.death_title("killed", reason), "Caught by an ambush hunter", "a kill's title is its reason")
+	check_eq(Main.death_title("killed"), "Your cell died", "a kill with no reason (a dev kill)")
+	check_eq(Main.death_title("starved", reason), "Out of energy", "starving is never a kill")
+	check_eq(Main.death_title("drowned"), "Your cell died", "anything else")
+	var saved := {"attempted": true, "ok": true, "error": ""}
+	var text := Main.death_text("killed", 3, tip, saved, 1)
+	var lines := text.split("\n")
+	check_eq(lines.size(), 2, "one sentence line and a tip line: %s" % text)
+	check(lines[0].contains("(−3)") and lines[0].contains("generation 1") and lines[0].ends_with("Saved."),
+		"the loss, the generation and 'Saved.': %s" % lines[0])
+	check(lines[0].contains("You lost") and not text.contains("You lose"), "the loss is told as already taken")
+	check_eq(lines[1], tip, "the species tip on its own line")
+	check(tip.contains("sideways, out of its line"), "the tip names the dodge the tests prove: %s" % tip)
+	check(Main.death_text("killed", 3, tip, saved, 2).contains("generation 2"), "the generation is the save's")
+
+
+func test_the_death_notice_says_whether_the_death_was_saved() -> void:
+	var failed := {"attempted": true, "ok": false, "error": "Could not save to user://saves/slot_1.json: Can't open file."}
+	var text := Main.death_text("killed", 3, "", failed)
+	check(text.ends_with("(−3). Could not save to user://saves/slot_1.json: Can't open file.") and not text.contains("Saved."),
+		"a failed save says so with its reason: %s" % text)
+	check_eq(Main.death_save_line({"attempted": true, "ok": false, "error": "disk full"}), "Could not save: disk full",
+		"an error without its own lead-in")
+	var fallback := Main.death_text("killed", 3, "", {"attempted": false, "ok": false, "error": ""})
+	check(not fallback.contains("Saved.") and not fallback.contains("Could not save") and fallback.ends_with("(−3)."),
+		"no save tried (the OD1 fallback) says nothing about saving: %s" % fallback)
+	check_eq(Main.death_save_line({}), "", "no save result")
+
+
+func test_shelter_and_respawn_texts_count_whole_seconds() -> void:
+	check_eq(Hud.grace_text(5), "Sheltered 5", "the shelter chip")
+	check_eq(Hud.grace_text(1), "Sheltered 1", "its last second")
+	check_eq(Main.respawn_text(5), "Back at the generation start · sheltered for 5 s.", "the continue toast")
+	check_eq(Main.respawn_text(0), "Back at the generation start.", "no shelter, as in a pool without creatures")
+	check_eq(Hud.shelter_seconds(null), 0, "no run")
+
+
+func test_quitting_asks_first_only_about_what_would_be_lost() -> void:
+	var alive := Main.quit_prompt(false, false)
+	check_eq(alive.title, "Save first?", "alive")
+	check_eq(_ids(alive.choices), PackedStringArray(["save_quit", "quit", "cancel"]), "alive choices")
+	check_eq(alive.focus, "save_quit", "alive focus")
+	var failed := Main.quit_prompt(true, true)
+	check_eq(failed.body, "Your cell's death could not be saved. Quit anyway?", "a failed death save")
+	check_eq(_ids(failed.choices), PackedStringArray(["quit", "cancel"]), "no save choice: the save just failed")
+	check_eq(failed.focus, "cancel", "Cancel is focused")
+	var fallback := Main.quit_prompt(true, false)
+	check_eq(fallback.title, "Save first?", "dead, not saved (the OD1 fallback): step 2's dialog")
+	check(str(fallback.body).contains("Saving is off until you continue"), "it says why there is no save: %s" % fallback.body)
+	check_eq(_ids(fallback.choices), PackedStringArray(["quit", "cancel"]), "no save while dead")
+
+
+func _ids(choices: Array) -> PackedStringArray:
+	var out := PackedStringArray()
+	for c in choices:
+		out.append(str(c[0]))
+	return out
 
 
 func test_save_times_show_as_a_local_date_and_minute() -> void:
