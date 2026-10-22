@@ -17,7 +17,7 @@ Pinned in `tools/toolchain.env`. Inspected and verified on 2026-10-22.
 
 **Windows gate status.**
 - M0: passed (launch check). On 2026-10-22 the owner launched the exported `Pangaea.exe` (built from commit 678ce8b plus the M0 working tree) on his Windows PC and saw the sample cell rotating with four PASS lines. Hardware was not recorded.
-- M1 step 2: partly done. On 2026-10-22 the owner ran the preview build (commit a927b0f) on his PC. The formal checklist, the adapter and the FPS are not recorded yet; see `docs/milestones/M1.md`. Later commits are exported but not Windows-verified.
+- M1 step 2: open. On 2026-10-22 the owner ran the preview build (commit a927b0f) on his PC. The formal checklist, the adapter and the FPS are not recorded yet; see `docs/milestones/M1.md`. Later commits are exported but not Windows-verified.
 
 ## What `tools/check.sh` runs
 

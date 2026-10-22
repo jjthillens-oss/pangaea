@@ -1,4 +1,4 @@
-> **Approved pre-build plan for M1 step 2 (2026-10-22), kept for history.** It is copied here unchanged.
+> **Final pre-build plan for M1 step 2 (2026-10-22), kept for history.** It is copied here unchanged.
 > The build differs from it in places, and some numbers here are out of date. The step 2 section of
 > `docs/milestones/M1.md` lists where the build differs; the code and `game/data/` hold the current values.
 

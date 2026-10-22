@@ -9,9 +9,9 @@ Built with **Godot 4.7.2** and **Blender 5.2.2 LTS**. The design authority is th
 | Milestone | State |
 | --- | --- |
 | M0 Foundations: separate project, pinned toolchain, save schema, Blender export pipeline | Implemented; Windows launch verified by owner |
-| M1 First life: microscopic feeding, threats, reproduction, bounded editor | In progress: step 1 (rules) and step 2 (swim and eat) implemented; step 2 Windows checklist partly done. See `docs/milestones/M1.md` |
+| M1 First life: microscopic feeding, threats, reproduction, bounded editor | In progress: step 1 (rules) and step 2 (swim and eat) implemented; the owner played a step 2 preview build on Windows; its checklist is not recorded yet. See `docs/milestones/M1.md` |
 
-Opening the project starts the game (`game/scenes/main.tscn`): a start screen, then a tide pool where a single cell swims and eats plankton or carrion. The M0 check scene, `game/scenes/boot.tscn`, still runs by path.
+Running the project starts the game (`game/scenes/main.tscn`): a start screen, then a tide pool where a single cell swims and eats plankton or carrion. The M0 check scene, `game/scenes/boot.tscn`, still runs by path.
 
 ## Quick start
 
