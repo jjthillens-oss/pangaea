@@ -4,10 +4,13 @@ shader_type spatial;
 // the water above it lets through. Water takes red first, so the floor turns teal and darker
 // with depth while its shadows keep their contrast, which a fog mix would wash out. Only the
 // floor is drawn through it: the cell and the food on the swim plane keep their own colours, so
-// they read first. The rim above the surface stays dry.
+// they read first. The rim above the surface stays dry. Keep glow off in the pool environment:
+// the Compatibility renderer stores a glowing frame at a quarter of its brightness, which a
+// multiply cannot undo, and the floor turns almost black (tests/test_pool_look.gd).
 render_mode blend_mul, unshaded, depth_draw_never, fog_disabled, cull_back;
 
-// Share of each channel lost per metre of water above the floor (red, green, blue).
+// How fast each channel fades with the water above the floor, per metre (red, green, blue):
+// the floor keeps exp(-absorb * depth) of its light.
 uniform vec3 absorb = vec3(0.95, 0.27, 0.14);
 // The water's surface in world metres; the swim plane is y = 0.
 uniform float surface_y = 0.8;

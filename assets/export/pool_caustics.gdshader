@@ -3,13 +3,14 @@ shader_type spatial;
 // that adds a slow net of soft bright lines, made here from two layers of moving cells (no
 // texture). The pass is lit like the floor, so the sun's shadows mask it. It skips the engine
 // fog, which would add the fog colour a second time, and fades with the same fog the floor gets
-// instead: the fog_* uniforms copy game/scenes/pool/pool_environment.tres (tests/test_assets.gd
-// checks this). M_PoolWater, the next pass, then takes the water's share of it like the floor's.
+// instead: the fog_* uniforms copy game/scenes/pool/pool_environment.tres
+// (tests/test_pool_look.gd checks this). M_PoolWater, the next pass, then takes the water's share
+// of it like the floor's.
 render_mode blend_add, depth_draw_never, diffuse_lambert, specular_disabled, ambient_light_disabled, fog_disabled;
 
-uniform vec3 tint : source_color = vec3(1.0, 0.95, 0.85);
-uniform float strength = 0.2;
-uniform float cells_per_m = 0.42;     // how many cells of the net fit in a metre
+uniform vec3 tint : source_color = vec3(0.957, 0.918, 0.824);   // cream highlight, never pure white
+uniform float strength = 0.13;
+uniform float cells_per_m = 0.34;     // how many cells of the net fit in a metre
 uniform float drift = 0.35;           // how fast the cells move
 uniform float warp = 0.3;             // how far a slow swirl bends the lines
 uniform float fog_density = 0.0;
@@ -54,6 +55,8 @@ void fragment() {
 	float c = min(cell_borders(p, t), cell_borders(p * LAYER_SCALE + LAYER_OFFSET, -t * 1.21)) * 1.6;
 	// Where the net is finer than a few pixels it would shimmer, so it fades out there.
 	float detail = 1.0 - smoothstep(0.25, 0.6, length(fwidth(p)));
-	float fog = max(1.0 - exp(-fog_density * length(VERTEX)), 1.0 - exp(min(0.0, (world_pos.y - fog_height) * fog_height_density)));
+	float depth_fog = 1.0 - exp(-fog_density * length(VERTEX));
+	float height_fog = 1.0 - exp(min(0.0, (world_pos.y - fog_height) * fog_height_density));
+	float fog = max(depth_fog, height_fog);
 	ALBEDO = tint * (c * strength * detail * (1.0 - fog));
 }
