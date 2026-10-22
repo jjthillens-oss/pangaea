@@ -9,8 +9,8 @@ extends RefCounted
 
 const RETURN_SPEED := 1.0   ## m/s at full depth into the soft band
 const ROCK_PASSES := 2      ## pushing out of one rock can push into another; two passes settle it
-## Overlap is_clear forgives. Above float32 rounding at pool distances (a few micrometres), since
-## pushing out of a rock lands that close to its surface, on either side; still far below 1 mm.
+## Overlap is_clear forgives. Pushing out of a rock lands within float32 rounding of its surface
+## (a few micrometres either side at pool distances), so this is above that and far below 1 mm.
 const CLEAR_EPSILON := 1e-4
 
 var radius := 40.0
