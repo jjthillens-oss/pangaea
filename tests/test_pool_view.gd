@@ -212,3 +212,56 @@ func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there(
 	check_near(t.basis.get_scale().x, 1.0, 1e-5, "full size after %.1f s" % FoodView.MEAT_SETTLE_S)
 	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and on the floor where it landed")
 	meat.free()
+
+
+# --- threats (M1 step 3): the player's spike part, hurt and shelter ---
+
+const CELL_VIEW := "res://game/scenes/pool/player_cell_view.tscn"
+
+
+func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:
+	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
+	var catalog := PartCatalog.load_from()
+	var genome := Lineage.found(1, "test+dev", catalog, "grazer").save.genome
+	genome.add_part("spike", 1.2)
+	view.build(genome, Phenotype.derive(genome, catalog))
+	var holder := view.part_nodes().back() as Node3D
+	check_eq(holder.get_meta("part_type"), "spike", "the spike's holder")
+	check_eq(holder.get_child_count(), 1, "with its model")
+	if holder.get_child_count() == 1:
+		check_eq(String(holder.get_child(0).scene_file_path), "res://assets/export/part_spike.glb", "the part_spike blockout")
+	check(holder.transform.is_equal_approx(PartPlacement.transform_for(1.2, "spike")), "placed by PartPlacement")
+	view.free()
+
+
+func test_a_hit_flashes_and_flinches_the_cell_and_shelter_rims_it_softly() -> void:
+	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
+	var catalog := PartCatalog.load_from()
+	var r := Lineage.found(1, "test+dev", catalog, "grazer")
+	view.build(r.save.genome, Phenotype.derive(r.save.genome, catalog))
+	view._process(0.01)
+	check_eq((view.overlay_colors().tint as Color).a, 0.0, "no tint on a healthy cell")
+	view.hurt()
+	view._process(0.03)
+	var tint: Color = view.overlay_colors().tint
+	check(tint.a > 0.3 and tint.r > tint.g * 2.0, "a hit flashes the cell red (%s)" % tint)
+	check(not (view.get_node("%Pivot") as Node3D).scale.is_equal_approx(Vector3.ONE), "and it flinches")
+	view._process(0.2)
+	check_eq((view.overlay_colors().tint as Color).a, 0.0, "the flash is gone after 0.15 s")
+	check((view.get_node("%Pivot") as Node3D).scale.is_equal_approx(Vector3.ONE), "and so is the flinch")
+	view.set_sheltered(true)
+	var top := 0.0
+	var low := 1.0
+	for i in 120:
+		view._process(1.0 / 60.0)
+		var a := (view.overlay_colors().rim as Color).a
+		if i >= 30:
+			top = maxf(top, a)
+			low = minf(low, a)
+	check(top <= 0.25 + 1e-6 and top > 0.2, "the shelter rim pulses up to a quarter alpha (%.3f)" % top)
+	check(low < top - 0.1, "and back down, once a second (%.3f)" % low)
+	view.set_sheltered(false)
+	for i in 30:
+		view._process(1.0 / 60.0)
+	check_eq((view.overlay_colors().rim as Color).a, 0.0, "the rim fades out when shelter ends")
+	view.free()
