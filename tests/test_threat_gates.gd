@@ -5,10 +5,15 @@ extends TestCase
 ## Their seeds were written here before any run. If a gate fails after a change, the data is tuned
 ## (plan section 10: five knobs, in order, within their bounds), never the gate.
 ##
-## #29 stress: 24 creatures round a ring for 30 s; the average tick stays under 2.5 ms. The same 30 s
-##     are timed three times (the bot's run, then two replays of its intents) and each 5 s window
-##     counts at its fastest, so a burst of load from other processes on a shared machine does not
-##     fail the gate. The replays end in the bot's run's state hash: all three timed the same ticks.
+## #29 stress: 24 creatures round a ring for 30 s. The same 30 s are timed three times (the bot's
+##     run, then two replays of its intents) and each 5 s window counts at its fastest, so a burst
+##     of load from other processes on a shared machine does not fail the gate. The replays end in
+##     the bot's run's state hash: all three timed the same ticks. The average tick stays under
+##     4.4 ms, about 2.5 times a quiet reading here (about 1750 us; CI's runner reads about 810),
+##     so steady load does not fail it either; and each step is timed against the yardstick
+##     (tests/cost_yardstick.gd) run right after it, which load slows alike: a tick reads about 12
+##     to 15 yardsticks under any load here, and a step that costs twice as much about 25, past
+##     STRESS_YARDSTICKS. Flake policy: docs/DECISIONS.md, M1 step 3 review fixes.
 ## #30 hunter viability (plan D2): HuntBot keeps a hunter lineage alive on what it kills, now that
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on
@@ -16,6 +21,7 @@ extends TestCase
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const Yardstick := preload("res://tests/cost_yardstick.gd")
 
 ## #29: 24 creatures, ambush hunters and rammers in turn, 28 m out from the pool's center, facing in.
 ## The ring starts 7.5 degrees off north-east-south-west so every site sits between the rim rocks
@@ -25,7 +31,8 @@ const STRESS_RING_M := 28.0
 const STRESS_RING_START := PI / 24.0
 const STRESS_SPECIES: PackedStringArray = ["ambush_hunter", "rammer"]
 const STRESS_TICKS := 1800
-const STRESS_LIMIT_US := 2500.0
+const STRESS_LIMIT_US := 4400.0
+const STRESS_YARDSTICKS := 21.0
 const STRESS_RUNS := 3              ## the bot's run and two replays of its intents
 const STRESS_WINDOW_TICKS := 300    ## each 5 s window of the 30 counts at its fastest of the runs
 ## #30 (plan section 10): seeds fixed before any run; a seed passes with no starvation death, at most
@@ -72,7 +79,9 @@ func _sim(body: String, seed_value: int, p_species: SpeciesCatalog = null) -> Po
 
 func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick() -> void:
 	# Plan #29: the real species placed as dev creatures (outside the niche caps, so none need
-	# raising), with the cell foraging at the spawn while minding them. Only sim.step is timed.
+	# raising), with the cell foraging at the spawn while minding them. Only sim.step and the
+	# yardstick are timed; each run's yardstick count is its step time over its yardstick time, and
+	# the lowest counts.
 	var windows := ceili(float(STRESS_TICKS) / STRESS_WINDOW_TICKS)
 	var best := PackedInt64Array()
 	best.resize(windows)
@@ -82,6 +91,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 	var deaths := 0
 	var left := 0
 	var end_hash := 0
+	var ratios: Array[float] = []
 	for run in STRESS_RUNS:
 		var sim := _stress_sim()
 		check_eq(sim.creatures.creatures.size(), STRESS_CREATURES, "run %d: %d creatures" % [run, STRESS_CREATURES])
@@ -91,6 +101,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 			bot.avoid_threats = true
 		var spent := PackedInt64Array()
 		spent.resize(windows)
+		var yard := 0
 		for i in STRESS_TICKS:
 			var intent: SimIntent
 			if run == 0:
@@ -101,6 +112,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 			var t0 := Time.get_ticks_usec()
 			sim.step(intent)
 			spent[floori(float(i) / STRESS_WINDOW_TICKS)] += Time.get_ticks_usec() - t0
+			yard += Yardstick.time_once()
 			for e in sim.drain_events():
 				if run == 0 and e.type == "creature_died":
 					deaths += 1
@@ -108,6 +120,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 		for w in windows:
 			best[w] = mini(best[w], spent[w])
 			total += spent[w]
+		ratios.append(total / float(maxi(yard, 1)))
 		if run == 0:
 			first_average = total / float(STRESS_TICKS)
 			left = sim.creatures.creatures.size()
@@ -118,9 +131,12 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 	for w in windows:
 		average += best[w]
 	average /= float(STRESS_TICKS)
-	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left)" % [
-		average, STRESS_TICKS, STRESS_CREATURES, STRESS_RUNS, first_average, deaths, left])
+	var ratio: float = ratios.min()
+	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left); %.2f yardsticks (%s)" % [
+		average, STRESS_TICKS, STRESS_CREATURES, STRESS_RUNS, first_average, deaths, left, ratio,
+		", ".join(ratios.map(func(r: float) -> String: return "%.2f" % r))])
 	check(average <= STRESS_LIMIT_US, "average %.1f us per tick (limit %.0f)" % [average, STRESS_LIMIT_US])
+	check(ratio <= STRESS_YARDSTICKS, "a tick costs %.2f yardsticks (limit %.1f)" % [ratio, STRESS_YARDSTICKS])
 
 
 ## The #29 pool: a new omnivore lineage at the spawn, and the ring of creatures facing in.
