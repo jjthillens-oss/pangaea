@@ -643,8 +643,7 @@ func _continue_sheltered(pool: PoolScene) -> int:
 ## the cell once the shelter is over: the HUD's own refresh brings up one arrow for it, at the
 ## bottom edge with the jaw glyph, and draws it on screen with the notice's "!" (the "!" over the
 ## body stays hidden off screen), clear of every refusal hint at both window sizes. F10 kills it
-## and the arrow goes by itself. Then the forage bot swims on until there is
-## unsaved progress again.
+## and the arrow goes by itself. Then the forage bot swims on until there is unsaved progress again.
 func _check_off_screen_arrow(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot: Object = pool.intent_provider
