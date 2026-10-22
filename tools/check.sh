@@ -2,8 +2,9 @@
 # Imports assets, runs the test suite, the M0 boot check and the scene smokes, then fails if any
 # smoke log holds an engine or script error. Usage: tools/check.sh [path-to-godot]
 #   launch:   the main scene opens and runs 300 frames (start screen, nothing saved)
-#   found:    a new grazer lineage eats, starves and recovers, then saves and quits to the title;
-#             hunter and omnivore lineages eat too
+#   found:    a new grazer lineage eats, starves and recovers, dies and continues, then saves and
+#             quits to the title; hunter and omnivore lineages eat too. Last, the grazer continues
+#             and the window's close button saves and quits through "Save first?", ending the game
 #   continue: a new process continues that lineage and finds the same body, points and place
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/.
 set -euo pipefail
