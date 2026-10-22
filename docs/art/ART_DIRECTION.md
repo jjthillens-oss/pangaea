@@ -130,7 +130,7 @@ cloud environment since 2026-10-22; the first scan in use is Poly Haven's Rock B
 
 Once a model looks right, its triangles are cut as far as they go without visible loss. The
 production generator decimates each mesh while its surface stays within a tolerance of the
-full-detail model (PROPOSED: 1.2 mm for parts, 1.5 mm for food and the player cell, 10 mm for
+full-detail model (PROPOSED: 0.6 mm for parts, 1.5 mm for food and the player cell, 10 mm for
 rocks; about one pixel where each is seen most closely), then bakes the full-detail shading into
 the normal map. Records list the tolerance and the triangle counts before and after
 (`docs/art/production_m1.md`).

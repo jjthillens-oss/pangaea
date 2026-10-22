@@ -66,7 +66,7 @@
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
-    "tolerance_m": 0.0012,
+    "tolerance_m": 0.0006,
     "triangles_before": 1344,
     "triangles_after": 1260
   },

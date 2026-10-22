@@ -32,10 +32,10 @@ is baked into the normal map.
 | Asset | Full detail | Shipped | Budget | Tolerance | Textures (px) |
 | --- | --- | --- | --- | --- | --- |
 | `sample_cell` | 9,412 | 5,607 | 8000 | 1.5 mm | Albedo 1024, ORM 1024, Normal 1024 |
-| `part_mouth_filter` | 1,344 | 1,260 | 1500 | 1.2 mm | Albedo 512, ORM 512, Normal 512 |
-| `part_mouth_jaw` | 1,096 | 552 | 1500 | 1.2 mm | Albedo 512, ORM 512, Normal 512 |
-| `part_flagellum` | 1,056 | 452 | 1500 | 1.2 mm | Albedo 512, ORM 512, Normal 512 |
-| `part_eye_spot` | 1,256 | 652 | 1500 | 1.2 mm | Albedo 512, ORM 512, Normal 512 |
+| `part_mouth_filter` | 1,344 | 1,260 | 1500 | 0.6 mm | Albedo 512, ORM 512, Normal 512 |
+| `part_mouth_jaw` | 1,096 | 728 | 1500 | 0.6 mm | Albedo 512, ORM 512, Normal 512 |
+| `part_flagellum` | 1,056 | 558 | 1500 | 0.6 mm | Albedo 512, ORM 512, Normal 512 |
+| `part_eye_spot` | 1,256 | 1,006 | 1500 | 0.6 mm | Albedo 512, ORM 512, Normal 512 |
 | `plankton` | 384 | 284 | 400 | 1.5 mm | Albedo 256, ORM 256, Normal 256, Emission 256 |
 | `carrion` | 320 | 300 | 400 | 1.5 mm | Albedo 256, ORM 256, Normal 256 |
 | `rock_a` | 1,280 | 600 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |

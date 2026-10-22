@@ -46,7 +46,7 @@ ROCK_TEXTURE = 512    # a 2 m prop is about 150 px tall at the gameplay camera
 # Each mesh is decimated while its surface stays within this distance of the full-detail model,
 # and the full model's shading is baked into the normal map. At the gameplay camera one pixel is
 # about 11 mm; in an editor close-up about 1 mm.
-PART_TOLERANCE = 0.0012
+PART_TOLERANCE = 0.0006
 FOOD_TOLERANCE = 0.0015
 ROCK_TOLERANCE = 0.01
 
@@ -220,7 +220,7 @@ def build_eye_spot():
             # From the lid's front edge, which dips to a soft petal point at the middle, over the
             # top and a little behind it. The eye's front stays open.
             mid = math.exp(-((j / cols - 0.5) / 0.2) ** 2)
-            pitch = math.radians((30.0 - 14.0 * mid) + (100.0 - (30.0 - 14.0 * mid)) * row)
+            pitch = math.radians((30.0 - 14.0 * mid) + (84.0 - (30.0 - 14.0 * mid)) * row)
             edge = 1.0 - 0.18 * (abs(j / cols - 0.5) * 2.0) ** 2
             r = (EYE_BALL_R + 0.009) * edge
             d = Vector((math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)))
@@ -230,7 +230,7 @@ def build_eye_spot():
                   for i in range(rows) for j in range(cols)]
     lid = bc.mesh_object("EyeSpotLid", hood, hood_faces, [lid_proc], fix_normals=False, parent=eye)
     solid = lid.modifiers.new("Solidify", "SOLIDIFY")
-    solid.thickness = 0.008
+    solid.thickness = 0.01
     solid.offset = 1.0
     sf.select([lid])
     bpy.ops.object.modifier_apply(modifier="Solidify")
@@ -435,11 +435,12 @@ def build_carrion():
     fibres = sh.noise(3.0, 2.0, 0.5, vector=sh.vmath("MULTIPLY", sh.pos, (60.0, 6.0, 60.0)))
     flesh = sh.mix(sh.math("MULTIPLY", sh.remap(fibres, 0.35, 0.65), 0.3), flesh, "#5A1A24")
     across = sh.math("ADD", sh.vmath("DOT_PRODUCT", sh.pos, (0.6, -0.8, 0.0)), sh.math("MULTIPLY", sh.noise(18.0, 2.0), 0.03))
-    sinew = sh.math("MULTIPLY", sh.remap(sh.math("ABSOLUTE", sh.math("SUBTRACT", across, 0.035)), 0.045, 0.02),
+    across = sh.math("ADD", across, sh.math("MULTIPLY", sh.noise(7.0, 2.0), 0.05))
+    sinew = sh.math("MULTIPLY", sh.remap(sh.math("ABSOLUTE", sh.math("SUBTRACT", across, 0.06)), 0.024, 0.008),
                     sh.remap(sh.axis("Z"), -0.02, 0.04))
-    fat = sh.math("MULTIPLY", sh.remap(sh.voronoi(16.0, 1.0), 0.17, 0.11), sh.remap(sh.axis("Z"), 0.0, 0.08))
-    base = sh.mix(sinew, flesh, sh.ramp(sh.noise(30.0, 2.0), [(0.3, "#E8D6C0"), (0.7, "cream")]))
-    base = sh.mix(sh.math("MULTIPLY", fat, 0.9), base, "#EFC98F")
+    fat = sh.math("MULTIPLY", sh.remap(sh.voronoi(8.0, 1.0), 0.2, 0.08), sh.remap(sh.axis("Z"), 0.02, 0.1))
+    base = sh.mix(sh.math("MULTIPLY", sinew, 0.85), flesh, sh.ramp(sh.noise(30.0, 2.0), [(0.3, "#D9A89A"), (0.7, "#EED8C8")]))
+    base = sh.mix(sh.math("MULTIPLY", fat, 0.55), base, "#E9C49A")
     underside = sh.remap(sh.axis("Z"), -0.03, -0.09)
     base = sh.mix(sh.math("MULTIPLY", underside, 0.6), base, "#4A1620")
     sh.bump(sh.math("ADD", sh.math("MULTIPLY", fibres, 0.6), sh.math("ADD", sinew, fat)), 0.35, 0.004)

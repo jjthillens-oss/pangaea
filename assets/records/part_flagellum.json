@@ -17,7 +17,7 @@
     "y_forward": 0.79,
     "z_up": 0.12
   },
-  "triangles": 452,
+  "triangles": 558,
   "triangle_budget": 1500,
   "textures": [
     {
@@ -66,9 +66,9 @@
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
-    "tolerance_m": 0.0012,
+    "tolerance_m": 0.0006,
     "triangles_before": 1056,
-    "triangles_after": 452
+    "triangles_after": 558
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
