@@ -48,6 +48,11 @@ func _initialize() -> void:
 				continue
 			total += 1
 			suite.current_test = "%s::%s" % [file.get_basename(), name]
+			if method["args"].size() > method["default_args"].size():
+				# Calling it would raise a script error here in the runner and stop the run.
+				failed += 1
+				lines.append("FAIL %s: test methods must take no arguments" % suite.current_test)
+				continue
 			var before := suite.failures.size()
 			var errors_before := errors.count
 			suite.before_each()

@@ -24,6 +24,8 @@ var world_changes: Array = []
 var player: Dictionary = {"position": [0.0, 0.0, 0.0]}
 var pending_transactions: Array = []
 var saved_at_unix: int = 0
+## Type problems found by from_dict (not saved). validate() reports them.
+var load_problems: Array = []
 
 
 static func new_run(seed: int, p_build_id: String) -> SaveGame:
@@ -37,7 +39,7 @@ static func new_run(seed: int, p_build_id: String) -> SaveGame:
 
 
 func validate(catalog: PartCatalog) -> PackedStringArray:
-	var errors := PackedStringArray()
+	var errors := PackedStringArray(load_problems)
 	if not StableId.is_valid(lineage_id, "lineage"):
 		errors.append("Save has an invalid lineage id '%s'." % lineage_id)
 	if not ERAS.has(era):
@@ -80,23 +82,24 @@ func to_dict() -> Dictionary:
 	}
 
 
-## Expects data already migrated to SCHEMA_VERSION.
+## Expects data already migrated to SCHEMA_VERSION. Fields of the wrong type are recorded in
+## load_problems and reported by validate(); nothing is dropped silently.
 static func from_dict(data: Dictionary) -> SaveGame:
 	var save := SaveGame.new()
-	save.build_id = str(data.get("build_id", ""))
-	save.world_seed = JsonValues.whole(data.get("world_seed"), -1)
-	save.lineage_id = str(data.get("lineage_id", ""))
-	save.era = str(data.get("era", ""))
+	var problems := save.load_problems
+	save.build_id = JsonValues.text(data, "build_id", problems)
+	save.world_seed = JsonValues.whole(data, "world_seed", problems)
+	save.lineage_id = JsonValues.text(data, "lineage_id", problems)
+	save.era = JsonValues.text(data, "era", problems)
 	var genome_data = data.get("genome")
 	save.genome = Genome.from_dict(genome_data) if genome_data is Dictionary else null
-	save.adaptation_points = JsonValues.whole(data.get("adaptation_points"), -1)
-	save.lineage_history = JsonValues.array(data.get("lineage_history"))
-	save.discoveries = JsonValues.array(data.get("discoveries"))
-	save.relationships = JsonValues.array(data.get("relationships"))
-	save.settlements = JsonValues.array(data.get("settlements"))
-	save.world_changes = JsonValues.array(data.get("world_changes"))
-	save.player = JsonValues.dict(data.get("player"))
-	save.pending_transactions = JsonValues.array(data.get("pending_transactions"))
-	save.saved_at_unix = JsonValues.whole(data.get("saved_at_unix"), 0)
+	save.adaptation_points = JsonValues.whole(data, "adaptation_points", problems)
+	save.lineage_history = JsonValues.array(data, "lineage_history", problems)
+	save.discoveries = JsonValues.array(data, "discoveries", problems)
+	save.relationships = JsonValues.array(data, "relationships", problems)
+	save.settlements = JsonValues.array(data, "settlements", problems)
+	save.world_changes = JsonValues.array(data, "world_changes", problems)
+	save.player = JsonValues.dict(data, "player", problems)
+	save.pending_transactions = JsonValues.array(data, "pending_transactions", problems)
+	save.saved_at_unix = JsonValues.whole(data, "saved_at_unix", problems)
 	return save
-

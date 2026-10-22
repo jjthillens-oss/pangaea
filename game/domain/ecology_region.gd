@@ -24,8 +24,11 @@ static func create(seed: int) -> EcologyRegion:
 
 ## Returns false (and adds nothing) for a repeated id or a zone that could never hold or regrow food.
 func add_zone(id: String, center: Vector2, radius: float, capacity: float, growth_rate: float) -> bool:
-	if not zone(id).is_empty() or not (radius > 0.0 and capacity > 0.0 and growth_rate > 0.0):
+	if not zone(id).is_empty() or not center.is_finite():
 		return false
+	for value in [radius, capacity, growth_rate]:
+		if not (is_finite(value) and value > 0.0):
+			return false
 	zones.append({"id": id, "center": center, "radius": radius, "capacity": capacity, "growth_rate": growth_rate, "amount": capacity})
 	return true
 

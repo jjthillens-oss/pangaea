@@ -1,8 +1,11 @@
 extends TestCase
 
-## Per-process folder so two test runs at once cannot touch each other's files.
-var DIR := "user://test_saves_%d" % OS.get_process_id()
+## Per-process folder so two test runs at once cannot touch each other's files. Folders left by
+## runs that were killed are removed once their process is gone.
+const ROOT := "user://test_saves"
+var DIR := ROOT + "/%d" % OS.get_process_id()
 var PATH := DIR + "/slot.json"
+var _swept := false
 
 var catalog: PartCatalog
 var service: PersistenceService
@@ -11,12 +14,24 @@ var service: PersistenceService
 func before_each() -> void:
 	catalog = PartCatalog.load_from()
 	service = PersistenceService.new(catalog)
+	if not _swept:
+		_sweep_stale_runs()
+		_swept = true
 	_clear()
 	DirAccess.make_dir_recursive_absolute(DIR)
 
 
 func after_each() -> void:
 	_clear()
+
+
+func _sweep_stale_runs() -> void:
+	for sub in DirAccess.get_directories_at(ROOT):
+		if sub.is_valid_int() and int(sub) != OS.get_process_id() and not OS.is_process_running(int(sub)):
+			var path := ROOT + "/" + sub
+			for f in DirAccess.get_files_at(path):
+				DirAccess.remove_absolute(path + "/" + f)
+			DirAccess.remove_absolute(path)
 
 
 func _clear() -> void:
@@ -206,6 +221,29 @@ func test_wrong_types_in_a_save_fail_cleanly_and_fall_back_to_the_backup() -> vo
 	var result := service.load_from(PATH)
 	check(result.ok, "backup loads: %s" % [result.errors])
 	check_eq(result.source, "backup", "from the backup")
-	check_has_error(result.errors, "must not be negative")
+	check_has_error(result.errors, "'adaptation_points' must be a whole number")
+	check_has_error(result.errors, "'lineage_history' must be a list")
+	check_has_error(result.errors, "'parts' must be a list")
 	if result.ok:
 		check_eq(result.save.adaptation_points, 12, "backup points")
+
+
+func test_wrong_typed_lists_do_not_load_as_empty_and_the_backup_survives_the_next_save() -> void:
+	var save := _new_save()
+	service.save_to(PATH, save)
+	service.save_to(PATH, save)
+	var backup_text := FileAccess.get_file_as_string(PATH + ".bak")
+	var data := save.to_dict()
+	data["discoveries"] = {"id": "food_red_chunk", "generation": 1}
+	data["genome"]["appearance"] = "red"
+	data["genome"]["parts"][1]["id"] = 2
+	_write_raw(PATH, JSON.stringify(data))
+	var result := service.load_from(PATH)
+	check_eq(result.source, "backup", "damaged primary is not accepted")
+	check_has_error(result.errors, "'discoveries' must be a list")
+	check_has_error(result.errors, "'appearance' must be an object")
+	check_has_error(result.errors, "not text")
+	if result.ok:
+		check_eq(result.save.discoveries.size(), 1, "discoveries come back from the backup")
+		check_eq(service.save_to(PATH, result.save), OK, "re-save")
+		check_eq(FileAccess.get_file_as_string(PATH + ".bak"), backup_text, "the good backup was not replaced by the damaged file")

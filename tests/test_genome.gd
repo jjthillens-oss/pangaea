@@ -96,9 +96,27 @@ func test_malformed_parts_are_kept_for_validation_to_report() -> void:
 		"parts": [{"id": "part_1", "type": "mouth_filter", "angle": 0.0, "scale": 1.0}, "not a part"], "next_part_number": 3}
 	var genome := Genome.from_dict(data)
 	check_eq(genome.parts.size(), 2, "malformed entry kept, not dropped")
-	check_has_error(genome.validate(catalog), "missing or repeated")
+	check_has_error(genome.validate(catalog), "not an object")
 	data["parts"] = null
 	data["generation"] = null
 	var empty := Genome.from_dict(data)
 	check_eq(empty.parts.size(), 0, "null parts load as none")
 	check_has_error(empty.validate(catalog), "Generation must be 1 or higher")
+
+
+func test_missing_part_counter_never_reuses_an_id() -> void:
+	var catalog := PartCatalog.load_from()
+	var source := Genome.create(StableId.generate("lineage"))
+	source.add_part("mouth_jaw", 0.0)
+	var removed := source.add_part("cilia", 1.0)
+	source.add_part("cilia", -1.0)
+	source.remove_part(removed)
+	var data := source.to_dict()
+	data.erase("next_part_number")
+	var loaded := Genome.from_dict(data)
+	check_eq(loaded.next_part_number, 4, "continues after the highest id, not after the part count")
+	check(loaded.validate(catalog).is_empty(), "valid: %s" % [loaded.validate(catalog)])
+	data["next_part_number"] = null
+	check_has_error(Genome.from_dict(data).validate(catalog), "'next_part_number' must be a whole number")
+	data["next_part_number"] = 2
+	check_has_error(Genome.from_dict(data).validate(catalog), "would reuse its id")
