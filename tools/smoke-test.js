@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const path = require('path');
+require('fs').mkdirSync('shots', { recursive: true });
 const URL = 'file://' + path.resolve(__dirname, '../index.html');
 // Smoke test: plays the cell stage, uses the editor, finishes the stage, checks for page errors.
 // Run: npm i -D playwright && node tools/smoke-test.js (screenshots land in shots/)
