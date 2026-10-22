@@ -13,9 +13,14 @@ extends TestCase
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on
 ##     each other empty no niche for long, kill few, and leave nobody stalled.
+## #32 pressure (step 3 review): a forager started at the spawn meets threats, and one that dodges
+##     is not worn down by them. ForageBot swims for the nearest food its body eats and never minds a
+##     creature; EvadeBot dodges each tell aimed at the cell 0.4 s after it starts (F2), as a player
+##     reading the tells would. Notices of the cell and tells at it are its meetings with threats.
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
 
 ## #29: 24 creatures, ambush hunters and rammers in turn, 28 m out from the pool's center, facing in.
 ## The ring starts 7.5 degrees off north-east-south-west so every site sits between the rim rocks
@@ -47,6 +52,13 @@ const MAX_PREDATION_DEATHS := 6            ## creatures killed by creatures, per
 const MOVE_WINDOW_TICKS := 3600
 const MOVE_MIN_M := 1.0
 const ON_THE_MOVE_MIN_TICKS := 300
+## #32 (docs/DECISIONS.md, "M1 step 3 review fixes: pressure"): seeds fixed before any run, 300 s
+## each for each plankton body. A dead cell continues at its checkpoint after DEATH_NOTICE_TICKS.
+const PRESSURE_SEEDS: Array[int] = [501, 502, 503]
+const PRESSURE_BODIES: PackedStringArray = ["grazer", "omnivore"]
+const PRESSURE_TICKS := 300 * 60
+const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0   ## for each body, over its seeds: pressure exists
+const PRESSURE_MAX_DEATHS_PER_5_MIN := 0.5   ## over every run: a careful player is not worn down
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -289,3 +301,82 @@ static func _on_the_move(c: CreatureField.Creature) -> bool:
 		CreatureBrain.CHASE:
 			return c.brain.phase == CreatureBrain.PURSUE
 	return false
+
+
+func test_slow_a_forager_near_the_spawn_meets_threats_and_one_that_dodges_is_not_worn_down() -> void:
+	# #32, the pressure gate: the zones by the spawn no longer feed a cell for ever out of every
+	# threat's reach (lair_s watches z_s, and z_center alone no longer feeds a cell).
+	var deaths := 0
+	var starved := 0
+	var minutes := 0.0
+	for body in PRESSURE_BODIES:
+		var meetings := 0
+		var met_in := 0
+		for seed_value in PRESSURE_SEEDS:
+			var run := _pressure_run(body, seed_value)
+			var met := int(run.notices) + int(run.tells)
+			meetings += met
+			met_in += 1 if met > 0 else 0
+			deaths += int(run.killed)
+			starved += int(run.starved)
+			print("test-threats-pressure: %s seed %d: %d notices and %d tells (first at %s), %d dodged, %d hits taken, %d killed, %d starved, %d meals; fed most in %s" % [
+				body, seed_value, run.notices, run.tells, "%.0f s" % (run.first_met / 60.0) if run.first_met >= 0 else "none",
+				run.dodges, run.hits_taken, run.killed, run.starved, run.meals, run.fed_most])
+		var body_minutes := PRESSURE_SEEDS.size() * PRESSURE_TICKS / 3600.0
+		minutes += body_minutes
+		var rate := meetings / body_minutes
+		print("test-threats-pressure: %s: %.2f meetings a minute (need %.1f), met in %d of %d seeds" % [
+			body, rate, PRESSURE_MIN_MEETINGS_PER_MIN, met_in, PRESSURE_SEEDS.size()])
+		check(rate >= PRESSURE_MIN_MEETINGS_PER_MIN, "%s: %.2f meetings a minute (need %.1f)" % [body, rate, PRESSURE_MIN_MEETINGS_PER_MIN])
+	var death_rate := deaths / minutes * 5.0
+	print("test-threats-pressure: %d deaths in %.0f minutes, %.2f per 5 minutes (at most %.1f); %d starved" % [
+		deaths, minutes, death_rate, PRESSURE_MAX_DEATHS_PER_5_MIN, starved])
+	check(death_rate <= PRESSURE_MAX_DEATHS_PER_5_MIN, "%.2f deaths per 5 minutes (at most %.1f)" % [death_rate, PRESSURE_MAX_DEATHS_PER_5_MIN])
+	check_eq(starved, 0, "the forager never starved, so the zones it roams to still feed it")
+
+
+## One seed's 300 s: a new `body` lineage at the spawn, ForageBot's nearest food under EvadeBot's dodge.
+func _pressure_run(body: String, seed_value: int) -> Dictionary:
+	var sim := _sim(body, seed_value)
+	var forager = ForageBot.new()
+	var bot = EvadeBot.new()
+	bot.base = forager.next_intent
+	var run := {"notices": 0, "tells": 0, "first_met": -1, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0, "meals": 0,
+		"fed_most": ""}
+	var fed := {}   # zone id -> meals there ("" for carrion)
+	var events: Array = []
+	var dead_since := -1
+	for i in PRESSURE_TICKS:
+		if sim.dead:
+			if dead_since < 0:
+				dead_since = sim.tick
+			elif sim.tick - dead_since >= DEATH_NOTICE_TICKS:
+				sim.respawn_player()
+				dead_since = -1
+				events.append_array(sim.drain_events())
+		sim.step(bot.next_intent(sim, events))
+		events = sim.drain_events()
+		for e in events:
+			match str(e.type):
+				"creature_noticed", "creature_tell":
+					if e.target != CreatureField.PLAYER_ID:
+						continue
+					run[("notices" if e.type == "creature_noticed" else "tells")] += 1
+					if run.first_met < 0:
+						run.first_met = sim.tick
+				"dodged":
+					run.dodges += 1
+				"hit":
+					if e.target == CreatureField.PLAYER_ID:
+						run.hits_taken += 1
+				"died":
+					run[("starved" if e.cause == "starved" else "killed")] += 1
+				"ate":
+					run.meals += 1
+					fed[str(e.zone)] = int(fed.get(str(e.zone), 0)) + 1
+	var most := 0
+	for zone in fed:
+		if int(fed[zone]) > most:
+			most = int(fed[zone])
+			run.fed_most = zone if not str(zone).is_empty() else "carrion"
+	return run
