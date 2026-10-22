@@ -3,7 +3,8 @@ extends SceneTree
 ## frame is exactly one sim tick and 2400 frames are 40 s of sim time. It drives the real main
 ## scene through the methods, buttons and keys a player uses, with the dev ForageBot swimming
 ## instead of the player, and prints one PASS or FAIL line per check and a TIME line per step.
-## Exit code 0 when every check passes, 1 otherwise.
+## Buttons are clicked with the mouse through the viewport, and only when a player could click
+## them: on screen, enabled and not covered. Exit code 0 when every check passes, 1 otherwise.
 ##
 ##   -- --phase=found --slot=user://smoke/slot_1.json --seed=4242
 ##       Clears user://smoke/ and opens the start screen. A grazer lineage eats, starves and
@@ -109,12 +110,14 @@ func _found() -> void:
 	_end()
 
 	_begin("grazer eats")
-	start.open_picker()
+	if not _click(start.new_button, "New lineage"):
+		start.open_picker()
 	await _frames(1)
 	_check(start.picker_view.visible and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
 	start.select("grazer")
 	main.intent_provider = ForageBot.new()
-	start.start_button.pressed.emit()
+	if not _click(start.start_button, "the picker's Start"):
+		start.request_start()
 	await _frames(2)
 	var started: bool = await _check_run_started("grazer")
 	if not started:
@@ -307,10 +310,8 @@ func _die_and_continue(pool: PoolScene) -> void:
 	_check(not main.pause_menu.is_open() and notice.is_open(), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
 	_check(button != null and _focus() == button, "the notice's Continue has the keyboard focus")
-	if button == null:
+	if not _click(button, "the notice's Continue"):
 		main.continue_after_death()
-	else:
-		button.pressed.emit()
 	await _frames(2)
 	_check(not sim.dead and not notice.is_open(), "Continue brings the cell back")
 	_check(loss >= 1 and sim.save.adaptation_points == points - loss and str(sim.save.lineage_history.back().get("event", "")) == "died",
@@ -331,18 +332,23 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	_check(menu.is_open() and pool.paused, "the pause key opens the pause menu and pauses the pool")
 	_check(_focus() == menu.resume_button, "Resume has the keyboard focus")
 	_check(menu.footer_text() == "Seed %d · build %s" % [sim.save.world_seed, BuildInfo.build_id()], "the footer reads '%s'" % menu.footer_text())
+	_check(not menu.save_button.disabled and not menu.save_quit_button.disabled, "a living cell can save from the pause menu")
 	if main.session.dirty:
-		menu.quit_button.pressed.emit()
+		if not _click(menu.quit_button, "Quit to desktop"):
+			main.quit_to_desktop()
 		await _frames(2)
-		var choices := main.quit_dialog.choice_ids()
-		_check(main.quit_dialog.is_open() and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
+		var dialog := main.quit_dialog
+		var choices := dialog.choice_ids()
+		_check(dialog.is_open() and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
 			"Quit to desktop asks 'Save first?' with %s" % choices)
-		main.quit_dialog.choose("cancel")
+		if not _click(dialog.button_for("cancel"), "the dialog's Cancel"):
+			dialog.choose("cancel")
 		await _frames(1)
-		_check(not main.quit_dialog.is_open() and menu.is_open() and pool.paused, "Cancel returns to the pause menu")
+		_check(not dialog.is_open() and menu.is_open() and pool.paused, "Cancel returns to the pause menu")
 	else:
 		_check(false, "the run has unsaved progress before Save and quit")
-	menu.save_quit_button.pressed.emit()
+	if not _click(menu.save_quit_button, "Save and quit to title"):
+		main.save_and_quit_to_title()
 	await _frames(2)
 	var start := main.start_screen
 	_check(start != null and main.screen == start and main.pool == null, "Save and quit to title shows the title")
@@ -432,7 +438,8 @@ func _continue() -> void:
 	_end()
 
 	_begin("continue run")
-	start.continue_button.pressed.emit()
+	if not _click(start.continue_button, "Continue"):
+		main.continue_run()
 	await _frames(2)
 	var pool := main.pool
 	_check(pool != null and main.screen == pool and main.last_run.get("ok", false) and main.last_run.get("source", "") == "primary",
@@ -551,6 +558,53 @@ func _ticks_until(sim: PoolSim, done: Callable, max_ticks: int) -> int:
 func _frames(count: int) -> void:
 	for i in count:
 		await process_frame
+
+
+## Clicks `button` with the mouse at its centre, through the viewport's GUI input, as a player does.
+## It must be on screen, enabled and able to take keyboard focus, and the click must reach it, so a
+## control drawn over it fails the check. Returns whether the button was pressed; when the player
+## could not press it, nothing is clicked.
+func _click(button: BaseButton, what: String) -> bool:
+	var at := button.get_global_rect().get_center() if button != null else Vector2.INF
+	var why := ""
+	if button == null:
+		why = "missing"
+	elif not _shown(button):
+		why = "hidden"
+	elif button.disabled:
+		why = "disabled"
+	elif button.focus_mode != Control.FOCUS_ALL:
+		why = "takes no keyboard focus"
+	elif button.mouse_filter != Control.MOUSE_FILTER_STOP or not root.get_visible_rect().has_point(at):
+		why = "takes no clicks"
+	var pressed := [false]
+	if why.is_empty():
+		var note := func(): pressed[0] = true
+		button.pressed.connect(note)
+		for down in [true, false]:
+			var click := InputEventMouseButton.new()
+			click.button_index = MOUSE_BUTTON_LEFT
+			click.pressed = down
+			click.position = at
+			click.global_position = at
+			root.push_input(click, true)
+		button.pressed.disconnect(note)
+		why = "" if pressed[0] else "covered"
+	_check(pressed[0], "a click presses %s%s" % [what, "" if why.is_empty() else " (%s)" % why])
+	return pressed[0]
+
+
+## On screen: visible up the tree (CanvasLayers included) and not faded out by its own or any
+## ancestor's modulate.
+func _shown(item: CanvasItem) -> bool:
+	if item == null or not item.is_visible_in_tree() or item.self_modulate.a <= 0.01:
+		return false
+	var node: Node = item
+	while node is CanvasItem:
+		if (node as CanvasItem).modulate.a <= 0.01:
+			return false
+		node = node.get_parent()
+	return true
 
 
 ## A key press and release of `action`, as the player's keyboard sends it.
