@@ -7,11 +7,21 @@ extends TestCase
 ## y = 8) and the real species with no sites, so every creature is placed exactly.
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
 const PLAYER := "player"
 const STEP_COST_LIMIT_US := 1000.0
+const BODIES: PackedStringArray = ["grazer", "hunter", "omnivore"]
+## Open water in the threats fixture, far from the wall, the zone and the soft wall: strikes start here.
+const STRIKE_ORIGIN := Vector2(0.0, -16.0)
+const LUNGE_DISTS := [2.5, 2.75, 3.0]   ## the lunge's start window (plan section 0)
+const CHARGE_DISTS := [3.0, 4.0, 5.0]   ## the charge's start window
+const GRAZE := 0.3                      ## throttle of a grazing cell
+const CRUISE := 0.8                     ## throttle of a cruising cell
+## Heading indices (k x 30 degrees, 0 facing away from the creature) that swim into the strike.
+const HEAD_ON: Array[int] = [5, 6, 7]
 ## Snapshot keys only a pool with creatures has (T14 compares everything else).
 const CREATURE_KEYS: PackedStringArray = ["creatures", "creature_next", "creature_rng", "spawn_queue",
 	"engaged_on_player", "niches"]
@@ -92,6 +102,664 @@ func _of(events: Array[Dictionary], type: String) -> Array[Dictionary]:
 
 func _creature_json(sim: PoolSim) -> String:
 	return JSON.stringify(sim.creatures.snapshot(), "", true, true)
+
+
+# --- tells and fairness (plan threats_sim #1-8) ---
+
+## One strike in the real sim with the probe's geometry (plan section 0): the creature at rest at
+## STRIKE_ORIGIN facing +x, the cell `d` m in front heading `h` (0 faces away from it), still or
+## swimming on at `throttle`, fed or starving; the tell starts now through the brain's begin_tell.
+## `react` < 0: the cell never reacts; else EvadeBot with that reaction (its base: swim on).
+## Runs until the strike is over. {"hit", "clearance" (INF without a strike tick), "tell_tick",
+## "reacted_at", "events"}.
+func _strike(species_id: String, body: String, d: float, h: float, throttle: float, starving: bool, react: int) -> Dictionary:
+	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h)
+	if starving:
+		sim.debug_set_energy(0.0)
+	sim.motion.velocity = Vector2.from_angle(h) * sim.phenotype.speed * sim.state.speed_multiplier() * throttle
+	var c := _creature(sim, species_id, STRIKE_ORIGIN, 0.0)
+	_begin_tell(sim, c)
+	var swim_on := SimIntent.new(Vector2.from_angle(h) * throttle)
+	var bot = EvadeBot.new()
+	bot.reaction_ticks = maxi(react, 0)
+	bot.base = func(_s: PoolSim) -> SimIntent: return swim_on
+	var tell_tick := sim.tick
+	var out := {"hit": false, "clearance": INF, "tell_tick": tell_tick, "reacted_at": -1, "events": []}
+	var pending: Array[Dictionary] = []
+	var limit: int = c.brain.cfg.attack.tell_ticks + c.brain.cfg.attack.burst_ticks + c.brain.cfg.attack.glide_ticks + 4
+	for i in limit:
+		var t := sim.tick
+		sim.step(bot.next_intent(sim, pending) if react >= 0 else swim_on)
+		pending = sim.drain_events()
+		for e in pending:
+			e["tick"] = t
+			out.events.append(e)
+			if e.type == "hit" and e.attacker == c.id and e.target == PLAYER:
+				out.hit = true
+		if out.hit or c.brain.phase == CreatureBrain.RECOVER or sim.creatures.find(c.id) == null:
+			break
+		if CreatureBrain.is_striking(c.brain):
+			out.clearance = minf(out.clearance, _clearance(c, sim))
+	out.reacted_at = bot.reacted_at
+	return out
+
+
+## The creature's brain targets the cell (seen now, engageable) and starts its tell at once.
+func _begin_tell(sim: PoolSim, c: CreatureField.Creature) -> void:
+	c.brain.target = PLAYER
+	c.brain.seen[PLAYER] = {"position": sim.motion.position, "velocity": sim.motion.velocity, "tick": sim.tick, "by": "sight",
+		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
+	c.brain.engaged_tick = sim.tick
+	CreatureBrain.begin_tell(c.brain, sim.creatures.self_view_of(c), sim.tick)
+	sim.creatures.update_token(c)
+
+
+## How far the cell's center is from where the creature's strike would be allowed now: the nearest
+## of its weapons' sectors (radius: both radii plus the reach; the weapon's arc). A ram needs closing
+## speed, so while the bodies are not closing (a cell passing a rammer's flank spikes) no sector is
+## allowed and the tick does not count (INF).
+func _clearance(c: CreatureField.Creature, sim: PoolSim) -> float:
+	var bite := str(c.brain.cfg.attack.kind) == "bite"
+	var reach := c.phenotype.radius + sim.phenotype.radius + (InteractionResolver.BITE_REACH if bite else InteractionResolver.RAM_REACH)
+	var weapons: Array[Dictionary] = []
+	if bite:
+		for m in c.phenotype.mouths:
+			if m.type == "mouth_jaw":
+				weapons.append(m)
+	else:
+		weapons.assign(c.phenotype.spikes)
+		var line := sim.motion.position - c.motion.position
+		if (c.motion.velocity - sim.motion.velocity).dot(line.normalized()) <= 0.0:
+			return INF
+	var d := c.motion.position.distance_to(sim.motion.position)
+	var actor := InteractionResolver.Actor.new(c.id, c.motion.position, c.motion.heading, c.phenotype)
+	var bearing := InteractionResolver.relative_angle(actor, sim.motion.position)
+	var best := INF
+	for w in weapons:
+		best = minf(best, _sector_gap(d, absf(angle_difference(float(w.angle), bearing)), reach, float(w.arc) * 0.5))
+	return best
+
+
+## Distance from a point at distance d and off-axis angle th to the sector of radius r and half-angle a.
+static func _sector_gap(d: float, th: float, r: float, a: float) -> float:
+	if th <= a:
+		return maxf(0.0, d - r)
+	var off := th - a
+	var along := d * cos(off)
+	if along <= 0.0:
+		return d
+	if along <= r:
+		return d * sin(off)
+	return Vector2(along, d * sin(off)).distance_to(Vector2(r, 0.0))
+
+
+## The S5 grid for one species (plan section 18 #2-3): EvadeBot at 24 ticks, distances `dists` x 12
+## headings x still or grazing x fed or starving x 3 bodies. Returns {"body/base/fed" -> {"hits":
+## [heading index...], "clear": min clearance, "clear_out": min clearance outside head-on}}, and
+## checks the reaction came exactly 24 ticks after every tell.
+func _grid(species_id: String, dists: Array) -> Dictionary:
+	var cells := {}
+	var late := 0
+	for body in BODIES:
+		for base in ["still", "graze"]:
+			for starving in [false, true]:
+				var cell := {"hits": [], "clear": INF, "clear_out": INF, "runs": 0}
+				for d in dists:
+					for k in 12:
+						var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0 if base == "still" else GRAZE, starving, EvadeBot.REACTION_TICKS)
+						cell.runs += 1
+						if r.reacted_at != int(r.tell_tick) + EvadeBot.REACTION_TICKS:
+							late += 1
+						if r.hit:
+							cell.hits.append(k)
+							continue
+						cell.clear = minf(cell.clear, r.clearance)
+						if not HEAD_ON.has(k):
+							cell.clear_out = minf(cell.clear_out, r.clearance)
+				cells["%s/%s/%s" % [body, base, "starving" if starving else "fed"]] = cell
+	check_eq(late, 0, "%s: EvadeBot reacted exactly %d ticks after every tell" % [species_id, EvadeBot.REACTION_TICKS])
+	return cells
+
+
+func _cell_text(cells: Dictionary, key: String) -> String:
+	var c: Dictionary = cells[key]
+	return "%s: %d hits %s, clearance %.3f (outside head-on %.3f) over %d runs" % [key, c.hits.size(), c.hits, c.clear, c.clear_out, c.runs]
+
+
+func test_the_threats_are_real_and_moving_prey_is_safe_without_any_reaction() -> void:
+	# No reaction, every body fed: still prey is always hit, a perpendicular graze mostly, a
+	# perpendicular cruise almost never (pinned together so tuning cannot slide to either extreme).
+	for species_id in ["ambush_hunter", "rammer"]:
+		var dists := LUNGE_DISTS if species_id == "ambush_hunter" else CHARGE_DISTS
+		var graze_floor := 5 if species_id == "ambush_hunter" else 4
+		for body in BODIES:
+			var still_hits := 0
+			var graze_hits := 0
+			var cruise_hits := 0
+			for d in dists:
+				for k in 12:
+					var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0, false, -1)
+					if r.hit:
+						still_hits += 1
+				for k in [3, 9]:
+					if _strike(species_id, body, d, k * TAU / 12.0, GRAZE, false, -1).hit:
+						graze_hits += 1
+					if _strike(species_id, body, d, k * TAU / 12.0, CRUISE, false, -1).hit:
+						cruise_hits += 1
+			print("test-threats-no-reaction: %s vs %s: still %d/36, graze across %d/6, cruise across %d/6" % [species_id, body, still_hits, graze_hits, cruise_hits])
+			check_eq(still_hits, 36, "%s hits a still %s every time" % [species_id, body])
+			check(graze_hits >= graze_floor, "%s hits a %s grazing across its line %d/6 (at least %d)" % [species_id, body, graze_hits, graze_floor])
+			check(cruise_hits <= 1, "%s hits a %s cruising across its line %d/6 (at most 1)" % [species_id, body, cruise_hits])
+
+
+func test_a_lunge_is_dodged_by_swimming_sideways_0_4_s_after_the_tell_starts() -> void:
+	# S5 lunge grid (plan section 18 #2): bounds from the probe in section 0.
+	var cells := _grid("ambush_hunter", LUNGE_DISTS)
+	for body in BODIES:
+		var key := "%s/still/fed" % body
+		print("test-threats-s5-lunge: " + _cell_text(cells, key))
+		check(cells[key].hits.is_empty() and cells[key].clear >= 0.15, _cell_text(cells, key))
+		key = "%s/still/starving" % body
+		print("test-threats-s5-lunge: " + _cell_text(cells, key))
+		check(cells[key].hits.is_empty() and cells[key].clear_out >= 0.15, _cell_text(cells, key))
+		key = "%s/graze/fed" % body
+		print("test-threats-s5-lunge: " + _cell_text(cells, key))
+		check(cells[key].hits.is_empty() and cells[key].clear_out >= 0.15, _cell_text(cells, key))
+		key = "%s/graze/starving" % body
+		print("test-threats-s5-lunge: " + _cell_text(cells, key))
+		var head_on_only: bool = cells[key].hits.all(func(k: int) -> bool: return HEAD_ON.has(k))
+		check(cells[key].hits.size() <= 1 and head_on_only and cells[key].clear_out >= 0.10, _cell_text(cells, key))
+
+
+func test_a_charge_is_dodged_by_swimming_sideways_0_4_s_after_the_puff_starts() -> void:
+	# S5 charge grid (plan section 18 #3), inside the rammer's territory.
+	var cells := _grid("rammer", CHARGE_DISTS)
+	for body in BODIES:
+		for base in ["still", "graze"]:
+			var key := "%s/%s/fed" % [body, base]
+			print("test-threats-s5-charge: " + _cell_text(cells, key))
+			check(cells[key].hits.is_empty() and cells[key].clear >= 0.15, _cell_text(cells, key))
+			key = "%s/%s/starving" % [body, base]
+			print("test-threats-s5-charge: " + _cell_text(cells, key))
+			check(cells[key].hits.is_empty() and cells[key].clear >= 0.05, _cell_text(cells, key))
+
+
+func test_the_brain_reaches_the_probed_strike_by_itself_and_a_sideways_dodge_still_works() -> void:
+	# S5 natural path (plan #4): no whitebox. The creature notices the cell, pursues, aims and
+	# tells by itself; the cell (fed, still or grazing at 4 headings) reacts with EvadeBot. A tell
+	# needs the creature at rest in its window, so a grazing cell can slip away untold: an ambusher
+	# never tells on prey swimming straight away (test_creature_brain), and a rammer lets an
+	# intruder leave its territory. Such a run must end with the engagement over and no hit.
+	for species_id in ["ambush_hunter", "rammer"]:
+		var graze_tells := 0
+		for body in BODIES:
+			for base in ["still", "graze"]:
+				var hits := 0
+				var told := 0
+				var unfinished := 0
+				var clear := INF
+				var clear_out := INF
+				for k in [0, 3, 6, 9]:
+					var r := _natural_strike(species_id, body, k * TAU / 12.0, 0.0 if base == "still" else GRAZE)
+					if r.told:
+						told += 1
+					elif r.engaged:
+						unfinished += 1
+					if r.hit:
+						hits += 1
+						continue
+					clear = minf(clear, r.clearance)
+					if not r.head_on:
+						clear_out = minf(clear_out, r.clearance)
+				var text := "%s vs %s %s: %d tells, %d hits, clearance %.3f (outside head-on %.3f)" % [species_id, body, base, told, hits, clear, clear_out]
+				print("test-threats-natural: " + text)
+				if base == "still":
+					check_eq(told, 4, "every run on a still cell reached a tell: " + text)
+				else:
+					graze_tells += told
+				check_eq(unfinished, 0, "a run without a tell ended its engagement: " + text)
+				check_eq(hits, 0, "no hits: " + text)
+				var floor_ok := clear >= 0.15 if base == "still" or species_id == "rammer" else clear_out >= 0.15
+				check(floor_ok, "clearance as in the grid: " + text)
+		check(graze_tells >= 6, "%s told on grazing cells in %d of 12 runs" % [species_id, graze_tells])
+
+
+## One natural engagement: the creature at rest at STRIKE_ORIGIN facing +x (an ambush hunter
+## hungry), the cell ahead of it heading `h`, swimming on at `throttle` with EvadeBot. Runs until the
+## first strike is over (or 900 ticks). {"told", "hit", "clearance", "head_on" (the cell swam into
+## the lane at the tell: heading within 30 degrees of straight at the creature), "engaged" (still
+## engaged with the cell at the end)}.
+func _natural_strike(species_id: String, body: String, h: float, throttle: float) -> Dictionary:
+	var ahead := 5.0 if species_id == "ambush_hunter" else 4.5
+	var sim := _sim(body, 41, STRIKE_ORIGIN + Vector2(ahead, 0.0), h)
+	sim.motion.velocity = Vector2.from_angle(h) * sim.phenotype.speed * throttle
+	var c := _creature(sim, species_id, STRIKE_ORIGIN, 0.0, 0.4 if species_id == "ambush_hunter" else -1.0)
+	var swim_on := SimIntent.new(Vector2.from_angle(h) * throttle)
+	var bot = EvadeBot.new()
+	bot.base = func(_s: PoolSim) -> SimIntent: return swim_on
+	var out := {"told": false, "hit": false, "clearance": INF, "head_on": false, "engaged": false}
+	var struck := false
+	var pending: Array[Dictionary] = []
+	for i in 900:
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+		for e in pending:
+			if e.type == "creature_tell" and e.id == c.id and not out.told:
+				out.told = true
+				out.head_on = absf(angle_difference(float(e.lane.heading), sim.motion.heading)) >= 5.0 * PI / 6.0 - 1e-6
+			elif e.type == "creature_strike" and e.id == c.id:
+				struck = true
+			elif e.type == "hit" and e.attacker == c.id and e.target == PLAYER:
+				out.hit = true
+		if out.hit or (struck and not CreatureBrain.is_striking(c.brain)):
+			break
+		if CreatureBrain.is_striking(c.brain):
+			out.clearance = minf(out.clearance, _clearance(c, sim))
+	out.engaged = not out.told and CreatureBrain.is_engaged_with(c.brain, PLAYER)
+	return out
+
+
+func test_a_cell_swimming_straight_away_outpaces_a_pursuer_when_fed_and_is_never_hit_when_starving() -> void:
+	# S6 escape (plan #5, F3): the creature starts 4 m behind the cell, already pursuing it.
+	for species_id in ["ambush_hunter", "rammer"]:
+		for body in BODIES:
+			for starving in [false, true]:
+				var start := Vector2(-8.0, -16.0)
+				var sim := _sim(body, 51, start, 0.0)
+				if starving:
+					sim.debug_set_energy(0.0)
+				sim.motion.velocity = Vector2.RIGHT * sim.phenotype.speed * sim.state.speed_multiplier()
+				var c := _creature(sim, species_id, start - Vector2(4.0, 0.0), 0.0, 0.4 if species_id == "ambush_hunter" else -1.0)
+				_engage(sim, c)
+				c.motion.velocity = Vector2.RIGHT * c.phenotype.speed * float(c.brain.cfg.speeds.pursue)
+				var gaps: Array[float] = []
+				var attack: Dictionary = c.brain.cfg.attack
+				var bound: int = c.brain.cfg.give_up_ticks + attack.tell_ticks + attack.burst_ticks + attack.glide_ticks + attack.recover_ticks
+				var ended := -1   # the engagement is over: a give-up, or the attack ends without a reason to go on
+				var hits := 0
+				var shrunk := ""
+				for t in bound + 1:
+					sim.step(SimIntent.new(Vector2.RIGHT))
+					gaps.append(c.motion.position.distance_to(sim.motion.position))
+					for e in sim.drain_events():
+						if e.type == "hit" and e.attacker == c.id:
+							hits += 1
+					if not CreatureBrain.is_engaged_with(c.brain, PLAYER):
+						ended = t
+						break
+				var label := "%s behind a %s %s cell" % [species_id, "starving" if starving else "fed", body]
+				check_eq(hits, 0, "%s: never hit" % label)
+				if starving:
+					check(ended >= 0, "%s: the creature let the cell go by tick %d (at %d)" % [label, bound, ended])
+				else:
+					for t in range(120, gaps.size()):
+						if shrunk.is_empty() and gaps[t] < gaps[t - 60] - 0.05:
+							shrunk = "tick %d: %.2f m -> %.2f m" % [t, gaps[t - 60], gaps[t]]
+					check(shrunk.is_empty(), "%s: after the first second the gap never shrinks over a second (%s)" % [label, shrunk])
+					check(gaps.size() >= 120, "%s: the chase lasted past the first two seconds (%d ticks)" % [label, gaps.size()])
+
+
+## The creature's brain has just seen the cell and chases it, its give-up timer starting now
+## (whitebox through the brain's own transitions).
+func _engage(sim: PoolSim, c: CreatureField.Creature) -> void:
+	c.brain.seen[PLAYER] = {"position": sim.motion.position, "velocity": sim.motion.velocity, "tick": sim.tick, "by": "sight",
+		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": sim.phenotype.radius, "engageable": true}
+	CreatureBrain._notice(c.brain, PLAYER, "sight", sim.tick)
+	CreatureBrain._chase(c.brain, sim.creatures.self_view_of(c), CreatureBrain.PURSUE, sim.tick, true)
+	sim.creatures.update_token(c)
+	sim.drain_events()
+
+
+func test_every_strike_comes_exactly_1_2_s_after_its_tell_and_hits_only_inside_its_own_window() -> void:
+	# Plan #6: long engagements against a cell that keeps edging toward the creature, so creatures
+	# are in contact outside their strikes too.
+	for species_id in ["ambush_hunter", "rammer"]:
+		var sim := _sim("grazer", 61, STRIKE_ORIGIN + Vector2(4.0, 0.0), PI)
+		var c := _creature(sim, species_id, STRIKE_ORIGIN, 0.0, 0.4 if species_id == "ambush_hunter" else -1.0)
+		var attack: Dictionary = c.brain.cfg.attack
+		var window: int = attack.burst_ticks + attack.glide_ticks
+		var edge_in := func(s: PoolSim) -> SimIntent:
+			var to := c.motion.position - s.motion.position
+			return SimIntent.new(to.normalized() * 0.25 if to.length() > c.phenotype.radius + s.phenotype.radius + 0.1 else Vector2.ZERO)
+		var tells: Array[int] = []
+		var strikes: Array[Dictionary] = []   # {"tick", "heading", "hits"}
+		var stray_hits: Array[int] = []
+		var turned := ""
+		var reach := c.phenotype.radius + sim.phenotype.radius + float(attack.reach)
+		var touching := 0   # ticks in reach outside a strike: where a stray hit could land
+		for t in 2400:
+			sim.step(edge_in.call(sim))
+			if not CreatureBrain.is_striking(c.brain) and c.motion.position.distance_to(sim.motion.position) <= reach:
+				touching += 1
+			for e in sim.drain_events():
+				if e.get("id", "") == c.id and e.type == "creature_tell":
+					tells.append(t)
+				elif e.get("id", "") == c.id and e.type == "creature_strike":
+					strikes.append({"tick": t, "heading": float(e.heading), "hits": 0})
+				elif e.type == "hit" and e.attacker == c.id:
+					if not strikes.is_empty() and t >= int(strikes[-1].tick) and t < int(strikes[-1].tick) + window:
+						strikes[-1].hits += 1
+					else:
+						stray_hits.append(t)
+			if CreatureBrain.is_striking(c.brain) and not strikes.is_empty() \
+					and absf(angle_difference(c.motion.heading, float(strikes[-1].heading))) > 1e-6 and turned.is_empty():
+				turned = "tick %d: %.4f vs %.4f" % [t, c.motion.heading, strikes[-1].heading]
+			if sim.dead:
+				break
+		var landed: int = strikes.reduce(func(n: int, s: Dictionary) -> int: return n + int(s.hits), 0)
+		print("test-threats-timings: %s: %d tells, %d strikes, %d hits in their windows, %d outside, %d ticks in reach outside strikes"
+			% [species_id, tells.size(), strikes.size(), landed, stray_hits.size(), touching])
+		check(strikes.size() >= 1 and landed >= 1, "%s: a strike (%d) and a hit (%d)" % [species_id, strikes.size(), landed])
+		check(touching >= 30, "%s: in reach outside its strikes for %d ticks" % [species_id, touching])
+		for i in strikes.size():
+			check(i < tells.size() and int(strikes[i].tick) - tells[i] == int(attack.tell_ticks),
+				"%s strike %d comes %d ticks after its tell" % [species_id, i, int(strikes[i].tick) - (tells[i] if i < tells.size() else 0)])
+			check(int(strikes[i].hits) <= 1, "%s strike %d hit at most once (%d)" % [species_id, i, strikes[i].hits])
+		check(stray_hits.is_empty(), "%s: no hit outside a strike's burst and glide (%s)" % [species_id, stray_hits])
+		check(turned.is_empty(), "%s: the heading held over every strike (%s)" % [species_id, turned])
+
+
+func test_a_rammer_cancels_its_puff_when_the_intruder_leaves_its_territory_and_goes_home() -> void:
+	# Plan #7: the territory (8 m: a 6 m zone plus the margin) is centred 3 m behind the rammer; the
+	# intruder starts 6.5 m from the centre, already swimming out at full speed.
+	var center := STRIKE_ORIGIN
+	var sim := _sim("hunter", 71, center + Vector2(6.5, 0.0), 0.0)
+	sim.motion.velocity = Vector2.RIGHT * sim.phenotype.speed
+	var c := _creature(sim, "rammer", center + Vector2(3.0, 0.0), 0.0)
+	c.brain.territory_center = center
+	_begin_tell(sim, c)
+	var home := c.brain.home
+	var events := _run(sim, 900, func(_s: PoolSim) -> SimIntent: return SimIntent.new(Vector2.RIGHT),
+		func(_s: PoolSim, _t: int) -> bool: return c.brain.state == CreatureBrain.REST or c.brain.phase == CreatureBrain.PATROL)
+	var cancelled := _of(events, "tell_cancelled")
+	check_eq(cancelled.size(), 1, "the puff was cancelled")
+	if cancelled.size() == 1:
+		check_eq(cancelled[0].reason, "left_territory", "because the intruder left the territory")
+		check(int(cancelled[0].tick) < int(c.brain.cfg.attack.tell_ticks), "during the puff (tick %d)" % cancelled[0].tick)
+	check(_of(events, "creature_strike").is_empty(), "no strike")
+	check(_of(events, "hit").is_empty(), "no hit")
+	check(c.motion.position.distance_to(home) <= 1.0, "the rammer went home (%.2f m away)" % c.motion.position.distance_to(home))
+
+
+func test_a_dodged_lunge_on_the_cell_reports_one_dodge_and_one_on_a_creature_reports_none() -> void:
+	# Plan #8.
+	var sim := _sim("grazer", 81, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0)
+	var c := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	_begin_tell(sim, c)
+	var bot = EvadeBot.new()
+	var pending: Array[Dictionary] = []
+	var events: Array[Dictionary] = []
+	for i in 200:
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+		events.append_array(pending)
+	var recovered := _of(events, "creature_recovered")
+	check(not recovered.is_empty() and recovered[0].outcome == "missed", "the lunge missed")
+	var dodged := _of(events, "dodged")
+	check_eq(dodged.size(), 1, "one dodge")
+	if dodged.size() == 1:
+		check_eq([dodged[0].id, dodged[0].species], [c.id, "ambush_hunter"], "naming the creature and its species")
+	check_eq(sim.stats.dodges, 1, "counted once")
+	check(_of(events, "hit").is_empty(), "and no hit")
+
+	# The same lunge at a scripted body that slips aside: a miss, but no dodge.
+	var other := _sim("grazer", 81, Vector2(0.0, 20.0), 0.0)
+	var h := _creature(other, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	var decoy := other.creatures.spawn_scripted(SpeciesCatalog.PLAYER_SPECIES, other.phenotype, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0, other.tick)
+	h.brain.target = decoy.id
+	h.brain.seen[decoy.id] = {"position": decoy.motion.position, "velocity": Vector2.ZERO, "tick": other.tick, "by": "sight",
+		"species": SpeciesCatalog.PLAYER_SPECIES, "radius": decoy.phenotype.radius, "engageable": true}
+	CreatureBrain.begin_tell(h.brain, other.creatures.self_view_of(h), other.tick)
+	other.drain_events()
+	var on_decoy: Array[Dictionary] = []
+	for t in 200:
+		decoy.script_move = Vector2.DOWN if t >= EvadeBot.REACTION_TICKS else Vector2.ZERO
+		other.step(SimIntent.new())
+		on_decoy.append_array(other.drain_events())
+	var missed := _of(on_decoy, "creature_recovered").filter(func(e: Dictionary) -> bool: return e.target == decoy.id)
+	check(not missed.is_empty() and missed[0].outcome == "missed", "the lunge at the decoy missed")
+	check(_of(on_decoy, "dodged").is_empty(), "no dodge for a creature target")
+
+
+# --- combat both ways (plan threats_sim #9-13) ---
+
+func test_a_hunter_cell_kills_a_rammer_in_five_bites_and_its_carcass_feeds_the_cell_the_next_tick() -> void:
+	# Plan #9: the cell comes up behind a resting rammer and keeps biting until it dies.
+	var sim := _sim("hunter", 91, STRIKE_ORIGIN - Vector2(1.6, 0.0), 0.0)
+	var r := _creature(sim, "rammer", STRIKE_ORIGIN, 0.0)
+	r.brain.ignore_all_until = 1 << 40   # resting: it notices nothing until it is bitten
+	var at_it := func(s: PoolSim) -> SimIntent: return SimIntent.new((r.motion.position - s.motion.position).normalized())
+	var events := _run(sim, 1800, at_it, func(_s: PoolSim, _t: int) -> bool: return sim.creatures.find(r.id) == null)
+	var bites := _of(events, "hit").filter(func(e: Dictionary) -> bool: return e.attacker == PLAYER and e.target == r.id)
+	check_eq(bites.size(), 5, "five bites")
+	check(bites.all(func(e: Dictionary) -> bool: return e.kind == "bite" and is_equal_approx(float(e.damage), 8.0)), "of 8 each")
+	var died := _of(events, "creature_died")
+	check_eq(died.size(), 1, "the rammer died")
+	if died.size() != 1:
+		return
+	check_eq([died[0].id, died[0].cause, died[0].by], [r.id, "killed", PLAYER], "killed by the cell")
+	check_eq(sim.stats.kills, 1, "a kill in the stats")
+	var spawned := _of(events, "carrion_spawned")
+	check_eq(spawned.map(func(e: Dictionary) -> String: return e.food_id), Array(died[0].carcass), "its carcass is the carrion that appeared")
+	check_eq(spawned.size(), 3, "three chunks")
+	check(spawned.all(func(e: Dictionary) -> bool: return e.source == "kill" and int(e.tick) == int(died[0].tick)), "from the kill, on its tick")
+	# Edible on the next tick: the cell beside one chunk, facing it.
+	var chunk := {}
+	for item in sim.carrion.items:
+		if item.id == died[0].carcass[0]:
+			chunk = item
+	check(not chunk.is_empty(), "the first chunk is in the carrion")
+	if chunk.is_empty():
+		return
+	sim.debug_set_energy(sim.state.energy_capacity * 0.5)
+	var side := Vector2.from_angle(0.7)
+	check(sim.debug_teleport(chunk.position - side * (sim.phenotype.radius + float(chunk.radius) + 0.1), side.angle()), "the cell beside the chunk")
+	var points := sim.save.adaptation_points
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var ate := _of(sim.drain_events(), "ate")
+	check_eq(ate.size(), 1, "it eats on the next tick")
+	if ate.size() == 1:
+		check_eq([ate[0].food_id, ate[0].kind, ate[0].points], [chunk.id, "meat", 3], "the chunk, meat, 3 points")
+		check(is_equal_approx(float(ate[0].absorbed), 24.0), "24 energy (%.2f)" % ate[0].absorbed)
+		check(sim.save.adaptation_points >= points + 3, "the points went through Lineage.earn (%d -> %d)" % [points, sim.save.adaptation_points])
+
+
+func test_the_cell_fights_back_with_its_jaw_and_spikes_and_backing_away_is_no_ram() -> void:
+	# Plan #10. A hunter cell's bite on an ambush hunter deals 8 and knocks it back 0.8 m/s.
+	var sim := _sim("hunter", 101, STRIKE_ORIGIN + Vector2(0.75 + 0.5 + 0.2, 0.0), PI)
+	var c := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	sim.debug_set_ai_frozen(true)
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var hits := _of(sim.drain_events(), "hit")
+	check_eq(hits.size(), 1, "one bite")
+	if hits.size() == 1:
+		check_eq([hits[0].attacker, hits[0].target, hits[0].kind], [PLAYER, c.id, "bite"], "the cell bit the hunter")
+		check(is_equal_approx(float(hits[0].damage), 8.0) and is_equal_approx(float(hits[0].dealt), 8.0), "for 8")
+		check(is_equal_approx(float(hits[0].target_health), 37.0), "45 -> 37")
+		check(is_equal_approx(float(hits[0].knockback), float(species.combat.player_bite_knockback)), "knocked back")
+		check(is_equal_approx(c.motion.velocity.length(), 0.8), "at 0.8 m/s (%.3f)" % c.motion.velocity.length())
+
+	# A test genome with one front spike rams a frozen rammer: damage = spike x impact(closing speed).
+	var ram := _spiked_sim(102, STRIKE_ORIGIN - Vector2(2.0, 0.0))
+	var r := _creature(ram, "rammer", STRIKE_ORIGIN, PI)
+	ram.debug_set_ai_frozen(true)
+	ram.drain_events()
+	var landed := {}
+	var closing := 0.0
+	for t in 120:
+		ram.step(SimIntent.new(Vector2.RIGHT))
+		var got := _of(ram.drain_events(), "hit")
+		if not got.is_empty():
+			landed = got[0]
+			closing = ram.motion.velocity.dot((r.motion.position - ram.motion.position).normalized())
+			break
+	check(not landed.is_empty(), "the spiked cell rammed the rammer")
+	if not landed.is_empty():
+		var spike: Dictionary = ram.phenotype.spikes[0]
+		var expected := float(spike.damage) * clampf(closing / ram.phenotype.speed, 0.25, 1.5)
+		check_eq([landed.attacker, landed.target, landed.kind], [PLAYER, r.id, "ram"], "a ram")
+		check(absf(float(landed.damage) - expected) < 1e-6, "%.4f damage = %.1f x impact at %.3f m/s closing (%.4f)" % [landed.damage, spike.damage, closing, expected])
+
+	# Backing away from it, spike still pointing at it: refused, quietly, and nothing changes.
+	var back := _spiked_sim(103, STRIKE_ORIGIN - Vector2(0.625 + 0.5 + 0.2, 0.0))
+	var target := _creature(back, "rammer", STRIKE_ORIGIN, PI)
+	back.debug_set_ai_frozen(true)
+	back.motion.velocity = Vector2.LEFT * 1.0
+	back.drain_events()
+	var health := target.state.health
+	back.step(SimIntent.new())
+	var after := back.drain_events()
+	check(_of(after, "hit").is_empty(), "no hit")
+	check(_of(after, "attack_refused").is_empty(), "and no refusal reported (a quiet reason)")
+	var rams := back.attack_log.filter(func(e: Dictionary) -> bool: return e.kind == "ram")
+	check(not rams.is_empty() and rams[-1].reason == "not moving toward it" and not rams[-1].allowed, "the resolver refused it: %s" % [rams])
+	check_eq(target.state.health, health, "the rammer is untouched")
+
+
+## The cell with a test genome: one front spike and a flagellum, nothing else.
+func _spiked_sim(seed_value: int, at: Vector2) -> PoolSim:
+	var r := Lineage.found(seed_value, "test+dev", catalog, "grazer")
+	var g := Genome.new()
+	g.add_part("spike", 0.0, 1.0)
+	g.add_part("flagellum", PI, 1.0)
+	r.save.genome = g
+	r.save.player["position"] = PlaneSpace.to_save(fixture.spawn)
+	var sim := PoolSim.create(r.save, catalog, fixture, test_species)
+	check(sim.debug_teleport(at, 0.0), "the spiked cell placed")
+	sim.drain_events()
+	return sim
+
+
+func test_an_ambush_hunter_kills_a_rammer_that_strays_in_front_of_it_and_then_eats_the_carcass() -> void:
+	# Plan #11: creature on creature, the cell far away.
+	var sim := _sim("grazer", 111, Vector2(0.0, 20.0))
+	var h := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0, 0.4)
+	var r := _creature(sim, "rammer", STRIKE_ORIGIN + Vector2(2.9, 0.0), PI / 2.0)
+	r.brain.ignore_all_until = 1 << 40   # it rests on, noticing nothing
+	r.state.energy = r.state.energy_capacity   # fed, so it does not swim off to forage
+	r.state.health = 10.0                # one bite kills it
+	var events := _run(sim, 2400, Callable(), func(s: PoolSim, _t: int) -> bool: return s.stats.creature_meals > 0)
+	var died := _of(events, "creature_died")
+	check_eq(died.size(), 1, "the rammer died")
+	if died.size() != 1:
+		return
+	check_eq([died[0].id, died[0].cause, died[0].by], [r.id, "killed", h.id], "killed by the hunter")
+	check_eq(died[0].carcass.size(), 3, "three chunks")
+	var meals := _of(events, "creature_ate").filter(func(e: Dictionary) -> bool: return e.id == h.id)
+	check(not meals.is_empty(), "the hungry hunter ate")
+	if not meals.is_empty():
+		check(Array(died[0].carcass).has(meals[0].food_id) and meals[0].kind == "meat", "a chunk of that carcass (%s)" % meals[0].food_id)
+
+
+func test_a_cell_pressed_against_a_rock_is_never_pushed_into_it_or_past_6_m_s() -> void:
+	# T10 (plan #12): a charge on a cell pressed to a lone rock, from 36 directions; also with the
+	# knockback raised to 7 m/s, so the speed clamp has to act.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(THREATS_FIXTURE))
+	data.rocks = [{"id": "lone", "asset": "rock_a", "center": [0.0, -16.0], "yaw_deg": 0, "scale": 1.25}]
+	var one_rock := PoolLayout.from_dict(data)
+	check(one_rock.load_problems.is_empty(), "the one-rock layout loads: %s" % [one_rock.load_problems])
+	var rock: Dictionary = one_rock.build_arena().rocks[0]
+	for knockback in [-1.0, 7.0]:
+		var worst_dig := 0.0
+		var fastest := 0.0
+		var hits := 0
+		for k in 36:
+			var u := Vector2.from_angle(k * TAU / 36.0)
+			var sim := _sim("grazer", 121, rock.center + u * (rock.radius + 0.5 + 0.02), (-u).angle(), one_rock)
+			var c := _creature(sim, "rammer", sim.motion.position + u * 4.0, (-u).angle())
+			if knockback > 0.0:
+				c.brain.cfg = c.brain.cfg.duplicate(true)
+				c.brain.cfg.attack.knockback = knockback
+			_begin_tell(sim, c)
+			for t in 200:
+				sim.step(SimIntent.new(-u))
+				for e in sim.drain_events():
+					if e.type == "hit" and e.attacker == c.id:
+						hits += 1
+				for body in [[sim.motion, sim.phenotype.radius], [c.motion, c.phenotype.radius]]:
+					var m: Locomotion.MotionState = body[0]
+					worst_dig = maxf(worst_dig, float(rock.radius) + float(body[1]) - m.position.distance_to(rock.center))
+					fastest = maxf(fastest, m.velocity.length())
+		var label := "knockback %s" % ("as in the data" if knockback < 0.0 else "7 m/s")
+		print("test-threats-t10: %s: %d rams landed, deepest %.5f m into the rock, fastest %.3f m/s" % [label, hits, worst_dig, fastest])
+		check(hits >= 18, "%s: the charges landed (%d of 36)" % [label, hits])
+		check(worst_dig <= 0.001, "%s: never more than 1 mm into the rock (%.5f)" % [label, worst_dig])
+		check(fastest <= float(species.combat.max_speed_after_hit) + 1e-6, "%s: never faster than 6 m/s (%.3f)" % [label, fastest])
+
+
+func test_a_mutual_kill_on_one_tick_kills_both_in_the_fixed_order_and_repeats_exactly() -> void:
+	# T12 (plan #13): the cell and an ambush hunter at 1 health; the cell's jaw comes ready on the
+	# very tick the lunge starts, so both attacks are allowed on that tick.
+	var orders := []
+	var hashes := []
+	for run in 2:
+		var sim := _sim("hunter", 131, STRIKE_ORIGIN + Vector2(0.75 + 0.5 + 0.2, 0.0), PI)
+		var c := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+		_begin_tell(sim, c)
+		var strike_tick: int = sim.tick + int(c.brain.cfg.attack.tell_ticks)
+		sim.actor.cooldowns["bite:" + c.id] = strike_tick * PoolSim.DT
+		sim.state.health = 1.0
+		c.state.health = 1.0
+		var events := _run(sim, strike_tick - sim.tick + 5)
+		var order := []
+		for e in events:
+			if e.type in ["hit", "died", "creature_died"]:
+				order.append([e.type, int(e.tick) == strike_tick, e.get("attacker", e.get("by", "")), e.get("target", e.get("id", ""))])
+		orders.append(order)
+		hashes.append(sim.state_hash())
+		if run == 0:
+			check(sim.dead, "the cell died")
+			check(sim.creatures.find(c.id) == null, "the hunter died")
+			check_eq(sim.death.get("by_species", ""), "ambush_hunter", "killed by the hunter")
+			check_eq(sim.death.get("reason", ""), str(species.species.ambush_hunter.death_reason), "with its death reason")
+	var expected := [["hit", true, PLAYER, "c_1"], ["hit", true, "c_1", PLAYER], ["died", true, "c_1", ""], ["creature_died", true, PLAYER, "c_1"]]
+	check_eq(orders[0], expected, "both hits, then the cell's death, then the hunter's, all on the strike tick")
+	check_eq(orders[1], orders[0], "the second run did the same")
+	check_eq(hashes[1], hashes[0], "and hashes the same")
+
+
+func test_touching_a_creature_with_the_jaw_turned_away_reports_the_refusal_at_most_twice_a_second() -> void:
+	# The cell has no attack key (OD3): touching is attacking, and a refusal it can act on is told.
+	var sim := _sim("hunter", 141, STRIKE_ORIGIN + Vector2(0.625 + 0.5 + 0.2, 0.0), PI / 2.0)
+	var r := _creature(sim, "rammer", STRIKE_ORIGIN, PI / 2.0)
+	sim.debug_set_ai_frozen(true)
+	sim.drain_events()
+	var events := _run(sim, 61)
+	var refused := _of(events, "attack_refused")
+	check_eq(refused.map(func(e: Dictionary) -> int: return int(e.tick)), [0, 30, 60], "reported at once, then every 0.5 s")
+	if not refused.is_empty():
+		check_eq([refused[0].target, refused[0].kind, refused[0].reason], [r.id, "bite", "jaw is not facing it"], "the nearest creature, the jaw, why")
+	check(_of(events, "hit").is_empty(), "no hit")
+	var latest := sim.attack_log.slice(-2)
+	check(sim.attack_log.size() == PoolSim.ATTACK_LOG_SIZE, "the attack log keeps the latest %d results" % PoolSim.ATTACK_LOG_SIZE)
+	check_eq(latest.map(func(e: Dictionary) -> Array: return [e.kind, e.reason, e.tick]),
+		[["bite", "jaw is not facing it", 60], ["ram", "needs a spike", 60]], "quiet reasons included")
+
+
+func test_dev_commands_kill_the_nearest_creature_and_hurt_the_cell() -> void:
+	var sim := _sim("grazer", 151, STRIKE_ORIGIN, 0.0)
+	var near := _creature(sim, "rammer", STRIKE_ORIGIN + Vector2(4.0, 0.0), 0.0)
+	_creature(sim, "ambush_hunter", STRIKE_ORIGIN + Vector2(-8.0, 0.0), 0.0)
+	check(sim.debug_kill_nearest_creature(), "kill the nearest")
+	var events := sim.drain_events()
+	var died := _of(events, "creature_died")
+	check_eq(died.size(), 1, "one creature died")
+	if died.size() == 1:
+		check_eq([died[0].id, died[0].cause, died[0].by], [near.id, "killed", "debug"], "the nearest, killed by the dev command")
+		check_eq(died[0].carcass.size(), 3, "it left its carcass")
+	check_eq(_of(events, "debug").size(), 1, "and said so")
+	check_eq(sim.stats.kills, 0, "not the cell's kill")
+	check(sim.debug_hurt_player(12.0), "hurt the cell")
+	check(is_equal_approx(sim.state.health, sim.state.max_health - 12.0), "12 health taken")
+	check(not sim.debug_hurt_player(NAN) and not sim.debug_hurt_player(-1.0), "a bad amount is refused")
+	check(sim.debug_hurt_player(100.0), "hurt it to death")
+	var gone := _of(sim.drain_events(), "died")
+	check(sim.dead and gone.size() == 1 and gone[0].cause == "killed" and gone[0].by == "debug", "it died, killed by the dev command")
+	check(not sim.debug_hurt_player(1.0), "a dead cell cannot be hurt")
+	var plain := _plain_sim("grazer", 151, fixture)
+	check(not plain.debug_kill_nearest_creature(), "without creatures there is nothing to kill")
 
 
 # --- senses: it cannot see your coordinates (plan threats_sim #14-17) ---
@@ -337,6 +1005,213 @@ func test_dev_commands_place_freeze_and_hide_and_refuse_what_does_not_fit() -> v
 	check(sim.snapshot().dev_ai_frozen and not sim.snapshot().dev_hidden, "the switches are in the snapshot")
 
 
+# --- give-up and recovery, the token, the economy (plan threats_sim #18-23) ---
+
+func test_a_hunter_that_cannot_reach_a_cell_behind_the_wall_gives_up_and_lurks_again_within_20_s() -> void:
+	# Plan #18: it saw the cell slip behind the wall's middle; the cell stays there.
+	var sim := _sim("grazer", 181, Vector2(0.0, 10.5), 0.0)
+	var c := _creature(sim, "ambush_hunter", Vector2(0.0, 4.0), PI / 2.0)
+	_engage(sim, c)
+	var lurking := func(_s: PoolSim, _t: int) -> bool: return c.brain.state == CreatureBrain.REST and c.brain.phase == CreatureBrain.LURK
+	var events := _run(sim, 20 * 60, Callable(), lurking)
+	var gave_up := _of(events, "creature_gave_up")
+	check_eq(gave_up.size(), 1, "it gave up")
+	if gave_up.size() == 1:
+		check(gave_up[0].reason in ["unreachable", "lost"], "unreachable or lost (%s)" % gave_up[0].reason)
+	check(lurking.call(sim, sim.tick), "back in rest/lurk within 20 s (%s/%s)" % [c.brain.state, c.brain.phase])
+	check(c.motion.position.distance_to(c.brain.home) <= 1.0, "at home")
+	check(_of(events, "creature_tell").is_empty(), "it never told on the hidden cell")
+
+
+func test_a_chase_ends_on_its_timer_its_leash_or_the_territory_edge_and_the_target_is_then_ignored() -> void:
+	# Plan #19. Timer: the cell circles the hunter's home 5 m out at full speed, which holds the
+	# pursuer about 3.5 m off (just outside its 3 m window) until the 5 s timer runs out.
+	var home := STRIKE_ORIGIN
+	var sim := _sim("hunter", 191, home + Vector2(5.0, 0.0), PI / 2.0)
+	var c := _creature(sim, "ambush_hunter", home, 0.0, 0.4)
+	_engage(sim, c)
+	var start := sim.tick
+	var orbit := func(s: PoolSim) -> SimIntent:
+		var rel := s.motion.position - home
+		return SimIntent.new((Vector2(-rel.y, rel.x).normalized() + rel.normalized() * (5.0 - rel.length())).normalized())
+	var events := _run(sim, 600, orbit, func(_s: PoolSim, _t: int) -> bool: return not CreatureBrain.is_engaged_with(c.brain, PLAYER))
+	var gave_up := _of(events, "creature_gave_up")
+	check_eq(gave_up.size(), 1, "timer: it gave up")
+	check(_of(events, "creature_tell").is_empty(), "timer: never in its window long enough to tell")
+	var g := -1
+	if gave_up.size() == 1:
+		check_eq(gave_up[0].reason, "timer", "timer: on its timer")
+		g = int(gave_up[0].tick)
+		check(g - start >= int(c.brain.cfg.give_up_ticks) and g - start <= int(c.brain.cfg.give_up_ticks) + 3, "timer: after %d ticks" % (g - start))
+	# The cell keeps circling in view of the hunter, now back home: inside the refractory window it
+	# is not noticed again; after it, it is.
+	var refractory: int = c.brain.cfg.refractory_ticks
+	var later := _run(sim, refractory + 120, orbit)
+	var noticed := _of(later, "creature_noticed").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+	check(not noticed.is_empty() and int(noticed[0].tick) >= g + refractory, "timer: noticed again only after %d ticks (%s)" % [refractory, noticed.map(func(e: Dictionary) -> int: return int(e.tick) - g)])
+
+	# Leash: the cell leads the hunter (displaced 3 m from home) straight out.
+	var lead := _sim("hunter", 192, home + Vector2(7.0, 0.0), 0.0)
+	var h := _creature(lead, "ambush_hunter", home, 0.0)
+	h.motion.place(home + Vector2(3.0, 0.0), 0.0)
+	_engage(lead, h)
+	var out := _run(lead, 600, func(s: PoolSim) -> SimIntent: return SimIntent.new(Vector2.RIGHT * 0.75 if CreatureBrain.is_engaged_with(h.brain, PLAYER) else Vector2.ZERO),
+		func(_s: PoolSim, _t: int) -> bool: return not CreatureBrain.is_engaged_with(h.brain, PLAYER))
+	var leash := _of(out, "creature_gave_up")
+	check(not leash.is_empty() and leash[0].reason == "leash", "leash: it gave up at its leash (%s)" % [leash.map(func(e: Dictionary) -> String: return e.reason)])
+	var resting := func(_s: PoolSim, _t: int) -> bool: return h.brain.state == CreatureBrain.REST and h.motion.position.distance_to(h.brain.home) <= 1.0
+	_run(lead, 15 * 60, Callable(), resting)
+	check(resting.call(lead, lead.tick), "leash: home and resting within 15 s (%s/%s, %.2f m from home)" % [h.brain.state, h.brain.phase, h.motion.position.distance_to(h.brain.home)])
+
+	# Territory: the rammer chases an intruder near the edge of its reach (territory 8 m plus leash
+	# 3 m from the centre); the intruder swims out, a little faster than the rammer, still in sight.
+	var leave := _sim("hunter", 193, home + Vector2(10.0, 0.0), 0.0)
+	var out_speed := 0.62
+	leave.motion.velocity = Vector2.RIGHT * leave.phenotype.speed * out_speed
+	var r := _creature(leave, "rammer", home, 0.0)
+	r.motion.place(home + Vector2(4.0, 0.0), 0.0)
+	_engage(leave, r)
+	var gone := _run(leave, 600, func(_s: PoolSim) -> SimIntent: return SimIntent.new(Vector2.RIGHT * out_speed),
+		func(_s: PoolSim, _t: int) -> bool: return not CreatureBrain.is_engaged_with(r.brain, PLAYER))
+	var left := _of(gone, "creature_gave_up")
+	check(not left.is_empty() and left[0].reason == "left_territory", "territory: it gave up when the cell left (%s)" % [left.map(func(e: Dictionary) -> String: return e.reason)])
+
+
+func test_a_rock_ring_closed_behind_a_hunter_gets_it_removed_as_stuck_and_it_respawns_at_its_site() -> void:
+	# Plan #20: a ring of rocks round the hunter's home with one gap; the hunter is outside and the
+	# gap is then closed. The cell is far away all along.
+	var ring_home := Vector2(-15.0, -15.0)
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(THREATS_FIXTURE))
+	var rocks: Array = data.rocks.duplicate()
+	for i in range(1, 10):
+		var p := ring_home + Vector2.from_angle(i * TAU / 10.0) * 3.5
+		rocks.append({"id": "ring_%d" % i, "asset": "rock_a", "center": [p.x, p.y], "yaw_deg": 0, "scale": 1.25})
+	data.rocks = rocks
+	var ring := PoolLayout.from_dict(data)
+	check(ring.load_problems.is_empty(), "the ring layout loads: %s" % [ring.load_problems])
+	test_species.sites.append({"id": "ring_lair", "species": "ambush_hunter", "home": ring_home, "heading": 0.0, "territory_zone": ""})
+	var sim := _sim("grazer", 201, Vector2.INF, 0.0, ring)
+	check_eq(sim.creatures.creatures.size(), 1, "the ring's hunter is there")
+	var c: CreatureField.Creature = sim.creatures.creatures[0]
+	check_eq(c.site_id, "ring_lair", "at its site")
+	c.motion.place(ring_home + Vector2(6.0, 0.0), 0.0)
+	CreatureBrain._enter(c.brain, CreatureBrain.WANDER, CreatureBrain.RETURN_HOME, sim.tick, c.motion.position)
+	sim.arena.add_rock("plug", ring_home + Vector2(3.5, 0.0), 1.25)
+	var start := sim.tick
+	var timeout: int = c.brain.cfg.nav_timeout_ticks
+	var events := _run(sim, 3 * timeout + 600, Callable(),
+		func(s: PoolSim, _t: int) -> bool: return s.creatures.creatures.size() == 1 and s.creatures.creatures[0] != c)
+	var removed := _of(events, "creature_removed")
+	check(not removed.is_empty() and removed[0].reason == "stuck", "removed as stuck (%s)" % [removed])
+	if removed.is_empty():
+		return
+	check(int(removed[0].tick) - start >= 3 * timeout, "after three navigation timeouts (%d ticks)" % (int(removed[0].tick) - start))
+	var spawned := _of(events, "creature_spawned")
+	check(not spawned.is_empty() and spawned[-1].site == "ring_lair" and int(spawned[-1].tick) > int(removed[0].tick), "then a new hunter at its site")
+	if not spawned.is_empty():
+		check(Vector2(spawned[-1].position).distance_to(ring_home) < 1e-6, "at its home")
+	check(sim.motion.position.distance_to(ring_home) >= float(species.fairness.spawn_safe_m), "the cell was far away")
+
+
+func test_only_one_creature_engages_the_cell_at_a_time_and_the_other_waits_until_its_timer() -> void:
+	# T6 (plan #21): a hungry ambush hunter and a rammer, the cell inside both their reach. The
+	# hunter notices first and keeps the token (its own timer lifted for the test); the cell dodges.
+	var sim := _sim("grazer", 211, STRIKE_ORIGIN, 0.0)
+	var h := _creature(sim, "ambush_hunter", STRIKE_ORIGIN - Vector2(4.0, 0.0), 0.0, 0.4)
+	h.brain.cfg = h.brain.cfg.duplicate(true)
+	h.brain.cfg.give_up_ticks = 1 << 30
+	var r := _creature(sim, "rammer", STRIKE_ORIGIN + Vector2(4.0, 0.0), PI)
+	r.brain.ignore_all_until = sim.tick + 20
+	var bot = EvadeBot.new()
+	bot.base = func(s: PoolSim) -> SimIntent:   # back to its spot between them after each dodge
+		var to := STRIKE_ORIGIN - s.motion.position
+		return SimIntent.new(to.limit_length(1.0) if to.length() > 0.3 else Vector2.ZERO)
+	var pending: Array[Dictionary] = []
+	var most := 0
+	var rammer_engaged := 0
+	var waited := 0
+	var gave_up := {}
+	var hunter_chased := false
+	for t in 900:
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+		most = maxi(most, sim.creatures.engaged_on_player.size())
+		hunter_chased = hunter_chased or CreatureBrain.is_engaged_with(h.brain, PLAYER)
+		if CreatureBrain.is_engaged_with(r.brain, PLAYER):
+			rammer_engaged += 1
+		if r.brain.state == CreatureBrain.NOTICE and r.brain.target == PLAYER:
+			waited += 1
+		for e in pending:
+			if e.type == "creature_gave_up" and e.id == r.id and gave_up.is_empty():
+				gave_up = e
+		if not gave_up.is_empty() or sim.dead:
+			break
+	check(hunter_chased, "the hunter engaged the cell")
+	check_eq(most, 1, "never more than one creature engaged on the cell")
+	check_eq(rammer_engaged, 0, "the rammer never chased or attacked it")
+	check(not gave_up.is_empty() and gave_up.reason == "timer", "the rammer gave up on its timer (%s)" % [gave_up])
+	check(waited >= int(r.brain.cfg.give_up_ticks) - int(r.brain.cfg.notice_ticks), "after waiting in notice (%d ticks)" % waited)
+
+
+func test_a_starving_hunter_cell_kills_a_rammer_and_eats_before_it_starves() -> void:
+	# Plan #22, with an in-test driver until HuntBot (plan commit 11): it closes on the resting
+	# rammer from behind and keeps biting, dodges any charge sideways, then eats the carcass.
+	var sim := _sim("hunter", 221, STRIKE_ORIGIN - Vector2(6.0, 0.0), 0.0)
+	sim.debug_set_energy(0.0)
+	var r := _creature(sim, "rammer", STRIKE_ORIGIN, 0.0)
+	r.state.energy = r.state.energy_capacity
+	var forage = ForageBot.new()
+	var bot = EvadeBot.new()
+	bot.base = func(s: PoolSim) -> SimIntent:
+		if s.creatures.find(r.id) != null:
+			return SimIntent.new((r.motion.position - s.motion.position).normalized())
+		return forage.next_intent(s)
+	var pending: Array[Dictionary] = []
+	var killed := -1
+	var ate := -1
+	for t in 60 * 60:
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+		for e in pending:
+			if e.type == "creature_died" and e.id == r.id and e.by == PLAYER:
+				killed = t
+			if e.type == "ate" and e.kind == "meat" and ate < 0:
+				ate = t
+		if sim.dead or (ate >= 0 and not sim.state.is_starving()):
+			break
+	print("test-threats-starving-hunter: killed at %.1f s, ate at %.1f s, dead %s, starving %s" % [killed / 60.0, ate / 60.0, sim.dead, sim.state.is_starving()])
+	check(killed >= 0, "it killed the rammer")
+	check(ate > killed, "then ate its meat")
+	check(not sim.dead, "before it died")
+	check(not sim.state.is_starving(), "and is no longer starving")
+
+
+func test_every_fed_body_swims_past_the_lair_se_hunter_at_full_speed_and_is_never_hit() -> void:
+	# Plan #23, real layout and species: a straight line through z_se's east side that passes
+	# 2.75 m from lair_se, inside the hunter's window.
+	var lair: Dictionary = species.site("lair_se")
+	var lair_at: Vector2 = lair.home
+	var x := lair_at.x - 2.75
+	for body in BODIES:
+		var sim := _sim(body, 231, Vector2.INF, 0.0, layout, species)
+		var c: CreatureField.Creature = null
+		for k in sim.creatures.creatures:
+			if k.site_id == "lair_se":
+				c = k
+		check(c != null, "%s: the lair_se hunter is there" % body)
+		if c == null:
+			continue
+		_run(sim, 200)   # it settles
+		check(sim.debug_teleport(Vector2(x, lair_at.y - 12.0), PI / 2.0), "%s: at the start of the pass" % body)
+		var events := _run(sim, 480, func(_s: PoolSim) -> SimIntent: return SimIntent.new(Vector2.DOWN))
+		var noticed := _of(events, "creature_noticed").filter(func(e: Dictionary) -> bool: return e.id == c.id and e.target == PLAYER)
+		var hits := _of(events, "hit").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+		print("test-threats-lair-pass: %s: noticed %d, tells %d, hits %d" % [body, noticed.size(), _of(events, "creature_tell").size(), hits.size()])
+		check(not noticed.is_empty(), "%s: the hunter noticed the cell going by" % body)
+		check(hits.is_empty(), "%s: never hit" % body)
+		check(sim.motion.position.y > lair_at.y + 6.0, "%s: it got past (y %.1f)" % [body, sim.motion.position.y])
+
+
 # --- determinism and coverage (plan threats_sim #24-28) ---
 
 func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed_does_not() -> void:
@@ -347,14 +1222,17 @@ func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed
 		var c: CreatureField.Creature = sim.creatures.creatures[-1]
 		c.brain.ignore_all_until = 0
 		c.state.energy = c.state.energy_capacity * 0.4   # hungry: it chases
-		runs.append({"seed": seed_value, "sim": sim, "bot": ForageBot.new(), "hashes": [], "engaged": 0})
+		sim.state.health = 10.0                          # and its first bites can kill the cell
+		runs.append({"seed": seed_value, "sim": sim, "bot": ForageBot.new(), "hashes": [], "engaged": 0, "kills": 0})
 	for t in 3600:
 		for run in runs:
 			var sim: PoolSim = run.sim
 			if run.seed == 78 and t >= 600:
 				continue   # seed 78 only has to differ by tick 600
 			sim.step(run.bot.next_intent(sim))
-			sim.drain_events()
+			for e in sim.drain_events():
+				if e.type == "died" or e.type == "creature_died":
+					run.kills += 1
 			if not sim.creatures.engaged_on_player.is_empty():
 				run.engaged += 1
 			if sim.tick % 60 == 0:
@@ -362,6 +1240,8 @@ func test_two_runs_with_the_same_seed_and_intents_hash_the_same_and_another_seed
 	check_eq(runs[0].hashes, runs[1].hashes, "seed 77 twice: the same hash every 60 ticks")
 	check(runs[0].hashes.slice(0, 10) != runs[2].hashes.slice(0, 10), "seed 78 differs by tick 600")
 	check(runs[0].engaged > 0, "the run included a chase on the cell (%d ticks engaged)" % runs[0].engaged)
+	var stats: Dictionary = runs[0].sim.stats
+	check(stats.hits_taken > 0 and runs[0].kills > 0, "and a kill: %d hits taken, %d deaths" % [stats.hits_taken, runs[0].kills])
 	check_eq(runs[0].hashes.size(), 60, "sixty hashes")
 
 

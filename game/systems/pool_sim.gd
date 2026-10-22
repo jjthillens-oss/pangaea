@@ -24,7 +24,13 @@ extends RefCounted
 ##  6. metabolism: the player as in step 2, creatures at their species' metabolism share (a
 ##     starved creature dies and leaves no carcass);
 ##  7. ecology, then the creature field's respawn queue and stuck removals;
-##  8. sync the resolver actors; 9. feeding: the player, then each creature eating by its drive.
+##  8. sync the resolver actors; 9. feeding: the player, then each creature eating by its drive;
+## 10. combat, only through InteractionResolver: (a) the cell's automatic bite and ram on the
+##     creatures it touches, (b) creature strikes in number order (only in a strike's burst or
+##     glide, at most one hit per strike), each landed hit with its knockback and the speed clamp
+##     (c), then (d) deaths: the cell first, then creatures in number order (carcass, removal,
+##     queue). Every body alive when combat begins may attack, so a mutual kill kills both (T12);
+## 11. dodges: a strike on the cell that ended this tick without a hit (missed or blocked).
 ## Creatures are not saved; every timer is a whole tick and every RNG is seeded from the world seed.
 
 const DT := 1.0 / 60.0
@@ -41,8 +47,15 @@ const DEBUG_CARRION_AHEAD_M := 4.0
 ## m: debug_spawn_threat_ahead places the creature this far in front of the cell, facing it, so it
 ## is in view and inside the ambush hunter's sight.
 const DEBUG_THREAT_AHEAD_M := 6.0
+const DEBUG_KILLER := "debug"           ## `by` for a death caused by a dev command
 ## Refusals never reported: no food in reach is normal, and swallowing is a meal in progress.
 const QUIET_REASONS: PackedStringArray = ["out of reach", "still swallowing"]
+## Attack refusals never reported (plan section 9): contact without a weapon, a weapon cooling down
+## or a body backing away are normal and say nothing the player can act on. The others ("jaw is not
+## facing it", "no spike points at it", "too big to bite") become hints.
+const ATTACK_QUIET_REASONS: PackedStringArray = ["out of reach", "jaw is recovering", "spikes are recovering",
+	"not moving toward it", "needs a jaw", "needs a spike"]
+const ATTACK_LOG_SIZE := 6              ## a bite and a ram for the last three ticks, like FEED_LOG_SIZE
 
 var tick := 0
 var save: SaveGame
@@ -73,12 +86,19 @@ var stats := {"plankton_eaten": 0, "carrion_eaten": 0, "plant_taken": 0.0, "ener
 ## The last FEED_LOG_SIZE reported feeding results, newest last:
 ## {"tick", "food_id", "kind", "allowed", "reason"}
 var feed_log: Array[Dictionary] = []
+## The cell's last ATTACK_LOG_SIZE attack results on the nearest creature it touches, quiet
+## refusals included, newest last: {"tick", "target", "kind", "allowed", "reason"} (debug panel, tests).
+var attack_log: Array[Dictionary] = []
 
 var _events: Array[Dictionary] = []
 var _alive_ticks := 0
 var _was_starving := false
 var _last_refusal := {}    ## {"food_id", "reason", "touching", "at"}
 var _contact := {}         ## {"food_id", "since"}: the food being touched, and since when
+var _last_attack_refusal := {}   ## kind -> {"target", "reason", "at"}: the attack refusal throttle
+var _killer := ""          ## the creature whose hit on the cell landed last this tick
+## Strikes on the cell that ended this tick without a hit, {"id", "species"}; dodged at step 11.
+var _dodges: Array[Dictionary] = []
 
 
 ## Builds the pool for a save. The save's position is used when it is a clear place inside the
@@ -141,8 +161,10 @@ func step(intent: SimIntent) -> void:
 		motion.prev_position = motion.position
 		motion.prev_heading = motion.heading
 	var creature_moved: Array[float] = []
+	var swim := {}
 	if creatures != null:
 		creature_moved = _move_creatures()
+		swim = _swim_velocities()
 		_contacts()
 	if not dead:
 		_metabolism(moved)
@@ -163,6 +185,8 @@ func step(intent: SimIntent) -> void:
 	if creatures != null:
 		_creatures_feed()
 		_take_field_events()
+		_combat(swim)
+		_emit_dodges()
 	tick += 1
 
 
@@ -182,6 +206,9 @@ func step(intent: SimIntent) -> void:
 ##   creature_strike {id, target, kind, position, heading}
 ##   creature_recovered {id, target, outcome, position}; creature_fled {id, from, position}
 ## and from the sim: creature_ate {id, kind, food_id}; creature_died {id, species, cause, by, position, carcass}
+##   hit {attacker, target, kind, damage, dealt, target_health, knockback, position} (every landed hit,
+##     either way; position is the target's); attack_refused {target, kind, reason} (the cell only,
+##     throttled, quiet reasons never); dodged {id, species} (a strike on the cell ended without a hit)
 func drain_events() -> Array[Dictionary]:
 	_take_field_events()
 	var out := _events
@@ -266,6 +293,7 @@ func respawn_player() -> void:
 	_update_starving()   # a cell that starved to death comes back fed
 	_contact.clear()
 	_last_refusal.clear()
+	_last_attack_refusal.clear()
 	_emit({"type": "respawned"})
 
 
@@ -379,6 +407,38 @@ func debug_set_hidden(on: bool) -> bool:
 	return true
 
 
+## Kills the creature nearest the cell (ties by id) as if by a hit: cause "killed", by "debug". It
+## leaves its carcass and its site is queued.
+func debug_kill_nearest_creature() -> bool:
+	if creatures == null:
+		return false
+	var best: CreatureField.Creature = null
+	var best_d := INF
+	for c in creatures.creatures:
+		var d := motion.position.distance_squared_to(c.motion.position)
+		if d < best_d or (d == best_d and best != null and c.id < best.id):
+			best_d = d
+			best = c
+	if best == null:
+		return false
+	_emit({"type": "debug", "command": "kill_nearest", "id": best.id, "species": best.species_id})
+	best.state.take_damage(best.state.health)
+	best.last_hit_by = DEBUG_KILLER
+	_creature_dies(best, "killed", DEBUG_KILLER)
+	return true
+
+
+## Takes `amount` health from the living cell as if by a hit; at 0 it dies (killed, by "debug").
+func debug_hurt_player(amount: float) -> bool:
+	if dead or not is_finite(amount) or amount <= 0.0:
+		return false
+	var dealt := state.take_damage(amount)
+	_emit({"type": "debug", "command": "hurt_player", "amount": dealt, "health": state.health})
+	if not state.is_alive():
+		_player_dies("killed", DEBUG_KILLER, "", "")
+	return true
+
+
 ## Moves the cell to a clear point at rest; keeps the heading unless one is given.
 func debug_teleport(p: Vector2, heading: float = NAN) -> bool:
 	if not arena.is_clear(p, phenotype.radius):
@@ -412,6 +472,8 @@ func _player_dies(cause: String, by: String, by_species: String, reason: String)
 	motion.velocity = Vector2.ZERO
 	death = {"cause": cause, "by": by, "by_species": by_species, "reason": reason}
 	_emit({"type": "died", "cause": cause, "by": by, "by_species": by_species, "reason": reason, "position": motion.position})
+	if creatures != null:
+		_forget_player_everywhere()   # a dead body is gone to every brain (target_gone); the token is freed
 
 
 func _update_starving() -> void:
@@ -538,7 +600,13 @@ func _take_field_events() -> void:
 	_events.append_array(carrion.events)
 	carrion.events.clear()
 	if creatures != null:
-		_events.append_array(creatures.take_events())
+		var taken := creatures.take_events()
+		for e in taken:
+			if e.type == "creature_recovered" and e.target == CreatureField.PLAYER_ID \
+					and (e.outcome == "missed" or e.outcome == "blocked"):
+				var c := creatures.find(e.id)
+				_dodges.append({"id": e.id, "species": c.species_id if c != null else ""})
+		_events.append_array(taken)
 
 
 ## Where the field measures spawn safety from: the cell, or its checkpoint while it is dead.
@@ -642,10 +710,13 @@ func _creature_metabolism(moved: Array[float]) -> void:
 ## freeing its niche slot and queueing its site. Only a kill leaves a carcass, unless the species'
 ## carcass.on_starve says otherwise; a scripted body leaves none.
 func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> void:
+	_take_field_events()   # its brain's last events come before its death
 	var carcass := PackedStringArray()
 	if not c.scripted and (cause == "killed" or bool(species.species[c.species_id].carcass.on_starve)):
 		carcass = creatures.drop_carcass(c, carrion, arena)
 	stats.creature_deaths += 1
+	if by == CreatureField.PLAYER_ID:
+		stats.kills += 1
 	_emit({"type": "creature_died", "id": c.id, "species": c.species_id, "cause": cause, "by": by,
 		"position": c.motion.position, "carcass": Array(carcass)})
 	creatures.remove(c, cause, tick, true)
@@ -677,6 +748,198 @@ func _creatures_feed() -> void:
 		c.state.eat(supplied)
 		stats.creature_meals += 1
 		_emit({"type": "creature_ate", "id": c.id, "kind": food.kind, "food_id": food.id})
+
+
+## Every body's velocity after this tick's motion and before contacts, by id: a ram's closing speed
+## comes from these (plan section 9), not from what separation or a leash clamp left.
+func _swim_velocities() -> Dictionary:
+	var out := {}
+	if not dead:
+		out[CreatureField.PLAYER_ID] = motion.velocity
+	for c in creatures.creatures:
+		out[c.id] = c.motion.velocity
+	return out
+
+
+## Tick step 10: combat. Who may attack is fixed when it begins: the living cell (a), and every
+## living creature in a strike's burst or glide that has not hit yet in this strike (b). A body at
+## 0 health is never a target, so nothing is hit twice after its death blow. Deaths come last (d).
+func _combat(swim: Dictionary) -> void:
+	_killer = ""
+	var striking: Array[CreatureField.Creature] = []
+	for c in creatures.creatures:
+		if c.brain == null or not c.state.is_alive():
+			continue
+		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
+			c.strike_hit = false   # a new strike
+		if CreatureBrain.is_striking(c.brain) and bool(c.drive.get("strike", false)) and not c.strike_hit:
+			striking.append(c)
+	if not dead:
+		_player_attacks(swim)
+	for c in striking:
+		_creature_strike(c, swim)
+	_deaths()
+
+
+## Step 10a: the cell bites and rams what it touches, with no key (OD3): the creatures within its
+## radius + theirs + RAM_REACH, nearest first (ties by id); the first allowed bite and the first
+## allowed ram, at most one of each. A refusal on the nearest one is reported (throttled) unless
+## its reason is quiet.
+func _player_attacks(swim: Dictionary) -> void:
+	var near: Array[Dictionary] = []
+	for c in creatures.creatures:
+		if not c.state.is_alive():
+			continue
+		var d := motion.position.distance_to(c.motion.position)
+		if d <= phenotype.radius + c.phenotype.radius + InteractionResolver.RAM_REACH:
+			near.append({"d": d, "c": c})
+	if near.is_empty():
+		return
+	near.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d if a.d != b.d else a.c.id < b.c.id)
+	var nearest: CreatureField.Creature = near[0].c
+	var on_nearest := {}   # kind -> reason
+	var landed := {}       # kind -> true
+	for entry in near:
+		var c: CreatureField.Creature = entry.c
+		for kind in ["bite", "ram"]:
+			if landed.has(kind) or not c.state.is_alive():
+				continue
+			var r: Dictionary
+			if kind == "bite":
+				r = InteractionResolver.bite(actor, c.actor, now())
+			else:
+				r = InteractionResolver.ram(actor, c.actor, _closing(swim, CreatureField.PLAYER_ID, motion, c.id, c.motion), now())
+			if c == nearest:
+				on_nearest[kind] = r.reason
+				_log_attack(c.id, kind, r.allowed, r.reason)
+			if not r.allowed:
+				continue
+			landed[kind] = true
+			var knockback := float(species.combat.player_bite_knockback if kind == "bite" else species.combat.player_ram_knockback)
+			var dealt := _apply_hit(CreatureField.PLAYER_ID, motion, c.id, c.motion, c.state, kind, float(r.effect.damage), knockback)
+			c.last_hit_by = CreatureField.PLAYER_ID
+			stats.hits_dealt += 1
+			stats.damage_dealt += dealt
+			if c.brain != null:
+				CreatureBrain.on_hurt(c.brain, player_body(), tick)
+			_take_field_events()
+	for kind in ["bite", "ram"]:
+		if not landed.has(kind) and on_nearest.has(kind) and not ATTACK_QUIET_REASONS.has(on_nearest[kind]):
+			_note_attack_refusal(nearest.id, kind, on_nearest[kind])
+
+
+## Step 10b: one creature's strike at its target, through the resolver. A concealed, dead or gone
+## target is skipped. A refused strike carries on until its ticks run out.
+func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
+	var target_id := str(c.drive.get("target", ""))
+	var kind := str(c.brain.cfg.attack.kind)
+	var knockback := float(c.brain.cfg.attack.knockback)
+	if target_id == CreatureField.PLAYER_ID:
+		if dead or is_concealed() or not state.is_alive():
+			return
+		var r: Dictionary
+		if kind == "bite":
+			r = InteractionResolver.bite(c.actor, actor, now())
+		else:
+			r = InteractionResolver.ram(c.actor, actor, _closing(swim, c.id, c.motion, CreatureField.PLAYER_ID, motion), now())
+		if not r.allowed:
+			return
+		var dealt := _apply_hit(c.id, c.motion, CreatureField.PLAYER_ID, motion, state, kind, float(r.effect.damage), knockback)
+		c.strike_hit = true
+		_killer = c.id
+		stats.hits_taken += 1
+		stats.damage_taken += dealt
+		CreatureBrain.on_strike_landed(c.brain, tick)
+		_take_field_events()
+		return
+	var t := creatures.find(target_id)
+	if t == null or t == c or not t.state.is_alive():
+		return
+	var rt: Dictionary
+	if kind == "bite":
+		rt = InteractionResolver.bite(c.actor, t.actor, now())
+	else:
+		rt = InteractionResolver.ram(c.actor, t.actor, _closing(swim, c.id, c.motion, t.id, t.motion), now())
+	if not rt.allowed:
+		return
+	_apply_hit(c.id, c.motion, t.id, t.motion, t.state, kind, float(rt.effect.damage), knockback)
+	c.strike_hit = true
+	t.last_hit_by = c.id
+	CreatureBrain.on_strike_landed(c.brain, tick)
+	if t.brain != null:
+		CreatureBrain.on_hurt(t.brain, creatures.body_of(c), tick)
+	_take_field_events()
+
+
+## One landed hit (steps 10a-c): the damage, a knockback of `knockback` m/s on the target away from
+## the attacker, both speeds clamped to combat.max_speed_after_hit (the tunnelling bound, T10), and
+## the hit event. Returns the health taken.
+func _apply_hit(attacker_id: String, a: Locomotion.MotionState, target_id: String, t: Locomotion.MotionState,
+		t_state: ActorState, kind: String, damage: float, knockback: float) -> float:
+	var dealt := t_state.take_damage(damage)
+	var away := t.position - a.position
+	var dir := away / away.length() if away.length() > 1e-6 else Vector2.from_angle(a.heading)
+	t.velocity += dir * knockback
+	var top := float(species.combat.max_speed_after_hit)
+	for m in [a, t]:
+		if m.velocity.length() > top:
+			m.velocity = m.velocity.normalized() * top
+	_emit({"type": "hit", "attacker": attacker_id, "target": target_id, "kind": kind, "damage": damage, "dealt": dealt,
+		"target_health": t_state.health, "knockback": knockback, "position": t.position})
+	return dealt
+
+
+## Closing speed of `a` on `b`: their relative swim velocity along the line from a to b.
+func _closing(swim: Dictionary, a_id: String, a: Locomotion.MotionState, b_id: String, b: Locomotion.MotionState) -> float:
+	var line := b.position - a.position
+	if line.length() <= 1e-6:
+		return 0.0
+	var va: Vector2 = swim.get(a_id, a.velocity)
+	var vb: Vector2 = swim.get(b_id, b.velocity)
+	return (va - vb).dot(line / line.length())
+
+
+## Step 10d: the cell first (killed by the last creature that hit it this tick, with that species'
+## death_reason), then creatures in number order.
+func _deaths() -> void:
+	if not dead and not state.is_alive():
+		var by := creatures.find(_killer)
+		var sp := by.species_id if by != null else ""
+		_player_dies("killed", _killer, sp, str(species.species[sp].death_reason) if species.has_species(sp) else "")
+	var fallen: Array[CreatureField.Creature] = []
+	for c in creatures.creatures:
+		if not c.state.is_alive():
+			fallen.append(c)
+	for c in fallen:
+		_creature_dies(c, "killed", c.last_hit_by)
+
+
+## Step 11: every strike on the living cell that ended this tick without a hit.
+func _emit_dodges() -> void:
+	_take_field_events()
+	if dead:
+		_dodges.clear()
+	for d in _dodges:
+		stats.dodges += 1
+		_emit({"type": "dodged", "id": d.id, "species": d.species})
+	_dodges.clear()
+
+
+## Reports an attack refusal when the (target, reason) pair of that kind changes, or every
+## REFUSAL_REPEAT_S while it lasts (the feeding throttle).
+func _note_attack_refusal(target_id: String, kind: String, reason: String) -> void:
+	var last: Dictionary = _last_attack_refusal.get(kind, {})
+	if last.get("target", "") == target_id and last.get("reason", "") == reason \
+			and now() - float(last.at) < REFUSAL_REPEAT_S - 1e-9:
+		return
+	_last_attack_refusal[kind] = {"target": target_id, "reason": reason, "at": now()}
+	_emit({"type": "attack_refused", "target": target_id, "kind": kind, "reason": reason})
+
+
+func _log_attack(target_id: String, kind: String, allowed: bool, reason: String) -> void:
+	attack_log.append({"tick": tick, "target": target_id, "kind": kind, "allowed": allowed, "reason": reason})
+	if attack_log.size() > ATTACK_LOG_SIZE:
+		attack_log.pop_front()
 
 
 func _food_item(id: String) -> Dictionary:
