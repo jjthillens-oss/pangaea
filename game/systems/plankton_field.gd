@@ -1,0 +1,183 @@
+class_name PlanktonField
+extends RefCounted
+## Plankton items the cell can touch, as a view of EcologyRegion stock (M1 step 2). A zone's
+## amount is the only authority on how much plankton exists: the zone shows one item per
+## unit_energy it holds (up to max_items_per_zone). Each tick a zone below that spawns one item
+## and a zone above it removes its newest item.
+##
+## Items drift around an anchor. The drift is simulated, not just drawn, because reach depends on
+## it. Spawn points come from the region's seeded RNG; drift phases come from the item number, so
+## the field draws no random numbers of its own.
+
+const SPAWN_TRIES := 8
+const COUNT_EPSILON := 1e-6           ## 23.9999999 energy still shows three 8-energy items
+const GOLDEN_ANGLE := 2.399963229728653
+const GOLDEN_RATIO_FRACTION := 0.6180339887498949
+const REGROWN_LATCH_SHARE := 0.5      ## an emptied zone can report "empty" again once back to half capacity
+
+var unit_energy := 8.0
+var points := 1
+var item_radius := 0.18
+var max_items_per_zone := 12
+var drift_amplitude := 0.35           ## m on each axis
+var drift_period := Vector2(7.0, 13.0)  ## shortest and longest drift period, s
+## Insertion-ordered: [{"id", "zone", "kind": "plant", "position", "radius", "energy", "points",
+## "anchor", "phase": Vector2, "omega": Vector2, "born_tick"}]
+var items: Array[Dictionary] = []
+var next_number := 1
+## zone_empty / zone_regrown events since PoolSim last took them: {"type", "zone"}
+var events: Array[Dictionary] = []
+var _empty_latched := {}
+var _regrowing := {}
+
+
+## config: the layout's "plankton" block.
+static func create(config: Dictionary) -> PlanktonField:
+	var field := PlanktonField.new()
+	field.unit_energy = config.unit_energy
+	field.points = config.points
+	field.item_radius = config.item_radius
+	field.max_items_per_zone = config.max_items_per_zone
+	field.drift_amplitude = config.drift_amplitude
+	field.drift_period = config.drift_period_s
+	return field
+
+
+## Furthest an item gets from its anchor (each axis swings by drift_amplitude).
+func drift_reach() -> float:
+	return drift_amplitude * sqrt(2.0)
+
+
+## How many items a zone shows at its current amount.
+func target_count(zone: Dictionary) -> int:
+	return mini(max_items_per_zone, floori(float(zone.amount) / unit_energy + COUNT_EPSILON))
+
+
+## How many items a full zone shows.
+func max_count(zone: Dictionary) -> int:
+	return mini(max_items_per_zone, floori(float(zone.capacity) / unit_energy + COUNT_EPSILON))
+
+
+func count_in(zone_id: String) -> int:
+	var n := 0
+	for item in items:
+		if item.zone == zone_id:
+			n += 1
+	return n
+
+
+## True from a zone's "zone_empty" until it is full of items again.
+func is_regrowing(zone_id: String) -> bool:
+	return _regrowing.has(zone_id)
+
+
+## Fills every zone up to its count at once (a new world starts full).
+func fill(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
+	for zone in region.zones:
+		for i in target_count(zone) - count_in(zone.id):
+			_try_spawn(zone, region, arena, tick_number, now)
+
+
+func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
+	var counts := {}
+	for item in items:
+		counts[item.zone] = int(counts.get(item.zone, 0)) + 1
+	for zone in region.zones:
+		var have: int = counts.get(zone.id, 0)
+		var want := target_count(zone)
+		if have < want and _try_spawn(zone, region, arena, tick_number, now):
+			have += 1
+		elif have > want:
+			_remove_newest(zone.id)
+			have -= 1
+		_update_flags(zone, have)
+	for item in items:
+		item.position = _drifted(item, now)
+
+
+## Items whose centers lie within `reach` of `p`, in insertion order.
+func items_near(p: Vector2, reach: float) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var reach_sq := reach * reach
+	for item in items:
+		if p.distance_squared_to(item.position) <= reach_sq:
+			out.append(item)
+	return out
+
+
+## Removes an eaten item. The caller has already taken its energy from the zone.
+func consume(id: String) -> bool:
+	for i in items.size():
+		if items[i].id == id:
+			items.remove_at(i)
+			return true
+	return false
+
+
+## Removes every item of a zone (dev command; the caller empties the zone's stock).
+func clear_zone(zone_id: String) -> void:
+	items = items.filter(func(item: Dictionary) -> bool: return item.zone != zone_id)
+
+
+func _try_spawn(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> bool:
+	# Anchors sit far enough inside the zone that the drift never carries an item out of it.
+	var radius: float = zone.radius
+	var inset := maxf(0.0, radius - drift_reach()) / radius
+	for i in SPAWN_TRIES:
+		var anchor: Vector2 = zone.center + (region.random_point_in(zone.id) - zone.center) * inset
+		if arena.is_clear(anchor, item_radius + drift_reach()):
+			_add(zone.id, anchor, tick_number, now)
+			return true
+	return false
+
+
+func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> void:
+	var n := next_number
+	next_number += 1
+	# Golden-ratio steps spread phases and periods evenly without a random draw.
+	var period_x := lerpf(drift_period.x, drift_period.y, fposmod(n * GOLDEN_RATIO_FRACTION, 1.0))
+	var period_y := lerpf(drift_period.x, drift_period.y, fposmod(n * GOLDEN_RATIO_FRACTION * 2.0 + 0.5, 1.0))
+	var item := {
+		"id": "pk_%d" % n,
+		"zone": zone_id,
+		"kind": "plant",
+		"position": anchor,
+		"radius": item_radius,
+		"energy": unit_energy,
+		"points": points,
+		"anchor": anchor,
+		"phase": Vector2(fposmod(n * GOLDEN_ANGLE, TAU), fposmod(n * GOLDEN_ANGLE * 2.0, TAU)),
+		"omega": Vector2(TAU / period_x, TAU / period_y),
+		"born_tick": tick_number,
+	}
+	item.position = _drifted(item, now)
+	items.append(item)
+
+
+func _drifted(item: Dictionary, now: float) -> Vector2:
+	var phase: Vector2 = item.phase
+	var omega: Vector2 = item.omega
+	return item.anchor + drift_amplitude * Vector2(sin(now * omega.x + phase.x), cos(now * omega.y + phase.y))
+
+
+func _remove_newest(zone_id: String) -> void:
+	for i in range(items.size() - 1, -1, -1):
+		if items[i].zone == zone_id:
+			items.remove_at(i)
+			return
+
+
+## "zone_empty" when a zone has no items and less than one unit of stock; latched until the zone
+## is back to half capacity. "zone_regrown" when an emptied zone shows all its items again.
+func _update_flags(zone: Dictionary, have: int) -> void:
+	var id: String = zone.id
+	if not _empty_latched.has(id):
+		if have == 0 and zone.amount < unit_energy:
+			_empty_latched[id] = true
+			_regrowing[id] = true
+			events.append({"type": "zone_empty", "zone": id})
+	elif zone.amount >= zone.capacity * REGROWN_LATCH_SHARE:
+		_empty_latched.erase(id)
+	if _regrowing.has(id) and have >= max_count(zone):
+		_regrowing.erase(id)
+		events.append({"type": "zone_regrown", "zone": id})
