@@ -43,8 +43,10 @@ func open_count() -> int:
 	return open.count(1)
 
 
-## Walking distance in meters from the nearest source to every point (UNREACHED where none).
-func distances_from(sources: PackedInt32Array) -> PackedFloat32Array:
+## Walking distance in meters from the nearest source to every point (INF where none). Points
+## further than `max_m` are left at INF, which saves time when only nearby points matter.
+func distances_from(sources: PackedInt32Array, max_m: float = INF) -> PackedFloat32Array:
+	var limit := UNREACHED if is_inf(max_m) else floori(max_m / STEP * UNITS_PER_STEP)
 	var units := PackedInt32Array()
 	units.resize(open.size())
 	units.fill(UNREACHED)
@@ -71,7 +73,7 @@ func distances_from(sources: PackedInt32Array) -> PackedFloat32Array:
 					if open[n] == 0:
 						continue
 					var cost := b + (DIAGONAL_UNITS if dx != 0 and dy != 0 else UNITS_PER_STEP)
-					if cost < units[n]:
+					if cost < units[n] and cost <= limit:
 						units[n] = cost
 						while buckets.size() <= cost:
 							buckets.append([])
@@ -82,6 +84,19 @@ func distances_from(sources: PackedInt32Array) -> PackedFloat32Array:
 	for i in units.size():
 		meters[i] = INF if units[i] == UNREACHED else units[i] * STEP / UNITS_PER_STEP
 	return meters
+
+
+## Open points within `radius` of `center`.
+func points_in_circle(center: Vector2, radius: float) -> PackedInt32Array:
+	var out := PackedInt32Array()
+	var low := index_near(center - Vector2(radius, radius))
+	var high := index_near(center + Vector2(radius, radius))
+	for y in range(floori(low / float(size)), floori(high / float(size)) + 1):
+		for x in range(low % size, high % size + 1):
+			var i := y * size + x
+			if open[i] == 1 and point(i).distance_to(center) <= radius:
+				out.append(i)
+	return out
 
 
 ## Open points inside any plankton zone.
