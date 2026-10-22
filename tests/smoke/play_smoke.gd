@@ -31,6 +31,7 @@ const CENTRAL_SHARE := 0.4          ## the cell stays inside the central 40% of 
 const PITCH_DEG := 55.0
 const HUD_LAG_FRAMES := 8           ## HUD labels refresh at 10 Hz (6 frames), plus slack
 const RUN_FRAMES := 10              ## frames watched to see the sim stand still or run
+const FADE_SLACK_FRAMES := 2        ## the pool's fade-in may still show this long after FADE_IN_S
 const BAR_STEP := 0.01              ## the HUD bars round their value to this step
 ## Points before the death, so the death rule's quarter of them takes at least 1.
 const POINTS_BEFORE_DEATH := 4
@@ -129,7 +130,7 @@ func _found() -> void:
 	if not _click(start.new_button, "New lineage"):
 		start.open_picker()
 	await _frames(1)
-	_check(start.picker_view.visible and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
+	_check(_shown(start.picker_view) and _focus() == start.card_for("grazer"), "the picker opens with the grazer card focused")
 	start.select("grazer")
 	main.intent_provider = ForageBot.new()
 	if not _click(start.start_button, "the picker's Start"):
@@ -219,14 +220,14 @@ func _check_run_started(body: String) -> bool:
 	return true
 
 
-## The HUD labels name the sim's energy and points once they have refreshed.
+## The HUD labels are on screen and name the sim's energy and points once they have refreshed.
 func _check_hud_now(sim: PoolSim) -> void:
 	await _frames(HUD_LAG_FRAMES)
 	var hud := main.hud
 	var energy_ok := absf(_first_number(hud.energy_text.text) - sim.state.energy) <= 1.0
-	_check(energy_ok and hud.energy_text.text.ends_with("/ %d" % roundi(sim.state.energy_capacity)),
+	_check(_shown(hud.energy_text) and energy_ok and hud.energy_text.text.ends_with("/ %d" % roundi(sim.state.energy_capacity)),
 		"the HUD shows '%s' for sim energy %.2f / %.0f" % [hud.energy_text.text, sim.state.energy, sim.state.energy_capacity])
-	_check(hud.points_text.text == Hud.points_line(sim.save.adaptation_points)
+	_check(_shown(hud.points_text) and hud.points_text.text == Hud.points_line(sim.save.adaptation_points)
 		and int(_first_number(hud.points_text.text)) == sim.save.adaptation_points, "the HUD shows '%s'" % hud.points_text.text)
 
 
@@ -258,6 +259,10 @@ func _check_view_record(run: String) -> void:
 	_check(_view.food_mismatch == 0 and _view.plankton_drawn > 0,
 		"the food views drew the sim's plankton and carrion counts every frame of %s (%d misses; last %d plankton, %d carrion)"
 		% [run, _view.food_mismatch, _view.plankton_drawn, _view.carrion_drawn])
+	_check(_view.food_misplaced == 0,
+		"the food views drew sampled plankton and carrion at their sim positions every frame of %s (%d misses)" % [run, _view.food_misplaced])
+	_check(_view.fade_late == 0,
+		"the pool's fade-in cleared after %.1f s in %s (shown %d frames late)" % [PoolScene.FADE_IN_S, run, _view.fade_late])
 	_check(_view.bar_worst <= BAR_STEP + 1e-6, "the energy bar showed the sim energy every frame of %s (worst %.3f off)" % [run, _view.bar_worst])
 	_check(_view.hud_worst_lag <= HUD_LAG_FRAMES, "the HUD energy text never lagged the sim by more than %d frames in %s (%d)" % [HUD_LAG_FRAMES, run, _view.hud_worst_lag])
 
@@ -294,9 +299,9 @@ func _starve_and_recover(pool: PoolScene) -> void:
 	await _ticks_until(sim, func(): return sim.state.is_starving(), 10)
 	await _frames(1)
 	_check(sim.state.is_starving() and sim.state.speed_multiplier() <= 0.5, "the cell starves at half speed")
-	_check(hud.starving_banner.visible and hud.banner_text.text == Hud.STARVING_TEXT, "the starving banner shows")
-	_check(hud.state_text.text == "Starving" and hud.health_row.visible, "the HUD says Starving and shows health")
-	_check(pool.starving_arrow.visible, "the arrow points to food")
+	_check(_shown(hud.starving_banner) and _shown(hud.banner_text) and hud.banner_text.text == Hud.STARVING_TEXT, "the starving banner shows")
+	_check(_shown(hud.state_text) and hud.state_text.text == "Starving" and _shown(hud.health_row), "the HUD says Starving and shows health")
+	_check(_shown(pool.starving_arrow), "the arrow points to food")
 	var meals_before := _meals.size()
 	var ticks := await _ticks_until(sim, func(): return not sim.state.is_starving() or sim.dead, RECOVER_TICKS)
 	_check(not sim.dead and not sim.state.is_starving() and _meals.size() > meals_before,
@@ -326,9 +331,9 @@ func _die_and_continue(pool: PoolScene) -> void:
 	var notice := main.death_notice
 	var points := sim.save.adaptation_points
 	var loss := Lineage.death_loss(points)
-	_check(notice.is_open() and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
+	_check(_shown(notice) and notice.body_text().contains("(−%d)" % loss), "the death notice names the loss: %s" % notice.body_text())
 	await _press(&"pause")
-	_check(not main.pause_menu.is_open() and notice.is_open(), "the pause key leaves the death notice in charge")
+	_check(not main.pause_menu.is_open() and _shown(notice), "the pause key leaves the death notice in charge")
 	var button := notice.button_for("continue")
 	_check(button != null and _focus() == button, "the notice's Continue has the keyboard focus")
 	var dialog := main.quit_dialog
@@ -360,7 +365,7 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var sim := pool.sim
 	await _press(&"pause")
 	var menu := main.pause_menu
-	_check(menu.is_open() and pool.paused, "the pause key opens the pause menu and pauses the pool")
+	_check(_shown(menu) and pool.paused, "the pause key opens the pause menu and pauses the pool")
 	_check(_focus() == menu.resume_button, "Resume has the keyboard focus")
 	var still := await _ticks_in(sim, RUN_FRAMES)
 	_check(still == 0, "the sim stands still under the pause menu (%d ticks in %d frames)" % [still, RUN_FRAMES])
@@ -380,12 +385,12 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 		await _frames(2)
 		var dialog := main.quit_dialog
 		var choices := dialog.choice_ids()
-		_check(dialog.is_open() and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
+		_check(_shown(dialog) and choices == PackedStringArray(["save_quit", "quit", "cancel"]),
 			"Quit to desktop asks 'Save first?' with %s" % choices)
 		if not _click(dialog.button_for("cancel"), "the dialog's Cancel"):
 			dialog.choose("cancel")
 		await _frames(1)
-		_check(not dialog.is_open() and menu.is_open() and pool.paused, "Cancel returns to the pause menu")
+		_check(not dialog.is_open() and _shown(menu) and pool.paused, "Cancel returns to the pause menu")
 	else:
 		_check(false, "the run has unsaved progress before Save and quit")
 	if not _click(menu.save_quit_button, "Save and quit to title"):
@@ -563,7 +568,7 @@ func _continue() -> void:
 	_check(sim.motion.position.distance_to(saved) <= POSITION_TOLERANCE_M,
 		"the cell is where it was saved (%.6f m away)" % sim.motion.position.distance_to(saved))
 	_check_cell_view(pool)
-	_check(main.hud.message.visible and main.hud.message_text.text.begins_with("Your cell rested"),
+	_check(_shown(main.hud.message) and main.hud.message_text.text.begins_with("Your cell rested"),
 		"the HUD says the cell rested: %s" % main.hud.message_text.text)
 	await _check_running(pool, "the continued run plays", 60)
 	_check_view_record("the continued run")
@@ -607,7 +612,8 @@ func _watch(pool: PoolScene) -> void:
 	_event_points = 0
 	_hud_meal_mismatches.clear()
 	_view = {"frames": 0, "rect": Vector2.ZERO, "worst_offset": 0.0, "behind": 0, "food_mismatch": 0,
-		"plankton_drawn": 0, "carrion_drawn": 0, "hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0}
+		"plankton_drawn": 0, "carrion_drawn": 0, "food_misplaced": 0, "fade_late": 0,
+		"hud_lag": 0, "hud_worst_lag": 0, "bar_worst": 0.0}
 	pool.sim_event.connect(_on_sim_event)
 
 
@@ -644,10 +650,31 @@ func _probe_frame() -> void:
 	_view.carrion_drawn = pool.carrion_view.shown_count()
 	if _view.plankton_drawn != sim.plankton.items.size() or _view.carrion_drawn != sim.carrion.items.size():
 		_view.food_mismatch += 1
+	if not _food_placed(pool.plankton_view, sim.plankton.items) or not _food_placed(pool.carrion_view, sim.carrion.items):
+		_view.food_misplaced += 1
+	# _view.frames starts a frame or more after the pool's fade-in starts.
+	if _view.frames > ceili(PoolScene.FADE_IN_S / PoolSim.DT) + FADE_SLACK_FRAMES and _shown(pool.get_node("%Fade") as CanvasItem):
+		_view.fade_late += 1
 	var stale := not pool.paused and absf(_first_number(main.hud.energy_text.text) - sim.state.energy) > 1.0
 	_view.hud_lag = _view.hud_lag + 1 if stale else 0
 	_view.hud_worst_lag = maxi(_view.hud_worst_lag, _view.hud_lag)
 	_view.bar_worst = maxf(_view.bar_worst, absf(main.hud.energy_bar.value - sim.state.energy))
+
+
+## The first, middle and last of `items` sit at their sim positions (x and z) in the view's
+## instance buffer, which is what the renderer draws. MultiMesh.get_instance_transform() reads
+## identity under --headless, but the buffer reads back as written.
+func _food_placed(view: FoodView, items: Array[Dictionary]) -> bool:
+	if items.is_empty():
+		return true
+	var buffer := view.multimesh.buffer
+	for i in [0, floori(items.size() * 0.5), items.size() - 1]:
+		var want := PlaneSpace.to_world(items[i].position)
+		var o: int = i * FoodView.FLOATS_PER_INSTANCE
+		if o + 11 >= buffer.size() or absf(buffer[o + 3] - want.x) > POSITION_TOLERANCE_M \
+				or absf(buffer[o + 11] - want.z) > POSITION_TOLERANCE_M:
+			return false
+	return true
 
 
 ## Waits for `done` or `max_ticks` sim ticks, whichever comes first. Returns the ticks waited.
