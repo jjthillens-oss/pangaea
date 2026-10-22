@@ -5,9 +5,9 @@ extends TestCase
 
 const DOMAIN_DIR := "res://game/domain"
 const SIM_FILES: PackedStringArray = ["res://game/systems/pool_sim.gd", "res://game/systems/plankton_field.gd",
-	"res://game/systems/carrion_field.gd", "res://game/systems/sim_intent.gd"]
-## part_catalog.gd reads its tuning data from a file (an existing read-only load).
-const FILE_ALLOWED: PackedStringArray = ["res://game/domain/part_catalog.gd"]
+	"res://game/systems/carrion_field.gd", "res://game/systems/sim_intent.gd", "res://game/systems/species_catalog.gd"]
+## part_catalog.gd and species_catalog.gd read their tuning data from a file (read-only loads).
+const FILE_ALLOWED: PackedStringArray = ["res://game/domain/part_catalog.gd", "res://game/systems/species_catalog.gd"]
 const BANNED := {
 	"global random numbers": "(?<![\\w.])(randf|randi|randomize|randf_range|randi_range|randfn|seed)\\(",
 	"the clock": "\\bTime\\.",
