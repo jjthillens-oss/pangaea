@@ -116,7 +116,7 @@ func _build() -> void:
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
-	feedback.setup(session.layout.zones)
+	feedback.setup(session.layout.zones, camera)
 	camera.configure(session.layout.camera)
 	camera.snap_to(cell_view.position)
 	_draw_food(1.0)
