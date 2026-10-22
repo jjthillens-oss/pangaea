@@ -18,10 +18,11 @@ extends TestCase
 ##     creature; EvadeBot dodges each tell aimed at the cell 0.4 s after it starts (F2), as a player
 ##     reading the tells would. Notices of the cell and tells at it are its meetings with threats.
 ## #33 no threat-free larder (step 3 review): neither zone by the spawn feeds a cell that stays in
-##     it. No reach can cover them: rule 8 keeps every reach out of z_center, and F6 keeps lair_s from
-##     spawning while the cell is anywhere in z_s, so a cell that continues there or outlasts lair_s's
-##     hunter would be safe for ever. A camper starts full in each zone (a Continue from a save made
-##     there puts it there with 60%, D16) and eats only that zone's food; it must run dry.
+##     it and eats what it can. No reach can cover them: rule 8 keeps every reach out of z_center, and
+##     F6 keeps lair_s from spawning while the cell is anywhere in z_s, so a cell that continues there
+##     or outlasts lair_s's hunter would be safe for ever. A camper starts full in each zone (a
+##     Continue from a save made there puts it there with 60%, D16) and eats only that zone's food,
+##     each item as soon as it has room for half of it, as touching one does; it must run dry.
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
