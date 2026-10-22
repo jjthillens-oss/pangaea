@@ -317,6 +317,19 @@
         "game/ui/hud.tscn"
       ],
       "node": "Pool/UI/Hud/ThreatIndicators"
+    },
+    {
+      "id": "ambience_quads",
+      "kind": "particles",
+      "description": "Camera-facing quads of the pool ambience: drifting specks, bubbles and microbe swarms drawn by drift.gdshader (about 1,560 instances in three MultiMeshes), and ten flat quads carrying the pre-blurred backdrop organisms rendered by tools/blender/make_ambience_backdrops.py. Decor that never collides; the quad is only a carrier for a shader or texture. The PlaneMesh reference is the quad's orientation constant.",
+      "types": [
+        "QuadMesh",
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/ambience/pool_ambience.gd"
+      ],
+      "node": "Pool/Ambience"
     }
   ]
 }

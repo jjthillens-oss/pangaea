@@ -71,3 +71,27 @@ cilia are already thin, so it reduces least.
 xvfb-run -a .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . --rendering-method gl_compatibility \
   --fixed-fps 60 --script res://tools/godot/capture_pool.gd -- --out=docs/art/renders/production/pool --body=hunter --zoom=-2
 ```
+
+## Micro-world ambience (PROPOSED tuning; the look is CONFIRMED in DECISIONS)
+
+`game/scenes/pool/ambience/` is decor only: one `Ambience` node in `pool.tscn`. It reads the
+camera and the player cell, never the sim, and draws from its own random numbers
+(`tests/test_ambience.gd`).
+
+- **Drifting layers** (`drift.gdshader`): three MultiMeshes of camera-facing quads, wrapped in a
+  48 x 40 m box around the camera's focus by the shader, so the CPU never moves them.
+  - 900 specks.
+  - 140 rising bubbles.
+  - 520 microbes in 18 swarms: rods, spirilla and spores, 0.7 to 4.5 m under the swim plane,
+    which part around the cell.
+  - Shapes are drawn in the shader. Specks and bubbles grow softer away from the plane, standing
+    in for depth of field.
+- **Backdrops**: ten flat quads 14 to 34 m below the plane, recycled around the camera. Each
+  carries a pre-blurred organism from `tools/blender/make_ambience_backdrops.py`: a giant ciliate,
+  a bead colony, a diatom, a coiled filament or a radiolarian. The source is
+  `assets/source/blender/ambience_backdrops.blend`, and the textures are in `assets/export/ambience/`.
+- **Colours**: lavender, amber, cream and pale blue. Never the food green or the threat pink.
+- **Shown only once the floor drops**: the layers below the plane need the deep floor from
+  engineering's micro-world pass. Until then, preview them with
+  `capture_pool.gd -- --floor-y=-30 --micro-look`, which applies the mood frame's water values
+  as a preview of that pass.
