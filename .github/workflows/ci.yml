@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-and-export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pinned toolchain
+        run: grep -E "^[A-Z_]+=" tools/toolchain.env >> "$GITHUB_ENV"
+
+      - name: Cache Godot and export templates
+        uses: actions/cache@v4
+        with:
+          path: |
+            .toolchain
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_RELEASE }}-windows-templates
+
+      - name: Install Godot
+        run: tools/setup_toolchain.sh --templates
+
+      - name: Import, test and smoke check
+        run: tools/check.sh
+
+      - name: Export Windows build
+        run: tools/export_windows.sh
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: pangaea-windows-${{ github.sha }}
+          path: builds/windows/
+          retention-days: 30

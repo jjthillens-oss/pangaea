@@ -1,0 +1,32 @@
+; Engine configuration file.
+; Pinned engine: Godot 4.7.2-stable (see docs/TOOLCHAIN.md).
+
+config_version=5
+
+[application]
+
+config/name="Pangaea"
+config/description="Pangaea (codename GENESIS): an original seven-era evolution game."
+config/version="0.0.1-m0"
+run/main_scene="res://game/scenes/boot.tscn"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="Pangaea"
+config/features=PackedStringArray("4.7", "Forward Plus")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+
+[filesystem]
+
+import/blender/enabled=false
+import/fbx2gltf/enabled=false
