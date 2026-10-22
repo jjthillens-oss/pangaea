@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pangaea</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: full-bleed tide pool canvas; HUD floats in the corners; overlays are frosted sheets over the water */
+:root{
+  --abyss:#06161c;
+  --shallows:#0e3a44;
+  --foam:#e8f3ee;
+  --silt:#8fb0ab;
+  --coral:#ff8a6b;
+  --amber:#ffc857;
+  --kelp:#79d2a0;
+  --danger:#ff5d6c;
+  --panel:rgba(6,24,30,.86);
+  --line:rgba(232,243,238,.14);
+  --display:"Bricolage Grotesque","Trebuchet MS",sans-serif;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--abyss);color:var(--foam);font-family:var(--body);-webkit-user-select:none;user-select:none}
+#game{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* HUD */
+.hud{position:fixed;z-index:2;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.hud-tl{top:calc(12px + env(safe-area-inset-top,0px));left:calc(12px + env(safe-area-inset-left,0px))}
+.hud-tr{top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));align-items:flex-end}
+.hud-bl{bottom:calc(12px + env(safe-area-inset-bottom,0px));left:calc(12px + env(safe-area-inset-left,0px))}
+.hud-br{bottom:calc(12px + env(safe-area-inset-bottom,0px));right:calc(12px + env(safe-area-inset-right,0px));align-items:flex-end}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px;backdrop-filter:blur(6px)}
+.species{font-family:var(--display);font-weight:800;font-size:1.15rem;letter-spacing:.01em}
+.eyebrow{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--silt)}
+.bar{height:8px;width:180px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:6px}
+.bar>i{display:block;height:100%;width:0;border-radius:inherit;transition:width .25s}
+#prog>i{background:linear-gradient(90deg,var(--amber),var(--coral))}
+#hp>i{background:var(--kelp)}
+#hp.low>i{background:var(--danger)}
+.dna{font-family:var(--display);font-weight:800;font-size:1.5rem;font-variant-numeric:tabular-nums;color:var(--amber)}
+.dna small{font-family:var(--body);font-weight:400;font-size:.7rem;letter-spacing:.14em;color:var(--silt);margin-left:6px}
+.btn{pointer-events:auto;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px 16px;font-weight:700}
+.btn:hover{border-color:var(--silt)}
+.btn.primary{background:var(--amber);color:#2a1a00;border-color:transparent}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(255,200,87,.18)}}
+.icon-btn{pointer-events:auto;border:1px solid var(--line);background:var(--panel);border-radius:10px;width:40px;height:40px;display:grid;place-items:center;font-size:.8rem}
+.row{display:flex;gap:8px;align-items:center}
+.keys{color:var(--silt);font-size:.78rem}
+kbd{font-family:var(--body);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:.72rem;color:var(--foam)}
+#toast{position:fixed;z-index:3;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translate(-50%,-10px);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;text-align:center;max-width:min(420px,80vw)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast b{font-family:var(--display);font-size:1.1rem;display:block}
+
+/* Overlays */
+.overlay{position:fixed;inset:0;z-index:5;display:grid;place-items:center;background:rgba(3,12,16,.55);backdrop-filter:blur(3px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px;overflow:auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px;max-width:560px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.card h1{font-family:var(--display);font-weight:800;font-size:clamp(2.6rem,9vw,4.4rem);line-height:.9;margin:0 0 8px;letter-spacing:-.02em;text-wrap:balance}
+.card h1 span{color:var(--coral)}
+.card h2{font-family:var(--display);font-weight:800;font-size:1.8rem;margin:0 0 8px;text-wrap:balance}
+.card p{color:var(--silt);line-height:1.5;margin:0 0 18px;max-width:60ch}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.choice{text-align:left;border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.choice:hover{border-color:var(--amber)}
+.choice canvas{width:100%;height:96px}
+.choice b{font-family:var(--display);font-size:1.1rem}
+.choice span{color:var(--silt);font-size:.85rem;line-height:1.35}
+.stages{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px;padding:0;list-style:none}
+.stages li{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;border:1px solid var(--line);border-radius:99px;padding:4px 10px;color:var(--silt)}
+.stages li.on{color:#2a1a00;background:var(--amber);border-color:transparent}
+
+/* Editor */
+#editor{position:fixed;inset:0;z-index:4;background:radial-gradient(ellipse at 50% 40%,#123f4a,var(--abyss) 70%);display:grid;grid-template-rows:auto 1fr auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(12px + env(safe-area-inset-bottom,0px));gap:12px}
+.ed-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+#ed-name{font-family:var(--display);font-weight:800;font-size:1.6rem;background:transparent;border:0;border-bottom:1px dashed var(--line);color:var(--foam);width:min(320px,60vw);padding:2px 0}
+.ed-body{display:grid;grid-template-columns:220px 1fr 240px;gap:12px;min-height:0}
+.ed-col{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;overflow:auto;min-height:0}
+.parts{display:grid;gap:6px}
+.part{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;text-align:left;border:1px solid transparent;background:rgba(255,255,255,.03);border-radius:10px;padding:6px}
+.part canvas{width:44px;height:44px}
+.part b{display:block;font-size:.88rem}
+.part em{font-style:normal;font-size:.72rem;color:var(--silt);line-height:1.25;display:block}
+.part .cost{font-variant-numeric:tabular-nums;color:var(--amber);font-weight:700;font-size:.85rem}
+.part.sel{border-color:var(--amber);background:rgba(255,200,87,.08)}
+.part:disabled{opacity:.38;cursor:not-allowed}
+.ed-stage{position:relative;min-height:0;display:flex;flex-direction:column}
+#ed-cv{flex:1;width:100%;min-height:220px;touch-action:none;cursor:pointer}
+.hint{margin:0;text-align:center;color:var(--silt);font-size:.82rem;min-height:1.3em}
+.stat{display:grid;grid-template-columns:70px 1fr;gap:8px;align-items:center;font-size:.82rem;margin-bottom:8px}
+.pips{display:flex;gap:3px}
+.pips i{flex:1;height:7px;border-radius:2px;background:rgba(255,255,255,.08)}
+.pips i.on{background:var(--kelp)}
+.side-h{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--silt);margin:14px 0 8px}
+.side-h:first-child{margin-top:0}
+#ed-hue{width:100%;accent-color:var(--amber)}
+.seg{display:flex;gap:4px}
+.seg button{flex:1;border:1px solid var(--line);background:transparent;border-radius:8px;padding:6px;font-size:.8rem}
+.seg button.on{background:var(--foam);color:var(--abyss)}
+.diet{font-family:var(--display);font-weight:800;font-size:1.1rem}
+.ed-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.warn{color:var(--danger);font-size:.85rem}
+@media (max-width:820px){
+  .ed-body{grid-template-columns:1fr;grid-template-rows:260px auto auto;overflow:auto}
+  .ed-stage{order:-1}
+  .parts{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .ed-col{overflow:visible;min-height:auto}
+  .ed-stage{min-height:260px}
+  .bar{width:130px}
+  .keys{display:none}
+}
+@media (max-width:460px){.choices{grid-template-columns:1fr}.card{padding:20px}}
+@media (prefers-reduced-motion:reduce){.btn.pulse{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Cell stage play area"></canvas>
+
+<div class="hud hud-tl" id="hud-tl" hidden>
+  <div class="chip">
+    <div class="eyebrow" id="stage-label">Cell stage · Size 1 of 5</div>
+    <div class="species" id="sp-name">Species</div>
+    <div class="bar" id="prog" title="Growth"><i></i></div>
+  </div>
+</div>
+<div class="hud hud-tr" id="hud-tr" hidden>
+  <div class="chip dna"><span id="dna">0</span><small>DNA</small></div>
+  <button class="btn primary" id="evolve-btn" type="button">Evolve <kbd>E</kbd></button>
+</div>
+<div class="hud hud-bl" id="hud-bl" hidden>
+  <div class="chip">
+    <div class="eyebrow">Health</div>
+    <div class="bar" id="hp"><i></i></div>
+  </div>
+</div>
+<div class="hud hud-br" id="hud-br" hidden>
+  <div class="row">
+    <span class="keys"><kbd>WASD</kbd> or hold mouse to swim · <kbd>P</kbd> pause</span>
+    <button class="icon-btn" id="mute-btn" type="button" aria-label="Toggle sound">♪</button>
+    <button class="icon-btn" id="pause-btn" type="button" aria-label="Pause">II</button>
+  </div>
+</div>
+<div id="toast" class="chip" role="status" aria-live="polite"></div>
+
+<!-- Title -->
+<div class="overlay" id="title-screen">
+  <div class="card">
+    <div class="eyebrow">An evolution game</div>
+    <h1>Pang<span>aea</span></h1>
+    <p>Begin as a single cell in a warm tide pool. Eat, grow, and reshape your body in the editor until your species is ready to crawl onto land.</p>
+    <ul class="stages" aria-label="Stages">
+      <li class="on">Cell</li><li>Creature</li><li>Tribe</li><li>Civilization</li><li>Space</li>
+    </ul>
+    <div class="choices">
+      <button class="choice" id="pick-plant" type="button"><canvas data-diet="plant"></canvas><b>Plant eater</b><span>Filter mouth. Graze on plankton and stay out of trouble.</span></button>
+      <button class="choice" id="pick-meat" type="button"><canvas data-diet="meat"></canvas><b>Meat eater</b><span>Jaw. Hunt smaller cells and feed on what they leave.</span></button>
+    </div>
+    <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+      <button class="btn" id="continue-btn" type="button" hidden>Continue saved species</button>
+      <span class="keys">Swim with <kbd>WASD</kbd>, arrow keys, or hold the mouse or a finger toward where you want to go.</span>
+    </div>
+  </div>
+</div>
+
+<!-- Pause -->
+<div class="overlay" id="pause-screen" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <p>Your progress saves in this browser automatically.</p>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn primary" id="resume-btn" type="button">Resume</button>
+      <button class="btn" id="restart-btn" type="button">New species</button>
+    </div>
+  </div>
+</div>
+
+<!-- Death -->
+<div class="overlay" id="death-screen" hidden>
+  <div class="card">
+    <h2>Eaten</h2>
+    <p>Something bigger got you. Your species lives on through its relatives, and you keep all your DNA and growth.</p>
+    <button class="btn primary" id="respawn-btn" type="button">Divide a new cell</button>
+  </div>
+</div>
+
+<!-- Stage complete -->
+<div class="overlay" id="done-screen" hidden>
+  <div class="card">
+    <div class="eyebrow">Cell stage complete</div>
+    <h2 id="done-title">Ready for land</h2>
+    <p id="done-text">Your species has outgrown the tide pool.</p>
+    <ul class="stages"><li>Cell</li><li class="on">Creature</li><li>Tribe</li><li>Civilization</li><li>Space</li></ul>
+    <p>The creature stage, with legs, a 3D body editor and a land world, is the next thing being built. You can keep swimming and tuning your cell until then.</p>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn primary" id="keep-btn" type="button">Keep swimming</button>
+      <button class="btn" id="restart2-btn" type="button">Start a new species</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editor -->
+<section id="editor" hidden aria-label="Cell editor">
+  <header class="ed-head">
+    <div>
+      <div class="eyebrow">Cell editor · <span id="ed-count">0 / 4 parts</span></div>
+      <input id="ed-name" maxlength="22" aria-label="Species name" spellcheck="false">
+    </div>
+    <div class="dna"><span id="ed-dna">0</span><small>DNA to spend</small></div>
+  </header>
+  <div class="ed-body">
+    <div class="ed-col"><div class="side-h">Parts</div><div class="parts" id="ed-parts"></div></div>
+    <div class="ed-stage"><canvas id="ed-cv" aria-label="Your cell. Click the membrane to attach the selected part; click a part to remove it."></canvas><p class="hint" id="ed-hint"></p></div>
+    <aside class="ed-col">
+      <div class="side-h">Diet</div>
+      <div class="diet" id="ed-diet">Herbivore</div>
+      <div class="side-h">Abilities</div>
+      <div id="ed-stats"></div>
+      <div class="side-h">Color</div>
+      <input type="range" id="ed-hue" min="0" max="359" aria-label="Body color">
+      <div class="side-h">Markings</div>
+      <div class="seg" id="ed-pattern">
+        <button type="button" data-p="plain">Plain</button>
+        <button type="button" data-p="spots">Spots</button>
+        <button type="button" data-p="stripes">Stripes</button>
+      </div>
+    </aside>
+  </div>
+  <footer class="ed-foot">
+    <span class="warn" id="ed-warn"></span>
+    <div class="row">
+      <button class="btn" id="ed-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="ed-done" type="button">Swim on</button>
+    </div>
+  </footer>
+</section>
+
+<script>
+(() => {
+'use strict';
+const TAU = Math.PI * 2;
+const rand = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+const hsl = (h, s, l, a = 1) => `hsla(${h},${s}%,${l}%,${a})`;
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+const SAVE_KEY = 'pangaea.cell.v1';
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function mulberry(seed) { let a = seed >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- Parts and stats ----------
+const PARTS = {
+  filter:    { name: 'Filter mouth', cost: 10, unlock: 0, max: 1, desc: 'Strains plankton. Eat plants.' },
+  jaw:       { name: 'Jaw',          cost: 15, unlock: 0, max: 1, desc: 'Bite cells. Eat meat.' },
+  flagellum: { name: 'Flagellum',    cost: 15, unlock: 0, max: 3, desc: 'Whip tail. Higher top speed.' },
+  cilia:     { name: 'Cilia',        cost: 10, unlock: 1, max: 3, desc: 'Tiny oars. Turn and accelerate faster.' },
+  spike:     { name: 'Spike',        cost: 15, unlock: 1, max: 4, desc: 'Hurts any cell it rams.' },
+  eye:       { name: 'Eye spot',     cost: 10, unlock: 1, max: 3, desc: 'See farther in murky water.' },
+  armor:     { name: 'Shell plate',  cost: 20, unlock: 2, max: 3, desc: 'More health, a little slower.' },
+  poison:    { name: 'Toxin gland',  cost: 25, unlock: 3, max: 2, desc: 'Leaves a toxic cloud trail.' },
+};
+const PART_ORDER = Object.keys(PARTS);
+const BACK_PARTS = new Set(['flagellum', 'cilia', 'spike']);
+const LEVELS = [0, 20, 50, 90, 140, 200];
+const MAX_LEVEL = 5;
+const maxParts = lvl => 4 + Math.min(lvl, 4) * 2;
+const baseR = lvl => 16 * Math.pow(1.3, Math.min(lvl, 4));
+
+function statsOf(sp) {
+  const c = {}; for (const k of PART_ORDER) c[k] = 0;
+  let filterA = 0, jawA = 0;
+  for (const p of sp.parts) { c[p.type]++; if (p.type === 'filter') filterA = p.a; if (p.type === 'jaw') jawA = p.a; }
+  return {
+    counts: c, filterA, jawA,
+    speed: 62 + 48 * Math.min(c.flagellum, 1) + 30 * Math.max(0, c.flagellum - 1) - 7 * c.armor,
+    accel: 2.0 + 1.3 * c.cilia + 0.3 * c.flagellum,
+    turn: 3.2 + 2.2 * c.cilia,
+    hp: 40 + 18 * c.armor,
+    sight: 1 + 0.32 * c.eye,
+    spikes: c.spike, poison: c.poison,
+    herb: c.filter > 0, carn: c.jaw > 0,
+  };
+}
+
+// ---------- Names and NPC species ----------
+const SYL = ['zo', 'ba', 'qui', 'lum', 'ta', 'rix', 'mo', 'pel', 'vy', 'sca', 'nor', 'eth', 'ul', 'ki', 'dra', 'ophi', 'mer', 'sil'];
+const END = ['a', 'us', 'on', 'ix', 'ella', 'id', 'ora', 'yx'];
+function genName() {
+  const n = Math.random() < 0.5 ? 2 : 3; let s = '';
+  for (let i = 0; i < n; i++) s += SYL[(Math.random() * SYL.length) | 0];
+  s += END[(Math.random() * END.length) | 0];
+  return s[0].toUpperCase() + s.slice(1);
+}
+function makeSpecies(role, level) {
+  const parts = [];
+  const hue = role === 'grazer' ? (rand(90, 220) | 0) : ([rand(340, 380), rand(15, 40), rand(270, 310)][(Math.random() * 3) | 0] % 360) | 0;
+  parts.push({ type: role === 'grazer' ? 'filter' : 'jaw', a: 0 });
+  parts.push({ type: 'flagellum', a: Math.PI + rand(-.2, .2) });
+  if (Math.random() < 0.5) { parts.push({ type: 'cilia', a: Math.PI / 2 }); parts.push({ type: 'cilia', a: -Math.PI / 2 }); }
+  if (Math.random() < 0.6) { const a = rand(.5, .9); parts.push({ type: 'eye', a }); if (Math.random() < .6) parts.push({ type: 'eye', a: -a }); }
+  if (role === 'hunter' && level >= 1 && Math.random() < 0.45) parts.push({ type: 'spike', a: rand(-.15, .15) });
+  if (role === 'grazer' && level >= 2 && Math.random() < 0.4) { parts.push({ type: 'spike', a: Math.PI - .7 }); parts.push({ type: 'spike', a: Math.PI + .7 }); }
+  if (level >= 2 && Math.random() < 0.3) parts.push({ type: 'armor', a: rand(0, TAU) });
+  if (level >= 3 && Math.random() < 0.2) parts.push({ type: 'poison', a: Math.PI + rand(-.5, .5) });
+  return { name: genName(), hue, pattern: ['plain', 'spots', 'stripes'][(Math.random() * 3) | 0], seed: (Math.random() * 1e9) | 0, parts, role };
+}
+
+// ---------- Drawing ----------
+function membranePath(c, r, t, seed) {
+  c.beginPath();
+  const N = 30;
+  for (let i = 0; i <= N; i++) {
+    const ang = i / N * TAU;
+    const rr = r * (1 + 0.04 * Math.sin(t * 2.3 + i * 1.9 + seed) + 0.025 * Math.sin(t * 3.7 + i * 0.7));
+    const x = Math.cos(ang) * rr * 1.06, y = Math.sin(ang) * rr * 0.96;
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  }
+  c.closePath();
+}
+function drawPart(c, p, r, t, hue, jawT) {
+  const a = p.a, dx = Math.cos(a), dy = Math.sin(a);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  switch (p.type) {
+    case 'flagellum': {
+      const ax = dx * r * .92, ay = dy * r * .92, px = -dy, py = dx, L = r * 1.55, N = 14;
+      c.strokeStyle = hsl(hue, 50, 72, .95);
+      let lx = ax, ly = ay;
+      for (let i = 1; i <= N; i++) {
+        const s = i / N, w = Math.sin(t * 11 - s * 7 + a) * r * .22 * s;
+        const x = ax + dx * L * s + px * w, y = ay + dy * L * s + py * w;
+        c.lineWidth = r * .15 * (1 - s * .8); c.beginPath(); c.moveTo(lx, ly); c.lineTo(x, y); c.stroke(); lx = x; ly = y;
+      }
+      break;
+    }
+    case 'cilia': {
+      c.strokeStyle = hsl(hue, 45, 80, .9); c.lineWidth = r * .055;
+      for (let i = 0; i < 6; i++) {
+        const b = a + (i - 2.5) * .15, bx = Math.cos(b) * r * .97, by = Math.sin(b) * r * .97;
+        const w = b + Math.sin(t * 17 + i * 1.3) * .45;
+        c.beginPath(); c.moveTo(bx, by); c.lineTo(bx + Math.cos(w) * r * .38, by + Math.sin(w) * r * .38); c.stroke();
+      }
+      break;
+    }
+    case 'spike': {
+      const tip = r * 1.6, b1 = a - .17, b2 = a + .17;
+      c.fillStyle = '#efe3c8'; c.strokeStyle = 'rgba(70,50,30,.55)'; c.lineWidth = r * .04;
+      c.beginPath(); c.moveTo(Math.cos(b1) * r * .85, Math.sin(b1) * r * .85); c.lineTo(dx * tip, dy * tip); c.lineTo(Math.cos(b2) * r * .85, Math.sin(b2) * r * .85); c.closePath(); c.fill(); c.stroke();
+      break;
+    }
+    case 'eye': {
+      const ex = dx * r * .6, ey = dy * r * .6;
+      c.fillStyle = '#f6fbf8'; c.beginPath(); c.arc(ex, ey, r * .21, 0, TAU); c.fill();
+      c.fillStyle = '#0b1215'; c.beginPath(); c.arc(ex + r * .07, ey, r * .11, 0, TAU); c.fill();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(ex + r * .1, ey - r * .04, r * .035, 0, TAU); c.fill();
+      break;
+    }
+    case 'filter': {
+      c.save(); c.rotate(a);
+      c.fillStyle = hsl(hue, 35, 18, .9); c.beginPath(); c.ellipse(r * .86, 0, r * .16, r * .3, 0, 0, TAU); c.fill();
+      c.strokeStyle = hsl(hue, 40, 88, .9); c.lineWidth = r * .04;
+      for (let i = 0; i < 6; i++) { const y = (i - 2.5) * r * .095; const w = Math.sin(t * 9 + i) * r * .03; c.beginPath(); c.moveTo(r * .92, y); c.lineTo(r * 1.13, y + w); c.stroke(); }
+      c.strokeStyle = hsl(hue, 30, 30, 1); c.lineWidth = r * .07; c.beginPath(); c.ellipse(r * .86, 0, r * .16, r * .3, 0, -1.4, 1.4); c.stroke();
+      c.restore();
+      break;
+    }
+    case 'jaw': {
+      c.save(); c.rotate(a);
+      const open = .12 + clamp(jawT, 0, .3) * 1.6 + Math.sin(t * 3) * .04;
+      c.fillStyle = '#1a0d0f'; c.beginPath(); c.ellipse(r * .9, 0, r * .14, r * .2, 0, 0, TAU); c.fill();
+      for (const s of [-1, 1]) {
+        c.fillStyle = hsl(hue, 30, 24, 1); c.strokeStyle = 'rgba(255,240,230,.35)'; c.lineWidth = r * .03;
+        c.beginPath(); c.moveTo(r * .78, s * r * .42); c.quadraticCurveTo(r * 1.45, s * r * (.5 + open * .3), r * 1.5, s * r * (.04 + open * .55)); c.lineTo(r * .98, s * r * .1); c.closePath(); c.fill(); c.stroke();
+      }
+      c.restore();
+      break;
+    }
+    case 'armor': {
+      c.strokeStyle = hsl(hue, 25, 28, .95); c.lineWidth = r * .22; c.beginPath(); c.arc(0, 0, r * 1.0, a - .5, a + .5); c.stroke();
+      c.strokeStyle = hsl(hue, 30, 60, .6); c.lineWidth = r * .05; c.beginPath(); c.arc(0, 0, r * 1.07, a - .42, a + .42); c.stroke();
+      break;
+    }
+    case 'poison': {
+      const bx = dx * r * 1.0, by = dy * r * 1.0;
+      const g = c.createRadialGradient(bx, by, 0, bx, by, r * .45); g.addColorStop(0, 'rgba(190,90,255,.5)'); g.addColorStop(1, 'rgba(190,90,255,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(bx, by, r * .45, 0, TAU); c.fill();
+      c.fillStyle = hsl(285, 65, 55); c.beginPath(); c.arc(bx, by, r * .22, 0, TAU); c.fill();
+      c.fillStyle = hsl(285, 80, 80); c.beginPath(); c.arc(bx - r * .06, by - r * .06, r * .07, 0, TAU); c.fill();
+      break;
+    }
+  }
+}
+function drawCell(c, sp, x, y, r, heading, t, o = {}) {
+  c.save(); c.translate(x, y); c.rotate(heading);
+  const hue = sp.hue, seed = (sp.seed % 1000) / 100;
+  for (const p of sp.parts) if (BACK_PARTS.has(p.type)) drawPart(c, p, r, t, hue, o.jawT || 0);
+  membranePath(c, r, t, seed);
+  const g = c.createRadialGradient(-r * .25, -r * .25, r * .1, 0, 0, r * 1.1);
+  g.addColorStop(0, hsl(hue, 55, 66, .94)); g.addColorStop(1, hsl(hue, 60, 38, .94));
+  c.fillStyle = g; c.fill();
+  c.save(); c.clip();
+  if (sp.pattern === 'spots') {
+    const rng = mulberry(sp.seed); c.fillStyle = hsl(hue + 25, 50, 26, .35);
+    for (let i = 0; i < 7; i++) { const ang = rng() * TAU, d = Math.sqrt(rng()) * r * .8; c.beginPath(); c.arc(Math.cos(ang) * d, Math.sin(ang) * d, r * (.07 + rng() * .1), 0, TAU); c.fill(); }
+  } else if (sp.pattern === 'stripes') {
+    c.strokeStyle = hsl(hue + 25, 50, 26, .32); c.lineWidth = r * .13;
+    for (let i = -2; i <= 2; i++) { c.beginPath(); c.moveTo(i * r * .38, -r * 1.2); c.quadraticCurveTo(i * r * .38 + r * .2, 0, i * r * .38, r * 1.2); c.stroke(); }
+  }
+  c.fillStyle = hsl(hue + 20, 45, 28, .55); c.beginPath(); c.arc(-r * .2, r * .08, r * .27, 0, TAU); c.fill();
+  c.fillStyle = hsl(hue + 20, 60, 80, .5); c.beginPath(); c.arc(-r * .26, r * .02, r * .07, 0, TAU); c.fill();
+  c.restore();
+  c.strokeStyle = hsl(hue, 65, 80, .85); c.lineWidth = r * .07; membranePath(c, r, t, seed); c.stroke();
+  if (o.flash > 0) { c.fillStyle = `rgba(255,70,80,${o.flash * .5})`; membranePath(c, r, t, seed); c.fill(); }
+  for (const p of sp.parts) if (!BACK_PARTS.has(p.type)) drawPart(c, p, r, t, hue, o.jawT || 0);
+  c.restore();
+}
+function drawPartGhost(c, type, a, r, t, hue) {
+  c.save(); c.globalAlpha = .55; drawPart(c, { type, a }, r, t, hue, 0); c.restore();
+}
+
+// ---------- Audio ----------
+const audio = {
+  ctx: null, muted: store.get('pangaea.muted') === true, last: 0,
+  init() { if (this.ctx) return; try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} },
+  blip(f1, f2, dur, type = 'sine', vol = .06) {
+    if (!this.ctx || this.muted) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t + dur + .02);
+  },
+  eat() { const n = performance.now(); if (n - this.last < 60) return; this.last = n; this.blip(520 + Math.random() * 120, 900, .09); },
+  hurt() { this.blip(180, 70, .18, 'square', .05); },
+  hit() { this.blip(300, 140, .1, 'triangle', .06); },
+  grow() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.blip(f, f * 1.01, .18, 'sine', .07), i * 90)); },
+};
+
+// ---------- Game state ----------
+const cv = $('game'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  bgGrad = null; if (!$('editor').hidden) sizeEditor();
+}
+let bgGrad = null;
+
+const G = { mode: 'title', sp: null, player: null, cells: [], food: [], clouds: [], fx: [], texts: [], pool: [],
+  level: 0, progress: 0, dna: 0, cam: { x: 0, y: 0, s: 1 }, t: 0, id: 1, complete: false, edits: 0, saveT: 0 };
+
+class Cell {
+  constructor(sp, x, y, r, isPlayer) {
+    this.id = G.id++; this.sp = sp; this.st = statsOf(sp); this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.r = r; this.heading = rand(0, TAU); this.hp = 1; this.player = !!isPlayer; this.cool = {}; this.t = rand(0, 50);
+    this.flash = 0; this.jawT = 0; this.poisonT = 0; this.dead = false;
+    this.ai = { wander: rand(0, TAU), timer: 0, chase: 0, rest: 0 };
+    this.speedMul = isPlayer ? 1 : sp.role === 'grazer' ? .68 : .8;
+  }
+  get hpMax() { return this.st.hp * this.r / 16; }
+}
+
+const targetScale = () => Math.min(W, H) / (G.player.r * 30);
+const viewR = () => Math.hypot(W, H) / 2 / G.cam.s;
+
+function newGame(diet) {
+  const plant = diet === 'plant';
+  G.sp = { name: genName(), hue: plant ? 150 : 14, pattern: 'spots', seed: (Math.random() * 1e9) | 0,
+    parts: [{ type: plant ? 'filter' : 'jaw', a: 0 }, { type: 'flagellum', a: Math.PI }] };
+  G.level = 0; G.progress = 0; G.dna = 10; G.complete = false; G.edits = 0;
+  startWorld();
+  toast(`Meet the ${G.sp.name}`, plant ? 'Swim into green plankton to eat it. Avoid cells with jaws.' : 'Bite smaller cells, then eat the red chunks they leave.');
+}
+function loadGame() {
+  const s = store.get(SAVE_KEY); if (!s || !s.sp) return false;
+  Object.assign(G, { sp: s.sp, level: s.level | 0, progress: s.progress | 0, dna: s.dna | 0, complete: !!s.complete, edits: s.edits | 0 });
+  startWorld(); toast(`Welcome back, ${G.sp.name}`, 'Your species picks up where it left off.');
+  return true;
+}
+function save() { if (G.sp) store.set(SAVE_KEY, { sp: G.sp, level: G.level, progress: G.progress, dna: G.dna, complete: G.complete, edits: G.edits }); }
+
+function startWorld() {
+  G.player = new Cell(G.sp, 0, 0, baseR(G.level), true); G.player.heading = 0;
+  G.cells = [G.player]; G.food = []; G.clouds = []; G.fx = []; G.texts = [];
+  G.cam.x = 0; G.cam.y = 0; G.cam.s = targetScale();
+  G.pool = []; refreshPool();
+  populate(true);
+  setMode('play'); updateHud(true);
+}
+function refreshPool() {
+  G.pool = G.pool.slice(-4);
+  for (let i = 0; i < 3; i++) G.pool.push(makeSpecies('grazer', G.level));
+  for (let i = 0; i < 3; i++) G.pool.push(makeSpecies('hunter', G.level));
+}
+
+function spawnFood(x, y, kind, r) {
+  G.food.push({ x, y, kind, r, val: kind === 'meat' ? 3 : 1, t: rand(0, 10), vx: rand(-4, 4) * r / 5, vy: rand(-4, 4) * r / 5 });
+}
+function spawnNpc(initial) {
+  const p = G.player, vr = viewR();
+  const role = Math.random() < .6 ? 'grazer' : 'hunter';
+  const list = G.pool.filter(s => s.role === role); const sp = list[(Math.random() * list.length) | 0];
+  const lo = role === 'grazer' ? .5 : .65, hi = role === 'grazer' ? 1.25 : 1.35 + G.level * .14;
+  const r = p.r * rand(lo, hi);
+  const ang = rand(0, TAU);
+  const d = initial && role === 'grazer' ? rand(vr * .45, vr * 1.5) : rand(vr * 1.08, vr * 1.6);
+  G.cells.push(new Cell(sp, p.x + Math.cos(ang) * d, p.y + Math.sin(ang) * d, r, false));
+}
+function populate(initial) {
+  const p = G.player, vr = viewR();
+  const foodTarget = 95, npcTarget = 11 + Math.min(G.level, 4);
+  // cull far things
+  const fr = vr * 2.4, cr = vr * 2.6;
+  G.food = G.food.filter(f => Math.abs(f.x - p.x) < fr && Math.abs(f.y - p.y) < fr);
+  G.cells = G.cells.filter(c => c.player || (Math.abs(c.x - p.x) < cr && Math.abs(c.y - p.y) < cr));
+  let guard = 0;
+  while (G.food.length < foodTarget && guard++ < 200) {
+    const ang = rand(0, TAU), d = initial ? rand(p.r * 3, vr * 1.7) : rand(vr * 1.05, vr * 1.8);
+    const meat = Math.random() < (G.sp.parts.some(q => q.type === 'jaw') ? .14 : .06);
+    // plankton drifts in little clusters
+    const n = meat ? 1 : 1 + ((Math.random() * 3) | 0);
+    const cx = p.x + Math.cos(ang) * d, cy = p.y + Math.sin(ang) * d;
+    for (let i = 0; i < n; i++) spawnFood(cx + rand(-1, 1) * p.r * 1.2, cy + rand(-1, 1) * p.r * 1.2, meat ? 'meat' : 'plant', p.r * rand(.2, .32));
+  }
+  guard = 0;
+  while (G.cells.length - 1 < npcTarget && guard++ < 50) spawnNpc(initial);
+}
+
+// ---------- Input ----------
+const keys = new Set();
+const pointer = { down: false, x: 0, y: 0 };
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (e.target && e.target.tagName === 'INPUT') { if (k === 'enter') e.target.blur(); return; }
+  keys.add(k);
+  if (G.mode === 'play') {
+    if (k === 'e') openEditor();
+    if (k === 'p' || k === 'escape') setMode('pause');
+  } else if (G.mode === 'pause' && (k === 'p' || k === 'escape')) setMode('play');
+  else if (G.mode === 'editor' && k === 'escape') closeEditor(false);
+  if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => { keys.clear(); pointer.down = false; });
+cv.addEventListener('pointerdown', e => { audio.init(); pointer.down = true; pointer.x = e.clientX; pointer.y = e.clientY; try { cv.setPointerCapture(e.pointerId); } catch (_) {} });
+cv.addEventListener('pointermove', e => { pointer.x = e.clientX; pointer.y = e.clientY; });
+const up = () => { pointer.down = false; };
+cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'play') setMode('pause'); });
+
+function playerDesire() {
+  let x = 0, y = 0;
+  if (keys.has('w') || keys.has('arrowup')) y -= 1;
+  if (keys.has('s') || keys.has('arrowdown')) y += 1;
+  if (keys.has('a') || keys.has('arrowleft')) x -= 1;
+  if (keys.has('d') || keys.has('arrowright')) x += 1;
+  if (!x && !y && pointer.down) {
+    const p = G.player, s = G.cam.s;
+    const sx = (p.x - G.cam.x) * s + W / 2, sy = (p.y - G.cam.y) * s + H / 2;
+    x = pointer.x - sx; y = pointer.y - sy;
+    if (Math.hypot(x, y) < p.r * s * .5) { x = 0; y = 0; }
+  }
+  const l = Math.hypot(x, y); return l ? { x: x / l, y: y / l } : { x: 0, y: 0 };
+}
+
+// ---------- Simulation ----------
+function move(c, d, dt) {
+  const st = c.st, max = st.speed * Math.pow(c.r / 16, .7) * c.speedMul, acc = st.accel * max;
+  c.vx += d.x * acc * dt; c.vy += d.y * acc * dt;
+  const damp = Math.exp(-1.6 * dt); c.vx *= damp; c.vy *= damp;
+  const sp = Math.hypot(c.vx, c.vy); if (sp > max) { c.vx *= max / sp; c.vy *= max / sp; }
+  c.x += c.vx * dt; c.y += c.vy * dt;
+  const want = (d.x || d.y) ? Math.atan2(d.y, d.x) : (sp > max * .2 ? Math.atan2(c.vy, c.vx) : c.heading);
+  const step = st.turn * dt; c.heading += clamp(angDiff(want, c.heading), -step, step);
+  c.speed = sp;
+}
+function toward(c, x, y) { const dx = x - c.x, dy = y - c.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l }; }
+function think(c, dt) {
+  const st = c.st, sight = c.r * 13 * st.sight, ai = c.ai;
+  // flee anything with a jaw that could eat us
+  let fx = 0, fy = 0, threat = false;
+  for (const o of G.cells) {
+    if (o === c || o.dead || !o.st.carn || o.sp === c.sp || o.r < c.r * .85) continue;
+    const dx = c.x - o.x, dy = c.y - o.y, d = Math.hypot(dx, dy);
+    if (d < (st.carn ? c.r * 5 : c.r * 9) + o.r) { fx += dx / (d * d + 1); fy += dy / (d * d + 1); threat = true; }
+  }
+  if (threat && (!st.carn || c.hp < .45)) { const l = Math.hypot(fx, fy) || 1; return { x: fx / l, y: fy / l }; }
+  if (st.carn) {
+    if (ai.rest > 0) ai.rest -= dt;
+    let best = null, bd = sight;
+    for (const o of G.cells) {
+      if (o === c || o.dead || o.sp === c.sp || o.r > c.r * 1.05) continue;
+      if (o.player && ai.rest > 0) continue;
+      const d = Math.hypot(o.x - c.x, o.y - c.y); if (d < bd) { bd = d; best = o; }
+    }
+    if (best) {
+      if (best.player) { ai.chase += dt; if (ai.chase > 7) { ai.rest = 5; ai.chase = 0; } }
+      return toward(c, best.x + best.vx * .3, best.y + best.vy * .3);
+    }
+    ai.chase = Math.max(0, ai.chase - dt);
+  }
+  let bf = null, bd = sight;
+  for (const f of G.food) {
+    if (f.kind === 'plant' ? !st.herb : !st.carn) continue;
+    const d = Math.abs(f.x - c.x) + Math.abs(f.y - c.y); if (d < bd) { bd = d; bf = f; }
+  }
+  if (bf) return toward(c, bf.x, bf.y);
+  ai.timer -= dt; if (ai.timer < 0) { ai.wander += rand(-1.2, 1.2); ai.timer = rand(1, 3); }
+  return { x: Math.cos(ai.wander) * .5, y: Math.sin(ai.wander) * .5 };
+}
+function damage(target, amount, by) {
+  if (target.dead) return;
+  target.hp -= amount / target.hpMax; target.flash = 1;
+  if (target.player) { audio.hurt(); }
+  if (target.hp <= 0) kill(target, by);
+}
+function kill(c, by) {
+  c.dead = true;
+  const n = clamp(Math.round(c.r / (G.player.r * .35)), 2, 7);
+  for (let i = 0; i < n; i++) { const a = rand(0, TAU), d = rand(0, c.r * .7); spawnFood(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, 'meat', clamp(c.r * rand(.22, .32), 3, G.player.r * .5)); }
+  burst(c.x, c.y, c.r, hsl(c.sp.hue, 60, 65), 14);
+  if (c.player) { setTimeout(() => setMode('dead'), 700); }
+  else if (by && by.player) { audio.hit(); }
+}
+function strike(X, Y, kind, base, nx, ny) {
+  const key = kind + Y.id; if ((X.cool[key] || 0) > G.t) return;
+  X.cool[key] = G.t + .55;
+  const k = 90 * Math.sqrt(X.r / Y.r); Y.vx += nx * k; Y.vy += ny * k;
+  burst(Y.x - nx * Y.r, Y.y - ny * Y.r, Y.r * .5, kind === 's' ? '#efe3c8' : '#ff7a6b', 5);
+  if (X.player) audio.hit();
+  damage(Y, base * X.r / 16, X);
+}
+function combat(X, Y, d, nx, ny) {
+  if (X.dead || Y.dead || (X.sp === Y.sp && !X.player && !Y.player)) return;
+  const rel = angDiff(Math.atan2(ny, nx), X.heading);
+  if (X.st.spikes && d < X.r * 1.5 + Y.r) {
+    for (const p of X.sp.parts) if (p.type === 'spike' && Math.abs(angDiff(rel, p.a)) < .5) { strike(X, Y, 's', 7, nx, ny); break; }
+  }
+  if (X.st.carn && Y.r < X.r * 1.6 && d < X.r * 1.3 + Y.r && Math.abs(angDiff(rel, X.st.jawA)) < .75) { X.jawT = .3; strike(X, Y, 'j', 9, nx, ny); }
+}
+function burst(x, y, r, color, n) {
+  if (G.fx.length > 300) return;
+  for (let i = 0; i < n; i++) { const a = rand(0, TAU), s = rand(.5, 2) * r; G.fx.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, r: r * rand(.06, .14), color }); }
+}
+function floatText(x, y, text, color) { G.texts.push({ x, y, text, color, life: 1 }); }
+
+function gain(v, x, y) {
+  G.dna += v; floatText(x, y, `+${v}`, '#ffc857'); audio.eat();
+  if (G.level < MAX_LEVEL) {
+    G.progress += v;
+    while (G.level < MAX_LEVEL && G.progress >= LEVELS[G.level + 1]) levelUp();
+  }
+}
+function levelUp() {
+  G.level++; audio.grow();
+  burst(G.player.x, G.player.y, G.player.r * 1.6, '#ffc857', 26);
+  if (G.level >= MAX_LEVEL) {
+    G.complete = true; save();
+    setTimeout(() => { if (G.mode === 'play') { fillDone(); setMode('done'); } }, 900);
+    return;
+  }
+  const unlocked = PART_ORDER.filter(k => PARTS[k].unlock === G.level).map(k => PARTS[k].name);
+  toast(`Your cell grew to size ${G.level + 1}`, (unlocked.length ? `New parts: ${unlocked.join(', ')}. ` : '') + `Part slots: ${maxParts(G.level)}. Open the editor with E.`);
+  $('evolve-btn').classList.add('pulse');
+  refreshPool(); save();
+}
+
+function update(dt) {
+  G.t += dt;
+  const p = G.player;
+  // grow smoothly toward current size
+  const tr = baseR(G.level); if (p.r < tr) p.r = Math.min(tr, p.r + (tr - p.r) * dt * 1.5 + dt * .5);
+  for (const c of G.cells) {
+    if (c.dead) continue;
+    c.t += dt; c.flash = Math.max(0, c.flash - dt * 3); c.jawT = Math.max(0, c.jawT - dt);
+    move(c, c.player ? playerDesire() : think(c, dt), dt);
+    c.hp = Math.min(1, c.hp + dt * .006);
+    if (c.st.poison && c.speed > 8) {
+      c.poisonT -= dt;
+      if (c.poisonT <= 0) { c.poisonT = .5 / c.st.poison; G.clouds.push({ x: c.x - Math.cos(c.heading) * c.r * 1.1, y: c.y - Math.sin(c.heading) * c.r * 1.1, r: c.r * .5, life: 1, owner: c }); }
+    }
+  }
+  // contacts
+  const cells = G.cells;
+  for (let i = 0; i < cells.length; i++) {
+    const a = cells[i]; if (a.dead) continue;
+    for (let j = i + 1; j < cells.length; j++) {
+      const b = cells[j]; if (b.dead) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, reach = (a.r + b.r) * 1.6;
+      if (Math.abs(dx) > reach || Math.abs(dy) > reach) continue;
+      const d = Math.hypot(dx, dy) || .001, nx = dx / d, ny = dy / d, min = a.r + b.r;
+      if (d < min) {
+        const o = min - d, ma = a.r * a.r, mb = b.r * b.r, tot = ma + mb;
+        a.x -= nx * o * mb / tot; a.y -= ny * o * mb / tot; b.x += nx * o * ma / tot; b.y += ny * o * ma / tot;
+      }
+      combat(a, b, d, nx, ny); combat(b, a, d, -nx, -ny);
+    }
+  }
+  // eating
+  for (const c of cells) {
+    if (c.dead) continue;
+    const st = c.st;
+    for (let i = G.food.length - 1; i >= 0; i--) {
+      const f = G.food[i], dx = f.x - c.x, dy = f.y - c.y, lim = c.r * 1.2 + f.r;
+      if (Math.abs(dx) > lim || Math.abs(dy) > lim) continue;
+      const d = Math.hypot(dx, dy); if (d > lim) continue;
+      const ok = f.kind === 'plant' ? st.herb : st.carn; if (!ok) continue;
+      const mouthA = f.kind === 'plant' ? st.filterA : st.jawA;
+      if (d > c.r * .6 && Math.abs(angDiff(angDiff(Math.atan2(dy, dx), c.heading), mouthA)) > 1.35) continue;
+      G.food.splice(i, 1);
+      if (c.player) { gain(f.val, f.x, f.y); c.hp = Math.min(1, c.hp + .04); if (f.kind === 'meat') c.jawT = .2; }
+      else c.hp = Math.min(1, c.hp + .05);
+    }
+  }
+  // toxin clouds
+  for (const cl of G.clouds) {
+    cl.life -= dt / 3; cl.r += dt * cl.owner.r * .25;
+    for (const c of cells) {
+      if (c === cl.owner || c.dead || (c.sp === cl.owner.sp && !c.player)) continue;
+      if (Math.hypot(c.x - cl.x, c.y - cl.y) < cl.r + c.r * .6) { damage(c, 10 * dt * cl.owner.r / 16, cl.owner); c.flash = Math.max(c.flash, .4); }
+    }
+  }
+  G.clouds = G.clouds.filter(c => c.life > 0);
+  // food drift
+  for (const f of G.food) { f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= .995; f.vy *= .995; }
+  for (const e of G.fx) { e.life -= dt * 1.6; e.x += e.vx * dt; e.y += e.vy * dt; e.vx *= .94; e.vy *= .94; }
+  G.fx = G.fx.filter(e => e.life > 0);
+  for (const tx of G.texts) { tx.life -= dt * 1.1; tx.y -= dt * p.r * 1.5; }
+  G.texts = G.texts.filter(t => t.life > 0);
+  G.cells = G.cells.filter(c => !c.dead || c.player);
+  // camera
+  const k = Math.min(1, dt * 5); G.cam.x += (p.x - G.cam.x) * k; G.cam.y += (p.y - G.cam.y) * k;
+  G.cam.s += (targetScale() - G.cam.s) * Math.min(1, dt * 1.5);
+  populate(false);
+  G.saveT -= dt; if (G.saveT < 0) { G.saveT = 8; save(); }
+}
+
+// ---------- Rendering ----------
+const motes = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random(), z: rand(.15, .7), r: rand(.6, 2.2) }));
+function render() {
+  const s = G.cam.s, p = G.player;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  if (!bgGrad) { bgGrad = ctx.createLinearGradient(0, 0, W * .3, H); bgGrad.addColorStop(0, '#11505a'); bgGrad.addColorStop(.55, '#0a2e37'); bgGrad.addColorStop(1, '#051419'); }
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+  // light shafts
+  if (!reduceMotion) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 4; i++) {
+      const x = ((i * .29 + .1) * W + Math.sin(G.t * .15 + i) * 60 - G.cam.x * s * .05) % (W * 1.3);
+      const g = ctx.createLinearGradient(x, 0, x + 120, H); g.addColorStop(0, 'rgba(160,240,220,.05)'); g.addColorStop(1, 'rgba(160,240,220,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 90, 0); ctx.lineTo(x + 300, H); ctx.lineTo(x + 140, H); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // parallax motes (things far below and above the action)
+  ctx.fillStyle = 'rgba(200,240,230,.18)';
+  for (const m of motes) {
+    const sx = (((m.x * W * 2 - G.cam.x * s * m.z) % W) + W) % W, sy = (((m.y * H * 2 - G.cam.y * s * m.z) % H) + H) % H;
+    ctx.beginPath(); ctx.arc(sx, sy, m.r * (m.z + .4), 0, TAU); ctx.fill();
+  }
+  const vr = viewR();
+  const vis = (x, y, r) => Math.abs(x - G.cam.x) < vr + r && Math.abs(y - G.cam.y) < vr + r;
+  ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(s, s); ctx.translate(-G.cam.x, -G.cam.y);
+  for (const cl of G.clouds) {
+    if (!vis(cl.x, cl.y, cl.r)) continue;
+    const g = ctx.createRadialGradient(cl.x, cl.y, 0, cl.x, cl.y, cl.r);
+    g.addColorStop(0, `rgba(180,80,255,${.35 * cl.life})`); g.addColorStop(1, 'rgba(180,80,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cl.x, cl.y, cl.r, 0, TAU); ctx.fill();
+  }
+  for (const f of G.food) {
+    if (!vis(f.x, f.y, f.r)) continue;
+    if (f.kind === 'plant') {
+      ctx.fillStyle = 'rgba(140,230,150,.25)'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r * 1.5, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#8fe39a';
+      for (let i = 0; i < 3; i++) { const a = f.t * .6 + i * 2.1; ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * f.r * .4, f.y + Math.sin(a) * f.r * .4, f.r * .55, 0, TAU); ctx.fill(); }
+      ctx.fillStyle = '#d9ffd0'; ctx.beginPath(); ctx.arc(f.x - f.r * .2, f.y - f.r * .2, f.r * .2, 0, TAU); ctx.fill();
+    } else {
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.t * .4);
+      ctx.fillStyle = '#d9473f'; ctx.beginPath(); ctx.moveTo(-f.r, -f.r * .5); ctx.lineTo(f.r * .6, -f.r * .8); ctx.lineTo(f.r, f.r * .3); ctx.lineTo(-f.r * .3, f.r * .9); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ff9a86'; ctx.beginPath(); ctx.arc(-f.r * .1, -f.r * .2, f.r * .28, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+  const order = G.cells.filter(c => !c.dead && vis(c.x, c.y, c.r * 2.6)).sort((a, b) => (a.player ? 1 : 0) - (b.player ? 1 : 0) || a.r - b.r);
+  for (const c of order) {
+    if (!c.player && c.st.carn && c.r > p.r * .95) {
+      const g = ctx.createRadialGradient(c.x, c.y, c.r, c.x, c.y, c.r * 1.9);
+      g.addColorStop(0, 'rgba(255,93,108,.22)'); g.addColorStop(1, 'rgba(255,93,108,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 1.9, 0, TAU); ctx.fill();
+    }
+    drawCell(ctx, c.sp, c.x, c.y, c.r, c.heading, reduceMotion ? c.t * .3 : c.t, { flash: c.flash, jawT: c.jawT });
+    if (!c.player && c.hp < .999) {
+      ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 2.5 / s; ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 1.35, -Math.PI / 2, -Math.PI / 2 + TAU); ctx.stroke();
+      ctx.strokeStyle = c.hp < .35 ? '#ff5d6c' : '#79d2a0'; ctx.beginPath(); ctx.arc(c.x, c.y, c.r * 1.35, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0, c.hp)); ctx.stroke();
+    }
+  }
+  for (const e of G.fx) { ctx.globalAlpha = Math.max(0, e.life); ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, TAU); ctx.fill(); }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  // murky water: sight radius
+  const cx = (p.x - G.cam.x) * s + W / 2, cy = (p.y - G.cam.y) * s + H / 2;
+  const inner = p.r * s * 8 * p.st.sight, outer = inner * 2.1;
+  const fog = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  fog.addColorStop(0, 'rgba(3,14,18,0)'); fog.addColorStop(1, 'rgba(3,14,18,.82)');
+  ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H);
+  // floating text
+  ctx.textAlign = 'center'; ctx.font = `800 ${Math.round(clamp(p.r * s * .7, 13, 22))}px "Bricolage Grotesque", sans-serif`;
+  for (const tx of G.texts) { ctx.globalAlpha = Math.max(0, tx.life); ctx.fillStyle = tx.color; ctx.fillText(tx.text, (tx.x - G.cam.x) * s + W / 2, (tx.y - G.cam.y) * s + H / 2); }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- HUD ----------
+const hudCache = {};
+function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
+function updateHud(force) {
+  if (force) for (const k in hudCache) delete hudCache[k];
+  setText('sp-name', G.sp.name);
+  setText('stage-label', G.level >= MAX_LEVEL ? 'Cell stage · Fully grown' : `Cell stage · Size ${G.level + 1} of ${MAX_LEVEL}`);
+  setText('dna', String(G.dna));
+  const lo = LEVELS[Math.min(G.level, MAX_LEVEL - 1)], hi = LEVELS[Math.min(G.level + 1, MAX_LEVEL)];
+  const pr = G.level >= MAX_LEVEL ? 1 : clamp((G.progress - lo) / (hi - lo), 0, 1);
+  $('prog').firstElementChild.style.width = (pr * 100).toFixed(1) + '%';
+  const hp = clamp(G.player.hp, 0, 1);
+  $('hp').firstElementChild.style.width = (hp * 100).toFixed(1) + '%';
+  $('hp').classList.toggle('low', hp < .3);
+}
+let toastTimer = 0;
+function toast(title, text) {
+  const t = $('toast'); t.innerHTML = ''; const b = document.createElement('b'); b.textContent = title; t.appendChild(b);
+  if (text) t.appendChild(document.createTextNode(text));
+  t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
+}
+function setMode(m) {
+  G.mode = m;
+  const playing = m !== 'title';
+  for (const id of ['hud-tl', 'hud-tr', 'hud-bl', 'hud-br']) $(id).hidden = !playing || m === 'editor';
+  $('title-screen').hidden = m !== 'title';
+  $('pause-screen').hidden = m !== 'pause';
+  $('death-screen').hidden = m !== 'dead';
+  $('done-screen').hidden = m !== 'done';
+  $('editor').hidden = m !== 'editor';
+  if (m !== 'play') { keys.clear(); pointer.down = false; }
+}
+function fillDone() {
+  $('done-title').textContent = `The ${G.sp.name} are ready for land`;
+  const c = statsOf(G.sp);
+  const diet = c.herb && c.carn ? 'omnivores' : c.carn ? 'carnivores' : 'herbivores';
+  $('done-text').textContent = `Your ${diet} grew through five sizes, collected ${G.progress} DNA worth of food, and went through ${G.edits} rounds of evolution in the editor.`;
+}
+
+// ---------- Editor ----------
+const ecv = $('ed-cv'), ectx = ecv.getContext('2d');
+const E = { sp: null, dna: 0, sel: null, hover: null, hoverPart: -1, t: 0 };
+let eW = 0, eH = 0;
+function sizeEditor() {
+  const r = ecv.getBoundingClientRect(); eW = r.width; eH = r.height;
+  ecv.width = Math.round(eW * DPR); ecv.height = Math.round(eH * DPR);
+}
+function openEditor() {
+  E.sp = JSON.parse(JSON.stringify(G.sp)); E.dna = G.dna; E.sel = null; E.hover = null;
+  $('evolve-btn').classList.remove('pulse');
+  setMode('editor'); sizeEditor();
+  $('ed-name').value = E.sp.name; $('ed-hue').value = E.sp.hue;
+  buildPartList(); refreshEditor();
+}
+function closeEditor(apply) {
+  if (apply) {
+    const st = statsOf(E.sp);
+    if (!st.herb && !st.carn) { $('ed-warn').textContent = 'Your cell needs a mouth to eat. Add a filter mouth or a jaw.'; return; }
+    const changed = JSON.stringify(E.sp) !== JSON.stringify(G.sp);
+    E.sp.name = ($('ed-name').value.trim() || G.sp.name).slice(0, 22);
+    G.sp = E.sp; G.dna = E.dna; if (changed) G.edits++;
+    const p = G.player; p.sp = G.sp; p.st = statsOf(G.sp);
+    save(); updateHud(true);
+  }
+  setMode('play');
+}
+function countOf(sp, type) { return sp.parts.filter(p => p.type === type).length; }
+function buildPartList() {
+  const box = $('ed-parts'); box.innerHTML = '';
+  for (const k of PART_ORDER) {
+    const def = PARTS[k];
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'part'; b.dataset.type = k;
+    const ic = document.createElement('canvas'); ic.width = 88; ic.height = 88;
+    const info = document.createElement('div'); const nb = document.createElement('b'); nb.textContent = def.name; const em = document.createElement('em'); info.append(nb, em);
+    const cost = document.createElement('span'); cost.className = 'cost'; cost.textContent = def.cost;
+    b.append(ic, info, cost);
+    b.addEventListener('click', () => { E.sel = E.sel === k ? null : k; refreshEditor(); });
+    box.appendChild(b);
+    const c = ic.getContext('2d'); c.scale(2, 2);
+    const a = k === 'flagellum' ? Math.PI * .75 : k === 'cilia' ? -Math.PI / 2 : -Math.PI / 4;
+    drawCell(c, { hue: 190, pattern: 'plain', seed: 1, parts: [{ type: k, a }] }, k === 'flagellum' ? 28 : 18, k === 'flagellum' ? 16 : 26, 11, 0, 1);
+  }
+}
+function partBlockReason(k) {
+  const def = PARTS[k];
+  if (def.unlock > G.level) return `Grows in at size ${def.unlock + 1}`;
+  if (countOf(E.sp, k) >= def.max) return `Limit of ${def.max}`;
+  if (E.sp.parts.length >= maxParts(G.level)) return 'No free part slots';
+  if (E.dna < def.cost) return 'Not enough DNA';
+  return '';
+}
+function refreshEditor() {
+  $('ed-dna').textContent = E.dna;
+  $('ed-count').textContent = `${E.sp.parts.length} / ${maxParts(G.level)} parts`;
+  for (const b of $('ed-parts').children) {
+    const k = b.dataset.type, why = partBlockReason(k), locked = PARTS[k].unlock > G.level;
+    b.disabled = locked; b.classList.toggle('sel', E.sel === k);
+    b.querySelector('em').textContent = locked ? why : PARTS[k].desc;
+    if (E.sel === k && locked) E.sel = null;
+  }
+  const st = statsOf(E.sp);
+  $('ed-diet').textContent = st.herb && st.carn ? 'Omnivore' : st.carn ? 'Carnivore' : st.herb ? 'Herbivore' : 'No mouth';
+  const rows = [
+    ['Speed', (st.speed - 55) / 25], ['Agility', (st.accel - 1.5) / .9], ['Health', (st.hp - 30) / 15],
+    ['Sight', (st.sight - .8) / .3], ['Attack', st.spikes + (st.carn ? 1 : 0) + st.poison], ];
+  $('ed-stats').innerHTML = rows.map(([n, v]) => `<div class="stat"><span>${n}</span><span class="pips">${Array.from({ length: 6 }, (_, i) => `<i class="${i < Math.round(clamp(v, 0, 6)) ? 'on' : ''}"></i>`).join('')}</span></div>`).join('');
+  for (const b of $('ed-pattern').children) b.classList.toggle('on', b.dataset.p === E.sp.pattern);
+  const reason = E.sel ? partBlockReason(E.sel) : '';
+  $('ed-hint').textContent = E.sel ? (reason || `Click around your cell to attach the ${PARTS[E.sel].name.toLowerCase()}. Click the part's button again when you're done placing.`) : 'Pick a part to add it. With nothing picked, click a part on your cell to remove it for a full refund.';
+  $('ed-warn').textContent = (!st.herb && !st.carn) ? 'Your cell needs a mouth to eat.' : '';
+}
+function edGeom() { const R = Math.min(eW, eH) * .24; return { cx: eW / 2, cy: eH / 2, R }; }
+function edAngle(e) { const r = ecv.getBoundingClientRect(), { cx, cy } = edGeom(); return Math.atan2(e.clientY - r.top - cy, e.clientX - r.left - cx); }
+function partAt(e) {
+  const r = ecv.getBoundingClientRect(), { cx, cy, R } = edGeom(), x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = -1, bd = R * .45;
+  E.sp.parts.forEach((p, i) => {
+    const rr = p.type === 'eye' ? R * .6 : p.type === 'flagellum' ? R * 1.4 : p.type === 'spike' ? R * 1.2 : R;
+    const d = Math.hypot(cx + Math.cos(p.a) * rr - x, cy + Math.sin(p.a) * rr - y); if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+ecv.addEventListener('pointermove', e => { E.hover = edAngle(e); E.hoverPart = E.sel ? -1 : partAt(e); });
+ecv.addEventListener('pointerleave', () => { E.hover = null; E.hoverPart = -1; });
+ecv.addEventListener('pointerdown', e => {
+  audio.init();
+  const hit = E.sel ? -1 : partAt(e);
+  if (hit >= 0) {
+    const p = E.sp.parts[hit];
+    E.sp.parts.splice(hit, 1); E.dna += PARTS[p.type].cost; audio.blip(500, 250, .08);
+    refreshEditor(); return;
+  }
+  if (!E.sel) return;
+  if (partBlockReason(E.sel)) { audio.blip(160, 120, .1, 'square', .04); return; }
+  E.sp.parts.push({ type: E.sel, a: edAngle(e) }); E.dna -= PARTS[E.sel].cost; audio.blip(600, 1000, .08);
+  refreshEditor();
+});
+$('ed-hue').addEventListener('input', e => { E.sp.hue = +e.target.value; });
+$('ed-pattern').addEventListener('click', e => { const p = e.target.dataset && e.target.dataset.p; if (p) { E.sp.pattern = p; refreshEditor(); } });
+$('ed-cancel').addEventListener('click', () => closeEditor(false));
+$('ed-done').addEventListener('click', () => closeEditor(true));
+function renderEditor(dt) {
+  E.t += dt;
+  const { cx, cy, R } = edGeom();
+  ectx.setTransform(DPR, 0, 0, DPR, 0, 0); ectx.clearRect(0, 0, eW, eH);
+  // petri dish
+  ectx.strokeStyle = 'rgba(232,243,238,.12)'; ectx.lineWidth = 1; ectx.setLineDash([4, 6]);
+  ectx.beginPath(); ectx.arc(cx, cy, R * 1.9, 0, TAU); ectx.stroke(); ectx.setLineDash([]);
+  ectx.fillStyle = 'rgba(232,243,238,.35)'; ectx.font = '700 11px "Atkinson Hyperlegible", sans-serif'; ectx.textAlign = 'left';
+  ectx.fillText('FRONT  →', cx + R * 1.2, cy - R * 1.5);
+  drawCell(ectx, E.sp, cx, cy, R, 0, reduceMotion ? E.t * .3 : E.t, {});
+  if (E.hoverPart >= 0 && E.sp.parts[E.hoverPart]) {
+    const p = E.sp.parts[E.hoverPart];
+    ectx.strokeStyle = 'rgba(255,93,108,.9)'; ectx.lineWidth = 2;
+    ectx.beginPath(); ectx.arc(cx + Math.cos(p.a) * R, cy + Math.sin(p.a) * R, R * .3, 0, TAU); ectx.stroke();
+  } else if (E.sel && E.hover != null && !partBlockReason(E.sel)) {
+    ectx.save(); ectx.translate(cx, cy); drawPartGhost(ectx, E.sel, E.hover, R, E.t, E.sp.hue); ectx.restore();
+  }
+}
+
+// ---------- Title previews ----------
+function drawChoices(t) {
+  for (const c of document.querySelectorAll('.choice canvas')) {
+    const r = c.getBoundingClientRect(); if (!r.width) continue;
+    if (c.width !== Math.round(r.width * DPR)) { c.width = Math.round(r.width * DPR); c.height = Math.round(r.height * DPR); }
+    const x = c.getContext('2d'); x.setTransform(DPR, 0, 0, DPR, 0, 0); x.clearRect(0, 0, r.width, r.height);
+    const plant = c.dataset.diet === 'plant';
+    drawCell(x, { hue: plant ? 150 : 14, pattern: 'spots', seed: plant ? 7 : 3, parts: [{ type: plant ? 'filter' : 'jaw', a: 0 }, { type: 'flagellum', a: Math.PI }, { type: 'eye', a: -.6 }] },
+      r.width / 2 + 8, r.height / 2, Math.min(r.height * .3, 30), Math.sin(t * .7) * .2, t);
+  }
+}
+
+// ---------- Buttons ----------
+$('pick-plant').addEventListener('click', () => { audio.init(); newGame('plant'); });
+$('pick-meat').addEventListener('click', () => { audio.init(); newGame('meat'); });
+$('continue-btn').addEventListener('click', () => { audio.init(); loadGame(); });
+$('evolve-btn').addEventListener('click', () => { if (G.mode === 'play') openEditor(); });
+$('pause-btn').addEventListener('click', () => setMode(G.mode === 'pause' ? 'play' : 'pause'));
+$('resume-btn').addEventListener('click', () => setMode('play'));
+const restart = () => { store.del(SAVE_KEY); $('continue-btn').hidden = true; setMode('title'); };
+$('restart-btn').addEventListener('click', restart);
+$('restart2-btn').addEventListener('click', restart);
+$('keep-btn').addEventListener('click', () => setMode('play'));
+$('respawn-btn').addEventListener('click', () => {
+  const p = G.player, ang = rand(0, TAU), d = viewR() * 3;
+  p.dead = false; p.hp = 1; p.x += Math.cos(ang) * d; p.y += Math.sin(ang) * d; p.vx = p.vy = 0;
+  G.cam.x = p.x; G.cam.y = p.y; G.cells = [p]; G.food = []; G.clouds = [];
+  populate(true); setMode('play');
+});
+const muteBtn = $('mute-btn');
+const syncMute = () => { muteBtn.style.opacity = audio.muted ? .45 : 1; muteBtn.setAttribute('aria-pressed', String(!audio.muted)); };
+muteBtn.addEventListener('click', () => { audio.init(); audio.muted = !audio.muted; store.set('pangaea.muted', audio.muted); syncMute(); });
+syncMute();
+if (store.get(SAVE_KEY)) $('continue-btn').hidden = false;
+
+// ---------- Loop ----------
+addEventListener('resize', resize); resize();
+let last = performance.now(), hudT = 0, titleT = 0;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (G.mode === 'title') {
+    titleT += dt; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    if (!bgGrad) { bgGrad = ctx.createLinearGradient(0, 0, W * .3, H); bgGrad.addColorStop(0, '#11505a'); bgGrad.addColorStop(.55, '#0a2e37'); bgGrad.addColorStop(1, '#051419'); }
+    ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+    drawChoices(titleT);
+  } else {
+    if (G.mode === 'play') update(dt);
+    render();
+    if (G.mode === 'editor') renderEditor(dt);
+    hudT -= dt; if (hudT < 0 && G.mode === 'play') { hudT = .1; updateHud(); }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// test hook
+window.__pangaea = { G, PARTS, statsOf, openEditor, closeEditor, E };
+})();
+</script>
+
+</body>
+</html>
