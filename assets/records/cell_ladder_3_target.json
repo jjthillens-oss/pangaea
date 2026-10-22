@@ -1,0 +1,96 @@
+{
+  "id": "cell_ladder_3_target",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "look approved by the owner on 2026-10-22; reference demo for the art direction, not a gameplay asset",
+  "purpose": "Quality-ladder demo rung 3_target (docs/art/quality_ladder.md).",
+  "ladder_rung": "3_target",
+  "art_role": "rigging and animation, technical artist",
+  "source_blend": "assets/source/blender/cell_ladder_3_target.blend",
+  "generator_script": "tools/blender/cell_ladder.py",
+  "export_path": "assets/export/cell_ladder_3_target.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.908,
+    "y_forward": 1.882,
+    "z_up": 0.756
+  },
+  "triangles": 10228,
+  "textures": [
+    {
+      "name": "T_CellLadder_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB"
+    },
+    {
+      "name": "T_CellLadder_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    }
+  ],
+  "materials": [
+    "M_CellMembrane",
+    "M_EyeIris",
+    "M_EyePupil",
+    "M_EyeSclera",
+    "M_Lid",
+    "M_Lips",
+    "M_Organelle"
+  ],
+  "rig_family": "cell_single_body",
+  "animations": [
+    {
+      "name": "idle",
+      "frames": 48,
+      "fps": 24,
+      "loop": true
+    },
+    {
+      "name": "swim",
+      "frames": 24,
+      "fps": 24,
+      "loop": true
+    },
+    {
+      "name": "eat",
+      "frames": 20,
+      "fps": 24,
+      "loop": false
+    }
+  ],
+  "sockets": [
+    "socket_mouth",
+    "socket_side_L",
+    "socket_side_R",
+    "socket_tail",
+    "socket_top"
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/cell_ladder.py; no external or generated meshes or images.",
+  "bones": [
+    "root",
+    "body",
+    "mouth",
+    "tail_01",
+    "tail_02",
+    "tail_03",
+    "tail_04",
+    "tail_05",
+    "eye_L",
+    "lid_upper_L",
+    "lid_lower_L",
+    "eye_R",
+    "lid_upper_R",
+    "lid_lower_R"
+  ]
+}
