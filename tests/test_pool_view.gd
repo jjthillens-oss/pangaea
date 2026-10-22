@@ -295,7 +295,8 @@ func test_meal_labels_that_the_moving_camera_brings_closer_than_a_line_move_apar
 
 
 func test_a_hit_on_or_by_the_cell_rises_as_a_number_and_a_dodge_says_so() -> void:
-	var fx := _feedback()
+	var camera := _camera()
+	var fx := _feedback(camera)
 	var taken := {"type": "hit", "attacker": "c_1", "target": CreatureField.PLAYER_ID, "kind": "bite",
 		"damage": 12.0, "dealt": 12.0, "position": Vector2(1.0, 2.0)}
 	fx.show_hit(taken)
@@ -324,6 +325,7 @@ func test_a_hit_on_or_by_the_cell_rises_as_a_number_and_a_dodge_says_so() -> voi
 	fx._process(FeedbackFx.DODGED_LIFE_S * 0.5 + 0.01)
 	check(not fx.dodged_label().visible, "gone after 0.8 s")
 	fx.free()
+	camera.free()
 
 
 func test_the_food_arrow_label_never_covers_the_cell_and_stays_by_its_arrow() -> void:
