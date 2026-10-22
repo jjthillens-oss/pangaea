@@ -380,6 +380,26 @@ func test_a_full_cell_refuses_food_and_eats_again_with_room_for_half() -> void:
 		check(ate[0].absorbed < ate[0].supplied, "absorbing only what fits")
 
 
+func test_refusals_are_reported_sparingly_and_never_for_quiet_reasons() -> void:
+	var sim := _sim("omnivore", 85)
+	var bot = ForageBot.new()
+	var last_at := {}
+	var reported := 0
+	for i in 60 * 60:
+		sim.step(bot.next_intent(sim))
+		var refused := _events_of(sim.drain_events(), "refused")
+		check(refused.size() <= 1, "tick %d: at most one refusal per tick" % i)
+		for e in refused:
+			reported += 1
+			check(not PoolSim.QUIET_REASONS.has(e.reason), "'%s' is never reported" % e.reason)
+			var key := "%s|%s" % [e.food_id, e.reason]
+			if last_at.has(key):
+				var gap: float = (i - int(last_at[key])) * DT
+				check(gap >= PoolSim.REFUSAL_REPEAT_S - 1e-6, "%s repeated after %.2f s" % [key, gap])
+			last_at[key] = i
+	check(reported > 0, "a full omnivore met some refusals in a minute (%d)" % reported)
+
+
 func test_survival_points_come_from_stepped_time_and_reset_on_respawn() -> void:
 	var sim := _sim("grazer", 81)
 	var earned := []
