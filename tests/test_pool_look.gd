@@ -9,6 +9,13 @@ const FLOOR_MATERIAL := "res://assets/export/M_PoolFloor.tres"
 const FLOOR_RECORD := "res://assets/records/pool_floor.json"
 const LAYOUT_PATH := "res://game/data/pool_m1.json"
 const HABITAT_MAX_SATURATION := 0.55    ## docs/art/ART_DIRECTION.md section 3 (HSL)
+const FLOOR_SCENE := "res://assets/export/pool_floor.glb"
+const RIM_LIP_M := Vector2(41.5, 43.0)    ## the dry lip's radii, as test_assets.gd and the generator check it
+## The lip's linear albedo luminance at most (PROPOSED). The highlight is cream and never white,
+## and living things read first: the old pale stone (0.68) rendered at L* 94 in Forward+, the
+## brightest thing on screen and lighter than the plankton's glow (L* 87); stone at 0.39 rendered
+## at L* 83. Renders of both renderers are in docs/DECISIONS.md, "Pool lighting pass".
+const RIM_MAX_LUMINANCE := 0.40
 
 
 func _env() -> Environment:
@@ -139,3 +146,31 @@ func test_caustic_light_stops_where_the_floor_rises_out_of_the_water() -> void:
 	var water_surface: Variant = (passes[1] as ShaderMaterial).get_shader_parameter("surface_y")
 	check(caustic_surface != null and water_surface != null and is_equal_approx(float(caustic_surface), float(water_surface)),
 			"the caustics stop at the water's surface: %s, the water's %s" % [caustic_surface, water_surface])
+
+
+
+func test_the_dry_rim_lip_is_stone_that_never_reads_near_white() -> void:
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FLOOR_RECORD))
+	var stone: Array = record.get("vertex_colors", {}).get("stone", [1.0, 1.0, 1.0])
+	var stone_luminance := Color(float(stone[0]), float(stone[1]), float(stone[2])).get_luminance()
+	check(stone_luminance <= RIM_MAX_LUMINANCE, "the record's stone has luminance %.2f, at most %.2f" % [stone_luminance, RIM_MAX_LUMINANCE])
+	var packed: PackedScene = load(FLOOR_SCENE)
+	var node := packed.instantiate() if packed else null
+	if node == null:
+		check(false, "pool_floor loads")
+		return
+	var lip := 0
+	var brightest := 0.0
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var arrays := (mi as MeshInstance3D).mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+		for i in mini(verts.size(), colors.size()):
+			var r := Vector2(verts[i].x, verts[i].z).length()
+			if r >= RIM_LIP_M.x and r <= RIM_LIP_M.y:
+				lip += 1
+				# COLOR_0 holds sRGB; luminance is taken in linear light.
+				brightest = maxf(brightest, colors[i].srgb_to_linear().get_luminance())
+	node.free()
+	check(lip > 0, "the floor has vertices on the rim lip")
+	check(brightest <= RIM_MAX_LUMINANCE, "the rim lip's brightest vertex has luminance %.2f, at most %.2f" % [brightest, RIM_MAX_LUMINANCE])
