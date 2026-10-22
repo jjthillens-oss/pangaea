@@ -263,7 +263,7 @@ func _on_pause_requested(reason: String) -> void:
 	pause_menu.open(reason, footer_text(), not session.sim.dead)
 
 
-func _on_died(cause: String) -> void:
+func _on_died(cause: String, _reason: String = "") -> void:
 	pause_menu.close()
 	var lost := Lineage.death_loss(session.sim.save.adaptation_points)
 	death_notice.open(death_title(cause), death_text(cause, lost),

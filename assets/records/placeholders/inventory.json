@@ -252,6 +252,30 @@
         "game/dev/dev_gizmos.gd"
       ],
       "node": "DevLayer/DevGizmos"
+    },
+    {
+      "id": "threat_lane",
+      "kind": "ui",
+      "description": "The floor lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (alpha at most 0.25). Gameplay UI drawn on the swim plane, not a model.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/creature_view.tscn"
+      ],
+      "node": "Pool/Creatures/<id>/Lane"
+    },
+    {
+      "id": "threat_marker",
+      "kind": "label",
+      "description": "Label3D \"!\" over a creature for 0.6 s when it notices the cell. Text, not geometry.",
+      "types": [
+        "Label3D"
+      ],
+      "files": [
+        "game/scenes/pool/creature_view.tscn"
+      ],
+      "node": "Pool/Creatures/<id>/Marker"
     }
   ]
 }
