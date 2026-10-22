@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import blockout_common as bc  # noqa: E402  (imports bpy first, which provides mathutils)
 import make_m1_blockouts as mb  # noqa: E402
+import make_m1_threats as mt  # noqa: E402
 import surfacing as sf  # noqa: E402
 import cell_ladder as cl  # noqa: E402
 import lookdev as ld  # noqa: E402
@@ -723,9 +724,325 @@ def _triangles(obj):
     return obj.data.loop_triangles
 
 
+# --- Step 3 threats --------------------------------------------------------------------------
+# Production passes over engineering's step 3 blockouts (tools/blender/make_m1_threats.py, plan
+# section 17). The blockout's forms, node names, pivots, frame and colours are the contract, so
+# each asset is built by the blockout's own code, surfaced, reduced and baked. A body's normal map
+# comes from the same body built at a finer tessellation, so the shipped body is smooth with the
+# blockout's vertex count, which its vertex-colour patterns need. Every material keeps its name and flat colour (the creature
+# view and the tests look them up) and gains a shared greyscale detail albedo, an ORM and a normal
+# map; the bodies keep their vertex colours, which their engine materials multiply by the detail.
+
+THREAT_TEXTURE = 1024        # creature bodies are the pool's largest living things and its focal threats
+THREAT_TOLERANCE = 0.0015    # bodies, as the sample cell
+THREAT_COLOUR_ERROR = 0.04   # per channel, sRGB-encoded: the patterns stay crisp after reduction
+CREST_GLOW = 0.6             # emission energy of the rammer crest's threat points
+FINE = {"AMBUSH_SEGMENTS": 96, "AMBUSH_RINGS": (20, 12), "RAMMER_SEGMENTS": 64, "RAMMER_RINGS": 34}
+
+
+def _fine_body(builder):
+    """The Body mesh of a blockout builder run at the finer tessellation, kept as a lone mesh
+    datablock; everything else that run made is removed, so the shipped build can take the names."""
+    keep = {k: getattr(mt, k) for k in FINE}
+    for k, v in FINE.items():
+        setattr(mt, k, v)
+    try:
+        builder()
+    finally:
+        for k, v in keep.items():
+            setattr(mt, k, v)
+    mesh = bpy.data.objects["Body"].data.copy()
+    mesh.name = "Body_fine"
+    for obj in list(bpy.data.objects):
+        bpy.data.objects.remove(obj)
+    for mat in list(bpy.data.materials):
+        bpy.data.materials.remove(mat)
+    return mesh
+
+
+def _gaze_facing(sh, gaze):
+    """How squarely a point on an eye (object space, origin at its centre) faces `gaze`, mirrored
+    across x so one material serves both eyes."""
+    xyz = sh.node("ShaderNodeSeparateXYZ")
+    sh.link(sh.pos, xyz.inputs["Vector"])
+    comb = sh.node("ShaderNodeCombineXYZ")
+    sh.link(sh.math("ABSOLUTE", xyz.outputs["X"]), comb.inputs["X"])
+    sh.link(xyz.outputs["Y"], comb.inputs["Y"])
+    sh.link(xyz.outputs["Z"], comb.inputs["Z"])
+    unit = sh.vmath("NORMALIZE", comb.outputs["Vector"])
+    return sh.vmath("DOT_PRODUCT", unit, tuple(Vector(gaze).normalized()))
+
+
+def _stretched(sh, scale):
+    return sh.vmath("MULTIPLY", sh.pos, scale)
+
+
+def _grey(sh, fac, lo, hi=1.0):
+    """A greyscale detail value from `fac` (0..1): lo where it is 0, hi where it is 1."""
+    return sh.ramp(fac, [(0.0, (lo, lo, lo, 1.0)), (1.0, (hi, hi, hi, 1.0))])
+
+
+def _eye_shader(name, gaze, lo):
+    """A wet eye: fine radial grain over the front, darker toward a ring round the iris."""
+    sh = sf.Shader(name)
+    facing = _gaze_facing(sh, gaze)
+    grain = sh.noise(260.0, 2.0, vector=_stretched(sh, (1.0, 1.0, 3.0)))
+    ring = sh.math("MULTIPLY", sh.remap(facing, 0.3, 0.5), sh.remap(facing, 0.75, 0.55))
+    base = sh.ramp(facing, [(0.0, (lo, lo, lo, 1.0)), (0.45, (1.0, 1.0, 1.0, 1.0)), (1.0, (0.94, 0.94, 0.94, 1.0))])
+    base = sh.mix(sh.math("MULTIPLY", sh.remap(grain, 0.35, 0.7), 0.2), base, (0.7, 0.7, 0.7, 1.0))
+    base = sh.mix(sh.math("MULTIPLY", ring, 0.25), base, (0.6, 0.6, 0.6, 1.0))
+    sh.bump(sh.math("MULTIPLY", grain, 0.3), 0.15, 0.002)
+    return sh.out(base, 0.06)
+
+
+def _plain_shader(name, rough, grain_scale=120.0, lo=0.85):
+    sh = sf.Shader(name)
+    grain = sh.noise(grain_scale, 3.0)
+    sh.bump(grain, 0.2, 0.002)
+    return sh.out(_grey(sh, sh.remap(grain, 0.3, 0.7), lo), rough)
+
+
+def _swap_materials(objs, shaders):
+    """Puts each procedural shader in place of the blockout material of the same name, which it
+    then takes (the name is the contract)."""
+    olds = {slot.material for obj in objs for slot in obj.material_slots}
+    for obj in objs:
+        for slot in obj.material_slots:
+            slot.material = shaders[slot.material.name]
+    for old in olds:
+        name = old.name
+        bpy.data.materials.remove(old)
+        shaders[name].name = name
+
+
+def _threat_bake(objs, body, tints, accept, texture, fine=None):
+    """Reduces the body (patterns and contracts kept by `accept`) and the small meshes, then bakes
+    one tinted texture set, with the body's normals from `fine` (its finer mesh) when given.
+    Returns the record's textures and reduction."""
+    before = after = 0
+    highs = {}
+    for obj in objs:
+        tolerance, check = (THREAT_TOLERANCE, accept) if obj is body else (PART_TOLERANCE, None)
+        b, a, high = sf.reduce(obj, tolerance, accept=check)
+        before, after = before + b, after + a
+        if obj is body and fine is not None:
+            for mat in obj.data.materials:
+                fine.materials.append(mat)
+            high.data = fine
+        elif a == b:
+            sf.drop_highs([high])
+            high = None
+        highs[obj.name] = high
+    sf.unwrap(objs)
+    textures = sf.bake_set(objs, texture, THREAT_TEXTURE if body is not None else PART_TEXTURE, highs=highs, tints=tints)
+    sf.drop_highs(highs.values())
+    return {"textures": textures,
+            "reduction": {"method": "Blender collapse decimation within a surface tolerance; body vertex colours kept within "
+                                    f"{THREAT_COLOUR_ERROR} per channel; full-detail shading (a body built at a finer "
+                                    "tessellation) baked to the normal map",
+                          "tolerance_m": {"body": THREAT_TOLERANCE, "eyes_and_small_meshes": PART_TOLERANCE},
+                          "triangles_before": before, "triangles_after": after}}
+
+
+def _colours_and(obj, attribute, contract=None):
+    fidelity = sf.color_fidelity(obj, attribute, THREAT_COLOUR_ERROR)
+    return lambda mesh: (contract is None or contract(mesh)) and fidelity(mesh)
+
+
+def _lin(hex_color):
+    return tuple(mt.linear(hex_color))
+
+
+def build_creature_ambush_body():
+    fine = _fine_body(mt.build_ambush_body)
+    fields = mt.build_ambush_body()
+    body = bpy.data.objects["Body"]
+    # Hide: a pebbled, warty back (raised cells, glossier on their crowns) and fine scales on the belly.
+    sh = sf.Shader("M_AmbushBodyProc")
+    back = sh.remap(sh.axis("Z"), -0.03, 0.03)
+    warts = sh.remap(sh.voronoi(34.0, 0.85), 0.42, 0.05)
+    small = sh.remap(sh.voronoi(85.0, 0.9), 0.4, 0.05)
+    scales = sh.remap(sh.voronoi(70.0, 0.6, feature="DISTANCE_TO_EDGE"), 0.0, 0.08)
+    pores = sh.noise(240.0, 2.0)
+    height = sh.math("ADD", sh.math("MULTIPLY", sh.math("ADD", warts, sh.math("MULTIPLY", small, 0.35)), back),
+                     sh.math("MULTIPLY", sh.math("MULTIPLY", scales, 0.35), sh.math("SUBTRACT", 1.0, back)))
+    height = sh.math("ADD", height, sh.math("MULTIPLY", pores, 0.12))
+    sh.bump(height, 0.55, 0.004)
+    detail = _grey(sh, sh.remap(height, 0.05, 0.9, smooth=False), 0.62)
+    rough = sh.math("SUBTRACT", 0.62, sh.math("MULTIPLY", warts, 0.22))
+    shaders = {
+        "M_AmbushBody": sh.out(detail, rough),
+        "M_AmbushEye": _eye_shader("M_AmbushEyeProc", (0.35, 1.0, 0.45), 0.55),
+        "M_AmbushPupil": _plain_shader("M_AmbushPupilProc", 0.12, lo=0.95),
+    }
+    bsh = sf.Shader("M_AmbushBrowProc")
+    folds = bsh.noise(70.0, 3.0, vector=_stretched(bsh, (0.4, 1.0, 2.5)))
+    knobs = bsh.remap(bsh.voronoi(60.0, 0.8), 0.4, 0.05)
+    bheight = bsh.math("ADD", folds, bsh.math("MULTIPLY", knobs, 0.6))
+    bsh.bump(bheight, 0.6, 0.004)
+    shaders["M_AmbushBrow"] = bsh.out(_grey(bsh, bsh.remap(bheight, 0.3, 1.2), 0.6), 0.7)
+    objs = [body] + [bpy.data.objects[n] for n in ("Eye_L", "Eye_R", "Pupil_L", "Pupil_R", "Brow")]
+    _swap_materials(objs, shaders)
+    amber = _lin(mt.MINERAL_AMBER)
+    tints = {
+        "M_AmbushBody": sf.tint(vertex_colors="AmbushColor"),
+        "M_AmbushEye": sf.tint(amber, emission=amber, emission_strength=mt.AMBUSH_EYE_GLOW),
+        "M_AmbushPupil": sf.tint(_lin(mt.DEEP_SHADOW)),
+        "M_AmbushBrow": sf.tint(_lin(mt.AMBUSH_BROW)),
+    }
+    fields.update(_threat_bake(objs, body, tints, _colours_and(body, "AmbushColor"), "AmbushHunter", fine))
+    _threat_frame_check(body, "creature_ambush_body")
+    fields.update({
+        "purpose": "M1 step 3 ambush hunter body (role: ambush): a big, flat, dark mottled pebble with a warty hide and wet amber eyes glowing under a heavy wrinkled brow. Body only; its parts come from the part GLBs.",
+        "revision": 2,
+        "dependencies": ["assets/export/M_AmbushBody.tres"],
+    })
+    return fields
+
+
+def _rammer_contract(mesh):
+    """The tests' midline bands: vertices along the top of the back, crossed by three dark bands."""
+    attr = mesh.color_attributes["RammerColor"].data
+    line = []
+    for v in mesh.vertices:
+        if abs(v.co.x) < 0.001 and v.co.z > 0.05:
+            r, g, b = (ld.srgb_to_linear(c) for c in attr[v.index].color[:3])
+            line.append((v.co.y, 0.2126 * r + 0.7152 * g + 0.0722 * b))
+    line.sort()
+    bands, inside = 0, False
+    for _, lum in line:
+        if lum < 0.1 and not inside:
+            bands += 1
+        inside = lum < 0.1
+    return len(line) > 24 and bands == 3
+
+
+def build_creature_rammer_body():
+    fine = _fine_body(mt.build_rammer_body)
+    fields = mt.build_rammer_body()
+    body = bpy.data.objects["Body"]
+    # Hide: leathery plates (fine grooves between scutes), pores, and a matte sheen.
+    sh = sf.Shader("M_RammerBodyProc")
+    plates = sh.remap(sh.voronoi(18.0, 0.7, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)
+    creases = sh.remap(sh.noise(55.0, 4.0, vector=_stretched(sh, (1.0, 0.35, 1.0))), 0.45, 0.6)
+    pores = sh.noise(260.0, 2.0)
+    height = sh.math("ADD", sh.math("MULTIPLY", plates, 0.8), sh.math("ADD", sh.math("MULTIPLY", creases, 0.2), sh.math("MULTIPLY", pores, 0.1)))
+    sh.bump(height, 0.45, 0.004)
+    detail = _grey(sh, sh.remap(height, 0.1, 0.95, smooth=False), 0.72)
+    rough = sh.math("ADD", 0.48, sh.math("MULTIPLY", sh.math("SUBTRACT", 1.0, plates), 0.18))
+    shaders = {
+        "M_RammerBody": sh.out(detail, rough),
+        "M_RammerEye": _eye_shader("M_RammerEyeProc", (0.45, 1.0, 0.2), 0.8),
+        "M_RammerPupil": _plain_shader("M_RammerPupilProc", 0.1, lo=0.95),
+    }
+    lsh = sf.Shader("M_RammerLidProc")
+    wrinkles = lsh.noise(90.0, 3.0, vector=_stretched(lsh, (3.0, 3.0, 0.5)))
+    lsh.bump(wrinkles, 0.4, 0.002)
+    shaders["M_RammerLid"] = lsh.out(_grey(lsh, lsh.remap(wrinkles, 0.35, 0.7), 0.78), 0.62)
+    # The crest: a veined membrane, and keratin streaks running up the points.
+    hsh = sf.Shader("M_RammerHoodProc")
+    veins = hsh.remap(hsh.voronoi(26.0, 0.9, vector=_stretched(hsh, (0.2, 1.0, 0.6)), feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    hsh.bump(hsh.math("MULTIPLY", veins, 0.5), 0.35, 0.003)
+    shaders["M_RammerHood"] = hsh.out(_grey(hsh, veins, 0.7), 0.55)
+    tsh = sf.Shader("M_ThreatProc")
+    streaks = tsh.noise(80.0, 3.0, vector=_stretched(tsh, (6.0, 2.0, 0.4)))
+    tsh.bump(streaks, 0.25, 0.002)
+    shaders["M_Threat"] = tsh.out(_grey(tsh, tsh.remap(streaks, 0.3, 0.7), 0.8), 0.4)
+    names = ("Eye_L", "Eye_R", "Pupil_L", "Pupil_R", "Lid_L", "Lid_R", "Hood")
+    objs = [body] + [bpy.data.objects[n] for n in names]
+    _swap_materials(objs, shaders)
+    tints = {
+        "M_RammerBody": sf.tint(vertex_colors="RammerColor"),
+        "M_RammerEye": sf.tint(_lin(mt.CREAM)),
+        "M_RammerPupil": sf.tint(_lin(mt.DEEP_SHADOW)),
+        "M_RammerLid": sf.tint(_lin(mt.RAMMER_LID)),
+        "M_RammerHood": sf.tint(_lin(mt.RAMMER_BAND)),
+        # The crest is a thin blade facing away from the key light at the gameplay camera, so its
+        # points glow faintly to read threat pink like the spikes (step 3 review).
+        "M_Threat": sf.tint(_lin(mt.THREAT), emission=_lin(mt.THREAT), emission_strength=CREST_GLOW),
+    }
+    fields.update(_threat_bake(objs, body, tints, _colours_and(body, "RammerColor", _rammer_contract), "Rammer", fine))
+    _threat_frame_check(body, "creature_rammer_body")
+    fields.update({
+        "purpose": "M1 step 3 territorial rammer body (role: territorial): a pale, leathery domed pebble with three dark bands, a veined dorsal crest with threat-coloured points and frowning lids. Body only; its spikes and other parts come from the part GLBs.",
+        "revision": 2,
+        "dependencies": ["assets/export/M_RammerBody.tres"],
+    })
+    return fields
+
+
+def _threat_frame_check(body, asset_id):
+    """The reduced body still meets the swim plane on PartPlacement's ellipse (the tests allow 1 cm)."""
+    tris = [tuple(body.matrix_world @ body.data.vertices[i].co for i in t.vertices) for t in _triangles(body)]
+    worst = 0.0
+    for a, b, c in tris:
+        for p, q in ((a, b), (b, c), (c, a)):
+            if (p.z > 0.0) != (q.z > 0.0):
+                t = p.z / (p.z - q.z)
+                x, y = p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t
+                worst = max(worst, abs(math.hypot(x, y) - mt.frame_radius(math.atan2(x, y))))
+    _check(worst <= 0.006, f"{asset_id}: reduced swim plane section off the frame ellipse by {worst:.4f} m")
+
+
+SPIKE_SIDES = 24
+SPIKE_STEPS = 18
+
+
+def build_part_spike():
+    """The blockout's thorn (length, collar, colours and attachment) with a finer profile: a bone
+    collar, the threat colour along a shaft ringed with growth lines, darkening to a glossy point."""
+    end = mt.SPIKE_LENGTH - mt.PART_EMBED
+    r0 = mt.SPIKE_RADIUS
+    profile = [(-mt.PART_EMBED, 0.0), (-mt.PART_EMBED, r0), (-0.012, r0 * 1.03), (0.0, r0 * 1.05), (0.01, r0 * 1.02), (0.018, r0 * 0.96)]
+    for i in range(1, SPIKE_STEPS):
+        t = i / SPIKE_STEPS
+        profile.append((0.018 + (end - 0.018) * t, r0 * 0.9 * (1.0 - t) ** 1.15))
+    profile.append((end, 0.0))
+    verts, faces, bands = bc.revolve(profile, SPIKE_SIDES)
+    tip_from = end - 0.075
+    face_materials = []
+    for b in bands:
+        y = (profile[b][0] + profile[b + 1][0]) / 2.0
+        face_materials.append(0 if y < 0.012 else (2 if y > tip_from else 1))
+    root = sf.Shader("M_SpikeRootProc")
+    knurl = root.noise(150.0, 3.0)
+    root.bump(knurl, 0.3, 0.002)
+    shaft = sf.Shader("M_SpikeShaftProc")
+    rings = shaft.math("SINE", shaft.math("MULTIPLY", shaft.axis("Y"), 260.0))
+    streak = shaft.noise(70.0, 3.0, vector=_stretched(shaft, (4.0, 0.3, 4.0)))
+    shaft_h = shaft.math("ADD", shaft.math("MULTIPLY", rings, 0.25), streak)
+    shaft.bump(shaft_h, 0.3, 0.002)
+    tip = sf.Shader("M_SpikeTipProc")
+    tstreak = tip.noise(90.0, 3.0, vector=_stretched(tip, (5.0, 0.3, 5.0)))
+    tip.bump(tstreak, 0.15, 0.002)
+    mats = [root.out(_grey(root, root.remap(knurl, 0.3, 0.7), 0.8), 0.6),
+            shaft.out(_grey(shaft, shaft.remap(shaft_h, -0.1, 0.9), 0.78), 0.4),
+            tip.out(_grey(tip, tip.remap(tstreak, 0.3, 0.7), 0.82), 0.25)]
+    spike = bc.mesh_object("Spike", verts, faces, mats, face_materials)
+    for mat, name in zip(mats, ("M_SpikeRoot", "M_SpikeShaft", "M_SpikeTip")):
+        mat.name = name
+    tints = {"M_SpikeRoot": sf.tint(_lin(mt.SPIKE_ROOT)), "M_SpikeShaft": sf.tint(_lin(mt.THREAT)),
+             "M_SpikeTip": sf.tint(_lin(mt.SPIKE_TIP))}
+    baked = _threat_bake([spike], None, tints, None, "PartSpike")
+    pts = bc.world_vertices()
+    y_max = max(p.y for p in pts)
+    _check(min(p.y for p in pts) >= -0.05, "spike: sinks at most 0.05 m behind its attachment point")
+    _check(abs(y_max - end) < 1e-4, "spike: the point is SPIKE_LENGTH - PART_EMBED out")
+    return {
+        "purpose": "M1 step 3 spike part (rams): a tapered thorn in the threat colour ringed with growth lines, with a bone collar, darkening to a glossy point.",
+        "category": "part",
+        "part_type": "spike",
+        "attachment": dict(mt.PART_ATTACHMENT),
+        "length_m": mt.SPIKE_LENGTH,
+        "tip_m": round(y_max, 3),
+        "revision": 2,
+        **baked,
+    }
+
+
 # --- Driver -----------------------------------------------------------------------------------
 
-# asset id -> (builder, triangle budget). Budgets are the M1 step 2 plan's, also in tests/test_assets.gd.
+# asset id -> (builder, triangle budget). Budgets are the M1 step 2 and step 3 plans', also in tests/test_assets.gd.
 ASSETS = {
     "part_flagellum": (build_flagellum, 1500),
     "part_eye_spot": (build_eye_spot, 1500),
@@ -737,6 +1054,9 @@ ASSETS = {
     "rock_b": (lambda: build_rock("rock_b"), 1300),
     "rock_c": (lambda: build_rock("rock_c"), 1300),
     "sample_cell": (build_sample_cell, 8000),
+    "creature_ambush_body": (build_creature_ambush_body, 4000),
+    "creature_rammer_body": (build_creature_rammer_body, 4000),
+    "part_spike": (build_part_spike, 600),
     "pool_floor": (build_pool_floor, 20000),
 }
 

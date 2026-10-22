@@ -22,6 +22,9 @@ colours and lighting passes and adds detail on top.
 | `part_eye_spot` | A glossy amber eye with a dark lens in a coral cup on a short stalk, under a rust petal lid (`EyeSpotLid`, ready for a blink). |
 | `plankton` | A centric diatom: radial ribs, rings of pores, a food-glow core (emission map), girdle band. |
 | `carrion` | A torn, marbled flesh chunk with muscle fibres, a pale sinew band and fat beads. |
+| `creature_ambush_body` | Engineering's step 3 ambusher (flat dark mottled pebble, amber eyes, heavy brow) with a warty, pebbled hide, wet glowing eyes with fine grain and a wrinkled brow. Vertex-colour pattern, nodes, frame and M_AmbushEye unchanged. |
+| `creature_rammer_body` | Engineering's step 3 rammer (pale banded dome, crest, frowning lids) with leathery plates and pores, a veined crest membrane and keratin-streaked threat points. Bands, Hood pivot and frame unchanged. |
+| `part_spike` | The thorn with growth rings on its threat-coloured shaft, a knurled bone collar and a glossy dark point. Same length, attachment and reach. |
 | `pool_floor` | Engineering's bowl, sand, silt patches and grey stone rim lip (vertex colours, unchanged), with sand ripples from a CC0 normal map on `M_PoolFloor.tres` (tiled every 5 m), so the caustics catch on them. Reduced only where the silt still fades softly. |
 | `rock_a`, `rock_b`, `rock_c` | Cool stone with grain and height from a CC0 scan, algae on the lit tops, a wet band at the water line and warm mineral flecks. Swim-band outline contract unchanged. |
 
@@ -40,10 +43,19 @@ is baked into the normal map.
 | `part_eye_spot` | 1,256 | 1,006 | 1500 | 0.6 mm | Albedo 512, ORM 512, Normal 512 |
 | `plankton` | 384 | 284 | 400 | 1.5 mm | Albedo 256, ORM 256, Normal 256, Emission 256 |
 | `carrion` | 320 | 300 | 400 | 1.5 mm | Albedo 256, ORM 256, Normal 256 |
+| `creature_ambush_body` | 3,264 (normals from a 6,000-triangle body) | 2,922 | 4000 | 1.5 mm body, 0.6 mm eyes and brow | Detail 1024, ORM 1024, Normal 1024 |
+| `creature_rammer_body` | 3,800 (normals from a 5,000-triangle body) | 3,428 | 4000 | 1.5 mm body, 0.6 mm eyes, lids and crest | Detail 1024, ORM 1024, Normal 1024 |
+| `part_spike` | 1,056 | 282 | 600 | 0.6 mm | Detail 512, ORM 512, Normal 512 |
 | `pool_floor` | 17,536 | 13,802 | 20000 | 5 mm | Normal 1024 (engine material, tiled) |
 | `rock_a` | 1,280 | 600 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
 | `rock_b` | 1,280 | 690 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
 | `rock_c` | 1,280 | 660 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
+
+The threat bodies keep engineering's vertex colours (the tests read their tone and bands), so
+reduction also keeps every original vertex's colour within 0.04 per channel, and the rammer keeps
+its three bands along the midline. Their materials keep their names and flat colours and gain a
+shared greyscale detail albedo (`surfacing.bake_set(tints=...)`); the bodies' `.tres` multiply the
+vertex colours by it. In-game frames: `renders/production/threat_*_godot.jpg`.
 
 The old sample cell had 13,056 triangles and the blockout rocks 1,280 each. The filter mouth's
 cilia are already thin, so it reduces least.
