@@ -25,10 +25,11 @@ const SAVE_ON_DEATH := true
 ## The death notice's tips after starving, picked by starved_tip() from what the body eats (a
 ## kill's tip is its species' death_tip). A body that eats plankton is told where it regrows.
 const STARVED_TIP := "Plankton regrows in the sunlit patches; slow down when energy runs low."
-## A body that eats only carrion: since step 3 that comes only from kills (D1). Worded as the tests
-## hunt (HuntBot, threats_sim #9 and #22): from behind a rammer, jaw first. It names no other prey,
-## since an ambush hunter may be too big to bite.
-const STARVED_TIP_MEAT := "Carrion comes only from kills: swim into a rammer from behind, jaw first, then eat what it drops. Slow down when energy runs low."
+## A body that eats only carrion: since step 3, past the few world-start pieces (which may still lie
+## in the pool), more comes only from kills (D1). Worded as the tests hunt (threats_sim #9 and #22,
+## HuntBot): from behind a rammer, jaw first, biting until it dies (five bites in #9). It names no
+## other prey, since an ambush hunter may be too big to bite.
+const STARVED_TIP_MEAT := "More carrion comes only from kills: bite a rammer from behind, jaw first, and keep biting until it dies, then eat what it drops. Slow down when energy runs low."
 ## No body to go by, or one that eats nothing: no food named.
 const STARVED_TIP_ANY := "Slow down when energy runs low."
 

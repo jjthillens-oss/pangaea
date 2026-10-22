@@ -1206,7 +1206,7 @@ Every signal uses at least two of shape, motion, text and sound. Colour is never
 
   - `Main.death_title(cause, reason := "")` returns the title.
   - `Main.death_text(cause, lost, tip := "", saved := true)` returns one sentence and a tip line. For example: "The lineage continues from the start of generation 1. You lost a quarter of your unspent adaptation points (−3). Saved." plus the species `death_tip`.
-  - The starvation tip names only food the body can eat (`GameSession.starved_tip`, a review fix): "Plankton regrows in the sunlit patches; slow down when energy runs low." for a body that eats plankton, "Carrion comes only from kills: swim into a rammer from behind, jaw first, then eat what it drops. Slow down when energy runs low." for one that eats only carrion, and "Slow down when energy runs low." otherwise.
+  - The starvation tip names only food the body can eat (`GameSession.starved_tip`, a review fix): "Plankton regrows in the sunlit patches; slow down when energy runs low." for a body that eats plankton, "More carrion comes only from kills: bite a rammer from behind, jaw first, and keep biting until it dies, then eat what it drops. Slow down when energy runs low." for one that eats only carrion, and "Slow down when energy runs low." otherwise.
   - The step 2 phrasing "You lose" becomes "You lost", because the loss is already applied.
   - When the save failed, "Saved." becomes "Could not save: <error>". With the OD1 fallback, "Saved." is omitted.
   - Continue toast: "Back at the generation start · sheltered for 5 s."

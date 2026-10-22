@@ -249,8 +249,10 @@ func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more()
 
 
 func test_a_starving_death_tip_names_only_food_the_body_can_eat() -> void:
-	# A hunter's jaw eats only carrion, which since step 3 comes only from kills (D1): its starving
-	# tip must say so, not send it to plankton it cannot eat. Each starting body starves for real.
+	# A hunter's jaw eats only carrion, which since step 3 comes only from kills (D1) once the
+	# world-start pieces are gone: its starving tip must say so, not send it to plankton it cannot
+	# eat, and must hold where it dies (those pieces may still lie there, and one bite does not kill
+	# a rammer). Each starting body starves for real.
 	for body in BodyText.ORDER:
 		var session := GameSession.new(slot)
 		check(session.start_new(body, 12).ok, "%s started" % body)
@@ -272,6 +274,18 @@ func test_a_starving_death_tip_names_only_food_the_body_can_eat() -> void:
 		if body == "hunter":
 			check(tip.contains("carrion") or tip.contains("Carrion"), "the hunter's tip names its food: %s" % tip)
 			check(tip.contains("kills"), "and where it comes from: %s" % tip)
+			var lying := sim.carrion.items.filter(func(item: Dictionary) -> bool: return item.get("source", "") != "kill").size()
+			var qualified := RegEx.create_from_string("(?i)\\bmore\\b[^.:;]*only from kills")
+			check(lying == 0 or qualified.search(tip) != null,
+				"%d world-start pieces still lie in the pool, so the tip does not say all carrion comes from kills: %s" % [lying, tip])
+			var rammers := sim.creatures.creatures.filter(func(c: CreatureField.Creature) -> bool: return c.species_id == "rammer")
+			check(not rammers.is_empty(), "a rammer lives in the pool")
+			if not rammers.is_empty():
+				var r: CreatureField.Creature = rammers[0]
+				var bite := sim.phenotype.bite_damage * (1.0 - clampf(r.phenotype.defense, 0.0, InteractionResolver.MAX_DEFENSE))
+				var bites := ceili(r.phenotype.max_health / bite)
+				check(bites <= 1 or tip.contains("until it dies"),
+					"a rammer takes %d bites (%.1f health, %.1f a bite), so the tip says to keep biting: %s" % [bites, r.phenotype.max_health, bite, tip])
 		session.respawn_after_death()
 
 

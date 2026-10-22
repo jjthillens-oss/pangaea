@@ -266,7 +266,8 @@ static func controls_lines() -> PackedStringArray:
 
 
 ## How this body eats, in words that do not lean on colour alone. A body that eats only carrion is
-## also told that carrion comes only from kills (D1); its starving tip says how to make one.
+## also told that, past the world-start pieces it may see now, more comes only from kills (D1); its
+## starving tip says how to make one.
 static func first_meal_line(p: Phenotype) -> String:
 	var plants := p.can_eat("plant")
 	var meat := p.can_eat("meat")
@@ -275,7 +276,7 @@ static func first_meal_line(p: Phenotype) -> String:
 	if plants:
 		return "Eat by touching drifting plankton (small green blobs) with your filter mouth."
 	if meat:
-		return "Eat by touching carrion (still brown chunks) with your jaw; it comes only from kills."
+		return "Eat by touching carrion (still brown chunks) with your jaw; more comes only from kills."
 	return "This body has no mouth that can eat."
 
 

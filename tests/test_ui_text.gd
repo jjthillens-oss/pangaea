@@ -131,8 +131,10 @@ func test_controls_are_named_from_the_key_bindings() -> void:
 		check(not line.contains("Physical"), "plain key names in '%s'" % line)
 	check(Hud.first_meal_line(_phenotype("grazer")).contains("filter mouth"), "a grazer is told about its filter mouth")
 	check(Hud.first_meal_line(_phenotype("hunter")).contains("jaw"), "a hunter is told about its jaw")
-	check(Hud.first_meal_line(_phenotype("hunter")).contains("only from kills"), "and that carrion comes only from kills: %s"
-		% Hud.first_meal_line(_phenotype("hunter")))
+	var hunter_meal := Hud.first_meal_line(_phenotype("hunter"))
+	check(hunter_meal.contains("only from kills"), "and that more carrion comes only from kills: %s" % hunter_meal)
+	check(PoolLayout.load_from().carrion.initial.is_empty() or not _says_all_carrion_is_from_kills(hunter_meal),
+		"but not that all of it does, while the world-start pieces lie in the pool: %s" % hunter_meal)
 
 
 func test_the_death_notice_names_the_points_the_death_rule_takes() -> void:
@@ -181,11 +183,21 @@ func test_a_starving_tip_names_only_food_the_body_can_eat_and_tells_a_hunter_to_
 	check_eq(GameSession.starved_tip(_phenotype("grazer")), GameSession.STARVED_TIP, "a grazer is told where plankton regrows")
 	check_eq(GameSession.starved_tip(_phenotype("omnivore")), GameSession.STARVED_TIP, "so is an omnivore, which eats it too")
 	var hunter := GameSession.starved_tip(_phenotype("hunter"))
-	check(hunter.contains("Carrion comes only from kills") and hunter.contains("rammer"), "a hunter is told to hunt, and what: %s" % hunter)
+	check(hunter.contains("only from kills") and hunter.contains("rammer"), "a hunter is told to hunt, and what: %s" % hunter)
+	check(not _says_all_carrion_is_from_kills(hunter), "but not that all carrion comes from kills, while world-start pieces may lie in the pool: %s" % hunter)
+	check(hunter.contains("keep biting") and hunter.contains("until it dies"), "and that one bite does not kill a rammer (five do, threats_sim #9): %s" % hunter)
 	var mouthless := Phenotype.new()
 	check(not mouthless.can_eat("plant") and not mouthless.can_eat("meat"), "a body with no mouth")
 	check_eq(GameSession.starved_tip(mouthless), GameSession.STARVED_TIP_ANY, "is sent to no food")
 	check_eq(GameSession.starved_tip(null), GameSession.STARVED_TIP_ANY, "nor is an unknown body")
+
+
+## Whether `text` says all carrion comes from kills: "only from kills" with no "more" before it in the
+## same clause. The pool starts with a few pieces (the layout's carrion.initial), which rot only after
+## 120 s, so a hunter would see that claim proved wrong.
+static func _says_all_carrion_is_from_kills(text: String) -> bool:
+	var qualified := RegEx.create_from_string("(?i)\\bmore\\b[^.:;]*only from kills")
+	return text.to_lower().contains("only from kills") and qualified.search(text) == null
 
 
 ## The height of `text` in a wrapping Label at `width` with this font and size.
