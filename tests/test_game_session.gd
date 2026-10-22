@@ -51,10 +51,13 @@ func test_continue_brings_back_the_same_lineage_body_points_and_place() -> void:
 	var saved := session.save_now()
 	check(saved.ok, "saved: %s" % saved.error)
 	var position := session.sim.motion.position
+	# The slot holds this save and the backup holds the start, so a re-save would change both.
+	var files := _files()
 
 	var again := GameSession.new(slot)
 	var r := again.continue_run()
 	check(r.ok, "continued: %s" % [r.errors])
+	check_eq(_files(), files, "continuing rewrote nothing: file list, times and contents")
 	if not r.ok:
 		return
 	check_eq(r.source, "primary", "from the primary file")
@@ -95,6 +98,7 @@ func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
 	var f := FileAccess.open(slot, FileAccess.WRITE)
 	f.store_string("{ not a save")
 	f.close()
+	var files := _files()
 	var again := GameSession.new(slot)
 	var peek := again.peek_slot()
 	check(peek.exists and peek.ok, "peek finds a usable save")
@@ -103,6 +107,7 @@ func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
 	var r := again.continue_run()
 	check(r.ok, "continued")
 	check_eq(r.source, "backup", "from the backup")
+	check_eq(_files(), files, "the damaged file stays as it was until the player saves")
 	if r.ok:
 		check_eq(again.sim.save.lineage_id, lineage, "the same lineage")
 		check_eq(again.load_source, "backup", "load source kept for the debug panel")
@@ -158,6 +163,42 @@ func test_a_saved_position_inside_a_rock_continues_from_the_spawn() -> void:
 	check(again.continue_run().ok, "continued")
 	check(again.sim.motion.position.is_equal_approx(again.layout.spawn), "back at the spawn: %s" % again.sim.motion.position)
 	check(again.sim.arena.is_clear(again.sim.motion.position, again.sim.phenotype.radius), "in open water")
+
+
+func test_a_cell_saved_while_pressed_against_a_rock_continues_in_place() -> void:
+	# Pushing out of a rock leaves the cell within float32 rounding of its surface. rock_09 is one
+	# where that lands a micrometre inside from some sides, which once sent Continue to the spawn.
+	var session := GameSession.new(slot)
+	session.start_new("grazer", 9)
+	var sim := session.sim
+	var rock := {}
+	for r in sim.arena.rocks:
+		if r.id == "rock_09":
+			rock = r
+	check(not rock.is_empty(), "the layout has rock_09")
+	if rock.is_empty():
+		return
+	var touching: float = rock.radius + sim.phenotype.radius
+	var pressed := 0
+	for k in 16:
+		var out := Vector2.from_angle(k * TAU / 16.0)
+		if not sim.debug_teleport(rock.center + out * (touching + 0.05), (-out).angle()):
+			continue
+		for i in 30:
+			sim.step(SimIntent.new(-out))
+		var saved_at := sim.motion.position
+		if absf(saved_at.distance_to(rock.center) - touching) > 1e-3:
+			continue
+		pressed += 1
+		check(session.save_now().ok, "saved")
+		var again := GameSession.new(slot)
+		if not again.continue_run().ok:
+			check(false, "continued after saving at %s" % saved_at)
+			continue
+		var back := again.sim.motion.position
+		check(back.distance_to(saved_at) < 1e-3, "pressed from %d deg: saved at %s, continued at %s"
+			% [k * 360 / 16, saved_at, back])
+	check(pressed >= 12, "the cell was pressed against the rock from %d of 16 sides" % pressed)
 
 
 func test_unsaved_changes_are_tracked() -> void:

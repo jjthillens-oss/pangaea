@@ -124,7 +124,10 @@ func test_full_thrust_into_the_wall_settles_inside_the_soft_band() -> void:
 			furthest = maxf(furthest, m.position.length())
 		var settled := m.position.length()
 		check(settled >= 37.5 and settled <= 39.0, "%s settles at %.2f m" % [body_name, settled])
-		check(furthest <= 39.0 + 1e-6, "%s never passes 39 m (%.3f)" % [body_name, furthest])
+		# The failsafe clamps at 39.0 m, so stopping short of it shows the soft band did the holding.
+		var failsafe := arena.hard_radius - BODY_R
+		check(furthest <= failsafe - 0.1, "%s is held by the soft band, short of the %.1f m failsafe (%.3f)"
+			% [body_name, failsafe, furthest])
 		var back := -1.0
 		for i in 10 * 60:
 			_step(arena, m, Vector2.ZERO, p)
@@ -135,12 +138,39 @@ func test_full_thrust_into_the_wall_settles_inside_the_soft_band() -> void:
 
 
 func test_the_hard_limit_holds_even_at_top_speed() -> void:
-	var arena := _pool()
+	# With no return current the soft band alone only slows the cell toward the hard radius, so
+	# only the failsafe can stop it at 39 m.
+	var arena := PoolArena.create(40.0, 36.0, 39.5, 0.0)
 	var m := Locomotion.MotionState.new(Vector2(38.0, 0.0))
 	for i in 120:
 		m.velocity = Vector2(6.0, 0.0)
 		arena.move(m, BODY_R, DT)
 	check(m.position.length() <= 39.0 + 1e-6, "clamped at hard - body radius: %.3f" % m.position.length())
+	check(m.position.length() >= 39.0 - 1e-4, "pressed against the limit: %.4f" % m.position.length())
+	check(m.velocity.dot(m.position.normalized()) <= 1e-6, "the clamp removes the outward velocity: %s" % m.velocity)
+
+
+func test_a_cell_pressed_against_any_layout_rock_is_at_a_clear_point() -> void:
+	# Pushing out lands the cell within float32 rounding of the rock's surface, a few micrometres
+	# either side at pool distances. Continue only restores a clear point, so those must count.
+	var arena := PoolLayout.load_from().build_arena()
+	var contacts := 0
+	for rock in arena.rocks:
+		for k in 72:
+			var out := Vector2.from_angle(k * TAU / 72.0)
+			var m := Locomotion.MotionState.new(rock.center + out * (rock.radius + BODY_R + 0.01))
+			for i in 3:
+				m.velocity = -out * 3.0
+				arena.move(m, BODY_R, DT)
+			if m.position.length() > arena.soft_start - BODY_R:
+				continue   # resting in the soft band, which is never a clear point
+			contacts += 1
+			if not arena.is_clear(m.position, BODY_R):
+				var gap: float = m.position.distance_to(rock.center) - rock.radius - BODY_R
+				check(false, "pressed against %s from %d deg: %s is %.7f m off the surface and not clear"
+					% [rock.id, k * 5, m.position, gap])
+				return
+	check(contacts > 1000, "the cell rested against the rocks %d times" % contacts)
 
 
 func test_the_returned_distance_is_the_actual_displacement() -> void:
