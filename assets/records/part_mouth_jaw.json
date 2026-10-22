@@ -13,11 +13,11 @@
   "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.311,
-    "y_forward": 0.27,
+    "x": 0.31,
+    "y_forward": 0.271,
     "z_up": 0.2
   },
-  "triangles": 1084,
+  "triangles": 552,
   "triangle_budget": 1500,
   "textures": [
     {
@@ -37,9 +37,20 @@
       ],
       "colorspace": "Non-Color",
       "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartMouthJaw_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
     }
   ],
   "materials": [
+    "M_JawCollarProc",
+    "M_MandibleProc",
     "M_PartMouthJaw"
   ],
   "rig_family": null,
@@ -55,6 +66,12 @@
     "origin": "attachment point on the body surface",
     "outward_axis": "Blender +Y (Godot -Z)",
     "embed_m": 0.03
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0012,
+    "triangles_before": 1096,
+    "triangles_after": 552
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

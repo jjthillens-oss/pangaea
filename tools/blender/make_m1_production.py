@@ -30,6 +30,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blockout_common as bc  # noqa: E402  (imports bpy first, which provides mathutils)
 import make_m1_blockouts as mb  # noqa: E402
 import surfacing as sf  # noqa: E402
+import cell_ladder as cl  # noqa: E402
+import lookdev as ld  # noqa: E402
 import bpy  # noqa: E402
 from mathutils import Vector, noise  # noqa: E402
 
@@ -40,6 +42,13 @@ PROVENANCE = ("Authored procedurally in Blender by tools/blender/make_m1_product
 PART_TEXTURE = 512    # microscopic creature budget (art direction section 4)
 FOOD_TEXTURE = 256    # tiny, drawn hundreds of times
 ROCK_TEXTURE = 512    # a 2 m prop is about 150 px tall at the gameplay camera
+# Triangle reduction (Joshua, 2026-10-22: as few triangles as possible without losing quality).
+# Each mesh is decimated while its surface stays within this distance of the full-detail model,
+# and the full model's shading is baked into the normal map. At the gameplay camera one pixel is
+# about 11 mm; in an editor close-up about 1 mm.
+PART_TOLERANCE = 0.0012
+FOOD_TOLERANCE = 0.0015
+ROCK_TOLERANCE = 0.01
 
 CC0_ROCK = {
     "path": "assets/source/textures/cc0/polyhaven_rock_boulder_dry",
@@ -58,12 +67,30 @@ def _check(condition, message):
         raise RuntimeError(message)
 
 
-def _part(asset_id_type, purpose, objs, extra=None):
-    """Bake the part's shaders to one texture set, then the blockout's attachment checks."""
+def _reduce_and_bake(objs, tolerance, texture, size, **bake):
+    """Reduces every object, bakes one texture set (normals from the full-detail copies), then
+    removes the copies. Returns the record fields for textures and reduction."""
+    before = after = 0
+    highs = {}
+    for obj in objs:
+        b, a, high = sf.reduce(obj, tolerance)
+        before, after = before + b, after + a
+        highs[obj.name] = high if a < b else None
+        if a == b:
+            sf.drop_highs([high])
     sf.unwrap(objs)
-    textures = sf.bake_set(objs, asset_id_type["texture"], PART_TEXTURE, **(extra or {}))
+    textures = sf.bake_set(objs, texture, size, highs=highs, **bake)
+    sf.drop_highs(highs.values())
+    return {"textures": textures,
+            "reduction": {"method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+                          "tolerance_m": tolerance, "triangles_before": before, "triangles_after": after}}
+
+
+def _part(asset_id_type, purpose, objs, extra=None):
+    """Reduce and bake the part to one texture set, then the blockout's attachment checks."""
+    reduced = _reduce_and_bake(objs, PART_TOLERANCE, asset_id_type["texture"], PART_TEXTURE, **(extra or {}))
     fields = mb._part_fields(asset_id_type["type"], purpose)
-    fields["textures"] = textures
+    fields.update(reduced)
     fields["revision"] = 2
     return fields
 
@@ -187,15 +214,18 @@ def build_eye_spot():
     hood = []
     rows, cols = 6, 18
     for i in range(rows + 1):
-        pitch = math.radians(-8.0 + 88.0 * i / rows)          # from the brow (front) over the top
+        row = i / rows
         for j in range(cols + 1):
-            yaw = math.radians(-80.0 + 160.0 * j / cols)
+            yaw = math.radians(-78.0 + 156.0 * j / cols)
+            # From the lid's front edge, which dips to a soft petal point at the middle, over the
+            # top and a little behind it. The eye's front stays open.
+            mid = math.exp(-((j / cols - 0.5) / 0.2) ** 2)
+            pitch = math.radians((30.0 - 14.0 * mid) + (100.0 - (30.0 - 14.0 * mid)) * row)
             edge = 1.0 - 0.18 * (abs(j / cols - 0.5) * 2.0) ** 2
             r = (EYE_BALL_R + 0.009) * edge
             d = Vector((math.sin(yaw) * math.cos(pitch), math.cos(yaw) * math.cos(pitch), math.sin(pitch)))
             # A soft point at the front middle: the petal tip.
-            tip = 0.012 * math.exp(-((j / cols - 0.5) / 0.18) ** 2) * (1.0 - i / rows)
-            hood.append(Vector((0.0, EYE_CENTRE_Y, 0.0)) + d * (r + tip * 0.3) + Vector((0.0, tip, 0.0)) * 0.6)
+            hood.append(Vector((0.0, EYE_CENTRE_Y, 0.0)) + d * r)
     hood_faces = [(i * (cols + 1) + j, i * (cols + 1) + j + 1, (i + 1) * (cols + 1) + j + 1, (i + 1) * (cols + 1) + j)
                   for i in range(rows) for j in range(cols)]
     lid = bc.mesh_object("EyeSpotLid", hood, hood_faces, [lid_proc], fix_normals=False, parent=eye)
@@ -232,33 +262,33 @@ def build_mouth_filter():
     proc = sh.out(base, sh.math("ADD", 0.5, sh.math("MULTIPLY", inward, -0.12)))
 
     rim = mb.FILTER_RIM_RADIUS
-    profile = [(-mb.PART_EMBED, 0.0), (-mb.PART_EMBED, 0.068), (0.0, 0.07), (0.025, 0.074), (0.055, 0.085),
+    profile = [(-mb.PART_EMBED, 0.0), (-mb.PART_EMBED, 0.068), (0.0, 0.07), (0.055, 0.085),
                (0.085, 0.099), (0.108, 0.111), (0.122, rim), (0.131, rim - 0.006), (0.128, rim - 0.018),
-               (0.112, 0.094), (0.09, 0.078), (0.065, 0.058), (0.045, 0.034), (0.036, 0.0)]
+               (0.112, 0.094), (0.09, 0.078), (0.045, 0.034), (0.036, 0.0)]
     segments = 32
     verts, faces, _ = bc.revolve(profile, segments)
     # Scallop the rim into eight petals: the lip rings swell and rise at each petal's middle and
     # pinch between petals (pebble, petal, bead).
-    lip_rings = range(6, 10)
-    for ring in lip_rings:
-        weight = {6: 0.35, 7: 0.75, 8: 1.0, 9: 0.8}[ring]
+    for ring, weight in ((5, 0.35), (6, 0.75), (7, 1.0), (8, 0.8)):
         for j in range(segments):
             a = 2.0 * math.pi * j / segments
             petal = math.cos(PETALS * a)                      # +1 mid-petal, -1 between petals
             k = 1 + (ring - 1) * segments + j                 # ring 0 is the pole at the base
             v = Vector(verts[k])
-            scale = 1.0 + weight * 0.07 * petal
-            verts[k] = (v.x * scale, v.y + weight * 0.008 * petal, v.z * scale)
-    # The fringe: sixteen tapered cilia leaning out between the petals.
-    lean = math.radians(40.0)
-    for k in range(16):
-        a = 2.0 * math.pi * (k + 0.5) / 16
+            scale = 1.0 + weight * 0.1 * petal
+            verts[k] = (v.x * scale, v.y + weight * 0.014 * petal, v.z * scale)
+    # The fringe: soft cilia curling out from between the petals, each ending in a round bead. They
+    # stay soft and curved: in this era a sharp point means danger (art direction section 2).
+    lean = math.radians(35.0)
+    for k in range(PETALS * 2):
+        a = 2.0 * math.pi * (k + 0.5) / (PETALS * 2)
         radial_dir = Vector((math.cos(a), 0.0, math.sin(a)))
         out = Vector((0.0, math.cos(lean), 0.0)) + radial_dir * math.sin(lean)
-        base_pt = Vector((0.0, 0.124, 0.0)) + radial_dir * (rim * 0.97)
-        length = 0.048 + 0.012 * math.cos(3.0 * a)
-        path = [base_pt + out * (length * i / 3) + radial_dir * (0.008 * (i / 3) ** 2) for i in range(4)]
-        tv, tf = bc.tube(path, [0.009, 0.007, 0.0045, 0.0], 5)
+        base_pt = Vector((0.0, 0.122, 0.0)) + radial_dir * (rim * 0.93)
+        length = 0.05 + 0.01 * math.cos(3.0 * a)
+        path = [base_pt + out * (length * t) + radial_dir * (0.022 * t * t) for t in (0.0, 0.3, 0.6, 0.85, 0.95, 1.0)]
+        widths = [0.0055, 0.0042, 0.0034, 0.0046, 0.0038, 0.0]
+        tv, tf = _sweep(path, lambda i, _a, widths=widths: widths[i], 4)
         bc.append(verts, faces, tv, tf)
     obj = bc.mesh_object("MouthFilter", verts, faces, [proc])
     return _part({"type": "mouth_filter", "texture": "PartMouthFilter"},
@@ -313,8 +343,8 @@ def build_mouth_jaw():
             inner = Vector((-sx, 0.0, 0.0))
             inner = (inner - tangent * inner.dot(tangent)).normalized()
             r = 0.031 * (1.0 - t) ** 0.75
-            tooth = [c + inner * (r * 0.4), c + inner * (r * 0.4 + 0.016) - tangent * 0.006]
-            ttv, ttf = bc.tube(tooth, [0.007, 0.0], 5)
+            tooth = [c + inner * (r * 0.3), c + inner * (r * 0.3 + 0.024) - tangent * 0.008]
+            ttv, ttf = bc.tube(tooth, [0.0085, 0.0], 6)
             bc.append(tv, tf, ttv, ttf)
         m = bc.mesh_object(f"Mandible_{side}", tv, tf, [mandible_proc], parent=base,
                            location=(sx * mb.JAW_HINGE[0], mb.JAW_HINGE[1], 0.0))
@@ -381,9 +411,8 @@ def build_plankton():
     for j in range(segments):
         faces.append((bottom, ring(len(lats) - 1, j + 1), ring(len(lats) - 1, j)))
     obj = bc.mesh_object("Plankton", pts, faces, [proc])
-    sf.unwrap([obj])
-    textures = sf.bake_set([obj], "Plankton", FOOD_TEXTURE, normal=True, emission=True)
-    radius = mb._horizontal_radius(pts)
+    reduced = _reduce_and_bake([obj], FOOD_TOLERANCE, "Plankton", FOOD_TEXTURE, normal=True, emission=True)
+    radius = mb._horizontal_radius([obj.matrix_world @ v.co for v in obj.data.vertices])
     _check(abs(radius - mb.PLANKTON_ITEM_RADIUS) <= 0.2 * mb.PLANKTON_ITEM_RADIUS, "plankton: mesh radius fits the item radius")
     return {
         "purpose": "M1 plankton food item: a glowing centric diatom (radial ribs, pore rings, a food-glow core), drawn many times with one MultiMesh.",
@@ -393,26 +422,26 @@ def build_plankton():
         "pivot": "centre of the item",
         "item_radius_m": mb.PLANKTON_ITEM_RADIUS,
         "mesh_radius_m": round(radius, 3),
-        "textures": textures,
+        **reduced,
     }
 
 
 def build_carrion():
     sh = sf.Shader("M_CarrionProc")
     marble = sh.noise(14.0, 4.0, 0.6)
-    flesh = sh.ramp(marble, [(0.3, "#4A1622"), (0.5, "#7E2A2C"), (0.62, "rust"), (0.75, "#C8705A")])
+    flesh = sh.ramp(marble, [(0.3, "#6E2430"), (0.48, "#9A3A36"), (0.6, "rust"), (0.72, "#D27C62")])
     # Torn muscle fibres run along one direction; a pale sinew band and fat beads sit on top, so
     # the chunk reads as meat by shape and marking, not colour alone (section 3).
     fibres = sh.noise(3.0, 2.0, 0.5, vector=sh.vmath("MULTIPLY", sh.pos, (60.0, 6.0, 60.0)))
-    flesh = sh.mix(sh.math("MULTIPLY", sh.remap(fibres, 0.35, 0.65), 0.35), flesh, "#3A1018")
+    flesh = sh.mix(sh.math("MULTIPLY", sh.remap(fibres, 0.35, 0.65), 0.3), flesh, "#5A1A24")
     across = sh.math("ADD", sh.vmath("DOT_PRODUCT", sh.pos, (0.6, -0.8, 0.0)), sh.math("MULTIPLY", sh.noise(18.0, 2.0), 0.03))
     sinew = sh.math("MULTIPLY", sh.remap(sh.math("ABSOLUTE", sh.math("SUBTRACT", across, 0.035)), 0.045, 0.02),
                     sh.remap(sh.axis("Z"), -0.02, 0.04))
     fat = sh.math("MULTIPLY", sh.remap(sh.voronoi(16.0, 1.0), 0.17, 0.11), sh.remap(sh.axis("Z"), 0.0, 0.08))
     base = sh.mix(sinew, flesh, sh.ramp(sh.noise(30.0, 2.0), [(0.3, "#E8D6C0"), (0.7, "cream")]))
     base = sh.mix(sh.math("MULTIPLY", fat, 0.9), base, "#EFC98F")
-    underside = sh.remap(sh.axis("Z"), -0.09, -0.03)
-    base = sh.mix(underside, base, "#2E0E14")
+    underside = sh.remap(sh.axis("Z"), -0.03, -0.09)
+    base = sh.mix(sh.math("MULTIPLY", underside, 0.6), base, "#4A1620")
     sh.bump(sh.math("ADD", sh.math("MULTIPLY", fibres, 0.6), sh.math("ADD", sinew, fat)), 0.35, 0.004)
     wet = sh.math("ADD", 0.32, sh.math("MULTIPLY", sh.math("ADD", sinew, fat, clamp=True), 0.2))
     proc = sh.out(base, wet)
@@ -435,9 +464,8 @@ def build_carrion():
         p.x *= mb.CARRION_MESH_RADIUS / widest
         p.y *= mb.CARRION_MESH_RADIUS / widest
     obj = bc.mesh_object("Carrion", pts, faces, [proc])
-    sf.unwrap([obj])
-    textures = sf.bake_set([obj], "Carrion", FOOD_TEXTURE, normal=True)
-    radius = mb._horizontal_radius(pts)
+    reduced = _reduce_and_bake([obj], FOOD_TOLERANCE, "Carrion", FOOD_TEXTURE, normal=True)
+    radius = mb._horizontal_radius([obj.matrix_world @ v.co for v in obj.data.vertices])
     _check(abs(radius - mb.CARRION_ITEM_RADIUS) <= 0.2 * mb.CARRION_ITEM_RADIUS, "carrion: mesh radius fits the item radius")
     return {
         "purpose": "M1 carrion food item (static, sinks, no drift): a torn, marbled flesh chunk with a pale sinew band and fat beads, drawn with one MultiMesh.",
@@ -447,7 +475,7 @@ def build_carrion():
         "pivot": "centre of the item",
         "item_radius_m": mb.CARRION_ITEM_RADIUS,
         "mesh_radius_m": round(radius, 3),
-        "textures": textures,
+        **reduced,
     }
 
 
@@ -455,9 +483,9 @@ def build_carrion():
 
 
 ROCK_TINTS = {   # (stone base, stone light, accent) per variant, cool and below about 55% saturation
-    "rock_a": ("#5E6A6C", "#A9ABA0", "mineral_amber"),
-    "rock_b": ("#5A5F66", "#9EA3A6", "#C99A5B"),
-    "rock_c": ("#66665E", "#B2AC9C", "mineral_amber"),
+    "rock_a": ("#646660", "#ABA79A", "mineral_amber"),
+    "rock_b": ("#5E6264", "#A2A39E", "#C99A5B"),
+    "rock_c": ("#6A665C", "#B4AC9A", "mineral_amber"),
 }
 
 
@@ -473,18 +501,18 @@ def build_rock(asset_id):
     lum = sh.node("ShaderNodeRGBToBW")
     sh.link(scan, lum.inputs["Color"])
     # The scan gives value and grain only; the palette gives the colour (habitat stays cool).
-    stone = sh.ramp(lum.outputs["Val"], [(0.15, "deep_shadow"), (0.35, dark), (0.75, light), (1.0, "#D8D2C2")])
+    stone = sh.ramp(lum.outputs["Val"], [(0.12, "#2F3638"), (0.35, dark), (0.75, light), (1.0, "#D8D2C2")])
     geo = sh.node("ShaderNodeNewGeometry")
     up = sh.vmath("DOT_PRODUCT", geo.outputs["Normal"], (0.0, 0.0, 1.0))
     # Algae and moss settle on the lit, upward faces above the water line (pebble top reads green
     # from the gameplay camera), patchy by noise.
     patch = sh.noise(2.2, 4.0, 0.6, w=seed)
     moss_mask = sh.math("MULTIPLY", sh.remap(up, 0.35, 0.8), sh.remap(patch, 0.42, 0.58))
-    moss = sh.ramp(sh.noise(18.0, 3.0, w=seed), [(0.3, "moss_deep"), (0.65, "algae_green"), (1.0, "#9CC27A")])
-    base = sh.mix(sh.math("MULTIPLY", moss_mask, 0.92), stone, moss)
+    moss = sh.ramp(sh.noise(18.0, 3.0, w=seed), [(0.3, "moss_deep"), (0.65, "#5E9455"), (1.0, "#93B07A")])
+    base = sh.mix(sh.math("MULTIPLY", moss_mask, 0.8), stone, moss)
     # A darker, slightly wet band where the rock sits in water, fading under the swim plane.
     wet = sh.remap(sh.axis("Z"), 0.1, -0.5)
-    base = sh.mix(sh.math("MULTIPLY", wet, 0.45), base, "#24364A")
+    base = sh.mix(sh.math("MULTIPLY", wet, 0.3), base, "#2B3A3E")
     # Mineral flecks: small warm beads in the stone, the habitat's one warm accent.
     flecks = sh.math("MULTIPLY", sh.remap(sh.voronoi(9.0, 1.0, vector=sh.vmath("ADD", sh.pos, (seed, seed, 0.0))), 0.07, 0.035),
                      sh.math("SUBTRACT", 1.0, moss_mask, clamp=True))
@@ -496,16 +524,142 @@ def build_rock(asset_id):
     proc = sh.out(base, rough)
     obj.data.materials.clear()
     obj.data.materials.append(proc)
-    sf.unwrap([obj], margin=0.004)
-    textures = sf.bake_set([obj], f"Rock{asset_id[-1].upper()}", ROCK_TEXTURE, normal=True)
+    reduced = _reduce_and_bake([obj], ROCK_TOLERANCE, f"Rock{asset_id[-1].upper()}", ROCK_TEXTURE, normal=True)
+    # The reduced rock must still meet the blockout's swim-band contract (tests/test_assets.gd).
+    pts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    tris = [tuple(t.vertices) for t in _triangles(obj)]
+    outline = mb.band_outline(pts, tris, mb.ROCK_OUTLINE_HEIGHTS)
+    at_plane = mb.band_outline(pts, tris, [0.0])
+    lo, hi = (k * mb.ROCK_FOOTPRINT_RADIUS for k in mb.ROCK_OUTLINE)
+    _check(lo <= min(outline) and max(outline) <= hi, f"{asset_id}: reduced swim band outline {min(outline):.3f}-{max(outline):.3f}")
+    _check(lo <= min(at_plane) and max(at_plane) <= hi, f"{asset_id}: reduced swim plane section {min(at_plane):.3f}-{max(at_plane):.3f}")
     fields.update({
+        "max_radius_m": round(mb._horizontal_radius(pts), 3),
+        "swim_band_radius_m": round(max(outline), 3),
+        "swim_band_min_radius_m": round(min(outline), 3),
+        "swim_plane_radius_range_m": [round(min(at_plane), 3), round(max(at_plane), 3)],
         "purpose": "M1 pool rock, an obstacle the cell slides around: cool stone with algae on its lit top, a wet band at the water line and warm mineral flecks. Placed by game/data/pool_m1.json with yaw and uniform scale.",
         "revision": 3,
-        "textures": textures,
+        **reduced,
         "dependencies": [dict(CC0_ROCK)],
         "provenance_extra": "; surface detail from the CC0 Poly Haven scan in dependencies",
     })
     return fields
+
+
+# --- Player cell -----------------------------------------------------------------------------
+
+# The M1 body, in the approved quality-ladder look (cell_ladder rung 2), fitted to the gameplay
+# contract: PartPlacement's ellipsoid (0.46 wide, 0.5 long, 0.39 tall), the five sockets on it,
+# the eyes where the sample's were (their tops at 0.26, under the eye spot's 0.30), and the nodes
+# the pool view hides (Body/Mouth, Body/Flagellum) and keeps (Body/Eye_*, Body/Pupil_*).
+CELL_RADII = (0.46, 0.5, 0.39)
+CELL_EYES = {"L": Vector((-0.17, 0.335, 0.145)), "R": Vector((0.17, 0.335, 0.145))}
+CELL_EYE_R = 0.095
+CELL_TEXTURE = 1024   # the player's own body is the most-seen asset and is shown close up in the editor
+CELL_TOLERANCE = 0.0015
+CELL_SOCKETS = {"socket_mouth": (0, 0.5, 0), "socket_tail": (0, -0.5, 0), "socket_top": (0, 0, 0.39),
+                "socket_side_L": (-0.46, 0, 0), "socket_side_R": (0.46, 0, 0)}
+
+
+def _uv_sphere(name, radius, location, segments, rings, parent, scale=(1, 1, 1), rotation=None):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=segments, ring_count=rings, radius=radius, location=location)
+    obj = cl.name_obj(bpy.context.active_object, name)
+    obj.scale = scale
+    if rotation is not None:
+        obj.rotation_euler = rotation
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    bpy.ops.object.shade_smooth()
+    obj.parent = parent
+    return obj
+
+
+def _cell_eye(side, body, mats):
+    """Eyeball, iris and pupil caps, and upper and lower lids that pivot on the eye centre."""
+    centre = CELL_EYES[side]
+    gaze = Vector((centre.x * 1.6, 1.0, 0.1)).normalized()
+    rot = gaze.to_track_quat("Z", "Y").to_euler()
+    eye = _uv_sphere(f"Eye_{side}", CELL_EYE_R, centre, 24, 12, body)
+    eye.data.materials.append(mats["sclera"])
+    for name, radius, depth, flat, mat in (("Iris", 0.06, CELL_EYE_R - 0.016, 0.4, "iris"),
+                                           ("Pupil", 0.032, CELL_EYE_R + 0.002, 0.35, "pupil")):
+        cap = _uv_sphere(f"{name}_{side}", radius, centre + gaze * depth, 18, 8, body, rotation=rot)
+        cap.scale = (1, 1, flat)
+        sf.select([cap])
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        cap.data.materials.append(mats[mat])
+    yaw = math.atan2(-gaze.x, gaze.y)
+    for lid, keep_upper, tilt in (("LidUpper", True, 48.0), ("LidLower", False, -62.0)):
+        bm = cl.bmesh.new()
+        cl.bmesh.ops.create_uvsphere(bm, u_segments=20, v_segments=10, radius=CELL_EYE_R + 0.005)
+        doomed = [v for v in bm.verts if (v.co.z < -0.004 if keep_upper else v.co.z > 0.004)]
+        cl.bmesh.ops.delete(bm, geom=doomed, context="VERTS")
+        mesh = bpy.data.meshes.new(f"{lid}_{side}_mesh")
+        bm.to_mesh(mesh)
+        bm.free()
+        obj = bpy.data.objects.new(f"{lid}_{side}", mesh)
+        bpy.context.collection.objects.link(obj)
+        obj.location = centre
+        obj.rotation_euler = (math.radians(tilt), 0, yaw)
+        solid = obj.modifiers.new("Solidify", "SOLIDIFY")
+        solid.thickness = 0.009
+        solid.offset = 1.0
+        sf.select([obj])
+        bpy.ops.object.modifier_apply(modifier="Solidify")
+        bpy.ops.object.shade_smooth()
+        obj.data.materials.append(mats["lid"])
+        obj.parent = body
+
+
+def build_sample_cell():
+    cl.BODY_RADII = CELL_RADII
+    cl.EYE_DIR = {side: c.normalized() for side, c in CELL_EYES.items()}
+    body = cl.build_body_mesh(level=4)
+    beads = cl.add_organelles(body)
+    membrane = cl.body_membrane()
+    organelle = ld.principled("M_OrganelleProc", ld.color("mineral_amber"), 0.4, ld.color("mineral_amber"), 0.5)
+    body.data.materials.append(membrane)
+    for bead in beads:
+        bead.data.materials.append(organelle)
+    cl.join_into(body, beads)
+    mats = {
+        "sclera": ld.principled("M_ScleraProc", ld.color("cream"), 0.08),
+        "iris": ld.principled("M_IrisProc", ld.color("pool_teal"), 0.25),
+        "pupil": ld.principled("M_PupilProc", ld.color("#0E1A26"), 0.05),
+        "lid": ld.principled("M_LidProc", ld.color("rust"), 0.62),
+    }
+    for side in CELL_EYES:
+        _cell_eye(side, body, mats)
+    mouth = cl.name_obj(cl.add_lips(body), "Mouth")
+    mouth.data.materials.append(ld.principled("M_LipsProc", ld.color("#8E3A33"), 0.55))
+    flagellum, collar = cl.add_flagellum(body)
+    flagellum.data.materials.append(membrane)
+    collar.data.materials.append(membrane)
+    cl.join_into(flagellum, [collar])
+    for obj in [o for o in bpy.data.objects if o.type == "MESH"]:
+        sf.select([obj])
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    for name, loc in CELL_SOCKETS.items():
+        cl.add_socket(name, loc, body)
+    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+    reduced = _reduce_and_bake(meshes, CELL_TOLERANCE, "PlayerCell", CELL_TEXTURE)
+    for side, c in CELL_EYES.items():
+        eye = bpy.data.objects[f"Eye_{side}"]
+        for part in (f"Eye_{side}", f"LidUpper_{side}"):
+            obj = bpy.data.objects[part]
+            top = max((obj.matrix_world @ v.co).z for v in obj.data.vertices)
+            _check(top <= 0.26, f"sample_cell: {part} top {top:.3f} stays under the eye spot (0.30)")
+    return {
+        "purpose": "M1 player cell body in the approved art direction (quality-ladder look): a coral pebble body with lidded eyes, organelle beads, lips and a flagellum. The pool hides Body/Mouth and Body/Flagellum (genome parts replace them).",
+        "category": "creature",
+        "revision": 2,
+        **reduced,
+    }
+
+
+def _triangles(obj):
+    obj.data.calc_loop_triangles()
+    return obj.data.loop_triangles
 
 
 # --- Driver -----------------------------------------------------------------------------------
@@ -521,6 +675,7 @@ ASSETS = {
     "rock_a": (lambda: build_rock("rock_a"), 1300),
     "rock_b": (lambda: build_rock("rock_b"), 1300),
     "rock_c": (lambda: build_rock("rock_c"), 1300),
+    "sample_cell": (build_sample_cell, 8000),
 }
 
 

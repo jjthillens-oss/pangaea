@@ -17,7 +17,7 @@
     "y_forward": 0.365,
     "z_up": 0.2
   },
-  "triangles": 384,
+  "triangles": 284,
   "triangle_budget": 400,
   "textures": [
     {
@@ -58,7 +58,8 @@
     }
   ],
   "materials": [
-    "M_Plankton"
+    "M_Plankton",
+    "M_PlanktonProc"
   ],
   "rig_family": null,
   "animations": [],
@@ -70,5 +71,11 @@
   "pivot": "centre of the item",
   "item_radius_m": 0.18,
   "mesh_radius_m": 0.185,
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 384,
+    "triangles_after": 284
+  },
   "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

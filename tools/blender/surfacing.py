@@ -147,6 +147,71 @@ class Shader:
         return self.mat
 
 
+# --- Triangle reduction --------------------------------------------------------------------
+
+
+def _surface_error(obj_a, obj_b):
+    """Largest distance between the two objects' surfaces, both ways, measured at the vertices."""
+    from mathutils.bvhtree import BVHTree
+    deps = bpy.context.evaluated_depsgraph_get()
+    worst = 0.0
+    for src, dst in ((obj_a, obj_b), (obj_b, obj_a)):
+        tree = BVHTree.FromObject(dst, deps)
+        mesh = src.evaluated_get(deps).to_mesh()
+        for v in mesh.vertices:
+            hit = tree.find_nearest(v.co)
+            worst = max(worst, hit[3] if hit[0] is not None else 1e9)
+        src.evaluated_get(deps).to_mesh_clear()
+    return worst
+
+
+def reduce(obj, tolerance, keep_high=True, steps=9):
+    """Cuts `obj`'s triangles as far as Blender's collapse decimation allows while its surface stays
+    within `tolerance` metres of the original everywhere (checked both ways at every vertex).
+
+    With keep_high the original stays as a hidden copy, named <name>_high, so bake_set can bake
+    its shading into the reduced mesh's normal map. Returns (triangles before, after, high copy)."""
+    high = obj.copy()
+    high.data = obj.data.copy()
+    high.name = f"{obj.name}_high"
+    bpy.context.collection.objects.link(high)
+    high.parent = obj.parent
+    high.matrix_world = obj.matrix_world.copy()
+    before = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+    lo, hi = 0.0, 1.0      # lo: smallest ratio known to fail, hi: smallest known to pass
+    mod = obj.modifiers.new("Reduce", "DECIMATE")
+    mod.decimate_type = "COLLAPSE"
+    mod.use_collapse_triangulate = True
+    for _ in range(steps):
+        mid = (lo + hi) / 2.0
+        mod.ratio = mid
+        bpy.context.view_layer.update()
+        if _surface_error(obj, high) <= tolerance:
+            hi = mid
+        else:
+            lo = mid
+    mod.ratio = hi
+    select([obj])
+    if hi < 1.0:
+        bpy.ops.object.modifier_apply(modifier="Reduce")
+    else:
+        obj.modifiers.remove(mod)
+    after = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+    if not keep_high:
+        bpy.data.objects.remove(high)
+        high = None
+    else:
+        high.hide_render = True
+        high.hide_set(True)
+    return before, after, high
+
+
+def drop_highs(highs):
+    for high in highs:
+        if high is not None:
+            bpy.data.objects.remove(high)
+
+
 # --- UVs and baking --------------------------------------------------------------------------
 
 
@@ -187,15 +252,42 @@ def _bake(objs, image, kind, **kwargs):
         mat.node_tree.nodes.remove(n)
 
 
+def _bake_from_high(high, low, image, clear):
+    """Bakes `high`'s shading normals into `low`'s tangent space (selected to active)."""
+    high.hide_set(False)
+    nodes = []
+    for mat in {slot.material for slot in low.material_slots if slot.material}:
+        n = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        n.image = image
+        mat.node_tree.nodes.active = n
+        nodes.append((mat, n))
+    bpy.ops.object.select_all(action="DESELECT")
+    high.select_set(True)
+    low.select_set(True)
+    bpy.context.view_layer.objects.active = low
+    size = max(low.dimensions)
+    bpy.ops.object.bake(type="NORMAL", normal_space="TANGENT", use_selected_to_active=True,
+                        cage_extrusion=0.02 * size, max_ray_distance=0.05 * size, use_clear=clear, margin=4)
+    for mat, n in nodes:
+        mat.node_tree.nodes.remove(n)
+    high.hide_set(True)
+
+
 def _pixels(image):
     buf = np.empty(image.size[0] * image.size[1] * 4, dtype=np.float32)
     image.pixels.foreach_get(buf)
     return buf.reshape(-1, 4)
 
 
-def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, metallic=0.0):
+def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, metallic=0.0, highs=None):
     """Bakes the procedural materials on `objs` to one texture set and gives every face of every
-    object a single glTF-safe material M_<name>. Returns the record's `textures` entries."""
+    object a single glTF-safe material M_<name>. Returns the record's `textures` entries.
+
+    `highs` maps an object's name to its unreduced copy (from reduce()); that object's normal map
+    is then baked from the copy, so reduction keeps the original's shading. A normal map is baked
+    whenever any object has a copy."""
+    highs = {k: v for k, v in (highs or {}).items() if v is not None}
+    normal = normal or bool(highs)
     scene = bpy.context.scene
     ld.setup_render(samples=8)
     scene.render.bake.margin_type = "EXTEND"
@@ -210,7 +302,11 @@ def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, meta
     extra = []
     if normal:
         nor = _image(f"T_{name}_Normal", size, "Non-Color")
-        _bake(objs, nor, "NORMAL", normal_space="TANGENT")
+        own = [o for o in objs if o.name not in highs]
+        if own:
+            _bake(own, nor, "NORMAL", normal_space="TANGENT")
+        for i, obj in enumerate(o for o in objs if o.name in highs):
+            _bake_from_high(highs[obj.name], obj, nor, clear=not own and i == 0)
         extra.append(nor)
     if emission:
         emit = _image(f"T_{name}_Emission", size, "sRGB")
