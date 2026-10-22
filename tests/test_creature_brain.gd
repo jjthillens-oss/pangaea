@@ -328,13 +328,14 @@ func test_a_sated_hunter_pushed_off_its_home_swims_back_past_prey_in_view_and_no
 		if not noticed.is_empty():
 			check(int(noticed[0].tick) >= home_at, "%s: the notice came once it was home (tick %d, home at %d)" % [case[0], noticed[0].tick, home_at])
 		check_eq(c.label(), "rest/watch", "%s: it watches the prey from home" % case[0])
-	# Prey that hurt it, or that it bit before, is still noticed on the way home.
+	# Prey that hurt it, or that it bit before, is still noticed on the way home, even behind other prey.
 	var hurt := _ambush()
 	hurt.m.position = Vector2(-2.0, 0.0)
 	hurt.mem.attacker = "a"
-	_tick(hurt, 5, [_percept(hurt, "a", Vector2(4.0, 0.0))])
-	_tick(hurt, 11, [_percept(hurt, "a", Vector2(4.0, 0.0))])
+	_tick(hurt, 5, [_percept(hurt, "b", Vector2(1.0, 0.0)), _percept(hurt, "a", Vector2(4.0, 0.0))])
+	_tick(hurt, 11, [_percept(hurt, "b", Vector2(1.0, 0.0)), _percept(hurt, "a", Vector2(4.0, 0.0))])
 	check_eq(hurt.label(), "notice", "its attacker is noticed away from home")
+	check_eq(hurt.mem.target, "a", "the attacker, not the nearer prey")
 	var bitten := _ambush()
 	bitten.m.position = Vector2(-2.0, 0.0)
 	bitten.mem.landed_on["a"] = 0
