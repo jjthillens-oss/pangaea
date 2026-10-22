@@ -61,6 +61,12 @@ These came with the final step 2 plan (`docs/milestones/m1-step2-plan.md`, secti
 10. **Camera.** Pitch 55 degrees, vertical field of view 45 degrees, distance 14 m, zoom 10 to 20 m in 2 m steps, yaw fixed north-up, no shake or roll. This follows the approved brief (about 55 degrees, following the cell).
 11. **Pool floor is one vertex-coloured material.** `pool_floor` uses one material, `M_PoolFloor`, coloured per vertex so sand, silt and rim stone fade into each other. It replaces three materials assigned per face, whose silt patches had stair-step edges. The floor now reaches r 66 m (was 58), because the widest view from the wall reaches about r 64.9. Impact: the floor is one mesh surface with one material. Godot's glTF import leaves the vertex colours out of the material, so `pool_floor.glb.import` points the material at `assets/export/M_PoolFloor.tres`. The colours are stored sRGB-encoded, so other glTF viewers show the floor lighter than the game does.
 
+## 2026-10-22 · Rival species evolve by visible rules (CONFIRMED direction)
+The owner chose option B on the research decision card: the player still designs their own creature, and between the player's generations rival species adapt under bounded rules that the journal shows. This is innovation backlog item IB-05 (`docs/research/innovation-backlog.md`). It is planned as an M3 spike with tests. The rules, rates and caps are PROPOSED tuning, and nothing is built yet. Offspring variants (option C) and a selection-led population (option D) were not chosen.
+
+## 2026-10-22 · Runtime reshaping boundary for creature parts (CONFIRMED)
+The owner chose option B on the research decision card. The editor may reshape creature parts in-game only through shape keys and bone scaling that are authored in Blender, and only within set limits. Every mesh still comes from a Blender source, and collision proxies are refit and tested at the extreme supported values. Runtime-generated body skins (option C) are not approved. This is the approved boundary that Bible section 12 requires for runtime deformation, and it is innovation backlog item IB-15. The limits per part are PROPOSED tuning data.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
