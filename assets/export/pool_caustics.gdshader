@@ -4,8 +4,9 @@ shader_type spatial;
 // texture). The pass is lit like the floor, so the sun's shadows mask it. It skips the engine
 // fog, which would add the fog colour a second time, and fades with the same fog the floor gets
 // instead: the fog_* uniforms copy game/scenes/pool/pool_environment.tres
-// (tests/test_pool_look.gd checks this). M_PoolWater, the next pass, then takes the water's share
-// of it like the floor's.
+// (tests/test_pool_look.gd checks this). Caustics come from the water's surface, so they stop
+// where the floor rises out of the water and the dry rim lip gets none; surface_y copies
+// M_PoolWater's. M_PoolWater, the next pass, then takes the water's share of it like the floor's.
 render_mode blend_add, depth_draw_never, diffuse_lambert, specular_disabled, ambient_light_disabled, fog_disabled;
 
 uniform vec3 tint : source_color = vec3(0.957, 0.918, 0.824);   // cream highlight, never pure white
@@ -16,10 +17,12 @@ uniform float warp = 0.3;             // how far a slow swirl bends the lines
 uniform float fog_density = 0.0;
 uniform float fog_height = 0.0;
 uniform float fog_height_density = 0.0;
+uniform float surface_y = 0.8;        // the water's surface in world metres (M_PoolWater)
 
 const float SHARPNESS = 4.0;          // higher keeps the light closer to the cell borders
 const float LAYER_SCALE = 1.37;
 const vec2 LAYER_OFFSET = vec2(3.1, 7.4);
+const float SURFACE_FADE_M = 0.2;     // the light fades out over this much floor below the surface
 
 varying vec3 world_pos;
 
@@ -58,5 +61,6 @@ void fragment() {
 	float depth_fog = 1.0 - exp(-fog_density * length(VERTEX));
 	float height_fog = 1.0 - exp(min(0.0, (world_pos.y - fog_height) * fog_height_density));
 	float fog = max(depth_fog, height_fog);
-	ALBEDO = tint * (c * strength * detail * (1.0 - fog));
+	float wet = 1.0 - smoothstep(surface_y - SURFACE_FADE_M, surface_y, world_pos.y);
+	ALBEDO = tint * (c * strength * detail * (1.0 - fog) * wet);
 }

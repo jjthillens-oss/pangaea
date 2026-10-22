@@ -126,3 +126,16 @@ func test_the_pool_keeps_one_shadowed_key_light_and_no_costly_screen_effects() -
 	var env := _env()
 	for key in ["ssr_enabled", "ssao_enabled", "ssil_enabled", "sdfgi_enabled", "volumetric_fog_enabled"]:
 		check(not env.get(key), "%s is off" % key)
+
+
+
+func test_caustic_light_stops_where_the_floor_rises_out_of_the_water() -> void:
+	# The rim lip stands above the water; caustic light there lit dry stone up to near-white.
+	var passes := _floor_passes()
+	if passes.size() != 2:
+		check(false, "the floor has a caustic and a water pass")
+		return
+	var caustic_surface: Variant = (passes[0] as ShaderMaterial).get_shader_parameter("surface_y")
+	var water_surface: Variant = (passes[1] as ShaderMaterial).get_shader_parameter("surface_y")
+	check(caustic_surface != null and water_surface != null and is_equal_approx(float(caustic_surface), float(water_surface)),
+			"the caustics stop at the water's surface: %s, the water's %s" % [caustic_surface, water_surface])
