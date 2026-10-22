@@ -38,7 +38,8 @@ item proposes a different shape that fits the Bible's exclusions, and says so.
   - *Refinement of a proposal*: sharpens something the Bible proposes but has not approved (era mechanics, §26 open
     items) without adding scope.
   - *Scope change needing approval*: adds a system, a boundary, or a route the Bible does not yet cover.
-  - *Conflicts with Bible exclusion*: touches the §2 exclusions (multiplayer, live service, network, user scripting).
+  - *Conflicts with Bible exclusion*: touches the §2 exclusions (multiplayer, live service, user scripting). Network calls are barred separately
+    by the project rules in `CLAUDE.md` unless approved.
 - **Milestone** is the Bible §23 milestone where the item would first be built or decided, followed by the governing
   section (§N).
 
@@ -92,7 +93,7 @@ called confusing; this turns the resolver's existing refusal reasons into teachi
 keep the last five resolver results and energy states, and show them on the respawn screen.
 
 **IB-03 Editor test space.** The player swims the edited body in a small, safe basin with one food and one slow
-threat before paying. The Bible already requires a test space (§12); fans praised undo and redo in Elysian Eclipse,
+threat before paying. The Bible already requires a test space (§12); the Elysian Eclipse developers added undo and redo to fix accidental edits,
 and the test space goes further by letting the player feel the change. Smallest slice: reuse the tide pool scene
 with a fixed seed, no saving, and a "commit" or "back to editor" choice.
 
@@ -123,7 +124,7 @@ the same shore route (the §6 acceptance form).
 
 **IB-09 Offline sharing.** The player exports "My Creature.pangaea-creature" to a folder and a friend imports it.
 The file is plain data (genome plus name), validated exactly like a save, and never contains code. It answers
-theme 8 without a network call, service or account, so it avoids the §2 network and live-service exclusions; it still
+theme 8 without a network call, service or account, so it avoids the §2 multiplayer and live-service exclusions and the `CLAUDE.md` no-network rule; it still
 adds a new player-facing file format, so it needs approval. Smallest slice: export and import of a genome through the
 existing validator, with tests for malformed, oversized and newer-build files.
 
@@ -138,8 +139,8 @@ Spore's frequent eco-disasters; the Bible already prefers observable consequence
 appears before any loss.
 
 **IB-12 Negotiable rivals.** Each rival civilization states what it wants and remembers what the player did, and
-there is always a path to peace, trade or outlasting it. Fans describe Spore's dominant empire as unbeatable and
-unbefriendable. Smallest slice: a rival with one goal, one memory list and three responses, tested for "a single
+there is always a path to peace, trade or outlasting it. Some fans describe Spore's dominant empire as unbeatable and
+unbefriendable, though others share strategies that beat it. Smallest slice: a rival with one goal, one memory list and three responses, tested for "a single
 accident does not cause permanent war" (§8 rule).
 
 **IB-13 Homeworld queue.** Requests from home wait in a list with deadlines measured in actions, not seconds, and
@@ -201,8 +202,8 @@ be carried. Smallest slice: in M3, one carry interaction in the resolver with a 
 **IB-28 GLB validation.** Every exported asset is checked by Khronos glTF-Validator before Godot import. Smallest
 slice: one CI step on the sample cell GLB. Needs approval as a dev-only tool.
 
-**IB-29 Online gallery.** Listed so the demand is recorded. It needs network calls, accounts, moderation and a
-service, all excluded by §2. Not recommended for the initial production scope; IB-09 is the offline alternative.
+**IB-29 Online gallery.** Listed so the demand is recorded. It is a live service (excluded by §2) and needs network
+calls (barred by `CLAUDE.md` without approval), accounts and moderation. Not recommended for the initial production scope; IB-09 is the offline alternative.
 
 ## Recommended for Joshua's decision now
 
@@ -256,8 +257,8 @@ M3. It should be decided before the M2 benchmark creature is rigged.
 
 ### D4. Should players be able to share creatures, and how? (IB-09, IB-10, IB-29)
 
-Context: sharing is theme 8 (high strength) and was central to Spore's success. The Bible excludes multiplayer, live
-service and network calls from initial scope (§2). File-based sharing avoids the network but adds a new file format.
+Context: sharing is theme 8 (high strength) and was central to Spore's success. The Bible excludes multiplayer and live
+service from initial scope (§2), and `CLAUDE.md` bars network calls without approval. File-based sharing avoids the network but adds a new file format.
 
 - **A. No sharing in the initial production scope.**
 - **B. Offline export and import of creature files, validated like saves, no network.** Answers most of the demand at
