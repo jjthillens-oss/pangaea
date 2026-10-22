@@ -766,16 +766,25 @@ func _contacts() -> void:
 		radii.append(c.phenotype.radius)
 		masses.append(c.phenotype.mass)
 	var n := motions.size()
+	# The positions again, packed: the pair loop reads them n x n times. A push updates both entries.
+	var at := PackedVector2Array()
+	for m in motions:
+		at.append(m.position)
 	var pushed := PackedByteArray()
 	pushed.resize(n)
 	for i in n:
+		var ri := radii[i]
+		var at_i := at[i]
 		for j in range(i + 1, n):
-			var reach := radii[i] + radii[j]
-			if motions[i].position.distance_squared_to(motions[j].position) >= reach * reach:
+			var reach := ri + radii[j]
+			if at_i.distance_squared_to(at[j]) >= reach * reach:
 				continue   # apart: the common case, checked here without a call
-			if PoolArena.separate(motions[i], radii[i], masses[i], motions[j], radii[j], masses[j]):
+			if PoolArena.separate(motions[i], ri, masses[i], motions[j], radii[j], masses[j]):
 				pushed[i] = 1
 				pushed[j] = 1
+				at_i = motions[i].position
+				at[i] = at_i
+				at[j] = motions[j].position
 	for i in n:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])

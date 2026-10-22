@@ -32,11 +32,13 @@ static func perceive(viewer: Dictionary, bodies: Array, arena: PoolArena) -> Arr
 	var half_fov: float = float(viewer.fov) / 2.0
 	var near: float = viewer.near
 	for body in bodies:
-		if body.id == viewer.id or not bool(body.get("alive", true)) or bool(body.get("concealed", false)):
-			continue
 		var at: Vector2 = body.position
 		var r: float = body.radius
 		var d := from.distance_to(at)
+		if d > sight + r and d > viewer_r + r + near:
+			continue   # beyond every sense: most bodies, so ruled out before anything else is read
+		if body.id == viewer.id or not bool(body.get("alive", true)) or bool(body.get("concealed", false)):
+			continue
 		var b := bearing(viewer, at)
 		var by := ""
 		if d <= viewer_r + r + near:
@@ -62,13 +64,15 @@ static func perceive_food(viewer: Dictionary, items: Array, kinds: PackedStringA
 	var sight: float = viewer.sight
 	var half_fov: float = float(viewer.fov) / 2.0
 	for item in items:
-		if not kinds.has(str(item.kind)):
-			continue
 		var at: Vector2 = item.position
 		var r: float = item.radius
 		var d := from.distance_to(at)
+		if not (d <= sight + r):
+			continue   # out of range (or no distance): most items, ruled out before anything else is read
+		if not kinds.has(str(item.kind)):
+			continue
 		var b := bearing(viewer, at)
-		if d <= sight + r and absf(b) <= half_fov + FOV_EPSILON:
+		if absf(b) <= half_fov + FOV_EPSILON:
 			out.append({"id": str(item.id), "kind": str(item.kind), "position": at, "radius": r, "distance": d, "bearing": b})
 	out.sort_custom(_nearer)
 	return out
