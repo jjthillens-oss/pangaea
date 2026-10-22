@@ -5,7 +5,9 @@
 #   found:    a new grazer lineage eats, starves and recovers, then saves and quits to the title;
 #             hunter and omnivore lineages eat too
 #   continue: a new process continues that lineage and finds the same body, points and place
-# Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/.
+#   release:  tools/check_release.sh exports the release pack (no game/dev, no tests) and starts it
+# Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
+# builds/release/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/toolchain.env
@@ -22,3 +24,4 @@ if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1
 fi
+tools/check_release.sh "$GODOT"

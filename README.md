@@ -19,6 +19,7 @@ Opening the project runs the M0 check scene: it loads the Blender sample creatur
 tools/setup_toolchain.sh --templates   # Linux: pinned Godot + Windows templates
 tools/check.sh                         # import, tests, boot smoke check
 tools/export_windows.sh                # builds/windows/Pangaea.exe
+tools/check_release.sh                 # start the release pack, without game/dev (check.sh runs it too)
 ```
 
 On Windows, open `project.godot` in Godot 4.7.2. CI builds a Windows executable on every push; download it from the run's artifacts.
