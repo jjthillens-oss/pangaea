@@ -1,9 +1,10 @@
 class_name SaveGame
 extends RefCounted
-## One run's persistent state, schema version 1 (Bible section 18). Plain data plus validation.
+## One run's persistent state, schema version 2 (Bible section 18).
+## v2 (M1) adds adaptation_points; see SaveMigrations for the v1 -> v2 step. Plain data plus validation.
 ## File handling, migration and recovery live in PersistenceService.
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 ## Era ids are PROPOSED names from Bible section 4.
 const ERAS: PackedStringArray = ["microscopic", "aquatic", "terrestrial", "social", "tribal", "civilization", "interstellar"]
 
@@ -12,6 +13,8 @@ var world_seed: int = 0
 var lineage_id: String = ""
 var era: String = "microscopic"
 var genome: Genome
+## Unspent adaptation points, earned by eating and surviving, spent in the editor.
+var adaptation_points: int = 0
 ## Ordered events: {"generation": int, "genome_id": String, "event": String}
 var lineage_history: Array = []
 var discoveries: Array = []
@@ -39,6 +42,8 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 		errors.append("Save has an invalid lineage id '%s'." % lineage_id)
 	if not ERAS.has(era):
 		errors.append("Unknown era '%s'." % era)
+	if adaptation_points < 0:
+		errors.append("Adaptation points must not be negative.")
 	if world_seed < 0:
 		errors.append("World seed must not be negative.")
 	if genome == null:
@@ -63,6 +68,7 @@ func to_dict() -> Dictionary:
 		"lineage_id": lineage_id,
 		"era": era,
 		"genome": genome.to_dict() if genome else {},
+		"adaptation_points": adaptation_points,
 		"lineage_history": lineage_history.duplicate(true),
 		"discoveries": discoveries.duplicate(true),
 		"relationships": relationships.duplicate(true),
@@ -83,6 +89,7 @@ static func from_dict(data: Dictionary) -> SaveGame:
 	save.era = str(data.get("era", ""))
 	var genome_data = data.get("genome")
 	save.genome = Genome.from_dict(genome_data) if genome_data is Dictionary else null
+	save.adaptation_points = int(data.get("adaptation_points", -1))
 	save.lineage_history = Array(data.get("lineage_history", [])).duplicate(true)
 	save.discoveries = Array(data.get("discoveries", [])).duplicate(true)
 	save.relationships = Array(data.get("relationships", [])).duplicate(true)

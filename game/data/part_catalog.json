@@ -1,20 +1,55 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "PROPOSED",
-  "note": "Part IDs and limits for the microscopic era. Costs and stat curves are M1 tuning data and are not defined yet.",
+  "note": "Microscopic-era parts and tuning. All numbers are PROPOSED tuning data; change them here, not in code.",
   "limits": {
     "max_parts": 8,
     "min_scale": 0.5,
     "max_scale": 2.0
   },
   "required_categories": ["mouth"],
+  "refund_rate": 1.0,
+  "diminishing_factor": 0.6,
+  "base_body": {
+    "speed": 2.0,
+    "acceleration": 3.0,
+    "turn_rate": 2.5,
+    "max_health": 30.0,
+    "energy_capacity": 100.0,
+    "upkeep": 0.5,
+    "move_cost": 0.08,
+    "sight": 6.0,
+    "mass": 1.0,
+    "radius": 0.5
+  },
+  "caps": {
+    "speed": 6.0,
+    "acceleration": 9.0,
+    "turn_rate": 8.0,
+    "sight": 15.0,
+    "defense": 0.6
+  },
+  "starting_bodies": {
+    "grazer": [{"type": "mouth_filter", "angle": 0.0}, {"type": "flagellum", "angle": 3.14159}, {"type": "eye_spot", "angle": 0.6}],
+    "hunter": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
+    "omnivore": [{"type": "mouth_filter", "angle": 0.35}, {"type": "mouth_jaw", "angle": -0.35}, {"type": "flagellum", "angle": 3.14159}]
+  },
   "parts": {
-    "mouth_filter": {"category": "mouth", "max_count": 1},
-    "mouth_jaw": {"category": "mouth", "max_count": 1},
-    "flagellum": {"category": "propulsion", "max_count": 3},
-    "cilia": {"category": "propulsion", "max_count": 3},
-    "spike": {"category": "defense", "max_count": 4},
-    "eye_spot": {"category": "sense", "max_count": 3},
-    "shell_plate": {"category": "defense", "max_count": 3}
+    "mouth_filter": {"category": "mouth", "max_count": 1, "cost": 10, "editor": true,
+      "effects": {"upkeep": 0.05, "mass": 0.05}, "diet": "plant", "arc_deg": 70},
+    "mouth_jaw": {"category": "mouth", "max_count": 1, "cost": 15, "editor": true,
+      "effects": {"upkeep": 0.15, "mass": 0.1, "bite_damage": 8.0}, "diet": "meat", "arc_deg": 60},
+    "flagellum": {"category": "propulsion", "max_count": 3, "cost": 15, "editor": true,
+      "effects": {"speed": 1.4, "acceleration": 0.6, "upkeep": 0.25, "mass": 0.1}},
+    "cilia": {"category": "propulsion", "max_count": 3, "cost": 10, "editor": true,
+      "effects": {"turn_rate": 1.5, "acceleration": 1.5, "upkeep": 0.15, "mass": 0.05}},
+    "spike": {"category": "defense", "max_count": 4, "cost": 15, "editor": true,
+      "effects": {"ram_damage": 6.0, "upkeep": 0.05, "mass": 0.15}, "arc_deg": 40},
+    "eye_spot": {"category": "sense", "max_count": 3, "cost": 10, "editor": true,
+      "effects": {"sight": 3.0, "upkeep": 0.1, "mass": 0.02}},
+    "shell_plate": {"category": "defense", "max_count": 3, "cost": 20, "editor": false,
+      "effects": {"defense": 0.2, "max_health": 10.0, "upkeep": 0.1, "mass": 0.3}},
+    "toxin_gland": {"category": "defense", "max_count": 2, "cost": 25, "editor": false,
+      "effects": {"upkeep": 0.2, "mass": 0.1}}
   }
 }

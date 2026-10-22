@@ -1,7 +1,7 @@
 class_name Genome
 extends RefCounted
 ## Inheritable body design: parts, placement and appearance. Plain data with validation;
-## no scene, UI or file access (Bible sections 12 and 17). Phenotype derivation is M1 work.
+## no scene, UI or file access (Bible sections 12 and 17). Stats come from Phenotype.derive().
 
 const SCHEMA_VERSION := 1
 

@@ -19,6 +19,7 @@ var catalog: PartCatalog
 
 func _init(p_catalog: PartCatalog) -> void:
 	catalog = p_catalog
+	migrations = SaveMigrations.all()
 
 
 func save_to(path: String, save: SaveGame) -> Error:

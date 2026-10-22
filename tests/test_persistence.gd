@@ -152,3 +152,39 @@ func test_invalid_save_is_not_written_and_existing_file_survives() -> void:
 	save.genome.parts.clear()
 	check_eq(service.save_to(PATH, save), ERR_INVALID_DATA, "refused")
 	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
+
+
+func test_m0_save_migrates_to_v2_with_no_adaptation_points() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v1.json")
+	check(not text.is_empty(), "fixture readable")
+	_write_raw(PATH, text)
+	var result := service.load_from(PATH)
+	check(result.ok, "v1 loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check_eq(loaded.adaptation_points, 0, "starts with no points")
+	check_eq(loaded.lineage_id, "lineage_3f9a1c07b2e84d65", "lineage kept")
+	check_eq(loaded.genome.parts.size(), 2, "body kept")
+	check_eq(FileAccess.get_file_as_string(PATH), text, "file not rewritten on load")
+	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
+	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(PATH))["schema_version"]), 2, "written as v2")
+
+
+func test_negative_adaptation_points_are_refused() -> void:
+	var data := _new_save().to_dict()
+	data["adaptation_points"] = -5
+	_write_raw(PATH, JSON.stringify(data))
+	var result := service.load_from(PATH)
+	check(not result.ok, "refused")
+	check_has_error(result.errors, "must not be negative")
+
+
+func test_adaptation_points_round_trip() -> void:
+	var save := _new_save()
+	save.adaptation_points = 37
+	service.save_to(PATH, save)
+	var result := service.load_from(PATH)
+	check(result.ok, "loads")
+	if result.ok:
+		check_eq(result.save.adaptation_points, 37, "points kept")

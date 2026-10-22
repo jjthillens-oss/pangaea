@@ -13,6 +13,12 @@ func _initialize() -> void:
 		if not (file.begins_with("test_") and file.ends_with(".gd")) or file == "test_case.gd":
 			continue
 		var script: GDScript = load("res://tests/" + file)
+		if script == null or not script.can_instantiate():
+			# A file that fails to parse counts as a failure instead of stopping the run.
+			total += 1
+			failed += 1
+			lines.append("FAIL %s: script did not load (see the parse error above)" % file.get_basename())
+			continue
 		var suite: TestCase = script.new()
 		for method in suite.get_method_list():
 			var name: String = method["name"]
