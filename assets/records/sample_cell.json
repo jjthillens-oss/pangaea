@@ -1,0 +1,39 @@
+{
+  "id": "sample_cell",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "sample - pipeline validation only, not visually approved",
+  "purpose": "M0 Blender-to-Godot pipeline check: scale, orientation, materials, sockets.",
+  "source_blend": "assets/source/blender/sample_cell.blend",
+  "generator_script": "tools/blender/make_sample_cell.py",
+  "export_path": "assets/export/sample_cell.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.92,
+    "y_forward": 1.658,
+    "z_up": 0.78
+  },
+  "triangles": 13056,
+  "textures": [],
+  "materials": [
+    "M_CellMembrane",
+    "M_CellNucleus",
+    "M_EyePupil",
+    "M_EyeWhite",
+    "M_Flagellum",
+    "M_MouthLip"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [
+    "socket_mouth",
+    "socket_side_L",
+    "socket_side_R",
+    "socket_tail",
+    "socket_top"
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_sample_cell.py; no external or generated meshes."
+}

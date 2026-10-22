@@ -1,2 +1,14 @@
+# Godot caches and generated products
+.godot/
+*.import.tmp
+builds/*
+!builds/.gdignore
+game/data/build_info.json
+# Blender autosaves
+*.blend1
+*.blend@
+# Web prototype tooling
 node_modules/
 shots/
+__pycache__/
+.toolchain/

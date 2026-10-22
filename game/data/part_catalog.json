@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Part IDs and limits for the microscopic era. Costs and stat curves are M1 tuning data and are not defined yet.",
+  "limits": {
+    "max_parts": 8,
+    "min_scale": 0.5,
+    "max_scale": 2.0
+  },
+  "required_categories": ["mouth"],
+  "parts": {
+    "mouth_filter": {"category": "mouth", "max_count": 1},
+    "mouth_jaw": {"category": "mouth", "max_count": 1},
+    "flagellum": {"category": "propulsion", "max_count": 3},
+    "cilia": {"category": "propulsion", "max_count": 3},
+    "spike": {"category": "defense", "max_count": 4},
+    "eye_spot": {"category": "sense", "max_count": 3},
+    "shell_plate": {"category": "defense", "max_count": 3}
+  }
+}

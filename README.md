@@ -1,54 +1,42 @@
 # Pangaea
 
-An original evolution game inspired by the stage-based design of classic "god games": start as a single cell, evolve a body in an editor, and carry your species from the tide pool to the stars.
+An original evolution game (codename GENESIS): shape a lineage from microscopic life through seven eras into a civilization that reaches the stars. Inspired by the creativity and colorful style of Spore (2008), with every design, asset and line of code made from scratch.
 
-Everything here (code, art, names) is made from scratch. Nothing is taken from any existing commercial game.
+Built with **Godot 4.7.2** and **Blender 5.2.2 LTS**. The design authority is the [GENESIS Master Developer Bible](docs/bible/GENESIS_Master_Developer_Bible_v0.1.pdf).
 
-## Play
+## Status
 
-Open `index.html` in any modern browser. No build step, no dependencies.
+| Milestone | State |
+| --- | --- |
+| M0 Foundations: separate project, pinned toolchain, save schema, Blender export pipeline | Implemented, Windows launch pending |
+| M1 First life: microscopic feeding, threats, reproduction, bounded editor | Not started |
 
-- **Swim:** WASD or arrow keys, or hold the mouse / a finger toward where you want to go.
-- **Evolve:** `E` or the Evolve button opens the cell editor.
-- **Pause:** `P` or `Esc`.
+Opening the project runs the M0 check scene: it loads the Blender sample creature and verifies the build, part data, asset loading and a save round trip.
 
-Progress saves in the browser's local storage.
+## Quick start
 
-## Cell stage (playable now)
+```bash
+tools/setup_toolchain.sh --templates   # Linux: pinned Godot + Windows templates
+tools/check.sh                         # import, tests, boot smoke check
+tools/export_windows.sh                # builds/windows/Pangaea.exe
+```
 
-- Pick a starting diet: plant eater (filter mouth) or meat eater (jaw).
-- Eat plankton or meat chunks to earn DNA and grow through five sizes.
-- Other species roam the pool: grazers flee, hunters chase anything smaller. Bigger hunters glow red.
-- Combat is positional: spikes hurt whatever they ram, jaws bite what's in front of them, toxin glands leave a damaging trail.
-- Murky water limits sight; eye spots push it back.
+On Windows, open `project.godot` in Godot 4.7.2. CI builds a Windows executable on every push; download it from the run's artifacts.
 
-### Cell editor
+## Repository layout
 
-Spend DNA on parts and attach them anywhere around the membrane. Placement matters, because the mouth side faces the way you swim.
+| Path | Contents |
+| --- | --- |
+| `game/domain/` | Rules with no scene or file access: genome, part catalog, save schema |
+| `game/systems/` | Services: persistence (safe writes, backups, migrations), build info |
+| `game/scenes/` | Presentation. `boot.tscn` is the M0 check scene |
+| `game/data/` | Tuning data (JSON) |
+| `assets/source/blender/` | Blender sources of record |
+| `assets/export/` | GLB exports loaded by Godot |
+| `assets/records/` | One record per asset: dimensions, triangles, sockets, provenance |
+| `tests/` | `run_tests.gd` plus test suites |
+| `tools/` | Toolchain setup, checks, export, Blender scripts |
+| `docs/` | Bible, toolchain, decisions, milestone handoffs |
+| `prototypes/web-cell/` | The first HTML prototype, kept as a tuning sandbox |
 
-| Part | Unlocks at | Effect |
-| --- | --- | --- |
-| Filter mouth | Size 1 | Eat plants |
-| Jaw | Size 1 | Bite cells, eat meat |
-| Flagellum | Size 1 | Top speed |
-| Cilia | Size 2 | Turning and acceleration |
-| Spike | Size 2 | Ramming damage |
-| Eye spot | Size 2 | Sight radius |
-| Shell plate | Size 3 | Health (slightly slower) |
-| Toxin gland | Size 4 | Poison cloud trail |
-
-Each size adds two part slots. Removing a part refunds its DNA in full.
-
-## Roadmap
-
-1. **Cell** – done (this prototype).
-2. **Creature** – walk onto land; 3D body editor with spine, limbs and mouths; befriend or hunt other species.
-3. **Tribe** – small RTS with a village, tools, food gathering and rival tribes.
-4. **Civilization** – cities, vehicles, trade, conquest or diplomacy across the planet.
-5. **Space** – a spaceship editor, star map, terraforming and alien empires.
-
-Each stage carries traits from the one before it (diet, aggression, social style), so how you play early shapes later options.
-
-## Development
-
-`tools/smoke-test.js` drives the game in headless Chromium with Playwright and fails on any page error.
+See `CLAUDE.md` for working rules.
