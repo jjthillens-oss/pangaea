@@ -42,17 +42,27 @@ ROCK_FOOTPRINT_RADIUS = 1.0
 
 # Pool floor. The cell's centre never passes r = 39 (hard limit 39.5 minus its 0.5 m radius) and
 # the cell reaches 0.39 m below the swim plane, so the floor stays at or below -0.46 inside r = 39.
+# The shelf runs past what the widest zoom (20 m) shows from a cell at the wall with full
+# look-ahead: the top screen corners reach about r 64.7 on the shelf at 16:9.
 FLOOR_SEGMENTS = 128
 FLOOR_RINGS = ([float(r) for r in range(1, 37)]            # bowl, every metre
                + [36.5 + 0.5 * i for i in range(6)]        # 36.5 .. 39.0, approaching the wall
                + [39.25 + 0.25 * i for i in range(12)]     # 39.25 .. 42.0, the rim lip
                + [42.5 + 0.5 * i for i in range(6)]        # 42.5 .. 45.0, lip down to the shelf
-               + [46.0, 47.0, 48.0, 50.0, 52.0, 55.0, 58.0])  # shelf to the edge of the view
+               + [46.0, 47.0, 48.0, 50.0, 52.0, 55.0, 58.0, 62.0, 66.0])  # shelf past the edge of the view
 FLOOR_BOWL = [(0.0, -1.6), (30.0, -1.0), (36.0, -0.6), (39.0, -0.46)]  # (radius, height), smooth
 FLOOR_LIP = (42.0, 1.2)
 FLOOR_SHELF = (45.0, 1.0)
 FLOOR_BOWL_NOISE = 0.12   # gentle undulation, faded out between r = 26 and 33
 FLOOR_RIM_NOISE = 0.10    # rocky rim, faded in from r = 40
+# Floor colours (linear RGB, as in the other blockout materials), blended per vertex so silt patches and the stone band fade in over
+# a metre or two instead of switching at a face edge of the radial grid.
+FLOOR_SAND = (0.46, 0.40, 0.28)
+FLOOR_SILT = (0.24, 0.22, 0.15)
+FLOOR_STONE = (0.70, 0.68, 0.62)
+FLOOR_SILT_EDGE = (0.12, 0.28)   # patch noise over which the sand turns to silt
+FLOOR_STONE_EDGE_M = 0.6         # width of the fade at each side of the stone band
+FLOOR_MOTTLE = 0.05              # gentle light and dark mottling of the sand, as a share of its colour
 
 # Rocks: a squared-off, displaced icosphere, buried in the floor, top above the swim plane.
 ROCK_TOP = 0.58
@@ -145,10 +155,34 @@ def floor_height(x, y):
     return h
 
 
+def _mix(a, b, t):
+    return tuple(x + (y - x) * t for x, y in zip(a, b))
+
+
+def floor_color(x, y):
+    """Linear RGB of the floor at (x, y): sand, soft silt patches and a silty centre, the stone band."""
+    r = math.hypot(x, y)
+    a = math.atan2(y, x)
+    around = Vector((math.cos(a) * 3.0, math.sin(a) * 3.0, 0.0))
+    # The patch field: broad noise for where the patches are, finer noise to make their edges organic.
+    # Every noise here changes slowly next to the grid spacing (1 m rings, up to 1.8 m apart around
+    # the bowl), so the blend never shows the triangles.
+    patch = (noise.noise(Vector((x * 0.06 - 7.7, y * 0.06 + 1.9, 4.4)))
+             + 0.08 * noise.noise(Vector((x * 0.2 + 2.1, y * 0.2 - 5.3, 7.9))))
+    silt = bc.smoothstep((patch - FLOOR_SILT_EDGE[0]) / (FLOOR_SILT_EDGE[1] - FLOOR_SILT_EDGE[0]))
+    centre = 7.0 + 2.0 * noise.noise(around + Vector((0.0, 9.0, 3.0)))
+    silt = max(silt, 1.0 - bc.smoothstep((r - centre + 1.5) / 3.0))
+    mottle = 1.0 + FLOOR_MOTTLE * noise.noise(Vector((x * 0.16 + 3.3, y * 0.16 + 8.8, 1.7)))
+    color = tuple(c * mottle for c in _mix(FLOOR_SAND, FLOOR_SILT, silt))
+    stone_in = 38.9 + 0.35 * noise.noise(around + Vector((1.3, 0.0, 6.2)))
+    stone_out = 45.5 + 1.2 * noise.noise(around + Vector((-4.0, 2.2, 1.1)))
+    edge = FLOOR_STONE_EDGE_M
+    stone = bc.smoothstep((r - stone_in + edge / 2.0) / edge) * (1.0 - bc.smoothstep((r - stone_out + edge / 2.0) / edge))
+    return _mix(color, FLOOR_STONE, stone)
+
+
 def build_pool_floor():
-    sand = bc.material("M_PoolSand", (0.46, 0.40, 0.28), 0.9)
-    silt = bc.material("M_PoolSilt", (0.24, 0.22, 0.15), 0.95)
-    stone = bc.material("M_PoolRimStone", (0.70, 0.68, 0.62), 0.8)
+    floor_mat = bc.material("M_PoolFloor", (1.0, 1.0, 1.0), 0.9, vertex_colors="FloorColor")
     verts = [(0.0, 0.0, floor_height(0.0, 0.0))]
     for r in FLOOR_RINGS:
         for j in range(FLOOR_SEGMENTS):
@@ -163,35 +197,33 @@ def build_pool_floor():
     for i in range(len(FLOOR_RINGS) - 1):
         for j in range(FLOOR_SEGMENTS):
             faces.append((ring(i, j), ring(i + 1, j), ring(i + 1, j + 1), ring(i, j + 1)))
-    # Materials per face: pale stone on the lip, silt patches and a silty deep centre, sand elsewhere.
-    face_materials = []
-    for f in faces:
-        cx = sum(verts[k][0] for k in f) / len(f)
-        cy = sum(verts[k][1] for k in f) / len(f)
-        r = math.hypot(cx, cy)
-        a = math.atan2(cy, cx)
-        around = Vector((math.cos(a) * 3.0, math.sin(a) * 3.0, 0.0))
-        stone_in = 38.9 + 0.35 * noise.noise(around + Vector((1.3, 0.0, 6.2)))
-        stone_out = 45.5 + 1.2 * noise.noise(around + Vector((-4.0, 2.2, 1.1)))
-        patch = noise.noise(Vector((cx * 0.06 - 7.7, cy * 0.06 + 1.9, 4.4)))
-        if stone_in <= r <= stone_out:
-            face_materials.append(2)
-        elif patch > 0.18 or r < 7.0 + 2.0 * noise.noise(around + Vector((0.0, 9.0, 3.0))):
-            face_materials.append(1)
-        else:
-            face_materials.append(0)
-    floor = bc.mesh_object("PoolFloor", verts, faces, [sand, silt, stone], face_materials, fix_normals=False,
-                           uv=lambda co: (0.5 + co.x / 116.0, 0.5 + co.y / 116.0))
+    # Colours per vertex: pale stone on the lip, silt patches and a silty deep centre, sand elsewhere.
+    colors = [floor_color(v[0], v[1]) for v in verts]
+    edge = FLOOR_RINGS[-1]
+    floor = bc.mesh_object("PoolFloor", verts, faces, [floor_mat], fix_normals=False,
+                           uv=lambda co: (0.5 + co.x / (2.0 * edge), 0.5 + co.y / (2.0 * edge)),
+                           vertex_colors=("FloorColor", colors))
     _check(all(p.normal.z > 0.0 for p in floor.data.polygons), "pool_floor: every face points up")
     inner = [v for v in verts if math.hypot(v[0], v[1]) <= 39.0 + 1e-6]
     rim = [v for v in verts if 41.5 <= math.hypot(v[0], v[1]) <= 43.0]
     _check(max(v[2] for v in inner) <= -0.45, "pool_floor: at or below -0.45 m inside r = 39")
     _check(min(v[2] for v in rim) > 0.8, "pool_floor: rim above +0.8 m over r 41.5-43")
     return {
-        "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out to the edge of the camera view.",
+        "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out past the edge of the camera view.",
         "category": "floor",
+        "revision": 2,
+        "dependencies": ["assets/export/M_PoolFloor.tres"],
+        "vertex_colors_attribute": "FloorColor",
         "pivot": "pool centre on the swim plane (Godot y = 0)",
         "radius_m": FLOOR_RINGS[-1],
+        "vertex_colors": {
+            "attribute": "FloorColor",
+            "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_PoolFloor.tres)",
+            "note": "Sand with soft silt patches and a silty centre, and a pale stone band on the rim lip, blended per vertex.",
+            "sand": list(FLOOR_SAND),
+            "silt": list(FLOOR_SILT),
+            "stone": list(FLOOR_STONE),
+        },
         "profile_m": {
             "bowl": [list(p) for p in FLOOR_BOWL],
             "lip": list(FLOOR_LIP),

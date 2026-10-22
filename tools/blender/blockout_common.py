@@ -40,7 +40,14 @@ def reset_scene():
     scene.unit_settings.scale_length = 1.0
 
 
-def material(name, color, roughness=0.5, emission=None, emission_strength=0.6):
+def material(name, color, roughness=0.5, emission=None, emission_strength=0.6, vertex_colors=None):
+    """A Principled material. With `vertex_colors` (a color attribute name) the base color comes
+    from that attribute instead of `color`, and the glTF exporter writes it as COLOR_0.
+
+    Vertex colours are stored sRGB-encoded (see srgb()), because Godot reads COLOR_0 as it is and
+    the engine material marks it sRGB (vertex_color_is_srgb), so the Forward+ and Compatibility
+    renderers both shade it exactly like an albedo colour. A gamma node decodes it here, so the
+    Blender preview matches."""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
@@ -49,7 +56,19 @@ def material(name, color, roughness=0.5, emission=None, emission_strength=0.6):
     if emission:
         bsdf.inputs["Emission Color"].default_value = (*emission, 1.0)
         bsdf.inputs["Emission Strength"].default_value = emission_strength
+    if vertex_colors:
+        attribute = mat.node_tree.nodes.new("ShaderNodeVertexColor")
+        attribute.layer_name = vertex_colors
+        decode = mat.node_tree.nodes.new("ShaderNodeGamma")
+        decode.inputs["Gamma"].default_value = 2.2
+        mat.node_tree.links.new(attribute.outputs["Color"], decode.inputs["Color"])
+        mat.node_tree.links.new(decode.outputs["Color"], bsdf.inputs["Base Color"])
     return mat
+
+
+def srgb(color):
+    """Linear RGB to sRGB-encoded RGB (the standard transfer curve), for vertex colours."""
+    return tuple(12.92 * c if c <= 0.0031308 else 1.055 * c ** (1.0 / 2.4) - 0.055 for c in color)
 
 
 def smoothstep(t):
@@ -162,12 +181,14 @@ def append(verts, faces, more_verts, more_faces):
 
 
 def mesh_object(name, verts, faces, materials, face_materials=None, smooth=True, parent=None,
-                location=(0.0, 0.0, 0.0), fix_normals=True, uv=None):
+                location=(0.0, 0.0, 0.0), fix_normals=True, uv=None, vertex_colors=None):
     """Creates a linked mesh object.
 
     `fix_normals` makes every face of a closed piece point outward (leave it off for open
     surfaces whose winding is set by construction). `uv(co) -> (u, v)` fills a UV layer so the
     importer can build tangents; blockouts carry no textures, so a simple projection is enough.
+    `vertex_colors` is (attribute name, [linear (r, g, b) per vertex]), for a material made with
+    the same `vertex_colors` name; they are stored sRGB-encoded.
     """
     mesh = bpy.data.meshes.new(f"{name}_mesh")
     mesh.from_pydata([tuple(v) for v in verts], [], [tuple(f) for f in faces])
@@ -183,6 +204,10 @@ def mesh_object(name, verts, faces, materials, face_materials=None, smooth=True,
         mesh.polygons.foreach_set("material_index", list(face_materials))
     for poly in mesh.polygons:
         poly.use_smooth = smooth
+    if vertex_colors is not None:
+        attr_name, colors = vertex_colors
+        attr = mesh.color_attributes.new(name=attr_name, type="FLOAT_COLOR", domain="POINT")
+        attr.data.foreach_set("color", [c for rgb in colors for c in (*srgb(rgb), 1.0)])
     uv = uv or (lambda co: (0.5 + 0.5 * math.atan2(co.y, co.x) / math.pi, 0.5 + co.z))
     layer = mesh.uv_layers.new(name="UVMap")
     for loop in mesh.loops:
@@ -248,6 +273,7 @@ def export(asset_id, budget, fields):
     if os.path.exists(blend_path):
         os.remove(blend_path)  # otherwise Blender keeps the old file as a .blend1 backup
     bpy.ops.wm.save_as_mainfile(filepath=blend_path, compress=True, relative_remap=True)
+    vertex_colors = fields.pop("vertex_colors_attribute", None)
     bpy.ops.export_scene.gltf(
         filepath=glb_path,
         export_format="GLB",
@@ -256,6 +282,10 @@ def export(asset_id, budget, fields):
         export_materials="EXPORT",
         export_cameras=False,
         export_lights=False,
+        # The material decodes the colours through a gamma node, which the exporter does not
+        # follow, so name the attribute to write as COLOR_0.
+        **({"export_vertex_color": "NAME", "export_vertex_color_name": vertex_colors,
+            "export_all_vertex_colors": False} if vertex_colors else {}),
     )
     lo, hi = world_bounds()
     size = hi - lo
@@ -270,8 +300,8 @@ def export(asset_id, budget, fields):
         "generator_script": GENERATOR,
         "export_path": f"assets/export/{asset_id}.glb",
         "export_format": "GLB",
-        "dependencies": [],
-        "revision": 1,
+        "dependencies": fields.pop("dependencies", []),
+        "revision": fields.pop("revision", 1),
         "blender_version": bpy.app.version_string,
         "dimensions_m": {"x": round(size.x, 3), "y_forward": round(size.y, 3), "z_up": round(size.z, 3)},
         "triangles": tris,

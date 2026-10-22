@@ -3,27 +3,27 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out to the edge of the camera view.",
+  "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out past the edge of the camera view.",
   "category": "floor",
   "source_blend": "assets/source/blender/pool_floor.blend",
   "generator_script": "tools/blender/make_m1_blockouts.py",
   "export_path": "assets/export/pool_floor.glb",
   "export_format": "GLB",
-  "dependencies": [],
-  "revision": 1,
+  "dependencies": [
+    "assets/export/M_PoolFloor.tres"
+  ],
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 116.0,
-    "y_forward": 116.0,
+    "x": 132.0,
+    "y_forward": 132.0,
     "z_up": 2.875
   },
-  "triangles": 17024,
+  "triangles": 17536,
   "triangle_budget": 20000,
   "textures": [],
   "materials": [
-    "M_PoolRimStone",
-    "M_PoolSand",
-    "M_PoolSilt"
+    "M_PoolFloor"
   ],
   "rig_family": null,
   "animations": [],
@@ -32,7 +32,27 @@
     "PoolFloor"
   ],
   "pivot": "pool centre on the swim plane (Godot y = 0)",
-  "radius_m": 58.0,
+  "radius_m": 66.0,
+  "vertex_colors": {
+    "attribute": "FloorColor",
+    "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_PoolFloor.tres)",
+    "note": "Sand with soft silt patches and a silty centre, and a pale stone band on the rim lip, blended per vertex.",
+    "sand": [
+      0.46,
+      0.4,
+      0.28
+    ],
+    "silt": [
+      0.24,
+      0.22,
+      0.15
+    ],
+    "stone": [
+      0.7,
+      0.68,
+      0.62
+    ]
+  },
   "profile_m": {
     "bowl": [
       [
