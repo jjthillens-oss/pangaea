@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Everything in game/ that is drawn or played without a recorded asset. Placeholders stand in for production assets and name the milestone that removes them. Functional entries are particles, UI and debug drawing, which Bible 15 does not count as placeholders. tests/test_placeholders.gd fails when a primitive, code-built, saved or referenced mesh in game/**/*.gd, .tscn or .tres, or a binary resource or model file anywhere in game/, is not listed here by type and file, and when a placeholder's asset_id has a record in assets/records.",
+  "placeholders": [
+    {
+      "id": "sfx_eat_plant",
+      "asset_id": "sfx_eat_plant",
+      "kind": "audio",
+      "description": "Rising blip when plankton is eaten. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "Eat burst and the meal toast",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_eat_meat",
+      "asset_id": "sfx_eat_meat",
+      "kind": "audio",
+      "description": "Two low chomps when carrion is eaten. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "Eat burst and the meal toast",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_refuse",
+      "asset_id": "sfx_refuse",
+      "kind": "audio",
+      "description": "Dull two-tone when food is refused. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "Refusal hint text",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "sfx_starve_pulse",
+      "asset_id": "sfx_starve_pulse",
+      "kind": "audio",
+      "description": "Pulse at most once a second while starving. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "Pulsing starving banner, grey cell and health bar",
+      "remove_by": "M1 step 5"
+    },
+    {
+      "id": "amb_pool_loop",
+      "asset_id": "amb_pool_loop",
+      "kind": "audio",
+      "description": "4 s filtered-noise ambience loop. Synthesized at startup; no file.",
+      "types": [
+        "AudioStreamWAV"
+      ],
+      "files": [
+        "game/scenes/audio/placeholder_audio.gd"
+      ],
+      "node": "Pool/Audio",
+      "visual_equivalent": "None needed: the ambience carries no information",
+      "remove_by": "M1 step 5"
+    }
+  ],
+  "functional": [
+    {
+      "id": "eat_fx_quads",
+      "kind": "particles",
+      "description": "Draw mesh of the CPUParticles3D eat burst (at most 12 particles).",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/player_cell_view.tscn",
+        "game/scenes/pool/player_cell_view.gd",
+        "game/scenes/pool/feedback_fx.gd"
+      ],
+      "node": "PlayerCell/EatFx"
+    },
+    {
+      "id": "feedback_labels",
+      "kind": "label",
+      "description": "Pooled Label3D for meal toasts such as \"+8 energy\" and the \"Regrowing\" labels. Text, not geometry.",
+      "types": [
+        "Label3D"
+      ],
+      "files": [
+        "game/scenes/pool/feedback_fx.gd"
+      ],
+      "node": "Pool/Feedback"
+    },
+    {
+      "id": "dev_gizmos",
+      "kind": "debug",
+      "description": "Debug builds only: zone rings, resolver mouth arcs and the reach circle drawn as lines.",
+      "types": [
+        "ImmediateMesh"
+      ],
+      "files": [
+        "game/dev/dev_gizmos.gd"
+      ],
+      "node": "DevLayer/DevGizmos"
+    }
+  ]
+}

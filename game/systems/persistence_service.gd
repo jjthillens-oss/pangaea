@@ -2,9 +2,9 @@ class_name PersistenceService
 extends RefCounted
 ## Versioned save files with safe writes, a last-known-good backup and migrations (Bible section 18).
 ##
-## Writing: validate -> write <path>.tmp -> re-read and parse it -> move the current good save
-## to <path>.bak -> move .tmp into place. An interrupted write leaves either the old save or the
-## backup intact.
+## Writing: validate -> write <path>.tmp -> read it back as a load would -> move the current good
+## save to <path>.bak -> move .tmp into place. An interrupted write leaves either the old save or
+## the backup intact, and a refused or failed write removes its .tmp.
 ## Loading: never modifies files. If the primary file is unreadable, invalid or from a newer
 ## build, the backup is tried. Errors explain what went wrong.
 
@@ -37,7 +37,10 @@ func save_to(path: String, save: SaveGame) -> Error:
 		return FileAccess.get_open_error()
 	file.store_string(text)
 	file.close()
-	if _parse(FileAccess.get_file_as_string(tmp)) == null:
+	# A save is only reported as written if it loads back as the same lineage and world: a number
+	# the file cannot hold exactly would otherwise pass here and fail (or change) on Continue.
+	var written := _read_current_version(tmp)
+	if not written.ok or written.save.lineage_id != save.lineage_id or written.save.world_seed != save.world_seed:
 		DirAccess.remove_absolute(tmp)
 		return ERR_FILE_CORRUPT
 
@@ -49,14 +52,19 @@ func save_to(path: String, save: SaveGame) -> Error:
 				DirAccess.remove_absolute(backup)
 			var err := DirAccess.rename_absolute(path, backup)
 			if err != OK:
+				DirAccess.remove_absolute(tmp)
 				return err
 		else:
 			# Keep the existing backup and set the unreadable file aside instead of discarding it.
 			var corrupt := "%s.corrupt-%d" % [path, Time.get_unix_time_from_system()]
 			var err := DirAccess.rename_absolute(path, corrupt)
 			if err != OK:
+				DirAccess.remove_absolute(tmp)
 				return err
-	return DirAccess.rename_absolute(tmp, path)
+	var moved := DirAccess.rename_absolute(tmp, path)
+	if moved != OK:
+		DirAccess.remove_absolute(tmp)
+	return moved
 
 
 ## Returns {"ok": bool, "save": SaveGame or null, "source": "primary" | "backup" | "", "errors": PackedStringArray}

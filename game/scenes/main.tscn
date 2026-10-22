@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://game/scenes/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://game/ui/notice_dialog.tscn" id="2_notice"]
+
+[node name="Main" type="Node"]
+script = ExtResource("1_main")
+
+[node name="Dialogs" type="CanvasLayer" parent="."]
+layer = 15
+
+[node name="QuitDialog" parent="Dialogs" instance=ExtResource("2_notice")]
+unique_name_in_owner = true
+
+[node name="Alert" parent="Dialogs" instance=ExtResource("2_notice")]
+unique_name_in_owner = true

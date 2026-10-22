@@ -7,6 +7,8 @@ extends RefCounted
 const REPRODUCE_ENERGY_SHARE := 0.7   ## energy needed, as a share of capacity
 const DEATH_POINT_LOSS := 0.25        ## approved 2026-10-22: unspent points drop by a quarter
 const SURVIVAL_INTERVAL := 30.0       ## seconds alive per survival point (PROPOSED)
+const BODY_ANGLE_TOLERANCE := 0.01    ## rad: a part this close to a starting body's angle still matches it
+const BODY_SCALE_TOLERANCE := 0.001
 
 
 ## Starts a new lineage with one of the catalog's starting bodies (approved 2026-10-22: grazer,
@@ -21,6 +23,39 @@ static func found(seed_value: int, build_id: String, catalog: PartCatalog, body_
 	if not errors.is_empty():
 		return {"ok": false, "errors": errors, "save": null}
 	return {"ok": true, "errors": PackedStringArray(), "save": save}
+
+
+## The starting body this genome still is ("grazer", "hunter", "omnivore"), or "" once it has
+## been edited: same part types, angles within BODY_ANGLE_TOLERANCE and the same scales, in any order.
+static func starting_body_of(genome: Genome, catalog: PartCatalog) -> String:
+	for body_name in catalog.starting_bodies:
+		var body: Array = catalog.starting_bodies[body_name]
+		if body.size() != genome.parts.size():
+			continue
+		var unused := genome.parts.duplicate()
+		var matched := true
+		for wanted in body:
+			var hit := -1
+			for i in unused.size():
+				if _same_part(unused[i], wanted):
+					hit = i
+					break
+			if hit < 0:
+				matched = false
+				break
+			unused.remove_at(hit)
+		if matched:
+			return body_name
+	return ""
+
+
+static func _same_part(part: Dictionary, wanted: Dictionary) -> bool:
+	var angle = part.get("angle")
+	var scale = part.get("scale", 1.0)
+	if str(part.get("type", "")) != wanted.type or not (angle is float or angle is int) or not (scale is float or scale is int):
+		return false
+	return absf(angle_difference(float(angle), wanted.angle)) <= BODY_ANGLE_TOLERANCE \
+		and absf(float(scale) - wanted.scale) <= BODY_SCALE_TOLERANCE
 
 
 static func can_reproduce(state: ActorState) -> Dictionary:
@@ -75,9 +110,15 @@ static func earn(save: SaveGame, points: int) -> int:
 	return points
 
 
+## The points a death would cost with `points` unspent: DEATH_POINT_LOSS of them, rounded down.
+## The death notice shows it before apply_death takes it.
+static func death_loss(points: int) -> int:
+	return floori(points * DEATH_POINT_LOSS)
+
+
 ## Applies the death rule and records it. Returns the points lost.
 static func apply_death(save: SaveGame, cause: String) -> int:
-	var lost := floori(save.adaptation_points * DEATH_POINT_LOSS)
+	var lost := death_loss(save.adaptation_points)
 	save.adaptation_points -= lost
 	save.lineage_history.append({
 		"generation": save.genome.generation,

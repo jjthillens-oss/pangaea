@@ -5,6 +5,8 @@ extends RefCounted
 ## File handling, migration and recovery live in PersistenceService.
 
 const SCHEMA_VERSION := 2
+## 2^53: save files keep numbers as doubles, which hold whole numbers exactly only up to here.
+const MAX_WORLD_SEED := 9007199254740992
 ## Era ids are PROPOSED names from Bible section 4.
 const ERAS: PackedStringArray = ["microscopic", "aquatic", "terrestrial", "social", "tribal", "civilization", "interstellar"]
 
@@ -48,6 +50,8 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 		errors.append("Adaptation points must not be negative.")
 	if world_seed < 0:
 		errors.append("World seed must not be negative.")
+	elif world_seed > MAX_WORLD_SEED:
+		errors.append("World seed %d is above %d, the largest a save file keeps exactly." % [world_seed, MAX_WORLD_SEED])
 	if genome == null:
 		errors.append("Save has no genome.")
 	else:

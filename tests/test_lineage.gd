@@ -96,6 +96,14 @@ func test_death_costs_a_quarter_of_unspent_points_and_is_recorded() -> void:
 	check_eq(Lineage.apply_death(save, "starved"), 0, "rounds down: small totals are spared")
 
 
+func test_the_death_preview_names_the_points_apply_death_takes() -> void:
+	for points in [0, 1, 3, 4, 7, 40, 41, 1001]:
+		save.adaptation_points = points
+		var shown := Lineage.death_loss(points)
+		check_eq(Lineage.apply_death(save, "starved"), shown, "with %d points" % points)
+		check_eq(save.adaptation_points, points - shown, "what is left with %d points" % points)
+
+
 func test_each_starting_body_founds_a_valid_lineage() -> void:
 	check_eq(catalog.starting_bodies.keys(), ["grazer", "hunter", "omnivore"], "the three approved bodies")
 	var diets := {"grazer": ["plant"], "hunter": ["meat"], "omnivore": ["plant", "meat"]}
@@ -137,3 +145,25 @@ func test_points_are_earned_by_eating_and_surviving_not_by_energy() -> void:
 	check_eq(Lineage.survival_points(0.0, NAN), 0, "NaN earns nothing")
 	check_eq(Lineage.earn(save, -5), 0, "negative earns nothing")
 	check_eq(save.adaptation_points, 42, "unchanged")
+
+
+func test_starting_body_of_names_each_body_until_it_is_edited() -> void:
+	for body in catalog.starting_bodies:
+		var r := Lineage.found(5, "test+dev", catalog, body)
+		check(r.ok, "%s founds" % body)
+		if not r.ok:
+			continue
+		var genome: Genome = r.save.genome
+		check_eq(Lineage.starting_body_of(genome, catalog), body, "%s recognized" % body)
+		genome.parts.reverse()
+		check_eq(Lineage.starting_body_of(genome, catalog), body, "%s recognized in any part order" % body)
+		var moved := Genome.from_dict(genome.to_dict())
+		moved.parts[0]["angle"] = float(moved.parts[0]["angle"]) + 0.1
+		check_eq(Lineage.starting_body_of(moved, catalog), "", "%s with a moved part is no longer a starting body" % body)
+		var grown := Genome.from_dict(genome.to_dict())
+		grown.add_part("eye_spot", -1.0)
+		check_eq(Lineage.starting_body_of(grown, catalog), "", "%s with an extra part is no longer a starting body" % body)
+		var scaled := Genome.from_dict(genome.to_dict())
+		scaled.parts[0]["scale"] = 1.5
+		check_eq(Lineage.starting_body_of(scaled, catalog), "", "%s with a resized part is no longer a starting body" % body)
+	check_eq(Lineage.starting_body_of(save.genome, catalog), "", "the test body is not a starting body")

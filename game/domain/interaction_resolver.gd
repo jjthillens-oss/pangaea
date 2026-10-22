@@ -15,6 +15,9 @@ const BITE_SIZE_LIMIT := 1.6  ## a jaw cannot bite something more than this many
 const BITE_COOLDOWN := 0.6
 const RAM_COOLDOWN := 0.5
 const FEED_COOLDOWN := 0.25
+## A cell eats only when it can absorb at least this share of the food's energy (PROPOSED;
+## 0 turns the rule off). Without it a full cell would keep stripping zones and earning points.
+const FEED_MIN_ROOM_SHARE := 0.5
 const MAX_DEFENSE := 0.95     ## no defense blocks everything
 
 
@@ -55,7 +58,8 @@ static func _after_defense(damage: float, target: Actor) -> float:
 
 
 ## food: {"id", "kind": "plant"|"meat", "position": Vector2, "radius": float, "energy": float, "points": int}
-static func feed(actor: Actor, food: Dictionary, now: float) -> Dictionary:
+## room: energy the actor can still absorb (capacity - energy); the default never refuses.
+static func feed(actor: Actor, food: Dictionary, now: float, room: float = INF) -> Dictionary:
 	var p := actor.phenotype
 	if not p.can_eat(food.kind):
 		return _result(false, "needs a %s" % ("filter mouth" if food.kind == "plant" else "jaw"))
@@ -68,6 +72,8 @@ static func feed(actor: Actor, food: Dictionary, now: float) -> Dictionary:
 			facing = true
 	if not facing:
 		return _result(false, "mouth is not facing it")
+	if room < float(food.energy) * FEED_MIN_ROOM_SHARE:
+		return _result(false, "not hungry")
 	if not _ready_at(actor, "feed", now):
 		return _result(false, "still swallowing")
 	actor.cooldowns["feed"] = now + FEED_COOLDOWN

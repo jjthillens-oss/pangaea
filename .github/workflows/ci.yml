@@ -33,6 +33,9 @@ jobs:
       - name: Export Windows build
         run: tools/export_windows.sh
 
+      - name: Start the exported release exe without the dev tools
+        run: tools/check_release.sh ".toolchain/Godot_v${GODOT_RELEASE}_linux.x86_64" builds/windows/Pangaea.exe
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:

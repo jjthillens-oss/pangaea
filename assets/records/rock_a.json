@@ -1,0 +1,44 @@
+{
+  "id": "rock_a",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - M1 step 2, not visually approved",
+  "purpose": "M1 step 2 pool rock, an obstacle the cell slides around. Placed by game/data/pool_m1.json with yaw and uniform scale.",
+  "category": "rock",
+  "source_blend": "assets/source/blender/rock_a.blend",
+  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "export_path": "assets/export/rock_a.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 2.119,
+    "y_forward": 1.896,
+    "z_up": 2.58
+  },
+  "triangles": 1280,
+  "triangle_budget": 1300,
+  "textures": [],
+  "materials": [
+    "M_RockStone"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Rock"
+  ],
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_radius_m": 1.0,
+  "max_radius_m": 1.092,
+  "swim_band_radius_m": 1.05,
+  "swim_band_min_radius_m": 0.936,
+  "swim_plane_radius_range_m": [
+    0.933,
+    1.013
+  ],
+  "top_m": 0.58,
+  "bottom_m": -2.0,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+}

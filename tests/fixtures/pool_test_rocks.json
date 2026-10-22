@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "status": "TEST FIXTURE",
+  "note": "A tiny pool for food placement tests: zone z_rock has a rock inside it, a bigger rock covers all of zone z_covered, and the interim carrion supply runs every second.",
+  "pool": {"radius": 20.0, "soft_start": 16.0, "hard_radius": 19.5, "return_speed": 1.0},
+  "spawn": {"position": [0.0, 10.0], "heading": -1.5708},
+  "plankton": {"unit_energy": 8.0, "points": 1, "item_radius": 0.18, "max_items_per_zone": 12,
+               "drift_amplitude": 0.35, "drift_period_s": [7.0, 13.0]},
+  "zones": [
+    {"id": "z_rock",    "center": [0.0, 0.0],  "radius": 4.0, "capacity": 96.0, "growth_rate": 1.0},
+    {"id": "z_covered", "center": [-9.0, 0.0], "radius": 1.5, "capacity": 24.0, "growth_rate": 0.5}
+  ],
+  "carrion": {"energy": 24.0, "points": 3, "item_radius": 0.3, "lifetime_s": 90.0,
+              "initial": [],
+              "interim_supply": {"enabled": true, "interim": true, "interval_s": 1.0, "jitter_s": 0.5,
+                                 "max_live": 6, "placement": "in_zone"}},
+  "rocks": [
+    {"id": "rock_in_zone",   "asset": "rock_a", "center": [1.5, 0.0],  "yaw_deg": 0, "scale": 1.5},
+    {"id": "rock_over_zone", "asset": "rock_b", "center": [-9.0, 0.0], "yaw_deg": 0, "scale": 2.5}
+  ],
+  "rock_footprint_radius_m": 1.0,
+  "camera": {"pitch_deg": 55.0, "fov_deg": 45.0, "distance": 14.0, "zoom_min": 10.0, "zoom_max": 20.0, "zoom_step": 2.0,
+             "follow_half_life_s": 0.12, "look_ahead_s": 0.35, "look_ahead_max": 2.5},
+  "assists": {"starving_food_arrow": true}
+}
