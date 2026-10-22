@@ -104,6 +104,11 @@ func test_a_site_near_the_player_or_in_view_waits_for_the_first_retry_after_the_
 	check_eq(field.spawn_blocker(lair, arena, NORTH_OF_LAIR_SE), "near the player", "13.6 m away, out of view, is still too near")
 	check_eq(field.spawn_blocker(lair, arena, BESIDE_LAIR_SE), "in view", "20.5 m away but on screen at the widest zoom")
 	check_eq(field.spawn_blocker(lair, arena, layout.spawn), "", "from the checkpoint it may spawn")
+	var on_rock := {"id": "on_rock", "species": "ambush_hunter", "home": layout.rocks[16].center, "heading": 0.0}
+	check_eq(field.spawn_blocker(on_rock, arena, layout.spawn), "not clear", "never on a rock (%s)" % layout.rocks[16].id)
+	var squatter := field.spawn_at("rammer", lair.home + Vector2(1.5, 0.0), 0.0, "", 0, true)
+	check_eq(field.spawn_blocker(lair, arena, layout.spawn), "occupied", "never onto another creature")
+	field.remove(squatter, "test", 0, false)
 	var player := [lair.home]
 	var moves := {100: NORTH_OF_LAIR_SE, 150: BESIDE_LAIR_SE, 200: layout.spawn}
 	var born := -1
@@ -111,15 +116,13 @@ func test_a_site_near_the_player_or_in_view_waits_for_the_first_retry_after_the_
 		if moves.has(tick):
 			player[0] = moves[tick]
 		field.tick_spawns(arena, player[0], tick)
-		var c := field.find("c_7")
-		if c != null and born < 0:
+		if born < 0 and _site_ids(field).has("lair_se"):
 			born = tick
 	check_eq(born, 240, "it spawns at the first retry (60, 120, 180 refused; 240 after the move at 200)")
-	var c := field.find("c_7")
-	if c != null:
-		check_eq(c.site_id, "lair_se", "at lair_se")
-		check_eq(c.motion.position, lair.home, "at its home")
-		check_eq(c.born_tick, 240, "born then")
+	var c: CreatureField.Creature = field.creatures[-1]
+	check_eq(c.site_id, "lair_se", "at lair_se")
+	check_eq(c.motion.position, lair.home, "at its home")
+	check_eq(c.born_tick, 240, "born then")
 	check(field.queue.is_empty(), "nothing waits after")
 
 
