@@ -9,6 +9,11 @@ extends RefCounted
 ##   "mouth is not facing it": after touching it for FACING_AFTER_S
 ##   "not hungry": at most once per FULL_REPEAT_S
 ##   anything else: as the rules give it
+##
+## Attack refusals (M1 step 3, the cell's automatic bite and ram) come as "attack_refused" events,
+## which the sim sends only for reasons the player can act on and at most every 0.5 s per
+## creature; consider_attack() words them (ATTACK_TEXTS) and shows each at most once per
+## ATTACK_REPEAT_S, so pressing against a creature does not repeat the hint and its sound.
 
 const DIET_REPEAT_S := 4.0
 const FACING_AFTER_S := 0.5
@@ -20,7 +25,16 @@ const TEXTS := {
 	"not hungry": "Full",
 }
 
+## The cell's attack refusals worth a hint, and their words.
+const ATTACK_TEXTS := {
+	"jaw is not facing it": "Turn your jaw toward it",
+	"no spike points at it": "Point a spike at it",
+	"too big to bite": "Too big to bite",
+}
+const ATTACK_REPEAT_S := 2.0
+
 var _last_shown := {}   ## reason -> sim time it was last shown
+var _last_attack := {}  ## attack reason -> sim time it was last shown
 
 
 ## True for refusals that are about what the body can eat.
@@ -50,6 +64,19 @@ func consider(event: Dictionary, now: float) -> String:
 	return str(TEXTS.get(reason, reason))
 
 
+## The hint to show now for an "attack_refused" event at sim time `now`, or "" (a reason with no
+## hint, or the same one shown less than ATTACK_REPEAT_S ago).
+func consider_attack(event: Dictionary, now: float) -> String:
+	var reason := str(event.get("reason", ""))
+	if not ATTACK_TEXTS.has(reason):
+		return ""
+	if _last_attack.has(reason) and now - float(_last_attack[reason]) < ATTACK_REPEAT_S:
+		return ""
+	_last_attack[reason] = now
+	return str(ATTACK_TEXTS[reason])
+
+
 ## Forgets what was shown (a new run or a respawn).
 func reset() -> void:
 	_last_shown.clear()
+	_last_attack.clear()

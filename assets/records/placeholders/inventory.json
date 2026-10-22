@@ -232,7 +232,7 @@
     {
       "id": "feedback_labels",
       "kind": "label",
-      "description": "Pooled Label3D for meal toasts such as \"+8 energy\" and the \"Regrowing\" labels. Text, not geometry.",
+      "description": "Pooled Label3D for meal toasts such as \"+8 energy\", the \"Regrowing\" labels and the \"−12\" hit numbers. Text, not geometry.",
       "types": [
         "Label3D"
       ],
@@ -276,6 +276,47 @@
         "game/scenes/pool/creature_view.tscn"
       ],
       "node": "Pool/Creatures/<id>/Marker"
+    },
+    {
+      "id": "dodged_label",
+      "kind": "label",
+      "description": "Label3D \"Dodged!\" rising over the cell for 0.8 s when a strike on it ends without a hit. Text, not geometry.",
+      "types": [
+        "Label3D"
+      ],
+      "files": [
+        "game/scenes/pool/feedback_fx.gd"
+      ],
+      "node": "Pool/Feedback/Dodged"
+    },
+    {
+      "id": "hurt_vignette",
+      "kind": "ui",
+      "description": "A full-screen ColorRect with hurt_vignette.gdshader: a dark red glow at the screen edges, one pulse per hit on the cell (alpha at most 0.35, gone in 0.4 s). Gameplay UI, not a model.",
+      "types": [
+        "ColorRect",
+        "ShaderMaterial"
+      ],
+      "files": [
+        "game/ui/hud.tscn",
+        "game/ui/hurt_vignette.gdshader",
+        "game/ui/hud.gd"
+      ],
+      "node": "Pool/UI/Hud/HurtVignette"
+    },
+    {
+      "id": "threat_arrows",
+      "kind": "ui",
+      "description": "Off-screen threat arrows drawn with CanvasItem draw calls: a badge with the species glyph (HudIcon jaw or star) and a pointer on the screen edge, pulsing with \"!\" during a tell. Gameplay UI, not a model.",
+      "types": [
+        "Control"
+      ],
+      "files": [
+        "game/ui/threat_indicators.gd",
+        "game/ui/hud_icon.gd",
+        "game/ui/hud.tscn"
+      ],
+      "node": "Pool/UI/Hud/ThreatIndicators"
     }
   ]
 }

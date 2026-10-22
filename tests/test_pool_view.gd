@@ -146,6 +146,38 @@ func test_a_new_meal_label_pushes_the_rising_labels_near_it_up_a_line_without_cr
 	fx.free()
 
 
+func test_a_hit_on_or_by_the_cell_rises_as_a_number_and_a_dodge_says_so() -> void:
+	var fx := _feedback()
+	var taken := {"type": "hit", "attacker": "c_1", "target": CreatureField.PLAYER_ID, "kind": "bite",
+		"damage": 12.0, "dealt": 12.0, "position": Vector2(1.0, 2.0)}
+	fx.show_hit(taken)
+	var labels := fx.hit_labels()
+	check_eq(labels.size(), 1, "a hit on the cell shows a number")
+	if labels.size() == 1:
+		check_eq(labels[0].text, "−12", "the health it took")
+		check(labels[0].modulate.is_equal_approx(FeedbackFx.HIT_TAKEN_COLOR), "in the taken colour")
+		check(labels[0].position.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FeedbackFx.HIT_START_Y)), "over the cell")
+	fx.show_hit({"type": "hit", "attacker": CreatureField.PLAYER_ID, "target": "c_2", "kind": "bite", "damage": 8.0,
+		"dealt": 7.6, "position": Vector2.ZERO})
+	check_eq(fx.hit_labels().size(), 2, "a hit by the cell shows one too")
+	if fx.hit_labels().size() == 2:
+		check(fx.hit_labels()[1].modulate.is_equal_approx(FeedbackFx.HIT_DEALT_COLOR) and fx.hit_labels()[1].text == "−8",
+			"in the dealt colour, rounded")
+	fx.show_hit({"type": "hit", "attacker": "c_3", "target": "c_2", "kind": "ram", "damage": 9.0, "dealt": 9.0, "position": Vector2.ZERO})
+	check_eq(fx.hit_labels().size(), 2, "hits between creatures show nothing")
+	check_eq(FeedbackFx.hit_text({"dealt": 0.3}), "−1", "a scratch shows at least 1")
+	fx._process(FeedbackFx.HIT_LIFE_S + 0.01)
+	check_eq(fx.hit_labels().size(), 0, "the numbers are gone after their life")
+	check(not fx.dodged_label().visible, "no dodge yet")
+	fx.show_dodged(Vector2(3.0, -1.0))
+	check(fx.dodged_label().visible and fx.dodged_label().text == "Dodged!", "a dodge shows 'Dodged!'")
+	fx._process(FeedbackFx.DODGED_LIFE_S * 0.5)
+	check(fx.dodged_label().visible and fx.dodged_label().position.y > FeedbackFx.DODGED_START_Y, "rising")
+	fx._process(FeedbackFx.DODGED_LIFE_S * 0.5 + 0.01)
+	check(not fx.dodged_label().visible, "gone after 0.8 s")
+	fx.free()
+
+
 func test_the_food_arrow_label_never_covers_the_cell_and_stays_by_its_arrow() -> void:
 	var arrow := StarvingArrow.new()
 	arrow.size = Vector2(1920, 1080)

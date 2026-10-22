@@ -188,6 +188,43 @@ func test_quitting_asks_first_only_about_what_would_be_lost() -> void:
 	check_eq(_ids(fallback.choices), PackedStringArray(["quit", "cancel"]), "no save while dead")
 
 
+func test_attack_refusals_become_hints_in_words_at_most_every_two_seconds() -> void:
+	var hints := RefusalHints.new()
+	var jaw := {"type": "attack_refused", "target": "c_1", "kind": "bite", "reason": "jaw is not facing it"}
+	check_eq(hints.consider_attack(jaw, 1.0), "Turn your jaw toward it", "jaw")
+	check_eq(hints.consider_attack(jaw, 2.9), "", "not again within two seconds")
+	check_eq(hints.consider_attack(jaw, 3.0), "Turn your jaw toward it", "again after two seconds")
+	check_eq(hints.consider_attack({"reason": "no spike points at it"}, 3.1), "Point a spike at it", "spikes, on their own clock")
+	check_eq(hints.consider_attack({"reason": "too big to bite"}, 3.2), "Too big to bite", "too big")
+	for quiet in ["out of reach", "jaw is recovering", "spikes are recovering", "not moving toward it", "needs a jaw", "needs a spike"]:
+		check_eq(hints.consider_attack({"reason": quiet}, 10.0), "", "'%s' gets no hint" % quiet)
+		check(PoolSim.ATTACK_QUIET_REASONS.has(quiet), "and the sim never sends '%s'" % quiet)
+	for reason: String in RefusalHints.ATTACK_TEXTS:
+		check(not PoolSim.ATTACK_QUIET_REASONS.has(reason), "the sim sends '%s'" % reason)
+	hints.reset()
+	check_eq(hints.consider_attack(jaw, 3.5), "Turn your jaw toward it", "reset forgets")
+
+
+func test_the_health_bar_shows_whenever_the_cell_is_hurt_or_starving() -> void:
+	check(not Hud.shows_health(_state(60.0, 30.0)), "fed and whole: no bar")
+	check(Hud.shows_health(_state(60.0, 29.5)), "any damage shows it")
+	check(Hud.shows_health(_state(60.0, 18.0)), "a bite shows it")
+	check(Hud.shows_health(_state(0.0, 30.0)), "starving shows it")
+
+
+func test_the_hurt_vignette_pulses_once_and_never_past_its_peak() -> void:
+	check_near(Hud.vignette_strength(0.0), Hud.VIGNETTE_PEAK, 1e-6, "at its peak when the hit lands")
+	check(Hud.VIGNETTE_PEAK <= 0.35 + 1e-6, "the peak is at most 0.35 (comfort)")
+	check_near(Hud.vignette_strength(Hud.VIGNETTE_FALL_S * 0.5), Hud.VIGNETTE_PEAK * 0.5, 1e-6, "half way down")
+	check_eq(Hud.vignette_strength(Hud.VIGNETTE_FALL_S), 0.0, "gone after 0.4 s")
+	check_eq(Hud.vignette_strength(-0.1), 0.0, "nothing before the hit")
+	var top := 0.0
+	for i in 60:
+		top = maxf(top, Hud.vignette_strength(i / 60.0))
+	check(top <= Hud.VIGNETTE_PEAK + 1e-6, "never above the peak (%.3f)" % top)
+	check(Hud.VIGNETTE_MIN_GAP_S >= Hud.VIGNETTE_FALL_S, "a pulse ends before the next may start")
+
+
 func _ids(choices: Array) -> PackedStringArray:
 	var out := PackedStringArray()
 	for c in choices:

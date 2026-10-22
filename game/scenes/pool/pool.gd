@@ -9,8 +9,10 @@ extends Node3D
 ## notices mount under %UI (CanvasLayer 10) and read `sim` directly; see the signals below.
 ##
 ## Threats (M1 step 3): CreatureLayer draws the sim's creatures, and creature events become the
-## "!" marker, the tell's floor lane, flashes, the player's hurt flinch and shelter rim, and
-## positional cues. A pool without species has no creatures and none of this.
+## "!" marker, the tell's floor lane, flashes, the player's hurt flinch and shelter rim, "−12" hit
+## labels and "Dodged!" (FeedbackFx), attack hints, and positional cues. The HUD adds the shelter
+## chip, the hurt vignette and the off-screen threat arrows from the same events and the sim. A pool
+## without species has no creatures and none of this.
 
 ## Every sim event, after the pool's own feedback has run (see PoolSim.drain_events for types).
 signal sim_event(event: Dictionary)
@@ -162,7 +164,7 @@ func _process(delta: float) -> void:
 	# While paused the sim is still, so draw its current tick instead of a moving fraction.
 	var fraction := 1.0 if paused else Engine.get_physics_interpolation_fraction()
 	cell_view.show_motion(sim.motion, fraction)
-	cell_view.set_sheltered(_sheltered())
+	cell_view.set_sheltered(sim.is_sheltered())
 	creature_layer.sync(fraction)
 	camera.follow(cell_view.position, Vector2.ZERO if paused else sim.display_velocity(), delta)
 	_draw_food(fraction)
@@ -249,9 +251,16 @@ func _route(event: Dictionary) -> void:
 				audio.play_at("notice", _world(event.position))
 		"creature_tell":
 			audio.play_at("tell_" + str(event.get("kind", "")), _world(event.position))
+		"attack_refused":
+			var text := hints.consider_attack(event, sim.now())
+			if not text.is_empty():
+				audio.play("refuse")
+				refusal_hint.emit(text, str(event.reason))
 		"dodged":
+			feedback.show_dodged(sim.motion.position)
 			audio.play("dodged")
 		"hit":
+			feedback.show_hit(event)
 			if event.get("target") == CreatureField.PLAYER_ID:
 				cell_view.hurt()
 				audio.play("hurt")
@@ -269,12 +278,6 @@ func _route(event: Dictionary) -> void:
 
 func _world(p: Variant) -> Vector3:
 	return PlaneSpace.to_world(p) if p is Vector2 else cell_view.position
-
-
-## Whether the cell is sheltered now (the sim's grace after a start, continue or respawn). The
-## checkpoint commit gives PoolSim is_sheltered(); until then no cell is sheltered.
-func _sheltered() -> bool:
-	return bool(sim.call("is_sheltered")) if sim.has_method("is_sheltered") else false
 
 
 ## Grey cell, pulse sound and the food arrow while starving.
