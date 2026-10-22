@@ -169,6 +169,9 @@ func validate(max_speed: float = MAX_SPEED) -> PackedStringArray:
 			errors.append("Zone '%s' needs a positive radius, capacity and growth rate." % z.id)
 		elif z.center.length() + z.radius > soft_start - ZONE_WALL_MARGIN:
 			errors.append("Zone '%s' reaches within %.1f m of the soft wall." % [z.id, ZONE_WALL_MARGIN])
+		if z.capacity > 0.0 and z.capacity < unit:
+			errors.append("Zone '%s' capacity %.1f is below one plankton unit (%.1f), so it could never show food."
+				% [z.id, z.capacity, unit])
 	var tunnel_limit := 2.0 * max_speed * PoolSim.DT
 	for r in rocks:
 		if not _new_id(r.id, ids):

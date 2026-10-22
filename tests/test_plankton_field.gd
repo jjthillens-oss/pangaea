@@ -5,6 +5,8 @@ extends TestCase
 const DT := 1.0 / 60.0
 ## One zone with a rock inside it and one zone a rock covers completely.
 const ROCKY_FIXTURE := "res://tests/fixtures/pool_test_rocks.json"
+## One zone: capacity 24, unit 8, growth 0.10, no rocks.
+const SMALL_FIXTURE := "res://tests/fixtures/pool_test_small.json"
 ## Chance per tick of a meal and of a take in the random test (60 ticks a second).
 const RANDOM_EAT_SHARE := 0.01
 const RANDOM_TAKE_SHARE := 0.01
@@ -50,6 +52,23 @@ func _ids_in(field: PlanktonField, zone_id: String) -> Array:
 		if item.zone == zone_id:
 			ids.append(item.id)
 	return ids
+
+
+## The small test pool with its one zone's capacity changed (not validated).
+func _small_layout(capacity: float) -> PoolLayout:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SMALL_FIXTURE))
+	data.zones[0].capacity = capacity
+	return PoolLayout.from_dict(data)
+
+
+## Types of the zone events a field reported for one zone since the last call; clears them.
+func _zone_events(field: PlanktonField, zone_id: String) -> Array:
+	var out := []
+	for e in field.events:
+		if e.zone == zone_id:
+			out.append(e.type)
+	field.events.clear()
+	return out
 
 
 ## Eats the way PoolSim does: stock first, then the item.
@@ -250,6 +269,76 @@ func test_an_emptied_zone_reports_empty_once_and_regrown_when_full_again() -> vo
 	check_eq(field.count_in("z_center"), 6, "all six items back")
 	# Plan: first item about 15 s, all six about 56 s after the centre zone is emptied.
 	check(regrown_at * DT > 40.0 and regrown_at * DT < 75.0, "regrown after %.1f s" % (regrown_at * DT))
+	# Emptied again after it regrew: reported again.
+	for item in field.items.duplicate():
+		if item.zone == "z_center":
+			_eat(field, region, item)
+	region.take("z_center", 100.0)
+	region.tick(DT)
+	field.tick(region, arena, regrown_at + 1, (regrown_at + 1) * DT)
+	check_eq(_zone_events(field, "z_center"), ["zone_empty"], "the second emptying is reported at once")
+	check(field.is_regrowing("z_center"), "and the zone is regrowing again")
+
+
+func test_a_zone_with_room_for_one_item_reports_empty_once_each_time_it_is_emptied() -> void:
+	var small := _small_layout(12.0)
+	check(small.validate().is_empty(), "capacity 12 is a valid zone: %s" % [small.validate()])
+	var arena_small := small.build_arena()
+	var region := small.build_region(21)
+	var field := PlanktonField.create(small.plankton)
+	field.fill(region, arena_small, 0, 0.0)
+	var reports := []
+	var tick := 0
+	for emptying in 2:
+		check_eq(field.count_in("z_test"), 1, "emptying %d: the zone shows its one item" % emptying)
+		for item in field.items.duplicate():
+			_eat(field, region, item)
+		region.take("z_test", 100.0)
+		var counts := {"zone_empty": 0, "zone_regrown": 0}
+		# The item comes back after about 35 s at this growth rate.
+		for i in 60 * 60:
+			region.tick(DT)
+			field.tick(region, arena_small, tick, tick * DT)
+			tick += 1
+			for type in _zone_events(field, "z_test"):
+				counts[type] += 1
+			if field.count_in("z_test") == 1 and not field.is_regrowing("z_test"):
+				break
+		reports.append([counts.zone_empty, counts.zone_regrown])
+	check_eq(reports, [[1, 1], [1, 1]], "[zone_empty, zone_regrown] reports for each emptying")
+
+
+func test_a_zone_drained_again_before_half_capacity_reports_empty_only_once() -> void:
+	var small := _small_layout(24.0)
+	var arena_small := small.build_arena()
+	var region := small.build_region(22)
+	var field := PlanktonField.create(small.plankton)
+	field.fill(region, arena_small, 0, 0.0)
+	var z := region.zone("z_test")
+	var events := []
+	var drains := 0
+	for item in field.items.duplicate():
+		_eat(field, region, item)
+	region.take("z_test", 100.0)
+	for i in 90 * 60:
+		region.tick(DT)
+		field.tick(region, arena_small, i, i * DT)
+		events.append_array(_zone_events(field, "z_test"))
+		# Eat the first item back (below half capacity), then everything once it is past half.
+		var past_half: bool = z.amount >= z.capacity * PlanktonField.REGROWN_LATCH_SHARE
+		if field.count_in("z_test") > 0 and (drains == 0 or past_half):
+			check_eq(past_half, drains == 1, "drain %d happens %s half capacity" % [drains, "past" if drains == 1 else "below"])
+			for item in field.items.duplicate():
+				_eat(field, region, item)
+			drains += 1
+			if drains == 2:
+				region.tick(DT)
+				field.tick(region, arena_small, i + 1, (i + 1) * DT)
+				events.append_array(_zone_events(field, "z_test"))
+				break
+	check_eq(drains, 2, "both drains happened")
+	check_eq(events, ["zone_empty", "zone_empty"], "no second report below half capacity, a new one past it")
+	check(field.is_regrowing("z_test"), "regrowing after the second report")
 
 
 func test_carrion_spawns_never_draw_from_the_region_rng() -> void:
