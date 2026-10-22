@@ -18,6 +18,9 @@ const LATE_RUN_SEEDS := [101, 102, 103, 104]
 const LATE_RUN_POINTS := 2
 const LATE_RUN_POINT_SPACING_M := 10.0
 const LATE_RUN_MISSES_ALLOWED := 1
+const APPROACH_M := 4.0       ## a cell swimming at food starts this far away
+const SHORT_CARRION_LIFETIME_S := 1.0
+const LONE_CARRION_AT := Vector2(8.0, 0.0)   ## clear of the fixture zone and its plankton
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -162,6 +165,41 @@ func test_a_diet_refusal_changes_nothing() -> void:
 	check_eq(sim.stats.energy_supplied, 0.0, "nothing supplied")
 
 
+## The diet refusal is reported from beyond touch range too (diet comes before reach), and that
+## early report must not hold back the one that comes when the cell touches the food: diet hints
+## show only while touching, so a short brush past would otherwise go unexplained. Swimming on
+## and away is not news, so the usual REFUSAL_REPEAT_S spacing holds from that touch on.
+func test_a_hunter_swimming_through_plankton_is_refused_while_touching_from_the_first_touch() -> void:
+	var sim := _sim("hunter", 21)
+	var food := _lonely_plant(sim, "z_n")
+	check(not food.is_empty() and _beside(sim, food, 0.0, APPROACH_M), "hunter placed %.0f m from plankton, facing it" % APPROACH_M)
+	var touch := sim.phenotype.radius + float(food.radius) + PoolSim.TOUCH_MARGIN
+	var reports := []   # [sim time, touching then, event] for this food
+	var first_touch_at := -1.0
+	var left_at := -1.0
+	for i in 2 * roundi(APPROACH_M / sim.phenotype.speed / DT) + 60:
+		sim.step(SimIntent.new(Vector2.RIGHT))   # straight through it, at full throttle
+		var at := (sim.tick - 1) * DT
+		var touching := sim.motion.position.distance_to(_item(sim, food.id).position) <= touch
+		if touching and first_touch_at < 0.0:
+			first_touch_at = at
+		elif not touching and first_touch_at >= 0.0 and left_at < 0.0:
+			left_at = at
+		for e in _events_of(sim.drain_events(), "refused"):
+			if e.food_id == food.id:
+				reports.append([at, touching, e])
+	check(first_touch_at >= 0.0 and left_at > first_touch_at, "it swam into the plankton and out again")
+	var diet := func(r: Array) -> bool: return r[2].reason == "needs a filter mouth" and r[2].touching == r[1]
+	check(not reports.is_empty() and reports.all(diet), "every report is the diet refusal, touching as measured: %s" % [reports])
+	check(reports.any(func(r: Array) -> bool: return r[0] < first_touch_at), "it was refused before touching it")
+	check(reports.any(func(r: Array) -> bool: return r[0] == first_touch_at and r[2].touching),
+		"and again on the first tick it touched it (%.3f s): %s" % [first_touch_at, reports])
+	var since_touch := reports.filter(func(r: Array) -> bool: return r[0] >= first_touch_at)
+	for k in range(1, since_touch.size()):
+		var gap: float = since_touch[k][0] - since_touch[k - 1][0]
+		check(gap >= PoolSim.REFUSAL_REPEAT_S - 1e-6, "reported again after %.2f s, left it after %.2f s" % [gap, left_at - first_touch_at])
+
+
 func test_a_zone_eaten_empty_regrows_while_the_cell_waits_nearby() -> void:
 	var fixture := PoolLayout.load_from(FIXTURE)
 	check(fixture.validate().is_empty(), "fixture is valid: %s" % [fixture.validate()])
@@ -227,13 +265,17 @@ func test_a_starving_cell_swims_at_half_speed_and_recovers_by_eating() -> void:
 	var bot = ForageBot.new()
 	var fastest_starving := 0.0
 	var ate_at := -1
+	var meal_tick := []
 	for i in 25 * 60:
 		sim.step(bot.next_intent(sim))
-		if not _events_of(sim.drain_events(), "ate").is_empty():
+		var events := sim.drain_events()
+		if not _events_of(events, "ate").is_empty():
 			ate_at = i
+			meal_tick = events.map(func(e: Dictionary) -> String: return e.type)
 			break
 		fastest_starving = maxf(fastest_starving, sim.display_velocity().length())
 	check(ate_at >= 0 and not sim.dead, "ate before dying (after %.1f s)" % (ate_at * DT))
+	check(meal_tick.find("starving_ended") > meal_tick.find("ate"), "the meal ends starving on its tick: %s" % [meal_tick])
 	check(fastest_starving <= sim.phenotype.speed * ActorState.STARVING_SPEED + SPEED_EPSILON,
 		"starving top speed %.3f m/s, half of %.3f" % [fastest_starving, sim.phenotype.speed])
 	check(fastest_starving > sim.phenotype.speed * ActorState.STARVING_SPEED * 0.9, "it did swim at that speed")
@@ -301,6 +343,28 @@ func test_a_hunter_starving_late_in_a_run_still_finds_carrion() -> void:
 	check(misses.size() <= LATE_RUN_MISSES_ALLOWED, "starved before finding carrion: %s" % [misses])
 
 
+## The starving arrow points at the nearest food the body can eat (by distance, then id). At the
+## spawn the nearest food of all is carrion, so a grazer must be sent past it to plankton.
+func test_the_starving_arrow_food_is_the_nearest_the_body_can_eat() -> void:
+	for body in ["grazer", "hunter", "omnivore"]:
+		var sim := _sim(body, 1234)
+		var at := sim.motion.position
+		var by_distance := sim.plankton.items + sim.carrion.items
+		by_distance.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var da := at.distance_to(a.position)
+			var db := at.distance_to(b.position)
+			return da < db if da != db else str(a.id) < str(b.id))
+		check_eq(by_distance[0].kind, "meat", "%s: the nearest food at the spawn is carrion" % body)
+		var edible := by_distance.filter(func(item: Dictionary) -> bool: return sim.phenotype.can_eat(item.kind))
+		var food := sim.nearest_edible()
+		check_eq(food.get("id", ""), edible[0].id, "%s: the nearest edible food" % body)
+		check(sim.phenotype.can_eat(food.get("kind", "")), "%s: can eat it (%s)" % [body, food.get("kind", "")])
+		check_eq(food.get("position", Vector2.INF), edible[0].position, "%s: and where it is" % body)
+	var no_carrion := PoolLayout.load_from(FIXTURE)
+	check(no_carrion.carrion.initial.is_empty() and not no_carrion.carrion.interim_supply.enabled, "a pool with no carrion")
+	check_eq(_sim("hunter", 1234, no_carrion).nearest_edible(), {}, "a hunter there has nothing to aim at")
+
+
 func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() -> void:
 	var sim := _sim("grazer", 51)
 	var died := 0
@@ -325,6 +389,101 @@ func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() 
 	check_eq(sim.alive_s, 0.0, "alive timer reset")
 	check_eq(sim.save.adaptation_points, points, "the sim alone does not apply the death rule")
 	check_eq(_events_of(sim.drain_events(), "respawned").size(), 1, "respawned reported")
+
+
+## A dead cell skips feeding (tick order): food in front of it stays put and earns nothing while
+## the death notice is up.
+func test_a_cell_that_dies_facing_food_eats_none_of_it() -> void:
+	var sims: Array[PoolSim] = []
+	for i in 2:
+		var sim := _sim("grazer", 51)
+		var food := _lonely_plant(sim, "z_n")
+		check(not food.is_empty() and _beside(sim, food, 0.0), "grazer placed facing plankton")
+		sim.debug_set_energy(0.0)
+		sim.drain_events()
+		sims.append(sim)
+	var living := sims[0]
+	living.step(SimIntent.new())
+	check_eq(_events_of(living.drain_events(), "ate").size(), 1, "a starving cell placed there eats on the first tick")
+	var dying := sims[1]
+	var food_id: String = _lonely_plant(dying, "z_n").id
+	dying.state.health = ActorState.STARVATION_DAMAGE * DT   # one tick of starving left
+	var points := dying.save.adaptation_points
+	dying.step(SimIntent.new())
+	check(dying.dead, "it died on the first tick")
+	var meals := _events_of(dying.drain_events(), "ate").size()
+	for i in 60:
+		dying.step(SimIntent.new())
+		meals += _events_of(dying.drain_events(), "ate").size()
+	check_eq(meals, 0, "a dead cell eats nothing")
+	check(not _item(dying, food_id).is_empty(), "the food is still there")
+	check_eq(dying.stats.plankton_eaten, 0, "nothing counted as eaten")
+	check_eq(dying.state.energy, 0.0, "no energy gained")
+	check_eq(dying.save.adaptation_points, points, "no points earned")
+
+
+## Ecology runs before feeding (tick order), so carrion that rots on a tick is gone before the
+## cell can bite it on that tick.
+func test_carrion_that_rots_on_a_tick_cannot_be_eaten_on_that_tick() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE))
+	data.carrion.lifetime_s = SHORT_CARRION_LIFETIME_S
+	data.carrion.initial = [[LONE_CARRION_AT.x, LONE_CARRION_AT.y]]
+	var short_lived := PoolLayout.from_dict(data)
+	check(short_lived.validate().is_empty(), "a valid pool with one short-lived carrion")
+	# The tick it rots on, seen from a cell that leaves it alone.
+	var watch := _sim("hunter", 63, short_lived)
+	var rot_tick := -1
+	for i in roundi(SHORT_CARRION_LIFETIME_S / DT) + 60:
+		watch.step(SimIntent.new())
+		if not _events_of(watch.drain_events(), "carrion_expired").is_empty():
+			rot_tick = i
+			break
+	check(rot_tick > 0, "it rots on tick %d" % rot_tick)
+	for hungry_on in [rot_tick - 1, rot_tick]:
+		var sim := _sim("hunter", 63, short_lived)
+		var food: Dictionary = sim.carrion.items[0] if sim.carrion.items.size() == 1 else {}
+		check(not food.is_empty() and _beside(sim, food, 0.0), "hunter placed facing the carrion")
+		for i in hungry_on:
+			sim.debug_set_energy(sim.state.energy_capacity)   # full: it refuses the carrion
+			sim.step(SimIntent.new())
+		sim.debug_set_energy(sim.state.energy_capacity * 0.5)
+		sim.drain_events()
+		sim.step(SimIntent.new())
+		var events := sim.drain_events()
+		var ate := _events_of(events, "ate")
+		if hungry_on < rot_tick:
+			check(ate.size() == 1 and ate[0].food_id == food.id, "hungry the tick before it rots, it eats it: %s" % [events])
+		else:
+			check(ate.is_empty(), "hungry on the tick it rots, it eats nothing: %s" % [events])
+			check_eq(_events_of(events, "carrion_expired").size(), 1, "it rotted on that tick")
+
+
+## Starving events follow every change of the starving state as it happens, so a consumer driven
+## by them alone agrees with is_starving(), across a death and respawn too.
+func test_starving_events_alternate_across_a_death_and_respawn() -> void:
+	var sim := _sim("grazer", 51)
+	var starving_events := func() -> Array:
+		return sim.drain_events().map(func(e: Dictionary) -> String: return e.type) \
+			.filter(func(t: String) -> bool: return t.begins_with("starving_"))
+	sim.respawn_player()
+	check_eq(starving_events.call(), [], "respawning a fed cell reports no change")
+	sim.debug_set_energy(0.0)
+	check_eq(starving_events.call(), ["starving_started"], "emptying its energy starts it at once")
+	var seen := []
+	for i in 100 * 60:
+		sim.step(SimIntent.new())
+		seen.append_array(starving_events.call())
+		if sim.dead:
+			break
+	check(sim.dead and seen.is_empty(), "it starved to death with no other change reported: %s" % [seen])
+	sim.respawn_player()
+	check(not sim.state.is_starving(), "respawned fed")
+	check_eq(starving_events.call(), ["starving_ended"], "respawning ends it")
+	for i in 30:
+		sim.step(SimIntent.new())
+	check_eq(starving_events.call(), [], "nothing more while fed")
+	sim.debug_set_energy(0.0)
+	check_eq(starving_events.call(), ["starving_started"], "starving again starts it again")
 
 
 func test_death_through_the_session_costs_a_quarter_of_the_points_and_is_recorded() -> void:
@@ -396,22 +555,43 @@ func test_a_mouth_on_the_side_eats_only_food_on_that_side() -> void:
 	var food: Dictionary = sim.plankton.items[0]
 	var start: Vector2 = food.position + Vector2(0.0, 2.5)
 	sim.debug_teleport(start, (food.position - start).angle())
+	# Each refusal's touching and contact_s are checked against the distance measured here, and
+	# the refusals go through RefusalHints as the pool scene passes them.
+	var touch := sim.phenotype.radius + float(food.radius) + PoolSim.TOUCH_MARGIN
+	var touch_since := -1.0
+	var hints := RefusalHints.new()
 	var refusals := []
+	var shown := []
 	var meals := 0
 	for i in 4 * 60:
 		var target: Vector2 = _item(sim, food.id).position
 		var to := target - sim.motion.position
 		# Slow down to stop just short of it, mouth side or not.
 		sim.step(SimIntent.new(to.normalized() * clampf((to.length() - 0.55) / 1.5, 0.0, 1.0)))
+		var at := (sim.tick - 1) * DT
+		var touching := sim.motion.position.distance_to(_item(sim, food.id).position) <= touch
+		if not touching:
+			touch_since = -1.0
+		elif touch_since < 0.0:
+			touch_since = at
 		for e in sim.drain_events():
 			if e.type == "refused":
+				var contact := at - touch_since if touching else 0.0
+				check(e.touching == touching and absf(e.contact_s - contact) < 1e-6,
+					"%.3f s: reported touching %s for %.3f s, measured %s for %.3f s" % [at, e.touching, e.contact_s, touching, contact])
 				refusals.append(e)
+				shown.append(hints.consider(e, at))
 			elif e.type == "ate":
 				meals += 1
 	check_eq(meals, 0, "swimming straight at it gives no meal")
 	var last: Dictionary = refusals[-1] if not refusals.is_empty() else {}
 	check_eq(last.get("reason", ""), "mouth is not facing it", "the last refusal")
-	check(refusals.any(func(e: Dictionary) -> bool: return e.touching), "while touching it")
+	check(refusals.any(func(e: Dictionary) -> bool: return not e.touching), "in reach before touching it")
+	var first_touch := refusals.find_custom(func(e: Dictionary) -> bool: return e.touching)
+	check(first_touch >= 0 and shown[first_touch] == "", "while touching it, with no hint at first: %s" % [shown])
+	check(refusals.any(func(e: Dictionary) -> bool: return e.touching and e.contact_s >= RefusalHints.FACING_AFTER_S),
+		"and still touching it %.1f s later" % RefusalHints.FACING_AFTER_S)
+	check(shown.has(RefusalHints.TEXTS["mouth is not facing it"]), "then the player is told to turn: %s" % [shown])
 	check(_beside(sim, _item(sim, food.id), PI / 2.0), "placed with the food on its right")
 	var ate := {}
 	for i in 30:
@@ -481,7 +661,15 @@ func test_survival_points_come_from_stepped_time_and_reset_on_respawn() -> void:
 	check(earned.all(func(e: Dictionary) -> bool: return e.reason == "survival" and e.points == 1), "for survival")
 	check_eq(sim.stats.points_survival, 2, "counted as survival points")
 	check_near(sim.alive_s, 61.0, 1e-9, "alive time is sim time")
-	check_eq(sim.save.adaptation_points, 2, "time that is not stepped earns nothing")
+	# Reading the sim as a scene does every frame is not time passing.
+	var alive := sim.alive_s
+	var before := sim.snapshot()
+	for i in 60:
+		sim.drain_events()
+		sim.snapshot()
+		sim.nearest_edible()
+	check_eq(sim.alive_s, alive, "time that is not stepped is not alive time")
+	check_eq(sim.snapshot(), before, "and earns nothing and changes nothing")
 	sim.respawn_player()
 	check_eq(sim.alive_s, 0.0, "timer reset on respawn")
 	for i in 29 * 60:

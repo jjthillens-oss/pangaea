@@ -45,7 +45,7 @@ var feed_log: Array[Dictionary] = []
 var _events: Array[Dictionary] = []
 var _alive_ticks := 0
 var _was_starving := false
-var _last_refusal := {}    ## {"food_id", "reason", "at"}
+var _last_refusal := {}    ## {"food_id", "reason", "touching", "at"}
 var _contact := {}         ## {"food_id", "since"}: the food being touched, and since when
 
 
@@ -187,7 +187,7 @@ func respawn_player() -> void:
 	alive_s = 0.0
 	_alive_ticks = 0
 	dead = false
-	_was_starving = state.is_starving()
+	_update_starving()   # a cell that starved to death comes back fed
 	_contact.clear()
 	_last_refusal.clear()
 	_emit({"type": "respawned"})
@@ -341,8 +341,10 @@ func _commit_feed(food: Dictionary, effect: Dictionary) -> void:
 	_update_starving()
 
 
-## Reports a refusal when the (food, reason) pair changes, or every REFUSAL_REPEAT_S while it
-## lasts. contact_s is how long the cell has been touching that food.
+## Reports a refusal when the (food, reason) pair changes, when the cell starts touching that
+## food, or every REFUSAL_REPEAT_S while it lasts. Diet refusals come before reach, so one can be
+## reported before contact; the touching report (the one hints wait for) is never held back by it.
+## contact_s is how long the cell has been touching that food.
 func _note_refusal(food: Dictionary, reason: String) -> void:
 	var touching := motion.position.distance_to(food.position) <= phenotype.radius + float(food.radius) + TOUCH_MARGIN
 	if not touching:
@@ -350,10 +352,11 @@ func _note_refusal(food: Dictionary, reason: String) -> void:
 	elif _contact.get("food_id", "") != food.id:
 		_contact = {"food_id": food.id, "since": now()}
 	var contact_s: float = now() - float(_contact.since) if touching else 0.0
-	var same: bool = _last_refusal.get("food_id", "") == food.id and _last_refusal.get("reason", "") == reason
+	var same: bool = _last_refusal.get("food_id", "") == food.id and _last_refusal.get("reason", "") == reason \
+		and (not touching or bool(_last_refusal.get("touching", false)))
 	if same and now() - float(_last_refusal.at) < REFUSAL_REPEAT_S - 1e-9:
 		return
-	_last_refusal = {"food_id": food.id, "reason": reason, "at": now()}
+	_last_refusal = {"food_id": food.id, "reason": reason, "touching": touching, "at": now()}
 	_log_feed(food, false, reason)
 	_emit({"type": "refused", "kind": food.kind, "food_id": food.id, "reason": reason,
 		"touching": touching, "contact_s": contact_s})
