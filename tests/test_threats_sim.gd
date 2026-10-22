@@ -8,6 +8,7 @@ extends TestCase
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
@@ -543,6 +544,90 @@ func test_a_dodged_lunge_on_the_cell_reports_one_dodge_and_one_on_a_creature_rep
 	var missed := _of(on_decoy, "creature_recovered").filter(func(e: Dictionary) -> bool: return e.target == decoy.id)
 	check(not missed.is_empty() and missed[0].outcome == "missed", "the lunge at the decoy missed")
 	check(_of(on_decoy, "dodged").is_empty(), "no dodge for a creature target")
+
+
+func test_the_evade_bot_stops_dodging_once_the_creature_telling_at_it_is_gone() -> void:
+	# A guard on the dev driver: a creature killed in its tell never recovers, and the dodge still ends.
+	var sim := _sim("grazer", 82, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0)
+	var c := _creature(sim, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	_begin_tell(sim, c)
+	var bot = EvadeBot.new()
+	var pending: Array[Dictionary] = []
+	var dodging_at_kill := false
+	for t in 60:
+		if t == 40:
+			dodging_at_kill = bot.is_dodging()
+			check(sim.debug_kill_nearest_creature(), "the hunter killed in its tell")
+			pending.append_array(sim.drain_events())
+		sim.step(bot.next_intent(sim, pending))
+		pending = sim.drain_events()
+	check(dodging_at_kill, "the cell was dodging when the hunter died")
+	check(not bot.is_dodging(), "and stopped once it was gone")
+
+
+func test_the_forage_bot_minding_threats_passes_over_food_by_a_creature_steers_clear_and_dodges_a_tell() -> void:
+	# ForageBot's avoid_threats (plan section 16), which the smoke phases use. Food: the nearer meat
+	# lies 4 m from a rammer, the farther one 14 m.
+	var sim := _sim("hunter", 83, STRIKE_ORIGIN - Vector2(10.0, 0.0), PI)
+	var near: Dictionary = sim.carrion.spawn(STRIKE_ORIGIN - Vector2(6.0, 0.0), "debug")
+	var far: Dictionary = sim.carrion.spawn(STRIKE_ORIGIN - Vector2(16.0, 0.0), "debug")
+	_creature(sim, "rammer", STRIKE_ORIGIN - Vector2(2.0, 0.0), PI)
+	var plain = ForageBot.new()
+	plain.next_intent(sim)
+	check_eq(plain.target_id(), near.id, "without avoid_threats it swims for the nearer meat")
+	var wary = ForageBot.new()
+	wary.avoid_threats = true
+	wary.next_intent(sim)
+	check_eq(wary.target_id(), far.id, "minding threats it passes over the meat beside the rammer")
+
+	# Parked, with a creature 3 m east: pushed west, half the way from THREAT_AVOID_M times the gain.
+	var calm := _sim("grazer", 84, STRIKE_ORIGIN, 0.0)
+	_creature(calm, "rammer", STRIKE_ORIGIN + Vector2(3.0, 0.0), PI)
+	var parked = ForageBot.new()
+	parked.park_at = STRIKE_ORIGIN
+	check_eq(parked.next_intent(calm).move, Vector2.ZERO, "parked and not minding threats it holds still")
+	parked.avoid_threats = true
+	var away: Vector2 = parked.next_intent(calm).move
+	check(away.x < -0.99 and absf(away.y) < 1e-6, "minding threats it swims straight away west (%s)" % away)
+
+	# A lunge at it: the EvadeBot reaction, 0.4 s after the tell, perpendicular to the lane; it misses.
+	var lunge := _sim("grazer", 85, STRIKE_ORIGIN + Vector2(2.75, 0.0), PI / 2.0)
+	var c := _creature(lunge, "ambush_hunter", STRIKE_ORIGIN, 0.0)
+	_begin_tell(lunge, c)
+	var tell_tick := lunge.tick
+	var bot = ForageBot.new()
+	bot.avoid_threats = true
+	bot.park_at = lunge.motion.position
+	var events: Array[Dictionary] = []
+	var dodge := Vector2.ZERO
+	for i in 200:
+		var intent: SimIntent = bot.next_intent(lunge)
+		if lunge.tick == tell_tick + EvadeBot.REACTION_TICKS:
+			dodge = intent.move
+		lunge.step(intent)
+		events.append_array(lunge.drain_events())
+	check(bot.evade != null and bot.evade.tells_seen == 1, "it saw the tell")
+	check_eq(bot.evade.reacted_at if bot.evade != null else -1, tell_tick + EvadeBot.REACTION_TICKS, "and reacted 24 ticks after it")
+	check(absf(dodge.dot(Vector2.RIGHT)) < 1e-3 and dodge.length() > 0.99, "sideways to the lane, at full throttle (%s)" % dodge)
+	var recovered := _of(events, "creature_recovered")
+	check(not recovered.is_empty() and recovered[0].outcome == "missed", "the lunge missed")
+	check(_of(events, "hit").is_empty(), "and nothing hit the cell")
+
+
+func test_the_forage_bot_minding_threats_feeds_a_grazer_in_the_real_pool_for_two_minutes_untouched() -> void:
+	# The smoke phases' driver, in the real pool with every site filled: it eats and is never hit.
+	var sim := _sim("grazer", 4242, Vector2.INF, 0.0, layout, species)
+	check_eq(sim.creatures.creatures.size(), 7, "every site filled")
+	var bot = ForageBot.new()
+	bot.avoid_threats = true
+	var events := _run(sim, 120 * 60, func(s: PoolSim) -> SimIntent: return bot.next_intent(s))
+	var hits := _of(events, "hit").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+	var meals := _of(events, "ate").size()
+	var noticed := _of(events, "creature_noticed").filter(func(e: Dictionary) -> bool: return e.target == PLAYER)
+	print("test-threats-wary-forage: %d meals, %d notices, %d hits, dead %s" % [meals, noticed.size(), hits.size(), sim.dead])
+	check(meals >= 10, "it ate (%d meals)" % meals)
+	check(hits.is_empty(), "nothing hit it")
+	check(not sim.dead, "and it lived")
 
 
 # --- combat both ways (plan threats_sim #9-13) ---
@@ -1198,18 +1283,13 @@ func test_only_one_creature_engages_the_cell_at_a_time_and_the_other_waits_until
 
 
 func test_a_starving_hunter_cell_kills_a_rammer_and_eats_before_it_starves() -> void:
-	# Plan #22, with an in-test driver until HuntBot (plan commit 11): it closes on the resting
-	# rammer from behind and keeps biting, dodges any charge sideways, then eats the carcass.
+	# Plan #22: HuntBot closes on the resting rammer from behind and keeps biting, dodges any charge
+	# sideways, then eats the carcass.
 	var sim := _sim("hunter", 221, STRIKE_ORIGIN - Vector2(6.0, 0.0), 0.0)
 	sim.debug_set_energy(0.0)
 	var r := _creature(sim, "rammer", STRIKE_ORIGIN, 0.0)
 	r.state.energy = r.state.energy_capacity
-	var forage = ForageBot.new()
-	var bot = EvadeBot.new()
-	bot.base = func(s: PoolSim) -> SimIntent:
-		if s.creatures.find(r.id) != null:
-			return SimIntent.new((r.motion.position - s.motion.position).normalized())
-		return forage.next_intent(s)
+	var bot = HuntBot.new()
 	var pending: Array[Dictionary] = []
 	var killed := -1
 	var ate := -1
