@@ -725,16 +725,28 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 	view.free()
 
 
-func test_the_lane_shader_never_draws_above_a_quarter_alpha() -> void:
+## The shader constant `name`'s value, or NAN when it is missing.
+func _shader_const(code: String, name: String) -> float:
+	var at := code.find("const float %s = " % name)
+	return float(code.substr(at).get_slice("=", 1).get_slice(";", 0)) if at >= 0 else NAN
+
+
+func test_the_lane_keeps_its_inside_under_a_quarter_alpha_and_only_its_thin_outline_above() -> void:
 	var code := (load("res://game/scenes/pool/threat_lane.gdshader") as Shader).code
-	check(code.contains("const float MAX_ALPHA = 0.25;"), "the lane's alpha cap is 0.25 (plan section 14)")
-	check(code.contains("ALPHA = min(a, MAX_ALPHA) * strength;"), "and every pixel is capped by it")
-	var writes := Array(code.split("\n")).filter(func(line: String) -> bool: return line.strip_edges().begins_with("ALPHA"))
-	check_eq(writes.size(), 1, "with no other alpha written")
+	check_eq(_shader_const(code, "MAX_ALPHA"), 0.25, "the inside's alpha cap is 0.25 (plan section 14)")
 	for name in ["BASE_ALPHA", "FILL_ALPHA", "CHEVRON_ALPHA"]:
-		var at := code.find("const float %s = " % name)
-		var value := float(code.substr(at).get_slice("=", 1).get_slice(";", 0))
-		check(at >= 0 and value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
+		var value := _shader_const(code, name)
+		check(value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
+	# Under a quarter alpha no red survives over the lit teal floor, so the thin outline alone goes
+	# higher (PROPOSED, DECISIONS 2026-10-22 visual); the floor still shows through it.
+	var line := _shader_const(code, "LINE_ALPHA")
+	check(line > 0.25 and line <= 0.75, "the outline's alpha is above the cap and at most 0.75 (%.2f)" % line)
+	check(_shader_const(code, "EDGE_M") + _shader_const(code, "ACCENT_M") <= 0.25, "and the outline is at most 0.25 m wide")
+	check(code.contains("float a = max(min(inside, MAX_ALPHA), LINE_ALPHA * max(border, accent));"),
+		"the inside is capped by MAX_ALPHA and only the border and its line reach LINE_ALPHA")
+	check(code.contains("ALPHA = a * strength;"), "and every pixel is scaled by the lane's strength")
+	var writes := Array(code.split("\n")).filter(func(line_text: String) -> bool: return line_text.strip_edges().begins_with("ALPHA"))
+	check_eq(writes.size(), 1, "with no other alpha written")
 
 
 func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:

@@ -1117,7 +1117,7 @@ CreatureView (Node3D, script creature_view.gd)
 │   └── Model (Node3D; uniform scale = body_size × pose.scale)
 │       ├── Body (creature_<x>_body.glb instance: Eye_L, Eye_R, Brow | Hood)
 │       └── Parts (Node3D; one holder per genome part placed by PartPlacement, the player's part GLBs)
-├── Lane (MeshInstance3D quad on the floor, unshaded, alpha ≤ 0.25; visible only during a tell targeting the player)
+├── Lane (MeshInstance3D quad on the floor, unshaded, alpha ≤ 0.25 inside and ≤ 0.7 on its thin outline (PROPOSED, DECISIONS 2026-10-22 visual); visible only during a tell targeting the player)
 └── Marker (Label3D "!", no depth test; shown 0.6 s on notice of the player)
 ```
 
