@@ -11,11 +11,11 @@ extends TestCase
 ##     the bot's run's state hash: all three timed the same ticks. The average tick stays under
 ##     4.4 ms, about 2.5 times a quiet reading here (about 1700 us; CI's runners read 810 to 1185),
 ##     so moderate load does not fail it either; and each step is timed against the yardstick
-##     (tests/cost_yardstick.gd) run right after it: in the median run a tick reads 15.2 to 15.8
-##     yardsticks at load 5 to 6 here and pinned beside a busy loop, and a step that costs twice as
-##     much 28.2 to 31.9, past STRESS_YARDSTICKS. Heavy load can still move the count, so only a pass
-##     on a quiet machine or on CI rules a regression out. Flake policy: docs/DECISIONS.md, M1 step 3
-##     review fixes.
+##     (tests/cost_yardstick.gd) run right after it: in the median run a tick reads 15.1 to 16.9
+##     yardsticks at load 2 to 7 here and beside a busy loop or a cache-thrashing process (14.6 on
+##     CI), and a step that costs twice as much 28.2 to 33.3, past STRESS_YARDSTICKS. Heavy load can
+##     still move the count, so only a pass on a quiet machine or on CI rules a regression out. Flake
+##     policy: docs/DECISIONS.md, M1 step 3 review fixes.
 ## #30 hunter viability (plan D2): HuntBot keeps a hunter lineage alive on what it kills, now that
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on

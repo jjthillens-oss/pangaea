@@ -5,12 +5,13 @@ extends RefCounted
 ## Time-slicing by other processes lands on the step and the yardstick in proportion to their
 ## length, so the ratio of their times holds where the microseconds do not: pinned to one core
 ## beside a busy loop, the microseconds doubled while the 7-creature tick read 5.0 yardsticks and the
-## 24-creature tick 15.8, as at load 5 to 6 (4.7 to 4.8, 15.2), and a step made twice as costly
-## read 9.4 to 10.1 and 28.1 to 31.9. Heavy load can still move the ratio: see the flake policy in
-## docs/DECISIONS.md, M1 step 3 review fixes.
+## 24-creature tick 15.8, as at load 2 to 7 (4.7 to 5.0, 15.1 to 16.3), and a step made twice as
+## costly read 9.5 to 10.2 and 28.2 to 33.3. Load that pushes the step's data out of the caches
+## still raises the ratio a little (5.1 and 16.9 beside a cache-thrashing process): see the flake
+## policy in docs/DECISIONS.md, M1 step 3 review fixes.
 ## It allocates nothing. The first version built a dictionary each time, and its time grew with
-## the heap and with the cost of the step before it: a step made twice as costly read only 1.5 to
-## 1.6 times the yardsticks on the 24-creature gate (23.3 against 14.6 at load 5.5).
+## the heap and with the cost of the step before it: a step made twice as costly read only 1.4 to
+## 1.6 times the yardsticks on the 24-creature gate (20.9 to 23.3 against 14.6 at load 2.4 to 6).
 ##
 ##     const Yardstick := preload("res://tests/cost_yardstick.gd")
 ##     var yard_us := Yardstick.time_once()
