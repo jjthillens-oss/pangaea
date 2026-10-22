@@ -11,7 +11,7 @@
     {"id": "z_n",      "center": [0.0, -22.0],   "radius": 6.0, "capacity": 96.0, "growth_rate": 0.08},
     {"id": "z_ne",     "center": [19.1, -11.0],  "radius": 6.0, "capacity": 56.0, "growth_rate": 0.12},
     {"id": "z_se",     "center": [19.1, 11.0],   "radius": 6.0, "capacity": 80.0, "growth_rate": 0.08},
-    {"id": "z_s",      "center": [0.0, 22.0],    "radius": 6.0, "capacity": 64.0, "growth_rate": 0.10},
+    {"id": "z_s",      "center": [0.0, 22.0],    "radius": 6.0, "capacity": 64.0, "growth_rate": 0.06},
     {"id": "z_sw",     "center": [-19.1, 11.0],  "radius": 6.0, "capacity": 48.0, "growth_rate": 0.12},
     {"id": "z_nw",     "center": [-19.1, -11.0], "radius": 6.0, "capacity": 96.0, "growth_rate": 0.08}
   ],

@@ -17,6 +17,11 @@ extends TestCase
 ##     is not worn down by them. ForageBot swims for the nearest food its body eats and never minds a
 ##     creature; EvadeBot dodges each tell aimed at the cell 0.4 s after it starts (F2), as a player
 ##     reading the tells would. Notices of the cell and tells at it are its meetings with threats.
+## #33 no threat-free larder (step 3 review): neither zone by the spawn feeds a cell that stays in
+##     it. No reach can cover them: rule 8 keeps every reach out of z_center, and F6 keeps lair_s from
+##     spawning while the cell is anywhere in z_s, so a cell that continues there or outlasts lair_s's
+##     hunter would be safe for ever. A camper starts full in each zone (a Continue from a save made
+##     there puts it there with 60%, D16) and eats only that zone's food; it must run dry.
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -59,6 +64,11 @@ const PRESSURE_BODIES: PackedStringArray = ["grazer", "omnivore"]
 const PRESSURE_TICKS := 300 * 60
 const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0   ## for each body, over its seeds, and some in every seed
 const PRESSURE_MAX_DEATHS_PER_5_MIN := 0.5   ## over every run: a careful player is not worn down
+## #33: one seed fixed before any run, for each zone by the spawn and each plankton body.
+const CAMP_ZONES: PackedStringArray = ["z_s", "z_center"]
+const CAMP_SEED := 331
+const CAMP_LIMIT_TICKS := 420 * 60     ## a camper that starts full runs dry within 7 minutes
+const CAMP_MIN_IN_ZONE_SHARE := 0.9    ## it really camps: inside the zone this share of the time
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -382,4 +392,70 @@ func _pressure_run(body: String, seed_value: int) -> Dictionary:
 		if int(fed[zone]) > most:
 			most = int(fed[zone])
 			run.fed_most = zone if not str(zone).is_empty() else "carrion"
+	return run
+
+
+func test_slow_a_cell_camping_in_a_zone_by_the_spawn_cannot_live_on_it_alone() -> void:
+	# #33: z_s at 0.06 and z_center at 0.08 both top out at 1.15 energy a second (growth x capacity x
+	# 0.30), and a camper eating every item it has room for draws about 1.45: it eats its zone down,
+	# and what an eaten-down zone regrows cannot feed it.
+	for zone_id in CAMP_ZONES:
+		for body in PRESSURE_BODIES:
+			var run := _camp_run(body, zone_id)
+			var share := float(run.in_zone) / maxi(1, run.ticks)
+			print("test-threats-camp: %s %s: ran dry after %s, %d meals, %.0f%% of the time in the zone, %d meetings, %d killed; sites at the start %s" % [
+				zone_id, body, "%.0f s" % (run.dry_at / 60.0) if run.dry_at >= 0 else "never in %d s" % (CAMP_LIMIT_TICKS / 60),
+				run.meals, 100.0 * share, run.meetings, run.killed, run.sites])
+			check(run.dry_at >= 0, "%s %s: a camper that starts full runs dry within %d s" % [zone_id, body, CAMP_LIMIT_TICKS / 60])
+			check(share >= CAMP_MIN_IN_ZONE_SHARE, "%s %s: it camped (%.0f%% in the zone)" % [zone_id, body, 100.0 * share])
+			check(run.meals >= run.full_stock, "%s %s: it ate there, more than the zone holds when full (%d meals)" % [zone_id, body, run.meals])
+
+
+## A new `body` lineage placed full at the centre of `zone_id`, eating only that zone's food and
+## dodging tells, until its energy first runs out or CAMP_LIMIT_TICKS pass.
+func _camp_run(body: String, zone_id: String) -> Dictionary:
+	var z := layout.zone(zone_id)
+	var r := Lineage.found(CAMP_SEED, "test+dev", catalog, body)
+	r.save.player["position"] = PlaneSpace.to_save(z.center)
+	var sim := PoolSim.create(r.save, catalog, layout, species)
+	sim.state.energy = sim.state.energy_capacity
+	sim.drain_events()
+	var run := {"ticks": 0, "dry_at": -1, "meals": 0, "in_zone": 0, "meetings": 0, "killed": 0, "sites": PackedStringArray(),
+		"full_stock": sim.plankton.max_count(sim.region.zone(zone_id))}
+	for c in sim.creatures.creatures:
+		run.sites.append(c.site_id)
+	var forager = ForageBot.new()
+	var bot = EvadeBot.new()
+	bot.base = func(s: PoolSim) -> SimIntent:
+		var food := {}
+		var best := INF
+		for list in [s.plankton.items, s.carrion.items]:
+			for item in list:
+				var d: float = s.motion.position.distance_to(item.position)
+				if s.phenotype.can_eat(item.kind) and Vector2(item.position).distance_to(z.center) <= float(z.radius) and d < best:
+					best = d
+					food = item
+		if not food.is_empty() and s.state.energy_capacity - s.state.energy < float(food.energy) * InteractionResolver.FEED_MIN_ROOM_SHARE:
+			return SimIntent.new()   # too full to eat it: wait
+		forager.park_at = Vector2(z.center) if food.is_empty() else Vector2(food.position)
+		return forager.next_intent(s)
+	var events: Array = []
+	while run.ticks < CAMP_LIMIT_TICKS and not sim.dead:
+		sim.step(bot.next_intent(sim, events))
+		run.ticks += 1
+		events = sim.drain_events()
+		if sim.motion.position.distance_to(z.center) <= float(z.radius):
+			run.in_zone += 1
+		for e in events:
+			match str(e.type):
+				"creature_noticed", "creature_tell":
+					if e.target == CreatureField.PLAYER_ID:
+						run.meetings += 1
+				"died":
+					run.killed += 1 if e.cause != "starved" else 0
+				"ate":
+					run.meals += 1
+		if sim.state.energy <= 0.0:
+			run.dry_at = sim.tick
+			break
 	return run
