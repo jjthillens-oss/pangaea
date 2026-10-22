@@ -405,18 +405,20 @@ func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var position := PlaneSpace.from_save(save.player.position)
 	_check(position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M, "the save holds the cell's position")
 	_check(not start.continue_button.disabled and _focus() == start.continue_button, "Continue is on and has the keyboard focus")
-	var expect := _expect_from(save)
+	var expect := _expect_from(sim)
 	var wrote := _write_expect(expect)
 	_check(wrote, "wrote %s" % EXPECT_PATH)
 	return expect if wrote else {}
 
 
-## What Continue must bring back from `save`, the grazer's running save just written.
-func _expect_from(save: SaveGame) -> Dictionary:
+## What Continue must bring back after the grazer's run was saved: the run as it is now, not
+## what its save holds, so a save that wrote nothing fails the continue phase.
+func _expect_from(sim: PoolSim) -> Dictionary:
+	var save := sim.save
 	var parts := []
 	for part in save.genome.parts:
 		parts.append({"type": str(part.get("type", "")), "angle": float(part.get("angle", 0.0))})
-	var position := PlaneSpace.from_save(save.player.position)
+	var position := sim.motion.position
 	return {
 		"lineage_id": save.lineage_id,
 		"lineage_tag": GameSession.lineage_tag(save.lineage_id),
@@ -513,7 +515,7 @@ func _continue_and_close_window(expect: Dictionary) -> void:
 	_check(loaded.ok and loaded.save.lineage_id == expect.lineage_id and loaded.save.adaptation_points == sim.save.adaptation_points
 		and position.distance_to(sim.motion.position) <= POSITION_TOLERANCE_M,
 		"the slot holds the run's %d points and new place (%.2f m from the last save)" % [sim.save.adaptation_points, position.distance_to(saved)])
-	_check(_write_expect(_expect_from(sim.save)), "wrote %s again" % EXPECT_PATH)
+	_check(_write_expect(_expect_from(sim)), "wrote %s again" % EXPECT_PATH)
 	_end()
 	# The game quits at the end of this frame and _finalize reports; still running means it did not.
 	await _frames(2)
