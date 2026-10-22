@@ -26,7 +26,7 @@ colours and lighting passes and adds detail on top.
 | `creature_rammer_body` | Engineering's step 3 rammer (pale banded dome, crest, frowning lids) with leathery plates and pores, a veined crest membrane and keratin-streaked threat points. Bands, Hood pivot and frame unchanged. |
 | `part_spike` | The thorn with growth rings on its threat-coloured shaft, a knurled bone collar and a glossy dark point. Same length, attachment and reach. |
 | `pool_floor` | Engineering's bowl, sand, silt patches and grey stone rim lip (vertex colours, unchanged), with sand ripples from a CC0 normal map on `M_PoolFloor.tres` (tiled every 5 m), so the caustics catch on them. Reduced only where the silt still fades softly. |
-| `rock_a`, `rock_b`, `rock_c` | Cool stone with grain and height from a CC0 scan, algae on the lit tops, a wet band at the water line and warm mineral flecks. Swim-band outline contract unchanged. |
+| `rock_a`, `rock_b`, `rock_c` | Glassy shells of dead microorganisms for the micro world (rev 4): a radiolarian lattice with an amber core, a ribbed diatom drum and a cream coccolith-plated drum. Same ids, footprint and swim-band outline contract. |
 
 ## Triangles and textures
 
@@ -47,9 +47,9 @@ is baked into the normal map.
 | `creature_rammer_body` | 3,800 (normals from a 5,000-triangle body) | 3,428 | 4000 | 1.5 mm body, 0.6 mm eyes, lids and crest | Detail 1024, ORM 1024, Normal 1024 |
 | `part_spike` | 1,056 | 282 | 600 | 0.6 mm | Detail 512, ORM 512, Normal 512 |
 | `pool_floor` | 17,536 | 13,802 | 20000 | 5 mm | Normal 1024 (engine material, tiled) |
-| `rock_a` | 1,280 | 600 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
-| `rock_b` | 1,280 | 690 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
-| `rock_c` | 1,280 | 660 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
+| `rock_a` | 2,400 | 524 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
+| `rock_b` | 2,400 | 534 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
+| `rock_c` | 2,400 | 464 | 1300 | 10 mm | Albedo 512, ORM 512, Normal 512 |
 
 The threat bodies keep engineering's vertex colours (the tests read their tone and bands), so
 reduction also keeps every original vertex's colour within 0.04 per channel, and the rammer keeps
@@ -65,7 +65,7 @@ cilia are already thin, so it reduces least.
 | Source | License | Used for |
 | --- | --- | --- |
 | [Poly Haven, Aerial Beach 01](https://polyhaven.com/a/aerial_beach_01) (Rob Tuytel), 1k OpenGL normal map, kept in `assets/source/textures/cc0/polyhaven_aerial_beach_01/` | CC0 1.0 | Pool floor sand ripples (`assets/export/T_PoolFloor_Normal.png`) |
-| [Poly Haven, Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry) (Dimitrios Savva, Rico Cilliers), 1k diffuse and displacement, kept in `assets/source/textures/cc0/polyhaven_rock_boulder_dry/` | CC0 1.0 | Rock grain and height under the palette recolour |
+| [Poly Haven, Rock Boulder Dry](https://polyhaven.com/a/rock_boulder_dry) (Dimitrios Savva, Rico Cilliers), 1k diffuse and displacement, kept in `assets/source/textures/cc0/polyhaven_rock_boulder_dry/` | CC0 1.0 | Rock grain and height under the palette recolour (rocks rev 3; unused since the rev 4 shells, kept for the record) |
 
 ## Known gaps
 
