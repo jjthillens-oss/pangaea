@@ -222,7 +222,7 @@ const CELL_VIEW := "res://game/scenes/pool/player_cell_view.tscn"
 func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:
 	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
 	var catalog := PartCatalog.load_from()
-	var genome := Lineage.found(1, "test+dev", catalog, "grazer").save.genome
+	var genome: Genome = Lineage.found(1, "test+dev", catalog, "grazer").save.genome
 	genome.add_part("spike", 1.2)
 	view.build(genome, Phenotype.derive(genome, catalog))
 	var holder := view.part_nodes().back() as Node3D
