@@ -437,7 +437,7 @@ func test_the_floor_fades_silt_patches_and_the_stone_band_in_by_vertex_colour() 
 			between += 1 if silt_t[i] >= 0.3 and silt_t[i] <= 0.7 else 0
 			check(stone_d[i] > 0.5, "no stone in the bowl at %s" % verts[i])
 		elif r >= 41.5 and r <= 43.0:
-			check(stone_d[i] < 0.1, "the rim lip is pale stone at %s" % verts[i])
+			check(stone_d[i] < 0.1, "the rim lip is stone at %s" % verts[i])
 	check(sandy > bowl / 3, "most of the bowl is sand: %d of %d vertices" % [sandy, bowl])
 	check(silty > bowl / 20, "the bowl has silt patches: %d of %d vertices" % [silty, bowl])
 	check(between > bowl / 50, "silt fades into the sand over several vertices: %d of %d in between" % [between, bowl])

@@ -50,6 +50,8 @@ var _starve_pulse_t := 0.0
 @onready var target_ring: TargetRing = %TargetRing
 @onready var starving_arrow: StarvingArrow = %StarvingArrow
 @onready var _fade: ColorRect = %Fade
+@onready var _sun: DirectionalLight3D = $Sun
+@onready var _world: WorldEnvironment = $WorldEnvironment
 
 
 ## Starts drawing the session's running sim. `provider` defaults to the player's SwimInput.
@@ -66,6 +68,8 @@ func setup(p_session: GameSession, provider: Object = null) -> void:
 func _ready() -> void:
 	for node in floor_node.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The light is tuned for Forward+; the Compatibility renderer gets its own values (pool_look.gd).
+	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world, floor_node)
 	swim_input.camera = camera
 	if session != null and not _built:
 		_build()
