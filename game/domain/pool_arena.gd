@@ -26,8 +26,14 @@ var radius := 40.0
 var soft_start := 36.0
 var hard_radius := 39.5
 var return_speed := RETURN_SPEED
-## [{"id": String, "center": Vector2, "radius": float}]
+## [{"id": String, "center": Vector2, "radius": float}]; add rocks with add_rock() only.
 var rocks: Array[Dictionary] = []
+
+# The rocks' centers and radii again, as packed arrays: the per-tick loops (every body's move, every
+# line of sight, every detour) read these, several times faster than the dictionaries (M1 step 3,
+# when seven creatures joined the cell). Same values, same arithmetic, so the same results.
+var _centers := PackedVector2Array()
+var _radii := PackedFloat64Array()
 
 
 static func create(p_radius: float, p_soft_start: float, p_hard_radius: float, p_return_speed: float = RETURN_SPEED) -> PoolArena:
@@ -41,6 +47,8 @@ static func create(p_radius: float, p_soft_start: float, p_hard_radius: float, p
 
 func add_rock(id: String, center: Vector2, rock_radius: float) -> void:
 	rocks.append({"id": id, "center": center, "radius": rock_radius})
+	_centers.append(center)
+	_radii.append(rock_radius)
 
 
 ## How far into the soft band a point is: 0 inside soft_start, 1 at the hard radius.
@@ -52,8 +60,8 @@ func wall_depth(p: Vector2) -> float:
 func is_clear(p: Vector2, r: float) -> bool:
 	if not p.is_finite() or p.length() > soft_start - r + CLEAR_EPSILON:
 		return false
-	for rock in rocks:
-		if p.distance_to(rock.center) < rock.radius + r - CLEAR_EPSILON:
+	for i in _centers.size():
+		if p.distance_to(_centers[i]) < _radii[i] + r - CLEAR_EPSILON:
 			return false
 	return true
 
@@ -79,15 +87,16 @@ func move(m: Locomotion.MotionState, body_r: float, dt: float) -> float:
 ## separate() pushes bodies apart.
 func settle(m: Locomotion.MotionState, body_r: float) -> void:
 	for i in ROCK_PASSES:
-		for rock in rocks:
-			var offset: Vector2 = m.position - rock.center
+		for k in _centers.size():
+			var center := _centers[k]
+			var offset: Vector2 = m.position - center
 			var dist := offset.length()
-			var min_dist: float = rock.radius + body_r
+			var min_dist: float = _radii[k] + body_r
 			if dist >= min_dist:
 				continue
 			# Dead centre has no normal; push toward +X so the result stays deterministic.
 			var normal := offset / dist if dist > 1e-9 else Vector2.RIGHT
-			m.position = rock.center + normal * min_dist
+			m.position = center + normal * min_dist
 			var inward := m.velocity.dot(normal)
 			if inward < 0.0:
 				m.velocity -= normal * inward
@@ -104,8 +113,17 @@ func settle(m: Locomotion.MotionState, body_r: float) -> void:
 ## Line of sight: false when the segment a-b passes within `shrink` times a rock's radius of its
 ## center. Grazing a rock's edge still sees past it.
 func segment_clear(a: Vector2, b: Vector2, shrink: float = SIGHT_SHRINK) -> bool:
-	for rock in rocks:
-		if _segment_distance(rock.center, a, b) < rock.radius * shrink:
+	# The distance from each rock's center to the segment, worked out inline (no call per rock).
+	var ab := b - a
+	var len_sq := ab.length_squared()
+	for k in _centers.size():
+		var p := _centers[k]
+		var dist: float
+		if len_sq < 1e-12:
+			dist = p.distance_to(a)
+		else:
+			dist = p.distance_to(a + ab * clampf((p - a).dot(ab) / len_sq, 0.0, 1.0))
+		if dist < _radii[k] * shrink:
 			return false
 	return true
 
@@ -122,25 +140,27 @@ func route_point(from: Vector2, to: Vector2, body_r: float, clearance: float = R
 	if length < 1e-6:
 		return to
 	var dir := to_target / length
-	var blocking := {}
+	var blocking := -1
+	var blocking_off := Vector2.ZERO
 	var nearest_along := INF
-	for rock in rocks:
-		var c: Vector2 = rock.center - from
+	for k in _centers.size():
+		var c: Vector2 = _centers[k] - from
 		var along := c.dot(dir)
-		if along <= 0.0 or along >= length + rock.radius:
+		var rock_r := _radii[k]
+		if along <= 0.0 or along >= length + rock_r:
 			continue
 		var off := c - dir * along
-		if off.length() < rock.radius + body_r + clearance and along < nearest_along:
+		if off.length() < rock_r + body_r + clearance and along < nearest_along:
 			nearest_along = along
-			blocking = {"center": rock.center, "radius": rock.radius, "off": off}
-	if blocking.is_empty():
+			blocking = k
+			blocking_off = off
+	if blocking < 0:
 		return to
 	# Go round on the side the line already passes, so the detour is the short way.
-	var off: Vector2 = blocking.off
-	var away := -off.normalized() if off.length() > 1e-6 else dir.orthogonal()
+	var away := -blocking_off.normalized() if blocking_off.length() > 1e-6 else dir.orthogonal()
 	if side != 0:
 		away = dir.orthogonal() * signf(side)
-	return blocking.center + away * (blocking.radius + body_r + margin)
+	return _centers[blocking] + away * (_radii[blocking] + body_r + margin)
 
 
 ## Pushes two overlapping bodies apart along the line between their centers until they just touch.
@@ -167,15 +187,16 @@ static func separate(a: Locomotion.MotionState, ra: float, ma: float, b: Locomot
 func rock_contact(p: Vector2, r: float, slack: float = CONTACT_SLACK, facing: float = NAN, max_bearing: float = PI) -> String:
 	var best := ""
 	var best_gap := INF
-	for rock in rocks:
-		var gap: float = p.distance_to(rock.center) - rock.radius - r
+	for k in _centers.size():
+		var gap: float = p.distance_to(_centers[k]) - _radii[k] - r
 		if gap > slack:
 			continue
-		if is_finite(facing) and absf(angle_difference(facing, (rock.center - p).angle())) > max_bearing:
+		if is_finite(facing) and absf(angle_difference(facing, (_centers[k] - p).angle())) > max_bearing:
 			continue
-		if gap < best_gap or (gap == best_gap and str(rock.id) < best):
+		var id: String = rocks[k].id
+		if gap < best_gap or (gap == best_gap and id < best):
 			best_gap = gap
-			best = rock.id
+			best = id
 	return best
 
 
@@ -194,11 +215,3 @@ static func clamp_to_disc(m: Locomotion.MotionState, center: Vector2, disc_radiu
 		m.velocity -= n * outward
 	return true
 
-
-static func _segment_distance(p: Vector2, a: Vector2, b: Vector2) -> float:
-	var ab := b - a
-	var len_sq := ab.length_squared()
-	if len_sq < 1e-12:
-		return p.distance_to(a)
-	var t := clampf((p - a).dot(ab) / len_sq, 0.0, 1.0)
-	return p.distance_to(a + ab * t)
