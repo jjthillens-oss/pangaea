@@ -11,13 +11,14 @@ extends SceneTree
 ##       recovers, dies and continues. Then the threats (M1 step 3, plan section 19): every
 ##       creature is drawn where the sim has it and listed in the debug panel, F9 and F10 place
 ##       and kill threats, lair_se's ambush hunter catches the cell parked in front of it (its
-##       tell on its body and the floor, the hit on the HUD, the notice, the death already on
-##       disk), Continue brings it back sheltered, lair_sw's hunter catches it again soon after (a
-##       longer shelter), and a hunter just below the screen gets an edge arrow. Then the grazer
-##       pauses and resumes, saves and quits to the title. Hunter and omnivore lineages on their
-##       own slots eat too. Then the grazer continues and swims, and the window's close button
-##       saves and quits through "Save first?", which ends the process; expect.json records what
-##       Continue must bring back.
+##       tell on its body, the floor and an edge arrow while the camera looks away, the hit on the
+##       HUD, the notice, the death already on disk), Continue brings it back sheltered, lair_sw's
+##       hunter catches it again soon after (a longer shelter), and a hunter just below the screen
+##       gets an edge arrow drawn by the HUD's own refresh. Then the grazer pauses and resumes,
+##       saves and quits to the title. Hunter and omnivore lineages on their own slots eat too.
+##       Then the grazer continues and swims, and the window's close button saves and quits
+##       through "Save first?", which ends the process; expect.json records what Continue must
+##       bring back.
 ##   -- --phase=continue --slot=user://smoke/slot_1.json
 ##       A new process: Continue must bring back the lineage, body, parts, points, deaths and
 ##       place in user://smoke/expect.json, repopulate the creatures and start sheltered, and the
@@ -70,6 +71,16 @@ const TELL_POSE_FRAMES := 20        ## a third into the tell its fast-starting c
 const COIL_SHOWN := 0.95            ## the coiled body is shorter than this share of its size
 const OFF_SCREEN_SOUTH_M := 5.8     ## south of the cell: below the 5.49 m screen edge, within sight
 const NOTICE_TICKS := 1200          ## the new hunter settles 3 s and the shelter lasts up to 10 s
+## The edge arrows refresh at 30 Hz (2 frames at 60 fps): an arrow comes and goes within this many.
+const ARROW_FRAMES := 6
+const NOTICE_ON_SCREEN_TICKS := 60  ## a hunter notices a cell placed in front of it within a second
+## The camera is moved this far north of the cell mid-tell, so the telling hunter is off screen.
+const CAMERA_AWAY_M := 30.0
+## The window sizes the bottom hint is checked clear of the edge arrows at (the canvas stays 1920 x
+## 1080 under canvas_items stretch, so they lay out the same; the check keeps that true).
+const HINT_WINDOWS: Array[Vector2i] = [Vector2i(1280, 720), Vector2i(1920, 1080)]
+## Arrow positions along each screen edge are swept this far apart.
+const ARROW_SWEEP_PX := 10
 const CARRION_MEALS := 2            ## die_and_quit eats this many pieces of dev carrion
 ## die_and_quit hurts the omnivore down to this health before the hunter: well under one bite (12),
 ## with its regeneration (0.6 a second) while the hunter tells. Held in front of the lair, an
@@ -542,6 +553,14 @@ func _caught_at(pool: PoolScene, site: String, cues: bool) -> Dictionary:
 	pool.intent_provider = hold
 	var from := sim.tick
 	if cues:
+		# On screen its notice pops the "!" over its body, and it gets no edge arrow.
+		var notice := await _await_event(sim, "creature_noticed", func(e: Dictionary) -> bool: return e.id == hunter.id and e.target == PLAYER, NOTICE_ON_SCREEN_TICKS)
+		await _frames(2)
+		var noticed_view := pool.creature_layer.view_of(hunter.id)
+		var marker := noticed_view.get_node("%Marker") as Label3D if noticed_view != null else null
+		var edge_rows := main.hud.threat_indicators.indicators.filter(func(d: Dictionary) -> bool: return d.id == hunter.id)
+		_check(not notice.is_empty() and marker != null and marker.visible and edge_rows.is_empty(),
+			"on screen its notice pops the '!' over it, with no edge arrow")
 		var tell := await _await_event(sim, "creature_tell", func(e: Dictionary) -> bool: return e.id == hunter.id and e.target == PLAYER, CAUGHT_TICKS)
 		_check(not tell.is_empty(), "the hunter starts its tell on the cell after %.1f s" % ((sim.tick - from) * PoolSim.DT))
 		await _frames(TELL_POSE_FRAMES)
@@ -555,6 +574,15 @@ func _caught_at(pool: PoolScene, site: String, cues: bool) -> Dictionary:
 		_check(telling and coil < COIL_SHOWN, "%d frames into the tell the hunter has coiled to %.2f of its length" % [TELL_POSE_FRAMES, coil])
 		_check(glow > CreatureView.EYE_GLOW_ALERT / CreatureView.EYE_EMISSION_REST, "its eyes glow brighter than when it watches (%.2f)" % glow)
 		_check(view != null and view.lane_visible(), "its strike lane shows on the floor")
+		# A tell cannot be staged off screen (the lunge window is on screen at every zoom), so the
+		# camera looks away for a moment instead; it eases back and the sim never sees it.
+		pool.camera.snap_to(PlaneSpace.to_world(sim.motion.position + Vector2(0.0, -CAMERA_AWAY_M)))
+		var arrows: ThreatIndicators = main.hud.threat_indicators
+		await _frames_until(func() -> bool: return arrows.drawn.any(func(d: Dictionary) -> bool: return d.id == hunter.id), ARROW_FRAMES)
+		var rows := arrows.indicators.filter(func(d: Dictionary) -> bool: return d.id == hunter.id)
+		var marks := arrows.drawn.filter(func(d: Dictionary) -> bool: return d.id == hunter.id and (d.mark as Rect2).has_area())
+		_check(hunter.brain.phase == CreatureBrain.TELL and rows.size() == 1 and bool(rows[0].telling) and marks.size() == 1,
+			"mid-tell, with the camera away, its edge arrow shows the tell and draws its '!' %s" % [rows])
 		var hit := await _await_event(sim, "hit", func(e: Dictionary) -> bool: return e.target == PLAYER, CAUGHT_TICKS)
 		await _frames(1)
 		var hud := main.hud
@@ -612,9 +640,10 @@ func _continue_sheltered(pool: PoolScene) -> int:
 
 
 ## An ambush hunter placed south of the still cell, below the screen's edge and facing it, notices
-## the cell once the shelter is over: the HUD shows one arrow for it, at the bottom edge with the
-## jaw glyph. F10 kills it and the arrow goes. Then the forage bot swims on until there is unsaved
-## progress again.
+## the cell once the shelter is over: the HUD's own refresh brings up one arrow for it, at the
+## bottom edge with the jaw glyph, and draws it on screen with the notice's "!" (the "!" over the
+## body stays hidden off screen), clear of every refusal hint at both window sizes. F10 kills it
+## and the arrow goes by itself. Then the forage bot swims on until there is unsaved progress again.
 func _check_off_screen_arrow(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot: Object = pool.intent_provider
@@ -629,9 +658,8 @@ func _check_off_screen_arrow(pool: PoolScene) -> void:
 		pool.intent_provider = bot
 		return
 	var noticed := await _await_event(sim, "creature_noticed", func(e: Dictionary) -> bool: return e.id == c.id and e.target == PLAYER, NOTICE_TICKS)
-	await _frames(2)
 	var arrows: ThreatIndicators = main.hud.threat_indicators
-	arrows.refresh()
+	var frames := await _frames_until(func() -> bool: return not arrows.drawn.is_empty(), ARROW_FRAMES)
 	var rect := arrows.get_viewport_rect()
 	var body := PlaneSpace.to_world(c.motion.position)
 	var off := pool.camera.is_position_behind(body) or not rect.has_point(pool.camera.unproject_position(body))
@@ -639,13 +667,72 @@ func _check_off_screen_arrow(pool: PoolScene) -> void:
 	var shown: Array[Dictionary] = arrows.indicators
 	var bottom := rect.end.y - ThreatIndicators.MARGIN_PX
 	_check(shown.size() == 1 and shown[0].id == c.id and shown[0].glyph == "jaw" and absf(float(shown[0].position.y) - bottom) <= 1.0,
-		"the HUD shows one arrow for it, at the bottom edge with the jaw glyph %s" % [shown])
+		"the HUD shows one arrow for it by itself, at the bottom edge with the jaw glyph %s" % [shown])
+	_check(_shown(arrows) and arrows.drawn.size() == 1 and arrows.drawn[0].id == c.id,
+		"and draws it on screen within %d frames (%d drawn)" % [frames, arrows.drawn.size()])
+	var view := pool.creature_layer.view_of(c.id)
+	var marker := view.get_node("%Marker") as Label3D if view != null else null
+	var mark: Rect2 = arrows.drawn[0].mark if arrows.drawn.size() == 1 else Rect2()
+	_check(c.brain.state == CreatureBrain.NOTICE and shown.size() == 1 and bool(shown[0].noticing) and mark.has_area()
+		and marker != null and not marker.visible,
+		"while it notices, the arrow draws the '!' and the '!' over its body, off screen, stays hidden")
+	await _check_hint_clear_of_arrows(arrows)
 	await _press(&"dev_kill_nearest")
-	arrows.refresh()
-	_check(sim.creatures.find(c.id) == null and arrows.indicators.is_empty(), "F10 kills it and the arrow goes")
+	var gone := await _frames_until(func() -> bool: return arrows.indicators.is_empty() and arrows.drawn.is_empty(), ARROW_FRAMES)
+	_check(sim.creatures.find(c.id) == null and arrows.indicators.is_empty() and arrows.drawn.is_empty(),
+		"F10 kills it and the arrow goes by itself (%d frames after the key)" % gone)
 	pool.intent_provider = bot
 	var ticks := await _ticks_until(sim, func(): return main.session.dirty, MEAL_TICKS)
 	_check(main.session.dirty, "the forage bot swims on and the run has unsaved progress again after %.1f s" % (ticks * PoolSim.DT))
+
+
+## Every refusal hint at the bottom center stays clear of the edge arrows, at each of HINT_WINDOWS:
+## the arrows drawn now, and an arrow at any place on any screen edge, telling at the top of its
+## pulse, with its "!" (ThreatIndicators.arrow_shape, the shapes _draw draws).
+func _check_hint_clear_of_arrows(arrows: ThreatIndicators) -> void:
+	var hud := main.hud
+	var texts: Array = RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values()
+	var window := root.size
+	for size in HINT_WINDOWS:
+		root.size = size
+		var hits := PackedStringArray()
+		var widest := Rect2()
+		var shown := true
+		for text: String in texts:
+			hud.show_hint(text)
+			await _frames(2)
+			var hint := hud.hint.get_global_rect()
+			shown = shown and _shown(hud.hint) and hud.hint_text.text == text
+			if hint.size.x > widest.size.x:
+				widest = hint
+			for d in arrows.drawn:
+				for part in ["badge", "mark"]:
+					if (d[part] as Rect2).intersects(hint):
+						hits.append("'%s' under the drawn %s %s" % [text, part, d[part]])
+			var rect := arrows.get_viewport_rect()
+			var inner := rect.grow(-ThreatIndicators.MARGIN_PX)
+			var places: Array[Vector2] = []
+			for x in range(int(inner.position.x), int(inner.end.x) + 1, ARROW_SWEEP_PX):
+				places.append_array([Vector2(x, inner.position.y), Vector2(x, inner.end.y)])
+			for y in range(int(inner.position.y), int(inner.end.y) + 1, ARROW_SWEEP_PX):
+				places.append_array([Vector2(inner.position.x, y), Vector2(inner.end.x, y)])
+			for at in places:
+				var ind := {"position": at, "direction": (at - rect.get_center()).normalized(), "telling": true}
+				var shape := ThreatIndicators.arrow_shape(ind, 1.0, rect)
+				for part in ["badge", "mark"]:
+					if (shape[part] as Rect2).intersects(hint):
+						hits.append("'%s' under a %s at %s" % [text, part, at])
+		_check(root.size == size and shown and hits.is_empty(),
+			"in a %dx%d window every refusal hint (%s at the widest) stays clear of the edge arrows: %s"
+			% [root.size.x, root.size.y, _span(widest), hits.slice(0, 4)])
+	root.size = window
+	hud.hint.visible = false
+	await _frames(1)
+
+
+## "x 630..1289, y 888..952", for messages.
+func _span(r: Rect2) -> String:
+	return "x %d..%d, y %d..%d" % [roundi(r.position.x), roundi(r.end.x), roundi(r.position.y), roundi(r.end.y)]
 
 
 ## The pause key opens the pause menu and the sim stands still; the pause key and Resume each
@@ -1167,6 +1254,15 @@ func _ticks_until(sim: PoolSim, done: Callable, max_ticks: int) -> int:
 func _frames(count: int) -> void:
 	for i in count:
 		await process_frame
+
+
+## Waits until `done` returns true, for at most `max_frames` frames. Returns the frames waited.
+func _frames_until(done: Callable, max_frames: int) -> int:
+	var frames := 0
+	while not done.call() and frames < max_frames:
+		await process_frame
+		frames += 1
+	return frames
 
 
 ## The sim ticks run in `count` frames.

@@ -9,7 +9,8 @@ extends Node3D
 ##
 ## The root carries the interpolated position. Pivot turns to the heading (and wobbles); Model takes
 ## body_size times the pose's scale. Lane lies on the swim plane in world space while a tell targets
-## the player; Marker pops up a "!" when the creature notices the player.
+## the player; Marker pops up a "!" when the creature notices the player, while the creature is on
+## screen (off screen the HUD's edge arrow shows the "!" instead).
 
 ## Body blockouts by species body_asset (creatures_m1.json).
 const BODY_SCENES := {
@@ -88,6 +89,8 @@ var _spike_rest: Array[Transform3D] = []
 var _hood: Node3D
 var _brow: Node3D
 var _brow_rest := Vector3.ZERO
+var _recover_from := {}   ## the pose a recover from a tell that never struck starts from
+var _sim_at := Vector3.ZERO   ## the sim's position (not the drawn one), for the marker's on-screen test
 var _wag_nodes: Array[Node3D] = []
 var _wag_phase := 0.0
 var _hurt_t := -1.0
@@ -111,10 +114,12 @@ var _marker: Label3D
 ## The pose of a creature with `behavior` ("ambush" or "territorial") in brain phase `phase` (the
 ## brain's "state/phase" label), `progress` (0..1) of the way through it. `outcome` is the attack's
 ## (CreatureBrain.Memory.outcome) during recover, and `phase_s` the phase's length in seconds (it
-## times the blocked wobble). Pure. Returns {"scale" (Vector3, times body_size), "jaw_open",
-## "hood", "spike_raise", "brow", "eye_glow" (emission strength), "stretch", "wobble" (radians of
-## roll)}; every amount but eye_glow and wobble is 0..1.
-static func pose(p_behavior: String, phase: String, progress: float, outcome := "", phase_s := 0.0) -> Dictionary:
+## times the blocked wobble). A recover starts from `from` when it is given (the pose shown when a
+## tell was cancelled, so the puff deflates from where it got to), else from the full tell or the
+## lunge. Pure. Returns {"scale" (Vector3, times body_size), "jaw_open", "hood", "spike_raise",
+## "brow", "eye_glow" (emission strength), "stretch", "wobble" (radians of roll)}; every amount but
+## eye_glow and wobble is 0..1.
+static func pose(p_behavior: String, phase: String, progress: float, outcome := "", phase_s := 0.0, from := {}) -> Dictionary:
 	var k := clampf(progress, 0.0, 1.0)
 	var out := _neutral(p_behavior, phase)
 	if p_behavior == CreatureBrain.AMBUSH:
@@ -134,9 +139,9 @@ static func pose(p_behavior: String, phase: String, progress: float, outcome := 
 			"attack/recover":
 				# From the coil when the tell never struck, else from the lunge's stretch.
 				var from_phase := "attack/tell" if outcome == "cancelled" or outcome == "interrupted" else "attack/glide"
-				var from := pose(p_behavior, from_phase, 1.0)
-				from.stretch = 0.0
-				return blend(from, out, smoothstep(0.0, RELAX_SHARE, k))
+				var start := from.duplicate() if not from.is_empty() else pose(p_behavior, from_phase, 1.0)
+				start.stretch = 0.0
+				return blend(start, out, smoothstep(0.0, RELAX_SHARE, k))
 	elif p_behavior == CreatureBrain.TERRITORIAL:
 		match phase:
 			"attack/tell":
@@ -152,7 +157,8 @@ static func pose(p_behavior: String, phase: String, progress: float, outcome := 
 				var from_phase := "attack/tell" if outcome == "cancelled" or outcome == "interrupted" else "attack/glide"
 				# A cancelled puff deflates over its whole (short) recover; the others over its first part.
 				var span := 1.0 if outcome == "cancelled" else RELAX_SHARE
-				var deflated := blend(pose(p_behavior, from_phase, 1.0), out, smoothstep(0.0, span, k))
+				var start := from if not from.is_empty() else pose(p_behavior, from_phase, 1.0)
+				var deflated := blend(start, out, smoothstep(0.0, span, k))
 				if outcome == "blocked":
 					var t := k * phase_s
 					if t < WOBBLE_S:
@@ -254,13 +260,14 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 			_spikes.append(holder)
 			_spike_rest.append(holder.transform)
 		parts.add_child(holder)
-	# Bodies cast shadows; parts do not (plan section 20).
+	# Bodies cast shadows (all but the rammer's crest, in _find_pose_nodes); parts do not (plan section 20).
 	for node in parts.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_hurt_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_hurt_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_lane_material.shader = preload("res://game/scenes/pool/threat_lane.gdshader")
 	_lane_material.set_shader_parameter("color", LANE_COLOR)
+	_lane_material.set_shader_parameter("strength", 0.0)
 	_lane.material_override = _lane_material
 	_lane.visible = false
 	_marker.modulate = MARKER_COLOR
@@ -287,6 +294,9 @@ func _find_pose_nodes(body: Node3D) -> void:
 				_eye_material = material.duplicate() as StandardMaterial3D
 			eye.set_surface_override_material(0, _eye_material)
 	_hood = body.get_node_or_null(HOOD_PATH) as Node3D
+	# The crest is a thin blade: its shadow on the back reads as a dark hole, not as its shape.
+	if _hood is GeometryInstance3D:
+		(_hood as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_brow = body.get_node_or_null(BROW_PATH) as Node3D
 	_brow_rest = _brow.position if _brow != null else Vector3.ZERO
 
@@ -296,6 +306,7 @@ func show_motion(motion: Locomotion.MotionState, fraction: float) -> void:
 	position = PlaneSpace.to_world(motion.prev_position.lerp(motion.position, fraction))
 	_pivot.rotation.y = PlaneSpace.yaw_for_heading(lerp_angle(motion.prev_heading, motion.heading, fraction))
 	_speed = motion.position.distance_to(motion.prev_position) / PoolSim.DT
+	_sim_at = PlaneSpace.to_world(motion.position)
 
 
 ## Poses the view from its brain at the drawn moment (`tick` is the sim's tick, `fraction` the draw
@@ -312,8 +323,14 @@ func show_brain(mem: CreatureBrain.Memory, tick: int, fraction: float) -> void:
 			_blend_t = 0.0
 		else:
 			_blend_t = BLEND_S
+		# A tell that never struck deflates from the pose it had reached, not from the full coil or
+		# puff, so a withdrawn threat never swells first; it starts there, so it needs no blend.
+		_recover_from = {}
+		if label == "attack/recover" and (mem.outcome == "cancelled" or mem.outcome == "interrupted"):
+			_recover_from = shown_pose.duplicate()
+			_blend_t = BLEND_S
 		_label = label
-	var target := pose(behavior, label, progress, mem.outcome, phase_ticks(mem) * PoolSim.DT)
+	var target := pose(behavior, label, progress, mem.outcome, phase_ticks(mem) * PoolSim.DT, _recover_from)
 	shown_pose = blend(_blend_from, target, _blend_t / BLEND_S) if _blend_t < BLEND_S else target
 	if label == "attack/tell":
 		_lane_material.set_shader_parameter("fill", progress)
@@ -349,14 +366,29 @@ func hide_lane(fade_s := 0.0) -> void:
 	_apply_lane()
 
 
+## The lane is on screen: shown, and drawn at a strength (its shader's alpha scale) above 0. Its
+## pixels themselves (the alpha math, its depth against the floor) show only in rendered frames.
 func lane_visible() -> bool:
-	return _lane.visible
+	return _lane.visible and float(_lane_material.get_shader_parameter("strength")) > 0.0
 
 
 ## The "!" over a creature that noticed the player.
 func show_marker() -> void:
 	_marker_t = 0.0
 	_apply_marker()
+
+
+## True when the creature's sim position is on the pool camera's screen, by the HUD's edge arrow
+## test (ThreatIndicators.on_screen), so the "!" over its body and its edge arrow's "!" take turns
+## at the screen's edge instead of one drawing through the other. True outside a tree or without a
+## camera.
+func on_screen() -> bool:
+	if not is_inside_tree():
+		return true
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return true
+	return ThreatIndicators.on_screen(camera, get_viewport().get_visible_rect(), _sim_at)
 
 
 ## A hit on it: a short white-red flash and squash.
@@ -473,7 +505,7 @@ func _apply_lane() -> void:
 
 
 func _apply_marker() -> void:
-	_marker.visible = _marker_t >= 0.0
+	_marker.visible = _marker_t >= 0.0 and on_screen()
 	if not _marker.visible:
 		return
 	var pop := clampf(_marker_t / MARKER_POP_S, 0.0, 1.0)
