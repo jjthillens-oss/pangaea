@@ -13,8 +13,6 @@ const MIN_THROTTLE := 0.35     ## approaching a place
 const TURN_THROTTLE := 0.08    ## at the food: just above the input deadzone, so the cell turns its mouth onto it
 const CONTACT_MARGIN_M := 0.1  ## "at the food": within both radii plus this
 const PARK_RADIUS_M := 0.3
-const ROCK_CLEARANCE_M := 0.1  ## a rock blocks the straight line when the cell would pass this close
-const DETOUR_MARGIN_M := 0.6   ## room kept from a rock when going round it
 const SWITCH_SHARE := 0.6      ## change food only for one this much nearer than the current one
 
 ## Where to swim and stop instead of foraging; Vector2.INF to forage.
@@ -83,28 +81,7 @@ func _waiting_spot(sim: PoolSim) -> Vector2:
 	return z.center if not z.is_empty() else sim.layout.spawn
 
 
-## The point to swim at now: the target itself, or a point beside the first rock in the way.
+## The point to swim at now: the target itself, or a point beside the first rock in the way
+## (PoolArena.route_point, which creatures share).
 func _route(sim: PoolSim, pos: Vector2, target: Vector2) -> Vector2:
-	var to := target - pos
-	var length := to.length()
-	if length < 1e-6:
-		return target
-	var dir := to / length
-	var body_r := sim.phenotype.radius
-	var blocking := {}
-	var nearest_along := INF
-	for rock in sim.arena.rocks:
-		var c: Vector2 = rock.center - pos
-		var along := c.dot(dir)
-		if along <= 0.0 or along >= length + rock.radius:
-			continue
-		var off := c - dir * along
-		if off.length() < rock.radius + body_r + ROCK_CLEARANCE_M and along < nearest_along:
-			nearest_along = along
-			blocking = {"center": rock.center, "radius": rock.radius, "off": off}
-	if blocking.is_empty():
-		return target
-	# Go round on the side the line already passes, so the detour is the short way.
-	var off: Vector2 = blocking.off
-	var away := -off.normalized() if off.length() > 1e-6 else dir.orthogonal()
-	return blocking.center + away * (blocking.radius + body_r + DETOUR_MARGIN_M)
+	return sim.arena.route_point(pos, target, sim.phenotype.radius)
