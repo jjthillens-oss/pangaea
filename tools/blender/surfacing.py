@@ -165,12 +165,23 @@ def _surface_error(obj_a, obj_b):
     return worst
 
 
-def reduce(obj, tolerance, keep_high=True, steps=9):
+def _accepts(obj, accept):
+    deps = bpy.context.evaluated_depsgraph_get()
+    mesh = obj.evaluated_get(deps).to_mesh()
+    try:
+        return accept(mesh)
+    finally:
+        obj.evaluated_get(deps).to_mesh_clear()
+
+
+def reduce(obj, tolerance, keep_high=True, steps=9, accept=None):
     """Cuts `obj`'s triangles as far as Blender's collapse decimation allows while its surface stays
     within `tolerance` metres of the original everywhere (checked both ways at every vertex).
 
     With keep_high the original stays as a hidden copy, named <name>_high, so bake_set can bake
-    its shading into the reduced mesh's normal map. Returns (triangles before, after, high copy)."""
+    its shading into the reduced mesh's normal map. `accept(mesh)`, if given, must also hold for
+    the reduced (evaluated) mesh, for contracts beyond shape such as vertex-colour gradients.
+    Returns (triangles before, after, high copy)."""
     high = obj.copy()
     high.data = obj.data.copy()
     high.name = f"{obj.name}_high"
@@ -186,7 +197,7 @@ def reduce(obj, tolerance, keep_high=True, steps=9):
         mid = (lo + hi) / 2.0
         mod.ratio = mid
         bpy.context.view_layer.update()
-        if _surface_error(obj, high) <= tolerance:
+        if _surface_error(obj, high) <= tolerance and (accept is None or _accepts(obj, accept)):
             hi = mid
         else:
             lo = mid

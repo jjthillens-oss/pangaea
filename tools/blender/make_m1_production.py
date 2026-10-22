@@ -548,6 +548,66 @@ def build_rock(asset_id):
     return fields
 
 
+# --- Pool floor ------------------------------------------------------------------------------
+
+FLOOR_TOLERANCE = 0.005   # the floor contract allows 1 cm (inside r 39 it stays at or below -0.45 m; the mesh is at -0.46)
+CC0_SAND = {
+    "path": "assets/source/textures/cc0/polyhaven_aerial_beach_01",
+    "asset": "Aerial Beach 01",
+    "source_url": "https://polyhaven.com/a/aerial_beach_01",
+    "files": ["aerial_beach_01_nor_gl_1k.jpg"],
+    "license": "CC0 1.0 (https://polyhaven.com/license)",
+    "authors": "Rob Tuytel",
+    "retrieved": "2026-10-22",
+    "use": "sand-ripple normal map in M_PoolFloor.tres (assets/export/T_PoolFloor_Normal.png), tiled every 5 m",
+}
+
+
+FLOOR_MAX_SILT_STEP_PER_M = 1.15   # tests/test_assets.gd allows 1.25 sand-to-silt steps per metre in the bowl
+
+
+def _soft_silt(mesh):
+    """Silt still fades into the sand over the bowl after reduction (the test_assets.gd check)."""
+    attr = mesh.color_attributes["FloorColor"]
+    to_lin = ld.srgb_to_linear
+    sand, silt = Vector(mb.FLOOR_SAND), Vector(mb.FLOOR_SILT)
+    axis = silt - sand
+    t = [(Vector([to_lin(c) for c in d.color[:3]]) - sand).dot(axis) / axis.length_squared for d in attr.data]
+    worst = 0.0
+    for e in mesh.edges:
+        a, b = (mesh.vertices[i].co for i in e.vertices)
+        if math.hypot(a.x, a.y) <= 38.0 or math.hypot(b.x, b.y) <= 38.0:
+            run = max(math.hypot(a.x - b.x, a.y - b.y), 1e-3)
+            worst = max(worst, abs(t[e.vertices[0]] - t[e.vertices[1]]) / run)
+    return worst <= FLOOR_MAX_SILT_STEP_PER_M
+
+
+def build_pool_floor():
+    """The step 2 floor (geometry, vertex colours and the lighting pass's contract unchanged),
+    reduced, with a CC0 sand-ripple normal map on its engine material M_PoolFloor.tres."""
+    fields = mb.build_pool_floor()
+    obj = bpy.data.objects["PoolFloor"]
+    before, after, _ = sf.reduce(obj, FLOOR_TOLERANCE, keep_high=False, accept=_soft_silt)
+    pts = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    inner = [v for v in pts if math.hypot(v.x, v.y) <= 39.0 + 1e-6]
+    rim = [v for v in pts if 41.5 <= math.hypot(v.x, v.y) <= 43.0]
+    _check(max(v.z for v in inner) <= -0.45, "pool_floor: reduced floor at or below -0.45 m inside r = 39")
+    _check(min(v.z for v in rim) > 0.8, "pool_floor: reduced rim above +0.8 m over r 41.5-43")
+    fields["profile_m"]["max_height_inside_r39"] = round(max(v.z for v in inner), 3)
+    fields["profile_m"]["min_height_r41_5_to_43"] = round(min(v.z for v in rim), 3)
+    fields.update({
+        "purpose": "M1 tide pool floor: a bowl under the swim plane with sand, silt patches and a grey stone rim lip in vertex colour, sand ripples in a CC0 normal map, and a shelf out past the edge of the camera view.",
+        "revision": fields.get("revision", 3) + 1,
+        "dependencies": list(fields.get("dependencies", [])) + ["assets/export/T_PoolFloor_Normal.png", dict(CC0_SAND)],
+        "textures": [{"name": "T_PoolFloor_Normal", "size": [1024, 1024], "colorspace": "Non-Color",
+                      "packing": "tangent-space normal (OpenGL, +Y up), on M_PoolFloor.tres with uv1_scale 26.4"}],
+        "reduction": {"method": "Blender collapse decimation within a surface tolerance; vertex colours carried over",
+                      "tolerance_m": FLOOR_TOLERANCE, "triangles_before": before, "triangles_after": after},
+        "provenance_extra": "; the floor's own material is assets/export/M_PoolFloor.tres, with a normal map from the CC0 Poly Haven scan in dependencies",
+    })
+    return fields
+
+
 # --- Player cell -----------------------------------------------------------------------------
 
 # The M1 body, in the approved quality-ladder look (cell_ladder rung 2), fitted to the gameplay
@@ -677,6 +737,7 @@ ASSETS = {
     "rock_b": (lambda: build_rock("rock_b"), 1300),
     "rock_c": (lambda: build_rock("rock_c"), 1300),
     "sample_cell": (build_sample_cell, 8000),
+    "pool_floor": (build_pool_floor, 20000),
 }
 
 
