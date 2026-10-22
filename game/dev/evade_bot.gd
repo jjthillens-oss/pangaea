@@ -6,7 +6,9 @@ extends RefCounted
 ##  1. On a creature_tell aimed at the cell it waits `reaction_ticks` (0.4 s, the fairness
 ##     contract's reaction, F2) from the tell's tick.
 ##  2. Then it swims perpendicular to the tell's lane, on the side with the shorter turn from its
-##     heading; on a tie (within TIE_RAD) the side of the lane's centre line it is already on.
+##     heading; on a tie (within TIE_RAD) the side of the lane's centre line it is already on. With
+##     `far_side` it takes the other perpendicular instead, the longer turn a player may pick (the
+##     S5 grid measures that side too; F2 promises only turns under about 120 degrees).
 ##  3. It holds that until the same creature's creature_recovered, dodged or tell_cancelled, or
 ##     until that creature dies or is removed.
 ##  4. Then it swims straight away from the creature for `away_ticks` (AWAY_TICKS unless a driver
@@ -28,6 +30,7 @@ var reaction_ticks := REACTION_TICKS
 var away_ticks := AWAY_TICKS
 var base := Callable()
 var throttle := 1.0          ## of the dodge and of the swim away
+var far_side := false        ## dodge to the perpendicular with the longer turn (tests measure it)
 var reacted_at := -1         ## the sim tick of its first dodge intent (tests guard the latency)
 var tell_tick := -1          ## the tick of the last creature_tell it reacted to
 var tells_seen := 0
@@ -44,6 +47,8 @@ func next_intent(sim: PoolSim, events: Array) -> SimIntent:
 	if not _threat.is_empty() and sim.tick >= int(_threat.react_at):
 		if _threat.dir == Vector2.ZERO:
 			_threat.dir = side(sim.motion.position, sim.motion.heading, float(_threat.heading), _threat.origin)
+			if far_side:
+				_threat.dir = -_threat.dir
 			if reacted_at < 0:
 				reacted_at = sim.tick
 		return SimIntent.new(_threat.dir * throttle)

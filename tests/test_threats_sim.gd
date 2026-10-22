@@ -23,6 +23,10 @@ const GRAZE := 0.3                      ## throttle of a grazing cell
 const CRUISE := 0.8                     ## throttle of a cruising cell
 ## Heading indices (k x 30 degrees, 0 facing away from the creature) that swim into the strike.
 const HEAD_ON: Array[int] = [5, 6, 7]
+## The turn F2 promises a dodge may need: out of the line on the side the cell faces, turning less
+## than about 120 degrees. Turning all the way round (150 to 180 degrees) takes longer than the tell
+## at 2.5 rad/s, with no thrust until the heading is within 90 degrees (Locomotion.steer).
+const PROMISED_TURN_DEG := 120.0
 ## Snapshot keys only a pool with creatures has (T14 compares everything else).
 const CREATURE_KEYS: PackedStringArray = ["creatures", "creature_next", "creature_rng", "spawn_queue",
 	"engaged_on_player", "niches", "grace_until", "death_streak"]
@@ -114,10 +118,13 @@ func _creature_json(sim: PoolSim) -> String:
 ## One strike in the real sim with the probe's geometry (plan section 0): the creature at rest at
 ## STRIKE_ORIGIN facing +x, the cell `d` m in front heading `h` (0 faces away from it), still or
 ## swimming on at `throttle`, fed or starving; the tell starts now through the brain's begin_tell.
-## `react` < 0: the cell never reacts; else EvadeBot with that reaction (its base: swim on).
-## Runs until the strike is over. {"hit", "clearance" (INF without a strike tick), "tell_tick",
-## "reacted_at", "events"}.
-func _strike(species_id: String, body: String, d: float, h: float, throttle: float, starving: bool, react: int) -> Dictionary:
+## `react` < 0: the cell never reacts; else EvadeBot with that reaction (its base: swim on), which
+## dodges out of the line on the side with the shorter turn from the cell's heading, or with `far`
+## on the other side. Runs until the strike is over. {"hit", "clearance" (INF without a strike
+## tick), "tell_tick", "reacted_at", "turn" (degrees from the cell's heading to the dodge at the
+## reaction; NAN without one), "events"}.
+func _strike(species_id: String, body: String, d: float, h: float, throttle: float, starving: bool, react: int,
+		far := false) -> Dictionary:
 	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h)
 	if starving:
 		sim.debug_set_energy(0.0)
@@ -127,14 +134,18 @@ func _strike(species_id: String, body: String, d: float, h: float, throttle: flo
 	var swim_on := SimIntent.new(Vector2.from_angle(h) * throttle)
 	var bot = EvadeBot.new()
 	bot.reaction_ticks = maxi(react, 0)
+	bot.far_side = far
 	bot.base = func(_s: PoolSim) -> SimIntent: return swim_on
 	var tell_tick := sim.tick
-	var out := {"hit": false, "clearance": INF, "tell_tick": tell_tick, "reacted_at": -1, "events": []}
+	var out := {"hit": false, "clearance": INF, "tell_tick": tell_tick, "reacted_at": -1, "turn": NAN, "events": []}
 	var pending: Array[Dictionary] = []
 	var limit: int = c.brain.cfg.attack.tell_ticks + c.brain.cfg.attack.burst_ticks + c.brain.cfg.attack.glide_ticks + 4
 	for i in limit:
 		var t := sim.tick
-		sim.step(bot.next_intent(sim, pending) if react >= 0 else swim_on)
+		var intent: SimIntent = bot.next_intent(sim, pending) if react >= 0 else swim_on
+		if react >= 0 and bot.reacted_at == t and is_nan(float(out.turn)):
+			out.turn = rad_to_deg(absf(angle_difference(sim.motion.heading, intent.move.angle())))
+		sim.step(intent)
 		pending = sim.drain_events()
 		for e in pending:
 			e["tick"] = t
@@ -199,24 +210,31 @@ static func _sector_gap(d: float, th: float, r: float, a: float) -> float:
 
 
 ## The S5 grid for one species (plan section 18 #2-3): EvadeBot at 24 ticks, distances `dists` x 12
-## headings x still or grazing x fed or starving x 3 bodies. Returns {"body/base/fed" -> {"hits":
-## [heading index...], "clear": min clearance, "clear_out": min clearance outside head-on}}, and
-## checks the reaction came exactly 24 ticks after every tell.
-func _grid(species_id: String, dists: Array) -> Dictionary:
+## headings x still or grazing x fed or starving x 3 bodies. EvadeBot dodges on the side the cell
+## faces (the shorter turn, at most 90 degrees), or with `far` on the side behind it (the longer
+## turn, 90 to 180 degrees). Returns {"body/base/fed" -> {"hits": [heading index...], "hit_turns":
+## [the dodge's turn in degrees, per hit], "turns": [the same, per run], "clear": min clearance,
+## "clear_out": min clearance outside head-on, "max_turn": the largest turn}}, and checks the
+## reaction came exactly 24 ticks after every tell.
+func _grid(species_id: String, dists: Array, far := false) -> Dictionary:
 	var cells := {}
 	var late := 0
 	for body in BODIES:
 		for base in ["still", "graze"]:
 			for starving in [false, true]:
-				var cell := {"hits": [], "clear": INF, "clear_out": INF, "runs": 0}
+				var cell := {"hits": [], "hit_turns": [], "turns": [], "clear": INF, "clear_out": INF, "max_turn": 0.0, "runs": 0}
 				for d in dists:
 					for k in 12:
-						var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0 if base == "still" else GRAZE, starving, EvadeBot.REACTION_TICKS)
+						var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0 if base == "still" else GRAZE, starving,
+							EvadeBot.REACTION_TICKS, far)
 						cell.runs += 1
 						if r.reacted_at != int(r.tell_tick) + EvadeBot.REACTION_TICKS:
 							late += 1
+						cell.turns.append(r.turn)
+						cell.max_turn = maxf(cell.max_turn, r.turn)
 						if r.hit:
 							cell.hits.append(k)
+							cell.hit_turns.append(r.turn)
 							continue
 						cell.clear = minf(cell.clear, r.clearance)
 						if not HEAD_ON.has(k):
@@ -228,7 +246,8 @@ func _grid(species_id: String, dists: Array) -> Dictionary:
 
 func _cell_text(cells: Dictionary, key: String) -> String:
 	var c: Dictionary = cells[key]
-	return "%s: %d hits %s, clearance %.3f (outside head-on %.3f) over %d runs" % [key, c.hits.size(), c.hits, c.clear, c.clear_out, c.runs]
+	return "%s: %d hits %s, clearance %.3f (outside head-on %.3f), turns up to %.0f deg over %d runs" \
+		% [key, c.hits.size(), c.hits, c.clear, c.clear_out, c.max_turn, c.runs]
 
 
 func test_the_threats_are_real_and_moving_prey_is_safe_without_any_reaction() -> void:
@@ -257,9 +276,12 @@ func test_the_threats_are_real_and_moving_prey_is_safe_without_any_reaction() ->
 			check(cruise_hits <= 1, "%s hits a %s cruising across its line %d/6 (at most 1)" % [species_id, body, cruise_hits])
 
 
-func test_a_lunge_is_dodged_by_swimming_sideways_0_4_s_after_the_tell_starts() -> void:
-	# S5 lunge grid (plan section 18 #2): bounds from the probe in section 0.
+func test_a_lunge_is_dodged_by_swimming_out_of_its_line_on_the_side_the_cell_faces_0_4_s_after_the_tell_starts() -> void:
+	# S5 lunge grid (plan section 18 #2): bounds from the probe in section 0. EvadeBot dodges on the
+	# side the cell faces, a turn of at most 90 degrees (F2); the side behind it is measured below.
 	var cells := _grid("ambush_hunter", LUNGE_DISTS)
+	for cell_key in cells:
+		check(float(cells[cell_key].max_turn) <= 90.0 + 1e-3, "the dodge turns at most 90 degrees: " + _cell_text(cells, cell_key))
 	for body in BODIES:
 		var key := "%s/still/fed" % body
 		print("test-threats-s5-lunge: " + _cell_text(cells, key))
@@ -276,9 +298,12 @@ func test_a_lunge_is_dodged_by_swimming_sideways_0_4_s_after_the_tell_starts() -
 		check(cells[key].hits.size() <= 1 and head_on_only and cells[key].clear_out >= 0.10, _cell_text(cells, key))
 
 
-func test_a_charge_is_dodged_by_swimming_sideways_0_4_s_after_the_puff_starts() -> void:
-	# S5 charge grid (plan section 18 #3), inside the rammer's territory.
+func test_a_charge_is_dodged_by_swimming_out_of_its_line_on_the_side_the_cell_faces_0_4_s_after_the_puff_starts() -> void:
+	# S5 charge grid (plan section 18 #3), inside the rammer's territory, dodging on the side the
+	# cell faces (F2).
 	var cells := _grid("rammer", CHARGE_DISTS)
+	for cell_key in cells:
+		check(float(cells[cell_key].max_turn) <= 90.0 + 1e-3, "the dodge turns at most 90 degrees: " + _cell_text(cells, cell_key))
 	for body in BODIES:
 		for base in ["still", "graze"]:
 			var key := "%s/%s/fed" % [body, base]
@@ -289,12 +314,60 @@ func test_a_charge_is_dodged_by_swimming_sideways_0_4_s_after_the_puff_starts() 
 			check(cells[key].hits.is_empty() and cells[key].clear >= 0.05, _cell_text(cells, key))
 
 
-func test_the_brain_reaches_the_probed_strike_by_itself_and_a_sideways_dodge_still_works() -> void:
+func test_a_dodge_on_the_side_behind_the_cell_is_hit_only_when_it_needs_a_turn_of_120_degrees_or_more() -> void:
+	# The S5 grids again, with EvadeBot dodging on the other side: the perpendicular behind the
+	# cell (a turn of 90 to 180 degrees), which a player may pick by where the lane lies on screen.
+	# F2 promises the side the cell faces, turning less than about PROMISED_TURN_DEG: a cell turns
+	# at 2.5 rad/s with no thrust until it heads within 90 degrees of where it wants to go
+	# (Locomotion.steer), so turning all the way round takes longer than the 1.2 s tell. This pins
+	# both halves: a dodge that needs less than PROMISED_TURN_DEG is never hit (but for the starving
+	# head-on case the grids above allow), and a still cell that must turn all the way round is.
+	# The counts are recorded in DECISIONS (M1 step 3 review fixes: fair).
+	for species_id in ["ambush_hunter", "rammer"]:
+		var cells := _grid(species_id, LUNGE_DISTS if species_id == "ambush_hunter" else CHARGE_DISTS, true)
+		var hits := 0
+		var runs := 0
+		var band := 0          # runs whose dodge turned more than 90 but less than PROMISED_TURN_DEG
+		var band_hits := 0
+		var round_hits := 0    # hits on a still cell that had to turn 170 degrees or more
+		var by_heading: Array[int] = []
+		by_heading.resize(12)
+		for key: String in cells:
+			var cell: Dictionary = cells[key]
+			runs += cell.runs
+			hits += cell.hits.size()
+			band += cell.turns.filter(func(t: float) -> bool: return t > 90.0 + 1e-3 and t < PROMISED_TURN_DEG - 1e-3).size()
+			var shown: Array = cell.hit_turns.map(func(t: float) -> int: return roundi(t))
+			print("test-threats-s5-far: %s %s, turns of the hits %s" % [species_id, _cell_text(cells, key), shown])
+			check(float(cell.max_turn) >= 150.0, "%s %s: the dodge went to the side behind the cell (turns up to %.0f deg)"
+				% [species_id, key, cell.max_turn])
+			var unpromised := []
+			for i in cell.hits.size():
+				var k: int = cell.hits[i]
+				var turn: float = cell.hit_turns[i]
+				by_heading[k] += 1
+				if turn >= 170.0 and key.contains("/still/"):
+					round_hits += 1
+				if turn > 90.0 + 1e-3 and turn < PROMISED_TURN_DEG - 1e-3:
+					band_hits += 1
+				if turn < PROMISED_TURN_DEG - 1e-3 and not (key.ends_with("/starving") and HEAD_ON.has(k)):
+					unpromised.append("heading %d deg, turn %.1f deg" % [k * 30, turn])
+			check(unpromised.is_empty(), "%s %s: no hit where the dodge turns less than %d degrees: %s"
+				% [species_id, key, PROMISED_TURN_DEG, unpromised])
+		print("test-threats-s5-far: %s: %d hits in %d runs (%d of the %d dodges that turned 90-120 deg); by heading (0, 30, ... 330 deg) %s"
+			% [species_id, hits, runs, band_hits, band, by_heading])
+		check(band > 0, "%s: some dodges turned between 90 and %d degrees (%d)" % [species_id, PROMISED_TURN_DEG, band])
+		check(round_hits > 0, "%s: a still cell that turns all the way round is hit (%d times); if not, both sides work and F2, D6 and the tips can say so"
+			% [species_id, round_hits])
+
+
+func test_the_brain_reaches_the_probed_strike_by_itself_and_a_dodge_on_the_side_the_cell_faces_still_works() -> void:
 	# S5 natural path (plan #4): no whitebox. The creature notices the cell, pursues, aims and
-	# tells by itself; the cell (fed, still or grazing at 4 headings) reacts with EvadeBot. A tell
-	# needs the creature at rest in its window, so a grazing cell can slip away untold: an ambusher
-	# never tells on prey swimming straight away (test_creature_brain), and a rammer lets an
-	# intruder leave its territory. Such a run must end with the engagement over and no hit.
+	# tells by itself; the cell (fed, still or grazing at 4 headings) reacts with EvadeBot, out of
+	# the line on the side it faces. A tell needs the creature at rest in its window, so a grazing
+	# cell can slip away untold: an ambusher never tells on prey swimming straight away
+	# (test_creature_brain), and a rammer lets an intruder leave its territory. Such a run must end
+	# with the engagement over and no hit.
 	for species_id in ["ambush_hunter", "rammer"]:
 		var graze_tells := 0
 		for body in BODIES:
