@@ -10,6 +10,14 @@ const FIXTURE := "res://tests/fixtures/pool_test_small.json"
 const DT := PoolSim.DT
 const SPEED_EPSILON := 0.01   ## m/s
 const STEP_COST_LIMIT_US := 1000.0
+## Late-run hunter recovery: the hunter starts starving this long after the initial carrion has
+## rotted (at the data's lifetime_s), when the least carrion is left. Seeds and points were fixed
+## before the carrion data was tuned.
+const LATE_RUN_AFTER_ROT_S := 5.0
+const LATE_RUN_SEEDS := [101, 102, 103, 104]
+const LATE_RUN_POINTS := 2
+const LATE_RUN_POINT_SPACING_M := 10.0
+const LATE_RUN_MISSES_ALLOWED := 1
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -70,6 +78,36 @@ func _lonely_plant(sim: PoolSim, zone_id: String, room: float = 2.0) -> Dictiona
 		if alone:
 			return item
 	return {}
+
+
+## The `count` open points furthest (walking) from any zone, each at least `spacing` m from the
+## ones already picked. Ties go to the lower grid index, so the choice is stable.
+func _hardest_points(grid: ReachGrid, to_food: PackedFloat32Array, count: int, spacing: float) -> Array[Vector2]:
+	var order: Array[int] = []
+	for i in grid.open.size():
+		if grid.open[i] == 1 and is_finite(to_food[i]):
+			order.append(i)
+	order.sort_custom(func(a: int, b: int) -> bool: return to_food[a] > to_food[b] if to_food[a] != to_food[b] else a < b)
+	var picked: Array[Vector2] = []
+	for i in order:
+		var p: Vector2 = grid.point(i)
+		if picked.all(func(q: Vector2) -> bool: return p.distance_to(q) >= spacing):
+			picked.append(p)
+			if picked.size() == count:
+				break
+	return picked
+
+
+## Lets the world run for `seconds` while the cell rests where it is, kept full so it never
+## starves and never eats (a full cell refuses food).
+func _wait_full(sim: PoolSim, seconds: float) -> void:
+	var bot = ForageBot.new()
+	bot.park_at = sim.motion.position
+	for i in roundi(seconds / DT):
+		if i % 60 == 0:
+			sim.debug_set_energy(sim.state.energy_capacity)
+		sim.step(bot.next_intent(sim))
+	sim.drain_events()
 
 
 ## Puts the cell `dist` from a plankton item with the item at `relative_angle` from its heading.
@@ -229,6 +267,38 @@ func test_a_starving_hunter_recovers_from_the_worst_point_in_the_pool() -> void:
 				break
 		check(ate and not sim.dead, "seed %d: the hunter found carrion before dying" % seed_value)
 		check(not sim.state.is_starving(), "seed %d: no longer starving" % seed_value)
+
+
+## After the initial carrion has rotted, only the interim supply feeds a hunter. A hunter that
+## starts starving then, at the hardest points in the pool, must still find carrion. One miss is
+## allowed, because the supply drops carrion at random and can leave the far zones empty. If this
+## fails, tune carrion.interim_supply or lifetime_s in the pool data, not the test.
+func test_a_hunter_starving_late_in_a_run_still_finds_carrion() -> void:
+	var grid := ReachGrid.new(layout, PoolLayout.CELL_RADIUS)
+	var to_food := grid.distances_from(grid.zone_points())
+	var points := _hardest_points(grid, to_food, LATE_RUN_POINTS, LATE_RUN_POINT_SPACING_M)
+	check_eq(points.size(), LATE_RUN_POINTS, "hardest points found")
+	var late_s: float = layout.carrion.lifetime_s + LATE_RUN_AFTER_ROT_S
+	var misses: Array[String] = []
+	for seed_value in LATE_RUN_SEEDS:
+		for p in points:
+			var sim := _sim("hunter", seed_value)
+			_wait_full(sim, late_s)
+			check_eq(sim.stats.carrion_eaten, 0, "seed %d: the resting cell ate nothing" % seed_value)
+			check(sim.carrion.items.all(func(c: Dictionary) -> bool: return c.source != "initial"),
+				"seed %d: the initial carrion has rotted by %.0f s" % [seed_value, late_s])
+			check(sim.debug_teleport(p), "seed %d: hunter placed at %s" % [seed_value, p])
+			sim.debug_set_energy(0.0)
+			var bot = ForageBot.new()
+			var ate := false
+			for i in 25 * 60:
+				sim.step(bot.next_intent(sim))
+				ate = not _events_of(sim.drain_events(), "ate").is_empty()
+				if ate or sim.dead:
+					break
+			if not ate or sim.dead:
+				misses.append("seed %d at %s" % [seed_value, p])
+	check(misses.size() <= LATE_RUN_MISSES_ALLOWED, "starved before finding carrion: %s" % [misses])
 
 
 func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() -> void:

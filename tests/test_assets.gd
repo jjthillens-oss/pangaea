@@ -64,7 +64,7 @@ func _record(id: String) -> Dictionary:
 	return data if data is Dictionary else {}
 
 
-## The pool layout, or {} until the pool systems add it.
+## The pool layout as raw data, or {} when it is missing or not an object.
 func _layout() -> Dictionary:
 	if not FileAccess.file_exists(LAYOUT_PATH):
 		return {}
@@ -210,14 +210,14 @@ func test_parts_start_at_their_attachment_point_and_extend_forward() -> void:
 
 func test_food_is_one_mesh_sized_to_its_item_radius() -> void:
 	var layout := _layout()
+	check(not layout.is_empty(), "the pool layout %s exists and is an object" % LAYOUT_PATH)
 	for id in FOOD_LAYOUT_KEYS:
 		var record := _record(id)
-		var item_radius := float(record.get("item_radius_m", 0.0))
-		if not layout.is_empty():
-			var block: Dictionary = layout.get(FOOD_LAYOUT_KEYS[id], {})
-			check_near(item_radius, float(block.get("item_radius", -1.0)), 0.0001, "%s record item radius matches the layout" % id)
-			item_radius = float(block.get("item_radius", item_radius))
-		check(item_radius > 0.0, "%s has an item radius" % id)
+		check(record.has("item_radius_m"), "%s record has item_radius_m" % id)
+		var block: Variant = layout.get(FOOD_LAYOUT_KEYS[id], {})
+		var item_radius := float(block.get("item_radius", -1.0)) if block is Dictionary else -1.0
+		check(item_radius > 0.0, "the layout gives %s an item radius" % id)
+		check_near(float(record.get("item_radius_m", 0.0)), item_radius, 0.0001, "%s record item radius matches the layout" % id)
 		var node := _load_scene("res://assets/export/%s.glb" % id)
 		if node == null:
 			check(false, "%s loads" % id)
