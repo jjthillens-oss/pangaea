@@ -82,6 +82,7 @@ func test_a_new_world_fills_every_site_in_data_order_and_both_niches() -> void:
 		check_near(c.state.energy / c.state.energy_capacity, float(species.species[c.species_id].start_energy_share), 1e-9,
 			"%s starts at its species' energy share" % c.id)
 		check_eq(c.brain.ignore_all_until, 180, "%s settles for 3 s" % c.id)
+		check_eq(c.brain.rng.seed, SEED * CreatureField.BRAIN_SEED_STRIDE + c.number, "%s has its own brain seed" % c.id)
 		check_eq(c.brain.state, "rest", "%s rests" % c.id)
 	check_eq(field.region.niches, {"ambush": {"cap": 3, "count": 3}, "territorial": {"cap": 4, "count": 4}}, "both niches full")
 	check(field.queue.is_empty(), "nothing waits")
@@ -158,7 +159,11 @@ func test_a_death_frees_the_niche_and_requeues_the_site_after_its_respawn_time()
 	var arena := layout.build_arena()
 	field.populate(arena, layout.spawn, 0)
 	var rammer := field.find("c_4")
+	var neighbour := field.find("c_5")
+	neighbour.brain.seen[rammer.id] = {"position": rammer.motion.position, "velocity": Vector2.ZERO, "tick": 5, "by": "sight",
+		"species": "rammer", "radius": rammer.phenotype.radius, "engageable": true}
 	field.remove(rammer, "killed", 10, true)
+	check(not neighbour.brain.seen.has(rammer.id), "a brain that remembered it forgets it")
 	var due: int = field.queue[0].at_tick
 	field.tick_spawns(arena, layout.spawn, due - 1)
 	check_eq(field.creatures.size(), 6, "not back before its time")
