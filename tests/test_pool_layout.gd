@@ -112,26 +112,23 @@ func test_wrong_types_and_missing_files_are_reported_not_crashed_on() -> void:
 
 
 ## Test-only: rock assets come from assets/records, which are not exported, so the runtime cannot
-## check them. Until the step 2 blockout records exist (build step 3) there is nothing to compare;
-## once any rock record exists, every rock asset must have one.
+## check them. Every rock asset the layout names must have a record whose footprint matches the
+## layout's collision footprint.
 func test_rock_footprints_match_their_asset_records() -> void:
 	var layout := PoolLayout.load_from()
 	var assets := {}
 	for rock in layout.rocks:
 		assets[rock.asset] = true
-	var found := 0
-	for asset in assets:
-		if FileAccess.file_exists("%s/%s.json" % [RECORDS_DIR, asset]):
-			found += 1
-	if found == 0:
-		print("NOTE test_pool_layout: no rock asset records yet; the footprint check waits for the blockouts.")
-		return
+	check_eq(assets.size(), 3, "the layout uses three rock assets")
 	for asset in assets:
 		var path := "%s/%s.json" % [RECORDS_DIR, asset]
 		check(FileAccess.file_exists(path), "%s has an asset record" % asset)
 		if not FileAccess.file_exists(path):
 			continue
-		var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		check(data is Dictionary, "%s record is a JSON object" % asset)
+		var record: Dictionary = data if data is Dictionary else {}
+		check(record.has("footprint_radius_m"), "%s record has footprint_radius_m" % asset)
 		var footprint := float(record.get("footprint_radius_m", -1.0))
 		check(absf(footprint - layout.rock_footprint_radius_m) <= layout.rock_footprint_radius_m * FOOTPRINT_TOLERANCE,
 			"%s footprint %.2f m vs layout %.2f m" % [asset, footprint, layout.rock_footprint_radius_m])
