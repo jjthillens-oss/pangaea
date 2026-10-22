@@ -24,12 +24,13 @@ const CRUISE := 0.8                     ## throttle of a cruising cell
 const HEAD_ON: Array[int] = [5, 6, 7]
 ## Snapshot keys only a pool with creatures has (T14 compares everything else).
 const CREATURE_KEYS: PackedStringArray = ["creatures", "creature_next", "creature_rng", "spawn_queue",
-	"engaged_on_player", "niches"]
+	"engaged_on_player", "niches", "grace_until", "death_streak"]
 ## What #25 perturbs, one sim each (_perturb).
 const PERTURBATIONS: PackedStringArray = ["creature position.x by one float32 step", "creature velocity",
 	"creature heading", "creature health", "creature energy", "a cooldown", "phase_tick", "target", "lock_heading",
 	"a seen position", "an ignore entry", "landed_on", "the brain RNG", "the field RNG", "a queue at_tick",
-	"engaged_on_player", "the AI frozen switch", "the hidden switch", "the cell's death"]
+	"engaged_on_player", "the AI frozen switch", "the hidden switch", "the cell's death", "the shelter's end",
+	"the death streak"]
 
 var catalog: PartCatalog
 var fixture: PoolLayout
@@ -47,13 +48,16 @@ func before_each() -> void:
 
 
 ## A new lineage with creatures (the fixture and the site-less species unless given), the cell at
-## `at` facing `heading` (else at the layout spawn). Starting events are dropped.
+## `at` facing `heading` (else at the layout spawn). Its start shelter is ended at once, so the
+## creatures can sense it from the first tick (test_checkpoints covers the shelter). Starting events
+## are dropped.
 func _sim(body: String, seed_value: int, at := Vector2.INF, heading := 0.0, p_layout: PoolLayout = null,
 		p_species: SpeciesCatalog = null) -> PoolSim:
 	var use := p_layout if p_layout != null else fixture
 	var r := Lineage.found(seed_value, "test+dev", catalog, body)
 	r.save.player["position"] = PlaneSpace.to_save(use.spawn)
 	var sim := PoolSim.create(r.save, catalog, use, p_species if p_species != null else test_species)
+	sim.grace_until = sim.tick
 	if at.is_finite():
 		check(sim.debug_teleport(at, heading), "the cell placed at %s" % at)
 	sim.drain_events()
@@ -647,6 +651,7 @@ func _spiked_sim(seed_value: int, at: Vector2) -> PoolSim:
 	r.save.genome = g
 	r.save.player["position"] = PlaneSpace.to_save(fixture.spawn)
 	var sim := PoolSim.create(r.save, catalog, fixture, test_species)
+	sim.grace_until = sim.tick   # no start shelter, as in _sim
 	check(sim.debug_teleport(at, 0.0), "the spiked cell placed")
 	sim.drain_events()
 	return sim
@@ -1356,6 +1361,10 @@ func _perturb(s: PoolSim, what: String) -> void:
 			s.dev_hidden = true
 		"the cell's death":
 			s.death = {"cause": "killed"}
+		"the shelter's end":
+			s.grace_until += 1
+		"the death streak":
+			s.death_streak += 1
 
 
 func test_without_creatures_the_species_machinery_changes_nothing_in_the_step_2_pool() -> void:
@@ -1370,11 +1379,19 @@ func test_without_creatures_the_species_machinery_changes_nothing_in_the_step_2_
 	var event_diffs := 0
 	var first := ""
 	var events := 0
+	var shelter_ends := []
 	for t in 3600:
 		plain.step(bots[0].next_intent(plain))
 		empty.step(bots[1].next_intent(empty))
 		var ea := plain.drain_events()
-		var eb := empty.drain_events()
+		var eb: Array[Dictionary] = []
+		# The start shelter is the one event only a pool with species has; it changes nothing else.
+		for e in empty.drain_events():
+			if e.type == "grace_ended":
+				e["tick"] = t
+				shelter_ends.append(e)
+			else:
+				eb.append(e)
 		events += ea.size()
 		if ea != eb:
 			event_diffs += 1
@@ -1386,7 +1403,9 @@ func test_without_creatures_the_species_machinery_changes_nothing_in_the_step_2_
 			if first.is_empty():
 				first = "tick %d" % t
 	check_eq(snap_diffs, 0, "the snapshots match minus the creature keys on every tick (first difference %s)" % first)
-	check_eq(event_diffs, 0, "and so do the events")
+	check_eq(event_diffs, 0, "and so do the events, but for the start shelter's end")
+	check_eq(shelter_ends, [{"type": "grace_ended", "reason": "timeout", "tick": test_species.start_grace_ticks - 1}],
+		"which comes once, on its last tick")
 	check(events >= 10 and plain.stats.plankton_eaten > 0, "the run did something (%d events)" % events)
 
 
