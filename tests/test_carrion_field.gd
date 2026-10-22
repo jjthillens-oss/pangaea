@@ -5,6 +5,10 @@ extends TestCase
 const DT := 1.0 / 60.0
 ## One zone with a rock inside it and one zone a rock covers completely; the supply runs every second.
 const ROCKY_FIXTURE := "res://tests/fixtures/pool_test_rocks.json"
+## Well below the 13 to 15 items the pool data's supply reaches on its own, so this cap has
+## arrivals to hold back.
+const HELD_BACK_MAX_LIVE := 8
+const UNCAPPED_MAX_LIVE := 1 << 20
 
 var layout: PoolLayout
 var arena: PoolArena
@@ -35,6 +39,15 @@ func _interim_spawns(seed_value: int, seconds: float) -> Array:
 		field.events.clear()
 	_run(field, seconds, collect)
 	return out
+
+
+## The most carrion live at once over `seconds`, initial items included.
+func _peak_live(data: Dictionary, seed_value: int, seconds: float) -> int:
+	var field := CarrionField.create(data, seed_value)
+	field.place_initial(arena)
+	var most := [0]
+	_run(field, seconds, func(_i: int) -> void: most[0] = maxi(most[0], field.items.size()))
+	return most[0]
 
 
 func test_the_interim_supply_is_deterministic_per_seed() -> void:
@@ -81,13 +94,21 @@ func test_interim_carrion_never_lands_on_a_rock_inside_a_zone() -> void:
 
 
 func test_the_supply_never_exceeds_max_live() -> void:
-	var field := CarrionField.create(layout.carrion, 34)
-	field.place_initial(arena)
 	var max_live: int = layout.carrion.interim_supply.max_live
-	var most := [0]
-	_run(field, 1200.0, func(_i: int) -> void: most[0] = maxi(most[0], field.items.size()))
-	check(most[0] <= max_live, "at most %d live, saw %d" % [max_live, most[0]])
-	check_eq(most[0], max_live, "and it does fill up to the cap")
+	var most := _peak_live(layout.carrion, 34, 1200.0)
+	check(most <= max_live, "at most %d live, saw %d" % [max_live, most])
+	check_eq(most, max_live, "and it does fill up to the cap")
+	# The data's cap is about as many as the supply reaches anyway, so it holds back little or
+	# nothing. A lower cap must hold back arrivals that the same supply makes without one.
+	var uncapped: Dictionary = layout.carrion.duplicate(true)
+	uncapped.interim_supply.max_live = UNCAPPED_MAX_LIVE
+	var uncapped_most := _peak_live(uncapped, 34, 300.0)
+	check(uncapped_most > HELD_BACK_MAX_LIVE, "without a cap the same supply reaches %d live" % uncapped_most)
+	var held: Dictionary = layout.carrion.duplicate(true)
+	held.interim_supply.max_live = HELD_BACK_MAX_LIVE
+	var held_most := _peak_live(held, 34, 300.0)
+	check(held_most <= HELD_BACK_MAX_LIVE, "at most %d live under the lower cap, saw %d" % [HELD_BACK_MAX_LIVE, held_most])
+	check_eq(held_most, HELD_BACK_MAX_LIVE, "and it fills up to the lower cap")
 
 
 func test_carrion_rots_at_its_lifetime() -> void:
