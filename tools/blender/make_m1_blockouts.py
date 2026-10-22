@@ -16,8 +16,10 @@ Conventions (verified by tests/test_assets.gd after import):
   * Parts have their origin at the attachment point and extend outward along Blender +Y.
   * Foods are one mesh object each, centred on the origin, so the pool can draw them with a MultiMesh.
 The output is deterministic: fixed formulas and mathutils.noise at fixed offsets, no random numbers.
-GLBs and records come out byte-identical on every run. A .blend differs only in each mesh's
-face-set colour seed, which Blender takes from the clock and does not expose to Python.
+GLBs and records come out byte-identical on every run. A .blend also holds a few values that
+Blender takes from the clock, a random seed or memory addresses and that scripts cannot set (each
+mesh's face-set colour seed, material node identifiers and UI screen pointers), so it differs from
+run to run in those bytes only; its geometry, objects and materials are the same.
 """
 import argparse
 import math
