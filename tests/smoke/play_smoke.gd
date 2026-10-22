@@ -73,6 +73,7 @@ const OFF_SCREEN_SOUTH_M := 5.8     ## south of the cell: below the 5.49 m scree
 const NOTICE_TICKS := 1200          ## the new hunter settles 3 s and the shelter lasts up to 10 s
 ## The edge arrows refresh at 30 Hz (2 frames at 60 fps): an arrow comes and goes within this many.
 const ARROW_FRAMES := 6
+const NOTICE_ON_SCREEN_TICKS := 60  ## a hunter notices a cell placed in front of it within a second
 ## The camera is moved this far north of the cell mid-tell, so the telling hunter is off screen.
 const CAMERA_AWAY_M := 30.0
 ## The window sizes the bottom hint is checked clear of the edge arrows at (the canvas stays 1920 x
@@ -552,6 +553,14 @@ func _caught_at(pool: PoolScene, site: String, cues: bool) -> Dictionary:
 	pool.intent_provider = hold
 	var from := sim.tick
 	if cues:
+		# On screen its notice pops the "!" over its body, and it gets no edge arrow.
+		var notice := await _await_event(sim, "creature_noticed", func(e: Dictionary) -> bool: return e.id == hunter.id and e.target == PLAYER, NOTICE_ON_SCREEN_TICKS)
+		await _frames(2)
+		var noticed_view := pool.creature_layer.view_of(hunter.id)
+		var marker := noticed_view.get_node("%Marker") as Label3D if noticed_view != null else null
+		var edge_rows := main.hud.threat_indicators.indicators.filter(func(d: Dictionary) -> bool: return d.id == hunter.id)
+		_check(not notice.is_empty() and marker != null and marker.visible and edge_rows.is_empty(),
+			"on screen its notice pops the '!' over it, with no edge arrow")
 		var tell := await _await_event(sim, "creature_tell", func(e: Dictionary) -> bool: return e.id == hunter.id and e.target == PLAYER, CAUGHT_TICKS)
 		_check(not tell.is_empty(), "the hunter starts its tell on the cell after %.1f s" % ((sim.tick - from) * PoolSim.DT))
 		await _frames(TELL_POSE_FRAMES)
@@ -632,8 +641,9 @@ func _continue_sheltered(pool: PoolScene) -> int:
 
 ## An ambush hunter placed south of the still cell, below the screen's edge and facing it, notices
 ## the cell once the shelter is over: the HUD's own refresh brings up one arrow for it, at the
-## bottom edge with the jaw glyph, and draws it on screen, clear of every refusal hint at both window
-## sizes. F10 kills it and the arrow goes by itself. Then the forage bot swims on until there is
+## bottom edge with the jaw glyph, and draws it on screen with the notice's "!" (the "!" over the
+## body stays hidden off screen), clear of every refusal hint at both window sizes. F10 kills it
+## and the arrow goes by itself. Then the forage bot swims on until there is
 ## unsaved progress again.
 func _check_off_screen_arrow(pool: PoolScene) -> void:
 	var sim := pool.sim
@@ -661,6 +671,12 @@ func _check_off_screen_arrow(pool: PoolScene) -> void:
 		"the HUD shows one arrow for it by itself, at the bottom edge with the jaw glyph %s" % [shown])
 	_check(_shown(arrows) and arrows.drawn.size() == 1 and arrows.drawn[0].id == c.id,
 		"and draws it on screen within %d frames (%d drawn)" % [frames, arrows.drawn.size()])
+	var view := pool.creature_layer.view_of(c.id)
+	var marker := view.get_node("%Marker") as Label3D if view != null else null
+	var mark: Rect2 = arrows.drawn[0].mark if arrows.drawn.size() == 1 else Rect2()
+	_check(c.brain.state == CreatureBrain.NOTICE and shown.size() == 1 and bool(shown[0].noticing) and mark.has_area()
+		and marker != null and not marker.visible,
+		"while it notices, the arrow draws the '!' and the '!' over its body, off screen, stays hidden")
 	await _check_hint_clear_of_arrows(arrows)
 	await _press(&"dev_kill_nearest")
 	var gone := await _frames_until(func() -> bool: return arrows.indicators.is_empty() and arrows.drawn.is_empty(), ARROW_FRAMES)

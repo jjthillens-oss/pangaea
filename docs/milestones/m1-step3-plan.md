@@ -1118,7 +1118,7 @@ CreatureView (Node3D, script creature_view.gd)
 │       ├── Body (creature_<x>_body.glb instance: Eye_L, Eye_R, Brow | Hood)
 │       └── Parts (Node3D; one holder per genome part placed by PartPlacement, the player's part GLBs)
 ├── Lane (MeshInstance3D quad on the floor, unshaded, alpha ≤ 0.25 inside and ≤ 0.7 on its thin outline (PROPOSED, DECISIONS 2026-10-22 visual); visible only during a tell targeting the player)
-└── Marker (Label3D "!", no depth test; shown 0.6 s on notice of the player)
+└── Marker (Label3D "!", no depth test; shown 0.6 s on notice of the player, while the creature is on screen)
 ```
 
 - **`static func pose(behavior: String, phase: String, progress: float) -> Dictionary`**, pure and tested. It returns `{scale: Vector3, jaw_open, hood, spike_raise, eye_glow, stretch}`.
@@ -1149,7 +1149,7 @@ CreatureView (Node3D, script creature_view.gd)
 
 | Event | Response |
 |---|---|
-| `creature_noticed` (target player) | View marker "!"; `notice` cue; HUD indicator if off-screen |
+| `creature_noticed` (target player) | View marker "!" if on screen; `notice` cue; HUD indicator, with "!", if off-screen |
 | `creature_tell` | `tell_lunge` or `tell_puff` cue (positional, length = tell); lane on when targeting the player; the pose is driven by the phase, not by this event |
 | `tell_cancelled` | Lane off |
 | `dodged` | "Dodged!" label; `dodged` cue |
@@ -1188,7 +1188,7 @@ Every signal uses at least two of shape, motion, text and sound. Colour is never
 
 - **Off-screen indicators** (`game/ui/threat_indicators.gd`, **never cut**):
   - **Which creatures:** each one whose brain targets the player in `notice`, `rest/watch`, `chase` or `attack`, and whose projected position is outside the viewport.
-  - **What is drawn:** an edge arrow with the species glyph (`HudIcon` `jaw` = ambush hunter, `star` = rammer). During a tell it pulses at 3 Hz and shows "!".
+  - **What is drawn:** an edge arrow with the species glyph (`HudIcon` `jaw` = ambush hunter, `star` = rammer). During a tell it pulses at 3 Hz and shows "!". It also shows "!", without the pulse, while the creature notices the player, because the view's "!" marker shows only while the creature is on screen (PROPOSED, DECISIONS 2026-10-22 visual).
   - **Placement:** `static func edge_point(rect: Rect2, p_screen: Vector2, behind_camera: bool, margin: float) -> Vector2`, pure and tested. A position behind the camera is mirrored.
   - Updated at 30 Hz. A functional inventory entry.
 - **Shelter chip:** "Sheltered 5" with the `ring` icon, counting down whole seconds and hidden at 0. Text from `Hud.grace_text(seconds)`.

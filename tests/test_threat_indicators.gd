@@ -138,8 +138,13 @@ func test_an_arrow_row_copies_its_brains_tell_and_glyph() -> void:
 	var watch := _memory(CreatureBrain.REST, CreatureBrain.WATCH, player)
 	watch.behavior = CreatureBrain.AMBUSH
 	var calm := ThreatIndicators.indicator_for("c_1", "ambush_hunter", watch, Vector2(70, 540), Vector2.ZERO)
-	check(not calm.telling and calm.glyph == "jaw", "a watching hunter's arrow is not telling and shows the jaw")
+	check(not calm.telling and not calm.noticing and calm.glyph == "jaw", "a watching hunter's arrow is not telling or noticing and shows the jaw")
 	check(calm.direction == Vector2.DOWN, "a zero direction falls back to down")
+	check(not row.noticing, "a tell is not a notice")
+	var notice := ThreatIndicators.indicator_for("c_2", "ambush_hunter", _memory(CreatureBrain.NOTICE, "", player), Vector2(960, 1010), Vector2.DOWN)
+	check(notice.noticing and not notice.telling, "a creature noticing the cell has a noticing arrow")
+	var wait := ThreatIndicators.indicator_for("c_4", "rammer", _memory(CreatureBrain.NOTICE, CreatureBrain.WAIT, player), Vector2(960, 1010), Vector2.DOWN)
+	check(not wait.noticing, "a rammer waiting for its turn is past its notice")
 
 
 ## True when `rect` overlaps the disc of radius `r` around `c`.
@@ -147,8 +152,9 @@ func _hits_disc(rect: Rect2, c: Vector2, r: float) -> bool:
 	return c.clamp(rect.position, rect.end).distance_to(c) < r
 
 
-func _row(at: Vector2, telling: bool) -> Dictionary:
-	return {"id": "c_1", "glyph": "jaw", "position": at, "direction": (at - RECT.get_center()).normalized(), "telling": telling}
+func _row(at: Vector2, telling: bool, noticing := false) -> Dictionary:
+	return {"id": "c_1", "glyph": "jaw", "position": at, "direction": (at - RECT.get_center()).normalized(),
+		"telling": telling, "noticing": noticing}
 
 
 func test_only_a_telling_arrow_pulses_and_shows_its_mark_clear_of_the_badge() -> void:
@@ -156,6 +162,10 @@ func test_only_a_telling_arrow_pulses_and_shows_its_mark_clear_of_the_badge() ->
 	var calm := ThreatIndicators.arrow_shape(_row(at, false), 1.0, RECT)
 	check_eq(calm.radius, ThreatIndicators.BADGE_RADIUS_PX, "an arrow that is not telling never pulses")
 	check(not (calm.mark as Rect2).has_area() and calm.mark_h == 0.0, "and shows no '!'")
+	# Off screen the creature's own "!" is hidden, so its arrow carries the notice: a "!" with no pulse.
+	var notice := ThreatIndicators.arrow_shape(_row(at, false, true), 1.0, RECT)
+	check_eq(notice.radius, ThreatIndicators.BADGE_RADIUS_PX, "a noticing arrow does not pulse")
+	check((notice.mark as Rect2).has_area() and notice.mark_h == ThreatIndicators.MARK_PX, "but shows its '!' at rest size")
 	var rest := ThreatIndicators.arrow_shape(_row(at, true), 0.0, RECT)
 	var top := ThreatIndicators.arrow_shape(_row(at, true), 1.0, RECT)
 	check_eq(rest.radius, ThreatIndicators.BADGE_RADIUS_PX, "a telling arrow at the bottom of its pulse")

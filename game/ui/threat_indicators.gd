@@ -7,7 +7,8 @@ extends Control
 ## gets an arrow on the screen edge, along the line from the screen center toward it: a badge with
 ## its species glyph (HudIcon "jaw" for an ambush hunter, "star" for a rammer) and a pointer. During
 ## a tell the arrow pulses at PULSE_HZ and shows "!", so shape, motion and text carry it, and the
-## tell's own sound is positional.
+## tell's own sound is positional. While the creature notices the cell the arrow shows the "!" too,
+## without the pulse: the "!" over the creature's body shows only on screen (CreatureView).
 ##
 ## It only reads the sim and the pool camera, at REFRESH_HZ. The HUD binds it to the pool and draws
 ## it over everything else, and keeps its bottom hint out of the bottom arrows' band (band_px).
@@ -24,7 +25,7 @@ const PULSE_GROW := 0.25            ## a telling arrow grows this much at the to
 const BADGE_COLOR := Color(0.03, 0.11, 0.13, 0.9)
 const THREAT_COLOR := Color(0.851, 0.275, 0.42)       ## threat #D9466B (docs/art/ART_DIRECTION.md)
 const GLYPH_COLOR := Color(0.957, 0.918, 0.824)       ## cream highlight #F4EAD2
-## The tell's "!": a bar over a dot, MARK_PX tall, upright wherever the arrow is, MARK_GAP_PX from
+## The "!" of a notice or a tell: a bar over a dot, MARK_PX tall, upright wherever the arrow is, MARK_GAP_PX from
 ## the badge: beside it toward the screen's middle on the top and bottom edges, so an arrow there
 ## keeps to the band along its edge, and on the side away from the edge on the left and right. Drawn
 ## as shapes, so no font can shrink it.
@@ -37,7 +38,8 @@ const GLYPHS := {"ambush": "jaw", "territorial": "star"}
 
 var pool: PoolScene
 ## The arrows drawn now, in creature order: {"id", "species", "glyph", "position" (the badge's
-## center on screen), "direction" (unit, from the screen center toward the creature), "telling"}.
+## center on screen), "direction" (unit, from the screen center toward the creature), "telling",
+## "noticing"}.
 var indicators: Array[Dictionary] = []
 ## What _draw drew for those arrows, for checks: one {"id", "badge" (Rect2 around the badge and its
 ## pointer), "mark" (Rect2 around the "!", empty without one)} per arrow on screen. Each refresh
@@ -89,7 +91,7 @@ static func on_screen(camera: Camera3D, rect: Rect2, at: Vector3) -> bool:
 static func indicator_for(id: String, species: String, mem: CreatureBrain.Memory, edge: Vector2, direction: Vector2) -> Dictionary:
 	return {"id": id, "species": species, "glyph": GLYPHS.get(mem.behavior, "jaw"), "position": edge,
 		"direction": direction.normalized() if direction.length() > 1e-6 else Vector2.DOWN,
-		"telling": is_telling(mem)}
+		"telling": is_telling(mem), "noticing": is_noticing(mem)}
 
 
 ## How far from the top or bottom screen edge an arrow there reaches, its "!" and pulse included:
@@ -106,6 +108,12 @@ static func watches_player(mem: CreatureBrain.Memory) -> bool:
 	if mem.state in [CreatureBrain.NOTICE, CreatureBrain.CHASE, CreatureBrain.ATTACK]:
 		return true
 	return mem.state == CreatureBrain.REST and mem.phase == CreatureBrain.WATCH
+
+
+## True in the first moment of a notice (the brain's notice phase, not a rammer's wait for its turn
+## that may follow), when the creature's own "!" pops up.
+static func is_noticing(mem: CreatureBrain.Memory) -> bool:
+	return mem.state == CreatureBrain.NOTICE and mem.phase != CreatureBrain.WAIT
 
 
 ## True during a tell (the coil or the puff).
@@ -148,7 +156,8 @@ func _process(delta: float) -> void:
 
 
 ## How the arrow `ind` (an indicators row) is drawn on the screen `rect`, `pulse` (0..1) of the way to
-## the top of its pulse (only a telling arrow pulses). Pure; _draw and the layout checks share it.
+## the top of its pulse (only a telling arrow pulses; a telling or noticing one shows the "!"). Pure;
+## _draw and the layout checks share it.
 ## Returns {"center", "radius", "pointer" (the triangle: tip and two base corners), "glyph" (Rect2),
 ## "mark_at" (the "!"'s center), "mark_h" (its height, 0 without one), "badge" (Rect2 around the
 ## badge and its pointer), "mark" (Rect2 around the "!", empty without one)}.
@@ -167,7 +176,7 @@ static func arrow_shape(ind: Dictionary, pulse: float, rect: Rect2) -> Dictionar
 	var g := GLYPH_PX * grow
 	var out := {"center": c, "radius": r, "pointer": pointer, "glyph": Rect2(c - Vector2(g, g) * 0.5, Vector2(g, g)),
 		"mark_at": c, "mark_h": 0.0, "badge": badge, "mark": Rect2()}
-	if not ind.telling:
+	if not (ind.telling or ind.get("noticing", false)):
 		return out
 	var h := MARK_PX * grow
 	var half := Vector2(h * MARK_BAR_SHARE * 0.5 + MARK_OUTLINE_PX, h * 0.5 + MARK_OUTLINE_PX)
