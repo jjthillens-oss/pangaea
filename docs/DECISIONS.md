@@ -33,6 +33,9 @@ Part costs, effects, diminishing returns (each further copy gives 60% of the pre
 ## 2026-10-22 · Spore files are not used (CONFIRMED)
 The owner offered to buy Spore and extract its files for formats. Declined: we do not need EA's formats, and reading data out of their files would risk Pangaea being treated as derived from them. Playing the game for design notes written in our own words is fine.
 
+## 2026-10-22 · Rival species evolve by visible rules (CONFIRMED direction)
+The owner chose option B on the research decision card: the player still designs their own creature, and between the player's generations rival species adapt under bounded rules that the journal shows. This is innovation backlog item IB-05 (`docs/research/innovation-backlog.md`). It is planned as an M3 spike with tests. The rules, rates and caps are PROPOSED tuning, and nothing is built yet. Offspring variants (option C) and a selection-led population (option D) were not chosen.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
