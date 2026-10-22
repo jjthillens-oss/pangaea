@@ -245,6 +245,7 @@ func _update_starving(delta: float) -> void:
 	var cell_at := cell_view.position
 	var food_at := PlaneSpace.to_world(food.position)
 	var cell_px := camera.unproject_position(cell_at)
+	var cell_radius_px := camera.unproject_position(cell_at + Vector3.RIGHT * sim.phenotype.radius).distance_to(cell_px)
 	# One meter toward the food is always in front of the camera, so it gives the screen direction.
 	var toward := cell_at + (food_at - cell_at).normalized()
 	var direction := camera.unproject_position(toward) - cell_px
@@ -253,7 +254,7 @@ func _update_starving(delta: float) -> void:
 		var p := camera.unproject_position(food_at)
 		if starving_arrow.get_rect().has_point(p):
 			food_px = p
-	starving_arrow.point(cell_px, direction, food_px, cell_at.distance_to(food_at))
+	starving_arrow.point(cell_px, direction, food_px, cell_at.distance_to(food_at), cell_radius_px)
 
 
 func _update_target_ring() -> void:
