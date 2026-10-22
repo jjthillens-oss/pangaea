@@ -1,0 +1,12 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; The pool floor's material (assets/records/pool_floor.json). Its colour is the mesh's vertex
+; colours, which the glTF importer would leave unused: sand, silt patches and the rim stone,
+; stored sRGB-encoded so both renderers shade them like an albedo colour. Roughness matches the
+; Blender material M_PoolFloor. pool_floor.glb.import points the imported material here.
+
+[resource]
+resource_name = "M_PoolFloor"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+roughness = 0.9
