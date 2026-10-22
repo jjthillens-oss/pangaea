@@ -7,6 +7,10 @@ extends RefCounted
 ## while starving), `acceleration` is the m/s^2 rate and `turn_rate` caps the heading change per
 ## tick. The cell turns first and then swims: thrust follows how well the heading matches the
 ## wanted direction. steer() only changes velocity; PoolArena.move() moves the cell.
+##
+## A creature's strike (M1 step 3) does not steer: burst() sets the velocity along a locked heading
+## and glide() lets it decay. Neither is bounded by the phenotype's top speed; species data keeps
+## the burst speed within PoolLayout.MAX_SPEED, the speed rocks are proven against.
 
 const INPUT_DEADZONE := 0.05
 const ALIGN_POWER := 2.0       ## thrust share = max(0, cos(heading error))^ALIGN_POWER
@@ -58,3 +62,28 @@ static func steer(m: MotionState, move: Vector2, p: Phenotype, speed_mul: float,
 	target = minf(target, sqrt(maxf(0.0, top * top - w * w)))
 	u = minf(target, u + p.acceleration * dt) if u < target else maxf(target, u - slow * dt)
 	m.velocity = fwd * u + side * w
+
+
+## A strike's burst: the heading snaps to `heading` and the whole velocity is `speed` along it.
+static func burst(m: MotionState, heading: float, speed: float) -> void:
+	m.prev_heading = m.heading
+	m.heading = wrapf(heading, -PI, PI)
+	m.velocity = Vector2.from_angle(m.heading) * speed
+
+
+## A strike's glide: the velocity decays by exp(-drag * dt) each tick and the heading holds.
+static func glide(m: MotionState, drag: float, dt: float) -> void:
+	m.prev_heading = m.heading
+	m.velocity *= exp(-drag * dt)
+
+
+## The distance a burst of `burst_ticks` and then a glide of `glide_ticks` cover from `speed`, when
+## each tick sets the velocity first and then moves by it (as PoolArena.move does). The sum per
+## tick, not the integral: the integral is a few centimetres longer for the M1 strikes.
+static func strike_travel(speed: float, burst_ticks: int, drag: float, glide_ticks: int, dt: float) -> float:
+	var travel := speed * dt * burst_ticks
+	var v := speed
+	for i in glide_ticks:
+		v *= exp(-drag * dt)
+		travel += v * dt
+	return travel
