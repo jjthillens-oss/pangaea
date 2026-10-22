@@ -89,6 +89,63 @@ func test_the_meal_label_names_energy_and_points() -> void:
 	check_eq(FeedbackFx.meal_text({"absorbed": 4.0, "points": 0}), "+4 energy", "no points")
 
 
+func _meal(at: Vector2) -> Dictionary:
+	return {"type": "ate", "kind": "plant", "position": at, "absorbed": 8.0, "points": 1}
+
+
+func _feedback() -> FeedbackFx:
+	var fx := FeedbackFx.new()
+	var zones: Array[Dictionary] = []
+	fx.setup(zones)
+	return fx
+
+
+func test_a_quick_second_meal_close_by_adds_to_the_first_meal_label() -> void:
+	var fx := _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.3)
+	fx.show_meal(_meal(Vector2(0.8, 0.5)))
+	var labels := fx.meal_labels()
+	check_eq(labels.size(), 1, "one label for both meals")
+	if labels.size() == 1:
+		check_eq(labels[0].text, "+16 energy · +2", "the label sums the meals")
+		check(labels[0].position.is_equal_approx(PlaneSpace.to_world(Vector2(0.8, 0.5), FeedbackFx.MEAL_START_Y)),
+			"and rises again from the newer meal (%s)" % labels[0].position)
+	fx._process(FeedbackFx.MEAL_MERGE_S + 0.05)
+	fx.show_meal(_meal(Vector2(0.8, 0.5)))
+	check_eq(fx.meal_labels().size(), 2, "a meal after the merge window gets its own label")
+	fx.free()
+
+
+func test_a_new_meal_label_pushes_the_rising_labels_near_it_up_a_line_without_crossing() -> void:
+	var fx := _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.1)
+	fx.show_meal(_meal(Vector2(2.0, 0.0)))   # too far to merge, near enough to collide
+	var labels := fx.meal_labels()
+	check_eq(labels.size(), 2, "two labels")
+	if labels.size() != 2:
+		fx.free()
+		return
+	var closest := INF
+	for frame in 12:
+		fx._process(1.0 / 60.0)
+		closest = minf(closest, labels[0].position.y - labels[1].position.y)
+	check(closest > 0.0, "the older label never drops to the newer one (closest %.3f m)" % closest)
+	var gap := labels[0].position.y - labels[1].position.y
+	check(gap >= FeedbackFx.MEAL_LINE_M * 0.95, "after 0.2 s the older label is a line above (%.3f m)" % gap)
+	fx.free()
+	fx = _feedback()
+	fx.show_meal(_meal(Vector2.ZERO))
+	fx._process(0.1)
+	fx.show_meal(_meal(Vector2(FeedbackFx.MEAL_NEAR_M + 1.0, 0.0)))
+	fx._process(0.2)
+	var far := fx.meal_labels()[0]
+	check_near(far.position.y, FeedbackFx.MEAL_START_Y + FeedbackFx.MEAL_RISE_M * ease(0.3 / FeedbackFx.MEAL_LIFE_S, 0.4), 1e-4,
+		"a label far from the new one stays where it was")
+	fx.free()
+
+
 func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -> void:
 	var plants := FoodView.new()
 	plants.kind = "plant"
