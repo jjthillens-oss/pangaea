@@ -489,6 +489,51 @@ func test_no_pose_stretches_outside_a_strike_and_recovery_returns_to_rest() -> v
 	check_eq(CreatureView.pose("territorial", "attack/recover", 0.2, "missed", 1.2).wobble, 0.0, "a miss does not wobble")
 
 
+## How far a shown pose is from rest: its scale's distance from one and each 0..1 amount.
+func _tell_amounts(p: Dictionary) -> PackedFloat64Array:
+	var s: Vector3 = p.scale
+	return PackedFloat64Array([(s - Vector3.ONE).length(), p.jaw_open, p.hood, p.spike_raise, p.brow])
+
+
+func test_a_cancelled_tell_deflates_from_the_pose_it_reached_and_never_swells_first() -> void:
+	for species_id in ["rammer", "ambush_hunter"]:
+		for cancel_at in [5, 20, 47]:
+			# A real view drawn at 60 fps: the tell entered at tick 100, so the sim's tick is 101 at its
+			# first drawn frame; the step at tick T cancels it into recover, drawn from tick T + 1.
+			var view := _creature_view(species_id)
+			var mem := _memory_in(view, "attack", "tell")
+			var tick := 101
+			for i in cancel_at:
+				view.show_brain(mem, tick, 0.0)
+				view._process(1.0 / 60.0)
+				tick += 1
+			var at_cancel := view.shown_pose.duplicate()
+			mem.phase = CreatureBrain.RECOVER
+			mem.phase_tick = tick - 1
+			mem.outcome = "cancelled"
+			mem.recover_ticks = CreatureBrain.CANCEL_RECOVER_TICKS
+			var last := _tell_amounts(at_cancel)
+			var rises := PackedStringArray()
+			var first := {}
+			for i in mem.recover_ticks + 6:
+				view.show_brain(mem, tick, 0.0)
+				view._process(1.0 / 60.0)
+				if first.is_empty():
+					first = view.shown_pose.duplicate()
+				var now := _tell_amounts(view.shown_pose)
+				for k in now.size():
+					if now[k] > last[k] + 1e-6:
+						rises.append("frame %d: %.3f > %.3f" % [i, now[k], last[k]])
+				last = now
+				tick += 1
+			var what := "%s cancelled %d ticks into its tell" % [species_id, cancel_at]
+			check(_tell_amounts(at_cancel)[0] > 0.01, "%s had begun its tell (scale %s)" % [what, at_cancel.scale])
+			check((first.scale as Vector3).is_equal_approx(at_cancel.scale), "%s starts its recover from the pose it reached (%s, then %s)" % [what, at_cancel.scale, first.scale])
+			check(rises.is_empty(), "%s only deflates: %s" % [what, rises])
+			check((view.shown_pose.scale as Vector3).is_equal_approx(Vector3.ONE), "%s ends at rest" % what)
+			view.free()
+
+
 func test_the_pose_progress_follows_the_sim_tick_and_the_draw_fraction() -> void:
 	var sim := _threat_sim()
 	var c: CreatureField.Creature = sim.creatures.creatures[0]

@@ -88,6 +88,7 @@ var _spike_rest: Array[Transform3D] = []
 var _hood: Node3D
 var _brow: Node3D
 var _brow_rest := Vector3.ZERO
+var _recover_from := {}   ## the pose a recover from a tell that never struck starts from
 var _wag_nodes: Array[Node3D] = []
 var _wag_phase := 0.0
 var _hurt_t := -1.0
@@ -111,10 +112,12 @@ var _marker: Label3D
 ## The pose of a creature with `behavior` ("ambush" or "territorial") in brain phase `phase` (the
 ## brain's "state/phase" label), `progress` (0..1) of the way through it. `outcome` is the attack's
 ## (CreatureBrain.Memory.outcome) during recover, and `phase_s` the phase's length in seconds (it
-## times the blocked wobble). Pure. Returns {"scale" (Vector3, times body_size), "jaw_open",
-## "hood", "spike_raise", "brow", "eye_glow" (emission strength), "stretch", "wobble" (radians of
-## roll)}; every amount but eye_glow and wobble is 0..1.
-static func pose(p_behavior: String, phase: String, progress: float, outcome := "", phase_s := 0.0) -> Dictionary:
+## times the blocked wobble). A recover starts from `from` when it is given (the pose shown when a
+## tell was cancelled, so the puff deflates from where it got to), else from the full tell or the
+## lunge. Pure. Returns {"scale" (Vector3, times body_size), "jaw_open", "hood", "spike_raise",
+## "brow", "eye_glow" (emission strength), "stretch", "wobble" (radians of roll)}; every amount but
+## eye_glow and wobble is 0..1.
+static func pose(p_behavior: String, phase: String, progress: float, outcome := "", phase_s := 0.0, from := {}) -> Dictionary:
 	var k := clampf(progress, 0.0, 1.0)
 	var out := _neutral(p_behavior, phase)
 	if p_behavior == CreatureBrain.AMBUSH:
@@ -134,9 +137,9 @@ static func pose(p_behavior: String, phase: String, progress: float, outcome := 
 			"attack/recover":
 				# From the coil when the tell never struck, else from the lunge's stretch.
 				var from_phase := "attack/tell" if outcome == "cancelled" or outcome == "interrupted" else "attack/glide"
-				var from := pose(p_behavior, from_phase, 1.0)
-				from.stretch = 0.0
-				return blend(from, out, smoothstep(0.0, RELAX_SHARE, k))
+				var start := from.duplicate() if not from.is_empty() else pose(p_behavior, from_phase, 1.0)
+				start.stretch = 0.0
+				return blend(start, out, smoothstep(0.0, RELAX_SHARE, k))
 	elif p_behavior == CreatureBrain.TERRITORIAL:
 		match phase:
 			"attack/tell":
@@ -152,7 +155,8 @@ static func pose(p_behavior: String, phase: String, progress: float, outcome := 
 				var from_phase := "attack/tell" if outcome == "cancelled" or outcome == "interrupted" else "attack/glide"
 				# A cancelled puff deflates over its whole (short) recover; the others over its first part.
 				var span := 1.0 if outcome == "cancelled" else RELAX_SHARE
-				var deflated := blend(pose(p_behavior, from_phase, 1.0), out, smoothstep(0.0, span, k))
+				var start := from if not from.is_empty() else pose(p_behavior, from_phase, 1.0)
+				var deflated := blend(start, out, smoothstep(0.0, span, k))
 				if outcome == "blocked":
 					var t := k * phase_s
 					if t < WOBBLE_S:
@@ -315,8 +319,14 @@ func show_brain(mem: CreatureBrain.Memory, tick: int, fraction: float) -> void:
 			_blend_t = 0.0
 		else:
 			_blend_t = BLEND_S
+		# A tell that never struck deflates from the pose it had reached, not from the full coil or
+		# puff, so a withdrawn threat never swells first; it starts there, so it needs no blend.
+		_recover_from = {}
+		if label == "attack/recover" and (mem.outcome == "cancelled" or mem.outcome == "interrupted"):
+			_recover_from = shown_pose.duplicate()
+			_blend_t = BLEND_S
 		_label = label
-	var target := pose(behavior, label, progress, mem.outcome, phase_ticks(mem) * PoolSim.DT)
+	var target := pose(behavior, label, progress, mem.outcome, phase_ticks(mem) * PoolSim.DT, _recover_from)
 	shown_pose = blend(_blend_from, target, _blend_t / BLEND_S) if _blend_t < BLEND_S else target
 	if label == "attack/tell":
 		_lane_material.set_shader_parameter("fill", progress)
