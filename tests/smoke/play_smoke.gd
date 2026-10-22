@@ -260,7 +260,7 @@ func _check_view_record(run: String) -> void:
 		"the food views drew the sim's plankton and carrion counts every frame of %s (%d misses; last %d plankton, %d carrion)"
 		% [run, _view.food_mismatch, _view.plankton_drawn, _view.carrion_drawn])
 	_check(_view.food_misplaced == 0,
-		"the food views drew sampled plankton and carrion at their sim positions every frame of %s (%d misses)" % [run, _view.food_misplaced])
+		"the food views drew every plankton and carrion item at its sim position every frame of %s (%d misses)" % [run, _view.food_misplaced])
 	_check(_view.fade_late == 0,
 		"the pool's fade-in cleared after %.1f s in %s (shown %d frames late)" % [PoolScene.FADE_IN_S, run, _view.fade_late])
 	_check(_view.bar_worst <= BAR_STEP + 1e-6, "the energy bar showed the sim energy every frame of %s (worst %.3f off)" % [run, _view.bar_worst])
@@ -663,14 +663,14 @@ func _probe_frame() -> void:
 	_view.bar_worst = maxf(_view.bar_worst, absf(main.hud.energy_bar.value - sim.state.energy))
 
 
-## The first, middle and last of `items` sit at their sim positions (x and z) in the view's
-## instance buffer, which is what the renderer draws. MultiMesh.get_instance_transform() reads
-## identity under --headless, but the buffer reads back as written.
+## Every one of `items` sits at its sim position (x and z) in the view's instance buffer, which is
+## what the renderer draws. MultiMesh.get_instance_transform() reads identity under --headless,
+## but the buffer reads back as written.
 func _food_placed(view: FoodView, items: Array[Dictionary]) -> bool:
 	if items.is_empty():
 		return true
 	var buffer := view.multimesh.buffer
-	for i in [0, floori(items.size() * 0.5), items.size() - 1]:
+	for i in items.size():
 		var want := PlaneSpace.to_world(items[i].position)
 		var o: int = i * FoodView.FLOATS_PER_INSTANCE
 		if o + 11 >= buffer.size() or absf(buffer[o + 3] - want.x) > POSITION_TOLERANCE_M \
