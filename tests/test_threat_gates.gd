@@ -57,7 +57,7 @@ const ON_THE_MOVE_MIN_TICKS := 300
 const PRESSURE_SEEDS: Array[int] = [501, 502, 503]
 const PRESSURE_BODIES: PackedStringArray = ["grazer", "omnivore"]
 const PRESSURE_TICKS := 300 * 60
-const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0   ## for each body, over its seeds: pressure exists
+const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0   ## for each body, over its seeds, and some in every seed
 const PRESSURE_MAX_DEATHS_PER_5_MIN := 0.5   ## over every run: a careful player is not worn down
 
 var catalog: PartCatalog
@@ -328,6 +328,9 @@ func test_slow_a_forager_near_the_spawn_meets_threats_and_one_that_dodges_is_not
 		print("test-threats-pressure: %s: %.2f meetings a minute (need %.1f), met in %d of %d seeds" % [
 			body, rate, PRESSURE_MIN_MEETINGS_PER_MIN, met_in, PRESSURE_SEEDS.size()])
 		check(rate >= PRESSURE_MIN_MEETINGS_PER_MIN, "%s: %.2f meetings a minute (need %.1f)" % [body, rate, PRESSURE_MIN_MEETINGS_PER_MIN])
+		# Every seed, not just the average: a run spent feeding in one quiet zone must not hide
+		# behind the others' meetings.
+		check_eq(met_in, PRESSURE_SEEDS.size(), "%s: met a threat in every seed" % body)
 	var death_rate := deaths / minutes * 5.0
 	print("test-threats-pressure: %d deaths in %.0f minutes, %.2f per 5 minutes (at most %.1f); %d starved" % [
 		deaths, minutes, death_rate, PRESSURE_MAX_DEATHS_PER_5_MIN, starved])
