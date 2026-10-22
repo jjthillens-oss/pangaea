@@ -1,8 +1,8 @@
-# Pangaea art direction (draft)
+# Pangaea art direction
 
-**Status: PROPOSED.** Nothing here is an approved art style until Joshua approves the look
-(Bible section 15: passing needs owner approval of the benchmark; scores cannot authorize a
-style). Gameplay placeholders stay in place until then.
+**Status: CONFIRMED look (owner approved 2026-10-22).** Joshua approved this direction after
+reviewing the quality-ladder renders. Specific values (palette hexes, budgets, material
+settings) remain PROPOSED tuning, and each production asset still needs its own review.
 
 Sources: Bible sections 2, 15 and 16. Spore (2008) is the fidelity bar, not a reference library:
 no Spore shapes, palettes, UI or names are copied, and none of the files below were made by
@@ -125,12 +125,12 @@ blocked by the cloud environment's network policy, so everything so far is proce
 
 ## 9. Next for the art team
 
-1. Joshua reviews the ladder renders and this draft; his notes and concept images reset the
-   direction before anything else is built.
+1. Done: Joshua approved the look on 2026-10-22. His notes and concept images can still adjust
+   it at any time.
 2. Procedural creature body and bone system for the editor stages: a Blender-authored body
-   kit (spine segments, limb and part meshes with sockets) that the game deforms and skins at
-   runtime, inside an approved boundary (Bible section 15). This needs a design brief and an
-   engineering contract with the engineering thread first.
+   kit (spine segments, limb and part meshes with sockets). The approved boundary (DECISIONS,
+   IB-15) is shape keys and bone scaling authored in Blender, within set limits; no
+   runtime-generated skins. This needs a design brief and an engineering contract first.
 3. Detail normal maps and CC0 detail textures once the hosts are allowed.
 4. The rest of the M2 reference package: three compatible creature variants, a habitat
    composition, a scale lineup, a lighting test and an in-engine Forward+ benchmark frame.

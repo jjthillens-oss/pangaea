@@ -46,7 +46,7 @@ func test_every_rung_has_record_and_loads() -> void:
 	for rung in RUNGS:
 		var record := _record(rung)
 		check(record.get("ladder_rung") == rung, "%s record names its rung" % rung)
-		check(record.get("status") == "PROPOSED", "%s stays PROPOSED until the look is approved" % rung)
+		check(record.get("status") == "PROPOSED", "%s stays a PROPOSED reference asset, not production" % rung)
 		var node := _load(rung)
 		check(node != null, "%s loads" % rung)
 		if node:

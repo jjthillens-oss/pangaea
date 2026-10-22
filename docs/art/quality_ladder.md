@@ -1,8 +1,8 @@
 # Quality ladder demo: one cell from blockout to target
 
-**Status: PROPOSED look-development, awaiting Joshua's review.** These four assets are not
-gameplay assets. The sample cell and the M1 blockouts stay in the game until the look is
-approved (Bible section 15).
+**Status: look approved by Joshua on 2026-10-22.** These four assets are reference assets,
+not gameplay assets. Production art for M1 now follows this ladder and replaces the
+placeholders asset by asset.
 
 Every rung is a real asset with a Blender source, a GLB and a record, built headless by
 `tools/blender/cell_ladder.py` and rendered by `tools/blender/render_ladder.py`. Godot checks

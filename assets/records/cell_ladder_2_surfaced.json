@@ -2,7 +2,7 @@
   "id": "cell_ladder_2_surfaced",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "look-development, awaiting owner review of the art direction; not for gameplay use",
+  "review_state": "look approved by the owner on 2026-10-22; reference demo for the art direction, not a gameplay asset",
   "purpose": "Quality-ladder demo rung 2_surfaced (docs/art/quality_ladder.md).",
   "ladder_rung": "2_surfaced",
   "art_role": "surfacing",

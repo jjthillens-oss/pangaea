@@ -9,7 +9,7 @@ side. The rungs follow docs/art/ART_DIRECTION.md section 7 and are owned by the 
   3 target    (rigging + tech)   armature, idle/swim/eat actions, budget check, GLB checks
 
 The sample cell (`make_sample_cell.py`) is the gameplay placeholder and is not changed here.
-These assets are PROPOSED look-development, not production, until Joshua approves the look.
+Joshua approved the look on 2026-10-22. These remain reference assets, not gameplay assets.
 
 Run with the pinned Blender (docs/TOOLCHAIN.md):
   python tools/blender/cell_ladder.py [rung ...]      (bpy 5.2.2 module; default: every rung)
@@ -647,7 +647,7 @@ def export(rung, objs, extra=None):
         "id": aid,
         "owner": "Joshua Jake",
         "status": "PROPOSED",
-        "review_state": "look-development, awaiting owner review of the art direction; not for gameplay use",
+        "review_state": "look approved by the owner on 2026-10-22; reference demo for the art direction, not a gameplay asset",
         "purpose": f"Quality-ladder demo rung {rung} (docs/art/quality_ladder.md).",
         "ladder_rung": rung,
         "art_role": ROLE[rung],
