@@ -22,18 +22,12 @@ script = ExtResource("1_pool")
 environment = ExtResource("2_env")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.5735764, 0.6455006, -0.5043204, 0, 0.6156615, 0.7880108, 0.819152, -0.4519844, 0.3531289, 0, 20, 0)
-light_color = Color(1, 0.93, 0.8, 1)
+transform = Transform3D(-0.7071068, 0.579228, -0.4055798, 0, 0.5735764, 0.819152, 0.7071068, 0.579228, -0.4055798, 0, 20, 0)
+light_color = Color(0.957, 0.918, 0.824, 1)
 light_energy = 1.1
 shadow_enabled = true
 directional_shadow_mode = 1
 directional_shadow_max_distance = 40.0
-
-[node name="Fill" type="DirectionalLight3D" parent="."]
-transform = Transform3D(-0.5, -0.8365163, 0.2241439, 0, 0.258819, 0.9659258, -0.8660254, 0.4829629, -0.1294095, 0, 20, 0)
-light_color = Color(0.6, 0.8, 0.95, 1)
-light_energy = 0.2
-light_specular = 0.0
 
 [node name="Floor" parent="." instance=ExtResource("3_floor")]
 unique_name_in_owner = true
