@@ -22,8 +22,15 @@ const DIRTY_MOVE_M := 1.0
 ## skip the death. false: step 2's rule; nothing is written until the player saves, and quitting
 ## without saving discards the death. Both paths are tested (test_checkpoints).
 const SAVE_ON_DEATH := true
-## The death notice's tip after starving (a kill's tip is its species' death_tip).
+## The death notice's tips after starving, picked by starved_tip() from what the body eats (a
+## kill's tip is its species' death_tip). A body that eats plankton is told where it regrows.
 const STARVED_TIP := "Plankton regrows in the sunlit patches; slow down when energy runs low."
+## A body that eats only carrion: since step 3 that comes only from kills (D1). Worded as the tests
+## hunt (HuntBot, threats_sim #9 and #22): from behind a rammer, jaw first. It names no other prey,
+## since an ambush hunter may be too big to bite.
+const STARVED_TIP_MEAT := "Carrion comes only from kills: swim into a rammer from behind, jaw first, then eat what it drops. Slow down when energy runs low."
+## No body to go by, or one that eats nothing: no food named.
+const STARVED_TIP_ANY := "Slow down when energy runs low."
 
 var slot: String
 var catalog: PartCatalog
@@ -196,6 +203,16 @@ func respawn_after_death() -> int:
 	return int(resolved.lost)
 
 
+## The tip after starving for body `p`, naming only a food it can eat: STARVED_TIP when it eats
+## plankton, STARVED_TIP_MEAT when it eats only carrion, else (or for null) STARVED_TIP_ANY.
+static func starved_tip(p: Phenotype) -> String:
+	if p != null and p.can_eat("plant"):
+		return STARVED_TIP
+	if p != null and p.can_eat("meat"):
+		return STARVED_TIP_MEAT
+	return STARVED_TIP_ANY
+
+
 ## Why the run cannot start: the layout's problems, then the species data's.
 func _data_problems() -> PackedStringArray:
 	var errors := layout.validate()
@@ -206,7 +223,7 @@ func _data_problems() -> PackedStringArray:
 
 func _death_tip(cause: String, by_species: String) -> String:
 	if cause == "starved":
-		return STARVED_TIP
+		return starved_tip(sim.phenotype)
 	if species != null and species.has_species(by_species):
 		return str(species.species[by_species].get("death_tip", ""))
 	return ""

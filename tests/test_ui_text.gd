@@ -2,11 +2,13 @@ extends TestCase
 ## The words and numbers the menus and HUD show (M1 step 2). Body cards must show exactly the
 ## stats Phenotype.derive gives, the HUD must name the sim's energy, health and points as the
 ## rules count them, controls are named from the key bindings, and the death notice names the
-## points the death rule took, the killer, its tip and whether the death was saved. The running
-## screens are covered by the scene smoke.
+## points the death rule took, the killer, its tip and whether the death was saved; a starving
+## tip names only food the body can eat. The running screens are covered by the scene smoke.
 
 const PERF_TOUR := "res://game/dev/perf_tour.gd"
 const THEME := "res://game/ui/theme/pangaea_theme.tres"
+## Words that name each food, for checking a tip names only food the body can eat.
+const FOOD_WORDS := {"plant": ["plankton"], "meat": ["carrion", "kill"]}
 const PERF_STALL_MS := 100           ## a real stall, far longer than the one-tick delta it comes with
 
 var catalog := PartCatalog.load_from()
@@ -123,9 +125,11 @@ func test_controls_are_named_from_the_key_bindings() -> void:
 
 
 func test_the_death_notice_names_the_points_the_death_rule_takes() -> void:
-	check_eq(Main.death_text("starved", Lineage.death_loss(9)),
+	check_eq(Main.death_text("starved", Lineage.death_loss(9), "", {}, 1, _phenotype("grazer")),
 		"The lineage continues from the start of generation 1. You lost a quarter of your unspent adaptation points (−2).\n"
-		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the starving tip follows")
+		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the body's starving tip follows")
+	check(Main.death_text("starved", 2).ends_with("(−2).\n" + GameSession.STARVED_TIP_ANY),
+		"without a body the fallback tip names no food: %s" % Main.death_text("starved", 2))
 	check_eq(Main.death_title("starved"), "Out of energy", "the title does not repeat the body")
 	check_eq(Main.save_status_text({"ok": false, "error": "Could not save to x: disk full."}), "Could not save to x: disk full.", "errors as given")
 	check(Main.save_status_text({"ok": true, "error": ""}).begins_with("Saved "), "a save names its time")
@@ -150,6 +154,25 @@ func test_a_kill_notice_names_the_killer_the_saved_loss_and_the_species_tip() ->
 	check_eq(lines[1], tip, "the species tip on its own line")
 	check(tip.contains("sideways, out of its line"), "the tip names the dodge the tests prove: %s" % tip)
 	check(Main.death_text("killed", 3, tip, saved, 2).contains("generation 2"), "the generation is the save's")
+
+
+func test_a_starving_tip_names_only_food_the_body_can_eat_and_tells_a_hunter_to_hunt() -> void:
+	for body in BodyText.ORDER:
+		var p := _phenotype(body)
+		var tip := GameSession.starved_tip(p)
+		check_eq(Main.death_text("starved", 0, "", {}, 1, p).get_slice("\n", 1), tip, "%s: the notice's fallback is the body's tip" % body)
+		for diet: String in FOOD_WORDS:
+			for word: String in FOOD_WORDS[diet]:
+				check(p.can_eat(diet) or not tip.to_lower().contains(word),
+					"%s (eats %s) is not sent to %s: %s" % [body, BodyText.diet(p).to_lower(), word, tip])
+	check_eq(GameSession.starved_tip(_phenotype("grazer")), GameSession.STARVED_TIP, "a grazer is told where plankton regrows")
+	check_eq(GameSession.starved_tip(_phenotype("omnivore")), GameSession.STARVED_TIP, "so is an omnivore, which eats it too")
+	var hunter := GameSession.starved_tip(_phenotype("hunter"))
+	check(hunter.contains("Carrion comes only from kills") and hunter.contains("rammer"), "a hunter is told to hunt, and what: %s" % hunter)
+	var mouthless := Phenotype.new()
+	check(not mouthless.can_eat("plant") and not mouthless.can_eat("meat"), "a body with no mouth")
+	check_eq(GameSession.starved_tip(mouthless), GameSession.STARVED_TIP_ANY, "is sent to no food")
+	check_eq(GameSession.starved_tip(null), GameSession.STARVED_TIP_ANY, "nor is an unknown body")
 
 
 func test_the_death_notice_says_whether_the_death_was_saved() -> void:

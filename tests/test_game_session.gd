@@ -248,6 +248,33 @@ func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more()
 	check_eq(session.respawn_after_death(), 0, "a second respawn does nothing")
 
 
+func test_a_starving_death_tip_names_only_food_the_body_can_eat() -> void:
+	# A hunter's jaw eats only carrion, which since step 3 comes only from kills (D1): its starving
+	# tip must say so, not send it to plankton it cannot eat. Each starting body starves for real.
+	for body in BodyText.ORDER:
+		var session := GameSession.new(slot)
+		check(session.start_new(body, 12).ok, "%s started" % body)
+		var sim := session.sim
+		sim.debug_set_energy(0.0)
+		for i in 25 * 60:
+			sim.step(SimIntent.new())
+			if sim.dead:
+				break
+		check(sim.dead, "the %s starved" % body)
+		if not sim.dead:
+			continue
+		var tip := str(session.resolve_death().tip)
+		check_eq(tip, GameSession.starved_tip(sim.phenotype), "the %s gets its body's starving tip" % body)
+		check(sim.phenotype.can_eat("plant") or not tip.to_lower().contains("plankton"),
+			"the %s cannot eat plankton and is not sent to it: %s" % [body, tip])
+		check(sim.phenotype.can_eat("meat") or not tip.to_lower().contains("carrion"),
+			"the %s cannot eat carrion and is not sent to it: %s" % [body, tip])
+		if body == "hunter":
+			check(tip.contains("carrion") or tip.contains("Carrion"), "the hunter's tip names its food: %s" % tip)
+			check(tip.contains("kills"), "and where it comes from: %s" % tip)
+		session.respawn_after_death()
+
+
 func test_a_session_runs_the_threats_by_default_and_the_step_2_pool_without_species_data() -> void:
 	var session := GameSession.new(slot)
 	check(session.species != null and session.start_new("grazer", 10).ok, "started with the species data")
