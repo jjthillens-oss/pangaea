@@ -1,0 +1,249 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://game/ui/start_screen.gd" id="1_start"]
+[ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://game/ui/cell_preview.tscn" id="3_preview"]
+[ext_resource type="PackedScene" path="res://game/ui/notice_dialog.tscn" id="4_notice"]
+
+[sub_resource type="Gradient" id="Gradient_water"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.07, 0.25, 0.27, 1, 0.035, 0.14, 0.16, 1, 0.012, 0.06, 0.07, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_water"]
+gradient = SubResource("Gradient_water")
+width = 16
+height = 256
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[node name="StartScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_start")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("GradientTexture2D_water")
+expand_mode = 1
+
+[node name="MainView" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 120
+theme_override_constants/margin_top = 96
+theme_override_constants/margin_right = 120
+theme_override_constants/margin_bottom = 96
+
+[node name="Row" type="HBoxContainer" parent="MainView"]
+layout_mode = 2
+theme_override_constants/separation = 96
+alignment = 1
+
+[node name="Left" type="VBoxContainer" parent="MainView/Row"]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="MainView/Row/Left"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "Pangaea"
+
+[node name="Tagline" type="Label" parent="MainView/Row/Left"]
+layout_mode = 2
+theme_type_variation = &"LargeLabel"
+text = "First life in a small pool."
+
+[node name="Gap" type="Control" parent="MainView/Row/Left"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="Buttons" type="VBoxContainer" parent="MainView/Row/Left"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_constants/separation = 16
+
+[node name="ContinueButton" type="Button" parent="MainView/Row/Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "Continue"
+
+[node name="NewButton" type="Button" parent="MainView/Row/Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "New lineage"
+
+[node name="QuitButton" type="Button" parent="MainView/Row/Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Quit"
+
+[node name="ContinueCard" type="PanelContainer" parent="MainView/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(700, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"CardPanel"
+
+[node name="Box" type="VBoxContainer" parent="MainView/Row/ContinueCard"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="CardTitle" type="Label" parent="MainView/Row/ContinueCard/Box"]
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+text = "Your lineage"
+
+[node name="Content" type="HBoxContainer" parent="MainView/Row/ContinueCard/Box"]
+layout_mode = 2
+theme_override_constants/separation = 28
+
+[node name="ContinuePreview" parent="MainView/Row/ContinueCard/Box/Content" instance=ExtResource("3_preview")]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 340)
+layout_mode = 2
+
+[node name="Facts" type="VBoxContainer" parent="MainView/Row/ContinueCard/Box/Content"]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 10
+
+[node name="CardName" type="Label" parent="MainView/Row/ContinueCard/Box/Content/Facts"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HeaderLabel"
+
+[node name="CardTag" type="Label" parent="MainView/Row/ContinueCard/Box/Content/Facts"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CardProgress" type="Label" parent="MainView/Row/ContinueCard/Box/Content/Facts"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="CardSaved" type="Label" parent="MainView/Row/ContinueCard/Box/Content/Facts"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+
+[node name="CardNote" type="Label" parent="MainView/Row/ContinueCard/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(620, 0)
+layout_mode = 2
+theme_type_variation = &"WarnLabel"
+autowrap_mode = 3
+
+[node name="PickerView" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 96
+theme_override_constants/margin_top = 72
+theme_override_constants/margin_right = 96
+theme_override_constants/margin_bottom = 72
+
+[node name="Box" type="VBoxContainer" parent="PickerView"]
+layout_mode = 2
+theme_override_constants/separation = 36
+alignment = 1
+
+[node name="Header" type="Label" parent="PickerView/Box"]
+layout_mode = 2
+theme_type_variation = &"HeaderLabel"
+text = "New lineage: choose a starting body"
+horizontal_alignment = 1
+
+[node name="Row" type="HBoxContainer" parent="PickerView/Box"]
+layout_mode = 2
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="Cards" type="HBoxContainer" parent="PickerView/Box/Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="PreviewPanel" type="PanelContainer" parent="PickerView/Box/Row"]
+layout_mode = 2
+theme_type_variation = &"CardPanel"
+
+[node name="Box" type="VBoxContainer" parent="PickerView/Box/Row/PreviewPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PickerPreview" parent="PickerView/Box/Row/PreviewPanel/Box" instance=ExtResource("3_preview")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="PickedName" type="Label" parent="PickerView/Box/Row/PreviewPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HeaderLabel"
+horizontal_alignment = 1
+
+[node name="PickedDiet" type="Label" parent="PickerView/Box/Row/PreviewPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+horizontal_alignment = 1
+
+[node name="Buttons" type="HBoxContainer" parent="PickerView/Box"]
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="BackButton" type="Button" parent="PickerView/Box/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240, 0)
+layout_mode = 2
+text = "Back"
+
+[node name="StartButton" type="Button" parent="PickerView/Box/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "Start"
+
+[node name="BuildLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -32.0
+offset_top = -24.0
+offset_right = -32.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_type_variation = &"SmallLabel"
+
+[node name="Confirm" parent="." instance=ExtResource("4_notice")]
+unique_name_in_owner = true
+visible = false

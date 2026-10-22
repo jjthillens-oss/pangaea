@@ -1,0 +1,72 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://game/ui/body_card.gd" id="1_card"]
+[ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+
+[node name="BodyCard" type="Button"]
+custom_minimum_size = Vector2(380, 420)
+theme = ExtResource("2_theme")
+theme_type_variation = &"BodyCardButton"
+toggle_mode = true
+script = ExtResource("1_card")
+
+[node name="Margin" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Box" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Top" type="HBoxContainer" parent="Margin/Box"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Margin/Box/Top"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"HeaderLabel"
+text = "Body"
+
+[node name="Selected" type="Label" parent="Margin/Box/Top"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"AccentLabel"
+text = "Selected"
+
+[node name="Role" type="Label" parent="Margin/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(320, 116)
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Diet" type="Label" parent="Margin/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+
+[node name="Separator" type="HSeparator" parent="Margin/Box"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Stats" type="GridContainer" parent="Margin/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 6
+columns = 2
