@@ -1,13 +1,21 @@
 extends TestCase
 ## Bible 15: production visuals come from Blender, never from engine primitives. Every primitive
 ## or code-built mesh in game/ must be listed in the placeholder inventory, as functional
-## (particles, UI, debug drawing) or as a placeholder with the milestone that removes it. A
+## (particles, UI, debug drawing) or as a placeholder with the milestone that removes it. So must
+## any binary resource or model file kept in game/, since its text cannot be scanned. A
 ## placeholder whose asset now has a record must be removed from the code and the inventory.
 
 const INVENTORY_PATH := "res://assets/records/placeholders/inventory.json"
 const RECORDS_DIR := "res://assets/records"
 const SCAN_ROOT := "res://game"
 const SCAN_EXTENSIONS := ["gd", "tscn", "tres"]
+## Files whose contents the text scan cannot read. Each one in game/ is a hit of its own: a saved
+## mesh or scene, or a model that belongs in assets/export with a record.
+const FILE_HIT_TYPES := {
+	"res": "binary resource", "mesh": "binary resource", "scn": "binary resource",
+	"obj": "model file", "glb": "model file", "gltf": "model file", "fbx": "model file",
+	"blend": "model file", "dae": "model file",
+}
 ## Engine primitives: meshes and CSG shapes that are not authored in Blender.
 const PRIMITIVE_TYPES := [
 	"BoxMesh", "CapsuleMesh", "CylinderMesh", "PlaneMesh", "PointMesh", "PrismMesh", "QuadMesh",
@@ -21,8 +29,8 @@ const AUDIO_CUES := ["sfx_eat_plant", "sfx_eat_meat", "sfx_refuse", "sfx_starve_
 var _primitive_re := RegEx.create_from_string("\\b(%s)\\b" % "|".join(PackedStringArray(PRIMITIVE_TYPES)))
 ## Meshes built in code (ArrayMesh, ImmediateMesh, any *Mesh) and SurfaceTool.
 var _built_re := RegEx.create_from_string("\\b(\\w*Mesh|SurfaceTool)\\.new\\(")
-## Meshes embedded in a scene or resource file.
-var _embedded_re := RegEx.create_from_string("\\[sub_resource type=\"(\\w*Mesh)\"")
+## Meshes in a scene or resource file: embedded, saved as a resource of their own, or referenced.
+var _embedded_re := RegEx.create_from_string("\\[(?:gd_resource|sub_resource|ext_resource) type=\"(\\w*Mesh)\"")
 
 
 func _inventory() -> Dictionary:
@@ -38,12 +46,23 @@ func _record_ids() -> PackedStringArray:
 	return out
 
 
-func _game_files(dir: String, out: PackedStringArray) -> void:
+## Every file under `dir` with one of `extensions`, recursively.
+func _game_files(dir: String, extensions: Array, out: PackedStringArray) -> void:
 	for f in DirAccess.get_files_at(dir):
-		if f.get_extension() in SCAN_EXTENSIONS:
+		if f.get_extension().to_lower() in extensions:
 			out.append(dir + "/" + f)
 	for sub in DirAccess.get_directories_at(dir):
-		_game_files(dir + "/" + sub, out)
+		_game_files(dir + "/" + sub, extensions, out)
+
+
+## Binary resources and model files among `files`, as hits like _scan_text's (line 0: the whole file).
+func _file_hits(files: PackedStringArray) -> Array[Dictionary]:
+	var hits: Array[Dictionary] = []
+	for file in files:
+		var type: String = FILE_HIT_TYPES.get(file.get_extension().to_lower(), "")
+		if type != "":
+			hits.append({"file": file, "type": type, "line": 0})
+	return hits
 
 
 ## Mesh types named in one file's text, as [{"file", "type", "line"}], first mention of each type.
@@ -80,7 +99,7 @@ func _unlisted(hits: Array[Dictionary], inventory: Dictionary) -> PackedStringAr
 				if hit.type in entry.get("types", []) and hit.file in entry.get("files", []):
 					listed = true
 		if not listed:
-			out.append("%s:%d %s" % [hit.file, hit.line, hit.type])
+			out.append("%s:%d %s" % [hit.file, hit.line, hit.type] if hit.line > 0 else "%s %s" % [hit.file, hit.type])
 	return out
 
 
@@ -113,6 +132,47 @@ func test_the_scanner_finds_primitive_and_code_built_meshes_but_not_multimeshes(
 	check_eq(types, PackedStringArray(["ArrayMesh", "BoxMesh", "CSGSphere3D", "ImmediateMesh", "QuadMesh", "SurfaceTool"]), "types found")
 	var first: Dictionary = _scan_text("game/x.gd", text)[0]
 	check_eq(first, {"file": "game/x.gd", "type": "BoxMesh", "line": 1}, "a hit names its file and first line")
+
+
+func test_the_scanner_finds_a_mesh_saved_as_its_own_resource_or_referenced_by_a_scene() -> void:
+	# A mesh baked to an ArrayMesh and saved from the editor, and a scene that references it.
+	var saved := _scan_text("game/rock_standin.tres", "[gd_resource type=\"ArrayMesh\" format=4]\n\n[resource]")
+	check_eq(saved.size(), 1, "a saved ArrayMesh resource is a hit")
+	if saved.size() == 1:
+		check_eq(saved[0], {"file": "game/rock_standin.tres", "type": "ArrayMesh", "line": 1}, "saved mesh hit")
+	var scene := "\n".join([
+		"[gd_scene load_steps=3 format=3]",
+		"[ext_resource type=\"ArrayMesh\" path=\"res://game/rock_standin.tres\" id=\"1_a\"]",
+		"[ext_resource type=\"Mesh\" path=\"res://game/ball.res\" id=\"2_b\"]",
+		"[ext_resource type=\"MultiMesh\" path=\"res://game/many.tres\" id=\"3_c\"]",
+		"[ext_resource type=\"Script\" path=\"res://game/x.gd\" id=\"4_d\"]",
+	])
+	var types := PackedStringArray()
+	for hit in _scan_text("game/standin.tscn", scene):
+		types.append(hit.type)
+	types.sort()
+	check_eq(types, PackedStringArray(["ArrayMesh", "Mesh"]), "meshes a scene references, but not a MultiMesh")
+
+
+func test_binary_resources_and_model_files_in_game_are_hits_of_their_own() -> void:
+	var files := PackedStringArray([
+		"game/scenes/pool/ball.res", "game/scenes/pool/rock.mesh", "game/scenes/pool/saved.scn",
+		"game/scenes/pool/blob.obj", "game/scenes/pool/stand_in.glb", "game/scenes/pool/stand_in.GLTF",
+		"game/scenes/pool/rig.fbx", "game/scenes/pool/source.blend",
+		"game/scenes/pool/pool.gd", "game/scenes/pool/pool.tscn", "game/scenes/pool/pool_environment.tres",
+		"game/scenes/pool/stand_in.glb.import", "game/data/pool_m1.json",
+	])
+	var found := PackedStringArray()
+	for hit in _file_hits(files):
+		found.append("%s %s" % [hit.file.get_file(), hit.type])
+	check_eq(found, PackedStringArray([
+		"ball.res binary resource", "rock.mesh binary resource", "saved.scn binary resource",
+		"blob.obj model file", "stand_in.glb model file", "stand_in.GLTF model file",
+		"rig.fbx model file", "source.blend model file",
+	]), "file hits")
+	var inventory := {"functional": [{"id": "x", "types": ["model file"], "files": ["game/scenes/pool/blob.obj"]}]}
+	check_eq(_unlisted(_file_hits(PackedStringArray(["game/scenes/pool/blob.obj", "game/scenes/pool/ball.res"])), inventory),
+		PackedStringArray(["game/scenes/pool/ball.res binary resource"]), "a listed file passes and an unlisted one is reported")
 
 
 func test_an_unlisted_mesh_is_reported_and_a_listed_one_is_not() -> void:
@@ -170,11 +230,16 @@ func test_the_inventory_lists_the_synthesized_audio_and_the_functional_primitive
 func test_every_mesh_in_game_code_is_listed_and_no_placeholder_outlived_its_asset() -> void:
 	var inventory := _inventory()
 	var files := PackedStringArray()
-	_game_files(SCAN_ROOT, files)
+	_game_files(SCAN_ROOT, SCAN_EXTENSIONS, files)
 	check(files.size() > 0, "found game files to scan")
 	var hits: Array[Dictionary] = []
 	for path in files:
 		hits.append_array(_scan_text(path.trim_prefix("res://"), FileAccess.get_file_as_string(path)))
+	var opaque := PackedStringArray()
+	_game_files(SCAN_ROOT, FILE_HIT_TYPES.keys(), opaque)
+	for i in opaque.size():
+		opaque[i] = opaque[i].trim_prefix("res://")
+	hits.append_array(_file_hits(opaque))
 	var unlisted := _unlisted(hits, inventory)
 	check(unlisted.is_empty(), "meshes not in %s: %s" % [INVENTORY_PATH, unlisted])
 	var replaced := _replaced_placeholders(inventory, _record_ids())
