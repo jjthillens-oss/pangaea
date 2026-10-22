@@ -5,6 +5,7 @@ extends TestCase
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const ReachGrid := preload("res://tests/reach_grid.gd")
+const SaveFolder := preload("res://tests/save_folder.gd")
 const FIXTURE := "res://tests/fixtures/pool_test_small.json"
 const DT := PoolSim.DT
 const SPEED_EPSILON := 0.01   ## m/s
@@ -17,6 +18,10 @@ var layout: PoolLayout
 func before_each() -> void:
 	catalog = PartCatalog.load_from()
 	layout = PoolLayout.load_from()
+
+
+func after_each() -> void:
+	SaveFolder.clear()
 
 
 ## A new lineage at the layout spawn, as GameSession starts one.
@@ -250,6 +255,31 @@ func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() 
 	check_eq(sim.alive_s, 0.0, "alive timer reset")
 	check_eq(sim.save.adaptation_points, points, "the sim alone does not apply the death rule")
 	check_eq(_events_of(sim.drain_events(), "respawned").size(), 1, "respawned reported")
+
+
+func test_death_through_the_session_costs_a_quarter_of_the_points_and_is_recorded() -> void:
+	var session := GameSession.new(SaveFolder.path("death_slot.json"))
+	check(session.start_new("grazer", 52).ok, "started")
+	Lineage.earn(session.sim.save, 11)
+	var points := session.sim.save.adaptation_points
+	check_eq(session.respawn_after_death(), 0, "no death, no penalty")
+	session.sim.debug_set_energy(0.0)
+	for i in 25 * 60:
+		session.sim.step(SimIntent.new())
+		if session.sim.dead:
+			break
+	check(session.sim.dead, "starved")
+	check(session.dirty, "a death is an unsaved change")
+	check(not session.save_now().ok, "no saving while dead")
+	points = session.sim.save.adaptation_points
+	var lost := session.respawn_after_death()
+	check_eq(lost, floori(points * Lineage.DEATH_POINT_LOSS), "loses a quarter, rounded down")
+	check_eq(session.sim.save.adaptation_points, points - lost, "points")
+	var last: Dictionary = session.sim.save.lineage_history[-1]
+	check_eq(last.event, "died", "history records the death")
+	check_eq(last.cause, "starved", "and the cause")
+	check(not session.sim.dead and session.sim.motion.position == layout.spawn, "back at the start")
+	check(session.save_now().ok, "saving works again")
 
 
 func test_the_same_seed_and_intents_give_the_same_world() -> void:
