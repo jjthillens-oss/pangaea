@@ -73,7 +73,10 @@ real subsurface or transmission, which glTF export and Godot's renderers handle 
 Textures: one albedo and one ORM (occlusion, roughness, metallic) per creature, 512 px for
 microscopic creatures and 1024 to 2048 px for prominent ones (Bible section 16 budgets).
 Albedo is sRGB; ORM and normal maps are linear (non-color). Textures are painted or baked in
-Blender from procedural nodes. No photo textures and no AI-generated images.
+Blender from procedural nodes. No AI-generated images. CC0 photo scans may supply detail (grain,
+height, value) under a palette recolour, baked, never shown raw, and logged in the record
+(DECISIONS 2026-10-22, PROPOSED). Normal maps (linear, OpenGL convention) carry detail and the
+shading of the full-detail model after triangle reduction (section 9).
 
 Clay renders use one material (`#B9B3A8`, roughness 0.6) so form can be judged apart from
 color and lighting.
@@ -120,10 +123,19 @@ level of finish, never its designs, creatures, shapes, UI or names.
 Free CC0 resources are used by default where they raise quality: Poly Haven and ambientCG
 textures and HDRIs for surfacing detail and review lighting. Each one is finished in Blender
 and logged in the asset record (`dependencies` with source URL, license and date). Generated or
-downloaded meshes still need owner approval (Bible section 15). Those hosts are currently
-blocked by the cloud environment's network policy, so everything so far is procedural.
+downloaded meshes still need owner approval (Bible section 15). The hosts are reachable from the
+cloud environment since 2026-10-22; the first scan in use is Poly Haven's Rock Boulder Dry (rocks).
 
-## 9. Next for the art team
+## 9. Triangle budget discipline (CONFIRMED, owner requirement 2026-10-22)
+
+Once a model looks right, its triangles are cut as far as they go without visible loss. The
+production generator decimates each mesh while its surface stays within a tolerance of the
+full-detail model (PROPOSED: 0.6 mm for parts, 1.5 mm for food and the player cell, 10 mm for
+rocks; about one pixel where each is seen most closely), then bakes the full-detail shading into
+the normal map. Records list the tolerance and the triangle counts before and after
+(`docs/art/production_m1.md`).
+
+## 10. Next for the art team
 
 1. Done: Joshua approved the look on 2026-10-22. His notes and concept images can still adjust
    it at any time.

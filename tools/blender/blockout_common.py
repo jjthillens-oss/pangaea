@@ -257,11 +257,13 @@ def world_bounds():
     return lo, hi
 
 
-def export(asset_id, budget, fields):
+def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=PROVENANCE):
     """Saves the .blend, exports the GLB and writes the record. Fails if over the triangle budget.
 
     `fields` holds the asset-specific record keys (purpose, category and the gameplay contract
-    values that tests check, such as footprint_radius_m or item_radius_m).
+    values that tests check, such as footprint_radius_m or item_radius_m). Production generators
+    pass their own review state, generator and provenance, and list baked images in
+    fields["textures"].
     """
     bpy.context.view_layer.update()
     tris = triangle_count()
@@ -293,11 +295,11 @@ def export(asset_id, budget, fields):
         "id": asset_id,
         "owner": OWNER,
         "status": STATUS,
-        "review_state": REVIEW_STATE,
+        "review_state": review_state,
         "purpose": fields.pop("purpose"),
         "category": fields.pop("category"),
         "source_blend": f"assets/source/blender/{asset_id}.blend",
-        "generator_script": GENERATOR,
+        "generator_script": generator,
         "export_path": f"assets/export/{asset_id}.glb",
         "export_format": "GLB",
         "dependencies": fields.pop("dependencies", []),
@@ -306,7 +308,7 @@ def export(asset_id, budget, fields):
         "dimensions_m": {"x": round(size.x, 3), "y_forward": round(size.y, 3), "z_up": round(size.z, 3)},
         "triangles": tris,
         "triangle_budget": budget,
-        "textures": [],
+        "textures": fields.pop("textures", []),
         "materials": sorted(m.name for m in bpy.data.materials if m.users),
         "rig_family": None,
         "animations": [],
@@ -314,7 +316,7 @@ def export(asset_id, budget, fields):
         "nodes": sorted(o.name for o in bpy.data.objects),
     }
     record.update(fields)
-    record["provenance"] = PROVENANCE
+    record["provenance"] = provenance
     with open(record_path, "w") as f:
         json.dump(record, f, indent=2)
         f.write("\n")

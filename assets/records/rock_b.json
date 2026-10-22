@@ -2,26 +2,69 @@
   "id": "rock_b",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - M1 step 2, not visually approved",
-  "purpose": "M1 step 2 pool rock, an obstacle the cell slides around. Placed by game/data/pool_m1.json with yaw and uniform scale.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 pool rock, an obstacle the cell slides around: cool stone with algae on its lit top, a wet band at the water line and warm mineral flecks. Placed by game/data/pool_m1.json with yaw and uniform scale.",
   "category": "rock",
   "source_blend": "assets/source/blender/rock_b.blend",
-  "generator_script": "tools/blender/make_m1_blockouts.py",
+  "generator_script": "tools/blender/make_m1_production.py",
   "export_path": "assets/export/rock_b.glb",
   "export_format": "GLB",
-  "dependencies": [],
-  "revision": 2,
+  "dependencies": [
+    {
+      "path": "assets/source/textures/cc0/polyhaven_rock_boulder_dry",
+      "asset": "Rock Boulder Dry",
+      "source_url": "https://polyhaven.com/a/rock_boulder_dry",
+      "files": [
+        "rock_boulder_dry_diff_1k.jpg",
+        "rock_boulder_dry_disp_1k.jpg"
+      ],
+      "license": "CC0 1.0 (https://polyhaven.com/license)",
+      "authors": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+      "retrieved": "2026-10-22",
+      "use": "box-projected luminance and height detail under the palette tint; baked, never shown raw"
+    }
+  ],
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 2.022,
     "y_forward": 1.997,
-    "z_up": 2.58
+    "z_up": 2.577
   },
-  "triangles": 1280,
+  "triangles": 690,
   "triangle_budget": 1300,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_RockB_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_RockB_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_RockB_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
-    "M_RockStone"
+    "M_RockB",
+    "M_RockProc"
   ],
   "rig_family": null,
   "animations": [],
@@ -32,13 +75,19 @@
   "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
   "footprint_radius_m": 1.0,
   "max_radius_m": 1.062,
-  "swim_band_radius_m": 1.05,
+  "swim_band_radius_m": 1.052,
   "swim_band_min_radius_m": 0.946,
   "swim_plane_radius_range_m": [
     0.945,
-    1.044
+    1.045
   ],
   "top_m": 0.58,
   "bottom_m": -2.0,
-  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.01,
+    "triangles_before": 1280,
+    "triangles_after": 690
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders; surface detail from the CC0 Poly Haven scan in dependencies."
 }
