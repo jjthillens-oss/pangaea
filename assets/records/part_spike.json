@@ -1,0 +1,43 @@
+{
+  "id": "part_spike",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - M1 step 3, not visually approved",
+  "purpose": "M1 step 3 spike part (rams): a tapered thorn in the threat colour with a bone collar, darkening to its point.",
+  "category": "part",
+  "source_blend": "assets/source/blender/part_spike.blend",
+  "generator_script": "tools/blender/make_m1_threats.py",
+  "export_path": "assets/export/part_spike.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.156,
+    "y_forward": 0.32,
+    "z_up": 0.152
+  },
+  "triangles": 280,
+  "triangle_budget": 600,
+  "textures": [],
+  "materials": [
+    "M_SpikeRoot",
+    "M_SpikeShaft",
+    "M_SpikeTip"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Spike"
+  ],
+  "part_type": "spike",
+  "attachment": {
+    "origin": "attachment point on the body surface",
+    "outward_axis": "Blender +Y (Godot -Z)",
+    "embed_m": 0.03
+  },
+  "length_m": 0.32,
+  "tip_m": 0.29,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_threats.py; no external or generated meshes."
+}
