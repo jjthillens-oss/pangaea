@@ -140,13 +140,15 @@ func _physics_process(_delta: float) -> void:
 	var t0 := Time.get_ticks_usec()
 	sim.step(intent_provider.next_intent(sim))
 	_record_cost(Time.get_ticks_usec() - t0)
-	for event in sim.drain_events():
-		_route(event)
+	_route_events()
 
 
 func _process(delta: float) -> void:
 	if sim == null or not _built:
 		return
+	# Events from between ticks (a respawn, a dev teleport) are routed before this frame is drawn,
+	# so the camera never shows one frame at the old place when no tick runs this frame.
+	_route_events()
 	# While paused the sim is still, so draw its current tick instead of a moving fraction.
 	var fraction := 1.0 if paused else Engine.get_physics_interpolation_fraction()
 	cell_view.show_motion(sim.motion, fraction)
@@ -185,6 +187,11 @@ func _draw_food(fraction: float) -> void:
 	var t := _draw_time(fraction)
 	plankton_view.sync(sim.plankton.items, t)
 	carrion_view.sync(sim.carrion.items, t)
+
+
+func _route_events() -> void:
+	for event in sim.drain_events():
+		_route(event)
 
 
 func _route(event: Dictionary) -> void:
