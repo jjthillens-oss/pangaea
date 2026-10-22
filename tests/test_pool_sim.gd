@@ -263,13 +263,17 @@ func test_a_starving_cell_swims_at_half_speed_and_recovers_by_eating() -> void:
 	var bot = ForageBot.new()
 	var fastest_starving := 0.0
 	var ate_at := -1
+	var meal_tick := []
 	for i in 25 * 60:
 		sim.step(bot.next_intent(sim))
-		if not _events_of(sim.drain_events(), "ate").is_empty():
+		var events := sim.drain_events()
+		if not _events_of(events, "ate").is_empty():
 			ate_at = i
+			meal_tick = events.map(func(e: Dictionary) -> String: return e.type)
 			break
 		fastest_starving = maxf(fastest_starving, sim.display_velocity().length())
 	check(ate_at >= 0 and not sim.dead, "ate before dying (after %.1f s)" % (ate_at * DT))
+	check(meal_tick.find("starving_ended") > meal_tick.find("ate"), "the meal ends starving on its tick: %s" % [meal_tick])
 	check(fastest_starving <= sim.phenotype.speed * ActorState.STARVING_SPEED + SPEED_EPSILON,
 		"starving top speed %.3f m/s, half of %.3f" % [fastest_starving, sim.phenotype.speed])
 	check(fastest_starving > sim.phenotype.speed * ActorState.STARVING_SPEED * 0.9, "it did swim at that speed")
@@ -361,6 +365,34 @@ func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() 
 	check_eq(sim.alive_s, 0.0, "alive timer reset")
 	check_eq(sim.save.adaptation_points, points, "the sim alone does not apply the death rule")
 	check_eq(_events_of(sim.drain_events(), "respawned").size(), 1, "respawned reported")
+
+
+## Starving events follow every change of the starving state as it happens, so a consumer driven
+## by them alone agrees with is_starving(), across a death and respawn too.
+func test_starving_events_alternate_across_a_death_and_respawn() -> void:
+	var sim := _sim("grazer", 51)
+	var starving_events := func() -> Array:
+		return sim.drain_events().map(func(e: Dictionary) -> String: return e.type) \
+			.filter(func(t: String) -> bool: return t.begins_with("starving_"))
+	sim.respawn_player()
+	check_eq(starving_events.call(), [], "respawning a fed cell reports no change")
+	sim.debug_set_energy(0.0)
+	check_eq(starving_events.call(), ["starving_started"], "emptying its energy starts it at once")
+	var seen := []
+	for i in 100 * 60:
+		sim.step(SimIntent.new())
+		seen.append_array(starving_events.call())
+		if sim.dead:
+			break
+	check(sim.dead and seen.is_empty(), "it starved to death with no other change reported: %s" % [seen])
+	sim.respawn_player()
+	check(not sim.state.is_starving(), "respawned fed")
+	check_eq(starving_events.call(), ["starving_ended"], "respawning ends it")
+	for i in 30:
+		sim.step(SimIntent.new())
+	check_eq(starving_events.call(), [], "nothing more while fed")
+	sim.debug_set_energy(0.0)
+	check_eq(starving_events.call(), ["starving_started"], "starving again starts it again")
 
 
 func test_death_through_the_session_costs_a_quarter_of_the_points_and_is_recorded() -> void:

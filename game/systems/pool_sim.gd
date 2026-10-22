@@ -187,7 +187,7 @@ func respawn_player() -> void:
 	alive_s = 0.0
 	_alive_ticks = 0
 	dead = false
-	_was_starving = state.is_starving()
+	_update_starving()   # a cell that starved to death comes back fed
 	_contact.clear()
 	_last_refusal.clear()
 	_emit({"type": "respawned"})
