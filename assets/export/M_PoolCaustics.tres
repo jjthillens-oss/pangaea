@@ -16,3 +16,4 @@ shader_parameter/fog_density = 0.006
 shader_parameter/fog_height = -0.25
 shader_parameter/fog_height_density = 0.5
 shader_parameter/surface_y = 0.8
+shader_parameter/max_light = 0.0

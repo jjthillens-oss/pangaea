@@ -55,6 +55,34 @@ func _lights() -> Array[Dictionary]:
 	return out
 
 
+## Whether `object` has a property named `key`. set() ignores a name the target lacks, so a typo
+## in a profile would quietly keep the Forward+ value.
+func _has_property(object: Object, key: String) -> bool:
+	for p in object.get_property_list():
+		if p.name == key:
+			return true
+	return false
+
+
+func _has_uniform(material: Material, key: String) -> bool:
+	var shader := (material as ShaderMaterial).shader if material is ShaderMaterial else null
+	if shader == null:
+		return false
+	for u in shader.get_shader_uniform_list():
+		if u.name == key:
+			return true
+	return false
+
+
+## Equal values, allowing for engine properties that store a float in single precision.
+func _same(a: Variant, b: Variant) -> bool:
+	if typeof(a) == TYPE_FLOAT and typeof(b) == TYPE_FLOAT:
+		return is_equal_approx(a, b)
+	if typeof(a) == TYPE_VECTOR3 and typeof(b) == TYPE_VECTOR3:
+		return (a as Vector3).is_equal_approx(b)
+	return typeof(a) == typeof(b) and a == b
+
+
 func _hsl_saturation(c: Color) -> float:
 	var hi := maxf(c.r, maxf(c.g, c.b))
 	var lo := minf(c.r, minf(c.g, c.b))
@@ -135,7 +163,6 @@ func test_the_pool_keeps_one_shadowed_key_light_and_no_costly_screen_effects() -
 		check(not env.get(key), "%s is off" % key)
 
 
-
 func test_caustic_light_stops_where_the_floor_rises_out_of_the_water() -> void:
 	# The rim lip stands above the water; caustic light there lit dry stone up to near-white.
 	var passes := _floor_passes()
@@ -146,7 +173,6 @@ func test_caustic_light_stops_where_the_floor_rises_out_of_the_water() -> void:
 	var water_surface: Variant = (passes[1] as ShaderMaterial).get_shader_parameter("surface_y")
 	check(caustic_surface != null and water_surface != null and is_equal_approx(float(caustic_surface), float(water_surface)),
 			"the caustics stop at the water's surface: %s, the water's %s" % [caustic_surface, water_surface])
-
 
 
 func test_the_dry_rim_lip_is_stone_that_never_reads_near_white() -> void:
@@ -174,3 +200,103 @@ func test_the_dry_rim_lip_is_stone_that_never_reads_near_white() -> void:
 	node.free()
 	check(lip > 0, "the floor has vertices on the rim lip")
 	check(brightest <= RIM_MAX_LUMINANCE, "the rim lip's brightest vertex has luminance %.2f, at most %.2f" % [brightest, RIM_MAX_LUMINANCE])
+
+
+func test_only_the_compatibility_renderer_swaps_in_its_own_light() -> void:
+	check(PoolLook.profile_for("forward_plus").is_empty(), "Forward+, the Windows build's renderer, keeps the authored look")
+	check(PoolLook.profile_for("mobile").is_empty(), "so does Mobile")
+	check(not PoolLook.profile_for(PoolLook.COMPATIBILITY_METHOD).is_empty(), "Compatibility gets its own light")
+	check_eq(PoolLook.COMPATIBILITY_METHOD, "gl_compatibility", "the Compatibility renderer's name")
+	check_eq(PoolLook.profile_for("gl_compatibility"), PoolLook.COMPATIBILITY, "and it is the Compatibility profile")
+
+
+func test_the_compatibility_light_names_real_properties_and_keeps_the_art_direction() -> void:
+	var profile := PoolLook.COMPATIBILITY
+	var scene := (load(POOL_SCENE) as PackedScene).instantiate()
+	var sun: DirectionalLight3D = scene.get_node("Sun")
+	var env := _env()
+	var passes := _floor_passes()
+	if passes.size() != 2:
+		check(false, "the floor has a caustic and a water pass")
+		scene.free()
+		return
+	check_eq(profile.keys(), ["sun", "environment", "caustics", "water"], "the profile's targets")
+	for key in profile.get("sun", {}):
+		check(_has_property(sun, key), "the sun has a %s" % key)
+	for key in profile.get("environment", {}):
+		check(_has_property(env, key), "the environment has a %s" % key)
+	for key in profile.get("caustics", {}):
+		check(_has_uniform(passes[0], key), "the caustic pass has a %s" % key)
+	for key in profile.get("water", {}):
+		check(_has_uniform(passes[1], key), "the water pass has a %s" % key)
+	# Only strengths change: the warm sun, the blue ambient and the water's tint keep their colours.
+	for target in profile.values():
+		for key in target:
+			check(not String(key).contains("color"), "the profile keeps the authored colours, but sets %s" % key)
+	# Compatibility adds the sun's pass to the rest in sRGB, which brightens whatever both reach, so
+	# after exposure its sun is never brighter than Forward+'s (the plankton's tops clip otherwise).
+	var sun_energy := float(profile.sun.get("light_energy", sun.light_energy))
+	var exposure := float(profile.environment.get("tonemap_exposure", env.tonemap_exposure))
+	check(sun_energy * exposure > 0.0, "the sun still lights the pool")
+	check(sun_energy * exposure <= sun.light_energy * env.tonemap_exposure, "sunlight after exposure %.2f is no brighter than Forward+'s %.2f" % [sun_energy * exposure, sun.light_energy * env.tonemap_exposure])
+	var ambient := float(profile.environment.get("ambient_light_energy", env.ambient_light_energy))
+	check(env.ambient_light_color.get_luminance() * ambient >= 0.2, "shadows are never black: ambient energy %.2f" % ambient)
+	check(float(profile.environment.get("fog_density", env.fog_density)) > 0.0, "distance still fades into the water")
+	# Compatibility multiplies the stored sRGB frame, which takes more of each channel than the
+	# same factor in linear light, so its water absorbs less per metre for the same colour.
+	var absorb: Vector3 = profile.water.get("absorb", Vector3.ZERO)
+	var authored: Vector3 = (passes[1] as ShaderMaterial).get_shader_parameter("absorb")
+	check(absorb.x > absorb.y and absorb.y > absorb.z and absorb.z > 0.0, "the water still takes red first, then green, then blue: %s" % absorb)
+	check(absorb.x < authored.x and absorb.y < authored.y and absorb.z < authored.z, "and less of each than Forward+'s %s" % authored)
+	var strength := float(profile.caustics.get("strength", 0.0))
+	check(strength > 0.0, "the caustics still show")
+	# Compatibility adds the caustic pass after tonemapping it, so its lines ease toward a ceiling
+	# instead of clipping to white in the shallows; Forward+ draws them as they are.
+	check(float(profile.caustics.get("max_light", 0.0)) > 0.0, "the Compatibility caustics ease toward a ceiling")
+	check_eq(float((passes[0] as ShaderMaterial).get_shader_parameter("max_light")), 0.0, "Forward+'s caustics have none")
+	scene.free()
+
+
+func test_the_compatibility_light_goes_on_one_pool_and_leaves_the_shared_resources_alone() -> void:
+	var profile := PoolLook.COMPATIBILITY
+	var env := _env()
+	var passes := _floor_passes()
+	# An empty profile, the Forward+ one, leaves a pool exactly as authored.
+	var authored := (load(POOL_SCENE) as PackedScene).instantiate()
+	PoolLook.apply({}, authored.get_node("Sun"), authored.get_node("WorldEnvironment"), authored.get_node("Floor"))
+	check((authored.get_node("WorldEnvironment") as WorldEnvironment).environment == env, "the authored pool keeps the shared environment")
+	for mi in (authored.get_node("Floor") as Node).find_children("*", "MeshInstance3D", true, false):
+		check((mi as MeshInstance3D).get_surface_override_material(0) == null, "and the floor's own material")
+	authored.free()
+	var scene := (load(POOL_SCENE) as PackedScene).instantiate()
+	var sun: DirectionalLight3D = scene.get_node("Sun")
+	var world: WorldEnvironment = scene.get_node("WorldEnvironment")
+	var floor_node: Node3D = scene.get_node("Floor")
+	PoolLook.apply(profile, sun, world, floor_node)
+	for key in profile.sun:
+		check(_same(sun.get(key), profile.sun[key]), "the sun's %s is %s" % [key, sun.get(key)])
+	check(world.environment != env, "the pool lights its own copy of the environment")
+	for key in profile.environment:
+		check(_same(world.environment.get(key), profile.environment[key]), "the pool's %s is %s" % [key, world.environment.get(key)])
+		check(not _same(env.get(key), profile.environment[key]), "while the shared environment keeps its %s" % key)
+	var floors := floor_node.find_children("*", "MeshInstance3D", true, false)
+	check(not floors.is_empty(), "the pool has a floor mesh")
+	for mi in floors:
+		var base := (mi as MeshInstance3D).get_surface_override_material(0)
+		var caustics: ShaderMaterial = base.next_pass if base else null
+		var water: ShaderMaterial = caustics.next_pass if caustics else null
+		if water == null:
+			check(false, "the pool's floor has its own caustic and water passes")
+			continue
+		check(caustics != passes[0] and water != passes[1], "copies of the shared passes")
+		for key in profile.caustics:
+			check(_same(caustics.get_shader_parameter(key), profile.caustics[key]), "the pool's caustic %s" % key)
+		for key in profile.water:
+			check(_same(water.get_shader_parameter(key), profile.water[key]), "the pool's water %s" % key)
+		for key in ["fog_density", "fog_height", "fog_height_density"]:
+			check_near(float(caustics.get_shader_parameter(key)), float(world.environment.get(key)), 1e-6, "the caustics fade with the pool's %s" % key)
+	for key in profile.water:
+		check(not _same((passes[1] as ShaderMaterial).get_shader_parameter(key), profile.water[key]), "the shared water keeps its %s" % key)
+	for key in profile.caustics:
+		check(not _same((passes[0] as ShaderMaterial).get_shader_parameter(key), profile.caustics[key]), "the shared caustics keep their %s" % key)
+	scene.free()

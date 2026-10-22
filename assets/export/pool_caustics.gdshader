@@ -7,6 +7,9 @@ shader_type spatial;
 // (tests/test_pool_look.gd checks this). Caustics come from the water's surface, so they stop
 // where the floor rises out of the water and the dry rim lip gets none; surface_y copies
 // M_PoolWater's. M_PoolWater, the next pass, then takes the water's share of it like the floor's.
+// max_light is for the Compatibility renderer (game/scenes/pool/pool_look.gd), which adds this
+// pass after tonemapping it: its bright lines in the shallows clip to white unless they ease
+// toward a ceiling.
 render_mode blend_add, depth_draw_never, diffuse_lambert, specular_disabled, ambient_light_disabled, fog_disabled;
 
 uniform vec3 tint : source_color = vec3(0.957, 0.918, 0.824);   // cream highlight, never pure white
@@ -18,6 +21,7 @@ uniform float fog_density = 0.0;
 uniform float fog_height = 0.0;
 uniform float fog_height_density = 0.0;
 uniform float surface_y = 0.8;        // the water's surface in world metres (M_PoolWater)
+uniform float max_light = 0.0;        // the light eases toward this and never passes it; 0 leaves it as it is
 
 const float SHARPNESS = 4.0;          // higher keeps the light closer to the cell borders
 const float LAYER_SCALE = 1.37;
@@ -62,5 +66,9 @@ void fragment() {
 	float height_fog = 1.0 - exp(min(0.0, (world_pos.y - fog_height) * fog_height_density));
 	float fog = max(depth_fog, height_fog);
 	float wet = 1.0 - smoothstep(surface_y - SURFACE_FADE_M, surface_y, world_pos.y);
-	ALBEDO = tint * (c * strength * detail * (1.0 - fog) * wet);
+	float light = c * strength * detail * (1.0 - fog) * wet;
+	if (max_light > 0.0) {
+		light /= 1.0 + light / max_light;
+	}
+	ALBEDO = tint * light;
 }
