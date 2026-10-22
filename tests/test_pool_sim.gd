@@ -555,22 +555,43 @@ func test_a_mouth_on_the_side_eats_only_food_on_that_side() -> void:
 	var food: Dictionary = sim.plankton.items[0]
 	var start: Vector2 = food.position + Vector2(0.0, 2.5)
 	sim.debug_teleport(start, (food.position - start).angle())
+	# Each refusal's touching and contact_s are checked against the distance measured here, and
+	# the refusals go through RefusalHints as the pool scene passes them.
+	var touch := sim.phenotype.radius + float(food.radius) + PoolSim.TOUCH_MARGIN
+	var touch_since := -1.0
+	var hints := RefusalHints.new()
 	var refusals := []
+	var shown := []
 	var meals := 0
 	for i in 4 * 60:
 		var target: Vector2 = _item(sim, food.id).position
 		var to := target - sim.motion.position
 		# Slow down to stop just short of it, mouth side or not.
 		sim.step(SimIntent.new(to.normalized() * clampf((to.length() - 0.55) / 1.5, 0.0, 1.0)))
+		var at := (sim.tick - 1) * DT
+		var touching := sim.motion.position.distance_to(_item(sim, food.id).position) <= touch
+		if not touching:
+			touch_since = -1.0
+		elif touch_since < 0.0:
+			touch_since = at
 		for e in sim.drain_events():
 			if e.type == "refused":
+				var contact := at - touch_since if touching else 0.0
+				check(e.touching == touching and absf(e.contact_s - contact) < 1e-6,
+					"%.3f s: reported touching %s for %.3f s, measured %s for %.3f s" % [at, e.touching, e.contact_s, touching, contact])
 				refusals.append(e)
+				shown.append(hints.consider(e, at))
 			elif e.type == "ate":
 				meals += 1
 	check_eq(meals, 0, "swimming straight at it gives no meal")
 	var last: Dictionary = refusals[-1] if not refusals.is_empty() else {}
 	check_eq(last.get("reason", ""), "mouth is not facing it", "the last refusal")
-	check(refusals.any(func(e: Dictionary) -> bool: return e.touching), "while touching it")
+	check(refusals.any(func(e: Dictionary) -> bool: return not e.touching), "in reach before touching it")
+	var first_touch := refusals.find_custom(func(e: Dictionary) -> bool: return e.touching)
+	check(first_touch >= 0 and shown[first_touch] == "", "while touching it, with no hint at first: %s" % [shown])
+	check(refusals.any(func(e: Dictionary) -> bool: return e.touching and e.contact_s >= RefusalHints.FACING_AFTER_S),
+		"and still touching it %.1f s later" % RefusalHints.FACING_AFTER_S)
+	check(shown.has(RefusalHints.TEXTS["mouth is not facing it"]), "then the player is told to turn: %s" % [shown])
 	check(_beside(sim, _item(sim, food.id), PI / 2.0), "placed with the food on its right")
 	var ate := {}
 	for i in 30:
