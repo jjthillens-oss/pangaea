@@ -188,3 +188,27 @@ func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -
 	check_near(meat._transform_for(rotting, 0.0).basis.get_scale().x, 0.5, 1e-5, "half size five seconds before rotting")
 	check(meat._transform_for(fresh, 0.0).origin.is_equal_approx(meat._transform_for(fresh, 7.0).origin), "carrion lies still")
 	meat.free()
+
+
+func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there() -> void:
+	var meat := FoodView.new()
+	meat.kind = "meat"
+	var start := {"id": "cr_2", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "initial"}
+	var t := meat._transform_for(start, 0.0)
+	check_near(t.basis.get_scale().x, 1.0, 1e-5, "starting carrion is full size")
+	check_near(t.origin.y, FoodView.MEAT_Y, 1e-6, "and on the floor")
+	var dropped := {"id": "cr_3", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "interim"}
+	t = meat._transform_for(dropped, 0.0)
+	check(t.basis.get_scale().x < 0.5 and t.origin.y > FoodView.MEAT_Y + 0.3,
+		"new carrion appears small and above the floor (scale %.2f, y %.2f)" % [t.basis.get_scale().x, t.origin.y])
+	var steady := true
+	var last := t
+	for tick in range(1, 37):
+		dropped.age = tick / 60.0
+		t = meat._transform_for(dropped, 0.0)
+		steady = steady and t.basis.get_scale().x >= last.basis.get_scale().x - 1e-6 and t.origin.y <= last.origin.y + 1e-6
+		last = t
+	check(steady, "it only grows and sinks")
+	check_near(t.basis.get_scale().x, 1.0, 1e-5, "full size after %.1f s" % FoodView.MEAT_SETTLE_S)
+	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and on the floor where it landed")
+	meat.free()
