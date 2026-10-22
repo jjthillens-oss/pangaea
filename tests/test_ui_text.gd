@@ -177,7 +177,7 @@ func test_a_starving_tip_names_only_food_the_body_can_eat_and_tells_a_hunter_to_
 		for diet: String in FOOD_WORDS:
 			for word: String in FOOD_WORDS[diet]:
 				check(p.can_eat(diet) or not tip.to_lower().contains(word),
-					"%s (eats %s) is not sent to %s: %s" % [body, BodyText.diet(p).to_lower(), word, tip])
+					"%s (%s) is not sent to %s: %s" % [body, BodyText.diet(p).to_lower(), word, tip])
 	check_eq(GameSession.starved_tip(_phenotype("grazer")), GameSession.STARVED_TIP, "a grazer is told where plankton regrows")
 	check_eq(GameSession.starved_tip(_phenotype("omnivore")), GameSession.STARVED_TIP, "so is an omnivore, which eats it too")
 	var hunter := GameSession.starved_tip(_phenotype("hunter"))
