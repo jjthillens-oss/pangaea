@@ -17,9 +17,9 @@ const BANNED := {
 	"a Node base": "extends\\s+Node",
 }
 const FILES_PATTERN := "\\b(FileAccess|DirAccess)\\b"
-## Creature perception (M1 step 3) works only from the percepts it is given: it never names the
-## player or reaches for the sim's tables. The brain joins this list when it lands.
-const PERCEPTION_FILES: PackedStringArray = ["res://game/domain/creature_senses.gd"]
+## Creature perception and decisions (M1 step 3) work only from the percepts they are given: they
+## never name the player or reach for the sim's tables.
+const PERCEPTION_FILES: PackedStringArray = ["res://game/domain/creature_senses.gd", "res://game/domain/creature_brain.gd"]
 const PERCEPTION_BANNED := {
 	"the player's id": "[\"']player[\"']",
 	"the sim": "\\b(PoolSim|CreatureField|roster)\\b|\\bsim\\.",
