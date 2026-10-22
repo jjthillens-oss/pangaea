@@ -288,7 +288,7 @@ func _starve_and_recover(pool: PoolScene) -> void:
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
-	# A quarter of 3 points rounds down to nothing, so eat a little more first.
+	# A quarter of fewer than 4 points rounds down to nothing, so eat a little more first.
 	var ticks := await _ticks_until(sim, func(): return sim.save.adaptation_points >= POINTS_BEFORE_DEATH, MEAL_TICKS)
 	_check(sim.save.adaptation_points >= POINTS_BEFORE_DEATH and not sim.dead,
 		"the grazer kept eating to %d points in %.1f s" % [sim.save.adaptation_points, ticks * PoolSim.DT])
@@ -322,13 +322,13 @@ func _die_and_continue(pool: PoolScene) -> void:
 	_check(not pool.paused, "play goes on after the death")
 
 
-## Esc opens the pause menu; Quit asks first because of the unsaved progress; Save and quit to
+## The pause key opens the pause menu; Quit asks first because of the unsaved progress; Save and quit to
 ## title saves and shows the title with Continue. Returns what expect.json records ({} on failure).
 func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var sim := pool.sim
 	await _press(&"pause")
 	var menu := main.pause_menu
-	_check(menu.is_open() and pool.paused, "Esc opens the pause menu and pauses the pool")
+	_check(menu.is_open() and pool.paused, "the pause key opens the pause menu and pauses the pool")
 	_check(_focus() == menu.resume_button, "Resume has the keyboard focus")
 	_check(menu.footer_text() == "Seed %d · build %s" % [sim.save.world_seed, BuildInfo.build_id()], "the footer reads '%s'" % menu.footer_text())
 	if main.session.dirty:
