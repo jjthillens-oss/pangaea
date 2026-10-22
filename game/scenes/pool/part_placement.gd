@@ -11,7 +11,9 @@ const RX := 0.46   ## half width: socket_side_R
 const RY := 0.39   ## half height: socket_top
 const RZ := 0.5    ## half length: socket_mouth and socket_tail
 ## Parts that sit up on the body instead of on its equator, by type: height above the swim plane.
-const RAISED_Y := {"eye_spot": 0.18}
+## The eye spot sits on the head, above the sample cell's baked eyes (their tops are at y 0.26),
+## so at any angle it clears them instead of growing out of one.
+const RAISED_Y := {"eye_spot": 0.30}
 
 
 ## Height of a part type's attachment point above the swim plane.
