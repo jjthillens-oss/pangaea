@@ -343,6 +343,28 @@ func test_a_hunter_starving_late_in_a_run_still_finds_carrion() -> void:
 	check(misses.size() <= LATE_RUN_MISSES_ALLOWED, "starved before finding carrion: %s" % [misses])
 
 
+## The starving arrow points at the nearest food the body can eat (by distance, then id). At the
+## spawn the nearest food of all is carrion, so a grazer must be sent past it to plankton.
+func test_the_starving_arrow_food_is_the_nearest_the_body_can_eat() -> void:
+	for body in ["grazer", "hunter", "omnivore"]:
+		var sim := _sim(body, 1234)
+		var at := sim.motion.position
+		var by_distance := sim.plankton.items + sim.carrion.items
+		by_distance.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var da := at.distance_to(a.position)
+			var db := at.distance_to(b.position)
+			return da < db if da != db else str(a.id) < str(b.id))
+		check_eq(by_distance[0].kind, "meat", "%s: the nearest food at the spawn is carrion" % body)
+		var edible := by_distance.filter(func(item: Dictionary) -> bool: return sim.phenotype.can_eat(item.kind))
+		var food := sim.nearest_edible()
+		check_eq(food.get("id", ""), edible[0].id, "%s: the nearest edible food" % body)
+		check(sim.phenotype.can_eat(food.get("kind", "")), "%s: can eat it (%s)" % [body, food.get("kind", "")])
+		check_eq(food.get("position", Vector2.INF), edible[0].position, "%s: and where it is" % body)
+	var no_carrion := PoolLayout.load_from(FIXTURE)
+	check(no_carrion.carrion.initial.is_empty() and not no_carrion.carrion.interim_supply.enabled, "a pool with no carrion")
+	check_eq(_sim("hunter", 1234, no_carrion).nearest_edible(), {}, "a hunter there has nothing to aim at")
+
+
 func test_a_cell_that_starves_dies_once_stays_still_and_respawns_at_the_start() -> void:
 	var sim := _sim("grazer", 51)
 	var died := 0
