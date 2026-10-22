@@ -4,7 +4,8 @@
 ; colours, which the glTF importer would leave unused: sand, silt patches and the rim stone,
 ; stored sRGB-encoded so both renderers shade them like an albedo colour. Roughness matches the
 ; Blender material M_PoolFloor. pool_floor.glb.import points the imported material here.
-; The next pass adds moving caustic light (M_PoolCaustics.tres).
+; Two passes follow: moving caustic light (M_PoolCaustics.tres), then the water over the floor
+; (M_PoolWater.tres), which takes red first with depth.
 
 [ext_resource type="Material" path="res://assets/export/M_PoolCaustics.tres" id="1_caustics"]
 

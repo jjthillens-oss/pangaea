@@ -5,5 +5,5 @@
 [resource]
 resource_name = "M_PoolWater"
 shader = ExtResource("1_water")
-shader_parameter/absorb = Vector3(0.7, 0.28, 0.2)
-shader_parameter/surface_y = 0.5
+shader_parameter/absorb = Vector3(0.95, 0.27, 0.14)
+shader_parameter/surface_y = 0.8

@@ -8,9 +8,9 @@ shader_type spatial;
 render_mode blend_mul, unshaded, depth_draw_never, fog_disabled, cull_back;
 
 // Share of each channel lost per metre of water above the floor (red, green, blue).
-uniform vec3 absorb = vec3(0.7, 0.28, 0.2);
+uniform vec3 absorb = vec3(0.95, 0.27, 0.14);
 // The water's surface in world metres; the swim plane is y = 0.
-uniform float surface_y = 0.5;
+uniform float surface_y = 0.8;
 
 varying float depth_m;
 

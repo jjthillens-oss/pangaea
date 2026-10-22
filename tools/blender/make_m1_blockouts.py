@@ -222,7 +222,9 @@ def build_pool_floor():
         "purpose": "M1 step 2 tide pool floor: a bowl under the swim plane, a pale stone rim lip and a shelf out past the edge of the camera view.",
         "category": "floor",
         "revision": 2,
-        "dependencies": ["assets/export/M_PoolFloor.tres"],
+        # The engine material and the procedural caustic and water passes drawn after it.
+        "dependencies": ["assets/export/M_PoolFloor.tres", "assets/export/M_PoolCaustics.tres", "assets/export/pool_caustics.gdshader",
+                         "assets/export/M_PoolWater.tres", "assets/export/pool_water.gdshader"],
         "vertex_colors_attribute": "FloorColor",
         "pivot": "pool centre on the swim plane (Godot y = 0)",
         "radius_m": FLOOR_RINGS[-1],

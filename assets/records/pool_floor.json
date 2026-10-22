@@ -10,7 +10,11 @@
   "export_path": "assets/export/pool_floor.glb",
   "export_format": "GLB",
   "dependencies": [
-    "assets/export/M_PoolFloor.tres"
+    "assets/export/M_PoolFloor.tres",
+    "assets/export/M_PoolCaustics.tres",
+    "assets/export/pool_caustics.gdshader",
+    "assets/export/M_PoolWater.tres",
+    "assets/export/pool_water.gdshader"
   ],
   "revision": 2,
   "blender_version": "5.2.2 LTS",
