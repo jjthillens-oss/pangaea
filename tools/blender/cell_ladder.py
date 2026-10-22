@@ -414,6 +414,218 @@ def build_surfaced():
     return objs, {"textures": textures}
 
 
+# --- Rung 3: target (rig and animation) ----------------------------------------------------
+
+RIG_FAMILY = "cell_single_body"
+FPS = 24
+TAIL_BONES = len(FLAGELLUM_PTS)
+
+
+def eye_frame(side):
+    d = EYE_DIR[side]
+    centre = ellipsoid_point(d) - d * 0.035
+    gaze = Vector((d.x * 0.6, 1.0, 0.18)).normalized()
+    return centre, gaze
+
+
+def build_armature():
+    arm_data = bpy.data.armatures.new("CellRig")
+    arm = bpy.data.objects.new("CellRig", arm_data)
+    bpy.context.collection.objects.link(arm)
+    select_only(arm)
+    bpy.ops.object.mode_set(mode="EDIT")
+    eb = arm_data.edit_bones
+
+    def bone(name, head, tail, parent=None, connect=False):
+        b = eb.new(name)
+        b.head, b.tail = Vector(head), Vector(tail)
+        b.roll = 0.0
+        if parent:
+            b.parent = eb[parent]
+            b.use_connect = connect
+        return b
+
+    bone("root", (0, 0, 0), (0, 0.25, 0))
+    bone("body", (0, -0.1, 0), (0, 0.3, 0), "root")
+    mouth = ellipsoid_point(MOUTH_DIR)
+    bone("mouth", mouth - MOUTH_DIR * 0.1, mouth + MOUTH_DIR * 0.05, "body")
+    chain = [Vector((0, -0.34, 0.02))] + [Vector(p) for p in FLAGELLUM_PTS[1:]] + [Vector((0, -1.42, 0.06))]
+    for i in range(TAIL_BONES):
+        bone(f"tail_{i + 1:02d}", chain[i], chain[i + 1], "body" if i == 0 else f"tail_{i:02d}", connect=i > 0)
+    for side in EYE_DIR:
+        centre, gaze = eye_frame(side)
+        flat = Vector((gaze.x, gaze.y, 0)).normalized() * 0.1
+        bone(f"eye_{side}", centre, centre + gaze * 0.1, "body")
+        bone(f"lid_upper_{side}", centre, centre + flat, "body")
+        bone(f"lid_lower_{side}", centre, centre + flat, "body")
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "XYZ"
+    return arm
+
+
+def skin_body(body, arm):
+    """Weights by position: tail chain along the flagellum, a soft mouth zone, body elsewhere."""
+    groups = {name: body.vertex_groups.new(name=name) for name in ["body", "mouth"] + [f"tail_{i + 1:02d}" for i in range(TAIL_BONES)]}
+    chain_y = [-0.34] + [p[1] for p in FLAGELLUM_PTS[1:]] + [-1.42]
+    mouth = ellipsoid_point(MOUTH_DIR)
+    for v in body.data.vertices:
+        co = v.co
+        weights = {}
+        if co.y < chain_y[0] + 0.06:
+            # Position along the chain in bone units, blended across joints.
+            y = co.y
+            t = 0.0
+            for i in range(TAIL_BONES):
+                a, b = chain_y[i], chain_y[i + 1]
+                if y <= a:
+                    t = i + min(1.0, (a - y) / (a - b))
+            t = max(0.0, t - 0.5)
+            lo = min(int(t), TAIL_BONES - 1)
+            frac = min(1.0, t - lo)
+            weights[f"tail_{lo + 1:02d}"] = 1.0 - frac
+            if lo + 1 < TAIL_BONES:
+                weights[f"tail_{lo + 2:02d}"] = frac
+            if co.y > chain_y[0] - 0.08:
+                # Rear of the body: fade from body into the first tail bone.
+                k = (co.y - (chain_y[0] - 0.08)) / 0.14
+                weights = {n: w * (1 - k) for n, w in weights.items()}
+                weights["body"] = k
+        else:
+            m = gauss((co - mouth).length_squared, 0.07)
+            weights = {"mouth": m, "body": 1.0 - m}
+        for name, w in weights.items():
+            if w > 0.001:
+                groups[name].add([v.index], w, "REPLACE")
+    mod = body.modifiers.new("Armature", "ARMATURE")
+    mod.object = arm
+    body.parent = arm
+
+
+def parent_to_bone(obj, arm, bone):
+    world = obj.matrix_world.copy()
+    obj.parent = arm
+    obj.parent_type = "BONE"
+    obj.parent_bone = bone
+    bpy.context.view_layer.update()
+    obj.matrix_world = world
+
+
+def key(arm, frame, values):
+    """values: {bone: {"rot": (x, y, z) degrees, "scale": (x, y, z), "loc": (x, y, z)}}."""
+    for name, channels in values.items():
+        pb = arm.pose.bones[name]
+        if "rot" in channels:
+            pb.rotation_euler = [math.radians(a) for a in channels["rot"]]
+            pb.keyframe_insert("rotation_euler", frame=frame)
+        if "scale" in channels:
+            pb.scale = channels["scale"]
+            pb.keyframe_insert("scale", frame=frame)
+        if "loc" in channels:
+            pb.location = channels["loc"]
+            pb.keyframe_insert("location", frame=frame)
+
+
+def new_action(arm, name):
+    action = bpy.data.actions.new(name)
+    action.use_fake_user = True
+    arm.animation_data.action = action
+    for pb in arm.pose.bones:
+        pb.rotation_euler = (0, 0, 0)
+        pb.scale = (1, 1, 1)
+        pb.location = (0, 0, 0)
+    return action
+
+
+def lids(upper, lower):
+    return {f"lid_upper_{s}": {"rot": (upper, 0, 0)} for s in EYE_DIR} | {f"lid_lower_{s}": {"rot": (lower, 0, 0)} for s in EYE_DIR}
+
+
+def tail_wave(phase, amplitude=1.0):
+    return {f"tail_{i + 1:02d}": {"rot": (0, 0, amplitude * (8 + 5 * i) * math.sin(phase - i * 0.9))} for i in range(TAIL_BONES)}
+
+
+def animate(arm):
+    """Idle and swim loop; eat is a one-shot. Lids and body squash carry the emotion (art doc 2)."""
+    arm.animation_data_create()
+    clips = []
+
+    new_action(arm, "idle")
+    for f in range(0, 49, 4):
+        ph = 2 * math.pi * f / 48
+        breath = 0.5 - 0.5 * math.cos(ph)
+        pose = {"body": {"scale": (1 + 0.03 * breath, 1 - 0.015 * breath, 1 + 0.03 * breath)}}
+        pose |= tail_wave(ph, 0.45)
+        glance = 9 * math.sin(ph)
+        pose |= {f"eye_{s}": {"rot": (0, 0, glance)} for s in EYE_DIR}
+        pose |= lids(0, 0)
+        key(arm, f, pose)
+    key(arm, 30, lids(-62, 30))  # the blink closes on frame 30
+    clips.append({"name": "idle", "frames": 48, "fps": FPS, "loop": True})
+
+    new_action(arm, "swim")
+    for f in range(0, 25, 2):
+        ph = 2 * math.pi * f / 24
+        pose = tail_wave(ph, 1.0)
+        pose["body"] = {"rot": (0, 0, -4 * math.sin(ph + 0.6)),
+                        "scale": (1 - 0.02 * math.sin(2 * ph), 1 + 0.035 * math.sin(2 * ph), 1 - 0.02 * math.sin(2 * ph))}
+        pose |= lids(-12, 6)  # focused: a slightly narrowed eye
+        key(arm, f, pose)
+    clips.append({"name": "swim", "frames": 24, "fps": FPS, "loop": True})
+
+    new_action(arm, "eat")
+    beats = [(0, 1.0, 0.0, 0, 0), (6, 1.4, 0.07, -8, 4), (10, 0.75, 0.03, -28, 18), (14, 1.08, 0.0, -28, 18), (20, 1.0, 0.0, 0, 0)]
+    for f, mouth, lunge, upper, lower in beats:
+        pose = {"mouth": {"scale": (mouth, 1.0, mouth)}, "body": {"loc": (0, lunge, 0)}}
+        pose |= lids(upper, lower)  # a satisfied squint on the chomp
+        pose |= tail_wave(2 * math.pi * f / 20, 0.5)
+        key(arm, f, pose)
+    clips.append({"name": "eat", "frames": 20, "fps": FPS, "loop": False})
+
+    arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.rotation_euler, pb.scale, pb.location = (0, 0, 0), (1, 1, 1), (0, 0, 0)
+    scene = bpy.context.scene
+    scene.render.fps = FPS
+    scene.frame_start, scene.frame_end = 0, 48
+    return clips
+
+
+def build_target():
+    objs, extra = build_surfaced()
+    body = objs["body"]
+    arm = build_armature()
+    bpy.context.view_layer.update()
+    sockets = [o for o in bpy.data.objects if o.name.startswith("socket_")]
+    for key_, obj in objs.items():
+        if key_ == "body":
+            continue
+        family, _, side = key_.partition("_")
+        if family in ("eye", "iris", "pupil"):
+            parent_to_bone(obj, arm, f"eye_{side}")
+        elif family == "lidupper":
+            parent_to_bone(obj, arm, f"lid_upper_{side}")
+        elif family == "lidlower":
+            parent_to_bone(obj, arm, f"lid_lower_{side}")
+        elif family == "lips":
+            parent_to_bone(obj, arm, "mouth")
+        else:
+            parent_to_bone(obj, arm, "body")
+    for socket in sockets:
+        parent_to_bone(socket, arm, "body")
+    skin_body(body, arm)
+    clips = animate(arm)
+    extra.update({
+        "rig_family": RIG_FAMILY,
+        "bones": [b.name for b in arm.data.bones],
+        "animations": clips,
+        "gltf": {"export_animations": True, "export_animation_mode": "ACTIONS", "export_skins": True,
+                 "export_def_bones": False, "export_frame_range": False},
+    })
+    objs["rig"] = arm
+    return objs, extra
+
+
 # --- Export and record ---------------------------------------------------------------------
 
 def export(rung, objs, extra=None):
@@ -465,7 +677,7 @@ def export(rung, objs, extra=None):
     return record
 
 
-BUILDERS = {"0_blockout": build_blockout, "1_form": build_form, "2_surfaced": build_surfaced}
+BUILDERS = {"0_blockout": build_blockout, "1_form": build_form, "2_surfaced": build_surfaced, "3_target": build_target}
 
 
 def build(rung):
