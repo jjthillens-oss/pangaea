@@ -690,7 +690,11 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 	var lane := CreatureBrain.strike_lane(cfg.attack, 0.75, 0.5, Vector2(3.0, -4.0), 0.6)
 	view.show_lane(lane)
 	var node := view.get_node("%Lane") as MeshInstance3D
+	var material := node.material_override as ShaderMaterial
 	check(view.lane_visible(), "the lane shows")
+	# The view's state and the uniform the shader multiplies every pixel's alpha by. The lane's pixels
+	# themselves (alpha math, depth against the floor) are checked only in rendered frames.
+	check_eq(material.get_shader_parameter("strength"), 1.0, "at full strength")
 	# The unit quad's corners land on the lane rectangle: from its origin forward along its heading.
 	var t := node.transform   # the lane is top_level, so this is its world transform
 	check(node.top_level, "the lane does not turn with the creature")
@@ -706,9 +710,10 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 		"the near end is at the creature (%s vs %s)" % [near_right, near_corner])
 	check(t.basis.get_scale().is_equal_approx(Vector3(2.0 * float(lane.half_width), 1.0, float(lane.length))), "the lane's size")
 	check(t.origin.y < 0.0 and t.origin.y > -0.1, "just under the swim plane")
-	var material := node.material_override as ShaderMaterial
 	view.show_brain(_memory_in(view, "attack", "tell"), 137, 0.0)
+	view._process(1.0 / 60.0)
 	check_near(material.get_shader_parameter("fill"), 36.0 / 72.0, 1e-6, "filled halfway through the tell")
+	check(view.lane_visible() and material.get_shader_parameter("strength") == 1.0, "and still at full strength")
 	view.hide_lane()
 	check(not view.lane_visible(), "a cancelled tell takes the lane down at once")
 	view.show_lane(lane)

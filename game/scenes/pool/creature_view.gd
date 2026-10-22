@@ -265,6 +265,7 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	_hurt_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_lane_material.shader = preload("res://game/scenes/pool/threat_lane.gdshader")
 	_lane_material.set_shader_parameter("color", LANE_COLOR)
+	_lane_material.set_shader_parameter("strength", 0.0)
 	_lane.material_override = _lane_material
 	_lane.visible = false
 	_marker.modulate = MARKER_COLOR
@@ -362,8 +363,10 @@ func hide_lane(fade_s := 0.0) -> void:
 	_apply_lane()
 
 
+## The lane is on screen: shown, and drawn at a strength (its shader's alpha scale) above 0. Its
+## pixels themselves (the alpha math, its depth against the floor) show only in rendered frames.
 func lane_visible() -> bool:
-	return _lane.visible
+	return _lane.visible and float(_lane_material.get_shader_parameter("strength")) > 0.0
 
 
 ## The "!" over a creature that noticed the player.
