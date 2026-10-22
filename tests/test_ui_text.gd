@@ -5,6 +5,7 @@ extends TestCase
 ## points the death rule takes. The running screens are covered by the scene smoke.
 
 const PERF_TOUR := "res://game/dev/perf_tour.gd"
+const PERF_STALL_MS := 100           ## a real stall, far longer than the one-tick delta it comes with
 
 var catalog := PartCatalog.load_from()
 
@@ -136,4 +137,17 @@ func test_the_perf_tour_times_frames_by_the_wall_clock_so_a_long_stall_counts_in
 		measured_ms += ms
 	check(done and measured_ms >= script.DURATION_S * 1000.0 and measured_ms < script.DURATION_S * 1000.0 + 100.0,
 		"the tour ends once %.0f s of wall time are measured (%.3f s)" % [script.DURATION_S, measured_ms / 1000.0])
+	tour.free()
+
+
+func test_each_perf_tour_frame_reads_the_wall_clock_not_the_process_delta() -> void:
+	var script: GDScript = load(PERF_TOUR)
+	var tour: Node = script.new()
+	tour.sample(Time.get_ticks_usec() - int(script.WARM_UP_S * 1e6))   # a warm-up that is already over
+	tour._running = true
+	tour._process(1.0 / 60.0)
+	OS.delay_msec(PERF_STALL_MS)
+	tour._process(1.0 / 60.0)
+	check(tour.frame_ms.size() == 1 and tour.frame_ms[0] >= PERF_STALL_MS,
+		"a %d ms stall counts in full although the delta says one tick (%s)" % [PERF_STALL_MS, tour.frame_ms])
 	tour.free()
