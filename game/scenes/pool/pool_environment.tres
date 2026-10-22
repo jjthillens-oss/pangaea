@@ -2,17 +2,14 @@
 
 [resource]
 background_mode = 1
-background_color = Color(0.03, 0.15, 0.17, 1)
+background_color = Color(0.165, 0.498, 0.525, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.38, 0.6, 0.7, 1)
-ambient_light_energy = 0.3
+ambient_light_color = Color(0.114, 0.208, 0.341, 1)
+ambient_light_energy = 2.2
 tonemap_mode = 2
-glow_enabled = true
-glow_intensity = 0.3
-glow_strength = 0.8
-glow_bloom = 0.0
-glow_hdr_threshold = 1.1
 fog_enabled = true
-fog_light_color = Color(0.05, 0.22, 0.25, 1)
-fog_density = 0.02
+fog_light_color = Color(0.165, 0.498, 0.525, 1)
+fog_density = 0.006
 fog_sky_affect = 0.0
+fog_height = -0.25
+fog_height_density = 0.5
