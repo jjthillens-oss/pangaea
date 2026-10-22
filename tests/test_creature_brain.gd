@@ -1160,6 +1160,56 @@ func test_the_strike_lane_holds_every_point_where_the_strike_could_hit() -> void
 		check_eq(outside, 0, "%s: every allowed hit on a still prey lies in the lane" % kind)
 
 
+func test_the_lane_a_tell_shows_is_the_lane_its_strike_runs() -> void:
+	# F1: creature_tell's lane is the strike's own: from where the tell starts, along the locked
+	# heading (which leads a moving target, so it is not the body's heading), and as wide as the
+	# strike reaches a prey of the target's size. The strike then starts there, along it.
+	var prey_r := 0.4
+	for kind in ["ambush", "rammer"]:
+		var c := _ambush() if kind == "ambush" else _rammer(Vector2.ZERO, 0.0)
+		c.energy_share = 0.5
+		var at := Vector2(2.75, 0.0) if kind == "ambush" else Vector2(4.0, 0.0)
+		var prey := {"velocity": Vector2(0.0, 0.9), "radius": prey_r}
+		var t := 0
+		while t < 60 and c.mem.target.is_empty():
+			_tick(c, t, [_percept(c, "a", at, prey)], false)
+			t += 1
+		check_eq(c.mem.target, "a", kind + ": the prey is noticed")
+		if c.mem.target.is_empty():
+			continue
+		var origin := c.m.position
+		CreatureBrain.begin_tell(c.mem, c.view(), t)
+		_collect(c, t)
+		var told := c.of("creature_tell")
+		check_eq(told.size(), 1, kind + ": a tell")
+		if told.is_empty():
+			continue
+		var lane: Dictionary = told[0].lane
+		var a: Dictionary = c.mem.cfg.attack
+		var half: float = c.p.radius + float(a.reach) + prey_r
+		check(absf(angle_difference(c.mem.lock_heading, c.m.heading)) > deg_to_rad(10.0),
+			"%s: the lock leads the target, %.1f degrees off the body's heading" % [kind, rad_to_deg(absf(angle_difference(c.mem.lock_heading, c.m.heading)))])
+		check_near(float(lane.heading), c.mem.lock_heading, 1e-9, kind + ": the lane runs along the lock")
+		check(Vector2(lane.origin).distance_to(origin) < 1e-9, kind + ": from where the tell starts")
+		check_near(float(lane.half_width), half, 1e-9, kind + ": as wide as its radius, its reach and the prey's radius")
+		check_near(float(lane.travel), float(a.travel), 1e-9, kind + ": as long as the strike travels")
+		check_near(float(lane.length), float(a.travel) + half, 1e-9, kind + ": plus the reach at its end")
+		check_eq(lane, CreatureBrain.strike_lane(a, c.p.radius, prey_r, origin, c.mem.lock_heading), kind + ": strike_lane() of the lock")
+		var struck := {}
+		while t < 400 and struck.is_empty():
+			t += 1
+			at += Vector2(prey.velocity) * DT
+			_tick(c, t, [_percept(c, "a", at, prey)])
+			var strikes := c.of("creature_strike")
+			if not strikes.is_empty():
+				struck = strikes[0]
+		check(not struck.is_empty(), kind + ": it strikes")
+		if struck.is_empty():
+			continue
+		check_near(float(struck.heading), float(lane.heading), 1e-9, kind + ": the strike runs along the lane")
+		check(Vector2(struck.position).distance_to(lane.origin) < 1e-6, kind + ": from the lane's origin")
+
+
 # --- the schedule, foraging and the respawn hooks ---
 
 func test_thinks_run_at_ten_hertz_staggered_twenty_while_engaged_and_on_every_deadline() -> void:

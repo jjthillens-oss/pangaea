@@ -11,8 +11,10 @@ extends TestCase
 ##     inside it, so no strike runs into the hard clamp
 ##  3  no data creature within respawn_clear_m of the checkpoint (its edge, as rule 8 measures)
 ##  4  every creature_strike comes exactly its tell (at least 1.2 s) after the same creature's
-##     creature_tell, in attack/tell on every tick between
-##  5  every creature's hit lands inside its own strike or glide, at most one per strike
+##     creature_tell, in attack/tell on every tick between, along that tell's lane: the same heading,
+##     from within LANE_DRIFT_M of the lane's origin
+##  5  every creature's hit lands inside its own strike or glide, at most one per strike, and a hit
+##     on the cell lands inside the lane its tell showed (grown by how far that strike started from it)
 ##  6  every chase ends within give-up plus one attack cycle of its start (a notice, a chase from
 ##     rest or the creature's own hit); every notice within notice plus give-up
 ##  7  no stall: 150 ticks in chase/pursue, wander/* or forage/seek (toward one goal) move the
@@ -39,6 +41,12 @@ const WALL_SLACK_M := 1e-4               ## PoolArena.CLEAR_EPSILON: float32 rou
 const SPEED_LIMIT := 6.0                 ## combat.max_speed_after_hit, the tunnelling bound (T10)
 const SPEED_SLACK := 1e-4
 const MIN_TELL_TICKS := 72               ## fairness F1: every tell lasts at least 1.2 s
+const LANE_HEADING_SLACK := 1e-6         ## rad: a strike's heading is its lane's (both are the lock)
+## m: how far a strike may start from the origin its tell's lane showed. The body brakes from rest
+## through the tell, but a body leaning on it can still push it: the four seeds' worst is 0.446 m
+## (seed 402, the z_n rammer c_4 pushed by its neighbour c_5 through its puff); most are under 0.03.
+const LANE_DRIFT_M := 0.5
+const LANE_HIT_SLACK := 1e-3             ## m: float32 positions
 ## The give-up fires on the exact tick it falls due, and a last tell may start the tick before.
 const CHASE_SLACK_TICKS := 2
 const STALL_TICKS := 150
@@ -67,9 +75,9 @@ func test_kiting_round_the_real_creatures_for_four_minutes_breaks_no_fairness_or
 	var totals := {"tells": 0, "strikes": 0, "hits_on_cell": 0, "give_ups": 0, "flees": 0}
 	for i in SEEDS.size():
 		var counts := _fuzz(SEEDS[i], BODIES[i], STARTS[i])
-		print("test-threat-fuzz: seed %d (%s): %d tells, %d strikes, %d hits on the cell, %d by the cell, %d give-ups, %d flees, %d notices, %d cell deaths, %d creature deaths, %d visits" % [
+		print("test-threat-fuzz: seed %d (%s): %d tells, %d strikes, %d hits on the cell, %d by the cell, %d give-ups, %d flees, %d notices, %d cell deaths, %d creature deaths, %d visits; strikes up to %.3f m from their lanes' origins" % [
 			SEEDS[i], BODIES[i], counts.tells, counts.strikes, counts.hits_on_cell, counts.hits_by_cell, counts.give_ups,
-			counts.flees, counts.notices, counts.deaths, counts.creature_deaths, counts.visits])
+			counts.flees, counts.notices, counts.deaths, counts.creature_deaths, counts.visits, counts.drift])
 		for key in totals.keys():
 			totals[key] += int(counts[key])
 	for inv in range(1, 12):
@@ -93,10 +101,10 @@ func _fuzz(seed_value: int, body: String, start: Vector2) -> Dictionary:
 	sim.drain_events()
 	var bot = KiterBot.new(seed_value)
 	var counts := {"tells": 0, "strikes": 0, "hits_on_cell": 0, "hits_by_cell": 0, "give_ups": 0, "flees": 0,
-		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0}
+		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0, "drift": 0.0}
 	var k := {
 		"tell_at": {}, "tell_since": {}, "striking": {}, "strike_hits": {}, "engaged_from": {}, "noticed_at": {},
-		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {},
+		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {}, "lane": {}, "strike_lane": {},
 	}
 	var dead_since := -1
 	for i in RUN_TICKS:
@@ -139,6 +147,7 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 			"creature_tell":
 				counts.tells += 1
 				k.tell_at[e.id] = t
+				k.lane[e.id] = e.lane
 				var c := sim.creatures.find(e.id)
 				if c != null and c.brain != null:
 					var lane: Dictionary = e.lane
@@ -158,8 +167,11 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 						where, e.id, int(k.tell_at.get(e.id, -1)), int(k.tell_since.get(e.id, -1)), t - tell])
 				k.striking[e.id] = true
 				k.strike_hits[e.id] = 0
+				_check_strike_lane(e, where, k, counts)
 			"creature_recovered":
 				k.striking.erase(e.id)
+				k.lane.erase(e.id)
+				k.strike_lane.erase(e.id)
 			"hit":
 				if e.target == CreatureField.PLAYER_ID:
 					counts.hits_on_cell += 1
@@ -171,6 +183,10 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 					_fail(5, "%s: %s hit %s outside a strike or twice in one (%d before)" % [
 						where, e.attacker, e.target, int(k.strike_hits.get(e.attacker, 0))])
 				k.strike_hits[e.attacker] = int(k.strike_hits.get(e.attacker, 0)) + 1
+				var shown: Dictionary = k.strike_lane.get(e.attacker, {})
+				if e.target == CreatureField.PLAYER_ID and not shown.is_empty() \
+						and not CreatureBrain.lane_contains(_grown(shown.lane, float(shown.drift) + LANE_HIT_SLACK), e.position):
+					_fail(5, "%s: %s hit the cell at %s, outside the lane its tell showed (%s)" % [where, e.attacker, e.position, shown.lane])
 				k.engaged_from[e.attacker] = t   # a landed hit restarts the give-up timer
 			"creature_noticed":
 				counts.notices += 1
@@ -184,6 +200,31 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 				counts.deaths += 1
 			"creature_died":
 				counts.creature_deaths += 1
+
+
+## Invariant 4's lane: the strike runs along the lane its tell showed. Its heading is the lane's, and
+## it starts within LANE_DRIFT_M of the lane's origin. Keeps the lane and that drift for invariant 5.
+func _check_strike_lane(e: Dictionary, where: String, k: Dictionary, counts: Dictionary) -> void:
+	var lane: Dictionary = k.lane.get(e.id, {})
+	k.lane.erase(e.id)
+	if lane.is_empty():
+		_fail(4, "%s: %s struck with no tell lane" % [where, e.id])
+		return
+	var off := absf(angle_difference(float(e.heading), float(lane.heading)))
+	if off > LANE_HEADING_SLACK:
+		_fail(4, "%s: %s struck %.2f degrees off the lane its tell showed" % [where, e.id, rad_to_deg(off)])
+	var drift: float = Vector2(e.position).distance_to(lane.origin)
+	counts.drift = maxf(float(counts.drift), drift)
+	if drift > LANE_DRIFT_M:
+		_fail(4, "%s: %s struck from %.3f m off its lane's origin" % [where, e.id, drift])
+	k.strike_lane[e.id] = {"lane": lane, "drift": drift}
+
+
+## The lane grown by `m` on every side: the origin moved back, the length and half-width added to.
+static func _grown(lane: Dictionary, m: float) -> Dictionary:
+	var heading := float(lane.heading)
+	return {"origin": Vector2(lane.origin) - Vector2.from_angle(heading) * m, "heading": heading,
+		"length": float(lane.length) + 2.0 * m, "half_width": float(lane.half_width) + m}
 
 
 ## Invariants 1 and 10 for the cell, and 8 and 11 over all creatures.
