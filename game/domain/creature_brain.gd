@@ -584,6 +584,12 @@ static func _think_watch(mem: Memory, me: Dictionary, tick: int) -> void:
 
 static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: int, arena: PoolArena) -> void:
 	var found := _pick_new_target(mem, me, percepts, tick)
+	# A sated hunter on its way home does not stop for prey it would not chase (it would notice,
+	# watch from off its home, set off again and notice again); it notices it once home. Prey that
+	# hurt it or that it bit is still worth a chase.
+	if not found.is_empty() and mem.behavior == AMBUSH and mem.phase == RETURN_HOME and not _hungry(mem, me) \
+			and not mem.landed_on.has(found.id) and found.id != mem.attacker:
+		found = {}
 	if not found.is_empty():
 		_notice(mem, found.id, found.by, tick)
 		return

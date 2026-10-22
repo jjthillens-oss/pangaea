@@ -306,6 +306,43 @@ func test_a_watching_hunter_aims_only_at_a_target_in_its_window_in_front_that_it
 			check(not labels.has("chase/aim"), "%s: never aims" % case[0])
 
 
+func test_a_sated_hunter_pushed_off_its_home_swims_back_past_prey_in_view_and_notices_it_once_home() -> void:
+	# A sated hunter 2 m from home (a missed lunge, a shove) with prey in view all the way: it does
+	# not stop to notice prey it would not chase, so it gets home, then notices it once and watches.
+	var cases := [
+		["pushed back", Vector2(-2.0, 0.0), Vector2(4.0, 0.0)],
+		["pushed sideways", Vector2(0.0, 2.0), Vector2(3.5, 1.0)],
+		["pushed forward, the prey to one side", Vector2(2.0, 0.0), Vector2(2.0, -4.0)],
+	]
+	for case in cases:
+		var c := _ambush()
+		c.m.position = case[1]
+		var home_at := -1
+		for t in 900:
+			_tick(c, t, [_percept(c, "a", case[2])])
+			if home_at < 0 and c.m.position.distance_to(c.mem.home) <= CreatureBrain.ARRIVE_HOME_M:
+				home_at = t
+		var noticed := c.of("creature_noticed")
+		check(home_at >= 0, "%s: home within 15 s (%.2f m off, %d notices)" % [case[0], c.m.position.distance_to(c.mem.home), noticed.size()])
+		check(noticed.size() <= 1, "%s: at most one notice (%d)" % [case[0], noticed.size()])
+		if not noticed.is_empty():
+			check(int(noticed[0].tick) >= home_at, "%s: the notice came once it was home (tick %d, home at %d)" % [case[0], noticed[0].tick, home_at])
+		check_eq(c.label(), "rest/watch", "%s: it watches the prey from home" % case[0])
+	# Prey that hurt it, or that it bit before, is still noticed on the way home.
+	var hurt := _ambush()
+	hurt.m.position = Vector2(-2.0, 0.0)
+	hurt.mem.attacker = "a"
+	_tick(hurt, 5, [_percept(hurt, "a", Vector2(4.0, 0.0))])
+	_tick(hurt, 11, [_percept(hurt, "a", Vector2(4.0, 0.0))])
+	check_eq(hurt.label(), "notice", "its attacker is noticed away from home")
+	var bitten := _ambush()
+	bitten.m.position = Vector2(-2.0, 0.0)
+	bitten.mem.landed_on["a"] = 0
+	_tick(bitten, 5, [_percept(bitten, "a", Vector2(4.0, 0.0))])
+	_tick(bitten, 11, [_percept(bitten, "a", Vector2(4.0, 0.0))])
+	check_eq(bitten.label(), "notice", "prey it bit before is noticed away from home")
+
+
 # --- 3. phases ---
 
 func test_a_tell_starts_only_when_nearly_still_in_the_window_and_aimed() -> void:
