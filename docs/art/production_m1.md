@@ -86,24 +86,36 @@ xvfb-run -a .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . --rendering-met
 
 ## Micro-world ambience (PROPOSED tuning; the look is CONFIRMED in DECISIONS)
 
-`game/scenes/pool/ambience/` is decor only: one `Ambience` node in `pool.tscn`. It reads the
-camera and the player cell, never the sim, and draws from its own random numbers
-(`tests/test_ambience.gd`).
+`game/scenes/pool/ambience/ambience.tscn` is decor only. The pool mounts it as its one `Ambience`
+child when the file exists (engineering's micro-world plan, C6), so art adds files and never edits
+`pool.tscn`. It reads the pool's camera and cell view, never the sim, and draws from its own
+random numbers. `tests/test_ambience.gd` checks this and the contract in plan section 7.
 
-- **Drifting layers** (`drift.gdshader`): three MultiMeshes of camera-facing quads, wrapped in a
-  48 x 40 m box around the camera's focus by the shader, so the CPU never moves them.
-  - 900 specks.
-  - 140 rising bubbles.
-  - 520 microbes in 18 swarms: rods, spirilla and spores, 0.7 to 4.5 m under the swim plane,
-    which part around the cell.
+- **Drifting layers** (`drift.gdshader`): four MultiMeshes of camera-facing quads, 1,540 in all.
+  The shader wraps them in a 48 x 40 m box around the camera's focus, so the CPU never moves them.
+  - 40 faint foreground specks and bubbles, 0.6 to 2.8 m above the plane.
+  - 900 specks, 3 to 30 m below.
+  - 120 rising bubbles, 3 to 10 m below.
+  - 480 microbes in 18 swarms, 3 to 7 m below: rods, spirilla and spores. They part around the
+    cell as it swims over them.
   - Shapes are drawn in the shader. Specks and bubbles grow softer away from the plane, standing
     in for depth of field.
-- **Backdrops**: ten flat quads 14 to 34 m below the plane, recycled around the camera. Each
+- **Backdrops**: ten flat quads 12 to 22 m below the plane, recycled around the camera. Each
   carries a pre-blurred organism from `tools/blender/make_ambience_backdrops.py`: a giant ciliate,
   a bead colony, a diatom, a coiled filament or a radiolarian. The source is
   `assets/source/blender/ambience_backdrops.blend`, and the textures are in `assets/export/ambience/`.
-- **Colours**: lavender, amber, cream and pale blue. Never the food green or the threat pink.
-- **Shown only once the floor drops**: the layers below the plane need the deep floor from
-  engineering's micro-world pass. Until then, preview them with
-  `capture_pool.gd -- --floor-y=-30 --micro-look`, which applies the mood frame's water values
-  as a preview of that pass.
+- **Fading with depth**: everything is `blend_mix` with the engine's height fog on, so decor
+  fades into the fluid with stock fog. There is no custom fog code and no depth of field.
+- **Readability caps** (plan section 7):
+  - nothing within 1.5 m below or 0.5 m above the swim plane;
+  - every colour at least 25 degrees of LAB hue from food and threat, so no mauve;
+  - linear luminance times opacity at most 0.12;
+  - linear luminance at most 0.40 below the plane;
+  - render priority under the strike lane's.
+  
+  Decor is therefore subtle by design: it gives depth and motion behind the cues and never
+  competes with them.
+- **Colours**: dusty blue, lavender and amber; the backdrops are blue-lavender, peach, pale silica
+  and lavender.
+- **Previews** until engineering's fluid lands: `capture_pool.gd -- --floor-y=-40 --micro-look`.
+  This applies the plan's proposed fluid values and mounts the ambience.

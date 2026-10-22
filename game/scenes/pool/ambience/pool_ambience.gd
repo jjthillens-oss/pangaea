@@ -1,8 +1,8 @@
 class_name PoolAmbience
 extends Node3D
 ## The microscopic world's decor (docs/DECISIONS.md, "The cell stage reads as a microscopic world"):
-## specks and bubbles drifting between the depths and the camera, swarms of microbes under the
-## swim plane that part around the cell, and huge out-of-focus organisms far below.
+## specks and bubbles drifting in the depths and a few above the plane, swarms of microbes under
+## the swim plane that part around the cell, and huge out-of-focus organisms far below.
 ##
 ## Presentation only: it reads the camera and the player cell's position, never the simulation,
 ## and draws from its own random numbers, so the pool sim stays deterministic. Nothing here
@@ -22,37 +22,52 @@ const BOX := Vector2(48.0, 40.0)
 enum Kind { SPECK, BUBBLE, ROD, SPIRILLUM, SPORE }
 
 ## Each drifting layer: how many quads, which kinds (weighted), their size and opacity ranges,
-## the vertical band they wrap in, and how they move. Totals stay under the 2,000-particle budget.
+## the vertical band they wrap in, and how they move. Bands follow the ambience contract
+## (/mnt/project-files/pangaea/docs/micro-world-plan.md section 7): nothing within -1.5 to +0.5 m
+## of the swim plane, a sparse foreground above it, the rest below where the height fog takes it.
+## Each tint's linear luminance times the layer's top opacity stays at or under MAX_LUMA_ALPHA, so
+## pale decor never lifts the fluid behind the cell or the strike lanes; the shader never draws a
+## quad brighter than its tint. Totals stay under the 2,000-particle budget.
+const MAX_LUMA_ALPHA := 0.12
 const LAYERS := {
+	"Foreground": {
+		"count": 40, "kinds": {Kind.SPECK: 0.7, Kind.BUBBLE: 0.3}, "size": Vector2(0.02, 0.06), "alpha": Vector2(0.05, 0.12),
+		"height": Vector2(0.6, 2.8), "drift": Vector3(0.05, 0.01, -0.03), "wobble": 0.2,
+		"tints": ["#B7C4E6", "#A9B6E0", "#D2B98A"],
+	},
 	"Specks": {
-		"count": 900, "kinds": {Kind.SPECK: 1.0}, "size": Vector2(0.025, 0.07), "alpha": Vector2(0.25, 0.6),
-		"height": Vector2(-24.0, 7.0), "drift": Vector3(0.05, 0.02, -0.03), "wobble": 0.3,
-		"tints": ["#DCEBFA", "#C9D6F2", "#F0E2C0"],
+		"count": 900, "kinds": {Kind.SPECK: 1.0}, "size": Vector2(0.03, 0.09), "alpha": Vector2(0.1, 0.28),
+		"height": Vector2(-30.0, -3.0), "drift": Vector3(0.05, 0.02, -0.03), "wobble": 0.3,
+		"tints": ["#96A8CC", "#A294CC", "#C2A47C"],
 	},
 	"Bubbles": {
-		"count": 140, "kinds": {Kind.BUBBLE: 1.0}, "size": Vector2(0.08, 0.32), "alpha": Vector2(0.55, 0.9),
-		"height": Vector2(-9.0, 7.0), "drift": Vector3(0.02, 0.18, -0.01), "wobble": 0.15,
-		"tints": ["#DDF0FF", "#DDF0FF", "#DDF0FF"],
+		"count": 120, "kinds": {Kind.BUBBLE: 1.0}, "size": Vector2(0.1, 0.34), "alpha": Vector2(0.14, 0.3),
+		"height": Vector2(-10.0, -3.0), "drift": Vector3(0.02, 0.18, -0.01), "wobble": 0.15,
+		"tints": ["#96A8CC", "#96A8CC", "#96A8CC"],
 	},
-	# Below the cell's belly (0.39 m) and above the floor cues, so they never look like food on
-	# the plane; fog takes them as they sink.
+	# Swarms in the midground. They part around the cell from below as it swims over them.
 	"Microbes": {
-		"count": 520, "kinds": {Kind.ROD: 0.6, Kind.SPIRILLUM: 0.2, Kind.SPORE: 0.2}, "size": Vector2(0.35, 0.6),
-		"alpha": Vector2(0.6, 0.95), "height": Vector2(-4.5, -0.7), "drift": Vector3(0.06, 0.0, 0.04), "wobble": 0.6,
-		"tints": ["#DCE6F2", "#B49BE0", "#E8B65A"], "clusters": 18, "scatter": 2.2,
+		"count": 480, "kinds": {Kind.ROD: 0.6, Kind.SPIRILLUM: 0.2, Kind.SPORE: 0.2}, "size": Vector2(0.4, 0.7),
+		"alpha": Vector2(0.22, 0.32), "height": Vector2(-7.0, -3.0), "drift": Vector3(0.06, 0.0, 0.04), "wobble": 0.6,
+		"tints": ["#8FA6C8", "#9A86D0", "#C09048"], "clusters": 18, "scatter": 2.6, "scatter_depth": 8.0,
 	},
 }
 
-## Huge organisms far below the plane, pre-blurred in their textures (no depth of field).
+## Huge organisms far below the plane, pre-blurred in their textures (no depth of field). Their
+## colour is scaled by BACKDROP_BRIGHTNESS so the brightest texel stays at or under linear
+## luminance 0.40, and their opacity keeps luminance times alpha under MAX_LUMA_ALPHA.
 const BACKDROP_COUNT := 10
-const BACKDROP_DEPTH := Vector2(-34.0, -14.0)
-const BACKDROP_SIZE := Vector2(9.0, 22.0)
+const BACKDROP_DEPTH := Vector2(-22.0, -12.0)
+const BACKDROP_SIZE := Vector2(10.0, 24.0)
 const BACKDROP_BOX := Vector2(90.0, 80.0)
+const BACKDROP_BRIGHTNESS := 0.38
+const BACKDROP_OPACITY := Vector2(0.2, 0.28)
 
 var _rng := RandomNumberGenerator.new()
 var _materials: Array[ShaderMaterial] = []
 var _backdrops: Array[MeshInstance3D] = []
 var _player: Node3D
+var _camera: Camera3D
 
 
 func _ready() -> void:
@@ -60,11 +75,15 @@ func _ready() -> void:
 	for layer_name: String in LAYERS:
 		add_child(_drift_layer(layer_name, LAYERS[layer_name]))
 	_build_backdrops()
-	_player = get_parent().get_node_or_null(^"PlayerCell") as Node3D if get_parent() != null else null
+	# The pool mounts this scene and exposes its camera and cell view (micro-world plan C6).
+	var pool := get_parent()
+	if pool != null:
+		_player = pool.get("cell_view") as Node3D
+		_camera = pool.get("camera") as Camera3D
 
 
 func _process(delta: float) -> void:
-	var camera := get_viewport().get_camera_3d()
+	var camera := _camera if _camera != null else get_viewport().get_camera_3d()
 	if camera == null:
 		return
 	var focus := _focus_of(camera)
@@ -132,6 +151,7 @@ func _drift_layer(layer_name: String, spec: Dictionary) -> MultiMeshInstance3D:
 	material.set_shader_parameter("drift", spec.drift)
 	material.set_shader_parameter("wobble", spec.wobble)
 	material.set_shader_parameter("scatter_radius", spec.get("scatter", 0.0))
+	material.set_shader_parameter("scatter_depth", spec.get("scatter_depth", 3.0))
 	var tints: Array = spec.tints
 	material.set_shader_parameter("tint_a", Color(tints[0]))
 	material.set_shader_parameter("tint_b", Color(tints[1]))
@@ -175,7 +195,8 @@ func _build_backdrops() -> void:
 		var material := ShaderMaterial.new()
 		material.shader = BACKDROP_SHADER
 		material.set_shader_parameter("image", textures[i % textures.size()])
-		material.set_shader_parameter("opacity", _rng.randf_range(0.35, 0.6))
+		material.set_shader_parameter("opacity", _rng.randf_range(BACKDROP_OPACITY.x, BACKDROP_OPACITY.y))
+		material.set_shader_parameter("brightness", BACKDROP_BRIGHTNESS)
 		var node := MeshInstance3D.new()
 		node.name = "Backdrop%d" % i
 		node.mesh = quad

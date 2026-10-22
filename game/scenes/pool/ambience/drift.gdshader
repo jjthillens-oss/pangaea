@@ -5,7 +5,8 @@ shader_type spatial;
 // quads fill the whole pool and the CPU never moves them. Shapes are drawn here, not textured.
 //
 // INSTANCE_CUSTOM: x phase (0..1), y size (m), z kind, w opacity.
-// Kinds: 0 speck, 1 bubble, 2 rod bacterium, 3 spirillum, 4 spore.
+// Kinds: 0 speck, 1 bubble, 2 rod bacterium, 3 spirillum, 4 spore. Every kind draws at or under its
+// tint's brightness, and engine fog stays on (blend_mix), so decor fades into the fluid.
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, skip_vertex_transform;
 
 uniform vec3 focus = vec3(0.0);          // the camera's focus on the swim plane (world)
@@ -78,15 +79,15 @@ void fragment() {
 		float rim = smoothstep(0.30 - edge, 0.42, r) * (1.0 - smoothstep(0.44, 0.5, r));
 		float spot = 1.0 - smoothstep(0.0, 0.07 + edge, length(q - vec2(-0.14, 0.15)));
 		a = max(rim * 0.85, spot) + 0.06 * (1.0 - smoothstep(0.4, 0.5, r));
-		col = mix(tint_a.rgb, vec3(1.0), spot);
+		col = tint_a.rgb;
 	} else if (v_kind < 2.5) {
-		// A rod bacterium: a plump capsule, lit from the top left, with a paler core and a darker rim.
+		// A rod bacterium: a plump capsule, lit from the top left, with a darker rim. Never brighter
+		// than its tint (pool_ambience.gd MAX_LUMA_ALPHA).
 		float d = capsule(q, 0.17, 0.17);
 		a = 1.0 - smoothstep(-edge, 0.01, d);
 		vec3 base = v_phase < 0.5 ? tint_b.rgb : tint_c.rgb;
 		float lit = clamp(0.5 + 2.2 * dot(q, vec2(-0.5, 0.6)), 0.0, 1.0);
-		col = base * mix(0.62, 1.05, lit);
-		col = mix(col, vec3(1.0), 0.35 * (1.0 - smoothstep(-0.14, -0.06, d)));
+		col = base * mix(0.6, 1.0, lit);
 		col *= mix(0.75, 1.0, smoothstep(-0.02, -0.06, d));
 	} else if (v_kind < 3.5) {
 		// A spirillum: a thin helix seen side on.
@@ -99,7 +100,7 @@ void fragment() {
 		float ang = atan(q.y, q.x);
 		float d = r - (0.2 + 0.07 * pow(abs(cos(ang * 5.0 + v_phase * 6.28)), 6.0));
 		a = 1.0 - smoothstep(-edge, 0.02, d);
-		col = mix(tint_c.rgb, vec3(1.0), 0.3 * (1.0 - smoothstep(0.0, 0.15, r)));
+		col = tint_c.rgb * mix(1.0, 0.8, smoothstep(0.0, 0.25, r));
 	}
 	ALBEDO = col;
 	ALPHA = clamp(a * v_alpha, 0.0, 1.0);

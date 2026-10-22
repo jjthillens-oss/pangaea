@@ -8,11 +8,13 @@ extends SceneTree
 ##   --at=x,y places the cell at that plane point and leaves it idle (no ForageBot).
 ##   --floor-y=Y moves the floor down to Y for micro-world look previews until the pool has its own
 ##   floor-depth setting (review only; the sim's floor cues stay where they are).
-##   --micro-look applies the micro-world mood frame's water values (DECISIONS, "The cell stage
-##   reads as a microscopic world") to the environment, as a preview of engineering's tuning.
+##   --micro-look applies engineering's proposed fluid values (micro-world plan C4: height fog, no
+##   distance fog, no sun shadows) as a preview until they land. Use it with --floor-y=-40.
+## The ambience scene is mounted here when the pool has not mounted it yet (plan C6 does that).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const AMBIENCE_SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
 
 
 func _initialize() -> void:
@@ -62,13 +64,21 @@ func _initialize() -> void:
 	if micro:
 		var world := main.pool.find_children("*", "WorldEnvironment", true, false)[0] as WorldEnvironment
 		var env := world.environment.duplicate() as Environment
-		env.background_color = Color("#1D4E8C")
+		env.background_color = Color("#0B2E6B")
 		env.ambient_light_color = Color("#2F6FB8")
-		env.fog_light_color = Color("#3A78B8")
-		env.fog_density = 0.006
-		env.fog_height = -0.5
-		env.fog_height_density = 0.12
+		env.ambient_light_energy = 0.8
+		env.fog_light_color = Color(0.0, 0.085, 0.20)
+		env.fog_sun_scatter = 0.05
+		env.fog_density = 0.0
+		env.fog_height = -1.0
+		env.fog_height_density = 0.09
 		world.environment = env
+		for sun: DirectionalLight3D in main.pool.find_children("*", "DirectionalLight3D", true, false):
+			sun.shadow_enabled = false
+	if main.pool.get_node_or_null(^"Ambience") == null and ResourceLoader.exists(AMBIENCE_SCENE):
+		var ambience := (load(AMBIENCE_SCENE) as PackedScene).instantiate()
+		ambience.name = "Ambience"
+		main.pool.add_child(ambience)
 	if zoom != 0:
 		main.pool.camera.zoom_by(zoom)
 	var frame := 0

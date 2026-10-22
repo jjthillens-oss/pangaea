@@ -32,20 +32,20 @@ SIZE = 512
 
 
 def ciliate(rng):
-    body = mm.soft("M_GiantCiliate", "#E2C3D6", 0.4, sss=0.5, emit="#EBCFDF", emit_strength=0.25)
-    hairs = mm.soft("M_GiantCiliaHair", "#F0DCE6", 0.5)
+    body = mm.soft("M_GiantCiliate", "#B8C0E8", 0.4, sss=0.5, emit="#C8D0F0", emit_strength=0.25)
+    hairs = mm.soft("M_GiantCiliaHair", "#D0D8F2", 0.5)
     objs = mm.giant_ciliate((0.0, 0.0, 0.0), 8.0, body, hairs, rng)
     for o in objs:
         o.rotation_euler = (0.0, 0.0, 0.5)
     # A dark gullet groove and a few food vacuoles inside, seen through the skin.
-    vac = mm.soft("M_Vacuole", "#C99AB8", 0.3)
+    vac = mm.soft("M_Vacuole", "#9AA6D8", 0.3)
     for i in range(7):
         mm.uv_sphere(f"Vacuole{i}", 0.18 + 0.12 * rng.random(), (rng.uniform(-0.6, 0.6), rng.uniform(-1.8, 1.8), 0.4), vac, 16, 8)
     return 9.0
 
 
 def colony(rng):
-    mat = mm.soft("M_Colony", "#E8D2A0", 0.4, sss=0.6, emit="#F0DDB0", emit_strength=0.15)
+    mat = mm.soft("M_Colony", "#E0B088", 0.4, sss=0.6, emit="#E8BC94", emit_strength=0.15)
     beads = []
     for i in range(30):
         a = i / 30 * math.tau

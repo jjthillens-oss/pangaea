@@ -5,10 +5,11 @@ shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
 
 uniform sampler2D image : source_color, filter_linear_mipmap, repeat_disable;
-uniform float opacity = 0.5;
+uniform float opacity = 0.25;
+uniform float brightness = 0.38;  // keeps the brightest texel at or under linear luminance 0.40
 
 void fragment() {
 	vec4 c = texture(image, UV);
-	ALBEDO = c.rgb;
+	ALBEDO = c.rgb * brightness;
 	ALPHA = c.a * opacity;
 }
