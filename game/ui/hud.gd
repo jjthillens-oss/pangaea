@@ -11,7 +11,9 @@ extends Control
 ##   bottom left:  the controls, from the key bindings, until the first meal or for 30 s
 ##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
-## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input.
+## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
+## panel has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
+## messages never run under the side panels, whatever the body, lineage or message.
 
 const LABEL_REFRESH_S := 0.1
 const HUNGRY_SHARE := 0.25          ## below this share of capacity the chip says "Hungry"
@@ -28,7 +30,15 @@ const BANNER_PULSE_HZ := 1.0
 ## the words never fade.
 const BANNER_PULSE_GLOW := Color(1.45, 1.25, 1.15)
 const BANNER_PULSE_GROW := 0.18
-const STARVING_TEXT := "Starving: you are slow and losing health. Find food."
+const STARVING_TEXT := "Starving: you are slow and losing health.\nFind food."
+## The widest the starving banner and a message may be, panel included: centered, this leaves a
+## gap to the status panel (x 32..512 at the 1920 x 1080 base) and the points panel.
+const CENTER_MAX_W := 840.0
+## Step when narrowing a wrapped message so its lines come out about even.
+const WRAP_STEP_PX := 8.0
+## How a Label with AUTOWRAP_WORD_SMART breaks lines, with its default trim flags.
+const WRAP_FLAGS := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE \
+	| TextServer.BREAK_TRIM_START_EDGE_SPACES | TextServer.BREAK_TRIM_END_EDGE_SPACES
 const CHIP_STYLES := {"Fed": &"ChipFed", "Hungry": &"ChipHungry", "Starving": &"ChipStarving"}
 const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": KEY_DOWN, &"move_right": KEY_RIGHT}
 
@@ -72,6 +82,7 @@ func _ready() -> void:
 	for node in find_children("*", "Control", true, false):
 		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner_text.text = STARVING_TEXT
+	_fit_center(banner_text, starving_banner)
 	_warning_icon.pivot_offset = _warning_icon.custom_minimum_size * 0.5
 	starving_banner.visible = false
 	message.visible = false
@@ -113,8 +124,9 @@ func refresh() -> void:
 
 ## A short message at the top of the screen, such as "Your cell rested".
 func show_message(text: String, seconds: float = MESSAGE_S) -> void:
-	message_text.text = text
 	message.visible = true
+	message_text.text = text
+	_fit_center(message_text, message)
 	message.modulate.a = 1.0
 	_message_t = seconds
 
@@ -212,6 +224,39 @@ static func first_meal_line(p: Phenotype) -> String:
 	return "This body has no mouth that can eat."
 
 
+## The width a wrapping label needs for `text`: its own width when that is at most `max_w`, else
+## the narrowest width that wraps into as few lines as `max_w` does with every break at a space,
+## so a path is not split and the last line is more than one word when the words allow it.
+static func wrap_width(text: String, font: Font, font_size: int, max_w: float) -> float:
+	var para := TextParagraph.new()
+	para.break_flags = WRAP_FLAGS
+	para.add_string(text, font, font_size)
+	var natural := para.get_size().x
+	if natural < max_w:
+		return minf(ceilf(natural) + 1.0, max_w)
+	para.width = max_w
+	var lines := para.get_line_count()
+	var best := max_w
+	var w := max_w - WRAP_STEP_PX
+	while w > WRAP_STEP_PX:
+		para.width = w
+		if para.get_line_count() > lines:
+			break
+		if breaks_at_spaces(para, text):
+			best = w
+		w -= WRAP_STEP_PX
+	return best
+
+
+## True when every line of `para` (shaped from `text`) ends at a space or a line break.
+static func breaks_at_spaces(para: TextParagraph, text: String) -> bool:
+	for i in para.get_line_count() - 1:
+		var end := para.get_line_range(i).y
+		if not ((end > 0 and text[end - 1] in " \n") or (end < text.length() and text[end] in " \n")):
+			return false
+	return true
+
+
 static func _shown(value: float) -> int:
 	var shown := roundi(value)
 	return 1 if shown == 0 and value > 0.0 else shown
@@ -304,6 +349,14 @@ func _fade(panel: Control, t: float, delta: float, fade_s: float) -> float:
 	if t <= 0.0:
 		panel.visible = false
 	return t
+
+
+## Sizes a top-center label so its panel is at most CENTER_MAX_W wide; longer text wraps.
+func _fit_center(label: Label, panel: Control) -> void:
+	label.custom_minimum_size.x = 0.0
+	var chrome := panel.get_combined_minimum_size().x - label.get_combined_minimum_size().x
+	label.custom_minimum_size.x = wrap_width(label.text, label.get_theme_font(&"font"),
+		label.get_theme_font_size(&"font_size"), CENTER_MAX_W - chrome)
 
 
 func _set_text(label: Label, text: String) -> void:
