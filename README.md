@@ -39,7 +39,7 @@ Launch flags go after `--`: `--seed=N`, `--slot=PATH` and, in the dev exe, `--pe
 | `assets/source/blender/` | Blender sources of record |
 | `assets/export/` | GLB exports loaded by Godot |
 | `assets/records/` | One record per asset: dimensions, triangles, sockets, provenance. `placeholders/inventory.json` lists the allowed placeholders |
-| `tests/` | `run_tests.gd` plus test suites; `smoke/play_smoke.gd` is the two-process scene smoke |
+| `tests/` | `run_tests.gd` plus test suites; `smoke/play_smoke.gd` is the two-process scene smoke and `smoke/ui_smoke.gd` checks the HUD layout and the replace-lineage confirm |
 | `tools/` | Toolchain setup, checks, export, Blender scripts |
 | `docs/` | Bible, toolchain, decisions, milestone handoffs |
 | `prototypes/web-cell/` | The first HTML prototype, kept as a tuning sandbox |
