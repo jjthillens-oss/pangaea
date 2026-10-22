@@ -95,6 +95,36 @@ layout_mode = 2
 theme_type_variation = &"DebugButton"
 text = "Copy seed, build, genome, position"
 
+[node name="SpawnThreat" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Threat 6 m ahead (F9)"
+
+[node name="KillNearest" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Kill nearest creature (F10)"
+
+[node name="FreezeAI" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Freeze AI: off"
+
+[node name="HideFromAI" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Hide from AI: off"
+
+[node name="HurtSelf" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Hurt the cell 10"
+
 [node name="IdentityTitle" type="Label" parent="Root/Panel/Scroll/Box"]
 layout_mode = 2
 theme_type_variation = &"DebugHeader"
@@ -137,6 +167,18 @@ theme_type_variation = &"DebugHeader"
 text = "Actor"
 
 [node name="Actor" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="AITitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "AI (creatures, niches, the cell)"
+
+[node name="AI" type="Label" parent="Root/Panel/Scroll/Box"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(560, 0)
 layout_mode = 2

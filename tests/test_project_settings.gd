@@ -47,6 +47,8 @@ const KEY_ACTIONS := {
 	"dev_drain": [KEY_F6],
 	"dev_empty_zone": [KEY_F7],
 	"dev_spawn_carrion": [KEY_F8],
+	"dev_spawn_threat": [KEY_F9],
+	"dev_kill_nearest": [KEY_F10],
 }
 const MOUSE_ACTIONS := {
 	"swim_to_cursor": MOUSE_BUTTON_LEFT,

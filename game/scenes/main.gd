@@ -355,7 +355,7 @@ func _quit() -> void:
 	get_tree().quit()
 
 
-## Debug builds only: the debug panel (F3), dev gizmos and the dev keys (F5 to F8).
+## Debug builds only: the debug panel (F3), dev gizmos and the dev keys (F5 to F10).
 func _add_dev_layer() -> void:
 	if not OS.is_debug_build() or not ResourceLoader.exists(DEV_PANEL_PATH):
 		return
