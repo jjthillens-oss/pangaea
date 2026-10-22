@@ -457,6 +457,18 @@ func test_swimming_settling_and_sight_come_out_the_same_to_the_bit_with_the_rock
 			in_band += 1
 	check(touching > 200 and resting > 1000 and in_band > 100, "the swim touched rocks on %d ticks, rested on %d, was in the soft band on %d" % [
 		touching, resting, in_band])
+	# A body at rest that something left inside a rock (the leash clamp does not settle): its next
+	# move still pushes it out, with the grid as without it.
+	for rock in grid.rocks:
+		var inside: Vector2 = rock.center + Vector2.from_angle(0.7) * (rock.radius + BODY_R - 0.2)
+		var still_a := Locomotion.MotionState.new(inside)
+		var still_b := Locomotion.MotionState.new(inside)
+		grid.move(still_a, BODY_R, DT)
+		plain.move(still_b, BODY_R, DT)
+		if still_a.position != still_b.position or still_a.position.distance_to(rock.center) < rock.radius + BODY_R - 1e-3:
+			check(false, "a resting body inside %s ended %.4f m from its surface at %s with the grid, at %s without" % [
+				rock.id, still_a.position.distance_to(rock.center) - rock.radius - BODY_R, still_a.position, still_b.position])
+			return
 	# Lines of sight, which skip the rocks outside a segment's box.
 	var blocked := 0
 	for i in 20000:
