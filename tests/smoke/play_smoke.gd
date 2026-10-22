@@ -8,11 +8,12 @@ extends SceneTree
 ##
 ##   -- --phase=found --slot=user://smoke/slot_1.json --seed=4242
 ##       Clears user://smoke/ and opens the start screen. A grazer lineage eats, starves and
-##       recovers, dies and continues, then saves and quits to the title, and expect.json records
-##       what Continue must bring back. Hunter and omnivore lineages on their own slots eat too.
+##       recovers, dies and continues, pauses and resumes, then saves and quits to the title, and
+##       expect.json records what Continue must bring back. Hunter and omnivore lineages on their
+##       own slots eat too.
 ##   -- --phase=continue --slot=user://smoke/slot_1.json
 ##       A new process: Continue must bring back the lineage, body, parts, points and place in
-##       user://smoke/expect.json.
+##       user://smoke/expect.json, and the run must play.
 ##
 ## Nodes are awaited into the tree before use. Saves stay under user://smoke/: the smoke stops
 ## before playing if --slot points anywhere else.
@@ -28,6 +29,7 @@ const VIEW_SIZE := Vector2(1920, 1080)
 const CENTRAL_SHARE := 0.4          ## the cell stays inside the central 40% of the view
 const PITCH_DEG := 55.0
 const HUD_LAG_FRAMES := 8           ## HUD labels refresh at 10 Hz (6 frames), plus slack
+const RUN_FRAMES := 10              ## frames watched to see the sim stand still or run
 const BAR_STEP := 0.01              ## the HUD bars round their value to this step
 ## Points before the death, so the death rule's quarter of them takes at least 1.
 const POINTS_BEFORE_DEATH := 4
@@ -287,7 +289,7 @@ func _starve_and_recover(pool: PoolScene) -> void:
 
 
 ## A drained cell parked away from food dies; the notice names the points the death takes and
-## its Continue puts the cell back at the start.
+## its Continue puts the cell back at the start, and play goes on.
 func _die_and_continue(pool: PoolScene) -> void:
 	var sim := pool.sim
 	var bot := main.intent_provider as ForageBot
@@ -319,18 +321,29 @@ func _die_and_continue(pool: PoolScene) -> void:
 	_check(sim.motion.position.distance_to(sim.layout.spawn) <= POSITION_TOLERANCE_M and sim.state.health == sim.state.max_health,
 		"the cell is back at the start with full health")
 	bot.park_at = Vector2.INF
-	await _frames(30)
-	_check(not pool.paused, "play goes on after the death")
+	await _check_running(pool, "play goes on after the death", 30)
 
 
-## The pause key opens the pause menu; Quit asks first because of the unsaved progress; Save and quit to
-## title saves and shows the title with Continue. Returns what expect.json records ({} on failure).
+## The pause key opens the pause menu and the sim stands still; the pause key and Resume each
+## close it and the sim runs again. Quit asks first because of the unsaved progress; Save and
+## quit to title saves and shows the title with Continue. Returns what expect.json records ({} on
+## failure).
 func _save_and_quit_to_title(pool: PoolScene) -> Dictionary:
 	var sim := pool.sim
 	await _press(&"pause")
 	var menu := main.pause_menu
 	_check(menu.is_open() and pool.paused, "the pause key opens the pause menu and pauses the pool")
 	_check(_focus() == menu.resume_button, "Resume has the keyboard focus")
+	var still := await _ticks_in(sim, RUN_FRAMES)
+	_check(still == 0, "the sim stands still under the pause menu (%d ticks in %d frames)" % [still, RUN_FRAMES])
+	await _press(&"pause")
+	await _check_running(pool, "the pause key closes the pause menu and the sim runs again")
+	await _press(&"pause")
+	if not _click(menu.resume_button, "Resume"):
+		main.resume()
+	await _check_running(pool, "Resume closes the pause menu and the sim runs again")
+	await _press(&"pause")
+	_check(_shown(menu) and pool.paused and _focus() == menu.resume_button, "the pause key opens the pause menu again, with Resume focused")
 	_check(menu.footer_text() == "Seed %d · build %s" % [sim.save.world_seed, BuildInfo.build_id()], "the footer reads '%s'" % menu.footer_text())
 	_check(not menu.save_button.disabled and not menu.save_quit_button.disabled, "a living cell can save from the pause menu")
 	if main.session.dirty:
@@ -462,8 +475,10 @@ func _continue() -> void:
 	_check_cell_view(pool)
 	_check(main.hud.message.visible and main.hud.message_text.text.begins_with("Your cell rested"),
 		"the HUD says the cell rested: %s" % main.hud.message_text.text)
-	await _frames(60)
+	await _check_running(pool, "the continued run plays", 60)
 	_check_view_record("the continued run")
+	await _press(&"pause")
+	_check(_shown(main.pause_menu) and pool.paused, "the pause key reaches the continued run and opens the pause menu")
 	_end()
 
 
@@ -558,6 +573,19 @@ func _ticks_until(sim: PoolSim, done: Callable, max_ticks: int) -> int:
 func _frames(count: int) -> void:
 	for i in count:
 		await process_frame
+
+
+## The sim ticks run in `count` frames.
+func _ticks_in(sim: PoolSim, count: int) -> int:
+	var from := sim.tick
+	await _frames(count)
+	return sim.tick - from
+
+
+## The pause menu is closed, the pool is not paused and every frame runs one sim tick.
+func _check_running(pool: PoolScene, what: String, count: int = RUN_FRAMES) -> void:
+	var ticks := await _ticks_in(pool.sim, count)
+	_check(not main.pause_menu.is_open() and not pool.paused and ticks == count, "%s (%d ticks in %d frames)" % [what, ticks, count])
 
 
 ## Clicks `button` with the mouse at its centre, through the viewport's GUI input, as a player does.
