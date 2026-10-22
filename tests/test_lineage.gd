@@ -96,6 +96,14 @@ func test_death_costs_a_quarter_of_unspent_points_and_is_recorded() -> void:
 	check_eq(Lineage.apply_death(save, "starved"), 0, "rounds down: small totals are spared")
 
 
+func test_the_death_preview_names_the_points_apply_death_takes() -> void:
+	for points in [0, 1, 3, 4, 7, 40, 41, 1001]:
+		save.adaptation_points = points
+		var shown := Lineage.death_loss(points)
+		check_eq(Lineage.apply_death(save, "starved"), shown, "with %d points" % points)
+		check_eq(save.adaptation_points, points - shown, "what is left with %d points" % points)
+
+
 func test_each_starting_body_founds_a_valid_lineage() -> void:
 	check_eq(catalog.starting_bodies.keys(), ["grazer", "hunter", "omnivore"], "the three approved bodies")
 	var diets := {"grazer": ["plant"], "hunter": ["meat"], "omnivore": ["plant", "meat"]}

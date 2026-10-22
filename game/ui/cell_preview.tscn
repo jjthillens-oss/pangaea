@@ -1,0 +1,45 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://game/ui/cell_preview.gd" id="1_preview"]
+[ext_resource type="PackedScene" path="res://game/scenes/pool/player_cell_view.tscn" id="2_cell"]
+
+[sub_resource type="Environment" id="Environment_preview"]
+background_mode = 1
+background_color = Color(0, 0, 0, 0)
+ambient_light_source = 2
+ambient_light_color = Color(0.55, 0.75, 0.8, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[node name="CellPreview" type="SubViewportContainer"]
+custom_minimum_size = Vector2(380, 380)
+stretch = true
+mouse_filter = 2
+script = ExtResource("1_preview")
+
+[node name="Viewport" type="SubViewport" parent="."]
+own_world_3d = true
+transparent_bg = true
+handle_input_locally = false
+msaa_3d = 2
+size = Vector2i(380, 380)
+render_target_update_mode = 4
+
+[node name="Environment" type="WorldEnvironment" parent="Viewport"]
+environment = SubResource("Environment_preview")
+
+[node name="Key" type="DirectionalLight3D" parent="Viewport"]
+rotation_degrees = Vector3(-50, 35, 0)
+light_color = Color(1, 0.97, 0.9, 1)
+light_energy = 0.9
+
+[node name="Camera" type="Camera3D" parent="Viewport"]
+unique_name_in_owner = true
+current = true
+fov = 30.0
+
+[node name="Turntable" type="Node3D" parent="Viewport"]
+unique_name_in_owner = true
+
+[node name="Cell" parent="Viewport/Turntable" instance=ExtResource("2_cell")]
+unique_name_in_owner = true

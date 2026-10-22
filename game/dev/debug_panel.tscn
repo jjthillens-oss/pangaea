@@ -1,0 +1,187 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://game/dev/debug_panel.gd" id="1_panel"]
+[ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+
+[node name="DebugPanel" type="CanvasLayer"]
+layer = 20
+script = ExtResource("1_panel")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+
+[node name="Panel" type="PanelContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -620.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_type_variation = &"DebugPanel"
+
+[node name="Scroll" type="ScrollContainer" parent="Root/Panel"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Box" type="VBoxContainer" parent="Root/Panel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Debug panel · F3 hides · dev build only"
+
+[node name="Commands" type="HFlowContainer" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+
+[node name="Fill" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Fill energy (F5)"
+
+[node name="Drain" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Drain energy (F6)"
+
+[node name="EmptyZone" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Empty nearest zone (F7)"
+
+[node name="SpawnCarrion" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Carrion 4 m ahead (F8)"
+
+[node name="Teleport" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Teleport to spawn"
+
+[node name="Gizmos" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Gizmos on/off"
+
+[node name="VSync" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "VSync on/off"
+
+[node name="Copy" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Copy seed, build, genome, position"
+
+[node name="IdentityTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Identity"
+
+[node name="Identity" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="SimTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Simulation"
+
+[node name="Sim" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="RenderTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Rendering and performance"
+
+[node name="Render" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="ActorTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Actor"
+
+[node name="Actor" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="StatsTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Derived stats (Phenotype)"
+
+[node name="Stats" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="FeedingTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Feeding (last 6 resolver results)"
+
+[node name="Feeding" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3
+
+[node name="EcologyTitle" type="Label" parent="Root/Panel/Scroll/Box"]
+layout_mode = 2
+theme_type_variation = &"DebugHeader"
+text = "Ecology"
+
+[node name="Zones" type="GridContainer" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 4
+columns = 3
+
+[node name="Carrion" type="Label" parent="Root/Panel/Scroll/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(560, 0)
+layout_mode = 2
+theme_type_variation = &"DebugLabel"
+autowrap_mode = 3

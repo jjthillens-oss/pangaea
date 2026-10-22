@@ -110,9 +110,15 @@ static func earn(save: SaveGame, points: int) -> int:
 	return points
 
 
+## The points a death would cost with `points` unspent: DEATH_POINT_LOSS of them, rounded down.
+## The death notice shows it before apply_death takes it.
+static func death_loss(points: int) -> int:
+	return floori(points * DEATH_POINT_LOSS)
+
+
 ## Applies the death rule and records it. Returns the points lost.
 static func apply_death(save: SaveGame, cause: String) -> int:
-	var lost := floori(save.adaptation_points * DEATH_POINT_LOSS)
+	var lost := death_loss(save.adaptation_points)
 	save.adaptation_points -= lost
 	save.lineage_history.append({
 		"generation": save.genome.generation,

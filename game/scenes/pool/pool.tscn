@@ -1,0 +1,108 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://game/scenes/pool/pool.gd" id="1_pool"]
+[ext_resource type="Environment" path="res://game/scenes/pool/pool_environment.tres" id="2_env"]
+[ext_resource type="PackedScene" path="res://assets/export/pool_floor.glb" id="3_floor"]
+[ext_resource type="Script" path="res://game/scenes/pool/rock_field.gd" id="4_rocks"]
+[ext_resource type="Script" path="res://game/scenes/pool/food_view.gd" id="5_food"]
+[ext_resource type="PackedScene" path="res://assets/export/plankton.glb" id="6_plankton"]
+[ext_resource type="PackedScene" path="res://assets/export/carrion.glb" id="7_carrion"]
+[ext_resource type="PackedScene" path="res://game/scenes/pool/player_cell_view.tscn" id="8_cell"]
+[ext_resource type="Script" path="res://game/scenes/pool/feedback_fx.gd" id="9_feedback"]
+[ext_resource type="Script" path="res://game/scenes/pool/pool_camera.gd" id="10_camera"]
+[ext_resource type="Script" path="res://game/scenes/pool/swim_input.gd" id="11_input"]
+[ext_resource type="Script" path="res://game/scenes/audio/placeholder_audio.gd" id="12_audio"]
+[ext_resource type="Script" path="res://game/scenes/pool/target_ring.gd" id="13_ring"]
+[ext_resource type="Script" path="res://game/scenes/pool/starving_arrow.gd" id="14_arrow"]
+
+[node name="Pool" type="Node3D"]
+script = ExtResource("1_pool")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("2_env")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.8660254, -0.43301272, 0.24999999, 0, 0.49999997, 0.86602545, -0.5, -0.75, 0.43301266, 0, 20, 0)
+light_color = Color(1, 0.97, 0.9, 1)
+light_energy = 0.5
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 40.0
+
+[node name="Floor" parent="." instance=ExtResource("3_floor")]
+unique_name_in_owner = true
+
+[node name="Rocks" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4_rocks")
+
+[node name="Plankton" type="MultiMeshInstance3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("5_food")
+source = ExtResource("6_plankton")
+
+[node name="Carrion" type="MultiMeshInstance3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("5_food")
+kind = "meat"
+source = ExtResource("7_carrion")
+
+[node name="PlayerCell" parent="." instance=ExtResource("8_cell")]
+unique_name_in_owner = true
+
+[node name="Feedback" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("9_feedback")
+
+[node name="Camera" type="Camera3D" parent="."]
+unique_name_in_owner = true
+current = true
+fov = 45.0
+near = 0.1
+far = 200.0
+script = ExtResource("10_camera")
+
+[node name="SwimInput" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("11_input")
+
+[node name="Audio" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("12_audio")
+
+[node name="UI" type="CanvasLayer" parent="."]
+unique_name_in_owner = true
+layer = 10
+
+[node name="TargetRing" type="Control" parent="UI"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("13_ring")
+
+[node name="StarvingArrow" type="Control" parent="UI"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("14_arrow")
+
+[node name="Fade" type="ColorRect" parent="UI"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.043, 0.2, 0.22, 1)

@@ -23,6 +23,9 @@ static func clear() -> void:
 
 
 static func sweep_stale() -> void:
+	# A fresh user folder (every CI run) has none yet; listing it would log an engine error.
+	if not DirAccess.dir_exists_absolute(ROOT):
+		return
 	for sub in DirAccess.get_directories_at(ROOT):
 		if sub.is_valid_int() and int(sub) != OS.get_process_id() and not OS.is_process_running(int(sub)):
 			_remove(ROOT + "/" + sub)
