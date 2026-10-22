@@ -21,7 +21,7 @@ import lookdev as ld  # noqa: E402
 
 OUT = os.path.join(ld.RENDER_DIR, "production")
 IDS = ["part_flagellum", "part_eye_spot", "part_mouth_filter", "part_mouth_jaw", "plankton", "carrion",
-       "rock_a", "rock_b", "rock_c"]
+       "rock_a", "rock_b", "rock_c", "sample_cell"]
 
 
 def bounds():
