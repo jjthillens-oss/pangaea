@@ -247,3 +247,39 @@ func test_wrong_typed_lists_do_not_load_as_empty_and_the_backup_survives_the_nex
 		check_eq(result.save.discoveries.size(), 1, "discoveries come back from the backup")
 		check_eq(service.save_to(PATH, result.save), OK, "re-save")
 		check_eq(FileAccess.get_file_as_string(PATH + ".bak"), backup_text, "the good backup was not replaced by the damaged file")
+
+
+func test_a_world_seed_a_save_file_cannot_hold_exactly_is_refused() -> void:
+	var save := _new_save()
+	service.save_to(PATH, save)
+	var before := FileAccess.get_file_as_string(PATH)
+	# 2^53 + 1 would be read back as 2^53: Continue would run a different world.
+	save.world_seed = 9007199254740993
+	check_has_error(save.validate(catalog), "World seed")
+	check_eq(service.save_to(PATH, save), ERR_INVALID_DATA, "refused")
+	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
+	save.world_seed = 9007199254740992
+	check_eq(service.save_to(PATH, save), OK, "2^53 is held exactly")
+
+
+func test_a_save_that_would_not_load_back_is_refused_rather_than_reported_as_written() -> void:
+	var save := _new_save()
+	service.save_to(PATH, save)
+	var before := FileAccess.get_file_as_string(PATH)
+	# Valid in memory, but the file rounds the next part number (2^53 + 1) down onto the newest
+	# part's number, which then fails to load. Any number the file cannot hold exactly would do.
+	save.genome.next_part_number = 9007199254740992
+	save.genome.add_part("cilia", 1.0)
+	check(save.validate(catalog).is_empty(), "valid in memory: %s" % [save.validate(catalog)])
+	check(service.save_to(PATH, save) != OK, "refused")
+	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
+	check(not FileAccess.file_exists(PATH + ".tmp"), "no temp file left")
+
+
+func test_a_save_that_cannot_be_moved_into_place_leaves_no_temp_file() -> void:
+	# The slot path is a folder, so the final rename fails.
+	var folder := DIR + "/folder.json"
+	DirAccess.make_dir_recursive_absolute(folder)
+	check(service.save_to(folder, _new_save()) != OK, "refused")
+	check(not FileAccess.file_exists(folder + ".tmp"), "no temp file left")
+	DirAccess.remove_absolute(folder)
