@@ -110,3 +110,30 @@ func test_the_perf_tour_reports_the_average_and_the_slowest_one_percent() -> voi
 	check_near(report.low_1pct_fps, 1000.0 / 30.0, 1e-3, "1% low over the two slowest frames")
 	check_near(report.max_frame_ms, 40.0, 1e-6, "longest frame")
 	check_eq(tour.summarize(PackedFloat32Array()).frames, 0, "no frames")
+
+
+func test_the_perf_tour_times_frames_by_the_wall_clock_so_a_long_stall_counts_in_full() -> void:
+	var script: GDScript = load(PERF_TOUR)
+	var tour: Node = script.new()
+	var now := 7_000_000
+	check(not tour.sample(now), "the first sample starts the warm-up")
+	now += int(script.WARM_UP_S * 1e6) - 1
+	tour.sample(now)
+	check_eq(tour.frame_ms.size(), 0, "nothing is measured during the warm-up")
+	now += 1
+	tour.sample(now)
+	for gap_ms in [16, 400, 17]:
+		now += gap_ms * 1000
+		tour.sample(now)
+	check_eq(tour.frame_ms, PackedFloat32Array([16.0, 400.0, 17.0]), "each frame is the wall time since the one before")
+	check_near(script.summarize(tour.frame_ms).max_frame_ms, 400.0, 1e-6, "the longest frame is the whole 400 ms stall")
+	var done := false
+	while not done and tour.frame_ms.size() < 10000:
+		now += 100_000
+		done = tour.sample(now)
+	var measured_ms := 0.0
+	for ms in tour.frame_ms:
+		measured_ms += ms
+	check(done and measured_ms >= script.DURATION_S * 1000.0 and measured_ms < script.DURATION_S * 1000.0 + 100.0,
+		"the tour ends once %.0f s of wall time are measured (%.3f s)" % [script.DURATION_S, measured_ms / 1000.0])
+	tour.free()
