@@ -22,7 +22,7 @@ Pinned in `tools/toolchain.env`. Inspected and verified on 2026-10-22.
 
 ## What `tools/check.sh` runs
 
-In this order; any failure stops it. It takes about 4.5 minutes in the Linux container, about 4 of them in the unit suite (its three slow gates about 2). Every Godot run has a time limit (the import and the release pack's export 600 s, the unit suite 900 s, every other run 300 s), so a hang fails the check with exit code 124 instead of running until CI cancels the job. The test runner prints each test's name as it starts and `ok` or `FAIL` as it ends, so a stopped suite still shows the results so far and names the test that hung; the failures are listed again above the totals.
+In this order; any failure stops it. It takes about 4.5 minutes in the Linux container, about 4 of them in the unit suite (its three slow gates about 2). Every Godot run has a time limit (the import and the release pack's export 600 s, the unit suite 900 s, every other run 300 s), so a hang fails the check with exit code 124 instead of running until CI cancels the job. The limits come from `tools/bounded.sh`, which keeps each run in the script's process group, so Ctrl-C stops the check at once and no Godot outlives it; `tools/test_bounded.sh` checks that before the import (about 12 s). The test runner prints each test's name as it starts and `ok` or `FAIL` as it ends, so a stopped suite still shows the results so far and names the test that hung; the failures are listed again above the totals.
 
 1. `--import`.
 2. `tests/run_tests.gd`: the whole test suite, slow gates included.

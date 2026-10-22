@@ -17,22 +17,7 @@ cd "$(dirname "$0")/.."
 source tools/toolchain.env
 GODOT="${1:-${GODOT:-.toolchain/Godot_v${GODOT_RELEASE}_linux.x86_64}}"
 
-# bounded SECONDS COMMAND...: as in tools/check.sh, COMMAND stopped after SECONDS (killed 10 s
-# later if it ignores the stop), or with no limit where coreutils' timeout is missing.
-bounded() {
-  local limit="$1"
-  shift
-  if ! command -v timeout > /dev/null; then
-    "$@"
-    return
-  fi
-  local status=0
-  timeout --kill-after=10 "$limit" "$@" || status=$?
-  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-    echo "Stopped after its ${limit} s limit: $*"
-  fi
-  return "$status"
-}
+source tools/bounded.sh
 
 case "$GODOT" in */*) GODOT="$(realpath "$GODOT")" ;; esac
 LOGS="$PWD/builds/release"
