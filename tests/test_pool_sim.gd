@@ -18,6 +18,7 @@ const LATE_RUN_SEEDS := [101, 102, 103, 104]
 const LATE_RUN_POINTS := 2
 const LATE_RUN_POINT_SPACING_M := 10.0
 const LATE_RUN_MISSES_ALLOWED := 1
+const APPROACH_M := 4.0       ## a cell swimming at food starts this far away
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -160,6 +161,41 @@ func test_a_diet_refusal_changes_nothing() -> void:
 	check_eq(sim.save.adaptation_points, twin.save.adaptation_points, "points")
 	check(sim.actor.cooldowns.is_empty(), "no cooldown")
 	check_eq(sim.stats.energy_supplied, 0.0, "nothing supplied")
+
+
+## The diet refusal is reported from beyond touch range too (diet comes before reach), and that
+## early report must not hold back the one that comes when the cell touches the food: diet hints
+## show only while touching, so a short brush past would otherwise go unexplained. Swimming on
+## and away is not news, so the usual REFUSAL_REPEAT_S spacing holds from that touch on.
+func test_a_hunter_swimming_through_plankton_is_refused_while_touching_from_the_first_touch() -> void:
+	var sim := _sim("hunter", 21)
+	var food := _lonely_plant(sim, "z_n")
+	check(not food.is_empty() and _beside(sim, food, 0.0, APPROACH_M), "hunter placed %.0f m from plankton, facing it" % APPROACH_M)
+	var touch := sim.phenotype.radius + float(food.radius) + PoolSim.TOUCH_MARGIN
+	var reports := []   # [sim time, touching then, event] for this food
+	var first_touch_at := -1.0
+	var left_at := -1.0
+	for i in 2 * roundi(APPROACH_M / sim.phenotype.speed / DT) + 60:
+		sim.step(SimIntent.new(Vector2.RIGHT))   # straight through it, at full throttle
+		var at := (sim.tick - 1) * DT
+		var touching := sim.motion.position.distance_to(_item(sim, food.id).position) <= touch
+		if touching and first_touch_at < 0.0:
+			first_touch_at = at
+		elif not touching and first_touch_at >= 0.0 and left_at < 0.0:
+			left_at = at
+		for e in _events_of(sim.drain_events(), "refused"):
+			if e.food_id == food.id:
+				reports.append([at, touching, e])
+	check(first_touch_at >= 0.0 and left_at > first_touch_at, "it swam into the plankton and out again")
+	var diet := func(r: Array) -> bool: return r[2].reason == "needs a filter mouth" and r[2].touching == r[1]
+	check(not reports.is_empty() and reports.all(diet), "every report is the diet refusal, touching as measured: %s" % [reports])
+	check(reports.any(func(r: Array) -> bool: return r[0] < first_touch_at), "it was refused before touching it")
+	check(reports.any(func(r: Array) -> bool: return r[0] == first_touch_at and r[2].touching),
+		"and again on the first tick it touched it (%.3f s): %s" % [first_touch_at, reports])
+	var since_touch := reports.filter(func(r: Array) -> bool: return r[0] >= first_touch_at)
+	for k in range(1, since_touch.size()):
+		var gap: float = since_touch[k][0] - since_touch[k - 1][0]
+		check(gap >= PoolSim.REFUSAL_REPEAT_S - 1e-6, "reported again after %.2f s, left it after %.2f s" % [gap, left_at - first_touch_at])
 
 
 func test_a_zone_eaten_empty_regrows_while_the_cell_waits_nearby() -> void:
