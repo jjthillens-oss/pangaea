@@ -546,6 +546,51 @@ func test_a_hit_flashes_and_flinches_the_cell_and_shelter_rims_it_softly() -> vo
 	view.free()
 
 
+func test_the_footprint_contains_every_floor_point_the_pool_camera_shows() -> void:
+	var layout := PoolLayout.load_from()
+	var camera := PoolCamera.new()
+	camera.configure(layout.camera)
+	var target := Vector2(3.0, 9.0)
+	var size := Vector2(1920.0, 1080.0)
+	var screen := Rect2(Vector2.ZERO, size)
+	for zoom in [14.0, 20.0]:
+		camera.distance = zoom
+		camera.snap_to(PlaneSpace.to_world(target))
+		var shown := 0
+		var missed := PackedStringArray()
+		for i in 20:
+			for j in 10:
+				var p := target + Vector2(-36.0 + 72.0 * i / 19.0, -22.0 + 34.0 * j / 9.0)
+				var px := _unproject(camera, PlaneSpace.to_world(p), size)
+				if px.x != px.x or not screen.has_point(px):   # NaN: behind the camera
+					continue
+				shown += 1
+				if not ViewFootprint.contains(target, p, layout.camera, zoom, size.aspect(), 0.01):
+					missed.append(str(p))
+		check(shown > 20 and shown < 180, "zoom %d: the sample has points on and off the screen (%d on)" % [zoom, shown])
+		check(missed.is_empty(), "zoom %d: shown but outside the footprint: %s" % [zoom, missed])
+		var quad := ViewFootprint.corners(target, layout.camera, zoom, size.aspect())
+		var center := (quad[0] + quad[1] + quad[2] + quad[3]) / 4.0
+		var corners_shown := true
+		for q in quad:
+			corners_shown = corners_shown and screen.grow(1.0).has_point(_unproject(camera, PlaneSpace.to_world(q.lerp(center, 0.01)), size))
+		check(corners_shown, "zoom %d: the footprint's corners are the screen's" % zoom)
+	camera.free()
+
+
+## Camera3D.unproject_position for a camera outside the scene tree (the test runner has no live
+## viewport): the projection Camera3D builds for its keep-height fov, from the PoolCamera node's own
+## fov, clip planes and transform. A live 1920x1080 SubViewport agreed with it within 0.001 px at
+## zooms 14 and 20. A point behind the camera comes back as NaN.
+func _unproject(camera: Camera3D, world: Vector3, size: Vector2) -> Vector2:
+	var view := camera.transform.affine_inverse() * world
+	if view.z >= 0.0:
+		return Vector2(NAN, NAN)
+	var clip := Projection.create_perspective(camera.fov, size.aspect(), camera.near, camera.far) * Vector4(view.x, view.y, view.z, 1.0)
+	var ndc := Vector2(clip.x, clip.y) / clip.w
+	return Vector2((ndc.x + 1.0) * 0.5 * size.x, (1.0 - ndc.y) * 0.5 * size.y)
+
+
 func test_the_tell_cues_last_as_long_as_the_species_tells() -> void:
 	var lengths := PoolScene.tell_lengths(SpeciesCatalog.load_from())
 	check_eq(lengths, {"lunge": 1.2, "puff": 1.2}, "both tells are 1.2 s in the data")
