@@ -717,7 +717,7 @@ The heading never tracks the target after this (D6). There is no homing.
 | `forage/seek`, `/eat` | Nearest perceived plankton inside the territory at 0.5 | Energy ≥ 0.9 → `rest`. Intruder → `notice` |
 | `notice` (30) | Turns to face; no thrust | Intruder still inside and engageable → `chase/pursue`. Not engageable → stays in `notice` until give-up. Gone → `wander/patrol` |
 | `chase/pursue` | To the stand-off point (4 m) at 1.0. Too close means it swims out first: a run-up | In window and aimed → `chase/aim`. Give-up rules |
-| `chase/aim` | Brakes and turns | Tell-start conditions → `attack/tell` |
+| `chase/aim` | Brakes and turns | Tell-start conditions → `attack/tell`, unless the target is perceived beyond `territory_r + territory_exit_m` (9 m), where the puff would be cancelled at once: give up `left_territory` instead (review fix, PROPOSED) |
 | `attack/tell` **puff** (72) | Brakes; turns to `lock_heading` | At +72 → `attack/strike`. **Target perceived beyond `territory_r + territory_exit_m` (9 m)** → `tell_cancelled {reason: "left_territory"}` → `recover` (cancelled; deflates over 24 ticks) → `wander/return` |
 | `attack/strike` (54) | `burst` 4.0 m/s along the lock | Hit → `recover`. Rock ahead → `on_blocked` → `recover` 120 (dazed: a readable punish window). +54 → `attack/glide` |
 | `attack/glide` (18) | `glide` drag 5 | Hit → `recover`. +18 → `recover` (missed) |

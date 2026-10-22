@@ -718,6 +718,11 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 			_enter(mem, CHASE, AIM, tick)
 		return
 	if _tell_ok(mem, me, tick):
+		# A puff at a target past the territory exit would be cancelled on the next think: a rammer
+		# lets it go there instead of telling for nothing.
+		if mem.behavior == TERRITORIAL and _past_exit(mem, Vector2(mem.seen[mem.target].position)):
+			_give_up(mem, "left_territory", tick)
+			return
 		begin_tell(mem, me, tick)
 		return
 	if _in_window(mem, me, tick) or _approaching(mem, me, tick):
@@ -736,8 +741,7 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 static func _think_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 	if mem.phase == TELL:
 		if mem.behavior == TERRITORIAL and _fresh(mem, mem.target, tick):
-			var at: Vector2 = mem.seen[mem.target].position
-			if at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.territory_exit_m):
+			if _past_exit(mem, Vector2(mem.seen[mem.target].position)):
 				_emit(mem, {"type": "tell_cancelled", "target": mem.target, "reason": "left_territory"})
 				_recover(mem, "cancelled", tick)
 		return
@@ -1007,6 +1011,11 @@ static func _aimed(mem: Memory, me: Dictionary, tick: int) -> bool:
 ## landed a hit on the target.
 static func _wants_chase(mem: Memory, me: Dictionary) -> bool:
 	return _hungry(mem, me) or mem.landed_on.has(mem.target) or mem.target == mem.attacker
+
+
+## A territorial brain's puff rule: a target seen beyond territory_r + territory_exit_m is leaving.
+static func _past_exit(mem: Memory, at: Vector2) -> bool:
+	return at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.territory_exit_m)
 
 
 static func _intruding(mem: Memory, id: String, tick: int) -> bool:

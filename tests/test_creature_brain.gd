@@ -762,6 +762,34 @@ func test_a_puff_is_cancelled_when_the_target_is_seen_leaving_the_territory() ->
 			check_eq(c.first_tick("creature_strike") - tell, 72, "so it charges")
 
 
+func test_a_rammer_lets_an_intruder_go_rather_than_puff_at_it_past_its_territory_exit() -> void:
+	# The chase follows an intruder out to territory + leash (11 m), but a puff at a target seen past
+	# territory + exit (9 m) is cancelled at once. So a rammer that would start a puff out there
+	# gives the intruder up instead: no tell that is called off 3 ticks later.
+	for case in [[9.5, false], [10.5, false], [8.5, true]]:
+		var c := _rammer()
+		var stop: float = case[0]
+		var at := Vector2(0.0, 5.0)
+		for t in 900:
+			var v := Vector2(0.0, 2.0) if at.y < stop else Vector2.ZERO
+			at.y = minf(at.y + v.y * DT, stop)
+			_tick(c, t, [_percept(c, "a", at, {"velocity": v})])
+			if not c.of("creature_gave_up").is_empty() or not c.of("creature_strike").is_empty():
+				break
+		var name := "the intruder stopped %.1f m from the center" % stop
+		check(c.of("tell_cancelled").is_empty(), name + ": no puff called off")
+		if case[1]:
+			check_eq(c.of("creature_tell").size(), 1, name + ": inside the exit it puffs")
+			check_eq(c.of("creature_strike").size(), 1, name + ": and charges")
+			continue
+		check(c.of("creature_tell").is_empty(), name + ": no puff")
+		var gave_up := c.of("creature_gave_up")
+		check_eq(gave_up.size(), 1, name + ": it gives the intruder up")
+		if not gave_up.is_empty():
+			check_eq(gave_up[0].reason, "left_territory", name + ": reason")
+			check_eq(c.mem.ignore.get("a", -1), int(gave_up[0].tick) + 180, name + ": and ignores it for its refractory time")
+
+
 func test_a_blocked_charge_dazes_the_rammer_for_its_blocked_recover_time() -> void:
 	var c := _rammer()
 	var t := 0
