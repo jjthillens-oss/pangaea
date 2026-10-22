@@ -160,6 +160,42 @@ func test_a_saved_position_inside_a_rock_continues_from_the_spawn() -> void:
 	check(again.sim.arena.is_clear(again.sim.motion.position, again.sim.phenotype.radius), "in open water")
 
 
+func test_a_cell_saved_while_pressed_against_a_rock_continues_in_place() -> void:
+	# Pushing out of a rock leaves the cell within float32 rounding of its surface. rock_09 is one
+	# where that lands a micrometre inside from some sides, which once sent Continue to the spawn.
+	var session := GameSession.new(slot)
+	session.start_new("grazer", 9)
+	var sim := session.sim
+	var rock := {}
+	for r in sim.arena.rocks:
+		if r.id == "rock_09":
+			rock = r
+	check(not rock.is_empty(), "the layout has rock_09")
+	if rock.is_empty():
+		return
+	var touching: float = rock.radius + sim.phenotype.radius
+	var pressed := 0
+	for k in 16:
+		var out := Vector2.from_angle(k * TAU / 16.0)
+		if not sim.debug_teleport(rock.center + out * (touching + 0.05), (-out).angle()):
+			continue
+		for i in 30:
+			sim.step(SimIntent.new(-out))
+		var saved_at := sim.motion.position
+		if absf(saved_at.distance_to(rock.center) - touching) > 1e-3:
+			continue
+		pressed += 1
+		check(session.save_now().ok, "saved")
+		var again := GameSession.new(slot)
+		if not again.continue_run().ok:
+			check(false, "continued after saving at %s" % saved_at)
+			continue
+		var back := again.sim.motion.position
+		check(back.distance_to(saved_at) < 1e-3, "pressed from %d deg: saved at %s, continued at %s"
+			% [k * 360 / 16, saved_at, back])
+	check(pressed >= 12, "the cell was pressed against the rock from %d of 16 sides" % pressed)
+
+
 func test_unsaved_changes_are_tracked() -> void:
 	var session := GameSession.new(slot)
 	check(not session.dirty, "no run, nothing unsaved")
