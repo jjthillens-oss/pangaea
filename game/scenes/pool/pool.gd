@@ -128,7 +128,7 @@ func _build() -> void:
 	creature_layer.attach(sim)
 	if sim.species != null:
 		audio.configure_tells(tell_lengths(sim.species))
-	feedback.setup(session.layout.zones)
+	feedback.setup(session.layout.zones, camera)
 	camera.configure(session.layout.camera)
 	camera.snap_to(cell_view.position)
 	_draw_food(1.0)
