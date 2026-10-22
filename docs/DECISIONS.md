@@ -105,10 +105,10 @@ These came with the final step 3 plan (`docs/milestones/m1-step3-plan.md`, secti
 21. **D21 One creature at a time.** At most one creature chases or attacks the cell (`max_engaged_on_player` 1, the forgiving preset); the others watch or wait until their give-up timers end it.
 22. **D22 Body-only blockouts.** `tools/blender/make_m1_threats.py` builds the ambush and rammer bodies without parts; the view places the species' part GLBs at runtime through `PartPlacement`, so tuning `parts` or `body_size` never needs a Blender run. There are no composite species GLBs. Body vertex colours reach Godot through external materials (`M_AmbushBody.tres`, `M_RammerBody.tres`) mapped in each `.glb.import`, the same pattern as the pool floor, because Godot's glTF import ignores `COLOR_0`; a regeneration that rewrites the `.import` file must keep that mapping.
 
-## 2026-10-22 · M1 step 3 owner decisions (open; the recommended option of each is built)
+## 2026-10-22 · M1 step 3 owner decisions (OD1 CONFIRMED; OD3 open; the recommended option of each is built)
 Each changes what the approved brief says, or could. The build ships with the recommended option, and the other is one constant or one data change, already wired and tested.
 
-- **OD1. Save the death at once.** (A, recommended and built) `GameSession.SAVE_ON_DEATH = true`: when the cell dies the game writes the slot (the same temp, verify and backup path) with the death applied and the cell at its checkpoint, so quitting at the death notice cannot skip the death. That is a write trigger beyond the brief's "autosave on each generation". (B) `SAVE_ON_DEATH = false`: step 2's rule, nothing is written until the player saves, and quitting without saving discards the death. Both paths are tested in `tests/test_checkpoints.gd`.
+- **OD1. Save the death at once.** CONFIRMED by the owner on 2026-10-22: option A. (A, built) `GameSession.SAVE_ON_DEATH = true`: when the cell dies the game writes the slot (the same temp, verify and backup path) with the death applied and the cell at its checkpoint, so quitting at the death notice cannot skip the death. That is a write trigger beyond the brief's "autosave on each generation". (B) `SAVE_ON_DEATH = false`: step 2's rule, nothing is written until the player saves, and quitting without saving discards the death. Both paths are tested in `tests/test_checkpoints.gd`.
 - **OD2. Hunter fallback, only if the viability gate fails after tuning.** Not raised: the gate passes 6 of 6 seeds with the shipped data and no tuning. If a later change fails it after the five knobs reach their bounds, the owner chooses: (A, recommended) a slow interim carrion trickle again (`interim_supply.enabled` true, every 30 ± 5 s, at most 4 live, in zones; data only), or (B) accept that hunter lineages are harder in M1, turn the gate into a printed report, and add "Hunters must hunt to eat." to the hunter's start card.
 - **OD3. Combat on contact, with no attack key.** (A, recommended and built) Keep it: it uses the step 1 resolver unchanged, and step 4's editor makes part placement the skill. (B) Add an attack key in step 4 through the same resolver path. Recorded as D5.
 
@@ -145,6 +145,6 @@ Impact: the mint sample cell is now close in hue to the water and reads by value
 - A console wrapper for `Pangaea-dev.exe` (needs the console templates in the toolchain setup and CI).
 
 ## Open decisions (from M1 step 3)
-- OD1 (save the death at once) and OD3 (combat on contact): the owner's answer only flips `GameSession.SAVE_ON_DEATH` or adds a key in step 4; the recommended options are built.
+- OD3 (combat on contact): the owner's answer only adds a key in step 4; the recommended option is built. OD1 (save the death at once) is CONFIRMED as built.
 - OD2 (hunter fallback) is raised only if the hunter viability gate fails after data tuning; it passes now.
 - Threat pressure: sated ambush hunters mostly watch, and HuntBot's hunter took no hits in 240 s on any gate seed. Whether threats need more pressure (hunger, metabolism, `start_max_m` or `max_engaged_on_player` in the data, never shorter tells) is for the owner's play test.
