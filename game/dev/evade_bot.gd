@@ -8,7 +8,7 @@ extends RefCounted
 ##  2. Then it swims perpendicular to the tell's lane, on the side with the shorter turn from its
 ##     heading; on a tie (within TIE_RAD) the side of the lane's centre line it is already on. With
 ##     `far_side` it takes the other perpendicular instead, the longer turn a player may pick (the
-##     S5 grid measures that side too; F2 promises only turns under about 120 degrees).
+##     S5 tests measure that side too; F2 promises only the side the cell faces).
 ##  3. It holds that until the same creature's creature_recovered, dodged or tell_cancelled, or
 ##     until that creature dies or is removed.
 ##  4. Then it swims straight away from the creature for `away_ticks` (AWAY_TICKS unless a driver
