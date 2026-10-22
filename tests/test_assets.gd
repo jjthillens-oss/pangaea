@@ -12,7 +12,7 @@ const BLOCKOUT_BUDGETS := {
 	"plankton": 400, "carrion": 400,
 	"part_mouth_filter": 1500, "part_mouth_jaw": 1500, "part_flagellum": 1500, "part_eye_spot": 1500,
 }
-const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot"]
+const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot", "part_spike"]
 const ROCK_IDS := ["rock_a", "rock_b", "rock_c"]
 ## Food record id -> its block in the pool layout, which holds the gameplay item_radius.
 const FOOD_LAYOUT_KEYS := {"plankton": "plankton", "carrion": "carrion"}
@@ -24,6 +24,31 @@ const FLOOR_SHELF_R := 45.0
 const SWIM_BAND_M := 0.45
 ## Section heights through the swim band, for rock outlines.
 const SWIM_BAND_HEIGHTS: Array[float] = [-0.45, -0.3375, -0.225, -0.1125, 0.0, 0.1125, 0.225, 0.3375, 0.45]
+## The step 3 threat blockouts (step 3 plan section 17): their review state, generator and
+## triangle budgets, kept here so a record cannot loosen its own.
+const THREAT_REVIEW := "blockout - M1 step 3, not visually approved"
+const THREAT_GENERATOR := "tools/blender/make_m1_threats.py"
+const THREAT_BUDGETS := {"creature_ambush_body": 4000, "creature_rammer_body": 4000, "part_spike": 600}
+## Nodes under Body that the creature view poses, by body.
+const THREAT_POSE_NODES := {
+	"creature_ambush_body": ["Eye_L", "Eye_R", "Brow"],
+	"creature_rammer_body": ["Eye_L", "Eye_R", "Hood"],
+}
+## Silhouette contracts. The ambush hunter at its body_size is at least AMBUSH_FOOTPRINT_SHARE
+## times as long and wide as the sample cell (compared as the square root of their top-down
+## areas), and its height is at most AMBUSH_MAX_HEIGHT_SHARE of its width. A spike at scale 1
+## reaches SPIKE_MIN_REACH_M past the body outline. Bodies meet the swim plane on PartPlacement's
+## ellipse to within FRAME_TOLERANCE_M, so every part GLB sits on their surface.
+const AMBUSH_FOOTPRINT_SHARE := 1.4
+const AMBUSH_MAX_HEIGHT_SHARE := 0.35
+const SPIKE_MIN_REACH_M := 0.25
+const FRAME_TOLERANCE_M := 0.01
+## The species data gives the ambush hunter's body_size; until it exists, the plan's value.
+const CREATURES_PATH := "res://game/data/creatures_m1.json"
+const AMBUSH_PLANNED_SIZE := 1.5
+## docs/art/ART_DIRECTION.md: the threat colour goes on spikes and attack tells; eyes may be amber.
+const THREAT_COLOR := Color("#D9466B")
+const MINERAL_AMBER := Color("#E3A64A")
 
 
 ## Top-level records only: get_files_at lists no folders, so assets/records/placeholders/ is skipped.
@@ -107,11 +132,15 @@ func _vertices(root: Node3D) -> PackedVector3Array:
 
 ## The outline of `root`'s triangles seen from above over `heights`: for each 1-degree azimuth
 ## bin, the farthest point of any horizontal section at those heights (0 where none reaches).
-## Each cut is sampled densely, so sparse vertices never read as a narrow side.
-func _section_outline(root: Node3D, heights: Array[float]) -> PackedFloat32Array:
+## Each cut is sampled densely, so sparse vertices never read as a narrow side. With `only`, just
+## that mesh instance's own triangles count (in root space).
+func _section_outline(root: Node3D, heights: Array[float], only: MeshInstance3D = null) -> PackedFloat32Array:
 	var best := PackedFloat32Array()
 	best.resize(360)
-	for mi in _mesh_instances(root):
+	var instances := _mesh_instances(root)
+	if only != null:
+		instances = [only]
+	for mi in instances:
 		var t := _relative(mi, root)
 		for s in mi.mesh.get_surface_count():
 			var arrays := mi.mesh.surface_get_arrays(s)
@@ -468,3 +497,264 @@ func test_sample_cell_has_the_nodes_the_pool_hides_and_keeps() -> void:
 	for path in ["Body/Mouth", "Body/Flagellum", "Body/Pupil_L", "Body/Pupil_R"]:
 		check(node.get_node_or_null(path) is MeshInstance3D, "sample_cell has %s" % path)
 	node.free()
+
+
+# --- Step 3 threat blockouts (step 3 plan section 17) -------------------------------------------
+
+
+## How far a point on the swim plane lies outside PartPlacement's body ellipse, along the ray from
+## the body's centre (negative inside).
+func _beyond_frame(p: Vector2) -> float:
+	return p.length() - _frame_radius(p.angle())
+
+
+## Distance from the body's centre to PartPlacement's ellipse in the swim plane at `azimuth`
+## (Godot x and z, as Vector2.angle() measures it).
+func _frame_radius(azimuth: float) -> float:
+	return 1.0 / sqrt(pow(cos(azimuth) / PartPlacement.RX, 2.0) + pow(sin(azimuth) / PartPlacement.RZ, 2.0))
+
+
+## Area of a mesh instance's own triangles seen from above (the convex hull of its vertices on the
+## swim plane), in root space.
+func _top_area(mi: MeshInstance3D, root: Node3D) -> float:
+	var t := _relative(mi, root)
+	var points := PackedVector2Array()
+	for s in mi.mesh.get_surface_count():
+		var verts: PackedVector3Array = mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]
+		for v in verts:
+			var p := t * v
+			points.append(Vector2(p.x, p.z))
+	var hull := Geometry2D.convex_hull(points)
+	var twice := 0.0
+	for i in hull.size():
+		twice += hull[i].cross(hull[(i + 1) % hull.size()])
+	return absf(twice) / 2.0
+
+
+## The ambush hunter's body_size from the species data, or the plan's value before that file exists.
+func _ambush_body_size() -> float:
+	if not FileAccess.file_exists(CREATURES_PATH):
+		return AMBUSH_PLANNED_SIZE
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(CREATURES_PATH))
+	var species: Variant = data.get("species", {}) if data is Dictionary else {}
+	var ambush: Variant = species.get("ambush_hunter", {}) if species is Dictionary else {}
+	var size: Variant = ambush.get("body_size") if ambush is Dictionary else null
+	check(size is float or size is int, "%s gives the ambush hunter a body_size" % CREATURES_PATH)
+	return float(size) if size is float or size is int else AMBUSH_PLANNED_SIZE
+
+
+## Linear luminance of a vertex colour stored sRGB-encoded.
+func _luminance(c: Color) -> float:
+	var lin := c.srgb_to_linear()
+	return 0.2126 * lin.r + 0.7152 * lin.g + 0.0722 * lin.b
+
+
+func _is_color(actual: Color, expected: Color) -> bool:
+	return absf(actual.r - expected.r) <= 0.02 and absf(actual.g - expected.g) <= 0.02 and absf(actual.b - expected.b) <= 0.02
+
+
+## The materials on every surface under `root`.
+func _materials(root: Node) -> Array[StandardMaterial3D]:
+	var out: Array[StandardMaterial3D] = []
+	for mi in _mesh_instances(root):
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			if mat != null:
+				out.append(mat)
+	return out
+
+
+func test_threat_blockouts_are_proposed_unapproved_and_within_their_step_3_budgets() -> void:
+	for id in THREAT_BUDGETS:
+		var record := _record(id)
+		if record.is_empty():
+			check(false, "%s has a record" % id)
+			continue
+		check_eq(record.get("status"), "PROPOSED", "%s status" % id)
+		check_eq(record.get("review_state"), THREAT_REVIEW, "%s review state" % id)
+		check_eq(record.get("generator_script"), THREAT_GENERATOR, "%s generator" % id)
+		check(String(record.get("provenance", "")).contains("procedurally") and String(record.get("provenance", "")).contains(THREAT_GENERATOR),
+			"%s provenance is procedural and names its generator" % id)
+		var tris := int(record.get("triangles", 1 << 30))
+		check(tris > 0 and tris <= THREAT_BUDGETS[id], "%s has %d triangles, budget %d" % [id, tris, THREAT_BUDGETS[id]])
+
+
+func test_threat_bodies_carry_the_pose_nodes_the_creature_view_drives() -> void:
+	for id in THREAT_POSE_NODES:
+		var node := _load_scene("res://assets/export/%s.glb" % id)
+		if node == null:
+			check(false, "%s loads" % id)
+			continue
+		check(node.get_node_or_null(^"Body") is MeshInstance3D, "%s has a Body mesh" % id)
+		var listed: Array = _record(id).get("nodes", [])
+		for pose_node: String in THREAT_POSE_NODES[id]:
+			check(node.get_node_or_null("Body/" + pose_node) is MeshInstance3D, "%s has Body/%s" % [id, pose_node])
+			check(listed.has(pose_node), "%s record lists %s" % [id, pose_node])
+		# Eyes turn, squint and glow about their own centre.
+		for eye in ["Eye_L", "Eye_R"]:
+			var mi := node.get_node_or_null("Body/" + eye) as MeshInstance3D
+			if mi != null:
+				check(mi.mesh.get_aabb().get_center().length() < 0.01, "%s %s has its origin at its centre" % [id, eye])
+		node.free()
+	# The ambush hunter's eyes share one glowing amber material, whose emission the view drives.
+	var ambush := _load_scene("res://assets/export/creature_ambush_body.glb")
+	if ambush != null:
+		for eye in ["Eye_L", "Eye_R"]:
+			var mi := ambush.get_node_or_null("Body/" + eye) as MeshInstance3D
+			var mat := mi.mesh.surface_get_material(0) as StandardMaterial3D if mi != null else null
+			check(mat != null and mat.resource_name == "M_AmbushEye", "ambush %s wears M_AmbushEye" % eye)
+			check(mat != null and mat.emission_enabled, "ambush %s glows" % eye)
+			check(mat != null and _is_color(mat.albedo_color, MINERAL_AMBER), "ambush %s is mineral amber" % eye)
+		ambush.free()
+	# The rammer's crest stands on its pivot on the midline of the back: the view raises it by
+	# scaling its up axis, which sinks its base into the body and lifts its points.
+	var rammer := _load_scene("res://assets/export/creature_rammer_body.glb")
+	if rammer != null:
+		var hood := rammer.get_node_or_null(^"Body/Hood") as MeshInstance3D
+		if hood != null:
+			var box := hood.mesh.get_aabb()
+			check(box.position.y < -0.02 and box.end.y > 0.1, "the crest runs from below its pivot to %.3f m above it, got %s" % [box.end.y, box])
+			check(absf(box.get_center().x) < 0.01, "the crest sits on the midline")
+		rammer.free()
+
+
+func test_threat_bodies_meet_the_swim_plane_on_the_part_placement_ellipse() -> void:
+	for id in THREAT_POSE_NODES:
+		var node := _load_scene("res://assets/export/%s.glb" % id)
+		var body := node.get_node_or_null(^"Body") as MeshInstance3D if node != null else null
+		if body == null:
+			check(false, "%s loads with a Body mesh" % id)
+			if node:
+				node.free()
+			continue
+		var outline := _section_outline(node, [0.0] as Array[float], body)
+		var missing := 0
+		var worst := 0.0
+		for bin in 360:
+			if outline[bin] <= 0.0:
+				missing += 1
+				continue
+			worst = maxf(worst, absf(outline[bin] - _frame_radius(deg_to_rad(bin + 0.5))))
+		check(missing == 0 and worst <= FRAME_TOLERANCE_M,
+			"%s Body at the swim plane is within %.3f m of PartPlacement's ellipse all round, off by %.4f m (%d degrees empty)"
+			% [id, FRAME_TOLERANCE_M, worst, missing])
+		node.free()
+
+
+func test_the_ambush_body_is_flat_and_bigger_than_the_sample_cell_at_its_size() -> void:
+	var ambush := _load_scene("res://assets/export/creature_ambush_body.glb")
+	var cell := _load_scene("res://assets/export/sample_cell.glb")
+	var ambush_body := ambush.get_node_or_null(^"Body") as MeshInstance3D if ambush != null else null
+	var cell_body := cell.get_node_or_null(^"Body") as MeshInstance3D if cell != null else null
+	check(ambush_body != null and cell_body != null, "both bodies load")
+	if ambush_body != null and cell_body != null:
+		# Height against width over the whole asset, eyes and brow included; scale does not change it.
+		var size := _mesh_bounds(ambush).size
+		check(size.y <= AMBUSH_MAX_HEIGHT_SHARE * size.x,
+			"the ambush body is %.3f m high and %.3f m wide: height %.3f of the width, at most %.2f" % [size.y, size.x, size.y / size.x, AMBUSH_MAX_HEIGHT_SHARE])
+		var body_size := _ambush_body_size()
+		var share := body_size * sqrt(_top_area(ambush_body, ambush) / _top_area(cell_body, cell))
+		check(share >= AMBUSH_FOOTPRINT_SHARE,
+			"at body_size %.2f the ambush body is %.2f times the sample cell's length and width, at least %.2f" % [body_size, share, AMBUSH_FOOTPRINT_SHARE])
+	if ambush:
+		ambush.free()
+	if cell:
+		cell.free()
+
+
+func test_a_spike_placed_on_the_body_points_well_past_the_outline() -> void:
+	var node := _load_scene("res://assets/export/part_spike.glb")
+	if node == null:
+		check(false, "part_spike loads")
+		return
+	var verts := _vertices(node)
+	# The rammer's spike angles, then the sides, the tail and the front.
+	for angle in [0.3, -0.3, 1.9, -1.9, PI / 2.0, PI, 0.0]:
+		var t := PartPlacement.transform_for(angle, "spike", 1.0)
+		var reach := -INF
+		for v in verts:
+			var p := t * v
+			reach = maxf(reach, _beyond_frame(Vector2(p.x, p.z)))
+		check(reach >= SPIKE_MIN_REACH_M, "at angle %.2f a spike at scale 1 reaches %.3f m past the body outline, at least %.2f" % [angle, reach, SPIKE_MIN_REACH_M])
+	node.free()
+
+
+func test_spikes_and_the_rammer_crest_points_wear_the_threat_colour() -> void:
+	for id in ["part_spike", "creature_rammer_body"]:
+		var node := _load_scene("res://assets/export/%s.glb" % id)
+		if node == null:
+			check(false, "%s loads" % id)
+			continue
+		var found := false
+		var search: Node = node if id == "part_spike" else node.get_node_or_null(^"Body/Hood")
+		if search != null:
+			for mat in _materials(search):
+				found = found or _is_color(mat.albedo_color, THREAT_COLOR)
+		check(found, "%s has a surface in the threat colour %s" % [id, THREAT_COLOR.to_html(false)])
+		node.free()
+
+
+func test_threat_bodies_draw_their_vertex_colours_a_dark_ambusher_and_a_banded_rammer() -> void:
+	var expected := {"creature_ambush_body": "M_AmbushBody", "creature_rammer_body": "M_RammerBody"}
+	var tops := {}
+	var bellies := {}
+	var midlines := {}
+	for id in expected:
+		var node := _load_scene("res://assets/export/%s.glb" % id)
+		var body := node.get_node_or_null(^"Body") as MeshInstance3D if node != null else null
+		if body == null:
+			check(false, "%s loads with a Body mesh" % id)
+			if node:
+				node.free()
+			continue
+		var mat := body.mesh.surface_get_material(0) as BaseMaterial3D
+		# As with the pool floor, the import points the body material at an external .tres that
+		# draws the vertex colours as sRGB albedo in every renderer.
+		check(mat != null and mat.resource_name == expected[id], "%s body material is %s" % [id, expected[id]])
+		check(mat != null and mat.vertex_color_use_as_albedo and mat.vertex_color_is_srgb, "%s draws its vertex colours as sRGB albedo" % id)
+		check(mat != null and mat.albedo_color.is_equal_approx(Color.WHITE), "nothing tints %s's vertex colours" % id)
+		var arrays := body.mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		check_eq(colors.size(), verts.size(), "every %s body vertex has a colour" % id)
+		var top: Array[float] = []
+		var belly: Array[float] = []
+		var midline: Array[Vector2] = []   # (forward position, luminance) along the top of the back
+		var t := _relative(body, node)
+		for i in mini(verts.size(), colors.size()):
+			var p := t * verts[i]
+			var lum := _luminance(colors[i])
+			if p.y > 0.05:
+				top.append(lum)
+				if absf(p.x) < 0.001:
+					midline.append(Vector2(-p.z, lum))
+			elif p.y < -0.05:
+				belly.append(lum)
+		tops[id] = top
+		bellies[id] = belly
+		midlines[id] = midline
+		node.free()
+	if tops.size() < 2:
+		return
+	var mean := func(values: Array[float]) -> float:
+		var total := 0.0
+		for v in values:
+			total += v
+		return total / maxi(values.size(), 1)
+	# The ambush hunter: a dark back over a pale belly.
+	var ambush_back: float = mean.call(tops.creature_ambush_body)
+	var ambush_belly: float = mean.call(bellies.creature_ambush_body)
+	check(ambush_back < 0.12, "the ambush back is dark: mean luminance %.3f" % ambush_back)
+	check(ambush_belly > 3.0 * ambush_back, "the ambush belly (%.3f) is pale next to its back (%.3f)" % [ambush_belly, ambush_back])
+	# The rammer: a pale back crossed by three dark bands, front to tail along the midline.
+	check(mean.call(tops.creature_rammer_body) > 0.25, "the rammer back is pale")
+	var line: Array[Vector2] = midlines.creature_rammer_body
+	line.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+	var bands := 0
+	var in_band := false
+	for v in line:
+		if v.y < 0.1 and not in_band:
+			bands += 1
+		in_band = v.y < 0.1
+	check(line.size() > 20, "the rammer has vertices along the top of its back")
+	check_eq(bands, 3, "dark bands across the rammer's back")
