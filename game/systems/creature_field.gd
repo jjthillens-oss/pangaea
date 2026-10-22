@@ -49,6 +49,10 @@ class Creature:
 	var last_hit_by := ""
 	var strike_hit := false            ## a hit has landed in the current strike
 	var born_tick := 0
+	## A scripted body (a test decoy): no brain, no niche and no site; the sim swims it by
+	## `script_move` like the player's intent and hits it through the player's path.
+	var scripted := false
+	var script_move := Vector2.ZERO
 
 
 var species: SpeciesCatalog
@@ -150,30 +154,28 @@ func spawn_at(species_id: String, p: Vector2, heading: float, site := "", tick :
 	if not debug and not region.try_spawn(role):
 		return null
 	var block: Dictionary = species.species[species_id]
-	var c := Creature.new()
-	c.number = next_number
-	next_number += 1
-	c.id = ID_PREFIX + str(c.number)
-	c.species_id = species_id
+	var c := _new_creature(species_id, _phenotypes[species_id], p, heading, tick)
 	c.site_id = site
 	c.role = role
 	c.debug = debug
-	c.phenotype = _phenotypes[species_id]
-	c.state = ActorState.fresh(c.phenotype)
 	c.state.energy = c.state.energy_capacity * float(block.start_energy_share)
-	c.motion = Locomotion.MotionState.new(p, heading)
-	c.actor = InteractionResolver.Actor.new(c.id, p, heading, c.phenotype)
 	var territory := {}
 	if not site.is_empty():
 		territory = species.territory_of(species.site(site), layout)
 	var cfg := species.brain_config(species_id)
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, p, heading, territory, seed_value * BRAIN_SEED_STRIDE + c.number, tick)
-	c.drive = {"mode": CreatureBrain.MODE_STEER, "move": Vector2.ZERO, "speed_mul": 0.0, "face": heading, "strike": false,
-		"target": "", "feed": ""}
-	c.born_tick = tick
-	creatures.append(c)
-	events.append({"type": "creature_spawned", "id": c.id, "species": species_id, "site": site, "position": p,
-		"heading": heading, "debug": debug})
+	_add(c)
+	return c
+
+
+## Places a scripted body (a test decoy, never a real creature): any species id and phenotype, no
+## brain, outside the niches, never respawned. The sim swims it by its script_move. It is perceived
+## like any body, so a test can put it where the player would be and compare what brains do.
+func spawn_scripted(species_id: String, p_phenotype: Phenotype, p: Vector2, heading: float, tick := 0) -> Creature:
+	var c := _new_creature(species_id, p_phenotype, p, heading, tick)
+	c.debug = true
+	c.scripted = true
+	_add(c)
 	return c
 
 
@@ -192,8 +194,9 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	if token_at >= 0:
 		engaged_on_player.remove_at(token_at)
 	for other in creatures:
-		CreatureBrain.on_target_gone(other.brain, c.id, tick)
-		update_token(other)
+		if other.brain != null:
+			CreatureBrain.on_target_gone(other.brain, c.id, tick)
+			update_token(other)
 	events.append({"type": "creature_removed", "id": c.id, "species": c.species_id, "reason": reason})
 	if requeue and not c.debug and not c.site_id.is_empty():
 		var wait := species.spawn_retry_ticks if reason == "stuck" else respawn_delay(c.species_id)
@@ -212,9 +215,11 @@ func respawn_delay(species_id: String) -> int:
 ## requeued. Elsewhere a stuck creature keeps trying, and the debug panel shows it.
 func remove_stuck(player_pos: Vector2, tick: int) -> void:
 	var fairness := species.fairness
-	for c in creatures.duplicate():
-		if not c.brain.stuck:
-			continue
+	var stuck: Array[Creature] = []
+	for c in creatures:
+		if c.brain != null and c.brain.stuck:
+			stuck.append(c)
+	for c in stuck:
 		var at: Vector2 = c.motion.position
 		var margin: float = float(layout.camera.look_ahead_max) + float(fairness.spawn_view_margin_m) + c.phenotype.radius
 		if at.distance_to(player_pos) < float(fairness.spawn_safe_m) \
@@ -296,13 +301,14 @@ func self_view_of(c: Creature) -> Dictionary:
 
 
 func think_due(c: Creature, tick: int) -> bool:
-	return CreatureBrain.think_due(c.brain, c.number, tick)
+	return c.brain != null and CreatureBrain.think_due(c.brain, c.number, tick)
 
 
 ## One creature's think: it perceives `bodies` (the tick's snapshot) through its own senses, sees
 ## food only while foraging, and decides. The player's percept is engageable only if the token lets
-## this creature engage; the token list follows the brain right after.
-func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int) -> void:
+## this creature engage; the token list follows the brain right after. `self_view` may be passed in
+## when the caller already built it this tick (the body has not moved since).
+func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int, self_view := {}) -> void:
 	var viewer := viewer_of(c)
 	var percepts := CreatureSenses.perceive(viewer, p_bodies, arena)
 	for percept in percepts:
@@ -311,13 +317,19 @@ func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, ti
 	var food: Array[Dictionary] = []
 	if c.brain.state == CreatureBrain.FORAGE:
 		food = CreatureSenses.perceive_food(viewer, food_items, c.phenotype.diets)
-	CreatureBrain.think(c.brain, self_view_of(c), percepts, food, tick, arena)
+	CreatureBrain.think(c.brain, self_view if not self_view.is_empty() else self_view_of(c), percepts, food, tick, arena)
 	update_token(c)
 
 
+## A drive that does nothing: no thrust, no turn, no strike (a new, frozen or scripted creature).
+static func idle_drive(heading: float) -> Dictionary:
+	return {"mode": CreatureBrain.MODE_STEER, "move": Vector2.ZERO, "speed_mul": 0.0, "face": heading, "strike": false,
+		"target": "", "feed": ""}
+
+
 ## The creature's drive for this tick (CreatureBrain.drive), kept on the record.
-func drive(c: Creature, arena: PoolArena, tick: int) -> Dictionary:
-	c.drive = CreatureBrain.drive(c.brain, self_view_of(c), tick, arena)
+func drive(c: Creature, arena: PoolArena, tick: int, self_view := {}) -> Dictionary:
+	c.drive = CreatureBrain.drive(c.brain, self_view if not self_view.is_empty() else self_view_of(c), tick, arena)
 	return c.drive
 
 
@@ -329,7 +341,7 @@ func may_engage_player(c: Creature) -> bool:
 ## Brings the token list in line with the creature's brain: it holds the token exactly while it is
 ## engaged with the player.
 func update_token(c: Creature) -> void:
-	var engaged := CreatureBrain.is_engaged_with(c.brain, PLAYER_ID)
+	var engaged := c.brain != null and CreatureBrain.is_engaged_with(c.brain, PLAYER_ID)
 	var at := engaged_on_player.find(c.id)
 	if engaged and at < 0:
 		engaged_on_player.append(c.id)
@@ -337,13 +349,17 @@ func update_token(c: Creature) -> void:
 		engaged_on_player.remove_at(at)
 
 
-## Field events plus every creature's brain events (each with its creature's id), in creature
-## order, oldest first; clears them.
+## Field events plus every creature's brain events (each with its creature's id, and its position
+## when the brain gave none), in creature order, oldest first; clears them.
 func take_events() -> Array[Dictionary]:
 	for c in creatures:
+		if c.brain == null:
+			continue
 		for e in c.brain.events:
 			var tagged: Dictionary = e.duplicate()
 			tagged["id"] = c.id
+			if not tagged.has("position"):
+				tagged["position"] = c.motion.position
 			events.append(tagged)
 		c.brain.events.clear()
 	var taken := events
@@ -366,13 +382,35 @@ func snapshot() -> Dictionary:
 			"drive": {"mode": str(d.get("mode", "")), "move": _pair(d.get("move", Vector2.ZERO)),
 				"speed_mul": float(d.get("speed_mul", 0.0)), "face": float(d.get("face", 0.0)),
 				"strike": bool(d.get("strike", false)), "target": str(d.get("target", "")), "feed": str(d.get("feed", ""))},
-			"brain": c.brain.to_dict(),
+			"brain": c.brain.to_dict() if c.brain != null else {}, "scripted": c.scripted,
+			"script_move": _pair(c.script_move),
 		})
 	var waiting := []
 	for entry in queue:
 		waiting.append({"site": entry.site, "species": entry.species, "at_tick": entry.at_tick})
 	return {"creatures": list, "creature_next": next_number, "creature_rng": rng.state, "spawn_queue": waiting,
 		"engaged_on_player": Array(engaged_on_player)}
+
+
+func _new_creature(species_id: String, p_phenotype: Phenotype, p: Vector2, heading: float, tick: int) -> Creature:
+	var c := Creature.new()
+	c.number = next_number
+	next_number += 1
+	c.id = ID_PREFIX + str(c.number)
+	c.species_id = species_id
+	c.phenotype = p_phenotype
+	c.state = ActorState.fresh(p_phenotype)
+	c.motion = Locomotion.MotionState.new(p, heading)
+	c.actor = InteractionResolver.Actor.new(c.id, p, heading, p_phenotype)
+	c.drive = idle_drive(heading)
+	c.born_tick = tick
+	return c
+
+
+func _add(c: Creature) -> void:
+	creatures.append(c)
+	events.append({"type": "creature_spawned", "id": c.id, "species": c.species_id, "site": c.site_id,
+		"position": c.motion.position, "heading": c.motion.heading, "debug": c.debug})
 
 
 ## Spawns the site's creature now if the spawn check passes and its niche has room.
