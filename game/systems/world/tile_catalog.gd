@@ -42,9 +42,11 @@ const MIN_ZONE_R := 2.0
 const MAX_ZONE_R := 8.0
 ## Rule 2's tunnelling check runs at the band's second size, where a bu is 0.625 tm.
 const SECOND_SIZE_SCALE := 0.625
-## Static #33: no zone yields more than the unguarded M1 maximum (z_center): growth x capacity x
-## (YIELD_SHARE + EcologyRegion.REGROW_FLOOR) <= MAX_ZONE_YIELD.
+## Static #33: growth x capacity x (YIELD_SHARE + EcologyRegion.REGROW_FLOOR) <= MAX_ZONE_YIELD, the M1
+## unguarded maximum (z_center, z_s: the zones by the spawn #33's camper measures; the guarded z_n
+## and z_nw yield 2.304).
 const MAX_ZONE_YIELD := 1.152
+const STATIC_33_LABEL := "the M1 unguarded maximum (z_center, z_s)"
 const YIELD_SHARE := 0.25
 ## Rule 6 against the anchor: a reach disc keeps respawn_clear_m + ANCHOR_CLEAR_EXTRA beyond the
 ## anchor's collider, a cell and ANCHOR_GAP_BU.
@@ -314,7 +316,8 @@ static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dic
 				errors.append("%s: rule %d: '%s' and '%s' overlap by %.2f bu" % [w, 5 if _is_piece(b.id) else 2, a.id, b.id, -gap])
 
 
-## Rule 3: zone values and edges, the clear share among the tile's colliders, and static #33.
+## Rule 3: zone values and edges, the gap rule against the tile's colliders (its shells, its landmark
+## collider or its set piece's colliders; PoolLayout.zone_problems, B-3), and static #33.
 static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: PackedStringArray) -> void:
 	var w: String = t.where
 	for z in t.zones:
@@ -330,7 +333,7 @@ static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: Pa
 			errors.append("%s: rule 3: zone '%s' at_second_size '%s' is not one of %s" % [w, z.id, z.at_second_size, ", ".join(ZONE_SECOND_SIZE)])
 		var yield_rate := float(z.growth_rate) * float(z.capacity) * (YIELD_SHARE + EcologyRegion.REGROW_FLOOR)
 		if yield_rate > MAX_ZONE_YIELD:
-			errors.append("%s: rule 3: zone '%s' yields %.3f a second; static #33 allows %.3f" % [w, z.id, yield_rate, MAX_ZONE_YIELD])
+			errors.append("%s: rule 3: zone '%s' yields %.3f a second; static #33 allows <= %.3f, %s" % [w, z.id, yield_rate, MAX_ZONE_YIELD, STATIC_33_LABEL])
 		var one: Array[Dictionary] = [{"id": z.id, "center": _vec(c), "radius": r, "capacity": z.capacity, "growth_rate": z.growth_rate}]
 		for p in PoolLayout.zone_problems(one, colliders, INF):
 			errors.append("%s: rule 3: %s" % [w, p])
