@@ -379,6 +379,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _open_pool() -> void:
 	_clear_screen()
 	pool = POOL_SCENE.instantiate()
+	pool.player_memory = player_memory
 	add_child(pool)
 	pool.setup(session, intent_provider)
 	var ui := pool.ui
@@ -394,6 +395,7 @@ func _open_pool() -> void:
 	pool.pause_requested.connect(_on_pause_requested)
 	pool.died.connect(_on_died)
 	pool.respawned.connect(_on_respawned)
+	pool.giant_pass_started.connect(_on_giant_pass_started)
 	pause_menu.resume_requested.connect(resume)
 	pause_menu.save_requested.connect(save_now)
 	pause_menu.save_and_quit_requested.connect(save_and_quit_to_title, CONNECT_DEFERRED)
@@ -449,6 +451,16 @@ func _on_died(cause: String, reason: String = "") -> void:
 ## the cell shows there.
 func _on_respawned(grace_s: float, _teleport: bool) -> void:
 	hud.show_message(respawn_text(ceili(grace_s)))
+
+
+## The giants' first pass for this lineage has started (D-42): this computer remembers it at once, so
+## a quit during the pass does not bring it back.
+func _on_giant_pass_started() -> void:
+	var lineage := session.sim.save.lineage_id if session != null and session.sim != null else ""
+	if player_memory == null or lineage.is_empty() or player_memory.giant_pass_lineages.has(lineage):
+		return
+	player_memory.giant_pass_lineages.append(lineage)
+	save_player_memory()
 
 
 ## The settings the running pool reads: pausing on focus loss, and the zoom speed and direction

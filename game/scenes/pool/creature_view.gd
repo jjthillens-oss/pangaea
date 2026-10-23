@@ -101,6 +101,8 @@ const RIM_SHADER := preload("res://game/scenes/pool/rim_hull.gdshader")
 const BODY_MESH_PATH := ^"Body"
 const LIMP_MATERIAL := preload("res://assets/export/M_RemnantLimp.tres")
 const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
+## The body blockouts that first show at size 2 (the start fade warms them up).
+const GROWTH_BODIES: PackedStringArray = ["creature_lurker_body", "creature_elder_rammer_body"]
 ## "Now food" over a body the cell can now eat, just after a growth.
 const NOW_FOOD_TEXT := "Now food"
 const NOW_FOOD_FONT := 56
@@ -168,6 +170,8 @@ var _rim_target := 0.0
 var _rim_rate := 0.0
 var _body_mesh: MeshInstance3D
 var _rim_material := ShaderMaterial.new()
+static var _body_meshes := {}
+static var _growth_warm_up: Array[Mesh] = []
 var _body_hurt := StandardMaterial3D.new()   ## the hurt flash on the body mesh, chained to the rim
 var _overlay_key := ""
 var _limp_delay := -1.0                  ## seconds until the limp look starts fading in
@@ -604,6 +608,41 @@ static func warm_up_lane_mesh() -> Mesh:
 	quad.orientation = QuadMesh.FACE_Y
 	quad.material = material
 	return quad
+
+
+## What the start fade draws once so the growth's looks show without a first-use compile (V-20): the
+## meshes of the bodies that first come at size 2, and M_Morsel, M_RemnantLimp and the rim hull, each
+## on a copy of a body mesh (where they are drawn in play).
+static func warm_up_growth_meshes() -> Array[Mesh]:
+	if _growth_warm_up.is_empty():
+		for asset in GROWTH_BODIES:
+			_growth_warm_up.append_array(body_meshes(asset))
+		var rim := ShaderMaterial.new()
+		rim.shader = RIM_SHADER
+		rim.set_shader_parameter("color", RIM_COLOR)
+		var body := body_meshes(GROWTH_BODIES[0])
+		for material: Material in [MORSEL_MATERIAL, LIMP_MATERIAL, rim]:
+			if not body.is_empty():
+				var copy := body[0].duplicate() as Mesh
+				for i in copy.get_surface_count():
+					copy.surface_set_material(i, material)
+				_growth_warm_up.append(copy)
+	return _growth_warm_up
+
+
+## Every mesh in body blockout `asset` (a BODY_SCENES key), read once.
+static func body_meshes(asset: String) -> Array[Mesh]:
+	if not _body_meshes.has(asset):
+		var meshes: Array[Mesh] = []
+		var packed: PackedScene = BODY_SCENES.get(asset)
+		if packed != null:
+			var scene := packed.instantiate()
+			for node in scene.find_children("*", "MeshInstance3D", true, false):
+				if (node as MeshInstance3D).mesh != null:
+					meshes.append((node as MeshInstance3D).mesh)
+			scene.free()
+		_body_meshes[asset] = meshes
+	return _body_meshes[asset]
 
 
 ## Takes the lane down: at once for a cancelled tell, or fading over `fade_s`.

@@ -44,9 +44,8 @@
     {"id": "f8", "center": [-23.0, 25.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "la", "species": "ambush_hunter", "home": [-12.0, -4.7], "heading": -2.5582, "territory_zone": "", "sizes": [1]},
+    {"id": "la", "species": "ambush_hunter", "home": [-12.0, -4.7], "heading": -2.5582, "territory_zone": "", "sizes": [1, 2]},
     {"id": "lb", "species": "ambush_hunter", "home": [6.6, 11.2], "heading": 1.3339, "territory_zone": "", "sizes": [1]},
-    {"id": "lc", "species": "ambush_hunter", "home": [-12.2, 16.4], "heading": 2.8724, "territory_zone": "", "sizes": [1]},
-    {"id": "lk", "species": "lurker", "home": [-10.0, 2.0], "heading": -0.1974, "territory_zone": "", "sizes": [2], "post_b": {"home": [-14.81, 6.81], "heading": -0.4309}}
+    {"id": "lc", "species": "ambush_hunter", "home": [-12.2, 16.4], "heading": 2.8724, "territory_zone": "", "sizes": [1]}
   ]
 }

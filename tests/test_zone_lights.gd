@@ -127,5 +127,6 @@ func test_the_start_fade_warms_the_zone_light() -> void:
 	var meshes: Array[Mesh] = pool.warm_up_meshes()
 	check(meshes.has(pool.zone_lights.mesh), "the warm-up draws the zone light's mesh")
 	check(not meshes.has(null), "and both food meshes: %s" % [meshes])
-	check_eq(meshes.size(), 4, "warm-up meshes (the strike lane's too; tests/test_pool_view.gd)")
+	check_eq(meshes.slice(0, 4), [pool.plankton_view.food_mesh(), pool.carrion_view.food_mesh(), pool.zone_lights.mesh, meshes[3]],
+		"the food, the zone light and the strike lane first (the growth's looks follow; tests/test_pool_view.gd)")
 	pool.free()

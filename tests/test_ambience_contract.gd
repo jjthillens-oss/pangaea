@@ -43,6 +43,9 @@ extends TestCase
 ## layer needs a `height_range`, its custom w counts as up to 1, so its top opacity belongs in
 ## `opacity`, and it carries its colours in uniforms, not instance colours.
 ## Luminance is linear, as art measures it: Color.srgb_to_linear().get_luminance().
+##
+## S2: the ghosts and giants (game/scenes/pool/ghost_layer.gd, s2-view 6) are decor too. They keep
+## the same rules with every slot drawn at once, and share the large-billboard budget (S2G15).
 
 const SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
 const AMBIENCE_DIR := "res://game/scenes/pool/ambience"
@@ -934,13 +937,91 @@ func test_the_ambience_keeps_to_its_budget() -> void:
 	ambience.get_parent().free()
 
 
+## S2 (S2G15, s2-view 6): the ghosts and giants are decor under the same budget. With every slot of
+## the layer drawn at once (six near ghosts, three giants and a riser) beside art's own large
+## billboards, there are at most MAX_BILLBOARDS.
+func test_ghosts_and_ambience_share_the_billboard_budget() -> void:
+	var pool := _pool()
+	pool._mount_ambience()
+	var ambience := pool.get_node_or_null("Ambience")
+	var large := 0
+	if ambience != null:
+		_ready_tree(ambience)
+		for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
+			if _item_size(geo, ambience) >= LARGE_M:
+				var mm := (geo as MultiMeshInstance3D).multimesh if geo is MultiMeshInstance3D else null
+				large += (mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count) if mm != null else 1
+	var ghosts := _all_ghosts(pool)
+	var drawn := ghosts.billboards()
+	check_eq(drawn.size(), 10, "every ghost slot draws: six near, three far and the riser")
+	for geo: GeometryInstance3D in drawn:
+		check(_item_size(geo, ghosts) >= LARGE_M, "%s is a large billboard (%.2f m)" % [geo.name, _item_size(geo, ghosts)])
+		large += 1
+	check(large <= MAX_BILLBOARDS, "%d large billboards with the ghosts, at most %d" % [large, MAX_BILLBOARDS])
+	pool.free()
+
+
+## S2 (S2G15): the ghosts keep the decor rules. Every one drawn at once keeps out of the plane band
+## (the riser at most at its edge), casts no shadow, draws under the strike lane, fades with the fog,
+## keeps clear of the food and threat hues and is too faint to lift the fluid.
+func test_the_ghosts_keep_the_decor_rules() -> void:
+	var pool := _pool()
+	var ghosts := _all_ghosts(pool)
+	var drawn := ghosts.billboards()
+	check(not drawn.is_empty(), "the ghosts draw")
+	for geo: GeometryInstance3D in drawn:
+		var h := _heights(geo, ghosts)
+		check(h.high <= PLANE_BAND.x + 1e-4, "%s keeps under %.1f m (its top at %.2f m)" % [geo.name, PLANE_BAND.x, h.high])
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s casts no shadow" % geo.name)
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "%s draws under the lane" % geo.name)
+			check(_blend_and_fog(m).fog, "%s keeps the engine's fog" % geo.name)
+	_check_hues(drawn)
+	_check_pale(drawn, ghosts)
+	pool.free()
+
+
+## A GhostLayer under `pool` on the shipped ladder at size 1 with every slot drawn: the near slots
+## and the giants staged in view, and two seconds into a rise of a species no near slot shows, so it
+## draws as its own billboard at its height.
+func _all_ghosts(pool: Node) -> GhostLayer:
+	var camera: PoolCamera = pool.camera
+	camera.configure({})
+	camera.snap_to(Vector3.ZERO)
+	var ghosts := GhostLayer.new()
+	ghosts.camera = camera
+	pool.add_child(ghosts)
+	ghosts.configure(GhostLayer.shipped().data, 1, 7)
+	var near := []
+	for i in 6:
+		near.append({"species": ["elder_rammer", "veil", "warden"][i % 3], "offset": Vector2(-12.0 + 5.0 * i, -6.0 - 3.0 * i)})
+	ghosts.stage(near, [{"offset": Vector2(-20.0, -25.0)}, {"offset": Vector2(5.0, -30.0)}, {"offset": Vector2(25.0, -20.0)}])
+	ghosts.apply_scale_view(_ghost_view(camera, 0.0))
+	ghosts.rise("lurker", Vector2(0.0, -12.0))
+	for t in [0.5, 1.0, 1.5, 2.0]:
+		ghosts.apply_scale_view(_ghost_view(camera, t))
+	return ghosts
+
+
+static func _ghost_view(camera: PoolCamera, time_s: float) -> Dictionary:
+	return {"size": 1, "band": 0, "region": "", "tile": Vector2i.ZERO, "depth_k": 1.0, "size_k": 1.0,
+		"focus_am": PackedFloat64Array([camera.focus.x, camera.focus.z]), "tm_to_am": 1.0, "time_s": time_s}
+
+
 func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 	if not ResourceLoader.exists(SCENE):
 		return
 	var ambience := _mounted()
 	if ambience == null:
 		return
-	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
+	_check_hues(_nodes(ambience, "GeometryInstance3D"))
+	ambience.get_parent().free()
+
+
+## Every colour `geos` draw keeps HUE_GAP from the reserved hues: flat colours one by one, a painting
+## by coverage.
+func _check_hues(geos: Array) -> void:
+	for geo: GeometryInstance3D in geos:
 		for m in _materials(geo):
 			var named: Array = []
 			for color_set: Dictionary in _color_sets(m, geo):
@@ -976,7 +1057,6 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 				for reserved: String in RESERVED:
 					var gap := LookProbe.hue_gap(LookProbe.hue(lab), LookProbe.hue(LookProbe.lab(RESERVED[reserved])))
 					check(gap >= HUE_GAP, "%s colour %s is %.0f degrees of LAB hue from the %s colour, at least %.0f" % [geo.name, entry[0], gap, reserved, HUE_GAP])
-	ambience.get_parent().free()
 
 
 func test_pale_decor_is_too_faint_to_lift_the_fluid_or_cut_the_lane() -> void:
@@ -985,8 +1065,15 @@ func test_pale_decor_is_too_faint_to_lift_the_fluid_or_cut_the_lane() -> void:
 	var ambience := _mounted()
 	if ambience == null:
 		return
-	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
-		var below: bool = _heights(geo, ambience).high < 0.0
+	_check_pale(_nodes(ambience, "GeometryInstance3D"), ambience)
+	ambience.get_parent().free()
+
+
+## Everything transparent among `geos` (under `root`) keeps luminance x opacity at most MAX_LUMA_ALPHA,
+## and what is under the plane keeps its luminance at most MAX_LUMA_BELOW.
+func _check_pale(geos: Array, root: Node) -> void:
+	for geo: GeometryInstance3D in geos:
+		var below: bool = _heights(geo, root).high < 0.0
 		var instance := _instance_opacity(geo)
 		var unread := geo is MultiMeshInstance3D and (geo as MultiMeshInstance3D).multimesh != null and (geo as MultiMeshInstance3D).multimesh.use_custom_data \
 			and not _readable((geo as MultiMeshInstance3D).multimesh)
@@ -1005,7 +1092,6 @@ func test_pale_decor_is_too_faint_to_lift_the_fluid_or_cut_the_lane() -> void:
 				check(top_lit <= MAX_LUMA_ALPHA + 1e-4, "%s: luminance x opacity %.3f, at most %.2f%s" % [geo.name, top_lit, MAX_LUMA_ALPHA, note])
 			if below:
 				check(top <= MAX_LUMA_BELOW + 1e-4, "%s under the plane: luminance %.3f, at most %.2f" % [geo.name, top, MAX_LUMA_BELOW])
-	ambience.get_parent().free()
 
 
 ## S1 (the endless sea): a rebase moves every local position by -offset, the camera's focus with

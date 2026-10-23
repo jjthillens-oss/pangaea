@@ -11,6 +11,8 @@ extends RefCounted
 
 const DT := 1.0 / 60.0
 const SCREEN := Vector2(1920.0, 1080.0)
+## The instances tracked of each of the beat's still MultiMeshes (old food, glitter).
+const STILL_POINTS := 8
 
 
 ## One frame as the engine runs it at 60 fps: the sim ticks and its events route, then the pool
@@ -49,7 +51,8 @@ static func project(camera: Camera3D, p: Vector3, screen := SCREEN) -> Vector2:
 
 ## The views a growth must keep in place, by name -> point in the pool's space: the cell, the
 ## creature views, every shell instance (live, retiring and fresh) by id, the landmark pieces, the
-## zone patches and labels, the markers, the Backdrop's centre and the beat's effects.
+## zone patches and labels, the markers, the Backdrop's centre, the beat's effects (with the first
+## instances of its old food copies and glitter) and the ghosts drawn ("ghost <name>").
 static func tracked_points(pool: PoolScene) -> Dictionary:
 	var out := {"cell": pool.cell_view.position}
 	for view in pool.creature_layer.views():
@@ -71,7 +74,14 @@ static func tracked_points(pool: PoolScene) -> Dictionary:
 	if pool.markers.column() != null:
 		out["column"] = in_pool(pool, pool.markers.column())
 	out["backdrop"] = pool.backdrop.position
+	if pool.ghosts != null:
+		for ghost in pool.ghosts.billboards():
+			out["ghost " + ghost.name] = in_pool(pool, ghost)
 	if pool.growth_beat != null and pool.growth_beat.fx != null:
 		for child in pool.growth_beat.fx.get_children():
 			out["fx " + child.name] = in_pool(pool, child)
+			if child is StillInstances:
+				var still := child as StillInstances
+				for i in mini(still.transforms.size(), STILL_POINTS):
+					out["fx %s %d" % [child.name, i]] = in_pool(pool, still) + still.transforms[i].origin
 	return out

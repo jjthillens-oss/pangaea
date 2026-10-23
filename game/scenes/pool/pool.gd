@@ -33,6 +33,11 @@ extends Node3D
 ## GrowthBeat then times the swell, the dolly back out, the chord (growth_chord, for the HUD) and the
 ## relations. Leftover chunks retire (chunk_unloaded {reason: "growth"}) and sink away; the new
 ## ones fade in. A respawn, a teleport or a dev size change ends a running beat at once.
+##
+## The ghosts (S2, s2-view 6): GhostLayer ("Ghosts", camera_relative) draws the species of the next
+## sizes far below, and the giants further down, from scale_view() and the camera alone, in both
+## modes. Once per lineage on this computer the giants make a first pass; giant_pass_started tells
+## main, which remembers it in the player memory set here before setup().
 
 ## Every sim event, after the pool's own feedback has run (see PoolSim.drain_events for types).
 signal sim_event(event: Dictionary)
@@ -51,6 +56,8 @@ signal respawned(grace_s: float, teleport: bool)
 ## The growth beat's chord (S2, 1.9 s in): the scene now shows `size`; the HUD shows its message,
 ## badge and ring for it.
 signal growth_chord(size: int)
+## The giants' first pass for this lineage has started (D-42): main records it in the player memory.
+signal giant_pass_started
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The regions whose zones get sunlit patches in the sea: the feast region and home (CT-14).
@@ -99,6 +106,11 @@ var sent_trigger := ""
 var reduce_motion := false
 ## Times the growth beat on screen (S2); idle outside a growth.
 var growth_beat: GrowthBeat
+## The ghosts of the sizes to come and the giants (S2).
+var ghosts: GhostLayer
+## What this computer remembers about its player (main's), read for the giants' first pass; none
+## outside main, and then every lineage gets its pass.
+var player_memory: UserSettings
 ## The depth factor drawn now (apply_depth_k), and the base depths it scales: the Backdrop's height
 ## and scale, and the fog of the environment they were read from (re-read if it is replaced).
 var _depth_k := 1.0
@@ -164,6 +176,13 @@ func _ready() -> void:
 		growth_beat = GrowthBeat.new()
 		growth_beat.name = "GrowthBeat"
 		add_child(growth_beat)
+	if ghosts == null:
+		ghosts = GhostLayer.new()
+		ghosts.name = "Ghosts"
+		ghosts.add_to_group(&"camera_relative")   # placed from the camera every frame (V-12)
+		add_child(ghosts)
+		ghosts.first_pass_started.connect(giant_pass_started.emit)
+	ghosts.camera = camera
 	_mount_ambience()
 	if session != null and not _built:
 		_build()
@@ -252,6 +271,8 @@ func _build() -> void:
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
 	creature_layer.attach(sim, world_space)
+	apply_food_looks(sim_size())
+	_configure_ghosts()
 	markers.setup(sim, session.world.kit if is_endless() else null)
 	_update_markers()
 	if sim.species != null:
@@ -262,6 +283,22 @@ func _build() -> void:
 	_draw_food(1.0)
 	_listen_to_settings()
 	_fade_in()
+
+
+## The ghosts on the shipped ladder at the sim's size, hashed from the lineage (none when the ladder
+## has problems); the glitter takes its haze sprites from the same ladder. A lineage this computer
+## has not seen pass gets the giants' first pass 30 to 60 s into the session (D-42, V-14).
+func _configure_ghosts() -> void:
+	var ladder: Dictionary = GhostLayer.shipped()
+	var data: Dictionary = ladder.data if ladder.problems.is_empty() else {}
+	var lineage: String = sim.save.lineage_id if sim.save != null else ""
+	ghosts.configure(data, sim_size(), hash(lineage))
+	growth_beat.haze = GrowthBeat.FOOD_HAZE.merged(GrowthBeat.SPECIES_HAZE).merged(GhostLayer.haze_paths(data), true)
+	if data.is_empty() or (player_memory != null and player_memory.giant_pass_lineages.has(lineage)):
+		return
+	var start: Array = data.far.first_pass.start_s
+	var u := float(hash(lineage) & 0xFFFF) / 65536.0
+	ghosts.schedule_first_pass(sim.now() + lerpf(float(start[0]), float(start[1]), u))
 
 
 ## True in the endless sea (the sim streams a world), false in the M1 pool.
@@ -314,6 +351,8 @@ func apply_depth_k(k: float) -> void:
 	zone_lights.set_depth_k(k)
 	feedback.set_depth_k(k)
 	markers.set_size_k(k)
+	plankton_view.depth_k = k
+	carrion_view.depth_k = k
 
 
 ## The depth factor drawn now (1 outside a growth beat).
@@ -326,12 +365,11 @@ func depth_k() -> float:
 func scale_view() -> Dictionary:
 	var focus := Vector2(camera.focus.x, camera.focus.z)
 	var endless := is_endless()
-	var n := shown_size()
 	return {"size": sim_size(), "band": 0, "region": sim.region if sim != null else "",
 		"tile": sim.world.tile_of_local(focus) if endless else Vector2i.ZERO,
 		"depth_k": _depth_k, "size_k": _depth_k,
 		"focus_am": sim.world.abs_of_local(focus) if endless else PackedFloat64Array([focus.x, focus.y]),
-		"tm_to_am": WorldConfig.tm_to_am(n) if endless else 1.0,
+		"tm_to_am": WorldConfig.tm_to_am(sim_size()) if endless else 1.0,
 		"time_s": _draw_time(1.0 if paused else Engine.get_physics_interpolation_fraction()) if sim != null else 0.0}
 
 
@@ -543,6 +581,7 @@ func _begin_growth(e: Dictionary) -> void:
 	world_space.apply_growth(center, factor)
 	_bake_fx()
 	creature_layer.apply_growth(center, factor)
+	ghosts.begin_growth(int(e.get("from", 1)), int(e.get("to", 2)))
 	markers.hold_column_until(GrowthBeat.RELATIONS_S)
 	apply_depth_k(growth_beat.k())
 	_follow_camera()
@@ -582,9 +621,27 @@ func _fade_in() -> void:
 
 ## What the start fade draws out of sight besides the eat burst: both food meshes, which first show
 ## at a meal, the zone light, whose patches may first come into view later, and a strike lane, which
-## first shows at a tell.
+## first shows at a tell. S2 (V-20): every food look (the algae ball first shows at size 2), the new
+## bodies, M_Morsel, M_RemnantLimp and the rim hull, the beat's pre-blur veil and glitter, and a ghost.
 func warm_up_meshes() -> Array[Mesh]:
-	return [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
+	var out := [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
+	for look in FoodView.LOOKS:
+		var mesh := FoodView.look_mesh(look)
+		if not out.has(mesh):
+			out.append(mesh)
+	out.append_array(CreatureView.warm_up_growth_meshes())
+	out.append_array(GrowthBeat.warm_up_meshes())
+	out.append(GhostLayer.warm_up_mesh())
+	return out
+
+
+## The food views wear the looks of `size` (world_cell.json ladder.food_looks: the algae ball at size
+## 2); the pool's are the plankton and carrion.
+func apply_food_looks(size: int) -> void:
+	var looks: Array = session.world.config.ladder.get("food_looks", []) if is_endless() else []
+	var at: Dictionary = looks[size - 1] if size >= 1 and size <= looks.size() else {}
+	plankton_view.set_look(str(at.get("plant", FoodView.KIND_LOOKS.plant)))
+	carrion_view.set_look(str(at.get("meat", FoodView.KIND_LOOKS.meat)))
 
 
 ## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at
@@ -757,6 +814,7 @@ func _route(event: Dictionary) -> void:
 			_begin_growth(event)
 		"grew":
 			growth_beat.apply_grew(event)
+			apply_food_looks(sim_size())
 			audio.play("grow")
 		"carrion_expired":
 			if event.get("reason") == "growth":
@@ -779,17 +837,20 @@ func _route(event: Dictionary) -> void:
 				camera.snap_to(cell_view.position)
 				creature_layer.attach(sim, world_space)
 				creature_layer.apply_relations(sim_size(), 0.0)
+				apply_food_looks(sim_size())
 				if audio.has_method(&"set_size"):
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)
 	sim_event.emit(event)
 
 
-## Art's ambience reads the scale view each frame when it can (s2-view 4.2, 11.2).
+## The ghosts and art's ambience (when it can) read the scale view each frame (s2-view 4.2, 6, 11.2).
 func _apply_scale_view() -> void:
+	var view := scale_view()
+	ghosts.apply_scale_view(view)
 	var ambience := get_node_or_null(^"Ambience")
 	if ambience != null and ambience.has_method(&"apply_scale_view"):
-		ambience.call(&"apply_scale_view", scale_view())
+		ambience.call(&"apply_scale_view", view)
 
 
 func _world(p: Variant) -> Vector3:

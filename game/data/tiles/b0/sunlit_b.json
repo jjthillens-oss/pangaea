@@ -34,9 +34,8 @@
     {"id": "f7", "center": [0.0, 27.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "ma", "species": "rammer", "home": [-5.0, 1.0], "heading": -2.3562, "territory_zone": "ra", "sizes": [1]},
+    {"id": "ma", "species": "rammer", "home": [-5.0, 1.0], "heading": -2.3562, "territory_zone": "ra", "sizes": [1, 2]},
     {"id": "mb", "species": "rammer", "home": [6.0, 7.0], "heading": 1.5708, "territory_zone": "rb", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [-6.1, -12.4], "heading": -2.274, "territory_zone": "", "sizes": [1]},
-    {"id": "lk", "species": "lurker", "home": [4.0, 14.0], "heading": -1.8491, "territory_zone": "", "sizes": [2]}
+    {"id": "la", "species": "ambush_hunter", "home": [-6.1, -12.4], "heading": -2.274, "territory_zone": "", "sizes": [1]}
   ]
 }
