@@ -553,3 +553,64 @@ func test_think_hands_the_brain_the_cell_where_it_is_alive_and_not_concealed() -
 	field.think(c, others, [], arena, 11, sv)
 	check_eq(sv.get("cell", null), Vector2.INF, "no player in the bodies: no cell")
 	check_eq(sv.get("cell_seen", null), false, "and not seen")
+
+
+# --- S2 T2.2: the field per size (D-16, D-79, BP-10) ---
+
+## The fields a body is compared on (every Phenotype.scaled field and the unscaled ones).
+func _body(p: Phenotype) -> Array:
+	return [p.radius, p.speed, p.acceleration, p.sight, p.max_health, p.bite_damage, p.mass, p.upkeep,
+		p.move_cost, p.energy_capacity, p.turn_rate, p.defense, p.spikes.size()]
+
+
+func test_create_holds_the_niches_and_records_of_the_first_size_only() -> void:
+	var s2 := FakeWorldGen.s2_species()
+	var field := _field(SEED, s2)
+	var m1 := _field()
+	check_eq(field.region.niches, m1.region.niches, "the M1 roles and caps, nothing for the size-2 species")
+	check_eq(field.size, 1, "size 1")
+	for id in ["ambush_hunter", "rammer"]:
+		var rec := field.record_of(id)
+		check_eq(rec.q, 1.0, "%s: q 1" % id)
+		check_eq(_body(rec.phenotype), _body(s2.phenotype(id, parts)), "%s: its own body, bit for bit" % id)
+		check_eq(rec.cfg, s2.brain_config(id), "%s: its own brain config" % id)
+		var senses: Dictionary = s2.species[id].senses
+		check_eq(field._senses[id], {"sight": s2.phenotype(id, parts).sight, "fov": deg_to_rad(float(senses.fov_deg)),
+			"near": float(senses.near_m)}, "%s: its own senses" % id)
+	for id in ["lurker", "elder_rammer"]:
+		check(field.record_of(id).is_empty(), "%s: no record at size 1" % id)
+		check(field.spawn_at(id, Vector2(0.0, -30.0), 0.0, "", 0, true) == null, "%s: nothing spawns it at size 1" % id)
+	check(field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 0, true) != null, "an M1 species does")
+
+
+func test_set_size_takes_every_record_at_the_size_and_spawns_from_them() -> void:
+	var s2 := FakeWorldGen.s2_species()
+	var field := _field(SEED, s2)
+	var arena := layout.build_arena()
+	field.set_size(2)
+	check_eq(field.size, 2, "size 2")
+	for id in s2.species_ids():
+		var rec := field.record_of(id)
+		check_eq(rec, s2.at_size(id, 2, parts), "%s: its at_size record" % id)
+	check_eq(field.record_of("rammer").q, 0.625, "an M1 species one size down")
+	check_eq(field.record_of("lurker").q, 1.0, "a size-2 species at its entry size")
+	var rec: Dictionary = field.record_of("rammer")
+	var c := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	check(c != null, "a rammer spawns")
+	if c == null:
+		return
+	check_eq(_body(c.phenotype), _body(rec.phenotype), "its body is the record's")
+	check_eq(c.state.max_health, rec.phenotype.max_health, "and its health")
+	check_eq(c.actor.reach_scale, 0.625, "its reach scales by q")
+	check_eq(c.brain.cfg, rec.cfg, "its brain runs the scaled config")
+	check_eq(field._senses.rammer, {"sight": rec.sight, "fov": rec.fov, "near": rec.near_m}, "its senses are the record's")
+	var points := field.carcass_points(c, arena, 0.05)
+	for p in points:
+		check(absf(p.distance_to(c.motion.position) - float(rec.carcass_rings[0])) < 1e-5,
+			"a chunk lands on the first scaled ring (%s)" % p.distance_to(c.motion.position))
+	var lurker := field.spawn_at("lurker", Vector2(20.0, -30.0), 0.0, "", 5, true)
+	check(lurker != null and lurker.actor.reach_scale == 1.0, "a Lurker spawns at size 2, at q 1")
+	field.set_size(1)
+	check(field.record_of("lurker").is_empty(), "back at size 1 the Lurker has no record")
+	check_eq(field.record_of("rammer").q, 1.0, "and the rammer is its own again")
+	check_eq(_body(c.phenotype), _body(rec.phenotype), "a creature already out keeps its body")

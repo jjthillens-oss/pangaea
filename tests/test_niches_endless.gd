@@ -444,3 +444,102 @@ func _reach_site(sim: PoolSim, site: String, start: Vector2, dir: Vector2) -> Cr
 			return c
 		sim.step(SimIntent.new(dir))
 	return sim.creatures._occupant(site)
+
+
+# --- S2 T2.2 (BP-10): the niches per size ---
+
+## A site of its own, `species` homed at local `home` (in a loaded chunk), entered into the table at
+## the world's size with the caps recomputed.
+func _own_site(sim: PoolSim, id: String, p_species: String, home: Vector2) -> Dictionary:
+	var a := sim.world.abs_of_local(home)
+	var key := sim.world.chunk_of_local(home)
+	check(sim.world.chunk(key) != null, "the home chunk of %s is loaded" % id)
+	var s := {"id": id, "species": p_species, "x": a[0], "y": a[1], "heading": 0.0,
+		"territory": {"x": a[0], "y": a[1], "radius": 3.0}, "reach": {"x": a[0], "y": a[1], "radius": 6.0},
+		"chunks": [key] as Array[Vector2i], "sizes": [sim.world.size] as Array[int], "tile": Vector2i.ZERO}
+	sim.world.sites[id] = sim.world._site_record(s, key)
+	sim.world.recompute_caps(sim)
+	return sim.world.sites[id]
+
+
+## With the size-2 species in the catalog, a size-1 endless world is S1's: the same roles (a Lurker
+## or elder rammer role at cap 0 would add keys to every size-1 snapshot) and the same state.
+func test_at_size_1_the_size_2_species_add_no_role_and_change_nothing() -> void:
+	var a := _endless()
+	var b := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species())
+	for t in 900:
+		a.step(SimIntent.new(Vector2.from_angle(0.3)))
+		b.step(SimIntent.new(Vector2.from_angle(0.3)))
+	check_eq(b.snapshot().niches, a.snapshot().niches, "the niches")
+	check_eq(b.region.niches.keys(), a.region.niches.keys(), "the roles, in order")
+	check(not b.region.niches.has("lurker") and not b.region.niches.has("elder_rammer"), "no size-2 role")
+	check_eq(b.state_hash(), a.state_hash(), "the same state")
+
+
+## At size 2 the size-2 species' roles join, the Lurker's cap is its live sites in the table, its
+## creature takes the record at size 2, and a drop back to size 1 keeps the role at cap 0.
+func test_at_size_2_the_lurker_cap_is_its_live_sites_and_a_drop_keeps_its_role_at_0() -> void:
+	var s2 := FakeWorldGen.s2_species()
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, s2)
+	for t in 40:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	var spot := sim._clear_point_near(sim.motion.position + Vector2(0.0, -9.0), 1.0)
+	check(not sim.debug_spawn_creature("lurker", spot, 0.0), "no dev Lurker at size 1 (it has no record)")
+	sim.world.size = 2
+	sim.creatures.set_size(2)
+	sim.world.recompute_caps(sim)
+	check(sim.debug_spawn_creature("lurker", spot, 0.0), "a dev Lurker at size 2")
+	check_eq(int(sim.region.niches.lurker.cap), 0, "the Lurker role joins at size 2, at 0 with no site")
+	check_eq(int(sim.region.niches.elder_rammer.cap), 0, "and the elder rammer's")
+	var at := sim.motion.position
+	var ids := ["x_lurk_a", "x_lurk_b", "x_lurk_c"]
+	for i in ids.size():
+		_own_site(sim, ids[i], "lurker", at + Vector2(-20.0 + 6.0 * i, 12.0))
+	var live := 0
+	for id in sim.world.sites:
+		if str(sim.world.sites[id].species) == "lurker" and s2.live_at("lurker", sim.world.size):
+			live += 1
+	check_eq(live, 3, "three live Lurker sites")
+	check_eq(int(sim.region.niches.lurker.cap), live, "the Lurker cap is its live sites")
+	var c := sim.creatures.spawn_site(sim.world.sites["x_lurk_a"], sim.tick, true)
+	check(c != null, "a Lurker spawns at its site")
+	if c != null:
+		check_eq(c.phenotype.radius, s2.at_size("lurker", 2, catalog).phenotype.radius, "with its size-2 body")
+	var r_site := _own_site(sim, "x_ram", "rammer", at + Vector2(20.0, 12.0))
+	var r := sim.creatures.spawn_site(r_site, sim.tick, true)
+	check(r != null and r.actor.reach_scale == 0.625, "a rammer at size 2 reaches at q 0.625")
+	if r != null:
+		check_eq(r.phenotype.radius, s2.at_size("rammer", 2, catalog).phenotype.radius, "with its scaled body")
+	for id in ids:
+		sim.world.sites.erase(id)
+	sim.world.size = 1
+	sim.creatures.set_size(1)
+	sim.world.recompute_caps(sim)
+	check(sim.region.niches.has("lurker"), "back at size 1 the Lurker role stays")
+	check_eq(int(sim.region.niches.lurker.cap), 0, "at cap 0")
+
+
+## Creatures come only from streamed sites in the endless world (BP-10): over a swim every
+## creature_spawned names a site in the table on its tick, none is a debug spawn, and every creature
+## in the field on every tick holds a site of the table.
+func test_every_endless_spawn_comes_from_a_site_in_the_table() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species(), null, PackedFloat64Array(), 2)
+	var spawns := 0
+	var met := {}
+	var bad := []
+	for t in 2400:
+		sim.step(SimIntent.new(Vector2.from_angle(0.6)))
+		for e in sim.drain_events():
+			if e.type != "creature_spawned":
+				continue
+			spawns += 1
+			if str(e.site).is_empty() or bool(e.debug) or not sim.world.sites.has(str(e.site)):
+				bad.append("tick %d: %s" % [t, e])
+		for c in sim.creatures.creatures:
+			met[c.id] = true
+			if c.debug or c.site_id.is_empty() or sim.creatures._occupant(c.site_id) != c:
+				bad.append("tick %d: %s at site '%s'" % [t, c.id, c.site_id])
+	check(bad.is_empty(), "every creature from a site (%s)" % [bad.slice(0, 3)])
+	check(spawns >= 2, "%d spawns on the way" % spawns)
+	check(met.size() >= 6, "%d creatures met" % met.size())

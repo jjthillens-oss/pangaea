@@ -104,7 +104,11 @@ var events: Array[Dictionary] = []
 var endless := false
 var world: WorldStream = null
 
-var _phenotypes := {}   ## species id -> Phenotype
+## The cell's size (S2): the endless world's size, 1 in the pool. set_size keeps the per-species
+## caches below at it.
+var size := 1
+var _records := {}      ## species id -> its SpeciesCatalog.at_size record at `size` (entry_size <= size)
+var _phenotypes := {}   ## species id -> Phenotype (its record's)
 ## Endless mode: the awake creatures, sorted (number, id) like `creatures`.
 var _awake: Array[Creature] = []
 ## Endless mode: how many awake creatures think on each slot.
@@ -123,8 +127,9 @@ var _scan_all := true
 var _taken_at := -1
 
 
-## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets each species'
-## niche in the region; spawns nothing yet (populate()).
+## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets the niche of each
+## species drawn from the first size (entry_size 1, D-16 and BP-10: a later size's species would add a
+## role to every size-1 snapshot) and the caches at size 1; spawns nothing yet (populate()).
 static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: PoolLayout, p_region: EcologyRegion,
 		p_seed: int) -> CreatureField:
 	var field := CreatureField.new()
@@ -135,13 +140,37 @@ static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: 
 	field.seed_value = p_seed
 	field.rng.seed = p_seed
 	for id in p_species.species_ids():
+		if p_species.entry_size(id) != 1:
+			continue
 		var niche := p_species.niche_of(id)
 		p_region.set_niche(str(niche.role), int(niche.cap))
-		var p := p_species.phenotype(id, p_catalog)
-		field._phenotypes[id] = p
-		var senses: Dictionary = p_species.species[id].senses
-		field._senses[id] = {"sight": p.sight, "fov": deg_to_rad(float(senses.fov_deg)), "near": float(senses.near_m)}
+	field.set_size(1)
 	return field
+
+
+## The per-species caches at the cell's size n (S2, D-79): each species with entry_size <= n takes its
+## SpeciesCatalog.at_size record, and its body and senses from it; a species above n keeps none (it is
+## a ghost, and nothing spawns it). At a species' entry size every value is its own, so at size 1 every
+## M1 value is S1's, bit for bit. Creatures already in the field keep the body they have.
+func set_size(n: int) -> void:
+	size = n
+	_records.clear()
+	_phenotypes.clear()
+	_senses.clear()
+	for id in species.species_ids():
+		if species.entry_size(id) > n:
+			continue
+		var rec := species.at_size(id, n, catalog)
+		if rec.is_empty():
+			continue   # a broken catalog: at_size reported it
+		_records[id] = rec
+		_phenotypes[id] = rec.phenotype
+		_senses[id] = {"sight": rec.sight, "fov": rec.fov, "near": rec.near_m}
+
+
+## The species' record at the field's size (SpeciesCatalog.at_size), or {} when it has none here.
+func record_of(species_id: String) -> Dictionary:
+	return _records.get(species_id, {})
 
 
 ## The creatures that act this tick, in number order: every creature in the pool (the list itself),
@@ -275,15 +304,19 @@ func spawns_asleep(s: Dictionary, places: Array[Vector2]) -> bool:
 ## Places a creature now, at rest at `p` facing `heading`, with `p` as its home. A site's creature
 ## guards that site's territory; a creature with no site (tests, dev) guards the brain's default
 ## circle round its home. A counted creature first takes a niche slot: null when its niche is full.
-## A debug creature skips the niche. Every creature settles for settle_s (it notices nothing).
+## A debug creature skips the niche. Every creature settles for settle_s (it notices nothing). Its body,
+## brain config and reach come from its record at the field's size (D-79): null for a species with
+## none here (above the size).
 func spawn_at(species_id: String, p: Vector2, heading: float, site := "", tick := 0, debug := false) -> Creature:
-	if not species.has_species(species_id):
+	var rec := record_of(species_id)
+	if not species.has_species(species_id) or rec.is_empty():
 		return null
 	var role := str(species.niche_of(species_id).role)
 	if not debug and not region.try_spawn(role):
 		return null
 	var block: Dictionary = species.species[species_id]
-	var c := _new_creature(species_id, _phenotypes[species_id], p, heading, tick)
+	var c := _new_creature(species_id, rec.phenotype, p, heading, tick)
+	c.actor.reach_scale = float(rec.reach_scale)
 	c.site_id = site
 	c.role = role
 	c.debug = debug
@@ -291,7 +324,7 @@ func spawn_at(species_id: String, p: Vector2, heading: float, site := "", tick :
 	var territory := {}
 	if not site.is_empty():
 		territory = species.territory_of(species.site(site), layout)
-	var cfg := species.brain_config(species_id)
+	var cfg: Dictionary = rec.cfg
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, p, heading, territory, seed_value * BRAIN_SEED_STRIDE + c.number, tick)
 	_add(c)
 	return c
@@ -390,10 +423,14 @@ func respawn_delay_for(c: Creature) -> int:
 ## Endless mode: spawns site `s` (a WorldStream site record) now if its niche has room. Its number,
 ## id ("c_<size>_<site>_<count>"), brain seed and respawn delay come from the world seed, the site
 ## and its spawn count, which rises only on a real spawn. An awake spawn first has its site's reach
-## chunks loaded (B-9). Null when the niche is full.
+## chunks loaded (B-9). Its body, brain config and reach come from its record at the field's size
+## (D-79). Null when the niche is full or the species has no record here.
 func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var site_id := str(s.id)
 	var species_id := str(s.species)
+	var rec := record_of(species_id)
+	if rec.is_empty():
+		return null
 	var count: int = world.site_counts.get(site_id, 0)
 	var role := str(species.niche_of(species_id).role)
 	if not region.try_spawn(role):
@@ -401,7 +438,7 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	if not asleep:
 		world.load_site_chunks(s)
 	world.site_counts[site_id] = count + 1
-	var p: Phenotype = _phenotypes[species_id]
+	var p: Phenotype = rec.phenotype
 	var c := Creature.new()
 	var site_hash := WorldHash.str32(site_id)   # for the number and the brain's seed
 	c.number = 1 + WorldHash.mix32(site_hash, count) % SITE_NUMBERS
@@ -413,11 +450,12 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	c.state.energy = c.state.energy_capacity * float(species.species[species_id].start_energy_share)
 	c.motion = Locomotion.MotionState.new(s.home, float(s.heading))
 	c.actor = InteractionResolver.Actor.new(c.id, s.home, float(s.heading), p)
+	c.actor.reach_scale = float(rec.reach_scale)
 	c.drive = idle_drive(float(s.heading))
 	c.born_tick = tick
 	c.site_id = site_id
 	c.role = role
-	var cfg := species.brain_config(species_id)
+	var cfg: Dictionary = rec.cfg
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
 		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])), tick)
 	c.asleep = asleep
@@ -487,16 +525,18 @@ func remove_stuck_at(places: Array[Vector2], tick: int) -> void:
 
 
 ## Where a dead creature's carcass chunks land: chunk i is tried at heading + i x TAU / chunks, at
-## each CARCASS_RINGS_M distance in turn, and takes the first spot where `item_radius` is clear of
-## rocks, else the body's center. Deterministic, with no RNG.
+## each of its record's carcass rings in turn (CARCASS_RINGS_M x q, D-79; CARCASS_RINGS_M without a
+## record), and takes the first spot where `item_radius` is clear of rocks, else the body's center.
+## Deterministic, with no RNG.
 func carcass_points(c: Creature, arena: PoolArena, item_radius: float) -> Array[Vector2]:
 	var out: Array[Vector2] = []
 	var chunks := int(species.species[c.species_id].carcass.chunks)
 	var center := c.motion.position
+	var rings: Array = record_of(c.species_id).get("carcass_rings", CARCASS_RINGS_M)
 	for i in chunks:
 		var dir := Vector2.from_angle(c.motion.heading + i * TAU / chunks)
 		var spot := center
-		for ring in CARCASS_RINGS_M:
+		for ring in rings:
 			var p: Vector2 = center + dir * float(ring)
 			if arena.is_clear(p, item_radius):
 				spot = p
