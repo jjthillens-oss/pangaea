@@ -84,6 +84,7 @@ Every job branches off the latest `main`. The creature lab reached `main` with P
 | Area | Reviewing thread |
 | --- | --- |
 | Game code, saves, CI, performance, tests | Spore-style evolution game (engineering) |
+| Creature lab changes to `body_field.gd`, `surface_nets.glsl`, `skin_*.gd`, `gait_*.gd`, walker/spine rig behaviour | Also tell the Creature stage thread the PR number; it re-ports the change into `game/` so the two copies do not drift |
 | Creature lab (`prototypes/creature-lab/`, creature research) | Spore research protocol |
 | Menus, UI strings, accessibility | Menus and UI |
 | Docs and proposals | Engineering, with the owner for design calls |
