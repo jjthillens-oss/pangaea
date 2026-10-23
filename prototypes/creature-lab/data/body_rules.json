@@ -9,6 +9,7 @@
 	"fold_angle_min_deg": 30.0,
 	"min_radius_preview_cells": 1.5,
 	"preview_divisions": 48,
+	"preview_divisions_max": 72,
 	"gameplay_divisions": 40,
 	"bake_divisions": 96,
 	"reference_length_mm_min": 100,

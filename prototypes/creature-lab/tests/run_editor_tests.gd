@@ -6,6 +6,7 @@ const Lab := preload("res://lab_spine.gd")
 const BodyCodec := preload("res://domain/body_codec.gd")
 const BodyField := preload("res://domain/body_field.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
+const MeshChecks := preload("res://skin/mesh_checks.gd")
 const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 const Session := preload("res://domain/creature_editor_session.gd")
 const Picking := preload("res://domain/editor_picking.gd")
@@ -28,6 +29,7 @@ func _init() -> void:
 	costs = Lab.editor_costs()
 	test_fresh_session()
 	test_spine_edits_and_undo()
+	test_growth()
 	test_refused_ops_change_nothing()
 	test_gesture_is_one_undo_step()
 	test_limb_edits()
@@ -75,8 +77,8 @@ func test_spine_edits_and_undo() -> void:
 	check(r["ok"] and limb["joints"][0]["p"] == [90, -10, -260] and limb["joints"][3]["p"] == [110, -490, -320],
 			"moving a vertebra moves the limbs on it %s" % r["reason"])
 	r = s.insert_vertebra(9)
-	# A longer body has a coarser skin grid (cell = longest extent / divisions), so the thin toes fall under it.
-	check(not r["ok"] and r["reason"].contains("too thin"), "refused: a tail vertebra that would make the toes too thin for the grid (%s)" % r["reason"])
+	check(r["ok"], "a vertebra added at the tail end (the preview grid gets finer for the thin toes) %s" % r["reason"])
+	s.undo()
 	r = s.insert_vertebra(3)
 	check(r["ok"] and s.working.vertebrae[3]["p"] == [0, 15, -190], "a vertebra added halfway %s" % r["reason"])
 	r = s.set_vertebra_radius("v_5", 140)
@@ -92,6 +94,30 @@ func test_spine_edits_and_undo() -> void:
 	r = s.remove_vertebra("v_6")
 	check(r["ok"] and r["removed"]["limbs"] == ["l_2"] and r["removed"]["parts"] == ["p_6"]
 			and s.working.limb_index("l_2") < 0, "removing a vertebra removes its limbs and their parts %s" % str(r))
+
+
+## Growing a body: a longer body keeps its thin legs on a finer preview grid; its skins stay closed and one piece.
+func test_growth() -> void:
+	var s := session()
+	var grew := true
+	for k in 3:
+		grew = grew and s.insert_vertebra(s.working.vertebrae.size())["ok"]
+	var desc = s.working
+	var div: int = desc.preview_divisions(rules)
+	var preview := SkinCpu.build(desc, div)
+	var play := SkinCpu.build_within(desc, int(rules["gameplay_divisions"]), int(rules["gameplay_triangle_budget"]))
+	check(grew and div > int(rules["preview_divisions"]) and MeshChecks.watertight(preview["indices"])
+			and MeshChecks.watertight(play["indices"]) and play["indices"].size() / 3 <= int(rules["gameplay_triangle_budget"]),
+			"three tail vertebrae added: preview grid /%d, %d triangles, closed; gameplay skin /%d, %d triangles, closed"
+			% [div, preview["indices"].size() / 3, play["divisions"], play["indices"].size() / 3])
+	var limit := session()
+	var r: Dictionary = {"ok": true}
+	var added := 0
+	while r["ok"] and added < 20:
+		r = limit.insert_vertebra(limit.working.vertebrae.size())
+		added += 1 if r["ok"] else 0
+	check(not r["ok"] and r["reason"].contains("too thin"),
+			"the tail grows by %d vertebrae before the toes are too thin for the finest grid (%s)" % [added, r["reason"]])
 
 
 func test_refused_ops_change_nothing() -> void:

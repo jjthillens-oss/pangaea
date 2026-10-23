@@ -215,6 +215,21 @@ func cell_size_m(divisions: int) -> float:
 	return bounds_m().get_longest_axis_size() / float(divisions)
 
 
+## The preview grid for this body: the usual divisions, or finer when its thinnest vertebra or joint needs it (each
+## radius spans at least min_radius_preview_cells cells), up to preview_divisions_max. So a body can grow longer
+## without its thin legs falling under the grid; validate() refuses only what the finest preview grid cannot hold.
+func preview_divisions(rules: Dictionary) -> int:
+	var thinnest := INF
+	for i in vertebrae.size():
+		thinnest = minf(thinnest, radius_m(i))
+	for limb in limbs:
+		for j in limb["joints"]:
+			thinnest = minf(thinnest, float(j["r"]) * scale_m())
+	var need := int(ceil(float(rules["min_radius_preview_cells"]) * bounds_m().get_longest_axis_size() / thinnest)) \
+			if thinnest > 0.0 else int(rules["preview_divisions_max"])
+	return clampi(need, int(rules["preview_divisions"]), int(rules["preview_divisions_max"]))
+
+
 func to_dict() -> Dictionary:
 	var verts := []
 	for v in vertebrae:
@@ -260,7 +275,7 @@ func validate(rules: Dictionary) -> PackedStringArray:
 					int(rules["radius_max"])])
 	if not out.is_empty() or n < 2:
 		return out
-	var cell := cell_size_m(int(rules["preview_divisions"]))
+	var cell := cell_size_m(int(rules["preview_divisions_max"]))
 	for i in n:
 		if radius_m(i) < float(rules["min_radius_preview_cells"]) * cell:
 			out.append("vertebra %s is too thin for the skin grid (radius %.3f m, minimum %.3f m)"

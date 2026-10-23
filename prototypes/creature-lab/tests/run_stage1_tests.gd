@@ -31,7 +31,8 @@ var skins := {}
 func _init() -> void:
 	rules = Lab.rules()
 	for body_name in Lab.stage1_names():
-		skins[body_name] = SkinCpu.build(Lab.body(body_name), int(rules["preview_divisions"]))
+		var desc = Lab.body(body_name)
+		skins[body_name] = SkinCpu.build(desc, desc.preview_divisions(rules))
 	test_bodies_are_valid()
 	test_validation_refuses_limb_limits()
 	test_codec_round_trip_and_size()

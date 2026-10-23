@@ -61,7 +61,7 @@ Agreed with engineering on 2026-10-23 so the game has one editor, not two:
 
 ## 3. Results
 
-`tests/run_editor_tests.gd`: 78 checks, all passing. They cover:
+`tests/run_editor_tests.gd`: 80 checks, all passing. They cover:
 
 - all ten Stage 1 bodies open with no cost and no problems;
 - spine, limb and part edits, with exact undo and redo (byte-identical text);
@@ -95,22 +95,26 @@ Live skin while dragging: 20–35 ms per rebuild on software Vulkan at /48 for t
 
 The Stage 1, spine and gait tests still pass after the resolver changes.
 
-## 4. Found while building: growing a body can make it invalid
+## 4. Found while building: growing a body made it invalid (fixed)
 
-The skin grid's cell is the body's longest extent divided by the preview divisions (48). Each radius must be at least
-1.5 cells. So lengthening a body coarsens the grid, and thin parts elsewhere fall under the minimum:
+The skin grid's cell was the body's longest extent divided by a fixed 48, and each radius had to be at least 1.5 cells.
+So lengthening a body coarsened the grid, and thin parts elsewhere fell under the minimum. Adding a tail vertebra to
+the quadruped was refused because its toes became too thin.
 
-- adding a tail vertebra to the quadruped is refused because its toes become too thin;
-- the demo's tail stretch is refused because the head becomes too thin.
+Fix: each body now gets its own preview grid (`BodyDescription.preview_divisions`). It is 48 as before, or finer when
+the thinnest vertebra or joint needs it, up to `preview_divisions_max` (72, in `data/body_rules.json`). Validation
+refuses only what the finest grid cannot hold. The ten test bodies keep /48, so nothing about them changes.
 
-This is a rule of the prototype, not of the game. Two ways to fix it, for the next step:
+| Check | Result |
+| --- | --- |
+| Quadruped with three tail vertebrae added | Preview /58, 6 120 triangles, closed. Gameplay skin /40, 2 948 triangles, closed |
+| How far the quadruped's tail can grow | 6 vertebrae, then the toes are too thin for /72 |
+| GPU rebuild, quadruped, software Vulkan | /48 24 ms, /58 36 ms, /72 56 ms |
 
-- set the preview grid by the thinnest radius instead of a fixed count, within a cell budget;
-- make the minimum radius an absolute size per quality level.
+The gameplay skin needs no change: it already runs coarser than the preview, at /40 or less, and stays closed.
 
 ## 5. Next (PROPOSED)
 
-1. Fix the growth rule in §4.
-2. Limb tools in the scene: drag a new limb out of the body, and rotate or turn parts with a gizmo ring.
-3. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
-4. Hand the core to S4's editor shell when the creature stage starts.
+1. Limb tools in the scene: drag a new limb out of the body, and rotate or turn parts with a gizmo ring.
+2. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
+3. Hand the core to S4's editor shell when the creature stage starts.

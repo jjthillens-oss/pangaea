@@ -27,7 +27,7 @@ const BODY_COLOR := Color(0.36, 0.66, 0.86)
 
 var body_name := "s1_quadruped"
 var points := 100
-var divisions := 48
+var divisions := 0  # 0: the body's own preview grid (BodyDescription.preview_divisions)
 var demo := false
 
 var session: RefCounted
@@ -85,7 +85,8 @@ func _ready() -> void:
 func _rebuild() -> void:
 	var desc = session.working
 	var t0 := Time.get_ticks_usec()
-	var arrays: Dictionary = gpu.build(desc, divisions) if gpu else SkinCpu.build(desc, mini(divisions, 32))
+	var d: int = divisions if divisions > 0 else desc.preview_divisions(session.rules)
+	var arrays: Dictionary = gpu.build(desc, d) if gpu else SkinCpu.build(desc, mini(d, 32))
 	skin_ms = (Time.get_ticks_usec() - t0) / 1000.0
 	if rig:
 		rig.free()
