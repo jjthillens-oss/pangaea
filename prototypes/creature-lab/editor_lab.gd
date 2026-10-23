@@ -3,15 +3,16 @@ extends Node3D
 ## over the scene-free editor core (domain/creature_editor_session.gd, domain/editor_picking.gd); the game's editor
 ## UI would host the same core. Command line (after --): --body=NAME (default s1_quadruped), --points=N,
 ## --divisions=N (skin grid), --sync (build the skin on the main thread), --drive (start in the test drive),
-## --duration=SECONDS, --demo (a scripted run of edits for a clip;
+## --duration=SECONDS, --load=PATH, --showcase (arms plus every part type), --demo (a scripted run of edits for a clip;
 ## quits when done).
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part) to move it; with a part tool chosen, left-click
 ## the skin to add one. Wheel over the selected vertebra or joint: thicker or thinner; elsewhere: zoom. Right-drag:
-## orbit. A selected part shows a yellow ring: drag its handle round to turn the part. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 6 or L limb tool (click the skin and drag the new limb's
-## tip out), 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the selection, Insert adds a
+## orbit. A selected part shows a yellow ring: drag its handle round to turn the part. Keys: 1-9 or Tab / [ ] pick a part tool (every part
+## type in the art records, by name), L the limb tool (click the skin and drag the new limb's tip out), 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the selection, Insert adds a
 ## vertebra or joint after the selection, Ctrl+Z / Ctrl+Y undo and redo, Enter commits; T test-drives
-## the body (it walks on Gait Lab legs; T again returns to editing).
+## the body (it walks on Gait Lab legs; T again returns to editing); Ctrl+S saves the creature, Ctrl+O loads the newest
+## saved one. --load=PATH starts from a saved creature.
 ##
 ## A vertebra on the middle line stays on it while dragged, so a symmetric body stays symmetric. Dragging a mirror
 ## copy's joint or a part's twin moves the original, mirrored.
@@ -29,7 +30,8 @@ const Drives := preload("res://lab_drives.gd")
 const GaitBody := preload("res://domain/gait_body.gd")
 const WalkerRig := preload("res://rig/walker_rig.gd")
 
-const TOOLS := ["eye", "beak", "fin", "foot", "horn"]
+## Where Ctrl+S saves creatures (the canonical description text, data/stage1_bodies.json form).
+const SAVE_DIR := "user://creatures"
 const HANDLE_PICK_PX := 16.0
 const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
 		"turn": Color(1.0, 0.9, 0.2)}
@@ -50,6 +52,8 @@ var camera: Camera3D
 var hud: Label
 var gpu: RefCounted
 var tool := ""
+## Part tools: every part type in the art records, by name.
+var tools: Array = []
 var selected := {}
 var dragging := false
 var drag_plane := Plane()
@@ -60,6 +64,10 @@ var _dirty := true
 var threaded := true
 ## --async: the demo also builds on the worker thread (a check of the threaded path).
 var async_demo := false
+## --load=PATH: start from a saved creature.
+var load_path := ""
+## --showcase: grow a pair of arms and add every part type the body does not have yet, through picking.
+var showcase_now := false
 ## --drive: start in the test drive (with --duration=SECONDS to quit after a while).
 var drive_now := false
 var duration := 0.0
@@ -81,6 +89,8 @@ var _demo_steps: Array = []
 var walker: Node3D
 var _drive_t := 0.0
 var _sphere: SphereMesh
+## --save: save the body once it is set up (after --load and --showcase).
+var save_now := false
 
 
 func _ready() -> void:
@@ -88,16 +98,27 @@ func _ready() -> void:
 		var kv := arg.trim_prefix("--").split("=", true, 1)
 		match kv[0]:
 			"body": body_name = kv[1]
+			"load": load_path = kv[1]
 			"points": points = int(kv[1])
 			"divisions": divisions = int(kv[1])
 			"demo": demo = true
+			"showcase": showcase_now = true
+			"save": save_now = true
 			"sync": threaded = false
 			"async": async_demo = true
 			"drive": drive_now = true
 			"duration": duration = float(kv[1])
 	part_rules = Lab.part_rules()
 	orientations = Lab.part_orientations(part_rules)
+	tools = part_rules.keys()
+	tools.sort()
 	session = Session.new(Lab.body(body_name), Lab.rules(), part_rules, Lab.editor_costs(), points)
+	if load_path != "":
+		load_creature(load_path)
+	if showcase_now:
+		showcase()
+	if save_now:
+		save_creature()
 	if demo:
 		threaded = async_demo
 	if threaded:
@@ -298,9 +319,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_report(session.undo(), "undo")
 		elif k.ctrl_pressed and k.keycode == KEY_Y:
 			_report(session.redo(), "redo")
-		elif k.keycode >= KEY_1 and k.keycode <= KEY_5:
-			tool = TOOLS[k.keycode - KEY_1]
-		elif k.keycode == KEY_6 or k.keycode == KEY_L:
+		elif k.ctrl_pressed and k.keycode == KEY_S:
+			save_creature()
+		elif k.ctrl_pressed and k.keycode == KEY_O:
+			load_creature("")
+		elif k.keycode >= KEY_1 and k.keycode <= KEY_9 and k.keycode - KEY_1 < tools.size():
+			tool = tools[k.keycode - KEY_1]
+		elif k.keycode == KEY_TAB or k.keycode == KEY_BRACKETRIGHT or k.keycode == KEY_BRACKETLEFT:
+			var step := -1 if k.keycode == KEY_BRACKETLEFT or k.shift_pressed else 1
+			tool = tools[posmod(tools.find(tool) + step, tools.size())] if tools.has(tool) else tools[0]
+		elif k.keycode == KEY_L:
 			tool = "limb"
 		elif k.keycode == KEY_0:
 			tool = ""
@@ -503,6 +531,119 @@ func test_drive() -> void:
 	handle_root.visible = false
 	_drive_t = 0.0
 	message = "test drive: %d legs" % info["legs"].size()
+
+
+## Saves the working body as canonical text to SAVE_DIR/creature_<n>.json (the next free n).
+func save_creature() -> void:
+	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	var n := 1
+	while FileAccess.file_exists("%s/creature_%d.json" % [SAVE_DIR, n]):
+		n += 1
+	var path := "%s/creature_%d.json" % [SAVE_DIR, n]
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		message = "could not save to %s" % path
+		return
+	var text := BodyCodec.encode(session.working)
+	f.store_string(text)
+	f.close()
+	message = "saved %s (%d bytes)" % [ProjectSettings.globalize_path(path), text.length()]
+
+
+## Loads a saved creature ("" = the newest in SAVE_DIR) into a new session; a body that fails the rules is refused.
+func load_creature(path: String) -> void:
+	if path == "":
+		var newest := 0
+		for file in DirAccess.get_files_at(SAVE_DIR):
+			if file.begins_with("creature_") and file.ends_with(".json"):
+				newest = maxi(newest, int(file.trim_prefix("creature_").trim_suffix(".json")))
+		if newest == 0:
+			message = "nothing saved in %s yet" % ProjectSettings.globalize_path(SAVE_DIR)
+			return
+		path = "%s/creature_%d.json" % [SAVE_DIR, newest]
+	if not FileAccess.file_exists(path):
+		message = "no file %s" % path
+		return
+	var desc = BodyCodec.decode(FileAccess.get_file_as_string(path))
+	var fresh = Session.new(desc, session.rules, part_rules, session.costs, points)
+	var problems: PackedStringArray = fresh.errors_of(desc)
+	if not problems.is_empty():
+		message = "refused %s: %s" % [path.get_file(), problems[0]]
+		return
+	session = fresh
+	selected = {}
+	body_name = path.get_file().get_basename()
+	message = "loaded %s" % path.get_file()
+	_dirty = true
+
+
+## Adds a pair of arms on the neck and every part type the body lacks, each through the same picking as a click:
+## a ray at a spot that suits the part (snout, head, back, tail, the new arms' hands). Reports what went where.
+func showcase() -> void:
+	var desc = session.working
+	var n: int = desc.vertebrae.size()
+	var field = BodyField.from_description(desc)
+	var neck: Dictionary = Picking.ray_to_skin(field, desc.position_m(1) + Vector3(3.0, -0.2 * desc.radius_m(1), 0.0), Vector3.LEFT)
+	if neck["hit"]:
+		var arm: Dictionary = Picking.limb_at(desc, session.rules, neck["point"], neck["normal"])
+		session.add_limb(arm["attach"], arm["joints"], arm["mirror"])
+	desc = session.working
+	field = BodyField.from_description(desc)
+	var head: Vector3 = desc.position_m(0)
+	var head_dir: Vector3 = (head - desc.position_m(1)).normalized()
+	var tail: Vector3 = desc.position_m(n - 1)
+	var tail_dir: Vector3 = (tail - desc.position_m(n - 2)).normalized()
+	var arm_tip: Vector3 = Vector3.ZERO
+	if not desc.limbs.is_empty():
+		var j: Array = desc.limbs[-1]["joints"][-1]["p"]
+		arm_tip = Vector3(float(j[0]), float(j[1]), float(j[2])) * desc.scale_m()
+	var r1: float = desc.radius_m(1)
+	# Claws go on a limb: aim at the middle joint of each limb, from outside it.
+	var claw_spots := []
+	for limb in desc.limbs:
+		var mj: Array = limb["joints"][limb["joints"].size() / 2]["p"]
+		var at: Vector3 = Vector3(float(mj[0]), float(mj[1]), float(mj[2])) * desc.scale_m()
+		var side := Vector3.RIGHT if at.x >= 0.0 else Vector3.LEFT
+		claw_spots.append([at + side * 3.0, -side])
+	# type -> [ray origin, direction]; the first spot that takes the part wins.
+	var spots := {
+		"antenna": [[desc.position_m(1) + Vector3(0.5 * r1, 3.0, 0.0), Vector3.DOWN]],
+		"crest": [[desc.position_m(2) + Vector3.UP * 3.0, Vector3.DOWN]],
+		"mandibles": [[head + head_dir * 3.0 + Vector3(0.0, -0.4 * desc.radius_m(0), 0.0), -head_dir]],
+		"wing": [[desc.position_m(n / 2 - 1) + Vector3(0.6 * desc.radius_m(n / 2 - 1), 3.0, 0.0), Vector3.DOWN]],
+		"tail_spikes": [[desc.position_m(n - 3) + Vector3.UP * 3.0, Vector3.DOWN]],
+		"tail_fluke": [[tail + tail_dir * 3.0, -tail_dir]],
+		"hand": [[arm_tip + Vector3.RIGHT * 3.0, Vector3.LEFT], [arm_tip + Vector3.DOWN * 3.0, Vector3.UP]],
+		"claw": claw_spots,
+	}
+	var have := {}
+	for p in desc.parts:
+		have[p["type"]] = true
+	var done := PackedStringArray()
+	var missed := PackedStringArray()
+	for type in tools:
+		if have.has(type) or not spots.has(type):
+			continue
+		var ok := false
+		for spot in spots[type]:
+			field = BodyField.from_description(session.working)
+			var hit: Dictionary = Picking.ray_to_skin(field, spot[0], spot[1])
+			if not hit["hit"]:
+				continue
+			var a: Dictionary = Picking.anchor_for_part(session.working, part_rules[type],
+					Picking.anchor_at(session.working, field, hit["point"]))
+			if a.has("reason"):
+				continue
+			if session.add_part(type, a)["ok"]:
+				ok = true
+				break
+		if ok:
+			done.append(type)
+		else:
+			missed.append(type)
+	message = "showcase: added %s%s" % [", ".join(done), ("; could not place %s" % ", ".join(missed)) if not missed.is_empty() else ""]
+	print(message)
+	_dirty = true
 
 
 func commit() -> void:

@@ -41,6 +41,7 @@ func _init() -> void:
 	test_pick_round_trip()
 	test_anchor_for_part()
 	test_limb_from_click()
+	test_every_part_type()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -361,3 +362,45 @@ func test_limb_from_click() -> void:
 			check(r["ok"] and limb["mirror"] == c[2] and s.working.limb_chains().size() == before + (2 if c[2] else 1),
 					"%s: a limb grown from the %s is valid, %s %s" % [body_name, what, "a mirrored pair" if c[2] else "single",
 					r["reason"]])
+
+
+## Every part type in the art records can be added through picking at a spot that suits it: the side of the chest,
+## the top of the back, the snout, past the tail tip, or a leg's tip.
+func test_every_part_type() -> void:
+	var desc = Lab.body("s1_quadruped")
+	var field = BodyField.from_description(desc)
+	var n: int = desc.vertebrae.size()
+	var tail: Vector3 = desc.position_m(n - 1)
+	var tail_dir: Vector3 = (tail - desc.position_m(n - 2)).normalized()
+	var head: Vector3 = desc.position_m(0)
+	var head_dir: Vector3 = (head - desc.position_m(1)).normalized()
+	var spots := {
+		"side": [desc.position_m(n / 3) + Vector3.RIGHT * 3.0, Vector3.LEFT],
+		"back": [desc.position_m(n / 2) + Vector3.UP * 3.0, Vector3.DOWN],
+		"head top": [desc.position_m(1) + Vector3.UP * 3.0, Vector3.DOWN],
+		"snout": [head + head_dir * 3.0, -head_dir],
+		"tail tip": [tail + tail_dir * 3.0, -tail_dir],
+		"leg tip": [Vector3(3.0, -0.6, -0.36), Vector3.LEFT],
+	}
+	var types: Array = part_rules.keys()
+	types.sort()
+	var placed := []
+	for type in types:
+		var ok := false
+		var tried := []
+		for spot in spots:
+			var hit: Dictionary = Picking.ray_to_skin(field, spots[spot][0], spots[spot][1])
+			if not hit["hit"]:
+				continue
+			var a: Dictionary = Picking.anchor_for_part(desc, part_rules[type], Picking.anchor_at(desc, field, hit["point"]))
+			if a.has("reason"):
+				continue
+			var s := session()
+			var r: Dictionary = s.add_part(type, a)
+			tried.append("%s: %s" % [spot, r["reason"] if not r["ok"] else "ok"])
+			if r["ok"]:
+				ok = true
+				placed.append("%s on the %s" % [type, spot])
+				break
+		check(ok, "%s can be added by clicking the body %s" % [type, "" if ok else str(tried)])
+	print("INFO  " + ", ".join(placed))

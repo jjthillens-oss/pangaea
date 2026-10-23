@@ -3,7 +3,7 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "S3 cradle ring dressing: a low glass rim 14 bu across with a frosted lip and a ring of beads, sunk below the decor-free band, framing the old pool shrunk to a tiny dish at band 1.",
+  "purpose": "S3 cradle ring dressing: a low glass rim 28.1 bu across (the old pool at band 1, placed at scale 1) with a frosted lip and a ring of beads, sunk below the decor-free band, framing the old pool shrunk to a tiny dish at band 1.",
   "category": "dressing",
   "source_blend": "assets/source/blender/cradle_ring.blend",
   "generator_script": "tools/blender/make_endless_extras.py",
@@ -13,11 +13,11 @@
   "revision": 1,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 16.666,
-    "y_forward": 16.666,
-    "z_up": 1.49
+    "x": 33.616,
+    "y_forward": 33.616,
+    "z_up": 3.002
   },
-  "triangles": 3456,
+  "triangles": 4896,
   "triangle_budget": 6000,
   "textures": [
     {
@@ -63,7 +63,7 @@
   "kind": "dressing",
   "band": 1,
   "pivot": "centre of the old pool on the swim plane (Godot y = 0)",
-  "radius_bu": 7.0,
+  "radius_bu": 14.0625,
   "top_bu": -1.6,
   "provenance": "Authored procedurally in Blender by tools/blender/make_endless_extras.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
