@@ -347,3 +347,45 @@ func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_sw
 	check(bad.is_empty(), "the kept counts match (%s)" % [bad.slice(0, 3)])
 	check(unloads >= 10, "chunks unloaded on the way (%d)" % unloads)
 	check(w.sites.size() >= 100, "a dense table (%d sites)" % w.sites.size())
+
+
+# --- WorldStream's look-ahead generation (chunks generated on quiet ticks, handed out once) ---
+
+static func _chunk_text(ch: WorldChunk) -> String:
+	return var_to_str([ch.key, ch.size, ch.shells, ch.zones, ch.sites, ch.anchors, ch.places])
+
+
+## Every chunk a swim loads equals the generator's chunk built at that moment, most of them come
+## from the look-ahead (each once: never a chunk object loaded twice), and a teleport forgets them.
+func test_chunks_generated_ahead_equal_the_generators_and_go_once() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the look-ahead waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 503)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var ahead := 0
+	var loads := 0
+	var objects := {}
+	var bad := []
+	for t in 1500:
+		var kept: Dictionary = w._ahead.duplicate()
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT if t < 1000 else Vector2.DOWN))
+		for e in sim.drain_events():
+			if e.type != "chunk_loaded":
+				continue
+			loads += 1
+			var ch := w.chunk(e.key)
+			if kept.get(Vector3i(e.key.x, e.key.y, w.size)) == ch:
+				ahead += 1
+			if objects.has(ch.get_instance_id()):
+				bad.append("tick %d: chunk %s loaded twice" % [t, e.key])
+			objects[ch.get_instance_id()] = true
+			if _chunk_text(ch) != _chunk_text(w.gen.chunk(w.size, e.key.x, e.key.y)):
+				bad.append("tick %d: chunk %s differs from the generator's" % [t, e.key])
+	check(bad.is_empty(), "%s" % [bad.slice(0, 3)])
+	check(loads >= 20 and ahead * 4 >= loads * 3, "most loads came from the look-ahead (%d of %d)" % [ahead, loads])
+	check(not w._ahead.is_empty(), "chunks kept ahead at the end")
+	sim.debug_teleport_abs(5000.0, -3000.0)
+	check(w._ahead.is_empty(), "a teleport forgets them")

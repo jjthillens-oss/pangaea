@@ -56,6 +56,13 @@ const CARRION_POSITIONS: PackedStringArray = ["position"]
 ## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
 ## watching, noticing, chasing, attacking, fleeing or going home. _calm tests them without a key.
 const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+## Look-ahead generation: tm beyond the load ring a chunk may be generated ahead, how many are kept,
+## how far ahead along its velocity (s) the cell is taken to be, and how long (ticks) a look that
+## found nothing to generate waits before the next.
+const AHEAD_MARGIN_TM := 16.0
+const AHEAD_KEEP := 4
+const AHEAD_LEAD_S := 1.0
+const AHEAD_REFRESH_TICKS := 15
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -121,6 +128,14 @@ var _zone_c := PackedVector2Array()
 var _zone_r := PackedFloat64Array()
 var _zone_refs: Array[Dictionary] = []
 var _cell_tile := Vector2i.ZERO
+## Chunks generated ahead (WorldGen.chunk is pure, so a chunk is the same whatever tick builds it):
+## on a tick that loads nothing, the missing chunk nearest where the cell is heading is generated
+## and kept here, Vector3i(x, y, size) -> WorldChunk, so the tick that loads it does not pay for it.
+## Each is handed out once; a teleport or another generator forgets them.
+var _ahead := {}
+var _ahead_gen: WorldGen = null
+var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
+var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
@@ -174,7 +189,10 @@ func step(sim: PoolSim) -> void:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
 	_unload(sim)
 	var view := _wake_view(sim)
+	var loads := _loads
 	_load(sim, view)
+	if _loads == loads:
+		_look_ahead(sim)
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
 
@@ -285,6 +303,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		for c in sim.creatures.creatures.duplicate():
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
+	_ahead.clear()
 	_wake_bound.clear()
 	_swum_from = Vector2.INF
 	var old_x := origin_x_am
@@ -587,7 +606,8 @@ func _nearest_missing(body: Vector2, ring: float) -> Variant:
 ## food is the same whatever route reaches it), then every awake body and the cell are settled
 ## against the new colliders, and chunk_loaded tells the scene.
 func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
-	var ch := gen.chunk(size, key.x, key.y)
+	var ch := _generated(key)
+	_loads += 1
 	var colliders: Array[Dictionary] = []
 	for s in ch.shells:
 		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
@@ -620,6 +640,64 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_chunks[key] = ch
 	_emit(sim, _chunk_loaded_event(ch))
 	_apply_caps(sim)
+
+
+## Chunk `key` at the current size: the one generated ahead when there is one (taken), else now.
+func _generated(key: Vector2i) -> WorldChunk:
+	if not is_same(_ahead_gen, gen):
+		_ahead.clear()
+		_ahead_gen = gen
+	var k := Vector3i(key.x, key.y, size)
+	var ch: WorldChunk = _ahead.get(k)
+	if ch == null:
+		return gen.chunk(size, key.x, key.y)
+	_ahead.erase(k)
+	_ahead_tick = 0
+	return ch
+
+
+## On a tick that loads nothing: generates the missing chunk nearest the point AHEAD_LEAD_S ahead of
+## the cell along its velocity, within the load ring plus AHEAD_MARGIN_TM of it (least (distance, y,
+## x)), and keeps it; with AHEAD_KEEP kept, in place of the kept chunk farthest from that point when
+## it is nearer. A look that generates nothing waits AHEAD_REFRESH_TICKS ticks, or until a load
+## takes a kept chunk, before the next.
+func _look_ahead(sim: PoolSim) -> void:
+	if sim.tick < _ahead_tick:
+		return
+	_ahead_tick = sim.tick + AHEAD_REFRESH_TICKS
+	if not is_same(_ahead_gen, gen):
+		_ahead.clear()
+		_ahead_gen = gen
+	var a := abs_of_local(sim.motion.position + sim.motion.velocity * AHEAD_LEAD_S)
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var ring := float(rings.load) + AHEAD_MARGIN_TM
+	var best: Variant = null
+	var best_d := INF
+	for ky in range(floori((y - ring) / chunk_tm), floori((y + ring) / chunk_tm) + 1):
+		for kx in range(floori((x - ring) / chunk_tm), floori((x + ring) / chunk_tm) + 1):
+			var key := Vector2i(kx, ky)
+			if _chunks.has(key) or _ahead.has(Vector3i(kx, ky, size)):
+				continue
+			var d := _square_distance(key, x, y)
+			if d <= ring and d < best_d:
+				best = key
+				best_d = d
+	if best == null:
+		return
+	if _ahead.size() >= AHEAD_KEEP:
+		var far: Variant = null
+		var far_d := -1.0
+		for k in _ahead:
+			var d := _square_distance(Vector2i(k.x, k.y), x, y)
+			if d > far_d:
+				far = k
+				far_d = d
+		if far_d <= best_d:
+			return
+		_ahead.erase(far)
+	_ahead[Vector3i(best.x, best.y, size)] = gen.chunk(size, best.x, best.y)
+	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
 
 
 # --- sleep and wake (step 5) ---
