@@ -1734,3 +1734,23 @@ func test_a_scaled_brain_feeds_and_strikes_exactly_as_far_as_the_resolver_lets_i
 				var target := InteractionResolver.Actor.new("t", Vector2(float(lane.half_width) + edge, 0.0), 0.0, prey)
 				var r := InteractionResolver.bite(hitter, target, 0.0) if kind == "bite" else InteractionResolver.ram(hitter, target, 1.0, 0.0)
 				check_eq(r.reason != "out of reach", edge < 0.0, "q %.6f, %s %+.4f m from the lane's edge: %s" % [q, kind, edge, r.reason])
+
+
+## D-82: the smallest disc holding two discs. One that holds the other is the answer; otherwise the
+## disc spanning both along the line through their centres, which touches each from inside.
+func test_union_disc_is_the_smallest_disc_holding_both() -> void:
+	var big := {"center": Vector2(0.0, 0.0), "radius": 5.0}
+	var small := {"center": Vector2(1.0, 0.0), "radius": 2.0}
+	check_eq(CreatureBrain.union_disc(big, small), big, "the larger holds the smaller")
+	check_eq(CreatureBrain.union_disc(small, big), big, "either way round")
+	check_eq(CreatureBrain.union_disc(big, big.duplicate()), big, "equal discs: one of them")
+	var a := {"center": Vector2(0.0, 0.0), "radius": 1.0}
+	var b := {"center": Vector2(10.0, 0.0), "radius": 3.0}
+	check_eq(CreatureBrain.union_disc(a, b), {"center": Vector2(6.0, 0.0), "radius": 7.0}, "apart: (10 + 1 + 3) / 2 = 7, from 6")
+	var c := {"center": Vector2(0.0, 0.0), "radius": 4.0}
+	var d := {"center": Vector2(3.0, 4.0), "radius": 2.0}
+	var u := CreatureBrain.union_disc(c, d)
+	check_near(float(u.radius), 5.5, 1e-9, "overlapping: (5 + 4 + 2) / 2")
+	check(Vector2(u.center).is_equal_approx(Vector2(0.9, 1.2)), "its centre 1.5 along the line: %s" % [u.center])
+	for disc in [c, d]:
+		check_near(Vector2(disc.center).distance_to(u.center) + float(disc.radius), float(u.radius), 1e-5, "it touches each from inside")
