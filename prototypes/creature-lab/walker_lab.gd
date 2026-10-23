@@ -1,6 +1,6 @@
 extends Node3D
-## Walker Lab: Stage 1 generated creatures walking on Gait Lab legs. Command line (after --): --body=NAME|all
-## (s1_* names; "all" is every Stage 1 body with legs), --drive=demo|walk|trot|run|turn_in_place|reversal|random,
+## Walker Lab: Stage 1 generated creatures walking, slithering or shuffling. Command line (after --): --body=NAME|all
+## (s1_* names), --drive=demo|walk|trot|run|turn_in_place|reversal|random,
 ## --duration=SECONDS, --hud=0.
 
 const Lab := preload("res://lab_data.gd")
@@ -9,6 +9,8 @@ const Drives := preload("res://lab_drives.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
 const GaitBody := preload("res://domain/gait_body.gd")
 const WalkerRig := preload("res://rig/walker_rig.gd")
+const GroundDrive := preload("res://domain/ground_drive.gd")
+const GroundDriveRig := preload("res://rig/ground_drive_rig.gd")
 const BodyField := preload("res://domain/body_field.gd")
 const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 
@@ -38,7 +40,8 @@ func _ready() -> void:
 	_build_world()
 	var names: Array = []
 	for n in (LabSpine.stage1_names() if body_choice == "all" else [body_choice]):
-		if not GaitBody.from_description(LabSpine.body(n))["legs"].is_empty():
+		var d = LabSpine.body(n)
+		if not GaitBody.from_description(d)["legs"].is_empty() or not GroundDrive.create(d).mode.is_empty():
 			names.append(n)
 	var table = Lab.table()
 	var orientations := LabSpine.part_orientations(LabSpine.part_rules())
@@ -46,17 +49,26 @@ func _ready() -> void:
 	for n in names.size():
 		var desc = LabSpine.body(names[n])
 		var info := GaitBody.from_description(desc)
-		var mech = Lab.BodyMechanics.create(names[n], info["body"], table)
 		var width: float = desc.bounds_m().size.x
 		if n > 0:
 			x += 0.5 * width + 0.6
-		var planner = Lab.GaitPlanner.create(mech, Vector3(x, 0.0, 0.0), 0.0)
+		var ground = GroundDrive.create(desc)
+		var rig: Node3D
+		if not info["legs"].is_empty():
+			var mech = Lab.BodyMechanics.create(names[n], info["body"], table)
+			var planner = Lab.GaitPlanner.create(mech, Vector3(x, 0.0, 0.0), 0.0)
+			rig = WalkerRig.new()
+			rig.name = names[n]
+			add_child(rig)
+			rig.setup(desc, SkinCpu.build(desc, 48), planner, info, PALETTE[n % PALETTE.size()],
+					AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+		else:
+			ground.position = Vector3(x, 0.0, 0.0)
+			rig = GroundDriveRig.new()
+			rig.name = names[n]
+			add_child(rig)
+			rig.setup(desc, SkinCpu.build(desc, 48), ground, PALETTE[n % PALETTE.size()])
 		x += 0.5 * width
-		var rig = WalkerRig.new()
-		rig.name = names[n]
-		add_child(rig)
-		rig.setup(desc, SkinCpu.build(desc, 48), planner, info, PALETTE[n % PALETTE.size()],
-				AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
 		rig.body.use_skin_shader({"color_base": PALETTE[n % PALETTE.size()], "pattern_seed": n, "coat_pattern": 1 + n % 3,
 				"detail_pattern": [2, 1, 3, 0][n % 4]})
 		walkers.append(rig)
@@ -86,9 +98,13 @@ func _process(_delta: float) -> void:
 		var lines := PackedStringArray(["WALKER LAB  generated Stage 1 bodies on Gait Lab legs  drive: %s  t=%.1f s"
 				% [drive, time]])
 		for w in walkers:
-			lines.append("%-16s %d legs  hip height %.2f m  speed %.2f m/s  max stance slip %.3f%%"
-					% [w.name, w.leg_bones.size(), w.planner.mech.hip_height, w.planner.v,
-					100.0 * w.max_stance_slip_ratio])
+			if w.get_script() == GroundDriveRig:
+				lines.append("%-16s %s  speed %.3f m/s  max contact slip %.2f%%"
+						% [w.name, w.mode, w.planner.v, 100.0 * w.max_stance_slip_ratio])
+			else:
+				lines.append("%-16s %d legs  hip height %.2f m  speed %.2f m/s  max stance slip %.3f%%"
+						% [w.name, w.leg_bones.size(), w.planner.mech.hip_height, w.planner.v,
+						100.0 * w.max_stance_slip_ratio])
 		hud.text = "\n".join(lines)
 	if duration > 0.0 and time >= duration:
 		get_tree().quit()

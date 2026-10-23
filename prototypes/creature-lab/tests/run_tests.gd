@@ -3,6 +3,7 @@ extends SceneTree
 
 const Lab := preload("res://lab_data.gd")
 const Drives := preload("res://lab_drives.gd")
+const GroundDriveChecks := preload("res://tests/ground_drive_checks.gd")
 const DT := 1.0 / 60.0
 
 var failures := 0
@@ -18,6 +19,7 @@ func _init() -> void:
 	test_stop_settles_feet()
 	test_deterministic_logs()
 	test_sixty_seconds_random_drive()
+	failures += GroundDriveChecks.run_checks()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
