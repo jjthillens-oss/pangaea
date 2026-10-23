@@ -68,10 +68,11 @@ func test_brain_wake_overrides_staggered_schedule() -> void:
 	check(CreatureBrain.think_due(mem, 0, 1), "hurt wake runs immediately")
 
 
-func test_migration_registry_contains_only_the_approved_v1_step() -> void:
+func test_migration_registry_contains_only_the_approved_steps() -> void:
 	var steps := SaveMigrations.all()
-	check_eq(steps.size(), 1, "one approved upgrade")
+	check_eq(steps.size(), 2, "two approved upgrades: v1 to v2 (M1) and v2 to v3 (S2, the growth fields)")
 	check(steps.has(1), "v1 upgrade registered")
+	check(steps.has(2), "v2 upgrade registered")
 
 
 func test_migration_keeps_unrelated_old_fields() -> void:
