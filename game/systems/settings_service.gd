@@ -15,7 +15,6 @@ signal changed(id: String)
 
 const PATH := "user://settings.cfg"
 const TEMP_SUFFIX := ".tmp"
-const SLOT_COUNT := 3
 ## The bus each volume setting drives.
 const BUSES := {"audio/master": "Master", "audio/music": "Music", "audio/sfx": "SFX", "audio/ambience": "Ambience"}
 ## The actions the player can rebind, in the order the controls screen lists them, with their names.
@@ -26,8 +25,10 @@ const REBINDABLE := [
 ]
 ## The movement actions the stick deadzone applies to.
 const MOVE_ACTIONS := ["move_up", "move_down", "move_left", "move_right"]
-## Menu navigation also takes the left stick (the engine's ui_* actions have the d-pad only).
-const UI_STICK := {"ui_up": "axis:1:-1", "ui_down": "axis:1:1", "ui_left": "axis:0:-1", "ui_right": "axis:0:1"}
+## Controller inputs the menus need that the engine's ui_* actions lack: A to choose, B to go back
+## (the engine binds the d-pad and the left stick for moving, but no buttons for these two).
+const UI_PAD := {"ui_accept": "pad:0", "ui_cancel": "pad:1", "ui_up": "axis:1:-1", "ui_down": "axis:1:1",
+	"ui_left": "axis:0:-1", "ui_right": "axis:0:1"}
 ## Text scale steps, in percent, multiply every font size in the theme.
 const THEME_PATH := "res://game/ui/theme/pangaea_theme.tres"
 
@@ -37,6 +38,8 @@ var path := PATH
 var settings := GameSettings.defaults()
 ## The last load's result: "file", "defaults" (no file yet) or "damaged" (unreadable, defaults used).
 var load_source := ""
+## What shared()'s first load found wrong (Main logs it as warnings).
+var load_problems := PackedStringArray()
 var _focus_muted := false
 ## Theme -> {[type, name]: base size} before any text scale.
 var _base_sizes := {}
@@ -50,7 +53,7 @@ func _init(p_path: String = PATH) -> void:
 static func shared() -> SettingsService:
 	if _shared == null:
 		_shared = SettingsService.new()
-		_shared.load_file()
+		_shared.load_problems = _shared.load_file()
 	return _shared
 
 
@@ -149,7 +152,9 @@ func apply_graphics() -> void:
 		root.msaa_3d = msaa_mode(str(get_value("graphics/msaa")))
 	if DisplayServer.get_name() == "headless":
 		return
-	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if get_value("graphics/vsync") else DisplayServer.VSYNC_DISABLED)
+	var vsync := DisplayServer.VSYNC_ENABLED if get_value("graphics/vsync") else DisplayServer.VSYNC_DISABLED
+	if DisplayServer.window_get_vsync_mode() != vsync:
+		DisplayServer.window_set_vsync_mode(vsync)
 	var mode := window_mode(str(get_value("graphics/window_mode")))
 	if DisplayServer.window_get_mode() != mode:
 		DisplayServer.window_set_mode(mode)
@@ -173,7 +178,7 @@ func set_window_focused(focused: bool) -> void:
 
 
 ## Rebuilds the bindings of every rebindable action from the settings (or the project defaults) and
-## sets the stick deadzone. The menus also take the left stick.
+## sets the stick deadzone. The menus also take A, B and the left stick (UI_PAD).
 func apply_bindings() -> void:
 	for pair in REBINDABLE:
 		var action: String = pair[0]
@@ -188,16 +193,15 @@ func apply_bindings() -> void:
 	for action in MOVE_ACTIONS:
 		if InputMap.has_action(action):
 			InputMap.action_set_deadzone(action, deadzone)
-	for action in UI_STICK:
+	for action in UI_PAD:
 		if not InputMap.has_action(action):
 			continue
-		var stick := InputCodes.to_event(UI_STICK[action])
 		var has := false
 		for event in InputMap.action_get_events(action):
-			if InputCodes.from_event(event) == UI_STICK[action]:
+			if InputCodes.from_event(event) == UI_PAD[action]:
 				has = true
 		if not has:
-			InputMap.action_add_event(action, stick)
+			InputMap.action_add_event(action, InputCodes.to_event(UI_PAD[action]))
 
 
 ## The codes bound to an action now: the player's, or the project's defaults.
@@ -316,13 +320,9 @@ func pause_on_focus_loss() -> bool:
 	return bool(get_value("gameplay/pause_on_focus_loss"))
 
 
-## The save slot path for slot n (1 to SLOT_COUNT). Slot 1 is GameSession.DEFAULT_SLOT.
-static func slot_path(n: int) -> String:
-	return "user://saves/slot_%d.json" % clampi(n, 1, SLOT_COUNT)
-
-
+## The save slot the title screen uses (SaveSlots.path of the "game/slot" setting).
 func current_slot_path() -> String:
-	return slot_path(int(get_value("game/slot")))
+	return SaveSlots.path(int(get_value("game/slot")))
 
 
 static func window_mode(name: String) -> DisplayServer.WindowMode:

@@ -141,6 +141,8 @@ func test_the_deadzone_and_the_menu_stick_are_applied() -> void:
 	check_near(InputMap.action_get_deadzone("move_left"), 0.35, 0.001, "deadzone")
 	var up := InputCodes.to_event("axis:1:-1")
 	check(InputMap.action_has_event("ui_up", up), "the menus take the left stick")
+	check(InputMap.action_has_event("ui_accept", InputCodes.to_event("pad:0")), "A chooses in menus")
+	check(InputMap.action_has_event("ui_cancel", InputCodes.to_event("pad:1")), "B goes back in menus")
 	_service.set_value("controls/stick_deadzone", 0.2)
 
 
@@ -168,6 +170,10 @@ func test_audio_volumes_skip_missing_buses() -> void:
 
 
 func test_slot_paths() -> void:
-	check_eq(SettingsService.slot_path(1), GameSession.DEFAULT_SLOT, "slot 1 is the old default slot")
-	check_eq(SettingsService.slot_path(3), "user://saves/slot_3.json", "slot 3")
-	check_eq(SettingsService.slot_path(9), "user://saves/slot_3.json", "clamped")
+	check_eq(SaveSlots.path(1), GameSession.DEFAULT_SLOT, "slot 1 is the old default slot")
+	check_eq(SaveSlots.path(3), "user://saves/slot_3.json", "slot 3")
+	check_eq(SaveSlots.path(9), "user://saves/slot_3.json", "clamped")
+	check_eq(SaveSlots.number_of("user://saves/slot_2.json"), 2, "number of a slot path")
+	check_eq(SaveSlots.number_of("user://smoke/slot_1.json"), 0, "a smoke slot is no numbered slot")
+	_service.set_value("game/slot", 2)
+	check_eq(_service.current_slot_path(), "user://saves/slot_2.json", "the chosen slot")

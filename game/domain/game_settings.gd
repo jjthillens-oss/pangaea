@@ -38,7 +38,7 @@ const SPEC := {
 	# Gameplay
 	"gameplay/growth_trigger": {"kind": "choice", "default": "auto", "options": ["auto", "press"]},
 	"gameplay/pause_on_focus_loss": {"kind": "bool", "default": true},
-	# Which save slot the title screen uses (1 to SLOT_COUNT).
+	# Which save slot the title screen uses (1 to SaveSlots.COUNT).
 	"game/slot": {"kind": "int", "default": 1, "min": 1, "max": 3},
 }
 

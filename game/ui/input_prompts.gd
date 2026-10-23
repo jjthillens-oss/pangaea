@@ -65,5 +65,5 @@ static func hint_line(pairs: Array) -> String:
 		var names := names_for(pair[0])
 		if names.is_empty():
 			continue
-		parts.append("%s %s" % [names[0], pair[1]])
+		parts.append("%s  %s" % [names[0], pair[1]])
 	return "   ·   ".join(parts)
