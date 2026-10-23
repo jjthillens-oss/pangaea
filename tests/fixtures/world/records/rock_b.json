@@ -1,0 +1,7 @@
+{
+	"id": "rock_b",
+	"status": "PROPOSED",
+	"review_state": "production - S1 test fixture",
+	"export_path": "assets/export/rock_b.glb",
+	"footprint_radius_m": 1.0
+}
