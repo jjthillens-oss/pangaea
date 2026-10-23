@@ -489,25 +489,33 @@ func bodies(player_body: Dictionary) -> Array[Dictionary]:
 
 ## One creature in the senses' body format.
 func body_of(c: Creature) -> Dictionary:
-	return {"id": c.id, "species": c.species_id, "position": c.motion.position, "velocity": c.motion.velocity,
-		"radius": c.phenotype.radius, "alive": c.state.is_alive(), "concealed": false, "engageable": true,
-		"bite": c.phenotype.bite_damage > 0.0, "spikes": c.phenotype.spikes.size()}
+	var m := c.motion
+	var p := c.phenotype
+	return {"id": c.id, "species": c.species_id, "position": m.position, "velocity": m.velocity,
+		"radius": p.radius, "alive": c.state.is_alive(), "concealed": false, "engageable": true,
+		"bite": p.bite_damage > 0.0, "spikes": p.spikes.size()}
 
 
 ## What a creature senses with (CreatureSenses' viewer).
 func viewer_of(c: Creature) -> Dictionary:
-	var senses: Dictionary = _senses[c.species_id]
-	return {"id": c.id, "species": c.species_id, "position": c.motion.position, "heading": c.motion.heading,
+	var species_id := c.species_id
+	var senses: Dictionary = _senses[species_id]
+	var m := c.motion
+	return {"id": c.id, "species": species_id, "position": m.position, "heading": m.heading,
 		"radius": c.phenotype.radius, "sight": senses.sight, "fov": senses.fov, "near": senses.near}
 
 
 ## What a creature knows of itself (CreatureBrain's self_view).
 func self_view_of(c: Creature) -> Dictionary:
-	return {"id": c.id, "species": c.species_id, "position": c.motion.position, "heading": c.motion.heading,
-		"velocity": c.motion.velocity, "speed_now": c.motion.velocity.length(), "radius": c.phenotype.radius,
-		"speed": c.phenotype.speed, "acceleration": c.phenotype.acceleration,
-		"health_share": c.state.health / c.state.max_health if c.state.max_health > 0.0 else 0.0,
-		"energy_share": c.state.energy / c.state.energy_capacity if c.state.energy_capacity > 0.0 else 0.0}
+	var m := c.motion
+	var p := c.phenotype
+	var s := c.state
+	var velocity := m.velocity
+	return {"id": c.id, "species": c.species_id, "position": m.position, "heading": m.heading,
+		"velocity": velocity, "speed_now": velocity.length(), "radius": p.radius,
+		"speed": p.speed, "acceleration": p.acceleration,
+		"health_share": s.health / s.max_health if s.max_health > 0.0 else 0.0,
+		"energy_share": s.energy / s.energy_capacity if s.energy_capacity > 0.0 else 0.0}
 
 
 ## Whether the creature thinks this tick: on its number's slot of the schedule in the pool, on its
