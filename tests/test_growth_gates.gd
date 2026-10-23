@@ -46,7 +46,7 @@ const NEAR_M := 3.0               ## the cell is put this far from the creature 
 const STRAIGHT_DOT := 0.9         ## "straight at it": the move's cosine to the line to the creature
 
 ## The gates (S2G16). Seeds written here before any run.
-const GATE_NEEDS: PackedStringArray = ["set_size", "remnants", "size_two_content"]
+const GATE_NEEDS: PackedStringArray = ["set_size", "force_growth", "remnants", "size_two_content"]
 const PARK_NEEDS: PackedStringArray = ["set_size", "size_two_content"]
 const GROWTH_SEEDS: Array[int] = [601, 602, 603, 604, 605, 606]
 const FIRST_BOTS: Array[Dictionary] = [{"bot": "forage", "body": "grazer"}, {"bot": "forage", "body": "omnivore"},

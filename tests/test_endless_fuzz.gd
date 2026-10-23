@@ -36,7 +36,7 @@ const TURN := 0.04                     ## rad: the most the swim turns in a tick
 const NON_VACUOUS: PackedStringArray = ["loads", "unloads", "sleeps", "wakes", "spawns"]
 ## The growth fuzz (S2G21).
 const Gates := preload("res://tests/test_endless_gates.gd")
-const GROWTH_NEEDS: PackedStringArray = ["set_size", "fuzz_growth"]
+const GROWTH_NEEDS: PackedStringArray = ["set_size", "force_growth", "fuzz_growth"]
 const GROWTH_CYCLE := 1200
 const GROWTH_FAST_SEED := 531
 const GROWTH_FAST_TICKS := 2520

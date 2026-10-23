@@ -129,6 +129,122 @@ func test_the_local_bound_covers_a_held_creatures_reach() -> void:
 	check(float(wider.radius_tm) > float(reach.radius_tm) and str(wider.where).contains("site"), "a wider leash, %s" % [wider])
 
 
+## S2G36 (D-69, D-82): reach_max builds each live site's disc as its brain has it at the size: the
+## species' lengths times k_of(entry size, n), over the union of both posts for a two-post site, then
+## times bu_to_tm(n). With every other site gone, the one site's disc is reach_max.
+func test_reach_max_takes_k_and_the_union_at_each_size() -> void:
+	var lurker := {"species": "lurker", "x": -40.0, "y": -44.0, "territory_zone": ""}
+	var elder := {"species": "elder_rammer", "x": 34.0, "y": -44.0, "territory_zone": "ea"}
+	var post_b := {"home": [46.0, -44.0], "heading": 0.0, "territory_zone": "eb"}
+	var cases := [
+		# [the site's changes, reach_max in tm, why]
+		[lurker.merged({"sizes": [2]}), 9.0, "the Lurker at size 2: leash 9 x k 1.6 = 14.4 bu, x 0.625"],
+		[lurker.merged({"sizes": [1, 2]}), 9.0, "listed at size 1 too, below its entry size: only size 2 counts"],
+		[lurker.merged({"sizes": [1]}), 0.0, "never live: no disc"],
+		[elder.merged({"sizes": [2]}), 7.5, "the elder rammer on zone ea (r 4): 4 + (2 + 3) x 1.6 = 12 bu, x 0.625"],
+		[elder.merged({"sizes": [2], "post_b": post_b}), 11.25, "both posts, 12 bu apart: the union's r (12 + 12 + 12) / 2 = 18 bu, x 0.625"],
+		[elder.merged({"sizes": [2], "post_b": post_b.merged({"territory_zone": "ez"}, true)}), 0.0,
+			"post b's zone is not the block's: the validators refuse the site, so it is skipped"],
+		[elder.merged({"species": "rammer", "sizes": [2]}, true), 5.625, "the M1 rammer at size 2: k 1, 4 + 2 + 3 = 9 bu, x 0.625"],
+		[elder.merged({"species": "rammer", "sizes": [1, 2]}, true), 9.0, "and at sizes 1 and 2: 9 tm at size 1"],
+	]
+	for c in cases:
+		var content := _alone_at_home(c[0])
+		var reach := content.reach_max(species)
+		check_near(float(reach.radius_tm), c[1], 1e-9, "%s: %s" % [c[2], reach])
+		check_eq(reach.where, "home_min site 're'" if c[1] > 0.0 else "", "%s: where" % c[2])
+	# A tile's two-post site: post b's territory is its own zone's.
+	var content := _alone_at_home({"species": "rammer", "x": 0.0, "y": 0.0, "territory_zone": "", "sizes": []})
+	var t: Dictionary = content.tiles.tiles.reef_a
+	t.zones.append({"id": "ta", "center": PackedFloat64Array([-6.0, 0.0]), "radius": 4.0})
+	t.zones.append({"id": "tb", "center": PackedFloat64Array([6.0, 0.0]), "radius": 4.0})
+	var site := {"id": "te", "species": "elder_rammer", "home": PackedFloat64Array([-6.0, 0.0]), "heading": 0.0,
+		"territory_zone": "ta", "sizes": [2], "post_b": {"home": PackedFloat64Array([6.0, 0.0]), "heading": 0.0, "territory_zone": "tb"}}
+	t.sites.append(site)
+	var reach := content.reach_max(species)
+	check_near(float(reach.radius_tm), 11.25, 1e-9, "a tile's two-post elder: %s" % [reach])
+	check_eq(reach.where, "b0/reef_a site 'te'", "on the tile")
+	t.zones[-1].radius = 6.0
+	check_near(float(content.reach_max(species).radius_tm), (12.0 + 12.0 + 14.0) / 2.0 * 0.625, 1e-9,
+		"post b's zone r 6 widens its disc to 14 bu: the union (12 + 12 + 14) / 2 bu")
+	t.sites[-1].post_b = {}
+	check_near(float(content.reach_max(species).radius_tm), 7.5, 1e-9, "one post: post a's disc alone")
+
+
+## S2G36: the B-6 bound takes reach_max's union: a two-post elder rammer of 11.25 tm, above the M1
+## rammer's 11 tm, sets it.
+func test_the_local_bound_takes_a_two_post_sites_union() -> void:
+	var content := _content()
+	_add_zones(content)
+	content.home.sites.append({"id": "re", "species": "elder_rammer", "x": 34.0, "y": -44.0, "heading": 0.0,
+		"territory_zone": "ea", "sizes": [2], "m1": false, "post_b": {"home": [46.0, -44.0], "heading": 0.0, "territory_zone": "eb"}})
+	var reach := content.reach_max(species)
+	check_eq([reach.radius_tm, reach.where], [11.25, "home_min site 're'"], "the union sets reach_max")
+	var at := 96.0 + 96.0 + 11.25 + 32.0 * sqrt(2.0)
+	content.config.local_bound_tm = at
+	check_has_error(content.problems(parts, species), "world_cell.origin.local_bound_tm: rebase_beyond_tm + hold + reach_max + chunk_tm x sqrt 2 (%.2f)" % at)
+	content.config.local_bound_tm = at + 0.01
+	for p in content.problems(parts, species):
+		check(not p.begins_with("world_cell.origin.local_bound_tm"), "a hundredth above it passes: %s" % p)
+
+
+## The fixture content with every site gone but one ring site 're' made of `changes` (zones ea and eb,
+## r 4, 12 bu apart, added to the block).
+func _alone_at_home(changes: Dictionary) -> WorldContent:
+	var content := _content()
+	for id in content.tiles.tiles:
+		content.tiles.tiles[id].sites = []
+	content.home.sites.clear()
+	_add_zones(content)
+	content.home.sites.append({"id": "re", "heading": 0.0, "m1": false, "post_b": {}}.merged(changes, true))
+	return content
+
+
+func _add_zones(content: WorldContent) -> void:
+	for z in [["ea", 34.0], ["eb", 46.0]]:
+		content.home.zones.append({"id": z[0], "x": z[1], "y": -44.0, "radius": 4.0, "capacity": 8, "growth_rate": 1.0,
+			"at_second_size": "keep", "m1": false})
+
+
+## BP-4: at every size the build runs, the widest collider (a tile's shells, landmark and set piece
+## colliders, the home block's circles) is no wider than chunk_tm - 2 x wedge_tm, so every collider
+## that can touch the growth tick's bounded spiral lies in its 3 x 3 chunks. At the limit it passes;
+## a hundredth past it, it fails once.
+func test_the_largest_shell_rule() -> void:
+	var content := _content()
+	var at_1 := content.largest_shell(1)
+	check_eq([at_1.radius_tm, at_1.where], [3.0, "b0/rare_giant_husk 'r0'"], "the husk's collider at size 1")
+	var at_2 := content.largest_shell(2)
+	check_eq([at_2.radius_tm, at_2.where], [1.875, "b0/rare_giant_husk 'r0'"], "x 0.625 at size 2")
+	content.config.growth.wedge_tm = (32.0 - 3.0) / 2.0
+	check_eq(content.problems(parts, species), PackedStringArray(), "at the limit")
+	content.config.growth.wedge_tm += 0.005
+	var problems := content.problems(parts, species)
+	check_eq(problems.size(), 1, "one problem past it: %s" % [problems])
+	check_has_error(problems, "b0/rare_giant_husk 'r0': BP-4: radius 3.00 tm at size 1; every shell keeps <= chunk_tm - 2 x wedge_tm (2.99 tm)")
+	# Each kind of collider counts, at the size it exists.
+	content = _content()
+	var t: Dictionary = content.tiles.tiles.reef_a
+	t.shells[0].radius = 4.0
+	t.shells[0].at_second_size = "sink"
+	check_eq(content.largest_shell(1), {"radius_tm": 4.0, "where": "b0/reef_a '%s'" % t.shells[0].id}, "a tile's shell")
+	check_eq(content.largest_shell(2).where, "b0/rare_giant_husk 'r0'", "sunk at size 2")
+	t.shells[0].at_second_size = "keep"
+	check_eq(content.largest_shell(2), {"radius_tm": 2.5, "where": "b0/reef_a '%s'" % t.shells[0].id}, "kept at size 2")
+	var ring := content.home.shells[-1]
+	ring.r = 6.0
+	check_eq(content.largest_shell(1), {"radius_tm": 6.0, "where": "home_min '%s'" % ring.id}, "a home ring shell")
+	check_eq(content.largest_shell(2), {"radius_tm": 3.75, "where": "home_min '%s'" % ring.id}, "kept at size 2")
+	ring.at_second_size = "sink"
+	check_eq(content.largest_shell(2).where, "b0/reef_a '%s'" % t.shells[0].id, "a sunk ring shell is gone at size 2")
+	content.kit.collide_radius_bu = 7.0
+	check_eq(content.largest_shell(1), {"radius_tm": 7.0, "where": "b0/drift_a 'lm'"}, "a landmark collider (the first tile with an anchor)")
+	content.home.band = 1
+	for id in content.tiles.tiles:
+		content.tiles.tiles[id].band = 1
+	check_eq(content.largest_shell(1), {"radius_tm": 0.0, "where": ""}, "band 1's content is not at size 1")
+
+
 func test_a_broken_world_file_gives_its_own_problems_alone() -> void:
 	var content := WorldContent.load_from("res://tests/fixtures/world/no_such_world.json", PoolLayout.load_from(), species)
 	var problems := content.problems(parts, species)
