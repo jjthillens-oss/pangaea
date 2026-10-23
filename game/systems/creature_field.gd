@@ -309,6 +309,15 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 		_enqueue(c.site_id, c.species_id, tick + wait)
 
 
+## Endless mode (B-6, the hold pass): an awake creature held beyond the hold ring leaves, "unloaded",
+## and its site is queued at this tick with no respawn delay, so the spawn rule refills it as a
+## sleeper (or not at all once its chunks unload). A debug or siteless creature is not requeued.
+func let_go(c: Creature, tick: int) -> void:
+	remove(c, "unloaded", tick, false)
+	if not c.debug and not c.site_id.is_empty():
+		_enqueue(c.site_id, c.species_id, tick)
+
+
 ## Ticks until a dead creature's site respawns: respawn_s +/- respawn_jitter_s, one encounter draw.
 func respawn_delay(species_id: String) -> int:
 	var niche := species.niche_of(species_id)
