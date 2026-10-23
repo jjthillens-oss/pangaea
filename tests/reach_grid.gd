@@ -143,6 +143,35 @@ func zone_points() -> PackedInt32Array:
 	return out
 
 
+## A component label per point (-1 where closed): open points joined by the moves distances_from
+## takes (8 directions) share a label, numbered in index order from 0. Cheaper than a distance pass
+## when only connection matters.
+func components() -> PackedInt32Array:
+	var labels := PackedInt32Array()
+	labels.resize(open.size())
+	labels.fill(-1)
+	var next := 0
+	var stack := PackedInt32Array()
+	for first in open.size():
+		if open[first] == 0 or labels[first] != -1:
+			continue
+		labels[first] = next
+		stack.append(first)
+		while not stack.is_empty():
+			var i := stack[stack.size() - 1]
+			stack.remove_at(stack.size() - 1)
+			var x := i % size
+			var y := floori(i / float(size))
+			for ny in range(maxi(y - 1, 0), mini(y + 2, rows)):
+				for nx in range(maxi(x - 1, 0), mini(x + 2, size)):
+					var n := ny * size + nx
+					if open[n] == 1 and labels[n] == -1:
+						labels[n] = next
+						stack.append(n)
+		next += 1
+	return labels
+
+
 ## Open points on the grid's outer rows and columns, in index order.
 func border_points() -> PackedInt32Array:
 	var out := PackedInt32Array()

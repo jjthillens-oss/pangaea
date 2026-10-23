@@ -1,8 +1,11 @@
 extends TestCase
-## The S1 dev bots (S1 spine 3.15; core 12.1 and C-21): SwimBot's straight swimmer and camper,
-## HuntBot's zones in the pool and its endless rule, and ForageBot's endless fallback. The pool cases
-## and the endless rule's arithmetic run now; the cases on an endless sim run once the endless world
-## has landed (tests/test_endless_gates.gd, Gates.missing()), and until then print what they wait on.
+## The S1 dev bots (S1 spine 3.15; core 12.1 and CC-21): SwimBot's straight swimmer, camper and
+## overdrive (S1 build plan B-12), HuntBot's zones in the pool and its endless rule, and ForageBot's
+## endless fallback. The pool cases and the endless rule's arithmetic run in any tree; the cases on
+## an endless sim run once the endless world they read has landed (tests/test_endless_gates.gd,
+## Gates.missing(Gates.WORLD); they read no invariant, so they do not wait on T2.8), and until then
+## print what they wait on. The overdriven speed test swims on T2's
+## FakeWorldGen, whose lane along y = 9 holds no collider, so no content can block it.
 ## test_the_gates_wait_only_on_what_has_not_landed keeps that wait honest.
 
 const Gates := preload("res://tests/test_endless_gates.gd")
@@ -20,6 +23,11 @@ const GREEDY_HUNGER := 0.3            ## the greedy camper is kept hungry: energ
 const GREEDY_HUNGER_EVERY := 300      ## every this many ticks, so it keeps eating
 const REBASE_ZONE_FROM_M := 8.0       ## the rebase camper heads for a zone at least this far off
 const REBASE_AFTER_TICKS := 20        ## and is on its way when the origin moves
+## The overdriven swim (B-12): east from FakeWorldGen's home spawn (0, 9), timed from tick 300 to 900.
+const FAKE_GEN := "res://tests/fakes/fake_world_gen.gd"   ## T2's permanent test generator
+const OVERDRIVE_FROM_TICK := 300
+const OVERDRIVE_TO_TICK := 900
+const OVERDRIVE_MIN_SPEED := 5.9
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -42,11 +50,102 @@ func _pool_sim(body: String, at: Vector2, with_species := false) -> PoolSim:
 
 
 func _waits(what: String) -> bool:
-	var gaps := Gates.missing()
+	var gaps := Gates.missing(Gates.WORLD)
 	if gaps.is_empty():
 		return false
 	print("test-swim-bot: %s waits on: %s" % [what, "; ".join(gaps)])
 	return true
+
+
+## overdrive sets the cap and fills the energy; next_intent changes nothing, for every kind of bot.
+func test_overdrive_sets_the_cap_and_fills_the_energy_and_next_intent_changes_nothing() -> void:
+	var sim := _pool_sim("grazer", layout.spawn, true)
+	sim.debug_set_energy(1.0)
+	sim.drain_events()
+	check(sim.phenotype.speed < PoolLayout.MAX_SPEED, "a grazer is slower than the cap (%.2f)" % sim.phenotype.speed)
+	SwimBot.overdrive(sim)
+	check_eq(sim.phenotype.speed, PoolLayout.MAX_SPEED, "overdrive sets the cap")
+	check_eq(sim.state.energy, sim.state.energy_capacity, "and fills the energy")
+	check(sim.actor.phenotype == sim.phenotype, "the actor shares the phenotype, so its speed is the cap too")
+	for bot in [SwimBot.new(Vector2(1.0, 2.0), 0.7), SwimBot.camper(CAMP_ZONE), SwimBot.camper(CAMP_ZONE, true)]:
+		for i in 30:
+			var before := sim.state_hash()
+			var speed := sim.phenotype.speed
+			var energy := sim.state.energy
+			var intent: SimIntent = bot.next_intent(sim)
+			check(sim.state_hash() == before and sim.phenotype.speed == speed and sim.state.energy == energy,
+				"next_intent leaves the sim as it was")
+			sim.step(intent)
+			sim.drain_events()
+
+
+## An overdriven straight swim (B-12) averages at least 5.9 tm/s over ticks 300 to 900, on T2's
+## FakeWorldGen (its lane along y = 9 holds no collider), with RACER; as it is, RACER is slower.
+func test_an_overdriven_straight_swim_averages_at_least_5_9_tm_s() -> void:
+	var what := Gates.missing(Gates.SIM)
+	if not FileAccess.file_exists(FAKE_GEN):
+		what.append("tests/fakes/fake_world_gen.gd (T2.1)")
+	if not what.is_empty():
+		print("test-swim-bot: the overdriven swim waits on: %s" % "; ".join(what))
+		return
+	var speeds := {}
+	for overdriven in [true, false]:
+		var sim: Variant = _fake_racer()
+		var bot = SwimBot.new(Vector2.RIGHT)
+		var from := PackedFloat64Array()
+		for i in OVERDRIVE_TO_TICK:
+			if overdriven:
+				SwimBot.overdrive(sim)
+			if i == OVERDRIVE_FROM_TICK:
+				from = sim.absolute_position_am()
+			sim.step(bot.next_intent(sim))
+			sim.drain_events()
+		var to: PackedFloat64Array = sim.absolute_position_am()
+		speeds[overdriven] = (to[0] - from[0]) / ((OVERDRIVE_TO_TICK - OVERDRIVE_FROM_TICK) / 60.0)
+		if overdriven:
+			check(absf(to[1] - from[1]) < 0.01, "it swam straight east (%.3f tm off its line)" % absf(to[1] - from[1]))
+	print("test-swim-bot: from tick %d to %d the overdriven racer averaged %.3f tm/s, as it is %.3f" % [
+		OVERDRIVE_FROM_TICK, OVERDRIVE_TO_TICK, speeds[true], speeds[false]])
+	check(float(speeds[true]) >= OVERDRIVE_MIN_SPEED, "overdriven: %.3f tm/s (at least %.1f)" % [speeds[true], OVERDRIVE_MIN_SPEED])
+	check(float(speeds[false]) < OVERDRIVE_MIN_SPEED - 1.0, "as it is the racer is slower (%.3f tm/s)" % speeds[false])
+
+
+## RACER, the fastest legal body, saved at FakeWorldGen's home spawn, in an endless sim on that
+## generator with no creatures.
+func _fake_racer() -> Variant:
+	var Fake: GDScript = load(FAKE_GEN)
+	var content: Variant = Fake.call("fixture_content")
+	var r := Lineage.found(SEED, "test+dev", catalog, "hunter")
+	Gates.make_racer(r.save.genome, catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(content.home.spawn[0], content.home.spawn[1])
+	var sim: Variant = (load(Gates.POOL_SIM_PATH) as GDScript).callv("_create_endless",
+		[r.save, catalog, layout, null, content, Fake.new(content, null, SEED)])
+	sim.drain_events()
+	return sim
+
+
+## overdrive is for tests and soak gates only: no game script but swim_bot.gd itself, and no smoke,
+## names it.
+func test_overdrive_is_never_called_from_game_code_or_a_smoke() -> void:
+	var files := _scripts("res://game")
+	files.append_array(_scripts("res://tests/smoke"))
+	var own := (load("res://game/dev/swim_bot.gd") as GDScript).resource_path
+	check(files.has(own), "the scan covers game/dev/swim_bot.gd")
+	check(files.size() > 40, "the scan covers the game's scripts (%d)" % files.size())
+	for path in files:
+		if path != own:
+			check(not FileAccess.get_file_as_string(path).contains("overdrive("), "%s does not call overdrive" % path)
+
+
+## Every .gd under `dir`, subfolders included.
+static func _scripts(dir: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd"):
+			out.append(dir.path_join(f))
+	for d in DirAccess.get_directories_at(dir):
+		out.append_array(_scripts(dir.path_join(d)))
+	return out
 
 
 func test_a_straight_swim_bot_always_asks_for_the_same_direction() -> void:

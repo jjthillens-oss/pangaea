@@ -4,23 +4,34 @@ extends TestCase
 ##
 ## They run on the real content once T4.3's tiles are in game/data/tiles/b0, on T1's fixture world
 ## (tests/fixtures/world/world_min.json) before that, and wait while neither is there or while a T2
-## surface they read has not landed (gaps()). Waiting is not a pass for ever:
+## surface they read has not landed (gaps()). Each waits on the level it needs (missing()): SIM, an
+## endless sim at home (make_sim); WORLD, also the stream's read API, teleport, rebase and the
+## creatures' endless fields; ALL, also FuzzInvariants (T2.8, the last T2 commit the gates read).
+## The 10 km hash, which reads no invariant, needs SIM; the other gates ALL. Waiting is not a pass
+## for ever:
 ## test_the_gates_wait_only_on_what_has_not_landed fails once a gap's marker file is in the tree
 ## while the harness still misses the surface, and with nothing missing it runs a short swim through
 ## the harness, so the gates are known to run before their tier does.
 ##
-## Seeds and points were written here before any run. The straight swims use RACER, the fastest
-## legal body (3 flagella at scale 2: 4.41 tm/s): no body reaches the 6 tm/s the gates are written
-## for, and the fastest starting body, the hunter, makes 3.26 (docs/DECISIONS.md, S1 build decisions).
-## The other gates use the bodies of the M1 gates they extend. Every gate prints its numbers.
-##  - Eight directions x 36,000 ticks (G8, G17): FuzzInvariants clean on every tick (12, 13, 16 and
-##    the restated M1 ones), awake_overflow and chunk_waits 0; food_trimmed and evictions printed.
+## Seeds and points were written here before any run. The straight swims and the 10 km hash run
+## overdriven (S1 build plan B-12): RACER, the fastest legal body (3 flagella at scale 2: 4.41 tm/s),
+## with SwimBot.overdrive before every step, which sets the 6 tm/s cap (PoolLayout.MAX_SPEED) the
+## gates are written for and keeps the energy full; no legal body reaches it, and the fastest
+## starting body, the hunter, makes 3.26. Each also keeps one run of RACER as it is. The other gates
+## use the bodies of the M1 gates they extend (docs/DECISIONS.md, S1 build decisions). Every gate
+## prints its numbers.
+##  - Straight swims (G8, G17): eight directions x 36,000 ticks overdriven, then RACER east for as
+##    long, each with FuzzInvariants clean on every tick (12, 13, 16 and the restated M1 ones),
+##    awake_overflow and chunk_waits 0; food_trimmed and evictions printed. An overdriven swim must
+##    average more than RACER's own top speed, or it was not overdriven.
 ##  - A circle of 3 tm round a chunk corner for 36,000 ticks: no chunk_loaded after the first 600.
 ##  - #32 from home (M1's 3 seeds x 2 bodies) and from 10 points (2 bodies each), M1's thresholds.
 ##  - #33: a greedy camper in z_center, z_s and 4 tile zones no live reach disc covers, M1's checks.
 ##  - Hunter viability: from home on M1's 6 seeds (5 must pass) and from 10 points (9 must pass).
 ##  - F9: a starving grazer dropped at 30 points eats before it dies, every time.
-##  - G13: two runs of a 10 km straight swim give the same hashes and snapshot strings throughout.
+##  - G13: two overdriven runs of a 10 km straight swim (100,000 ticks) give the same hashes and
+##    snapshot strings throughout, and so do two runs of RACER as it is (about 136,000 ticks): a hash
+##    needs two runs, so G13's racer run is a pair. Its mutation is T2's zone stream left unseeded.
 ## The cell is hidden from the creatures (debug_set_hidden) where a gate is about streaming, not
 ## about threats, and kept fed (debug_set_energy) on the long swims.
 
@@ -40,6 +51,11 @@ const FIXTURE_WORLD := "res://tests/fixtures/world/world_min.json"    ## T1.7
 const REAL_WORLD := "res://game/data/world_cell.json"                 ## WorldConfig.DEFAULT_PATH
 const REAL_TILES := "res://game/data/tiles/b0"                        ## T4.3
 
+## The levels a test can wait on (missing()), each needing the ones before it.
+const SIM := 0                         ## make_sim: an endless sim at home on the content
+const WORLD := 1                       ## also the stream's read API, teleport, rebase, creature fields
+const ALL := 2                         ## also FuzzInvariants
+
 const BUILD_ID := "test+dev"
 const HOME := Vector2(0.0, 9.0)        ## the spawn, in am: what a new endless game writes to the save
 const HOME_BLOCK_TM := 64.0            ## the home block is [-64, 64) squared
@@ -48,11 +64,14 @@ const FEED_BELOW := 0.5                ## keep_fed tops the cell up below this s
 const DEATH_NOTICE_TICKS := 90         ## a player reading the death notice before Continue (as M1)
 const POINTS_HALF_TM := 2000.0         ## random points lie in [-2 km, 2 km] squared round home
 
-## Eight directions: each swim's ticks, and the distance it must at least cover so its invariants
-## were checked on a moving cell (4 chunks; it prints what it covered).
+## Straight swims: each swim's ticks, and the distance it must at least cover so its invariants
+## were checked on a moving cell (4 chunks; it prints what it covered). Eight overdriven directions,
+## from east every 45 degrees, then one RACER swim as it is, east.
 const SWIM_SEED := 6101
 const SWIM_TICKS := 36000
 const SWIM_MIN_TM := 128.0
+const SWIM_DIRECTIONS := 8
+const SWIM_RACER_HEADING := 0.0
 ## The corner circle: candidate corners (abs tm), the first whose circle is clear of shells is used.
 const CIRCLE_SEED := 6102
 const CIRCLE_CORNERS: Array[Vector2] = [Vector2(256, 256), Vector2(-256, 256), Vector2(256, -256),
@@ -108,47 +127,49 @@ const TEN_KM_RECORD_EVERY := 18000
 static var _data := {}
 
 
-## What the gates still wait on, as [{"what", "marker"}]; empty when they can run. A gap is allowed
-## only while its marker file is not in the tree.
+## What the gates still wait on, as [{"what", "marker", "need"}]; empty when they can run. A gap is
+## allowed only while its marker file is not in the tree. "need" is the level (SIM, WORLD, ALL) that
+## waits on it.
 static func gaps() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var classes := _global_classes()
 	if not classes.has("WorldContent"):
-		out.append({"what": "WorldContent (T1.1)", "marker": CONTENT_FILE})
+		out.append({"what": "WorldContent (T1.1)", "marker": CONTENT_FILE, "need": SIM})
 	var sim_script := load(POOL_SIM_PATH) as GDScript
 	var lacking := _lacking(sim_script, {"create": 5, "is_endless": 0, "absolute_position_am": 0}, ["world", "respawn_pending"])
 	if not lacking.is_empty():
-		out.append({"what": "PoolSim %s (T2.1)" % ", ".join(lacking), "marker": STREAM_FILE})
+		out.append({"what": "PoolSim %s (T2.1)" % ", ".join(lacking), "marker": STREAM_FILE, "need": SIM})
 	lacking = _lacking(sim_script, {"debug_rebase": 1, "debug_teleport_abs": 2}, [])
 	if not lacking.is_empty():
-		out.append({"what": "PoolSim %s (T2.4)" % ", ".join(lacking), "marker": REBASE_FILE})
+		out.append({"what": "PoolSim %s (T2.4)" % ", ".join(lacking), "marker": REBASE_FILE, "need": WORLD})
 	if not classes.has("WorldStream"):
-		out.append({"what": "WorldStream (T2.1)", "marker": STREAM_FILE})
+		out.append({"what": "WorldStream (T2.1)", "marker": STREAM_FILE, "need": SIM})
 	else:
 		lacking = _lacking(load(classes.WorldStream) as GDScript, {"loaded_keys": 0, "chunk": 1, "local_of_abs": 2,
 			"abs_of_local": 1, "view_set_keys": 1, "sleeping_ids": 0}, ["counters", "size"])
 		if not lacking.is_empty():
-			out.append({"what": "WorldStream %s (T2.2 to T2.6)" % ", ".join(lacking), "marker": FUZZ_PATH})
+			out.append({"what": "WorldStream %s (T2.2 to T2.6)" % ", ".join(lacking), "marker": FUZZ_PATH, "need": WORLD})
 	lacking = _lacking(load(CREATURE_FIELD_PATH) as GDScript, {"awake": 0}, [])
 	lacking.append_array(_lacking(CreatureField.Creature, {}, ["asleep", "think_slot", "spawn_count"]))
 	if not lacking.is_empty():
-		out.append({"what": "CreatureField %s (T2.5, T2.6)" % ", ".join(lacking), "marker": FUZZ_PATH})
+		out.append({"what": "CreatureField %s (T2.5, T2.6)" % ", ".join(lacking), "marker": FUZZ_PATH, "need": WORLD})
 	if not FileAccess.file_exists(FUZZ_PATH):
-		out.append({"what": "tests/fuzz_invariants.gd (T2.8)", "marker": FUZZ_PATH})
+		out.append({"what": "tests/fuzz_invariants.gd (T2.8)", "marker": FUZZ_PATH, "need": ALL})
 	else:
 		lacking = _lacking(load(FUZZ_PATH) as GDScript, {"before": 1, "after": 5, "report": 0}, ["bad", "counts"])
 		if not lacking.is_empty():
-			out.append({"what": "FuzzInvariants %s (T2.8)" % ", ".join(lacking), "marker": FUZZ_PATH})
+			out.append({"what": "FuzzInvariants %s (T2.8)" % ", ".join(lacking), "marker": FUZZ_PATH, "need": ALL})
 	if content_path().is_empty():
-		out.append({"what": "world content: the fixture world (T1.7) or the real tiles (T4.3)", "marker": FIXTURE_WORLD})
+		out.append({"what": "world content: the fixture world (T1.7) or the real tiles (T4.3)", "marker": FIXTURE_WORLD, "need": SIM})
 	return out
 
 
-## What the gates wait on, in words; empty when they can run.
-static func missing() -> PackedStringArray:
+## What a test that needs `need` (SIM, WORLD or ALL) waits on, in words; empty when it can run.
+static func missing(need := ALL) -> PackedStringArray:
 	var out := PackedStringArray()
 	for g in gaps():
-		out.append(g.what)
+		if int(g.need) <= need:
+			out.append(g.what)
 	return out
 
 
@@ -210,6 +231,15 @@ static func teleport(sim: Variant, at: PackedFloat64Array) -> bool:
 static func keep_fed(sim: Variant) -> void:
 	if sim.state.energy < sim.state.energy_capacity * FEED_BELOW:
 		sim.debug_set_energy(sim.state.energy_capacity)
+
+
+## Before a step of a swim: overdriven, SwimBot.overdrive (6 tm/s, energy full; B-12); as it is,
+## keep_fed.
+static func drive(sim: Variant, overdriven: bool) -> void:
+	if overdriven:
+		SwimBot.overdrive(sim)
+	else:
+		keep_fed(sim)
 
 
 ## A FuzzInvariants for the real species and layout.
@@ -313,8 +343,8 @@ static func _lacking(script: GDScript, methods: Dictionary, properties: Array) -
 
 # ---- Fast: the harness itself ----
 
-func _waits(gate: String) -> bool:
-	var what := missing()
+func _waits(gate: String, need := ALL) -> bool:
+	var what := missing(need)
 	if what.is_empty():
 		return false
 	print("test-endless-gates: %s waits on: %s" % [gate, "; ".join(what)])
@@ -386,31 +416,40 @@ func test_random_points_repeat_and_stay_in_their_square() -> void:
 
 # ---- Soak: the gates ----
 
-## Eight directions x 10 minutes (G8, G17).
+## Eight directions x 10 minutes overdriven, then RACER east as it is (G8, G17).
 func test_soak_straight_swims_in_eight_directions_keep_the_invariants_and_counters() -> void:
-	if _waits("eight directions"):
+	if _waits("straight swims"):
 		return
-	for k in 8:
-		var dir := Vector2.from_angle(k * PI / 4.0)
+	var racer_top := 0.0
+	for k in SWIM_DIRECTIONS + 1:
+		var overdriven := k < SWIM_DIRECTIONS
+		var dir := Vector2.from_angle(k * TAU / SWIM_DIRECTIONS if overdriven else SWIM_RACER_HEADING)
+		var where := "direction %d" % k if overdriven else "racer"
 		var sim: Variant = make_sim(RACER, SWIM_SEED)
+		racer_top = float(sim.phenotype.speed)
 		sim.debug_set_hidden(true)
 		var fuzz: Variant = new_fuzz()
 		var bot = SwimBot.new(dir)
 		var start: PackedFloat64Array = sim.absolute_position_am()
 		var t0 := Time.get_ticks_msec()
 		for i in SWIM_TICKS:
-			keep_fed(sim)
-			tick(sim, bot.next_intent(sim), fuzz, "direction %d tick %d" % [k, sim.tick])
+			drive(sim, overdriven)
+			tick(sim, bot.next_intent(sim), fuzz, "%s tick %d" % [where, sim.tick])
 		var dist := abs_distance(start, sim.absolute_position_am())
+		var speed := dist / (SWIM_TICKS / 60.0)
 		var c: Dictionary = sim.world.counters
 		var report: String = fuzz.report()
-		print("test-endless-gates: direction %d (%.0f deg): %.0f tm in %d s, %.2f tm/s; awake_overflow %d, chunk_waits %d, food_trimmed %d, evictions %d; %s; %.0f s" % [
-			k, rad_to_deg(dir.angle()), dist, SWIM_TICKS / 60, dist / (SWIM_TICKS / 60.0), int(c.awake_overflow),
-			int(c.chunk_waits), int(c.food_trimmed), int(c.evictions), str(fuzz.counts), (Time.get_ticks_msec() - t0) / 1000.0])
-		check_eq(report, "", "direction %d: every invariant held" % k)
-		check_eq(int(c.awake_overflow), 0, "direction %d: awake_overflow" % k)
-		check_eq(int(c.chunk_waits), 0, "direction %d: chunk_waits" % k)
-		check(dist >= SWIM_MIN_TM, "direction %d: it swam %.0f tm (at least %.0f)" % [k, dist, SWIM_MIN_TM])
+		print("test-endless-gates: %s (%.0f deg, %s): %.0f tm in %d s, %.2f tm/s; awake_overflow %d, chunk_waits %d, food_trimmed %d, evictions %d; %s; %.0f s" % [
+			where, rad_to_deg(dir.angle()), "overdriven" if overdriven else "as it is", dist, SWIM_TICKS / 60, speed,
+			int(c.awake_overflow), int(c.chunk_waits), int(c.food_trimmed), int(c.evictions), str(fuzz.counts),
+			(Time.get_ticks_msec() - t0) / 1000.0])
+		check_eq(report, "", "%s: every invariant held" % where)
+		check_eq(int(c.awake_overflow), 0, "%s: awake_overflow" % where)
+		check_eq(int(c.chunk_waits), 0, "%s: chunk_waits" % where)
+		check(dist >= SWIM_MIN_TM, "%s: it swam %.0f tm (at least %.0f)" % [where, dist, SWIM_MIN_TM])
+		if overdriven:
+			check(speed > racer_top, "%s: it averaged %.2f tm/s, more than the racer's top speed %.2f, so it was overdriven" % [
+				where, speed, racer_top])
 
 
 func test_soak_circling_a_chunk_corner_does_not_churn_chunks() -> void:
@@ -703,32 +742,42 @@ func test_soak_a_starving_grazer_reaches_food_from_thirty_points() -> void:
 	print("test-endless-gates: F9: %d starving grazers; the slowest ate after %.1f s" % [STARVE_POINTS, slowest / 60.0])
 
 
-## G13: two runs of a 10 km straight swim are the same run.
+## G13: two runs of a 10 km straight swim are the same run, overdriven and with RACER as it is.
 func test_soak_two_runs_of_a_ten_km_swim_give_the_same_hash() -> void:
-	if _waits("10 km"):
+	if _waits("10 km", SIM):
 		return
-	var a := _ten_km_run()
-	var b := _ten_km_run()
-	check_eq(a.marks.size(), b.marks.size(), "the same number of records")
-	for i in mini(a.marks.size(), b.marks.size()):
-		var x: Dictionary = a.marks[i]
-		var y: Dictionary = b.marks[i]
-		check(x.hash == y.hash and x.sha256 == y.sha256, "tick %d: the two runs are the same (hash %d and %d)" % [x.tick, x.hash, y.hash])
-	print("test-endless-gates: 10 km: %d ticks, %.0f tm covered, %d records equal" % [a.ticks, a.distance, a.marks.size()])
-	check(float(a.distance) >= SWIM_MIN_TM, "it swam (%.0f tm)" % a.distance)
+	for overdriven in [true, false]:
+		var label := "overdriven" if overdriven else "racer"
+		var a := _ten_km_run(overdriven)
+		var b := _ten_km_run(overdriven)
+		check_eq(a.marks.size(), b.marks.size(), "%s: the same number of records" % label)
+		var equal := 0
+		for i in mini(a.marks.size(), b.marks.size()):
+			var x: Dictionary = a.marks[i]
+			var y: Dictionary = b.marks[i]
+			var same: bool = x.hash == y.hash and x.sha256 == y.sha256
+			equal += 1 if same else 0
+			check(same, "%s tick %d: the two runs are the same (hash %d and %d)" % [label, x.tick, x.hash, y.hash])
+		print("test-endless-gates: 10 km %s: %d ticks at %.2f tm/s, %.0f tm covered, %d of %d records equal; %.0f s a run" % [
+			label, a.ticks, a.speed, a.distance, equal, a.marks.size(), a.seconds])
+		check(float(a.distance) >= SWIM_MIN_TM, "%s: it swam (%.0f tm)" % [label, a.distance])
 
 
-func _ten_km_run() -> Dictionary:
+func _ten_km_run(overdriven: bool) -> Dictionary:
+	var t0 := Time.get_ticks_msec()
 	var sim: Variant = make_sim(RACER, TEN_KM_SEED)
 	sim.debug_set_hidden(true)
+	drive(sim, overdriven)
 	var bot = SwimBot.new(Vector2.from_angle(TEN_KM_HEADING))
-	var ticks := ceili(TEN_KM_TM / float(sim.phenotype.speed) * 60.0)
+	var speed := float(sim.phenotype.speed)
+	var ticks := ceili(TEN_KM_TM / speed * 60.0)
 	var start: PackedFloat64Array = sim.absolute_position_am()
 	var marks: Array[Dictionary] = []
 	for i in ticks:
-		keep_fed(sim)
+		drive(sim, overdriven)
 		tick(sim, bot.next_intent(sim))
 		if sim.tick % TEN_KM_RECORD_EVERY == 0 or i == ticks - 1:
 			marks.append({"tick": sim.tick, "hash": sim.state_hash(),
 				"sha256": JSON.stringify(sim.snapshot(), "", true, true).sha256_text()})
-	return {"marks": marks, "ticks": ticks, "distance": abs_distance(start, sim.absolute_position_am())}
+	return {"marks": marks, "ticks": ticks, "speed": speed, "distance": abs_distance(start, sim.absolute_position_am()),
+		"seconds": (Time.get_ticks_msec() - t0) / 1000.0}

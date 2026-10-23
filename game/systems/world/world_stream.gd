@@ -18,8 +18,9 @@ extends RefCounted
 ## the cell's chunk plus every chunk within VIEW_SET_MARGIN_TM of the widest camera view: it is
 ## loaded at once when the world starts, so nothing in view is ever missing. After that the nearest
 ## missing chunk within the load ring loads each tick, and a chunk unloads once it lies beyond the
-## unload ring and no awake creature's reach touches it; the gap between the rings keeps a chunk
-## from flickering in and out at a boundary. Unloading forgets a chunk entirely: it comes back from
+## unload ring and no awake, held creature's reach touches it (D-9; a creature whose reach lies beyond
+## the hold ring, 96 tm, is let go: B-6); the gap between the rings keeps a chunk from flickering in
+## and out at a boundary. Unloading forgets a chunk entirely: it comes back from
 ## the generator, with its food zones' streams restarted.
 ##
 ## Sites. A loaded chunk's live creature sites enter the site table (local records re-derived from
@@ -34,6 +35,9 @@ extends RefCounted
 ## from sleeping and waking at a boundary. Over caps.awake the farthest calm creature between the
 ## rings sleeps early; over caps.sleepers the farthest sleeper is evicted, its site requeued. While
 ## the cell is dead every distance is to the nearer of the body and the checkpoint.
+##
+## Respawn. A respawn waits for the next step (step 0): near the body, with the checkpoint's view set
+## loaded, the cell comes back there; otherwise the world moves home behind the camera cut (teleport).
 ##
 ## Food. Only the zones whose nearest point lies within the food ring (52 tm) show plankton, and
 ## carrion beyond it is dropped for good: both happen out of view (the view reaches 35.7 tm with its
@@ -115,11 +119,13 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11): the floating origin (step 2),
-## unload (step 3), load (step 4), sleep and wake (step 5), then the food view (step 6). Load, unload
-## and food always measure from the body, alive or dead; sleep and wake from every place the cell
-## has (PoolSim._player_places), the same for steps 4 and 5.
+## The streaming block, first in every endless tick (spine 3.11): a pending respawn (step 0), the
+## floating origin (step 2), unload (step 3), load (step 4), sleep and wake (step 5), then the food
+## view (step 6). Load, unload and food always measure from the body, alive or dead; sleep and wake
+## from every place the cell has (PoolSim._player_places), the same for steps 4 and 5.
 func step(sim: PoolSim) -> void:
+	if sim.respawn_pending:
+		_respawn(sim)
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
@@ -239,6 +245,36 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		_load_chunk(sim, key)
 	_fill_all = true
 	recompute_caps(sim)
+
+
+## Step 0 (spine 3.11, D-10, D-11): the pending respawn. When the checkpoint's whole view set is
+## loaded the cell comes back there as M1's respawn does, and the zones touching its new view fill at
+## once. Otherwise the world moves home behind the camera cut: every chunk unloads (its creatures
+## first), the rest of the creatures and every carrion item go, the origin becomes the checkpoint
+## (rebased), its view set loads with every food zone filled, and the cell comes back at the origin.
+func _respawn(sim: PoolSim) -> void:
+	var near := true
+	for key in view_set_keys(checkpoint_local()):
+		if not _chunks.has(key):
+			near = false
+			break
+	if near:
+		sim._respawn_now(false)
+		_flag_fill_touching(sim, sim.motion.position)
+	else:
+		teleport(sim, checkpoint_am[0], checkpoint_am[1])
+		sim._respawn_now(true)
+	sim.respawn_pending = false
+	recompute_caps(sim)
+
+
+## D-11: every zone touching the view from `p` (its footprint grown by the spawn-view margin) fills at
+## once in this tick's food view.
+func _flag_fill_touching(sim: PoolSim, p: Vector2) -> void:
+	var quad := ViewFootprint.corners(p, camera, float(camera.zoom_max), view_aspect)
+	for z in sim.region.zones:
+		if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) <= view_margin + float(z.radius):
+			_fill[z.id] = true
 
 
 # --- chunks ---
@@ -569,7 +605,8 @@ func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 	return out
 
 
-## Step 5: one pass over the site creatures in (slot, or ASLEEP_KEY for a sleeper; number; id) order.
+## Step 5: first the hold pass (B-6, _hold_pass), then one pass over the site creatures in (slot, or
+## ASLEEP_KEY for a sleeper; number; id) order.
 ## An awake one sleeps when it is calm, beyond the sleep ring, out of view and not a token holder; a
 ## sleeper wakes inside the wake ring or in view. Then over caps.awake the farthest calm creature
 ## between the rings sleeps (none: awake_overflow counts once), and over caps.sleepers the farthest
@@ -578,6 +615,7 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 	var field := sim.creatures
 	if field == null:
 		return
+	_hold_pass(sim, view_from)
 	var buckets: Array = []
 	for i in CreatureField.ASLEEP_KEY + 1:
 		buckets.append([])
@@ -618,6 +656,20 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 			break
 		field.remove(e, "evicted", sim.tick, true)
 		counters.evictions += 1
+
+
+## Step 5's first pass (B-6): an awake creature whose site's reach-disc centre (a siteless one's
+## leash-disc centre) lies beyond the hold ring of every place leaves, "unloaded", its site queued
+## again at once (CreatureField.let_go); step 3 releases its chunks on the next tick. It is at least
+## hold minus the reach radius (85 tm) away, so out of view. A scripted body holds nothing and stays.
+func _hold_pass(sim: PoolSim, view_from: Dictionary) -> void:
+	var hold := float(rings.hold)
+	for c in sim.creatures.awake().duplicate():
+		if c.brain == null:
+			continue
+		var center: Vector2 = sites[c.site_id].reach.center if sites.has(c.site_id) else CreatureBrain.leash_disc(c.brain).center
+		if _wake_distance(center, view_from) > hold:
+			sim.creatures.let_go(c, sim.tick)
 
 
 static func _calm(c: CreatureField.Creature) -> bool:

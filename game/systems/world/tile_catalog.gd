@@ -188,7 +188,9 @@ func rare_tile(band: int, kind: String) -> Dictionary:
 
 ## The circles a tile's sites and zones live among, in the tile's identity frame ({id, center:
 ## Vector2, radius} bu): its shells, then its landmark collider (lm) or its set piece's colliders
-## (r<k>: the record's colliders turned by the piece's yaw_deg, then moved to its centre).
+## (r<k>: the record's colliders turned by the piece's yaw_deg, then moved to its centre). A set
+## piece marked "mirror": true (never in a file: tests/world_checks.gd's oriented copies, as a
+## mirrored tile's place draws it) is mirrored in its own x before it turns.
 static func colliders_of(t: Dictionary, kit: PlacementKit) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for s in t.shells:
@@ -197,11 +199,12 @@ static func colliders_of(t: Dictionary, kit: PlacementKit) -> Array[Dictionary]:
 		out.append({"id": LANDMARK_ID, "center": _vec(t.landmark_anchor), "radius": kit.collide_radius_bu})
 	if not t.set_piece.is_empty() and t.set_piece.center.size() == 2:
 		var colliders: Array = kit.assets.get(t.set_piece.asset, {}).get("colliders", [])
+		var mx := -1.0 if t.set_piece.get("mirror", false) else 1.0
 		for k in colliders.size():
 			var c: Dictionary = colliders[k]
 			if c.center.size() != 2:
 				continue
-			var p := yaw_point(c.center[0], c.center[1], float(t.set_piece.yaw_deg))
+			var p := yaw_point(mx * c.center[0], c.center[1], float(t.set_piece.yaw_deg))
 			out.append({"id": "r%d" % k, "center": Vector2(t.set_piece.center[0] + p[0], t.set_piece.center[1] + p[1]),
 				"radius": float(c.radius)})
 	return out

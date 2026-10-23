@@ -394,20 +394,40 @@ func test_an_awake_creatures_leash_disc_holds_its_chunks() -> void:
 	check(c != null, "a debug creature")
 	var disc := CreatureBrain.leash_disc(c.brain)
 	var held := sim.world.disc_keys(disc)
+	var center := sim.world.abs_of_local(disc.center)
 	check(held.size() >= 2, "its disc spans %d chunks" % held.size())
+	var a := sim.absolute_position_am()
 	for t in 3000:
 		sim.step(SimIntent.new(Vector2.RIGHT))
-	var a := sim.absolute_position_am()
-	check(a[0] > 100.0, "the cell swam far (%.1f)" % a[0])
+		a = sim.absolute_position_am()
+		if a[0] - center[0] > 94.0:
+			break
+	check(a[0] > 80.0, "the cell swam far (%.1f)" % a[0])
+	var out: Array[Vector2i] = []
 	for key in held:
-		check(_ref_nearest(key, a[0], a[1]) > 72.0, "chunk %s is beyond the unload ring" % key)
-		check(sim.world.chunk(key) != null, "and still loaded, held by the creature")
+		if _ref_nearest(key, a[0], a[1]) > 72.0:
+			out.append(key)
+			check(sim.world.chunk(key) != null, "chunk %s, beyond the unload ring, still loaded: held by the creature" % key)
+	check(out.size() >= 2, "chunks of its disc beyond the unload ring (%s)" % [out])
 	for key in sim.world.loaded_keys():
 		check(held.has(key) or _ref_nearest(key, a[0], a[1]) <= 72.0, "nothing else beyond 72 (%s)" % key)
-	sim.creatures.remove(c, "test", sim.tick, false)
-	sim.step(SimIntent.new())
-	for key in held:
-		check(sim.world.chunk(key) == null, "chunk %s unloaded once the creature is gone" % key)
+	# Past the hold ring (B-6) its leash centre is let go: it leaves, unloaded, and its ground with it.
+	sim.drain_events()
+	var gone := -1
+	for t in 200:
+		var from := sim.absolute_position_am()
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		if sim.creatures.find(c.id) == null:
+			gone = t
+			check(Vector2(from[0] - center[0], from[1] - center[1]).length() > 96.0, "let go only beyond 96 tm")
+			break
+	check(gone >= 0, "the creature let go")
+	var removed := _of(sim.drain_events(), "creature_removed")
+	check(removed.size() == 1 and removed[0].reason == "unloaded", "unloaded (%s)" % [removed])
+	check(sim.creatures.queue.is_empty(), "a debug creature is not requeued")
+	sim.step(SimIntent.new(Vector2.RIGHT))
+	for key in out:
+		check(sim.world.chunk(key) == null, "chunk %s unloaded on the next step" % key)
 
 
 ## Chunks at equal distance load in key order, (y, x): at a corner shared by four chunks they are
@@ -717,24 +737,29 @@ func _in_view(sim: PoolSim, place: Vector2, p: Vector2, r: float) -> bool:
 	return ViewFootprint.contains(place, p, layout.camera, float(layout.camera.zoom_max), float(species.fairness.spawn_view_aspect), margin)
 
 
-## Spine 3.11 step 3 and D-9: an awake site creature's reach chunks stay loaded past the unload ring
-## however long it stays awake; once it sleeps they unload on the next tick, its site and its
-## creature with them.
+## Spine 3.11 step 3 and D-9: an awake, held site creature's reach chunks stay loaded past the
+## unload ring for as long as it is awake and its reach centre lies within the hold ring (96 tm);
+## once it sleeps they unload on the next tick, its site and its creature with them.
 func test_a_chunk_under_an_awake_creatures_reach_disc_stays_loaded() -> void:
 	var sim := _quiet()
 	var c := _site_creature(sim, "x_hold", Vector2(-20.0, 0.0))
 	var key := sim.world.chunk_of_local(c.motion.position)
+	var reach: Dictionary = sim.world.sites["x_hold"].abs.reach
 	sim.world.rings.wake = 990.0   # a config copy: it cannot sleep while the cell swims away
 	sim.world.rings.sleep = 1000.0
 	var beyond := 0
+	var held_out := 0.0
 	for t in 2400:
 		sim.step(SimIntent.new(Vector2.RIGHT))
 		var a := sim.absolute_position_am()
+		held_out = Vector2(a[0] - float(reach.x), a[1] - float(reach.y)).length()
 		if _ref_nearest(key, a[0], a[1]) > 72.0:
 			beyond += 1
-			if beyond >= 120:
-				break
-	check_eq(beyond, 120, "120 ticks with its chunk beyond the unload ring")
+		if held_out > 94.0:
+			break
+	check(beyond >= 20, "%d ticks with its chunk beyond the unload ring" % beyond)
+	check(held_out < 96.0, "its reach centre within the hold ring (%.2f tm)" % held_out)
+	check(sim.creatures.find(c.id) == c, "it is still there")
 	check(sim.world.chunk(key) != null, "held while it is awake")
 	sim.world.rings.wake = 40.0
 	sim.world.rings.sleep = 44.0
@@ -747,6 +772,52 @@ func test_a_chunk_under_an_awake_creatures_reach_disc_stays_loaded() -> void:
 	check(not sim.world.sites.has("x_hold"), "the site with it")
 	var removed := _of(sim.drain_events(), "creature_removed")
 	check(removed.size() == 1 and removed[0].id == c.id and removed[0].reason == "unloaded", "its sleeper left, unloaded")
+
+
+## B-6, the hold pass: an awake site creature (kept from sleeping) whose reach centre lies beyond the
+## hold ring of the cell leaves, "unloaded", out of view, in step 5 of the first tick that holds it
+## beyond 96 tm; its site is refilled at once as a sleeper (no respawn delay), and on the next tick
+## step 3 releases its ground, the sleeper and the site with it.
+func test_a_creature_held_beyond_the_hold_ring_is_let_go_and_its_chunks_unload() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_far", Vector2(-20.0, 0.0))
+	c.brain.state = "wander"   # not calm (a frozen brain keeps it), so it never sleeps
+	c.brain.phase = "return"
+	var key := sim.world.chunk_of_local(c.motion.position)
+	var reach: Dictionary = sim.world.sites["x_far"].abs.reach
+	var counts_before := int(sim.world.site_counts.get("x_far", 0))
+	sim.drain_events()
+	var gone := -1
+	var from := PackedFloat64Array()
+	var events: Array[Dictionary] = []
+	for t in 3000:
+		from = sim.absolute_position_am()
+		var tick := sim.tick
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		events = sim.drain_events()
+		var d := Vector2(from[0] - float(reach.x), from[1] - float(reach.y)).length()
+		if sim.creatures.find(c.id) == null:
+			gone = tick
+			check(d > 96.0, "let go beyond the hold ring (%.3f tm)" % d)
+			break
+		check(d <= 96.0 + 1e-3, "held until then (%.3f tm at tick %d)" % [d, tick])
+		check(sim.world.chunk(key) != null, "its chunk held while it is")
+	check(gone >= 0, "the creature was let go")
+	var removed := _of(events, "creature_removed")
+	check(removed.size() == 1 and removed[0].id == c.id and removed[0].reason == "unloaded", "unloaded (%s)" % [removed])
+	if removed.size() == 1:
+		var off: Vector2 = removed[0].position - sim.motion.position
+		check(off.length() >= 85.0, "%.1f tm from the cell" % off.length())
+		check(not _in_view(sim, sim.motion.position, removed[0].position, c.phenotype.radius), "out of view")
+	var spawned := _of(events, "creature_spawned")
+	check(spawned.size() == 1 and spawned[0].site == "x_far" and spawned[0].asleep, "refilled at once as a sleeper (%s)" % [spawned])
+	check_eq(int(sim.world.site_counts.get("x_far", 0)), counts_before + 1, "one more spawn of the site")
+	check(sim.world.chunk(key) != null, "its chunk still there on the tick it was let go (step 3 ran first)")
+	sim.step(SimIntent.new(Vector2.RIGHT))
+	check(sim.world.chunk(key) == null, "and released on the next")
+	check(not sim.world.sites.has("x_far"), "the site with it")
+	removed = _of(sim.drain_events(), "creature_removed")
+	check(removed.size() == 1 and removed[0].reason == "unloaded", "its sleeper left, unloaded (%s)" % [removed])
 
 
 ## G14: out 100 tm, back and out again through a site in every chunk: every creature_spawned id is

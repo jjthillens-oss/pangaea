@@ -1,10 +1,15 @@
 extends RefCounted
 ## Test helper (not a test file): the endless world's heavy checks (docs/s1/s1-interfaces.md 4.2,
-## docs/s1/s1-core.md 6.7). The validators keep to cheap per-file rules; these walk grids, every
-## orientation and every seam, and T4 runs them on the real content.
+## docs/s1/s1-core.md 6.7, docs/s1/s1-build-plan.md B-16 and B-17). The validators keep to cheap
+## per-file rules; these walk grids, every orientation and every seam, and T4 runs them on the real
+## content: reach_problems (G5), orientation_problems, food_bound, sample_sites and seam_problems (G4).
 ##
 ##     const WorldChecks := preload("res://tests/world_checks.gd")
 ##     WorldChecks.reach_problems(arena, zones, bounds, WorldChecks.starving_budget(catalog), homes)
+##     WorldChecks.orientation_problems(content, species, parts, 1)
+##     WorldChecks.food_bound(content, 4.0).worst <= content.config.caps.food_items
+##     WorldChecks.sample_sites(gen, 0, 1, PackedFloat64Array([x_tm, y_tm])) <= 10
+##     WorldChecks.seam_problems(content, species, parts, 1)
 
 const ReachGrid := preload("res://tests/reach_grid.gd")
 ## A starving cell should reach food using at most this share of the distance it can swim before it
@@ -36,15 +41,20 @@ static func reach_problems(arena: PoolArena, zones: Array[Dictionary], bounds: R
 	var grid = ReachGrid.over(arena, zones, bounds, PoolLayout.CELL_RADIUS)
 	var food: PackedInt32Array = grid.zone_points()
 	var to_food: PackedFloat32Array = grid.distances_from(food)
-	var from_border: PackedFloat32Array = grid.distances_from(grid.border_points())
+	var labels: PackedInt32Array = grid.components()
+	var outside := {}
+	for i in grid.border_points():
+		outside[labels[i]] = true
 	var problems := PackedStringArray()
 	var walled := 0
 	var walled_sum := Vector2.ZERO
 	var worst := -1.0
 	var worst_at := Vector2.ZERO
 	var start := -1
+	var cut := 0
+	var cut_at := Vector2.ZERO
 	for i in grid.open.size():
-		if grid.open[i] == 0 or not is_finite(from_border[i]):
+		if grid.open[i] == 0 or not outside.has(labels[i]):
 			continue
 		if not is_finite(to_food[i]):
 			walled += 1
@@ -52,6 +62,10 @@ static func reach_problems(arena: PoolArena, zones: Array[Dictionary], bounds: R
 			continue
 		if start < 0:
 			start = i
+		elif labels[i] != labels[start]:
+			if cut == 0:
+				cut_at = grid.point(i)
+			cut += 1
 		if to_food[i] > worst:
 			worst = to_food[i]
 			worst_at = grid.point(i)
@@ -62,26 +76,17 @@ static func reach_problems(arena: PoolArena, zones: Array[Dictionary], bounds: R
 	var sealed := 0
 	var sealed_sum := Vector2.ZERO
 	for i in food:
-		if not is_finite(from_border[i]):
+		if not outside.has(labels[i]):
 			sealed += 1
 			sealed_sum += grid.point(i)
 	if sealed > 0:
 		problems.append("reach: %d zone points around %s lie in a sealed pocket" % [sealed, sealed_sum / sealed])
 	for p in must_reach:
 		var i: int = grid.index_near(p)
-		if grid.open[i] == 0 or not is_finite(from_border[i]):
+		if grid.open[i] == 0 or not outside.has(labels[i]):
 			problems.append("reach: %s must be reached but lies in a sealed pocket or under a collider" % p)
-	if start >= 0:
-		var from_start: PackedFloat32Array = grid.distances_from(PackedInt32Array([start]))
-		var cut := 0
-		var cut_at := Vector2.ZERO
-		for i in grid.open.size():
-			if grid.open[i] == 1 and is_finite(from_border[i]) and is_finite(to_food[i]) and not is_finite(from_start[i]):
-				if cut == 0:
-					cut_at = grid.point(i)
-				cut += 1
-		if cut > 0:
-			problems.append("reach: %d open points from %s are cut off from %s" % [cut, cut_at, grid.point(start)])
+	if cut > 0:
+		problems.append("reach: %d open points from %s are cut off from %s" % [cut, cut_at, grid.point(start)])
 	return problems
 
 
@@ -96,3 +101,328 @@ static func worst_reach(arena: PoolArena, zones: Array[Dictionary], bounds: Rect
 			worst = to_food[i]
 			at = grid.point(i)
 	return {"worst": worst, "at": at}
+
+
+# --- every orientation (B-16) ---
+
+## Every orientation, 0 to 7: m = o >> 2 mirrors x first, k = o & 3 quarter turns (WorldGen).
+const ALL_ORIENTATIONS := [0, 1, 2, 3, 4, 5, 6, 7]
+
+
+## A copy of TileCatalog tile `t` laid in orientation o, as WorldGen places it: every point through
+## WorldGen.orient_point, headings through orient_heading, the set piece's yaw through
+## orient_yaw_deg (kept in [0, 360)) and marked "mirror" when o mirrors, so colliders_of turns its
+## colliders where WorldGen puts them. Its `where` gains "@o<o>", so a problem names the orientation.
+static func oriented_tile(t: Dictionary, o: int) -> Dictionary:
+	var out := t.duplicate(true)
+	out.where = "%s@o%d" % [t.where, o]
+	for list in [out.shells, out.zones]:
+		for item in list:
+			item.center = WorldGen.orient_point(item.center[0], item.center[1], o)
+	for s in out.sites:
+		s.home = WorldGen.orient_point(s.home[0], s.home[1], o)
+		s.heading = WorldGen.orient_heading(float(s.heading), o)
+	if t.landmark_anchor.size() == 2:
+		out.landmark_anchor = WorldGen.orient_point(t.landmark_anchor[0], t.landmark_anchor[1], o)
+	if not t.set_piece.is_empty():
+		out.set_piece.center = WorldGen.orient_point(t.set_piece.center[0], t.set_piece.center[1], o)
+		out.set_piece.yaw_deg = fposmod(WorldGen.orient_yaw_deg(float(t.set_piece.yaw_deg), o), 360.0)
+		out.set_piece["mirror"] = (o >> 2) & 1 == 1
+	return out
+
+
+## Tile rules 2 to 8 (TileCatalog.validate) with every tile laid in each of `orientations`; empty
+## when all hold. Each tile problem names its tile and orientation ("b0/reef_c@o5: rule 6: ..."); a
+## band-wide problem the orientations share is given once.
+static func orientation_problems(content: WorldContent, species: SpeciesCatalog, parts: PartCatalog, size: int,
+		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
+	var out := PackedStringArray()
+	var seen := {}
+	for o in orientations:
+		var cat := TileCatalog.new()
+		cat.bands = content.tiles.bands.duplicate()
+		for id in WorldConfig._sorted(content.tiles.tiles.keys()):
+			cat.tiles[id] = oriented_tile(content.tiles.tiles[id], o)
+		for p in cat.validate(species, content.kit, parts, size):
+			if not seen.has(p):
+				seen[p] = true
+				out.append(p)
+	return out
+
+
+# --- the food bound (plan A.2) ---
+
+## The most food items any arrangement can put within the food ring of a point: for each point p on
+## a `step_tm` grid over one tile (cell centres, tile-local, scanned y then x), the 3 x 3 tile slots
+## round p's tile each hold the tile and orientation whose zones put the most items within the ring
+## of p (a zone counts min(floor(capacity / unit_energy), food_per_zone) items when its disc comes
+## within the ring); the slots sum. Where p's tile lies round or in the home block (tiles -2 to 1 on
+## each axis), the block's own zones, counted exactly, replace the slots it covers.
+## {worst: int, at: Vector2 (tile-local bu), home: bool, tile: Vector2i (p's tile when home is
+## true)}; the gate is worst <= caps.food_items. The first point to reach the worst wins a tie, the
+## arrangements away from the home first.
+static func food_bound(content: WorldContent, step_tm: float) -> Dictionary:
+	var scale := WorldConfig.bu_to_tm(content.config.size_start)
+	var ring := float(content.config.rings.food) / scale
+	var step := step_tm / scale
+	var frames: Array = []
+	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
+		for o in ALL_ORIENTATIONS:
+			frames.append(_food_zones(oriented_tile(content.tiles.tiles[id], o).zones, content))
+	var home_zones := _food_zones(content.home.zones.map(func(z: Dictionary) -> Dictionary:
+		return {"center": PackedFloat64Array([z.x, z.y]), "radius": z.radius, "capacity": z.capacity}), content)
+	var n := roundi(TileCatalog.HALF_TILE_BU * 2.0 / step)
+	var best := {"worst": -1, "at": Vector2.ZERO, "tile": Vector2i.ZERO, "home": false}
+	var slot_max := {}
+	for j in n:
+		for i in n:
+			var p := Vector2(-TileCatalog.HALF_TILE_BU + (i + 0.5) * step, -TileCatalog.HALF_TILE_BU + (j + 0.5) * step)
+			var total := 0
+			for sy in range(-1, 2):
+				for sx in range(-1, 2):
+					var m := 0
+					var at := p - Vector2(sx, sy) * TileCatalog.HALF_TILE_BU * 2.0
+					for zones in frames:
+						m = maxi(m, _items_near(zones, at, ring))
+					slot_max[Vector4i(i, j, sx, sy)] = m
+					total += m
+			if total > int(best.worst):
+				best = {"worst": total, "at": p, "tile": Vector2i.ZERO, "home": false}
+	var lo := int(content.config.arrangement.home_tiles[0])
+	var hi := int(content.config.arrangement.home_tiles[1])
+	for ty in range(lo - 1, hi + 2):
+		for tx in range(lo - 1, hi + 2):
+			for j in n:
+				for i in n:
+					var p := Vector2(-TileCatalog.HALF_TILE_BU + (i + 0.5) * step, -TileCatalog.HALF_TILE_BU + (j + 0.5) * step)
+					var block_p := p + Vector2(tx * 2 + 1, ty * 2 + 1) * TileCatalog.HALF_TILE_BU
+					var total := _items_near(home_zones, block_p, ring)
+					for sy in range(-1, 2):
+						for sx in range(-1, 2):
+							var hx := tx + sx
+							var hy := ty + sy
+							if not (hx >= lo and hx <= hi and hy >= lo and hy <= hi):
+								total += int(slot_max[Vector4i(i, j, sx, sy)])
+					if total > int(best.worst):
+						best = {"worst": total, "at": p, "tile": Vector2i(tx, ty), "home": true}
+	return best
+
+
+## [center: Vector2, radius, items] per zone, items as the plankton field counts them.
+static func _food_zones(zones: Array, content: WorldContent) -> Array:
+	var unit := float(content.layout.plankton.unit_energy)
+	var cap := int(content.config.caps.food_per_zone)
+	var out := []
+	for z in zones:
+		var items := mini(cap, floori(float(z.capacity) / unit + PlanktonField.COUNT_EPSILON))
+		out.append([Vector2(z.center[0], z.center[1]), float(z.radius), items])
+	return out
+
+
+## The items of `zones` (in their own tile's frame) whose discs come within `ring` of the point `at`
+## in that frame.
+static func _items_near(zones: Array, at: Vector2, ring: float) -> int:
+	var total := 0
+	for z in zones:
+		if at.distance_to(z[0]) - float(z[1]) <= ring:
+			total += int(z[2])
+	return total
+
+
+# --- the site sample (B-17) ---
+
+static var _sample_gen: WorldGen = null
+static var _sample_chunks := {}
+static var _sample_margin := 0.0
+
+
+## How many live sites at `size` have reach discs that meet the disc of `radius_tm` round
+## `center_abs_tm` (absolute tm), over the chunks of `gen`. A site lies in the chunk of its home and
+## its home lies inside its reach disc, so the chunks within radius + 2 x reach_max hold every such
+## site. Chunks are cached while the same generator is passed (a seed's discs share them); passing
+## another generator drops the cache. `band` must be size's band; -1 otherwise.
+static func sample_sites(gen: WorldGen, band: int, size: int, center_abs_tm: PackedFloat64Array, radius_tm := 40.0) -> int:
+	if WorldConfig.band_of(size) != band:
+		return -1
+	if gen != _sample_gen:
+		_sample_gen = gen
+		_sample_chunks.clear()
+		_sample_margin = 2.0 * float(gen.content.reach_max(gen.species).radius_tm)
+	var center := Vector2(center_abs_tm[0], center_abs_tm[1])
+	var count := 0
+	for key in WorldGen.disc_chunks(center_abs_tm[0], center_abs_tm[1], radius_tm + _sample_margin, gen.content.config.chunk_tm):
+		var k := Vector3i(size, key.x, key.y)
+		if not _sample_chunks.has(k):
+			_sample_chunks[k] = gen.chunk(size, key.x, key.y)
+		var c: WorldChunk = _sample_chunks[k]
+		for s in c.sites:
+			if s.reach.is_empty() or not s.sizes.has(size):
+				continue
+			if center.distance_to(Vector2(s.reach.x, s.reach.y)) < radius_tm + float(s.reach.radius):
+				count += 1
+	return count
+
+
+# --- the seams (G4) ---
+
+## Problems across tile seams and the home block's edges: rules 9 and 10 for every live site against
+## the circles of both sides, and no circle overlapping one across the seam (tile rule 2). A
+## problem the site's own side already has is not repeated; each names both sides and their
+## orientations. Ordered pairs of tiles in `orientations`, B east of A, north of A and at A's
+## north-east corner (core 6.7's three placements; the pairs swapped give west, south and the
+## south-west corner, and with all eight orientations a quarter turn of the pair gives the other two
+## corners); then every tile and orientation along each edge of the home block.
+static func seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
+		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
+	var out := tile_seam_problems(content, species, part_catalog, size, orientations)
+	out.append_array(home_seam_problems(content, species, part_catalog, size, orientations))
+	return out
+
+
+## seam_problems' tile pairs.
+static func tile_seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
+		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
+	var frames := _tile_frames(content, species, part_catalog, size, orientations)
+	var tile_bu := TileCatalog.HALF_TILE_BU * 2.0
+	var placements := [["east", Vector2(tile_bu, 0.0)], ["north", Vector2(0.0, -tile_bu)], ["north-east", Vector2(tile_bu, -tile_bu)]]
+	var out := PackedStringArray()
+	for a in frames:
+		for b in frames:
+			for placement in placements:
+				_seam(a, b, placement[1], "seam %s | %s %s" % [a.where, b.where, placement[0]], species, out)
+	return out
+
+
+## seam_problems' home edges: each tile and orientation in the two tile slots along each edge.
+static func home_seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
+		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
+	var frames := _tile_frames(content, species, part_catalog, size, orientations)
+	var home := _home_frame(content, species, part_catalog, size)
+	var lo := int(content.config.arrangement.home_tiles[0])
+	var hi := int(content.config.arrangement.home_tiles[1])
+	var slots: Array[Vector2i] = []
+	for k in range(lo, hi + 1):
+		slots.append(Vector2i(hi + 1, k))
+		slots.append(Vector2i(lo - 1, k))
+		slots.append(Vector2i(k, lo - 1))
+		slots.append(Vector2i(k, hi + 1))
+	var out := PackedStringArray()
+	for slot in slots:
+		var offset := Vector2(slot.x * 2 + 1, slot.y * 2 + 1) * TileCatalog.HALF_TILE_BU
+		for b in frames:
+			_seam(home, b, offset, "seam %s | %s at tile %s" % [home.where, b.where, slot], species, out)
+	return out
+
+
+## Side A at the origin, side B moved by `offset`: B's circles near each of A's discs and A's near
+## each of B's, and every overlapping pair.
+static func _seam(a: Dictionary, b: Dictionary, offset: Vector2, label: String, species: SpeciesCatalog, out: PackedStringArray) -> void:
+	var b_circles: Array[Dictionary] = []
+	for c in b.circles:
+		b_circles.append({"id": c.id, "center": c.center + offset, "radius": c.radius})
+	for ca in a.circles:
+		for cb in b_circles:
+			var gap: float = Vector2(ca.center).distance_to(cb.center) - ca.radius - cb.radius
+			if gap < 0.0:
+				out.append("%s: rule 2: '%s' and '%s' overlap by %.2f bu across the seam" % [label, ca.id, cb.id, -gap])
+	var max_r := maxf(float(a.max_r), float(b.max_r))
+	for s in a.sites:
+		_seam_site(s, s.disc, a.circles, b_circles, max_r, label, species, out)
+	for s in b.sites:
+		var disc := {"center": Vector2(s.disc.center) + offset, "radius": s.disc.radius}
+		_seam_site(s, disc, b_circles, a.circles, max_r, label, species, out)
+
+
+## Rules 9 and 10 for one site with the far side's circles added, less what its own side gives. A
+## far circle can change them only when it comes near the leash circle (rule 9's band), reaches into
+## the disc, or lies within a passage of a circle that does (rule 10), which may be an own circle or
+## a far one, so `max_r` is the largest radius on either side; the others are left out, and with
+## none near, nothing is checked.
+static func _seam_site(s: Dictionary, disc: Dictionary, own: Array[Dictionary], far: Array[Dictionary], max_r: float,
+		label: String, species: SpeciesCatalog, out: PackedStringArray) -> void:
+	var r := float(s.r)
+	var band := r + float(species.fairness.leash_band_margin_m)
+	var passage := 2.0 * r + float(species.fairness.pinch_margin_m)
+	var reach_near := float(disc.radius) + maxf(band, r + passage + 2.0 * max_r)
+	var near: Array[Dictionary] = []
+	for c in far:
+		if Vector2(disc.center).distance_to(c.center) - float(c.radius) < reach_near:
+			near.append(c)
+	if near.is_empty():
+		return
+	var alone := PackedStringArray()
+	species.check_disc_against_shells(s.where, disc, r, own, INF, alone)
+	var both := PackedStringArray()
+	var all: Array[Dictionary] = own.duplicate()
+	all.append_array(near)
+	species.check_disc_against_shells(s.where, disc, r, all, INF, both)
+	for p in both:
+		if not alone.has(p):
+			out.append("%s: %s" % [label, p])
+
+
+## Each tile in each orientation as one side of a seam: {where, circles (ids "<where>:<id>"), sites
+## [{where, disc: {center, radius}, r}]}; a site's disc is built in the tile's identity frame and
+## then oriented, as WorldGen does (docs/s1/s1-core.md 16.12).
+static func _tile_frames(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
+		orientations: PackedInt32Array) -> Array:
+	var out := []
+	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
+		var t: Dictionary = content.tiles.tiles[id]
+		var discs := []
+		for s in t.sites:
+			if not s.sizes.has(size) or not species.species.has(s.species):
+				discs.append({})
+				continue
+			var zone := TileCatalog._zone(t, s.territory_zone)
+			var z := {} if zone.is_empty() else {"center": TileCatalog._vec(zone.center), "radius": float(zone.radius)}
+			var site := {"species": s.species, "home": TileCatalog._vec(s.home), "heading": float(s.heading)}
+			discs.append(species.reach_disc_for(site, species.territory_from(site, z)))
+		for o in orientations:
+			var ot := oriented_tile(t, o)
+			var circles := _named(TileCatalog.colliders_of(ot, content.kit), ot.where)
+			var frame := {"where": ot.where, "circles": circles, "max_r": _max_r(circles), "sites": []}
+			for k in t.sites.size():
+				var disc: Dictionary = discs[k]
+				if disc.is_empty():
+					continue
+				var c := WorldGen.orient_point(disc.center.x, disc.center.y, o)
+				frame.sites.append({"where": "site '%s' of %s" % [t.sites[k].id, ot.where], "r": species.phenotype(t.sites[k].species, part_catalog).radius,
+					"disc": {"center": Vector2(c[0], c[1]), "radius": float(disc.radius)}})
+			out.append(frame)
+	return out
+
+
+## The home block as one side of a seam, in its own frame (centre at abs (0, 0)).
+static func _home_frame(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int) -> Dictionary:
+	var home := content.home
+	var circles := _named(home.circles(), home.where)
+	var frame := {"where": home.where, "circles": circles, "max_r": _max_r(circles), "sites": []}
+	for s in home.sites:
+		if not s.sizes.has(size) or not species.species.has(s.species):
+			continue
+		var z := {}
+		for zone in home.zones:
+			if zone.id == s.territory_zone:
+				z = {"center": Vector2(zone.x, zone.y), "radius": float(zone.radius)}
+		var site := {"species": s.species, "home": Vector2(s.x, s.y), "heading": float(s.heading)}
+		var disc := species.reach_disc_for(site, species.territory_from(site, z))
+		if disc.is_empty():
+			continue
+		frame.sites.append({"where": "site '%s' of %s" % [s.id, home.where], "r": species.phenotype(s.species, part_catalog).radius,
+			"disc": {"center": Vector2(disc.center), "radius": float(disc.radius)}})
+	return frame
+
+
+static func _max_r(circles: Array[Dictionary]) -> float:
+	var out := 0.0
+	for c in circles:
+		out = maxf(out, float(c.radius))
+	return out
+
+
+static func _named(circles: Array[Dictionary], where: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for c in circles:
+		out.append({"id": "%s:%s" % [where, c.id], "center": c.center, "radius": float(c.radius)})
+	return out
