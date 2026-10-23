@@ -120,7 +120,7 @@ def arch(m, rng):
     for i in range(41):
         t = i / 40
         a = math.pi * t
-        pts.append(Vector((-2.6 * math.cos(a), 0.4 * math.sin(2 * a), -1.8 + 6.0 * math.sin(a))))
+        pts.append(Vector((-2.2 * math.cos(a), 0.4 * math.sin(2 * a), -1.8 + 6.0 * math.sin(a))))
     rib = mm.tube("Rib", pts, 0.38, m["silica"], 16)
     # Ribbing: rings along the arch.
     for i in range(2, 39, 3):
@@ -130,7 +130,7 @@ def arch(m, rng):
         r = bpy.context.object
         r.rotation_euler = t.to_track_quat("Z", "Y").to_euler()
         r.data.materials.append(m["silica_frost"])
-    for x in (-2.6, 2.6):
+    for x in (-2.2, 2.2):
         revolve(f"Foot{x}", [(0.0, -3.0), (0.9, -2.6), (0.75, -1.2), (0.55, -0.4), (0.4, 0.4), (0.0, 0.5)],
                 m["silica_frost"], 48, (x, 0, 0), (9, 0.08))
     for i in range(6):
@@ -141,13 +141,13 @@ def arch(m, rng):
 def giant_carcass(m, rng):
     """The collapsed husk of a giant protist: a deflated, ribbed membrane with its glassy skeleton
     showing through and a spill of cream granules. Pale and greyed, never carrion red or threat pink."""
-    husk = mm.uv_sphere("Husk", 1.0, (0, 0, -0.8), m["husk"], 64, 32, (3.0, 2.0, 1.1))
+    husk = mm.uv_sphere("Husk", 1.0, (0, 0, -0.8), m["husk"], 64, 32, (2.35, 1.7, 1.1))
     husk.rotation_euler = (0.0, 0.15, 0.4)
     dent = husk.modifiers.new("Wrinkle", "DISPLACE")
     tex = bpy.data.textures.new("Wrinkles", "CLOUDS")
     tex.noise_scale = 0.6
     dent.texture = tex
-    dent.strength = 0.5
+    dent.strength = 0.3
     husk.modifiers.new("Smooth", "SUBSURF").levels = 1
     for i in range(9):
         a = -1.1 + i * 0.27
@@ -155,7 +155,7 @@ def giant_carcass(m, rng):
         rib = mm.tube(f"Rib{i}", pts, 0.09, m["silica_frost"], 8)
         rib.rotation_euler = (0, 0, 0.4)
     for i in range(40):
-        p = Vector((rng.uniform(1.6, 3.2), rng.uniform(-1.6, 1.6), rng.uniform(-1.2, 0.0)))
+        p = Vector((rng.uniform(1.2, 2.3), rng.uniform(-0.9, 0.9), rng.uniform(-1.2, 0.0)))
         mm.uv_sphere(f"Granule{i}", rng.uniform(0.06, 0.16), p, m["cream"], 12, 6)
     return 3.6
 
@@ -185,7 +185,7 @@ def spire(m, rng):
 
 def ring(m, rng):
     """A giant diatom girdle band standing on edge: a glassy hoop with rows of pores, half sunk."""
-    bpy.ops.mesh.primitive_torus_add(major_radius=2.6, minor_radius=0.42, major_segments=96, minor_segments=24, location=(0, 0, 0.6))
+    bpy.ops.mesh.primitive_torus_add(major_radius=2.4, minor_radius=0.42, major_segments=96, minor_segments=24, location=(0, 0, 0.6))
     hoop = bpy.context.object
     hoop.name = "Hoop"
     hoop.rotation_euler = (math.pi / 2, 0, 0.35)
@@ -193,7 +193,7 @@ def ring(m, rng):
     hoop.data.materials.append(m["silica"])
     for i in range(36):
         a = math.tau * i / 36
-        p = Vector((2.6 * math.cos(a), 0.0, 0.6 + 2.6 * math.sin(a)))
+        p = Vector((2.4 * math.cos(a), 0.0, 0.6 + 2.4 * math.sin(a)))
         for side in (-1, 1):
             q = p + Vector((0.0, side * 0.43, 0.0))
             o = mm.uv_sphere(f"Pore{i}_{side}", 0.11, q, m["lavender"], 10, 6, (1, 0.4, 1))

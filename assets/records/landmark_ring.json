@@ -1,0 +1,64 @@
+{
+  "id": "landmark_ring",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "rough - endless world S1, not visually approved",
+  "purpose": "Endless world S1 rough: A giant diatom girdle band standing on edge in two cradles. Swapped for the finished piece under the same id.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/landmark_ring.blend",
+  "generator_script": "tools/blender/make_s1_world_kit.py",
+  "export_path": "assets/export/landmark_ring.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 5.8,
+    "y_forward": 2.6,
+    "z_up": 6.22
+  },
+  "triangles": 8100,
+  "triangle_budget": 9000,
+  "textures": [],
+  "materials": [
+    "M_Lavender",
+    "M_Silica",
+    "M_SilicaFrost"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Landmark"
+  ],
+  "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
+  "anchor_radius_m": 3.0,
+  "swim_band_reach_m": 2.82,
+  "scale_range": [
+    0.9,
+    1.06
+  ],
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": null,
+      "scale": 1.0
+    },
+    {
+      "id": "frosted",
+      "tint": "#C9D4EE",
+      "growth": null,
+      "scale": 0.92
+    },
+    {
+      "id": "amber_bloom",
+      "tint": "#F2E2C2",
+      "growth": null,
+      "scale": 1.05
+    }
+  ],
+  "top_m": 3.42,
+  "bottom_m": -2.8,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_world_kit.py; no external or generated meshes."
+}
