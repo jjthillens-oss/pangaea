@@ -1,0 +1,15 @@
+{
+	"note": "PROPOSED tuning for the creature stage's test field (docs/milestones/creature-stage-plan.md section 5). Seconds are converted to whole ticks once at load (CreatureWorldSim.TICKS_PER_SECOND); metres and kilograms as written.",
+	"schema_version": 1,
+	"start_points": 150,
+	"field_half_size_m": 80,
+	"nest_radius_m": 6,
+	"fruit": {"count": 40, "points": 5, "regrow_s": 30},
+	"meat": {"points": 20, "decay_s": 60},
+	"rivals": {"count": 6, "sight_m": 12, "flee_mass_ratio": 1.3, "hunt_mass_ratio": 0.7, "hungry_below": 0.5},
+	"health": {"per_kg": 2.0, "regen_per_s": 0.5},
+	"bite": {"base": 5, "per_mouth": 5, "scale_power": 1.0, "cooldown_s": 0.8, "no_mouth_fruit_share": 0.5},
+	"sight": {"base_m": 6, "per_eye_m": 3, "max_m": 24},
+	"death": {"points_loss_share": 0.2},
+	"mass": {"kg_per_m3": 900}
+}
