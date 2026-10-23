@@ -1,0 +1,165 @@
+# Creature art contract: part assets and skin shader (PROPOSED)
+
+The procedural creature has two owners. This doc is art's half of the contract.
+
+| Owner | Owns |
+|---|---|
+| Spore research protocol thread | Runtime geometry, spine skin, rig, Gait Lab, body save format |
+| Art thread | Part meshes, skin materials and shaders, look review |
+
+It builds on these PROPOSED specs in PR #12:
+- `docs/research/spore/workstreams/creature_editor.md` §3.3–3.6 (anchors and `PartRules`);
+- `docs/research/spore/CREATURE_GEOMETRY_SPEC.md` §4 (bones), §8 (skin channels and paint) and §9 (Blender's role).
+
+Nothing in this doc moves into `game/` until Joshua approves the save-schema step. The cell stage stays microscopic, so its parts have no bones, teeth or skeletons; those belong to later stages. Nothing here is copied from Spore.
+
+## 1. Part assets
+
+Every part follows the usual pipeline:
+- a `.blend` in `assets/source/blender/part_<type>[_<variant>].blend`;
+- a GLB in `assets/export/`;
+- a record in `assets/records/`.
+
+`tests/test_assets.gd` checks all three, as it does today.
+
+### 1.1 Axes, pivot and scale
+
+| Rule | Godot | Blender |
+|---|---|---|
+| Up = the skin normal at the anchor | +Y | +Z |
+| Forward = toward the head, along the spine tangent projected on the skin | −Z | +Y |
+| Right | +X | +X |
+
+- **Pivot.** The pivot is the point where the part meets the skin, on the skin surface. Geometry below the pivot, down to `sink_depth`, is the part's root, so it never shows a gap when the skin bulges.
+- **Scale.** Author at the part's nominal size at scale 1000‰, in metres (1 m = 1 Godot unit). The runtime applies per-mille scale uniformly about the pivot, so nothing may depend on world size.
+- **Chirality.** Chiral parts ship one side only: the **right** side (+X in Godot). The runtime mirrors them at bake. Records carry `"chiral": true`. A test bakes the mirror and checks that its normals face outward.
+- **Breaking change.** M1's cell parts (`part_spike`, `part_flagellum`, `part_mouth_jaw`, `part_mouth_filter`, `part_eye_spot`) use the older convention: outward is Blender +Y. When the creature runtime lands, art re-exports them in this convention as a new revision, and the records' `attachment` block changes to match. Until then they stay as they are, because M1 code reads them.
+
+### 1.2 Nodes, shape keys and sockets
+
+- **Root.** The root node is one mesh named after the part type in PascalCase, for example `Spike`. Extra meshes are children of the root.
+- **Handles.** Up to 4 shape keys, named `H1_<what>` to `H4_<what>`, for example `H1_Length` or `H2_Curl`. Each handle runs from 0 to 1000‰. 0‰ is the basis shape. Every handle must stay inside the footprint at 1000‰.
+- **Sockets.** A part that can host other parts gets empties named `socket_<n>` (Blender +Z = the hosted part's up). They export as `Node3D`s. The runtime turns each socket into a `part_NN` socket bone.
+- **No bones.** Parts have no armature. The runtime rig places each part under a `BoneAttachment3D` on its socket bone. Moving parts, such as a jaw opening or a flagellum beating, animate by shape key or by a shader driven by `ANIM_PHASE` (§2.4), never by bones inside the part.
+- **Collision.** A collision proxy is optional. If present, it is a child named `Collider` that is hidden in renders.
+
+### 1.3 Record fields
+
+The `part_*` record fields stay. These are added under `"part_rules"`, with values the runtime copies into `PartRules`:
+
+```json
+"part_rules": {
+  "type": "spike",
+  "footprint_radius_m": 0.06,
+  "sink_depth_m": 0.03,
+  "chiral": false,
+  "orientation": "normal",
+  "turn_limit_deg": 45,
+  "tilt_limit_deg": 30,
+  "centerline": "allowed",
+  "hosts": ["spine", "limb", "limb_end"],
+  "handles": [{"key": "H1_Length", "meaning": "shaft length", "default_permille": 0}]
+}
+```
+
+- `orientation` takes one of three values:
+  - `normal`: up follows the skin;
+  - `ground`: feet, up follows world +Y at rest;
+  - `forward_cone`: mouths and eyes, forward is clamped to a cone around the head direction.
+- `footprint_radius_m` is measured at scale 1000‰ in the skin's tangent plane.
+- The record's `triangle_budget` holds for the part at all handle values.
+
+### 1.4 Budgets (PROPOSED)
+
+| Part class | Triangles | Textures |
+|---|---|---|
+| Small (eye, pore, bristle) | 400 | 256 px |
+| Medium (mouth, spike, fin, flagellum) | 1,200 | 512 px |
+| Large (limb end, crest, shell plate) | 2,500 | 512 px |
+
+The whole body target is set by the runtime thread. Parts are drawn as separate meshes, so a creature with 24 parts stays within about 30k part triangles.
+
+### 1.5 Materials
+
+Each part has the same baked set as M1's finished parts:
+- a greyscale albedo detail texture times each material's base colour;
+- an ORM texture;
+- a normal map.
+
+Every part material also exposes `paint_mix` (0 to 1). This is how much of the creature's paint (§2.2) replaces the part's own base colour. Horn, chitin and eyes stay near 0. Fleshy parts such as fins follow the skin near 1, so they read as one animal.
+
+## 2. Skin shader parameters
+
+There is one `ShaderMaterial` for the generated skin: `assets/export/shaders/creature_skin.gdshader` plus `M_CreatureSkin.tres`. Art authors and owns it. It reads only what the runtime writes.
+
+### 2.1 Vertex inputs (written by the runtime)
+
+| Channel | Meaning | Range |
+|---|---|---|
+| `CUSTOM0.x` | `spine_u`: position along the spine, 0 at the head, 1 at the tail | 0–1 |
+| `CUSTOM0.y` | `ring_v`: angle around the spine in turns: 0 dorsal, 0.25 right (+X), 0.5 belly, 0.75 left; wraps on the dorsal midline | 0–1 |
+| `CUSTOM0.z` | `limb_id`: 0 on the trunk, 1 and up for each limb | integer as float |
+| `CUSTOM0.w` | `limb_t`: distance along the limb, 0 at the attach point, 1 at the tip | 0–1 |
+| `CUSTOM1.xyz` | `rest_pos`: the vertex's rest-pose body-space position in metres (the mesh's own vertex array before skinning). Spots, cells and scales are computed here with x folded, so they don't stretch with the spine coordinates, streak at the end caps or slide when the body bends | metres |
+| `COLOR.r` | `crease`: optional ambient-occlusion hint at blend seams (0 if not provided) | 0–1 |
+
+### 2.2 Paint uniforms (from the body save, set per creature)
+
+| Uniform | Type | Meaning |
+|---|---|---|
+| `base_pattern` | int | Base layer id (§2.3) |
+| `coat_pattern` | int | Coat layer id: covers the back and fades toward the belly |
+| `detail_pattern` | int | Detail layer id: stripes, spots, rings |
+| `color_base`, `color_coat`, `color_detail` | vec3, sRGB | The 3 paint colours |
+| `pattern_seed` | int | Seeds spots and noise per creature (deterministic) |
+| `coat_reach` | float 0–1 | How far the coat reaches down the flanks |
+| `detail_scale` | float | Pattern features per body length |
+| `body_length_m` | float | The body's length; rest-space patterns are scaled by it, so a pattern keeps its count as the body grows |
+
+### 2.3 Pattern ids (first set, IMPLEMENTED in the shader, look PROPOSED)
+
+| Layer | Ids |
+|---|---|
+| Base | 0 plain, 1 mottled, 2 cellular, 3 fine scales |
+| Coat | 0 none, 1 saddle, 2 dorsal stripe, 3 countershade |
+| Detail | 0 none, 1 cross bands, 2 spots, 3 rings on limbs (`limb_t`), 4 eye spots |
+
+Coats and cross bands follow `spine_u` and the folded ring value. Spots, cells and scales live in rest space (`CUSTOM1`). Fine surface detail is triplanar in object space, using CC0 or in-house greyscale textures under `assets/export/creature_skin/`. The pattern layers come from the vertex channels, so stretched bodies don't smear.
+
+### 2.4 Global and animation uniforms
+
+| Uniform | Meaning |
+|---|---|
+| `stage_look` | Int: 0 = cell (translucent membrane, rim light), 1 = creature (opaque). Later stages add their own |
+| `ANIM_PHASE` | Float, set by the gait runtime per frame. Parts and skin may use it for ripple, beat or breathing |
+| `damage`, `ripeness` | Floats 0–1 that reuse the M1 cell's meanings, so the same game feedback reads the same way |
+
+### 2.5 Colour rules
+
+- Paint colours are free for players.
+- The default creature palettes art ships keep 25° LAB hue clear of food green (114) and the threat pink (11), as every other asset does.
+- The threat outline and food glow stay engine overlays, never baked into the skin.
+
+## 2.6 First look check
+
+`assets/export/shaders/creature_skin.gdshader` has the full parameter set. It was run on the creature lab's real skins (branch `claude/project-thread-uqwkit`, commit 9fbf9e3, `spine_lab.tscn --body=all --anim=swim`). The check used a throwaway scene that sets the material override and copies the vertex array into `CUSTOM1`. Frames:
+- `docs/art/renders/concept/creature_skin_v1_all.jpg`
+- `..._fish.jpg`
+- `..._bean.jpg`
+
+Rendered with gl_compatibility under Xvfb.
+
+## 3. Blender side
+
+Art writes `tools/blender/creature_reference.py`. It rebuilds a `BodyDescription` JSON as a `.blend` using the runtime thread's Python port of the skin algorithm. It places the parts by the same anchor rules and applies `creature_skin` look-dev as a Blender material. It is used for:
+- the look review and hero renders;
+- a reference that the Godot output is compared against.
+
+## 4. Settled with the runtime thread (2026-10-23)
+
+1. **`ring_v` wrap.** It wraps on the dorsal midline. Symmetric patterns use the folded value `f = 2·min(v, 1−v)` (0 on the back, 1 on the belly), or `sin/cos(2πv)`, so the wrap never shows.
+2. **Limb-end pivots.** The pivot is where the limb axis leaves the tip cap, on the skin, with +Y outward along the limb axis. `ground` parts (feet) are the exception: +Y is body up at rest, −Z is body forward, and the sole sits on the pivot.
+3. **Handles.** They are Godot blend shapes. The H1–H4 shape keys export in the GLB and are set per instance. A later bake may flatten them for the far LOD.
+
+---
+Status: PROPOSED by the art thread, 2026-10-23. Edit freely; the runtime thread's edits win on anything they own.
