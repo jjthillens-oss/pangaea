@@ -259,6 +259,27 @@ func test_sample_cell_scale_matches_blender_meters() -> void:
 	node.free()
 
 
+## Blender adds shape keys at full value, and the GLB stores that as each mesh's default morph weights.
+## Godot's importer leaves blend shapes at 0, but Blender, viewers and other glTF readers draw those
+## defaults, so a key left at 1 shows the cell ripe and stretched there. Reads the GLB's JSON chunk.
+func test_sample_cell_morph_weights_rest_at_zero() -> void:
+	var bytes := FileAccess.get_file_as_bytes("res://assets/export/sample_cell.glb")
+	check(bytes.size() > 20, "sample_cell.glb reads")
+	if bytes.size() <= 20:
+		return
+	var length := bytes.decode_u32(12)
+	var gltf: Variant = JSON.parse_string(bytes.slice(20, 20 + length).get_string_from_utf8())
+	check(gltf is Dictionary, "sample_cell.glb has a JSON chunk")
+	if not gltf is Dictionary:
+		return
+	var found := 0
+	for mesh: Dictionary in gltf.get("meshes", []):
+		for w in mesh.get("weights", []):
+			found += 1
+			check_near(float(w), 0.0, 1e-6, "%s morph weight rests at 0" % mesh.get("name", "?"))
+	check(found >= 2, "sample_cell has its Ripeness and Stretch morph targets, found %d" % found)
+
+
 func test_sample_cell_faces_godot_forward_and_has_sockets() -> void:
 	var node := _load_scene("res://assets/export/sample_cell.glb")
 	if node == null:

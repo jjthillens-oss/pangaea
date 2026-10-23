@@ -757,6 +757,7 @@ def _cell_shape_keys(body):
     body.shape_key_add(name="Basis", from_mix=False)
     ripe = body.shape_key_add(name="Ripeness", from_mix=False)
     stretch = body.shape_key_add(name="Stretch", from_mix=False)
+    ripe.value = stretch.value = 0.0    # Blender adds keys at 1, which the GLB would carry as default weights
     for i, v in enumerate(body.data.vertices):
         co = v.co
         ripe.data[i].co = Vector((co.x * (1 + CELL_SWELL), co.y * (1 + CELL_SWELL), co.z * (1 + 0.6 * CELL_SWELL)))
