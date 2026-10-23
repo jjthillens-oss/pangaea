@@ -1050,6 +1050,13 @@ func _slots(sim: PoolSim) -> Dictionary:
 	return _sorted_dict(out)
 
 
+## The cell's settle point at the next size (BP-4), in the current frame, or Vector2.INF when the
+## cell is wedged there. Until the growth tick lands (T2.5) a stub that is never wedged: the cell's own
+## position.
+func next_size_clear_point(sim: PoolSim) -> Vector2:
+	return sim.motion.position
+
+
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the
 ## species, so two species sharing a role share the cap). Roles with no loaded site get 0. A niche
 ## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap. This counts
