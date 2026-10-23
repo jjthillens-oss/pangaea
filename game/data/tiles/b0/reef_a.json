@@ -12,7 +12,7 @@
   "shells": [
     {"id": "s0", "center": [1.1, 20.8], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s1", "center": [-2.7, 22.7], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s2", "center": [-23.0, 6.8], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-23.4, 6.2], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s3", "center": [9.4, -8.2], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s4", "center": [-23.1, -17.1], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s5", "center": [-21.3, 3.5], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
