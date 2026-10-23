@@ -107,6 +107,15 @@ var _str_plankton := WorldHash.str32("plankton")
 var _fill := {}                        ## zone id -> true: fill at once in the next food view
 var _fill_all := false                 ## fill every food zone at once in the next food view
 var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
+## The region's zones packed for the food view, in their order: id, centre, radius and the zone
+## itself. This stream is the only one to add, remove or move a zone in the endless world, and bumps
+## _zones_version when it does; the index is rebuilt when that or the zone count changed.
+var _zones_version := 0
+var _zones_indexed := -1
+var _zone_ids := PackedStringArray()
+var _zone_c := PackedVector2Array()
+var _zone_r := PackedFloat64Array()
+var _zone_refs: Array[Dictionary] = []
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
@@ -480,6 +489,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
 		sim.region.remove_zone(z.id)
+		_zones_version += 1
 		_zone_abs.erase(z.id)
 		_zone_chunk.erase(z.id)
 		_fill.erase(z.id)
@@ -573,6 +583,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
+		_zones_version += 1
 	if sim.creatures != null:
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
@@ -886,10 +897,20 @@ func _rederive(sim: PoolSim) -> void:
 	var oy := origin_y_am
 	if sim.arena is ChunkArena:
 		(sim.arena as ChunkArena).set_origin(ox / k, oy / k)
+	var indexed := _zones_indexed == _zones_version and _zone_refs.size() == sim.region.zones.size()
+	var i := 0
 	for z in sim.region.zones:
 		var a: Variant = _zone_abs.get(z.id)
 		if a != null:
 			z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
+		if indexed:
+			_zone_c[i] = z.center   # the food view's index moves with its zones
+		i += 1
+	_zones_version += 1
+	if indexed:
+		_zones_indexed = _zones_version
+	else:
+		_index_zones(sim.region)
 	for id in sites:
 		_derive_site_local(sites[id], k, ox, oy)
 
@@ -939,30 +960,44 @@ static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 ## Last, tile_entered when the cell's tile changed.
 func _food_view(sim: PoolSim) -> void:
 	var body := sim.motion.position
+	_index_zones(sim.region)
+	var ring := float(rings.food)
 	var food := {}
-	var reach := {}
-	for z in sim.region.zones:
-		var d := body.distance_to(z.center) - float(z.radius)
-		if d <= float(rings.food):
-			food[z.id] = true
-			reach[z.id] = d
+	var at := PackedInt32Array()          # the food zones' places in the index, in zone order
+	var reach := PackedFloat64Array()     # and their distances
+	for i in _zone_ids.size():
+		var d := body.distance_to(_zone_c[i]) - _zone_r[i]
+		if d <= ring:
+			food[_zone_ids[i]] = true
+			at.append(i)
+			reach.append(d)
+	var counts := PackedInt32Array()      # and their item targets
 	var total := 0
-	for id in food:
-		total += sim.plankton.target_count(sim.region.zone(id))
-	if total > int(caps.food_items):
+	for i in at:
+		var n := sim.plankton.target_count(_zone_refs[i])
+		counts.append(n)
+		total += n
+	var cap := int(caps.food_items)
+	if total > cap:
+		# The food zones farthest first, ties to the lower id (picked one at a time, as few are needed),
+		# each trimmed when it is out of view, until the rest fit.
 		var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
-		var out: Array = []
-		for id in food:
-			var z := sim.region.zone(id)
-			if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) > view_margin + float(z.radius):
-				out.append(id)
-		out.sort_custom(func(a: String, b: String) -> bool:
-			return reach[a] > reach[b] or (reach[a] == reach[b] and a < b))
-		for id in out:
-			if total <= int(caps.food_items):
-				break
+		var box := _box(quad)
+		var left := range(at.size())
+		while total > cap and not left.is_empty():
+			var best := 0
+			for m in range(1, left.size()):
+				var j: int = left[m]
+				var b: int = left[best]
+				if reach[j] > reach[b] or (reach[j] == reach[b] and _zone_ids[at[j]] < _zone_ids[at[b]]):
+					best = m
+			var j: int = left[best]
+			left.remove_at(best)
+			if not _out_of_view(quad, box, _zone_c[at[j]], _zone_r[at[j]]):
+				continue
+			var id := _zone_ids[at[j]]
 			food.erase(id)
-			total -= sim.plankton.target_count(sim.region.zone(id))
+			total -= counts[j]
 			if not _trimmed.has(id):
 				_trimmed[id] = true
 				counters.food_trimmed += 1
@@ -970,9 +1005,10 @@ func _food_view(sim: PoolSim) -> void:
 	for id in _trimmed.keys():
 		if food.has(id) or sim.region.zone(id).is_empty():
 			_trimmed.erase(id)
-	for id in sim.plankton.active_zones.keys():
-		if not food.has(id):
-			sim.plankton.drop_zone(id)
+	if food != sim.plankton.active_zones:   # the same zones (the usual tick): none to drop
+		for id in sim.plankton.active_zones.keys():
+			if not food.has(id):
+				sim.plankton.drop_zone(id)
 	sim.plankton.active_zones = food
 	sim.carrion.drop_beyond(body, float(rings.food))
 	var fill: Array = food.keys() if _fill_all else _fill.keys()
@@ -987,6 +1023,50 @@ func _food_view(sim: PoolSim) -> void:
 		_cell_tile = tile
 		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
 		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
+
+
+## Rebuilds the packed zone index when the zones changed since it was built.
+func _index_zones(region: EcologyRegion) -> void:
+	if _zones_indexed == _zones_version and _zone_refs.size() == region.zones.size():
+		return
+	_zone_ids.clear()
+	_zone_c.clear()
+	_zone_r.clear()
+	_zone_refs.clear()
+	for z in region.zones:
+		_zone_ids.append(z.id)
+		_zone_c.append(z.center)
+		_zone_r.append(float(z.radius))
+		_zone_refs.append(z)
+	_zones_indexed = _zones_version
+
+
+## A footprint's bounding box [min x, min y, max x, max y] (empty for an empty footprint).
+static func _box(quad: PackedVector2Array) -> PackedFloat64Array:
+	if quad.is_empty():
+		return PackedFloat64Array()
+	var box := PackedFloat64Array([INF, INF, -INF, -INF])
+	for v in quad:
+		box[0] = minf(box[0], v.x)
+		box[1] = minf(box[1], v.y)
+		box[2] = maxf(box[2], v.x)
+		box[3] = maxf(box[3], v.y)
+	return box
+
+
+## Whether a zone at `c` of radius `r` lies wholly out of the footprint `quad` grown by the spawn
+## view's margin. A centre more than the margin, the radius and 0.01 tm (float32 rounding) from the
+## footprint's box is farther still from the footprint, so it needs no edge test.
+func _out_of_view(quad: PackedVector2Array, box: PackedFloat64Array, c: Vector2, r: float) -> bool:
+	if quad.is_empty():
+		return true
+	var limit := view_margin + r
+	var dx := maxf(maxf(box[0] - c.x, c.x - box[2]), 0.0)
+	var dy := maxf(maxf(box[1] - c.y, c.y - box[3]), 0.0)
+	var far := limit + 0.01
+	if dx * dx + dy * dy > far * far:
+		return true
+	return ViewFootprint.distance_outside(quad, c) > limit
 
 
 ## The distance from the absolute point (x, y) (tm) to the square of chunk `key`, in float64.

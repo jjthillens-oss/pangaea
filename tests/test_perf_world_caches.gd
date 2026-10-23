@@ -165,3 +165,132 @@ func test_slow_the_wake_bound_wakes_the_same_sleepers_as_measuring_every_one() -
 	check(counts.creature_woke >= 3 and counts.creature_slept >= 3, "sleepers slept and woke (%s)" % counts)
 	check(bounded >= 1000, "the bound skipped sleepers on most ticks (%d)" % bounded)
 	check(counts.died == 1 and a.tick > 1400 + Gates.DEATH_NOTICE_TICKS and not a.dead, "the cell died and came back")
+
+
+# --- WorldStream._food_view (packed zones, the trim picked lazily, the drop skipped when unchanged) ---
+
+## WorldStream._food_view before the zones were packed.
+static func _food_view_before(w: WorldStream, sim: PoolSim) -> void:
+	var body := sim.motion.position
+	var food := {}
+	var reach := {}
+	for z in sim.region.zones:
+		var d := body.distance_to(z.center) - float(z.radius)
+		if d <= float(w.rings.food):
+			food[z.id] = true
+			reach[z.id] = d
+	var total := 0
+	for id in food:
+		total += sim.plankton.target_count(sim.region.zone(id))
+	if total > int(w.caps.food_items):
+		var quad := ViewFootprint.corners(body, w.camera, float(w.camera.zoom_max), w.view_aspect)
+		var out: Array = []
+		for id in food:
+			var z := sim.region.zone(id)
+			if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) > w.view_margin + float(z.radius):
+				out.append(id)
+		out.sort_custom(func(a: String, b: String) -> bool:
+			return reach[a] > reach[b] or (reach[a] == reach[b] and a < b))
+		for id in out:
+			if total <= int(w.caps.food_items):
+				break
+			food.erase(id)
+			total -= sim.plankton.target_count(sim.region.zone(id))
+			if not w._trimmed.has(id):
+				w._trimmed[id] = true
+				w.counters.food_trimmed += 1
+	for id in w._trimmed.keys():
+		if food.has(id) or sim.region.zone(id).is_empty():
+			w._trimmed.erase(id)
+	for id in sim.plankton.active_zones.keys():
+		if not food.has(id):
+			sim.plankton.drop_zone(id)
+	sim.plankton.active_zones = food
+	sim.carrion.drop_beyond(body, float(w.rings.food))
+	var fill: Array = food.keys() if w._fill_all else w._fill.keys()
+	fill.sort()
+	for id in fill:
+		if food.has(id):
+			sim.plankton.fill_zone(sim.region.zone(id), sim.region, sim.arena, sim.tick, sim.now())
+	w._fill.clear()
+	w._fill_all = false
+	var tile := w.tile_of_local(body)
+	if tile != w._cell_tile:
+		w._cell_tile = tile
+		var info := w.gen.tile_info(WorldConfig.band_of(w.size), tile.x, tile.y)
+		w._emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
+
+
+## Twin sims: at 400 random places round home, with random zone stocks, item caps (most of them
+## trimming) and whole fills, one runs the food view and the other the old one. The zones shown
+## (in their order), the trimmed set and count, the items and the events must stay equal; a rebase
+## and a swim between the rounds move the zones under the kept index.
+func test_the_food_view_equals_the_old_one_at_random_places_stocks_and_caps() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the food view waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 502)
+	var b: Variant = Gates.make_sim(Gates.RACER, 502)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7103
+	var trimmed := 0
+	var shown := 0
+	var ties := 0
+	for round in 4:
+		for i in 100:
+			var p := Vector2(rng.randf_range(-40.0, 40.0), rng.randf_range(-40.0, 40.0))
+			if i % 4 == 3:
+				# Midway between two zones of one radius: equal distances, so the tie goes to the lower id.
+				var zs: Array = a.region.zones
+				var z1: Dictionary = zs[rng.randi_range(0, zs.size() - 1)]
+				var z2: Dictionary = zs[rng.randi_range(0, zs.size() - 1)]
+				if z1.id != z2.id and float(z1.radius) == float(z2.radius):
+					p = (z1.center + z2.center) / 2.0
+			var cap := rng.randi_range(0, 60) if rng.randf() < 0.8 else 1000
+			var fill_all := rng.randf() < 0.1
+			var amounts := []
+			for z in a.region.zones:
+				amounts.append(rng.randf_range(0.0, float(z.capacity)))
+			for sim in [a, b]:
+				sim.motion.position = p
+				sim.world.caps.food_items = cap
+				sim.world._fill_all = fill_all
+				for k in sim.region.zones.size():
+					sim.region.zones[k].amount = amounts[k]
+			a.world._food_view(a)
+			_food_view_before(b.world, b)
+			var wa: WorldStream = a.world
+			var wb: WorldStream = b.world
+			if var_to_str(a.plankton.active_zones) != var_to_str(b.plankton.active_zones) or wa._trimmed != wb._trimmed \
+					or wa.counters != wb.counters or var_to_str(a.plankton.items) != var_to_str(b.plankton.items) \
+					or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+				check(false, "round %d, place %d (%s, cap %d): the food views differ" % [round, i, p, cap])
+				return
+			shown += a.plankton.active_zones.size()
+			ties += 1 if _has_tie(a.world, a.motion.position) else 0
+		trimmed = int(a.world.counters.food_trimmed)
+		for sim in [a, b]:
+			sim.motion.position = Vector2(0.0, 9.0)
+			sim.world.caps.food_items = 1000
+			sim.debug_rebase(Vector2i(1, -1) if round % 2 == 0 else Vector2i(-1, 1))
+			for t in 30:
+				SwimBot.overdrive(sim)
+				sim.step(SimIntent.new(Vector2.RIGHT))
+			sim.drain_events()
+		check_eq(a.state_hash(), b.state_hash(), "round %d: the twins agree" % round)
+	print("test-perf-world-caches: the food view: %d zones shown over 400 places, %d trimmed, %d places with a tie" % [shown, trimmed, ties])
+	check(trimmed >= 50, "zones were trimmed (%d)" % trimmed)
+	check(ties >= 10, "places with two food zones at one distance (%d)" % ties)
+	check(shown >= 400, "zones were shown (%d)" % shown)
+
+
+## Whether two food zones lie at the same distance from `p`.
+static func _has_tie(w: WorldStream, p: Vector2) -> bool:
+	var seen := {}
+	for i in w._zone_ids.size():
+		var d := p.distance_to(w._zone_c[i]) - w._zone_r[i]
+		if d <= float(w.rings.food):
+			if seen.has(d):
+				return true
+			seen[d] = true
+	return false
