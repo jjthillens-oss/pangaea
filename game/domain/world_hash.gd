@@ -8,13 +8,17 @@ extends RefCounted
 ##
 ## hash_ints is MurmurHash3_x86_32 (its author placed it in the public domain) over each int as two
 ## little-endian 32-bit words, low word first, with seed SEED0 and length 8 x count. Purpose strings
-## use FNV-1a 32, also public domain. Every product goes through mul32, so no 64-bit int ever
-## overflows. The engine's hash() is never used: it may change with an engine upgrade.
+## use FNV-1a 32, also public domain. No 64-bit int ever overflows: a product by a constant of 2^31
+## or more is split as mul32 splits it, and a product by a smaller one (C2, 5, the FNV prime) stays
+## below 2^63 whole. The engine's hash() is never used: it may change with an engine upgrade.
 ## tools/world_hash_ref.py is an independent Python reference, and tests/test_world_hash.gd pins
 ## twenty golden values both agree on.
 ##
-## Callers precompute str32 of their fixed purposes once (a static var), since a str32 costs about a
-## microsecond and hash_ints of six ints about 14 (S1 spine 0.4).
+## hash_ints, mix32, fmix32 and str32 write mul32, rotl32 and the MurmurHash3 round out in place,
+## with the constants' 16-bit halves, since a call costs about as much as a round (S1 perf: hash_ints
+## of six ints 11 -> 2 us, mix32 3.6 -> under 1); tests/test_perf_world_caches.gd holds them to a
+## copy of the functions as they were. Callers precompute str32 of their fixed purposes once (a
+## static var), since a str32 costs about a microsecond.
 
 const MASK := 0xFFFFFFFF
 const SEED0 := 0x9747B28C
@@ -38,9 +42,9 @@ static func rotl32(x: int, r: int) -> int:
 static func fmix32(h: int) -> int:
 	h &= MASK
 	h ^= h >> 16
-	h = mul32(h, 0x85EBCA6B)
+	h = (h * 0xCA6B + (((h * 0x85EB) & 0xFFFF) << 16)) & MASK   # mul32(h, 0x85EBCA6B)
 	h ^= h >> 13
-	h = mul32(h, 0xC2B2AE35)
+	h = (h * 0xAE35 + (((h * 0xC2B2) & 0xFFFF) << 16)) & MASK   # mul32(h, 0xC2B2AE35)
 	h ^= h >> 16
 	return h
 
@@ -50,23 +54,66 @@ static func hash_ints(values: PackedInt64Array) -> int:
 	var h := SEED0
 	for v in values:
 		# >> is arithmetic, so & MASK takes each word's bit pattern, negative values included.
-		h = _block(h, v & MASK)
-		h = _block(h, (v >> 32) & MASK)
+		# One MurmurHash3 round per word, the low word first: k = rotl32(mul32(word, _C1), 15) * _C2,
+		# then h = rotl32(h ^ k, 13) * 5 + 0xE6546B64.
+		var k := v & MASK
+		k = (k * 0x2D51 + (((k * 0xCC9E) & 0xFFFF) << 16)) & MASK   # mul32(k, _C1)
+		k = ((k << 15) | (k >> 17)) & MASK
+		k = (k * _C2) & MASK
+		h ^= k
+		h = ((h << 13) | (h >> 19)) & MASK
+		h = (h * 5 + 0xE6546B64) & MASK
+		k = (v >> 32) & MASK
+		k = (k * 0x2D51 + (((k * 0xCC9E) & 0xFFFF) << 16)) & MASK
+		k = ((k << 15) | (k >> 17)) & MASK
+		k = (k * _C2) & MASK
+		h ^= k
+		h = ((h << 13) | (h >> 19)) & MASK
+		h = (h * 5 + 0xE6546B64) & MASK
 	h ^= (8 * values.size()) & MASK
-	return fmix32(h)
+	h ^= h >> 16
+	h = (h * 0xCA6B + (((h * 0x85EB) & 0xFFFF) << 16)) & MASK
+	h ^= h >> 13
+	h = (h * 0xAE35 + (((h * 0xC2B2) & 0xFFFF) << 16)) & MASK
+	h ^= h >> 16
+	return h
 
 
 ## FNV-1a 32 over the string's UTF-8 bytes.
 static func str32(s: String) -> int:
 	var h := _FNV_OFFSET
 	for byte in s.to_utf8_buffer():
-		h = mul32(h ^ byte, _FNV_PRIME)
+		h = ((h ^ byte) * _FNV_PRIME) & MASK
 	return h
 
 
-## hash_ints([a, b]).
+## hash_ints([a, b]), without building the array.
 static func mix32(a: int, b: int) -> int:
-	return hash_ints(PackedInt64Array([a, b]))
+	var h := SEED0
+	var v := a
+	for i in 2:
+		var k := v & MASK
+		k = (k * 0x2D51 + (((k * 0xCC9E) & 0xFFFF) << 16)) & MASK
+		k = ((k << 15) | (k >> 17)) & MASK
+		k = (k * _C2) & MASK
+		h ^= k
+		h = ((h << 13) | (h >> 19)) & MASK
+		h = (h * 5 + 0xE6546B64) & MASK
+		k = (v >> 32) & MASK
+		k = (k * 0x2D51 + (((k * 0xCC9E) & 0xFFFF) << 16)) & MASK
+		k = ((k << 15) | (k >> 17)) & MASK
+		k = (k * _C2) & MASK
+		h ^= k
+		h = ((h << 13) | (h >> 19)) & MASK
+		h = (h * 5 + 0xE6546B64) & MASK
+		v = b
+	h ^= 16
+	h ^= h >> 16
+	h = (h * 0xCA6B + (((h * 0x85EB) & 0xFFFF) << 16)) & MASK
+	h ^= h >> 13
+	h = (h * 0xAE35 + (((h * 0xC2B2) & 0xFFFF) << 16)) & MASK
+	h ^= h >> 16
+	return h
 
 
 ## The hash of one purpose at one place: hash_ints([seed, gen_version, band, tx, ty, str32(purpose)]).
@@ -85,13 +132,3 @@ static func pick(h: int, count: int) -> int:
 		push_error("WorldHash.pick: count %d < 1" % count)
 		return 0
 	return h % count
-
-
-## One MurmurHash3 round: the 32-bit block `word` mixed into `h`.
-static func _block(h: int, word: int) -> int:
-	var k := mul32(word, _C1)
-	k = rotl32(k, 15)
-	k = mul32(k, _C2)
-	h ^= k
-	h = rotl32(h, 13)
-	return (mul32(h, 5) + 0xE6546B64) & MASK

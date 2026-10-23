@@ -389,3 +389,100 @@ func test_chunks_generated_ahead_equal_the_generators_and_go_once() -> void:
 	check(not w._ahead.is_empty(), "chunks kept ahead at the end")
 	sim.debug_teleport_abs(5000.0, -3000.0)
 	check(w._ahead.is_empty(), "a teleport forgets them")
+
+
+# --- WorldHash with mul32 and rotl32 written out ---
+
+## WorldHash's functions before mul32, rotl32 and the round were written out in place.
+class HashBefore:
+	const MASK := 0xFFFFFFFF
+	const SEED0 := 0x9747B28C
+
+	static func mul32(a: int, b: int) -> int:
+		return ((a * (b & 0xFFFF)) + (((a * (b >> 16)) & 0xFFFF) << 16)) & MASK
+
+	static func rotl32(x: int, r: int) -> int:
+		return ((x << r) | (x >> (32 - r))) & MASK
+
+	static func fmix32(h: int) -> int:
+		h &= MASK
+		h ^= h >> 16
+		h = mul32(h, 0x85EBCA6B)
+		h ^= h >> 13
+		h = mul32(h, 0xC2B2AE35)
+		h ^= h >> 16
+		return h
+
+	static func hash_ints(values: PackedInt64Array) -> int:
+		var h := SEED0
+		for v in values:
+			h = _block(h, v & MASK)
+			h = _block(h, (v >> 32) & MASK)
+		h ^= (8 * values.size()) & MASK
+		return fmix32(h)
+
+	static func str32(s: String) -> int:
+		var h := 0x811C9DC5
+		for byte in s.to_utf8_buffer():
+			h = mul32(h ^ byte, 0x01000193)
+		return h
+
+	static func mix32(a: int, b: int) -> int:
+		return hash_ints(PackedInt64Array([a, b]))
+
+	static func key(seed: int, gen_version: int, band: int, tx: int, ty: int, purpose: String) -> int:
+		return hash_ints(PackedInt64Array([seed, gen_version, band, tx, ty, str32(purpose)]))
+
+	static func _block(h: int, word: int) -> int:
+		var k := mul32(word, 0xCC9E2D51)
+		k = rotl32(k, 15)
+		k = mul32(k, 0x1B873593)
+		h ^= k
+		h = rotl32(h, 13)
+		return (mul32(h, 5) + 0xE6546B64) & MASK
+
+
+## A random int of any size: whole 64-bit patterns (negative half the time), the edges, words with
+## every bit set, and small ints of either sign, as the generator hashes them.
+static func _any_int(rng: RandomNumberGenerator) -> int:
+	match rng.randi_range(0, 5):
+		0:
+			return (rng.randi() << 32) | rng.randi()
+		1:
+			return [0, 1, -1, 0xFFFFFFFF, 0x100000000, 9223372036854775807, -9223372036854775807 - 1, 0x7FFFFFFF,
+				-0x80000000][rng.randi_range(0, 8)]
+		2:
+			return rng.randi()
+		3:
+			return -rng.randi()
+		_:
+			return rng.randi_range(-5000, 5000)
+
+
+func test_world_hash_equals_the_old_functions_on_random_values_and_strings() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7106
+	var bad := []
+	for i in 4000:
+		var values := PackedInt64Array()
+		for j in rng.randi_range(0, 8):
+			values.append(_any_int(rng))
+		var a := _any_int(rng)
+		var b := _any_int(rng)
+		var h := rng.randi() if i % 2 == 0 else _any_int(rng)
+		var text := ""
+		for j in rng.randi_range(0, 12):
+			text += String.chr([rng.randi_range(32, 126), rng.randi_range(0xA0, 0x7FF), rng.randi_range(0x800, 0xD7FF),
+				rng.randi_range(0x10000, 0x10FFFF)][rng.randi_range(0, 3) if j % 3 == 0 else 0])
+		if WorldHash.hash_ints(values) != HashBefore.hash_ints(values):
+			bad.append("hash_ints(%s)" % values)
+		if WorldHash.mix32(a, b) != HashBefore.mix32(a, b):
+			bad.append("mix32(%d, %d)" % [a, b])
+		if WorldHash.fmix32(h) != HashBefore.fmix32(h):
+			bad.append("fmix32(%d)" % h)
+		if WorldHash.str32(text) != HashBefore.str32(text):
+			bad.append("str32(%s)" % text.c_escape())
+		if WorldHash.key(a, i % 3, b % 7, values[0] if not values.is_empty() else 0, i, text) != \
+				HashBefore.key(a, i % 3, b % 7, values[0] if not values.is_empty() else 0, i, text):
+			bad.append("key(%d, ..., %s)" % [a, text.c_escape()])
+	check(bad.is_empty(), "%d differ: %s" % [bad.size(), bad.slice(0, 3)])
