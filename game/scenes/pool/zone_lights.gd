@@ -15,6 +15,11 @@ extends Node3D
 ## by zone id and adopted back when the tick loads the same zone again; a new one fades in over
 ## PREBLUR_S; after the settle the leftovers fade over RETIRE_S (lights do not sink) and end_growth
 ## frees them.
+##
+## Each disc wears its own copy of the material, holding where it was laid and its span then
+## (anchor, laid_span): the shader lays the shafts in that frame, so neither a rebase nor a growth
+## slides them across the disc (the hatch probe showed the growth's frame 0 shifting them, and a
+## rebase did too); as laid they fall exactly where the world-space shafts did.
 
 const SHADER := preload("res://game/scenes/pool/zone_light.gdshader")
 ## The disc spans this many zone radii across; the shader's light reaches 1.3 zone radii out, so
@@ -97,14 +102,21 @@ func add_chunk(key: Variant, zones: Array) -> void:
 			disc = MeshInstance3D.new()
 			disc.name = id
 			disc.mesh = mesh
+			disc.material_override = mesh.material.duplicate()
 			disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(disc)
 			if _beat and _settled_t < 0.0:
 				_fresh[disc] = _beat_t
 				disc.transparency = 1.0
 		var span := float(zone.radius) * SPAN_PER_ZONE_RADIUS
+		var adopted := disc.has_meta(&"laid")
 		disc.position = WorldSpace.to_frame(self, zone.center, DEPTH_M * _depth_k)
 		disc.scale = Vector3(span, 1.0, span)
+		if not adopted:
+			var laid := position + disc.position
+			(disc.material_override as ShaderMaterial).set_shader_parameter("anchor", Vector2(laid.x, laid.z))
+			(disc.material_override as ShaderMaterial).set_shader_parameter("laid_span", span)
+			disc.set_meta(&"laid", true)
 		discs.append(disc)
 	_discs[key] = discs
 

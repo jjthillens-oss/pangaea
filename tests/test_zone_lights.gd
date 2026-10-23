@@ -130,3 +130,51 @@ func test_the_start_fade_warms_the_zone_light() -> void:
 	check_eq(meshes.slice(0, 4), [pool.plankton_view.food_mesh(), pool.carrion_view.food_mesh(), pool.zone_lights.mesh, meshes[3]],
 		"the food, the zone light and the strike lane first (the growth's looks follow; tests/test_pool_view.gd)")
 	pool.free()
+
+
+## The shafts are laid in each disc's own frame (anchor and laid_span on its own material copy), so
+## a rebase or a growth, which move and shrink the disc, carry them with it: the frame is set once,
+## where the disc was laid, and never again; the shader reads the shafts and their phase from it,
+## not from world space (the hatch probe saw the growth's frame 0 slide them; a rebase did too).
+func test_the_shafts_are_laid_in_each_disc_s_own_frame() -> void:
+	var layout := PoolLayout.load_from()
+	var lights := ZoneLights.new()
+	lights.build(layout.zones)
+	var frames := {}
+	for zone in layout.zones:
+		var disc := lights.get_node(String(zone.id)) as MeshInstance3D
+		var material := disc.material_override as ShaderMaterial
+		check(material != null and material != lights.mesh.material and material.shader == lights.mesh.material.shader,
+			"%s wears its own copy of the patch material" % zone.id)
+		if material == null:
+			continue
+		check(Vector2(material.get_shader_parameter("anchor")).is_equal_approx(Vector2(disc.position.x, disc.position.z)),
+			"%s's shafts are anchored where it was laid" % zone.id)
+		check_near(float(material.get_shader_parameter("laid_span")), float(zone.radius) * SPAN_PER_ZONE_RADIUS, 1e-6, "%s's laid span" % zone.id)
+		check_near(float(material.get_shader_parameter("strength")), ZoneLights.strength_for(RenderingServer.get_current_rendering_method()), 1e-6,
+			"%s keeps the renderer's alpha" % zone.id)
+		frames[disc] = [material.get_shader_parameter("anchor"), material.get_shader_parameter("laid_span"), disc.position, disc.scale]
+	lights.position = Vector3(5.0, 0.0, -3.0)
+	lights.renormalize()
+	lights.apply_growth(Vector2(2.0, 1.0), 1.6)
+	for disc: MeshInstance3D in frames:
+		var material := disc.material_override as ShaderMaterial
+		check(not disc.position.is_equal_approx(frames[disc][2]) and not disc.scale.is_equal_approx(frames[disc][3]), "%s moved and shrank" % disc.name)
+		check_eq([material.get_shader_parameter("anchor"), material.get_shader_parameter("laid_span")], frames[disc].slice(0, 2),
+			"%s's shaft frame did not change with it" % disc.name)
+	# The tick's unloaded chunks retire and the same zones load again at the new size: adopted back,
+	# each disc is laid at the new zone's place and span and keeps its shaft frame.
+	lights.retire_chunk(RockField.POOL_KEY)
+	var regrown: Array = layout.zones.map(func(z: Dictionary) -> Dictionary:
+		return {"id": z.id, "center": (Vector2(z.center) - Vector2(2.0, 1.0)) / 1.6 + Vector2(2.0, 1.0), "radius": float(z.radius) / 1.6})
+	lights.add_chunk(&"regrown", regrown)
+	check_eq(lights.get_child_count(), frames.size(), "every disc adopted back, none laid anew")
+	for disc: MeshInstance3D in frames:
+		var material := disc.material_override as ShaderMaterial
+		check_eq([material.get_shader_parameter("anchor"), material.get_shader_parameter("laid_span")], frames[disc].slice(0, 2),
+			"%s keeps its shaft frame when adopted back" % disc.name)
+	var code := RegEx.create_from_string("//[^\\n]*").sub((lights.mesh.material as ShaderMaterial).shader.code, "", true)
+	check(code.contains("shaft_xz = anchor + VERTEX.xz * laid_span;"), "the shader lays the shafts in the disc's frame")
+	check(code.contains("float s = dot(shaft_xz, across);") and code.contains("float t = dot(shaft_xz, sun_way);")
+		and code.contains("float seed = dot(anchor,"), "and reads them and their phase from it, not from world space")
+	lights.free()

@@ -23,7 +23,9 @@ extends SceneTree
 ## Flags after --:
 ##   --out=DIR          the frames and look_probe.json (default user://look_probe/out)
 ##   --look=NAME        the gate set: micro (plan section 6, the default in the pool), baseline
-##                      (today's look) or endless (the endless sea's, the default there)
+##                      (today's look), endless (the endless sea's, the default there) or growth
+##                      (S2's, in the endless sea: --scenes=lineup_s1,lineup_s2,hatch; about
+##                      2 minutes in Compatibility)
 ##   --scenes=a,b       only these scenes (default every one of the world's, in its list's order)
 ##   --parity=DIR       another renderer's run of the same scenes: adds the parity readings and gates
 ##   --zoom=M           the camera distance (default the layout's, 14 m)
@@ -118,6 +120,36 @@ extends SceneTree
 ## pip_present (1 when the column's pip changes pixels where the overlay draws it) with pip;
 ## rebase_pair adds median_dE and p99_dE (CIE76 between A and B over every PARITY_STRIDE-th pixel)
 ## and still_median_dE and still_p99_dE (A against A again: what drawing twice changes by itself).
+##
+## S2's growth scenes (docs/s2/s2-view.md 12.3, gate set growth; also in ENDLESS_SCENES). Each
+## starts a new GROWTH_BODY lineage (a jaw, so the rim shows) at home with the AI frozen:
+##   lineup_s1  size 1: the ambush hunter and the rammer at the M1 lineup's offsets beside the cell;
+##              the near ghosts (lurker, elder rammer, veil, warden) staged at LINEUP_NEAR_SPOTS and
+##              the three giants at LINEUP_FAR_SPOTS; zoom GROWTH_ZOOM
+##   lineup_s2  debug_set_size(2) first, then the same with the lurker and the elder rammer beside
+##              the cell too, and the size-2 near ghosts (veil, warden, deep lurker, elder warden)
+##   hatch      size 1, still: two rammers and three carrion pieces beside the cell, plankton in
+##              view, the ring filled (debug_fill_meter(1.0)); then one ordinary tick, frame A,
+##              debug_force_growth() and the growth's tick, frame 0
+## Their frames: the lineups add <scene>_noghosts.png (the ghost layer hidden), <scene>_ink.png
+## (each lineup body's ink surfaces keyed to INK_KEY), <scene>_marker.png and
+## <scene>_nomarker.png (the "!" over the lineup bodies with no ink surface, shown and hidden) and
+## <scene>_norim.png (every lineup body's rim off). hatch saves <scene>.png (the frozen moment with
+## the HUD), <scene>_world.png (frame A, no 2D layer), <scene>_zero.png (frame 0), and for review
+## <scene>_beat1s.png and <scene>_beat2s.png (the beat at 1.0 s and 2.0 s, with the HUD).
+## Their readings: the lineups add bodies (each lineup body's id), near.<species> and far.<i>: a
+## ghost's body (its texture's body_rect, projected through the camera) as width_px, height_px,
+## cell_multiple (its width over the cell's drawn diameter), cell_radius_multiple (its height over
+## the cell's drawn radius), screen_share (its height over the screen's) and pixels (how many it
+## changes against the frame without ghosts, drawn_share of its box, and box); ink.<species> (1 when at least INK_SHARE of the
+## pixels its ink surfaces draw, or the "!" draws for a body with none, lie within INK_HUE_DEG of
+## the threat hue with C* at least INK_MIN_C, else 0) with ink_detail.<species>; rim.<species> (1
+## when at least RIM_PIXELS of the pixels its rim draws, against the frame with it off, lie within
+## RIM_HUE_DEG of the food hue) with rim_detail.<species>. hatch adds median_dE, p99_dE and max_dE
+## (frame A against frame 0, every PARITY_STRIDE-th pixel, no 2D layer), tick_median_dE and
+## tick_p99_dE (the ordinary tick before A, against A: what any tick changes by itself),
+## bare_median_dE and bare_p99_dE (the same pair paused with the ambience hidden), size_after and
+## plankton_on_screen.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SLOT := "user://look_probe/slot.json"
@@ -127,12 +159,15 @@ const SEED := 4242
 ## The M1 pool's scenes, every one with --world=pool.
 const POOL_SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
 ## The endless sea's scenes (docs/s1/s1-content.md section 10), every one with --world=endless.
-const ENDLESS_SCENES: Array[String] = ["reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair"]
+const ENDLESS_SCENES: Array[String] = ["reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair",
+	"lineup_s1", "lineup_s2", "hatch"]
+## S2's growth scenes (gate set growth), staged with GROWTH_BODY.
+const GROWTH_SCENES: Array[String] = ["lineup_s1", "lineup_s2", "hatch"]
 ## Every scene the probe can stage: POOL_SCENES, then ENDLESS_SCENES.
 const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter",
-	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair"]
+	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair", "lineup_s1", "lineup_s2", "hatch"]
 ## The world each gate set measures.
-const LOOK_WORLDS := {"micro": "pool", "baseline": "pool", "endless": "endless"}
+const LOOK_WORLDS := {"micro": "pool", "baseline": "pool", "endless": "endless", "growth": "endless"}
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
 const START_FRAMES := 30                 ## frames of a new run before staging (the fade-in is 0.3 s)
 const FIRST_SETTLE := 2                  ## frames drawn before a moment's first capture...
@@ -194,6 +229,31 @@ const SILHOUETTE_CHANGE := 0.03          ## a piece draws a pixel it changes by 
 const ACHROMATIC_C := 5.0                ## a colour under this chroma has no hue (the look rule's exemption)
 const ARROW_DISC_PX := 3.0
 const REBASE_BY := Vector2i(1, 0)        ## the rebase pair's dev rebase, in chunks
+# S2's growth scenes (s2-view 12.3).
+const GROWTH_BODY := "omnivore"          ## a jaw, so a body the cell can eat shows its rim
+const GROWTH_ZOOM := 14.0
+## Lineup bodies by size: [species, offset from the cell (tm)], facing north. The M1 lineup's
+## ambush hunter and rammer, and at size 2 the lurker and the elder rammer south of the cell, between
+## the HUD's lower panels (further out the controls and the ladder strip cover them).
+const LINEUP_BODIES := {
+	1: [["ambush_hunter", Vector2(-4.2, -1.0)], ["rammer", Vector2(4.4, -2.2)]],
+	2: [["ambush_hunter", Vector2(-4.2, -1.0)], ["rammer", Vector2(4.4, -2.2)], ["lurker", Vector2(-2.4, 3.6)],
+		["elder_rammer", Vector2(2.6, 3.6)]],
+}
+## The near ghosts staged by size, at LINEUP_NEAR_SPOTS in order (tm from the focus, north is -y).
+const LINEUP_NEAR := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
+const LINEUP_NEAR_SPOTS: Array[Vector2] = [Vector2(-6.0, -8.0), Vector2(6.0, -8.0), Vector2(-8.0, -16.0), Vector2(8.0, -16.0)]
+## The giants staged at these offsets from the focus, at the far band's middle depth.
+const LINEUP_FAR_SPOTS: Array[Vector2] = [Vector2(-20.0, -30.0), Vector2(0.0, -40.0), Vector2(20.0, -30.0)]
+const INK_KEY := Color(0.0, 1.0, 0.0)    ## the lineup's ink surfaces are keyed to this to find their pixels
+const INK_SHARE := 0.3                   ## ink shows when this share of its pixels...
+const INK_HUE_DEG := 15.0                ## ...lies within this of the threat hue...
+const INK_MIN_C := 30.0                  ## ...with at least this chroma
+const RIM_PIXELS := 20                   ## the rim shows when this many of its pixels...
+const RIM_HUE_DEG := 15.0                ## ...lie within this of the food hue (C* at least ACHROMATIC_C)
+const RIM_BOX_PX := 6                    ## a body's screen box grown this much for its rim
+const HATCH_RAMMERS: Array[Vector2] = [Vector2(-4.0, -2.5), Vector2(4.0, -2.5)]
+const HATCH_RING_FRAMES := 3             ## frames drawn with the ring full before frame A
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
@@ -289,6 +349,39 @@ const GATES := {
 		{"id": "rebase_median", "path": "rebase_pair.median_dE", "max": 1.0, "what": "a rebase never shows: frame B against frame A (median CIE76; 0.0 | 0.0)"},
 		{"id": "rebase_p99", "path": "rebase_pair.p99_dE", "max": 5.0, "what": "a rebase never shows: frame B against frame A (99th percentile CIE76; 0.0 | 0.0)"},
 	],
+	# S2's growth (s2-view 12.3; S2G13 M, S2G14 M), PROPOSED there; the readings measured at T5.7
+	# (seed 4242, omnivore, 1920x1080, zoom 14, Compatibility on llvmpipe) follow each one.
+	"growth": [
+		{"id": "s1_near_lurker", "path": "lineup_s1.near.lurker.cell_multiple", "min": 1.4, "what": "size 1: the Lurker's near ghost against the cell (body width over the cell's diameter; 1.45)"},
+		{"id": "s1_near_elder_rammer", "path": "lineup_s1.near.elder_rammer.cell_multiple", "min": 1.4, "what": "size 1: the elder rammer's near ghost against the cell (1.43)"},
+		{"id": "s1_near_veil", "path": "lineup_s1.near.veil.cell_multiple", "min": 1.4, "what": "size 1: the veil's near ghost against the cell (1.66)"},
+		{"id": "s1_near_warden", "path": "lineup_s1.near.warden.cell_multiple", "min": 1.4, "what": "size 1: the warden's near ghost against the cell (1.45)"},
+		{"id": "s2_near_veil", "path": "lineup_s2.near.veil.cell_multiple", "min": 1.4, "what": "size 2: the veil's near ghost against the cell (1.45)"},
+		{"id": "s2_near_warden", "path": "lineup_s2.near.warden.cell_multiple", "min": 1.4, "what": "size 2: the warden's near ghost against the cell (1.45)"},
+		{"id": "s2_near_deep_lurker", "path": "lineup_s2.near.deep_lurker.cell_multiple", "min": 1.4, "what": "size 2: the deep Lurker's near ghost against the cell (1.61)"},
+		{"id": "s2_near_elder_warden", "path": "lineup_s2.near.elder_warden.cell_multiple", "min": 1.4, "what": "size 2: the elder warden's near ghost against the cell (1.45)"},
+		{"id": "s1_far_0_size", "path": "lineup_s1.far.0.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 0 at least five cell radii high (7.42)"},
+		{"id": "s1_far_1_size", "path": "lineup_s1.far.1.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 1 at least five cell radii high (7.42)"},
+		{"id": "s1_far_2_size", "path": "lineup_s1.far.2.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 2 at least five cell radii high (7.42)"},
+		{"id": "s2_far_0_size", "path": "lineup_s2.far.0.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 0 at least five cell radii high (7.42)"},
+		{"id": "s2_far_1_size", "path": "lineup_s2.far.1.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 1 at least five cell radii high (7.42)"},
+		{"id": "s2_far_2_size", "path": "lineup_s2.far.2.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 2 at least five cell radii high (7.42)"},
+		{"id": "s1_far_0_share", "path": "lineup_s1.far.0.screen_share", "max": 0.3333, "what": "size 1: giant 0 at most a third of the screen high (0.32)"},
+		{"id": "s1_far_1_share", "path": "lineup_s1.far.1.screen_share", "max": 0.3333, "what": "size 1: giant 1 at most a third of the screen high (0.32)"},
+		{"id": "s1_far_2_share", "path": "lineup_s1.far.2.screen_share", "max": 0.3333, "what": "size 1: giant 2 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_0_share", "path": "lineup_s2.far.0.screen_share", "max": 0.3333, "what": "size 2: giant 0 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_1_share", "path": "lineup_s2.far.1.screen_share", "max": 0.3333, "what": "size 2: giant 1 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_2_share", "path": "lineup_s2.far.2.screen_share", "max": 0.3333, "what": "size 2: giant 2 at most a third of the screen high (0.32)"},
+		{"id": "s1_ink_ambush", "path": "lineup_s1.ink.ambush_hunter", "min": 1.0, "max": 1.0, "what": "size 1: the ambush hunter shows the threat colour (1: 39% of its \"!\" pixels)"},
+		{"id": "s1_ink_rammer", "path": "lineup_s1.ink.rammer", "min": 1.0, "max": 1.0, "what": "size 1: the rammer shows the threat colour (1: 52% of its ink surfaces' pixels)"},
+		{"id": "s2_ink_rammer", "path": "lineup_s2.ink.rammer", "min": 0.0, "max": 0.0, "what": "size 2: the rammer (prey) shows no threat colour (0: 3%)"},
+		{"id": "s2_ink_ambush", "path": "lineup_s2.ink.ambush_hunter", "min": 0.0, "max": 0.0, "what": "size 2: the ambush hunter (a rival) shows no threat colour (0: 0% of its \"!\")"},
+		{"id": "s2_ink_lurker", "path": "lineup_s2.ink.lurker", "min": 1.0, "max": 1.0, "what": "size 2: the Lurker shows the threat colour (1: 40% of its \"!\")"},
+		{"id": "s2_ink_elder_rammer", "path": "lineup_s2.ink.elder_rammer", "min": 1.0, "max": 1.0, "what": "size 2: the elder rammer shows the threat colour (1: 71%)"},
+		{"id": "s2_rim_rammer", "path": "lineup_s2.rim.rammer", "min": 1.0, "max": 1.0, "what": "size 2: the rammer, food now, shows the green rim (1: 911 food-hue rim pixels)"},
+		{"id": "s2_rim_ambush", "path": "lineup_s2.rim.ambush_hunter", "min": 0.0, "max": 0.0, "what": "size 2: the ambush hunter, a rival and not food, shows no rim (0: no rim pixels)"},
+		{"id": "hatch_median", "path": "hatch.median_dE", "max": 2.0, "what": "the growth's frame 0 against frame A, no 2D layer (median CIE76; 0.0; p99 12.8, all of it the ambience's drift, whose x and z wrap in world space; 0.1 with it hidden)"},
+	],
 }
 
 ## Swims nowhere: the cell holds still while a scene plays to its moment.
@@ -320,6 +413,8 @@ var _decor: MeshInstance3D
 var _staged := {}
 ## The endless sea's anchors, rare places and set-piece colliders round the origin (_sea()).
 var _sea_cache := {}
+## A growth lineup's bodies: species -> creature id.
+var _lineup_ids := {}
 
 
 func _initialize() -> void:
@@ -363,7 +458,7 @@ func _initialize() -> void:
 		RenderingServer.get_video_adapter_name(), ", ".join(scenes)])
 	for scene in scenes:
 		results[scene] = {"frames": {}, "readings": {}, "error": ""}
-		await _fresh_run()
+		await _fresh_run(body_for(scene))
 		var staged := await _stage(scene)
 		if not _staged.is_empty():
 			results[scene].readings.staged = _staged.duplicate()
@@ -407,9 +502,9 @@ func _setup_problem(scenes: Array[String]) -> String:
 
 # --- Runs and moments ----------------------------------------------------------------------------
 
-## A new grazer lineage on SEED in a fresh pool, the cell holding still and unsheltered,
-## START_FRAMES in.
-func _fresh_run() -> void:
+## A new `body` lineage (a grazer unless a scene says otherwise, body_for) on SEED in a fresh pool,
+## the cell holding still and unsheltered, START_FRAMES in.
+func _fresh_run(body := BODY) -> void:
 	if main == null:
 		main = (load(MAIN_SCENE) as PackedScene).instantiate()
 		root.add_child(main)
@@ -423,7 +518,8 @@ func _fresh_run() -> void:
 	events.clear()
 	_decor = null
 	_staged = {}
-	main.start_new(BODY, SEED)
+	_lineup_ids = {}
+	main.start_new(body, SEED)
 	pool = main.pool
 	sim = pool.sim
 	pool.pause_on_focus_loss = false
@@ -552,6 +648,12 @@ func _stage(scene: String) -> bool:
 			return await _stage_at(MARKERS_AT, 0.0)
 		"rebase_pair":
 			return await _stage_reef()
+		"lineup_s1":
+			return await _stage_growth_lineup(1)
+		"lineup_s2":
+			return await _stage_growth_lineup(2)
+		"hatch":
+			return await _stage_hatch()
 	return false
 
 
@@ -779,6 +881,60 @@ static func _nearest(objects: Array) -> Dictionary:
 	return best
 
 
+# --- S2's growth scenes: staging ----------------------------------------------------------------
+
+## A growth lineup at `size`: the AI frozen (size 2 set first), LINEUP_BODIES[size] beside the cell
+## facing north, the near ghosts LINEUP_NEAR[size] at LINEUP_NEAR_SPOTS and the giants at
+## LINEUP_FAR_SPOTS, at GROWTH_ZOOM (or --zoom). False where the sea does not grow, when the size is
+## refused or a body has no room.
+func _stage_growth_lineup(size: int) -> bool:
+	if sim.world == null or sim.growth == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	if sim.size() != size and not sim.debug_set_size(size):
+		return false
+	await _play(START_FRAMES)
+	var c := sim.motion.position
+	for entry: Array in LINEUP_BODIES[size]:
+		if not sim.debug_spawn_creature(entry[0], c + (entry[1] as Vector2), -PI / 2.0):
+			printerr("Look probe: no room for the %s at %s" % [entry[0], c + (entry[1] as Vector2)])
+			return false
+		_lineup_ids[entry[0]] = sim.creatures.creatures.back().id
+	var near := []
+	for i in LINEUP_NEAR_SPOTS.size():
+		near.append({"species": LINEUP_NEAR[size][i], "offset": LINEUP_NEAR_SPOTS[i]})
+	pool.ghosts.stage(near, LINEUP_FAR_SPOTS.map(func(o: Vector2) -> Dictionary: return {"offset": o}))
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_am": Array(sim.absolute_position_am()), "bodies": _lineup_ids.duplicate()}
+	return true
+
+
+## The hatch: at home, size 1, the AI frozen, two rammers and three carrion pieces beside the cell
+## (plankton is in view at home), then the ring filled and drawn full. The growth itself is shot.
+func _stage_hatch() -> bool:
+	if sim.world == null or sim.growth == null or sim.size() != 1:
+		return false
+	sim.debug_set_ai_frozen(true)
+	var c := sim.motion.position
+	for offset in HATCH_RAMMERS:
+		if not sim.debug_spawn_creature("rammer", c + offset, -PI / 2.0):
+			printerr("Look probe: no room for a rammer at %s" % [c + offset])
+			return false
+	for i in 3:
+		var p := c + Vector2(0.5, 3.4) + Vector2.from_angle(TAU * i / 3.0 + 0.4) * 0.9
+		if sim.arena.is_clear(p, sim.carrion.item_radius):
+			sim.carrion.spawn(p, "debug")
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
+	if not sim.debug_fill_meter(1.0):
+		return false
+	await _play(HATCH_RING_FRAMES)
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_am": Array(sim.absolute_position_am()),
+		"carrion": sim.carrion.items.size(), "meter": sim.growth.meter, "ring": sim.growth.ring(1)}
+	return true
+
+
 # --- Scenes: frames and readings ----------------------------------------------------------------
 
 ## Captures the frozen moment's frames and takes its readings.
@@ -800,6 +956,10 @@ func _shoot(scene: String) -> void:
 			await _shoot_markers(scene)
 		"rebase_pair":
 			await _shoot_rebase(scene)
+		"lineup_s1", "lineup_s2":
+			await _shoot_growth_lineup(scene)
+		"hatch":
+			await _shoot_hatch(scene)
 		_:
 			var frames := await _shoot_common(scene)
 			var r: Dictionary = results[scene].readings
@@ -1158,6 +1318,218 @@ func _shoot_rebase(scene: String) -> void:
 	if not same.is_empty():
 		r.still_median_dE = same.median
 		r.still_p99_dE = same.p99
+
+
+## A growth lineup's frames and readings: the common ones, then the ghosts (against the frame
+## without them), each lineup body's rim (against the frame with every lineup rim off) and its ink
+## (its ink surfaces keyed, or its "!" where it has none; popping the "!" steps those views on, so it
+## comes last).
+func _shoot_growth_lineup(scene: String) -> void:
+	var frames := await _shoot_common(scene)
+	var full: Image = frames[0]
+	var fluid: Image = frames[1]
+	var r: Dictionary = results[scene].readings
+	r.bodies = _lineup_ids.duplicate()
+	var ghosts := pool.ghosts.billboards()
+	pool.ghosts.visible = false
+	var bare := await _capture()
+	pool.ghosts.visible = true
+	_save(scene, "noghosts", bare)
+	r.near = {}
+	r.far = {}
+	var cell_px := 2.0 * _px_radius(pool.cell_view.global_position, sim.phenotype.radius)
+	for node in ghosts:
+		var species := pool.ghosts.species_of(node)
+		var far := str(node.name).begins_with("Far")
+		if species.is_empty() and not far:
+			continue
+		var body := _ghost_body(node, _ghost_rect(node, species))
+		var drawn := _drawn(full, bare, fluid, body.box)
+		_boxes.append(body.box)
+		var one := {"node": str(node.name), "width_px": snappedf(body.width, 0.1), "height_px": snappedf(body.height, 0.1),
+			"cell_multiple": snappedf(body.width / cell_px, 0.01), "cell_radius_multiple": snappedf(body.height / (cell_px * 0.5), 0.01),
+			"screen_share": snappedf(body.height / float(full.get_height()), 0.0001), "pixels": (drawn.on as PackedColorArray).size(),
+			"drawn_share": snappedf((drawn.on as PackedColorArray).size() / float(maxi(int(drawn.of), 1)), 0.001),
+			"box": [body.box.position.x, body.box.position.y, body.box.size.x, body.box.size.y],
+			"on_screen": Rect2(Vector2.ZERO, Vector2(full.get_size())).has_point(body.centre)}
+		if far:
+			r.far[str(node.name).trim_prefix("Far")] = one
+		else:
+			r.near[species] = one
+	var views := {}
+	for species: String in _lineup_ids:
+		var view := pool.creature_layer.view_of(_lineup_ids[species])
+		if view != null:
+			views[species] = view
+	r.rim = {}
+	r.rim_detail = {}
+	for v: CreatureView in views.values():
+		v._rim_material.set_shader_parameter("rim", 0.0)
+	var unrimmed := await _capture()
+	for v: CreatureView in views.values():
+		v._apply_rim()
+	_save(scene, "norim", unrimmed)
+	for species: String in views:
+		var v: CreatureView = views[species]
+		var box := _screen_box(v).grow(RIM_BOX_PX)
+		var pixels := _changed(full, unrimmed, box, full)
+		var green := hue_share(pixels, FOOD_HEX, RIM_HUE_DEG, ACHROMATIC_C)
+		r.rim[species] = 1 if int(green.count) >= RIM_PIXELS else 0
+		r.rim_detail[species] = {"pixels": pixels.size(), "food_hue_pixels": green.count, "view_rim": v.rim}
+	r.ink = {}
+	r.ink_detail = {}
+	var keyed_views := views.values().filter(func(v: CreatureView) -> bool: return not v._ink_slots.is_empty())
+	var marked_views := views.values().filter(func(v: CreatureView) -> bool: return v._ink_slots.is_empty())
+	for v: CreatureView in keyed_views:
+		for slot: Dictionary in v._ink_slots:
+			(slot.material as BaseMaterial3D).albedo_color = INK_KEY
+	var keyed := await _capture()
+	for v: CreatureView in keyed_views:
+		v._apply_ink()
+	_save(scene, "ink", keyed)
+	var marker_on: Image = null
+	var marker_off: Image = null
+	if not marked_views.is_empty():
+		for v: CreatureView in marked_views:
+			v.show_marker()
+			v._process(CreatureView.MARKER_POP_S)
+		marker_on = await _capture()
+		for v: CreatureView in marked_views:
+			(v.get_node("%Marker") as Label3D).visible = false
+		marker_off = await _capture()
+		_save(scene, "marker", marker_on)
+		_save(scene, "nomarker", marker_off)
+	for species: String in views:
+		var v: CreatureView = views[species]
+		var pixels := PackedColorArray()
+		var source := "surfaces"
+		var box := _screen_box(v)
+		if v._ink_slots.is_empty():
+			source = "marker"
+			var at := Vector2i(_px((v.get_node("%Marker") as Label3D).global_position))
+			box = Rect2i(at - Vector2i.ONE * MARKER_BOX_PX, Vector2i.ONE * MARKER_BOX_PX * 2)
+			pixels = _changed(marker_on, marker_off, box, marker_on)
+		else:
+			pixels = _changed(full, keyed, box, full)
+		_boxes.append(box)
+		var share := hue_share(pixels, THREAT_HEX, INK_HUE_DEG, INK_MIN_C)
+		r.ink[species] = 1 if pixels.size() > 0 and share.share >= INK_SHARE else 0
+		r.ink_detail[species] = {"source": source, "pixels": pixels.size(), "share": share.share, "view_ink": v.ink,
+			"median": reading(median_color(pixels))}
+	_write_points(scene, full)
+
+
+## The hatch: frame A (one ordinary tick after the ring was drawn full) and frame 0 (the growth's
+## tick), both with no 2D layer, compared over the whole frame; the ordinary tick before A against A
+## for scale; the same pair paused with the ambience hidden; then the beat at 1.0 s and 2.0 s, with
+## the HUD, for review. Ticks run here: the pool plays one frame at a time at --fixed-fps.
+func _shoot_hatch(scene: String) -> void:
+	_boxes.clear()
+	var r: Dictionary = results[scene].readings
+	var full := await _capture(FIRST_SETTLE)
+	_save(scene, "", full)
+	r.render_info = _render_info()
+	var ambience := pool.get_node_or_null(^"Ambience") as Node3D
+	pool.ui.visible = false
+	_run_ticks(true)
+	var before := await _capture()
+	var a := await _capture()
+	_run_ticks(false)
+	await _play(1)
+	if ambience != null:
+		ambience.visible = false
+	var a_bare := await _capture()
+	if ambience != null:
+		ambience.visible = true
+	var size_before := sim.size()
+	if not sim.debug_force_growth():
+		results[scene].error = "debug_force_growth was refused"
+		pool.ui.visible = true
+		return
+	_run_ticks(true)
+	var zero := await _capture()
+	_run_ticks(false)
+	await _play(1)
+	r.size_before = size_before
+	r.size_after = sim.size()
+	if ambience != null:
+		ambience.visible = false
+	var zero_bare := await _capture()
+	if ambience != null:
+		ambience.visible = true
+	_save(scene, "world", a)
+	_save(scene, "zero", zero)
+	var whole := Rect2i(Vector2i.ZERO, a.get_size())
+	var growth := delta_e_spread(a, zero, whole, PARITY_STRIDE)
+	var tick := delta_e_spread(before, a, whole, PARITY_STRIDE)
+	var bare := delta_e_spread(a_bare, zero_bare, whole, PARITY_STRIDE)
+	if not growth.is_empty():
+		r.median_dE = growth.median
+		r.p99_dE = growth.p99
+		r.max_dE = growth.max
+	if not tick.is_empty():
+		r.tick_median_dE = tick.median
+		r.tick_p99_dE = tick.p99
+	if not bare.is_empty():
+		r.bare_median_dE = bare.median
+		r.bare_p99_dE = bare.p99
+	r.ambience = "shown in A and 0 (its apply_scale_view re-expresses it); hidden in the bare pair" if ambience != null else "none mounted"
+	r.plankton_on_screen = sim.plankton.items.filter(func(item: Dictionary) -> bool: return _on_screen(PlaneSpace.to_world(item.position), a)).size()
+	pool.ui.visible = true
+	_run_ticks(true)
+	for at_s in [1.0, 2.0]:
+		var guard := 0
+		while pool.growth_beat.running() and pool.growth_beat.t() < at_s and guard < 600:
+			await process_frame
+			guard += 1
+		_save(scene, "beat%ds" % int(at_s), await _capture())
+		r["beat_t_%ds" % int(at_s)] = snappedf(pool.growth_beat.t(), 0.001)
+	_run_ticks(false)
+
+
+## Lets the sim tick (one tick a frame at --fixed-fps) or stops it again, as _freeze does.
+func _run_ticks(on: bool) -> void:
+	Engine.time_scale = 1.0 if on else 0.0
+	pool.set_paused(not on)
+
+
+## A ghost billboard's body rect: its species' from the ladder, or the far texture's.
+func _ghost_rect(node: Node3D, species: String) -> Array:
+	var ladder := pool.ghosts.ladder()
+	if not species.is_empty():
+		return ladder.species[species].body_rect
+	var far: Dictionary = ladder.far
+	return far.body_rects[str(far.textures[int(str(node.name).trim_prefix("Far"))]).get_file().get_basename()]
+
+
+## A billboard's body on screen (the quad lies flat, u east and v south): its centre, its width
+## across its middle, its height and its screen box. {"centre", "width", "height", "box"}.
+func _ghost_body(node: Node3D, rect: Array) -> Dictionary:
+	var xf := node.global_transform
+	var at := func(u: float, v: float) -> Vector2: return _px(xf * Vector3(u - 0.5, 0.0, v - 0.5))
+	var mid_v := (float(rect[1]) + float(rect[3])) * 0.5
+	var corners: Array[Vector2] = []
+	for corner in [[rect[0], rect[1]], [rect[2], rect[1]], [rect[0], rect[3]], [rect[2], rect[3]]]:
+		corners.append(at.call(float(corner[0]), float(corner[1])))
+	var box := Rect2(corners[0], Vector2.ZERO)
+	for c in corners:
+		box = box.expand(c)
+	return {"centre": _px(xf.origin), "width": (at.call(float(rect[0]), mid_v) as Vector2).distance_to(at.call(float(rect[2]), mid_v)),
+		"height": box.size.y, "box": Rect2i(Vector2i(box.position.floor()), Vector2i(box.end.ceil()) - Vector2i(box.position.floor()))}
+
+
+## The pixels of `colors_from` in `rect` where `a` and `b` differ by more than SILHOUETTE_CHANGE in a
+## channel.
+func _changed(a: Image, b: Image, rect: Rect2i, colors_from: Image) -> PackedColorArray:
+	var out := PackedColorArray()
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, a.get_size()))
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var p := a.get_pixel(x, y)
+			var q := b.get_pixel(x, y)
+			if maxf(absf(p.r - q.r), maxf(absf(p.g - q.g), absf(p.b - q.b))) > SILHOUETTE_CHANGE:
+				out.append(colors_from.get_pixel(x, y))
+	return out
 
 
 ## The pixels a piece draws in `rect` (within `radius` of `center` when one is given): where `full`
@@ -1842,6 +2214,23 @@ static func delta_e_spread(a: Image, b: Image, rect: Rect2i, stride := 1) -> Dic
 	d.sort()
 	return {"median": snappedf(d[d.size() / 2], 0.1), "p99": snappedf(d[mini(d.size() - 1, int(d.size() * 0.99))], 0.1),
 		"max": snappedf(d[d.size() - 1], 0.1)}
+
+
+## The body a scene's lineage starts with: GROWTH_BODY for S2's growth scenes, else BODY.
+static func body_for(scene: String) -> String:
+	return GROWTH_BODY if GROWTH_SCENES.has(scene) else BODY
+
+
+## Of `colors`, those whose LAB hue lies within `deg` of `hex`'s with C* at least `min_c`:
+## {"count", "of", "share"} (share 0 for no colours).
+static func hue_share(colors: PackedColorArray, hex: String, deg: float, min_c: float) -> Dictionary:
+	var target := hue(lab(Color(hex)))
+	var count := 0
+	for c in colors:
+		var v := lab(c)
+		if Vector2(v.y, v.z).length() >= min_c and hue_gap(hue(v), target) <= deg:
+			count += 1
+	return {"count": count, "of": colors.size(), "share": snappedf(count / float(colors.size()), 0.001) if not colors.is_empty() else 0.0}
 
 
 ## The scenes --world=`world_name` stages by default: POOL_SCENES or ENDLESS_SCENES ([] for neither).

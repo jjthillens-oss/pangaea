@@ -185,8 +185,9 @@ func test_the_look_probe_reads_a_rebase_pair_by_its_spread() -> void:
 	check(LookProbe.delta_e_spread(a, b, Rect2i(30, 0, 5, 5)).is_empty(), "no pixel, no spread")
 
 
-## --world=endless stages the endless scenes and judges them by the endless gates; the pool keeps
-## its own scenes and looks, so today's commands and baselines are unchanged (content doc section 10).
+## --world=endless stages the endless scenes and judges them by the endless gates (S2's growth
+## scenes by the growth gates); the pool keeps its own scenes and looks, so today's commands and
+## baselines are unchanged (content doc section 10).
 func test_the_look_probe_keeps_the_endless_scenes_apart_from_the_pool() -> void:
 	check_eq(str(LookProbe.scenes_for("pool")), str(LookProbe.POOL_SCENES), "the pool's scenes by default there")
 	check_eq(str(LookProbe.scenes_for("endless")), str(LookProbe.ENDLESS_SCENES), "the endless sea's there")
@@ -198,8 +199,11 @@ func test_the_look_probe_keeps_the_endless_scenes_apart_from_the_pool() -> void:
 		for gate: Dictionary in LookProbe.GATES[look]:
 			check(LookProbe.scenes_for(world).has(gate.path.get_slice(".", 0)), "%s/%s reads a %s scene: %s" % [look, gate.id, world, gate.path])
 	var paths: Array = LookProbe.GATES.endless.map(func(g: Dictionary) -> String: return g.path)
+	var growth_paths: Array = LookProbe.GATES.growth.map(func(g: Dictionary) -> String: return g.path)
 	for scene in LookProbe.ENDLESS_SCENES:
-		check(paths.any(func(path: String) -> bool: return path.begins_with(scene + ".")), "an endless gate reads %s" % scene)
+		var own: Array = growth_paths if LookProbe.GROWTH_SCENES.has(scene) else paths
+		check(own.any(func(path: String) -> bool: return path.begins_with(scene + ".")),
+			"an %s gate reads %s" % ["growth" if LookProbe.GROWTH_SCENES.has(scene) else "endless", scene])
 	for path in ["rebase_pair.median_dE", "rebase_pair.p99_dE", "markers.pip_present"]:
 		check(paths.has(path), "the endless gates read %s" % path)
 
