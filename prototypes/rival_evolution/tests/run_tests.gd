@@ -129,7 +129,8 @@ func _init() -> void:
 	relatives[0]["population"] = 0
 	var founding: Dictionary = Simulation._refound(relatives[0], relatives, 4)
 	check(founding["trait"] == "refound" and relatives[0]["population"] == Simulation.REFOUND_POPULATION
-		and Simulation.valid_parts(relatives[0]) and founding["cause"].contains("survived"),
+		and Simulation.valid_parts(relatives[0]) and relatives[0]["parts"].size() < 3
+		and founding["cause"].contains("survived"),
 		"re-founding is bounded and names a surviving relative")
 	var scarce: Dictionary = Simulation.run(1, 100, 5, 24)
 	var observed_refound := false
