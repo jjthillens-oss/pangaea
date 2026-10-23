@@ -4,6 +4,7 @@ extends Button
 ## and the stats Phenotype.derive gives it, all worded by BodyText. It is a toggle button in the
 ## picker's group; a "Selected" label marks the chosen card as well as its border.
 
+## The card's width at 100% text size; a larger text size widens it to fit its stats.
 const WIDTH := 380.0
 
 var body := ""
@@ -23,6 +24,12 @@ func _ready() -> void:
 		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toggled.connect(func(on: bool): _selected.visible = on)
 	_selected.visible = button_pressed
+
+
+## A text size change (the settings screen) refits the card to its words.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED and _margin != null and is_node_ready():
+		_fit.call_deferred()
 
 
 func setup(p_body: String, p_phenotype: Phenotype) -> void:
@@ -47,7 +54,14 @@ func setup(p_body: String, p_phenotype: Phenotype) -> void:
 		value.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_stats.add_child(stat_name)
 		_stats.add_child(value)
-	custom_minimum_size = Vector2(WIDTH, _margin.get_combined_minimum_size().y)
+	_fit()
+
+
+## At least WIDTH wide, and wider when the stats need it (130% text), so nothing spills over the
+## card's edge.
+func _fit() -> void:
+	var needed := _margin.get_combined_minimum_size()
+	custom_minimum_size = Vector2(maxf(WIDTH, needed.x), needed.y)
 
 
 ## The stat values as shown, in BodyText.stat_rows order.
