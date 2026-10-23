@@ -3,21 +3,18 @@ extends TestCase
 ## 3.5 and 5.2): 18 ordinary tiles and the two rare places, on the real kit. TileCatalog's rules are
 ## T1's (tests/test_tile_catalog.gd, on fixtures); these tests hold the real content to them, to the
 ## region designs, to the margins the tiles were authored with, and to the heavy checks of spine 4.2:
-## per-tile reach (slow), the identity seams (slow), every rule and reach at all 8 orientations
-## (soak), the food bound and the site sample (T1.10's world_checks; they wait until it lands, see
-## _waits). docs/s1/s1-build-plan.md corrects them: zones keep 0.7 bu from every collider (B-3), the
-## cathedral's nave is sealed (B-28), and the sample counts reach discs per 40 tm disc (B-17).
+## per-tile reach (slow), the identity seams with a positive control (slow), every rule and reach at
+## all 8 orientations (soak), the food bound (coarse fast, fine soak) and the site sample (soak), the
+## last four through T1.10's world_checks. docs/s1/s1-build-plan.md corrects them: zones keep 0.7 bu
+## from every collider (B-3), the cathedral's nave is sealed (B-28), the seams and orientations are
+## world_checks' (B-16), and the sample counts reach discs per 40 tm disc (B-17).
 
 const WorldChecks := preload("res://tests/world_checks.gd")
 const ReachGrid := preload("res://tests/reach_grid.gd")
-## The same script as a plain Script, for the functions T1.10 adds (called by name until they land).
-const CHECKS_PATH := "res://tests/world_checks.gd"
-const DIR := "res://game/data/tiles/b0"
 ## The starving budget as tests/test_pool_layout.gd computes it, pinned before any grid runs (G5).
 const BUDGET_TM := 16.32
 const BUDGET_PIN := 0.01
 const TILE_BOUNDS := Rect2(-32.0, -32.0, 64.0, 64.0)
-const TILE_BU := 64.0
 const RARE_KINDS: PackedStringArray = ["giant_husk", "shell_cathedral"]
 ## The region designs (s1-content 3.2): what each kind of tile is for.
 const SUNLIT_RICH_R := 5.0
@@ -32,21 +29,16 @@ const DRIFT_MAX_ITEMS := 12
 const MIN_INSET_SLACK := 1.0
 const MIN_ANCHOR_SLACK := 1.0
 ## The seam check's positive control (s1-content 5.2): a shell put just across the seam from
-## giant_husk's lair la, inside its reach circle where rule 9 wants clear water.
+## giant_husk's lair la, inside its reach circle where rule 9 wants clear water; with giant_husk east
+## of reef_a, it sits in reef_a's frame at CONTROL_SHELL.
 const CONTROL_A := "reef_a"
 const CONTROL_B := "giant_husk"
-const CONTROL_SHELL := Vector2(35.5, -4.0)
+const CONTROL_SHELL := [35.5, -4.0]
 const CONTROL_R := 0.6
-## The home block's edge slots: the centres of the 8 tiles that touch it, in its frame.
-const HOME_SLOTS: Array[Vector2] = [Vector2(96, -32), Vector2(96, 32), Vector2(-96, -32), Vector2(-96, 32),
-	Vector2(-32, -96), Vector2(32, -96), Vector2(-32, 96), Vector2(32, 96)]
-## T1.10 brings world_checks.food_bound and sample_sites with their tests in tests/test_world_checks.gd;
-## once that file tests them, the waiting tests below must run (test_the_heavy_checks_wait_only_on_t1_10).
-const CHECKS_TESTS := "res://tests/test_world_checks.gd"
-const CHECKS_LANDED_MARK := "food_bound"
+const IDENTITY: PackedInt32Array = [0]
 const FOOD_COARSE_TM := 4.0
 const FOOD_FINE_TM := 1.0
-## A coarse bound below this would mean food_bound saw no tiles (s1-content 5.2 measured 91).
+## A coarse bound below this would mean food_bound saw no tiles (it measures 100; s1-content 5.2 had 91).
 const FOOD_FLOOR := 60
 ## The site sample (B-17, B-14): arrangements x discs uniform over a 2 km square round home, each
 ## disc 40 tm; no disc meets more than 10 live reach discs.
@@ -91,26 +83,6 @@ func _budget() -> float:
 	return budget
 
 
-## Whether a heavy check waits on T1.10, saying so.
-func _waits(check_name: String) -> bool:
-	if _missing_checks().is_empty():
-		return false
-	print("test-tiles: %s waits on T1.10's world_checks: %s" % [check_name, ", ".join(_missing_checks())])
-	return true
-
-
-func _missing_checks() -> PackedStringArray:
-	var have := {}
-	var checks: Script = load(CHECKS_PATH)
-	for m in checks.get_script_method_list():
-		have[str(m.name)] = true
-	var out := PackedStringArray()
-	for fn in ["food_bound", "sample_sites"]:
-		if not have.has(fn):
-			out.append(fn)
-	return out
-
-
 ## Items a full zone shows (PlanktonField.max_count, capped per zone by the world file).
 func _items(z: Dictionary) -> int:
 	var unit := float(content.layout.plankton.unit_energy)
@@ -137,26 +109,21 @@ static func _orient(p: Vector2, o: int) -> Vector2:
 	return Vector2(q[0], q[1])
 
 
-## Tile t turned to orientation o and moved so its centre sits at `at`: its colliders (with or
-## without the landmark's) and zones as ReachGrid and check_disc_against_shells take them, and the
-## reach disc of each live site (computed at identity, then oriented, as spine 3.6 places them).
-func _placed(t: Dictionary, o: int, at: Vector2, with_anchor: bool = true) -> Dictionary:
+## Tile t turned to orientation o: its colliders (with or without the landmark's) and zones as
+## ReachGrid takes them, and the homes of its live sites (must_reach).
+func _placed(t: Dictionary, o: int, with_anchor: bool = true) -> Dictionary:
 	var colliders: Array[Dictionary] = []
 	for c in TileCatalog.colliders_of(t, kit):
 		if with_anchor or c.id != TileCatalog.LANDMARK_ID:
-			colliders.append({"id": "%s/%s" % [t.id, c.id], "center": at + _orient(c.center, o), "radius": float(c.radius)})
+			colliders.append({"id": "%s/%s" % [t.id, c.id], "center": _orient(c.center, o), "radius": float(c.radius)})
 	var zones: Array[Dictionary] = []
 	for z in t.zones:
-		zones.append({"id": "%s/%s" % [t.id, z.id], "center": at + _orient(Vector2(z.center[0], z.center[1]), o), "radius": float(z.radius)})
-	var discs: Array[Dictionary] = []
+		zones.append({"id": "%s/%s" % [t.id, z.id], "center": _orient(Vector2(z.center[0], z.center[1]), o), "radius": float(z.radius)})
 	var homes: Array[Vector2] = []
 	for s in t.sites:
 		if s.sizes.has(1):
-			var d := _disc(t, s)
-			discs.append({"where": "%s o%d site '%s'" % [t.id, o, s.id], "r": float(radii[s.species]),
-				"disc": {"center": at + _orient(d.center, o), "radius": float(d.radius)}})
-			homes.append(at + _orient(Vector2(s.home[0], s.home[1]), o))
-	return {"colliders": colliders, "zones": zones, "discs": discs, "homes": homes}
+			homes.append(_orient(Vector2(s.home[0], s.home[1]), o))
+	return {"colliders": colliders, "zones": zones, "homes": homes}
 
 
 ## The worst walk to food over the open points the sea outside reaches (a sealed, empty pocket such as
@@ -182,6 +149,9 @@ func test_the_band_0_content_validates() -> void:
 	check_eq(tiles.load_problems, PackedStringArray(), "the tiles read")
 	check_eq(_ids().size(), 20, "18 ordinary tiles and 2 rare ones")
 	check_eq(content.problems(parts, species), PackedStringArray(), "world_cell.json and everything it names")
+	# B-6's content bound in problems(): rebase_beyond + hold + reach_max + chunk x sqrt 2 < local bound.
+	var widest := content.reach_max(species)
+	print("test-tiles: reach_max %.2f tm at %s" % [widest.radius_tm, widest.where])
 
 
 func test_each_region_has_three_tiles_per_set_and_two_rare_kinds() -> void:
@@ -325,22 +295,11 @@ func test_the_cathedral_nave_is_sealed_and_nothing_lives_in_it() -> void:
 
 
 func test_the_coarse_food_bound_stays_under_the_cap() -> void:
-	if _waits("the coarse food bound"):
-		return
-	var bound: Dictionary = (load(CHECKS_PATH) as Script).call("food_bound", content, FOOD_COARSE_TM)
+	var bound := WorldChecks.food_bound(content, FOOD_COARSE_TM)
 	var cap := int(content.config.caps.food_items)
 	check(int(bound.worst) <= cap, "at most %d items within the food ring of any point (%d at %s)" % [cap, int(bound.worst), bound.get("at")])
 	check(int(bound.worst) >= FOOD_FLOOR, "the bound saw the tiles (%d >= %d)" % [int(bound.worst), FOOD_FLOOR])
 	print("test-tiles: coarse food bound %d at %s (cap %d)" % [int(bound.worst), bound.get("at"), cap])
-
-
-## Waiting is not a pass for ever: once T1.10's tests of the food bound are in the tree, world_checks
-## must have the functions the waiting tests call.
-func test_the_heavy_checks_wait_only_on_t1_10() -> void:
-	if FileAccess.file_exists(CHECKS_TESTS) and FileAccess.get_file_as_string(CHECKS_TESTS).contains(CHECKS_LANDED_MARK):
-		check_eq(_missing_checks(), PackedStringArray(), "%s tests %s, so T1.10 has landed" % [CHECKS_TESTS, CHECKS_LANDED_MARK])
-	elif not _missing_checks().is_empty():
-		print("test-tiles: the food bound and the site sample wait on T1.10: %s" % ", ".join(_missing_checks()))
 
 
 # ---- Slow ----
@@ -355,7 +314,7 @@ func test_slow_every_tile_reaches_food_within_the_starving_budget() -> void:
 		var t: Dictionary = tiles.tiles[id]
 		var worst := 0.0
 		for with_anchor in ([true, false] if t.landmark_anchor.size() == 2 else [true]):
-			var p := _placed(t, 0, Vector2.ZERO, with_anchor)
+			var p := _placed(t, 0, with_anchor)
 			var arena := ChunkArena.from_shells(p.colliders)
 			check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget, p.homes), PackedStringArray(),
 				"%s %s its anchor" % [id, "with" if with_anchor else "without"])
@@ -364,124 +323,39 @@ func test_slow_every_tile_reaches_food_within_the_starving_budget() -> void:
 	print("test-tiles: reach worst per tile (budget %.2f): %s" % [budget, ", ".join(rows)])
 
 
-## Problems where two placed tiles (_placed, in one frame) meet: rules 9 and 10 for every live reach
-## disc of both against the colliders of both, and no collider of one overlapping one of the other.
-func _seam_problems(a: Dictionary, b: Dictionary) -> PackedStringArray:
-	var errors := PackedStringArray()
-	var combined: Array[Dictionary] = []
-	combined.append_array(a.colliders)
-	combined.append_array(b.colliders)
-	for d in a.discs + b.discs:
-		species.check_disc_against_shells(d.where, d.disc, d.r, combined, INF, errors)
-	for ca in a.colliders:
-		for cb in b.colliders:
-			if ca.center.distance_to(cb.center) < ca.radius + cb.radius:
-				errors.append("%s overlaps %s across the seam" % [ca.id, cb.id])
-	return errors
-
-
-## G2's seams at identity: every ordered pair of tiles placed east, north and on the diagonal, and the
-## home block against every tile in each of the 8 slots along its edges. The soak over every
-## orientation pair is T1's (tests/test_seams.gd, B-16); this is the identity pass with a positive
-## control, run with the primitives seam_problems uses until T1.10 brings it.
+## G2's seams at identity (B-16): world_checks.seam_problems with every ordered pair of tiles placed
+## east, north and on the diagonal, and the home block against every tile in the 8 slots along its
+## edges. The soak over every orientation is T1's (tests/test_seams.gd). The positive control: the
+## same check run on reef_a with one shell more, inside the reach of giant_husk's lair across the
+## seam, must report it.
 func test_slow_seams_hold_between_tiles_and_against_the_home_edges() -> void:
-	var placements := 0
-	var errors := PackedStringArray()
-	var ids := _ids()
-	for ia in ids:
-		var a := _placed(tiles.tiles[ia], 0, Vector2.ZERO)
-		for ib in ids:
-			for offset in [Vector2(TILE_BU, 0.0), Vector2(0.0, -TILE_BU), Vector2(TILE_BU, -TILE_BU)]:
-				errors.append_array(_seam_problems(a, _placed(tiles.tiles[ib], 0, offset)))
-				placements += 1
-	var home := _home_placed()
-	for id in ids:
-		for slot in HOME_SLOTS:
-			errors.append_array(_seam_problems(home, _placed(tiles.tiles[id], 0, slot)))
-			placements += 1
-	check_eq(placements, 20 * 20 * 3 + 20 * HOME_SLOTS.size(), "placements")
-	check_eq(errors, PackedStringArray(), "rules 9 and 10 and no overlap across every seam")
-	# The positive control: the same check must see a shell across the seam inside a lair's reach.
-	var control := _placed(tiles.tiles[CONTROL_A], 0, Vector2.ZERO)
-	control.colliders.append({"id": "%s/control" % CONTROL_A, "center": CONTROL_SHELL, "radius": CONTROL_R})
-	var found := _seam_problems(control, _placed(tiles.tiles[CONTROL_B], 0, Vector2(TILE_BU, 0.0)))
-	var reported := false
+	check_eq(WorldChecks.seam_problems(content, species, parts, 1, IDENTITY), PackedStringArray(),
+		"rules 9 and 10 and no overlap across every seam at identity")
+	var control := WorldContent.new()
+	control.config = content.config
+	control.kit = content.kit
+	control.home = content.home
+	control.layout = content.layout
+	control.tiles = TileCatalog.new()
+	control.tiles.bands = tiles.bands.duplicate()
+	for id in [CONTROL_A, CONTROL_B]:
+		control.tiles.tiles[id] = tiles.tiles[id].duplicate(true)
+	control.tiles.tiles[CONTROL_A].shells.append({"id": "control", "center": PackedFloat64Array(CONTROL_SHELL), "radius": CONTROL_R})
+	var found := WorldChecks.tile_seam_problems(control, species, parts, 1, IDENTITY)
+	var reported := PackedStringArray()
 	for e in found:
-		reported = reported or e.contains("control")
-	check(reported, "the control shell at %s, r %s, west of %s is reported: %s" % [CONTROL_SHELL, CONTROL_R, CONTROL_B, found])
-	print("test-tiles: %d seam placements clean; the control reports %s" % [placements, found])
-
-
-## The home block in its own frame: its colliders and the M1 sites' reach discs (the ring has none).
-func _home_placed() -> Dictionary:
-	var home := content.home
-	var zone_by_id := {}
-	for z in home.zones:
-		zone_by_id[z.id] = z
-	var colliders: Array[Dictionary] = []
-	for c in home.circles():
-		colliders.append({"id": "home/%s" % c.id, "center": c.center, "radius": c.radius})
-	var discs: Array[Dictionary] = []
-	for s in home.sites:
-		if not s.sizes.has(1):
-			continue
-		var z: Dictionary = zone_by_id.get(s.territory_zone, {})
-		var territory := species.territory_from({"species": s.species}, {} if z.is_empty() else {"center": Vector2(z.x, z.y), "radius": z.radius})
-		var d := species.reach_disc_for({"species": s.species, "home": Vector2(s.x, s.y), "heading": s.heading}, territory)
-		discs.append({"where": "home site '%s'" % s.id, "r": float(radii[s.species]), "disc": {"center": d.center, "radius": float(d.radius)}})
-	return {"colliders": colliders, "zones": [], "discs": discs}
+		if e.contains("%s@o0:control" % CONTROL_A) and e.contains("| b0/%s@o0 east" % CONTROL_B):
+			reported.append(e)
+	check(not reported.is_empty(), "the control shell at %s, r %s, west of %s is reported: %s" % [CONTROL_SHELL, CONTROL_R, CONTROL_B, found])
+	print("test-tiles: the identity seams are clean; the control reports %s" % [reported])
 
 
 # ---- Soak ----
 
-## Tile file `data` turned to orientation o by WorldGen's maps, as TileCatalog.add_tile reads a file.
-## A set piece's colliders are placed in the turned frame and handed to `test_kit` as a piece of
-## their own at yaw 0, since a mirrored piece has no yaw that matches it. Shell yaw ranges stay as
-## they are: they choose a look, not a place.
-static func _oriented_file(data: Dictionary, o: int, test_kit: PlacementKit) -> Dictionary:
-	var out: Dictionary = data.duplicate(true)
-	for s in out.shells:
-		s.center = _orient_pair(s.center, o)
-	for z in out.zones:
-		z.center = _orient_pair(z.center, o)
-	for s in out.sites:
-		s.home = _orient_pair(s.home, o)
-		s.heading = WorldGen.orient_heading(float(s.heading), o)
-	if out.landmark_anchor != null:
-		out.landmark_anchor = _orient_pair(out.landmark_anchor, o)
-	if out.set_piece != null:
-		var piece: Dictionary = out.set_piece
-		var asset: Dictionary = test_kit.assets[piece.asset]
-		var turned: Dictionary = asset.duplicate(true)
-		var colliders: Array[Dictionary] = []
-		for c in asset.colliders:
-			var p := TileCatalog.yaw_point(c.center[0], c.center[1], float(piece.yaw_deg))
-			colliders.append({"center": WorldGen.orient_point(p[0], p[1], o), "radius": c.radius})
-		turned.colliders = colliders
-		var piece_id := "%s_o%d" % [piece.asset, o]
-		test_kit.assets[piece_id] = turned
-		out.set_piece = {"asset": piece_id, "center": _orient_pair(piece.center, o), "yaw_deg": 0.0}
-	return out
-
-
-static func _orient_pair(p: Array, o: int) -> Array:
-	var q := WorldGen.orient_point(float(p[0]), float(p[1]), o)
-	return [q[0], q[1]]
-
-
-## G2 at every orientation the generator may place a tile in: the whole band turned to o, then
-## TileCatalog.validate (rules 1 to 8). It is T1.10's orientation_problems (B-16), run here from the
-## pinned primitives until T1.10 brings it.
+## G2 at every orientation the generator may place a tile in: world_checks.orientation_problems
+## (B-16), rules 2 to 8 with every tile laid in each orientation.
 func test_soak_every_tile_keeps_every_rule_at_all_8_orientations() -> void:
-	var files := {}
-	for id in _ids():
-		files[id] = WorldConfig.read_json(DIR.path_join("%s.json" % id))
-	for o in 8:
-		var test_kit := PlacementKit.load_from(str(content.config.content.kit))
-		var turned := TileCatalog.new()
-		for id in _ids():
-			turned.add_tile(_oriented_file(files[id], o, test_kit), 0, id)
-		check_eq(turned.validate(species, test_kit, parts, 1), PackedStringArray(), "the band at orientation %d" % o)
+	check_eq(WorldChecks.orientation_problems(content, species, parts, 1), PackedStringArray(), "every tile at every orientation")
 
 
 func test_soak_every_tile_reaches_food_at_all_8_orientations() -> void:
@@ -492,7 +366,7 @@ func test_soak_every_tile_reaches_food_at_all_8_orientations() -> void:
 		var t: Dictionary = tiles.tiles[id]
 		for o in 8:
 			for with_anchor in ([true, false] if t.landmark_anchor.size() == 2 else [true]):
-				var p := _placed(t, o, Vector2.ZERO, with_anchor)
+				var p := _placed(t, o, with_anchor)
 				var arena := ChunkArena.from_shells(p.colliders)
 				check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget, p.homes), PackedStringArray(),
 					"%s at orientation %d %s its anchor" % [id, o, "with" if with_anchor else "without"])
@@ -504,9 +378,7 @@ func test_soak_every_tile_reaches_food_at_all_8_orientations() -> void:
 
 
 func test_soak_the_fine_food_bound_stays_under_the_cap() -> void:
-	if _waits("the fine food bound"):
-		return
-	var bound: Dictionary = (load(CHECKS_PATH) as Script).call("food_bound", content, FOOD_FINE_TM)
+	var bound := WorldChecks.food_bound(content, FOOD_FINE_TM)
 	var cap := int(content.config.caps.food_items)
 	check(int(bound.worst) <= cap, "at most %d items within the food ring of any point (%d at %s)" % [cap, int(bound.worst), bound.get("at")])
 	print("test-tiles: fine food bound %d at %s (cap %d)" % [int(bound.worst), bound.get("at"), cap])
@@ -515,9 +387,6 @@ func test_soak_the_fine_food_bound_stays_under_the_cap() -> void:
 ## B-17: sample_sites(gen, band, size, centre, 40) counts the live reach discs that meet a 40 tm disc.
 ## Each arrangement is a world seed; its discs are uniform over the 2 km square round home.
 func test_soak_no_disc_of_any_arrangement_wakes_more_than_10_sites() -> void:
-	if _waits("the site sample"):
-		return
-	var checks: Script = load(CHECKS_PATH)
 	var worst := -1
 	var worst_at := ""
 	for i in SAMPLE_ARRANGEMENTS:
@@ -526,7 +395,7 @@ func test_soak_no_disc_of_any_arrangement_wakes_more_than_10_sites() -> void:
 		rng.seed = SAMPLE_SEED + i
 		for k in SAMPLE_DISCS:
 			var at := PackedFloat64Array([rng.randf_range(-SAMPLE_HALF_TM, SAMPLE_HALF_TM), rng.randf_range(-SAMPLE_HALF_TM, SAMPLE_HALF_TM)])
-			var n := int(checks.call("sample_sites", gen, 0, 1, at, SAMPLE_RADIUS_TM))
+			var n := WorldChecks.sample_sites(gen, 0, 1, at, SAMPLE_RADIUS_TM)
 			if n > worst:
 				worst = n
 				worst_at = "seed %d at %s" % [SAMPLE_SEED + i, at]
