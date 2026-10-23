@@ -197,5 +197,48 @@ func test_done_over_the_points_is_refused_and_back_asks_to_leave() -> void:
 	var r: Dictionary = editor.finish()
 	check(not r["ok"] and r["reason"] != "" and editor.refusal_text == r["reason"], "a commit over the points is refused: %s" % r["reason"])
 	check_eq(editor.points(), 5, "the points are untouched")
-	editor.back()
+	check_eq(editor.back(), "cleared", "the first Back clears the tool and the selection")
+	check(editor.tool == "" and editor.selected.is_empty() and backs[0] == 0, "nothing left yet")
+	check_eq(editor.back(), "asked", "the next asks about the unsaved edit")
+	check_eq(editor.refusal_text, CreatureEditor.UNSAVED_TEXT, "with the reason")
+	check_eq(backs[0], 0, "still in the editor")
+	check_eq(editor.back(), "left", "and the one after leaves")
 	check_eq(backs[0], 1, "back_requested emitted")
+	editor._process(CreatureEditor.REFUSAL_S + 0.1)
+	after_each()
+	open("quadruped", 5)
+	editor.back_requested.connect(func(): backs[0] += 1)
+	check_eq(editor.back(), "left", "Back with nothing edited leaves at once")
+	check_eq(backs[0], 2, "back_requested emitted")
+
+
+func test_done_on_a_body_without_legs_asks_once() -> void:
+	open("snake")
+	var dones := [0]
+	editor.done_requested.connect(func(_b, _p): dones[0] += 1)
+	var r: Dictionary = editor.finish()
+	check(not r["ok"] and r["reason"] == CreatureEditor.NO_LEGS_TEXT and editor.refusal_text == r["reason"], "the first Done asks: %s" % r["reason"])
+	check_eq(dones[0], 0, "nothing committed")
+	r = editor.finish()
+	check(r["ok"], "Done again goes anyway: %s" % r["reason"])
+	check_eq(dones[0], 1, "committed")
+
+
+func test_the_camera_stays_above_the_floor_and_the_wheel_zooms_off_the_selection() -> void:
+	open()
+	for i in 12:
+		editor.wheel(-1)
+	editor.orbit(Vector2(0.0, -5.0))
+	check(editor.camera.position.y > editor.floor_disc.position.y, "pitched to the floor and zoomed far out, the camera is above the disc (%.2f)" % editor.camera.position.y)
+	var desc = editor.working_body()
+	var v: Dictionary = desc.vertebrae[3]
+	editor.selected = {"kind": "vertebra", "id": v["id"], "twin": false}
+	var before := BodyCodec.encode(desc)
+	var distance: float = editor._distance
+	editor.wheel(1, Vector2(2.0, 2.0))
+	check(text() == before and editor._distance < distance, "the wheel away from the selected handle zooms, not thickens")
+	var handle: Dictionary = editor.handles.filter(func(h): return h["kind"] == "vertebra" and h["id"] == v["id"])[0]
+	distance = editor._distance
+	editor.wheel(1, editor._unproject(handle["world"]))
+	check(text() != before and is_equal_approx(editor._distance, distance), "over the selected handle it thickens")
+	check(editor.undo(), "as one undo step")

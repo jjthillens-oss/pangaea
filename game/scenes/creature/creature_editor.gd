@@ -12,7 +12,9 @@ extends Node3D
 ## vertebra or joint thickens or thins it, elsewhere zooms. Middle-drag or the right stick orbits. Keys: 1-9, Tab,
 ## [ and ] pick a part tool, L the limb tool, 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the
 ## selection, Insert adds a vertebra or joint after it, M toggles its mirror, Ctrl+Z / Ctrl+Y undo and redo, T
-## toggles the test drive, Enter is Done, Escape is Back. The right mouse button and Space stay unused
+## toggles the test drive, Enter is Done. Escape (and the HUD's Back, and the pad's B through CreatureStage) is
+## progressive: it clears the tool and the selection first; with edits since the last Done it asks once (UNSAVED_TEXT,
+## for REFUSAL_S) and leaves on the next press; otherwise it leaves. The right mouse button and Space stay unused
 ## (tests/test_project_settings.gd).
 ##
 ## Every input path has a method twin (choose_tool, click_skin, drag, select, undo, redo, remove_selected,
@@ -46,6 +48,12 @@ const ORBIT_MOUSE_RATE := 0.008
 const ORBIT_STICK_RATE := 2.2
 const STICK_DEADZONE := 0.2
 const ZOOM_STEP := 1.1
+## The camera's pitch range (rad): never under the floor disc, even zoomed far out.
+const PITCH_MIN := 0.05
+const PITCH_MAX := 1.4
+## Back with edits since the last Done asks once; Done on a body without legs asks once.
+const UNSAVED_TEXT := "Unsaved edits: press Esc or Back again to leave without them"
+const NO_LEGS_TEXT := "No legs to walk on; press Done again to go anyway"
 const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
 		"turn": Color(1.0, 0.9, 0.2)}
 const SKIN_COLOR_KEY := "skin_color"
@@ -54,8 +62,8 @@ const SKIN_COLORS: Array[Color] = [Color("#5ca8dc"), Color("#4fc08a"), Color("#d
 		Color("#a86fd6"), Color("#e6e1c8"), Color("#5f6b7a"), Color("#2e4a6b")]
 ## The test drive's looping program: [until_s, throttle, turn] (a walk, a trot, a run and a turn, then again).
 const DRIVE_PROGRAM := [[2.5, 0.3, 0.0], [5.0, 0.6, 0.0], [7.0, 1.0, 0.0], [8.5, 0.6, 0.7], [10.0, 0.0, 0.0]]
-const HINT := "Drag a handle   ·   click the skin with a tool   ·   wheel thickens   ·   middle-drag or right stick orbits\n" \
-		+ "1-9 / Tab tools   ·   L limb   ·   0 none   ·   Q E R F turn and tilt   ·   Del   ·   Ins   ·   M mirror   ·   Ctrl+Z / Ctrl+Y   ·   T test drive   ·   Enter done   ·   Esc back"
+const HINT := "Drag a handle   ·   click the skin with a tool   ·   wheel over the selection thickens, elsewhere zooms   ·   middle-drag or right stick orbits\n" \
+		+ "1-9 / Tab tools   ·   L limb   ·   0 none   ·   Q E R F turn and tilt   ·   Del   ·   Ins   ·   M mirror   ·   Ctrl+Z / Ctrl+Y   ·   T test drive   ·   Enter done   ·   Esc clears the tool, again leaves"
 
 signal done_requested(body_dict: Dictionary, points_left: int)
 signal back_requested
@@ -314,7 +322,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.pressed:
-					wheel(1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
+					wheel(1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1, mb.position)
 					get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
@@ -524,8 +532,12 @@ func test_drive(on: bool) -> Dictionary:
 
 
 ## Commits: validates, charges the points and emits done_requested with the body dictionary and the points left.
-## Returns {ok, reason, points_left}; a refused commit changes nothing.
+## Returns {ok, reason, points_left}; a refused commit changes nothing. A body without legs cannot walk the world,
+## so the first Done on one asks (NO_LEGS_TEXT); the next within REFUSAL_S goes anyway (E at the nest still evolves).
 func finish() -> Dictionary:
+	if int(session.preview()["phenotype"]["legs"]) == 0 and refusal_text != NO_LEGS_TEXT:
+		_refuse(NO_LEGS_TEXT)
+		return {"ok": false, "reason": NO_LEGS_TEXT, "points_left": session.available_points}
 	var c: Dictionary = session.commit()
 	if not c["ok"]:
 		var reason: String = c["errors"][0] if not (c["errors"] as PackedStringArray).is_empty() else "cannot commit"
@@ -541,8 +553,20 @@ func finish() -> Dictionary:
 	return {"ok": true, "reason": "", "points_left": c["points_left"]}
 
 
-func back() -> void:
+## Back, progressive (Escape, the HUD's Back button and CreatureStage.press_escape all come here): a tool or a
+## selection is cleared first; edits since the last Done ask once (UNSAVED_TEXT) and the next press within REFUSAL_S
+## leaves; otherwise back_requested is emitted at once. Returns what happened: "cleared", "asked" or "left".
+func back() -> String:
+	if tool != "" or not selected.is_empty():
+		choose_tool("")
+		selected = {}
+		_mark_dirty()
+		return "cleared"
+	if not session._undo.is_empty() and refusal_text != UNSAVED_TEXT:
+		_refuse(UNSAVED_TEXT)
+		return "asked"
 	back_requested.emit()
+	return "left"
 
 
 ## The skin colour, from a swatch; the working body carries it as "skin_color".
@@ -670,9 +694,12 @@ func release() -> void:
 	_mark_dirty()
 
 
-## The wheel: over the selected vertebra or joint it thickens or thins; elsewhere it zooms.
-func wheel(direction: int) -> void:
-	if selected.is_empty() or selected["kind"] in ["part", "turn"]:
+## The wheel at a screen position: over the selected vertebra's or joint's handle it thickens or thins (a paid,
+## undoable edit); anywhere else it zooms. Without a position it zooms; thicken() is the edit's method twin.
+func wheel(direction: int, at := Vector2(-INF, -INF)) -> void:
+	var under := _handle_at(at) if at.is_finite() else {}
+	var over_selection: bool = not under.is_empty() and under["kind"] in ["vertebra", "joint"] and _same(under, selected)
+	if not over_selection:
 		_distance *= 1.0 / ZOOM_STEP if direction > 0 else ZOOM_STEP
 		_update_camera()
 		return
@@ -682,7 +709,7 @@ func wheel(direction: int) -> void:
 ## Orbits the camera by (yaw, pitch) radians.
 func orbit(by: Vector2) -> void:
 	_orbit += by
-	_orbit.y = clampf(_orbit.y, -0.2, 1.4)
+	_orbit.y = clampf(_orbit.y, PITCH_MIN, PITCH_MAX)
 	_update_camera()
 
 
