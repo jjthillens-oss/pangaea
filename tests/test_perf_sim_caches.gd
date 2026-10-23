@@ -643,3 +643,57 @@ func test_the_view_free_seek_matches_drive() -> void:
 				differ += 1
 	check_eq(differ, 0, "foragers whose view-free seek differs from drive")
 	check(seeking > 2000, "foragers seeking (%d)" % seeking)
+
+
+## A forager's seek routes past the colliders kept for it (ChunkArena.route_point_kept): on the
+## saturated world, through two rebases and a teleport, a twin whose creatures drop their keeps
+## before every step drives every creature the same on every tick, to the same hash.
+func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() -> void:
+	var sims: Array[PoolSim] = []
+	for i in 2:
+		var cost: GDScript = load(COST)
+		var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+		var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+		Gates.make_racer(r.save.genome, catalog)
+		r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+		var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+		sim.debug_set_hidden(true)
+		sim.drain_events()
+		sims.append(sim)
+	var a := sims[0]
+	var b := sims[1]
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var held := 0
+	var keys := {}
+	for t in 1500:
+		if t == 400 or t == 800:
+			a.debug_rebase(Vector2i(-1, 1))
+			b.debug_rebase(Vector2i(-1, 1))
+		elif t == 1100:
+			a.debug_teleport(a.motion.position + Vector2(-20.0, 8.0))
+			b.debug_teleport(b.motion.position + Vector2(-20.0, 8.0))
+		for c in b.creatures.creatures:
+			c.route_keep = null
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		var intent = bot.next_intent(a)
+		a.step(intent)
+		b.step(intent)
+		var drives_a := []
+		var drives_b := []
+		for c in a.creatures.awake():
+			drives_a.append(c.drive)
+			if c.route_keep != null:
+				if keys.get(c.id) == c.route_keep.key:
+					held += 1
+				keys[c.id] = c.route_keep.key
+		for c in b.creatures.awake():
+			drives_b.append(c.drive)
+		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the twins' drives or events differ" % t)
+			return
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(held > 5000, "keeps held from tick to tick (%d)" % held)

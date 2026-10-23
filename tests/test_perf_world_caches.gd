@@ -791,3 +791,147 @@ func _grids_match(arena: ChunkArena, what: String) -> bool:
 			check(false, "%s, the grid of %s differs from a full re-mark" % [what, k])
 			return false
 	return true
+
+
+# --- ChunkArena.route_point_kept (the colliders a seek's route can meet, kept between calls) ---
+
+## Callers seek goals beside colliders (where a route's last blocker can lie past the goal) from a
+## few tm off, creeping or jumping, while chunks load and unload and the origin moves under them
+## (with them half the time): every kept route must be route_point's, and on every 8th call every
+## collider that passes the blocking test from where the caller is (nearest or not) must be kept.
+func test_a_kept_route_equals_route_point_through_moves_loads_and_rebases() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4410
+	var arena := ChunkArena.create_endless()
+	for ky in range(-2, 2):
+		for kx in range(-2, 2):
+			var list: Array[Dictionary] = []
+			for i in rng.randi_range(4, 10):
+				list.append(ArenaTests._collider(rng, Vector2i(kx, ky), "r%d_%d_%d" % [kx, ky, i]))
+			arena.add_chunk(Vector2i(kx, ky), list)
+	var keeps: Array[ChunkArena.RouteKeep] = []
+	var froms: Array[Vector2] = []
+	var tos: Array[Vector2] = []
+	for i in 8:
+		keeps.append(ChunkArena.RouteKeep.new())
+		froms.append(Vector2.ZERO)
+		tos.append(Vector2.ZERO)
+		_new_goal(rng, arena, i, froms, tos)
+	var calls := 0
+	var held := 0
+	var blocked_held := 0
+	var blockers := 0
+	var origin := Vector2.ZERO
+	for step in 40000:
+		var i := rng.randi_range(0, keeps.size() - 1)
+		var roll := rng.randf()
+		if roll < 0.002:
+			# A chunk unloads or loads again (the epoch moves).
+			var key := Vector2i(rng.randi_range(-2, 1), rng.randi_range(-2, 1))
+			if arena.has_chunk(key):
+				arena.remove_chunk(key)
+			else:
+				var list: Array[Dictionary] = []
+				for j in rng.randi_range(4, 10):
+					list.append(ArenaTests._collider(rng, key, "s%d_%d" % [step, j]))
+				arena.add_chunk(key, list)
+		elif roll < 0.003:
+			# A rebase by whole chunks: the callers move with it, or (half the time) stay where they are
+			# in local terms while the colliders move under them.
+			var by := Vector2(32.0 * rng.randi_range(-1, 1), 32.0 * rng.randi_range(-1, 1))
+			origin += by
+			arena.set_origin(origin.x, origin.y)
+			if rng.randf() < 0.5:
+				for j in keeps.size():
+					froms[j] -= by
+					tos[j] -= by
+		elif roll < 0.01:
+			_new_goal(rng, arena, i, froms, tos)
+		elif roll < 0.02:
+			froms[i] += Vector2(rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0))   # a jump past the keep
+		else:
+			froms[i] += Vector2(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.12, 0.12)) + (tos[i] - froms[i]).limit_length(0.05)
+		var body_r := [0.5, 0.9, 1.4][i % 3] as float
+		var side := [0, 1, -1][(i / 3) % 3] as int
+		var key_before := keeps[i].key
+		var got := arena.route_point_kept(froms[i], tos[i], body_r, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, side, keeps[i])
+		var want := arena.route_point(froms[i], tos[i], body_r, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, side)
+		calls += 1
+		if got != want:
+			check(false, "step %d: the kept route %s differs from route_point's %s" % [step, got, want])
+			return
+		if step % 8 == 0:
+			var missing := _blockers_not_kept(arena, froms[i], tos[i], body_r, keeps[i])
+			blockers += _blockers_not_kept(arena, froms[i], tos[i], body_r, null).size()
+			if not missing.is_empty():
+				check(false, "step %d: colliders %s could block but are not kept" % [step, missing])
+				return
+		if keeps[i].key == key_before:
+			held += 1
+			if want != tos[i]:
+				blocked_held += 1
+	print("test-perf-world-caches: the kept route held on %d of %d calls, %d of them blocked; %d blockers checked kept" % [
+		held, calls, blocked_held, blockers])
+	check(held > calls / 2, "the keep held on most calls (%d of %d)" % [held, calls])
+	check(blocked_held > 1000, "kept routes went round a collider (%d)" % blocked_held)
+	check(blockers > 2000, "blockers were checked (%d)" % blockers)
+
+
+## The two margins of a keep, each at the place only it covers: a collider past the goal that blocks
+## though its centre lies 2 r + body_r + clearance - 1.6 tm off the segment (the 2 r), and one the
+## caller comes to block by moving 0.99 tm without the keep being picked again (ROUTE_KEEP_TM).
+func test_a_kept_route_keeps_a_blocker_past_the_goal_and_one_the_caller_moves_into() -> void:
+	var body_r := 0.5
+	var clearance := PoolArena.ROUTE_CLEARANCE
+	var shells: Array[Dictionary] = [{"id": "past", "center": Vector2(15.9, 14.55), "radius": 4.0}]
+	var arena := ChunkArena.from_shells(shells)
+	var keep := ChunkArena.RouteKeep.new()
+	var from := Vector2(2.0, 10.0)
+	var to := Vector2(12.0, 10.0)
+	var want := arena.route_point(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0)
+	check(want != to, "the collider past the goal blocks")
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0, keep), want, "and is kept")
+	shells = [{"id": "beside", "center": Vector2(3.0, 3.9), "radius": 0.6}]
+	arena = ChunkArena.from_shells(shells)
+	keep = ChunkArena.RouteKeep.new()
+	from = Vector2(2.0, 2.0)
+	to = Vector2(12.0, 2.0)
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0, keep), to, "nothing blocks at first")
+	var key := keep.key
+	from = Vector2(2.0, 2.99)
+	want = arena.route_point(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0)
+	check(want != to, "the collider beside the route blocks once the caller has moved 0.99 tm")
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0, keep), want, "and was kept")
+	check_eq(keep.key, key, "by the keep picked before the move")
+
+
+## Every collider that passes route_point's blocking test from `from` to `to` (its loop's arithmetic,
+## over every collider) and is not in `keep` (all of them when `keep` is null).
+static func _blockers_not_kept(arena: ChunkArena, from: Vector2, to: Vector2, body_r: float, keep: ChunkArena.RouteKeep) -> Array:
+	var out := []
+	var to_target := to - from
+	var length := to_target.length()
+	if length < 1e-6:
+		return out
+	var dir := to_target / length
+	for k in arena._centers.size():
+		var c: Vector2 = arena._centers[k] - from
+		var along := c.dot(dir)
+		var rock_r := arena._radii[k]
+		if along <= 0.0 or along >= length + rock_r:
+			continue
+		var off := c - dir * along
+		if off.length() < rock_r + body_r + PoolArena.ROUTE_CLEARANCE and (keep == null or not keep.near.has(k)):
+			out.append(k)
+	return out
+
+
+## Caller `i`'s next goal: beside a random collider (up to 2 r + 2.5 tm from its centre, so the
+## route's blocker may lie past it) or, one time in four, anywhere; it starts 2 to 25 tm away.
+static func _new_goal(rng: RandomNumberGenerator, arena: ChunkArena, i: int, froms: Array[Vector2], tos: Array[Vector2]) -> void:
+	var to := Vector2(rng.randf_range(-60.0, 60.0), rng.randf_range(-60.0, 60.0))
+	if rng.randf() < 0.75 and not arena._centers.is_empty():
+		var k := rng.randi_range(0, arena._centers.size() - 1)
+		to = arena._centers[k] + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(0.0, 2.0 * arena._radii[k] + 2.5)
+	tos[i] = to
+	froms[i] = to + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(2.0, 25.0)
