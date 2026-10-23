@@ -122,13 +122,14 @@ The gameplay skin needs no change: it already runs coarser than the preview, at 
   - Checks: on the quadruped, biped and hexapod, clicks on the side of the chest, the side of the neck, the top of the
     back and past the tail tip each grow a valid limb (12 checks).
 - **Editor Lab.** The limb tool (6 or L) grows the limb and lets the mouse drag its tip out in the same gesture. The
-  growth and the drag are one undo step. Q and E turn the selected part; R and F tilt it. The record limits apply, so
-  turning past them is refused.
-- The demo clip now also grows a pair of arms from the neck, turns the fin, and stretches the tail until the toes are
+  growth and the drag are one undo step. A selected part shows a yellow ring around its up axis; dragging the ring's
+  handle turns the part by the angle the mouse sweeps. Q and E also turn it, and R and F tilt it. The record limits
+  apply, so turning past them is refused.
+- The demo clip now also grows a pair of arms from the neck, turns a horn with its ring until its record's 60° limit,
+  and stretches the tail until the toes are
   too thin for the finest grid.
 
 ## 6. Next (PROPOSED)
 
-1. A gizmo ring for turning parts with the mouse, instead of keys.
-2. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
-3. Hand the core to S4's editor shell when the creature stage starts.
+1. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
+2. Hand the core to S4's editor shell when the creature stage starts.

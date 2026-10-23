@@ -6,7 +6,7 @@ extends Node3D
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part) to move it; with a part tool chosen, left-click
 ## the skin to add one. Wheel over the selected vertebra or joint: thicker or thinner; elsewhere: zoom. Right-drag:
-## orbit. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 6 or L limb tool (click the skin and drag the new limb's
+## orbit. A selected part shows a yellow ring: drag its handle round to turn the part. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 6 or L limb tool (click the skin and drag the new limb's
 ## tip out), 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the selection, Insert adds a
 ## vertebra or joint after the selection, Ctrl+Z / Ctrl+Y undo and redo, Enter commits.
 ##
@@ -23,7 +23,8 @@ const Picking := preload("res://domain/editor_picking.gd")
 
 const TOOLS := ["eye", "beak", "fin", "foot", "horn"]
 const HANDLE_PICK_PX := 16.0
-const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5)}
+const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
+		"turn": Color(1.0, 0.9, 0.2)}
 const BODY_COLOR := Color(0.36, 0.66, 0.86)
 
 var body_name := "s1_quadruped"
@@ -119,6 +120,31 @@ func _rebuild_handles(desc: RefCounted, placed: Array) -> void:
 	for e in placed:
 		var t: Transform3D = e["transform"]
 		_add_handle({"kind": "part", "id": e["part"], "twin": e["twin"]}, t.origin, 1.15 * r)
+		# The selected part's turn ring: a circle around its up axis, with a handle on its side to drag round.
+		if not e["twin"] and not selected.is_empty() and selected["kind"] in ["part", "turn"] and selected["id"] == e["part"]:
+			var up := t.basis.y.normalized()
+			var side := t.basis.x.normalized()
+			var ring_r := 5.0 * r
+			_add_ring(t.origin, up, side, ring_r)
+			_add_handle({"kind": "turn", "id": e["part"], "origin": t.origin + _rig_offset, "up": up},
+					t.origin + side * ring_r, r)
+
+
+func _add_ring(centre: Vector3, up: Vector3, side: Vector3, radius: float) -> void:
+	var im := ImmediateMesh.new()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	mat.albedo_color = COLORS["turn"]
+	im.surface_begin(Mesh.PRIMITIVE_LINE_STRIP, mat)
+	var other := up.cross(side)
+	for k in 49:
+		var a := TAU * k / 48.0
+		im.surface_add_vertex(centre + _rig_offset + (side * cos(a) + other * sin(a)) * radius)
+	im.surface_end()
+	var mi := MeshInstance3D.new()
+	mi.mesh = im
+	handle_root.add_child(mi)
 
 
 func _add_handle(h: Dictionary, body_pos: Vector3, r: float) -> void:
@@ -246,6 +272,9 @@ func drag_to(at: Vector2) -> void:
 	if not dragging:
 		return
 	var desc = session.working
+	if selected["kind"] == "turn":
+		_drag_turn(at)
+		return
 	if selected["kind"] == "part":
 		var hit := _skin_hit(at)
 		if not hit["hit"]:
@@ -302,6 +331,23 @@ func wheel(direction: int) -> void:
 		for j in limb["joints"]:
 			if j["id"] == selected["id"]:
 				_result(session.set_joint_radius(selected["limb"], selected["id"], int(round(int(j["r"]) * f))), "")
+
+
+## Dragging the turn ring's handle: the part turns by the angle the mouse sweeps around its up axis.
+func _drag_turn(at: Vector2) -> void:
+	var origin: Vector3 = selected["origin"]
+	var up: Vector3 = selected["up"]
+	var hit = Plane(up, origin).intersects_ray(camera.project_ray_origin(at), camera.project_ray_normal(at))
+	if hit == null:
+		return
+	if not selected.has("from"):
+		var part: Dictionary = session.working.parts.filter(func(x): return x["id"] == selected["id"])[0]
+		selected["from"] = selected["world"] - origin
+		selected["turn0"] = int(part["turn"])
+	var v0: Vector3 = selected["from"]
+	var v1: Vector3 = hit - origin
+	var delta := rad_to_deg(atan2(up.dot(v0.cross(v1)), v0.dot(v1)))
+	_result(session.orient_part(selected["id"], {"turn": int(round(selected["turn0"] + delta))}), "")
 
 
 ## Q/E turn the selected part 10 degrees left or right about its up axis, R/F tilt it.
@@ -469,12 +515,22 @@ func _demo_script() -> Array:
 	steps.append([10.3, func():
 		release()
 		tool = ""])
-	steps.append([10.8, func(): message = "turn the fin with Q / E"])
-	steps.append([11.0, func():
-		selected = handles.filter(func(h): return h["kind"] == "part" and h["id"] == "p_7" and not h["twin"])[0]
+	steps.append([10.6, func():
+		message = "turn a horn with its ring (its record allows 60 degrees)"
+		selected = handles.filter(func(h): return h["kind"] == "part" and h["id"] == "p_3" and not h["twin"])[0]
 		_dirty = true])
-	for i in 3:
-		steps.append([11.3 + 0.3 * i, func(): turn_selected(KEY_E)])
+	var spin := {}
+	steps.append([11.0, func():
+		var ring: Dictionary = handles.filter(func(h): return h["kind"] == "turn")[0]
+		spin["at"] = ring["world"]
+		spin["origin"] = ring["origin"]
+		spin["up"] = ring["up"]
+		press(camera.unproject_position(ring["world"]))])
+	for i in range(1, 25):
+		steps.append([11.0 + 0.05 * i, func():
+			var v: Vector3 = spin["at"] - spin["origin"]
+			drag_to(camera.unproject_position(spin["origin"] + v.rotated(spin["up"], deg_to_rad(-4.0 * i))))])
+	steps.append([12.3, func(): release()])
 	steps.append([12.4, func(): message = "stretch the tail: past the limit is refused"])
 	drag.call(12.6, 13.6, vertebra.call("v_9"), Vector3(0, 0.15, 1.2))
 	steps.append([14.0, func(): _report(session.undo(), "undo")])
