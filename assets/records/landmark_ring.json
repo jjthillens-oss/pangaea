@@ -2,63 +2,72 @@
   "id": "landmark_ring",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "rough - endless world S1, not visually approved",
-  "purpose": "Endless world S1 rough: A giant diatom girdle band standing on edge in two cradles. Swapped for the finished piece under the same id.",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 landmark (S1 rough): a giant diatom girdle band standing on edge in its cradle. Collides as a 2 bu circle; the visual fills the 3 bu anchor.",
   "category": "landmark",
   "source_blend": "assets/source/blender/landmark_ring.blend",
-  "generator_script": "tools/blender/make_s1_world_kit.py",
+  "generator_script": "tools/blender/make_s1_kit.py",
   "export_path": "assets/export/landmark_ring.glb",
   "export_format": "GLB",
   "dependencies": [],
   "revision": 1,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 5.8,
-    "y_forward": 2.6,
-    "z_up": 6.22
+    "x": 5.075,
+    "y_forward": 5.075,
+    "z_up": 6.6
   },
-  "triangles": 8100,
-  "triangle_budget": 9000,
+  "triangles": 4384,
+  "triangle_budget": 6000,
   "textures": [],
   "materials": [
+    "M_Amber",
+    "M_Frost",
     "M_Lavender",
-    "M_Silica",
-    "M_SilicaFrost"
+    "M_Silica"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
-    "Landmark"
+    "Growth_Beads",
+    "Growth_Needles",
+    "LandmarkRing"
   ],
+  "kind": "landmark",
   "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
-  "anchor_radius_m": 3.0,
-  "swim_band_reach_m": 2.82,
-  "scale_range": [
-    0.9,
-    1.06
-  ],
+  "group": 0,
+  "footprint_radius_m": 2.0,
+  "collide_radius_bu": 2.0,
+  "anchor_radius_bu": 3.0,
+  "yaw_rule": "steps_90",
   "dressings": [
     {
       "id": "plain",
       "tint": "#FFFFFF",
-      "growth": null,
+      "growth": "",
       "scale": 1.0
     },
     {
       "id": "frosted",
-      "tint": "#C9D4EE",
-      "growth": null,
-      "scale": 0.92
+      "tint": "#D6E0F5",
+      "growth": "Growth_Needles",
+      "scale": 0.96
     },
     {
-      "id": "amber_bloom",
-      "tint": "#F2E2C2",
-      "growth": null,
-      "scale": 1.05
+      "id": "amber",
+      "tint": "#F3E3C6",
+      "growth": "Growth_Beads",
+      "scale": 1.04
     }
   ],
-  "top_m": 3.42,
-  "bottom_m": -2.8,
-  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_world_kit.py; no external or generated meshes."
+  "swim_band_min_radius_m": 1.996,
+  "swim_band_radius_m": 2.0,
+  "top_m": 3.6,
+  "bottom_m": -3.0,
+  "scale_range": [
+    0.92,
+    1.06
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
 }

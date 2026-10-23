@@ -1,0 +1,55 @@
+{
+  "id": "shell_diatom_disc",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 shell (S1 rough): a centric diatom disc, flat-topped with radial ribs. An obstacle the cell slides around; slots pick it by footprint class.",
+  "category": "shell",
+  "source_blend": "assets/source/blender/shell_diatom_disc.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/shell_diatom_disc.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.5,
+    "y_forward": 1.5,
+    "z_up": 2.4
+  },
+  "triangles": 960,
+  "triangle_budget": 1300,
+  "textures": [],
+  "materials": [
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ShellDiatomDisc"
+  ],
+  "kind": "shell",
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_class": "fp_s",
+  "footprint_radius_m": 0.75,
+  "yaw_rule": "free",
+  "pickable": true,
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    }
+  ],
+  "swim_band_min_radius_m": 0.748,
+  "swim_band_radius_m": 0.75,
+  "top_m": 0.5,
+  "bottom_m": -1.9,
+  "scale_range": [
+    0.8,
+    1.2
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}
