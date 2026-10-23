@@ -92,6 +92,8 @@ func _report(rows: Array[Dictionary], run_count: int, ticks: int) -> String:
 			BalanceLab.DEATH_NOTICE_TICKS / 60.0, ", ".join(BalanceLab.BOTS)],
 		"Status: information, not a gate. Flags use the lab's own PROPOSED reading thresholds.",
 		"",
+		"Rows in italics are bots that do not suit the body (a forager on a body that eats no plankton, the hunter on one that cannot bite); they are kept for reference and raise no flags.",
+		"",
 		"| Body | Bot | Survived whole run | Deaths / 5 min | Starved / 5 min | Median first death | Meals / min alive | Mean energy | Starving | Meetings / min | Tells dodged | Kills | Killed by |",
 		"| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 	])
@@ -101,8 +103,9 @@ func _report(rows: Array[Dictionary], run_count: int, ticks: int) -> String:
 		names.sort()
 		for name in names:
 			by.append("%s %d" % [name, row.killed_by[name]])
+		var bot_cell: String = row.bot if row.fits else "_%s (off role)_" % row.bot
 		lines.append("| %s | %s | %d of %d | %.2f | %.2f | %.0f s | %.1f | %.0f%% | %.0f%% | %.2f | %d of %d | %d | %s |" % [
-			row.body, row.bot, row.survived_runs, row.runs, row.deaths_per_5_min, row.starved_per_5_min,
+			row.body, bot_cell, row.survived_runs, row.runs, row.deaths_per_5_min, row.starved_per_5_min,
 			row.median_first_death_s, row.meals_per_min, row.mean_energy_share * 100.0, row.starving_share * 100.0,
 			row.meetings_per_min, row.dodges, row.tells, row.kills, ", ".join(by) if not by.is_empty() else "none"])
 	lines.append("")

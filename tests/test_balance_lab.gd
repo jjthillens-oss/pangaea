@@ -68,6 +68,17 @@ func test_the_summary_adds_up_and_flags_starvation() -> void:
 	check(BalanceLab.flags(rows[0]).is_empty(), "a fed careless forager raises nothing")
 
 
+func test_off_role_bots_are_marked_and_raise_no_flags() -> void:
+	var grazer: Dictionary = lab.run("grazer", "hunt", 7, SHORT_TICKS)
+	var hunter: Dictionary = lab.run("hunter", "evade", 7, SHORT_TICKS)
+	check(not grazer.fits, "a grazer cannot bite, so HuntBot is off role")
+	check(not hunter.fits, "a hunter eats no plankton, so the foragers are off role")
+	check(lab.run("hunter", "hunt", 7, SHORT_TICKS).fits, "HuntBot suits the hunter")
+	check(lab.run("omnivore", "evade", 7, SHORT_TICKS).fits, "the foragers suit the omnivore")
+	var row: Dictionary = BalanceLab.summarize([_run("hunter", "evade", 1, {"deaths": 3, "starved": 3, "fits": false})])[0]
+	check(BalanceLab.flags(row).is_empty(), "an off-role row raises nothing")
+
+
 func test_seed_ranges_and_lists_parse() -> void:
 	check_eq(LabMain._seeds("1001-1003,7"), [1001, 1002, 1003, 7], "a range and a single seed")
 

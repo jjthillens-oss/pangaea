@@ -59,6 +59,7 @@ func run(body: String, bot: String, seed_value: int, ticks: int) -> Dictionary:
 	if not driver.is_valid():
 		return {"ok": false, "errors": PackedStringArray(["Unknown bot '%s'." % bot])}
 	var out := _new_run(body, bot, seed_value, ticks)
+	out.fits = fits(sim.phenotype, bot)
 	var events: Array = []
 	var dead_since := -1
 	var alive_since := 0
@@ -99,7 +100,7 @@ func _new_run(body: String, bot: String, seed_value: int, ticks: int) -> Diction
 		"deaths": 0, "starved": 0, "killed": 0, "killed_by": {}, "lives_ticks": [],
 		"meals": 0, "plankton_meals": 0, "carrion_meals": 0, "energy_supplied": 0.0,
 		"notices": 0, "tells": 0, "hits_taken": 0, "damage_taken": 0.0, "hits_dealt": 0, "dodges": 0, "kills": 0,
-		"points": 0, "distance_m": 0.0, "state_hash": 0}
+		"points": 0, "distance_m": 0.0, "state_hash": 0, "fits": true}
 
 
 func _count(out: Dictionary, e: Dictionary, sim: PoolSim, alive_since: int, met: Dictionary) -> void:
@@ -167,6 +168,19 @@ func _driver(bot: String, seed_value: int) -> Callable:
 	return Callable()
 
 
+## Whether a bot plays the way this body is meant to be played: the foragers need a body that eats
+## plankton ("plant"), the hunter one that bites. The kiter fits every body (it is the reckless
+## stress driver). A run that does not fit still counts, but raises no flags: a grazer that cannot
+## bite starving under HuntBot says nothing about balance.
+static func fits(phenotype: Phenotype, bot: String) -> bool:
+	match bot:
+		"forage", "wary", "evade":
+			return phenotype.can_eat("plant")
+		"hunt":
+			return phenotype.bite_damage > 0.0
+	return true
+
+
 ## Per body and bot, over the runs given: the means and totals the report shows. Rows are sorted by
 ## body, then by bot in BOTS order.
 static func summarize(runs: Array) -> Array[Dictionary]:
@@ -190,7 +204,7 @@ static func summarize(runs: Array) -> Array[Dictionary]:
 		var list: Array = groups[key]
 		var minutes := 0.0
 		var alive_min := 0.0
-		var row := {"body": list[0].body, "bot": list[0].bot, "runs": list.size(), "seeds": [],
+		var row := {"body": list[0].body, "bot": list[0].bot, "fits": bool(list[0].get("fits", true)), "runs": list.size(), "seeds": [],
 			"deaths": 0, "starved": 0, "killed": 0, "killed_by": {}, "meals": 0, "carrion_meals": 0,
 			"tells": 0, "notices": 0, "dodges": 0, "hits_taken": 0, "kills": 0, "survived_runs": 0,
 			"starving_ticks": 0, "alive_ticks": 0, "first_death_ticks": [], "energy_share_sum": 0.0}
@@ -227,6 +241,8 @@ static func summarize(runs: Array) -> Array[Dictionary]:
 ## the lab's own reading aids (PROPOSED), not gates: the step 3 gates stay in test_threat_gates.
 static func flags(row: Dictionary) -> PackedStringArray:
 	var out := PackedStringArray()
+	if not row.get("fits", true):
+		return out
 	var careful: bool = row.bot in ["wary", "evade", "hunt"]
 	if row.starved_per_5_min > 0.25:
 		out.append("starves (%.2f per 5 min)" % row.starved_per_5_min)
@@ -236,6 +252,8 @@ static func flags(row: Dictionary) -> PackedStringArray:
 		out.append("few threats met (%.2f a minute)" % row.meetings_per_min)
 	if row.meals_per_min < 1.0:
 		out.append("eats little (%.2f meals a minute alive)" % row.meals_per_min)
+	if careful and row.mean_energy_share > 0.9 and row.deaths == 0:
+		out.append("never under pressure (mean energy %.0f%%, no deaths)" % (row.mean_energy_share * 100.0))
 	if row.starving_share > 0.2:
 		out.append("starving %.0f%% of the time alive" % (row.starving_share * 100.0))
 	return out
