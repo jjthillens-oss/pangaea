@@ -24,11 +24,14 @@ func _endless(at := PackedFloat64Array()) -> PoolSim:
 	return FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, at)
 
 
-## The caps the table implies, worked out here: per role, the sites whose species fills it.
+## The caps the table implies, worked out here: per role of a species drawn at the world's size
+## (entry_size at most the size: BP-10, so the real catalog's size-2 species add no role at size 1),
+## the sites whose species fills it.
 func _want_caps(sim: PoolSim) -> Dictionary:
 	var out := {}
 	for id in species.species_ids():
-		out[str(species.niche_of(id).role)] = 0
+		if species.entry_size(id) <= sim.size():
+			out[str(species.niche_of(id).role)] = 0
 	for id in sim.world.sites:
 		var role := str(species.niche_of(str(sim.world.sites[id].species)).role)
 		out[role] = int(out[role]) + 1

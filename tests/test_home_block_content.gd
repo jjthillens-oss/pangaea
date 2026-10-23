@@ -68,6 +68,10 @@ func _budget() -> float:
 func test_the_home_block_validates() -> void:
 	check_eq(home.validate(species, kit, parts, 1), PackedStringArray(), "home_b0 against the shipped kit at size 1")
 	check_eq(home.where, "home_b0", "messages name the file")
+	# S2 (T3.4): at size 2 too, with the size-2 species (WorldChecks.s2_species until T1.7 ships them).
+	var s2 := WorldChecks.s2_species()
+	check_eq(HomeBlock.load_from(HomeBlock.DEFAULT_PATH, layout, s2).validate(s2, kit, parts, 2), PackedStringArray(),
+		"home_b0 against the shipped kit at size 2")
 
 
 func test_the_ring_is_twenty_zones_and_eight_shells_outside_the_m1_pool() -> void:

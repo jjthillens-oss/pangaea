@@ -4,6 +4,8 @@ extends TestCase
 ## is for: one mutated copy of the real data per rule, each reported under that rule's name.
 
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
+## The two-post fixture's reader (tests/fixtures/creatures_posts_test.json).
+const Habits := preload("res://tests/test_habits.gd")
 
 var parts: PartCatalog
 var layout: PoolLayout
@@ -55,7 +57,7 @@ func test_the_real_species_data_is_valid() -> void:
 	var cat := SpeciesCatalog.load_from()
 	var errors := cat.validate(layout, parts)
 	check(errors.is_empty(), "no errors: %s" % [errors])
-	check_eq(Array(cat.species_ids()), ["ambush_hunter", "rammer"], "two species, sorted")
+	check_eq(Array(cat.species_ids()), ["ambush_hunter", "elder_rammer", "lurker", "rammer"], "four species, sorted")
 	check_eq(cat.sites.size(), 7, "seven sites")
 	check_eq(cat.sites_of("ambush_hunter").size(), 3, "three lairs")
 	check_eq(cat.sites_of("rammer").size(), 4, "four territories")
@@ -179,6 +181,14 @@ func test_the_test_fixture_is_the_real_species_data_with_no_sites() -> void:
 	for key in ["sites", "status", "note"]:
 		real.erase(key)
 		fixture.erase(key)
+	# The fixture is M1's threats: S2's relationships block and the species that enter later are left
+	# out of it (a test that needs them builds its catalog from the real data).
+	check(not fixture.has("relationships"), "the fixture has no relationships block")
+	real.erase("relationships")
+	for id in real.species.keys():
+		if int(real.species[id].get("entry_size", 1)) > 1:
+			check(not fixture.species.has(id), "the fixture has no %s" % id)
+			real.species.erase(id)
 	check_eq(JSON.stringify(fixture, "", true, true), JSON.stringify(real, "", true, true), "everything else is the real data")
 	var errors := SpeciesCatalog.load_from(TEST_SPECIES).validate(layout, parts)
 	check(errors.is_empty(), "and it validates: %s" % [errors])
@@ -428,25 +438,43 @@ const RELATIONSHIPS := {"rules": {"prey_share": true, "intruder_share": true, "f
 	"tolerance": 1e-6}
 
 
-## The real data with the relationships block and two size-2 species built on the M1 ones (spine
-## 4.2): a two-post ambush "lurker" and a two-post territorial "elder_rammer".
+## The real data (T1.7): the relationships block and the two size-2 species built on the M1 ones
+## (spine 4.2), the two-post ambush "lurker" and the two-post territorial "elder_rammer".
 func _s2_data() -> Dictionary:
+	return _data()
+
+
+func test_the_s2_species_are_their_m1_kin_but_for_what_spine_4_2_names() -> void:
 	var data := _data()
-	data["relationships"] = RELATIONSHIPS.duplicate(true)
-	var lurker: Dictionary = data.species.ambush_hunter.duplicate(true)
-	lurker.name = "Lurker"
-	lurker.entry_size = 2
-	lurker.niche = {"role": "lurker", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
-	lurker.habit = {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
-	var elder: Dictionary = data.species.rammer.duplicate(true)
-	elder.name = "elder rammer"
-	elder.entry_size = 2
-	elder.nav_timeout_s = 16.0
-	elder.niche = {"role": "elder_rammer", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
-	elder.habit = {"post_switch": "nearer_cell", "post_hysteresis_m": 2.0}
-	data.species["lurker"] = lurker
-	data.species["elder_rammer"] = elder
-	return data
+	check_eq(data.relationships, RELATIONSHIPS, "spine 4.2's relationships block, every rule on")
+	var own := {
+		"lurker": {"kin": "ambush_hunter", "name": "Lurker", "death_reason": "Caught by a Lurker", "entry_size": 2.0,
+			"body_asset": "creature_lurker_body", "niche": {"role": "lurker", "cap": 0.0, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
+			"habit": {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}},
+		"elder_rammer": {"kin": "rammer", "name": "elder rammer", "death_reason": "Rammed by an elder rammer", "entry_size": 2.0,
+			"body_asset": "creature_elder_rammer_body", "nav_timeout_s": 16.0,
+			"niche": {"role": "elder_rammer", "cap": 0.0, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
+			"habit": {"post_switch": "nearer_cell", "post_hysteresis_m": 2.0}},
+	}
+	for id in own:
+		var block: Dictionary = data.species[id].duplicate(true)
+		var kin: Dictionary = data.species[own[id].kin].duplicate(true)
+		for key in own[id]:
+			if key == "kin":
+				continue
+			check_eq(block[key], own[id][key], "%s.%s" % [id, key])
+		check(str(block.death_tip).begins_with("Lurkers keep two lairs in the reefs." if id == "lurker" else "Elder rammers guard two feasts."),
+			"%s: spine 4.2's tip first: %s" % [id, block.death_tip])
+		for key in own[id].keys() + ["death_tip"]:
+			block.erase(key)
+			kin.erase(key)
+		if id == "lurker":
+			check_eq(block.senses.fov_deg, 300.0, "the Lurker's wide sight")
+			block.senses.erase("fov_deg")
+			kin.senses.erase("fov_deg")
+		check_eq(JSON.stringify(block, "", true, true), JSON.stringify(kin, "", true, true), "every other number of %s is the %s's" % [id, own[id].kin])
+	check_eq(data.sites.filter(func(s: Dictionary) -> bool: return s.species == "lurker" or s.species == "elder_rammer"), [],
+		"neither has a pool site")
 
 
 func _s2_errors_after(change: Callable) -> PackedStringArray:
@@ -667,3 +695,70 @@ func test_strike_room_problem_at_a_size_uses_the_record_at_that_size() -> void:
 	# whose radius is 0.5 tm at every size: 2.49 tm. The leash is 3.6 x 0.625 = 2.25 tm.
 	check_eq(short.strike_room_problem("ambush_hunter", 6.0, "x", parts, 2), "x strike lane 2.49 m is longer than its leash (2.25 m).",
 		"at size 2: the scaled lane against the scaled leash")
+
+
+# --- two-post sites at q = 1 (S2G4) ---
+
+## Rules 9 and 10 for the fixture's site `site` against `rocks`, on each post's disc and the union.
+func _two_post_errors(cat: SpeciesCatalog, site: Dictionary, rocks: Array[Dictionary], wall_r: float) -> PackedStringArray:
+	var two := cat.two_post_disc_for(site, site.territory, site.post_b, site.post_b.territory)
+	var errors := PackedStringArray()
+	cat.check_two_post_discs("site '%s'" % site.id, two, cat.phenotype(site.species, parts).radius, rocks, wall_r, errors)
+	return errors
+
+
+func test_the_two_post_fixture_keeps_rules_6_9_and_10_on_each_post_and_their_union() -> void:
+	var cat := SpeciesCatalog.load_from()
+	var fx := Habits.posts_fixture()
+	check_eq(fx.sites.size(), 2, "a Lurker and an elder rammer")
+	for site: Dictionary in fx.sites:
+		var id: String = site.species
+		check(not cat.habit_of(id).is_empty(), "%s keeps a habit" % id)
+		check_eq(_two_post_errors(cat, site, fx.rocks, fx.soft_start), PackedStringArray(), "%s: rules 9 and 10 hold" % site.id)
+		# Rule 6 at q = 1: the strike lane fits each post's room (its leash, or its zone and leash).
+		for t: Dictionary in [site.territory, site.post_b.territory]:
+			var smallest := float(t.get("radius", 0.0))
+			check_eq(cat.strike_room_problem(id, smallest, "site '%s'" % site.id, parts), "", "%s: the lane fits the post" % site.id)
+		# D-61's spacing at q = 1, and the elder rammer's move within 0.8 of its navigation timeout.
+		var apart: float = Vector2(site.home).distance_to(site.post_b.home)
+		var p := cat.phenotype(id, parts)
+		if id == "lurker":
+			check(apart >= 4.0 and apart <= 6.0, "the Lurker's posts are 4 to 6 m apart (%.2f)" % apart)
+		else:
+			check(apart >= 6.0 and apart <= 10.5, "the elder rammer's posts are 6 to 10.5 m apart (%.2f)" % apart)
+			var travel := apart / (p.speed * float(cat.species[id].speeds.wander))
+			check(travel <= 0.8 * float(cat.species[id].nav_timeout_s), "its move takes %.1f s, under 0.8 x %.0f s" % [travel, cat.species[id].nav_timeout_s])
+			check(Vector2(site.territory.center).distance_to(site.post_b.territory.center) > 2.0 * float(site.territory.radius),
+				"its two zones do not overlap")
+
+
+func test_a_shell_near_the_union_circle_or_pinching_inside_the_union_is_caught_though_both_posts_are_clear() -> void:
+	var cat := SpeciesCatalog.load_from()
+	var fx := Habits.posts_fixture()
+	for site: Dictionary in fx.sites:
+		var two := cat.two_post_disc_for(site, site.territory, site.post_b, site.post_b.territory)
+		var center: Vector2 = two.center
+		var a: Vector2 = two.posts[0].center
+		var side := (Vector2(two.posts[1].center) - a).orthogonal().normalized()
+		var along := (Vector2(two.posts[1].center) - a).normalized()
+		# Rule 9: a shell on the union circle, square to the posts' line, is far from both post circles.
+		var on_circle: Array[Dictionary] = [{"id": "edge", "center": center + side * float(two.radius), "radius": 0.5}]
+		var errors := _two_post_errors(cat, site, on_circle, INF)
+		check_eq(errors.size(), 1, "%s: one problem: %s" % [site.id, errors])
+		check_has_error(errors, "Rule 9 (leash band): site '%s' the union: edge" % site.id)
+		# Rule 9 on one post's circle where it lies deep inside the other post's disc and the union.
+		for i in 2:
+			var c: Vector2 = two.posts[i].center
+			var toward: Vector2 = (Vector2(two.posts[1 - i].center) - c).normalized()
+			var inner: Array[Dictionary] = [{"id": "inner", "center": c + toward * float(two.posts[i].radius), "radius": 0.3}]
+			errors = _two_post_errors(cat, site, inner, INF)
+			check_eq(errors.size(), 1, "%s: one problem: %s" % [site.id, errors])
+			check_has_error(errors, "Rule 9 (leash band): site '%s' post %s: inner" % [site.id, "a" if i == 0 else "b"])
+		# Rule 10: two shells inside the union, out of both posts' reach, with a gap no body passes.
+		if site.species == "elder_rammer":
+			var deep := center + side * 13.0
+			var pinch: Array[Dictionary] = [{"id": "p1", "center": deep - along * 0.9, "radius": 0.4},
+				{"id": "p2", "center": deep + along * 0.9, "radius": 0.4}]
+			errors = _two_post_errors(cat, site, pinch, INF)
+			check_eq(errors.size(), 2, "%s: the pinch, both ways: %s" % [site.id, errors])
+			check_has_error(errors, "Rule 10 (pinch): site '%s' the union: p1 leaves 1.00 m to p2" % site.id)

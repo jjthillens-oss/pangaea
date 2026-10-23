@@ -29,9 +29,26 @@ extends TestCase
 ##     looked before the step (the same sense, position and velocity) or a hurt by the cell then
 ## 10  health and energy within range, for the cell and every creature
 ## 11  each niche counts exactly its live data creatures, within its cap
+##
+## The endless runner at size 2 (S2 T0.3, gate S2G8; endless-cell plan B.6): on the real content with
+## growth on, each seed's cell is set to size 2 at home on its first tick (debug_set_size, a cut for
+## the checker, BP-2) and lives 5 minutes there, KiterBot on two seeds (biting every creature it
+## visits, bite_visits) and EvadeBot over ForageBot on two. Every tick is checked against
+## FuzzInvariants as the endless fuzz has them (1 to 13 and 16; 2 on the two-post disc the brain's
+## leash_disc gives, and 3, 7 and 11 over the creature field, which holds no remnant) and against
+## 14  no creature at q < 1 at the cell's size notices, tells at, chases or hits the cell: none holds
+##     the cell as its target, names it in creature_noticed, creature_tell or creature_strike, or
+##     lands a hit on it (a remnant's too).
+## Non-vacuity: each pair of SIZE_TWO_PAIRS had the cell in its senses on at least
+## SIZE_TWO_MIN_SENSED ticks and was bitten by it at least once, so the rule against answering a
+## larger body (relationship rule 4) was asked. The runner waits on the S2 seams it reads
+## (Gates.s2_missing).
 
 const KiterBot := preload("res://game/dev/kiter_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const ForageBot := preload("res://game/dev/forage_bot.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
 const SEEDS: Array[int] = [401, 402, 403, 404]
 ## The starting body of each seed's lineage: two jaws to wound creatures (flee), and the jawless grazer.
 const BODIES: PackedStringArray = ["hunter", "omnivore", "grazer", "hunter"]
@@ -47,6 +64,17 @@ const MIN_HITS_ON_CELL := 1
 const MIN_FLEES := 1
 ## Invariant 9's floor: changed memories of the cell checked over the four seeds (3333 measured).
 const MIN_MEMORY_CHECKS := 2000
+## The size-2 runner (S2G8): seeds, bots and bodies (the kiters bite, so they have jaws).
+const SIZE_TWO_SEEDS: Array[int] = [421, 422, 423, 424]
+const SIZE_TWO_BOTS: PackedStringArray = ["kiter", "evade", "kiter", "evade"]
+const SIZE_TWO_BODIES: PackedStringArray = ["hunter", "grazer", "omnivore", "hunter"]
+const SIZE_TWO := 2
+const SIZE_TWO_TICKS := 5 * 60 * 60
+## The (species, size) pairs invariant 14 is asked of, and how often each must have sensed the cell.
+const SIZE_TWO_PAIRS := [["ambush_hunter", 2], ["rammer", 2]]
+const SIZE_TWO_MIN_SENSED := 600
+const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "fuzz_growth", "size_two_species", "remnants"]
+const Q_SLACK := 1e-9                    ## q is exactly 1.0 at the entry size (Relationships.q_of)
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -111,6 +139,170 @@ func test_invariant_9_fails_a_memory_of_the_cell_that_its_senses_did_not_give() 
 		_fz._check_memory(c, t, "self-test", looked, cell, sim.arena, k)
 		check_eq(_fz.bad.has(9), case[6], "%s: %s" % [case[0], "fails" if case[6] else "passes"])
 		check_eq(k.memory_checks, 1, "%s: counted" % case[0])
+
+
+func test_slow_at_size_two_no_creature_below_its_size_notices_tells_chases_or_hits_the_cell() -> void:
+	var waits := Gates.s2_missing(SIZE_TWO_NEEDS)
+	if not waits.is_empty():
+		print("test-threat-fuzz: the size-2 runner waits on: %s" % "; ".join(waits))
+		return
+	var fz: Variant = Gates.new_fuzz()
+	var pairs := {}   # species -> {"sensed": ticks, "bitten": hits by the cell}
+	for pair in SIZE_TWO_PAIRS:
+		pairs[pair[0]] = {"sensed": 0, "bitten": 0}
+	var broken := PackedStringArray()
+	for i in SIZE_TWO_SEEDS.size():
+		var run := _size_two_run(fz, SIZE_TWO_SEEDS[i], SIZE_TWO_BOTS[i], SIZE_TWO_BODIES[i], pairs)
+		broken.append_array(run.broken)
+		print("test-threat-fuzz: size 2, seed %d (%s, %s): size %d at the end, %d deaths, %d of the cell's bites on creatures below it, %d checked by 14; %s" % [
+			SIZE_TWO_SEEDS[i], SIZE_TWO_BOTS[i], SIZE_TWO_BODIES[i], run.size, run.deaths, run.bites_below, run.checked, run.counts])
+	print("test-threat-fuzz: size 2 pairs: %s" % pairs)
+	check_eq(str(fz.report()), "", "every invariant on every tick at size 2")
+	check(broken.is_empty(), "invariant 14 broken %d times; first: %s" % [broken.size(), broken[0] if not broken.is_empty() else ""])
+	for pair in SIZE_TWO_PAIRS:
+		var p: Dictionary = pairs[pair[0]]
+		check(int(p.sensed) >= SIZE_TWO_MIN_SENSED, "(%s, %d) had the cell in its senses on %d ticks (at least %d)" % [
+			pair[0], pair[1], p.sensed, SIZE_TWO_MIN_SENSED])
+		check(int(p.bitten) >= 1, "(%s, %d) was bitten by the cell (%d)" % [pair[0], pair[1], p.bitten])
+
+
+func test_invariant_14_fails_a_creature_below_its_size_that_engages_the_cell() -> void:
+	# Hand-built at size 2 on the pool's creatures (M1 species, entry size 1: q = 0.625): a target, a
+	# notice, a tell, a strike or a hit on the cell fails; a flight, a percept or the same at size 1
+	# does not.
+	var r := Lineage.found(SEEDS[0], "test+dev", catalog, "hunter")
+	r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+	var sim := PoolSim.create(r.save, catalog, layout, species)
+	var c: CreatureField.Creature = sim.creatures.creatures[0]
+	var known := {c.id: c.species_id}
+	var p := CreatureField.PLAYER_ID
+	var cases := [   # [what, target, events, size, fails]
+		["calm", "", [], 2, false],
+		["fleeing the cell", "", [{"type": "creature_fled", "id": c.id, "from": p}], 2, false],
+		["holding the cell as its target", p, [], 2, true],
+		["noticing the cell", "", [{"type": "creature_noticed", "id": c.id, "target": p, "by": "sight"}], 2, true],
+		["telling at the cell", "", [{"type": "creature_tell", "id": c.id, "target": p}], 2, true],
+		["striking at the cell", "", [{"type": "creature_strike", "id": c.id, "target": p}], 2, true],
+		["hitting the cell", "", [{"type": "hit", "attacker": c.id, "target": p}], 2, true],
+		["hit by the cell", "", [{"type": "hit", "attacker": p, "target": c.id}], 2, false],
+		["holding the cell as its target at q == 1", p, [], 1, false],
+		["telling at another creature", "", [{"type": "creature_tell", "id": c.id, "target": "c_99"}], 2, false],
+	]
+	for case in cases:
+		c.brain.target = case[1]
+		var out := broken_14(sim, case[3], case[2], known, case[0])
+		check_eq(not out.is_empty(), case[4], "%s: %s" % [case[0], "fails" if case[4] else "passes"])
+	c.brain.target = ""
+
+
+## Invariant 14 on one tick at the cell's `size`: what broke it, as text. `known` maps every body id
+## seen this tick (creatures before and after the step, and remnants) to its species, so a creature
+## gone in the tick is still judged.
+static func broken_14(sim: PoolSim, size: int, events: Array, known: Dictionary, where: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	var p := CreatureField.PLAYER_ID
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.brain != null and c.brain.target == p and _below(sim, c.species_id, size):
+			out.append("%s: %s (%s) at q < 1 holds the cell as its target in %s/%s" % [where, c.id, c.species_id, c.brain.state, c.brain.phase])
+	for e in events:
+		var type := str(e.get("type", ""))
+		var who := ""
+		if type in ["creature_noticed", "creature_tell", "creature_strike"] and str(e.get("target", "")) == p:
+			who = str(e.get("id", ""))
+		elif type == "hit" and str(e.get("target", "")) == p:
+			who = str(e.get("attacker", ""))
+		if who.is_empty() or not known.has(who):
+			continue
+		if _below(sim, str(known[who]), size):
+			out.append("%s: %s (%s) at q < 1: %s on the cell" % [where, who, known[who], type])
+	return out
+
+
+static func _below(sim: PoolSim, species_id: String, size: int) -> bool:
+	if not sim.species.has_species(species_id):
+		return false
+	return sim.species.q_of(species_id, size) < 1.0 - Q_SLACK
+
+
+## One size-2 seed: the cell set to size 2 on its first tick, then SIZE_TWO_TICKS with `bot_name`,
+## every tick through the checker and invariant 14. Adds to `pairs`; returns {"broken", "size",
+## "deaths", "bites_below", "checked", "counts"}.
+func _size_two_run(fz: Variant, seed_value: int, bot_name: String, body: String, pairs: Dictionary) -> Dictionary:
+	var sim: Variant = Gates.make_sim(body, seed_value, true)
+	sim.grace_until = sim.tick
+	sim.drain_events()
+	fz.start_run()
+	var bot: Variant
+	var forage = ForageBot.new()   # the evading cell's base, kept here for as long as the run
+	forage.keys.trigger = ""       # the EvadeBot sends the keys
+	if bot_name == "kiter":
+		bot = KiterBot.new(seed_value)
+		bot.bite_visits = true
+	else:
+		bot = EvadeBot.new()
+		bot.base = forage.next_intent
+	var out := {"broken": PackedStringArray(), "size": 0, "deaths": 0, "bites_below": 0, "checked": 0, "counts": {}}
+	var dead := {}
+	var events: Array[Dictionary] = []
+	for i in SIZE_TWO_TICKS:
+		events.append_array(Gates.continue_after_death(sim, dead, fz))
+		var t: int = sim.tick
+		var was: Dictionary = fz.before(sim)
+		var known := _species_of(sim)
+		if i == 0:
+			check(sim.debug_set_size(SIZE_TWO), "seed %d: the cell set to size 2" % seed_value)
+		var intent: SimIntent = bot.next_intent(sim, events) if bot_name == "evade" else bot.next_intent(sim)
+		sim.step(intent)
+		events = sim.drain_events()
+		var where := "size 2 seed %d tick %d" % [seed_value, t]
+		fz.after(sim, events, t, where, was)
+		known.merge(_species_of(sim))
+		var size: int = sim.size()
+		out.broken.append_array(broken_14(sim, size, events, known, where))
+		out.checked += _tally(sim, size, events, known, pairs)
+		for e in events:
+			if e.type == "died":
+				out.deaths += 1
+			elif e.type == "hit" and e.attacker == CreatureField.PLAYER_ID and known.has(e.target) and _below(sim, known[e.target], size):
+				out.bites_below += 1
+	out.size = sim.size()
+	out.counts = fz.counts.duplicate()
+	return out
+
+
+## Every body id of the tick -> its species: the creature field's and the remnants'.
+static func _species_of(sim: Variant) -> Dictionary:
+	var out := {}
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		out[c.id] = c.species_id
+	var remnants: Variant = sim.get("remnants")
+	if remnants != null:
+		for c in remnants.items:
+			out[c.id] = c.species_id
+	return out
+
+
+## Non-vacuity of 14 on one tick: for each pair's species below the cell's size, the ticks one of its
+## creatures had a percept of the cell from this tick and the cell's hits on one. Returns how many
+## creatures at q < 1 the tick held.
+static func _tally(sim: Variant, size: int, events: Array, known: Dictionary, pairs: Dictionary) -> int:
+	var below := 0
+	var sensed := {}
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.brain == null or not _below(sim, c.species_id, size):
+			continue
+		below += 1
+		var seen: Dictionary = c.brain.seen.get(CreatureField.PLAYER_ID, {})
+		if pairs.has(c.species_id) and not seen.is_empty() and int(seen.get("tick", -1)) == sim.tick - 1:
+			sensed[c.species_id] = true
+	for id in sensed:
+		pairs[id].sensed += 1
+	for e in events:
+		if e.get("type", "") == "hit" and e.get("attacker", "") == CreatureField.PLAYER_ID:
+			var sp := str(known.get(e.get("target", ""), ""))
+			if pairs.has(sp) and _below(sim, sp, size):
+				pairs[sp].bitten += 1
+	return below
 
 
 ## One seed's run, the cell starting at `start` (the checkpoint when not finite). Returns its event

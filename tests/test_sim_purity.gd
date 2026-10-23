@@ -18,7 +18,13 @@ const FILE_ALLOWED: PackedStringArray = ["res://game/domain/part_catalog.gd", "r
 ## Files that must be scanned once they exist (non-vacuity: a scan that silently skipped them would
 ## pass): the world's generator and stream, and the endless domain rules.
 const MUST_SCAN: PackedStringArray = ["res://game/systems/world/world_gen.gd", "res://game/systems/world/world_stream.gd",
-	"res://game/domain/chunk_arena.gd", "res://game/domain/rebase_shift.gd", "res://game/domain/world_hash.gd"]
+	"res://game/domain/chunk_arena.gd", "res://game/domain/rebase_shift.gd", "res://game/domain/world_hash.gd",
+	"res://game/systems/world/growth.gd", "res://game/systems/world/remnant_field.gd", "res://game/domain/relationships.gd"]
+## S2's sim files (S2 gate S2G27): the growth economy, the remnants and the relationship rules. They
+## have landed, so each must exist as well as be scanned: a move or a rename would otherwise take it
+## out of the scan with nothing failing.
+const S2_FILES: PackedStringArray = ["res://game/systems/world/growth.gd", "res://game/systems/world/remnant_field.gd",
+	"res://game/domain/relationships.gd"]
 const BANNED := {
 	"global random numbers": "(?<![\\w.])(randf|randi|randomize|randf_range|randi_range|randfn|seed)\\(",
 	"the clock": "\\bTime\\.",
@@ -125,6 +131,10 @@ func test_the_scan_covers_the_world_directory() -> void:
 		if FileAccess.file_exists(path):
 			check(files.has(path), "%s exists and is scanned" % path)
 	check(files.has("res://game/domain/world_hash.gd"), "the endless hash (T0.1) is scanned through the domain directory")
+	for path in S2_FILES:
+		check(FileAccess.file_exists(path), "%s exists (S2G27)" % path)
+		check(files.has(path), "%s is scanned (S2G27)" % path)
+		check(MUST_SCAN.has(path), "%s is in MUST_SCAN" % path)
 	for path in FILE_ALLOWED:
 		check(not path.begins_with(WORLD_DIR) or path.get_file() in ["world_config.gd", "tile_catalog.gd", "home_block.gd", "placement_kit.gd"],
 			"only the four loaders may touch files in the world directory (%s)" % path)
