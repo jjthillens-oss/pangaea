@@ -48,7 +48,9 @@ extends TestCase
 ##    tick in turn, 200 ticks a round, 3 rounds: the median difference per remnant at most 25 us.
 ##  - S2G18, the growth tick: per seed (6), the ring filled, at least PREFETCH_WARM_TICKS ticks for the
 ##    prefetch, then debug_force_growth; the tick that grows at its fastest of 3 runs is at most 40
-##    yardsticks. The same with no warm-up (cold) is printed.
+##    yardsticks. The same with no warm-up (cold) is printed. A second slow case holds what makes the
+##    warm tick warm: on PREFETCH_SEEDS, every chunk the prefetch held when the growth was forced that
+##    the growth tick loads is the very WorldChunk it held, not one generated again.
 
 const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
@@ -106,6 +108,7 @@ const GROWTH_TICK_SEEDS: Array[int] = [2811, 2812, 2813, 2814, 2815, 2816]
 const PREFETCH_WARM_TICKS := 60        ## S2G18: the prefetch fills at most one chunk a tick
 const GROWTH_TICK_LIMIT_YARDSTICKS := 40.0
 const GROWTH_WAIT_TICKS := 10          ## a forced growth grows within this many ticks
+const PREFETCH_SEEDS: Array[int] = [2811, 2812]   ## the prefetch case: the first two growth-tick seeds
 
 static var _runs := {}                ## "overdriven/size" or "racer/size" -> the timed swim runs
 static var _dense: Array[Dictionary] = []   ## the saturated case's 3 runs
@@ -706,6 +709,45 @@ func test_slow_the_growth_tick_costs_at_most_40_yardsticks() -> void:
 		check(float(warm.ratio) <= GROWTH_TICK_LIMIT_YARDSTICKS, "seed %d: the growth tick costs %.2f yardsticks at its fastest (limit %.0f)" % [
 			seed_value, warm.ratio, GROWTH_TICK_LIMIT_YARDSTICKS])
 	print("test-endless-cost: S2G18 the growth tick at its fastest of %d runs: %s" % [RUNS, "; ".join(rows)])
+
+
+## S2G18's warm path (BP-4): the growth tick takes the next size's chunks the prefetch holds as they
+## are. On each of PREFETCH_SEEDS, warm as _growth_tick has it, the chunks the growth tick loads that
+## the prefetch held when the growth was forced are the very WorldChunks it held (is_same), and there
+## is at least one.
+func test_slow_the_growth_tick_loads_the_chunks_the_prefetch_holds() -> void:
+	if _size_two_waits("the growth tick's prefetch", GROWTH_NEEDS):
+		return
+	for seed_value in PREFETCH_SEEDS:
+		var sim: Variant = Gates.make_sim("omnivore", seed_value, true)
+		sim.debug_set_hidden(true)
+		var bot: Variant = _still_keys()
+		sim.step(_still(bot, sim))
+		sim.drain_events()
+		fill_ring(sim)
+		for i in PREFETCH_WARM_TICKS:
+			sim.step(_still(bot, sim))
+			sim.drain_events()
+		var held: Dictionary = (sim.world.get("_next_chunks") as Dictionary).duplicate()
+		check(sim.debug_force_growth(), "seed %d: debug_force_growth" % seed_value)
+		sim.drain_events()
+		var grew := false
+		for i in GROWTH_WAIT_TICKS:
+			sim.step(_still(bot, sim))
+			if _has_event(sim.drain_events(), "grew"):
+				grew = true
+				break
+		check(grew, "seed %d: the forced growth grew within %d ticks" % [seed_value, GROWTH_WAIT_TICKS])
+		var loaded := 0
+		var same := 0
+		for key: Vector2i in sim.world.loaded_keys():
+			if held.has(key):
+				loaded += 1
+				same += 1 if is_same(sim.world.chunk(key), held[key]) else 0
+		print("test-endless-cost: S2G18 seed %d: the growth tick loaded %d of the %d chunks the prefetch held, %d of them as held" % [
+			seed_value, loaded, held.size(), same])
+		check(loaded > 0, "seed %d: the growth tick loaded chunks the prefetch held (%d held)" % [seed_value, held.size()])
+		check_eq(same, loaded, "seed %d: each the very chunk the prefetch held, not generated again" % seed_value)
 
 
 ## One seed's growth tick at its fastest of RUNS runs: {"ratio", "us", "grew", "prefetched"}. Every

@@ -544,6 +544,58 @@ func test_the_growth_tick_takes_the_next_arena_as_the_arena_the_caches_off_build
 		check_eq(_arena_state(on.arena), _arena_state(off.arena), "seed %d: and after it" % seed_value)
 
 
+
+## The growth tick and its beat load from the cache with their loads prepared on quiet ticks (each
+## zone's plankton stream, seeded and unused, and each chunk_loaded payload but its positions): every
+## event and every hash is the one the caches off give, from the growth tick through the beat.
+func test_prepared_loads_give_the_events_and_hashes_of_fresh_ones() -> void:
+	for seed_value: int in SEEDS:
+		var on := _sim(seed_value, FakeWorldGen.s2_species())
+		var off := _sim(seed_value, FakeWorldGen.s2_species())
+		off.world.next_cache = false
+		for t in 80:
+			for sim: PoolSim in [on, off]:
+				sim.growth.meter = 0.95 * sim.growth.ring(1)
+				sim.step(SimIntent.new())
+				sim.drain_events()
+		check_eq(on.world._next_events.size(), 25, "seed %d: every cached chunk's load prepared" % seed_value)
+		check(on.world._next_streams.size() > 0, "seed %d: with its zones' streams (%d)" % [seed_value, on.world._next_streams.size()])
+		_due(on)
+		_due(off)
+		var parted := -1
+		var loaded := 0
+		for t in 90:
+			on.step(SimIntent.new())
+			off.step(SimIntent.new())
+			var got := on.drain_events()
+			loaded += _of(got, "chunk_loaded").size()
+			if parted < 0 and (got != off.drain_events() or on.state_hash() != off.state_hash()):
+				parted = t
+		check(on.size() == 2 and loaded > 9, "seed %d: grew and loaded (%d)" % [seed_value, loaded])
+		check_eq(parted, -1, "seed %d: the same events and hashes through the growth tick and the beat" % seed_value)
+
+
+## The growth tick hands what it lets go of (the old chunks, the plankton list, the old arena) to
+## quiet ticks after the beat to free, one a tick, instead of freeing it in its own tick; they free all
+## of it.
+func test_the_old_world_is_freed_on_quiet_ticks_after_the_beat() -> void:
+	var sim := _sim(SEEDS[1])
+	var w := sim.world
+	var old := sim.arena
+	var chunks := w.loaded_keys().size()
+	_due(sim)
+	_tick(sim)
+	check(sim.size() == 2, "grew")
+	check_eq(w._retired.size(), chunks + 2, "the old chunks, the plankton list and the arena held")
+	check(w._retired.has(old), "the old arena among them")
+	var held := w._retired.size()
+	while sim.tick < sim.growth.beat_until:
+		_tick(sim)
+	check_eq(w._retired.size(), held, "none freed in the beat")
+	for t in 300:
+		_tick(sim)
+	check(w._retired.is_empty(), "all freed after it (%d left)" % w._retired.size())
+
 ## An arena's state but its epoch (which only grows): its chunks in canonical order, the canonical
 ## arrays, each chunk's span, near grid and colliders as added, its origin and its switches.
 static func _arena_state(arena: ChunkArena) -> Dictionary:

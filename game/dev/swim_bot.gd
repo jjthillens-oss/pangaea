@@ -19,6 +19,8 @@ extends RefCounted
 ##    point's local position from the stream every tick, so it follows the point through a rebase.
 ##    The gates that start out in the sea arrive at their points with it (tests/test_endless_gates.gd,
 ##    arrive()). It frees itself where it wedges between shells (Unjam, which HuntBot shares).
+##  - A site tour (SiteTour, S2's size-2 threat runner) swims from one creature site to the next, as
+##    a player who goes to meet the creatures round them, and hands the cell to another bot at each.
 ## Like player input next_intent only returns a SimIntent and never changes the sim. overdrive()
 ## does change it, and only tests and soak gates call it. Every swimmer's `keys` (EvadeBot.GrowthKeys,
 ## S2) send the growth trigger on its first intent and, in a press run, Grow while the ring is full.
@@ -107,6 +109,155 @@ class Unjam:
 			else:
 				_step_until = -1
 		return sim.arena.route_point(pos, to, sim.phenotype.radius)
+
+
+## A player's tour of the creatures round them, for the size-2 threat runner (S2 gate S2G8,
+## test_threat_fuzz). At size 2 the sites round the spawn are in its view, so they never spawn while
+## the cell waits there (CreatureField.blocker_from), and a runner that stays home meets almost
+## nothing. The tour takes the nearest site not yet visited of the first of its `groups` (lists of
+## species, in order of want) that has one, among the sites that live at the world's size, read from
+## WorldGen.chunk up to RINGS chunks round the cell's (pure, the chunks as the stream would load
+## them), and swims there round rocks (Unjam) until it is within MEET_TM of the site's home. There it
+## stays while the site's creature is awake, up to `stay_ticks`, and next_move gives null, so the bot
+## it tours for drives, except that with `keep_tm` above 0 it swims to the point keep_tm in front of
+## that creature whenever the cell is farther off or behind its flank (more than KEEP_BEARING off its
+## heading): a player who stays to watch it, since at size 2 an M1 creature senses the cell only
+## within about 4 tm and turns away to flee it. Then it moves on. A site whose creature is not awake
+## WAKE_TICKS after it arrived, or whose home it has not reached TRAVEL_TICKS after it set off, is
+## passed over, and a death ends the visit (the cell comes back at its checkpoint). With every site in
+## reach visited it starts again. It reads its own cell, the world's content and which site each awake
+## creature came from, as a player reading the screen and the map would, draws no random numbers and
+## only returns intents.
+class SiteTour:
+	const RINGS := 6               ## chunks round the cell's: 6 rings at size 2 reach 192 tm each way
+	const MEET_TM := 8.0
+	const WAKE_TICKS := 300
+	const TRAVEL_TICKS := 3600
+	const KEEP_BEARING := PI / 2.0  ## keeping, it stays in front of the creature's flank
+
+	var groups: Array[PackedStringArray] = []
+	var stay_ticks := 1800
+	var keep_tm := 0.0             ## while it stays, it keeps within this of the site's creature (0: off)
+	var visits := 0                ## sites it arrived at (tests guard that it got round)
+	var _visited := {}             ## site id -> true
+	var _wanted := {}              ## every species of `groups` -> true
+	var _site := {}                ## {"id", "am": PackedFloat64Array (its home)}: where it goes or stays
+	var _since := -1               ## the tick it set off for the site
+	var _arrived := -1             ## the tick it arrived; -1 while it travels
+	var _unjam: Unjam = null
+
+	func _init(p_groups: Array[PackedStringArray], p_stay_ticks := 1800, p_keep_tm := 0.0) -> void:
+		groups = p_groups
+		stay_ticks = p_stay_ticks
+		keep_tm = p_keep_tm
+		for group in groups:
+			for sp in group:
+				_wanted[sp] = true
+
+	## The id of the site it travels to or stays at, or "".
+	func site_id() -> String:
+		return str(_site.get("id", ""))
+
+	## The intent while it travels to a site; null while it stays at one (or finds none), when the bot
+	## it tours for drives.
+	func next_move(sim: PoolSim) -> SimIntent:
+		if sim.dead:
+			_leave()
+			return null
+		var t := sim.tick
+		if _site.is_empty():
+			_site = _nearest(sim)
+			if _site.is_empty():
+				_visited.clear()
+				_site = _nearest(sim)
+			if _site.is_empty():
+				return null
+			_since = t
+			_arrived = -1
+			_unjam = Unjam.new()
+		if _arrived < 0:
+			var goal := Unjam.local_of(sim, _site.am)
+			if sim.motion.position.distance_to(goal) > MEET_TM:
+				if t - _since > TRAVEL_TICKS:
+					_leave()
+					return null
+				var to := _unjam.aim(sim, goal) - sim.motion.position
+				return SimIntent.new(to.normalized() if to.length() > 1e-6 else Vector2.ZERO)
+			_arrived = t
+			visits += 1
+		var c := _site_creature(sim)
+		if t - _arrived >= stay_ticks or (c == null and t - _arrived >= WAKE_TICKS):
+			_leave()
+			return null
+		if c == null or keep_tm <= 0.0:
+			return null
+		var off := sim.motion.position - c.motion.position
+		if off.length() <= keep_tm and absf(angle_difference(c.motion.heading, off.angle())) <= KEEP_BEARING:
+			return null
+		var front := c.motion.position + Vector2.from_angle(c.motion.heading) * keep_tm
+		var d := sim.motion.position.distance_to(front)
+		var to := _unjam.aim(sim, front) - sim.motion.position
+		if to.length() < 1e-6:
+			return SimIntent.new()
+		return SimIntent.new(to.normalized() * clampf((d - keep_tm) / ARRIVE_M, MIN_THROTTLE, 1.0))
+
+	func _leave() -> void:
+		if not _site.is_empty():
+			_visited[_site.id] = true
+		_site = {}
+
+	## The next site: the nearest site not visited of the first group of `groups` that has one in
+	## reach (_sites), ties by id; {} when no group has one.
+	func _nearest(sim: PoolSim) -> Dictionary:
+		var found := _sites(sim)
+		var here := sim.absolute_position_am()
+		for group: PackedStringArray in groups:
+			var best := {}
+			var best_d := INF
+			for sp in group:
+				if not found.has(sp):
+					continue
+				var at: PackedFloat64Array = found[sp].am
+				var d := Vector2(at[0] - here[0], at[1] - here[1]).length()
+				if d < best_d or (d == best_d and str(found[sp].id) < str(best.id)):
+					best_d = d
+					best = found[sp]
+			if not best.is_empty():
+				return best
+		return {}
+
+	## Per species of `groups`, its nearest site not visited (ties by id), live at the world's size, in
+	## the chunks up to RINGS round the cell's: {species: {"id", "am"}}.
+	func _sites(sim: PoolSim) -> Dictionary:
+		var world: Object = sim.get("world")
+		var n: int = world.get("size")
+		var gen: WorldGen = world.get("gen")
+		var to_am := WorldConfig.tm_to_am(n)
+		var here := sim.absolute_position_am()
+		var center: Vector2i = world.call("chunk_of_local", sim.motion.position)
+		var best := {}
+		var best_d := {}
+		for dy in range(-RINGS, RINGS + 1):
+			for dx in range(-RINGS, RINGS + 1):
+				for s in gen.chunk(n, center.x + dx, center.y + dy).sites:
+					var id := str(s.id)
+					var sp := str(s.species)
+					if _visited.has(id) or not _wanted.has(sp) or not (s.sizes as Array).has(n):
+						continue
+					var at := PackedFloat64Array([float(s.x) * to_am, float(s.y) * to_am])
+					var d := Vector2(at[0] - here[0], at[1] - here[1]).length()
+					var was: float = best_d.get(sp, INF)
+					if d < was or (d == was and id < str(best[sp].id)):
+						best_d[sp] = d
+						best[sp] = {"id": id, "am": at}
+		return best
+
+	## The awake creature of the site it stays at, or null.
+	func _site_creature(sim: PoolSim) -> CreatureField.Creature:
+		for c: CreatureField.Creature in sim.creatures.call("awake"):
+			if c.site_id == str(_site.id):
+				return c
+		return null
 
 
 func _init(p_dir: Vector2, p_throttle := 1.0) -> void:

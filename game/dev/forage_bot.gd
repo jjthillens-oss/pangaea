@@ -15,6 +15,12 @@ extends RefCounted
 ## loaded it waits where it is rather than heading for the pool's spawn, which is not in the cell's
 ## frame there. The pool's output is unchanged (the golden M1 hashes drive it).
 ##
+## With `unjam` (S2; off by default, so the M1 goldens and S1's forager runs do not move) its way
+## round rocks frees itself where it wedges, as SwimBot's homing swimmer and HuntBot's travel do
+## (SwimBot.Unjam): once the cell, touching a collider, has moved less than Unjam.STUCK_TM over
+## Unjam.STUCK_TICKS ticks of swimming for one place, it steps aside and heads on. S2's size-2
+## threat runner turns it on.
+##
 ## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
 ## run, Grow while the ring is full; a bot that wraps it sends its own and blanks these.
 ##
@@ -38,10 +44,12 @@ const EvadeBot := preload("res://game/dev/evade_bot.gd")
 ## Where to swim and stop instead of foraging; Vector2.INF to forage.
 var park_at := Vector2.INF
 var avoid_threats := false
+var unjam := false
 var keys := EvadeBot.GrowthKeys.new()
 var _target_id := ""
 var evade = null               ## with avoid_threats: the EvadeBot it dodges with, made when first needed
 var _attacking := {}           ## creature id -> true: telling or striking at the cell last tick
+var _unjam = null              ## with unjam: its SwimBot.Unjam, made when first needed
 
 
 ## The id of the food the last intent swam for, or "" when there was none.
@@ -194,6 +202,11 @@ static func _active(sim: PoolSim) -> Array:
 
 
 ## The point to swim at now: the target itself, or a point beside the first rock in the way
-## (PoolArena.route_point, which creatures share).
+## (PoolArena.route_point, which creatures share); with `unjam`, through SwimBot.Unjam, which steps
+## aside where that way wedges the cell. swim_bot.gd preloads this file, so Unjam is loaded by path.
 func _route(sim: PoolSim, pos: Vector2, target: Vector2) -> Vector2:
-	return sim.arena.route_point(pos, target, sim.phenotype.radius)
+	if not unjam:
+		return sim.arena.route_point(pos, target, sim.phenotype.radius)
+	if _unjam == null:
+		_unjam = (load("res://game/dev/swim_bot.gd") as GDScript).Unjam.new()
+	return _unjam.aim(sim, target)
