@@ -40,6 +40,7 @@ var _zone_counts := {}                ## zone id -> how many of `items` it shows
 ## Each item's drift phase and rates, in `items` order: the drift loop's packed copy (they never change).
 var _phase := PackedVector2Array()
 var _omega := PackedVector2Array()
+var _radii := PackedFloat64Array()    ## each item's radius, in `items` order (packed_radii)
 var _by_id := {}                      ## item id -> the item (ids are unique: "pk_" and next_number)
 
 
@@ -133,6 +134,14 @@ func items_near(p: Vector2, reach: float) -> Array[Dictionary]:
 	return out
 
 
+## Every item's radius, packed in `items` order (a copy), for the senses' food snapshot: what
+## reading them off the items gives (an item's radius never changes).
+func packed_radii() -> PackedFloat64Array:
+	if _radii.size() != items.size():
+		_repack()   # only if something outside this file changed `items`
+	return _radii.duplicate()
+
+
 ## The item with this id, or {}: what a scan of `items` finds.
 func find(id: String) -> Dictionary:
 	if _by_id.size() != items.size():
@@ -149,6 +158,7 @@ func consume(id: String) -> bool:
 			items.remove_at(i)
 			_phase.remove_at(i)
 			_omega.remove_at(i)
+			_radii.remove_at(i)
 			return true
 	return false
 
@@ -204,18 +214,21 @@ func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> voi
 	items.append(item)
 	_phase.append(item.phase)
 	_omega.append(item.omega)
+	_radii.append(item.radius)
 	_by_id[item.id] = item
 	_zone_counts[zone_id] = int(_zone_counts.get(zone_id, 0)) + 1
 
 
-## The drift loop's packed copy of every item's phase and rates, and the id index, from the items.
+## The packed copies (drift phases and rates, radii) and the id index, from the items.
 func _repack() -> void:
 	_phase.resize(items.size())
 	_omega.resize(items.size())
+	_radii.resize(items.size())
 	_by_id.clear()
 	for i in items.size():
 		_phase[i] = items[i].phase
 		_omega[i] = items[i].omega
+		_radii[i] = items[i].radius
 		_by_id[items[i].id] = items[i]
 
 
@@ -233,6 +246,7 @@ func _remove_newest(zone_id: String) -> void:
 			items.remove_at(i)
 			_phase.remove_at(i)
 			_omega.remove_at(i)
+			_radii.remove_at(i)
 			return
 
 

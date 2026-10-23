@@ -906,11 +906,11 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 				# carrion: the senses only read it.
 				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
 				food_at.resize(food.size())
-				food_r.resize(food.size())
 				for i in food.size():
-					var item: Dictionary = food[i]
-					food_at[i] = item.position
-					food_r[i] = item.radius
+					food_at[i] = food[i].position
+				food_r = plankton.packed_radii()   # the plankton's own copy, then the carrion's
+				for item in carrion.items:
+					food_r.append(item.radius)
 				food_listed = true
 			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
 		var d := creatures.drive(c, arena, tick, self_view)

@@ -183,11 +183,11 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 	return out
 
 
-## PlanktonField keeps each zone's item count, its packed copy of the items' drift phases and rates,
-## and its id index as items come and go, so count_in and the tick's counts are what a count over the
-## items gives, the drift reads each item's own values and find() what a scan finds: random meals,
-## takes (the newest item goes), clears, drops, fills and active-zone changes, in the pool and in the
-## endless world.
+## PlanktonField keeps each zone's item count, its packed copies of the items' drift phases and
+## rates and radii, and its id index as items come and go, so count_in and the tick's counts are what
+## a count over the items gives, the drift reads each item's own values, packed_radii() what reading
+## the items gives and find() what a scan finds: random meals, takes (the newest item goes), clears,
+## drops, fills and active-zone changes, in the pool and in the endless world.
 func test_plankton_zone_counts_follow_every_change() -> void:
 	for endless in [false, true]:
 		var region := layout.build_region(21)
@@ -220,7 +220,9 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 				field.drop_zone(zone_id)
 			elif roll < 0.13:
 				field.fill_zone(region.zone(zone_id), region, arena, t, t * PoolSim.DT)
-			elif roll < 0.15 and endless:
+			elif roll < 0.14:
+				field.item_radius = rng.randf_range(0.1, 0.3)   # new items differ, so a misplaced radius shows
+			elif roll < 0.16 and endless:
 				if field.active_zones.has(zone_id):
 					field.drop_zone(zone_id)
 					field.active_zones.erase(zone_id)
@@ -234,8 +236,13 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 			for id in ids + ["no_such_zone"]:
 				if field.count_in(id) != int(counts.get(id, 0)):
 					wrong += 1
+			if field._radii.size() != field.items.size():
+				unpacked += 1   # packed_radii() would rebuild it: the bookkeeping missed a change
+			var radii := field.packed_radii()
 			for i in field.items.size():
 				if field._phase[i] != field.items[i].phase or field._omega[i] != field.items[i].omega:
+					unpacked += 1
+				if radii[i] != field.items[i].radius:
 					unpacked += 1
 			if field._by_id.size() != field.items.size():
 				unindexed += 1   # find() would rebuild it: the bookkeeping missed a change
@@ -247,6 +254,7 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 					unindexed += 1
 		check_eq(wrong, 0, "endless %s: counts that differ from the items" % endless)
 		check_eq(field._phase.size(), field.items.size(), "endless %s: one drift entry per item" % endless)
+		check_eq(field._radii.size(), field.items.size(), "endless %s: one radius per item" % endless)
 		check_eq(unpacked, 0, "endless %s: drift entries that differ from their item's" % endless)
 		check_eq(unindexed, 0, "endless %s: id index entries that differ from the items" % endless)
 		check(gone.size() > 20, "endless %s: items were eaten (%d)" % [endless, gone.size()])
