@@ -30,6 +30,14 @@ Port rules:
 - The art team's parts stay theirs: `assets/export/cpart_*.glb`, their records and the skin shader are read, never
   edited. The part palette is built from the records' `part_rules`, as in the lab.
 
+Ported into `game/` (2026-10-23, commits 64876e0 to 1f4f93e): the lab's `domain/*.gd` as `game/domain/creature/`,
+`skin/` as `game/systems/creature/` with the new `creature_data.gd` loader, `rig/spine_rig.gd`, `walker_rig.gd` and
+`part_library.gd` as `game/scenes/creature/`, the data files as `game/data/creature/` (`stage1_bodies.json` as
+`starter_bodies.json`), the test-only bodies, drives and mesh checks under `tests/`, and the lab's four runners as
+`tests/test_creature_{body,skin,anchors,editor,gait}.gd`. The purity scan now walks `game/domain/` recursively and
+the generated skin is listed in the placeholder inventory. Not yet ported (later tracks): `creature_stats.gd`,
+`creature_world_rules.gd`, `creature_store.gd`, `creature_world_sim.gd`, the scenes, UI and smoke.
+
 ## 2. Layout (new files)
 
 | Path | Role |
