@@ -6,9 +6,15 @@ extends SceneTree
 ##   godot --path . --rendering-method gl_compatibility --script res://tools/godot/capture_pool.gd \
 ##     -- --out=docs/art/renders/production/pool --body=hunter --seed=4242 --frames=300,900 --zoom=0
 ##   --at=x,y places the cell at that plane point and leaves it idle (no ForageBot).
+##   --floor-y=Y moves the floor down to Y for micro-world look previews until the pool has its own
+##   floor-depth setting (review only; the sim's floor cues stay where they are).
+##   --micro-look applies engineering's proposed fluid values (micro-world plan C4: height fog, no
+##   distance fog, no sun shadows) as a preview until they land. Use it with --floor-y=-40.
+## The ambience scene is mounted here when the pool has not mounted it yet (plan C6 does that).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const AMBIENCE_SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
 
 
 func _initialize() -> void:
@@ -18,6 +24,8 @@ func _initialize() -> void:
 	var frames := [300, 900]
 	var zoom := 0
 	var at := Vector2.INF
+	var floor_y := NAN
+	var micro := false
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out = arg.trim_prefix("--out=")
@@ -30,6 +38,10 @@ func _initialize() -> void:
 		elif arg.begins_with("--at="):
 			var xy := arg.trim_prefix("--at=").split(",")
 			at = Vector2(float(xy[0]), float(xy[1]))
+		elif arg.begins_with("--floor-y="):
+			floor_y = float(arg.trim_prefix("--floor-y="))
+		elif arg == "--micro-look":
+			micro = true
 		elif arg.begins_with("--zoom="):
 			zoom = int(arg.trim_prefix("--zoom="))
 	root.size = Vector2i(1920, 1080)
@@ -47,6 +59,26 @@ func _initialize() -> void:
 		sim.motion.position = at
 		sim.motion.prev_position = at
 		sim.actor.position = at
+	if not is_nan(floor_y):
+		main.pool.floor_node.position.y = floor_y
+	if micro:
+		var world := main.pool.find_children("*", "WorldEnvironment", true, false)[0] as WorldEnvironment
+		var env := world.environment.duplicate() as Environment
+		env.background_color = Color("#0B2E6B")
+		env.ambient_light_color = Color("#2F6FB8")
+		env.ambient_light_energy = 0.8
+		env.fog_light_color = Color(0.0, 0.085, 0.20)
+		env.fog_sun_scatter = 0.05
+		env.fog_density = 0.0
+		env.fog_height = -1.0
+		env.fog_height_density = 0.09
+		world.environment = env
+		for sun: DirectionalLight3D in main.pool.find_children("*", "DirectionalLight3D", true, false):
+			sun.shadow_enabled = false
+	if main.pool.get_node_or_null(^"Ambience") == null and ResourceLoader.exists(AMBIENCE_SCENE):
+		var ambience := (load(AMBIENCE_SCENE) as PackedScene).instantiate()
+		ambience.name = "Ambience"
+		main.pool.add_child(ambience)
 	if zoom != 0:
 		main.pool.camera.zoom_by(zoom)
 	var frame := 0
