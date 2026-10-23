@@ -958,15 +958,19 @@ func _contacts() -> void:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
 	for c in creatures.awake():
-		if c.brain == null:
+		var mem := c.brain
+		if mem == null:
 			continue
-		var disc := CreatureBrain.leash_disc(c.brain)
-		PoolArena.clamp_to_disc(c.motion, disc.center, disc.radius)
-		if CreatureBrain.is_striking(c.brain):
+		# CreatureBrain.leash_disc written out, without its dictionary.
+		if mem.behavior == CreatureBrain.TERRITORIAL:
+			PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
+		else:
+			PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
+		if CreatureBrain.is_striking(mem):
 			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
 				CreatureBrain.BLOCKED_BEARING)
 			if not rock.is_empty():
-				CreatureBrain.on_blocked(c.brain, tick)
+				CreatureBrain.on_blocked(mem, tick)
 	_take_field_events()
 
 
