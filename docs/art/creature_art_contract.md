@@ -100,6 +100,7 @@ There is one `ShaderMaterial` for the generated skin: `assets/export/shaders/cre
 | `CUSTOM0.y` | `ring_v`: angle around the spine in turns: 0 dorsal, 0.25 right (+X), 0.5 belly, 0.75 left; wraps on the dorsal midline | 0–1 |
 | `CUSTOM0.z` | `limb_id`: 0 on the trunk, 1 and up for each limb | integer as float |
 | `CUSTOM0.w` | `limb_t`: distance along the limb, 0 at the attach point, 1 at the tip | 0–1 |
+| `CUSTOM1.xyz` | `rest_pos`: the vertex's rest-pose body-space position in metres (the mesh's own vertex array before skinning). Spots, cells and scales are computed here with x folded, so they don't stretch with the spine coordinates, streak at the end caps or slide when the body bends | metres |
 | `COLOR.r` | `crease`: optional ambient-occlusion hint at blend seams (0 if not provided) | 0–1 |
 
 ### 2.2 Paint uniforms (from the body save, set per creature)
@@ -112,9 +113,10 @@ There is one `ShaderMaterial` for the generated skin: `assets/export/shaders/cre
 | `color_base`, `color_coat`, `color_detail` | vec3, sRGB | The 3 paint colours |
 | `pattern_seed` | int | Seeds spots and noise per creature (deterministic) |
 | `coat_reach` | float 0–1 | How far the coat reaches down the flanks |
-| `detail_scale` | float | Detail frequency along `spine_u` |
+| `detail_scale` | float | Pattern features per body length |
+| `body_length_m` | float | The body's length; rest-space patterns are scaled by it, so a pattern keeps its count as the body grows |
 
-### 2.3 Pattern ids (first set, PROPOSED)
+### 2.3 Pattern ids (first set, IMPLEMENTED in the shader, look PROPOSED)
 
 | Layer | Ids |
 |---|---|
@@ -122,7 +124,7 @@ There is one `ShaderMaterial` for the generated skin: `assets/export/shaders/cre
 | Coat | 0 none, 1 saddle, 2 dorsal stripe, 3 countershade |
 | Detail | 0 none, 1 cross bands, 2 spots, 3 rings on limbs (`limb_t`), 4 eye spots |
 
-Fine surface detail is triplanar in object space, using CC0 or in-house greyscale textures under `assets/export/creature_skin/`. The pattern layers come from the vertex channels, so stretched bodies don't smear.
+Coats and cross bands follow `spine_u` and the folded ring value. Spots, cells and scales live in rest space (`CUSTOM1`). Fine surface detail is triplanar in object space, using CC0 or in-house greyscale textures under `assets/export/creature_skin/`. The pattern layers come from the vertex channels, so stretched bodies don't smear.
 
 ### 2.4 Global and animation uniforms
 
@@ -137,6 +139,15 @@ Fine surface detail is triplanar in object space, using CC0 or in-house greyscal
 - Paint colours are free for players.
 - The default creature palettes art ships keep 25° LAB hue clear of food green (114) and the threat pink (11), as every other asset does.
 - The threat outline and food glow stay engine overlays, never baked into the skin.
+
+## 2.6 First look check
+
+`assets/export/shaders/creature_skin.gdshader` has the full parameter set. It was run on the creature lab's real skins (branch `claude/project-thread-uqwkit`, commit 9fbf9e3, `spine_lab.tscn --body=all --anim=swim`). The check used a throwaway scene that sets the material override and copies the vertex array into `CUSTOM1`. Frames:
+- `docs/art/renders/concept/creature_skin_v1_all.jpg`
+- `..._fish.jpg`
+- `..._bean.jpg`
+
+Rendered with gl_compatibility under Xvfb.
 
 ## 3. Blender side
 
