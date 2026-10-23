@@ -230,6 +230,29 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 	return out
 
 
+## A body that leaves (removed, or put to sleep) is forgotten by each brain as on_target_gone forgets
+## it, also by one that remembers it only as the attacker that hurt it while it notices the cell
+## (CreatureField._forget_in's shortcut): the hurt goes with the attacker, and what it notices stays.
+func test_a_brain_forgets_an_attacker_that_leaves_while_it_notices_the_cell() -> void:
+	var sim := _forager(5103)
+	var field := sim.creatures
+	for leave in ["removed", "asleep"]:
+		check(sim.debug_spawn_creature("ambush_hunter", Vector2(30.0, -30.0), 0.0), "%s: a hunter" % leave)
+		check(sim.debug_spawn_creature("rammer", Vector2(-30.0, -30.0), 0.0), "%s: a rammer" % leave)
+		var a: CreatureField.Creature = field.creatures[field.creatures.size() - 2]
+		var b: CreatureField.Creature = field.creatures[field.creatures.size() - 1]
+		CreatureBrain._notice(b.brain, CreatureField.PLAYER_ID, "sight", sim.tick)
+		b.brain.attacker = a.id
+		b.brain.pain = true
+		if leave == "removed":
+			field.remove(a, "killed", sim.tick, false)
+		else:
+			field.sleep(a, sim.tick)
+		check_eq([b.brain.attacker, b.brain.pain], ["", false], "%s: the rammer forgets the hunter that hurt it" % leave)
+		check_eq(b.brain.target, CreatureField.PLAYER_ID, "%s: and still notices the cell" % leave)
+		sim.drain_events()
+
+
 ## PlanktonField keeps each zone's item count, its packed copies of the items' drift phases and
 ## rates and radii, and its id index as items come and go, so count_in and the tick's counts are what
 ## a count over the items gives, the drift reads each item's own values, packed_radii() what reading
@@ -697,3 +720,33 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 			return
 	check_eq(a.state_hash(), b.state_hash(), "the same end")
 	check(held > 5000, "keeps held from tick to tick (%d)" % held)
+
+
+## The tick's leash clamp (CreatureBrain.leash_disc written out in PoolSim._contacts) is the brain's
+## leash disc: with the brains frozen, a hunter and a rammer put 0.5 tm inside their discs stay there,
+## and put 1 tm past them come back to the edge.
+func test_the_ticks_leash_clamp_is_the_brains_leash_disc() -> void:
+	var sim := _forager(5104)
+	check(sim.debug_set_ai_frozen(true), "the brains are frozen")
+	check(sim.debug_spawn_creature("ambush_hunter", Vector2(30.0, -30.0), 0.0), "a hunter")
+	check(sim.debug_spawn_creature("rammer", Vector2(-30.0, -30.0), 0.0), "a rammer")
+	var field := sim.creatures
+	for c in [field.creatures[field.creatures.size() - 2], field.creatures[field.creatures.size() - 1]]:
+		var disc := CreatureBrain.leash_disc(c.brain)
+		var center: Vector2 = disc.center
+		var radius: float = disc.radius
+		var dir := Vector2.ZERO
+		for k in 8:
+			var d := Vector2.from_angle(k * PI / 4.0)
+			if sim.arena.is_clear(center + d * (radius - 0.5), c.phenotype.radius) \
+					and sim.arena.is_clear(center + d * (radius + 1.0), c.phenotype.radius):
+				dir = d
+				break
+		check(dir != Vector2.ZERO, "%s: clear water at its leash's edge" % c.species_id)
+		for out in [-0.5, 1.0]:
+			c.motion.position = center + dir * (radius + out)
+			c.motion.velocity = Vector2.ZERO
+			sim.step(SimIntent.new())
+			check(absf(c.motion.position.distance_to(center) - minf(radius + out, radius)) < 1e-3,
+				"%s put %.1f tm off its leash's edge ends %.3f tm from the centre (leash %.3f)" % [
+					c.species_id, out, c.motion.position.distance_to(center), radius])
