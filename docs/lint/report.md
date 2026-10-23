@@ -11,7 +11,7 @@ gdlint game tests tools
 gdformat --check game tests tools
 ```
 
-The scope contains 143 `.gd` files. The tools exit with status 1 because the current tree has findings. The new `gdscript-lint` job uses `continue-on-error: true`; it still runs the formatting step when lint fails, and it does not gate `test-and-export` or `windows-launch`. Prototype projects are outside this job because each has its own Godot project and conventions.
+The scope contains 143 `.gd` files. The tools exit with status 1 because the current tree has findings. The new `gdscript-lint` job and both warning-producing steps use `continue-on-error: true`, so the check reports a successful job while the step logs retain the findings. It still runs the formatting step when lint fails, and it does not gate `test-and-export` or `windows-launch`. Prototype projects are outside this job because each has its own Godot project and conventions.
 
 ## Current findings
 

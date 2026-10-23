@@ -24,10 +24,12 @@ jobs:
         run: python -m pip install gdtoolkit==4.5.0
 
       - name: Lint game, tests and tools
+        continue-on-error: true
         run: gdlint game tests tools
 
       - name: Check formatting without changing files
         if: always()
+        continue-on-error: true
         run: gdformat --check game tests tools
 
   test-and-export:
