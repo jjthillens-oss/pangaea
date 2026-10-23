@@ -318,10 +318,7 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	if token_at >= 0:
 		engaged_on_player.remove_at(token_at)
 	_scan_all = true   # the hooks below reach sleepers too
-	for other in creatures:
-		if other.brain != null:
-			CreatureBrain.on_target_gone(other.brain, c.id, tick)
-			update_token(other, tick)
+	_forget_in(creatures, c.id, tick)
 	var removed := {"type": "creature_removed", "id": c.id, "species": c.species_id, "reason": reason}
 	if endless:
 		removed["position"] = c.motion.position
@@ -413,10 +410,7 @@ func sleep(c: Creature, tick: int) -> void:
 	c.drive = idle_drive(c.motion.heading)
 	if c.brain != null:
 		c.brain.seen.clear()
-	for other in _awake:
-		if other.brain != null:
-			CreatureBrain.on_target_gone(other.brain, c.id, tick)
-			update_token(other, tick)
+	_forget_in(_awake, c.id, tick)
 	events.append({"type": "creature_slept", "id": c.id, "position": c.motion.position})
 
 
@@ -583,6 +577,26 @@ static func idle_drive(heading: float) -> Dictionary:
 func drive(c: Creature, arena: PoolArena, tick: int, self_view := {}) -> Dictionary:
 	c.drive = CreatureBrain.drive(c.brain, self_view if not self_view.is_empty() else self_view_of(c), tick, arena)
 	return c.drive
+
+
+## Every brain of `others` forgets body `id`, which left (CreatureBrain.on_target_gone), and the token
+## follows (update_token), in list order. A brain whose target and attacker are other bodies only
+## drops its memories of `id`: on_target_gone does no more there. Its engagement is then unchanged,
+## so update_token is called only when the token is held or the brain is engaged with the player
+## (otherwise it finds nothing to do).
+func _forget_in(others: Array[Creature], id: String, tick: int) -> void:
+	for other in others:
+		var b := other.brain
+		if b == null:
+			continue
+		if b.target == id or b.attacker == id:
+			CreatureBrain.on_target_gone(b, id, tick)
+			update_token(other, tick)
+			continue
+		b.seen.erase(id)
+		b.landed_on.erase(id)
+		if not engaged_on_player.is_empty() or (b.target == PLAYER_ID and (b.state == CreatureBrain.CHASE or b.state == CreatureBrain.ATTACK)):
+			update_token(other, tick)
 
 
 ## True when this creature may chase or attack the player: the token has room, or it holds it.
