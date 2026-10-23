@@ -863,15 +863,16 @@ static func _chunk_event(c: Vector2, key: Vector2i, factor: float, all: bool) ->
 
 
 ## The pixels of every point the containers draw (shells, landmark pieces, patches, labels, the
-## beat's effects, the Backdrop) and of `leaf`; the cell, the creatures and the column are placed
-## from the sim each frame, which a faked growth does not move.
+## beat's effects, the Backdrop) and of `leaf`; the cell, the creatures, the column and the ghosts
+## are placed from the sim (the ghosts from its frame) each frame, which a faked growth does not
+## move (tests/test_ghosts.gd checks the ghosts across a growth).
 func _container_pixels(pool: PoolScene, leaf: Node3D) -> Dictionary:
 	var out := {}
 	var points := Frames.tracked_points(pool)
 	points["leaf"] = Frames.in_pool(pool, leaf)
 	points["eat burst"] = Frames.in_pool(pool, pool.world_fx.get_node("EatFx"))
 	for key: String in points:
-		if key == "cell" or key == "column" or key.begins_with("creature "):
+		if key == "cell" or key == "column" or key.begins_with("creature ") or key.begins_with("ghost "):
 			continue
 		out[key] = Frames.project(pool.camera, points[key])
 	return out

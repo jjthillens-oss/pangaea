@@ -38,7 +38,7 @@ func test_zoom_is_ignored_while_the_growth_dolly_runs() -> void:
 
 ## S2 (V-20): the start fade draws every look the growth brings once, so none compiles in play: the
 ## algae ball, the lurker's and the elder rammer's bodies, M_Morsel, M_RemnantLimp, the rim hull, the
-## beat's pre-blur veil and its glitter.
+## beat's pre-blur veil and its glitter, and a ghost.
 func test_the_start_fade_warms_every_growth_look() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.pool_session())
 	var meshes := pool.warm_up_meshes()
@@ -59,6 +59,8 @@ func test_the_start_fade_warms_every_growth_look() -> void:
 	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == CreatureView.RIM_SHADER), "the rim hull")
 	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == GrowthBeat.PREBLUR_SHADER), "the pre-blur veil")
 	check(has_material.call(_is_glitter), "the glitter")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == GhostLayer.BACKDROP_SHADER \
+		and m.get_shader_parameter("image") != null), "a ghost")
 	pool.free()
 
 

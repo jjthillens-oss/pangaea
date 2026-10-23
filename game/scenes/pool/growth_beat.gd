@@ -10,6 +10,7 @@ extends Node
 ## starts drawn at k of its size (the swell). Then:
 ##   0 to 0.7 s    the cell swells to its new size and eases to where the tick settled it
 ##   0.3 to 1.9 s  the camera dollies back out and k runs to 1 (dolly_k: one curve for every layer)
+##   1.0 s         the ghost of a species live from now rises toward one of its sites (GhostLayer)
 ##   1.9 s         the chord: the HUD, the markers' thresholds and shown_size() switch to the new size
 ##   2.0 s         relations change (ink, rim, "Now food", remnants go limp); the containers end
 ##   6.0 s         the last of the beat's effects (glitter) is gone and the beat is idle
@@ -55,7 +56,8 @@ const GLITTER_HOLD_S := 4.0
 ## food, with no pop at frame 0.
 const GLITTER_BAND := Vector2(-1.0, -1.5)
 const GLITTER_IN_S := 0.15
-## The haze sprites by food look and by species (T5.5 reads them from ghost_ladder.json).
+## The haze sprites by food look and by species: the defaults, before the pool sets `haze` from
+## ghost_ladder.json (GhostLayer.haze_paths).
 const FOOD_HAZE := {"plankton": "res://assets/export/ambience/T_Haze_plankton.png",
 	"algae_ball": "res://assets/export/ambience/T_Haze_algae_ball.png",
 	"carrion": "res://assets/export/ambience/T_Haze_carrion.png"}
@@ -69,9 +71,10 @@ const HAZE_SPANS := {"T_Haze_plankton.png": 0.773, "T_Haze_algae_ball.png": 0.43
 	"T_Haze_ambush.png": 0.844, "T_Haze_rammer.png": 0.5, "T_Haze_lurker.png": 0.844,
 	"T_Haze_elder_rammer.png": 0.438, "T_Haze_veil.png": 0.844, "T_Haze_warden.png": 0.602,
 	"T_Haze_bead_cluster.png": 0.766, "T_Haze_glass_flake.png": 0.82}
-const RISE := Vector2(1.0, 2.0)
-const RISE_SWIM_TM_S := 3.0
-const RISE_MAX_S := 6.0
+## The ghost of a species live from the new size starts to rise here (GhostLayer.rise, V-13); with
+## no loaded site of one it heads RISE_NO_SITE from the cell (north).
+const RISE_S := 1.0
+const RISE_NO_SITE := Vector2(0.0, -30.0)
 ## Under reduce motion the swell starts half way (half of the 0.375 swell).
 const REDUCED_SWELL_FROM := 0.8125
 ## Headless reduce motion: %Fade's alpha at the middle of the dissolve.
@@ -92,6 +95,7 @@ var _reduced := false
 var _settled_to := Vector2.ZERO
 var _chord_done := false
 var _relations_done := false
+var _rise_done := false
 var _ended := false
 var _dip := false
 var _center_old := Vector2.ZERO
@@ -103,7 +107,7 @@ var _expired: Array[Transform3D] = []
 var _creature_haze: Array[Dictionary] = []
 var _copies: Array[StillInstances] = []
 var _glitter: Array[StillInstances] = []
-## The haze sprite of each food look and species.
+## The haze sprite of each food look and species (the pool's build sets it from the ghost ladder).
 var haze := FOOD_HAZE.merged(SPECIES_HAZE)
 static var _glitter_quad: QuadMesh
 ## The still of the last frame that dissolves under reduce motion (over the HUD, under nothing).
@@ -148,6 +152,7 @@ func begin(event: Dictionary, reduce_motion: bool) -> void:
 	_t = 0.0
 	_chord_done = false
 	_relations_done = false
+	_rise_done = false
 	_ended = false
 	_dip = false
 	var center: Variant = event.get("center_old", Vector2.ZERO)
@@ -396,6 +401,10 @@ func _step(cancelled := false) -> void:
 		c.beat_frame(_t, k)
 	_step_food()
 	_show_dissolve()
+	if not _rise_done and _t >= RISE_S:
+		_rise_done = true
+		if not cancelled:
+			_rise()
 	if not _chord_done and _t >= CHORD_S:
 		_chord_done = true
 		_pool.on_growth_chord(_to)
@@ -408,6 +417,35 @@ func _step(cancelled := false) -> void:
 			c.end_growth()
 	if _t >= END_S:
 		_stop()
+
+
+## The rise (V-13): the species live from this size that the ghost ladder names, the post of one of
+## their loaded sites nearest the cell, and the ghost of that species rises toward it. With no such
+## site, the first of them heads RISE_NO_SITE from the cell. No rise in the pool, nor at the build's
+## top (no species enters there).
+func _rise() -> void:
+	var ghosts := _pool.ghosts
+	if ghosts == null or not _pool.is_endless():
+		return
+	var candidates := ghosts.entering(_to)
+	if candidates.is_empty():
+		return
+	var cell := PlaneSpace.to_plane(_pool.cell_view.position)
+	var world := _pool.sim.world
+	var species := candidates[0]
+	var toward := cell + RISE_NO_SITE
+	var best := INF
+	for key in world.loaded_keys():
+		for site: Dictionary in world.chunk(key).sites:
+			if not candidates.has(str(site.species)):
+				continue
+			for post: Dictionary in site.get("posts", [site]):
+				var p := world.local_of_tm(float(post.x), float(post.y))
+				if p.distance_squared_to(cell) < best:
+					best = p.distance_squared_to(cell)
+					species = str(site.species)
+					toward = p
+	ghosts.rise(species, toward)
 
 
 ## The old food's copies fade over OLD_FOOD_FADE_S, then go; the glitter sinks and fades.

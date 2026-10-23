@@ -71,6 +71,8 @@ func test_a_rebase_moves_nothing_on_screen() -> void:
 func test_a_rebase_during_a_growth_beat_moves_nothing() -> void:
 	var a := _open()
 	var b := _open()
+	# The ghosts hash from the lineage, which each session founds afresh: B takes A's.
+	b.ghosts.configure(GhostLayer.shipped().data, b.sim_size(), hash(a.sim.save.lineage_id))
 	var key: Vector2i = a.loaded_keys()[0]
 	for pool in [a, b]:
 		for i in 20:
