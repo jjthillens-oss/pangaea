@@ -476,7 +476,13 @@ func _fit_center(label: Label, panel: Control) -> void:
 		label.get_theme_font_size(&"font_size"), CENTER_MAX_W - chrome)
 
 
+## "Reduce flashing effects" (settings, Bible 19) keeps the pulse but at this share of its strength.
+const REDUCED_FLASH_SCALE := 0.4
+
+
 func _set_vignette(strength: float) -> void:
+	if strength > 0.0 and SettingsService.shared().reduce_flashing():
+		strength *= REDUCED_FLASH_SCALE
 	(hurt_vignette.material as ShaderMaterial).set_shader_parameter(&"strength", strength)
 	hurt_vignette.visible = strength > 0.0
 

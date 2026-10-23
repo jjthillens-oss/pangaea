@@ -1,0 +1,12 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; A creature body drawn as a morsel (docs/endless-cell-plan.md B.4, I): the body's own vertex colours,
+; warmed a little so it reads as food under the green rim, with no threat colour, because as a
+; material_override it replaces every surface, crest points included. Written by tools/blender/make_endless_sprites.py.
+
+[resource]
+resource_name = "M_Morsel"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(1, 0.88, 0.74, 1)
+roughness = 0.55

@@ -1,0 +1,26 @@
+{
+  "id": "mus_nautilus",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_nautilus.mp3",
+  "purpose": "Slow ambient piece: the calm playlist.",
+  "role": "calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 216.13,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Nautilus",
+      "author": "poinl",
+      "url": "https://opengameart.org/content/nautilus",
+      "download": "https://opengameart.org/sites/default/files/ambient2%28Nautilus%29_4.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none"
+    }
+  ]
+}

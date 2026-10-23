@@ -1,0 +1,22 @@
+{
+  "id": "eat_plant_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/eat_plant_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "eat_plant",
+  "variant": 1,
+  "purpose": "The cell eats plankton: a soft suck, a rising pop and a glassy sparkle.",
+  "visual_equivalent": "Eat burst and the meal toast",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.42,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"eat_plant\", 0)"
+}

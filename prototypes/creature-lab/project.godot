@@ -1,0 +1,18 @@
+; Creature Lab: isolated research prototypes (Gait Lab first). A separate Godot project, so the main
+; project's import, tests and export skip this folder. Nothing here is loaded by the game.
+
+config_version=5
+
+[application]
+
+config/name="Creature Lab"
+run/main_scene="res://gait_lab.tscn"
+config/features=PackedStringArray("4.7")
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"

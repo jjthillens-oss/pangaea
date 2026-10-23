@@ -1,0 +1,79 @@
+{
+  "id": "part_cilia",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Cell cilia part (S4 editor): a lens-shaped pad of twelve short hairs in three rows; shape key Beat bends them in a power stroke toward the tail.",
+  "category": "part",
+  "source_blend": "assets/source/blender/part_cilia.blend",
+  "generator_script": "tools/blender/make_cell_parts.py",
+  "export_path": "assets/export/part_cilia.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.176,
+    "y_forward": 0.163,
+    "z_up": 0.176
+  },
+  "triangles": 634,
+  "triangle_budget": 1500,
+  "textures": [
+    {
+      "name": "T_PartCilia_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartCilia_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartCilia_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_CiliaHair",
+    "M_CiliaPad"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Cilia"
+  ],
+  "part_type": "cilia",
+  "attachment": {
+    "origin": "attachment point on the body surface",
+    "outward_axis": "Blender +Y (Godot -Z)",
+    "embed_m": 0.03
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0006,
+    "triangles_before": 1064,
+    "triangles_after": 634
+  },
+  "shape_keys": {
+    "Beat": "power stroke toward the tail, rows lagging; rests at 0, the engine drives it 0 to 1 and back"
+  },
+  "hairs": 12,
+  "hair_length_m": 0.13,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_cell_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

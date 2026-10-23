@@ -1,0 +1,25 @@
+{
+  "id": "ui_hover",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "ui",
+  "export_path": "assets/audio/ui/ui_hover.ogg",
+  "purpose": "A very short soft tick when the pointer, keyboard or gamepad moves onto a button, and as a slider moves.",
+  "bus": "SFX",
+  "loop": false,
+  "used_by": "game/scenes/audio/ui_sounds.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Kenney Interface Sounds 1.0",
+      "file": "Audio/tick_004.ogg",
+      "author": "Kenney (www.kenney.nl)",
+      "url": "https://kenney.nl/assets/interface-sounds",
+      "download": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+      "license": "CC0 1.0",
+      "license_url": "http://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": false
+    }
+  ]
+}

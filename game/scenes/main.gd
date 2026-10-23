@@ -15,6 +15,12 @@ extends Node
 ## save_now(), save_and_quit_to_title(), resume(), continue_after_death(), quit_to_desktop().
 ## open_session(slot) switches save slots, and intent_provider (for example the dev ForageBot)
 ## swims instead of the player in the next run.
+##
+## Settings and slots (UI pass): the shared SettingsService is applied at launch (window, audio,
+## bindings, text size) and picks the save slot unless --slot names one. open_settings() shows the
+## settings screen over the title or the pause menu; open_slots() the save slots screen over the
+## title, whose choose_slot(n) and delete_slot(n) do the work. Every input event tells
+## InputPrompts which device is in use, so hints name the controller's buttons or the keys.
 
 signal screen_changed(screen: Node)
 
@@ -47,6 +53,11 @@ var last_run := {}
 ## Debug builds only; null in a release build.
 var dev_layer: Node
 var debug_panel: Node
+## The player's settings (SettingsService.shared()).
+var settings: SettingsService
+## The settings screen or the save slots screen while one is open, else null.
+var settings_menu: SettingsMenu
+var slot_picker: SlotPicker
 
 var _paused_for_quit := false
 
@@ -59,7 +70,12 @@ func _ready() -> void:
 	flags = RunFlags.current()
 	for problem in flags.problems:
 		push_warning(problem)
-	open_session(flags.slot)
+	settings = SettingsService.shared()
+	for problem in settings.load_problems:
+		push_warning(problem)
+	settings.apply_all()
+	settings.changed.connect(_on_setting_changed)
+	open_session(flags.slot if not flags.slot.is_empty() else settings.current_slot_path())
 	quit_dialog.chosen.connect(_on_quit_choice)
 	_add_dev_layer()
 	if flags.perf_tour:
@@ -81,11 +97,13 @@ func show_start() -> void:
 	_clear_screen()
 	start_screen = START_SCREEN_SCENE.instantiate()
 	add_child(start_screen)
-	start_screen.setup(session.peek_slot(), session.catalog)
+	start_screen.setup(session.peek_slot(), session.catalog, SaveSlots.number_of(session.slot))
 	# Deferred, so a screen is never swapped out from under the button that asked for it.
 	start_screen.new_requested.connect(start_new, CONNECT_DEFERRED)
 	start_screen.continue_requested.connect(continue_run, CONNECT_DEFERRED)
 	start_screen.quit_requested.connect(quit_to_desktop, CONNECT_DEFERRED)
+	start_screen.settings_requested.connect(open_settings, CONNECT_DEFERRED)
+	start_screen.slots_requested.connect(open_slots, CONNECT_DEFERRED)
 	_set_screen(start_screen)
 
 
@@ -176,11 +194,64 @@ func request_quit() -> void:
 	quit_dialog.open(prompt.title, prompt.body, prompt.choices, prompt.focus, "cancel")
 
 
+## Full screen key: switches between a window and borderless full screen, and keeps the choice in
+## the settings.
 func toggle_fullscreen() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if full else DisplayServer.WINDOW_MODE_FULLSCREEN)
+	var windowed := str(settings.get_value("graphics/window_mode")) == "windowed"
+	settings.set_value("graphics/window_mode", "borderless" if windowed else "windowed")
+	settings.save_file()
+
+
+## Shows the settings screen over the title or the pause menu (the pool stays paused under it).
+func open_settings() -> SettingsMenu:
+	if settings_menu != null:
+		return settings_menu
+	var host: Node = pool.ui if pool != null else screen
+	if host == null:
+		return null
+	settings_menu = SettingsMenu.new()
+	settings_menu.name = "SettingsMenu"
+	host.add_child(settings_menu)
+	settings_menu.closed.connect(_on_settings_closed, CONNECT_DEFERRED)
+	settings_menu.open(settings)
+	return settings_menu
+
+
+## Shows the save slots screen over the title.
+func open_slots() -> SlotPicker:
+	if slot_picker != null or start_screen == null:
+		return slot_picker
+	slot_picker = SlotPicker.new()
+	slot_picker.name = "SlotPicker"
+	start_screen.add_child(slot_picker)
+	slot_picker.slot_chosen.connect(choose_slot, CONNECT_DEFERRED)
+	slot_picker.delete_requested.connect(delete_slot, CONNECT_DEFERRED)
+	slot_picker.closed.connect(_on_slots_closed, CONNECT_DEFERRED)
+	slot_picker.open(SaveSlots.peek_all(), SaveSlots.number_of(session.slot), session.catalog)
+	return slot_picker
+
+
+## Plays slot n from now on (remembered in the settings) and shows its title screen.
+func choose_slot(n: int) -> void:
+	settings.set_value("game/slot", n)
+	settings.save_file()
+	slot_picker = null
+	open_session(SaveSlots.path(n))
+
+
+## Deletes slot n's save (the slots screen already asked) and refreshes the slots and the title.
+## Returns the error, OK when the files are gone.
+func delete_slot(n: int) -> Error:
+	var err := SaveSlots.delete(SaveSlots.path(n))
+	if slot_picker != null:
+		slot_picker.show_slots(SaveSlots.peek_all(), SaveSlots.number_of(session.slot))
+	if err != OK:
+		_alert("Could not delete slot %d" % n, PackedStringArray([error_string(err)]))
+	elif start_screen != null and SaveSlots.number_of(session.slot) == n:
+		start_screen.setup(session.peek_slot(), session.catalog, n)
+	return err
 
 
 ## "Saved 14:02" (local time) or the save error.
@@ -263,6 +334,14 @@ func footer_text() -> String:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		request_quit()
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT and settings != null:
+		settings.set_window_focused(false)
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN and settings != null:
+		settings.set_window_focused(true)
+
+
+func _input(event: InputEvent) -> void:
+	InputPrompts.note(event)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -293,7 +372,9 @@ func _open_pool() -> void:
 	pause_menu.save_requested.connect(save_now)
 	pause_menu.save_and_quit_requested.connect(save_and_quit_to_title, CONNECT_DEFERRED)
 	pause_menu.quit_requested.connect(quit_to_desktop, CONNECT_DEFERRED)
+	pause_menu.settings_requested.connect(open_settings, CONNECT_DEFERRED)
 	death_notice.chosen.connect(func(_choice: String): continue_after_death())
+	_apply_pool_settings()
 	_set_screen(pool)
 
 
@@ -305,6 +386,8 @@ func _clear_screen() -> void:
 		screen.queue_free()
 	screen = null
 	start_screen = null
+	settings_menu = null
+	slot_picker = null
 	pool = null
 	hud = null
 	pause_menu = null
@@ -340,6 +423,44 @@ func _on_died(cause: String, reason: String = "") -> void:
 ## the cell shows there.
 func _on_respawned(grace_s: float, _teleport: bool) -> void:
 	hud.show_message(respawn_text(ceili(grace_s)))
+
+
+## The settings the running pool reads: pausing on focus loss, and the zoom speed and direction
+## (a negative step zooms the other way).
+func _apply_pool_settings() -> void:
+	if pool == null:
+		return
+	pool.pause_on_focus_loss = settings.pause_on_focus_loss()
+	var cam := pool.camera
+	if not cam.has_meta("base_zoom_step"):
+		cam.set_meta("base_zoom_step", cam.zoom_step)
+	var direction := -1.0 if settings.get_value("controls/invert_zoom") else 1.0
+	cam.zoom_step = float(cam.get_meta("base_zoom_step")) * float(settings.get_value("controls/zoom_speed")) * direction
+
+
+func _on_setting_changed(id: String) -> void:
+	if pool != null:
+		_apply_pool_settings()
+	if start_screen != null and id == "accessibility/reduce_camera_motion":
+		start_screen.fit_backdrop()
+
+
+func _on_settings_closed() -> void:
+	if settings_menu != null:
+		settings_menu.queue_free()
+	settings_menu = null
+	if pause_menu != null and pause_menu.is_open():
+		pause_menu.settings_button.grab_focus()
+	elif start_screen != null:
+		start_screen.settings_button.grab_focus()
+
+
+func _on_slots_closed() -> void:
+	if slot_picker != null:
+		slot_picker.queue_free()
+	slot_picker = null
+	if start_screen != null:
+		start_screen.slots_button.grab_focus()
 
 
 func _on_quit_choice(choice: String) -> void:

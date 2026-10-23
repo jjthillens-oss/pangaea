@@ -1,0 +1,69 @@
+{
+  "id": "cradle_ring",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S3 cradle ring dressing: a low glass rim 14 bu across with a frosted lip and a ring of beads, sunk below the decor-free band, framing the old pool shrunk to a tiny dish at band 1.",
+  "category": "dressing",
+  "source_blend": "assets/source/blender/cradle_ring.blend",
+  "generator_script": "tools/blender/make_endless_extras.py",
+  "export_path": "assets/export/cradle_ring.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 16.666,
+    "y_forward": 16.666,
+    "z_up": 1.49
+  },
+  "triangles": 3456,
+  "triangle_budget": 6000,
+  "textures": [
+    {
+      "name": "T_CradleRing_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CradleRing_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CradleRing_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Amber",
+    "M_Frost",
+    "M_Lavender",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "CradleRing"
+  ],
+  "kind": "dressing",
+  "band": 1,
+  "pivot": "centre of the old pool on the swim plane (Godot y = 0)",
+  "radius_bu": 7.0,
+  "top_bu": -1.6,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_extras.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

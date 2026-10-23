@@ -1,0 +1,100 @@
+{
+  "id": "cpart_claw",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature claw part (PROPOSED): a dark hooked sickle claw on a padded sheath, right-hand piece (mirrored at bake for the left).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_claw.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_claw.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.049,
+    "y_forward": 0.082,
+    "z_up": 0.136
+  },
+  "triangles": 188,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartClaw_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartClaw_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartClaw_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Claw",
+    "M_ClawSheath"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Claw"
+  ],
+  "part_type": "claw",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "claw",
+    "footprint_radius_m": 0.027,
+    "sink_depth_m": 0.02,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 30,
+    "tilt_limit_deg": 30,
+    "centerline": "forbidden",
+    "hosts": [
+      "limb_end",
+      "limb"
+    ],
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the claw 40% longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Hook",
+        "meaning": "the tip hooked further forward and down",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_ClawSheath": 0.8,
+    "M_Claw": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 648,
+    "triangles_after": 188
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

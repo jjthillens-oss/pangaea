@@ -1,0 +1,26 @@
+{
+  "id": "mus_another_august",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_another_august.mp3",
+  "purpose": "Serene, ethereal ambient piece: the calm playlist while the cell explores.",
+  "role": "calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 206.6,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Another August",
+      "author": "The Cynic Project (cynicmusic, pixelsphere.org)",
+      "url": "https://opengameart.org/content/another-august",
+      "download": "https://opengameart.org/sites/default/files/013_Another_August_0.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none (the author asks for credit, which the CC0 licence does not require; credited in the record and the game credits)"
+    }
+  ]
+}

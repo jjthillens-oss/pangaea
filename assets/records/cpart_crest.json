@@ -1,0 +1,97 @@
+{
+  "id": "cpart_crest",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature crest part (PROPOSED): a dorsal crest of five webbed spines on the midline that raises or folds on shape keys; takes the creature's paint.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_crest.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_crest.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.017,
+    "y_forward": 0.354,
+    "z_up": 0.135
+  },
+  "triangles": 526,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartCrest_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartCrest_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartCrest_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Crest"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Crest"
+  ],
+  "part_type": "crest",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "crest",
+    "footprint_radius_m": 0.159,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 10,
+    "tilt_limit_deg": 15,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "handles": [
+      {
+        "key": "H1_Raise",
+        "meaning": "spines 45% taller",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Fold",
+        "meaning": "spines laid back toward the tail",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_Crest": 0.75
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0002,
+    "triangles_before": 976,
+    "triangles_after": 526
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

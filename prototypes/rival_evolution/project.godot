@@ -1,0 +1,6 @@
+; Isolated, headless research prototype. The main game does not load this project.
+config_version=5
+
+[application]
+config/name="Rival Evolution Prototype"
+config/features=PackedStringArray("4.7")
