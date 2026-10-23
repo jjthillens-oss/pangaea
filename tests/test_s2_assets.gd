@@ -140,3 +140,20 @@ func test_material_overrides_load_and_stay_clear_of_reserved_hues() -> void:
 		if m:
 			var gap := _reserved_gap(m.albedo_color)
 			check(gap >= MIN_LAB_HUE_GAP_DEG, "%s albedo keeps %.0f degrees of LAB hue from food and threat" % [path, gap])
+
+
+## S3 pieces that lie wholly below the swim plane (s3-view A3V-2, A3V-3): albedo luminance at most
+## 0.40, so the engine draws them as authored, and the cradle ring at the old pool's band-1 radius.
+func test_below_plane_s3_pieces_stay_dim_and_the_cradle_is_full_size() -> void:
+	for id in ["cradle_ring", "home_beacon"]:
+		var root: Node = (load("res://assets/export/%s.glb" % id) as PackedScene).instantiate()
+		for mi in _meshes(root):
+			for s in mi.mesh.get_surface_count():
+				var m := mi.mesh.surface_get_material(s) as BaseMaterial3D
+				if m:
+					var luma := m.albedo_color.srgb_to_linear().get_luminance()
+					check(luma <= 0.40, "%s %s albedo luminance %.2f, at most 0.40" % [id, m.resource_name, luma])
+		root.free()
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/records/cradle_ring.json"))
+	check_near(float(record.get("radius_bu", 0.0)), 14.0625, 1e-4, "cradle_ring radius_bu")
+	check_near(float(record.get("top_bu", 0.0)), -1.6, 1e-4, "cradle_ring top_bu")

@@ -117,19 +117,44 @@ roughness = 0.5
 """
 
 
-def build_cradle_ring():
+# Pieces that lie wholly below the swim plane keep their albedo luminance at or under this (s3-view
+# A3V-2), so the engine draws them as authored instead of dimming them.
+BELOW_PLANE_LUMA = 0.38
+
+
+def _below_plane_mats():
+    """The kit's flat materials, each scaled down (hue kept) to linear luminance BELOW_PLANE_LUMA at most."""
     m = k._mats()
-    r = 7.0
+    for mat in m.values():
+        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        c = bsdf.inputs["Base Color"].default_value
+        luma = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+        if luma > BELOW_PLANE_LUMA:
+            f = BELOW_PLANE_LUMA / luma
+            bsdf.inputs["Base Color"].default_value = (c[0] * f, c[1] * f, c[2] * f, 1.0)
+    return m
+
+
+# The cradle ring is authored at the old pool's size at band 1 (s3-interfaces A-3), so the engine
+# places it at scale 1: the M1 ring of 7 bu, scaled 2.009 in plan, the top kept at -1.6 bu.
+CRADLE_R = 14.0625
+CRADLE_K = CRADLE_R / 7.0
+
+
+def build_cradle_ring():
+    m = _below_plane_mats()
+    r, s = CRADLE_R, CRADLE_K
     top = -1.6
-    k.revolve("Rim", [(r - 0.6, top - 1.2), (r - 0.5, top - 0.3), (r - 0.35, top), (r + 0.35, top), (r + 0.55, top - 0.3),
-                      (r + 0.9, top - 1.0), (r + 1.3, top - 1.4)], m["silica"], 96, lobes=(48, 0.004))
-    k.torus("Lip", r, 0.12, m["frost"], (0, 0, top - 0.02), seg=(96, 6))
-    for i in range(24):
-        a = i * math.tau / 24
-        k.sphere(f"Bead{i}", 0.14, (r * math.cos(a), r * math.sin(a), top - 0.05), m["amber"] if i % 3 == 0 else m["lavender"], 8, 4)
+    k.revolve("Rim", [(r - 0.6 * s, top - 1.2 * s), (r - 0.5 * s, top - 0.3 * s), (r - 0.35 * s, top), (r + 0.35 * s, top),
+                      (r + 0.55 * s, top - 0.3 * s), (r + 0.9 * s, top - 1.0 * s), (r + 1.3 * s, top - 1.4 * s)],
+              m["silica"], 144, lobes=(72, 0.004 * s))
+    k.torus("Lip", r, 0.12 * s, m["frost"], (0, 0, top - 0.02 * s), seg=(144, 5))
+    for i in range(36):
+        a = i * math.tau / 36
+        k.sphere(f"Bead{i}", 0.14 * s, (r * math.cos(a), r * math.sin(a), top - 0.05 * s), m["amber"] if i % 3 == 0 else m["lavender"], 8, 4)
     k.assemble("cradle_ring")
     return {
-        "purpose": "S3 cradle ring dressing: a low glass rim 14 bu across with a frosted lip and a ring of beads, sunk below the decor-free band, framing the old pool shrunk to a tiny dish at band 1.",
+        "purpose": "S3 cradle ring dressing: a low glass rim 28.1 bu across (the old pool at band 1, placed at scale 1) with a frosted lip and a ring of beads, sunk below the decor-free band, framing the old pool shrunk to a tiny dish at band 1.",
         "category": "dressing", "kind": "dressing", "band": 1,
         "pivot": "centre of the old pool on the swim plane (Godot y = 0)",
         "radius_bu": r, "top_bu": top,
@@ -137,7 +162,7 @@ def build_cradle_ring():
 
 
 def build_home_beacon():
-    m = k._mats()
+    m = _below_plane_mats()
     base = -40.0
     k.revolve("Foot", [(0.0, base), (6.0, base + 0.5), (5.0, base + 3.0), (2.5, base + 6.0), (1.6, base + 10.0)], m["frost"], 48, lobes=(9, 0.05))
     k.lattice("Spire", 4.0, (0, 0, base + 18.0), m["silica"], 2, 0.25, (1, 1, 2.2), keep=lambda co: True)
