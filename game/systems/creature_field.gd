@@ -340,6 +340,27 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 		_enqueue(c.site_id, c.species_id, tick + wait)
 
 
+## The growth tick (S2, B.4 step 2): `c` leaves the field for a remnant, a morsel or haze, with no
+## event and no hook on the other brains (every other awake creature leaves in the same step): out of
+## the creature and awake lists, its think slot, its site and the token, and its niche slot freed.
+func take_for_growth(c: Creature) -> Creature:
+	var at := creatures.find(c)
+	if at < 0:
+		return null
+	creatures.remove_at(at)
+	if endless:
+		_awake.erase(c)
+		_release_slot(c)
+		if not c.site_id.is_empty() and _by_site.get(c.site_id) == c:
+			_by_site.erase(c.site_id)
+	if not c.debug:
+		region.on_creature_removed(c.role)
+	var token_at := engaged_on_player.find(c.id)
+	if token_at >= 0:
+		engaged_on_player.remove_at(token_at)
+	return c
+
+
 ## Endless mode (B-6, the hold pass): an awake creature held beyond the hold ring leaves, "unloaded",
 ## and its site is queued at this tick with no respawn delay, so the spawn rule refills it as a
 ## sleeper (or not at all once its chunks unload). A debug or siteless creature is not requeued.
@@ -584,15 +605,23 @@ func think_due(c: Creature, tick: int) -> bool:
 ## after. `self_view` may be passed in when the caller already built it this tick (the body has not
 ## moved since), and so may a packed copy of the food's positions and radii
 ## (CreatureSenses.perceive_food_packed), taken with `food_items`.
+## The self_view the brain gets also holds the cell for habits (D-59): "cell", its position when the
+## snapshot's first body is the living, unconcealed cell (else Vector2.INF), and "cell_seen", whether
+## this creature senses it now. The brain never names the player; it reads these two keys.
 func think(c: Creature, p_bodies: Variant, food_items: Array, arena: PoolArena, tick: int, self_view := {},
 		food_at := PackedVector2Array(), food_r := PackedFloat64Array()) -> void:
 	var viewer := viewer_of(c)
 	var percepts := CreatureSenses.perceive_bodies(viewer, p_bodies, arena) if p_bodies is CreatureSenses.Bodies \
 		else CreatureSenses.perceive(viewer, p_bodies, arena)
+	var sv := self_view if not self_view.is_empty() else self_view_of(c)
+	sv["cell"] = _cell_of(p_bodies)
+	var seen := false
 	var may := may_engage_player(c)
 	for percept in percepts:
 		if percept.id == PLAYER_ID:
 			percept.engageable = may
+			seen = true
+	sv["cell_seen"] = seen
 	if c.brain.seen.has(PLAYER_ID):
 		c.brain.seen[PLAYER_ID].engageable = may
 	var food: Array[Dictionary] = []
@@ -601,8 +630,25 @@ func think(c: Creature, p_bodies: Variant, food_items: Array, arena: PoolArena, 
 			food = CreatureSenses.perceive_food_packed(viewer, food_items, food_at, food_r, c.phenotype.diets)
 		else:
 			food = CreatureSenses.perceive_food(viewer, food_items, c.phenotype.diets)
-	CreatureBrain.think(c.brain, self_view if not self_view.is_empty() else self_view_of(c), percepts, food, tick, arena)
+	CreatureBrain.think(c.brain, sv, percepts, food, tick, arena)
 	update_token(c, tick)
+
+
+## The cell's position for a self_view (D-59): the snapshot's first body when it is the player,
+## alive and not concealed, else Vector2.INF.
+static func _cell_of(p_bodies: Variant) -> Vector2:
+	if p_bodies is CreatureSenses.Bodies:
+		var b: CreatureSenses.Bodies = p_bodies
+		if b.info.is_empty() or b.info[0].id != PLAYER_ID or b.alive[0] == 0 or bool(b.info[0].get("concealed", false)):
+			return Vector2.INF
+		return b.at[0]
+	var list: Array = p_bodies
+	if list.is_empty():
+		return Vector2.INF
+	var first: Dictionary = list[0]
+	if first.id != PLAYER_ID or not bool(first.get("alive", true)) or bool(first.get("concealed", false)):
+		return Vector2.INF
+	return first.position
 
 
 ## A drive that does nothing: no thrust, no turn, no strike (a new, frozen or scripted creature).

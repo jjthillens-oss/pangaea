@@ -7,6 +7,7 @@ extends TestCase
 
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
+const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SEED := 77
 ## Real sites in data order, as populate() numbers them.
 const SITE_ORDER := ["lair_se", "lair_sw", "lair_s", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
@@ -468,3 +469,87 @@ func test_remove_stuck_at_one_place_equals_remove_stuck() -> void:
 	var far: Array[Vector2] = [layout.spawn, Vector2(-30.0, -20.0)]
 	c.remove_stuck_at(far, 61)
 	check(c.find("c_1") == null, "removed when no place is near or sees it")
+
+
+# --- S2 T2.2: the growth tick's take, and the cell in the self_view (D-59) ---
+
+func test_take_for_growth_leaves_the_field_with_no_event_and_no_hook() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	field.populate(arena, layout.spawn, 0)
+	field.take_events()
+	var rammer := field.find("c_4")
+	var neighbour := field.find("c_5")
+	neighbour.brain.seen[rammer.id] = {"position": rammer.motion.position, "velocity": Vector2.ZERO, "tick": 5, "by": "sight",
+		"species": "rammer", "radius": rammer.phenotype.radius, "engageable": true}
+	field.engaged_on_player.append(rammer.id)
+	var count: int = field.region.niches.territorial.count
+	check(field.take_for_growth(rammer) == rammer, "it gives the creature back")
+	check(field.find(rammer.id) == null, "out of the creature list")
+	check_eq(field.region.niches.territorial.count, count - 1, "its niche slot is free")
+	check(not field.engaged_on_player.has(rammer.id), "it leaves the token")
+	check(field.take_events().is_empty(), "no event")
+	check(neighbour.brain.seen.has(rammer.id), "no brain is told (every other awake creature leaves in the same step)")
+	check(field.queue.is_empty(), "its site is not queued")
+	check(field.take_for_growth(rammer) == null, "a second take finds nothing")
+	var debug := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	count = field.region.niches.territorial.count
+	field.take_for_growth(debug)
+	check_eq(field.region.niches.territorial.count, count, "a debug creature held no niche slot")
+
+	# The endless world: a rammer site of its own 20 tm from the cell, its creature spawned awake.
+	var sim := FakeWorldGen.endless_sim(SEED, parts, layout, species)
+	for t in 40:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	var home := sim.motion.position + Vector2(20.0, 0.0)
+	var a := sim.world.abs_of_local(home)
+	var key := sim.world.chunk_of_local(home)
+	var s := {"id": "x_take", "species": "rammer", "x": a[0], "y": a[1], "heading": 0.0,
+		"territory": {"x": a[0], "y": a[1], "radius": 3.0}, "reach": {"x": a[0], "y": a[1], "radius": 6.0},
+		"chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int], "tile": Vector2i.ZERO}
+	sim.world.sites["x_take"] = sim.world._site_record(s, key)
+	sim.world.recompute_caps(sim)
+	var f := sim.creatures
+	var c := f.spawn_site(sim.world.sites["x_take"], sim.tick, false)
+	check(c != null and not c.asleep and c.think_slot >= 0, "an awake creature at its own site")
+	if c == null:
+		return
+	f.take_events()
+	var slot := c.think_slot
+	var on_slot: int = f._slot_counts[slot]
+	f.take_for_growth(c)
+	check(not f.awake().has(c), "out of the awake list")
+	check_eq(c.think_slot, -1, "off its think slot")
+	check_eq(f._slot_counts[slot], on_slot - 1, "the slot count drops")
+	check(f._occupant(c.site_id) == null, "its site is empty")
+	check(f.take_events().is_empty(), "no event in the endless world either")
+
+
+func test_think_hands_the_brain_the_cell_where_it_is_alive_and_not_concealed() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	field.populate(arena, layout.spawn, 0)
+	var c := field.find("c_4")
+	var near := c.motion.position + Vector2.from_angle(c.motion.heading) * 3.0
+	var far := c.motion.position + Vector2(200.0, 0.0)
+	var cases := [
+		["in sight", _player(near), near, true],
+		["beyond its senses", _player(far), far, false],
+		["concealed", _player(near).merged({"concealed": true}, true), Vector2.INF, false],
+		["dead", _player(near).merged({"alive": false}, true), Vector2.INF, false],
+	]
+	for row in cases:
+		var body: Dictionary = row[1]
+		for form in ["list", "columns"]:
+			var bodies: Variant = field.bodies(body) if form == "list" else field.body_snapshot(body)
+			var sv := field.self_view_of(c)
+			field.think(c, bodies, [], arena, 10, sv)
+			check_eq(sv.get("cell", null), row[2], "%s (%s): the cell" % [row[0], form])
+			check_eq(sv.get("cell_seen", null), row[3], "%s (%s): cell_seen" % [row[0], form])
+	# The first body is not the player: no cell.
+	var sv := field.self_view_of(c)
+	var others: Array = field.bodies(_player(near)).slice(1)
+	field.think(c, others, [], arena, 11, sv)
+	check_eq(sv.get("cell", null), Vector2.INF, "no player in the bodies: no cell")
+	check_eq(sv.get("cell_seen", null), false, "and not seen")
