@@ -145,6 +145,20 @@ const IDENTITY_RUNS: Array[Dictionary] = [
 	{"name": "circle_hunter", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle"}]
 const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
 
+## S2's growth gates (test_threat_fuzz's size-2 runner, test_endless_fuzz's growth fuzz,
+## test_growth_gates, test_endless_cost's size-2 cases) wait on the S2 seams they read (S2 build plan
+## 5.2), each named in S2_NEEDS, as the S1 gates wait on gaps(): s2_missing(needs) names what has not
+## landed, and a gap is allowed only while its marker file is not in the tree ("" for a data check
+## with no file of its own).
+const S2_NEEDS := {
+	"set_size": {"what": "PoolSim.debug_set_size and debug_force_growth (T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"fuzz_growth": {"what": "FuzzInvariants through a growth and a set_size cut (T2.6b)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"blocker": {"what": "Growth.blocker_of (T2.3)", "marker": "res://game/systems/world/remnant_field.gd"},
+	"remnants": {"what": "PoolSim.remnants (T2.4)", "marker": "res://game/systems/world/remnant_field.gd"},
+	"size_two_species": {"what": "species that enter at size 2 (T1.7)", "marker": "res://tests/fixtures/creatures_posts_test.json"},
+	"size_two_content": {"what": "the real content's size-2 sites (T3.5)", "marker": ""},
+}
+
 
 # ---- The harness (static, shared) ----
 
@@ -194,6 +208,61 @@ static func missing(need := ALL) -> PackedStringArray:
 	for g in gaps():
 		if int(g.need) <= need:
 			out.append(g.what)
+	return out
+
+
+## The S2 seams of `needs` (S2_NEEDS keys) that have not landed, in words; empty when the gate can
+## run. The S1 levels it rests on (ALL) come first.
+static func s2_missing(needs: PackedStringArray) -> PackedStringArray:
+	var out := missing(ALL)
+	if not out.is_empty():
+		return out
+	for need in needs:
+		if not s2_has(need):
+			out.append(str(S2_NEEDS[need].what))
+	return out
+
+
+## Whether the S2 seam `need` (an S2_NEEDS key) is in the tree.
+static func s2_has(need: String) -> bool:
+	var sim_script := load(POOL_SIM_PATH) as GDScript
+	match need:
+		"set_size":
+			return _lacking(sim_script, {"debug_set_size": 1, "debug_force_growth": 0}, []).is_empty()
+		"fuzz_growth":
+			var fuzz: Variant = new_fuzz()
+			fuzz.start_run()
+			return (fuzz.counts as Dictionary).has("growths") and (fuzz.counts as Dictionary).has("set_sizes")
+		"blocker":
+			return _lacking(load("res://game/systems/world/growth.gd") as GDScript, {"blocker_of": 1}, []).is_empty()
+		"remnants":
+			return _lacking(sim_script, {}, ["remnants"]).is_empty()
+		"size_two_species":
+			return not species_entering_at(2).is_empty()
+		"size_two_content":
+			if content_path() != REAL_WORLD or species_entering_at(2).is_empty():
+				return false
+			var entering := species_entering_at(2)
+			var content: Variant = data().content
+			var sites: Array = content.home.sites.duplicate()
+			for id in content.tiles.tiles:
+				sites.append_array(content.tiles.tiles[id].sites)
+			for site in sites:
+				if entering.has(str(site.species)):
+					return true
+			return false
+	push_error("Gates.s2_has: no seam '%s'" % need)
+	return false
+
+
+## The ids of the species whose entry size is `n`, sorted.
+static func species_entering_at(n: int) -> PackedStringArray:
+	var species: SpeciesCatalog = data().species
+	var out := PackedStringArray()
+	for id in species.species_ids():
+		if species.entry_size(id) == n:
+			out.append(id)
+	out.sort()
 	return out
 
 
@@ -493,6 +562,23 @@ func test_the_gates_wait_only_on_what_has_not_landed() -> void:
 	check_eq(int(sim.world.counters.awake_overflow) + int(sim.world.counters.chunk_waits), 0, "no overflow and no chunk waits")
 	print("test-endless-gates: the harness ran on %s: %d chunks loaded, %.1f tm east in 120 ticks" % [
 		content_path(), sim.world.loaded_keys().size(), end[0] - start[0]])
+
+
+## S2's seams: each gap is allowed only while its marker file is not in the tree, and the waits
+## name what they wait on.
+func test_the_s2_gates_wait_only_on_what_has_not_landed() -> void:
+	if _waits("the S2 seams check", ALL):
+		return
+	var waiting := PackedStringArray()
+	for need in S2_NEEDS:
+		var marker := str(S2_NEEDS[need].marker)
+		if s2_has(need):
+			continue
+		waiting.append(str(S2_NEEDS[need].what))
+		check(marker.is_empty() or not FileAccess.file_exists(marker), "%s is in the tree, so %s has landed, but the harness misses it" % [
+			marker, S2_NEEDS[need].what])
+	check_eq(s2_missing(PackedStringArray(S2_NEEDS.keys())), waiting, "s2_missing names every missing seam")
+	print("test-endless-gates: the S2 gates wait on: %s" % ("nothing" if waiting.is_empty() else "; ".join(waiting)))
 
 
 ## The swim body is the fastest legal one: legal, faster than every starting body, and no part could
