@@ -6,13 +6,14 @@ extends RefCounted
 ## input, tree or global random numbers, and gives the same chunk along any route.
 ##
 ## The arrangement (spine 3.6, docs/s1/s1-core.md 6.4): a value-noise region per tile from a lattice
-## every region_period_tiles, the drift swap, the home tiles, one rare tile per 6 x 6 block (block
+## every region_period_tiles, the coordinate drift rule, the home tiles, one rare tile per 6 x 6 block (block
 ## (0, 0)'s fixed), a tile id per (region, set) and a landmark per 2 x 2 cell. Every stream is a
 ## WorldHash of fixed coordinates. Tile infos and lattice values are memoised per instance; clearing
 ## the memo changes nothing (tests/test_world_gen.gd).
 ##
-## The region rule is the spine's drift swap (core C-15: it ships until the integrator answers core
-## question 17.1; the coordinate rule both S1 designs recommend would keep 14.5% drift, not 1.7%).
+## The region rule is the coordinate rule (docs/s1/s1-build-plan.md B-11, replacing the spine's
+## drift swap): a raw drift tile on every (max_drift_run + 1)th column or row is sunlit. Drift keeps
+## about 14.8% of the tiles, and no row or column holds more than max_drift_run drift tiles running.
 ##
 ## A chunk (docs/s1/s1-core.md 6.5) holds every object of the tiles under it whose centre lies in
 ## it: shells with their hashed kit asset, yaw and dressing, zones, live sites with their reach
@@ -47,6 +48,7 @@ var _t0 := 0.395
 var _t1 := 0.605
 var _order := PackedStringArray(["drift", "sunlit", "reef"])
 var _drift_index := 0
+var _drift_run := 2
 var _home_lo := -1
 var _home_hi := 0
 var _block_first := -3
@@ -120,6 +122,7 @@ func setup(p_content: WorldContent, p_species: SpeciesCatalog, p_world_seed: int
 	if (a.region_order as PackedStringArray).size() == 3:
 		_order = a.region_order
 	_drift_index = _order.find(DRIFT)
+	_drift_run = maxi(1, int(a.max_drift_run))
 	_home_lo = int(a.home_tiles[0])
 	_home_hi = int(a.home_tiles[1])
 	_block_first = int(a.rare_block_first_tile)
@@ -585,13 +588,13 @@ func _landmark_of_cell(band: int, lx: int, ly: int) -> Dictionary:
 	return {"tile": candidates[WorldHash.pick(h, candidates.size())], "model": model, "dressing": dressing, "h": h}
 
 
-## The final region of an ordinary tile: the raw region, with the spine's drift swap (a drift tile
-## whose two raw west or two raw north neighbours are drift becomes sunlit). It reads raw neighbours
-## only, so it is route-independent, and no row or column holds three final drift tiles running.
+## The final region of an ordinary tile (B-11): the raw region, except that a raw drift tile whose
+## column or row is m mod (m + 1), with m = max_drift_run, is sunlit. It reads the tile's own
+## coordinates only, so it is route-independent, and every run of m + 1 tiles along a row or column
+## holds one such column or row, so no row or column holds more than m final drift tiles running.
 func _region(band: int, tx: int, ty: int) -> String:
 	var r := _raw(band, tx, ty)
-	if r == _drift_index and ((_raw(band, tx - 1, ty) == _drift_index and _raw(band, tx - 2, ty) == _drift_index)
-			or (_raw(band, tx, ty - 1) == _drift_index and _raw(band, tx, ty - 2) == _drift_index)):
+	if r == _drift_index and (posmod(tx, _drift_run + 1) == _drift_run or posmod(ty, _drift_run + 1) == _drift_run):
 		return SUNLIT
 	return _order[r]
 

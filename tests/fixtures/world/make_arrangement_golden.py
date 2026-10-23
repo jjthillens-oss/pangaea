@@ -2,7 +2,7 @@
 fixture world for a spread of tiles and cells and two seeds, computed again here in Python from the
 spine's arrangement (docs/s1/s1-interfaces.md 3.6, docs/s1/s1-core.md 6.4) and tools/world_hash_ref.py,
 not from the GDScript. tests/test_world_gen.gd checks the generator against it, so a slip in the
-noise, the drift swap, the rare blocks, the id pick or the landmark pick fails a test.
+noise, the coordinate drift rule (B-11), the rare blocks, the id pick or the landmark pick fails a test.
 
 Run with python3 -I from anywhere; it reads the fixture world next to itself and writes next to it.
 """
@@ -31,6 +31,7 @@ P = arr["region_period_tiles"]
 T0, T1 = arr["region_thresholds"]
 ORDER = arr["region_order"]
 DRIFT = ORDER.index("drift")
+M = arr["max_drift_run"]
 HOME_LO, HOME_HI = arr["home_tiles"]
 FIRST = arr["rare_block_first_tile"]
 BLOCK = arr["rare_block_tiles"]
@@ -95,8 +96,7 @@ class Gen:
 
     def region(self, tx, ty):
         r = self.raw(tx, ty)
-        if r == DRIFT and ((self.raw(tx - 1, ty) == DRIFT and self.raw(tx - 2, ty) == DRIFT)
-                           or (self.raw(tx, ty - 1) == DRIFT and self.raw(tx, ty - 2) == DRIFT)):
+        if r == DRIFT and (tx % (M + 1) == M or ty % (M + 1) == M):   # Python's % is posmod for a positive modulus
             return "sunlit"
         return ORDER[r]
 

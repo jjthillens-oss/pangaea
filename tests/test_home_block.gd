@@ -107,7 +107,7 @@ func test_each_home_rule_has_a_failing_variant() -> void:
 		[func(d: Dictionary) -> void: _zone(d, "ine").center = [24.0, -26.0], "home_min: rule 3: zone 'ine' at (24.0, -26.0) reaches inside seam_inner_r", 1],
 		[func(d: Dictionary) -> void: _zone(d, "e").center = [58.0, 0.0], "home_min: rule 3: zone 'e' at (58.0, 0.0) comes within 1.0 bu", 1],
 		[func(d: Dictionary) -> void: _zone(d, "e").center = [50.0, 16.5], "home_min: rule 3: zones 'e' and 'ese' are", 1],
-		[func(d: Dictionary) -> void: _zone(d, "e").center = [48.3, 16.84], "home_min: rule 3: zone 'e' is 0.25 bu from shell 'sa'", 1],
+		[func(d: Dictionary) -> void: _zone(d, "e").center = [48.3, 16.84], "home_min: rule 3: Zone 'e' is 0.25 bu from collider 'sa'; it keeps 0.7.", 1],
 		[func(d: Dictionary) -> void: _zone(d, "e").growth_rate = 0.25, "home_min: rule 3: zone 'e' yields 1.200 a second", 1],
 		[func(d: Dictionary) -> void: _zone(d, "e").at_second_size = "grow", "home_min: rule 3: zone 'e' at_second_size 'grow'", 1],
 		# Rule 4: ring sites.
@@ -134,6 +134,34 @@ func test_each_home_rule_has_a_failing_variant() -> void:
 		for p in problems:
 			found = found or p.contains(c[1])
 		check(found and problems.size() == c[2], "case %d: %d problem(s), one containing '%s': %s" % [i, c[2], c[1], problems])
+
+
+## Rule 3's gap (B-2): every home zone, M1 and ring, keeps 0.7 bu from every home collider, ring
+## shells and M1 rocks alike. 0.69 bu is refused, 0.70 passes: a ring zone by a ring shell, a ring
+## zone by an M1 rock (seam_inner_r lowered to let it come near) and an M1 zone by an M1 rock (the
+## layout's z_center moved east, towards rock_01).
+func test_rule_3_keeps_every_home_zone_0_7_bu_from_every_collider() -> void:
+	var r01: float = layout.rocks[0].radius
+	var r14: float = layout.rocks[13].radius
+	check_eq([layout.rocks[0].id, layout.rocks[13].id, layout.zones[0].id], ["rock_01", "rock_14", "z_center"], "the pieces used")
+	for gap in [0.69, 0.70]:
+		var label := "%.2f bu" % gap
+		var by_ring_shell := _problems(func(d: Dictionary) -> void: _zone(d, "e").center = [40.65 + 1.4 + 6.0 + gap, 16.84])
+		var diagonal: float = (5.0 + r14 + gap) / sqrt(2.0)
+		var by_rock := _problems(func(d: Dictionary) -> void:
+			d.seam_inner_r = 30.0
+			_zone(d, "ise").center = [24.0 + diagonal, 24.0 + diagonal])
+		var moved := PoolLayout.load_from()
+		moved.zones[0].center = Vector2(12.0 - r01 - 5.0 - gap, 0.0)
+		var m1_zone := HomeBlock.from_dict(_data(), moved, species, "home_min").validate(species, kit, parts, 1)
+		if gap < 0.7:
+			check_eq(by_ring_shell, PackedStringArray(["home_min: rule 3: Zone 'e' is 0.69 bu from collider 'sa'; it keeps 0.7."]), "%s: a ring zone by a ring shell" % label)
+			check_eq(by_rock, PackedStringArray(["home_min: rule 3: Zone 'ise' is 0.69 bu from collider 'rock_14'; it keeps 0.7."]), "%s: a ring zone by an M1 rock" % label)
+			check_eq(m1_zone, PackedStringArray(["home_min: rule 3: Zone 'z_center' is 0.69 bu from collider 'rock_01'; it keeps 0.7."]), "%s: an M1 zone by an M1 rock" % label)
+		else:
+			check_eq(by_ring_shell, PackedStringArray(), "%s: a ring zone by a ring shell passes" % label)
+			check_eq(by_rock, PackedStringArray(), "%s: a ring zone by an M1 rock passes" % label)
+			check_eq(m1_zone, PackedStringArray(), "%s: an M1 zone by an M1 rock passes" % label)
 
 
 ## Rule 6 holds for the M1 sites (species rule 8 against the checkpoint, unchanged); moved closer, it fails.

@@ -23,7 +23,7 @@ const TOP_KEYS: PackedStringArray = ["schema_version", "status", "note", "mode",
 const SIZES_KEYS: PackedStringArray = ["start", "max_in_build"]
 const UNITS_KEYS: PackedStringArray = ["growth_factor", "band_factor", "tile_bu", "chunk_tm"]
 ## Inner to outer: every ring lies strictly outside the one before it (rule 4).
-const RING_KEYS: PackedStringArray = ["mirror", "view", "wake", "sleep", "food", "load", "unload"]
+const RING_KEYS: PackedStringArray = ["mirror", "view", "wake", "sleep", "food", "load", "unload", "hold"]
 const CAP_KEYS: PackedStringArray = ["awake", "sleepers", "food_items", "food_per_zone", "chunks", "view_set_chunks",
 	"loads_per_tick"]
 const ORIGIN_KEYS: PackedStringArray = ["rebase_beyond_tm", "rebase_step_tm", "local_bound_tm"]
@@ -60,7 +60,8 @@ var growth_factor := 1.6
 var band_factor := 2.56
 var tile_bu := 64.0
 var chunk_tm := 32.0
-## "mirror", "view", "wake", "sleep", "food", "load", "unload" -> float tm
+## "mirror", "view", "wake", "sleep", "food", "load", "unload", "hold" -> float tm (hold: an awake
+## creature whose reach disc centre lies further than this is removed, so its chunks can unload; B-6)
 var rings := {}
 ## "awake", "sleepers", "food_items", "food_per_zone", "chunks", "view_set_chunks", "loads_per_tick" -> int
 var caps := {}
@@ -201,7 +202,8 @@ func validate() -> PackedStringArray:
 		if pair[1] != pair[2]:
 			errors.append("%s.units.%s: must be %s (the S1 code assumes it), not %s" % [w, pair[0], pair[2], pair[1]])
 
-	# Rule 4: the rings rise strictly, with room between wake and sleep and between load and unload.
+	# Rule 4: the rings rise strictly (unload < hold too), with room between wake and sleep and between
+	# load and unload.
 	var rising := float(rings.mirror) > 0.0
 	for i in range(1, RING_KEYS.size()):
 		rising = rising and float(rings[RING_KEYS[i]]) > float(rings[RING_KEYS[i - 1]])
@@ -227,12 +229,14 @@ func validate() -> PackedStringArray:
 	if caps.loads_per_tick < 1:
 		errors.append("%s.caps.loads_per_tick: must be 1 or more" % w)
 
-	# Rule 6: the floating origin keeps every local position inside the bound.
+	# Rule 6: the floating origin keeps every local position inside the bound: a loaded chunk lies
+	# within unload, a held creature's disc centre within hold (B-6), and a chunk's far corner a
+	# diagonal beyond. WorldContent.problems adds the reach discs to the hold.
 	if rebase_step_tm != CHUNK_TM:
 		errors.append("%s.origin.rebase_step_tm: must equal chunk_tm (%s)" % [w, CHUNK_TM])
-	var farthest := rebase_beyond_tm + float(rings.unload) + CHUNK_TM * sqrt(2.0)
+	var farthest := rebase_beyond_tm + maxf(float(rings.unload), float(rings.hold)) + CHUNK_TM * sqrt(2.0)
 	if not (farthest < local_bound_tm):
-		errors.append("%s.origin.local_bound_tm: rebase_beyond_tm + unload + chunk_tm x sqrt 2 (%.2f) must be below it (%.2f)"
+		errors.append("%s.origin.local_bound_tm: rebase_beyond_tm + max(unload, hold) + chunk_tm x sqrt 2 (%.2f) must be below it (%.2f)"
 			% [w, farthest, local_bound_tm])
 
 	# Rule 7: the arrangement.
