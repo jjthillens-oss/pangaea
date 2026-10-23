@@ -330,17 +330,17 @@ func test_lineage_tags_are_two_groups_of_four_hex_digits() -> void:
 # The world (S1 T3.3). Without a world path a session is the M1 pool; with one, the world file and
 # the mode argument pick endless or pool.
 
-## Existing files standing in for the world's content (home block, tiles, kit) while T4's are not in
-## yet, as test_world_config does: the endless cases need a world file with no problems.
-const STAND_IN_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
-	"kit": "res://game/data/creatures_m1.json"}
+## T1's fixture world (home block, band 0 tiles, kit) in place of the shipped content paths, whose
+## files are T4's: the endless cases need a world file with no problems.
+const FIXTURE_CONTENT := {"home": "res://tests/fixtures/world/home_min.json",
+	"tiles": {"0": "res://tests/fixtures/world/tiles/b0"}, "kit": "res://tests/fixtures/world/kit_min.json"}
 
 
-## The shipped world settings with the stand-in content and `changes` over its top-level keys,
+## The shipped world settings with the fixture content and `changes` over its top-level keys,
 ## written into this test's folder. Returns its path.
 func _world_file(file: String = "world.json", changes: Dictionary = {}) -> String:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
-	data.content = STAND_IN_CONTENT.duplicate(true)
+	data.content = FIXTURE_CONTENT.duplicate(true)
 	data.merge(changes, true)
 	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
 	var path := SaveFolder.path(file)
@@ -410,8 +410,8 @@ func test_world_problems_stop_an_endless_start_and_continue() -> void:
 	check(not none.ok, "so does a missing one")
 	check_has_error(none.errors, "no_such_world.json")
 	var content_missing := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH,
-		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json", "tiles": {"0": "res://game/data"},
-			"kit": "res://game/data/creatures_m1.json"}}))
+		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json",
+			"tiles": FIXTURE_CONTENT.tiles, "kit": FIXTURE_CONTENT.kit}}))
 	var bad := content_missing.start_new("grazer", 26)
 	check(not bad.ok, "an endless world whose content is missing starts nothing")
 	check_has_error(bad.errors, "no_such_home.json")
@@ -425,3 +425,19 @@ func test_endless_mode_without_creature_data_is_a_problem() -> void:
 	check_has_error(r.errors, "Endless mode needs the creature data")
 	var pooled := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "", _world_file(), "pool")
 	check(pooled.start_new("grazer", 27).ok, "the step 2 pool needs none")
+
+
+func test_endless_dirty_compares_absolute_positions() -> void:
+	var session := _endless(33)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	var local := sim.motion.position
+	check(sim.debug_rebase(Vector2i(1, -1)), "rebased")
+	check(not sim.motion.position.is_equal_approx(local), "the local position moved: %s to %s" % [local, sim.motion.position])
+	check(not session.dirty, "a rebase alone is not an unsaved change")
+	check(sim.debug_teleport(sim.motion.position + Vector2(0.99, 0.0)), "moved 0.99 tm")
+	check(not session.dirty, "under a metre is not one either")
+	check(sim.debug_teleport(sim.motion.position + Vector2(0.02, 0.0)), "then 0.02 more")
+	check(session.dirty, "1.01 tm from the save is")
+	check(session.save_now().ok and not session.dirty, "saved")
