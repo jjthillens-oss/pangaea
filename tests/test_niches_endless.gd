@@ -4,10 +4,13 @@ extends TestCase
 ## sites enter the site table and queue at once; the niche caps are the table's sites per role,
 ## recomputed after every load and after the unloaded sites' creatures have left (G7); a site's
 ## creature is a hash of the world seed, the site and its spawn count, so it is the same along any
-## route; a site whose reach comes near the checkpoint stays dormant.
+## route; a site whose reach comes near the checkpoint stays dormant. At size 2 (S2 T2.7) the same
+## table, queue and caps hold over the sites live at size 2: the generator's size-2 rammer sites and
+## its two-post Lurker and elder rammer sites, never a size-1 one.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SEED := 4305
+const SIZE_TWO_TICKS := 2400           ## the size-2 swim
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -88,6 +91,47 @@ func test_with_twenty_chunks_loaded_every_live_site_is_filled_or_queued() -> voi
 	check(checked > 3000, "%d ticks with twenty chunks loaded" % checked)
 	check(seen.size() >= 3, "%d sites met" % seen.size())
 	check(seen.keys().all(func(id: String) -> bool: return id.begins_with("t_f_")), "no size 2 site is live at size 1")
+
+
+## At size 2 (growth on, the cell set to size 2 at the start), on every tick of a long swim: the table
+## holds exactly the loaded chunks' sites live at size 2, each filled or queued, never both, and the
+## caps are the table's sites per role over the species drawn at size 2.
+func test_at_size_two_every_live_site_is_filled_or_queued_and_the_caps_follow() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 4, true)
+	check(sim.debug_set_size(2), "size 2")
+	sim.drain_events()
+	var seen := {}
+	var bad := 0
+	var first := ""
+	var filled := 0
+	for t in SIZE_TWO_TICKS:
+		sim.step(SimIntent.new(Vector2.from_angle(0.6 + 0.0004 * t)))
+		sim.drain_events()
+		var table := sim.world.sites.keys()
+		table.sort()
+		var problem := ""
+		if table != _loaded_sites(sim):
+			problem = "table %s, loaded %s" % [table, _loaded_sites(sim)]
+		for id in table:
+			seen[id] = true
+			var occupied := sim.creatures._occupant(id) != null
+			if occupied:
+				filled += 1
+			var queued := sim.creatures.queue.any(func(e: Dictionary) -> bool: return e.site == id)
+			if occupied == queued:
+				problem = "site %s filled %s, queued %s" % [id, occupied, queued]
+		if _caps(sim) != _want_caps(sim):
+			problem = "caps %s, want %s" % [_caps(sim), _want_caps(sim)]
+		if not problem.is_empty():
+			bad += 1
+			if first.is_empty():
+				first = "tick %d: %s" % [t, problem]
+	check_eq(bad, 0, "every tick (%s)" % first)
+	check_eq(sim.size(), 2, "still size 2")
+	for prefix: String in ["u_f_", "l_f_", "e_f_"]:
+		check(seen.keys().any(func(id: String) -> bool: return id.begins_with(prefix)), "a %s site met (%s)" % [prefix, seen.keys()])
+	check(not seen.keys().any(func(id: String) -> bool: return id.begins_with("t_f_")), "no size-1 site is live at size 2")
+	check(filled > 0, "sites filled (%d site-ticks)" % filled)
 
 
 ## At create the loaded sites that pass their checks spawn at once (M1's populate), and the start is

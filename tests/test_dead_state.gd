@@ -12,6 +12,11 @@ extends TestCase
 ## from the dev teleport, or the end of the swim, to the end: the respawn tick (and a dev teleport's)
 ## is the camera cut. Plankton appearing in view is watched through the notice and the WATCHED_AFTER
 ## ticks after the respawn.
+##
+## At size 2 (S2 T2.7, gate S2G28): the same three cases with growth on, the cell set to size 2 at
+## home first (debug_set_size, a cut) with the ring half full. Each holds as at size 1, the size and
+## the checkpoint's size stay 2, and the death costs a quarter of the ring (D-35); the near case first
+## dies once at size 1, which costs nothing.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
@@ -23,6 +28,7 @@ const SOUTH := 40.0                    ## tm: the near case's swim
 const SETTLE := 60                     ## ticks after a dev teleport, before the death
 ## The chunk the near case keeps by hysteresis: 58.5 tm from the body, inside the 72 tm unload ring.
 const HELD_CHUNK := Vector2i(1, -1)
+const SIZE_TWO := "@2"                 ## a case's name with this suffix runs at size 2 (S2G28)
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -141,6 +147,40 @@ func test_a_teleport_drops_all_carrion() -> void:
 			check(not r.carrion_after.has(id), "%s: carrion %s gone" % [name, id])
 
 
+## S2G28: the dead state at size 2. Every invariant holds on every tick through the size change,
+## the notice and the respawn; near comes back at its checkpoint without a teleport, 150 tm and 5 km
+## teleport to it exactly with every food zone full; nothing is left by the cell; the absolute
+## position is the checkpoint's while dead; and the size stays 2 with its checkpoint.
+func test_at_size_two_the_dead_state_holds_as_at_size_one() -> void:
+	for name: String in ["near", "150", "5km"]:
+		var r := _run(name + SIZE_TWO)
+		var fz: FuzzInvariants = r.fuzz
+		check_eq(fz.report(), "", "%s at size 2: every invariant on every tick" % name)
+		check_eq(int(fz.counts.set_sizes), 1, "%s at size 2: the size change checked as a cut (%s)" % [name, fz.counts])
+		check_eq(r.respawned.get("teleport"), name != "near", "%s at size 2: respawned.teleport" % name)
+		check_eq([r.size_after, r.cp_size], [2, 2.0], "%s at size 2: the size and the checkpoint's after the respawn" % name)
+		check_eq(r.abs_bad, 0, "%s at size 2: absolute_position_am() == checkpoint_am while dead (%s)" % [name, r.abs_first])
+		check_eq(r.too_close, [], "%s at size 2: nothing within respawn_clear_m after the respawn tick" % name)
+		check_eq(r.food_appeared, 0, "%s at size 2: no plankton appears in view (%s)" % [name, r.food_first])
+		if name == "near":
+			check(r.cell_after.distance_to(r.cp_after) < 0.01, "near at size 2: back at its checkpoint (%s, %s)" % [r.cell_after, r.cp_after])
+			check_eq(r.origin_after, r.origin_before, "near at size 2: the origin did not move")
+		else:
+			check_eq(r.origin_after, r.cp_am, "%s at size 2: the origin is the checkpoint exactly" % name)
+			check_eq(r.unfilled, [], "%s at size 2: every food zone full at once" % name)
+
+
+## S2G28, D-35: from size 2 a death costs death_meter_share (a quarter) of the ring; at size 1 it
+## costs nothing.
+func test_a_death_costs_a_quarter_ring_at_size_two_and_nothing_at_size_one() -> void:
+	var r := _run("near" + SIZE_TWO)
+	check_eq(r.meter_one, [45.0, 45.0], "size 1: half of the 90 ring before the death and after it")
+	for name: String in ["near", "150", "5km"]:
+		var m: Array = _run(name + SIZE_TWO).meter_two
+		check(float(m[0]) >= 60.0, "%s at size 2: at least half of the 120 ring before the death (%.2f; near ate on its swim)" % [name, m[0]])
+		check_eq(m[1], float(m[0]) - 30.0, "%s at size 2: 30 less after it" % name)
+
+
 # --- the runs ---
 
 func _run(name: String) -> Dictionary:
@@ -152,14 +192,18 @@ func _run(name: String) -> Dictionary:
 ## One case: home, then out (a swim or a dev teleport), the death, the notice, the respawn, AFTER
 ## ticks, every tick checked by FuzzInvariants. Returns what the tests read.
 func _death(name: String) -> Dictionary:
-	var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species)
+	var two := name.ends_with(SIZE_TWO)
+	var base := name.trim_suffix(SIZE_TWO)
+	var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species, PackedFloat64Array(), two)
 	var w := sim.world
 	var r := {"cp_am": PackedFloat64Array([w.checkpoint_am[0], w.checkpoint_am[1]]), "max_local": 0.0, "food_appeared": 0,
 		"food_first": ""}
 	var fuzz := FuzzInvariants.new(species, layout)
 	sim.drain_events()
+	if two:
+		_to_size_two(sim, fuzz, r, base)
 	var was := fuzz.before(sim)
-	match name:
+	match base:
 		"near":
 			var guard := 0
 			while sim.motion.position.y < SOUTH and guard < 3000:   # unchecked: the swim is the endless fuzz's
@@ -172,8 +216,8 @@ func _death(name: String) -> Dictionary:
 			sim.debug_teleport_abs(5000.0, 9.0)
 	for i in SETTLE:
 		# A dev teleport's events reach the first settle tick's check, as its cut.
-		_tick(sim, Vector2.ZERO, fuzz, "%s settle tick %d" % [name, i], r, was if i == 0 and name != "near" else {})
-	if name != "near":
+		_tick(sim, Vector2.ZERO, fuzz, "%s settle tick %d" % [name, i], r, was if i == 0 and base != "near" else {})
+	if base != "near":
 		for i in 3:
 			sim.debug_spawn_carrion_ahead()
 			sim.motion.heading += 2.0
@@ -188,8 +232,11 @@ func _death(name: String) -> Dictionary:
 		if c.asleep and c.motion.position.distance_to(w.checkpoint_local()) < wake:
 			slept.append(c.id)
 	r["slept_by_checkpoint"] = slept
+	var meter := sim.growth.meter if two else 0.0
 	check(sim.debug_hurt_player(1.0e9), "%s: the cell is hurt" % name)
 	check(sim.dead, "%s: and dies" % name)
+	if two:
+		r["meter_two"] = [meter, sim.growth.meter]
 	if name == "near":
 		r["cp_site"] = _queue_site_in_view_of_the_checkpoint(sim)
 	sim.drain_events()
@@ -260,6 +307,8 @@ func _death(name: String) -> Dictionary:
 			r.respawned = e
 	r["respawn_types"] = types
 	r["origin_after"] = PackedFloat64Array([w.origin_x_am, w.origin_y_am])
+	r["size_after"] = sim.size()
+	r["cp_size"] = w.checkpoint_am[3]
 	r["cell_after"] = sim.motion.position
 	r["cp_after"] = w.checkpoint_local()
 	r["loads_per_tick"] = int(w.caps.loads_per_tick)
@@ -309,6 +358,28 @@ func _death(name: String) -> Dictionary:
 		name, r.respawned.get("teleport"), r.respawned.get("relocated"), woke.size(), c.checked, c.spawns, c.sleeps, c.wakes,
 		c.loads, c.unloads, c.cuts])
 	return r
+
+
+## S2G28's start: for the near case a death at size 1 with the ring half full (r.meter_one: the meter
+## before it and after it) and its respawn; then debug_set_size(2) at home, checked as a cut, and the
+## ring half full at size 2. The case measures from the size-2 checkpoint (r.cp_am).
+func _to_size_two(sim: PoolSim, fuzz: FuzzInvariants, r: Dictionary, base: String) -> void:
+	var g := sim.growth
+	if base == "near":
+		check(sim.debug_fill_meter(0.5), "half full at size 1")
+		var before := g.meter
+		check(sim.debug_hurt_player(1.0e9) and sim.dead, "a death at size 1")
+		r["meter_one"] = [before, g.meter]
+		sim.respawn_player()
+		sim.step(SimIntent.new())
+		sim.drain_events()
+	var was := fuzz.before(sim)
+	check(sim.debug_set_size(2), "%s: size 2" % base)
+	_tick(sim, Vector2.ZERO, fuzz, "%s set_size tick" % base, r, was)
+	check(sim.debug_fill_meter(0.5), "%s: half full at size 2" % base)
+	sim.drain_events()
+	var w := sim.world
+	r.cp_am = PackedFloat64Array([w.checkpoint_am[0], w.checkpoint_am[1]])
 
 
 ## A rammer site of the test's own, homed in view of the checkpoint (over 20 tm from it, its reach
