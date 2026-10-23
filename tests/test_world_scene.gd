@@ -102,7 +102,7 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
 	check_eq(names.slice(0, 6), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx"], "the containers register in their fixed order")
-	check_eq(names.size(), 6 + PlaceholderAudio.POSITIONAL_PLAYERS + pool.creature_layer.views().size(),
+	check_eq(names.size(), 6 + CellAudio.POSITIONAL_PLAYERS + pool.creature_layer.views().size(),
 		"then the positional players, then each creature's lane")
 	check(pool.cell_view.get_node_or_null("EatFx") == null and pool.world_fx.get_node_or_null("EatFx") is CPUParticles3D,
 		"the eat burst has moved to WorldFx")
