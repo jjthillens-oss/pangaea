@@ -29,6 +29,9 @@ const TEXTURE_SAMPLES := 16
 ## The M1 home rocks: white material colour, their look in a coloured texture, plain dressing only;
 ## they keep tests/test_assets.gd's rock contract, as tests/test_kit_assets.gd says.
 const HOME_ROCKS: PackedStringArray = ["rock_a", "rock_b", "rock_c"]
+## Root meshes not named after their id: the lair mouth's is "LairMouth" (art PR #26, pinned by
+## tests/test_kit_assets.gd's LAIR_NODE).
+const ROOT_NODES := {"marker_lair_mouth": "LairMouth"}
 ## "asset/dressing/node/surface" -> what it measured: the products that break the rule today.
 const AWAITING := {
 	"landmark_arch/amber/LandmarkArch/1": "#C5C9BB, h 121.9, 7.6 from food",
@@ -95,7 +98,8 @@ func test_every_albedo_and_tint_product_keeps_clear_of_food_and_threat() -> void
 		var a: Dictionary = kit.assets[id]
 		var scene: Node3D = (load(a.glb) as PackedScene).instantiate()
 		var dressings: Array = a.dressings if not a.dressings.is_empty() else [{"id": "untinted", "tint": "#FFFFFF"}]
-		check(scene.find_child(_pascal(id), true, false) != null or id.begins_with("rock_"), "%s: its root mesh %s" % [id, _pascal(id)])
+		var root := str(ROOT_NODES.get(id, _pascal(id)))
+		check(scene.find_child(root, true, false) != null or id.begins_with("rock_"), "%s: its root mesh %s" % [id, root])
 		for surface in _surfaces(scene):
 			var albedo: Color = surface.material.albedo_color
 			var growth := str(surface.node).begins_with("Growth_")

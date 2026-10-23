@@ -63,16 +63,17 @@ func test_the_fixture_kit_has_no_problems() -> void:
 
 
 ## Art's kit on main (tools/blender/make_s1_kit.py, docs/s1/s1-build-plan.md section 1): the rules
-## accept it and it holds exactly the S1 pieces, so a piece added, renamed or dropped shows here.
+## accept it and it holds exactly the S1 pieces plus S2's Lurker lair mouth marker (art PR #26), so
+## a piece added, renamed or dropped shows here.
 func test_the_shipped_kit_validates() -> void:
 	var kit := PlacementKit.load_from()
 	check_eq(kit.validate(), PackedStringArray(), "the kit the world ships")
 	var ids := PackedStringArray(kit.assets.keys())
 	ids.sort()
 	check_eq(ids, PackedStringArray(["landmark_arch", "landmark_fan", "landmark_great_shell", "landmark_ring",
-		"landmark_shed_husk", "landmark_spire", "marker_checkpoint_column", "marker_origin_arrow", "rare_giant_husk",
-		"rare_shell_cathedral", "rock_a", "rock_b", "rock_c", "shell_bell", "shell_diatom_disc", "shell_fluted_tower",
-		"shell_girdle_drum", "shell_radiolarian_lens"]), "the 18 S1 pieces")
+		"landmark_shed_husk", "landmark_spire", "marker_checkpoint_column", "marker_lair_mouth", "marker_origin_arrow",
+		"rare_giant_husk", "rare_shell_cathedral", "rock_a", "rock_b", "rock_c", "shell_bell", "shell_diatom_disc",
+		"shell_fluted_tower", "shell_girdle_drum", "shell_radiolarian_lens"]), "the 18 S1 pieces and the lair mouth")
 	check_eq(kit.landmarks(0, 3), PackedStringArray(["landmark_shed_husk"]), "the shed husk is group 3's landmark")
 	check_eq(kit.rare_asset(0, "giant_husk"), "rare_giant_husk", "and the fixed rare tile's piece is the giant husk")
 
