@@ -50,6 +50,7 @@ func test_the_shipped_world_cell_has_no_problems() -> void:
 	check_eq(config.mode, "endless", "Joshua plays the endless world (D-4)")
 	check_eq(config.gen_version, 1, "generator version")
 	check_eq(config.rings.view, 33.9, "view ring")
+	check_eq(config.rings.hold, 96.0, "hold ring (B-6)")
 	check_eq(config.caps.chunks, 36, "chunk cap")
 	check_eq(config.arrangement.fixed_rare.tile, Vector2i(2, -1), "the fixed rare tile")
 	check_eq(config.arrangement.fixed_rare.kind, "giant_husk", "is the giant husk")
@@ -74,6 +75,8 @@ func test_each_rule_has_a_failing_case() -> void:
 		["rings_tm.sleep", 40.0, "world_cell.rings_tm: must rise"],
 		["rings_tm.sleep", 41.0, "world_cell.rings_tm.sleep:"],
 		["rings_tm.unload", 71.0, "world_cell.rings_tm.unload:"],
+		["rings_tm.hold", 72.0, "world_cell.rings_tm: must rise"],
+		["rings_tm.hold", 120.0, "world_cell.origin.local_bound_tm: rebase_beyond_tm + max(unload, hold) + chunk_tm x sqrt 2 (261.25)"],
 		["caps.awake", 0, "world_cell.caps.awake:"],
 		["caps.sleepers", 11, "world_cell.caps.sleepers:"],
 		["caps.food_per_zone", 0, "world_cell.caps.food_per_zone:"],
