@@ -30,11 +30,15 @@ var max_belly_slip_ratio := 0.0
 var max_foot_slip_ratio := 0.0
 var max_pitch := 0.0
 var max_roll := 0.0
+var root_pitch := 0.0
+var root_roll := 0.0
 var belly_anchor: Array[Vector3] = []
 var belly_planted := PackedByteArray()
 var foot_anchor: Array[Vector3] = []
 var foot_planted := PackedByteArray()
 var foot_rest := PackedVector3Array()
+var foot_target_world: Array[Vector3] = []
+var max_swing_travel_m := 0.0
 
 
 static func create(description: RefCounted) -> RefCounted:
@@ -71,6 +75,7 @@ static func create(description: RefCounted) -> RefCounted:
 			p.root_lift_m = -lowest
 			for i in p.foot_rest.size():
 				p.foot_anchor.append(Vector3.ZERO)
+				p.foot_target_world.append(Vector3.ZERO)
 				p.foot_planted.append(0)
 	return p
 
@@ -99,6 +104,23 @@ func step(dt: float, throttle: float, turn: float) -> void:
 		_step_belly()
 	else:
 		_step_feet()
+	_sample_root_orientation()
+
+
+func posed_root_transform() -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, yaw) * Basis.from_euler(Vector3(root_pitch, 0.0, root_roll)),
+			position + Vector3(0.0, body_lift(), 0.0))
+
+
+func _sample_root_orientation() -> void:
+	# Remove heading before measuring the root's local pitch and roll.
+	var up := Basis(Vector3.UP, -yaw) * (posed_root_transform().basis * Vector3.UP)
+	max_pitch = maxf(max_pitch, absf(atan2(up.z, up.y)))
+	max_roll = maxf(max_roll, absf(atan2(up.x, up.y)))
+
+
+func within_stability_gate() -> bool:
+	return max_pitch <= deg_to_rad(5.0) and max_roll <= deg_to_rad(5.0)
 
 
 ## Relative rotation of one vertebra, travelling from vertebra 0 toward the tail.
@@ -146,17 +168,27 @@ func _step_feet() -> void:
 		var u := fposmod(phase + (0.5 if i % 2 == 1 else 0.0), 1.0)
 		var planted := u < FOOT_DUTY
 		var at := position + Basis(Vector3.UP, yaw) * foot_rest[i]
+		at.y = 0.0
 		if planted:
 			if foot_planted[i] == 0:
-				foot_anchor[i] = at
-			else:
-				max_foot_slip_ratio = maxf(max_foot_slip_ratio,
-						at.distance_to(foot_anchor[i]) / maxf(leg_length_m, 0.001))
+				foot_anchor[i] = foot_target_world[i] if time > DT else at
+				foot_anchor[i].y = 0.0
+			foot_target_world[i] = foot_anchor[i]
+			max_foot_slip_ratio = maxf(max_foot_slip_ratio,
+					foot_target_world[i].distance_to(foot_anchor[i]) / maxf(leg_length_m, 0.001))
+		else:
+			# The swing begins at the old ground anchor and finishes at a forward landing
+			# target. The target is in world space, so stance remains planted as the root moves.
+			var swing_u := (u - FOOT_DUTY) / (1.0 - FOOT_DUTY)
+			var lead := Basis(Vector3.UP, yaw) * Vector3(0.0, 0.0,
+					-signf(v) * minf(0.3 * leg_length_m, absf(v) / SHUFFLE_HZ))
+			var landing := at + lead
+			var target := foot_anchor[i].lerp(landing, swing_u)
+			target.y = sin(PI * swing_u) * 0.35 * leg_length_m
+			foot_target_world[i] = target
+			max_swing_travel_m = maxf(max_swing_travel_m,
+					Vector2(target.x - foot_anchor[i].x, target.z - foot_anchor[i].z).length())
 		foot_planted[i] = 1 if planted else 0
-	# The shuffle has no full IK or dynamic balance; the support polygon stays symmetric and the
-	# deliberately level root has zero pitch/roll. Keep explicit telemetry for the stability gate.
-	max_pitch = maxf(max_pitch, 0.0)
-	max_roll = maxf(max_roll, 0.0)
 
 
 func is_finite_state() -> bool:
@@ -167,6 +199,9 @@ func is_finite_state() -> bool:
 		if not at.is_finite():
 			return false
 	for at in foot_anchor:
+		if not at.is_finite():
+			return false
+	for at in foot_target_world:
 		if not at.is_finite():
 			return false
 	return true

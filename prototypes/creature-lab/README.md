@@ -61,6 +61,8 @@ $G --path prototypes/creature-lab spine_lab.tscn -- --body=stage1 --anim=pose   
 $G --headless --path prototypes/creature-lab --script res://tests/run_spine_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_stage1_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_legless_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tests/run_skin_volume_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tests/run_editor_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tools/pose_matrix.gd  # -> results/pose_error.json
 $G --path prototypes/creature-lab walker_lab.tscn -- --body=s1_quadruped --drive=demo   # a generated creature walking
 $G --headless --path prototypes/creature-lab --script res://tools/walker_measure.gd  # -> results/walker_measurements.json
