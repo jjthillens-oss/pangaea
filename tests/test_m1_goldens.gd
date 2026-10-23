@@ -7,6 +7,7 @@ extends TestCase
 ## pool-mode change: fix the change, never the file.
 
 const Scenarios := preload("res://tests/m1_scenarios.gd")
+const Runner := preload("res://tests/run_tests.gd")
 
 const FAST_SEED := 401
 const SLOW_SEEDS: Array[int] = [402, 4242, 77]
@@ -79,3 +80,37 @@ func test_the_pool_scenarios_match_the_goldens_at_seed_401() -> void:
 
 func test_slow_the_pool_scenarios_match_the_goldens_at_seeds_402_4242_77() -> void:
 	_check_scenarios(SLOW_SEEDS, SHORT_TICKS)
+
+
+func test_soak_the_pool_scenarios_match_the_goldens_at_18000_ticks() -> void:
+	_check_scenarios(Scenarios.SEEDS, Scenarios.TICKS)
+
+
+## The soak tier the 18,000-tick goldens run in (S1 spine 3.1): never in a default run, only with
+## --soak; tools/check_soak.sh passes --soak, and CI runs that in a parallel job.
+func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it() -> void:
+	var plain := Runner._flags(PackedStringArray([]))
+	var soak := Runner._flags(PackedStringArray(["--soak", "--only=test_m1_goldens"]))
+	var quick := Runner._flags(PackedStringArray(["--skip-slow"]))
+	check(not plain.soak and soak.soak and soak.only == PackedStringArray(["test_m1_goldens"]), "--soak parses")
+	check_eq(Runner.tier_of("test_soak_x", plain), "soak skipped", "a default run skips soak tests")
+	check_eq(Runner.tier_of("test_soak_x", quick), "soak skipped", "so does --skip-slow")
+	check_eq(Runner.tier_of("test_soak_x", soak), "run", "--soak runs them")
+	check_eq(Runner.tier_of("test_x", soak), "soak skipped", "and only them")
+	check_eq(Runner.tier_of("test_slow_x", soak), "soak skipped", "slow tests are not soak")
+	check_eq(Runner.tier_of("test_slow_x", plain), "run", "a default run keeps slow tests")
+	check_eq(Runner.tier_of("test_slow_x", quick), "slow skipped", "--skip-slow skips them")
+	check_eq(Runner.tier_of("test_x", plain), "run", "plain tests run")
+	check_eq(Runner.tier_of("helper", plain), "not a test", "other methods are not tests")
+	var script := FileAccess.get_file_as_string("res://tools/check_soak.sh")
+	check(script.contains("bounded 3600 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd -- --soak"),
+		"check_soak.sh runs the soak tier under a 3600 s limit")
+	check(script.contains("bounded 600 \"$GODOT\" --headless --path . --import"), "after an import")
+	var ci := FileAccess.get_file_as_string("res://.github/workflows/ci.yml")
+	var job := ci.find("\n  soak:\n")
+	check(job >= 0, "CI has a job named soak")
+	var body := ci.substr(job)
+	check(body.contains("run: tools/check_soak.sh"), "the soak job runs tools/check_soak.sh")
+	check(body.contains("timeout-minutes: 75"), "with a 75-minute backstop")
+	check(not body.contains("needs:"), "in parallel with test-and-export")
+	check(not FileAccess.get_file_as_string("res://tools/check.sh").contains("--soak"), "check.sh leaves the soak tier to its job")
