@@ -149,13 +149,23 @@ func test_biting_without_a_mouth_is_refused_once_per_press() -> void:
 	check_eq(again.filter(func(e): return e["kind"] == "refused").size(), 1, "the next press is refused again")
 
 
+## A mouth with a bite, whatever parts the seed gave the creature.
+func _give_mouth(c: Dictionary) -> void:
+	c["stats"]["has_mouth"] = true
+	c["stats"]["bite_power"] = maxf(float(c["stats"]["bite_power"]), 1.0)
+	c["stats"]["bite_reach_m"] = maxf(float(c["stats"]["bite_reach_m"]), 0.3)
+
+
 func test_nothing_at_the_nest_can_be_bitten() -> void:
 	var sim := make("s1_snake")
 	check(not sim.player()["has_legs"] and sim.at_nest(), "a legless player at the nest")
 	var rival: Dictionary = sim.rivals[0]
 	rival["fullness"] = 0.0
+	# The rival's parts come from the seed; the check is about the nest, so give it a mouth either way.
+	_give_mouth(rival)
 	var reach := float(rival["stats"]["bite_reach_m"])
-	var step := reach * 0.5 + float(sim.me["stats"]["body_radius_m"]) + float(rival["stats"]["body_radius_m"])
+	# Within reach of the player's skin (bite_lands measures to the target's edge).
+	var step := reach * 0.5 + float(sim.me["stats"]["body_radius_m"])
 	sim._place(rival, Vector3(0.0, 0.0, step))
 	rival["yaw"] = 0.0   # faces -Z, at the player
 	if rival["planner"] != null:
@@ -178,6 +188,8 @@ func test_nothing_at_the_nest_can_be_bitten() -> void:
 	if r2["planner"] != null:
 		r2["planner"].yaw = 0.0
 	r2["wants_bite"] = true
+	r2["cooldown"] = 0
+	_give_mouth(r2)
 	var events := []
 	away._bite(r2, away._alive_creatures(), events)
 	check(events.filter(func(e): return e["kind"] == "hit" and e["target"] == Sim.PLAYER_ID).size() == 1,
