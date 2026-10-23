@@ -1,0 +1,55 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://game/scenes/creature/creature_world.gd" id="1_world"]
+[ext_resource type="PackedScene" path="res://game/ui/creature_world_hud.tscn" id="2_hud"]
+
+[sub_resource type="ProceduralSkyMaterial" id="Sky_material"]
+sky_top_color = Color(0.16, 0.3, 0.62, 1)
+sky_horizon_color = Color(0.68, 0.78, 0.9, 1)
+sky_curve = 0.12
+ground_bottom_color = Color(0.12, 0.17, 0.22, 1)
+ground_horizon_color = Color(0.62, 0.7, 0.78, 1)
+sun_angle_max = 20.0
+sun_curve = 0.1
+
+[sub_resource type="Sky" id="Sky_daylight"]
+sky_material = SubResource("Sky_material")
+
+[sub_resource type="Environment" id="Environment_field"]
+background_mode = 2
+sky = SubResource("Sky_daylight")
+ambient_light_source = 3
+ambient_light_energy = 0.55
+tonemap_mode = 2
+tonemap_white = 1.3
+ssao_enabled = false
+fog_enabled = true
+fog_light_color = Color(0.72, 0.8, 0.9, 1)
+fog_density = 0.0035
+fog_sky_affect = 0.15
+
+[node name="CreatureWorld" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_field")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.872665, -0.523599, 0)
+light_color = Color(1, 0.97, 0.9, 1)
+light_energy = 1.4
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 80.0
+
+[node name="Camera" type="Camera3D" parent="."]
+position = Vector3(0, 4, 6)
+fov = 50.0
+near = 0.1
+far = 400.0
+
+[node name="Rivals" type="Node3D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Hud" parent="UI" instance=ExtResource("2_hud")]

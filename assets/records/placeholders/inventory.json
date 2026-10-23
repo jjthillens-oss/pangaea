@@ -2,7 +2,68 @@
   "schema_version": 1,
   "status": "PROPOSED",
   "note": "Everything in game/ that is drawn or played without a recorded asset. Placeholders stand in for production assets and name the milestone that removes them. Functional entries are particles, UI and debug drawing, which Bible 15 does not count as placeholders. tests/test_placeholders.gd fails when a primitive, code-built, saved or referenced mesh in game/**/*.gd, .tscn or .tres, or a binary resource or model file anywhere in game/, is not listed here by type and file, and when a placeholder's asset_id has a record in assets/records.",
-  "placeholders": [],
+  "placeholders": [
+    {
+      "id": "creature_field",
+      "asset_id": "creature_field_ground",
+      "kind": "environment",
+      "description": "The creature stage's test field: a flat 160 x 160 m PlaneMesh in a plain green material, until the creature stage art pass brings terrain and ground cover (creature-stage-plan.md section 5).",
+      "types": [
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd",
+        "game/scenes/creature/creature_world.tscn"
+      ],
+      "node": "CreatureWorld/Field",
+      "remove_by": "creature stage art pass"
+    },
+    {
+      "id": "creature_nest",
+      "asset_id": "creature_nest_ring",
+      "kind": "environment",
+      "description": "The nest at the field's centre: a flat TorusMesh ring at the nest radius (6 m), the only place the creature can evolve, until the art pass models a nest.",
+      "types": [
+        "TorusMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd",
+        "game/scenes/creature/creature_world.tscn"
+      ],
+      "node": "CreatureWorld/Nest",
+      "remove_by": "creature stage art pass"
+    },
+    {
+      "id": "creature_fruit",
+      "asset_id": "creature_fruit_bush",
+      "kind": "prop",
+      "description": "Fruit bushes: 40 SphereMesh instances in one MultiMesh, red and full when ripe, small and green while regrowing, until the art pass models bushes.",
+      "types": [
+        "SphereMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd",
+        "game/scenes/creature/creature_world.tscn"
+      ],
+      "node": "CreatureWorld/Fruit",
+      "remove_by": "creature stage art pass"
+    },
+    {
+      "id": "creature_meat",
+      "asset_id": "creature_meat_chunk",
+      "kind": "prop",
+      "description": "Meat left where a creature dies: a small BoxMesh in one MultiMesh, until the art pass models a carcass.",
+      "types": [
+        "BoxMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd",
+        "game/scenes/creature/creature_world.tscn"
+      ],
+      "node": "CreatureWorld/Meat",
+      "remove_by": "creature stage art pass"
+    }
+  ],
   "functional": [
     {
       "id": "eat_fx_quads",
