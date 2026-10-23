@@ -1773,6 +1773,330 @@ def build_gill_fan():
             "part_rules": rules, "paint_mix": {"M_GillBase": 0.9, "M_GillRachis": 0.5, "M_GillPlume": 0.5}, "revision": 1, **baked}
 
 
+# --- Flipper ----------------------------------------------------------------------------------
+
+FLIPPER_LEN = 0.2
+FLIPPER_W = 0.055      # half-width at the broadest, across X
+FLIPPER_T = 0.009      # half-thickness at the root, along Y
+FLIPPER_SINK = 0.015
+
+
+def build_flipper():
+    """A swimmer's paddle for a limb tip: a flattened blade out along +Z (the limb's axis), broad across X and
+    thin along Y, waisted at the root, with lengthwise stiffening ridges in the skin and a rounded tip, cupped
+    a little toward the head. H1_Length lengthens it, H2_Width widens it."""
+    steps = 18
+    path = [Vector((0.0, 0.03 * (i / steps) ** 2, -FLIPPER_SINK * 0.9 + (FLIPPER_LEN + FLIPPER_SINK * 0.9) * i / steps)) for i in range(steps + 1)]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = i / steps
+        w = FLIPPER_W * (0.55 + 0.45 * math.sin(math.pi * min(1.0, 0.15 + 0.85 * t)))
+        th = FLIPPER_T * (1.0 - 0.75 * t) + 0.0025
+        # A true ellipse; _tube's ring angle 0 lies along +Y for a path up +Z, so the breadth goes on sin.
+        return w * th / math.sqrt((th * math.sin(a)) ** 2 + (w * math.cos(a)) ** 2)
+
+    verts, faces, _ = _tube(path, radius_at, 22)
+    sh = sf.Shader("M_FlipperSkinProc")
+    pebble = sh.remap(sh.voronoi(240.0, 0.8), 0.2, 0.04)
+    grain = sh.noise(60.0, 2.0, vector=mp._stretched(sh, (3.0, 1.0, 0.4)))
+    ridges = sh.math("SINE", sh.math("MULTIPLY", sh.axis("X"), 230.0))                 # lengthwise stiffening ridges
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", ridges, 0.5), sh.math("SUBTRACT", sh.math("MULTIPLY", grain, 0.4), sh.math("MULTIPLY", pebble, 0.4))), 0.4, 0.001)
+    mat = sh.out(_grey(sh, sh.math("SUBTRACT", sh.remap(grain, 0.3, 0.7), sh.math("MULTIPLY", pebble, 0.3), clamp=True), 0.75), 0.5)
+    flipper = bc.mesh_object("Flipper", verts, faces, [mat])
+    mat.name = "M_FlipperSkin"
+    baked = _bake([flipper], "PartFlipper", {"M_FlipperSkin": sf.tint(_lin("#7F8FA0"))}, tolerance=0.0004)
+    pts = _check_pivot("flipper", FLIPPER_SINK)
+    foot = _footprint(pts)
+    mp._check(max(p.z for p in pts) > FLIPPER_LEN * 0.95, "flipper: reaches its length along +Z")
+
+    def length(co):
+        if co.z > 0.0:
+            co.z *= 1.4
+            co.y *= 1.4
+        return co
+
+    def width(co):
+        if co.z > 0.0:
+            co.x *= 1.35
+        return co
+
+    handles = _shape_keys(flipper, [("H1_Length", length, "the blade 40% longer"), ("H2_Width", width, "the blade 35% broader")])
+    rules = _rules("flipper", round(foot, 3), FLIPPER_SINK, "normal", ["limb_end"], 30, 30)
+    rules["handles"] = handles
+    rules["placement_note"] = "A limb end: +Z runs on along the limb and the blade's broad faces look fore and aft."
+    return {"purpose": "Creature limb end part (PROPOSED): a flattened swimming paddle with stiffening ridges, broad across x and thin fore-aft.",
+            "category": "part", "part_type": "flipper", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_FlipperSkin": 0.9}, "revision": 1, **baked}
+
+
+# --- Hoof -------------------------------------------------------------------------------------
+
+HOOF_H = 0.043
+HOOF_ANKLE = 0.075
+
+
+def build_hoof():
+    """A cloven hoof standing on its sole (orientation "ground": +Z body up, the cleft toward the head, the
+    sole on the pivot): a horn capsule split by a front cleft, with a short skin pastern rising to the limb.
+    H1_Wide widens the hoof, H2_Tall raises its wall."""
+    # Rings from the sole up: (z, half-width x, half-length y, cleft depth, material); horn 1, skin 0.
+    rows = [(0.0, 0.040, 0.0425, 0.28, 1), (0.004, 0.041, 0.0435, 0.28, 1), (0.016, 0.040, 0.042, 0.26, 1),
+            (0.030, 0.037, 0.039, 0.2, 1), (HOOF_H, 0.032, 0.034, 0.12, 1), (HOOF_H + 0.004, 0.027, 0.028, 0.0, 0),
+            (0.06, 0.023, 0.024, 0.0, 0), (HOOF_ANKLE, 0.021, 0.022, 0.0, 0)]
+    seg = 36
+    verts, faces, face_mats, rings = [], [], [], []
+    for z, rx, ry, depth, _m in rows:
+        ring = []
+        for j in range(seg):
+            a = 2.0 * math.pi * j / seg
+            d = math.atan2(math.sin(a - math.pi / 2), math.cos(a - math.pi / 2))      # angle from the front (+Y)
+            cleft = 1.0 - depth * math.exp(-(d / 0.3) ** 2)
+            heel = 1.0 - 0.06 * math.exp(-((abs(d) - math.pi) / 0.5) ** 2)             # a little flat at the back
+            ring.append(len(verts))
+            verts.append((rx * math.cos(a) * cleft * heel, ry * math.sin(a) * cleft * heel - 0.004, z))
+        rings.append(ring)
+    sole, top = len(verts), len(verts) + 1
+    verts.append((0.0, -0.004, 0.0))
+    verts.append((0.0, -0.004, HOOF_ANKLE))
+    for j in range(seg):
+        k = (j + 1) % seg
+        faces.append((sole, rings[0][k], rings[0][j]))
+        face_mats.append(1)
+        for i in range(len(rows) - 1):
+            faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
+            face_mats.append(rows[i][4])
+        faces.append((rings[-1][j], rings[-1][k], top))
+        face_mats.append(0)
+    skin = sf.Shader("M_HoofSkinProc")
+    hair = skin.noise(220.0, 3.0, vector=mp._stretched(skin, (1.0, 1.0, 0.25)))
+    skin.bump(hair, 0.3, 0.0008)
+    horn = sf.Shader("M_HoofHornProc")
+    growth = horn.math("SINE", horn.math("MULTIPLY", horn.axis("Z"), 500.0))
+    streak = horn.noise(90.0, 3.0, vector=mp._stretched(horn, (4.0, 4.0, 0.3)))
+    h = horn.math("ADD", horn.math("MULTIPLY", growth, 0.25), streak)
+    horn.bump(h, 0.3, 0.001)
+    mats = [skin.out(_grey(skin, skin.remap(hair, 0.3, 0.7), 0.75), 0.6),
+            horn.out(_grey(horn, horn.remap(h, -0.1, 0.9), 0.65), 0.35)]
+    hoof = bc.mesh_object("Hoof", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_HoofSkin", "M_HoofHorn"
+    baked = _bake([hoof], "PartHoof", {"M_HoofSkin": sf.tint(_lin("#A88870")), "M_HoofHorn": sf.tint(_lin("#4F4238"))})
+    pts = _check_pivot("hoof", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+
+    def wide(co):
+        k = 1.0 + 0.3 * max(0.0, 1.0 - co.z / (HOOF_H + 0.01))
+        co.x *= k
+        return co
+
+    def tall(co):
+        co.z = co.z * 1.3 if co.z <= HOOF_H else co.z + 0.3 * HOOF_H
+        return co
+
+    handles = _shape_keys(hoof, [("H1_Wide", wide, "the hoof 30% wider"), ("H2_Tall", tall, "the hoof wall 30% taller")])
+    rules = _rules("hoof", round(reach, 3), 0.0, "ground", ["limb_end"], 20, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the pastern top (z %.3f m) meets the limb tip." % HOOF_ANKLE
+    return {"purpose": "Creature foot part (PROPOSED): a cloven horn hoof on a short skin pastern, standing on its sole.",
+            "category": "part", "part_type": "hoof", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_HoofSkin": 0.85, "M_HoofHorn": 0.0}, "revision": 1, **baked}
+
+
+# --- Club tail --------------------------------------------------------------------------------
+
+CLUB_R = 0.055
+CLUB_STALK = 0.07
+CLUB_SINK = 0.03
+
+
+def build_club_tail():
+    """A bony club for the tail cap (+Z out along the spine): a thick waisted stalk ending in a ball of fused
+    bony knobs (a score of them, spread evenly). H1_Length lengthens the stalk, H2_Size swells the club 30%."""
+    centre = Vector((0.0, 0.0, CLUB_STALK + CLUB_R * 0.6))
+    path = [Vector((0.0, 0.0, -CLUB_SINK * 0.9 + (CLUB_STALK + CLUB_SINK * 0.9) * t)) for t in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]
+    verts, fcs, _ = _tube(path, lambda i, a: 0.03 * (1.0 - 0.25 * math.sin(math.pi * i / 5)) * (1.0 + 0.04 * math.cos(5 * a)), 18)
+    face_mats = [0] * len(fcs)
+    # The club: a sphere pushed out into knobs around twenty fixed directions (a Fibonacci spread).
+    knobs = []
+    golden = math.pi * (3.0 - math.sqrt(5.0))
+    for k in range(20):
+        z = 1.0 - 2.0 * (k + 0.5) / 20
+        r = math.sqrt(1.0 - z * z)
+        knobs.append(Vector((r * math.cos(golden * k), r * math.sin(golden * k), z)))
+    unit, ufaces = bc.icosphere(4)
+    club = []
+    for co in unit:
+        n = Vector(co).normalized()
+        bump = sum(math.exp(-((1.0 - n.dot(d)) / 0.03) ** 2) for d in knobs)
+        club.append(tuple(centre + n * (CLUB_R * (0.85 + 0.25 * min(1.0, bump)))))
+    bc.append(verts, fcs, club, ufaces)
+    face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    flesh = sf.Shader("M_ClubStalkProc")
+    wr = flesh.noise(160.0, 3.0, vector=mp._stretched(flesh, (1.0, 1.0, 0.3)))
+    flesh.bump(wr, 0.3, 0.0008)
+    bone = sf.Shader("M_ClubBoneProc")
+    pits = bone.remap(bone.voronoi(140.0, 0.9), 0.3, 0.08)
+    grain = bone.noise(70.0, 3.0)
+    bone.bump(bone.math("SUBTRACT", bone.math("MULTIPLY", grain, 0.6), bone.math("MULTIPLY", pits, 0.6)), 0.35, 0.001)
+    mats = [flesh.out(_grey(flesh, flesh.remap(wr, 0.3, 0.7), 0.75), 0.55),
+            bone.out(_grey(bone, bone.math("SUBTRACT", bone.remap(grain, 0.25, 0.75), bone.math("MULTIPLY", pits, 0.35), clamp=True), 0.65), 0.4)]
+    obj = bc.mesh_object("ClubTail", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name = "M_ClubStalk", "M_ClubBone"
+    baked = _bake([obj], "PartClubTail", {"M_ClubStalk": sf.tint(_lin("#A8826E")), "M_ClubBone": sf.tint(_lin("#D8CBB0"))}, tolerance=0.0006)
+    pts = _check_pivot("club_tail", CLUB_SINK)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.01:
+            co.z += 0.05 * min(1.0, (co.z - 0.01) / 0.04)
+        return co
+
+    def size(co):
+        if (co - centre).length < CLUB_R * 1.25:
+            return centre + (co - centre) * 1.3
+        return co
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the stalk 0.05 m longer"), ("H2_Size", size, "the club 30% bigger")])
+    rules = _rules("club_tail", round(foot, 3), CLUB_SINK, "normal", ["spine"], 15, 20, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1)."
+    return {"purpose": "Creature tail weapon part (PROPOSED): a knobbed bony club on a thick fleshy stalk for the tail tip.",
+            "category": "part", "part_type": "club_tail", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_ClubStalk": 0.85, "M_ClubBone": 0.1}, "revision": 1, **baked}
+
+
+# --- Lure -------------------------------------------------------------------------------------
+
+LURE_LEN = 0.22
+LURE_SINK = 0.02
+
+
+def build_lure():
+    """An angler's lure: a slender stalk rising from a small pad and arching forward (+Y) over the head to a
+    glowing bulb hanging from its tip. H1_Length lengthens the stalk, H2_Droop lowers the bulb."""
+    unit, ufaces = bc.icosphere(2)
+    verts = [(n.x * 0.02, n.y * 0.02, -0.012 + max(n.z, -0.2) * 0.03) for n in (Vector(co).normalized() for co in unit)]
+    fcs = list(ufaces)
+    face_mats = [0] * len(fcs)
+    steps = 16
+    path = [Vector((0.0, 0.0, -LURE_SINK * 0.9))]
+    for i in range(steps):
+        t = (i + 0.5) / steps
+        theta = math.radians(112.0) * t ** 1.3                 # from straight up to forward and down
+        path.append(path[-1] + Vector((0.0, math.sin(theta), math.cos(theta))) * (LURE_LEN / steps))
+    v, f, _ = _tube(path, lambda i, a: 0.0065 * (1.0 - 0.45 * i / steps) * (1.0 + 0.05 * math.cos(4 * a)), 10)
+    bc.append(verts, fcs, v, f)
+    face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    tip = path[-1] + (path[-1] - path[-2]).normalized() * 0.012
+    unit3, ufaces3 = bc.icosphere(3)
+    bulb = [tuple(tip + Vector(co).normalized() * 0.021 * Vector((1.0, 1.0, 1.15))) for co in unit3]
+    bc.append(verts, fcs, bulb, ufaces3)
+    face_mats.extend([2] * (len(fcs) - len(face_mats)))
+    pad_sh = sf.Shader("M_LurePadProc")
+    wr = pad_sh.noise(220.0, 3.0)
+    pad_sh.bump(wr, 0.3, 0.0008)
+    stalk = sf.Shader("M_LureStalkProc")
+    rings = stalk.math("SINE", stalk.math("MULTIPLY", stalk.vmath("LENGTH", stalk.pos), 900.0))
+    stalk.bump(rings, 0.2, 0.0005)
+    glow = sf.Shader("M_LureBulbProc")
+    veins = glow.remap(glow.voronoi(90.0, 0.7, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    glow.bump(veins, 0.15, 0.0004)
+    mats = [pad_sh.out(_grey(pad_sh, pad_sh.remap(wr, 0.3, 0.7), 0.75), 0.55),
+            stalk.out(_grey(stalk, stalk.remap(rings, -1.0, 1.0), 0.78), 0.5),
+            glow.out(_grey(glow, veins, 0.85), 0.2)]
+    obj = bc.mesh_object("Lure", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name, mats[2].name = "M_LurePad", "M_LureStalk", "M_LureBulb"
+    baked = _bake([obj], "PartLure", {"M_LurePad": sf.tint(_lin("#B98A7A")), "M_LureStalk": sf.tint(_lin("#8C6A5E")),
+                                      "M_LureBulb": sf.tint(_lin("#BFE9F2"), emission=_lin("#7FD8F0"), emission_strength=2.0)}, size=256, tolerance=0.0004)
+    pts = _check_pivot("lure", LURE_SINK)
+    foot = _footprint(pts)
+    mp._check(max(p.y for p in pts) > 0.1, "lure: the bulb hangs forward over the head (+Y)")
+
+    def length(co):
+        k = min(1.0, max(0.0, (co.z - 0.01) / 0.03))
+        return co + Vector((0.0, 0.0, 0.01)) * 0.0 + (co - Vector((0.0, 0.0, 0.01))) * (0.4 * k)
+
+    def droop(co):
+        k = min(1.0, max(0.0, (co.z - 0.015) / 0.04))
+        hinge = Vector((0.0, 0.0, 0.015))
+        return hinge + Matrix.Rotation(math.radians(-45.0) * k, 3, "X") @ (co - hinge)
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the stalk and bulb carried 40% further from the pad"),
+                                ("H2_Droop", droop, "the stalk bent 45 degrees forward and down from its root")])
+    rules = _rules("lure", round(foot, 3), LURE_SINK, "normal", ["spine", "part"], 45, 40)
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the brow: the stalk arches forward over the head and the bulb's emission is baked flat, so it glows the same in every light."
+    return {"purpose": "Creature lure part (PROPOSED): a slender stalk arching forward over the head to a glowing pale-cyan bulb.",
+            "category": "part", "part_type": "lure", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_LurePad": 0.9, "M_LureStalk": 0.7, "M_LureBulb": 0.0}, "revision": 1, **baked}
+
+
+# --- Barbels ----------------------------------------------------------------------------------
+
+BARBEL_SINK = 0.015
+
+
+def build_barbels():
+    """Chin barbels: a small fleshy pad with two long and two short tapering whiskers sweeping forward (+Y)
+    and out, rising then settling back to skin level, like a catfish's. H1_Length lengthens them, H2_Lift
+    raises them."""
+    unit, ufaces = bc.icosphere(2)
+    verts = [(n.x * 0.034, n.y * 0.024, -0.01 + max(n.z, -0.2) * 0.022) for n in (Vector(co).normalized() for co in unit)]
+    fcs = list(ufaces)
+    face_mats = [0] * len(fcs)
+    whiskers = [(-0.02, 0.0, 32.0, 0.16), (0.02, 0.0, -32.0, 0.16), (-0.009, 0.012, 58.0, 0.09), (0.009, 0.012, -58.0, 0.09)]
+    bases = []
+    for sx, sy, yaw, length in whiskers:
+        base = Vector((sx, sy, 0.0))
+        bases.append((base, math.radians(yaw)))
+        yaw = math.radians(yaw)
+        path = []
+        for t in (0.0, 0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0):
+            path.append(base + Vector((math.sin(yaw) * length * t * (1.0 + 0.3 * t), math.cos(yaw) * length * t,
+                                       -0.008 + 0.045 * (length / 0.16) ** 2 * math.sin(math.pi * t ** 0.8) + 0.008 * t)))
+        v, f, _ = _tube(path, lambda i, a, L=length: 0.0 if i == 7 else 0.0045 * (L / 0.16) ** 0.5 * (1.0 - i / 7) ** 0.8, 8)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    pad_sh = sf.Shader("M_BarbelPadProc")
+    wr = pad_sh.noise(220.0, 3.0)
+    pad_sh.bump(wr, 0.3, 0.0008)
+    whisker = sf.Shader("M_BarbelProc")
+    rings = whisker.math("SINE", whisker.math("MULTIPLY", whisker.vmath("LENGTH", whisker.pos), 1100.0))
+    grain = whisker.noise(200.0, 2.0)
+    whisker.bump(whisker.math("ADD", whisker.math("MULTIPLY", rings, 0.4), whisker.math("MULTIPLY", grain, 0.6)), 0.25, 0.0005)
+    mats = [pad_sh.out(_grey(pad_sh, pad_sh.remap(wr, 0.3, 0.7), 0.75), 0.55),
+            whisker.out(_grey(whisker, whisker.remap(grain, 0.3, 0.7), 0.7), 0.5)]
+    obj = bc.mesh_object("Barbels", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name = "M_BarbelPad", "M_Barbel"
+    baked = _bake([obj], "PartBarbels", {"M_BarbelPad": sf.tint(_lin("#B98A7A")), "M_Barbel": sf.tint(_lin("#9A6E62"))}, size=256)
+    pts = _check_pivot("barbels", BARBEL_SINK)
+    foot = _footprint(pts)
+    mp._check(max(p.y for p in pts) > 0.12, "barbels: the long pair reaches forward (+Y)")
+
+    def _base(co):
+        return min(bases, key=lambda b: abs(math.atan2(co.x - b[0].x, co.y - b[0].y) - b[1]))[0]
+
+    def _k(co):
+        return bc.smoothstep(min(1.0, max(0.0, (co.y - 0.01) / 0.04)))
+
+    def length(co):
+        base = _base(co)
+        return base + (co - base) * (1.0 + 0.4 * _k(co))
+
+    def lift(co):
+        base = _base(co)
+        return base + Matrix.Rotation(math.radians(25.0) * _k(co), 3, "X") @ (co - base)
+
+    handles = _shape_keys(obj, [("H1_Length", length, "the whiskers 40% longer"), ("H2_Lift", lift, "the whiskers lifted 25 degrees")])
+    rules = _rules("barbels", round(foot, 3), BARBEL_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the chin or snout; the long pair sweeps out and forward, the short pair forward."
+    return {"purpose": "Creature sensory part (PROPOSED): two long and two short tapering whisker barbels on a fleshy chin pad.",
+            "category": "part", "part_type": "barbels", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_BarbelPad": 0.9, "M_Barbel": 0.7}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -1796,6 +2120,11 @@ ASSETS = {
     "cpart_proboscis": (build_proboscis, 1200),
     "cpart_tusk": (build_tusk, 1200),
     "cpart_gill_fan": (build_gill_fan, 1200),
+    "cpart_flipper": (build_flipper, 1200),
+    "cpart_hoof": (build_hoof, 1200),
+    "cpart_club_tail": (build_club_tail, 1200),
+    "cpart_lure": (build_lure, 1200),
+    "cpart_barbels": (build_barbels, 1200),
 }
 
 

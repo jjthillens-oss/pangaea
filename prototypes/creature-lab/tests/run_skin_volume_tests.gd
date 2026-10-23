@@ -7,7 +7,10 @@ const SkinCpu := preload("res://skin/skin_cpu.gd")
 const BodyField := preload("res://domain/body_field.gd")
 const SpineRig := preload("res://rig/spine_rig.gd")
 const ANGLES := [0.0, 45.0, 90.0]
-const MIN_HIP_RADIUS := 0.75
+const MIN_HIP_RADIUS := 0.80
+const MIN_KNEE_RADIUS := 0.90
+const MAX_HIP_FIELD_ERROR := 0.08
+const MAX_KNEE_FIELD_ERROR := 0.08
 
 func _init() -> void:
 	var desc = Lab.body("s1_quadruped")
@@ -18,7 +21,9 @@ func _init() -> void:
 		print("SKIN_VOLUME %ddeg hip_radius=%.3f knee_radius=%.3f hip_error=%.4f knee_error=%.4f samples=%d/%d" % [
 				int(angle), result.hip_radius, result.knee_radius, result.hip_error, result.knee_error,
 				result.hip_count, result.knee_count])
-		if result.hip_count == 0 or result.knee_count == 0 or result.hip_radius < MIN_HIP_RADIUS:
+		if result.hip_count == 0 or result.knee_count == 0 or result.hip_radius < MIN_HIP_RADIUS \
+				or result.knee_radius < MIN_KNEE_RADIUS or result.hip_error > MAX_HIP_FIELD_ERROR \
+				or result.knee_error > MAX_KNEE_FIELD_ERROR:
 			failures += 1
 	print("FAILURES: %d" % failures)
 	quit(1 if failures else 0)

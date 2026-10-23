@@ -1,0 +1,25 @@
+[gd_resource type="ShaderMaterial" load_steps=7 format=3]
+
+; The creature stage field's material (assets/records/creature_field_ground.json): assets/export/shaders/creature_field.gdshader
+; blends the seamless turf and earth tiles in world space (one tile per 2 m) by a 37 m patch mask, with a bare
+; clearing round the nest. creature_field_ground.glb.import points the imported M_CreatureField here. Written by
+; tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Shader" path="res://assets/export/shaders/creature_field.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_field/T_CreatureField_Turf_Albedo.png" id="2_turf_albedo"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_field/T_CreatureField_Turf_Normal.png" id="3_turf_normal"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_field/T_CreatureField_Earth_Albedo.png" id="4_earth_albedo"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_field/T_CreatureField_Earth_Normal.png" id="5_earth_normal"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_field/T_CreatureField_Patch.png" id="6_patch"]
+
+[resource]
+resource_name = "M_CreatureField"
+shader = ExtResource("1_shader")
+shader_parameter/turf_albedo = ExtResource("2_turf_albedo")
+shader_parameter/turf_normal = ExtResource("3_turf_normal")
+shader_parameter/earth_albedo = ExtResource("4_earth_albedo")
+shader_parameter/earth_normal = ExtResource("5_earth_normal")
+shader_parameter/patch_mask = ExtResource("6_patch")
+shader_parameter/tile_m = 2.0
+shader_parameter/patch_m = 37.0
+shader_parameter/clearing_r = 7.5

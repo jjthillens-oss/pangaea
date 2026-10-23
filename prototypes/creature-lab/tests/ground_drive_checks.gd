@@ -4,6 +4,8 @@ extends RefCounted
 const LabSpine := preload("res://lab_spine.gd")
 const Drives := preload("res://lab_drives.gd")
 const GroundDrive := preload("res://domain/ground_drive.gd")
+const GroundDriveRig := preload("res://rig/ground_drive_rig.gd")
+const SkinCpu := preload("res://skin/skin_cpu.gd")
 const DT := 1.0 / 60.0
 
 
@@ -37,7 +39,38 @@ static func run_checks() -> int:
 			"slither belly contact slip <= 12%% body length (%.2f%%)" % (100.0 * snake.max_belly_slip_ratio))
 	failed += _check(stub.max_foot_slip_ratio <= 0.25,
 			"shuffle stance slip <= 25%% short-leg length (%.2f%%)" % (100.0 * stub.max_foot_slip_ratio))
+	failed += _check(stub.max_swing_travel_m > 0.005,
+			"shuffle swing foot travels over ground (%.4f m)" % stub.max_swing_travel_m)
+	var tilted = GroundDrive.create(LabSpine.body("s1_tiny"))
+	tilted.root_pitch = deg_to_rad(6.0)
+	tilted.step(DT, 0.0, 0.0)
+	failed += _check(not tilted.within_stability_gate() and tilted.max_pitch > deg_to_rad(5.0),
+			"intentional 6-degree pitch FAILS the 5-degree stability gate")
+	var level = GroundDrive.create(LabSpine.body("s1_tiny"))
+	level.step(DT, 0.0, 0.0)
+	failed += _check(level.within_stability_gate(), "unperturbed root PASSES the 5-degree stability gate")
 	return failed
+
+
+static func run_pose_checks(scene_root: Window) -> int:
+	var tiny_desc = LabSpine.body("s1_tiny")
+	var posed = GroundDrive.create(tiny_desc)
+	var rig = GroundDriveRig.new()
+	scene_root.add_child(rig)
+	rig.setup(tiny_desc, SkinCpu.build(tiny_desc, 48), posed, Color.WHITE)
+	var posed_slip := 0.0
+	for f in 120:
+		posed.step(DT, 1.0, 0.0)
+		rig.sync(DT)
+		for i in posed.foot_planted.size():
+			if posed.foot_planted[i] == 1:
+				var tip: int = rig.body.limb_roots[i] + 1
+				var actual: Vector3 = rig.body.global_transform * rig.body.skeleton.get_bone_global_pose(tip).origin
+				posed_slip = maxf(posed_slip,
+						actual.distance_to(posed.foot_anchor[i]) / posed.leg_length_m)
+	rig.free()
+	return _check(posed_slip <= 0.25,
+			"posed shuffle foot stays at its world stance anchor (%.2f%% leg length)" % (100.0 * posed_slip))
 
 
 static func _check(ok: bool, label: String) -> int:
