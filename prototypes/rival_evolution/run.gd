@@ -7,9 +7,12 @@ func _init() -> void:
 	var generations := 20
 	var species_count := 4
 	var as_csv := false
+	var as_summary := false
 	for argument in OS.get_cmdline_user_args():
 		if argument == "--csv":
 			as_csv = true
+		elif argument == "--summary":
+			as_summary = true
 		elif argument.begins_with("--seed="):
 			var raw := argument.trim_prefix("--seed=")
 			if not raw.is_valid_int():
@@ -32,7 +35,9 @@ func _init() -> void:
 			_bad("unknown option: " + argument)
 			return
 	var result: Dictionary = Simulation.run(seed_value, generations, species_count)
-	if as_csv:
+	if as_summary:
+		print(Simulation.summary(result["species"]).trim_suffix("\n"))
+	elif as_csv:
 		print(Simulation.csv(result["history"]).trim_suffix("\n"))
 	else:
 		print(result["text"].trim_suffix("\n"))
