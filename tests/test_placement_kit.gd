@@ -5,7 +5,7 @@ extends TestCase
 ## rare pieces) answer from the data alone.
 ##
 ## The tests use tests/fixtures/world/kit_min.json: real GLBs, fixture records. The kit the world
-## ships (T4's) is checked by the same rules once it lands.
+## ships (art's, game/data/placement_kit.json) is checked by the same rules.
 
 const KIT := "res://tests/fixtures/world/kit_min.json"
 const RECORDS := "res://tests/fixtures/world/records/"
@@ -62,12 +62,19 @@ func test_the_fixture_kit_has_no_problems() -> void:
 	check_eq(kit.assets.landmark_arch.dressings[1], {"id": "algae", "tint": "#C8D8B0", "growth": "Growth_Algae", "scale": 0.95}, "a dressing")
 
 
-func test_the_shipped_kit_has_no_problems_once_it_lands() -> void:
-	if not FileAccess.file_exists(PlacementKit.DEFAULT_PATH):
-		check(PlacementKit.load_from().validate() == PackedStringArray(["placement_kit.json: missing or not readable JSON"]),
-			"until T4's kit lands, loading it says it is missing")
-		return
-	check_eq(PlacementKit.load_from().validate(), PackedStringArray(), "the kit the world ships")
+## Art's kit on main (tools/blender/make_s1_kit.py, docs/s1/s1-build-plan.md section 1): the rules
+## accept it and it holds exactly the S1 pieces, so a piece added, renamed or dropped shows here.
+func test_the_shipped_kit_validates() -> void:
+	var kit := PlacementKit.load_from()
+	check_eq(kit.validate(), PackedStringArray(), "the kit the world ships")
+	var ids := PackedStringArray(kit.assets.keys())
+	ids.sort()
+	check_eq(ids, PackedStringArray(["landmark_arch", "landmark_fan", "landmark_great_shell", "landmark_ring",
+		"landmark_shed_husk", "landmark_spire", "marker_checkpoint_column", "marker_origin_arrow", "rare_giant_husk",
+		"rare_shell_cathedral", "rock_a", "rock_b", "rock_c", "shell_bell", "shell_diatom_disc", "shell_fluted_tower",
+		"shell_girdle_drum", "shell_radiolarian_lens"]), "the 18 S1 pieces")
+	check_eq(kit.landmarks(0, 3), PackedStringArray(["landmark_shed_husk"]), "the shed husk is group 3's landmark")
+	check_eq(kit.rare_asset(0, "giant_husk"), "rare_giant_husk", "and the fixed rare tile's piece is the giant husk")
 
 
 func test_each_rule_has_a_failing_case() -> void:
@@ -120,7 +127,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		[_with("shell_s_pill", "record", RECORDS + "no_such_record.json"), ".record: '%sno_such_record.json' does not exist" % RECORDS, 1],
 		[_with("shell_s_pill", "record", VARIANTS + "wrong_id.json"), ".record: '%swrong_id.json' disagrees: id 'shell_s_other'" % VARIANTS, 1],
 		[_with("shell_s_pill", "record", VARIANTS + "wrong_radius.json"), "disagrees: footprint_radius_m 0.7", 1],
-		[_with("shell_s_pill", "record", VARIANTS + "wrong_export.json"), "disagrees: export_path 'assets/export/shell_small_lens.glb'", 1],
+		[_with("shell_s_pill", "record", VARIANTS + "wrong_export.json"), "disagrees: export_path 'assets/export/shell_radiolarian_lens.glb'", 1],
 		# Rule 10: placeholder and approval.
 		[_with("shell_s_pill", "record", VARIANTS + "finished.json"), "placement_kit.assets[0].placeholder: true, but the record's review_state is 'production", 1],
 		[_with("rock_a", "placeholder", true), ".placeholder: true, but the record's review_state is 'production", 1],
@@ -236,7 +243,7 @@ func test_landmarks_and_rare_pieces_are_looked_up_by_group_and_kind() -> void:
 	var kit := PlacementKit.load_from(KIT)
 	check_eq(kit.landmarks(0, 0), PackedStringArray(["landmark_arch", "landmark_fan"]), "group 0")
 	check_eq(kit.landmarks(0, 1), PackedStringArray(["landmark_great_shell", "landmark_ring"]), "group 1")
-	check_eq(kit.landmarks(0, 3), PackedStringArray(["landmark_giant_carcass"]), "group 3")
+	check_eq(kit.landmarks(0, 3), PackedStringArray(["landmark_shed_husk"]), "group 3")
 	check_eq(kit.landmarks(1, 0), PackedStringArray(), "band 1")
 	check_eq(kit.rare_asset(0, "giant_husk"), "rare_giant_husk", "the fixed rare tile's piece")
 	check_eq(kit.rare_asset(0, "shell_cathedral"), "rare_shell_cathedral", "the other rare kind")

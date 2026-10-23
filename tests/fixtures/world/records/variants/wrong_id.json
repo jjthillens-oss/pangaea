@@ -2,6 +2,6 @@
 	"id": "shell_s_other",
 	"status": "PROPOSED",
 	"review_state": "blockout - S1 test fixture",
-	"export_path": "assets/export/shell_small_pill.glb",
+	"export_path": "assets/export/shell_diatom_disc.glb",
 	"footprint_radius_m": 0.75
 }

@@ -1,0 +1,69 @@
+{
+  "id": "marker_checkpoint_column",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world marker (S1 rough): the cream light column at the current checkpoint, 'where you come back'. No collision; drawn unlit by the engine.",
+  "category": "marker",
+  "source_blend": "assets/source/blender/marker_checkpoint_column.blend",
+  "generator_script": "tools/blender/make_s1_production.py",
+  "export_path": "assets/export/marker_checkpoint_column.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.5,
+    "y_forward": 0.5,
+    "z_up": 14.0
+  },
+  "triangles": 336,
+  "triangle_budget": 800,
+  "textures": [
+    {
+      "name": "T_MarkerCheckpointColumn_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_MarkerCheckpointColumn_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_MarkerCheckpointColumn_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Column"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "MarkerCheckpointColumn"
+  ],
+  "kind": "marker",
+  "pivot": "the checkpoint on the swim plane (Godot y = 0)",
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
+}
