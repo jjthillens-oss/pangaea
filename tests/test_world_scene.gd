@@ -457,9 +457,9 @@ func test_sleepers_hide_and_wakers_show_where_they_woke() -> void:
 	var c: CreatureField.Creature = sim.creatures.creatures.back()
 	var view := pool.creature_layer.view_of(c.id)
 	check(view != null and view.visible, "drawn while awake")
-	# T2's sleep: the creature is flagged and its event says so (until T2.6, set here by hand).
-	c.asleep = true
-	pool.creature_layer.on_event({"type": "creature_slept", "id": c.id})
+	sim.creatures.sleep(c, sim.tick)
+	for e in sim.drain_events():
+		pool._route(e)
 	check(not view.visible, "creature_slept hides the view")
 	var at := view.position
 	c.motion.place(c.motion.position + Vector2(3.0, 0.0), c.motion.heading)
@@ -468,10 +468,23 @@ func test_sleepers_hide_and_wakers_show_where_they_woke() -> void:
 	check(not pool.creature_layer.views().has(view), "a sleeper is not among the live views")
 	var woke_at := c.motion.position + Vector2(0.0, 5.0)
 	c.motion.place(woke_at, c.motion.heading)
-	c.asleep = false
-	pool.creature_layer.on_event({"type": "creature_woke", "id": c.id})
+	sim.creatures.wake(c, sim.tick)
+	for e in sim.drain_events():
+		pool._route(e)
 	check(view.visible, "creature_woke shows it")
 	check(view.position.is_equal_approx(PlaneSpace.to_world(woke_at)), "where it woke, in the same frame: %s" % view.position)
+	# One that is asleep when its spawn is drawn gets no view until it wakes.
+	check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(-10.0, 0.0), 0.0), "a second rammer")
+	var sleeper: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.creatures.sleep(sleeper, sim.tick)
+	for e in sim.drain_events():
+		pool._route(e)
+	check(pool.creature_layer.view_of(sleeper.id) == null, "a creature asleep when its spawn is drawn is not drawn")
+	sim.creatures.wake(sleeper, sim.tick)
+	for e in sim.drain_events():
+		pool._route(e)
+	var woken := pool.creature_layer.view_of(sleeper.id)
+	check(woken != null and woken.visible, "and is drawn once it wakes")
 	pool.free()
 
 

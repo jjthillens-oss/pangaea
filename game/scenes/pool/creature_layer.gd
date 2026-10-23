@@ -70,7 +70,7 @@ func on_event(event: Dictionary) -> void:
 	match str(event.get("type", "")):
 		"creature_spawned":
 			var c := sim.creatures.find(id)
-			if c != null and not _views.has(id):
+			if c != null and not c.asleep and not _views.has(id):   # a sleeper is drawn when it wakes
 				var view := _add_view(c)
 				view.fade_in(sim.species.fade_in_ticks * PoolSim.DT)
 		"creature_died":
