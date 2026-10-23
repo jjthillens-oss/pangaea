@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "S1 home block, band 0: the M1 pool unwalled (base files) plus the seam ring. 20 zones and 8 shells; reach over [-64, 64)^2 is 14.6 tm (docs/s1/s1-content.md section 3.6).",
+  "note": "S1 home block, band 0: the M1 pool unwalled (base files) plus the seam ring. 20 zones and 8 shells; reach over [-64, 64)^2 measures 14.7 tm (docs/s1/s1-content.md section 3.6).",
   "band": 0,
   "base_layout": "res://game/data/pool_m1.json",
   "base_sites": "res://game/data/creatures_m1.json",
