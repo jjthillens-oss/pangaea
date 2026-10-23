@@ -709,9 +709,9 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 ## order) with their queue entries and site records, its zones' plankton is dropped and the zones
 ## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene; with its
 ## `reason` when one is given (the growth tick's "growth", D-67), so S1's payload is unchanged. The
-## growth tick, which unloads every chunk and then takes another arena, leaves the arena be (`arena`
-## false).
-func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", arena := true) -> void:
+## growth tick's _unload_all, which unloads every chunk (`whole`), has taken every zone out itself and
+## grow takes another arena, so the chunk's zones and colliders are left to them.
+func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", whole := false) -> void:
 	var ch: WorldChunk = _chunks[key]
 	_site_epoch += 1
 	if _home_count != sites.size():
@@ -731,18 +731,10 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", arena := true) -> 
 	for id in mine:
 		sites.erase(id)
 		_forget_role(id)
-	for z in ch.zones:
-		sim.plankton.drop_zone(z.id)
-		sim.plankton.active_zones.erase(z.id)
-		var was := sim.region.zone(z.id)
-		sim.region.remove_zone(z.id)
-		_zones_version += 1
-		_unindex_zone(sim.region, was)
-		_zone_abs.erase(z.id)
-		_zone_chunk.erase(z.id)
-		_fill.erase(z.id)
-		_trimmed.erase(z.id)
-	if arena:
+	if not whole:
+		for z in ch.zones:
+			sim.plankton.drop_zone(z.id)
+			_drop_zone(sim, z.id)
 		(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
@@ -751,6 +743,39 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", arena := true) -> 
 	if not reason.is_empty():
 		event["reason"] = reason
 	_emit(sim, event)
+
+
+## The growth tick's unload (step 3): every chunk unloads ("growth") and leaves the stream, the
+## region, the food and the creature field as _unload_chunk one chunk at a time leaves them, but the
+## zones' plankton goes in one pass (PlanktonField.drop_zones) and the zones leave in the region's own
+## order (each removal finds its zone first). The arena is left as it is: another takes its place
+## (step 5). The chunks and the plankton list are freed after the beat (_retired).
+func _unload_all(sim: PoolSim) -> void:
+	var dropped := {}
+	for key in _keys:
+		_retired.append(_chunks[key])
+		for z in _chunks[key].zones:
+			dropped[z.id] = true
+	_retired.append(sim.plankton.items)
+	sim.plankton.drop_zones(dropped)
+	for z: Dictionary in sim.region.zones.duplicate():
+		if dropped.has(z.id):
+			_drop_zone(sim, z.id)
+	for key in _keys.duplicate():
+		_unload_chunk(sim, key, "growth", true)
+
+
+## A zone of an unloading chunk leaves the food set, the region (with its stream) and the index.
+func _drop_zone(sim: PoolSim, id: String) -> void:
+	sim.plankton.active_zones.erase(id)
+	var was := sim.region.zone(id)
+	sim.region.remove_zone(id)
+	_zones_version += 1
+	_unindex_zone(sim.region, was)
+	_zone_abs.erase(id)
+	_zone_chunk.erase(id)
+	_fill.erase(id)
+	_trimmed.erase(id)
 
 
 # --- step 4: load ---
@@ -875,9 +900,10 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	var arena := sim.arena as ChunkArena
 	if not (_growing and arena.has_chunk(key)):
 		arena.add_chunk(key, _colliders(ch))
+	var k := _tm_to_am   # local_of_tm written out: (x k - origin) / k, through float64
 	for z in ch.zones:
-		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
-			float(z.growth_rate))
+		var fresh := sim.region.add_zone(z.id, Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k),
+			float(z.radius), float(z.capacity), float(z.growth_rate))
 		var stream: RandomNumberGenerator = _next_streams.get(z.id)
 		if stream == null:
 			stream = _zone_stream(z.id)
@@ -1501,18 +1527,7 @@ func grow(sim: PoolSim) -> void:
 	for item in sim.plankton.items:
 		haze.append({"kind": "plant", "look": plant, "position": item.position})
 	haze.append_array(body_haze)
-	# Every zone goes, so its plankton goes in one pass (PlanktonField.drop_zones), and the arena is
-	# not emptied chunk by chunk: another takes its place (step 5). The chunks, the plankton list and
-	# the arena are freed after the beat (_retired).
-	var dropped := {}
-	for key in _keys:
-		_retired.append(_chunks[key])
-		for z in _chunks[key].zones:
-			dropped[z.id] = true
-	_retired.append(sim.plankton.items)
-	sim.plankton.drop_zones(dropped)
-	for key in _keys.duplicate():
-		_unload_chunk(sim, key, "growth", false)
+	_unload_all(sim)
 	var old_arena := sim.arena as ChunkArena
 	_retired.append(old_arena)
 	sim.arena = _arena_after(old_arena, ChunkArena.create_endless(chunk_tm))
@@ -1795,26 +1810,29 @@ func chunk_loaded_event(ch: WorldChunk) -> Dictionary:
 ## the part that does not depend on the frame (_placed_event places the rest).
 func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
 	var at := Vector2.ZERO
+	var k := _tm_to_am   # local_of_tm written out: (x k - origin) / k, through float64
+	var ox := origin_x_am
+	var oy := origin_y_am
 	var shells := []
 	for s in ch.shells:
 		if placed:
-			at = local_of_tm(float(s.x), float(s.y))
+			at = Vector2((float(s.x) * k - ox) / k, (float(s.y) * k - oy) / k)
 		shells.append({"id": s.id, "position": at, "radius": float(s.r), "kind": s.kind,
 			"asset": s.asset, "yaw_deg": s.yaw_deg, "scale": s.scale, "tint": s.tint})
 	var zones := []
 	for z in ch.zones:
 		if placed:
-			at = local_of_tm(float(z.x), float(z.y))
+			at = Vector2((float(z.x) * k - ox) / k, (float(z.y) * k - oy) / k)
 		zones.append({"id": z.id, "center": at, "radius": float(z.radius), "region": z.region})
 	var anchors := []
 	for a in ch.anchors:
 		if placed:
-			at = local_of_tm(float(a.x), float(a.y))
+			at = Vector2((float(a.x) * k - ox) / k, (float(a.y) * k - oy) / k)
 		anchors.append({"id": a.id, "position": at, "model": a.model, "dressing": a.dressing})
 	var places := []
 	for p in ch.places:
 		if placed:
-			at = local_of_tm(float(p.x), float(p.y))
+			at = Vector2((float(p.x) * k - ox) / k, (float(p.y) * k - oy) / k)
 		places.append({"id": p.id, "kind": p.kind, "position": at, "yaw_deg": float(p.yaw_deg),
 			"mirror": bool(p.mirror), "scale": WorldConfig.bu_to_tm(ch.size)})
 	var site_list := []
@@ -1825,11 +1843,11 @@ func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
 		if s.has("posts"):
 			for post: Dictionary in s.posts:
 				if placed:
-					at = local_of_tm(float(post.x), float(post.y))
+					at = Vector2((float(post.x) * k - ox) / k, (float(post.y) * k - oy) / k)
 				posts.append({"position": at, "heading": float(post.heading)})
 		else:
 			if placed:
-				at = local_of_tm(float(s.x), float(s.y))
+				at = Vector2((float(s.x) * k - ox) / k, (float(s.y) * k - oy) / k)
 			posts.append({"position": at, "heading": float(s.heading)})
 		site_list.append({"id": s.id, "species": s.species, "posts": posts})
 	return {"type": "chunk_loaded", "key": ch.key, "shells": shells, "zones": zones, "anchors": anchors, "places": places,
@@ -1839,25 +1857,28 @@ func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
 ## `event`, _event_of(ch, false), with its positions placed in the frame in force now: then it equals
 ## chunk_loaded_event(ch).
 func _placed_event(event: Dictionary, ch: WorldChunk) -> Dictionary:
+	var k := _tm_to_am   # local_of_tm written out, as in _event_of
+	var ox := origin_x_am
+	var oy := origin_y_am
 	var out: Array = event.shells
 	var i := 0
 	for s in ch.shells:
-		out[i].position = local_of_tm(float(s.x), float(s.y))
+		out[i].position = Vector2((float(s.x) * k - ox) / k, (float(s.y) * k - oy) / k)
 		i += 1
 	out = event.zones
 	i = 0
 	for z in ch.zones:
-		out[i].center = local_of_tm(float(z.x), float(z.y))
+		out[i].center = Vector2((float(z.x) * k - ox) / k, (float(z.y) * k - oy) / k)
 		i += 1
 	out = event.anchors
 	i = 0
 	for a in ch.anchors:
-		out[i].position = local_of_tm(float(a.x), float(a.y))
+		out[i].position = Vector2((float(a.x) * k - ox) / k, (float(a.y) * k - oy) / k)
 		i += 1
 	out = event.places
 	i = 0
 	for p in ch.places:
-		out[i].position = local_of_tm(float(p.x), float(p.y))
+		out[i].position = Vector2((float(p.x) * k - ox) / k, (float(p.y) * k - oy) / k)
 		i += 1
 	out = event.sites
 	i = 0
@@ -1868,10 +1889,10 @@ func _placed_event(event: Dictionary, ch: WorldChunk) -> Dictionary:
 		if s.has("posts"):
 			var j := 0
 			for post: Dictionary in s.posts:
-				posts[j].position = local_of_tm(float(post.x), float(post.y))
+				posts[j].position = Vector2((float(post.x) * k - ox) / k, (float(post.y) * k - oy) / k)
 				j += 1
 		else:
-			posts[0].position = local_of_tm(float(s.x), float(s.y))
+			posts[0].position = Vector2((float(s.x) * k - ox) / k, (float(s.y) * k - oy) / k)
 		i += 1
 	return event
 
