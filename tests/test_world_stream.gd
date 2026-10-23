@@ -69,6 +69,17 @@ func test_create_loads_the_view_set_at_once_and_places_the_cell_at_the_origin() 
 				check_eq(rz.center, Vector2(float(z.x) - 0.0, float(z.y) - 9.0), "zone %s at its local place" % z.id)
 	check(zones > 0, "the view set holds zones")
 	check_eq(sim.region.zones.size(), zones, "and only those")
+	# B-8: a save restored inside a shell (chunk (2, 0)'s, at (88, 24)) puts the cell 1.5 tm off the
+	# origin, where the view set reaches one chunk further east: that chunk is loaded before the
+	# first step too.
+	var moved := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array([88.0, 24.0]))
+	var place := moved.motion.position
+	check(place.length() > 1.0, "the cell moved off the shell (%s)" % place)
+	var extra := moved.world.view_set_keys(place).filter(func(k: Vector2i) -> bool:
+		return not moved.world.view_set_keys(Vector2.ZERO).has(k))
+	check(not extra.is_empty(), "its view set reaches a chunk the origin's does not")
+	for key in moved.world.view_set_keys(place):
+		check(moved.world.chunk(key) != null, "view-set chunk %s of the placed cell loaded" % key)
 
 
 func test_a_pool_sim_has_no_world() -> void:
@@ -331,40 +342,43 @@ func test_a_chunk_unloads_only_beyond_72_tm() -> void:
 
 
 ## Over the chunk cap only the view set loads: every other load waits and is counted once a tick.
-func test_at_the_chunk_cap_loads_outside_the_view_set_wait_and_count() -> void:
+## B-5: at the chunk cap the nearest missing view-set chunk loads in place of a nearer chunk outside
+## the view set, and chunk_waits counts the give-way; with no view-set chunk missing the load waits
+## and counts.
+func test_at_the_chunk_cap_a_view_set_chunk_loads_in_place_of_a_nearer_one_and_counts() -> void:
 	var sim := _endless(SEED, null, false)
+	# Here the view set reaches 36.7 tm sideways, and the chunk two rows up is 32 tm off.
+	check(sim.debug_teleport(Vector2(-14.0, -9.0)), "the cell placed")
+	for t in 40:
+		sim.step(SimIntent.new())
+	var body := sim.motion.position
+	var view := sim.world.view_set_keys(body)
+	# The farthest view-set chunk, and a loaded chunk outside the view set nearer than it.
+	var far_view: Vector2i = view[0]
+	for key in view:
+		if sim.world.nearest(key, body) > sim.world.nearest(far_view, body):
+			far_view = key
+	var near_other: Variant = null
+	for key in sim.world.loaded_keys():
+		if not view.has(key) and sim.world.nearest(key, body) < sim.world.nearest(far_view, body):
+			if near_other == null or sim.world.nearest(key, body) < sim.world.nearest(near_other, body):
+				near_other = key
+	check(near_other != null, "a chunk outside the view set nearer than the view set's farthest")
+	if near_other == null:
+		return
+	sim.world._unload_chunk(sim, far_view)
+	sim.world._unload_chunk(sim, near_other)
+	sim.world.caps.chunks = sim.world.loaded_keys().size()
+	check_eq(sim.world._nearest_missing(body, 56.0), near_other, "the nearest missing chunk is the outsider")
 	sim.drain_events()
-	var cap := sim.world.loaded_keys().size() + 2
-	sim.world.caps.chunks = cap
-	var waits := 0
-	var bad := 0
-	var first := ""
-	for t in 600:
-		var a := sim.absolute_position_am()
-		var before := sim.world.loaded_keys()
-		var view := sim.world.view_set_keys(sim.motion.position)
-		var waits_before := int(sim.world.counters.chunk_waits)
-		sim.step(SimIntent.new(Vector2.DOWN))
-		var loaded: Array = []
-		for e in sim.drain_events():
-			if e.type == "chunk_loaded":
-				loaded.append(e.key)
-		var kept := before.filter(func(k: Vector2i) -> bool: return _ref_nearest(k, a[0], a[1]) <= 72.0)
-		var best: Variant = _ref_nearest_missing(kept, a[0], a[1], 56.0)
-		var want_wait := best != null and kept.size() >= cap and not view.has(best)
-		var waited := int(sim.world.counters.chunk_waits) - waits_before
-		if waited != (1 if want_wait else 0) or (want_wait and not loaded.is_empty()):
-			bad += 1
-			if first.is_empty():
-				first = "tick %d: waited %d, loaded %s, want a wait %s" % [t, waited, loaded, want_wait]
-		for key in loaded:
-			if kept.size() >= cap and not view.has(key):
-				bad += 1
-		waits += waited
-	check_eq(bad, 0, "a wait exactly when the nearest missing chunk is outside the view set at the cap (%s)" % first)
-	check(waits > 0, "the cap was reached (%d waits)" % waits)
-	for key in sim.world.view_set_keys(sim.motion.position):
-		check(sim.world.chunk(key) != null, "view-set chunk %s loaded past the cap" % key)
+	sim.step(SimIntent.new())
+	var loaded := _of(sim.drain_events(), "chunk_loaded").map(func(e: Dictionary) -> Vector2i: return e.key)
+	check_eq(loaded, [far_view], "the view-set chunk loaded in its place")
+	check_eq(int(sim.world.counters.chunk_waits), 1, "and the give-way counted")
+	sim.step(SimIntent.new())
+	check(_of(sim.drain_events(), "chunk_loaded").is_empty(), "then nothing more: the view set is whole")
+	check(sim.world.chunk(near_other) == null, "the outsider waits")
+	check_eq(int(sim.world.counters.chunk_waits), 2, "and the wait counted")
 
 
 ## An awake creature's reach holds its chunks however far the cell swims; once it is gone they go.

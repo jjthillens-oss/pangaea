@@ -9,6 +9,9 @@ extends WorldGen
 ##     zone's, where there is one), home ZONE_R - 2 east of that centre, reach disc of radius
 ##     REACH_R there (so it lies inside the chunk), live at size 1; and beside it a second rammer
 ##     site of the same shape, "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
+## Chunk (-3, 1) also holds the zone "z_edge" (capacity EDGE_CAPACITY) centred 2 tm inside its west
+## edge, so its disc crosses into chunk (-4, 1), which holds the shell "s_edge" exactly
+## ZONE_CLEAR_MARGIN from that disc (the gap rule, B-3).
 ## The nearest sites to the home spawn (0, 9) are at (-48, -48) and (80, 80) and so on: no creature
 ## starts in view. tile_info gives every tile the "sunlit" region.
 ##
@@ -22,6 +25,9 @@ const ZONE_GROWTH := 0.08
 const REACH_R := 12.0
 const SITE_SPECIES := "rammer"
 const SITE_HEADING := -PI / 2.0
+const EDGE_CHUNK := Vector2i(-3, 1)
+const EDGE_CAPACITY := 96.0
+const ZONE_CLEAR_MARGIN := 0.7
 
 ## Chunks built so far, by key: tests count generator calls with it.
 var built := {}
@@ -69,6 +75,13 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	var tile := Vector2i(floori(cx / 2.0), floori(cy / 2.0))
 	c.shells.append({"id": "s_f_%d_%d" % [cx, cy], "x": x0 + 16.0 + SHELL_OFFSET, "y": y0 + 16.0 + SHELL_OFFSET,
 		"r": SHELL_R, "kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	var edge := Vector2(chunk_tm * EDGE_CHUNK.x + 2.0, chunk_tm * EDGE_CHUNK.y + 16.0)
+	if key == EDGE_CHUNK:
+		c.zones.append({"id": "z_edge", "x": edge.x, "y": edge.y, "radius": ZONE_R, "capacity": EDGE_CAPACITY,
+			"growth_rate": ZONE_GROWTH, "tile": tile, "region": "sunlit"})
+	if key == EDGE_CHUNK + Vector2i(-1, 0):
+		c.shells.append({"id": "s_edge", "x": edge.x - ZONE_R - ZONE_CLEAR_MARGIN - SHELL_R, "y": edge.y, "r": SHELL_R,
+			"kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
 	if posmod(cx, 2) == 0 and posmod(cy, 2) == 0:
 		c.zones.append({"id": "z_f_%d_%d" % [cx, cy], "x": x0 + 16.0, "y": y0 + 16.0, "radius": ZONE_R,
 			"capacity": ZONE_CAPACITY, "growth_rate": ZONE_GROWTH, "tile": tile, "region": "sunlit"})

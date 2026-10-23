@@ -405,8 +405,9 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 # --- step 4: load ---
 
 ## Loads the nearest missing chunk within the load ring (ties by key), up to caps.loads_per_tick a
-## tick. With caps.chunks loaded, only a chunk of the view set may still load; any other waits, and
-## chunk_waits counts the wait (a backstop that a swim should never need).
+## tick, after the sleepers that wake this tick have their site chunks. With caps.chunks loaded, the
+## nearest missing chunk of the view set loads instead (never refused), and chunk_waits counts each
+## time the nearest missing chunk had to give way or wait (B-5: a backstop a swim should never need).
 func _load(sim: PoolSim, view_from: Dictionary) -> void:
 	# The sleepers step 5 will wake: their reach chunks load first, never refused and never counted.
 	for c in _wakers(sim, view_from):
@@ -422,10 +423,28 @@ func _load(sim: PoolSim, view_from: Dictionary) -> void:
 		if _keys.size() >= int(caps.chunks):
 			if view.is_empty():
 				view = view_set_keys(body)
-			if not view.has(key):
+			var vkey: Variant = _nearest_missing_of(view, body)
+			if vkey == null:
 				counters.chunk_waits += 1
 				break
+			if vkey != key:
+				counters.chunk_waits += 1
+			key = vkey
 		_load_chunk(sim, key)
+
+
+## The missing key of `keys` nearest `body`, least (distance, y, x); null when all are loaded.
+func _nearest_missing_of(keys: Array[Vector2i], body: Vector2) -> Variant:
+	var best: Variant = null
+	var best_d := INF
+	for key in keys:
+		if _chunks.has(key):
+			continue
+		var d := nearest(key, body)
+		if best == null or d < best_d or (d == best_d and _key_less(key, best)):
+			best = key
+			best_d = d
+	return best
 
 
 ## The missing chunk nearest `body` within `ring`, least (distance, y, x); null when every chunk in
