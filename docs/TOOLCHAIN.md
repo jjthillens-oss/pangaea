@@ -58,7 +58,7 @@ Pass them after `--`, for example `Pangaea.exe -- --seed=4242`. `tools/check.sh`
 | --- | --- |
 | `--seed=N` | World seed for a new lineage, a whole number from 0 to 4294967295. |
 | `--slot=PATH` | Save slot instead of `user://saves/slot_1.json` (`%APPDATA%\Pangaea\saves\slot_1.json` on Windows). It must name a file under `user://` or at an absolute path. |
-| `--perf-tour` | Dev exe only. The forage bot swims for 90 s after a 2 s warm-up, then the game writes `user://reports/perf_<build>.json` and quits. |
+| `--perf-tour` | Dev exe only. The forage bot swims for 90 s after a 2 s warm-up, then the game writes `user://reports/perf_<build>.json` (frame times and the GPU time of each frame; see "Look probe") and quits. |
 
 A flag that cannot be used is logged as a warning and ignored, so a refused `--slot` falls back to the default slot.
 
@@ -85,6 +85,54 @@ echo '{"file_format_version": "1.0.1", "ICD": {"library_path": "/tmp/lvp/usr/lib
 VK_ICD_FILENAMES=/tmp/lvp/lvp_icd.json xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . \
   --rendering-method forward_plus --rendering-driver vulkan --resolution 1920x1080 --fixed-fps 60 --script path/to/shot.gd
 ```
+
+## Look probe
+
+`tools/godot/look_probe.gd` (micro-world plan C1) measures what the player sees. It starts a grazer lineage on seed 4242 in the real pool, stages seven fixed moments (`lineup`: both threats, plankton, carrion and the cell; `tell`: an ambush hunter 0.8 s into its tell; `puff`: a rammer's puff before a charge; `rim_north` and `rim_south`; `starving`; `hud`: the starving banner, the food arrow, a rammer near and the hurt vignette at its peak), then pauses the pool, stops time and centres the camera on the cell. For each moment it saves the frame the player sees and the same moment with every body, food item, rock and the 2D layer hidden (what lies behind them), writes CIELAB readings at named points (per-channel sRGB medians, D65, CIE76: the judge's maths) to `look_probe.json`, and checks a gate set. The script's header lists every frame and reading.
+
+It runs windowed under Xvfb at 1920×1080 with `--fixed-fps 60`, from the repository root; it refuses to run headless or without a fixed frame rate. Use the lavapipe setup above for Forward+.
+
+```bash
+# Compatibility: about 1.5 minutes on 4 CPUs.
+xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . --audio-driver Dummy \
+  --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 \
+  --script res://tools/godot/look_probe.gd -- --out=/abs/probe_compat --look=baseline
+# Forward+ on lavapipe: about 10 minutes. --parity compares its frames with the Compatibility run's.
+VK_ICD_FILENAMES=/tmp/lvp/lvp_icd.json xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86_64 --path . \
+  --audio-driver Dummy --rendering-method forward_plus --rendering-driver vulkan --resolution 1920x1080 --fixed-fps 60 \
+  --script res://tools/godot/look_probe.gd -- --out=/abs/probe_fwd --look=baseline --parity=/abs/probe_compat
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--out=DIR` | Where the frames and `look_probe.json` go (default `user://look_probe/out`). Use an absolute path. |
+| `--look=micro` or `--look=baseline` | The gate set: the micro-world look (plan section 6; the default) or today's look. |
+| `--scenes=lineup,tell` | Only these moments. |
+| `--parity=DIR` | Another renderer's run of the same moments: adds the median CIE76 between the two runs (whole frame, fluid frame, cell) and the parity gates. |
+| `--zoom=M` | The camera distance (default the layout's 14 m). |
+
+The exit code is 0 when every gate passes, 1 when one fails or a moment could not be staged, and 2 when the probe cannot run. It prints one PASS, FAIL or SKIP line per gate. Its save goes to `user://look_probe/`, never the player's slot; set `XDG_DATA_HOME` as for `check.sh`. Runs are repeatable: two runs in one renderer give the same readings, and their frames differ only in the HUD's random lineage id. It is not part of `check.sh`: run it at C4, C5 and C9 of the plan and whenever the look changes. Its colour maths and gate logic are unit-tested in `tests/test_look_probe.gd`.
+
+**Today's look** (m1-threats at ecb1eee; llvmpipe and lavapipe, 1920×1080, zoom 14). `--look=baseline` passes its 18 gates in both renderers. `--look=micro` (with `--parity`) fails 16 of its 20 in Compatibility and 14 in Forward+, as it should until C4.
+
+| Reading | Compatibility | Forward+ (lavapipe) | Micro gate |
+| --- | --- | --- | --- |
+| Cell, lineup (inner 55% of its disc) | `#A2543E`, h 42.1 | `#B26550`, h 41.3 | h 30 to 50 |
+| Floor near the cell (centre third, fluid frame) | `#246E74`: L\* 42.4, C\* 22.6, h 206.3 | `#2A7B86`: L\* 47.5, C\* 24.3, h 212.8 | L\* 26 to 36, h 268 to 288, C\* ≥ 25 |
+| Cell against it, \|dL\*\| | 2.4 | 3.6 | ≥ 15 |
+| Darkest corner L\*; centre minus corners' mean, dL\* | 48.4; −7.7 | 55.2; −9.2 | ≥ 15; ≥ 5 |
+| Lane outline, tell and puff (least of 6 points, \|dL\*\|) | 8.0 and 6.4 | 3.0 and 2.8 (pink: CIE76 about 14) | ≥ 15 |
+| Plankton hue span; highest channel | h 108.6 to 138.2; 255 | h 117.8 to 136.6; 255 | 110 to 145; ≤ 254 |
+| Carrion: least hue gap from the threat pink | 18.6 | 15.1 | ≥ 15 |
+| Hurt vignette, outer band (corners) | `#52585F`, h 261.2 | `#5B646C`, h 254.2 | h 15 to 45 |
+| Starving cell (`#785A55` / `#9D8485`) against the floor, \|dL\*\| | 5.8 | 3.7 | ≥ 10 |
+| Rim north, largest L\* step down the wall | 6.8 | 3.5 | ≤ 6 |
+| Threat bodies in the lineup, hunter and rammer, \|dL\*\| (CIE76) | 2.8 (24.9) and 18.0 (32.3) | 0.4 (25.0) and 15.2 (36.6) | none (plan risk 5) |
+| Draw calls; primitives, lineup | 140; 57.3k (shadow pass: 21.0k primitives, no draw calls counted) | 46; 57.3k (shadow pass: 72 draw calls, 21.0k primitives) | |
+
+Renderer parity, Forward+ against Compatibility (median CIE76): whole frame 4.6 to 6.9 across the seven moments, fluid frame 5.3 to 7.1, the fed cell 6.9 to 7.3 and the starving cell 17.1; in the lineup 6.5, 6.7 and 7.0 (micro gate: ≤ 2 for opaque content). The decor stand-in (a pale camera-facing plane at y −3 m, linear luminance 0.81 × alpha 0.147 = 0.12, the ambience contract's cap) lies under today's opaque floor, so the outline over it reads the same as over the floor until C4 takes the floor away. Today's skirt reading samples the floor's caustics, since there is no skirt yet.
+
+**GPU time.** The perf tour's report (`--perf-tour`, dev exe) has `gpu_frames`, `gpu_avg_ms`, `gpu_slow_1pct_ms` and `gpu_max_ms` beside the frame times, from the renderer's own timing of the root viewport (`RenderingServer.viewport_set_measure_render_time`). The F3 panel's render section shows the GPU time's average and longest over the last 60 timed frames. A headless run times nothing and reports zeros. On llvmpipe or lavapipe the "GPU" is the CPU rasterising (a Compatibility perf tour at 1280×720 averaged 355.6 ms over 241 timed frames), so GPU budgets are measured on the owner's PC (plan section 9).
 
 ## Owner setup on Windows
 
