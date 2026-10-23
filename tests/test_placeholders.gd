@@ -24,9 +24,6 @@ const PRIMITIVE_TYPES := [
 ]
 ## Holds instances of another mesh and no geometry of its own.
 const NOT_GEOMETRY := ["MultiMesh"]
-const AUDIO_CUES := ["sfx_eat_plant", "sfx_eat_meat", "sfx_refuse", "sfx_starve_pulse", "amb_pool_loop",
-	"sfx_notice", "sfx_tell_lunge", "sfx_tell_puff", "sfx_bite", "sfx_ram", "sfx_hurt", "sfx_dodged", "sfx_creature_die",
-	"sfx_respawn"]
 
 var _primitive_re := RegEx.create_from_string("\\b(%s)\\b" % "|".join(PackedStringArray(PRIMITIVE_TYPES)))
 ## Meshes built in code (ArrayMesh, ImmediateMesh, any *Mesh) and SurfaceTool.
@@ -199,7 +196,7 @@ func test_a_placeholder_whose_asset_now_has_a_record_is_reported() -> void:
 	check_eq(_replaced_placeholders(inventory, _record_ids()), PackedStringArray(["old_cell (asset sample_cell has a record)"]), "replaced")
 
 
-func test_the_inventory_lists_the_synthesized_audio_and_the_functional_primitives() -> void:
+func test_the_inventory_lists_the_functional_primitives() -> void:
 	var inventory := _inventory()
 	check(inventory.get("placeholders") is Array and inventory.get("functional") is Array, "inventory has placeholders and functional lists")
 	var ids := {}
@@ -215,13 +212,6 @@ func test_the_inventory_lists_the_synthesized_audio_and_the_functional_primitive
 			if group == "placeholders":
 				check(String(entry.get("asset_id", "")) != "", "%s names the asset it stands in for" % id)
 				check(String(entry.get("remove_by", "")) != "", "%s names the milestone that removes it" % id)
-	for cue in AUDIO_CUES:
-		var found := false
-		for entry: Dictionary in inventory.get("placeholders", []):
-			if entry.get("asset_id") == cue:
-				found = true
-				check_eq(entry.get("remove_by"), "M1 step 5", "%s removed by" % cue)
-		check(found, "audio cue %s is listed as a placeholder" % cue)
 	for type in ["QuadMesh", "Label3D", "ImmediateMesh"]:
 		var found := false
 		for entry: Dictionary in inventory.get("functional", []):
@@ -229,17 +219,12 @@ func test_the_inventory_lists_the_synthesized_audio_and_the_functional_primitive
 		check(found, "%s is listed as functional" % type)
 
 
-func test_every_cue_the_placeholder_audio_synthesizes_is_listed_as_a_placeholder() -> void:
-	var listed := {}
+## The step 2 and 3 placeholder sounds were replaced by recorded audio (assets/records/audio/,
+## checked by tests/test_audio.gd), so none may come back as a placeholder.
+func test_no_audio_placeholder_remains() -> void:
 	for entry: Dictionary in _inventory().get("placeholders", []):
-		if entry.get("kind") == "audio":
-			listed[String(entry.get("asset_id", ""))] = entry
-	for cue in PlaceholderAudio.CUES:
-		var id := "sfx_%s" % cue
-		check(listed.has(id), "the %s cue is listed as %s" % [cue, id])
-		if listed.has(id):
-			check(listed[id].get("files", []).has("game/scenes/audio/placeholder_audio.gd"), "%s names the file that makes it" % id)
-			check(String(listed[id].get("visual_equivalent", "")) != "", "%s names its visual equivalent (Bible 20)" % id)
+		check(entry.get("kind") != "audio", "%s is an audio placeholder" % entry.get("id"))
+	check(not FileAccess.file_exists("res://game/scenes/audio/placeholder_audio.gd"), "the placeholder audio script is gone")
 
 
 func test_every_mesh_in_game_code_is_listed_and_no_placeholder_outlived_its_asset() -> void:

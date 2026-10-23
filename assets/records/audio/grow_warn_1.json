@@ -1,0 +1,22 @@
+{
+  "id": "grow_warn_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/grow_warn_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "grow_warn",
+  "variant": 1,
+  "purpose": "Endless world: growth starts in 1.5 s (a rising shimmer).",
+  "visual_equivalent": "\"Growing…\" toast",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 1.6,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"grow_warn\", 0)"
+}

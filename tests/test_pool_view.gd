@@ -893,11 +893,12 @@ func _unproject(camera: Camera3D, world: Vector3, size: Vector2) -> Vector2:
 func test_the_tell_cues_last_as_long_as_the_species_tells() -> void:
 	var lengths := PoolScene.tell_lengths(SpeciesCatalog.load_from())
 	check_eq(lengths, {"lunge": 1.2, "puff": 1.2}, "both tells are 1.2 s in the data")
-	var audio := PlaceholderAudio.new()
+	var audio := CellAudio.new()
 	check_near(audio.length_of("tell_lunge"), 1.2, 0.001, "the growl lasts the default tell")
+	check_near(audio.length_of("tell_puff"), 1.2, 0.001, "the hiss lasts the default tell")
 	audio.configure_tells({"lunge": 1.5, "puff": 1.3})
 	check_near(audio.length_of("tell_lunge"), 1.5, 0.001, "the growl follows the lunge tell")
 	check_near(audio.length_of("tell_puff"), 1.3, 0.001, "the hiss follows the puff tell")
-	for cue in PlaceholderAudio.CUES:
-		check(audio.length_of(cue) > 0.05, "%s is synthesized" % cue)
+	for cue in CellAudio.CUES:
+		check(audio.length_of(cue) > 0.05, "%s has a sound" % cue)
 	audio.free()

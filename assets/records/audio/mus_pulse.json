@@ -1,0 +1,22 @@
+{
+  "id": "mus_pulse",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_pulse.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "purpose": "Danger: a muted bass ostinato, a heartbeat and a trembling high string. Faded in while a creature hunts the cell.",
+  "bus": "Music",
+  "loop": true,
+  "sample_rate": 22050,
+  "channels": 2,
+  "length_s": 48.0,
+  "bpm": 80.0,
+  "bars": 16,
+  "key": "D major (lydian colour)",
+  "recipe": "tools/audio/make_cell_audio.gd _pulse"
+}

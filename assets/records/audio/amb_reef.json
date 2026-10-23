@@ -1,0 +1,19 @@
+{
+  "id": "amb_reef",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "ambience",
+  "export_path": "assets/audio/ambience/amb_reef.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "purpose": "Shell reefs: crackles and clicks of busy microbes, small knocks and far chirps.",
+  "bus": "Ambience",
+  "loop": true,
+  "sample_rate": 22050,
+  "channels": 2,
+  "length_s": 29.0,
+  "recipe": "tools/audio/make_cell_audio.gd _reef"
+}
