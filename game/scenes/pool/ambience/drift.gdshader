@@ -17,6 +17,8 @@ uniform vec3 drift = vec3(0.04, 0.0, -0.03);   // m/s
 uniform float wobble = 0.25;             // m of slow side-to-side wander
 uniform float scatter_radius = 0.0;      // microbes part around the cell within this distance, m
 uniform float scatter_depth = 3.0;       // and only this far below it
+uniform float depth_k = 1.0;            // growth: heights and the band scale by this (pool_ambience apply_scale_view)
+uniform float size_k = 1.0;             // growth: quad sizes scale by this
 uniform float opacity = 1.0;             // the layer's top opacity; INSTANCE_CUSTOM.w scales under it
 uniform vec4 tint_a : source_color = vec4(0.86, 0.92, 0.98, 1.0);
 uniform vec4 tint_b : source_color = vec4(0.71, 0.61, 0.88, 1.0);
@@ -40,6 +42,7 @@ void vertex() {
 	vec3 p = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	p += drift * TIME;
 	p += vec3(sin(t * 0.37), 0.4 * sin(t * 0.23 + 1.7), cos(t * 0.29)) * wobble;
+	p.y *= depth_k;      // height_range arrives already scaled
 	p.x = wrap(p.x, focus.x - box.x * 0.5, box.x);
 	p.z = wrap(p.z, focus.z - box.y * 0.5, box.y);
 	p.y = wrap(p.y, height_range.x, height_range.y - height_range.x);
@@ -52,9 +55,9 @@ void vertex() {
 		}
 	}
 	// Out of focus away from the swim plane: bigger and softer (pre-blurred, no depth of field).
-	float off_plane = clamp(abs(p.y) / 8.0, 0.0, 1.0);
+	float off_plane = clamp(abs(p.y) / (8.0 * depth_k), 0.0, 1.0);
 	v_soft = off_plane;
-	float size = data.y * (1.0 + 1.5 * off_plane * step(data.z, 1.5));
+	float size = data.y * size_k * (1.0 + 1.5 * off_plane * step(data.z, 1.5));
 	// Rods, spirilla and spores turn slowly as they swim.
 	float spin = data.x * 6.2832 + TIME * (0.2 + data.x * 0.3) * step(1.5, data.z);
 	mat2 rot = mat2(vec2(cos(spin), sin(spin)), vec2(-sin(spin), cos(spin)));

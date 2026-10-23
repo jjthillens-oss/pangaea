@@ -56,7 +56,10 @@ const LAYERS := {
 ## Huge organisms far below the plane, pre-blurred in their textures (no depth of field). Their
 ## colour is scaled by BACKDROP_BRIGHTNESS so the brightest texel stays at or under linear
 ## luminance 0.40, and their opacity keeps luminance times alpha under MAX_LUMA_ALPHA.
-const BACKDROP_COUNT := 10
+## None by default since S2: the S2 ghost layer draws the far giants from these textures, and ten
+## drifting backdrops at -12 to -22 m would sit inside its near-ghost band and its billboard budget
+## (s2-view 11.1, D-41). The builder stays for the look-dev tools.
+const BACKDROP_COUNT := 0
 const BACKDROP_DEPTH := Vector2(-22.0, -12.0)
 const BACKDROP_SIZE := Vector2(10.0, 24.0)
 const BACKDROP_BOX := Vector2(90.0, 80.0)
@@ -65,6 +68,7 @@ const BACKDROP_OPACITY := Vector2(0.2, 0.28)
 
 var _rng := RandomNumberGenerator.new()
 var _materials: Array[ShaderMaterial] = []
+var _bands: Array[Vector2] = []     # each drift material's height band at k = 1
 var _backdrops: Array[MeshInstance3D] = []
 var _player: Node3D
 var _camera: Camera3D
@@ -92,6 +96,18 @@ func _process(delta: float) -> void:
 		material.set_shader_parameter("focus", focus)
 		material.set_shader_parameter("player", player)
 	_recycle_backdrops(focus, delta)
+
+
+## Growth re-expresses the world around the cell (s2-view 4.2, 11.2): every drifting layer's
+## depth band scales by view.depth_k and its quad sizes by view.size_k. The drift shader wraps in
+## world space, so scaling this node could not do it. With both at 1 nothing changes.
+func apply_scale_view(view: Dictionary) -> void:
+	var depth_k := float(view.get("depth_k", 1.0))
+	var size_k := float(view.get("size_k", 1.0))
+	for i in _materials.size():
+		_materials[i].set_shader_parameter("height_range", _bands[i] * depth_k)
+		_materials[i].set_shader_parameter("depth_k", depth_k)
+		_materials[i].set_shader_parameter("size_k", size_k)
 
 
 ## The number of drifting quads, for the budget test.
@@ -148,6 +164,7 @@ func _drift_layer(layer_name: String, spec: Dictionary) -> MultiMeshInstance3D:
 	material.shader = DRIFT_SHADER
 	material.set_shader_parameter("box", BOX)
 	material.set_shader_parameter("height_range", height)
+	_bands.append(height)
 	material.set_shader_parameter("drift", spec.drift)
 	material.set_shader_parameter("wobble", spec.wobble)
 	material.set_shader_parameter("opacity", (spec.alpha as Vector2).y)
@@ -184,7 +201,8 @@ func _build_backdrops() -> void:
 	var textures: Array[Texture2D] = []
 	if DirAccess.dir_exists_absolute(BACKDROP_DIR):
 		for file in DirAccess.get_files_at(BACKDROP_DIR):
-			if file.ends_with(".png"):
+			# Only the backdrops: the folder also holds ghosts, haze, tints and the silt trail.
+			if file.begins_with("T_Backdrop_") and file.ends_with(".png"):
 				textures.append(load(BACKDROP_DIR + file))
 	if textures.is_empty():
 		return
