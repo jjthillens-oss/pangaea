@@ -1,0 +1,404 @@
+{
+	"runs": [
+		{
+			"body": "s1_quadruped",
+			"drive": "walk",
+			"legs": 4,
+			"max_slip_ratio": 4.398587017214171e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9626877643687612,
+			"early_lifts": 3,
+			"steps": 36
+		},
+		{
+			"body": "s1_quadruped",
+			"drive": "trot",
+			"legs": 4,
+			"max_slip_ratio": 8.358601342208742e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9738279131761259,
+			"early_lifts": 3,
+			"steps": 46
+		},
+		{
+			"body": "s1_quadruped",
+			"drive": "run",
+			"legs": 4,
+			"max_slip_ratio": 1.6251173636577676e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.964612265855588,
+			"early_lifts": 3,
+			"steps": 58
+		},
+		{
+			"body": "s1_quadruped",
+			"drive": "turn_in_place",
+			"legs": 4,
+			"max_slip_ratio": 2.5270460801632753e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9657737659689921,
+			"early_lifts": 1,
+			"steps": 38
+		},
+		{
+			"body": "s1_quadruped",
+			"drive": "demo",
+			"legs": 4,
+			"max_slip_ratio": 3.4375222947449315e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9626877643687612,
+			"early_lifts": 6,
+			"steps": 73
+		},
+		{
+			"body": "s1_biped",
+			"drive": "walk",
+			"legs": 2,
+			"max_slip_ratio": 4.3610472870051313e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9632753056441571,
+			"early_lifts": 2,
+			"steps": 18
+		},
+		{
+			"body": "s1_biped",
+			"drive": "trot",
+			"legs": 2,
+			"max_slip_ratio": 8.103172613224437e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9536132163222206,
+			"early_lifts": 1,
+			"steps": 23
+		},
+		{
+			"body": "s1_biped",
+			"drive": "run",
+			"legs": 2,
+			"max_slip_ratio": 1.601280595653231e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9373239477593728,
+			"early_lifts": 1,
+			"steps": 28
+		},
+		{
+			"body": "s1_biped",
+			"drive": "turn_in_place",
+			"legs": 2,
+			"max_slip_ratio": 2.680781180950617e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.8938564321422688,
+			"early_lifts": 0,
+			"steps": 19
+		},
+		{
+			"body": "s1_biped",
+			"drive": "demo",
+			"legs": 2,
+			"max_slip_ratio": 3.4996343591070647e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9632753056441571,
+			"early_lifts": 3,
+			"steps": 37
+		},
+		{
+			"body": "s1_hexapod",
+			"drive": "walk",
+			"legs": 6,
+			"max_slip_ratio": 4.2822433315762907e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9680221965070834,
+			"early_lifts": 6,
+			"steps": 73
+		},
+		{
+			"body": "s1_hexapod",
+			"drive": "trot",
+			"legs": 6,
+			"max_slip_ratio": 7.723034969302159e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.966831855451314,
+			"early_lifts": 9,
+			"steps": 95
+		},
+		{
+			"body": "s1_hexapod",
+			"drive": "run",
+			"legs": 6,
+			"max_slip_ratio": 1.519765180519044e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9566191237541024,
+			"early_lifts": 19,
+			"steps": 118
+		},
+		{
+			"body": "s1_hexapod",
+			"drive": "turn_in_place",
+			"legs": 6,
+			"max_slip_ratio": 2.981727902808211e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9666447735019481,
+			"early_lifts": 13,
+			"steps": 76
+		},
+		{
+			"body": "s1_hexapod",
+			"drive": "demo",
+			"legs": 6,
+			"max_slip_ratio": 6.054278974547864e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9680221965070834,
+			"early_lifts": 9,
+			"steps": 147
+		},
+		{
+			"body": "s1_twelve_limbs",
+			"drive": "walk",
+			"legs": 12,
+			"max_slip_ratio": 5.160859966840022e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9664009687095927,
+			"early_lifts": 13,
+			"steps": 164
+		},
+		{
+			"body": "s1_twelve_limbs",
+			"drive": "trot",
+			"legs": 12,
+			"max_slip_ratio": 9.634976626390118e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9675077483086072,
+			"early_lifts": 18,
+			"steps": 215
+		},
+		{
+			"body": "s1_twelve_limbs",
+			"drive": "run",
+			"legs": 12,
+			"max_slip_ratio": 1.8863082608349343e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9727737150972335,
+			"early_lifts": 41,
+			"steps": 260
+		},
+		{
+			"body": "s1_twelve_limbs",
+			"drive": "turn_in_place",
+			"legs": 12,
+			"max_slip_ratio": 3.334553506462906e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9727726581693975,
+			"early_lifts": 20,
+			"steps": 170
+		},
+		{
+			"body": "s1_twelve_limbs",
+			"drive": "demo",
+			"legs": 12,
+			"max_slip_ratio": 7.910413810216738e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9664009687095927,
+			"early_lifts": 16,
+			"steps": 328
+		},
+		{
+			"body": "s1_giant_limb",
+			"drive": "walk",
+			"legs": 2,
+			"max_slip_ratio": 6.125058002134248e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9553056159082466,
+			"early_lifts": 2,
+			"steps": 30
+		},
+		{
+			"body": "s1_giant_limb",
+			"drive": "trot",
+			"legs": 2,
+			"max_slip_ratio": 1.168396515023204e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9597439600327856,
+			"early_lifts": 1,
+			"steps": 40
+		},
+		{
+			"body": "s1_giant_limb",
+			"drive": "run",
+			"legs": 2,
+			"max_slip_ratio": 2.313552761442798e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9624432070335821,
+			"early_lifts": 1,
+			"steps": 49
+		},
+		{
+			"body": "s1_giant_limb",
+			"drive": "turn_in_place",
+			"legs": 2,
+			"max_slip_ratio": 3.055858270028334e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9714039553780391,
+			"early_lifts": 1,
+			"steps": 32
+		},
+		{
+			"body": "s1_giant_limb",
+			"drive": "demo",
+			"legs": 2,
+			"max_slip_ratio": 5.534424203811749e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9553056159082466,
+			"early_lifts": 3,
+			"steps": 61
+		},
+		{
+			"body": "s1_max_vertebrae",
+			"drive": "walk",
+			"legs": 4,
+			"max_slip_ratio": 3.818470567019862e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9698678158941535,
+			"early_lifts": 3,
+			"steps": 22
+		},
+		{
+			"body": "s1_max_vertebrae",
+			"drive": "trot",
+			"legs": 4,
+			"max_slip_ratio": 6.680171708060964e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.97180301340445,
+			"early_lifts": 4,
+			"steps": 28
+		},
+		{
+			"body": "s1_max_vertebrae",
+			"drive": "run",
+			"legs": 4,
+			"max_slip_ratio": 0.003979156013003225,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9625505755904503,
+			"early_lifts": 4,
+			"steps": 34
+		},
+		{
+			"body": "s1_max_vertebrae",
+			"drive": "turn_in_place",
+			"legs": 4,
+			"max_slip_ratio": 3.380251753620436e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9555213087996954,
+			"early_lifts": 3,
+			"steps": 22
+		},
+		{
+			"body": "s1_max_vertebrae",
+			"drive": "demo",
+			"legs": 4,
+			"max_slip_ratio": 1.6494169210695123e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9698678158941535,
+			"early_lifts": 4,
+			"steps": 48
+		},
+		{
+			"body": "s1_thin",
+			"drive": "walk",
+			"legs": 6,
+			"max_slip_ratio": 3.689337252512623e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9684650016008443,
+			"early_lifts": 7,
+			"steps": 46
+		},
+		{
+			"body": "s1_thin",
+			"drive": "trot",
+			"legs": 6,
+			"max_slip_ratio": 6.453267214161055e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9699091227467296,
+			"early_lifts": 10,
+			"steps": 59
+		},
+		{
+			"body": "s1_thin",
+			"drive": "run",
+			"legs": 6,
+			"max_slip_ratio": 1.216098968212077e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9680180796816714,
+			"early_lifts": 16,
+			"steps": 73
+		},
+		{
+			"body": "s1_thin",
+			"drive": "turn_in_place",
+			"legs": 6,
+			"max_slip_ratio": 3.2794771121007045e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9736492207503218,
+			"early_lifts": 13,
+			"steps": 45
+		},
+		{
+			"body": "s1_thin",
+			"drive": "demo",
+			"legs": 6,
+			"max_slip_ratio": 2.7347321692142565e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9684650016008443,
+			"early_lifts": 9,
+			"steps": 94
+		},
+		{
+			"body": "s1_asymmetric",
+			"drive": "walk",
+			"legs": 3,
+			"max_slip_ratio": 5.771033902573484e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9633457003660906,
+			"early_lifts": 1,
+			"steps": 32
+		},
+		{
+			"body": "s1_asymmetric",
+			"drive": "trot",
+			"legs": 3,
+			"max_slip_ratio": 1.1602749977659166e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.972213402729039,
+			"early_lifts": 0,
+			"steps": 42
+		},
+		{
+			"body": "s1_asymmetric",
+			"drive": "run",
+			"legs": 3,
+			"max_slip_ratio": 1.1604131584257425e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9195829423788303,
+			"early_lifts": 0,
+			"steps": 51
+		},
+		{
+			"body": "s1_asymmetric",
+			"drive": "turn_in_place",
+			"legs": 3,
+			"max_slip_ratio": 2.465830946038582e-07,
+			"finite": true,
+			"max_stance_reach_ratio": 0.9256135622316424,
+			"early_lifts": 0,
+			"steps": 35
+		},
+		{
+			"body": "s1_asymmetric",
+			"drive": "demo",
+			"legs": 3,
+			"max_slip_ratio": 4.591755180289544e-06,
+			"finite": true,
+			"max_stance_reach_ratio": 0.966683364097153,
+			"early_lifts": 2,
+			"steps": 65
+		}
+	]
+}

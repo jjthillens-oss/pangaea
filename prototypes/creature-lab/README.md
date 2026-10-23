@@ -61,6 +61,8 @@ $G --path prototypes/creature-lab spine_lab.tscn -- --body=stage1 --anim=pose   
 $G --headless --path prototypes/creature-lab --script res://tests/run_spine_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_stage1_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tools/pose_matrix.gd  # -> results/pose_error.json
+$G --path prototypes/creature-lab walker_lab.tscn -- --body=s1_quadruped --drive=demo   # a generated creature walking
+$G --headless --path prototypes/creature-lab --script res://tools/walker_measure.gd  # -> results/walker_measurements.json
 xvfb-run $G --path prototypes/creature-lab --rendering-method forward_plus --rendering-driver vulkan --script res://tools/skin_bench.gd
 ```
 
@@ -71,3 +73,4 @@ xvfb-run $G --path prototypes/creature-lab --rendering-method forward_plus --ren
 | `skin/` | Grid, GDScript and GPU builders, mesh checks |
 | `rig/spine_rig.gd` | Generated skeleton (vertebrae and limb joints), skinned mesh with CUSTOM0/CUSTOM1 |
 | `spine_lab.gd`, `spine_lab.tscn` | Viewer |
+| `domain/gait_body.gd`, `rig/walker_rig.gd`, `walker_lab.gd`, `walker_lab.tscn` | Generated bodies walking on the gait planner |

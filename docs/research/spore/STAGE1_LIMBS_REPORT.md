@@ -110,10 +110,32 @@ equally and float rounding picks a different one. Positions and weights are unaf
 
 GPU preview at /48 takes 8–45 ms on software Vulkan; GDScript takes 0.1–0.75 s.
 
-## 6. Next (PROPOSED)
+## 6. Generated creatures walking (Walker Lab)
 
-1. Parts on the skin (mouths, eyes, feet), using the art team's part meshes and limb-end pivots
-   (`creature_art_contract.md`).
-2. Put Gait Lab's legs on a Stage 1 body, so a generated creature walks with its own skin.
-3. One of the deformation fixes in §3.
+`walker_lab.tscn` runs a Stage 1 body on the Gait Lab planner. The planner is built from the same body description
+(`domain/gait_body.gd`), and the generated skeleton's legs are solved with Godot's `TwoBoneIK3D`
+(`rig/walker_rig.gd`).
+
+- **Which limbs are legs.** A limb is a leg if it has a knee (3 or more joints), hangs down, and reaches the lowest
+  feet. A biped's arms and the giant claw are therefore not legs.
+- **How a leg is solved.** Hip to knee is one bone, and knee to tip is one rigid piece, so a toe keeps its shape.
+- **Knee direction** is read from the rest pose: forward, back or out.
+- **Ground contact.** The foot target is lifted by the tip's radius, so the skin touches the ground, not the bone.
+
+Results (`results/walker_measurements.json`, `tools/walker_measure.gd`): 8 of the 10 bodies walk, trot, run and turn
+in place, over 40 runs:
+
+- maximum stance slip is 0.4% of leg length (the long lizard at a run), and 0% almost everywhere;
+- every state stays finite;
+- stance reach stays at most 0.974 of leg length.
+
+The snake has no legs. The tiny body's legs are two-joint stubs, which need a one-bone solver that is not built. The
+biped walks because the planner does not model balance; it has no balance yet.
+
+## 7. Next (PROPOSED)
+
+1. Parts on the skin, using the art team's first five parts (PR #29) and limb-end pivots. The foot's ankle top sits
+   0.09 above the sole, so the limb tip goes there.
+2. One of the deformation fixes in §3.
+3. A one-bone solver for stub legs, and balance for bipeds.
 4. An editor scene to drag vertebrae and joints, using the GPU rebuild.
