@@ -23,6 +23,8 @@ const FAR_FROM_ORIGIN := 80.0
 const FAR_ABS := Vector2(2000.0, 1000.0)
 ## tm: the hand-built beat shell's radius.
 const HAND_SHELL_R := 0.25
+## Checkers _grown hands back for hand-built copies of the growth tick.
+const SPARES := 3
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -145,8 +147,9 @@ func test_at_size_two_a_distance_is_in_that_sizes_tm() -> void:
 	check(un.bad.has(12) and str(un.bad[12].first).contains(str(shell.id)), "the unload with its shell in view fails 12: %s" % un.report())
 
 
-## A chunk_loaded after grew (the beat's) with a shell in view at the new size fails 12; the same
-## load before grew is the re-expression's own and exempt.
+## A chunk_loaded after grew (the beat's) with a shell in view at the new size fails 12, and one just
+## out of view at the new size (in view at the old) passes; the same load before grew is the
+## re-expression's own and exempt.
 func test_a_beat_load_after_grew_with_a_shell_in_view_fails_12() -> void:
 	var r := _grown(FakeWorldGen.s2_species())
 	var sim: PoolSim = r.sim
@@ -157,19 +160,22 @@ func test_a_beat_load_after_grew_with_a_shell_in_view_fails_12() -> void:
 		if events[i].type == "grew":
 			at_grew = i
 	check(at_grew > 0, "the tick grew")
-	# Just inside the view in size 2's tm (outside it in size 1's).
-	var inside := 0.8 * _edge(r.fuzz, HAND_SHELL_R)
-	var load := {"type": "chunk_loaded", "key": Vector2i(99, 99), "zones": [], "anchors": [], "places": [], "sites": [], "scale": 1.0,
-		"shells": [{"id": "s_hand", "position": sim.motion.position + Vector2(inside, 0.0), "radius": HAND_SHELL_R}]}
-	for at: int in [at_grew + 1, at_grew]:
+	# Just inside the view in size 2's tm (outside it in size 1's), and just outside it.
+	var edge := _edge(r.fuzz, HAND_SHELL_R)
+	var cases := [["after grew, in view", at_grew + 1, 0.8 * edge, true], ["after grew, out of view", at_grew + 1, 1.25 * edge, false],
+		["before grew, in view", at_grew, 0.8 * edge, false]]
+	for i in cases.size():
+		var c: Array = cases[i]
+		var load := {"type": "chunk_loaded", "key": Vector2i(99, 99), "zones": [], "anchors": [], "places": [], "sites": [],
+			"scale": 1.0, "shells": [{"id": "s_hand", "position": sim.motion.position + Vector2(float(c[2]), 0.0), "radius": HAND_SHELL_R}]}
 		var hand: Array[Dictionary] = events.duplicate()
-		hand.insert(at, load)
-		var fuzz: FuzzInvariants = r.late if at > at_grew else r.early
-		fuzz.after(sim, hand, sim.tick - 1, "hand", r.was_late if at > at_grew else r.was_early)
-		if at > at_grew:
-			check(fuzz.bad.has(12) and str(fuzz.bad[12].first).contains("s_hand"), "after grew: fails 12 (%s)" % fuzz.report())
+		hand.insert(int(c[1]), load)
+		var fuzz: FuzzInvariants = r.spares[i][0]
+		fuzz.after(sim, hand, sim.tick - 1, c[0], r.spares[i][1])
+		if c[3]:
+			check(fuzz.bad.has(12) and str(fuzz.bad[12].first).contains("s_hand"), "%s: fails 12 (%s)" % [c[0], fuzz.report()])
 		else:
-			check(not fuzz.bad.has(12), "before grew: exempt (%s)" % fuzz.report())
+			check(not fuzz.bad.has(12), "%s: passes (%s)" % [c[0], fuzz.report()])
 
 
 ## Invariant 13 covers the remnants (each position the cell's own are checked by), the two-post
@@ -250,8 +256,8 @@ func _step(sim: PoolSim, fuzz: FuzzInvariants, where: String, move := Vector2.ZE
 ## FAR_FROM_ORIGIN tm from the origin, a sleeper planted (_plant), then a forced growth, every tick
 ## checked. With `prey`, a rammer (prey at size 2, so a remnant) beside the cell first, the creatures
 ## frozen. Returns the sim, its checker, the growth tick's events, the removals it checked (and
-## whether the planted sleeper was one), how far from the origin the cell grew, and two more checkers
-## (with what they took before the growth tick) for hand-built copies of that tick.
+## whether the planted sleeper was one), how far from the origin the cell grew, and SPARES more
+## checkers (with what each took before the growth tick) for hand-built copies of that tick.
 func _grown(species: SpeciesCatalog, prey := false) -> Dictionary:
 	var sim := _sim(species, PackedFloat64Array([FAR_ABS.x, FAR_ABS.y]))
 	var fuzz := FuzzInvariants.new(species, layout)
@@ -266,10 +272,10 @@ func _grown(species: SpeciesCatalog, prey := false) -> Dictionary:
 	_step(sim, fuzz, "rebase tick", Vector2.ZERO, was)
 	var cell_local := sim.motion.position.length()
 	var planted := _plant(sim, fuzz)
-	var early := FuzzInvariants.new(species, layout)
-	var late := FuzzInvariants.new(species, layout)
-	var was_early := early.before(sim)
-	var was_late := late.before(sim)
+	var spares := []
+	for i in SPARES:
+		var spare := FuzzInvariants.new(species, layout)
+		spares.append([spare, spare.before(sim)])
 	was = fuzz.before(sim)
 	check(sim.debug_force_growth(), "the forced growth")
 	var events := _step(sim, fuzz, "growth tick", Vector2.ZERO, was)
@@ -280,7 +286,7 @@ func _grown(species: SpeciesCatalog, prey := false) -> Dictionary:
 			removed += 1
 			planted_removed = planted_removed or str(e.id) == planted
 	return {"sim": sim, "fuzz": fuzz, "events": events, "removed": removed, "planted_removed": planted_removed,
-		"cell_local": cell_local, "early": early, "late": late, "was_early": was_early, "was_late": was_late}
+		"cell_local": cell_local, "spares": spares}
 
 
 ## Plants a sleeping rammer where reading its place with size 2's k (am = origin + p x 1.6, against
