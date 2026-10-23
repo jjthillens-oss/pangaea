@@ -285,6 +285,11 @@ func _endless_continue() -> void:
 	var label: Dictionary = main.hud.world_overlay.label if main.hud.world_overlay != null else {}
 	var words := Hud.WorldOverlay.ARROW_TEXT % WorldMarkers.distance_text(Vector2(float(want[0]), float(want[1])).length())
 	_check(str(label.get("text", "")) == words, "the overlay reads '%s' (%s)" % [words, label.get("text", "")])
+	var panels := main.hud.panel_rects()
+	var pip: Dictionary = main.hud.world_overlay.pip if main.hud.world_overlay != null else {}
+	_check(not panels.is_empty() and (not main.hud.controls.visible or main.hud.controls.get_global_rect() in panels),
+		"the HUD lists the panels showing (%d)" % panels.size())
+	_check(pip.is_empty() or Hud.WorldOverlay._clear(pip, panels), "the pip and its words keep off them (%s)" % [pip.get("at")])
 	_end()
 
 	_begin("ghost across a rebase")

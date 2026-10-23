@@ -18,7 +18,8 @@ extends Control
 ##   endless sea (S1): a toast naming each region or rare tile the cell enters, at most once per
 ##                 REGION_TOAST_REPEAT_S for each, the start tile's at once; and the WorldOverlay,
 ##                 made in code: a cream pip at the screen edge toward the column at the generation
-##                 start while it is off screen, and the distance home beside the arrow's tip
+##                 start while it is off screen, and the distance home beside the arrow's tip;
+##                 the pip and its words slide along the edge clear of the panels showing
 ##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
@@ -191,6 +192,18 @@ func show_hint(text: String) -> void:
 ## shader's outer band lifts the corners a little more).
 func vignette_alpha() -> float:
 	return float((hurt_vignette.material as ShaderMaterial).get_shader_parameter(&"strength"))
+
+
+## The screen rects of the panels showing now (status, points, toasts, banner, message, hint and
+## controls): the world overlay keeps its pip and words off them.
+func panel_rects() -> Array[Rect2]:
+	var panels: Array = [get_node("Frame/Status"), get_node("Frame/Right/Points"), starving_banner, message, hint, controls]
+	panels.append_array(toast_list.get_children())
+	var out: Array[Rect2] = []
+	for panel: Control in panels:
+		if panel.is_visible_in_tree() and panel.modulate.a > 0.0 and panel.size != Vector2.ZERO:
+			out.append(panel.get_global_rect())
+	return out
 
 
 ## The toasts on screen now, oldest first (for checks).
@@ -496,7 +509,9 @@ func _set_text(label: Label, text: String) -> void:
 ## untouched. While the column at the generation start is off screen, a cream pip sits at the
 ## screen edge toward it (where an edge arrow would, ThreatIndicators.edge_point), labelled
 ## "Generation start"; while the arrow home shows, "Where you began · 1.4 km" sits beside its tip.
-## Both are shapes and words, never colour alone.
+## Both are shapes and words, never colour alone. Where the pip or its words would cover a panel
+## (the controls, when the column is to the west), the pip slides along the edge band to the
+## nearest point clear of every panel showing, so it still sits on the column's side.
 class WorldOverlay extends Control:
 	const PIP_RADIUS_PX := 10.0
 	const PIP_OUTLINE_PX := 3.0
@@ -506,9 +521,12 @@ class WorldOverlay extends Control:
 	const TEXT_GAP_PX := 8.0
 	const TEXT_PAD_PX := 8.0              ## text stays this far inside the screen
 	const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
+	const PANEL_GAP_PX := 6.0             ## the pip and its words keep this far off the panels
+	const SLIDE_STEP_PX := 4.0            ## how finely the pip slides along the edge band
 
 	var pool: PoolScene
-	## {"at": Vector2} while the pip is drawn, else empty (for checks).
+	## {"at": Vector2, "text": Rect2 (where its words go)} while the pip is drawn, else empty (for
+	## checks).
 	var pip := {}
 	## {"at": Vector2 (the arrow tip's screen point), "side": Vector2 (the way the arrow points on
 	## screen, where the words go), "text": String} while the label is drawn, else empty.
@@ -526,8 +544,9 @@ class WorldOverlay extends Control:
 
 	## Works out the pip and the label on the screen `rect` (by default the viewport's), projecting
 	## pool points with `project`: a Callable(Vector3) -> {"at": Vector2, "behind": bool} (by
-	## default the pool camera's own projection).
-	func refresh(rect := Rect2(), project := Callable()) -> void:
+	## default the pool camera's own projection). The pip keeps off the screen rects in `avoid` (by
+	## default the HUD's panels showing now, Hud.panel_rects).
+	func refresh(rect := Rect2(), project := Callable(), avoid: Variant = null) -> void:
 		pip = {}
 		label = {}
 		var markers: WorldMarkers = pool.markers if pool != null else null
@@ -542,7 +561,10 @@ class WorldOverlay extends Control:
 				return {"at": camera.unproject_position(at), "behind": camera.is_position_behind(at)}
 		var column: Dictionary = project.call(markers.column().position)
 		if column.behind or not rect.has_point(column.at):
-			pip = {"at": ThreatIndicators.edge_point(rect, column.at, column.behind, ThreatIndicators.MARGIN_PX)}
+			if avoid == null:
+				avoid = (get_parent() as Hud).panel_rects() if get_parent() is Hud else []
+			var at := ThreatIndicators.edge_point(rect, column.at, column.behind, ThreatIndicators.MARGIN_PX)
+			pip = place_pip(rect, at, avoid)
 		if markers.arrow() != null and markers.arrow().visible:
 			var tip: Dictionary = project.call(markers.arrow_tip())
 			var back: Dictionary = project.call(markers.arrow().position)
@@ -552,6 +574,66 @@ class WorldOverlay extends Control:
 					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_tm)}
 		queue_redraw()
 
+	## The pip at `at` on the edge band of `rect` with its words; where either would come within
+	## PANEL_GAP_PX of a rect in `avoid`, slid along the band (both ways, the nearer first) to the
+	## nearest point where neither does. Where no point is clear it stays at `at`.
+	func place_pip(rect: Rect2, at: Vector2, avoid: Array) -> Dictionary:
+		var font := get_theme_default_font()
+		var placed := _pip_at(font, rect, at)
+		var band := rect.grow(-ThreatIndicators.MARGIN_PX)
+		var around := 2.0 * (band.size.x + band.size.y)
+		if _clear(placed, avoid) or around <= 0.0:
+			return placed
+		var from := _along(band, at)
+		for i in range(1, ceili(around * 0.5 / SLIDE_STEP_PX) + 1):
+			for way in [1.0, -1.0]:
+				var moved := _pip_at(font, rect, _band_point(band, from + way * i * SLIDE_STEP_PX))
+				if _clear(moved, avoid):
+					return moved
+		return placed
+
+	## The pip at `at` and its words, which sit on its inner side, toward the screen centre.
+	func _pip_at(font: Font, rect: Rect2, at: Vector2) -> Dictionary:
+		var inward := (rect.get_center() - at).normalized()
+		return {"at": at, "text": _text_rect(font, rect, at + inward * (PIP_RADIUS_PX + TEXT_GAP_PX), PIP_TEXT, inward)}
+
+	static func _clear(placed: Dictionary, avoid: Array) -> bool:
+		var reach := PIP_RADIUS_PX + PIP_OUTLINE_PX
+		var disc := Rect2(placed.at - Vector2(reach, reach), Vector2(reach, reach) * 2.0)
+		for r: Rect2 in avoid:
+			var kept := r.grow(PANEL_GAP_PX)
+			if kept.intersects(disc) or kept.intersects(placed.text):
+				return false
+		return true
+
+	## How far round the edge of `band` the point `p` (on it) is, clockwise from its top left.
+	static func _along(band: Rect2, p: Vector2) -> float:
+		var w := band.size.x
+		var h := band.size.y
+		var q := p.clamp(band.position, band.end) - band.position
+		var to := [q.y, w - q.x, h - q.y, q.x]   # top, right, bottom, left
+		match to.find(to.min()):
+			0:
+				return q.x
+			1:
+				return w + q.y
+			2:
+				return w + h + (w - q.x)
+		return 2.0 * w + h + (h - q.y)
+
+	## The point `s` round the edge of `band`, clockwise from its top left (any s; it wraps).
+	static func _band_point(band: Rect2, s: float) -> Vector2:
+		var w := band.size.x
+		var h := band.size.y
+		s = fposmod(s, 2.0 * (w + h))
+		if s < w:
+			return band.position + Vector2(s, 0.0)
+		if s < w + h:
+			return band.position + Vector2(w, s - w)
+		if s < 2.0 * w + h:
+			return band.position + Vector2(w - (s - w - h), h)
+		return band.position + Vector2(0.0, h - (s - 2.0 * w - h))
+
 	func _draw() -> void:
 		var font := get_theme_default_font()
 		var rect := get_viewport_rect() if is_inside_tree() else get_rect()
@@ -559,20 +641,21 @@ class WorldOverlay extends Control:
 			var at: Vector2 = pip.at
 			draw_circle(at, PIP_RADIUS_PX + PIP_OUTLINE_PX, OUTLINE)
 			draw_circle(at, PIP_RADIUS_PX, WorldMarkers.MARKER_COLOR)
-			# The words sit on the pip's inner side, toward the screen centre.
-			var inward := (rect.get_center() - at).normalized()
-			_text(font, rect, at + inward * (PIP_RADIUS_PX + TEXT_GAP_PX), PIP_TEXT, inward)
+			_text(font, (pip.text as Rect2).position, PIP_TEXT)
 		if not label.is_empty():
-			_text(font, rect, label.at, label.text, label.side)
+			_text(font, _text_rect(font, rect, label.at, label.text, label.side).position, label.text)
 
-	## Draws `text` outlined, beside `anchor` on its `side`, kept inside `rect`.
-	func _text(font: Font, rect: Rect2, anchor: Vector2, text: String, side: Vector2) -> void:
+	## Where `text` goes beside `anchor` on its `side`, kept inside `rect`.
+	func _text_rect(font: Font, rect: Rect2, anchor: Vector2, text: String, side: Vector2) -> Rect2:
 		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
 		var top_left := anchor + Vector2(TEXT_GAP_PX if side.x >= 0.0 else -TEXT_GAP_PX - size.x, -size.y * 0.5)
 		if absf(side.y) > absf(side.x):
 			top_left = anchor + Vector2(-size.x * 0.5, 0.0 if side.y > 0.0 else -size.y)
 		var inner := rect.grow(-TEXT_PAD_PX)
-		top_left = top_left.clamp(inner.position, (inner.end - size).max(inner.position))
+		return Rect2(top_left.clamp(inner.position, (inner.end - size).max(inner.position)), size)
+
+	## Draws `text` outlined with its top left at `top_left`.
+	func _text(font: Font, top_left: Vector2, text: String) -> void:
 		var baseline := top_left + Vector2(0.0, font.get_ascent(FONT_SIZE))
 		draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 6, OUTLINE)
 		draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, WorldMarkers.MARKER_COLOR)

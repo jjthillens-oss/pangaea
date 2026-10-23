@@ -173,6 +173,81 @@ func test_the_column_pip_shows_only_when_the_column_is_off_screen() -> void:
 	pool.free()
 
 
+func test_the_pip_and_its_words_keep_off_the_panels() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var world := pool.sim.world
+	var hud := _hud(pool)
+	var overlay := hud.world_overlay
+	var rect := Rect2(Vector2.ZERO, SCREEN)
+	var project := _projector(pool.camera)
+	# The panels where hud.tscn lays them out at 1920 x 1080 (read off the running game): status,
+	# points, a message, a hint and the controls (bottom left, 30 s from a new lineage); the toasts
+	# as a box wide and tall enough for several.
+	var controls := Rect2(32.0, 691.0, 500.0, 361.0)
+	var panels: Array[Rect2] = [Rect2(32.0, 28.0, 480.0, 176.0), Rect2(1500.0, 28.0, 388.0, 64.0),
+		Rect2(1560.0, 102.0, 328.0, 220.0), Rect2(842.0, 28.0, 236.0, 64.0), Rect2(759.0, 888.0, 402.0, 64.0), controls]
+	var home: PackedFloat64Array = world.checkpoint_am
+	var band := rect.grow(-ThreatIndicators.MARGIN_PX)
+	var font := overlay.get_theme_default_font()
+	var under := 0
+	for i in 72:
+		var bearing := TAU * i / 72.0
+		var off := Vector2.from_angle(bearing) * 200.0
+		world.checkpoint_am = PackedFloat64Array([home[0] + off.x, home[1] + off.y, 0.0, 1.0])
+		FakeEvents.frame(pool)
+		var p: Dictionary = project.call(pool.markers.column().position)
+		var natural := ThreatIndicators.edge_point(rect, p.at, p.behind, ThreatIndicators.MARGIN_PX)
+		overlay.refresh(rect, project, [])
+		check(overlay.pip.at.is_equal_approx(natural), "with no panel the pip sits where an edge arrow would (%d)" % i)
+		var plain_clear := Hud.WorldOverlay._clear(overlay.pip, panels)
+		overlay.refresh(rect, project, panels)
+		if overlay.pip.is_empty():
+			check(false, "a pip at bearing %d" % i)
+			continue
+		var at: Vector2 = overlay.pip.at
+		var reach := Hud.WorldOverlay.PIP_RADIUS_PX + Hud.WorldOverlay.PIP_OUTLINE_PX
+		var disc := Rect2(at - Vector2(reach, reach), Vector2(reach, reach) * 2.0)
+		for r in panels:
+			check(not r.intersects(disc) and not r.intersects(overlay.pip.text),
+				"bearing %d: the pip %s and its words %s keep off the panel %s" % [i, at, overlay.pip.text, r])
+		var to_band := minf(minf(at.x - band.position.x, band.end.x - at.x), minf(at.y - band.position.y, band.end.y - at.y))
+		check(absf(to_band) <= 0.01, "bearing %d: on the edge band (%.2f px off)" % [i, to_band])
+		check(rect.grow(-Hud.WorldOverlay.TEXT_PAD_PX).encloses(overlay.pip.text), "bearing %d: its words on screen" % i)
+		if plain_clear:
+			check(at.is_equal_approx(natural), "bearing %d: a clear pip stays put" % i)
+		else:
+			under += 1
+			# Nothing nearer round the band (either way) is clear.
+			var around := 2.0 * (band.size.x + band.size.y)
+			var ahead := fposmod(Hud.WorldOverlay._along(band, at) - Hud.WorldOverlay._along(band, natural), around)
+			var slid := minf(ahead, around - ahead)
+			var nearer := 0
+			for k in floori(slid / Hud.WorldOverlay.SLIDE_STEP_PX):
+				for way in [1.0, -1.0]:
+					var q := Hud.WorldOverlay._band_point(band, Hud.WorldOverlay._along(band, natural) + way * k * Hud.WorldOverlay.SLIDE_STEP_PX)
+					if Hud.WorldOverlay._clear(overlay._pip_at(font, rect, q), panels):
+						nearer += 1
+			check(nearer == 0, "bearing %d: slid %.0f px round the band, to the nearest clear point (%d nearer)" % [i, slid, nearer])
+			check(signf(at.x - SCREEN.x * 0.5) == signf(natural.x - SCREEN.x * 0.5) or absf(natural.x - SCREEN.x * 0.5) < 400.0,
+				"bearing %d: still on the column's side (%s from %s)" % [i, at, natural])
+	check(under >= 8, "some bearings put the pip under a panel and it slid (%d)" % under)
+	# The case the S1 frames showed: the column west and a little south, the pip under the controls.
+	world.checkpoint_am = PackedFloat64Array([home[0] - 200.0, home[1] + 40.0, 0.0, 1.0])
+	FakeEvents.frame(pool)
+	overlay.refresh(rect, project, [])
+	var natural_at: Vector2 = overlay.pip.at
+	check(controls.grow(Hud.WorldOverlay.PIP_RADIUS_PX).has_point(natural_at) or controls.intersects(overlay.pip.text),
+		"west-south-west the pip would sit on the controls (%s)" % natural_at)
+	overlay.refresh(rect, project, panels)
+	var moved: Vector2 = overlay.pip.at
+	check(moved.x < SCREEN.x * 0.5 and moved.y < controls.position.y, "it slides up the west edge above them (%s)" % moved)
+	for s in [0.0, 300.0, 1780.0, 2500.0, 4000.0, 5000.0]:
+		var point := Hud.WorldOverlay._band_point(band, s)
+		check_near(Hud.WorldOverlay._along(band, point), fposmod(s, 2.0 * (band.size.x + band.size.y)), 0.01, "round the band at %.0f" % s)
+	hud.free()
+	pool.free()
+
+
 func test_the_arrow_label_reads_the_distance_home_beside_its_tip() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array([1400.0, 0.0])))
 	var hud := _hud(pool)
