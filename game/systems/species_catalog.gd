@@ -455,6 +455,18 @@ func check_disc_against_shells(where: String, disc: Dictionary, r: float, shells
 				_rule(errors, 10, "%s: %s leaves %.2f m to %s; it needs %.2f m." % [where, rock.id, between, other.id, passage])
 
 
+## Rules 9 and 10 for a two-post site (B.7, spine 3.2): check_disc_against_shells on each post's disc
+## and on their union, `two` as two_post_disc_for gives it; each problem names "post a", "post b" or
+## "the union" after `where`. The tile and home checks and tests/fixtures/creatures_posts_test.json
+## use it.
+func check_two_post_discs(where: String, two: Dictionary, r: float, shells: Array[Dictionary], wall_r: float,
+		errors: PackedStringArray) -> void:
+	var posts: Array = two.posts
+	check_disc_against_shells(where + " post a", posts[0], r, shells, wall_r, errors)
+	check_disc_against_shells(where + " post b", posts[1], r, shells, wall_r, errors)
+	check_disc_against_shells(where + " the union", {"center": two.center, "radius": two.radius}, r, shells, wall_r, errors)
+
+
 # --- the rules ---
 
 func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, starting: Dictionary,
