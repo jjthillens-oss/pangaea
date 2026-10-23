@@ -1,0 +1,41 @@
+{
+  "id": "marker_checkpoint_column",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world marker (S1 rough): the cream light column at the current checkpoint, 'where you come back'. No collision; drawn unlit by the engine.",
+  "category": "marker",
+  "source_blend": "assets/source/blender/marker_checkpoint_column.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/marker_checkpoint_column.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.5,
+    "y_forward": 0.5,
+    "z_up": 14.0
+  },
+  "triangles": 336,
+  "triangle_budget": 800,
+  "textures": [],
+  "materials": [
+    "M_Column"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "MarkerCheckpointColumn"
+  ],
+  "kind": "marker",
+  "pivot": "the checkpoint on the swim plane (Godot y = 0)",
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}

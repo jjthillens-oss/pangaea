@@ -1,0 +1,41 @@
+{
+  "id": "marker_origin_arrow",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world marker (S1 rough): the cream arrow toward the origin, 'where you began'. Lies flat; a different shape from the column.",
+  "category": "marker",
+  "source_blend": "assets/source/blender/marker_origin_arrow.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/marker_origin_arrow.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.0,
+    "y_forward": 1.2,
+    "z_up": 0.08
+  },
+  "triangles": 24,
+  "triangle_budget": 800,
+  "textures": [],
+  "materials": [
+    "M_Arrow"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "MarkerOriginArrow"
+  ],
+  "kind": "marker",
+  "pivot": "centre of the arrow; it points Godot -Z",
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}

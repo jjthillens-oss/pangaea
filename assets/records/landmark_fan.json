@@ -1,0 +1,73 @@
+{
+  "id": "landmark_fan",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 landmark (S1 rough): a fan colony of cream stalks holding amber bell cells. Collides as a 2 bu circle; the visual fills the 3 bu anchor.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/landmark_fan.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/landmark_fan.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 5.408,
+    "y_forward": 5.023,
+    "z_up": 6.967
+  },
+  "triangles": 5368,
+  "triangle_budget": 6000,
+  "textures": [],
+  "materials": [
+    "M_Amber",
+    "M_Cream",
+    "M_Deep",
+    "M_Frost"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Growth_Beads",
+    "Growth_Needles",
+    "LandmarkFan"
+  ],
+  "kind": "landmark",
+  "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
+  "group": 1,
+  "footprint_radius_m": 2.0,
+  "collide_radius_bu": 2.0,
+  "anchor_radius_bu": 3.0,
+  "yaw_rule": "steps_90",
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    },
+    {
+      "id": "frosted",
+      "tint": "#D6E0F5",
+      "growth": "Growth_Needles",
+      "scale": 0.96
+    },
+    {
+      "id": "amber",
+      "tint": "#F3E3C6",
+      "growth": "Growth_Beads",
+      "scale": 1.04
+    }
+  ],
+  "swim_band_min_radius_m": 1.996,
+  "swim_band_radius_m": 2.0,
+  "top_m": 3.767,
+  "bottom_m": -3.2,
+  "scale_range": [
+    0.92,
+    1.06
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}

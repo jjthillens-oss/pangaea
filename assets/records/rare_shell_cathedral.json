@@ -1,0 +1,106 @@
+{
+  "id": "rare_shell_cathedral",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 rare place (S1 rough): eight crowned glass drums in a ring round an open nave.",
+  "category": "rare",
+  "source_blend": "assets/source/blender/rare_shell_cathedral.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/rare_shell_cathedral.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 8.778,
+    "y_forward": 9.229,
+    "z_up": 6.945
+  },
+  "triangles": 8640,
+  "triangle_budget": 12000,
+  "textures": [],
+  "materials": [
+    "M_Core",
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "RareShellCathedral"
+  ],
+  "kind": "rare",
+  "pivot": "centre of the set piece on the swim plane (Godot y = 0)",
+  "rare_kind": "shell_cathedral",
+  "colliders": [
+    {
+      "center": [
+        3.4,
+        0.0
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        2.4042,
+        2.4042
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        0.0,
+        3.4
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        -2.4042,
+        2.4042
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        -3.4,
+        0.0
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        -2.4042,
+        -2.4042
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        -0.0,
+        -3.4
+      ],
+      "radius": 0.9
+    },
+    {
+      "center": [
+        2.4042,
+        -2.4042
+      ],
+      "radius": 0.9
+    }
+  ],
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "swim_band_min_radius_m": 3.452,
+  "swim_band_radius_m": 4.3,
+  "top_m": 3.945,
+  "bottom_m": -3.0,
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}

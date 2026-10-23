@@ -1,0 +1,55 @@
+{
+  "id": "shell_bell",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 shell (S1 rough): a broad bell-shaped shell. An obstacle the cell slides around; slots pick it by footprint class.",
+  "category": "shell",
+  "source_blend": "assets/source/blender/shell_bell.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/shell_bell.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 2.7,
+    "y_forward": 2.7,
+    "z_up": 2.72
+  },
+  "triangles": 960,
+  "triangle_budget": 1300,
+  "textures": [],
+  "materials": [
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ShellBell"
+  ],
+  "kind": "shell",
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_class": "fp_l",
+  "footprint_radius_m": 1.35,
+  "yaw_rule": "free",
+  "pickable": true,
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    }
+  ],
+  "swim_band_min_radius_m": 1.346,
+  "swim_band_radius_m": 1.35,
+  "top_m": 0.58,
+  "bottom_m": -2.14,
+  "scale_range": [
+    0.88,
+    1.12
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}
