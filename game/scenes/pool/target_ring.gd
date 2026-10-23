@@ -9,7 +9,7 @@ const OUTLINE_PX := 2.0
 const PULSE_HZ := 1.5
 const PULSE_SHARE := 0.12
 const COLOR := Color(1.0, 0.97, 0.86, 0.95)
-const OUTLINE := Color(0.03, 0.13, 0.15, 0.8)
+const OUTLINE := Color(UiPalette.KEYLINE, 0.8)
 
 var _at := Vector2.ZERO
 var _t := 0.0

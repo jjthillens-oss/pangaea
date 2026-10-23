@@ -4,14 +4,17 @@ extends Node3D
 ## by PartPlacement, drawn between sim ticks and animated in code (no rig until step 5).
 ## It only draws: position, heading and every reaction come from the sim and its events.
 ##
-## The root carries the exact interpolated position and yaw. Bank, gulp, head-shake and the death
-## pose go on Pivot, so they never move the point the camera and tests read.
+## The root carries the exact interpolated position and yaw. Bank, gulp, head-shake, the hurt
+## flinch and the death pose go on Pivot, so they never move the point the camera and tests read.
+## One overlay (cell_overlay.gdshader) greys the cell while it starves or is dead, flashes it red
+## when it is hurt and draws the soft rim of shelter (M1 step 3).
 
 const PART_SCENES := {
 	"mouth_filter": preload("res://assets/export/part_mouth_filter.glb"),
 	"mouth_jaw": preload("res://assets/export/part_mouth_jaw.glb"),
 	"flagellum": preload("res://assets/export/part_flagellum.glb"),
 	"eye_spot": preload("res://assets/export/part_eye_spot.glb"),
+	"spike": preload("res://assets/export/part_spike.glb"),
 }
 ## Baked parts of the sample cell that the genome's parts replace (GLB contract names that
 ## test_assets checks). Its eyes and pupils stay.
@@ -32,12 +35,24 @@ const GHOST_S := 0.15
 const GHOST_END_SCALE := 0.35
 const TINT_FADE_S := 0.4
 const STARVING_TINT := Color(0.42, 0.44, 0.47, 0.55)
+## A hit on the cell (M1 step 3): a red flash fading over HURT_S and a flinch, a quick squash and
+## recoil of the body, over FLINCH_S. PROPOSED, view only.
+const HURT_S := 0.15
+const HURT_TINT := Color(0.93, 0.2, 0.2, 0.75)   ## below about 0.6 alpha the cyan cell turns grey, not red
+const FLINCH_S := 0.15
+const FLINCH_SQUASH := 0.15
+const FLINCH_BACK_M := 0.08
+## Shelter (M1 step 3): a soft rim pulsing once a second, never above alpha 0.25, so it never flashes.
+const SHELTER_RIM := Color(0.62, 0.98, 1.0)
+const SHELTER_ALPHA_MAX := 0.25
+const SHELTER_ALPHA_MIN := 0.1
+const SHELTER_HZ := 1.0
+const SHELTER_FADE_S := 0.3
 const DEAD_ROLL_DEG := 160.0
 const DEAD_SINK_M := 0.2
 const DEAD_POSE_S := 1.2
 const FX_LIFT_M := 0.15          ## the burst starts a little above the mouth, so the body never hides it
 const FX_COLORS := {"plant": Color(0.62, 0.95, 0.55), "meat": Color(0.85, 0.42, 0.33)}
-const WARM_UP_DEPTH_M := 5.0     ## the shader warm-up plays this far under the floor, out of sight
 
 var _top_speed := 1.0
 var _turn_rate := 1.0
@@ -53,18 +68,25 @@ var _starving := false
 var _tint := 0.0
 var _dead := false
 var _dead_t := 0.0
-var _overlay := StandardMaterial3D.new()
+var _hurt_t := -1.0
+var _sheltered := false
+var _shelter := 0.0
+var _shelter_phase := 0.0
+var _overlay := ShaderMaterial.new()
+var _overlay_on := false
+var _warm_overlay := 0   ## frames left to draw the overlay unseen, so its shader is ready before play
 
 @onready var _pivot: Node3D = %Pivot
 
 
 ## Builds the parts of a genome. Each part becomes a child of Parts with metadata "part_id",
-## "part_type", "part_angle" and "part_scale". A type with no model yet (cilia and spikes come in
-## step 4) gets an empty marker, so the children still match the genome one to one.
+## "part_type", "part_angle" and "part_scale". A type with no model yet (cilia come in step 4) gets
+## an empty marker, so the children still match the genome one to one.
 func build(genome: Genome, phenotype: Phenotype) -> void:
 	_top_speed = maxf(phenotype.speed, 0.01)
 	_turn_rate = maxf(phenotype.turn_rate, 0.01)
 	_mouths = phenotype.mouths.duplicate()
+	_pivot = %Pivot   # also set here, so a view built outside the tree (in tests) can animate
 	var model: Node3D = %Model
 	for path in HIDDEN_MODEL_NODES:
 		var baked := model.get_node_or_null(path) as Node3D
@@ -93,8 +115,8 @@ func build(genome: Genome, phenotype: Phenotype) -> void:
 			if type == "flagellum":
 				_wag_nodes.append(model_node)
 		parts.add_child(holder)
-	_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_overlay.albedo_color = Color(STARVING_TINT, 0.0)
+	_overlay.shader = preload("res://game/scenes/pool/cell_overlay.gdshader")
+	_overlay_on = false
 	_apply_overlay(null)
 
 
@@ -132,6 +154,24 @@ func set_dead(dead: bool) -> void:
 		_dead_t = 0.0
 
 
+## A hit on the cell: a red flash and a flinch.
+func hurt() -> void:
+	_hurt_t = 0.0
+
+
+## Shelter after a respawn or a start (the sim's grace): a soft pulsing rim while it lasts.
+func set_sheltered(sheltered: bool) -> void:
+	_sheltered = sheltered
+
+
+## The overlay's current colours, for tests: {"tint": Color, "rim": Color}.
+func overlay_colors() -> Dictionary:
+	var none := Color(0.0, 0.0, 0.0, 0.0)
+	var tint = _overlay.get_shader_parameter("tint")
+	var rim = _overlay.get_shader_parameter("rim")
+	return {"tint": tint if tint is Color else none, "rim": rim if rim is Color else none}
+
+
 ## A meal: the cell gulps.
 func gulp() -> void:
 	_gulp_t = 0.0
@@ -162,16 +202,17 @@ func swallow(from: Vector3, kind: String, mesh: Mesh) -> void:
 		_ghost(mesh, from, mouth)
 
 
-## Plays the eat burst and draws each mesh once, out of sight under the floor, so their shaders
-## are ready before the first real meal. A real meal restarts the burst at the mouth.
-func warm_up(meshes: Array[Mesh]) -> void:
+## Plays the eat burst and draws each mesh once at `at`, a point the camera sees but the player
+## cannot (the pool picks it), so their shaders are ready before the first real meal. A real meal
+## restarts the burst at the mouth.
+func warm_up(meshes: Array[Mesh], at: Vector3) -> void:
 	if not is_inside_tree():
 		return
-	var hidden := global_position + Vector3.DOWN * WARM_UP_DEPTH_M
-	_burst(hidden, Color.WHITE)
+	_burst(at, Color.WHITE)
+	_warm_overlay = 2
 	for mesh in meshes:
 		if mesh != null:
-			_ghost(mesh, hidden, hidden)
+			_ghost(mesh, at, at)
 
 
 func _burst(at: Vector3, color: Color) -> void:
@@ -222,21 +263,41 @@ func _process(delta: float) -> void:
 			_gulp_t = -1.0
 	if _dead:
 		_dead_t = minf(_dead_t + delta / DEAD_POSE_S, 1.0)
+	var flinch := 0.0
+	if _hurt_t >= 0.0:
+		_hurt_t += delta
+		flinch = sin(PI * clampf(_hurt_t / FLINCH_S, 0.0, 1.0))
+		if _hurt_t >= maxf(HURT_S, FLINCH_S):
+			_hurt_t = -1.0
 	var pose := smoothstep(0.0, 1.0, _dead_t)
 	_pivot.rotation = Vector3(0.0, shake, _bank + deg_to_rad(DEAD_ROLL_DEG) * pose)
-	_pivot.position = Vector3(0.0, -DEAD_SINK_M * pose, 0.0)
-	_pivot.scale = Vector3.ONE * gulp_scale
-	_update_tint(delta)
+	_pivot.position = Vector3(0.0, -DEAD_SINK_M * pose, FLINCH_BACK_M * flinch)
+	var squash := 1.0 - FLINCH_SQUASH * flinch
+	_pivot.scale = Vector3(1.0 / sqrt(squash), squash, 1.0 / sqrt(squash)) * gulp_scale
+	_update_overlay(delta)
 
 
-## Greys the cell while it starves (or is dead) with one shared overlay material.
-func _update_tint(delta: float) -> void:
+## Greys the cell while it starves (or is dead), flashes it red when hurt and rims it while
+## sheltered, with one overlay material on every mesh; no overlay at all when none applies.
+func _update_overlay(delta: float) -> void:
 	var want := 1.0 if _starving or _dead else 0.0
-	if is_equal_approx(_tint, want):
-		return
 	_tint = move_toward(_tint, want, delta / TINT_FADE_S)
-	_overlay.albedo_color = Color(STARVING_TINT, STARVING_TINT.a * _tint)
-	_apply_overlay(_overlay if _tint > 0.0 else null)
+	_shelter = move_toward(_shelter, 1.0 if _sheltered and not _dead else 0.0, delta / SHELTER_FADE_S)
+	_shelter_phase = fmod(_shelter_phase + TAU * SHELTER_HZ * delta, TAU) if _shelter > 0.0 else 0.0
+	# Eased out (1 - k^2), so the first frames after a hit show it at nearly full red.
+	var flash := 1.0 - pow(_hurt_t / HURT_S, 2.0) if _hurt_t >= 0.0 and _hurt_t < HURT_S else 0.0
+	var tint := Color(STARVING_TINT, STARVING_TINT.a * _tint)
+	if flash > 0.0:
+		tint = Color(tint.lerp(HURT_TINT, flash), maxf(tint.a, HURT_TINT.a * flash))
+	var pulse := lerpf(SHELTER_ALPHA_MIN, SHELTER_ALPHA_MAX, 0.5 - 0.5 * cos(_shelter_phase))
+	var rim := Color(SHELTER_RIM, pulse * _shelter)
+	_overlay.set_shader_parameter("tint", tint)
+	_overlay.set_shader_parameter("rim", rim)
+	var on := tint.a > 0.0 or rim.a > 0.0 or _warm_overlay > 0
+	_warm_overlay = maxi(_warm_overlay - 1, 0)
+	if on != _overlay_on:
+		_overlay_on = on
+		_apply_overlay(_overlay if on else null)
 
 
 func _apply_overlay(material: Material) -> void:

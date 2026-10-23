@@ -1,0 +1,82 @@
+{
+  "id": "bead_cluster",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S3 bead cluster food item (size 4's plant food): a short coiled chain of glowing green-gold beads, every third a larger resting cell, like a filament colony.",
+  "category": "food",
+  "source_blend": "assets/source/blender/bead_cluster.blend",
+  "generator_script": "tools/blender/make_endless_foods.py",
+  "export_path": "assets/export/bead_cluster.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.327,
+    "y_forward": 0.297,
+    "z_up": 0.156
+  },
+  "triangles": 560,
+  "triangle_budget": 600,
+  "textures": [
+    {
+      "name": "T_BeadCluster_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_BeadCluster_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_BeadCluster_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    },
+    {
+      "name": "T_BeadCluster_Emission",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "emitted colour RGB"
+    }
+  ],
+  "materials": [
+    "M_BeadCluster",
+    "M_BeadClusterProc"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "BeadCluster"
+  ],
+  "food_kind": "plant",
+  "pivot": "centre of the item",
+  "item_radius_m": 0.18,
+  "mesh_radius_m": 0.185,
+  "scale_note": "Built at the plankton's item radius; the world draws it at its size's item radius.",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 560,
+    "triangles_after": 560
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_foods.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

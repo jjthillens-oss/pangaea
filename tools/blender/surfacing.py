@@ -290,9 +290,98 @@ def _pixels(image):
     return buf.reshape(-1, 4)
 
 
-def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, metallic=0.0, highs=None):
+def tint(color=None, vertex_colors=None, emission=None, emission_strength=1.0):
+    """A material's flat look for bake_set(tints=...): `color` (linear RGB) or `vertex_colors` (a
+    colour attribute stored sRGB-encoded, which the engine material draws), and emission."""
+    return {"color": color, "vertex_colors": vertex_colors, "emission": emission, "emission_strength": emission_strength}
+
+
+def _tinted(mat, look, albedo, orm, normal_image):
+    """Rebuilds `mat` as the baked detail times its flat colour, keeping its name."""
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    nodes.clear()
+    out = nodes.new("ShaderNodeOutputMaterial")
+    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+    links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    bsdf.inputs["Metallic"].default_value = 0.0
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.image = albedo
+    mul = nodes.new("ShaderNodeMix")
+    mul.data_type, mul.blend_type = "RGBA", "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    links.new(tex.outputs["Color"], mul.inputs["A"])
+    if look["vertex_colors"]:
+        # As blockout_common.material(): the colours are stored sRGB-encoded; decode for Blender.
+        attr = nodes.new("ShaderNodeVertexColor")
+        attr.layer_name = look["vertex_colors"]
+        decode = nodes.new("ShaderNodeGamma")
+        decode.inputs["Gamma"].default_value = 2.2
+        links.new(attr.outputs["Color"], decode.inputs["Color"])
+        links.new(decode.outputs["Color"], mul.inputs["B"])
+    else:
+        mul.inputs["B"].default_value = (*look["color"], 1.0)
+    links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+    tex_orm = nodes.new("ShaderNodeTexImage")
+    tex_orm.image = orm
+    split = nodes.new("ShaderNodeSeparateColor")
+    links.new(tex_orm.outputs["Color"], split.inputs["Color"])
+    links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
+    links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
+    if normal_image is not None:
+        tex_n = nodes.new("ShaderNodeTexImage")
+        tex_n.image = normal_image
+        nmap = nodes.new("ShaderNodeNormalMap")
+        links.new(tex_n.outputs["Color"], nmap.inputs["Color"])
+        links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+    if look["emission"] is not None:
+        bsdf.inputs["Emission Color"].default_value = (*look["emission"], 1.0)
+        bsdf.inputs["Emission Strength"].default_value = look["emission_strength"]
+
+
+def color_fidelity(obj, attribute, max_error):
+    """An accept() for reduce(): every original vertex's colour in `attribute` (a POINT colour)
+    is still within `max_error` per channel of the reduced surface's colour at its nearest point."""
+    from mathutils.bvhtree import BVHTree
+    from mathutils.geometry import barycentric_transform
+    from mathutils import Vector
+    src = obj.data
+    points = [v.co.copy() for v in src.vertices]
+    colours = [Vector(d.color[:3]) for d in src.color_attributes[attribute].data]
+
+    def accept(mesh):
+        tree = BVHTree.FromPolygons([v.co for v in mesh.vertices], [p.vertices[:] for p in mesh.polygons])
+        data = mesh.color_attributes[attribute].data
+        mesh.calc_loop_triangles()
+        tris = {}
+        for t in mesh.loop_triangles:
+            tris.setdefault(t.polygon_index, []).append(t.vertices[:])
+        for p, c in zip(points, colours):
+            hit, _, index, _ = tree.find_nearest(p)
+            if hit is None:
+                return False
+            best = None
+            for tri in tris[index]:
+                a, b, d = (mesh.vertices[i].co for i in tri)
+                w = barycentric_transform(hit, a, b, d, Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1)))
+                if best is None or min(w) > min(best[1]):
+                    best = (tri, w)
+            tri, w = best
+            got = sum((Vector(data[i].color[:3]) * k for i, k in zip(tri, w)), Vector())
+            if max(abs(x) for x in got - c) > max_error:
+                return False
+        return True
+
+    return accept
+
+
+def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, metallic=0.0, highs=None, tints=None):
     """Bakes the procedural materials on `objs` to one texture set and gives every face of every
     object a single glTF-safe material M_<name>. Returns the record's `textures` entries.
+
+    With `tints` the objects keep their material slots instead: each procedural material bakes
+    a greyscale detail albedo, and is rebuilt under its own name as that texture times a flat
+    base colour, so gameplay-facing material names and colours survive. `tints` maps a material
+    name to tint(): its colour, or a colour attribute, and emission.
 
     `highs` maps an object's name to its unreduced copy (from reduce()); that object's normal map
     is then baked from the copy, so reduction keeps the original's shading. A normal map is baked
@@ -338,40 +427,45 @@ def bake_set(objs, name, size, normal=False, emission=False, ao_samples=64, meta
         img.file_format = "PNG"
         img.pack()
 
-    mat = bpy.data.materials.new(f"M_{name}")
-    mat.use_nodes = True
-    nodes, links = mat.node_tree.nodes, mat.node_tree.links
-    bsdf = nodes["Principled BSDF"]
-    tex = nodes.new("ShaderNodeTexImage")
-    tex.image = albedo
-    links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-    tex_orm = nodes.new("ShaderNodeTexImage")
-    tex_orm.image = orm
-    split = nodes.new("ShaderNodeSeparateColor")
-    links.new(tex_orm.outputs["Color"], split.inputs["Color"])
-    links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
-    links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
-    if normal:
-        tex_n = nodes.new("ShaderNodeTexImage")
-        tex_n.image = extra[0]
-        nmap = nodes.new("ShaderNodeNormalMap")
-        links.new(tex_n.outputs["Color"], nmap.inputs["Color"])
-        links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
-    if emission:
-        tex_e = nodes.new("ShaderNodeTexImage")
-        tex_e.image = extra[-1]
-        links.new(tex_e.outputs["Color"], bsdf.inputs["Emission Color"])
-        bsdf.inputs["Emission Strength"].default_value = 1.0
+    if tints is not None:
+        for mat in {slot.material for obj in objs for slot in obj.material_slots if slot.material}:
+            _tinted(mat, tints[mat.name], albedo, orm, extra[0] if normal else None)
+    else:
+        mat = bpy.data.materials.new(f"M_{name}")
+        mat.use_nodes = True
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        bsdf = nodes["Principled BSDF"]
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = albedo
+        links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        tex_orm = nodes.new("ShaderNodeTexImage")
+        tex_orm.image = orm
+        split = nodes.new("ShaderNodeSeparateColor")
+        links.new(tex_orm.outputs["Color"], split.inputs["Color"])
+        links.new(split.outputs["Green"], bsdf.inputs["Roughness"])
+        links.new(split.outputs["Blue"], bsdf.inputs["Metallic"])
+        if normal:
+            tex_n = nodes.new("ShaderNodeTexImage")
+            tex_n.image = extra[0]
+            nmap = nodes.new("ShaderNodeNormalMap")
+            links.new(tex_n.outputs["Color"], nmap.inputs["Color"])
+            links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+        if emission:
+            tex_e = nodes.new("ShaderNodeTexImage")
+            tex_e.image = extra[-1]
+            links.new(tex_e.outputs["Color"], bsdf.inputs["Emission Color"])
+            bsdf.inputs["Emission Strength"].default_value = 1.0
 
-    old = {slot.material for obj in objs for slot in obj.material_slots if slot.material}
-    for obj in objs:
-        obj.data.materials.clear()
-        obj.data.materials.append(mat)
-        obj.data.polygons.foreach_set("material_index", [0] * len(obj.data.polygons))
-    for m in old:
-        if m.users == 0:
-            bpy.data.materials.remove(m)
-    packing = {"Albedo": "albedo RGB (baked AO darkens crevices)", "ORM": "R occlusion, G roughness, B metallic",
+        old = {slot.material for obj in objs for slot in obj.material_slots if slot.material}
+        for obj in objs:
+            obj.data.materials.clear()
+            obj.data.materials.append(mat)
+            obj.data.polygons.foreach_set("material_index", [0] * len(obj.data.polygons))
+        for m in old:
+            if m.users == 0:
+                bpy.data.materials.remove(m)
+    packing = {"Albedo": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour" if tints is not None
+               else "albedo RGB (baked AO darkens crevices)", "ORM": "R occlusion, G roughness, B metallic",
                "Normal": "tangent-space normal (OpenGL, +Y up)", "Emission": "emitted colour RGB"}
     return [{"name": img.name, "size": [size, size], "colorspace": img.colorspace_settings.name,
              "packing": packing[img.name.rsplit("_", 1)[1]]} for img in images]

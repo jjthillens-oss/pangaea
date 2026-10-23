@@ -15,7 +15,10 @@ RENDER_DIR = os.path.join(ROOT, "docs", "art", "renders")
 # Art-direction palette (PROPOSED). Keep in sync with docs/art/ART_DIRECTION.md section 3.
 PALETTE = {
     "deep_shadow": "#1D3557",
-    "pool_teal": "#2A7F86",
+    "fluid_deep": "#0B2E6B",
+    "fluid_light": "#4C9BE0",
+    "ambient": "#2F6FB8",
+    "pool_teal": "#2A7F86",  # retired as a habitat colour (micro-world plan C9); eye-iris tint only
     "shallow_turquoise": "#49B3A6",
     "algae_green": "#6BAB5A",
     "moss_deep": "#2F6B4A",
@@ -27,6 +30,8 @@ PALETTE = {
     "threat": "#D9466B",
     "clay": "#B9B3A8",
 }
+# Kept for the materials that still use them, but no longer on the palette board.
+RETIRED = {"pool_teal"}
 
 # Gameplay camera from game/data/pool_m1.json (M1 step 2): pitch 55 deg, FOV 45 deg, 14 m.
 GAME_CAMERA = {"pitch_deg": 55.0, "fov_deg": 45.0, "distance": 14.0}

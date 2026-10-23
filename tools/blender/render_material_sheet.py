@@ -54,7 +54,7 @@ def palette_board():
     ld.setup_render(samples=1)
     scene.view_settings.view_transform = "Standard"
     scene.view_settings.look = "None"
-    names = list(ld.PALETTE)
+    names = [name for name in ld.PALETTE if name not in ld.RETIRED]
     scene.render.resolution_x, scene.render.resolution_y = 120 * len(names), 120
     for i, name in enumerate(names):
         bpy.ops.mesh.primitive_plane_add(size=1.0, location=(i + 0.5 - len(names) / 2, 0, 0))

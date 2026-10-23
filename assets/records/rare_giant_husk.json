@@ -1,0 +1,106 @@
+{
+  "id": "rare_giant_husk",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-0 rare place (S1 rough): the cracked-open glass husk of a dead giant microbe, its lattice in pieces.",
+  "category": "rare",
+  "source_blend": "assets/source/blender/rare_giant_husk.blend",
+  "generator_script": "tools/blender/make_s1_production.py",
+  "export_path": "assets/export/rare_giant_husk.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 9.066,
+    "y_forward": 4.863,
+    "z_up": 4.489
+  },
+  "triangles": 2908,
+  "triangle_budget": 12000,
+  "textures": [
+    {
+      "name": "T_RareGiantHusk_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_RareGiantHusk_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_RareGiantHusk_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Core",
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "RareGiantHusk"
+  ],
+  "kind": "rare",
+  "pivot": "centre of the set piece on the swim plane (Godot y = 0)",
+  "rare_kind": "giant_husk",
+  "colliders": [
+    {
+      "center": [
+        -3.4,
+        0.4
+      ],
+      "radius": 1.1
+    },
+    {
+      "center": [
+        -1.15,
+        -0.3
+      ],
+      "radius": 1.3
+    },
+    {
+      "center": [
+        1.15,
+        0.3
+      ],
+      "radius": 1.25
+    },
+    {
+      "center": [
+        3.4,
+        -0.35
+      ],
+      "radius": 1.1
+    }
+  ],
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "swim_band_min_radius_m": 0.464,
+  "swim_band_radius_m": 4.521,
+  "top_m": 1.889,
+  "bottom_m": -2.6,
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
+}

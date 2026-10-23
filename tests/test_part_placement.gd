@@ -204,11 +204,11 @@ func test_a_part_without_a_model_still_gets_a_node() -> void:
 	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
 	var catalog := PartCatalog.load_from()
 	var genome := _genome("grazer")
-	genome.add_part("spike", -1.0)
+	genome.add_part("cilia", -1.0)   # spikes got their model in M1 step 3; cilia come in step 4
 	view.build(genome, Phenotype.derive(genome, catalog))
 	var nodes := view.part_nodes()
 	check_eq(nodes.size(), 4, "every part has a node")
-	check_eq(nodes[3].get_meta("part_type"), "spike", "the spike marker")
+	check_eq(nodes[3].get_meta("part_type"), "cilia", "the cilia marker")
 	check_eq(nodes[3].get_child_count(), 0, "no model until step 4")
 	view.free()
 

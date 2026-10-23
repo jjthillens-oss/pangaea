@@ -3,12 +3,17 @@ extends Control
 ## The pool's heads-up display (M1 step 2). It only reads the sim and the pool's signals; it
 ## never changes anything. Main mounts it under the pool's UI layer and calls bind(pool).
 ##
-##   top left:     energy bar and text with a Fed / Hungry / Starving chip, the health bar (only
-##                 while hurt or starving) and the lineage line
+##   top left:     energy bar and text with a Fed / Hungry / Starving chip, the "Sheltered 5"
+##                 chip with a ring icon while the cell is sheltered (M1 step 3), the health bar
+##                 (whenever health is below full, or while starving) and the lineage line
 ##   top right:    adaptation points with a "+N" flash, and meal and survival toasts
 ##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
-##   bottom center: refusal hints, worded by RefusalHints
+##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
+##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
 ##   bottom left:  the controls, from the key bindings, until the first meal or for 30 s
+##
+##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
+##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
 ##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
@@ -39,6 +44,12 @@ const WRAP_STEP_PX := 8.0
 ## How a Label with AUTOWRAP_WORD_SMART breaks lines, with its default trim flags.
 const WRAP_FLAGS := TextServer.BREAK_MANDATORY | TextServer.BREAK_WORD_BOUND | TextServer.BREAK_ADAPTIVE \
 	| TextServer.BREAK_TRIM_START_EDGE_SPACES | TextServer.BREAK_TRIM_END_EDGE_SPACES
+## The hurt vignette: each hit on the cell sets it to VIGNETTE_PEAK at the screen's edges and it
+## fades to nothing over VIGNETTE_FALL_S; a hit sooner than VIGNETTE_MIN_GAP_S after the last
+## pulse adds none. No full-screen flash and no camera shake (comfort).
+const VIGNETTE_PEAK := 0.35
+const VIGNETTE_FALL_S := 0.4
+const VIGNETTE_MIN_GAP_S := 0.5
 const CHIP_STYLES := {"Fed": &"ChipFed", "Hungry": &"ChipHungry", "Starving": &"ChipStarving"}
 const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": KEY_DOWN, &"move_right": KEY_RIGHT}
 
@@ -53,11 +64,14 @@ var _message_t := 0.0
 var _controls_t := 0.0
 var _banner_t := 0.0
 var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
+var _vignette_t := INF                ## seconds since the last vignette pulse
 
 @onready var energy_text: Label = %EnergyText
 @onready var state_chip: PanelContainer = %StateChip
 @onready var state_text: Label = %StateText
 @onready var energy_bar: ProgressBar = %EnergyBar
+@onready var shelter_chip: PanelContainer = %ShelterChip
+@onready var shelter_text: Label = %ShelterText
 @onready var health_row: Control = %HealthRow
 @onready var health_text: Label = %HealthText
 @onready var health_bar: ProgressBar = %HealthBar
@@ -75,6 +89,8 @@ var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
 @onready var controls: PanelContainer = %Controls
 @onready var controls_text: Label = %ControlsText
 @onready var first_meal_text: Label = %FirstMealText
+@onready var hurt_vignette: ColorRect = %HurtVignette
+@onready var threat_indicators: ThreatIndicators = %ThreatIndicators
 
 
 func _ready() -> void:
@@ -88,7 +104,9 @@ func _ready() -> void:
 	message.visible = false
 	hint.visible = false
 	health_row.visible = false
+	shelter_chip.visible = false
 	points_flash.modulate.a = 0.0
+	_set_vignette(0.0)
 
 
 ## Starts showing a running pool: reads its sim every frame and listens to its events.
@@ -101,6 +119,9 @@ func bind(p_pool: PoolScene) -> void:
 	first_meal_text.text = first_meal_line(pool.sim.phenotype)
 	controls.visible = true
 	_controls_t = 0.0
+	_vignette_t = INF
+	_set_vignette(0.0)
+	threat_indicators.bind(pool)
 	refresh()
 
 
@@ -114,7 +135,10 @@ func refresh() -> void:
 	var chip := state_name(state)
 	_set_text(state_text, chip)
 	state_chip.theme_type_variation = CHIP_STYLES[chip]
-	health_row.visible = state.health < state.max_health or state.is_starving()
+	health_row.visible = shows_health(state)
+	var shelter := shelter_seconds(sim)
+	shelter_chip.visible = shelter > 0
+	_set_text(shelter_text, grace_text(shelter))
 	_set_text(health_text, health_line(state))
 	_set_text(lineage_text, BodyText.lineage_line(_body, GameSession.lineage_tag(sim.save.lineage_id), sim.save.genome.generation))
 	_set_text(points_text, points_line(sim.save.adaptation_points))
@@ -139,6 +163,12 @@ func show_hint(text: String) -> void:
 	_hint_t = HINT_S
 
 
+## The hurt vignette's strength now, for checks: its alpha where the edge band is full (the
+## shader's outer band lifts the corners a little more).
+func vignette_alpha() -> float:
+	return float((hurt_vignette.material as ShaderMaterial).get_shader_parameter(&"strength"))
+
+
 ## The toasts on screen now, oldest first (for checks).
 func toast_texts() -> PackedStringArray:
 	var out := PackedStringArray()
@@ -156,6 +186,19 @@ static func energy_line(state: ActorState) -> String:
 
 static func health_line(state: ActorState) -> String:
 	return "Health %d / %d" % [_shown(state.health), roundi(state.max_health)]
+
+
+## The health bar shows whenever health is below full, so every hit shows, or while starving.
+static func shows_health(state: ActorState) -> bool:
+	return state.health < state.max_health or state.is_starving()
+
+
+## The hurt vignette's strength `age_s` seconds after its pulse began: VIGNETTE_PEAK at once,
+## falling to 0 at VIGNETTE_FALL_S.
+static func vignette_strength(age_s: float) -> float:
+	if age_s < 0.0 or age_s >= VIGNETTE_FALL_S:
+		return 0.0
+	return VIGNETTE_PEAK * (1.0 - age_s / VIGNETTE_FALL_S)
 
 
 ## "Fed", "Hungry" (below a quarter of capacity) or "Starving".
@@ -185,6 +228,19 @@ static func survival_toast(points: int, alive_s: float) -> String:
 	return "+%d point%s · survived %d s" % [points, "" if points == 1 else "s", roundi(alive_s)]
 
 
+## "Sheltered 5": the shelter chip's words, in whole seconds of shelter left.
+static func grace_text(seconds: int) -> String:
+	return "Sheltered %d" % seconds
+
+
+## Whole seconds of shelter the living cell has left, rounded up; 0 when it is not sheltered (or
+## the pool has no creatures, so no shelter).
+static func shelter_seconds(sim: PoolSim) -> int:
+	if sim == null or not sim.is_sheltered():
+		return 0
+	return ceili((sim.grace_until - sim.tick) / float(CreatureBrain.TICKS_PER_SECOND))
+
+
 ## What Continue restores: energy and health restart (they are not saved).
 static func rested_line(state: ActorState) -> String:
 	var health := "full" if state.health >= state.max_health else "%d%%" % roundi(100.0 * state.health / state.max_health)
@@ -211,7 +267,9 @@ static func controls_lines() -> PackedStringArray:
 	])
 
 
-## How this body eats, in words that do not lean on colour alone.
+## How this body eats, in words that do not lean on colour alone. A body that eats only carrion is
+## also told that, past the world-start pieces it may see now, more comes only from kills (D1); its
+## starving tip says how to make one.
 static func first_meal_line(p: Phenotype) -> String:
 	var plants := p.can_eat("plant")
 	var meat := p.can_eat("meat")
@@ -220,7 +278,7 @@ static func first_meal_line(p: Phenotype) -> String:
 	if plants:
 		return "Eat by touching drifting plankton (small green blobs) with your filter mouth."
 	if meat:
-		return "Eat by touching carrion (still brown chunks) with your jaw."
+		return "Eat by touching carrion (still brown chunks) with your jaw; more comes only from kills."
 	return "This body has no mouth that can eat."
 
 
@@ -286,6 +344,9 @@ func _process(delta: float) -> void:
 	_hint_t = _fade(hint, _hint_t, delta, HINT_FADE_S)
 	_message_t = _fade(message, _message_t, delta, HINT_FADE_S)
 	_age_toasts(delta)
+	if _vignette_t < maxf(VIGNETTE_FALL_S, VIGNETTE_MIN_GAP_S):
+		_vignette_t += delta
+		_set_vignette(vignette_strength(_vignette_t))
 
 
 func _update_bars() -> void:
@@ -307,6 +368,10 @@ func _on_sim_event(event: Dictionary) -> void:
 			_flash(int(event.points))
 		"respawned":
 			hint.visible = false
+		"hit":
+			if event.get("target") == CreatureField.PLAYER_ID and _vignette_t >= VIGNETTE_MIN_GAP_S:
+				_vignette_t = 0.0
+				_set_vignette(vignette_strength(0.0))
 	refresh()
 
 
@@ -357,6 +422,11 @@ func _fit_center(label: Label, panel: Control) -> void:
 	var chrome := panel.get_combined_minimum_size().x - label.get_combined_minimum_size().x
 	label.custom_minimum_size.x = wrap_width(label.text, label.get_theme_font(&"font"),
 		label.get_theme_font_size(&"font_size"), CENTER_MAX_W - chrome)
+
+
+func _set_vignette(strength: float) -> void:
+	(hurt_vignette.material as ShaderMaterial).set_shader_parameter(&"strength", strength)
+	hurt_vignette.visible = strength > 0.0
 
 
 func _set_text(label: Label, text: String) -> void:

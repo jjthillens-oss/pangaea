@@ -1,0 +1,107 @@
+{
+  "id": "creature_elder_warden_body",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S3 elder Warden body (role: territorial, size 4's guard that follows the bloom): the Warden grown old, deeper slate with rust bands, heavy frowning lids and a tall nine-point crest. Body only; its parts come from the part GLBs.",
+  "category": "creature_body",
+  "source_blend": "assets/source/blender/creature_elder_warden_body.blend",
+  "generator_script": "tools/blender/make_endless_threats.py",
+  "export_path": "assets/export/creature_elder_warden_body.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    "assets/export/M_ElderWardenBody.tres"
+  ],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.92,
+    "y_forward": 1.0,
+    "z_up": 0.836
+  },
+  "triangles": 3654,
+  "triangle_budget": 4000,
+  "textures": [
+    {
+      "name": "T_Rammer_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_Rammer_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_Rammer_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_RammerBody",
+    "M_RammerEye",
+    "M_RammerHood",
+    "M_RammerLid",
+    "M_RammerPupil",
+    "M_Threat"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Body",
+    "Eye_L",
+    "Eye_R",
+    "Hood",
+    "Lid_L",
+    "Lid_R",
+    "Pupil_L",
+    "Pupil_R"
+  ],
+  "frame": {
+    "equator_rx_m": 0.46,
+    "equator_rz_m": 0.5,
+    "source": "game/scenes/pool/part_placement.gd RX and RZ; the part GLBs sit on this outline at the swim plane"
+  },
+  "top_m": 0.576,
+  "bottom_m": 0.26,
+  "height_to_width": 0.908,
+  "pivot": "body centre on the swim plane (Godot y = 0); built at size 1, the creature view scales it by the species' body_size",
+  "pose_nodes": {
+    "Eye_L": "child of Body, origin at the eye's centre (with Pupil_L and Lid_L)",
+    "Eye_R": "as Eye_L",
+    "Hood": "child of Body: the dorsal crest, origin at the middle of its base on the back; scale its up axis (Godot +Y) to raise it in the puff"
+  },
+  "vertex_colors": {
+    "attribute": "RammerColor",
+    "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_RammerBody.tres)",
+    "note": "Pale sand with three dark bands across the back that fade down the flanks, a cream belly.",
+    "sand": "#56688F",
+    "band": "#3A1E1C",
+    "belly": "#F4EAD2"
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; body vertex colours kept within 0.04 per channel; full-detail shading (a body built at a finer tessellation) baked to the normal map",
+    "tolerance_m": {
+      "body": 0.0015,
+      "eyes_and_small_meshes": 0.0006
+    },
+    "triangles_before": 4264,
+    "triangles_after": 3654
+  },
+  "variant_of": "creature_rammer_body",
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_threats.py on the step 3 body code (make_m1_threats.py, make_m1_production.py); no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

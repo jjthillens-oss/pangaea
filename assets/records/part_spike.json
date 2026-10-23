@@ -1,0 +1,80 @@
+{
+  "id": "part_spike",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 step 3 spike part (rams): a tapered thorn in the threat colour ringed with growth lines, with a bone collar, darkening to a glossy point.",
+  "category": "part",
+  "source_blend": "assets/source/blender/part_spike.blend",
+  "generator_script": "tools/blender/make_m1_production.py",
+  "export_path": "assets/export/part_spike.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.157,
+    "y_forward": 0.32,
+    "z_up": 0.157
+  },
+  "triangles": 282,
+  "triangle_budget": 600,
+  "textures": [
+    {
+      "name": "T_PartSpike_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartSpike_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartSpike_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_SpikeRoot",
+    "M_SpikeShaft",
+    "M_SpikeTip"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Spike"
+  ],
+  "part_type": "spike",
+  "attachment": {
+    "origin": "attachment point on the body surface",
+    "outward_axis": "Blender +Y (Godot -Z)",
+    "embed_m": 0.03
+  },
+  "length_m": 0.32,
+  "tip_m": 0.29,
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; body vertex colours kept within 0.04 per channel; full-detail shading (a body built at a finer tessellation) baked to the normal map",
+    "tolerance_m": {
+      "body": 0.0015,
+      "eyes_and_small_meshes": 0.0006
+    },
+    "triangles_before": 1056,
+    "triangles_after": 282
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

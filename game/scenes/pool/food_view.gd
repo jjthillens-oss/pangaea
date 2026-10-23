@@ -4,10 +4,10 @@ extends MultiMeshInstance3D
 ## ("plant") or carrion ("meat"). The mesh comes from the item's Blender asset. sync() writes the
 ## whole instance buffer once per frame.
 ##
-## Drawn only: plankton bobs and spins and grows in when it appears; carrion sinks onto the floor
-## and grows to full size when it appears, then lies still, turned by its id, and shrinks over the
-## last seconds before it rots away. Food of the starting world is simply there. None of this
-## changes the items.
+## Drawn only: plankton bobs and spins and grows in when it appears; carrion sinks to just under
+## the swim plane and grows to full size when it appears, then lies still, turned by its id, and
+## shrinks over the last seconds before it rots away. Food of the starting world is simply there.
+## None of this changes the items.
 
 const FLOATS_PER_INSTANCE := 12   ## a 3x4 transform, row by row
 const MIN_CAPACITY := 16
@@ -17,7 +17,7 @@ const PLANT_SPIN_RAD_S := 0.35
 const PLANT_GROW_S := 0.6
 const MEAT_Y := -0.04
 const MEAT_SETTLE_S := 0.6        ## new carrion sinks and grows in over this long...
-const MEAT_SINK_M := 0.5          ## ...from this far above the floor...
+const MEAT_SINK_M := 0.5          ## ...from this far above where it lies...
 const MEAT_SETTLE_SCALE := 0.3    ## ...and this share of its size
 const MEAT_SHRINK_S := 10.0       ## carrion shrinks over its last this many seconds
 const MEAT_MIN_SCALE := 0.15

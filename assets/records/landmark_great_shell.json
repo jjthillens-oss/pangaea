@@ -1,0 +1,101 @@
+{
+  "id": "landmark_great_shell",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-0 landmark (S1 rough): a giant radiolarian dome over a glowing amber heart. Collides as a 2 bu circle; the visual fills the 3 bu anchor.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/landmark_great_shell.blend",
+  "generator_script": "tools/blender/make_s1_production.py",
+  "export_path": "assets/export/landmark_great_shell.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 5.356,
+    "y_forward": 5.196,
+    "z_up": 6.516
+  },
+  "triangles": 3408,
+  "triangle_budget": 6000,
+  "textures": [
+    {
+      "name": "T_LandmarkGreatShell_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_LandmarkGreatShell_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_LandmarkGreatShell_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Amber",
+    "M_Core",
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Growth_Beads",
+    "Growth_Needles",
+    "LandmarkGreatShell"
+  ],
+  "kind": "landmark",
+  "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
+  "group": 0,
+  "footprint_radius_m": 2.0,
+  "collide_radius_bu": 2.0,
+  "anchor_radius_bu": 3.0,
+  "yaw_rule": "free",
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    },
+    {
+      "id": "frosted",
+      "tint": "#D6E0F5",
+      "growth": "Growth_Needles",
+      "scale": 0.96
+    },
+    {
+      "id": "amber",
+      "tint": "#F3E3C6",
+      "growth": "Growth_Beads",
+      "scale": 1.04
+    }
+  ],
+  "swim_band_min_radius_m": 1.996,
+  "swim_band_radius_m": 2.0,
+  "top_m": 3.316,
+  "bottom_m": -3.2,
+  "scale_range": [
+    0.92,
+    1.06
+  ],
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
+}

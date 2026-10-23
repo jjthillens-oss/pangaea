@@ -7,6 +7,16 @@ extends RefCounted
 ## previous copy's share (copies are ranked largest first, so part order never matters); upkeep
 ## and mass are paid in full for every copy; mass slows speed and acceleration; stats are capped.
 ## Directional parts keep their angle so interactions can check facing.
+##
+## Body size (M1 step 3, PROPOSED) builds the same parts at a larger or smaller size s: every
+## part's benefit and cost, each spike's damage, and the base mass, upkeep, health and radius are
+## multiplied by s. Base speed, acceleration, turn rate, sight and energy capacity are not, so a
+## bigger body is tougher, hits harder and needs more food, and its extra mass makes it slower.
+## At size 1 every result is identical to the unsized rule; the player is always size 1 in M1.
+
+## The size range one rule covers; species data stays inside it (SpeciesCatalog checks 1.0..2.0).
+const MIN_BODY_SIZE := 0.5
+const MAX_BODY_SIZE := 2.0
 
 var speed: float = 0.0          ## m/s at full health and energy
 var acceleration: float = 0.0   ## m/s^2
@@ -30,7 +40,9 @@ var mouths: Array[Dictionary] = []
 var spikes: Array[Dictionary] = []
 
 
-static func derive(genome: Genome, catalog: PartCatalog) -> Phenotype:
+## `body_size` is clamped to MIN_BODY_SIZE..MAX_BODY_SIZE; a value that is not a number counts as 1.
+static func derive(genome: Genome, catalog: PartCatalog, body_size: float = 1.0) -> Phenotype:
+	var s := clampf(body_size, MIN_BODY_SIZE, MAX_BODY_SIZE) if is_finite(body_size) else 1.0
 	var p := Phenotype.new()
 	var sums := {}
 	for part in _ranked_parts(genome, catalog):
@@ -41,24 +53,24 @@ static func derive(genome: Genome, catalog: PartCatalog) -> Phenotype:
 		for stat in def["effects"]:
 			# Costs (upkeep, mass) are paid in full for every copy; only benefits diminish.
 			var full_cost: bool = stat == "upkeep" or stat == "mass"
-			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (scale if full_cost else share)
+			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (scale if full_cost else share) * s
 		var arc := deg_to_rad(def["arc_deg"])
 		if def["category"] == "mouth":
 			p.mouths.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "diet": def["diet"]})
 			if not p.diets.has(def["diet"]):
 				p.diets.append(def["diet"])
 		elif type_id == "spike":
-			var damage: float = def["effects"].get("ram_damage", 0.0) * scale
+			var damage: float = def["effects"].get("ram_damage", 0.0) * scale * s
 			p.spikes.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "damage": damage})
 
-	p.mass = catalog.base("mass", 1.0) + sums.get("mass", 0.0)
-	p.radius = catalog.base("radius", 0.5)
+	p.mass = catalog.base("mass", 1.0) * s + sums.get("mass", 0.0)
+	p.radius = catalog.base("radius", 0.5) * s
 	p.speed = _cap(catalog, "speed", (catalog.base("speed") + sums.get("speed", 0.0)) / p.mass)
 	p.acceleration = _cap(catalog, "acceleration", (catalog.base("acceleration") + sums.get("acceleration", 0.0)) / p.mass)
 	p.turn_rate = _cap(catalog, "turn_rate", catalog.base("turn_rate") + sums.get("turn_rate", 0.0))
-	p.max_health = catalog.base("max_health") + sums.get("max_health", 0.0)
+	p.max_health = catalog.base("max_health") * s + sums.get("max_health", 0.0)
 	p.energy_capacity = catalog.base("energy_capacity") + sums.get("energy_capacity", 0.0)
-	p.upkeep = catalog.base("upkeep") + sums.get("upkeep", 0.0)
+	p.upkeep = catalog.base("upkeep") * s + sums.get("upkeep", 0.0)
 	p.move_cost = catalog.base("move_cost") * p.mass
 	p.sight = _cap(catalog, "sight", catalog.base("sight") + sums.get("sight", 0.0))
 	p.defense = _cap(catalog, "defense", sums.get("defense", 0.0))

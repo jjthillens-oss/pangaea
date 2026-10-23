@@ -1,0 +1,79 @@
+{
+  "id": "pool_rim",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - M1 micro world, not visually approved",
+  "purpose": "M1 microscopic world's edge (engineering placeholder until the owner picks the look): a dark dish wall that drops from the swim plane into the fluid where the collision stops the cell, the floor's rim lip and a shelf out past the edge of the camera view. The pool scene places it as its Rim (micro-world plan C4).",
+  "category": "rim",
+  "source_blend": "assets/source/blender/pool_rim.blend",
+  "generator_script": "tools/blender/make_m1_micro_rim.py",
+  "export_path": "assets/export/pool_rim.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    "assets/export/M_PoolRim.tres"
+  ],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 132.0,
+    "y_forward": 132.0,
+    "z_up": 31.238
+  },
+  "triangles": 3840,
+  "triangle_budget": 4000,
+  "textures": [],
+  "materials": [
+    "M_PoolRim"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "PoolRim"
+  ],
+  "pivot": "pool centre on the swim plane (Godot y = 0)",
+  "radius_m": 66.0,
+  "vertex_colors": {
+    "attribute": "RimColor",
+    "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_PoolRim.tres)",
+    "note": "Linear RGB, with gentle mottling: dark, cool stone on the lip and shelf, and a lighter navy on the wall's inner face from 1 m down, which the sun never reaches on the north side.",
+    "stone": [
+      0.03,
+      0.034,
+      0.045
+    ],
+    "wall": [
+      0.07,
+      0.13,
+      0.19
+    ],
+    "max_luminance": 0.1321
+  },
+  "profile_m": {
+    "inner_edge": [
+      38.619,
+      38.695
+    ],
+    "plane_crossing": [
+      40.036,
+      40.039
+    ],
+    "skirt_bottom": -30.0,
+    "lip": [
+      42.0,
+      1.2
+    ],
+    "shelf": [
+      45.0,
+      1.0
+    ],
+    "max_height_inside_r39": -0.46,
+    "min_height_r41_5_to_43": 1.018,
+    "shelf_heights": [
+      0.923,
+      1.058
+    ]
+  },
+  "contract": "Shape only, whatever the material: the wall's inner face in r 38.5-38.8 at every azimuth down to at least 5 m, the surface crossing the swim plane between the hard radius and 1 m outside it, at or below -0.45 m inside r 39, the lip above +0.8 m over r 41.5-43, a level shelf at about +1.0 m past the widest view, every face looking up or into the pool (tests/test_assets.gd).",
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_micro_rim.py; no external or generated meshes."
+}

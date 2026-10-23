@@ -1,0 +1,105 @@
+{
+  "id": "creature_ambush_body",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "M1 step 3 ambush hunter body (role: ambush): a big, flat, dark mottled pebble with a warty hide and wet amber eyes glowing under a heavy wrinkled brow. Body only; its parts come from the part GLBs.",
+  "category": "creature_body",
+  "source_blend": "assets/source/blender/creature_ambush_body.blend",
+  "generator_script": "tools/blender/make_m1_production.py",
+  "export_path": "assets/export/creature_ambush_body.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    "assets/export/M_AmbushBody.tres"
+  ],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.92,
+    "y_forward": 1.0,
+    "z_up": 0.276
+  },
+  "triangles": 2922,
+  "triangle_budget": 4000,
+  "textures": [
+    {
+      "name": "T_AmbushHunter_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_AmbushHunter_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_AmbushHunter_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_AmbushBody",
+    "M_AmbushBrow",
+    "M_AmbushEye",
+    "M_AmbushPupil"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Body",
+    "Brow",
+    "Eye_L",
+    "Eye_R",
+    "Pupil_L",
+    "Pupil_R"
+  ],
+  "frame": {
+    "equator_rx_m": 0.46,
+    "equator_rz_m": 0.5,
+    "source": "game/scenes/pool/part_placement.gd RX and RZ; the part GLBs sit on this outline at the swim plane"
+  },
+  "top_m": 0.176,
+  "bottom_m": 0.1,
+  "height_to_width": 0.3,
+  "pivot": "body centre on the swim plane (Godot y = 0); built at size 1, the creature view scales it by the species' body_size",
+  "pose_nodes": {
+    "Eye_L": "child of Body, origin at the eye's centre; material M_AmbushEye, whose emission the creature view drives",
+    "Eye_R": "as Eye_L",
+    "Brow": "child of Body, origin at the middle of the ridge"
+  },
+  "eye_material": "M_AmbushEye",
+  "eye_emission_rest": 0.4,
+  "vertex_colors": {
+    "attribute": "AmbushColor",
+    "encoding": "sRGB-encoded in COLOR_0; the engine material sets vertex_color_is_srgb (assets/export/M_AmbushBody.tres)",
+    "note": "Dark olive-brown back with blue-leaning mottles and light olive flecks, dark rings round the eye sockets, a cream belly.",
+    "back": "#5B4D31",
+    "mottle": "#2C2F3B",
+    "fleck": "#7D6E45",
+    "belly": "#F4EAD2"
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; body vertex colours kept within 0.04 per channel; full-detail shading (a body built at a finer tessellation) baked to the normal map",
+    "tolerance_m": {
+      "body": 0.0015,
+      "eyes_and_small_meshes": 0.0006
+    },
+    "triangles_before": 3264,
+    "triangles_after": 2922
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_m1_production.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
