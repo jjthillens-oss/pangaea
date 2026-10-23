@@ -653,10 +653,17 @@ func _add(c: Creature) -> void:
 
 ## Spawns the site's creature now if the spawn check passes (from every place) and its niche has room.
 func _try_site(s: Dictionary, arena: PoolArena, places: Array[Vector2], tick: int) -> bool:
+	if endless:
+		# blocker_from's "no room" first: with the caps full it is the usual answer, and blocker_from
+		# is pure, so asking it first changes no outcome.
+		var asleep := spawns_asleep(s, places)
+		if (creatures.size() - _awake.size() >= int(world.caps.sleepers)) if asleep else (_awake.size() >= int(world.caps.awake)):
+			return false
+		if not blocker_from(s, arena, places).is_empty():
+			return false
+		return spawn_site(s, tick, asleep) != null
 	if not blocker_from(s, arena, places).is_empty():
 		return false
-	if endless:
-		return spawn_site(s, tick, spawns_asleep(s, places)) != null
 	return spawn_at(str(s.species), s.home, float(s.heading), str(s.id), tick) != null
 
 
@@ -689,12 +696,25 @@ static func _insert_sorted(list: Array[Creature], c: Creature) -> void:
 	list.insert(i, c)
 
 
-## Adds a queue entry, keeping the queue sorted by (at_tick, site).
+## Adds a queue entry, keeping the queue sorted by (at_tick, site): before the first entry that is
+## not less. The endless world's queue only ever changes here, at its front and by an order-keeping
+## filter, so it is always sorted and a binary search finds that place; the pool's tests edit theirs,
+## so it keeps the scan.
 func _enqueue(site_id: String, species_id: String, at_tick: int) -> void:
 	var entry := {"site": site_id, "species": species_id, "at_tick": at_tick}
 	var i := 0
-	while i < queue.size() and (int(queue[i].at_tick) < at_tick or (int(queue[i].at_tick) == at_tick and str(queue[i].site) < site_id)):
-		i += 1
+	if endless:
+		var hi := queue.size()
+		while i < hi:
+			var mid := (i + hi) >> 1
+			var q: Dictionary = queue[mid]
+			if int(q.at_tick) < at_tick or (int(q.at_tick) == at_tick and str(q.site) < site_id):
+				i = mid + 1
+			else:
+				hi = mid
+	else:
+		while i < queue.size() and (int(queue[i].at_tick) < at_tick or (int(queue[i].at_tick) == at_tick and str(queue[i].site) < site_id)):
+			i += 1
 	queue.insert(i, entry)
 
 
