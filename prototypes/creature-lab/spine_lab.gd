@@ -1,7 +1,9 @@
 extends Node3D
-## Spine Lab (prototype 0b) viewer. Command line (after --): --body=NAME|all, --anim=swim|rest|live,
-## --duration=SECONDS, --divisions=N (skin grid), --hud=0. "live" rebuilds the skin every frame while one vertebra
-## moves, to show rebuild cost.
+## Spine Lab viewer (prototypes 0b and Stage 1). Command line (after --): --body=NAME|all|stage1,
+## --anim=swim|pose|rest|live, --duration=SECONDS, --divisions=N (skin grid), --hud=0. "all" shows the spine bodies,
+## "stage1" the ten Stage 1 bodies with limbs (names s1_*). "pose" sweeps the spine through +-60 degrees and the limbs
+## through +-90 degrees (CREATURE_GEOMETRY_SPEC.md section 10 test 6). "live" rebuilds the skin every frame while one
+## vertebra moves, to show rebuild cost.
 
 const Lab := preload("res://lab_spine.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
@@ -33,10 +35,11 @@ func _ready() -> void:
 			"divisions": divisions = int(kv[1])
 			"hud": show_hud = kv[1] != "0"
 	_build_world()
-	var names: Array = Lab.BODY_NAMES if body_choice == "all" else [body_choice]
-	# Display only: each body is scaled to about 1 m long and turned side-on, in rows of four; the HUD gives real
-	# sizes.
-	var columns := mini(4, names.size())
+	var names: Array = Lab.BODY_NAMES if body_choice == "all" else (Lab.stage1_names() if body_choice == "stage1"
+			else [body_choice])
+	# Display only: each body is scaled to about 1 m long and turned side-on (three-quarter view for bodies with
+	# limbs), in rows of four or five; the HUD gives real sizes.
+	var columns := mini(5 if names.size() > 8 else 4, names.size())
 	for n in names.size():
 		var desc = Lab.body(names[n])
 		var arrays := SkinCpu.build(desc, divisions)
@@ -48,10 +51,10 @@ func _ready() -> void:
 		var box: AABB = desc.bounds_m()
 		var k := 1.0 / box.get_longest_axis_size()
 		rig.scale = Vector3.ONE * k
-		rig.rotation.y = -0.5 * PI
-		var centre := box.get_center()
+		rig.rotation.y = -0.5 * PI + (0.6 if not desc.limbs.is_empty() else 0.0)
 		var slot := Vector3((n % columns - 0.5 * (columns - 1)) * 1.4, 0.0, (n / columns) * 1.3)
-		rig.position = slot + Vector3(centre.z * k, -box.position.y * k + 0.02, -centre.x * k)
+		var centre: Vector3 = rig.transform.basis * box.get_center()
+		rig.position = slot + Vector3(-centre.x, -box.position.y * k + 0.02, -centre.z)
 		rigs.append(rig)
 	_place_camera(1.4 * columns, int(ceil(names.size() / float(columns))))
 
@@ -62,6 +65,9 @@ func _process(delta: float) -> void:
 	if anim == "swim":
 		for r in rigs:
 			r.swim(dt)
+	elif anim == "pose":
+		for r in rigs:
+			r.pose_sweep(time)
 	elif anim == "live":
 		for n in rigs.size():
 			var r = rigs[n]
@@ -72,11 +78,11 @@ func _process(delta: float) -> void:
 			_build_ms[n] = arrays["ms"]["total"]
 			r.mesh_instance.mesh = SpineRig.build_mesh(arrays, PALETTE[n % PALETTE.size()])
 	if show_hud:
-		var lines := PackedStringArray(["SPINE LAB  (prototype 0b)  anim: %s  grid: length/%d  t=%.1f s" % [anim, divisions, time]])
+		var lines := PackedStringArray(["SPINE LAB  (0b + Stage 1)  anim: %s  grid: length/%d  t=%.1f s" % [anim, divisions, time]])
 		for n in rigs.size():
 			var r = rigs[n]
-			lines.append("%-8s %4.2f m  %2d vertebrae  %5d triangles  skin build %.0f ms (GDScript)"
-					% [r.name, r.desc.bounds_m().get_longest_axis_size(), r.desc.vertebrae.size(),
+			lines.append("%-16s %4.2f m  %2d vertebrae  %2d limbs  %5d triangles  skin build %.0f ms (GDScript)"
+					% [r.name, r.desc.bounds_m().get_longest_axis_size(), r.desc.vertebrae.size(), r.limb_roots.size(),
 					r.mesh_instance.mesh.surface_get_array_index_len(0) / 3, _build_ms[n]])
 		hud.text = "\n".join(lines)
 	if duration > 0.0 and time >= duration:
@@ -85,7 +91,7 @@ func _process(delta: float) -> void:
 
 func _place_camera(span: float, rows: int) -> void:
 	var depth := 1.3 * (rows - 1)
-	var dist := 0.8 * span + 1.2
+	var dist := (0.62 if span > 6.0 else 0.8) * span + 1.2
 	camera.position = Vector3(0.0, 0.5 * dist, depth + 0.85 * dist)
 	camera.look_at(Vector3(0.0, 0.15, 0.5 * depth), Vector3.UP)
 

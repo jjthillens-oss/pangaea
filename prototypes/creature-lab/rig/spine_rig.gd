@@ -118,6 +118,19 @@ func swim(dt: float) -> void:
 		skeleton.set_bone_pose_rotation(limb_roots[c], Quaternion(Vector3.RIGHT, swing))
 
 
+## The posing sweep of CREATURE_GEOMETRY_SPEC.md section 10 test 6 at time t: the spine bends to +-60 degrees in
+## total and each limb swings +-90 degrees at its root, on slower and faster sines so every combination shows.
+func pose_sweep(t: float) -> void:
+	var n: int = desc.vertebrae.size()
+	var bend := deg_to_rad(60.0) * sin(TAU * 0.25 * t) / float(maxi(1, n - 1))
+	for i in n:
+		if i != root_bone:
+			skeleton.set_bone_pose_rotation(i, Quaternion(Vector3.UP, bend))
+	for c in limb_roots.size():
+		var swing := deg_to_rad(90.0) * sin(TAU * 0.4 * t + PI * float(c % 2))
+		skeleton.set_bone_pose_rotation(limb_roots[c], Quaternion(Vector3.RIGHT, swing))
+
+
 ## Length of the body along the spine in metres, end cap to end cap: the `body_length_m` shader uniform.
 func body_length_m() -> float:
 	var n: int = desc.vertebrae.size()

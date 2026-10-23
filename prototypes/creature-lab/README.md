@@ -1,4 +1,4 @@
-# Creature Lab: Gait Lab (prototype 0a)
+# Creature Lab: Gait Lab (0a), Spine Lab (0b) and Stage 1 limbs
 
 Status: PROTOTYPE, approved by the owner on 2026-10-23 ("Build Gait Lab"). Not production code. Nothing here is loaded
 by the game, and nothing in `game/` was changed. This folder is its own Godot project, so the main project's import,
@@ -49,3 +49,25 @@ prototypes/creature-lab/tools/render_clips.sh OUT_DIR                           
 | `tools/measure.gd`, `tools/render_clips.sh` | Rig measurements and clips |
 
 Scripts have no `class_name` and load each other by path, so nothing leaks into a global class list.
+
+## Spine Lab (0b) and Stage 1 limbs
+
+Generated creature bodies: a spine of 3–24 vertebrae with limbs of 2–5 joints, skinned by Surface Nets in GDScript
+(`skin/skin_cpu.gd`) and in a compute shader (`skin/skin_gpu.gd`, `skin/surface_nets.glsl`) that gives the same mesh.
+Results: `docs/research/spore/SPINE_LAB_REPORT.md` and `STAGE1_LIMBS_REPORT.md`.
+
+```bash
+$G --path prototypes/creature-lab spine_lab.tscn -- --body=stage1 --anim=pose     # the ten Stage 1 bodies posing
+$G --headless --path prototypes/creature-lab --script res://tests/run_spine_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tests/run_stage1_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tools/pose_matrix.gd  # -> results/pose_error.json
+xvfb-run $G --path prototypes/creature-lab --rendering-method forward_plus --rendering-driver vulkan --script res://tools/skin_bench.gd
+```
+
+| Path | Role |
+| --- | --- |
+| `data/body_rules.json`, `data/spine_bodies.json`, `data/stage1_bodies.json` | Limits and test bodies (PROPOSED) |
+| `domain/body_description.gd`, `domain/body_codec.gd`, `domain/body_field.gd` | Body description, canonical save text, capsule field |
+| `skin/` | Grid, GDScript and GPU builders, mesh checks |
+| `rig/spine_rig.gd` | Generated skeleton (vertebrae and limb joints), skinned mesh with CUSTOM0/CUSTOM1 |
+| `spine_lab.gd`, `spine_lab.tscn` | Viewer |

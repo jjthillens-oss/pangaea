@@ -56,6 +56,10 @@ animation beyond the posing sweep.
 
 Limbs attach to vertebrae only in Stage 1 (no limbs branching from limbs; a later option).
 
+**Prototype built 2026-10-23** in `prototypes/creature-lab/` (`STAGE1_LIMBS_REPORT.md`): limbs, the ten test bodies,
+tests 1–3, 5 and 7 met for the test bodies; test 6 met at gait range, not at the full ±90° limb swing. Still open:
+parts sockets, the orbit viewer and the both-renderer contact sheet.
+
 Acceptance: `CREATURE_GEOMETRY_SPEC.md` §10 items 1–3 and 5–7, plus **measured** rebuild and bake times in the path
 chosen after 0b. The 33 ms live-preview target moves to Stage 2; probe 0b already showed GDScript alone cannot meet it.
 Blender parity (item 8) comes in Stage 4. Contact sheet of all ten bodies at rest and posed, in both renderers.
