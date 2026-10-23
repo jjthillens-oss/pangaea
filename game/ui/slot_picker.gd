@@ -59,10 +59,15 @@ func show_slots(p_peeks: Array[Dictionary], p_current: int) -> void:
 	current = p_current
 	_fill()
 	if is_inside_tree() and visible:
-		var focus: Button = _play_buttons[clampi(current - 1, 0, _play_buttons.size() - 1)] if not _play_buttons.is_empty() else _back
-		if focus.disabled:
-			focus = _back
-		focus.grab_focus()
+		first_focus().grab_focus()
+
+
+## The first slot that can be picked (the one in use cannot), else Back.
+func first_focus() -> Button:
+	for b in _play_buttons:
+		if not b.disabled:
+			return b
+	return _back
 
 
 func close() -> void:
