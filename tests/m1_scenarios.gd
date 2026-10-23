@@ -34,7 +34,10 @@ const RECORD_COMMAND := "godot --headless --path . --script res://tools/godot/re
 
 
 ## A new lineage at the layout spawn, as GameSession.start_new makes one: {"sim": PoolSim, "bot": Object}.
-static func make(scenario: String, seed_value: int) -> Dictionary:
+## With `relationships` (a creatures_m1.json "relationships" block, S2 D-18), every species' brain
+## config is built from that block instead of the data's, as the catalog builds it, so a test can
+## switch each relationship rule (S2G1, tests/test_hash_identity.gd). The step 2 pool has no species.
+static func make(scenario: String, seed_value: int, relationships: Variant = null) -> Dictionary:
 	assert(scenario in SCENARIOS, "unknown scenario %s" % scenario)
 	var catalog := PartCatalog.load_from()
 	var layout := PoolLayout.load_from()
@@ -42,6 +45,9 @@ static func make(scenario: String, seed_value: int) -> Dictionary:
 	var save: SaveGame = r.save
 	save.player["position"] = PlaneSpace.to_save(layout.spawn)
 	var species: SpeciesCatalog = null if scenario == "pool" else SpeciesCatalog.load_from()
+	if species != null and relationships is Dictionary:
+		for id in species.configs:
+			species.configs[id] = CreatureBrain.config(id, species.species[id], species.ai, relationships)
 	var sim := PoolSim.create(save, catalog, layout, species)
 	var bot: Object = KiterBot.new(seed_value) if scenario == "threats_kiter" else ForageBot.new()
 	return {"sim": sim, "bot": bot}
@@ -55,8 +61,9 @@ static func record_of(scenario: String, seed_value: int, sim: PoolSim) -> Dictio
 
 ## Steps the scenario and returns a record after exactly each tick count in `at` (ascending).
 ## Events are drained every tick, as the game does; draining never changes the state.
-static func run(scenario: String, seed_value: int, at: Array[int]) -> Array[Dictionary]:
-	var made := make(scenario, seed_value)
+## `relationships` as make().
+static func run(scenario: String, seed_value: int, at: Array[int], relationships: Variant = null) -> Array[Dictionary]:
+	var made := make(scenario, seed_value, relationships)
 	var sim: PoolSim = made.sim
 	var bot = made.bot
 	var out: Array[Dictionary] = []

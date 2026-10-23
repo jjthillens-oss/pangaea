@@ -221,10 +221,13 @@ static func data() -> Dictionary:
 	return _data
 
 
-## A new lineage of `body` (or RACER) in the endless world at home, as a new endless game starts.
-## Read only after missing() is empty.
-static func make_sim(body: String, seed_value: int) -> Variant:
+## A new lineage of `body` (or RACER) in the endless world at home, as a new endless game starts,
+## with the world's growth switch set to `growth` (S2 build plan BP-6). The content is shared by
+## every gate sim, so each call sets the switch; S1's gates take the default and run with growth
+## off, where endless size 1 is S1's (S2G1). Read only after missing() is empty.
+static func make_sim(body: String, seed_value: int, growth := false) -> Variant:
 	var d := data()
+	d.content.config.switches["growth"] = growth
 	var r := Lineage.found(seed_value, BUILD_ID, d.catalog, "hunter" if body == RACER else body)
 	if body == RACER:
 		make_racer(r.save.genome, d.catalog)
