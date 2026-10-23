@@ -36,6 +36,38 @@ func test_zoom_is_ignored_while_the_growth_dolly_runs() -> void:
 	pool.free()
 
 
+## S2 (V-20): the start fade draws every look the growth brings once, so none compiles in play: the
+## algae ball, the lurker's and the elder rammer's bodies, M_Morsel, M_RemnantLimp, the rim hull, the
+## beat's pre-blur veil and its glitter.
+func test_the_start_fade_warms_every_growth_look() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session())
+	var meshes := pool.warm_up_meshes()
+	var has_material := func(test: Callable) -> bool:
+		for mesh in meshes:
+			for i in mesh.get_surface_count():
+				var m := mesh.surface_get_material(i)
+				if m != null and test.call(m):
+					return true
+		return false
+	check(meshes.has(FoodView.look_mesh("algae_ball")), "the algae ball")
+	check(meshes.has(FoodView.look_mesh("plankton")) and meshes.has(FoodView.look_mesh("carrion")), "and the M1 food")
+	for asset in ["creature_lurker_body", "creature_elder_rammer_body"]:
+		var body := CreatureView.body_meshes(asset)
+		check(not body.is_empty() and body.all(func(m: Mesh) -> bool: return meshes.has(m)), "every mesh of %s" % asset)
+	check(has_material.call(func(m: Material) -> bool: return m == CreatureView.MORSEL_MATERIAL), "M_Morsel")
+	check(has_material.call(func(m: Material) -> bool: return m == CreatureView.LIMP_MATERIAL), "M_RemnantLimp")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == CreatureView.RIM_SHADER), "the rim hull")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == GrowthBeat.PREBLUR_SHADER), "the pre-blur veil")
+	check(has_material.call(_is_glitter), "the glitter")
+	pool.free()
+
+
+static func _is_glitter(m: Material) -> bool:
+	var sprite := m as StandardMaterial3D
+	return sprite != null and sprite.billboard_mode == BaseMaterial3D.BILLBOARD_ENABLED and sprite.albedo_texture != null \
+		and sprite.albedo_texture.resource_path == GrowthBeat.FOOD_HAZE.plankton
+
+
 func test_the_camera_looks_north_down_at_the_set_pitch_and_distance() -> void:
 	var camera := _camera()
 	var target := Vector3(5.0, 0.0, -3.0)

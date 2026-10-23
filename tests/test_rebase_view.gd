@@ -79,9 +79,12 @@ func test_a_rebase_during_a_growth_beat_moves_nothing() -> void:
 		pool._route({"type": "growth_began", "from": 1, "to": 2, "center_old": c, "center_am": [0.0, 0.0], "factor": 1.6})
 		pool._route(FakeEvents.unloaded(key, "growth"))
 		pool._route(FakeEvents.loaded(Vector2i(901, 901), [FakeEvents.shell("fresh_rv", Vector2(2.0, -3.0), 0.4, "rock_a")]))
-		pool._route({"type": "grew", "from": 1, "to": 2, "settled_to": Vector2.ZERO, "haze": [], "remnants": [], "morsels": [],
+		var haze := [{"kind": "plant", "look": "plankton", "position": c + Vector2(3.0, 2.0)},
+			{"kind": "plant", "look": "plankton", "position": c + Vector2(-4.0, 1.0)}]
+		pool._route({"type": "grew", "from": 1, "to": 2, "settled_to": Vector2.ZERO, "haze": haze, "remnants": [], "morsels": [],
 			"checkpoint_am": [0.0, 0.0, 0.0, 2.0]})
 	check(not a.rocks.retiring_of("rock_a").is_empty() and not a.rocks.fresh_of("rock_a").is_empty(), "shells retire and come in")
+	check(not a.growth_beat.glitter().is_empty() and not a.growth_beat.old_food().is_empty(), "the old food and its glitter")
 	var worst := 0.0
 	var worst_what := ""
 	var compared := 0

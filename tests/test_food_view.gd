@@ -5,6 +5,10 @@ extends TestCase
 ## good; over caps.food_items the farthest zones wholly out of view are trimmed; a new world fills
 ## every food zone at once; each zone draws its plankton places from its own stream, so they do not
 ## depend on the route.
+##
+## The scene's FoodView in S2 (T5.4; s2-view 4.6, V-10, V-24): it wears a look and draws each item at
+## its own radius over the look's, leaves morsels to their creatures' views, and keeps what it last
+## drew for the growth beat's still copy, re-expressed as the world is.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SEED := 4302
@@ -347,6 +351,82 @@ func test_pool_mode_has_no_zone_streams_or_food_view() -> void:
 	check(not sim.plankton.endless and sim.plankton.active_zones.is_empty(), "no food view")
 	for z in sim.region.zones:
 		check(sim.plankton.count_in(z.id) <= sim.plankton.target_count(z), "zone %s shows its count" % z.id)
+
+
+# --- the scene's FoodView (S2, T5.4) ---
+
+func test_a_look_swaps_the_mesh_and_each_item_draws_at_its_own_radius() -> void:
+	var plants := _food_view("plant")
+	check_eq(plants.look, "plankton", "plants start as plankton")
+	plants.sync([_plant("p1", Vector2(1.0, 2.0), 0.18), _plant("p2", Vector2(-3.0, 0.5), 0.09)] as Array[Dictionary], 5.0)
+	check_eq(_scale_of(plants, "p1"), 1.0, "an item at the look's radius draws exactly as before (the pool's food)")
+	check_near(_scale_of(plants, "p2"), 0.5, 1e-6, "an item at half the radius draws at half the size")
+	plants.set_look("algae_ball")
+	check(plants.multimesh.mesh == FoodView.look_mesh("algae_ball") and plants.food_mesh() == plants.multimesh.mesh,
+		"the algae ball's mesh is drawn from now on (and eaten)")
+	plants.set_look("no_such_look")
+	check_eq(plants.look, "algae_ball", "an unknown look is ignored")
+	plants.free()
+	var meat := _food_view("meat")
+	check_eq(meat.look, "carrion", "carrion starts as carrion")
+	var kept := {"id": "c1", "kind": "meat", "position": Vector2(2.0, 2.0), "radius": 0.1875, "source": "initial",
+		"age": 1.0, "lifetime": 120.0}
+	meat.sync([kept] as Array[Dictionary], 5.0)
+	check_near(_scale_of(meat, "c1"), 0.625, 1e-6, "carrion shrunk by a growth (0.3 / 1.6) draws at 0.625")
+	meat.free()
+
+
+func test_morsels_are_drawn_by_their_creatures_not_here() -> void:
+	var meat := _food_view("meat")
+	var items: Array[Dictionary] = [
+		{"id": "c1", "kind": "meat", "position": Vector2(0.0, 0.0), "radius": 0.3, "source": "initial", "age": 0.0, "lifetime": 120.0},
+		{"id": "m1", "kind": "meat", "position": Vector2(1.0, 0.0), "radius": 0.2, "source": "morsel", "age": 0.0, "lifetime": 30.0},
+		{"id": "c2", "kind": "meat", "position": Vector2(2.0, 0.0), "radius": 0.3, "source": "rammer", "age": 0.0, "lifetime": 120.0}]
+	meat.sync(items, 1.0)
+	check_eq(meat.shown_count(), 2, "two drawn: the morsel is not")
+	check_eq(meat.snapshot().keys(), ["c1", "c2"], "and it is not in what was drawn")
+	meat.free()
+
+
+func test_the_snapshot_keeps_what_was_drawn_and_its_copy_is_re_expressed() -> void:
+	var plants := _food_view("plant")
+	var items: Array[Dictionary] = [_plant("p1", Vector2(4.0, -2.0), 0.18), _plant("p2", Vector2(-6.0, 3.0), 0.12),
+		_plant("p3", Vector2(0.5, 9.0), 0.18)]
+	plants.sync(items, 7.25)
+	var snap := plants.snapshot()
+	check_eq(snap.keys(), ["p1", "p2", "p3"], "every drawn item by id")
+	for item in items:
+		check(snap[item.id].is_equal_approx(plants._transform_for(item, 7.25)), "%s as drawn" % item.id)
+	var c := Vector2(1.5, -0.5)
+	var drawn: Array[Transform3D] = []
+	drawn.assign(snap.values())
+	var copy := plants.retired_copy(drawn, c, 1.6)
+	check(copy.multimesh.mesh == plants.multimesh.mesh and copy.multimesh.instance_count == 3, "a still copy of the three")
+	for i in 3:
+		var was: Transform3D = drawn[i]
+		var now := copy.transforms[i]
+		check(now.origin.is_equal_approx(WorldSpace.reexpress_point(was.origin, c, 1.6)), "%d: re-expressed round the old centre" % i)
+		check_near(now.basis.get_scale().x, was.basis.get_scale().x / 1.6, 1e-5, "%d: and 1.6 times smaller" % i)
+	copy.free()
+	plants.free()
+
+
+## A FoodView of `kind` as pool.tscn makes one, outside the tree.
+static func _food_view(kind: String) -> FoodView:
+	var view := FoodView.new()
+	view.kind = kind
+	view.source = load(FoodView.LOOKS[FoodView.KIND_LOOKS[kind]].scene)
+	view._ready()
+	return view
+
+
+static func _plant(id: String, at: Vector2, radius: float) -> Dictionary:
+	return {"id": id, "kind": "plant", "position": at, "radius": radius, "phase": Vector2(0.3, 1.1), "born_tick": 0}
+
+
+## Item `id`'s drawn scale, as last drawn.
+static func _scale_of(view: FoodView, id: String) -> float:
+	return (view.snapshot()[id] as Transform3D).basis.get_scale().x
 
 
 ## The same absolute places, up to the float32 rounding of a local position in two frames (the

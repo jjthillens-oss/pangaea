@@ -8,9 +8,11 @@ extends TestCase
 ## The growth beat (S2G13 F, S2G24, S2G25; s2-view 4): its curves, the camera kept at the same
 ## absolute place and dollied back out, every container re-expressed with nothing moving on screen,
 ## leftovers adopted by id or sunk away (never popped), reduce motion, the cell's settle, a clock
-## that is the same at any frame rate, and "Now food" with the relations. The growth events are
-## faked (tests/fakes/fake_growth_events.gd) until T2's growth tick lands; the tests use their own
-## settings file and never save it.
+## that is the same at any frame rate, and "Now food" with the relations. The old food (T5.4, V-10,
+## V-22): the new plankton grows in as the algae ball while the old food is drawn on, re-expressed,
+## from copies that fade, and glitter sinks from where the old plankton and haze were. Most growth
+## events are faked (tests/fakes/fake_growth_events.gd); the food's is T2's real growth tick. The
+## tests use their own settings file and never save it.
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const FakeGrowthEvents := preload("res://tests/fakes/fake_growth_events.gd")
@@ -483,11 +485,13 @@ func test_no_pop_on_growth() -> void:
 	var pool := _growth_pool()
 	var c := pool.sim.motion.position
 	check(pool.sim.debug_spawn_creature("rammer", c + Vector2(-5.0, 3.0), 0.0), "a sleeper-to-be")
+	var dropped := pool.sim.carrion.spawn(c + Vector2(4.0, -6.0), "initial")
 	Frames.frame(pool)
 	var leaving := pool.creature_layer.views()[pool.creature_layer.views().size() - 1]
 	for i in 60:
 		leaving._process(DT)
 	pool._route(FakeGrowthEvents.began(c, 1, 2))
+	pool._route({"type": "carrion_expired", "food_id": dropped.id, "position": dropped.position, "reason": "growth"})
 	pool._route(FakeEvents.unloaded(Vector2i(900, 900), "growth"))
 	# The new chunk lacks one shell, the landmark and the zone: they must sink away, not vanish.
 	var e := _chunk_event(c, Vector2i(500, 500), 1.6, false)
@@ -504,6 +508,13 @@ func test_no_pop_on_growth() -> void:
 	var fresh_mmi := pool.rocks.multimesh_of("rock_a__fresh")
 	check(retiring_mmi != null and retiring_mmi.transparency < 1e-6, "frame 0: the leftover shell drawn whole")
 	check(fresh_mmi != null and is_equal_approx(fresh_mmi.transparency, 1.0), "frame 0: the new shell not yet in")
+	var copies := pool.growth_beat.old_food()
+	check_eq(copies.map(func(m: StillInstances) -> String: return m.name), ["OldPlankton", "OldCarrion"], "the old food is copied")
+	check(copies.all(func(m: StillInstances) -> bool: return m.transparency == 0.0), "frame 0: drawn whole")
+	check_eq(copies[1].transforms.size(), 1, "the dropped carrion in its copy")
+	var glitter: StillInstances = pool.growth_beat.glitter()[0]
+	check_eq(glitter.transforms.size(), 30, "a glitter sprite per haze entry")
+	var deepest := 0.0
 	var gone_piece: Node3D = pool.landmarks.retiring().values()[0] if not pool.landmarks.retiring().is_empty() else null
 	check(gone_piece != null, "the landmark retires")
 	var gone_disc: MeshInstance3D = pool.zone_lights.retiring().values()[0] if not pool.zone_lights.retiring().is_empty() else null
@@ -524,6 +535,13 @@ func test_no_pop_on_growth() -> void:
 			check(is_instance_valid(gone_label) and gone_label.modulate.a > 0.0, "0.45 s: the label still drawn")
 			check(is_instance_valid(leaving) and not leaving.is_queued_for_deletion(), "0.45 s: the creature still drawn")
 			check(fresh_mmi.transparency < 1.0 and fresh_mmi.transparency > 0.0, "the new shell coming in (%.2f)" % fresh_mmi.transparency)
+			check(copies.all(func(m: StillInstances) -> bool: return not is_instance_valid(m) or m.transparency > 0.0),
+				"the old food fading")
+			check(_glitter_alpha(glitter) > 0.0, "the glitter drawn")
+		if is_instance_valid(glitter) and glitter.position.y < -1.5:
+			deepest = minf(deepest, glitter.position.y)
+			check(_glitter_alpha(glitter) <= GrowthBeat.GLITTER_ALPHA.y + 1e-6,
+				"below -1.5 tm the glitter's alpha is at most 0.25 (%.3f at %.2f tm)" % [_glitter_alpha(glitter), glitter.position.y])
 		if not by_end and t >= GrowthBeat.RETIRE_S + 0.1:
 			by_end = true
 			check(not is_instance_valid(retiring_mmi) or retiring_mmi.transparency >= 1.0 - 1e-6, "1.3 s: the shell gone")
@@ -533,7 +551,9 @@ func test_no_pop_on_growth() -> void:
 			check(not is_instance_valid(gone_disc) or gone_disc.transparency >= 1.0 - 1e-6, "1.3 s: the patch gone")
 			check(not is_instance_valid(gone_label) or gone_label.modulate.a <= 1e-6, "1.3 s: the label gone")
 			check(not is_instance_valid(leaving) or leaving.is_queued_for_deletion(), "1.3 s: the creature gone")
+			check(pool.growth_beat.old_food().is_empty(), "1.3 s: the old food's copies gone")
 	check(at_045 and by_end, "the beat ran past both checks")
+	check(deepest < -2.5, "the glitter sank (%.2f tm)" % deepest)
 	check(pool.rocks.multimesh_of("rock_a__retiring") == null and pool.rocks.multimesh_of("rock_a__fresh") == null,
 		"after the beat: no retiring or fresh lists left")
 	check(pool.landmarks.retiring().is_empty() and pool.zone_lights.retiring().is_empty() and pool.feedback.retiring().is_empty(),
@@ -598,8 +618,9 @@ func test_beat_is_frame_rate_independent() -> void:
 	var seen := []
 	for fps: float in [30.0, 144.0]:
 		var pool := _growth_pool()
-		pool._route(FakeGrowthEvents.began(pool.sim.motion.position, 1, 2))
-		pool._route(FakeGrowthEvents.grew(Vector2(1.0, 0.0)))
+		var c := pool.sim.motion.position
+		pool._route(FakeGrowthEvents.began(c, 1, 2))
+		pool._route(FakeGrowthEvents.grew(Vector2(1.0, 0.0), [{"kind": "plant", "look": "plankton", "position": c + Vector2.ONE}]))
 		var start := 100.0
 		var dt: float = 1.0 / fps
 		var frames: int = roundi(fps)
@@ -607,12 +628,150 @@ func test_beat_is_frame_rate_independent() -> void:
 			pool.growth_beat.advance(start + i * dt)
 			pool.camera.follow(pool.camera.focus, Vector2.ZERO, dt)
 		seen.append({"t": pool.growth_beat.t(), "k": pool.depth_k(), "swell": pool.growth_beat.swell(),
-			"distance": pool.camera.shown_distance(), "offset": pool.growth_beat.cell_offset()})
+			"distance": pool.camera.shown_distance(), "offset": pool.growth_beat.cell_offset(),
+			"glitter_y": pool.growth_beat.glitter()[0].position.y})
 		pool.free()
 	check_near(seen[0].t, 1.0, 1e-9, "both at beat second 1.0")
-	for key in ["t", "k", "swell", "distance"]:
+	check(seen[0].glitter_y < -2.0, "the glitter well on its way down (%.3f tm)" % seen[0].glitter_y)
+	for key in ["t", "k", "swell", "distance", "glitter_y"]:
 		check_near(seen[0][key], seen[1][key], 1e-4, "%s agrees at 30 and 144 fps" % key)
 	check((seen[0].offset as Vector2).distance_to(seen[1].offset) < 1e-4, "the offset agrees")
+
+
+## On T2's real growth tick (S2G24, V-10): frame 0 draws the new plankton as algae balls at almost
+## nothing, the carrion kept by the tick at its new radius (0.625 of what it was, the same on screen),
+## and every old plankton item from a copy exactly where frame A drew it; the copy fades by 0.6 s,
+## and the glitter sinks out of the old plankton and is gone by 6 s.
+func test_new_plankton_grows_in() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	var kept := sim.carrion.spawn(sim.motion.position + Vector2(3.0, 1.0), "rammer")
+	for i in 40:
+		Frames.frame(pool)
+	check_eq(pool.plankton_view.look, "plankton", "size 1: plankton")
+	var plants_a := pool.plankton_view.snapshot()
+	var meat_a: Transform3D = pool.carrion_view.snapshot()[kept.id]
+	check(plants_a.size() >= 5, "frame A draws the plankton round the cell (%d)" % plants_a.size())
+	var meat_px_a := Frames.project(pool.camera, meat_a.origin)
+	var pixels_a := []
+	for t: Transform3D in plants_a.values():
+		pixels_a.append(Frames.project(pool.camera, t.origin))
+	var g := sim.growth
+	g.meter = g.ring(sim.size())
+	g.full_since = sim.tick
+	g.due = true
+	Frames.frame(pool)
+	check_eq(sim.size(), 2, "the tick grew the world")
+	check(pool.plankton_view.look == "algae_ball" and pool.plankton_view.multimesh.mesh == FoodView.look_mesh("algae_ball"),
+		"frame 0: the plants are algae balls")
+	var plants_0 := pool.plankton_view.snapshot()
+	check(not plants_0.is_empty(), "the new zones are filled")
+	var biggest := 0.0
+	for t: Transform3D in plants_0.values():
+		biggest = maxf(biggest, t.basis.get_scale().x)
+	check(biggest <= 0.05, "every new plant item draws at scale <= 0.05 at frame 0 (%.3f)" % biggest)
+	var meat_0: Transform3D = pool.carrion_view.snapshot()[kept.id]
+	check_near(meat_0.basis.get_scale().x / meat_a.basis.get_scale().x, 0.625, 1e-4, "the kept carrion draws at 0.625")
+	var moved := Frames.project(pool.camera, meat_0.origin).distance_to(meat_px_a)
+	check(moved <= 0.5, "and where frame A drew it on screen (%.3f px)" % moved)
+	var copy: StillInstances = pool.growth_beat.old_food()[0]
+	check_eq(copy.transforms.size(), plants_a.size(), "every old plant item is in the copy")
+	var worst := 0.0
+	var base := Frames.in_pool(pool, copy)
+	for i in copy.transforms.size():
+		worst = maxf(worst, Frames.project(pool.camera, base + copy.transforms[i].origin).distance_to(pixels_a[i]))
+	check(worst <= 0.5, "frame 0: the old plankton is on screen where frame A drew it (%.3f px)" % worst)
+	var glitter: StillInstances = pool.growth_beat.glitter()[0]
+	check_eq(glitter.transforms.size(), mini(plants_a.size(), GrowthBeat.GLITTER_MAX), "a glitter sprite per old plant item")
+	check_near(_glitter_alpha(glitter), 0.0, 1e-9, "the glitter comes in from nothing")
+	var t0: float = pool.growth_beat._t0
+	pool.growth_beat.advance(t0 + 0.3)
+	check(is_instance_valid(copy) and copy.transparency > 0.0 and copy.transparency < 1.0, "0.3 s: the copy fading")
+	pool.growth_beat.advance(t0 + GrowthBeat.OLD_FOOD_FADE_S)
+	check(pool.growth_beat.old_food().is_empty(), "0.6 s: the copy gone")
+	pool.growth_beat.advance(t0 + GrowthBeat.GLITTER_SINK_S)
+	check_near(glitter.position.y, GrowthBeat.GLITTER_DEPTH_TM, 1e-6, "2.0 s: the glitter at -3 tm")
+	check_near(_glitter_alpha(glitter), GrowthBeat.GLITTER_ALPHA.y, 1e-6, "at 0.25")
+	pool.growth_beat.advance(t0 + 5.0)
+	check(_glitter_alpha(glitter) > 0.0 and _glitter_alpha(glitter) < GrowthBeat.GLITTER_ALPHA.y, "5.0 s: fading")
+	pool.growth_beat.advance(t0 + GrowthBeat.GLITTER_GONE_S)
+	check(pool.growth_beat.glitter().is_empty() and pool.growth_beat.fx.get_child_count() == 0, "6.0 s: gone")
+	check(not pool.growth_beat.running(), "and the beat is idle")
+	pool.free()
+
+
+## The glitter (V-22): a sprite per plant haze entry, the nearest GLITTER_MAX to the cell, the old
+## item's drawn diameter across (in new tm, over its sprite's span), and one per creature turned to
+## haze in its species' sprite; each where the thing was on screen.
+func test_haze_leaves_glitter_where_it_was() -> void:
+	var pool := _growth_pool()
+	var c := pool.sim.motion.position
+	var view := pool.creature_layer.views()[0]
+	var body := PlaneSpace.to_plane(view.position)
+	var near := [c + Vector2(2.0, 1.0), c + Vector2(-3.0, 4.0), c + Vector2(0.5, -6.0)]
+	var haze := []
+	for p in near:
+		haze.append({"kind": "plant", "look": "plankton", "position": p})
+	for i in GrowthBeat.GLITTER_MAX:
+		haze.append({"kind": "plant", "look": "plankton", "position": c + Vector2.from_angle(i) * 20.0})
+	for i in 30:
+		haze.append({"kind": "plant", "look": "plankton", "position": c + Vector2.from_angle(i) * 45.0})
+	haze.append({"kind": "creature", "look": "rammer", "position": body})
+	var was := {}
+	for p in near + [body]:
+		was[p] = Frames.project(pool.camera, PlaneSpace.to_world(p))
+	pool._route(FakeGrowthEvents.began(c, 1, 2))
+	pool._route(FakeGrowthEvents.converted(view.creature_id, "rammer", "haze", body, 0.4))
+	pool._route(FakeGrowthEvents.grew(Vector2.ZERO, haze))
+	var by_name := {}
+	for g in pool.growth_beat.glitter():
+		by_name[String(g.name)] = g
+	check_eq(by_name.keys(), ["Glitter", "Glitter_rammer"], "the plants' glitter and the haze creature's")
+	var plants: StillInstances = by_name.Glitter
+	check_eq(plants.transforms.size(), GrowthBeat.GLITTER_MAX, "at most 400 plant sprites")
+	var farthest := 0.0
+	for t in plants.transforms:
+		farthest = maxf(farthest, Vector2(t.origin.x, t.origin.z).length())
+	check(farthest < 30.0 / 1.6, "the nearest ones (%.1f tm out at most)" % farthest)
+	check_near(plants.transforms[0].basis.get_scale().x, 2.0 * 0.18 / 1.6 / 0.773, 1e-5, "a plankton's old diameter across")
+	var creature: StillInstances = by_name.Glitter_rammer
+	check_near(creature.transforms[0].basis.get_scale().x, 2.0 * 0.4 / 0.5, 1e-5, "the rammer's old diameter across")
+	var base := Frames.in_pool(pool, plants)
+	for i in near.size():
+		var px := Frames.project(pool.camera, base + plants.transforms[i].origin)
+		check(px.distance_to(was[near[i]]) < 0.5, "plant %d where it was on screen (%.3f px)" % [i, px.distance_to(was[near[i]])])
+	var at := Frames.project(pool.camera, Frames.in_pool(pool, creature) + creature.transforms[0].origin)
+	check(at.distance_to(was[body]) < 0.5, "the rammer's where it was (%.3f px)" % at.distance_to(was[body]))
+	pool.free()
+
+
+## The glitter sizes each sprite by its body span (s2-view 0.9): each HAZE_SPANS value is its PNG's
+## alpha >= 0.1 box, larger side over the texture's, to a pixel; every haze sprite named is there.
+func test_haze_spans_match_the_sprites() -> void:
+	var named := {}
+	for path in GrowthBeat.FOOD_HAZE.values() + GrowthBeat.SPECIES_HAZE.values():
+		named[path.get_file()] = true
+		check(ResourceLoader.exists(path), "%s exists" % path)
+	for file in named:
+		check(GrowthBeat.HAZE_SPANS.has(file), "%s has a span" % file)
+	for file: String in GrowthBeat.HAZE_SPANS:
+		var img := Image.load_from_file(ProjectSettings.globalize_path("res://assets/export/ambience/" + file))
+		if img == null:
+			check(false, "%s loads" % file)
+			continue
+		img.convert(Image.FORMAT_RGBA8)
+		var data := img.get_data()
+		var w := img.get_width()
+		var lo := Vector2i(w, img.get_height())
+		var hi := Vector2i(-1, -1)
+		for y in img.get_height():
+			for x in w:
+				if data[(y * w + x) * 4 + 3] >= 26:   # alpha >= 0.1
+					lo = Vector2i(mini(lo.x, x), mini(lo.y, y))
+					hi = Vector2i(maxi(hi.x, x), maxi(hi.y, y))
+		var span := maxf(float(hi.x + 1 - lo.x) / w, float(hi.y + 1 - lo.y) / img.get_height())
+		check(absf(span - float(GrowthBeat.HAZE_SPANS[file])) <= 1.0 / w, "%s spans %.3f (table %.3f)" % [file, span, GrowthBeat.HAZE_SPANS[file]])
 
 
 func test_now_food_comes_with_the_relations() -> void:
@@ -666,6 +825,11 @@ func test_a_respawn_ends_the_beat_at_once() -> void:
 
 ## An endless pool with a still cell, quiet cues, a rammer beside the cell and a chunk (900, 900) in
 ## view holding two shells, a landmark and a sunlit zone, so every container has something to draw.
+## A glitter's alpha now.
+static func _glitter_alpha(glitter: StillInstances) -> float:
+	return (glitter.material_override as StandardMaterial3D).albedo_color.a
+
+
 func _growth_pool() -> PoolScene:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var sim := pool.sim

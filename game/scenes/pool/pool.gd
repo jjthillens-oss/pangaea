@@ -252,6 +252,7 @@ func _build() -> void:
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
 	creature_layer.attach(sim, world_space)
+	apply_food_looks(sim_size())
 	markers.setup(sim, session.world.kit if is_endless() else null)
 	_update_markers()
 	if sim.species != null:
@@ -314,6 +315,8 @@ func apply_depth_k(k: float) -> void:
 	zone_lights.set_depth_k(k)
 	feedback.set_depth_k(k)
 	markers.set_size_k(k)
+	plankton_view.depth_k = k
+	carrion_view.depth_k = k
 
 
 ## The depth factor drawn now (1 outside a growth beat).
@@ -582,9 +585,26 @@ func _fade_in() -> void:
 
 ## What the start fade draws out of sight besides the eat burst: both food meshes, which first show
 ## at a meal, the zone light, whose patches may first come into view later, and a strike lane, which
-## first shows at a tell.
+## first shows at a tell. S2 (V-20): every food look (the algae ball first shows at size 2), the new
+## bodies, M_Morsel, M_RemnantLimp and the rim hull, and the beat's pre-blur veil and glitter.
 func warm_up_meshes() -> Array[Mesh]:
-	return [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
+	var out := [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
+	for look in FoodView.LOOKS:
+		var mesh := FoodView.look_mesh(look)
+		if not out.has(mesh):
+			out.append(mesh)
+	out.append_array(CreatureView.warm_up_growth_meshes())
+	out.append_array(GrowthBeat.warm_up_meshes())
+	return out
+
+
+## The food views wear the looks of `size` (world_cell.json ladder.food_looks: the algae ball at size
+## 2); the pool's are the plankton and carrion.
+func apply_food_looks(size: int) -> void:
+	var looks: Array = session.world.config.ladder.get("food_looks", []) if is_endless() else []
+	var at: Dictionary = looks[size - 1] if size >= 1 and size <= looks.size() else {}
+	plankton_view.set_look(str(at.get("plant", FoodView.KIND_LOOKS.plant)))
+	carrion_view.set_look(str(at.get("meat", FoodView.KIND_LOOKS.meat)))
 
 
 ## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at
@@ -757,6 +777,7 @@ func _route(event: Dictionary) -> void:
 			_begin_growth(event)
 		"grew":
 			growth_beat.apply_grew(event)
+			apply_food_looks(sim_size())
 			audio.play("grow")
 		"carrion_expired":
 			if event.get("reason") == "growth":
@@ -779,6 +800,7 @@ func _route(event: Dictionary) -> void:
 				camera.snap_to(cell_view.position)
 				creature_layer.attach(sim, world_space)
 				creature_layer.apply_relations(sim_size(), 0.0)
+				apply_food_looks(sim_size())
 				if audio.has_method(&"set_size"):
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)
