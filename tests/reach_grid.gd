@@ -11,6 +11,8 @@ const STEP := 0.5
 const UNITS_PER_STEP := 10       ## integer path costs: straight 10, diagonal 14 (x STEP / 10 m)
 const DIAGONAL_UNITS := 14
 const UNREACHED := 1 << 30
+## zone_points() buckets zones on this grid (bu), so a point tests only the zones near it.
+const ZONE_BUCKET := 8.0
 
 var layout: PoolLayout           ## null for a grid made by over()
 var arena: PoolArena
@@ -119,14 +121,63 @@ func points_in_circle(center: Vector2, radius: float) -> PackedInt32Array:
 	return out
 
 
-## Open points inside any plankton zone.
+## Open points inside any plankton zone, in index order. Zones are bucketed on a ZONE_BUCKET grid
+## first, so each point tests only the zone discs that reach its bucket.
 func zone_points() -> PackedInt32Array:
+	var buckets := {}
+	for z in zones:
+		var c: Vector2 = z.center
+		var r := float(z.radius)
+		for by in range(floori((c.y - r) / ZONE_BUCKET), floori((c.y + r) / ZONE_BUCKET) + 1):
+			for bx in range(floori((c.x - r) / ZONE_BUCKET), floori((c.x + r) / ZONE_BUCKET) + 1):
+				buckets.get_or_add(Vector2i(bx, by), []).append(z)
 	var out := PackedInt32Array()
 	for i in open.size():
 		if open[i] == 0:
 			continue
-		for z in zones:
-			if point(i).distance_to(z.center) <= z.radius:
+		var p := point(i)
+		for z in buckets.get(Vector2i(floori(p.x / ZONE_BUCKET), floori(p.y / ZONE_BUCKET)), []):
+			if p.distance_to(z.center) <= z.radius:
 				out.append(i)
 				break
+	return out
+
+
+## A component label per point (-1 where closed): open points joined by the moves distances_from
+## takes (8 directions) share a label, numbered in index order from 0. Cheaper than a distance pass
+## when only connection matters.
+func components() -> PackedInt32Array:
+	var labels := PackedInt32Array()
+	labels.resize(open.size())
+	labels.fill(-1)
+	var next := 0
+	var stack := PackedInt32Array()
+	for first in open.size():
+		if open[first] == 0 or labels[first] != -1:
+			continue
+		labels[first] = next
+		stack.append(first)
+		while not stack.is_empty():
+			var i := stack[stack.size() - 1]
+			stack.remove_at(stack.size() - 1)
+			var x := i % size
+			var y := floori(i / float(size))
+			for ny in range(maxi(y - 1, 0), mini(y + 2, rows)):
+				for nx in range(maxi(x - 1, 0), mini(x + 2, size)):
+					var n := ny * size + nx
+					if open[n] == 1 and labels[n] == -1:
+						labels[n] = next
+						stack.append(n)
+		next += 1
+	return labels
+
+
+## Open points on the grid's outer rows and columns, in index order.
+func border_points() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for i in open.size():
+		var x := i % size
+		var y := floori(i / float(size))
+		if open[i] == 1 and (x == 0 or y == 0 or x == size - 1 or y == rows - 1):
+			out.append(i)
 	return out

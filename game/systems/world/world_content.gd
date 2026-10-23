@@ -40,9 +40,9 @@ static func load_from(config_path: String, p_layout: PoolLayout, species: Specie
 
 ## Problems across the content; empty when the world can run. Cheap checks only (at most 50 ms,
 ## tests/test_world_content.gd), in this order: the world file, the kit, the tiles, the home block,
-## then the checks across files: the fixed rare kind, the interim carrion supply (C-13) and the
-## camera the rings assume. A world file that did not read gives its own problems alone, since the
-## content paths came from it.
+## then the checks across files: the fixed rare kind, the interim carrion supply (C-13), the camera
+## the rings assume and the local bound round a held creature's reach (B-6). A world file that did
+## not read gives its own problems alone, since the content paths came from it.
 func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStringArray:
 	var out := config.validate()
 	if not config.load_problems.is_empty():
@@ -65,4 +65,48 @@ func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStrin
 	var aspect := float(species.fairness.get("spawn_view_aspect", NAN))
 	if aspect != VIEW_ASPECT_ASSUMED:
 		out.append("species.fairness.spawn_view_aspect: %s, but the rings and the view set assume %s" % [aspect, VIEW_ASPECT_ASSUMED])
+	# B-6: the cell rebases beyond rebase_beyond_tm, a held creature's reach disc centre lies within
+	# hold of it, its disc reaches reach_max further and the disc's chunks a chunk's diagonal more.
+	var reach := reach_max(species)
+	var farthest := config.rebase_beyond_tm + float(config.rings.hold) + float(reach.radius_tm) + config.chunk_tm * sqrt(2.0)
+	if not (farthest < config.local_bound_tm):
+		out.append("%s.origin.local_bound_tm: rebase_beyond_tm + hold + reach_max + chunk_tm x sqrt 2 (%.2f) must be below it (%.2f); reach_max is %.2f tm, %s"
+			% [WorldConfig.FILE_NAME, farthest, config.local_bound_tm, reach.radius_tm, reach.where])
 	return out
+
+
+## The largest reach-disc radius in tm over the home block and every tile, among the sites live at
+## the sizes this build runs (size_start to max_size_in_build), and where it is:
+## {radius_tm, where: "b0/reef_c site 'a'"}; radius 0 and where "" with no live site. Sites the
+## validators refuse (an unknown species, a missing territory) are skipped.
+func reach_max(species: SpeciesCatalog) -> Dictionary:
+	var best := {"radius_tm": 0.0, "where": ""}
+	var sizes := range(config.size_start, config.max_size_in_build + 1)
+	for id in WorldConfig._sorted(tiles.tiles.keys()):
+		var t: Dictionary = tiles.tiles[id]
+		for s in t.sites:
+			var zone := TileCatalog._zone(t, s.territory_zone)
+			var z := {} if zone.is_empty() else {"center": TileCatalog._vec(zone.center), "radius": float(zone.radius)}
+			_take_reach(best, species, s.species, TileCatalog._vec(s.home), float(s.heading), z, s.sizes, sizes, "%s site '%s'" % [t.where, s.id])
+	for s in home.sites:
+		var z := {}
+		for zone in home.zones:
+			if zone.id == s.territory_zone:
+				z = {"center": Vector2(zone.x, zone.y), "radius": float(zone.radius)}
+		_take_reach(best, species, s.species, Vector2(s.x, s.y), float(s.heading), z, s.sizes, sizes, "%s site '%s'" % [home.where, s.id])
+	return best
+
+
+func _take_reach(best: Dictionary, species: SpeciesCatalog, kind: String, home_bu: Vector2, heading: float, zone: Dictionary,
+		live: Array, sizes: Array, where: String) -> void:
+	var site := {"species": kind, "home": home_bu, "heading": heading}
+	if not species.species.has(kind) or (species.behavior_of(kind) == "territorial" and zone.is_empty()):
+		return
+	var disc := species.reach_disc_for(site, species.territory_from(site, zone))
+	if disc.is_empty():
+		return
+	for n in sizes:
+		var radius := float(disc.radius) * WorldConfig.bu_to_tm(n)
+		if live.has(n) and radius > float(best.radius_tm):
+			best.radius_tm = radius
+			best.where = where

@@ -215,39 +215,32 @@ func test_every_open_point_is_reachable_and_close_enough_to_a_zone_to_survive_st
 
 # --- the S1 extractions (docs/s1/s1-interfaces.md 3.8): the endless world checks its tiles with them ---
 
-## A zone among shells (C-12): ZONE_CLEAR_SHARE of its points keep ZONE_CLEAR_MARGIN of open water.
-## A shell slid in from the east covers more of the zone the further in it comes; 76% clear passes
-## and 74% clear is refused.
-func test_zone_problems_refuses_a_zone_mostly_under_shells() -> void:
+## The gap rule (B-3): a zone's disc keeps ZONE_CLEAR_MARGIN (0.7 bu) from every collider. A collider
+## 0.69 bu off is refused with one message naming the nearest; 0.70 passes, along any direction and
+## wherever the tile lies (the rule reads only the gap, so it holds in every orientation).
+func test_zone_problems_keeps_every_zone_0_7_bu_from_every_collider() -> void:
 	var zone := {"id": "z", "center": Vector2(3.0, -2.0), "radius": 6.0, "capacity": 40.0, "growth_rate": 0.1}
 	var zones: Array[Dictionary] = [zone]
-	var at_76 := _shell_at_share(zone, 0.76)
-	var at_74 := _shell_at_share(zone, 0.74)
-	check(not at_76.is_empty() and not at_74.is_empty(), "a shell position gives each share")
-	if at_76.is_empty() or at_74.is_empty():
-		return
-	check_eq(PoolLayout.zone_problems(zones, at_76, INF), PackedStringArray(), "76% clear passes")
-	var refused := PoolLayout.zone_problems(zones, at_74, INF)
-	check(refused.size() == 1 and refused[0].begins_with("Zone 'z' has 74.") and refused[0].ends_with("of its points 0.7 m clear of shells; it needs 75%."),
-		"74%% clear is refused: %s" % [refused])
+	for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2(-0.6, 0.8)]:
+		var refused := PoolLayout.zone_problems(zones, _collider_at(zone, dir, 0.69), INF)
+		check_eq(refused, PackedStringArray(["Zone 'z' is 0.69 bu from collider 'near'; it keeps 0.7."]), "0.69 bu along %s" % dir)
+		check_eq(PoolLayout.zone_problems(zones, _collider_at(zone, dir, 0.70), INF), PackedStringArray(), "0.70 bu along %s passes" % dir)
 	var none: Array[Dictionary] = []
-	check_eq(PoolLayout.zone_problems(zones, none, INF), PackedStringArray(), "no shells, no clearance check")
-	# The share is counted from the zone's centre, so it is the same wherever the tile is placed.
+	check_eq(PoolLayout.zone_problems(zones, none, INF), PackedStringArray(), "no colliders, no gap check (the pool's path)")
 	var far := zone.duplicate()
 	far.center = Vector2(zone.center) + Vector2(64.0, -128.0)
-	var far_shell: Array[Dictionary] = [{"center": Vector2(at_74[0].center) + Vector2(64.0, -128.0), "radius": at_74[0].radius}]
-	check_eq(PoolLayout.zone_clear_share(far, far_shell), PoolLayout.zone_clear_share(zone, at_74), "the same share one tile over")
+	var far_zones: Array[Dictionary] = [far]
+	check_eq(PoolLayout.zone_problems(far_zones, _collider_at(far, Vector2.UP, 0.69), INF).size(), 1, "the same one tile over")
+	check_eq(PoolLayout.zone_problems(far_zones, _collider_at(far, Vector2.UP, 0.70), INF), PackedStringArray(), "and its pass")
 
 
-## One shell east of the zone whose clear share lies within 0.005 of `share`; [] when none is found.
-static func _shell_at_share(zone: Dictionary, share: float) -> Array[Dictionary]:
+## Two colliders off `zone` along `dir`: 'near' at `gap` bu and 'far' at 3 bu, far listed first, so the
+## message must name the nearest and not the first.
+static func _collider_at(zone: Dictionary, dir: Vector2, gap: float) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	for i in 400:
-		var shell := {"center": Vector2(zone.center) + Vector2(12.0 - i * 0.02, 0.0), "radius": 3.0}
-		var one: Array[Dictionary] = [shell]
-		if absf(PoolLayout.zone_clear_share(zone, one) - share) < 0.005:
-			out.append(shell)
-			return out
+	for c in [["far", 1.5, 3.0], ["near", 1.0, gap]]:
+		var r: float = c[1]
+		out.append({"id": c[0], "center": Vector2(zone.center) + dir * (float(zone.radius) + r + float(c[2])), "radius": r})
 	return out
 
 

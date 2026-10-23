@@ -11,12 +11,14 @@ const CELL_RADIUS := 0.5       ## clearance the spawn needs; the radius of every
 ## The part catalog's speed cap. A rock thinner than two ticks at this speed could be skipped.
 const MAX_SPEED := 6.0
 const ZONE_WALL_MARGIN := 1.0  ## zones keep this far inside the soft wall
-## A zone among shells (the endless world) keeps ZONE_CLEAR_SHARE of its grid points, ZONE_CLEAR_STEP
-## apart from its centre, at least ZONE_CLEAR_MARGIN clear of every shell: a plankton anchor needs the
-## item radius plus the drift reach (0.18 + 0.495) of open water (PlanktonField._try_spawn).
+## A zone among colliders (the endless world) keeps ZONE_CLEAR_MARGIN of open water between its disc
+## and every collider of its tile or home block (docs/s1/s1-build-plan.md B-3): a plankton anchor
+## needs the item radius plus the drift reach (0.18 + 0.495) of open water (PlanktonField._try_spawn),
+## so every anchor of the zone is clear whatever else is loaded, in every orientation.
 const ZONE_CLEAR_MARGIN := 0.7
-const ZONE_CLEAR_SHARE := 0.75
-const ZONE_CLEAR_STEP := 0.25
+## The gap is measured on Vector2 (float32) centres, so a gap authored at exactly the margin can read
+## a few micro-bu short of it; this much is forgiven, and nothing more.
+const ZONE_CLEAR_EPS := 1e-5
 const CAMERA_KEYS: PackedStringArray = ["pitch_deg", "fov_deg", "distance", "zoom_min", "zoom_max",
 	"zoom_step", "follow_half_life_s", "look_ahead_s", "look_ahead_max"]
 
@@ -210,8 +212,9 @@ func validate(max_speed: float = MAX_SPEED) -> PackedStringArray:
 
 
 ## The zone checks the pool and the endless world share: a positive radius, capacity and growth rate;
-## ZONE_WALL_MARGIN inside a soft wall at wall_r (INF: none); and, when `circles` ({center, radius})
-## are given, ZONE_CLEAR_SHARE of the zone's points clear of them (zone_clear_share).
+## ZONE_WALL_MARGIN inside a soft wall at wall_r (INF: none); and, when `circles` ({id, center,
+## radius}) are given, the gap rule: the zone's disc keeps ZONE_CLEAR_MARGIN from every circle, and a
+## zone that does not is named once, with its nearest circle.
 static func zone_problems(p_zones: Array[Dictionary], circles: Array[Dictionary], wall_r: float) -> PackedStringArray:
 	var errors := PackedStringArray()
 	for z in p_zones:
@@ -220,42 +223,16 @@ static func zone_problems(p_zones: Array[Dictionary], circles: Array[Dictionary]
 			continue
 		if z.center.length() + z.radius > wall_r - ZONE_WALL_MARGIN:
 			errors.append("Zone '%s' reaches within %.1f m of the soft wall." % [z.id, ZONE_WALL_MARGIN])
-		if not circles.is_empty():
-			var share := zone_clear_share(z, circles)
-			if share < ZONE_CLEAR_SHARE:
-				errors.append("Zone '%s' has %.1f%% of its points %.1f m clear of shells; it needs %.0f%%."
-					% [z.id, share * 100.0, ZONE_CLEAR_MARGIN, ZONE_CLEAR_SHARE * 100.0])
+		var gap := INF
+		var nearest := ""
+		for c in circles:
+			var g: float = Vector2(z.center).distance_to(c.center) - float(z.radius) - float(c.radius)
+			if g < gap:
+				gap = g
+				nearest = str(c.get("id", ""))
+		if gap < ZONE_CLEAR_MARGIN - ZONE_CLEAR_EPS:
+			errors.append("Zone '%s' is %.2f bu from collider '%s'; it keeps %.1f." % [z.id, gap, nearest, ZONE_CLEAR_MARGIN])
 	return errors
-
-
-## The share of the zone's grid points (ZONE_CLEAR_STEP apart, counted from its centre, so the same
-## for every placement and orientation of a tile) at least ZONE_CLEAR_MARGIN clear of every circle.
-static func zone_clear_share(z: Dictionary, circles: Array[Dictionary]) -> float:
-	var center: Vector2 = z.center
-	var radius := float(z.radius)
-	# Only circles within reach of the zone can cover a point of it.
-	var near: Array[Dictionary] = []
-	for c in circles:
-		if center.distance_to(c.center) < radius + float(c.radius) + ZONE_CLEAR_MARGIN:
-			near.append(c)
-	var n := floori(radius / ZONE_CLEAR_STEP)
-	var total := 0
-	var clear := 0
-	for j in range(-n, n + 1):
-		for i in range(-n, n + 1):
-			var offset := Vector2(i * ZONE_CLEAR_STEP, j * ZONE_CLEAR_STEP)
-			if offset.length() > radius:
-				continue
-			total += 1
-			var p := center + offset
-			var free := true
-			for c in near:
-				if p.distance_to(c.center) - float(c.radius) < ZONE_CLEAR_MARGIN:
-					free = false
-					break
-			if free:
-				clear += 1
-	return clear / float(total) if total > 0 else 0.0
 
 
 ## The tunnelling check the pool and the endless world share: a circle of radius x scale no thicker
