@@ -1,20 +1,13 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://game/ui/start_screen.gd" id="1_start"]
 [ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://game/ui/cell_preview.tscn" id="3_preview"]
 [ext_resource type="PackedScene" path="res://game/ui/notice_dialog.tscn" id="4_notice"]
+[ext_resource type="Shader" path="res://game/ui/title_backdrop.gdshader" id="5_backdrop"]
 
-[sub_resource type="Gradient" id="Gradient_water"]
-offsets = PackedFloat32Array(0, 1)
-colors = PackedColorArray(0.298, 0.608, 0.878, 1, 0.043, 0.18, 0.42, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_water"]
-gradient = SubResource("Gradient_water")
-width = 16
-height = 256
-fill_from = Vector2(0.5, 0)
-fill_to = Vector2(0.5, 1)
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_backdrop"]
+shader = ExtResource("5_backdrop")
 
 [node name="StartScreen" type="Control"]
 layout_mode = 3
@@ -26,15 +19,16 @@ grow_vertical = 2
 theme = ExtResource("2_theme")
 script = ExtResource("1_start")
 
-[node name="Background" type="TextureRect" parent="."]
+[node name="Background" type="ColorRect" parent="."]
+unique_name_in_owner = true
+material = SubResource("ShaderMaterial_backdrop")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("GradientTexture2D_water")
-expand_mode = 1
+mouse_filter = 2
 
 [node name="MainView" type="MarginContainer" parent="."]
 unique_name_in_owner = true
@@ -68,7 +62,7 @@ text = "Pangaea"
 [node name="Tagline" type="Label" parent="MainView/Row/Left"]
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
-text = "First life in a small pool."
+text = "Life starts small."
 
 [node name="Gap" type="Control" parent="MainView/Row/Left"]
 custom_minimum_size = Vector2(0, 40)
@@ -91,6 +85,16 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "New lineage"
 
+[node name="SlotsButton" type="Button" parent="MainView/Row/Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save slots"
+
+[node name="SettingsButton" type="Button" parent="MainView/Row/Left/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Settings"
+
 [node name="QuitButton" type="Button" parent="MainView/Row/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -108,6 +112,7 @@ layout_mode = 2
 theme_override_constants/separation = 14
 
 [node name="CardTitle" type="Label" parent="MainView/Row/ContinueCard/Box"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"AccentLabel"
 text = "Your lineage"
@@ -241,6 +246,19 @@ offset_top = -24.0
 offset_right = -32.0
 offset_bottom = -24.0
 grow_horizontal = 0
+grow_vertical = 0
+theme_type_variation = &"SmallLabel"
+
+[node name="Hint" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = -24.0
+offset_right = 32.0
+offset_bottom = -24.0
 grow_vertical = 0
 theme_type_variation = &"SmallLabel"
 

@@ -41,6 +41,7 @@ const KEY_ACTIONS := {
 	"move_left": [KEY_A, KEY_LEFT],
 	"move_right": [KEY_D, KEY_RIGHT],
 	"pause": [KEY_ESCAPE, KEY_P],
+	"grow": [KEY_G],
 	"toggle_fullscreen": [KEY_F11],
 	"toggle_debug": [KEY_F3],
 	"dev_fill": [KEY_F5],
@@ -54,6 +55,18 @@ const MOUSE_ACTIONS := {
 	"swim_to_cursor": MOUSE_BUTTON_LEFT,
 	"zoom_in": MOUSE_BUTTON_WHEEL_UP,
 	"zoom_out": MOUSE_BUTTON_WHEEL_DOWN,
+}
+## Controller defaults (UI pass), as InputCodes: the left stick and the d-pad swim, the shoulders
+## zoom, Menu pauses and Y grows. Every other action has no controller input.
+const PAD_ACTIONS := {
+	"move_up": ["axis:1:-1", "pad:11"],
+	"move_down": ["axis:1:1", "pad:12"],
+	"move_left": ["axis:0:-1", "pad:13"],
+	"move_right": ["axis:0:1", "pad:14"],
+	"zoom_in": ["pad:10"],
+	"zoom_out": ["pad:9"],
+	"pause": ["pad:6"],
+	"grow": ["pad:3"],
 }
 
 
@@ -209,8 +222,10 @@ func test_every_action_is_bound_by_physical_key_or_mouse_button() -> void:
 		check(action in actions, "%s exists" % action)
 		var codes := []
 		for event in _events(action):
+			if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+				continue
 			var key := event as InputEventKey
-			check(key != null, "%s is bound to keys only" % action)
+			check(key != null, "%s is bound to keys (and controller inputs) only" % action)
 			if key == null:
 				continue
 			check(key.keycode == KEY_NONE and key.physical_keycode != KEY_NONE,
@@ -221,6 +236,8 @@ func test_every_action_is_bound_by_physical_key_or_mouse_button() -> void:
 		check(action in actions, "%s exists" % action)
 		var buttons := []
 		for event in _events(action):
+			if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+				continue
 			var button := event as InputEventMouseButton
 			check(button != null, "%s is bound to a mouse button" % action)
 			if button != null:
@@ -229,6 +246,13 @@ func test_every_action_is_bound_by_physical_key_or_mouse_button() -> void:
 	for action in actions:
 		check(KEY_ACTIONS.has(action) or MOUSE_ACTIONS.has(action), "%s is one of the planned actions" % action)
 		check(InputMap.has_action(action), "%s is in the input map" % action)
+	for action in actions:
+		var pads := []
+		for event in _events(action):
+			if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+				check(event.device == -1, "%s's controller input works on any controller" % action)
+				pads.append(InputCodes.from_event(event))
+		check_eq(pads, PAD_ACTIONS.get(action, []), "%s controller inputs" % action)
 
 
 func test_space_and_the_right_mouse_button_stay_free_for_step_3() -> void:
