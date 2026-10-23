@@ -20,7 +20,8 @@ extends RefCounted
 ##    The gates that start out in the sea arrive at their points with it (tests/test_endless_gates.gd,
 ##    arrive()). It frees itself where it wedges between shells (Unjam, which HuntBot shares).
 ## Like player input next_intent only returns a SimIntent and never changes the sim. overdrive()
-## does change it, and only tests and soak gates call it.
+## does change it, and only tests and soak gates call it. Every swimmer's `keys` (EvadeBot.GrowthKeys,
+## S2) send the growth trigger on its first intent and, in a press run, Grow while the ring is full.
 ##
 ##     const SwimBot := preload("res://game/dev/swim_bot.gd")
 ##     var east = SwimBot.new(Vector2.RIGHT)
@@ -31,6 +32,7 @@ extends RefCounted
 ##     sim.step(east.next_intent(sim))
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const ARRIVE_M := 1.2          ## a camper eases off within this distance of the centre
 const MIN_THROTTLE := 0.35     ## and never below this while it still has to arrive
 
@@ -39,6 +41,7 @@ var throttle := 1.0
 var zone_id := ""              ## a camper's zone; "" for a straight swimmer
 var goal_am := PackedFloat64Array()   ## a homing swimmer's point (x, y am); empty for the others
 var greedy := false
+var keys := EvadeBot.GrowthKeys.new()
 var _forager = null            ## a greedy camper's way to an item (ForageBot parked on it)
 var _unjam: Unjam = null       ## a homing swimmer's way out of a crack
 
@@ -137,6 +140,10 @@ static func overdrive(sim: PoolSim) -> void:
 
 
 func next_intent(sim: PoolSim) -> SimIntent:
+	return keys.apply(sim, _swim(sim))
+
+
+func _swim(sim: PoolSim) -> SimIntent:
 	if not goal_am.is_empty():
 		return _home_in(sim)
 	if zone_id.is_empty():
@@ -172,6 +179,7 @@ func _camp(sim: PoolSim) -> SimIntent:
 				return SimIntent.new()   # too full to eat it: wait
 			if _forager == null:
 				_forager = ForageBot.new()
+				_forager.keys.trigger = ""   # this bot sends the keys
 			_forager.park_at = Vector2(food.position)
 			return _forager.next_intent(sim)
 	return _swim_to(sim, center, float(z.radius) * 0.5)

@@ -1,0 +1,40 @@
+{
+	"base_commit": "99ec158b7d58c582adc3b6ad88b3c0abcfa02274",
+	"content": "res://game/data/world_cell.json",
+	"growth": false,
+	"runs": [
+		{
+			"name": "swim_hunter",
+			"body": "hunter",
+			"seed": 6101,
+			"driver": "swim",
+			"hashes": {
+				"600": "1568113818",
+				"3600": "2339878401",
+				"18000": "3018242475"
+			}
+		},
+		{
+			"name": "swim_racer",
+			"body": "racer",
+			"seed": 6101,
+			"driver": "swim_overdriven",
+			"hashes": {
+				"600": "1198725810",
+				"3600": "1278840190",
+				"18000": "496672855"
+			}
+		},
+		{
+			"name": "circle_hunter",
+			"body": "hunter",
+			"seed": 6102,
+			"driver": "circle",
+			"hashes": {
+				"600": "1245667385",
+				"3600": "1032994793",
+				"18000": "2931357690"
+			}
+		}
+	]
+}
