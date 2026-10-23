@@ -11,6 +11,8 @@ const BISECT_STEPS := 32
 const MARCH_FRACTION := 0.25
 ## On a limb, a click this far along it (per mille) goes to the limb's end when the part may sit there.
 const LIMB_END_FROM_U := 900
+## A click this close (per mille of a turn) to the middle line snaps onto it, for parts allowed there.
+const MIDDLE_SNAP := 25
 
 
 ## First point where the ray enters the skin: {hit: bool, point: Vector3, normal: Vector3}.
@@ -122,7 +124,8 @@ static func _chain_anchor(desc: RefCounted, field: RefCounted, p: Vector3, limb_
 
 ## The anchor a part of this kind gets at a picked spot, or {reason} when it cannot go there. `rule` is the part's
 ## record part_rules. Applies the part's hosts (a limb click near the tip goes to the limb's end when allowed), its
-## middle-line rule (snaps a "required" part onto ring 0 or 500), and gives a part off the middle line a twin.
+## middle-line rule (snaps a "required" part onto ring 0 or 500, and an "allowed" one when the click is within
+## MIDDLE_SNAP of it), and gives a part off the middle line a twin.
 static func anchor_for_part(desc: RefCounted, rule: Dictionary, picked: Dictionary) -> Dictionary:
 	var hosts: Array = rule["hosts"]
 	var a := {"host": picked["host"], "u": picked["u"], "ring": picked["ring"], "elev": picked["elev"]}
@@ -141,6 +144,11 @@ static func anchor_for_part(desc: RefCounted, rule: Dictionary, picked: Dictiona
 	var ring := int(a["ring"])
 	var cap := int(a["u"]) == 0 or int(a["u"]) == 1000
 	match String(rule["centerline"]):
+		"allowed":
+			if ring <= MIDDLE_SNAP or ring >= 1000 - MIDDLE_SNAP:
+				a["ring"] = 0
+			elif absi(ring - 500) <= MIDDLE_SNAP:
+				a["ring"] = 500
 		"required":
 			a["ring"] = 0 if ring < 250 or ring >= 750 else 500
 			if cap:

@@ -282,6 +282,10 @@ func test_anchor_for_part() -> void:
 	var eye: Dictionary = Picking.anchor_for_part(desc, part_rules["eye"], side)
 	check(beak["ring"] == 0 and not beak["mirror"] and horn["ring"] != 0 and horn["mirror"] and eye["ring"] == 230
 			and eye["mirror"], "a beak snaps to the middle line, a horn leaves it with a twin, an eye stays put with a twin")
+	var near_top: Dictionary = Picking.anchor_for_part(desc, part_rules["fin"], {"host": "spine", "u": 500, "ring": 985, "elev": 0})
+	var off_top: Dictionary = Picking.anchor_for_part(desc, part_rules["fin"], {"host": "spine", "u": 500, "ring": 960, "elev": 0})
+	check(near_top["ring"] == 0 and not near_top["mirror"] and off_top["ring"] == 960 and off_top["mirror"],
+			"a fin clicked just off the back snaps onto the middle line, with no twin; further off it keeps its spot and a twin")
 	var tip := {"host": "l_1", "u": 950, "ring": 500, "elev": 0, "on_copy": false}
 	var foot: Dictionary = Picking.anchor_for_part(desc, part_rules["foot"], tip)
 	var eye_leg: Dictionary = Picking.anchor_for_part(desc, part_rules["eye"], tip)
