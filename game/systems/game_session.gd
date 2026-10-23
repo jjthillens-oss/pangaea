@@ -1,14 +1,16 @@
 class_name GameSession
 extends RefCounted
 ## One play session's save slot and running pool (M1 step 2, threats and checkpoints in step 3,
-## the endless world in S1). Main owns it; it is not an autoload. New lineage, continue, save and
-## the death flow all go through here, using the existing save schema (no new fields): energy,
+## the endless world in S1, growth in S2). Main owns it; it is not an autoload. New lineage,
+## continue, save and the death flow all go through here, on save schema v3 (SaveGame): energy,
 ## health, heading, the world's food, the creatures, the death streak and the shelter are not
 ## saved, so Continue restarts them (D16).
 ##
 ## There is no timed autosave. Saving happens when the player asks (pause menu, save and quit,
-## the quit dialog), once when a new lineage starts, so Continue always has a file, and, with
-## SAVE_ON_DEATH, when a death is resolved.
+## the quit dialog), once when a new lineage starts, so Continue always has a file, with
+## SAVE_ON_DEATH when a death is resolved, and right after a tick in which the cell grew
+## (after_events, which the scene calls with each tick's events; S2 D-75). A size that differs from
+## the saved one is an unsaved change.
 ##
 ## The death flow (plan section 13): the sim reports died; resolve_death() applies the death to the
 ## lineage once (Lineage.apply_death with RespawnRules.death_cause) and, with save_on_death, writes
@@ -17,7 +19,7 @@ extends RefCounted
 ## The world (S1): with a world path the session reads WorldConfig, and the mode (the file's, or
 ## the world_mode argument, which is the --world flag) picks the endless world or the M1 pool.
 ## Without one it is the M1 pool, exactly as before, which is how every pool test runs. An endless
-## save is a plain v2 save whose position is absolute am in float64 (PlaneSpace.to_save_abs). In
+## save is a plain save whose position is absolute am in float64 (PlaneSpace.to_save_abs). In
 ## endless mode the sim respawns at its next step (respawn_pending), so between the request and
 ## that step the cell is still dead with its death already applied: resolve_death, a second
 ## respawn_after_death and save_now hold off, and the dirty test reads the death's own save.
@@ -75,6 +77,8 @@ var _saved_position := Vector2.ZERO
 var _saved_history_size := 0
 ## Endless: absolute_position_am() at the last save or load. Pool mode uses _saved_position.
 var _saved_abs := PackedFloat64Array([0.0, 0.0])
+## The cell's size at the last save or load (S2): a growth or a size change since is unsaved.
+var _saved_size := 1
 ## Whether the death handed to the pending respawn was saved: respawn_after_death clears `death`
 ## before the sim's next step performs the respawn, and the dirty test reads this meanwhile.
 var _respawn_death_saved := false
@@ -199,6 +203,16 @@ func save_now() -> Dictionary:
 	return last_save
 
 
+## Call with each tick's drained events (PoolSim.drain_events): a tick whose events hold "grew" is
+## saved at once, so the growth survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s
+## result when it saved, else {}.
+func after_events(events: Array) -> Dictionary:
+	for event in events:
+		if event is Dictionary and event.get("type") == "grew":
+			return save_now()
+	return {}
+
+
 ## Applies the cell's death to the lineage, once: Lineage.apply_death takes a quarter of the
 ## unspent points and records the cause ("starved" or "killed:<species>", D18). With save_on_death
 ## the slot is then written with the cell at its checkpoint (the usual temp, verify and backup
@@ -291,14 +305,21 @@ func _mark_saved() -> void:
 	_saved_points = sim.save.adaptation_points
 	_saved_position = sim.position_for_save()
 	_saved_history_size = sim.save.lineage_history.size()
+	_saved_size = _size()
 	if sim.is_endless():
 		_saved_abs = sim.absolute_position_am()
+
+
+## The cell's size: the world's in endless mode, 1 in the pool.
+func _size() -> int:
+	return sim.world.size if sim.is_endless() else 1
 
 
 ## A dead cell is dirty only while its death is not saved; after a saved death the checkpoint is
 ## where the save puts it, so neither the open notice nor the respawn there is an unsaved change.
 ## While an endless respawn is pending, the death's save is the one respawn_after_death recorded.
-## Endless positions are compared as absolute am in float64, never as local Vector2s.
+## Endless positions are compared as absolute am in float64, never as local Vector2s. A size other
+## than the saved one is always a change, wherever the cell is.
 func _is_dirty() -> bool:
 	if sim == null:
 		return false
@@ -307,6 +328,8 @@ func _is_dirty() -> bool:
 		if not saved:
 			return true
 	if sim.save.adaptation_points != _saved_points or sim.save.lineage_history.size() != _saved_history_size:
+		return true
+	if _size() != _saved_size:
 		return true
 	if sim.is_endless():
 		var a := sim.absolute_position_am()

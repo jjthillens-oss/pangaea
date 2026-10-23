@@ -1,9 +1,9 @@
 extends TestCase
 ## Endless saves (S1, gate G11): Continue lands where the save was made, within a micrometre, at
 ## 5 km and 100 km from home; the position goes through the file as float64 (PlaneSpace.to_save_abs,
-## full precision) and never through a float32 Vector2. An endless save is a plain v2 save, so a
-## pool session reads it too: its far position is not a clear place in the pool, and the cell
-## starts at the spawn.
+## full precision) and never through a float32 Vector2. An endless save is a plain save, so a pool
+## session reads it too: its far position is not a clear place in the pool, and the cell starts at
+## the spawn. The fixture is a v2 file; it loads through the v2 -> v3 migration.
 ##
 ## tests/fixtures/save_v2_endless_5km.json is a real v2 save written once by write_fixture() and
 ## committed. The suite never calls write_fixture(); to write the file again, run by hand:
@@ -42,7 +42,8 @@ func after_each() -> void:
 
 
 ## Writes the fixture: a founded omnivore lineage (seed 4242) at FIXTURE_X, FIXTURE_Y, through
-## PersistenceService.save_to, so the file is a v2 save in the shipped format. By hand only.
+## PersistenceService.save_to, so the file is a save in the shipped format: v2 when it was written.
+## A run now would write v3 over the one v2 endless fixture, so keep it as it is. By hand only.
 static func write_fixture() -> void:
 	var catalog := PartCatalog.load_from()
 	var founded := Lineage.found(FIXTURE_SEED, "test+dev", catalog, "omnivore")
