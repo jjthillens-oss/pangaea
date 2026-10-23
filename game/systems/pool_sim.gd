@@ -196,8 +196,8 @@ func step(intent: SimIntent) -> void:
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
-		creatures.tick_spawns(arena, _player_place(), tick)
-		creatures.remove_stuck(_player_place(), tick)
+		creatures.tick_spawns_at(arena, _player_places(), tick)
+		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()
 	if creatures != null:
@@ -673,6 +673,12 @@ func _player_place() -> Vector2:
 	return position_for_save()
 
 
+## Every place the field measures spawn safety and stuck removals from (CreatureField's *_at):
+## in the pool, _player_place() alone.
+func _player_places() -> Array[Vector2]:
+	return [_player_place()]
+
+
 ## Rule C1: `p` when a body of radius `r` fits there, else the first clear point on rings
 ## CLEAR_SPIRAL_STEP_M apart going out from it (each ring in angle order from +x), else `p`.
 func _clear_point_near(p: Vector2, r: float) -> Vector2:
@@ -721,7 +727,7 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 	var food: Array = []
 	var food_listed := false
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		var speed_mul := c.state.speed_multiplier()
 		if c.scripted:
 			Locomotion.steer(c.motion, c.script_move, c.phenotype, speed_mul, DT)
@@ -744,7 +750,7 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 ## Tick step 4 for creatures: each moves by its velocity. Returns the distances, in creature order.
 func _move_creatures() -> Array[float]:
 	var out: Array[float] = []
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		out.append(arena.move(c.motion, c.phenotype.radius, DT))
 	return out
 
@@ -761,7 +767,7 @@ func _contacts() -> void:
 		motions.append(motion)
 		radii.append(phenotype.radius)
 		masses.append(phenotype.mass)
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		motions.append(c.motion)
 		radii.append(c.phenotype.radius)
 		masses.append(c.phenotype.mass)
@@ -788,7 +794,7 @@ func _contacts() -> void:
 	for i in n:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		if c.brain == null:
 			continue
 		var disc := CreatureBrain.leash_disc(c.brain)
@@ -805,7 +811,7 @@ func _contacts() -> void:
 ## starving and regrowth together); a scripted body uses the cell's own rates. `moved` is in
 ## creature order. A creature that starves dies.
 func _creature_metabolism(moved: Array[float]) -> void:
-	var list := creatures.creatures.duplicate()
+	var list := creatures.awake().duplicate()
 	for i in list.size():
 		var c: CreatureField.Creature = list[i]
 		var share := 1.0 if c.scripted else float(species.species[c.species_id].metabolism_share)
@@ -832,7 +838,7 @@ func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> voi
 
 
 func _sync_creatures() -> void:
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		c.actor.position = c.motion.position
 		c.actor.heading = c.motion.heading
 
@@ -840,7 +846,7 @@ func _sync_creatures() -> void:
 ## Tick step 9 for creatures: each one whose drive names a food item eats it through the resolver,
 ## after the cell has fed. No points: those are the lineage's alone.
 func _creatures_feed() -> void:
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		var food_id := str(c.drive.get("feed", ""))
 		if food_id.is_empty():
 			continue
@@ -864,7 +870,7 @@ func _swim_velocities() -> Dictionary:
 	var out := {}
 	if not dead:
 		out[CreatureField.PLAYER_ID] = motion.velocity
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		out[c.id] = c.motion.velocity
 	return out
 
@@ -875,7 +881,7 @@ func _swim_velocities() -> Dictionary:
 func _combat(swim: Dictionary) -> void:
 	_killer = ""
 	var striking: Array[CreatureField.Creature] = []
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		if c.brain == null or not c.state.is_alive():
 			continue
 		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
@@ -895,7 +901,7 @@ func _combat(swim: Dictionary) -> void:
 ## its reason is quiet. A landed hit ends the cell's shelter (grace_ended {reason: "attacked"}).
 func _player_attacks(swim: Dictionary) -> void:
 	var near: Array[Dictionary] = []
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		if not c.state.is_alive():
 			continue
 		var d := motion.position.distance_to(c.motion.position)
@@ -1019,7 +1025,7 @@ func _deaths() -> void:
 		var sp := by.species_id if by != null else ""
 		_player_dies("killed", _killer, sp, str(species.species[sp].death_reason) if species.has_species(sp) else "")
 	var fallen: Array[CreatureField.Creature] = []
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		if not c.state.is_alive():
 			fallen.append(c)
 	for c in fallen:
