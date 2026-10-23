@@ -24,7 +24,21 @@ const STATIC := {
 	"_senses": "creature data",
 	"cfg": "brain tuning data",
 	"camera": "camera tuning data",
+	"_next_chunks": "WorldChunks generated ahead for size n + 1: absolute tm at that size, no local positions",
+	"_next_arena": "the next size's arena: its own frame, origin A at size n + 1 (BP-4), kept and moved to A each tick it is used",
 }
+## S2G10: what the growth tick builds again from the next size's chunks or starts over, so the
+## re-expression walk does not compare it (path parts), with the reason.
+const REBUILT := {
+	"region": "zones load again from the next size's chunks (their ids may repeat)",
+	"arena": "colliders load again from the next size's chunks",
+	"world.sites": "site records load again at the next size",
+	"world._zone_c": "the food view's index of those zones",
+	"world._swum_from": "the wake bound's place, which set_size starts over",
+}
+
+## The kinds of position _busy_sim holds, each of which the rebase walk must reach.
+const KINDS := ["position", "prev_position", "anchor", "origin", "goal", "flee_from", "home", "territory_center", "center"]
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -119,10 +133,18 @@ static func _shift_ok(before: Vector2, after: Vector2, by: Vector2) -> bool:
 
 
 func test_a_rebase_moves_every_stored_position_by_the_offset() -> void:
-	var sim := _busy_sim()
+	var paths := _check_rebase_walk(_busy_sim(), Vector2i(3, -2))
+	for part in [".seen.player.position", ".lane.origin", ".progress.position", "arena._centers[", "region.zones["]:
+		check(paths.contains(part), "the walk reached %s" % part)
+
+
+## The walk of test_a_rebase_moves_every_stored_position_by_the_offset, rebasing `sim` by `by`
+## chunks: every Vector2 moves by the offset or is named, and each kind of position was there to be
+## checked. The paths walked, joined by spaces.
+func _check_rebase_walk(sim: PoolSim, by: Vector2i, kinds_needed: Array = KINDS) -> String:
 	var before := _vectors(sim)
-	var offset := Vector2(96.0, -64.0)
-	check(sim.debug_rebase(Vector2i(3, -2)), "rebased")
+	var offset := Vector2(by) * sim.world.rebase_step_tm
+	check(sim.debug_rebase(by), "rebased")
 	var after := _vectors(sim)
 	var moved := 0
 	var kept := 0
@@ -150,11 +172,9 @@ func test_a_rebase_moves_every_stored_position_by_the_offset() -> void:
 	check(moved >= 40, "positions moved (%d)" % moved)
 	check(kept > 0, "named values kept (%d)" % kept)
 	# Each kind of position was there to be checked.
-	for name in ["position", "prev_position", "anchor", "origin", "goal", "flee_from", "home", "territory_center", "center"]:
+	for name in kinds_needed:
 		check(kinds.has(name), "a %s was checked" % name)
-	var paths := " ".join(PackedStringArray(before.keys()))
-	for part in [".seen.player.position", ".lane.origin", ".progress.position", "arena._centers[", "region.zones["]:
-		check(paths.contains(part), "the walk reached %s" % part)
+	return " ".join(PackedStringArray(before.keys()))
 
 
 func test_absolute_positions_hold_within_2_pow_minus_16_across_a_forced_rebase() -> void:
@@ -472,3 +492,192 @@ func _farthest_local(sim: PoolSim) -> float:
 		if v.is_finite():
 			far = maxf(far, v.length())
 	return far
+
+
+# --- S2 (T2.5): rebases with growth on, and the growth tick's re-expression (S2G10) ---
+
+## An endless sim with growth on among the size-2 species and a site in every 2 x 2 chunks, that has
+## swum 240 ticks (so creatures are awake round the cell), with carrion beside the cell.
+func _growing_sim() -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species(), null, PackedFloat64Array(), 2, true)
+	for t in 240:
+		sim.step(SimIntent.new(Vector2(0.6, 0.2)))
+	sim.carrion.spawn(sim.motion.position + Vector2(4.0, 1.0), "test", 10.0)
+	return sim
+
+
+## Three rammers (prey at size 2) moving beside the cell, in view, so they are there to convert.
+func _rammers_beside(sim: PoolSim) -> Array[CreatureField.Creature]:
+	var out: Array[CreatureField.Creature] = []
+	for off in [Vector2(6.0, 0.0), Vector2(-5.0, 3.0), Vector2(1.0, -6.0)]:
+		var at := PoolSim.clear_point_on(sim.arena, sim.motion.position + off, 0.5)
+		var c := sim.creatures.spawn_at("rammer", at, 0.3, "", sim.tick, true)
+		check(c != null, "a rammer at %s" % at)
+		if c != null:
+			c.motion.prev_position = c.motion.position - Vector2(0.011, 0.017)
+			out.append(c)
+	return out
+
+
+## With growth on, a rebase at size 1 moves the remnants too and leaves the next size's prefetch
+## arena alone (its own frame, BP-4); after a growth, at size 2, it moves a two-post brain's posts
+## and union leash, and the site records' posts (D-83).
+func test_a_rebase_with_growth_on_moves_remnants_and_posts_and_leaves_the_next_arena() -> void:
+	var sim := _growing_sim()
+	var near := _rammers_beside(sim)
+	if near.is_empty():
+		return
+	sim.remnants.add_from(near[0], sim.species.at_size("rammer", 2), sim.tick)
+	var g := sim.growth
+	g.meter = (g.prefetch_share + 0.02) * g.ring(1)
+	for t in 3:
+		sim.step(SimIntent.new())
+	var q := sim.world.next_size_clear_point(sim)
+	var next: ChunkArena = sim.world._next_arena
+	check(next != null and not next._centers.is_empty() and not sim.world._next_chunks.is_empty(), "the prefetch is warm")
+	if next == null:
+		return
+	var centers := next._centers.duplicate()
+	var paths := _check_rebase_walk(sim, Vector2i(-2, 1), ["position", "prev_position", "anchor", "home", "center"])
+	check(paths.contains("remnants.items[0].motion.prev_position"), "the walk reached the remnant")
+	check(is_same(sim.world._next_arena, next), "the next size's arena kept")
+	check_eq(next._centers, centers, "in its own frame")
+	var moved := sim.world.next_size_clear_point(sim)
+	check((moved - (q - Vector2(-64.0, 32.0))).length() < 1e-4, "its point moved with the frame (%s -> %s)" % [q, moved])
+
+	g.meter = g.ring(1)
+	g.full_since = sim.tick
+	g.due = true
+	sim.step(SimIntent.new())
+	check_eq(sim.size(), 2, "grown")
+	var at := PoolSim.clear_point_on(sim.arena, sim.motion.position + Vector2(9.0, -7.0), 1.0)
+	var c := sim.creatures.spawn_at("lurker", at, 0.3, "", sim.tick, true)
+	check(c != null, "a lurker beside the cell")
+	if c == null:
+		return
+	CreatureBrain.set_posts(c.brain, [{"home": at + Vector2(2.0, 0.0), "heading": 0.0, "territory": {}},
+		{"home": at + Vector2(-3.0, 1.0), "heading": 0.0, "territory": {"center": at + Vector2(-3.0, 2.0), "radius": 3.0}}])
+	paths = _check_rebase_walk(sim, Vector2i(1, 2), ["position", "prev_position", "home", "center", "leash_center"])
+	for part in [".posts[0].home", ".posts[1].territory.center", ".leash_center", "remnants.items[0].motion.position"]:
+		check(paths.contains(part), "the walk reached %s" % part)
+	var site_posts := false
+	for id in sim.world.sites:
+		site_posts = site_posts or sim.world.sites[id].has("posts")
+	check(site_posts and paths.contains(".posts[1].home"), "and a two-post site's record")
+
+
+## S2G10: the growth tick re-expresses the world at size n + 1 round the cell's absolute point A
+## (WorldStream.grow). Every Vector2 that survives it (the same thing: keyed by the nearest id above
+## it, so a creature's and the remnant it becomes alike) equals local_of_abs of the absolute place
+## recorded before, (o + v k_n - A) / k_n+1, within float32 rounding: the cell's previous position,
+## each remnant's position and previous position, the carrion kept. The cell itself takes its settle
+## point, a remnant moves only where the settle took it out of a new shell, and what loads again is
+## REBUILT's.
+func test_the_growth_tick_re_expresses_every_surviving_position_at_the_next_size() -> void:
+	var sim := _growing_sim()
+	var w := sim.world
+	sim.motion.prev_position = sim.motion.position - Vector2(0.013, -0.007)
+	var far := sim.carrion.spawn(sim.motion.position + Vector2(float(w.rings.food) + 6.0, 0.0), "test", 10.0)
+	_rammers_beside(sim)
+	var k0 := WorldConfig.tm_to_am(1)
+	var o0 := PackedFloat64Array([w.origin_x_am, w.origin_y_am])
+	var cell := sim.motion.position
+	var a := PackedFloat64Array([o0[0] + float(cell.x) * k0, o0[1] + float(cell.y) * k0])
+	var awake := {}
+	for c in sim.creatures.awake():
+		awake["#" + c.id] = true
+	var before := _vectors_by_id(sim)
+	w.grow(sim)
+	var k1 := WorldConfig.tm_to_am(2)
+	check_eq(PackedFloat64Array([w.origin_x_am, w.origin_y_am]), a, "the origin is A")
+	var after := _vectors_by_id(sim)
+	var remnants := {}
+	for r in sim.remnants.items:
+		remnants["#" + r.id] = r
+	var bad: Array = []
+	var compared := 0
+	var settled := 0
+	var seen := {}
+	for key: String in after:
+		if not before.has(key):
+			continue
+		var path: String = after[key][1]
+		if _named(path) or _named(before[key][1]) or _rebuilt(path) or key == "sim.motion.position" or key == "#player.position":
+			continue
+		var b: Vector2 = before[key][0]
+		var got: Vector2 = after[key][0]
+		if not b.is_finite():
+			if got != b:
+				bad.append("%s: %s -> %s" % [key, b, got])
+			continue
+		var want := Vector2((o0[0] + float(b.x) * k0 - a[0]) / k1, (o0[1] + float(b.y) * k0 - a[1]) / k1)
+		var owner: String = key.get_slice(".", 0)
+		if remnants.has(owner) and (key == owner + ".motion.position" or key == owner + ".position") \
+				and not sim.arena.is_clear(want, remnants[owner].phenotype.radius):
+			settled += 1   # the settle took it out of a new shell
+			continue
+		var tol := maxf(absf(want.x), absf(want.y)) * 1.2e-7
+		if absf(got.x - want.x) <= tol and absf(got.y - want.y) <= tol:
+			compared += 1
+			seen[key] = true
+		else:
+			bad.append("%s: %s -> %s, want %s" % [key, b, got, want])
+	check(bad.is_empty(), "every surviving Vector2 re-expressed (%d bad: %s)" % [bad.size(), bad.slice(0, 6)])
+	check(seen.has("sim.motion.prev_position"), "the cell's previous position was compared")
+	check_eq(sim.motion.position, PoolSim.clear_point_on(sim.arena, Vector2.ZERO, sim.phenotype.radius), "the cell at its settle point")
+	var from_creatures := 0
+	for owner in remnants:
+		if awake.has(owner) and seen.has(owner + ".motion.prev_position"):
+			from_creatures += 1
+	check(from_creatures >= 3, "remnants made from creatures were compared (%d of %d)" % [from_creatures, remnants.size()])
+	var kept := sim.carrion.items.filter(func(i: Dictionary) -> bool: return seen.has("#%s.position" % i.id))
+	check(not kept.is_empty(), "kept carrion was compared")
+	check(not sim.carrion.items.any(func(i: Dictionary) -> bool: return i.id == far.id), "carrion beyond the food ring gone")
+	check(compared >= 8, "%d positions compared (%d remnant settles)" % [compared, settled])
+	# A remnant the re-expression put inside a new shell was settled out of it (grow step 6).
+	check(settled >= 1, "a remnant needed the settle here (%d)" % settled)
+	for r: RemnantField.Remnant in sim.remnants.items:
+		check(sim.arena.is_clear(r.motion.position, r.phenotype.radius), "remnant %s clear of the new shells" % r.id)
+
+
+## Every Vector2 reachable from the sim's state, keyed by the nearest thing above it that has an id
+## ("#<id>.<path below it>", so a creature's and the remnant it becomes share keys) or else by its
+## path: {key: [value, path]}.
+func _vectors_by_id(sim: PoolSim) -> Dictionary:
+	var out := {}
+	_walk_id(sim, "sim", "sim", out, {})
+	return out
+
+
+func _walk_id(v: Variant, path: String, key: String, out: Dictionary, seen: Dictionary) -> void:
+	match typeof(v):
+		TYPE_VECTOR2:
+			out[key] = [v, path]
+		TYPE_PACKED_VECTOR2_ARRAY:
+			for i in v.size():
+				out["%s[%d]" % [key, i]] = [v[i], "%s[%d]" % [path, i]]
+		TYPE_DICTIONARY:
+			var at := "#%s" % v.id if v.get("id") is String else key
+			for k in v:
+				_walk_id(v[k], "%s.%s" % [path, k], "%s.%s" % [at, k], out, seen)
+		TYPE_ARRAY:
+			for i in v.size():
+				_walk_id(v[i], "%s[%d]" % [path, i], "%s[%d]" % [key, i], out, seen)
+		TYPE_OBJECT:
+			if v == null or not (v is RefCounted) or seen.has(v.get_instance_id()):
+				return
+			seen[v.get_instance_id()] = true
+			var id: Variant = v.get("id")
+			var at := "#%s" % id if id is String else key
+			for prop in v.get_property_list():
+				if prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and not STATIC.has(prop.name):
+					_walk_id(v.get(prop.name), "%s.%s" % [path, prop.name], "%s.%s" % [at, prop.name], out, seen)
+
+
+## True when the path lies under something REBUILT names.
+static func _rebuilt(path: String) -> bool:
+	var dotted := "." + path + "."
+	for part in REBUILT:
+		if dotted.contains(".%s." % part) or dotted.contains(".%s[" % part):
+			return true
+	return false

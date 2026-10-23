@@ -6,6 +6,20 @@ extends TestCase
 ## seeds. A third case lets a home rammer engage and then flees straight at 6 tm/s (SwimBot.overdrive,
 ## B-12) for 3,600 ticks: the chaser is let go and every local stays under 256 tm (B-6).
 ## Each case prints its non-vacuity counts and fails when loads, unloads, sleeps, wakes or spawns is 0.
+##
+## The growth fuzz (S2 T0.4, gate S2G21; S2 build plan BP-5): the same wandering swim with growth on,
+## in cycles of GROWTH_CYCLE ticks: at tick GROWTH_CYCLE / 2 of a cycle a cell at size 2 is set back
+## to size 1 (debug_set_size, a cut for the checker), and at a cycle's last tick a growth is forced
+## (debug_force_growth: the meter full and due, past the calm window), so each cycle after the first
+## grows again. Every tick runs FuzzInvariants, 12, 13 and 16 through the growth tick (BP-2). There
+## is no max_in_build 3 config (BP-5). It runs on the size-2 fake world (FakeWorldGen with its
+## size-2 rammer sites and the two size-2 species) until the real content holds size-2 sites (T3.5),
+## then on the real content.
+##  - fast: 1 seed x 2,520 ticks (two growths), run twice: the two runs' hashes are equal after
+##    every growth and at the end;
+##  - slow: 4 seeds x 6,000 ticks;
+##  - soak: 2 seeds x 36,000 ticks.
+## Each run must grow at least once a cycle after the first and set the size back between.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
@@ -20,6 +34,16 @@ const FOOD_CAP := 40
 const NOTICE := 90                     ## ticks a dead cell lies before the respawn is asked for
 const TURN := 0.04                     ## rad: the most the swim turns in a tick
 const NON_VACUOUS: PackedStringArray = ["loads", "unloads", "sleeps", "wakes", "spawns"]
+## The growth fuzz (S2G21).
+const Gates := preload("res://tests/test_endless_gates.gd")
+const GROWTH_NEEDS: PackedStringArray = ["set_size", "force_growth", "fuzz_growth"]
+const GROWTH_CYCLE := 1200
+const GROWTH_FAST_SEED := 531
+const GROWTH_FAST_TICKS := 2520
+const GROWTH_SLOW_SEEDS: Array[int] = [531, 532, 533, 534]
+const GROWTH_SLOW_TICKS := 6000
+const GROWTH_SOAK_SEEDS: Array[int] = [535, 536]
+const GROWTH_SOAK_TICKS := 36000
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -101,6 +125,122 @@ func test_slow_a_chaser_then_a_6_tms_flight_keeps_every_local_under_256() -> voi
 	check(sim.creatures.find(engaged) == null, "and is gone at the end")
 	check_eq(fz.report(), "", "every invariant on every tick")
 	check(int(fz.counts.rebases) >= 3, "the origin moved with the flight (%d)" % int(fz.counts.rebases))
+
+
+func test_growth_fuzz_grows_twice_cleanly_and_two_runs_hash_alike() -> void:
+	if _growth_waits("the fast growth fuzz"):
+		return
+	var fz := FuzzInvariants.new(species, layout)
+	var a := _growth_fuzz(fz, GROWTH_FAST_SEED, GROWTH_FAST_TICKS)
+	var b := _growth_fuzz(null, GROWTH_FAST_SEED, GROWTH_FAST_TICKS)   # the hash only: no checker
+	_print_growth(GROWTH_FAST_SEED, a)
+	check_eq(fz.report(), "", "every invariant on every tick through two growths")
+	_check_growth_run(GROWTH_FAST_SEED, GROWTH_FAST_TICKS, a)
+	check_eq(a.hashes, b.hashes, "two runs hash alike after every growth and at the end")
+
+
+func test_slow_growth_fuzz_on_four_seeds() -> void:
+	if _growth_waits("the slow growth fuzz"):
+		return
+	var fz := FuzzInvariants.new(species, layout)
+	for seed_value in GROWTH_SLOW_SEEDS:
+		var run := _growth_fuzz(fz, seed_value, GROWTH_SLOW_TICKS)
+		_print_growth(seed_value, run)
+		_check_growth_run(seed_value, GROWTH_SLOW_TICKS, run)
+	check_eq(fz.report(), "", "every invariant on every tick of every seed")
+
+
+func test_soak_growth_fuzz_for_ten_minutes_on_two_seeds() -> void:
+	if _growth_waits("the soak growth fuzz"):
+		return
+	var fz := FuzzInvariants.new(species, layout)
+	for seed_value in GROWTH_SOAK_SEEDS:
+		var run := _growth_fuzz(fz, seed_value, GROWTH_SOAK_TICKS)
+		_print_growth(seed_value, run)
+		_check_growth_run(seed_value, GROWTH_SOAK_TICKS, run)
+	check_eq(fz.report(), "", "every invariant on every tick of every seed")
+
+
+func _growth_waits(what: String) -> bool:
+	var waits := Gates.s2_missing(GROWTH_NEEDS)
+	if waits.is_empty():
+		return false
+	print("test-endless-fuzz: %s waits on: %s" % [what, "; ".join(waits)])
+	return true
+
+
+## A sim with growth on for the growth fuzz: the real content once it holds size-2 sites, else the
+## size-2 fake world.
+func _growth_sim(seed_value: int) -> PoolSim:
+	if Gates.s2_has("size_two_content"):
+		return Gates.make_sim("omnivore", seed_value, true)
+	return FakeWorldGen.endless_sim(seed_value, catalog, layout, FakeWorldGen.s2_species(), null, PackedFloat64Array(), 4, true)
+
+
+## One seed of the growth fuzz: the wandering swim of _fuzz with growth on, the size set back at
+## half of each cycle and a growth forced at its end, deaths continued after NOTICE. Returns the
+## counts of FuzzInvariants plus {"grew", "forced", "set_backs", "respawns", "size", "hashes"}: the
+## state hash after each grew and at the end. With `fz` null nothing is checked (a hash run).
+func _growth_fuzz(fz: Variant, seed_value: int, ticks: int) -> Dictionary:
+	var sim := _growth_sim(seed_value)
+	sim.grace_until = sim.tick
+	sim.drain_events()
+	if fz != null:
+		fz.start_run()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var heading := rng.randf_range(-PI, PI)
+	var run := {"grew": 0, "forced": 0, "set_backs": 0, "respawns": 0, "size": 0, "hashes": PackedStringArray()}
+	var dead_since := -1
+	for t in ticks:
+		var was: Dictionary = fz.before(sim) if fz != null else {}
+		var c := t % GROWTH_CYCLE
+		var alive := not sim.dead and not sim.respawn_pending
+		if c == GROWTH_CYCLE / 2 and alive and sim.size() == 2 and sim.debug_set_size(1):
+			run.set_backs += 1
+		if c == GROWTH_CYCLE - 1 and alive and sim.debug_force_growth():
+			run.forced += 1
+		if sim.dead and not sim.respawn_pending:
+			if dead_since < 0:
+				dead_since = t
+			elif t - dead_since >= NOTICE:
+				sim.respawn_player()
+				dead_since = -1
+				run.respawns += 1
+		heading += rng.randf_range(-TURN, TURN)
+		var tick := sim.tick
+		sim.step(SimIntent.new(Vector2.from_angle(heading) * rng.randf_range(0.7, 1.0)))
+		var events := sim.drain_events()
+		if fz != null:
+			fz.after(sim, events, tick, "growth seed %d tick %d" % [seed_value, t], was)
+		for e in events:
+			if e.type == "grew":
+				run.grew += 1
+				run.hashes.append(str(sim.state_hash()))
+	run.hashes.append(str(sim.state_hash()))
+	run.size = sim.size()
+	if fz != null:
+		run.merge(fz.counts)
+	return run
+
+
+## Non-vacuity of one growth run: a forced growth at the end of every whole cycle grew (the last
+## cycle's may still be in its beat), and every growth but the last was set back.
+func _check_growth_run(seed_value: int, ticks: int, run: Dictionary) -> void:
+	var cycles := ticks / GROWTH_CYCLE
+	check(int(run.forced) >= cycles, "seed %d: %d growths forced over %d cycles" % [seed_value, int(run.forced), cycles])
+	check(int(run.grew) >= cycles, "seed %d: %d grew over %d cycles" % [seed_value, int(run.grew), cycles])
+	check(int(run.set_backs) >= cycles - 1, "seed %d: set back to size 1 %d times" % [seed_value, int(run.set_backs)])
+	check(int(run.get("set_sizes", 0)) >= int(run.set_backs), "seed %d: the checker saw %d set_size cuts" % [seed_value, int(run.get("set_sizes", 0))])
+	check(int(run.get("growths", 0)) >= cycles, "seed %d: the checker saw %d growth ticks" % [seed_value, int(run.get("growths", 0))])
+	for key in ["loads", "unloads", "spawns"]:
+		check(int(run[key]) > 0, "seed %d: %s happened (%d)" % [seed_value, key, int(run[key])])
+
+
+func _print_growth(seed_value: int, run: Dictionary) -> void:
+	print("test-endless-fuzz: growth seed %d: %d forced, %d grew, %d set back, %d respawns, size %d at the end; %d growth ticks and %d set_size cuts checked; %d spawns, %d sleeps, %d wakes, %d loads, %d unloads, %d rebases" % [
+		seed_value, run.forced, run.grew, run.set_backs, run.respawns, run.size, int(run.get("growths", 0)),
+		int(run.get("set_sizes", 0)), run.spawns, run.sleeps, run.wakes, run.loads, run.unloads, run.rebases])
 
 
 ## One seed: a swim whose heading wanders, a forced rebase at a third of the run, a death at a half

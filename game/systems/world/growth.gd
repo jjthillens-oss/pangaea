@@ -20,6 +20,13 @@ extends RefCounted
 ## count; blocked for blocked_hint_s, the blocker is named (growth_blocked) until a calm tick clears it
 ## (growth_unblocked). hint() is the HUD's line for all this.
 ##
+## The ledger (B.2, D-71, D-72). A food look new at the size, a place or a landmark found near the
+## cell is written to `discoveries` once per size ({type, id, size}) and, with the world file's lumps
+## switch, pays a share of the ring once (`paid` holds what this size has paid: a Continue never pays
+## twice). A kill of a q 1 species pays threat_kill; any other kill a share of its carcass's energy.
+## A death costs death_meter_share of the ring from size 2 (on_death), and the respawn's energy
+## comes from respawn_energy (D-35, D-73).
+##
 ## All lengths are current tm; all times are ticks of PoolSim.DT.
 
 const NEVER := CreatureBrain.NEVER
@@ -138,6 +145,10 @@ func observe(sim: PoolSim, ev: Array) -> void:
 						last_ram = sim.tick
 			"ate":
 				last_meal = sim.tick
+				_ate(sim, str(e.kind))
+			"creature_died":
+				if str(e.by) == CreatureField.PLAYER_ID:
+					_killed(sim, e)
 	# 3. Nothing more while dead or waiting to respawn.
 	if sim.dead or sim.respawn_pending:
 		return
@@ -151,7 +162,13 @@ func observe(sim: PoolSim, ev: Array) -> void:
 		blocker = ""
 		if not is_full(n):
 			armed = false
-		return
+	else:
+		_window(sim, n)   # 7 to 9
+	_discover(sim, n)   # 10
+
+
+## Steps 7 to 9 of observe, for a full ring below the top: the blocker, the press, the window.
+func _window(sim: PoolSim, n: int) -> void:
 	var now_blocker := blocker_of(sim)   # 7
 	# 8. A press arms it, and says why it waits.
 	if sim.intent_grow:
@@ -321,10 +338,14 @@ static func _flip_in_view(sim: PoolSim, n: int) -> bool:
 
 
 ## Step 4: energy above the floor share of the capacity moves into the meter, at most
-## ring / drain_ring_seconds a second, never past the ring.
+## ring / drain_ring_seconds a second, never past the ring. A ring already full at the build top (only
+## a Continue restores one: add pays out at once otherwise) pays out here.
 func _drain(sim: PoolSim) -> void:
 	var n := sim.size()
 	var r := ring(n)
+	if is_full(n) and at_top(n, sim.world.max_size):
+		add(sim, 0.0, "drain", "")
+		return
 	var cap := sim.state.energy_capacity
 	var floor_e := float(cfg.drain_floor_share) * cap
 	if sim.state.energy <= floor_e or r - meter <= 0.0:
@@ -332,6 +353,158 @@ func _drain(sim: PoolSim) -> void:
 	var amount := minf(r / float(cfg.drain_ring_seconds) * PoolSim.DT, minf(sim.state.energy - floor_e, r - meter))
 	sim.state.energy -= amount
 	add(sim, amount, "drain", "")
+
+
+## Step 2, an `ate`: the look of the food at this size (ladder.food_looks), when it is new at the size
+## (D-71: every look at size 1; at size n a look that is not one of size n - 1's) and not yet paid
+## here, is written to the ledger and, with lumps, pays food_look x the ring.
+func _ate(sim: PoolSim, kind: String) -> void:
+	var n := sim.size()
+	var looks: Array = sim.world.content.config.ladder.food_looks
+	if n < 1 or n > looks.size():
+		return
+	var side := "plant" if kind == "plant" else "meat"
+	var look := str(looks[n - 1][side])
+	if n > 1 and (looks[n - 2] as Dictionary).values().has(look):
+		return
+	if (paid.food as Array).has(look):
+		return
+	_note(sim, "food", look, n)
+	if _lumps(sim):
+		add(sim, float(cfg.lumps.food_look) * ring(n), "food_look", look)
+
+
+## Step 2, a `creature_died` by the cell, with lumps (D-72): a species drawn at this size (q 1) pays
+## threat_kill x the ring on every kill; any other pays kill_carcass_share x the summed energy of its
+## carcass items (they are in the carrion field at the end of the tick).
+func _killed(sim: PoolSim, e: Dictionary) -> void:
+	if not _lumps(sim):
+		return
+	var n := sim.size()
+	var id := str(e.id)
+	var species_id := str(e.species)
+	if sim.species != null and sim.species.has_species(species_id) and sim.species.q_of(species_id, n) == 1.0:
+		add(sim, float(cfg.lumps.threat_kill) * ring(n), "threat_kill", id)
+		return
+	var energy := 0.0
+	for food_id in e.get("carcass", []):
+		var item := sim.carrion.find(str(food_id))
+		if not item.is_empty():
+			energy += float(item.energy)
+	if energy > 0.0:
+		add(sim, float(cfg.lumps.kill_carcass_share) * energy, "kill", id)
+
+
+## Step 10, every tick while alive: the places within place_find_tm and the anchors (landmarks) within
+## landmark_find_tm of the cell, over the 3 x 3 loaded chunks round its chunk, that this size has not
+## paid are written to the ledger in id order, each with discovered {kind, id, size, lump} (the find's
+## type is `kind`: the event's own `type` is "discovered"); with lumps, a place pays place x the ring
+## and a landmark landmark_at_top x the ring at the build top only.
+func _discover(sim: PoolSim, n: int) -> void:
+	var w := sim.world
+	var at := sim.motion.position
+	var c := w.chunk_of_local(at)
+	var place_r := float(cfg.discovery.place_find_tm)
+	var mark_r := float(cfg.discovery.landmark_find_tm)
+	var found := []   # [id, type, kind]
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var ch := w.chunk(Vector2i(c.x + dx, c.y + dy))
+			if ch == null:
+				continue
+			for p in ch.places:
+				if not (paid.place as Array).has(p.kind) and at.distance_to(w.local_of_tm(float(p.x), float(p.y))) <= place_r:
+					found.append([str(p.id), "place", str(p.kind)])
+			for a in ch.anchors:
+				if not (paid.landmark as Array).has(a.model) and at.distance_to(w.local_of_tm(float(a.x), float(a.y))) <= mark_r:
+					found.append([str(a.id), "landmark", str(a.model)])
+	if found.is_empty():
+		return
+	found.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+	var top := at_top(n, w.max_size)
+	for f: Array in found:
+		var kind: String = f[1]
+		if (paid[kind] as Array).has(f[2]):
+			continue   # two of a kind found in one tick
+		var lump := _lumps(sim) and (kind == "place" or top)
+		_note(sim, kind, f[2], n)
+		sim._emit({"type": "discovered", "kind": kind, "id": f[2], "size": n, "lump": lump})
+		if lump:
+			add(sim, float(cfg.lumps.place if kind == "place" else cfg.lumps.landmark_at_top) * ring(n), kind, f[2])
+
+
+## A find at size `n`: paid here (sorted) and in the ledger.
+func _note(_sim: PoolSim, kind: String, id: String, n: int) -> void:
+	var list: Array = paid[kind]
+	list.append(id)
+	list.sort()
+	discoveries.append({"type": kind, "id": id, "size": n})
+
+
+static func _lumps(sim: PoolSim) -> bool:
+	return bool(sim.world.content.config.switches.get("lumps", false))
+
+
+## _player_dies (D-35): the energy the cell died with; from size 2 the death costs death_meter_share
+## of the ring (never below 0); the window, the press and the closing history start again.
+func on_death(sim: PoolSim) -> void:
+	energy_at_death = sim.state.energy
+	var n := sim.size()
+	if n >= 2:
+		meter = maxf(0.0, meter - float(cfg.death_meter_share) * ring(n))
+		if not is_full(n):
+			full_since = -1
+	calm_ticks = 0
+	blocked_ticks = 0
+	blocker = ""
+	armed = false
+	due = false
+	closing.clear()
+
+
+## The energy a respawn starts with (D-35, D-73): the streak's share of the capacity, but at most
+## respawn_cap_over_death over the energy the cell died with; before the first growth (size 1) at
+## least respawn_floor_share of the capacity. With no death recorded, the share.
+func respawn_energy(cap: float, share: float, n: int) -> float:
+	if energy_at_death < 0.0:
+		return share * cap
+	var v := minf(share * cap, energy_at_death + float(cfg.respawn_cap_over_death))
+	if n == 1:
+		v = maxf(float(cfg.respawn_floor_share) * cap, v)
+	return clampf(v, 0.0, cap)
+
+
+## A Continue (D-74): the saved meter at size `n` (clamped to the ring; full from tick 0), the ledger,
+## and the paid lists from the ledger's finds at n.
+func restore(save: SaveGame, n: int) -> void:
+	meter = clampf(float(save.growth.get("meter", 0.0)), 0.0, ring(n))
+	full_since = 0 if is_full(n) else -1
+	discoveries = save.discoveries.duplicate(true)
+	_paid_from_ledger(n)
+
+
+## A new size (the growth tick, D-76's debug_set_size): the meter, the window and the press start
+## again, and the paid lists are the ledger's finds at size `n` (a size met before keeps what it paid).
+func reset_for_size(n: int) -> void:
+	meter = 0.0
+	calm_ticks = 0
+	blocked_ticks = 0
+	blocker = ""
+	armed = false
+	due = false
+	full_since = -1
+	closing.clear()
+	_paid_from_ledger(n)
+
+
+func _paid_from_ledger(n: int) -> void:
+	paid = {"place": [], "landmark": [], "food": []}
+	for d: Dictionary in discoveries:
+		var kind := str(d.type)
+		if int(d.size) == n and paid.has(kind) and not paid[kind].has(d.id):
+			paid[kind].append(d.id)
+	for kind: String in paid:
+		paid[kind].sort()
 
 
 ## The meter's state for the endless snapshot (spine 3.12): closing ids and paid lists sorted.

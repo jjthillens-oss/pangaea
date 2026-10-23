@@ -1,14 +1,15 @@
 extends TestCase
-## Save, quit and continue bring back the same lineage, body, points and place, using the
-## existing v2 save schema; a death is applied once (test_checkpoints covers the death flow in
-## full). Saves go to a per-process folder under user://test_saves.
+## Save, quit and continue bring back the same lineage, body, points and place, using the v3 save
+## schema; a death is applied once (test_checkpoints covers the death flow in full). Saves go to a
+## per-process folder under user://test_saves.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
-## The v2 save's top-level keys. A field added without a schema version and migration fails here.
-const V2_KEYS := ["adaptation_points", "build_id", "discoveries", "era", "genome", "lineage_history",
-	"lineage_id", "pending_transactions", "player", "relationships", "saved_at_unix", "schema_version",
-	"settlements", "world_changes", "world_seed"]
+## The v3 save's top-level keys (v2's 15 plus S2's four). A field added without a schema version
+## and migration fails here; v3 is frozen once S2 ships (build plan BP-18).
+const SAVE_KEYS := ["adaptation_points", "build_id", "checkpoint", "discoveries", "era", "gen_version", "genome",
+	"growth", "lineage_history", "lineage_id", "pending_transactions", "player", "relationships", "saved_at_unix",
+	"schema_version", "settlements", "spawn", "world_changes", "world_seed"]
 
 var slot := ""
 var _swept := false
@@ -76,7 +77,7 @@ func test_continue_brings_back_the_same_lineage_body_points_and_place() -> void:
 	check(not again.dirty, "nothing unsaved right after continuing")
 
 
-func test_a_saved_file_has_exactly_the_v2_keys() -> void:
+func test_a_saved_file_has_exactly_the_v3_keys() -> void:
 	var session := GameSession.new(slot)
 	session.start_new("grazer", 1)
 	_play(session, 120)
@@ -84,10 +85,13 @@ func test_a_saved_file_has_exactly_the_v2_keys() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, V2_KEYS, "top-level keys")
-	check_eq(int(data.schema_version), 2, "schema version")
-	check_eq(data.player.keys(), ["position"], "the player holds only a position")
+	check_eq(keys, SAVE_KEYS, "top-level keys")
+	check_eq(int(data.schema_version), 3, "schema version")
+	var player_keys: Array = data.player.keys()
+	player_keys.sort()
+	check_eq(player_keys, ["energy", "health", "position"], "the player holds a position and step 4's two fields")
 	check_eq(data.player.position.size(), 3, "three numbers")
+	check(data.player.energy == null and data.player.health == null, "energy and health are null: fresh")
 
 
 func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
@@ -215,6 +219,54 @@ func test_unsaved_changes_are_tracked() -> void:
 	check(not session.dirty, "saved")
 	Lineage.earn(session.sim.save, 1)
 	check(session.dirty, "points changed")
+
+
+func test_a_tick_in_which_the_cell_grew_is_saved_at_once() -> void:
+	# S2 D-75: the scene hands each tick's events to after_events; a "grew" among them saves.
+	var session := GameSession.new(slot)
+	check(session.start_new("grazer", 40).ok, "started")
+	_play(session, 120)
+	Lineage.earn(session.sim.save, 3)
+	check(session.dirty, "points earned since the start's save")
+	var files := _files()
+	check_eq(session.after_events([]), {}, "a tick with no events saves nothing")
+	session.sim.step(SimIntent.new())
+	check_eq(session.after_events(session.sim.drain_events()), {}, "nor does a tick with no growth")
+	check_eq(session.after_events([{"type": "ate"}, {"type": "ring_full", "size": 1, "ring": 90.0}]), {},
+		"nor a full ring")
+	check_eq(_files(), files, "nothing was written")
+	check(session.dirty, "still unsaved")
+	var grew := {"type": "grew", "from": 1, "to": 2, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
+		"settled_to": Vector2.ZERO, "remnants": [], "morsels": [], "haze": [], "checkpoint_am": [0.0, 9.0, -1.5708, 2]}
+	var saved := session.after_events([{"type": "growth_began"}, grew, {"type": "chunk_loaded"}])
+	check(saved.get("ok", false), "a tick that grew is saved: %s" % [saved])
+	check_eq(session.last_save, saved, "as save_now saves")
+	check(not session.dirty, "nothing unsaved after it")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	check_eq(int(data.adaptation_points), session.sim.save.adaptation_points, "the file holds this tick's points")
+
+
+## Sets the endless world's size the way a growth leaves it, for the dirty test: only the number
+## (the frame and the chunks stay), which is all the session reads.
+func _set_size(sim: PoolSim, n: int) -> void:
+	sim.world.size = n
+
+
+func test_a_size_other_than_the_saved_one_is_an_unsaved_change() -> void:
+	var session := _endless(35)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(not session.dirty, "saved at size 1")
+	_set_size(sim, 2)
+	check(session.dirty, "a growth is an unsaved change, though the cell has not moved")
+	check(session.save_now().ok, "saved")
+	check(not session.dirty, "saved at size 2")
+	_set_size(sim, 1)
+	check(session.dirty, "and so is a size back down")
+	check(session.save_now().ok and not session.dirty, "saved again")
+	var pool := GameSession.new(SaveFolder.path("pool_slot.json"))
+	check(pool.start_new("grazer", 35).ok and not pool.dirty, "the pool is always size 1")
 
 
 func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more() -> void:

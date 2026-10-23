@@ -102,8 +102,12 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
 	check_eq(names.slice(0, 6), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx"], "the containers register in their fixed order")
-	check_eq(names.size(), 6 + CellAudio.POSITIONAL_PLAYERS + pool.creature_layer.views().size(),
-		"then the positional players, then each creature's lane")
+	check_eq(names.size(), 6 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
+		"then the positional players, the growth beat's effects, then each creature's lane")
+	check_eq(names[6 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
+	var dissolve := pool.ui.get_node_or_null(^"BeatDissolve") as TextureRect
+	check(dissolve != null and not dissolve.visible, "the reduce-motion dissolve waits, hidden, over the UI (S2)")
+	check(not pool.growth_beat.running() and pool.depth_k() == 1.0, "the growth beat is idle after the build")
 	check(pool.cell_view.get_node_or_null("EatFx") == null and pool.world_fx.get_node_or_null("EatFx") is CPUParticles3D,
 		"the eat burst has moved to WorldFx")
 	check((pool.world_fx.get_node("EatFx") as CPUParticles3D).local_coords, "with local particle coordinates")

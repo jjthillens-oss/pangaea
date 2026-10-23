@@ -15,6 +15,12 @@ extends Control
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
 ##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
 ##
+##   growth (S2):  under the energy bar, the meter ring with the size in it and the size badge
+##                 ("Size 1 · about 20 µm"), and under them Growth.hint() as it is, its "(G)" naming
+##                 the grow key bound now (BP-19). GrowthHud works out what they show; all three are
+##                 hidden in the M1 pool, which has no growth (D-46). A ring paid out at the top gets
+##                 its own toast, never the survival one (C-V8)
+##
 ##   endless sea (S1): a toast naming each region or rare tile the cell enters, at most once per
 ##                 REGION_TOAST_REPEAT_S for each, the start tile's at once; and the WorldOverlay,
 ##                 made in code: a cream pip at the screen edge toward the column at the generation
@@ -63,6 +69,11 @@ const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": K
 const REGION_TOAST_REPEAT_S := 30.0
 const REGION_NAMES := {"home": "Home waters", "sunlit": "Sunlit shallows", "reef": "Shell reef",
 		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral"}
+## The grow warning sound plays when the ring starts growing, at most once per this long (sim s).
+const GROW_WARN_GAP_S := 3.0
+## The growth line's look while the ring waits or grows: cream on a keyline outline.
+const GROWTH_LINE_CREAM := Color("#F4EAD2")
+const GROWTH_LINE_OUTLINE := 4
 
 var pool: PoolScene
 
@@ -77,6 +88,8 @@ var _banner_t := 0.0
 var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
 var _vignette_t := INF                ## seconds since the last vignette pulse
 var _region_shown := {}               ## region or rare kind -> sim time its toast last showed
+var _growth_state := "none"           ## GrowthHud state shown last frame
+var _grow_warn_at := -INF             ## sim time the grow warning last played
 ## The endless sea's marker overlay; null in the pool.
 var world_overlay: WorldOverlay
 
@@ -84,6 +97,10 @@ var world_overlay: WorldOverlay
 @onready var state_chip: PanelContainer = %StateChip
 @onready var state_text: Label = %StateText
 @onready var energy_bar: ProgressBar = %EnergyBar
+@onready var growth_row: Control = %GrowthRow
+@onready var meter_ring: MeterRing = %MeterRing
+@onready var size_badge: Label = %SizeBadge
+@onready var growth_line: Label = %GrowthLine
 @onready var shelter_chip: PanelContainer = %ShelterChip
 @onready var shelter_text: Label = %ShelterText
 @onready var health_row: Control = %HealthRow
@@ -128,6 +145,7 @@ func bind(p_pool: PoolScene) -> void:
 	pool = p_pool
 	pool.sim_event.connect(_on_sim_event)
 	pool.refusal_hint.connect(func(text: String, _reason: String): show_hint(text))
+	pool.growth_chord.connect(on_growth_chord)
 	_body = Lineage.starting_body_of(pool.sim.save.genome, pool.sim.catalog)
 	controls_text.text = "\n".join(controls_lines())
 	first_meal_text.text = first_meal_line(pool.sim.phenotype)
@@ -137,6 +155,9 @@ func bind(p_pool: PoolScene) -> void:
 	_set_vignette(0.0)
 	threat_indicators.bind(pool)
 	_region_shown.clear()
+	_growth_state = "none"
+	_grow_warn_at = -INF
+	update_growth()
 	if world_overlay != null:
 		remove_child(world_overlay)
 		world_overlay.queue_free()
@@ -178,6 +199,14 @@ func show_message(text: String, seconds: float = MESSAGE_S) -> void:
 	_fit_center(message_text, message)
 	message.modulate.a = 1.0
 	_message_t = seconds
+
+
+## The growth beat's chord (S2, 1.9 s in): the new size's message ("Size 2 · about 32 µm"); the
+## badge and the ring follow pool.shown_size(), which turns to the new size at the same moment.
+func on_growth_chord(size: int) -> void:
+	show_message(GrowthHud.badge_text(size, pool.session.world.config.ladder.get("labels", [])))
+	update_growth()
+	refresh()
 
 
 ## A refusal hint at the bottom of the screen.
@@ -374,6 +403,7 @@ func _process(delta: float) -> void:
 	if pool == null or pool.sim == null:
 		return
 	_update_bars()
+	update_growth()
 	if pool.paused:
 		return
 	_refresh_t -= delta
@@ -399,6 +429,55 @@ func _process(delta: float) -> void:
 		_set_vignette(vignette_strength(_vignette_t))
 
 
+## The growth row and line, from the pool's Growth (S2; every frame, and at bind): hidden with no
+## growth. The ring shows the shown size's meter, the badge that size, the line Growth.hint() with
+## the bound grow key; the grow warning sounds when the ring starts growing.
+func update_growth() -> void:
+	var growth := pool.growth()
+	growth_row.visible = growth != null
+	if growth == null:
+		growth_line.visible = false
+		_growth_state = "none"
+		return
+	var config := pool.session.world.config
+	var n := pool.shown_size()
+	var state := GrowthHud.state_of(growth, n, pool.max_size())
+	# Until the growth beat's chord the scene shows the old size, its ring still full (V-7).
+	var share := 1.0 if n < pool.sim_size() else GrowthHud.share_of(growth, n)
+	meter_ring.reduce_flashing = SettingsService.shared().reduce_flashing()
+	meter_ring.show_ring(share, n, state)
+	_set_text(size_badge, GrowthHud.badge_text(n, config.ladder.get("labels", [])))
+	var hint: String = GrowthHud.hint_of(growth)
+	if hint.contains("(G)"):
+		hint = GrowthHud.with_grow_key(hint, grow_key_name())
+	_set_text(growth_line, hint)
+	growth_line.visible = hint != ""
+	if state != _growth_state:
+		_style_growth_line(state)
+		var now := pool.sim.now()
+		if state == "growing" and now - _grow_warn_at >= GROW_WARN_GAP_S:
+			_grow_warn_at = now
+			pool.audio.play("grow_warn")
+		_growth_state = state
+
+
+## The name of the input bound to grow for the device in use ("G", or a button), "" for none.
+static func grow_key_name() -> String:
+	var code := SettingsService.shared().first_code("grow", InputPrompts.device)
+	return InputPrompts.code_name(code) if code != "" else ""
+
+
+func _style_growth_line(state: String) -> void:
+	if state in ["growing", "blocked", "ready"]:
+		growth_line.add_theme_color_override(&"font_color", GROWTH_LINE_CREAM)
+		growth_line.add_theme_color_override(&"font_outline_color", UiPalette.KEYLINE)
+		growth_line.add_theme_constant_override(&"outline_size", GROWTH_LINE_OUTLINE)
+	else:
+		growth_line.remove_theme_color_override(&"font_color")
+		growth_line.remove_theme_color_override(&"font_outline_color")
+		growth_line.remove_theme_constant_override(&"outline_size")
+
+
 func _update_bars() -> void:
 	var state := pool.sim.state
 	energy_bar.max_value = state.energy_capacity
@@ -414,8 +493,20 @@ func _on_sim_event(event: Dictionary) -> void:
 			_add_toast(meal_toast(event))
 			_flash(int(event.get("points", 0)))
 		"earned":
-			_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
+			# A ring paid out at the top has its own toast (ring_paid); the points only flash (C-V8).
+			if str(event.get("reason", "")) != "ring":
+				_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
 			_flash(int(event.points))
+		"ring_paid":
+			_add_toast(GrowthHud.ring_paid_text(int(event.points)))
+			meter_ring.sweep()
+			pool.audio.play("growth_ring")
+		"ring_full":
+			pool.audio.play("growth_ring")
+		"growth_waiting":
+			pool.audio.play("refuse")   # the line itself is Growth.hint(), say "Not while something is hunting you"
+		"meter_lump", "discovered":
+			meter_ring.flash()
 		"respawned":
 			hint.visible = false
 		"tile_entered":
@@ -571,7 +662,7 @@ class WorldOverlay extends Control:
 			if not tip.behind and (tip.at as Vector2).is_finite():
 				var side := ((tip.at as Vector2) - (back.at as Vector2)).normalized()
 				label = {"at": tip.at, "side": side if side.is_finite() and side != Vector2.ZERO else Vector2.RIGHT,
-					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_tm)}
+					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_am)}
 		queue_redraw()
 
 	## The pip at `at` on the edge band of `rect` with its words; where either would come within

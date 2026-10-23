@@ -32,9 +32,27 @@ extends TestCase
 ##    most 16 at its fastest of 3. The saturated case needs no invariant, so it waits on
 ##    Gates.missing(Gates.WORLD) and FakeWorldGen only.
 ## While the endless world has not landed each prints what it waits on (Gates.missing()).
+##
+## S2 (T0.6; S2 build plan BP-4, BP-6): every size-1 run above uses the real config with growth on,
+## the trigger "press" and no press (the racer's SwimBot keys), with the ring filled at the start
+## (debug_fill_meter, or Growth.add before T2.6) and kept full by the overdrive's energy, never armed;
+## each run ends at size 1. So the P99.9 case is also S2G38: with the ring held full the wedge test
+## and the next size's prefetch run on every tick. The S2 cases wait on the S2 seams they read:
+##  - S2G17, #28E at size 2: the same swim after debug_set_size(2) at home, 3 runs; the median run's
+##    median tick at most 8 yardsticks and the fastest run's at most 1,500 us.
+##  - S2G17, #29E: the 30 s after a forced growth in the densest arrangement, 12 remnants (12 dev
+##    creatures round the cell at size 1 converted by the growth) and 10 awake (dev creatures of the
+##    size-2 species placed round it after), timed 3 times on twin sims; each 5 s window at its
+##    fastest of 3 at most 2,500 us and 14 yardsticks.
+##  - S2G17, a remnant: twin sims after that growth, one with its remnants removed, timed tick by
+##    tick in turn, 200 ticks a round, 3 rounds: the median difference per remnant at most 25 us.
+##  - S2G18, the growth tick: per seed (6), the ring filled, at least PREFETCH_WARM_TICKS ticks for the
+##    prefetch, then debug_force_growth; the tick that grows at its fastest of 3 runs is at most 40
+##    yardsticks. The same with no warm-up (cold) is printed.
 
 const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const Yardstick := preload("res://tests/cost_yardstick.gd")
 
 const COST_SEED := 2801
@@ -68,7 +86,28 @@ const DENSE_MIN_IN_VIEW := 6           ## at least half the awake cap in the cel
 const DENSE_LIMIT_YARDSTICKS := 10.0   ## the median run's median tick
 const DENSE_LOAD_LIMIT_YARDSTICKS := 16.0   ## every tick that loads a chunk, at its fastest of 3
 
-static var _runs := {}                ## overdriven (bool) -> the timed swim runs
+## S2 (T0.6).
+const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "size_two_content"]
+const GROWTH_NEEDS: PackedStringArray = ["set_size", "force_growth", "remnants", "size_two_content"]
+const SIZE_TWO_SEED := 2803
+const DENSE_REMNANTS := 12             ## #29E: the remnants a growth keeps (D-78's cap)
+const DENSE_AWAKE := 10                ## #29E: awake creatures after it
+const DENSE_RING_TM := 6.0             ## the dev creatures stand this far round the cell
+const POST_GROWTH_TICKS := 1800        ## #29E: the 30 s after the growth
+const WINDOW_TICKS := 300              ## each 5 s window counts at its fastest of the runs
+const WINDOW_LIMIT_US := 2500.0
+const WINDOW_LIMIT_YARDSTICKS := 14.0
+const REMNANT_TICKS := 200
+const REMNANT_ROUNDS := 3
+const REMNANT_LIMIT_US := 25.0
+const REMNANT_MIN := 8                 ## remnants on average through a round: fewer cannot be told from noise
+const SIZE_TWO := 2
+const GROWTH_TICK_SEEDS: Array[int] = [2811, 2812, 2813, 2814, 2815, 2816]
+const PREFETCH_WARM_TICKS := 60        ## S2G18: the prefetch fills at most one chunk a tick
+const GROWTH_TICK_LIMIT_YARDSTICKS := 40.0
+const GROWTH_WAIT_TICKS := 10          ## a forced growth grows within this many ticks
+
+static var _runs := {}                ## "overdriven/size" or "racer/size" -> the timed swim runs
 static var _dense: Array[Dictionary] = []   ## the saturated case's 3 runs
 
 
@@ -80,16 +119,51 @@ func _waits(gate: String) -> bool:
 	return true
 
 
-static func _mode(overdriven: bool) -> String:
-	return "overdriven" if overdriven else "racer"
+static func _mode(overdriven: bool, size := 1) -> String:
+	var mode := "overdriven" if overdriven else "racer"
+	return mode if size == 1 else "%s at size %d" % [mode, size]
 
 
-## A racer at home, hidden, about to swim east.
-static func _swimmer() -> Variant:
-	var sim: Variant = Gates.make_sim(Gates.RACER, COST_SEED)
+## A racer at home, hidden, about to swim east, with growth on and its ring full (BP-6, S2G38): its
+## bot (_swim_bot) plays in press mode and never presses. At another size it gets there first by
+## debug_set_size (D-76); at the build's top size there is no ring to fill (a full ring pays out).
+static func _swimmer(size := 1) -> Variant:
+	var sim: Variant = Gates.make_sim(Gates.RACER, COST_SEED, true)
+	if size != 1:
+		sim.debug_set_size(size)
 	sim.debug_set_hidden(true)
+	if not Growth.at_top(sim.size(), sim.world.max_size):
+		fill_ring(sim)
 	sim.drain_events()
 	return sim
+
+
+## The swimmer's bot: east at full throttle, press mode, no press.
+static func _swim_bot() -> Variant:
+	var bot = SwimBot.new(Vector2.RIGHT)
+	bot.keys.trigger = "press"
+	bot.keys.press = false
+	return bot
+
+
+## The ring filled: debug_fill_meter (T2.6), or Growth.add as it does before that lands.
+static func fill_ring(sim: Variant) -> void:
+	if sim.has_method("debug_fill_meter"):
+		sim.debug_fill_meter()
+	else:
+		sim.growth.add(sim, sim.growth.ring(sim.size()) - sim.growth.meter, "debug", "")
+
+
+## A run's growth at its end: {"size", "full", "armed"}.
+static func _end_of(sim: Variant) -> Dictionary:
+	return {"size": int(sim.size()), "full": sim.growth.is_full(sim.size()), "armed": bool(sim.growth.armed)}
+
+
+## A size-1 run's end (_end_of), as BP-6 and S2G38 ask: still size 1, the ring full and never armed.
+func _check_size_one(end: Dictionary, what: String) -> void:
+	check_eq(int(end.size), 1, "%s: the run ends at size 1" % what)
+	check(bool(end.full), "%s: the ring was held full" % what)
+	check(not bool(end.armed), "%s: never armed (press mode, no press)" % what)
 
 
 ## One untimed swim step: overdriven or as it is (Gates.drive), then the bot's move.
@@ -113,13 +187,14 @@ static func _timed_step(sim: Variant, intent: SimIntent, rebase_by := Vector2i.Z
 
 ## The three timed runs of the straight swim (shared by #28E and P99.9): per run, every tick's us
 ## and yardsticks, the end hash and the counters.
-func _swim_runs(overdriven: bool) -> Array[Dictionary]:
-	if _runs.has(overdriven):
-		return _runs[overdriven]
+func _swim_runs(overdriven: bool, size := 1) -> Array[Dictionary]:
+	var key := _mode(overdriven, size)
+	if _runs.has(key):
+		return _runs[key]
 	var out: Array[Dictionary] = []
 	for run in RUNS:
-		var sim: Variant = _swimmer()
-		var bot = SwimBot.new(Vector2.RIGHT)
+		var sim: Variant = _swimmer(size)
+		var bot = _swim_bot()
 		var start: PackedFloat64Array = sim.absolute_position_am()
 		for i in WARM_TICKS:
 			_swim_step(sim, bot, overdriven)
@@ -133,8 +208,9 @@ func _swim_runs(overdriven: bool) -> Array[Dictionary]:
 		out.append({"us": us, "ratios": ratios, "hash": sim.state_hash(), "chunks": sim.world.loaded_keys().size(),
 			"awake": sim.creatures.awake().size(), "sleeping": sim.world.sleeping_ids().size(),
 			"awake_overflow": int(sim.world.counters.awake_overflow), "chunk_waits": int(sim.world.counters.chunk_waits),
-			"speed": Gates.abs_distance(start, sim.absolute_position_am()) / ((WARM_TICKS + TIMED_TICKS) / 60.0)})
-	_runs[overdriven] = out
+			"speed": Gates.abs_distance(start, sim.absolute_position_am()) / ((WARM_TICKS + TIMED_TICKS) / 60.0),
+			"end": _end_of(sim)})
+	_runs[key] = out
 	return out
 
 
@@ -345,9 +421,9 @@ func test_soak_the_racer_as_it_is_meets_the_same_cost_gates() -> void:
 	_check_rebase_cost(false)
 
 
-func _check_swim_cost(overdriven: bool) -> void:
-	var mode := _mode(overdriven)
-	var runs := _swim_runs(overdriven)
+func _check_swim_cost(overdriven: bool, size := 1) -> void:
+	var mode := _mode(overdriven, size)
+	var runs := _swim_runs(overdriven, size)
 	var medians: Array[float] = []
 	var ratios: Array[float] = []
 	for r in runs:
@@ -355,6 +431,11 @@ func _check_swim_cost(overdriven: bool) -> void:
 		ratios.append(Yardstick.median(r.ratios))
 		check_eq(r.hash, runs[0].hash, "%s: every run timed the same ticks" % mode)
 		check_eq(int(r.awake_overflow) + int(r.chunk_waits), 0, "%s: no awake overflow and no chunk waits on the swim (G17)" % mode)
+	for r in runs:
+		if size == 1:
+			_check_size_one(r.end, "#28E %s" % mode)
+		else:
+			check_eq(int(r.end.size), size, "%s: the run swam at size %d" % [mode, size])
 	var fastest: float = medians.min()
 	var ratio := Yardstick.median(ratios)
 	print("test-endless-cost: #28E %s on %s at %.2f tm/s: median tick %.1f us in the fastest of %d runs (%s); %.2f yardsticks in the median run (%s); %d chunks, %d awake, %d asleep at the end; awake_overflow %d, chunk_waits %d" % [
@@ -373,7 +454,9 @@ func _check_p999(overdriven: bool) -> void:
 	for r in runs:
 		by_median.append(Yardstick.median(r.ratios))
 	var median_run: Dictionary = runs[by_median.find(Yardstick.median(by_median))]
-	print("test-endless-cost: P99.9 %s %.2f yardsticks over each tick's fastest run; the median run's own %.2f; worst tick %.2f" % [
+	for r in runs:
+		_check_size_one(r.end, "P99.9 %s" % mode)
+	print("test-endless-cost: P99.9 %s %.2f yardsticks over each tick's fastest run (S2G38: size 1, growth on, the ring full in press mode); the median run's own %.2f; worst tick %.2f" % [
 		mode, p, _percentile(median_run.ratios, P999), fastest.max()])
 	check(p <= P999_YARDSTICKS, "%s: P99.9 tick %.2f yardsticks (limit %.1f)" % [mode, p, P999_YARDSTICKS])
 
@@ -413,6 +496,7 @@ func _check_sleeper_cost(overdriven: bool) -> void:
 	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each (rounds %s); %d still asleep at the end" % [
 		mode, n, swum, with_them.absolute_position_am()[0], cost, _joined(per, "%.2f"), with_them.world.sleeping_ids().size()])
 	check(with_them.world.sleeping_ids().size() == n, "%s: they slept through the timing" % mode)
+	_check_size_one(_end_of(with_them), "sleeper %s" % mode)
 	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
 
 
@@ -421,21 +505,26 @@ func _check_sleeper_cost(overdriven: bool) -> void:
 ## SLEEPER_SWIM_MAX_TICKS in all).
 static func _sleeper_scene(overdriven: bool) -> Variant:
 	var sim: Variant = _swimmer()
-	var bot = SwimBot.new(Vector2.RIGHT)
+	var bot = _swim_bot()
 	for i in SLEEPER_SWIM_MAX_TICKS:
 		if i >= SLEEPER_SWIM_TICKS and sim.world.sleeping_ids().size() >= SLEEPER_STOP:
 			break
 		_swim_step(sim, bot, overdriven)
 	for i in SLEEPER_REST_TICKS:
-		sim.step(SimIntent.new())
+		sim.step(_still(bot, sim))
 		sim.drain_events()
 	return sim
+
+
+## A still intent through `bot`'s keys (so the run stays in press mode).
+static func _still(bot: Variant, sim: Variant) -> SimIntent:
+	return bot.keys.apply(sim, SimIntent.new())
 
 
 func _check_rebase_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
 	var sim: Variant = _swimmer()
-	var bot = SwimBot.new(Vector2.RIGHT)
+	var bot = _swim_bot()
 	for i in WARM_TICKS:
 		_swim_step(sim, bot, overdriven)
 	var excess: Array[float] = []
@@ -458,6 +547,7 @@ func _check_rebase_cost(overdriven: bool) -> void:
 	var m := Yardstick.median(excess) if not excess.is_empty() else INF
 	print("test-endless-cost: %s: a rebase tick costs %.2f yardsticks more than the tick before it (median of %d: %s)" % [
 		mode, m, excess.size(), _joined(excess, "%.2f")])
+	_check_size_one(_end_of(sim), "rebase %s" % mode)
 	check(m <= REBASE_LIMIT_YARDSTICKS, "%s: a rebase tick costs %.2f yardsticks more (limit %.1f)" % [mode, m, REBASE_LIMIT_YARDSTICKS])
 
 
@@ -470,6 +560,281 @@ static func _rebases(events: Array) -> int:
 
 static func _joined(values: Array[float], format: String) -> String:
 	return ", ".join(values.map(func(v: float) -> String: return format % v))
+
+
+## S2 (T0.6): the gates at size 2 wait on Gates.s2_missing(SIZE_TWO_NEEDS), and those round a forced
+## growth on GROWTH_NEEDS.
+func _size_two_waits(gate: String, needs := SIZE_TWO_NEEDS) -> bool:
+	var what := Gates.s2_missing(needs)
+	if what.is_empty():
+		return false
+	print("test-endless-cost: %s waits on: %s" % [gate, "; ".join(what)])
+	return true
+
+
+## #29E's scene before its growth, which runs now (fast): the species a growth to size 2 keeps as
+## remnants are M1's at q < 1 there with a rival or prey role, and twelve dev creatures of them
+## stand on the ring round the cell at home at size 1.
+func test_the_29e_scene_rings_the_cell_with_twelve_future_remnants() -> void:
+	if _waits("#29E's scene"):
+		return
+	var sim: Variant = Gates.make_sim("omnivore", SIZE_TWO_SEED, true)
+	var kinds := remnant_species(sim.species, SIZE_TWO)
+	check(not kinds.is_empty(), "some species become remnants at size 2 (%s)" % [kinds])
+	for id in kinds:
+		check_eq(sim.species.entry_size(id), 1, "%s enters at size 1" % id)
+		check(sim.species.q_of(id, SIZE_TWO) < 1.0, "%s is at q < 1 at size 2" % id)
+	for id in sim.species.species_ids():
+		var role := str(sim.species.at_size(id, SIZE_TWO).get("ladder_role", "")) if sim.species.entry_size(id) <= SIZE_TWO else ""
+		check_eq(kinds.has(id), role == "rival" or role == "prey", "%s (%s at size 2) is a remnant species exactly when a rival or prey" % [id, role])
+	var before: int = sim.creatures.awake().size()
+	check_eq(_ring_of(sim, kinds, DENSE_REMNANTS), DENSE_REMNANTS, "every dev creature stands")
+	check_eq(sim.creatures.awake().size(), before + DENSE_REMNANTS, "and is awake")
+
+
+## S2G17: #28E at size 2, the same swim after debug_set_size(2) at home (overdriven; the racer as it
+## is in the soak case below).
+func test_slow_a_size_2_swim_costs_at_most_8_yardsticks_a_tick() -> void:
+	if _size_two_waits("#28E at size 2"):
+		return
+	_check_swim_cost(true, SIZE_TWO)
+
+
+func test_soak_the_racer_as_it_is_swims_at_size_2_within_8_yardsticks() -> void:
+	if _size_two_waits("#28E at size 2 (racer)"):
+		return
+	_check_swim_cost(false, SIZE_TWO)
+
+
+## S2G17, #29E: the densest 30 s after a forced growth (12 remnants and 10 awake), timed 3 times on
+## twin scenes; each 5 s window counts at its fastest of the 3, as #29's do.
+func test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window() -> void:
+	if _size_two_waits("#29E", GROWTH_NEEDS):
+		return
+	var windows := ceili(float(POST_GROWTH_TICKS) / WINDOW_TICKS)
+	var best_us: Array[float] = []
+	var best_ratio: Array[float] = []
+	best_us.resize(windows)
+	best_us.fill(INF)
+	best_ratio.resize(windows)
+	best_ratio.fill(INF)
+	var end_hash := 0
+	var scene0 := {}
+	for run in RUNS:
+		var scene := _post_growth_scene(DENSE_AWAKE)
+		if not _check_scene(scene, "#29E run %d" % run, DENSE_AWAKE):
+			return
+		if run == 0:
+			scene0 = scene
+		var sim: Variant = scene.sim
+		var us := PackedFloat64Array()
+		var yard := PackedFloat64Array()
+		us.resize(windows)
+		yard.resize(windows)
+		for i in POST_GROWTH_TICKS:
+			var t := _timed_step(sim, _still(scene.bot, sim))
+			var w := floori(float(i) / WINDOW_TICKS)
+			us[w] += t.us
+			yard[w] += t.yard_us
+		for w in windows:
+			best_us[w] = minf(best_us[w], us[w] / WINDOW_TICKS)
+			best_ratio[w] = minf(best_ratio[w], us[w] / maxf(yard[w], 1.0))
+		if run == 0:
+			end_hash = sim.state_hash()
+		else:
+			check_eq(sim.state_hash(), end_hash, "#29E run %d timed the same ticks as run 0" % run)
+	print("test-endless-cost: #29E: the %d s after a growth with %d remnants and %d awake (%d remnants left at the end of run 0): each %d s window's mean tick at its fastest of %d runs %s us; %s yardsticks" % [
+		POST_GROWTH_TICKS / 60, scene0.remnants, scene0.awake, scene0.sim.remnants.items.size(), WINDOW_TICKS / 60, RUNS,
+		_joined(best_us, "%.1f"), _joined(best_ratio, "%.2f")])
+	for w in windows:
+		check(best_us[w] <= WINDOW_LIMIT_US, "#29E window %d: %.1f us a tick at its fastest (limit %.0f)" % [w, best_us[w], WINDOW_LIMIT_US])
+		check(best_ratio[w] <= WINDOW_LIMIT_YARDSTICKS, "#29E window %d: %.2f yardsticks at its fastest (limit %.1f)" % [
+			w, best_ratio[w], WINDOW_LIMIT_YARDSTICKS])
+
+
+## S2G17, a remnant: twin scenes after the growth (no awake dev creatures, so nothing in them reacts
+## to the remnants), one with its remnants taken out, timed tick by tick in turn. A round's cost per
+## remnant is its median difference over the remnants it held on average (they flee and leave).
+func test_slow_a_remnant_costs_at_most_25_us() -> void:
+	if _size_two_waits("the remnant cost", GROWTH_NEEDS):
+		return
+	var with_them := _post_growth_scene(0)
+	var without := _post_growth_scene(0)
+	if not _check_scene(with_them, "remnants", 0) or not _check_scene(without, "twin", 0):
+		return
+	var a_sim: Variant = with_them.sim
+	var b_sim: Variant = without.sim
+	check_eq(a_sim.state_hash(), b_sim.state_hash(), "the twin scenes are the same")
+	for r in (b_sim.remnants.items as Array).duplicate():
+		b_sim.remnants.remove(r, "unloaded", b_sim.tick)
+	b_sim.drain_events()
+	check_eq(b_sim.remnants.items.size(), 0, "the twin has no remnants")
+	var per: Array[float] = []
+	var held: Array[float] = []
+	for k in REMNANT_ROUNDS:
+		var a: Array[float] = []
+		var b: Array[float] = []
+		var count := 0.0
+		for i in REMNANT_TICKS:
+			count += a_sim.remnants.items.size()
+			a.append(_timed_step(a_sim, _still(with_them.bot, a_sim)).us)
+			b.append(_timed_step(b_sim, _still(without.bot, b_sim)).us)
+		var mean := count / REMNANT_TICKS
+		held.append(mean)
+		per.append((Yardstick.median(a) - Yardstick.median(b)) / maxf(mean, 1.0))
+	var cost := Yardstick.median(per)
+	print("test-endless-cost: a remnant costs %.2f us a tick (rounds %s, holding %s remnants on average)" % [
+		cost, _joined(per, "%.2f"), _joined(held, "%.1f")])
+	check(held.min() >= REMNANT_MIN, "at least %d remnants on average through every round (%s)" % [REMNANT_MIN, _joined(held, "%.1f")])
+	check(cost <= REMNANT_LIMIT_US, "a remnant costs %.2f us a tick (limit %.0f)" % [cost, REMNANT_LIMIT_US])
+
+
+## S2G18: the growth tick, warm (the ring filled, PREFETCH_WARM_TICKS ticks for the prefetch, then
+## debug_force_growth) on each seed, at its fastest of 3 runs, at most 40 yardsticks; the same with
+## no warm-up (cold) is printed beside it, not gated (BP-4).
+func test_slow_the_growth_tick_costs_at_most_40_yardsticks() -> void:
+	if _size_two_waits("the growth tick", GROWTH_NEEDS):
+		return
+	var rows: Array[String] = []
+	for seed_value in GROWTH_TICK_SEEDS:
+		var warm := _growth_tick(seed_value, true)
+		var cold := _growth_tick(seed_value, false)
+		rows.append("seed %d: warm %.2f yardsticks (%.0f us), cold %.2f (%.0f us)" % [seed_value, warm.ratio, warm.us, cold.ratio, cold.us])
+		check(bool(warm.grew) and bool(cold.grew), "seed %d: the forced growth grew within %d ticks" % [seed_value, GROWTH_WAIT_TICKS])
+		check(int(warm.prefetched) > 0, "seed %d: the warm runs grew with the next size's chunks prefetched (%d)" % [
+			seed_value, warm.prefetched])
+		check(float(warm.ratio) <= GROWTH_TICK_LIMIT_YARDSTICKS, "seed %d: the growth tick costs %.2f yardsticks at its fastest (limit %.0f)" % [
+			seed_value, warm.ratio, GROWTH_TICK_LIMIT_YARDSTICKS])
+	print("test-endless-cost: S2G18 the growth tick at its fastest of %d runs: %s" % [RUNS, "; ".join(rows)])
+
+
+## One seed's growth tick at its fastest of RUNS runs: {"ratio", "us", "grew", "prefetched"}. Every
+## run is the same: a hidden cell at home in press mode with no press, still; warm: the ring filled
+## and PREFETCH_WARM_TICKS ticks; then debug_force_growth, and the tick that grows is timed.
+## `prefetched` is how many next-size chunks the stream held when the growth was forced.
+func _growth_tick(seed_value: int, warm: bool) -> Dictionary:
+	var out := {"ratio": INF, "us": INF, "grew": true, "prefetched": 0}
+	var grown_hash := 0
+	for run in RUNS:
+		var sim: Variant = Gates.make_sim("omnivore", seed_value, true)
+		sim.debug_set_hidden(true)
+		var bot: Variant = _still_keys()
+		sim.step(_still(bot, sim))
+		sim.drain_events()
+		if warm:
+			fill_ring(sim)
+			for i in PREFETCH_WARM_TICKS:
+				sim.step(_still(bot, sim))
+				sim.drain_events()
+		out.prefetched = _prefetched(sim)
+		check(sim.debug_force_growth(), "seed %d: debug_force_growth" % seed_value)
+		sim.drain_events()
+		var t := {}
+		for i in GROWTH_WAIT_TICKS:
+			var step := _timed_step(sim, _still(bot, sim))
+			if _has_event(step.events, "grew"):
+				t = step
+				break
+		if t.is_empty():
+			out.grew = false
+			return out
+		out.ratio = minf(out.ratio, t.ratio)
+		out.us = minf(out.us, t.us)
+		if run == 0:
+			grown_hash = sim.state_hash()
+		else:
+			check_eq(sim.state_hash(), grown_hash, "seed %d: run %d grew the same as run 0" % [seed_value, run])
+	return out
+
+
+## The next size's chunks the stream holds (WorldStream._next_chunks, BP-4), or 0 before it lands.
+static func _prefetched(sim: Variant) -> int:
+	var next: Variant = sim.world.get("_next_chunks")
+	return (next as Dictionary).size() if next is Dictionary else 0
+
+
+## #29E's scene: SIZE_TWO_SEED's omnivore at home, hidden and still, in press mode with no press
+## (its keys in "bot"); DENSE_REMNANTS dev creatures of the species that are remnants at size 2
+## round it at size 1, a forced growth, then `awake` dev creatures of the size-2 species round it.
+## {"sim", "bot", "grew", "remnants", "awake", "placed"}.
+static func _post_growth_scene(awake: int) -> Dictionary:
+	var sim: Variant = Gates.make_sim("omnivore", SIZE_TWO_SEED, true)
+	sim.debug_set_hidden(true)
+	var bot: Variant = _still_keys()
+	sim.step(_still(bot, sim))
+	sim.drain_events()
+	var placed := _ring_of(sim, remnant_species(sim.species, SIZE_TWO), DENSE_REMNANTS)
+	var grew := false
+	if sim.debug_force_growth():
+		for i in GROWTH_WAIT_TICKS:
+			sim.step(_still(bot, sim))
+			if _has_event(sim.drain_events(), "grew"):
+				grew = true
+				break
+	var remnants: int = sim.remnants.items.size() if sim.remnants != null else 0
+	placed += _ring_of(sim, Gates.species_entering_at(SIZE_TWO), awake) if grew else 0
+	sim.drain_events()
+	return {"sim": sim, "bot": bot, "grew": grew, "remnants": remnants, "awake": sim.creatures.awake().size(),
+		"placed": placed}
+
+
+## A scene as _post_growth_scene promises it: grown to size 2 with the remnant cap full and every dev
+## creature placed (DENSE_REMNANTS before, `awake` after), and at least `awake` creatures awake.
+func _check_scene(scene: Dictionary, what: String, awake: int) -> bool:
+	var before := failures.size()
+	check(bool(scene.grew), "%s: the forced growth grew" % what)
+	check_eq(int(scene.sim.size()), SIZE_TWO, "%s: at size %d" % [what, SIZE_TWO])
+	check_eq(int(scene.placed), DENSE_REMNANTS + awake, "%s: every dev creature placed" % what)
+	check_eq(int(scene.remnants), DENSE_REMNANTS, "%s: the growth kept %d remnants" % [what, DENSE_REMNANTS])
+	check(int(scene.awake) >= awake, "%s: at least %d awake (%d)" % [what, awake, scene.awake])
+	return failures.size() == before
+
+
+## The species at q < 1 at size n that a growth to n keeps as remnants (their ladder role there is
+## rival or prey, D-68), live a size below it so a dev creature of them can stand there; sorted.
+static func remnant_species(species: SpeciesCatalog, n: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	for id in species.species_ids():
+		if species.entry_size(id) >= n:
+			continue
+		var role := str(species.at_size(id, n).get("ladder_role", ""))
+		if role == "rival" or role == "prey":
+			out.append(id)
+	out.sort()
+	return out
+
+
+## Places `count` dev creatures of `kinds` in turn on a ring round the cell, each facing it, at
+## DENSE_RING_TM or, where a rock is in the way, up to 5 steps of 1.5 tm farther out. Returns how many
+## stand.
+static func _ring_of(sim: Variant, kinds: PackedStringArray, count: int) -> int:
+	if kinds.is_empty():
+		return 0
+	var placed := 0
+	for k in count:
+		var a := TAU * k / count
+		for step in 6:
+			var p: Vector2 = sim.motion.position + Vector2.from_angle(a) * (DENSE_RING_TM + 1.5 * step)
+			if sim.debug_spawn_creature(kinds[k % kinds.size()], p, a + PI):
+				placed += 1
+				break
+	sim.drain_events()
+	return placed
+
+
+## Keys for a cell that stands still in press mode and never presses.
+static func _still_keys() -> Variant:
+	var bot = EvadeBot.new()
+	bot.keys.trigger = "press"
+	bot.keys.press = false
+	return bot
+
+
+static func _has_event(events: Array, type: String) -> bool:
+	for e in events:
+		if e.type == type:
+			return true
+	return false
 
 
 ## The saturated case's world (B-7): T2's FakeWorldGen made dense. Every chunk keeps the fake's shell

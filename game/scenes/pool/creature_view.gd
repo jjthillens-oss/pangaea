@@ -11,11 +11,21 @@ extends Node3D
 ## body_size times the pose's scale. Lane lies on the swim plane in world space while a tell targets
 ## the player; Marker pops up a "!" when the creature notices the player, while the creature is on
 ## screen (off screen the HUD's edge arrow shows the "!" instead).
+##
+## Growth (S2, s2-view 5): a creature is drawn at its q, its size at the cell's size over its size
+## at its entry size (view_q; radius and top speed scale with it). Its threat colour, the "ink" of
+## the M_Threat, M_SpikeShaft and M_SpikeTip surfaces, the "!" and the lane, shows only while it
+## can attack the cell; below that it fades to a neutral grey. A body the cell can eat now (prey or
+## a morsel, for a cell with a jaw) gets a green rim, an inverted hull round its body mesh. At a
+## growth it may become a remnant (it goes limp: M_RemnantLimp fades in), a morsel (M_Morsel, drawn
+## where its carrion item lies) or haze (it fades out). "Now food" can show over it for a moment.
 
 ## Body blockouts by species body_asset (creatures_m1.json).
 const BODY_SCENES := {
 	"creature_ambush_body": preload("res://assets/export/creature_ambush_body.glb"),
 	"creature_rammer_body": preload("res://assets/export/creature_rammer_body.glb"),
+	"creature_lurker_body": preload("res://assets/export/creature_lurker_body.glb"),
+	"creature_elder_rammer_body": preload("res://assets/export/creature_elder_rammer_body.glb"),
 }
 ## Pose nodes, as their records name them (assets/records/creature_*_body.json and part_mouth_jaw.json).
 const EYE_PATHS: Array[NodePath] = [^"Body/Eye_L", ^"Body/Eye_R"]
@@ -75,12 +85,46 @@ const LANE_PRIORITY := 8
 const WAG_DEG := 15.0            ## flagellum wag, as on the player's cell
 const WAG_HZ_REST := 1.5
 const WAG_HZ_TOP := 5.0
+## Ink (S2, D-52): the surfaces that carry the threat colour, by material name as imported from the
+## GLBs, and the neutral each fades to on a creature that can no longer attack the cell. The "!"
+## and the lane fade to the crest's neutral.
+const NEUTRAL_CREST := Color("#9AA0B4")
+const NEUTRAL_TIP := Color("#6E7487")
+const INK_SURFACES := {"M_Threat": NEUTRAL_CREST, "M_SpikeShaft": NEUTRAL_CREST, "M_SpikeTip": NEUTRAL_TIP}
+## The rim on a body the cell can eat now: food's green, this wide in the world at any body size.
+const RIM_COLOR := Color("#CFE86A")
+const RIM_GROW_TM := 0.06
+## A relation that fades (at a growth) brings the rim in this fast; the ink takes its fade_s (V-8).
+const RIM_FADE_S := 0.3
+const RIM_SHADER := preload("res://game/scenes/pool/rim_hull.gdshader")
+## The body mesh the rim goes round (Model/Body/Body: the body GLB's root holds it).
+const BODY_MESH_PATH := ^"Body"
+const LIMP_MATERIAL := preload("res://assets/export/M_RemnantLimp.tres")
+const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
+## The body blockouts that first show at size 2 (the start fade warms them up).
+const GROWTH_BODIES: PackedStringArray = ["creature_lurker_body", "creature_elder_rammer_body"]
+## "Now food" over a body the cell can now eat, just after a growth.
+const NOW_FOOD_TEXT := "Now food"
+const NOW_FOOD_FONT := 56
+const NOW_FOOD_PIXEL := 0.005
+const NOW_FOOD_OUTLINE := 12
+const NOW_FOOD_Y := 1.0          ## tm above the swim plane...
+const NOW_FOOD_NORTH := 1.6      ## ...and this many body radii north
+const NOW_FOOD_IN_S := 0.2
+const NOW_FOOD_OUT_S := 0.4
 
 var creature_id := ""
 var species_id := ""
 var behavior := ""
 var body_size := 1.0
-var radius := 0.5   ## the body's plane radius in metres (its phenotype's)
+var radius := 0.5   ## the body's plane radius in metres (its phenotype's, times view_q)
+## Growth (S2): the shown size (q), how much threat colour shows (ink, 0 neutral to 1) and how much
+## rim (0..1), for tests; a remnant or a morsel is drawn as one from its conversion on.
+var view_q := 1.0
+var ink := 1.0
+var rim := 0.0
+var remnant := false
+var morsel_id := ""
 ## The pose drawn last (pose() keys), for tests and blends.
 var shown_pose := {}
 var dying := false
@@ -117,6 +161,28 @@ var _pivot: Node3D
 var _model: Node3D
 var _lane: MeshInstance3D
 var _marker: Label3D
+var _base_radius := 0.5
+var _base_speed := 1.0
+var _ink_slots: Array[Dictionary] = []   ## {"material", "ink" (its own colour), "neutral"}
+var _ink_target := 1.0
+var _ink_rate := 0.0                     ## per second; 0 sets at once
+var _rim_target := 0.0
+var _rim_rate := 0.0
+var _body_mesh: MeshInstance3D
+var _rim_material := ShaderMaterial.new()
+static var _body_meshes := {}
+static var _growth_warm_up: Array[Mesh] = []
+var _body_hurt := StandardMaterial3D.new()   ## the hurt flash on the body mesh, chained to the rim
+var _overlay_key := ""
+var _limp_delay := -1.0                  ## seconds until the limp look starts fading in
+var _limp_s := 0.0
+var _limp_t := -1.0
+var _limp_overlay: StandardMaterial3D
+var _out_s := 0.0                        ## fade_out(): its length, 0 when not leaving
+var _out_t := 0.0
+var _now_food: Label3D
+var _now_s := 0.0
+var _now_t := -1.0
 
 
 ## The pose of a creature with `behavior` ("ambush" or "territorial") in brain phase `phase` (the
@@ -214,16 +280,20 @@ static func phase_progress(mem: CreatureBrain.Memory, tick: int, fraction: float
 
 
 ## Builds the species' body and parts (creatures_m1.json): its body_asset, scaled by body_size, and
-## one holder per genome part, placed by PartPlacement like the player's parts.
-func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, id := "") -> void:
+## one holder per genome part, placed by PartPlacement like the player's parts. `q` is its size at
+## the cell's size (S2; SpeciesCatalog.q_of), 1 at its entry size.
+func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, id := "", q := 1.0) -> void:
 	creature_id = id
 	species_id = p_species_id
 	var data: Dictionary = species.species.get(p_species_id, {})
 	behavior = str(data.get("behavior", ""))
 	body_size = float(data.get("body_size", 1.0))
 	var phenotype := species.phenotype(p_species_id, catalog)
-	_top_speed = maxf(phenotype.speed, 0.01)
-	radius = phenotype.radius
+	_base_speed = maxf(phenotype.speed, 0.01)
+	_base_radius = phenotype.radius
+	view_q = q
+	_top_speed = maxf(phenotype.speed * q, 0.01)
+	radius = phenotype.radius * q
 	_pivot = %Pivot
 	_model = %Model
 	_lane = %Lane
@@ -287,7 +357,19 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	_marker.visible = false
 	_overlay_on = false
 	_transparency = -1.0
+	_overlay_key = ""
 	_label = ""
+	_build_ink()
+	_build_rim()
+	ink = 1.0
+	_ink_target = 1.0
+	rim = 0.0
+	_rim_target = 0.0
+	remnant = false
+	morsel_id = ""
+	_limp_delay = -1.0
+	_limp_t = -1.0
+	_apply_ink()
 	shown_pose = pose(behavior, "", 0.0)
 	_apply_pose(shown_pose)
 
@@ -310,6 +392,150 @@ func _find_pose_nodes(body: Node3D) -> void:
 		(_hood as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_brow = body.get_node_or_null(BROW_PATH) as Node3D
 	_brow_rest = _brow.position if _brow != null else Vector3.ZERO
+
+
+## Each threat-coloured surface of the body and parts gets a copy of its material of its own, so
+## its ink can fade without touching other creatures.
+func _build_ink() -> void:
+	_ink_slots.clear()
+	for node in _model.find_children("*", "MeshInstance3D", true, false):
+		var mesh_node := node as MeshInstance3D
+		if mesh_node.mesh == null:
+			continue
+		for i in mesh_node.mesh.get_surface_count():
+			var material := mesh_node.get_active_material(i) as BaseMaterial3D
+			if material == null or not INK_SURFACES.has(material.resource_name):
+				continue
+			var own := material.duplicate() as BaseMaterial3D
+			mesh_node.set_surface_override_material(i, own)
+			_ink_slots.append({"material": own, "ink": material.albedo_color,
+				"neutral": INK_SURFACES[material.resource_name]})
+
+
+func _build_rim() -> void:
+	_body_mesh = null
+	var body := _model.get_node_or_null(^"Body")
+	if body != null:
+		_body_mesh = body.get_node_or_null(BODY_MESH_PATH) as MeshInstance3D
+	_rim_material.shader = RIM_SHADER
+	_rim_material.set_shader_parameter("color", RIM_COLOR)
+	_rim_material.set_shader_parameter("rim", 0.0)
+	_body_hurt.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_body_hurt.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_apply_rim_grow()
+
+
+## Shows the creature at another size (a growth re-expresses every view by 1 / factor, D-30).
+func set_q(q: float) -> void:
+	view_q = q
+	radius = _base_radius * q
+	_top_speed = maxf(_base_speed * q, 0.01)
+	_marker.position = Vector3(0.0, MARKER_Y, -MARKER_NORTH * radius)
+	_apply_rim_grow()
+	_apply_pose(shown_pose)
+
+
+## The body's plane radius at q (its phenotype's times q).
+func radius_at(q: float) -> float:
+	return _base_radius * q
+
+
+## What the creature is to the cell now: whether it can attack it (its ink) and whether the cell can
+## eat it (its rim). The ink fades to its new value over `fade_s` and the rim over RIM_FADE_S; with
+## `fade_s` 0 both are set at once.
+func set_relation(can_attack: bool, rimmed: bool, fade_s: float) -> void:
+	_ink_target = 1.0 if can_attack and not remnant and morsel_id == "" else 0.0
+	_rim_target = 1.0 if rimmed else 0.0
+	_ink_rate = 1.0 / fade_s if fade_s > 0.0 else 0.0
+	_rim_rate = 1.0 / RIM_FADE_S if fade_s > 0.0 else 0.0
+	if fade_s <= 0.0:
+		ink = _ink_target
+		rim = _rim_target
+	_apply_ink()
+	_apply_rim()
+
+
+## The rim the next relation fades to (1 when the cell can eat it).
+func rimmed() -> bool:
+	return _rim_target > 0.0
+
+
+## A remnant (S2, D-28): after `delay_s` it goes limp, the M_RemnantLimp look fading in over
+## `limp_fade_s` (an overlay for that long, then the material). It never attacks again, so every
+## relation set from now on has no ink; the ink it has fades with the next one (at a growth, at
+## RELATIONS_S), so frame 0 still draws it as it was.
+func set_remnant(limp_fade_s: float, delay_s: float) -> void:
+	remnant = true
+	_limp_s = maxf(limp_fade_s, 0.0)
+	_limp_delay = maxf(delay_s, 0.0)
+	_limp_t = -1.0
+	hide_lane()
+	_marker_t = -1.0
+	_apply_marker()
+
+
+## A morsel (S2, D-50): drawn with M_Morsel at `p_radius`, where the carrion item `food_id` lies
+## (CreatureLayer places it there each frame).
+func set_morsel(food_id: String, p_radius: float) -> void:
+	morsel_id = food_id
+	ink = 0.0
+	_ink_target = 0.0
+	_apply_ink()
+	hide_lane()
+	_marker_t = -1.0
+	_apply_marker()
+	set_q(p_radius / maxf(_base_radius, 1e-6))
+	for node in _model.find_children("*", "GeometryInstance3D", true, false):
+		(node as GeometryInstance3D).material_override = MORSEL_MATERIAL
+
+
+## Leaves: fades to nothing over `seconds` where it is, with no sink, then frees itself.
+func fade_out(seconds: float) -> void:
+	if _out_s > 0.0 or dying:
+		return
+	_out_s = maxf(seconds, 1e-3)
+	_out_t = 0.0
+	hide_lane()
+	_marker_t = -1.0
+	_apply_marker()
+
+
+## True while fade_out runs.
+func leaving() -> bool:
+	return _out_s > 0.0
+
+
+## "Now food" over the body for `seconds` (fading in and out within them).
+func show_now_food(seconds: float) -> void:
+	if _now_food == null:
+		_now_food = Label3D.new()
+		_now_food.name = "NowFood"
+		_now_food.text = NOW_FOOD_TEXT
+		_now_food.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_now_food.font_size = NOW_FOOD_FONT
+		_now_food.pixel_size = NOW_FOOD_PIXEL
+		_now_food.modulate = RIM_COLOR
+		_now_food.outline_modulate = UiPalette.KEYLINE
+		_now_food.outline_size = NOW_FOOD_OUTLINE
+		_now_food.fixed_size = false
+		_now_food.render_priority = LANE_PRIORITY + 1
+		_now_food.outline_render_priority = LANE_PRIORITY
+		_now_food.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_now_food)
+	_now_food.position = Vector3(0.0, NOW_FOOD_Y, -NOW_FOOD_NORTH * radius)
+	_now_s = maxf(seconds, NOW_FOOD_IN_S + NOW_FOOD_OUT_S)
+	_now_t = 0.0
+	_apply_now_food()
+
+
+## The "Now food" label while it shows, else null.
+func now_food_label() -> Label3D:
+	return _now_food if _now_food != null and _now_food.visible else null
+
+
+## The rim's width in the world: its grow over the model's scale, times that scale.
+func rim_grow_world() -> float:
+	return float(_rim_material.get_shader_parameter("grow")) * _model.scale.x
 
 
 ## Moves the view to the sim's motion, `fraction` of the way from the previous tick to this one.
@@ -382,6 +608,41 @@ static func warm_up_lane_mesh() -> Mesh:
 	quad.orientation = QuadMesh.FACE_Y
 	quad.material = material
 	return quad
+
+
+## What the start fade draws once so the growth's looks show without a first-use compile (V-20): the
+## meshes of the bodies that first come at size 2, and M_Morsel, M_RemnantLimp and the rim hull, each
+## on a copy of a body mesh (where they are drawn in play).
+static func warm_up_growth_meshes() -> Array[Mesh]:
+	if _growth_warm_up.is_empty():
+		for asset in GROWTH_BODIES:
+			_growth_warm_up.append_array(body_meshes(asset))
+		var rim := ShaderMaterial.new()
+		rim.shader = RIM_SHADER
+		rim.set_shader_parameter("color", RIM_COLOR)
+		var body := body_meshes(GROWTH_BODIES[0])
+		for material: Material in [MORSEL_MATERIAL, LIMP_MATERIAL, rim]:
+			if not body.is_empty():
+				var copy := body[0].duplicate() as Mesh
+				for i in copy.get_surface_count():
+					copy.surface_set_material(i, material)
+				_growth_warm_up.append(copy)
+	return _growth_warm_up
+
+
+## Every mesh in body blockout `asset` (a BODY_SCENES key), read once.
+static func body_meshes(asset: String) -> Array[Mesh]:
+	if not _body_meshes.has(asset):
+		var meshes: Array[Mesh] = []
+		var packed: PackedScene = BODY_SCENES.get(asset)
+		if packed != null:
+			var scene := packed.instantiate()
+			for node in scene.find_children("*", "MeshInstance3D", true, false):
+				if (node as MeshInstance3D).mesh != null:
+					meshes.append((node as MeshInstance3D).mesh)
+			scene.free()
+		_body_meshes[asset] = meshes
+	return _body_meshes[asset]
 
 
 ## Takes the lane down: at once for a cancelled tell, or fading over `fade_s`.
@@ -475,6 +736,16 @@ func _process(delta: float) -> void:
 		_die_t += delta
 		if _die_t >= DIE_S:
 			queue_free()
+	_step_relation(delta)
+	if _now_t >= 0.0:
+		_now_t += delta
+		if _now_t >= _now_s:
+			_now_t = -1.0
+		_apply_now_food()
+	if _out_s > 0.0:
+		_out_t += delta
+		if _out_t >= _out_s:
+			queue_free()
 	_apply_pose(shown_pose)
 
 
@@ -484,7 +755,7 @@ func _apply_pose(p: Dictionary) -> void:
 		return
 	var model := _model
 	var pivot := _pivot
-	var size := body_size
+	var size := body_size * view_q
 	var sink := 0.0
 	var transparency := 0.0
 	if _fade_s > 0.0 and _fade_t < _fade_s:
@@ -496,6 +767,8 @@ func _apply_pose(p: Dictionary) -> void:
 		size *= 1.0 - d
 		sink = DIE_SINK_M * d
 		transparency = d
+	if _out_s > 0.0:
+		transparency = maxf(transparency, clampf(_out_t / _out_s, 0.0, 1.0))
 	var squash := 1.0
 	if _hurt_t >= 0.0 and _hurt_t < HURT_SQUASH_S:
 		squash = 1.0 - HURT_SQUASH * sin(PI * _hurt_t / HURT_SQUASH_S)
@@ -518,14 +791,112 @@ func _apply_pose(p: Dictionary) -> void:
 		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / EYE_EMISSION_REST
 	var flash := PlayerCellView.hit_flash(_hurt_t, HURT_S, SettingsService.shared().reduce_flashing())
 	_hurt_overlay.albedo_color = Color(HURT_COLOR, HURT_COLOR.a * flash)
-	# Overlay and transparency change only now and then; set them on the meshes only when they do.
-	if (flash > 0.0) != _overlay_on or transparency != _transparency:
+	_body_hurt.albedo_color = _hurt_overlay.albedo_color
+	var limp := _limp_share()
+	if _limp_overlay != null:
+		_limp_overlay.albedo_color.a = limp
+	# Overlays and transparency change only now and then; set them on the meshes only when they do.
+	# The body mesh chains its overlays: the hurt flash or the limp look fading in, then the rim.
+	var key := "%s/%s/%s" % [flash > 0.0, rim > 0.0, limp > 0.0 and limp < 1.0]
+	if key != _overlay_key or transparency != _transparency:
+		_overlay_key = key
 		_overlay_on = flash > 0.0
 		_transparency = transparency
+		var fading_limp := limp > 0.0 and limp < 1.0
+		var shared: Material = _hurt_overlay if _overlay_on else (_limp_overlay if fading_limp else null)
 		for node in model.find_children("*", "GeometryInstance3D", true, false):
 			var g := node as GeometryInstance3D
-			g.material_overlay = _hurt_overlay if _overlay_on else null
+			g.material_overlay = _body_overlay(fading_limp) if g == _body_mesh else shared
 			g.transparency = transparency
+
+
+## The body mesh's overlay chain: the hurt flash (or the limp look while it fades in), then the rim.
+func _body_overlay(fading_limp: bool) -> Material:
+	var first: BaseMaterial3D = _body_hurt if _overlay_on else (_limp_body_overlay() if fading_limp else null)
+	var rim_pass: Material = _rim_material if rim > 0.0 else null
+	if first == null:
+		return rim_pass
+	first.next_pass = rim_pass
+	return first
+
+
+func _limp_body_overlay() -> BaseMaterial3D:
+	if _limp_overlay == null:
+		return null
+	if not _limp_overlay.has_meta(&"body"):
+		_limp_overlay.set_meta(&"body", _limp_overlay.duplicate())
+	var own: BaseMaterial3D = _limp_overlay.get_meta(&"body")
+	own.albedo_color = _limp_overlay.albedo_color
+	return own
+
+
+## The limp look's share now: 0 before it starts, 1 once it is the material.
+func _limp_share() -> float:
+	if _limp_t < 0.0:
+		return 0.0
+	return 1.0 if _limp_s <= 0.0 else clampf(_limp_t / _limp_s, 0.0, 1.0)
+
+
+## Moves ink and rim toward their targets, and runs the limp look's cross-fade.
+func _step_relation(delta: float) -> void:
+	if ink != _ink_target:
+		ink = _ink_target if _ink_rate <= 0.0 else move_toward(ink, _ink_target, _ink_rate * delta)
+		_apply_ink()
+	if rim != _rim_target:
+		rim = _rim_target if _rim_rate <= 0.0 else move_toward(rim, _rim_target, _rim_rate * delta)
+		_apply_rim()
+	if _limp_delay >= 0.0:
+		_limp_delay -= delta
+		if _limp_delay < 0.0:
+			_limp_t = 0.0
+			_limp_overlay = LIMP_MATERIAL.duplicate() as StandardMaterial3D
+			if _limp_overlay != null:
+				_limp_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				_limp_overlay.albedo_color.a = 0.0
+	elif _limp_t >= 0.0 and _limp_t < _limp_s:
+		_limp_t = minf(_limp_t + delta, _limp_s)
+	if _limp_t >= 0.0 and _limp_share() >= 1.0 and _limp_overlay != null:
+		_limp_overlay = null
+		for node in _model.find_children("*", "GeometryInstance3D", true, false):
+			(node as GeometryInstance3D).material_override = LIMP_MATERIAL
+		_overlay_key = ""
+
+
+func _apply_ink() -> void:
+	for slot in _ink_slots:
+		(slot.material as BaseMaterial3D).albedo_color = _inked(slot.neutral, slot.ink)
+	if _marker != null:
+		_marker.modulate = Color(_inked(NEUTRAL_CREST, MARKER_COLOR), _marker.modulate.a)
+	_lane_material.set_shader_parameter("color", _inked(NEUTRAL_CREST, LANE_COLOR))
+
+
+## A colour between the neutral (ink 0) and the ink colour (ink 1), each end exact.
+func _inked(neutral: Color, ink_color: Color) -> Color:
+	if ink >= 1.0:
+		return ink_color
+	if ink <= 0.0:
+		return neutral
+	return neutral.lerp(ink_color, ink)
+
+
+func _apply_rim() -> void:
+	_rim_material.set_shader_parameter("rim", rim)
+
+
+## The hull's push in the mesh's own units, so the rim is RIM_GROW_TM wide in the world.
+func _apply_rim_grow() -> void:
+	_rim_material.set_shader_parameter("grow", RIM_GROW_TM / maxf(body_size * view_q, 1e-3))
+
+
+func _apply_now_food() -> void:
+	if _now_food == null:
+		return
+	_now_food.visible = _now_t >= 0.0
+	if not _now_food.visible:
+		return
+	var a := minf(clampf(_now_t / NOW_FOOD_IN_S, 0.0, 1.0), clampf((_now_s - _now_t) / NOW_FOOD_OUT_S, 0.0, 1.0))
+	_now_food.modulate.a = a
+	_now_food.outline_modulate.a = a
 
 
 func _apply_lane() -> void:

@@ -11,6 +11,11 @@ extends RefCounted
 ## glide and recover), so the cell's jaw (contact combat, OD3) wounds creatures until they flee.
 ##
 ## In the endless world (S1) it circles awake creatures only: one that falls asleep is passed over.
+## With `bite_visits` (S2's size-2 runner, test_threat_fuzz) it also swims jaw first into every
+## creature it visits, once arrived, until a bite of the cell's lands (sim.stats.hits_dealt grows),
+## and circles it after that: at size 2 nothing strikes at the cell, so this is how a creature at
+## q < 1 gets hurt by it and the relationship rule against answering a larger body is asked. It draws
+## nothing more from its RNG, so a run without it is unchanged.
 ##
 ## Unlike EvadeBot it reads the sim's creatures (bodies and brains), as a test would. Like player
 ## input it only returns a SimIntent and never changes the sim. Its choices come from its own seeded
@@ -44,6 +49,7 @@ const HOLD_SHARE := 0.5
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 
 var bite_dazed := true
+var bite_visits := false
 var keys := EvadeBot.GrowthKeys.new()
 var visits := 0                   ## creatures it has circled (tests guard that it got round)
 var _rng := RandomNumberGenerator.new()
@@ -54,6 +60,8 @@ var _dir := 1.0                   ## +1 or -1: which way round
 var _phase := 0                   ## offset into the orbit period
 var _throttle := 0.7
 var _hold := false                ## this visit it stops dead while aimed at
+var _bitten := false              ## with bite_visits: this visit's bite has landed
+var _hits_dealt := -1             ## sim.stats.hits_dealt when it last looked; -1 before it first did
 var _recent: Array[String] = []
 
 
@@ -89,9 +97,13 @@ func _kite(sim: PoolSim) -> SimIntent:
 		_dwell_left -= 1
 	if _hold and _aiming_at_cell(c):
 		return SimIntent.new()
+	var dealt := int(sim.stats.hits_dealt)
+	if _hits_dealt >= 0 and dealt > _hits_dealt and _arrived:
+		_bitten = true
+	_hits_dealt = dealt
 	var radial := off / d if d > 1e-6 else Vector2.from_angle(sim.motion.heading + PI)
 	var want: Vector2
-	var closing := bite_dazed and _committed(c)
+	var closing := (bite_dazed and _committed(c)) or (bite_visits and _arrived and not _bitten)
 	if closing:
 		want = -radial   # straight at it, jaw first, while it cannot turn
 	else:
@@ -133,6 +145,7 @@ func _choose(sim: PoolSim) -> CreatureField.Creature:
 		best = fallback
 	_target = best.id if best != null else ""
 	_arrived = false
+	_bitten = false
 	_dwell_left = _rng.randi_range(DWELL_TICKS[0], DWELL_TICKS[1])
 	_dir = 1.0 if _rng.randi_range(0, 1) == 1 else -1.0
 	_phase = _rng.randi_range(0, ORBIT_PERIOD_TICKS - 1)

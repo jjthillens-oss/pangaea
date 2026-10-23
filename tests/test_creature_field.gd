@@ -614,3 +614,47 @@ func test_set_size_takes_every_record_at_the_size_and_spawns_from_them() -> void
 	check(field.record_of("lurker").is_empty(), "back at size 1 the Lurker has no record")
 	check_eq(field.record_of("rammer").q, 1.0, "and the rammer is its own again")
 	check_eq(_body(c.phenotype), _body(rec.phenotype), "a creature already out keeps its body")
+
+
+## S2 (B.7, D-83): a two-post site's creature takes the site record's posts (local, as the record
+## holds them; a copy, so a rebase that shifts the brain's leaves the record's to be derived again)
+## when the world file switches habits on, and none when it is off; a one-post site never has any.
+func test_a_two_post_sites_creature_takes_its_posts_only_with_habits_on() -> void:
+	for habits in [true, false]:
+		var content := FakeWorldGen.fixture_content()
+		content.config.switches["habits"] = habits
+		var sim := FakeWorldGen.endless_sim(SEED, parts, layout, FakeWorldGen.s2_species(), content, PackedFloat64Array(), 4, true)
+		check(sim.debug_set_size(2), "size 2")
+		var home := sim.motion.position + Vector2(20.0, 0.0)
+		var a := sim.world.abs_of_local(home)
+		var k := WorldConfig.tm_to_am(2)
+		var x := a[0] / k
+		var y := a[1] / k
+		var key := sim.world.chunk_of_local(home)
+		var posts := [{"x": x, "y": y, "heading": 0.5, "territory": {}},
+			{"x": x + 5.0, "y": y, "heading": -0.5, "territory": {"x": x + 5.0, "y": y + 1.0, "radius": 3.0}}]
+		var sites := [
+			{"id": "x_posts", "species": "lurker", "x": x, "y": y, "heading": 0.5, "territory": {},
+				"reach": {"x": x + 2.5, "y": y, "radius": 10.0}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
+				"tile": Vector2i.ZERO, "posts": posts},
+			{"id": "x_one", "species": "rammer", "x": x, "y": y + 8.0, "heading": 0.0, "territory": {"x": x, "y": y + 8.0, "radius": 3.0},
+				"reach": {"x": x, "y": y + 8.0, "radius": 6.0}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
+				"tile": Vector2i.ZERO}]
+		for s in sites:
+			sim.world.sites[s.id] = sim.world._site_record(s, key)
+		sim.world.recompute_caps(sim)
+		var rec: Dictionary = sim.world.sites["x_posts"]
+		var c := sim.creatures.spawn_site(rec, sim.tick, false)
+		var one := sim.creatures.spawn_site(sim.world.sites["x_one"], sim.tick, false)
+		check(c != null and one != null, "both spawn (habits %s)" % habits)
+		if c == null or one == null:
+			continue
+		check(one.brain.posts.is_empty(), "a one-post site's creature has no posts (habits %s)" % habits)
+		if not habits:
+			check(c.brain.posts.is_empty(), "habits off: no posts")
+			continue
+		check_eq(c.brain.posts.size(), 2, "two posts")
+		check_eq(c.brain.posts, rec.posts, "the record's posts")
+		check_eq(c.brain.posts[0].home, home, "the first at the site's home, local")
+		check_eq(c.brain.posts[1].territory.center, sim.world.local_of_tm(x + 5.0, y + 1.0), "the second's zone, local")
+		check(not is_same(c.brain.posts[1].territory, rec.posts[1].territory), "a copy of them")

@@ -1140,3 +1140,164 @@ func test_the_snapshot_holds_the_sleepers_and_the_slots() -> void:
 	var ids := want.keys()
 	ids.sort()
 	check_eq(w.slots.keys(), ids, "in id order")
+
+
+# --- S2 (T2.5): chunk events at a size, site posts, the teleport path to a size ---
+
+## An endless sim on the fake generator with growth on (size 2 is the build top), its start events
+## drained: with the size-2 species when `with_species`, so sites get records and creatures.
+func _growing(with_species := false) -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species() if with_species else null, null,
+		PackedFloat64Array(), 4, true)
+	sim.drain_events()
+	return sim
+
+
+## The chunk_loaded event of `key` among `events` ({} when there is none).
+func _loaded_event(events: Array[Dictionary], key: Vector2i) -> Dictionary:
+	for e in _of(events, "chunk_loaded"):
+		if e.key == key:
+			return e
+	return {}
+
+
+## S2 build plan 7.4 (BP-16, C-V10): chunk_loaded lists the sites live at the chunk's size, each with
+## its posts [{position, heading}] in local tm (a one-post site: one post, at its home), and every
+## place carries scale bu_to_tm(size): 1.0 at size 1, 0.625 at size 2. Chunk (2, 2)'s zone centre is
+## (80, 80) tm at each size; at size 2 a tm is 1.6 am.
+func test_chunk_loaded_lists_the_sites_live_at_its_size_with_their_posts_and_places_their_scale() -> void:
+	var sim := _growing()
+	var key := Vector2i(2, 2)
+	var heading := FakeWorldGen.SITE_HEADING
+	var husk := FakeWorldGen.PLACE_CHUNK
+	var husk_at := Vector2(32.0 * husk.x + 16.0, 32.0 * husk.y + 16.0)
+	check(sim.debug_teleport_abs(80.0, 70.0), "beside the site chunk at size 1")
+	var e := _loaded_event(sim.drain_events(), key)
+	check_eq(e.get("sites"), [{"id": "t_f_2_2", "species": "rammer",
+		"posts": [{"position": sim.world.local_of_tm(83.0, 80.0), "heading": heading}]}], "size 1: the size-1 site, one post at its home")
+	check(sim.debug_teleport_abs(husk_at.x + 10.0, husk_at.y), "beside the place at size 1")
+	e = _loaded_event(sim.drain_events(), husk)
+	check_eq(e.get("places", [{}])[0].get("scale"), 1.0, "a place's scale at size 1")
+	check_eq(e.get("places", [{}])[0].get("position"), Vector2(-10.0, 0.0), "its local position")
+
+	check(sim.debug_set_size(2), "size 2")
+	var k := WorldConfig.tm_to_am(2)
+	check(sim.debug_teleport_abs(80.0 * k, 70.0 * k), "beside the site chunk at size 2")
+	e = _loaded_event(sim.drain_events(), key)
+	var want := [
+		["u_f_2_2", "rammer", [Vector2(77.0, 80.0)]],
+		["l_f_2_2", "lurker", [Vector2(74.0, 72.0), Vector2(74.0 + FakeWorldGen.LURKER_GAP, 72.0)]],
+		["e_f_2_2", "elder_rammer", [Vector2(82.0, 84.0), Vector2(73.0, 88.0)]]]
+	var sites: Array = e.get("sites", [])
+	check_eq(sites.size(), want.size(), "size 2: the three size-2 sites, not the size-1 one")
+	for i in mini(sites.size(), want.size()):
+		var s: Dictionary = sites[i]
+		check_eq([s.id, s.species, s.posts.size()], [want[i][0], want[i][1], want[i][2].size()], "site %d" % i)
+		for j in mini(s.posts.size(), want[i][2].size()):
+			var at: Vector2 = want[i][2][j]
+			check_eq(s.posts[j].position, sim.world.local_of_tm(at.x, at.y), "%s post %d in local tm" % [s.id, j])
+			var back := sim.world.abs_of_local(s.posts[j].position)
+			check(absf(back[0] - at.x * k) < 1e-3 and absf(back[1] - at.y * k) < 1e-3, "%s post %d at %s am" % [s.id, j, at * k])
+			check_eq(s.posts[j].heading, heading, "%s post %d heading" % [s.id, j])
+	check(sim.debug_teleport_abs((husk_at.x + 10.0) * k, husk_at.y * k), "beside the place at size 2")
+	e = _loaded_event(sim.drain_events(), husk)
+	check_eq(e.get("places", [{}])[0].get("scale"), 0.625, "a place's scale at size 2 (bu_to_tm(2))")
+	check_eq(e.get("places", [{}])[0].get("position"), Vector2(-10.0, 0.0), "its local position (tm at size 2)")
+
+
+## S1's chunk_unloaded payload is unchanged: only the growth tick's unloads carry a reason (D-67,
+## test_growth_tick), so streaming and the teleport path send {type, key}, with growth on or off.
+func test_a_chunk_unloaded_by_streaming_or_teleport_carries_only_its_key() -> void:
+	for growth in [false, true]:
+		var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, null, null, PackedFloat64Array(), 4, growth)
+		sim.drain_events()
+		var shapes := {}
+		for t in 300:
+			sim.step(SimIntent.new(Vector2.RIGHT))
+		for e in _of(sim.drain_events(), "chunk_unloaded"):
+			shapes[str(e.keys())] = true
+		var swum := shapes.size()
+		check(sim.debug_teleport_abs(5000.0, 9.0), "far away")
+		var gone := _of(sim.drain_events(), "chunk_unloaded")
+		check(not gone.is_empty(), "the teleport unloads (growth %s)" % growth)
+		for e in gone:
+			shapes[str(e.keys())] = true
+		check_eq(shapes.keys(), [str(["type", "key"])], "every unload is {type, key} (growth %s, %d from the swim)" % [growth, swum])
+
+
+## A two-post site's record holds its posts as CreatureBrain.set_posts takes them, in local tm at the
+## size (their territory centres too, or {}), and every rebase derives them again from "abs_posts",
+## as it does the site's home (S2 spine 3.17, D-83).
+func test_a_two_post_sites_record_holds_its_posts_in_local_tm_and_a_rebase_derives_them_again() -> void:
+	var sim := _growing(true)
+	check(sim.debug_set_size(2), "size 2")
+	var k := WorldConfig.tm_to_am(2)
+	check(sim.debug_teleport_abs(80.0 * k, 70.0 * k), "beside the site chunk")
+	sim.drain_events()
+	var want := {
+		"l_f_2_2": [[74.0, 72.0, {}], [74.0 + FakeWorldGen.LURKER_GAP, 72.0, {}]],
+		"e_f_2_2": [[82.0, 84.0, [80.0, 80.0, FakeWorldGen.ZONE_R]], [73.0, 88.0, [72.0, 88.0, FakeWorldGen.ELDER_ZONE_R]]]}
+	for by in [Vector2i.ZERO, Vector2i(1, -1), Vector2i(-2, 0)]:
+		if by != Vector2i.ZERO:
+			check(sim.debug_rebase(by), "rebase by %s" % by)
+		for id in want:
+			var rec: Dictionary = sim.world.sites.get(id, {})
+			check(rec.has("posts"), "%s recorded with posts (after %s)" % [id, by])
+			if not rec.has("posts"):
+				continue
+			check_eq(rec.posts.size(), 2, "two posts")
+			check_eq(rec.posts[0].home, rec.home, "the first post is the site's home")
+			for j in 2:
+				var w: Array = want[id][j]
+				var post: Dictionary = rec.posts[j]
+				check_eq(post.home, sim.world.local_of_tm(w[0], w[1]), "%s post %d home (after %s)" % [id, j, by])
+				check_eq(post.heading, FakeWorldGen.SITE_HEADING, "its heading")
+				if w[2] is Dictionary:
+					check_eq(post.territory, {}, "no territory")
+				else:
+					check_eq(post.territory, {"center": sim.world.local_of_tm(w[2][0], w[2][1]), "radius": w[2][2]},
+						"%s post %d territory (after %s)" % [id, j, by])
+	check(not sim.world.sites.get("u_f_2_2", {}).has("posts"), "a one-post site has no posts key")
+
+
+## D-76: debug set_size takes the world to size n round the cell's absolute place by the teleport
+## path: every remnant leaves ("unloaded"), the checkpoint keeps its place and heading at size n, the
+## creature field and the loaded chunks are size n's, the origin is the place, the cell takes the clear
+## point nearest it, the meter starts again, and debug {command: "set_size", size} comes last (C-V9).
+## It refuses a size outside the ladder, or a dead cell.
+func test_debug_set_size_takes_the_world_to_a_size_by_the_teleport_path() -> void:
+	var sim := _growing(true)
+	for t in 60:
+		sim.step(SimIntent.new(Vector2(0.3, 0.2)))
+	var c := sim.creatures.creatures[0] if not sim.creatures.creatures.is_empty() else null
+	check(c != null, "a creature to make a remnant of")
+	if c == null:
+		return
+	var r := sim.remnants.add_from(c, sim.species.at_size(c.species_id, 2), sim.tick)
+	sim.growth.meter = 1.5
+	var a := sim.absolute_position_am()
+	var cp := sim.world.checkpoint_am.duplicate()
+	sim.drain_events()
+	check(sim.debug_set_size(2), "size 2")
+	var events := sim.drain_events()
+	check_eq(sim.size(), 2, "size 2")
+	check_eq(sim.creatures.size, 2, "the creature field's records are size 2's")
+	check(sim.remnants.items.is_empty(), "no remnant left")
+	var left := _of(events, "creature_removed").filter(func(e: Dictionary) -> bool: return e.id == r.id and e.species == r.species_id)
+	check(not left.is_empty() and left[0].reason == "unloaded", "the remnant left, unloaded")
+	check_eq(sim.world.checkpoint_am, PackedFloat64Array([cp[0], cp[1], cp[2], 2.0]), "the checkpoint at size 2, same place")
+	check_eq([sim.world.origin_x_am, sim.world.origin_y_am], [a[0], a[1]], "the origin is the place exactly")
+	check_eq(sim.motion.position, PoolSim.clear_point_on(sim.arena, Vector2.ZERO, sim.phenotype.radius),
+		"the cell at the clear point nearest its place")
+	check(sim.motion.position.length() < 3.0, "near its place (%s)" % sim.motion.position)
+	check_eq(sim.world.loaded_keys(), sim.world.view_set_keys(Vector2.ZERO), "the view set round the place")
+	for key in sim.world.loaded_keys():
+		check_eq(sim.world.chunk(key).size, 2, "chunk %s at size 2" % key)
+	check_eq(sim.growth.meter, 0.0, "the meter starts again")
+	check_eq(events.back(), {"type": "debug", "command": "set_size", "size": 2}, "the debug event last")
+	check(not sim.debug_set_size(3), "no size above the build top")
+	check(not sim.debug_set_size(0), "no size 0")
+	check(sim.debug_set_size(1), "back to size 1")
+	check_eq([sim.size(), sim.creatures.size, int(sim.world.checkpoint_am[3])], [1, 1, 1], "size 1 again")
+	sim._player_dies("starved", "", "", "test")
+	check(not sim.debug_set_size(2), "not while dead")

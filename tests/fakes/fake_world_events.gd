@@ -47,13 +47,17 @@ static func pool_session(seed_value := SEED, body := "omnivore") -> GameSession:
 
 ## An endless session on FakeWorldGen (a shell per chunk, a zone per 2 x 2 chunks, a rammer site
 ## per 4 x 4) with the M1 creatures and the shipped placement kit (whose pieces the scene draws), at
-## the home spawn or at `at` (absolute am). Nothing is saved.
-static func endless_session(seed_value := SEED, at := PackedFloat64Array()) -> GameSession:
+## the home spawn or at `at` (absolute am), with the growth switch `growth` (off: S1's world, BP-6;
+## on: with FakeWorldGen.s2_species, the size-2 species the world places there). Nothing is saved.
+static func endless_session(seed_value := SEED, at := PackedFloat64Array(), growth := false) -> GameSession:
 	var session := GameSession.new(SLOT)
+	if growth:
+		session.species = FakeWorldGen.s2_species()
 	var content: WorldContent = FakeWorldGen.fixture_content()
 	content.kit = PlacementKit.load_from()
 	session.world = content
-	session.sim = FakeWorldGen.endless_sim(seed_value, session.catalog, session.layout, session.species, content, at)
+	session.sim = FakeWorldGen.endless_sim(seed_value, session.catalog, session.layout, session.species, content, at, 4,
+		growth)
 	return session
 
 
@@ -125,8 +129,11 @@ static func loaded(key: Vector2i, shells := [], zones := [], anchors := [], plac
 	return {"type": "chunk_loaded", "key": key, "shells": shells, "zones": zones, "anchors": anchors, "places": places}
 
 
-static func unloaded(key: Vector2i) -> Dictionary:
-	return {"type": "chunk_unloaded", "key": key}
+## `reason` "growth" (S2): the chunk unloads at a growth tick, and the scene retires it.
+static func unloaded(key: Vector2i, reason := "") -> Dictionary:
+	if reason == "":
+		return {"type": "chunk_unloaded", "key": key}
+	return {"type": "chunk_unloaded", "key": key, "reason": reason}
 
 
 static func rebased(offset_tm: Vector2, origin_am := [0.0, 0.0]) -> Dictionary:

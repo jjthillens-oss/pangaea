@@ -427,7 +427,8 @@ func respawn_delay_for(c: Creature) -> int:
 ## id ("c_<size>_<site>_<count>"), brain seed and respawn delay come from the world seed, the site
 ## and its spawn count, which rises only on a real spawn. An awake spawn first has its site's reach
 ## chunks loaded (B-9). Its body, brain config and reach come from its record at the field's size
-## (D-79). Null when the niche is full or the species has no record here.
+## (D-79); a two-post site's brain gets its posts when the world file switches habits on (S2, B.7).
+## Null when the niche is full or the species has no record here.
 func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var site_id := str(s.id)
 	var species_id := str(s.species)
@@ -461,6 +462,8 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var cfg: Dictionary = rec.cfg
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
 		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])), tick)
+	if s.has("posts") and bool(world.content.config.switches.get("habits", false)):
+		CreatureBrain.set_posts(c.brain, s.posts)
 	c.asleep = asleep
 	_by_site[site_id] = c
 	_add(c)
