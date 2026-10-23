@@ -151,7 +151,7 @@ const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
 ## landed, and a gap is allowed only while its marker file is not in the tree ("" for a data check
 ## with no file of its own).
 const S2_NEEDS := {
-	"set_size": {"what": "PoolSim.debug_set_size and debug_force_growth (T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"set_size": {"what": "the growth tick and PoolSim.debug_set_size and debug_force_growth (T2.5, T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
 	"fuzz_growth": {"what": "FuzzInvariants through a growth and a set_size cut (T2.6b)", "marker": "res://tests/test_fuzz_invariants.gd"},
 	"blocker": {"what": "Growth.blocker_of (T2.3)", "marker": "res://game/systems/world/remnant_field.gd"},
 	"remnants": {"what": "PoolSim.remnants (T2.4)", "marker": "res://game/systems/world/remnant_field.gd"},
