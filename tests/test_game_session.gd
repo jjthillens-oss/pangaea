@@ -325,3 +325,103 @@ func test_starting_needs_a_known_body_and_picks_a_seed_when_none_is_given() -> v
 
 func test_lineage_tags_are_two_groups_of_four_hex_digits() -> void:
 	check_eq(GameSession.lineage_tag("lineage_3f9a1c07b2e84d65"), "3F9A-1C07", "tag")
+
+
+# The world (S1 T3.3). Without a world path a session is the M1 pool; with one, the world file and
+# the mode argument pick endless or pool.
+
+## Existing files standing in for the world's content (home block, tiles, kit) while T4's are not in
+## yet, as test_world_config does: the endless cases need a world file with no problems.
+const STAND_IN_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
+	"kit": "res://game/data/creatures_m1.json"}
+
+
+## The shipped world settings with the stand-in content and `changes` over its top-level keys,
+## written into this test's folder. Returns its path.
+func _world_file(file: String = "world.json", changes: Dictionary = {}) -> String:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
+	data.content = STAND_IN_CONTENT.duplicate(true)
+	data.merge(changes, true)
+	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
+	var path := SaveFolder.path(file)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "\t"))
+	f.close()
+	return path
+
+
+## A new endless lineage, saved to `p_slot`.
+func _endless(seed_value: int, p_slot: String = "") -> GameSession:
+	var session := GameSession.new(slot if p_slot.is_empty() else p_slot, PoolLayout.DEFAULT_PATH,
+		SpeciesCatalog.DEFAULT_PATH, _world_file())
+	var started := session.start_new("grazer", seed_value)
+	check(started.ok, "an endless lineage starts: %s" % [started.errors])
+	return session
+
+
+func test_a_session_without_a_world_path_is_pool_mode() -> void:
+	var session := GameSession.new(slot)
+	check(session.world == null and session.world_config == null and not session.is_endless(), "no world")
+	check(session.start_new("grazer", 21).ok, "started")
+	check(not session.sim.is_endless(), "the M1 pool")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	check_eq(data.player.position, PlaneSpace.to_save(session.layout.spawn), "the spawn as a pool save holds it")
+	var again := GameSession.new(slot)
+	check(again.continue_run().ok and not again.sim.is_endless(), "Continue is the M1 pool too")
+
+
+func test_the_world_mode_argument_overrides_the_file() -> void:
+	var pooled := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, _world_file(), "pool")
+	check(pooled.world == null and not pooled.is_endless(), "an endless file run as the pool has no world")
+	check(pooled.world_config != null and pooled.world_config.mode == "pool", "the flag's mode: %s"
+		% (pooled.world_config.mode if pooled.world_config != null else "none"))
+	check(pooled.start_new("grazer", 22).ok and not pooled.sim.is_endless(), "and starts the pool")
+	var pool_file := _world_file("pool_world.json", {"mode": "pool"})
+	var plain := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, pool_file)
+	check(plain.world == null, "a pool-mode file runs the pool")
+	var forced := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, pool_file, "endless")
+	check(forced.is_endless() and forced.world.config.mode == "endless", "and the flag makes it endless")
+	check(forced.start_new("grazer", 23).ok and forced.sim.is_endless(), "an endless run")
+	check(not forced.dirty, "with nothing unsaved after its first save")
+	var again := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, pool_file, "endless")
+	check(again.continue_run().ok and again.sim.is_endless(), "and an endless Continue")
+	check(not again.dirty, "with nothing unsaved after it")
+	var unknown := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, pool_file, "sideways")
+	var refused := unknown.start_new("grazer", 23)
+	check(not refused.ok and unknown.sim == null, "an unknown mode starts nothing")
+	check_has_error(refused.errors, "'sideways'")
+
+
+func test_world_problems_stop_an_endless_start_and_continue() -> void:
+	check(_endless(26).sim != null, "a save to continue")
+	var broken_file := _world_file("broken_world.json", {"sideways": true})
+	var broken := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, broken_file)
+	var r := broken.start_new("grazer", 26)
+	check(not r.ok and broken.sim == null, "no new lineage")
+	check_has_error(r.errors, "sideways")
+	var c := broken.continue_run()
+	check(not c.ok and broken.sim == null, "no continue")
+	check_has_error(c.errors, "sideways")
+	var pooled := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, broken_file, "pool")
+	check(not pooled.start_new("grazer", 26).ok, "a broken world file stops the pool too")
+	var missing := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH,
+		SaveFolder.path("no_such_world.json"))
+	var none := missing.start_new("grazer", 26)
+	check(not none.ok, "so does a missing one")
+	check_has_error(none.errors, "no_such_world.json")
+	var content_missing := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH,
+		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json", "tiles": {"0": "res://game/data"},
+			"kit": "res://game/data/creatures_m1.json"}}))
+	var bad := content_missing.start_new("grazer", 26)
+	check(not bad.ok, "an endless world whose content is missing starts nothing")
+	check_has_error(bad.errors, "no_such_home.json")
+
+
+func test_endless_mode_without_creature_data_is_a_problem() -> void:
+	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "", _world_file())
+	check(session.world == null, "no world without the creature data")
+	var r := session.start_new("grazer", 27)
+	check(not r.ok and session.sim == null, "refused")
+	check_has_error(r.errors, "Endless mode needs the creature data")
+	var pooled := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "", _world_file(), "pool")
+	check(pooled.start_new("grazer", 27).ok, "the step 2 pool needs none")

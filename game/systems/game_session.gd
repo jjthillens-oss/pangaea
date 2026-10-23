@@ -1,10 +1,10 @@
 class_name GameSession
 extends RefCounted
-## One play session's save slot and running pool (M1 step 2, threats and checkpoints in step 3).
-## Main owns it; it is not an autoload. New lineage, continue, save and the death flow all go
-## through here, using the existing save schema (no new fields): energy, health, heading, the
-## world's food, the creatures, the death streak and the shelter are not saved, so Continue
-## restarts them (D16).
+## One play session's save slot and running pool (M1 step 2, threats and checkpoints in step 3,
+## the endless world in S1). Main owns it; it is not an autoload. New lineage, continue, save and
+## the death flow all go through here, using the existing save schema (no new fields): energy,
+## health, heading, the world's food, the creatures, the death streak and the shelter are not
+## saved, so Continue restarts them (D16).
 ##
 ## There is no timed autosave. Saving happens when the player asks (pause menu, save and quit,
 ## the quit dialog), once when a new lineage starts, so Continue always has a file, and, with
@@ -13,9 +13,18 @@ extends RefCounted
 ## The death flow (plan section 13): the sim reports died; resolve_death() applies the death to the
 ## lineage once (Lineage.apply_death with RespawnRules.death_cause) and, with save_on_death, writes
 ## the slot with the cell at its checkpoint; respawn_after_death() then brings the cell back there.
+##
+## The world (S1): with a world path the session reads WorldConfig, and the mode (the file's, or
+## the world_mode argument, which is the --world flag) picks the endless world or the M1 pool.
+## Without one it is the M1 pool, exactly as before, which is how every pool test runs. An endless
+## save is a plain v2 save whose position is absolute am in float64 (PlaneSpace.to_save_abs). In
+## endless mode the sim respawns at its next step (respawn_pending), so between the request and
+## that step the cell is still dead with its death already applied: resolve_death, a second
+## respawn_after_death and save_now hold off, and the dirty test reads the death's own save.
 
 const DEFAULT_SLOT := "user://saves/slot_1.json"   ## %APPDATA%\Pangaea\saves\slot_1.json on Windows
-## Moving further than this since the last save counts as an unsaved change.
+## Moving further than this since the last save counts as an unsaved change. In endless mode it is
+## am at size 1, measured between absolute positions, so a rebase alone changes nothing.
 const DIRTY_MOVE_M := 1.0
 ## The owner's choice for OD1 (plan section 24), the recommended option. true: resolving a death
 ## writes the slot at once, with the cell at its checkpoint, so quitting at the death notice cannot
@@ -55,20 +64,44 @@ var dirty: bool:
 	get:
 		return _is_dirty()
 
+## The world content in endless mode; null in pool mode.
+var world: WorldContent = null
+## The world file with the mode applied, when a world path was given; null for a pool-only session.
+## Its load problems (an unreadable file, a bad key, an unknown mode) stop a run in either mode.
+var world_config: WorldConfig = null
+
 var _saved_points := 0
 var _saved_position := Vector2.ZERO
 var _saved_history_size := 0
+## Endless: absolute_position_am() at the last save or load. Pool mode uses _saved_position.
+var _saved_abs := PackedFloat64Array([0.0, 0.0])
+## Whether the death handed to the pending respawn was saved: respawn_after_death clears `death`
+## before the sim's next step performs the respawn, and the dirty test reads this meanwhile.
+var _respawn_death_saved := false
 
 
-## `species_path` "" runs the step 2 pool, with no creatures.
+## `species_path` "" runs the step 2 pool, with no creatures. `world_path` "" is the M1 pool; else
+## the world file, with `world_mode` ("pool" or "endless", "" for the file's own) overriding its mode.
 func _init(p_slot: String = DEFAULT_SLOT, layout_path: String = PoolLayout.DEFAULT_PATH,
-		species_path: String = SpeciesCatalog.DEFAULT_PATH) -> void:
+		species_path: String = SpeciesCatalog.DEFAULT_PATH, world_path: String = "", world_mode: String = "") -> void:
 	slot = p_slot
 	catalog = PartCatalog.load_from()
 	persistence = PersistenceService.new(catalog)
 	layout = PoolLayout.load_from(layout_path)
 	if not species_path.is_empty():
 		species = SpeciesCatalog.load_from(species_path)
+	if world_path.is_empty():
+		return
+	var from_file := WorldConfig.load_from(world_path)
+	world_config = from_file.with_mode(world_mode if not world_mode.is_empty() else from_file.mode)
+	if world_config.mode == "endless" and species != null and world_config.load_problems.is_empty():
+		world = WorldContent.load_from(world_path, layout, species)
+		world.config = world_config   # the flag's mode wins over the file's
+
+
+## True when the session runs the endless world.
+func is_endless() -> bool:
+	return world != null
 
 
 ## The first eight hex digits of a lineage id in two groups, for showing to the player:
@@ -123,8 +156,11 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	if not founded.ok:
 		return {"ok": false, "errors": founded.errors, "saved": false}
 	var save: SaveGame = founded.save
-	save.player["position"] = PlaneSpace.to_save(layout.spawn)
-	sim = PoolSim.create(save, catalog, layout, species)
+	if world != null:
+		save.player["position"] = PlaneSpace.to_save_abs(world.home.spawn[0], world.home.spawn[1])
+	else:
+		save.player["position"] = PlaneSpace.to_save(layout.spawn)
+	sim = PoolSim.create(save, catalog, layout, species, world)
 	death = {}
 	load_source = "new"
 	var written := _write()
@@ -143,7 +179,7 @@ func continue_run() -> Dictionary:
 	var loaded := persistence.load_from(slot)
 	if not loaded.ok:
 		return {"ok": false, "source": "", "errors": loaded.errors}
-	sim = PoolSim.create(loaded.save, catalog, layout, species)
+	sim = PoolSim.create(loaded.save, catalog, layout, species, world)
 	death = {}
 	load_source = loaded.source
 	_mark_saved()
@@ -151,11 +187,12 @@ func continue_run() -> Dictionary:
 
 
 ## Writes the running save to the slot. Refused while the cell is dead (the death must be
-## resolved first). Returns {"ok", "error"}.
+## resolved first), except while an endless respawn is pending: the death is applied by then, and
+## the save holds the checkpoint, as the death's own save did. Returns {"ok", "error"}.
 func save_now() -> Dictionary:
 	if sim == null:
 		last_save = {"ok": false, "error": "There is no run to save."}
-	elif sim.dead:
+	elif sim.dead and not sim.respawn_pending:
 		last_save = {"ok": false, "error": "Your cell is dead; continue before saving."}
 	else:
 		last_save = _write()
@@ -166,11 +203,12 @@ func save_now() -> Dictionary:
 ## unspent points and records the cause ("starved" or "killed:<species>", D18). With save_on_death
 ## the slot is then written with the cell at its checkpoint (the usual temp, verify and backup
 ## path); when that fails the death still stands in memory and the session stays dirty. Calling it
-## again returns the same result. Returns {} while the cell is alive, else
+## again returns the same result, and while an endless respawn is pending (the death it handed over
+## was applied; `death` is already cleared) it returns {}. Returns {} while the cell is alive, else
 ## {"lost", "cause", "by_species", "reason" (the killer's death_reason, or ""), "tip" (the death
 ##  notice's tip, or ""), "saved": {"attempted", "ok", "error"}}.
 func resolve_death() -> Dictionary:
-	if sim == null or not sim.dead:
+	if sim == null or not sim.dead or sim.respawn_pending:
 		return {}
 	if not death.is_empty():
 		return death
@@ -194,11 +232,13 @@ func death_save_failed() -> bool:
 
 ## Brings the dead cell back at its checkpoint (PoolSim.respawn_player), resolving the death first
 ## if that has not happened yet, so the death always counts once. Returns the points the death
-## took (0, and nothing changed, when the cell is not dead).
+## took (0, and nothing changed, when the cell is not dead or its endless respawn is pending: the
+## sim performs it at its next step).
 func respawn_after_death() -> int:
-	if sim == null or not sim.dead:
+	if sim == null or not sim.dead or sim.respawn_pending:
 		return 0
 	var resolved := resolve_death()
+	_respawn_death_saved = bool(resolved.saved.ok)
 	sim.respawn_player()
 	death = {}
 	return int(resolved.lost)
@@ -214,11 +254,18 @@ static func starved_tip(p: Phenotype) -> String:
 	return STARVED_TIP_ANY
 
 
-## Why the run cannot start: the layout's problems, then the species data's.
+## Why the run cannot start: the layout's problems, then the species data's, then the world file's
+## (in either mode) and, in endless mode, the world content's.
 func _data_problems() -> PackedStringArray:
 	var errors := layout.validate()
 	if errors.is_empty() and species != null:
 		errors = species.validate(layout, catalog)
+	if world_config != null:
+		errors.append_array(world_config.load_problems)
+		if world_config.mode == "endless" and species == null:
+			errors.append("Endless mode needs the creature data; this session has none.")
+		elif world != null:
+			errors.append_array(world.problems(catalog, species))
 	return errors
 
 
@@ -244,15 +291,26 @@ func _mark_saved() -> void:
 	_saved_points = sim.save.adaptation_points
 	_saved_position = sim.position_for_save()
 	_saved_history_size = sim.save.lineage_history.size()
+	if sim.is_endless():
+		_saved_abs = sim.absolute_position_am()
 
 
 ## A dead cell is dirty only while its death is not saved; after a saved death the checkpoint is
 ## where the save puts it, so neither the open notice nor the respawn there is an unsaved change.
+## While an endless respawn is pending, the death's save is the one respawn_after_death recorded.
+## Endless positions are compared as absolute am in float64, never as local Vector2s.
 func _is_dirty() -> bool:
 	if sim == null:
 		return false
-	if sim.dead and not bool(death.get("saved", {}).get("ok", false)):
+	if sim.dead:
+		var saved := _respawn_death_saved if sim.respawn_pending else bool(death.get("saved", {}).get("ok", false))
+		if not saved:
+			return true
+	if sim.save.adaptation_points != _saved_points or sim.save.lineage_history.size() != _saved_history_size:
 		return true
-	return sim.save.adaptation_points != _saved_points \
-		or sim.save.lineage_history.size() != _saved_history_size \
-		or sim.position_for_save().distance_to(_saved_position) > DIRTY_MOVE_M
+	if sim.is_endless():
+		var a := sim.absolute_position_am()
+		var dx := a[0] - _saved_abs[0]
+		var dy := a[1] - _saved_abs[1]
+		return dx * dx + dy * dy > DIRTY_MOVE_M * DIRTY_MOVE_M
+	return sim.position_for_save().distance_to(_saved_position) > DIRTY_MOVE_M
