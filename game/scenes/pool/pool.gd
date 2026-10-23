@@ -76,6 +76,8 @@ var _starve_pulse_t := 0.0
 @onready var rocks: RockField = %Rocks
 ## The sea's landmarks and rare set pieces.
 @onready var landmarks: LandmarkLayer = %Landmarks
+## The endless sea's column at the generation start and arrow home (world_rebuilt: placed every frame).
+@onready var markers: WorldMarkers = %Markers
 @onready var plankton_view: FoodView = %Plankton
 @onready var carrion_view: FoodView = %Carrion
 @onready var cell_view: PlayerCellView = %PlayerCell
@@ -200,6 +202,8 @@ func _build() -> void:
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
 	creature_layer.attach(sim, world_space)
+	markers.setup(sim, session.world.kit if is_endless() else null)
+	_update_markers()
 	if sim.species != null:
 		audio.configure_tells(tell_lengths(sim.species))
 	camera.configure(session.layout.camera)
@@ -262,6 +266,7 @@ func apply_world_event(e: Dictionary) -> void:
 			_renormalize_fx()
 			_shift_ambience(o)
 			_follow_camera()
+			_update_markers()
 
 
 ## WorldFx renormalises as the other containers do (WorldSpace.renormalize_far), but only while no
@@ -311,6 +316,11 @@ func _follow_camera() -> void:
 	for node: Node3D in [backdrop, _sun, _depth_glow]:
 		node.position.x = camera.focus.x
 		node.position.z = camera.focus.z
+
+
+## The column and the arrow home stand where the sim says, beside the cell as it is drawn now.
+func _update_markers() -> void:
+	markers.update(sim, PlaneSpace.to_plane(cell_view.position))
 
 
 ## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and the
@@ -363,6 +373,7 @@ func _process(delta: float) -> void:
 	creature_layer.sync(fraction)
 	camera.follow(cell_view.position, Vector2.ZERO if paused else sim.display_velocity(), delta)
 	_follow_camera()
+	_update_markers()
 	_draw_food(fraction)
 	feedback.update_zones(sim.region, sim.plankton, delta)
 	_update_starving(delta)

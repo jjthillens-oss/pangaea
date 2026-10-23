@@ -15,6 +15,11 @@ extends Control
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
 ##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
 ##
+##   endless sea (S1): a toast naming each region or rare tile the cell enters, at most once per
+##                 REGION_TOAST_REPEAT_S for each, the start tile's at once; and the WorldOverlay,
+##                 made in code: a cream pip at the screen edge toward the column at the generation
+##                 start while it is off screen, and the distance home beside the arrow's tip
+##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
 ## panel has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
@@ -52,6 +57,11 @@ const VIGNETTE_FALL_S := 0.4
 const VIGNETTE_MIN_GAP_S := 0.5
 const CHIP_STYLES := {"Fed": &"ChipFed", "Hungry": &"ChipHungry", "Starving": &"ChipStarving"}
 const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": KEY_DOWN, &"move_right": KEY_RIGHT}
+## A region's (or rare tile's) toast shows again only after this long, so a swim along a boundary
+## does not repeat it (C-15). The window is per region.
+const REGION_TOAST_REPEAT_S := 30.0
+const REGION_NAMES := {"home": "Home waters", "sunlit": "Sunlit shallows", "reef": "Shell reef",
+		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral"}
 
 var pool: PoolScene
 
@@ -65,6 +75,9 @@ var _controls_t := 0.0
 var _banner_t := 0.0
 var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
 var _vignette_t := INF                ## seconds since the last vignette pulse
+var _region_shown := {}               ## region or rare kind -> sim time its toast last showed
+## The endless sea's marker overlay; null in the pool.
+var world_overlay: WorldOverlay
 
 @onready var energy_text: Label = %EnergyText
 @onready var state_chip: PanelContainer = %StateChip
@@ -122,6 +135,17 @@ func bind(p_pool: PoolScene) -> void:
 	_vignette_t = INF
 	_set_vignette(0.0)
 	threat_indicators.bind(pool)
+	_region_shown.clear()
+	if world_overlay != null:
+		remove_child(world_overlay)
+		world_overlay.queue_free()
+		world_overlay = null
+	if pool.is_endless():
+		world_overlay = WorldOverlay.new(pool)
+		add_child(world_overlay)
+		move_child(world_overlay, 0)   # under the panels and the threat arrows
+		var start := start_tile_info(pool.sim)
+		_on_region(str(start.get("region", "")), str(start.get("rare", "")))
 	refresh()
 
 
@@ -226,6 +250,19 @@ static func meal_toast(event: Dictionary) -> String:
 ## "+1 point · survived 30 s" for an "earned" survival event.
 static func survival_toast(points: int, alive_s: float) -> String:
 	return "+%d point%s · survived %d s" % [points, "" if points == 1 else "s", roundi(alive_s)]
+
+
+## The toast for entering a tile: its rare kind's name when `rare` is not "", else its region's;
+## "" for a name the HUD does not know.
+static func region_toast(region: String, rare: String) -> String:
+	return str(REGION_NAMES.get(rare if rare != "" else region, ""))
+
+
+## The tile the endless cell is in now: WorldGen.tile_info's {id, region, rare, ...}.
+static func start_tile_info(sim: PoolSim) -> Dictionary:
+	var w := sim.world
+	var t := w.tile_of_local(sim.motion.position)
+	return w.gen.tile_info(WorldConfig.band_of(w.size), t.x, t.y)
 
 
 ## "Sheltered 5": the shelter chip's words, in whole seconds of shelter left.
@@ -368,11 +405,26 @@ func _on_sim_event(event: Dictionary) -> void:
 			_flash(int(event.points))
 		"respawned":
 			hint.visible = false
+		"tile_entered":
+			_on_region(str(event.get("region", "")), str(event.get("rare", "")))
 		"hit":
 			if event.get("target") == CreatureField.PLAYER_ID and _vignette_t >= VIGNETTE_MIN_GAP_S:
 				_vignette_t = 0.0
 				_set_vignette(vignette_strength(0.0))
 	refresh()
+
+
+## Toasts the region (or rare tile) the cell is in, unless its toast showed less than
+## REGION_TOAST_REPEAT_S ago.
+func _on_region(region: String, rare: String) -> void:
+	var text := region_toast(region, rare)
+	if text == "":
+		return
+	var key := rare if rare != "" else region
+	var now := pool.sim.now()
+	if float(_region_shown.get(key, -INF)) + REGION_TOAST_REPEAT_S <= now:
+		_region_shown[key] = now
+		_add_toast(text)
 
 
 func _flash(points: int) -> void:
@@ -432,3 +484,89 @@ func _set_vignette(strength: float) -> void:
 func _set_text(label: Label, text: String) -> void:
 	if label.text != text:
 		label.text = text
+
+
+## The endless sea's marker overlay (S1, docs/s1/s1-content.md 6.11), made in code so hud.tscn is
+## untouched. While the column at the generation start is off screen, a cream pip sits at the
+## screen edge toward it (where an edge arrow would, ThreatIndicators.edge_point), labelled
+## "Generation start"; while the arrow home shows, "Where you began · 1.4 km" sits beside its tip.
+## Both are shapes and words, never colour alone.
+class WorldOverlay extends Control:
+	const PIP_RADIUS_PX := 10.0
+	const PIP_OUTLINE_PX := 3.0
+	const PIP_TEXT := "Generation start"
+	const ARROW_TEXT := "Where you began · %s"
+	const FONT_SIZE := 18
+	const TEXT_GAP_PX := 8.0
+	const TEXT_PAD_PX := 8.0              ## text stays this far inside the screen
+	const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
+
+	var pool: PoolScene
+	## {"at": Vector2} while the pip is drawn, else empty (for checks).
+	var pip := {}
+	## {"at": Vector2 (the arrow tip's screen point), "side": Vector2 (the way the arrow points on
+	## screen, where the words go), "text": String} while the label is drawn, else empty.
+	var label := {}
+
+	func _init(p_pool: PoolScene) -> void:
+		pool = p_pool
+		name = "WorldOverlay"
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+
+	func _process(_delta: float) -> void:
+		if pool != null and not pool.paused:
+			refresh()
+
+	## Works out the pip and the label on the screen `rect` (by default the viewport's), projecting
+	## pool points with `project`: a Callable(Vector3) -> {"at": Vector2, "behind": bool} (by
+	## default the pool camera's own projection).
+	func refresh(rect := Rect2(), project := Callable()) -> void:
+		pip = {}
+		label = {}
+		var markers: WorldMarkers = pool.markers if pool != null else null
+		if markers == null or not markers.visible or markers.column() == null or pool.camera == null:
+			queue_redraw()
+			return
+		if not rect.has_area():
+			rect = get_viewport_rect()
+		if not project.is_valid():
+			var camera: Camera3D = pool.camera
+			project = func(at: Vector3) -> Dictionary:
+				return {"at": camera.unproject_position(at), "behind": camera.is_position_behind(at)}
+		var column: Dictionary = project.call(markers.column().position)
+		if column.behind or not rect.has_point(column.at):
+			pip = {"at": ThreatIndicators.edge_point(rect, column.at, column.behind, ThreatIndicators.MARGIN_PX)}
+		if markers.arrow() != null and markers.arrow().visible:
+			var tip: Dictionary = project.call(markers.arrow_tip())
+			var back: Dictionary = project.call(markers.arrow().position)
+			if not tip.behind and (tip.at as Vector2).is_finite():
+				var side := ((tip.at as Vector2) - (back.at as Vector2)).normalized()
+				label = {"at": tip.at, "side": side if side.is_finite() and side != Vector2.ZERO else Vector2.RIGHT,
+					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_tm)}
+		queue_redraw()
+
+	func _draw() -> void:
+		var font := get_theme_default_font()
+		var rect := get_viewport_rect() if is_inside_tree() else get_rect()
+		if not pip.is_empty():
+			var at: Vector2 = pip.at
+			draw_circle(at, PIP_RADIUS_PX + PIP_OUTLINE_PX, OUTLINE)
+			draw_circle(at, PIP_RADIUS_PX, WorldMarkers.MARKER_COLOR)
+			# The words sit on the pip's inner side, toward the screen centre.
+			var inward := (rect.get_center() - at).normalized()
+			_text(font, rect, at + inward * (PIP_RADIUS_PX + TEXT_GAP_PX), PIP_TEXT, inward)
+		if not label.is_empty():
+			_text(font, rect, label.at, label.text, label.side)
+
+	## Draws `text` outlined, beside `anchor` on its `side`, kept inside `rect`.
+	func _text(font: Font, rect: Rect2, anchor: Vector2, text: String, side: Vector2) -> void:
+		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+		var top_left := anchor + Vector2(TEXT_GAP_PX if side.x >= 0.0 else -TEXT_GAP_PX - size.x, -size.y * 0.5)
+		if absf(side.y) > absf(side.x):
+			top_left = anchor + Vector2(-size.x * 0.5, 0.0 if side.y > 0.0 else -size.y)
+		var inner := rect.grow(-TEXT_PAD_PX)
+		top_left = top_left.clamp(inner.position, (inner.end - size).max(inner.position))
+		var baseline := top_left + Vector2(0.0, font.get_ascent(FONT_SIZE))
+		draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 6, OUTLINE)
+		draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, WorldMarkers.MARKER_COLOR)
