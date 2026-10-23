@@ -6,8 +6,8 @@
 [ext_resource type="PackedScene" path="res://game/ui/notice_dialog.tscn" id="4_notice"]
 
 [sub_resource type="Gradient" id="Gradient_water"]
-offsets = PackedFloat32Array(0, 0.55, 1)
-colors = PackedColorArray(0.07, 0.25, 0.27, 1, 0.035, 0.14, 0.16, 1, 0.012, 0.06, 0.07, 1)
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.298, 0.608, 0.878, 1, 0.043, 0.18, 0.42, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_water"]
 gradient = SubResource("Gradient_water")
