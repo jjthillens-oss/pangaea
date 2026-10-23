@@ -57,6 +57,37 @@ const AMBUSH_PLANNED_SIZE := 1.5
 ## docs/art/ART_DIRECTION.md: the threat colour goes on spikes and attack tells; eyes may be amber.
 const THREAT_COLOR := Color("#D9466B")
 const MINERAL_AMBER := Color("#E3A64A")
+## The microscopic world's rim (docs/micro-world-plan.md, commit C3): an engineering placeholder
+## from its own generator until the owner picks how the world's edge looks, with its budget kept
+## here so its record cannot loosen it.
+const RIM_ID := "pool_rim"
+const RIM_REVIEW := "blockout - M1 micro world, not visually approved"
+const RIM_GENERATOR := "tools/blender/make_m1_micro_rim.py"
+const RIM_BUDGET := 4000
+## The rim's surface crosses the swim plane between the layout's hard radius, where the collision
+## stops the cell's side, and this far outside it, so the wall the player sees is where the cell stops.
+const RIM_PLANE_BAND_M := 1.0
+## The wall's inner face lies in this band at every azimuth and at each of these heights, from
+## under the swim plane down to the skirt's least depth (5 m).
+const RIM_INNER_M := Vector2(38.5, 38.8)
+const RIM_SKIRT_HEIGHTS: Array[float] = [-1.5, -3.0, -5.0]
+## As the floor's: the cell's centre stops at r 39 and the cell reaches 0.39 m below the swim
+## plane, so inside r 39 the rim stays at or below -0.45 m. (radius, height)
+const RIM_CLEAR_M := Vector2(39.0, -0.45)
+## The floor's lip (+1.2 m at r 42) and shelf (+1.0 m from FLOOR_SHELF_R out), with their 0.1 m of
+## rocky noise: the heights the rim keeps over the lip's radii and over the shelf.
+const RIM_LIP_R := Vector2(41.5, 43.0)
+const RIM_LIP_HEIGHT_M := Vector2(0.8, 1.4)
+const RIM_SHELF_HEIGHT_M := Vector2(0.85, 1.15)
+## The placeholder look (PROPOSED). The lip's linear albedo luminance is at most RIM_MAX_LUMINANCE,
+## as the floor lip's (tests/test_pool_look.gd), and every albedo at least RIM_MIN_LUMINANCE. The
+## wall's face below RIM_WALL_BELOW_M gets no sun on the north side, only the blue ambient light,
+## so its albedo is at least RIM_WALL_MIN_LUMINANCE: in the lip's dark stone it rendered near
+## black (L* 6; docs/DECISIONS.md).
+const RIM_MAX_LUMINANCE := 0.40
+const RIM_MIN_LUMINANCE := 0.01
+const RIM_WALL_BELOW_M := -1.0
+const RIM_WALL_MIN_LUMINANCE := 0.08
 
 
 ## Top-level records only: get_files_at lists no folders, so assets/records/placeholders/ is skipped.
@@ -141,10 +172,13 @@ func _vertices(root: Node3D) -> PackedVector3Array:
 ## The outline of `root`'s triangles seen from above over `heights`: for each 1-degree azimuth
 ## bin, the farthest point of any horizontal section at those heights (0 where none reaches).
 ## Each cut is sampled densely, so sparse vertices never read as a narrow side. With `only`, just
-## that mesh instance's own triangles count (in root space).
-func _section_outline(root: Node3D, heights: Array[float], only: MeshInstance3D = null) -> PackedFloat32Array:
+## that mesh instance's own triangles count (in root space). With `nearest`, each bin holds the
+## nearest point instead (INF where none reaches).
+func _section_outline(root: Node3D, heights: Array[float], only: MeshInstance3D = null, nearest := false) -> PackedFloat32Array:
 	var best := PackedFloat32Array()
 	best.resize(360)
+	if nearest:
+		best.fill(INF)
 	var instances := _mesh_instances(root)
 	if only != null:
 		instances = [only]
@@ -174,7 +208,7 @@ func _section_outline(root: Node3D, heights: Array[float], only: MeshInstance3D 
 					for j in steps + 1:
 						var c := cut[0].lerp(cut[1], float(j) / steps)
 						var bin := int(fposmod(rad_to_deg(c.angle()), 360.0)) % 360
-						best[bin] = maxf(best[bin], c.length())
+						best[bin] = minf(best[bin], c.length()) if nearest else maxf(best[bin], c.length())
 	return best
 
 
@@ -377,13 +411,19 @@ func _corner_reach(camera: Dictionary, distance: float, height: float) -> float:
 
 
 func test_the_floor_reaches_past_the_widest_view_from_the_wall() -> void:
+	_check_shelf_reaches_past_the_widest_view("pool_floor", FLOOR_SHELF_R)
+
+
+## Checks that asset `id`'s shelf, its vertices from `shelf_r` out, reaches past what the widest
+## zoom shows from a cell at the wall, and that its record's radius_m is its edge.
+func _check_shelf_reaches_past_the_widest_view(id: String, shelf_r: float) -> void:
 	var layout := _layout()
 	var camera: Dictionary = layout.get("camera", {})
 	var pool: Dictionary = layout.get("pool", {})
 	check(camera.has("zoom_max") and pool.has("hard_radius"), "the layout has the camera and pool blocks")
-	var node := _load_scene("res://assets/export/pool_floor.glb")
+	var node := _load_scene("res://assets/export/%s.glb" % id)
 	if node == null or camera.is_empty() or pool.is_empty():
-		check(false, "pool_floor loads")
+		check(false, "%s loads" % id)
 		if node:
 			node.free()
 		return
@@ -396,20 +436,20 @@ func test_the_floor_reaches_past_the_widest_view_from_the_wall() -> void:
 	for v in verts:
 		var r := Vector2(v.x, v.z).length()
 		edge_r = maxf(edge_r, r)
-		if r >= FLOOR_SHELF_R:
+		if r >= shelf_r:
 			shelf_low = minf(shelf_low, v.y)
-	check(shelf_low < INF, "the floor has a shelf past r %.0f" % FLOOR_SHELF_R)
-	# The floor's edge is a polygon on its outermost ring; it covers the circle through its edge midpoints.
+	check(shelf_low < INF, "%s has a shelf past r %.0f" % [id, shelf_r])
+	# The edge is a polygon on the outermost ring; it covers the circle through its edge midpoints.
 	var edge_count := 0
 	for v in verts:
 		if Vector2(v.x, v.z).length() >= edge_r - 0.01:
 			edge_count += 1
-	check(edge_count >= 32, "the floor ends in a ring of vertices, got %d" % edge_count)
+	check(edge_count >= 32, "%s ends in a ring of vertices, got %d" % [id, edge_count])
 	var covered := edge_r * cos(PI / maxi(edge_count, 3))
 	var needed := focus_r + _corner_reach(camera, float(camera.zoom_max), shelf_low)
 	check(covered >= needed,
-		"at the widest zoom (%.0f m) from the wall the view reaches r %.1f, the floor covers r %.1f" % [float(camera.zoom_max), needed, covered])
-	check_near(float(_record("pool_floor").get("radius_m", 0.0)), edge_r, 0.05, "record radius_m is the floor's edge")
+		"at the widest zoom (%.0f m) from the wall the view reaches r %.1f, %s covers r %.1f" % [float(camera.zoom_max), needed, id, covered])
+	check_near(float(_record(id).get("radius_m", 0.0)), edge_r, 0.05, "%s record radius_m is its edge" % id)
 	node.free()
 
 
@@ -798,3 +838,167 @@ func test_production_assets_carry_textures_and_log_every_outside_source() -> voi
 				var textured := mat != null and (mat.albedo_texture != null or (mat.vertex_color_use_as_albedo and mat.normal_texture != null))
 				check(textured, "%s %s surface %d has an albedo texture, or vertex colours and a normal map" % [id, mi.name, s])
 		node.free()
+
+
+# --- The microscopic world's rim (docs/micro-world-plan.md, commit C3) ---------------------------
+
+
+func test_the_pool_rim_is_a_micro_world_blockout_within_its_budget() -> void:
+	var record := _record(RIM_ID)
+	if record.is_empty():
+		check(false, "%s has a record" % RIM_ID)
+		return
+	check_eq(record.get("status"), "PROPOSED", "%s status" % RIM_ID)
+	check_eq(record.get("review_state"), RIM_REVIEW, "%s review state" % RIM_ID)
+	check_eq(record.get("generator_script"), RIM_GENERATOR, "%s generator" % RIM_ID)
+	var provenance := String(record.get("provenance", ""))
+	check(provenance.contains("procedurally") and provenance.contains(RIM_GENERATOR), "%s provenance is procedural and names its generator" % RIM_ID)
+	var tris := int(record.get("triangles", 1 << 30))
+	check(tris > 0 and tris <= RIM_BUDGET, "%s has %d triangles, budget %d" % [RIM_ID, tris, RIM_BUDGET])
+
+
+# The rim's shape is its gameplay contract. These checks read only its triangles, never its
+# material, so art can swap the look (the owner's question on the world edge) without them.
+
+
+func test_the_pool_rim_wall_meets_the_swim_plane_where_the_collision_stops_the_cell() -> void:
+	var pool: Variant = _layout().get("pool", {})
+	var hard := float(pool.get("hard_radius", 0.0)) if pool is Dictionary else 0.0
+	check(hard > 0.0, "the layout gives the pool a hard radius")
+	var node := _load_scene("res://assets/export/%s.glb" % RIM_ID)
+	if node == null:
+		check(false, "%s loads" % RIM_ID)
+		return
+	# At every azimuth the surface crosses the swim plane, and only between the hard radius and a
+	# metre outside it. (A bin with no crossing holds INF nearest and 0 farthest.)
+	var near := _section_outline(node, [0.0] as Array[float], null, true)
+	var far := _section_outline(node, [0.0] as Array[float])
+	var off := 0
+	for bin in 360:
+		off += 0 if near[bin] >= hard and far[bin] <= hard + RIM_PLANE_BAND_M and near[bin] <= far[bin] else 1
+	check(off == 0, "%s crosses the swim plane in r %.1f-%.1f at every azimuth: r %.3f-%.3f (%d degrees off)"
+		% [RIM_ID, hard, hard + RIM_PLANE_BAND_M, Array(near).min(), Array(far).max(), off])
+	# Below it the wall faces the pool from just outside the cell's reach, all round and at least
+	# 5 m down, and nothing reaches further in.
+	for h in RIM_SKIRT_HEIGHTS:
+		var wall := _section_outline(node, [h] as Array[float], null, true)
+		var outside := 0
+		for r in wall:
+			outside += 0 if r >= RIM_INNER_M.x and r <= RIM_INNER_M.y else 1
+		check(outside == 0, "%s wall at y %.1f is in r %.1f-%.1f at every azimuth: r %.3f-%.3f (%d degrees outside or missing)"
+			% [RIM_ID, h, RIM_INNER_M.x, RIM_INNER_M.y, Array(wall).min(), Array(wall).max(), outside])
+	var innermost := INF
+	for v in _vertices(node):
+		innermost = minf(innermost, Vector2(v.x, v.z).length())
+	check(innermost >= RIM_INNER_M.x, "nothing of %s reaches inside r %.1f, got %.3f" % [RIM_ID, RIM_INNER_M.x, innermost])
+	node.free()
+
+
+func test_the_pool_rim_clears_the_cell_keeps_the_floors_lip_and_shelf_and_faces_the_pool() -> void:
+	var node := _load_scene("res://assets/export/%s.glb" % RIM_ID)
+	if node == null:
+		check(false, "%s loads" % RIM_ID)
+		return
+	var inside := -INF
+	var lip := Vector2(INF, -INF)
+	var shelf := Vector2(INF, -INF)
+	var away := 0
+	var count := 0
+	for mi in _mesh_instances(node):
+		var t := _relative(mi, node)
+		for s in mi.mesh.get_surface_count():
+			var arrays := mi.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+			for i in verts.size():
+				var v := t * verts[i]
+				var r := Vector2(v.x, v.z).length()
+				count += 1
+				if r <= RIM_CLEAR_M.x:
+					inside = maxf(inside, v.y)
+				elif r >= RIM_LIP_R.x and r <= RIM_LIP_R.y:
+					lip = Vector2(minf(lip.x, v.y), maxf(lip.y, v.y))
+				elif r >= FLOOR_SHELF_R:
+					shelf = Vector2(minf(shelf.x, v.y), maxf(shelf.y, v.y))
+				# The wall shows its inner side and the lip and shelf their top: each vertex's normal
+				# points up or in toward the pool's axis, never down or out.
+				var n := (t.basis * normals[i]).normalized() if i < normals.size() else Vector3.ZERO
+				away += 0 if n.y - n.dot(Vector3(v.x, 0.0, v.z).normalized()) > 0.0 else 1
+	check(count > 0, "%s has vertices" % RIM_ID)
+	check(inside <= RIM_CLEAR_M.y, "inside r %.0f %s is at most %.2f m, got %.3f" % [RIM_CLEAR_M.x, RIM_ID, RIM_CLEAR_M.y, inside])
+	check(lip.x > RIM_LIP_HEIGHT_M.x and lip.y <= RIM_LIP_HEIGHT_M.y,
+		"over r %.1f-%.0f the lip is %.3f-%.3f m, within %.1f-%.1f" % [RIM_LIP_R.x, RIM_LIP_R.y, lip.x, lip.y, RIM_LIP_HEIGHT_M.x, RIM_LIP_HEIGHT_M.y])
+	check(shelf.x >= RIM_SHELF_HEIGHT_M.x and shelf.y <= RIM_SHELF_HEIGHT_M.y,
+		"from r %.0f the shelf is %.3f-%.3f m, within %.2f-%.2f" % [FLOOR_SHELF_R, shelf.x, shelf.y, RIM_SHELF_HEIGHT_M.x, RIM_SHELF_HEIGHT_M.y])
+	check(away == 0, "every %s normal points up or into the pool: %d of %d point away" % [RIM_ID, away, count])
+	node.free()
+
+
+func test_the_pool_rim_shelf_reaches_past_the_widest_view_from_the_wall() -> void:
+	_check_shelf_reaches_past_the_widest_view(RIM_ID, FLOOR_SHELF_R)
+
+
+## The rim's linear albedo at vertex `i` as `mat` draws it: its colour times the vertex colour when
+## it uses them. Black when the albedo cannot be read from the mesh (a texture).
+func _rim_albedo(mat: BaseMaterial3D, colors: PackedColorArray, i: int) -> Color:
+	if mat == null or mat.albedo_texture != null:
+		return Color.BLACK
+	var albedo := mat.albedo_color.srgb_to_linear()
+	if mat.vertex_color_use_as_albedo and i < colors.size():
+		albedo *= colors[i].srgb_to_linear() if mat.vertex_color_is_srgb else colors[i]
+	return albedo
+
+
+## Dark and cool: luminance in [RIM_MIN_LUMINANCE, `most`], and blue at least green at least red
+## (within 8-bit rounding), so it never leans toward food's yellow-green or the threat's pink.
+func _is_dark_cool(c: Color, most: float) -> bool:
+	var lum := c.get_luminance()
+	return lum >= RIM_MIN_LUMINANCE and lum <= most and c.b >= c.g - 0.004 and c.g >= c.r - 0.004
+
+
+# The placeholder look, read through the material the import gives the rim. A new look for the
+# world's edge replaces this test, not the shape tests above.
+func test_the_pool_rim_is_dark_cool_stone_never_near_white_and_its_wall_never_black() -> void:
+	var palette: Dictionary = _record(RIM_ID).get("vertex_colors", {})
+	for key in ["stone", "wall"]:
+		var rgb: Variant = palette.get(key)
+		var ok: bool = rgb is Array and (rgb as Array).size() == 3
+		check(ok, "the %s record gives its %s colour" % [RIM_ID, key])
+		if ok:
+			var c := Color(float(rgb[0]), float(rgb[1]), float(rgb[2]))
+			check(_is_dark_cool(c, RIM_MAX_LUMINANCE), "the %s colour %s is dark and cool" % [key, c])
+	var node := _load_scene("res://assets/export/%s.glb" % RIM_ID)
+	if node == null:
+		check(false, "%s loads" % RIM_ID)
+		return
+	var on_lip := 0
+	var brightest := 0.0
+	var on_wall := 0
+	var darkest_wall := INF
+	var off := 0
+	var count := 0
+	for mi in _mesh_instances(node):
+		var t := _relative(mi, node)
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
+			check(mat != null and mat.albedo_texture == null, "%s %s surface %d has a standard material without a texture, whose albedo this test reads" % [RIM_ID, mi.name, s])
+			var arrays := mi.mesh.surface_get_arrays(s)
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+			for i in verts.size():
+				var albedo := _rim_albedo(mat, colors, i)
+				count += 1
+				off += 0 if _is_dark_cool(albedo, RIM_MAX_LUMINANCE) else 1
+				var v := t * verts[i]
+				var r := Vector2(v.x, v.z).length()
+				if r >= RIM_LIP_R.x and r <= RIM_LIP_R.y:
+					on_lip += 1
+					brightest = maxf(brightest, albedo.get_luminance())
+				elif v.y <= RIM_WALL_BELOW_M:
+					on_wall += 1
+					darkest_wall = minf(darkest_wall, albedo.get_luminance())
+	check(count > 0 and off == 0, "every %s vertex is dark, cool stone as drawn: %d of %d are not" % [RIM_ID, off, count])
+	check(on_lip > 0 and on_wall > 0, "%s has vertices on the lip and on the wall" % RIM_ID)
+	check(brightest <= RIM_MAX_LUMINANCE, "the lip's brightest albedo has luminance %.3f, at most %.2f" % [brightest, RIM_MAX_LUMINANCE])
+	check(darkest_wall >= RIM_WALL_MIN_LUMINANCE, "below y %.0f the wall's darkest albedo has luminance %.3f, at least %.2f" % [RIM_WALL_BELOW_M, darkest_wall, RIM_WALL_MIN_LUMINANCE])
+	node.free()
