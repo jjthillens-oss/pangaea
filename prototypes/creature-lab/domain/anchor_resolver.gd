@@ -20,6 +20,8 @@ const MARCH_STEPS := 64
 const GROUND_ANKLE_M := 0.09
 ## "forward_cone" parts (eyes, mouths) look along the head direction, turned towards the skin normal by at most this.
 const FORWARD_CONE_DEG := 45.0
+## Within this fraction of the line's length of an inner joint, a spot counts as on the joint (u is in per mille).
+const JOINT_SNAP := 0.0006
 
 
 ## Returns [{part: id, twin: bool, transform: Transform3D (body space, with scale), bone: int}, ...]: one entry per
@@ -90,8 +92,9 @@ static func resolve(desc: RefCounted, field: RefCounted, part: Dictionary, orien
 		var k: int = at["segment"]
 		var tangent: Vector3 = at["tangent"]
 		var dir := _ring_direction(tangent, float(part["ring"]) / 1000.0)
-		# End caps (polar mode): at the spine's ends the part leans `elev` degrees from the axis towards `ring`.
-		if host == "spine" and (int(part["u"]) == 0 or int(part["u"]) == 1000):
+		# End caps (polar mode): at the spine's ends and a limb's tip the part leans `elev` degrees from the axis
+		# towards `ring`. A limb's start is inside the trunk, so it has no cap.
+		if int(part["u"]) == 1000 or (host == "spine" and int(part["u"]) == 0):
 			var out_axis := -tangent if int(part["u"]) == 0 else tangent
 			var e := deg_to_rad(float(part["elev"]))
 			dir = (out_axis * cos(e) + dir * sin(e)).normalized()
@@ -152,8 +155,15 @@ static func _point_on_line(line: PackedVector3Array, u: float) -> Dictionary:
 		var len_k := line[k].distance_to(line[k + 1])
 		if want <= len_k or k == line.size() - 2:
 			var t := clampf(want / len_k, 0.0, 1.0) if len_k > 0.0 else 0.0
-			return {"point": line[k].lerp(line[k + 1], t), "tangent": (line[k + 1] - line[k]).normalized(), "segment": k,
-					"t": t}
+			var tangent := (line[k + 1] - line[k]).normalized()
+			# At an inner joint (to within the rounding of u), the tangent is the bend's mean direction, so a part on
+			# the outside of a knee stands out from it instead of along one of its segments.
+			var near := JOINT_SNAP * total
+			if want >= len_k - near and k < line.size() - 2:
+				tangent = (tangent + (line[k + 2] - line[k + 1]).normalized()).normalized()
+			elif want <= near and k > 0:
+				tangent = (tangent + (line[k] - line[k - 1]).normalized()).normalized()
+			return {"point": line[k].lerp(line[k + 1], t), "tangent": tangent, "segment": k, "t": t}
 		want -= len_k
 	return {"point": line[0], "tangent": Vector3.BACK, "segment": 0, "t": 0.0}
 

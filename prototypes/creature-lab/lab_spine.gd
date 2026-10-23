@@ -20,6 +20,11 @@ static func rules() -> Dictionary:
 	return read_json("res://data/body_rules.json")
 
 
+## Editor prices (PROPOSED), for domain/creature_editor_session.gd.
+static func editor_costs() -> Dictionary:
+	return read_json("res://data/editor_costs.json")
+
+
 static func body(body_name: String) -> RefCounted:
 	if body_name.begins_with("s1_"):
 		return BodyCodec.from_dict(read_json("res://data/stage1_bodies.json")["bodies"][body_name.substr(3)])

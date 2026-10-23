@@ -19,7 +19,7 @@ var vertebrae: Array = []
 ## Joint 0 is the shoulder or hip and sits on the attach vertebra; the last joint is the tip.
 var limbs: Array = []
 ## Each: {id, type, host: "spine" | limb id | limb id + ":end", u: 0..1000 along the host, ring: 0..999 thousandths
-## of a turn around it (0 up, 250 right), elev: 0..90 degrees (only at the spine's ends, u 0 or 1000: how far the part
+## of a turn around it (0 up, 250 right), elev: 0..90 degrees (only at the spine's ends, u 0 or 1000, and a limb's tip, u 1000: how far the part
 ## leans from the end of the axis towards `ring`), height (offset along the skin normal, body units), turn, tilt,
 ## roll (degrees), scale (per mille), handles: [per mille], mirror: bool}. Integers throughout.
 var parts: Array = []
