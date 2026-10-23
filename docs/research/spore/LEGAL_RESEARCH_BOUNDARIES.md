@@ -6,11 +6,16 @@ opinion from a qualified lawyer in the owner's country, then an owner decision r
 
 Labels used in every file in this folder:
 
-- **CONFIRMED**: stated by a primary source (the license text, a statute, a court ruling, or a paper by Spore's own
-  developers), with a citation. For a project rule, it means the owner approved it.
-- **OBSERVED**: seen in our own gameplay recordings or in a cited secondary source (wiki, review, interview).
+- **CONFIRMED**: stated by a primary source, with a citation, or decided by the owner. Primary sources are Maxis/EA
+  developers' own papers, slides, talks or patents, and a statute, a court ruling or the license text. A first-hand
+  developer essay or blog (for example S14 Johnson, S7 Hecker) counts as primary only if we actually read it; S7 has
+  not been read (site down), so its details are unverified. For a project rule, CONFIRMED means the owner approved it.
+- **OBSERVED**: seen in our own gameplay recordings, or reported by a secondary source: journalists, wikis
+  (Wikipedia included), interviews written by others, community or modder material. Give a confidence.
 - **HYPOTHESIS**: our inference about how something might work. Never present it as Spore's implementation.
 - **PROPOSED**: a GENESIS design or process suggestion that the owner has not approved.
+
+No file in this folder redefines these labels. A press report quoting a developer is still OBSERVED.
 
 ## 1. What already binds us
 
@@ -36,18 +41,20 @@ the owner depends on where he lives and where he bought the game.
 | §2 License | "You may not reverse engineer or attempt to extract or otherwise use source code or other data from EA Services", with an exception where EA authorizes it or the law permits it | Decompiling or disassembling Spore is a breach of contract unless a law gives a right that overrides the contract. Reading data out of game files is covered too. |
 | §2 License | "You may not access, copy, modify or distribute any EA Service, Content or Entitlements" (except as the agreement allows) | No copying or redistributing game data, binaries or assets. |
 | §7.A Technical and Content Protection Measures | "Attempting to circumvent, disable or tamper with these measures shall terminate this license." | Never touch DRM or launcher checks. This is also a separate legal risk under anti-circumvention law (section 3). |
-| §7.C Monitoring and Anti-Cheat | Defines "Unauthorized Third-Party Program" as one that "intercepts, 'mines', or otherwise collects information from or through the game" | Memory readers, hooks and data-mining tools attached to a running Spore are out, even for "just measuring". Screen recording is not covered by that definition. |
+| §7.C Monitoring and Anti-Cheat | Defines "Unauthorized Third-Party Program" as one that "intercepts, 'mines', or otherwise collects information from or through the game" | Memory readers, hooks and data-mining tools attached to a running Spore are out, even for "just measuring". In our reading, screen recording is not covered by that definition. |
 | §6 Rules of Conduct | "Do not engage or assist in cheating ... or using exploits." | Irrelevant to single-player observation, but no exploit-based measurement tricks. |
 | §13(B) Governing law | For residents of the EEA, UK, Switzerland, Brazil, Hong Kong, Mexico or Russia, "the laws of your country of residence govern this Agreement" | Which statutory exceptions apply depends on the owner's country. We need to know it. |
+| §13(B) Governing law (US clause) | "If you live in the United States, Canada or Japan, the laws of the State of California, excluding its conflicts-of-law rules, govern this Agreement and your use of EA Services" | This is the clause that applies to the owner (US resident): California law and US federal law. |
 
 Owner's answers (2026-10-23): **bought on Steam, lives in the United States.** So:
 
-- US law applies (section 3, US items). §13(B)'s country-of-residence rule for the EEA and others does not apply.
+- US law applies (section 3, US items). §13(B)'s US clause names California law (quoted above); its
+  country-of-residence rule for the EEA and others does not apply.
 - Two agreements bind the copy: the Steam Subscriber Agreement (Valve) and EA's terms for the game. Open task: if the
   game shows an EULA at first launch or links one on its store page, quote that version here. We do not open files
   in the install folder to find it.
-- In the US, *Davidson v. Jung* (section 3) makes a game EULA's reverse-engineering ban likely enforceable, so binary
-  analysis stays off the plan. The owner confirmed on 2026-10-23: no unauthorized binary analysis or DRM
+- US courts have enforced such reverse-engineering bans (*Bowers*, *Davidson*; section 3), so we assume EA's term is
+  enforceable and binary analysis stays off the plan. (Our assumption, not legal advice.) The owner confirmed on 2026-10-23: no unauthorized binary analysis or DRM
   circumvention.
 
 ## 3. Law that sits next to the contract
@@ -61,15 +68,20 @@ they apply to us.
   these cases are a weak fit.
 - **US contracts can still forbid it.** *Bowers v. Baystate*, 320 F.3d 1317 (Fed. Cir. 2003) and *Davidson &
   Associates v. Jung*, 422 F.3d 630 (8th Cir. 2005) enforced license terms that banned reverse engineering. *Davidson*
-  is about a game (Blizzard's Battle.net) and also found a DMCA anti-circumvention violation. So in the US, the EA
-  clause above is likely enforceable even where fair use might have applied.
+  is about a game (Blizzard's Battle.net) and also found a DMCA anti-circumvention violation. Each binds only its
+  own circuit, and courts differ on preemption: *Vault Corp. v. Quaid Software*, 847 F.2d 255 (5th Cir. 1988) held
+  that a state law validating reverse-engineering bans in licenses was preempted by federal copyright law. So we
+  assume, without a legal opinion, that the EA clause above is enforceable against us even where fair use might
+  have applied.
 - **US anti-circumvention.** 17 U.S.C. §1201 forbids circumventing access controls; §1201(f) has a narrow
   interoperability exception that does not cover "learning how a game works to make our own".
 - **EU.** Directive 2009/24/EC Art. 5(3) lets a lawful user "observe, study or test the functioning of the program in
   order to determine the ideas and principles which underlie any element of the program" while loading, displaying
   or running it, and Art. 8 makes contract terms against this void. This supports our gameplay observation. Art. 6
   allows decompilation only for interoperability of an independently created program, under strict conditions; that
-  does not describe our purpose either. The UK has equivalents (CDPA 1988 ss. 50A–50C, 296ZA ff.).
+  does not describe our purpose either. The UK has equivalents in the CDPA 1988: s. 50BA (observing, studying and
+  testing), s. 50B (decompilation), s. 296A (contract terms against these are void), and ss. 296ZA ff.
+  (circumvention). The owner lives in the US, so EU and UK law is background only.
 - **Ideas are free, expression is not.** Game mechanics and general techniques are not protected by copyright;
   code, art, animation data, audio and text are. Patents are a separate question that copyright law does not answer.
   First search (2026-10-23, Google Patents; not a legal clearance):
@@ -96,7 +108,7 @@ binary analysis is high and the research gain is low, because Maxis published th
 
 | Technique | Status | Notes |
 | --- | --- | --- |
-| Playing Spore (owned copy) and taking notes in our own words | Allowed | Matches owner rule and EU Art. 5(3). |
+| Playing Spore (owned copy) and taking notes in our own words | Allowed | Matches owner rule. (EU Art. 5(3) also supports it, as background only: the owner is in the US.) |
 | Screen recording our own play, frame-by-frame analysis, stopwatch timing | Allowed | Keep clips private in project storage, never published or committed to the repo (they contain EA's art). |
 | On-screen measuring aids outside the game (a ruler overlay in the video player, a grid printed on paper) | Allowed | Nothing attaches to the game process. |
 | Reading published papers, talks, slides, interviews, patents, reviews, wikis | Allowed | Cite each. Quote briefly; paraphrase the rest. |
@@ -116,8 +128,8 @@ binary analysis is high and the research gain is low, because Maxis published th
 
 Owner's brief of 2026-10-23 allows targeted local static analysis only "where permitted by applicable terms and
 law", and says to stop at public-source and behavioural research otherwise. EA's User Agreement §2 does not permit
-it, and in the US (owner's country) *Davidson v. Jung* makes that term likely enforceable. So the condition is not
-met, and the research stops at public sources and gameplay observation. The steps below are what would have to
+it, and in the US (owner's country) courts have enforced such terms (*Bowers*, *Davidson*), so we assume it is
+enforceable (section 3; not legal advice). So the condition is not met, and the research stops at public sources and gameplay observation. The steps below are what would have to
 change first.
 
 Recommendation (PROPOSED): **do not seek clearance.** Keep binary analysis of Spore off the plan. The published

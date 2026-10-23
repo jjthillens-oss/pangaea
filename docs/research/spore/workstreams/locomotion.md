@@ -7,7 +7,9 @@ S-numbers that other workstreams add.
 
 This file builds on `../PROCEDURAL_ANIMATION_SPEC.md`, the animation spec. It does not replace that spec. Where the two
 differ, this file says so and explains why. It is input for the owner's review. An implementation agent would receive only
-the reviewed specification parts (§3–§6 "Spec", "Interfaces", "Tests") and the public sources in §1.
+the reviewed specification, options and test subsections (§2, §3.3–3.4, §3.7–3.8, §4.3–4.4, §4.6–4.7, §5.3–5.4,
+§5.6, §6.3–6.4, §6.6, §7) and the public sources in §1. Not the "Observed behaviour and evidence" subsections (§x.1):
+§6.1 holds S1's own solver constants, which GENESIS does not adopt.
 
 ## 0. Question, method and limits
 
@@ -46,7 +48,7 @@ anatomy feed abilities and stats? What original GENESIS designs follow?
 | S2 | Developer talk page | Earlier version of S1, including failures | Site down; not read |
 | S11 | Community wiki (secondary) | Speed and abilities come from leg and other parts in levels | Via existing project notes only |
 | S13 | Journalist quoting developers (secondary) | "Walking ratio" from leg count, length and symmetry; footfall rhythm uses torso and head size; legless creatures slither | Via existing project notes |
-| S14 | Spore designer essay (secondary, first-hand) | Creature-stage part stats did not depend on limb length or placement | Via existing project notes |
+| S14 | Spore designer's first-hand essay (primary; read for `SPORE_RESEARCH.md` and re-checked by the evidence review, 2026-10-23) | Creature-stage part stats did not depend on limb length or placement | Via existing project notes |
 
 ### 1.2 Public locomotion literature and talks (not Spore; general knowledge, reimplemented in our own words)
 
@@ -103,9 +105,12 @@ consequences:
      we found before building anything.
 2. **Speed scales as √(leg length).**
    - At equal Fr, a 2 m leg moves √2 ≈ 1.41× faster in metres per second than a 1 m leg.
-   - In *body lengths per second* it moves 1/√2 ≈ 0.71× as fast. For example, at the trial walk: 0.25 m legs gave
-     2.97 L/s and 2 m legs gave 1.05 L/s.
-   - Long legs are faster over the ground, and small creatures look quicker. Gameplay must decide which unit the player
+   - In *body lengths per second* it moves 1/√2 ≈ 0.71× as fast, **if the whole body scales with the leg**
+     (isometric scaling, so body length ∝ leg length). For example, at the trial walk: 0.25 m legs gave 2.97 L/s and
+     2 m legs gave 1.05 L/s (L = leg length, standing in for body length under that assumption).
+   - If only the legs get longer and the body stays the same (not isometric; this is R307's case), body length does
+     not change, so speed in body lengths per second rises by √2 as well, the same as in m/s.
+   - Long legs are faster over the ground, and small creatures (scaled as a whole) look quicker. Gameplay must decide which unit the player
      feels (§5).
 3. **Cadence scales as 1/√(leg length).** In X1, walk cadence went from 2.18 Hz at 0.25 m to 0.77 Hz at 2 m. This
    matches the direction of L4: small animals take more strides per second.
@@ -221,7 +226,8 @@ relations above.
 
 ### 3.8 Unsupported configurations (first version)
 
-- Legs attached to other legs (branching legs). S1 supports them; we postpone.
+- Legs attached to other legs (branching legs). S1 supports them; we postpone. Stage 1 rule, shared with
+  `../CREATURE_GEOMETRY_SPEC.md` §3 and `creature_editor.md` §2.3: limbs attach to vertebrae only.
 - Feet above the hip (legs pointing up).
 - Legs whose rest pose already exceeds reach on flat ground.
 - A body whose centre of mass lies outside every possible support polygon: it is flagged in the editor and gets a
@@ -348,7 +354,7 @@ named-bone animations, so they do not fit generated skeletons without retargetin
 
 ### 5.1 Observed behaviour and evidence
 
-- OBSERVED (S14): in Spore's Creature stage, part stats were fixed regardless of placement or limb length. Shape had no
+- CONFIRMED (S14, first-hand developer essay): in Spore's Creature stage, part stats were fixed regardless of placement or limb length. Shape had no
   gameplay effect.
 - OBSERVED (S11; rows P002–P004): four combat and four social abilities, each rated on five levels summed from parts.
   Speed comes from leg parts in levels.

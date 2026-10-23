@@ -68,12 +68,11 @@ weights generated; detail parts stay Blender-authored.
   system"; Gingold calls this "the deep structure of the creatures" (S12).
 - S3 slides, "Note: Creatures": "Base block is a special block: body mesh"; "Allow player control over a basic
   skeleton – Adjust spline, glue limbs"; "Mesh generated via metaballs"; "Rigblocks attached to body". This is the
-  only primary Maxis source we have that names the skin method, and it agrees with S7.
-- S7 (summary only): blobby implicit surface, spherical metaballs, rebuilt live; chosen for topological robustness
-  rather than local control.
-- The pose the player builds in is the **rest pose**: "The position and orientation of the bodies at the time the
-  player creates the character is called the rest pose ... We simply assume the player created the character in a
-  'reasonable' rest configuration" (S1 §1.2). Players "sometimes adjust the rest pose after seeing their character
+  only primary Maxis source we have that names the skin method, and it is the citation for the metaball skin.
+- S7 (search summary only; S7 not read, so unverified): blobby implicit surface, spherical metaballs, rebuilt live;
+  chosen for topological robustness rather than local control.
+- The pose the player builds in is the **rest pose**: the bodies' placement when the player creates the character
+  "is called the rest pose", and S1 assumes it is a "'reasonable' rest configuration" (S1 §1.2). Players "sometimes adjust the rest pose after seeing their character
   animate" (S1 footnote 2).
 - The animation root is "a unique spine body chosen by a heuristic based on the maximum number of incident leg limbs
   and the position of the body" (S1 §1.2).
@@ -81,14 +80,15 @@ weights generated; detail parts stay Blender-authored.
   adequately in many common cases" because player spines have many inflection points, while quintic Hermite
   splines were sufficient (S1 §4.3.2). Interior spine bodies are stored as a parameter t plus an offset and
   orientation relative to a frame transported along the spline.
-- Legs and limbs "can be stretched and curled like clay" (S13).
+- Creature features "can be stretched and curled like clay" (S13).
 
 ### 2.2 Documented, inferred, unknown
 
-Documented (CONFIRMED by a primary or developer-quoted source):
+Documented (CONFIRMED by a primary source unless marked OBSERVED; labels as in `LEGAL_RESEARCH_BOUNDARIES.md`):
 
-1. The body is a tree of bodies with a serial spine chain at the root; no loops (S1, S13).
-2. The skin is generated from metaballs around a player-controlled skeleton (S3 slides; S7).
+1. The body is a tree of bodies with a serial spine chain at the root; no loops (S1). S13 (OBSERVED) adds the
+   animation reason for dropping loops.
+2. The skin is generated from metaballs around a player-controlled skeleton (S3 slides; S7 unverified).
 3. The player's edit pose is the rest pose for animation (S1).
 4. The skeleton editing is "adjust spline, glue limbs" (S3 slides).
 5. Typical size: 20–80 bodies including parts (S1).
@@ -115,8 +115,9 @@ Unknown (needs recordings or stays unknown):
 
 1. A creature body is one **spine**: an ordered chain of 3 or more vertebrae from head end to tail end. Each
    vertebra has a position in body space and a thickness. The spine is a tree root; nothing loops.
-2. **Limbs** branch from a vertebra (or, at most one level deep, from a limb joint). A limb is a chain of 2 or more
-   joints, each with a position and a thickness.
+2. **Limbs** branch from a vertebra. A limb is a chain of 2 or more joints, each with a position and a thickness.
+   Stage 1 rule (shared with `CREATURE_GEOMETRY_SPEC.md` §3 and `locomotion.md` §3.8): vertebra only. Limbs
+   branching from a limb joint (one level deep) are a later option.
 3. Thickness varies smoothly between neighbouring vertebrae and joints. Optionally a vertebra has separate width and
    height (elliptical section); round is the default.
 4. The skin is one closed, smooth, single-piece surface around the spine and all limbs. It has no holes, no
@@ -162,14 +163,14 @@ beyond what spheres allow.
 | --- | --- | --- | --- |
 | How | Sum compact-support falloffs of distance to each spine/limb segment; contour the iso surface on a grid; smooth; normals from the field gradient | Rings of vertices around each spine/limb segment form a coarse quad cage; branch junctions are stitched; Catmull–Clark subdivision smooths it | Editor draws the body with a fragment shader that raymarches the same field (no mesh); a mesh is built (F-1) when the handle is released |
 | Quality | Organic blobs, automatic blending at junctions; small grid-scale lumps; no natural UVs | Clean quad topology, natural UVs (u along spine, v around), great deformation; junctions are the hard part (3+ way branches, limbs close together) | Perfectly smooth preview at any resolution; final look still F-1 |
-| Robustness | Topology changes handled for free (S7's reason); thin features below about 1.5 cells can tear (probe P1 found 2 non-manifold edges) | Fragile at junctions, near-touching limbs and folded spines; needs many special cases | Preview never fails; final mesh has F-1's limits |
+| Robustness | Topology changes handled for free (S7's reason per a search summary; unverified); thin features below about 1.5 cells can tear (probe P1 found 2 non-manifold edges) | Fragile at junctions, near-touching limbs and folded spines; needs many special cases | Preview never fails; final mesh has F-1's limits |
 | Cost | Grid cost; probe P1–P3 shows GDScript is far too slow for live drag; native code needed | Cheap: ring count × sides, then 1–2 subdivision levels; fast in GDScript | GPU per pixel × primitives; not in the Compatibility renderer; editor only |
 | Determinism | Good on one machine; float differences across CPUs or compilers can move vertices (hash tests per platform) | Very good (fewer ops) | Preview not part of determinism |
 | Weights | From field contributions, exact by construction (`CREATURE_GEOMETRY_SPEC.md` §6) | From ring ownership, trivial and very clean | Same as F-1 |
 | Blender interplay | Need our own Python port of field + nets for parity; Blender metaball objects use a different field and must not be the reference | Blender's Skin modifier + Subdivision is the same idea, good for art review; its source is GPL so it is a reference only, never ported | Same as F-1 |
 
 Recommendation: **F-1 stays the production path** (it is the only one that copes with arbitrary player topology,
-which is Spore's own reason in S7), built natively (see §5). F-3 is a strong candidate for the drag preview if F-1
+which is Spore's own reason according to the unverified S7 summary), built natively (see §5). F-3 is a strong candidate for the drag preview if F-1
 native still misses 33 ms. F-2 is the fallback if F-1's lumps or cost fail review, and is worth a one-day spike on
 the torso alone because it gives UVs and topology F-1 cannot.
 
@@ -223,7 +224,8 @@ Scenes (`game/scenes/creature/`):
 
 1. `test_body_description_validates_ranges`: each limit in `BodyRules` refused with a reason; boundary values
    accepted.
-2. `test_spine_is_a_tree`: limbs attach only to existing vertebrae or limb joints; no cycles; depth ≤ 2.
+2. `test_spine_is_a_tree`: limbs attach only to existing vertebrae (Stage 1; limb joints later, depth ≤ 2); no
+   cycles.
 3. `test_skin_watertight`: for each of the ten fixed test bodies (`GENESIS_IMPLEMENTATION_ROADMAP.md` Stage 1),
    every edge is shared by exactly two triangles and the skin is one connected piece.
 4. `test_skin_deterministic_same_machine`: two builds give the same SHA-256 of vertex, index and weight bytes.
@@ -251,7 +253,7 @@ Risks:
 
 Unsupported (refused with a reason, PROPOSED):
 
-- Loops, disconnected limbs, limbs on limbs deeper than one level.
+- Loops, disconnected limbs, limbs on limbs (Stage 1; one level may be allowed later).
 - Features thinner than 1.5 preview cells at the creature's size (probe P1 shows tears below that).
 - Spines folded back on themselves or crossing themselves (the field merges them into one lump).
 - Spine leaving the sagittal plane (first version; see R212).
@@ -293,8 +295,9 @@ Documented:
 2. Parts attach to the body; the editors allow stacking, pinning and sliding (S3 slides).
 3. Capabilities on bodies link parts to animation and gameplay (S1).
 4. A sagittal midplane exists and animations mirror across it (S1).
-5. Symmetry is a design principle (S12); some asymmetric configurations existed (S1 Fig. 5, S13).
-6. Placement did not change part stats in the Creature stage (S14).
+5. OBSERVED: symmetry is a design principle (S12). CONFIRMED: some asymmetric configurations existed (S1 Fig. 5;
+   also S13, OBSERVED).
+6. Placement did not change part stats in the Creature stage (S14, first-hand developer essay).
 
 Inferred (HYPOTHESIS):
 
@@ -441,7 +444,8 @@ width (only the band changes) in a usability test.
 
 Documented:
 
-1. The saved creature is a recipe, about 2–5 KB, not a mesh (S15, S12).
+1. The saved creature is a recipe, about 2–5 KB, not a mesh (S15). OBSERVED: press reports give 4 KB (S12) and
+   about 8 KB (S17).
 2. Animation is regenerated from the body's structure (S15, S1).
 3. The playable model is baked from the recipe: one material, one texture page, LODs, simplified rigs for animated
    parts (S3 slides).
@@ -475,8 +479,9 @@ owner's 2026-10-22 rule):
    marked stand-in in the editor (Bible §18).
 6. The description records the generator version that last baked it. A newer generator may rebuild a slightly
    different skin; it never changes the description.
-7. Size: the largest legal body under 4 KB as compact JSON (target; probe P5 measured 4.6 KB for a deliberately
-   over-maximal body, see §5).
+7. Size: the largest body reachable under the complexity limit encodes under 4 KB as compact JSON. This is
+   GENESIS's own target, not Spore parity: published Spore figures are 2–5 KB (S15), 4 KB (S12) and about 8 KB (S17).
+   Probe P5 measured 4.6 KB for a deliberately over-maximal body (see §5).
 8. Each generation's description is kept in lineage history (it is the genome), so ancestors can be rebuilt.
 
 Proposed shape (one example, values invented):
@@ -601,15 +606,15 @@ What it tells us:
 
 ## 6. What this research changes for GENESIS
 
-- New primary evidence (S3 slides) agrees with S7 that Spore's skin was metaballs over a player-edited skeleton
-  ("Adjust spline, glue limbs"). F-1 stays the right family.
+- New primary evidence (S3 slides) shows that Spore's skin was metaballs over a player-edited skeleton
+  ("Adjust spline, glue limbs"); S7's details stay unverified. F-1 stays the right family.
 - Evidence that asymmetric creatures existed (S1 Fig. 5, S13) means "symmetry required" (S12) was a default, not an
   absolute. GENESIS keeps symmetry on by default with an explicit "break link" edit.
 - The rest pose is the edit pose (S1), so GENESIS must validate rest poses and offer a "settle" helper rather than
   assume a standard pose.
 - The earlier GDScript estimate in `CREATURE_GEOMETRY_SPEC.md` §5 (30–80 ms) is contradicted by this probe
-  (200–580 ms). The Stage 1 prototype should measure a native path early. (This file does not edit that spec; the
-  lead should decide whether to update it.)
+  (200–580 ms). The Stage 1 prototype should measure a native path early. (Resolved: that spec's §5 has since been
+  updated with these probe numbers.)
 - Does the research reduce work? Yes, moderately: it settles the topology (tree, no loops), the surface family, the
   edit-pose-as-rest-pose rule and the recipe-not-mesh save model, all of which would otherwise need prototypes to
   discover. It does not reduce the hard engineering (fast contouring, junction quality, anchor robustness), which

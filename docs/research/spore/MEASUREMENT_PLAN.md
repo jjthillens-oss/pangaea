@@ -52,7 +52,8 @@ The research thread does the analysis if you upload clips to the project files, 
 - **Repeats.** Five takes for timings and speeds; report the median as `value` and half the range as
   `uncertainty`.
 - **Result type** (column `result_type`): `observed` (read or counted directly from footage), `estimated`
-  (measured with a ruler or derived, with error), `independently verified` (two methods or two sources agree).
+  (measured with a ruler or derived, with error), `independently verified` (two methods or two sources agree),
+  `documented` (read from one published source, not measured by us; used for the P rows).
 - **Confidence** (column `confidence`): high (repeatable, small spread), medium (some spread or one source),
   low (one take or a judgement call).
 - **Label**: every recorded value is OBSERVED (the `result_type` column says whether it was estimated). Nothing

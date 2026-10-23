@@ -29,7 +29,7 @@ Files in this folder:
    steps, if the owner wants them anyway, are in `LEGAL_RESEARCH_BOUNDARIES.md` §5.
 3. **Sources.** Maxis published unusually detailed technical work on Spore: one SIGGRAPH 2008 journal paper on the
    animation system, four SIGGRAPH 2007 sketches (rigblocks, procedural texturing, spherical planets, object
-   distribution), GDC talks on animation and procedural music, and developer notes on the creature skin. §3 lists
+   distribution), GDC talks on animation and procedural music, and developer notes on the creature skin (S7, not yet read). §3 lists
    them with what each one establishes.
 4. **Biggest finding for GENESIS.** Spore's creatures come alive because of a layered runtime stack: semantic body
    tags, animation stored relative to those tags, a procedural gait generator, a two-phase constraint IK solver and
@@ -132,17 +132,19 @@ Adventures features (adventure editor) are not.
 
 ## 3. Published sources on Spore's engineering
 
-All are public papers or talks by Spore's developers unless marked. CONFIRMED means the source says it.
+All are public papers or talks by Spore's developers unless marked. Labels follow `LEGAL_RESEARCH_BOUNDARIES.md`:
+claims from read primary sources (S1, S3–S6, S14, S15) can be CONFIRMED; claims from secondary sources (S10–S13,
+S16, S17) are OBSERVED; S2 and S7 have not been read, so nothing rests on them alone.
 
 | ID | Source | What it establishes |
 | --- | --- | --- |
 | S1 | Hecker, Raabe, Enslow, DeWeese, Maynard, van Prooijen, "Real-time Motion Retargeting to Highly Varied User-Created Morphologies", ACM Trans. Graph. 27(3), Article 27, SIGGRAPH 2008. DOI 10.1145/1360612.1360626. PDF: <https://www.chrishecker.com/images/c/cb/Sporeanim-siggraph08.pdf> | The whole creature animation stack: semantic body capabilities, the Spasm authoring tool, generalized/specialized pose spaces, movement modes, branching and variants, the gait system, the two-phase Particle IK solver, "Jiggles" secondary motion, testing and performance. Primary source for `PROCEDURAL_ANIMATION_SPEC.md`. |
 | S2 | Hecker, "How To Animate a Character You've Never Seen Before", GDC 2007 lecture. <https://chrishecker.com/How_To_Animate_a_Character_You%27ve_Never_Seen_Before> | Earlier version of S1, including approaches that did not work. Slides and audio linked from the page (site was down on 2026-10-23; re-check). |
 | S3 | Choy, Ingram, Quigley, Sharp, Willmott, "Rigblocks: Player-deformable Objects", SIGGRAPH 2007 sketch. <https://www.cs.cmu.edu/~ajw/s2007/> | Parts are artist-made models with deform animations parameterized over 0..1 and driven by player handles; deforms compose additively; the finished model is baked. |
-| S4 | DeBry, Goffin, Hecker, Quigley, Shodhan, Willmott, "Player-Driven Procedural Texturing", SIGGRAPH 2007 sketch. Same page. | Creature paint: particle-driven brushes run over the body mesh and paint diffuse, specular and bump maps; player picks base, coat and detail scripts and two colours; UVs from cubemap partitioning; spherical-harmonics lighting. |
+| S4 | DeBry, Goffin, Hecker, Quigley, Shodhan, Willmott, "Player-Driven Procedural Texturing", SIGGRAPH 2007 sketch. Same page. | Creature paint: particle-driven brushes run over the body mesh and paint diffuse, specular and bump maps; player picks base, coat and detail scripts and player-selectable colour(s); UVs from cubemap partitioning; spherical-harmonics lighting. |
 | S5 | Compton, Grieve, Goldman, Quigley, Stratton, Todd, Willmott, "Creating Spherical Worlds", SIGGRAPH 2007 sketch. Same page. | Planets: cube-map charts with perspective projection; heightfields made by particle-driven brushes; terrain texture blended from height, slope and curvature. Relevant to GENESIS M7+ only. |
 | S6 | Willmott, "Fast Object Distribution", SIGGRAPH 2007 sketch. Same page. | Incremental Halton sequence for well-spaced, repeatable object placement with density maps. Directly useful now (food and scatter placement). |
-| S7 | Hecker, "My Liner Notes for Spore" (blog). <https://chrishecker.com/My_Liner_Notes_for_Spore> | Developer account: creature skin is a "blobby implicit surface" using only spherical metaballs along spine and limbs, rebuilt in real time while editing; ellipsoids rejected as too slow; rigblocks are Maya models with deformation handles. Read through a search summary on 2026-10-23 because the site was down; re-read and quote directly in Phase 2. |
+| S7 | Hecker, "My Liner Notes for Spore" (blog). <https://chrishecker.com/My_Liner_Notes_for_Spore> | **Not read** (site down on 2026-10-23; only a search-engine summary seen). The summary says: creature skin is a "blobby implicit surface" using only spherical metaballs along spine and limbs, rebuilt in real time while editing; ellipsoids rejected as too slow; rigblocks are Maya models with deformation handles. All of these details are unverified until S7 is read; the metaball skin itself is CONFIRMED by the S3 slides instead. Re-read and quote directly in Phase 2. |
 | S8 | Jolly and McLeran, "Procedural Music in Spore", GDC 2008. Recording: <https://archive.org/details/GDC2008Jolly> | Music generated in real time with EAPd, a customised Pure Data; most prominent in editors. Relevant to GENESIS audio later, out of scope now. |
 | S9 | Will Wright, "The Future of Content", GDC 2005 (cited as [Wright 2005] in S1) | Design intent: player-made content and procedural generation as the core of Spore. Design context, not engineering detail. |
 | S10 | "Development of Spore", Wikipedia. <https://en.wikipedia.org/wiki/Development_of_Spore> | Secondary. Timeline and staff; the 2005 demo versus the shipped game. |
@@ -150,7 +152,7 @@ All are public papers or talks by Spore's developers unless marked. CONFIRMED me
 
 | S12 | N. Evan, "Gingold Talks Spore's 'Magic Crayon' Approach", Game Developer, 2008-06-26. <https://gamedeveloper.com/game-platforms/gingold-talks-i-spore-i-s-magic-crayon-approach> | Creature designer Chaim Gingold: base shape is a 3D bean with pullable vertebra-like points ("deep structure"); symmetry required; creature data "smaller than the size of the thumbnail" (about 4k versus a 20k picture); legs were the hardest part of the editor; functions as a "fuzzy interpretation of what looks good". Secondary report of a talk. |
 | S13 | D. Kushner, "Engineering Spore", IEEE Spectrum, 2008-09-01. <https://spectrum.ieee.org/engineering-spore> | Looped spines removed because they broke animation rules; a "walking ratio" from leg count, length and symmetry; footfall rhythm from torso and head dimensions; mouth used as a hand when there is no grasper; legless creatures slither; 20 artists and 7 programmers on the editors; over a million creatures in the first 8 days of the Creature Creator. Secondary (journalist), quoting developers. |
-| S14 | S. Johnson, "Spore: My View of the Elephant", Game Developer, 2013-10-02. <https://www.gamedeveloper.com/design/spore-my-view-of-the-elephant> | Spore designer: part stats are fixed regardless of placement or limb length; shape has no gameplay effect in the Creature stage (the Cell editor does better); procedural animation finished late; lessons on prototypes. |
+| S14 | S. Johnson, "Spore: My View of the Elephant", Game Developer, 2013-10-02. <https://www.gamedeveloper.com/design/spore-my-view-of-the-elephant> | Spore designer's first-hand essay (primary; read): part stats are fixed regardless of placement or limb length; shape has no gameplay effect in the Creature stage (the Cell editor does better); procedural animation finished late; lessons on prototypes. |
 | S15 | EA patents US7789758B2 and US7867093B2, "Video game with simulated evolution", inventor Will Wright, priority 2006-03-10. <https://patents.google.com/patent/US7789758B2/en>, <https://patents.google.com/patent/US7867093B2/en> | Public technical documentation: creatures stored as procedural instructions of about 2–5 KB; animation recreated from procedural data using the creature's structure. Claims cover server-based sharing of player content (see `LEGAL_RESEARCH_BOUNDARIES.md` §3). |
 | S16 | Gingold, "Spore's Magic Crayons", GDC 2007 (reported by GameSpot, "GDC 07: Creating Spore", <https://www.gamespot.com/articles/gdc-07-creating-spore/1100-6167215/>) | Design challenges of the creature, building, vehicle and planet editors. Slides not found yet (GDC Vault may need a login). |
 
@@ -171,12 +173,12 @@ records clips under `MEASUREMENT_PLAN.md`.
 
 | Topic | Known (label, source) | Gap, and method |
 | --- | --- | --- |
-| Procedural body geometry | CONFIRMED (S7, secondary): implicit-surface skin of spherical metaballs along spine and limbs, rebuilt live; base shape a "bean" with vertebra-like points (S12) | Adopted as direction (DECISIONS.md 2026-10-23). GENESIS design: `CREATURE_GEOMETRY_SPEC.md`. |
+| Procedural body geometry | CONFIRMED (S3 slides, "Mesh generated via metaballs"): the body mesh is generated from metaballs around a player-adjusted skeleton. OBSERVED (S12): base shape a "bean" with vertebra-like points. Unverified until S7 is read: spheres only, ellipsoids too slow, rebuilt live. | Adopted as direction (DECISIONS.md 2026-10-23). GENESIS design: `CREATURE_GEOMETRY_SPEC.md`. |
 | Spine manipulation | CONFIRMED (S1): a serial chain of spine bodies at the root; editor uses a tree, general graphs were tried and dropped as confusing. OBSERVED: player drags vertebrae, adds or removes them, scales each. | Recording: max and min spine segments, how thickness is set. |
 | Limb placement | CONFIRMED (S1): bodies form a directed acyclic graph; capabilities tag parts (grasper, foot, mouth, spine). | Recording: attach rules, symmetry mode, limits. |
 | Body scaling | CONFIRMED (S1): animations scale with character bounds (CreatureSize) or limb length (LimbLength). | Recording: size range in the editor and in the world. |
 | Procedural skeleton | CONFIRMED (S1): skeleton is the body graph itself; legs are paths from a foot to a spine body (the hip). | Enough for GENESIS spec. |
-| Automatic rigging | CONFIRMED (S1, S3): parts carry their own deform animations; the skin follows the spine and limb bodies. HYPOTHESIS: skin weights come from distance to bodies. | GENESIS design: weights from primitive field contributions, `CREATURE_GEOMETRY_SPEC.md` §6. |
+| Automatic rigging | CONFIRMED (S1, S3): parts carry their own deform animations. HYPOTHESIS: the skin follows the spine and limb bodies, with skin weights from distance to bodies (neither source describes skinning). | GENESIS design: weights from primitive field contributions, `CREATURE_GEOMETRY_SPEC.md` §6. |
 | Animation adaptation | CONFIRMED (S1): full stack, see `PROCEDURAL_ANIMATION_SPEC.md` §2. | Enough for GENESIS spec. |
 | Coloration and texturing | CONFIRMED (S4): base, coat and detail paint scripts plus colours; brushes run along spine and limbs. | GENESIS approach in `CREATURE_CREATOR_ANALYSIS.md` §5. |
 
@@ -200,7 +202,7 @@ records clips under `MEASUREMENT_PLAN.md`.
 | Creature-stage progression | OBSERVED (S11): DNA points from befriending or hunting; brain upgrades raise pack size and health. | Recording: points per interaction, number of brain upgrades. |
 | Anatomy-based abilities | CONFIRMED in engine terms (S1): capabilities on parts drive animation and gameplay queries. OBSERVED: abilities sum from parts. | Enough for GENESIS design direction. |
 | Species generation | OBSERVED: NPC species are pre-made or downloaded player creations placed by the game. HYPOTHESIS: chosen to fit diet and stage. | Out of scope for measurement; GENESIS uses its own approved IB-05 rules. |
-| Later eras | CONFIRMED (S10): five stages, Cell, Creature, Tribal, Civilization, Space. GENESIS has seven eras of its own; Spore's stage scopes are not a template. | Not measured in Phase 1. |
+| Later eras | OBSERVED (S10, high confidence): five stages, Cell, Creature, Tribal, Civilization, Space. GENESIS has seven eras of its own; Spore's stage scopes are not a template. | Not measured in Phase 1. |
 
 ## 5. Open questions for Phase 2
 

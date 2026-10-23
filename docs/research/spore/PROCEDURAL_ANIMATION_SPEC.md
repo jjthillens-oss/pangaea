@@ -11,12 +11,13 @@ factor, spring bones) are standard animation knowledge with decades of public li
 ## 1. Goal
 
 Any body the player can build in a GENESIS editor moves believably the moment it is built, and its anatomy changes
-how it moves and what it can do. The Bible requires "anatomy must affect gameplay" (CONFIRMED) and
+how it moves and what it can do. The Bible requires "Creature anatomy must meaningfully influence gameplay." (CONFIRMED) and
 "limb placement influences support, reach, gait, and turning" (Bible §7, PROPOSED era text). This spec is the
 animation half; the gameplay half lives in `game/domain/locomotion.gd` and its successors.
 
-Non-goals: physically simulated locomotion; arbitrary graphs with loops (Spore removed loops for the same reason,
-S13). Bodies come from `CREATURE_GEOMETRY_SPEC.md`: a generated skin and skeleton plus Blender-authored parts.
+Non-goals: physically simulated locomotion; arbitrary graphs with loops. Spore dropped loops for two stated
+reasons: a general graph's interface complexity hindered player creativity (S1 footnote 1), and looped spines broke
+animation (S13, OBSERVED). Bodies come from `CREATURE_GEOMETRY_SPEC.md`: a generated skin and skeleton plus Blender-authored parts.
 
 ## 2. What Spore published (summary of S1)
 
@@ -48,7 +49,8 @@ CONFIRMED from S1 unless marked:
    grid; pass rate about 90%. Cost: about 0.2 ms per frame for a 25-body creature on a 1.7 GHz Pentium M, about 35%
    of it in IK.
 
-Also reported, but not in S1 (secondary, S13, journalist quoting developers):
+Also reported, but not in S1. Items 8 and 9 are OBSERVED (S13, a journalist quoting developers); item 10 is
+CONFIRMED (S14, a first-hand developer essay):
 
 8. A "walking ratio" comes from leg count, leg length and symmetry (twice as many legs on one side gives one to
    two); footfall rhythm and gait take the torso and head dimensions into account.
@@ -61,14 +63,17 @@ Also reported, but not in S1 (secondary, S13, journalist quoting developers):
 Five layers, each testable alone. Domain rules stay free of scenes, UI and files (CLAUDE.md).
 
 ```
-BodyDescriptor (domain)  ->  Gait planner (domain)  ->  Pose goals  ->  Godot SkeletonModifier3D stack  ->  Secondary
+BodyMechanics (domain)   ->  Gait planner (domain)  ->  Pose goals  ->  Godot SkeletonModifier3D stack  ->  Secondary
    capabilities, legs,         phases, foot targets,      clips +           IK solvers, look-at              spring bones
    leg groups, stats           speed limits               gait              (scene)                          (scene)
 ```
 
-### 3.1 BodyDescriptor (`game/domain/`, pure)
+### 3.1 BodyMechanics (`game/domain/`, pure)
 
-Built from the genome and part catalog when a body is created or edited. Contains:
+Renamed from `BodyDescriptor` and merged with `BodyMechanics` in `workstreams/locomotion.md` §7.1, which holds the
+current interface. The old name was retired because it differed by one word from `BodyDescription` (the editable body
+data, `CREATURE_GEOMETRY_SPEC.md` §3). Built from the body description, genome and part catalog when a body is
+created or edited. Contains:
 
 - Bone tree (spine chain at the root, limbs as subtrees), rest lengths in metres.
 - Capabilities per part (`capabilities` list in the part catalog; see `CREATURE_CREATOR_ANALYSIS.md` §3).
@@ -86,13 +91,15 @@ to cover more ground than the body can step. This is the key link between anatom
 
 ### 3.2 Gait planner (`game/domain/`, pure, deterministic)
 
-Input: descriptor, current velocity and turn rate, time. Output per foot: phase, stance or swing, target position on
+Input: body mechanics, current velocity and turn rate, time. Output per foot: phase, stance or swing, target position on
 the ground plane (before terrain correction).
 
 - One cycle clock per leg group. Ratios between groups snap to small rationals (1:1, 1:2, 2:3) so patterns repeat.
   Same idea as §2 item 4; the numbers are ours.
-- Gait table per speed band (stand, walk, trot, run) with duty factor and phase offsets, authored as data for 1–6
-  legs per group and generated for more (offsets spread evenly, alternating sides). File:
+- Gait table per speed band (stand, walk, trot, run) with duty factor and phase offsets. **Current proposal:**
+  `workstreams/locomotion.md` §3.3, where the table is written in leg-relative (Froude) units and phases are
+  generated for every leg count rather than hand-tabled per count. The earlier idea here (authored for 1–6 legs per
+  group, generated for more) is superseded unless the prototype shows generated phases look worse. File:
   `game/data/gaits.json`, PROPOSED tuning.
 - Step trigger rule: in stance, a foot lifts when its phase says so **or** when it is stretched beyond its reach
   radius (safety net for sudden turns).
@@ -167,16 +174,21 @@ Automated, in `tests/` once anything moves into the game; in the prototype first
    phase, at all speed bands, on flat ground.
 3. **No impossible poses.** No NaN or infinite transforms; bone lengths within 5% of rest; no joint flipping past
    its limit, over a 60 s scripted run with sudden stops and 180° turns.
-4. **Determinism.** The gait planner gives identical output for the same descriptor, inputs and seed (domain test).
-5. **Speed coupling.** The gameplay top speed from the descriptor never needs a cadence above the gait table's
+4. **Determinism.** The gait planner gives identical output for the same body mechanics, inputs and seed (domain test).
+5. **Speed coupling.** The gameplay top speed from `BodyMechanics` never needs a cadence above the gait table's
    limit (domain test over every test body).
 6. **Editor feedback.** After adding a foot, mouth or grasper in the editor, the body is animating with it within
    0.5 s (S1 reports immediate play; our target is a number we can test).
 7. **Clip pass grid.** Every clip on every test body, rendered to a contact sheet; a reviewer marks pass/fail.
    Target ≥ 90% pass before a clip ships, and failures are fixed or the clip gets a fallback (S1 used the same kind of
    grid and reported about 90%).
-8. **Performance.** On the baseline PC (RTX 5070 machine, DECISIONS.md), 50 animated creatures of 25 bones cost
-   under 1.5 ms per frame on the main thread together. To be re-set once a lower minimum spec is chosen.
+8. **Performance (provisional).** On the baseline PC (RTX 5070 machine, DECISIONS.md), 50 animated creatures of 25
+   bones cost under 1.5 ms per frame on the main thread together. No estimate yet meets this: S1 reports about
+   0.2 ms per creature on 2008 hardware, and `workstreams/locomotion.md` §6.4 estimates 0.2–0.3 ms per creature for an
+   own GDScript solver (10–15 ms for 50). So the budget assumes tiers: full solve for near creatures, a reduced
+   update rate (for example every second or fourth frame) and simpler IK for mid-distance ones, and clip-only or
+   frozen poses for far ones. The number is re-set after Gait Lab measures option A (built-in IK), and again once a
+   lower minimum spec is chosen.
 9. **Compare with Spore measurements.** Prototype values measured the same way as Spore clips
    (`GAMEPLAY_MEASUREMENTS.csv`, `subject=genesis`): stride-to-leg ratio, start and stop frames, turn radius.
    Differences are allowed, but must be explained.

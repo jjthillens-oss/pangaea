@@ -26,17 +26,20 @@ observation; nothing comes from game files.
   the unit interval rather than over time. The player drags a **handle** shown near the feature; the handle scrubs
   that animation from 0 to 1.
 - CONFIRMED (S3): several deforms on one part compose **additively** (translation, rotation and scale deltas summed
-  per bone, then turned into a matrix), so applying one does not undo another and the order does not matter.
-  Morph targets are supported but avoided for memory and runtime cost.
+  per bone, then turned into a matrix), so applying one does not undo another. S3 notes that summing Euler angles
+  (as Maya does) would make the result order-independent, while Spore's engine concatenates quaternions, which in
+  general is not order-independent. Morph targets are supported but avoided for memory and runtime cost.
 - CONFIRMED (S3): when the player finishes, the model is **baked**: deform data is removed and a static model is
   kept for in-game rendering.
 - CONFIRMED (S3): subranges of a handle can produce completely different styles of part, not just bigger or smaller.
 
 ### 1.3 Skin (the torso surface)
 
-- CONFIRMED by developer statement (S7, read via a search summary because the site was down on 2026-10-23;
-  re-verify): the torso skin is a "blobby implicit surface" made of **spherical metaballs only**, distributed along
-  spine and limbs, rebuilt in real time while the player edits. Ellipsoids were rejected as too slow to evaluate.
+- CONFIRMED (S3 slides, "Note: Creatures"): "Base block is a special block: body mesh"; "Mesh generated via
+  metaballs" around a skeleton the player adjusts ("Adjust spline, glue limbs").
+- Unverified until S7 is read (only a search summary was seen, because the site was down on 2026-10-23): the skin is
+  a "blobby implicit surface" of **spherical metaballs only** along spine and limbs, rebuilt in real time while the
+  player edits, and ellipsoids were rejected as too slow. Nothing in GENESIS depends on these details.
 - HYPOTHESIS: the surface is polygonized each edit (marching cubes or similar), and skin weights are derived from
   the nearest spine and limb bodies. Not stated in the sources we have; do not treat as fact.
 
@@ -79,7 +82,7 @@ These need our own recordings (`MEASUREMENT_PLAN.md`, session R2). Values go in 
 | Body as a tree with a spine chain at the root | **Yes** | Matches Godot `Skeleton3D` naturally. Trees only, no loops (Spore's own finding). |
 | Legs computed from the graph | **Yes** | A leg is a path from a `foot` cap to a `spine` bone. Computed, never stored in saves. |
 | Parts deformed by handles scrubbing 0..1 | **Yes, within the approved boundary** | Handles drive Blender-authored shape keys and bone scale (CONFIRMED boundary, DECISIONS.md 2026-10-22, IB-15 option B). Limits per part are tuning data. |
-| Additive composition of deforms | **Yes** | Shape keys are additive in Godot already; bone-scale deltas are summed, then applied. Test: order independence. |
+| Additive composition of deforms (one does not undo another) | **Yes** | Shape keys are additive in Godot already; bone-scale deltas are summed, then applied. Test: order independence. That is our own requirement, not something S3 claims for Spore (§1.2). |
 | Baking the finished creature | **Yes** | After the editor closes, merge static parts into fewer meshes for draw calls; keep the skeleton. Measured against the M2 performance budget. |
 | Implicit-surface (metaball) skin rebuilt at runtime | **Yes (changed 2026-10-23)** | The owner chose generated skins (DECISIONS.md 2026-10-23). GENESIS design: `CREATURE_GEOMETRY_SPEC.md`. §4 below is kept as a fallback only. |
 | Particle brushes painting textures at runtime | **Not now** | Generating texture pixels at runtime is not a mesh, so the boundary does not forbid it, but it is a scope expansion that needs approval. §5 proposes a shader-based alternative. |

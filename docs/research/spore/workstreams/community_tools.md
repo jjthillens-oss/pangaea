@@ -9,7 +9,9 @@ Evidence types used below:
 - **E1** community tool source or documentation statement (what the modders' tools do or say).
 - **E2** reverse-engineered declaration of EA internals (headers and names that modders wrote from disassembly).
   These show how modders model the game, not how EA designed it. Always labelled OBSERVED (community RE).
-- **E3** developer description (Maxis staff talks, papers, interviews).
+- **E3** developer description (Maxis staff talks, papers, interviews). The label follows
+  `LEGAL_RESEARCH_BOUNDARIES.md`: CONFIRMED only when we read the developers' own paper, slides, patent or essay
+  (S1, S3, S14, S15); OBSERVED when a journalist or press item reports it (S12, S13, S17, S21, S22).
 - **E4** our inference. Always labelled HYPOTHESIS.
 
 Method and limits. Both repositories were cloned into the session scratchpad, outside the repo, without checking out
@@ -77,8 +79,8 @@ New developer and press sources (not in S1 to S16): see section 4.
   baked").
 - OBSERVED (E1/E2): Sporepedia selection and creation import and export exist as named subsystems (C1 "Sporepedia",
   "Thumbnail import/export" headers). We do not study the PNG-card format; owner rule.
-- CONFIRMED (E3): size of the recipe. S12: about 4 KB. S15: about 2 to 5 KB. New S17 (Lucy Bradshaw, 2008): about
-  8 KB. The numbers differ; any of them supports the conclusion that **the description is parameters plus part
+- Size of the recipe. CONFIRMED (E3, S15 patent): about 2 to 5 KB. OBSERVED (E3, press reports): S12 about 4 KB;
+  new S17 (Lucy Bradshaw, 2008) about 8 KB. The numbers differ; any of them supports the conclusion that **the description is parameters plus part
   references, rebuilt at load**.
 - Plain summary (HYPOTHESIS, E4): the editable description is a list of parts. Each entry has a part definition
   reference, a transform, a parent link, symmetry, scale and handle (deform) values, plus paint choices and colours.
@@ -97,7 +99,8 @@ New developer and press sources (not in S1 to S16): see section 4.
 - OBSERVED (E2, low-medium): names only. The editor has **limits/budgets** (`EditorLimits.h`), **content
   validation** (`ContentValidation.h`), **spine tuning** (`TuningSpine.h`), an **editor skin and skin mesh**
   (`cEditorSkin.h`, `cEditorSkinMesh.h`) and a **play (test-drive) mode** with its own animations. HYPOTHESIS (E4):
-  the skin mesh is rebuilt from the rigblocks while editing, as S7 says in developer terms.
+  the skin mesh is rebuilt from the rigblocks while editing. The S3 slides confirm a metaball-generated body mesh;
+  "rebuilt live" rests only on an S7 search summary, which is unverified until S7 is read.
 - OBSERVED (E1, medium-high): a creature part definition holds a template parent (part category such as mouth or
   grasper), a model and paint textures, a display name, **ability levels**, behaviour tags, **minimum and maximum
   scale** with a default scale, model transform offsets, attached effects, mouth and foot sound types, cost,
@@ -109,7 +112,7 @@ New developer and press sources (not in S1 to S16): see section 4.
   mouths, graspers and eyes; flap and bend for feet and wings; expressions for eyes; and so on), authored on a fixed
   0-to-end timeline (C3, "List of Part Animations"). That is S1's "rigblock animations" and S3's deforms, seen from
   the tool side.
-- CONFIRMED (E3): S12 says symmetry is required and legs were the hardest part of the editor. S13 says looped spines
+- OBSERVED (E3, press reports, medium-high): S12 says symmetry is required and legs were the hardest part of the editor. S13 says looped spines
   were removed. S17 says the interface adjusts limb manipulation to the creature's orientation and mirrors limbs
   placed on one side.
 
@@ -130,7 +133,8 @@ New developer and press sources (not in S1 to S16): see section 4.
   the last frame; whether walking is allowed during it; whether it becomes the new idle; blend-in time; priority;
   and **several weighted choices** re-rolled per loop or not (C3, "How to: use Spore animations"; ModAPI's
   animated-creature doc comments, C1). This matches S1's variants and branching.
-- CONFIRMED (E3): S1 and S2 remain the primary sources for the solver: particle IK and the gait system.
+- CONFIRMED (E3): S1 remains the primary source for the solver: particle IK and the gait system. (S2, the
+  earlier GDC talk, has not been read; site down.)
   Workstream A found nothing in C1 to C3 that adds to them on the solver side.
 
 ### 3.4 Locomotion and abilities
@@ -143,9 +147,9 @@ New developer and press sources (not in S1 to S16): see section 4.
 - OBSERVED (E2, low): ModAPI names a **locomotive object** base class, a creature base class with ability play and
   jump calls, and a creature ability class with animation IDs and UI icons (C1 `Simulator/` headers). These say
   nothing about gait. The community has **not** publicly modelled gait timing, foot placement or turning.
-- CONFIRMED (E3): developer-side locomotion facts are still only S1 (gait system and IK), S13 (walking ratio from
-  leg count, length and symmetry; footfall rhythm from torso and head size; legless creatures slither; mouth as a
-  hand) and S14 (shape has no stat effect).
+- Developer-side locomotion facts are still only S1 (gait system and IK) and S14 (shape has no stat effect), both
+  CONFIRMED (E3), plus S13, OBSERVED (E3, press report: walking ratio from leg count, length and symmetry; footfall
+  rhythm from torso and head size; legless creatures slither; mouth as a hand).
 - Conclusion (E4): community tools **do not reduce** our locomotion unknowns. Gameplay recordings
   (`MEASUREMENT_PLAN.md`) and S1 stay the sources for gait.
 
@@ -193,10 +197,10 @@ S16. Kate Compton is a co-author of S5 (planets), not of creature papers.
   (`LEGAL_RESEARCH_BOUNDARIES.md` §6).
 - **License:** GPL-3.0 for C2, and GPL-3.0-or-later per-file for C1 (no root license file). Any code use would
   impose GPL terms on GENESIS, and the owner forbids copying anyway. Detours in C1 is non-commercial only.
-- **Tension with an earlier note:** `SPORE_RESEARCH.md` §3 says modder tools and format docs are "not used, on
-  purpose". The owner's 2026-10-23 brief asks us to study these two repos. This file reconciles the two by staying
-  at concept level: public READMEs, wiki prose and file names, with no format layouts. The lead should confirm this
-  reading with the owner and note it in `SPORE_RESEARCH.md`.
+- **Tension with an earlier note (resolved):** `SPORE_RESEARCH.md` §3 now has a paragraph ("Community projects")
+  that reconciles its "not used, on purpose" list with the owner's 2026-10-23 brief: study at concept level only
+  (public READMEs, wiki prose and file names, no format layouts). Owner approval of that reading is still open
+  question 6.
 - **In-game cheat:** C3 mentions a shipped console cheat that shows creature bodies. It is a game feature, not a
   third-party tool, so under `LEGAL_RESEARCH_BOUNDARIES.md` §4 it is "Flag: low risk". Use it only with owner
   approval, and log it.

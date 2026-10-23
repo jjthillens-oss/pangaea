@@ -212,6 +212,30 @@ advice):
 | F24 | P3 | creature_editor §2.1 | S1 rest-pose quote ~32 words | Shorten |
 | F25 | P3 | LEGAL §2 | §13(B) US clause not quoted | Quote the US/Canada/Japan clause that actually applies |
 
+Applied (2026-10-23; F1 done earlier; F2, F14 and F22 not applied because the roadmap is being rewritten):
+
+- F3: S3 slides cited for the metaball skin in SPORE_RESEARCH §3 (S7 row) and §4A, CREATURE_CREATOR §1.3, CREATURE_GEOMETRY §1 and §4; S7 details marked unverified there and in creature_editor and community_tools §3.2.
+- F4: CREATURE_CREATOR §1.2 now says deforms add up without undoing each other and notes Euler-sum vs quaternion order; §3 row keeps order independence as our own requirement.
+- F5: one label rule written into LEGAL label definitions; SPORE_RESEARCH §3 intro, community_tools E3 and creature_editor §2.2 no longer redefine it; S10/S12/S13/S17 claims relabelled OBSERVED, S14 CONFIRMED as a read first-hand essay, SPORE_RESEARCH §4A rigging clause downgraded to HYPOTHESIS.
+- F6: CREATURE_GEOMETRY §1, §3, §10.7 and creature_editor §4.2/§4.3.7 cite 2–5, 4 and 8 KB, mark 4 KB as GENESIS's own target and use "largest body reachable under the complexity limit".
+- F7: PROC_ANIM §6.8 marked provisional, with near/mid/far LOD and update-rate tiers, to be re-set after Gait Lab.
+- F8: CSV P005–P010 `result_type` changed to `documented`, a value now defined in MEASUREMENT_PLAN §4.
+- F9: CSV P002–P004 method and evidence record that both wikis were unreachable and the provenance is unrecorded; confidence lowered to `low`.
+- F10: Google Patents checked: US 6,084,593 (Gibson, MERL, filed 1998-05-14) is "Expired - Lifetime", 2018-05-14; named in CREATURE_GEOMETRY §1 and §5.
+- F11: PROC_ANIM `BodyDescriptor` renamed to `BodyMechanics`, pointing to locomotion §7.1.
+- F12: PROC_ANIM §3.2 points to locomotion §3.3 (Froude units, generated phases) as the current proposal.
+- F13: Stage 1 rule "limbs attach to vertebrae only" stated in CREATURE_GEOMETRY §3, creature_editor §2.3/§2.7/§2.8 and locomotion §3.8.
+- F15: LEGAL §2, §3 and §5 softened ("we assume enforceable", *Vault v. Quaid* 847 F.2d 255 added and checked); "in our reading" added for screen recording; §4 marks EU law as background; CDPA s. 50BA and s. 296A cited.
+- F16: locomotion header hand-off narrowed to spec, options, tests and interfaces subsections; §6.1 excluded.
+- F17: SPORE_RESEARCH S4 entry now says "player-selectable colour(s)".
+- F18: creature_editor §2.1 now quotes S13's "features".
+- F19: PROC_ANIM §1 quotes the Bible exactly.
+- F20: CREATURE_GEOMETRY §1 and PROC_ANIM §1 give S1's reason (interface complexity) and S13's reason (animation) separately.
+- F21: community_tools §5 tension note and creature_editor §6 note on the 30–80 ms estimate marked resolved.
+- F23: locomotion §2 item 2 states the isometric assumption and gives the legs-only (R307) case.
+- F24: creature_editor §2.1 rest-pose quote shortened to two short fragments.
+- F25: LEGAL §2 quotes the §13(B) US/Canada/Japan clause (California law), fetched from tos.ea.com on 2026-10-23.
+
 ## 8. Does the research reduce implementation work?
 
 Honest view: **yes, by a useful but bounded amount.** It is roughly a design head start, not a shortcut through the

@@ -15,11 +15,11 @@ decades of public literature, and it cites where Spore's developers published a 
 | --- | --- | --- |
 | Base shape | A 3D "bean" with pullable points that work like vertebrae, the creature's "deep structure" (S12 Gingold) | Same idea: a spine of vertebrae is the editable core |
 | Symmetry | Required: "all living things are symmetrical" (S12) | Symmetric by default; off-centre limbs and parts are mirrored automatically |
-| Topology | Tree only; looped spines were removed because they broke animation (S1 footnote 1, S13) | Tree only |
-| Skin | One implicit surface of spherical metaballs along spine and limbs, rebuilt live while editing; ellipsoids rejected as slow; no blend groups (S7, via secondary summaries; re-verify) | Implicit surface of tapered **capsule** primitives with blend rules (§4), rebuilt live |
-| Tessellation | Developer says he avoided marching cubes because its patent was live during development and used an ear-clipping method instead; the patent expired before ship (S7, via secondary summary; re-verify) | Marching cubes' patent (US 4,710,876) expired in 2005; we use Surface Nets (§5), which is public and unpatented as far as we know |
+| Topology | Tree only. Two separate reasons were given for dropping loops: the interface complexity of a general graph hindered player creativity (S1 footnote 1), and looped spines broke animation (S13) | Tree only |
+| Skin | CONFIRMED: the body mesh is "generated via metaballs" (S3 slides). Unverified until S7 is read (search summary only): spherical metaballs only, rebuilt live while editing, ellipsoids rejected as slow, no blend groups | Implicit surface of tapered **capsule** primitives with blend rules (§4), rebuilt live |
+| Tessellation | HYPOTHESIS / unverified (S7 search summary only; S7 not read): the developer avoided marching cubes because its patent was live during development and used an ear-clipping method instead. Nothing here depends on it | Marching cubes' patent (US 4,710,876) expired in 2005. We use Surface Nets (§5); its patent, US 6,084,593 (Gibson, MERL, filed 1998-05-14), is listed by Google Patents as "Expired - Lifetime" since 2018-05-14 (checked 2026-10-23; not a legal clearance) |
 | Parts | Artist-made "rigblocks" with handle-driven deform animations, baked after editing (S3) | Blender-authored parts with shape-key handles (the approved IB-15 mechanism still applies to parts) |
-| Data size | Creature stored as instructions: "approximately 2-5 Kbytes" (patent US7867093B2), "4k" (S12) | Same goal: a compact body description, everything else rebuilt from it |
+| Data size | Creature stored as instructions. Three sources give three figures: "approximately 2-5 Kbytes" (patent US7867093B2, S15), "4k" (S12), "about 8 K" (S17). So 2–8 KB is a loose range, not a parity target | Same goal: a compact body description, everything else rebuilt from it. 4 KB is GENESIS's own target (§3) |
 | Shape and gameplay | "The player's creativity in designing the creature's shape has no impact on actual gameplay"; part stats were fixed regardless of placement or limb length (S14, Soren Johnson) | **This is where GENESIS differs**: limb length, leg count, stance width, body mass and part placement change speed, turning, stability and reach (`PROCEDURAL_ANIMATION_SPEC.md` §4) |
 
 The last row matters most. Spore's own team says shape did not affect play in the Creature stage. A modern successor
@@ -44,12 +44,16 @@ schema change**, which needs the owner's approval when that time comes.
 - **Spine:** 3–24 vertebrae (PROPOSED). Each has a position (the spine is a polyline the player drags, kept as
   points) and a radius. Vertebra 0 is the head end.
 - **Limbs:** 0–12 limbs (PROPOSED; each mirrored pair counts as two). Each has an attach vertebra, side (left,
-  right or centre), and 2–6 joints with position and radius.
+  right or centre), and 2–6 joints with position and radius. Stage 1 rule, shared with
+  `workstreams/creature_editor.md` §2.3 and `workstreams/locomotion.md` §3.8: limbs attach to vertebrae only;
+  limbs branching from a limb joint are a later option.
 - **Parts:** 0–24 (PROPOSED). Each is a Blender-authored part id, attached to a vertebra or to a limb's last joint,
   with an offset on the skin, an orientation, a uniform scale and its shape-key handle values (0..1).
 - **Symmetry flag** per limb and part (default on).
 - **Paint:** base, coat, detail pattern ids and up to three colours (§8).
-- Target size: under 4 KB as JSON for a large creature (comparable with Spore's published figure).
+- Target size: under 4 KB as JSON for the largest body reachable under the complexity limit. This is GENESIS's own
+  target, not a parity requirement: published figures for Spore range from 2 to 8 KB (§1), and workstream B's probe
+  measured 4.6 KB for a deliberately over-maximal body (`workstreams/creature_editor.md` §4.6, §5).
 
 Validation (domain, pure): ranges, counts, connectedness (every limb attaches to an existing vertebra), minimum
 radius, no NaN, symmetry consistency. Invalid edits are refused with a reason the editor can show (IB-02 style).
@@ -64,7 +68,8 @@ radius, no NaN, symmetry consistency. Invalid edits are refused with a reason th
   `spine` ancestor (S1 §4.2).
 - **Primitives.** Each consecutive pair of joints along the spine and along each limb makes a tapered capsule
   (segment with radius interpolated between the two joints). Capsules follow limbs better than chains of spheres
-  and need fewer primitives; Spore used spheres, citing speed (S7), and our feasibility number below suggests
+  and need fewer primitives; Spore reportedly used spheres for speed (S7 search summary, unverified), and our
+  feasibility number below suggests
   capsules are affordable.
 - **Field.** Each primitive contributes a compact-support falloff of the distance to its segment, normalised by its
   radius, using the classic "soft object" polynomial (Wyvill, McPheeters and Wyvill 1986): f = (1 − d²/R²)³ for
@@ -81,7 +86,8 @@ radius, no NaN, symmetry consistency. Invalid edits are refused with a reason th
   visited (sparse by bounding boxes).
 - **Surface Nets** (Gibson 1998, "Constrained elastic surface nets"; the common "naive surface nets" variant): one
   vertex per cell that the surface crosses, placed at the mean of the edge crossings; quads between neighbours; split
-  into triangles. Fewer, better-shaped triangles than marching cubes and simpler to write.
+  into triangles. Fewer, better-shaped triangles than marching cubes and simpler to write. Gibson's surface-net
+  patent, US 6,084,593, is listed as expired (2018-05-14) on Google Patents (§1).
 - **Smoothing.** Two or three Taubin smoothing passes, then each vertex projected back toward the iso surface along
   the field gradient. Normals from the analytic field gradient (smooth, no faceting).
 - **Incremental rebuild while dragging.** Recompute only the region around the edited primitive (dirty box), at the
@@ -159,14 +165,15 @@ artists make:
    (parts excluded).
 3. **Weights:** every vertex has at least one weight; weights sum to 1 ± 1e-4; no vertex on a limb has more than
    10% weight on a bone of a different limb.
-4. **Budgets:** preview rebuild under 33 ms and final bake under 250 ms for the large test body on the baseline PC
+4. **Budgets:** preview rebuild under 33 ms and final bake under 250 ms (both need the native path; GDScript measured 0.2–3 s) for the large test body on the baseline PC
    (RTX 5070 machine; CPU is a Ryzen 7 9800X3D); skin under 8 000 triangles at gameplay LOD.
 5. **Extremes:** the test matrix (thin long snake, 12 limbs, one huge limb, tiny body, maximum vertebrae, all
    vertebrae at minimum radius) builds without errors and passes 2 and 3.
 6. **Deformation:** posing the skeleton through a scripted range (spine bend ±60°, limbs ±90°) shows no vertex
    farther than 5% of body length from where linear blend skinning predicts, and no visible tearing at the joints
    in the review contact sheet.
-7. **Size:** the large test body's description is under 4 KB as JSON.
+7. **Size:** the description of the largest body reachable under the complexity limit is under 4 KB as JSON
+   (GENESIS's own target, §3).
 8. **Blender parity:** the Blender script and the Godot generator give meshes whose surfaces are within one preview
    cell of each other.
 
