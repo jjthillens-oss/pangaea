@@ -210,8 +210,15 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void
 ## Endless mode: the sleepers and the awake are both at their caps, so _try_site's "no room" holds
 ## whether a site's creature would sleep or not.
 func _caps_full() -> bool:
-	return endless and creatures.size() - _awake.size() >= int(world.caps.sleepers) \
-			and _awake.size() >= int(world.caps.awake)
+	return endless and _no_room(true) and _no_room(false)
+
+
+## Endless mode: whether the cap a site's creature would count against is full: the sleepers' when it
+## would spawn asleep, else the awake ones' (blocker_from's "no room", _try_site's first check).
+func _no_room(asleep: bool) -> bool:
+	if asleep:
+		return creatures.size() - _awake.size() >= int(world.caps.sleepers)
+	return _awake.size() >= int(world.caps.awake)
 
 
 ## Why a creature may not appear at this site now, or "": too close to the player (spawn_safe_m), in
@@ -249,10 +256,7 @@ func blocker_from(s: Dictionary, arena: PoolArena, places: Array[Vector2]) -> St
 		var reach: Dictionary = s.reach
 		if world.checkpoint_local().distance_to(reach.center) - float(reach.radius) - r < float(fairness.respawn_clear_m):
 			return "dormant"
-		if spawns_asleep(s, places):
-			if creatures.size() - _awake.size() >= int(world.caps.sleepers):
-				return "no room"
-		elif _awake.size() >= int(world.caps.awake):
+		if _no_room(spawns_asleep(s, places)):
 			return "no room"
 	return ""
 
@@ -656,6 +660,12 @@ func update_token(c: Creature, tick: int) -> void:
 		engaged_on_player.remove_at(at)
 
 
+## A hook outside the field is about to tell every brain, the sleepers' too: the next take_events
+## reads every creature's brain.
+func note_every_brain_told() -> void:
+	_scan_all = true
+
+
 ## Field events plus every creature's brain events (each with its creature's id, and its position
 ## when the brain gave none), in creature order, oldest first; clears them.
 func take_events() -> Array[Dictionary]:
@@ -742,7 +752,7 @@ func _try_site(s: Dictionary, arena: PoolArena, places: Array[Vector2], tick: in
 		# blocker_from's "no room" first: with the caps full it is the usual answer, and blocker_from
 		# is pure, so asking it first changes no outcome.
 		var asleep := spawns_asleep(s, places)
-		if (creatures.size() - _awake.size() >= int(world.caps.sleepers)) if asleep else (_awake.size() >= int(world.caps.awake)):
+		if _no_room(asleep):
 			return false
 		if not blocker_from(s, arena, places).is_empty():
 			return false
