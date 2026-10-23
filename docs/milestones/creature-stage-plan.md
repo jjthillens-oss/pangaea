@@ -1,0 +1,115 @@
+# Creature stage, first playable slice (PROPOSED)
+
+Status: PROPOSED plan, 2026-10-23. Built under the owner's standing rules (keep shipping, review at merge). The owner's
+direction of 2026-10-23 (`docs/DECISIONS.md`, "Generated creature skins, Spore-style full-body building") is CONFIRMED;
+everything else here is PROPOSED until `docs/DECISIONS.md` says otherwise.
+
+The goal of this slice: a player can open the creature stage from the title, build a creature in a Spore-style
+editor (spine, limbs, art parts, live generated skin), walk it around a test field, eat and bite to earn points
+and come back to the editor to spend them. The creature's anatomy drives its play: leg length sets speed and
+cadence (the gait planner), mouths set bite power, eyes set sight, mass sets health.
+
+## 1. What exists and what moves
+
+The creature lab (`prototypes/creature-lab/`) is a separate Godot project with everything the stage needs, all
+tested: body description and codec, capsule field, Surface Nets skin (GDScript and compute shader), generated
+`Skeleton3D` rig with the art parts on anchors, the gait planner with `TwoBoneIK3D` legs, and the editor core
+(`creature_editor_session.gd`, `editor_picking.gd`) with the same contract as `game/domain/editor_session.gd`.
+
+The game cannot load a prototype (it is outside the export and the import), so this slice **ports** the lab into
+`game/`. The lab stays as it is, as a tuning sandbox, like `prototypes/web-cell`. Godfrey's open PRs #70 (slither)
+and #71 (skin volume) change only `prototypes/creature-lab/**`; nothing here touches that folder, and their results
+are re-ported into `game/` when they merge (a follow-up, noted in the lab README by the port).
+
+Port rules:
+- Copy the lab code with as few changes as possible (paths, a `res://` loader in place of the lab's `../../assets`
+  reads), so a later re-port is a diff, not a rewrite. No `class_name` on the ported files; they load each other
+  by `preload` path, as in the lab.
+- Domain files keep the lab's purity: no scene, file, OS, clock, input or global random access.
+  `tests/test_sim_purity.gd` now scans `game/domain/` recursively, so `game/domain/creature/` is checked.
+- The art team's parts stay theirs: `assets/export/cpart_*.glb`, their records and the skin shader are read, never
+  edited. The part palette is built from the records' `part_rules`, as in the lab.
+
+## 2. Layout (new files)
+
+| Path | Role |
+| --- | --- |
+| `game/domain/creature/` | Ported pure rules: `body_description.gd`, `body_codec.gd`, `body_field.gd`, `anchor_resolver.gd`, `creature_editor_session.gd`, `editor_picking.gd`, `body_mechanics.gd`, `gait_table.gd`, `gait_planner.gd`, `gait_body.gd`, plus new `creature_stats.gd` (anatomy to play numbers) and `creature_world_rules.gd` (the world's pure rules) |
+| `game/data/creature/` | `body_rules.json`, `editor_costs.json`, `gait_table.json`, `starter_bodies.json` (the lab's Stage 1 bodies), `creature_stage.json` (world tuning, PROPOSED) |
+| `game/systems/creature/` | `skin_grid.gd`, `skin_cpu.gd`, `skin_gpu.gd`, `surface_nets.glsl` (the skin builders; the GPU one owns its own `RenderingDevice`), `creature_data.gd` (loads the data files and the part rules from the records), `creature_store.gd` (the stage's own save file), `creature_world_sim.gd` (the deterministic world simulation) |
+| `game/scenes/creature/` | `spine_rig.gd`, `walker_rig.gd`, `part_library.gd` (ported; parts loaded from `res://assets/export`), `creature_editor.tscn/.gd`, `creature_world.tscn/.gd`, `creature_stage.tscn/.gd` (the stage root Main hosts) |
+| `game/ui/creature_*` | The editor's palette, points bar and buttons; the world HUD (health, points, hint) |
+| `tests/test_creature_*.gd`, `tests/smoke/creature_smoke.gd` | Ported lab tests in the main runner, the new rules' tests, and a scripted play-through smoke |
+
+Main gets `open_creature_stage()`; the title screen gets a "Creature stage" button (marked as a preview); `--creature`
+after `--` launches straight into it. Both are small edits to files other departments own (`main.gd`,
+`start_screen.gd`, `run_flags.gd`); keep them to the hook and the button.
+
+## 3. Saves (owner decision pending)
+
+The lineage save schema stays v2. The creature stage keeps its own file, `user://creature_stage/slot_<n>.json`
+(`CreatureStore`, schema 1: `version`, `name`, `body` (the codec's dictionary), `points`, `world_seed`, `generation`,
+`history`). Loading validates the body with the body rules and refuses a broken file with a reason, like
+`PersistenceService`. Folding the body into the lineage save is save schema v3 and needs the owner's approval; it is
+listed in `docs/DECISIONS.md` as an open owner decision. The lab's `user://creatures/*.json` files are the same codec
+text, so `--load=PATH` style imports are cheap later.
+
+## 4. The editor (scene over the ported core)
+
+- Mouse: left-drag a handle (vertebra, joint, part) to move it; with a part tool chosen, left-click the skin to add
+  one; wheel over a selected vertebra or joint thickens or thins it, elsewhere zooms; middle-drag or the right stick
+  orbits. The right mouse button and Space stay unbound (`tests/test_project_settings.gd`).
+- Palette: one tool per part type in the art records, with a limb tool; the cost of each tool and the points left
+  are shown; a refused edit shows its reason for two seconds, like the cell editor's refusal hints.
+- Undo, redo, delete, insert, symmetry: the core's ops, on keys and on buttons. Every gesture is one undo step.
+- Live skin: the GPU builder on a worker thread when the renderer has compute (Forward+); the GDScript builder
+  otherwise (the compatibility renderer the cloud screenshots use). Handles follow the mouse at once, the skin catches
+  up.
+- "Test drive" walks the working body on the gait planner's legs in place of the editor view; a body with no legs
+  says so (slither comes with Godfrey's #70).
+- "Done" commits (validates, charges the points, writes the store) and enters the world; "Back" leaves to the title.
+- Every mouse and key path has a method twin (`add_part_at(screen_pos)`, `choose_tool(type)`, `drag(from, to)`, ...)
+  so the smoke and the UI tests drive it without input events, as `tests/smoke/play_smoke.gd` drives the pool.
+
+## 5. The world (a test field, deterministic sim)
+
+`CreatureWorldSim` runs at 60 ticks a second from the world seed, like `PoolSim`: whole-tick durations, every sort
+tied by id, every draw from a seeded stream, snapshots as plain data. It holds the player, food and rivals; the scene
+only presents it.
+
+- A flat field 160 m across with a nest at the centre (the editor's spot). Food: fruit bushes (regrow) and meat
+  left by kills. Eating fruit or meat gives points; the world is endless in time, not in space (walls at the edge).
+- Rivals: 6 creatures built from the starter bodies with parts drawn from the seed. Brains get percepts only
+  (`CreatureBrain`'s rule): wander, graze, flee a bigger creature, hunt a smaller one when hungry. A bite lands when
+  the attacker's mouth reach touches the target; damage is the bite power.
+- Anatomy to play (`creature_stats.gd`, pure): speed and cadence from the gait planner's leg length; bite power from
+  mouth parts (maw, mandibles, beak) and their scale; sight range from eye parts; health from body volume; a body
+  with no mouth can still eat fruit by touch, at half the points.
+- Controls: `move_*` relative to the camera, `creature_bite` (F, pad X) and `creature_evolve` (E, pad Y) at the nest.
+  New actions go into `project.godot` and the tables in `tests/test_project_settings.gd`.
+- Death: health at zero sends the creature back to the nest at full health with a 20% points loss, with a notice.
+- The camera follows behind and above the creature; the right stick or middle-drag orbits.
+
+## 6. Gates
+
+1. `tests/run_tests.gd` green with the ported lab tests (body, codec, field, skin closed on every starter body at
+   the gameplay grid, anchor round trip, editor session ops and refusals, picking, gait planner) and the new ones
+   (stats, world rules, world sim determinism: same seed and intents, same SHA-256 of the snapshot stream; store round
+   trip; purity).
+2. `tests/smoke/creature_smoke.gd` in `tools/check.sh`: launch into the stage, build a body through the method
+   twins (grow a limb pair, add a maw, two eyes and feet), commit, enter the world, walk, eat fruit, bite a rival,
+   evolve back to the editor with more points, save; then a second phase in a new process loads the store and finds
+   the same body and points.
+3. No engine or script errors in any smoke log; the release pack starts (`tools/check_release.sh`).
+4. `tests/test_placeholders.gd`: every mesh the stage builds in code is listed in
+   `assets/records/placeholders/inventory.json`: the generated skin (functional, kind "generated"), the editor handles
+   and gizmos (functional, kind "ui"), the field, the nest and the fruit as placeholders that the creature-stage art
+   pass removes.
+5. A Windows export (`tools/export_windows.sh`), zipped to the project files as
+   `Pangaea-M2-creature-preview-windows.zip`. Exported but not Windows-verified until the owner launches it.
+
+## 7. Out of this slice (next)
+
+Slither and stub gaits (Godfrey #70), skin volume at extreme swings (#71), paint and skin colour choice, more
+biomes and terrain relief, social play (packs, calls), the lineage save schema v3, Blender parity exports of a
+built creature, and the look pass on the field, nest and fruit.
