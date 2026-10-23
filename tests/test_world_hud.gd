@@ -195,13 +195,48 @@ func test_the_pool_reports_a_respawn_with_its_shelter_and_whether_it_teleported(
 		check(not heard[0].dead, "alive again when the message shows")
 		check_eq(Main.respawn_text(ceili(heard[0].grace_s)), "Back at the generation start · sheltered for 5 s.", "main's words")
 		check_eq(ceili(heard[0].grace_s), Hud.shelter_seconds(sim), "the same seconds the shelter chip shows")
-	# The endless world's teleport respawn adds teleport: true (spine 3.12); the pool passes it on.
-	# Until T2's teleport respawn lands this is the event as the stream will emit it.
-	pool._route({"type": "respawned", "grace_s": 5.0, "energy": 60.0, "relocated": [], "streak": 1, "teleport": true})
-	check_eq(heard.size(), 2, "a teleport respawn is reported too")
-	if heard.size() == 2:
-		check_eq([heard[1].grace_s, heard[1].teleport], [5.0, true], "with its shelter and teleport: true")
 	pool.free()
+
+
+## The endless world respawns on the step after the death is resolved (spine 3.11 step 0): far from
+## the checkpoint the world moves home (teleport: true), near it the cell comes back in place
+## (teleport: false). Either way the pool reports it once, with the cell already drawn where the sim
+## put it, the camera on it and the column at the checkpoint.
+func test_an_endless_respawn_reports_whether_the_world_moved_home() -> void:
+	for case in [{"died_at": Vector2(600.0, 9.0), "teleport": true}, {"died_at": Vector2(6.0, 9.0), "teleport": false}]:
+		var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+		var heard: Array[Dictionary] = []
+		pool.respawned.connect(func(grace_s: float, teleport: bool) -> void:
+			heard.append({"grace_s": grace_s, "teleport": teleport, "drawn_at": pool.cell_view.position,
+				"sim_at": PlaneSpace.to_world(pool.sim.motion.position), "focus": pool.camera.focus,
+				"abs": pool.sim.absolute_position_am(), "dead": pool.cell_view._dead}))
+		var sim := pool.sim
+		var tag := "died at %s" % case.died_at
+		FakeEvents.frame(pool)
+		check(sim.debug_teleport_abs(case.died_at.x, case.died_at.y, 0.0), "%s: the cell swims there" % tag)
+		FakeEvents.frame(pool)
+		check(sim.debug_hurt_player(sim.state.max_health) and sim.dead, "%s: the cell dies" % tag)
+		FakeEvents.frame(pool)
+		pool.session.respawn_after_death()
+		check(heard.is_empty() and sim.respawn_pending, "%s: the respawn waits for the next step" % tag)
+		FakeEvents.frame(pool)
+		check_eq(heard.size(), 1, "%s: one respawn, on the next step" % tag)
+		if heard.size() == 1:
+			var h: Dictionary = heard[0]
+			check_eq([h.grace_s, h.teleport], [5.0, case.teleport], "%s: the shelter, and teleport %s" % [tag, case.teleport])
+			check(h.drawn_at.is_equal_approx(h.sim_at), "%s: the cell is drawn where the sim put it: %s, %s" % [tag, h.drawn_at, h.sim_at])
+			check(Vector2(h.focus.x, h.focus.z).is_equal_approx(Vector2(h.sim_at.x, h.sim_at.z)),
+				"%s: the camera is on it at once: %s" % [tag, h.focus])
+			var cp: PackedFloat64Array = sim.world.checkpoint_am
+			check(Vector2(h.abs[0] - cp[0], h.abs[1] - cp[1]).length() < 3.0,
+				"%s: back at the checkpoint: %s, %s" % [tag, h.abs, cp])
+			check(not h.dead, "%s: alive when the message shows" % tag)
+			if case.teleport:
+				check(sim.world.local_of_abs(cp[0], cp[1]).length() < 1e-3, "%s: the origin moved to the checkpoint" % tag)
+			var column := PlaneSpace.to_world(sim.world.local_of_abs(cp[0], cp[1]))
+			FakeEvents.frame(pool)
+			check(pool.markers.column().position.is_equal_approx(column), "%s: the column stands at the checkpoint" % tag)
+		pool.free()
 
 
 ## The HUD bound to `pool` outside the tree. The threat arrows read the live viewport when they
