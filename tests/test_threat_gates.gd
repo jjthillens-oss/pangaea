@@ -24,12 +24,14 @@ extends TestCase
 ##     is not worn down by them. ForageBot swims for the nearest food its body eats and never minds a
 ##     creature; EvadeBot dodges each tell aimed at the cell 0.4 s after it starts (F2), as a player
 ##     reading the tells would. Notices of the cell and tells at it are its meetings with threats.
-## #33 no threat-free larder (step 3 review): neither zone by the spawn feeds a cell that stays in
-##     it and eats what it can. No reach can cover them: rule 8 keeps every reach out of z_center, and
-##     F6 keeps lair_s from spawning while the cell is anywhere in z_s, so a cell that continues there
-##     or outlasts lair_s's hunter would be safe for ever. A camper starts full in each zone (a
-##     Continue from a save made there puts it there with 60%, D16) and eats only that zone's food,
-##     each item as soon as it has room for half of it, as touching one does; it must run dry.
+## #33 no larder for a greedy camper (step 3 review): neither zone by the spawn feeds a cell that
+##     stays in it and eats what it touches. No reach can cover them: rule 8 keeps every reach out
+##     of all but z_center's far 2 m, and F6 keeps lair_s from spawning while the cell is anywhere
+##     in z_s, so a cell that continues there or outlasts lair_s's hunter would be safe for ever.
+##     A camper starts full in each zone (a Continue from a save made there puts it there with
+##     60%, D16) and eats only that zone's food, each item as soon as it has room for half of it,
+##     as touching one does; it must run dry. A camper that rests and eats in bursts when hungry
+##     still lives there (DECISIONS, pressure item 3: an owner question, not gated).
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -415,7 +417,7 @@ func _pressure_run(body: String, seed_value: int) -> Dictionary:
 	return run
 
 
-func test_slow_a_cell_camping_in_a_zone_by_the_spawn_cannot_live_on_it_alone() -> void:
+func test_slow_a_greedy_camper_in_a_zone_by_the_spawn_runs_dry() -> void:
 	# #33: z_s at 0.06 and z_center at 0.08 both top out at 1.15 energy a second (growth x capacity x
 	# 0.30), and a camper eating every item it has room for draws about 1.45: it eats its zone down,
 	# and what an eaten-down zone regrows cannot feed it.
@@ -426,6 +428,7 @@ func test_slow_a_cell_camping_in_a_zone_by_the_spawn_cannot_live_on_it_alone() -
 			print("test-threats-camp: %s %s: ran dry after %s, %d meals, %.0f%% of the time in the zone, %d meetings, %d killed; sites at the start %s" % [
 				zone_id, body, "%.0f s" % (run.dry_at / 60.0) if run.dry_at >= 0 else "never in %d s" % (CAMP_LIMIT_TICKS / 60),
 				run.meals, 100.0 * share, run.meetings, run.killed, run.sites])
+			check_eq(run.killed, 0, "%s %s: no threat killed the camper" % [zone_id, body])
 			check(run.dry_at >= 0, "%s %s: a camper that starts full runs dry within %d s" % [zone_id, body, CAMP_LIMIT_TICKS / 60])
 			check(share >= CAMP_MIN_IN_ZONE_SHARE, "%s %s: it camped (%.0f%% in the zone)" % [zone_id, body, 100.0 * share])
 			check(run.meals >= run.full_stock, "%s %s: it ate there, more than the zone holds when full (%d meals)" % [zone_id, body, run.meals])

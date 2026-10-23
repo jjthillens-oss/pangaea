@@ -150,9 +150,10 @@ func test_every_site_reaches_only_its_leash_disc_far_from_the_checkpoint() -> vo
 func test_an_ambush_lair_reaches_into_z_s_and_sees_it_from_home() -> void:
 	# The step 3 review (pressure): z_center and z_s, the zones by the spawn, fed a cell for ever out of
 	# every creature's reach. Rule 8 keeps every reach short of z_center's useful part, and F6 keeps a
-	# lair from spawning while the cell is in z_s, so neither zone regrows fast enough to feed a cell
-	# that camps there and eats what it can (test_threat_gates #33). z_s also gets a lair whose reach (leash plus body) enters it well
-	# and whose hunter, at home, sees across its edge, so a cell feeding there meets it (#32).
+	# lair from spawning while the cell is in z_s, so z_center and z_s regrow too slowly to feed a
+	# cell that camps there and eats what it touches (test_threat_gates #33). z_s also gets a lair
+	# whose reach (leash plus body) enters it well and whose hunter, at home, sees across its edge, so
+	# a cell feeding there meets it (#32).
 	var cat := SpeciesCatalog.load_from()
 	var z := layout.zone("z_s")
 	var watching := PackedStringArray()
