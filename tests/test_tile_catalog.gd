@@ -403,8 +403,9 @@ func test_each_two_post_rule_has_a_failing_variant() -> void:
 			"b0/reef_posts: rule 6 at size 2: site 'lk' post_b home [-7.0, 11.0] is not clear", 2, 2],
 		[func(f: Dictionary) -> void: f.reef_posts.shells.append(_shell("z", -13.0, 20.4, 1.0)),
 			"b0/reef_posts: rule 6 at size 2: Rule 9 (leash band): site 'lk' post a: z lies 0.00 m from its leash circle; it needs 0.85 m.", 1, 2],
+		# The anchor rule binds the elder rammer (post a and union), not the M1 rammer 'a', a rival at size 2.
 		[func(f: Dictionary) -> void: f.sunlit_posts.landmark_anchor = [-24.0, 10.0],
-			"b0/sunlit_posts: rule 6 at size 2: site 'er' union can reach", 3, 2],
+			"b0/sunlit_posts: rule 6 at size 2: site 'er' union can reach", 2, 2],
 		[func(f: Dictionary) -> void: f.reef_posts.sites[1].sizes = [1, 2],
 			"b0/reef_posts: rule 6: site 'lk': 'lurker' enters at size 2, so it cannot be live at size 1", 1, 1],
 		# Rule 4 at size 2: the largest live body is the Lurker's 1.2 bu, so the collider needs 2 x 1.2 +

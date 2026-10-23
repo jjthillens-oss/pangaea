@@ -6,6 +6,16 @@
 	"base_layout": "res://game/data/pool_m1.json",
 	"base_sites": "res://game/data/creatures_m1.json",
 	"seam_inner_r": 36.0,
+	"m1_second_size_sites": [
+		"lair_se",
+		"lair_sw",
+		"lair_s",
+		"terr_n_a",
+		"terr_n_b",
+		"terr_nw",
+		"terr_ne"
+	],
+	"m1_zones_at_second_size": "keep",
 	"shells": [
 		{
 			"id": "sa",
