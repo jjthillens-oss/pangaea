@@ -892,7 +892,7 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 	var food_listed := false
 	var endless := creatures.endless
 	for c in creatures.awake():
-		var speed_mul := c.state.speed_multiplier()
+		var speed_mul := ActorState.STARVING_SPEED if c.state.energy <= 0.0 else 1.0   # speed_multiplier()
 		if c.scripted:
 			Locomotion.steer(c.motion, c.script_move, c.phenotype, speed_mul, DT)
 			continue
@@ -901,9 +901,10 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
 			continue
 		var self_view := creatures.self_view_of(c)
+		var brain := c.brain
 		# creatures.think_due(c, tick) written out (a creature here always has a brain).
-		if CreatureBrain.think_due(c.brain, c.think_slot if endless else c.number, tick):
-			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
+		if CreatureBrain.think_due(brain, c.think_slot if endless else c.number, tick):
+			if brain.state == CreatureBrain.FORAGE and not food_listed:
 				# The two lists joined (a new array), or the plankton list itself when there is no
 				# carrion: the senses only read it.
 				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
@@ -915,8 +916,13 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 					food_r.append(item.radius)
 				food_listed = true
 			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
-		var d := creatures.drive(c, arena, tick, self_view)
-		CreatureBrain.move_body(c.brain, c.motion, d, c.phenotype, speed_mul, DT)
+		# creatures.drive(c, ...) written out, then move_body's steer, the usual drive, without the call.
+		var d := CreatureBrain.drive(brain, self_view, tick, arena)
+		c.drive = d
+		if d.mode == CreatureBrain.MODE_STEER:
+			Locomotion.steer(c.motion, d.move, c.phenotype, float(d.speed_mul) * speed_mul, DT)
+		else:
+			CreatureBrain.move_body(brain, c.motion, d, c.phenotype, speed_mul, DT)
 	_take_field_events()
 
 
