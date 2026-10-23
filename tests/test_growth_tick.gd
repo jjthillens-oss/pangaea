@@ -8,7 +8,9 @@ extends TestCase
 ## and every conversion is exact (S2G34).
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
+const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
 ## The fast seeds of S2G9, S2G12 and S2G35; their slow tests run SLOW_SEEDS seeds.
 const SEEDS := [7, 11, 23, 4242, 90001]
 const SLOW_SEEDS := 50
@@ -18,6 +20,8 @@ const SWIM_TICKS := 240
 const ROUTE_AM := 200.0
 ## The prefetch comparison's ticks (the growth is tick 60).
 const HASH_AT := [59, 60, 61, 75, 119]
+## The quiet-tick prefetch case's swim.
+const QUIET_TICKS := 240
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -83,13 +87,20 @@ static func _raw_point(sim: PoolSim) -> Vector2:
 static func _shell_at_next_size(sim: PoolSim, offset: Vector2, r: float) -> void:
 	var a := sim.world.abs_of_local(sim.motion.position)
 	var s1 := WorldConfig.tm_to_am(sim.size() + 1)
-	var x := a[0] / s1 + offset.x
-	var y := a[1] / s1 + offset.y
+	_extra_shell(sim, a[0] + offset.x * s1, a[1] + offset.y * s1, r)
+	sim.world._clear_next()
+
+
+## A size-2 shell of radius `r` (size-2 tm) centred on the absolute point (x_am, y_am), through the
+## fake's extra shells; the caches are left as they are.
+static func _extra_shell(sim: PoolSim, x_am: float, y_am: float, r: float) -> void:
+	var s1 := WorldConfig.tm_to_am(sim.size() + 1)
+	var x := x_am / s1
+	var y := y_am / s1
 	var key := Vector3i(floori(x / sim.world.chunk_tm), floori(y / sim.world.chunk_tm), sim.size() + 1)
 	var more: Array = sim.world.gen.extra_shells.get(key, [])
 	more.append({"x": x, "y": y, "r": r})
 	sim.world.gen.extra_shells[key] = more
-	sim.world._clear_next()
 
 
 # --- S2G9: the world one size up, the cell safe, settled, full and sheltered ---
@@ -362,6 +373,107 @@ func test_a_cache_miss_generates_the_chunk_and_keeps_it() -> void:
 	check(is_same(arena, w._next_arena), "the arena kept, moved to the new point")
 
 
+## BP-4's arena is kept, not rebuilt: on quiet ticks the 3 x 3 round the new-size chunk the cell
+## heads for joins it one chunk a tick, so the crossing into that chunk adds none; with the cell
+## still, a chunk in neither 3 x 3 leaves one a tick, and a crossing it did not head for adds the
+## chunks it lacks. Every point equals the one from freshly generated chunks (a twin with the caches
+## off), with a shell on the cell's point here and one and two chunks east, so the points are not the
+## cell's own.
+func test_the_next_arena_is_kept_across_new_size_chunks_and_gives_a_fresh_point() -> void:
+	var on := _sim(SEEDS[1])
+	var off := _sim(SEEDS[1])
+	off.world.next_cache = false
+	var w := on.world
+	var east := Vector2(w.chunk_tm * WorldConfig.tm_to_am(2), 0.0)   # a new-size chunk, in size-1 tm
+	var a := w.abs_of_local(on.motion.position)
+	for sim: PoolSim in [on, off]:
+		_extra_shell(sim, a[0], a[1], 1.4)
+		_extra_shell(sim, a[0] + east.x, a[1], 1.4)
+		_extra_shell(sim, a[0] + 2.0 * east.x, a[1], 1.4)
+		sim.growth.meter = 0.95 * sim.growth.ring(1)
+	for t in 25:
+		w._prefetch(on)
+	var q := w.next_size_clear_point(on)
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell moved it (%s)" % q)
+	var arena := w._next_arena
+	var key := w._next_key
+	check_eq(w._next_held.size(), 9, "the 3 x 3")
+	on.motion.velocity = east / WorldStream.NEXT_LEAD_S   # heading for the chunk east
+	for t in 3:
+		w._prefetch(on)
+		check_eq(w._next_held.size(), 10 + t, "quiet tick %d: one chunk of the 3 x 3 ahead joined" % t)
+	w._prefetch(on)
+	w._prefetch(on, false)
+	check_eq(w._next_held.size(), 12, "then none joins and none leaves")
+	for sim: PoolSim in [on, off]:
+		sim.motion.position += east
+	var epoch := arena.epoch
+	q = w.next_size_clear_point(on)
+	check(is_same(arena, w._next_arena) and w._next_key == key + Vector2i(1, 0), "the same arena, round the new chunk")
+	check_eq(arena.epoch, epoch + 1, "the crossing added no chunk, only moved the arena to A")
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks after the crossing")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
+	on.motion.velocity = Vector2.ZERO
+	for t in 5:
+		w._prefetch(on)
+	check_eq(w._next_held.size(), 12, "the prefetch's new column comes first")
+	for t in 3:
+		w._prefetch(on)
+	check_eq(w._next_held.size(), 9, "then the column behind leaves, one a quiet tick")
+	for k: Vector2i in w._next_held:
+		check(absi(k.x - w._next_key.x) <= 1 and absi(k.y - w._next_key.y) <= 1, "%s in the 3 x 3" % k)
+	check(w.next_size_clear_point(on) == q, "the point unchanged")
+	for sim: PoolSim in [on, off]:
+		sim.motion.position += east
+	q = w.next_size_clear_point(on)
+	check(is_same(arena, w._next_arena), "a crossing it did not head for keeps the arena too")
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			check(w._next_held.has(w._next_key + Vector2i(dx, dy)), "and adds the 3 x 3's chunk %s" % Vector2i(dx, dy))
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks there")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
+
+
+## The prefetch generates only on a quiet tick, one that loaded no chunk and generated none ahead,
+## so a size-2 generation never lands on a tick that already made a chunk.
+func test_the_prefetch_waits_for_a_tick_that_loaded_and_generated_nothing() -> void:
+	var sim := _sim(SEEDS[2])
+	var w := sim.world
+	sim.growth.meter = 0.95 * sim.growth.ring(1)
+	w._prefetch(sim, false)
+	check(w._next_chunks.is_empty(), "a busy tick generates nothing")
+	w._prefetch(sim)
+	check_eq(w._next_chunks.size(), 1, "a quiet one does")
+	var dir := Vector2.from_angle(0.3)
+	var waited := {"load": 0, "ahead": 0}
+	var busy := 0
+	for t in QUIET_TICKS:
+		sim.growth.meter = 0.95 * sim.growth.ring(1)
+		var loads := w._loads
+		var ahead: Array = w._ahead.keys()
+		var before: Array = w._next_chunks.keys()
+		sim.step(SimIntent.new(dir))
+		var fresh := 0
+		for key in w._next_chunks:
+			fresh += 0 if before.has(key) else 1
+		var made := false   # a chunk generated ahead: a key in the keep that was not there
+		for key in w._ahead:
+			made = made or not ahead.has(key)
+		if w._loads != loads or made:
+			busy += 1
+			check_eq(fresh, 0, "tick %d loaded or generated ahead: no prefetch" % t)
+			if w._next_chunks.size() < 25:
+				waited["load" if w._loads != loads else "ahead"] += 1
+		else:
+			check(fresh <= 1, "tick %d: at most one a quiet tick" % t)
+	sim.drain_events()
+	print("test-growth-tick: the prefetch waited on %d load ticks and %d look-ahead ticks of %d busy in %d" % [
+		waited.load, waited.ahead, busy, QUIET_TICKS])
+	check(waited.load > 0 and waited.ahead > 0, "the prefetch waited on load and look-ahead ticks (%s)" % waited)
+	check_eq(w._next_chunks.size(), 25, "and filled the 5 x 5 on the quiet ones")
+
+
 func test_the_growth_tick_takes_its_view_set_from_the_cache() -> void:
 	var sim := _sim(SEEDS[0])
 	var w := sim.world
@@ -480,6 +592,36 @@ func _check_growth_equals_arrival(seed_value: int) -> void:
 	check_eq(direct.world.loaded_keys(), keys, "seed %d: the same chunks held" % seed_value)
 	check_eq(_content(direct, keys), _content(grown, keys), "seed %d: the same chunks, colliders, sites and zones" % seed_value)
 	check(direct.motion.position == p, "seed %d: the same settled point" % seed_value)
+
+
+## S2G12 on the shipped content (T3.5's size-2 sites): a hidden omnivore's growth after a swim from
+## home meets the world a debug_set_size(2) arrival at its point meets, size-2 sites among it.
+func test_on_the_shipped_content_a_growth_meets_the_world_a_direct_arrival_meets() -> void:
+	var waits := Gates.s2_missing(["set_size", "size_two_content"])
+	if not waits.is_empty():
+		print("test-growth-tick: the shipped-content S2G12 waits on: %s" % "; ".join(waits))
+		return
+	var grown: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	grown.debug_set_hidden(true)
+	for t in SWIM_TICKS:
+		grown.step(SimIntent.new(Vector2.from_angle(0.4 + 0.004 * t) * 0.6))
+	grown.drain_events()
+	var a := grown.world.abs_of_local(grown.motion.position)
+	grown.world.grow(grown)
+	var direct: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	check(Gates.teleport(direct, a), "the direct run is placed on the point")
+	check(direct.world.abs_of_local(direct.motion.position) == a, "exactly")
+	check(direct.debug_set_size(2), "debug_set_size(2)")
+	var keys := grown.world.loaded_keys()
+	check_eq(direct.world.loaded_keys(), keys, "the same chunks held")
+	var want := _content(grown, keys)
+	check_eq(_content(direct, keys), want, "the same chunks, colliders, sites and zones")
+	check(direct.motion.position == grown.motion.position, "the same settled point")
+	var entering := Gates.species_entering_at(2)
+	var met := 0
+	for site: Array in want.sites:
+		met += 1 if entering.has(str(site[1])) else 0
+	check(met > 0, "size-2 sites among them (%d of %d)" % [met, want.sites.size()])
 
 
 func test_two_size_two_routes_meet_the_world_a_growth_makes() -> void:
@@ -672,3 +814,140 @@ func test_remnants_over_the_cap_turn_to_haze_nearest_kept() -> void:
 	check_eq([to[ids[0][1]], to[ids[1][1]], to[ids[2][1]], to[ids[3][1]]], ["remnant", "remnant", "haze", "haze"],
 		"the nearest two kept (D-78)")
 	check_eq(sim.world.counters.remnant_overflow, 1, "counted once")
+
+
+# --- after the growth: a crack narrower than a body (BP-2 invariant 1 at size 2) ---
+
+## A crack CRACK_GAP_SHARE x a body's width across, between two shells of CRACK_RADII (the share of
+## that body's radius), CRACK_AHEAD tm east of where the body starts at size 2. The tiles keep every
+## crack 1.5 tm wide at size 1 (#32), which is 0.94 tm at size 2: under the cell's 1.0.
+const CRACK_GAP_SHARE := 0.9
+const CRACK_RADII := [1.44, 1.06]
+const CRACK_AHEAD := 3.0
+const CRACK_LANE := 0.3                 ## tm: the lane runs this far off the crack's middle, toward the first shell
+const CRACK_TICKS := 150
+const CRACK_REMNANT_TICKS := 600        ## a remnant flees at its flee share of its speed
+const CRACK_PUSH := 0.4                 ## tm: how far the cell presses into the body at the mouth
+
+
+## Adds, at size 2, the crack for a body of radius `r` round the point CRACK_AHEAD tm (at size 2) east
+## of the cell; the sim is at size 1 and the size-2 chunks there not yet made. Returns the crack's
+## middle and its two shells as [x, y, r] in absolute size-2 tm.
+static func _crack_at_size_two(sim: PoolSim, r: float) -> Array:
+	var s2 := WorldConfig.tm_to_am(2)
+	var a := sim.world.abs_of_local(sim.motion.position)
+	var mid := Vector2(a[0] / s2 + CRACK_AHEAD, a[1] / s2)
+	var r_n: float = CRACK_RADII[0] * r
+	var r_s: float = CRACK_RADII[1] * r
+	var half := CRACK_GAP_SHARE * r
+	var shells := [[mid.x, mid.y + half + r_n, r_n], [mid.x, mid.y - half - r_s, r_s]]
+	for s in shells:
+		var key := Vector3i(floori(s[0] / sim.world.chunk_tm), floori(s[1] / sim.world.chunk_tm), 2)
+		var more: Array = sim.world.gen.extra_shells.get(key, [])
+		more.append({"x": s[0], "y": s[1], "r": s[2]})
+		sim.world.gen.extra_shells[key] = more
+	return [mid, shells]
+
+
+## The deepest a body of radius `r` at `p` digs into either shell of the crack (size-2 tm, local).
+static func _crack_dig(sim: PoolSim, crack: Array, p: Vector2, r: float) -> float:
+	var s2 := WorldConfig.tm_to_am(2)
+	var most := -INF
+	for s in crack[1]:
+		var c := sim.world.local_of_abs(s[0] * s2, s[1] * s2)
+		most = maxf(most, s[2] + r - p.distance_to(c))
+	return most
+
+
+## The crack's middle, local.
+static func _crack_mid(sim: PoolSim, crack: Array) -> Vector2:
+	var s2 := WorldConfig.tm_to_am(2)
+	return sim.world.local_of_abs(crack[0].x * s2, crack[0].y * s2)
+
+
+## The cell swims east into a crack narrower than it at size 2, every tick: the arena's two settle
+## passes, pushed from one shell into the other, would leave it inside one (in the growth fuzz, 33 mm
+## into a reef shell at worst). A move that ends inside a rock is taken back, so it stops at the mouth
+## touching both and never digs past FuzzInvariants' 1 mm.
+func test_at_size_two_the_cell_stops_at_the_mouth_of_a_crack_narrower_than_it() -> void:
+	var sim := _sim(SEEDS[0])
+	var r := sim.phenotype.radius
+	var crack := _crack_at_size_two(sim, r)
+	check(sim.debug_set_size(2), "size 2")
+	var mid := _crack_mid(sim, crack)
+	var start := mid + Vector2(-CRACK_AHEAD, CRACK_LANE)
+	check(sim.debug_teleport(start, 0.0), "the lane's start, heading east")
+	check(sim.arena.is_clear(start, r), "open water there")
+	var most := -INF
+	for t in CRACK_TICKS:
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		most = maxf(most, _crack_dig(sim, crack, sim.motion.position, r))
+	check(most <= FuzzInvariants.ROCK_SLACK_M, "never more than 1 mm into a shell (%.4f m)" % most)
+	check(most >= -0.02, "it reached the shells (%.4f m)" % most)
+	check(sim.motion.position.x < mid.x, "held at the mouth, west of the crack's middle")
+	check(sim.motion.position.x > start.x + 1.0, "after swimming in")
+	# A body already inside (a load or a test may put one there) is not held there: it swims out.
+	sim.motion.position = mid
+	sim.motion.velocity = Vector2.ZERO
+	var out_at := -1
+	for t in CRACK_TICKS:
+		sim.step(SimIntent.new(Vector2.LEFT))
+		if _crack_dig(sim, crack, sim.motion.position, r) <= 0.0:
+			out_at = t
+			break
+	check(out_at >= 0, "out of the crack, swimming west (after %d ticks)" % out_at)
+
+
+## The same crack for the other bodies that move at size 2: an awake creature (tick step 4), a remnant
+## (RemnantField.tick) and a body that contacts push in (tick step 5); each from size 1 is exactly S1's.
+func test_at_size_two_creatures_remnants_and_pushed_bodies_stop_at_the_mouth_of_a_crack() -> void:
+	var sim := _sim(SEEDS[0], FakeWorldGen.s2_species())
+	var rec := sim.species.at_size("lurker", 2, catalog)
+	var r: float = rec.phenotype.radius
+	var crack := _crack_at_size_two(sim, r)
+	check(sim.debug_set_size(2), "size 2")
+	sim.debug_set_ai_frozen(true)
+	var mid := _crack_mid(sim, crack)
+	var start := mid + Vector2(-CRACK_AHEAD, CRACK_LANE * r / 0.5)
+	# The cell well west, out of everything's way.
+	check(sim.debug_teleport(mid + Vector2(-CRACK_AHEAD - 6.0, 0.0), 0.0), "the cell to the west")
+	check(sim.debug_spawn_creature("lurker", start, 0.0), "a lurker at the lane's start")
+	var c: CreatureField.Creature = null
+	for each in sim.creatures.awake():
+		if each.species_id == "lurker" and each.motion.position == start:
+			c = each
+	check(c != null, "and awake")
+	if c == null:
+		return
+	var most := -INF
+	for t in CRACK_TICKS:
+		c.motion.velocity = Vector2(rec.phenotype.speed, 0.0)   # as its steering would, every tick
+		sim._move_creatures()
+		most = maxf(most, _crack_dig(sim, crack, c.motion.position, r))
+	check(most <= FuzzInvariants.ROCK_SLACK_M, "a creature: never more than 1 mm into a shell (%.4f m)" % most)
+	check(most >= -0.02 and c.motion.position.x < mid.x, "a creature: at the mouth (%.4f m)" % most)
+	# A body pushed in: the cell presses into the creature at its mouth from behind.
+	var mouth := c.motion.position
+	var behind := mouth - Vector2(sim.phenotype.radius + r - CRACK_PUSH, 0.0)
+	check(sim.debug_teleport(behind, 0.0), "the cell pressed into it from the west")
+	sim.motion.velocity = Vector2.ZERO
+	c.motion.velocity = Vector2.ZERO
+	sim._contacts()
+	var pushed := _crack_dig(sim, crack, c.motion.position, r)
+	check(pushed <= FuzzInvariants.ROCK_SLACK_M, "a pushed creature: never more than 1 mm into a shell (%.4f m)" % pushed)
+	check(sim.motion.position.distance_to(c.motion.position) < sim.phenotype.radius + r, "the two still overlap: the push was taken back")
+	# A remnant fleeing the cell, east into the crack (remnants keep still under the freeze).
+	sim.debug_set_ai_frozen(false)
+	check(sim.debug_teleport(start + Vector2(-2.0, 0.0), 0.0), "the cell behind the lane")
+	var rem := sim.remnants.add_from(c, rec, sim.tick)
+	rem.motion.position = start
+	rem.motion.velocity = Vector2.ZERO
+	most = -INF
+	for t in CRACK_REMNANT_TICKS:
+		sim.remnants.tick(sim)
+		if sim.remnants.find(rem.id) == null:
+			break
+		most = maxf(most, _crack_dig(sim, crack, rem.motion.position, r))
+	check(sim.remnants.find(rem.id) != null, "the remnant stayed in view")
+	check(most <= FuzzInvariants.ROCK_SLACK_M, "a remnant: never more than 1 mm into a shell (%.4f m)" % most)
+	check(most >= -0.02 and rem.motion.position.x < mid.x, "a remnant: at the mouth (%.4f m)" % most)

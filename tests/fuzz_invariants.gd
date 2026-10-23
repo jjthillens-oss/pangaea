@@ -50,6 +50,19 @@ extends RefCounted
 ## Each event's positions are in the frame in force at its place in the list: a rebased changes it.
 ## The positions kept from before the step (where each creature looked, its lane, its stall ring) move
 ## with the tick's rebases, as the sim's own do.
+##
+## Sizes (S2, BP-2). Positions are compared in absolute am: a local p in the frame (origin, k) is
+## origin + p k, a chunk's stored tm is x tm_to_am(its size), and a distance is the am difference
+## divided by the k of the point it is measured from: before()'s k for the cell before the step, the
+## current k for the cell after it, so "in view" and spawn_safe_m are in that size's tm. A
+## `debug set_size` is a cut like a respawn or a dev teleport (its events up to it are its own). A
+## growth tick (its events hold growth_began) re-expresses the world: before `grew` its conversions,
+## its morsels, its "growth" unloads, its loads and the plankton it turns to haze are exempt, while
+## its sleepers that leave ("growth") and its carrion that expires are checked from the cell before
+## the step at the old size; `grew` moves the frame to growth_began's centre_am at the new size, and
+## every later event of the tick is checked from the cell after the step. The food view's zone checks
+## and its plankton half are skipped on a growth tick. Remnants, two-post brains' posts and the site
+## records' posts join invariant 13.
 
 const LEASH_SLACK_M := 1e-3
 const ROCK_SLACK_M := 0.001
@@ -72,7 +85,7 @@ const LOCAL_BOUND := 256.0
 const PLACE_RADIUS_TM := 4.0           ## core 8.7: a place's extent
 const ANCHOR_RADIUS_BU := 3.0          ## core 8.7: an anchor's extent, times the band's bu-to-tm
 ## Reasons a creature leaves that the player must not see happen.
-const HIDDEN_REMOVALS := {"unloaded": "block", "evicted": "block", "stuck": "step"}
+const HIDDEN_REMOVALS := {"unloaded": "block", "evicted": "block", "stuck": "step", "growth": "block", "remnant_left": "step"}
 
 var bad := {}      ## invariant -> {"count": int, "first": String}, across runs
 var counts := {}   ## the run's non-vacuity counters
@@ -100,7 +113,7 @@ func start_run() -> void:
 	counts = {"tells": 0, "strikes": 0, "hits_on_cell": 0, "hits_by_cell": 0, "give_ups": 0, "flees": 0,
 		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0, "drift": 0.0, "memory_checks": 0,
 		"checked": 0, "spawns": 0, "sleeps": 0, "wakes": 0, "loads": 0, "unloads": 0, "evictions": 0,
-		"zone_changes": 0, "rebases": 0, "cuts": 0}
+		"zone_changes": 0, "rebases": 0, "cuts": 0, "growths": 0, "set_sizes": 0, "after_growth": 0}
 	k = {
 		"tell_at": {}, "tell_since": {}, "striking": {}, "strike_hits": {}, "engaged_from": {}, "noticed_at": {},
 		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {}, "lane": {}, "strike_lane": {},
@@ -119,8 +132,9 @@ func report() -> String:
 
 
 ## What `after` needs from before the step: invariant 9's looks and the cell's body; in the endless
-## world also the frame, the cell, the loaded chunks, the food view, every plankton and carrion item
-## and every creature's radius.
+## world also the frame and its k (tm to am) and size, the cell (local and absolute am), the loaded
+## chunks, the food view, every plankton and carrion item, every creature's radius and every
+## remnant's position and radius.
 func before(sim: PoolSim) -> Dictionary:
 	var was := _before(sim) if sim.creatures != null else {"looks": {}, "cell": {}}
 	if sim.world == null:
@@ -142,7 +156,12 @@ func before(sim: PoolSim) -> Dictionary:
 	if sim.creatures != null:
 		for c in sim.creatures.creatures:
 			radii[c.id] = c.phenotype.radius
+	var remnants := {}
+	if sim.remnants != null:
+		for r in sim.remnants.items:
+			remnants[r.id] = {"position": r.motion.position, "radius": r.phenotype.radius}
 	was.merge({"origin": PackedFloat64Array([w.origin_x_am, w.origin_y_am]), "cell_at": sim.motion.position, "dead": sim.dead,
+		"k": w._tm_to_am, "size": w.size, "cell_am": w.abs_of_local(sim.motion.position), "remnants": remnants,
 		"checkpoint": w.checkpoint_local(),
 		"chunks": chunks, "active": sim.plankton.active_zones.duplicate(), "zones": zones, "plankton": plankton,
 		"carrion": carrion, "radii": radii})
@@ -366,10 +385,10 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		_check_stall(c, t, where, label, k)
 		var looked: Dictionary = before.looks.get(c.id, {})
 		if b.target == CreatureField.PLAYER_ID and not looked.is_empty() and looked.target != CreatureField.PLAYER_ID:
-			_check_sensed(c, t, where, looked, before.cell, sim.arena, k)
+			_check_sensed(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
 		var memory := _sensed_part(b.seen.get(CreatureField.PLAYER_ID, {}))
 		if not looked.is_empty() and not memory.is_empty() and memory != looked.memory:
-			_check_memory(c, t, where, looked, before.cell, sim.arena, k)
+			_check_memory(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
 		k.label[c.id] = label
 
 
@@ -440,8 +459,8 @@ static func _went_away(ring: Array, from: Vector2) -> bool:
 ## Invariant 9: CreatureSenses again, from where the creature looked before the step, on the cell's
 ## body alone (other bodies never hide it; only rocks do).
 func _check_sensed(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
-		k: Dictionary) -> void:
-	if not CreatureSenses.perceive(_viewer(c, looked), [cell], arena).is_empty():
+		k: Dictionary, field: CreatureField = null) -> void:
+	if not CreatureSenses.perceive(_viewer(c, looked, field), [cell], arena).is_empty():
 		return
 	var hurt: int = int(k.hurt_by_cell.get(c.id, -1))
 	if hurt >= 0 and t - hurt <= int(c.brain.cfg.memory_ticks):
@@ -455,7 +474,7 @@ func _check_sensed(c: CreatureField.Creature, t: int, where: String, looked: Dic
 ## without a new percept, or a percept the senses would not give (an eye in the back of its head,
 ## a memory that follows the cell), fails.
 func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
-		k: Dictionary) -> void:
+		k: Dictionary, field: CreatureField = null) -> void:
 	k.memory_checks += 1
 	var e: Dictionary = c.brain.seen[CreatureField.PLAYER_ID]
 	var by := str(e.by)
@@ -466,7 +485,7 @@ func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dic
 		if int(k.hurt_by_cell.get(c.id, -1)) != t:
 			_fail(9, "%s: %s felt the cell's pain without a hit by it" % [where, c.id])
 		return
-	var got := CreatureSenses.perceive(_viewer(c, looked), [cell], arena)
+	var got := CreatureSenses.perceive(_viewer(c, looked, field), [cell], arena)
 	if got.is_empty():
 		_fail(9, "%s: %s holds a %s percept of the cell its senses do not give from %s" % [where, c.id, by, looked.position])
 	elif got[0].by != by or not Vector2(got[0].position).is_equal_approx(e.position) \
@@ -475,8 +494,16 @@ func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dic
 			got[0].by, got[0].position])
 
 
-## The creature as CreatureSenses' viewer, where it looked from before the step.
-func _viewer(c: CreatureField.Creature, looked: Dictionary) -> Dictionary:
+## The creature as CreatureSenses' viewer, where it looked from before the step: its senses are
+## `field`'s at its size (CreatureField.viewer_of: SpeciesCatalog.at_size's sight, fov and near_m x q).
+## Without a field (a caller's hand-built check), its species block's own, which are the same at the
+## species' entry size, so everywhere in S1.
+func _viewer(c: CreatureField.Creature, looked: Dictionary, field: CreatureField = null) -> Dictionary:
+	if field != null:
+		var out := field.viewer_of(c)
+		out.position = looked.position
+		out.heading = looked.heading
+		return out
 	var senses: Dictionary = species.species[c.species_id].senses
 	return {"id": c.id, "species": c.species_id, "position": looked.position, "heading": looked.heading,
 		"radius": c.phenotype.radius, "sight": c.phenotype.sight, "fov": deg_to_rad(float(senses.fov_deg)),
@@ -519,20 +546,33 @@ func _check_condition(who: String, s: ActorState, where: String) -> void:
 
 func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, was: Dictionary) -> void:
 	var w := sim.world
-	var tk := w._tm_to_am
+	var k_now := w._tm_to_am
+	var k_was := float(was.k)
 	var now_origin := PackedFloat64Array([w.origin_x_am, w.origin_y_am])
-	var cell_after := _abs(sim.motion.position, now_origin, tk)
-	# The cut: everything up to the last respawned or teleport_abs is step 0's own (exempt).
+	var cell_after := _at(sim.motion.position, now_origin, k_now)
+	# The cut: everything up to the last respawned, teleport_abs or set_size is step 0's (or the dev
+	# command's) own (exempt). A growth tick runs from growth_began to grew.
 	var cut_at := -1
+	var began := {}
 	for i in events.size():
 		var e := events[i]
-		if e.type == "respawned" or (e.type == "debug" and str(e.get("command", "")) == "teleport_abs"):
+		var command := str(e.get("command", "")) if e.type == "debug" else ""
+		if e.type == "respawned" or command == "teleport_abs" or command == "set_size":
 			cut_at = i
+		if command == "set_size":
+			counts.set_sizes += 1
+		if e.type == "growth_began":
+			began = e
+			counts.growths += 1
 	var cut := cut_at >= 0
 	if cut:
 		counts.cuts += 1
-	var cell_block := cell_after if cut else _abs(was.cell_at, was.origin, tk)
+	var growing := not began.is_empty()
+	var cell_block := cell_after if cut else PackedFloat64Array([float(was.cell_am[0]), float(was.cell_am[1]), k_was])
+	var block := cell_block   # where block-step events are measured from: the cell after a growth's grew
 	var frame: PackedFloat64Array = was.origin
+	var fk := k_was           # the frame's k: the current one after a cut, the new size's after grew
+	var in_growth := false
 	var gone_carrion := {}
 	for i in events.size():
 		var e := events[i]
@@ -543,16 +583,31 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 		if e.type == "carrion_expired" or e.type == "ate" or e.type == "creature_ate":
 			gone_carrion[str(e.get("food_id", ""))] = true
 		if i <= cut_at:
+			if i == cut_at:
+				fk = k_now
 			continue
+		if e.type == "growth_began":
+			in_growth = true
+			continue
+		if e.type == "grew":
+			in_growth = false
+			frame = PackedFloat64Array([float(began.center_am[0]), float(began.center_am[1])])
+			fk = WorldConfig.tm_to_am(int(e.to))
+			block = cell_after
+			continue
+		if in_growth and (e.type == "chunk_loaded" or e.type == "chunk_unloaded"):
+			continue   # the re-expression's own: the scene draws it behind the beat (S2G24)
+		if growing and not in_growth:
+			counts.after_growth += 1
 		var tag := "%s: %s" % [where, e.type]
 		match e.type:
 			"creature_spawned":
 				if bool(e.get("debug", false)):
 					continue
 				counts.spawns += 1
-				_creature_hidden(sim, e, _abs(e.position, frame, tk), cell_after, was, tag)
+				_creature_hidden(sim, e, _at(e.position, frame, fk), cell_after, was, tag)
 				if was.dead and sim.dead:   # dead, the checkpoint is a place too: the respawn will look there
-					_creature_hidden(sim, e, _abs(e.position, frame, tk), _abs(was.checkpoint, was.origin, tk), was,
+					_creature_hidden(sim, e, _at(e.position, frame, fk), _at(was.checkpoint, was.origin, k_was), was,
 						"%s (by the checkpoint)" % tag)
 			"creature_removed":
 				var when := str(HIDDEN_REMOVALS.get(str(e.reason), ""))
@@ -560,41 +615,50 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 					continue
 				if e.reason == "evicted":
 					counts.evictions += 1
-				_creature_hidden(sim, e, _abs(e.position, frame, tk), cell_block if when == "block" else cell_after, was,
+				_creature_hidden(sim, e, _at(e.position, frame, fk), block if when == "block" else cell_after, was,
 					"%s (%s)" % [tag, e.reason])
 			"creature_slept", "creature_woke":
 				counts["sleeps" if e.type == "creature_slept" else "wakes"] += 1
-				_creature_hidden(sim, e, _abs(e.position, frame, tk), cell_block, was, tag)
+				_creature_hidden(sim, e, _at(e.position, frame, fk), block, was, tag)
+			"carrion_expired":
+				if str(e.get("reason", "")) == "growth":
+					_out_of_view(_at(e.position, frame, fk), sim.carrion.item_radius * fk, block, "%s %s" % [tag, e.food_id])
 			"chunk_loaded":
 				counts.loads += 1
 				for s in e.shells:
-					_out_of_view(_abs(s.position, frame, tk), float(s.radius), cell_block, "%s %s shell %s" % [tag, e.key, s.id])
+					_out_of_view(_at(s.position, frame, fk), float(s.radius) * fk, block, "%s %s shell %s" % [tag, e.key, s.id])
 				for z in e.zones:
-					_out_of_view(_abs(z.center, frame, tk), float(z.radius), cell_block, "%s %s zone %s" % [tag, e.key, z.id])
+					_out_of_view(_at(z.center, frame, fk), float(z.radius) * fk, block, "%s %s zone %s" % [tag, e.key, z.id])
 				for a in e.anchors:
-					_out_of_view(_abs(a.position, frame, tk), _anchor_r(w), cell_block, "%s %s anchor %s" % [tag, e.key, a.id])
+					_out_of_view(_at(a.position, frame, fk), _anchor_r(w.size) * fk, block, "%s %s anchor %s" % [tag, e.key, a.id])
 				for p in e.places:
-					_out_of_view(_abs(p.position, frame, tk), PLACE_RADIUS_TM, cell_block, "%s %s place %s" % [tag, e.key, p.id])
+					_out_of_view(_at(p.position, frame, fk), PLACE_RADIUS_TM * fk, block, "%s %s place %s" % [tag, e.key, p.id])
 			"chunk_unloaded":
 				counts.unloads += 1
 				var ch: WorldChunk = was.chunks.get(e.key, null)
 				if ch == null:
 					_fail(12, "%s %s: not loaded before the tick" % [tag, e.key])
 					continue
+				var ck := WorldConfig.tm_to_am(ch.size)
 				for s in ch.shells:
-					_out_of_view(_tm(s.x, s.y), float(s.r), cell_block, "%s %s shell %s" % [tag, e.key, s.id])
+					_out_of_view(_am(s.x, s.y, ck), float(s.r) * ck, block, "%s %s shell %s" % [tag, e.key, s.id])
 				for z in ch.zones:
-					_out_of_view(_tm(z.x, z.y), float(z.radius), cell_block, "%s %s zone %s" % [tag, e.key, z.id])
+					_out_of_view(_am(z.x, z.y, ck), float(z.radius) * ck, block, "%s %s zone %s" % [tag, e.key, z.id])
 				for a in ch.anchors:
-					_out_of_view(_tm(a.x, a.y), _anchor_r(w), cell_block, "%s %s anchor %s" % [tag, e.key, a.id])
+					_out_of_view(_am(a.x, a.y, ck), _anchor_r(ch.size) * ck, block, "%s %s anchor %s" % [tag, e.key, a.id])
 				for p in ch.places:
-					_out_of_view(_tm(p.x, p.y), PLACE_RADIUS_TM, cell_block, "%s %s place %s" % [tag, e.key, p.id])
+					_out_of_view(_am(p.x, p.y, ck), PLACE_RADIUS_TM * ck, block, "%s %s place %s" % [tag, e.key, p.id])
 	if cut:
-		# A teleport (a far respawn or a dev teleport) drops every item behind the cut (C-10, CC-10);
-		# a near respawn keeps them, so what it drops is measured from the cell after.
+		# A teleport (a far respawn, a dev teleport or a size set) drops every item behind the cut (C-10,
+		# CC-10); a near respawn keeps them, so what it drops is measured from the cell after.
 		var last := events[cut_at]
 		if not (last.type == "debug" or bool(last.get("teleport", false))):
-			_check_food_gone(sim, where, was, gone_carrion, cell_block, tk)
+			_check_food_gone(sim, where, was, gone_carrion, cell_block, false)
+		return
+	if growing:
+		# The food view's zones all went with the old size; its plankton turned to haze (D-29). The
+		# carrion half: what the tick dropped with no expiry, meal or conversion naming it.
+		_check_food_gone(sim, where, was, gone_carrion, cell_block, true)
 		return
 	# The food view: zones that joined or left it, and how fast each zone grows.
 	var active := sim.plankton.active_zones
@@ -602,13 +666,14 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 		if not was.active.has(id):
 			counts.zone_changes += 1
 			var z := sim.region.zone(id)
-			_out_of_view(_abs(z.center, now_origin, tk), float(z.radius), cell_block, "%s: zone %s joined the food view" % [where, id])
+			_out_of_view(_at(z.center, now_origin, k_now), float(z.radius) * k_now, cell_block, "%s: zone %s joined the food view" % [where, id])
 	for id in was.active:
 		if not active.has(id):
 			counts.zone_changes += 1
 			var z: Dictionary = was.zones.get(id, {})
 			if not z.is_empty():
-				_out_of_view(_abs(z.center, was.origin, tk), float(z.radius), cell_block, "%s: zone %s left the food view" % [where, id])
+				_out_of_view(_at(z.center, was.origin, k_was), float(z.radius) * k_was, cell_block,
+					"%s: zone %s left the food view" % [where, id])
 	var had := {}
 	for id in was.plankton:
 		var zone := str(was.plankton[id].zone)
@@ -619,50 +684,63 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 	for zone in has:
 		if int(has[zone]) - int(had.get(zone, 0)) > 1:
 			_fail(12, "%s: zone %s gained %d plankton items" % [where, zone, int(has[zone]) - int(had.get(zone, 0))])
-	_check_food_gone(sim, where, was, gone_carrion, cell_block, tk)
+	_check_food_gone(sim, where, was, gone_carrion, cell_block, false)
 
 
-## Plankton of zones no longer in the food view, and carrion gone with no expiry or meal, went out
-## of view.
+## Plankton of zones no longer in the food view (not on a growth tick: `carrion_only`), and carrion
+## gone with no expiry or meal, went out of view; both as they were before the step (before()'s k).
 func _check_food_gone(sim: PoolSim, where: String, was: Dictionary, gone_carrion: Dictionary,
-		cell_block: PackedFloat64Array, tk: float) -> void:
-	var now_plankton := {}
-	for item in sim.plankton.items:
-		now_plankton[item.id] = true
-	for id in was.plankton:
-		var zone := str(was.plankton[id].zone)
-		if not now_plankton.has(id) and not sim.plankton.active_zones.has(zone):
-			_out_of_view(_abs(was.plankton[id].position, was.origin, tk), sim.plankton.item_radius, cell_block,
-				"%s: plankton %s of zone %s dropped" % [where, id, zone])
+		cell_block: PackedFloat64Array, carrion_only: bool) -> void:
+	var k_was := float(was.k)
+	if not carrion_only:
+		var now_plankton := {}
+		for item in sim.plankton.items:
+			now_plankton[item.id] = true
+		for id in was.plankton:
+			var zone := str(was.plankton[id].zone)
+			if not now_plankton.has(id) and not sim.plankton.active_zones.has(zone):
+				_out_of_view(_at(was.plankton[id].position, was.origin, k_was), sim.plankton.item_radius * k_was, cell_block,
+					"%s: plankton %s of zone %s dropped" % [where, id, zone])
 	var now_carrion := {}
 	for item in sim.carrion.items:
 		now_carrion[item.id] = true
 	for id in was.carrion:
 		if not now_carrion.has(id) and not gone_carrion.has(id):
-			_out_of_view(_abs(was.carrion[id], was.origin, tk), sim.carrion.item_radius, cell_block,
+			_out_of_view(_at(was.carrion[id], was.origin, k_was), sim.carrion.item_radius * k_was, cell_block,
 				"%s: carrion %s dropped" % [where, id])
 
 
-## A creature event's body: at least spawn_safe_m from the measuring point and out of view.
+## A creature event's body (at `at`, am): at least spawn_safe_m from the measuring point and out of
+## view, in the measuring point's tm. Its radius is the live body's (a creature or a remnant) at the
+## current size, else the one before() recorded at the old size.
 func _creature_hidden(sim: PoolSim, e: Dictionary, at: PackedFloat64Array, m: PackedFloat64Array, was: Dictionary,
 		tag: String) -> void:
 	counts.checked += 1
-	var r := float(was.radii.get(e.id, 0.0))
+	var id := str(e.id)
+	var k_now := sim.world._tm_to_am
+	var r_am := float(was.radii.get(id, 0.0)) * float(was.k)
+	if was.remnants.has(id):
+		r_am = float(was.remnants[id].radius) * float(was.k)
 	if sim.creatures != null:
-		var c := sim.creatures.find(str(e.id))
+		var c := sim.creatures.find(id)
 		if c != null:
-			r = c.phenotype.radius
+			r_am = c.phenotype.radius * k_now
+	if sim.remnants != null:
+		var rem := sim.remnants.find(id)
+		if rem != null:
+			r_am = rem.phenotype.radius * k_now
 	var rel := _rel(at, m)
 	if rel.length() < _safe:
-		_fail(12, "%s %s %.2f tm from the cell" % [tag, e.id, rel.length()])
-	elif _in_view(rel, r):
-		_fail(12, "%s %s in view at %s from the cell" % [tag, e.id, rel])
+		_fail(12, "%s %s %.2f tm from the cell" % [tag, id, rel.length()])
+	elif _in_view(rel, r_am / m[2]):
+		_fail(12, "%s %s in view at %s from the cell" % [tag, id, rel])
 
 
-func _out_of_view(at: PackedFloat64Array, r: float, m: PackedFloat64Array, tag: String) -> void:
+## Something of radius `r_am` (am) at `at` (am) is out of the view of the measuring point `m`.
+func _out_of_view(at: PackedFloat64Array, r_am: float, m: PackedFloat64Array, tag: String) -> void:
 	counts.checked += 1
 	var rel := _rel(at, m)
-	if _in_view(rel, r):
+	if _in_view(rel, r_am / m[2]):
 		_fail(12, "%s in view at %s from the cell" % [tag, rel])
 
 
@@ -698,12 +776,30 @@ func _check_13(sim: PoolSim, where: String) -> void:
 		_far(far, item.position, "carrion %s" % item.id)
 	for z in sim.region.zones:
 		_far(far, z.center, "zone %s" % z.id)
+	if sim.creatures != null:
+		for c in sim.creatures.creatures:   # S2: a two-post brain's posts and union leash (D-83)
+			var b := c.brain
+			if b == null or b.posts.is_empty():
+				continue
+			for i in b.posts.size():
+				_far(far, b.posts[i].home, "%s post %d home" % [c.id, i])
+				if not b.posts[i].territory.is_empty():
+					_far(far, b.posts[i].territory.center, "%s post %d territory" % [c.id, i])
+			_far(far, b.leash_center, "%s leash_center" % c.id)
+	if sim.remnants != null:
+		for r in sim.remnants.items:
+			_far(far, r.motion.position, "remnant %s position" % r.id)
+			_far(far, r.motion.prev_position, "remnant %s prev_position" % r.id)
+			_far(far, r.actor.position, "remnant %s actor" % r.id)
 	for id in sim.world.sites:
 		var s: Dictionary = sim.world.sites[id]
 		_far(far, s.home, "site %s home" % id)
 		if not s.territory.is_empty():
 			_far(far, s.territory.center, "site %s territory" % id)
 		_far(far, s.reach.center, "site %s reach" % id)
+		if s.has("posts"):
+			for i in s.posts.size():
+				_far(far, s.posts[i].home, "site %s post %d home" % [id, i])
 	if sim.arena is ChunkArena:
 		for p in (sim.arena as ChunkArena)._centers:
 			_far(far, p, "a collider")
@@ -734,22 +830,26 @@ func _check_16(sim: PoolSim, where: String) -> void:
 
 # --- frames ---
 
-## A local position in the frame `origin` (am) as absolute tm, in float64.
-static func _abs(p: Vector2, origin: PackedFloat64Array, k: float) -> PackedFloat64Array:
-	return PackedFloat64Array([origin[0] / k + float(p.x), origin[1] / k + float(p.y)])
+## A local position in the frame (`origin` am, `k` am per tm) as absolute am in float64, with `k`
+## third: as a measuring point, distances from it are in its size's tm.
+static func _at(p: Vector2, origin: PackedFloat64Array, k: float) -> PackedFloat64Array:
+	return PackedFloat64Array([origin[0] + float(p.x) * k, origin[1] + float(p.y) * k, k])
 
 
-static func _tm(x: Variant, y: Variant) -> PackedFloat64Array:
-	return PackedFloat64Array([float(x), float(y)])
+## A chunk's stored absolute tm at its size (`ck` = tm_to_am(size)) as absolute am.
+static func _am(x: Variant, y: Variant, ck: float) -> PackedFloat64Array:
+	return PackedFloat64Array([float(x) * ck, float(y) * ck])
 
 
+## `at` from the measuring point `m`, in m's tm.
 static func _rel(at: PackedFloat64Array, m: PackedFloat64Array) -> Vector2:
-	return Vector2(at[0] - m[0], at[1] - m[1])
+	return Vector2((at[0] - m[0]) / m[2], (at[1] - m[1]) / m[2])
 
 
 func _in_view(rel: Vector2, r: float) -> bool:
 	return _quad.is_empty() or ViewFootprint.distance_outside(_quad, rel) <= _margin + r
 
 
-static func _anchor_r(w: WorldStream) -> float:
-	return ANCHOR_RADIUS_BU * WorldConfig.bu_to_tm(w.size)
+## An anchor's extent in tm at size `n`.
+static func _anchor_r(n: int) -> float:
+	return ANCHOR_RADIUS_BU * WorldConfig.bu_to_tm(n)

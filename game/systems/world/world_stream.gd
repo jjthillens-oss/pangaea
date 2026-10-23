@@ -72,6 +72,9 @@ const AHEAD_MARGIN_TM := 16.0
 const AHEAD_KEEP := 4
 const AHEAD_LEAD_S := 1.0
 const AHEAD_REFRESH_TICKS := 15
+## s: how far ahead along its velocity the cell is taken to be when the next size's arena gets the
+## 3 x 3 round the new-size chunk it heads for (BP-4; _arena_chore).
+const NEXT_LEAD_S := 2.0
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -178,6 +181,7 @@ var _ahead_gen: WorldGen = null
 var _ahead_binding := PackedInt64Array()
 var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
+var _ahead_made := 0                   ## chunks generated ahead so far (whether a tick generated one)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
@@ -218,9 +222,15 @@ var _unload_bound := PackedFloat64Array()
 ## round _next_key in its own frame (origin the cell's absolute point _next_from, at the new size);
 ## and the rings the point's spiral may go out (growth.wedge_tm / CLEAR_SPIRAL_STEP_M). WorldGen.chunk
 ## is pure, so a chunk from here is the one a load would make: the caches never change a result.
+## The arena is kept, not rebuilt: a new _next_key adds only the chunks of its 3 x 3 it lacks, and
+## on quiet ticks _arena_chore adds the 3 x 3 round the chunk the cell heads for, one chunk a tick,
+## and takes out one a tick that is in neither (_next_held, the arena's keys). A collider outside
+## A's own 3 x 3 cannot reach the spiral (the largest-shell rule), so the extra chunks never change a
+## point; they keep the tick A crosses into a new chunk from adding three (about 160 us each).
 var _next_chunks := {}
 var _next_arena: ChunkArena = null
 var _next_key := Vector2i.MAX
+var _next_held := {}                   ## Vector2i -> true: the chunks _next_arena holds
 var _next_from := PackedFloat64Array()
 var _next_size := 0
 var wedge_rings := 4
@@ -272,12 +282,15 @@ func step(sim: PoolSim) -> void:
 	var view := _wake_view(sim)
 	var loads := _loads
 	_load(sim, view)
-	if _loads == loads:
+	var quiet := _loads == loads   # nothing loaded and nothing generated ahead: the prefetch may work
+	if quiet:
+		var made := _ahead_made
 		_look_ahead(sim)
+		quiet = _ahead_made == made
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
 	if g != null:
-		_prefetch(sim)
+		_prefetch(sim, quiet)
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -349,8 +362,8 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 
 
 ## The size the world is expressed at (S2): every local tm is 1.6^(n - 1) am. Forgets what was kept
-## for the old size: the next size's caches, the chunks generated ahead, and the ring and wake bounds
-## (they hold tm at the old size). The caller re-expresses the world (grow, set_size_teleport).
+## for the old size: the next size's caches, the chunks generated ahead, and the ring, wake and hold
+## bounds (they hold tm at the old size). The caller re-expresses the world (grow, set_size_teleport).
 func set_size(n: int) -> void:
 	size = n
 	_tm_to_am = WorldConfig.tm_to_am(n)
@@ -359,6 +372,7 @@ func set_size(n: int) -> void:
 	_load_bound = PackedFloat64Array()
 	_unload_bound = PackedFloat64Array()
 	_wake_bound.clear()
+	_hold_bound.clear()
 	_swum_from = Vector2.INF
 
 
@@ -950,6 +964,7 @@ func _look_ahead(sim: PoolSim) -> void:
 			return
 		_ahead.erase(far)
 	_ahead[Vector3i(best.x, best.y, size)] = gen.chunk(size, best.x, best.y)
+	_ahead_made += 1
 	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
 
 
@@ -1178,23 +1193,27 @@ func next_size_clear_point(sim: PoolSim) -> Vector2:
 	return local_of_abs(a[0] + float(q.x) * s1, a[1] + float(q.y) * s1)
 
 
-## next_size_clear_point's spiral, in the next size's frame (origin `a`, tm at size + 1). The arena is
-## built again only when A's new-size chunk changes, and moved to A whenever A changes.
+## next_size_clear_point's spiral, in the next size's frame (origin `a`, tm at size + 1). When A's
+## new-size chunk changes the arena gets the chunks of its 3 x 3 it lacks; it is moved to A whenever
+## A changes (a chunk added since was placed at the same origin, by the same expression).
 func _next_point(a: PackedFloat64Array, r: float) -> Vector2:
 	if _next_size != size + 1 or not next_cache:
 		_clear_next()
 		_next_size = size + 1
 	var s1 := WorldConfig.tm_to_am(size + 1)
 	var key := Vector2i(floori(a[0] / s1 / chunk_tm), floori(a[1] / s1 / chunk_tm))
-	if _next_arena == null or key != _next_key:
-		var arena := ChunkArena.create_endless(chunk_tm)
+	if _next_arena == null:
+		_next_arena = ChunkArena.create_endless(chunk_tm)
+		_next_held = {}
+		_next_from = PackedFloat64Array()
+	if key != _next_key:
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
 				var k := Vector2i(key.x + dx, key.y + dy)
-				arena.add_chunk(k, _colliders(_next_chunk(k)))
-		_next_arena = arena
+				if not _next_held.has(k):
+					_next_arena.add_chunk(k, _colliders(_next_chunk(k)))
+					_next_held[k] = true
 		_next_key = key
-		_next_from = PackedFloat64Array()
 	if _next_from != a:
 		_next_arena.set_origin(a[0] / s1, a[1] / s1)   # the expression _rederive's set_origin makes at A
 		_next_from = a.duplicate()
@@ -1215,6 +1234,7 @@ func _next_chunk(key: Vector2i) -> WorldChunk:
 func _clear_next() -> void:
 	_next_chunks = {}
 	_next_arena = null
+	_next_held = {}
 	_next_key = Vector2i.MAX
 	_next_from = PackedFloat64Array()
 	_next_size = 0
@@ -1225,7 +1245,10 @@ func _clear_next() -> void:
 ## new-size keys round the cell's new-size chunk are generated and kept, nearest first by the distance
 ## from the cell to the key's centre (ties by y, then x); keys that left the 5 x 5 are dropped. Any
 ## other tick forgets the cache, except the growth tick and its beat, whose loads take from it.
-func _prefetch(sim: PoolSim) -> void:
+## Only a `quiet` tick (step: none loaded, none generated ahead) generates, so a chunk generation does
+## not land on a tick that already made one; a quiet tick with nothing to generate does the arena's
+## chore instead. The caches never change a result, so neither does which tick fills them.
+func _prefetch(sim: PoolSim, quiet := true) -> void:
 	var g := sim.growth
 	if sim.tick < g.beat_until:
 		return
@@ -1244,6 +1267,9 @@ func _prefetch(sim: PoolSim) -> void:
 	for key: Vector2i in _next_chunks.keys():
 		if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
 			_next_chunks.erase(key)
+	if not quiet:
+		return
+	var made := 0
 	for i in g.prefetch_per_tick:
 		var best := Vector2i.MAX
 		var best_d := INF
@@ -1259,8 +1285,39 @@ func _prefetch(sim: PoolSim) -> void:
 					best = key
 					best_d = d
 		if best == Vector2i.MAX:
-			return
+			break
 		_next_chunks[best] = gen.chunk(size + 1, best.x, best.y)
+		made += 1
+	if made == 0:
+		_arena_chore(sim)
+
+
+## One quiet tick's care of the next size's arena (BP-4), once it is in use: the first chunk of the
+## 3 x 3 round the new-size chunk the cell heads for (its point NEXT_LEAD_S along its velocity) that the
+## arena lacks and the prefetch holds goes in; with none, the first chunk in neither that 3 x 3 nor
+## _next_key's comes out.
+func _arena_chore(sim: PoolSim) -> void:
+	if _next_arena == null or _next_key == Vector2i.MAX:
+		return
+	var s1 := WorldConfig.tm_to_am(size + 1)
+	var h := abs_of_local(sim.motion.position + sim.motion.velocity * NEXT_LEAD_S)
+	var head := Vector2i(floori(h[0] / s1 / chunk_tm), floori(h[1] / s1 / chunk_tm))
+	if head != _next_key:
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var k := Vector2i(head.x + dx, head.y + dy)
+				if not _next_held.has(k) and _next_chunks.has(k):
+					_next_arena.add_chunk(k, _colliders(_next_chunks[k]))
+					_next_held[k] = true
+					return
+	if _next_held.size() <= 9:
+		return
+	for k: Vector2i in _next_held:
+		if maxi(absi(k.x - _next_key.x), absi(k.y - _next_key.y)) > 1 \
+				and maxi(absi(k.x - head.x), absi(k.y - head.y)) > 1:
+			_next_arena.remove_chunk(k)
+			_next_held.erase(k)
+			return
 
 
 ## The growth tick (streaming step 1; plan B.4, s2-sim 3.7 as BP-4 changes it), when the meter is due

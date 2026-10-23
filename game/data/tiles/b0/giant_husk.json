@@ -31,6 +31,7 @@
   ],
   "sites": [
     {"id": "la", "species": "ambush_hunter", "home": [-20.6, -9.6], "heading": -2.6779, "territory_zone": "", "sizes": [1]},
-    {"id": "lb", "species": "ambush_hunter", "home": [21.1, 9.8], "heading": 0.6871, "territory_zone": "", "sizes": [1]}
+    {"id": "lb", "species": "ambush_hunter", "home": [21.1, 9.8], "heading": 0.6871, "territory_zone": "", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [13.0, 14.0], "heading": -2.3192, "territory_zone": "", "sizes": [2]}
   ]
 }

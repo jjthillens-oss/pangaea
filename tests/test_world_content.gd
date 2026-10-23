@@ -106,6 +106,43 @@ func test_problems_come_in_the_pinned_order() -> void:
 		check(problems[i].begins_with(expected[i]), "problem %d '%s' begins '%s'" % [i, problems[i], expected[i]])
 
 
+## D-70: problems() checks the tiles, then the home block, at every size the build runs (size_start
+## to max_size_in_build), so a rule broken only at size 2 is a problem; one broken alike at both sizes
+## is listed once.
+func test_problems_check_every_size() -> void:
+	var content := _content()
+	# sunlit_b is of set 1, which keeps a threat at size 2 (TileCatalog's rule 7).
+	var t: Dictionary = content.tiles.tiles.sunlit_b
+	t.sites = t.sites.filter(func(s: Dictionary) -> bool: return s.id != "er")
+	var site: Dictionary = content.home.sites.filter(func(s: Dictionary) -> bool: return s.id == "terr_n_a")[0]
+	var zone: Dictionary = content.home.zones.filter(func(z: Dictionary) -> bool: return z.id == site.territory_zone)[0]
+	zone.at_second_size = "drop"
+	var tile_2 := "b0/sunlit_b: rule 7: a sunlit tile needs a live threat site at size 2"
+	var home_2 := "home_min: rule 5 at size 2: site '%s' territory_zone '%s' is dropped at size 2"
+	check_eq(content.tiles.validate(species, content.kit, parts, 1), PackedStringArray(), "the tiles pass at size 1")
+	check_eq(content.home.validate(species, content.kit, parts, 1), PackedStringArray(), "the home block passes at size 1")
+	var problems := content.problems(parts, species)
+	print("test-world-content: at size 2 only: %s" % [problems])
+	# Both of z_n's rammers name it.
+	check_eq(problems, PackedStringArray([tile_2, home_2 % ["terr_n_a", zone.id], home_2 % ["terr_n_b", zone.id]]),
+			"the tile's, then the home block's")
+	# A size-free problem is the same at both sizes and listed once, where it first came; the tiles at
+	# every size come before the home block at any.
+	content = _content()
+	content.tiles.tiles.sunlit_a.zones[0].growth_rate = 0.5
+	content.tiles.tiles.sunlit_b.sites = content.tiles.tiles.sunlit_b.sites.filter(
+			func(s: Dictionary) -> bool: return s.species != "elder_rammer")
+	content.home.zones.filter(func(z: Dictionary) -> bool: return not z.m1)[0].radius = 7.0
+	var free := content.tiles.validate(species, content.kit, parts, 1)
+	check_eq(free.size(), 1, "the size-free tile problem at size 1: %s" % [free])
+	check(free.size() == 1 and content.tiles.validate(species, content.kit, parts, 2).has(free[0]), "and again at size 2")
+	problems = content.problems(parts, species)
+	var expected := ["b0/sunlit_a: ", "b0/sunlit_b: rule 7: a sunlit tile needs a live threat site at size 2", "home_min: rule 3"]
+	check_eq(problems.size(), expected.size(), "one problem each: %s" % [problems])
+	for i in mini(problems.size(), expected.size()):
+		check(problems[i].begins_with(expected[i]), "problem %d '%s' begins '%s'" % [i, problems[i], expected[i]])
+
+
 ## B-6: rebase_beyond + hold + reach_max + chunk_tm x sqrt 2 stays below the local bound. reach_max
 ## is the largest reach disc of a site live at size 1, tiles and home block alike; a bound just above
 ## the sum passes and one at it fails (the world file's own rule 6 passes both, 237.25 < 240).

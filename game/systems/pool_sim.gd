@@ -17,10 +17,12 @@ extends RefCounted
 ##     senses; the token decides whether the player is engageable to it), drive, and set its
 ##     velocity by the drive (steer, tell, burst or glide). A frozen creature (dev) coasts;
 ##  3. the player steers;
-##  4. the player moves, then each creature;
+##  4. the player moves, then each creature (move_body: from size 2 a move left inside a rock is
+##     taken back);
 ##  5. contacts: overlapping bodies are pushed apart once (positions only, by inverse mass), each
-##     pushed body settles against rocks and the wall, every creature is clamped to its leash disc
-##     last, and a striking creature touching a rock ahead is blocked;
+##     pushed body settles against rocks and the wall (from size 2, a push left inside a rock is taken
+##     back), every creature is clamped to its leash disc last, and a striking creature touching a
+##     rock ahead is blocked;
 ##  6. metabolism: the player as in step 2, creatures at their species' metabolism share (a
 ##     starved creature dies and leaves no carcass);
 ##  7. ecology, then the creature field's respawn queue and stuck removals;
@@ -202,7 +204,9 @@ static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayou
 ## block's starting carrion within the food ring is placed, every food zone is filled at once, the
 ## loaded sites that pass their spawn checks get their creatures (as M1's populate), and the cell
 ## starts sheltered. The layout gives the camera, the food and carrion tuning; its walls, zones and
-## rocks are not used (the home block holds the M1 pool's).
+## rocks are not used (the home block holds the M1 pool's). S2 (D-74): the world is at the save's
+## size (clamped to the sizes the build runs), the checkpoint is the save's, and growth restores the
+## meter and the ledger.
 static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout, p_species: SpeciesCatalog,
 		p_world: WorldContent, p_gen: WorldGen) -> PoolSim:
 	var sim := PoolSim.new()
@@ -215,6 +219,15 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	# Its rng is never drawn in endless mode: every zone draws its own stream.
 	sim.region = EcologyRegion.create(p_save.world_seed * SEED_STRIDE + REGION_SEED_OFFSET)
 	var world := WorldStream.create(p_world, p_gen)
+	# S2 (D-74): a v3 save's size, clamped to the sizes this build runs (the first alone with growth
+	# off: BP-6), and its checkpoint at that size.
+	var config := p_world.config
+	var top := config.max_size_in_build if not Growth.config_of(config).is_empty() else config.size_start
+	var n := clampi(int(p_save.growth.get("size", config.size_start)), config.size_start, maxi(top, config.size_start))
+	if n != world.size:
+		world.set_size(n)
+	var cp: Dictionary = p_save.checkpoint
+	world.checkpoint_am = PackedFloat64Array([float(cp.x_am), float(cp.y_am), float(cp.heading), float(n)])
 	world.camera = p_layout.camera
 	if p_species != null:
 		world.view_aspect = float(p_species.fairness.spawn_view_aspect)
@@ -234,6 +247,8 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 		sim.species = p_species
 		sim.creatures = CreatureField.create_endless(p_species, p_catalog, p_layout, sim.region, world,
 			p_save.world_seed * SEED_STRIDE + ENCOUNTER_SEED_OFFSET)
+		if n != sim.creatures.size:
+			sim.creatures.set_size(n)
 	world.load_view_set_now(sim, Vector2.ZERO)
 	var place := sim._clear_point_near(Vector2.ZERO, sim.phenotype.radius)
 	# A restored place inside a collider moves the cell off the origin: its own view set loads too (B-8).
@@ -244,6 +259,8 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	sim.actor = InteractionResolver.Actor.new("player", place, heading, sim.phenotype)
 	world.start(sim)
 	sim._start_growth(Growth.config_of(p_world.config), p_world.config.max_size_in_build)
+	if sim.growth != null:
+		sim.growth.restore(p_save, n)   # the meter and the ledger (D-74)
 	# The home block's starting carrion that lies within the food ring (absolute pairs).
 	for p: Array in p_world.home.carrion_initial:
 		var local := world.local_of_abs(float(p[0]), float(p[1]))
@@ -320,7 +337,7 @@ func step(intent: SimIntent) -> void:
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
 		Locomotion.steer(motion, move, phenotype, state.speed_multiplier(), DT)
-		moved = arena.move(motion, phenotype.radius, DT)
+		moved = move_body(motion, phenotype.radius)
 		stats.distance_m += moved
 	else:
 		motion.prev_position = motion.position
@@ -488,7 +505,11 @@ func _respawn_now(teleport := false) -> void:
 	var grace := 0
 	if creatures != null:
 		death_streak = RespawnRules.streak_after(death_streak, _alive_ticks, species.streak_window_ticks)
-		state.energy = state.energy_capacity * RespawnRules.pick(species.respawn_energy_share, death_streak)
+		var share := RespawnRules.pick(species.respawn_energy_share, death_streak)
+		if growth != null:
+			state.energy = growth.respawn_energy(state.energy_capacity, share, size())   # D-73, D-35
+		else:
+			state.energy = state.energy_capacity * share
 		grace = int(RespawnRules.pick(species.grace_ticks, death_streak))
 		grace_until = tick + grace
 		relocated = _clear_checkpoint(motion.position, killer)
@@ -516,6 +537,22 @@ func write_position_to_save() -> void:
 		save.player["position"] = PlaneSpace.to_save_abs(a[0], a[1])
 		return
 	save.player["position"] = PlaneSpace.to_save(position_for_save())
+
+
+## The save's v3 growth fields (S2, spine 4.6; GameSession writes them after the position): the size
+## and the meter (0 with growth off), the world's checkpoint (absolute am, heading, size; the pool
+## keeps the v3 default), the ledger when growth is on, and the generator version (the pool: 1).
+func write_growth_to_save() -> void:
+	save.growth = {"size": size(), "meter": growth.meter if growth != null else 0.0}
+	if world != null:
+		var cp := world.checkpoint_am
+		save.checkpoint = {"x_am": cp[0], "y_am": cp[1], "heading": cp[2], "size": int(cp[3])}
+		save.gen_version = world.gen_version
+	else:
+		save.checkpoint = SaveGame.new().checkpoint   # the v3 default
+		save.gen_version = 1
+	if growth != null:
+		save.discoveries = growth.discoveries.duplicate(true)
 
 
 ## Where the lineage returns after a death: the generation start, which in M1 is the layout spawn
@@ -711,6 +748,33 @@ func debug_set_size(n: int) -> bool:
 	return true
 
 
+## Dev (endless, growth on): the meter to `share` (0 to 1) of the ring now, through Growth.add (so a
+## full ring is full as eating makes it, and pays out at the build top). Emits debug {command:
+## "fill_meter", share}. False with growth off, while dead or waiting to respawn, or for a share
+## outside 0 to 1.
+func debug_fill_meter(share := 1.0) -> bool:
+	if growth == null or dead or respawn_pending or not (share >= 0.0 and share <= 1.0):
+		return false
+	growth.add(self, share * growth.ring(size()) - growth.meter, "debug", "")
+	_emit({"type": "debug", "command": "fill_meter", "share": share})
+	return true
+
+
+## Dev (endless, growth on): the next tick grows, calm or not: the ring full and due. The growth tick
+## asserts its settle against the next size's point only when that point is finite, so a wedged cell
+## grows too, onto the nearest clear point (BP-4). Emits debug {command: "force_growth"}. False with
+## growth off, at the build top, while dead or waiting to respawn.
+func debug_force_growth() -> bool:
+	if growth == null or dead or respawn_pending or Growth.at_top(size(), world.max_size):
+		return false
+	growth.meter = growth.ring(size())
+	if growth.full_since < 0:
+		growth.full_since = tick
+	growth.due = true
+	_emit({"type": "debug", "command": "force_growth"})
+	return true
+
+
 ## Dev (endless): moves the floating origin by whole chunks now, as the streaming block does when the
 ## cell swims far from it. False in the pool.
 func debug_rebase(by_chunks: Vector2i) -> bool:
@@ -752,6 +816,8 @@ func _player_dies(cause: String, by: String, by_species: String, reason: String)
 	dead = true
 	motion.velocity = Vector2.ZERO
 	death = {"cause": cause, "by": by, "by_species": by_species, "reason": reason}
+	if growth != null:
+		growth.on_death(self)
 	_emit({"type": "died", "cause": cause, "by": by, "by_species": by_species, "reason": reason, "position": motion.position})
 	if creatures != null:
 		_forget_player_everywhere()   # a dead body is gone to every brain (target_gone); the token is freed
@@ -1022,8 +1088,31 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 func _move_creatures() -> Array[float]:
 	var out: Array[float] = []
 	for c in creatures.awake():
-		out.append(arena.move(c.motion, c.phenotype.radius, DT))
+		out.append(move_body(c.motion, c.phenotype.radius))
 	return out
+
+
+## Tick step 4's move of one body (the cell, a creature, a remnant): PoolArena.move, and from size 2 a
+## move that the arena's settle leaves inside a rock is taken back, so the body stays where it was and
+## stops. The tiles keep every crack a cell wide at size 1 (#32), but a 1.5 tm crack there is 0.94 tm
+## at size 2, and the settle's two passes, pushed from one shell into the other, end inside one: in
+## the growth fuzz up to 33 mm into a reef shell (FuzzInvariants' invariant 1 forgives 1 mm). In the
+## pool and at size 1 this is PoolArena.move alone, to the bit. Returns the distance moved.
+func move_body(m: Locomotion.MotionState, r: float) -> float:
+	if world == null or world.size < 2:
+		return arena.move(m, r, DT)
+	var aim := m.position + m.velocity * DT   # where the move lands unless the settle pushes it
+	var moved := arena.move(m, r, DT)
+	if m.position != aim and _wedged(m.position, m.prev_position, r):
+		m.position = m.prev_position
+		m.velocity = Vector2.ZERO
+		return 0.0
+	return moved
+
+
+## True when a body of radius `r` at `p` is inside a rock and at `was` it was not (move_body).
+func _wedged(p: Vector2, was: Vector2, r: float) -> bool:
+	return not arena.is_clear(p, r) and arena.is_clear(was, r)
 
 
 ## Tick step 5: one separation pass over every overlapping pair (the cell first, then creatures in
@@ -1047,6 +1136,8 @@ func _contacts() -> void:
 	var at := PackedVector2Array()
 	for m in motions:
 		at.append(m.position)
+	# From size 2 a push the settle leaves inside a rock is taken back, as in move_body.
+	var held := at.duplicate() if world != null and world.size >= 2 else PackedVector2Array()
 	var pushed := PackedByteArray()
 	pushed.resize(n)
 	for i in n:
@@ -1065,6 +1156,8 @@ func _contacts() -> void:
 	for i in n:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
+			if not held.is_empty() and _wedged(motions[i].position, held[i], radii[i]):
+				motions[i].position = held[i]
 	for c in creatures.awake():
 		var mem := c.brain
 		if mem == null:

@@ -16,7 +16,8 @@ extends WorldGen
 ## zone disc and whose second guards a disc of ELDER_ZONE_R to the south-west; each site's reach is
 ## the union of its posts' REACH_R discs (D-82). The fake applies no at_second_size.
 ## `extra_shells` adds shells to one chunk at one size (Vector3i(cx, cy, n) -> [{x, y, r}], absolute
-## tm), so a test can wedge the cell at the next size.
+## tm), so a test can wedge the cell at the next size; `extra_anchors` adds landmark anchors the same
+## way (Vector3i(cx, cy, n) -> [{id, x, y, model}]), so a test can find one.
 ## Chunk (-2, 3) holds a rare place, "p_f_husk" (kind "giant_husk"), at its centre with yaw_deg
 ## PLACE_YAW and mirrored, as WorldGen emits places (B-15).
 ## Chunk (-3, 1) also holds the zone "z_edge" (capacity EDGE_CAPACITY) centred 2 tm inside its west
@@ -56,6 +57,8 @@ var built := {}
 var site_period := 4
 ## Vector3i(cx, cy, size) -> Array of {x, y, r} (absolute tm at that size): more shells for a test.
 var extra_shells := {}
+## Vector3i(cx, cy, size) -> Array of {id, x, y, model} (absolute tm at that size): landmark anchors.
+var extra_anchors := {}
 
 
 func _init(p_content: WorldContent = null, p_species: SpeciesCatalog = null, p_seed := 0) -> void:
@@ -105,6 +108,8 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	for i in more.size():
 		c.shells.append({"id": "s_x_%d_%d_%d" % [cx, cy, i], "x": float(more[i].x), "y": float(more[i].y), "r": float(more[i].r),
 			"kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	for a in extra_anchors.get(Vector3i(cx, cy, n), []):
+		c.anchors.append({"id": str(a.id), "x": float(a.x), "y": float(a.y), "model": str(a.model), "dressing": {}, "tile": tile})
 	if key == PLACE_CHUNK:
 		c.places.append({"id": "p_f_husk", "kind": "giant_husk", "x": x0 + 16.0, "y": y0 + 16.0, "tile": tile,
 			"yaw_deg": PLACE_YAW, "mirror": true})

@@ -10,10 +10,10 @@
   "landmark_anchor": [22.0, 22.0],
   "set_piece": null,
   "shells": [
-    {"id": "s0", "center": [-14.5, -22.5], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s0", "center": [-14.5, -22.5], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s1", "center": [7.0, 5.0], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s2", "center": [-20.4, 11.6], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s3", "center": [7.4, -21.8], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [7.4, -21.8], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s4", "center": [-15.5, 12.1], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s5", "center": [17.9, -16.1], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s6", "center": [-10.9, -20.4], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
@@ -21,7 +21,7 @@
     {"id": "s8", "center": [12.4, -20.2], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
   ],
   "zones": [
-    {"id": "ra", "center": [-4.0, -4.0], "radius": 5.0, "capacity": 64.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "ra", "center": [-4.0, -4.0], "radius": 5.0, "capacity": 64.0, "growth_rate": 0.05, "at_second_size": "thin"},
     {"id": "f0", "center": [23.0, -23.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
     {"id": "f1", "center": [-20.0, -21.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
     {"id": "f2", "center": [0.0, -20.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
@@ -33,6 +33,7 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [-6.0, -4.0], "heading": 0.0, "territory_zone": "ra", "sizes": [1]},
-    {"id": "mb", "species": "rammer", "home": [-2.0, -4.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]}
+    {"id": "mb", "species": "rammer", "home": [-2.0, -4.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [-14.0, -12.0], "heading": 0.7086, "territory_zone": "", "sizes": [2], "post_b": {"home": [-6.0, -12.0], "heading": 1.1071}}
   ]
 }

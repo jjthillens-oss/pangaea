@@ -66,9 +66,11 @@ func test_the_fixture_tiles_have_no_problems() -> void:
 	check_eq(cat.tiles.size(), 20, "6 per region and the 2 rare tiles")
 	check_eq(cat.bands, [0] as Array[int], "band 0")
 	var t := cat.tile("sunlit_a")
-	check_eq(t.landmark_anchor, PackedFloat64Array([0.0, -20.0]), "coordinates stay float64 pairs")
+	check_eq(t.landmark_anchor, PackedFloat64Array([0.0, -25.0]), "coordinates stay float64 pairs")
 	check_eq(t.shells[0].center, PackedFloat64Array([-16.0, -8.0]), "a shell's centre")
-	check_eq(t.sites[0].sizes, [1, 2] as Array[int], "a site's sizes")
+	check_eq(t.sites[0].sizes, [1] as Array[int], "a site's sizes")
+	check_eq([t.sites[2].species, t.sites[2].sizes], ["elder_rammer", [2] as Array[int]], "S2: the size-2 threat")
+	check_eq(cat.validate(species, kit, parts, 2), PackedStringArray(), "the 20 minimal tiles at size 2")
 	check_eq(cat.tile("rare_giant_husk").set, -1, "a rare tile has no set")
 	check(cat.tile("rare_giant_husk").landmark_anchor.is_empty(), "nor an anchor")
 	check(cat.tile("nowhere").is_empty(), "an unknown id")
@@ -113,7 +115,7 @@ func test_each_tile_rule_has_a_failing_variant() -> void:
 		[func(f: Dictionary) -> void: f.drift_a.shells[4] = _shell("e", -9.11, -10.0, 1.2), "b0/drift_a: rule 3: Zone 'b' is 0.69 bu from collider 'e'; it keeps 0.7.", 1],
 		# Rule 4: the landmark anchor.
 		[func(f: Dictionary) -> void: f.sunlit_a.landmark_anchor = [0.0, -26.0], "b0/sunlit_a: rule 4: the landmark anchor [0.0, -26.0] lies beyond", 1],
-		[func(f: Dictionary) -> void: f.sunlit_a.shells[2].center = [-3.5, -23.0], "b0/sunlit_a: rule 4: the landmark collider leaves 1.61 bu to shell 'c'", 1],
+		[func(f: Dictionary) -> void: f.sunlit_a.shells[2].center = [-3.5, -23.0], "b0/sunlit_a: rule 4: the landmark collider leaves 1.03 bu to shell 'c'", 1],
 		# Rule 5: the set piece.
 		[func(f: Dictionary) -> void: f.rare_giant_husk.set_piece.asset = "rare_shell_cathedral", "b0/rare_giant_husk: rule 5: the set piece 'rare_shell_cathedral'", 1],
 		[func(f: Dictionary) -> void: f.rare_giant_husk.set_piece.yaw_deg = 45.0, "b0/rare_giant_husk: rule 5: the set piece's yaw_deg 45.0", 1],
@@ -291,7 +293,7 @@ func test_colliders_of_turns_the_set_piece_as_its_mesh_turns() -> void:
 	check_eq(pieces[0], {"id": "r0", "center": Vector2(0.0, -12.5), "radius": 2.0}, "(-1.5, 0) turned 90 degrees, at (0, -14)")
 	check_eq(pieces[1], {"id": "r1", "center": Vector2(0.5, -15.5), "radius": 1.5}, "(1.5, 0.5) turned 90 degrees")
 	var ordinary := TileCatalog.colliders_of(cat.tile("sunlit_a"), kit)
-	check_eq(ordinary[-1], {"id": "lm", "center": Vector2(0.0, -20.0), "radius": 2.0}, "the landmark collider comes last")
+	check_eq(ordinary[-1], {"id": "lm", "center": Vector2(0.0, -25.0), "radius": 2.0}, "the landmark collider comes last")
 	check_eq(ordinary.size(), cat.tile("sunlit_a").shells.size() + 1, "the shells, then the anchor")
 	for yaw in [0.0, 90.0, 180.0, 270.0]:
 		for p in [Vector2(1.5, 0.5), Vector2(-2.0, 3.0)]:
@@ -417,8 +419,15 @@ func test_each_two_post_rule_has_a_failing_variant() -> void:
 			for z in f.reef_posts.zones:
 				z.at_second_size = "drop",
 			"b0/reef_posts: rule 7 at size 2: every zone is dropped", 1, 2],
-		[func(f: Dictionary) -> void: f.reef_posts.sites.pop_back(), "b0/reef_posts: rule 7: a reef tile needs a live threat site at size 2", 1, 2],
+		# A tile of set 1 needs a threat at size 2; one of set 0 (both fixtures) a live site, an M1 one
+		# (the cell outgrows it) or a threat (PROPOSED, TileCatalog.SECOND_SIZE_OUTGROWN_SET).
+		[func(f: Dictionary) -> void: f.reef_posts.sites.pop_back(), "b0/reef_posts: rule 7: a reef tile of set 0 needs a live site at size 2", 1, 2],
 		[func(f: Dictionary) -> void:
+			f.reef_posts.set = 1
+			f.reef_posts.sites.pop_back(),
+			"b0/reef_posts: rule 7: a reef tile needs a live threat site at size 2", 1, 2],
+		[func(f: Dictionary) -> void:
+			f.sunlit_posts.set = 1
 			f.sunlit_posts.sites[1].species = "rammer"
 			f.sunlit_posts.sites[1].erase("post_b"),
 			"b0/sunlit_posts: rule 7: a sunlit tile needs a live threat site at size 2", 1, 2],
@@ -432,6 +441,15 @@ func test_each_two_post_rule_has_a_failing_variant() -> void:
 	for i in cases.size():
 		var c: Array = cases[i]
 		_check_case(_s2_problems(c[0], c[3], c[4] if c.size() > 4 else null), c[1], c[2], "case %d" % i)
+	# Rule 7 at size 2: a set-0 tile whose one live site there is its M1 rammer passes; at set 1 not.
+	var outgrown := func(set_index: int) -> Callable:
+		return func(f: Dictionary) -> void:
+			f.sunlit_posts.set = set_index
+			f.sunlit_posts.sites.pop_back()
+	check_eq(_s2_problems(outgrown.call(0), 2), PackedStringArray(), "rule 7 at size 2: set 0 with its rammer live there")
+	_check_case(_s2_problems(outgrown.call(1), 2), "b0/sunlit_posts: rule 7: a sunlit tile needs a live threat site at size 2", 1,
+		"rule 7 at size 2: set 1 with the same rammer")
+	check_eq(_s2_problems(outgrown.call(0), 1), PackedStringArray(), "rule 7 at size 1: the rammer is its threat there")
 	# The same shell near the anchor passes at size 1 (2.0 bu), and at size 2 once it sinks there.
 	check_eq(_s2_problems(func(f: Dictionary) -> void: f.reef_posts.shells.append(_shell("z", 24.0, -18.5, 1.0)), 1), PackedStringArray(),
 		"rule 4 at size 1")
