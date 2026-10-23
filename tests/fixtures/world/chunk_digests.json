@@ -1,0 +1,17 @@
+{"note": "Written by record_chunk_digests.gd; do not edit by hand.", "world": "res://tests/fixtures/world/world_min.json", "seed": 401, "size": 1,
+ "chunks": [
+  {"key": [-2, -1], "digest": "9d8fa5ef548994620ca6ac4b0a037db92efb981932c3279b9cc5ead0c83c8492", "holds": "1 shells, 1 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [-1, -1], "digest": "362b386f2c0f9c2fa1c810c7fa4fe2c4718bde98f340b257854eda2e34746921", "holds": "3 shells, 2 zones, 2 sites, 0 anchors, 0 places"},
+  {"key": [0, -1], "digest": "ece79e1732ae46c1c40c780214ecf1acaf03e10bb8fca5da5dc42cbaf8a073e1", "holds": "2 shells, 3 zones, 2 sites, 0 anchors, 0 places"},
+  {"key": [1, -1], "digest": "1d39172e31ed07b6829672a6e183b01b2d954d276a35ff9082f0165b281d830b", "holds": "2 shells, 1 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [-2, 0], "digest": "294bdd7f482d2d9db5289d3be9d863ce1f686a4969c082e83a0addc9d302d896", "holds": "2 shells, 2 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [-1, 0], "digest": "f4a1ab161dc145d602aa1aceddc09bf33a86e4c70875e2160bd9aa03f00e8c80", "holds": "4 shells, 2 zones, 1 sites, 0 anchors, 0 places"},
+  {"key": [0, 0], "digest": "93c6927b5beb745b37f012e6123586463620bc72a9a07e51f549c2321e764f51", "holds": "5 shells, 4 zones, 2 sites, 0 anchors, 0 places"},
+  {"key": [1, 0], "digest": "25ce1951f1335d337159c8c331ce46b7bdb849a7c3863f947948b3827861deb9", "holds": "1 shells, 2 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [3, -12], "digest": "5c4aba36a6a8b918cf3bc9e3e5bfe9bfea6ea5f98d1531442fb9a018bc529bb3", "holds": "4 shells, 0 zones, 0 sites, 1 anchors, 0 places"},
+  {"key": [-6, -12], "digest": "5052f05b6293a813fb9cb9c2b8f70f83a461776e045e18790e296c058c0d0c00", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
+  {"key": [-7, -12], "digest": "1bee0b94b97a4a55032dbf7d7acbd7e3b577ab4805baba251c76f15d058c5216", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
+  {"key": [5, -2], "digest": "ed1b23a10b7877ee24a960806ce49f62d9b7a6d43b58c498079bb5aa1bfe84f2", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
+  {"key": [11, 1], "digest": "9e874bf1ff54b9cb5bebc9f5d533fcf5eaa13870378cf2b0a3ec7ae33c25cb83", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
+  {"key": [-3, -8], "digest": "3c389abef6e3e83b09448b9aca20cbda9826538e845940a632ef9825b6071e85", "holds": "1 shells, 1 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [3125, -3126], "digest": "0d70c5e7e0dffb458034221aa21d2e57b08db0e9d66fc84ce912002f52f1a621", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"}]}
