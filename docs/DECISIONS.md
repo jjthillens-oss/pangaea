@@ -79,6 +79,17 @@ The owner asked that once a model looks right, its triangles are cut as far as p
 ## 2026-10-22 · CC0 scans as detail sources (PROPOSED)
 CC0 photo scans (Poly Haven, ambientCG) may feed surface detail (grain, height, value variation) through a procedural shader that recolours them to the palette, and the result is baked; a scan is never shown raw. Each scan is kept in `assets/source/textures/cc0/` and listed with its URL, authors and license in the asset record. This narrows the art direction's earlier "no photo textures" line to fit the owner's CC0 rule.
 
+## 2026-10-22 · The cell stage reads as a microscopic world (CONFIRMED)
+The owner asked that the cell stage look like a microscopic world ("like a cell reproduction stage"), not just underwater. That means tiny cells, spores and bacteria swimming around, with other microorganisms to encounter. He shared Spore cell-stage screenshots for mood, scale and density only; no designs are copied. He approved the mood frame `docs/art/renders/concept/micro_mood_pool.jpg` (from `tools/blender/render_micro_mood.py`) on 2026-10-22 at 22:01 ("yes", "i look the new look way better").
+
+The approved look is a deep-blue fluid in place of the approved pool teal. Its depth layers are:
+- huge, out-of-focus organisms far below the swim plane;
+- glassy radiolarian and diatom shells in place of the rocks;
+- bubbles and specks drifting between the swim plane and the camera;
+- muted swarms of bacteria, spirilla and spores.
+
+Decor never uses the food green (`#CFE86A` family) or the threat pink (`#D9466B`), and never looks solid on the swim plane. The work is split as in `/mnt/project-files/pangaea/docs/ambience-handoff.md`. Art builds the decorative ambience scene and the shell swap, which are presentation only. Engineering owns the camera, floor depth, fog and lighting, and any microbe that affects play. Colours, depths and densities stay PROPOSED tuning. Microbes that compete for food or can be eaten are a separate owner decision.
+
 ## 2026-10-22 · M1 step 3 decisions (PROPOSED)
 These came with the final step 3 plan (`docs/milestones/m1-step3-plan.md`, section 23) and were built in step 3. They are built and tested, but the owner has not approved them yet. None changes the approved M1 goal; the three that could are the owner decisions below. Numbers live in `game/data/creatures_m1.json`, `game/data/pool_m1.json` and the constants at the top of each file. Where the build differs from the plan, `docs/milestones/M1.md` (step 3, "As built") says how and why.
 
