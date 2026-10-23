@@ -1,0 +1,82 @@
+{
+  "id": "glass_flake",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S3 glass flake food item (size 3's plant food): a broken, thin silica flake, pale and glassy with fine pores, a glowing green chloroplast band running through it.",
+  "category": "food",
+  "source_blend": "assets/source/blender/glass_flake.blend",
+  "generator_script": "tools/blender/make_endless_foods.py",
+  "export_path": "assets/export/glass_flake.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.356,
+    "y_forward": 0.338,
+    "z_up": 0.046
+  },
+  "triangles": 24,
+  "triangle_budget": 400,
+  "textures": [
+    {
+      "name": "T_GlassFlake_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_GlassFlake_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_GlassFlake_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    },
+    {
+      "name": "T_GlassFlake_Emission",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "emitted colour RGB"
+    }
+  ],
+  "materials": [
+    "M_GlassFlake",
+    "M_GlassFlakeProc"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "GlassFlake"
+  ],
+  "food_kind": "plant",
+  "pivot": "centre of the item",
+  "item_radius_m": 0.18,
+  "mesh_radius_m": 0.185,
+  "scale_note": "Built at the plankton's item radius; the world draws it at its size's item radius.",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 24,
+    "triangles_after": 24
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_foods.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

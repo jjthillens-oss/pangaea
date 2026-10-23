@@ -50,12 +50,32 @@ extends RefCounted
 const VIEW_SET_MARGIN_TM := 11.5
 ## tm: the largest zone radius at size 1 (tile rule 3).
 const MAX_ZONE_RADIUS_TM := 8.0
-## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
-## watching, noticing, chasing, attacking, fleeing or going home.
 ## The Vector2 keys a rebase shifts on each plankton and carrion item (RebaseShift.items).
 const PLANKTON_POSITIONS: PackedStringArray = ["position", "anchor"]
 const CARRION_POSITIONS: PackedStringArray = ["position"]
+## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
+## watching, noticing, chasing, attacking, fleeing or going home. _calm tests them without a key.
 const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+## Look-ahead generation: tm beyond the load ring a chunk may be generated ahead, how many are kept,
+## how far ahead along its velocity (s) the cell is taken to be, and how long (ticks) a look that
+## found nothing to generate waits before the next.
+const AHEAD_MARGIN_TM := 16.0
+const AHEAD_KEEP := 4
+const AHEAD_LEAD_S := 1.0
+const AHEAD_REFRESH_TICKS := 15
+## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
+## is under a thousandth of this at 128 tm and a million ticks.
+const WAKE_SLACK_TM := 0.05
+## tm: how far the view's reach may differ from the bound's before the bound restarts (a float32
+## footprint at another place differs by about 1e-5).
+const WAKE_FAR_TOLERANCE_TM := 0.001
+## tm: the load bound scans this much beyond the load ring, so every chunk outside its box lies at
+## least this far beyond the ring; and what the load and unload bounds allow for float64 rounding.
+const LOAD_BOUND_TM := 8.0
+const RING_BOUND_SLACK_TM := 1e-6
+## tm: what the food view's bound allows for float32 rounding in a zone's distance and the body's
+## movement (each under 1e-5 at 128 tm).
+const FOOD_BOUND_SLACK_TM := 0.001
 
 var content: WorldContent
 var gen: WorldGen
@@ -85,21 +105,93 @@ var _chunks := {}                      ## Vector2i -> WorldChunk (absolute)
 var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 ## site id -> {id, species, home: Vector2, heading, territory: {} or {center: Vector2, radius},
 ## reach: {center: Vector2, radius}, chunks: Array[Vector2i], home_chunk: Vector2i, abs: the
-## WorldChunk's site}: the loaded live sites, local.
+## WorldChunk's site}: the loaded live sites, local. Read it freely; only _load_chunk and
+## _unload_chunk add or remove a site (they keep the home and role counts below with it). A site
+## added or removed elsewhere is taken in when the table's size no longer matches those counts
+## (they are recounted then); one that replaces another at the same size goes unseen.
 var sites := {}
 ## site id -> how many creatures it has spawned this session (never cleared by an unload, so a
 ## reloaded site's next creature is a new one).
 var site_counts := {}
+## The niche caps' count kept as sites enter and leave the table, so a load or an unload need not
+## look up every site's species again: site id -> its species' role, and role -> how many sites of
+## the table fill it (a role leaves at 0).
+var _site_role := {}
+var _role_sites := {}
+## The table's sites by home chunk (Vector2i -> {site id: true}), so an unload finds its own without
+## walking the table; recounted if the table's size no longer matches it (a test's own site).
+var _home_sites := {}
+var _home_count := 0
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
 var _fill := {}                        ## zone id -> true: fill at once in the next food view
 var _fill_all := false                 ## fill every food zone at once in the next food view
 var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
+## The region's zones packed for the food view, in their order: id, centre, radius and the zone
+## itself, and for a rebase its absolute centre (tm; NaN for a zone without one). This stream is the
+## only one to add, remove or move a zone in the endless world, and bumps _zones_version when it
+## does; the index is rebuilt when that or the zone count changed.
+var _zones_version := 0
+var _zones_indexed := -1
+var _zone_ids := PackedStringArray()
+var _zone_c := PackedVector2Array()
+var _zone_r := PackedFloat64Array()
+var _zone_refs: Array[Dictionary] = []
+var _zone_ax := PackedFloat64Array()
+var _zone_ay := PackedFloat64Array()
+var _index_epoch := 0                  ## bumped on every change to the index (a zone in, out or moved)
+## The food view's last measure of the zones: the index places of those within the food ring, in
+## index order, good while the index epoch and the ring are the same and the body has moved less than
+## every zone's distance from the ring (a distance changes by no more than the body moves): [x, y,
+## room, ring, epoch], empty to measure every zone.
+var _food_at := PackedInt32Array()
+var _food_bound := PackedFloat64Array()
+## The food set last given to the plankton (PlanktonField.active_zones), the index places it shows
+## and the index epoch they are of.
+var _shown_food := {}
+var _shown_at := PackedInt32Array()
+var _shown_epoch := -1
 var _cell_tile := Vector2i.ZERO
+## Chunks generated ahead (WorldGen.chunk is pure, so a chunk is the same whatever tick builds it):
+## on a tick that loads nothing, the missing chunk nearest where the cell is heading is generated
+## and kept here, Vector3i(x, y, size) -> WorldChunk, so the tick that loads it does not pay for it.
+## Each is handed out once; a teleport, another generator or the same one bound again (WorldGen.setup
+## to other content, species, seed or version) forgets them.
+var _ahead := {}
+var _ahead_gen: WorldGen = null
+## [content's and species' instance ids, world seed, gen version] they were made with (ids, so the
+## stream holds no second path to the absolute world data)
+var _ahead_binding := PackedInt64Array()
+var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
+var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
+## This tick's waking sleepers, from _wakers for step 5 (a sleeper lies still, so the pass would find
+## the same): the view they were measured from, the sleepers of the pass that wake (in creature
+## order) and their wake distances.
+var _waking_view: Variant = null
+var _waking: Array[CreatureField.Creature] = []
+var _waking_d := PackedFloat64Array()
+## The wake bound. A sleeper lies still, and while the cell has one place it comes no nearer a
+## sleeper than the path that place has moved, so a sleeper measured as not waking cannot wake before
+## the place has moved by its distance less the farthest it could wake from (the wake ring, or the
+## view's reach plus its margin and radius). Each such sleeper keeps [its position, the path length
+## at which it may first wake] and _wakers skips its test until then (or until it is moved). The bound
+## restarts, every sleeper measured again, when the cell has two places or the view or rings change.
+var _wake_bound := {}                  ## sleeper (Creature) -> [position, path length]
+var _swum := 0.0                       ## tm the cell's one place has moved since the bound restarted
+var _swum_from := Vector2.INF          ## that place at the last _wakers
+var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, view margin] it holds for
+## The ring bounds. A chunk's distance from the body changes by no more than the body moves, so after
+## a scan found no missing chunk within the load ring (_nearest_missing), none can come within it
+## before the body has moved the nearest missing one's distance less the ring, unless a chunk
+## unloads; and after a scan found every loaded chunk within the unload ring (_unload), none can leave
+## it before the body has moved the farthest one's distance short of the ring, unless a chunk loads.
+## Each is [the body's absolute x, y (tm) at the scan, that distance, the ring], or empty.
+var _load_bound := PackedFloat64Array()
+var _unload_bound := PackedFloat64Array()
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -134,7 +226,10 @@ func step(sim: PoolSim) -> void:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
 	_unload(sim)
 	var view := _wake_view(sim)
+	var loads := _loads
 	_load(sim, view)
+	if _loads == loads:
+		_look_ahead(sim)
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
 
@@ -217,16 +312,48 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 	RebaseShift.motion(sim.motion, offset)
 	sim.actor.position -= offset
 	if sim.creatures != null:
+		# RebaseShift.motion written out, and every position a brain remembers: what it has seen, its
+		# strike lane, its goal, its progress check, what it flees, its home and its territory. One pass
+		# over the creatures, in a timed tick (G17).
 		for c in sim.creatures.creatures:
-			var m := c.motion   # RebaseShift.motion written out: once per creature, in a timed tick (G17)
+			var m := c.motion
 			m.position -= offset
 			m.prev_position -= offset
 			c.actor.position -= offset
-			if c.brain != null:
-				RebaseShift.memory(c.brain, offset)
+			var mem := c.brain
+			if mem == null:
+				continue
+			if not mem.seen.is_empty():
+				for entry in mem.seen.values():
+					entry.position -= offset
+			if not mem.lane.is_empty():
+				mem.lane.origin -= offset
+			if mem.goal.is_finite():
+				mem.goal -= offset
+			if not mem.progress.is_empty():
+				mem.progress.position -= offset
+			if mem.flee_from.is_finite():
+				mem.flee_from -= offset
+			mem.home -= offset
+			if mem.territory_center.is_finite():
+				mem.territory_center -= offset
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
-	_rederive(sim)
+	if _swum_from.is_finite():
+		_swum_from -= offset   # the wake bound's place and sleepers, as the bodies moved
+	for b in _wake_bound.values():
+		b[0] -= offset
+	var food_bound := _food_bound
+	var epoch := _index_epoch
+	if _rederive(sim):
+		# The zone index kept its places, so the food view's measure and food set hold for the moved
+		# bodies and zones: each distance changes only by the float32 rounding of the moved values (under
+		# a tenth of FOOD_BOUND_SLACK_TM), which the bound gives up one slack's room for.
+		if _shown_epoch == epoch:
+			_shown_epoch = _index_epoch
+		if not food_bound.is_empty() and food_bound[4] == epoch and food_bound[2] > FOOD_BOUND_SLACK_TM:
+			_food_bound = PackedFloat64Array([food_bound[0] - offset.x, food_bound[1] - offset.y,
+				food_bound[2] - FOOD_BOUND_SLACK_TM, food_bound[3], _index_epoch])
 	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
 
 
@@ -241,6 +368,9 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		for c in sim.creatures.creatures.duplicate():
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
+	_ahead.clear()
+	_wake_bound.clear()
+	_swum_from = Vector2.INF
 	var old_x := origin_x_am
 	var old_y := origin_y_am
 	set_origin_abs(sim, x_am, y_am)
@@ -400,15 +530,34 @@ func snapshot(sim: PoolSim) -> Dictionary:
 ## creature's reach touches it (its site's chunks, or the leash disc of a creature with no site; a
 ## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order.
 func _unload(sim: PoolSim) -> void:
-	var held := _held_keys(sim)
-	var body := sim.motion.position
-	var any := false
-	for key in _keys.duplicate():
-		if nearest(key, body) > float(rings.unload) and not held.has(key):
-			_unload_chunk(sim, key)
-			any = true
-	if any:
-		recompute_caps(sim)   # after the unloaded sites' creatures left (G7)
+	var a := abs_of_local(sim.motion.position)   # nearest() for every key, the body's part once
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var ring := float(rings.unload)
+	if _within_bound(_unload_bound, x, y, ring):
+		return   # every loaded chunk is still within the ring
+	var held: Variant = null   # the holds are only needed for a chunk beyond the ring
+	var gone: Array[Vector2i] = []
+	var far := 0.0
+	var size_tm := chunk_tm
+	for key in _keys:
+		# _square_distance written out.
+		var x0 := key.x * size_tm
+		var y0 := key.y * size_tm
+		var dx := maxf(maxf(x0 - x, x - (x0 + size_tm)), 0.0)
+		var dy := maxf(maxf(y0 - y, y - (y0 + size_tm)), 0.0)
+		var d := sqrt(dx * dx + dy * dy)
+		far = maxf(far, d)
+		if d > ring:
+			if held == null:
+				held = _held_keys(sim)
+			if not held.has(key):
+				gone.append(key)
+	_unload_bound = _bound_at(x, y, ring - far, ring) if far <= ring else PackedFloat64Array()
+	for key in gone:
+		_unload_chunk(sim, key)
+	if not gone.is_empty():
+		_apply_caps(sim)   # after the unloaded sites' creatures left (G7)
 
 
 ## The chunks awake creatures hold: a site creature its site's reach chunks, a creature with no site
@@ -431,21 +580,30 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 ## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene.
 func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch: WorldChunk = _chunks[key]
-	var mine := {}
-	for id in sites:
-		if sites[id].home_chunk == key:
-			mine[id] = true
+	if _home_count != sites.size():
+		_index_homes()
+	var mine: Dictionary = _home_sites.get(key, {})
+	_home_sites.erase(key)
+	_home_count -= mine.size()
 	if sim.creatures != null and not mine.is_empty():
 		for c in sim.creatures.creatures.duplicate():
 			if mine.has(c.site_id):
 				sim.creatures.remove(c, "unloaded", sim.tick, false)
-		sim.creatures.queue = sim.creatures.queue.filter(func(e: Dictionary) -> bool: return not mine.has(e.site))
+		var kept: Array[Dictionary] = []
+		for e in sim.creatures.queue:
+			if not mine.has(e.site):
+				kept.append(e)
+		sim.creatures.queue = kept
 	for id in mine:
 		sites.erase(id)
+		_forget_role(id)
 	for z in ch.zones:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
+		var was := sim.region.zone(z.id)
 		sim.region.remove_zone(z.id)
+		_zones_version += 1
+		_unindex_zone(sim.region, was)
 		_zone_abs.erase(z.id)
 		_zone_chunk.erase(z.id)
 		_fill.erase(z.id)
@@ -453,6 +611,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
+	_load_bound = PackedFloat64Array()   # a missing chunk now
 	_emit(sim, {"type": "chunk_unloaded", "key": key})
 
 
@@ -507,19 +666,48 @@ func _nearest_missing(body: Vector2, ring: float) -> Variant:
 	var a := abs_of_local(body)
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
+	if _within_bound(_load_bound, x, y, ring):
+		return null   # still no missing chunk within the ring
 	var best: Variant = null
 	var best_d := INF
+	# The ring's box, scanned within the bound's wider box (every chunk outside that lies at least
+	# `wide` away); the nearest missing chunk of the wider box sets the bound.
+	var kx0 := floori((x - ring) / chunk_tm)
+	var kx1 := floori((x + ring) / chunk_tm)
+	var ky0 := floori((y - ring) / chunk_tm)
+	var ky1 := floori((y + ring) / chunk_tm)
+	var wide := ring + LOAD_BOUND_TM
+	var nearest_d := wide
 	# Keys run (y, x), so the first of equal distances is the least key.
-	for ky in range(floori((y - ring) / chunk_tm), floori((y + ring) / chunk_tm) + 1):
-		for kx in range(floori((x - ring) / chunk_tm), floori((x + ring) / chunk_tm) + 1):
+	for ky in range(floori((y - wide) / chunk_tm), floori((y + wide) / chunk_tm) + 1):
+		for kx in range(floori((x - wide) / chunk_tm), floori((x + wide) / chunk_tm) + 1):
 			var key := Vector2i(kx, ky)
 			if _chunks.has(key):
 				continue
 			var d := _square_distance(key, x, y)
-			if d <= ring and d < best_d:
+			nearest_d = minf(nearest_d, d)
+			if d <= ring and d < best_d and kx >= kx0 and kx <= kx1 and ky >= ky0 and ky <= ky1:
 				best = key
 				best_d = d
+	_load_bound = _bound_at(x, y, nearest_d - ring, ring) if best == null else PackedFloat64Array()
 	return best
+
+
+## A ring bound for a body at absolute (x, y) that may move `room` tm (less the rounding slack), or
+## empty when it may not move at all.
+static func _bound_at(x: float, y: float, room: float, ring: float) -> PackedFloat64Array:
+	var r := room - RING_BOUND_SLACK_TM
+	return PackedFloat64Array([x, y, r, ring]) if r > 0.0 else PackedFloat64Array()
+
+
+## Whether a body at absolute (x, y) lies strictly within `bound`'s room of where it was set, for
+## the same ring.
+static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: float) -> bool:
+	if bound.size() != 4 or bound[3] != ring:
+		return false
+	var dx := x - bound[0]
+	var dy := y - bound[1]
+	return dx * dx + dy * dy < bound[2] * bound[2]
 
 
 ## Loads one chunk: its colliders into the arena, its zones into the region (each with its own
@@ -527,22 +715,29 @@ func _nearest_missing(body: Vector2, ring: float) -> Variant:
 ## food is the same whatever route reaches it), then every awake body and the cell are settled
 ## against the new colliders, and chunk_loaded tells the scene.
 func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
-	var ch := gen.chunk(size, key.x, key.y)
+	var ch := _generated(key)
+	_loads += 1
 	var colliders: Array[Dictionary] = []
 	for s in ch.shells:
 		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
 	(sim.arena as ChunkArena).add_chunk(key, colliders)
 	for z in ch.zones:
-		sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity), float(z.growth_rate))
+		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
+			float(z.growth_rate))
 		var stream := RandomNumberGenerator.new()
 		stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(z.id), _str_plankton]))
 		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
+		_zones_version += 1
+		if fresh:
+			_index_added_zone(sim.region)
 	if sim.creatures != null:
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
+				_note_home(s.id, key)
 				sites[s.id] = _site_record(s, key)
+				_note_role(sim, s.id, str(s.species))
 				sim.creatures._enqueue(s.id, s.species, sim.tick)
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
@@ -555,8 +750,81 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
 	_chunks[key] = ch
+	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
 	_emit(sim, _chunk_loaded_event(ch))
-	recompute_caps(sim)
+	_apply_caps(sim)
+
+
+## Chunk `key` at the current size: the one generated ahead when there is one (taken), else now.
+func _generated(key: Vector2i) -> WorldChunk:
+	_check_ahead_gen()
+	var k := Vector3i(key.x, key.y, size)
+	var ch: WorldChunk = _ahead.get(k)
+	if ch == null:
+		return gen.chunk(size, key.x, key.y)
+	_ahead.erase(k)
+	_ahead_tick = 0
+	return ch
+
+
+## Forgets the chunks generated ahead unless `gen` is the generator they came from, bound to the same
+## content, species, seed and version (WorldGen.chunk's every input but the key and the size).
+func _check_ahead_gen() -> void:
+	var g := gen
+	var binding := PackedInt64Array()
+	if g != null:
+		binding = PackedInt64Array([_id_of(g.content), _id_of(g.species), g.world_seed, g.gen_version])
+	if is_same(_ahead_gen, g) and binding == _ahead_binding:
+		return
+	_ahead.clear()
+	_ahead_gen = g
+	_ahead_binding = binding
+
+
+static func _id_of(o: Object) -> int:
+	return 0 if o == null else o.get_instance_id()
+
+
+## On a tick that loads nothing: generates the missing chunk nearest the point AHEAD_LEAD_S ahead of
+## the cell along its velocity, within the load ring plus AHEAD_MARGIN_TM of it (least (distance, y,
+## x)), and keeps it; with AHEAD_KEEP kept, in place of the kept chunk farthest from that point when
+## it is nearer. A look that generates nothing waits AHEAD_REFRESH_TICKS ticks, or until a load
+## takes a kept chunk, before the next.
+func _look_ahead(sim: PoolSim) -> void:
+	if sim.tick < _ahead_tick:
+		return
+	_ahead_tick = sim.tick + AHEAD_REFRESH_TICKS
+	_check_ahead_gen()
+	var a := abs_of_local(sim.motion.position + sim.motion.velocity * AHEAD_LEAD_S)
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var ring := float(rings.load) + AHEAD_MARGIN_TM
+	var best: Variant = null
+	var best_d := INF
+	for ky in range(floori((y - ring) / chunk_tm), floori((y + ring) / chunk_tm) + 1):
+		for kx in range(floori((x - ring) / chunk_tm), floori((x + ring) / chunk_tm) + 1):
+			var key := Vector2i(kx, ky)
+			if _chunks.has(key) or _ahead.has(Vector3i(kx, ky, size)):
+				continue
+			var d := _square_distance(key, x, y)
+			if d <= ring and d < best_d:
+				best = key
+				best_d = d
+	if best == null:
+		return
+	if _ahead.size() >= AHEAD_KEEP:
+		var far: Variant = null
+		var far_d := -1.0
+		for k in _ahead:
+			var d := _square_distance(Vector2i(k.x, k.y), x, y)
+			if d > far_d:
+				far = k
+				far_d = d
+		if far_d <= best_d:
+			return
+		_ahead.erase(far)
+	_ahead[Vector3i(best.x, best.y, size)] = gen.chunk(size, best.x, best.y)
+	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
 
 
 # --- sleep and wake (step 5) ---
@@ -597,17 +865,59 @@ func _in_view(p: Vector2, r: float, d: float, view_from: Dictionary) -> bool:
 	return false
 
 
-## The sleepers step 5 will wake this tick: inside the wake ring or in view.
+## The sleepers step 5 will wake this tick: inside the wake ring or in view. Those whose site is in the
+## table are returned (their reach chunks load first); those step 5's pass visits are kept for it.
 func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 	var out := []
+	_waking_view = view_from
+	_waking.clear()
+	_waking_d.clear()
 	if sim.creatures == null:
 		return out
+	var wake_r := float(rings.wake)
+	var places: Array = view_from.places
+	var far := float(view_from.far)
+	var bounded := places.size() == 1
+	if bounded and _swum_from.is_finite() and absf(far - _bound_view[0]) <= WAKE_FAR_TOLERANCE_TM \
+			and wake_r == _bound_view[1] and view_margin == _bound_view[2]:
+		var place: Vector2 = places[0]
+		_swum += place.distance_to(_swum_from)
+		_swum_from = place
+	else:
+		_wake_bound.clear()
+		_swum = 0.0
+		_swum_from = places[0] if bounded else Vector2.INF
+		_bound_view = PackedFloat64Array([far, wake_r, view_margin])
+	if _wake_bound.size() > sim.creatures.creatures.size() + 64:
+		_wake_bound.clear()   # mostly creatures gone since: measure the rest again
+	var reach := _bound_view[0] + WAKE_FAR_TOLERANCE_TM + view_margin + 0.01   # _in_view's own cut, plus r
 	for c in sim.creatures.creatures:
-		if c.asleep and sites.has(c.site_id):
-			var d := _wake_distance(c.motion.position, view_from)
-			if d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
+		if not c.asleep:
+			continue
+		var b: Variant = _wake_bound.get(c)
+		if b != null and _swum < b[1] and b[0] == c.motion.position:
+			continue
+		var passed := _in_pass(c)
+		var sited := sites.has(c.site_id)
+		if not passed and not sited:
+			continue
+		var at := c.motion.position
+		var r := c.phenotype.radius
+		var d := _wake_distance(at, view_from)
+		if d < wake_r or _in_view(at, r, d, view_from):
+			if sited:
 				out.append(c)
+			if passed:
+				_waking.append(c)
+				_waking_d.append(d)
+		elif bounded:
+			_wake_bound[c] = [at, _swum + d - maxf(wake_r, reach + r) - WAKE_SLACK_TM]
 	return out
+
+
+## Whether step 5's pass visits `c`: scripted and siteless creatures never sleep (C-6).
+static func _in_pass(c: CreatureField.Creature) -> bool:
+	return not c.scripted and c.brain != null and not c.site_id.is_empty()
 
 
 ## Step 5: first the hold pass (B-6, _hold_pass), then one pass over the site creatures in (slot, or
@@ -616,35 +926,48 @@ func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 ## sleeper wakes inside the wake ring or in view. Then over caps.awake the farthest calm creature
 ## between the rings sleeps (none: awake_overflow counts once), and over caps.sleepers the farthest
 ## sleeper is evicted and its site requeued (D-12). Scripted and siteless creatures never sleep (C-6).
+##
+## The sleepers that wake are _wakers' (the same test on the same view, nothing having moved them
+## since), woken after every awake creature, as their key orders them. A sleeper's distance is only
+## needed for an eviction, so it is measured only then.
 func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 	var field := sim.creatures
 	if field == null:
 		return
+	if not is_same(_waking_view, view_from):
+		_wakers(sim, view_from)
+	_waking_view = null
 	_hold_pass(sim, view_from)
 	var buckets: Array = []
-	for i in CreatureField.ASLEEP_KEY + 1:
+	for i in CreatureField.ASLEEP_KEY:
 		buckets.append([])
-	for c in field.creatures:   # sorted (number, id), so each bucket is too
-		if not c.scripted and c.brain != null and not c.site_id.is_empty():
-			buckets[CreatureField.ASLEEP_KEY if c.asleep else c.think_slot].append(c)
+	for c in field.awake():   # sorted (number, id), so each bucket is too
+		if _in_pass(c):
+			buckets[c.think_slot].append(c)
 	var list: Array = []
 	for b in buckets:
 		list.append_array(b)
 	var dist := {}
+	var sleep_r := float(rings.sleep)
 	for c in list:
 		var d := _wake_distance(c.motion.position, view_from)
 		dist[c.id] = d
-		if not c.asleep:
-			if _calm(c) and d > float(rings.sleep) and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
-					and not field.engaged_on_player.has(c.id):
-				field.sleep(c, sim.tick)
-		elif d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
-			field.wake(c, sim.tick)
+		if _calm(c) and d > sleep_r and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
+				and not field.engaged_on_player.has(c.id):
+			field.sleep(c, sim.tick)
+	for i in _waking.size():
+		var c := _waking[i]
+		dist[c.id] = _waking_d[i]
+		field.wake(c, sim.tick)
+		list.append(c)
+	_waking.clear()
 	while field.awake().size() > int(caps.awake):
 		var pick: CreatureField.Creature = null
 		for c in list:
+			if c.asleep:
+				continue
 			var d: float = dist[c.id]
-			if c.asleep or not _calm(c) or field.engaged_on_player.has(c.id) or d < float(rings.wake) or d > float(rings.sleep):
+			if not _calm(c) or field.engaged_on_player.has(c.id) or d < float(rings.wake) or d > sleep_r:
 				continue
 			if pick == null or d > dist[pick.id] or (d == dist[pick.id] and c.id < pick.id):
 				pick = c
@@ -652,14 +975,24 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 			counters.awake_overflow += 1
 			break
 		field.sleep(pick, sim.tick)
+	if field.creatures.size() - field.awake().size() <= int(caps.sleepers):
+		return
+	# Every sleeper the pass visits (those it put to sleep are among them), with its distance.
+	var asleep: Array[CreatureField.Creature] = []
+	for c in field.creatures:
+		if c.asleep and _in_pass(c):
+			asleep.append(c)
+			if not dist.has(c.id):
+				dist[c.id] = _wake_distance(c.motion.position, view_from)
 	while field.creatures.size() - field.awake().size() > int(caps.sleepers):
 		var e: CreatureField.Creature = null
-		for c in list:
-			if c.asleep and (e == null or dist[c.id] > dist[e.id] or (dist[c.id] == dist[e.id] and c.id < e.id)):
+		for c in asleep:
+			if e == null or dist[c.id] > dist[e.id] or (dist[c.id] == dist[e.id] and c.id < e.id):
 				e = c
 		if e == null:
 			break
 		field.remove(e, "evicted", sim.tick, true)
+		asleep.erase(e)   # still marked asleep: left in the list it would be picked again forever
 		counters.evictions += 1
 
 
@@ -677,8 +1010,16 @@ func _hold_pass(sim: PoolSim, view_from: Dictionary) -> void:
 			sim.creatures.let_go(c, sim.tick)
 
 
+## Whether the creature's (state/phase) is in CALM, without building the key (a pass asks for every
+## awake creature; tests/test_perf_world_caches.gd holds the two together).
 static func _calm(c: CreatureField.Creature) -> bool:
-	return CALM.has(c.brain.state + "/" + c.brain.phase)
+	var m := c.brain
+	var state := m.state
+	if state == "forage":
+		return m.phase == "seek" or m.phase == "eat"
+	if state == "rest":
+		return m.phase == "lurk" or m.phase == ""
+	return state == "wander" and m.phase == "patrol"
 
 
 ## {creature id: think slot} of the awake creatures, sorted by id.
@@ -692,20 +1033,79 @@ func _slots(sim: PoolSim) -> Dictionary:
 
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the
 ## species, so two species sharing a role share the cap). Roles with no loaded site get 0. A niche
-## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap.
+## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap. This counts
+## the table afresh, for a caller that changed it; the stream's own loads and unloads keep the count.
 func recompute_caps(sim: PoolSim) -> void:
 	if sim.creatures == null:
+		return
+	_site_role.clear()
+	_role_sites.clear()
+	for id in sites:
+		_note_role(sim, id, str(sites[id].species))
+	_apply_caps(sim)
+
+
+## recompute_caps from the kept count (counted afresh if the table changed size behind it).
+func _apply_caps(sim: PoolSim) -> void:
+	if sim.creatures == null:
+		return
+	if _site_role.size() != sites.size():
+		recompute_caps(sim)
 		return
 	var per_role := {}
 	for id in sim.species.species_ids():
 		per_role[str(sim.species.niche_of(id).role)] = 0
-	for id in sites:
-		var role := str(sim.species.niche_of(str(sites[id].species)).role)
-		per_role[role] = int(per_role.get(role, 0)) + 1
+	for role in _role_sites:
+		per_role[role] = int(per_role.get(role, 0)) + int(_role_sites[role])
 	var roles := per_role.keys()
 	roles.sort()
 	for role in roles:
 		sim.region.set_niche(role, per_role[role])
+
+
+## Site `id` entered under its home chunk `key` (before its record goes into the table).
+func _note_home(id: String, key: Vector2i) -> void:
+	if _home_count != sites.size():
+		_index_homes()
+	if sites.has(id):
+		var was: Vector2i = sites[id].home_chunk
+		_home_sites[was].erase(id)
+		_home_count -= 1
+	if not _home_sites.has(key):
+		_home_sites[key] = {}
+	_home_sites[key][id] = true
+	_home_count += 1
+
+
+## _home_sites counted afresh from the table.
+func _index_homes() -> void:
+	_home_sites.clear()
+	for id in sites:
+		var key: Vector2i = sites[id].home_chunk
+		if not _home_sites.has(key):
+			_home_sites[key] = {}
+		_home_sites[key][id] = true
+	_home_count = sites.size()
+
+
+## Site `id` (of `species_id`) counted in its role, once.
+func _note_role(sim: PoolSim, id: String, species_id: String) -> void:
+	_forget_role(id)
+	var role := str(sim.species.niche_of(species_id).role)
+	_site_role[id] = role
+	_role_sites[role] = int(_role_sites.get(role, 0)) + 1
+
+
+func _forget_role(id: String) -> void:
+	if not _site_role.has(id):
+		return
+	var role: String = _site_role[id]
+	_site_role.erase(id)
+	var n := int(_role_sites[role]) - 1
+	if n == 0:
+		_role_sites.erase(role)
+	else:
+		_role_sites[role] = n
 
 
 ## A site's local record from its WorldChunk entry (absolute) and its home chunk: its local home,
@@ -737,19 +1137,53 @@ static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) 
 
 
 ## Every local value that is derived from an absolute one, again from its absolute value (zones
-## with local_of_tm written out, as sites are).
-func _rederive(sim: PoolSim) -> void:
+## with local_of_tm written out, as sites are). With the food view's index current, a zone's
+## absolute centre comes from its packed copy there (the same float64 values as _zone_abs); a zone
+## that is not the index's own at its place sends the index to a rebuild. True when the index kept
+## its places and every zone in it has an absolute centre (so each moved with the origin).
+func _rederive(sim: PoolSim) -> bool:
 	var k := _tm_to_am
 	var ox := origin_x_am
 	var oy := origin_y_am
 	if sim.arena is ChunkArena:
 		(sim.arena as ChunkArena).set_origin(ox / k, oy / k)
+	var indexed := _zones_indexed == _zones_version and _zone_refs.size() == sim.region.zones.size()
+	var refs := _zone_refs
+	var ax := _zone_ax
+	var ay := _zone_ay
+	var cs := _zone_c
+	var moved := true
+	var i := 0
 	for z in sim.region.zones:
-		var a: Variant = _zone_abs.get(z.id)
-		if a != null:
-			z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
-	for id in sites:
-		_derive_site_local(sites[id], k, ox, oy)
+		if indexed and is_same(refs[i], z):
+			if not is_nan(ax[i]):
+				var c := Vector2((ax[i] * k - ox) / k, (ay[i] * k - oy) / k)
+				z.center = c
+				cs[i] = c   # the food view's index moves with its zones
+			else:
+				cs[i] = z.center
+				moved = false
+		else:
+			indexed = false
+			var a: Variant = _zone_abs.get(z.id)
+			if a != null:
+				z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
+		i += 1
+	_zones_version += 1
+	_index_epoch += 1   # the centres moved
+	if indexed:
+		_zones_indexed = _zones_version
+	else:
+		_index_zones(sim.region)
+	# _derive_site_local written out.
+	for rec: Dictionary in sites.values():
+		var a: PackedFloat64Array = rec.abs_tm
+		rec.home = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
+		var t: Dictionary = rec.territory
+		if not t.is_empty():
+			t.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
+		rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
+	return indexed and moved
 
 
 ## chunk_loaded's payload (spine 3.12), in the frame in force now.
@@ -797,41 +1231,90 @@ static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 ## Last, tile_entered when the cell's tile changed.
 func _food_view(sim: PoolSim) -> void:
 	var body := sim.motion.position
-	var food := {}
-	var reach := {}
-	for z in sim.region.zones:
-		var d := body.distance_to(z.center) - float(z.radius)
-		if d <= float(rings.food):
-			food[z.id] = true
-			reach[z.id] = d
+	_index_zones(sim.region)
+	var ring := float(rings.food)
+	var at: PackedInt32Array              # the food zones' places in the index, in zone order
+	var reach := PackedFloat64Array()     # and their distances (measured again for a trim when kept)
+	var bound := _food_bound
+	if not bound.is_empty() and bound[3] == ring and bound[4] == _index_epoch \
+			and Vector2(bound[0], bound[1]).distance_to(body) < bound[2]:
+		at = _food_at   # the same zones within the ring as the last measure
+	else:
+		at = PackedInt32Array()
+		var room := INF
+		for i in _zone_ids.size():
+			var d := body.distance_to(_zone_c[i]) - _zone_r[i]
+			if d <= ring:
+				at.append(i)
+				reach.append(d)
+			room = minf(room, absf(d - ring))
+		_food_at = at
+		room -= FOOD_BOUND_SLACK_TM
+		_food_bound = PackedFloat64Array([body.x, body.y, room, ring, _index_epoch]) if room > 0.0 else PackedFloat64Array()
+	var plankton := sim.plankton
+	var most := plankton.max_items_per_zone
+	var unit := plankton.unit_energy
+	var counts := PackedInt32Array()      # and their item targets (PlanktonField.target_count written out)
 	var total := 0
-	for id in food:
-		total += sim.plankton.target_count(sim.region.zone(id))
-	if total > int(caps.food_items):
+	for i in at:
+		var n := mini(most, floori(float(_zone_refs[i].amount) / unit + PlanktonField.COUNT_EPSILON))
+		counts.append(n)
+		total += n
+	var shown := at                       # the food zones less those trimmed
+	var cap := int(caps.food_items)
+	if total > cap:
+		if reach.size() != at.size():
+			for i in at:
+				reach.append(body.distance_to(_zone_c[i]) - _zone_r[i])
+		# The food zones farthest first, ties to the lower id (picked one at a time, as few are needed),
+		# each trimmed when it is out of view, until the rest fit.
 		var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
-		var out: Array = []
-		for id in food:
-			var z := sim.region.zone(id)
-			if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) > view_margin + float(z.radius):
-				out.append(id)
-		out.sort_custom(func(a: String, b: String) -> bool:
-			return reach[a] > reach[b] or (reach[a] == reach[b] and a < b))
-		for id in out:
-			if total <= int(caps.food_items):
-				break
-			food.erase(id)
-			total -= sim.plankton.target_count(sim.region.zone(id))
+		var box := _box(quad)
+		var cut := PackedByteArray()
+		cut.resize(at.size())
+		var left := range(at.size())
+		while total > cap and not left.is_empty():
+			var best := 0
+			for m in range(1, left.size()):
+				var j: int = left[m]
+				var b: int = left[best]
+				if reach[j] > reach[b] or (reach[j] == reach[b] and _zone_ids[at[j]] < _zone_ids[at[b]]):
+					best = m
+			var j: int = left[best]
+			left.remove_at(best)
+			if not _out_of_view(quad, box, _zone_c[at[j]], _zone_r[at[j]]):
+				continue
+			var id := _zone_ids[at[j]]
+			cut[j] = 1
+			total -= counts[j]
 			if not _trimmed.has(id):
 				_trimmed[id] = true
 				counters.food_trimmed += 1
+		shown = PackedInt32Array()
+		for m in at.size():
+			if cut[m] == 0:
+				shown.append(at[m])
+	# The food set: the one given to the plankton last time while the same zones are shown (nothing
+	# else changes it), else built afresh in zone order.
+	var food: Dictionary = plankton.active_zones
+	var same := shown == _shown_at and _index_epoch == _shown_epoch and is_same(food, _shown_food)
+	if not same:
+		food = {}
+		for i in shown:
+			food[_zone_ids[i]] = true
 	# A zone stays counted as trimmed until it shows food again (or unloads).
 	for id in _trimmed.keys():
 		if food.has(id) or sim.region.zone(id).is_empty():
 			_trimmed.erase(id)
-	for id in sim.plankton.active_zones.keys():
-		if not food.has(id):
-			sim.plankton.drop_zone(id)
-	sim.plankton.active_zones = food
+	if not same:
+		if food != plankton.active_zones:   # the same zones (in a new index): none to drop
+			for id in plankton.active_zones.keys():
+				if not food.has(id):
+					plankton.drop_zone(id)
+		plankton.active_zones = food
+		_shown_at = shown
+		_shown_epoch = _index_epoch
+		_shown_food = food
 	sim.carrion.drop_beyond(body, float(rings.food))
 	var fill: Array = food.keys() if _fill_all else _fill.keys()
 	fill.sort()
@@ -845,6 +1328,91 @@ func _food_view(sim: PoolSim) -> void:
 		_cell_tile = tile
 		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
 		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
+
+
+## The zone add_zone just appended, appended to the index too when the index was current before it
+## (so a load does not rebuild the index: the same entries, in the same order as a rebuild's).
+func _index_added_zone(region: EcologyRegion) -> void:
+	if _zones_indexed != _zones_version - 1 or _zone_refs.size() + 1 != region.zones.size():
+		return
+	var z: Dictionary = region.zones.back()
+	var a: Variant = _zone_abs.get(z.id)
+	_zone_ids.append(z.id)
+	_zone_c.append(z.center)
+	_zone_r.append(float(z.radius))
+	_zone_refs.append(z)
+	_zone_ax.append(NAN if a == null else float(a[0]))
+	_zone_ay.append(NAN if a == null else float(a[1]))
+	_zones_indexed = _zones_version
+	_index_epoch += 1
+
+
+## Zone `z`, just removed from the region (which keeps the others in order), taken out of the index
+## too when the index was current before it.
+func _unindex_zone(region: EcologyRegion, z: Dictionary) -> void:
+	if z.is_empty() or _zones_indexed != _zones_version - 1 or _zone_refs.size() - 1 != region.zones.size():
+		return
+	var i := _zone_ids.find(z.id)
+	if i < 0 or not is_same(_zone_refs[i], z):
+		return
+	_zone_ids.remove_at(i)
+	_zone_c.remove_at(i)
+	_zone_r.remove_at(i)
+	_zone_refs.remove_at(i)
+	_zone_ax.remove_at(i)
+	_zone_ay.remove_at(i)
+	_zones_indexed = _zones_version
+	_index_epoch += 1
+
+
+## Rebuilds the packed zone index when the zones changed since it was built.
+func _index_zones(region: EcologyRegion) -> void:
+	if _zones_indexed == _zones_version and _zone_refs.size() == region.zones.size():
+		return
+	_zone_ids.clear()
+	_zone_c.clear()
+	_zone_r.clear()
+	_zone_refs.clear()
+	_zone_ax.clear()
+	_zone_ay.clear()
+	for z in region.zones:
+		_zone_ids.append(z.id)
+		_zone_c.append(z.center)
+		_zone_r.append(float(z.radius))
+		_zone_refs.append(z)
+		var a: Variant = _zone_abs.get(z.id)
+		_zone_ax.append(NAN if a == null else float(a[0]))
+		_zone_ay.append(NAN if a == null else float(a[1]))
+	_zones_indexed = _zones_version
+	_index_epoch += 1
+
+
+## A footprint's bounding box [min x, min y, max x, max y] (empty for an empty footprint).
+static func _box(quad: PackedVector2Array) -> PackedFloat64Array:
+	if quad.is_empty():
+		return PackedFloat64Array()
+	var box := PackedFloat64Array([INF, INF, -INF, -INF])
+	for v in quad:
+		box[0] = minf(box[0], v.x)
+		box[1] = minf(box[1], v.y)
+		box[2] = maxf(box[2], v.x)
+		box[3] = maxf(box[3], v.y)
+	return box
+
+
+## Whether a zone at `c` of radius `r` lies wholly out of the footprint `quad` grown by the spawn
+## view's margin. A centre more than the margin, the radius and 0.01 tm (float32 rounding) from the
+## footprint's box is farther still from the footprint, so it needs no edge test.
+func _out_of_view(quad: PackedVector2Array, box: PackedFloat64Array, c: Vector2, r: float) -> bool:
+	if quad.is_empty():
+		return true
+	var limit := view_margin + r
+	var dx := maxf(maxf(box[0] - c.x, c.x - box[2]), 0.0)
+	var dy := maxf(maxf(box[1] - c.y, c.y - box[3]), 0.0)
+	var far := limit + 0.01
+	if dx * dx + dy * dy > far * far:
+		return true
+	return ViewFootprint.distance_outside(quad, c) > limit
 
 
 ## The distance from the absolute point (x, y) (tm) to the square of chunk `key`, in float64.

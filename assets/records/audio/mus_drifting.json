@@ -1,0 +1,26 @@
+{
+  "id": "mus_drifting",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_drifting.ogg",
+  "purpose": "Gentle water-level music (\"jellyfish drifting by\"): the calm playlist.",
+  "role": "calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 96.0,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Drifting",
+      "author": "some-weirdo",
+      "url": "https://opengameart.org/content/drifting-0",
+      "download": "https://opengameart.org/sites/default/files/drifting_0.ogg",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none"
+    }
+  ]
+}

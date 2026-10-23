@@ -16,11 +16,11 @@ extends SceneTree
 ##   -- --phase=endless_continue --world=endless --slot=user://smoke/endless.json
 ##       A new process continues that slot: the cell is back at its absolute place within 1e-6 tm,
 ##       the same view set is loaded with the same anchors and first shells, under the same tile,
-##       and the first step does not rebase. The column stands at the checkpoint, the arrow points
+##       and the first step does not rebase. The column stands beside the checkpoint, the arrow points
 ##       home and the overlay reads the distance. A meal ghost in flight keeps its place across a
 ##       dev rebase (the scene tree steps its tween, which the unit runner cannot). Then the cell
 ##       dies: the respawn message waits for the respawn the next step performs (a teleport home,
-##       300 tm out), and then the column stands at home and the arrow hides.
+##       300 tm out), and then the column stands beside home and the arrow hides.
 ##   -- --phase=fps --world=endless --seed=4245 --slot=... (--fps-out=FILE | --compare=FILE)
 ##       A new omnivore swims north-east; at sim tick FPS_TICK the provider records the sim's
 ##       state hash and the SHA-256 of its snapshot, and the pool pauses. --fps-out writes the
@@ -274,9 +274,9 @@ func _endless_continue() -> void:
 	await _frames(OVERLAY_FRAMES)
 	var cp := w.checkpoint_am
 	var column := pool.markers.column()
-	var column_at := PlaneSpace.to_world(w.local_of_abs(cp[0], cp[1]))
+	var column_at := PlaneSpace.to_world(WorldMarkers.column_point(w.local_of_abs(cp[0], cp[1])))
 	_check(column != null and column.position.distance_to(column_at) <= COLUMN_TOLERANCE_M,
-		"the column stands at the checkpoint (%s, %s)" % [column.position if column != null else null, column_at])
+		"the column stands beside the checkpoint (%s, %s)" % [column.position if column != null else null, column_at])
 	var arrow := pool.markers.arrow()
 	var home := WorldMarkers.origin_arrow(PackedFloat64Array(want), PackedFloat64Array([ORIGIN_AM.x, ORIGIN_AM.y]))
 	var yaw := PlaneSpace.yaw_for_heading((home.direction as Vector2).angle())
@@ -285,6 +285,11 @@ func _endless_continue() -> void:
 	var label: Dictionary = main.hud.world_overlay.label if main.hud.world_overlay != null else {}
 	var words := Hud.WorldOverlay.ARROW_TEXT % WorldMarkers.distance_text(Vector2(float(want[0]), float(want[1])).length())
 	_check(str(label.get("text", "")) == words, "the overlay reads '%s' (%s)" % [words, label.get("text", "")])
+	var panels := main.hud.panel_rects()
+	var pip: Dictionary = main.hud.world_overlay.pip if main.hud.world_overlay != null else {}
+	_check(not panels.is_empty() and (not main.hud.controls.visible or main.hud.controls.get_global_rect() in panels),
+		"the HUD lists the panels showing (%d)" % panels.size())
+	_check(pip.is_empty() or Hud.WorldOverlay._clear(pip, panels), "the pip and its words keep off them (%s)" % [pip.get("at")])
 	_end()
 
 	_begin("ghost across a rebase")
@@ -307,9 +312,10 @@ func _endless_continue() -> void:
 		_check(bool(_respawn_seen.teleport), "and the world moved home (teleport: %s)" % _respawn_seen.teleport)
 	await _frames(2)
 	cp = w.checkpoint_am
-	column_at = PlaneSpace.to_world(w.local_of_abs(cp[0], cp[1]))
+	var home_at := w.local_of_abs(cp[0], cp[1])
+	column_at = PlaneSpace.to_world(WorldMarkers.column_point(home_at))
 	_check(Vector2(cp[0], cp[1]) == HOME_AM and column != null and column.position.distance_to(column_at) <= COLUMN_TOLERANCE_M
-		and Vector2(column_at.x, column_at.z).length() < 1.0,
+		and home_at.length() < 1.0,
 		"the column stands at home, by the cell (%s)" % [column.position if column != null else null])
 	_check(arrow != null and not arrow.visible, "and the arrow hides within 40 tm of the origin")
 	_end()

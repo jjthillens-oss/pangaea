@@ -16,6 +16,11 @@ const KEYS := {
 const COMMON_KEYS := ["id", "kind", "band", "glb", "record", "scale", "yaw_rule", "dressings", "placeholder", "approved"]
 const YAW_RULES := {"shell": ["free", "slot"], "landmark": ["free", "steps_90"], "rare": ["fixed"], "marker": ["fixed"]}
 const BUDGETS := {"shell": 1300, "landmark": 6000, "rare": 12000, "marker": 800}
+const LAIR_ID := "marker_lair_mouth"
+const LAIR_NODE := "LairMouth"
+const LAIR_INNER := 1.3
+const LAIR_OUTER := 2.6
+const LAIR_FLOOR := -1.2
 const MAX_COLLIDER_R := 4.0
 const HOME_ROCKS := ["rock_a", "rock_b", "rock_c"]
 const BAND_HEIGHTS: Array[float] = [-0.45, -0.3375, -0.225, -0.1125, 0.0, 0.1125, 0.225, 0.3375, 0.45]
@@ -211,7 +216,8 @@ func test_every_kit_piece_meets_the_art_contract() -> void:
 		var id: String = a.id
 		var rec := _record(a.record)
 		var scene: Node3D = (load(a.glb) as PackedScene).instantiate()
-		check(scene.find_child(_pascal(id), true, false) != null, "%s: root mesh %s" % [id, _pascal(id)])
+		var root_name := LAIR_NODE if id == LAIR_ID else _pascal(id)
+		check(scene.find_child(root_name, true, false) != null, "%s: root mesh %s" % [id, root_name])
 		for d: Dictionary in a.dressings:
 			if d.growth != "":
 				check(scene.find_child(d.growth, true, false) != null, "%s: growth node %s" % [id, d.growth])
@@ -264,6 +270,18 @@ func test_every_kit_piece_meets_the_art_contract() -> void:
 			"marker":
 				if id == "marker_checkpoint_column":
 					check(box.size.x <= 0.5 + 1e-3 and box.size.z <= 0.5 + 1e-3, "%s: at most 0.5 wide" % id)
+				elif id == LAIR_ID:
+					# docs/s2/lurker-lair-mouth-spec.md: authored at the Lurker's radius R = 1, origin at the ring's
+					# centre on the lip top, everything below it, the hollow's floor at -1.2, outer radius about 2.6,
+					# and the horseshoe open toward +X (the lunge), so nothing stands in the opening near the lip.
+					check(box.end.y <= 1e-3, "%s: all geometry at or below the lip top, got %.3f" % [id, box.end.y])
+					check(box.position.y >= LAIR_FLOOR - 0.1, "%s: floor at about %.1f, got %.3f" % [id, LAIR_FLOOR, box.position.y])
+					var reach := 0.0
+					for v in verts:
+						reach = maxf(reach, Vector2(v.x, v.z).length())
+						if v.x > 0.0 and absf(atan2(-v.z, v.x)) < deg_to_rad(40.0):
+							check(v.y < -0.5 or Vector2(v.x, v.z).length() < LAIR_INNER + 0.05, "%s: the opening toward +X is clear" % id)
+					check(reach <= LAIR_OUTER * 1.15, "%s: outer radius about %.1f, got %.2f" % [id, LAIR_OUTER, reach])
 				else:
 					check(box.size.y <= 0.1 and maxf(box.size.x, box.size.z) <= 1.5, "%s: flat and at most 1.5 long" % id)
 		# No surface near the food or threat hue.
@@ -279,3 +297,49 @@ func test_every_kit_piece_meets_the_art_contract() -> void:
 						var h := _lab_hue(mat.albedo_color)
 						check(_hue_gap(h, FOOD_HUE) >= HUE_GAP and _hue_gap(h, THREAT_HUE) >= HUE_GAP, "%s: %s hue %.0f" % [id, mat.resource_name, h])
 		scene.free()
+
+
+## CIE L* of an sRGB colour.
+func _lstar(c: Color) -> float:
+	var y := c.srgb_to_linear().get_luminance()
+	return 116.0 * pow(y, 1.0 / 3.0) - 16.0 if y > 0.008856 else 903.3 * y
+
+
+## The wayfinding markers read as soft light, never as glaring white (S1 integration pass): the
+## column is an additive, unlit, fog-free cream shaft about 6 m tall that fades at both ends and peaks
+## near L* 80; the arrow is unlit cream at about L* 85.
+func test_markers_are_soft_cream_light_not_white() -> void:
+	var column: Node = (load("res://assets/export/marker_checkpoint_column.glb") as PackedScene).instantiate()
+	var box := AABB()
+	var shader_mat: ShaderMaterial = null
+	var stack: Array[Node] = [column]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D:
+			var mesh := (n as MeshInstance3D).mesh
+			box = mesh.get_aabb()
+			shader_mat = mesh.surface_get_material(0) as ShaderMaterial
+	check_near(box.size.y, 6.0, 0.05, "column is about 6 m tall")
+	check(box.position.y < -1.0 and box.end.y > 4.0, "column runs from below the plane to well above it")
+	check(shader_mat != null, "column draws with M_CheckpointColumn.tres")
+	if shader_mat:
+		var code := shader_mat.shader.code
+		for mode in ["unshaded", "blend_add", "fog_disabled", "depth_draw_never"]:
+			check(code.contains(mode), "column shader is %s" % mode)
+		var tint: Color = shader_mat.get_shader_parameter("tint")
+		check(_lstar(tint) >= 75.0 and _lstar(tint) <= 85.0, "column peak L* %.1f is about 80" % _lstar(tint))
+		var h := _lab_hue(tint)
+		check(_hue_gap(h, FOOD_HUE) >= HUE_GAP and _hue_gap(h, THREAT_HUE) >= HUE_GAP, "column tint hue %.0f is clear of food and threat" % h)
+	column.free()
+	var arrow: Node = (load("res://assets/export/marker_origin_arrow.glb") as PackedScene).instantiate()
+	stack = [arrow]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D:
+			var mat := (n as MeshInstance3D).mesh.surface_get_material(0) as BaseMaterial3D
+			check(mat != null and mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED, "arrow is drawn unlit")
+			if mat:
+				check(_lstar(mat.albedo_color) <= 93.0, "arrow tint L* %.1f keeps its brightest texels near 85, not white" % _lstar(mat.albedo_color))
+	arrow.free()

@@ -1,0 +1,61 @@
+name: Nightly
+
+# Every night, the whole of CI runs on main (tests, smokes, export, the release check and the launch
+# on Windows). When every job passes and main has moved since the last nightly, the build is
+# published as the "nightly" prerelease: Pangaea-nightly-windows.zip with both exes and a
+# WHATS_NEW.txt listing what was merged since the previous nightly. A red night publishes nothing,
+# so the nightly always holds the last build that passed.
+on:
+  schedule:
+    - cron: "17 9 * * *"   # 09:17 UTC, early morning in the US
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find the previous nightly
+        id: previous
+        run: |
+          git fetch --force --tags
+          previous="$(git rev-parse -q --verify 'refs/tags/nightly^{commit}' || true)"
+          echo "commit=$previous" >> "$GITHUB_OUTPUT"
+          if [ "$previous" = "$GITHUB_SHA" ]; then
+            echo "Main has not moved since the last nightly ($previous); nothing to publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the Windows build
+        if: steps.previous.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pangaea-windows-${{ github.sha }}
+          path: nightly/Pangaea
+
+      - name: Write the zip and its notes
+        if: steps.previous.outputs.skip != 'true'
+        run: tools/write_nightly_notes.sh "${{ steps.previous.outputs.commit }}" > nightly/Pangaea/WHATS_NEW.txt && cat nightly/Pangaea/WHATS_NEW.txt && (cd nightly && zip -qr Pangaea-nightly-windows.zip Pangaea)
+
+      - name: Publish the nightly prerelease
+        if: steps.previous.outputs.skip != 'true'
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly nightly/Pangaea-nightly-windows.zip --prerelease --target "$GITHUB_SHA" \
+            --title "Nightly $(date -u +%Y-%m-%d) ($(git rev-parse --short HEAD))" --notes-file nightly/Pangaea/WHATS_NEW.txt

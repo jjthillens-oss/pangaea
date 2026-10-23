@@ -65,7 +65,10 @@ func test_the_column_stands_at_the_checkpoint_across_a_rebase() -> void:
 		pool.free()
 		return
 	var at_checkpoint := func() -> Vector3:
-		return PlaneSpace.to_world(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1]))
+		return PlaneSpace.to_world(WorldMarkers.column_point(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1])))
+	var checkpoint := PlaneSpace.to_world(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1]))
+	check_near(column.position.distance_to(checkpoint), WorldMarkers.COLUMN_BESIDE_TM.length(), 1e-4,
+		"beside the checkpoint, not on it")
 	check(column.position.is_equal_approx(at_checkpoint.call()), "at the checkpoint from the first frame: %s" % column.position)
 	var before := column.position
 	check(sim.debug_rebase(Vector2i(3, -2)), "a dev rebase")
@@ -79,6 +82,60 @@ func test_the_column_stands_at_the_checkpoint_across_a_rebase() -> void:
 	check(sim.debug_hurt_player(sim.state.max_health) and sim.dead, "the cell dies")
 	FakeEvents.frame(pool)
 	check(column.visible and pool.markers.visible, "the column stays while the cell is dead")
+	pool.free()
+
+
+## The cell starts next to the column, never inside it, and the column's top shows on screen at the
+## default camera (art may hand over a taller or opaque piece: its drawn height is clamped).
+func test_a_new_cell_starts_beside_the_column_and_sees_its_top() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	FakeEvents.frame(pool)
+	var column := pool.markers.column()
+	check(column != null, "the sea has a column")
+	if column == null:
+		pool.free()
+		return
+	var cell := PlaneSpace.to_plane(pool.cell_view.position)
+	var base := PlaneSpace.to_plane(column.position)
+	var radius := pool.sim.phenotype.radius
+	check(base.distance_to(cell) >= radius + 0.25 + 1.0, "a clear gap between the cell (r %.2f) and the column: %.2f tm apart" % [radius, base.distance_to(cell)])
+	var top := WorldMarkers._top_of(column) * column.scale.y
+	check(top <= WorldMarkers.COLUMN_TOP_MAX_M + 1e-4 and top > 1.0, "drawn up to %.2f m above the plane" % top)
+	var project := _projector(pool.camera)
+	var at_cell: Dictionary = project.call(pool.cell_view.position)
+	var cell_px: float = (project.call(pool.cell_view.position + Vector3.RIGHT * radius).at as Vector2).distance_to(at_cell.at)
+	var foot: Vector2 = project.call(column.position).at
+	var head: Dictionary = project.call(column.position + Vector3.UP * top)
+	check(not head.behind and Rect2(Vector2.ZERO, SCREEN).grow(-40.0).has_point(head.at),
+		"its top is on screen, 40 px clear of the edge: %s" % head.at)
+	var nearest := Geometry2D.get_closest_point_to_segment(at_cell.at, foot, head.at)
+	check(nearest.distance_to(at_cell.at) > cell_px * 1.5, "and on screen it stands beside the cell, not across it: %.0f px from its centre, the cell %.0f px across" % [nearest.distance_to(at_cell.at), cell_px * 2.0])
+	# A piece taller than the kit's, and opaque (the rough kit's 12 m pillar), is squashed to
+	# COLUMN_TOP_MAX_M; a shorter one keeps its height.
+	var tall := Node3D.new()
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.5, 12.0, 0.5)
+	box.material = StandardMaterial3D.new()
+	mesh.mesh = box
+	mesh.position.y = 4.5
+	tall.add_child(mesh)
+	mesh.owner = tall
+	var packed := PackedScene.new()
+	packed.pack(tall)
+	tall.free()
+	var path := "user://test_world_hud/tall_column.tscn"
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	check_eq(ResourceSaver.save(packed, path), OK, "a tall stand-in column saved")
+	var kit := PlacementKit.load_from()
+	kit.assets[WorldMarkers.COLUMN_ID] = {"glb": path}
+	pool.markers.setup(pool.sim, kit)
+	FakeEvents.frame(pool)
+	column = pool.markers.column()
+	check_near(WorldMarkers._top_of(column), 10.5, 1e-4, "the stand-in reaches 10.5 m as made")
+	check_near(WorldMarkers._top_of(column) * column.scale.y, WorldMarkers.COLUMN_TOP_MAX_M, 1e-4, "and is drawn to the cap")
+	check_eq(WorldMarkers.column_scale(3.0), 1.0, "a shorter piece keeps its height")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	pool.free()
 
 
@@ -112,6 +169,81 @@ func test_the_column_pip_shows_only_when_the_column_is_off_screen() -> void:
 		check(rect.has_point(at) and to_edge <= ThreatIndicators.MARGIN_PX + 0.01, "inside the screen, %.1f px from its edge" % to_edge)
 		check(at.x > SCREEN.x * 0.5, "on the side the column is (east)")
 	check(overlay.label.is_empty(), "no distance label while the arrow is hidden")
+	hud.free()
+	pool.free()
+
+
+func test_the_pip_and_its_words_keep_off_the_panels() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var world := pool.sim.world
+	var hud := _hud(pool)
+	var overlay := hud.world_overlay
+	var rect := Rect2(Vector2.ZERO, SCREEN)
+	var project := _projector(pool.camera)
+	# The panels where hud.tscn lays them out at 1920 x 1080 (read off the running game): status,
+	# points, a message, a hint and the controls (bottom left, 30 s from a new lineage); the toasts
+	# as a box wide and tall enough for several.
+	var controls := Rect2(32.0, 691.0, 500.0, 361.0)
+	var panels: Array[Rect2] = [Rect2(32.0, 28.0, 480.0, 176.0), Rect2(1500.0, 28.0, 388.0, 64.0),
+		Rect2(1560.0, 102.0, 328.0, 220.0), Rect2(842.0, 28.0, 236.0, 64.0), Rect2(759.0, 888.0, 402.0, 64.0), controls]
+	var home: PackedFloat64Array = world.checkpoint_am
+	var band := rect.grow(-ThreatIndicators.MARGIN_PX)
+	var font := overlay.get_theme_default_font()
+	var under := 0
+	for i in 72:
+		var bearing := TAU * i / 72.0
+		var off := Vector2.from_angle(bearing) * 200.0
+		world.checkpoint_am = PackedFloat64Array([home[0] + off.x, home[1] + off.y, 0.0, 1.0])
+		FakeEvents.frame(pool)
+		var p: Dictionary = project.call(pool.markers.column().position)
+		var natural := ThreatIndicators.edge_point(rect, p.at, p.behind, ThreatIndicators.MARGIN_PX)
+		overlay.refresh(rect, project, [])
+		check(overlay.pip.at.is_equal_approx(natural), "with no panel the pip sits where an edge arrow would (%d)" % i)
+		var plain_clear := Hud.WorldOverlay._clear(overlay.pip, panels)
+		overlay.refresh(rect, project, panels)
+		if overlay.pip.is_empty():
+			check(false, "a pip at bearing %d" % i)
+			continue
+		var at: Vector2 = overlay.pip.at
+		var reach := Hud.WorldOverlay.PIP_RADIUS_PX + Hud.WorldOverlay.PIP_OUTLINE_PX
+		var disc := Rect2(at - Vector2(reach, reach), Vector2(reach, reach) * 2.0)
+		for r in panels:
+			check(not r.intersects(disc) and not r.intersects(overlay.pip.text),
+				"bearing %d: the pip %s and its words %s keep off the panel %s" % [i, at, overlay.pip.text, r])
+		var to_band := minf(minf(at.x - band.position.x, band.end.x - at.x), minf(at.y - band.position.y, band.end.y - at.y))
+		check(absf(to_band) <= 0.01, "bearing %d: on the edge band (%.2f px off)" % [i, to_band])
+		check(rect.grow(-Hud.WorldOverlay.TEXT_PAD_PX).encloses(overlay.pip.text), "bearing %d: its words on screen" % i)
+		if plain_clear:
+			check(at.is_equal_approx(natural), "bearing %d: a clear pip stays put" % i)
+		else:
+			under += 1
+			# Nothing nearer round the band (either way) is clear.
+			var around := 2.0 * (band.size.x + band.size.y)
+			var ahead := fposmod(Hud.WorldOverlay._along(band, at) - Hud.WorldOverlay._along(band, natural), around)
+			var slid := minf(ahead, around - ahead)
+			var nearer := 0
+			for k in floori(slid / Hud.WorldOverlay.SLIDE_STEP_PX):
+				for way in [1.0, -1.0]:
+					var q := Hud.WorldOverlay._band_point(band, Hud.WorldOverlay._along(band, natural) + way * k * Hud.WorldOverlay.SLIDE_STEP_PX)
+					if Hud.WorldOverlay._clear(overlay._pip_at(font, rect, q), panels):
+						nearer += 1
+			check(nearer == 0, "bearing %d: slid %.0f px round the band, to the nearest clear point (%d nearer)" % [i, slid, nearer])
+			check(signf(at.x - SCREEN.x * 0.5) == signf(natural.x - SCREEN.x * 0.5) or absf(natural.x - SCREEN.x * 0.5) < 400.0,
+				"bearing %d: still on the column's side (%s from %s)" % [i, at, natural])
+	check(under >= 8, "some bearings put the pip under a panel and it slid (%d)" % under)
+	# The case the S1 frames showed: the column west and a little south, the pip under the controls.
+	world.checkpoint_am = PackedFloat64Array([home[0] - 200.0, home[1] + 40.0, 0.0, 1.0])
+	FakeEvents.frame(pool)
+	overlay.refresh(rect, project, [])
+	var natural_at: Vector2 = overlay.pip.at
+	check(controls.grow(Hud.WorldOverlay.PIP_RADIUS_PX).has_point(natural_at) or controls.intersects(overlay.pip.text),
+		"west-south-west the pip would sit on the controls (%s)" % natural_at)
+	overlay.refresh(rect, project, panels)
+	var moved: Vector2 = overlay.pip.at
+	check(moved.x < SCREEN.x * 0.5 and moved.y < controls.position.y, "it slides up the west edge above them (%s)" % moved)
+	for s in [0.0, 300.0, 1780.0, 2500.0, 4000.0, 5000.0]:
+		var point := Hud.WorldOverlay._band_point(band, s)
+		check_near(Hud.WorldOverlay._along(band, point), fposmod(s, 2.0 * (band.size.x + band.size.y)), 0.01, "round the band at %.0f" % s)
 	hud.free()
 	pool.free()
 
@@ -233,9 +365,9 @@ func test_an_endless_respawn_reports_whether_the_world_moved_home() -> void:
 			check(not h.dead, "%s: alive when the message shows" % tag)
 			if case.teleport:
 				check(sim.world.local_of_abs(cp[0], cp[1]).length() < 1e-3, "%s: the origin moved to the checkpoint" % tag)
-			var column := PlaneSpace.to_world(sim.world.local_of_abs(cp[0], cp[1]))
+			var column := PlaneSpace.to_world(WorldMarkers.column_point(sim.world.local_of_abs(cp[0], cp[1])))
 			FakeEvents.frame(pool)
-			check(pool.markers.column().position.is_equal_approx(column), "%s: the column stands at the checkpoint" % tag)
+			check(pool.markers.column().position.is_equal_approx(column), "%s: the column stands beside the checkpoint" % tag)
 		pool.free()
 
 

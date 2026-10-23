@@ -1,0 +1,22 @@
+{
+  "id": "now_food_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/now_food_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "now_food",
+  "variant": 1,
+  "purpose": "Endless world: a former threat is now small enough to eat.",
+  "visual_equivalent": "\"Now food\" toast",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.8,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"now_food\", 0)"
+}

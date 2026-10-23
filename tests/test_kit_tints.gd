@@ -7,13 +7,11 @@ extends TestCase
 ## less). Growth children, pieces without dressings and the marker cream are checked untinted. The
 ## albedo textures are greyscale detail (the records' packing), so a surface's hue is its colour's.
 ##
-## Five products break the rule today (AWAITING). B-26 says T4 removes such a dressing, but main's
-## test_kit_assets.gd holds every landmark to three dressings, so removing it would break G21's other
-## half. They wait for art's or the integrator's call (a new amber tint, or the dressing rule relaxed);
-## the test fails if any other product breaks the rule, or if one of these is fixed and not struck.
-## PROPOSED amber: #EAE5C7, the nearest tint to today's #F3E3C6 (CIE76 4.2) that keeps every product
-## clear, measured with this test on a scratch copy of the kit (worst product 27.4 degrees from food,
-## landmark_arch surface 1); with it AWAITING empties.
+## No product breaks the rule (AWAITING is empty). Five did under the old amber tint #F3E3C6 (four
+## landmarks' surface 1 at 7.6 degrees from food, the shed husk's surface 0 at 18.0 from threat);
+## art PR #63 moved every landmark's amber to #EAE5C7, the tint this test proposed. The ledger stays
+## so a product that breaks the rule waiting on the owner's call can be recorded, not hidden: the
+## test fails if any other product breaks the rule, or if one recorded here is fixed and not struck.
 
 const LookProbe := preload("res://tools/godot/look_probe.gd")
 const FOOD_HEX := "CFE86A"
@@ -29,14 +27,11 @@ const TEXTURE_SAMPLES := 16
 ## The M1 home rocks: white material colour, their look in a coloured texture, plain dressing only;
 ## they keep tests/test_assets.gd's rock contract, as tests/test_kit_assets.gd says.
 const HOME_ROCKS: PackedStringArray = ["rock_a", "rock_b", "rock_c"]
+## Root meshes not named after their id: the lair mouth's is "LairMouth" (art PR #26, pinned by
+## tests/test_kit_assets.gd's LAIR_NODE).
+const ROOT_NODES := {"marker_lair_mouth": "LairMouth"}
 ## "asset/dressing/node/surface" -> what it measured: the products that break the rule today.
-const AWAITING := {
-	"landmark_arch/amber/LandmarkArch/1": "#C5C9BB, h 121.9, 7.6 from food",
-	"landmark_great_shell/amber/LandmarkGreatShell/1": "#C5C9BB, h 121.9, 7.6 from food",
-	"landmark_ring/amber/LandmarkRing/1": "#C5C9BB, h 121.9, 7.6 from food",
-	"landmark_spire/amber/LandmarkSpire/1": "#C5C9BB, h 121.9, 7.6 from food",
-	"landmark_shed_husk/amber/LandmarkShedHusk/0": "#BAA7A4, h 29.0, 18.0 from threat",
-}
+const AWAITING := {}
 
 var kit: PlacementKit
 
@@ -95,7 +90,8 @@ func test_every_albedo_and_tint_product_keeps_clear_of_food_and_threat() -> void
 		var a: Dictionary = kit.assets[id]
 		var scene: Node3D = (load(a.glb) as PackedScene).instantiate()
 		var dressings: Array = a.dressings if not a.dressings.is_empty() else [{"id": "untinted", "tint": "#FFFFFF"}]
-		check(scene.find_child(_pascal(id), true, false) != null or id.begins_with("rock_"), "%s: its root mesh %s" % [id, _pascal(id)])
+		var root := str(ROOT_NODES.get(id, _pascal(id)))
+		check(scene.find_child(root, true, false) != null or id.begins_with("rock_"), "%s: its root mesh %s" % [id, root])
 		for surface in _surfaces(scene):
 			var albedo: Color = surface.material.albedo_color
 			var growth := str(surface.node).begins_with("Growth_")

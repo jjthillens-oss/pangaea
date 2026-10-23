@@ -15,7 +15,9 @@ const PULSE_HZ := 1.0
 const PULSE_SHARE := 0.15
 const COLOR := Color(1.0, 0.83, 0.42)
 const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
+## The label at 100% text size; it follows the Text size setting (Bible 19), as the theme does.
 const FONT_SIZE := 22
+const LABEL_OUTLINE_PX := 6
 const LABEL_GAP_PX := 6.0
 ## The label keeps clear of this many cell radii, which takes in the mouth and eyes.
 const CELL_CLEAR := 1.35
@@ -76,6 +78,11 @@ func _to_edge(from: Vector2, dir: Vector2) -> float:
 
 
 ## "Food 3 m"
+## The label's font size at the chosen text size.
+static func font_size() -> int:
+	return roundi(FONT_SIZE * int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0)
+
+
 func label_text() -> String:
 	return "Food %d m" % roundi(distance_m)
 
@@ -86,7 +93,7 @@ func label_text() -> String:
 func label_rect() -> Rect2:
 	var s := SIZE_PX * (1.0 + PULSE_SHARE)
 	var fwd := arrow_direction
-	var box := get_theme_default_font().get_string_size(label_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+	var box := get_theme_default_font().get_string_size(label_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size())
 	var behind := s * 0.9 + absf(fwd.x) * box.x * 0.5 + absf(fwd.y) * box.y * 0.5 + LABEL_GAP_PX
 	var rect := Rect2(arrow_position - fwd * behind - box * 0.5, box)
 	if not _over_cell(rect):
@@ -121,6 +128,8 @@ func _draw() -> void:
 	draw_polyline(outline, OUTLINE, OUTLINE_PX, true)
 	var font := get_theme_default_font()
 	var text := label_text()
-	var baseline := label_rect().position + Vector2(0.0, font.get_ascent(FONT_SIZE))
-	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 6, OUTLINE)
-	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, COLOR)
+	var size_px := font_size()
+	var outline_px := roundi(LABEL_OUTLINE_PX * size_px / float(FONT_SIZE))
+	var baseline := label_rect().position + Vector2(0.0, font.get_ascent(size_px))
+	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, outline_px, OUTLINE)
+	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, COLOR)

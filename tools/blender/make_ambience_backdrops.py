@@ -10,7 +10,8 @@ green and the threat pink.
 Writes:
   assets/source/blender/ambience_backdrops.blend   every organism, editable, side by side
   assets/export/ambience/T_Backdrop_<name>.png     512 px, sRGB, straight alpha, pre-blurred
-Run: python tools/blender/make_ambience_backdrops.py [--sigma PX]
+Run: python tools/blender/make_ambience_backdrops.py [--sigma PX] [--guard-only]
+--guard-only re-applies the reserved-hue guard to the PNGs already exported, without rendering.
 """
 import argparse
 import math
@@ -130,10 +131,76 @@ def _blur(rgba, sigma):
     return pre
 
 
+# Reserved colours (the food glow and the threat pink) and the LAB hue gap every texel keeps from them,
+# with 5 degrees to spare over the 25 the tests ask for, since 8-bit storage moves low-chroma hues (tests/test_s2_assets.gd).
+RESERVED = ("#CFE86A", "#D9466B")
+HUE_GAP_DEG = 30.0
+GREY_CHROMA = 8.0
+_WHITE = np.array([0.95047, 1.0, 1.08883])
+_M = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+
+
+def _to_lab(srgb):
+    lin = np.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
+    xyz = lin @ _M.T / _WHITE
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16.0 / 116.0)
+    return np.stack([116.0 * f[..., 1] - 16.0, 500.0 * (f[..., 0] - f[..., 1]), 200.0 * (f[..., 1] - f[..., 2])], axis=-1)
+
+
+def _from_lab(lab):
+    fy = (lab[..., 0] + 16.0) / 116.0
+    f = np.stack([fy + lab[..., 1] / 500.0, fy, fy - lab[..., 2] / 200.0], axis=-1)
+    xyz = np.where(f ** 3 > 0.008856, f ** 3, (f - 16.0 / 116.0) / 7.787) * _WHITE
+    lin = np.clip(xyz @ np.linalg.inv(_M).T, 0.0, 1.0)
+    return np.where(lin <= 0.0031308, lin * 12.92, 1.055 * lin ** (1.0 / 2.4) - 0.055)
+
+
+def _hex(h):
+    return np.array([int(h[i:i + 2], 16) / 255.0 for i in (1, 3, 5)])
+
+
+def guard_reserved_hues(rgba):
+    """Turns any coloured texel within HUE_GAP_DEG of LAB hue of a reserved colour out to the gap's edge,
+    keeping its lightness and chroma, so no part of a giant reads as food or as a threat."""
+    lab = _to_lab(rgba[..., :3].astype(np.float64))
+    chroma = np.hypot(lab[..., 1], lab[..., 2])
+    hue = np.degrees(np.arctan2(lab[..., 2], lab[..., 1]))
+    for ref in RESERVED:
+        r = _to_lab(_hex(ref))
+        ref_hue = math.degrees(math.atan2(r[2], r[1]))
+        d = (hue - ref_hue + 180.0) % 360.0 - 180.0
+        near = (np.abs(d) < HUE_GAP_DEG) & (chroma >= GREY_CHROMA)
+        hue = np.where(near, ref_hue + np.where(d >= 0.0, HUE_GAP_DEG, -HUE_GAP_DEG), hue)
+    rad = np.radians(hue)
+    lab[..., 1], lab[..., 2] = chroma * np.cos(rad), chroma * np.sin(rad)
+    out = rgba.copy()
+    out[..., :3] = _from_lab(lab).astype(rgba.dtype)
+    changed = np.abs(out[..., :3] - rgba[..., :3]).max(axis=-1) > 1e-6
+    out[..., :3] = np.where(changed[..., None], out[..., :3], rgba[..., :3])     # untouched texels stay bit-exact
+    return out
+
+
+def guard_existing():
+    for name in ORGANISMS:
+        path = os.path.join(OUT, f"T_Backdrop_{name}.png")
+        img = bpy.data.images.load(path)
+        img.colorspace_settings.name = "Non-Color"      # read the stored sRGB values as they are
+        px = np.array(img.pixels[:], dtype=np.float32).reshape(img.size[1], img.size[0], 4)
+        guarded = guard_reserved_hues(px)
+        moved = int((np.abs(guarded - px).max(axis=-1) > 1e-6).sum())
+        img.pixels.foreach_set(guarded.ravel())
+        img.save()
+        print(f"T_Backdrop_{name}: {moved} texels turned clear of the reserved hues")
+
+
 def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--sigma", type=float, default=7.0, help="blur, in pixels of the 512 px texture")
+    parser.add_argument("--guard-only", action="store_true", help="only re-apply the reserved-hue guard to the exported PNGs")
     args = parser.parse_args(argv)
+    if args.guard_only:
+        guard_existing()
+        return
     os.makedirs(OUT, exist_ok=True)
     tmp = os.path.join(OUT, "_render.png")
     keep = []
@@ -145,7 +212,7 @@ def main(argv):
         bpy.ops.render.render(write_still=True)
         img = bpy.data.images.load(tmp)
         px = np.array(img.pixels[:], dtype=np.float32).reshape(SIZE, SIZE, 4)
-        blurred = _blur(px, args.sigma)
+        blurred = guard_reserved_hues(_blur(px, args.sigma))
         out = bpy.data.images.new(f"T_Backdrop_{name}", SIZE, SIZE, alpha=True)
         out.pixels.foreach_set(blurred.ravel())
         out.filepath_raw = os.path.join(OUT, f"T_Backdrop_{name}.png")

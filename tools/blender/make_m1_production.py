@@ -735,11 +735,38 @@ def build_sample_cell():
             obj = bpy.data.objects[part]
             top = max((obj.matrix_world @ v.co).z for v in obj.data.vertices)
             _check(top <= 0.26, f"sample_cell: {part} top {top:.3f} stays under the eye spot (0.30)")
+    keys = _cell_shape_keys(bpy.data.objects["Body"])
     return {
         "purpose": "M1 player cell body in the approved art direction (quality-ladder look): a coral pebble body with lidded eyes, organelle beads, lips and a flagellum. The pool hides Body/Mouth and Body/Flagellum (genome parts replace them).",
         "category": "creature",
-        "revision": 2,
+        "revision": 3,
+        "shape_keys": keys,
         **reduced,
+    }
+
+
+# The endless world's growth cues (docs/endless-cell-plan.md, S2): the body swells as the growth ring
+# fills and its membrane stretches just before a growth. Drawn swell stays at or under 5%.
+CELL_SWELL = 0.05
+
+
+def _cell_shape_keys(body):
+    """Adds Ripeness (an even swell, a little less in height, so the cell reads fuller from above)
+    and Stretch (the membrane drawn taut: longer and narrower, the top flattening) to the reduced
+    Body, after baking (decimation cannot run on a mesh with shape keys)."""
+    body.shape_key_add(name="Basis", from_mix=False)
+    ripe = body.shape_key_add(name="Ripeness", from_mix=False)
+    stretch = body.shape_key_add(name="Stretch", from_mix=False)
+    ripe.value = stretch.value = 0.0    # Blender adds keys at 1, which the GLB would carry as default weights
+    for i, v in enumerate(body.data.vertices):
+        co = v.co
+        ripe.data[i].co = Vector((co.x * (1 + CELL_SWELL), co.y * (1 + CELL_SWELL), co.z * (1 + 0.6 * CELL_SWELL)))
+        stretch.data[i].co = Vector((co.x * (1 - 0.4 * CELL_SWELL), co.y * (1 + CELL_SWELL), co.z * (1 - 0.5 * CELL_SWELL)))
+    return {
+        "Ripeness": f"the growth ring filling: the body swells evenly by {CELL_SWELL:.0%} across and {0.6 * CELL_SWELL:.0%} in height",
+        "Stretch": f"just before a growth: the membrane drawn taut, {CELL_SWELL:.0%} longer, {0.4 * CELL_SWELL:.0%} narrower and {0.5 * CELL_SWELL:.0%} lower",
+        "max_swell": CELL_SWELL,
+        "note": "Blend shapes on Body (glTF morph targets). Eyes, lips and the flagellum are child nodes and do not follow; at 5% they stay seated.",
     }
 
 

@@ -1,0 +1,14 @@
+{
+	"note": "PROPOSED editor prices for the creature lab (domain/creature_editor_session.gd). Points per item added; removing refunds refund_rate of the price. A mirrored limb's joints and a mirrored part's twin count twice. Placeholder numbers, to be tuned with the creature stage's economy.",
+	"vertebra": 5,
+	"limb_joint": 4,
+	"part_default": 10,
+	"part": {
+		"eye": 10,
+		"beak": 15,
+		"fin": 12,
+		"foot": 8,
+		"horn": 15
+	},
+	"refund_rate": 0.5
+}
