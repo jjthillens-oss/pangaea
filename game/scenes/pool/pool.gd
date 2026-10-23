@@ -175,9 +175,10 @@ func _fade_in() -> void:
 
 
 ## What the start fade draws out of sight besides the eat burst: both food meshes, which first show
-## at a meal, and the zone light, whose patches may first come into view later.
+## at a meal, the zone light, whose patches may first come into view later, and a strike lane, which
+## first shows at a tell.
 func warm_up_meshes() -> Array[Mesh]:
-	return [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh] as Array[Mesh]
+	return [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
 
 
 ## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at

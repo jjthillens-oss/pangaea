@@ -256,12 +256,13 @@
     {
       "id": "threat_lane",
       "kind": "ui",
-      "description": "The floor lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (alpha at most 0.25). Gameplay UI drawn on the swim plane, not a model.",
+      "description": "The strike lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (the inside at alpha 0.25 at most, the thin outline at 0.7). Gameplay UI drawn on the swim plane, not a model. creature_view.gd builds one more unit quad with the lane's material for the start fade's shader warm-up, drawn out of sight.",
       "types": [
         "QuadMesh"
       ],
       "files": [
-        "game/scenes/pool/creature_view.tscn"
+        "game/scenes/pool/creature_view.tscn",
+        "game/scenes/pool/creature_view.gd"
       ],
       "node": "Pool/Creatures/<id>/Lane"
     },

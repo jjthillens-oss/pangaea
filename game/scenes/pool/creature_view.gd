@@ -64,6 +64,11 @@ const MARKER_OUTLINE := Color(0.114, 0.208, 0.341)  ## deep shadow #1D3557
 const LANE_Y := -0.02            ## the lane lies just under the swim plane, where the bodies swim
 const LANE_FADE_S := 0.3         ## the lane fades out over this long when the strike ends
 const LANE_COLOR := Color(0.851, 0.275, 0.42)
+const LANE_SHADER := preload("res://game/scenes/pool/threat_lane.gdshader")
+## The lane draws over every other world transparent (the sunlit patches and art's ambience stay
+## below it, so pale decor never covers its outline) and under the dev gizmos at 10 (micro-world
+## plan section 3).
+const LANE_PRIORITY := 8
 const WAG_DEG := 15.0            ## flagellum wag, as on the player's cell
 const WAG_HZ_REST := 1.5
 const WAG_HZ_TOP := 5.0
@@ -265,7 +270,8 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_hurt_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_hurt_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_lane_material.shader = preload("res://game/scenes/pool/threat_lane.gdshader")
+	_lane_material.shader = LANE_SHADER
+	_lane_material.render_priority = LANE_PRIORITY
 	_lane_material.set_shader_parameter("color", LANE_COLOR)
 	_lane_material.set_shader_parameter("strength", 0.0)
 	_lane.material_override = _lane_material
@@ -352,6 +358,20 @@ func show_lane(lane: Dictionary) -> void:
 	_lane_strength = 1.0
 	_lane_fade = 0.0
 	_apply_lane()
+
+
+## A lane quad with a lane material of its own, for the start fade's shader warm-up (pool.gd): a
+## lane first shows at a tell, in play, where its first compile would show as a hitch.
+static func warm_up_lane_mesh() -> Mesh:
+	var material := ShaderMaterial.new()
+	material.shader = LANE_SHADER
+	material.render_priority = LANE_PRIORITY
+	material.set_shader_parameter("color", LANE_COLOR)
+	material.set_shader_parameter("strength", 1.0)
+	var quad := QuadMesh.new()
+	quad.orientation = QuadMesh.FACE_Y
+	quad.material = material
+	return quad
 
 
 ## Takes the lane down: at once for a cancelled tell, or fading over `fade_s`.

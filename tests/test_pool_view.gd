@@ -737,16 +737,50 @@ func test_the_lane_keeps_its_inside_under_a_quarter_alpha_and_only_its_thin_outl
 	for name in ["BASE_ALPHA", "FILL_ALPHA", "CHEVRON_ALPHA"]:
 		var value := _shader_const(code, name)
 		check(value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
-	# Under a quarter alpha no red survives over the lit teal floor, so the thin outline alone goes
-	# higher (PROPOSED, DECISIONS 2026-10-22 visual); the floor still shows through it.
+	# Under a quarter alpha no red survived over the old lit teal floor, so the thin outline alone
+	# goes higher (PROPOSED, DECISIONS 2026-10-22 visual); the fluid still shows through it.
 	var line := _shader_const(code, "LINE_ALPHA")
 	check(line > 0.25 and line <= 0.75, "the outline's alpha is above the cap and at most 0.75 (%.2f)" % line)
-	check(_shader_const(code, "EDGE_M") + _shader_const(code, "ACCENT_M") <= 0.25, "and the outline is at most 0.25 m wide")
-	check(code.contains("float a = max(min(inside, MAX_ALPHA), LINE_ALPHA * max(border, accent));"),
-		"the inside is capped by MAX_ALPHA and only the border and its line reach LINE_ALPHA")
+	check(_shader_const(code, "EDGE_M") + _shader_const(code, "ACCENT_M") <= 0.25, "and the coloured outline is at most 0.25 m wide")
+	# The navy keyline outside it gives the outline value contrast on the dark fluid and on pale
+	# decor (micro-world plan C5): thin too, and drawn at LINE_ALPHA like the rest of the outline.
+	var key_m := _shader_const(code, "KEY_M")
+	check(key_m > 0.0 and key_m <= 0.1, "the keyline is at most 0.1 m wide (%.2f)" % key_m)
+	check(code.contains("float a = max(min(inside, MAX_ALPHA), LINE_ALPHA * max(max(border, accent), keyline));"),
+		"the inside is capped by MAX_ALPHA and only the keyline, the border and its line reach LINE_ALPHA")
+	var lift := _shader_const(code, "FILL_LIFT")
+	check(lift > 0.0 and lift <= 1.0, "the filled inside is lifted toward the threat colour, no further than it (%.2f)" % lift)
 	check(code.contains("ALPHA = a * strength;"), "and every pixel is scaled by the lane's strength")
 	var writes := Array(code.split("\n")).filter(func(line_text: String) -> bool: return line_text.strip_edges().begins_with("ALPHA"))
 	check_eq(writes.size(), 1, "with no other alpha written")
+
+
+func test_the_lane_draws_over_every_world_transparent_but_the_dev_gizmos() -> void:
+	check(CreatureView.LANE_PRIORITY > 0, "above the zone lights, the ambience and every other world transparent (%d)" % CreatureView.LANE_PRIORITY)
+	var gizmos: Node3D = (load("res://game/dev/dev_gizmos.gd") as GDScript).new()
+	gizmos.attach(null)
+	var gizmo_priority: int = (gizmos.get("_material") as Material).render_priority
+	check(CreatureView.LANE_PRIORITY < gizmo_priority, "and under the dev gizmos (%d < %d)" % [CreatureView.LANE_PRIORITY, gizmo_priority])
+	gizmos.free()
+	var view := _creature_view("ambush_hunter")
+	var material := (view.get_node("%Lane") as MeshInstance3D).material_override as ShaderMaterial
+	check_eq(material.render_priority, CreatureView.LANE_PRIORITY, "the lane's material draws at LANE_PRIORITY")
+	view.free()
+
+
+func test_the_start_fade_warms_the_lane_shader_at_the_lanes_priority() -> void:
+	var pool := (load("res://game/scenes/pool/pool.tscn") as PackedScene).instantiate()
+	pool.notification(Node.NOTIFICATION_READY)
+	var lanes: Array[ShaderMaterial] = []
+	for mesh: Mesh in pool.warm_up_meshes():
+		var material := mesh.surface_get_material(0) as ShaderMaterial if mesh != null else null
+		if material != null and material.shader == CreatureView.LANE_SHADER:
+			lanes.append(material)
+	check_eq(lanes.size(), 1, "the warm-up draws one strike lane")
+	if lanes.size() == 1:
+		check_eq(lanes[0].render_priority, CreatureView.LANE_PRIORITY, "with the lane's material settings")
+		check(float(lanes[0].get_shader_parameter("strength")) > 0.0, "drawn, not faded out")
+	pool.free()
 
 
 func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:

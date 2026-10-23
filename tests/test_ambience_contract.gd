@@ -31,10 +31,6 @@ const SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
 const AMBIENCE_DIR := "res://game/scenes/pool/ambience"
 const POOL_SCENE := "res://game/scenes/pool/pool.tscn"
 const SYSTEMS_DIR := "res://game/systems"
-const CREATURE_VIEW := "res://game/scenes/pool/creature_view.gd"
-## The strike lane draws at this priority and every world transparent below it (plan section 3);
-## creature_view.gd names it LANE_PRIORITY once the lane commit (C5) lands, and then this reads it.
-const PLAN_LANE_PRIORITY := 8
 ## Nothing decorative lies in this band around the swim plane (m)...
 const PLANE_BAND := Vector2(-1.5, 0.5)
 ## ...and the foreground above it is sparse and stays low: the plan's foreground band ends 3 m up.
@@ -324,11 +320,6 @@ func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 	return {"low": Array(points).min() if not points.is_empty() else 0.0, "high": Array(points).max() if not points.is_empty() else 0.0, "points": points, "known": true, "band": false}
 
 
-func _lane_priority() -> int:
-	var script: GDScript = load(CREATURE_VIEW)
-	return int(script.get_script_constant_map().get("LANE_PRIORITY", PLAN_LANE_PRIORITY))
-
-
 ## Every source file of the ambience, by path.
 func _sources(dir: String, out: Dictionary) -> void:
 	for f in DirAccess.get_files_at(dir):
@@ -419,7 +410,8 @@ func test_nothing_it_draws_casts_a_shadow_or_draws_over_the_strike_lane() -> voi
 	var ambience := _mounted()
 	if ambience == null:
 		return
-	var lane := _lane_priority()
+	# The strike lane draws at LANE_PRIORITY, and every world transparent below it (plan section 3).
+	var lane := CreatureView.LANE_PRIORITY
 	var geos := _nodes(ambience, "GeometryInstance3D")
 	check(not geos.is_empty(), "the ambience draws something")
 	for geo: GeometryInstance3D in geos:

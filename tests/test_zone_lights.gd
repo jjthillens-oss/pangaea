@@ -5,10 +5,6 @@ extends TestCase
 ## fade like the food meshes.
 
 const POOL_SCENE := "res://game/scenes/pool/pool.tscn"
-const CREATURE_VIEW := "res://game/scenes/pool/creature_view.gd"
-## The strike lane draws at this priority (plan section 3); creature_view.gd names it LANE_PRIORITY
-## once the lane commit (C5) lands, and then this reads it.
-const PLAN_LANE_PRIORITY := 8
 ## Where a disc lies (m under the swim plane) and how many zone radii it spans across (PROPOSED).
 const DEPTH_M := -2.5
 const SPAN_PER_ZONE_RADIUS := 2.6
@@ -19,11 +15,6 @@ const MAX_STRENGTH := 0.007
 const FOOD_GLOW := Color("#CFE86A")
 const MIN_FOOD_DELTA_E := 30.0
 const LookProbe := preload("res://tools/godot/look_probe.gd")
-
-
-func _lane_priority() -> int:
-	var script: GDScript = load(CREATURE_VIEW)
-	return int(script.get_script_constant_map().get("LANE_PRIORITY", PLAN_LANE_PRIORITY))
 
 
 ## The render_mode flags of a shader, comments removed.
@@ -85,7 +76,7 @@ func test_it_adds_light_without_fog_or_depth_under_every_cue() -> void:
 	# Additive with the engine's fog would paint a bright, hard-edged quad over the fluid.
 	check(modes.has("fog_disabled"), "zone_light.gdshader adds light, so it takes no fog")
 	check_eq(material.render_priority, -2, "render priority")
-	check(material.render_priority < _lane_priority(), "the patches draw under the strike lane (%d)" % _lane_priority())
+	check(material.render_priority < CreatureView.LANE_PRIORITY, "the patches draw under the strike lane (%d)" % CreatureView.LANE_PRIORITY)
 	lights.free()
 
 
@@ -95,5 +86,5 @@ func test_the_start_fade_warms_the_zone_light() -> void:
 	var meshes: Array[Mesh] = pool.warm_up_meshes()
 	check(meshes.has(pool.zone_lights.mesh), "the warm-up draws the zone light's mesh")
 	check(not meshes.has(null), "and both food meshes: %s" % [meshes])
-	check_eq(meshes.size(), 3, "warm-up meshes")
+	check_eq(meshes.size(), 4, "warm-up meshes (the strike lane's too; tests/test_pool_view.gd)")
 	pool.free()
