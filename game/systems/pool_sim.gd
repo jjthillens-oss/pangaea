@@ -419,7 +419,19 @@ func nearest_edible() -> Dictionary:
 ## capacity (C4); every creature within respawn_clear_m of the cell is sent home and every brain
 ## forgets the cell, the one that killed it ignoring it for killer_ignore_s (C2, C3); and the
 ## streak's shelter starts (C5). Emits respawned {grace_s, energy, relocated, streak}.
+##
+## Endless: only sets respawn_pending; the next step's streaming block performs the respawn first
+## (spine 3.11 step 0), near the body or by a teleport home, through _respawn_now.
 func respawn_player() -> void:
+	if world != null:
+		respawn_pending = true
+		return
+	_respawn_now()
+
+
+## respawn_player's work. Endless: `teleport` tells whether step 0 moved the world to the checkpoint,
+## and the respawned event says so.
+func _respawn_now(teleport := false) -> void:
 	var killer := str(death.get("by", ""))
 	var cp := checkpoint()
 	motion.place(_clear_point_near(cp.position, phenotype.radius), cp.heading)
@@ -442,8 +454,11 @@ func respawn_player() -> void:
 	_contact.clear()
 	_last_refusal.clear()
 	_last_attack_refusal.clear()
-	_emit({"type": "respawned", "grace_s": float(grace) / CreatureBrain.TICKS_PER_SECOND, "energy": state.energy,
-		"relocated": Array(relocated), "streak": death_streak})
+	var respawned := {"type": "respawned", "grace_s": float(grace) / CreatureBrain.TICKS_PER_SECOND, "energy": state.energy,
+		"relocated": Array(relocated), "streak": death_streak}
+	if world != null:
+		respawned["teleport"] = teleport
+	_emit(respawned)
 
 
 ## Writes position_for_save() into the save (the checkpoint while the cell is dead, never its body).

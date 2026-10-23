@@ -6,6 +6,7 @@ extends TestCase
 ## 100 km keeps every local position small and the arena exact (G10, G12).
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
 const SEED := 4303
 ## Invariant 13: every local position stays under this (world_cell.json's origin.local_bound_tm).
 const LOCAL_BOUND := 256.0
@@ -207,40 +208,41 @@ func test_a_rebase_fires_beyond_96_tm_by_whole_chunks() -> void:
 
 
 ## 1,800 ticks of swimming with a forced rebase of up to two chunks either way every 60: the cell's
-## absolute track stays continuous, every local position stays under 256 tm, and zones and colliders
-## stay where their absolute values put them. (FuzzInvariants checks the full set, T2.8.)
-func test_a_rebase_every_60_ticks_keeps_places_continuous_and_small() -> void:
+## absolute track stays continuous and FuzzInvariants holds on every tick (12, 13 and 16: nothing
+## appears or vanishes in view, every stored position under 256 tm, sleepers out of view). Zones,
+## sites and colliders staying exact is test_zones_and_colliders_are_re_derived_not_accumulated's.
+func test_a_rebase_every_60_ticks_keeps_every_invariant() -> void:
 	var sim := _endless()
+	var fuzz := FuzzInvariants.new(species, layout)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	var last := sim.absolute_position_am()
-	var bad := 0
+	var jumps := 0
 	var first := ""
 	var rebases := 0
+	sim.drain_events()
 	for t in 1800:
+		var was := fuzz.before(sim)
 		if t % 60 == 30:
 			var by := Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
 			sim.debug_rebase(by)
 			rebases += 1
 		var angle := t * 0.004
+		var tick := sim.tick
 		sim.step(SimIntent.new(Vector2.from_angle(angle)))
+		fuzz.after(sim, sim.drain_events(), tick, "tick %d" % t, was)
 		var a := sim.absolute_position_am()
 		var step := Vector2(a[0] - last[0], a[1] - last[1]).length()
 		last = a
-		var problem := ""
 		if step > sim.phenotype.speed / 60.0 * 1.5 + 1e-4:
-			problem = "the cell jumped %.4f tm" % step
-		var far := _farthest_local(sim)
-		if far >= LOCAL_BOUND:
-			problem = "a local position at %.1f tm" % far
-		if not _derived_exactly(sim):
-			problem = "a zone, site or collider off its absolute place"
-		if not problem.is_empty():
-			bad += 1
+			jumps += 1
 			if first.is_empty():
-				first = "tick %d: %s" % [t, problem]
-	check_eq(bad, 0, "continuous, small and exact (%s)" % first)
+				first = "tick %d: the cell jumped %.4f tm" % [t, step]
+	check_eq(jumps, 0, "the absolute track is continuous (%s)" % first)
+	check_eq(fuzz.report(), "", "every invariant on every tick")
 	check(rebases >= 29, "%d forced rebases" % rebases)
+	check(int(fuzz.counts.rebases) >= rebases, "and FuzzInvariants followed each frame (%s)" % fuzz.counts)
+	check(int(fuzz.counts.loads) > 0 and int(fuzz.counts.unloads) > 0, "chunks came and went (%s)" % fuzz.counts)
 
 
 func test_a_teleport_to_100_km_keeps_locals_small_and_the_arena_exact() -> void:

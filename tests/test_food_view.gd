@@ -202,6 +202,44 @@ func test_create_fills_every_food_zone_at_once() -> void:
 		"and the start is not news: only the chunk loads are queued")
 
 
+## D-11: a near respawn (no teleport) fills at once the food zones touching the new footprint plus
+## the spawn margin; the other food zones regrow one item a tick, out of view. Every zone is emptied of
+## items (its stock kept) while the cell is dead, so each zone's count after the respawn tick shows
+## which way it filled.
+func test_a_near_respawn_fills_only_the_zones_touching_the_new_footprint() -> void:
+	var sim := _endless()
+	for t in 30:
+		sim.step(SimIntent.new(Vector2(0.6, 0.8)))
+	check(sim.debug_hurt_player(1.0e9) and sim.dead, "the cell dies")
+	for t in 30:
+		sim.step(SimIntent.new())
+	for z in sim.region.zones:
+		sim.plankton.clear_zone(z.id)
+	sim.respawn_player()
+	sim.step(SimIntent.new())
+	var events := sim.drain_events()
+	var respawned := events.filter(func(e: Dictionary) -> bool: return e.type == "respawned")
+	check(respawned.size() == 1 and respawned[0].teleport == false, "a near respawn (%s)" % [respawned])
+	var counts := _counts(sim)
+	var margin := float(layout.camera.look_ahead_max) + float(species.fairness.spawn_view_margin_m)
+	var quad := ViewFootprint.corners(sim.motion.position, layout.camera, float(layout.camera.zoom_max),
+		float(species.fairness.spawn_view_aspect))
+	var touching := 0
+	var other := 0
+	for id in sim.plankton.active_zones:
+		var z := sim.region.zone(id)
+		var want := sim.plankton.target_count(z)
+		check(want > 1, "zone %s has stock for more than one item" % id)
+		if ViewFootprint.distance_outside(quad, z.center) <= margin + float(z.radius):
+			touching += 1
+			check_eq(int(counts.get(id, 0)), want, "zone %s touches the view: full at once" % id)
+		else:
+			other += 1
+			check(int(counts.get(id, 0)) <= 1, "zone %s out of view regrows one item a tick (%d)" % [id, int(counts.get(id, 0))])
+	check(touching >= 1, "zones touching the new view (%d)" % touching)
+	check(other >= 1, "and food zones out of it (%d)" % other)
+
+
 ## The home block's starting carrion within the food ring is placed at create; the rest is not.
 func test_create_places_the_home_carrion_within_the_food_ring() -> void:
 	var c := FakeWorldGen.fixture_content()

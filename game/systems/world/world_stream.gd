@@ -115,11 +115,13 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11): the floating origin (step 2),
-## unload (step 3), load (step 4), sleep and wake (step 5), then the food view (step 6). Load, unload
-## and food always measure from the body, alive or dead; sleep and wake from every place the cell
-## has (PoolSim._player_places), the same for steps 4 and 5.
+## The streaming block, first in every endless tick (spine 3.11): a pending respawn (step 0), the
+## floating origin (step 2), unload (step 3), load (step 4), sleep and wake (step 5), then the food
+## view (step 6). Load, unload and food always measure from the body, alive or dead; sleep and wake
+## from every place the cell has (PoolSim._player_places), the same for steps 4 and 5.
 func step(sim: PoolSim) -> void:
+	if sim.respawn_pending:
+		_respawn(sim)
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
@@ -239,6 +241,36 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		_load_chunk(sim, key)
 	_fill_all = true
 	recompute_caps(sim)
+
+
+## Step 0 (spine 3.11, D-10, D-11): the pending respawn. When the checkpoint's whole view set is
+## loaded the cell comes back there as M1's respawn does, and the zones touching its new view fill at
+## once. Otherwise the world moves home behind the camera cut: every chunk unloads (its creatures
+## first), the rest of the creatures and every carrion item go, the origin becomes the checkpoint
+## (rebased), its view set loads with every food zone filled, and the cell comes back at the origin.
+func _respawn(sim: PoolSim) -> void:
+	var near := true
+	for key in view_set_keys(checkpoint_local()):
+		if not _chunks.has(key):
+			near = false
+			break
+	if near:
+		sim._respawn_now(false)
+		_flag_fill_touching(sim, sim.motion.position)
+	else:
+		teleport(sim, checkpoint_am[0], checkpoint_am[1])
+		sim._respawn_now(true)
+	sim.respawn_pending = false
+	recompute_caps(sim)
+
+
+## D-11: every zone touching the view from `p` (its footprint grown by the spawn-view margin) fills at
+## once in this tick's food view.
+func _flag_fill_touching(sim: PoolSim, p: Vector2) -> void:
+	var quad := ViewFootprint.corners(p, camera, float(camera.zoom_max), view_aspect)
+	for z in sim.region.zones:
+		if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) <= view_margin + float(z.radius):
+			_fill[z.id] = true
 
 
 # --- chunks ---
