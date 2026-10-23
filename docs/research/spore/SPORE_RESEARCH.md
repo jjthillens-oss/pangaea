@@ -134,8 +134,13 @@ All are public papers or talks by Spore's developers unless marked. CONFIRMED me
 | S15 | EA patents US7789758B2 and US7867093B2, "Video game with simulated evolution", inventor Will Wright, priority 2006-03-10. <https://patents.google.com/patent/US7789758B2/en>, <https://patents.google.com/patent/US7867093B2/en> | Public technical documentation: creatures stored as procedural instructions of about 2–5 KB; animation recreated from procedural data using the creature's structure. Claims cover server-based sharing of player content (see `LEGAL_RESEARCH_BOUNDARIES.md` §3). |
 | S16 | Gingold, "Spore's Magic Crayons", GDC 2007 (reported by GameSpot, "GDC 07: Creating Spore", <https://www.gamespot.com/articles/gdc-07-creating-spore/1100-6167215/>) | Design challenges of the creature, building, vehicle and planet editors. Slides not found yet (GDC Vault may need a login). |
 
-Not used, on purpose: Sporepedia files, the Spore API, PNG creature cards, SporeModder, Spore ModAPI and any file-format
-documentation written by modders. They describe EA's formats, which the owner's rule excludes.
+Community projects (added 2026-10-23 at the owner's request): Spore-ModAPI and SporeModder-FX are studied as reference
+only, at the level of public prose, in `workstreams/community_tools.md` (sources C1–C3). Both are GPL-3.0 and contain
+modders' reverse-engineered declarations, so nothing from them is copied, and their pages describing reconstructed
+Spore source code are not read and never reach implementation agents.
+
+Not used, on purpose: Sporepedia files, the Spore API, PNG creature cards, running SporeModder-FX or ModAPI mods on the
+owner's install, and byte-level file-format documentation. Those touch EA's data, which the owner's rule excludes.
 
 ## 4. Systems map
 
