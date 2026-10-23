@@ -9,28 +9,39 @@ extends TestCase
 ## The scene is built as the pool builds it: mounted under a pool, then readied (the test runner has
 ## no scene tree, so the test sends the ready notification itself). What it then holds is checked:
 ## every GeometryInstance3D, every material it draws with (overrides, surface materials and their
-## next passes) and each MultiMesh's instances. Colour and opacity are read the way the decor
-## shaders draw them, by convention:
-##   - a material's colours are its Color uniforms and its texture uniforms, times a float uniform
-##     `brightness` when it has one, and any literal colour its shader writes to ALBEDO or EMISSION
+## next passes, and a sprite's own, which the engine builds from its texture and modulate) and each
+## MultiMesh's instances. Decor draws only with what the contract can read: meshes, MultiMeshes,
+## particles and sprites. Colour, opacity and size are read the way the decor draws them, by
+## convention:
+##   - a material's colours are its Color uniforms and its texture uniforms (as the material sets
+##     them, else as the shader's code declares them), times a float uniform `brightness` when it
+##     has one, and any literal colour its shader writes to ALBEDO or EMISSION
 ##     (a vec3 or vec4 of numbers in the assignment, or in a constant or local variable it reads);
-##     a standard material's are its albedo, emission and albedo texture, its albedo times each
-##     vertex colour of the mesh when vertex_color_use_as_albedo is set, and a particle process
-##     material's its colour and colour ramps. For hue, a flat colour, every stop of a gradient or
-##     colour ramp and every vertex colour count one by one, and an image texture (a painting) by
-##     coverage: at most PAINTING_SHARE of its alpha-weighted texels with chroma PAINTING_CHROMA or
-##     more may lie near a reserved hue;
-##   - its opacity is the product of what it has of: the colour's or texel's alpha, a float uniform
-##     `opacity` (or `alpha`), and its MultiMesh instances' custom data w (INSTANCE_CUSTOM.w). An
-##     opaque material's opacity is 1;
+##     a standard material's are its albedo, emission and albedo texture (times the albedo, as it
+##     draws), its albedo times each vertex colour of the mesh when vertex_color_use_as_albedo is
+##     set, and a particle process material's (or a CPU emitter's) its colour and colour ramps. A
+##     shader that reads COLOR counts the mesh's vertex colours too. A sprite draws its texture
+##     times its modulate. For hue, a flat colour, every stop of a gradient or colour ramp and every
+##     vertex colour count one by one, and an image texture (a painting) by coverage: at most
+##     PAINTING_SHARE of its alpha-weighted texels with chroma PAINTING_CHROMA or more may lie near
+##     a reserved hue;
+##   - its opacity is the product of what it has of: the colour's or texel's alpha (a sprite's
+##     modulate alpha among them), a float uniform `opacity` (or `alpha`), and its MultiMesh
+##     instances' custom data w (INSTANCE_CUSTOM.w). An opaque material's opacity is 1;
 ##   - a shader that places its own instances (wrapping them around the camera, say) names the band
 ##     of world heights it draws them in as a vec2 uniform `height_range`, which then stands for
 ##     their heights;
 ##   - a particle emitter's heights are its emission shape's extents and its visibility_aabb,
-##     whichever reaches further, so its visibility_aabb should hold where its particles go.
+##     whichever reaches further, so its visibility_aabb should hold where its particles go. A CPU
+##     emitter also reaches as far as its fastest particle can travel in its lifetime, pushed by its
+##     strongest acceleration and falling with gravity;
+##   - an item's size is its mesh's box, a sprite's rectangle (a billboard sweeps the cube round it),
+##     one instance's mesh (an instanced layer's shader draws each item at its mesh's size or
+##     smaller), or one particle's draw mesh at its largest scale.
 ## The headless runner cannot read a MultiMesh's instance data: its dummy renderer keeps no buffer,
-## so transforms read as identity and custom data as (0, 0, 0, 1). There an instanced layer needs a
-## `height_range`, and its custom w counts as up to 1, so its top opacity belongs in `opacity`.
+## so transforms read as identity, custom data and colours as (0, 0, 0, 1). There an instanced
+## layer needs a `height_range`, its custom w counts as up to 1, so its top opacity belongs in
+## `opacity`, and it carries its colours in uniforms, not instance colours.
 ## Luminance is linear, as art measures it: Color.srgb_to_linear().get_luminance().
 
 const SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
@@ -41,9 +52,10 @@ const SYSTEMS_DIR := "res://game/systems"
 const PLANE_BAND := Vector2(-1.5, 0.5)
 ## ...and the foreground above it is sparse, low and small (plan section 7): at most MAX_FOREGROUND
 ## items, none above the band's top at 3 m (the camera sits 8.2 m over the plane at zoom 10, so an
-## item there already draws about 1.6 times its size at the plane), and no single mesh above the
-## plane LARGE_M or more across, since one faint sheet over the cell veils the whole middle of the
-## frame however low it hangs.
+## item there already draws about 1.6 times its size at the plane), and no single item above the
+## plane LARGE_M or more in any direction, whatever draws it (a mesh, a sprite, one instance of a
+## layer or one particle), since one faint sheet over the cell veils the whole middle of the frame
+## however low it hangs.
 const MAX_FOREGROUND := 40
 const FOREGROUND_TOP_M := 3.0
 ## Budgets (the ambience handoff): live particles, large billboards, and transparent billboards
@@ -67,6 +79,8 @@ const MAX_LUMA_ALPHA := 0.12
 const MAX_LUMA_BELOW := 0.40
 ## Texture uniforms are read at this size.
 const TEXEL_GRID := 64
+## A number in shader code.
+const NUMBER := "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?"
 const LookProbe := preload("res://tools/godot/look_probe.gd")
 
 
@@ -141,10 +155,22 @@ func _materials(geo: GeometryInstance3D) -> Array[Material]:
 			var pass_mesh := (geo as GPUParticles3D).get_draw_pass_mesh(p)
 			for s in (pass_mesh.get_surface_count() if pass_mesh else 0):
 				first.append(pass_mesh.surface_get_material(s))
-	elif geo is CPUParticles3D and (geo as CPUParticles3D).mesh:
-		mesh = (geo as CPUParticles3D).mesh
-		for s in mesh.get_surface_count():
+	elif geo is CPUParticles3D:
+		# A CPU emitter's colour and ramps, read as a process material's are.
+		var cpu := geo as CPUParticles3D
+		var process := ParticleProcessMaterial.new()
+		process.color = cpu.color
+		for ramp in [["color_ramp", cpu.color_ramp], ["color_initial_ramp", cpu.color_initial_ramp]]:
+			if ramp[1]:
+				var texture := GradientTexture1D.new()
+				texture.gradient = ramp[1]
+				process.set(ramp[0], texture)
+		first.append(process)
+		mesh = cpu.mesh
+		for s in (mesh.get_surface_count() if mesh else 0):
 			first.append(mesh.surface_get_material(s))
+	elif geo is SpriteBase3D:
+		first.append_array(_sprite_materials(geo))
 	var out: Array[Material] = []
 	for m in first:
 		var pass_m := m
@@ -154,10 +180,41 @@ func _materials(geo: GeometryInstance3D) -> Array[Material]:
 	return out
 
 
+## What a sprite draws with, as a standard material: its texture times its modulate (the modulate's
+## alpha its opacity), see-through unless it is opaque or cut out, at its own render priority. The
+## engine builds the real material inside the renderer, where this runner cannot read it. An
+## animated sprite gives one per frame.
+func _sprite_materials(sprite: SpriteBase3D) -> Array[Material]:
+	var textures: Array[Texture2D] = []
+	if sprite is Sprite3D:
+		textures.append((sprite as Sprite3D).texture)
+	elif sprite is AnimatedSprite3D and (sprite as AnimatedSprite3D).sprite_frames:
+		var frames := (sprite as AnimatedSprite3D).sprite_frames
+		for animation in frames.get_animation_names():
+			for i in frames.get_frame_count(animation):
+				textures.append(frames.get_frame_texture(animation, i))
+	var out: Array[Material] = []
+	for texture in textures:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = sprite.modulate
+		m.albedo_texture = texture
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if sprite.transparent and sprite.alpha_cut == SpriteBase3D.ALPHA_CUT_DISABLED \
+			else BaseMaterial3D.TRANSPARENCY_DISABLED
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL if sprite.shaded else BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.render_priority = sprite.render_priority
+		out.append(m)
+	return out
+
+
+## A shader's code with its comments removed.
+func _code(shader: Shader) -> String:
+	var text := RegEx.create_from_string("(?s)/\\*.*?\\*/").sub(shader.code, "", true)
+	return RegEx.create_from_string("//[^\\n]*").sub(text, "", true)
+
+
 ## The render_mode flags of a shader, comments removed.
 func _render_modes(shader: Shader) -> PackedStringArray:
-	var text := RegEx.create_from_string("(?s)/\\*.*?\\*/").sub(shader.code, "", true)
-	text = RegEx.create_from_string("//[^\\n]*").sub(text, "", true)
+	var text := _code(shader)
 	var out := PackedStringArray()
 	for m in RegEx.create_from_string("render_mode\\s+([^;]+);").search_all(text):
 		for flag in m.get_string(1).split(","):
@@ -186,10 +243,46 @@ func _has_blend(modes: PackedStringArray) -> bool:
 	return false
 
 
-## A shader uniform's value on `m`, or the shader's default when the material leaves it unset.
+## A shader uniform's value on `m`, or the shader's default when the material leaves it unset. The
+## headless renderer gives no defaults, so a default is read from the shader's code (a number, or a
+## vecN of numbers), and a uniform declared without one is zero, as in GLSL. Null for a texture left
+## unset.
 func _param(m: ShaderMaterial, uniform_name: String) -> Variant:
 	var v: Variant = m.get_shader_parameter(uniform_name)
-	return v if v != null else RenderingServer.shader_get_parameter_default(m.shader.get_rid(), uniform_name)
+	if v == null:
+		v = RenderingServer.shader_get_parameter_default(m.shader.get_rid(), uniform_name)
+	if v != null:
+		return v
+	var type := TYPE_NIL
+	var opaque := false
+	for u in m.shader.get_shader_uniform_list():
+		if String(u.name) == uniform_name:
+			type = u.type
+			# A vec3 colour (source_color) has no alpha: it is opaque.
+			opaque = u.hint == PROPERTY_HINT_COLOR_NO_ALPHA
+	var declared := RegEx.create_from_string("\\buniform\\s+\\w+\\s+%s\\b[^=;]*(?:=\\s*([^;]+))?;" % uniform_name).search(_code(m.shader))
+	var n: Array[float] = []
+	if declared:
+		# Its numbers, once names such as vec3 are gone.
+		var text := RegEx.create_from_string("\\b[A-Za-z_]\\w*").sub(declared.get_string(1), " ", true)
+		for value in RegEx.create_from_string(NUMBER).search_all(text):
+			n.append(float(value.get_string(0)))
+	# One number fills every component, as vec3(1.0) does; missing ones are zero.
+	var at := func(i: int) -> float: return n[0] if n.size() == 1 else (n[i] if i < n.size() else 0.0)
+	match type:
+		TYPE_FLOAT, TYPE_INT:
+			return at.call(0)
+		TYPE_BOOL:
+			return declared != null and declared.get_string(1).contains("true")
+		TYPE_VECTOR2:
+			return Vector2(at.call(0), at.call(1))
+		TYPE_VECTOR3:
+			return Vector3(at.call(0), at.call(1), at.call(2))
+		TYPE_VECTOR4:
+			return Vector4(at.call(0), at.call(1), at.call(2), at.call(3))
+		TYPE_COLOR:
+			return Color(at.call(0), at.call(1), at.call(2), 1.0 if opaque else at.call(3))
+	return null
 
 
 func _uniform_names(m: ShaderMaterial) -> Array[String]:
@@ -210,7 +303,8 @@ func _colors(m: Material, geo: GeometryInstance3D = null) -> Array[Color]:
 
 ## A material's colours in sets, brightness applied: {"what", "colors", "painting"}. A flat colour,
 ## a gradient's or colour ramp's stops, or a mesh's vertex colours, is a set with "painting" false;
-## an image texture's texels are one with "painting" true.
+## an image texture's texels are one with "painting" true. A MultiMesh's instance colours that this
+## runner cannot read come as a set with "unread" true and no colours.
 func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if m is BaseMaterial3D:
@@ -218,9 +312,10 @@ func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionar
 		var vertex: Array[Color] = []
 		if b.vertex_color_use_as_albedo:
 			vertex = _vertex_colors(geo)
-		if vertex.is_empty():
+			out.append_array(_instance_color_sets(geo, b.albedo_color))
+		if vertex.is_empty() and b.albedo_texture == null:
 			out.append(_flat("albedo", b.albedo_color, 1.0))
-		else:
+		elif not vertex.is_empty():
 			# The albedo the engine draws is the albedo colour times each vertex's colour.
 			var colors: Array[Color] = []
 			for c: Color in vertex:
@@ -229,7 +324,9 @@ func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionar
 		if b.emission_enabled:
 			out.append(_flat("emission", Color(b.emission * b.emission_energy_multiplier, 1.0), 1.0))
 		if b.albedo_texture:
-			out.append(_texture_colors("albedo_texture", b.albedo_texture, 1.0))
+			# The engine draws the texture times the albedo colour, alpha too (and the albedo alone
+			# nowhere).
+			out.append(_texture_colors("albedo_texture", b.albedo_texture, 1.0, b.albedo_color))
 		return out
 	if m is ParticleProcessMaterial:
 		var p := m as ParticleProcessMaterial
@@ -252,6 +349,27 @@ func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionar
 	var literal := _literal_colors(sm.shader)
 	if not literal.is_empty():
 		out.append({"what": "literal colour in the shader", "colors": literal, "painting": false})
+	# A shader that reads COLOR draws the mesh's vertex colours (and a MultiMesh's instance colours).
+	if RegEx.create_from_string("\\bCOLOR\\b").search(_code(sm.shader)) != null:
+		var vertex := _vertex_colors(geo)
+		if not vertex.is_empty():
+			out.append({"what": "vertex colour (the shader reads COLOR)", "colors": vertex, "painting": false})
+		out.append_array(_instance_color_sets(geo, Color.WHITE))
+	return out
+
+
+## A MultiMesh's instance colours times `tint`, as one set, when it has them: "unread" when this
+## runner cannot read them (see the note at the top).
+func _instance_color_sets(geo: GeometryInstance3D, tint: Color) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if not (geo is MultiMeshInstance3D) or (geo as MultiMeshInstance3D).multimesh == null or not (geo as MultiMeshInstance3D).multimesh.use_colors:
+		return out
+	var mm := (geo as MultiMeshInstance3D).multimesh
+	var colors: Array[Color] = []
+	if _readable(mm):
+		for i in mm.instance_count:
+			colors.append(tint * mm.get_instance_color(i))
+	out.append({"what": "instance colour", "colors": colors, "painting": false, "unread": not _readable(mm)})
 	return out
 
 
@@ -290,9 +408,8 @@ func _literal_colors(shader: Shader) -> Array[Color]:
 	var out: Array[Color] = []
 	if shader == null:
 		return out
-	var code := RegEx.create_from_string("(?s)/\\*.*?\\*/").sub(shader.code, "", true)
-	code = RegEx.create_from_string("//[^\\n]*").sub(code, "", true)
-	var number := "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?"
+	var code := _code(shader)
+	var number := NUMBER
 	var literal := RegEx.create_from_string("\\bvec[34]\\s*\\(\\s*(%s(?:\\s*,\\s*%s)*)\\s*\\)" % [number, number])
 	# Names that hold a literal colour: "const vec3 NAME = vec3(...);", "vec3 name = vec3(...);" or
 	# "name = vec3(...);".
@@ -322,9 +439,9 @@ func _flat(what: String, c: Color, brightness: float) -> Dictionary:
 	return {"what": what, "colors": colors, "painting": false}
 
 
-## A texture's colours: a gradient's stops (a gradient texture, or a noise texture's colour ramp),
-## else its texels on a TEXEL_GRID square, a painting.
-func _texture_colors(what: String, texture: Texture2D, brightness: float) -> Dictionary:
+## A texture's colours, times `tint` (alpha too): a gradient's stops (a gradient texture, or a noise
+## texture's colour ramp), else its texels on a TEXEL_GRID square, a painting.
+func _texture_colors(what: String, texture: Texture2D, brightness: float, tint := Color.WHITE) -> Dictionary:
 	var colors: Array[Color] = []
 	var gradient: Gradient = null
 	if texture is GradientTexture1D or texture is GradientTexture2D:
@@ -333,7 +450,7 @@ func _texture_colors(what: String, texture: Texture2D, brightness: float) -> Dic
 		gradient = (texture as NoiseTexture2D).color_ramp
 	if gradient:
 		for c in gradient.colors:
-			colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
+			colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a) * tint)
 		return {"what": what, "colors": colors, "painting": false}
 	var image := texture.get_image()
 	if image != null:
@@ -343,7 +460,7 @@ func _texture_colors(what: String, texture: Texture2D, brightness: float) -> Dic
 		for y in TEXEL_GRID:
 			for x in TEXEL_GRID:
 				var c := image.get_pixel(x, y)
-				colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
+				colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a) * tint)
 	return {"what": what, "colors": colors, "painting": true}
 
 
@@ -382,8 +499,8 @@ func _luma(c: Color) -> float:
 
 ## Heights (y, in the pool's space) a geometry instance takes up: {"low", "high", "points"}. The
 ## points are its MultiMesh instances' origins, a particle emitter's lowest and highest reach
-## (_particle_box), or its mesh's lowest and highest point; a material's `height_range` gives the
-## band instead ("band" true), with one point per instance at its foot.
+## (_particle_box), or its mesh's or sprite's lowest and highest point (_item_box); a material's
+## `height_range` gives the band instead ("band" true), with one point per instance at its foot.
 ## "known" is false for instances this runner cannot read when nothing names their band.
 func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 	var t := _relative(geo, root)
@@ -406,7 +523,7 @@ func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 		points.append(reach.position.y)
 		points.append(reach.end.y)
 	else:
-		var box := t * geo.get_aabb()
+		var box := t * _item_box(geo)
 		points.append(box.position.y)
 		points.append(box.end.y)
 	return {"low": Array(points).min() if not points.is_empty() else 0.0, "high": Array(points).max() if not points.is_empty() else 0.0, "points": points, "known": true, "band": false}
@@ -415,6 +532,9 @@ func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 ## Where a particle emitter's particles can be, in its own space: its emission shape's extents
 ## (box, sphere or ring, offset and scaled as the shape is) merged with its visibility_aabb, so a
 ## tall emission box or a loose visibility box counts in full. An emitter with neither is a point.
+## A CPU emitter's particles also go as far as the fastest of them travels in its lifetime, pushed
+## by its strongest acceleration, and fall with its gravity (its visibility_aabb, when set, counts
+## too).
 func _particle_box(geo: GeometryInstance3D) -> AABB:
 	var shape: Variant = null
 	var box := AABB()
@@ -425,6 +545,8 @@ func _particle_box(geo: GeometryInstance3D) -> AABB:
 		shape = (geo as GPUParticles3D).process_material as ParticleProcessMaterial
 	elif geo is CPUParticles3D:
 		shape = geo
+		box = (geo as CPUParticles3D).visibility_aabb
+		bounded = box.has_volume()
 	if shape == null:
 		return box
 	var extent := Vector3.ZERO
@@ -441,7 +563,97 @@ func _particle_box(geo: GeometryInstance3D) -> AABB:
 		offset = shape.emission_shape_offset
 		extent *= (shape.emission_shape_scale as Vector3).abs()
 	var emitted := AABB(offset - extent, extent * 2.0)
+	if geo is CPUParticles3D:
+		var cpu := geo as CPUParticles3D
+		var life := cpu.lifetime
+		var accel := 0.0
+		for a in [cpu.linear_accel_min, cpu.linear_accel_max, cpu.radial_accel_min, cpu.radial_accel_max, cpu.tangential_accel_min, cpu.tangential_accel_max]:
+			accel = maxf(accel, absf(a))
+		var speed := maxf(absf(cpu.initial_velocity_min), absf(cpu.initial_velocity_max))
+		emitted = emitted.grow(speed * life + 0.5 * accel * life * life)
+		# Gravity carries every particle the same way, at most this far by the end of its life.
+		emitted = emitted.merge(AABB(emitted.position + cpu.gravity * 0.5 * life * life, emitted.size))
 	return box.merge(emitted) if bounded else emitted
+
+
+## An item's own box, before its node's transform: a mesh's; a sprite's rectangle (_sprite_box);
+## one instance's mesh, at the largest scale its transform gives when this runner can read it; one
+## particle's draw meshes at the largest scale its emitter gives them. Empty for anything else.
+func _item_box(geo: GeometryInstance3D) -> AABB:
+	var box := AABB()
+	var scale := 1.0
+	if geo is MeshInstance3D:
+		box = (geo as MeshInstance3D).mesh.get_aabb() if (geo as MeshInstance3D).mesh else AABB()
+	elif geo is SpriteBase3D:
+		box = _sprite_box(geo)
+	elif geo is MultiMeshInstance3D and (geo as MultiMeshInstance3D).multimesh and (geo as MultiMeshInstance3D).multimesh.mesh:
+		var mm := (geo as MultiMeshInstance3D).multimesh
+		box = mm.mesh.get_aabb()
+		if _readable(mm) and mm.instance_count > 0:
+			scale = 0.0
+			for i in mm.instance_count:
+				var s := mm.get_instance_transform(i).basis.get_scale().abs()
+				scale = maxf(scale, maxf(s.x, maxf(s.y, s.z)))
+	elif geo is GPUParticles3D:
+		var gp := geo as GPUParticles3D
+		var first := true
+		for p in gp.draw_passes:
+			var pass_mesh := gp.get_draw_pass_mesh(p)
+			if pass_mesh:
+				box = pass_mesh.get_aabb() if first else box.merge(pass_mesh.get_aabb())
+				first = false
+		var process := gp.process_material as ParticleProcessMaterial
+		if process:
+			var curve := process.scale_curve
+			var top := 1.0
+			if curve is CurveTexture:
+				top = _curve_top((curve as CurveTexture).curve)
+			elif curve is CurveXYZTexture:
+				var xyz := curve as CurveXYZTexture
+				top = maxf(_curve_top(xyz.curve_x), maxf(_curve_top(xyz.curve_y), _curve_top(xyz.curve_z)))
+			scale = maxf(absf(process.scale_min), absf(process.scale_max)) * top
+	elif geo is CPUParticles3D and (geo as CPUParticles3D).mesh:
+		var cpu := geo as CPUParticles3D
+		box = cpu.mesh.get_aabb()
+		var top := _curve_top(cpu.scale_amount_curve)
+		if cpu.split_scale:
+			top = maxf(_curve_top(cpu.scale_curve_x), maxf(_curve_top(cpu.scale_curve_y), _curve_top(cpu.scale_curve_z)))
+		scale = maxf(absf(cpu.scale_amount_min), absf(cpu.scale_amount_max)) * top
+	return AABB(box.position * scale, box.size * scale)
+
+
+## The largest value a curve reaches, sampled across its domain, or 1 when there is none.
+func _curve_top(curve: Curve) -> float:
+	if curve == null:
+		return 1.0
+	var top := 0.0
+	for i in 33:
+		top = maxf(top, absf(curve.sample(lerpf(curve.min_domain, curve.max_domain, i / 32.0))))
+	return top
+
+
+## A sprite's rectangle in its own space, in metres, laid on its axis as SpriteBase3D lays it: X
+## across along -z and up along y, Y across along x and up along -z, Z across along x and up along y.
+## A billboard turns to the camera, so it takes the engine's cube round its origin out to the
+## rectangle's furthest edge.
+func _sprite_box(sprite: SpriteBase3D) -> AABB:
+	var rect := sprite.get_item_rect()
+	var r := Rect2(rect.position * sprite.pixel_size, rect.size * sprite.pixel_size)
+	if sprite.billboard != BaseMaterial3D.BILLBOARD_DISABLED:
+		var reach := maxf(maxf(absf(r.position.x), absf(r.end.x)), maxf(absf(r.position.y), absf(r.end.y)))
+		return AABB(-Vector3.ONE * reach, Vector3.ONE * reach * 2.0)
+	match sprite.axis:
+		Vector3.AXIS_X:
+			return AABB(Vector3(0.0, r.position.y, -r.end.x), Vector3(0.0, r.size.y, r.size.x))
+		Vector3.AXIS_Y:
+			return AABB(Vector3(r.position.x, 0.0, -r.end.y), Vector3(r.size.x, 0.0, r.size.y))
+	return AABB(Vector3(r.position.x, r.position.y, 0.0), Vector3(r.size.x, r.size.y, 0.0))
+
+
+## An item's largest size in any direction as it draws (_item_box, scaled as its node is).
+func _item_size(geo: GeometryInstance3D, root: Node) -> float:
+	var size := _item_box(geo).size * _relative(geo, root).basis.get_scale().abs()
+	return maxf(size.x, maxf(size.y, size.z))
 
 
 ## Every source file of the ambience, by path.
@@ -569,8 +781,17 @@ func test_nothing_costly_or_banned() -> void:
 	var ambience := _mounted()
 	if ambience == null:
 		return
-	for type in ["WorldEnvironment", "Camera3D", "FogVolume", "Light3D", "ReflectionProbe", "VoxelGI", "LightmapGI"]:
+	for type in ["WorldEnvironment", "Camera3D", "FogVolume", "Light3D", "ReflectionProbe", "VoxelGI", "LightmapGI", "Decal"]:
 		check(_nodes(ambience, type).is_empty(), "the ambience has no %s" % type)
+	# Decor draws only with what the contract can read (Label3D and CSG shapes are not), and a sprite
+	# keeps to the world: a fixed-size one has no size there, one without the depth test draws over
+	# the cell.
+	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
+		var readable := geo is MeshInstance3D or geo is MultiMeshInstance3D or geo is GPUParticles3D or geo is CPUParticles3D or geo is SpriteBase3D
+		check(readable, "%s is a %s, which the contract cannot read: decor draws with meshes, MultiMeshes, particles or sprites" % [geo.name, geo.get_class()])
+		if geo is SpriteBase3D:
+			check(not (geo as SpriteBase3D).fixed_size, "%s draws at a fixed size on screen" % geo.name)
+			check(not (geo as SpriteBase3D).no_depth_test, "%s draws without the depth test, over the cell" % geo.name)
 	ambience.get_parent().free()
 	var sources := {}
 	_sources(AMBIENCE_DIR, sources)
@@ -610,22 +831,21 @@ func test_decor_stays_clear_of_the_swim_plane() -> void:
 	ambience.get_parent().free()
 
 
-func test_foreground_meshes_are_small() -> void:
+func test_foreground_items_are_small() -> void:
 	if not ResourceLoader.exists(SCENE):
 		return
 	var ambience := _mounted()
 	if ambience == null:
 		return
-	# One mesh above the plane, not an instanced layer of small items: its footprint across.
-	for geo: GeometryInstance3D in _nodes(ambience, "MeshInstance3D"):
-		var mesh := (geo as MeshInstance3D).mesh
+	# Every item above the plane, whatever draws it: a mesh, a sprite, each instance of a layer, each
+	# particle. Instances this runner cannot place count as above it.
+	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
 		var h := _heights(geo, ambience)
-		if mesh == null or h.high < PLANE_BAND.y:
+		if h.known and h.high < PLANE_BAND.y:
 			continue
-		var box := _relative(geo, ambience) * mesh.get_aabb()
-		var across := maxf(box.size.x, box.size.z)
-		check(across < LARGE_M, "%s is above the swim plane (its top at %.2f m) and %.2f m across: a foreground item stays under %.1f m, since one faint sheet over the cell veils the middle of the frame" \
-			% [geo.name, h.high, across, LARGE_M])
+		var size := _item_size(geo, ambience)
+		check(size < LARGE_M, "%s is above the swim plane (its top at %.2f m) and its items are %.2f m across: a foreground item stays under %.1f m in any direction, since one faint sheet over the cell veils the middle of the frame" \
+			% [geo.name, h.high, size, LARGE_M])
 	ambience.get_parent().free()
 
 
@@ -636,21 +856,28 @@ func test_the_ambience_keeps_to_its_budget() -> void:
 	if ambience == null:
 		return
 	var particles := 0
+	var large := 0
 	var billboards: Array[GeometryInstance3D] = []
 	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
+		var items := 1
 		if geo is MultiMeshInstance3D and (geo as MultiMeshInstance3D).multimesh:
 			var mm := (geo as MultiMeshInstance3D).multimesh
-			particles += mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			items = mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+			particles += items
 		elif geo is GPUParticles3D:
-			particles += (geo as GPUParticles3D).amount
+			items = (geo as GPUParticles3D).amount
+			particles += items
 		elif geo is CPUParticles3D:
-			particles += (geo as CPUParticles3D).amount
-		elif geo is MeshInstance3D and (geo as MeshInstance3D).mesh:
-			var size := (geo as MeshInstance3D).mesh.get_aabb().size * (geo as Node3D).basis.get_scale()
-			if maxf(size.x, maxf(size.y, size.z)) >= LARGE_M:
+			items = (geo as CPUParticles3D).amount
+			particles += items
+		# A large billboard: a mesh or a sprite, or each instance or particle, LARGE_M or more in any
+		# direction.
+		if _item_size(geo, ambience) >= LARGE_M:
+			large += items
+			if geo is MeshInstance3D or geo is SpriteBase3D:
 				billboards.append(geo)
 	check(particles <= MAX_PARTICLES, "%d live particles, at most %d" % [particles, MAX_PARTICLES])
-	check(billboards.size() <= MAX_BILLBOARDS, "%d large billboards, at most %d" % [billboards.size(), MAX_BILLBOARDS])
+	check(large <= MAX_BILLBOARDS, "%d large billboards, at most %d" % [large, MAX_BILLBOARDS])
 	# Transparent billboards stacked over one point of the plan, on a grid over their footprints.
 	var stacked := 0
 	var flat: Array[Dictionary] = []
@@ -660,7 +887,7 @@ func test_the_ambience_keeps_to_its_budget() -> void:
 			see_through = see_through or _blend_and_fog(m).blend != "opaque"
 		if see_through:
 			var t := _relative(geo, ambience)
-			flat.append({"inverse": t.affine_inverse(), "y": t.origin.y, "box": (geo as MeshInstance3D).mesh.get_aabb(), "world": t * (geo as MeshInstance3D).mesh.get_aabb()})
+			flat.append({"inverse": t.affine_inverse(), "y": t.origin.y, "box": _item_box(geo), "world": t * _item_box(geo)})
 	var area := AABB()
 	for i in flat.size():
 		area = flat[i].world if i == 0 else area.merge(flat[i].world)
@@ -687,6 +914,9 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 		for m in _materials(geo):
 			var named: Array = []
 			for color_set: Dictionary in _color_sets(m, geo):
+				if color_set.get("unread", false):
+					check(false, "%s: this runner cannot read its MultiMesh instance colours, so its colours belong in uniforms" % geo.name)
+					continue
 				if not color_set.painting:
 					# A flat colour, every stop of a ramp however many it has, and every vertex colour
 					# counts as it is.
