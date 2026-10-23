@@ -16,6 +16,8 @@ const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const SCHEMA_VERSION := 1
 const FOLDER := "user://creature_stage"
 const TEMP_SUFFIX := ".tmp"
+## The save before the last one, kept as PersistenceService keeps its backup; load_from falls back to it.
+const BACKUP_SUFFIX := ".bak"
 const STARTER_BODY := "quadruped"
 const DEFAULT_NAME := "Newcomer"
 ## The world tuning file (owned by the world track); start_points falls back to DEFAULT_START_POINTS without it.
@@ -77,19 +79,42 @@ func save_to(path: String, state: Dictionary) -> Error:
 			or BodyCodec.encode(BodyCodec.from_dict(written.state["body"])) != BodyCodec.encode(BodyCodec.from_dict(state["body"])):
 		DirAccess.remove_absolute(tmp)
 		return ERR_FILE_CORRUPT
+	var backup := path + BACKUP_SUFFIX
+	var backed_up := false
 	if FileAccess.file_exists(path):
-		var err := DirAccess.remove_absolute(path)
+		# The current file becomes the backup first, so a failed move still leaves the player a save.
+		if FileAccess.file_exists(backup):
+			DirAccess.remove_absolute(backup)
+		var err := DirAccess.rename_absolute(path, backup)
 		if err != OK:
 			DirAccess.remove_absolute(tmp)
 			return err
+		backed_up = true
 	var moved := DirAccess.rename_absolute(tmp, path)
 	if moved != OK:
 		DirAccess.remove_absolute(tmp)
+		if backed_up:
+			DirAccess.rename_absolute(backup, path)
 	return moved
 
 
-## Returns {"ok": bool, "state": Dictionary (whole numbers as int), "errors": PackedStringArray}. Never writes.
+## Returns {"ok": bool, "state": Dictionary (whole numbers as int), "errors": PackedStringArray}. When the file does
+## not read, its .bak is tried (the result then carries "source": "backup"); the primary's reasons are kept either
+## way. Never writes.
 func load_from(path: String) -> Dictionary:
+	var result := _read(path)
+	if result.ok or not FileAccess.file_exists(path + BACKUP_SUFFIX) or path.ends_with(BACKUP_SUFFIX) \
+			or path.ends_with(TEMP_SUFFIX):
+		return result
+	var backup := _read(path + BACKUP_SUFFIX)
+	if backup.ok:
+		backup["source"] = "backup"
+		backup["errors"] = result.errors
+		return backup
+	return result
+
+
+func _read(path: String) -> Dictionary:
 	var result := {"ok": false, "state": {}, "errors": PackedStringArray()}
 	var name := path.get_file()
 	if not FileAccess.file_exists(path):

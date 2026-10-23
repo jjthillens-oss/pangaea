@@ -73,6 +73,23 @@ func test_write_is_atomic_and_leaves_no_temp_file() -> void:
 	check_eq(store.load_from(path).state["points"], 99, "the good file is untouched")
 
 
+func test_the_save_before_is_kept_as_the_backup_and_read_when_the_file_is_bad() -> void:
+	var state := CreatureStore.new_state(1)
+	check_eq(store.save_to(path, state), OK, "first save")
+	check(not FileAccess.file_exists(path + CreatureStore.BACKUP_SUFFIX), "no .bak after the first save")
+	state["points"] = 99
+	check_eq(store.save_to(path, state), OK, "second save")
+	check(FileAccess.file_exists(path + CreatureStore.BACKUP_SUFFIX), "the first save became the .bak")
+	check_eq(store.load_from(path + CreatureStore.BACKUP_SUFFIX).state["points"], CreatureStore.start_points(), "with the first state")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string("{not json")
+	f.close()
+	var loaded := store.load_from(path)
+	check(loaded.ok and loaded.state["points"] == CreatureStore.start_points(), "a bad file falls back to the .bak")
+	check_eq(String(loaded.get("source", "")), "backup", "and says so")
+	check(not loaded.errors.is_empty(), "keeping the primary's reasons: %s" % [loaded.errors])
+
+
 func test_refusals_explain_themselves() -> void:
 	var missing := store.load_from(path)
 	check(not missing.ok and missing.state.is_empty(), "no file: not ok")
