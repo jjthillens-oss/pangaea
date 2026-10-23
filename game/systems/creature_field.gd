@@ -37,6 +37,13 @@ const BRAIN_SEED_STRIDE := 31
 ## clear of rocks wins, else the center (plan section 10).
 const CARCASS_RINGS_M := [0.45, 0.9]
 const CARCASS_SOURCE := "kill"
+## Endless mode: dev and test creatures take numbers from here up, so they sort after every site
+## creature and their ids ("c_" + number) never meet a site creature's ("c_<size>_<site>_<count>").
+const DEBUG_NUMBER_BASE := 1 << 30
+## The think schedule's slots (10 Hz at 60 ticks a second) and the pass key of a sleeper in the
+## streaming block's sleep and wake pass (after every slot).
+const THINK_SLOTS := 6
+const ASLEEP_KEY := 6
 
 
 ## One creature. Its phenotype is shared with its species; everything else is its own.
@@ -88,10 +95,13 @@ var events: Array[Dictionary] = []
 
 ## Endless mode (S1): set by create_endless; false in the pool.
 var endless := false
+var world: WorldStream = null
 
 var _phenotypes := {}   ## species id -> Phenotype
 ## Endless mode: the awake creatures, sorted (number, id) like `creatures`.
 var _awake: Array[Creature] = []
+## Endless mode: how many awake creatures think on each slot.
+var _slot_counts := PackedInt32Array()
 var _senses := {}       ## species id -> {"sight", "fov" (radians, whole), "near"}
 
 
@@ -120,6 +130,21 @@ static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: 
 ## the awake ones in the endless world.
 func awake() -> Array[Creature]:
 	return _awake if endless else creatures
+
+
+## The endless world's field (S1): as create, but every niche starts at cap 0 (WorldStream sets the
+## caps from the sites it has loaded) and creatures come only from streamed sites. `rng` is seeded
+## but never drawn: every endless stream is a hash of the world seed and the site.
+static func create_endless(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: PoolLayout,
+		p_region: EcologyRegion, p_world: WorldStream, p_seed: int) -> CreatureField:
+	var field := create(p_species, p_catalog, p_layout, p_region, p_seed)
+	for role in field.region.niches:
+		field.region.set_niche(role, 0)
+	field.endless = true
+	field.world = p_world
+	field._slot_counts.resize(THINK_SLOTS)
+	field._slot_counts.fill(0)
+	return field
 
 
 ## Fills every site, in data order: a site that passes the spawn check gets its creature now, any
@@ -227,6 +252,7 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	creatures.remove_at(at)
 	if endless:
 		_awake.erase(c)
+		_release_slot(c)
 	if not c.debug:
 		region.on_creature_removed(c.role)
 	var token_at := engaged_on_player.find(c.id)
@@ -457,7 +483,7 @@ func snapshot() -> Dictionary:
 
 func _new_creature(species_id: String, p_phenotype: Phenotype, p: Vector2, heading: float, tick: int) -> Creature:
 	var c := Creature.new()
-	c.number = next_number
+	c.number = next_number + (DEBUG_NUMBER_BASE if endless else 0)
 	next_number += 1
 	c.id = ID_PREFIX + str(c.number)
 	c.species_id = species_id
@@ -474,6 +500,8 @@ func _add(c: Creature) -> void:
 	if endless:
 		_insert_sorted(creatures, c)
 		if not c.asleep:
+			if c.brain != null:
+				c.think_slot = _take_slot()
 			_insert_sorted(_awake, c)
 	else:
 		creatures.append(c)
@@ -486,6 +514,22 @@ func _try_site(s: Dictionary, arena: PoolArena, places: Array[Vector2], tick: in
 	if not blocker_from(s, arena, places).is_empty():
 		return false
 	return spawn_at(str(s.species), s.home, float(s.heading), str(s.id), tick) != null
+
+
+## Endless mode: the slot with the fewest awake creatures (ties to the lowest), taken.
+func _take_slot() -> int:
+	var best := 0
+	for i in range(1, _slot_counts.size()):
+		if _slot_counts[i] < _slot_counts[best]:
+			best = i
+	_slot_counts[best] += 1
+	return best
+
+
+func _release_slot(c: Creature) -> void:
+	if c.think_slot >= 0:
+		_slot_counts[c.think_slot] -= 1
+		c.think_slot = -1
 
 
 ## A site's record by id: the species data's in the pool.
