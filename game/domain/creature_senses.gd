@@ -21,6 +21,17 @@ extends RefCounted
 const FOV_EPSILON := 1e-5
 
 
+## The bodies list in columns (CreatureField.body_snapshot), the same bodies in the same order: each
+## body's position, velocity, radius and whether it is alive packed, and the rest of its body format
+## ("id", "species", "concealed", "engageable", "bite", "spikes") in `info`. perceive_bodies reads it.
+class Bodies:
+	var info: Array[Dictionary] = []
+	var at := PackedVector2Array()
+	var velocity := PackedVector2Array()
+	var radius := PackedFloat64Array()
+	var alive := PackedByteArray()
+
+
 ## Every body the viewer senses, nearest first (ties by id), as fresh percepts: {"id", "species",
 ## "position", "velocity", "radius", "distance", "bearing", "by": "near"|"sight", "engageable",
 ## "bite": bool, "spikes": int}. Skips the viewer itself, dead bodies and concealed bodies.
@@ -49,6 +60,43 @@ static func perceive(viewer: Dictionary, bodies: Array, arena: PoolArena) -> Arr
 			continue
 		out.append({
 			"id": str(body.id), "species": str(body.species), "position": at, "velocity": Vector2(body.velocity),
+			"radius": r, "distance": d, "bearing": b, "by": by, "engageable": bool(body.get("engageable", true)),
+			"bite": bool(body.get("bite", false)), "spikes": int(body.get("spikes", 0)),
+		})
+	out.sort_custom(_nearer)
+	return out
+
+
+## perceive over a Bodies snapshot: the same tests on the same values, so the same percepts in the
+## same order, reading a body's other fields only once it is within a sense's range (most are not).
+static func perceive_bodies(viewer: Dictionary, bodies: Bodies, arena: PoolArena) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var from: Vector2 = viewer.position
+	var viewer_r: float = viewer.radius
+	var sight: float = viewer.sight
+	var half_fov: float = float(viewer.fov) / 2.0
+	var near: float = viewer.near
+	var positions := bodies.at
+	var radii := bodies.radius
+	for i in positions.size():
+		var at := positions[i]
+		var r := radii[i]
+		var d := from.distance_to(at)
+		if d > sight + r and d > viewer_r + r + near:
+			continue
+		var body: Dictionary = bodies.info[i]
+		if body.id == viewer.id or bodies.alive[i] == 0 or bool(body.get("concealed", false)):
+			continue
+		var b := bearing(viewer, at)
+		var by := ""
+		if d <= viewer_r + r + near:
+			by = "near"
+		elif d <= sight + r and absf(b) <= half_fov + FOV_EPSILON and (arena == null or arena.segment_clear(from, at)):
+			by = "sight"
+		if by.is_empty():
+			continue
+		out.append({
+			"id": str(body.id), "species": str(body.species), "position": at, "velocity": bodies.velocity[i],
 			"radius": r, "distance": d, "bearing": b, "by": by, "engageable": bool(body.get("engageable", true)),
 			"bite": bool(body.get("bite", false)), "spikes": int(body.get("spikes", 0)),
 		})

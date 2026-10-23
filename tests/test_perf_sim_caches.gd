@@ -436,3 +436,115 @@ static func _plain_give_up_deadline(mem: CreatureBrain.Memory) -> int:
 	if mem.seen.has(mem.target):
 		due = mini(due, int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks))
 	return due
+
+
+## perceive_bodies over a Bodies snapshot gives what perceive gives over the same bodies as
+## dictionaries, for random viewers among bodies on the range edges, dead, concealed, the viewer
+## itself and bodies as far as another.
+func test_packed_body_sense_matches_the_dictionary_one() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var differ := 0
+	var found := 0
+	for round in 400:
+		var exact := round % 2 == 0
+		var from := Vector2(rng.randi_range(-40, 40), rng.randi_range(-40, 40)) if exact \
+			else Vector2(rng.randf_range(-40.0, 40.0), rng.randf_range(-40.0, 40.0))
+		var heading := rng.randf_range(-PI, PI)
+		var viewer := {"id": "c_1", "species": "s", "position": from, "heading": heading, "radius": 0.5,
+			"sight": float(rng.randi_range(3, 9)) if exact else rng.randf_range(3.0, 9.0),
+			"fov": deg_to_rad(rng.randf_range(90.0, 300.0)), "near": float(rng.randi_range(0, 2))}
+		var bodies: Array[Dictionary] = []
+		for i in rng.randi_range(0, 24):
+			var r := float(rng.randi_range(1, 4)) / 4.0 if exact else rng.randf_range(0.2, 1.2)
+			var p := from + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(0.0, 14.0)
+			match rng.randi_range(0, 6):
+				0:   # on the sight edge, or a float32 step either side of it
+					var edge := float(viewer.sight) + r
+					if exact:
+						p = from + [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN][rng.randi_range(0, 3)] * edge
+					else:
+						p = from + Vector2.from_angle(rng.randf_range(-PI, PI)) * edge * (1.0 + rng.randi_range(-1, 1) * 1.2e-7)
+				1:   # on the near edge
+					var edge := float(viewer.radius) + r + float(viewer.near)
+					p = from + [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN][rng.randi_range(0, 3)] * edge
+				2:   # on the field of view's edge
+					p = from + Vector2.from_angle(heading + float(viewer.fov) / 2.0 * (1.0 if rng.randf() < 0.5 else -1.0)) * 2.0
+				3:   # as far as an earlier body
+					if not bodies.is_empty():
+						var other: Dictionary = bodies[rng.randi_range(0, bodies.size() - 1)]
+						p = from + (Vector2(other.position) - from).rotated(rng.randf_range(-0.5, 0.5))
+				4:
+					p = from
+			var id := "c_1" if rng.randf() < 0.05 else ("player" if i == 0 else "c_%d" % (i + 2))
+			bodies.append({"id": id, "species": "sp%d" % rng.randi_range(0, 2), "position": p,
+				"velocity": Vector2(rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0)), "radius": r,
+				"alive": rng.randf() < 0.9, "concealed": rng.randf() < 0.1, "engageable": rng.randf() < 0.8,
+				"bite": rng.randf() < 0.5, "spikes": rng.randi_range(0, 3)})
+		var snap := CreatureSenses.Bodies.new()
+		for body in bodies:
+			snap.info.append(body)
+			snap.at.append(body.position)
+			snap.velocity.append(body.velocity)
+			snap.radius.append(body.radius)
+			snap.alive.append(1 if bool(body.alive) else 0)
+		var want := CreatureSenses.perceive(viewer, bodies, null)
+		var got := CreatureSenses.perceive_bodies(viewer, snap, null)
+		found += want.size()
+		if var_to_str(got) != var_to_str(want):
+			differ += 1
+	check_eq(differ, 0, "rounds where the packed sense differs")
+	check(found > 500, "bodies were sensed (%d)" % found)
+
+
+## CreatureField.body_snapshot holds what bodies() gives, column by column, and every awake creature
+## perceives the same through either with the arena's line of sight: on the saturated world swum
+## through overdriven (creatures spawn, sleep, wake and go), then with the hunter seen.
+func test_the_body_snapshot_holds_what_bodies_gives() -> void:
+	var cost: GDScript = load(COST)
+	var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+	Gates.make_racer(r.save.genome, catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+	sim.debug_set_hidden(true)
+	sim.drain_events()
+	var f := sim.creatures
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var wrong := 0
+	var differ := 0
+	var sensed := 0
+	for t in 1500:
+		if t == 900:
+			sim.debug_set_hidden(false)
+		SwimBot.overdrive(sim)
+		sim.step(bot.next_intent(sim))
+		sim.drain_events()
+		if t % 5 != 0:
+			continue
+		var player := sim.player_body()
+		var list := f.bodies(player)
+		var snap := f.body_snapshot(player)
+		if snap.info.size() != list.size() or snap.at.size() != list.size() or snap.velocity.size() != list.size() \
+				or snap.radius.size() != list.size() or snap.alive.size() != list.size():
+			wrong += 1
+			continue
+		for i in list.size():
+			var body := list[i]
+			var info := snap.info[i]
+			for key in ["id", "species", "concealed", "engageable", "bite", "spikes"]:
+				if info[key] != body[key]:
+					wrong += 1
+			if snap.at[i] != body.position or snap.velocity[i] != body.velocity or snap.radius[i] != body.radius \
+					or snap.alive[i] != (1 if bool(body.alive) else 0):
+				wrong += 1
+		for c in f.awake():
+			var viewer := f.viewer_of(c)
+			var want := CreatureSenses.perceive(viewer, list, sim.arena)
+			sensed += want.size()
+			if var_to_str(CreatureSenses.perceive_bodies(viewer, snap, sim.arena)) != var_to_str(want):
+				differ += 1
+	check_eq(wrong, 0, "snapshot values that differ from bodies()")
+	check_eq(differ, 0, "creatures that perceive differently through the snapshot")
+	check(sensed > 200, "bodies were sensed (%d)" % sensed)
+

@@ -274,7 +274,7 @@ func step(intent: SimIntent) -> void:
 	if world != null:
 		world.step(self)   # the streaming block (S1 spine 3.11): first, reading sim state only
 	if creatures != null:
-		_creatures_act(creatures.bodies(player_body()))
+		_creatures_act(creatures.body_snapshot(player_body()))
 	var moved := 0.0
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
@@ -885,7 +885,7 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 ## Tick steps 1-2: each creature in number order thinks when due (on `snapshot`, the bodies as
 ## they were at the start of the tick), drives, and sets its velocity. Scripted bodies swim by
 ## their script; frozen creatures coast.
-func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
+func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 	var food: Array = []
 	var food_at := PackedVector2Array()    # the food's positions and radii, packed for the senses
 	var food_r := PackedFloat64Array()

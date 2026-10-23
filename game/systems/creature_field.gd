@@ -78,6 +78,8 @@ class Creature:
 	var asleep := false
 	var think_slot := -1
 	var spawn_count := 0
+	## Its fields of the senses' body format that never change, for body_snapshot (built on first use).
+	var body_info := {}
 
 
 var species: SpeciesCatalog
@@ -503,6 +505,30 @@ func bodies(player_body: Dictionary) -> Array[Dictionary]:
 	return out
 
 
+## bodies() as a CreatureSenses.Bodies snapshot (perceive_bodies): the same bodies in the same
+## order and the same values. `player_body` is its own info.
+func body_snapshot(player_body: Dictionary) -> CreatureSenses.Bodies:
+	var out := CreatureSenses.Bodies.new()
+	if not player_body.is_empty():
+		out.info.append(player_body)
+		out.at.append(player_body.position)
+		out.velocity.append(player_body.velocity)
+		out.radius.append(player_body.radius)
+		out.alive.append(1 if bool(player_body.get("alive", true)) else 0)
+	for c in awake():
+		var m := c.motion
+		var p := c.phenotype
+		if c.body_info.is_empty():
+			c.body_info = {"id": c.id, "species": c.species_id, "concealed": false, "engageable": true,
+				"bite": p.bite_damage > 0.0, "spikes": p.spikes.size()}
+		out.info.append(c.body_info)
+		out.at.append(m.position)
+		out.velocity.append(m.velocity)
+		out.radius.append(p.radius)
+		out.alive.append(1 if c.state.health > 0.0 else 0)
+	return out
+
+
 ## One creature in the senses' body format.
 func body_of(c: Creature) -> Dictionary:
 	var m := c.motion
@@ -540,17 +566,19 @@ func think_due(c: Creature, tick: int) -> bool:
 	return c.brain != null and CreatureBrain.think_due(c.brain, c.think_slot if endless else c.number, tick)
 
 
-## One creature's think: it perceives `bodies` (the tick's snapshot) through its own senses, sees
-## food only while foraging, and decides. The player is engageable only if the token lets this
-## creature engage now: the flag goes on a fresh percept and on the brain's remembered entry alike,
-## so no decision runs on a flag from an older think (or from a hurt, which marks its attacker
-## engageable). The token list follows the brain right after. `self_view` may be passed in when the
-## caller already built it this tick (the body has not moved since), and so may a packed copy of the
-## food's positions and radii (CreatureSenses.perceive_food_packed), taken with `food_items`.
-func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int, self_view := {},
+## One creature's think: it perceives `bodies` (the tick's snapshot: bodies(), or body_snapshot()'s
+## CreatureSenses.Bodies) through its own senses, sees food only while foraging, and decides. The
+## player is engageable only if the token lets this creature engage now: the flag goes on a fresh
+## percept and on the brain's remembered entry alike, so no decision runs on a flag from an older
+## think (or from a hurt, which marks its attacker engageable). The token list follows the brain right
+## after. `self_view` may be passed in when the caller already built it this tick (the body has not
+## moved since), and so may a packed copy of the food's positions and radii
+## (CreatureSenses.perceive_food_packed), taken with `food_items`.
+func think(c: Creature, p_bodies: Variant, food_items: Array, arena: PoolArena, tick: int, self_view := {},
 		food_at := PackedVector2Array(), food_r := PackedFloat64Array()) -> void:
 	var viewer := viewer_of(c)
-	var percepts := CreatureSenses.perceive(viewer, p_bodies, arena)
+	var percepts := CreatureSenses.perceive_bodies(viewer, p_bodies, arena) if p_bodies is CreatureSenses.Bodies \
+		else CreatureSenses.perceive(viewer, p_bodies, arena)
 	var may := may_engage_player(c)
 	for percept in percepts:
 		if percept.id == PLAYER_ID:
