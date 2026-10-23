@@ -1,0 +1,113 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "S2 T3.2 test fixture: two-post sites at size 2 (a Lurker, an elder rammer) for TileCatalog's rules; not game content.",
+	"id": "reef_posts",
+	"band": 0,
+	"region": "reef",
+	"set": 0,
+	"rare": "",
+	"landmark_anchor": [
+		24.0,
+		-24.0
+	],
+	"set_piece": null,
+	"shells": [
+		{
+			"id": "a",
+			"center": [
+				-14.0,
+				12.0
+			],
+			"radius": 1.0,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				20.0,
+				-4.0
+			],
+			"radius": 1.2,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "c",
+			"center": [
+				-4.0,
+				-20.0
+			],
+			"radius": 0.8,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "sink"
+		}
+	],
+	"zones": [
+		{
+			"id": "a",
+			"center": [
+				16.0,
+				16.0
+			],
+			"radius": 4.0,
+			"capacity": 40.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				-20.0,
+				-18.0
+			],
+			"radius": 3.0,
+			"capacity": 30.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		}
+	],
+	"sites": [
+		{
+			"id": "b",
+			"species": "ambush_hunter",
+			"home": [
+				8.0,
+				8.0
+			],
+			"heading": 0.0,
+			"sizes": [
+				1
+			]
+		},
+		{
+			"id": "lk",
+			"species": "lurker",
+			"home": [
+				-13.0,
+				5.0
+			],
+			"heading": 0.6,
+			"sizes": [
+				2
+			],
+			"post_b": {
+				"home": [
+					-7.0,
+					11.0
+				],
+				"heading": 2.4
+			}
+		}
+	]
+}
