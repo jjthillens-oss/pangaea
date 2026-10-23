@@ -890,6 +890,7 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 	var food_at := PackedVector2Array()    # the food's positions and radii, packed for the senses
 	var food_r := PackedFloat64Array()
 	var food_listed := false
+	var endless := creatures.endless
 	for c in creatures.awake():
 		var speed_mul := c.state.speed_multiplier()
 		if c.scripted:
@@ -900,7 +901,8 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
 			continue
 		var self_view := creatures.self_view_of(c)
-		if creatures.think_due(c, tick):
+		# creatures.think_due(c, tick) written out (a creature here always has a brain).
+		if CreatureBrain.think_due(c.brain, c.think_slot if endless else c.number, tick):
 			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
 				# The two lists joined (a new array), or the plankton list itself when there is no
 				# carrion: the senses only read it.
@@ -974,7 +976,7 @@ func _contacts() -> void:
 			PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
 		else:
 			PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
-		if CreatureBrain.is_striking(mem):
+		if mem.state == CreatureBrain.ATTACK and CreatureBrain.is_striking(mem):   # a strike is an attack phase
 			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
 				CreatureBrain.BLOCKED_BEARING)
 			if not rock.is_empty():
