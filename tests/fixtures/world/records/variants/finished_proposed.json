@@ -1,0 +1,7 @@
+{
+	"id": "shell_s_pill",
+	"status": "PROPOSED",
+	"review_state": "production - S1 test fixture",
+	"export_path": "assets/export/shell_small_pill.glb",
+	"footprint_radius_m": 0.75
+}

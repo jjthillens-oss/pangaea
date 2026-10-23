@@ -211,3 +211,104 @@ func test_every_open_point_is_reachable_and_close_enough_to_a_zone_to_survive_st
 	check(grid.open_count() > 10000, "the grid covers the pool (%d open points)" % grid.open_count())
 	check_eq(unreached, 0, "open points the spawn cannot reach")
 	check(worst <= budget, "worst path to a zone %.1f m at %s, budget %.1f m" % [worst, worst_at, budget])
+
+
+# --- the S1 extractions (docs/s1/s1-interfaces.md 3.8): the endless world checks its tiles with them ---
+
+## A zone among shells (C-12): ZONE_CLEAR_SHARE of its points keep ZONE_CLEAR_MARGIN of open water.
+## A shell slid in from the east covers more of the zone the further in it comes; 76% clear passes
+## and 74% clear is refused.
+func test_zone_problems_refuses_a_zone_mostly_under_shells() -> void:
+	var zone := {"id": "z", "center": Vector2(3.0, -2.0), "radius": 6.0, "capacity": 40.0, "growth_rate": 0.1}
+	var zones: Array[Dictionary] = [zone]
+	var at_76 := _shell_at_share(zone, 0.76)
+	var at_74 := _shell_at_share(zone, 0.74)
+	check(not at_76.is_empty() and not at_74.is_empty(), "a shell position gives each share")
+	if at_76.is_empty() or at_74.is_empty():
+		return
+	check_eq(PoolLayout.zone_problems(zones, at_76, INF), PackedStringArray(), "76% clear passes")
+	var refused := PoolLayout.zone_problems(zones, at_74, INF)
+	check(refused.size() == 1 and refused[0].begins_with("Zone 'z' has 74.") and refused[0].ends_with("of its points 0.7 m clear of shells; it needs 75%."),
+		"74%% clear is refused: %s" % [refused])
+	var none: Array[Dictionary] = []
+	check_eq(PoolLayout.zone_problems(zones, none, INF), PackedStringArray(), "no shells, no clearance check")
+	# The share is counted from the zone's centre, so it is the same wherever the tile is placed.
+	var far := zone.duplicate()
+	far.center = Vector2(zone.center) + Vector2(64.0, -128.0)
+	var far_shell: Array[Dictionary] = [{"center": Vector2(at_74[0].center) + Vector2(64.0, -128.0), "radius": at_74[0].radius}]
+	check_eq(PoolLayout.zone_clear_share(far, far_shell), PoolLayout.zone_clear_share(zone, at_74), "the same share one tile over")
+
+
+## One shell east of the zone whose clear share lies within 0.005 of `share`; [] when none is found.
+static func _shell_at_share(zone: Dictionary, share: float) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for i in 400:
+		var shell := {"center": Vector2(zone.center) + Vector2(12.0 - i * 0.02, 0.0), "radius": 3.0}
+		var one: Array[Dictionary] = [shell]
+		if absf(PoolLayout.zone_clear_share(zone, one) - share) < 0.005:
+			out.append(shell)
+			return out
+	return out
+
+
+func test_zone_problems_without_circles_gives_the_m1_messages() -> void:
+	var none: Array[Dictionary] = []
+	var cases := [
+		func(d: Dictionary) -> void: d.zones[0].radius = 0.0,
+		func(d: Dictionary) -> void: d.zones[1].growth_rate = -1.0,
+		func(d: Dictionary) -> void: d.zones[2].center = [0.0, 30.0],
+	]
+	for change in cases:
+		var data := _data()
+		change.call(data)
+		var layout := PoolLayout.from_dict(data)
+		var mine := PoolLayout.zone_problems(layout.zones, none, layout.soft_start)
+		check_eq(mine.size(), 1, "one zone problem: %s" % [mine])
+		var zone_errors := PackedStringArray()
+		for e in layout.validate():
+			if e.begins_with("Zone '") and not e.contains("plankton unit"):
+				zone_errors.append(e)
+		check_eq(mine, zone_errors, "the same text validate() gives")
+	var near_wall := _data()
+	near_wall.zones[2].center = [0.0, 30.0]
+	var layout := PoolLayout.from_dict(near_wall)
+	check_eq(PoolLayout.zone_problems(layout.zones, none, INF), PackedStringArray(), "no wall, no wall margin")
+
+
+func test_tunnel_problems_gives_the_rock_loops_message() -> void:
+	var data := _data()
+	data.rock_footprint_radius_m = 0.15
+	var layout := PoolLayout.from_dict(data)
+	var mine := PoolLayout.tunnel_problems(layout.rocks, PoolLayout.MAX_SPEED, 1.0)
+	var theirs := PackedStringArray()
+	for e in layout.validate():
+		if e.contains("two ticks at top speed"):
+			theirs.append(e)
+	check(not mine.is_empty(), "thin rocks are refused")
+	check_eq(mine, theirs, "the same text, in the same order, as the rock loop")
+	var real := PoolLayout.load_from()
+	check_eq(PoolLayout.tunnel_problems(real.rocks), PackedStringArray(), "the M1 rocks are thick enough")
+	var one: Array[Dictionary] = [{"id": "s", "center": Vector2.ZERO, "radius": 0.6}]
+	check_eq(PoolLayout.tunnel_problems(one, PoolLayout.MAX_SPEED, 0.625), PackedStringArray(), "0.375 m clears 0.20 m")
+	check_eq(PoolLayout.tunnel_problems(one, PoolLayout.MAX_SPEED, 0.3),
+		PackedStringArray(["Rock 's' radius 0.18 m is not above 0.20 m (two ticks at top speed)."]), "a scaled radius is the one checked")
+
+
+func test_reach_grid_over_equals_the_layout_constructor() -> void:
+	var layout := PoolLayout.load_from()
+	var grid = ReachGrid.new(layout, PoolLayout.CELL_RADIUS)
+	var half := ceili(layout.soft_start / ReachGrid.STEP)
+	var bounds := Rect2(-half * ReachGrid.STEP, -half * ReachGrid.STEP, 2 * half * ReachGrid.STEP, 2 * half * ReachGrid.STEP)
+	var over = ReachGrid.over(layout.build_arena(), layout.zones, bounds, PoolLayout.CELL_RADIUS)
+	check_eq(over.size, grid.size, "points per row")
+	check_eq(over.rows, grid.rows, "rows")
+	check_eq(grid.rows, grid.size, "the pool's grid is square")
+	check_eq(over.origin, grid.origin, "origin")
+	check(over.open == grid.open, "every cell is equal (%d open)" % grid.open_count())
+	check(over.zone_points() == grid.zone_points(), "the same zone points")
+	# A grid over a non-square rectangle indexes rows by its own width.
+	var strip = ReachGrid.over(layout.build_arena(), layout.zones, Rect2(-10.0, 2.0, 20.0, 5.0), PoolLayout.CELL_RADIUS)
+	check_eq([strip.size, strip.rows], [41, 11], "41 x 11 points")
+	check_eq(strip.point(strip.index_near(Vector2(9.9, 6.9))), Vector2(10.0, 7.0), "the far corner")
+	var d: PackedFloat32Array = strip.distances_from(PackedInt32Array([strip.index_near(Vector2(-10.0, 2.0))]))
+	check(is_finite(d[strip.index_near(Vector2(10.0, 7.0))]) == (strip.open[strip.index_near(Vector2(10.0, 7.0))] == 1), "walks the whole strip")

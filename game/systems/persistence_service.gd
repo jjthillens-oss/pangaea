@@ -28,7 +28,10 @@ func save_to(path: String, save: SaveGame) -> Error:
 		push_error("Save refused: %s" % "; ".join(errors))
 		return ERR_INVALID_DATA
 	save.saved_at_unix = int(Time.get_unix_time_from_system())
-	var text := JSON.stringify(save.to_dict(), "\t")
+	# Sorted keys (as before) and full precision: every double is written with the shortest digits
+	# that name it, so an endless save's float64 position reads back within one ulp (the engine's
+	# parse is not correctly rounded). At the default 15 digits it would be up to 44 ulps off.
+	var text := JSON.stringify(save.to_dict(), "\t", true, true)
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 
 	var tmp := path + TEMP_SUFFIX
