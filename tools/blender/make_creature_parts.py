@@ -1721,7 +1721,11 @@ def build_gill_fan():
     soft = plume.noise(160.0, 2.0)
     plume.bump(plume.math("ADD", plume.math("MULTIPLY", fil, 0.5), plume.math("MULTIPLY", soft, 0.5)), 0.25, 0.0006)
     plume_base = _grey(plume, plume.math("SUBTRACT", plume.remap(soft, 0.3, 0.7), plume.math("MULTIPLY", fil, 0.2), clamp=True), 0.72)
-    mats = [base_sh.out(_grey(base_sh, base_sh.remap(wr, 0.3, 0.7), 0.75), 0.55), plume.out(plume_base, 0.45)]
+    rachis = sf.Shader("M_GillRachisProc")
+    grain = rachis.noise(260.0, 2.0, vector=mp._stretched(rachis, (0.3, 1.0, 0.3)))
+    rachis.bump(grain, 0.2, 0.0005)
+    mats = [base_sh.out(_grey(base_sh, base_sh.remap(wr, 0.3, 0.7), 0.75), 0.55),
+            rachis.out(_grey(rachis, rachis.remap(grain, 0.3, 0.7), 0.75), 0.45)]
     fan = bc.mesh_object("GillFan", verts, fcs, mats, face_mats)
     mats[0].name, mats[1].name = "M_GillBase", "M_GillRachis"
     plume_mat = plume.out(plume_base, 0.45)

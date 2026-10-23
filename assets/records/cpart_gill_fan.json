@@ -50,7 +50,8 @@
   ],
   "materials": [
     "M_GillBase",
-    "M_GillPlume"
+    "M_GillPlume",
+    "M_GillRachis"
   ],
   "rig_family": null,
   "animations": [],
