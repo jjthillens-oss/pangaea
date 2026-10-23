@@ -52,7 +52,6 @@ func _ready() -> void:
 		var width: float = desc.bounds_m().size.x
 		if n > 0:
 			x += 0.5 * width + 0.6
-		var ground = GroundDrive.create(desc)
 		var rig: Node3D
 		if not info["legs"].is_empty():
 			var mech = Lab.BodyMechanics.create(names[n], info["body"], table)
@@ -63,6 +62,7 @@ func _ready() -> void:
 			rig.setup(desc, SkinCpu.build(desc, 48), planner, info, PALETTE[n % PALETTE.size()],
 					AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
 		else:
+			var ground = GroundDrive.create(desc)
 			ground.position = Vector3(x, 0.0, 0.0)
 			rig = GroundDriveRig.new()
 			rig.name = names[n]
