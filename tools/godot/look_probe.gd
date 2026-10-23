@@ -52,7 +52,8 @@ extends SceneTree
 ## its sRGB pixels as {"hex", "L", "a", "b", "C", "h"} (CIE76, D65; h in degrees) plus "max_channel"
 ## (0 to 255). Every scene has cell (the inner 55% of the cell's disc), cell_behind (the fluid frame
 ## there), fluid_near_cell (the fluid frame's centre third), cell_dL (|L* of cell - L* of
-## fluid_near_cell|), fluid_top, fluid_bottom, fluid_corner_tl/tr/bl/br, fluid_corners_min_L, glow_dL
+## fluid_near_cell|), fluid_threat_hue_gap (degrees of LAB hue between fluid_near_cell and the threat
+## colour), fluid_top, fluid_bottom, fluid_corner_tl/tr/bl/br, fluid_corners_min_L, glow_dL
 ## (fluid_near_cell L* minus the corners' mean: the depth glow), creatures (each on-screen body
 ## against the fluid behind it) and render_info. lineup adds plankton and carrion (each on-screen item
 ## clear of bodies and HUD panels; hue span, highest channel, hue gap from the threat colour); tell
@@ -106,7 +107,8 @@ const BOX_COLOR := Color(1.0, 0.95, 0.0)
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
 ## fails. A "parity" gate runs only with --parity, and a gate on a scene that did not run is skipped.
-##   micro: plan section 6 (PROPOSED), plus the depth glow check of plan section 10, risk 1.
+##   micro: plan section 6 (PROPOSED), plus the depth glow check of plan section 10, risk 1, and
+##   section 3's 90 degrees of LAB hue between the fluid and the threat pink, read on screen.
 ##   baseline: today's look (m1-threats at ecb1eee) in both renderers, with margins (docs/DECISIONS.md,
 ##   "Microscopic world look"), so the probe itself can be checked on today's build. Its "fluid" is
 ##   the teal floor. It has no skirt or plankton clipping gate: there is no skirt yet (those samples
@@ -118,6 +120,7 @@ const GATES := {
 		{"id": "fluid_value", "path": "lineup.fluid_near_cell.L", "min": 26.0, "max": 36.0, "what": "fluid near the cell (L*)"},
 		{"id": "fluid_hue", "path": "lineup.fluid_near_cell.h", "min": 268.0, "max": 288.0, "what": "fluid near the cell (h)"},
 		{"id": "fluid_chroma", "path": "lineup.fluid_near_cell.C", "min": 25.0, "what": "fluid near the cell (C*)"},
+		{"id": "fluid_threat_gap", "path": "lineup.fluid_threat_hue_gap", "min": 90.0, "what": "fluid near the cell, LAB hue away from the threat colour (degrees)"},
 		{"id": "fluid_corners", "path": "lineup.fluid_corners_min_L", "min": 15.0, "what": "darkest fluid corner (L*)"},
 		{"id": "depth_glow", "path": "lineup.glow_dL", "min": 5.0, "what": "centre field lighter than the corners (dL*)"},
 		{"id": "lane_fluid_tell", "path": "tell.lane.over_fluid_min_dL", "min": 15.0, "what": "ambush lane outline over the fluid (|dL*|, 3 points)"},
@@ -534,7 +537,8 @@ func _shoot_lane(scene: String) -> void:
 
 # --- Measuring -----------------------------------------------------------------------------------
 
-## cell, cell_behind, fluid_near_cell, cell_dL, the fluid bands and corners, and glow_dL.
+## cell, cell_behind, fluid_near_cell, cell_dL, fluid_threat_hue_gap, the fluid bands and corners,
+## and glow_dL.
 func _common_readings(full: Image, fluid: Image) -> Dictionary:
 	var w := full.get_width()
 	var h := full.get_height()
@@ -545,6 +549,7 @@ func _common_readings(full: Image, fluid: Image) -> Dictionary:
 	out.cell_behind = _disc_point(fluid, at, core)
 	out.fluid_near_cell = _box_point(fluid, Rect2i(w / 3, h / 3, w / 3, h / 3), 2)
 	out.cell_dL = _dl(out.cell, out.fluid_near_cell)
+	out.fluid_threat_hue_gap = snappedf(hue_gap(out.fluid_near_cell.h, hue(lab(Color(THREAT_HEX)))), 0.1)
 	out.fluid_top = _box_point(fluid, Rect2i(int(w * 0.3125), 0, int(w * 0.4167), int(h * 0.111)), 2)
 	out.fluid_bottom = _box_point(fluid, Rect2i(int(w * 0.3125), int(h * 0.889), int(w * 0.4167), int(h * 0.111)), 2)
 	var cw := int(w * 0.078)

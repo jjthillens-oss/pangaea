@@ -23,16 +23,15 @@ const BACKDROP_MAX_Y := -30.0
 ## luminance (the stored colours, as the plan measured them). At 0.15 the fluid behind the cell
 ## rendered L* 46, darker than the cell by only 7.5; at 0.10 it renders L* 33 to 34.
 const FLUID_MAX_LUMINANCE := 0.12
-## The fluid's LAB hue band (plan section 6, measured on screen; mood frame h 278).
+## The fluid's LAB hue band (plan section 6, measured on screen; mood frame h 278). It also carries
+## the plan's hue gap from food and threat for the stored colours: anywhere in it the fluid is more
+## than 150 degrees of LAB hue from food's #CFE86A (h 114) and at least 83 from the threat pink
+## #D9466B (h 11), at its violet end. The plan's 90 from the pink would fail its own fog colour,
+## h 281.8, by a degree; the look probe holds the 90 on screen instead (gate fluid_threat_gap: the
+## fluid renders at h 273.5, 98 degrees from the pink).
 const FLUID_HUE := Vector2(268.0, 288.0)
 ## ...and its value band on screen (L*), which the start fade matches so it does not flash.
 const FLUID_L := Vector2(26.0, 36.0)
-## The fluid keeps at least this many degrees of LAB hue from food. From the threat pink (h 11) it
-## keeps as many as the band's violet end does (83): the plan's 90 for both would fail its own fog,
-## h 281.8, by a degree, while on screen that fluid reads h 273.5, 98 degrees from the pink.
-const FOOD_HUE_GAP := 90.0
-const FOOD_COLOR := Color("#CFE86A")      ## docs/art/ART_DIRECTION.md: food-only glow...
-const THREAT_COLOR := Color("#D9466B")    ## ...and threat-only pink
 const RIM_LIP_M := Vector2(41.5, 43.0)    ## the dry lip's radii, as test_assets.gd checks the rim
 ## The lip's linear albedo luminance at most (PROPOSED). The highlight is cream and never white,
 ## and living things read first: the old floor's pale stone (0.68) rendered at L* 92 to 95 in
@@ -254,14 +253,11 @@ func test_the_fluid_keeps_to_its_value_and_hue_rule() -> void:
 		return
 	var fluid := _fluid_radiance(env, glow)
 	check(fluid.get_luminance() <= FLUID_MAX_LUMINANCE, "the fluid's brightest radiance %s has luminance %.3f, at most %.2f" % [fluid, fluid.get_luminance(), FLUID_MAX_LUMINANCE])
-	var threat_gap := LookProbe.hue_gap(FLUID_HUE.y, _lab_hue(THREAT_COLOR))
 	for named: Array in [["the fog colour", env.fog_light_color], ["the fluid's brightest radiance", fluid]]:
 		var c: Color = named[1]
 		var h := _lab_hue(c)
 		check(c.b > c.g and c.g > c.r, "%s is blue: %s" % [named[0], c])
-		check(h >= FLUID_HUE.x and h <= FLUID_HUE.y, "%s has LAB hue %.1f, in the fluid's band %.0f to %.0f" % [named[0], h, FLUID_HUE.x, FLUID_HUE.y])
-		check(LookProbe.hue_gap(h, _lab_hue(FOOD_COLOR)) >= FOOD_HUE_GAP, "%s (h %.1f) keeps %.0f degrees from food" % [named[0], h, FOOD_HUE_GAP])
-		check(LookProbe.hue_gap(h, _lab_hue(THREAT_COLOR)) >= threat_gap, "%s (h %.1f) keeps %.1f degrees from the threat pink" % [named[0], h, threat_gap])
+		check(h >= FLUID_HUE.x and h <= FLUID_HUE.y, "%s has LAB hue %.1f, in the fluid's band %.0f to %.0f, clear of food and the threat pink" % [named[0], h, FLUID_HUE.x, FLUID_HUE.y])
 	# Shown only should the Backdrop go missing.
 	var bg := env.background_color
 	check(bg.b > bg.g and bg.g > bg.r, "the background is blue: %s" % bg)

@@ -13,7 +13,7 @@ const TODAY := {
 	"gl_compatibility": {
 		"lineup": {
 			"cell": {"h": 42.1}, "cell_dL": 2.4,
-			"fluid_near_cell": {"L": 42.4, "h": 206.3, "C": 22.6},
+			"fluid_near_cell": {"L": 42.4, "h": 206.3, "C": 22.6}, "fluid_threat_hue_gap": 164.8,
 			"fluid_corners_min_L": 48.4, "glow_dL": -7.7,
 			"plankton": {"h_min": 108.6, "h_max": 138.2, "max_channel": 255},
 			"carrion": {"threat_hue_gap": 18.6},
@@ -28,7 +28,7 @@ const TODAY := {
 	"forward_plus": {
 		"lineup": {
 			"cell": {"h": 41.3}, "cell_dL": 3.6,
-			"fluid_near_cell": {"L": 47.5, "h": 212.8, "C": 24.3},
+			"fluid_near_cell": {"L": 47.5, "h": 212.8, "C": 24.3}, "fluid_threat_hue_gap": 158.3,
 			"fluid_corners_min_L": 55.2, "glow_dL": -9.2,
 			"plankton": {"h_min": 117.8, "h_max": 136.6, "max_channel": 255},
 			"carrion": {"threat_hue_gap": 15.1},
@@ -168,7 +168,7 @@ func test_the_micro_gates_are_section_6() -> void:
 		by_id[gate.id] = gate
 	var ranges := {
 		"cell_hue": [30.0, 50.0], "cell_contrast": [15.0, null], "fluid_value": [26.0, 36.0],
-		"fluid_hue": [268.0, 288.0], "fluid_chroma": [25.0, null], "fluid_corners": [15.0, null],
+		"fluid_hue": [268.0, 288.0], "fluid_chroma": [25.0, null], "fluid_threat_gap": [90.0, null], "fluid_corners": [15.0, null],
 		"lane_fluid_tell": [15.0, null], "lane_decor_tell": [15.0, null], "lane_fluid_puff": [15.0, null],
 		"lane_decor_puff": [15.0, null], "plankton_hue_low": [110.0, null], "plankton_hue_high": [null, 145.0],
 		"plankton_clip": [null, 254.0], "carrion_hue": [15.0, null], "vignette_hue": [15.0, 45.0],
@@ -196,5 +196,6 @@ func test_today_s_look_passes_its_baseline_gates_in_both_renderers_and_fails_the
 		for id in ["cell_contrast", "fluid_value", "fluid_hue", "fluid_chroma", "depth_glow", "lane_fluid_tell",
 				"lane_decor_puff", "plankton_clip", "vignette_hue", "starving_contrast", "parity_fluid", "parity_cell"]:
 			check(failed.has(id), "%s fails the micro look's %s" % [renderer, id])
-		check(not failed.has("cell_hue") and not failed.has("carrion_hue"), "%s keeps the coral cell and the carrion hue" % renderer)
+		check(not failed.has("cell_hue") and not failed.has("carrion_hue") and not failed.has("fluid_threat_gap"),
+			"%s keeps the coral cell, the carrion hue and the teal's distance from the threat pink" % renderer)
 	check_eq(LookProbe.GATES.baseline.size(), 18, "every baseline gate has a reading here")

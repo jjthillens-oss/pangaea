@@ -113,12 +113,12 @@ VK_ICD_FILENAMES=/tmp/lvp/lvp_icd.json xvfb-run -a -s "-screen 0 1920x1080x24" .
 
 The exit code is 0 when every gate passes, 1 when one fails or a moment could not be staged, and 2 when the probe cannot run. It prints one PASS, FAIL or SKIP line per gate. Its save goes to `user://look_probe/`, never the player's slot; set `XDG_DATA_HOME` as for `check.sh`. Runs are repeatable: two runs in one renderer give the same readings, and their frames differ only in the HUD's random lineage id. It is not part of `check.sh`: run it at C4, C5 and C9 of the plan and whenever the look changes. Its colour maths and gate logic are unit-tested in `tests/test_look_probe.gd`.
 
-**Today's look** (m1-threats at ecb1eee; llvmpipe and lavapipe, 1920×1080, zoom 14). `--look=baseline` passes its 18 gates in both renderers. `--look=micro` (with `--parity`) fails 16 of its 20 in Compatibility and 14 in Forward+, as it should until C4.
+**Today's look** (m1-threats at ecb1eee; llvmpipe and lavapipe, 1920×1080, zoom 14). `--look=baseline` passes its 18 gates in both renderers. `--look=micro` (with `--parity`) fails 16 of its 21 in Compatibility and 14 in Forward+, as it should until C4.
 
 | Reading | Compatibility | Forward+ (lavapipe) | Micro gate |
 | --- | --- | --- | --- |
 | Cell, lineup (inner 55% of its disc) | `#A2543E`, h 42.1 | `#B26550`, h 41.3 | h 30 to 50 |
-| Floor near the cell (centre third, fluid frame) | `#246E74`: L\* 42.4, C\* 22.6, h 206.3 | `#2A7B86`: L\* 47.5, C\* 24.3, h 212.8 | L\* 26 to 36, h 268 to 288, C\* ≥ 25 |
+| Floor near the cell (centre third, fluid frame) | `#246E74`: L\* 42.4, C\* 22.6, h 206.3 | `#2A7B86`: L\* 47.5, C\* 24.3, h 212.8 | L\* 26 to 36, h 268 to 288, C\* ≥ 25; ≥ 90 degrees of hue from the threat pink (164.8 \| 158.3) |
 | Cell against it, \|dL\*\| | 2.4 | 3.6 | ≥ 15 |
 | Darkest corner L\*; centre minus corners' mean, dL\* | 48.4; −7.7 | 55.2; −9.2 | ≥ 15; ≥ 5 |
 | Lane outline, tell and puff (least of 6 points, \|dL\*\|) | 8.0 and 6.4 | 3.0 and 2.8 (pink: CIE76 about 14) | ≥ 15 |
