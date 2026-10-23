@@ -80,6 +80,9 @@ class Creature:
 	var spawn_count := 0
 	## Its fields of the senses' body format that never change, for body_snapshot (built on first use).
 	var body_info := {}
+	## Endless mode: the colliders its forage seek's route looks at (ChunkArena.route_point_kept), made
+	## on its first such seek.
+	var route_keep: ChunkArena.RouteKeep = null
 
 
 var species: SpeciesCatalog

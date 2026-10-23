@@ -197,6 +197,13 @@ var _wake_bound := {}                  ## sleeper (Creature) -> [position, path 
 var _swum := 0.0                       ## tm the cell's one place has moved since the bound restarted
 var _swum_from := Vector2.INF          ## that place at the last _wakers
 var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, view margin] it holds for
+## The hold pass's bound, on the same path: an awake creature's hold centre (its site's reach centre,
+## or its leash disc's) stays put until a load, an unload or a re-derive (_site_epoch) or a change of
+## the table's size, so one measured inside the hold ring cannot leave it before the place has moved
+## the ring less its distance. Each keeps [_site_epoch, the table's size, the path length at which it
+## may first leave, the hold ring]; the bound restarts with the wake bound's.
+var _hold_bound := {}                  ## awake creature (Creature) -> that
+var _site_epoch := 0                   ## bumped by every load, unload and re-derive
 ## The ring bounds. A chunk's distance from the body changes by no more than the body moves, so after
 ## a scan found no missing chunk within the load ring (_nearest_missing), none can come within it
 ## before the body has moved the nearest missing one's distance less the ring, unless a chunk
@@ -448,6 +455,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	_ahead.clear()
 	_clear_next()
 	_wake_bound.clear()
+	_hold_bound.clear()
 	_swum_from = Vector2.INF
 	var old_x := origin_x_am
 	var old_y := origin_y_am
@@ -677,6 +685,7 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 ## `reason` when one is given (the growth tick's "growth", D-67), so S1's payload is unchanged.
 func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "") -> void:
 	var ch: WorldChunk = _chunks[key]
+	_site_epoch += 1
 	if _home_count != sites.size():
 		_index_homes()
 	var mine: Dictionary = _home_sites.get(key, {})
@@ -828,6 +837,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	if ch == null:
 		ch = _generated(key)
 	_loads += 1
+	_site_epoch += 1
 	(sim.arena as ChunkArena).add_chunk(key, _colliders(ch))
 	for z in ch.zones:
 		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
@@ -1001,6 +1011,7 @@ func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 		_swum_from = place
 	else:
 		_wake_bound.clear()
+		_hold_bound.clear()
 		_swum = 0.0
 		_swum_from = places[0] if bounded else Vector2.INF
 		_bound_view = PackedFloat64Array([far, wake_r, view_margin])
@@ -1068,7 +1079,7 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 	for c in list:
 		var d := _wake_distance(c.motion.position, view_from)
 		dist[c.id] = d
-		if _calm(c) and d > sleep_r and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
+		if d > sleep_r and _calm(c) and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
 				and not field.engaged_on_player.has(c.id):
 			field.sleep(c, sim.tick)
 	for i in _waking.size():
@@ -1118,12 +1129,22 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 ## hold minus the reach radius (85 tm) away, so out of view. A scripted body holds nothing and stays.
 func _hold_pass(sim: PoolSim, view_from: Dictionary) -> void:
 	var hold := float(rings.hold)
+	var bounded := _swum_from.is_finite()   # _wakers' bound runs: one place, and _swum is its path
+	if _hold_bound.size() > sim.creatures.creatures.size() + 64:
+		_hold_bound.clear()   # mostly creatures gone since
+	var n := sites.size()
 	for c in sim.creatures.awake().duplicate():
 		if c.brain == null:
 			continue
+		var b: Variant = _hold_bound.get(c)
+		if b != null and _swum < b[2] and b[0] == _site_epoch and b[1] == n and b[3] == hold:
+			continue
 		var center: Vector2 = sites[c.site_id].reach.center if sites.has(c.site_id) else CreatureBrain.leash_disc(c.brain).center
-		if _wake_distance(center, view_from) > hold:
+		var d := _wake_distance(center, view_from)
+		if d > hold:
 			sim.creatures.let_go(c, sim.tick)
+		elif bounded:
+			_hold_bound[c] = [_site_epoch, n, _swum + hold - d - WAKE_SLACK_TM, hold]
 
 
 ## Whether the creature's (state/phase) is in CALM (the brain's own test, D-62; a pass asks it of every
@@ -1564,6 +1585,7 @@ static func _derive_posts(rec: Dictionary, k: float, ox: float, oy: float) -> vo
 ## that is not the index's own at its place sends the index to a rebuild. True when the index kept
 ## its places and every zone in it has an absolute centre (so each moved with the origin).
 func _rederive(sim: PoolSim) -> bool:
+	_site_epoch += 1
 	var k := _tm_to_am
 	var ox := origin_x_am
 	var oy := origin_y_am

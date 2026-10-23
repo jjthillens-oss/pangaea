@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "Shell reef, the danger: shell clusters round ambush lairs that watch the meadows, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
+  "note": "Shell reef, the danger: shell clusters round ambush lairs that wait at the rims of the meadows they watch, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
   "id": "reef_e",
   "band": 0,
   "region": "reef",
@@ -10,19 +10,19 @@
   "landmark_anchor": [22.0, 22.0],
   "set_piece": null,
   "shells": [
-    {"id": "s0", "center": [-18.4, 8.9], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s1", "center": [20.2, -3.5], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s2", "center": [-9.1, 18.4], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s0", "center": [-17.7, 8.1], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [20.2, -3.2], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-9.8, 18.5], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s3", "center": [3.3, 7.9], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s4", "center": [-5.4, 23.8], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s5", "center": [-15.6, -16.2], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s6", "center": [25.2, -6.5], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s7", "center": [-11.0, 8.2], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [-10.8, 8.2], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s8", "center": [0.8, 16.4], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s9", "center": [8.0, 8.1], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s10", "center": [-14.2, 7.7], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s11", "center": [-6.3, 18.1], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s12", "center": [-1.1, 20.8], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s11", "center": [-7.7, 15.7], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s12", "center": [-0.9, 20.9], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s13", "center": [-26.6, 7.6], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s14", "center": [-21.2, 7.6], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s15", "center": [-3.6, 19.0], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
@@ -44,6 +44,6 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [-4.0, -5.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [6.0, -8.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [9.8, -11.8], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
   ]
 }
