@@ -516,6 +516,31 @@ func test_unload_and_reload_leave_no_duplicates_and_seed_each_zone_stream() -> v
 			check_eq(block.zone_rngs[z.id], stream.state, "its state in the snapshot")
 
 
+## Step 6 ends with tile_entered when the cell's tile (64 tm at size 1) changed: once, on the first
+## tick the body is in the new tile, with the generator's region and rare kind.
+func test_tile_entered_fires_once_when_the_cell_crosses_into_a_new_tile() -> void:
+	var sim := _endless(SEED, null, false)
+	sim.drain_events()
+	var entered: Array[Dictionary] = []
+	var crossed_at := -1
+	for t in 1800:
+		var a := sim.absolute_position_am()
+		if crossed_at < 0 and a[0] >= 64.0:
+			crossed_at = t
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		for e in _of(sim.drain_events(), "tile_entered"):
+			e["at"] = t
+			entered.append(e)
+	check(crossed_at > 0, "the cell crossed x = 64")
+	check_eq(entered.size(), 1, "one tile_entered")
+	if entered.size() == 1:
+		check_eq(entered[0].tile, Vector2i(1, 0), "tile (1, 0)")
+		check_eq(entered[0].region, "sunlit", "the generator's region")
+		check_eq(entered[0].rare, "", "no rare kind")
+		check_eq(int(entered[0].at), crossed_at, "on the first tick in it")
+	check_eq(sim.snapshot().world.cell_tile, [1, 0], "the snapshot's cell_tile")
+
+
 func _region_matches(sim: PoolSim) -> bool:
 	var want := []
 	for key in sim.world.loaded_keys():

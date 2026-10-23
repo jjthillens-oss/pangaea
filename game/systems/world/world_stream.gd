@@ -18,6 +18,12 @@ extends RefCounted
 ## unload ring and no awake creature's reach touches it; the gap between the rings keeps a chunk
 ## from flickering in and out at a boundary. Unloading forgets a chunk entirely: it comes back from
 ## the generator, with its food zones' streams restarted.
+##
+## Food. Only the zones whose nearest point lies within the food ring (52 tm) show plankton, and
+## carrion beyond it is dropped for good: both happen out of view (the view reaches 35.7 tm with its
+## margin). A zone entering the ring regrows one item a tick, out of view. Over caps.food_items the
+## farthest zones wholly out of view are trimmed. A new world, a Continue and a teleport fill every
+## food zone at once (S1 core C-9).
 
 ## tm: look_ahead_max (2.5) + spawn_view_margin_m (1.0) + MAX_ZONE_RADIUS_TM. Every zone touching the
 ## view plus its margin has its centre in a view-set chunk (S1 core C-1).
@@ -52,6 +58,9 @@ var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
+var _fill := {}                        ## zone id -> true: fill at once in the next food view
+var _fill_all := false                 ## fill every food zone at once in the next food view
+var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 
@@ -74,11 +83,18 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11): unload (step 3), then load (step 4).
-## Load, unload and food always measure from the body, alive or dead.
+## The streaming block, first in every endless tick (spine 3.11): unload (step 3), load (step 4),
+## then the food view (step 6). Load, unload and food always measure from the body, alive or dead.
 func step(sim: PoolSim) -> void:
 	_unload(sim)
 	_load(sim)
+	_food_view(sim)
+
+
+## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
+func fill_all_food_now(sim: PoolSim) -> void:
+	_fill_all = true
+	_food_view(sim)
 
 
 ## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile.
@@ -265,6 +281,8 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.region.remove_zone(z.id)
 		_zone_abs.erase(z.id)
 		_zone_chunk.erase(z.id)
+		_fill.erase(z.id)
+		_trimmed.erase(z.id)
 	(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
@@ -386,6 +404,66 @@ func _insert_key(key: Vector2i) -> void:
 
 static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 	return a.y < b.y or (a.y == b.y and a.x < b.x)
+
+
+# --- step 6: food view ---
+
+## Which zones show plankton: those whose nearest point lies within the food ring of the body. Over
+## caps.food_items (their summed item targets), the zones wholly out of view (by the spawn view's
+## margin plus their radius) are trimmed, farthest first, ties to the lower id, until the rest fit;
+## a zone in view is never trimmed. Zones that leave the set drop their items without events (they
+## are out of view). Carrion beyond the ring goes for good. Zones flagged to fill at once fill now.
+## Last, tile_entered when the cell's tile changed.
+func _food_view(sim: PoolSim) -> void:
+	var body := sim.motion.position
+	var food := {}
+	var reach := {}
+	for z in sim.region.zones:
+		var d := body.distance_to(z.center) - float(z.radius)
+		if d <= float(rings.food):
+			food[z.id] = true
+			reach[z.id] = d
+	var total := 0
+	for id in food:
+		total += sim.plankton.target_count(sim.region.zone(id))
+	if total > int(caps.food_items):
+		var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
+		var out: Array = []
+		for id in food:
+			var z := sim.region.zone(id)
+			if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) > view_margin + float(z.radius):
+				out.append(id)
+		out.sort_custom(func(a: String, b: String) -> bool:
+			return reach[a] > reach[b] or (reach[a] == reach[b] and a < b))
+		for id in out:
+			if total <= int(caps.food_items):
+				break
+			food.erase(id)
+			total -= sim.plankton.target_count(sim.region.zone(id))
+			if not _trimmed.has(id):
+				_trimmed[id] = true
+				counters.food_trimmed += 1
+	# A zone stays counted as trimmed until it shows food again (or unloads).
+	for id in _trimmed.keys():
+		if food.has(id) or sim.region.zone(id).is_empty():
+			_trimmed.erase(id)
+	for id in sim.plankton.active_zones.keys():
+		if not food.has(id):
+			sim.plankton.drop_zone(id)
+	sim.plankton.active_zones = food
+	sim.carrion.drop_beyond(body, float(rings.food))
+	var fill: Array = food.keys() if _fill_all else _fill.keys()
+	fill.sort()
+	for id in fill:
+		if food.has(id):
+			sim.plankton.fill_zone(sim.region.zone(id), sim.region, sim.arena, sim.tick, sim.now())
+	_fill.clear()
+	_fill_all = false
+	var tile := tile_of_local(body)
+	if tile != _cell_tile:
+		_cell_tile = tile
+		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
+		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
 
 
 ## The distance from the absolute point (x, y) (tm) to the square of chunk `key`, in float64.
