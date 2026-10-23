@@ -23,6 +23,7 @@ const BodyField := preload("res://game/domain/creature/body_field.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const WalkerRig := preload("res://game/scenes/creature/walker_rig.gd")
 const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
+const Look := preload("res://game/scenes/creature/creature_look.gd")
 
 const PLAYER_SKIN_DIVISIONS_MAX := 48
 const RIVAL_SKIN_DIVISIONS_MAX := 32
@@ -46,9 +47,10 @@ const CAMERA_REALIGN_HALF_LIFE_S := 1.2
 const STICK_DEADZONE := 0.25
 const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 0.72, 0.36),
 		Color(0.72, 0.5, 0.86), Color(0.86, 0.45, 0.56), Color(0.45, 0.8, 0.76), Color(0.8, 0.8, 0.5)]
-## The player's colour when the body carries no skin_color (the editor writes its swatch as "rrggbb").
+## The player's colour when the body carries no skin_color (the editor writes its swatch as "rrggbb"); its pattern
+## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
-const SKIN_COLOR_KEY := "skin_color"
+const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
 const FIELD_COLOR := Color(0.36, 0.47, 0.27)
 const NEST_COLOR := Color(0.78, 0.66, 0.42)
 const FRUIT_RIPE_COLOR := Color(0.82, 0.3, 0.32)
@@ -99,7 +101,7 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	for r in sim.rivals:
 		var s := Time.get_ticks_msec()
 		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, PALETTE[rival_rigs.size() % PALETTE.size()],
-				rival_rigs.size() + 1)
+				Look.rival_pattern(rival_rigs.size() + 1))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
@@ -286,8 +288,9 @@ func _draw_food() -> void:
 func _build_player() -> void:
 	var body = sim.body_of(Sim.PLAYER_ID)
 	var color := skin_color_of(body)
+	var pattern: Dictionary = Look.pattern_of(body.extra)
 	if sim.player()["has_legs"]:
-		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, 0)
+		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, pattern)
 	else:
 		# No legs: the body stands at the nest as a plain rig, so the player sees what needs fixing.
 		var rig := SpineRig.new()
@@ -296,7 +299,7 @@ func _build_player() -> void:
 		rig.setup(body, SkinCpu.build(body, divisions), color)
 		var orientations: Dictionary = CreatureData.part_orientations(data["part_rules"])
 		rig.add_parts(AnchorResolver.resolve_all(body, BodyField.from_description(body), orientations), orientations)
-		rig.use_skin_shader({"color_base": color, "pattern_seed": 0, "coat_pattern": 1, "detail_pattern": 2})
+		rig.use_skin_shader(Look.shader_params(color, pattern))
 		var box: AABB = body.bounds_m()
 		rig.position = sim.nest - Vector3(0.0, box.position.y, 0.0)
 		player_rig = rig
@@ -304,16 +307,15 @@ func _build_player() -> void:
 
 
 ## A walker rig on the sim's planner for `id`, its skin built once on the CPU builder at the body's preview grid
-## clamped to `divisions_max`.
-func _build_rig(id: String, body: RefCounted, divisions_max: int, color: Color, seed_index: int) -> Node3D:
+## clamped to `divisions_max`, in `color` with the skin-shader `pattern` (creature_look.gd).
+func _build_rig(id: String, body: RefCounted, divisions_max: int, color: Color, pattern: Dictionary) -> Node3D:
 	var rig := WalkerRig.new()
 	rig.name = id
 	var divisions := mini(body.preview_divisions(data["body_rules"]), divisions_max)
 	var orientations: Dictionary = CreatureData.part_orientations(data["part_rules"])
 	var placements: Array = AnchorResolver.resolve_all(body, BodyField.from_description(body), orientations)
 	rig.setup(body, SkinCpu.build(body, divisions), sim.planner_of(id), sim.gait_of(id), color, placements, orientations)
-	rig.body.use_skin_shader({"color_base": color, "pattern_seed": seed_index, "coat_pattern": 1 + seed_index % 3,
-			"detail_pattern": [2, 1, 3, 0][seed_index % 4]})
+	rig.body.use_skin_shader(Look.shader_params(color, pattern))
 	return rig
 
 

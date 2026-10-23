@@ -183,6 +183,10 @@ func test_done_emits_the_body_as_a_dictionary_the_codec_reloads() -> void:
 		var reloaded = BodyCodec.from_dict(got["body"])
 		check(reloaded.load_problems.is_empty() and BodyCodec.encode(reloaded) == edited, "the codec reloads the body unchanged")
 		check(String(got["body"].get("skin_color", "")) == editor.skin_color.to_html(false), "with the skin colour")
+		check(int(got["body"].get("pattern_seed", -1)) == int(editor.skin_pattern["pattern_seed"])
+				and int(got["body"].get("coat_pattern", -1)) == int(editor.skin_pattern["coat_pattern"])
+				and int(got["body"].get("detail_pattern", -1)) == int(editor.skin_pattern["detail_pattern"]),
+				"and the three pattern keys the world reads (%s)" % [got["body"].keys()])
 	check_eq(editor.points(), POINTS - cost, "the editor goes on from the committed body with the points left")
 	check(editor.session.cost() == 0, "nothing to pay for after the commit")
 

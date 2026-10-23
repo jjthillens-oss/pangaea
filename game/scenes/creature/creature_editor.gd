@@ -22,13 +22,15 @@ extends Node3D
 ## it without input events. The UI buttons call the same methods. `refusal_text` holds the last refused op's reason
 ## for REFUSAL_S seconds.
 ##
-## The skin colour comes from a swatch; it rides in the body dictionary as "skin_color" ("#rrggbb"), a field the codec
-## keeps as an unknown key (tests/test_creature_body.gd), so the world and the store carry it without a schema change.
+## The skin colour comes from a swatch; it rides in the body dictionary as "skin_color" ("#rrggbb") beside the three
+## skin-pattern ints (creature_look.gd), fields the codec keeps as unknown keys (tests/test_creature_body.gd), so the
+## world and the store carry them without a schema change.
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
 const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
 const WalkerRig := preload("res://game/scenes/creature/walker_rig.gd")
+const Look := preload("res://game/scenes/creature/creature_look.gd")
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const Session := preload("res://game/domain/creature/creature_editor_session.gd")
@@ -81,6 +83,8 @@ var dragging := false
 var drag_plane := Plane()
 var handles: Array = []   ## {kind, id, limb, copy, twin, world: Vector3}
 var skin_color: Color = SKIN_COLORS[0]
+## The skin-shader pattern (pattern_seed, coat_pattern, detail_pattern), from the body or Look.DEFAULT_PATTERN.
+var skin_pattern: Dictionary = Look.DEFAULT_PATTERN.duplicate()
 ## The last refused op's reason, for REFUSAL_S seconds.
 var refusal_text := ""
 var rig: Node3D
@@ -156,6 +160,7 @@ func setup(body: RefCounted, points: int) -> void:
 	session = Session.new(body, rules, part_rules, costs, points)
 	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
 	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
+	skin_pattern = Look.pattern_of(body.extra)
 	selected = {}
 	tool = ""
 	if _worker == null:
@@ -197,7 +202,7 @@ func _frame_body() -> void:
 func _rebuild() -> void:
 	_dirty = false
 	var desc = session.working
-	desc.extra[SKIN_COLOR_KEY] = skin_color.to_html(false)
+	_store_look(desc.extra)
 	var placed := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations)
 	_rebuild_handles(desc, placed)
 	_refresh_hud()
@@ -223,7 +228,13 @@ func _present(built: Dictionary) -> void:
 
 
 func _shader_params() -> Dictionary:
-	return {"color_base": skin_color, "pattern_seed": 3, "coat_pattern": 2, "detail_pattern": 1}
+	return Look.shader_params(skin_color, skin_pattern)
+
+
+## The swatch and the pattern into a body's extra keys, as the world reads them (creature_look.gd).
+func _store_look(extra: Dictionary) -> void:
+	extra[SKIN_COLOR_KEY] = skin_color.to_html(false)
+	Look.store_pattern(extra, skin_pattern)
 
 
 func _collect_skin() -> void:
@@ -544,7 +555,7 @@ func finish() -> Dictionary:
 		_refuse(reason)
 		return {"ok": false, "reason": reason, "points_left": c["points_left"]}
 	var body: RefCounted = c["body"]
-	body.extra[SKIN_COLOR_KEY] = skin_color.to_html(false)
+	_store_look(body.extra)
 	var dict: Dictionary = body.to_dict()
 	session = Session.new(body, rules, part_rules, costs, c["points_left"])
 	selected = {}
@@ -572,7 +583,7 @@ func back() -> String:
 ## The skin colour, from a swatch; the working body carries it as "skin_color".
 func set_skin_color(color: Color) -> void:
 	skin_color = color
-	session.working.extra[SKIN_COLOR_KEY] = color.to_html(false)
+	_store_look(session.working.extra)
 	hud.set_color(color)
 	if rig:
 		rig.use_skin_shader(_shader_params())
