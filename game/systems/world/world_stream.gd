@@ -696,8 +696,10 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 ## Forgets one chunk: the creatures of the sites homed in it leave ("unloaded", in (number, id)
 ## order) with their queue entries and site records, its zones' plankton is dropped and the zones
 ## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene; with its
-## `reason` when one is given (the growth tick's "growth", D-67), so S1's payload is unchanged.
-func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "") -> void:
+## `reason` when one is given (the growth tick's "growth", D-67), so S1's payload is unchanged. The
+## growth tick, which unloads every chunk and then takes another arena, leaves the arena be (`arena`
+## false).
+func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", arena := true) -> void:
 	var ch: WorldChunk = _chunks[key]
 	_site_epoch += 1
 	if _home_count != sites.size():
@@ -728,7 +730,8 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "") -> void:
 		_zone_chunk.erase(z.id)
 		_fill.erase(z.id)
 		_trimmed.erase(z.id)
-	(sim.arena as ChunkArena).remove_chunk(key)
+	if arena:
+		(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
 	_load_bound = PackedFloat64Array()   # a missing chunk now
@@ -842,7 +845,8 @@ static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: f
 ## food is the same whatever route reaches it), then every awake body and the cell are settled
 ## against the new colliders unless `settle` is false (the growth tick settles the cell itself, D-67),
 ## and chunk_loaded tells the scene. In the growth tick and its beat the chunk comes from the next
-## size's cache when it is there (BP-4).
+## size's cache when it is there (BP-4); in the growth tick its colliders may be in the arena already
+## (the next size's arena, taken as it is), and the caps are applied once after its loads.
 func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	var ch: WorldChunk = null
 	if _next_size == size and next_cache and (_growing or (sim.growth != null and sim.tick < sim.growth.beat_until)):
@@ -852,7 +856,9 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 		ch = _generated(key)
 	_loads += 1
 	_site_epoch += 1
-	(sim.arena as ChunkArena).add_chunk(key, _colliders(ch))
+	var arena := sim.arena as ChunkArena
+	if not (_growing and arena.has_chunk(key)):
+		arena.add_chunk(key, _colliders(ch))
 	for z in ch.zones:
 		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
 			float(z.growth_rate))
@@ -884,7 +890,8 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	_chunks[key] = ch
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
 	_emit(sim, chunk_loaded_event(ch))
-	_apply_caps(sim)
+	if not _growing:
+		_apply_caps(sim)
 
 
 ## A chunk's colliders as ChunkArena.add_chunk takes them ({id, x, y, r}: absolute tm at its size).
@@ -1445,12 +1452,22 @@ func grow(sim: PoolSim) -> void:
 	for item in sim.plankton.items:
 		haze.append({"kind": "plant", "look": plant, "position": item.position})
 	haze.append_array(body_haze)
+	# Every zone goes, so its plankton goes in one pass (PlanktonField.drop_zones), and the arena is
+	# not emptied chunk by chunk: another takes its place (step 5).
+	var dropped := {}
+	for key in _keys:
+		for z in _chunks[key].zones:
+			dropped[z.id] = true
+	sim.plankton.drop_zones(dropped)
 	for key in _keys.duplicate():
-		_unload_chunk(sim, key, "growth")
+		_unload_chunk(sim, key, "growth", false)
+	var old_arena := sim.arena as ChunkArena
+	sim.arena = _arena_after(old_arena, ChunkArena.create_endless(chunk_tm))
 	recompute_caps(sim)
-	# 4. Size and origin: the next size's cache stays for step 5 and the beat.
+	# 4. Size and origin: the next size's cache and arena stay for step 5 and the beat.
 	var next := _next_chunks
 	var next_size := _next_size
+	var next_arena := _next_arena if next_cache and _next_size == n + 1 and _next_from == a else null
 	set_size(n + 1)
 	_next_chunks = next
 	_next_size = next_size
@@ -1470,11 +1487,21 @@ func grow(sim: PoolSim) -> void:
 		items[i].position = local_of_abs(item_abs[2 * i], item_abs[2 * i + 1])
 	if sim.creatures != null:
 		sim.creatures.set_size(n + 1)
-	# 5. Load the view set, unsettled.
+	# 5. Load the view set, unsettled. The next size's arena (BP-4) holds the 3 x 3 round A at size
+	# n + 1, at origin A by the expression _rederive's set_origin uses, so it is taken as the arena once
+	# it gives up its chunks outside the view set: equal colliders and an equal origin are an equal
+	# arena (its arrays in canonical order, its near grids counts), whichever order they came in.
+	var view := view_set_keys(Vector2.ZERO)
+	if next_arena != null:
+		for key in next_arena.chunk_keys():
+			if not view.has(key):
+				next_arena.remove_chunk(key)
+		sim.arena = _arena_after(old_arena, next_arena)
 	_growing = true
-	for key in view_set_keys(Vector2.ZERO):
+	for key in view:
 		_load_chunk(sim, key, false)
 	_growing = false
+	_apply_caps(sim)
 	_fill_all = true
 	# 6. Settle.
 	var p := PoolSim.clear_point_on(sim.arena, Vector2.ZERO, r_cell)
@@ -1497,6 +1524,15 @@ func grow(sim: PoolSim) -> void:
 	_emit(sim, {"type": "grew", "from": n, "to": n + 1, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
 		"settled_to": p, "remnants": remnant_ids, "morsels": morsel_ids, "haze": haze,
 		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1]})
+
+
+## `arena` as the growth tick's new arena in place of `old`: its epoch past every epoch `old` had (so
+## no RouteKeep picked on `old` is taken for one of its own), `old`'s grid switch and fallback count.
+static func _arena_after(old: ChunkArena, arena: ChunkArena) -> ChunkArena:
+	arena.epoch = maxi(arena.epoch, old.epoch) + 1
+	arena.rock_grid = old.rock_grid
+	arena.settle_fallbacks = old.settle_fallbacks
+	return arena
 
 
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the

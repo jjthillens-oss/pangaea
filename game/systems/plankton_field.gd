@@ -185,6 +185,28 @@ func drop_zone(zone_id: String) -> void:
 	_regrowing.erase(zone_id)
 
 
+## drop_zone for every zone of `zone_ids` (zone id -> true) in one pass over the items, where one
+## drop_zone a zone would filter and repack the items once per zone that shows any (S2: the growth tick
+## drops every loaded zone). The same items stay, in the same order, with the same counts and flags.
+## When the zones' counts add up to every item (the counts are kept with every change here), none
+## stays, and the pass is skipped.
+func drop_zones(zone_ids: Dictionary) -> void:
+	var shown := 0
+	for id in zone_ids:
+		shown += int(_zone_counts.get(id, 0))
+	if shown > 0:
+		if shown == items.size() and _phase.size() == items.size():
+			var none: Array[Dictionary] = []
+			items = none
+		else:
+			items = items.filter(func(item: Dictionary) -> bool: return not zone_ids.has(item.zone))
+		_repack()
+	for id in zone_ids:
+		_zone_counts.erase(id)
+		_empty_latched.erase(id)
+		_regrowing.erase(id)
+
+
 func _try_spawn(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> bool:
 	# Anchors sit far enough inside the zone that the drift never carries an item out of it.
 	var radius: float = zone.radius
