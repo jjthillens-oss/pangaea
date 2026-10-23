@@ -1,11 +1,14 @@
 class_name ZoneLights
 extends Node3D
 ## The sunlit patches (micro-world plan C7; docs/DECISIONS.md, "Microscopic world look"): a soft pool
-## of cream light under each plankton zone, so the starving tip's "sunlit patches" are there to
-## find, and the rammer's ground has a visible middle. Light only: one disc per layout zone, 2.5 m
-## under the swim plane, added to the fluid in the Sun's colour and never in food's glow, with no
-## fog, no depth and under every cue (zone_light.gdshader). It reads the layout's zones and never
-## the sim.
+## of cream light under each plankton zone, meant to put the starving tip's "sunlit patches" there to
+## find and give the rammer's ground a visible middle. Within the look probe's gates they do neither
+## yet: at STRENGTH they are at the edge of seeing in Forward+ and absent in Compatibility. Owner
+## question 2 settles them before m1-micro merges: brighter zones at the cost of the cell's contrast
+## there, another patch design, or no patches and a reworded tip. Light only: one disc per layout
+## zone, 2.5 m under the swim plane, added to the fluid in the Sun's colour and never in food's glow,
+## with no fog, no depth and under every cue (zone_light.gdshader). It reads the layout's zones and
+## never the sim.
 
 const SHADER := preload("res://game/scenes/pool/zone_light.gdshader")
 ## The disc spans this many zone radii across (plan B's prototype). Its light is full out to 0.46
@@ -18,7 +21,9 @@ const DEPTH_M := -2.5
 ## judged in Compatibility only; Forward+ adds about five times as much light from the same additive
 ## disc, and at 0.05 the fluid around the cell in a zone rose from L* 34 to 46, leaving the coral
 ## cell 7.7 L* above it. The look probe's fluid gate (L* at most 36 near the cell) allows about
-## 0.007 there: 0.006 lifts the zone's middle 1.7 L* in Forward+ and about 0.4 in Compatibility.
+## 0.007 there. At 0.006 Forward+ lifts the middle of the frame about 1.5 L* (3.6 at most), too
+## little to notice, and Compatibility draws the same pixels as with no patches: a placeholder for
+## owner question 2, not yet a cue.
 const STRENGTH := 0.006
 ## The Sun's light colour (pool.tscn), never the food glow #CFE86A.
 const TINT := Color(0.957, 0.918, 0.824)
