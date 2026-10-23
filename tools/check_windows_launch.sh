@@ -4,11 +4,15 @@
 # check_release.sh starts the same pack with the Linux engine; this catches what only the Windows
 # templates can break (a pack the exe cannot read, a missing DLL, a renderer that cannot start).
 #   launch:   Pangaea.exe, headless, runs its main scene 120 frames (start screen, nothing saved)
-#   probe:    Pangaea.exe, headless, runs tools/release_probe.gd (start screen up, no dev layer)
 #   rendered: Pangaea-dev.exe with a real window and renderer runs the --perf-tour (the ForageBot
 #             swims a grazer in the pool for 90 s, then it quits). A CI runner has no GPU, so the
 #             renderer is whatever Windows offers there (usually its software adapter), and the
-#             frame rate means nothing; what counts is that the pool renders and nothing errors.
+#             frame rate means nothing; what counts is that the pool renders, the tour finishes
+#             and nothing errors. The runner has no Vulkan and no audio device, so Godot switches
+#             to Direct3D 12 and the dummy audio driver; those errors are the runner's, not the
+#             build's, and are the only ones let through (RUNNER_ONLY).
+# release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
+# the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
 # log (--log-file); both go into the run's log. Each run starts in an empty folder, so nothing can
 # fall through to the repository, and has 300 s. Logs are in builds/windows-launch/. Godot still
@@ -22,7 +26,8 @@ BUILD="$(realpath "${1:-builds/windows}")"
 LOGS="$PWD/builds/windows-launch"
 # A path Godot on Windows can read (C:/...), unchanged elsewhere.
 native() { if command -v cygpath > /dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
-PROBE="$(native "$PWD/tools/release_probe.gd")"
+# Errors the runner causes (no Vulkan driver, no audio device), matched on the error or its "at:".
+RUNNER_ONLY='Vulkan instance extension|drivers/vulkan/rendering_context_driver_vulkan|WASAPI|drivers/wasapi/'
 mkdir -p "$LOGS"
 rm -f "$LOGS"/*.log "$LOGS"/*.txt
 for exe in Pangaea.exe Pangaea-dev.exe; do
@@ -58,14 +63,21 @@ run() {
 }
 
 run launch "$BUILD/Pangaea.exe" --headless --fixed-fps 60 --quit-after 120 -- --slot=user://smoke/windows_launch.json
-run probe "$BUILD/Pangaea.exe" --headless --fixed-fps 60 --script "$PROBE" -- --slot=user://smoke/windows_launch.json --perf-tour
 run rendered "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour
 
-if ! grep -q "^PASS Main opens on the start screen" "$LOGS/probe.log"; then
-  echo "The release probe did not report the start screen."
+if ! grep -q "^Perf tour: .* FPS average" "$LOGS/rendered.log"; then
+  echo "The perf tour did not finish in the rendered run."
   status=1
 fi
-if grep -E "SCRIPT ERROR|^ERROR:" "$LOGS"/*.log; then
+# Each error with the line after it (its "at:"), less the runner's own.
+errors="$(awk -v skip="$RUNNER_ONLY" '
+  FNR == 1 && pending != "" { if (pending !~ skip) print file ": " pending; pending = "" }
+  pending != "" { if ((pending " " $0) !~ skip) print file ": " pending; pending = "" }
+  /SCRIPT ERROR|^ERROR:/ { pending = $0; file = FILENAME }
+  END { if (pending != "" && pending !~ skip) print file ": " pending }
+' "$LOGS"/*.log)"
+if [ -n "$errors" ]; then
+  echo "$errors"
   echo "Engine or script errors while starting the Windows build ($LOGS/)."
   status=1
 fi
