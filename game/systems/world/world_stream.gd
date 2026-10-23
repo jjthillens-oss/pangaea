@@ -13,7 +13,11 @@ extends RefCounted
 ## Chunks are 32 tm squares keyed by Vector2i, loaded from WorldGen.chunk (pure, so a chunk comes
 ## back the same whatever route reaches it). The view set (view_set_keys) is the 3 x 3 chunks round
 ## the cell's chunk plus every chunk within VIEW_SET_MARGIN_TM of the widest camera view: it is
-## loaded at once when the world starts, so nothing in view is ever missing.
+## loaded at once when the world starts, so nothing in view is ever missing. After that the nearest
+## missing chunk within the load ring loads each tick, and a chunk unloads once it lies beyond the
+## unload ring and no awake creature's reach touches it; the gap between the rings keeps a chunk
+## from flickering in and out at a boundary. Unloading forgets a chunk entirely: it comes back from
+## the generator, with its food zones' streams restarted.
 
 ## tm: look_ahead_max (2.5) + spawn_view_margin_m (1.0) + MAX_ZONE_RADIUS_TM. Every zone touching the
 ## view plus its margin has its centre in a view-set chunk (S1 core C-1).
@@ -47,6 +51,7 @@ var _chunks := {}                      ## Vector2i -> WorldChunk (absolute)
 var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
+var _str_plankton := WorldHash.str32("plankton")
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 
@@ -69,9 +74,11 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11).
+## The streaming block, first in every endless tick (spine 3.11): unload (step 3), then load (step 4).
+## Load, unload and food always measure from the body, alive or dead.
 func step(sim: PoolSim) -> void:
-	pass
+	_unload(sim)
+	_load(sim)
 
 
 ## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile.
@@ -177,6 +184,27 @@ func sleeping_ids() -> PackedStringArray:
 	return PackedStringArray()
 
 
+## The distance from a local point to the square of chunk `key`: 0 inside it. Measured on absolute
+## values in float64, so it does not depend on where the origin is.
+func nearest(key: Vector2i, p: Vector2) -> float:
+	var a := abs_of_local(p)
+	return _square_distance(key, a[0] / _tm_to_am, a[1] / _tm_to_am)
+
+
+## The keys of every chunk a disc ({center: local Vector2, radius}) reaches, sorted (y, x).
+func disc_keys(disc: Dictionary) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var a := abs_of_local(disc.center)
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var r := float(disc.radius)
+	for ky in range(floori((y - r) / chunk_tm), floori((y + r) / chunk_tm) + 1):
+		for kx in range(floori((x - r) / chunk_tm), floori((x + r) / chunk_tm) + 1):
+			if _square_distance(Vector2i(kx, ky), x, y) <= r:
+				out.append(Vector2i(kx, ky))
+	return out
+
+
 ## The endless state for snapshots and hashing (spine 3.12's "world" block).
 func snapshot(sim: PoolSim) -> Dictionary:
 	var keys := []
@@ -201,6 +229,94 @@ func snapshot(sim: PoolSim) -> Dictionary:
 	}
 
 
+# --- step 3: unload ---
+
+## Unloads every chunk whose nearest point lies beyond the unload ring from the body, unless an awake
+## creature's reach touches it (its site's chunks, or the leash disc of a creature with no site; a
+## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order.
+func _unload(sim: PoolSim) -> void:
+	var held := _held_keys(sim)
+	var body := sim.motion.position
+	for key in _keys.duplicate():
+		if nearest(key, body) > float(rings.unload) and not held.has(key):
+			_unload_chunk(sim, key)
+
+
+## The chunks awake creatures hold: a scripted body (no brain) holds none.
+func _held_keys(sim: PoolSim) -> Dictionary:
+	var held := {}
+	if sim.creatures == null:
+		return held
+	for c in sim.creatures.awake():
+		if c.brain == null:
+			continue
+		for key in disc_keys(CreatureBrain.leash_disc(c.brain)):
+			held[key] = true
+	return held
+
+
+## Forgets one chunk: its zones' plankton is dropped and the zones leave the region, its colliders
+## leave the arena, and chunk_unloaded tells the scene.
+func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
+	var ch: WorldChunk = _chunks[key]
+	for z in ch.zones:
+		sim.plankton.drop_zone(z.id)
+		sim.plankton.active_zones.erase(z.id)
+		sim.region.remove_zone(z.id)
+		_zone_abs.erase(z.id)
+		_zone_chunk.erase(z.id)
+	(sim.arena as ChunkArena).remove_chunk(key)
+	_chunks.erase(key)
+	_keys.erase(key)
+	_emit(sim, {"type": "chunk_unloaded", "key": key})
+
+
+# --- step 4: load ---
+
+## Loads the nearest missing chunk within the load ring (ties by key), up to caps.loads_per_tick a
+## tick. With caps.chunks loaded, only a chunk of the view set may still load; any other waits, and
+## chunk_waits counts the wait (a backstop that a swim should never need).
+func _load(sim: PoolSim) -> void:
+	var body := sim.motion.position
+	var view: Array[Vector2i] = []
+	for i in int(caps.loads_per_tick):
+		var key: Variant = _nearest_missing(body, float(rings.load))
+		if key == null:
+			break
+		if _keys.size() >= int(caps.chunks):
+			if view.is_empty():
+				view = view_set_keys(body)
+			if not view.has(key):
+				counters.chunk_waits += 1
+				break
+		_load_chunk(sim, key)
+
+
+## The missing chunk nearest `body` within `ring`, least (distance, y, x); null when every chunk in
+## reach is loaded.
+func _nearest_missing(body: Vector2, ring: float) -> Variant:
+	var a := abs_of_local(body)
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var best: Variant = null
+	var best_d := INF
+	# Keys run (y, x), so the first of equal distances is the least key.
+	for ky in range(floori((y - ring) / chunk_tm), floori((y + ring) / chunk_tm) + 1):
+		for kx in range(floori((x - ring) / chunk_tm), floori((x + ring) / chunk_tm) + 1):
+			var key := Vector2i(kx, ky)
+			if _chunks.has(key):
+				continue
+			var d := _square_distance(key, x, y)
+			if d <= ring and d < best_d:
+				best = key
+				best_d = d
+	return best
+
+
+## Loads one chunk: its colliders into the arena, its zones into the region (each with its own
+## plankton stream, seeded from the world seed, the generator version and the zone's id, so a zone's
+## food is the same whatever route reaches it), then every awake body and the cell are settled
+## against the new colliders, and chunk_loaded tells the scene.
 func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch := gen.chunk(size, key.x, key.y)
 	var colliders: Array[Dictionary] = []
@@ -209,11 +325,18 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	(sim.arena as ChunkArena).add_chunk(key, colliders)
 	for z in ch.zones:
 		sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity), float(z.growth_rate))
+		var stream := RandomNumberGenerator.new()
+		stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(z.id), _str_plankton]))
+		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
+	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
+	# move, a waking creature or a test may put a body anywhere.
+	if sim.creatures != null:
+		for c in sim.creatures.awake():
+			sim.arena.settle(c.motion, c.phenotype.radius)
+			c.actor.position = c.motion.position
 	if sim.motion != null and not sim.dead:
-		# A new collider never holds the cell: the loads come from 56 tm out, but a debug move or a
-		# test may put the cell anywhere.
 		sim.arena.settle(sim.motion, sim.phenotype.radius)
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
@@ -263,6 +386,15 @@ func _insert_key(key: Vector2i) -> void:
 
 static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 	return a.y < b.y or (a.y == b.y and a.x < b.x)
+
+
+## The distance from the absolute point (x, y) (tm) to the square of chunk `key`, in float64.
+func _square_distance(key: Vector2i, x: float, y: float) -> float:
+	var x0 := key.x * chunk_tm
+	var y0 := key.y * chunk_tm
+	var dx := maxf(maxf(x0 - x, x - (x0 + chunk_tm)), 0.0)
+	var dy := maxf(maxf(y0 - y, y - (y0 + chunk_tm)), 0.0)
+	return sqrt(dx * dx + dy * dy)
 
 
 ## The distance from a convex quad (qx, qy) to the square [x0, x0 + side) x [y0, y0 + side): 0

@@ -246,6 +246,320 @@ static func _reference_distance(quad: PackedVector2Array, x0: float, y0: float, 
 	return best
 
 
+# --- load and unload (T2.2) ---
+
+## A swim east then back west, checked every tick against the rules worked out here from the cell's
+## absolute place: the chunks beyond 72 tm unload, in (y, x) order, then the nearest missing chunk
+## within 56 tm loads (ties to the lower key), one a tick; unloads before loads; the arena, the
+## region and the stream agree on what is loaded.
+func test_chunks_load_nearest_first_one_a_tick_within_the_load_ring() -> void:
+	var sim := _endless(SEED, null, false)
+	sim.drain_events()
+	var bad := 0
+	var first := ""
+	var loads := 0
+	var unloads := 0
+	for t in 3000:
+		var dir := Vector2.RIGHT if t < 2000 else Vector2.LEFT
+		var a := sim.absolute_position_am()
+		var before := sim.world.loaded_keys()
+		sim.step(SimIntent.new(dir))
+		var events := sim.drain_events()
+		var got_unloaded: Array = []
+		var got_loaded: Array = []
+		var order_ok := true
+		for e in events:
+			if e.type == "chunk_unloaded":
+				got_unloaded.append(e.key)
+				order_ok = order_ok and got_loaded.is_empty()
+			elif e.type == "chunk_loaded":
+				got_loaded.append(e.key)
+		var want_unloaded: Array = []
+		for key in before:
+			if _ref_nearest(key, a[0], a[1]) > 72.0:
+				want_unloaded.append(key)
+		var after_unload := before.filter(func(k: Vector2i) -> bool: return not want_unloaded.has(k))
+		var want_loaded: Array = []
+		var best: Variant = _ref_nearest_missing(after_unload, a[0], a[1], 56.0)
+		if best != null:
+			want_loaded.append(best)
+		loads += got_loaded.size()
+		unloads += got_unloaded.size()
+		var problem := ""
+		if got_unloaded != want_unloaded:
+			problem = "unloaded %s, want %s" % [got_unloaded, want_unloaded]
+		elif got_loaded != want_loaded:
+			problem = "loaded %s, want %s" % [got_loaded, want_loaded]
+		elif not order_ok:
+			problem = "a load before an unload"
+		elif (sim.arena as ChunkArena).chunk_keys() != sim.world.loaded_keys():
+			problem = "the arena holds %s" % [(sim.arena as ChunkArena).chunk_keys()]
+		elif not _region_matches(sim):
+			problem = "the region's zones differ from the loaded chunks'"
+		if not problem.is_empty():
+			bad += 1
+			if first.is_empty():
+				first = "tick %d at %s: %s" % [t, a, problem]
+	check_eq(bad, 0, "every tick as the rules say (%s)" % first)
+	check(loads >= 20 and unloads >= 10, "the swim loaded %d and unloaded %d" % [loads, unloads])
+	# At the end, every chunk within the load ring is in.
+	var a := sim.absolute_position_am()
+	for key in _ref_keys_within(a[0], a[1], 56.0):
+		check(sim.world.chunk(key) != null, "chunk %s within 56 tm loaded" % key)
+	check_eq(sim.world.counters.chunk_waits, 0, "no waits under the cap")
+
+
+## A chunk goes when its nearest point is farther than 72 tm from the body, not at 72 tm itself.
+func test_a_chunk_unloads_only_beyond_72_tm() -> void:
+	var sim := _endless(SEED, null, false)
+	check(sim.world.chunk(Vector2i(0, 0)) != null, "chunk (0, 0) loaded at the start")
+	# Chunk (0, 0) spans x 0 to 32: from (104, 16) its nearest point is 72 tm away.
+	check(sim.debug_teleport(sim.world.local_of_abs(104.0, 16.0)), "the cell 72 tm east of the chunk")
+	sim.drain_events()
+	sim.world.step(sim)
+	check(sim.world.chunk(Vector2i(0, 0)) != null, "kept at 72 tm")
+	# The chunks the jump left beyond 72 tm went together, in (y, x) order.
+	var gone: Array = []
+	for e in _of(sim.drain_events(), "chunk_unloaded"):
+		gone.append(e.key)
+	var sorted := gone.duplicate()
+	sorted.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	check(gone.size() >= 2, "several at once (%d)" % gone.size())
+	check_eq(gone, sorted, "unloads in (y, x) order")
+	check(sim.debug_teleport(sim.world.local_of_abs(104.01, 16.0)), "and 72.01 tm east")
+	sim.world.step(sim)
+	check(sim.world.chunk(Vector2i(0, 0)) == null, "gone at 72.01 tm")
+	check(_of(sim.drain_events(), "chunk_unloaded").any(func(e: Dictionary) -> bool: return e.key == Vector2i(0, 0)),
+		"with its chunk_unloaded")
+
+
+## Over the chunk cap only the view set loads: every other load waits and is counted once a tick.
+func test_at_the_chunk_cap_loads_outside_the_view_set_wait_and_count() -> void:
+	var sim := _endless(SEED, null, false)
+	sim.drain_events()
+	var cap := sim.world.loaded_keys().size() + 2
+	sim.world.caps.chunks = cap
+	var waits := 0
+	var bad := 0
+	var first := ""
+	for t in 600:
+		var a := sim.absolute_position_am()
+		var before := sim.world.loaded_keys()
+		var view := sim.world.view_set_keys(sim.motion.position)
+		var waits_before := int(sim.world.counters.chunk_waits)
+		sim.step(SimIntent.new(Vector2.DOWN))
+		var loaded: Array = []
+		for e in sim.drain_events():
+			if e.type == "chunk_loaded":
+				loaded.append(e.key)
+		var kept := before.filter(func(k: Vector2i) -> bool: return _ref_nearest(k, a[0], a[1]) <= 72.0)
+		var best: Variant = _ref_nearest_missing(kept, a[0], a[1], 56.0)
+		var want_wait := best != null and kept.size() >= cap and not view.has(best)
+		var waited := int(sim.world.counters.chunk_waits) - waits_before
+		if waited != (1 if want_wait else 0) or (want_wait and not loaded.is_empty()):
+			bad += 1
+			if first.is_empty():
+				first = "tick %d: waited %d, loaded %s, want a wait %s" % [t, waited, loaded, want_wait]
+		for key in loaded:
+			if kept.size() >= cap and not view.has(key):
+				bad += 1
+		waits += waited
+	check_eq(bad, 0, "a wait exactly when the nearest missing chunk is outside the view set at the cap (%s)" % first)
+	check(waits > 0, "the cap was reached (%d waits)" % waits)
+	for key in sim.world.view_set_keys(sim.motion.position):
+		check(sim.world.chunk(key) != null, "view-set chunk %s loaded past the cap" % key)
+
+
+## An awake creature's reach holds its chunks however far the cell swims; once it is gone they go.
+func test_an_awake_creatures_leash_disc_holds_its_chunks() -> void:
+	var sim := _endless()
+	sim.debug_set_ai_frozen(true)
+	sim.drain_events()
+	# A siteless debug rammer at the origin: its leash disc is its default territory plus the leash.
+	var c := sim.creatures.spawn_at("rammer", Vector2(-6.0, 0.0), 0.0, "", sim.tick, true)
+	check(c != null, "a debug creature")
+	var disc := CreatureBrain.leash_disc(c.brain)
+	var held := sim.world.disc_keys(disc)
+	check(held.size() >= 2, "its disc spans %d chunks" % held.size())
+	for t in 3000:
+		sim.step(SimIntent.new(Vector2.RIGHT))
+	var a := sim.absolute_position_am()
+	check(a[0] > 100.0, "the cell swam far (%.1f)" % a[0])
+	for key in held:
+		check(_ref_nearest(key, a[0], a[1]) > 72.0, "chunk %s is beyond the unload ring" % key)
+		check(sim.world.chunk(key) != null, "and still loaded, held by the creature")
+	for key in sim.world.loaded_keys():
+		check(held.has(key) or _ref_nearest(key, a[0], a[1]) <= 72.0, "nothing else beyond 72 (%s)" % key)
+	sim.creatures.remove(c, "test", sim.tick, false)
+	sim.step(SimIntent.new())
+	for key in held:
+		check(sim.world.chunk(key) == null, "chunk %s unloaded once the creature is gone" % key)
+
+
+## Chunks at equal distance load in key order, (y, x): at a corner shared by four chunks they are
+## all at distance 0.
+func test_chunks_at_equal_distance_load_in_key_order() -> void:
+	var sim := _endless(SEED, null, false)
+	check(sim.debug_teleport(sim.world.local_of_abs(1024.0, 0.0)), "the cell on the corner of chunks (31, -1) to (32, 0)")
+	check_eq(sim.absolute_position_am(), PackedFloat64Array([1024.0, 0.0]), "exactly")
+	sim.drain_events()
+	var loaded: Array = []
+	for t in 4:
+		sim.world.step(sim)
+		for e in _of(sim.drain_events(), "chunk_loaded"):
+			loaded.append(e.key)
+	check_eq(loaded, [Vector2i(31, -1), Vector2i(32, -1), Vector2i(31, 0), Vector2i(32, 0)], "(y, x) order")
+
+
+## The disc's chunks are exactly those whose square it reaches.
+func test_disc_keys_are_the_chunks_a_disc_reaches() -> void:
+	var sim := _endless(SEED, null, false)
+	var center := Vector2(10.0, 2.0)   # abs (10, 11)
+	var keys := sim.world.disc_keys({"center": center, "radius": 23.0})
+	var want: Array[Vector2i] = []
+	for ky in range(-3, 4):
+		for kx in range(-3, 4):
+			if _ref_nearest(Vector2i(kx, ky), 10.0, 11.0) <= 23.0:
+				want.append(Vector2i(kx, ky))
+	check_eq(keys, want, "the keys whose square lies within 23 tm of (10, 11)")
+	check(want.size() >= 4 and want.size() < 49, "a real subset (%d)" % want.size())
+
+
+## A chunk that loads under a body pushes it out of its new colliders: the cell and an awake creature.
+func test_a_loaded_chunk_settles_the_cell_and_awake_bodies_out_of_new_shells() -> void:
+	var sim := _endless()
+	sim.debug_set_ai_frozen(true)
+	sim.drain_events()
+	# Chunk (5, 0)'s shell is at abs (184, 24): put the cell on it before the chunk loads.
+	var shell := sim.world.local_of_abs(184.0, 24.0)
+	check(sim.world.chunk(Vector2i(5, 0)) == null, "the chunk is not loaded")
+	check(sim.debug_teleport(shell), "the cell is placed on the shell's centre")
+	# And a frozen debug creature on chunk (5, 1)'s shell (abs (184, 56)).
+	var other := sim.world.local_of_abs(184.0, 56.0)
+	var c := sim.creatures.spawn_at("rammer", other, 0.0, "", sim.tick, true)
+	var r := FakeWorldGen.SHELL_R
+	# The streaming block alone, so the M1 move after it cannot be what frees them. (5, 0) loads
+	# first (distance 0), then (6, 0) and (5, 1), both at 8 tm, in key order.
+	for t in 3:
+		sim.world.step(sim)
+	check(sim.world.chunk(Vector2i(5, 0)) != null and sim.world.chunk(Vector2i(5, 1)) != null, "both chunks loaded")
+	check(sim.motion.position.distance_to(shell) >= r + sim.phenotype.radius - 1e-4,
+		"the cell is out of the shell (%.3f)" % sim.motion.position.distance_to(shell))
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "and clear")
+	check_eq(sim.actor.position, sim.motion.position, "its actor follows")
+	check(c.motion.position.distance_to(other) >= r + c.phenotype.radius - 1e-4,
+		"the creature is out of its shell (%.3f)" % c.motion.position.distance_to(other))
+	check_eq(c.actor.position, c.motion.position, "its actor follows")
+
+
+## A chunk's events carry its content in the frame in force: shells, zones and the key.
+func test_chunk_events_carry_the_chunks_content_in_local_tm() -> void:
+	var sim := _endless(SEED, null, false)
+	var events := sim.drain_events()
+	var gen := FakeWorldGen.new(sim.world.content, null, SEED)
+	var seen := 0
+	for e in _of(events, "chunk_loaded"):
+		var ch := gen.chunk(1, e.key.x, e.key.y)
+		check_eq(e.shells.size(), ch.shells.size(), "shells of %s" % e.key)
+		for i in ch.shells.size():
+			var s: Dictionary = ch.shells[i]
+			check_eq(e.shells[i].id, s.id, "shell id")
+			check_eq(e.shells[i].position, Vector2(s.x - 0.0, s.y - 9.0), "shell position local")
+			check_eq(e.shells[i].radius, s.r, "shell radius")
+			check_eq(e.shells[i].asset, s.asset, "shell asset")
+		check_eq(e.zones.size(), ch.zones.size(), "zones of %s" % e.key)
+		for i in ch.zones.size():
+			check_eq(e.zones[i].center, Vector2(ch.zones[i].x - 0.0, ch.zones[i].y - 9.0), "zone centre local")
+			check_eq(e.zones[i].region, "sunlit", "zone region")
+		seen += 1
+	check(seen >= 9, "checked %d chunks" % seen)
+
+
+## Unloading forgets a chunk and reloading rebuilds it: one chunk per key in the arena, one zone per
+## id in the region, each with its own seeded stream (G14 for chunks and zones).
+func test_unload_and_reload_leave_no_duplicates_and_seed_each_zone_stream() -> void:
+	var sim := _endless(SEED, null, false)
+	var counts := {}
+	var tally := func(events: Array[Dictionary]) -> void:
+		for e in events:
+			if e.type == "chunk_loaded":
+				counts[e.key] = int(counts.get(e.key, 0)) + 1
+			elif e.type == "chunk_unloaded":
+				counts[e.key] = int(counts.get(e.key, 0)) - 1
+	tally.call(sim.drain_events())
+	var start := sim.world.loaded_keys()
+	for t in 4200:
+		sim.step(SimIntent.new(Vector2.RIGHT if t < 2100 else Vector2.LEFT))
+		tally.call(sim.drain_events())
+	for key in counts:
+		check_eq(int(counts[key]), 1 if sim.world.chunk(key) != null else 0, "chunk %s: loads minus unloads" % key)
+	var ids := {}
+	for z in sim.region.zones:
+		check(not ids.has(z.id), "zone %s once" % z.id)
+		ids[z.id] = true
+	check(_region_matches(sim), "the region holds the loaded chunks' zones")
+	var reloaded := 0
+	for key in start:
+		if sim.world.chunk(key) != null and counts.has(key):
+			reloaded += 1
+	check(reloaded > 0, "some starting chunks came back")
+	# Every loaded zone draws from its own stream, seeded from (seed, generator version, zone id); a
+	# reloaded zone's stream starting over is test_food_view's (its first anchors repeat).
+	var block: Dictionary = sim.snapshot().world
+	check_eq(block.zone_rngs.size(), sim.region.zones.size(), "a stream per loaded zone")
+	for z in sim.region.zones:
+		var stream: RandomNumberGenerator = sim.region.streams.get(z.id)
+		check(stream != null, "zone %s has a stream" % z.id)
+		if stream != null:
+			check_eq(stream.seed, WorldHash.hash_ints(PackedInt64Array([SEED, 1, WorldHash.str32(z.id), WorldHash.str32("plankton")])),
+				"zone %s's seed" % z.id)
+			check_eq(block.zone_rngs[z.id], stream.state, "its state in the snapshot")
+
+
+func _region_matches(sim: PoolSim) -> bool:
+	var want := []
+	for key in sim.world.loaded_keys():
+		for z in sim.world.chunk(key).zones:
+			want.append(z.id)
+	want.sort()
+	var got := []
+	for z in sim.region.zones:
+		got.append(z.id)
+	got.sort()
+	return got == want
+
+
+## The distance from the absolute point (x, y) to chunk `key`'s square, in float64 (a Vector2 would
+## round it to float32 and tie keys that are not tied).
+static func _ref_nearest(key: Vector2i, x: float, y: float) -> float:
+	var dx := x - clampf(x, key.x * 32.0, key.x * 32.0 + 32.0)
+	var dy := y - clampf(y, key.y * 32.0, key.y * 32.0 + 32.0)
+	return sqrt(dx * dx + dy * dy)
+
+
+static func _ref_keys_within(x: float, y: float, ring: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for ky in range(floori(y / 32.0) - 4, floori(y / 32.0) + 5):
+		for kx in range(floori(x / 32.0) - 4, floori(x / 32.0) + 5):
+			if _ref_nearest(Vector2i(kx, ky), x, y) <= ring:
+				out.append(Vector2i(kx, ky))
+	return out
+
+
+## The missing key nearest (x, y) within `ring`: least distance, then y, then x.
+static func _ref_nearest_missing(loaded: Array, x: float, y: float, ring: float) -> Variant:
+	var cands := _ref_keys_within(x, y, ring).filter(func(k: Vector2i) -> bool: return not loaded.has(k))
+	if cands.is_empty():
+		return null
+	cands.sort_custom(func(p: Vector2i, q: Vector2i) -> bool:
+		var dp := _ref_nearest(p, x, y)
+		var dq := _ref_nearest(q, x, y)
+		if dp != dq:
+			return dp < dq
+		return p.y < q.y or (p.y == q.y and p.x < q.x))
+	return cands[0]
+
+
 static func _no_vectors(value: Variant) -> bool:
 	match typeof(value):
 		TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_VECTOR3, TYPE_OBJECT:
