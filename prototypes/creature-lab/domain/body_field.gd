@@ -13,6 +13,9 @@ const SUPPORT := 1.6
 const ISO := 0.22628403  # (1 - 1 / SUPPORT^2)^3
 const BLEND_P := 3.0
 const ISO_P := 0.011586752  # ISO^BLEND_P
+## Reduce opposing spine influence on vertices whose dominant capsule is a limb. This keeps the
+## limb's cross-section from collapsing when its root swings far from the trunk.
+const HIP_SPINE_BLEND := 0.1
 
 ## Capsule k runs from a[k] to b[k] and belongs to bones bone_a[k] and bone_b[k]. Spine capsules come first.
 var a := PackedVector3Array()
@@ -170,9 +173,10 @@ func weights(p: Vector3, bone_count: int) -> Array:
 			continue
 		var c := capsule(k, p)
 		if c.x > 0.0:
-			w[bone_a[k]] += c.x * (1.0 - c.y)
-			w[bone_b[k]] += c.x * c.y
-			total += c.x
+			var influence: float = c.x * (HIP_SPINE_BLEND if own != 0.0 and limb[k] == 0.0 else 1.0)
+			w[bone_a[k]] += influence * (1.0 - c.y)
+			w[bone_b[k]] += influence * c.y
+			total += influence
 	if total <= 0.0:
 		# Outside every support (rare, at the very tip): nearest capsule's bones.
 		var best_k := 0
