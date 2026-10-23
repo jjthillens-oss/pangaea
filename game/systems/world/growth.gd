@@ -57,10 +57,7 @@ static func create(p_cfg: Dictionary, p_trigger: String) -> Growth:
 
 ## The world file's growth block when it switches growth on, else {} (growth off: D-46).
 static func config_of(config: WorldConfig) -> Dictionary:
-	var block: Variant = config.get("growth")
-	if not block is Dictionary or not bool(config.switches.get("growth", false)):
-		return {}
-	return block
+	return config.growth if bool(config.switches.get("growth", false)) else {}
 
 
 ## The ring at size `n`: rings[n - 1], or 0.0 past the table (no next size).

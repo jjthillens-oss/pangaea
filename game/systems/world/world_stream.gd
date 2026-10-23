@@ -1071,9 +1071,14 @@ func _apply_caps(sim: PoolSim) -> void:
 	if _site_role.size() != sites.size():
 		recompute_caps(sim)
 		return
+	# The roles (BP-10): every role already registered (a size drop leaves it at 0) and those of the
+	# species drawn at this size or below, so at size 1 the niches are S1's.
 	var per_role := {}
+	for role in sim.region.niches:
+		per_role[role] = 0
 	for id in sim.species.species_ids():
-		per_role[str(sim.species.niche_of(id).role)] = 0
+		if sim.species.entry_size(id) <= size:
+			per_role[str(sim.species.niche_of(id).role)] = 0
 	for role in _role_sites:
 		per_role[role] = int(per_role.get(role, 0)) + int(_role_sites[role])
 	var roles := per_role.keys()

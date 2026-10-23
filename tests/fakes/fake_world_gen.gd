@@ -128,6 +128,26 @@ static func real_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, 
 	return PoolSim.create(r.save, catalog, layout, p_species, c)
 
 
+## The shipped species plus the two size-2 species as spine 4.2 builds them on the M1 ones, until T1.7
+## puts them in creatures_m1.json: a "lurker" (ambush) and an "elder_rammer" (territorial), entry_size
+## 2, each in a role of its own at cap 0. No habit: two posts are T1.6's.
+static func s2_species() -> SpeciesCatalog:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	if not data.species.has("lurker"):
+		var lurker: Dictionary = data.species.ambush_hunter.duplicate(true)
+		lurker.name = "Lurker"
+		lurker.entry_size = 2
+		lurker.niche = {"role": "lurker", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		data.species["lurker"] = lurker
+	if not data.species.has("elder_rammer"):
+		var elder: Dictionary = data.species.rammer.duplicate(true)
+		elder.name = "elder rammer"
+		elder.entry_size = 2
+		elder.niche = {"role": "elder_rammer", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		data.species["elder_rammer"] = elder
+	return SpeciesCatalog.from_dict(data)
+
+
 ## The chunks a disc (absolute tm) touches, sorted (y, x).
 static func disc_chunks(x: float, y: float, r: float, chunk_tm: float) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []

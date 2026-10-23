@@ -594,11 +594,13 @@ func debug_spawn_carrion_ahead() -> bool:
 	return true
 
 
-## Places a dev creature (debug: outside the niche count, never respawned) at a clear point.
+## Places a dev creature (debug: outside the niche count, never respawned) at a clear point, with its
+## body at the cell's size (D-79): false for a species with no record at this size.
 func debug_spawn_creature(species_id: String, p: Vector2, heading: float) -> bool:
 	if creatures == null or not species.has_species(species_id) or not is_finite(heading):
 		return false
-	if not arena.is_clear(p, species.phenotype(species_id, catalog).radius):
+	var rec := creatures.record_of(species_id)
+	if rec.is_empty() or not arena.is_clear(p, rec.phenotype.radius):
 		return false
 	var c := creatures.spawn_at(species_id, p, heading, "", tick, true)
 	if c == null:

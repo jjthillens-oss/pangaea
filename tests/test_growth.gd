@@ -14,22 +14,6 @@ const S1_COUNTERS := ["awake_overflow", "chunk_waits", "evictions", "food_trimme
 ## Spine 3.12's growth keys.
 const GROWTH_KEYS := ["armed", "beat_until", "blocked", "blocker", "calm", "closing", "discoveries", "due",
 	"energy_at_death", "full_since", "last_bite", "last_meal", "last_ram", "meter", "paid", "trigger"]
-## The plan's growth block (s2-sim 4.1 with BP-4's prefetch keys), for the fixture world until it
-## carries one (T3.1).
-const PLAN_GROWTH := {
-	"trigger": "auto",
-	"rings": [90, 120, 150, 170, 180, 190, 200, 205, 210],
-	"drain_floor_share": 0.8, "drain_ring_seconds": 180.0,
-	"calm_ticks": 90, "quiet_ticks": 120, "chase_window_ticks": 60, "chase_close_tm": 1.0, "chase_track_tm": 15.0,
-	"wedge_tm": 2.0, "showcase_s": 20.0, "blocked_hint_s": 3.0, "shelter_s": 5.0,
-	"beat_s": 2.0, "beat_loads_per_tick": 2, "prefetch_share": 0.9, "prefetch_per_tick": 1,
-	"death_meter_share": 0.25, "respawn_floor_share": 0.8, "respawn_cap_over_death": 20.0, "top_payout_points": 10,
-	"lumps": {"threat_kill": 0.15, "place": 0.10, "landmark_at_top": 0.10, "food_look": 0.05, "kill_carcass_share": 0.25},
-	"remnants": {"cap": 12, "min_rel": 0.45, "morsel_min_rel": 0.25, "life_s": 30.0, "morsel_max_radius_tm": 0.225,
-		"morsel_rot_s": 120.0},
-	"discovery": {"place_find_tm": 10.0, "landmark_find_tm": 6.0},
-}
-
 var catalog: PartCatalog
 var layout: PoolLayout
 
@@ -39,12 +23,10 @@ func before_each() -> void:
 	layout = PoolLayout.load_from()
 
 
-## An endless sim (fake generator, no creatures) with growth on and size 2 as the build top.
+## An endless sim (fake generator, the shipped world file, no creatures) with growth on: size 2 is
+## the build top.
 func _growth_sim() -> PoolSim:
 	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, null, null, PackedFloat64Array(), 4, true)
-	if sim.growth == null:
-		sim._start_growth(PLAN_GROWTH, 2)   # the fixture world has no growth block yet (T3.1)
-	sim.world.max_size = 2
 	sim.drain_events()
 	return sim
 
@@ -73,6 +55,7 @@ func test_growth_exists_only_in_the_endless_world_with_its_switch_on() -> void:
 	check_eq(pool.size(), 1, "the pool is size 1")
 	check(not pool.snapshot().has("world"), "the pool snapshot is M1's")
 	var on := _growth_sim()
+	check_eq(on.world.max_size, 2, "the build top from the world file")
 	var on_world: Dictionary = on.snapshot().world
 	for key in ["growth", "carrion_radius", "carrion_lifetime"]:
 		check(on_world.has(key), "growth on: world.%s" % key)
@@ -83,7 +66,7 @@ func test_growth_exists_only_in_the_endless_world_with_its_switch_on() -> void:
 
 
 func test_growth_reads_the_prefetch_keys() -> void:
-	var cfg := PLAN_GROWTH.duplicate(true)
+	var cfg := WorldConfig.load_from().growth.duplicate(true)
 	cfg.prefetch_share = 0.75
 	cfg.prefetch_per_tick = 3
 	var g := Growth.create(cfg, "press")
@@ -93,14 +76,16 @@ func test_growth_reads_the_prefetch_keys() -> void:
 
 
 func test_the_ring_table_covers_sizes_one_to_nine() -> void:
-	var g := Growth.create(PLAN_GROWTH, "auto")
-	check_eq(g.ring(1), 90.0, "size 1")
-	check_eq(g.ring(2), 120.0, "size 2")
-	check_eq(g.ring(9), 210.0, "size 9")
+	var cfg := WorldConfig.load_from().growth
+	var g := Growth.create(cfg, "auto")
+	for n in range(1, 10):
+		check_eq(g.ring(n), float(cfg.rings[n - 1]), "size %d: rings[%d]" % [n, n - 1])
 	check_eq(g.ring(10), 0.0, "no ring past the table")
-	g.meter = 90.0 - 1e-10
+	check_eq(g.ring(0), 0.0, "nor before it")
+	var r := g.ring(1)
+	g.meter = r - 1e-10
 	check(g.is_full(1), "within 1e-9 of the ring is full")
-	g.meter = 90.0 - 1e-6
+	g.meter = r - 1e-6
 	check(not g.is_full(1), "short of the ring")
 	g.meter = 500.0
 	check(not g.is_full(10), "never full without a ring")
@@ -166,7 +151,7 @@ func test_the_meter_stops_at_the_ring_and_reports_it_full_once() -> void:
 	check_eq(full.size(), 1, "ring_full once")
 	if full.size() == 1:
 		check_eq(full[0].size, 1, "at size 1")
-		check_eq(full[0].ring, 90.0, "with its ring")
+		check_eq(full[0].ring, g.ring(1), "with its ring")
 	var energy := sim.state.energy
 	sim.step(SimIntent.new())
 	check_eq(g.meter, g.ring(1), "still the ring")
