@@ -183,6 +183,8 @@ func test_the_micro_gates_are_section_6() -> void:
 		"lane_decor_puff": [15.0, null], "plankton_hue_low": [110.0, null], "plankton_hue_high": [null, 145.0],
 		"plankton_clip": [null, 254.0], "carrion_hue": [15.0, null], "vignette_hue": [15.0, 45.0], "marker_outline": [3.0, null],
 		"starving_contrast": [10.0, null], "parity_fluid": [null, 2.0], "parity_cell": [null, 2.0],
+		"ambush_contrast": [15.0, null], "lane_on_patch": [2.0, null], "patch_visible": [5.0, null],
+		"patch_shafts": [null, 0.5], "patch_ambush": [15.0, null], "sunlit_cell": [15.0, null],
 	}
 	for id: String in ranges:
 		check(by_id.has(id), "section 6 has %s" % id)

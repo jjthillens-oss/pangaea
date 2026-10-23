@@ -40,6 +40,7 @@ extends SceneTree
 ##   starving   the starving (grey) cell at the spawn, AI frozen
 ##   hud        the starving cell (banner and food arrow) with a rammer near and the hurt vignette
 ##              at its peak, AI frozen
+##   sunlit     the cell in the middle of the z_s plankton zone, in its sunlit patch, AI frozen
 ##
 ## Frames, in --out: <scene>.png is what the player sees; <scene>_fluid.png is the same moment with
 ## every body, food item, rock, world label and the 2D layer hidden, so it shows what lies behind
@@ -47,6 +48,8 @@ extends SceneTree
 ## <scene>_decor_nolane.png (a pale decor stand-in under the lane, with and without it) and
 ## <scene>_marker.png (the "!" popped over the telling creature, the stand-in hidden); hud adds
 ## <scene>_vignette.png (the 3D frame and the vignette alone) and <scene>_world.png (no 2D layer).
+## sunlit adds <scene>_nopatch.png (the fluid frame with the zone lights hidden) and
+## <scene>_ambush.png (an ambush hunter let in over the patch's brightest point).
 ## <scene>_points.png outlines every sampled region in yellow.
 ##
 ## Readings, in look_probe.json under scenes.<scene>.readings: a point is the per-channel median of
@@ -57,13 +60,18 @@ extends SceneTree
 ## colour), fluid_top, fluid_bottom, fluid_corner_tl/tr/bl/br, fluid_corners_min_L, glow_dL
 ## (fluid_near_cell L* minus the corners' mean: the depth glow), creatures (each on-screen body
 ## against the fluid behind it) and render_info. lineup adds plankton and carrion (each on-screen item
-## clear of bodies and HUD panels; hue span, highest channel, hue gap from the threat colour); tell
+## clear of bodies and HUD panels; hue span, highest channel, hue gap from the threat colour) and
+## ambush_dL (the ambush hunter's body against what lies behind it, the least of any on screen); tell
 ## and puff add lane (the outline's largest |dL*| against the same pixels without the lane, across
 ## the lane's edge at 30, 50 and 70% of its length on both sides, skipping places a body covers;
-## over the fluid and over the decor stand-in) and marker (the "!"'s outline and glyph pixels, the
-## fluid behind them and their WCAG contrast ratios); rim_north adds skirt (L* down the north wall from
+## over the fluid and over the decor stand-in; and the L* the sunlit patches add under its edge)
+## and marker (the "!"'s outline and glyph pixels, the fluid behind them and their WCAG contrast
+## ratios); rim_north adds skirt (L* down the north wall from
 ## 1 m to 30 m deep, and its largest step between neighbouring samples); hud adds vignette (the four
-## corners with the vignette alone), vignette_behind and vignette_dE. With --parity every scene adds
+## corners with the vignette alone), vignette_behind and vignette_dE; sunlit adds patch (the zone's
+## light: L* of the fluid frame against the same without the zone lights, out from the zone's centre
+## on the patches' plane) and ambush (that hunter's body against what lies behind it, and the patch
+## point it covers). With --parity every scene adds
 ## parity: the median CIE76 between the two runs over the whole frame, the fluid frame and the cell.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
@@ -71,7 +79,7 @@ const SLOT := "user://look_probe/slot.json"
 const DEFAULT_OUT := "user://look_probe/out"
 const BODY := "grazer"
 const SEED := 4242
-const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud"]
+const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit"]
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
 const START_FRAMES := 30                 ## frames of a new run before staging (the fade-in is 0.3 s)
 const FIRST_SETTLE := 2                  ## frames drawn before a moment's first capture...
@@ -106,13 +114,19 @@ const SKIRT_BOX_PX := 5
 const PARITY_STRIDE := 4
 const MARKER_BOX_PX := 60                ## the "!" marker is measured within this many px of its anchor...
 const MARKER_CHANGE := 0.1               ## ...where it changes a channel by more than this
+const SUNLIT_ZONE := "z_s"               ## the sunlit scene's zone: radius 6 m, no rock or lair in view
+const PATCH_FRACTIONS: Array[float] = [0.0, 0.25, 0.5, 0.75, 0.88, 1.0, 1.15, 1.3]   ## zone radii out...
+const PATCH_DIRECTIONS := 16             ## ...along this many directions, on the patches' plane
+const PATCH_BOX_PX := 9
 const BOX_COLOR := Color(1.0, 0.95, 0.0)
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
 ## fails. A "parity" gate runs only with --parity, and a gate on a scene that did not run is skipped.
-##   micro: plan section 6 (PROPOSED), plus the depth glow check of plan section 10, risk 1, and
-##   section 3's 90 degrees of LAB hue between the fluid and the threat pink, read on screen.
+##   micro: plan section 6 (PROPOSED), plus the depth glow check of plan section 10, risk 1,
+##   section 3's 90 degrees of LAB hue between the fluid and the threat pink, read on screen, and
+##   the sunlit patches' gates (docs/DECISIONS.md, "Microscopic world look"): seen, broken into
+##   shafts, under the tell's lane, and never cutting the cell or an ambush hunter under 15 dL*.
 ##   baseline: today's look (m1-threats at ecb1eee) in both renderers, with margins (docs/DECISIONS.md,
 ##   "Microscopic world look"), so the probe itself can be checked on today's build. Its "fluid" is
 ##   the teal floor. It has no skirt or plankton clipping gate: there is no skirt yet (those samples
@@ -138,6 +152,12 @@ const GATES := {
 		{"id": "vignette_hue", "path": "hud.vignette.h", "min": 15.0, "max": 45.0, "what": "hurt vignette outer band (h)"},
 		{"id": "marker_outline", "path": "tell.marker.outline_contrast", "min": 3.0, "what": "the \"!\" marker's outline against the fluid behind it (WCAG contrast)"},
 		{"id": "starving_contrast", "path": "starving.cell_dL", "min": 10.0, "what": "starving cell against the fluid (|dL*|)"},
+		{"id": "ambush_contrast", "path": "lineup.ambush_dL", "min": 15.0, "what": "ambush hunter on the centre zone's lit band, against what lies behind it (|dL*|)"},
+		{"id": "lane_on_patch", "path": "tell.lane.patch_lift_max_dL", "min": 2.0, "what": "the tell's lane lies over a sunlit patch, so its lane gates hold there (dL* the patch adds under its edge)"},
+		{"id": "patch_visible", "path": "sunlit.patch.lift_max_dL", "min": 5.0, "what": "a sunlit patch lifts the fluid where it is brightest (dL*)"},
+		{"id": "patch_shafts", "path": "sunlit.patch.ring_min_share", "max": 0.5, "what": "the patch's light is broken into shafts, not an even ring round a target (least lift over the most at its brightest radius)"},
+		{"id": "patch_ambush", "path": "sunlit.ambush.dL", "min": 15.0, "what": "ambush hunter over the brightest point of a sunlit patch (|dL*|)"},
+		{"id": "sunlit_cell", "path": "sunlit.cell_dL", "min": 15.0, "what": "cell against the fluid in the middle of a sunlit patch (|dL*|)"},
 		{"id": "skirt_edge", "path": "rim_north.skirt.max_step_dL", "max": 6.0, "what": "no hard lower edge on the rim wall (largest dL* step)"},
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 2.0, "parity": true, "what": "renderer parity, fluid (median CIE76)"},
 		{"id": "parity_cell", "path": "lineup.parity.cell_dE", "max": 2.0, "parity": true, "what": "renderer parity, cell (median CIE76)"},
@@ -379,6 +399,8 @@ func _stage(scene: String) -> bool:
 			return await _stage_starving()
 		"hud":
 			return await _stage_hud()
+		"sunlit":
+			return await _stage_sunlit()
 	return false
 
 
@@ -456,6 +478,16 @@ func _stage_hud() -> bool:
 	return sim.state.is_starving()
 
 
+## The cell in the middle of SUNLIT_ZONE, where its plankton grows, in the zone's sunlit patch.
+func _stage_sunlit() -> bool:
+	sim.debug_set_ai_frozen(true)
+	var zone := _zone(SUNLIT_ZONE)
+	if zone.is_empty() or not sim.debug_teleport(zone.center, -PI / 2.0):
+		return false
+	await _play(20)
+	return true
+
+
 ## At least `frames`, and enough for a creature spawned now to finish fading in (the species
 ## data's fade_in_s; one frame is one sim tick at --fixed-fps 60), so it is drawn opaque and whole.
 func _whole_frames(frames: int) -> int:
@@ -471,6 +503,8 @@ func _shoot(scene: String) -> void:
 			await _shoot_lane(scene)
 		"hud":
 			await _shoot_hud(scene)
+		"sunlit":
+			await _shoot_sunlit(scene)
 		_:
 			var frames := await _shoot_common(scene)
 			var r: Dictionary = results[scene].readings
@@ -478,6 +512,9 @@ func _shoot(scene: String) -> void:
 				var panels := _hud_panels()
 				r.plankton = _food_readings(frames[0], sim.plankton.items, pool.plankton_view.food_mesh(), panels)
 				r.carrion = _food_readings(frames[0], sim.carrion.items, pool.carrion_view.food_mesh(), panels)
+				var ambush: Array = r.creatures.filter(func(c: Dictionary) -> bool: return c.species == "ambush_hunter")
+				if not ambush.is_empty():
+					r.ambush_dL = ambush.map(func(c: Dictionary) -> float: return c.dL).min()
 			elif scene == "rim_north":
 				r.skirt = _skirt_readings(frames[1])
 			_write_points(scene, frames[0])
@@ -516,6 +553,58 @@ func _shoot_hud(scene: String) -> void:
 	_write_points(scene, frames[0])
 
 
+## The sunlit scene: its frames, then the fluid frame with the zone lights hidden, for the patch.
+## Then an ambush hunter is let in where the patch is brightest, between the camera and that point,
+## and shot against what lies behind it (<scene>_ambush.png): the worst a patch does to a body.
+func _shoot_sunlit(scene: String) -> void:
+	var frames := await _shoot_common(scene)
+	_show_gameplay(false)
+	pool.zone_lights.visible = false
+	var dark := await _capture()
+	pool.zone_lights.visible = true
+	_show_gameplay(true)
+	_save(scene, "nopatch", dark)
+	var zone := _zone(SUNLIT_ZONE)
+	var patch := _patch_readings(zone, frames[1], dark)
+	results[scene].readings.patch = patch
+	_write_points(scene, frames[0])
+	var top: Dictionary = {}
+	for p: Dictionary in patch.profile:
+		if top.is_empty() or p.dL > top.dL:
+			top = p
+	if top.is_empty():
+		return
+	# Where the view ray to the brightest point crosses the swim plane.
+	var lit := PlaneSpace.to_world(Vector2(zone.center) + Vector2.from_angle(deg_to_rad(top.deg)) * float(zone.radius) * top.at, ZoneLights.DEPTH_M)
+	var eye := pool.camera.global_position
+	var on_plane := lit + (eye - lit) * (-lit.y / (eye.y - lit.y))
+	_thaw()
+	pool.set_paused(false)
+	var spawned := sim.debug_spawn_creature("ambush_hunter", Vector2(on_plane.x, on_plane.z), -PI / 2.0)
+	await _play(_whole_frames(1))
+	await _freeze()
+	if not spawned:
+		results[scene].readings.ambush = {"error": "no room for the hunter at %s" % Vector2(on_plane.x, on_plane.z)}
+		return
+	_boxes.clear()
+	var full := await _capture(FIRST_SETTLE)
+	_show_gameplay(false)
+	var fluid := await _capture()
+	_show_gameplay(true)
+	_save(scene, "ambush", full)
+	var hunters: Array = _creature_readings(full, fluid).filter(func(c: Dictionary) -> bool: return c.species == "ambush_hunter")
+	if hunters.is_empty():
+		results[scene].readings.ambush = {"error": "the hunter is not on screen"}
+		return
+	var nearest: Dictionary = hunters[0]
+	var at := _px(on_plane)
+	for h: Dictionary in hunters:
+		if Vector2(h.px[0], h.px[1]).distance_to(at) < Vector2(nearest.px[0], nearest.px[1]).distance_to(at):
+			nearest = h
+	nearest.patch_point = top
+	results[scene].readings.ambush = nearest
+
+
 ## A tell scene: the frames with and without the lane, over the fluid and over the decor stand-in.
 func _shoot_lane(scene: String) -> void:
 	var tell := _last_tell()
@@ -527,6 +616,9 @@ func _shoot_lane(scene: String) -> void:
 	var lane: Dictionary = tell.lane
 	view.hide_lane()
 	var bare := await _capture()
+	pool.zone_lights.visible = false
+	var unlit := await _capture()
+	pool.zone_lights.visible = true
 	view.show_lane(lane)
 	_add_decor(lane)
 	var decor := await _capture()
@@ -537,6 +629,7 @@ func _shoot_lane(scene: String) -> void:
 	_save(scene, "decor", decor)
 	_save(scene, "decor_nolane", decor_bare)
 	results[scene].readings.lane = _lane_readings(lane, frames[0], bare, decor, decor_bare)
+	results[scene].readings.lane.merge(_lane_patch(lane, bare, unlit))
 	results[scene].readings.marker = await _marker_readings(scene, view)
 	_write_points(scene, frames[0])
 
@@ -587,7 +680,8 @@ func _creature_readings(full: Image, fluid: Image) -> Array:
 		var body := _disc_point(full, at, core)
 		var behind := _disc_point(fluid, at, core)
 		body.merge({"id": c.id, "species": c.species_id, "dL": _dl(body, behind),
-			"dE": snappedf(delta_e(_color_of(body), _color_of(behind)), 0.1)})
+			"dE": snappedf(delta_e(_color_of(body), _color_of(behind)), 0.1), "behind_L": behind.L,
+			"px": [roundi(at.x), roundi(at.y)]})
 		out.append(body)
 	return out
 
@@ -673,6 +767,28 @@ func _lane_readings(lane: Dictionary, on: Image, off: Image, decor_on: Image, de
 	return out
 
 
+## How much the sunlit patches light the fluid under the lane's edge: the L* the zone lights add
+## (`lit` against `unlit`, both without the lane) at LANE_FRACTIONS of its length on both sides.
+## {"patch_lift_max_dL", "patch_lift_mean_dL"}: a lane over a patch shows a lift here.
+func _lane_patch(lane: Dictionary, lit: Image, unlit: Image) -> Dictionary:
+	var dir := Vector2.from_angle(float(lane.heading))
+	var lifts: Array[float] = []
+	for f in LANE_FRACTIONS:
+		for side in [-1.0, 1.0]:
+			var at: Vector2 = Vector2(lane.origin) + dir * float(lane.length) * f + dir.orthogonal() * side * float(lane.half_width)
+			var px := _px(PlaneSpace.to_world(at, CreatureView.LANE_Y))
+			if _covered(px, 0.0) or not Rect2(Vector2.ZERO, Vector2(lit.get_size())).has_point(px):
+				continue
+			var rect := _disc_rect(px, PATCH_BOX_PX * 0.5)
+			lifts.append(lab(_color_of(median_of(lit, rect))).x - lab(_color_of(median_of(unlit, rect))).x)
+	if lifts.is_empty():
+		return {}
+	var mean := 0.0
+	for l in lifts:
+		mean += l / lifts.size()
+	return {"patch_lift_max_dL": snappedf(lifts.max(), 0.1), "patch_lift_mean_dL": snappedf(mean, 0.1)}
+
+
 ## The "!" over the telling creature, popped to full size, against the same moment without it
 ## (saved as <scene>_marker.png), over the fluid (the decor stand-in hidden): each pixel it changes
 ## counts as outline or glyph, whichever of the two colours it is nearer, and the frame without it
@@ -714,6 +830,50 @@ func _marker_readings(scene: String, view: CreatureView) -> Dictionary:
 	out.outline_contrast = snappedf(contrast(median_color(outline), median_color(behind)), 0.01)
 	out.glyph_contrast = snappedf(contrast(median_color(glyph), median_color(behind)), 0.01)
 	out.outline_glyph_contrast = snappedf(contrast(median_color(outline), median_color(glyph)), 0.01)
+	return out
+
+
+## A zone's sunlit patch: the L* the zone lights add to the fluid frame (`lit` against `dark`) at
+## PATCH_FRACTIONS of the zone's radius out from its centre, along PATCH_DIRECTIONS directions on the
+## patches' plane (ZoneLights.DEPTH_M). {"profile": [{"at", "deg", "dL"}], "by_fraction": [{"at",
+## "points", "mean_dL", "min_dL", "max_dL"}], "lift_max_dL", "lift_centre_dL", "ring_min_share"}.
+## ring_min_share is the least lift over the most at the brightest radius: a plain ring of light, which
+## reads as a target, lifts that radius evenly all round (1); light broken into shafts gives near 0.
+func _patch_readings(zone: Dictionary, lit: Image, dark: Image) -> Dictionary:
+	var out := {"zone": zone.get("id", ""), "profile": [], "by_fraction": []}
+	if zone.is_empty():
+		return out
+	var bounds := Rect2(Vector2.ZERO, Vector2(lit.get_size()))
+	var top := -INF
+	var top_at := NAN
+	for f in PATCH_FRACTIONS:
+		var lifts: Array[float] = []
+		for k in (1 if f == 0.0 else PATCH_DIRECTIONS):
+			var deg := 360.0 * k / PATCH_DIRECTIONS
+			var at: Vector2 = Vector2(zone.center) + Vector2.from_angle(deg_to_rad(deg)) * float(zone.radius) * f
+			var px := _px(PlaneSpace.to_world(at, ZoneLights.DEPTH_M))
+			if not bounds.grow(-PATCH_BOX_PX).has_point(px):
+				continue
+			var rect := _disc_rect(px, PATCH_BOX_PX * 0.5)
+			_boxes.append(rect)
+			var dl := lab(_color_of(median_of(lit, rect))).x - lab(_color_of(median_of(dark, rect))).x
+			lifts.append(snappedf(dl, 0.1))
+			out.profile.append({"at": f, "deg": deg, "dL": snappedf(dl, 0.1)})
+			if dl > top:
+				top = dl
+				top_at = f
+		if f == 0.0 and not lifts.is_empty():
+			out.lift_centre_dL = lifts[0]
+		if not lifts.is_empty():
+			var mean := 0.0
+			for l in lifts:
+				mean += l / lifts.size()
+			out.by_fraction.append({"at": f, "points": lifts.size(), "mean_dL": snappedf(mean, 0.1), "min_dL": lifts.min(), "max_dL": lifts.max()})
+	if is_finite(top):
+		out.lift_max_dL = snappedf(top, 0.1)
+		for b: Dictionary in out.by_fraction:
+			if b.at == top_at and b.points > 1:
+				out.ring_min_share = snappedf(b.min_dL / maxf(b.max_dL, 1e-3), 0.01)
 	return out
 
 
@@ -864,6 +1024,14 @@ func _add_decor(lane: Dictionary) -> void:
 	pool.add_child(_decor)
 	_decor.global_position = eye + ray * reach
 	_decor.global_basis = pool.camera.global_basis
+
+
+## The layout's zone `id`, or {}.
+func _zone(id: String) -> Dictionary:
+	for zone in sim.layout.zones:
+		if zone.id == id:
+			return zone
+	return {}
 
 
 func _creature_at(site_id: String) -> CreatureField.Creature:
