@@ -4,7 +4,7 @@ shader_type spatial;
 // MultiMesh. Each instance wraps inside a box that follows the camera's focus, so a few hundred
 // quads fill the whole pool and the CPU never moves them. Shapes are drawn here, not textured.
 //
-// INSTANCE_CUSTOM: x phase (0..1), y size (m), z kind, w opacity.
+// INSTANCE_CUSTOM: x phase (0..1), y size (m), z kind, w opacity as a share of the layer's `opacity`.
 // Kinds: 0 speck, 1 bubble, 2 rod bacterium, 3 spirillum, 4 spore. Every kind draws at or under its
 // tint's brightness, and engine fog stays on (blend_mix), so decor fades into the fluid.
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, skip_vertex_transform;
@@ -17,6 +17,7 @@ uniform vec3 drift = vec3(0.04, 0.0, -0.03);   // m/s
 uniform float wobble = 0.25;             // m of slow side-to-side wander
 uniform float scatter_radius = 0.0;      // microbes part around the cell within this distance, m
 uniform float scatter_depth = 3.0;       // and only this far below it
+uniform float opacity = 1.0;             // the layer's top opacity; INSTANCE_CUSTOM.w scales under it
 uniform vec4 tint_a : source_color = vec4(0.86, 0.92, 0.98, 1.0);
 uniform vec4 tint_b : source_color = vec4(0.71, 0.61, 0.88, 1.0);
 uniform vec4 tint_c : source_color = vec4(0.91, 0.71, 0.35, 1.0);
@@ -103,5 +104,5 @@ void fragment() {
 		col = tint_c.rgb * mix(1.0, 0.8, smoothstep(0.0, 0.25, r));
 	}
 	ALBEDO = col;
-	ALPHA = clamp(a * v_alpha, 0.0, 1.0);
+	ALPHA = clamp(a * v_alpha * opacity, 0.0, 1.0);
 }

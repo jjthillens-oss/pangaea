@@ -143,13 +143,14 @@ func _drift_layer(layer_name: String, spec: Dictionary) -> MultiMeshInstance3D:
 		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, p))
 		var size: Vector2 = spec.size
 		var alpha: Vector2 = spec.alpha
-		mm.set_instance_custom_data(i, Color(_rng.randf(), _rng.randf_range(size.x, size.y), _pick_kind(spec.kinds), _rng.randf_range(alpha.x, alpha.y)))
+		mm.set_instance_custom_data(i, Color(_rng.randf(), _rng.randf_range(size.x, size.y), _pick_kind(spec.kinds), _rng.randf_range(alpha.x, alpha.y) / alpha.y))
 	var material := ShaderMaterial.new()
 	material.shader = DRIFT_SHADER
 	material.set_shader_parameter("box", BOX)
 	material.set_shader_parameter("height_range", height)
 	material.set_shader_parameter("drift", spec.drift)
 	material.set_shader_parameter("wobble", spec.wobble)
+	material.set_shader_parameter("opacity", (spec.alpha as Vector2).y)
 	material.set_shader_parameter("scatter_radius", spec.get("scatter", 0.0))
 	material.set_shader_parameter("scatter_depth", spec.get("scatter_depth", 3.0))
 	var tints: Array = spec.tints
