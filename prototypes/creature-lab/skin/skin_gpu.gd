@@ -64,7 +64,8 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 	var caps := PackedFloat32Array()
 	for k in field.capsule_count():
 		caps.append_array([field.a[k].x, field.a[k].y, field.a[k].z, field.ra[k],
-				field.b[k].x, field.b[k].y, field.b[k].z, field.rb[k]])
+				field.b[k].x, field.b[k].y, field.b[k].z, field.rb[k],
+				field.start[k], field.a[k].distance_to(field.b[k]), field.total_length, 0.0])
 	_ensure_buffers(n, field.capsule_count())
 	var origin: Vector3 = grid["origin"]
 	var params := PackedFloat32Array([origin.x, origin.y, origin.z, grid["cell"]]).to_byte_array()
@@ -104,6 +105,7 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 		"normals": rd.buffer_get_data(_buffers["normals"], 0, 12 * vcount).to_vector3_array(),
 		"bones": rd.buffer_get_data(_buffers["bones"], 0, 16 * vcount).to_int32_array(),
 		"weights": rd.buffer_get_data(_buffers["weights"], 0, 16 * vcount).to_float32_array(),
+		"custom0": rd.buffer_get_data(_buffers["custom0"], 0, 16 * vcount).to_float32_array(),
 		"indices": rd.buffer_get_data(_buffers["indices"], 0, 4 * icount).to_int32_array(),
 		"dims": dims, "cell": grid["cell"],
 	}
@@ -153,13 +155,13 @@ func _ensure_buffers(n: int, capsules: int) -> void:
 	_cap_capsules = maxi(capsules, 32)
 	var blocks := int(ceil(float(_capacity) / GROUP))
 	var sizes := {
-		"params": 80, "capsules": 32 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
+		"params": 80, "capsules": 48 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
 		"quad_offset": 4 * _capacity, "blocks": 4 * blocks, "totals": 16, "vertices": 12 * _capacity,
 		"normals": 12 * _capacity, "bones": 16 * _capacity, "weights": 16 * _capacity,
-		"indices": 4 * 18 * _capacity,
+		"indices": 4 * 18 * _capacity, "custom0": 16 * _capacity,
 	}
 	var order := ["params", "capsules", "field", "cell_offset", "quad_offset", "blocks", "totals", "vertices",
-			"normals", "bones", "weights", "indices"]
+			"normals", "bones", "weights", "indices", "custom0"]
 	var uniforms: Array[RDUniform] = []
 	for binding in order.size():
 		var key: String = order[binding]

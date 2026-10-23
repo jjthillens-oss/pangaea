@@ -19,6 +19,9 @@ var a := PackedVector3Array()
 var b := PackedVector3Array()
 var ra := PackedFloat32Array()
 var rb := PackedFloat32Array()
+## Spine length before capsule k, and the whole spine length (for paint coordinates).
+var start := PackedFloat32Array()
+var total_length := 0.0
 
 
 static func from_description(desc: RefCounted) -> RefCounted:
@@ -28,6 +31,8 @@ static func from_description(desc: RefCounted) -> RefCounted:
 		f.b.append(desc.position_m(i + 1))
 		f.ra.append(desc.radius_m(i))
 		f.rb.append(desc.radius_m(i + 1))
+		f.start.append(f.total_length)
+		f.total_length += desc.position_m(i).distance_to(desc.position_m(i + 1))
 	return f
 
 
@@ -76,6 +81,34 @@ func support_bounds() -> AABB:
 		box = box.merge(AABB(a[k] - Vector3.ONE * r, Vector3.ONE * 2.0 * r))
 		box = box.merge(AABB(b[k] - Vector3.ONE * r, Vector3.ONE * 2.0 * r))
 	return box
+
+
+## Paint coordinates for the skin shader (Godot CUSTOM0, CREATURE_GEOMETRY_SPEC.md section 8), from the capsule that
+## contributes most at p: x = position along the spine (0 head, 1 tail), y = angle around it in turns (0 on the
+## dorsal midline, 0.25 right, 0.5 belly, 0.75 left; wraps on the dorsal midline), z = limb id (0 = spine),
+## w = distance along the limb (0 on the spine). skin/surface_nets.glsl repeats this.
+func paint_coords(p: Vector3) -> Vector4:
+	var best := 0
+	var best_f := -1.0
+	for k in a.size():
+		var c := capsule(k, p)
+		if c.x > best_f:
+			best_f = c.x
+			best = k
+	var ab := b[best] - a[best]
+	var len2 := ab.length_squared()
+	var t := clampf((p - a[best]).dot(ab) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
+	var u := (start[best] + t * sqrt(len2)) / total_length if total_length > 0.0 else 0.0
+	return Vector4(u, ring_angle(p - (a[best] + ab * t), ab), 0.0, 0.0)
+
+
+## Angle of `w` around the axis `axis` (head to tail), in turns: 0 towards body up, 0.25 towards body right.
+static func ring_angle(w: Vector3, axis: Vector3) -> float:
+	var tdir := axis.normalized() if axis.length_squared() > 0.0 else Vector3.BACK
+	var ref := Vector3.UP if absf(tdir.dot(Vector3.UP)) < 0.99 else Vector3.FORWARD
+	var dorsal := (ref - tdir * ref.dot(tdir)).normalized()
+	var right := dorsal.cross(tdir)
+	return fposmod(atan2(w.dot(right), w.dot(dorsal)) / TAU, 1.0)
 
 
 ## Up to four (bone, weight) pairs at p, weights summing to 1, heaviest first; ties go to the lower bone index.

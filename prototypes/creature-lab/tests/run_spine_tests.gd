@@ -25,6 +25,7 @@ func _init() -> void:
 	test_random_bodies_watertight()
 	test_skin_deterministic()
 	test_weights()
+	test_paint_coordinates()
 	test_triangle_budget_large_body()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
@@ -225,6 +226,27 @@ func test_weights() -> void:
 		for k in 4:
 			ok = ok and bones[4 * v + k] >= 0 and bones[4 * v + k] < desc.vertebrae.size()
 	check(ok, "every vertex has four bone weights summing to 1 on real bones")
+
+
+func test_paint_coordinates() -> void:
+	var desc = straight(8, 150)  # head at -Z, tail at +Z
+	var skin := SkinCpu.build(desc, 48)
+	var v: PackedVector3Array = skin["vertices"]
+	var c: PackedFloat32Array = skin["custom0"]
+	var top := 0
+	var right := 0
+	var head := 0
+	for i in v.size():
+		if v[i].y > v[top].y:
+			top = i
+		if v[i].x > v[right].x:
+			right = i
+		if v[i].z < v[head].z:
+			head = i
+	var ring_top := minf(c[4 * top + 1], 1.0 - c[4 * top + 1])
+	check(c.size() == 4 * v.size() and ring_top < 0.02 and absf(c[4 * right + 1] - 0.25) < 0.02
+			and c[4 * head] < 0.02, "paint coordinates: back 0, right side 0.25, head end 0 (got %.3f, %.3f, %.3f)"
+			% [ring_top, c[4 * right + 1], c[4 * head]])
 
 
 func test_triangle_budget_large_body() -> void:

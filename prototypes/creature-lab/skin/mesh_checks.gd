@@ -42,6 +42,7 @@ static func mesh_hash(arrays: Dictionary) -> String:
 	ctx.update(PackedVector3Array(arrays["normals"]).to_byte_array())
 	ctx.update(PackedInt32Array(arrays["bones"]).to_byte_array())
 	ctx.update(PackedFloat32Array(arrays["weights"]).to_byte_array())
+	ctx.update(PackedFloat32Array(arrays.get("custom0", PackedFloat32Array())).to_byte_array())
 	ctx.update(PackedInt32Array(arrays["indices"]).to_byte_array())
 	return ctx.finish().hex_encode()
 

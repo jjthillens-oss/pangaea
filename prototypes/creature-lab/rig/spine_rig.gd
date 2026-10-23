@@ -60,9 +60,11 @@ static func build_mesh(arrays: Dictionary, color: Color) -> ArrayMesh:
 	surface[Mesh.ARRAY_NORMAL] = arrays["normals"]
 	surface[Mesh.ARRAY_BONES] = arrays["bones"]
 	surface[Mesh.ARRAY_WEIGHTS] = arrays["weights"]
+	surface[Mesh.ARRAY_CUSTOM0] = arrays["custom0"]
 	surface[Mesh.ARRAY_INDEX] = arrays["indices"]
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {},
+			Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.45

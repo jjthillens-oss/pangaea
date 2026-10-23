@@ -16,7 +16,7 @@ const FLIP_SCALE := 1.0001
 static var _split: Array = []
 
 
-## Returns {vertices, normals, bones, weights, indices, dims, cell, ms: {field, nets, normals_weights, total}}.
+## Returns {vertices, normals, bones, weights, custom0 (4 floats per vertex, BodyField.paint_coords), indices, dims, cell, ms: {field, nets, normals_weights, total}}.
 static func build(desc: RefCounted, divisions: int) -> Dictionary:
 	var t0 := Time.get_ticks_usec()
 	var field = BodyField.from_description(desc)
@@ -165,14 +165,18 @@ static func build(desc: RefCounted, divisions: int) -> Dictionary:
 	var normals := PackedVector3Array()
 	var bones := PackedInt32Array()
 	var weights := PackedFloat32Array()
+	var custom0 := PackedFloat32Array()
 	var bone_count: int = desc.vertebrae.size()
 	for p in vertices:
 		normals.append(field.normal(p, 0.25 * cell))
 		var bw: Array = field.weights(p, bone_count)
 		bones.append_array(bw[0])
 		weights.append_array(bw[1])
+		var pc: Vector4 = field.paint_coords(p)
+		custom0.append_array([pc.x, pc.y, pc.z, pc.w])
 	var t3 := Time.get_ticks_usec()
-	return {"vertices": vertices, "normals": normals, "bones": bones, "weights": weights, "indices": indices,
+	return {"vertices": vertices, "normals": normals, "bones": bones, "weights": weights, "custom0": custom0,
+			"indices": indices,
 			"dims": dims, "cell": cell, "topology_fixes": fixes, "fix_passes_used": passes_used,
 			"ms": {"field": (t1 - t0) / 1000.0, "nets": (t2 - t1) / 1000.0, "normals_weights": (t3 - t2) / 1000.0,
 				"total": (t3 - t0) / 1000.0}}
