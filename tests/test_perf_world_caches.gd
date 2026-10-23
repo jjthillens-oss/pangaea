@@ -226,6 +226,100 @@ func test_the_wake_bound_starts_again_when_the_wake_ring_or_view_margin_changes(
 	check_eq(a.world._bound_view[1], wake_r, "the bound was measured again for the ring as it is now")
 
 
+## The hold pass's bound lets go the creatures measuring every awake one would: twin sims swim east
+## then west, with a debug rebase, the hold ring cut to 30 tm for a while (the awake creatures beyond
+## it go as the cell swims off) and then given back, and a debug teleport; before every step the twin
+## forgets its hold bound only. Every tick's events and every hash must be the same.
+func test_the_hold_bound_lets_go_the_same_creatures_as_measuring_every_one() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the hold bound waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 505)
+	var b: Variant = Gates.make_sim(Gates.RACER, 505)
+	a.debug_set_hidden(true)
+	b.debug_set_hidden(true)
+	var hold := float(a.world.rings.hold)
+	var let_go := 0
+	var held := 0
+	for t in 1500:
+		if t == 500:
+			a.debug_rebase(Vector2i(2, -1))
+			b.debug_rebase(Vector2i(2, -1))
+		elif t == 700 or t == 1000:
+			for sim in [a, b]:
+				sim.world.rings.hold = 30.0 if t == 700 else hold
+		elif t == 1200:
+			a.debug_teleport(a.motion.position + Vector2(-30.0, 12.0))
+			b.debug_teleport(b.motion.position + Vector2(-30.0, 12.0))
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		var before: int = a.world._hold_bound.size()
+		b.world._hold_bound.clear()
+		var move := Vector2.RIGHT if t < 800 else Vector2.LEFT
+		a.step(SimIntent.new(move))
+		b.step(SimIntent.new(move))
+		held += 1 if before > 0 else 0
+		var ea: Array = a.drain_events()
+		if var_to_str(ea) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the events differ" % t)
+			return
+		for e in ea:
+			if e.type == "creature_removed" and e.reason == "unloaded" and t >= 700 and t < 1000:
+				let_go += 1
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(held >= 1000, "the bound held creatures on most ticks (%d)" % held)
+	check(let_go >= 5, "creatures were let go while the ring was cut (%d)" % let_go)
+
+
+## An awake creature the hold bound holds goes on the first step that finds the cell past the hold
+## ring from its hold centre: the cell swims on east, the ring set 2 tm past the distance of a creature
+## left behind it.
+func test_a_held_creature_goes_on_the_first_step_past_the_hold_ring() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the held creature waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 505)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var held: CreatureField.Creature = null
+	var center := Vector2.ZERO
+	for t in 900:
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		sim.drain_events()
+		for c in sim.creatures.awake():
+			if w._hold_bound.has(c) and w.sites.has(c.site_id):
+				var at: Vector2 = w.sites[c.site_id].reach.center
+				var d: float = sim.motion.position.distance_to(at)
+				if d > 10.0 and d < 30.0 and at.x < sim.motion.position.x - 5.0:
+					held = c
+					center = at
+		if held != null:
+			break
+	check(held != null, "an awake creature left behind, held by the bound")
+	if held == null:
+		return
+	var hold: float = sim.motion.position.distance_to(center) + 2.0
+	w.rings.hold = hold
+	var past := -1
+	var gone := -1
+	for t in 400:
+		var d: float = sim.motion.position.distance_to(center)   # what this step's hold pass measures
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		sim.drain_events()
+		if past < 0 and d > hold + 0.01:
+			past = t
+		if gone < 0 and not sim.creatures.creatures.has(held):
+			gone = t
+			break
+	check(past >= 3, "the cell swam past the ring a few steps on (%d)" % past)
+	check_eq(gone, past, "the creature went on that step")
+
+
 ## A sleeper the bound holds is measured again once it is moved (a respawn sends the creatures near
 ## the checkpoint home, sleepers too): one put beside the cell wakes on the next step.
 func test_a_moved_sleeper_is_measured_again_at_once() -> void:
