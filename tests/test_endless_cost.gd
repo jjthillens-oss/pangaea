@@ -87,7 +87,8 @@ const DENSE_LIMIT_YARDSTICKS := 10.0   ## the median run's median tick
 const DENSE_LOAD_LIMIT_YARDSTICKS := 16.0   ## every tick that loads a chunk, at its fastest of 3
 
 ## S2 (T0.6).
-const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "remnants", "size_two_content"]
+const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "size_two_content"]
+const GROWTH_NEEDS: PackedStringArray = ["set_size", "force_growth", "remnants", "size_two_content"]
 const SIZE_TWO_SEED := 2803
 const DENSE_REMNANTS := 12             ## #29E: the remnants a growth keeps (D-78's cap)
 const DENSE_AWAKE := 10                ## #29E: awake creatures after it
@@ -561,9 +562,10 @@ static func _joined(values: Array[float], format: String) -> String:
 	return ", ".join(values.map(func(v: float) -> String: return format % v))
 
 
-## S2 (T0.6): the gates at size 2 and round a growth. They wait on Gates.s2_missing(SIZE_TWO_NEEDS).
-func _size_two_waits(gate: String) -> bool:
-	var what := Gates.s2_missing(SIZE_TWO_NEEDS)
+## S2 (T0.6): the gates at size 2 wait on Gates.s2_missing(SIZE_TWO_NEEDS), and those round a forced
+## growth on GROWTH_NEEDS.
+func _size_two_waits(gate: String, needs := SIZE_TWO_NEEDS) -> bool:
+	var what := Gates.s2_missing(needs)
 	if what.is_empty():
 		return false
 	print("test-endless-cost: %s waits on: %s" % [gate, "; ".join(what)])
@@ -607,7 +609,7 @@ func test_soak_the_racer_as_it_is_swims_at_size_2_within_8_yardsticks() -> void:
 ## S2G17, #29E: the densest 30 s after a forced growth (12 remnants and 10 awake), timed 3 times on
 ## twin scenes; each 5 s window counts at its fastest of the 3, as #29's do.
 func test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window() -> void:
-	if _size_two_waits("#29E"):
+	if _size_two_waits("#29E", GROWTH_NEEDS):
 		return
 	var windows := ceili(float(POST_GROWTH_TICKS) / WINDOW_TICKS)
 	var best_us: Array[float] = []
@@ -654,7 +656,7 @@ func test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window() -> 
 ## to the remnants), one with its remnants taken out, timed tick by tick in turn. A round's cost per
 ## remnant is its median difference over the remnants it held on average (they flee and leave).
 func test_slow_a_remnant_costs_at_most_25_us() -> void:
-	if _size_two_waits("the remnant cost"):
+	if _size_two_waits("the remnant cost", GROWTH_NEEDS):
 		return
 	var with_them := _post_growth_scene(0)
 	var without := _post_growth_scene(0)
@@ -691,7 +693,7 @@ func test_slow_a_remnant_costs_at_most_25_us() -> void:
 ## debug_force_growth) on each seed, at its fastest of 3 runs, at most 40 yardsticks; the same with
 ## no warm-up (cold) is printed beside it, not gated (BP-4).
 func test_slow_the_growth_tick_costs_at_most_40_yardsticks() -> void:
-	if _size_two_waits("the growth tick"):
+	if _size_two_waits("the growth tick", GROWTH_NEEDS):
 		return
 	var rows: Array[String] = []
 	for seed_value in GROWTH_TICK_SEEDS:
