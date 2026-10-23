@@ -6,7 +6,8 @@ extends WorldGen
 ##     ZONE_CAPACITY at the chunk's centre;
 ##   - with cx and cy both 2 mod 4 (one per 4 x 4 chunks), a rammer site whose territory is that
 ##     zone, home ZONE_R - 2 east of its centre, reach disc of radius REACH_R on the zone (so it
-##     lies inside the chunk), live at size 1.
+##     lies inside the chunk), live at size 1; and beside it a second rammer site of the same shape,
+##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
 ## The nearest sites to the home spawn (0, 9) are at (-48, -48) and (80, 80) and so on: no creature
 ## starts in view. tile_info gives every tile the "sunlit" region.
 ##
@@ -73,6 +74,10 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 		c.sites.append({"id": "t_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx + ZONE_R - 2.0, "y": zy,
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
 			"reach": {"x": zx, "y": zy, "radius": REACH_R}, "chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int],
+			"tile": tile})
+		c.sites.append({"id": "u_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx - ZONE_R + 2.0, "y": zy,
+			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
+			"reach": {"x": zx, "y": zy, "radius": REACH_R}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
 			"tile": tile})
 	return c
 

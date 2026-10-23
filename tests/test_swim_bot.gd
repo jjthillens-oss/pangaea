@@ -18,6 +18,8 @@ const CAMP_HOLD_TICKS := 600
 const GREEDY_TICKS := 3600
 const GREEDY_HUNGER := 0.3            ## the greedy camper is kept hungry: energy set to this share
 const GREEDY_HUNGER_EVERY := 300      ## every this many ticks, so it keeps eating
+const REBASE_ZONE_FROM_M := 8.0       ## the rebase camper heads for a zone at least this far off
+const REBASE_AFTER_TICKS := 20        ## and is on its way when the origin moves
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -134,28 +136,39 @@ func test_a_greedy_camper_eats_only_its_zones_food() -> void:
 	check(farthest <= float(z.radius) + 1.0, "it never left the zone (%.2f m from the centre)" % farthest)
 
 
+## A camper on its way when the origin moves keeps heading for the zone, now at a new local centre.
 func test_a_camper_finds_its_zone_after_a_rebase() -> void:
 	if _waits("the camper after a rebase"):
 		return
 	var sim: Variant = Gates.make_sim("omnivore", SEED)
 	sim.debug_set_hidden(true)
-	var z := Gates.zone_at(sim, PackedFloat64Array([layout.zone(CAMP_ZONE).center.x, layout.zone(CAMP_ZONE).center.y]))
-	check(not z.is_empty(), "the home block's %s is loaded" % CAMP_ZONE)
+	var z := {}
+	var best := INF
+	for zone in sim.region.zones:   # the nearest zone at least REBASE_ZONE_FROM_M away, ties by id
+		var d: float = sim.motion.position.distance_to(zone.center)
+		if d >= REBASE_ZONE_FROM_M and (d < best or (d == best and str(zone.id) < str(z.id))):
+			best = d
+			z = zone
+	check(not z.is_empty(), "a zone at least %.0f m away is loaded" % REBASE_ZONE_FROM_M)
 	if z.is_empty():
 		return
-	var before: Vector2 = z.center
+	var id := str(z.id)
+	var bot = SwimBot.camper(id)
+	for i in REBASE_AFTER_TICKS:
+		Gates.tick(sim, bot.next_intent(sim))
+	var before: Vector2 = sim.region.zone(id).center
 	check(sim.debug_rebase(Vector2i(2, 0)), "rebased by two chunks")
 	sim.drain_events()
-	var moved: Vector2 = sim.region.zone(str(z.id)).center
+	var moved: Vector2 = sim.region.zone(id).center
 	check(moved.is_equal_approx(before - Vector2(64.0, 0.0)), "the zone's local centre moved with the origin")
-	var bot = SwimBot.camper(str(z.id))
-	var first: SimIntent = bot.next_intent(sim)
 	var aim: Vector2 = moved - sim.motion.position
-	check(first.move.dot(aim) > 0.0, "it steers toward the zone's new local centre")
+	var first: SimIntent = bot.next_intent(sim)
+	check(aim.length() > float(z.radius) * 0.5 and first.move.angle_to(aim) < 0.5,
+		"it steers toward the zone's new local centre (%.2f rad off)" % absf(first.move.angle_to(aim)))
 	var arrived := false
 	for i in CAMP_ARRIVE_TICKS:
 		Gates.tick(sim, bot.next_intent(sim))
-		if sim.motion.position.distance_to(sim.region.zone(str(z.id)).center) <= float(z.radius) * 0.5:
+		if sim.motion.position.distance_to(sim.region.zone(id).center) <= float(z.radius) * 0.5:
 			arrived = true
 			break
 	check(arrived, "it arrived after the rebase")

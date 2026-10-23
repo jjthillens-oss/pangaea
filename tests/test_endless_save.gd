@@ -17,6 +17,12 @@ const FIXTURE := "res://tests/fixtures/save_v2_endless_5km.json"
 const FIXTURE_X := 5000.123456789012
 const FIXTURE_Y := -3.25
 const FIXTURE_SEED := 4242
+## T1's fixture world: the shipped settings with their content on the minimal fixtures, until T4's land.
+const WORLD := "res://tests/fixtures/world/world_min.json"
+## G11: Continue lands within a micrometre of the pre-save position, on each axis.
+const MICROMETRE := 1e-6
+## How far a Continue may move a cell out of a shell: _clear_point_near's 40 rings of 0.5 tm.
+const CLEAR_SEARCH_TM := 20.0
 
 var slot := ""
 var _swept := false
@@ -88,3 +94,95 @@ func test_a_pool_session_loads_the_endless_5km_fixture_at_the_spawn() -> void:
 	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "in open water")
 	check_eq(sim.save.lineage_id, peek.summary.lineage_id, "the same lineage")
 	check(not session.dirty, "nothing unsaved right after continuing")
+
+
+## A new endless lineage, saved to the slot.
+func _endless(seed_value: int) -> GameSession:
+	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, WORLD)
+	var started := session.start_new("omnivore", seed_value)
+	check(started.ok, "an endless lineage starts: %s" % [started.errors])
+	return session
+
+
+## Continues the slot in a new endless session (as a new launch would); null when it fails.
+func _continue() -> GameSession:
+	var again := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, WORLD)
+	var r := again.continue_run()
+	check(r.ok, "continued: %s" % [r.errors])
+	return again if r.ok else null
+
+
+## Swims straight for `ticks` (a SwimBot's straight line, without the bot).
+static func _swim(sim: PoolSim, ticks: int, direction: Vector2) -> void:
+	for i in ticks:
+		sim.step(SimIntent.new(direction))
+
+
+## Teleports to (x, y) am, swims 60 ticks, saves, continues in a new session, and checks the
+## continued cell is within a micrometre of where it was saved on each axis. Returns the new session.
+func _save_and_continue_at(x: float, y: float, seed_value: int) -> GameSession:
+	var session := _endless(seed_value)
+	if session.sim == null:
+		return null
+	var sim := session.sim
+	check(sim.debug_teleport_abs(x, y), "teleported to (%.6f, %.6f)" % [x, y])
+	_swim(sim, 60, Vector2(0.6, -0.8))
+	var before := sim.absolute_position_am()
+	# A float32 anywhere on the path would show: the place is not one a float32 holds.
+	check(float(Vector2(before[0], 0.0).x) != before[0] or float(Vector2(before[1], 0.0).x) != before[1],
+		"the place is beyond float32: (%.9f, %.9f)" % [before[0], before[1]])
+	check(session.save_now().ok, "saved")
+	var again := _continue()
+	if again == null:
+		return null
+	var after := again.sim.absolute_position_am()
+	check(absf(after[0] - before[0]) <= MICROMETRE and absf(after[1] - before[1]) <= MICROMETRE,
+		"within a micrometre: saved (%.9f, %.9f), continued (%.9f, %.9f), off by (%s, %s)"
+		% [before[0], before[1], after[0], after[1], after[0] - before[0], after[1] - before[1]])
+	return again
+
+
+func test_continue_at_5_km_lands_within_a_micrometre_of_the_pre_save_position() -> void:
+	_save_and_continue_at(5000.123456789012, -3.25, 4242)
+
+
+func test_continue_at_100_km_lands_within_a_micrometre_of_the_pre_save_position() -> void:
+	_save_and_continue_at(100000.3, -100000.7, 4243)
+
+
+func test_an_endless_session_loads_the_5km_fixture_near_its_position() -> void:
+	_fixture_in_slot()
+	var session := _continue()
+	if session == null:
+		return
+	var sim := session.sim
+	check(sim.is_endless(), "endless")
+	var at := sim.absolute_position_am()
+	var dx := at[0] - FIXTURE_X
+	var dy := at[1] - FIXTURE_Y
+	check(dx * dx + dy * dy <= CLEAR_SEARCH_TM * CLEAR_SEARCH_TM, "within %.0f tm of the saved place: (%.9f, %.9f)"
+		% [CLEAR_SEARCH_TM, at[0], at[1]])
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "in open water")
+	var saved_local := sim.world.local_of_abs(FIXTURE_X, FIXTURE_Y)
+	if sim.arena.is_clear(saved_local, sim.phenotype.radius):
+		check(absf(dx) <= MICROMETRE and absf(dy) <= MICROMETRE, "the saved place is clear, so the cell is there: off by (%s, %s)"
+			% [dx, dy])
+	check(not session.dirty, "nothing unsaved right after continuing")
+
+
+func test_slow_ten_save_and_continue_cycles_do_not_drift() -> void:
+	var session := _endless(4245)
+	if session.sim == null:
+		return
+	check(session.sim.debug_teleport_abs(100000.3, -100000.7), "100 km out")
+	for cycle in 10:
+		_swim(session.sim, 60, Vector2.from_angle(cycle * 0.7))
+		var before := session.sim.absolute_position_am()
+		check(session.save_now().ok, "cycle %d saved" % cycle)
+		var again := _continue()
+		if again == null:
+			return
+		var after := again.sim.absolute_position_am()
+		check(absf(after[0] - before[0]) <= MICROMETRE and absf(after[1] - before[1]) <= MICROMETRE,
+			"cycle %d: off by (%s, %s)" % [cycle, after[0] - before[0], after[1] - before[1]])
+		session = again

@@ -369,7 +369,10 @@ func test_at_the_chunk_cap_loads_outside_the_view_set_wait_and_count() -> void:
 
 ## An awake creature's reach holds its chunks however far the cell swims; once it is gone they go.
 func test_an_awake_creatures_leash_disc_holds_its_chunks() -> void:
-	var sim := _endless()
+	# No generated creatures: only the debug one holds ground.
+	var content := FakeWorldGen.fixture_content()
+	content.config.switches.generated_creatures = false
+	var sim := _endless(SEED, content)
 	sim.debug_set_ai_frozen(true)
 	sim.drain_events()
 	# A siteless debug rammer at the origin: its leash disc is its default territory plus the leash.
