@@ -1,0 +1,34 @@
+{
+	"note": "Gait Lab test bodies. Lengths in metres. Body-local axes: +X right, +Y up, -Z forward. Legs are listed front to back, left then right.",
+	"bodies": {
+		"quad_short": {
+			"body_length": 1.2, "body_width": 0.5, "mass": 20.0,
+			"legs": [
+				{"side": "L", "hip": [-0.25, 0.0, -0.45], "upper": 0.25, "lower": 0.25},
+				{"side": "L", "hip": [-0.25, 0.0, 0.45], "upper": 0.25, "lower": 0.25},
+				{"side": "R", "hip": [0.25, 0.0, -0.45], "upper": 0.25, "lower": 0.25},
+				{"side": "R", "hip": [0.25, 0.0, 0.45], "upper": 0.25, "lower": 0.25}
+			]
+		},
+		"quad_long": {
+			"body_length": 1.2, "body_width": 0.5, "mass": 20.0,
+			"legs": [
+				{"side": "L", "hip": [-0.25, 0.0, -0.45], "upper": 0.5, "lower": 0.5},
+				{"side": "L", "hip": [-0.25, 0.0, 0.45], "upper": 0.5, "lower": 0.5},
+				{"side": "R", "hip": [0.25, 0.0, -0.45], "upper": 0.5, "lower": 0.5},
+				{"side": "R", "hip": [0.25, 0.0, 0.45], "upper": 0.5, "lower": 0.5}
+			]
+		},
+		"hexapod": {
+			"body_length": 1.4, "body_width": 0.5, "mass": 20.0,
+			"legs": [
+				{"side": "L", "hip": [-0.25, 0.0, -0.55], "upper": 0.25, "lower": 0.25},
+				{"side": "L", "hip": [-0.25, 0.0, 0.0], "upper": 0.25, "lower": 0.25},
+				{"side": "L", "hip": [-0.25, 0.0, 0.55], "upper": 0.25, "lower": 0.25},
+				{"side": "R", "hip": [0.25, 0.0, -0.55], "upper": 0.25, "lower": 0.25},
+				{"side": "R", "hip": [0.25, 0.0, 0.0], "upper": 0.25, "lower": 0.25},
+				{"side": "R", "hip": [0.25, 0.0, 0.55], "upper": 0.25, "lower": 0.25}
+			]
+		}
+	}
+}
