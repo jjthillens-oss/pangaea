@@ -110,7 +110,7 @@ func test_badge_and_message() -> void:
 	check_eq(GrowthHud.badge_text(2, labels), "Size 2 · about 32 µm", "size 2")
 	check_eq(GrowthHud.badge_text(3, []), "Size 3", "no label for that size")
 	var g := FakeGrowth.new()
-	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(), g)
+	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true), g)
 	var hud := _hud(pool)
 	var ladder: Variant = pool.session.world.config.get(&"ladder")
 	var shown: Array = ladder.get("labels", []) if ladder is Dictionary else []
@@ -118,13 +118,19 @@ func test_badge_and_message() -> void:
 	check_eq(hud.meter_ring.size_n, pool.shown_size(), "and so does the ring")
 	# Through a growth the HUD keeps the old size and a full ring until the beat's chord at 1.9 s
 	# (V-7), then shows the new size's message, badge and ring at once.
+	# The sim's own growth tick runs (T2.5): its ring is made due, and the next frame grows the world
+	# to size 2 and sends growth_began and grew; the HUD's fake reads full, then empty once paid.
 	_grow_to_2(pool)
 	g.fill(1)
-	pool._route(FakeGrowthEvents.began(pool.sim.motion.position, 1, 2))
-	pool.sim.world.size = 2   # as the tick leaves it
+	var real := pool.sim.growth
+	real.meter = real.ring(1)
+	real.full_since = pool.sim.tick
+	real.due = true
+	FakeEvents.frame(pool)
+	check_eq(pool.sim.size(), 2, "the tick grew the world")
+	check(pool.growth_beat.running(), "and the beat runs")
 	g.meter = 0.0
 	g.full_since = -1
-	pool._route(FakeGrowthEvents.grew(Vector2.ZERO))
 	var size_2 := GrowthHud.badge_text(2, shown)
 	while true:
 		FakeEvents.frame(pool)
