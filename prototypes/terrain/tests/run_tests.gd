@@ -38,11 +38,19 @@ func _init() -> void:
 				var east: Dictionary = chunks[Vector2i(cx + 1, cz)]
 				for z in range(33):
 					seams = seams and center["heights"][z * 33 + 32] == east["heights"][z * 33]
+			if cx > -1:
+				var west: Dictionary = chunks[Vector2i(cx - 1, cz)]
+				for z in range(33):
+					seams = seams and center["heights"][z * 33] == west["heights"][z * 33 + 32]
 			if cz < 1:
 				var south: Dictionary = chunks[Vector2i(cx, cz + 1)]
 				for x in range(33):
 					seams = seams and center["heights"][32 * 33 + x] == south["heights"][x]
-	check(seams, "all east/west and north/south shared edges match in 3x3 block")
+			if cz > -1:
+				var north: Dictionary = chunks[Vector2i(cx, cz - 1)]
+				for x in range(33):
+					seams = seams and center["heights"][x] == north["heights"][32 * 33 + x]
+	check(seams, "all four shared-edge directions match in 3x3 block")
 	var biome_ids := {}
 	for cz in range(-2, 3):
 		for cx in range(-2, 3):
