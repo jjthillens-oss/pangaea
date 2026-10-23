@@ -1,0 +1,76 @@
+{
+  "id": "marker_lair_mouth",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S2 Lurker lair mouth (marker): an open horseshoe reef mouth of silt-crusted shell grit round a darker silt hollow, placed at both posts of every Lurker site so both read as lairs. Authored at R = 1 (the Lurker's drawn radius); the opening faces +X, the post heading. No collision.",
+  "category": "marker",
+  "source_blend": "assets/source/blender/marker_lair_mouth.blend",
+  "generator_script": "tools/blender/make_s1_production.py",
+  "export_path": "assets/export/marker_lair_mouth.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 2,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 4.02,
+    "y_forward": 5.476,
+    "z_up": 1.225
+  },
+  "triangles": 292,
+  "triangle_budget": 600,
+  "textures": [
+    {
+      "name": "T_MarkerLairMouth_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_MarkerLairMouth_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_MarkerLairMouth_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_LairMouth"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "LairMouth"
+  ],
+  "kind": "marker",
+  "pivot": "centre of the ring at lip-top height; all geometry at or below it (Godot y <= 0)",
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "authored_radius": {
+    "inner": 1.3,
+    "outer": 2.6,
+    "floor": -1.2,
+    "arc_deg": 240.0,
+    "units": "the Lurker's drawn radius"
+  },
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
+}
