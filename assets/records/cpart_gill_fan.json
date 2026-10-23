@@ -1,0 +1,103 @@
+{
+  "id": "cpart_gill_fan",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature breathing part (PROPOSED): five feathery external gill plumes on a fleshy ridge, right-hand side (mirrored at bake for the left).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_gill_fan.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_gill_fan.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.13,
+    "y_forward": 0.171,
+    "z_up": 0.102
+  },
+  "triangles": 786,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartGillFan_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartGillFan_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartGillFan_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_GillBase",
+    "M_GillPlume"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "GillFan",
+    "GillPlumes"
+  ],
+  "part_type": "gill_fan",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "gill_fan",
+    "footprint_radius_m": 0.054,
+    "sink_depth_m": 0.015,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 30,
+    "tilt_limit_deg": 30,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine"
+    ],
+    "handles": [
+      {
+        "key": "H1_Spread",
+        "meaning": "the plumes fanned 14 degrees further apart per step",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Length",
+        "meaning": "the plumes 35% longer",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both keys are on GillFan and GillPlumes with the same names; the runtime sets them together.",
+    "placement_note": "Meant for the sides of the neck; the ridge runs along the body (y) and the plumes lean out to +X."
+  },
+  "paint_mix": {
+    "M_GillBase": 0.9,
+    "M_GillRachis": 0.5,
+    "M_GillPlume": 0.5
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 1400,
+    "triangles_after": 786
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
