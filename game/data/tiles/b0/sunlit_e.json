@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Sunlit shallows, the feast: a rich zone under a C7 patch with rammers on it, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
+  "id": "sunlit_e",
+  "band": 0,
+  "region": "sunlit",
+  "set": 1,
+  "rare": "",
+  "landmark_anchor": [0.0, -24.0],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [-16.6, -13.4], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [20.9, -12.5], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-18.3, -8.4], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-3.9, 26.6], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [-16.0, 19.5], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [22.8, -1.6], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s6", "center": [8.5, -1.1], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [16.7, -10.5], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s8", "center": [-4.1, 21.5], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "ra", "center": [-6.0, 6.0], "radius": 5.0, "capacity": 64.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "ma", "center": [16.0, 12.0], "radius": 4.0, "capacity": 32.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "f0", "center": [22.0, -27.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f1", "center": [-6.0, -23.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f2", "center": [-23.0, -21.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f3", "center": [19.0, -5.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f4", "center": [-23.0, 1.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f5", "center": [2.0, 22.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f6", "center": [-25.0, 23.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f7", "center": [19.0, 24.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
+  ],
+  "sites": [
+    {"id": "ma", "species": "rammer", "home": [-5.0, 6.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
+    {"id": "la", "species": "ambush_hunter", "home": [8.0, 4.0], "heading": 0.7854, "territory_zone": "", "sizes": [1]}
+  ]
+}
