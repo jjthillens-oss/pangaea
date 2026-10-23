@@ -1,0 +1,82 @@
+{
+  "id": "algae_ball",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S2 algae ball food item (size 2's plant food): a ball colony of tiny glowing green cells on clear jelly, with daughter colonies pressing out from inside.",
+  "category": "food",
+  "source_blend": "assets/source/blender/algae_ball.blend",
+  "generator_script": "tools/blender/make_endless_foods.py",
+  "export_path": "assets/export/algae_ball.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.351,
+    "y_forward": 0.359,
+    "z_up": 0.355
+  },
+  "triangles": 316,
+  "triangle_budget": 400,
+  "textures": [
+    {
+      "name": "T_AlgaeBall_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_AlgaeBall_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_AlgaeBall_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    },
+    {
+      "name": "T_AlgaeBall_Emission",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "emitted colour RGB"
+    }
+  ],
+  "materials": [
+    "M_AlgaeBall",
+    "M_AlgaeBallProc"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "AlgaeBall"
+  ],
+  "food_kind": "plant",
+  "pivot": "centre of the item",
+  "item_radius_m": 0.18,
+  "mesh_radius_m": 0.185,
+  "scale_note": "Built at the plankton's item radius; the world draws it at its size's item radius.",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0015,
+    "triangles_before": 320,
+    "triangles_after": 316
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_foods.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
