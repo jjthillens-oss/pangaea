@@ -15,7 +15,7 @@ const TODAY := {
 			"cell": {"h": 42.1}, "cell_dL": 2.4,
 			"fluid_near_cell": {"L": 42.4, "h": 206.3, "C": 22.6},
 			"fluid_corners_min_L": 48.4, "glow_dL": -7.7,
-			"plankton": {"h_min": 107.4, "h_max": 137.9, "max_channel": 255},
+			"plankton": {"h_min": 108.6, "h_max": 138.2, "max_channel": 255},
 			"carrion": {"threat_hue_gap": 18.6},
 			"parity": {"fluid_dE": 6.7, "cell_dE": 7.0},
 		},
@@ -27,18 +27,18 @@ const TODAY := {
 	},
 	"forward_plus": {
 		"lineup": {
-			"cell": {"h": 41.3}, "cell_dL": 3.3,
-			"fluid_near_cell": {"L": 47.8, "h": 211.2, "C": 24.5},
-			"fluid_corners_min_L": 55.1, "glow_dL": -8.8,
-			"plankton": {"h_min": 117.5, "h_max": 136.5, "max_channel": 255},
+			"cell": {"h": 41.3}, "cell_dL": 3.6,
+			"fluid_near_cell": {"L": 47.5, "h": 212.8, "C": 24.3},
+			"fluid_corners_min_L": 55.2, "glow_dL": -9.2,
+			"plankton": {"h_min": 117.8, "h_max": 136.6, "max_channel": 255},
 			"carrion": {"threat_hue_gap": 15.1},
 			"parity": {"fluid_dE": 6.7, "cell_dE": 7.0},
 		},
-		"tell": {"lane": {"over_fluid_min_dL": 2.9, "over_decor_min_dL": 2.9}},
+		"tell": {"lane": {"over_fluid_min_dL": 3.0, "over_decor_min_dL": 3.0}},
 		"puff": {"lane": {"over_fluid_min_dL": 2.8, "over_decor_min_dL": 2.8}},
 		"rim_north": {"skirt": {"max_step_dL": 3.5}},
 		"starving": {"cell_dL": 3.7},
-		"hud": {"vignette": {"h": 251.2}},
+		"hud": {"vignette": {"h": 254.2}},
 	},
 }
 

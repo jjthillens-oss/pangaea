@@ -137,20 +137,20 @@ const GATES := {
 	# Today's readings, Compatibility | Forward+ (docs/TOOLCHAIN.md): each range holds both.
 	"baseline": [
 		{"id": "cell_hue", "path": "lineup.cell.h", "min": 30.0, "max": 50.0, "what": "coral cell hue (LAB h; 42.1 | 41.3)"},
-		{"id": "cell_contrast", "path": "lineup.cell_dL", "max": 8.0, "what": "cell against the floor, centre third: it reads by hue, not value (|dL*|; 2.4 | 3.3)"},
-		{"id": "fluid_value", "path": "lineup.fluid_near_cell.L", "min": 36.0, "max": 54.0, "what": "teal floor near the cell (L*; 42.4 | 47.8)"},
-		{"id": "fluid_hue", "path": "lineup.fluid_near_cell.h", "min": 198.0, "max": 220.0, "what": "teal floor near the cell (h; 206.3 | 211.2)"},
-		{"id": "fluid_chroma", "path": "lineup.fluid_near_cell.C", "min": 16.0, "max": 31.0, "what": "teal floor near the cell (C*; 22.6 | 24.5)"},
-		{"id": "fluid_corners", "path": "lineup.fluid_corners_min_L", "min": 40.0, "max": 62.0, "what": "darkest floor corner (L*; 48.4 | 55.1)"},
-		{"id": "depth_glow", "path": "lineup.glow_dL", "min": -14.0, "max": -3.0, "what": "centre darker than the corners, where the floor deepens (dL*; -7.7 | -8.8)"},
-		{"id": "lane_fluid_tell", "path": "tell.lane.over_fluid_min_dL", "min": 1.0, "max": 12.0, "what": "ambush lane outline over the floor (|dL*|, 3 points; 8.0 | 2.9)"},
-		{"id": "lane_decor_tell", "path": "tell.lane.over_decor_min_dL", "min": 1.0, "max": 12.0, "what": "ambush lane outline; the decor stand-in lies under the floor (|dL*|; 8.0 | 2.9)"},
+		{"id": "cell_contrast", "path": "lineup.cell_dL", "max": 8.0, "what": "cell against the floor, centre third: it reads by hue, not value (|dL*|; 2.4 | 3.6)"},
+		{"id": "fluid_value", "path": "lineup.fluid_near_cell.L", "min": 36.0, "max": 54.0, "what": "teal floor near the cell (L*; 42.4 | 47.5)"},
+		{"id": "fluid_hue", "path": "lineup.fluid_near_cell.h", "min": 198.0, "max": 220.0, "what": "teal floor near the cell (h; 206.3 | 212.8)"},
+		{"id": "fluid_chroma", "path": "lineup.fluid_near_cell.C", "min": 16.0, "max": 31.0, "what": "teal floor near the cell (C*; 22.6 | 24.3)"},
+		{"id": "fluid_corners", "path": "lineup.fluid_corners_min_L", "min": 40.0, "max": 62.0, "what": "darkest floor corner (L*; 48.4 | 55.2)"},
+		{"id": "depth_glow", "path": "lineup.glow_dL", "min": -14.0, "max": -3.0, "what": "centre darker than the corners, where the floor deepens (dL*; -7.7 | -9.2)"},
+		{"id": "lane_fluid_tell", "path": "tell.lane.over_fluid_min_dL", "min": 1.0, "max": 12.0, "what": "ambush lane outline over the floor (|dL*|, 3 points; 8.0 | 3.0)"},
+		{"id": "lane_decor_tell", "path": "tell.lane.over_decor_min_dL", "min": 1.0, "max": 12.0, "what": "ambush lane outline; the decor stand-in lies under the floor (|dL*|; 8.0 | 3.0)"},
 		{"id": "lane_fluid_puff", "path": "puff.lane.over_fluid_min_dL", "min": 1.0, "max": 12.0, "what": "rammer lane outline over the floor (|dL*|, 3 points; 6.4 | 2.8)"},
 		{"id": "lane_decor_puff", "path": "puff.lane.over_decor_min_dL", "min": 1.0, "max": 12.0, "what": "rammer lane outline; the decor stand-in lies under the floor (|dL*|; 6.4 | 2.8)"},
-		{"id": "plankton_hue_low", "path": "lineup.plankton.h_min", "min": 100.0, "max": 125.0, "what": "plankton hue, lowest item (h; 107.4 | 117.5)"},
-		{"id": "plankton_hue_high", "path": "lineup.plankton.h_max", "min": 129.0, "max": 145.0, "what": "plankton hue, highest item (h; 137.9 | 136.5)"},
+		{"id": "plankton_hue_low", "path": "lineup.plankton.h_min", "min": 100.0, "max": 125.0, "what": "plankton hue, lowest item (h; 108.6 | 117.8)"},
+		{"id": "plankton_hue_high", "path": "lineup.plankton.h_max", "min": 129.0, "max": 145.0, "what": "plankton hue, highest item (h; 138.2 | 136.6)"},
 		{"id": "carrion_hue", "path": "lineup.carrion.threat_hue_gap", "min": 10.0, "max": 27.0, "what": "carrion hue away from the threat colour (degrees; 18.6 | 15.1)"},
-		{"id": "vignette_hue", "path": "hud.vignette.h", "min": 243.0, "max": 270.0, "what": "hurt vignette outer band, blue-grey over teal (h; 261.2 | 251.2)"},
+		{"id": "vignette_hue", "path": "hud.vignette.h", "min": 243.0, "max": 270.0, "what": "hurt vignette outer band, blue-grey over teal (h; 261.2 | 254.2)"},
 		{"id": "starving_contrast", "path": "starving.cell_dL", "max": 10.0, "what": "starving cell against the floor (|dL*|; 5.8 | 3.7)"},
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 10.0, "parity": true, "what": "renderer parity, floor (median CIE76; 6.7)"},
 		{"id": "parity_cell", "path": "lineup.parity.cell_dE", "max": 10.0, "parity": true, "what": "renderer parity, cell (median CIE76; 7.0)"},
@@ -388,7 +388,7 @@ func _stage_lineup() -> bool:
 			sim.carrion.spawn(p, "debug")
 	if not sim.debug_teleport(center, -PI / 2.0):
 		return false
-	await _play(CARRION_SETTLE_FRAMES)
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
 	return true
 
 
@@ -444,8 +444,14 @@ func _stage_hud() -> bool:
 	if not sim.debug_teleport(spot, -PI / 2.0) or not sim.debug_set_energy(0.0):
 		return false
 	sim.debug_spawn_creature("rammer", spot + Vector2(3.0, 3.5), -2.2)
-	await _play(STARVE_FRAMES)
+	await _play(_whole_frames(STARVE_FRAMES))
 	return sim.state.is_starving()
+
+
+## At least `frames`, and enough for a creature spawned now to finish fading in (the species
+## data's fade_in_s; one frame is one sim tick at --fixed-fps 60), so it is drawn opaque and whole.
+func _whole_frames(frames: int) -> int:
+	return maxi(frames, sim.species.fade_in_ticks + 1)
 
 
 # --- Scenes: frames and readings ----------------------------------------------------------------
