@@ -80,6 +80,38 @@ static func derive(genome: Genome, catalog: PartCatalog, body_size: float = 1.0)
 	return p
 
 
+## This body at another size of the growth ladder (S2, plan B.6; PROPOSED): a copy with radius,
+## speed, acceleration, sight, max_health, energy_capacity, upkeep, move_cost, mass, bite_damage,
+## ram_damage and each spike's damage multiplied by q, the linear law (there is no area law). Turn
+## rate, defense, spike stacking, diets, mouths and the spikes' angles and arcs are copied as they
+## are. A smaller creature is scaled, never re-derived: derive() at a smaller body_size would make
+## it faster. q == 1.0 gives a copy equal to this one field for field (x * 1.0 == x in IEEE).
+func scaled(q: float) -> Phenotype:
+	var p := Phenotype.new()
+	p.speed = speed * q
+	p.acceleration = acceleration * q
+	p.turn_rate = turn_rate
+	p.max_health = max_health * q
+	p.energy_capacity = energy_capacity * q
+	p.upkeep = upkeep * q
+	p.move_cost = move_cost * q
+	p.sight = sight * q
+	p.mass = mass * q
+	p.radius = radius * q
+	p.defense = defense
+	p.bite_damage = bite_damage * q
+	p.ram_damage = ram_damage * q
+	p.spike_stacking = spike_stacking
+	p.diets = diets.duplicate()
+	for mouth in mouths:
+		p.mouths.append(mouth.duplicate())
+	for spike in spikes:
+		var copy: Dictionary = spike.duplicate()
+		copy["damage"] = float(spike.damage) * q
+		p.spikes.append(copy)
+	return p
+
+
 ## Known parts, each with "rank": its position among parts of the same type, largest first.
 ## Ranking by size (then id) keeps the stats independent of the order parts were added in.
 static func _ranked_parts(genome: Genome, catalog: PartCatalog) -> Array[Dictionary]:
