@@ -598,11 +598,11 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		for c in sim.creatures.creatures.duplicate():
 			if mine.has(c.site_id):
 				sim.creatures.remove(c, "unloaded", sim.tick, false)
-		var kept: Array[Dictionary] = []
-		for e in sim.creatures.queue:
-			if not mine.has(e.site):
-				kept.append(e)
-		sim.creatures.queue = kept
+		# Their queue entries leave in place, last first: the others keep their order.
+		var queue := sim.creatures.queue
+		for i in range(queue.size() - 1, -1, -1):
+			if mine.has(queue[i].site):
+				queue.remove_at(i)
 	for id in mine:
 		sites.erase(id)
 		_forget_role(id)

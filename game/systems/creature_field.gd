@@ -786,12 +786,14 @@ func _site(site_id: String) -> Dictionary:
 	return world.sites.get(site_id, {}) if endless else species.site(site_id)
 
 
-## Inserts `c` keeping `list` sorted by (number, id).
+## Inserts `c` keeping `list` sorted by (number, id), after every creature not greater: no other
+## creature equals it (ids are unique), so that is the first one greater, found by binary search.
 static func _insert_sorted(list: Array[Creature], c: Creature) -> void:
-	var i := list.size()
-	while i > 0 and (list[i - 1].number > c.number or (list[i - 1].number == c.number and list[i - 1].id > c.id)):
-		i -= 1
-	list.insert(i, c)
+	list.insert(list.bsearch_custom(c, _creature_less), c)
+
+
+static func _creature_less(a: Creature, b: Creature) -> bool:
+	return a.number < b.number or (a.number == b.number and a.id < b.id)
 
 
 ## Adds a queue entry, keeping the queue sorted by (at_tick, site): before the first entry that is
