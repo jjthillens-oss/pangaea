@@ -128,13 +128,21 @@ func test_the_m1_pool_is_kept_exactly() -> void:
 	check_eq(home.carrion_initial, carrion, "the starting carrion")
 
 
+## The spawn and every site home: points a cell must be able to swim from (B-29's must_reach).
+func _must_reach() -> Array[Vector2]:
+	var out: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1])]
+	for s in home.sites:
+		out.append(Vector2(s.x, s.y))
+	return out
+
+
 ## G3: from every open point of the block a starving cell reaches food (the M1 zones and the ring)
-## within the budget, round the M1 rocks and the ring shells, with no wall. Measured 14.7 tm at
-## (64, -17) on the block's east edge.
+## within the budget, round the M1 rocks and the ring shells, with no wall; the spawn and the site
+## homes lie in that open sea. Measured 14.7 tm at (64, -17) on the block's east edge.
 func test_every_point_of_the_home_block_reaches_food_within_the_budget() -> void:
 	var budget := _budget()
 	var arena := ChunkArena.from_shells(home.circles())
-	check_eq(WorldChecks.reach_problems(arena, home.zone_list(), BLOCK, budget), PackedStringArray(), "every point of [-64, 64)^2")
+	check_eq(WorldChecks.reach_problems(arena, home.zone_list(), BLOCK, budget, _must_reach()), PackedStringArray(), "every point of [-64, 64)^2")
 	var worst := WorldChecks.worst_reach(arena, home.zone_list(), BLOCK)
 	print("test-home-content: reach worst %.1f tm at %s (budget %.2f)" % [worst.worst, worst.at, budget])
 

@@ -9,6 +9,7 @@ extends TestCase
 ## cathedral's nave is sealed (B-28), and the sample counts reach discs per 40 tm disc (B-17).
 
 const WorldChecks := preload("res://tests/world_checks.gd")
+const ReachGrid := preload("res://tests/reach_grid.gd")
 ## The same script as a plain Script, for the functions T1.10 adds (called by name until they land).
 const CHECKS_PATH := "res://tests/world_checks.gd"
 const DIR := "res://game/data/tiles/b0"
@@ -39,9 +40,10 @@ const CONTROL_R := 0.6
 ## The home block's edge slots: the centres of the 8 tiles that touch it, in its frame.
 const HOME_SLOTS: Array[Vector2] = [Vector2(96, -32), Vector2(96, 32), Vector2(-96, -32), Vector2(-96, 32),
 	Vector2(-32, -96), Vector2(32, -96), Vector2(-32, 96), Vector2(32, 96)]
-## T1.10 brings world_checks.food_bound and sample_sites with tests/test_world_checks.gd; with that
-## file in the tree the waiting tests below must run (test_the_heavy_checks_wait_only_on_t1_10).
-const CHECKS_LANDED := "res://tests/test_world_checks.gd"
+## T1.10 brings world_checks.food_bound and sample_sites with their tests in tests/test_world_checks.gd;
+## once that file tests them, the waiting tests below must run (test_the_heavy_checks_wait_only_on_t1_10).
+const CHECKS_TESTS := "res://tests/test_world_checks.gd"
+const CHECKS_LANDED_MARK := "food_bound"
 const FOOD_COARSE_TM := 4.0
 const FOOD_FINE_TM := 1.0
 ## A coarse bound below this would mean food_bound saw no tiles (s1-content 5.2 measured 91).
@@ -147,12 +149,29 @@ func _placed(t: Dictionary, o: int, at: Vector2, with_anchor: bool = true) -> Di
 	for z in t.zones:
 		zones.append({"id": "%s/%s" % [t.id, z.id], "center": at + _orient(Vector2(z.center[0], z.center[1]), o), "radius": float(z.radius)})
 	var discs: Array[Dictionary] = []
+	var homes: Array[Vector2] = []
 	for s in t.sites:
 		if s.sizes.has(1):
 			var d := _disc(t, s)
 			discs.append({"where": "%s o%d site '%s'" % [t.id, o, s.id], "r": float(radii[s.species]),
 				"disc": {"center": at + _orient(d.center, o), "radius": float(d.radius)}})
-	return {"colliders": colliders, "zones": zones, "discs": discs}
+			homes.append(at + _orient(Vector2(s.home[0], s.home[1]), o))
+	return {"colliders": colliders, "zones": zones, "discs": discs, "homes": homes}
+
+
+## The worst walk to food over the open points the sea outside reaches (a sealed, empty pocket such as
+## the cathedral's nave has none; B-29), and where, for the printed margins.
+static func _worst_reach(arena: PoolArena, zones: Array[Dictionary], bounds: Rect2) -> Dictionary:
+	var grid = ReachGrid.over(arena, zones, bounds, PoolLayout.CELL_RADIUS)
+	var to_food: PackedFloat32Array = grid.distances_from(grid.zone_points())
+	var from_border: PackedFloat32Array = grid.distances_from(grid.border_points())
+	var worst := -1.0
+	var at := Vector2.ZERO
+	for i in grid.open.size():
+		if grid.open[i] == 1 and is_finite(from_border[i]) and is_finite(to_food[i]) and to_food[i] > worst:
+			worst = to_food[i]
+			at = grid.point(i)
+	return {"worst": worst, "at": at}
 
 
 # ---- Fast ----
@@ -279,10 +298,9 @@ func test_sites_keep_a_margin_inside_their_tile_and_from_the_landmark() -> void:
 
 
 ## The cathedral's drums stand closer than a cell can pass (the kit's piece: 0.80 bu between
-## neighbours), so its nave is sealed water no grid point can reach food from (B-28). Until
-## reach_problems skips sealed empty pockets (B-29, T1.8c) the tile fills it with shells. If the piece
-## is rebuilt with gaps a cell can swim through, this fails: the filler comes out and the nave is
-## open water again. No zone point or site home lies within 5 bu of the piece's centre.
+## neighbours), so its nave is a sealed pocket (B-28), legal while it is empty (B-29): no shell, zone
+## point or site home lies within 5 bu of the piece's centre. If the piece is rebuilt with gaps a cell
+## can swim through, this fails, and the nave must then meet the reach rule as open water.
 func test_the_cathedral_nave_is_sealed_and_nothing_lives_in_it() -> void:
 	var t := tiles.rare_tile(0, "shell_cathedral")
 	var centre := Vector2(t.set_piece.center[0], t.set_piece.center[1])
@@ -300,9 +318,10 @@ func test_the_cathedral_nave_is_sealed_and_nothing_lives_in_it() -> void:
 		var b: Dictionary = drums[(i + 1) % drums.size()]
 		widest = maxf(widest, a.center.distance_to(b.center) - a.radius - b.radius)
 	check(widest < 2.0 * PoolLayout.CELL_RADIUS, "the drums leave at most %.2f bu between neighbours, less than a cell (%.1f)" % [widest, 2.0 * PoolLayout.CELL_RADIUS])
-	var filler: Array = t.shells.filter(func(s: Dictionary) -> bool: return Vector2(s.center[0], s.center[1]).length() < 3.4)
-	check_eq(filler.size(), 9, "the nave shells n0 to n8 fill the space inside the drums")
-	print("test-tiles: the cathedral's drums leave %.2f bu; %d shells fill the nave" % [widest, filler.size()])
+	for s in t.shells:
+		var gap := centre.distance_to(Vector2(s.center[0], s.center[1])) - float(s.radius)
+		check(gap >= CATHEDRAL_CLEAR_BU, "shell '%s' comes %.2f bu from the cathedral's centre; the nave holds nothing" % [s.id, gap])
+	print("test-tiles: the cathedral's drums leave %.2f bu; the nave is sealed and empty" % widest)
 
 
 func test_the_coarse_food_bound_stays_under_the_cap() -> void:
@@ -315,19 +334,20 @@ func test_the_coarse_food_bound_stays_under_the_cap() -> void:
 	print("test-tiles: coarse food bound %d at %s (cap %d)" % [int(bound.worst), bound.get("at"), cap])
 
 
-## Waiting is not a pass for ever: once T1.10's test file is in the tree, world_checks must have the
-## functions the waiting tests call.
+## Waiting is not a pass for ever: once T1.10's tests of the food bound are in the tree, world_checks
+## must have the functions the waiting tests call.
 func test_the_heavy_checks_wait_only_on_t1_10() -> void:
-	if FileAccess.file_exists(CHECKS_LANDED):
-		check_eq(_missing_checks(), PackedStringArray(), "%s is in the tree, so T1.10 has landed" % CHECKS_LANDED)
+	if FileAccess.file_exists(CHECKS_TESTS) and FileAccess.get_file_as_string(CHECKS_TESTS).contains(CHECKS_LANDED_MARK):
+		check_eq(_missing_checks(), PackedStringArray(), "%s tests %s, so T1.10 has landed" % [CHECKS_TESTS, CHECKS_LANDED_MARK])
 	elif not _missing_checks().is_empty():
 		print("test-tiles: the food bound and the site sample wait on T1.10: %s" % ", ".join(_missing_checks()))
 
 
 # ---- Slow ----
 
-## G5: from every open point of each tile a starving cell reaches one of the tile's own zones within
-## the budget, with and without its landmark's collider (a rare tile: with its set piece).
+## G5: from every open point of each tile the sea outside reaches, a starving cell reaches one of the
+## tile's own zones within the budget, with and without its landmark's collider (a rare tile: with
+## its set piece), and every site home lies in that sea (B-29's must_reach).
 func test_slow_every_tile_reaches_food_within_the_starving_budget() -> void:
 	var budget := _budget()
 	var rows := PackedStringArray()
@@ -337,9 +357,9 @@ func test_slow_every_tile_reaches_food_within_the_starving_budget() -> void:
 		for with_anchor in ([true, false] if t.landmark_anchor.size() == 2 else [true]):
 			var p := _placed(t, 0, Vector2.ZERO, with_anchor)
 			var arena := ChunkArena.from_shells(p.colliders)
-			check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget), PackedStringArray(),
+			check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget, p.homes), PackedStringArray(),
 				"%s %s its anchor" % [id, "with" if with_anchor else "without"])
-			worst = maxf(worst, float(WorldChecks.worst_reach(arena, p.zones, TILE_BOUNDS).worst))
+			worst = maxf(worst, float(_worst_reach(arena, p.zones, TILE_BOUNDS).worst))
 		rows.append("%s %.1f" % [id, worst])
 	print("test-tiles: reach worst per tile (budget %.2f): %s" % [budget, ", ".join(rows)])
 
@@ -474,9 +494,9 @@ func test_soak_every_tile_reaches_food_at_all_8_orientations() -> void:
 			for with_anchor in ([true, false] if t.landmark_anchor.size() == 2 else [true]):
 				var p := _placed(t, o, Vector2.ZERO, with_anchor)
 				var arena := ChunkArena.from_shells(p.colliders)
-				check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget), PackedStringArray(),
+				check_eq(WorldChecks.reach_problems(arena, p.zones, TILE_BOUNDS, budget, p.homes), PackedStringArray(),
 					"%s at orientation %d %s its anchor" % [id, o, "with" if with_anchor else "without"])
-				var w := float(WorldChecks.worst_reach(arena, p.zones, TILE_BOUNDS).worst)
+				var w := float(_worst_reach(arena, p.zones, TILE_BOUNDS).worst)
 				if w > worst:
 					worst = w
 					worst_at = "%s o%d" % [id, o]
