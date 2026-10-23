@@ -16,11 +16,15 @@ extends TestCase
 ##    percentile is printed beside it. RACER as it is gets the same 3-run set: one run's own
 ##    percentile is load, not cost.
 ##  - Sleeper: after a swim the left-behind sleepers are timed against a twin sim with them removed,
-##    tick by tick in turn, 200 ticks each, 3 rounds: the median difference per sleeper is at most
-##    2 us. Debug creatures never sleep (core CC-6), so the sleepers are the world's own: the swim
-##    goes east at least SLEEPER_SWIM_TICKS and on until SLEEPER_STOP of them sleep, since how many
-##    sleep where it stops depends on the tiles there (on the real content 6 or 7 after 1,200 ticks).
-##    On the fixture world there may be too few to time, and the gate then waits for the real content.
+##    tick by tick in turn, 200 ticks each, 3 rounds: the difference of the two sims' median ticks
+##    per sleeper is at most 2 us. Each round builds the twins afresh, so the 3 rounds time the same
+##    ticks (their end hashes are equal), and each tick of each sim counts at its fastest of the 3,
+##    as P99.9's do; every round's own difference is printed beside it. The limit is in microseconds,
+##    so load that slows every tick alike still moves it. Debug creatures never sleep (core CC-6), so
+##    the sleepers are the world's own: the swim goes east at least SLEEPER_SWIM_TICKS and on until
+##    SLEEPER_STOP of them sleep, since how many sleep where it stops depends on the tiles there (on
+##    the real content 6 or 7 after 1,200 ticks). On the fixture world there may be too few to time,
+##    and the gate then waits for the real content.
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
 ##    median excess is at most 2 yardsticks. The 3 runs time the same rebases (their end hashes are
 ##    equal), and each tick, the rebase tick and the plain one, counts at its fastest of the 3, as
@@ -390,40 +394,66 @@ func _check_p999(overdriven: bool) -> void:
 
 func _check_sleeper_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
+	var rounds: Array[Dictionary] = []
+	for k in SLEEPER_ROUNDS:
+		var r := _sleeper_round(overdriven)
+		rounds.append(r)
+		var n: int = r.n
+		check_eq(int(r.twin_asleep), n, "%s: the twin sims are the same" % mode)
+		if n < SLEEPER_MIN:
+			if Gates.content_path() != Gates.REAL_WORLD:
+				print("test-endless-cost: sleeper %s waits on the real content: %d sleepers on %s (need %d)" % [
+					mode, n, Gates.content_path(), SLEEPER_MIN])
+				return
+			check(false, "%s: only %d sleepers after the swim on the real content (need %d)" % [mode, n, SLEEPER_MIN])
+			return
+		check_eq(int(r.twin_left), 0, "%s: the twin has no sleepers" % mode)
+		check(int(r.asleep_end) == n, "%s: they slept through the timing" % mode)
+	var r0: Dictionary = rounds[0]
+	var n0: int = r0.n
+	for r in rounds:
+		check_eq(r.hash, r0.hash, "%s: every round timed the same ticks" % mode)
+	var per: Array[float] = []
+	for r in rounds:
+		per.append((Yardstick.median(r.with_us) - Yardstick.median(r.without_us)) / n0)
+	var cost := (Yardstick.median(_fastest_per_tick(rounds, "with_us")) - Yardstick.median(_fastest_per_tick(rounds, "without_us"))) / n0
+	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each, each tick at its fastest of %d rounds (rounds %s); %d still asleep at the end" % [
+		mode, n0, r0.swum, r0.east, cost, SLEEPER_ROUNDS, _joined(per, "%.2f"), r0.asleep_end])
+	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
+
+
+## One round of the sleeper gate: the twin sims built afresh (_sleeper_scene twice, the twin's
+## sleepers removed), then SLEEPER_TICKS still ticks of each, timed in turn. The sims are
+## deterministic, so every round times the same ticks. Returns the sleepers' count ("n") and the
+## twin's before the removal ("twin_asleep"), and, with at least SLEEPER_MIN of them, each sim's
+## timed ticks in us ("with_us", "without_us"), the twin's sleepers left ("twin_left"), the
+## sleepers still asleep at the end ("asleep_end") and both sims' end hashes.
+static func _sleeper_round(overdriven: bool) -> Dictionary:
 	var with_them: Variant = _sleeper_scene(overdriven)
 	var without: Variant = _sleeper_scene(overdriven)
-	var swum: int = with_them.tick - SLEEPER_REST_TICKS
 	var sleepers: Array = []
 	for c in without.creatures.creatures:
 		if c.asleep:
 			sleepers.append(c)
-	var n := sleepers.size()
-	check_eq(with_them.world.sleeping_ids().size(), n, "%s: the twin sims are the same" % mode)
-	if n < SLEEPER_MIN:
-		if Gates.content_path() != Gates.REAL_WORLD:
-			print("test-endless-cost: sleeper %s waits on the real content: %d sleepers on %s (need %d)" % [
-				mode, n, Gates.content_path(), SLEEPER_MIN])
-			return
-		check(false, "%s: only %d sleepers after the swim on the real content (need %d)" % [mode, n, SLEEPER_MIN])
-		return
+	var out := {"n": sleepers.size(), "twin_asleep": with_them.world.sleeping_ids().size(),
+		"swum": with_them.tick - SLEEPER_REST_TICKS, "east": with_them.absolute_position_am()[0]}
+	if sleepers.size() < SLEEPER_MIN:
+		return out
 	for c in sleepers:
 		without.creatures.remove(c, "evicted", without.tick, false)
 	without.drain_events()
-	check_eq(without.world.sleeping_ids().size(), 0, "%s: the twin has no sleepers" % mode)
+	out.twin_left = without.world.sleeping_ids().size()
 	var still := SimIntent.new()
-	var per: Array[float] = []
-	for k in SLEEPER_ROUNDS:
-		var a: Array[float] = []
-		var b: Array[float] = []
-		for i in SLEEPER_TICKS:
-			a.append(_timed_step(with_them, still).us)
-			b.append(_timed_step(without, still).us)
-		per.append((Yardstick.median(a) - Yardstick.median(b)) / n)
-	var cost := Yardstick.median(per)
-	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each (rounds %s); %d still asleep at the end" % [
-		mode, n, swum, with_them.absolute_position_am()[0], cost, _joined(per, "%.2f"), with_them.world.sleeping_ids().size()])
-	check(with_them.world.sleeping_ids().size() == n, "%s: they slept through the timing" % mode)
-	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
+	var a: Array[float] = []
+	var b: Array[float] = []
+	for i in SLEEPER_TICKS:
+		a.append(_timed_step(with_them, still).us)
+		b.append(_timed_step(without, still).us)
+	out.with_us = a
+	out.without_us = b
+	out.asleep_end = with_them.world.sleeping_ids().size()
+	out.hash = [with_them.state_hash(), without.state_hash()]
+	return out
 
 
 ## A racer that swam east (overdriven or as it is) and stopped, leaving the creatures it passed
