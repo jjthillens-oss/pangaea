@@ -60,6 +60,7 @@ Results: `docs/research/spore/SPINE_LAB_REPORT.md` and `STAGE1_LIMBS_REPORT.md`.
 $G --path prototypes/creature-lab spine_lab.tscn -- --body=stage1 --anim=pose     # the ten Stage 1 bodies posing
 $G --headless --path prototypes/creature-lab --script res://tests/run_spine_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_stage1_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tests/run_legless_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tools/pose_matrix.gd  # -> results/pose_error.json
 $G --path prototypes/creature-lab walker_lab.tscn -- --body=s1_quadruped --drive=demo   # a generated creature walking
 $G --headless --path prototypes/creature-lab --script res://tools/walker_measure.gd  # -> results/walker_measurements.json
@@ -76,3 +77,14 @@ xvfb-run $G --path prototypes/creature-lab --rendering-method forward_plus --ren
 | `domain/gait_body.gd`, `rig/walker_rig.gd`, `walker_lab.gd`, `walker_lab.tscn` | Generated bodies walking on the gait planner |
 | `domain/anchor_resolver.gd`, `rig/part_library.gd` | Part anchors on the skin; the art team's part GLBs and skin shader, loaded from the main project |
 | `tools/make_stage1_bodies.py` | Writes `data/stage1_bodies.json` |
+
+## Flat-ground legless and stub-leg modes
+
+`walker_lab.tscn` also accepts `--body=s1_snake` for a spine-only travelling-wave slither and
+`--body=s1_tiny` for an alternating-pair stub-leg shuffle. Both use the existing generated skin
+and a new deterministic ground-drive controller. Slither speed is bounded and increases with body
+length and vertebra count; shuffle speed and turning are limited by the short feet. The headless
+ground-drive checks run both modes for 60 seconds of deterministic random input and measure
+contact slip, finite state, and level-root stability. The combined `tests/run_tests.gd` runner
+includes these checks. Measurements and limits are in
+`docs/research/spore/LEGLESS_LAB_REPORT.md`.
