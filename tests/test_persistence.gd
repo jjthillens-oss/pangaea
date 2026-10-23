@@ -575,3 +575,59 @@ func test_an_unknown_field_is_refused() -> void:
 		var result := _load_data(_with(good, path, 1))
 		check(not result.ok, "a save with '%s' is refused" % path)
 		check_has_error(result.errors, "'%s' is not part of a v3 save" % _field_name(path))
+
+
+# The S2-written fixture (T4.4; build plan 7.1 and BP-18; S2G19): a size-2 save as an S2 build
+# writes it, recorded once by tools/godot/record_save_v3.gd. test_endless_save continues it.
+
+const SaveRecorder := preload("res://tools/godot/record_save_v3.gd")
+const S2_SAVE := "res://tests/fixtures/save_v3_s2.json"
+
+
+func test_the_s2_fixture_is_a_v3_save_at_size_2_holding_the_recorders_values() -> void:
+	var text := FileAccess.get_file_as_string(S2_SAVE)
+	var data = JSON.parse_string(text)
+	check(data is Dictionary, "the fixture is a JSON object")
+	if not data is Dictionary:
+		return
+	check_eq(int(data.schema_version), 3, "written as v3, so it loads with no migration")
+	var keys: Array = data.keys()
+	keys.sort()
+	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v3 keys")
+	_write_raw(PATH, text)
+	var result := service.load_from(PATH)
+	check(result.ok and result.errors.is_empty(), "it loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	check_eq(result.source, "primary", "from the file itself")
+	var save: SaveGame = result.save
+	check_eq(save.growth, SaveRecorder.GROWTH, "size 2 with its meter")
+	check(save.growth.size is int and save.checkpoint.size is int, "sizes as whole numbers")
+	check_eq(save.checkpoint, SaveRecorder.CHECKPOINT, "the checkpoint at size 2")
+	check_eq(save.discoveries, SaveRecorder.DISCOVERIES, "the ledger, in find order")
+	check_eq(PlaneSpace.from_save_abs(save.player.position), PackedFloat64Array(SaveRecorder.POSITION),
+		"the place, absolute")
+	check(save.player.energy == null and save.player.health == null and save.spawn == null,
+		"fresh energy and health, and no spawn of its own (S2 writes none)")
+	check_eq(save.gen_version, 1, "the first generator")
+	check_eq(save.world_seed, SaveRecorder.SEED, "the seed")
+	check_eq(save.adaptation_points, SaveRecorder.POINTS, "the points")
+	check_eq(Lineage.starting_body_of(save.genome, catalog), SaveRecorder.BODY, "the body")
+	check_eq(FileAccess.get_file_as_string(PATH), text, "the load rewrote nothing")
+	# Written again from what it loads, it holds the same data (whole numbers in lineage_history
+	# come back as floats through JSON, so both sides are compared as parsed).
+	var again = JSON.parse_string(JSON.stringify(save.to_dict(), "\t", true, true))
+	check_eq(JSON.stringify(again, "", true, true), JSON.stringify(data, "", true, true), "the same data written back")
+
+
+func test_the_recorder_composes_a_valid_save_with_its_values() -> void:
+	var save := SaveRecorder.compose(catalog)
+	check(save != null, "composed")
+	if save == null:
+		return
+	check(save.validate(catalog).is_empty(), "a valid v3 save: %s" % [save.validate(catalog)])
+	check_eq(save.growth, SaveRecorder.GROWTH, "growth")
+	check_eq(save.checkpoint, SaveRecorder.CHECKPOINT, "checkpoint")
+	check_eq(save.discoveries, SaveRecorder.DISCOVERIES, "discoveries")
+	check_eq(int(save.growth.size), int(save.checkpoint.size), "the cell is at its checkpoint's size")
+	check_eq(service.save_to(PATH, save), OK, "the writer takes it")
