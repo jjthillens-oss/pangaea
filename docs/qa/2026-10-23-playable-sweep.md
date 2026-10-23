@@ -55,6 +55,24 @@ printed.
 | Rendered run | The dev perf tour (90 s, forage bot) under Xvfb with the compatibility renderer, 1280x720. | No script errors or engine errors from game code; the only errors are the container's missing ALSA device (dummy audio driver) and no V-Sync control under Xvfb. 13 FPS on llvmpipe says nothing about real hardware. |
 | Input and settings | Read the rebind capture (Esc cancels, echoes and the wrong device ignored, swaps tested in `test_settings`), menu navigation (`menus_smoke` drives every screen with controller buttons). | Nothing new beyond fix 3 (settings lost on window close). |
 
+## Round 2 (by hand, same day)
+
+Confirmed and fixed:
+
+| # | Sev | Where | What happened | Fix |
+| --- | --- | --- | --- | --- |
+| 10 | bug | `project.godot` `window/stretch/aspect` | The aspect was the default "keep", so a 21:9 or 16:10 monitor got the 16:9 canvas with black bars (measured under Xvfb: a 2560x1080 window kept a 1920x1080 visible rect). | "expand". Screenshots of the title, picker, slots, settings, pause menu and HUD at 2560x1080 and 1920x1200 all lay out cleanly. |
+| 11 | bug | `game/ui/body_card.gd` | At 130% text size the stats and the "Selected" mark spilled past the card's fixed 380 px width into the next card (115% was fine). | The card takes the wider of 380 px and its content, and refits when the text size changes. Screenshot at 130% clean. |
+
+Checked and clean:
+
+| Area | What ran | Result |
+| --- | --- | --- |
+| Death and dialogs | Headless scene probe: starving death with the forage bot; Esc and P spam and a focus loss at the death notice; Continue then pause at once; the quit dialog over the pause menu, cancelled with Esc; settings over the pause menu; Save and quit to title then Continue; the window's close button twice in a row on unsaved progress, then cancel. | Every state as designed: the notice stays in charge, the respawn point is clear and sheltered, one dialog at a time, focus returns to the pause menu, Continue comes from the primary save. |
+| Creature placement | 3150 samples (every second, 3 seeds, 2.5 sim minutes each, all live creatures) against the arena's clearance test at half the body radius. | 0 inside a rock or past the wall. |
+| Performance by reading | `pool.gd` `_process`, the food multimesh view, the creature layer, the HUD refresh, `cell_audio` and `soundtrack` per frame, the starving arrow and threat indicator `_draw`. | Buffers reused, no node or tween churn, no resource loads or string building per frame. The only per-frame allocation is the starving arrow's 5-point outline. |
+| Text size | Menus at 100, 115 and 130% at 1920x1080 and 1280x720. | Only finding 11. |
+
 Not covered: a Windows launch (CI's `windows-launch` job exports and starts the exe on a runner,
 which is not "Windows-verified"), real controller hardware, a real GPU's frame times, and the
 hotspot-level performance pass that Godfrey's #39 owns.
