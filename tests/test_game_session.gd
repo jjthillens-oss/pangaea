@@ -231,7 +231,7 @@ func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more()
 		sim.step(SimIntent.new())
 		if sim.dead:
 			break
-	check(sim.dead, "starved")
+	check(sim.dead, "dead")
 	var resolved := session.resolve_death()
 	check_eq(resolved.cause, "starved", "the history cause")
 	check_eq(resolved.lost, 5, "a quarter of 20")
@@ -438,6 +438,12 @@ func test_endless_mode_without_creature_data_is_a_problem() -> void:
 	check(pooled.start_new("grazer", 27).ok, "the step 2 pool needs none")
 
 
+## Kills the cell where it is at once (a dev hurt past its health); true once it is dead.
+func _kill(sim: PoolSim) -> bool:
+	sim.debug_hurt_player(1.0e6)
+	return sim.dead
+
+
 ## The slot's position as written, as absolute [x, y].
 func _saved_abs(session: GameSession) -> PackedFloat64Array:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(session.slot))
@@ -478,6 +484,87 @@ func test_continue_in_endless_mode_restores_the_float64_position() -> void:
 	check(absf(after[0] - before[0]) <= 1e-6 and absf(after[1] - before[1]) <= 1e-6,
 		"within a micrometre: saved (%.9f, %.9f), continued (%.9f, %.9f)" % [before[0], before[1], after[0], after[1]])
 	check(not again.dirty, "nothing unsaved right after continuing")
+
+
+func test_respawn_after_death_is_refused_while_a_respawn_is_pending() -> void:
+	var session := _endless(28)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	Lineage.earn(sim.save, 20)
+	check(_kill(sim), "dead")
+	check_eq(session.respawn_after_death(), 5, "the request reports the loss")
+	check(sim.dead and sim.respawn_pending, "the cell comes back at the next step")
+	check_eq(session.respawn_after_death(), 0, "a second request in the window does nothing")
+	check_eq(sim.save.adaptation_points, 15, "the death took its points once")
+	sim.step(SimIntent.new())
+	check(not sim.dead and not sim.respawn_pending, "respawned")
+	check_eq(session.respawn_after_death(), 0, "and nothing more after it")
+	var deaths := sim.save.lineage_history.filter(func(e: Dictionary) -> bool: return e.event == "died")
+	check_eq(deaths.size(), 1, "one death in the history")
+	check_eq(sim.save.adaptation_points, 15, "points")
+
+
+func test_resolve_death_does_not_take_points_twice_while_a_respawn_is_pending() -> void:
+	var session := _endless(29)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	Lineage.earn(sim.save, 20)
+	check(_kill(sim), "dead")
+	check_eq(session.resolve_death().lost, 5, "resolved")
+	session.respawn_after_death()
+	check(sim.respawn_pending and session.death.is_empty(), "the death is handed over")
+	check_eq(session.resolve_death(), {}, "nothing to resolve in the window")
+	check_eq(sim.save.adaptation_points, 15, "applied once")
+	check_eq(sim.save.lineage_history.filter(func(e: Dictionary) -> bool: return e.event == "died").size(), 1,
+		"recorded once")
+
+
+func test_a_saved_death_is_not_dirty_between_the_respawn_request_and_the_next_step() -> void:
+	var session := _endless(30)
+	if session.sim == null:
+		return
+	check(_kill(session.sim), "dead")
+	check(session.resolve_death().saved.ok, "the death is saved")
+	check(not session.dirty, "a saved death is not an unsaved change")
+	session.respawn_after_death()
+	check(session.sim.respawn_pending, "pending")
+	check(not session.dirty, "nor is it in the window")
+	session.sim.step(SimIntent.new())
+	check(not session.sim.dead and not session.dirty, "nor after the respawn at the checkpoint")
+
+	# A file sits where the slot's folder should be, so the death's save fails.
+	var blocker := SaveFolder.path("blocked")
+	var f := FileAccess.open(blocker, FileAccess.WRITE)
+	f.store_string("not a folder")
+	f.close()
+	var unsaved := _endless(31, blocker + "/slot.json")
+	if unsaved.sim == null:
+		return
+	check(_kill(unsaved.sim), "dead")
+	check(not unsaved.resolve_death().saved.ok, "the death's save failed")
+	unsaved.respawn_after_death()
+	check(unsaved.sim.respawn_pending, "pending")
+	check(unsaved.dirty, "an unsaved death is an unsaved change in the window")
+	unsaved.sim.step(SimIntent.new())
+	check(unsaved.dirty, "and after it")
+
+
+func test_save_now_while_a_respawn_is_pending_writes_the_checkpoint() -> void:
+	var session := _endless(32)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.debug_teleport_abs(30.0, 9.0), "away from the checkpoint")
+	check(_kill(sim), "dead")
+	session.respawn_after_death()
+	check(sim.respawn_pending, "pending")
+	var saved := session.save_now()
+	check(saved.ok, "saving is allowed in the window: %s" % saved.error)
+	var cp := sim.world.checkpoint_am
+	check_eq(_saved_abs(session), PackedFloat64Array([cp[0], cp[1]]), "the file holds the checkpoint, exactly")
+	check(not session.dirty, "and nothing is unsaved")
 
 
 func test_endless_dirty_compares_absolute_positions() -> void:
