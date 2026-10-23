@@ -121,19 +121,15 @@ func test_sprites_are_all_there_at_their_sizes_and_clear_of_reserved_hues() -> v
 			var img := tex.get_image()
 			if img.is_compressed():
 				img.decompress()
-			var step := maxi(1, img.get_width() / 32)
+			# Texel by texel: the ghost layer draws far giants from the backdrops with its own fog and
+			# brightness, so no single texel may sit near the food or threat hue.
+			var step := maxi(1, img.get_width() / 128)
 			var worst := 180.0
-			var sum := Color(0, 0, 0, 0)
 			for y in range(0, img.get_height(), step):
 				for x in range(0, img.get_width(), step):
 					var c := img.get_pixel(x, y)
-					sum += Color(c.r * c.a, c.g * c.a, c.b * c.a, c.a)
 					if c.a > 0.1:
 						worst = minf(worst, _reserved_gap(Color(c.r, c.g, c.b)))
-			if prefix == "T_Backdrop_":
-				# Backdrops are pre-blurred giants drawn dim; the ambience contract judges their
-				# alpha-weighted mean colour (test_ambience), as the eye reads them.
-				worst = _reserved_gap(Color(sum.r / sum.a, sum.g / sum.a, sum.b / sum.a))
 			check(worst >= MIN_LAB_HUE_GAP_DEG, "%s keeps %.0f degrees of LAB hue from food and threat" % [f, worst])
 
 
