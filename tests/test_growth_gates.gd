@@ -32,7 +32,11 @@ extends TestCase
 ##    PARK_SEARCH_RINGS chunks round the cell's (the loaded chunks alone hold none on some seeds),
 ##    and holds still there; from the tick it holds, a run of PARK_CALM_TICKS ticks with
 ##    Growth.blocker_of(sim, false) == "" starts within 28.5 s, on 6 seeds. Non-vacuous: a rammer
-##    flees the cell in view during each run.
+##    flees the cell in view during each run. Then the grazer turns on the nearest rammer fleeing it
+##    within chase_track_tm for PURSUE_TICKS ticks: a body it cannot eat is no chase, so blocker_of
+##    never says "chasing" then. Non-vacuous: over the seeds, the grazer was more than
+##    chase_close_tm nearer such a rammer than chase_window_ticks before on some tick (the chase
+##    rule's own test, so counting the fleeing bodies the cell cannot hurt would block it there).
 ## Each waits on the S2 seams it reads (Gates.s2_missing).
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -84,6 +88,7 @@ const ARRIVE_GRACE_TICKS := 600   ## the parked bot's ticks to stop once it has 
 ## The parked grazer's zone is looked for in the chunks up to this many rings round the cell's: 8
 ## rings at size 2 reach 256 tm, about six 40 tm tiles, each way.
 const PARK_SEARCH_RINGS := 8
+const PURSUE_TICKS := 600         ## after the park, the grazer swims at a rammer fleeing it this long
 const TPS := 60.0
 
 var catalog: PartCatalog
@@ -352,14 +357,20 @@ func test_soak_dying_on_purpose_never_grows_a_cell_faster_than_foraging() -> voi
 func test_slow_a_parked_grazer_at_size_two_finds_its_calm_window_within_30_s() -> void:
 	if _gate_waits("the parked grazer", PARK_NEEDS):
 		return
+	var closings := 0
 	for seed_value in PARK_SEEDS:
 		var run := _park_run(seed_value)
-		print("test-growth-gates: parked grazer seed %d: zone %s, arrived %s; calm run from %s after parking; %d ticks with a rammer fleeing in view; blockers %s" % [
-			seed_value, run.zone, run.arrival, _s(run.calm_s), run.fleeing_ticks, run.blockers])
+		print("test-growth-gates: parked grazer seed %d: zone %s, arrived %s; calm run from %s after parking; %d ticks with a rammer fleeing in view; blockers %s; pursuit: %d ticks on a fleeing rammer, %d of them closing in, blockers %s" % [
+			seed_value, run.zone, run.arrival, _s(run.calm_s), run.fleeing_ticks, run.blockers, run.pursuit_ticks,
+			run.closing_ticks, run.pursuit_blockers])
 		check(not str(run.zone).is_empty(), "seed %d: a sunlit zone in a live rammer territory" % seed_value)
 		check(run.calm_s <= PARK_START_LIMIT_S, "seed %d: %d calm ticks in a row start within 28.5 s (%s)" % [
 			seed_value, PARK_CALM_TICKS, _s(run.calm_s)])
 		check(int(run.fleeing_ticks) > 0, "seed %d: a rammer fled the cell in view" % seed_value)
+		check(not (run.pursuit_blockers as Dictionary).has("chasing"), "seed %d: swimming at a rammer it cannot eat is no chase (%s)" % [
+			seed_value, run.pursuit_blockers])
+		closings += int(run.closing_ticks)
+	check(closings > 0, "the grazer closed in on a fleeing rammer on some tick (%d)" % closings)
 
 
 ## The median of `xs` (the mean of the middle two for an even count); INF for none.
@@ -458,12 +469,16 @@ static func reversed_in_view(sim: Variant, old_size: int) -> bool:
 
 ## The parked grazer (BP-5): a grazer at size 2 arrives (Gates.arrive) at the nearest sunlit zone
 ## whose centre lies in a live rammer territory, then a ForageBot parks on its centre. From the
-## first tick it holds still, each tick reads Growth.blocker_of(sim, false). Returns {"zone",
-## "arrival", "calm_s" (when the first PARK_CALM_TICKS calm run started, INF for none in 30 s),
-## "fleeing_ticks", "blockers" (ticks per blocker)}.
+## first tick it holds still, each tick reads Growth.blocker_of(sim, false). Then, for PURSUE_TICKS,
+## it swims at the nearest rammer fleeing it within chase_track_tm (still with none) and reads
+## blocker_of again. Returns {"zone", "arrival", "calm_s" (when the first PARK_CALM_TICKS calm run
+## started, INF for none in 30 s), "fleeing_ticks", "blockers" (ticks per blocker), "pursuit_ticks"
+## (ticks with a rammer to swim at), "closing_ticks" (ticks it was more than chase_close_tm nearer
+## that rammer than chase_window_ticks before), "pursuit_blockers"}.
 func _park_run(seed_value: int) -> Dictionary:
 	var sim: Variant = Gates.make_sim("grazer", seed_value, true)
-	var out := {"zone": "", "arrival": "", "calm_s": INF, "fleeing_ticks": 0, "blockers": {}}
+	var out := {"zone": "", "arrival": "", "calm_s": INF, "fleeing_ticks": 0, "blockers": {}, "pursuit_ticks": 0,
+		"closing_ticks": 0, "pursuit_blockers": {}}
 	check(sim.debug_set_size(2), "seed %d: size 2" % seed_value)
 	sim.debug_set_hidden(true)
 	for i in PARK_SETTLE_TICKS:
@@ -505,7 +520,46 @@ func _park_run(seed_value: int) -> Dictionary:
 			run_from = sim.tick
 		if sim.tick - run_from + 1 >= PARK_CALM_TICKS and not is_finite(out.calm_s):
 			out.calm_s = (run_from - parked_at) / TPS
+	_pursue(sim, out)
 	return out
+
+
+## The parked run's pursuit (into `out`): PURSUE_TICKS ticks swimming at the nearest rammer fleeing
+## the cell within chase_track_tm, holding still with none, reading blocker_of(sim, false) each tick
+## and the distance to each such rammer, to count the ticks it was more than chase_close_tm nearer one
+## than chase_window_ticks before.
+func _pursue(sim: Variant, out: Dictionary) -> void:
+	var cfg: Dictionary = sim.growth.cfg
+	var window := int(cfg.chase_window_ticks)
+	var track := float(cfg.chase_track_tm)
+	var history := {}   # tick -> {rammer id: distance}
+	for i in PURSUE_TICKS:
+		var near := {}
+		var prey: CreatureField.Creature = null
+		for c: CreatureField.Creature in sim.creatures.awake():
+			if c.species_id != "rammer" or c.brain == null or c.brain.state != CreatureBrain.FLEE:
+				continue
+			if c.brain.fear_of != CreatureField.PLAYER_ID and c.brain.attacker != CreatureField.PLAYER_ID:
+				continue
+			var d: float = sim.motion.position.distance_to(c.motion.position)
+			if d <= track:
+				near[c.id] = d
+				if prey == null or d < float(near[prey.id]):
+					prey = c
+		history[sim.tick] = near
+		history.erase(sim.tick - window - 1)
+		var then: Dictionary = history.get(sim.tick - window, {})
+		for id in near:
+			if then.has(id) and float(then[id]) - float(near[id]) > float(cfg.chase_close_tm):
+				out.closing_ticks += 1
+				break
+		var intent := SimIntent.new()
+		if prey != null:
+			out.pursuit_ticks += 1
+			intent = SimIntent.new((prey.motion.position - sim.motion.position).normalized())
+		Gates.tick(sim, intent)
+		var blocker: String = sim.growth.blocker_of(sim, false)
+		out.pursuit_blockers[blocker] = int(out.pursuit_blockers.get(blocker, 0)) + 1
 
 
 ## The nearest zone to the cell in the "sunlit" region (its chunk's zone record says so) whose centre
