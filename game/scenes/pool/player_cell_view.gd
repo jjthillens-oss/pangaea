@@ -53,7 +53,6 @@ const DEAD_SINK_M := 0.2
 const DEAD_POSE_S := 1.2
 const FX_LIFT_M := 0.15          ## the burst starts a little above the mouth, so the body never hides it
 const FX_COLORS := {"plant": Color(0.62, 0.95, 0.55), "meat": Color(0.85, 0.42, 0.33)}
-const WARM_UP_DEPTH_M := 5.0     ## the shader warm-up plays this far under the floor, out of sight
 
 var _top_speed := 1.0
 var _turn_rate := 1.0
@@ -203,17 +202,17 @@ func swallow(from: Vector3, kind: String, mesh: Mesh) -> void:
 		_ghost(mesh, from, mouth)
 
 
-## Plays the eat burst and draws each mesh once, out of sight under the floor, so their shaders
-## are ready before the first real meal. A real meal restarts the burst at the mouth.
-func warm_up(meshes: Array[Mesh]) -> void:
+## Plays the eat burst and draws each mesh once at `at`, a point the camera sees but the player
+## cannot (the pool picks it), so their shaders are ready before the first real meal. A real meal
+## restarts the burst at the mouth.
+func warm_up(meshes: Array[Mesh], at: Vector3) -> void:
 	if not is_inside_tree():
 		return
-	var hidden := global_position + Vector3.DOWN * WARM_UP_DEPTH_M
-	_burst(hidden, Color.WHITE)
+	_burst(at, Color.WHITE)
 	_warm_overlay = 2
 	for mesh in meshes:
 		if mesh != null:
-			_ghost(mesh, hidden, hidden)
+			_ghost(mesh, at, at)
 
 
 func _burst(at: Vector3, color: Color) -> void:
