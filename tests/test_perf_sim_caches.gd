@@ -141,3 +141,52 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 		if e.type == "creature_recovered" and e.outcome == "cancelled":
 			out.append(e.id)
 	return out
+
+
+## PlanktonField keeps each zone's item count as items come and go, so count_in and the tick's
+## counts are what a count over the items gives: random meals, takes (the newest item goes), clears,
+## drops, fills and active-zone changes, in the pool and in the endless world.
+func test_plankton_zone_counts_follow_every_change() -> void:
+	for endless in [false, true]:
+		var region := layout.build_region(21)
+		var arena := layout.build_arena()
+		var field := PlanktonField.create(layout.plankton)
+		var ids: Array = region.zones.map(func(z: Dictionary) -> String: return z.id)
+		field.endless = endless
+		if endless:
+			field.active_zones = {ids[0]: true, ids[1]: true, ids[2]: true}
+		field.fill(region, arena, 0, 0.0)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 99
+		var wrong := 0
+		for t in 1500:
+			var roll := rng.randf()
+			var zone_id: String = ids[rng.randi_range(0, ids.size() - 1)]
+			if roll < 0.05 and not field.items.is_empty():
+				var item: Dictionary = field.items[rng.randi_range(0, field.items.size() - 1)]
+				region.take(item.zone, float(item.energy))
+				field.consume(item.id)
+			elif roll < 0.10:
+				region.take(zone_id, rng.randf_range(0.0, 40.0))
+			elif roll < 0.11:
+				field.clear_zone(zone_id)
+			elif roll < 0.12:
+				field.drop_zone(zone_id)
+			elif roll < 0.13:
+				field.fill_zone(region.zone(zone_id), region, arena, t, t * PoolSim.DT)
+			elif roll < 0.15 and endless:
+				if field.active_zones.has(zone_id):
+					field.drop_zone(zone_id)
+					field.active_zones.erase(zone_id)
+				else:
+					field.active_zones[zone_id] = true
+			region.tick(PoolSim.DT)
+			field.tick(region, arena, t, t * PoolSim.DT)
+			var counts := {}
+			for item in field.items:
+				counts[item.zone] = int(counts.get(item.zone, 0)) + 1
+			for id in ids + ["no_such_zone"]:
+				if field.count_in(id) != int(counts.get(id, 0)):
+					wrong += 1
+		check_eq(wrong, 0, "endless %s: counts that differ from the items" % endless)
+		check(field.next_number > 40, "endless %s: items came and went (%d)" % [endless, field.next_number])
