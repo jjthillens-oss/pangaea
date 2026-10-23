@@ -498,6 +498,108 @@ func test_the_growth_tick_takes_its_view_set_from_the_cache() -> void:
 	check(w._next_chunks.is_empty(), "forgotten after the beat")
 
 
+## The growth tick takes the next size's arena (BP-4) as its arena once it has given up its chunks
+## outside the view set, so it must be the arena a growth with the caches off builds chunk by chunk:
+## the same chunks, colliders, spans, near grids and origin, through the growth tick and its beat; and
+## its epoch is past every epoch the old arena had (no RouteKeep picked on the old one is taken).
+func test_the_growth_tick_takes_the_next_arena_as_the_arena_the_caches_off_build() -> void:
+	for seed_value: int in SEEDS:
+		var on := _sim(seed_value, FakeWorldGen.s2_species())
+		var off := _sim(seed_value, FakeWorldGen.s2_species())
+		off.world.next_cache = false
+		var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0) * 0.6
+		for t in 60:
+			for sim: PoolSim in [on, off]:
+				sim.growth.meter = 0.95 * sim.growth.ring(1)
+				sim.step(SimIntent.new(dir))
+		for sim: PoolSim in [on, off]:
+			sim.world.next_size_clear_point(sim)   # the calm window's wedge test, as the tick before a growth makes it
+			_due(sim)
+		var next: ChunkArena = on.world._next_arena
+		var old := on.arena as ChunkArena
+		check(next != null and next.chunk_keys().size() == 9, "seed %d: the next arena ready" % seed_value)
+		# Three quiet ticks' chore while heading two new-size chunks out on the diagonal: the arena
+		# takes three chunks beyond the 3 x 3, the far corner among them, which the view set lacks.
+		var v := on.motion.velocity
+		var s1 := WorldConfig.tm_to_am(2)
+		on.motion.velocity = Vector2(2.0, 2.0) * on.world.chunk_tm * s1 / WorldStream.NEXT_LEAD_S
+		for t in 3:
+			on.world._prefetch(on)
+		on.motion.velocity = v
+		check_eq(next.chunk_keys().size(), 12, "seed %d: the chore added three" % seed_value)
+		old.epoch += 1000000   # a long run's arena: its epoch far past the next arena's
+		var epoch := old.epoch
+		on.step(SimIntent.new(dir))
+		off.step(SimIntent.new(dir))
+		check(on.size() == 2 and off.size() == 2, "seed %d: both grew" % seed_value)
+		check(is_same(on.arena, next), "seed %d: the growth tick took the next arena" % seed_value)
+		check(on.arena.epoch > epoch, "seed %d: its epoch past the old arena's (%d, %d)" % [seed_value, on.arena.epoch, epoch])
+		var parted := -1
+		for t in 90:
+			if parted < 0 and _arena_state(on.arena) != _arena_state(off.arena):
+				parted = t
+			on.step(SimIntent.new(dir))
+			off.step(SimIntent.new(dir))
+		check_eq(parted, -1, "seed %d: the arenas equal through the growth tick and the beat" % seed_value)
+		check_eq(_arena_state(on.arena), _arena_state(off.arena), "seed %d: and after it" % seed_value)
+
+
+## An arena's state but its epoch (which only grows): its chunks in canonical order, the canonical
+## arrays, each chunk's span, near grid and colliders as added, its origin and its switches.
+static func _arena_state(arena: ChunkArena) -> Dictionary:
+	var chunks := {}
+	for key in arena.chunk_keys():
+		chunks[str(key)] = [arena._range[key], arena._grids[key], arena._chunk_colliders[key]]
+	return {"keys": arena.chunk_keys(), "x": arena._abs_x, "y": arena._abs_y, "centers": arena._centers,
+		"radii": arena._radii, "rocks": arena.rocks, "chunks": chunks, "origin": [arena.origin_x, arena.origin_y],
+		"grid": arena.rock_grid, "fallbacks": arena.settle_fallbacks}
+
+
+## PlanktonField.drop_zones, the growth tick's one pass over the items, leaves what drop_zone a zone
+## at a time leaves: the same items in the same order, the same counts, flags, packed copies and id
+## index; for some zones (with a flagged zone, an empty one and an unknown id among them), every zone
+## that shows items, and none.
+func test_drop_zones_leaves_what_drop_zone_a_zone_at_a_time_leaves() -> void:
+	var cases := ["some", "all", "none"]
+	for which: String in cases:
+		var one := _sim(SEEDS[4])
+		var each := _sim(SEEDS[4])
+		for t in 120:
+			for sim: PoolSim in [one, each]:
+				sim.step(SimIntent.new(Vector2.from_angle(0.4) * 0.6))
+		var shown: Array = one.plankton._zone_counts.keys()
+		shown.sort()
+		check(shown.size() >= 2 and one.plankton.items.size() > 4, "%s: zones show items (%d)" % [which, shown.size()])
+		var ids := {}
+		if which == "all":
+			for id in shown:
+				ids[id] = true
+		elif which == "some":
+			for i in range(0, shown.size(), 2):
+				ids[shown[i]] = true
+			ids["no_such_zone"] = true
+			for z in one.region.zones:
+				if not shown.has(z.id):
+					ids[z.id] = true   # a zone that shows none
+					break
+		for sim: PoolSim in [one, each]:
+			sim.plankton._empty_latched[shown[0]] = true
+			sim.plankton._regrowing[shown[0]] = true
+			sim.plankton._regrowing[shown[1]] = true
+		one.plankton.drop_zones(ids)
+		for id in ids:
+			each.plankton.drop_zone(id)
+		check_eq(_plankton_state(one.plankton), _plankton_state(each.plankton), "%s: the same field" % which)
+		var kept := 0 if which == "all" else one.plankton.items.size()
+		check(kept > 0 or which == "all", "%s: items stay (%d)" % [which, kept])
+
+
+static func _plankton_state(field: PlanktonField) -> Dictionary:
+	return {"items": field.items, "counts": field._zone_counts, "latched": field._empty_latched,
+		"regrowing": field._regrowing, "phase": field._phase, "omega": field._omega, "radii": field._radii,
+		"ids": field._by_id.keys(), "next": field.next_number}
+
+
 # --- the beat (D-80) and the fills (C-V15) ---
 
 func test_the_beat_loads_two_chunks_a_tick_then_one() -> void:
