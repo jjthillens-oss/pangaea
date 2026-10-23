@@ -1,0 +1,9 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/export/marker_origin_arrow_T_MarkerOriginArrow_Albedo.png" id="1_albedo"]
+
+[resource]
+resource_name = "M_Arrow"
+shading_mode = 0
+albedo_color = Color(0.949, 0.902, 0.847, 1)
+albedo_texture = ExtResource("1_albedo")
