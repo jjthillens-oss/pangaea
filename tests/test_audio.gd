@@ -8,7 +8,6 @@ const RECORDS_DIR := "res://assets/records/audio"
 const BUS_LAYOUT := "res://default_bus_layout.tres"
 const GENERATOR := "tools/audio/make_cell_audio.gd"
 const BUSES := ["Master", "Music", "SFX", "Ambience"]
-const MUSIC_LOOP_S := 48.0
 ## A loop's last sample may differ from its first by at most this much more than a typical
 ## sample-to-sample step (the 99th percentile), or the seam would click.
 const SEAM_SLACK := 1.25
@@ -114,8 +113,6 @@ func test_loops_loop_without_a_click_and_the_music_stems_share_one_length() -> v
 		var wav := stream as AudioStreamWAV
 		check_eq(wav.loop_mode != AudioStreamWAV.LOOP_DISABLED, bool(record.get("loop", false)), "%s loop mode" % id)
 		check_near(wav.get_length(), float(record.length_s), 0.01, "%s length" % id)
-		if record.get("category") == "music":
-			check_near(wav.get_length(), MUSIC_LOOP_S, 0.01, "%s is one 48 s loop" % id)
 		if not bool(record.get("loop", false)):
 			continue
 		var info := _read_wav(path)
@@ -173,25 +170,38 @@ func test_the_mixer_has_the_buses_the_settings_menu_drives() -> void:
 	check(has_low_pass, "the Music bus has the mood low-pass")
 
 
-func test_the_music_follows_the_mood_and_grows_with_the_cell() -> void:
+func test_the_music_follows_the_mood() -> void:
 	var music := Soundtrack.new()
 	check_eq(music.mood, "title", "starts on the title")
-	check(music.target_db("motif") > -6.0 and music.target_db("pulse") <= -79.0, "title: the theme, no danger")
+	check(music.target_db("title") >= -1.0 and music.target_db("calm") <= -79.0, "title: the title track only")
+	music.set_mood("calm")
+	check(music.target_db("calm") >= -1.0 and music.target_db("title") <= -79.0, "calm: the playlist")
 	music.set_mood("danger")
-	check(music.target_db("pulse") >= -1.0, "danger brings the pulse in")
-	check(music.target_db("motif") < -10.0, "danger pushes the theme back")
+	check(music.target_db("danger") >= -1.0, "danger brings the danger track in")
+	check(music.target_db("calm") < -10.0 and music.target_db("calm") > -79.0, "the calm track waits underneath")
 	music.set_mood("starving")
 	check(music.target_cutoff_hz() < 2000.0, "starving muffles the music")
 	music.set_mood("calm")
-	check(music.target_db("counter") <= -79.0, "size 1 has no counter line")
-	music.set_size(2)
-	check(music.target_db("counter") > -6.0, "size 2 adds the counter line")
 	check_eq(music.target_cutoff_hz(), 20000.0, "calm is open")
 	music.set_paused(true)
 	check(music.target_cutoff_hz() <= Soundtrack.PAUSED_CUTOFF_HZ, "the pause menu muffles it")
 	music.set_mood("not a mood")
 	check_eq(music.mood, "calm", "unknown moods are ignored")
 	music.free()
+
+
+func test_every_music_track_is_a_recorded_cc0_file() -> void:
+	var records := _records()
+	var tracks := Array(Soundtrack.CALM_TRACKS) + [Soundtrack.TITLE_TRACK, Soundtrack.DANGER_TRACK]
+	for file: String in tracks:
+		var id := file.get_basename()
+		check(load("%s/%s" % [Soundtrack.MUSIC_DIR, file]) is AudioStream, "%s loads" % file)
+		check(records.has(id) and records[id].get("category") == "music", "%s has a music record" % file)
+		if records.has(id):
+			check_eq(records[id].export_path, "assets/audio/music/" + file, "%s's record names it" % id)
+	for id in records:
+		if records[id].get("category") == "music":
+			check(String(records[id].export_path).get_file() in tracks, "%s is used by the soundtrack" % id)
 
 
 func test_menu_buttons_pick_their_sound() -> void:

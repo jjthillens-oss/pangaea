@@ -1,12 +1,13 @@
 extends SceneTree
-## Renders the cell stage's sound effects, ambience and music into assets/audio/ and writes a
-## record for each file in assets/records/audio/. The sound design lives in code: the effects
-## in game/scenes/audio/audio_synth.gd, the ambience and music below. Nothing is recorded or
-## sampled, so every sound is original; the UI sounds in assets/audio/ui/ are Kenney's CC0
-## packs (see their records) and this script leaves them alone.
+## Renders the cell stage's sound effects and ambience into assets/audio/ and writes a record for
+## each file in assets/records/audio/. The sound design lives in code: the effects in
+## game/scenes/audio/audio_synth.gd, the ambience below. Nothing is recorded or sampled, so every
+## sound is original. The music (assets/audio/music/, composed CC0 instrumentals) and the UI
+## sounds (assets/audio/ui/, Kenney's CC0 packs) are third-party files with their own records;
+## this script leaves them alone.
 ##
 ## Usage: godot --headless --path . --script res://tools/audio/make_cell_audio.gd [-- --only=a,b]
-##   --only takes file ids (eat_plant_1, amb_reef, mus_pad) or groups (sfx, ambience, music).
+##   --only takes file ids (eat_plant_1, amb_reef) or groups (sfx, ambience, buses).
 ## Then run `godot --headless --path . --import` so the new files are imported. Loops get a
 ## .import file with a forward loop; keep it when a file is regenerated.
 ##
@@ -14,42 +15,15 @@ extends SceneTree
 
 const SFX_DIR := "res://assets/audio/sfx"
 const AMB_DIR := "res://assets/audio/ambience"
-const MUSIC_DIR := "res://assets/audio/music"
 const RECORDS_DIR := "res://assets/records/audio"
 const GENERATOR := "tools/audio/make_cell_audio.gd"
 const SYNTH := "game/scenes/audio/audio_synth.gd"
 const REVIEW := "production rev 1 - M1, awaiting owner listen"
 
-## Music and ambience are softer and darker than the effects, so a lower rate keeps them small.
+## The ambience is softer and darker than the effects, so a lower rate keeps it small.
 const BED_RATE := 22050
-## The music: 80 beats a minute, 16 bars of 4/4 (48 s), a chord every 2 bars, in D major with a
-## raised fourth (lydian colour). The motif (F#-A-E-D, answered by F#-B-A) is the cell stage's
-## theme, which later stages are meant to keep (Bible 20).
-const BPM := 80.0
-const BARS := 16
-const BEAT_S := 60.0 / BPM
-const LOOP_S := BARS * 4 * BEAT_S
-## MIDI notes, low to high. The first is the bass.
-const CHORDS := [
-	[50, 57, 61, 64, 66],    # Dmaj9
-	[47, 54, 57, 61, 62],    # Bm9
-	[43, 50, 54, 59, 61],    # Gmaj7#11
-	[45, 52, 59, 61, 64],    # Aadd9
-	[42, 50, 57, 61, 64],    # Dmaj9/F#
-	[40, 47, 50, 54, 55],    # Em9 (no 3rd doubled)
-	[43, 50, 54, 57, 59],    # Gmaj9
-	[45, 52, 57, 62, 64],    # Asus4
-]
-## The theme, as [bar, beat, midi note, length in beats].
-const MOTIF := [
-	[0, 0.0, 78, 1.5], [0, 1.5, 81, 1.0], [0, 2.5, 76, 0.5], [0, 3.0, 74, 3.0],
-	[4, 0.0, 78, 1.5], [4, 1.5, 83, 1.0], [4, 2.5, 81, 3.5],
-	[8, 0.0, 78, 1.5], [8, 1.5, 81, 1.0], [8, 2.5, 76, 0.5], [8, 3.0, 74, 2.0], [9, 1.0, 69, 2.0],
-	[12, 0.0, 78, 1.5], [12, 1.5, 83, 1.0], [12, 2.5, 81, 1.5], [13, 0.0, 86, 2.0], [14, 0.0, 76, 4.0],
-]
 ## Target loudness of each file as RMS in dBFS; the mix sets the rest (CellAudio and the buses).
 const RMS_DB := {
-	"mus_pad": -21.0, "mus_motif": -25.0, "mus_counter": -26.0, "mus_pulse": -23.0,
 	"amb_bed": -25.0, "amb_sunlit": -31.0, "amb_reef": -30.0, "amb_drift": -31.0, "amb_swim": -24.0,
 }
 
@@ -61,14 +35,13 @@ func _init() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=").split(",", false)
-	for dir in [SFX_DIR, AMB_DIR, MUSIC_DIR, RECORDS_DIR]:
+	for dir in [SFX_DIR, AMB_DIR, RECORDS_DIR]:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	var t0 := Time.get_ticks_msec()
 	if _wanted("buses", "buses"):
 		_make_buses()
 	_make_sfx()
 	_make_ambience()
-	_make_music()
 	print("make_cell_audio: wrote %d files in %.1f s" % [_written, (Time.get_ticks_msec() - t0) / 1000.0])
 	quit(0)
 
@@ -351,204 +324,7 @@ func _swim(s: AudioSynth, length_s: float) -> Array:
 	return lr
 
 
-# --- Music -----------------------------------------------------------------------------------
-
-const MUSIC_INFO := {
-	"mus_pad": "The bed of the cell-stage theme: a slow, airy chord pad with a soft sub bass. Always on.",
-	"mus_motif": "The theme itself: glass bells play the motif (F#-A-E-D, answered by F#-B-A) with echoes and sparkles. Calm and title.",
-	"mus_counter": "A kalimba-like arpeggio of the chords, added as the cell grows (size 2 and up).",
-	"mus_pulse": "Danger: a muted bass ostinato, a heartbeat and a trembling high string. Faded in while a creature hunts the cell.",
-}
-
-
-func _make_music() -> void:
-	for id: String in MUSIC_INFO:
-		if not _wanted(id, "music"):
-			continue
-		var s := AudioSynth.new(BED_RATE, hash(id))
-		var lr: Array
-		match id:
-			"mus_pad": lr = _pad(s)
-			"mus_motif": lr = _motif(s)
-			"mus_counter": lr = _counter(s)
-			"mus_pulse": lr = _pulse(s)
-		for ch in 2:
-			lr[ch] = _circular(s, lr[ch], func(x: PackedFloat32Array) -> PackedFloat32Array: return s.highpass(s.highpass(x, 40.0), 40.0))
-		lr = _to_rms(s, lr, float(RMS_DB[id]))
-		var path := "%s/%s.wav" % [MUSIC_DIR, id]
-		_write_wav(path, lr, BED_RATE, true)
-		_write_record(id, "music", path, {
-			"purpose": MUSIC_INFO[id], "bus": "Music", "loop": true, "sample_rate": BED_RATE, "channels": 2,
-			"length_s": LOOP_S, "bpm": BPM, "bars": BARS, "key": "D major (lydian colour)",
-			"recipe": "%s _%s" % [GENERATOR, id.trim_prefix("mus_")],
-		})
-
-
-static func _hz(midi: float) -> float:
-	return 440.0 * pow(2.0, (midi - 69.0) / 12.0)
-
-
-static func _at(bar: float, beat: float) -> float:
-	return (bar * 4.0 + beat) * BEAT_S
-
-
-## A single-cycle wave with soft harmonics, read by phase (0..1) with linear interpolation.
-func _table(harmonics: Array) -> PackedFloat32Array:
-	var size := 2048
-	var out := PackedFloat32Array()
-	out.resize(size + 1)
-	for i in size + 1:
-		var v := 0.0
-		for h in harmonics.size():
-			v += harmonics[h] * sin(TAU * (h + 1) * i / size)
-		out[i] = v
-	return out
-
-
-## One sustained note from a wavetable, `detune` cents off, with a slow attack and release.
-func _held(s: AudioSynth, table: PackedFloat32Array, f: float, length_s: float, attack_s: float, release_s: float, detune: float) -> PackedFloat32Array:
-	var out := s.silence(length_s + release_s)
-	var n := out.size()
-	var hold := int(length_s * s.rate)
-	var step := f * pow(2.0, detune / 1200.0) / s.rate
-	var phase := s.rng.randf()
-	var size := table.size() - 1
-	var vib_rate := s.rng.randf_range(0.15, 0.35)
-	for i in n:
-		var t := float(i) / s.rate
-		phase += step * (1.0 + 0.0015 * sin(TAU * vib_rate * t))
-		phase -= floorf(phase)
-		var x := phase * size
-		var j := int(x)
-		var v := lerpf(table[j], table[j + 1], x - j)
-		var env := minf(1.0, t / attack_s)
-		if i > hold:
-			env *= exp(-(t - length_s) / (release_s * 0.3))
-		out[i] = v * env * env
-	return out
-
-
-func _pad(s: AudioSynth) -> Array:
-	var lr := [s.silence(LOOP_S), s.silence(LOOP_S)]
-	var warm := _table([1.0, 0.32, 0.12, 0.06, 0.02])
-	var sub := _table([1.0, 0.05])
-	var chord_s := 2 * 4 * BEAT_S
-	for c in CHORDS.size():
-		var chord: Array = CHORDS[c]
-		var at := c * chord_s - 0.4       # each chord breathes in just before its bar
-		for k in chord.size():
-			var f := _hz(chord[k])
-			var gain := 0.16 if k > 0 else 0.11
-			for ch in 2:
-				var a := _held(s, warm, f, chord_s + 0.3, 1.8, 3.0, (-5.0 if ch == 0 else 5.0) + s.rng.randf_range(-2.0, 2.0))
-				var b := _held(s, warm, f, chord_s + 0.3, 2.2, 3.0, (4.0 if ch == 0 else -4.0) + s.rng.randf_range(-2.0, 2.0))
-				s.mix(lr[ch], a, at, gain, true)
-				s.mix(lr[ch], b, at, gain * 0.8, true)
-		var root := _hz(chord[0] - 12)
-		if root < 45.0:
-			root *= 2.0
-		var low := _held(s, sub, root, chord_s, 0.8, 1.5, 0.0)
-		for ch in 2:
-			s.mix(lr[ch], low, at + 0.4, 0.12, true)
-	# A slow breath across the whole pad.
-	var breath := _swell(s, LOOP_S, 0.75, [2, 3])
-	for ch in 2:
-		var out := _circular(s, lr[ch], func(x: PackedFloat32Array) -> PackedFloat32Array: return s.lowpass(x, 2400.0))
-		for i in out.size():
-			out[i] *= breath[i]
-		lr[ch] = out
-	return lr
-
-
-## Places a bell note with ping-pong echoes (a dotted eighth apart, each softer and darker).
-func _echoed(s: AudioSynth, lr: Array, note: PackedFloat32Array, at_s: float, gain: float, pan: float) -> void:
-	_place(s, lr, note, at_s, gain, pan)
-	var echo := note
-	var g := gain
-	for k in 4:
-		g *= 0.42
-		echo = s.lowpass(echo, 3200.0 - 500.0 * k)
-		_place(s, lr, echo, at_s + (k + 1) * BEAT_S * 0.75, g, -0.7 if k % 2 == 0 else 0.7)
-
-
-func _motif(s: AudioSynth) -> Array:
-	var lr := [s.silence(LOOP_S), s.silence(LOOP_S)]
-	for m: Array in MOTIF:
-		var f := _hz(m[2])
-		var hold_s: float = m[3] * BEAT_S
-		var note := s.bell(hold_s + 2.5, f, 0.55 + 0.25 * hold_s, 3.5, 1.6)
-		var octave := s.bell(hold_s + 1.5, f * 2.0, 0.3, 2.0, 0.6)
-		s.mix(note, octave, 0.0, 0.18)
-		_echoed(s, lr, note, _at(m[0], m[1]), 0.5, s.rng.randf_range(-0.25, 0.25))
-	# Sparkles in the bars between the phrases: high chord tones, quiet and scattered.
-	for bar in [2, 3, 6, 7, 10, 11, 14, 15]:
-		var chord: Array = CHORDS[bar / 2]
-		for k in 2:
-			var midi: int = chord[s.rng.randi_range(2, chord.size() - 1)] + 24
-			var beat := float(s.rng.randi_range(0, 7)) * 0.5
-			_echoed(s, lr, s.bell(2.0, _hz(midi), 0.4, 3.5, 1.0), _at(bar, beat), 0.16, s.rng.randf_range(-0.8, 0.8))
-	return lr
-
-
-func _counter(s: AudioSynth) -> Array:
-	var lr := [s.silence(LOOP_S), s.silence(LOOP_S)]
-	var pattern := [0, 2, 1, 3, 2, 4, 3, 1]
-	for bar in BARS:
-		var chord: Array = CHORDS[bar / 2]
-		var tones := []
-		for k in range(1, chord.size()):
-			tones.append(chord[k] + 12)
-		tones.sort()
-		for step in 8:
-			var midi: int = tones[pattern[step] % tones.size()]
-			var accent := 1.0 if step % 4 == 0 else (0.7 if step % 2 == 0 else 0.5)
-			var tine := s.pluck(1.2, _hz(midi), 0.9985, 0.35)
-			var body := s.shaped(s.sweep(0.5, _hz(midi), _hz(midi), 0.0, 0.0), 0.002, 0.18)
-			s.mix(tine, body, 0.0, 0.5)
-			_place(s, lr, tine, _at(bar, step * 0.5) + s.rng.randf_range(0.0, 0.012), 0.35 * accent, -0.45 if step % 2 == 0 else 0.45)
-	return lr
-
-
-func _pulse(s: AudioSynth) -> Array:
-	var lr := [s.silence(LOOP_S), s.silence(LOOP_S)]
-	var accents := [1.0, 0.45, 0.55, 0.9, 0.45, 0.55, 0.9, 0.5]    # 3 + 3 + 2: uneasy
-	var string := _table([1.0, 0.5, 0.33, 0.25, 0.2, 0.16, 0.12, 0.1])
-	for bar in BARS:
-		var chord: Array = CHORDS[bar / 2]
-		var bass_f := _hz(chord[0] - 12)
-		if bass_f < 70.0:
-			bass_f *= 2.0
-		for step in 8:
-			var note := s.shaped(s.pluck(0.4, bass_f, 0.992, 0.25), 0.002, 0.12)
-			_place(s, lr, s.lowpass(note, 900.0), _at(bar, step * 0.5), 0.6 * accents[step], 0.0)
-		# A heartbeat on beats 1 and 3: lub-dub.
-		for beat in [0.0, 2.0]:
-			var lub := s.shaped(s.sweep(0.18, 75.0, 45.0, 0.2), 0.002, 0.06)
-			_place(s, lr, lub, _at(bar, beat), 0.7, 0.0)
-			_place(s, lr, lub, _at(bar, beat + 0.3), 0.4, 0.0)
-	# A trembling high string on the chord's fifth and ninth, a bar at a time.
-	for c in CHORDS.size():
-		var chord: Array = CHORDS[c]
-		for k in [1, 3]:
-			var f := _hz(chord[k] + 12)
-			for ch in 2:
-				var tone := _held(s, string, f, 2 * 4 * BEAT_S, 0.6, 1.0, -6.0 if ch == 0 else 6.0)
-				for i in tone.size():
-					tone[i] *= 0.6 + 0.4 * sin(TAU * 7.5 * float(i) / s.rate)
-				s.mix(lr[ch], s.lowpass(tone, 2200.0), c * 2 * 4 * BEAT_S, 0.05, true)
-	return lr
-
-
 # --- Output ----------------------------------------------------------------------------------
-
-## Runs a filter over a loop as if it had been playing already: the filter first hears the
-## loop's last second, so its state at the start matches the end and the seam stays clean.
-func _circular(s: AudioSynth, samples: PackedFloat32Array, filter: Callable) -> PackedFloat32Array:
-	var lead := mini(samples.size(), s.rate)
-	var primed := samples.slice(samples.size() - lead)
-	primed.append_array(samples)
-	var out: PackedFloat32Array = filter.call(primed)
-	return out.slice(lead)
 
 ## Scales a stereo pair to an RMS in dBFS, then softly limits any peak above -1 dBFS.
 func _to_rms(s: AudioSynth, lr: Array, rms_db: float) -> Array:
