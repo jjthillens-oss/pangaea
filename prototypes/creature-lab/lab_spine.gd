@@ -26,6 +26,26 @@ static func body(body_name: String) -> RefCounted:
 	return BodyCodec.from_dict(read_json("res://data/spine_bodies.json")["bodies"][body_name])
 
 
+## Part rules from the art team's records (assets/records/cpart_<type>.json in the main project): type -> part_rules.
+static func part_rules() -> Dictionary:
+	var out := {}
+	var dir := ProjectSettings.globalize_path("res://").path_join("../../assets/records")
+	for file in DirAccess.get_files_at(dir):
+		if file.begins_with("cpart_") and file.ends_with(".json"):
+			var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(dir.path_join(file)))
+			if record.has("part_rules"):
+				out[record["part_rules"]["type"]] = record["part_rules"]
+	return out
+
+
+## Part type -> orientation rule, for domain/anchor_resolver.gd.
+static func part_orientations(rules: Dictionary) -> Dictionary:
+	var out := {}
+	for type in rules:
+		out[type] = rules[type]["orientation"]
+	return out
+
+
 static func stage1_names() -> Array[String]:
 	var out: Array[String] = []
 	for n in STAGE1_NAMES:

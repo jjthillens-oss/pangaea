@@ -3,10 +3,11 @@ extends RefCounted
 ## and weights are derived from it. Positions and radii are integers in 1/1000 of `reference_length_mm`, so a body can
 ## grow by changing one number. Body axes: +X right, +Y up, -Z forward; vertebra 0 is the head end.
 ## Limbs (version 2) are joint chains that start on a vertebra; a mirrored limb also makes its copy across the X = 0
-## plane, so a pair is one entry and stays symmetric while it is edited.
+## plane, so a pair is one entry and stays symmetric while it is edited. Parts (version 3) are Blender-authored
+## pieces placed by an anchor relative to a host (domain/anchor_resolver.gd), so they ride along with body edits.
 ## Pure rules: no scene or file access.
 
-const BODY_VERSION := 2
+const BODY_VERSION := 3
 
 var body_version := BODY_VERSION
 var plan := "spine"
@@ -17,8 +18,13 @@ var vertebrae: Array = []
 ## Each: {id: String, attach: vertebra id, mirror: bool, joints: [{id: String, p: [x, y, z] ints, r: int}]}.
 ## Joint 0 is the shoulder or hip and sits on the attach vertebra; the last joint is the tip.
 var limbs: Array = []
+## Each: {id, type, host: "spine" | limb id | limb id + ":end", u: 0..1000 along the host, ring: 0..999 thousandths
+## of a turn around it (0 up, 250 right), elev: 0..90 degrees (only at the spine's ends, u 0 or 1000: how far the part
+## leans from the end of the axis towards `ring`), height (offset along the skin normal, body units), turn, tilt,
+## roll (degrees), scale (per mille), handles: [per mille], mirror: bool}. Integers throughout.
+var parts: Array = []
 ## Next id number per kind; ids are never reused.
-var next_ids := {"v": 1, "l": 1, "j": 1}
+var next_ids := {"v": 1, "l": 1, "j": 1, "p": 1}
 ## Top-level keys this version does not know, kept so a load never drops data.
 var extra := {}
 ## Problems met while loading (wrong types, non-integers); the entries are kept.
@@ -52,6 +58,77 @@ func add_limb(attach: String, joints: Array, mirror := true) -> String:
 		entry["joints"].append({"id": _next_id("j"), "p": [p.x, p.y, p.z], "r": int(j[1])})
 	limbs.append(entry)
 	return id
+
+
+## Adds a part; returns its id. `anchor` holds any of host, u, ring, height, turn, tilt, roll, scale, handles, mirror.
+func add_part(type: String, anchor: Dictionary) -> String:
+	var id := _next_id("p")
+	var entry := {"id": id, "type": type, "host": String(anchor.get("host", "spine")), "u": int(anchor.get("u", 500)),
+			"ring": int(anchor.get("ring", 0)), "elev": int(anchor.get("elev", 0)), "height": int(anchor.get("height", 0)), "turn": int(anchor.get("turn", 0)),
+			"tilt": int(anchor.get("tilt", 0)), "roll": int(anchor.get("roll", 0)), "scale": int(anchor.get("scale", 1000)),
+			"handles": (anchor.get("handles", []) as Array).map(func(h): return int(h)),
+			"mirror": bool(anchor.get("mirror", false))}
+	parts.append(entry)
+	return id
+
+
+func limb_index(id: String) -> int:
+	for i in limbs.size():
+		if limbs[i]["id"] == id:
+			return i
+	return -1
+
+
+## Placement limits that need the part catalog (`part_rules`: type -> the record's part_rules), as readable
+## reasons. Empty means every part is allowed where it is.
+func validate_parts(rules: Dictionary, part_rules: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	if parts.size() > int(rules["part_count_max"]):
+		out.append("%d parts; at most %d" % [parts.size(), int(rules["part_count_max"])])
+	var seen := {}
+	for p in parts:
+		var id := String(p["id"])
+		if seen.has(id):
+			out.append("part id %s is used twice" % id)
+		seen[id] = true
+		if not part_rules.has(p["type"]):
+			out.append("part %s has unknown type %s" % [id, p["type"]])
+			continue
+		var pr: Dictionary = part_rules[p["type"]]
+		var host := String(p["host"])
+		var kind := "spine" if host == "spine" else ("limb_end" if host.ends_with(":end") else "limb")
+		if kind != "spine" and limb_index(host.trim_suffix(":end")) < 0:
+			out.append("part %s is on %s, which is not a limb" % [id, host])
+			continue
+		if kind != "spine" and p["mirror"] and not limbs[limb_index(host.trim_suffix(":end"))]["mirror"]:
+			out.append("part %s has a twin but its limb %s has no mirror copy" % [id, host.trim_suffix(":end")])
+		if not (pr["hosts"] as Array).has(kind):
+			out.append("%s parts cannot go on a %s (part %s)" % [p["type"], kind.replace("_", " "), id])
+		if int(p["u"]) < 0 or int(p["u"]) > 1000 or int(p["ring"]) < 0 or int(p["ring"]) > 999 \
+				or int(p["elev"]) < 0 or int(p["elev"]) > 90:
+			out.append("part %s anchor is out of range (u 0..1000, ring 0..999, elev 0..90)" % id)
+		if absi(int(p["turn"])) > int(pr["turn_limit_deg"]) or absi(int(p["tilt"])) > int(pr["tilt_limit_deg"]):
+			out.append("part %s is turned or tilted past its limits (%d, %d deg)" % [id, int(pr["turn_limit_deg"]),
+					int(pr["tilt_limit_deg"])])
+		if int(p["scale"]) < int(rules["part_scale_min"]) or int(p["scale"]) > int(rules["part_scale_max"]):
+			out.append("part %s scale %d is outside %d..%d per mille" % [id, int(p["scale"]), int(rules["part_scale_min"]),
+					int(rules["part_scale_max"])])
+		for h in p["handles"]:
+			if int(h) < 0 or int(h) > 1000:
+				out.append("part %s has a handle outside 0..1000" % id)
+		# On the middle line means ring 0 or 500 on the spine, or straight off an end cap; such a part has no twin.
+		var on_middle: bool = kind == "spine" and (int(p["ring"]) == 0 or int(p["ring"]) == 500
+				or ((int(p["u"]) == 0 or int(p["u"]) == 1000) and int(p["elev"]) == 0))
+		match String(pr["centerline"]):
+			"required":
+				if not on_middle or p["mirror"]:
+					out.append("%s parts must sit on the middle line, with no twin (part %s)" % [p["type"], id])
+			"forbidden":
+				if on_middle:
+					out.append("%s parts cannot sit on the middle line (part %s)" % [p["type"], id])
+		if on_middle and p["mirror"]:
+			out.append("part %s is on the middle line and cannot have a twin" % id)
+	return out
 
 
 func vertebra_index(id: String) -> int:
@@ -143,7 +220,8 @@ func to_dict() -> Dictionary:
 	for v in vertebrae:
 		verts.append({"id": v["id"], "p": (v["p"] as Array).duplicate(), "r": v["r"]})
 	var d := {"body_version": body_version, "plan": plan, "reference_length_mm": reference_length_mm,
-			"generator": generator, "vertebrae": verts, "limbs": limbs.duplicate(true), "next": next_ids.duplicate()}
+			"generator": generator, "vertebrae": verts, "limbs": limbs.duplicate(true), "parts": parts.duplicate(true),
+			"next": next_ids.duplicate()}
 	for k in extra:
 		d[k] = extra[k]
 	return d

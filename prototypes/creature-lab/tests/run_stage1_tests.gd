@@ -10,6 +10,7 @@ const BodyField := preload("res://domain/body_field.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
 const MeshChecks := preload("res://skin/mesh_checks.gd")
 const SpineRig := preload("res://rig/spine_rig.gd")
+const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 
 ## Test 6: posing range and allowed error (fraction of body length). The spec's range swings limbs 90 degrees; this
 ## gate uses 30 degrees, about a trot's hip swing. tools/pose_matrix.gd measures the full range
@@ -40,6 +41,9 @@ func _init() -> void:
 	test_weights()
 	test_limb_paint_coordinates()
 	test_gameplay_budget()
+	test_parts_valid_and_refused()
+	test_parts_sit_on_skin()
+	test_parts_ride_along()
 	await test_deformation()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
@@ -222,6 +226,98 @@ func test_gameplay_budget() -> void:
 			worst = 1 << 30
 	check(worst <= int(rules["gameplay_triangle_budget"]), "every gameplay skin is closed and within %d triangles (largest %d; coarser grid for %s)"
 			% [int(rules["gameplay_triangle_budget"]), worst, ", ".join(lowered) if not lowered.is_empty() else "none"])
+
+
+func test_parts_valid_and_refused() -> void:
+	var pr := Lab.part_rules()
+	check(pr.size() >= 5, "part rules read from the art records (%s)" % ", ".join(pr.keys()))
+	for body_name in Lab.stage1_names():
+		var problems: PackedStringArray = Lab.body(body_name).validate_parts(rules, pr)
+		if not Lab.body(body_name).parts.is_empty():
+			check(problems.is_empty(), "%s parts are allowed where they are %s" % [body_name, "" if problems.is_empty() else str(problems)])
+	var cases := {}
+	var beak = quad()
+	beak.parts[1]["ring"] = 250
+	beak.parts[1]["elev"] = 30
+	cases["beak off the middle line"] = beak
+	var horn = quad()
+	horn.parts[2]["ring"] = 0
+	cases["chiral horn on the middle line"] = horn
+	var eye_on_leg = quad()
+	eye_on_leg.parts[0]["host"] = "l_1"
+	cases["eye on a leg"] = eye_on_leg
+	var foot_on_spine = quad()
+	foot_on_spine.parts[4]["host"] = "spine"
+	cases["foot on the spine"] = foot_on_spine
+	var turned = quad()
+	turned.parts[0]["turn"] = 90
+	cases["eye turned past its limit"] = turned
+	var scaled = quad()
+	scaled.parts[0]["scale"] = 3000
+	cases["part at 3x scale"] = scaled
+	var missing = quad()
+	missing.parts[4]["host"] = "l_9:end"
+	cases["part on a missing limb"] = missing
+	var giant = Lab.body("s1_giant_limb")
+	giant.add_part("fin", {"host": "l_1", "u": 500, "ring": 250, "mirror": true})
+	cases["twin on a limb with no mirror copy"] = giant
+	for what in cases:
+		var problems: PackedStringArray = cases[what].validate_parts(rules, pr)
+		check(not problems.is_empty(), "refused: %s (%s)" % [what, problems[0] if not problems.is_empty() else "accepted!"])
+
+
+## Distance from p to the skin, to first order (field offset over gradient length).
+func skin_distance(field: RefCounted, p: Vector3, h: float) -> float:
+	var g := Vector3(field.sample(p + Vector3(h, 0, 0)) - field.sample(p - Vector3(h, 0, 0)),
+			field.sample(p + Vector3(0, h, 0)) - field.sample(p - Vector3(0, h, 0)),
+			field.sample(p + Vector3(0, 0, h)) - field.sample(p - Vector3(0, 0, h))) / (2.0 * h)
+	return absf(field.sample(p) - BodyField.ISO) / maxf(g.length(), 1e-9)
+
+
+func test_parts_sit_on_skin() -> void:
+	var orient := Lab.part_orientations(Lab.part_rules())
+	for body_name in Lab.stage1_names():
+		var desc = Lab.body(body_name)
+		if desc.parts.is_empty():
+			continue
+		var field = BodyField.from_description(desc)
+		var placed := AnchorResolver.resolve_all(desc, field, orient)
+		var length: float = desc.bounds_m().get_longest_axis_size()
+		var worst := 0.0
+		var twins_exact := true
+		var expected := 0
+		for p in desc.parts:
+			expected += 2 if p["mirror"] else 1
+		for k in placed.size():
+			var e: Dictionary = placed[k]
+			var part: Dictionary = desc.parts.filter(func(x): return x["id"] == e["part"])[0]
+			if orient.get(part["type"], "normal") != "ground" and int(part["height"]) == 0:
+				worst = maxf(worst, skin_distance(field, e["transform"].origin, 0.002 * length) / length)
+			if e["twin"]:
+				var o: Transform3D = placed[k - 1]["transform"]
+				var t: Transform3D = e["transform"]
+				twins_exact = twins_exact and t.origin.is_equal_approx(Vector3(-o.origin.x, o.origin.y, o.origin.z)) \
+						and t.basis.determinant() < 0.0
+		check(placed.size() == expected and worst < 0.002 and twins_exact,
+				"%s: %d placements, each on the skin (worst %.3f%% of body length off), twins are exact mirror images"
+				% [body_name, placed.size(), 100.0 * worst])
+
+
+func test_parts_ride_along() -> void:
+	# Thicken the quadruped's head and neck by half: the eyes and horns must move out and stay on the skin.
+	var desc = quad()
+	var orient := Lab.part_orientations(Lab.part_rules())
+	var before := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orient)
+	for i in 3:
+		desc.vertebrae[i]["r"] = int(desc.vertebrae[i]["r"] * 1.5)
+	var field = BodyField.from_description(desc)
+	var after := AnchorResolver.resolve_all(desc, field, orient)
+	var ok: bool = desc.validate(rules).is_empty()
+	var length: float = desc.bounds_m().get_longest_axis_size()
+	for k in 2:
+		ok = ok and after[k]["transform"].origin.distance_to(before[k]["transform"].origin) > 0.01 \
+				and skin_distance(field, after[k]["transform"].origin, 0.002 * length) / length < 0.002
+	check(ok, "after the head is thickened by half, the eyes move with the skin and stay on it")
 
 
 ## Test 6. Poses the generated skeleton (spine bent, limbs swung), skins the rest mesh with linear blend skinning,
