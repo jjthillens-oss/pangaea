@@ -75,7 +75,7 @@ xvfb-run -a -s "-screen 0 1920x1080x24" .toolchain/Godot_v4.7.2-stable_linux.x86
 - `shot.gd` is a small `SceneTree` script that sets up the scene, waits for the frames it needs, then saves `root.get_viewport().get_texture().get_image()` with `save_png`. No such script is in the repository yet.
 - Wait at least 24 frames after the pool opens, so its 0.3 s fade-in is gone.
 - Set the pool's `pause_on_focus_loss` to false, or Xvfb focus changes can pause it.
-- These renders show the Compatibility renderer, which tonemaps each pass on its own and adds each shadowed light to the rest in sRGB. The pool gives it its own light (`game/scenes/pool/pool_look.gd`), so its floor comes within about 8 CIE76 of the game on Windows (Forward+), but its frames stay a little darker and greener, with paler plankton tops.
+- These renders show the Compatibility renderer. The pool's look takes one set of values in both renderers: the sun casts no shadow (Compatibility draws a shadowed light as a separate additive pass in sRGB) and nothing multiplies into stored sRGB any more, so the look probe measures Compatibility 0.1 CIE76 from the game on Windows (Forward+) on the fluid and 0.6 on the cell, and `PoolLook.COMPATIBILITY` in `game/scenes/pool/pool_look.gd` is empty, kept as an escape hatch. Transparent layers still differ: Compatibility tonemaps each transparent object before blending, so they come out darker there, and an additive layer adds about a fifth of the light it adds in Forward+. Tune those on Forward+ (lavapipe, below) and check both with the look probe.
 
 To judge the look, render with Forward+ on Mesa's software Vulkan driver (lavapipe). It takes about 30 s a frame at 1080p on 4 CPUs. Unpack the driver package that matches the installed Mesa and point the Vulkan loader at it:
 
@@ -150,8 +150,9 @@ Each script builds its assets from code and writes the `.blend`, the GLB and the
 | `tools/blender/make_sample_cell.py` | The M0 sample cell. |
 | `tools/blender/make_m1_blockouts.py [--only id[,id...]]` | The step 2 blockouts: pool floor, rocks, plankton, carrion and four parts. |
 | `tools/blender/make_m1_threats.py [--only id[,id...]]` | The step 3 blockouts: `creature_ambush_body`, `creature_rammer_body` and `part_spike`. GLBs and records come out byte-identical on every run. |
+| `tools/blender/make_m1_micro_rim.py` | `pool_rim`, the microscopic world's placeholder dish wall, which takes the floor's place at the pool's edge. It reads the old floor's rim height field from `make_m1_blockouts.py`. GLB and record come out byte-identical on every run. |
 
-The threat bodies and the pool floor are vertex-coloured. Godot's glTF import ignores `COLOR_0`, so each `.glb.import` maps the surface material to an external `.tres` (`M_PoolFloor`, `M_AmbushBody`, `M_RammerBody`) through `_subresources`; keep that mapping when an import file is rewritten.
+The threat bodies and the pool rim are vertex-coloured. Godot's glTF import ignores `COLOR_0`, so each `.glb.import` maps the surface material to an external `.tres` (`M_PoolRim`, `M_AmbushBody`, `M_RammerBody`) through `_subresources`; keep that mapping when an import file is rewritten.
 
 ## Conventions
 
