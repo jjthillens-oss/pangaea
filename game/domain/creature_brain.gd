@@ -882,18 +882,24 @@ static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictio
 ## Steers toward `goal` (round the first rock in the way), slowing on arrival when `arrive` is set
 ## so the body stops there without overshooting.
 static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool) -> Dictionary:
-	var at: Vector2 = me.position
+	return seek_from(mem, me.position, float(me.radius), float(me.speed), float(me.acceleration), goal, share, arena, arrive)
+
+
+## _seek from the body's own position, radius, top speed and acceleration (the self view's values)
+## instead of a self view: PoolSim's usual drive, a forager's seek, builds none.
+static func seek_from(mem: Memory, at: Vector2, radius: float, speed: float, acceleration: float, goal: Vector2,
+		share: float, arena: PoolArena, arrive: bool) -> Dictionary:
 	var way := goal
 	if arena != null:
-		way = arena.route_point(at, goal, float(me.radius), PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
+		way = arena.route_point(at, goal, radius, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
 	var to := way - at
 	var length := to.length()
 	if length < 1e-6:
 		return _coast(mem, share)
 	var throttle := 1.0
 	if arrive:
-		var top := maxf(float(me.speed) * share, 1e-3)
-		var brake := float(me.acceleration) * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
+		var top := maxf(speed * share, 1e-3)
+		var brake := acceleration * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
 		throttle = clampf(sqrt(2.0 * brake * at.distance_to(goal)) / top, 0.0, 1.0)
 	# _coast's dictionary with the move in it, built once (its keys in its order).
 	return {"mode": MODE_STEER, "move": to / length * throttle, "speed_mul": share, "face": 0.0, "strike": false,

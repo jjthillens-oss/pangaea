@@ -572,3 +572,38 @@ func test_a_woken_creatures_held_events_come_out_next() -> void:
 			noticed.append(e.id)
 	check_eq(noticed, [b.id], "woken: its held event comes out with the next events")
 	check(b.brain.events.is_empty(), "its brain holds nothing")
+
+
+## The usual drive written out in PoolSim._creatures_act, a forager's seek from the body's own values
+## (CreatureBrain.seek_from), gives what drive gives with the self view: every awake forager seeking
+## its goal on the saturated world swum through overdriven.
+func test_the_view_free_seek_matches_drive() -> void:
+	var cost: GDScript = load(COST)
+	var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+	Gates.make_racer(r.save.genome, catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+	sim.debug_set_hidden(true)
+	sim.drain_events()
+	var f := sim.creatures
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var differ := 0
+	var seeking := 0
+	for t in 900:
+		SwimBot.overdrive(sim)
+		sim.step(bot.next_intent(sim))
+		sim.drain_events()
+		for c in f.awake():
+			var b := c.brain
+			if b == null or b.state != CreatureBrain.FORAGE or b.phase == CreatureBrain.EAT or not b.goal.is_finite():
+				continue
+			seeking += 1
+			var p := c.phenotype
+			var want := CreatureBrain.drive(b, f.self_view_of(c), sim.tick, sim.arena)
+			var got := CreatureBrain.seek_from(b, c.motion.position, p.radius, p.speed, p.acceleration, b.goal,
+				float(b.cfg.speeds.forage), sim.arena, true)
+			if var_to_str(got) != var_to_str(want):
+				differ += 1
+	check_eq(differ, 0, "foragers whose view-free seek differs from drive")
+	check(seeking > 2000, "foragers seeking (%d)" % seeking)

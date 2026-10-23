@@ -900,10 +900,11 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 			c.drive = CreatureField.idle_drive(c.motion.heading)
 			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
 			continue
-		var self_view := creatures.self_view_of(c)
 		var brain := c.brain
+		var self_view := {}   # built when a think or drive needs it (the body does not move before both)
 		# creatures.think_due(c, tick) written out (a creature here always has a brain).
 		if CreatureBrain.think_due(brain, c.think_slot if endless else c.number, tick):
+			self_view = creatures.self_view_of(c)
 			if brain.state == CreatureBrain.FORAGE and not food_listed:
 				# The two lists joined (a new array), or the plankton list itself when there is no
 				# carrion: the senses only read it.
@@ -917,7 +918,16 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 				food_listed = true
 			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
 		# creatures.drive(c, ...) written out, then move_body's steer, the usual drive, without the call.
-		var d := CreatureBrain.drive(brain, self_view, tick, arena)
+		# A forager seeking its goal (the usual drive) seeks from the body's own values, without a view.
+		var d: Dictionary
+		if brain.state == CreatureBrain.FORAGE and brain.phase != CreatureBrain.EAT and brain.goal.is_finite():
+			var p := c.phenotype
+			d = CreatureBrain.seek_from(brain, c.motion.position, p.radius, p.speed, p.acceleration, brain.goal,
+				float(brain.cfg.speeds.forage), arena, true)
+		else:
+			if self_view.is_empty():
+				self_view = creatures.self_view_of(c)
+			d = CreatureBrain.drive(brain, self_view, tick, arena)
 		c.drive = d
 		if d.mode == CreatureBrain.MODE_STEER:
 			Locomotion.steer(c.motion, d.move, c.phenotype, float(d.speed_mul) * speed_mul, DT)
