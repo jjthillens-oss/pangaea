@@ -12,6 +12,7 @@ extends TestCase
 ##     godot --headless --path . --script /tmp/write_fixture.gd
 
 const SaveFolder := preload("res://tests/save_folder.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
 const FIXTURE := "res://tests/fixtures/save_v2_endless_5km.json"
 ## The fixture's place: absolute am at size 1, 5 km east of home. A float32 cannot hold its x.
 const FIXTURE_X := 5000.123456789012
@@ -112,10 +113,11 @@ func _continue() -> GameSession:
 	return again if r.ok else null
 
 
-## Swims straight for `ticks` (a SwimBot's straight line, without the bot).
+## Swims straight along `direction` for `ticks`, driven by a SwimBot.
 static func _swim(sim: PoolSim, ticks: int, direction: Vector2) -> void:
+	var bot = SwimBot.new(direction)
 	for i in ticks:
-		sim.step(SimIntent.new(direction))
+		sim.step(bot.next_intent(sim))
 
 
 ## Teleports to (x, y) am, swims 60 ticks, saves, continues in a new session, and checks the
@@ -128,9 +130,9 @@ func _save_and_continue_at(x: float, y: float, seed_value: int) -> GameSession:
 	check(sim.debug_teleport_abs(x, y), "teleported to (%.6f, %.6f)" % [x, y])
 	_swim(sim, 60, Vector2(0.6, -0.8))
 	var before := sim.absolute_position_am()
-	# A float32 anywhere on the path would show: the place is not one a float32 holds.
-	check(float(Vector2(before[0], 0.0).x) != before[0] or float(Vector2(before[1], 0.0).x) != before[1],
-		"the place is beyond float32: (%.9f, %.9f)" % [before[0], before[1]])
+	# A float32 anywhere on the path would show: x is not one a float32 holds, and its float32 is
+	# far more than a micrometre off (0.24 mm at 5 km). y near home could not show it.
+	check(float(Vector2(before[0], 0.0).x) != before[0], "x is beyond float32: (%.9f, %.9f)" % [before[0], before[1]])
 	check(session.save_now().ok, "saved")
 	var again := _continue()
 	if again == null:
