@@ -68,6 +68,10 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
+## How many events brains have emitted so far, every brain of every sim together: a creature field
+## that took every event and finds this unchanged knows no brain holds a new one.
+static var emitted := 0
+
 ## m: home is reached within this (the plan's arrival distance).
 const ARRIVE_HOME_M := 0.3
 ## m: a resting creature pushed farther than this from home (by a body or a rock) swims back.
@@ -287,8 +291,9 @@ static func is_striking(mem: Memory) -> bool:
 static func think_due(mem: Memory, number: int, tick: int) -> bool:
 	if mem.wake:
 		return true
-	var engaged := mem.state == CHASE or mem.state == ATTACK
-	var period: int = mem.cfg.engaged_think_ticks if engaged else mem.cfg.think_ticks
+	var state := mem.state
+	var cfg := mem.cfg
+	var period: int = cfg.engaged_think_ticks if state == CHASE or state == ATTACK else cfg.think_ticks
 	if posmod(tick + number, maxi(period, 1)) == 0:
 		return true
 	return tick >= next_deadline(mem)
@@ -296,37 +301,44 @@ static func think_due(mem: Memory, number: int, tick: int) -> bool:
 
 ## The first tick at which a timed decision falls due: a notice or recover ending, the target's
 ## memory running out, the give-up timer, the unreachable window, a flee or rest ending, or a
-## navigation timeout. NEVER when nothing is pending.
+## navigation timeout. NEVER when nothing is pending. (Wandering and foraging, the usual states, come
+## first; the cases are distinct, so their order changes nothing else.)
 static func next_deadline(mem: Memory) -> int:
 	var due := NEVER
+	var phase := mem.phase
+	var cfg := mem.cfg
 	match mem.state:
+		WANDER, FORAGE:
+			if phase == RETURN_HOME:
+				due = mem.phase_tick + int(cfg.nav_timeout_ticks)
+			elif phase != EAT and mem.goal.is_finite():
+				due = mem.goal_tick + int(cfg.nav_timeout_ticks)
+			if phase == SEEK:
+				var timeout := int(cfg.forage_timeout_ticks)
+				if timeout > 0:
+					due = mini(due, mem.phase_tick + timeout)
+			if phase != EAT:
+				var progress := mem.progress
+				if not progress.is_empty():
+					due = mini(due, int(progress.tick) + int(cfg.unreachable_ticks))
+		REST:
+			if phase == WATCH and mem.seen.has(mem.target):
+				due = int(mem.seen[mem.target].tick) + int(cfg.memory_ticks)
+			elif mem.behavior == TERRITORIAL:
+				due = mem.rest_until
 		NOTICE:
-			if mem.phase != WAIT:
-				due = mem.phase_tick + int(mem.cfg.notice_ticks)
+			if phase != WAIT:
+				due = mem.phase_tick + int(cfg.notice_ticks)
 			due = mini(due, _give_up_deadline(mem))
 		CHASE:
 			due = _give_up_deadline(mem)
-			if mem.phase == PURSUE and not mem.progress.is_empty():
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			if phase == PURSUE and not mem.progress.is_empty():
+				due = mini(due, int(mem.progress.tick) + int(cfg.unreachable_ticks))
 		ATTACK:
-			if mem.phase == RECOVER:
+			if phase == RECOVER:
 				due = mem.phase_tick + mem.recover_ticks
 		FLEE:
-			due = mem.state_tick + int(mem.cfg.flee_ticks)
-		REST:
-			if mem.phase == WATCH and mem.seen.has(mem.target):
-				due = int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks)
-			elif mem.behavior == TERRITORIAL:
-				due = mem.rest_until
-		WANDER, FORAGE:
-			if mem.phase == RETURN_HOME:
-				due = mem.phase_tick + int(mem.cfg.nav_timeout_ticks)
-			elif mem.goal.is_finite() and mem.phase != EAT:
-				due = mem.goal_tick + int(mem.cfg.nav_timeout_ticks)
-			if mem.phase == SEEK and int(mem.cfg.forage_timeout_ticks) > 0:
-				due = mini(due, mem.phase_tick + int(mem.cfg.forage_timeout_ticks))
-			if not mem.progress.is_empty() and mem.phase != EAT:
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			due = mem.state_tick + int(cfg.flee_ticks)
 	return due
 
 
@@ -409,8 +421,12 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 ## multiplier (ActorState.speed_multiplier()); a strike ignores it. The caller then moves the body
 ## (PoolArena.move) and clamps it to leash_disc().
 static func move_body(mem: Memory, m: Locomotion.MotionState, d: Dictionary, p: Phenotype, speed_mul: float, dt: float) -> void:
+	var mode := str(d.mode)
+	if mode == MODE_STEER:   # the usual one, ahead of the match (whose default it is)
+		Locomotion.steer(m, d.move, p, float(d.speed_mul) * speed_mul, dt)
+		return
 	var attack: Dictionary = mem.cfg.attack
-	match str(d.mode):
+	match mode:
 		MODE_BURST:
 			Locomotion.burst(m, float(d.face), float(attack.burst_speed))
 		MODE_GLIDE:
@@ -866,21 +882,28 @@ static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictio
 ## Steers toward `goal` (round the first rock in the way), slowing on arrival when `arrive` is set
 ## so the body stops there without overshooting.
 static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool) -> Dictionary:
-	var at: Vector2 = me.position
+	return seek_from(mem, me.position, float(me.radius), float(me.speed), float(me.acceleration), goal, share, arena, arrive)
+
+
+## _seek from the body's own position, radius, top speed and acceleration (the self view's values)
+## instead of a self view: PoolSim's usual drive, a forager's seek, builds none.
+static func seek_from(mem: Memory, at: Vector2, radius: float, speed: float, acceleration: float, goal: Vector2,
+		share: float, arena: PoolArena, arrive: bool) -> Dictionary:
 	var way := goal
 	if arena != null:
-		way = arena.route_point(at, goal, float(me.radius), PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
+		way = arena.route_point(at, goal, radius, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
 	var to := way - at
-	if to.length() < 1e-6:
+	var length := to.length()
+	if length < 1e-6:
 		return _coast(mem, share)
 	var throttle := 1.0
 	if arrive:
-		var top := maxf(float(me.speed) * share, 1e-3)
-		var brake := float(me.acceleration) * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
+		var top := maxf(speed * share, 1e-3)
+		var brake := acceleration * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
 		throttle = clampf(sqrt(2.0 * brake * at.distance_to(goal)) / top, 0.0, 1.0)
-	var out := _coast(mem, share)
-	out.move = to / to.length() * throttle
-	return out
+	# _coast's dictionary with the move in it, built once (its keys in its order).
+	return {"mode": MODE_STEER, "move": to / length * throttle, "speed_mul": share, "face": 0.0, "strike": false,
+		"target": mem.target, "feed": ""}
 
 
 static func _coast(mem: Memory, share: float) -> Dictionary:
@@ -1198,6 +1221,7 @@ static func _label(state: String, phase: String) -> String:
 
 static func _emit(mem: Memory, event: Dictionary) -> void:
 	mem.events.append(event)
+	emitted += 1
 
 
 static func _pair(v: Vector2) -> Array:
