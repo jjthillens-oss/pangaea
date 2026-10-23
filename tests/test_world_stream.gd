@@ -475,6 +475,39 @@ func test_chunk_events_carry_the_chunks_content_in_local_tm() -> void:
 	check(seen >= 9, "checked %d chunks" % seen)
 
 
+## Events keep the frame of their place in the drained list: a chunk_loaded after a rebased is in
+## the new frame, one before it in the old (spine 3.12). Drained once after a long swim.
+func test_chunk_events_carry_positions_in_the_frame_of_their_place() -> void:
+	var sim := _endless(SEED, null, false)
+	var ox := sim.world.origin_x_am
+	var oy := sim.world.origin_y_am
+	sim.drain_events()
+	for t in 3000:
+		sim.step(SimIntent.new(Vector2.RIGHT))
+	var rebases := 0
+	var loads_after := 0
+	var bad := 0
+	for e in sim.drain_events():
+		if e.type == "rebased":
+			check_eq(e.offset_tm, Vector2(e.origin_am[0] - ox, e.origin_am[1] - oy), "the offset is the origin's move")
+			ox = e.origin_am[0]
+			oy = e.origin_am[1]
+			rebases += 1
+		elif e.type == "chunk_loaded":
+			var ch := sim.world.gen.chunk(1, e.key.x, e.key.y)
+			for i in ch.shells.size():
+				if e.shells[i].position != Vector2(float(ch.shells[i].x) - ox, float(ch.shells[i].y) - oy):
+					bad += 1
+			for i in ch.zones.size():
+				if e.zones[i].center != Vector2(float(ch.zones[i].x) - ox, float(ch.zones[i].y) - oy):
+					bad += 1
+			if rebases > 0:
+				loads_after += 1
+	check(rebases >= 1, "the swim rebased (%d)" % rebases)
+	check(loads_after > 0, "chunks loaded after a rebase in the same drain (%d)" % loads_after)
+	check_eq(bad, 0, "every payload in the frame in force at its place")
+
+
 ## Unloading forgets a chunk and reloading rebuilds it: one chunk per key in the arena, one zone per
 ## id in the region, each with its own seeded stream (G14 for chunks and zones).
 func test_unload_and_reload_leave_no_duplicates_and_seed_each_zone_stream() -> void:

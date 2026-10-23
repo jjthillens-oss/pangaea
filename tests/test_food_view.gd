@@ -240,10 +240,16 @@ func test_carrion_beyond_52_tm_is_dropped_for_good() -> void:
 ## A zone's plankton places come from its own stream, so the zone shows the same first items whichever
 ## way the cell comes (route independence, S1 core 8.9).
 func test_a_zones_first_anchors_are_the_same_along_two_routes() -> void:
-	var west := _first_anchors(Vector2(84.0, 16.0), Vector2.RIGHT)
-	var north := _first_anchors(Vector2(144.0, -44.0), Vector2.DOWN)
+	var west := _approach(_endless(), Vector2(84.0, 16.0), Vector2.RIGHT)
+	# The northern route first visits the zones round (-112, 16), so other zones draw more plankton
+	# before this one than on the western route.
+	var north_sim := _endless()
+	check(north_sim.debug_teleport(north_sim.world.local_of_abs(-100.0, 9.0)), "a detour west")
+	for t in 40:
+		north_sim.step(SimIntent.new())
+	var north := _approach(north_sim, Vector2(144.0, -44.0), Vector2.DOWN)
 	check_eq(west.size(), 5, "the zone filled from the west (capacity 40, 8 an item)")
-	check_eq(north, west, "and the same anchors from the north")
+	check(_same_places(north, west), "and the same anchors from the north: %s and %s" % [north, west])
 
 
 ## Unloaded and reloaded, a zone's stream starts over: its first anchors repeat.
@@ -254,7 +260,7 @@ func test_a_reloaded_zone_restarts_its_stream() -> void:
 	sim.step(SimIntent.new())
 	check(sim.region.zone(ZONE).is_empty(), "the zone unloaded")
 	var again := _approach(sim, Vector2(84.0, 16.0), Vector2.RIGHT)
-	check_eq(again, first, "the same first anchors")
+	check(_same_places(again, first), "the same first anchors: %s and %s" % [again, first])
 	check_eq(again.size(), 5, "all five")
 
 
@@ -270,8 +276,15 @@ func test_pool_mode_has_no_zone_streams_or_food_view() -> void:
 		check(sim.plankton.count_in(z.id) <= sim.plankton.target_count(z), "zone %s shows its count" % z.id)
 
 
-func _first_anchors(start: Vector2, dir: Vector2) -> Array:
-	return _approach(_endless(), start, dir)
+## The same absolute places, up to the float32 rounding of a local position in two frames (the
+## routes may end with different origins; an ulp is 1.5e-5 tm under 256 tm).
+static func _same_places(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in a.size():
+		if absf(a[i][0] - b[i][0]) > 3e-5 or absf(a[i][1] - b[i][1]) > 3e-5:
+			return false
+	return true
 
 
 ## Puts the cell at abs `start` and swims along `dir` until ZONE shows its full count; its items'

@@ -8,7 +8,10 @@ extends RefCounted
 ## Positions. The sim keeps float32 local positions in tm, relative to the origin; the origin and
 ## every generated object are absolute and float64 (am, at size 1 equal to tm). A local value is
 ## always derived from an absolute one by subtracting in float64 and then casting, never by adding up
-## shifts, so a zone, site or collider is exact however far the cell swims.
+## shifts, so a zone, site or collider is exact however far the cell swims. When the cell gets more
+## than rebase_beyond_tm from the origin, the origin moves by whole chunks (rebase): bodies, brain
+## memories and food items shift by exactly that offset (RebaseShift), everything else re-derives,
+## and "rebased" tells the scene.
 ##
 ## Chunks are 32 tm squares keyed by Vector2i, loaded from WorldGen.chunk (pure, so a chunk comes
 ## back the same whatever route reaches it). The view set (view_set_keys) is the 3 x 3 chunks round
@@ -45,6 +48,8 @@ var counters := {"awake_overflow": 0, "chunk_waits": 0, "food_trimmed": 0, "evic
 var rings := {}
 var caps := {}
 var chunk_tm := 32.0
+var rebase_beyond_tm := 96.0
+var rebase_step_tm := 32.0
 var world_seed := 0
 var gen_version := 1
 ## The camera table the view set is measured with (the layout's camera), and the spawn view's
@@ -74,6 +79,8 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	w.rings = config.rings.duplicate()
 	w.caps = config.caps.duplicate()
 	w.chunk_tm = config.chunk_tm
+	w.rebase_beyond_tm = config.rebase_beyond_tm
+	w.rebase_step_tm = config.rebase_step_tm
 	w.world_seed = p_gen.world_seed
 	w.gen_version = p_gen.gen_version
 	var spawn: PackedFloat64Array = p_content.home.spawn
@@ -83,9 +90,13 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11): unload (step 3), load (step 4),
-## then the food view (step 6). Load, unload and food always measure from the body, alive or dead.
+## The streaming block, first in every endless tick (spine 3.11): the floating origin (step 2),
+## unload (step 3), load (step 4), then the food view (step 6). Load, unload and food always measure
+## from the body, alive or dead.
 func step(sim: PoolSim) -> void:
+	var p := sim.motion.position
+	if p.length() > rebase_beyond_tm:
+		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
 	_unload(sim)
 	_load(sim)
 	_food_view(sim)
@@ -138,6 +149,48 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 	origin_x_am = x_am
 	origin_y_am = y_am
 	_rederive(sim)
+
+
+## Moves the origin by `offset` (tm, whole chunks in each axis): every position the sim stores moves
+## by -offset. Bodies (with their previous positions, so the view's interpolation stays continuous),
+## actors, every creature's memories (sleepers too) and food items shift by it exactly; zones and
+## colliders re-derive from their absolute values. Emits rebased {offset_tm, origin_am}.
+func rebase(sim: PoolSim, offset: Vector2) -> void:
+	origin_x_am += float(offset.x) * _tm_to_am
+	origin_y_am += float(offset.y) * _tm_to_am
+	RebaseShift.motion(sim.motion, offset)
+	sim.actor.position -= offset
+	if sim.creatures != null:
+		for c in sim.creatures.creatures:
+			RebaseShift.motion(c.motion, offset)
+			c.actor.position -= offset
+			if c.brain != null:
+				RebaseShift.memory(c.brain, offset)
+	RebaseShift.items(sim.plankton.items, PackedStringArray(["position", "anchor"]), offset)
+	RebaseShift.items(sim.carrion.items, PackedStringArray(["position"]), offset)
+	_rederive(sim)
+	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
+
+
+## The teleport path (spine 3.11 step 0, D-10), behind a camera cut: every loaded chunk unloads,
+## every creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
+## point exactly (rebased), and the view set round it loads at once, its food zones flagged to fill
+## at once (C-9). The caller places the cell near the new origin.
+func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
+	for key in _keys.duplicate():
+		_unload_chunk(sim, key)
+	if sim.creatures != null:
+		for c in sim.creatures.creatures.duplicate():
+			sim.creatures.remove(c, "unloaded", sim.tick, false)
+	sim.carrion.drop_all()
+	var old_x := origin_x_am
+	var old_y := origin_y_am
+	set_origin_abs(sim, x_am, y_am)
+	_emit(sim, {"type": "rebased", "offset_tm": Vector2((origin_x_am - old_x) / _tm_to_am, (origin_y_am - old_y) / _tm_to_am),
+		"origin_am": [origin_x_am, origin_y_am]})
+	for key in view_set_keys(Vector2.ZERO):
+		_load_chunk(sim, key)
+	_fill_all = true
 
 
 # --- chunks ---

@@ -597,6 +597,31 @@ func debug_hurt_player(amount: float) -> bool:
 
 
 ## Moves the cell to a clear point at rest; keeps the heading unless one is given.
+## Dev (endless): moves the cell to an absolute place (am) at once, as a teleport respawn does: the
+## old ground unloads, the origin moves there, the new view set loads with its food, and the cell
+## takes the clear point nearest it. False in the pool or for a place that is not finite.
+func debug_teleport_abs(x_am: float, y_am: float, heading: float = NAN) -> bool:
+	if world == null or not is_finite(x_am) or not is_finite(y_am):
+		return false
+	world.teleport(self, x_am, y_am)
+	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), heading if is_finite(heading) else motion.heading)
+	_sync_actor()
+	_contact.clear()
+	world.fill_all_food_now(self)
+	_emit({"type": "debug", "command": "teleport_abs", "x_am": x_am, "y_am": y_am})
+	return true
+
+
+## Dev (endless): moves the floating origin by whole chunks now, as the streaming block does when the
+## cell swims far from it. False in the pool.
+func debug_rebase(by_chunks: Vector2i) -> bool:
+	if world == null:
+		return false
+	world.rebase(self, Vector2(by_chunks) * world.rebase_step_tm)
+	_emit({"type": "debug", "command": "rebase", "by": [by_chunks.x, by_chunks.y]})
+	return true
+
+
 func debug_teleport(p: Vector2, heading: float = NAN) -> bool:
 	if not arena.is_clear(p, phenotype.radius):
 		return false
