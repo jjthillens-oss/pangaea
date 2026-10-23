@@ -1,0 +1,597 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Band-0 placement kit for the endless world (docs/s1/s1-interfaces.md 4.4). Written by tools/blender/make_s1_kit.py from the asset records.",
+  "footprint_classes": {
+    "fp_s": [
+      0.6,
+      0.9
+    ],
+    "fp_m": [
+      0.9,
+      1.2
+    ],
+    "fp_l": [
+      1.2,
+      1.5
+    ]
+  },
+  "landmark": {
+    "anchor_radius_bu": 3.0,
+    "collide_radius_bu": 2.0,
+    "groups": [
+      2,
+      2,
+      1,
+      1
+    ]
+  },
+  "assets": [
+    {
+      "id": "shell_diatom_disc",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/shell_diatom_disc.glb",
+      "record": "res://assets/records/shell_diatom_disc.json",
+      "scale": [
+        0.8,
+        1.2
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "footprint_class": "fp_s",
+      "footprint_radius_m": 0.75,
+      "pickable": true,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "shell_radiolarian_lens",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/shell_radiolarian_lens.glb",
+      "record": "res://assets/records/shell_radiolarian_lens.json",
+      "scale": [
+        0.8,
+        1.2
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "footprint_class": "fp_s",
+      "footprint_radius_m": 0.75,
+      "pickable": true,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "shell_girdle_drum",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/shell_girdle_drum.glb",
+      "record": "res://assets/records/shell_girdle_drum.json",
+      "scale": [
+        0.85,
+        1.15
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "footprint_class": "fp_m",
+      "footprint_radius_m": 1.05,
+      "pickable": true,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "shell_fluted_tower",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/shell_fluted_tower.glb",
+      "record": "res://assets/records/shell_fluted_tower.json",
+      "scale": [
+        0.75,
+        1.25
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "footprint_class": "fp_l",
+      "footprint_radius_m": 1.2,
+      "pickable": true,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "shell_bell",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/shell_bell.glb",
+      "record": "res://assets/records/shell_bell.json",
+      "scale": [
+        0.88,
+        1.12
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "footprint_class": "fp_l",
+      "footprint_radius_m": 1.35,
+      "pickable": true,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_great_shell",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_great_shell.glb",
+      "record": "res://assets/records/landmark_great_shell.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 0,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_ring",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_ring.glb",
+      "record": "res://assets/records/landmark_ring.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "steps_90",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 0,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_spire",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_spire.glb",
+      "record": "res://assets/records/landmark_spire.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 1,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_fan",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_fan.glb",
+      "record": "res://assets/records/landmark_fan.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "steps_90",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 1,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_arch",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_arch.glb",
+      "record": "res://assets/records/landmark_arch.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "steps_90",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 2,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "landmark_shed_husk",
+      "kind": "landmark",
+      "band": 0,
+      "glb": "res://assets/export/landmark_shed_husk.glb",
+      "record": "res://assets/records/landmark_shed_husk.json",
+      "scale": [
+        0.92,
+        1.06
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        },
+        {
+          "id": "frosted",
+          "tint": "#D6E0F5",
+          "growth": "Growth_Needles",
+          "scale": 0.96
+        },
+        {
+          "id": "amber",
+          "tint": "#F3E3C6",
+          "growth": "Growth_Beads",
+          "scale": 1.04
+        }
+      ],
+      "group": 3,
+      "footprint_radius_m": 2.0,
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "rare_giant_husk",
+      "kind": "rare",
+      "band": 0,
+      "glb": "res://assets/export/rare_giant_husk.glb",
+      "record": "res://assets/records/rare_giant_husk.json",
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "yaw_rule": "fixed",
+      "dressings": [],
+      "rare_kind": "giant_husk",
+      "colliders": [
+        {
+          "center": [
+            -3.4,
+            0.4
+          ],
+          "radius": 1.1
+        },
+        {
+          "center": [
+            -1.15,
+            -0.3
+          ],
+          "radius": 1.3
+        },
+        {
+          "center": [
+            1.15,
+            0.3
+          ],
+          "radius": 1.25
+        },
+        {
+          "center": [
+            3.4,
+            -0.35
+          ],
+          "radius": 1.1
+        }
+      ],
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "rare_shell_cathedral",
+      "kind": "rare",
+      "band": 0,
+      "glb": "res://assets/export/rare_shell_cathedral.glb",
+      "record": "res://assets/records/rare_shell_cathedral.json",
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "yaw_rule": "fixed",
+      "dressings": [],
+      "rare_kind": "shell_cathedral",
+      "colliders": [
+        {
+          "center": [
+            3.4,
+            0.0
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            2.4042,
+            2.4042
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            0.0,
+            3.4
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            -2.4042,
+            2.4042
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            -3.4,
+            0.0
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            -2.4042,
+            -2.4042
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            -0.0,
+            -3.4
+          ],
+          "radius": 0.9
+        },
+        {
+          "center": [
+            2.4042,
+            -2.4042
+          ],
+          "radius": 0.9
+        }
+      ],
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "marker_checkpoint_column",
+      "kind": "marker",
+      "band": -1,
+      "glb": "res://assets/export/marker_checkpoint_column.glb",
+      "record": "res://assets/records/marker_checkpoint_column.json",
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "yaw_rule": "fixed",
+      "dressings": [],
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "marker_origin_arrow",
+      "kind": "marker",
+      "band": -1,
+      "glb": "res://assets/export/marker_origin_arrow.glb",
+      "record": "res://assets/records/marker_origin_arrow.json",
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "yaw_rule": "fixed",
+      "dressings": [],
+      "placeholder": true,
+      "approved": false
+    },
+    {
+      "id": "rock_a",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/rock_a.glb",
+      "record": "res://assets/records/rock_a.json",
+      "footprint_class": "fp_m",
+      "footprint_radius_m": 1.0,
+      "pickable": false,
+      "scale": [
+        0.8,
+        1.5
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "placeholder": false,
+      "approved": false
+    },
+    {
+      "id": "rock_b",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/rock_b.glb",
+      "record": "res://assets/records/rock_b.json",
+      "footprint_class": "fp_m",
+      "footprint_radius_m": 1.0,
+      "pickable": false,
+      "scale": [
+        0.8,
+        1.5
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "placeholder": false,
+      "approved": false
+    },
+    {
+      "id": "rock_c",
+      "kind": "shell",
+      "band": 0,
+      "glb": "res://assets/export/rock_c.glb",
+      "record": "res://assets/records/rock_c.json",
+      "footprint_class": "fp_m",
+      "footprint_radius_m": 1.0,
+      "pickable": false,
+      "scale": [
+        0.8,
+        1.5
+      ],
+      "yaw_rule": "free",
+      "dressings": [
+        {
+          "id": "plain",
+          "tint": "#FFFFFF",
+          "growth": "",
+          "scale": 1.0
+        }
+      ],
+      "placeholder": false,
+      "approved": false
+    }
+  ]
+}

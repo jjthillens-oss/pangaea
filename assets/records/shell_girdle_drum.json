@@ -1,0 +1,56 @@
+{
+  "id": "shell_girdle_drum",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "blockout - S1, not visually approved",
+  "purpose": "Endless world band-0 shell (S1 rough): a tall diatom drum with a girdle band. An obstacle the cell slides around; slots pick it by footprint class.",
+  "category": "shell",
+  "source_blend": "assets/source/blender/shell_girdle_drum.blend",
+  "generator_script": "tools/blender/make_s1_kit.py",
+  "export_path": "assets/export/shell_girdle_drum.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 2.179,
+    "y_forward": 2.179,
+    "z_up": 2.59
+  },
+  "triangles": 1216,
+  "triangle_budget": 1300,
+  "textures": [],
+  "materials": [
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ShellGirdleDrum"
+  ],
+  "kind": "shell",
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_class": "fp_m",
+  "footprint_radius_m": 1.05,
+  "yaw_rule": "free",
+  "pickable": true,
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    }
+  ],
+  "swim_band_min_radius_m": 1.047,
+  "swim_band_radius_m": 1.05,
+  "top_m": 0.57,
+  "bottom_m": -2.02,
+  "scale_range": [
+    0.85,
+    1.15
+  ],
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+}
