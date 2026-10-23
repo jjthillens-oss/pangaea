@@ -121,7 +121,16 @@ func test_a_running_drain_never_takes_energy_below_the_floor() -> void:
 	var cap := sim.state.energy_capacity
 	var floor_e := float(g.cfg.drain_floor_share) * cap
 	var rate := g.ring(1) / float(g.cfg.drain_ring_seconds) * PoolSim.DT
+	# One still tick well above the floor gives a tick's whole drop: the capped drain and the burn.
 	sim.debug_set_energy(floor_e + 60.0 * rate)
+	var e0 := sim.state.energy
+	sim.step(SimIntent.new())
+	var drop := e0 - sim.state.energy
+	var burn := drop - rate
+	check(burn > 0.0, "the metabolism burns (%f a tick)" % burn)
+	# From here, 30 ticks on the burn leaves half a tick's drain above the floor: that tick's drain is
+	# capped by the room, so it stops at the floor exactly, whatever the drain and burn rates are.
+	sim.debug_set_energy(floor_e + 30.0 * drop + burn + 0.5 * rate)
 	var drained := 0
 	var reached := false
 	for t in 240:
