@@ -61,6 +61,7 @@ $G --path prototypes/creature-lab spine_lab.tscn -- --body=stage1 --anim=pose   
 $G --headless --path prototypes/creature-lab --script res://tests/run_spine_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_stage1_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_legless_tests.gd
+$G --headless --path prototypes/creature-lab --script res://tests/run_swim_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_skin_volume_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tests/run_editor_tests.gd
 $G --headless --path prototypes/creature-lab --script res://tools/pose_matrix.gd  # -> results/pose_error.json
@@ -90,3 +91,16 @@ ground-drive checks run both modes for 60 seconds of deterministic random input 
 contact slip, finite state, and level-root stability. The combined `tests/run_tests.gd` runner
 includes these checks. Measurements and limits are in
 `docs/research/spore/LEGLESS_LAB_REPORT.md`.
+
+## PROPOSED aquatic swim mode
+
+`walker_lab.tscn` accepts `--body=swim_tail|swim_fins` and `--medium=water`.
+Mode selection reads the body description before the existing legged and ground-drive
+routes: a fin, flipper or tail fluke selects water when no limb reaches the ground;
+`--medium=water` explicitly overrides anatomy. It never creates a `GroundDrive` for
+a swimmer. `swim_tail` drives a head-to-tail wave and paired fin strokes;
+`swim_fins` has paired flippers without a tail paddle and uses fin strokes alone.
+Both are PROPOSED lab descriptions, not game assets or production locomotion.
+The controller's pitch/roll, forward-cycle progress and curvature gates run in
+`tests/run_swim_tests.gd`. Two side-view screenshots and measured limits are in
+`docs/research/spore/SWIM_LAB_REPORT.md`.

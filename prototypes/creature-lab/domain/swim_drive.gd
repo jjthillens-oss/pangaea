@@ -80,9 +80,7 @@ func step(dt: float, throttle: float, turn: float) -> void:
 	# Buoyancy is neutral: no acceleration toward or away from a surface.
 	root_pitch = deg_to_rad(4.0) * clampf(throttle, -1.0, 1.0)
 	root_roll = deg_to_rad(4.0) * clampf(turn, -1.0, 1.0)
-	var up := Basis(Vector3.UP, -yaw) * (posed_root_transform().basis * Vector3.UP)
-	max_pitch = maxf(max_pitch, absf(atan2(up.z, up.y)))
-	max_roll = maxf(max_roll, absf(atan2(up.x, up.y)))
+	sample_root_orientation()
 	var old_cycle := floori(cycles)
 	cycles += wave_hz * dt * clampf(absf(v) / speed_top, 0.25, 1.0)
 	phase = fposmod(cycles, 1.0)
@@ -107,6 +105,12 @@ func fin_angle(i: int) -> float:
 
 func posed_root_transform() -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, yaw) * Basis.from_euler(Vector3(root_pitch, 0.0, root_roll)), position)
+
+
+func sample_root_orientation() -> void:
+	var up := Basis(Vector3.UP, -yaw) * (posed_root_transform().basis * Vector3.UP)
+	max_pitch = maxf(max_pitch, absf(atan2(up.z, up.y)))
+	max_roll = maxf(max_roll, absf(atan2(up.x, up.y)))
 
 
 func within_stability_gate() -> bool:
