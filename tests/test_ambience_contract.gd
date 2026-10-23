@@ -11,9 +11,11 @@ extends TestCase
 ## every GeometryInstance3D, every material it draws with (overrides, surface materials and their
 ## next passes) and each MultiMesh's instances. Colour and opacity are read the way the decor
 ## shaders draw them, by convention:
-##   - a material's colours are its Color uniforms and the texels of its texture uniforms (gradient
-##     stops included), times a float uniform `brightness` when it has one; a standard material's
-##     are its albedo and emission;
+##   - a material's colours are its Color uniforms and its texture uniforms, times a float uniform
+##     `brightness` when it has one; a standard material's are its albedo, emission and albedo
+##     texture, and a particle process material's its colour and colour ramps. For hue, a flat
+##     colour and every stop of a gradient or colour ramp count one by one, and an image texture
+##     (a painting) by its alpha-weighted mean;
 ##   - its opacity is the product of what it has of: the colour's or texel's alpha, a float uniform
 ##     `opacity` (or `alpha`), and its MultiMesh instances' custom data w (INSTANCE_CUSTOM.w). An
 ##     opaque material's opacity is 1;
@@ -35,8 +37,10 @@ const CREATURE_VIEW := "res://game/scenes/pool/creature_view.gd"
 const PLAN_LANE_PRIORITY := 8
 ## Nothing decorative lies in this band around the swim plane (m)...
 const PLANE_BAND := Vector2(-1.5, 0.5)
-## ...and the foreground above it is sparse.
+## ...and the foreground above it is sparse and stays low: the plan's foreground band ends 3 m up.
+## The camera sits 8.2 m over the plane at zoom 10, so decor much higher would fill the screen.
 const MAX_FOREGROUND := 40
+const FOREGROUND_TOP_M := 3.0
 ## Budgets (the ambience handoff): live particles, large billboards, and transparent billboards
 ## stacked over one point. A billboard is large from this size (m) on.
 const MAX_PARTICLES := 2000
@@ -189,13 +193,30 @@ func _uniform_names(m: ShaderMaterial) -> Array[String]:
 ## A material's colours (each with its alpha) as the convention above reads them, brightness applied.
 func _colors(m: Material) -> Array[Color]:
 	var out: Array[Color] = []
+	for color_set in _color_sets(m):
+		out.append_array(color_set.colors)
+	return out
+
+
+## A material's colours in sets, brightness applied: {"what", "colors", "painting"}. A flat colour,
+## or a gradient's or colour ramp's stops, is a set with "painting" false; an image texture's texels
+## are one with "painting" true.
+func _color_sets(m: Material) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
 	if m is BaseMaterial3D:
 		var b := m as BaseMaterial3D
-		out.append(b.albedo_color)
+		out.append(_flat("albedo", b.albedo_color, 1.0))
 		if b.emission_enabled:
-			out.append(Color(b.emission * b.emission_energy_multiplier, 1.0))
+			out.append(_flat("emission", Color(b.emission * b.emission_energy_multiplier, 1.0), 1.0))
 		if b.albedo_texture:
-			out.append_array(_texels(b.albedo_texture, 1.0))
+			out.append(_texture_colors("albedo_texture", b.albedo_texture, 1.0))
+		return out
+	if m is ParticleProcessMaterial:
+		var p := m as ParticleProcessMaterial
+		out.append(_flat("color", p.color, 1.0))
+		for ramp: Texture2D in [p.color_ramp, p.color_initial_ramp]:
+			if ramp:
+				out.append(_texture_colors("color ramp", ramp, 1.0))
 		return out
 	if not (m is ShaderMaterial and (m as ShaderMaterial).shader):
 		return out
@@ -205,32 +226,40 @@ func _colors(m: Material) -> Array[Color]:
 	for uniform_name in names:
 		var v: Variant = _param(sm, uniform_name)
 		if v is Color:
-			var c := v as Color
-			out.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
+			out.append(_flat(uniform_name, v, brightness))
 		elif v is Texture2D:
-			out.append_array(_texels(v, brightness))
+			out.append(_texture_colors(uniform_name, v, brightness))
 	return out
 
 
-## A texture's colours: a gradient's stops, else its texels on a TEXEL_GRID square.
-func _texels(texture: Texture2D, brightness: float) -> Array[Color]:
-	var out: Array[Color] = []
-	var gradient: Gradient = texture.gradient if (texture is GradientTexture1D or texture is GradientTexture2D) else null
+func _flat(what: String, c: Color, brightness: float) -> Dictionary:
+	var colors: Array[Color] = [Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a)]
+	return {"what": what, "colors": colors, "painting": false}
+
+
+## A texture's colours: a gradient's stops (a gradient texture, or a noise texture's colour ramp),
+## else its texels on a TEXEL_GRID square, a painting.
+func _texture_colors(what: String, texture: Texture2D, brightness: float) -> Dictionary:
+	var colors: Array[Color] = []
+	var gradient: Gradient = null
+	if texture is GradientTexture1D or texture is GradientTexture2D:
+		gradient = texture.gradient
+	elif texture is NoiseTexture2D:
+		gradient = (texture as NoiseTexture2D).color_ramp
 	if gradient:
 		for c in gradient.colors:
-			out.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
-		return out
+			colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
+		return {"what": what, "colors": colors, "painting": false}
 	var image := texture.get_image()
-	if image == null:
-		return out
-	if image.is_compressed():
-		image.decompress()
-	image.resize(TEXEL_GRID, TEXEL_GRID)
-	for y in TEXEL_GRID:
-		for x in TEXEL_GRID:
-			var c := image.get_pixel(x, y)
-			out.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
-	return out
+	if image != null:
+		if image.is_compressed():
+			image.decompress()
+		image.resize(TEXEL_GRID, TEXEL_GRID)
+		for y in TEXEL_GRID:
+			for x in TEXEL_GRID:
+				var c := image.get_pixel(x, y)
+				colors.append(Color(c.r * brightness, c.g * brightness, c.b * brightness, c.a))
+	return {"what": what, "colors": colors, "painting": true}
 
 
 ## The largest opacity a material's own uniforms give it (opacity or alpha), or 1.
@@ -447,12 +476,20 @@ func test_decor_stays_clear_of_the_swim_plane() -> void:
 			check(false, "%s: this runner cannot read its instances, so its material names their band in a height_range uniform" % geo.name)
 			continue
 		var inside := 0
+		var over := 0
 		for y in h.points:
 			inside += 1 if y > PLANE_BAND.x and y < PLANE_BAND.y else 0
-			above += 1 if y >= PLANE_BAND.y else 0
+			over += 1 if y >= PLANE_BAND.y else 0
 		if not (geo is MultiMeshInstance3D) or h.band:
 			inside += 1 if h.low < PLANE_BAND.y and h.high > PLANE_BAND.x else 0
+		# Items above the plane: every MultiMesh instance and every particle counts, a mesh once.
+		if geo is MultiMeshInstance3D:
+			above += over
+		elif over > 0:
+			above += (geo as GPUParticles3D).amount if geo is GPUParticles3D else ((geo as CPUParticles3D).amount if geo is CPUParticles3D else 1)
 		check(inside == 0, "%s keeps out of %.1f to %.1f m around the swim plane (%d inside; it spans %.2f to %.2f m)" % [geo.name, PLANE_BAND.x, PLANE_BAND.y, inside, h.low, h.high])
+		# The top of its band, its highest instance, or its mesh's top.
+		check(h.high <= FOREGROUND_TOP_M, "%s stays at most %.1f m above the swim plane (it reaches %.2f m)" % [geo.name, FOREGROUND_TOP_M, h.high])
 	check(above <= MAX_FOREGROUND, "%d decor items above the plane, at most %d" % [above, MAX_FOREGROUND])
 	ambience.get_parent().free()
 
@@ -513,19 +550,19 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 		return
 	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
 		for m in _materials(geo):
-			var colors := _colors(m)
-			# A painting counts by its alpha-weighted mean, a flat colour as it is.
-			var sum := Color(0, 0, 0, 0)
-			var count := 0
-			for c in colors:
-				sum += Color(c.r * c.a, c.g * c.a, c.b * c.a, c.a)
-				count += 1
 			var named: Array = []
-			if count > 8 and sum.a > 0.0:
-				named.append(["its texture's mean", Color(sum.r / sum.a, sum.g / sum.a, sum.b / sum.a)])
-			else:
-				for c in colors:
-					named.append(["%s" % c.to_html(false), c])
+			for color_set: Dictionary in _color_sets(m):
+				if not color_set.painting:
+					# A flat colour, and every stop of a ramp however many it has, counts as it is.
+					for c: Color in color_set.colors:
+						named.append(["%s %s" % [color_set.what, c.to_html(false)], c])
+					continue
+				# A painting counts by its alpha-weighted mean.
+				var sum := Color(0, 0, 0, 0)
+				for c: Color in color_set.colors:
+					sum += Color(c.r * c.a, c.g * c.a, c.b * c.a, c.a)
+				if sum.a > 0.0:
+					named.append(["%s's mean" % color_set.what, Color(sum.r / sum.a, sum.g / sum.a, sum.b / sum.a)])
 			for entry in named:
 				var lab := LookProbe.lab(entry[1])
 				if Vector2(lab.y, lab.z).length() < MIN_CHROMA:
