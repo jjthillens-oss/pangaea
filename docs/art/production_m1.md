@@ -11,6 +11,15 @@ review sheets by `tools/blender/render_production.py`, in-game frames by
 DECISIONS "Pool lighting pass"); the floor's production pass keeps its geometry contract, vertex
 colours and lighting passes and adds detail on top.
 
+**Retired by the micro look (engineering's note, 2026-10-23).** The micro-world fluid look removed
+the pool floor (DECISIONS, "The fluid look (C4)"): `pool_floor`, `M_PoolFloor.tres` and the
+sand-ripple normal map `assets/export/T_PoolFloor_Normal.png` are gone from the game and the export
+folder. The `pool_floor` rows in the tables below are therefore history, not budget, and the Aerial
+Beach CC0 credit now covers only the kept source scan,
+`assets/source/textures/cc0/polyhaven_aerial_beach_01/aerial_beach_01_nor_gl_1k.jpg`. The rows stay
+as written so that art's ambience PR (#10), which edits the rock rows next to them, merges without
+a conflict; art can drop them in its next pass.
+
 ## What each asset became
 
 | Asset | Look |
