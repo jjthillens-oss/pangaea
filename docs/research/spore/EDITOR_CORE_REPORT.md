@@ -129,7 +129,18 @@ The gameplay skin needs no change: it already runs coarser than the preview, at 
   and stretches the tail until the toes are
   too thin for the finest grid.
 
-## 6. Next (PROPOSED)
+## 6. Skin built off the main thread
 
-1. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
-2. Hand the core to S4's editor shell when the creature stage starts.
+In interactive runs the Editor Lab builds the skin on a worker thread. The handles follow the mouse at once, and the
+skin catches up. An edit made while a build runs replaces any queued body, so the worker always builds the newest one.
+
+A local GPU device belongs to the thread that made it, so the worker creates and frees its own. A first try that
+started a new thread per build failed with "can only be called from the render thread".
+
+`--demo --async` runs the scripted demo on this path: the clip finishes with no errors and exits cleanly. The plain
+demo still builds in step, so every movie frame shows the edit it describes.
+
+## 7. Next (PROPOSED)
+
+1. Hand the core to S4's editor shell when the creature stage starts.
+2. Walk the edited creature straight from the editor (Walker Lab on the working body), as a test drive.

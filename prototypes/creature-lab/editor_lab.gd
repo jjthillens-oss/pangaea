@@ -2,7 +2,8 @@ extends Node3D
 ## Editor Lab (PROPOSED): drag a Stage 1 body's vertebrae, joints and parts, with the skin rebuilt live. A thin shell
 ## over the scene-free editor core (domain/creature_editor_session.gd, domain/editor_picking.gd); the game's editor
 ## UI would host the same core. Command line (after --): --body=NAME (default s1_quadruped), --points=N,
-## --divisions=N (skin grid), --demo (a scripted run of edits for a clip; quits when done).
+## --divisions=N (skin grid), --sync (build the skin on the main thread), --demo (a scripted run of edits for a clip;
+## quits when done).
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part) to move it; with a part tool chosen, left-click
 ## the skin to add one. Wheel over the selected vertebra or joint: thicker or thinner; elsewhere: zoom. Right-drag:
@@ -20,6 +21,7 @@ const BodyField := preload("res://domain/body_field.gd")
 const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 const Session := preload("res://domain/creature_editor_session.gd")
 const Picking := preload("res://domain/editor_picking.gd")
+const BodyCodec := preload("res://domain/body_codec.gd")
 
 const TOOLS := ["eye", "beak", "fin", "foot", "horn"]
 const HANDLE_PICK_PX := 16.0
@@ -48,6 +50,17 @@ var drag_plane := Plane()
 var message := ""
 var skin_ms := 0.0
 var _dirty := true
+## Skin builds on a worker thread (interactive runs; the demo builds in step).
+var threaded := true
+## --async: the demo also builds on the worker thread (a check of the threaded path).
+var async_demo := false
+var _worker: Thread
+var _mutex := Mutex.new()
+var _signal := Semaphore.new()
+var _job := {}
+var _built := {}
+var _quit := false
+var _building := false
 var _orbit := Vector2(2.05, 0.3)
 var _distance := 2.6
 var _orbiting := false
@@ -66,12 +79,19 @@ func _ready() -> void:
 			"points": points = int(kv[1])
 			"divisions": divisions = int(kv[1])
 			"demo": demo = true
+			"sync": threaded = false
+			"async": async_demo = true
 	part_rules = Lab.part_rules()
 	orientations = Lab.part_orientations(part_rules)
 	session = Session.new(Lab.body(body_name), Lab.rules(), part_rules, Lab.editor_costs(), points)
-	gpu = load("res://skin/skin_gpu.gd").new()
-	if not gpu.is_available():
-		gpu = null
+	if demo:
+		threaded = async_demo
+	if threaded:
+		# A local GPU device belongs to the thread that made it, so the worker makes and keeps its own.
+		_worker = Thread.new()
+		_worker.start(_work)
+	else:
+		gpu = _make_gpu()
 	var box: AABB = session.working.bounds_m()
 	_rig_offset = Vector3(0.0, -box.position.y + 0.01, 0.0)
 	_focus = box.get_center() + _rig_offset
@@ -84,23 +104,85 @@ func _ready() -> void:
 # Rebuild ---------------------------------------------------------------------------------------------------------
 
 
+## Rebuilds the creature from the working body. Interactive runs build the skin on a worker thread, so a drag never
+## waits on it: the handles follow the mouse at once and the skin catches up (an edit made while a build runs is built
+## next). The demo builds in step, so every movie frame shows the edit it describes.
 func _rebuild() -> void:
+	_dirty = false
 	var desc = session.working
+	var placed := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations)
+	_rebuild_handles(desc, placed)
+	if not threaded:
+		_present(_build_skin(desc.to_dict()))
+		return
+	# The newest body replaces any the worker has not started on.
+	_mutex.lock()
+	_job = desc.to_dict()
+	_building = true
+	_mutex.unlock()
+	_signal.post()
+
+
+static func _make_gpu() -> RefCounted:
+	var g = load("res://skin/skin_gpu.gd").new()
+	return g if g.is_available() else null
+
+
+## The worker thread: builds the newest body it is given until told to quit; owns the GPU device.
+func _work() -> void:
+	gpu = _make_gpu()
+	while true:
+		_signal.wait()
+		_mutex.lock()
+		var job: Dictionary = _job
+		_job = {}
+		var quit := _quit
+		_mutex.unlock()
+		if quit:
+			break
+		if job.is_empty():
+			continue
+		var built := _build_skin(job)
+		_mutex.lock()
+		_built = built
+		_mutex.unlock()
+	if gpu:
+		gpu.free_resources()
+		gpu = null
+
+
+func _build_skin(body: Dictionary) -> Dictionary:
+	var desc = BodyCodec.from_dict(body)
 	var t0 := Time.get_ticks_usec()
 	var d: int = divisions if divisions > 0 else desc.preview_divisions(session.rules)
 	var arrays: Dictionary = gpu.build(desc, d) if gpu else SkinCpu.build(desc, mini(d, 32))
-	skin_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	return {"desc": desc, "arrays": arrays, "ms": (Time.get_ticks_usec() - t0) / 1000.0}
+
+
+func _present(built: Dictionary) -> void:
+	var desc = built["desc"]
+	skin_ms = built["ms"]
 	if rig:
 		rig.free()
 	rig = SpineRig.new()
 	add_child(rig)
 	rig.position = _rig_offset
-	rig.setup(desc, arrays, BODY_COLOR)
-	var placed := AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations)
-	rig.add_parts(placed, orientations)
+	rig.setup(desc, built["arrays"], BODY_COLOR)
+	rig.add_parts(AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
 	rig.use_skin_shader({"color_base": BODY_COLOR, "pattern_seed": 3, "coat_pattern": 2, "detail_pattern": 1})
-	_rebuild_handles(desc, placed)
-	_dirty = false
+
+
+func _collect_skin() -> void:
+	if not threaded:
+		return
+	_mutex.lock()
+	var built := _built
+	_built = {}
+	if not built.is_empty():
+		_building = not _job.is_empty()
+	_mutex.unlock()
+	if not built.is_empty():
+		_present(built)
 
 
 func _rebuild_handles(desc: RefCounted, placed: Array) -> void:
@@ -439,14 +521,15 @@ func _process(delta: float) -> void:
 		_run_demo()
 	if _dirty:
 		_rebuild()
+	_collect_skin()
 	camera.position = _focus + _distance * Vector3(sin(_orbit.x) * cos(_orbit.y), sin(_orbit.y), cos(_orbit.x) * cos(_orbit.y))
 	camera.look_at(_focus, Vector3.UP)
 	var pv: Dictionary = session.preview()
 	var now: Dictionary = pv["phenotype"]
 	var was: Dictionary = pv["current"]
 	var lines := PackedStringArray([
-		"EDITOR LAB  %s   tool: %s   skin %s %.0f ms" % [body_name, tool if tool != "" else "none",
-				"GPU" if gpu else "GDScript", skin_ms],
+		"EDITOR LAB  %s   tool: %s   skin %s %.0f ms%s" % [body_name, tool if tool != "" else "none",
+				"GPU" if gpu else "GDScript", skin_ms, "  (building)" if _building else ""],
 		"cost %d of %d points%s" % [pv["cost"], points, "" if pv["affordable"] else "  (too many)"],
 		"length %.2f m (was %.2f)   mass %.1f kg (was %.1f)   legs %d   bones %d   parts %d" % [now["length_m"],
 				was["length_m"], now["mass_kg"], was["mass_kg"], now["legs"], now["bones"],
@@ -600,6 +683,12 @@ func _build_world() -> void:
 
 
 func _exit_tree() -> void:
-	if gpu:
+	if _worker != null:
+		_mutex.lock()
+		_quit = true
+		_mutex.unlock()
+		_signal.post()
+		_worker.wait_to_finish()
+	elif gpu:
 		gpu.free_resources()
 	load("res://rig/part_library.gd").clear()
