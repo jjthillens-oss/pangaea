@@ -28,7 +28,8 @@ var store_path := ""
 var store: CreatureStore
 ## Why the store file could not be read (empty when it loaded or did not exist yet); the state is then fresh.
 var load_problems: PackedStringArray = []
-## The screen shown now: the editor, the world, or null (the missing-scenes notice).
+## The screen shown now: the editor, the world, or null (the missing-scenes notice). Nodes, since the tests inject
+## stubs through make_editor / make_world; editor_scene() and world_scene() give the real scenes typed.
 var editor: Node
 var world: Node
 ## The seam the tests use: each returns the screen's Node, or null when its scene is missing. The defaults load
@@ -68,6 +69,16 @@ func mode() -> String:
 	return _mode
 
 
+## The editor scene on screen, or null (the world is up, the scene is missing, or a test's stub stands in).
+func editor_scene() -> CreatureEditor:
+	return editor as CreatureEditor
+
+
+## The world scene on screen, or null likewise.
+func world_scene() -> CreatureWorld:
+	return world as CreatureWorld
+
+
 ## Shows the editor on the state's body and points.
 func open_editor() -> void:
 	_mode = "editor"
@@ -94,6 +105,9 @@ func enter_world() -> void:
 	_add_screen(world)
 	if world.has_method("setup"):
 		world.call("setup", state["body"], int(state["world_seed"]), int(state["points"]))
+	var hud = world.get("hud")
+	if hud != null and hud.has_method("set_title"):
+		hud.call("set_title", String(state["name"]), int(state["generation"]))
 	_connect(world, "evolve_requested", _on_world_evolve)
 	_connect(world, "died", _on_world_died)
 

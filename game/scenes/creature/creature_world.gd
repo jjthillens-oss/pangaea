@@ -46,7 +46,9 @@ const CAMERA_REALIGN_HALF_LIFE_S := 1.2
 const STICK_DEADZONE := 0.25
 const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 0.72, 0.36),
 		Color(0.72, 0.5, 0.86), Color(0.86, 0.45, 0.56), Color(0.45, 0.8, 0.76), Color(0.8, 0.8, 0.5)]
+## The player's colour when the body carries no skin_color (the editor writes its swatch as "rrggbb").
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
+const SKIN_COLOR_KEY := "skin_color"
 const FIELD_COLOR := Color(0.36, 0.47, 0.27)
 const NEST_COLOR := Color(0.78, 0.66, 0.42)
 const FRUIT_RIPE_COLOR := Color(0.82, 0.3, 0.32)
@@ -283,17 +285,18 @@ func _draw_food() -> void:
 
 func _build_player() -> void:
 	var body = sim.body_of(Sim.PLAYER_ID)
+	var color := skin_color_of(body)
 	if sim.player()["has_legs"]:
-		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, PLAYER_COLOR, 0)
+		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, 0)
 	else:
 		# No legs: the body stands at the nest as a plain rig, so the player sees what needs fixing.
 		var rig := SpineRig.new()
 		rig.name = Sim.PLAYER_ID
 		var divisions := mini(body.preview_divisions(data["body_rules"]), PLAYER_SKIN_DIVISIONS_MAX)
-		rig.setup(body, SkinCpu.build(body, divisions), PLAYER_COLOR)
+		rig.setup(body, SkinCpu.build(body, divisions), color)
 		var orientations: Dictionary = CreatureData.part_orientations(data["part_rules"])
 		rig.add_parts(AnchorResolver.resolve_all(body, BodyField.from_description(body), orientations), orientations)
-		rig.use_skin_shader({"color_base": PLAYER_COLOR, "pattern_seed": 0, "coat_pattern": 1, "detail_pattern": 2})
+		rig.use_skin_shader({"color_base": color, "pattern_seed": 0, "coat_pattern": 1, "detail_pattern": 2})
 		var box: AABB = body.bounds_m()
 		rig.position = sim.nest - Vector3(0.0, box.position.y, 0.0)
 		player_rig = rig
@@ -379,6 +382,13 @@ func _place_camera() -> void:
 	var back := Vector3(sin(camera_yaw), 0.0, cos(camera_yaw))
 	var offset := back * cos(camera_pitch) * camera_distance + Vector3(0.0, sin(camera_pitch) * camera_distance, 0.0)
 	camera.look_at_from_position(_focus + offset, _focus, Vector3.UP)
+
+
+## The skin colour the body carries ("skin_color", "rrggbb" or "#rrggbb" from the editor's swatch), else
+## PLAYER_COLOR.
+static func skin_color_of(body: RefCounted) -> Color:
+	var stored := String(body.extra.get(SKIN_COLOR_KEY, "")) if body != null else ""
+	return Color.html(stored) if Color.html_is_valid(stored) else PLAYER_COLOR
 
 
 static func _body_length(body: RefCounted) -> float:

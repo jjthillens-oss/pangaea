@@ -23,7 +23,14 @@ class StubEditor extends Node:
 		backs += 1
 		back_requested.emit()
 
-## A stand-in for CreatureWorld: the contract's signals, setup(body_dict, seed, points) and a sim with points.
+## The world HUD's title seam: set_title(name, generation).
+class StubHud extends RefCounted:
+	var title := ""
+	func set_title(creature_name: String, generation: int) -> void:
+		title = "%s · Generation %d" % [creature_name, generation]
+
+## A stand-in for CreatureWorld: the contract's signals, setup(body_dict, seed, points), a sim with points and a
+## hud with set_title.
 class StubWorld extends Node:
 	signal evolve_requested(points: int)
 	signal died(cause: String)
@@ -31,6 +38,7 @@ class StubWorld extends Node:
 	var world_seed := -1
 	var points := -1
 	var sim: RefCounted
+	var hud := StubHud.new()
 	func setup(p_body: Dictionary, p_seed: int, p_points: int) -> void:
 		body_dict = p_body
 		world_seed = p_seed
@@ -97,6 +105,8 @@ func test_done_saves_the_committed_body_and_enters_the_world() -> void:
 	check_eq(world.points, 120, "the world gets the points left")
 	check_eq(world.world_seed, 99, "and the seed")
 	check_eq(BodyCodec.encode(BodyCodec.from_dict(world.body_dict)), BodyCodec.encode(body), "and the committed body")
+	check_eq((world.hud as StubHud).title, "Newcomer · Generation 1", "the HUD's title names the creature and generation")
+	check(stage.editor_scene() == null and stage.world_scene() == null, "the typed scenes are null for stubs")
 	check_eq(stage.last_save, OK, "saved")
 	var loaded := CreatureStore.new().load_from(path)
 	check(loaded.ok, "the store loads back: %s" % [loaded.errors])
@@ -113,6 +123,8 @@ func test_evolve_saves_the_points_and_reopens_the_editor() -> void:
 	check(stage.editor is StubEditor and stage.world == null, "the world is gone")
 	check_eq((stage.editor as StubEditor).points, 175, "the editor gets the points earned")
 	check_eq(stage.state["generation"], 2, "the generation advanced")
+	(stage.editor as StubEditor).done_requested.emit(CreatureData.body("s1_quadruped").to_dict(), 175)
+	check_eq(((stage.world as StubWorld).hud as StubHud).title, "Newcomer · Generation 2", "the next world's title says so")
 	check_eq((stage.state["history"] as Array).size(), 1, "the generation before is in the history")
 	check_eq(stage.state["history"][0]["generation"], 1, "as generation 1")
 	var loaded := CreatureStore.new().load_from(path)

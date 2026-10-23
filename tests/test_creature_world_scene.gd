@@ -79,6 +79,23 @@ func test_evolve_at_the_nest_reaches_the_stage_and_away_from_it_shows_the_notice
 	world.free()
 
 
+func test_the_editors_skin_colour_reaches_the_players_rig() -> void:
+	var dict: Dictionary = Fixtures.body("s1_quadruped").to_dict()
+	dict["skin_color"] = "4fc08a"
+	var world: CreatureWorld = load(WORLD_SCENE).instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(world)
+	world.setup(dict, 5, 150)
+	var mat := world.player_rig.body.mesh_instance.material_override as ShaderMaterial
+	check(mat != null and (mat.get_shader_parameter("color_base") as Color).is_equal_approx(Color("#4fc08a")),
+			"the player's skin shader takes the body's swatch (%s)" % [mat.get_shader_parameter("color_base") if mat else null])
+	check(CreatureWorld.skin_color_of(Fixtures.body("s1_quadruped")).is_equal_approx(CreatureWorld.PLAYER_COLOR),
+			"without one the default colour")
+	for id in world.rival_rigs:
+		var rival_mat := (world.rival_rigs[id] as Node3D).body.mesh_instance.material_override as ShaderMaterial
+		check(not (rival_mat.get_shader_parameter("color_base") as Color).is_equal_approx(Color("#4fc08a")), "%s keeps its own colour" % id)
+	world.free()
+
+
 func test_a_legless_body_is_told_it_needs_legs_and_can_still_evolve() -> void:
 	var world := make("s1_snake")
 	check(world.player_rig != null and not (world.player_rig is WalkerRig), "a plain rig at the nest")
