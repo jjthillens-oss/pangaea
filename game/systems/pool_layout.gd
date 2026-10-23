@@ -11,6 +11,12 @@ const CELL_RADIUS := 0.5       ## clearance the spawn needs; the radius of every
 ## The part catalog's speed cap. A rock thinner than two ticks at this speed could be skipped.
 const MAX_SPEED := 6.0
 const ZONE_WALL_MARGIN := 1.0  ## zones keep this far inside the soft wall
+## A zone among shells (the endless world) keeps ZONE_CLEAR_SHARE of its grid points, ZONE_CLEAR_STEP
+## apart from its centre, at least ZONE_CLEAR_MARGIN clear of every shell: a plankton anchor needs the
+## item radius plus the drift reach (0.18 + 0.495) of open water (PlanktonField._try_spawn).
+const ZONE_CLEAR_MARGIN := 0.7
+const ZONE_CLEAR_SHARE := 0.75
+const ZONE_CLEAR_STEP := 0.25
 const CAMERA_KEYS: PackedStringArray = ["pitch_deg", "fov_deg", "distance", "zoom_min", "zoom_max",
 	"zoom_step", "follow_half_life_s", "look_ahead_s", "look_ahead_max"]
 
@@ -162,25 +168,22 @@ func validate(max_speed: float = MAX_SPEED) -> PackedStringArray:
 	var ids := {}
 	if zones.is_empty():
 		errors.append("The pool needs at least one plankton zone.")
+	var no_circles: Array[Dictionary] = []
 	for z in zones:
 		if not _new_id(z.id, ids):
 			errors.append("Zone id '%s' is missing or repeated." % z.id)
-		if not (z.radius > 0.0 and z.capacity > 0.0 and z.growth_rate > 0.0):
-			errors.append("Zone '%s' needs a positive radius, capacity and growth rate." % z.id)
-		elif z.center.length() + z.radius > soft_start - ZONE_WALL_MARGIN:
-			errors.append("Zone '%s' reaches within %.1f m of the soft wall." % [z.id, ZONE_WALL_MARGIN])
+		var one_zone: Array[Dictionary] = [z]
+		errors.append_array(zone_problems(one_zone, no_circles, soft_start))
 		if z.capacity > 0.0 and z.capacity < unit:
 			errors.append("Zone '%s' capacity %.1f is below one plankton unit (%.1f), so it could never show food."
 				% [z.id, z.capacity, unit])
-	var tunnel_limit := 2.0 * max_speed * PoolSim.DT
 	for r in rocks:
 		if not _new_id(r.id, ids):
 			errors.append("Rock id '%s' is missing or repeated." % r.id)
 		if r.asset.is_empty():
 			errors.append("Rock '%s' names no asset." % r.id)
-		if not (r.radius > tunnel_limit):
-			errors.append("Rock '%s' radius %.2f m is not above %.2f m (two ticks at top speed)."
-				% [r.id, r.radius, tunnel_limit])
+		var one_rock: Array[Dictionary] = [r]
+		errors.append_array(tunnel_problems(one_rock, max_speed, 1.0))
 		if r.center.length() + r.radius > pool_radius:
 			errors.append("Rock '%s' is not inside the pool." % r.id)
 
@@ -203,6 +206,63 @@ func validate(max_speed: float = MAX_SPEED) -> PackedStringArray:
 			errors.append("Camera '%s' must be positive." % key)
 	if not (camera.zoom_min <= camera.distance and camera.distance <= camera.zoom_max):
 		errors.append("Camera distance must lie between zoom_min and zoom_max.")
+	return errors
+
+
+## The zone checks the pool and the endless world share: a positive radius, capacity and growth rate;
+## ZONE_WALL_MARGIN inside a soft wall at wall_r (INF: none); and, when `circles` ({center, radius})
+## are given, ZONE_CLEAR_SHARE of the zone's points clear of them (zone_clear_share).
+static func zone_problems(p_zones: Array[Dictionary], circles: Array[Dictionary], wall_r: float) -> PackedStringArray:
+	var errors := PackedStringArray()
+	for z in p_zones:
+		if not (z.radius > 0.0 and z.capacity > 0.0 and z.growth_rate > 0.0):
+			errors.append("Zone '%s' needs a positive radius, capacity and growth rate." % z.id)
+			continue
+		if z.center.length() + z.radius > wall_r - ZONE_WALL_MARGIN:
+			errors.append("Zone '%s' reaches within %.1f m of the soft wall." % [z.id, ZONE_WALL_MARGIN])
+		if not circles.is_empty():
+			var share := zone_clear_share(z, circles)
+			if share < ZONE_CLEAR_SHARE:
+				errors.append("Zone '%s' has %.1f%% of its points %.1f m clear of shells; it needs %.0f%%."
+					% [z.id, share * 100.0, ZONE_CLEAR_MARGIN, ZONE_CLEAR_SHARE * 100.0])
+	return errors
+
+
+## The share of the zone's grid points (ZONE_CLEAR_STEP apart, counted from its centre, so the same
+## for every placement and orientation of a tile) at least ZONE_CLEAR_MARGIN clear of every circle.
+static func zone_clear_share(z: Dictionary, circles: Array[Dictionary]) -> float:
+	var center: Vector2 = z.center
+	var radius := float(z.radius)
+	var n := floori(radius / ZONE_CLEAR_STEP)
+	var total := 0
+	var clear := 0
+	for j in range(-n, n + 1):
+		for i in range(-n, n + 1):
+			var offset := Vector2(i * ZONE_CLEAR_STEP, j * ZONE_CLEAR_STEP)
+			if offset.length() > radius:
+				continue
+			total += 1
+			var p := center + offset
+			var free := true
+			for c in circles:
+				if p.distance_to(c.center) - float(c.radius) < ZONE_CLEAR_MARGIN:
+					free = false
+					break
+			if free:
+				clear += 1
+	return clear / float(total) if total > 0 else 0.0
+
+
+## The tunnelling check the pool and the endless world share: a circle of radius x scale no thicker
+## than two ticks at max_speed could be swum through between two ticks.
+static func tunnel_problems(circles: Array[Dictionary], max_speed: float = MAX_SPEED, scale: float = 1.0) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var tunnel_limit := 2.0 * max_speed * PoolSim.DT
+	for c in circles:
+		var radius := float(c.radius) * scale
+		if not (radius > tunnel_limit):
+			errors.append("Rock '%s' radius %.2f m is not above %.2f m (two ticks at top speed)."
+				% [c.id, radius, tunnel_limit])
 	return errors
 
 

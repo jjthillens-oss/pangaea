@@ -241,20 +241,79 @@ func sites_of(species_id: String) -> Array[Dictionary]:
 ## The circle a territorial site guards: its zone's own {"center", "radius"} (the brain adds the
 ## territory margin), or {} for an ambush site or an unknown zone.
 func territory_of(s: Dictionary, layout: PoolLayout) -> Dictionary:
-	if behavior_of(str(s.species)) != "territorial":
+	return territory_from(s, layout.zone(str(s.get("territory_zone", ""))))
+
+
+## territory_of with the zone given ({} for none), so a world tile's zone can stand in for the layout's.
+func territory_from(s: Dictionary, zone: Dictionary) -> Dictionary:
+	if behavior_of(str(s.species)) != "territorial" or zone.is_empty():
 		return {}
-	var z := layout.zone(str(s.get("territory_zone", "")))
-	return {} if z.is_empty() else {"center": z.center, "radius": z.radius}
+	return {"center": zone.center, "radius": zone.radius}
 
 
 ## The disc a creature at this site can reach: the brain's own leash disc ({"center", "radius"}),
 ## which the sim clamps it to after every move.
 func reach_disc(s: Dictionary, layout: PoolLayout) -> Dictionary:
+	return reach_disc_for(s, territory_of(s, layout))
+
+
+## reach_disc with the territory given (territory_from's answer), for a site that is not the layout's.
+func reach_disc_for(s: Dictionary, territory: Dictionary) -> Dictionary:
 	var cfg := brain_config(str(s.species))
 	if cfg.is_empty():
 		return {}
-	var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory_of(s, layout), 0, 0)
+	var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
 	return CreatureBrain.leash_disc(mem)
+
+
+## Rule 6's lane check: the strike lane against what the creature may reach (its leash, plus its
+## smallest territory and the territory margin for a territorial species). The rule's text, or ""
+## when the lane fits. The lane's width needs the body radius, so the part catalog comes too.
+func strike_room_problem(species_id: String, smallest_territory: float, where: String, part_catalog: PartCatalog) -> String:
+	var block: Dictionary = species.get(species_id, {})
+	if block.is_empty() or brain_config(species_id).is_empty():
+		return ""
+	var p := phenotype(species_id, part_catalog)
+	var lane := CreatureBrain.strike_lane(brain_config(species_id).attack, p.radius, PoolLayout.CELL_RADIUS, Vector2.ZERO, 0.0)
+	var room := float(block.leash_m)
+	var room_text := "its leash"
+	if str(block.behavior) == "territorial":
+		room += smallest_territory + float(block.territory_margin_m)
+		room_text = "its smallest territory plus its leash"
+	if float(lane.length) > room:
+		return "%s strike lane %.2f m is longer than %s (%.2f m)." % [where, float(lane.length), room_text, room]
+	return ""
+
+
+## Rules 9 and 10 for one reach disc against a set of circles ({id, center, radius}) in the disc's
+## frame: no surface near the leash circle, and no gap a body of radius r could wedge in between two
+## circles, or between a circle and the soft wall at wall_r (INF: no wall, so no wall gap).
+func check_disc_against_shells(where: String, disc: Dictionary, r: float, shells: Array[Dictionary],
+		wall_r: float, errors: PackedStringArray) -> void:
+	var center: Vector2 = disc.center
+	var reach := float(disc.radius)
+	# Rule 9: no rock surface near the leash circle, where the hard clamp would press it into the rock.
+	var band := r + float(fairness.leash_band_margin_m)
+	# Rule 10: a rock reaching into the disc leaves room to pass it (no gap a body could wedge in).
+	var passage := 2.0 * r + float(fairness.pinch_margin_m)
+	for i in shells.size():
+		var rock: Dictionary = shells[i]
+		var d: float = center.distance_to(rock.center)
+		var to_circle: float = absf(d - reach) - rock.radius
+		if to_circle < band:
+			_rule(errors, 9, "%s: %s lies %.2f m from its leash circle; it needs %.2f m." % [where, rock.id, to_circle, band])
+		if d - rock.radius >= reach + r:
+			continue
+		var to_wall: float = wall_r - rock.center.length() - rock.radius
+		if to_wall > 0.0 and to_wall < passage:
+			_rule(errors, 10, "%s: %s leaves %.2f m to the soft wall; it needs %.2f m." % [where, rock.id, to_wall, passage])
+		for j in shells.size():
+			if j == i:
+				continue
+			var other: Dictionary = shells[j]
+			var between: float = rock.center.distance_to(other.center) - rock.radius - other.radius
+			if between > 0.0 and between < passage:
+				_rule(errors, 10, "%s: %s leaves %.2f m to %s; it needs %.2f m." % [where, rock.id, between, other.id, passage])
 
 
 # --- the rules ---
@@ -369,14 +428,9 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 	var aim := float(attack.aim_deg)
 	if not (aim > 0.0 and aim < 180.0) or float(attack.lead_s) < 0.0 or float(attack.lead_cap_m) < 0.0:
 		_rule(errors, 6, "%s needs 0 < aim_deg < 180 and lead_s, lead_cap_m >= 0." % where)
-	var lane := CreatureBrain.strike_lane(brain_config(id).attack, p.radius, PoolLayout.CELL_RADIUS, Vector2.ZERO, 0.0)
-	var room := float(block.leash_m)
-	var room_text := "its leash"
-	if behavior == "territorial":
-		room += _smallest_territory(id, layout) + float(block.territory_margin_m)
-		room_text = "its smallest territory plus its leash"
-	if float(lane.length) > room:
-		_rule(errors, 6, "%s strike lane %.2f m is longer than %s (%.2f m)." % [where, float(lane.length), room_text, room])
+	var room_problem := strike_room_problem(id, _smallest_territory(id, layout), where, part_catalog)
+	if not room_problem.is_empty():
+		_rule(errors, 6, room_problem)
 
 	# Plain ranges; no fairness rule hangs on them, but the brain and the sim assume them.
 	if float(block.leash_m) <= 0.0:
@@ -448,26 +502,8 @@ func _check_sites(layout: PoolLayout, part_catalog: PartCatalog, errors: PackedS
 		if checkpoint.distance_to(home) < float(fairness.spawn_safe_m):
 			_rule(errors, 8, "%s home is %.2f m from the checkpoint, under %.1f m." % [where, checkpoint.distance_to(home), float(fairness.spawn_safe_m)])
 
-		# Rule 9: no rock surface near the leash circle, where the hard clamp would press it into the rock.
-		var band := r + float(fairness.leash_band_margin_m)
-		# Rule 10: a rock reaching into the disc leaves room to pass it (no gap a body could wedge in).
-		var passage := 2.0 * r + float(fairness.pinch_margin_m)
-		for rock in layout.rocks:
-			var d: float = center.distance_to(rock.center)
-			var to_circle: float = absf(d - reach) - rock.radius
-			if to_circle < band:
-				_rule(errors, 9, "%s: %s lies %.2f m from its leash circle; it needs %.2f m." % [where, rock.id, to_circle, band])
-			if d - rock.radius >= reach + r:
-				continue
-			var to_wall: float = layout.soft_start - rock.center.length() - rock.radius
-			if to_wall > 0.0 and to_wall < passage:
-				_rule(errors, 10, "%s: %s leaves %.2f m to the soft wall; it needs %.2f m." % [where, rock.id, to_wall, passage])
-			for other in layout.rocks:
-				if other.id == rock.id:
-					continue
-				var between: float = rock.center.distance_to(other.center) - rock.radius - other.radius
-				if between > 0.0 and between < passage:
-					_rule(errors, 10, "%s: %s leaves %.2f m to %s; it needs %.2f m." % [where, rock.id, between, other.id, passage])
+		# Rules 9 and 10: the rocks against the leash circle, each other and the soft wall.
+		check_disc_against_shells(where, disc, r, layout.rocks, layout.soft_start, errors)
 
 		# Rule 11: a new game fills every niche, so every home lies out of view of the checkpoint.
 		var margin := float(layout.camera.look_ahead_max) + float(fairness.spawn_view_margin_m) + r
