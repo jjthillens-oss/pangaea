@@ -3,8 +3,10 @@ extends TestCase
 ## 3.5 and 5.2): 18 ordinary tiles and the two rare places, on the real kit. TileCatalog's rules are
 ## T1's (tests/test_tile_catalog.gd, on fixtures); these tests hold the real content to them, to the
 ## region designs, to the margins the tiles were authored with, and to the heavy checks of spine 4.2:
-## per-tile reach (slow), seams (slow), every rule and reach at all 8 orientations (soak), the food
-## bound and the site sample (T1.10's world_checks; they wait until it lands, see _waits).
+## per-tile reach (slow), the identity seams (slow), every rule and reach at all 8 orientations
+## (soak), the food bound and the site sample (T1.10's world_checks; they wait until it lands, see
+## _waits). docs/s1/s1-build-plan.md corrects them: zones keep 0.7 bu from every collider (B-3), the
+## cathedral's nave is sealed (B-28), and the sample counts reach discs per 40 tm disc (B-17).
 
 const WorldChecks := preload("res://tests/world_checks.gd")
 ## The same script as a plain Script, for the functions T1.10 adds (called by name until they land).
@@ -44,10 +46,17 @@ const FOOD_COARSE_TM := 4.0
 const FOOD_FINE_TM := 1.0
 ## A coarse bound below this would mean food_bound saw no tiles (s1-content 5.2 measured 91).
 const FOOD_FLOOR := 60
-const SAMPLE_ARRANGEMENTS := 5000
+## The site sample (B-17, B-14): arrangements x discs uniform over a 2 km square round home, each
+## disc 40 tm; no disc meets more than 10 live reach discs.
+const SAMPLE_ARRANGEMENTS := 1000
 const SAMPLE_DISCS := 100
 const SAMPLE_SEED := 4242
+const SAMPLE_HALF_TM := 1000.0
+const SAMPLE_RADIUS_TM := 40.0
 const SAMPLE_MAX_SITES := 10
+## B-28: no zone point or site home within this of the cathedral's centre (ring 3.4 + pillar 0.9 +
+## the 0.7 zone gap).
+const CATHEDRAL_CLEAR_BU := 5.0
 
 var species: SpeciesCatalog
 var parts: PartCatalog
@@ -208,6 +217,30 @@ func test_tiles_keep_their_region_design() -> void:
 	check(drift_most < sunlit_least, "drift tiles hold fewer items (at most %d) than any sunlit tile (at least %d)" % [drift_most, sunlit_least])
 
 
+## B-3: every zone disc keeps 0.7 bu (PoolLayout.ZONE_CLEAR_MARGIN) from every collider of its tile
+## (shells, the landmark's collider, the set piece's), so a plankton anchor is clear whatever else is
+## loaded. Tiles keep shells 4 bu and zones 1 bu from their edges, so pairs across a seam are 5 apart.
+func test_every_zone_keeps_0_7_bu_from_every_collider_of_its_tile() -> void:
+	var least := INF
+	var least_at := ""
+	var zones := 0
+	for id in _ids():
+		var t: Dictionary = tiles.tiles[id]
+		var colliders := TileCatalog.colliders_of(t, kit)
+		for z in t.zones:
+			zones += 1
+			var c := Vector2(z.center[0], z.center[1])
+			for k in colliders:
+				var gap: float = c.distance_to(k.center) - float(z.radius) - float(k.radius)
+				check(gap >= PoolLayout.ZONE_CLEAR_MARGIN, "%s zone '%s' is %.2f bu from collider '%s'; it keeps %.1f" % [
+					id, z.id, gap, k.id, PoolLayout.ZONE_CLEAR_MARGIN])
+				if gap < least:
+					least = gap
+					least_at = "%s/%s to %s" % [id, z.id, k.id]
+	check(zones >= 20, "every tile's zones (%d)" % zones)
+	print("test-tiles: least zone gap %.3f bu (%s)" % [least, least_at])
+
+
 ## Rule 6's inset and rule 8's anchor clearance, with the slack each site keeps beyond the rule.
 ## Formulas as TileCatalog's rule 6; the table is printed for T4.4's retuning.
 func test_sites_keep_a_margin_inside_their_tile_and_from_the_landmark() -> void:
@@ -246,11 +279,19 @@ func test_sites_keep_a_margin_inside_their_tile_and_from_the_landmark() -> void:
 
 
 ## The cathedral's drums stand closer than a cell can pass (the kit's piece: 0.80 bu between
-## neighbours), so its nave is sealed water no grid point can reach food from, and the tile fills it
-## with shells. If the piece is rebuilt with gaps a cell can swim through, this fails: the filler
-## shells come out and the nave becomes open water again.
-func test_the_cathedral_nave_is_filled_while_its_drums_seal_it() -> void:
+## neighbours), so its nave is sealed water no grid point can reach food from (B-28). Until
+## reach_problems skips sealed empty pockets (B-29, T1.8c) the tile fills it with shells. If the piece
+## is rebuilt with gaps a cell can swim through, this fails: the filler comes out and the nave is
+## open water again. No zone point or site home lies within 5 bu of the piece's centre.
+func test_the_cathedral_nave_is_sealed_and_nothing_lives_in_it() -> void:
 	var t := tiles.rare_tile(0, "shell_cathedral")
+	var centre := Vector2(t.set_piece.center[0], t.set_piece.center[1])
+	for z in t.zones:
+		var gap := centre.distance_to(Vector2(z.center[0], z.center[1])) - float(z.radius)
+		check(gap >= CATHEDRAL_CLEAR_BU, "zone '%s' comes %.2f bu from the cathedral's centre; it keeps %.1f" % [z.id, gap, CATHEDRAL_CLEAR_BU])
+	for s in t.sites:
+		var d := centre.distance_to(Vector2(s.home[0], s.home[1]))
+		check(d >= CATHEDRAL_CLEAR_BU, "site '%s' lives %.2f bu from the cathedral's centre; it keeps %.1f" % [s.id, d, CATHEDRAL_CLEAR_BU])
 	var drums := TileCatalog.colliders_of(t, kit).filter(func(c: Dictionary) -> bool: return str(c.id).begins_with("r"))
 	check_eq(drums.size(), 8, "eight drums")
 	var widest := 0.0
@@ -320,9 +361,9 @@ func _seam_problems(a: Dictionary, b: Dictionary) -> PackedStringArray:
 
 
 ## G2's seams at identity: every ordered pair of tiles placed east, north and on the diagonal, and the
-## home block against every tile at every orientation in each of the 8 slots along its edges. Spine
-## 4.2 gives the seam soak over every orientation pair to T1 (tests/test_seams.gd); this is its
-## identity share, run with the same primitives, and it has a positive control.
+## home block against every tile in each of the 8 slots along its edges. The soak over every
+## orientation pair is T1's (tests/test_seams.gd, B-16); this is the identity pass with a positive
+## control, run with the primitives seam_problems uses until T1.10 brings it.
 func test_slow_seams_hold_between_tiles_and_against_the_home_edges() -> void:
 	var placements := 0
 	var errors := PackedStringArray()
@@ -335,11 +376,10 @@ func test_slow_seams_hold_between_tiles_and_against_the_home_edges() -> void:
 				placements += 1
 	var home := _home_placed()
 	for id in ids:
-		for o in 8:
-			for slot in HOME_SLOTS:
-				errors.append_array(_seam_problems(home, _placed(tiles.tiles[id], o, slot)))
-				placements += 1
-	check_eq(placements, 20 * 20 * 3 + 20 * 8 * HOME_SLOTS.size(), "placements")
+		for slot in HOME_SLOTS:
+			errors.append_array(_seam_problems(home, _placed(tiles.tiles[id], 0, slot)))
+			placements += 1
+	check_eq(placements, 20 * 20 * 3 + 20 * HOME_SLOTS.size(), "placements")
 	check_eq(errors, PackedStringArray(), "rules 9 and 10 and no overlap across every seam")
 	# The positive control: the same check must see a shell across the seam inside a lair's reach.
 	var control := _placed(tiles.tiles[CONTROL_A], 0, Vector2.ZERO)
@@ -410,8 +450,8 @@ static func _orient_pair(p: Array, o: int) -> Array:
 
 
 ## G2 at every orientation the generator may place a tile in: the whole band turned to o, then
-## TileCatalog.validate (rules 1 to 8). The check s1-content 17.13 proposes as T1's
-## orientation_problems, run here from the pinned primitives until T1 adds it.
+## TileCatalog.validate (rules 1 to 8). It is T1.10's orientation_problems (B-16), run here from the
+## pinned primitives until T1.10 brings it.
 func test_soak_every_tile_keeps_every_rule_at_all_8_orientations() -> void:
 	var files := {}
 	for id in _ids():
@@ -452,9 +492,24 @@ func test_soak_the_fine_food_bound_stays_under_the_cap() -> void:
 	print("test-tiles: fine food bound %d at %s (cap %d)" % [int(bound.worst), bound.get("at"), cap])
 
 
+## B-17: sample_sites(gen, band, size, centre, 40) counts the live reach discs that meet a 40 tm disc.
+## Each arrangement is a world seed; its discs are uniform over the 2 km square round home.
 func test_soak_no_disc_of_any_arrangement_wakes_more_than_10_sites() -> void:
 	if _waits("the site sample"):
 		return
-	var sample: Dictionary = (load(CHECKS_PATH) as Script).call("sample_sites", content, species, SAMPLE_ARRANGEMENTS, SAMPLE_DISCS, SAMPLE_SEED)
-	check(int(sample.worst) <= SAMPLE_MAX_SITES, "at most %d live reach discs meet any 40 tm disc (%s)" % [SAMPLE_MAX_SITES, sample])
-	print("test-tiles: site sample worst %s" % [sample])
+	var checks: Script = load(CHECKS_PATH)
+	var worst := -1
+	var worst_at := ""
+	for i in SAMPLE_ARRANGEMENTS:
+		var gen := WorldGen.create(content, species, SAMPLE_SEED + i)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = SAMPLE_SEED + i
+		for k in SAMPLE_DISCS:
+			var at := PackedFloat64Array([rng.randf_range(-SAMPLE_HALF_TM, SAMPLE_HALF_TM), rng.randf_range(-SAMPLE_HALF_TM, SAMPLE_HALF_TM)])
+			var n := int(checks.call("sample_sites", gen, 0, 1, at, SAMPLE_RADIUS_TM))
+			if n > worst:
+				worst = n
+				worst_at = "seed %d at %s" % [SAMPLE_SEED + i, at]
+	check(worst <= SAMPLE_MAX_SITES, "at most %d live reach discs meet any %.0f tm disc (%d, %s)" % [SAMPLE_MAX_SITES, SAMPLE_RADIUS_TM, worst, worst_at])
+	check(worst > 0, "the sample met live sites")
+	print("test-tiles: site sample worst %d (%s) over %d x %d" % [worst, worst_at, SAMPLE_ARRANGEMENTS, SAMPLE_DISCS])

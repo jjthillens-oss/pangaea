@@ -19,7 +19,7 @@
     {"id": "f0", "center": [-24.0, -24.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
     {"id": "f1", "center": [21.0, -22.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
     {"id": "f2", "center": [-1.0, -20.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
-    {"id": "f3", "center": [-18.0, -2.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f3", "center": [-18.1, -1.95], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
     {"id": "f4", "center": [17.0, 3.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
     {"id": "f5", "center": [0.0, 17.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
     {"id": "f6", "center": [-24.0, 23.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},

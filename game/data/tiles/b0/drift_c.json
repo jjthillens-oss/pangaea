@@ -18,7 +18,7 @@
   ],
   "zones": [
     {"id": "f0", "center": [18.0, -19.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
-    {"id": "f1", "center": [-7.0, -17.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f1", "center": [-6.95, -16.9], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
     {"id": "f2", "center": [-24.0, -16.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
     {"id": "f3", "center": [-15.0, 3.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
     {"id": "f4", "center": [17.0, 7.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
