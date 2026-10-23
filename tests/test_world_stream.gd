@@ -28,10 +28,7 @@ func before_each() -> void:
 ## An endless sim on the fake generator for a new omnivore lineage. `content` defaults to the
 ## fixture content (the world file's rings and caps, the home spawn).
 func _endless(seed_value: int = SEED, content: WorldContent = null, with_species := true) -> PoolSim:
-	var c := content if content != null else FakeWorldGen.fixture_content()
-	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
-	var sp: SpeciesCatalog = species if with_species else null
-	return PoolSim._create_endless(r.save, catalog, layout, sp, c, FakeWorldGen.new(c, sp, seed_value))
+	return FakeWorldGen.endless_sim(seed_value, catalog, layout, species if with_species else null, content)
 
 
 func _of(events: Array[Dictionary], type: String) -> Array[Dictionary]:
