@@ -327,6 +327,64 @@ func test_the_food_view_equals_the_old_one_at_random_places_stocks_and_caps() ->
 	check(shown >= 400, "zones were shown (%d)" % shown)
 
 
+## The food view's bound (the zones within the food ring kept while the body moves less than any
+## zone's distance from the ring) and its kept food set (the one given last time, while the same zones
+## are shown) show what measuring every zone shows: twin sims swim east and back overdriven, with a
+## rebase, a teleport and a low item cap for a while (zones trimmed), and before every step the twin's
+## bound and kept set are dropped. Every tick's food zones (in order), trimmed set, events and hash
+## must be the same.
+func test_the_food_bound_shows_the_same_zones_as_measuring_every_one() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the food bound waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 503)
+	var b: Variant = Gates.make_sim(Gates.RACER, 503)
+	var held := 0
+	var kept := 0
+	var changed := 0
+	var last := ""
+	for t in 1800:
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		if t == 500:
+			a.debug_rebase(Vector2i(-2, 1))
+			b.debug_rebase(Vector2i(-2, 1))
+		elif t == 1100:
+			a.debug_teleport(a.motion.position + Vector2(-30.0, 12.0))
+			b.debug_teleport(b.motion.position + Vector2(-30.0, 12.0))
+		var cap := 12 if t >= 700 and t < 900 else 1000
+		a.world.caps.food_items = cap
+		b.world.caps.food_items = cap
+		var move := Vector2.RIGHT if (t / 450) % 2 == 0 else Vector2.LEFT
+		var bound_before: PackedFloat64Array = a.world._food_bound
+		var given_before: Dictionary = a.plankton.active_zones
+		b.world._food_bound = PackedFloat64Array()
+		b.world._shown_food = {}
+		a.step(SimIntent.new(move))
+		b.step(SimIntent.new(move))
+		if not bound_before.is_empty() and a.world._food_bound == bound_before:
+			held += 1
+		if is_same(a.plankton.active_zones, given_before):
+			kept += 1
+		var za := var_to_str(a.plankton.active_zones)
+		if za != var_to_str(b.plankton.active_zones) or a.world._trimmed != b.world._trimmed \
+				or a.world.counters != b.world.counters or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the food views differ" % t)
+			return
+		changed += 1 if za != last else 0
+		last = za
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	print("test-perf-world-caches: the food bound held on %d of 1800 ticks, the food set was kept on %d; the food zones changed on %d" % [
+		held, kept, changed])
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(held >= 900, "the bound held on most ticks (%d)" % held)
+	check(kept >= 900, "the food set was kept on most ticks (%d)" % kept)
+	check(changed >= 20, "the food zones changed as the cell swam (%d)" % changed)
+	check(int(a.world.counters.food_trimmed) > 0, "zones were trimmed (%d)" % int(a.world.counters.food_trimmed))
+
+
 ## Whether two food zones lie at the same distance from `p`.
 static func _has_tie(w: WorldStream, p: Vector2) -> bool:
 	var seen := {}

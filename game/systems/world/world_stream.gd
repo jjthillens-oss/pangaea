@@ -73,6 +73,9 @@ const WAKE_FAR_TOLERANCE_TM := 0.001
 ## least this far beyond the ring; and what the load and unload bounds allow for float64 rounding.
 const LOAD_BOUND_TM := 8.0
 const RING_BOUND_SLACK_TM := 1e-6
+## tm: what the food view's bound allows for float32 rounding in a zone's distance and the body's
+## movement (each under 1e-5 at 128 tm).
+const FOOD_BOUND_SLACK_TM := 0.001
 
 var content: WorldContent
 var gen: WorldGen
@@ -134,6 +137,18 @@ var _zone_r := PackedFloat64Array()
 var _zone_refs: Array[Dictionary] = []
 var _zone_ax := PackedFloat64Array()
 var _zone_ay := PackedFloat64Array()
+var _index_epoch := 0                  ## bumped on every change to the index (a zone in, out or moved)
+## The food view's last measure of the zones: the index places of those within the food ring, in
+## index order, good while the index epoch and the ring are the same and the body has moved less than
+## every zone's distance from the ring (a distance changes by no more than the body moves): [x, y,
+## room, ring, epoch], empty to measure every zone.
+var _food_at := PackedInt32Array()
+var _food_bound := PackedFloat64Array()
+## The food set last given to the plankton (PlanktonField.active_zones), the index places it shows
+## and the index epoch they are of.
+var _shown_food := {}
+var _shown_at := PackedInt32Array()
+var _shown_epoch := -1
 var _cell_tile := Vector2i.ZERO
 ## Chunks generated ahead (WorldGen.chunk is pure, so a chunk is the same whatever tick builds it):
 ## on a tick that loads nothing, the missing chunk nearest where the cell is heading is generated
@@ -1103,6 +1118,7 @@ func _rederive(sim: PoolSim) -> void:
 				z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
 		i += 1
 	_zones_version += 1
+	_index_epoch += 1   # the centres moved
 	if indexed:
 		_zones_indexed = _zones_version
 	else:
@@ -1164,27 +1180,45 @@ func _food_view(sim: PoolSim) -> void:
 	var body := sim.motion.position
 	_index_zones(sim.region)
 	var ring := float(rings.food)
-	var food := {}
-	var at := PackedInt32Array()          # the food zones' places in the index, in zone order
-	var reach := PackedFloat64Array()     # and their distances
-	for i in _zone_ids.size():
-		var d := body.distance_to(_zone_c[i]) - _zone_r[i]
-		if d <= ring:
-			food[_zone_ids[i]] = true
-			at.append(i)
-			reach.append(d)
-	var counts := PackedInt32Array()      # and their item targets
+	var at: PackedInt32Array              # the food zones' places in the index, in zone order
+	var reach := PackedFloat64Array()     # and their distances (measured again for a trim when kept)
+	var bound := _food_bound
+	if not bound.is_empty() and bound[3] == ring and bound[4] == _index_epoch \
+			and Vector2(bound[0], bound[1]).distance_to(body) < bound[2]:
+		at = _food_at   # the same zones within the ring as the last measure
+	else:
+		at = PackedInt32Array()
+		var room := INF
+		for i in _zone_ids.size():
+			var d := body.distance_to(_zone_c[i]) - _zone_r[i]
+			if d <= ring:
+				at.append(i)
+				reach.append(d)
+			room = minf(room, absf(d - ring))
+		_food_at = at
+		room -= FOOD_BOUND_SLACK_TM
+		_food_bound = PackedFloat64Array([body.x, body.y, room, ring, _index_epoch]) if room > 0.0 else PackedFloat64Array()
+	var plankton := sim.plankton
+	var most := plankton.max_items_per_zone
+	var unit := plankton.unit_energy
+	var counts := PackedInt32Array()      # and their item targets (PlanktonField.target_count written out)
 	var total := 0
 	for i in at:
-		var n := sim.plankton.target_count(_zone_refs[i])
+		var n := mini(most, floori(float(_zone_refs[i].amount) / unit + PlanktonField.COUNT_EPSILON))
 		counts.append(n)
 		total += n
+	var shown := at                       # the food zones less those trimmed
 	var cap := int(caps.food_items)
 	if total > cap:
+		if reach.size() != at.size():
+			for i in at:
+				reach.append(body.distance_to(_zone_c[i]) - _zone_r[i])
 		# The food zones farthest first, ties to the lower id (picked one at a time, as few are needed),
 		# each trimmed when it is out of view, until the rest fit.
 		var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
 		var box := _box(quad)
+		var cut := PackedByteArray()
+		cut.resize(at.size())
 		var left := range(at.size())
 		while total > cap and not left.is_empty():
 			var best := 0
@@ -1198,20 +1232,36 @@ func _food_view(sim: PoolSim) -> void:
 			if not _out_of_view(quad, box, _zone_c[at[j]], _zone_r[at[j]]):
 				continue
 			var id := _zone_ids[at[j]]
-			food.erase(id)
+			cut[j] = 1
 			total -= counts[j]
 			if not _trimmed.has(id):
 				_trimmed[id] = true
 				counters.food_trimmed += 1
+		shown = PackedInt32Array()
+		for m in at.size():
+			if cut[m] == 0:
+				shown.append(at[m])
+	# The food set: the one given to the plankton last time while the same zones are shown (nothing
+	# else changes it), else built afresh in zone order.
+	var food: Dictionary = plankton.active_zones
+	var same := shown == _shown_at and _index_epoch == _shown_epoch and is_same(food, _shown_food)
+	if not same:
+		food = {}
+		for i in shown:
+			food[_zone_ids[i]] = true
 	# A zone stays counted as trimmed until it shows food again (or unloads).
 	for id in _trimmed.keys():
 		if food.has(id) or sim.region.zone(id).is_empty():
 			_trimmed.erase(id)
-	if food != sim.plankton.active_zones:   # the same zones (the usual tick): none to drop
-		for id in sim.plankton.active_zones.keys():
-			if not food.has(id):
-				sim.plankton.drop_zone(id)
-	sim.plankton.active_zones = food
+	if not same:
+		if food != plankton.active_zones:   # the same zones (in a new index): none to drop
+			for id in plankton.active_zones.keys():
+				if not food.has(id):
+					plankton.drop_zone(id)
+		plankton.active_zones = food
+		_shown_at = shown
+		_shown_epoch = _index_epoch
+		_shown_food = food
 	sim.carrion.drop_beyond(body, float(rings.food))
 	var fill: Array = food.keys() if _fill_all else _fill.keys()
 	fill.sort()
@@ -1241,6 +1291,7 @@ func _index_added_zone(region: EcologyRegion) -> void:
 	_zone_ax.append(NAN if a == null else float(a[0]))
 	_zone_ay.append(NAN if a == null else float(a[1]))
 	_zones_indexed = _zones_version
+	_index_epoch += 1
 
 
 ## Zone `z`, just removed from the region (which keeps the others in order), taken out of the index
@@ -1258,6 +1309,7 @@ func _unindex_zone(region: EcologyRegion, z: Dictionary) -> void:
 	_zone_ax.remove_at(i)
 	_zone_ay.remove_at(i)
 	_zones_indexed = _zones_version
+	_index_epoch += 1
 
 
 ## Rebuilds the packed zone index when the zones changed since it was built.
@@ -1279,6 +1331,7 @@ func _index_zones(region: EcologyRegion) -> void:
 		_zone_ax.append(NAN if a == null else float(a[0]))
 		_zone_ay.append(NAN if a == null else float(a[1]))
 	_zones_indexed = _zones_version
+	_index_epoch += 1
 
 
 ## A footprint's bounding box [min x, min y, max x, max y] (empty for an empty footprint).
