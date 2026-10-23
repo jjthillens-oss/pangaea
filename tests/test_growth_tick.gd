@@ -8,6 +8,7 @@ extends TestCase
 ## and every conversion is exact (S2G34).
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
 ## The fast seeds of S2G9, S2G12 and S2G35; their slow tests run SLOW_SEEDS seeds.
 const SEEDS := [7, 11, 23, 4242, 90001]
@@ -590,6 +591,36 @@ func _check_growth_equals_arrival(seed_value: int) -> void:
 	check_eq(direct.world.loaded_keys(), keys, "seed %d: the same chunks held" % seed_value)
 	check_eq(_content(direct, keys), _content(grown, keys), "seed %d: the same chunks, colliders, sites and zones" % seed_value)
 	check(direct.motion.position == p, "seed %d: the same settled point" % seed_value)
+
+
+## S2G12 on the shipped content (T3.5's size-2 sites): a hidden omnivore's growth after a swim from
+## home meets the world a debug_set_size(2) arrival at its point meets, size-2 sites among it.
+func test_on_the_shipped_content_a_growth_meets_the_world_a_direct_arrival_meets() -> void:
+	var waits := Gates.s2_missing(["set_size", "size_two_content"])
+	if not waits.is_empty():
+		print("test-growth-tick: the shipped-content S2G12 waits on: %s" % "; ".join(waits))
+		return
+	var grown: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	grown.debug_set_hidden(true)
+	for t in SWIM_TICKS:
+		grown.step(SimIntent.new(Vector2.from_angle(0.4 + 0.004 * t) * 0.6))
+	grown.drain_events()
+	var a := grown.world.abs_of_local(grown.motion.position)
+	grown.world.grow(grown)
+	var direct: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	check(Gates.teleport(direct, a), "the direct run is placed on the point")
+	check(direct.world.abs_of_local(direct.motion.position) == a, "exactly")
+	check(direct.debug_set_size(2), "debug_set_size(2)")
+	var keys := grown.world.loaded_keys()
+	check_eq(direct.world.loaded_keys(), keys, "the same chunks held")
+	var want := _content(grown, keys)
+	check_eq(_content(direct, keys), want, "the same chunks, colliders, sites and zones")
+	check(direct.motion.position == grown.motion.position, "the same settled point")
+	var entering := Gates.species_entering_at(2)
+	var met := 0
+	for site: Array in want.sites:
+		met += 1 if entering.has(str(site[1])) else 0
+	check(met > 0, "size-2 sites among them (%d of %d)" % [met, want.sites.size()])
 
 
 func test_two_size_two_routes_meet_the_world_a_growth_makes() -> void:
