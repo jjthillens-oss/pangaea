@@ -12,6 +12,10 @@ extends TestCase
 ## 12 to 18 % of the ordinary tiles and each region at least 10 % (B-11). One square is too small to
 ## hold the shares: the regions come from a smooth field, and a square's drift share runs from about
 ## 5 to 27 % over these seeds.
+##
+## S2 (S2G7, T3.6): the density swims run again at size 2, the band's second size, at the same 3.3
+## tm/s through WorldGen.chunk(2, ...): the zones there that can hold an item (drop gone, thin
+## thinned) and the sites live there. The variety is the band's tiles, the same at both sizes.
 
 const SEEDS := 20
 const START := Vector2(0.0, 9.0)        ## the spawn, abs tm
@@ -39,7 +43,9 @@ var content: WorldContent
 var view_tm := 0.0
 var chunk_tm := 0.0
 var tile_tm := 0.0
-var swims: Array[Dictionary] = []
+var unit_energy := 0.0
+## The swims per size, run once for both density tests.
+var swims := {}
 
 
 func before_each() -> void:
@@ -50,6 +56,12 @@ func before_each() -> void:
 	view_tm = float(content.config.rings.view)
 	chunk_tm = float(content.config.chunk_tm)
 	tile_tm = float(content.config.tile_bu) * WorldConfig.bu_to_tm(1)
+	unit_energy = float(content.layout.plankton.unit_energy)
+
+
+## The sizes this build runs.
+func _sizes() -> Array:
+	return range(content.config.size_start, content.config.max_size_in_build + 1)
 
 
 ## Seed s's swim direction: 2 pi x unit(mix32(s, 77)).
@@ -57,9 +69,10 @@ static func heading_of(seed: int) -> Vector2:
 	return Vector2.from_angle(TAU * WorldHash.unit(WorldHash.mix32(seed, 77)))
 
 
-## One swim: the longest stretches (s) without a zone in reach and without a live site in view,
+## One swim at `size`: the longest stretches (s) without a zone (one that can hold an item) in reach
+## and without a site in view (WorldGen.chunk(size, ...) holds only the sites live at the size),
 ## counted from the start to the end, with the chunks memoised per key.
-func _swim(gen: WorldGen, seed: int) -> Dictionary:
+func _swim(gen: WorldGen, seed: int, size := 1) -> Dictionary:
 	var memo := {}
 	var dir := heading_of(seed)
 	var step := SWIM_SPEED * SAMPLE_S
@@ -71,6 +84,7 @@ func _swim(gen: WorldGen, seed: int) -> Dictionary:
 	var site_gap := 0.0
 	var zone_at := Vector2.ZERO
 	var site_at := Vector2.ZERO
+	var met := {}
 	for k in samples:
 		var t := k * SAMPLE_S
 		var p := START + dir * (k * step)
@@ -80,17 +94,18 @@ func _swim(gen: WorldGen, seed: int) -> Dictionary:
 			for cx in range(floori((p.x - look) / chunk_tm), floori((p.x + look) / chunk_tm) + 1):
 				var key := Vector2i(cx, cy)
 				if not memo.has(key):
-					memo[key] = gen.chunk(1, cx, cy)
+					memo[key] = gen.chunk(size, cx, cy)
 				var c: WorldChunk = memo[key]
 				if not near_zone:
 					for z in c.zones:
-						if p.distance_to(Vector2(z.x, z.y)) - float(z.radius) <= ZONE_NEAR_TM:
+						if float(z.capacity) + 0.000001 >= unit_energy and p.distance_to(Vector2(z.x, z.y)) - float(z.radius) <= ZONE_NEAR_TM:
 							near_zone = true
 							break
 				if not near_site:
 					for s in c.sites:
 						if p.distance_to(Vector2(s.x, s.y)) <= view_tm:
 							near_site = true
+							met[s.species] = true
 							break
 		if near_zone or k == samples - 1:
 			if t - last_zone > zone_gap:
@@ -102,15 +117,17 @@ func _swim(gen: WorldGen, seed: int) -> Dictionary:
 				site_gap = t - last_site
 				site_at = p
 			last_site = t
-	return {"zone_gap": zone_gap, "zone_at": zone_at, "site_gap": site_gap, "site_at": site_at, "chunks": memo.size()}
+	return {"zone_gap": zone_gap, "zone_at": zone_at, "site_gap": site_gap, "site_at": site_at, "chunks": memo.size(), "met": met}
 
 
-## The 20 swims, run once for both density tests.
-func _swims() -> Array[Dictionary]:
-	if swims.is_empty():
+## The 20 swims at `size`, run once for both density tests.
+func _swims(size: int) -> Array:
+	if not swims.has(size):
+		var all := []
 		for seed in range(1, SEEDS + 1):
-			swims.append(_swim(WorldGen.create(content, species, seed), seed))
-	return swims
+			all.append(_swim(WorldGen.create(content, species, seed), seed, size))
+		swims[size] = all
+	return swims[size]
 
 
 ## Seed s's variety square: the tile coordinates round the swim's midpoint.
@@ -126,37 +143,46 @@ static func _ordinary(info: Dictionary) -> bool:
 
 # ---- Slow ----
 
-## B-17's first half: a zone's edge within 9 tm at least every 30 s.
+## B-17's first half, at each size: a zone's edge within 9 tm at least every 30 s.
 func test_slow_a_straight_swim_never_goes_30_s_without_a_zone_in_reach() -> void:
-	var worst := 0.0
-	var worst_at := ""
-	var chunks := 0
-	var all := _swims()
-	for i in SEEDS:
-		var r: Dictionary = all[i]
-		chunks += int(r.chunks)
-		check(float(r.zone_gap) <= ZONE_WINDOW_S, "seed %d: %.1f s without a zone within %.0f tm, ending at %s" % [
-			i + 1, r.zone_gap, ZONE_NEAR_TM, r.zone_at])
-		if float(r.zone_gap) > worst:
-			worst = r.zone_gap
-			worst_at = "seed %d at %s" % [i + 1, r.zone_at]
-	check(chunks > SEEDS * 100, "the swims read the world (%d chunks)" % chunks)
-	print("test-layout-gates: longest stretch without a zone in reach %.1f s (%s)" % [worst, worst_at])
+	for size in _sizes():
+		var worst := 0.0
+		var worst_at := ""
+		var chunks := 0
+		var all := _swims(size)
+		for i in SEEDS:
+			var r: Dictionary = all[i]
+			chunks += int(r.chunks)
+			check(float(r.zone_gap) <= ZONE_WINDOW_S, "size %d seed %d: %.1f s without a zone within %.0f tm, ending at %s" % [
+				size, i + 1, r.zone_gap, ZONE_NEAR_TM, r.zone_at])
+			if float(r.zone_gap) > worst:
+				worst = r.zone_gap
+				worst_at = "seed %d at %s" % [i + 1, r.zone_at]
+		check(chunks > SEEDS * 100, "size %d: the swims read the world (%d chunks)" % [size, chunks])
+		print("test-layout-gates: size %d: longest stretch without a zone in reach %.1f s (%s)" % [size, worst, worst_at])
 
 
-## B-17's second half: a live site's home in the view ring at least every 60 s.
+## B-17's second half, at each size: a live site's home in the view ring at least every 60 s.
 func test_slow_a_straight_swim_passes_a_live_site_every_minute() -> void:
-	var worst := 0.0
-	var worst_at := ""
-	var all := _swims()
-	for i in SEEDS:
-		var r: Dictionary = all[i]
-		check(float(r.site_gap) <= SITE_WINDOW_S, "seed %d: %.1f s without a live site in view, ending at %s" % [
-			i + 1, r.site_gap, r.site_at])
-		if float(r.site_gap) > worst:
-			worst = r.site_gap
-			worst_at = "seed %d at %s" % [i + 1, r.site_at]
-	print("test-layout-gates: longest stretch without a live site in view %.1f s (%s)" % [worst, worst_at])
+	var threats_at := []
+	for size in _sizes():
+		var worst := 0.0
+		var worst_at := ""
+		var all := _swims(size)
+		var met := {}
+		for i in SEEDS:
+			var r: Dictionary = all[i]
+			met.merge(r.met)
+			check(float(r.site_gap) <= SITE_WINDOW_S, "size %d seed %d: %.1f s without a live site in view, ending at %s" % [
+				size, i + 1, r.site_gap, r.site_at])
+			if float(r.site_gap) > worst:
+				worst = r.site_gap
+				worst_at = "seed %d at %s" % [i + 1, r.site_at]
+		if met.keys().any(func(id: String) -> bool: return species.entry_size(id) == 2):
+			threats_at.append(size)
+		print("test-layout-gates: size %d: longest stretch without a live site in view %.1f s (%s); met %s" % [size, worst, worst_at, met.keys()])
+	# The sites met are those live at the size: the size-2 threats at size 2, and only there.
+	check_eq(threats_at, [2], "the sizes whose swims meet a size-2 threat")
 
 
 func test_slow_no_tile_repeats_its_edge_neighbour() -> void:

@@ -5,6 +5,9 @@ extends TestCase
 ## (tests/test_home_block.gd, on a fixture); these tests hold the real content to them, to the
 ## starving budget over the whole block, and to the margins the ring was authored with. The slow and
 ## soak tests run the block with the tiles round it as WorldGen.chunk builds them, seed by seed.
+## S2 (S2G7, D-37): the reach rules and static #33 run again at size 2, in that size's tm (the block
+## is 80 tm a side there; the cell keeps r 0.5 tm and the starving budget), with the colliders there,
+## the zones there (the M1 zones thinned) and the sites live there.
 
 const WorldChecks := preload("res://tests/world_checks.gd")
 ## The starving budget as tests/test_pool_layout.gd computes it (30 health at 1.5 a second, the
@@ -172,23 +175,64 @@ func test_the_m1_pool_is_kept_exactly() -> void:
 	check_eq(home.carrion_initial, carrion, "the starting carrion")
 
 
-## The spawn and every site home: points a cell must be able to swim from (B-29's must_reach).
-func _must_reach() -> Array[Vector2]:
-	var out: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1])]
+func _content() -> WorldContent:
+	if content == null:
+		content = WorldContent.load_from(WorldConfig.DEFAULT_PATH, layout, species)
+	return content
+
+
+## The sizes this build runs.
+func _sizes() -> Array:
+	return range(_content().config.size_start, _content().config.max_size_in_build + 1)
+
+
+## Items a full zone shows (PlanktonField.max_count, capped per zone by the world file).
+func _items(capacity: float) -> int:
+	return mini(int(_content().config.caps.food_per_zone), floori(capacity / float(layout.plankton.unit_energy) + 0.000001))
+
+
+## The block at `size` for the reach rule, in that size's tm: {arena (the colliders there), zones
+## (those there that can hold an item: the M1 zones thinned at size 2), bounds, homes (the spawn and
+## the homes of the sites live there, both posts' for two: B-29's must_reach)}.
+func _block_at(size: int) -> Dictionary:
+	var st := WorldConfig.bu_to_tm(size)
+	var zones: Array[Dictionary] = []
+	for z in WorldChecks.zones_at(home.zones, home.band, size, _content()):
+		if _items(float(z.capacity)) >= 1:
+			zones.append({"id": z.id, "center": Vector2(z.x, z.y) * st, "radius": float(z.radius) * st})
+	var homes: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1]) * st]
 	for s in home.sites:
-		out.append(Vector2(s.x, s.y))
-	return out
+		if s.sizes.has(size):
+			homes.append(Vector2(s.x, s.y) * st)
+			if not s.post_b.is_empty():
+				homes.append(Vector2(s.post_b.home[0], s.post_b.home[1]) * st)
+	return {"arena": ChunkArena.from_shells(WorldChecks.scaled(home.circles_at(size), st)), "zones": zones,
+		"bounds": Rect2(BLOCK.position * st, BLOCK.size * st), "homes": homes}
 
 
-## G3: from every open point of the block a starving cell reaches food (the M1 zones and the ring)
-## within the budget, round the M1 rocks and the ring shells, with no wall; the spawn and the site
-## homes lie in that open sea. Measured 14.7 tm at (64, -17) on the block's east edge.
+## G3 at each size (F9 at size 2): from every open point of the block a starving cell reaches food
+## (the M1 zones and the ring) within the budget, round the M1 rocks and the ring shells, with no
+## wall; the spawn and the live site homes lie in that open sea. Measured 14.7 tm at (64, -17) on the
+## block's east edge at size 1.
 func test_every_point_of_the_home_block_reaches_food_within_the_budget() -> void:
 	var budget := _budget()
-	var arena := ChunkArena.from_shells(home.circles())
-	check_eq(WorldChecks.reach_problems(arena, home.zone_list(), BLOCK, budget, _must_reach()), PackedStringArray(), "every point of [-64, 64)^2")
-	var worst := WorldChecks.worst_reach(arena, home.zone_list(), BLOCK)
-	print("test-home-content: reach worst %.1f tm at %s (budget %.2f)" % [worst.worst, worst.at, budget])
+	for size in _sizes():
+		var b := _block_at(size)
+		check(b.zones.size() >= 20 and b.homes.size() >= 4, "size %d: the block's food and homes (%d, %d)" % [size, b.zones.size(), b.homes.size()])
+		check_eq(WorldChecks.reach_problems(b.arena, b.zones, b.bounds, budget, b.homes), PackedStringArray(), "size %d: every point of %s" % [size, b.bounds])
+		var worst := WorldChecks.worst_reach(b.arena, b.zones, b.bounds)
+		print("test-home-content: size %d: reach worst %.1f tm at %s (budget %.2f)" % [size, worst.worst, worst.at, budget])
+
+
+## Static #33 at size 2: every zone of the block there, at its capacity there (the M1 zones thinned,
+## D-37; a "thin" ring zone x 0.4), yields at most the M1 unguarded maximum.
+func test_every_home_zone_meets_static_33_at_size_2() -> void:
+	var checked := 0
+	for z in WorldChecks.zones_at(home.zones, home.band, 2, _content()):
+		checked += 1
+		var yield_rate := float(z.growth_rate) * float(z.capacity) * (TileCatalog.YIELD_SHARE + EcologyRegion.REGROW_FLOOR)
+		check(yield_rate <= TileCatalog.MAX_ZONE_YIELD, "zone %s yields %.3f at size 2; static #33 allows %.3f" % [z.id, yield_rate, TileCatalog.MAX_ZONE_YIELD])
+	check_eq(checked, home.zones.size(), "every zone is there at size 2 (none dropped)")
 
 
 func test_seam_shells_stay_well_clear_of_the_m1_reach_discs() -> void:
@@ -211,42 +255,55 @@ func test_seam_shells_stay_well_clear_of_the_m1_reach_discs() -> void:
 	print("test-home-content: nearest ring shell to an M1 reach circle %.2f bu" % nearest)
 
 
-## The home block and its neighbour tiles for each seed in [seeds.x, seeds.y], from the generator:
-## one arena of every shell, every chunk's zones, and the spawn and every live site home as
-## must-reach points. With `measure`, returns the worst walk to food on the first seed (a grid more).
-func _neighbours_reach(seeds: Vector2i, measure: bool) -> float:
+## The home block and its neighbour tiles for each seed in [seeds.x, seeds.y] at `size`, from the
+## generator: one arena of every shell, every chunk's zones that can hold an item, and the spawn and
+## every live site home (both posts') as must-reach points, over the block and its ring of whole
+## tiles ([-128, 128)^2 bu, in that size's tm) and the chunks that hold them. With `measure`, returns
+## the worst walk to food on the first seed (a grid more).
+func _neighbours_reach(seeds: Vector2i, measure: bool, size := 1) -> float:
 	var budget := _budget()
-	if content == null:
-		content = WorldContent.load_from(WorldConfig.DEFAULT_PATH, layout, species)
+	var st := WorldConfig.bu_to_tm(size)
+	var bounds := Rect2(NEIGHBOURS.position * st, NEIGHBOURS.size * st)
+	var chunk_tm := float(_content().config.chunk_tm)
+	var lo := Vector2i(floori(bounds.position.x / chunk_tm), floori(bounds.position.y / chunk_tm))
+	var hi := Vector2i(ceili(bounds.end.x / chunk_tm), ceili(bounds.end.y / chunk_tm))
+	check(size != 1 or Rect2i(lo, hi - lo) == NEIGHBOUR_CHUNKS, "size 1: the 8 x 8 chunks of S1")
 	var worst := -1.0
 	for seed in range(seeds.x, seeds.y + 1):
 		var gen := WorldGen.create(content, species, seed)
 		var circles: Array[Dictionary] = []
 		var zones: Array[Dictionary] = []
-		var homes: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1])]
-		for cy in range(NEIGHBOUR_CHUNKS.position.y, NEIGHBOUR_CHUNKS.end.y):
-			for cx in range(NEIGHBOUR_CHUNKS.position.x, NEIGHBOUR_CHUNKS.end.x):
-				var c := gen.chunk(1, cx, cy)
+		var homes: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1]) * st]
+		for cy in range(lo.y, hi.y):
+			for cx in range(lo.x, hi.x):
+				var c := gen.chunk(size, cx, cy)
 				for sh in c.shells:
 					circles.append({"id": sh.id, "center": Vector2(sh.x, sh.y), "radius": float(sh.r)})
 				for z in c.zones:
-					zones.append({"id": z.id, "center": Vector2(z.x, z.y), "radius": float(z.radius)})
+					if _items(float(z.capacity)) >= 1:
+						zones.append({"id": z.id, "center": Vector2(z.x, z.y), "radius": float(z.radius)})
 				for site in c.sites:
+					if not site.sizes.has(size):
+						continue
 					homes.append(Vector2(site.x, site.y))
-		check(zones.size() > home.zones.size() and homes.size() > home.sites.size() + 1, "seed %d: the tiles round home were built (%d zones, %d homes)" % [seed, zones.size(), homes.size()])
+					for post in site.get("posts", []).slice(1):
+						homes.append(Vector2(post.x, post.y))
+		check(zones.size() > home.zones.size() and homes.size() > 2, "seed %d size %d: the tiles round home were built (%d zones, %d homes)" % [seed, size, zones.size(), homes.size()])
 		var arena := ChunkArena.from_shells(circles)
-		check_eq(WorldChecks.reach_problems(arena, zones, NEIGHBOURS, budget, homes), PackedStringArray(), "seed %d: [-128, 128)^2" % seed)
+		check_eq(WorldChecks.reach_problems(arena, zones, bounds, budget, homes), PackedStringArray(), "seed %d size %d: %s" % [seed, size, bounds])
 		if measure and seed == seeds.x:
-			worst = float(WorldChecks.worst_reach(arena, zones, NEIGHBOURS).worst)
+			worst = float(WorldChecks.worst_reach(arena, zones, bounds).worst)
 	return worst
 
 
-## G3 across the block's edges: the home block and the tiles round it, seeds 1 to 5.
+## G3 across the block's edges at each size: the home block and the tiles round it, seeds 1 to 5.
 func test_slow_the_home_block_and_its_neighbour_tiles_reach_food() -> void:
-	_neighbours_reach(SLOW_SEEDS, false)
-	print("test-home-content: home and neighbours, seeds %d to %d clean" % [SLOW_SEEDS.x, SLOW_SEEDS.y])
+	for size in _sizes():
+		_neighbours_reach(SLOW_SEEDS, false, size)
+		print("test-home-content: size %d: home and neighbours, seeds %d to %d clean" % [size, SLOW_SEEDS.x, SLOW_SEEDS.y])
 
 
 func test_soak_the_home_block_and_its_neighbour_tiles_reach_food_on_45_more_seeds() -> void:
-	var worst := _neighbours_reach(SOAK_SEEDS, true)
-	print("test-home-content: home and neighbours, seeds %d to %d clean; reach worst on seed %d %.1f tm" % [SOAK_SEEDS.x, SOAK_SEEDS.y, SOAK_SEEDS.x, worst])
+	for size in _sizes():
+		var worst := _neighbours_reach(SOAK_SEEDS, true, size)
+		print("test-home-content: size %d: home and neighbours, seeds %d to %d clean; reach worst on seed %d %.1f tm" % [size, SOAK_SEEDS.x, SOAK_SEEDS.y, SOAK_SEEDS.x, worst])
