@@ -101,6 +101,10 @@ var site_counts := {}
 ## the table fill it (a role leaves at 0).
 var _site_role := {}
 var _role_sites := {}
+## The table's sites by home chunk (Vector2i -> {site id: true}), so an unload finds its own without
+## walking the table; recounted if the table's size no longer matches it (a test's own site).
+var _home_sites := {}
+var _home_count := 0
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
@@ -442,14 +446,21 @@ func snapshot(sim: PoolSim) -> Dictionary:
 ## creature's reach touches it (its site's chunks, or the leash disc of a creature with no site; a
 ## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order.
 func _unload(sim: PoolSim) -> void:
-	var held := _held_keys(sim)
-	var body := sim.motion.position
-	var any := false
-	for key in _keys.duplicate():
-		if nearest(key, body) > float(rings.unload) and not held.has(key):
-			_unload_chunk(sim, key)
-			any = true
-	if any:
+	var a := abs_of_local(sim.motion.position)   # nearest() for every key, the body's part once
+	var x := a[0] / _tm_to_am
+	var y := a[1] / _tm_to_am
+	var ring := float(rings.unload)
+	var held: Variant = null   # the holds are only needed for a chunk beyond the ring
+	var gone: Array[Vector2i] = []
+	for key in _keys:
+		if _square_distance(key, x, y) > ring:
+			if held == null:
+				held = _held_keys(sim)
+			if not held.has(key):
+				gone.append(key)
+	for key in gone:
+		_unload_chunk(sim, key)
+	if not gone.is_empty():
 		_apply_caps(sim)   # after the unloaded sites' creatures left (G7)
 
 
@@ -473,15 +484,20 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 ## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene.
 func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch: WorldChunk = _chunks[key]
-	var mine := {}
-	for id in sites:
-		if sites[id].home_chunk == key:
-			mine[id] = true
+	if _home_count != sites.size():
+		_index_homes()
+	var mine: Dictionary = _home_sites.get(key, {})
+	_home_sites.erase(key)
+	_home_count -= mine.size()
 	if sim.creatures != null and not mine.is_empty():
 		for c in sim.creatures.creatures.duplicate():
 			if mine.has(c.site_id):
 				sim.creatures.remove(c, "unloaded", sim.tick, false)
-		sim.creatures.queue = sim.creatures.queue.filter(func(e: Dictionary) -> bool: return not mine.has(e.site))
+		var kept: Array[Dictionary] = []
+		for e in sim.creatures.queue:
+			if not mine.has(e.site):
+				kept.append(e)
+		sim.creatures.queue = kept
 	for id in mine:
 		sites.erase(id)
 		_forget_role(id)
@@ -587,6 +603,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	if sim.creatures != null:
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
+				_note_home(s.id, key)
 				sites[s.id] = _site_record(s, key)
 				_note_role(sim, s.id, str(s.species))
 				sim.creatures._enqueue(s.id, s.species, sim.tick)
@@ -839,6 +856,31 @@ func _apply_caps(sim: PoolSim) -> void:
 	roles.sort()
 	for role in roles:
 		sim.region.set_niche(role, per_role[role])
+
+
+## Site `id` entered under its home chunk `key` (before its record goes into the table).
+func _note_home(id: String, key: Vector2i) -> void:
+	if _home_count != sites.size():
+		_index_homes()
+	if sites.has(id):
+		var was: Vector2i = sites[id].home_chunk
+		_home_sites[was].erase(id)
+		_home_count -= 1
+	if not _home_sites.has(key):
+		_home_sites[key] = {}
+	_home_sites[key][id] = true
+	_home_count += 1
+
+
+## _home_sites counted afresh from the table.
+func _index_homes() -> void:
+	_home_sites.clear()
+	for id in sites:
+		var key: Vector2i = sites[id].home_chunk
+		if not _home_sites.has(key):
+			_home_sites[key] = {}
+		_home_sites[key][id] = true
+	_home_count = sites.size()
 
 
 ## Site `id` (of `species_id`) counted in its role, once.

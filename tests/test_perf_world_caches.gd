@@ -294,3 +294,56 @@ static func _has_tie(w: WorldStream, p: Vector2) -> bool:
 				return true
 			seen[d] = true
 	return false
+
+
+# --- WorldStream's kept counts: niche roles and home chunks of the site table, the zone index ---
+
+## On the saturated case's dense world (sites load and unload all the way), every 30 ticks the
+## stream's kept counts equal the ones counted afresh from the table and the region.
+func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_swim() -> void:
+	var cost: GDScript = load("res://tests/test_endless_cost.gd")
+	var fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
+	if fake == null or not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the kept counts wait on the endless world")
+		return
+	var d := Gates.data()
+	var content: Variant = fake.call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, d.catalog, "hunter")
+	Gates.make_racer(r.save.genome, d.catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim: PoolSim = PoolSim._create_endless(r.save, d.catalog, d.layout, d.species, content, cost.DenseGen.new(content, d.species, 2802))
+	sim.debug_set_hidden(true)
+	var w := sim.world
+	var unloads := 0
+	var bad := []
+	for t in 1500:
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT if t < 1200 else Vector2(-0.6, 0.8)))
+		for e in sim.drain_events():
+			unloads += 1 if e.type == "chunk_unloaded" else 0
+		if t % 30 != 29:
+			continue
+		var roles := {}
+		var homes := {}
+		for id in w.sites:
+			var role := str(d.species.niche_of(str(w.sites[id].species)).role)
+			roles[role] = int(roles.get(role, 0)) + 1
+			var key: Vector2i = w.sites[id].home_chunk
+			if not homes.has(key):
+				homes[key] = {}
+			homes[key][id] = true
+		if roles != w._role_sites or w._site_role.size() != w.sites.size():
+			bad.append("tick %d: roles %s, kept %s" % [t, roles, w._role_sites])
+		if homes != w._home_sites or w._home_count != w.sites.size():
+			bad.append("tick %d: the home chunks differ" % t)
+		w._index_zones(sim.region)
+		var ids := PackedStringArray()
+		var centres := PackedVector2Array()
+		for z in sim.region.zones:
+			ids.append(z.id)
+			centres.append(z.center)
+		if ids != w._zone_ids or centres != w._zone_c:
+			bad.append("tick %d: the zone index differs" % t)
+	check(bad.is_empty(), "the kept counts match (%s)" % [bad.slice(0, 3)])
+	check(unloads >= 10, "chunks unloaded on the way (%d)" % unloads)
+	check(w.sites.size() >= 100, "a dense table (%d sites)" % w.sites.size())
