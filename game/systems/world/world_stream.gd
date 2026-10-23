@@ -660,6 +660,7 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 		if e == null:
 			break
 		field.remove(e, "evicted", sim.tick, true)
+		list.erase(e)   # still marked asleep: left in the list it would be picked again forever
 		counters.evictions += 1
 
 
