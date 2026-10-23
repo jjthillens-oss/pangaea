@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Veil garden (S3 band 1): open water over rich meadows where veils drift; two old rammer grounds; the elder Warden's two meadows bloom in turn (docs/s3: s3-sim 4.3).",
+  "id": "veil_garden_e",
+  "band": 1,
+  "region": "veil_garden",
+  "set": 1,
+  "rare": "",
+  "landmark_anchor": [-23.0, 23.0],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [-23.0, -1.9], "radius": 0.67, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [6.0, 24.3], "radius": 0.99, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-21.9, 16.4], "radius": 0.93, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-15.2, 22.5], "radius": 1.32, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [-8.4, -5.4], "radius": 1.23, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s5", "center": [12.5, 11.0], "radius": 0.68, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s6", "center": [-20.9, -24.0], "radius": 0.8, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s7", "center": [5.3, -16.5], "radius": 1.43, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s8", "center": [-1.7, 16.7], "radius": 1.17, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s9", "center": [-0.7, -2.4], "radius": 0.69, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "ma", "center": [15.07, -15.07], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "mb", "center": [5.73, -5.73], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "zr1", "center": [16.0, 22.0], "radius": 3.5, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "zr2", "center": [-22.0, -16.0], "radius": 3.5, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "zv1", "center": [-5.0, -23.0], "radius": 4.0, "capacity": 14.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "zv2", "center": [23.0, 5.0], "radius": 4.0, "capacity": 14.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f1", "center": [-27.4, 27.4], "radius": 3.06, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [-27.0, -22.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f3", "center": [25.9, -16.9], "radius": 3.4, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f4", "center": [-18.5, 6.5], "radius": 3.0, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f5", "center": [-2.7, 26.7], "radius": 2.83, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f6", "center": [21.9, 27.1], "radius": 3.44, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "ew", "species": "elder_warden", "home": [15.07, -15.07], "heading": -1.6397, "territory_zone": "ma", "sizes": [4], "post_b": {"home": [5.73, -5.73], "heading": -0.2041, "territory_zone": "mb"}},
+    {"id": "ra", "species": "rammer", "home": [16.0, 22.0], "heading": -2.552, "territory_zone": "zr1", "sizes": [3, 4]},
+    {"id": "rb", "species": "rammer", "home": [-22.0, -16.0], "heading": -1.9585, "territory_zone": "zr2", "sizes": [3, 4]},
+    {"id": "va", "species": "veil", "home": [-5.0, -23.0], "heading": -0.5267, "territory_zone": "", "sizes": [3]},
+    {"id": "vb", "species": "veil", "home": [23.0, 5.0], "heading": -0.6655, "territory_zone": "", "sizes": [3]}
+  ]
+}
