@@ -129,7 +129,27 @@ The gameplay skin needs no change: it already runs coarser than the preview, at 
   and stretches the tail until the toes are
   too thin for the finest grid.
 
-## 6. Next (PROPOSED)
+## 6. Skin built off the main thread
 
-1. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
-2. Hand the core to S4's editor shell when the creature stage starts.
+In interactive runs the Editor Lab builds the skin on a worker thread. The handles follow the mouse at once, and the
+skin catches up. An edit made while a build runs replaces any queued body, so the worker always builds the newest one.
+
+A local GPU device belongs to the thread that made it, so the worker creates and frees its own. A first try that
+started a new thread per build failed with "can only be called from the render thread".
+
+`--demo --async` runs the scripted demo on this path: the clip finishes with no errors and exits cleanly. The plain
+demo still builds in step, so every movie frame shows the edit it describes.
+
+## 7. Test drive
+
+Press T in the Editor Lab, or start it with `--drive`, to see the body as it stands walk. It uses Gait Lab legs (the
+Walker Lab's rig and demo drive) in place of the editor view, and T again goes back to editing. A body with no legs
+gets a message instead. A leg needs a knee and must reach the ground.
+
+The demo clip ends with the edited quadruped walking: arms on the neck, a long tail and two fins. The crouched stance
+at a trot is the Walker Lab's existing gait, and the unedited quadruped shows the same stance.
+
+## 8. Next (PROPOSED)
+
+1. Hand the core to S4's editor shell when the creature stage starts.
+2. A taller stance for the walkers at a trot (the gait's hip height).
