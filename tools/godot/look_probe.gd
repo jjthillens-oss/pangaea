@@ -53,7 +53,8 @@ extends SceneTree
 ## sunlit adds <scene>_nopatch.png (the fluid frame with the zone lights hidden) and
 ## <scene>_ambush.png (an ambush hunter let in over the patch's brightest point). shelter adds
 ## <scene>_bare.png (the same moment with the rim off) and <scene>_unlit.png (the fluid frame with
-## the zone lights hidden).
+## the zone lights hidden). When art's ambience is mounted, rim_north adds <scene>_wall.png (the
+## fluid frame with the ambience hidden too).
 ## <scene>_points.png outlines every sampled region in yellow.
 ##
 ## Readings, in look_probe.json under scenes.<scene>.readings: a point is the per-channel median of
@@ -71,7 +72,8 @@ extends SceneTree
 ## over the fluid and over the decor stand-in; and the L* the sunlit patches add under its edge)
 ## and marker (the "!"'s outline and glyph pixels, the fluid behind them and their WCAG contrast
 ## ratios); rim_north adds skirt (L* down the north wall from
-## 1 m to 30 m deep, and its largest step between neighbouring samples); hud adds vignette (the four
+## 1 m to 30 m deep, and its largest step between neighbouring samples, read without art's decor);
+## hud adds vignette (the four
 ## corners with the vignette alone), vignette_behind and vignette_dE; sunlit adds patch (the zone's
 ## light: L* of the fluid frame against the same without the zone lights, out from the zone's centre
 ## on the patches' plane) and ambush (that hunter's body against what lies behind it, and the patch
@@ -545,7 +547,7 @@ func _shoot(scene: String) -> void:
 				if not ambush.is_empty():
 					r.ambush_dL = ambush.map(func(c: Dictionary) -> float: return c.dL).min()
 			elif scene == "rim_north":
-				r.skirt = _skirt_readings(frames[1])
+				r.skirt = _skirt_readings(await _wall_frame(scene, frames[1]))
 			_write_points(scene, frames[0])
 
 
@@ -986,7 +988,23 @@ func _patch_readings(zone: Dictionary, lit: Image, dark: Image) -> Dictionary:
 	return out
 
 
-## L* down the north wall below the cell, from SKIRT_TOP_Y to SKIRT_BOTTOM_Y, in the fluid frame:
+## The fluid frame for the skirt: with art's decor (the pool's "Ambience", when mounted) hidden too,
+## saved as <scene>_wall.png, since an item drifting in front of the wall is not an edge on it (art
+## PR #10 put a backdrop organism across the column: one step of 6.5). Without decor it is `fluid`.
+func _wall_frame(scene: String, fluid: Image) -> Image:
+	var ambience := pool.get_node_or_null(^"Ambience") as Node3D
+	if ambience == null or not ambience.visible:
+		return fluid
+	_show_gameplay(false)
+	ambience.visible = false
+	var wall := await _capture()
+	ambience.visible = true
+	_show_gameplay(true)
+	_save(scene, "wall", wall)
+	return wall
+
+
+## L* down the north wall below the cell, from SKIRT_TOP_Y to SKIRT_BOTTOM_Y, in the wall frame:
 ## a hard lower edge on the rim's skirt shows as a step between neighbouring samples.
 func _skirt_readings(fluid: Image) -> Dictionary:
 	var x := pool.cell_view.global_position.x
