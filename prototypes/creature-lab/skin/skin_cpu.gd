@@ -166,7 +166,7 @@ static func build(desc: RefCounted, divisions: int) -> Dictionary:
 	var bones := PackedInt32Array()
 	var weights := PackedFloat32Array()
 	var custom0 := PackedFloat32Array()
-	var bone_count: int = desc.vertebrae.size()
+	var bone_count: int = desc.bone_count()
 	for p in vertices:
 		normals.append(field.normal(p, 0.25 * cell))
 		var bw: Array = field.weights(p, bone_count)
@@ -180,6 +180,22 @@ static func build(desc: RefCounted, divisions: int) -> Dictionary:
 			"dims": dims, "cell": cell, "topology_fixes": fixes, "fix_passes_used": passes_used,
 			"ms": {"field": (t1 - t0) / 1000.0, "nets": (t2 - t1) / 1000.0, "normals_weights": (t3 - t2) / 1000.0,
 				"total": (t3 - t0) / 1000.0}}
+
+
+## The gameplay skin: built at `divisions` and, if that is over `triangle_budget` triangles (round, bulky bodies have
+## more surface per grid cell), rebuilt on a coarser grid. Triangles grow with divisions squared, so one estimate
+## nearly always lands; a second step down is the fallback. Adds "divisions" to the result.
+static func build_within(desc: RefCounted, divisions: int, triangle_budget: int) -> Dictionary:
+	var d := divisions
+	var out := build(desc, d)
+	for attempt in 3:
+		var tris: int = out["indices"].size() / 3
+		if tris <= triangle_budget:
+			break
+		d = mini(d - 2, int(floor(d * sqrt(float(triangle_budget) / tris) * 0.97)))
+		out = build(desc, d)
+	out["divisions"] = d
+	return out
 
 
 static func _mask(values: PackedFloat32Array, base: int, corner_offsets: PackedInt32Array, iso: float) -> int:

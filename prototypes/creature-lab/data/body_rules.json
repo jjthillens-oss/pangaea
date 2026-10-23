@@ -1,5 +1,5 @@
 {
-	"note": "Spine body limits for prototype 0b. PROPOSED numbers from workstreams/creature_editor.md section 2.6. Positions and radii are in 1/1000 of reference_length.",
+	"note": "Body limits for prototypes 0b and Stage 1. PROPOSED numbers from workstreams/creature_editor.md section 2.6. Positions and radii are in 1/1000 of reference_length.",
 	"vertebra_count_min": 3,
 	"vertebra_count_max": 24,
 	"position_limit": 1500,
@@ -14,5 +14,9 @@
 	"reference_length_mm_min": 100,
 	"reference_length_mm_max": 8000,
 	"size_budget_bytes": 4096,
-	"gameplay_triangle_budget": 8000
+	"gameplay_triangle_budget": 8000,
+	"limb_count_max": 12,
+	"limb_joints_min": 2,
+	"limb_joints_max": 5,
+	"bone_count_max": 128
 }

@@ -20,7 +20,7 @@ const float FLIP_SCALE = 1.0001; // skin_cpu.gd FLIP_SCALE
 const float SUPPORT = 1.6;
 const float ISO = 0.22628403;
 const float ISO_P = 0.011586752; // ISO^3: grids store sum f^3 (domain/body_field.gd)
-const int MAX_BONES = 32;
+const int MAX_BONES = 128; // body_rules.json bone_count_max
 
 layout(push_constant, std430) uniform Pass {
 	uint mode;
@@ -36,8 +36,8 @@ layout(set = 0, binding = 0, std430) restrict readonly buffer Params {
 	uvec4 split[2]; // 256-bit table: bit m set if corner mask m splits into two groups (skin_cpu.gd _split_table)
 } params;
 
-// Capsule k: caps[3k] = (a, ra), caps[3k + 1] = (b, rb), caps[3k + 2] = (spine length before it, its length,
-// whole spine length, 0).
+// Capsule k: caps[4k] = (a, ra), caps[4k + 1] = (b, rb), caps[4k + 2] = (chain length before it, its length,
+// whole chain length, limb id), caps[4k + 3] = (bone a, bone b, spine coordinate of a limb's vertebra, 0).
 layout(set = 0, binding = 1, std430) restrict readonly buffer Capsules { vec4 caps[]; };
 layout(set = 0, binding = 2, std430) restrict buffer Field { float field[]; };
 layout(set = 0, binding = 3, std430) restrict buffer CellOffsets { uint cell_offset[]; };
@@ -59,11 +59,11 @@ const int EDGE_TABLE[24] = int[24](0, 1, 2, 3, 4, 5, 6, 7, 0, 2, 1, 3, 4, 6, 5, 
 
 // Falloff of capsule k at p (x) and the closest point's axis parameter (y).
 vec2 capsule(int k, vec3 p) {
-	vec3 a = caps[3 * k].xyz;
-	vec3 ab = caps[3 * k + 1].xyz - a;
+	vec3 a = caps[4 * k].xyz;
+	vec3 ab = caps[4 * k + 1].xyz - a;
 	float len2 = dot(ab, ab);
 	float t = len2 > 0.0 ? clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
-	float big_r = SUPPORT * mix(caps[3 * k].w, caps[3 * k + 1].w, t);
+	float big_r = SUPPORT * mix(caps[4 * k].w, caps[4 * k + 1].w, t);
 	vec3 d = p - (a + ab * t);
 	float q = dot(d, d) / (big_r * big_r);
 	if (q >= 1.0) {
@@ -226,12 +226,20 @@ void main() {
 		float w[MAX_BONES];
 		int bone_count = params.counts.y;
 		for (int b = 0; b < MAX_BONES; b++) w[b] = 0.0;
+		int pk = 0;
+		float pf = -1.0;
+		for (int k = 0; k < params.counts.x; k++) {
+			float f = capsule(k, p).x;
+			if (f > pf) { pf = f; pk = k; }
+		}
+		float own = caps[4 * pk + 2].w;
 		float total = 0.0;
 		for (int k = 0; k < params.counts.x; k++) {
+			if (caps[4 * k + 2].w != 0.0 && caps[4 * k + 2].w != own) continue;
 			vec2 c = capsule(k, p);
 			if (c.x > 0.0) {
-				w[k] += c.x * (1.0 - c.y);
-				w[k + 1] += c.x * c.y;
+				w[int(caps[4 * k + 3].x)] += c.x * (1.0 - c.y);
+				w[int(caps[4 * k + 3].y)] += c.x * c.y;
 				total += c.x;
 			}
 		}
@@ -239,14 +247,15 @@ void main() {
 			int best_k = 0;
 			float best_d = 1e30;
 			for (int k = 0; k < params.counts.x; k++) {
-				vec3 a = caps[3 * k].xyz;
-				vec3 ab = caps[3 * k + 1].xyz - a;
+				if (caps[4 * k + 2].w != 0.0 && caps[4 * k + 2].w != own) continue;
+				vec3 a = caps[4 * k].xyz;
+				vec3 ab = caps[4 * k + 1].xyz - a;
 				float len2 = dot(ab, ab);
 				float t = len2 > 0.0 ? clamp(dot(p - a, ab) / len2, 0.0, 1.0) : 0.0;
 				float d = length(p - (a + ab * t));
 				if (d < best_d) { best_d = d; best_k = k; }
 			}
-			w[best_k] = 1.0;
+			w[int(caps[4 * best_k + 3].x)] = 1.0;
 		}
 		int out_bone[4];
 		float out_w[4];
@@ -270,19 +279,13 @@ void main() {
 			bones[4u * v + uint(slot)] = out_bone[slot];
 			weights[4u * v + uint(slot)] = out_w[slot] / wsum;
 		}
-		// Paint coordinates (BodyField.paint_coords): dominant capsule, position along the spine, ring angle.
-		int pk = 0;
-		float pf = -1.0;
-		for (int k = 0; k < params.counts.x; k++) {
-			float f = capsule(k, p).x;
-			if (f > pf) { pf = f; pk = k; }
-		}
-		vec3 pa = caps[3 * pk].xyz;
-		vec3 pab = caps[3 * pk + 1].xyz - pa;
+		// Paint coordinates (BodyField.paint_coords): dominant capsule, position along its chain, ring angle.
+		vec3 pa = caps[4 * pk].xyz;
+		vec3 pab = caps[4 * pk + 1].xyz - pa;
 		float plen2 = dot(pab, pab);
 		float pt = plen2 > 0.0 ? clamp(dot(p - pa, pab) / plen2, 0.0, 1.0) : 0.0;
-		vec4 seg = caps[3 * pk + 2];
-		float pu = seg.z > 0.0 ? (seg.x + pt * sqrt(plen2)) / seg.z : 0.0;
+		vec4 seg = caps[4 * pk + 2];
+		float along = seg.z > 0.0 ? (seg.x + pt * sqrt(plen2)) / seg.z : 0.0;
 		vec3 tdir = plen2 > 0.0 ? normalize(pab) : vec3(0.0, 0.0, 1.0);
 		vec3 ref = abs(dot(tdir, vec3(0.0, 1.0, 0.0))) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, -1.0);
 		vec3 dorsal = normalize(ref - tdir * dot(ref, tdir));
@@ -290,7 +293,11 @@ void main() {
 		vec3 rel = p - (pa + pab * pt);
 		float ang = atan(dot(rel, right), dot(rel, dorsal)) / 6.28318530718;
 		ang = ang - floor(ang);
-		custom0[4u * v] = pu; custom0[4u * v + 1u] = ang; custom0[4u * v + 2u] = 0.0; custom0[4u * v + 3u] = 0.0;
+		bool on_limb = seg.w != 0.0;
+		custom0[4u * v] = on_limb ? caps[4 * pk + 3].z : along;
+		custom0[4u * v + 1u] = ang;
+		custom0[4u * v + 2u] = seg.w;
+		custom0[4u * v + 3u] = on_limb ? along : 0.0;
 	} else if (pc.mode == MODE_FIX_MARK) {
 		// skin_cpu.gd step 1b: a crossed cell whose inside or outside corners form two groups gets its strongest
 		// outside corner marked to move inside.

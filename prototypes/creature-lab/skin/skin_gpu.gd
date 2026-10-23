@@ -65,12 +65,13 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 	for k in field.capsule_count():
 		caps.append_array([field.a[k].x, field.a[k].y, field.a[k].z, field.ra[k],
 				field.b[k].x, field.b[k].y, field.b[k].z, field.rb[k],
-				field.start[k], field.a[k].distance_to(field.b[k]), field.total_length, 0.0])
+				field.start[k], field.a[k].distance_to(field.b[k]), field.chain_length[k], field.limb[k],
+				float(field.bone_a[k]), float(field.bone_b[k]), field.attach_u[k], 0.0])
 	_ensure_buffers(n, field.capsule_count())
 	var origin: Vector3 = grid["origin"]
 	var params := PackedFloat32Array([origin.x, origin.y, origin.z, grid["cell"]]).to_byte_array()
 	params.append_array(PackedInt32Array([dims.x, dims.y, dims.z, n, field.capsule_count(),
-			desc.vertebrae.size(), 0, 0]).to_byte_array())
+			desc.bone_count(), 0, 0]).to_byte_array())
 	params.append_array(_split_bits().to_byte_array())
 	rd.buffer_update(_buffers["params"], 0, params.size(), params)
 	var cap_bytes := caps.to_byte_array()
@@ -155,7 +156,7 @@ func _ensure_buffers(n: int, capsules: int) -> void:
 	_cap_capsules = maxi(capsules, 32)
 	var blocks := int(ceil(float(_capacity) / GROUP))
 	var sizes := {
-		"params": 80, "capsules": 48 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
+		"params": 80, "capsules": 64 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
 		"quad_offset": 4 * _capacity, "blocks": 4 * blocks, "totals": 16, "vertices": 12 * _capacity,
 		"normals": 12 * _capacity, "bones": 16 * _capacity, "weights": 16 * _capacity,
 		"indices": 4 * 18 * _capacity, "custom0": 16 * _capacity,

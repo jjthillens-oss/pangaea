@@ -6,6 +6,8 @@ var desc: RefCounted
 var skeleton: Skeleton3D
 var mesh_instance: MeshInstance3D
 var root_bone := 0
+## First bone of each limb chain (its joint 0), in limb_chains() order.
+var limb_roots := PackedInt32Array()
 var swim_amplitude_deg := 9.0
 var swim_wavelength := 0.9  # in body lengths
 var swim_frequency := 0.8  # cycles per second
@@ -41,10 +43,24 @@ func setup(description: RefCounted, arrays: Dictionary, color: Color) -> void:
 		skeleton.set_bone_parent(i, parent)
 		var local: Vector3 = desc.position_m(i) - (desc.position_m(parent) if parent >= 0 else Vector3.ZERO)
 		skeleton.set_bone_rest(i, Transform3D(Basis(), local))
+	# Limb bones follow, one per joint: joint 0 hangs from its vertebra, each later joint from the one before.
+	var rest_points := PackedVector3Array()
+	for i in n:
+		rest_points.append(desc.position_m(i))
+	for c in desc.limb_chains():
+		var pts: PackedVector3Array = c["points"]
+		var first: int = rest_points.size()
+		limb_roots.append(first)
+		for k in pts.size():
+			var bone := skeleton.add_bone("limb_%02d_%d" % [c["limb_id"], k])
+			var parent: int = c["attach"] if k == 0 else first + k - 1
+			skeleton.set_bone_parent(bone, parent)
+			skeleton.set_bone_rest(bone, Transform3D(Basis(), pts[k] - rest_points[parent]))
+			rest_points.append(pts[k])
 	skeleton.reset_bone_poses()
 	var skin := Skin.new()
-	for i in n:
-		skin.add_bind(i, Transform3D(Basis(), desc.position_m(i)).affine_inverse())
+	for i in rest_points.size():
+		skin.add_bind(i, Transform3D(Basis(), rest_points[i]).affine_inverse())
 	mesh_instance = MeshInstance3D.new()
 	mesh_instance.name = "Skin"
 	skeleton.add_child(mesh_instance)
@@ -96,6 +112,10 @@ func swim(dt: float) -> void:
 		var tailward := 1.0 if i > root_bone else 0.35
 		var angle := deg_to_rad(swim_amplitude_deg) * tailward * sin(_phase - TAU * along / swim_wavelength)
 		skeleton.set_bone_pose_rotation(i, Quaternion(Vector3.UP, angle))
+	# Limbs paddle: each swings about the body's X axis at its root, the pairs in opposite phase.
+	for c in limb_roots.size():
+		var swing := deg_to_rad(2.0 * swim_amplitude_deg) * sin(_phase + PI * float(c % 2) + 0.7 * float(c / 2))
+		skeleton.set_bone_pose_rotation(limb_roots[c], Quaternion(Vector3.RIGHT, swing))
 
 
 ## Length of the body along the spine in metres, end cap to end cap: the `body_length_m` shader uniform.

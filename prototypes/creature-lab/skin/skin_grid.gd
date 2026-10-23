@@ -8,9 +8,7 @@ extends RefCounted
 static func layout(desc: RefCounted, divisions: int) -> Dictionary:
 	var box: AABB = desc.bounds_m()
 	var cell: float = box.get_longest_axis_size() / float(divisions)
-	var r_max := 0.0
-	for i in desc.vertebrae.size():
-		r_max = maxf(r_max, desc.radius_m(i))
+	var r_max: float = desc.max_radius_m()
 	var margin := 0.15 * r_max + 2.0 * cell
 	var origin := box.position - Vector3.ONE * margin
 	var size := box.size + Vector3.ONE * 2.0 * margin

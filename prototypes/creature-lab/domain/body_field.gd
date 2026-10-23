@@ -5,8 +5,8 @@ extends RefCounted
 ## its radius. Within one chain the capsules are combined by a p-norm, F = (sum f^P)^(1/P) with P = 3: a plain sum
 ## (P = 1) bulges about 15% at every vertebra (2 f(d) = ISO at d = 1.15 r), and max (P = infinity) leaves creases
 ## where a bent spine's capsules meet. P = 3 bulges about 5% and rounds the creases. Grid builders store
-## S = sum f^P and compare it with ISO_P = ISO^P, which is the same surface. Sum or smooth-union across chains comes
-## with limbs.
+## S = sum f^P and compare it with ISO_P = ISO^P, which is the same surface. Limbs are more chains of capsules in the
+## same blend, so where a limb meets the trunk the p-norm also rounds the junction into a small fillet.
 ## Pure rules: no scene or file access. skin/surface_nets.glsl repeats these formulas and must stay in step.
 
 const SUPPORT := 1.6
@@ -14,26 +14,61 @@ const ISO := 0.22628403  # (1 - 1 / SUPPORT^2)^3
 const BLEND_P := 3.0
 const ISO_P := 0.011586752  # ISO^BLEND_P
 
-## Capsule k runs from a[k] to b[k]; it belongs to bones k and k + 1 (vertebra indices).
+## Capsule k runs from a[k] to b[k] and belongs to bones bone_a[k] and bone_b[k]. Spine capsules come first.
 var a := PackedVector3Array()
 var b := PackedVector3Array()
 var ra := PackedFloat32Array()
 var rb := PackedFloat32Array()
-## Spine length before capsule k, and the whole spine length (for paint coordinates).
+var bone_a := PackedInt32Array()
+var bone_b := PackedInt32Array()
+## Chain length before capsule k and the whole chain's length (for paint coordinates), its limb id (0 = spine) and,
+## for a limb, the spine coordinate of the vertebra it starts on.
 var start := PackedFloat32Array()
+var chain_length := PackedFloat32Array()
+var limb := PackedFloat32Array()
+var attach_u := PackedFloat32Array()
+## Spine length.
 var total_length := 0.0
 
 
 static func from_description(desc: RefCounted) -> RefCounted:
 	var f = load("res://domain/body_field.gd").new()
-	for i in desc.vertebrae.size() - 1:
-		f.a.append(desc.position_m(i))
-		f.b.append(desc.position_m(i + 1))
-		f.ra.append(desc.radius_m(i))
-		f.rb.append(desc.radius_m(i + 1))
-		f.start.append(f.total_length)
+	var n: int = desc.vertebrae.size()
+	var spine_u := PackedFloat32Array([0.0])
+	for i in n - 1:
+		f._add(desc.position_m(i), desc.position_m(i + 1), desc.radius_m(i), desc.radius_m(i + 1), i, i + 1,
+				f.total_length, 0.0, 0.0)
 		f.total_length += desc.position_m(i).distance_to(desc.position_m(i + 1))
+		spine_u.append(f.total_length)
+	for k in f.chain_length.size():
+		f.chain_length[k] = f.total_length
+	var bone := n
+	for c in desc.limb_chains():
+		var pts: PackedVector3Array = c["points"]
+		var rs: PackedFloat32Array = c["radii"]
+		var u: float = spine_u[c["attach"]] / f.total_length if f.total_length > 0.0 else 0.0
+		var first: int = f.a.size()
+		var along := 0.0
+		for k in pts.size() - 1:
+			f._add(pts[k], pts[k + 1], rs[k], rs[k + 1], bone + k, bone + k + 1, along, float(c["limb_id"]), u)
+			along += pts[k].distance_to(pts[k + 1])
+		for k in range(first, f.a.size()):
+			f.chain_length[k] = along
+		bone += pts.size()
 	return f
+
+
+func _add(pa: Vector3, pb: Vector3, r0: float, r1: float, b0: int, b1: int, at: float, limb_id: float, u: float) -> void:
+	a.append(pa)
+	b.append(pb)
+	ra.append(r0)
+	rb.append(r1)
+	bone_a.append(b0)
+	bone_b.append(b1)
+	start.append(at)
+	chain_length.append(0.0)
+	limb.append(limb_id)
+	attach_u.append(u)
 
 
 func capsule_count() -> int:
@@ -83,11 +118,25 @@ func support_bounds() -> AABB:
 	return box
 
 
-## Paint coordinates for the skin shader (Godot CUSTOM0, CREATURE_GEOMETRY_SPEC.md section 8), from the capsule that
-## contributes most at p: x = position along the spine (0 head, 1 tail), y = angle around it in turns (0 on the
-## dorsal midline, 0.25 right, 0.5 belly, 0.75 left; wraps on the dorsal midline), z = limb id (0 = spine),
-## w = distance along the limb (0 on the spine). skin/surface_nets.glsl repeats this.
+## Paint coordinates for the skin shader (Godot CUSTOM0, docs/art/creature_art_contract.md), from the capsule that
+## contributes most at p: x = position along the spine (0 head, 1 tail; on a limb, that of its vertebra), y = angle
+## around the capsule axis in turns (0 towards body up, 0.25 right, 0.5 down, 0.75 left; wraps at 0), z = limb id
+## (0 = spine), w = position along the limb (0 at joint 0, 1 at the tip; 0 on the spine).
+## skin/surface_nets.glsl repeats this.
 func paint_coords(p: Vector3) -> Vector4:
+	var best := dominant(p)
+	var ab := b[best] - a[best]
+	var len2 := ab.length_squared()
+	var t := clampf((p - a[best]).dot(ab) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
+	var along := (start[best] + t * sqrt(len2)) / chain_length[best] if chain_length[best] > 0.0 else 0.0
+	var ring := ring_angle(p - (a[best] + ab * t), ab)
+	if limb[best] == 0.0:
+		return Vector4(along, ring, 0.0, 0.0)
+	return Vector4(attach_u[best], ring, limb[best], along)
+
+
+## The capsule that contributes most at p (the lowest index on a tie).
+func dominant(p: Vector3) -> int:
 	var best := 0
 	var best_f := -1.0
 	for k in a.size():
@@ -95,11 +144,7 @@ func paint_coords(p: Vector3) -> Vector4:
 		if c.x > best_f:
 			best_f = c.x
 			best = k
-	var ab := b[best] - a[best]
-	var len2 := ab.length_squared()
-	var t := clampf((p - a[best]).dot(ab) / len2, 0.0, 1.0) if len2 > 0.0 else 0.0
-	var u := (start[best] + t * sqrt(len2)) / total_length if total_length > 0.0 else 0.0
-	return Vector4(u, ring_angle(p - (a[best] + ab * t), ab), 0.0, 0.0)
+	return best
 
 
 ## Angle of `w` around the axis `axis` (head to tail), in turns: 0 towards body up, 0.25 towards body right.
@@ -112,27 +157,34 @@ static func ring_angle(w: Vector3, axis: Vector3) -> float:
 
 
 ## Up to four (bone, weight) pairs at p, weights summing to 1, heaviest first; ties go to the lower bone index.
-## A capsule gives its falloff to its two bones, split by t, so a bend between vertebrae blends smoothly.
+## A capsule gives its falloff to its two bones, split by t, so a bend between joints blends smoothly. A point whose
+## dominant capsule is on a limb takes weights only from that limb and the spine, so a limb never drags on its
+## neighbour (CREATURE_GEOMETRY_SPEC.md section 10, test 3).
 func weights(p: Vector3, bone_count: int) -> Array:
 	var w := PackedFloat32Array()
 	w.resize(bone_count)
 	var total := 0.0
+	var own := limb[dominant(p)]
 	for k in a.size():
+		if limb[k] != 0.0 and limb[k] != own:
+			continue
 		var c := capsule(k, p)
 		if c.x > 0.0:
-			w[k] += c.x * (1.0 - c.y)
-			w[k + 1] += c.x * c.y
+			w[bone_a[k]] += c.x * (1.0 - c.y)
+			w[bone_b[k]] += c.x * c.y
 			total += c.x
 	if total <= 0.0:
 		# Outside every support (rare, at the very tip): nearest capsule's bones.
 		var best_k := 0
 		var best_d := INF
 		for k in a.size():
+			if limb[k] != 0.0 and limb[k] != own:
+				continue
 			var d := Geometry3D.get_closest_point_to_segment(p, a[k], b[k]).distance_to(p)
 			if d < best_d:
 				best_d = d
 				best_k = k
-		w[best_k] = 1.0
+		w[bone_a[best_k]] = 1.0
 	var bones := PackedInt32Array()
 	var weights_out := PackedFloat32Array()
 	for slot in 4:
