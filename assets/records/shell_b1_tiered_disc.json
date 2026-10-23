@@ -1,0 +1,85 @@
+{
+  "id": "shell_b1_tiered_disc",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-1 shell (S3): a stepped, scalloped glass disc with an amber core. An obstacle the cell slides around; slots pick it by footprint class.",
+  "category": "shell",
+  "source_blend": "assets/source/blender/shell_b1_tiered_disc.blend",
+  "generator_script": "tools/blender/make_s3_kit.py",
+  "export_path": "assets/export/shell_b1_tiered_disc.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.4,
+    "y_forward": 1.4,
+    "z_up": 2.472
+  },
+  "triangles": 1240,
+  "triangle_budget": 1300,
+  "textures": [
+    {
+      "name": "T_ShellB1TieredDisc_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_ShellB1TieredDisc_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_ShellB1TieredDisc_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Core",
+    "M_Frost"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ShellB1TieredDisc"
+  ],
+  "kind": "shell",
+  "band": 1,
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_class": "fp_s",
+  "footprint_radius_m": 0.7,
+  "yaw_rule": "free",
+  "pickable": true,
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    }
+  ],
+  "swim_band_min_radius_m": 0.698,
+  "swim_band_radius_m": 0.7,
+  "top_m": 0.592,
+  "bottom_m": -1.88,
+  "scale_range": [
+    0.86,
+    1.28
+  ],
+  "provenance": "Original geometry from tools/blender/make_s3_kit.py (band-0 kit helpers in make_s1_kit.py), surfaced by make_s1_production.finish(): procedural shaders baked to textures. No outside sources."
+}

@@ -1,0 +1,101 @@
+{
+  "id": "rare_shed_shell",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-1 rare place (S3): the empty chambered test of a giant foraminifer lying on its side, broken open.",
+  "category": "rare",
+  "source_blend": "assets/source/blender/rare_shed_shell.blend",
+  "generator_script": "tools/blender/make_s3_kit.py",
+  "export_path": "assets/export/rare_shed_shell.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 8.726,
+    "y_forward": 4.539,
+    "z_up": 5.715
+  },
+  "triangles": 3200,
+  "triangle_budget": 12000,
+  "textures": [
+    {
+      "name": "T_RareShedShell_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_RareShedShell_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_RareShedShell_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Cream",
+    "M_Deep",
+    "M_Frost",
+    "M_Husk"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "RareShedShell"
+  ],
+  "kind": "rare",
+  "band": 1,
+  "pivot": "centre of the set piece on the swim plane (Godot y = 0)",
+  "rare_kind": "shed_shell",
+  "colliders": [
+    {
+      "center": [
+        -2.4,
+        -0.22
+      ],
+      "radius": 2.0
+    },
+    {
+      "center": [
+        0.9,
+        0.68
+      ],
+      "radius": 1.55
+    },
+    {
+      "center": [
+        3.2,
+        0.18
+      ],
+      "radius": 1.05
+    }
+  ],
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "swim_band_min_radius_m": 0.454,
+  "swim_band_radius_m": 4.408,
+  "top_m": 2.715,
+  "bottom_m": -3.0,
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Original geometry from tools/blender/make_s3_kit.py (band-0 kit helpers in make_s1_kit.py), surfaced by make_s1_production.finish(): procedural shaders baked to textures. No outside sources."
+}

@@ -1,0 +1,86 @@
+{
+  "id": "rare_fallen_lattice",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-1 rare place (S3): a giant radiolarian lattice, fallen and half sunk, one side broken open.",
+  "category": "rare",
+  "source_blend": "assets/source/blender/rare_fallen_lattice.blend",
+  "generator_script": "tools/blender/make_s3_kit.py",
+  "export_path": "assets/export/rare_fallen_lattice.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 9.171,
+    "y_forward": 9.139,
+    "z_up": 6.983
+  },
+  "triangles": 2612,
+  "triangle_budget": 12000,
+  "textures": [
+    {
+      "name": "T_RareFallenLattice_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_RareFallenLattice_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_RareFallenLattice_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Frost",
+    "M_Husk",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "RareFallenLattice"
+  ],
+  "kind": "rare",
+  "band": 1,
+  "pivot": "centre of the set piece on the swim plane (Godot y = 0)",
+  "rare_kind": "fallen_lattice",
+  "colliders": [
+    {
+      "center": [
+        0.0,
+        0.0
+      ],
+      "radius": 3.2
+    }
+  ],
+  "yaw_rule": "fixed",
+  "dressings": [],
+  "swim_band_min_radius_m": 3.196,
+  "swim_band_radius_m": 3.2,
+  "top_m": 3.583,
+  "bottom_m": -3.4,
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "provenance": "Original geometry from tools/blender/make_s3_kit.py (band-0 kit helpers in make_s1_kit.py), surfaced by make_s1_production.finish(): procedural shaders baked to textures. No outside sources."
+}

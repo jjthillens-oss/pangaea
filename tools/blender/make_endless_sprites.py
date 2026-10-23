@@ -36,7 +36,9 @@ RECORD = os.path.join(ld.ROOT, "assets", "records", "sprites", "endless_sprites.
 GENERATOR = "tools/blender/make_endless_sprites.py"
 
 GHOSTS = ["creature_lurker_body", "creature_elder_rammer_body", "creature_veil_body", "creature_warden_body",
-          "creature_deep_lurker_body", "creature_elder_warden_body"]
+          "creature_deep_lurker_body", "creature_elder_warden_body",
+          # Size 5 and 6, from rough render-only models (tools/blender/make_endless_extras.py).
+          "ghost_engulfer", "ghost_lancer"]
 GHOST_COLOR = "#8E9CC8"       # cool lavender-blue: far from the food (h 114) and threat (h 11) hues
 GHOST_SHADE = "#5A6796"
 GHOST_SIZE, GHOST_SIGMA = 512, 6.0
@@ -47,7 +49,7 @@ HAZE_SIZE, HAZE_SIGMA = 128, 1.2
 
 
 def _species(asset_id):
-    return asset_id.replace("creature_", "").replace("_body", "")
+    return asset_id.replace("creature_", "").replace("_body", "").replace("ghost_", "")
 
 
 def _open(asset_id):
@@ -212,7 +214,14 @@ def materials():
     return out
 
 
-PARTS = {"ghosts": ghosts, "haze": haze, "silt": silt, "materials": materials}
+def bloom():
+    """Recorded here; drawn by tools/blender/make_endless_extras.py."""
+    return [{"name": "T_BloomTint", "path": "assets/export/ambience/T_BloomTint.png", "size": [256, 256],
+             "kind": "bloom tint: a soft round gradient, white to clear, that the engine tints #E8D27A over a blooming meadow",
+             "source": "tools/blender/make_endless_extras.py"}]
+
+
+PARTS = {"ghosts": ghosts, "haze": haze, "silt": silt, "materials": materials, "bloom": bloom}
 
 
 def main(argv):
