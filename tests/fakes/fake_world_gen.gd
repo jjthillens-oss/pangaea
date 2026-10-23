@@ -7,8 +7,9 @@ extends WorldGen
 ##   - with cx and cy both 2 mod 4 (one per 4 x 4 chunks; `site_period` changes the 4), a rammer
 ##     site "t_f_<cx>_<cy>" whose territory is the disc of radius ZONE_R at the chunk's centre (the
 ##     zone's, where there is one), home ZONE_R - 2 east of that centre, reach disc of radius
-##     REACH_R there (so it lies inside the chunk), live at size 1; and beside it a second rammer
-##     site of the same shape, "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
+##     REACH_R centred REACH_SHIFT east of it (so it reaches into the chunk to the east: its chunks
+##     are both), live at size 1; and beside it a second rammer site of the same shape,
+##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
 ## Chunk (-3, 1) also holds the zone "z_edge" (capacity EDGE_CAPACITY) centred 2 tm inside its west
 ## edge, so its disc crosses into chunk (-4, 1), which holds the shell "s_edge" exactly
 ## ZONE_CLEAR_MARGIN from that disc (the gap rule, B-3).
@@ -25,6 +26,7 @@ const ZONE_GROWTH := 0.08
 const REACH_R := 12.0
 const SITE_SPECIES := "rammer"
 const SITE_HEADING := -PI / 2.0
+const REACH_SHIFT := 6.0
 const EDGE_CHUNK := Vector2i(-3, 1)
 const EDGE_CAPACITY := 96.0
 const ZONE_CLEAR_MARGIN := 0.7
@@ -90,15 +92,27 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	if posmod(cx, site_period) == at and posmod(cy, site_period) == at and creatures_on:
 		var zx := x0 + 16.0
 		var zy := y0 + 16.0
+		var reach := {"x": zx + REACH_SHIFT, "y": zy, "radius": REACH_R}
+		var reach_chunks := disc_chunks(zx + REACH_SHIFT, zy, REACH_R, chunk_tm)
 		c.sites.append({"id": "t_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx + ZONE_R - 2.0, "y": zy,
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
-			"reach": {"x": zx, "y": zy, "radius": REACH_R}, "chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int],
-			"tile": tile})
+			"reach": reach.duplicate(), "chunks": reach_chunks.duplicate(), "sizes": [1] as Array[int], "tile": tile})
 		c.sites.append({"id": "u_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx - ZONE_R + 2.0, "y": zy,
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
-			"reach": {"x": zx, "y": zy, "radius": REACH_R}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
-			"tile": tile})
+			"reach": reach.duplicate(), "chunks": reach_chunks.duplicate(), "sizes": [2] as Array[int], "tile": tile})
 	return c
+
+
+## The chunks a disc (absolute tm) touches, sorted (y, x).
+static func disc_chunks(x: float, y: float, r: float, chunk_tm: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for ky in range(floori((y - r) / chunk_tm), floori((y + r) / chunk_tm) + 1):
+		for kx in range(floori((x - r) / chunk_tm), floori((x + r) / chunk_tm) + 1):
+			var dx := maxf(0.0, maxf(chunk_tm * kx - x, x - chunk_tm * (kx + 1)))
+			var dy := maxf(0.0, maxf(chunk_tm * ky - y, y - chunk_tm * (ky + 1)))
+			if dx * dx + dy * dy <= r * r:
+				out.append(Vector2i(kx, ky))
+	return out
 
 
 func tile_info(band: int, tx: int, ty: int) -> Dictionary:

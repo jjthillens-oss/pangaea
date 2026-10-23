@@ -328,7 +328,8 @@ func respawn_delay_for(c: Creature) -> int:
 
 ## Endless mode: spawns site `s` (a WorldStream site record) now if its niche has room. Its number,
 ## id ("c_<size>_<site>_<count>"), brain seed and respawn delay come from the world seed, the site
-## and its spawn count, which rises only on a real spawn. Null when the niche is full.
+## and its spawn count, which rises only on a real spawn. An awake spawn first has its site's reach
+## chunks loaded (B-9). Null when the niche is full.
 func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var site_id := str(s.id)
 	var species_id := str(s.species)
@@ -336,6 +337,8 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var role := str(species.niche_of(species_id).role)
 	if not region.try_spawn(role):
 		return null
+	if not asleep:
+		world.load_site_chunks(s)
 	world.site_counts[site_id] = count + 1
 	var p: Phenotype = _phenotypes[species_id]
 	var c := Creature.new()

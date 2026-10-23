@@ -92,6 +92,7 @@ var _trimmed := {}                     ## zone id -> true while trimmed (counted
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
+var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -135,11 +136,23 @@ func fill_all_food_now(sim: PoolSim) -> void:
 	_food_view(sim)
 
 
-## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile, and
-## the creature field sleeping_ids() reads.
+## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile, the
+## creature field sleeping_ids() reads and the sim load_site_chunks loads into.
 func start(sim: PoolSim) -> void:
 	_cell_tile = tile_of_local(sim.motion.position)
 	_field = weakref(sim.creatures) if sim.creatures != null else null
+	_sim = weakref(sim)
+
+
+## B-9: every missing chunk of site record `s` loads now, before its creature spawns awake (never
+## refused and never counted), so an awake creature always stands on its whole reach.
+func load_site_chunks(s: Dictionary) -> void:
+	var sim: PoolSim = _sim.get_ref() if _sim != null else null
+	if sim == null:
+		return
+	for key in s.chunks:
+		if not _chunks.has(key):
+			_load_chunk(sim, key)
 
 
 # --- frames ---

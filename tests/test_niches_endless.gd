@@ -350,6 +350,34 @@ func test_a_spawn_over_the_sleeper_or_awake_cap_waits_with_no_room() -> void:
 	check(c != null and not c.asleep and c.think_slot >= 0, "awake on a slot")
 
 
+## B-9: after a teleport, every creature that spawns awake has its site's chunks loaded on its spawn
+## tick, even those the view set did not hold.
+func test_an_awake_spawn_has_its_site_chunks_loaded_on_its_spawn_tick() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	# Measured: from here two awake spawns' east chunks lie outside the view set.
+	check(sim.debug_teleport_abs(5015.9, 9.0), "teleported")
+	sim.drain_events()
+	var awake_spawns := 0
+	var missing_before := 0
+	var bad := 0
+	for t in 120:
+		var loaded := sim.world.loaded_keys()
+		sim.step(SimIntent.new())
+		for e in sim.drain_events():
+			if e.type != "creature_spawned" or e.debug or e.asleep:
+				continue
+			awake_spawns += 1
+			var chunks: Array = sim.world.sites[e.site].chunks
+			if chunks.any(func(k: Vector2i) -> bool: return not loaded.has(k)):
+				missing_before += 1
+			for key in chunks:
+				if sim.world.chunk(key) == null:
+					bad += 1
+	check(awake_spawns >= 3, "%d awake spawns" % awake_spawns)
+	check(missing_before >= 1, "%d of them had a site chunk missing when the tick began" % missing_before)
+	check_eq(bad, 0, "every awake spawn's site chunks loaded")
+
+
 ## C-14: debug creatures take numbers from 2^30 up and keep "c_" + number ids, so they sort after
 ## every site creature and never meet a site creature's id.
 func test_debug_creatures_sort_after_site_creatures_and_keep_c_ids() -> void:
