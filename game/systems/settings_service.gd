@@ -29,7 +29,9 @@ const MOVE_ACTIONS := ["move_up", "move_down", "move_left", "move_right"]
 ## (the engine binds the d-pad and the left stick for moving, but no buttons for these two).
 const UI_PAD := {"ui_accept": "pad:0", "ui_cancel": "pad:1", "ui_up": "axis:1:-1", "ui_down": "axis:1:1",
 	"ui_left": "axis:0:-1", "ui_right": "axis:0:1"}
-## Text scale steps, in percent, multiply every font size in the theme.
+## Text scale steps, in percent, multiply every font size in the theme but these (the title's
+## 150 px logo type is already as large as reading needs).
+const UNSCALED_TYPES := ["TitleLabel"]
 const THEME_PATH := "res://game/ui/theme/pangaea_theme.tres"
 
 static var _shared: SettingsService
@@ -298,7 +300,8 @@ func apply_text_scale(theme: Theme = null) -> void:
 	theme.default_font_size = roundi(sizes.default * scale)
 	for entry in sizes:
 		if entry is Array:
-			theme.set_font_size(entry[1], entry[0], roundi(sizes[entry] * scale))
+			var keep: bool = entry[0] in UNSCALED_TYPES
+			theme.set_font_size(entry[1], entry[0], sizes[entry] if keep else roundi(sizes[entry] * scale))
 
 
 # --- Read API for other systems (S2 reads these) ---

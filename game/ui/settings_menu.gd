@@ -409,7 +409,6 @@ func _add_binding_row(action: String, label_text: String) -> void:
 		var b := Button.new()
 		b.name = "Keys" if device == "keys" else "Pad"
 		b.custom_minimum_size = Vector2(300, 0)
-		b.clip_text = true
 		b.pressed.connect(begin_capture.bind(action, device))
 		row.add_child(b)
 		_bind_buttons[[action, device]] = b

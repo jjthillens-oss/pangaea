@@ -179,16 +179,16 @@ func _make_card(n: int) -> Control:
 	box.add_child(title)
 	var preview: CellPreview = PREVIEW_SCENE.instantiate()
 	preview.name = "Preview"
-	preview.custom_minimum_size = Vector2(300, 300)
+	preview.custom_minimum_size = Vector2(260, 260)
 	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(preview)
 	var spacer := Control.new()
 	spacer.name = "Spacer"
-	spacer.custom_minimum_size = Vector2(300, 300)
+	spacer.custom_minimum_size = Vector2(260, 260)
 	box.add_child(spacer)
 	var facts := VBoxContainer.new()
 	facts.name = "Facts"
-	facts.custom_minimum_size = Vector2(0, 170)
+	facts.custom_minimum_size = Vector2(0, 160)
 	box.add_child(facts)
 	var play := Button.new()
 	play.name = "Play"
