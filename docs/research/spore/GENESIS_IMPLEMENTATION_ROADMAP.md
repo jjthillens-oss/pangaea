@@ -40,7 +40,9 @@ The checkpoint (`CHECKPOINT_1.md`) replaced "start with full Stage 1" by two sma
   all pass criteria met, built-in IK holds for legs** (`GAIT_LAB_REPORT.md`).
 - **0b Spine skin and codec** (`workstreams/creature_editor.md` §8): a 3–24 vertebra body with no limbs or parts, the
   capsule skin at two grid sizes timed in GDScript and in one native path (compute shader), and the compact
-  description encoder. Decides how live editing will be made fast. About 1–2 sessions.
+  description encoder. Decides how live editing will be made fast. About 1–2 sessions. **Built 2026-10-23: the
+  compute shader rebuilds the preview skin in 6–30 ms even on a software GPU; no C++ needed for the skin**
+  (`SPINE_LAB_REPORT.md`).
 
 Each gets its own owner approval. Stage 1 below starts only after 0b, and uses its timing result.
 
@@ -103,9 +105,9 @@ separate decision; nothing in this roadmap commits to it.
 ## 3. Decisions needed from the owner
 
 1. ~~Approve prototype 0a, Gait Lab~~ Approved and built 2026-10-23 (`GAIT_LAB_REPORT.md`).
-2. Then approve 0b (spine skin and codec).
+2. ~~Then approve 0b (spine skin and codec).~~ Built 2026-10-23 on the owner's go ahead (`SPINE_LAB_REPORT.md`).
 3. Record sessions R2 and R3 when convenient (about 1.5 hours together).
-4. After 0b: if the compute shader path is not enough, choose whether to allow a C++ GDExtension (new toolchain and
+4. After 0b (recommendation: the compute shader path is enough, so no): if the compute shader path is not enough, choose whether to allow a C++ GDExtension (new toolchain and
    the MIT `godot-cpp` dependency).
 5. Bible §7 says "Support a small approved set of body plans first"; the 2026-10-23 decision asks for full free-form
    bodies like Spore. Confirm whether free-form bodies replace that line, or whether the first playable version ships

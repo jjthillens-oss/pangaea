@@ -56,8 +56,8 @@ Sources: `prototypes/creature-lab/results/measurements.json` (from `tools/measur
   this happens 0 times. It happens during speed changes and sharp turns: about 25–35% of steps in the 60 s random drive
   (where the input jumps every 0.5 s), and 3–19 times per short scripted run, mostly at start-up and band changes. This
   is the fallback working as intended. Fewer early lifts on transitions is a tuning task.
-- **Not covered:** body bob, pitch and roll, a spine, hip sway, knee direction per leg (every knee bends forward), slopes,
-  odd bodies (3 legs, mixed lengths), skin. The motion looks stiff above the legs. Gait Lab only tests the legs.
+- **Not covered:** a spine that bends with the gait, slopes, odd bodies (3 legs, mixed lengths), skin. Body posture and
+  knee direction were added after the first report (§7).
 
 ## 4. Engine facts learned (OBSERVED, Godot 4.7.2)
 
@@ -89,3 +89,30 @@ per second. Delivered to the owner with this report. The video files are not com
 3. Re-set the animation budget as tiers (§2). Measure on the baseline PC when the owner can run the prototype.
 4. Record **R307** in Spore (leg length versus speed), so this prototype's anatomy-driven speed can be compared with
    Spore's behaviour.
+
+## 7. Follow-up, same day: posture, knees and crowd cost
+
+The owner asked for Gait Lab to look less stiff above the legs and to handle 50 creatures. Added (all PROPOSED tuning
+in `data/gait_table.json`):
+
+- **Body posture.** The body dips twice per stride (scaled by Froude number), pitches nose-down when speeding up and
+  nose-up when slowing, rolls into turns, and sways side to side at a walk. Each is smoothed over 0.2 s and capped
+  (pitch 8°, roll 10°). The body is lowered just enough that no hip rises above its rest height, so posture never
+  pulls a foot out of reach.
+- **Knee direction per leg**, from the body data: the test quadrupeds have front knees bending back and hind knees
+  bending forward; the hexapod's knees point out.
+- **Distance tiers.** The nearest 10 creatures update every frame, the next 15 every 2nd frame and the rest every
+  4th frame, staggered so the work is spread evenly.
+
+Results with posture on (`results/measurements.json`): slip still at most 0.001% of leg length, 0 knee flips on every
+drive (now including the 10 s demo drive), max stance reach 0.985 of leg length, all states finite. The Gait Lab tests
+pass.
+
+| 50 short quadrupeds | Planner | Rig sync | IK solve + callback | Total ms/frame |
+| --- | --- | --- | --- | --- |
+| All every frame | 1.37 | 0.56 | 1.30 | 3.23 |
+| Tiered (10 / 15 / 25) | 0.71 | 0.27 | 0.65 | 1.63 |
+
+Tiers halve the cost. 1.63 ms is still slightly over the provisional 1.5 ms budget on this machine. The GDScript
+planner is the largest share; moving it to the compute shader or native code, or a coarser far tier, would close the
+gap. The baseline PC has not been measured.
