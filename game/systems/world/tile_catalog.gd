@@ -140,9 +140,9 @@ func add_tile(data: Variant, band: int, file_id: String) -> void:
 		t.landmark_anchor = WorldConfig.pair_at(w, data, "landmark_anchor", problems)
 		if data.has("set_piece") and data.set_piece != null:
 			problems.append("%s.set_piece: must be null on an ordinary tile" % w)
-	t.shells = _read_list(w, data, "shells", SHELL_KEYS, PackedStringArray(), problems, _read_shell)
-	t.zones = _read_list(w, data, "zones", ZONE_KEYS, PackedStringArray(), problems, _read_zone)
-	t.sites = _read_list(w, data, "sites", SITE_KEYS, SITE_OPTIONAL, problems, _read_site)
+	t.shells = read_list(w, data, "shells", SHELL_KEYS, PackedStringArray(), problems, read_shell)
+	t.zones = read_list(w, data, "zones", ZONE_KEYS, PackedStringArray(), problems, read_zone)
+	t.sites = read_list(w, data, "sites", SITE_KEYS, SITE_OPTIONAL, problems, read_site)
 	if str(t.id).is_empty():
 		return
 	if tiles.has(t.id):
@@ -468,7 +468,7 @@ static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, be
 # --- reading ---
 
 ## The list at `key`, each item checked against its keys and read by `reader`.
-static func _read_list(w: String, data: Dictionary, key: String, keys: PackedStringArray, optional: PackedStringArray,
+static func read_list(w: String, data: Dictionary, key: String, keys: PackedStringArray, optional: PackedStringArray,
 		problems: PackedStringArray, reader: Callable) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	var raw := WorldConfig.list_at(w, data, key, problems)
@@ -487,20 +487,20 @@ static func _read_list(w: String, data: Dictionary, key: String, keys: PackedStr
 	return out
 
 
-static func _read_shell(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
+static func read_shell(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
 	return {"id": WorldConfig.text_at(w, d, "id", problems), "center": _pair(w, d, "center", problems),
 		"radius": WorldConfig.number_at(w, d, "radius", problems), "yaw_deg": _pair(w, d, "yaw_deg", problems),
 		"at_second_size": WorldConfig.text_at(w, d, "at_second_size", problems)}
 
 
-static func _read_zone(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
+static func read_zone(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
 	return {"id": WorldConfig.text_at(w, d, "id", problems), "center": _pair(w, d, "center", problems),
 		"radius": WorldConfig.number_at(w, d, "radius", problems), "capacity": WorldConfig.number_at(w, d, "capacity", problems),
 		"growth_rate": WorldConfig.number_at(w, d, "growth_rate", problems),
 		"at_second_size": WorldConfig.text_at(w, d, "at_second_size", problems)}
 
 
-static func _read_site(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
+static func read_site(w: String, d: Dictionary, problems: PackedStringArray) -> Dictionary:
 	var sizes: Array[int] = []
 	var raw := WorldConfig.list_at(w, d, "sizes", problems)
 	for i in raw.size():
