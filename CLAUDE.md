@@ -29,6 +29,7 @@ tools/export_windows.sh                # builds/windows/Pangaea.exe (release) an
 python tools/blender/make_sample_cell.py   # with `pip install bpy==5.2.2` (Python 3.13), or blender --background --python
 python tools/blender/make_m1_blockouts.py [--only id[,id...]]   # the M1 blockouts, the same way
 python tools/blender/make_m1_threats.py [--only id[,id...]]   # the step 3 threat bodies and the spike part, the same way; then --import
+godot --headless --path . --script res://tools/audio/make_cell_audio.gd [-- --only=id|sfx|ambience|music|buses]   # the cell-stage audio; then --import
 # Tests only: godot --headless --path . --script res://tests/run_tests.gd [-- --skip-slow | -- --only=test_a,test_b]
 ```
 

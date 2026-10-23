@@ -240,7 +240,7 @@ func _brown(s: AudioSynth, length_s: float, cutoff: float) -> PackedFloat32Array
 	for i in out.size():
 		y = 0.995 * y + 0.06 * out[i]
 		out[i] = y
-	return s.lowpass(s.highpass(out, 25.0), cutoff)
+	return s.lowpass(s.highpass(s.highpass(out, 40.0), 40.0), cutoff)
 
 
 func _bed(s: AudioSynth, length_s: float) -> Array:
@@ -256,7 +256,7 @@ func _bed(s: AudioSynth, length_s: float) -> Array:
 			var t := float(i) / s.rate
 			# A faint pressure tone, two soft sines with whole cycles in the loop.
 			var tone := 0.04 * sin(TAU * 55.0 * t + ch) + 0.025 * sin(TAU * 82.5 * t) * swell_b[i]
-			out[i] = deep[i] * swell_a[i] + 0.12 * flow[i] * swell_b[i] + tone
+			out[i] = deep[i] * swell_a[i] + 0.3 * flow[i] * swell_b[i] + tone
 		lr.append(out)
 	return lr
 
@@ -373,7 +373,7 @@ func _make_music() -> void:
 			"mus_counter": lr = _counter(s)
 			"mus_pulse": lr = _pulse(s)
 		for ch in 2:
-			lr[ch] = _circular(s, lr[ch], func(x: PackedFloat32Array) -> PackedFloat32Array: return s.highpass(x, 35.0))
+			lr[ch] = _circular(s, lr[ch], func(x: PackedFloat32Array) -> PackedFloat32Array: return s.highpass(s.highpass(x, 40.0), 40.0))
 		lr = _to_rms(s, lr, float(RMS_DB[id]))
 		var path := "%s/%s.wav" % [MUSIC_DIR, id]
 		_write_wav(path, lr, BED_RATE, true)
@@ -445,6 +445,8 @@ func _pad(s: AudioSynth) -> Array:
 				s.mix(lr[ch], a, at, gain, true)
 				s.mix(lr[ch], b, at, gain * 0.8, true)
 		var root := _hz(chord[0] - 12)
+		if root < 45.0:
+			root *= 2.0
 		var low := _held(s, sub, root, chord_s, 0.8, 1.5, 0.0)
 		for ch in 2:
 			s.mix(lr[ch], low, at + 0.4, 0.12, true)
