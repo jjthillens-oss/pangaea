@@ -39,8 +39,22 @@ Severity: crash (script error, hang, data loss) · bug (wrong behaviour a player
 | 8 | polish | `persistence_service.gd` `save_to` | Two game processes on one slot share `<slot>.tmp`; with an exact interleaving one writer's save is reported as written while the file holds the other's state. | Running two instances on one slot is not supported, and the plain overwrite-each-other case is inherent to one slot without a lock. A per-slot lock file is the real fix; needs an owner call on the message to show. Finder confidence 0.35. |
 | 9 | polish | `game/scenes/pool/pool.gd` zoom | Wheel zoom steps a full 2 m per `zoom_in`/`zoom_out` press and ignores the event's `factor`, so precision touchpads may run from 14 m to a limit in one flick. | Not reproducible headless; needs a touchpad on Windows. Fix would accumulate `factor` and step at 1. |
 
-## Not yet covered
+## Covered by hand after the agent limit
 
-The finders for sim determinism, performance and memory, launch and Windows and export, input
-and controller and accessibility, and the dynamic fuzz probes (long bot runs, random input,
-title round-trips) did not run. The lead is covering them by hand next; results go in this file.
+Run by the lead in the Linux container (Godot 4.7.2 headless unless said, isolated user folder),
+all on this branch. Probe scripts were throwaway and are not kept; the numbers are what they
+printed.
+
+| Area | What ran | Result |
+| --- | --- | --- |
+| Long runs and fuzz | 18 runs of 18 000 ticks (5 sim minutes): each body with the forage, hunt, evade and kiter bots, a random-hold driver (new direction every 7 ticks, lengths up to 1.5) and a jitter driver (opposite directions every tick), seeds 4242-4259; deaths respawned through `GameSession`; a save and a `continue_run` every 4000 ticks. Checked every tick for non-finite position, energy or health, negative energy or health, the cell outside the pool, and points or generation drifting across a reload. | 0 problems. 7 deaths respawned, 72 reloads, max speed 3.27 m/s (hunter), 0 to 105 points. |
+| Title round-trips | 20 cycles in one process through `main.tscn`: new lineage or Continue, 120 frames of play with the forage bot, pause, settings open and close, every fourth time the quit dialog cancelled, then Save and quit to title. Object, node, orphan and resource counts after each cycle. | No growth: objects +86 to +99 over the title every cycle (not accumulating), nodes +3 after cycle 3 (the settings screen, built once and kept), 0 orphans, resources 391 to 393. |
+| Sim step cost over time | 10 sim minutes with the forage bot (omnivore, seed 99), step cost per 50 s window. | Flat: 444 to 519 us per tick on the shared 4-CPU container (about 3% of a 60 Hz frame). After 10 minutes: 58 plankton, 0 carrion, 6 creatures, no events pending. |
+| Determinism | Already gated: `test_pool_sim` same-seed-same-world and `test_threats_sim` hash tests; the sorts in the sim all tie-break by id, every RNG is seeded from the world seed, and the only system clock reads are the save timestamp and the `.corrupt-` suffix. | Nothing new. |
+| Launch flags | The main scene for 30 frames with `--seed=abc`, `--seed=99999999999999999999`, `--seed=-5`, `--slot=relative.json`, `--slot=res://x.json`, `--slot=user://`, `--slot=user://smoke/qa/deep/er/slot.json` (folders created), `--slot=C:\Users\Me\slot.json`, `--bogus`, `--perf-tour` in a non-dev run. | Every bad flag gives one plain warning and the game starts; no errors. |
+| Rendered run | The dev perf tour (90 s, forage bot) under Xvfb with the compatibility renderer, 1280x720. | No script errors or engine errors from game code; the only errors are the container's missing ALSA device (dummy audio driver) and no V-Sync control under Xvfb. 13 FPS on llvmpipe says nothing about real hardware. |
+| Input and settings | Read the rebind capture (Esc cancels, echoes and the wrong device ignored, swaps tested in `test_settings`), menu navigation (`menus_smoke` drives every screen with controller buttons). | Nothing new beyond fix 3 (settings lost on window close). |
+
+Not covered: a Windows launch (CI's `windows-launch` job exports and starts the exe on a runner,
+which is not "Windows-verified"), real controller hardware, a real GPU's frame times, and the
+hotspot-level performance pass that Godfrey's #39 owns.
