@@ -244,7 +244,7 @@
     {
       "id": "dev_gizmos",
       "kind": "debug",
-      "description": "Debug builds only: zone rings, resolver mouth arcs and the reach circle drawn as lines.",
+      "description": "Debug builds only: zone rings, resolver mouth arcs and the reach circle drawn as lines; in the endless sea also the chunk layer (loaded and view-set chunk squares, tile edges, the stream's rings, site reach discs and sleeper crosses).",
       "types": [
         "ImmediateMesh"
       ],

@@ -13,6 +13,15 @@ extends Node
 ## (RenderingServer.viewport_set_measure_render_time), so the look's own cost shows apart from the
 ## CPU and the vsync wait. Each measured frame records the latest reading, which trails the frame by
 ## a few frames. A renderer that measures nothing (headless) reports 0, and gpu_frames is then 0.
+##
+## `-- --perf-tour=swim` (S1, docs/s1/s1-content.md section 9; G18) runs the endless sea's swim route
+## instead (SwimRoute, the same on every machine): hidden from the AI, refilled every REFILL_TICKS,
+## SWIM_OUT_TICKS (5 min) east, a death far out (a teleport respawn: unload, rebase, load), then
+## SWIM_BACK_TICKS north after the respawn. It ends when the route does and writes
+## perf_swim_<build>.json with the world's streaming (rebases, chunk loads and unloads, the most
+## loaded chunks, awake creatures and sleepers, the stream's counters), the most draw calls and
+## primitives in a frame, the long frames (over LONG_FRAME_MS) tagged with the events within
+## TAG_WINDOW_S of them, and the G18 gate (gate()). The pool (--world=pool) has no swim route.
 
 const DURATION_S := 90.0
 const WARM_UP_S := 2.0             ## the first frames (shader warm-up, fade-in) are not measured
@@ -21,6 +30,79 @@ const REPORT_DIR := "user://reports"
 const BODY := "grazer"
 const SEED := 4242
 const BOT_PATH := "res://game/dev/forage_bot.gd"
+# The swim route (section 9).
+const SWIM_OUT_TICKS := 18000      ## 5 min east
+const SWIM_BACK_TICKS := 1200      ## 20 s north after the far respawn
+const REFILL_TICKS := 1800         ## the energy is refilled this often
+const LONG_FRAME_MS := 50.0
+const TAG_WINDOW_S := 0.25         ## a long frame is tagged with the events this near it, either side
+const SWIM_BOT_PATH := "res://game/dev/swim_bot.gd"
+# G18 on the swim route (plan :698; build plan B-20).
+const G18_LOW_1PCT_MS := 8.3       ## the slowest 1% of frames average at most this...
+const G18_MAX_FRAME_MS := 50.0     ## ...no frame is longer...
+const G18_MAX_DRAW_CALLS := 96     ## ...no frame draws more...
+const G18_GPU_OVER_M1_MS := 2.0    ## ...and the GPU's P99 is at most the M1 tour's P99 plus this
+
+
+## The swim route, keyed on the sim's ticks from the first it sees, so it does not matter how often
+## it is asked: hidden from the AI at once, the energy refilled every REFILL_TICKS, SWIM_OUT_TICKS
+## east, then debug_hurt_player(max_health) far out; after the "respawned" event (on_event),
+## SWIM_BACK_TICKS north; then done. It takes any sim with PoolSim's dev commands.
+class SwimRoute:
+	extends RefCounted
+
+	var done := false
+	var start_tick := -1
+	var died_at_tick := -1              ## when it sent the cell to its death
+	var back_from_tick := -1            ## when the cell came back
+	var out_from_am := PackedFloat64Array()
+	var out_to_am := PackedFloat64Array()
+	var _next_refill := 0
+	var _east: RefCounted
+	var _north: RefCounted
+
+	func _init() -> void:
+		var bot: GDScript = load(SWIM_BOT_PATH)
+		_east = bot.new(Vector2.RIGHT)
+		_north = bot.new(Vector2.UP)
+
+	func next_intent(sim) -> SimIntent:
+		if start_tick < 0:
+			start_tick = sim.tick
+			sim.debug_set_hidden(true)
+			out_from_am = sim.absolute_position_am()
+		if done or sim.dead:
+			return SimIntent.new()
+		var t: int = sim.tick - start_tick
+		if t >= _next_refill:
+			sim.debug_set_energy(sim.state.energy_capacity)
+			_next_refill = (t / REFILL_TICKS + 1) * REFILL_TICKS
+		if died_at_tick < 0:
+			if t < SWIM_OUT_TICKS:
+				return _east.next_intent(sim)
+			out_to_am = sim.absolute_position_am()
+			died_at_tick = sim.tick
+			sim.debug_hurt_player(sim.state.max_health)
+			return SimIntent.new()
+		if back_from_tick < 0:
+			return SimIntent.new()
+		if sim.tick - back_from_tick < SWIM_BACK_TICKS:
+			return _north.next_intent(sim)
+		done = true
+		return SimIntent.new()
+
+	## The tour routes the pool's sim events here: the "respawned" after the far death starts the
+	## way back.
+	func on_event(e: Dictionary, tick: int) -> void:
+		if e.get("type", "") == "respawned" and died_at_tick >= 0 and back_from_tick < 0:
+			back_from_tick = tick
+
+	## The out leg's length (tm, from the absolute places; am is tm at S1's size 1).
+	func distance_tm() -> float:
+		if out_from_am.size() < 2 or out_to_am.size() < 2:
+			return 0.0
+		return Vector2(out_to_am[0] - out_from_am[0], out_to_am[1] - out_from_am[1]).length()
+
 
 var main: Node
 var report_path := ""
@@ -32,6 +114,12 @@ var _running := false
 var _warm_up_end_usec := -1        ## set by the first sample
 var _last_usec := -1               ## the previous measured frame; -1 until the warm-up is over
 var _measured_ms := 0.0
+# The swim route's state (null and empty on the M1 tour).
+var _route: SwimRoute
+var _frames: Array[Dictionary] = []      ## {t_s, ms, tick} of each measured frame
+var _events: Array[Dictionary] = []      ## {t_s, text} of each sim event
+var _world := {"rebases": 0, "chunk_loads": 0, "chunk_unloads": 0, "max_loaded_chunks": 0, "max_awake": 0,
+	"max_sleepers": 0, "max_draw_calls": 0, "max_primitives": 0}
 
 
 func attach(p_main: Node) -> void:
@@ -40,9 +128,10 @@ func attach(p_main: Node) -> void:
 
 
 ## {"frames", "avg_fps", "low_1pct_fps", "max_frame_ms", "avg_frame_ms"} for frame times in ms,
-## and {"gpu_frames", "gpu_avg_ms", "gpu_slow_1pct_ms", "gpu_max_ms"} for GPU times in ms. The 1%
-## low is the frame rate over the slowest 1% of frames, and the GPU's slow 1% the average of its
-## slowest 1% (each at least one frame). No frames give zeros.
+## and {"gpu_frames", "gpu_avg_ms", "gpu_slow_1pct_ms", "gpu_p99_ms", "gpu_max_ms"} for GPU times
+## in ms. The 1% low is the frame rate over the slowest 1% of frames, and the GPU's slow 1% the
+## average of its slowest 1% (each at least one frame); its P99 is the time 99% of its frames come
+## within (G18 on the swim route compares it with the M1 tour's). No frames give zeros.
 static func summarize(frame_ms: PackedFloat32Array, gpu_ms := PackedFloat32Array()) -> Dictionary:
 	var frames := _spread(frame_ms)
 	var gpu := _spread(gpu_ms)
@@ -55,8 +144,77 @@ static func summarize(frame_ms: PackedFloat32Array, gpu_ms := PackedFloat32Array
 		"gpu_frames": gpu_ms.size(),
 		"gpu_avg_ms": gpu.avg,
 		"gpu_slow_1pct_ms": gpu.slow_1pct,
+		"gpu_p99_ms": percentile(gpu_ms, 0.99),
 		"gpu_max_ms": gpu.max,
 	}
+
+
+## The time `share` of the times come within (nearest rank); 0 for none.
+static func percentile(ms: PackedFloat32Array, share: float) -> float:
+	if ms.is_empty():
+		return 0.0
+	var sorted := ms.duplicate()
+	sorted.sort()
+	return sorted[clampi(ceili(share * sorted.size()) - 1, 0, sorted.size() - 1)]
+
+
+## The frames over `limit_ms`, each tagged with every event within `window_s` of it, before or
+## after: [{at_s, ms, tick, events: ["chunk_loaded 4,0", "rebased 32,0", ...]}]. `frames` are
+## {t_s, ms, tick} and `events` {t_s, text}, on the same clock.
+static func long_frames(frames: Array, events: Array, limit_ms := LONG_FRAME_MS, window_s := TAG_WINDOW_S) -> Array:
+	var out := []
+	for f: Dictionary in frames:
+		if float(f.ms) <= limit_ms:
+			continue
+		var tags := []
+		for e: Dictionary in events:
+			if absf(float(e.t_s) - float(f.t_s)) <= window_s:
+				tags.append(e.text)
+		out.append({"at_s": f.t_s, "ms": f.ms, "tick": f.tick, "events": tags})
+	return out
+
+
+## An event as a long frame's tag: its type, and for the world's own events the chunk key or the
+## rebase offset ("chunk_loaded 4,0", "rebased 32,0").
+static func event_text(e: Dictionary) -> String:
+	var type := str(e.get("type", "?"))
+	match type:
+		"chunk_loaded", "chunk_unloaded":
+			var key: Vector2i = e.get("key", Vector2i.ZERO)
+			return "%s %d,%d" % [type, key.x, key.y]
+		"rebased":
+			var o: Vector2 = e.get("offset_tm", Vector2.ZERO)
+			return "rebased %s,%s" % [_tm_text(o.x), _tm_text(o.y)]
+	return type
+
+
+## A distance in tm to a tenth, whole numbers without the decimal ("32", "-32.5").
+static func _tm_text(v: float) -> String:
+	var r := snappedf(v, 0.1)
+	return str(int(r)) if r == roundf(r) else "%.1f" % r
+
+
+## G18 on the swim route: {"low_1pct_ms", "max_frame_ms", "max_draw_calls", "gpu_p99_ms",
+## "gpu_m1_p99_ms", "failed": [which], "pass"}. `report` is a swim report so far (summarize's
+## fields and max_draw_calls); `m1_gpu_p99_ms` is the M1 tour's GPU P99 on the same machine, or a
+## negative number when there is none, and then the GPU part is not judged (it is named in "skipped").
+static func gate(report: Dictionary, m1_gpu_p99_ms: float) -> Dictionary:
+	var low_ms := 1000.0 / float(report.low_1pct_fps) if float(report.get("low_1pct_fps", 0.0)) > 0.0 else 0.0
+	var out := {"low_1pct_ms": low_ms, "max_frame_ms": float(report.get("max_frame_ms", 0.0)),
+		"max_draw_calls": int(report.get("max_draw_calls", 0)), "gpu_p99_ms": float(report.get("gpu_p99_ms", 0.0)),
+		"gpu_m1_p99_ms": m1_gpu_p99_ms, "failed": [], "skipped": []}
+	if out.low_1pct_ms > G18_LOW_1PCT_MS:
+		out.failed.append("1%% low %.1f ms > %.1f" % [out.low_1pct_ms, G18_LOW_1PCT_MS])
+	if out.max_frame_ms > G18_MAX_FRAME_MS:
+		out.failed.append("longest frame %.1f ms > %.0f" % [out.max_frame_ms, G18_MAX_FRAME_MS])
+	if out.max_draw_calls > G18_MAX_DRAW_CALLS:
+		out.failed.append("draw calls %d > %d" % [out.max_draw_calls, G18_MAX_DRAW_CALLS])
+	if m1_gpu_p99_ms < 0.0:
+		out.skipped.append("GPU P99: no M1 tour report on this machine")
+	elif out.gpu_p99_ms > m1_gpu_p99_ms + G18_GPU_OVER_M1_MS:
+		out.failed.append("GPU P99 %.2f ms > M1 %.2f + %.1f" % [out.gpu_p99_ms, m1_gpu_p99_ms, G18_GPU_OVER_M1_MS])
+	out.pass = out.failed.is_empty()
+	return out
 
 
 ## {"avg", "slow_1pct", "max"} of times in ms, slow_1pct averaging the slowest 1% (at least one);
@@ -79,18 +237,31 @@ static func _spread(ms: PackedFloat32Array) -> Dictionary:
 func _begin() -> void:
 	if main.flags.slot.is_empty():
 		main.open_session(SLOT)
-	main.intent_provider = load(BOT_PATH).new()
+	var swim: bool = main.flags.perf_route == "swim"
+	if swim:
+		_route = SwimRoute.new()
+	main.intent_provider = _route if swim else load(BOT_PATH).new()
 	var seed_value: int = main.flags.seed_value if main.flags.seed_value >= 0 else SEED
 	var result: Dictionary = main.start_new(BODY, seed_value)
 	if not result.ok:
 		printerr("Perf tour could not start: %s" % "; ".join(result.errors))
 		main.get_tree().quit(1)
 		return
+	if swim and not main.pool.is_endless():
+		printerr("--perf-tour=swim needs the endless world")
+		main.get_tree().quit(1)
+		return
 	main.pool.pause_on_focus_loss = false
 	RenderingServer.viewport_set_measure_render_time(main.get_viewport().get_viewport_rid(), true)
 	main.pool.died.connect(func(_cause: String, _reason: String): main.continue_after_death.call_deferred())
+	if swim:
+		main.pool.sim_event.connect(_on_event)
 	_running = true
-	print("Perf tour: measuring %d s after a %d s warm-up." % [DURATION_S, WARM_UP_S])
+	if swim:
+		print("Perf tour (swim): %d s east, a far death, %d s north, after a %d s warm-up." % [
+			SWIM_OUT_TICKS / 60, SWIM_BACK_TICKS / 60, WARM_UP_S])
+	else:
+		print("Perf tour: measuring %d s after a %d s warm-up." % [DURATION_S, WARM_UP_S])
 
 
 ## Takes one frame's wall clock reading (Time.get_ticks_usec()) and the renderer's latest GPU time
@@ -113,8 +284,50 @@ func sample(now_usec: int, gpu_frame_ms := 0.0) -> bool:
 
 
 func _process(_delta: float) -> void:
-	if _running and sample(Time.get_ticks_usec(), gpu_reading(self)):
+	if not _running:
+		return
+	var now := Time.get_ticks_usec()
+	var measured := frame_ms.size()
+	var over := sample(now, gpu_reading(self))
+	if _route == null:
+		if over:
+			_finish()
+		return
+	if frame_ms.size() > measured:
+		_frames.append({"t_s": _clock_s(now), "ms": frame_ms[frame_ms.size() - 1], "tick": main.pool.sim.tick})
+		_sample_world()
+	if _route.done:
 		_finish()
+
+
+## Seconds on the tour's clock: from the end of the warm-up.
+func _clock_s(now_usec: int) -> float:
+	return (now_usec - _warm_up_end_usec) / 1e6 if _warm_up_end_usec >= 0 else 0.0
+
+
+## The swim route's per-frame maxima: loaded chunks, awake creatures, sleepers, draw calls and
+## primitives.
+func _sample_world() -> void:
+	var sim: PoolSim = main.pool.sim
+	var w := sim.world
+	_world.max_loaded_chunks = maxi(_world.max_loaded_chunks, w.loaded_keys().size())
+	_world.max_awake = maxi(_world.max_awake, sim.creatures.awake().size() if sim.creatures != null else 0)
+	_world.max_sleepers = maxi(_world.max_sleepers, w.sleeping_ids().size())
+	_world.max_draw_calls = maxi(_world.max_draw_calls, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
+	_world.max_primitives = maxi(_world.max_primitives, int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
+
+
+## The swim route's sim events: counted, kept for the long frames' tags, and passed to the route.
+func _on_event(e: Dictionary) -> void:
+	match str(e.get("type", "")):
+		"rebased":
+			_world.rebases += 1
+		"chunk_loaded":
+			_world.chunk_loads += 1
+		"chunk_unloaded":
+			_world.chunk_unloads += 1
+	_events.append({"t_s": _clock_s(Time.get_ticks_usec()), "text": event_text(e)})
+	_route.on_event(e, main.pool.sim.tick)
 
 
 ## The renderer's latest GPU time of `node`'s viewport in ms: 0 when it measures nothing, the
@@ -141,8 +354,10 @@ func _finish() -> void:
 		"vsync": "n/a" if headless else str(DisplayServer.window_get_vsync_mode()),
 		"step_cost_usec": main.pool.step_cost_usec(),
 	})
+	if _route != null:
+		_add_swim_fields(report)
 	DirAccess.make_dir_recursive_absolute(REPORT_DIR)
-	report_path = "%s/perf_%s.json" % [REPORT_DIR, BuildInfo.build_id().validate_filename()]
+	report_path = "%s/perf_%s%s.json" % [REPORT_DIR, "swim_" if _route != null else "", BuildInfo.build_id().validate_filename()]
 	var file := FileAccess.open(report_path, FileAccess.WRITE)
 	if file == null:
 		printerr("Perf tour could not write %s: %s" % [report_path, error_string(FileAccess.get_open_error())])
@@ -150,7 +365,36 @@ func _finish() -> void:
 		return
 	file.store_string(JSON.stringify(report, "\t"))
 	file.close()
-	print("Perf tour: %.1f FPS average, %.1f FPS 1%% low, %.1f ms longest frame, GPU %.2f ms average (%d frames). Report: %s" % [
+	var line := "Perf tour: %.1f FPS average, %.1f FPS 1%% low, %.1f ms longest frame, GPU %.2f ms average (%d frames). Report: %s" % [
 		report.avg_fps, report.low_1pct_fps, report.max_frame_ms, report.gpu_avg_ms, report.gpu_frames,
-		ProjectSettings.globalize_path(report_path)])
+		ProjectSettings.globalize_path(report_path)]
+	if _route != null:
+		line += " · G18 pass" if report.gate.pass else " · G18 FAIL: %s" % "; ".join(report.gate.failed)
+	print(line)
 	main.get_tree().quit(0)
+
+
+## The swim route's fields (section 9): the route, its ticks and the out leg's distance, the world's
+## streaming, the frame maxima, the long frames and the G18 gate against this machine's M1 tour.
+func _add_swim_fields(report: Dictionary) -> void:
+	var w: WorldStream = main.pool.sim.world
+	report.merge(_world)
+	report.merge({
+		"route": "swim",
+		"ticks": main.pool.sim.tick - _route.start_tick,
+		"distance_tm": _route.distance_tm(),
+		"counters": w.counters.duplicate(),
+		"long_frames": long_frames(_frames, _events),
+	})
+	report.gate = gate(report, m1_gpu_p99_ms("%s/perf_%s.json" % [REPORT_DIR, BuildInfo.build_id().validate_filename()]))
+
+
+## The GPU P99 in the M1 tour's report at `path` (this machine and build's perf_<build>.json), or
+## -1 when there is no report or it timed no GPU frame.
+static func m1_gpu_p99_ms(path: String) -> float:
+	if not FileAccess.file_exists(path):
+		return -1.0
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not data is Dictionary or not (data as Dictionary).has("gpu_p99_ms") or int(data.get("gpu_frames", 0)) == 0:
+		return -1.0
+	return float(data.gpu_p99_ms)

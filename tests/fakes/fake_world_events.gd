@@ -57,6 +57,20 @@ static func endless_session(seed_value := SEED, at := PackedFloat64Array()) -> G
 	return session
 
 
+## An endless session on the shipped world (WorldContent from WorldConfig.DEFAULT_PATH, the real
+## generator, kit and home block) with the M1 creatures: a new omnivore lineage at the home spawn or
+## at `at` (absolute am). Nothing is saved.
+static func shipped_session(seed_value := SEED, at := PackedFloat64Array()) -> GameSession:
+	var session := GameSession.new(SLOT)
+	var content := WorldContent.load_from(WorldConfig.DEFAULT_PATH, session.layout, session.species)
+	session.world = content
+	var founded := Lineage.found(seed_value, "test+dev", session.catalog, "omnivore")
+	var place: PackedFloat64Array = at if not at.is_empty() else content.home.spawn
+	founded.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
+	session.sim = PoolSim.create(founded.save, session.catalog, session.layout, session.species, content)
+	return session
+
+
 ## The session's pool, built as main builds it but outside the tree (the test runner has none): set
 ## up, then readied as the tree readies it (children first), which builds it. `provider` swims for
 ## the cell (a still cell by default). Art's ambience, mounted during the pool's ready, is not

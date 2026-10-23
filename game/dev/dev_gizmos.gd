@@ -12,6 +12,13 @@ extends Node3D
 ## than TARGET_STALE_S; the strike lane from tell entry until recovery; the checkpoint's
 ## respawn_clear_m and spawn_safe_m circles; and the zoom-max camera view around the cell
 ## (ViewFootprint).
+##
+## S1 adds the endless sea's chunk layer (show_chunks, the debug panel's Chunk gizmo button; docs/
+## s1/s1-content.md 6.14), lower than the rest: the loaded chunks' squares (grey), the view set's
+## (white), the tile edges (cream), rings round the cell at the stream's wake, sleep, food, load and
+## unload distances, each awake creature's reach disc and a cross at each sleeper (chunk_layer()).
+## The AI layer draws the awake creatures only. Everything is drawn from sim-local positions every
+## frame, so a rebase needs nothing.
 
 const LIFT_M := 0.06
 const SEGMENTS := 48
@@ -38,8 +45,22 @@ const DASH_M := 0.25
 const LANE_COLOR := Color(1.0, 0.2, 0.2)
 const CHECKPOINT_COLORS := {"respawn_clear_m": Color(0.62, 0.98, 1.0), "spawn_safe_m": Color(0.35, 0.7, 0.8)}
 const FOOTPRINT_COLOR := Color(1.0, 1.0, 0.6, 0.7)
+const CHUNK_LIFT_M := 0.02
+const CHUNK_COLOR := Color(0.6, 0.6, 0.6)
+const VIEW_SET_COLOR := Color(1.0, 1.0, 1.0)
+const TILE_COLOR := Color(0.96, 0.92, 0.82, 0.55)
+## The stream's rings round the cell (WorldStream.rings, tm), each in its own colour.
+const RING_COLORS := {
+	"wake": Color(0.45, 0.9, 0.45), "sleep": Color(0.4, 0.6, 1.0), "food": Color(0.81, 0.91, 0.42),
+	"load": Color(1.0, 0.75, 0.35), "unload": Color(1.0, 0.4, 0.4),
+}
+const SITE_REACH_COLOR := Color(0.95, 0.55, 0.9, 0.7)
+const SLEEPER_COLOR := Color(0.7, 0.75, 1.0)
+const SLEEPER_MARK_M := 0.4
 
 var main: Node
+## The endless sea's chunk layer (the debug panel's Chunk gizmo button).
+var show_chunks := false
 var _mesh := ImmediateMesh.new()
 var _material := StandardMaterial3D.new()
 
@@ -83,6 +104,8 @@ func _process(_delta: float) -> void:
 		_arc(p, arc_r, from, to, color)
 	if sim.creatures != null:
 		_draw_ai(sim)
+	if show_chunks and sim.world != null:
+		_draw_chunks(sim)
 	_mesh.surface_end()
 
 
@@ -95,7 +118,7 @@ func _draw_ai(sim: PoolSim) -> void:
 		float(fairness.get("spawn_view_aspect", 16.0 / 9.0)))
 	for i in view.size():
 		_line(view[i], view[(i + 1) % view.size()], FOOTPRINT_COLOR)
-	for c in sim.creatures.creatures:
+	for c in sim.creatures.awake():
 		var mem := c.brain
 		if mem == null:
 			continue
@@ -130,11 +153,74 @@ func _draw_ai(sim: PoolSim) -> void:
 			_lane(mem.lane)
 
 
-func _line(a: Vector2, b: Vector2, color: Color) -> void:
+func _draw_chunks(sim: PoolSim) -> void:
+	var layer := chunk_layer(sim)
+	for pair: Array in [[layer.tiles, TILE_COLOR], [layer.loaded, CHUNK_COLOR], [layer.view, VIEW_SET_COLOR]]:
+		for square: Rect2 in pair[0]:
+			_square(square, pair[1])
+	for ring: String in layer.rings:
+		_arc(sim.motion.position, float(layer.rings[ring]), 0.0, TAU, RING_COLORS[ring], CHUNK_LIFT_M)
+	for disc: Dictionary in layer.reach:
+		_arc(disc.center, float(disc.radius), 0.0, TAU, SITE_REACH_COLOR, CHUNK_LIFT_M)
+	for at: Vector2 in layer.sleepers:
+		_line(at - Vector2(SLEEPER_MARK_M, SLEEPER_MARK_M), at + Vector2(SLEEPER_MARK_M, SLEEPER_MARK_M), SLEEPER_COLOR, CHUNK_LIFT_M)
+		_line(at - Vector2(SLEEPER_MARK_M, -SLEEPER_MARK_M), at + Vector2(SLEEPER_MARK_M, -SLEEPER_MARK_M), SLEEPER_COLOR, CHUNK_LIFT_M)
+
+
+## What the chunk layer draws, in sim-local coordinates: {"loaded", "view", "tiles" (Array of Rect2:
+## the loaded chunks', the view set's round the cell and the tiles' under the loaded chunks),
+## "rings" (ring name -> radius in tm, RING_COLORS' rings), "reach" (each awake creature's site
+## reach, {center, radius}), "sleepers" (each sleeper's position)}. Empty lists in the pool.
+static func chunk_layer(sim: PoolSim) -> Dictionary:
+	var out := {"loaded": [], "view": [], "tiles": [], "rings": {}, "reach": [], "sleepers": []}
+	var w := sim.world
+	if w == null:
+		return out
+	var keys := w.loaded_keys()
+	for key in keys:
+		out.loaded.append(_tm_square(w, key, w.chunk_tm))
+	for key in w.view_set_keys(sim.motion.position):
+		out.view.append(_tm_square(w, key, w.chunk_tm))
+	if not keys.is_empty():
+		var tile_tm := w.content.config.tile_bu * WorldConfig.bu_to_tm(w.size)
+		var lo := Vector2i(keys[0])
+		var hi := Vector2i(keys[0])
+		for key in keys:
+			lo = lo.min(key)
+			hi = hi.max(key)
+		for ty in range(floori(lo.y * w.chunk_tm / tile_tm), floori((hi.y + 1) * w.chunk_tm / tile_tm - 1e-6) + 1):
+			for tx in range(floori(lo.x * w.chunk_tm / tile_tm), floori((hi.x + 1) * w.chunk_tm / tile_tm - 1e-6) + 1):
+				out.tiles.append(_tm_square(w, Vector2i(tx, ty), tile_tm))
+	for ring: String in RING_COLORS:
+		if w.rings.has(ring):
+			out.rings[ring] = float(w.rings[ring])
+	if sim.creatures != null:
+		for c in sim.creatures.awake():
+			var site: Dictionary = w.sites.get(c.site_id, {})
+			if not site.is_empty():
+				out.reach.append({"center": site.reach.center, "radius": float(site.reach.radius)})
+		for c in sim.creatures.creatures:
+			if c.asleep:
+				out.sleepers.append(c.motion.position)
+	return out
+
+
+## The local square of grid cell `key` of side `side_tm` (absolute tm, from the origin).
+static func _tm_square(w: WorldStream, key: Vector2i, side_tm: float) -> Rect2:
+	return Rect2(w.local_of_tm(key.x * side_tm, key.y * side_tm), Vector2.ONE * side_tm)
+
+
+func _square(r: Rect2, color: Color) -> void:
+	var c := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	for i in 4:
+		_line(c[i], c[(i + 1) % 4], color, CHUNK_LIFT_M)
+
+
+func _line(a: Vector2, b: Vector2, color: Color, lift := LIFT_M) -> void:
 	_mesh.surface_set_color(color)
-	_mesh.surface_add_vertex(PlaneSpace.to_world(a, LIFT_M))
+	_mesh.surface_add_vertex(PlaneSpace.to_world(a, lift))
 	_mesh.surface_set_color(color)
-	_mesh.surface_add_vertex(PlaneSpace.to_world(b, LIFT_M))
+	_mesh.surface_add_vertex(PlaneSpace.to_world(b, lift))
 
 
 ## A strike lane's rectangle (CreatureBrain.strike_lane): from its origin forward to its length,
@@ -166,9 +252,9 @@ func _dashed_arc(center: Vector2, radius: float, color: Color) -> void:
 		_line(center + Vector2.from_angle(a) * radius, center + Vector2.from_angle(b) * radius, color)
 
 
-func _arc(center: Vector2, radius: float, from: float, to: float, color: Color) -> void:
+func _arc(center: Vector2, radius: float, from: float, to: float, color: Color, lift := LIFT_M) -> void:
 	var steps := maxi(4, ceili(SEGMENTS * absf(to - from) / TAU))
 	for i in steps:
 		var a := lerpf(from, to, float(i) / steps)
 		var b := lerpf(from, to, float(i + 1) / steps)
-		_line(center + Vector2.from_angle(a) * radius, center + Vector2.from_angle(b) * radius, color)
+		_line(center + Vector2.from_angle(a) * radius, center + Vector2.from_angle(b) * radius, color, lift)
