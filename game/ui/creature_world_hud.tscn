@@ -109,9 +109,16 @@ size_flags_horizontal = 4
 size_flags_vertical = 8
 theme_override_constants/separation = 6
 
-[node name="HintText" type="Label" parent="Frame/Bottom"]
+[node name="HintPanel" type="PanelContainer" parent="Frame/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+theme_type_variation = &"ToastPanel"
+
+[node name="HintText" type="Label" parent="Frame/Bottom/HintPanel"]
 unique_name_in_owner = true
 layout_mode = 2
+mouse_filter = 2
 theme_type_variation = &"SmallLabel"
 text = "W  Move   ·   F  Bite   ·   E  Evolve at the nest"
 horizontal_alignment = 1

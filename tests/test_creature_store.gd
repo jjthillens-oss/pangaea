@@ -58,6 +58,21 @@ func test_round_trip_keeps_body_points_and_seed() -> void:
 			"the same body, byte for byte")
 
 
+func test_the_editors_skin_look_survives_the_round_trip() -> void:
+	# The editor writes the swatch and the pattern into the body's extra keys (creature_look.gd); the store's write
+	# check re-reads the file and compares the body's encoding, so the keys must come back as they went in.
+	var Look = load("res://game/scenes/creature/creature_look.gd")
+	var state := CreatureStore.new_state(5)
+	state["body"]["skin_color"] = "4fc08a"
+	Look.store_pattern(state["body"], {"pattern_seed": 7, "coat_pattern": 3, "detail_pattern": 4})
+	check_eq(store.save_to(path, state), OK, "saved with the look keys")
+	var loaded := store.load_from(path)
+	check(loaded.ok, "loads back: %s" % [loaded.errors])
+	check_eq(Look.pattern_of(loaded.state["body"]), {"pattern_seed": 7, "coat_pattern": 3, "detail_pattern": 4},
+			"the pattern reads back")
+	check_eq(String(loaded.state["body"].get("skin_color", "")), "4fc08a", "the swatch reads back")
+
+
 func test_write_is_atomic_and_leaves_no_temp_file() -> void:
 	var state := CreatureStore.new_state(1)
 	check_eq(store.save_to(path, state), OK, "first save")

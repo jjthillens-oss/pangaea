@@ -82,12 +82,26 @@ func test_evolve_at_the_nest_reaches_the_stage_and_away_from_it_shows_the_notice
 func test_the_editors_skin_colour_reaches_the_players_rig() -> void:
 	var dict: Dictionary = Fixtures.body("s1_quadruped").to_dict()
 	dict["skin_color"] = "4fc08a"
+	dict["pattern_seed"] = 7
+	dict["coat_pattern"] = 3
+	dict["detail_pattern"] = 4
 	var world: CreatureWorld = load(WORLD_SCENE).instantiate()
 	(Engine.get_main_loop() as SceneTree).root.add_child(world)
 	world.setup(dict, 5, 150)
 	var mat := world.player_rig.body.mesh_instance.material_override as ShaderMaterial
 	check(mat != null and (mat.get_shader_parameter("color_base") as Color).is_equal_approx(Color("#4fc08a")),
 			"the player's skin shader takes the body's swatch (%s)" % [mat.get_shader_parameter("color_base") if mat else null])
+	check(mat != null and int(mat.get_shader_parameter("pattern_seed")) == 7 and int(mat.get_shader_parameter("coat_pattern")) == 3
+			and int(mat.get_shader_parameter("detail_pattern")) == 4, "and the body's three pattern keys")
+	world.free()
+	world = load(WORLD_SCENE).instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(world)
+	world.setup(Fixtures.body("s1_quadruped").to_dict(), 5, 150)
+	mat = world.player_rig.body.mesh_instance.material_override as ShaderMaterial
+	var Look = load("res://game/scenes/creature/creature_look.gd")
+	check(mat != null and int(mat.get_shader_parameter("pattern_seed")) == int(Look.DEFAULT_PATTERN["pattern_seed"])
+			and int(mat.get_shader_parameter("coat_pattern")) == int(Look.DEFAULT_PATTERN["coat_pattern"]),
+			"without them the editor's default pattern (creature_look.gd)")
 	check(CreatureWorld.skin_color_of(Fixtures.body("s1_quadruped")).is_equal_approx(CreatureWorld.PLAYER_COLOR),
 			"without one the default colour")
 	for id in world.rival_rigs:

@@ -23,6 +23,7 @@ const BodyField := preload("res://game/domain/creature/body_field.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const WalkerRig := preload("res://game/scenes/creature/walker_rig.gd")
 const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
+const Look := preload("res://game/scenes/creature/creature_look.gd")
 
 const PLAYER_SKIN_DIVISIONS_MAX := 48
 const RIVAL_SKIN_DIVISIONS_MAX := 32
@@ -30,13 +31,16 @@ const RIVAL_LOD_M := 40.0
 const MEAT_INSTANCES_MAX := 64
 const NO_LEGS_NOTICE := "This creature needs legs to walk"
 const DEATH_NOTICE := "You were %s. Back at the nest; %d points lost."
-## Camera (PROPOSED): behind and above, the distance from the body length, orbit by the right stick or a middle-drag.
-const CAMERA_DISTANCE_PER_BODY_M := 3.2
-const CAMERA_DISTANCE_MIN_M := 3.0
-const CAMERA_DISTANCE_MAX_M := 14.0
-const CAMERA_PITCH_DEG := 22.0
-const CAMERA_PITCH_MIN_DEG := 5.0
+## Camera (PROPOSED): behind and above, the distance from the body length (Spore-close: the creature fills a good
+## part of the frame), orbit by the right stick or a middle-drag. The eye never goes under the field: it is held at
+## least CAMERA_GROUND_CLEARANCE_M over the plane whatever the pitch.
+const CAMERA_DISTANCE_PER_BODY_M := 2.4
+const CAMERA_DISTANCE_MIN_M := 2.6
+const CAMERA_DISTANCE_MAX_M := 12.0
+const CAMERA_PITCH_DEG := 16.0
+const CAMERA_PITCH_MIN_DEG := 3.0
 const CAMERA_PITCH_MAX_DEG := 70.0
+const CAMERA_GROUND_CLEARANCE_M := 0.35
 const CAMERA_STICK_RAD_S := 2.4
 const CAMERA_DRAG_RAD_PX := 0.006
 const CAMERA_FOLLOW_HALF_LIFE_S := 0.1
@@ -46,13 +50,17 @@ const CAMERA_REALIGN_HALF_LIFE_S := 1.2
 const STICK_DEADZONE := 0.25
 const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 0.72, 0.36),
 		Color(0.72, 0.5, 0.86), Color(0.86, 0.45, 0.56), Color(0.45, 0.8, 0.76), Color(0.8, 0.8, 0.5)]
-## The player's colour when the body carries no skin_color (the editor writes its swatch as "rrggbb").
+## The player's colour when the body carries no skin_color (the editor writes its swatch as "rrggbb"); its pattern
+## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
-const SKIN_COLOR_KEY := "skin_color"
-const FIELD_COLOR := Color(0.36, 0.47, 0.27)
-const NEST_COLOR := Color(0.78, 0.66, 0.42)
-const FRUIT_RIPE_COLOR := Color(0.82, 0.3, 0.32)
-const FRUIT_BARE_COLOR := Color(0.3, 0.45, 0.24)
+const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
+## The field's look (PROPOSED): a mid-dark grass under a soft sun, so the fruit (the food cue) and the skins read
+## against it; roughness 1 keeps the plane from catching a sheen.
+const FIELD_COLOR := Color(0.2, 0.3, 0.14)
+const FIELD_ROUGHNESS := 1.0
+const NEST_COLOR := Color(0.7, 0.58, 0.36)
+const FRUIT_RIPE_COLOR := Color(0.9, 0.2, 0.22)
+const FRUIT_BARE_COLOR := Color(0.28, 0.42, 0.2)
 const MEAT_COLOR := Color(0.6, 0.2, 0.18)
 
 var sim: CreatureWorldSim
@@ -99,7 +107,7 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	for r in sim.rivals:
 		var s := Time.get_ticks_msec()
 		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, PALETTE[rival_rigs.size() % PALETTE.size()],
-				rival_rigs.size() + 1)
+				Look.rival_pattern(rival_rigs.size() + 1))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
@@ -210,7 +218,7 @@ func _build_ground() -> void:
 	plane.size = Vector2(2.0 * sim.half_size, 2.0 * sim.half_size)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = FIELD_COLOR
-	mat.roughness = 0.95
+	mat.roughness = FIELD_ROUGHNESS
 	plane.material = mat
 	field.mesh = plane
 	add_child(field)
@@ -286,8 +294,9 @@ func _draw_food() -> void:
 func _build_player() -> void:
 	var body = sim.body_of(Sim.PLAYER_ID)
 	var color := skin_color_of(body)
+	var pattern: Dictionary = Look.pattern_of(body.extra)
 	if sim.player()["has_legs"]:
-		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, 0)
+		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, pattern)
 	else:
 		# No legs: the body stands at the nest as a plain rig, so the player sees what needs fixing.
 		var rig := SpineRig.new()
@@ -296,7 +305,7 @@ func _build_player() -> void:
 		rig.setup(body, SkinCpu.build(body, divisions), color)
 		var orientations: Dictionary = CreatureData.part_orientations(data["part_rules"])
 		rig.add_parts(AnchorResolver.resolve_all(body, BodyField.from_description(body), orientations), orientations)
-		rig.use_skin_shader({"color_base": color, "pattern_seed": 0, "coat_pattern": 1, "detail_pattern": 2})
+		rig.use_skin_shader(Look.shader_params(color, pattern))
 		var box: AABB = body.bounds_m()
 		rig.position = sim.nest - Vector3(0.0, box.position.y, 0.0)
 		player_rig = rig
@@ -304,16 +313,15 @@ func _build_player() -> void:
 
 
 ## A walker rig on the sim's planner for `id`, its skin built once on the CPU builder at the body's preview grid
-## clamped to `divisions_max`.
-func _build_rig(id: String, body: RefCounted, divisions_max: int, color: Color, seed_index: int) -> Node3D:
+## clamped to `divisions_max`, in `color` with the skin-shader `pattern` (creature_look.gd).
+func _build_rig(id: String, body: RefCounted, divisions_max: int, color: Color, pattern: Dictionary) -> Node3D:
 	var rig := WalkerRig.new()
 	rig.name = id
 	var divisions := mini(body.preview_divisions(data["body_rules"]), divisions_max)
 	var orientations: Dictionary = CreatureData.part_orientations(data["part_rules"])
 	var placements: Array = AnchorResolver.resolve_all(body, BodyField.from_description(body), orientations)
 	rig.setup(body, SkinCpu.build(body, divisions), sim.planner_of(id), sim.gait_of(id), color, placements, orientations)
-	rig.body.use_skin_shader({"color_base": color, "pattern_seed": seed_index, "coat_pattern": 1 + seed_index % 3,
-			"detail_pattern": [2, 1, 3, 0][seed_index % 4]})
+	rig.body.use_skin_shader(Look.shader_params(color, pattern))
 	return rig
 
 
@@ -381,7 +389,9 @@ func _follow_camera(delta: float) -> void:
 func _place_camera() -> void:
 	var back := Vector3(sin(camera_yaw), 0.0, cos(camera_yaw))
 	var offset := back * cos(camera_pitch) * camera_distance + Vector3(0.0, sin(camera_pitch) * camera_distance, 0.0)
-	camera.look_at_from_position(_focus + offset, _focus, Vector3.UP)
+	var eye := _focus + offset
+	eye.y = maxf(eye.y, CAMERA_GROUND_CLEARANCE_M)
+	camera.look_at_from_position(eye, _focus, Vector3.UP)
 
 
 ## The skin colour the body carries ("skin_color", "rrggbb" or "#rrggbb" from the editor's swatch), else
