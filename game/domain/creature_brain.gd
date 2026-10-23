@@ -68,6 +68,10 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
+## How many events brains have emitted so far, every brain of every sim together: a creature field
+## that took every event and finds this unchanged knows no brain holds a new one.
+static var emitted := 0
+
 ## m: home is reached within this (the plan's arrival distance).
 const ARRIVE_HOME_M := 0.3
 ## m: a resting creature pushed farther than this from home (by a body or a rock) swims back.
@@ -1211,6 +1215,7 @@ static func _label(state: String, phase: String) -> String:
 
 static func _emit(mem: Memory, event: Dictionary) -> void:
 	mem.events.append(event)
+	emitted += 1
 
 
 static func _pair(v: Vector2) -> Array:

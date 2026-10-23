@@ -548,3 +548,27 @@ func test_the_body_snapshot_holds_what_bodies_gives() -> void:
 	check_eq(differ, 0, "creatures that perceive differently through the snapshot")
 	check(sensed > 200, "bodies were sensed (%d)" % sensed)
 
+
+## take_events skips its scan while no brain has emitted since the last one, and a creature that woke
+## holding events (given while it slept, after the scan that skipped it) still has them taken by the
+## next take_events, as the plain scan of the awake list takes them.
+func test_a_woken_creatures_held_events_come_out_next() -> void:
+	var sim := _forager(5103)
+	check(sim.debug_spawn_creature("rammer", Vector2(-30.0, -30.0), 0.0), "a rammer")
+	var field := sim.creatures
+	var b: CreatureField.Creature = field.creatures[field.creatures.size() - 1]
+	field.sleep(b, sim.tick)
+	sim.step(SimIntent.new())
+	sim.drain_events()
+	check(b.asleep and b.brain.events.is_empty(), "asleep, its brain holding nothing")
+	CreatureBrain._notice(b.brain, CreatureField.PLAYER_ID, "sight", sim.tick)   # no hook: no full scan
+	field.take_events()
+	check_eq(b.brain.events.size(), 1, "a sleeper's event waits while the awake are scanned")
+	check(field.take_events().is_empty(), "nothing emitted since: nothing taken")
+	field.wake(b, sim.tick)
+	var noticed := []
+	for e in field.take_events():
+		if e.type == "creature_noticed":
+			noticed.append(e.id)
+	check_eq(noticed, [b.id], "woken: its held event comes out with the next events")
+	check(b.brain.events.is_empty(), "its brain holds nothing")

@@ -117,6 +117,10 @@ var _senses := {}       ## species id -> {"sight", "fov" (radians, whole), "near
 ## Endless mode: a sleeper's brain may hold events (it went to sleep with some, or a hook on every
 ## brain gave it some), so the next take_events scans every creature; otherwise the awake ones only.
 var _scan_all := true
+## CreatureBrain.emitted when take_events last emptied the brains it scans; while it is unchanged
+## (and _scan_all is not set) no brain it scans has an event to take. -1 (a creature woke holding
+## events) scans.
+var _taken_at := -1
 
 
 ## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets each species'
@@ -424,6 +428,8 @@ func wake(c: Creature, _tick: int) -> void:
 	_insert_sorted(_awake, c)
 	if c.brain != null:
 		c.brain.wake = true
+		if not c.brain.events.is_empty():
+			_taken_at = -1   # it held events through its sleep: the next take_events scans
 	events.append({"type": "creature_woke", "id": c.id, "position": c.motion.position, "slot": c.think_slot})
 
 
@@ -653,18 +659,20 @@ func update_token(c: Creature, tick: int) -> void:
 ## Field events plus every creature's brain events (each with its creature's id, and its position
 ## when the brain gave none), in creature order, oldest first; clears them.
 func take_events() -> Array[Dictionary]:
-	var scan: Array[Creature] = _awake if endless and not _scan_all else creatures
-	_scan_all = false
-	for c in scan:
-		if c.brain == null or c.brain.events.is_empty():
-			continue
-		for e in c.brain.events:
-			var tagged: Dictionary = e.duplicate()
-			tagged["id"] = c.id
-			if not tagged.has("position"):
-				tagged["position"] = c.motion.position
-			events.append(tagged)
-		c.brain.events.clear()
+	if _scan_all or CreatureBrain.emitted != _taken_at:
+		var scan: Array[Creature] = _awake if endless and not _scan_all else creatures
+		_scan_all = false
+		for c in scan:
+			if c.brain == null or c.brain.events.is_empty():
+				continue
+			for e in c.brain.events:
+				var tagged: Dictionary = e.duplicate()
+				tagged["id"] = c.id
+				if not tagged.has("position"):
+					tagged["position"] = c.motion.position
+				events.append(tagged)
+			c.brain.events.clear()
+		_taken_at = CreatureBrain.emitted
 	var taken := events
 	events = []
 	return taken
