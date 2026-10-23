@@ -22,6 +22,13 @@ extends TestCase
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
 ##    median excess is at most 2 yardsticks. The rebase goes against the cell's side of the origin, so
 ##    the tick holds one rebase, not two.
+##  - Saturated (B-7): on DenseGen, T2's FakeWorldGen with 3 zones and 9 rammer sites a chunk, RACER
+##    swims overdriven east for 1,200 ticks and then 600 timed ticks, 3 runs, with the awake cap
+##    (12, at least 6 in view), the sleeper cap (30) and the food cap (120, less one zone's worth
+##    being eaten) full. The slow case checks that and prints the rows; the soak case holds B-7's
+##    limits, the median run's median tick at most 10 yardsticks and every tick that loads a chunk at
+##    most 16 at its fastest of 3. The saturated case needs no invariant, so it waits on
+##    Gates.missing(Gates.WORLD) and FakeWorldGen only.
 ## While the endless world has not landed each prints what it waits on (Gates.missing()).
 
 const Gates := preload("res://tests/test_endless_gates.gd")
@@ -46,8 +53,19 @@ const REBASES := 20
 const REBASE_GAP_TICKS := 30
 const REBASE_CHUNKS := 3
 const REBASE_LIMIT_YARDSTICKS := 2.0
+## The saturated case (B-7): a dense FakeWorldGen world (DenseGen), RACER overdriven east along the
+## lane y = DENSE_LANE_Y from x = 0 for DENSE_WARM_TICKS, then DENSE_TICKS timed ticks, 3 runs.
+const FAKE_GEN := "res://tests/fakes/fake_world_gen.gd"   ## T2's permanent test generator
+const DENSE_SEED := 2802
+const DENSE_LANE_Y := 16.0             ## tm: between the zone rows at 8 and 24 of every chunk
+const DENSE_WARM_TICKS := 1200         ## 120 tm: the cell is among creatures that spawned out of its view
+const DENSE_TICKS := 600
+const DENSE_MIN_IN_VIEW := 6           ## at least half the awake cap in the cell's view
+const DENSE_LIMIT_YARDSTICKS := 10.0   ## the median run's median tick
+const DENSE_LOAD_LIMIT_YARDSTICKS := 16.0   ## every tick that loads a chunk, at its fastest of 3
 
 static var _runs := {}                ## overdriven (bool) -> the timed swim runs
+static var _dense: Array[Dictionary] = []   ## the saturated case's 3 runs
 
 
 func _waits(gate: String) -> bool:
@@ -172,6 +190,145 @@ func test_slow_a_rebase_tick_costs_at_most_2_yardsticks_more() -> void:
 	if _waits("rebase"):
 		return
 	_check_rebase_cost(true)
+
+
+## The saturated case (B-7), measured: on a dense world with the awake, sleeper and food caps full,
+## the 3 runs time the same ticks, chunks load during them, and the case prints its rows (each
+## run's median tick, the load ticks at their fastest, the counts). B-7's limits are the soak gate
+## below: this case read about twice them, and B-7's remedy (caps.awake 10) as much (docs/DECISIONS.md,
+## S1 build decisions), so asserting them here would stop every check.sh until that is settled.
+func test_slow_a_saturated_world_fills_its_caps_and_prints_its_cost() -> void:
+	if _dense_waits("the saturated case"):
+		return
+	var runs := _dense_runs()
+	var r0: Dictionary = runs[0]
+	var caps: Dictionary = r0.caps
+	for r in runs:
+		check_eq(r.hash, r0.hash, "every run timed the same ticks")
+		check_eq(r.load_ticks, r0.load_ticks, "every run loaded on the same ticks")
+	var medians: Array[float] = []
+	for r in runs:
+		medians.append(Yardstick.median(r.ratios))
+	var loads := _dense_load_ticks(runs)
+	var verdict := "within" if Yardstick.median(medians) <= DENSE_LIMIT_YARDSTICKS and (loads.is_empty() or loads.max() <= DENSE_LOAD_LIMIT_YARDSTICKS) else "OVER"
+	print("test-endless-cost: saturated: over %d ticks after %d the median awake %d (%d in view), asleep %d, food %d (caps %d, %d, %d), %d chunks, %d sites, %d loads; median tick %.2f yardsticks in the median run (%s), %.1f us; load ticks at their fastest %s; awake_overflow %d, evictions %d, food_trimmed %d; %s B-7's limits (%.0f, %.0f)" % [
+		DENSE_TICKS, DENSE_WARM_TICKS, r0.awake, r0.in_view, r0.asleep, r0.food, int(caps.awake), int(caps.sleepers),
+		int(caps.food_items), r0.chunks, r0.sites, loads.size(), Yardstick.median(medians), _joined(medians, "%.2f"),
+		Yardstick.median(r0.us), _joined(loads, "%.2f"), r0.awake_overflow, r0.evictions, r0.food_trimmed, verdict,
+		DENSE_LIMIT_YARDSTICKS, DENSE_LOAD_LIMIT_YARDSTICKS])
+	check_eq(int(r0.awake), int(caps.awake), "the median tick has the awake cap full")
+	check(int(r0.in_view) >= DENSE_MIN_IN_VIEW, "and at least %d of them in view (%d)" % [DENSE_MIN_IN_VIEW, r0.in_view])
+	check_eq(int(r0.asleep), int(caps.sleepers), "the median tick has the sleeper cap full")
+	check(int(r0.food) <= int(caps.food_items) and int(r0.food) >= int(caps.food_items) - int(caps.food_per_zone),
+		"the median tick has the food cap full but for one zone's worth eaten and regrowing (%d of %d)" % [r0.food, caps.food_items])
+	check(not loads.is_empty(), "chunks loaded during the timing")
+
+
+## B-7's gate on the saturated case: the median run's median tick at most 10 yardsticks and every
+## tick that loads a chunk at most 16 at its fastest of 3. If it fails, T1 lowers caps.awake to 10
+## and nothing else changes first.
+func test_soak_a_saturated_world_costs_at_most_10_yardsticks_a_tick() -> void:
+	if _dense_waits("B-7's saturated gate"):
+		return
+	var runs := _dense_runs()
+	var medians: Array[float] = []
+	for r in runs:
+		medians.append(Yardstick.median(r.ratios))
+	var median := Yardstick.median(medians)
+	var loads := _dense_load_ticks(runs)
+	print("test-endless-cost: B-7: median tick %.2f yardsticks in the median run (%s); load ticks at their fastest %s" % [
+		median, _joined(medians, "%.2f"), _joined(loads, "%.2f")])
+	check(not loads.is_empty(), "chunks loaded during the timing")
+	check(median <= DENSE_LIMIT_YARDSTICKS, "median tick %.2f yardsticks in the median run (limit %.1f)" % [median, DENSE_LIMIT_YARDSTICKS])
+	for i in loads.size():
+		check(loads[i] <= DENSE_LOAD_LIMIT_YARDSTICKS, "load tick %d: %.2f yardsticks at its fastest (limit %.1f)" % [
+			runs[0].load_ticks[i], loads[i], DENSE_LOAD_LIMIT_YARDSTICKS])
+
+
+## The saturated case reads the endless world's counters and fields, not the invariants, and swims on
+## T2's FakeWorldGen, so it waits on Gates.WORLD and that file only.
+func _dense_waits(gate: String) -> bool:
+	var what := Gates.missing(Gates.WORLD)
+	if not FileAccess.file_exists(FAKE_GEN):
+		what.append("tests/fakes/fake_world_gen.gd (T2.1)")
+	if what.is_empty():
+		return false
+	print("test-endless-cost: %s waits on: %s" % [gate, "; ".join(what)])
+	return true
+
+
+## The 3 runs of the saturated case, run once per process.
+func _dense_runs() -> Array[Dictionary]:
+	if _dense.is_empty():
+		for run in RUNS:
+			_dense.append(_dense_run())
+	return _dense
+
+
+## The yardsticks of each timed tick that loaded a chunk, at its fastest of the runs.
+static func _dense_load_ticks(runs: Array[Dictionary]) -> Array[float]:
+	var fastest := _fastest_per_tick(runs)
+	var out: Array[float] = []
+	for i in runs[0].load_ticks:
+		out.append(fastest[i])
+	return out
+
+
+## One run of the saturated case: RACER overdriven east from (0, DENSE_LANE_Y) on DenseGen, hidden,
+## DENSE_WARM_TICKS untimed, then DENSE_TICKS timed. Returns each tick's us and yardsticks, the timed
+## ticks that loaded a chunk (indices), the end hash and the median count of each capped thing.
+func _dense_run() -> Dictionary:
+	var catalog := PartCatalog.load_from()
+	var layout := PoolLayout.load_from()
+	var species := SpeciesCatalog.load_from()
+	var Fake: GDScript = load(FAKE_GEN)
+	var content: Variant = Fake.call("fixture_content")
+	var r := Lineage.found(DENSE_SEED, Gates.BUILD_ID, catalog, "hunter")
+	Gates.make_racer(r.save.genome, catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, DENSE_LANE_Y)
+	var sim: Variant = (load(Gates.POOL_SIM_PATH) as GDScript).callv("_create_endless",
+		[r.save, catalog, layout, species, content, DenseGen.new(content, species, DENSE_SEED)])
+	sim.debug_set_hidden(true)
+	sim.drain_events()
+	var caps: Dictionary = sim.world.caps
+	var bot = SwimBot.new(Vector2.RIGHT)
+	for i in DENSE_WARM_TICKS:
+		_swim_step(sim, bot, true)
+	var us: Array[float] = []
+	var ratios: Array[float] = []
+	var load_ticks: Array[int] = []
+	var counts := {"awake": [] as Array[float], "in_view": [] as Array[float], "asleep": [] as Array[float], "food": [] as Array[float]}
+	for i in DENSE_TICKS:
+		Gates.drive(sim, true)
+		var t := _timed_step(sim, bot.next_intent(sim))
+		us.append(t.us)
+		ratios.append(t.ratio)
+		for e in t.events:
+			if e.type == "chunk_loaded":
+				load_ticks.append(i)
+				break
+		counts.awake.append(float(sim.creatures.awake().size()))
+		counts.in_view.append(float(_awake_in_view(sim)))
+		counts.asleep.append(float(sim.world.sleeping_ids().size()))
+		counts.food.append(float(sim.plankton.items.size()))
+	var c: Dictionary = sim.world.counters
+	return {"us": us, "ratios": ratios, "load_ticks": load_ticks, "hash": sim.state_hash(), "caps": caps,
+		"awake": int(Yardstick.median(counts.awake)), "in_view": int(Yardstick.median(counts.in_view)),
+		"asleep": int(Yardstick.median(counts.asleep)), "food": int(Yardstick.median(counts.food)),
+		"chunks": sim.world.loaded_keys().size(), "sites": sim.world.sites.size(), "awake_overflow": int(c.awake_overflow), "evictions": int(c.evictions),
+		"food_trimmed": int(c.food_trimmed)}
+
+
+## The awake creatures in the cell's widest view, as the stream keeps them awake: within its view
+## margin plus their radius of the view's footprint.
+static func _awake_in_view(sim: Variant) -> int:
+	var w: Variant = sim.world
+	var quad := ViewFootprint.corners(sim.motion.position, w.camera, float(w.camera.zoom_max), float(w.view_aspect))
+	var n := 0
+	for c in sim.creatures.awake():
+		if ViewFootprint.distance_outside(quad, c.motion.position) <= float(w.view_margin) + c.phenotype.radius:
+			n += 1
+	return n
 
 
 ## The four gates again with RACER as it is (B-12: each overdriven swim keeps one racer run).
@@ -305,3 +462,39 @@ static func _rebases(events: Array) -> int:
 
 static func _joined(values: Array[float], format: String) -> String:
 	return ", ".join(values.map(func(v: float) -> String: return format % v))
+
+
+## The saturated case's world (B-7): T2's FakeWorldGen made dense. Every chunk keeps the fake's shell
+## at its centre + (8, 8), the south-east quadrant's centre, and holds a zone of the fake's radius and
+## capacity on each other quadrant's centre, with PER_ZONE rammer sites spread round it HOME_R from
+## its centre (homes 4.3 tm apart; min_gap_m is 2), facing it: their territory the zone, their reach
+## the species' own leash disc. That is 9 sites a chunk, against the fake's one per 16 chunks.
+class DenseGen extends "res://tests/fakes/fake_world_gen.gd":
+	const ZONE_CENTRES: Array[Vector2] = [Vector2(8.0, 8.0), Vector2(24.0, 8.0), Vector2(8.0, 24.0)]
+	const PER_ZONE := 3
+	const HOME_R := 2.5
+
+	func chunk(n: int, cx: int, cy: int) -> WorldChunk:
+		var c := WorldChunk.new()
+		c.key = Vector2i(cx, cy)
+		c.size = n
+		var o := Vector2(32.0 * cx, 32.0 * cy)
+		var tile := Vector2i(floori(cx / 2.0), floori(cy / 2.0))
+		c.shells.append({"id": "s_d_%d_%d" % [cx, cy], "x": o.x + 16.0 + SHELL_OFFSET, "y": o.y + 16.0 + SHELL_OFFSET,
+			"r": SHELL_R, "kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+		for q in ZONE_CENTRES.size():
+			var zc: Vector2 = o + ZONE_CENTRES[q]
+			c.zones.append({"id": "z_d_%d_%d_%d" % [cx, cy, q], "x": zc.x, "y": zc.y, "radius": ZONE_R,
+				"capacity": ZONE_CAPACITY, "growth_rate": ZONE_GROWTH, "tile": tile, "region": "sunlit"})
+			for k in PER_ZONE:
+				var a := TAU * k / PER_ZONE
+				var home := Vector2.from_angle(a) * HOME_R
+				var site := {"species": SITE_SPECIES, "home": home, "heading": a + PI}
+				var reach: Dictionary = species.reach_disc_for(site, species.territory_from(site, {"center": Vector2.ZERO, "radius": ZONE_R}))
+				var rx: float = zc.x + reach.center.x
+				var ry: float = zc.y + reach.center.y
+				c.sites.append({"id": "d_%d_%d_%d_%d" % [cx, cy, q, k], "species": SITE_SPECIES, "x": zc.x + home.x,
+					"y": zc.y + home.y, "heading": a + PI, "territory": {"x": zc.x, "y": zc.y, "radius": ZONE_R},
+					"reach": {"x": rx, "y": ry, "radius": float(reach.radius)}, "chunks": disc_chunks(rx, ry, float(reach.radius), 32.0),
+					"sizes": [1] as Array[int], "tile": tile})
+		return c
