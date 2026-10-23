@@ -364,6 +364,39 @@ func test_chunk_events_add_and_remove_shell_instances() -> void:
 	pool.free()
 
 
+func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
+	# From a clean slate: the pieces earlier tests loaded are dropped (a pending load taken first).
+	for path in LandmarkLayer._loading.keys():
+		LandmarkLayer._scene(path)
+	LandmarkLayer._scenes.clear()
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var kit: PlacementKit = pool.session.world.kit
+	var paths := {}
+	for id in kit.assets:
+		if str(kit.assets[id].kind) in ["landmark", "rare"]:
+			paths[str(kit.assets[id].glb)] = true
+	check(paths.size() >= 5, "the kit has landmark and rare pieces (%d)" % paths.size())
+	for path in paths:
+		check(LandmarkLayer._loading.has(path), "setup starts loading %s" % path.get_file())
+	var loaded := func() -> bool: return paths.keys().all(func(path: String) -> bool: return LandmarkLayer.is_loaded(path))
+	var waited := 0
+	while waited < 10000 and not loaded.call():
+		OS.delay_msec(10)
+		waited += 10
+	check(loaded.call(), "every piece is loaded with no chunk asking for one (%d ms)" % waited)
+	pool.landmarks.setup(kit)
+	check_eq(LandmarkLayer._loading.size(), paths.size(), "a second setup (a new session) starts no load again")
+	pool.apply_world_event(_rare_chunk(Vector2i(53, 53)))
+	check(pool.landmarks.pieces().size() >= 2, "a chunk takes its landmark and its set piece")
+	check(LandmarkLayer._scenes.size() >= 2 and LandmarkLayer._loading.size() == paths.size() - LandmarkLayer._scenes.size(),
+		"from the loads already done (%d taken)" % LandmarkLayer._scenes.size())
+	pool.free()
+	check(LandmarkLayer._loading.is_empty(), "the layer takes every load still pending as it goes, so none leaks at exit")
+	for path in paths:
+		check_eq(ResourceLoader.load_threaded_get_status(path), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+			"and no request for %s is left with the loader (each was made once and taken once)" % path.get_file())
+
+
 func test_a_landmark_shows_its_model_yaw_scale_tint_and_growth() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var kit: PlacementKit = pool.session.world.kit
