@@ -9,8 +9,10 @@
 	"fold_angle_min_deg": 30.0,
 	"min_radius_preview_cells": 1.5,
 	"preview_divisions": 48,
+	"gameplay_divisions": 40,
 	"bake_divisions": 96,
 	"reference_length_mm_min": 100,
 	"reference_length_mm_max": 8000,
-	"size_budget_bytes": 4096
+	"size_budget_bytes": 4096,
+	"gameplay_triangle_budget": 8000
 }

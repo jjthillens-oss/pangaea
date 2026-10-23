@@ -25,7 +25,8 @@ func _init() -> void:
 			var cpu := SkinCpu.build(desc, divisions)
 			var row := {"body": body_name, "divisions": divisions, "vertebrae": desc.vertebrae.size(),
 					"vertices": cpu["vertices"].size(), "triangles": cpu["indices"].size() / 3,
-					"cpu_ms": cpu["ms"], "watertight_cpu": MeshChecks.watertight(cpu["indices"])}
+					"cpu_ms": cpu["ms"], "watertight_cpu": MeshChecks.watertight(cpu["indices"]),
+					"topology_fixes": cpu["topology_fixes"]}
 			if gpu.is_available():
 				var times := []
 				var first: Dictionary = {}

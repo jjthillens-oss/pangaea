@@ -2,12 +2,17 @@ extends RefCounted
 ## The implicit field around a spine (PROPOSED, CREATURE_GEOMETRY_SPEC.md section 4). Each pair of neighbouring
 ## vertebrae makes a tapered capsule; each capsule gives the soft-object falloff (1 - d^2/R^2)^3 of the distance to
 ## its axis, with R = SUPPORT * radius. The skin is where the field equals ISO, which puts a lone capsule's surface at
-## its radius. Within one chain the capsules are combined by max, not sum: a sum bulges about 15% at every vertebra
-## (measured on paper: 2 f(d) = ISO at d = 1.15 r). Sum or smooth-union across chains comes with limbs.
+## its radius. Within one chain the capsules are combined by a p-norm, F = (sum f^P)^(1/P) with P = 3: a plain sum
+## (P = 1) bulges about 15% at every vertebra (2 f(d) = ISO at d = 1.15 r), and max (P = infinity) leaves creases
+## where a bent spine's capsules meet. P = 3 bulges about 5% and rounds the creases. Grid builders store
+## S = sum f^P and compare it with ISO_P = ISO^P, which is the same surface. Sum or smooth-union across chains comes
+## with limbs.
 ## Pure rules: no scene or file access. skin/surface_nets.glsl repeats these formulas and must stay in step.
 
 const SUPPORT := 1.6
 const ISO := 0.22628403  # (1 - 1 / SUPPORT^2)^3
+const BLEND_P := 3.0
+const ISO_P := 0.011586752  # ISO^BLEND_P
 
 ## Capsule k runs from a[k] to b[k]; it belongs to bones k and k + 1 (vertebra indices).
 var a := PackedVector3Array()
@@ -44,10 +49,15 @@ func capsule(k: int, p: Vector3) -> Vector2:
 
 
 func sample(p: Vector3) -> float:
-	var best := 0.0
+	return pow(sample_p(p), 1.0 / BLEND_P)
+
+
+## sum f^P, the value grid builders store.
+func sample_p(p: Vector3) -> float:
+	var s := 0.0
 	for k in a.size():
-		best = maxf(best, capsule(k, p).x)
-	return best
+		s += pow(capsule(k, p).x, BLEND_P)
+	return s
 
 
 ## Outward surface normal at p (minus the field gradient), by central differences.

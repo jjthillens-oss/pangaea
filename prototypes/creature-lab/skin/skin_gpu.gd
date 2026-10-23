@@ -4,6 +4,7 @@ extends RefCounted
 ## or Metal); `is_available()` is false under the Compatibility renderer and in headless runs.
 
 const BodyField := preload("res://domain/body_field.gd")
+const SkinCpu := preload("res://skin/skin_cpu.gd")
 const SkinGrid := preload("res://skin/skin_grid.gd")
 
 const MODE_FIELD := 0
@@ -13,6 +14,9 @@ const MODE_SCAN_BLOCKS := 3
 const MODE_SCAN_ADD := 4
 const MODE_VERTS := 5
 const MODE_QUADS := 6
+const MODE_FIX_MARK := 7
+const MODE_FIX_APPLY := 8
+const FIX_PASSES := 6  # skin_cpu.gd FIX_PASSES
 const GROUP := 256
 
 var rd: RenderingDevice
@@ -66,6 +70,7 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 	var params := PackedFloat32Array([origin.x, origin.y, origin.z, grid["cell"]]).to_byte_array()
 	params.append_array(PackedInt32Array([dims.x, dims.y, dims.z, n, field.capsule_count(),
 			desc.vertebrae.size(), 0, 0]).to_byte_array())
+	params.append_array(_split_bits().to_byte_array())
 	rd.buffer_update(_buffers["params"], 0, params.size(), params)
 	var cap_bytes := caps.to_byte_array()
 	rd.buffer_update(_buffers["capsules"], 0, cap_bytes.size(), cap_bytes)
@@ -76,6 +81,9 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 	rd.compute_list_bind_compute_pipeline(list, pipeline)
 	rd.compute_list_bind_uniform_set(list, _uniform_set, 0)
 	_pass(list, MODE_FIELD, 0, groups, groups)
+	for fix in FIX_PASSES:
+		_pass(list, MODE_FIX_MARK, 0, groups, groups)
+		_pass(list, MODE_FIX_APPLY, 0, groups, groups)
 	_pass(list, MODE_COUNT, 0, groups, groups)
 	for target in 2:
 		_pass(list, MODE_SCAN_LOCAL, target, groups, groups)
@@ -103,6 +111,17 @@ func build(desc: RefCounted, divisions: int) -> Dictionary:
 	out["ms"] = {"upload": (t1 - t0) / 1000.0, "gpu": (t2 - t1) / 1000.0, "readback": (t3 - t2) / 1000.0,
 			"total": (t3 - t0) / 1000.0}
 	return out
+
+
+## SkinCpu's split table as 8 words of 32 bits, so both builders fix the same cells.
+static func _split_bits() -> PackedInt32Array:
+	var words := PackedInt32Array()
+	words.resize(8)
+	var table: Array = SkinCpu._split_table()
+	for m in 256:
+		if table[m]:
+			words[m >> 5] |= 1 << (m & 31)
+	return words
 
 
 func free_resources() -> void:
@@ -134,7 +153,7 @@ func _ensure_buffers(n: int, capsules: int) -> void:
 	_cap_capsules = maxi(capsules, 32)
 	var blocks := int(ceil(float(_capacity) / GROUP))
 	var sizes := {
-		"params": 48, "capsules": 32 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
+		"params": 80, "capsules": 32 * _cap_capsules, "field": 4 * _capacity, "cell_offset": 4 * _capacity,
 		"quad_offset": 4 * _capacity, "blocks": 4 * blocks, "totals": 16, "vertices": 12 * _capacity,
 		"normals": 12 * _capacity, "bones": 16 * _capacity, "weights": 16 * _capacity,
 		"indices": 4 * 18 * _capacity,

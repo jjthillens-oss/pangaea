@@ -13,9 +13,13 @@ const uint MODE_SCAN_BLOCKS = 3u;
 const uint MODE_SCAN_ADD = 4u;
 const uint MODE_VERTS = 5u;
 const uint MODE_QUADS = 6u;
+const uint MODE_FIX_MARK = 7u;
+const uint MODE_FIX_APPLY = 8u;
+const float FLIP_SCALE = 1.0001; // skin_cpu.gd FLIP_SCALE
 
 const float SUPPORT = 1.6;
 const float ISO = 0.22628403;
+const float ISO_P = 0.011586752; // ISO^3: grids store sum f^3 (domain/body_field.gd)
 const int MAX_BONES = 32;
 
 layout(push_constant, std430) uniform Pass {
@@ -29,6 +33,7 @@ layout(set = 0, binding = 0, std430) restrict readonly buffer Params {
 	vec4 origin_cell; // xyz origin, w cell size
 	ivec4 dims_n; // xyz grid points, w total points
 	ivec4 counts; // x capsules, y bones
+	uvec4 split[2]; // 256-bit table: bit m set if corner mask m splits into two groups (skin_cpu.gd _split_table)
 } params;
 
 // Capsule k: caps[2k] = (a, ra), caps[2k + 1] = (b, rb).
@@ -46,6 +51,10 @@ layout(set = 0, binding = 11, std430) restrict writeonly buffer Indices { uint i
 
 shared uint scan_tmp[256];
 
+const int EDGE_TABLE[24] = int[24](0, 1, 2, 3, 4, 5, 6, 7, 0, 2, 1, 3, 4, 6, 5, 7, 0, 4, 1, 5, 2, 6, 3, 7);
+
+
+
 // Falloff of capsule k at p (x) and the closest point's axis parameter (y).
 vec2 capsule(int k, vec3 p) {
 	vec3 a = caps[2 * k].xyz;
@@ -62,12 +71,14 @@ vec2 capsule(int k, vec3 p) {
 	return vec2(u * u * u, t);
 }
 
+// sum f^3 over capsules (the p-norm blend without the final root, which does not move the surface).
 float sample_field(vec3 p) {
-	float best = 0.0;
+	float s = 0.0;
 	for (int k = 0; k < params.counts.x; k++) {
-		best = max(best, capsule(k, p).x);
+		float f = capsule(k, p).x;
+		s += f * f * f;
 	}
-	return best;
+	return s;
 }
 
 ivec3 coords(uint i) {
@@ -77,13 +88,21 @@ ivec3 coords(uint i) {
 }
 
 bool is_inside(uint i) {
-	return field[i] > ISO;
+	return field[i] > ISO_P;
 }
 
 uint corner_index(uint base, int c) {
 	int nx = params.dims_n.x;
 	int nxy = params.dims_n.x * params.dims_n.y;
 	return base + uint((c & 1) + ((c >> 1) & 1) * nx + ((c >> 2) & 1) * nxy);
+}
+
+uint cell_mask(uint i) {
+	uint mask = 0u;
+	for (int c = 0; c < 8; c++) {
+		if (is_inside(corner_index(i, c))) mask |= 1u << c;
+	}
+	return mask;
 }
 
 bool cell_crossed(uint i) {
@@ -138,6 +157,7 @@ void main() {
 		if (i >= n) return;
 		vec3 p = params.origin_cell.xyz + vec3(coords(i)) * params.origin_cell.w;
 		field[i] = sample_field(p);
+		quad_offset[i] = 0u; // also the topology-fix marks; start clear
 	} else if (pc.mode == MODE_COUNT) {
 		if (i >= n) return;
 		cell_offset[i] = cell_crossed(i) ? 1u : 0u;
@@ -177,16 +197,18 @@ void main() {
 		uint v = cell_offset[i];
 		vec3 sum = vec3(0.0);
 		float count = 0.0;
-		const int edges[24] = int[24](0, 1, 2, 3, 4, 5, 6, 7, 0, 2, 1, 3, 4, 6, 5, 7, 0, 4, 1, 5, 2, 6, 3, 7);
 		for (int e = 0; e < 12; e++) {
-			int c0 = edges[2 * e];
-			int c1 = edges[2 * e + 1];
-			float v0 = field[corner_index(i, c0)] - ISO;
-			float v1 = field[corner_index(i, c1)] - ISO;
-			if ((v0 > 0.0) != (v1 > 0.0)) {
+			int c0 = EDGE_TABLE[2 * e];
+			int c1 = EDGE_TABLE[2 * e + 1];
+			bool in0 = is_inside(corner_index(i, c0));
+			bool in1 = is_inside(corner_index(i, c1));
+			if (in0 != in1) {
+				// Interpolate on F = S^(1/3), close to linear across a cell (skin_cpu.gd does the same).
+				float v0 = pow(field[corner_index(i, c0)], 1.0 / 3.0) - ISO;
+				float v1 = pow(field[corner_index(i, c1)], 1.0 / 3.0) - ISO;
 				vec3 p0 = vec3(float(c0 & 1), float((c0 >> 1) & 1), float((c0 >> 2) & 1));
 				vec3 p1 = vec3(float(c1 & 1), float((c1 >> 1) & 1), float((c1 >> 2) & 1));
-				sum += mix(p0, p1, v0 / (v0 - v1));
+				sum += mix(p0, p1, clamp(v0 / (v0 - v1), 0.0, 1.0));
 				count += 1.0;
 			}
 		}
@@ -245,6 +267,26 @@ void main() {
 		for (int slot = 0; slot < 4; slot++) {
 			bones[4u * v + uint(slot)] = out_bone[slot];
 			weights[4u * v + uint(slot)] = out_w[slot] / wsum;
+		}
+	} else if (pc.mode == MODE_FIX_MARK) {
+		// skin_cpu.gd step 1b: a crossed cell whose inside or outside corners form two groups gets its strongest
+		// outside corner marked to move inside.
+		if (i >= n) return;
+		ivec3 g = coords(i);
+		if (g.x >= params.dims_n.x - 1 || g.y >= params.dims_n.y - 1 || g.z >= params.dims_n.z - 1) return;
+		uint m = cell_mask(i);
+		if (m == 0u || m == 255u) return;
+		if ((params.split[m >> 7u][(m >> 5u) & 3u] & (1u << (m & 31u))) == 0u) return;
+		int best = -1;
+		for (int c = 0; c < 8; c++) {
+			if (((m >> c) & 1u) == 0u && (best < 0 || field[corner_index(i, c)] > field[corner_index(i, best)])) best = c;
+		}
+		quad_offset[corner_index(i, best)] = 1u;
+	} else if (pc.mode == MODE_FIX_APPLY) {
+		if (i >= n) return;
+		if (quad_offset[i] != 0u) {
+			field[i] = max(field[i], ISO_P * FLIP_SCALE);
+			quad_offset[i] = 0u;
 		}
 	} else if (pc.mode == MODE_QUADS) {
 		if (i >= n) return;

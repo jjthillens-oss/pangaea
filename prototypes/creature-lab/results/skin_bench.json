@@ -7,74 +7,77 @@
 			"body": "bean",
 			"divisions": 48,
 			"vertebrae": 3,
-			"vertices": 5176,
-			"triangles": 10348,
+			"vertices": 5456,
+			"triangles": 10908,
 			"cpu_ms": {
-				"field": 39.927,
-				"nets": 100.926,
-				"normals_weights": 89.343,
-				"total": 230.196
+				"field": 33.0,
+				"nets": 81.448,
+				"normals_weights": 56.031,
+				"total": 170.479
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 12.618,
-			"gpu_ms_min": 11.338,
+			"topology_fixes": 0,
+			"gpu_ms_median": 32.646,
+			"gpu_ms_min": 25.695,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.333,
-				"gpu": 932.265,
-				"readback": 0.712,
-				"total": 933.31
+				"upload": 0.447,
+				"gpu": 1760.757,
+				"readback": 0.942,
+				"total": 1762.146
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.168943236018697e-05,
+			"max_vertex_gap_cells": 8.344776048280605e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "bean",
 			"divisions": 96,
 			"vertebrae": 3,
-			"vertices": 20728,
-			"triangles": 41452,
+			"vertices": 21756,
+			"triangles": 43508,
 			"cpu_ms": {
-				"field": 169.174,
-				"nets": 285.978,
-				"normals_weights": 188.599,
-				"total": 643.751
+				"field": 265.015,
+				"nets": 645.987,
+				"normals_weights": 264.353,
+				"total": 1175.355
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 61.71,
-			"gpu_ms_min": 55.954,
+			"topology_fixes": 0,
+			"gpu_ms_median": 127.993,
+			"gpu_ms_min": 115.143,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.418,
-				"gpu": 62.745,
-				"readback": 3.544,
-				"total": 66.707
+				"upload": 0.517,
+				"gpu": 125.626,
+				"readback": 2.327,
+				"total": 128.47
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 3.6751350878889096e-05,
+			"max_vertex_gap_cells": 3.438729435323374e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "worm",
 			"divisions": 48,
 			"vertebrae": 16,
-			"vertices": 1292,
-			"triangles": 2580,
+			"vertices": 1346,
+			"triangles": 2688,
 			"cpu_ms": {
-				"field": 4.849,
-				"nets": 8.248,
-				"normals_weights": 61.992,
-				"total": 75.089
+				"field": 5.753,
+				"nets": 16.784,
+				"normals_weights": 80.642,
+				"total": 103.179
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 3.661,
-			"gpu_ms_min": 3.375,
+			"topology_fixes": 0,
+			"gpu_ms_median": 7.92,
+			"gpu_ms_min": 5.34,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.216,
-				"gpu": 4.335,
-				"readback": 0.605,
-				"total": 5.156
+				"upload": 0.242,
+				"gpu": 7.202,
+				"readback": 0.452,
+				"total": 7.896
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
@@ -85,286 +88,297 @@
 			"body": "worm",
 			"divisions": 96,
 			"vertebrae": 16,
-			"vertices": 5260,
-			"triangles": 10516,
+			"vertices": 5636,
+			"triangles": 11268,
 			"cpu_ms": {
-				"field": 24.834,
-				"nets": 39.352,
-				"normals_weights": 249.818,
-				"total": 314.004
+				"field": 19.785,
+				"nets": 51.992,
+				"normals_weights": 251.592,
+				"total": 323.369
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 14.737,
-			"gpu_ms_min": 13.253,
+			"topology_fixes": 0,
+			"gpu_ms_median": 25.041,
+			"gpu_ms_min": 23.975,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.198,
-				"gpu": 14.217,
-				"readback": 0.764,
-				"total": 15.179
+				"upload": 0.31,
+				"gpu": 22.674,
+				"readback": 0.991,
+				"total": 23.975
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.2772425185519475e-05,
+			"max_vertex_gap_cells": 1.2970459556577152e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "fish",
 			"divisions": 48,
 			"vertebrae": 10,
-			"vertices": 2874,
-			"triangles": 5744,
+			"vertices": 3104,
+			"triangles": 6204,
 			"cpu_ms": {
-				"field": 24.768,
-				"nets": 22.656,
-				"normals_weights": 86.194,
-				"total": 133.618
+				"field": 31.881,
+				"nets": 42.183,
+				"normals_weights": 96.771,
+				"total": 170.835
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 8.924,
-			"gpu_ms_min": 8.174,
+			"topology_fixes": 0,
+			"gpu_ms_median": 15.563,
+			"gpu_ms_min": 15.045,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.164,
-				"gpu": 9.45,
-				"readback": 0.842,
-				"total": 10.456
+				"upload": 0.2,
+				"gpu": 14.744,
+				"readback": 0.533,
+				"total": 15.477
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.6208522091983498e-05,
+			"max_vertex_gap_cells": 2.9819931300039877e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "fish",
 			"divisions": 96,
 			"vertebrae": 10,
-			"vertices": 11536,
-			"triangles": 23068,
+			"vertices": 12368,
+			"triangles": 24732,
 			"cpu_ms": {
-				"field": 167.02,
-				"nets": 153.102,
-				"normals_weights": 352.512,
-				"total": 672.634
+				"field": 229.049,
+				"nets": 317.92,
+				"normals_weights": 438.401,
+				"total": 985.37
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 41.039,
-			"gpu_ms_min": 33.774,
+			"topology_fixes": 0,
+			"gpu_ms_median": 81.924,
+			"gpu_ms_min": 75.405,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.157,
-				"gpu": 40.723,
-				"readback": 1.109,
-				"total": 41.989
+				"upload": 0.177,
+				"gpu": 73.811,
+				"readback": 1.417,
+				"total": 75.405
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 0.00011348974776595735,
+			"max_vertex_gap_cells": 3.5113962962621075e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "snake",
 			"divisions": 48,
 			"vertebrae": 24,
-			"vertices": 900,
-			"triangles": 1796,
+			"vertices": 976,
+			"triangles": 1948,
 			"cpu_ms": {
-				"field": 4.847,
-				"nets": 11.589,
-				"normals_weights": 89.084,
-				"total": 105.52
+				"field": 4.565,
+				"nets": 20.722,
+				"normals_weights": 110.725,
+				"total": 136.012
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 6.081,
-			"gpu_ms_min": 5.049,
+			"topology_fixes": 0,
+			"gpu_ms_median": 8.154,
+			"gpu_ms_min": 6.956,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.273,
-				"gpu": 5.083,
-				"readback": 0.725,
-				"total": 6.081
+				"upload": 0.314,
+				"gpu": 8.174,
+				"readback": 0.469,
+				"total": 8.957
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 4.846331724589038e-06,
+			"max_vertex_gap_cells": 4.836893891849471e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "snake",
 			"divisions": 96,
 			"vertebrae": 24,
-			"vertices": 3942,
-			"triangles": 7880,
+			"vertices": 4168,
+			"triangles": 8332,
 			"cpu_ms": {
-				"field": 25.899,
-				"nets": 59.268,
-				"normals_weights": 291.108,
-				"total": 376.275
+				"field": 28.896,
+				"nets": 91.505,
+				"normals_weights": 336.073,
+				"total": 456.474
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 15.94,
-			"gpu_ms_min": 14.12,
+			"topology_fixes": 1,
+			"gpu_ms_median": 28.013,
+			"gpu_ms_min": 24.692,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.221,
-				"gpu": 14.951,
-				"readback": 0.768,
-				"total": 15.94
+				"upload": 0.271,
+				"gpu": 28.891,
+				"readback": 0.67,
+				"total": 29.832
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 9.692663449178075e-06,
+			"max_vertex_gap_cells": 9.971511967008657e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "tadpole",
 			"divisions": 48,
 			"vertebrae": 6,
-			"vertices": 3766,
-			"triangles": 7528,
+			"vertices": 3850,
+			"triangles": 7696,
 			"cpu_ms": {
-				"field": 19.188,
-				"nets": 35.723,
-				"normals_weights": 67.686,
-				"total": 122.597
+				"field": 31.293,
+				"nets": 79.551,
+				"normals_weights": 57.465,
+				"total": 168.309
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 12.753,
-			"gpu_ms_min": 10.902,
+			"topology_fixes": 0,
+			"gpu_ms_median": 26.773,
+			"gpu_ms_min": 21.389,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.151,
-				"gpu": 11.905,
-				"readback": 0.739,
-				"total": 12.795
+				"upload": 0.142,
+				"gpu": 20.692,
+				"readback": 0.555,
+				"total": 21.389
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.0152867640893241e-05,
+			"max_vertex_gap_cells": 8.144880794988125e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "tadpole",
 			"divisions": 96,
 			"vertebrae": 6,
-			"vertices": 15122,
-			"triangles": 30240,
+			"vertices": 15388,
+			"triangles": 30772,
 			"cpu_ms": {
-				"field": 175.224,
-				"nets": 330.668,
-				"normals_weights": 297.181,
-				"total": 803.073
+				"field": 173.643,
+				"nets": 484.954,
+				"normals_weights": 253.216,
+				"total": 911.813
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 60.959,
-			"gpu_ms_min": 45.606,
+			"topology_fixes": 0,
+			"gpu_ms_median": 123.804,
+			"gpu_ms_min": 114.238,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.178,
-				"gpu": 65.422,
-				"readback": 1.861,
-				"total": 67.461
+				"upload": 0.229,
+				"gpu": 131.226,
+				"readback": 1.612,
+				"total": 133.067
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.6163970005733157e-05,
+			"max_vertex_gap_cells": 4.2622413266992086e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "arch",
 			"divisions": 48,
 			"vertebrae": 12,
-			"vertices": 1928,
-			"triangles": 3852,
+			"vertices": 2120,
+			"triangles": 4236,
 			"cpu_ms": {
-				"field": 10.435,
-				"nets": 15.174,
-				"normals_weights": 79.32,
-				"total": 104.929
+				"field": 7.338,
+				"nets": 20.524,
+				"normals_weights": 74.441,
+				"total": 102.303
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 6.267,
-			"gpu_ms_min": 5.339,
+			"topology_fixes": 0,
+			"gpu_ms_median": 10.767,
+			"gpu_ms_min": 7.934,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.326,
-				"gpu": 5.531,
-				"readback": 0.714,
-				"total": 6.571
+				"upload": 0.191,
+				"gpu": 10.12,
+				"readback": 0.456,
+				"total": 10.767
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 4.0959371746907355e-06,
+			"max_vertex_gap_cells": 4.035253511602075e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "arch",
 			"divisions": 96,
 			"vertebrae": 12,
-			"vertices": 8040,
-			"triangles": 16076,
+			"vertices": 8678,
+			"triangles": 17352,
 			"cpu_ms": {
-				"field": 43.265,
-				"nets": 57.045,
-				"normals_weights": 256.991,
-				"total": 357.301
+				"field": 67.808,
+				"nets": 165.474,
+				"normals_weights": 328.358,
+				"total": 561.64
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 24.236,
-			"gpu_ms_min": 21.659,
+			"topology_fixes": 0,
+			"gpu_ms_median": 49.364,
+			"gpu_ms_min": 40.933,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.198,
-				"gpu": 23.6,
-				"readback": 1.019,
-				"total": 24.817
+				"upload": 0.334,
+				"gpu": 46.251,
+				"readback": 0.972,
+				"total": 47.557
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 1.989303386610732e-05,
+			"max_vertex_gap_cells": 1.0143010413392809e-05,
 			"watertight_gpu": true
 		},
 		{
 			"body": "large",
 			"divisions": 48,
 			"vertebrae": 24,
-			"vertices": 3718,
-			"triangles": 7432,
+			"vertices": 4080,
+			"triangles": 8156,
 			"cpu_ms": {
-				"field": 76.598,
-				"nets": 29.913,
-				"normals_weights": 315.959,
-				"total": 422.47
+				"field": 143.894,
+				"nets": 83.726,
+				"normals_weights": 369.957,
+				"total": 597.577
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 14.124,
-			"gpu_ms_min": 13.114,
+			"topology_fixes": 0,
+			"gpu_ms_median": 25.112,
+			"gpu_ms_min": 21.73,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.396,
-				"gpu": 12.553,
-				"readback": 0.893,
-				"total": 13.842
+				"upload": 0.23,
+				"gpu": 23.956,
+				"readback": 1.097,
+				"total": 25.283
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 2.09808349609375e-05,
+			"max_vertex_gap_cells": 7.760718896558197e-06,
 			"watertight_gpu": true
 		},
 		{
 			"body": "large",
 			"divisions": 96,
 			"vertebrae": 24,
-			"vertices": 14976,
-			"triangles": 29948,
+			"vertices": 16302,
+			"triangles": 32600,
 			"cpu_ms": {
-				"field": 700.49,
-				"nets": 194.644,
-				"normals_weights": 1159.161,
-				"total": 2054.295
+				"field": 606.052,
+				"nets": 361.16,
+				"normals_weights": 1500.652,
+				"total": 2467.864
 			},
 			"watertight_cpu": true,
-			"gpu_ms_median": 58.035,
-			"gpu_ms_min": 50.584,
+			"topology_fixes": 0,
+			"gpu_ms_median": 114.533,
+			"gpu_ms_min": 110.393,
 			"gpu_ms_breakdown_first": {
-				"upload": 0.264,
-				"gpu": 55.505,
-				"readback": 1.661,
-				"total": 57.43
+				"upload": 0.386,
+				"gpu": 113.016,
+				"readback": 1.131,
+				"total": 114.533
 			},
 			"gpu_repeat_identical": true,
 			"same_topology": true,
-			"max_vertex_gap_cells": 2.288818359375e-05,
+			"max_vertex_gap_cells": 4.0690104166666664e-05,
 			"watertight_gpu": true
 		}
 	]

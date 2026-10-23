@@ -34,7 +34,9 @@ func _ready() -> void:
 			"hud": show_hud = kv[1] != "0"
 	_build_world()
 	var names: Array = Lab.BODY_NAMES if body_choice == "all" else [body_choice]
-	var x := 0.0
+	# Display only: each body is scaled to about 1 m long and turned side-on, in rows of four; the HUD gives real
+	# sizes.
+	var columns := mini(4, names.size())
 	for n in names.size():
 		var desc = Lab.body(names[n])
 		var arrays := SkinCpu.build(desc, divisions)
@@ -44,15 +46,14 @@ func _ready() -> void:
 		add_child(rig)
 		rig.setup(desc, arrays, PALETTE[n % PALETTE.size()])
 		var box: AABB = desc.bounds_m()
-		if n > 0:
-			x += 0.5 * box.size.x + 0.4
-		rig.position = Vector3(x - box.get_center().x, -box.position.y + 0.02, -box.get_center().z)
-		x += 0.5 * box.size.x
+		var k := 1.0 / box.get_longest_axis_size()
+		rig.scale = Vector3.ONE * k
+		rig.rotation.y = -0.5 * PI
+		var centre := box.get_center()
+		var slot := Vector3((n % columns - 0.5 * (columns - 1)) * 1.4, 0.0, (n / columns) * 1.3)
+		rig.position = slot + Vector3(centre.z * k, -box.position.y * k + 0.02, -centre.x * k)
 		rigs.append(rig)
-	var span := x
-	for r in rigs:
-		r.position.x -= 0.5 * span
-	_place_camera(span)
+	_place_camera(1.4 * columns, int(ceil(names.size() / float(columns))))
 
 
 func _process(delta: float) -> void:
@@ -74,18 +75,19 @@ func _process(delta: float) -> void:
 		var lines := PackedStringArray(["SPINE LAB  (prototype 0b)  anim: %s  grid: length/%d  t=%.1f s" % [anim, divisions, time]])
 		for n in rigs.size():
 			var r = rigs[n]
-			lines.append("%-8s %2d vertebrae  %5d triangles  skin build %.0f ms (GDScript)"
-					% [r.name, r.desc.vertebrae.size(), r.mesh_instance.mesh.surface_get_array_index_len(0) / 3,
-					_build_ms[n]])
+			lines.append("%-8s %4.2f m  %2d vertebrae  %5d triangles  skin build %.0f ms (GDScript)"
+					% [r.name, r.desc.bounds_m().get_longest_axis_size(), r.desc.vertebrae.size(),
+					r.mesh_instance.mesh.surface_get_array_index_len(0) / 3, _build_ms[n]])
 		hud.text = "\n".join(lines)
 	if duration > 0.0 and time >= duration:
 		get_tree().quit()
 
 
-func _place_camera(span: float) -> void:
-	var dist := 0.9 * span + 1.5
-	camera.position = Vector3(0.35 * span, 0.55 * dist, 0.75 * dist)
-	camera.look_at(Vector3(0.0, 0.25, 0.0), Vector3.UP)
+func _place_camera(span: float, rows: int) -> void:
+	var depth := 1.3 * (rows - 1)
+	var dist := 0.8 * span + 1.2
+	camera.position = Vector3(0.0, 0.5 * dist, depth + 0.85 * dist)
+	camera.look_at(Vector3(0.0, 0.15, 0.5 * depth), Vector3.UP)
 
 
 func _build_world() -> void:
