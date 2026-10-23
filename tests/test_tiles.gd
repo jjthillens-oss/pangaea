@@ -182,6 +182,9 @@ func test_the_band_0_content_validates() -> void:
 	check_eq(tiles.load_problems, PackedStringArray(), "the tiles read")
 	check_eq(_ids().size(), 20, "18 ordinary tiles and 2 rare ones")
 	check_eq(content.problems(parts, species), PackedStringArray(), "world_cell.json and everything it names")
+	# B-6's content bound in problems(): rebase_beyond + hold + reach_max + chunk x sqrt 2 < local bound.
+	var widest := content.reach_max(species)
+	print("test-tiles: reach_max %.2f tm at %s" % [widest.radius_tm, widest.where])
 
 
 func test_each_region_has_three_tiles_per_set_and_two_rare_kinds() -> void:

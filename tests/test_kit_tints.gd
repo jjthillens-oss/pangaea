@@ -11,6 +11,9 @@ extends TestCase
 ## test_kit_assets.gd holds every landmark to three dressings, so removing it would break G21's other
 ## half. They wait for art's or the integrator's call (a new amber tint, or the dressing rule relaxed);
 ## the test fails if any other product breaks the rule, or if one of these is fixed and not struck.
+## PROPOSED amber: #EAE5C7, the nearest tint to today's #F3E3C6 (CIE76 4.2) that keeps every product
+## clear, measured with this test on a scratch copy of the kit (worst product 27.4 degrees from food,
+## landmark_arch surface 1); with it AWAITING empties.
 
 const LookProbe := preload("res://tools/godot/look_probe.gd")
 const FOOD_HEX := "CFE86A"
