@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Warden flat (S3 band 1): wide meadows held by Wardens, an old rammer ground and an elder rammer's two posts; the elder Warden's meadows bloom in turn (docs/s3: s3-sim 4.3).",
+  "id": "warden_flat_e",
+  "band": 1,
+  "region": "warden_flat",
+  "set": 1,
+  "rare": "",
+  "landmark_anchor": [22.5, -23.5],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [11.2, 23.0], "radius": 0.71, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-3.0, -13.3], "radius": 1.27, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-24.4, 9.8], "radius": 0.71, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s3", "center": [-0.9, -6.3], "radius": 1.29, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s4", "center": [14.8, -8.1], "radius": 1.32, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [-5.6, -1.0], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s6", "center": [25.1, 25.8], "radius": 0.71, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [26.8, 9.8], "radius": 0.8, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s8", "center": [13.0, -22.5], "radius": 1.04, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s9", "center": [15.9, 26.5], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"}
+  ],
+  "zones": [
+    {"id": "ma", "center": [-15.17, 15.17], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "mb", "center": [-5.83, 5.83], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "zw1", "center": [3.0, 19.5], "radius": 6.5, "capacity": 16.0, "growth_rate": 0.05, "at_second_size": "drop"},
+    {"id": "zw2", "center": [-19.5, -3.0], "radius": 6.5, "capacity": 16.0, "growth_rate": 0.05, "at_second_size": "drop"},
+    {"id": "ze1", "center": [-17.0, -21.5], "radius": 2.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "ze2", "center": [-23.0, -21.5], "radius": 2.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "zr1", "center": [20.5, 21.0], "radius": 3.5, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f1", "center": [18.1, -16.1], "radius": 3.44, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [6.6, -24.6], "radius": 2.91, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f3", "center": [25.9, -3.9], "radius": 3.62, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f4", "center": [-17.6, 26.6], "radius": 3.09, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f5", "center": [27.7, -27.7], "radius": 2.8, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "ew", "species": "elder_warden", "home": [-15.17, 15.17], "heading": 0.4167, "territory_zone": "ma", "sizes": [4], "post_b": {"home": [-5.83, 5.83], "heading": -1.3821, "territory_zone": "mb"}},
+    {"id": "er", "species": "elder_rammer", "home": [-17.0, -21.5], "heading": -1.2967, "territory_zone": "ze1", "sizes": [3], "post_b": {"home": [-23.0, -21.5], "heading": -1.2568, "territory_zone": "ze2"}},
+    {"id": "ra", "species": "rammer", "home": [20.5, 21.0], "heading": 3.1092, "territory_zone": "zr1", "sizes": [3, 4]},
+    {"id": "wa", "species": "warden", "home": [3.0, 19.5], "heading": 1.0208, "territory_zone": "zw1", "sizes": [3]},
+    {"id": "wb", "species": "warden", "home": [-19.5, -3.0], "heading": 0.9678, "territory_zone": "zw2", "sizes": [3]}
+  ]
+}
