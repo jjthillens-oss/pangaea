@@ -265,3 +265,283 @@ func test_carrion_with_its_own_radius_or_lifetime_is_in_the_snapshot() -> void:
 	world = sim.snapshot().world
 	check_eq(world.carrion_radius.get(item.id), 0.1875, "its radius")
 	check_eq(world.carrion_lifetime.get(item.id), sim.carrion.lifetime * 0.5, "its lifetime")
+
+
+# --- T2.3: the calm window, the blockers, press and arm, the hints (S2G9, S2G22; BP-5, D-48, D-49, D-86) ---
+
+## A growth sim with creatures (none near the start) and every brain frozen, so a test sets their
+## states by hand; its showcase window cut to SHOWCASE_S so the auto tests run short.
+const SHOWCASE_S := 2.0
+
+
+func _calm_sim() -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, SpeciesCatalog.load_from(), null, PackedFloat64Array(), 4, true)
+	sim.debug_set_ai_frozen(true)
+	sim.growth.cfg.showcase_s = SHOWCASE_S
+	sim.drain_events()
+	return sim
+
+
+## Fills the ring now (the tick's full_since).
+func _fill(sim: PoolSim) -> void:
+	sim.growth.add(sim, sim.growth.ring(sim.size()) - sim.growth.meter, "debug", "")
+	sim.drain_events()
+
+
+## One tick with no movement, a G press when `grow`, and a trigger setting when one is given.
+func _tick(sim: PoolSim, grow := false, trigger := "") -> Array[Dictionary]:
+	var intent := SimIntent.new()
+	intent.grow = grow
+	intent.trigger = trigger
+	sim.step(intent)
+	return sim.drain_events()
+
+
+## A dev rammer (frozen, at rest) `d` tm from the cell at `angle` (cell frame), or null.
+func _rammer(sim: PoolSim, d: float, angle := 0.0) -> CreatureField.Creature:
+	var p := sim.motion.position + Vector2.from_angle(angle) * d
+	if not sim.debug_spawn_creature("rammer", p, angle + PI):
+		return null
+	var spawned := _of(sim.drain_events(), "debug")
+	return sim.creatures.find(str(spawned[0].id)) if not spawned.is_empty() else null
+
+
+func test_auto_counts_calm_ticks_after_the_showcase_and_sets_due_at_calm_ticks() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	check_eq(g.blocker_of(sim), "", "a quiet start is calm")
+	_fill(sim)
+	var full_at := g.full_since
+	var showcase := CreatureBrain.ticks(SHOWCASE_S)
+	var need := int(g.cfg.calm_ticks)
+	var first := -1
+	var due_at := -1
+	for t in showcase + need + 10:
+		var at := sim.tick
+		_tick(sim)
+		if first < 0 and g.calm_ticks > 0:
+			first = at
+		if g.due:
+			due_at = at
+			break
+	check_eq(first, full_at + showcase, "the first calm tick counts once the showcase is over")
+	check_eq(due_at, full_at + showcase + need - 1, "due on the %dth counted tick" % need)
+	check_eq(g.calm_ticks, need, "calm_ticks reached")
+	check_eq(g.hint(), Growth.HINT_GROWING, "the HUD says Growing")
+
+
+func test_press_counts_only_once_armed_and_a_press_on_an_unfilled_ring_does_nothing() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	_tick(sim, true, "press")
+	check(not g.armed, "a press before the ring is full does nothing")
+	_fill(sim)
+	check_eq(g.hint(), Growth.HINT_READY, "full and not armed: ready")
+	for t in CreatureBrain.ticks(SHOWCASE_S) + 60:
+		_tick(sim)
+	check_eq(g.calm_ticks, 0, "press mode never counts unarmed, showcase or not")
+	check(not g.due, "not due")
+	var events := _tick(sim, true)
+	check(g.armed, "G arms it")
+	check(_of(events, "growth_waiting").is_empty(), "calm: no waiting notice")
+	for t in int(g.cfg.calm_ticks) - 1:
+		_tick(sim)
+	check(g.due, "due after calm_ticks counted ticks from the press")
+
+
+func test_each_blocker_in_priority_order() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	check(sim.phenotype.bite_damage > 0.0, "the cell has a jaw (the chase cases need one)")
+	var c := _rammer(sim, 6.0)
+	check(c != null, "a rammer 6 tm off")
+	if c == null:
+		return
+	check_eq(g.blocker_of(sim), "", "a rammer at rest 6 tm off is no blocker")
+	var b := c.brain
+	for phase in [CreatureBrain.TELL, CreatureBrain.STRIKE, CreatureBrain.GLIDE]:
+		b.state = CreatureBrain.ATTACK
+		b.phase = phase
+		b.target = CreatureField.PLAYER_ID
+		check_eq(g.blocker_of(sim), "hunted", "an attack %s aimed at the cell" % phase)
+	b.phase = CreatureBrain.AIM
+	check_eq(g.blocker_of(sim), "", "aiming is not yet hunting")
+	b.phase = CreatureBrain.TELL
+	b.target = "c_99"
+	check_eq(g.blocker_of(sim), "", "a tell aimed at someone else")
+	b.state = CreatureBrain.REST
+	b.phase = ""
+	b.target = ""
+	sim.creatures.engaged_on_player.append(c.id)
+	check_eq(g.blocker_of(sim), "hunted", "the token held on the cell")
+	sim.creatures.engaged_on_player.clear()
+	var touch := sim.phenotype.radius + c.phenotype.radius + PoolSim.TOUCH_MARGIN
+	c.motion.position = sim.motion.position + Vector2(touch - 1e-3, 0.0)
+	check_eq(g.blocker_of(sim), "hunted", "a touch")
+	c.motion.position = sim.motion.position + Vector2(touch + 1e-3, 0.0)
+	check_eq(g.blocker_of(sim), "", "just out of touch")
+	# The cell's own bites, rams and meals, read from the tick's events; then the priority order.
+	var quiet := int(g.cfg.quiet_ticks)
+	sim.creatures.engaged_on_player.append(c.id)
+	g.observe(sim, [{"type": "hit", "attacker": CreatureField.PLAYER_ID, "kind": "bite"},
+		{"type": "ate", "kind": "plant"}])
+	check_eq(g.blocker_of(sim), "hunted", "hunted comes first")
+	sim.creatures.engaged_on_player.clear()
+	check_eq(g.blocker_of(sim), "chasing", "a bite: chasing before eating")
+	g.last_bite = sim.tick - quiet
+	check_eq(g.blocker_of(sim), "eating", "quiet_ticks after the bite: eating")
+	g.last_meal = sim.tick - quiet
+	check_eq(g.blocker_of(sim), "", "quiet_ticks after the meal: calm")
+	g.observe(sim, [{"type": "hit", "attacker": CreatureField.PLAYER_ID, "kind": "ram"}])
+	check_eq(g.last_ram, sim.tick, "a ram is noted")
+	check_eq(g.blocker_of(sim), "chasing", "a ram: chasing")
+	g.last_ram = sim.tick - quiet + 1
+	check_eq(g.blocker_of(sim), "chasing", "one tick short of quiet_ticks")
+	g.last_ram = sim.tick - quiet
+	g.observe(sim, [{"type": "hit", "attacker": c.id, "target": CreatureField.PLAYER_ID, "kind": "ram"}])
+	check_eq(g.blocker_of(sim), "", "a creature's hit on the cell is not the cell chasing")
+
+
+## The chase by the closing history: a fleeing creature the cell closes on by more than
+## chase_close_tm over chase_window_ticks blocks; one held at its distance, one not fleeing, or one
+## beyond chase_track_tm does not.
+func test_closing_on_a_fleeing_creature_is_chasing() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var window := int(g.cfg.chase_window_ticks)
+	var close := float(g.cfg.chase_close_tm)
+	var cases := [
+		# [name, start distance, closing per tick, state, blocks]
+		["closing in while it flees", 8.0, (close + 0.2) / window, CreatureBrain.FLEE, true],
+		["held at its distance", 8.0, 0.0, CreatureBrain.FLEE, false],
+		["closing just short", 8.0, (close - 0.05) / window, CreatureBrain.FLEE, false],
+		["closing in while it does not flee", 8.0, (close + 0.2) / window, CreatureBrain.WANDER, false],
+		["closing in beyond the track", float(g.cfg.chase_track_tm) + 2.0 + close, (close + 0.2) / window, CreatureBrain.FLEE, false],
+	]
+	for row in cases:
+		var s := _calm_sim()
+		var gs := s.growth
+		var c := _rammer(s, float(row[1]))
+		if c == null:
+			check(false, "%s: placed" % row[0])
+			continue
+		var dir := (c.motion.position - s.motion.position).normalized()
+		var d := float(row[1])
+		var hit := false
+		for t in window + 5:
+			c.brain.state = row[3]
+			c.motion.position = s.motion.position + dir * d
+			c.motion.velocity = Vector2.ZERO
+			_tick(s)
+			hit = hit or gs.blocker_of(s, false) == "chasing"
+			d -= float(row[2])
+		check_eq(hit, row[4], row[0])
+		check(gs.closing.size() <= window + 1, "%s: at most chase_window_ticks + 1 entries" % row[0])
+	# The history itself: oldest first, one entry a tick, the newest this tick.
+	var last: Array = g.closing
+	check(last.is_empty(), "no ticks yet, no history")
+	for t in window + 10:
+		_tick(sim)
+	check_eq(g.closing.size(), window + 1, "a full window")
+	check_eq(int(g.closing[-1][0]), sim.tick - 1, "the newest is the last tick")
+	check_eq(int(g.closing[0][0]), sim.tick - 1 - window, "the oldest chase_window_ticks before it")
+
+
+func test_a_broken_window_starts_again() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var c := _rammer(sim, 7.0, PI)
+	_fill(sim)
+	g.full_since -= CreatureBrain.ticks(SHOWCASE_S)   # the showcase is over
+	for t in 50:
+		_tick(sim)
+	check_eq(g.calm_ticks, 50, "fifty calm ticks counted")
+	sim.creatures.engaged_on_player.append(c.id)
+	_tick(sim)
+	check_eq(g.calm_ticks, 0, "one hunted tick breaks the window")
+	sim.creatures.engaged_on_player.clear()
+	for t in int(g.cfg.calm_ticks) - 1:
+		_tick(sim)
+		check(not g.due, "not due before a fresh calm_ticks (tick %d)" % t)
+	_tick(sim)
+	check(g.due, "due after a fresh calm_ticks")
+
+
+func test_a_long_block_is_named_and_cleared_and_a_short_one_says_nothing() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var c := _rammer(sim, 7.0, PI)
+	_fill(sim)
+	var hint_at := CreatureBrain.ticks(g.cfg.blocked_hint_s)
+	sim.creatures.engaged_on_player.append(c.id)
+	var blocked: Array[Dictionary] = []
+	for t in hint_at - 1:
+		blocked.append_array(_of(_tick(sim), "growth_blocked"))
+	check(blocked.is_empty(), "nothing named before blocked_hint_s")
+	check_eq(g.hint(), "", "and no hint yet")
+	sim.creatures.engaged_on_player.clear()
+	check(_of(_tick(sim), "growth_unblocked").is_empty(), "a short block clears without a notice")
+	sim.creatures.engaged_on_player.append(c.id)
+	for t in hint_at:
+		blocked.append_array(_of(_tick(sim), "growth_blocked"))
+	check_eq(blocked, [{"type": "growth_blocked", "blocker": "hunted"}] as Array[Dictionary], "named once, at blocked_hint_s")
+	check_eq(g.hint(), Growth.BLOCKER_HINTS.hunted, "the HUD names it")
+	sim.creatures.engaged_on_player.clear()
+	g.observe(sim, [{"type": "ate", "kind": "plant"}])   # a meal: the blocker changes
+	blocked = _of(_tick(sim), "growth_blocked")
+	check_eq(blocked, [{"type": "growth_blocked", "blocker": "eating"}] as Array[Dictionary], "named again when it changes")
+	check_eq(g.hint(), Growth.BLOCKER_HINTS.eating, "the HUD follows")
+	g.last_meal = -Growth.NEVER
+	var events := _tick(sim)
+	check_eq(_of(events, "growth_unblocked").size(), 1, "the first calm tick clears it")
+	check_eq(g.blocker, "", "no blocker")
+
+
+func test_a_press_in_danger_waits_and_says_so() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var c := _rammer(sim, 6.0)
+	_tick(sim, false, "press")
+	_fill(sim)
+	c.brain.state = CreatureBrain.ATTACK
+	c.brain.phase = CreatureBrain.TELL
+	c.brain.target = CreatureField.PLAYER_ID
+	var events := _tick(sim, true)
+	check(g.armed, "the press arms it")
+	check_eq(_of(events, "growth_waiting"), [{"type": "growth_waiting", "reason": "hunted"}] as Array[Dictionary], "and says why it waits")
+	check_eq(g.hint(), Growth.HINT_NOT_WHILE_HUNTED, "at once")
+	for t in int(g.cfg.calm_ticks) + 30:
+		c.brain.state = CreatureBrain.ATTACK
+		c.brain.phase = CreatureBrain.TELL
+		_tick(sim)
+	check(not g.due, "no growth during a tell")
+	check_eq(g.calm_ticks, 0, "nothing counted")
+	c.brain.state = CreatureBrain.REST
+	c.brain.phase = ""
+	c.brain.target = ""
+	for t in int(g.cfg.calm_ticks):
+		_tick(sim)
+	check(g.due, "once calm, the armed press grows")
+
+
+## D-49: in auto mode a creature that will flip at the next size, in view, starts the count before
+## the showcase is over; one out of view does not.
+func test_auto_counts_at_once_with_a_flipping_creature_in_view() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	g.cfg.showcase_s = 1000.0
+	var far := _rammer(sim, 40.0, -PI / 2.0)
+	check(far != null, "a rammer out of view")
+	_fill(sim)
+	for t in 30:
+		_tick(sim)
+	check_eq(g.calm_ticks, 0, "no flip creature in view: the showcase holds")
+	var role := str(sim.species.at_size("rammer", 2).ladder_role)
+	check(role == "rival" or role == "prey", "an M1 rammer flips at size 2 (%s)" % role)
+	var near := _rammer(sim, 8.0)
+	check(near != null, "a rammer 8 tm off, in view")
+	_tick(sim)
+	check_eq(g.calm_ticks, 1, "it starts the count")
+	near.motion.position = sim.motion.position + Vector2(0.0, -45.0)
+	_tick(sim)
+	check_eq(g.calm_ticks, 2, "a started count goes on")
