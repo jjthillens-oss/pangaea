@@ -84,6 +84,26 @@ Also, by hand:
 | What screen recorder do you have (Xbox Game Bar, OBS)? Can it record at 60 fps? | Measurement precision depends on frame rate |
 | Godot version on the PC | Must match `tools/toolchain.env` (4.7.2-stable) for any prototype review |
 
+### 2.1a Inventory result (read-only, owner's PC, 2026-10-23)
+
+Run with the owner's approval in PowerShell; nothing was launched, written or opened in Spore's data. OBSERVED.
+
+| Item | Result |
+| --- | --- |
+| Edition | Steam, app 17390, owned and fully installed (`appmanifest_17390.acf` StateFlags 4), one Steam library at `C:\Program Files (x86)\Steam` |
+| Steam build | buildid 16095569; depots 17391 and 355; English; last updated 2026-10-23 00:49 UTC; 4.17 GB on disk |
+| Expansions | Galactic Adventures not installed (no `SporebinEP1`); no other DLC depots listed |
+| Executable | `SporeBin\SporeApp.exe`, 20,626,168 bytes, FileVersion and ProductVersion 1.3.0.29 |
+| SHA-256 | `F9716458CDC232A507686DCB490E75680C514E31A5B1F33601B0DFCD05BAF75D` |
+| Godot | 4.7.2-stable (win64, in Downloads; not on PATH), matches the pin |
+| Blender | 5.2 in `C:\Program Files\Blender Foundation\Blender 5.2` |
+| Claude Code | 2.1.15 |
+| Node / git | Node 24.13.0; git 2.56.0 |
+| Ghidra / Java / REA | Not installed (no JDK either) |
+
+Implication for recordings: base game only, so the Creature Creator and the Creature stage are available; Galactic
+Adventures features (adventure editor) are not.
+
 ### 2.2 Tool identities (verified from public pages, 2026-10-23)
 
 - **Claude Code**: the agent running this research. Present in this cloud session. Owner PC: unknown.
