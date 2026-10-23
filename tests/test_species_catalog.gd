@@ -137,13 +137,37 @@ func test_every_site_reaches_only_its_leash_disc_far_from_the_checkpoint() -> vo
 	check_eq(cat.reach_disc(cat.site("terr_nw"), layout), {"center": Vector2(-19.1, -11.0), "radius": 11.0},
 		"a territory: the zone, 6 + 2 m margin + 3 m leash")
 	check_eq(cat.territory_of(cat.site("terr_n_b"), layout), {"center": Vector2(0.0, -22.0), "radius": 6.0}, "its zone's own circle")
-	check(cat.territory_of(cat.site("lair_gap"), layout).is_empty(), "a lair guards no territory")
-	# The plan's measured margins (section 0): no reachable area within 15.5 m of the checkpoint.
+	check(cat.territory_of(cat.site("lair_s"), layout).is_empty(), "a lair guards no territory")
+	# The measured margins (plan section 0): no reachable area within 15.5 m of the checkpoint, except
+	# lair_s by z_s (moved there by the step 3 review so the zones by the spawn meet a threat) at 12.81 m.
 	for s in cat.sites:
 		var disc := cat.reach_disc(s, layout)
 		var r := cat.phenotype(s.species, parts).radius
 		var clear: float = layout.spawn.distance_to(disc.center) - disc.radius - r
-		check(clear >= 15.5, "%s keeps %.2f m from the checkpoint" % [s.id, clear])
+		check(clear >= (12.5 if s.id == "lair_s" else 15.5), "%s keeps %.2f m from the checkpoint" % [s.id, clear])
+
+
+func test_an_ambush_lair_reaches_into_z_s_and_sees_it_from_home() -> void:
+	# The step 3 review (pressure): z_center and z_s, the zones by the spawn, fed a cell for ever out of
+	# every creature's reach. Rule 8 keeps every reach short of z_center's useful part, and F6 keeps a
+	# lair from spawning while the cell is in z_s, so neither zone regrows fast enough to feed a cell
+	# that camps there and eats what it can (test_threat_gates #33). z_s also gets a lair whose reach (leash plus body) enters it well
+	# and whose hunter, at home, sees across its edge, so a cell feeding there meets it (#32).
+	var cat := SpeciesCatalog.load_from()
+	var z := layout.zone("z_s")
+	var watching := PackedStringArray()
+	for s in cat.sites:
+		if cat.behavior_of(s.species) != "ambush":
+			continue
+		var disc := cat.reach_disc(s, layout)
+		var p := cat.phenotype(s.species, parts)
+		var from_center: float = Vector2(s.home).distance_to(z.center)
+		var reach_in: float = float(z.radius) + float(disc.radius) + p.radius - from_center
+		var to_edge: float = from_center - float(z.radius)
+		if reach_in >= 2.0 and to_edge < p.sight:
+			watching.append("%s (its reach %.2f m into z_s, its home %.2f m from the edge)" % [s.id, reach_in, to_edge])
+	print("test-threats-z-s-lair: %s" % ", ".join(watching))
+	check(not watching.is_empty(), "an ambush lair reaches at least 2 m into z_s and sees across its edge from home")
 
 
 func test_the_test_fixture_is_the_real_species_data_with_no_sites() -> void:
@@ -254,7 +278,7 @@ func test_rule_7_checks_every_site_and_niche() -> void:
 		"sites keep 2.0 m apart")
 	check_only_rule(_errors_after(func(d: Dictionary) -> void: _site(d, "terr_ne").territory_zone = "z_nowhere"), 7, "'z_nowhere'")
 	check_only_rule(_errors_after(func(d: Dictionary) -> void: _site(d, "terr_ne").erase("territory_zone")), 7, "territory_zone ''")
-	check_has_error(_rule_errors(_errors_after(func(d: Dictionary) -> void: _site(d, "lair_gap").id = "lair_se"), 7), "empty or repeated")
+	check_has_error(_rule_errors(_errors_after(func(d: Dictionary) -> void: _site(d, "lair_s").id = "lair_se"), 7), "empty or repeated")
 	check_has_error(_rule_errors(_errors_after(func(d: Dictionary) -> void: d.species.rammer.niche.role = "ambush"), 7),
 		"share the niche role 'ambush'")
 
@@ -267,8 +291,8 @@ func test_rule_8_keeps_every_reachable_disc_twelve_metres_from_the_checkpoint() 
 
 
 func test_rule_9_keeps_rocks_off_every_leash_circle() -> void:
-	# The base plan's lair_gap: rock_12 lies 0.64 m from its leash circle, where the clamp would press into it.
-	check_only_rule(_errors_after(func(d: Dictionary) -> void: _site(d, "lair_gap").home = [-9.6, -16.6]), 9, "rock_12 lies 0.64 m")
+	# The base plan's north-west rock gap lair: rock_12 lies 0.64 m from its leash circle, where the clamp would press into it.
+	check_only_rule(_errors_after(func(d: Dictionary) -> void: _site(d, "lair_s").home = [-9.6, -16.6]), 9, "rock_12 lies 0.64 m")
 
 
 func test_rule_10_leaves_room_to_pass_every_rock_inside_a_disc() -> void:
@@ -304,7 +328,7 @@ func test_rule_13_refuses_unknown_keys_so_a_removed_tuning_knob_cannot_return() 
 		"Rule 13 (unknown key): species 'ambush_hunter' attack has an unknown key 'homing_deg_s'")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.species.rammer.tell_turn_share = 0.5),
 		"Rule 13 (unknown key): species 'rammer' has an unknown key 'tell_turn_share'")
-	check_has_error(_errors_after(func(d: Dictionary) -> void: d.sites[2].leash_m = 12.0), "Rule 13 (unknown key): site 'lair_gap'")
+	check_has_error(_errors_after(func(d: Dictionary) -> void: d.sites[2].leash_m = 12.0), "Rule 13 (unknown key): site 'lair_s'")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.fairness.grace = [1.0]), "Rule 13 (unknown key): fairness")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.species.rammer.niche.max = 9), "Rule 13 (unknown key): species 'rammer' niche")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.species.rammer.parts[0].size = 2), "Rule 13 (unknown key): species 'rammer' part")

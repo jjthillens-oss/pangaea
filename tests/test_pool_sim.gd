@@ -561,23 +561,34 @@ func test_a_full_cell_refuses_food_and_eats_again_with_room_for_half() -> void:
 
 
 func test_refusals_are_reported_sparingly_and_never_for_quiet_reasons() -> void:
+	# A minute of foraging, then 10 s held full on the nearest plankton, so food it will not eat
+	# touches it whatever the zones' regrowth left near it.
 	var sim := _sim("omnivore", 85)
 	var bot = ForageBot.new()
 	var last_at := {}
 	var reported := 0
-	for i in 60 * 60:
+	for i in 70 * 60:
+		if i >= 60 * 60:
+			sim.debug_set_energy(sim.state.energy_capacity)
+			if i == 60 * 60:
+				var items: Array = sim.plankton.items.duplicate()
+				items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+					return a.position.distance_to(sim.motion.position) < b.position.distance_to(sim.motion.position))
+				bot.park_at = items[0].position
 		sim.step(bot.next_intent(sim))
 		var refused := _events_of(sim.drain_events(), "refused")
 		check(refused.size() <= 1, "tick %d: at most one refusal per tick" % i)
 		for e in refused:
 			reported += 1
 			check(not PoolSim.QUIET_REASONS.has(e.reason), "'%s' is never reported" % e.reason)
-			var key := "%s|%s" % [e.food_id, e.reason]
+			# The same refusal waits REFUSAL_REPEAT_S, except the one when the cell starts touching the
+			# food after one before contact (PoolSim._note_refusal), so touching is part of the key.
+			var key := "%s|%s|%s" % [e.food_id, e.reason, e.touching]
 			if last_at.has(key):
 				var gap: float = (i - int(last_at[key])) * DT
 				check(gap >= PoolSim.REFUSAL_REPEAT_S - 1e-6, "%s repeated after %.2f s" % [key, gap])
 			last_at[key] = i
-	check(reported > 0, "a full omnivore met some refusals in a minute (%d)" % reported)
+	check(reported > 0, "a full omnivore met some refusals (%d)" % reported)
 
 
 func test_survival_points_come_from_stepped_time_and_reset_on_respawn() -> void:

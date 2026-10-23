@@ -267,7 +267,8 @@ func test_an_emptied_zone_reports_empty_once_and_regrown_when_full_again() -> vo
 	check_eq(empty_at, 0, "reported on the first tick")
 	check(regrown_at > 0, "zone_regrown fires")
 	check_eq(field.count_in("z_center"), 6, "all six items back")
-	# Plan: first item about 15 s, all six about 56 s after the centre zone is emptied.
+	# First item about 19 s, all six about 70 s after the centre zone is emptied (growth 0.08 since the
+	# step 3 review; 15 s and 56 s at the step 2 plan's 0.10).
 	check(regrown_at * DT > 40.0 and regrown_at * DT < 75.0, "regrown after %.1f s" % (regrown_at * DT))
 	# Emptied again after it regrew: reported again.
 	for item in field.items.duplicate():

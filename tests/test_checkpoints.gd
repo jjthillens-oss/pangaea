@@ -115,7 +115,7 @@ func test_dying_five_times_in_a_row_always_returns_the_cell_to_a_fair_checkpoint
 	var deaths := [
 		{"at": "lair_se", "cause": "killed:ambush_hunter", "grace_s": 5.0, "energy": 0.6},
 		{"at": "lair_sw", "cause": "killed:ambush_hunter", "grace_s": 8.0, "energy": 0.8},
-		{"at": "lair_gap", "cause": "killed:ambush_hunter", "grace_s": 10.0, "energy": 1.0},
+		{"at": "lair_s", "cause": "killed:ambush_hunter", "grace_s": 10.0, "energy": 1.0},
 		{"at": "z_n", "cause": "killed:rammer", "grace_s": 10.0, "energy": 1.0},
 		{"at": "starve", "cause": "starved", "grace_s": 10.0, "energy": 1.0},
 	]
