@@ -19,6 +19,11 @@ extends RefCounted
 ## gives up (lost, timer, leash, left_territory, unreachable, target_gone) and every navigation goal
 ## has a progress check and a timeout. All timers are integer ticks.
 ##
+## S2's relationship rules (Relationships) each sit behind a cfg switch (config()): rule 1 bounds the
+## prey an ambush brain picks, rule 2 the intruders a territorial one charges, rule 3 makes it flee a
+## body it fears on sight (D-63), and rule 4 makes it flee a hurt from a body above its engage share
+## instead of answering it. With every switch off the brain is M1's.
+##
 ## The sim's side of the contract (CreatureField and PoolSim):
 ## - self_view: {"id", "species", "position", "heading", "velocity", "speed_now", "radius", "speed",
 ##   "acceleration", "health_share", "energy_share"}; speed and acceleration are the phenotype's.
@@ -171,6 +176,7 @@ class Memory:
 	var attacker := ""               ## the last body that hurt it
 	var pain := false                ## a hurt not yet answered by think()
 	var flee_from := Vector2.INF
+	var fear_of := ""                ## the body it flees on sight (rule 3, D-63); "" when none
 	var rest_until := 0
 	var forage_after := 0
 	var outcome := ""                ## hit | missed | blocked | interrupted | cancelled
@@ -189,6 +195,8 @@ class Memory:
 
 	## The whole memory for snapshots and hashing: vectors as [x, y], no NaN or infinity (null
 	## instead), dictionaries in id order, and the RNG's seed and state. cfg and events are left out.
+	## S2's fields are written only when they differ from their defaults, so a pool snapshot, where
+	## they never do, is M1's.
 	func to_dict() -> Dictionary:
 		var seen_out := {}
 		for id in CreatureBrain._sorted_keys(seen):
@@ -208,7 +216,7 @@ class Memory:
 		var progress_out := {}
 		if not progress.is_empty():
 			progress_out = {"position": CreatureBrain._pair(progress.position), "tick": progress.tick}
-		return {
+		var out := {
 			"behavior": behavior, "state": state, "phase": phase, "state_tick": state_tick, "phase_tick": phase_tick,
 			"target": target, "seen": seen_out, "engaged_tick": engaged_tick, "landed_on": landed_out,
 			"lock_heading": lock_heading if is_finite(lock_heading) else null, "lane": lane_out,
@@ -221,6 +229,9 @@ class Memory:
 			"territory_center": CreatureBrain._pair(territory_center) if territory_center.is_finite() else null,
 			"territory_r": territory_r, "wake": wake, "rng_seed": rng.seed, "rng_state": rng.state,
 		}
+		if not fear_of.is_empty():
+			out["fear_of"] = fear_of
+		return out
 
 
 ## Seconds to ticks, once, at load: roundi(s x 60), so 1.2 s is 72 and 0.35 s is 21.
@@ -439,6 +450,8 @@ static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Arr
 		mem.pain = false
 		if _answer_pain(mem, self_view, tick):
 			return
+	if _answer_fear(mem, self_view, percepts, tick):
+		return
 	match mem.state:
 		REST:
 			if mem.phase == WATCH:
@@ -593,6 +606,8 @@ static func on_target_gone(mem: Memory, id: String, tick: int) -> void:
 	if mem.attacker == id:
 		mem.attacker = ""
 		mem.pain = false
+	if mem.fear_of == id:
+		mem.fear_of = ""
 	if id.is_empty() or mem.target != id:
 		return
 	match mem.state:
@@ -613,6 +628,8 @@ static func forget(mem: Memory, id: String, ignore_until: int, tick: int) -> voi
 	if mem.attacker == id:
 		mem.attacker = ""
 		mem.pain = false
+	if mem.fear_of == id:
+		mem.fear_of = ""
 	if ignore_until > tick:
 		mem.ignore[id] = ignore_until
 	if id.is_empty() or mem.target != id:
@@ -634,6 +651,7 @@ static func force_return(mem: Memory, forget_id: String, ignore_until: int, tick
 	_drop_target(mem)
 	forget(mem, forget_id, ignore_until, tick)
 	mem.attacker = ""
+	mem.fear_of = ""
 	mem.pain = false
 	mem.goal = Vector2.INF
 	mem.food_id = ""
@@ -861,21 +879,28 @@ static func _think_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 		_after_engagement(mem, tick)
 
 
+## Flees the body it fears while it still senses it (D-63), else what hurt it, until the flee time
+## (restarted by every hurt and every sight of a feared body) runs out; then it swims home.
 static func _think_flee(mem: Memory, tick: int) -> void:
-	if mem.seen.has(mem.attacker):
-		mem.flee_from = _reckon(mem, mem.attacker, tick)
+	var from := mem.fear_of if mem.seen.has(mem.fear_of) else mem.attacker
+	if mem.seen.has(from):
+		mem.flee_from = _reckon(mem, from, tick)
 	if tick - mem.state_tick >= int(mem.cfg.flee_ticks):
 		mem.flee_from = Vector2.INF
+		mem.fear_of = ""
 		_enter(mem, WANDER, RETURN_HOME, tick)
 
 
-## Answers a hurt (pain), never during a strike: below the flee share it flees (a tell is
-## interrupted), a fleeing creature flees again, and an idle one, or one noticing something else,
-## notices the attacker. An engaged creature keeps its target. Returns true when it changed state.
+## Answers a hurt (pain), never during a strike: below the flee share, or hurt by a body above its
+## engage share (rule 4), it flees (a tell is interrupted), a fleeing creature flees again, and an
+## idle one, or one noticing something else, notices the attacker. An engaged creature keeps its
+## target. Returns true when it changed state.
 static func _answer_pain(mem: Memory, me: Dictionary, tick: int) -> bool:
 	if not mem.seen.has(mem.attacker):
 		return false
-	if float(me.health_share) < float(mem.cfg.flee_below) or mem.state == FLEE:
+	var above := bool(mem.cfg.engage_rule) and Relationships.above_engage(_engage_share(mem), float(me.radius),
+		float(mem.seen[mem.attacker].radius), float(mem.cfg.share_tolerance))
+	if above or float(me.health_share) < float(mem.cfg.flee_below) or mem.state == FLEE:
 		if mem.state == ATTACK and mem.phase == TELL:
 			_emit(mem, {"type": "creature_recovered", "target": mem.target, "outcome": "interrupted"})
 		_drop_target(mem)
@@ -889,6 +914,42 @@ static func _answer_pain(mem: Memory, me: Dictionary, tick: int) -> bool:
 		_notice(mem, mem.attacker, "pain", tick)
 		return true
 	return false
+
+
+## Rule 3 (D-63): it flees the nearest body it fears among its percepts (they come nearest first,
+## ties by id), whatever its state but a strike (which completes first) and even while settling; a
+## tell is interrupted. A fleeing creature that sees a feared body flees it, its flee time
+## restarting, and the flee handler steers. Returns true when it changed state.
+static func _answer_fear(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> bool:
+	var share := float(mem.cfg.fear_radius_share)
+	if is_inf(share) or is_striking(mem):
+		return false
+	var feared := {}
+	for p in percepts:
+		if Relationships.fears(share, float(me.radius), float(p.radius), float(mem.cfg.share_tolerance)):
+			feared = p
+			break
+	if feared.is_empty():
+		return false
+	if mem.state == FLEE:
+		mem.fear_of = feared.id
+		mem.state_tick = tick
+		return false
+	if mem.state == ATTACK and mem.phase == TELL:
+		_emit(mem, {"type": "creature_recovered", "target": mem.target, "outcome": "interrupted"})
+	_drop_target(mem)
+	mem.fear_of = feared.id
+	mem.flee_from = _reckon(mem, feared.id, tick)
+	_enter(mem, FLEE, "", tick)
+	mem.state_tick = tick
+	_emit(mem, {"type": "creature_fled", "from": feared.id})
+	return true
+
+
+## The share above which a hurt is fled, not answered (rule 4): the prey share for an ambush brain,
+## the intruder share for a territorial one. INF (rule 2 off) puts nothing above it.
+static func _engage_share(mem: Memory) -> float:
+	return float(mem.cfg.prey_max_radius_share) if mem.behavior == AMBUSH else float(mem.cfg.intruder_max_radius_share)
 
 
 # --- drive helpers ---
@@ -996,20 +1057,24 @@ static func _turn(mem: Memory, face: float, share: float) -> Dictionary:
 # --- decisions ---
 
 ## The first percept (nearest first) worth noticing now, or {}: prey for an ambush brain (another
-## species it could bite), an intruder for a territorial one (another species of at least
-## intruder_min_radius inside the territory). Nothing while settling, while hurt below the flee share,
-## or for an ignored id.
+## species of at most its radius x prey share, rule 1), an intruder for a territorial one (another
+## species from intruder_min_radius up to its radius x intruder share, rule 2, inside the territory).
+## Nothing while settling, while hurt below the flee share, or for an ignored id. The shares are the
+## engage shares of rule 4, so it never picks a body whose hurt it would flee.
 static func _pick_new_target(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> Dictionary:
 	if tick < mem.ignore_all_until or not _can_engage(mem, me):
 		return {}
+	var own := float(me.radius)
+	var tol := float(mem.cfg.share_tolerance)
 	for p in percepts:
 		if p.species == mem.cfg.species_id or mem.ignore.has(p.id):
 			continue
 		var r: float = p.radius
 		if mem.behavior == AMBUSH:
-			if r <= float(me.radius) * float(mem.cfg.prey_max_radius_share):
+			if Relationships.can_prey(float(mem.cfg.prey_max_radius_share), own, r, tol):
 				return p
-		elif r >= float(mem.cfg.intruder_min_radius) and Vector2(p.position).distance_to(mem.territory_center) <= mem.territory_r:
+		elif Relationships.is_intruder(float(mem.cfg.intruder_min_radius), float(mem.cfg.intruder_max_radius_share), own, r, tol) \
+				and Vector2(p.position).distance_to(mem.territory_center) <= mem.territory_r:
 			return p
 	return {}
 

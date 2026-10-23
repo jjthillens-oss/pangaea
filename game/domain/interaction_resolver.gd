@@ -28,6 +28,10 @@ class Actor:
 	var heading: float
 	var phenotype: Phenotype
 	var cooldowns: Dictionary = {}
+	## q of a creature drawn below its entry size (S2, plan B.6); 1.0 for the player and at the entry
+	## size. FEED_REACH, BITE_REACH and RAM_REACH are multiplied by it, so a scaled body reaches as far
+	## as its scaled brain (cfg.feed_reach, attack.reach) expects. At 1.0 each product is the constant.
+	var reach_scale := 1.0
 
 	func _init(p_id: String, p_position: Vector2, p_heading: float, p_phenotype: Phenotype) -> void:
 		id = p_id
@@ -64,7 +68,7 @@ static func feed(actor: Actor, food: Dictionary, now: float, room: float = INF) 
 	if not p.can_eat(food.kind):
 		return _result(false, "needs a %s" % ("filter mouth" if food.kind == "plant" else "jaw"))
 	var dist := actor.position.distance_to(food.position)
-	if dist > p.radius + food.radius + FEED_REACH:
+	if dist > p.radius + food.radius + FEED_REACH * actor.reach_scale:
 		return _result(false, "out of reach")
 	var facing := false
 	for mouth in p.mouths:
@@ -88,7 +92,7 @@ static func bite(attacker: Actor, target: Actor, now: float) -> Dictionary:
 		return _result(false, "cannot bite itself")
 	if target.phenotype.radius > p.radius * BITE_SIZE_LIMIT:
 		return _result(false, "too big to bite")
-	if attacker.position.distance_to(target.position) > p.radius + target.phenotype.radius + BITE_REACH:
+	if attacker.position.distance_to(target.position) > p.radius + target.phenotype.radius + BITE_REACH * attacker.reach_scale:
 		return _result(false, "out of reach")
 	var facing := false
 	for mouth in p.mouths:
@@ -113,7 +117,7 @@ static func ram(attacker: Actor, target: Actor, closing_speed: float, now: float
 		return _result(false, "cannot ram itself")
 	if not is_finite(closing_speed) or closing_speed <= 0.0:
 		return _result(false, "not moving toward it")
-	if attacker.position.distance_to(target.position) > p.radius + target.phenotype.radius + RAM_REACH:
+	if attacker.position.distance_to(target.position) > p.radius + target.phenotype.radius + RAM_REACH * attacker.reach_scale:
 		return _result(false, "out of reach")
 	var hitting: Array[float] = []
 	for spike in p.spikes:
