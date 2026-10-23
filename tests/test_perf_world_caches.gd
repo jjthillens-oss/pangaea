@@ -675,3 +675,119 @@ func test_world_hash_equals_the_old_functions_on_random_values_and_strings() -> 
 				HashBefore.key(a, i % 3, b % 7, values[0] if not values.is_empty() else 0, i, text):
 			bad.append("key(%d, ..., %s)" % [a, text.c_escape()])
 	check(bad.is_empty(), "%d differ: %s" % [bad.size(), bad.slice(0, 3)])
+
+
+# --- ChunkArena._may_reach (a collider clear of a chunk is not counted into its near grid) ---
+
+const ArenaTests := preload("res://tests/test_chunk_arena.gd")
+## Distances past the reach (r + GRID_BODY_R + GRID_SLACK) a band collider is placed at: either side
+## of the reach and of GRID_SLACK, and (added to it) either side of _may_reach's margin.
+const BAND_OFFSETS: Array[float] = [-0.02, -0.01, -1e-3, -1e-6, -1e-9, 0.0, 1e-9, 1e-6, 1e-5, 6e-5, 7e-5,
+	1e-4, 1e-3, 0.01, 0.02]
+
+
+## _may_reach's margin past the reach near chunk `key` (1e-6 tm per tm of coordinate).
+static func _margin_near(key: Vector2i) -> float:
+	return 1e-6 * (1.0 + 32.0 * (absi(key.x) + absi(key.y)))
+
+
+## A collider in a neighbour of chunk `key`, off one of its sides (or corners) by the reach plus an
+## offset (half the time plus _may_reach's margin too), at a random place along that side.
+static func _band_collider(rng: RandomNumberGenerator, key: Vector2i, id: String) -> Dictionary:
+	var chunk := 32.0
+	var r := rng.randf_range(0.6, ChunkArena.MAX_COLLIDER_R)
+	var off: float = BAND_OFFSETS[rng.randi_range(0, BAND_OFFSETS.size() - 1)] if rng.randf() < 0.7 \
+			else rng.randf_range(-0.03, 0.03)
+	if rng.randf() < 0.5:
+		off += _margin_near(key)
+	var d := r + PoolArena.GRID_BODY_R + PoolArena.GRID_SLACK + off
+	var side := Vector2i([-1, 0, 1][rng.randi_range(0, 2)], [-1, 0, 1][rng.randi_range(0, 2)])
+	if side == Vector2i.ZERO:
+		side = Vector2i(1, 0)
+	var dx := d
+	var dy := d
+	if side.x != 0 and side.y != 0:
+		var a := rng.randf_range(0.0, PI / 2.0)
+		dx = d * cos(a)
+		dy = d * sin(a)
+	var x := key.x * chunk + rng.randf_range(0.0, chunk)
+	var y := key.y * chunk + rng.randf_range(0.0, chunk)
+	if side.x < 0:
+		x = key.x * chunk - dx
+	elif side.x > 0:
+		x = (key.x + 1) * chunk + dx
+	if side.y < 0:
+		y = key.y * chunk - dy
+	elif side.y > 0:
+		y = (key.y + 1) * chunk + dy
+	return {"id": id, "x": x, "y": y, "r": r, "off": off}
+
+
+func test_a_collider_judged_clear_of_a_chunk_marks_none_of_its_cells_at_the_reach_edge() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4408
+	for base: Vector2i in [Vector2i(0, 0), Vector2i(3125, -3125)]:   # home, and 100 km out
+		var arena := ChunkArena.create_endless()
+		arena.add_chunk(base, [])
+		var skipped_near := 0
+		var reached_near := 0
+		for i in 6000:
+			var c := _band_collider(rng, base, "b%d" % i)
+			arena._grids[base].fill(0)
+			arena._count(base, c, 1)
+			var marked: int = arena._grids[base].size() - arena._grids[base].count(0)
+			if not arena._may_reach(base, c):
+				if marked > 0:
+					check(false, "%s: a collider %s past the reach was skipped but marks %d cells" % [base, c.off, marked])
+					return
+				if c.off < _margin_near(base) + 1e-3:
+					skipped_near += 1
+			elif marked > 0 and c.off > -1e-3:
+				reached_near += 1
+		check(skipped_near > 100 and reached_near > 100,
+			"%s: the band was exercised (%d skipped within 1e-3 tm of the margin, %d marked within 1e-3 tm of the reach)"
+			% [base, skipped_near, reached_near])
+
+
+func test_grids_with_colliders_at_the_reach_edge_equal_a_full_re_mark_through_loads_and_unloads() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4409
+	for base: Vector2i in [Vector2i(0, 0), Vector2i(3125, -3125)]:
+		for round in 8:
+			var arena := ChunkArena.create_endless()
+			# The middle chunk's own colliders lie off its neighbours' sides by the reach and a band.
+			var lists := {}
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					var key := base + Vector2i(dx, dy)
+					var list: Array[Dictionary] = []
+					for i in rng.randi_range(2, 8):
+						var around := key + Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1))
+						var c := _band_collider(rng, around, "k%d_%d_%d_%d" % [dx, dy, round, i])
+						if floori(c.x / 32.0) == key.x and floori(c.y / 32.0) == key.y:
+							c.erase("off")
+							list.append(c)
+					lists[key] = list
+			var order: Array = lists.keys()
+			for i in range(order.size() - 1, 0, -1):
+				var j := rng.randi_range(0, i)
+				var t: Vector2i = order[i]
+				order[i] = order[j]
+				order[j] = t
+			for key: Vector2i in order:
+				arena.add_chunk(key, lists[key])
+				if not _grids_match(arena, "%s round %d: after loading %s" % [base, round, key]):
+					return
+			for key: Vector2i in order.slice(0, 5):
+				arena.remove_chunk(key)
+				if not _grids_match(arena, "%s round %d: after unloading %s" % [base, round, key]):
+					return
+	check(true, "every grid equals a full re-mark")
+
+
+func _grids_match(arena: ChunkArena, what: String) -> bool:
+	for k in arena.chunk_keys():
+		if arena._grids[k] != ArenaTests._re_mark(arena, k):
+			check(false, "%s, the grid of %s differs from a full re-mark" % [what, k])
+			return false
+	return true
