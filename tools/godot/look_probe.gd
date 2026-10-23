@@ -22,11 +22,13 @@ extends SceneTree
 ##
 ## Flags after --:
 ##   --out=DIR          the frames and look_probe.json (default user://look_probe/out)
-##   --look=NAME        the gate set: micro (plan section 6, the default) or baseline (today's look)
-##   --scenes=a,b       only these scenes (default every one, in SCENES order)
+##   --look=NAME        the gate set: micro (plan section 6, the default in the pool), baseline
+##                      (today's look) or endless (the endless sea's, the default there)
+##   --scenes=a,b       only these scenes (default every one of the world's, in its list's order)
 ##   --parity=DIR       another renderer's run of the same scenes: adds the parity readings and gates
 ##   --zoom=M           the camera distance (default the layout's, 14 m)
-##   --world=MODE       pool (the default: every scene below stages in the M1 pool) or endless
+##   --world=MODE       pool (the default: the M1 scenes below, staged in the walled pool) or
+##                      endless (the endless scenes further down, docs/s1/s1-content.md section 10)
 ## Exit code: 0 when every gate passes, 1 when one fails or a scene could not be staged, 2 when the
 ## probe cannot run (headless, no --fixed-fps, or the output folder cannot be made).
 ##
@@ -82,13 +84,55 @@ extends SceneTree
 ## against the same pixels unsheltered, and against the fluid just outside it; and the L* the patch
 ## adds behind the cell). With --parity every scene adds
 ## parity: the median CIE76 between the two runs over the whole frame, the fluid frame and the cell.
+##
+## Endless scenes (--world=endless, ENDLESS_SCENES). Each starts the same way, then freezes the AI,
+## moves the cell to an absolute place in the sea (debug_teleport_abs: the view set there loads and
+## its food fills) and plays START_FRAMES there, so its creatures finish fading in:
+##   reef         the densest knot of shells of the reef tile nearest the origin, facing north: the
+##                cell REEF_SOUTH_TM south of the centroid of the shell with the most others within
+##                REEF_KNOT_TM and those others (a reef tile keeps its shells round its zones, not at
+##                its centre, so the content doc's "6 tm south of the centre" frames open water)
+##   landmark     ANCHOR_SOUTH_TM south of the nearest landmark anchor that is not a shed husk
+##   husk         HUSK_GAP_TM south of the giant husk's southmost collider, at the giant husk nearest
+##                the origin, facing north: the husk side-on from the south (build plan B-30)
+##   shed_husk    ANCHOR_SOUTH_TM south of the nearest landmark_shed_husk anchor (B-30)
+##   markers      MARKERS_AT facing east, the checkpoint at home: the arrow home and the column's pip
+##   rebase_pair  the reef moment, paused, before and after a dev rebase by one chunk east: shells
+##                all round, so the world-placed layers show if they do not follow (the content doc
+##                stages it at the markers spot, open water where only world-rebuilt things show)
+## Their frames: reef adds <scene>_norocks.png (every shell hidden); landmark, husk and shed_husk add
+## <scene>_nopiece.png (that piece hidden); markers adds <scene>_nomarkers.png (both markers hidden)
+## and <scene>_nooverlay.png (the HUD's world overlay hidden); rebase_pair saves frame A as
+## <scene>.png, A shot again as <scene>_still.png and frame B as <scene>_after.png.
+## Their readings: a piece's pixels are those it draws, where the frame differs from the same moment
+## without it by more than SILHOUETTE_CHANGE in a channel, read against the fluid frame there:
+## fluid_dL between their median and the fluid's, and fluid_dL_px, the median of each pixel's own
+## |dL*|. A hue gap is the LAB hue's distance from the food or threat colour, 180 for a colour under
+## ACHROMATIC_C chroma (it has no hue to confuse; the look rule's exemption). Every endless scene has
+## staged (where it was staged and what it frames) and the common readings above. reef adds shells
+## (each shell on screen clear of HUD panels, nearest the centre first, with its silhouette in its
+## projected box; food_gap_min, threat_gap_min, fluid_dL_min, fluid_dL_px_min); landmark, husk and
+## shed_husk add the piece's silhouette in its projected box (silhouette, silhouette_behind, pixels,
+## share, fluid_dL, fluid_dL_px, food_gap, threat_gap); markers adds arrow_L (L* of the arrow's
+## centre, ARROW_DISC_PX round its mesh's centre), arrow (its silhouette), arrow_state, and
+## pip_present (1 when the column's pip changes pixels where the overlay draws it) with pip;
+## rebase_pair adds median_dE and p99_dE (CIE76 between A and B over every PARITY_STRIDE-th pixel)
+## and still_median_dE and still_p99_dE (A against A again: what drawing twice changes by itself).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SLOT := "user://look_probe/slot.json"
 const DEFAULT_OUT := "user://look_probe/out"
 const BODY := "grazer"
 const SEED := 4242
-const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
+## The M1 pool's scenes, every one with --world=pool.
+const POOL_SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
+## The endless sea's scenes (docs/s1/s1-content.md section 10), every one with --world=endless.
+const ENDLESS_SCENES: Array[String] = ["reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair"]
+## Every scene the probe can stage: POOL_SCENES, then ENDLESS_SCENES.
+const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter",
+	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair"]
+## The world each gate set measures.
+const LOOK_WORLDS := {"micro": "pool", "baseline": "pool", "endless": "endless"}
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
 const START_FRAMES := 30                 ## frames of a new run before staging (the fade-in is 0.3 s)
 const FIRST_SETTLE := 2                  ## frames drawn before a moment's first capture...
@@ -135,6 +179,21 @@ const SHELTER_FRAMES := 30               ## the shelter rim fades in over 0.3 s
 const SHELTER_BAND := Vector2(0.6, 1.3)  ## the rim: the cell's own pixels this far out (radii)...
 const SHELTER_OUTSIDE := Vector2(1.3, 1.6)    ## ...and the fluid just outside the cell
 const BOX_COLOR := Color(1.0, 0.95, 0.0)
+# The endless scenes (absolute positions in tm; at S1's size 1 an am is a tm).
+const REEF_KNOT_TM := 8.0                ## the reef scene frames the shell with most others this near...
+const REEF_SOUTH_TM := 2.0               ## ...with the cell this far south of their centroid
+const ANCHOR_SOUTH_TM := 8.0             ## the landmark scenes' cell, south of the anchor
+const HUSK_GAP_TM := 4.4                 ## the husk scene's cell, south of the husk's southmost collider
+const MARKERS_AT := Vector2(300.0, 9.0)  ## the markers scene's cell, facing east
+const SHED_HUSK := "landmark_shed_husk"
+const SEARCH_TILES := 12                 ## the nearest reef tile is looked for this many tiles out...
+const SEARCH_CHUNKS := 12                ## ...and the nearest anchors and rare places this many chunks out
+const SHELL_ON_SCREEN := 0.5            ## a shell is read when this share of its projected box is on screen...
+const SHELL_PIXELS_NEEDED := 100         ## ...and it draws at least this many pixels there
+const SILHOUETTE_CHANGE := 0.03          ## a piece draws a pixel it changes by more than this in a channel
+const ACHROMATIC_C := 5.0                ## a colour under this chroma has no hue (the look rule's exemption)
+const ARROW_DISC_PX := 3.0
+const REBASE_BY := Vector2i(1, 0)        ## the rebase pair's dev rebase, in chunks
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
@@ -148,6 +207,10 @@ const BOX_COLOR := Color(1.0, 0.95, 0.0)
 ##   "Microscopic world look"), so the probe itself can be checked on today's build. Its "fluid" is
 ##   the teal floor. It has no skirt or plankton clipping gate: there is no skirt yet (those samples
 ##   land on the floor's caustics), and the plankton's sunlit tops reach 255 in both renderers.
+##   endless: the endless sea (docs/s1/s1-content.md section 10, PROPOSED there; build plan Q15 has
+##   T5.6 set them from its measurement): shells, landmarks and the husks keep clear of food and
+##   threat on screen, after light and fog (20 degrees; the albedo rule is 25) and stand out from the
+##   fluid, the arrow home is light, the column's pip shows, and a rebase never shows (G10).
 const GATES := {
 	"micro": [
 		{"id": "cell_hue", "path": "lineup.cell.h", "min": 30.0, "max": 50.0, "what": "coral cell hue (LAB h)"},
@@ -201,6 +264,31 @@ const GATES := {
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 10.0, "parity": true, "what": "renderer parity, floor (median CIE76; 6.7)"},
 		{"id": "parity_cell", "path": "lineup.parity.cell_dE", "max": 10.0, "parity": true, "what": "renderer parity, cell (median CIE76; 7.0)"},
 	],
+	# Measured at T5.6 (seed 4242, 1920x1080, zoom 14), Compatibility | Forward+ (lavapipe); the
+	# renderers agree within 0.1 CIE76 over the frame. Where the content doc's PROPOSED threshold
+	# held it is kept; where it did not, the gate is pinned about a fifth under the lower reading
+	# (build plan Q15) and the content doc's number is given. Contrast is read per pixel (the median
+	# of each drawn pixel's |dL*| against the fluid behind it): the kit's pieces are tall, lit on top
+	# and fluid-tinted on their sides, so the median of a silhouette can match the fluid's while its
+	# parts stand well apart (the shed husk: 0.8 | 1.1 between the medians, 5.5 | 5.8 per pixel).
+	"endless": [
+		{"id": "reef_food_gap", "path": "reef.shells.food_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the food colour (degrees, the least on screen; 137.8 | 137.8)"},
+		{"id": "reef_threat_gap", "path": "reef.shells.threat_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the threat colour (degrees, the least on screen; 89.8 | 89.8)"},
+		{"id": "reef_contrast", "path": "reef.shells.fluid_dL_px_min", "min": 5.0, "what": "reef shells against the fluid behind them (|dL*| per pixel, the least on screen; 6.3 | 6.3, a diatom disc seen side-on; PROPOSED 8)"},
+		{"id": "landmark_contrast", "path": "landmark.fluid_dL_px", "min": 7.5, "what": "the nearest landmark against the fluid (|dL*| per pixel; 9.6 | 9.8; PROPOSED 10)"},
+		{"id": "landmark_food_gap", "path": "landmark.food_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the food colour (degrees; 171.2 | 171.2)"},
+		{"id": "landmark_threat_gap", "path": "landmark.threat_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the threat colour (degrees; 85.5 | 85.5)"},
+		{"id": "husk_contrast", "path": "husk.fluid_dL_px", "min": 6.0, "what": "the giant husk side-on from the south against the fluid (|dL*| per pixel; 7.5 | 7.5; PROPOSED 10)"},
+		{"id": "husk_food_gap", "path": "husk.food_gap", "min": 20.0, "what": "the giant husk never reads as food: LAB hue away from the food colour (degrees; 165.8 | 165.8)"},
+		{"id": "husk_threat_gap", "path": "husk.threat_gap", "min": 20.0, "what": "the giant husk, LAB hue away from the threat colour (degrees; 90.9 | 90.9)"},
+		{"id": "shed_husk_contrast", "path": "shed_husk.fluid_dL_px", "min": 4.5, "what": "the shed husk landmark against the fluid (|dL*| per pixel; 5.5 | 5.8; PROPOSED 10)"},
+		{"id": "shed_husk_food_gap", "path": "shed_husk.food_gap", "min": 20.0, "what": "the shed husk never reads as food: LAB hue away from the food colour (degrees; 165.0 | 165.0)"},
+		{"id": "shed_husk_threat_gap", "path": "shed_husk.threat_gap", "min": 20.0, "what": "the shed husk, LAB hue away from the threat colour (degrees; 91.7 | 91.7)"},
+		{"id": "arrow_value", "path": "markers.arrow_L", "min": 75.0, "what": "the arrow home's centre (L*; 99.8 | 99.8)"},
+		{"id": "column_pip", "path": "markers.pip_present", "min": 1.0, "max": 1.0, "what": "the column's pip shows while the column is off screen (1 | 1)"},
+		{"id": "rebase_median", "path": "rebase_pair.median_dE", "max": 1.0, "what": "a rebase never shows: frame B against frame A (median CIE76; 0.0 | 0.0)"},
+		{"id": "rebase_p99", "path": "rebase_pair.p99_dE", "max": 5.0, "what": "a rebase never shows: frame B against frame A (99th percentile CIE76; 0.0 | 0.0)"},
+	],
 }
 
 ## Swims nowhere: the cell holds still while a scene plays to its moment.
@@ -227,17 +315,24 @@ var results := {}
 ## Regions sampled in the current scene, outlined in <scene>_points.png.
 var _boxes: Array[Rect2i] = []
 var _decor: MeshInstance3D
+## Where an endless scene was staged and what it frames (its readings' "staged"); the piece a
+## landmark scene reads is staged["id"].
+var _staged := {}
+## The endless sea's anchors, rare places and set-piece colliders round the origin (_sea()).
+var _sea_cache := {}
 
 
 func _initialize() -> void:
 	RenderingServer.render_loop_enabled = false
-	var scenes: Array[String] = SCENES.duplicate()
+	var scenes: Array[String] = []
+	var look_given := false
 	out_dir = DEFAULT_OUT
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out_dir = arg.trim_prefix("--out=")
 		elif arg.begins_with("--look="):
 			look = arg.trim_prefix("--look=")
+			look_given = true
 		elif arg.begins_with("--scenes="):
 			scenes.assign(Array(arg.trim_prefix("--scenes=").split(",")))
 		elif arg.begins_with("--parity="):
@@ -246,6 +341,10 @@ func _initialize() -> void:
 			zoom = float(arg.trim_prefix("--zoom="))
 		elif arg.begins_with("--world="):
 			world = arg.trim_prefix("--world=")
+	if not look_given and world == "endless":
+		look = "endless"
+	if scenes.is_empty():
+		scenes = scenes_for(world)
 	var problem := _setup_problem(scenes)
 	if problem.is_empty():
 		root.size = SIZE
@@ -265,7 +364,10 @@ func _initialize() -> void:
 	for scene in scenes:
 		results[scene] = {"frames": {}, "readings": {}, "error": ""}
 		await _fresh_run()
-		if not await _stage(scene):
+		var staged := await _stage(scene)
+		if not _staged.is_empty():
+			results[scene].readings.staged = _staged.duplicate()
+		if not staged:
 			results[scene].error = "could not stage the scene"
 			printerr("Look probe: could not stage %s" % scene)
 			continue
@@ -290,9 +392,14 @@ func _setup_problem(scenes: Array[String]) -> String:
 		return "it needs a real renderer (run it under xvfb-run, not --headless)"
 	if not GATES.has(look):
 		return "--look must be one of %s" % ", ".join(GATES.keys())
+	var own := scenes_for(world)
+	if own.is_empty():
+		return "--world must be pool or endless"
+	if LOOK_WORLDS.get(look, world) != world:
+		return "--look=%s measures the %s world: pass --world=%s" % [look, LOOK_WORLDS[look], LOOK_WORLDS[look]]
 	for scene in scenes:
-		if not SCENES.has(scene):
-			return "there is no scene %s (scenes: %s)" % [scene, ", ".join(SCENES)]
+		if not own.has(scene):
+			return "there is no %s scene %s (scenes: %s)" % [world, scene, ", ".join(own)]
 	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir)) != OK:
 		return "cannot make %s" % out_dir
 	return ""
@@ -315,6 +422,7 @@ func _fresh_run() -> void:
 	main.intent_provider = Still.new()
 	events.clear()
 	_decor = null
+	_staged = {}
 	main.start_new(BODY, SEED)
 	pool = main.pool
 	sim = pool.sim
@@ -378,9 +486,13 @@ func _save(scene: String, variant: String, img: Image) -> void:
 
 
 ## Shows or hides what lies in front of the fluid: the cell, creatures, food, rocks, world labels
-## and the 2D layer (HUD, target ring, starving arrow).
+## and the 2D layer (HUD, target ring, starving arrow); in the endless sea its landmarks, rare set
+## pieces and way-markers too.
 func _show_gameplay(on: bool) -> void:
-	for node: Node3D in [pool.cell_view, pool.creature_layer, pool.plankton_view, pool.carrion_view, pool.rocks, pool.feedback]:
+	var nodes: Array[Node3D] = [pool.cell_view, pool.creature_layer, pool.plankton_view, pool.carrion_view, pool.rocks, pool.feedback]
+	if pool.is_endless():
+		nodes.append_array([pool.landmarks, pool.markers])
+	for node in nodes:
 		node.visible = on
 	pool.ui.visible = on
 
@@ -427,6 +539,19 @@ func _stage(scene: String) -> bool:
 			return await _stage_sunlit()
 		"shelter":
 			return await _stage_shelter()
+		"reef":
+			return await _stage_reef()
+		"landmark":
+			return await _stage_anchor(false)
+		"shed_husk":
+			return await _stage_anchor(true)
+		"husk":
+			return await _stage_husk()
+		"markers":
+			_staged = {"at_tm": [MARKERS_AT.x, MARKERS_AT.y], "checkpoint_am": Array(sim.world.checkpoint_am) if sim.world != null else []}
+			return await _stage_at(MARKERS_AT, 0.0)
+		"rebase_pair":
+			return await _stage_reef()
 	return false
 
 
@@ -530,6 +655,130 @@ func _whole_frames(frames: int) -> int:
 	return maxi(frames, sim.species.fade_in_ticks + 1)
 
 
+# --- Endless scenes: staging --------------------------------------------------------------------
+
+## The cell moved to `at_tm` (absolute tm) facing `heading`, the AI frozen, then START_FRAMES played
+## there (at least long enough for a creature to fade in), so the view set round it is loaded and
+## drawn. False in the pool.
+func _stage_at(at_tm: Vector2, heading: float) -> bool:
+	if sim.world == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	var at := sim.world.abs_of_local(sim.world.local_of_tm(at_tm.x, at_tm.y))
+	if not sim.debug_teleport_abs(at[0], at[1], heading):
+		return false
+	await _play(_whole_frames(START_FRAMES))
+	return true
+
+
+## The reef tile nearest the origin, framed on its densest knot of shells, facing north.
+func _stage_reef() -> bool:
+	if sim.world == null:
+		return false
+	var band := WorldConfig.band_of(sim.world.size)
+	var tile_tm := _tile_tm()
+	var best := Vector2i.MAX
+	var best_d := INF
+	for ty in range(-SEARCH_TILES, SEARCH_TILES + 1):
+		for tx in range(-SEARCH_TILES, SEARCH_TILES + 1):
+			if sim.world.gen.tile_info(band, tx, ty).region != "reef":
+				continue
+			var d := ((Vector2(tx, ty) + Vector2.ONE * 0.5) * tile_tm).length()
+			if d < best_d:
+				best = Vector2i(tx, ty)
+				best_d = d
+	if best == Vector2i.MAX:
+		return false
+	var shells: Array[Vector2] = []
+	var per_tile := roundi(tile_tm / sim.world.chunk_tm)
+	for cy in range(best.y * per_tile, (best.y + 1) * per_tile):
+		for cx in range(best.x * per_tile, (best.x + 1) * per_tile):
+			for e: Dictionary in sim.world.gen.chunk(sim.world.size, cx, cy).shells:
+				if e.kind == "shell":
+					shells.append(Vector2(float(e.x), float(e.y)))
+	var knot: Array[Vector2] = []
+	for a in shells:
+		var near := shells.filter(func(b: Vector2) -> bool: return a.distance_to(b) <= REEF_KNOT_TM)
+		if near.size() > knot.size():
+			knot.assign(near)
+	if knot.is_empty():
+		return false
+	var centroid := Vector2.ZERO
+	for p in knot:
+		centroid += p / knot.size()
+	var at := centroid + Vector2(0.0, REEF_SOUTH_TM)
+	_staged = {"tile": [best.x, best.y], "knot": knot.size(), "knot_centroid_tm": [snappedf(centroid.x, 0.01), snappedf(centroid.y, 0.01)],
+		"at_tm": [snappedf(at.x, 0.01), snappedf(at.y, 0.01)]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## ANCHOR_SOUTH_TM south of the nearest landmark anchor, facing north: a shed husk when `shed`,
+## otherwise any other landmark.
+func _stage_anchor(shed: bool) -> bool:
+	if sim.world == null:
+		return false
+	var a := _nearest(_sea().anchors.filter(func(x: Dictionary) -> bool: return (str(x.model) == SHED_HUSK) == shed))
+	if a.is_empty():
+		return false
+	var at := Vector2(float(a.x), float(a.y) + ANCHOR_SOUTH_TM)
+	_staged = {"id": str(a.id), "model": str(a.model), "dressing": str(a.dressing), "anchor_tm": [a.x, a.y], "at_tm": [at.x, at.y]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## The giant husk nearest the origin, side-on from the south (build plan B-30): the cell HUSK_GAP_TM
+## south of its southmost collider, under the place's centre, facing north at the default zoom.
+func _stage_husk() -> bool:
+	if sim.world == null:
+		return false
+	var place := _nearest(_sea().places.filter(func(x: Dictionary) -> bool: return str(x.kind) == "giant_husk"))
+	if place.is_empty():
+		return false
+	var prefix := "s_%s_r" % str(place.id).trim_prefix("p_")
+	var south := -INF
+	for c: Dictionary in _sea().set_pieces:
+		if str(c.id).begins_with(prefix):
+			south = maxf(south, float(c.y) + float(c.r))
+	if not is_finite(south):
+		return false
+	var at := Vector2(float(place.x), south + HUSK_GAP_TM)
+	_staged = {"id": str(place.id), "place_tm": [place.x, place.y], "yaw_deg": place.get("yaw_deg", 0.0),
+		"mirror": place.get("mirror", false), "at_tm": [at.x, at.y]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## The tile's side in tm at the run's size.
+func _tile_tm() -> float:
+	return sim.world.content.config.tile_bu * WorldConfig.bu_to_tm(sim.world.size)
+
+
+## The landmark anchors, rare places and set-piece colliders (WorldChunk, absolute tm) of every chunk
+## within SEARCH_CHUNKS of the origin's, generated once: every scene starts the same sea.
+func _sea() -> Dictionary:
+	if not _sea_cache.is_empty():
+		return _sea_cache
+	var out := {"anchors": [], "places": [], "set_pieces": []}
+	for cy in range(-SEARCH_CHUNKS, SEARCH_CHUNKS + 1):
+		for cx in range(-SEARCH_CHUNKS, SEARCH_CHUNKS + 1):
+			var ch: WorldChunk = sim.world.gen.chunk(sim.world.size, cx, cy)
+			out.anchors.append_array(ch.anchors)
+			out.places.append_array(ch.places)
+			out.set_pieces.append_array(ch.shells.filter(func(x: Dictionary) -> bool: return x.kind == "set_piece"))
+	_sea_cache = out
+	return out
+
+
+## The object nearest the origin (its x, y in tm; ties go to the smaller id), or {}.
+static func _nearest(objects: Array) -> Dictionary:
+	var best := {}
+	var best_d := INF
+	for o: Dictionary in objects:
+		var d := Vector2(float(o.x), float(o.y)).length()
+		if d < best_d or (d == best_d and str(o.id) < str(best.get("id", ""))):
+			best = o
+			best_d = d
+	return best
+
+
 # --- Scenes: frames and readings ----------------------------------------------------------------
 
 ## Captures the frozen moment's frames and takes its readings.
@@ -543,6 +792,14 @@ func _shoot(scene: String) -> void:
 			await _shoot_sunlit(scene)
 		"shelter":
 			await _shoot_shelter(scene)
+		"reef":
+			await _shoot_reef(scene)
+		"landmark", "husk", "shed_husk":
+			await _shoot_piece(scene)
+		"markers":
+			await _shoot_markers(scene)
+		"rebase_pair":
+			await _shoot_rebase(scene)
 		_:
 			var frames := await _shoot_common(scene)
 			var r: Dictionary = results[scene].readings
@@ -750,6 +1007,229 @@ func _shoot_lane(scene: String) -> void:
 	results[scene].readings.lane.merge(_lane_patch(lane, bare, unlit))
 	results[scene].readings.marker = await _marker_readings(scene, view)
 	_write_points(scene, frames[0])
+
+
+# --- Endless scenes: frames and readings -------------------------------------------------------
+
+## The reef: its frames, then the same moment with every shell hidden, for the shells' own pixels.
+func _shoot_reef(scene: String) -> void:
+	var frames := await _shoot_common(scene)
+	pool.rocks.visible = false
+	var bare := await _capture()
+	pool.rocks.visible = true
+	_save(scene, "norocks", bare)
+	results[scene].readings.shells = _shell_readings(frames[0], frames[1], bare)
+	_write_points(scene, frames[0])
+
+
+## Each shell on screen and clear of HUD panels, nearest the screen centre first: its silhouette,
+## the pixels it draws in its projected box (its mesh's box at its instance), against the fluid frame
+## there. The shells are drums and towers 2.4 to 2.7 m tall, with lit tops and fluid-tinted sides,
+## so the whole silhouette is read, not a disc at the projected centre (the content doc's core), which
+## falls on the top or the side by where the shell stands on screen. A shell with less than
+## SHELL_ON_SCREEN of its box on screen is left out. {"items", "count", "achromatic", "food_gap_min", "threat_gap_min", "fluid_dL_min",
+## "fluid_dL_px_min", "fluid_dL_px_median"}; no minimum when no shell could be read.
+func _shell_readings(full: Image, fluid: Image, bare: Image) -> Dictionary:
+	var panels := _hud_panels()
+	var screen := Rect2i(Vector2i.ZERO, full.get_size())
+	var centre := Vector2(full.get_size()) * 0.5
+	var found := []
+	for asset in pool.rocks.assets_in_use():
+		var piece: Dictionary = pool.rocks._pieces[asset]
+		var mesh_box: AABB = (piece.mesh as Mesh).get_aabb()
+		for e: Dictionary in pool.rocks.instances_of(asset):
+			var t: Transform3D = pool.rocks.global_transform * e.transform * piece.offset
+			var w := t * mesh_box.get_center()
+			if not _on_screen(w, full):
+				continue
+			var whole := _project_box(t * mesh_box)
+			var box := whole.intersection(screen)
+			if box.get_area() < SHELL_ON_SCREEN * whole.get_area() or panels.any(func(p: Rect2) -> bool: return p.intersects(Rect2(box))):
+				continue
+			var drawn := _drawn(full, bare, fluid, box)
+			if drawn.on.size() < SHELL_PIXELS_NEEDED:
+				continue
+			_boxes.append(box)
+			var at := _px(w)
+			var one := _against_fluid(drawn)
+			one.merge({"id": e.id, "asset": asset, "px": [roundi(at.x), roundi(at.y)], "d": snappedf(at.distance_to(centre), 0.1)})
+			found.append(one)
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d)
+	var out := {"items": found, "count": found.size(), "achromatic": found.filter(func(x: Dictionary) -> bool: return x.achromatic).size()}
+	if found.is_empty():
+		return out
+	out.food_gap_min = found.map(func(x: Dictionary) -> float: return x.food_gap).min()
+	out.threat_gap_min = found.map(func(x: Dictionary) -> float: return x.threat_gap).min()
+	out.fluid_dL_min = found.map(func(x: Dictionary) -> float: return x.fluid_dL).min()
+	var each: Array = found.map(func(x: Dictionary) -> float: return x.fluid_dL_px)
+	out.fluid_dL_px_min = each.min()
+	each.sort()
+	out.fluid_dL_px_median = each[each.size() / 2]
+	return out
+
+
+## A landmark or the husk (the staged piece): its frames, then the same moment with that piece
+## hidden, for its silhouette in its projected box against the fluid frame.
+func _shoot_piece(scene: String) -> void:
+	var piece := _piece_node(str(_staged.get("id", "")))
+	if piece == null:
+		results[scene].error = "%s is not drawn" % _staged.get("id", "the piece")
+		return
+	var frames := await _shoot_common(scene)
+	piece.visible = false
+	var without := await _capture()
+	piece.visible = true
+	_save(scene, "nopiece", without)
+	var box := _screen_box(piece)
+	_boxes.append(box)
+	results[scene].readings.merge(_against_fluid(_drawn(frames[0], without, frames[1], box)))
+	results[scene].readings.box = [box.position.x, box.position.y, box.size.x, box.size.y]
+	_write_points(scene, frames[0])
+
+
+## The arrow home and the column's pip: the frames, then the moment with both markers hidden and
+## with the HUD's world overlay hidden.
+func _shoot_markers(scene: String) -> void:
+	var arrow := pool.markers.arrow()
+	var overlay: Control = main.hud.world_overlay
+	if arrow == null or not arrow.visible or overlay == null:
+		results[scene].error = "the arrow home is not showing"
+		return
+	var frames := await _shoot_common(scene)
+	pool.markers.visible = false
+	var bare := await _capture()
+	pool.markers.visible = true
+	overlay.visible = false
+	var plain := await _capture()
+	overlay.visible = true
+	_save(scene, "nomarkers", bare)
+	_save(scene, "nooverlay", plain)
+	var r: Dictionary = results[scene].readings
+	var mesh := arrow.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D
+	var core := _disc_point(frames[0], _px(mesh.global_transform * mesh.get_aabb().get_center()), ARROW_DISC_PX)
+	r.arrow_centre = core
+	r.arrow_L = core.L
+	var box := _screen_box(arrow)
+	_boxes.append(box)
+	r.arrow = _against_fluid(_drawn(frames[0], bare, frames[1], box))
+	var state: Dictionary = pool.markers.arrow_state()
+	r.arrow_state = {"distance_tm": snappedf(float(state.distance_tm), 0.1),
+		"direction": [snappedf(state.direction.x, 0.001), snappedf(state.direction.y, 0.001)]}
+	r.pip_present = 0
+	r.pip = {}
+	var pip: Dictionary = overlay.get("pip")
+	if pip.has("at"):
+		var at: Vector2 = pip.at
+		var pip_box := _disc_rect(at, Hud.WorldOverlay.PIP_RADIUS_PX + Hud.WorldOverlay.PIP_OUTLINE_PX + 2.0)
+		_boxes.append(pip_box)
+		var drawn := _drawn(frames[0], plain, frames[1], pip_box)
+		r.pip = {"at": [roundi(at.x), roundi(at.y)], "pixels": drawn.on.size()}
+		if not drawn.on.is_empty():
+			r.pip.color = reading(median_color(drawn.on))
+			r.pip_present = 1
+	_write_points(scene, frames[0])
+
+
+## The rebase pair (G10): frame A of the paused moment, A again with nothing changed, then a dev
+## rebase by REBASE_BY chunks routed as the pool routes it and frame B. A rebase never shows when B
+## matches A about as well as A matches itself.
+func _shoot_rebase(scene: String) -> void:
+	_boxes.clear()
+	var a := await _capture(FIRST_SETTLE)
+	var still := await _capture()
+	var before := [sim.world.origin_x_am, sim.world.origin_y_am]
+	if not sim.debug_rebase(REBASE_BY):
+		results[scene].error = "the dev rebase did not run"
+		return
+	var b := await _capture()
+	_save(scene, "", a)
+	_save(scene, "still", still)
+	_save(scene, "after", b)
+	var whole := Rect2i(Vector2i.ZERO, a.get_size())
+	var moved := delta_e_spread(a, b, whole, PARITY_STRIDE)
+	var same := delta_e_spread(a, still, whole, PARITY_STRIDE)
+	var r: Dictionary = results[scene].readings
+	r.render_info = _render_info()
+	r.origin_moved_am = [sim.world.origin_x_am - before[0], sim.world.origin_y_am - before[1]]
+	if not moved.is_empty():
+		r.median_dE = moved.median
+		r.p99_dE = moved.p99
+		r.max_dE = moved.max
+	if not same.is_empty():
+		r.still_median_dE = same.median
+		r.still_p99_dE = same.p99
+
+
+## The pixels a piece draws in `rect` (within `radius` of `center` when one is given): where `full`
+## differs from `without` (the moment without it) by more than SILHOUETTE_CHANGE in a channel, with
+## the fluid frame's pixels there. {"on", "behind" (PackedColorArray), "of" (pixels looked at)}.
+func _drawn(full: Image, without: Image, fluid: Image, rect: Rect2i, center := Vector2.INF, radius := 0.0) -> Dictionary:
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, full.get_size()))
+	var on := PackedColorArray()
+	var behind := PackedColorArray()
+	var of := 0
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			if radius > 0.0 and Vector2(x, y).distance_to(center) > radius:
+				continue
+			of += 1
+			var a := full.get_pixel(x, y)
+			var b := without.get_pixel(x, y)
+			if maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b))) > SILHOUETTE_CHANGE:
+				on.append(a)
+				behind.append(fluid.get_pixel(x, y))
+	return {"on": on, "behind": behind, "of": of}
+
+
+## A piece's drawn pixels (_drawn) against the fluid behind them: their medians, how many and what
+## share of the pixels looked at, |dL*| between the medians (fluid_dL), the median of each pixel's
+## own |dL*| (fluid_dL_px: texture and shading count there), and the LAB hue gaps from the food and
+## threat colours (180 for a colour under ACHROMATIC_C chroma). {"silhouette", "silhouette_behind",
+## "pixels", "share", "fluid_dL", "fluid_dL_px", "achromatic", "food_gap", "threat_gap"}.
+func _against_fluid(drawn: Dictionary) -> Dictionary:
+	var on: PackedColorArray = drawn.on
+	var piece := reading(median_color(on))
+	var behind := reading(median_color(drawn.behind))
+	var out := {"silhouette": piece, "silhouette_behind": behind, "pixels": on.size(),
+		"share": snappedf(on.size() / float(maxi(int(drawn.of), 1)), 0.01)}
+	if on.is_empty():
+		return out
+	out.fluid_dL = _dl(piece, behind)
+	var each := PackedFloat32Array()
+	for i in on.size():
+		each.append(absf(lab(on[i]).x - lab(drawn.behind[i]).x))
+	each.sort()
+	out.fluid_dL_px = snappedf(each[each.size() / 2], 0.1)
+	out.achromatic = piece.C < ACHROMATIC_C
+	out.food_gap = 180.0 if out.achromatic else snappedf(hue_gap(piece.h, hue(lab(Color(FOOD_HEX)))), 0.1)
+	out.threat_gap = 180.0 if out.achromatic else snappedf(hue_gap(piece.h, hue(lab(Color(THREAT_HEX)))), 0.1)
+	return out
+
+
+## The landmark layer's piece named `id` (an anchor's or a rare place's), or null.
+func _piece_node(id: String) -> Node3D:
+	for piece in pool.landmarks.pieces():
+		if str(piece.name) == id:
+			return piece
+	return null
+
+
+## The screen box round the bounding boxes of a node's visible meshes, clipped to the screen.
+func _screen_box(node: Node3D) -> Rect2i:
+	var box := Rect2i()
+	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		if mi.is_visible_in_tree():
+			var one := _project_box(mi.global_transform * mi.get_aabb())
+			box = box.merge(one) if box.has_area() else one
+	return box.intersection(Rect2i(Vector2i.ZERO, root.size))
+
+
+## The screen box round a world box's eight corners (unclipped).
+func _project_box(aabb: AABB) -> Rect2i:
+	var box := Rect2(_px(aabb.get_endpoint(0)), Vector2.ZERO)
+	for k in range(1, 8):
+		box = box.expand(_px(aabb.get_endpoint(k)))
+	return Rect2i(Vector2i(box.position.floor()), Vector2i(box.end.ceil()) - Vector2i(box.position.floor()))
 
 
 # --- Measuring -----------------------------------------------------------------------------------
@@ -1214,6 +1694,7 @@ func _write_report(gates: Array[Dictionary], failed: int) -> void:
 		"resolution": [window.x, window.y],
 		"body": BODY,
 		"seed": SEED,
+		"world": world,
 		"zoom": pool.camera.distance if pool != null else zoom,
 		"parity_with": parity_dir,
 		"gates": gates,
@@ -1346,6 +1827,31 @@ static func median_delta_e(a: Image, b: Image, rect: Rect2i, stride := 1, center
 		return NAN
 	d.sort()
 	return snappedf(d[d.size() / 2], 0.1)
+
+
+## The median, 99th percentile and largest CIE76 between two frames' pixels in `rect` (every
+## `stride`th one on both axes), to 0.1: {"median", "p99", "max"}; {} when no pixel lies in them.
+static func delta_e_spread(a: Image, b: Image, rect: Rect2i, stride := 1) -> Dictionary:
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, a.get_size()))
+	var d := PackedFloat32Array()
+	for y in range(area.position.y, area.end.y, stride):
+		for x in range(area.position.x, area.end.x, stride):
+			d.append(delta_e(a.get_pixel(x, y), b.get_pixel(x, y)))
+	if d.is_empty():
+		return {}
+	d.sort()
+	return {"median": snappedf(d[d.size() / 2], 0.1), "p99": snappedf(d[mini(d.size() - 1, int(d.size() * 0.99))], 0.1),
+		"max": snappedf(d[d.size() - 1], 0.1)}
+
+
+## The scenes --world=`world_name` stages by default: POOL_SCENES or ENDLESS_SCENES ([] for neither).
+static func scenes_for(world_name: String) -> Array[String]:
+	match world_name:
+		"pool":
+			return POOL_SCENES.duplicate()
+		"endless":
+			return ENDLESS_SCENES.duplicate()
+	return []
 
 
 ## The value at a dotted path in nested dictionaries ("lineup.cell.h"), or null.

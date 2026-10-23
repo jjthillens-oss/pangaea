@@ -11,8 +11,12 @@ extends TestCase
 ## projection for a camera outside the tree (as tests/test_pool_view.gd's _unproject). A tween bound
 ## to a node outside the tree does not step, so the meal ghost's flight across a rebase is checked
 ## in the tree, by tests/smoke/endless_smoke.gd; here the ghost is checked where it starts.
+##
+## The look probe's rebase_pair measures the same promise in the real renderers (tools/godot/
+## look_probe.gd, --world=endless); its pure parts are checked at the end of this file.
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
+const LookProbe := preload("res://tools/godot/look_probe.gd")
 const T := 180
 const TURN_TICKS := 120
 const SCREEN := Vector2(1920.0, 1080.0)
@@ -101,6 +105,43 @@ func test_particles_in_the_air_move_with_the_world() -> void:
 	for frame in range(T, T + 11):
 		worst = maxf(worst, (runs.frames[frame][0].fx as Vector3).distance_to(runs.frames[frame][1].fx))
 	check(worst <= 1e-4, "the burst keeps its place relative to the camera across the rebase (worst %.6f)" % worst)
+
+
+## The look probe reads its rebase pair over the whole frame: the median, the 99th percentile and
+## the largest CIE76 of the pixels it samples, so a few moved pixels show in p99 and max.
+func test_the_look_probe_reads_a_rebase_pair_by_its_spread() -> void:
+	var a := Image.create(20, 10, false, Image.FORMAT_RGB8)
+	a.fill(Color.BLACK)
+	var b := a.duplicate() as Image
+	var whole := Rect2i(0, 0, 20, 10)
+	check_eq(LookProbe.delta_e_spread(a, b, whole), {"median": 0.0, "p99": 0.0, "max": 0.0}, "the same frame")
+	b.set_pixel(19, 9, Color.WHITE)
+	var one := LookProbe.delta_e_spread(a, b, whole)
+	check_eq([one.median, one.p99, one.max], [0.0, 0.0, 100.0], "one pixel of 200 changed: above the 99th percentile")
+	b.set_pixel(18, 9, Color.WHITE)
+	b.set_pixel(17, 9, Color.WHITE)
+	check_eq(LookProbe.delta_e_spread(a, b, whole).p99, 100.0, "three of 200 reach it")
+	check_eq(LookProbe.delta_e_spread(a, b, whole, 2).max, 0.0, "every second pixel on both axes: row 9 is not sampled")
+	check(LookProbe.delta_e_spread(a, b, Rect2i(30, 0, 5, 5)).is_empty(), "no pixel, no spread")
+
+
+## --world=endless stages the endless scenes and judges them by the endless gates; the pool keeps
+## its own scenes and looks, so today's commands and baselines are unchanged (content doc section 10).
+func test_the_look_probe_keeps_the_endless_scenes_apart_from_the_pool() -> void:
+	check_eq(str(LookProbe.scenes_for("pool")), str(LookProbe.POOL_SCENES), "the pool's scenes by default there")
+	check_eq(str(LookProbe.scenes_for("endless")), str(LookProbe.ENDLESS_SCENES), "the endless sea's there")
+	check(LookProbe.scenes_for("nowhere").is_empty(), "no other world")
+	check_eq(str(LookProbe.SCENES), str(LookProbe.POOL_SCENES + LookProbe.ENDLESS_SCENES), "every scene is one world's")
+	check_eq(LookProbe.LOOK_WORLDS.keys(), LookProbe.GATES.keys(), "every look measures one world")
+	for look: String in LookProbe.GATES:
+		var world: String = LookProbe.LOOK_WORLDS.get(look, "")
+		for gate: Dictionary in LookProbe.GATES[look]:
+			check(LookProbe.scenes_for(world).has(gate.path.get_slice(".", 0)), "%s/%s reads a %s scene: %s" % [look, gate.id, world, gate.path])
+	var paths: Array = LookProbe.GATES.endless.map(func(g: Dictionary) -> String: return g.path)
+	for scene in LookProbe.ENDLESS_SCENES:
+		check(paths.any(func(path: String) -> bool: return path.begins_with(scene + ".")), "an endless gate reads %s" % scene)
+	for path in ["rebase_pair.median_dE", "rebase_pair.p99_dE", "markers.pip_present"]:
+		check(paths.has(path), "the endless gates read %s" % path)
 
 
 # --- the runs ---

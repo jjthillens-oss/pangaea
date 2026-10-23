@@ -21,7 +21,8 @@ const PLAIN_TINTS: PackedStringArray = ["", "#FFFFFF"]
 ## asset -> {mesh: Mesh, offset: Transform3D (the mesh node under the GLB root), override: Material,
 ## tinted: bool}; null for an asset that has no GLB.
 var _pieces := {}
-## asset -> [{id, key, transform: Transform3D (frame, without the offset), color: Color}], in add order
+## asset -> [{id, key, transform: Transform3D (frame, without the offset), color: Color, radius: float
+## (the collider's, tm)}], in add order
 var _instances := {}
 
 
@@ -30,7 +31,7 @@ func build_pool(layout: PoolLayout) -> void:
 	clear()
 	var shells := []
 	for rock in layout.rocks:
-		shells.append({"id": rock.id, "position": rock.center, "kind": "shell", "asset": rock.asset,
+		shells.append({"id": rock.id, "position": rock.center, "radius": rock.radius, "kind": "shell", "asset": rock.asset,
 			"yaw_deg": rock.yaw_deg, "scale": rock.scale, "tint": ""})
 	add_chunk(POOL_KEY, shells)
 
@@ -61,7 +62,7 @@ func add_chunk(key: Variant, shells: Array) -> void:
 		if not _instances.has(asset):
 			_instances[asset] = []
 		_instances[asset].append({"id": str(s.id), "key": key, "transform": Transform3D(basis, WorldSpace.to_frame(self, s.position)),
-			"color": color})
+			"color": color, "radius": float(s.get("radius", 0.0))})
 		touched[asset] = true
 	for asset in touched:
 		_write(asset)
@@ -88,7 +89,7 @@ func renormalize() -> void:
 		_write(asset)
 
 
-## The instances of `asset`, in add order: [{id, key, transform (in this node's frame), color}].
+## The instances of `asset`, in add order: [{id, key, transform (in this node's frame), color, radius}].
 func instances_of(asset: String) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for e in _instances.get(asset, []):
