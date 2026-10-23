@@ -489,6 +489,25 @@ func test_chunk_events_carry_the_chunks_content_in_local_tm() -> void:
 	check(seen >= 9, "checked %d chunks" % seen)
 
 
+## B-15: a chunk_loaded place carries the place's yaw and mirror, and its position in local tm.
+func test_chunk_events_carry_places_with_their_yaw_and_mirror() -> void:
+	var sim := _endless(SEED, null, false)
+	var key := FakeWorldGen.PLACE_CHUNK
+	var centre := Vector2(32.0 * key.x + 16.0, 32.0 * key.y + 16.0)
+	check(sim.debug_teleport_abs(centre.x + 10.0, centre.y), "beside the place")
+	var places := []
+	for e in _of(sim.drain_events(), "chunk_loaded"):
+		if e.key == key:
+			places = e.places
+	check_eq(places.size(), 1, "the chunk's place")
+	if places.size() == 1:
+		check_eq(places[0].id, "p_f_husk", "id")
+		check_eq(places[0].kind, "giant_husk", "kind")
+		check_eq(places[0].yaw_deg, FakeWorldGen.PLACE_YAW, "yaw_deg")
+		check_eq(places[0].mirror, true, "mirror")
+		check_eq(places[0].position, Vector2(-10.0, 0.0), "local position")
+
+
 ## Events keep the frame of their place in the drained list: a chunk_loaded after a rebased is in
 ## the new frame, one before it in the old (spine 3.12). Drained once after a long swim.
 func test_chunk_events_carry_positions_in_the_frame_of_their_place() -> void:
@@ -858,6 +877,8 @@ func test_a_sleeper_lies_still_and_no_brain_keeps_it_as_a_target() -> void:
 	other.brain.seen[c.id] = {"position": c.motion.position, "velocity": Vector2.ZERO, "tick": sim.tick, "by": "sight",
 		"species": "rammer", "radius": c.phenotype.radius, "engageable": true}
 	other.brain.landed_on[c.id] = sim.tick
+	c.brain.seen[other.id] = {"position": other.motion.position, "velocity": Vector2.ZERO, "tick": sim.tick, "by": "sight",
+		"species": "rammer", "radius": other.phenotype.radius, "engageable": true}
 	c.motion.velocity = Vector2(1.0, 0.5)
 	c.motion.prev_position = c.motion.position - Vector2(0.1, 0.0)
 	c.motion.prev_heading = c.motion.heading + 0.2
@@ -873,6 +894,7 @@ func test_a_sleeper_lies_still_and_no_brain_keeps_it_as_a_target() -> void:
 	check(not other.brain.landed_on.has(c.id), "its hits too")
 	check(other.brain.target != c.id, "not a target")
 	check(not sim.creatures.engaged_on_player.has(c.id), "no token")
+	check(c.brain.seen.is_empty(), "and it forgets what it had seen (B-21)")
 
 
 ## G17: a sleeper is not among the bodies the senses read.

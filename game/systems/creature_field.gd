@@ -365,8 +365,9 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 
 
 ## Endless mode (S1 core C-7): `c` sleeps where it lies. It leaves the awake list and its think slot,
-## stops (no velocity, an idle drive, its previous pose its pose, so no view interpolates it), and
-## every awake brain forgets it as if it had gone, the token following.
+## stops (no velocity, an idle drive, its previous pose its pose, so no view interpolates it), forgets
+## what it had seen (B-21: it re-decides on waking), and every awake brain forgets it as if it had
+## gone, the token following.
 func sleep(c: Creature, tick: int) -> void:
 	c.asleep = true
 	_release_slot(c)
@@ -375,6 +376,8 @@ func sleep(c: Creature, tick: int) -> void:
 	c.motion.prev_position = c.motion.position
 	c.motion.prev_heading = c.motion.heading
 	c.drive = idle_drive(c.motion.heading)
+	if c.brain != null:
+		c.brain.seen.clear()
 	for other in _awake:
 		if other.brain != null:
 			CreatureBrain.on_target_gone(other.brain, c.id, tick)

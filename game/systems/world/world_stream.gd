@@ -696,7 +696,8 @@ func _chunk_loaded_event(ch: WorldChunk) -> Dictionary:
 		anchors.append({"id": a.id, "position": local_of_tm(float(a.x), float(a.y)), "model": a.model, "dressing": a.dressing})
 	var places := []
 	for p in ch.places:
-		places.append({"id": p.id, "kind": p.kind, "position": local_of_tm(float(p.x), float(p.y))})
+		places.append({"id": p.id, "kind": p.kind, "position": local_of_tm(float(p.x), float(p.y)), "yaw_deg": float(p.yaw_deg),
+			"mirror": bool(p.mirror)})
 	return {"type": "chunk_loaded", "key": ch.key, "shells": shells, "zones": zones, "anchors": anchors, "places": places}
 
 
