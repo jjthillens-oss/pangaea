@@ -417,6 +417,59 @@ func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
 			"and no request for %s is left with the loader (each was made once and taken once)" % path.get_file())
 
 
+## S2G26: a growth draws shells and lair mouths the cell has not seen yet, so their GLBs start loading
+## on worker threads when the sea is set up, and none loads in the growth's frame.
+func test_the_kits_shell_pieces_and_the_lair_mouth_load_on_worker_threads_from_setup() -> void:
+	# From a clean slate: pending loads taken first, and the mouth dropped.
+	for path: String in RockField._loading.keys():
+		RockField._loading.erase(path)
+		ResourceLoader.load_threaded_get(path)
+	if SiltTrail._mouth_loading:
+		SiltTrail._take_mouth()
+	SiltTrail._mouth_scene = null
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var kit: PlacementKit = pool.session.world.kit
+	var shells := PackedStringArray()
+	for id: String in kit.assets:
+		if str(kit.assets[id].kind) == "shell":
+			shells.append(id)
+	check(shells.size() >= 5, "the kit has shell pieces (%d)" % shells.size())
+	var pending := PackedStringArray()
+	for id in shells:
+		var path := RockField.ASSET_PATH % id
+		check(RockField._loading.has(path) or pool.rocks._pieces.has(id),
+			"setup starts loading %s (or a chunk in view has taken it)" % id)
+		if RockField._loading.has(path):
+			pending.append(id)
+	check(not pending.is_empty(), "some shells are not in view at the start, and they load ahead (%s)" % [pending])
+	check(SiltTrail._mouth_loading, "the lair mouth starts loading too, though no Lurker lives at size 1")
+	var shells_in := []
+	for i in pending.size():
+		shells_in.append({"id": "pending_%d" % i, "position": Vector2(3.0 * i, 0.0), "radius": 1.0, "kind": "shell",
+			"asset": pending[i], "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	pool.rocks.add_chunk(Vector2i(77, 77), shells_in)
+	for id in pending:
+		check(not RockField._loading.has(RockField.ASSET_PATH % id) and pool.rocks.multimesh_of(id) != null,
+			"a chunk draws %s from its load" % id)
+	pool.silt_trail.resize(2)
+	pool.silt_trail.add_chunk(Vector2i(78, 78), FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0))
+	check(not pool.silt_trail.mouths().is_empty() and not SiltTrail._mouth_loading, "and the first mouths from the mouth's")
+	check(SiltTrail._mouth_scene != null, "which is kept for the run")
+	SiltTrail._mouth_scene = null
+	SiltTrail.request_mouth()
+	check(SiltTrail._mouth_loading, "(a new request)")
+	RockField.request_pieces(kit)
+	check(not RockField._loading.is_empty(), "(and new shell requests)")
+	pool.free()
+	check(RockField._loading.is_empty() and not SiltTrail._mouth_loading,
+		"the field and the trail take every load still pending as they go, so none leaks at exit")
+	for id in shells:
+		check_eq(ResourceLoader.load_threaded_get_status(RockField.ASSET_PATH % id), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+			"no request for %s is left with the loader" % id)
+	check_eq(ResourceLoader.load_threaded_get_status(SiltTrail.MOUTH_GLB), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+		"nor for the mouth")
+
+
 func test_a_landmark_shows_its_model_yaw_scale_tint_and_growth() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var kit: PlacementKit = pool.session.world.kit

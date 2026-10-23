@@ -272,6 +272,8 @@ func _build() -> void:
 		# the stream itself, and their queued create-time events change nothing (idempotent).
 		rim_node.visible = false   # the dish wall is the pool's edge; the sea has none
 		rocks.clear()
+		RockField.request_pieces(session.world.kit)   # S2G26: no GLB loads in a growth's frame
+		SiltTrail.request_mouth()
 		landmarks.setup(session.world.kit)
 		silt_trail.setup(sim.species, sim_size())
 		zone_lights.build([])
