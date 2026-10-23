@@ -44,6 +44,14 @@ extends RefCounted
 ## margin). A zone entering the ring regrows one item a tick, out of view. Over caps.food_items the
 ## farthest zones wholly out of view are trimmed. A new world, a Continue and a teleport fill every
 ## food zone at once (S1 core C-9).
+##
+## Growth (S2). With a meter (PoolSim.growth), step 1 grows the cell when the meter says it is due
+## (grow): the world is re-expressed one size up round the cell's absolute point, and for the beat
+## after it the load step loads beat_loads_per_tick chunks a tick. The next size's settle point is a
+## pure function of the cell's absolute point (next_size_clear_point, BP-4); a last step (_prefetch)
+## generates the next size's chunks round the cell a few at a time while the ring is nearly full, so
+## the point and the growth tick seldom generate them. Neither cache changes a result, and neither
+## is in the snapshot.
 
 ## tm: look_ahead_max (2.5) + spawn_view_margin_m (1.0) + MAX_ZONE_RADIUS_TM. Every zone touching the
 ## view plus its margin has its centre in a view-set chunk (S1 core C-1).
@@ -54,8 +62,9 @@ const MAX_ZONE_RADIUS_TM := 8.0
 const PLANKTON_POSITIONS: PackedStringArray = ["position", "anchor"]
 const CARRION_POSITIONS: PackedStringArray = ["position"]
 ## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
-## watching, noticing, chasing, attacking, fleeing or going home. _calm tests them without a key.
-const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+## watching, noticing, chasing, attacking, fleeing or going home. The set is the brain's (D-62); this
+## name stays for tests/test_perf_world_caches.gd, which reads it.
+const CALM := CreatureBrain.CALM
 ## Look-ahead generation: tm beyond the load ring a chunk may be generated ahead, how many are kept,
 ## how far ahead along its velocity (s) the cell is taken to be, and how long (ticks) a look that
 ## found nothing to generate waits before the next.
@@ -108,7 +117,8 @@ var _chunks := {}                      ## Vector2i -> WorldChunk (absolute)
 var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 ## site id -> {id, species, home: Vector2, heading, territory: {} or {center: Vector2, radius},
 ## reach: {center: Vector2, radius}, chunks: Array[Vector2i], home_chunk: Vector2i, abs: the
-## WorldChunk's site}: the loaded live sites, local. Read it freely; only _load_chunk and
+## WorldChunk's site, and for a two-post site (S2) posts: [{home, heading, territory}] x 2}: the
+## loaded live sites, local. Read it freely; only _load_chunk and
 ## _unload_chunk add or remove a site (they keep the home and role counts below with it). A site
 ## added or removed elsewhere is taken in when the table's size no longer matches those counts
 ## (they are recounted then); one that replaces another at the same size goes unseen.
@@ -195,6 +205,22 @@ var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, vi
 ## Each is [the body's absolute x, y (tm) at the scan, that distance, the ring], or empty.
 var _load_bound := PackedFloat64Array()
 var _unload_bound := PackedFloat64Array()
+## The next size (S2, BP-4). The new-size chunks round the cell's new-size chunk, Vector2i -> WorldChunk
+## at _next_size (size + 1 while the ring fills; the new size itself through the growth tick's beat,
+## whose loads take from it), absolute tm with no local positions; the arena of the 3 x 3 of them
+## round _next_key in its own frame (origin the cell's absolute point _next_from, at the new size);
+## and the rings the point's spiral may go out (growth.wedge_tm / CLEAR_SPIRAL_STEP_M). WorldGen.chunk
+## is pure, so a chunk from here is the one a load would make: the caches never change a result.
+var _next_chunks := {}
+var _next_arena: ChunkArena = null
+var _next_key := Vector2i.MAX
+var _next_from := PackedFloat64Array()
+var _next_size := 0
+var wedge_rings := 4
+## Tests turn this off to show the caches never change a result (S2G35): every point is then
+## computed from freshly generated chunks, and nothing is prefetched or taken from the cache.
+var next_cache := true
+var _growing := false                  ## inside grow: its loads take from the next size's chunks
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -210,6 +236,7 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	w.rebase_step_tm = config.rebase_step_tm
 	w.world_seed = p_gen.world_seed
 	w.gen_version = p_gen.gen_version
+	w.wedge_rings = ceili(float(config.growth.wedge_tm) / PoolSim.CLEAR_SPIRAL_STEP_M)
 	var spawn: PackedFloat64Array = p_content.home.spawn
 	w.checkpoint_am = PackedFloat64Array([spawn[0], spawn[1], p_content.home.spawn_heading, float(w.size)])
 	w.origin_x_am = spawn[0]
@@ -218,12 +245,19 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 
 
 ## The streaming block, first in every endless tick (spine 3.11): a pending respawn (step 0), the
-## floating origin (step 2), unload (step 3), load (step 4), sleep and wake (step 5), then the food
-## view (step 6). Load, unload and food always measure from the body, alive or dead; sleep and wake
-## from every place the cell has (PoolSim._player_places), the same for steps 4 and 5.
+## growth tick when the meter is due (step 1, S2), the floating origin (step 2), unload (step 3),
+## load (step 4), sleep and wake (step 5), the food view (step 6), then the next size's prefetch (S2,
+## BP-4). Load, unload and food always measure from the body, alive or dead; sleep and wake from
+## every place the cell has (PoolSim._player_places), the same for steps 4 and 5.
 func step(sim: PoolSim) -> void:
 	if sim.respawn_pending:
 		_respawn(sim)
+	var g := sim.growth
+	if g != null and g.due:
+		if not sim.dead and not sim.respawn_pending and size < max_size:
+			grow(sim)
+		else:
+			g.due = false
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
@@ -235,6 +269,8 @@ func step(sim: PoolSim) -> void:
 		_look_ahead(sim)
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
+	if g != null:
+		_prefetch(sim)
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -305,6 +341,36 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 	_rederive(sim)
 
 
+## The size the world is expressed at (S2): every local tm is 1.6^(n - 1) am. Forgets what was kept
+## for the old size: the next size's caches, the chunks generated ahead, and the ring and wake bounds
+## (they hold tm at the old size). The caller re-expresses the world (grow, set_size_teleport).
+func set_size(n: int) -> void:
+	size = n
+	_tm_to_am = WorldConfig.tm_to_am(n)
+	_clear_next()
+	_ahead.clear()
+	_load_bound = PackedFloat64Array()
+	_unload_bound = PackedFloat64Array()
+	_wake_bound.clear()
+	_swum_from = Vector2.INF
+
+
+## D-76: the world at size `n` round the cell's absolute place, by the teleport path: every remnant
+## leaves ("unloaded"), the checkpoint keeps its place and heading at size n, the creature field takes
+## size n's records, and the view set round the place loads. The caller places the cell
+## (PoolSim.debug_set_size).
+func set_size_teleport(sim: PoolSim, n: int) -> void:
+	var a := sim.absolute_position_am()
+	if sim.remnants != null:
+		for r in sim.remnants.items.duplicate():
+			sim.remnants.remove(r, "unloaded", sim.tick)
+	set_size(n)
+	checkpoint_am[3] = float(n)
+	if sim.creatures != null:
+		sim.creatures.set_size(n)
+	teleport(sim, a[0], a[1])
+
+
 ## Moves the origin by `offset` (tm, whole chunks in each axis): every position the sim stores moves
 ## by -offset. Bodies (with their previous positions, so the view's interpolation stays continuous),
 ## actors, every creature's memories (sleepers too) and food items shift by it exactly; zones and
@@ -340,6 +406,11 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 			mem.home -= offset
 			if mem.territory_center.is_finite():
 				mem.territory_center -= offset
+			RebaseShift.posts(mem, offset)   # S2: a two-post brain's posts and union leash (D-83)
+	if sim.remnants != null:
+		for r in sim.remnants.items:   # S2: a remnant is a body and an actor, with no brain
+			RebaseShift.motion(r.motion, offset)
+			r.actor.position -= offset
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
 	if _swum_from.is_finite():
@@ -361,17 +432,21 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 
 
 ## The teleport path (spine 3.11 step 0, D-10), behind a camera cut: every loaded chunk unloads,
-## every creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
+## every remnant and creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
 ## point exactly (rebased), and the view set round it loads at once, its food zones flagged to fill
 ## at once (C-9). The caller places the cell near the new origin.
 func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	for key in _keys.duplicate():
 		_unload_chunk(sim, key)
+	if sim.remnants != null:
+		for r in sim.remnants.items.duplicate():
+			sim.remnants.remove(r, "unloaded", sim.tick)
 	if sim.creatures != null:
 		for c in sim.creatures.creatures.duplicate():
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
 	_ahead.clear()
+	_clear_next()
 	_wake_bound.clear()
 	_swum_from = Vector2.INF
 	var old_x := origin_x_am
@@ -391,6 +466,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 ## first), the rest of the creatures and every carrion item go, the origin becomes the checkpoint
 ## (rebased), its view set loads with every food zone filled, and the cell comes back at the origin.
 func _respawn(sim: PoolSim) -> void:
+	_clear_next()
 	var near := true
 	for key in view_set_keys(checkpoint_local()):
 		if not _chunks.has(key):
@@ -530,6 +606,7 @@ func snapshot(sim: PoolSim) -> Dictionary:
 	}
 	if sim.growth != null:
 		out["growth"] = sim.growth.snapshot()
+		out["remnants"] = sim.remnants.snapshot()
 		var radii := {}
 		var lifetimes := {}
 		var carrion := sim.carrion
@@ -596,8 +673,9 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 
 ## Forgets one chunk: the creatures of the sites homed in it leave ("unloaded", in (number, id)
 ## order) with their queue entries and site records, its zones' plankton is dropped and the zones
-## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene.
-func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
+## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene; with its
+## `reason` when one is given (the growth tick's "growth", D-67), so S1's payload is unchanged.
+func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "") -> void:
 	var ch: WorldChunk = _chunks[key]
 	if _home_count != sites.size():
 		_index_homes()
@@ -631,15 +709,19 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_chunks.erase(key)
 	_keys.erase(key)
 	_load_bound = PackedFloat64Array()   # a missing chunk now
-	_emit(sim, {"type": "chunk_unloaded", "key": key})
+	var event := {"type": "chunk_unloaded", "key": key}
+	if not reason.is_empty():
+		event["reason"] = reason
+	_emit(sim, event)
 
 
 # --- step 4: load ---
 
 ## Loads the nearest missing chunk within the load ring (ties by key), up to caps.loads_per_tick a
-## tick, after the sleepers that wake this tick have their site chunks. With caps.chunks loaded, the
-## nearest missing chunk of the view set loads instead (never refused), and chunk_waits counts each
-## time the nearest missing chunk had to give way or wait (B-5: a backstop a swim should never need).
+## tick (during a growth's beat, at least growth.beat_loads_per_tick: D-80), after the sleepers that
+## wake this tick have their site chunks. With caps.chunks loaded, the nearest missing chunk of the
+## view set loads instead (never refused), and chunk_waits counts each time the nearest missing chunk
+## had to give way or wait (B-5: a backstop a swim should never need).
 func _load(sim: PoolSim, view_from: Dictionary) -> void:
 	# The sleepers step 5 will wake: their reach chunks load first, never refused and never counted.
 	for c in _wakers(sim, view_from):
@@ -648,7 +730,10 @@ func _load(sim: PoolSim, view_from: Dictionary) -> void:
 				_load_chunk(sim, key)
 	var body := sim.motion.position
 	var view: Array[Vector2i] = []
-	for i in int(caps.loads_per_tick):
+	var per_tick := int(caps.loads_per_tick)
+	if sim.growth != null and sim.tick < sim.growth.beat_until:
+		per_tick = maxi(per_tick, int(sim.growth.cfg.beat_loads_per_tick))
+	for i in per_tick:
 		var key: Variant = _nearest_missing(body, float(rings.load))
 		if key == null:
 			break
@@ -732,14 +817,18 @@ static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: f
 ## Loads one chunk: its colliders into the arena, its zones into the region (each with its own
 ## plankton stream, seeded from the world seed, the generator version and the zone's id, so a zone's
 ## food is the same whatever route reaches it), then every awake body and the cell are settled
-## against the new colliders, and chunk_loaded tells the scene.
-func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
-	var ch := _generated(key)
+## against the new colliders unless `settle` is false (the growth tick settles the cell itself, D-67),
+## and chunk_loaded tells the scene. In the growth tick and its beat the chunk comes from the next
+## size's cache when it is there (BP-4).
+func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
+	var ch: WorldChunk = null
+	if _next_size == size and next_cache and (_growing or (sim.growth != null and sim.tick < sim.growth.beat_until)):
+		ch = _next_chunks.get(key)
+		_next_chunks.erase(key)
+	if ch == null:
+		ch = _generated(key)
 	_loads += 1
-	var colliders: Array[Dictionary] = []
-	for s in ch.shells:
-		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
-	(sim.arena as ChunkArena).add_chunk(key, colliders)
+	(sim.arena as ChunkArena).add_chunk(key, _colliders(ch))
 	for z in ch.zones:
 		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
 			float(z.growth_rate))
@@ -760,18 +849,26 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 				sim.creatures._enqueue(s.id, s.species, sim.tick)
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
-	if sim.creatures != null:
+	if settle and sim.creatures != null:
 		for c in sim.creatures.awake():
 			sim.arena.settle(c.motion, c.phenotype.radius)
 			c.actor.position = c.motion.position
-	if sim.motion != null and not sim.dead:
+	if settle and sim.motion != null and not sim.dead:
 		sim.arena.settle(sim.motion, sim.phenotype.radius)
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
 	_chunks[key] = ch
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
-	_emit(sim, _chunk_loaded_event(ch))
+	_emit(sim, chunk_loaded_event(ch))
 	_apply_caps(sim)
+
+
+## A chunk's colliders as ChunkArena.add_chunk takes them ({id, x, y, r}: absolute tm at its size).
+static func _colliders(ch: WorldChunk) -> Array[Dictionary]:
+	var colliders: Array[Dictionary] = []
+	for s in ch.shells:
+		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
+	return colliders
 
 
 ## Chunk `key` at the current size: the one generated ahead when there is one (taken), else now.
@@ -1029,16 +1126,10 @@ func _hold_pass(sim: PoolSim, view_from: Dictionary) -> void:
 			sim.creatures.let_go(c, sim.tick)
 
 
-## Whether the creature's (state/phase) is in CALM, without building the key (a pass asks for every
-## awake creature; tests/test_perf_world_caches.gd holds the two together).
+## Whether the creature's (state/phase) is in CALM (the brain's own test, D-62; a pass asks it of every
+## awake creature).
 static func _calm(c: CreatureField.Creature) -> bool:
-	var m := c.brain
-	var state := m.state
-	if state == "forage":
-		return m.phase == "seek" or m.phase == "eat"
-	if state == "rest":
-		return m.phase == "lurk" or m.phase == ""
-	return state == "wander" and m.phase == "patrol"
+	return CreatureBrain.is_calm(c.brain)
 
 
 ## {creature id: think slot} of the awake creatures, sorted by id.
@@ -1048,6 +1139,286 @@ func _slots(sim: PoolSim) -> Dictionary:
 		for c in sim.creatures.awake():
 			out[c.id] = c.think_slot
 	return _sorted_dict(out)
+
+
+# --- growth (S2) ---
+
+## The cell's settle point at the next size (BP-4), in the current frame, or Vector2.INF when it is
+## wedged there. A pure function of the cell's absolute point A, the size and the cell's radius: the
+## spiral (PoolSim.clear_point_on) at size + 1, round A, in an arena of the 3 x 3 new-size chunks round
+## A's new-size chunk with its origin at A, out to wedge_rings rings (2 tm). The growth tick's settle
+## lands on the same point bit for bit (grow step 6). Below the build top only.
+func next_size_clear_point(sim: PoolSim) -> Vector2:
+	var a := abs_of_local(sim.motion.position)
+	var q := _next_point(a, sim.phenotype.radius)
+	if not q.is_finite():
+		return Vector2.INF
+	var s1 := WorldConfig.tm_to_am(size + 1)
+	return local_of_abs(a[0] + float(q.x) * s1, a[1] + float(q.y) * s1)
+
+
+## next_size_clear_point's spiral, in the next size's frame (origin `a`, tm at size + 1). The arena is
+## built again only when A's new-size chunk changes, and moved to A whenever A changes.
+func _next_point(a: PackedFloat64Array, r: float) -> Vector2:
+	if _next_size != size + 1 or not next_cache:
+		_clear_next()
+		_next_size = size + 1
+	var s1 := WorldConfig.tm_to_am(size + 1)
+	var key := Vector2i(floori(a[0] / s1 / chunk_tm), floori(a[1] / s1 / chunk_tm))
+	if _next_arena == null or key != _next_key:
+		var arena := ChunkArena.create_endless(chunk_tm)
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var k := Vector2i(key.x + dx, key.y + dy)
+				arena.add_chunk(k, _colliders(_next_chunk(k)))
+		_next_arena = arena
+		_next_key = key
+		_next_from = PackedFloat64Array()
+	if _next_from != a:
+		_next_arena.set_origin(a[0] / s1, a[1] / s1)   # the expression _rederive's set_origin makes at A
+		_next_from = a.duplicate()
+	return PoolSim.clear_point_on(_next_arena, Vector2.ZERO, r, wedge_rings)
+
+
+## The next size's chunk `key`: from the cache, else generated now and kept (a miss never changes a
+## result: WorldGen.chunk is pure).
+func _next_chunk(key: Vector2i) -> WorldChunk:
+	var ch: WorldChunk = _next_chunks.get(key)
+	if ch == null:
+		ch = gen.chunk(size + 1, key.x, key.y)
+		if next_cache:
+			_next_chunks[key] = ch
+	return ch
+
+
+func _clear_next() -> void:
+	_next_chunks = {}
+	_next_arena = null
+	_next_key = Vector2i.MAX
+	_next_from = PackedFloat64Array()
+	_next_size = 0
+
+
+## The last streaming step (BP-4): while the ring is nearly full (meter >= prefetch_share x ring) below
+## the build top and the cell is alive, at most growth.prefetch_per_tick missing chunks of the 5 x 5
+## new-size keys round the cell's new-size chunk are generated and kept, nearest first by the distance
+## from the cell to the key's centre (ties by y, then x); keys that left the 5 x 5 are dropped. Any
+## other tick forgets the cache, except the growth tick and its beat, whose loads take from it.
+func _prefetch(sim: PoolSim) -> void:
+	var g := sim.growth
+	if sim.tick < g.beat_until:
+		return
+	if not next_cache or sim.dead or sim.respawn_pending or size >= max_size or g.meter < g.prefetch_share * g.ring(size):
+		if _next_size != 0:
+			_clear_next()
+		return
+	if _next_size != size + 1:
+		_clear_next()
+		_next_size = size + 1
+	var s1 := WorldConfig.tm_to_am(size + 1)
+	var a := abs_of_local(sim.motion.position)
+	var x := a[0] / s1
+	var y := a[1] / s1
+	var c := Vector2i(floori(x / chunk_tm), floori(y / chunk_tm))
+	for key: Vector2i in _next_chunks.keys():
+		if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
+			_next_chunks.erase(key)
+	for i in g.prefetch_per_tick:
+		var best := Vector2i.MAX
+		var best_d := INF
+		for ky in range(c.y - 2, c.y + 3):   # (y, x) order: the first of equal distances is the least key
+			for kx in range(c.x - 2, c.x + 3):
+				var key := Vector2i(kx, ky)
+				if _next_chunks.has(key):
+					continue
+				var dx := (kx + 0.5) * chunk_tm - x
+				var dy := (ky + 0.5) * chunk_tm - y
+				var d := dx * dx + dy * dy
+				if d < best_d:
+					best = key
+					best_d = d
+		if best == Vector2i.MAX:
+			return
+		_next_chunks[best] = gen.chunk(size + 1, best.x, best.y)
+
+
+## The growth tick (streaming step 1; plan B.4, s2-sim 3.7 as BP-4 changes it), when the meter is due
+## below the build top with the cell alive. In order:
+## 1. Record the cell's absolute point A and previous point, and the next size's point q round A;
+##    emit growth_began.
+## 2. Every awake body, then every remnant, in order, converts by its ladder role at n + 1 (D-68, D-87):
+##    rival or prey to a remnant (the nearest remnants.cap of them by (distance, id); the rest to haze,
+##    remnant_overflow once, D-78), morsel to a carrion morsel, anything else (and a scripted body) to
+##    haze; each leaves its list and emits creature_converted after its morsel's carrion_spawned.
+## 3. Sleepers leave ("growth"); carrion within the food ring shrinks by 1.6 in radius and energy
+##    (points from the energy as a spawn would), carrion beyond it expires ("growth"), the morsels just
+##    made are kept as they are (D-66); plankton becomes haze; every chunk unloads ("growth"); caps.
+## 4. Size n + 1 with the origin exactly A: the cell at (0, 0), its previous point and the remnants and
+##    carrion again from their absolute values, its velocity / 1.6; the field takes size n + 1.
+## 5. The view set round A loads (from the next size's cache) without settling; every zone fills.
+## 6. The cell settles by the spiral on the new arena: when q was finite this is q bit for bit
+##    (push_error otherwise; test_growth_tick fails on it). The remnants settle.
+## 7. The checkpoint is the settled point at n + 1; full energy; the shelter; the meter starts again;
+##    the beat; the contact is forgotten.
+## 8. Emit grew.
+## Every event before step 4 is in the old frame (D-65); chunk_loaded and grew (but its haze) in the
+## new one. No rebased is emitted.
+func grow(sim: PoolSim) -> void:
+	var g := sim.growth
+	var n := size
+	var f := WorldConfig.GROWTH_FACTOR
+	var cell := sim.motion
+	var r_cell := sim.phenotype.radius
+	# 1. Record.
+	var a := abs_of_local(cell.position)
+	var ap := abs_of_local(cell.prev_position)
+	var q := _next_point(a, r_cell)
+	_emit(sim, {"type": "growth_began", "from": n, "to": n + 1, "center_old": cell.position,
+		"center_am": [a[0], a[1]], "factor": f})
+	# 2. The awake bodies, then the remnants.
+	var bodies: Array[CreatureField.Creature] = []
+	if sim.creatures != null:
+		bodies.append_array(sim.creatures.awake())
+	bodies.append_array(sim.remnants.items)
+	var fates := {}
+	var recs := {}
+	var kept: Array[CreatureField.Creature] = []
+	for c in bodies:
+		var fate := "haze"
+		if not c.scripted and sim.species != null and sim.species.has_species(c.species_id):
+			var rec := sim.species.at_size(c.species_id, n + 1, sim.catalog)
+			var role := str(rec.get("ladder_role", ""))
+			if role == "rival" or role == "prey":
+				fate = "remnant"
+				kept.append(c)
+			elif role == "morsel":
+				fate = "morsel"
+			recs[c] = rec
+		fates[c] = fate
+	if kept.size() > sim.remnants.cap:
+		var at := cell.position
+		kept.sort_custom(func(x: CreatureField.Creature, y: CreatureField.Creature) -> bool:
+			var dx := at.distance_to(x.motion.position)
+			var dy := at.distance_to(y.motion.position)
+			return dx < dy or (dx == dy and x.id < y.id))
+		for i in range(sim.remnants.cap, kept.size()):
+			fates[kept[i]] = "haze"
+		counters.remnant_overflow += 1
+	var remnant_ids := []
+	var morsel_ids := []
+	var body_haze := []
+	var fresh := {}
+	var moved := {}   # remnant -> [x, y, previous x, previous y] (am)
+	var cfg: Dictionary = g.cfg.remnants
+	for c in bodies:
+		var fate: String = fates[c]
+		var r_new := float(recs[c].phenotype.radius) if recs.has(c) else c.phenotype.radius / f
+		var at := c.motion.position
+		var food_id := ""
+		if fate == "remnant":
+			var rem := sim.remnants.add_from(c, recs[c], sim.tick)
+			var pa := abs_of_local(rem.motion.position)
+			var pp := abs_of_local(rem.motion.prev_position)
+			moved[rem] = PackedFloat64Array([pa[0], pa[1], pp[0], pp[1]])
+			remnant_ids.append(c.id)
+		elif fate == "morsel":
+			var item := sim.carrion.spawn(at, "morsel", sim.carrion.energy * r_new / Relationships.PLAYER_RADIUS, -1,
+				minf(r_new, float(cfg.morsel_max_radius_tm)), float(cfg.morsel_rot_s))
+			food_id = str(item.get("id", ""))
+			fresh[food_id] = true
+			morsel_ids.append(food_id)
+		else:
+			body_haze.append({"kind": "creature", "look": c.species_id, "position": at})
+		if c is RemnantField.Remnant:
+			if fate != "remnant":
+				sim.remnants.items.erase(c)
+		else:
+			sim.creatures.take_for_growth(c)
+		_emit(sim, {"type": "creature_converted", "id": c.id, "species": c.species_id, "to": fate, "position": at,
+			"radius": r_new, "food_id": food_id})
+	# 3. The rest: sleepers, carrion, plankton, chunks.
+	if sim.creatures != null:
+		for c in sim.creatures.creatures.duplicate():
+			sim.creatures.remove(c, "growth", sim.tick, false)
+	var carrion := sim.carrion
+	var ring_sq := float(rings.food) * float(rings.food)
+	var items: Array[Dictionary] = []
+	var item_abs := PackedFloat64Array()
+	var gone: Array[Dictionary] = []
+	for item in carrion.items:
+		if fresh.has(item.id):
+			pass
+		elif cell.position.distance_squared_to(item.position) <= ring_sq:
+			item.radius = float(item.radius) / f
+			item.energy = float(item.energy) / f
+			item.points = floori(float(item.energy) / carrion.energy * carrion.points + 1e-6)
+		else:
+			gone.append(item)
+			continue
+		var ia := abs_of_local(item.position)
+		item_abs.append(ia[0])
+		item_abs.append(ia[1])
+		items.append(item)
+	carrion.items = items
+	for item in gone:
+		_emit(sim, {"type": "carrion_expired", "food_id": item.id, "position": item.position, "reason": "growth"})
+	var haze := []
+	var plant := str(content.config.ladder.food_looks[n - 1].plant)
+	for item in sim.plankton.items:
+		haze.append({"kind": "plant", "look": plant, "position": item.position})
+	haze.append_array(body_haze)
+	for key in _keys.duplicate():
+		_unload_chunk(sim, key, "growth")
+	recompute_caps(sim)
+	# 4. Size and origin: the next size's cache stays for step 5 and the beat.
+	var next := _next_chunks
+	var next_size := _next_size
+	set_size(n + 1)
+	_next_chunks = next
+	_next_size = next_size
+	origin_x_am = a[0]
+	origin_y_am = a[1]
+	_rederive(sim)
+	cell.position = Vector2.ZERO
+	cell.prev_position = local_of_abs(ap[0], ap[1])
+	cell.velocity /= f
+	sim.actor.position = cell.position
+	for rem: RemnantField.Remnant in moved:
+		var m: PackedFloat64Array = moved[rem]
+		rem.motion.position = local_of_abs(m[0], m[1])
+		rem.motion.prev_position = local_of_abs(m[2], m[3])
+		rem.actor.position = rem.motion.position
+	for i in items.size():
+		items[i].position = local_of_abs(item_abs[2 * i], item_abs[2 * i + 1])
+	if sim.creatures != null:
+		sim.creatures.set_size(n + 1)
+	# 5. Load the view set, unsettled.
+	_growing = true
+	for key in view_set_keys(Vector2.ZERO):
+		_load_chunk(sim, key, false)
+	_growing = false
+	_fill_all = true
+	# 6. Settle.
+	var p := PoolSim.clear_point_on(sim.arena, Vector2.ZERO, r_cell)
+	if q.is_finite() and p != q:
+		push_error("WorldStream.grow: the settle point %s is not the next size's point %s (BP-4)" % [p, q])
+	cell.position = p
+	sim.actor.position = p
+	for rem in sim.remnants.items:
+		sim.arena.settle(rem.motion, rem.phenotype.radius)
+		rem.actor.position = rem.motion.position
+	# 7. Reset.
+	var cp := abs_of_local(p)
+	checkpoint_am = PackedFloat64Array([cp[0], cp[1], cell.heading, float(n + 1)])
+	sim.refill_energy()
+	sim.grace_until = sim.tick + CreatureBrain.ticks(g.cfg.shelter_s)
+	g.reset_for_size(n + 1)
+	g.beat_until = sim.tick + CreatureBrain.ticks(g.cfg.beat_s)
+	sim._contact.clear()
+	# 8. Emit.
+	_emit(sim, {"type": "grew", "from": n, "to": n + 1, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
+		"settled_to": p, "remnants": remnant_ids, "morsels": morsel_ids, "haze": haze,
+		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1]})
 
 
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the
@@ -1134,7 +1505,9 @@ func _forget_role(id: String) -> void:
 
 ## A site's local record from its WorldChunk entry (absolute) and its home chunk: its local home,
 ## territory and reach (derived), and "abs_tm", their absolute values [home x, y, territory x, y,
-## reach x, y] (tm; the territory's NaN when it has none) that a rebase derives them from again.
+## reach x, y] (tm; the territory's NaN when it has none) that a rebase derives them from again. A
+## two-post site (S2) also gets local "posts" [{home, heading, territory: {} or {center, radius}}] x 2,
+## as CreatureBrain.set_posts takes them, from "abs_posts" [home x, y, territory x, y] per post.
 func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
 	var chunks: Array[Vector2i] = []
 	chunks.assign(s.chunks)
@@ -1145,19 +1518,44 @@ func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
 			NAN if t.is_empty() else float(t.y), float(r.x), float(r.y)]),
 		"territory": {} if t.is_empty() else {"center": Vector2.ZERO, "radius": float(t.radius)},
 		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}}
+	if s.has("posts"):
+		var posts := []
+		var abs_posts := PackedFloat64Array()
+		for post: Dictionary in s.posts:
+			var pt: Dictionary = post.territory
+			abs_posts.append_array([float(post.x), float(post.y), NAN if pt.is_empty() else float(pt.x),
+				NAN if pt.is_empty() else float(pt.y)])
+			posts.append({"home": Vector2.ZERO, "heading": float(post.heading),
+				"territory": {} if pt.is_empty() else {"center": Vector2.ZERO, "radius": float(pt.radius)}})
+		rec["posts"] = posts
+		rec["abs_posts"] = abs_posts
 	_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)
 	return rec
 
 
-## A site record's local home, territory centre and reach centre, again from "abs_tm", in place.
-## Each is local_of_tm's own float64 expression written out (so the same float32 result): a rebase
-## does this for every loaded site, and a rebase tick is timed (G17).
+## A site record's local home, territory centre and reach centre (and its posts'), again from
+## "abs_tm" ("abs_posts"), in place. Each is local_of_tm's own float64 expression written out (so the
+## same float32 result): a rebase does this for every loaded site, and a rebase tick is timed (G17).
 static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) -> void:
 	var a: PackedFloat64Array = rec.abs_tm
 	rec.home = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
 	if not rec.territory.is_empty():
 		rec.territory.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
 	rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
+	if rec.has("posts"):
+		_derive_posts(rec, k, ox, oy)
+
+
+## The posts' local homes and territory centres from "abs_posts".
+static func _derive_posts(rec: Dictionary, k: float, ox: float, oy: float) -> void:
+	var b: PackedFloat64Array = rec.abs_posts
+	var i := 0
+	for post: Dictionary in rec.posts:
+		post.home = Vector2((b[i] * k - ox) / k, (b[i + 1] * k - oy) / k)
+		var pt: Dictionary = post.territory
+		if not pt.is_empty():
+			pt.center = Vector2((b[i + 2] * k - ox) / k, (b[i + 3] * k - oy) / k)
+		i += 4
 
 
 ## Every local value that is derived from an absolute one, again from its absolute value (zones
@@ -1207,11 +1605,16 @@ func _rederive(sim: PoolSim) -> bool:
 		if not t.is_empty():
 			t.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
 		rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
+		if rec.has("posts"):
+			_derive_posts(rec, k, ox, oy)
 	return indexed and moved
 
 
-## chunk_loaded's payload (spine 3.12), in the frame in force now.
-func _chunk_loaded_event(ch: WorldChunk) -> Dictionary:
+## chunk_loaded's payload (spine 3.12, S2 build plan 7.4), in the frame in force now: the one builder
+## (BP-17; the scene's WorldSpace.chunk_loaded_event returns this). Places carry `scale`, bu_to_tm at
+## the chunk's size (BP-16), and `sites` lists every site live at that size with its posts
+## [{position, heading}] (a one-post site: one, at its home; C-V10).
+func chunk_loaded_event(ch: WorldChunk) -> Dictionary:
 	var shells := []
 	for s in ch.shells:
 		shells.append({"id": s.id, "position": local_of_tm(float(s.x), float(s.y)), "radius": float(s.r), "kind": s.kind,
@@ -1225,8 +1628,20 @@ func _chunk_loaded_event(ch: WorldChunk) -> Dictionary:
 	var places := []
 	for p in ch.places:
 		places.append({"id": p.id, "kind": p.kind, "position": local_of_tm(float(p.x), float(p.y)), "yaw_deg": float(p.yaw_deg),
-			"mirror": bool(p.mirror)})
-	return {"type": "chunk_loaded", "key": ch.key, "shells": shells, "zones": zones, "anchors": anchors, "places": places}
+			"mirror": bool(p.mirror), "scale": WorldConfig.bu_to_tm(ch.size)})
+	var site_list := []
+	for s in ch.sites:
+		if not (s.sizes as Array).has(ch.size):
+			continue
+		var posts := []
+		if s.has("posts"):
+			for post: Dictionary in s.posts:
+				posts.append({"position": local_of_tm(float(post.x), float(post.y)), "heading": float(post.heading)})
+		else:
+			posts.append({"position": local_of_tm(float(s.x), float(s.y)), "heading": float(s.heading)})
+		site_list.append({"id": s.id, "species": s.species, "posts": posts})
+	return {"type": "chunk_loaded", "key": ch.key, "shells": shells, "zones": zones, "anchors": anchors, "places": places,
+		"sites": site_list}
 
 
 ## Every stream event goes out after the field and brain events already pending, so the drained list

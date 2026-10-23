@@ -16,6 +16,9 @@ extends RefCounted
 ## input it only returns a SimIntent and never changes the sim. Its choices come from its own seeded
 ## RNG, so a run repeats exactly.
 ##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full.
+##
 ##     var bot = load("res://game/dev/kiter_bot.gd").new(seed_value)
 ##     sim.step(bot.next_intent(sim))
 
@@ -38,7 +41,10 @@ const THROTTLE_RANGE := [0.35, 0.9]
 ## strike has no lead to miss by and lands (moving prey is safe by design).
 const HOLD_SHARE := 0.5
 
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
+
 var bite_dazed := true
+var keys := EvadeBot.GrowthKeys.new()
 var visits := 0                   ## creatures it has circled (tests guard that it got round)
 var _rng := RandomNumberGenerator.new()
 var _target := ""
@@ -61,6 +67,10 @@ func target_id() -> String:
 
 
 func next_intent(sim: PoolSim) -> SimIntent:
+	return keys.apply(sim, _kite(sim))
+
+
+func _kite(sim: PoolSim) -> SimIntent:
 	if sim.dead or sim.creatures == null:
 		_target = ""
 		return SimIntent.new()

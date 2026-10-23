@@ -35,6 +35,9 @@ extends RefCounted
 ## wedges between shells (SwimBot.Unjam). Patrolling a cluster whose rammers it has killed would keep
 ## their sites in its view, so they would never respawn, and it would starve there.
 ##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full.
+##
 ##     var bot = load("res://game/dev/hunt_bot.gd").new()
 ##     sim.step(bot.next_intent(sim, events_from_the_last_step))
 
@@ -66,6 +69,7 @@ const TURN_THROTTLE := 0.08        ## at the food: just above the input deadzone
 const CONTACT_MARGIN_M := 0.1
 
 var evade = EvadeBot.new()
+var keys := EvadeBot.GrowthKeys.new()
 var kills := 0                     ## creatures its own bites killed (from the events it is given)
 var _prey_id := ""
 var _patrol_index := 0
@@ -76,6 +80,7 @@ var _unjam = null                  ## endless: its SwimBot.Unjam, made on its fi
 
 func _init() -> void:
 	evade.base = _hunt
+	evade.keys.trigger = ""   # this bot sends the keys
 	# After a dodged strike the rammer recovers on the spot, unable to turn or strike: the time to
 	# bite, not to swim away.
 	evade.away_ticks = 0
@@ -86,7 +91,7 @@ func next_intent(sim: PoolSim, events: Array) -> SimIntent:
 	for e in events:
 		if e.get("type", "") == "creature_died" and e.get("by", "") == CreatureField.PLAYER_ID:
 			kills += 1
-	return evade.next_intent(sim, events)
+	return keys.apply(sim, evade.next_intent(sim, events))
 
 
 ## The id of the rammer it hunts, or "".

@@ -133,6 +133,17 @@ const TEN_KM_SEED := 1013
 const TEN_KM_TM := 10000.0
 const TEN_KM_HEADING := 0.25           ## rad: east-south-east, across tile rows and columns
 const TEN_KM_RECORD_EVERY := 18000
+## The endless identity (S2 build plan BP-6 and 7.5): with growth off, endless size 1 is S1's.
+## tools/godot/record_endless_hashes.gd ran these on the e2 base into IDENTITY_PATH, and
+## tests/test_hash_identity.gd runs them again (S2G1). Re-recording needs a docs/DECISIONS.md line
+## that names the S1 change forcing it.
+const IDENTITY_PATH := "res://tests/fixtures/endless_s1_hashes.json"
+const IDENTITY_DRIVERS: PackedStringArray = ["swim", "swim_overdriven", "circle"]
+const IDENTITY_RUNS: Array[Dictionary] = [
+	{"name": "swim_hunter", "body": "hunter", "seed": SWIM_SEED, "driver": "swim"},
+	{"name": "swim_racer", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven"},
+	{"name": "circle_hunter", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle"}]
+const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
 
 
 # ---- The harness (static, shared) ----
@@ -210,10 +221,13 @@ static func data() -> Dictionary:
 	return _data
 
 
-## A new lineage of `body` (or RACER) in the endless world at home, as a new endless game starts.
-## Read only after missing() is empty.
-static func make_sim(body: String, seed_value: int) -> Variant:
+## A new lineage of `body` (or RACER) in the endless world at home, as a new endless game starts,
+## with the world's growth switch set to `growth` (S2 build plan BP-6). The content is shared by
+## every gate sim, so each call sets the switch; S1's gates take the default and run with growth
+## off, where endless size 1 is S1's (S2G1). Read only after missing() is empty.
+static func make_sim(body: String, seed_value: int, growth := false) -> Variant:
 	var d := data()
+	d.content.config.switches["growth"] = growth
 	var r := Lineage.found(seed_value, BUILD_ID, d.catalog, "hunter" if body == RACER else body)
 	if body == RACER:
 		make_racer(r.save.genome, d.catalog)
@@ -284,6 +298,62 @@ static func drive(sim: Variant, overdriven: bool) -> void:
 		SwimBot.overdrive(sim)
 	else:
 		keep_fed(sim)
+
+
+## The corner circle's corner (abs tm): the first of CIRCLE_CORNERS whose CIRCLE_R circle is clear of
+## colliders, with the cell teleported onto that circle; empty when none is.
+static func circle_corner(sim: Variant) -> PackedFloat64Array:
+	for c in CIRCLE_CORNERS:
+		if not teleport(sim, PackedFloat64Array([c.x + CIRCLE_R, c.y])):
+			continue
+		var local: Vector2 = sim.world.local_of_abs(c.x, c.y)
+		var clear := true
+		for j in 16:
+			clear = clear and sim.arena.is_clear(local + Vector2.from_angle(j * PI / 8.0) * CIRCLE_R, sim.phenotype.radius + 0.3)
+		if clear:
+			return PackedFloat64Array([c.x, c.y])
+	return PackedFloat64Array()
+
+
+## The intent that keeps the cell circling `corner` (abs tm): aimed CIRCLE_LEAD ahead round the circle.
+static func circle_intent(sim: Variant, corner: PackedFloat64Array) -> SimIntent:
+	var c: Vector2 = sim.world.local_of_abs(corner[0], corner[1])
+	var to: Vector2 = c + Vector2.from_angle((sim.motion.position - c).angle() + CIRCLE_LEAD) * CIRCLE_R - sim.motion.position
+	return SimIntent.new(to.normalized() * CIRCLE_THROTTLE if to.length() > 1e-6 else Vector2.ZERO)
+
+
+## One endless identity run (S2 build plan 7.5) from make_sim, driven as the S1 gates drive theirs:
+## "swim" and "swim_overdriven" as the straight swims (east, hidden, keep_fed or overdriven), "circle"
+## as the corner circle. Returns {"<ticks>": "<state_hash() in decimal>"} after exactly each step
+## count in `at` (ascending), or {} when a circle finds no clear corner.
+static func identity_run(run: Dictionary, at: Array[int]) -> Dictionary:
+	var sim: Variant = make_sim(str(run.body), int(run.seed))
+	sim.debug_set_hidden(true)
+	var driver := str(run.driver)
+	assert(driver in IDENTITY_DRIVERS, "unknown identity driver %s" % driver)
+	var corner := PackedFloat64Array()
+	if driver == "circle":
+		corner = circle_corner(sim)
+		if corner.is_empty():
+			return {}
+	var bot = SwimBot.new(Vector2.from_angle(SWIM_RACER_HEADING))
+	var out := {}
+	var steps := 0
+	for n in at:
+		while steps < n:
+			drive(sim, driver == "swim_overdriven")
+			tick(sim, circle_intent(sim, corner) if driver == "circle" else bot.next_intent(sim))
+			steps += 1
+		out[str(n)] = str(sim.state_hash())
+	return out
+
+
+## The identity file as parsed, or {} when it is missing or not a JSON object.
+static func identity_file(path: String = IDENTITY_PATH) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}
 
 
 ## A FuzzInvariants for the real species and layout.
@@ -466,6 +536,31 @@ func test_the_endless_camper_skips_the_guarded_m1_zones() -> void:
 		check(not CAMP_HOME_ZONES.has(id), "%s is a territory, so the camper skips it" % id)
 
 
+## The identity file (S2 build plan 7.5) holds every run of IDENTITY_RUNS, as named there, with a
+## decimal hash at every tick count of IDENTITY_TICKS, recorded on the real content with growth off
+## at a named commit.
+func test_the_endless_identity_file_holds_every_run_at_every_tick() -> void:
+	var file := identity_file()
+	check(not file.is_empty(), "%s is there and is a JSON object" % IDENTITY_PATH)
+	check_eq(str(file.get("content", "")), REAL_WORLD, "recorded on the real content")
+	check_eq(file.get("growth"), false, "recorded with growth off")
+	check(str(file.get("base_commit", "")).length() == 40, "the base commit is a full sha (%s)" % file.get("base_commit"))
+	var runs: Array = file.get("runs", [])
+	check_eq(runs.size(), IDENTITY_RUNS.size(), "one record per run")
+	for i in mini(runs.size(), IDENTITY_RUNS.size()):
+		var want: Dictionary = IDENTITY_RUNS[i]
+		var got: Dictionary = runs[i]
+		for key in want:
+			var g: Variant = got.get(key)   # JSON numbers read back as floats
+			var same: bool = typeof(g) == TYPE_FLOAT and float(g) == float(want[key]) if want[key] is int else str(g) == str(want[key])
+			check(same, "run %d %s: %s (want %s)" % [i, key, g, want[key]])
+		var hashes: Dictionary = got.get("hashes", {})
+		check_eq(hashes.size(), IDENTITY_TICKS.size(), "%s: a hash per tick count" % want.name)
+		for n in IDENTITY_TICKS:
+			var h := str(hashes.get(str(n), ""))
+			check(h.is_valid_int() and int(h) >= 0, "%s tick %d: a decimal hash (%s)" % [want.name, n, h])
+
+
 func test_random_points_repeat_and_stay_in_their_square() -> void:
 	var a := random_points(77, 50, 100.0)
 	var b := random_points(77, 50, 100.0)
@@ -520,18 +615,7 @@ func test_soak_circling_a_chunk_corner_does_not_churn_chunks() -> void:
 		return
 	var sim: Variant = make_sim(RACER, CIRCLE_SEED)
 	sim.debug_set_hidden(true)
-	var corner := PackedFloat64Array()
-	for c in CIRCLE_CORNERS:
-		var at := PackedFloat64Array([c.x + CIRCLE_R, c.y])
-		if not teleport(sim, at):
-			continue
-		var local: Vector2 = sim.world.local_of_abs(c.x, c.y)
-		var clear := true
-		for j in 16:
-			clear = clear and sim.arena.is_clear(local + Vector2.from_angle(j * PI / 8.0) * CIRCLE_R, sim.phenotype.radius + 0.3)
-		if clear:
-			corner = PackedFloat64Array([c.x, c.y])
-			break
+	var corner := circle_corner(sim)
 	check(not corner.is_empty(), "a chunk corner among the candidates has a clear %.0f tm circle" % CIRCLE_R)
 	if corner.is_empty():
 		return
@@ -539,10 +623,8 @@ func test_soak_circling_a_chunk_corner_does_not_churn_chunks() -> void:
 	var farthest := 0.0
 	for i in CIRCLE_TICKS:
 		keep_fed(sim)
-		var c: Vector2 = sim.world.local_of_abs(corner[0], corner[1])
-		var to: Vector2 = c + Vector2.from_angle((sim.motion.position - c).angle() + CIRCLE_LEAD) * CIRCLE_R - sim.motion.position
 		var late := i >= CIRCLE_SETTLE_TICKS
-		for e in tick(sim, SimIntent.new(to.normalized() * CIRCLE_THROTTLE if to.length() > 1e-6 else Vector2.ZERO)):
+		for e in tick(sim, circle_intent(sim, corner)):
 			match str(e.type):
 				"chunk_loaded":
 					counts.loads += 1

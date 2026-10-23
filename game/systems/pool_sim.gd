@@ -44,7 +44,9 @@ extends RefCounted
 ## Growth (S2): with the world file's growth switch on, `growth` (a Growth) holds the meter round the
 ## cell. step() keeps the intent's grow press and trigger for it, and at the end of the tick, after
 ## every field event is taken, Growth.observe reads the tick's events (D-58). Off (or in the pool)
-## `growth` is null and the tick is exactly S1's (D-46).
+## `growth` is null and the tick is exactly S1's (D-46). `remnants` (a RemnantField) holds the
+## creatures a growth left behind: they move after the creatures, and contacts, the cell's attacks and
+## deaths take them with the awake creatures through _combat_bodies() (D-57); they never attack.
 ##
 ## Checkpoints (plan section 13): a death returns the cell to checkpoint(), the generation start.
 ## With creatures, respawn_player() follows rules C1-C5: the cell at the checkpoint (or the nearest
@@ -116,6 +118,8 @@ var grace_until := -1
 var death_streak := 0
 ## The endless world's growth meter (S2); null in the pool and with growth switched off (D-46).
 var growth: Growth = null
+## The remnants a growth left (S2, D-57); null wherever growth is.
+var remnants: RemnantField = null
 ## This tick's intent for Growth (D-58): a Grow press, and the trigger setting ("" for no change).
 var intent_grow := false
 var intent_trigger := ""
@@ -266,6 +270,7 @@ func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
 	if world == null or cfg.is_empty():
 		return
 	growth = Growth.create(cfg, str(cfg.trigger))
+	remnants = RemnantField.create(cfg)
 	world.max_size = max_in_build
 	world.counters["remnant_overflow"] = 0
 
@@ -324,6 +329,8 @@ func step(intent: SimIntent) -> void:
 	var swim := {}
 	if creatures != null:
 		creature_moved = _move_creatures()
+		if remnants != null:
+			remnants.tick(self)
 		swim = _swim_velocities()
 		_contacts()
 	if not dead:
@@ -685,6 +692,25 @@ func debug_teleport_abs(x_am: float, y_am: float, heading: float = NAN) -> bool:
 	return true
 
 
+## Dev (endless, D-76): the world at size `n` (1 to the build top) round the living cell's absolute
+## place now, by the teleport path (WorldStream.set_size_teleport): the remnants leave, the view set
+## loads at size n with its food, the cell takes the clear point nearest its place, and the meter
+## starts again at size n (its paid lists from the ledger). Emits debug {command: "set_size", size}
+## (C-V9). False in the pool, while dead or waiting to respawn, or for a size outside the ladder.
+func debug_set_size(n: int) -> bool:
+	if world == null or dead or respawn_pending or n < 1 or n > world.max_size:
+		return false
+	world.set_size_teleport(self, n)
+	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), motion.heading)
+	_sync_actor()
+	_contact.clear()
+	if growth != null:
+		growth.reset_for_size(n)
+	world.fill_all_food_now(self)
+	_emit({"type": "debug", "command": "set_size", "size": n})
+	return true
+
+
 ## Dev (endless): moves the floating origin by whole chunks now, as the streaming block does when the
 ## cell swims far from it. False in the pool.
 func debug_rebase(by_chunks: Vector2i) -> bool:
@@ -862,6 +888,9 @@ func _take_field_events() -> void:
 				var c := creatures.find(e.id)
 				_dodges.append({"id": e.id, "species": c.species_id if c != null else ""})
 		_events.append_array(taken)
+	if remnants != null and not remnants.events.is_empty():
+		_events.append_array(remnants.events)
+		remnants.events.clear()
 
 
 ## Where the field measures spawn safety from: the cell, or its checkpoint while it is dead.
@@ -883,16 +912,25 @@ func _player_places() -> Array[Vector2]:
 ## Rule C1: `p` when a body of radius `r` fits there, else the first clear point on rings
 ## CLEAR_SPIRAL_STEP_M apart going out from it (each ring in angle order from +x), else `p`.
 func _clear_point_near(p: Vector2, r: float) -> Vector2:
-	if arena.is_clear(p, r):
+	return clear_point_on(arena, p, r)
+
+
+## The one spiral (rule C1; S2 BP-4) on any arena: `p` when a body of radius `r` fits there, else the
+## first clear point on rings CLEAR_SPIRAL_STEP_M apart going out from it, each ring in angle order
+## from +x. With max_rings < 0 it goes out CLEAR_SPIRAL_RINGS rings and gives `p` when none is clear;
+## with max_rings >= 0 it stops after that many rings and gives Vector2.INF when none is clear (the
+## next size's wedge test). Equal colliders and an equal origin give bit-equal points.
+static func clear_point_on(on: PoolArena, p: Vector2, r: float, max_rings := -1) -> Vector2:
+	if on.is_clear(p, r):
 		return p
-	for ring in range(1, CLEAR_SPIRAL_RINGS + 1):
+	for ring in range(1, (CLEAR_SPIRAL_RINGS if max_rings < 0 else max_rings) + 1):
 		var d := ring * CLEAR_SPIRAL_STEP_M
 		var n := ceili(TAU * d / CLEAR_SPIRAL_STEP_M)
 		for k in n:
 			var q := p + Vector2.from_angle(k * TAU / n) * d
-			if arena.is_clear(q, r):
+			if on.is_clear(q, r):
 				return q
-	return p
+	return p if max_rings < 0 else Vector2.INF
 
 
 ## Rules C2 and C3 at a respawn at `at`: every creature within respawn_clear_m goes back to its
@@ -997,7 +1035,7 @@ func _contacts() -> void:
 		motions.append(motion)
 		radii.append(phenotype.radius)
 		masses.append(phenotype.mass)
-	for c in creatures.awake():
+	for c in _combat_bodies():
 		motions.append(c.motion)
 		radii.append(c.phenotype.radius)
 		masses.append(c.phenotype.mass)
@@ -1074,7 +1112,7 @@ func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> voi
 
 
 func _sync_creatures() -> void:
-	for c in creatures.awake():
+	for c in _combat_bodies():
 		var m := c.motion
 		var a := c.actor
 		a.position = m.position
@@ -1108,7 +1146,7 @@ func _swim_velocities() -> Dictionary:
 	var out := {}
 	if not dead:
 		out[CreatureField.PLAYER_ID] = motion.velocity
-	for c in creatures.awake():
+	for c in _combat_bodies():
 		out[c.id] = c.motion.velocity
 	return out
 
@@ -1142,7 +1180,7 @@ func _player_attacks(swim: Dictionary) -> void:
 	var near: Array[Dictionary] = []
 	var at := motion.position
 	var own_r := phenotype.radius
-	for c in creatures.awake():
+	for c in _combat_bodies():
 		if not c.state.is_alive():
 			continue
 		var d := at.distance_to(c.motion.position)
@@ -1271,6 +1309,39 @@ func _deaths() -> void:
 			fallen.append(c)
 	for c in fallen:
 		_creature_dies(c, "killed", c.last_hit_by)
+	if remnants != null and not remnants.items.is_empty():
+		var gone: Array[RemnantField.Remnant] = []
+		for r in remnants.items:
+			if not r.state.is_alive():
+				gone.append(r)
+		for r in gone:
+			_remnant_dies(r, r.last_hit_by)
+
+
+## The bodies combat and contacts take (D-57): the awake creatures (that very list while there are
+## no remnants, so a tick without growth is S1's), then the remnants.
+func _combat_bodies() -> Array[CreatureField.Creature]:
+	if remnants == null or remnants.items.is_empty():
+		return creatures.awake()
+	var out: Array[CreatureField.Creature] = creatures.awake().duplicate()
+	out.append_array(remnants.items)
+	return out
+
+
+## A remnant dies (killed; it never starves): one carrion item at its body, radius min(its radius,
+## MAX_FOOD_RADIUS) and the field's carcass energy scaled by its radius over the cell's, then
+## creature_died as a creature's, and it leaves the remnants ("killed").
+func _remnant_dies(r: RemnantField.Remnant, by: String) -> void:
+	_take_field_events()
+	var item := carrion.spawn(r.motion.position, CreatureField.CARCASS_SOURCE,
+		carrion.energy * r.phenotype.radius / Relationships.PLAYER_RADIUS, -1, minf(r.phenotype.radius, MAX_FOOD_RADIUS))
+	stats.creature_deaths += 1
+	if by == CreatureField.PLAYER_ID:
+		stats.kills += 1
+	_emit({"type": "creature_died", "id": r.id, "species": r.species_id, "cause": "killed", "by": by,
+		"position": r.motion.position, "carcass": [item.id] if not item.is_empty() else []})
+	remnants.remove(r, "killed", tick)
+	_take_field_events()
 
 
 ## Step 11: every strike on the living cell that ended this tick without a hit. A strike that
