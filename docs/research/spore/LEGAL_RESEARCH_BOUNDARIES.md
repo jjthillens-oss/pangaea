@@ -40,12 +40,15 @@ the owner depends on where he lives and where he bought the game.
 | §6 Rules of Conduct | "Do not engage or assist in cheating ... or using exploits." | Irrelevant to single-player observation, but no exploit-based measurement tricks. |
 | §13(B) Governing law | For residents of the EEA, UK, Switzerland, Brazil, Hong Kong, Mexico or Russia, "the laws of your country of residence govern this Agreement" | Which statutory exceptions apply depends on the owner's country. We need to know it. |
 
-Open questions (need the owner):
+Owner's answers (2026-10-23): **bought on Steam, lives in the United States.** So:
 
-- Where Spore was bought (Steam, EA app, GOG or disc). Steam and GOG copies may also carry a Spore-specific EULA in
-  the installer. Phase 2 task: the owner photographs or copies the EULA text shown at install or in the game folder,
-  and we cite that version here. We do not open any other file in the install folder to find it.
-- The owner's country of residence (for §13(B) and section 3 below).
+- US law applies (section 3, US items). §13(B)'s country-of-residence rule for the EEA and others does not apply.
+- Two agreements bind the copy: the Steam Subscriber Agreement (Valve) and EA's terms for the game. Open task: if the
+  game shows an EULA at first launch or links one on its store page, quote that version here. We do not open files
+  in the install folder to find it.
+- In the US, *Davidson v. Jung* (section 3) makes a game EULA's reverse-engineering ban likely enforceable, so binary
+  analysis stays off the plan. The owner confirmed on 2026-10-23: no unauthorized binary analysis or DRM
+  circumvention.
 
 ## 3. Law that sits next to the contract
 
@@ -69,8 +72,19 @@ they apply to us.
   does not describe our purpose either. The UK has equivalents (CDPA 1988 ss. 50A–50C, 296ZA ff.).
 - **Ideas are free, expression is not.** Game mechanics and general techniques are not protected by copyright;
   code, art, animation data, audio and text are. Patents are a separate question that copyright law does not answer.
-  HYPOTHESIS (not checked): EA or Maxis may hold patents on Spore-era creature editing or animation techniques.
-  Phase 2 task: a patent search before we ship a system that closely follows a published Spore technique (section 6).
+  First search (2026-10-23, Google Patents; not a legal clearance):
+  - US7789758B2 and US7867093B2, "Video game with simulated evolution", EA, inventor Will Wright, priority
+    2006-03-10. Google Patents lists them as active with estimated expiry 2028-10-25 and 2027-12-31 (Google marks
+    status as an assumption). Their independent claims are about **sharing player-made content through a game
+    server**: uploading or automatically downloading instructions that recreate content (including procedural
+    animation data), selected by heuristics, and an in-game browser of server content. Read with
+    `docs/research/innovation-backlog.md`: IB-29 (online gallery) would need a patent review before any work; IB-09
+    (offline file sharing, no server) looks outside these claims, but that is our reading, not an opinion.
+  - US6141019A, "Creature animation and simulation technique", EA, predates Spore (1990s filing); expired.
+  - No patent naming Chris Hecker as inventor on the Spore animation system was found in a first search.
+  Remaining task: a fuller search on creature skin generation, automatic rigging and procedural gait before any
+  GENESIS system following those ideas ships. The SIGGRAPH papers are public, but publication does not rule out a
+  patent.
 
 Conclusion (PROPOSED): in every jurisdiction above, **gameplay observation of a lawfully owned copy is the safe
 ground**, and decompiling Spore to learn its design is not covered by any exception we found. The legal cost of

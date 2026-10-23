@@ -13,6 +13,7 @@ Files in this folder:
 | `LEGAL_RESEARCH_BOUNDARIES.md` | EA license review, law summary, allowed and forbidden techniques, clearance steps |
 | `SPORE_RESEARCH.md` | This file: tool check, source survey, systems map, open questions, workflow |
 | `CREATURE_CREATOR_ANALYSIS.md` | How Spore's creature editor is built (from published papers) and what GENESIS takes from it |
+| `CREATURE_GEOMETRY_SPEC.md` | Original GENESIS spec for generated skins, procedural skeletons and automatic rigging |
 | `PROCEDURAL_ANIMATION_SPEC.md` | Original GENESIS spec for animating player-built bodies in Godot 4 |
 | `GAMEPLAY_MEASUREMENTS.csv` | Measurement schema; public-source rows filled, recording rows waiting for clips |
 | `MEASUREMENT_PLAN.md` | How the owner records clips and how each number is extracted |
@@ -34,10 +35,12 @@ Files in this folder:
    tags, animation stored relative to those tags, a procedural gait generator, a two-phase constraint IK solver and
    passive secondary motion. GENESIS can build its own version of that stack in Godot 4 within the approved art
    boundary (Blender-authored parts, shape keys and bone scale only). The spec is in `PROCEDURAL_ANIMATION_SPEC.md`.
-5. **One conflict to note.** Spore generates its creature skin at runtime as an implicit surface around the spine
-   and limbs. GENESIS's approved boundary (DECISIONS.md, 2026-10-22, IB-15 option B) does **not** allow
-   runtime-generated body skins. This research does not reopen that decision; `CREATURE_CREATOR_ANALYSIS.md` §4
-   describes how to get comparable variety inside the boundary.
+5. **Generated skins (updated 2026-10-23).** Spore generates its creature skin at runtime as an implicit surface
+   around the spine and limbs. The owner has now chosen the same direction for GENESIS (DECISIONS.md 2026-10-23,
+   superseding the IB-15 option B limit on skins). The original GENESIS design is in `CREATURE_GEOMETRY_SPEC.md`.
+6. **Where GENESIS can beat Spore.** A Spore developer wrote that in the Creature stage "the player's creativity in
+   designing the creature's shape has no impact on actual gameplay" (S14). GENESIS makes shape matter: limb length,
+   leg count, stance and mass set speed, turning, stability and reach.
 
 ## 2. Research environment
 
@@ -125,6 +128,12 @@ All are public papers or talks by Spore's developers unless marked. CONFIRMED me
 | S10 | "Development of Spore", Wikipedia. <https://en.wikipedia.org/wiki/Development_of_Spore> | Secondary. Timeline and staff; the 2005 demo versus the shipped game. |
 | S11 | Spore Wiki (fandom) and StrategyWiki "Spore/Creature Stage". <https://strategywiki.org/wiki/Spore/Creature_Stage> | Secondary, community-written. Ability categories and part-to-ability rules (OBSERVED by players). Used only as a cross-check for our own recordings. |
 
+| S12 | N. Evan, "Gingold Talks Spore's 'Magic Crayon' Approach", Game Developer, 2008-06-26. <https://gamedeveloper.com/game-platforms/gingold-talks-i-spore-i-s-magic-crayon-approach> | Creature designer Chaim Gingold: base shape is a 3D bean with pullable vertebra-like points ("deep structure"); symmetry required; creature data "smaller than the size of the thumbnail" (about 4k versus a 20k picture); legs were the hardest part of the editor; functions as a "fuzzy interpretation of what looks good". Secondary report of a talk. |
+| S13 | D. Kushner, "Engineering Spore", IEEE Spectrum, 2008-09-01. <https://spectrum.ieee.org/engineering-spore> | Looped spines removed because they broke animation rules; a "walking ratio" from leg count, length and symmetry; footfall rhythm from torso and head dimensions; mouth used as a hand when there is no grasper; legless creatures slither; 20 artists and 7 programmers on the editors; over a million creatures in the first 8 days of the Creature Creator. Secondary (journalist), quoting developers. |
+| S14 | S. Johnson, "Spore: My View of the Elephant", Game Developer, 2013-10-02. <https://www.gamedeveloper.com/design/spore-my-view-of-the-elephant> | Spore designer: part stats are fixed regardless of placement or limb length; shape has no gameplay effect in the Creature stage (the Cell editor does better); procedural animation finished late; lessons on prototypes. |
+| S15 | EA patents US7789758B2 and US7867093B2, "Video game with simulated evolution", inventor Will Wright, priority 2006-03-10. <https://patents.google.com/patent/US7789758B2/en>, <https://patents.google.com/patent/US7867093B2/en> | Public technical documentation: creatures stored as procedural instructions of about 2–5 KB; animation recreated from procedural data using the creature's structure. Claims cover server-based sharing of player content (see `LEGAL_RESEARCH_BOUNDARIES.md` §3). |
+| S16 | Gingold, "Spore's Magic Crayons", GDC 2007 (reported by GameSpot, "GDC 07: Creating Spore", <https://www.gamespot.com/articles/gdc-07-creating-spore/1100-6167215/>) | Design challenges of the creature, building, vehicle and planet editors. Slides not found yet (GDC Vault may need a login). |
+
 Not used, on purpose: Sporepedia files, the Spore API, PNG creature cards, SporeModder, Spore ModAPI and any file-format
 documentation written by modders. They describe EA's formats, which the owner's rule excludes.
 
@@ -137,12 +146,12 @@ records clips under `MEASUREMENT_PLAN.md`.
 
 | Topic | Known (label, source) | Gap, and method |
 | --- | --- | --- |
-| Procedural body geometry | CONFIRMED (S7): implicit-surface skin of spherical metaballs along spine and limbs, rebuilt live | Not adopted (approved boundary). See `CREATURE_CREATOR_ANALYSIS.md` §4. |
+| Procedural body geometry | CONFIRMED (S7, secondary): implicit-surface skin of spherical metaballs along spine and limbs, rebuilt live; base shape a "bean" with vertebra-like points (S12) | Adopted as direction (DECISIONS.md 2026-10-23). GENESIS design: `CREATURE_GEOMETRY_SPEC.md`. |
 | Spine manipulation | CONFIRMED (S1): a serial chain of spine bodies at the root; editor uses a tree, general graphs were tried and dropped as confusing. OBSERVED: player drags vertebrae, adds or removes them, scales each. | Recording: max and min spine segments, how thickness is set. |
 | Limb placement | CONFIRMED (S1): bodies form a directed acyclic graph; capabilities tag parts (grasper, foot, mouth, spine). | Recording: attach rules, symmetry mode, limits. |
 | Body scaling | CONFIRMED (S1): animations scale with character bounds (CreatureSize) or limb length (LimbLength). | Recording: size range in the editor and in the world. |
 | Procedural skeleton | CONFIRMED (S1): skeleton is the body graph itself; legs are paths from a foot to a spine body (the hip). | Enough for GENESIS spec. |
-| Automatic rigging | CONFIRMED (S1, S3): parts carry their own deform animations; the skin follows the spine and limb bodies. HYPOTHESIS: skin weights come from distance to bodies. | Not needed: GENESIS parts are rigged in Blender. |
+| Automatic rigging | CONFIRMED (S1, S3): parts carry their own deform animations; the skin follows the spine and limb bodies. HYPOTHESIS: skin weights come from distance to bodies. | GENESIS design: weights from primitive field contributions, `CREATURE_GEOMETRY_SPEC.md` §6. |
 | Animation adaptation | CONFIRMED (S1): full stack, see `PROCEDURAL_ANIMATION_SPEC.md` §2. | Enough for GENESIS spec. |
 | Coloration and texturing | CONFIRMED (S4): base, coat and detail paint scripts plus colours; brushes run along spine and limbs. | GENESIS approach in `CREATURE_CREATOR_ANALYSIS.md` §5. |
 
@@ -170,7 +179,8 @@ records clips under `MEASUREMENT_PLAN.md`.
 
 ## 5. Open questions for Phase 2
 
-1. Owner answers to the §2.1 checklist (purchase channel, country, recorder, Spore runs).
+1. Owner answers to the rest of the §2.1 checklist (recorder, Spore runs, tool versions). Answered 2026-10-23:
+   bought on Steam, lives in the United States.
 2. Re-read S2 and S7 when chrishecker.com is back; quote S7 directly.
 3. Patent search on procedural creature animation and editing (`LEGAL_RESEARCH_BOUNDARIES.md` §3).
 4. First recording session (`MEASUREMENT_PLAN.md` sessions R1 and R2).

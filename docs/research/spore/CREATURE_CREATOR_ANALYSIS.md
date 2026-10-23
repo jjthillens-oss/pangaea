@@ -81,15 +81,17 @@ These need our own recordings (`MEASUREMENT_PLAN.md`, session R2). Values go in 
 | Parts deformed by handles scrubbing 0..1 | **Yes, within the approved boundary** | Handles drive Blender-authored shape keys and bone scale (CONFIRMED boundary, DECISIONS.md 2026-10-22, IB-15 option B). Limits per part are tuning data. |
 | Additive composition of deforms | **Yes** | Shape keys are additive in Godot already; bone-scale deltas are summed, then applied. Test: order independence. |
 | Baking the finished creature | **Yes** | After the editor closes, merge static parts into fewer meshes for draw calls; keep the skeleton. Measured against the M2 performance budget. |
-| Implicit-surface (metaball) skin rebuilt at runtime | **No** | Not allowed: runtime-generated body skins were not approved (IB-15 option C declined). See §4. |
+| Implicit-surface (metaball) skin rebuilt at runtime | **Yes (changed 2026-10-23)** | The owner chose generated skins (DECISIONS.md 2026-10-23). GENESIS design: `CREATURE_GEOMETRY_SPEC.md`. §4 below is kept as a fallback only. |
 | Particle brushes painting textures at runtime | **Not now** | Generating texture pixels at runtime is not a mesh, so the boundary does not forbid it, but it is a scope expansion that needs approval. §5 proposes a shader-based alternative. |
 | Instant animation in the editor as parts are added | **Yes** | Core acceptance criterion in `PROCEDURAL_ANIMATION_SPEC.md` §6. |
 | Ability levels summed from parts | **Already ours** | M1 part catalog does this with diminishing returns. Keep GENESIS names and numbers. |
 
-## 4. Body variety inside the approved boundary (PROPOSED)
+## 4. Fallback: body variety without generated skins (superseded 2026-10-23)
 
-Spore gets a continuous torso by building a new surface every edit. GENESIS cannot do that. It can still reach a
-wide range of bodies:
+Kept only as a fallback if generated skins fail their prototype tests. The owner's chosen direction is
+`CREATURE_GEOMETRY_SPEC.md`.
+
+Without a generated surface, a wide range of bodies is still possible:
 
 1. **Segmented torso from Blender-authored segments.** The torso is a chain of 3–N Blender-authored segment meshes
    (head, neck, chest, belly, hip, tail), each skinned to its own spine bone with overlap zones weighted to both
@@ -105,7 +107,7 @@ Risk: a segmented body can look modular next to Spore's smooth skin. Mitigation 
 zones plus a shared material and a subtle normal-map seam blend. If the owner wants a truly continuous skin later,
 that is a change to the IB-15 decision and his call.
 
-## 5. Colouring inside the boundary (PROPOSED)
+## 5. Colouring (PROPOSED; the generated-skin version is in `CREATURE_GEOMETRY_SPEC.md` §8)
 
 Spore paints pixels with particles. A cheaper approach that fits GENESIS's glTF-safe materials:
 

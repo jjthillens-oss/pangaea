@@ -15,8 +15,8 @@ how it moves and what it can do. The Bible requires "anatomy must affect gamepla
 "limb placement influences support, reach, gait, and turning" (Bible §7, PROPOSED era text). This spec is the
 animation half; the gameplay half lives in `game/domain/locomotion.gd` and its successors.
 
-Non-goals: physically simulated locomotion; arbitrary graphs with loops; animating arbitrary user meshes (all parts
-are Blender-authored under the IB-15 boundary).
+Non-goals: physically simulated locomotion; arbitrary graphs with loops (Spore removed loops for the same reason,
+S13). Bodies come from `CREATURE_GEOMETRY_SPEC.md`: a generated skin and skeleton plus Blender-authored parts.
 
 ## 2. What Spore published (summary of S1)
 
@@ -47,6 +47,14 @@ CONFIRMED from S1 unless marked:
 7. **Testing.** Clips were tested on a database of creatures uploaded by players, with testers filling a pass/fail
    grid; pass rate about 90%. Cost: about 0.2 ms per frame for a 25-body creature on a 1.7 GHz Pentium M, about 35%
    of it in IK.
+
+Also reported, but not in S1 (secondary, S13, journalist quoting developers):
+
+8. A "walking ratio" comes from leg count, leg length and symmetry (twice as many legs on one side gives one to
+   two); footfall rhythm and gait take the torso and head dimensions into account.
+9. With no paw or claw, the mouth acts as the hand; with no legs, the creature slithers like an inchworm.
+10. Spore's own designer reports that the Creature stage's part stats did not depend on limb length or placement
+    (S14). Animation adapted to shape; gameplay did not. GENESIS changes that (§4).
 
 ## 3. GENESIS architecture (PROPOSED)
 
