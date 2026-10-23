@@ -35,7 +35,7 @@
   "sites": [
     {"id": "ma", "species": "rammer", "home": [1.5, 4.0], "heading": 0.0, "territory_zone": "ra", "sizes": [1, 2]},
     {"id": "mb", "species": "rammer", "home": [6.5, 4.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [-8.0, 8.0], "heading": 2.2143, "territory_zone": "", "sizes": [1]},
+    {"id": "la", "species": "ambush_hunter", "home": [-8.2, 14.6], "heading": 2.9047, "territory_zone": "", "sizes": [1]},
     {"id": "er", "species": "elder_rammer", "home": [-14.5, 15.5], "heading": -0.8187, "territory_zone": "ma", "sizes": [2]}
   ]
 }

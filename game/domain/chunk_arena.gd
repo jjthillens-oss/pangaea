@@ -24,12 +24,27 @@ const MAX_COLLIDER_R := 4.0       ## tm; add_chunk refuses larger colliders (the
 ## that deep needs a body placed inside a collider, which only a debug move does).
 const SETTLE_TRAVEL_TM := 2.0
 const FAR_BOX_TM := 1e12          ## a query box reaching past this covers every loaded chunk
+## tm: how far a route_point_kept caller may move from where its colliders were picked before they
+## are picked again, and the rounding slack added to every pick (as GRID_SLACK is to a grid's).
+const ROUTE_KEEP_TM := 1.0
+const ROUTE_KEEP_SLACK := 0.01
+
+## What route_point_kept keeps for one caller between calls: the canonical indices of the colliders
+## that could block its route from anywhere within ROUTE_KEEP_TM of where they were picked, and what
+## they were picked for, [epoch, from x, from y, to x, to y, body_r, clearance]. Floats, not
+## Vector2s: a rebase changes the epoch, so nothing here is a position to move.
+class RouteKeep:
+	var key := PackedFloat64Array()
+	var near := PackedInt32Array()
 
 var chunk_tm := 32.0
 var origin_x := 0.0               ## float64 abs tm of local (0, 0)
 var origin_y := 0.0
 ## How often settle() fell back to the reference; read only by tests.
 var settle_fallbacks := 0
+## Counts every change to the colliders' local centres or their canonical order (add_chunk,
+## remove_chunk, set_origin): a RouteKeep picked in another epoch is picked again.
+var epoch := 0
 
 var _keys: Array[Vector2i] = []   # loaded, sorted (y, x): the canonical order
 var _abs_x := PackedFloat64Array()  # per collider, canonical order
@@ -79,6 +94,7 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 	if _range.has(key):
 		push_error("ChunkArena: chunk %s is already loaded" % key)
 		return
+	epoch += 1
 	var kept: Array[Dictionary] = []
 	for c in colliders:
 		var x := float(c.x)
@@ -133,6 +149,7 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 func remove_chunk(key: Vector2i) -> void:
 	if not _range.has(key):
 		return
+	epoch += 1
 	var own: Array = _chunk_colliders[key]
 	for dy in range(-_ring, _ring + 1):
 		for dx in range(-_ring, _ring + 1):
@@ -171,6 +188,7 @@ func chunk_keys() -> Array[Vector2i]:
 ## error accumulates). The near grids are absolute and do not change. One pass over locals (the
 ## packed arrays are references): a rebase does this for every loaded collider in a timed tick (G17).
 func set_origin(ox_tm: float, oy_tm: float) -> void:
+	epoch += 1
 	origin_x = ox_tm
 	origin_y = oy_tm
 	var centers := _centers
@@ -312,6 +330,65 @@ func route_point(from: Vector2, to: Vector2, body_r: float, clearance: float = R
 	if side != 0:
 		away = dir.orthogonal() * signf(side)
 	return _centers[blocking] + away * (_radii[blocking] + body_r + margin)
+
+
+## route_point for a caller that asks again and again for the same `to` from nearby places (a
+## forager seeking its goal): only the colliders in `keep` are looped, in canonical order, so the
+## answer is route_point's. A collider blocks only when its centre lies within r + body_r +
+## clearance of the line and projects no further than r past `to`, so within 2 r + body_r +
+## clearance of the segment from `from` to `to`; moving `from` by d moves that segment by at most d.
+## `keep` holds every collider within that, plus ROUTE_KEEP_TM and ROUTE_KEEP_SLACK, of the segment
+## it was picked for, and is picked again when the caller has moved farther, or `to`, body_r,
+## clearance or the epoch differ.
+func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: float, margin: float, side: int,
+		keep: RouteKeep) -> Vector2:
+	if not rock_grid:
+		return super.route_point(from, to, body_r, clearance, margin, side)
+	var to_target := to - from
+	var length := to_target.length()
+	if length < 1e-6:
+		return to
+	var key := keep.key
+	if key.size() != 7 or key[0] != epoch or key[3] != to.x or key[4] != to.y or key[5] != body_r \
+			or key[6] != clearance or Vector2(key[1], key[2]).distance_squared_to(from) > ROUTE_KEEP_TM * ROUTE_KEEP_TM:
+		_keep_route(from, to, body_r, clearance, keep)
+	var dir := to_target / length
+	var blocking := -1
+	var blocking_off := Vector2.ZERO
+	var nearest_along := INF
+	for k in keep.near:
+		# PoolArena.route_point's loop body, unchanged, over a subset in canonical order that holds
+		# every collider the full loop could pick.
+		var c: Vector2 = _centers[k] - from
+		var along := c.dot(dir)
+		var rock_r := _radii[k]
+		if along <= 0.0 or along >= length + rock_r:
+			continue
+		var off := c - dir * along
+		if off.length() < rock_r + body_r + clearance and along < nearest_along:
+			nearest_along = along
+			blocking = k
+			blocking_off = off
+	if blocking < 0:
+		return to
+	var away := -blocking_off.normalized() if blocking_off.length() > 1e-6 else dir.orthogonal()
+	if side != 0:
+		away = dir.orthogonal() * signf(side)
+	return _centers[blocking] + away * (_radii[blocking] + body_r + margin)
+
+
+## Picks `keep`'s colliders for a route from `from` to `to` (route_point_kept).
+func _keep_route(from: Vector2, to: Vector2, body_r: float, clearance: float, keep: RouteKeep) -> void:
+	var pad := ROUTE_KEEP_TM + ROUTE_KEEP_SLACK + body_r + clearance
+	var h := 2.0 * MAX_COLLIDER_R + pad + GRID_SLACK
+	var near := PackedInt32Array()
+	for i in _candidates(minf(from.x, to.x) - h, minf(from.y, to.y) - h, maxf(from.x, to.x) + h, maxf(from.y, to.y) + h):
+		for k in range(_cand[2 * i], _cand[2 * i + 1]):
+			var c := _centers[k]
+			if Geometry2D.get_closest_point_to_segment(c, from, to).distance_to(c) < 2.0 * _radii[k] + pad:
+				near.append(k)
+	keep.near = near
+	keep.key = PackedFloat64Array([epoch, from.x, from.y, to.x, to.y, body_r, clearance])
 
 
 func rock_contact(p: Vector2, r: float, slack: float = CONTACT_SLACK, facing: float = NAN, max_bearing: float = PI) -> String:

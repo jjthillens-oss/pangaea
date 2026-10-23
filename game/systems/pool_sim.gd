@@ -969,12 +969,15 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 				food_listed = true
 			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
 		# creatures.drive(c, ...) written out, then move_body's steer, the usual drive, without the call.
-		# A forager seeking its goal (the usual drive) seeks from the body's own values, without a view.
+		# A forager seeking its goal (the usual drive) seeks from the body's own values, without a view,
+		# and in the endless world routes past the colliders kept for it (route_point_kept).
 		var d: Dictionary
 		if brain.state == CreatureBrain.FORAGE and brain.phase != CreatureBrain.EAT and brain.goal.is_finite():
 			var p := c.phenotype
+			if c.route_keep == null and endless and arena is ChunkArena:
+				c.route_keep = ChunkArena.RouteKeep.new()
 			d = CreatureBrain.seek_from(brain, c.motion.position, p.radius, p.speed, p.acceleration, brain.goal,
-				float(brain.cfg.speeds.forage), arena, true)
+				float(brain.cfg.speeds.forage), arena, true, c.route_keep)
 		else:
 			if self_view.is_empty():
 				self_view = creatures.self_view_of(c)
