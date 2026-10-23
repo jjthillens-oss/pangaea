@@ -129,9 +129,10 @@ func limb_bones(desc: RefCounted) -> Dictionary:
 
 
 func test_limb_weights_stay_on_their_own_limb() -> void:
-	for body_name in ["s1_quadruped", "s1_hexapod", "s1_twelve_limbs", "s1_asymmetric"]:
+	# Every starter body at the preview grid, as the lab's Stage 1 weights test did.
+	for body_name in Fixtures.starter_names():
 		var desc = Fixtures.body(body_name)
-		var skin := gameplay_skin(desc)
+		var skin := SkinCpu.build(desc, desc.preview_divisions(rules))
 		var bones: PackedInt32Array = skin["bones"]
 		var weights: PackedFloat32Array = skin["weights"]
 		var c0: PackedFloat32Array = skin["custom0"]
