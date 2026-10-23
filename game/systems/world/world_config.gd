@@ -436,6 +436,13 @@ static func list_at(where: String, data: Dictionary, key: String, problems: Pack
 	return []
 
 
+## True when `text` is a String the regular expression `pattern` finds a match in.
+static func matches(text: Variant, pattern: String) -> bool:
+	var re := RegEx.new()
+	re.compile(pattern)
+	return text is String and re.search(text) != null
+
+
 static func _sorted(keys: Array) -> Array:
 	var out := keys.duplicate()
 	out.sort()

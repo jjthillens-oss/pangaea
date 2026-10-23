@@ -1,0 +1,338 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "T1 test fixture: the M1 pool unwalled plus a minimal seam ring (20 zones, 8 shells); not game content.",
+	"band": 0,
+	"base_layout": "res://game/data/pool_m1.json",
+	"base_sites": "res://game/data/creatures_m1.json",
+	"seam_inner_r": 36.0,
+	"shells": [
+		{
+			"id": "sa",
+			"center": [
+				40.65,
+				16.84
+			],
+			"radius": 1.4,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sb",
+			"center": [
+				16.84,
+				40.65
+			],
+			"radius": 1.0,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sc",
+			"center": [
+				-16.84,
+				40.65
+			],
+			"radius": 0.8,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sd",
+			"center": [
+				-40.65,
+				16.84
+			],
+			"radius": 1.2,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "se",
+			"center": [
+				-40.65,
+				-16.84
+			],
+			"radius": 0.9,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sf",
+			"center": [
+				-16.84,
+				-40.65
+			],
+			"radius": 1.3,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sg",
+			"center": [
+				16.84,
+				-40.65
+			],
+			"radius": 0.7,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sh",
+			"center": [
+				40.65,
+				-16.84
+			],
+			"radius": 1.1,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		}
+	],
+	"zones": [
+		{
+			"id": "e",
+			"center": [
+				50.0,
+				0.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "ese",
+			"center": [
+				56.0,
+				28.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "se",
+			"center": [
+				56.0,
+				56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sse",
+			"center": [
+				28.0,
+				56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "s",
+			"center": [
+				0.0,
+				50.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "ssw",
+			"center": [
+				-28.0,
+				56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "sw",
+			"center": [
+				-56.0,
+				56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "wsw",
+			"center": [
+				-56.0,
+				28.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "w",
+			"center": [
+				-50.0,
+				0.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "wnw",
+			"center": [
+				-56.0,
+				-28.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "nw",
+			"center": [
+				-56.0,
+				-56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "nnw",
+			"center": [
+				-28.0,
+				-56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "n",
+			"center": [
+				0.0,
+				-50.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "nne",
+			"center": [
+				28.0,
+				-56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "ne",
+			"center": [
+				56.0,
+				-56.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "ene",
+			"center": [
+				56.0,
+				-28.0
+			],
+			"radius": 6.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "ise",
+			"center": [
+				30.0,
+				30.0
+			],
+			"radius": 5.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		},
+		{
+			"id": "isw",
+			"center": [
+				-30.0,
+				30.0
+			],
+			"radius": 5.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		},
+		{
+			"id": "inw",
+			"center": [
+				-30.0,
+				-30.0
+			],
+			"radius": 5.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		},
+		{
+			"id": "ine",
+			"center": [
+				30.0,
+				-30.0
+			],
+			"radius": 5.0,
+			"capacity": 16.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		}
+	],
+	"sites": []
+}
