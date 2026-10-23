@@ -182,3 +182,19 @@ static func post(position: Vector2, heading := 0.0) -> Dictionary:
 ## A chunk_loaded event's `sites` list.
 static func sites_payload(sites: Array[Dictionary]) -> Array[Dictionary]:
 	return sites.duplicate(true)
+
+
+## Two Lurker sites of two posts each (s_a, s_b) and a rammer's (s_r), round `center`, at 1 / `factor`
+## of the base layout: 1 as first loaded (the posts offset from center), else re-expressed round it.
+static func lair_sites(center: Vector2, factor := 1.0) -> Array[Dictionary]:
+	var at := func(offset: Vector2) -> Vector2:
+		return center + offset if factor == 1.0 else offset / factor
+	return sites_payload([
+		site("s_a", "lurker", [post(at.call(Vector2(4.0, 3.0)), 0.5), post(at.call(Vector2(-5.0, 2.0)), 2.0)] as Array[Dictionary]),
+		site("s_b", "lurker", [post(at.call(Vector2(2.0, -6.0)), -1.0), post(at.call(Vector2(8.0, 1.0)), 3.0)] as Array[Dictionary]),
+		site("s_r", "rammer", [post(at.call(Vector2(0.0, 9.0)), 0.0)] as Array[Dictionary])])
+
+
+## A creature_post_move event (spine 3.15) from `from` to `to` of creature `id`.
+static func post_move(from: Vector2, to: Vector2, id := "") -> Dictionary:
+	return {"type": "creature_post_move", "id": id, "post": 1, "from": from, "to": to}

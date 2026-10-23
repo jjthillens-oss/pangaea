@@ -60,6 +60,8 @@ signal growth_chord(size: int)
 signal giant_pass_started
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
+## The idea hints' "near a smaller body": a surface gap of at most this (tm, s2-view 7.5).
+const NEAR_SMALLER_TM := 2.0
 ## The regions whose zones get sunlit patches in the sea: the feast region and home (CT-14).
 const PATCH_REGIONS: PackedStringArray = ["sunlit", "home"]
 const FADE_IN_S := 0.3
@@ -108,6 +110,8 @@ var reduce_motion := false
 var growth_beat: GrowthBeat
 ## The ghosts of the sizes to come and the giants (S2).
 var ghosts: GhostLayer
+## The Lurkers' silt ribbons and lair mouths (S2, in WorldSpace).
+var silt_trail: SiltTrail
 ## What this computer remembers about its player (main's), read for the giants' first pass; none
 ## outside main, and then every lineage gets its pass.
 var player_memory: UserSettings
@@ -118,6 +122,12 @@ var _backdrop_y := -40.0
 var _backdrop_scale := Vector3.ONE
 var _fog_env: Environment
 var _fog_base := {}
+## Sim time of this session's last growth (-INF before one): the idea hints' beat_t.
+var _grew_at := -INF
+## The sea tile the idea hints last asked about, at which size, and its region.
+var _region_tile := Vector2i(2147483647, 2147483647)
+var _region_size := 0
+var _region_name := ""
 
 ## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
 @onready var rim_node: Node3D = %Rim
@@ -183,6 +193,10 @@ func _ready() -> void:
 		add_child(ghosts)
 		ghosts.first_pass_started.connect(giant_pass_started.emit)
 	ghosts.camera = camera
+	if silt_trail == null:
+		silt_trail = SiltTrail.new()
+		silt_trail.name = "SiltTrail"
+		add_child(silt_trail)
 	_mount_ambience()
 	if session != null and not _built:
 		_build()
@@ -243,7 +257,7 @@ func _build() -> void:
 		intent_provider = swim_input
 	hints.reset()
 	cell_view.attach_fx(world_fx)
-	for node: Node3D in [rim_node, zone_lights, rocks, landmarks, feedback, world_fx]:
+	for node: Node3D in [rim_node, zone_lights, rocks, landmarks, feedback, world_fx, silt_trail]:
 		world_space.register(node)
 	for player in audio.get_children():
 		if player is AudioStreamPlayer3D:
@@ -257,6 +271,7 @@ func _build() -> void:
 		rim_node.visible = false   # the dish wall is the pool's edge; the sea has none
 		rocks.clear()
 		landmarks.setup(session.world.kit)
+		silt_trail.setup(sim.species, sim_size())
 		zone_lights.build([])
 		feedback.setup([], camera)
 		for key in sim.world.loaded_keys():
@@ -265,6 +280,7 @@ func _build() -> void:
 		rim_node.visible = true
 		rocks.build_pool(session.layout)
 		landmarks.clear()
+		silt_trail.setup(sim.species, sim_size())
 		zone_lights.build(session.layout.zones)
 		feedback.setup(session.layout.zones, camera)
 	cell_view.build(sim.save.genome, sim.phenotype)
@@ -301,6 +317,64 @@ func _configure_ghosts() -> void:
 	ghosts.schedule_first_pass(sim.now() + lerpf(float(start[0]), float(start[1]), u))
 
 
+## What the idea hints read (S2, s2-view 7.5; the HUD asks every IDEA_CONTEXT_S): the size, whether
+## the cell has a jaw or eats only meat, starves, how full its ring is, whether it is in the home
+## tile (the sea only) and how long it has lived; whether a rimmed body is in view, whether a smaller
+## creature or remnant lies within NEAR_SMALLER_TM of its surface, and the sim time since this
+## session's last growth began (-1 before one).
+func hint_context() -> Dictionary:
+	var p := sim.phenotype
+	var n := sim_size()
+	return {"size": n, "has_jaw": p.can_eat("meat"), "meat_only": p.diets == PackedStringArray(["meat"]),
+		"starving": sim.state.is_starving(), "meter_share": GrowthHud.share_of(growth(), n),
+		"in_home_tile": is_endless() and _tile_region() == "home", "alive_s": sim.alive_s,
+		"rimmed_in_view": camera != null and not creature_layer.rimmed_in_view(camera, view_size(), 1).is_empty(),
+		"near_smaller": _near_smaller(), "beat_t": sim.now() - _grew_at if _grew_at > -INF else -1.0}
+
+
+## What the idea hints need to know about a sim event: {smaller, rimmed} for the body a "hit" struck
+## or the morsel an "ate" took (q under 1 or a remnant, and rimmed), both false otherwise.
+func hint_facts(event: Dictionary) -> Dictionary:
+	var view: CreatureView = null
+	match str(event.get("type", "")):
+		"hit":
+			var id := str(event.get("target", ""))
+			view = creature_layer.view_of(id)
+			if view == null:
+				view = creature_layer.remnant_view(id)
+		"ate":
+			view = creature_layer.morsel_view(str(event.get("food_id", "")))
+	if view == null:
+		return {"smaller": false, "rimmed": false}
+	return {"smaller": view.remnant or view.morsel_id != "" or view.view_q < 1.0, "rimmed": view.rimmed()}
+
+
+## A creature or remnant smaller than the cell (q under 1) within NEAR_SMALLER_TM of its surface.
+func _near_smaller() -> bool:
+	if camera == null:
+		return false
+	var cell := sim.motion.position
+	var r := sim.phenotype.radius
+	for view in creature_layer.views_in_view(camera, view_size()):
+		if view.morsel_id != "" or not (view.remnant or view.view_q < 1.0):
+			continue
+		if PlaneSpace.to_plane(view.position).distance_to(cell) - r - view.radius <= NEAR_SMALLER_TM:
+			return true
+	return false
+
+
+## The region of the sea tile the cell is in (WorldGen.tile_info), read again only when the tile
+## changes.
+func _tile_region() -> String:
+	var w := sim.world
+	var t := w.tile_of_local(sim.motion.position)
+	if t != _region_tile or w.size != _region_size:
+		_region_tile = t
+		_region_size = w.size
+		_region_name = str(w.gen.tile_info(WorldConfig.band_of(w.size), t.x, t.y).get("region", ""))
+	return _region_name
+
+
 ## True in the endless sea (the sim streams a world), false in the M1 pool.
 func is_endless() -> bool:
 	return sim != null and sim.world != null
@@ -325,12 +399,13 @@ func shown_size() -> int:
 ## The containers that follow the growth beat's contract (apply_growth, retire_chunk, settle_growth,
 ## beat_frame, end_growth).
 func growth_containers() -> Array:
-	return [rocks, landmarks, zone_lights, feedback]
+	return [rocks, landmarks, zone_lights, feedback, silt_trail]
 
 
 ## Every depth layer at k of its depth (the growth beat; 1 otherwise), s2-view 4.2: the Backdrop's
 ## height and size, the fog (heights times k, densities over k, so the attenuation over a path
-## that is k times as long in tm stays), the zone patches' depth, the zone labels and the markers.
+## that is k times as long in tm stays), the zone patches' and lair mouths' depth, the zone labels
+## and the markers.
 ## At k = 1 / factor, the first frame after a growth draws every layer where the last one did.
 func apply_depth_k(k: float) -> void:
 	# Exactly: the last step of the dolly is within is_equal_approx of 1, and must still land on 1.
@@ -350,6 +425,7 @@ func apply_depth_k(k: float) -> void:
 		env.fog_density = _fog_base.fog_density / k
 	zone_lights.set_depth_k(k)
 	feedback.set_depth_k(k)
+	silt_trail.set_depth_k(k)
 	markers.set_size_k(k)
 	plankton_view.depth_k = k
 	carrion_view.depth_k = k
@@ -475,6 +551,7 @@ func apply_world_event(e: Dictionary) -> void:
 			var zones: Array = e.get("zones", [])
 			zone_lights.add_chunk(key, zones.filter(func(z: Dictionary) -> bool: return z.region in PATCH_REGIONS))
 			feedback.add_zone_labels(key, zones)
+			silt_trail.add_chunk(key, e.get("sites", []))
 			_loaded[key] = true
 		"chunk_unloaded":
 			var key: Vector2i = e.key
@@ -488,6 +565,7 @@ func apply_world_event(e: Dictionary) -> void:
 				landmarks.remove_chunk(key)
 				zone_lights.remove_chunk(key)
 				feedback.remove_zone_labels(key)
+				silt_trail.remove_chunk(key)
 			_loaded.erase(key)
 		"rebased":
 			var o: Vector2 = e.offset_tm
@@ -582,6 +660,8 @@ func _begin_growth(e: Dictionary) -> void:
 	_bake_fx()
 	creature_layer.apply_growth(center, factor)
 	ghosts.begin_growth(int(e.get("from", 1)), int(e.get("to", 2)))
+	silt_trail.size = int(e.get("to", sim_size()))   # before the tick's chunks come
+	_grew_at = sim.now()
 	markers.hold_column_until(GrowthBeat.RELATIONS_S)
 	apply_depth_k(growth_beat.k())
 	_follow_camera()
@@ -677,6 +757,7 @@ func _process(delta: float) -> void:
 	cell_view.set_growth_pose(growth_beat.swell(), growth_beat.cell_offset(), _stretch_now(draw_t))
 	cell_view.set_ripeness(GrowthHud.share_of(growth(), sim_size()) if growth() != null else 0.0)
 	markers.beat_t = growth_beat.t()
+	silt_trail.step(draw_t)
 	if world_fx.scale != Vector3.ONE:
 		_bake_fx()   # a meal ghost was in flight at the growth: once it has landed
 	cell_view.show_motion(sim.motion, fraction)
@@ -808,6 +889,10 @@ func _route(event: Dictionary) -> void:
 				audio.play_at("bite" if event.get("kind") == "bite" else "ram", _world(event.position))
 		"creature_died":
 			audio.play_at("creature_die", _world(event.position))
+		"creature_post_move":
+			var mover: CreatureField.Creature = sim.creatures.find(str(event.get("id", ""))) if sim.creatures != null else null
+			if mover != null:
+				silt_trail.add_ribbon(event, mover.species_id, sim.now())
 		"chunk_loaded", "chunk_unloaded", "rebased":
 			apply_world_event(event)
 		"growth_began":
@@ -838,6 +923,7 @@ func _route(event: Dictionary) -> void:
 				creature_layer.attach(sim, world_space)
 				creature_layer.apply_relations(sim_size(), 0.0)
 				apply_food_looks(sim_size())
+				silt_trail.resize(sim_size())
 				if audio.has_method(&"set_size"):
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)

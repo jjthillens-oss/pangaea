@@ -386,6 +386,7 @@ func _open_pool() -> void:
 	hud = HUD_SCENE.instantiate()
 	ui.add_child(hud)
 	ui.move_child(hud, 0)   # under the target ring and the starving arrow
+	hud.bind_memory(player_memory, save_player_memory)
 	hud.bind(pool)
 	pause_menu = PAUSE_MENU_SCENE.instantiate()
 	ui.add_child(pause_menu)

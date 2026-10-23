@@ -3,9 +3,13 @@ extends TestCase
 ## count; docs/s1/s1-content.md 6.1 to 6.9 and 7.1). Every Node3D under the pool is covered by one
 ## of three groups, a rebase moves nothing on screen, and containers renormalise without moving
 ## anything. Pools are built outside the tree (tests/fakes/fake_world_events.gd), in pool mode or
-## on T2's FakeWorldGen.
+## on T2's FakeWorldGen. The silt trail (S2; s2-view 7.7, V-25, C-V10): a ribbon behind each move
+## between two lairs of a species with a trail, fading over its trail_s, at most eight; a lair mouth
+## at both posts of every live Lurker site, posed and sized for the size, gone with its chunk and
+## hidden where the Lurker is not live; the pool feeding it from its events.
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
+const FakeGrowthEvents := preload("res://tests/fakes/fake_growth_events.gd")
 const GROUPS: Array[StringName] = [&"world_space", &"world_rebuilt", &"camera_relative"]
 
 
@@ -80,6 +84,9 @@ static func registered_carrier(node: Node3D, pool: Node) -> Node3D:
 	return null
 
 
+## The shipped species, for the silt trail (loaded on first use).
+var _species: SpeciesCatalog
+
 func _check_covered(pool: PoolScene, when: String) -> void:
 	var problems := coverage_problems(pool)
 	check(problems.is_empty(), "every Node3D is covered %s:\n        %s" % [when, "\n        ".join(problems)])
@@ -101,10 +108,11 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	var names := []
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
-	check_eq(names.slice(0, 6), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx"], "the containers register in their fixed order")
-	check_eq(names.size(), 6 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
+	check_eq(names.slice(0, 7), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx", "SiltTrail"],
+		"the containers register in their fixed order (the silt trail is S2's)")
+	check_eq(names.size(), 7 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
 		"then the positional players, the growth beat's effects, then each creature's lane")
-	check_eq(names[6 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
+	check_eq(names[7 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
 	var dissolve := pool.ui.get_node_or_null(^"BeatDissolve") as TextureRect
 	check(dissolve != null and not dissolve.visible, "the reduce-motion dissolve waits, hidden, over the UI (S2)")
 	check(not pool.growth_beat.running() and pool.depth_k() == 1.0, "the growth beat is idle after the build")
@@ -140,6 +148,14 @@ func test_every_node3d_is_covered_in_endless_mode() -> void:
 	pool.apply_world_event(_rare_chunk(Vector2i(55, 55)))
 	check(not pool.landmarks.pieces().is_empty(), "a landmark and a set piece are drawn")
 	_check_covered(pool, "after a chunk with a landmark, an anchor and a place")
+	# The silt trail's pieces (S2): a Lurker's lair mouth and its ribbon, drawn as at size 2.
+	pool.silt_trail.resize(2)
+	var lair := sim.motion.position + Vector2(4.0, 0.0)
+	pool.apply_world_event(FakeEvents.loaded(Vector2i(56, 55), [], [], [], [],
+		[FakeGrowthEvents.site("s_l", "lurker", [FakeGrowthEvents.post(lair)] as Array[Dictionary])]))
+	pool.silt_trail.add_ribbon({"from": lair, "to": lair + Vector2(0.0, 6.0)}, "lurker", sim.now())
+	check(pool.silt_trail.mouths().size() == 1 and pool.silt_trail.ribbons().size() == 1, "a lair mouth and a silt ribbon are drawn")
+	_check_covered(pool, "after a lair mouth and a silt ribbon")
 	check(sim.debug_rebase(Vector2i(1, 0)), "a dev rebase")
 	FakeEvents.frame(pool)
 	_check_covered(pool, "after a rebase")
@@ -652,3 +668,121 @@ func test_draws_stay_at_one_multimesh_per_shell_asset() -> void:
 	check_eq(meshes.size(), pieces.size(), "one MultiMesh per shell piece, not per chunk")
 	check_eq(pool.rocks.get_child_count(), meshes.size(), "and nothing else in Rocks")
 	pool.free()
+
+
+func test_a_post_move_leaves_a_ribbon_that_fades() -> void:
+	var trail := _silt_trail(2)
+	trail.add_ribbon(FakeGrowthEvents.post_move(Vector2(1.0, 2.0), Vector2(7.0, 10.0)), "lurker", 10.0)
+	check_eq(trail.ribbons().size(), 1, "a ribbon for the Lurker's move")
+	var ribbon := trail.ribbons()[0]
+	var t := ribbon.transform
+	check(PlaneSpace.to_plane(t.origin).distance_to(Vector2(4.0, 6.0)) < 1e-5, "centred between the posts: %s" % t.origin)
+	check_near(t.origin.y, SiltTrail.RIBBON_Y, 1e-9, "just under the plane")
+	check(SiltTrail.RIBBON_Y < CreatureView.LANE_Y, "and under the strike lane")
+	var along := PlaneSpace.to_plane(t.basis.x)
+	check_near(along.length(), 10.0, 1e-4, "as long as the move")
+	check(along.normalized().distance_to(Vector2(0.6, 0.8)) < 1e-5, "along it: %s" % along)
+	check_near(t.basis.z.length(), 0.5, 1e-5, "0.5 tm wide")
+	check(absf(PlaneSpace.to_plane(t.basis.z).normalized().dot(along.normalized())) < 1e-5, "across it")
+	var m := ribbon.material_override as StandardMaterial3D
+	check(m != null and m.albedo_texture == SiltTrail.SILT_TEXTURE and m.texture_repeat, "T_SiltTrail, repeating")
+	check_near(m.uv1_scale.x, 10.0 / SiltTrail.TILE_TM, 1e-6, "along its length")
+	check_near(m.albedo_color.a, 0.55, 1e-6, "at 0.55")
+	check(m.render_priority < CreatureView.LANE_PRIORITY, "drawn before the lane")
+	check_eq(ribbon.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "casting no shadow")
+	check_near(float(_species.habit_of("lurker").trail_s), 20.0, 1e-9, "the Lurker's trail lasts 20 s")
+	trail.step(20.0)
+	check_near(m.albedo_color.a, 0.275, 1e-6, "half faded half way")
+	trail.step(29.9)
+	check_eq(trail.ribbons().size(), 1, "still there just before 20 s")
+	trail.step(30.0)
+	check(trail.ribbons().is_empty(), "gone at 20 s")
+	trail.add_ribbon(FakeGrowthEvents.post_move(Vector2.ZERO, Vector2(5.0, 0.0)), "rammer", 31.0)
+	check(trail.ribbons().is_empty(), "a species without a trail leaves none")
+	trail.add_ribbon(FakeGrowthEvents.post_move(Vector2.ONE, Vector2.ONE), "lurker", 31.0)
+	check(trail.ribbons().is_empty(), "nor a move that goes nowhere")
+	for i in 9:
+		trail.add_ribbon(FakeGrowthEvents.post_move(Vector2(i, 0.0), Vector2(i, 5.0)), "lurker", 40.0 + i)
+	var xs := trail.ribbons().map(func(r: MeshInstance3D) -> float: return roundf(r.position.x))
+	check_eq(xs, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], "at most eight: the oldest goes first")
+	trail.free()
+
+
+func test_lair_mouths_stand_at_the_live_posts() -> void:
+	check(not _species.live_at("lurker", 1) and _species.live_at("lurker", 2), "the Lurker is live from size 2")
+	var key := Vector2i(3, 4)
+	var sites := FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0)
+	var trail := _silt_trail(1)
+	trail.add_chunk(key, sites)
+	check(trail.mouths().is_empty(), "no mouths at size 1, where no Lurker lives")
+	for n in [2, 3]:
+		trail.resize(n)
+		var mouths := trail.mouths()
+		if not _species.live_at("lurker", n):
+			check(mouths.is_empty(), "none at size %d" % n)
+			continue
+		check_eq(mouths.map(func(p: Node3D) -> String: return str(p.name)), ["s_a_post0", "s_a_post1", "s_b_post0", "s_b_post1"],
+			"a mouth at each post of each Lurker site and none for the rammer's (size %d)" % n)
+		for i in mouths.size():
+			var post: Dictionary = sites[i / 2].posts[i % 2]
+			var t := mouths[i].transform
+			check(PlaneSpace.to_plane(t.origin).distance_to(post.position) < 1e-5, "%s at its post" % mouths[i].name)
+			check_near(t.origin.y, -1.6, 1e-6, "1.6 tm down")
+			var s := t.basis.get_scale()
+			check(s.is_equal_approx(Vector3.ONE * 0.75 * pow(1.6, 2 - n)), "%s at 0.75 x 1.6^(2 - %d): %s" % [mouths[i].name, n, s])
+			var opening := PlaneSpace.to_plane(t.basis.x).normalized()
+			check(opening.distance_to(Vector2.from_angle(float(post.heading))) < 1e-4, "%s opens along its heading" % mouths[i].name)
+		check(mouths.all(func(p: Node3D) -> bool: return p.find_children("*", "GeometryInstance3D", true, false).all(
+			func(g: GeometryInstance3D) -> bool: return g.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF)),
+			"casting no shadow")
+	trail.remove_chunk(key)
+	check(trail.mouths().is_empty(), "gone with their chunk")
+	trail.add_chunk(key, sites)
+	check_eq(trail.mouths().size(), 4, "back with it")
+	trail.resize(1)
+	check(trail.mouths().is_empty(), "hidden at a size the Lurker is not live at")
+	trail.resize(2)
+	check_eq(trail.mouths().size(), 4, "and shown again from the chunk's sites")
+	trail.free()
+
+
+## The pool's events: chunk sites become mouths at a live size, a Lurker's post move a ribbon, an
+## unload takes the mouths, and the dev's size jump redraws the trail for the new size.
+func test_the_pool_feeds_the_silt_trail() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true))
+	check(pool.world_space.registered().has(pool.silt_trail), "the trail moves with WorldSpace")
+	check(pool.growth_containers().has(pool.silt_trail), "and keeps the growth containers' contract")
+	check(pool.sim.debug_set_size(2), "the dev's size 2")
+	FakeEvents.frame(pool)
+	check_eq(pool.silt_trail.size, 2, "the trail drawn at size 2")
+	var c := pool.sim.motion.position
+	var key := Vector2i(900, 900)
+	var sites := FakeGrowthEvents.lair_sites(c, 1.0)
+	pool._route(FakeEvents.loaded(key, [], [], [], [], sites))
+	check_eq(pool.silt_trail.mouths().size(), 4, "the chunk's Lurker sites get their mouths")
+	check(pool.sim.debug_spawn_creature("lurker", c + Vector2(6.0, 0.0), 0.0), "a Lurker")
+	var lurker: CreatureField.Creature = pool.sim.creatures.creatures[pool.sim.creatures.creatures.size() - 1]
+	check_eq(lurker.species_id, "lurker", "spawned")
+	var move := FakeGrowthEvents.post_move(c + Vector2(3.0, 0.0), c + Vector2(-3.0, 2.0))
+	move.id = lurker.id
+	pool._route(move)
+	check_eq(pool.silt_trail.ribbons().size(), 1, "its post move leaves a ribbon")
+	move.id = "nobody"
+	pool._route(move)
+	check_eq(pool.silt_trail.ribbons().size(), 1, "a creature the sim no longer has leaves none")
+	pool._route(FakeEvents.unloaded(key))
+	check(pool.silt_trail.mouths().is_empty(), "the unload takes the mouths")
+	pool._route(FakeEvents.loaded(key, [], [], [], [], sites))
+	check(pool.sim.debug_set_size(1), "the dev's size 1")
+	FakeEvents.frame(pool)
+	check(pool.silt_trail.mouths().is_empty() and pool.silt_trail.ribbons().is_empty(), "no mouths or ribbons at size 1")
+	pool.free()
+
+
+## A silt trail on the shipped species at `size`, outside the tree.
+func _silt_trail(size: int) -> SiltTrail:
+	if _species == null:
+		_species = SpeciesCatalog.load_from()
+	var trail := SiltTrail.new()
+	trail.setup(_species, size)
+	return trail

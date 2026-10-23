@@ -411,6 +411,11 @@ func configure(ladder: Dictionary, size: int, seed_value: int) -> void:
 	_riser_node = _billboard("Riser", brightness)
 
 
+## The ladder the layer draws ({} when it draws nothing): the ladder strip reads its names from it.
+func ladder() -> Dictionary:
+	return _ladder
+
+
 ## The ladder species that enter at the next two sizes, in the ladder's order: what the near ghosts of
 ## `size` show.
 func near_species(size: int) -> PackedStringArray:

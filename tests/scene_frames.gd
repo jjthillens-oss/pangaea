@@ -52,7 +52,8 @@ static func project(camera: Camera3D, p: Vector3, screen := SCREEN) -> Vector2:
 ## The views a growth must keep in place, by name -> point in the pool's space: the cell, the
 ## creature views, every shell instance (live, retiring and fresh) by id, the landmark pieces, the
 ## zone patches and labels, the markers, the Backdrop's centre, the beat's effects (with the first
-## instances of its old food copies and glitter) and the ghosts drawn ("ghost <name>").
+## instances of its old food copies and glitter), the silt trail's ribbons and lair mouths and the
+## ghosts drawn ("ghost <name>").
 static func tracked_points(pool: PoolScene) -> Dictionary:
 	var out := {"cell": pool.cell_view.position}
 	for view in pool.creature_layer.views():
@@ -74,6 +75,9 @@ static func tracked_points(pool: PoolScene) -> Dictionary:
 	if pool.markers.column() != null:
 		out["column"] = in_pool(pool, pool.markers.column())
 	out["backdrop"] = pool.backdrop.position
+	if pool.silt_trail != null:
+		for child in pool.silt_trail.get_children():
+			out["silt " + child.name] = in_pool(pool, child)
 	if pool.ghosts != null:
 		for ghost in pool.ghosts.billboards():
 			out["ghost " + ghost.name] = in_pool(pool, ghost)

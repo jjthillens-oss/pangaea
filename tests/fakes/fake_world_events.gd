@@ -125,8 +125,10 @@ static func place(id: String, kind: String, pos: Vector2, yaw_deg := 0.0, mirror
 	return {"id": id, "kind": kind, "position": pos, "yaw_deg": yaw_deg, "mirror": mirror}
 
 
-static func loaded(key: Vector2i, shells := [], zones := [], anchors := [], places := []) -> Dictionary:
-	return {"type": "chunk_loaded", "key": key, "shells": shells, "zones": zones, "anchors": anchors, "places": places}
+## `sites` (S2, C-V10): the chunk's creature sites, {id, species, posts: [{position, heading}]}.
+static func loaded(key: Vector2i, shells := [], zones := [], anchors := [], places := [], sites := []) -> Dictionary:
+	return {"type": "chunk_loaded", "key": key, "shells": shells, "zones": zones, "anchors": anchors, "places": places,
+		"sites": sites}
 
 
 ## `reason` "growth" (S2): the chunk unloads at a growth tick, and the scene retires it.

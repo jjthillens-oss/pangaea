@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://game/ui/hud.gd" id="1_hud"]
 [ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://game/ui/threat_indicators.gd" id="4_indicators"]
 [ext_resource type="Shader" path="res://game/ui/hurt_vignette.gdshader" id="5_vignette"]
 [ext_resource type="Script" path="res://game/ui/meter_ring.gd" id="6_meter"]
+[ext_resource type="Script" path="res://game/ui/ladder_strip.gd" id="7_ladder"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_vignette"]
 resource_local_to_scene = true
@@ -250,6 +251,18 @@ layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 8
 
+[node name="IdeaHint" type="PanelContainer" parent="Frame/BottomCenter"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"HudPanel"
+
+[node name="IdeaHintText" type="Label" parent="Frame/BottomCenter/IdeaHint"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+horizontal_alignment = 1
+
 [node name="Hint" type="PanelContainer" parent="Frame/BottomCenter"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -293,6 +306,14 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 autowrap_mode = 3
+
+[node name="LadderStrip" type="VBoxContainer" parent="Frame"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+mouse_filter = 2
+script = ExtResource("7_ladder")
 
 [node name="ThreatIndicators" type="Control" parent="."]
 unique_name_in_owner = true

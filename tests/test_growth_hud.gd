@@ -4,7 +4,10 @@ extends TestCase
 ## size badge, the payout toast at the top (C-V8), the grow press as one tick of the player's intent
 ## and the trigger setting sent at the start and on every change (V-16), main's player memory beside
 ## a named slot (C-V1), and none of it in the M1 pool (D-46). Growth is FakeGrowth until T2's lands.
-## The tests use their own settings file and never save it.
+## The ladder strip (s2-view 7.4): its phrases and preview line, and its icons tinted by role with a
+## caption each; the idea hints (7.5, D-43): one at a time, paced, never again once followed (kept in
+## main's player memory), the starving tip once a run. The tests use their own settings file and
+## never save it.
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const FakeGrowthEvents := preload("res://tests/fakes/fake_growth_events.gd")
@@ -294,6 +297,12 @@ func test_pool_mode_hides_growth_ui() -> void:
 	hud._process(1.0 / 60.0)
 	check(not hud.growth_row.visible, "no ring or badge")
 	check(not hud.growth_line.visible, "no growth line")
+	hud.ladder_strip.refresh()
+	check(not hud.ladder_strip.visible, "no ladder strip")
+	# A meal that would offer "Eating well makes you grow" in the sea offers nothing here.
+	hud.idea_hints.on_event({"type": "ate"}, {}, {"size": 1, "meter_share": 0.5})
+	hud._process(1.0 / 60.0)
+	check(not hud.idea_hint.visible, "no idea hints")
 	check_eq(pool.sent_trigger, "", "no trigger goes out")
 	var press := InputEventKey.new()
 	press.physical_keycode = KEY_G
@@ -306,6 +315,7 @@ func test_pool_mode_hides_growth_ui() -> void:
 	var sea := FakeGrowthEvents.open_pool(FakeEvents.endless_session(), FakeGrowth.new())
 	var sea_hud := _hud(sea)
 	check(sea_hud.growth_row.visible, "the sea's HUD shows the ring")
+	check(sea_hud.ladder_strip.visible, "and the ladder strip")
 	sea_hud.free()
 	sea.free()
 
@@ -332,6 +342,228 @@ func test_player_memory_lives_beside_a_named_slot() -> void:
 	check_eq(UserSettings.load_from(path).hints_followed, PackedStringArray(["eat_to_grow"]), "and read back")
 	DirAccess.remove_absolute(path)
 	main.free()
+
+
+## The phrase table, and the preview line: the first two phrases by kind (flee, appear, ignore,
+## morsels, haze), then entry order; at the build's top the later build's promise.
+func test_ladder_phrases() -> void:
+	var table := [["threat", "rival", "rammers ignore you"], ["threat", "prey", "rammers flee from you"],
+		["rival", "prey", "rammers flee from you"], ["rival", "morsel", "rammers become morsels"],
+		["prey", "morsel", "rammers become morsels"], ["ghost", "threat", "rammers appear"],
+		["prey", "haze", "rammers fade to haze"], ["morsel", "haze", "rammers fade to haze"],
+		["rival", "rival", ""], ["prey", "prey", ""], ["ghost", "ghost", ""], ["rival", "threat", ""],
+		["prey", "rival", ""], ["ghost", "prey", "rammers flee from you"]]
+	for row: Array in table:
+		check_eq(LadderStrip.phrase("rammers", row[0], row[1]), row[2], "%s -> %s" % [row[0], row[1]])
+	var ladder: Dictionary = GhostLayer.shipped().data
+	var catalog := SpeciesCatalog.load_from()
+	var ghosts := GhostLayer.new()
+	ghosts.configure(ladder, 1, 7)
+	var entries := LadderStrip.entries_for(PackedStringArray(["rammer", "ambush_hunter"]), ghosts.near_species(1), 1, catalog, ladder)
+	ghosts.free()
+	check_eq(entries.map(func(e: Dictionary) -> String: return e.id), ["rammer", "ambush_hunter", "lurker", "elder_rammer", "veil", "warden"],
+		"the live species first, then the ghosts to come, at most six")
+	check_eq(entries.map(func(e: Dictionary) -> String: return "%s>%s" % [e.role, e.next_role]),
+		["threat>prey", "threat>rival", "ghost>threat", "ghost>threat", "ghost>ghost", "ghost>ghost"], "their roles now and after the growth")
+	check_eq(LadderStrip.preview_line(entries, false, 1, ladder), "After your next growth: rammers flee from you; Lurkers appear",
+		"near a rammer and an ambush hunter at size 1 (s2-view 7.4)")
+	var reversed := entries.duplicate()
+	reversed.reverse()
+	check_eq(LadderStrip.preview_line(reversed, false, 1, ladder), "After your next growth: rammers flee from you; elder rammers appear",
+		"fleeing comes first whatever the entry order, then the first to appear")
+	check_eq(LadderStrip.preview_line(entries.slice(2), false, 1, ladder), "After your next growth: Lurkers appear; elder rammers appear",
+		"a tie keeps entry order")
+	check_eq(LadderStrip.preview_line(entries, true, 2, ladder), "Coming in a later build: the stinger veil", "at the build's top")
+	check_eq(LadderStrip.preview_line(entries, true, 1, ladder), "", "no promise for that size: no line")
+	check_eq(LadderStrip.preview_line(entries.slice(4), false, 1, ladder), "", "nothing changes: no line")
+	check_eq(LadderStrip.entries_for(PackedStringArray(["rammer", "rammer"]), PackedStringArray(["rammer"]), 1, catalog, ladder).size(), 1,
+		"each species once")
+	# The HUD's strip on the sea draws what entries_for and preview_line say.
+	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(), FakeGrowth.new())
+	_grow_to_2(pool)
+	var hud := _hud(pool)
+	var strip := hud.ladder_strip
+	strip.refresh()
+	var shown := strip.entries()
+	check(not shown.is_empty() and shown.slice(shown.size() - 2).all(func(e: Dictionary) -> bool: return e.role == "ghost"),
+		"the strip ends with the ghosts to come")
+	check_eq(strip.preview_text(), LadderStrip.preview_line(shown, false, 1, ladder), "and shows their preview line")
+	check(strip.preview_text().begins_with(LadderStrip.PREVIEW_PREFIX), "\"%s\"" % strip.preview_text())
+	hud.free()
+	pool.free()
+
+
+## Each icon's tint by role (ink for a threat, the rim's green for prey only with a jaw, neutral for
+## rivals and haze, a ghost faint over its own sprite), and a caption under every icon.
+func test_ladder_icons_by_role() -> void:
+	check_eq(LadderStrip.INK.to_html(false), "d9466b", "ink is the threat colour")
+	check_eq(LadderStrip.RIM.to_html(false), "cfe86a", "rim is the rim's green")
+	check_eq(LadderStrip.NEUTRAL.to_html(false), "9aa0b4", "neutral is the crest's grey")
+	check_eq(LadderStrip.tint_of("threat", true), LadderStrip.INK, "a threat in ink")
+	check_eq(LadderStrip.tint_of("threat", false), LadderStrip.INK, "with or without a jaw")
+	check_eq(LadderStrip.tint_of("prey", true), LadderStrip.RIM, "prey rimmed for a jaw")
+	check_eq(LadderStrip.tint_of("prey", false), LadderStrip.NEUTRAL, "prey neutral without one")
+	check_eq(LadderStrip.tint_of("morsel", true), LadderStrip.RIM, "a morsel rimmed for a jaw")
+	check_eq(LadderStrip.tint_of("morsel", false), LadderStrip.NEUTRAL, "a morsel neutral without one")
+	check_eq(LadderStrip.tint_of("rival", true), LadderStrip.NEUTRAL, "a rival neutral")
+	check_eq(LadderStrip.tint_of("haze", true), LadderStrip.NEUTRAL, "haze neutral")
+	check_eq(LadderStrip.tint_of("ghost", true), Color(1.0, 1.0, 1.0, 0.5), "a ghost faint")
+	var ladder: Dictionary = GhostLayer.shipped().data
+	var catalog := SpeciesCatalog.load_from()
+	# At size 2: the rammer is prey, the ambush hunter a rival, the Lurker a threat, the veil to come.
+	var entries := LadderStrip.entries_for(PackedStringArray(["rammer", "ambush_hunter", "lurker", "veil"]), PackedStringArray(), 2, catalog, ladder)
+	check_eq(entries.map(func(e: Dictionary) -> String: return e.role), ["prey", "rival", "threat", "ghost"], "the roles at size 2")
+	var strip := LadderStrip.new()
+	FakeEvents.ready_tree(strip)
+	for jaw in [true, false]:
+		strip._show(entries, jaw, "")
+		var icons := strip.icons()
+		check_eq(icons.size(), 4, "an icon per entry")
+		var want := [LadderStrip.RIM if jaw else LadderStrip.NEUTRAL, LadderStrip.NEUTRAL, LadderStrip.INK, Color(1.0, 1.0, 1.0, 0.5)]
+		check_eq(icons.map(func(i: Dictionary) -> Color: return i.tint), want, "tinted by role (jaw %s)" % jaw)
+		check_eq(icons.map(func(i: Dictionary) -> String: return i.caption), ["rammers", "ambush hunters", "Lurkers", "stinger veils"],
+			"each with its plural under it")
+		check(icons.all(func(i: Dictionary) -> bool: return str(i.texture) != "" and ResourceLoader.exists(str(i.texture))), "and its sprite")
+		check_eq(str(icons[3].texture), str(ladder.species.veil.texture), "a ghost shows its ghost sprite")
+		check_eq(str(icons[0].texture), str(GhostLayer.haze_paths(ladder).rammer), "the others their haze sprite")
+	strip._show(entries.slice(0, 1), true, "")
+	check_eq(strip.icons().size(), 1, "fewer entries hide the spare icons")
+	strip.free()
+
+
+## One idea at a time for SHOW_S, a minute between new ones, an unfollowed one back after three; a
+## followed one goes at once and never comes back, in this run or the next (main's player memory); the
+## starving tip once a run and never remembered.
+func test_idea_hints_pacing() -> void:
+	var main := Main.new()
+	main.flags = RunFlags.from_args(PackedStringArray(["--slot=%s/slot.json" % MEMORY_DIR]))
+	var path := main.player_memory_path()
+	DirAccess.remove_absolute(path)
+	main.player_memory = UserSettings.new()
+	var ideas := IdeaHints.new()
+	ideas.bind_memory(main.player_memory, main.save_player_memory)
+	# Two moments at once: a growth 2.5 s ago with a jaw, and two minutes in the home tile.
+	var ctx := {"size": 2, "has_jaw": true, "beat_t": 2.5, "in_home_tile": true, "alive_s": 130.0}
+	ideas.observe(ctx)
+	check_eq(ideas.step(100.0), "smaller_now", "the first waiting idea by order")
+	check_eq(ideas.step(105.9), "smaller_now", "shown for 6 s")
+	check_eq(ideas.step(106.0), "", "then gone")
+	check_eq(ideas.step(159.9), "", "the other waits a minute from the last new one")
+	check_eq(ideas.step(160.0), "sea_goes_on", "one at a time, a minute apart")
+	ideas.on_event({"type": "tile_entered", "region": "home"}, {}, ctx)
+	check(not ideas.is_followed("sea_goes_on"), "another home tile follows nothing")
+	ideas.on_event({"type": "tile_entered", "region": "reef"}, {}, ctx)
+	check(ideas.is_followed("sea_goes_on"), "leaving home follows it")
+	check_eq(ideas.step(161.0), "", "a followed idea goes at once")
+	check(FileAccess.file_exists(path), "saved as it is followed")
+	check_eq(ideas.step(279.9), "", "an idea not followed waits three minutes from when it showed")
+	check_eq(ideas.step(280.0), "smaller_now", "then comes back while its moment lasts")
+	ideas.observe(ctx.merged({"near_smaller": true}))
+	check_eq(main.player_memory.hints_followed, PackedStringArray(["sea_goes_on", "smaller_now", "flee_now"]),
+		"coming near a smaller body follows both growth ideas")
+	ideas.observe(ctx.merged({"has_jaw": false}))
+	for t in [300.0, 500.0, 1000.0]:
+		check_eq(ideas.step(t), "", "followed ideas never show again (%.0f s)" % t)
+	check_eq(UserSettings.load_from(path).hints_followed, main.player_memory.hints_followed, "kept in the player memory's file")
+	# The next run reads them back.
+	var next := IdeaHints.new()
+	next.bind_memory(UserSettings.load_from(path), Callable())
+	next.observe(ctx)
+	check_eq(next.step(0.0), "", "nor in the next run")
+	# The starving tip: once a run, never remembered.
+	var starving := {"size": 1, "has_jaw": true, "meat_only": true, "starving": true}
+	next.observe(starving)
+	check_eq(next.step(10.0), "hunt_for_meat", "a meat-only body starving")
+	check_eq(IdeaHints.text_of("hunt_for_meat"), "Hunt rammers from behind for meat", "in the balance lab's words")
+	check_eq(next.step(400.0), "", "once a run, though it starves still")
+	next.follow("hunt_for_meat")
+	check(not next.memory.hints_followed.has("hunt_for_meat"), "never remembered")
+	var third := IdeaHints.new()
+	third.bind_memory(UserSettings.load_from(path), Callable())
+	third.observe(starving)
+	check_eq(third.step(0.0), "hunt_for_meat", "a new run offers it again")
+	# Eating well: the first meal a tenth into the ring at size 1, followed when the ring fills.
+	var meals := IdeaHints.new()
+	meals.on_event({"type": "ate"}, {}, {"size": 1, "meter_share": 0.09})
+	meals.on_event({"type": "ate"}, {}, {"size": 2, "meter_share": 0.5})
+	check_eq(meals.step(0.0), "", "not under a tenth, nor at size 2")
+	meals.on_event({"type": "ate"}, {}, {"size": 1, "meter_share": 0.1})
+	check_eq(meals.step(1.0), "eat_to_grow", "a tenth at size 1")
+	meals.on_event({"type": "ring_full"}, {}, {})
+	check_eq(meals.step(2.0), "", "the ring filled: followed, for this run with no memory")
+	check_eq(meals.step(500.0), "", "and never again")
+	# Green rim: from 8 s after a growth with a rimmed body in view; followed by eating one.
+	var rims := IdeaHints.new()
+	rims.observe({"has_jaw": true, "beat_t": 7.9, "rimmed_in_view": true, "near_smaller": true})
+	check_eq(rims.step(0.0), "", "not before 8 s")
+	rims.observe({"has_jaw": true, "beat_t": 8.0, "rimmed_in_view": true, "near_smaller": true})
+	check_eq(rims.step(1.0), "green_rim", "8 s on")
+	rims.on_event({"type": "ate"}, {"rimmed": true}, {"size": 2})
+	check(rims.is_followed("green_rim"), "eating a rimmed morsel follows it")
+	# The HUD: the idea in %IdeaHint, gone when followed; followed ideas saved through main.
+	DirAccess.remove_absolute(path)
+	main.player_memory = UserSettings.new()
+	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(), FakeGrowth.new())
+	var hud := _hud(pool, main.player_memory, main.save_player_memory)
+	hud.idea_hints.on_event({"type": "ate"}, {}, {"size": 1, "meter_share": 0.5})
+	hud._process(1.0 / 60.0)
+	check(hud.idea_hint.visible and hud.idea_hint_text.text == "Eating well makes you grow", "the HUD shows the idea")
+	hud._on_sim_event(FakeGrowthEvents.ring_full(1, 100.0))
+	hud._process(1.0 / 60.0)
+	check(not hud.idea_hint.visible, "and drops it once followed")
+	check_eq(UserSettings.load_from(path).hints_followed, PackedStringArray(["eat_to_grow"]), "saved through main's player memory")
+	DirAccess.remove_absolute(path)
+	hud.free()
+	pool.free()
+	main.free()
+
+
+## What the pool tells the idea hints (PoolScene.hint_context, hint_facts): the body, the ring's share,
+## the home tile, a smaller body near and a rimmed one in view, and the time since the last growth.
+func test_the_pool_reads_the_idea_context() -> void:
+	var g := FakeGrowth.new()
+	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true), g)
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	g.meter = g.ring(1) * 0.5
+	var ctx := pool.hint_context()
+	var keys := ctx.keys()
+	keys.sort()
+	check_eq(keys, ["alive_s", "beat_t", "has_jaw", "in_home_tile", "meat_only", "meter_share", "near_smaller", "rimmed_in_view",
+		"size", "starving"], "the context's keys (s2-view 7.5)")
+	var p := sim.phenotype
+	check_eq([ctx.size, ctx.has_jaw, ctx.meat_only, ctx.starving], [1, p.can_eat("meat"), p.diets == PackedStringArray(["meat"]), false],
+		"the size and the body")
+	check_near(float(ctx.meter_share), 0.5, 1e-9, "the ring's share")
+	var region := str(sim.world.gen.tile_info(WorldConfig.band_of(sim.world.size), sim.world.tile_of_local(sim.motion.position).x,
+		sim.world.tile_of_local(sim.motion.position).y).get("region", ""))
+	check_eq(ctx.in_home_tile, region == "home", "in the home tile as the generator says (%s)" % region)
+	check_eq(ctx.beat_t, -1.0, "no growth yet")
+	check(not ctx.near_smaller, "nothing smaller near")
+	check(sim.debug_set_size(2), "size 2, where a rammer is smaller")
+	FakeEvents.frame(pool)
+	var c := sim.motion.position
+	var gap := 1.0
+	check(sim.debug_spawn_creature("rammer", c + Vector2(p.radius + 0.6 + gap, 0.0), 0.0), "a rammer close by")
+	FakeEvents.frame(pool)
+	var rammer: CreatureField.Creature = sim.creatures.creatures[sim.creatures.creatures.size() - 1]
+	var view := pool.creature_layer.view_of(rammer.id)
+	check(view != null and view.view_q < 1.0, "drawn smaller than the cell")
+	ctx = pool.hint_context()
+	check(ctx.near_smaller, "a smaller body within 2 tm of the cell's surface")
+	check_eq(ctx.rimmed_in_view, p.can_eat("meat"), "rimmed in view exactly when the cell has a jaw")
+	var facts := pool.hint_facts({"type": "hit", "target": rammer.id, "attacker": CreatureField.PLAYER_ID})
+	check_eq(facts, {"smaller": true, "rimmed": p.can_eat("meat")}, "a hit on it: smaller, rimmed with a jaw")
+	check_eq(pool.hint_facts({"type": "hit", "target": "nobody"}), {"smaller": false, "rimmed": false}, "an unknown body: neither")
+	sim.motion.place(c + Vector2(-40.0, 0.0), 0.0)
+	FakeEvents.frame(pool)
+	check(not pool.hint_context().near_smaller, "not when it is far")
+	var t0 := sim.now()
+	pool._route(FakeGrowthEvents.began(sim.motion.position, 2, 3))
+	for i in 30:
+		FakeEvents.frame(pool)
+	check_near(float(pool.hint_context().beat_t), sim.now() - t0, 1e-9, "the time since the growth began")
+	pool.free()
 
 
 ## Presses G once and holds it `frames` frames (echo events after the first), one tick each; the
@@ -368,10 +600,12 @@ func _grow_to_2(pool: PoolScene) -> void:
 
 
 ## The HUD bound to `pool` outside the tree, as test_world_hud binds it (the threat arrows bind
-## with the camera hidden from them).
-func _hud(pool: PoolScene) -> Hud:
+## with the camera hidden from them); given a player memory, it is bound first, as main binds it.
+func _hud(pool: PoolScene, memory: UserSettings = null, save := Callable()) -> Hud:
 	var hud: Hud = HUD_SCENE.instantiate()
 	FakeEvents.ready_tree(hud)
+	if memory != null:
+		hud.bind_memory(memory, save)
 	var camera := pool.camera
 	pool.camera = null
 	hud.bind(pool)

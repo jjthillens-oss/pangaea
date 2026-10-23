@@ -20,6 +20,10 @@ extends Control
 ##                 the grow key bound now (BP-19). GrowthHud works out what they show; all three are
 ##                 hidden in the M1 pool, which has no growth (D-46). A ring paid out at the top gets
 ##                 its own toast, never the survival one (C-V8)
+##   bottom right: the ladder strip (LadderStrip): the species near and to come, each tinted by
+##                 what it is to the cell, and what the next growth changes; hidden in the pool
+##   bottom center: above the refusal hints, one idea at a time (IdeaHints), its followed ideas
+##                 kept in main's player memory (bind_memory)
 ##
 ##   endless sea (S1): a toast naming each region or rare tile the cell enters, at most once per
 ##                 REGION_TOAST_REPEAT_S for each, the start tile's at once; and the WorldOverlay,
@@ -69,6 +73,8 @@ const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": K
 const REGION_TOAST_REPEAT_S := 30.0
 const REGION_NAMES := {"home": "Home waters", "sunlit": "Sunlit shallows", "reef": "Shell reef",
 		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral"}
+## The idea hints read the pool's context this often (s2-view 7.5).
+const IDEA_CONTEXT_S := 0.25
 ## The grow warning sound plays when the ring starts growing, at most once per this long (sim s).
 const GROW_WARN_GAP_S := 3.0
 ## The growth line's look while the ring waits or grows: cream on a keyline outline.
@@ -92,6 +98,12 @@ var _growth_state := "none"           ## GrowthHud state shown last frame
 var _grow_warn_at := -INF             ## sim time the grow warning last played
 ## The endless sea's marker overlay; null in the pool.
 var world_overlay: WorldOverlay
+## What idea shows in %IdeaHint (S2); a fresh one for each pool bound.
+var idea_hints := IdeaHints.new()
+var _memory: UserSettings
+var _save_memory := Callable()
+var _idea_t := 0.0
+var _idea_ctx := {}
 
 @onready var energy_text: Label = %EnergyText
 @onready var state_chip: PanelContainer = %StateChip
@@ -122,6 +134,9 @@ var world_overlay: WorldOverlay
 @onready var first_meal_text: Label = %FirstMealText
 @onready var hurt_vignette: ColorRect = %HurtVignette
 @onready var threat_indicators: ThreatIndicators = %ThreatIndicators
+@onready var idea_hint: PanelContainer = %IdeaHint
+@onready var idea_hint_text: Label = %IdeaHintText
+@onready var ladder_strip: LadderStrip = %LadderStrip
 
 
 func _ready() -> void:
@@ -134,6 +149,7 @@ func _ready() -> void:
 	starving_banner.visible = false
 	message.visible = false
 	hint.visible = false
+	idea_hint.visible = false
 	health_row.visible = false
 	shelter_chip.visible = false
 	points_flash.modulate.a = 0.0
@@ -157,7 +173,13 @@ func bind(p_pool: PoolScene) -> void:
 	_region_shown.clear()
 	_growth_state = "none"
 	_grow_warn_at = -INF
+	idea_hints = IdeaHints.new()
+	idea_hints.bind_memory(_memory, _save_memory)
+	_idea_t = 0.0
+	_idea_ctx = {}
+	idea_hint.visible = false
 	update_growth()
+	ladder_strip.bind(pool)
 	if world_overlay != null:
 		remove_child(world_overlay)
 		world_overlay.queue_free()
@@ -169,6 +191,14 @@ func bind(p_pool: PoolScene) -> void:
 		var start := start_tile_info(pool.sim)
 		_on_region(str(start.get("region", "")), str(start.get("rare", "")))
 	refresh()
+
+
+## The idea hints remember what the player followed in `memory` (main's player memory), calling
+## `save` as each is added; none leaves them for the run.
+func bind_memory(memory: UserSettings, save: Callable) -> void:
+	_memory = memory
+	_save_memory = save
+	idea_hints.bind_memory(memory, save)
 
 
 ## Brings every label and bar up to date now (they otherwise refresh at 10 Hz).
@@ -206,6 +236,7 @@ func show_message(text: String, seconds: float = MESSAGE_S) -> void:
 func on_growth_chord(size: int) -> void:
 	show_message(GrowthHud.badge_text(size, pool.session.world.config.ladder.get("labels", [])))
 	update_growth()
+	ladder_strip.refresh()
 	refresh()
 
 
@@ -226,7 +257,8 @@ func vignette_alpha() -> float:
 ## The screen rects of the panels showing now (status, points, toasts, banner, message, hint and
 ## controls): the world overlay keeps its pip and words off them.
 func panel_rects() -> Array[Rect2]:
-	var panels: Array = [get_node("Frame/Status"), get_node("Frame/Right/Points"), starving_banner, message, hint, controls]
+	var panels: Array = [get_node("Frame/Status"), get_node("Frame/Right/Points"), starving_banner, message, hint, controls,
+		idea_hint, ladder_strip.get_node("Panel")]
 	panels.append_array(toast_list.get_children())
 	var out: Array[Rect2] = []
 	for panel: Control in panels:
@@ -422,6 +454,7 @@ func _process(delta: float) -> void:
 	if _flash_t <= 0.0:
 		_flash_points = 0
 	_hint_t = _fade(hint, _hint_t, delta, HINT_FADE_S)
+	_update_idea(delta)
 	_message_t = _fade(message, _message_t, delta, HINT_FADE_S)
 	_age_toasts(delta)
 	if _vignette_t < maxf(VIGNETTE_FALL_S, VIGNETTE_MIN_GAP_S):
@@ -486,7 +519,27 @@ func _update_bars() -> void:
 	health_bar.value = state.health
 
 
+## Every IDEA_CONTEXT_S the idea hints read the pool's context; the one they show sits in %IdeaHint.
+## None where the sea does not grow: the M1 pool, and the sea with growth off, keep their HUD.
+func _update_idea(delta: float) -> void:
+	if pool.growth() == null:
+		idea_hint.visible = false
+		return
+	_idea_t -= delta
+	if _idea_t <= 0.0 or _idea_ctx.is_empty():
+		_idea_t = IDEA_CONTEXT_S
+		_idea_ctx = pool.hint_context()
+		idea_hints.observe(_idea_ctx)
+	var id := idea_hints.step(pool.sim.now())
+	idea_hint.visible = id != ""
+	if id != "":
+		_set_text(idea_hint_text, IdeaHints.text_of(id))
+
+
 func _on_sim_event(event: Dictionary) -> void:
+	if pool.growth() != null:
+		# A meal's ring share is the one after it: the context is read afresh for it.
+		idea_hints.on_event(event, pool.hint_facts(event), pool.hint_context() if event.type == "ate" else _idea_ctx)
 	match event.type:
 		"ate":
 			controls.visible = false

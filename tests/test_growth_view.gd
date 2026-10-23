@@ -10,7 +10,9 @@ extends TestCase
 ## leftovers adopted by id or sunk away (never popped), reduce motion, the cell's settle, a clock
 ## that is the same at any frame rate, and "Now food" with the relations. The old food (T5.4, V-10,
 ## V-22): the new plankton grows in as the algae ball while the old food is drawn on, re-expressed,
-## from copies that fade, and glitter sinks from where the old plankton and haze were. Most growth
+## from copies that fade, and glitter sinks from where the old plankton and haze were. The lair
+## mouths (V-25): re-expressed and held at k of their depth, adopted by site and post, new ones in
+## from the veil after the settle, the leftovers sunk and freed. Most growth
 ## events are faked (tests/fakes/fake_growth_events.gd); the food's is T2's real growth tick. The
 ## tests use their own settings file and never save it.
 
@@ -400,6 +402,13 @@ func test_dolly_drives_and_hands_back() -> void:
 
 func test_each_container_re_expresses_without_a_screen_move() -> void:
 	var pool := _growth_pool()
+	# The silt trail drawn as at size 2: a lair mouth (under the plane) and a ribbon.
+	var c0 := pool.sim.motion.position
+	pool.silt_trail.resize(2)
+	pool._route(FakeEvents.loaded(Vector2i(901, 900), [], [], [], [],
+		[FakeGrowthEvents.site("s_l", "lurker", [FakeGrowthEvents.post(c0 + Vector2(-4.0, 5.0), 1.0)] as Array[Dictionary])]))
+	pool.silt_trail.add_ribbon({"from": c0 + Vector2(-4.0, 5.0), "to": c0 + Vector2(3.0, 6.0)}, "lurker", pool.sim.now())
+	check(pool.silt_trail.mouths().size() == 1 and pool.silt_trail.ribbons().size() == 1, "a lair mouth and a ribbon drawn")
 	var lane := pool.creature_layer.views()[0].lane()
 	var before := _container_pixels(pool, lane)
 	check(before.size() >= 20, "at least 20 points tracked (%d)" % before.size())
@@ -411,7 +420,7 @@ func test_each_container_re_expresses_without_a_screen_move() -> void:
 		if not after.has(key) or (after[key] as Vector2).distance_to(before[key]) > 0.5:
 			moved.append("%s %s -> %s" % [key, before[key], after.get(key)])
 	check(moved.is_empty(), "no point moves on screen:\n        %s" % "\n        ".join(moved))
-	for node: Node3D in [pool.rocks, pool.landmarks, pool.zone_lights, pool.feedback, pool.growth_beat.fx]:
+	for node: Node3D in [pool.rocks, pool.landmarks, pool.zone_lights, pool.feedback, pool.silt_trail, pool.growth_beat.fx]:
 		check(node.position.is_zero_approx() and node.scale.is_equal_approx(Vector3.ONE),
 			"%s sits at the origin at scale 1: %s, %s" % [node.name, node.position, node.scale])
 	check(lane.scale.is_equal_approx(Vector3.ONE / 1.6), "a leaf is itself divided: %s" % lane.scale)
@@ -422,9 +431,14 @@ func test_each_container_re_expresses_without_a_screen_move() -> void:
 
 
 ## Every depth layer at k (s2-view 4.2): the Backdrop's depth and size, the fog's heights and
-## densities, the zone patches' depth, the zone labels and the markers; back at k 1 exactly.
+## densities, the zone patches' and lair mouths' depth, the zone labels and the markers; back at k 1
+## exactly.
 func test_depth_layers_follow_k() -> void:
 	var pool := _growth_pool()
+	pool.silt_trail.resize(2)
+	pool._route(FakeEvents.loaded(Vector2i(901, 900), [], [], [], [], FakeGrowthEvents.lair_sites(pool.sim.motion.position)))
+	var mouth: Node3D = pool.silt_trail.mouths()[0] if not pool.silt_trail.mouths().is_empty() else null
+	check(mouth != null, "a lair mouth")
 	var env := pool._world_env.environment
 	var base := {"y": pool.backdrop.position.y, "h": env.fog_height, "hd": env.fog_height_density, "d": env.fog_density}
 	var column_h := pool.markers.column().scale.y
@@ -439,11 +453,13 @@ func test_depth_layers_follow_k() -> void:
 	var label := pool.feedback.zone_label("z_gv")
 	check(label != null and label.scale.is_equal_approx(Vector3.ONE * 0.625), "a zone label at k of its size")
 	check_near(pool.markers.column().scale.y, column_h * 0.625, 1e-6, "the column at k")
+	check(mouth != null and is_equal_approx(mouth.position.y, -1.6 * 0.625), "a lair mouth at k of its depth")
 	pool.apply_depth_k(1.0)
 	check(pool.backdrop.position.y == base.y and env.fog_height == base.h and env.fog_height_density == base.hd,
 		"back at k 1: the base values exactly")
 	check(disc.position.y == ZoneLights.DEPTH_M and label.scale == Vector3.ONE and pool.markers.column().scale.y == column_h,
 		"and the patches, labels and column")
+	check(mouth != null and is_equal_approx(mouth.position.y, -1.6), "and the lair mouths")
 	var shared: Environment = load("res://game/scenes/pool/pool_environment.tres")
 	check(env != shared and env.resource_path.is_empty(), "the pool scales its own copy of the environment")
 	pool.apply_depth_k(0.5)
@@ -479,6 +495,81 @@ func test_adopt_by_id() -> void:
 	var piece: Node3D = pool.landmarks.pieces().filter(func(p: Node3D) -> bool: return p.name.contains("a_gv"))[0]
 	check(PlaneSpace.to_plane(Frames.in_pool(pool, piece)).distance_to((e.anchors[0] as Dictionary).position) < 1e-4, "the landmark at its pose")
 	pool.free()
+
+
+## A growth from 2 to 3: every mouth re-expressed in place and held at k of its depth, a site the new
+## chunk keeps adopted at the event's pose, the others sunk away after the settle and freed.
+func test_lair_mouths_are_adopted_or_sink_through_a_growth() -> void:
+	var trail := _silt_trail(2)
+	var center := Vector2(1.0, -2.0)
+	trail.add_chunk(Vector2i(0, 0), FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0))
+	trail.position = Vector3(0.5, 0.0, -0.25)   # a rebase moved the container since
+	var before := {}
+	for piece in trail.mouths():
+		before[piece] = trail.transform * piece.position
+	trail.apply_growth(center, 1.6)
+	check(trail.position == Vector3.ZERO, "the container back at the origin")
+	trail.set_depth_k(GrowthBeat.K_FROM)
+	for piece: Node3D in before:
+		var want := WorldSpace.reexpress_point(before[piece], center, 1.6)
+		check(piece.position.distance_to(want) < 1e-5, "%s re-expressed in place: %s, %s" % [piece.name, piece.position, want])
+		check(piece.scale.is_equal_approx(Vector3.ONE * 0.75 / 1.6), "and its size")
+	trail.size = 3
+	trail.retire_chunk(Vector2i(0, 0))
+	check_eq(trail.retiring().keys(), ["s_a_post0", "s_a_post1", "s_b_post0", "s_b_post1"], "the chunk's mouths retire")
+	var a0: Node3D = trail.retiring().s_a_post0
+	var b0: Node3D = trail.retiring().s_b_post0
+	var b0_y := b0.position.y
+	# The new chunk holds site a again, at its posts re-expressed; site b has gone.
+	var kept := FakeGrowthEvents.lair_sites(center, 1.6).slice(0, 1)
+	trail.add_chunk(Vector2i(0, 0), kept)
+	check_eq(trail.retiring().keys(), ["s_b_post0", "s_b_post1"], "site a adopted")
+	check(trail.mouths().has(a0), "the same piece, not a new one")
+	var post: Dictionary = kept[0].posts[0]
+	check(PlaneSpace.to_plane(a0.position).distance_to(post.position) < 1e-5, "at the event's pose")
+	check_near(a0.position.y, SiltTrail.MOUTH_Y_TM * GrowthBeat.K_FROM, 1e-6, "at k of its depth: where it was")
+	check(a0.scale.is_equal_approx(Vector3.ONE * 0.75 / 1.6), "sized for size 3")
+	check_near(_piece_transparency(a0), 0.0, 1e-6, "drawn whole")
+	trail.beat_frame(0.5, 0.8)
+	check_near(b0.position.y, b0_y, 1e-6, "the leftovers wait for the settle")
+	check_near(_piece_transparency(b0), 0.0, 1e-6, "drawn whole until then")
+	trail.settle_growth()
+	trail.beat_frame(0.5 + GrowthBeat.RETIRE_S * 0.5, 0.9)
+	check(_piece_transparency(b0) > 0.0 and _piece_transparency(b0) < 1.0, "then fade (%.2f)" % _piece_transparency(b0))
+	trail.beat_frame(0.5 + GrowthBeat.RETIRE_S, 1.0)
+	check_near(b0.position.y, b0_y - GrowthBeat.SINK_TM, 1e-6, "and sink 1.5 tm")
+	check_near(_piece_transparency(b0), 1.0, 1e-6, "out of sight")
+	trail.end_growth()
+	check(trail.retiring().is_empty() and b0.get_parent() == null, "end_growth frees them")
+	trail.set_depth_k(1.0)
+	check_near(a0.position.y, SiltTrail.MOUTH_Y_TM, 1e-6, "the kept mouth at its own depth after the beat")
+	trail.free()
+
+
+## A growth from 1 to 2: the Lurker's mouths are new; made once the tick settles, in from the veil.
+func test_new_lair_mouths_come_in_after_the_settle() -> void:
+	var trail := _silt_trail(1)
+	var center := Vector2(1.0, -2.0)
+	trail.add_chunk(Vector2i(0, 0), FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0))
+	trail.apply_growth(center, 1.6)
+	trail.size = 2
+	trail.retire_chunk(Vector2i(0, 0))
+	check(trail.retiring().is_empty(), "nothing to retire at size 1")
+	trail.add_chunk(Vector2i(0, 0), FakeGrowthEvents.lair_sites(center, 1.6))
+	check(trail.mouths().is_empty(), "a mouth first seen in the beat waits")
+	trail.beat_frame(0.2, 0.7)
+	check(trail.mouths().is_empty(), "until the tick settles")
+	trail.settle_growth()
+	trail.beat_frame(0.3, 0.7)
+	var mouths := trail.mouths()
+	check_eq(mouths.size(), 4, "then all four are made")
+	check(mouths.all(func(p: Node3D) -> bool: return _piece_transparency(p) > 0.9), "behind the veil")
+	trail.beat_frame(0.3 + GrowthBeat.PREBLUR_S, 0.9)
+	check(mouths.all(func(p: Node3D) -> bool: return _piece_transparency(p) < 1e-6), "in from it after PREBLUR_S")
+	trail.end_growth()
+	check_eq(trail.mouths().size(), 4, "kept after the beat")
+	trail.free()
+
 
 
 func test_no_pop_on_growth() -> void:
@@ -933,3 +1024,10 @@ func _contract(scene: PackedScene) -> Dictionary:
 	nodes.sort()
 	materials.sort()
 	return {"nodes": nodes, "materials": materials}
+
+
+## A silt trail on the shipped species at `size`, outside the tree.
+func _silt_trail(size: int) -> SiltTrail:
+	var trail := SiltTrail.new()
+	trail.setup(_species, size)
+	return trail
