@@ -156,6 +156,18 @@
         "game/scenes/title/title_world.gd"
       ],
       "node": "StartScreen/World/Backdrop"
+    },
+    {
+      "id": "creature_skin",
+      "kind": "generated",
+      "description": "The creature stage's generated skin: a Surface Nets ArrayMesh built at runtime from the body description's capsule field (game/systems/creature/skin_cpu.gd or skin_gpu.gd), skinned to the generated Skeleton3D with CUSTOM0 paint coordinates and CUSTOM1 rest positions, drawn with the art team's creature_skin.gdshader. Spore-style full-body building (docs/DECISIONS.md, 2026-10-23): the player's anatomy is the model, so there is no Blender source for it. The art parts on it are the recorded cpart_* assets.",
+      "types": [
+        "ArrayMesh"
+      ],
+      "files": [
+        "game/scenes/creature/spine_rig.gd"
+      ],
+      "node": "CreatureStage/<creature>/Body/Skeleton/Skin"
     }
   ]
 }
