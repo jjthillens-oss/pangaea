@@ -27,6 +27,32 @@
 				}
 			]
 		},
+		"barbels": {
+			"type": "barbels",
+			"footprint_radius_m": 0.163,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the whiskers 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Lift",
+					"meaning": "the whiskers lifted 25 degrees",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "Meant for the chin or snout; the long pair sweeps out and forward, the short pair forward."
+		},
 		"beak": {
 			"type": "beak",
 			"footprint_radius_m": 0.074,
@@ -82,6 +108,32 @@
 					"default_permille": 0
 				}
 			]
+		},
+		"club_tail": {
+			"type": "club_tail",
+			"footprint_radius_m": 0.031,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 15,
+			"tilt_limit_deg": 20,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the stalk 0.05 m longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Size",
+					"meaning": "the club 30% bigger",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "Meant for the tail cap (spine_u = 1)."
 		},
 		"compound_eye": {
 			"type": "compound_eye",
@@ -220,6 +272,32 @@
 				}
 			]
 		},
+		"flipper": {
+			"type": "flipper",
+			"footprint_radius_m": 0.04,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the blade 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Width",
+					"meaning": "the blade 35% broader",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "A limb end: +Z runs on along the limb and the blade's broad faces look fore and aft."
+		},
 		"foot": {
 			"type": "foot",
 			"footprint_radius_m": 0.103,
@@ -245,6 +323,60 @@
 				}
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+		},
+		"frill": {
+			"type": "frill",
+			"footprint_radius_m": 0.058,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 20,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"handles": [
+				{
+					"key": "H1_Fold",
+					"meaning": "the fan laid down flat along the body toward the tail",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Span",
+					"meaning": "the fan 35% wider",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on Frill and FrillWeb with the same names; the runtime sets them together.",
+			"placement_note": "Meant for the neck, just behind the head; the fan leans back toward the tail and folds flat along it."
+		},
+		"gill_fan": {
+			"type": "gill_fan",
+			"footprint_radius_m": 0.054,
+			"sink_depth_m": 0.015,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine"
+			],
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "the plumes fanned 14 degrees further apart per step",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the plumes 35% longer",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on GillFan and GillPlumes with the same names; the runtime sets them together.",
+			"placement_note": "Meant for the sides of the neck; the ridge runs along the body (y) and the plumes lean out to +X."
 		},
 		"hand": {
 			"type": "hand",
@@ -274,6 +406,32 @@
 				"grasper"
 			]
 		},
+		"hoof": {
+			"type": "hoof",
+			"footprint_radius_m": 0.046,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 20,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"handles": [
+				{
+					"key": "H1_Wide",
+					"meaning": "the hoof 30% wider",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Tall",
+					"meaning": "the hoof wall 30% taller",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the pastern top (z 0.075 m) meets the limb tip."
+		},
 		"horn": {
 			"type": "horn",
 			"footprint_radius_m": 0.032,
@@ -299,6 +457,33 @@
 					"default_permille": 0
 				}
 			]
+		},
+		"lure": {
+			"type": "lure",
+			"footprint_radius_m": 0.02,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 45,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the stalk and bulb carried 40% further from the pad",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Droop",
+					"meaning": "the stalk bent 45 degrees forward and down from its root",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "Meant for the brow: the stalk arches forward over the head and the bulb's emission is baked flat, so it glows the same in every light."
 		},
 		"mandibles": {
 			"type": "mandibles",
@@ -350,6 +535,32 @@
 				}
 			],
 			"handles_note": "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
+		},
+		"proboscis": {
+			"type": "proboscis",
+			"footprint_radius_m": 0.028,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the trunk 40% longer along its path",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Curl",
+					"meaning": "the outer half curled 55 degrees down and under",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on Proboscis and ProboscisTip with the same names; the runtime sets them together. The sucker moves rigidly with the trunk's tip."
 		},
 		"quills": {
 			"type": "quills",
@@ -428,6 +639,32 @@
 				}
 			],
 			"placement_note": "Meant for the tail cap (spine_u = 1); the pairs splay across the body's x."
+		},
+		"tusk": {
+			"type": "tusk",
+			"footprint_radius_m": 0.051,
+			"sink_depth_m": 0.025,
+			"chiral": true,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the tusk 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Curve",
+					"meaning": "the tip curled further out and up",
+					"default_permille": 0
+				}
+			]
 		},
 		"wing": {
 			"type": "wing",
