@@ -233,6 +233,11 @@ static func zone_problems(p_zones: Array[Dictionary], circles: Array[Dictionary]
 static func zone_clear_share(z: Dictionary, circles: Array[Dictionary]) -> float:
 	var center: Vector2 = z.center
 	var radius := float(z.radius)
+	# Only circles within reach of the zone can cover a point of it.
+	var near: Array[Dictionary] = []
+	for c in circles:
+		if center.distance_to(c.center) < radius + float(c.radius) + ZONE_CLEAR_MARGIN:
+			near.append(c)
 	var n := floori(radius / ZONE_CLEAR_STEP)
 	var total := 0
 	var clear := 0
@@ -244,7 +249,7 @@ static func zone_clear_share(z: Dictionary, circles: Array[Dictionary]) -> float
 			total += 1
 			var p := center + offset
 			var free := true
-			for c in circles:
+			for c in near:
 				if p.distance_to(c.center) - float(c.radius) < ZONE_CLEAR_MARGIN:
 					free = false
 					break
