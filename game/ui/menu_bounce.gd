@@ -14,6 +14,9 @@ const PILL_RADIUS := 30
 const SLIDE_PX := 48.0
 const SLIDE_S := 0.32
 const STAGGER_S := 0.05
+## Arriving views and buttons start this opaque, never fully invisible, so a click in the first
+## frames still lands on something the player can see.
+const ARRIVE_ALPHA := 0.3
 const STYLES := [&"normal", &"hover", &"pressed", &"hover_pressed", &"disabled", &"focus"]
 
 
@@ -87,12 +90,12 @@ static func arrive(view: Control, items: Array = [], offset: Vector2 = Vector2(-
 		return
 	var calm := _calm()
 	var tween := view.create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	view.modulate.a = 0.0
+	view.modulate.a = ARRIVE_ALPHA
 	tween.tween_property(view, "modulate:a", 1.0, SLIDE_S)
 	if not calm:
 		view.position = offset
 		tween.tween_property(view, "position", Vector2.ZERO, SLIDE_S)
 	for i in items.size():
 		var item: CanvasItem = items[i]
-		item.modulate.a = 0.0
+		item.modulate.a = ARRIVE_ALPHA
 		tween.tween_property(item, "modulate:a", 1.0, SLIDE_S).set_delay(0.08 + STAGGER_S * i)
