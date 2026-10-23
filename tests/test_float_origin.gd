@@ -25,7 +25,7 @@ const STATIC := {
 	"cfg": "brain tuning data",
 	"camera": "camera tuning data",
 	"_next_chunks": "WorldChunks generated ahead for size n + 1: absolute tm at that size, no local positions",
-	"_next_arena": "the next size's arena: its own frame, origin A at size n + 1 (BP-4), rebuilt each tick it is used",
+	"_next_arena": "the next size's arena: its own frame, origin A at size n + 1 (BP-4), kept and moved to A each tick it is used",
 }
 ## S2G10: what the growth tick builds again from the next size's chunks or starts over, so the
 ## re-expression walk does not compare it (path parts), with the reason.
