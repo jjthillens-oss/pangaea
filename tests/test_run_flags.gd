@@ -15,6 +15,13 @@ func test_no_flags_mean_defaults() -> void:
 	check_eq(flags.seed_value, -1, "no seed")
 	check_eq(flags.slot, "", "default slot")
 	check(not flags.perf_tour, "no tour")
+	check(not flags.creature, "the title, not the creature stage")
+
+
+func test_creature_opens_the_creature_stage_preview() -> void:
+	var flags := RunFlags.from_args(PackedStringArray(["--creature"]))
+	check(flags.creature, "creature stage asked for")
+	check(flags.other.is_empty() and flags.problems.is_empty(), "nothing left over: %s %s" % [flags.other, flags.problems])
 
 
 func test_unusable_flags_are_reported_and_ignored() -> void:

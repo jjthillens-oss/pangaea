@@ -17,6 +17,8 @@ signal continue_requested
 signal quit_requested
 signal slots_requested
 signal settings_requested
+## The creature stage preview (creature-stage plan): Main opens it with open_creature_stage().
+signal creature_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
 const REPLACE_TEXT := "This replaces your current lineage. The previous save is kept as a backup until your next save."
@@ -66,6 +68,7 @@ var picker_preview: PlayerCellView:
 @onready var quit_button: Button = %QuitButton
 @onready var slots_button: Button = %SlotsButton
 @onready var settings_button: Button = %SettingsButton
+@onready var creature_button: Button = %CreatureButton
 @onready var background: ColorRect = %Background
 @onready var hint: Label = %Hint
 @onready var _card_title: Label = %CardTitle
@@ -103,7 +106,7 @@ func _ready() -> void:
 	background.visible = false
 	add_child(_make_shade())
 	move_child(get_node("Shade"), 1)
-	for b: Button in [continue_button, new_button, slots_button, settings_button, quit_button]:
+	for b: Button in [continue_button, new_button, slots_button, settings_button, quit_button, creature_button]:
 		MenuBounce.pill(b)
 		MenuBounce.attach(b)
 	for b: Button in [back_button, start_button]:
@@ -114,6 +117,7 @@ func _ready() -> void:
 	quit_button.pressed.connect(func(): quit_requested.emit())
 	slots_button.pressed.connect(func(): slots_requested.emit())
 	settings_button.pressed.connect(func(): settings_requested.emit())
+	creature_button.pressed.connect(func(): creature_requested.emit())
 	resized.connect(fit_backdrop)
 	fit_backdrop()
 	start_button.pressed.connect(request_start)
@@ -334,12 +338,13 @@ func _show_hero() -> void:
 		world.show_genome(_genomes[IDLE_BODY], _cards[IDLE_BODY].phenotype)
 
 
-## The title view's parts that arrive one after another.
+## The title view's parts that arrive one after another: the menu, then the preview button, then the card.
 func _main_items() -> Array:
 	var items: Array = []
-	for b in main_view.get_node("Left/Buttons").get_children():
-		if b is Control and b.visible:
-			items.append(b)
+	for box in ["Left/Buttons", "Left/Preview"]:
+		for b in main_view.get_node(box).get_children():
+			if b is Control and b.visible:
+				items.append(b)
 	items.append(continue_card)
 	return items
 
