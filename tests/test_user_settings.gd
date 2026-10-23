@@ -1,22 +1,20 @@
 extends TestCase
 ## Player memory (S2 T4.2; build plan BP-3 and 7.2; S2G22): UserSettings keeps the hints followed and
 ## the lineages that have seen the first giant pass in user://player_memory.cfg, apart from the
-## player's settings. Every test writes to a per-process folder under user://test_saves, never to
-## the real files.
+## player's settings, which are main's SettingsService on user://settings.cfg. Every test writes to a
+## per-process folder under user://test_saves, never to the real files.
 ##
-## The survival case's other half, SettingsService.save_file leaving player_memory.cfg
-## byte-identical, needs main's SettingsService and lands once this branch has merged e2.
+## The survival case runs both ways in one shared folder, as in user://: saving player memory leaves
+## settings.cfg byte-identical, and SettingsService.save_file leaves player_memory.cfg byte-identical.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
-## The file main's SettingsService owns (its PATH): the player's settings, never written by S2 code.
-const SETTINGS_FILE := "settings.cfg"
-## A settings file as main's SettingsService writes it ([meta], [values], [bindings]).
-const SETTINGS_TEXT := "[meta]\n\nschema=1\n\n[values]\n\n\"gameplay/growth_trigger\"=\"press\"\n\"accessibility/reduce_camera_motion\"=true\n\n[bindings]\n\ngrow=PackedStringArray(\"key:71\")\n"
 const HINTS := ["eat_well", "sea_goes_on", "green_rim"]
 const LINEAGES := ["lineage_3f9a1c07b2e84d65", "lineage_e3b989a856cc79e7"]
 
 var _swept := false
 var path := ""
+## The player's settings in the test folder: the file main's SettingsService owns (its PATH's name).
+var settings_path := ""
 
 
 func before_each() -> void:
@@ -26,6 +24,7 @@ func before_each() -> void:
 	SaveFolder.clear()
 	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
 	path = SaveFolder.path(UserSettings.PATH.get_file())
+	settings_path = SaveFolder.path(SettingsService.PATH.get_file())
 
 
 func after_each() -> void:
@@ -49,9 +48,21 @@ func _is_default(memory: UserSettings) -> bool:
 	return memory != null and memory.hints_followed.is_empty() and memory.giant_pass_lineages.is_empty()
 
 
+## The player's settings as the game writes them: a growth trigger, reduce camera motion and a
+## rebound grow key, saved by main's SettingsService into this test's folder.
+func _save_settings() -> SettingsService:
+	var service := SettingsService.new(settings_path)
+	check(service.set_value("gameplay/growth_trigger", "press"), "the trigger set")
+	check(service.set_value("accessibility/reduce_camera_motion", true), "reduce motion set")
+	service.settings.bindings["grow"] = PackedStringArray(["key:72"])
+	check_eq(service.save_file(), OK, "settings saved")
+	return service
+
+
 func test_player_memory_is_its_own_file_beside_the_settings() -> void:
 	check_eq(UserSettings.PATH, "user://player_memory.cfg", "the path")
-	check(UserSettings.PATH.get_file() != SETTINGS_FILE, "not the settings file")
+	check_eq(UserSettings.PATH.get_base_dir(), SettingsService.PATH.get_base_dir(), "the settings' folder")
+	check(UserSettings.PATH.get_file() != SettingsService.PATH.get_file(), "not the settings file")
 	check(_is_default(UserSettings.new()), "a new memory remembers nothing")
 
 
@@ -148,12 +159,37 @@ func test_a_write_that_cannot_be_moved_into_place_leaves_no_temp_file() -> void:
 
 func test_saving_player_memory_leaves_the_settings_file_byte_identical() -> void:
 	# S2G22's survival case, UserSettings' half: the two files share a folder, as in user://.
-	var settings := SaveFolder.path(SETTINGS_FILE)
-	_write_raw(settings, SETTINGS_TEXT)
-	var bytes := FileAccess.get_file_as_bytes(settings)
+	_save_settings()
+	var bytes := FileAccess.get_file_as_bytes(settings_path)
+	check(bytes.size() > 0, "settings.cfg written")
 	var memory := _remembering()
 	check_eq(memory.save_to(path), OK, "saved")
 	memory.hints_followed.append("they_flee")
 	check_eq(memory.save_to(path), OK, "saved again")
-	check_eq(FileAccess.get_file_as_bytes(settings), bytes, "settings.cfg is byte-identical")
+	check_eq(FileAccess.get_file_as_bytes(settings_path), bytes, "settings.cfg is byte-identical")
 	check_eq(UserSettings.load_from(path).hints_followed.size(), HINTS.size() + 1, "and player memory holds its own")
+	var settings := SettingsService.new(settings_path)
+	check(settings.load_file().is_empty(), "the settings load without problems")
+	check_eq(settings.load_source, "file", "from the file")
+	check_eq(settings.growth_trigger(), "press", "the trigger kept")
+	check(settings.reduce_camera_motion(), "reduce motion kept")
+	check_eq(settings.first_code("grow", "keys"), "key:72", "the grow key kept")
+
+
+func test_saving_the_settings_leaves_player_memory_byte_identical() -> void:
+	# S2G22's survival case, SettingsService's half: main's save writes a new ConfigFile holding only
+	# its own sections, and it must never touch player_memory.cfg beside it. The second save replaces
+	# a settings.cfg that is already there.
+	check_eq(_remembering().save_to(path), OK, "player memory saved")
+	var bytes := FileAccess.get_file_as_bytes(path)
+	var service := _save_settings()
+	check(service.set_value("gameplay/growth_trigger", "auto"), "the trigger changed")
+	check_eq(service.save_file(), OK, "settings saved again")
+	check(FileAccess.file_exists(settings_path), "settings.cfg is there")
+	check_eq(FileAccess.get_file_as_bytes(path), bytes, "player_memory.cfg is byte-identical")
+	var loaded := UserSettings.load_from(path)
+	check_eq(loaded.hints_followed, PackedStringArray(HINTS), "hints followed survive")
+	check_eq(loaded.giant_pass_lineages, PackedStringArray(LINEAGES), "giant pass lineages survive")
+	var settings := SettingsService.new(settings_path)
+	check(settings.load_file().is_empty(), "the settings load without problems")
+	check_eq(settings.growth_trigger(), "auto", "the settings hold their own")
