@@ -634,6 +634,10 @@ func test_the_growth_tick_re_expresses_every_surviving_position_at_the_next_size
 	check(not kept.is_empty(), "kept carrion was compared")
 	check(not sim.carrion.items.any(func(i: Dictionary) -> bool: return i.id == far.id), "carrion beyond the food ring gone")
 	check(compared >= 8, "%d positions compared (%d remnant settles)" % [compared, settled])
+	# A remnant the re-expression put inside a new shell was settled out of it (grow step 6).
+	check(settled >= 1, "a remnant needed the settle here (%d)" % settled)
+	for r: RemnantField.Remnant in sim.remnants.items:
+		check(sim.arena.is_clear(r.motion.position, r.phenotype.radius), "remnant %s clear of the new shells" % r.id)
 
 
 ## Every Vector2 reachable from the sim's state, keyed by the nearest thing above it that has an id
