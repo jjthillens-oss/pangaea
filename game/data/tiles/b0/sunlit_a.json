@@ -22,7 +22,7 @@
   ],
   "zones": [
     {"id": "ra", "center": [4.0, 4.0], "radius": 5.0, "capacity": 64.0, "growth_rate": 0.05, "at_second_size": "thin"},
-    {"id": "ma", "center": [-14.0, 16.0], "radius": 4.0, "capacity": 32.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ma", "center": [-14.0, 16.0], "radius": 4.0, "capacity": 32.0, "growth_rate": 0.08, "at_second_size": "thin"},
     {"id": "f0", "center": [-27.0, -27.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
     {"id": "f1", "center": [-1.0, -24.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
     {"id": "f2", "center": [20.0, -24.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
@@ -33,9 +33,8 @@
     {"id": "f7", "center": [25.0, 26.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "ma", "species": "rammer", "home": [1.5, 4.0], "heading": 0.0, "territory_zone": "ra", "sizes": [1]},
+    {"id": "ma", "species": "rammer", "home": [1.5, 4.0], "heading": 0.0, "territory_zone": "ra", "sizes": [1, 2]},
     {"id": "mb", "species": "rammer", "home": [6.5, 4.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [-8.2, 14.6], "heading": 2.9047, "territory_zone": "", "sizes": [1]},
-    {"id": "er", "species": "elder_rammer", "home": [-14.5, 15.5], "heading": -0.8187, "territory_zone": "ma", "sizes": [2]}
+    {"id": "la", "species": "ambush_hunter", "home": [-8.2, 14.6], "heading": 2.9047, "territory_zone": "", "sizes": [1]}
   ]
 }

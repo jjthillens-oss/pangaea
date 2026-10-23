@@ -419,8 +419,15 @@ func test_each_two_post_rule_has_a_failing_variant() -> void:
 			for z in f.reef_posts.zones:
 				z.at_second_size = "drop",
 			"b0/reef_posts: rule 7 at size 2: every zone is dropped", 1, 2],
-		[func(f: Dictionary) -> void: f.reef_posts.sites.pop_back(), "b0/reef_posts: rule 7: a reef tile needs a live threat site at size 2", 1, 2],
+		# A tile of set 1 needs a threat at size 2; one of set 0 (both fixtures) a live site, an M1 one
+		# (the cell outgrows it) or a threat (PROPOSED, TileCatalog.SECOND_SIZE_OUTGROWN_SET).
+		[func(f: Dictionary) -> void: f.reef_posts.sites.pop_back(), "b0/reef_posts: rule 7: a reef tile of set 0 needs a live site at size 2", 1, 2],
 		[func(f: Dictionary) -> void:
+			f.reef_posts.set = 1
+			f.reef_posts.sites.pop_back(),
+			"b0/reef_posts: rule 7: a reef tile needs a live threat site at size 2", 1, 2],
+		[func(f: Dictionary) -> void:
+			f.sunlit_posts.set = 1
 			f.sunlit_posts.sites[1].species = "rammer"
 			f.sunlit_posts.sites[1].erase("post_b"),
 			"b0/sunlit_posts: rule 7: a sunlit tile needs a live threat site at size 2", 1, 2],
@@ -434,6 +441,15 @@ func test_each_two_post_rule_has_a_failing_variant() -> void:
 	for i in cases.size():
 		var c: Array = cases[i]
 		_check_case(_s2_problems(c[0], c[3], c[4] if c.size() > 4 else null), c[1], c[2], "case %d" % i)
+	# Rule 7 at size 2: a set-0 tile whose one live site there is its M1 rammer passes; at set 1 not.
+	var outgrown := func(set_index: int) -> Callable:
+		return func(f: Dictionary) -> void:
+			f.sunlit_posts.set = set_index
+			f.sunlit_posts.sites.pop_back()
+	check_eq(_s2_problems(outgrown.call(0), 2), PackedStringArray(), "rule 7 at size 2: set 0 with its rammer live there")
+	_check_case(_s2_problems(outgrown.call(1), 2), "b0/sunlit_posts: rule 7: a sunlit tile needs a live threat site at size 2", 1,
+		"rule 7 at size 2: set 1 with the same rammer")
+	check_eq(_s2_problems(outgrown.call(0), 1), PackedStringArray(), "rule 7 at size 1: the rammer is its threat there")
 	# The same shell near the anchor passes at size 1 (2.0 bu), and at size 2 once it sinks there.
 	check_eq(_s2_problems(func(f: Dictionary) -> void: f.reef_posts.shells.append(_shell("z", 24.0, -18.5, 1.0)), 1), PackedStringArray(),
 		"rule 4 at size 1")
