@@ -49,6 +49,9 @@ const THINK_SLOTS := 6
 const ASLEEP_KEY := 6
 ## Endless site creatures' numbers lie in [1, SITE_NUMBERS].
 const SITE_NUMBERS := 1 << 30
+## Endless mode: the creatures made ahead (prepare_site) are let go all at once when they outnumber
+## the stream's site table by more than this (those of chunks generated ahead but never loaded).
+const PREPARED_SLACK := 64
 
 
 ## One creature. Its phenotype is shared with its species; everything else is its own.
@@ -124,6 +127,9 @@ var _scan_all := true
 ## (and _scan_all is not set) no brain it scans has an event to take. -1 (a creature woke holding
 ## events) scans.
 var _taken_at := -1
+## Endless mode: site id -> [what it was made for (_made_for), the creature] for the creatures made
+## ahead of their spawn (prepare_site).
+var _prepared := {}
 
 
 ## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets each species'
@@ -372,7 +378,8 @@ func respawn_delay_for(c: Creature) -> int:
 ## Endless mode: spawns site `s` (a WorldStream site record) now if its niche has room. Its number,
 ## id ("c_<size>_<site>_<count>"), brain seed and respawn delay come from the world seed, the site
 ## and its spawn count, which rises only on a real spawn. An awake spawn first has its site's reach
-## chunks loaded (B-9). Null when the niche is full.
+## chunks loaded (B-9). Null when the niche is full. The creature made ahead for the site
+## (prepare_site) is taken when it was made for the same inputs; otherwise it is made now.
 func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var site_id := str(s.id)
 	var species_id := str(s.species)
@@ -383,6 +390,52 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	if not asleep:
 		world.load_site_chunks(s)
 	world.site_counts[site_id] = count + 1
+	var c: Creature = null
+	if not _prepared.is_empty():
+		var made: Array = _prepared.get(site_id, [])
+		if not made.is_empty():
+			_prepared.erase(site_id)
+			if made[0] == _made_for(s, count):
+				c = made[1]
+	if c == null:
+		c = _site_creature(s, count, role)
+	c.born_tick = tick
+	CreatureBrain.start(c.brain, tick)
+	c.asleep = asleep
+	_by_site[site_id] = c
+	_add(c)
+	return c
+
+
+## Endless mode: makes site `s`'s next creature now, ahead of its spawn (the stream does it for the
+## sites of a chunk generated ahead, on quiet ticks), and keeps it for spawn_site with what it was
+## made for. It is the creature spawn_site would make from the same record and spawn count but for
+## its birth tick and its brain's start, which the spawn sets; nothing is drawn from a shared stream.
+func prepare_site(s: Dictionary) -> void:
+	var site_id := str(s.id)
+	var count: int = world.site_counts.get(site_id, 0)
+	if _prepared.size() > world.sites.size() + PREPARED_SLACK:
+		_prepared.clear()   # mostly sites of chunks that never loaded: made again if needed
+	_prepared[site_id] = [_made_for(s, count), _site_creature(s, count, str(species.niche_of(str(s.species)).role))]
+
+
+## Endless mode: drops what prepare_site made for site `id` (its ground unloaded or was let go).
+func forget_prepared(id: String) -> void:
+	_prepared.erase(id)
+
+
+## What a site's creature is made from besides the catalogs: the spawn count, the world's size,
+## seed and generator version, and the record's species, home, heading and territory.
+func _made_for(s: Dictionary, count: int) -> Array:
+	return [count, world.size, world.world_seed, world.gen_version, str(s.species), s.home, float(s.heading),
+		(s.territory as Dictionary).duplicate()]
+
+
+## Endless mode: site `s`'s creature for spawn count `count`, as spawn_site places it but for its
+## birth tick, its brain's start and its sleep.
+func _site_creature(s: Dictionary, count: int, role: String) -> Creature:
+	var site_id := str(s.id)
+	var species_id := str(s.species)
 	var p: Phenotype = _phenotypes[species_id]
 	var c := Creature.new()
 	var site_hash := WorldHash.str32(site_id)   # for the number and the brain's seed
@@ -396,15 +449,11 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	c.motion = Locomotion.MotionState.new(s.home, float(s.heading))
 	c.actor = InteractionResolver.Actor.new(c.id, s.home, float(s.heading), p)
 	c.drive = idle_drive(float(s.heading))
-	c.born_tick = tick
 	c.site_id = site_id
 	c.role = role
 	var cfg := species.brain_config(species_id)
-	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
-		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])), tick)
-	c.asleep = asleep
-	_by_site[site_id] = c
-	_add(c)
+	c.brain = CreatureBrain.made(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
+		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])))
 	return c
 
 

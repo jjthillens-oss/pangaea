@@ -919,6 +919,93 @@ func test_chunks_generated_ahead_are_forgotten_when_any_input_of_their_binding_c
 		g.setup(content, species, seed)   # back to the world's own binding for the next round
 
 
+# --- Site records and creatures made ahead (for the chunks generated ahead, on quiet ticks) ---
+
+## Every script variable of `o`, the objects in it dumped the same way: a RandomNumberGenerator as its
+## seed and state, a phenotype (its species' own, shared) as its instance id.
+static func _dump(o: Object) -> Variant:
+	if o == null:
+		return null
+	if o is RandomNumberGenerator:
+		return [o.seed, o.state]
+	if o is Phenotype:
+		return o.get_instance_id()
+	var out := {}
+	for p in o.get_property_list():
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var v: Variant = o.get(p.name)
+			out[p.name] = _dump(v) if v is Object else v
+	return out
+
+
+## On a dense swim every site record a load puts in the table equals _site_record's for it then, and
+## every site creature spawned equals, field for field, the one spawn_site makes from its record at
+## its spawn tick; most of each come from what was made ahead. A rebase between the making and the
+## load or the spawn moves the sites: the load derives the record again, and the spawn makes its own
+## creature (the one made ahead was made for the old frame).
+func test_slow_records_and_creatures_made_ahead_equal_those_made_at_the_load_and_the_spawn() -> void:
+	var cost: GDScript = load("res://tests/test_endless_cost.gd")
+	var fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
+	if fake == null or not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: what is made ahead waits on the endless world")
+		return
+	var d := Gates.data()
+	var content: Variant = fake.call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, d.catalog, "hunter")
+	Gates.make_racer(r.save.genome, d.catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim: PoolSim = PoolSim._create_endless(r.save, d.catalog, d.layout, d.species, content, cost.DenseGen.new(content, d.species, 2802))
+	sim.debug_set_hidden(true)
+	sim.drain_events()   # the creatures placed with the world have moved since
+	var w := sim.world
+	var field := sim.creatures
+	var records := 0   # records a load took from those made ahead
+	var made := 0      # creatures a spawn took from those made ahead
+	var stale := 0     # made ahead for the old frame
+	var spawns := 0
+	var bad := []
+	for t in 1500:
+		var ahead_recs := {}
+		for k in w._ahead_sites:
+			for id in w._ahead_sites[k]:
+				ahead_recs[id] = w._ahead_sites[k][id]
+		var before := {}
+		for id in field._prepared:
+			before[id] = field._prepared[id][1]
+		if t == 700:
+			sim.debug_rebase(Vector2i(-3, 0))   # and the stream rebases back on the next step
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		for e in sim.drain_events():
+			if e.type == "chunk_loaded":
+				for id in w._home_sites.get(e.key, {}):
+					var rec: Dictionary = w.sites[id]
+					records += 1 if is_same(ahead_recs.get(id), rec) else 0
+					if var_to_str(rec) != var_to_str(w._site_record(rec.abs, e.key)):
+						bad.append("tick %d: site %s's record differs from a new one" % [t, id])
+			elif e.type == "creature_spawned" and not e.debug:
+				var c := field.find(e.id)
+				spawns += 1
+				if before.has(c.site_id):
+					if is_same(before[c.site_id], c):
+						made += 1
+					else:
+						stale += 1
+				var fresh := field._site_creature(w.sites[c.site_id], c.spawn_count, c.role)
+				fresh.born_tick = c.born_tick
+				CreatureBrain.start(fresh.brain, c.born_tick)
+				fresh.asleep = c.asleep
+				fresh.think_slot = c.think_slot
+				if var_to_str(_dump(fresh)) != var_to_str(_dump(c)):
+					bad.append("tick %d: %s differs from the one made at its spawn" % [t, c.id])
+	check(bad.is_empty(), "%s" % [bad.slice(0, 3)])
+	check(records >= 100, "loads took the records made ahead (%d)" % records)
+	check(made >= 10 and spawns >= 50, "spawns took the creatures made ahead (%d of %d)" % [made, spawns])
+	check(stale >= 1, "some were made for the frame before a rebase and made again at the spawn (%d)" % stale)
+	print("test-perf-world-caches: made ahead: %d records loaded, %d of %d spawns, %d made again after a rebase" % [
+		records, made, spawns, stale])
+
+
 # --- WorldHash with mul32 and rotl32 written out ---
 
 ## WorldHash's functions before mul32, rotl32 and the round were written out in place.

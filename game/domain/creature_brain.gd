@@ -250,6 +250,15 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 ## cfg.territory_margin_m. Ambush brains pass {}.
 static func create(behavior: String, cfg: Dictionary, home: Vector2, home_heading: float, territory: Dictionary,
 		seed_value: int, tick: int) -> Memory:
+	var mem := made(behavior, cfg, home, home_heading, territory, seed_value)
+	start(mem, tick)
+	return mem
+
+
+## create's part that does not depend on the tick: the memory with its home, territory and seeded RNG,
+## not yet started. The endless world makes a site's next brain ahead of its spawn this way.
+static func made(behavior: String, cfg: Dictionary, home: Vector2, home_heading: float, territory: Dictionary,
+		seed_value: int) -> Memory:
 	var mem := Memory.new()
 	mem.behavior = behavior
 	mem.cfg = cfg
@@ -259,13 +268,17 @@ static func create(behavior: String, cfg: Dictionary, home: Vector2, home_headin
 	if behavior == TERRITORIAL:
 		mem.territory_center = territory.get("center", home)
 		mem.territory_r = float(territory.get("radius", DEFAULT_TERRITORY_M)) + float(cfg.territory_margin_m)
-	mem.ignore_all_until = tick + int(cfg.settle_ticks)
+	return mem
+
+
+## The rest of create, once, at the spawn tick: settling until cfg.settle_ticks from now, at rest.
+static func start(mem: Memory, tick: int) -> void:
+	mem.ignore_all_until = tick + int(mem.cfg.settle_ticks)
 	mem.state_tick = tick
-	if behavior == AMBUSH:
+	if mem.behavior == AMBUSH:
 		_enter(mem, REST, LURK, tick)
 	else:
 		_rest(mem, tick)
-	return mem
 
 
 ## The disc the sim clamps the body to after every move: (home, leash) for an ambush brain,

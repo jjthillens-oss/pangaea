@@ -63,6 +63,9 @@ const AHEAD_MARGIN_TM := 16.0
 const AHEAD_KEEP := 4
 const AHEAD_LEAD_S := 1.0
 const AHEAD_REFRESH_TICKS := 15
+## How many sites of the chunks generated ahead have their record and creature made on a quiet tick
+## (_prepare_ahead).
+const PREPARE_PER_TICK := 2
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -164,6 +167,12 @@ var _ahead_gen: WorldGen = null
 ## stream holds no second path to the absolute world data)
 var _ahead_binding := PackedInt64Array()
 var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
+## The site records of the chunks generated ahead, made a few a tick on quiet ticks (_prepare_ahead)
+## with each site's next creature (CreatureField.prepare_site), so the tick that loads the chunk and
+## spawns its sites does not make them: the same key -> {site id: record}, forgotten with the chunk.
+## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn.
+var _ahead_sites := {}
+var _prepare_todo: Array = []
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
@@ -235,8 +244,8 @@ func step(sim: PoolSim) -> void:
 	var view := _wake_view(sim)
 	var loads := _loads
 	_load(sim, view)
-	if _loads == loads:
-		_look_ahead(sim)
+	if _loads == loads and not _look_ahead(sim):
+		_prepare_ahead(sim)
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
 
@@ -376,6 +385,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
 	_ahead.clear()
+	_forget_ahead_sites()
 	_wake_bound.clear()
 	_hold_bound.clear()
 	_swum_from = Vector2.INF
@@ -606,6 +616,8 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	for id in mine:
 		sites.erase(id)
 		_forget_role(id)
+		if sim.creatures != null:
+			sim.creatures.forget_prepared(id)   # made ahead but never spawned
 	for z in ch.zones:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
@@ -743,12 +755,19 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		if fresh:
 			_index_added_zone(sim.region)
 	if sim.creatures != null:
+		var made: Dictionary = _ahead_sites.get(Vector3i(key.x, key.y, size), {})
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
 				_note_home(s.id, key)
-				sites[s.id] = _site_record(s, key)
+				var rec: Dictionary = made.get(s.id, {})
+				if not rec.is_empty() and is_same(rec.abs, s):
+					_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
+				else:
+					rec = _site_record(s, key)
+				sites[s.id] = rec
 				_note_role(sim, s.id, str(s.species))
 				sim.creatures._enqueue(s.id, s.species, sim.tick)
+	_ahead_sites.erase(Vector3i(key.x, key.y, size))
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
 	if sim.creatures != null:
@@ -787,6 +806,7 @@ func _check_ahead_gen() -> void:
 	if is_same(_ahead_gen, g) and binding == _ahead_binding:
 		return
 	_ahead.clear()
+	_forget_ahead_sites()
 	_ahead_gen = g
 	_ahead_binding = binding
 
@@ -799,10 +819,10 @@ static func _id_of(o: Object) -> int:
 ## the cell along its velocity, within the load ring plus AHEAD_MARGIN_TM of it (least (distance, y,
 ## x)), and keeps it; with AHEAD_KEEP kept, in place of the kept chunk farthest from that point when
 ## it is nearer. A look that generates nothing waits AHEAD_REFRESH_TICKS ticks, or until a load
-## takes a kept chunk, before the next.
-func _look_ahead(sim: PoolSim) -> void:
+## takes a kept chunk, before the next. True when it generated one.
+func _look_ahead(sim: PoolSim) -> bool:
 	if sim.tick < _ahead_tick:
-		return
+		return false
 	_ahead_tick = sim.tick + AHEAD_REFRESH_TICKS
 	_check_ahead_gen()
 	var a := abs_of_local(sim.motion.position + sim.motion.velocity * AHEAD_LEAD_S)
@@ -821,7 +841,7 @@ func _look_ahead(sim: PoolSim) -> void:
 				best = key
 				best_d = d
 	if best == null:
-		return
+		return false
 	if _ahead.size() >= AHEAD_KEEP:
 		var far: Variant = null
 		var far_d := -1.0
@@ -831,10 +851,56 @@ func _look_ahead(sim: PoolSim) -> void:
 				far = k
 				far_d = d
 		if far_d <= best_d:
-			return
+			return false
 		_ahead.erase(far)
-	_ahead[Vector3i(best.x, best.y, size)] = gen.chunk(size, best.x, best.y)
+		_forget_ahead_sites(far)
+	var made := Vector3i(best.x, best.y, size)
+	_ahead[made] = gen.chunk(size, best.x, best.y)
+	_prepare_todo.append([made, 0])
 	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
+	return true
+
+
+## On a quiet tick that generated nothing ahead: the next PREPARE_PER_TICK live sites of the chunks
+## generated ahead get their record (in the frame in force now; the load derives it again) and their
+## next creature (CreatureField.prepare_site), chunk by chunk in the order they were generated.
+## Nothing here changes the world: a load or a spawn that finds nothing made, or something made for
+## other inputs, makes it then.
+func _prepare_ahead(sim: PoolSim) -> void:
+	if sim.creatures == null:
+		return   # no site table to load records into
+	var left := PREPARE_PER_TICK
+	while left > 0 and not _prepare_todo.is_empty():
+		var todo: Array = _prepare_todo[0]
+		var k: Vector3i = todo[0]
+		var ch: WorldChunk = _ahead.get(k)
+		var i: int = todo[1]
+		if ch == null or i >= ch.sites.size():
+			_prepare_todo.pop_front()   # gone through, loaded or forgotten
+			continue
+		todo[1] = i + 1
+		var s: Dictionary = ch.sites[i]
+		if not (s.sizes as Array).has(k.z):
+			continue
+		if not _ahead_sites.has(k):
+			_ahead_sites[k] = {}
+		var rec := _site_record(s, Vector2i(k.x, k.y))
+		_ahead_sites[k][s.id] = rec
+		sim.creatures.prepare_site(rec)
+		left -= 1
+
+
+## Forgets what _prepare_ahead made for the chunk generated ahead at `key` (every one when null): its
+## records here and its sites' creatures in the field.
+func _forget_ahead_sites(key: Variant = null) -> void:
+	var field: CreatureField = _field.get_ref() if _field != null else null
+	for k in ([key] if key != null else _ahead_sites.keys()):
+		if field != null:
+			for id in _ahead_sites.get(k, {}):
+				field.forget_prepared(id)
+		_ahead_sites.erase(k)
+	if key == null:
+		_prepare_todo.clear()
 
 
 # --- sleep and wake (step 5) ---
