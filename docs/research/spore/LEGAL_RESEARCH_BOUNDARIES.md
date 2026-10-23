@@ -80,7 +80,8 @@ they apply to us.
     animation data), selected by heuristics, and an in-game browser of server content. Read with
     `docs/research/innovation-backlog.md`: IB-29 (online gallery) would need a patent review before any work; IB-09
     (offline file sharing, no server) looks outside these claims, but that is our reading, not an opinion.
-  - US6141019A, "Creature animation and simulation technique", EA, predates Spore (1990s filing); expired.
+  - US6141019A, "Creature animation and simulation technique" (Roseborough, Kostolansky, del Palacio; priority
+    1995-10-13), not EA's as far as the record shows; listed as expired. Not a concern.
   - No patent naming Chris Hecker as inventor on the Spore animation system was found in a first search.
   Remaining task: a fuller search on creature skin generation, automatic rigging and procedural gait before any
   GENESIS system following those ideas ships. The SIGGRAPH papers are public, but publication does not rule out a
