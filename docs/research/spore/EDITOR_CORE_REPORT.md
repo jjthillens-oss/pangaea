@@ -140,7 +140,16 @@ started a new thread per build failed with "can only be called from the render t
 `--demo --async` runs the scripted demo on this path: the clip finishes with no errors and exits cleanly. The plain
 demo still builds in step, so every movie frame shows the edit it describes.
 
-## 7. Next (PROPOSED)
+## 7. Test drive
+
+Press T in the Editor Lab, or start it with `--drive`, to see the body as it stands walk. It uses Gait Lab legs (the
+Walker Lab's rig and demo drive) in place of the editor view, and T again goes back to editing. A body with no legs
+gets a message instead. A leg needs a knee and must reach the ground.
+
+The demo clip ends with the edited quadruped walking: arms on the neck, a long tail and two fins. The crouched stance
+at a trot is the Walker Lab's existing gait, and the unedited quadruped shows the same stance.
+
+## 8. Next (PROPOSED)
 
 1. Hand the core to S4's editor shell when the creature stage starts.
-2. Walk the edited creature straight from the editor (Walker Lab on the working body), as a test drive.
+2. A taller stance for the walkers at a trot (the gait's hip height).

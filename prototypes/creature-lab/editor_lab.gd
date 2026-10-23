@@ -2,14 +2,16 @@ extends Node3D
 ## Editor Lab (PROPOSED): drag a Stage 1 body's vertebrae, joints and parts, with the skin rebuilt live. A thin shell
 ## over the scene-free editor core (domain/creature_editor_session.gd, domain/editor_picking.gd); the game's editor
 ## UI would host the same core. Command line (after --): --body=NAME (default s1_quadruped), --points=N,
-## --divisions=N (skin grid), --sync (build the skin on the main thread), --demo (a scripted run of edits for a clip;
+## --divisions=N (skin grid), --sync (build the skin on the main thread), --drive (start in the test drive),
+## --duration=SECONDS, --demo (a scripted run of edits for a clip;
 ## quits when done).
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part) to move it; with a part tool chosen, left-click
 ## the skin to add one. Wheel over the selected vertebra or joint: thicker or thinner; elsewhere: zoom. Right-drag:
 ## orbit. A selected part shows a yellow ring: drag its handle round to turn the part. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 6 or L limb tool (click the skin and drag the new limb's
 ## tip out), 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the selection, Insert adds a
-## vertebra or joint after the selection, Ctrl+Z / Ctrl+Y undo and redo, Enter commits.
+## vertebra or joint after the selection, Ctrl+Z / Ctrl+Y undo and redo, Enter commits; T test-drives
+## the body (it walks on Gait Lab legs; T again returns to editing).
 ##
 ## A vertebra on the middle line stays on it while dragged, so a symmetric body stays symmetric. Dragging a mirror
 ## copy's joint or a part's twin moves the original, mirrored.
@@ -22,6 +24,10 @@ const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 const Session := preload("res://domain/creature_editor_session.gd")
 const Picking := preload("res://domain/editor_picking.gd")
 const BodyCodec := preload("res://domain/body_codec.gd")
+const GaitLab := preload("res://lab_data.gd")
+const Drives := preload("res://lab_drives.gd")
+const GaitBody := preload("res://domain/gait_body.gd")
+const WalkerRig := preload("res://rig/walker_rig.gd")
 
 const TOOLS := ["eye", "beak", "fin", "foot", "horn"]
 const HANDLE_PICK_PX := 16.0
@@ -54,6 +60,9 @@ var _dirty := true
 var threaded := true
 ## --async: the demo also builds on the worker thread (a check of the threaded path).
 var async_demo := false
+## --drive: start in the test drive (with --duration=SECONDS to quit after a while).
+var drive_now := false
+var duration := 0.0
 var _worker: Thread
 var _mutex := Mutex.new()
 var _signal := Semaphore.new()
@@ -68,6 +77,9 @@ var _focus := Vector3.ZERO
 var _rig_offset := Vector3.ZERO
 var _time := 0.0
 var _demo_steps: Array = []
+## Test drive (T): the working body walking on Gait Lab legs, in place of the editor view.
+var walker: Node3D
+var _drive_t := 0.0
 var _sphere: SphereMesh
 
 
@@ -81,6 +93,8 @@ func _ready() -> void:
 			"demo": demo = true
 			"sync": threaded = false
 			"async": async_demo = true
+			"drive": drive_now = true
+			"duration": duration = float(kv[1])
 	part_rules = Lab.part_rules()
 	orientations = Lab.part_orientations(part_rules)
 	session = Session.new(Lab.body(body_name), Lab.rules(), part_rules, Lab.editor_costs(), points)
@@ -298,6 +312,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			insert_after_selected()
 		elif k.keycode == KEY_ENTER:
 			commit()
+		elif k.keycode == KEY_T:
+			test_drive()
 
 
 ## Left button down at a screen position: grab a handle, or add a part with the current tool.
@@ -462,6 +478,33 @@ func insert_after_selected() -> void:
 		_result(session.insert_joint(selected["limb"], selected["id"]), "added a joint")
 
 
+## Toggles the test drive: the body as it stands walks, trots, runs and turns (the Walker Lab's demo drive).
+func test_drive() -> void:
+	if walker:
+		walker.free()
+		walker = null
+		rig.visible = true
+		handle_root.visible = true
+		message = "back to editing"
+		return
+	var desc = session.working
+	var info := GaitBody.from_description(desc)
+	if info["legs"].is_empty():
+		message = "no legs to walk on (a leg needs a knee and must reach the ground)"
+		return
+	var mech = GaitLab.BodyMechanics.create("edited", info["body"], GaitLab.table())
+	walker = WalkerRig.new()
+	add_child(walker)
+	walker.setup(desc, SkinCpu.build(desc, desc.preview_divisions(session.rules)),
+			GaitLab.GaitPlanner.create(mech, Vector3.ZERO, 0.0), info, BODY_COLOR,
+			AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+	walker.body.use_skin_shader({"color_base": BODY_COLOR, "pattern_seed": 3, "coat_pattern": 2, "detail_pattern": 1})
+	rig.visible = false
+	handle_root.visible = false
+	_drive_t = 0.0
+	message = "test drive: %d legs" % info["legs"].size()
+
+
 func commit() -> void:
 	var c: Dictionary = session.commit()
 	if c["ok"]:
@@ -522,8 +565,20 @@ func _process(delta: float) -> void:
 	if _dirty:
 		_rebuild()
 	_collect_skin()
-	camera.position = _focus + _distance * Vector3(sin(_orbit.x) * cos(_orbit.y), sin(_orbit.y), cos(_orbit.x) * cos(_orbit.y))
-	camera.look_at(_focus, Vector3.UP)
+	if drive_now and rig:
+		drive_now = false
+		test_drive()
+	if duration > 0.0 and _time >= duration:
+		get_tree().quit()
+	var focus := _focus
+	if walker:
+		_drive_t += 1.0 / 60.0
+		var input := Drives.input("demo", _drive_t)
+		walker.planner.step(1.0 / 60.0, input.x, input.y)
+		walker.sync(1.0 / 60.0)
+		focus = walker.planner.position + Vector3(0.0, _focus.y, 0.0)
+	camera.position = focus + _distance * Vector3(sin(_orbit.x) * cos(_orbit.y), sin(_orbit.y), cos(_orbit.x) * cos(_orbit.y))
+	camera.look_at(focus, Vector3.UP)
 	var pv: Dictionary = session.preview()
 	var now: Dictionary = pv["phenotype"]
 	var was: Dictionary = pv["current"]
@@ -619,7 +674,8 @@ func _demo_script() -> Array:
 	steps.append([14.0, func(): _report(session.undo(), "undo")])
 	steps.append([14.6, func(): _report(session.redo(), "redo")])
 	steps.append([15.4, func(): commit()])
-	steps.append([17.0, func(): get_tree().quit()])
+	steps.append([16.4, func(): test_drive()])
+	steps.append([25.0, func(): get_tree().quit()])
 	return steps
 
 
