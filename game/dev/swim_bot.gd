@@ -4,9 +4,10 @@ extends RefCounted
 ## tests/test_endless_cost.gd) and the endless smokes.
 ##  - A straight swimmer asks for the same move every tick: `dir` at `throttle`, whatever happens,
 ##    as a player holding one key would. At full throttle the cell swims at its body's top speed.
-##    The gates are written for 6 tm/s (PoolLayout.MAX_SPEED, the cap), but the fastest starting
-##    body, the hunter, reaches 3.26 tm/s, and no legal body passes 3.7, so they swim the hunter and
-##    print the speed it reached (docs/DECISIONS.md, S1 build decisions).
+##    The gates are written for 6 tm/s (PoolLayout.MAX_SPEED, the cap), but no body reaches it: the
+##    fastest starting body, the hunter, makes 3.26 tm/s and the fastest legal body (the gates'
+##    racer, a jaw and three flagella at scale 2) 4.41, so the straight swims and the cost gates swim
+##    the racer and print the speed it reached (docs/DECISIONS.md, S1 build decisions).
 ##  - A camper (camper(zone_id)) swims to its zone's centre, round rocks, and holds still within
 ##    half the zone's radius. It looks the zone up in sim.region.zones every tick, so it follows the
 ##    zone through a rebase of the floating origin. A greedy camper (#33) also eats its zone's food:
