@@ -3,11 +3,16 @@ extends RefCounted
 ## docs/s1/s1-core.md 6.7, docs/s1/s1-build-plan.md B-16 and B-17). The validators keep to cheap
 ## per-file rules; these walk grids, every orientation and every seam, and T4 runs them on the real
 ## content: reach_problems (G5), orientation_problems, food_bound, sample_sites and seam_problems (G4).
+## Each takes the size it checks (S2G7): at a band's second size the shells marked "sink" are gone,
+## the "drop" zones too, a "thin" zone holds capacity x second_size.zone_thin_share, discs take k and
+## a two-post site's posts and union, and the seams, the food ring and the tile frames are measured in
+## that size's tm (bu x bu_to_tm(size)); at size 1 every value is S1's.
 ##
 ##     const WorldChecks := preload("res://tests/world_checks.gd")
 ##     WorldChecks.reach_problems(arena, zones, bounds, WorldChecks.starving_budget(catalog), homes)
 ##     WorldChecks.orientation_problems(content, species, parts, 1)
 ##     WorldChecks.food_bound(content, 4.0).worst <= content.config.caps.food_items
+##     WorldChecks.food_bound(content, 4.0, 2)     # at size 2
 ##     WorldChecks.sample_sites(gen, 0, 1, PackedFloat64Array([x_tm, y_tm])) <= 10
 ##     WorldChecks.seam_problems(content, species, parts, 1)
 
@@ -140,6 +145,68 @@ static func s2_species() -> SpeciesCatalog:
 	return SpeciesCatalog.from_dict(s2_species_data())
 
 
+# --- a size's world (S2) ---
+
+## Whether `size` is the second size of `band` (where sink, drop and thin apply).
+static func is_second_size(band: int, size: int) -> bool:
+	return size == 2 * band + 2
+
+
+## The zones of `zones` there at `size` (each {center or x and y, radius, capacity, at_second_size}):
+## at the band's second size the "drop" ones are gone and a "thin" one holds capacity x
+## second_size.zone_thin_share (copies; the rest unchanged).
+static func zones_at(zones: Array, band: int, size: int, content: WorldContent) -> Array:
+	if not is_second_size(band, size):
+		return zones
+	var share := float(content.config.second_size.zone_thin_share)
+	var out := []
+	for z in zones:
+		if z.at_second_size == "drop":
+			continue
+		var kept: Dictionary = z.duplicate()
+		if z.at_second_size == "thin":
+			kept.capacity = float(z.capacity) * share
+		out.append(kept)
+	return out
+
+
+## A live site's reach discs at `size` in its own frame's bu, as the validators build them (D-39,
+## D-82): {label, disc: {center, radius}, homes: Array[Vector2]} for its one disc (label ""), or for
+## a two-post site post a's (" post a"), post b's (" post b") and their union (" union"). `zone` and
+## `zone_b` are the posts' territory circles ({center, radius}, or {} for none). Empty when a
+## territorial post has no zone there or the species no brain (the validators report those).
+static func site_discs(species: SpeciesCatalog, site: Dictionary, home: Vector2, zone: Dictionary, post_b: Dictionary,
+		zone_b: Dictionary, size: int) -> Array:
+	var territorial := species.behavior_of(site.species) == "territorial"
+	if territorial and zone.is_empty():
+		return []
+	var k := WorldConfig.k_of(species.entry_size(site.species), size)
+	var at_a := {"species": site.species, "home": home, "heading": float(site.heading)}
+	var territory := species.territory_from(at_a, zone)
+	if post_b.is_empty():
+		var disc := species.reach_disc_for(at_a, territory, k)
+		return [] if disc.is_empty() else [{"label": "", "disc": disc, "homes": [home]}]
+	if territorial and zone_b.is_empty():
+		return []
+	var home_b := Vector2(post_b.home[0], post_b.home[1])
+	var both := species.two_post_disc_for(at_a, territory, {"home": home_b, "heading": float(post_b.heading)},
+		species.territory_from(at_a, zone_b), k)
+	if both.is_empty():
+		return []
+	return [{"label": " post a", "disc": both.posts[0], "homes": [home]}, {"label": " post b", "disc": both.posts[1], "homes": [home_b]},
+		{"label": " union", "disc": {"center": both.center, "radius": both.radius}, "homes": [home, home_b]}]
+
+
+## Circles ({id, center, radius}) times s.
+static func scaled(circles: Array[Dictionary], s: float) -> Array[Dictionary]:
+	if s == 1.0:
+		return circles
+	var out: Array[Dictionary] = []
+	for c in circles:
+		out.append({"id": c.id, "center": Vector2(c.center) * s, "radius": float(c.radius) * s})
+	return out
+
+
 # --- every orientation (B-16) ---
 
 ## Every orientation, 0 to 7: m = o >> 2 mirrors x first, k = o & 3 quarter turns (WorldGen).
@@ -200,17 +267,22 @@ static func orientation_problems(content: WorldContent, species: SpeciesCatalog,
 ## each axis), the block's own zones, counted exactly, replace the slots it covers.
 ## {worst: int, at: Vector2 (tile-local bu), home: bool, tile: Vector2i (p's tile when home is
 ## true)}; the gate is worst <= caps.food_items. The first point to reach the worst wins a tie, the
-## arrangements away from the home first.
-static func food_bound(content: WorldContent, step_tm: float) -> Dictionary:
-	var scale := WorldConfig.bu_to_tm(content.config.size_start)
+## arrangements away from the home first. At `size` (0: size_start) the zones are those there
+## (zones_at: drop gone, thin thinned) and the ring and step are that size's tm in bu (/ bu_to_tm).
+static func food_bound(content: WorldContent, step_tm: float, size := 0) -> Dictionary:
+	if size <= 0:
+		size = content.config.size_start
+	var scale := WorldConfig.bu_to_tm(size)
 	var ring := float(content.config.rings.food) / scale
 	var step := step_tm / scale
 	var frames: Array = []
 	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
+		var t: Dictionary = content.tiles.tiles[id]
 		for o in ALL_ORIENTATIONS:
-			frames.append(_food_zones(oriented_tile(content.tiles.tiles[id], o).zones, content))
-	var home_zones := _food_zones(content.home.zones.map(func(z: Dictionary) -> Dictionary:
-		return {"center": PackedFloat64Array([z.x, z.y]), "radius": z.radius, "capacity": z.capacity}), content)
+			frames.append(_food_zones(zones_at(oriented_tile(t, o).zones, int(t.band), size, content), content))
+	var home_zones := _food_zones(zones_at(content.home.zones.map(func(z: Dictionary) -> Dictionary:
+		return {"center": PackedFloat64Array([z.x, z.y]), "radius": z.radius, "capacity": z.capacity,
+			"at_second_size": z.at_second_size}), content.home.band, size, content), content)
 	var n := roundi(TileCatalog.HALF_TILE_BU * 2.0 / step)
 	var best := {"worst": -1, "at": Vector2.ZERO, "tile": Vector2i.ZERO, "home": false}
 	var slot_max := {}
@@ -311,7 +383,9 @@ static func sample_sites(gen: WorldGen, band: int, size: int, center_abs_tm: Pac
 ## orientations. Ordered pairs of tiles in `orientations`, B east of A, north of A and at A's
 ## north-east corner (core 6.7's three placements; the pairs swapped give west, south and the
 ## south-west corner, and with all eight orientations a quarter turn of the pair gives the other two
-## corners); then every tile and orientation along each edge of the home block.
+## corners); then every tile and orientation along each edge of the home block. At `size`, in its tm:
+## the colliders there, each live site's discs with k (both posts and the union for two posts), the
+## radius there, and the offsets times bu_to_tm(size).
 static func seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
 		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
 	var out := tile_seam_problems(content, species, part_catalog, size, orientations)
@@ -323,8 +397,8 @@ static func seam_problems(content: WorldContent, species: SpeciesCatalog, part_c
 static func tile_seam_problems(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
 		orientations := PackedInt32Array(ALL_ORIENTATIONS)) -> PackedStringArray:
 	var frames := _tile_frames(content, species, part_catalog, size, orientations)
-	var tile_bu := TileCatalog.HALF_TILE_BU * 2.0
-	var placements := [["east", Vector2(tile_bu, 0.0)], ["north", Vector2(0.0, -tile_bu)], ["north-east", Vector2(tile_bu, -tile_bu)]]
+	var tile := TileCatalog.HALF_TILE_BU * 2.0 * WorldConfig.bu_to_tm(size)
+	var placements := [["east", Vector2(tile, 0.0)], ["north", Vector2(0.0, -tile)], ["north-east", Vector2(tile, -tile)]]
 	var out := PackedStringArray()
 	for a in frames:
 		for b in frames:
@@ -348,7 +422,7 @@ static func home_seam_problems(content: WorldContent, species: SpeciesCatalog, p
 		slots.append(Vector2i(k, hi + 1))
 	var out := PackedStringArray()
 	for slot in slots:
-		var offset := Vector2(slot.x * 2 + 1, slot.y * 2 + 1) * TileCatalog.HALF_TILE_BU
+		var offset := Vector2(slot.x * 2 + 1, slot.y * 2 + 1) * TileCatalog.HALF_TILE_BU * WorldConfig.bu_to_tm(size)
 		for b in frames:
 			_seam(home, b, offset, "seam %s | %s at tile %s" % [home.where, b.where, slot], species, out)
 	return out
@@ -401,56 +475,68 @@ static func _seam_site(s: Dictionary, disc: Dictionary, own: Array[Dictionary], 
 			out.append("%s: %s" % [label, p])
 
 
-## Each tile in each orientation as one side of a seam: {where, circles (ids "<where>:<id>"), sites
-## [{where, disc: {center, radius}, r}]}; a site's disc is built in the tile's identity frame and
-## then oriented, as WorldGen does (docs/s1/s1-core.md 16.12).
+## Each tile in each orientation as one side of a seam, in tm at `size`: {where, circles (ids
+## "<where>:<id>", the colliders there x s), max_r, sites [{where, disc: {center, radius}, r}]}; a
+## site's discs are built in the tile's identity frame and then oriented, as WorldGen does
+## (docs/s1/s1-core.md 16.12), and a two-post site gives one entry per post and one for the union
+## ("site 'lk' post a of ...").
 static func _tile_frames(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int,
 		orientations: PackedInt32Array) -> Array:
+	var s := WorldConfig.bu_to_tm(size)
+	var radii := TileCatalog.radii_at(species, part_catalog, size)
 	var out := []
 	for id in WorldConfig._sorted(content.tiles.tiles.keys()):
 		var t: Dictionary = content.tiles.tiles[id]
+		var second := is_second_size(int(t.band), size)
 		var discs := []
-		for s in t.sites:
-			if not s.sizes.has(size) or not species.species.has(s.species):
-				discs.append({})
+		for site in t.sites:
+			if not site.sizes.has(size) or not radii.has(site.species):
+				discs.append([])
 				continue
-			var zone := TileCatalog._zone(t, s.territory_zone)
-			var z := {} if zone.is_empty() else {"center": TileCatalog._vec(zone.center), "radius": float(zone.radius)}
-			var site := {"species": s.species, "home": TileCatalog._vec(s.home), "heading": float(s.heading)}
-			discs.append(species.reach_disc_for(site, species.territory_from(site, z)))
+			var post_b: Dictionary = site.get("post_b", {})
+			discs.append(site_discs(species, site, TileCatalog._vec(site.home), _tile_zone(t, site.territory_zone, second),
+				post_b, _tile_zone(t, str(post_b.get("territory_zone", "")), second), size))
 		for o in orientations:
 			var ot := oriented_tile(t, o)
-			var circles := _named(TileCatalog.colliders_of(ot, content.kit), ot.where)
+			var circles := _named(scaled(TileCatalog.colliders_at(ot, TileCatalog.colliders_of(ot, content.kit), size), s), ot.where)
 			var frame := {"where": ot.where, "circles": circles, "max_r": _max_r(circles), "sites": []}
 			for k in t.sites.size():
-				var disc: Dictionary = discs[k]
-				if disc.is_empty():
-					continue
-				var c := WorldGen.orient_point(disc.center.x, disc.center.y, o)
-				frame.sites.append({"where": "site '%s' of %s" % [t.sites[k].id, ot.where], "r": species.phenotype(t.sites[k].species, part_catalog).radius,
-					"disc": {"center": Vector2(c[0], c[1]), "radius": float(disc.radius)}})
+				for d in discs[k]:
+					var c := WorldGen.orient_point(d.disc.center.x, d.disc.center.y, o)
+					frame.sites.append({"where": "site '%s'%s of %s" % [t.sites[k].id, d.label, ot.where], "r": float(radii[t.sites[k].species]) * s,
+						"disc": {"center": Vector2(c[0], c[1]) * s, "radius": float(d.disc.radius) * s}})
 			out.append(frame)
 	return out
 
 
-## The home block as one side of a seam, in its own frame (centre at abs (0, 0)).
+## A tile zone's circle ({center, radius}) by id, or {} for none or one dropped at the second size.
+static func _tile_zone(t: Dictionary, id: String, second: bool) -> Dictionary:
+	var zone := TileCatalog._zone(t, id)
+	if zone.is_empty() or (second and zone.at_second_size == "drop"):
+		return {}
+	return {"center": TileCatalog._vec(zone.center), "radius": float(zone.radius)}
+
+
+## The home block as one side of a seam, in its own frame (centre at abs (0, 0)), in tm at `size`.
 static func _home_frame(content: WorldContent, species: SpeciesCatalog, part_catalog: PartCatalog, size: int) -> Dictionary:
 	var home := content.home
-	var circles := _named(home.circles(), home.where)
+	var s := WorldConfig.bu_to_tm(size)
+	var second := is_second_size(home.band, size)
+	var radii := TileCatalog.radii_at(species, part_catalog, size)
+	var circles := _named(scaled(home.circles_at(size), s), home.where)
 	var frame := {"where": home.where, "circles": circles, "max_r": _max_r(circles), "sites": []}
-	for s in home.sites:
-		if not s.sizes.has(size) or not species.species.has(s.species):
+	var zone_by_id := {}
+	for zone in home.zones:
+		if not (second and zone.at_second_size == "drop"):
+			zone_by_id[zone.id] = {"center": Vector2(zone.x, zone.y), "radius": float(zone.radius)}
+	for site in home.sites:
+		if not site.sizes.has(size) or not radii.has(site.species):
 			continue
-		var z := {}
-		for zone in home.zones:
-			if zone.id == s.territory_zone:
-				z = {"center": Vector2(zone.x, zone.y), "radius": float(zone.radius)}
-		var site := {"species": s.species, "home": Vector2(s.x, s.y), "heading": float(s.heading)}
-		var disc := species.reach_disc_for(site, species.territory_from(site, z))
-		if disc.is_empty():
-			continue
-		frame.sites.append({"where": "site '%s' of %s" % [s.id, home.where], "r": species.phenotype(s.species, part_catalog).radius,
-			"disc": {"center": Vector2(disc.center), "radius": float(disc.radius)}})
+		var post_b: Dictionary = site.post_b
+		for d in site_discs(species, site, Vector2(site.x, site.y), zone_by_id.get(site.territory_zone, {}), post_b,
+				zone_by_id.get(str(post_b.get("territory_zone", "")), {}), size):
+			frame.sites.append({"where": "site '%s'%s of %s" % [site.id, d.label, home.where], "r": float(radii[site.species]) * s,
+				"disc": {"center": Vector2(d.disc.center) * s, "radius": float(d.disc.radius) * s}})
 	return frame
 
 
