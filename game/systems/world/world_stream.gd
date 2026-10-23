@@ -27,6 +27,14 @@ extends RefCounted
 ## the table's sites per role, recomputed on every change, so a niche never holds more creatures than
 ## the ground loaded round the cell can home. A site's creature leaves with its home chunk.
 ##
+## Sleep. A site creature far from the cell (beyond the sleep ring, out of view, calm and not
+## holding the token) sleeps: it is kept, lying still, but neither thinks, moves nor is sensed, and
+## it holds no chunk. It wakes inside the wake ring or in view, its site's reach chunks loaded first,
+## and thinks on the emptiest of the six think slots. The gap between the rings keeps a creature
+## from sleeping and waking at a boundary. Over caps.awake the farthest calm creature between the
+## rings sleeps early; over caps.sleepers the farthest sleeper is evicted, its site requeued. While
+## the cell is dead every distance is to the nearer of the body and the checkpoint.
+##
 ## Food. Only the zones whose nearest point lies within the food ring (52 tm) show plankton, and
 ## carrion beyond it is dropped for good: both happen out of view (the view reaches 35.7 tm with its
 ## margin). A zone entering the ring regrows one item a tick, out of view. Over caps.food_items the
@@ -38,6 +46,9 @@ extends RefCounted
 const VIEW_SET_MARGIN_TM := 11.5
 ## tm: the largest zone radius at size 1 (tile rule 3).
 const MAX_ZONE_RADIUS_TM := 8.0
+## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
+## watching, noticing, chasing, attacking, fleeing or going home.
+const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
 
 var content: WorldContent
 var gen: WorldGen
@@ -80,6 +91,7 @@ var _fill_all := false                 ## fill every food zone at once in the ne
 var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
+var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -103,14 +115,17 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 
 
 ## The streaming block, first in every endless tick (spine 3.11): the floating origin (step 2),
-## unload (step 3), load (step 4), then the food view (step 6). Load, unload and food always measure
-## from the body, alive or dead.
+## unload (step 3), load (step 4), sleep and wake (step 5), then the food view (step 6). Load, unload
+## and food always measure from the body, alive or dead; sleep and wake from every place the cell
+## has (PoolSim._player_places), the same for steps 4 and 5.
 func step(sim: PoolSim) -> void:
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
 	_unload(sim)
-	_load(sim)
+	var view := _wake_view(sim)
+	_load(sim, view)
+	_sleep_and_wake(sim, view)
 	_food_view(sim)
 
 
@@ -120,9 +135,11 @@ func fill_all_food_now(sim: PoolSim) -> void:
 	_food_view(sim)
 
 
-## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile.
+## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile, and
+## the creature field sleeping_ids() reads.
 func start(sim: PoolSim) -> void:
 	_cell_tile = tile_of_local(sim.motion.position)
+	_field = weakref(sim.creatures) if sim.creatures != null else null
 
 
 # --- frames ---
@@ -268,7 +285,14 @@ func load_view_set_now(sim: PoolSim, center_local: Vector2) -> void:
 
 ## The sleeping creatures' ids, sorted.
 func sleeping_ids() -> PackedStringArray:
-	return PackedStringArray()
+	var field: CreatureField = _field.get_ref() if _field != null else null
+	var out := PackedStringArray()
+	if field != null:
+		for c in field.creatures:
+			if c.asleep:
+				out.append(c.id)
+	out.sort()
+	return out
 
 
 ## The distance from a local point to the square of chunk `key`: 0 inside it. Measured on absolute
@@ -310,7 +334,7 @@ func snapshot(sim: PoolSim) -> Dictionary:
 		"zone_rngs": zone_rngs,
 		"site_counts": _sorted_dict(site_counts),
 		"sleeping": Array(sleeping_ids()),
-		"slots": {},
+		"slots": _slots(sim),
 		"cell_tile": [_cell_tile.x, _cell_tile.y],
 		"counters": counters.duplicate(),
 	}
@@ -383,7 +407,12 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 ## Loads the nearest missing chunk within the load ring (ties by key), up to caps.loads_per_tick a
 ## tick. With caps.chunks loaded, only a chunk of the view set may still load; any other waits, and
 ## chunk_waits counts the wait (a backstop that a swim should never need).
-func _load(sim: PoolSim) -> void:
+func _load(sim: PoolSim, view_from: Dictionary) -> void:
+	# The sleepers step 5 will wake: their reach chunks load first, never refused and never counted.
+	for c in _wakers(sim, view_from):
+		for key in sites[c.site_id].chunks:
+			if not _chunks.has(key):
+				_load_chunk(sim, key)
 	var body := sim.motion.position
 	var view: Array[Vector2i] = []
 	for i in int(caps.loads_per_tick):
@@ -455,6 +484,121 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_chunks[key] = ch
 	_emit(sim, _chunk_loaded_event(ch))
 	recompute_caps(sim)
+
+
+# --- sleep and wake (step 5) ---
+
+## What steps 4 and 5 measure sleep and wake from, once a tick: {"places": every place the cell has,
+## "quads": the widest view's footprint of each place, "far": the farthest any footprint reaches
+## from its place}.
+func _wake_view(sim: PoolSim) -> Dictionary:
+	var places := sim._player_places()
+	var quads: Array[PackedVector2Array] = []
+	var far := 0.0
+	for place in places:
+		var quad := ViewFootprint.corners(place, camera, float(camera.zoom_max), view_aspect)
+		quads.append(quad)
+		for corner in quad:
+			far = maxf(far, place.distance_to(corner))
+	return {"places": places, "quads": quads, "far": far}
+
+
+## The wake distance: from `p` to the nearest place.
+static func _wake_distance(p: Vector2, view_from: Dictionary) -> float:
+	var d := INF
+	for place in view_from.places:
+		d = minf(d, p.distance_to(place))
+	return d
+
+
+## Whether a body of radius `r` at `p`, `d` from the nearest place, is in view of any place: within
+## the spawn-view margin plus r of a footprint (as the spawn check measures it). No footprint reaches
+## past `far`, so a body beyond it plus the margin is out of view without the quad test.
+func _in_view(p: Vector2, r: float, d: float, view_from: Dictionary) -> bool:
+	var margin := view_margin + r
+	if d > float(view_from.far) + margin + 0.01:
+		return false
+	for quad in view_from.quads:
+		if quad.is_empty() or ViewFootprint.distance_outside(quad, p) <= margin:
+			return true
+	return false
+
+
+## The sleepers step 5 will wake this tick: inside the wake ring or in view.
+func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
+	var out := []
+	if sim.creatures == null:
+		return out
+	for c in sim.creatures.creatures:
+		if c.asleep and sites.has(c.site_id):
+			var d := _wake_distance(c.motion.position, view_from)
+			if d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
+				out.append(c)
+	return out
+
+
+## Step 5: one pass over the site creatures in (slot, or ASLEEP_KEY for a sleeper; number; id) order.
+## An awake one sleeps when it is calm, beyond the sleep ring, out of view and not a token holder; a
+## sleeper wakes inside the wake ring or in view. Then over caps.awake the farthest calm creature
+## between the rings sleeps (none: awake_overflow counts once), and over caps.sleepers the farthest
+## sleeper is evicted and its site requeued (D-12). Scripted and siteless creatures never sleep (C-6).
+func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
+	var field := sim.creatures
+	if field == null:
+		return
+	var buckets: Array = []
+	for i in CreatureField.ASLEEP_KEY + 1:
+		buckets.append([])
+	for c in field.creatures:   # sorted (number, id), so each bucket is too
+		if not c.scripted and c.brain != null and not c.site_id.is_empty():
+			buckets[CreatureField.ASLEEP_KEY if c.asleep else c.think_slot].append(c)
+	var list: Array = []
+	for b in buckets:
+		list.append_array(b)
+	var dist := {}
+	for c in list:
+		var d := _wake_distance(c.motion.position, view_from)
+		dist[c.id] = d
+		if not c.asleep:
+			if _calm(c) and d > float(rings.sleep) and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
+					and not field.engaged_on_player.has(c.id):
+				field.sleep(c, sim.tick)
+		elif d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
+			field.wake(c, sim.tick)
+	while field.awake().size() > int(caps.awake):
+		var pick: CreatureField.Creature = null
+		for c in list:
+			var d: float = dist[c.id]
+			if c.asleep or not _calm(c) or field.engaged_on_player.has(c.id) or d < float(rings.wake) or d > float(rings.sleep):
+				continue
+			if pick == null or d > dist[pick.id] or (d == dist[pick.id] and c.id < pick.id):
+				pick = c
+		if pick == null:
+			counters.awake_overflow += 1
+			break
+		field.sleep(pick, sim.tick)
+	while field.creatures.size() - field.awake().size() > int(caps.sleepers):
+		var e: CreatureField.Creature = null
+		for c in list:
+			if c.asleep and (e == null or dist[c.id] > dist[e.id] or (dist[c.id] == dist[e.id] and c.id < e.id)):
+				e = c
+		if e == null:
+			break
+		field.remove(e, "evicted", sim.tick, true)
+		counters.evictions += 1
+
+
+static func _calm(c: CreatureField.Creature) -> bool:
+	return CALM.has(c.brain.state + "/" + c.brain.phase)
+
+
+## {creature id: think slot} of the awake creatures, sorted by id.
+func _slots(sim: PoolSim) -> Dictionary:
+	var out := {}
+	if sim.creatures != null:
+		for c in sim.creatures.awake():
+			out[c.id] = c.think_slot
+	return _sorted_dict(out)
 
 
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the
