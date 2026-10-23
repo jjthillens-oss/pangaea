@@ -519,6 +519,21 @@
       "approved": false
     },
     {
+      "id": "marker_lair_mouth",
+      "kind": "marker",
+      "band": -1,
+      "glb": "res://assets/export/marker_lair_mouth.glb",
+      "record": "res://assets/records/marker_lair_mouth.json",
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "yaw_rule": "fixed",
+      "dressings": [],
+      "placeholder": false,
+      "approved": false
+    },
+    {
       "id": "rock_a",
       "kind": "shell",
       "band": 0,

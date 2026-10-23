@@ -621,17 +621,96 @@ def build_origin_arrow():
     }
 
 
+# The Lurker's lair mouth (docs/s2/lurker-lair-mouth-spec.md): authored in units of the Lurker's drawn radius R = 1.
+LAIR_INNER, LAIR_OUTER, LAIR_FLOOR = 1.3, 2.6, -1.2
+LAIR_ARC = 240.0        # degrees of crust; the gap is centred on +X, the post heading and the Lurker's lunge
+LAIR_COLOR = (0.16, 0.2, 0.25)    # linear: the silt trail's grey-blue, luminance under 0.40, no mauve
+
+
+def build_lair_mouth():
+    """An open horseshoe of silt-crusted shell grit round a darker silt hollow, with a few flattened
+    shell flakes in the crust. Low, broken and granular, so it never reads as a shell or a food patch.
+    The origin is the ring's centre at lip-top height; everything is at or below it."""
+    import random
+    rng = random.Random(41)
+    mat = bc.material("M_LairMouth", LAIR_COLOR, 0.85)
+    half = math.radians(LAIR_ARC) / 2.0
+    cols, radial = 26, [LAIR_INNER, 1.45, 1.75, 2.05, 2.35, LAIR_OUTER]
+    # Crest height across the crust (0 at the inner wall foot, 1 at the crest), broken by noise.
+    lift = [0.0, 0.78, 1.0, 0.8, 0.45, 0.12]
+    verts, faces, grid = [], [], []
+    for c in range(cols + 1):
+        t = c / cols
+        a = math.pi - half + 2.0 * half * t           # from one horn of the horseshoe round the back to the other
+        end = min(t, 1.0 - t)
+        taper = min(1.0, end / 0.16) ** 0.8         # the arms crumble down toward the opening
+        pinch = min(1.0, end / 0.1)                  # and narrow to a ragged point of grit
+        ragged = 0.22 * math.sin(5.0 * a + 0.7) * math.sin(11.0 * a + 2.1) + rng.uniform(-0.12, 0.12)
+        row = []
+        for k, r0 in enumerate(radial):
+            if k == len(radial) - 1:
+                r0 = r0 + ragged                         # a broken outer edge, never a clean arc
+            elif k > 0:
+                r0 = r0 + rng.uniform(-0.07, 0.07)
+            r = 1.9 + (r0 - 1.9) * (0.25 + 0.75 * pinch)
+            crest = lift[k] * taper * (0.82 + 0.18 * math.sin(7.0 * a + 1.3) * math.cos(3.0 * a)) - rng.uniform(0.0, 0.1) * lift[k]
+            z = LAIR_FLOOR + (0.0 - LAIR_FLOOR) * crest if k < 3 else -0.95 + 0.95 * crest
+            z = min(0.0, z)
+            row.append(len(verts))
+            verts.append((r * math.cos(a), r * math.sin(a), z))
+        grid.append(row)
+    for c in range(cols):
+        for k in range(len(radial) - 1):
+            faces.append((grid[c][k], grid[c][k + 1], grid[c + 1][k + 1], grid[c + 1][k]))
+    # The hollow's silt floor: a disc inside the inner radius.
+    seg = 18
+    centre = len(verts)
+    verts.append((0.0, 0.0, LAIR_FLOOR))
+    ring = []
+    for j in range(seg):
+        a = math.tau * j / seg
+        ring.append(len(verts))
+        verts.append((LAIR_INNER * 1.02 * math.cos(a), LAIR_INNER * 1.02 * math.sin(a), LAIR_FLOOR + 0.02 * math.sin(3 * a)))
+    for j in range(seg):
+        faces.append((centre, ring[j], ring[(j + 1) % seg]))
+    # A few shed shell flakes lying flat in the crust.
+    for i in range(5):
+        a = math.pi - half * 0.85 + 2.0 * half * 0.85 * (i + rng.uniform(0.2, 0.8)) / 5
+        r = rng.uniform(1.6, 2.2)
+        cx, cy = r * math.cos(a), r * math.sin(a)
+        size = rng.uniform(0.16, 0.26)
+        tilt = rng.uniform(-0.15, 0.15)
+        cz = -0.06 - rng.uniform(0.0, 0.12)
+        base = len(verts)
+        sides = rng.choice((4, 5, 6))
+        for j in range(sides):
+            b = math.tau * j / sides + rng.uniform(-0.35, 0.35)
+            reach = size * rng.uniform(0.55, 1.0)
+            dx, dy = reach * math.cos(b), reach * 0.7 * math.sin(b)
+            verts.append((cx + dx, cy + dy, min(0.0, cz + tilt * dx)))
+        faces.append(tuple(range(base, base + sides)))
+    bc.mesh_object("LairMouth", verts, faces, [mat], fix_normals=False, smooth=True)
+    return {
+        "purpose": "S2 Lurker lair mouth (marker): an open horseshoe reef mouth of silt-crusted shell grit round a darker silt hollow, placed at both posts of every Lurker site so both read as lairs. Authored at R = 1 (the Lurker's drawn radius); the opening faces +X, the post heading. No collision.",
+        "category": "marker", "kind": "marker",
+        "pivot": "centre of the ring at lip-top height; all geometry at or below it (Godot y <= 0)",
+        "yaw_rule": "fixed", "dressings": [], "scale_range": [1.0, 1.0],
+        "authored_radius": {"inner": LAIR_INNER, "outer": LAIR_OUTER, "floor": LAIR_FLOOR, "arc_deg": LAIR_ARC, "units": "the Lurker's drawn radius"},
+    }
+
+
 ASSETS = {
     **{i: ((lambda i=i: build_shell(i)), BUDGET["shell"]) for i in SHELLS},
     **{i: ((lambda i=i: build_landmark(i)), BUDGET["landmark"]) for i in LANDMARKS},
     **{i: ((lambda i=i: build_rare(i)), BUDGET["rare"]) for i in RARES},
     "marker_checkpoint_column": (build_checkpoint_column, BUDGET["marker"]),
     "marker_origin_arrow": (build_origin_arrow, BUDGET["marker"]),
+    "marker_lair_mouth": (build_lair_mouth, 600),
 }
 
 
 KIT_PATH = os.path.join(bc.ROOT, "game", "data", "placement_kit.json")
-KIT_ORDER = list(SHELLS) + list(LANDMARKS) + list(RARES) + ["marker_checkpoint_column", "marker_origin_arrow"]
+KIT_ORDER = list(SHELLS) + list(LANDMARKS) + list(RARES) + ["marker_checkpoint_column", "marker_origin_arrow", "marker_lair_mouth"]
 # The pool's three M1 rocks, used only by the home block's fixed rocks (rule 12).
 HOME_ROCKS = ["rock_a", "rock_b", "rock_c"]
 
