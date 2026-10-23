@@ -16,7 +16,14 @@ extends RefCounted
 ## validate() names every broken rule as "Rule N (name): ...", so the data cannot drift away from
 ## the fairness contract unnoticed (docs/milestones/m1-step3-plan.md, section 5):
 ##   1 genome, 2 weapon, 3 speed, 4 readability, 5 forgiving, 6 strike window, 7 sites,
-##   8 checkpoint safety, 9 leash band, 10 pinch, 11 new-game fill, 12 fairness arrays, 13 unknown key.
+##   8 checkpoint safety, 9 leash band, 10 pinch, 11 new-game fill, 12 fairness arrays, 13 unknown key,
+##   15 outgrown (S2; 14 is kept for S3's veil).
+##
+## S2 (the growth ladder, plan B.6 and B.7): a species may name its entry_size, the cell's size at
+## which it is drawn as a threat (1 when left out), and a habit (two posts, B.7); the top-level
+## "relationships" block holds the relationship rules' shares and switches (D-18), which _prepare
+## passes into every brain config. at_size(id, n) is the species' record at the cell's size n: its
+## phenotype and cfg scaled by q = 1.6^(c - n) (Phenotype.scaled, CreatureBrain.scale_cfg), memoised.
 
 const DEFAULT_PATH := "res://game/data/creatures_m1.json"
 const SCHEMA_VERSION := 1
@@ -36,12 +43,19 @@ const WORST_CLOSING_SHARE := 2.0
 const ARC_NUDGE := 1e-4
 const RULE_NAMES := {1: "genome", 2: "weapon", 3: "speed", 4: "readability", 5: "forgiving", 6: "strike window",
 	7: "sites", 8: "checkpoint safety", 9: "leash band", 10: "pinch", 11: "new-game fill", 12: "fairness arrays",
-	13: "unknown key"}
+	13: "unknown key", 15: "outgrown"}
 const BEHAVIORS: PackedStringArray = ["ambush", "territorial"]
+## The sizes of the growth ladder (plan B.1): entry_size lies in 1..MAX_ENTRY_SIZE.
+const MAX_ENTRY_SIZE := 10
+## The largest relationships.tolerance accepted: it absorbs float rounding, not real size differences.
+const MAX_SHARE_TOLERANCE := 1e-3
+## A habit's post switch (B.7, D-23): the ambush brain moves when the cell is out of its sight, the
+## territorial one when the cell is nearer the other post's zone.
+const POST_SWITCHES := {"out_of_sight": "ambush", "nearer_cell": "territorial"}
 
 # Every key each block may hold, and its kind. A kind ending in "?" may be left out.
 const TOP_KEYS := {"schema_version": "whole", "status": "text", "note": "text?", "ai": "object", "combat": "object",
-	"fairness": "object", "spawning": "object", "species": "object", "sites": "list"}
+	"fairness": "object", "spawning": "object", "species": "object", "sites": "list", "relationships": "object?"}
 const AI_KEYS := {"think_hz": "number", "engaged_think_hz": "number", "dead_reckon_cap_s": "number",
 	"unreachable_window_s": "number", "unreachable_min_m": "number", "return_fail_limit": "whole",
 	"settle_s": "number", "tell_start_max_speed": "number"}
@@ -59,7 +73,8 @@ const SPECIES_KEYS := {"name": "text", "death_reason": "text", "death_tip": "tex
 	"speeds": "object", "prey_max_radius_share": "number?", "intruder_min_radius": "number?", "notice_s": "number",
 	"give_up_s": "number", "leash_m": "number", "forage_radius_m": "number?", "forage_timeout_s": "number?",
 	"forage_retry_s": "number?", "refractory_s": "number", "nav_timeout_s": "number", "territory_margin_m": "number?",
-	"territory_exit_m": "number?", "rest_s": "pair?", "attack": "object", "flee": "object", "carcass": "object"}
+	"territory_exit_m": "number?", "rest_s": "pair?", "attack": "object", "flee": "object", "carcass": "object",
+	"entry_size": "whole?", "habit": "object?"}
 ## The optional species keys each behavior needs.
 const BEHAVIOR_KEYS := {
 	"ambush": ["prey_max_radius_share", "forage_radius_m", "forage_timeout_s", "forage_retry_s"],
@@ -75,6 +90,12 @@ const SPEEDS_KEYS := {"wander": "number", "forage": "number", "pursue": "number"
 const FLEE_KEYS := {"below_health_share": "number", "for_s": "number"}
 const CARCASS_KEYS := {"chunks": "whole", "energy": "number", "on_starve": "flag"}
 const PART_KEYS := {"type": "text", "angle": "number", "scale": "number?"}
+const HABIT_KEYS := {"post_switch": "text", "post_rest_s": "number?", "post_hysteresis_m": "number?", "trail_s": "number?"}
+const RELATIONSHIP_KEYS := {"rules": "object", "prey_share": "number", "intruder_max_radius_share": "number",
+	"fear_radius_share": "number", "tolerance": "number"}
+## One switch per relationship rule (Relationships), every one required.
+const RULE_KEYS := {"prey_share": "flag", "intruder_share": "flag", "fear": "flag", "no_engage_above": "flag",
+	"outgrown_hazards": "flag"}
 const SITE_KEYS := {"id": "text", "species": "text", "home": "pair", "heading": "number", "territory_zone": "text?"}
 const SUB_BLOCKS := {"attack": ATTACK_KEYS, "niche": NICHE_KEYS, "senses": SENSES_KEYS, "speeds": SPEEDS_KEYS,
 	"flee": FLEE_KEYS, "carcass": CARCASS_KEYS}
@@ -99,6 +120,8 @@ var species := {}
 var sites: Array[Dictionary] = []
 ## species id -> CreatureBrain.config(): the brain's tick-based config. Empty while load_problems is not.
 var configs := {}
+## The "relationships" block as written (D-18); {} when the data has none, which is every rule off.
+var relationships := {}
 ## Shelter after a respawn, by death streak (fairness.grace_s in ticks).
 var grace_ticks: Array[int] = []
 ## Energy after a respawn, by death streak, as a share of capacity.
@@ -108,6 +131,9 @@ var killer_ignore_ticks := 0
 var start_grace_ticks := 0
 var spawn_retry_ticks := 0
 var fade_in_ticks := 0
+## at_size's records, by "<id>/<n>", and the one part catalog they are built with (the first given).
+var _records := {}
+var _part_catalog: PartCatalog = null
 
 
 ## Never null: a missing or unreadable file gives a catalog whose validate() says why.
@@ -135,6 +161,10 @@ static func from_dict(data: Variant) -> SpeciesCatalog:
 	cat.combat = _block(data, "combat", COMBAT_KEYS, "combat", problems)
 	cat.fairness = _block(data, "fairness", FAIRNESS_KEYS, "fairness", problems)
 	cat.spawning = _block(data, "spawning", SPAWNING_KEYS, "spawning", problems)
+	if data.has("relationships"):
+		cat.relationships = _block(data, "relationships", RELATIONSHIP_KEYS, "relationships", problems)
+		if cat.relationships.get("rules") is Dictionary:
+			_check_block(cat.relationships.rules, RULE_KEYS, "relationships rules", problems)
 
 	var raw_species = data.get("species")
 	if raw_species is Dictionary:
@@ -223,6 +253,75 @@ func niche_of(species_id: String) -> Dictionary:
 	return species.get(species_id, {}).get("niche", {})
 
 
+# --- S2: the growth ladder ---
+
+## The cell's size at which the species is drawn as a threat (data "entry_size", 1 when left out).
+func entry_size(species_id: String) -> int:
+	return int(species.get(species_id, {}).get("entry_size", 1))
+
+
+## q at the cell's size n: Relationships.q_of(entry_size, n), exactly 1.0 at the entry size.
+func q_of(species_id: String, n: int) -> float:
+	return Relationships.q_of(entry_size(species_id), n)
+
+
+## The species lives in a world of the cell's size n: n is at least its entry size and it is not yet
+## haze there (Relationships.ladder_role). False for an unknown species. The radius comes from
+## at_size, so its part catalog is the one at_size keeps.
+func live_at(species_id: String, n: int, part_catalog: PartCatalog = null) -> bool:
+	if not species.has(species_id) or n < entry_size(species_id):
+		return false
+	return str(at_size(species_id, n, part_catalog).get("ladder_role", "haze")) != "haze"
+
+
+## The "relationships" block (D-18); {} when the data has none.
+func relationships_cfg() -> Dictionary:
+	return relationships
+
+
+## The species' habit (B.7: its two posts and how it moves between them); {} when it has none.
+func habit_of(species_id: String) -> Dictionary:
+	return species.get(species_id, {}).get("habit", {})
+
+
+## The species' record at the cell's size n, for n at least its entry size (plan B.6, s2-sim 3.2):
+## {"q", "rel", "ladder_role", "phenotype" (phenotype(id).scaled(q)), "cfg" (scale_cfg of its brain
+## config), "sight" (the scaled phenotype's), "fov" (radians), "near_m" (senses.near_m x q),
+## "carcass_rings" (CreatureField.CARCASS_RINGS_M x q), "reach_scale" (q), "flee_share" (speeds.flee)}.
+## At the entry size every value is the species' own, bit for bit. Memoised per (id, n) and built
+## with one part catalog: the first one given, else the shipped one. {} with an error for an unknown
+## species, a broken catalog or n below the entry size.
+func at_size(species_id: String, n: int, part_catalog: PartCatalog = null) -> Dictionary:
+	var key := "%s/%d" % [species_id, n]
+	var known: Dictionary = _records.get(key, {})
+	if not known.is_empty():
+		return known
+	if not configs.has(species_id) or n < entry_size(species_id):
+		push_error("SpeciesCatalog.at_size: no record for '%s' at size %d (entry size %d)." % [species_id, n, entry_size(species_id)])
+		return {}
+	if _part_catalog == null:
+		_part_catalog = part_catalog if part_catalog != null else PartCatalog.load_from()
+	var q := q_of(species_id, n)
+	var p := phenotype(species_id, _part_catalog).scaled(q)
+	var block: Dictionary = species[species_id]
+	var rings := CreatureField.CARCASS_RINGS_M
+	var record := {
+		"q": q, "rel": Relationships.rel(p.radius),
+		"ladder_role": Relationships.ladder_role(entry_size(species_id), n, p.radius, share_tolerance()),
+		"phenotype": p, "cfg": CreatureBrain.scale_cfg(configs[species_id], q),
+		"sight": p.sight, "fov": deg_to_rad(float(block.senses.fov_deg)), "near_m": float(block.senses.near_m) * q,
+		"carcass_rings": [float(rings[0]) * q, float(rings[1]) * q], "reach_scale": q,
+		"flee_share": float(block.speeds.flee),
+	}
+	_records[key] = record
+	return record
+
+
+## The relationship rules' tolerance: the block's, else Relationships.TOLERANCE.
+func share_tolerance() -> float:
+	return float(relationships.get("tolerance", Relationships.TOLERANCE))
+
+
 func site(site_id: String) -> Dictionary:
 	for s in sites:
 		if s.id == site_id:
@@ -260,31 +359,65 @@ func reach_disc(s: Dictionary, layout: PoolLayout) -> Dictionary:
 ## reach_disc with the territory given (territory_from's answer), for a site that is not the layout's.
 ## CreatureBrain.create's territory and CreatureBrain.leash_disc written out, the same expressions,
 ## without building a brain (a world chunk asks for each of its sites).
-func reach_disc_for(s: Dictionary, territory: Dictionary) -> Dictionary:
+##
+## k (D-39) puts the disc in the caller's units when they are not the species' own: the brain's
+## lengths are those of CreatureBrain.scale_cfg(cfg, k), each multiplied out here (the same products,
+## so the same bits). A tile frame of band b holds a species of entry size c at k = 1.6^(c - 1) /
+## 2.56^b: 1 for the M1 species in band 0, 1.6 for a size-2 species. The territory is already in the
+## caller's units.
+func reach_disc_for(s: Dictionary, territory: Dictionary, k := 1.0) -> Dictionary:
 	var cfg := brain_config(str(s.species))
 	if cfg.is_empty():
 		return {}
 	var home: Vector2 = s.home
 	if str(cfg.behavior) == CreatureBrain.TERRITORIAL:
 		var center: Vector2 = territory.get("center", home)
-		var territory_r := float(territory.get("radius", CreatureBrain.DEFAULT_TERRITORY_M)) + float(cfg.territory_margin_m)
-		return {"center": center, "radius": territory_r + float(cfg.leash_m)}
-	return {"center": home, "radius": float(cfg.leash_m)}
+		var territory_r := float(territory.get("radius", float(cfg.default_territory_m) * k)) + float(cfg.territory_margin_m) * k
+		return {"center": center, "radius": territory_r + float(cfg.leash_m) * k}
+	return {"center": home, "radius": float(cfg.leash_m) * k}
+
+
+## A two-post site's reach (B.7, D-38): each post's reach_disc_for and the smallest disc holding both
+## (CreatureBrain.union_disc, D-82), which is the leash disc CreatureBrain.set_posts gives the brain.
+## `s` is the site at its first post; `post_b` is {"home", "heading"}; each territory is its post's
+## zone ({} for an ambush site). {"center", "radius", "posts": [disc_a, disc_b]}; {} for an unknown
+## species.
+func two_post_disc_for(s: Dictionary, territory_a: Dictionary, post_b: Dictionary, territory_b: Dictionary,
+		k := 1.0) -> Dictionary:
+	var a := reach_disc_for(s, territory_a, k)
+	if a.is_empty():
+		return {}
+	var at_b := s.duplicate()
+	at_b.home = post_b.home
+	at_b.heading = float(post_b.get("heading", s.get("heading", 0.0)))
+	var b := reach_disc_for(at_b, territory_b, k)
+	var union := CreatureBrain.union_disc(a, b)
+	return {"center": union.center, "radius": union.radius, "posts": [a, b]}
 
 
 ## Rule 6's lane check: the strike lane against what the creature may reach (its leash, plus its
 ## smallest territory and the territory margin for a territorial species). The rule's text, or ""
 ## when the lane fits. The lane's width needs the body radius, so the part catalog comes too.
-func strike_room_problem(species_id: String, smallest_territory: float, where: String, part_catalog: PartCatalog) -> String:
+## With n 0 the lane and leash are the species' own (rule 6, in the caller's units); with n >= 1
+## they are its at_size(id, n) record's, against the cell's radius, and the territory is in tm.
+func strike_room_problem(species_id: String, smallest_territory: float, where: String, part_catalog: PartCatalog,
+		n := 0) -> String:
 	var block: Dictionary = species.get(species_id, {})
 	if block.is_empty() or brain_config(species_id).is_empty():
 		return ""
-	var p := phenotype(species_id, part_catalog)
-	var lane := CreatureBrain.strike_lane(brain_config(species_id).attack, p.radius, PoolLayout.CELL_RADIUS, Vector2.ZERO, 0.0)
-	var room := float(block.leash_m)
+	var cfg := brain_config(species_id)
+	var radius := phenotype(species_id, part_catalog).radius if n == 0 else 0.0
+	if n >= 1:
+		var record := at_size(species_id, n, part_catalog)
+		if record.is_empty():
+			return ""
+		cfg = record.cfg
+		radius = (record.phenotype as Phenotype).radius
+	var lane := CreatureBrain.strike_lane(cfg.attack, radius, PoolLayout.CELL_RADIUS, Vector2.ZERO, 0.0)
+	var room := float(cfg.leash_m)
 	var room_text := "its leash"
 	if str(block.behavior) == "territorial":
-		room += smallest_territory + float(block.territory_margin_m)
+		room += smallest_territory + float(cfg.territory_margin_m)
 		room_text = "its smallest territory plus its leash"
 	if float(lane.length) > room:
 		return "%s strike lane %.2f m is longer than %s (%.2f m)." % [where, float(lane.length), room_text, room]
@@ -460,6 +593,44 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 	for key in ["name", "death_reason", "death_tip", "body_asset"]:
 		if str(block[key]).is_empty():
 			errors.append("%s: '%s' must not be empty." % [where, key])
+	_check_ladder(id, p, errors)
+
+
+## S2's species keys: the entry size, the habit, and rule 15. `p` is the species' own body (q = 1).
+func _check_ladder(id: String, p: Phenotype, errors: PackedStringArray) -> void:
+	var block: Dictionary = species[id]
+	var where := "species '%s'" % id
+	var c := entry_size(id)
+	if c < 1 or c > MAX_ENTRY_SIZE:
+		errors.append("%s: entry_size %d is outside 1..%d." % [where, c, MAX_ENTRY_SIZE])
+	if block.has("habit"):
+		var habit: Dictionary = block.habit
+		var switch := str(habit.post_switch)
+		if not POST_SWITCHES.has(switch):
+			errors.append("%s: habit.post_switch '%s' is not one of %s." % [where, switch, POST_SWITCHES.keys()])
+		elif POST_SWITCHES[switch] != str(block.behavior):
+			errors.append("%s: habit.post_switch '%s' needs behavior '%s'." % [where, switch, POST_SWITCHES[switch]])
+		elif switch == "out_of_sight" and not float(habit.get("post_rest_s", 0.0)) > 0.0:
+			errors.append("%s: habit 'out_of_sight' needs post_rest_s above 0." % where)
+		elif switch == "nearer_cell" and not float(habit.get("post_hysteresis_m", 0.0)) > 0.0:
+			errors.append("%s: habit 'nearer_cell' needs post_hysteresis_m above 0." % where)
+		if habit.has("post_rest_s"):
+			_check_durations(where, {"habit.post_rest_s": habit.post_rest_s}, errors)
+		if habit.has("trail_s") and not float(habit.trail_s) > 0.0:
+			errors.append("%s: habit.trail_s must be above 0." % where)
+	if c <= 1:
+		return
+	# Rule 15: one size past its entry (q = 1 / 1.6) it can no longer attack the cell, by the shares
+	# of the relationships block: an ambush brain's prey share, a territorial one's intruder share.
+	if relationships.is_empty():
+		_rule(errors, 15, "%s has entry_size %d, which needs the relationships block." % [where, c])
+		return
+	var share_key := "prey_share" if str(block.behavior) == "ambush" else "intruder_max_radius_share"
+	var reach := p.radius * Relationships.SHRINK_FACTOR * float(relationships[share_key])
+	var below := Relationships.PLAYER_RADIUS - share_tolerance()
+	if not reach < below:
+		_rule(errors, 15, "%s one size past its entry reaches radius %.6f x %s %.2f = %.6f, not below %.6f: it could still attack the cell."
+			% [where, p.radius * Relationships.SHRINK_FACTOR, share_key, float(relationships[share_key]), reach, below])
 
 
 func _check_sites(layout: PoolLayout, part_catalog: PartCatalog, errors: PackedStringArray) -> void:
@@ -564,6 +735,13 @@ func _check_shared(errors: PackedStringArray) -> void:
 			errors.append("fairness: %s must not be negative." % key)
 	if float(spawning.min_gap_m) < 0.0:
 		errors.append("spawning: min_gap_m must not be negative.")
+	if not relationships.is_empty():
+		for key in ["prey_share", "intruder_max_radius_share", "fear_radius_share"]:
+			if not float(relationships[key]) > 0.0:
+				errors.append("relationships: %s must be above 0." % key)
+		var tol := float(relationships.tolerance)
+		if not (tol >= 0.0 and tol <= MAX_SHARE_TOLERANCE):
+			errors.append("relationships: tolerance %s is not in [0, %s]." % [tol, MAX_SHARE_TOLERANCE])
 
 
 ## Rule 4's tick floor: each duration (seconds, by name) lasts at least one tick.
@@ -645,7 +823,7 @@ static func _rule(errors: PackedStringArray, number: int, text: String) -> void:
 ## Converts the timers to ticks and builds each species' brain config, once the data has read cleanly.
 func _prepare() -> void:
 	for id in species_ids():
-		configs[id] = CreatureBrain.config(id, species[id], ai)
+		configs[id] = CreatureBrain.config(id, species[id], ai, relationships)
 	for s in fairness.grace_s:
 		grace_ticks.append(CreatureBrain.ticks(s))
 	for share in fairness.respawn_energy_share:
@@ -669,6 +847,8 @@ static func _check_species_block(block: Dictionary, where: String, problems: Arr
 		return
 	for key in SUB_BLOCKS:
 		_check_block(block[key], SUB_BLOCKS[key], "%s %s" % [where, key], problems)
+	if block.has("habit"):
+		_check_block(block.habit, HABIT_KEYS, "%s habit" % where, problems)
 	for part in block.parts:
 		if part is Dictionary:
 			_check_block(part, PART_KEYS, "%s part" % where, problems)
