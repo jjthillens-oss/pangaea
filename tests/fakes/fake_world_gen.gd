@@ -38,12 +38,15 @@ static func fixture_content(config_path: String = WorldConfig.DEFAULT_PATH) -> W
 	return c
 
 
-## An endless sim on this generator for a new omnivore lineage of `seed_value`: the fixture content
-## unless `content` is given, with creatures when `p_species` is.
+## An endless sim on this generator for a new omnivore lineage of `seed_value`, saved at the home
+## spawn as a new game is (or at `at`, absolute am): the fixture content unless `content` is given,
+## with creatures when `p_species` is.
 static func endless_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
-		content: WorldContent = null) -> PoolSim:
+		content: WorldContent = null, at := PackedFloat64Array()) -> PoolSim:
 	var c := content if content != null else fixture_content()
 	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
+	var place: PackedFloat64Array = at if not at.is_empty() else c.home.spawn
+	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
 	var Fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
 	return PoolSim._create_endless(r.save, catalog, layout, p_species, c, Fake.new(c, p_species, seed_value))
 
