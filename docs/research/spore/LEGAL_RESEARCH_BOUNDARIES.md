@@ -102,7 +102,9 @@ binary analysis is high and the research gain is low, because Maxis published th
 | Reading published papers, talks, slides, interviews, patents, reviews, wikis | Allowed | Cite each. Quote briefly; paraphrase the rest. |
 | Spore's own in-game editors used as intended (building a test creature, using the test drive) | Allowed | Normal play. The creatures we build are test rigs only; none enters GENESIS. |
 | Spore's built-in cheat console (e.g. `addDNA`, `moreMoney`) to reach a stage quickly | Flag: low risk | It is a shipped game feature, not a third-party program, but it is a cheat under §6 if read broadly. Single-player only; record its use in the measurement row. |
-| Sporepedia/creature PNG cards, the Spore API, community modding tools (SporeModder, Spore ModAPI) | **Not allowed** | These read or write EA formats or hook the game. Covered by the owner's "Spore files are not used" rule. |
+| Reading the public source and docs of community projects (Spore-ModAPI, SporeModder-FX) on GitHub | Allowed as reference (owner's brief, 2026-10-23) | Their headers are modders' reverse-engineered declarations of EA internals: evidence of how modders model the game, not of EA's design. Record URL, commit and license; describe in our own words; copy no code, struct layouts, addresses or data tables. Public availability is not permission to reuse. |
+| Running those tools on the owner's install (unpacking `.package` files, injecting ModAPI mods), Sporepedia PNG cards, the Spore API | **Not allowed** | Reads or writes EA data or hooks the game: owner rule "Spore files are not used", EA §2 and §7.C, and the owner's own brief (no injecting mods, no changing game files). |
+| Recording the installed edition, executable version and SHA-256 hashes; reading Steam's own `appmanifest` text file | Allowed | Hashing a file and reading its version stamp is inventory, not reverse engineering. Read-only, on the owner's PC, with his approval. |
 | Memory readers, trainers, Cheat Engine, frame-time hooks, overlays that inject into the game | **Not allowed** | §7.C "Unauthorized Third-Party Program". |
 | Opening, unpacking or browsing `.package` or other files in the install folder | **Not allowed** | Owner rule. Exception: reading the EULA text if the installer shows it on screen. |
 | Ghidra / REA / IDA / Hopper on Spore's executable or DLLs | **Not allowed; needs clearance** | See section 5. |
@@ -111,6 +113,12 @@ binary analysis is high and the research gain is low, because Maxis published th
 | Studying Thrive's code | Reference-only | GPL-3.0. Read for ideas, write our own, no line-by-line translation. |
 
 ## 5. Clearance requirements before any binary analysis
+
+Owner's brief of 2026-10-23 allows targeted local static analysis only "where permitted by applicable terms and
+law", and says to stop at public-source and behavioural research otherwise. EA's User Agreement §2 does not permit
+it, and in the US (owner's country) *Davidson v. Jung* makes that term likely enforceable. So the condition is not
+met, and the research stops at public sources and gameplay observation. The steps below are what would have to
+change first.
 
 Recommendation (PROPOSED): **do not seek clearance.** Keep binary analysis of Spore off the plan. The published
 papers already describe the creature skin, part deformation, paint system, planets and the whole animation stack in
