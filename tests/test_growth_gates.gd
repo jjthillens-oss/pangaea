@@ -5,6 +5,9 @@ extends TestCase
 ##  - every bot's growth keys (EvadeBot.GrowthKeys): its first intent carries its trigger and no
 ##    later one does, and in a press run it holds Grow on every tick its ring is full, never in an
 ##    auto run or a press run that does not press;
+##  - ForageBot's unjam (S2's size-2 threat runner): across a row of rocks with cracks narrower than
+##    the body, route_point alone wedges the forager in a crack, and with unjam it steps aside and
+##    arrives;
 ##  - ClumsyBot's two modes, in the pool, where every M1 species is at q == 1: "clumsy" swims at a
 ##    q == 1 creature on screen until a hit, then passes that one over, and forages only after two
 ##    deaths; "die" swims at the nearest q == 1 creature within 40 tm below half its energy, holds
@@ -46,6 +49,17 @@ const BOT_NAMES: PackedStringArray = ["forage", "forage_wary", "hunt", "kiter", 
 	"homing", "clumsy", "die"]
 const NEAR_M := 3.0               ## the cell is put this far from the creature it should charge
 const STRAIGHT_DOT := 0.9         ## "straight at it": the move's cosine to the line to the creature
+## ForageBot's unjam: a row of CRACK_ROCKS rocks of radius CRACK_R across the way at x = CRACK_X, their
+## surfaces CRACK_GAP apart (less than the body is wide); the forager starts CRACK_FROM west of the
+## row and parks as far east of it (test_swim_bot's crack, for SwimBot.Unjam).
+const CRACK_X := 10.0
+const CRACK_R := 1.0
+const CRACK_GAP := 0.6
+const CRACK_ROCKS := 3
+const CRACK_FROM := 6.0
+const CRACK_Y := 0.3                  ## off the middle rock's centre, so the way round picks a side
+const CRACK_TICKS := 1200
+const CRACK_ARRIVED_M := 1.0
 
 ## The gates (S2G16). Seeds written here before any run.
 const GATE_NEEDS: PackedStringArray = ["set_size", "force_growth", "remnants", "size_two_content"]
@@ -136,6 +150,41 @@ func test_a_press_run_holds_grow_on_every_full_tick_and_no_other_run_does() -> v
 	var press = SwimBot.new(Vector2.RIGHT, 0.0)
 	press.keys.trigger = "press"
 	check(not press.next_intent(off).grow, "growth off: nothing to press")
+
+
+func test_a_forager_with_unjam_steps_out_of_a_crack_that_wedges_it_without() -> void:
+	var goal := Vector2(CRACK_X + CRACK_FROM, CRACK_Y)
+	var arrived := {}
+	var wedges := 0
+	for unjam in [false, true]:
+		var r := Lineage.found(BOT_SEED, "test+dev", catalog, "grazer")
+		r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+		var sim := PoolSim.create(r.save, catalog, layout, null)
+		sim.arena = PoolArena.create(layout.pool_radius, layout.soft_start, layout.hard_radius)
+		var step := 2.0 * CRACK_R + CRACK_GAP
+		for k in CRACK_ROCKS:
+			sim.arena.add_rock("crack_%d" % k, Vector2(CRACK_X, (k - (CRACK_ROCKS - 1) / 2.0) * step), CRACK_R)
+		check(2.0 * sim.phenotype.radius > CRACK_GAP, "the cracks (%.2f) are narrower than the body (%.2f)" % [
+			CRACK_GAP, 2.0 * sim.phenotype.radius])
+		check(sim.debug_teleport(Vector2(CRACK_X - CRACK_FROM, CRACK_Y), 0.0), "placed west of the row")
+		sim.drain_events()
+		var bot = ForageBot.new()
+		bot.park_at = goal
+		bot.unjam = unjam
+		arrived[unjam] = -1
+		for i in CRACK_TICKS:
+			if sim.motion.position.distance_to(goal) <= CRACK_ARRIVED_M:
+				arrived[unjam] = i
+				break
+			if i % 300 == 0:
+				sim.debug_set_energy(sim.state.energy_capacity)
+			sim.step(bot.next_intent(sim))
+			sim.drain_events()
+		if unjam:
+			wedges = bot._unjam.wedges if bot._unjam != null else 0
+	check_eq(int(arrived[false]), -1, "without unjam the forager stays wedged in a crack (the row is a real trap)")
+	check(int(arrived[true]) >= 0, "with unjam it gets round the row")
+	check(wedges >= 1, "it stepped aside (%d times)" % wedges)
 
 
 func test_a_clumsy_bot_charges_a_q1_creature_on_screen_until_a_hit_and_forages_after_two_deaths() -> void:

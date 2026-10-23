@@ -33,7 +33,12 @@ extends TestCase
 ## The endless runner at size 2 (S2 T0.3, gate S2G8; endless-cell plan B.6): on the real content with
 ## growth on, each seed's cell is set to size 2 at home on its first tick (debug_set_size, a cut for
 ## the checker, BP-2) and lives 5 minutes there, KiterBot on two seeds (biting every creature it
-## visits, bite_visits) and EvadeBot over ForageBot on two. Every tick is checked against
+## visits, bite_visits) and EvadeBot over ForageBot (unjam on) on two. At size 2 the home's sites are
+## in view of the spawn and never spawn there, so each cell goes to meet the creatures as a player
+## would: a SwimBot.SiteTour (SIZE_TWO_TOURS) of the sites live at size 2 (the M1 species' in set-0
+## tiles and the home, and the size-2 species'), keeping near each site's creature while its bot
+## drives; an evading cell that eats plants breaks off to forage when hungry (SIZE_TWO_HUNGRY to
+## SIZE_TWO_FED), as a player would. Every tick is checked against
 ## FuzzInvariants as the endless fuzz has them (1 to 13 and 16; 2 on the two-post disc the brain's
 ## leash_disc gives, and 3, 7 and 11 over the creature field, which holds no remnant) and against
 ## 14  no creature at q < 1 at the cell's size notices, tells at, chases or hits the cell: none holds
@@ -45,6 +50,7 @@ extends TestCase
 ## (Gates.s2_missing).
 
 const KiterBot := preload("res://game/dev/kiter_bot.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
@@ -73,7 +79,20 @@ const SIZE_TWO_TICKS := 5 * 60 * 60
 ## The (species, size) pairs invariant 14 is asked of, and how often each must have sensed the cell.
 const SIZE_TWO_PAIRS := [["ambush_hunter", 2], ["rammer", 2]]
 const SIZE_TWO_MIN_SENSED := 600
-const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "fuzz_growth", "size_two_species", "remnants"]
+const SIZE_TWO_NEEDS: PackedStringArray = ["set_size", "fuzz_growth", "size_two_species", "remnants",
+	"size_two_content"]
+## The runner's tours (SwimBot.SiteTour) per bot: the groups of species whose sites it goes to meet,
+## in order of want, the ticks it stays at each and how near it keeps to the site's creature (tm). The
+## evading cells meet the rammers, which dart in and out of range; the kiters bite whichever M1
+## creature is nearer and go on to the size-2 species when no M1 site is in reach.
+const SIZE_TWO_TOURS := {
+	"kiter": {"groups": [["rammer", "ambush_hunter"], ["lurker", "elder_rammer"]], "stay": 1800, "keep": 3.0},
+	"evade": {"groups": [["rammer"], ["ambush_hunter"]], "stay": 3600, "keep": 3.0},
+}
+## An evading cell that eats plants forages instead of touring once its energy is below SIZE_TWO_HUNGRY
+## of its capacity, until it is back to SIZE_TWO_FED.
+const SIZE_TWO_HUNGRY := 0.5
+const SIZE_TWO_FED := 0.9
 const Q_SLACK := 1e-9                    ## q is exactly 1.0 at the entry size (Relationships.q_of)
 
 var catalog: PartCatalog
@@ -154,8 +173,9 @@ func test_slow_at_size_two_no_creature_below_its_size_notices_tells_chases_or_hi
 	for i in SIZE_TWO_SEEDS.size():
 		var run := _size_two_run(fz, SIZE_TWO_SEEDS[i], SIZE_TWO_BOTS[i], SIZE_TWO_BODIES[i], pairs)
 		broken.append_array(run.broken)
-		print("test-threat-fuzz: size 2, seed %d (%s, %s): size %d at the end, %d deaths, %d of the cell's bites on creatures below it, %d checked by 14; %s" % [
-			SIZE_TWO_SEEDS[i], SIZE_TWO_BOTS[i], SIZE_TWO_BODIES[i], run.size, run.deaths, run.bites_below, run.checked, run.counts])
+		print("test-threat-fuzz: size 2, seed %d (%s, %s): size %d at the end, %d deaths, %d sites met, %d of the cell's bites on creatures below it, %d checked by 14; %s" % [
+			SIZE_TWO_SEEDS[i], SIZE_TWO_BOTS[i], SIZE_TWO_BODIES[i], run.size, run.deaths, run.sites, run.bites_below, run.checked, run.counts])
+		check(int(run.sites) > 0, "size 2 seed %d: the cell's tour met at least one site" % SIZE_TWO_SEEDS[i])
 	print("test-threat-fuzz: size 2 pairs: %s" % pairs)
 	check_eq(str(fz.report()), "", "every invariant on every tick at size 2")
 	check(broken.is_empty(), "invariant 14 broken %d times; first: %s" % [broken.size(), broken[0] if not broken.is_empty() else ""])
@@ -224,24 +244,43 @@ static func _below(sim: PoolSim, species_id: String, size: int) -> bool:
 	return sim.species.q_of(species_id, size) < 1.0 - Q_SLACK
 
 
-## One size-2 seed: the cell set to size 2 on its first tick, then SIZE_TWO_TICKS with `bot_name`,
-## every tick through the checker and invariant 14. Adds to `pairs`; returns {"broken", "size",
-## "deaths", "bites_below", "checked", "counts"}.
+## One size-2 seed: the cell set to size 2 on its first tick, then SIZE_TWO_TICKS with `bot_name` on
+## a SiteTour (the tour drives while it travels, the bot at each site), every tick through the
+## checker and invariant 14. Adds to `pairs`; returns {"broken", "size", "deaths", "sites",
+## "bites_below", "checked", "counts"}.
 func _size_two_run(fz: Variant, seed_value: int, bot_name: String, body: String, pairs: Dictionary) -> Dictionary:
 	var sim: Variant = Gates.make_sim(body, seed_value, true)
 	sim.grace_until = sim.tick
 	sim.drain_events()
 	fz.start_run()
 	var bot: Variant
+	var plan: Dictionary = SIZE_TWO_TOURS[bot_name]
+	var groups: Array[PackedStringArray] = []
+	for group: Array in plan.groups:
+		groups.append(PackedStringArray(group))
+	var tour = SwimBot.SiteTour.new(groups, int(plan.stay), float(plan.keep))
 	var forage = ForageBot.new()   # the evading cell's base, kept here for as long as the run
 	forage.keys.trigger = ""       # the EvadeBot sends the keys
+	forage.unjam = true
 	if bot_name == "kiter":
 		bot = KiterBot.new(seed_value)
 		bot.bite_visits = true
 	else:
 		bot = EvadeBot.new()
-		bot.base = forage.next_intent
-	var out := {"broken": PackedStringArray(), "size": 0, "deaths": 0, "bites_below": 0, "checked": 0, "counts": {}}
+		var hungry := [false]
+		bot.base = func(s: PoolSim) -> SimIntent:
+			if s.phenotype.can_eat("plant"):
+				var share: float = s.state.energy / s.state.energy_capacity
+				if share < SIZE_TWO_HUNGRY:
+					hungry[0] = true
+				elif share >= SIZE_TWO_FED:
+					hungry[0] = false
+				if hungry[0]:
+					return forage.next_intent(s)
+			var move: SimIntent = tour.next_move(s)
+			return move if move != null else forage.next_intent(s)
+	var out := {"broken": PackedStringArray(), "size": 0, "deaths": 0, "sites": 0, "bites_below": 0, "checked": 0,
+		"counts": {}}
 	var dead := {}
 	var events: Array[Dictionary] = []
 	for i in SIZE_TWO_TICKS:
@@ -251,7 +290,12 @@ func _size_two_run(fz: Variant, seed_value: int, bot_name: String, body: String,
 		var known := _species_of(sim)
 		if i == 0:
 			check(sim.debug_set_size(SIZE_TWO), "seed %d: the cell set to size 2" % seed_value)
-		var intent: SimIntent = bot.next_intent(sim, events) if bot_name == "evade" else bot.next_intent(sim)
+		var intent: SimIntent
+		if bot_name == "evade":
+			intent = bot.next_intent(sim, events)
+		else:
+			var move: SimIntent = tour.next_move(sim)
+			intent = bot.keys.apply(sim, move) if move != null else bot.next_intent(sim)
 		sim.step(intent)
 		events = sim.drain_events()
 		var where := "size 2 seed %d tick %d" % [seed_value, t]
@@ -266,6 +310,7 @@ func _size_two_run(fz: Variant, seed_value: int, bot_name: String, body: String,
 			elif e.type == "hit" and e.attacker == CreatureField.PLAYER_ID and known.has(e.target) and _below(sim, known[e.target], size):
 				out.bites_below += 1
 	out.size = sim.size()
+	out.sites = tour.visits
 	out.counts = fz.counts.duplicate()
 	return out
 
