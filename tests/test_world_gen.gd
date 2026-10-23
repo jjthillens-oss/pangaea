@@ -745,6 +745,21 @@ func test_sites_follow_the_switch_and_their_sizes() -> void:
 ## on a new generator (so the chunk is cold in each), as the endless cost gates count a tick at its
 ## fastest of 3 runs, so a burst from another process cannot fail it; the yardstick runs after each.
 func test_slow_cold_chunks_cost_at_most_150_us_median_and_300_us_max() -> void:
+	var cost := _cold_chunk_costs(1)
+	check(cost.median <= 150.0 and cost.median_ratio <= 1.5, "median %.0f us, %.2f yardsticks" % [cost.median, cost.median_ratio])
+	check(cost.max <= 300.0 and cost.top <= 3.0, "max %.0f us, %.2f yardsticks" % [cost.max, cost.top])
+
+
+## S2G37: G17 at size 2, where a chunk is part of up to four 40-tm tiles and each is emitted whole.
+func test_slow_size_two_chunks_cost_at_most_300_us_median_and_600_us_max() -> void:
+	var cost := _cold_chunk_costs(2)
+	check(cost.median <= 300.0 and cost.median_ratio <= 3.5, "median %.0f us, %.2f yardsticks" % [cost.median, cost.median_ratio])
+	check(cost.max <= 600.0 and cost.top <= 7.0, "max %.0f us, %.2f yardsticks" % [cost.max, cost.top])
+
+
+## G17's measure at size n: 500 chunks in spiral order, each its fastest of 3 runs on a new generator
+## and its fastest ratio to the yardstick timed after it. {median, median_ratio, max, top}.
+func _cold_chunk_costs(n: int) -> Dictionary:
 	var keys := _spiral(500)
 	var best: Array[float] = []
 	var ratio: Array[float] = []
@@ -756,7 +771,7 @@ func test_slow_cold_chunks_cost_at_most_150_us_median_and_300_us_max() -> void:
 		var gen := _gen(4242)
 		for i in keys.size():
 			var t0 := Time.get_ticks_usec()
-			gen.chunk(1, keys[i].x, keys[i].y)
+			gen.chunk(n, keys[i].x, keys[i].y)
 			var us := float(Time.get_ticks_usec() - t0)
 			best[i] = minf(best[i], us)
 			ratio[i] = minf(ratio[i], us / maxf(1.0, Yardstick.time_once()))
@@ -769,10 +784,9 @@ func test_slow_cold_chunks_cost_at_most_150_us_median_and_300_us_max() -> void:
 	var top := 0.0
 	for r in ratio:
 		top = maxf(top, r)
-	print("test-world-gen: cold chunks median %.0f us (%.2f yardsticks), max %.0f us at %s (%.2f yardsticks max)"
-		% [median, median_ratio, best[worst], keys[worst], top])
-	check(median <= 150.0 and median_ratio <= 1.5, "median %.0f us, %.2f yardsticks" % [median, median_ratio])
-	check(best[worst] <= 300.0 and top <= 3.0, "max %.0f us, %.2f yardsticks" % [best[worst], top])
+	print("test-world-gen: size %d cold chunks median %.0f us (%.2f yardsticks), max %.0f us at %s (%.2f yardsticks max)"
+		% [n, median, median_ratio, best[worst], keys[worst], top])
+	return {"median": median, "median_ratio": median_ratio, "max": best[worst], "top": top}
 
 
 # --- size 2 (S2 T3.3; docs/s2/s2-sim.md 3.10, build plan BP-7, BP-16) ---
