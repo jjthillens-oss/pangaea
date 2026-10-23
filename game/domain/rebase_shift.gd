@@ -2,9 +2,10 @@ class_name RebaseShift
 extends RefCounted
 ## The floating origin's shift (S1): when the endless world moves its origin by `by` (a whole number
 ## of chunks), every position the sim keeps relative to it moves by -by. The helpers here shift the
-## values that are stored as they are (bodies, brain memories, food items); zones, sites and colliders
-## are re-derived from their absolute float64 values instead, so they never drift however many
-## rebases a run has (WorldStream.rebase). Pure: domain classes only.
+## values that are stored as they are (bodies, food items; WorldStream.rebase shifts the creatures'
+## bodies and brain memories itself, in one pass); zones, sites and colliders are re-derived from
+## their absolute float64 values instead, so they never drift however many rebases a run has
+## (WorldStream.rebase). Pure: domain classes only.
 ##
 ## Every shifted value moves by an exact multiple of 32 tm, so its only error is the float32 rounding
 ## of the result: at most 3.8 um under 128 tm.
@@ -33,26 +34,6 @@ static func point(p: Vector2, by: Vector2) -> Vector2:
 static func motion(m: Locomotion.MotionState, by: Vector2) -> void:
 	m.position -= by
 	m.prev_position -= by
-
-
-## Every position a brain remembers: what it has seen, its strike lane, its goal, its progress
-## check, what it flees, its home and its territory.
-## (point() written out: a rebase does this for every creature, and a rebase tick is timed, G17.)
-static func memory(mem: CreatureBrain.Memory, by: Vector2) -> void:
-	if not mem.seen.is_empty():
-		for entry in mem.seen.values():
-			entry.position -= by
-	if not mem.lane.is_empty():
-		mem.lane.origin -= by
-	if mem.goal.is_finite():
-		mem.goal -= by
-	if not mem.progress.is_empty():
-		mem.progress.position -= by
-	if mem.flee_from.is_finite():
-		mem.flee_from -= by
-	mem.home -= by
-	if mem.territory_center.is_finite():
-		mem.territory_center -= by
 
 
 ## The named Vector2 keys of every item in `list` (plankton: position and anchor; carrion: position).

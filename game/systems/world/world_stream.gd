@@ -305,20 +305,48 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 	RebaseShift.motion(sim.motion, offset)
 	sim.actor.position -= offset
 	if sim.creatures != null:
+		# RebaseShift.motion written out, and every position a brain remembers: what it has seen, its
+		# strike lane, its goal, its progress check, what it flees, its home and its territory. One pass
+		# over the creatures, in a timed tick (G17).
 		for c in sim.creatures.creatures:
-			var m := c.motion   # RebaseShift.motion written out: once per creature, in a timed tick (G17)
+			var m := c.motion
 			m.position -= offset
 			m.prev_position -= offset
 			c.actor.position -= offset
-			if c.brain != null:
-				RebaseShift.memory(c.brain, offset)
+			var mem := c.brain
+			if mem == null:
+				continue
+			if not mem.seen.is_empty():
+				for entry in mem.seen.values():
+					entry.position -= offset
+			if not mem.lane.is_empty():
+				mem.lane.origin -= offset
+			if mem.goal.is_finite():
+				mem.goal -= offset
+			if not mem.progress.is_empty():
+				mem.progress.position -= offset
+			if mem.flee_from.is_finite():
+				mem.flee_from -= offset
+			mem.home -= offset
+			if mem.territory_center.is_finite():
+				mem.territory_center -= offset
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
 	if _swum_from.is_finite():
 		_swum_from -= offset   # the wake bound's place and sleepers, as the bodies moved
 	for b in _wake_bound.values():
 		b[0] -= offset
-	_rederive(sim)
+	var food_bound := _food_bound
+	var epoch := _index_epoch
+	if _rederive(sim):
+		# The zone index kept its places, so the food view's measure and food set hold for the moved
+		# bodies and zones: each distance changes only by the float32 rounding of the moved values (under
+		# a tenth of FOOD_BOUND_SLACK_TM), which the bound gives up one slack's room for.
+		if _shown_epoch == epoch:
+			_shown_epoch = _index_epoch
+		if not food_bound.is_empty() and food_bound[4] == epoch and food_bound[2] > FOOD_BOUND_SLACK_TM:
+			_food_bound = PackedFloat64Array([food_bound[0] - offset.x, food_bound[1] - offset.y,
+				food_bound[2] - FOOD_BOUND_SLACK_TM, food_bound[3], _index_epoch])
 	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
 
 
@@ -1090,8 +1118,9 @@ static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) 
 ## Every local value that is derived from an absolute one, again from its absolute value (zones
 ## with local_of_tm written out, as sites are). With the food view's index current, a zone's
 ## absolute centre comes from its packed copy there (the same float64 values as _zone_abs); a zone
-## that is not the index's own at its place sends the index to a rebuild.
-func _rederive(sim: PoolSim) -> void:
+## that is not the index's own at its place sends the index to a rebuild. True when the index kept
+## its places and every zone in it has an absolute centre (so each moved with the origin).
+func _rederive(sim: PoolSim) -> bool:
 	var k := _tm_to_am
 	var ox := origin_x_am
 	var oy := origin_y_am
@@ -1102,6 +1131,7 @@ func _rederive(sim: PoolSim) -> void:
 	var ax := _zone_ax
 	var ay := _zone_ay
 	var cs := _zone_c
+	var moved := true
 	var i := 0
 	for z in sim.region.zones:
 		if indexed and is_same(refs[i], z):
@@ -1111,6 +1141,7 @@ func _rederive(sim: PoolSim) -> void:
 				cs[i] = c   # the food view's index moves with its zones
 			else:
 				cs[i] = z.center
+				moved = false
 		else:
 			indexed = false
 			var a: Variant = _zone_abs.get(z.id)
@@ -1131,6 +1162,7 @@ func _rederive(sim: PoolSim) -> void:
 		if not t.is_empty():
 			t.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
 		rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
+	return indexed and moved
 
 
 ## chunk_loaded's payload (spine 3.12), in the frame in force now.
