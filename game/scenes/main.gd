@@ -21,6 +21,11 @@ extends Node
 ## settings screen over the title or the pause menu; open_slots() the save slots screen over the
 ## title, whose choose_slot(n) and delete_slot(n) do the work. Every input event tells
 ## InputPrompts which device is in use, so hints name the controller's buttons or the keys.
+##
+## Growth (S2): the pool reads the growth trigger and reduce camera motion from the same shared
+## settings and follows their changes itself (V-15, V-16). Main keeps the player memory
+## (UserSettings: hints followed, giant passes seen) on user://player_memory.cfg, apart from both
+## the settings and the saves (C-V1); a run with --slot keeps its own beside that save.
 
 signal screen_changed(screen: Node)
 
@@ -55,6 +60,10 @@ var dev_layer: Node
 var debug_panel: Node
 ## The player's settings (SettingsService.shared()).
 var settings: SettingsService
+## What this computer remembers about its player (S2): loaded at launch from player_memory_path().
+var player_memory: UserSettings
+## False while a tool must leave the player memory as it is (the perf tour always does).
+var memory_writable := true
 ## The settings screen or the save slots screen while one is open, else null.
 var settings_menu: SettingsMenu
 var slot_picker: SlotPicker
@@ -75,6 +84,7 @@ func _ready() -> void:
 		push_warning(problem)
 	settings.apply_all()
 	settings.changed.connect(_on_setting_changed)
+	player_memory = UserSettings.load_from(player_memory_path())
 	open_session(flags.slot if not flags.slot.is_empty() else settings.current_slot_path())
 	quit_dialog.chosen.connect(_on_quit_choice)
 	_add_dev_layer()
@@ -82,6 +92,22 @@ func _ready() -> void:
 		_start_perf_tour()
 	if screen == null:
 		show_start()
+
+
+## The player memory's file: UserSettings.PATH, or player_memory.cfg beside the --slot save, so the
+## smokes and tours, which name their own slot, never touch the player's.
+func player_memory_path() -> String:
+	if flags == null or flags.slot.is_empty():
+		return UserSettings.PATH
+	return flags.slot.get_base_dir().path_join("player_memory.cfg")
+
+
+## Writes the player memory: ERR_SKIP, with nothing written, during the perf tour or while
+## memory_writable is false.
+func save_player_memory() -> Error:
+	if player_memory == null or not memory_writable or (flags != null and flags.perf_tour):
+		return ERR_SKIP
+	return player_memory.save_to(player_memory_path())
 
 
 ## Uses another save slot ("" for the default) and shows its start screen if a screen is up. The

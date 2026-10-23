@@ -657,6 +657,31 @@ func _item_size(geo: GeometryInstance3D, root: Node) -> float:
 	return maxf(size.x, maxf(size.y, size.z))
 
 
+## `text` with its comments blanked: from a # (GDScript) or // (shader) outside a string to the end of
+## its line. Strings and everything else stay.
+static func _code_only(text: String) -> String:
+	var out := PackedStringArray()
+	for line in text.split("\n"):
+		var quote := ""
+		var cut := line.length()
+		var i := 0
+		while i < line.length():
+			var ch := line[i]
+			if quote != "":
+				if ch == "\\":
+					i += 1
+				elif ch == quote:
+					quote = ""
+			elif ch == "\"" or ch == "'":
+				quote = ch
+			elif ch == "#" or (ch == "/" and i + 1 < line.length() and line[i + 1] == "/"):
+				cut = i
+				break
+			i += 1
+		out.append(line.substr(0, cut))
+	return "\n".join(out)
+
+
 ## Every source file of the ambience, by path.
 func _sources(dir: String, out: Dictionary) -> void:
 	for f in DirAccess.get_files_at(dir):
@@ -729,12 +754,16 @@ func test_the_ambience_never_reaches_into_the_simulation() -> void:
 		if m:
 			banned.append(m.get_string(1))
 	check(banned.has("PoolSim"), "the banned names include PoolSim: %s" % [banned])
+	check_eq(_code_only("var a := PoolSim.DT  # PoolSim\n## Growth\nvar c := Color(\"#fff\") # x"),
+		"var a := PoolSim.DT  \n\nvar c := Color(\"#fff\") ", "comments go, code and strings stay")
 	var global_random := RegEx.create_from_string("(?<![\\w.])(randf|randi|randf_range|randi_range|randfn|randomize|seed)\\s*\\(")
 	for path: String in sources:
 		var text: String = sources[path]
+		# Code only: a comment may name a sim class (S2's Growth is also a plain word) without using it.
+		var code := _code_only(text) if path.get_extension() in ["gd", "gdshader"] else text
 		for name in banned:
 			var word := RegEx.create_from_string("(?<![\\w])%s(?![\\w])" % name.replace("/", "\\/").replace(".", "\\."))
-			check(word.search(text) == null, "%s mentions %s" % [path, name])
+			check(word.search(code) == null, "%s mentions %s" % [path, name])
 		# Random numbers come from its own generator, never the global one the sim must not share.
 		check(global_random.search(text) == null, "%s draws from the global random generator" % path)
 		if text.contains(".randf") or text.contains(".randi"):
