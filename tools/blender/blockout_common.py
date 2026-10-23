@@ -259,8 +259,9 @@ def world_bounds():
     for obj in bpy.context.scene.objects:
         if obj.type != "MESH":
             continue
-        for corner in obj.bound_box:
-            w = obj.matrix_world @ Vector(corner)
+        # The vertices, not bound_box: a mesh's box also spans its shape keys.
+        for v in obj.data.vertices:
+            w = obj.matrix_world @ v.co
             lo = Vector(map(min, lo, w))
             hi = Vector(map(max, hi, w))
     return lo, hi
