@@ -420,10 +420,10 @@ func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
 ## S2G26: a growth draws shells and lair mouths the cell has not seen yet, so their GLBs start loading
 ## on worker threads when the sea is set up, and none loads in the growth's frame.
 func test_the_kits_shell_pieces_and_the_lair_mouth_load_on_worker_threads_from_setup() -> void:
-	# From a clean slate: pending loads taken first, and the mouth dropped.
+	# From a clean slate: pending loads taken first, and the pieces earlier tests loaded dropped.
 	for path: String in RockField._loading.keys():
-		RockField._loading.erase(path)
-		ResourceLoader.load_threaded_get(path)
+		RockField._scene(path)
+	RockField._scenes.clear()
 	if SiltTrail._mouth_loading:
 		SiltTrail._take_mouth()
 	SiltTrail._mouth_scene = null
@@ -455,14 +455,25 @@ func test_the_kits_shell_pieces_and_the_lair_mouth_load_on_worker_threads_from_s
 	pool.silt_trail.add_chunk(Vector2i(78, 78), FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0))
 	check(not pool.silt_trail.mouths().is_empty() and not SiltTrail._mouth_loading, "and the first mouths from the mouth's")
 	check(SiltTrail._mouth_scene != null, "which is kept for the run")
+	var kept := RockField._scenes.size()
+	RockField.request_pieces(kit)
+	check_eq(RockField._scenes.size() + RockField._loading.size(), shells.size(),
+		"a second request starts no load for a piece already loaded or loading")
+	# A piece and the mouth dropped and asked for again, so loads are pending as the sea goes.
+	RockField._scenes.erase(RockField.ASSET_PATH % shells[0])
+	RockField.request_pieces(kit)
 	SiltTrail._mouth_scene = null
 	SiltTrail.request_mouth()
-	check(SiltTrail._mouth_loading, "(a new request)")
-	RockField.request_pieces(kit)
-	check(not RockField._loading.is_empty(), "(and new shell requests)")
+	check(SiltTrail._mouth_loading, "(a new request for the mouth)")
+	var pending_at_exit := RockField._loading.size()
+	check_eq(pending_at_exit, 1, "(a new request for %s)" % shells[0])
 	pool.free()
 	check(RockField._loading.is_empty() and not SiltTrail._mouth_loading,
-		"the field and the trail take every load still pending as they go, so none leaks at exit")
+		"the field and the trail take every load still pending as they go (%d), so none leaks at exit" % pending_at_exit)
+	check_eq(RockField._scenes.size(), shells.size(), "and every shell piece is kept for the run (%d loaded before)" % kept)
+	var again := FakeEvents.open_pool(FakeEvents.endless_session())
+	check(RockField._loading.is_empty() and not SiltTrail._mouth_loading, "so a new sea's setup loads nothing again")
+	again.free()
 	for id in shells:
 		check_eq(ResourceLoader.load_threaded_get_status(RockField.ASSET_PATH % id), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
 			"no request for %s is left with the loader" % id)
