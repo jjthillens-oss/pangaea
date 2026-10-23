@@ -57,6 +57,10 @@ static func food_need(rival: Dictionary) -> int:
 	# Bigger bodies and locomotion require more food, including duplicate parts.
 	return ceili(rival["population"] * (rival["scale"] + 0.07 * part_burden(rival)) / 4.0)
 
+static func point_delta(rival: Dictionary, food: int) -> int:
+	var bank_tax: int = maxi(0, floori((rival["points"] - 50) / 12.0))
+	return 4 + mini(4, food) - upkeep(rival) - bank_tax
+
 static func mouth(rival: Dictionary) -> String:
 	if count_part(rival, "mouth_filter") > 0 and count_part(rival, "mouth_jaw") > 0:
 		return "both"
@@ -129,16 +133,18 @@ static func _adapt(rival: Dictionary, outcome: Dictionary, generation: int) -> D
 		return change
 	if outcome["predation"] >= 2:
 		var cause: String = "%s took %d of them" % [outcome["killer"], outcome["predation"]]
-		var choices := ["spike", "flagellum", "eye_spot"]
-		var start: int = (generation + rival["id"]) % choices.size()
-		for offset in choices.size():
-			var part: String = choices[(start + offset) % choices.size()]
+		var speed_gap: float = outcome.get("killer_speed", 0.0) - speed(rival)
+		var size_gap: float = (outcome.get("killer_scale", 0.0) - rival["scale"]) * 1.5
+		var choices := ["flagellum", "eye_spot", "spike"] if speed_gap > size_gap else ["spike", "eye_spot", "flagellum"]
+		if is_equal_approx(speed_gap, size_gap) and rival["id"] % 2 == 1:
+			choices.reverse()
+		for part in choices:
 			if _add_part(rival, part):
 				change = {"trait": part, "cause": cause, "description": "grew a " + part.replace("_", " "), "delta": 1}
 				break
 		if change["trait"] == "" and _scale(rival, -0.1):
 			change = {"trait": "size", "cause": cause, "description": "became smaller to hide", "delta": -1}
-	elif outcome["shortfall"] >= 2:
+	elif outcome["shortfall"] >= 2 or (outcome["shortfall"] >= 1 and rival["points"] >= 40):
 		var cause: String = "prey supplied %d fewer food units than needed" % outcome["shortfall"] if rival["role"] == "hunter" and count_part(rival, "mouth_filter") == 0 else "shared food ran short by %d" % outcome["shortfall"]
 		if upkeep(rival) >= 8:
 			var shed := _shed_part(rival)
@@ -150,10 +156,18 @@ static func _adapt(rival: Dictionary, outcome: Dictionary, generation: int) -> D
 			change = {"trait": "forage", "cause": cause, "description": "grew cilia to forage", "delta": 1}
 		elif change["trait"] == "" and _scale(rival, -0.1):
 			change = {"trait": "size", "cause": cause, "description": "became smaller", "delta": -1}
-	elif outcome["food"] >= outcome["need"] and outcome["food"] > 0 and upkeep(rival) <= 6:
+	elif outcome["food"] >= outcome["need"] and outcome["food"] > 0:
 		var cause: String = "eating %d food units" % outcome["food"]
-		if _scale(rival, 0.1):
+		if upkeep(rival) >= 7 and rival["points"] >= 30:
+			var shed := _shed_part(rival)
+			if shed != "":
+				change = {"trait": shed, "cause": cause + " despite high upkeep", "description": "shed a costly " + shed.replace("_", " "), "delta": -1}
+		if change["trait"] == "" and upkeep(rival) <= 6 and _scale(rival, 0.1):
 			change = {"trait": "size", "cause": cause, "description": "became larger", "delta": 1}
+		elif change["trait"] == "" and rival["points"] >= 40 and upkeep(rival) <= 6 and _add_part(rival, "eye_spot"):
+			change = {"trait": "eye_spot", "cause": cause, "description": "grew an eye spot", "delta": 1}
+		elif change["trait"] == "" and rival["points"] >= 40 and upkeep(rival) <= 6 and _add_part(rival, "cilia"):
+			change = {"trait": "cilia", "cause": cause, "description": "grew cilia", "delta": 1}
 	if change["trait"] != "":
 		rival["last_change"] = generation
 	return change
@@ -175,7 +189,7 @@ static func run(seed_value: int, generation_count: int = 20, species_count: int 
 		var outcomes: Array[Dictionary] = []
 		for rival in species:
 			outcomes.append({"id": rival["id"], "food": 0, "need": food_need(rival),
-				"predation": 0, "killer": "", "shortfall": 0})
+				"predation": 0, "killer": "", "killer_speed": 0.0, "killer_scale": 0.0, "shortfall": 0})
 		var grazers: Array[Dictionary] = []
 		for rival in species:
 			if (rival["role"] == "grazer" or count_part(rival, "mouth_filter") > 0) and rival["population"] > 0:
@@ -208,6 +222,8 @@ static func run(seed_value: int, generation_count: int = 20, species_count: int 
 			var kills: int = mini(target["population"], clampi(ceili(attack - defense), 0, 3))
 			outcomes[target["id"]]["predation"] += kills
 			outcomes[target["id"]]["killer"] = hunter["name"]
+			outcomes[target["id"]]["killer_speed"] = speed(hunter)
+			outcomes[target["id"]]["killer_scale"] = hunter["scale"]
 			outcomes[hunter["id"]]["food"] += kills * 2
 		for o in outcomes:
 			var rival: Dictionary = species[o["id"]]
@@ -218,7 +234,8 @@ static func run(seed_value: int, generation_count: int = 20, species_count: int 
 				rival["population"] = mini(POP_CAP, rival["population"] + 3)
 			elif o["food"] > 0 and rival["population"] > 0:
 				rival["population"] = mini(POP_CAP, rival["population"] + 1)
-			rival["points"] = clampi(rival["points"] + 3 + mini(3, o["food"]) - ceili(upkeep(rival) * 1.5), 0, 100)
+			rival["points"] = clampi(rival["points"] + point_delta(rival, o["food"]), 0, 100)
+			var earned_points: int = rival["points"]
 			var change: Dictionary = _refound(rival, species, generation)
 			if change.is_empty():
 				change = _adapt(rival, o, generation)
@@ -236,6 +253,7 @@ static func run(seed_value: int, generation_count: int = 20, species_count: int 
 			record["food"] = o["food"]
 			record["predation"] = o["predation"]
 			record["shortfall"] = o["shortfall"]
+			record["earned_points"] = earned_points
 			history.append(record)
 	return {"text": "\n".join(lines) + "\n", "history": history, "species": species, "journal": journal}
 

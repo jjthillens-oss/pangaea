@@ -41,6 +41,9 @@ func _init() -> void:
 	var survival_count := 0
 	var long_survival_count := 0
 	var non_saturation_count := 0
+	var late_change_count := 0
+	var earning_count := 0
+	var end_states := {}
 	var refound_count := 0
 	for seed_value in range(20):
 		var result: Dictionary = Simulation.run(seed_value, 500, 5)
@@ -49,6 +52,8 @@ func _init() -> void:
 		var last_delta := {}
 		var max_streak := {}
 		var non_saturated := true
+		var earned_forty := false
+		var changed_late := false
 		for rival in result["history"]:
 			bounds = bounds and Simulation.valid_parts(rival)
 			bounds = bounds and rival["population"] >= 0 and rival["population"] <= Simulation.POP_CAP
@@ -56,12 +61,14 @@ func _init() -> void:
 			var id: int = rival["id"]
 			max_streak[id] = max_streak.get(id, 0) + 1 if rival["points"] == 100 else 0
 			non_saturated = non_saturated and max_streak[id] <= 50
+			earned_forty = earned_forty or rival["earned_points"] >= 40
 			any_predation = any_predation or rival["predation"] > 0
 			any_shortfall = any_shortfall or rival["shortfall"] > 0
 		for event in result["journal"]:
 			var id: int = event["id"]
 			causal = causal and event["text"].contains(" after ") and event["cause"] != ""
 			if event["trait"] != "":
+				changed_late = changed_late or (event["trait"] != "refound" and event["generation"] > 100)
 				if event["trait"] == "refound":
 					refound_count += 1
 				causal = causal and (event["cause"].contains("took") or event["cause"].contains("short") or event["cause"].contains("fewer") or event["cause"].contains("eating") or event["cause"].contains("survived"))
@@ -86,6 +93,11 @@ func _init() -> void:
 			long_survival_count += 1
 		if non_saturated:
 			non_saturation_count += 1
+		if earned_forty:
+			earning_count += 1
+		if changed_late:
+			late_change_count += 1
+		end_states[Simulation.summary(result["species"])] = true
 		one_change = one_change and first_twenty["journal"].size() == 20 * 5
 	check(bounds, "parts, scale, population and points bounded for 500 generations x 20 seeds")
 	check(cooldown, "no change or reversal inside three-generation cooldown")
@@ -94,6 +106,9 @@ func _init() -> void:
 	check(survival_count >= 18, "all species survive 20 generations in at least 18/20 seeds (%d)" % survival_count)
 	check(long_survival_count >= 16, "at least four of five alive after 500 generations in at least 16/20 seeds (%d)" % long_survival_count)
 	check(non_saturation_count >= 16, "no 100-point streak over 50 generations in at least 16/20 seeds (%d)" % non_saturation_count)
+	check(late_change_count >= 16, "journaled adaptation after generation 100 in at least 16/20 seeds (%d)" % late_change_count)
+	check(earning_count >= 16, "a species earns at least 40 points in at least 16/20 seeds (%d)" % earning_count)
+	check(end_states.size() > 1, "different seeds retain distinct 500-generation end states (%d)" % end_states.size())
 	print("OBSERVED  re-founding events over 500 generations x 20 seeds: %d" % refound_count)
 	var base: Dictionary = Simulation.initial_species(5)[0]
 	var spiky: Dictionary = base.duplicate(true)
@@ -118,13 +133,23 @@ func _init() -> void:
 			var second: float = Simulation.part_burden(carrier)
 			every_part_costs = every_part_costs and second - first > first - before
 	check(every_part_costs, "every part has a rising recurring cost for additional copies")
+	var lean: Dictionary = base.duplicate(true)
+	lean["points"] = 0
+	var burdened: Dictionary = base.duplicate(true)
+	burdened["scale"] = 2.0
+	burdened["parts"] = ["mouth_filter", "flagellum", "flagellum", "flagellum", "spike", "spike", "spike", "spike"]
+	burdened["points"] = 0
+	check(Simulation.valid_parts(burdened) and Simulation.point_delta(lean, 8) > 0
+		and Simulation.point_delta(burdened, 8) < 0,
+		"fed lean bodies earn points while maximum-burden bodies lose them")
 	var choices := {}
-	for generation in range(1, 4):
+	for attack in [{"killer_speed": 8.0, "killer_scale": 1.0}, {"killer_speed": 2.0, "killer_scale": 2.0}]:
 		var hunted: Dictionary = base.duplicate(true)
 		hunted["points"] = 100
-		var change: Dictionary = Simulation._adapt(hunted, {"predation": 2, "killer": "Hunters", "shortfall": 0, "food": 0, "need": 4}, generation)
+		var change: Dictionary = Simulation._adapt(hunted, {"predation": 2, "killer": "Hunters", "shortfall": 0,
+			"food": 0, "need": 4, "killer_speed": attack["killer_speed"], "killer_scale": attack["killer_scale"]}, 1)
 		choices[change["trait"]] = true
-	check(choices.size() >= 2, "predation offers more than one causal adaptation")
+	check(choices.has("flagellum") and choices.has("spike"), "faster and larger predators prompt different defences")
 	var relatives: Array[Dictionary] = Simulation.initial_species(5)
 	relatives[0]["population"] = 0
 	var founding: Dictionary = Simulation._refound(relatives[0], relatives, 4)
