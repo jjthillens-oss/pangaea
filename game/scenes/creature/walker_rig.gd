@@ -1,9 +1,12 @@
 extends Node3D
 ## A generated creature walking: the Stage 1 skeleton and skin (rig/spine_rig.gd) with one TwoBoneIK3D chain per leg,
-## driven by a gait planner built from the same body description (domain/gait_body.gd). Arms and other limbs keep
-## their rest pose. Measures stance slip like rig/creature_rig.gd.
+## driven by a gait planner built from the same body description (domain/gait_body.gd). Limbs the planner does not
+## own (arms) hang from their attach joint instead of keeping their editor pose: elbow a little forward, the tip just
+## above the ground when the arm reaches it, swinging with the gait's cadence (arm_pose.gd). Measures stance slip
+## like rig/creature_rig.gd.
 
 const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
+const ArmPose := preload("res://game/scenes/creature/arm_pose.gd")
 
 var planner: RefCounted
 var gait: Dictionary
@@ -15,6 +18,11 @@ var poles: Array[Marker3D] = []
 var leg_bones: Array = []
 ## Per leg: the tip's radius, so the skin, not the bone, touches the ground.
 var tip_lift := PackedFloat32Array()
+## Per arm (a limb chain the planner does not own): {chain, root, middle, end: bone indices (middle -1 on a two-joint
+## stub), upper, lower, length: m, side: -1.0 left / 1.0 right, lift: m the tip hangs above the ground}.
+var arms: Array = []
+## Per arm: the tip's last world position, from the last sync, for tests.
+var arm_tips: Array[Vector3] = []
 
 var max_stance_slip_ratio := 0.0
 var solved_frames := 0
@@ -69,22 +77,87 @@ func setup(desc: RefCounted, arrays: Dictionary, gait_planner: RefCounted, gait_
 		for p in body.part_nodes:
 			if p["ground"] and p["entry"]["bone"] == leg_bones[i][2]:
 				tip_lift[i] = load("res://game/domain/creature/anchor_resolver.gd").GROUND_ANKLE_M * p["scale"]
+	for c in chains.size():
+		if legs.has(c):
+			continue
+		var pts: PackedVector3Array = chains[c]["points"]
+		var count := pts.size()
+		var first: int = body.limb_roots[c]
+		var arm := {"chain": c, "root": first, "middle": first + 1 if count >= 3 else -1, "end": first + count - 1,
+				"upper": pts[0].distance_to(pts[1]), "lower": pts[1].distance_to(pts[count - 1]) if count >= 3 else 0.0,
+				"length": 0.0, "side": -1.0 if pts[0].x < 0.0 else 1.0,
+				"lift": (chains[c]["radii"] as PackedFloat32Array)[count - 1]}
+		for k in count - 1:
+			arm["length"] += pts[k].distance_to(pts[k + 1])
+		for p in body.part_nodes:
+			if p["ground"] and p["entry"]["bone"] == arm["end"]:
+				arm["lift"] = load("res://game/domain/creature/anchor_resolver.gd").GROUND_ANKLE_M * p["scale"]
+		arms.append(arm)
+		arm_tips.append(Vector3.ZERO)
+	# Arms start hanging, so a rig that is never synced (a far rival) still carries them at rest.
+	body.transform = _body_pose()
+	_pose_arms(false)
 	skeleton.skeleton_updated.connect(_on_skeleton_updated)
+
+
+## The body's world transform from the planner: its ground pose with the gait origin at the hips' centre.
+func _body_pose() -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, planner.yaw), planner.position) * planner.body_pose_local() \
+			* Transform3D(Basis(), -(gait["centre"] as Vector3))
 
 
 ## Copies the planner's body pose and foot targets to the rig and queues one IK solve.
 func sync(dt: float) -> void:
 	var basis := Basis(Vector3.UP, planner.yaw)
-	body.global_transform = Transform3D(basis, planner.position) * planner.body_pose_local() \
-			* Transform3D(Basis(), -(gait["centre"] as Vector3))
+	# The body is top_level, so its own transform is its world transform.
+	body.transform = _body_pose()
 	for i in targets.size():
 		var leg: Dictionary = planner.mech.legs[i]
-		targets[i].global_position = planner.foot[i] + Vector3(0.0, tip_lift[i], 0.0)
-		poles[i].global_position = planner.hip_world(i) + basis * ((leg["pole"] as Vector3) * leg["length"])
+		# The targets and poles are top_level too, so their positions are world positions, in or out of the tree.
+		targets[i].position = planner.foot[i] + Vector3(0.0, tip_lift[i], 0.0)
+		poles[i].position = planner.hip_world(i) + basis * ((leg["pole"] as Vector3) * leg["length"])
 		_stance_snapshot[i] = planner.state[i]
-		_target_snapshot[i] = targets[i].global_position
+		_target_snapshot[i] = targets[i].position
+	_pose_arms(true)
 	_synced = true
 	body.skeleton.advance(dt)
+
+
+## Poses every arm on the skeleton: hanging from its root with the elbow bent forward, the tip just above the
+## ground when the arm reaches it, swinging with the gait when `alive` (arm_pose.gd). Plain bone poses, so they
+## hold outside the tree and under the leg IK, which touches other bones.
+func _pose_arms(alive: bool) -> void:
+	var skeleton: Skeleton3D = body.skeleton
+	var to_world: Transform3D = body.transform * skeleton.transform
+	var to_body := to_world.affine_inverse()
+	var heading := Basis(Vector3.UP, planner.yaw)
+	var speed: float = clampf(absf(planner.v) / planner.mech.v_top, 0.0, 1.0) if alive else 0.0
+	var time: float = planner.time if alive else 0.0
+	for i in arms.size():
+		var arm: Dictionary = arms[i]
+		var root: int = arm["root"]
+		var parent := skeleton.get_bone_parent(root)
+		var parent_pose: Transform3D = skeleton.get_bone_global_pose(parent) if parent >= 0 else Transform3D()
+		var root_rest: Transform3D = skeleton.get_bone_rest(root)
+		var shoulder_body: Vector3 = (parent_pose * root_rest).origin
+		var shoulder: Vector3 = to_world * shoulder_body
+		var aim: Dictionary = ArmPose.hang(shoulder, heading, arm["side"], arm["length"], planner.position.y + arm["lift"],
+				planner.cycle_phase, speed, time)
+		# The chain's rest directions, in the root's parent space (the bones' rest bases are identity).
+		var mid_rest: Vector3 = skeleton.get_bone_rest(root + 1).origin
+		var tip_rest := Vector3.ZERO
+		for b in range(root + 1, int(arm["end"]) + 1):
+			tip_rest += skeleton.get_bone_rest(b).origin
+		var space := (parent_pose * root_rest).basis
+		var target_local: Vector3 = space.inverse() * (to_body * (aim["target"] as Vector3) - shoulder_body)
+		var pole_local: Vector3 = space.inverse() * (to_body * (aim["pole"] as Vector3) - shoulder_body)
+		if int(arm["middle"]) < 0:
+			skeleton.set_bone_pose_rotation(root, ArmPose.arc(tip_rest, target_local))
+		else:
+			var poses: Array = ArmPose.two_bone(mid_rest, tip_rest, target_local, pole_local)
+			skeleton.set_bone_pose_rotation(root, poses[0])
+			skeleton.set_bone_pose_rotation(int(arm["middle"]), poses[1])
+		arm_tips[i] = to_world * skeleton.get_bone_global_pose(int(arm["end"])).origin
 
 
 func _on_skeleton_updated() -> void:
@@ -101,6 +174,12 @@ func _on_skeleton_updated() -> void:
 		if _stance_snapshot[i] == 0:
 			var length: float = planner.mech.legs[i]["length"]
 			max_stance_slip_ratio = maxf(max_stance_slip_ratio, tip.distance_to(_target_snapshot[i]) / length)
+	# A foot on an arm's tip hangs level there too.
+	for i in arms.size():
+		var tip := skeleton.global_transform * skeleton.get_bone_global_pose(int(arms[i]["end"])).origin
+		solved_finite = solved_finite and tip.is_finite()
+		arm_tips[i] = tip
+		_place_ground_parts(int(arms[i]["end"]), tip)
 
 
 func _exit_tree() -> void:
