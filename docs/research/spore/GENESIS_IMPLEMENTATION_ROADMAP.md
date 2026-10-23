@@ -1,84 +1,100 @@
-# GENESIS implementation roadmap (from the Spore research)
+# GENESIS creature engineering roadmap
 
-Status: PROPOSED, 2026-10-23. This roadmap does not change the Bible's milestones, the seven eras, the art
-pipeline, the save schema or any milestone scope. Each step marked **gate** needs the owner's approval before it
-starts, and the approval is recorded in `docs/DECISIONS.md`. Labels as in `LEGAL_RESEARCH_BOUNDARIES.md`.
+Status: PROPOSED, rewritten 2026-10-23 after the owner set the priority: procedural creature geometry, automatic
+rigging, anatomy-driven animation and locomotion first; later stages (civilization, space) are not studied yet.
+Nothing here modifies existing GENESIS systems. Each step marked **gate** needs the owner's approval, recorded in
+`docs/DECISIONS.md`. Labels as in `LEGAL_RESEARCH_BOUNDARIES.md`.
 
-## 1. Research phases
+The goal (owner, 2026-10-23): "independently build an original, technically comparable creature-generation system
+in Godot 4 using Blender for production assets."
 
-| Phase | Work | Output | Gate |
-| --- | --- | --- | --- |
-| 1 (done in this PR) | Legal boundaries, tool identities, published-source survey, creature creator analysis, animation spec, measurement schema and recording plan | This folder | Owner reviews the PR |
-| 2 | Owner answers the tool checklist (`SPORE_RESEARCH.md` §2.1); owner records sessions R1 and R2; we extract values; re-read S2 and S7 when chrishecker.com is back; patent search | Filled CSV rows R101–R107, R201–R206; updated analysis | None for research. Recording time is the owner's. |
-| 3 | Sessions R3–R5; behaviour notes for NPCs as HYPOTHESIS only | Filled rows R301–R504 | None |
-| 4 | Compare each GENESIS prototype against the same rows (`subject=genesis`) | Comparison table per prototype | Follows the prototype gates below |
+## 1. Where the research stands
 
-Binary analysis of Spore is **not** on this roadmap. See `LEGAL_RESEARCH_BOUNDARIES.md` §5.
+| Area | Research status | Spec |
+| --- | --- | --- |
+| Generated skin (implicit surface) | Published facts gathered (S7, S12, S13); details of Spore's tessellation and weighting not published | `CREATURE_GEOMETRY_SPEC.md` §3–5 |
+| Procedural skeleton | Published (S1, S12) | `CREATURE_GEOMETRY_SPEC.md` §4 |
+| Automatic rigging | Not published by Maxis; our method stated, Spore's left as HYPOTHESIS | `CREATURE_GEOMETRY_SPEC.md` §6 |
+| Anatomy-driven animation | Published in depth (S1, S2, S13) | `PROCEDURAL_ANIMATION_SPEC.md` |
+| Locomotion feel | Needs recordings (R2xx, R3xx) | `MEASUREMENT_PLAN.md` |
+| Parts and handles | Published (S3) | `CREATURE_CREATOR_ANALYSIS.md` §1.2, §3 |
+| Paint | Published (S4) | `CREATURE_GEOMETRY_SPEC.md` §8 |
+| Legal and patents | EA license reviewed; US law applies; first patent search done | `LEGAL_RESEARCH_BOUNDARIES.md` |
 
-## 2. Mapping to GENESIS milestones
+Open research tasks, which run alongside the prototypes: owner recordings R2 and R3; re-read Hecker's liner notes
+and GDC 2007 slides when chrishecker.com is back (S2, S7); fuller patent search on skin generation, rigging and gait.
 
-Milestone names are from Bible §23 (PROPOSED there). Innovation backlog IDs are in
-`docs/research/innovation-backlog.md`.
+## 2. Engineering plan
 
-| Milestone | What this research feeds | Research inputs | Status |
-| --- | --- | --- | --- |
-| M1 First life (in progress) | Nothing new is added to M1. Optional: measured cell-stage feel (R1) as a comparison for tuning speed, growth and camera scaling in the endless pool work. | R101–R107 | Comparison only; tuning stays PROPOSED and playtest-led |
-| M1 step 4 editor | Plain-language before/after deltas (IB-04) and instant feedback in the editor; part `capabilities` field (small schema addition to the part catalog, not the save schema). | `CREATURE_CREATOR_ANALYSIS.md` §3 | **Gate**: catalog field is a data change; confirm it fits step 4's plan |
-| M2 Visual benchmark | Body variety inside the IB-15 boundary: segmented torso with matching seam rings, shape keys and bone scale (`CREATURE_CREATOR_ANALYSIS.md` §4); mask-based colouring shader (§5). Look-at and spring bones (IB-16). | S3, S4, S7 | **Gate**: spike approval; colouring bake step is a scope question |
-| M3 Anatomy depth | The procedural animation stack (`PROCEDURAL_ANIMATION_SPEC.md`): BodyDescriptor, gait planner, motion clips, Godot IK stack, secondary motion; anatomy-derived speed, turn and stability (IB-14, IB-18). Exit evidence "same-scenario comparisons with meaningful tradeoffs" maps to spec §6. | S1, R2xx, R3xx | **Gate**: prototype spike approval, then production approval |
-| M4 First continuity | Shore gradient between swimming oscillators and legged gait (IB-08). | S1 crawl/float rule, R206 | Later |
-| M5 Social foundation onward | Target-relative clips (reach, give, carry; IB-27), grasper or mouth fallbacks so no body plan is locked out (Bible §9). | S1 §3.2 | Later |
-| M7–M8 | Possible later use of cube-sphere planet ideas (S5) and Halton scatter (S6). | S5, S6 | Later; not scheduled |
+All prototype work lives in `prototypes/creature-lab/`. It does not use code from `game/`, and Stage 1's first step
+makes sure the main project's import, tests and Windows export skip that folder (checked by a test). Each stage has its own tests, run headless the same way `tools/check.sh` runs tests.
+Commit and push after every step.
 
-## 3. Proposed prototype spikes
+### Stage 1: Body and skin (first prototype, **gate: awaiting approval**)
 
-Each spike lives in `prototypes/` (not `game/`), has its own tests, and is thrown away or promoted only after review.
-None starts without its gate.
+What: `BodyDescription` + validation, skeleton layout, capsule primitives, field, Surface Nets mesh, smoothing,
+normals, automatic weights, a `Skeleton3D` + `Skin` + `ArrayMesh` in a viewer scene. Ten fixed test bodies from data
+files (snake, biped, quadruped, hexapod, 12-limb, giant limb, tiny, max vertebrae, thin, asymmetric). A viewer scene
+orbits each body and poses its skeleton through a scripted range. No editor UI yet, no parts yet (sockets only), no
+animation beyond the posing sweep.
 
-### Spike A: Halton scatter (small, any time)
+Acceptance: `CREATURE_GEOMETRY_SPEC.md` §10 items 1–7 (Blender parity, item 8, comes in stage 4). Contact sheet of
+all ten bodies at rest and posed, in both renderers.
 
-- What: deterministic, well-spaced placement of food and decoration from a seed with a density map, using an
-  incremental Halton sequence (standard mathematics; the idea is published in S6, the code is ours).
-- Why now: fits the endless cell-world work (repeatable, memoryless placement per region).
-- Acceptance: same seed gives identical points; minimum spacing statistics beat uniform random; 10 000 points in
-  under 1 ms in GDScript on the baseline PC.
-- Gate: an engineering choice inside current scope (tuning and tools are the lead's call per the studio model), but it
-  touches the endless-world thread's work, so it is offered to that thread rather than started here.
+Size: about 2–4 working sessions. Output: the prototype, its tests, contact sheets, measured rebuild times, and a short
+report on whether GDScript is fast enough.
 
-### Spike B: body descriptor and gait planner (domain only)
+### Stage 2: Live editing (**gate**)
 
-- What: `BodyDescriptor` and the gait planner from `PROCEDURAL_ANIMATION_SPEC.md` §3.1–3.2 as pure GDScript with unit
-  tests, no scenes.
-- Acceptance: spec §6 items 4 and 5 on the 12-body test matrix.
-- Gate: owner approves starting M3 groundwork early.
+What: drag vertebrae, add or remove vertebrae, pull limbs out of the body, add joints, mirror symmetry, thickness
+handles, undo; dirty-region rebuild while dragging. Placeholder sphere "parts" attach to sockets.
 
-### Spike C: animated test bodies
+Acceptance: preview rebuild under 33 ms on the baseline PC for the large test body; edits refused with a reason when
+invalid; description round-trips through JSON unchanged; R207 comparison (Spore's lag) recorded.
 
-- What: Spike B plus Godot's IK modifiers on placeholder test bodies in a prototype scene, with the clip pass grid and
-  a contact sheet.
-- Acceptance: spec §6 items 1–3, 7 and 8.
-- Gate: after Spike B, owner approval. Test bodies in `prototypes/` may be built from engine primitives because
-  they are throwaway test rigs outside `game/`; anything promoted into `game/` uses Blender-authored parts with
-  records, as the asset rules require.
+### Stage 3: Anatomy-driven locomotion (**gate**)
 
-### Spike D: segmented torso in Blender
+What: `PROCEDURAL_ANIMATION_SPEC.md` §3.1–3.4 on generated bodies: body descriptor numbers, gait planner, foot
+targets, Godot's `TwoBoneIK3D`/`FABRIK3D` per leg, spine bend, `LookAtModifier3D`, `SpringBoneSimulator3D` on tails;
+crawl and float fallbacks. Walk the ten test bodies around a flat test field under keyboard control.
 
-- What: one torso of five segments authored in Blender with shape keys and matching seam rings, exported to GLB,
-  driven by bone scale in Godot; collision capsules refit at the extremes.
-- Acceptance: seam test passes at every key-extreme combination; no visible gap at 1080p in review lighting.
-- Gate: owner approval as an M2 art spike (art thread).
+Acceptance: `PROCEDURAL_ANIMATION_SPEC.md` §6 items 1–5 and 8; R307–R311 comparison table against Spore recordings;
+a side-by-side clip of two bodies with different leg lengths showing different speed and turning.
 
-## 4. Workflow per spike (PROPOSED)
+### Stage 4: Parts, paint and Blender parity (**gate**, with the art thread)
 
-1. Spec section cited, acceptance criteria copied into the spike's README.
-2. Build in `prototypes/<spike>/` with tests; commit and push after every step.
-3. Measure the same rows as Spore where they apply (`subject=genesis`).
-4. Independent review (Codex or a separate reviewer session) of code and test results.
-5. Owner decides: promote (with a DECISIONS.md entry), change, or drop.
+What: three Blender-authored test parts (a mouth, a foot, a grasper) with shape-key handles, sockets and records,
+attached to generated bodies; the spine/angle vertex channels and a first creature shader (base, coat, detail);
+the Blender script that rebuilds a description as a `.blend` for review.
 
-## 5. Decisions needed from the owner
+Acceptance: `CREATURE_GEOMETRY_SPEC.md` §10 item 8; part bases sit in the skin with no gaps on all ten bodies; art
+thread review against the visual bar.
 
-1. Purchase channel and country (for the license version and the law that applies).
-2. Whether to keep binary analysis off the plan permanently (recommended), or start the clearance steps.
-3. Whether REA should be evaluated as a dev tool for non-Spore uses. Recommended: no, not needed now.
-4. Which spike, if any, to start first. Recommended order: A (if the endless-world thread wants it), then B.
+### Stage 5: Motion clips and interactions (**gate**)
+
+What: the semantic clip format (`PROCEDURAL_ANIMATION_SPEC.md` §3.3): eat, grab, look, call, attack, with capability
+requirements and fallbacks (mouth as hand); the clip pass grid on all test bodies.
+
+Acceptance: §6 item 7 (90% pass grid) and a clip preview scene showing one clip on the grid of bodies.
+
+### Promotion into the game (**gate**, owner decision)
+
+Only after the stages above pass: a plan to move the generator and animation into `game/` for the era that first
+needs them, including the save schema change for `BodyDescription`, the `tests/test_placeholders.gd` rule for
+generated production meshes, an asset record for the generator, and the effect on milestone scope. That is a
+separate decision; nothing in this roadmap commits to it.
+
+## 3. Decisions needed from the owner
+
+1. **Approve Stage 1** as an isolated prototype in `prototypes/creature-lab/` (recommended). Nothing in `game/`
+   changes.
+2. Record sessions R2 and R3 when convenient (about 1.5 hours together).
+3. Later, at Stage 2: if GDScript is too slow, choose between a compute shader (no new dependency, not available on the
+   Compatibility renderer) and a C++ GDExtension (new toolchain and the MIT `godot-cpp` dependency).
+
+## 4. Out of scope for now
+
+- Tribal, civilization and space stage research (owner's priority).
+- Binary analysis of Spore (not cleared; `LEGAL_RESEARCH_BOUNDARIES.md` §5).
+- Online sharing of creatures (IB-29; patent review needed first, `LEGAL_RESEARCH_BOUNDARIES.md` §3).
+- REA or Ghidra setup.
