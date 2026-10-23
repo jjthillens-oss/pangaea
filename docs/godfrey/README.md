@@ -49,7 +49,7 @@ Notes for the studio:
 - Keep at least one `godfrey-task` issue open. When the queue is empty the prompt falls back to the coordinator's
   list, which includes the jobs held as `godfrey-later`.
 
-## Current queue (updated 2026-10-23 22:50 UTC)
+## Current queue (updated 2026-10-23 23:25 UTC)
 
 | Issue | Branch | Status |
 | --- | --- | --- |
@@ -66,12 +66,15 @@ Notes for the studio:
 | #55 Proposals for the remaining eras | `godfrey/era-proposals-2` | merged (PR #74) |
 | #75 Creature lab follow-ups from the #70/#71 review | `godfrey/creature-lab-followups` | merged (PR #83) |
 | #76 Rival evolution v3: long-run ecology | `godfrey/rival-evolution-3` | PR #85: changes requested (ecology freezes at gen 4) |
-| #77 Test review, round 3: services and determinism | `godfrey/test-review-3` | claimed |
-| #86 Docs path checker tool and non-blocking CI step | `godfrey/docs-check` | ready |
-| #87 Species and lineage name generator prototype | `godfrey/naming-prototype` | ready |
-| #89 Terrain chunk prototype for the land era | `godfrey/terrain-prototype` | ready |
-| #90 Save format reference document | `godfrey/save-format-doc` | ready |
+| #77 Test review, round 3: services and determinism | `godfrey/test-review-3` | merged (PR #95) |
+| #86 Docs path checker tool and non-blocking CI step | `godfrey/docs-check` | PR #97: changes requested (leading dot stripped) |
+| #87 Species and lineage name generator prototype | `godfrey/naming-prototype` | PR #100: changes requested (block list) |
+| #89 Terrain chunk prototype for the land era | `godfrey/terrain-prototype` | merged (PR #99) |
+| #90 Save format reference document | `godfrey/save-format-doc` | merged (PR #98) |
 | #91 Creature lab swim gait | `godfrey/swim-gait` | ready |
+| #101 Test review, round 4: UI, audio and scenes | `godfrey/test-review-4` | ready |
+| #102 Lint cleanup of tests/ and tools/ | `godfrey/lint-tests-tools` | ready |
+| #103 Research: stage transitions in other games | `godfrey/research-transitions` | ready |
 | #38 Save fuzzing | `godfrey/save-fuzz` | later: after S1 (PR #69) lands |
 | #39 Performance pass | `godfrey/perf-pass` | later: after S1 lands; base on post-S1 main |
 | #40 Localisation prep | `godfrey/l10n-prep` | later: after S1 |
