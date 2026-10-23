@@ -8,8 +8,10 @@ extends TestCase
 ##   150   debug_teleport_abs(150, 9) first: the respawn teleports home behind the camera cut;
 ##   5 km  debug_teleport_abs(5000, 9) first: the same, 5 km out.
 ##
-## Each case runs once per suite and is checked tick by tick with FuzzInvariants (12, 13 and 16)
-## from the dev teleport, or the end of the swim, to the end, the respawn tick being the camera cut.
+## Each case runs once per suite and is checked tick by tick with FuzzInvariants (1 to 13 and 16)
+## from the dev teleport, or the end of the swim, to the end: the respawn tick (and a dev teleport's)
+## is the camera cut. Plankton appearing in view is watched through the notice and the WATCHED_AFTER
+## ticks after the respawn.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
@@ -104,17 +106,21 @@ func test_no_sleeper_lies_within_40_tm_of_the_checkpoint_from_the_second_dead_ti
 func test_nothing_appears_or_vanishes_in_the_footprint_during_the_notice_and_60_ticks_after() -> void:
 	for name in ["near", "150", "5km"]:
 		var r := _run(name)
-		var fz: FuzzInvariants = r.watched
-		check(not fz.bad.has(12), "%s: invariant 12 (%s)" % [name, fz.report()])
-		check(not fz.bad.has(16), "%s: invariant 16 (%s)" % [name, fz.report()])
+		var fz: FuzzInvariants = r.fuzz
+		check_eq(fz.report(), "", "%s: every invariant on every tick" % name)
 		check(int(fz.counts.checked) > 0, "%s: things measured (%s)" % [name, fz.counts])
-		check_eq(int(fz.counts.cuts), 1, "%s: one cut, the respawn tick" % name)
+		check_eq(int(fz.counts.cuts), 1 if name == "near" else 2, "%s: the cuts are the respawn and a dev teleport" % name)
 		check(r.view_zones >= 1, "%s: food zones in the new view (%d)" % [name, r.view_zones])
 		check_eq(r.view_unfilled, [], "%s: each full from the cut on (D-11)" % name)
 		check_eq(r.food_appeared, 0, "%s: no plankton appears in view (%s)" % [name, r.food_first])
 	var near := _run("near")
-	check(int(near.watched.counts.wakes) >= 2, "near: wakes watched (%s)" % near.watched.counts)
-	check(int(near.watched.counts.loads) >= 1, "near: loads watched (%s)" % near.watched.counts)
+	# A site in view of the checkpoint, queued when the cell died, stays shut while it is dead: the
+	# checkpoint is a place too (G8: blocker_from measured from the body alone spawns it there).
+	check(not str(near.cp_site).is_empty(), "near: a site queued in view of the checkpoint")
+	check_eq(near.get("cp_site_blocker", ""), "in view", "near: and still shut at the end of the notice")
+	check_eq(near.get("cp_site_spawned", -1), 0, "near: it never spawned while the cell was dead")
+	check(int(near.fuzz.counts.wakes) >= 2, "near: wakes measured (%s)" % near.fuzz.counts)
+	check(int(near.fuzz.counts.loads) >= 1, "near: loads measured (%s)" % near.fuzz.counts)
 
 
 ## C-8: dead, and with the respawn pending, the absolute position is the checkpoint's exactly.
@@ -151,7 +157,6 @@ func _death(name: String) -> Dictionary:
 	var r := {"cp_am": PackedFloat64Array([w.checkpoint_am[0], w.checkpoint_am[1]]), "max_local": 0.0, "food_appeared": 0,
 		"food_first": ""}
 	var fuzz := FuzzInvariants.new(species, layout)
-	var watched := FuzzInvariants.new(species, layout)
 	sim.drain_events()
 	var was := fuzz.before(sim)
 	match name:
@@ -167,7 +172,7 @@ func _death(name: String) -> Dictionary:
 			sim.debug_teleport_abs(5000.0, 9.0)
 	for i in SETTLE:
 		# A dev teleport's events reach the first settle tick's check, as its cut.
-		_tick(sim, Vector2.ZERO, [fuzz], "%s settle tick %d" % [name, i], r, was if i == 0 and name != "near" else {})
+		_tick(sim, Vector2.ZERO, fuzz, "%s settle tick %d" % [name, i], r, was if i == 0 and name != "near" else {})
 	if name != "near":
 		for i in 3:
 			sim.debug_spawn_carrion_ahead()
@@ -185,6 +190,8 @@ func _death(name: String) -> Dictionary:
 	r["slept_by_checkpoint"] = slept
 	check(sim.debug_hurt_player(1.0e9), "%s: the cell is hurt" % name)
 	check(sim.dead, "%s: and dies" % name)
+	if name == "near":
+		r["cp_site"] = _queue_site_in_view_of_the_checkpoint(sim)
 	sim.drain_events()
 	var woke := {}
 	var dead_sleeper := [0, ""]
@@ -195,7 +202,7 @@ func _death(name: String) -> Dictionary:
 	for i in NOTICE:
 		var held := w._held_keys(sim)
 		var where := "%s notice tick %d" % [name, i]
-		var events := _tick(sim, Vector2.ZERO, [fuzz, watched], where, r, {}, true)
+		var events := _tick(sim, Vector2.ZERO, fuzz, where, r, {}, true)
 		held_through = held_through and w.chunk(HELD_CHUNK) != null
 		for e in events:
 			if e.type == "creature_woke":
@@ -216,6 +223,10 @@ func _death(name: String) -> Dictionary:
 			if abs_bad[1].is_empty():
 				abs_bad[1] = "%s: %s" % [where, sim.absolute_position_am()]
 	r["woke_while_dead"] = woke
+	if name == "near" and not str(r.cp_site).is_empty():
+		var site: Dictionary = w.sites[r.cp_site]
+		r["cp_site_blocker"] = sim.creatures.blocker_from(site, sim.arena, sim._player_places())
+		r["cp_site_spawned"] = int(w.site_counts.get(r.cp_site, 0))
 	# Near: an awake rammer put by the checkpoint, a creature the cell would find at its door.
 	r["moved_id"] = ""
 	if name == "near":
@@ -240,7 +251,7 @@ func _death(name: String) -> Dictionary:
 	check(sim.respawn_pending, "%s: the respawn waits for the next step" % name)
 	r["pending_abs_ok"] = sim.dead and sim.absolute_position_am() == r.cp_am
 	# The respawn tick: the camera cut.
-	var events := _tick(sim, Vector2.ZERO, [fuzz, watched], "%s respawn tick" % name, r)
+	var events := _tick(sim, Vector2.ZERO, fuzz, "%s respawn tick" % name, r)
 	var types := PackedStringArray()
 	r["respawned"] = {}
 	for e in events:
@@ -284,10 +295,8 @@ func _death(name: String) -> Dictionary:
 	r["view_zones"] = touching
 	r["view_unfilled"] = view_unfilled
 	for i in AFTER:
-		var checkers: Array = [fuzz, watched] if i < WATCHED_AFTER else [fuzz]
-		_tick(sim, Vector2.ZERO, checkers, "%s tick %d after the respawn" % [name, i + 1], r, {}, i < WATCHED_AFTER)
+		_tick(sim, Vector2.ZERO, fuzz, "%s tick %d after the respawn" % [name, i + 1], r, {}, i < WATCHED_AFTER)
 	r["fuzz"] = fuzz
-	r["watched"] = watched
 	r["dead_sleeper_bad"] = dead_sleeper[0]
 	r["dead_sleeper_first"] = dead_sleeper[1]
 	r["dead_unload_bad"] = dead_unload[0]
@@ -295,23 +304,47 @@ func _death(name: String) -> Dictionary:
 	r["abs_bad"] = abs_bad[0]
 	r["abs_first"] = abs_bad[1]
 	r["abs_checked"] = abs_checked
-	print("test-dead-state: %s: teleport %s, relocated %s, %d woke while dead; watched %s" % [name,
-		r.respawned.get("teleport"), r.respawned.get("relocated"), woke.size(), watched.counts])
+	var c: Dictionary = fuzz.counts
+	print("test-dead-state: %s: teleport %s, relocated %s, %d woke while dead; checked %d, %d spawns, %d sleeps, %d wakes, %d loads, %d unloads, %d cuts" % [
+		name, r.respawned.get("teleport"), r.respawned.get("relocated"), woke.size(), c.checked, c.spawns, c.sleeps, c.wakes,
+		c.loads, c.unloads, c.cuts])
 	return r
 
 
-## One step with `move`, checked by every FuzzInvariants in `checkers` (`was`, when given, is what
-## the first took before something done between the steps). Returns the step's events.
+## A rammer site of the test's own, homed in view of the checkpoint (over 20 tm from it, its reach
+## clear of rule 8's ring) on a loaded chunk, entered into the site table and queued now. Returns
+## its id, "" when no such clear home was found.
+func _queue_site_in_view_of_the_checkpoint(sim: PoolSim) -> String:
+	var w := sim.world
+	var cp := w.checkpoint_local()
+	for at: Vector2 in [cp + Vector2(-20.0, -10.0), cp + Vector2(20.0, -10.0), cp + Vector2(-22.0, -6.0), cp + Vector2(22.0, -6.0)]:
+		var key := w.chunk_of_local(at)
+		if w.chunk(key) == null or not sim.arena.is_clear(at, 1.5) or not _in_view(cp, at, 0.6) or at.distance_to(cp) < 21.0:
+			continue
+		var a := w.abs_of_local(at)
+		var x_tm := a[0] / w._tm_to_am
+		var y_tm := a[1] / w._tm_to_am
+		var s := {"id": "x_cp", "species": "rammer", "x": x_tm, "y": y_tm, "heading": 0.0,
+			"territory": {"x": x_tm, "y": y_tm, "radius": 3.0}, "reach": {"x": x_tm, "y": y_tm, "radius": 6.0},
+			"chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int], "tile": Vector2i.ZERO}
+		w.sites["x_cp"] = w._site_record(s, key)
+		w.recompute_caps(sim)
+		sim.creatures._enqueue("x_cp", "rammer", sim.tick)
+		return "x_cp"
+	return ""
+
+
+## One step with `move`, checked by `fuzz` (`was`, when given, is what it took before something done
+## between the steps). Returns the step's events.
 ## With `watch`, a plankton item that appears in view (a zone regrowing where the player looks)
 ## counts in r.food_appeared.
-func _tick(sim: PoolSim, move: Vector2, checkers: Array, where: String, r: Dictionary, was := {}, watch := false) -> Array[Dictionary]:
+func _tick(sim: PoolSim, move: Vector2, fuzz: FuzzInvariants, where: String, r: Dictionary, was := {}, watch := false) -> Array[Dictionary]:
 	if was.is_empty():
-		was = (checkers[0] as FuzzInvariants).before(sim)
+		was = fuzz.before(sim)
 	var t := sim.tick
 	sim.step(SimIntent.new(move))
 	var events := sim.drain_events()
-	for fz: FuzzInvariants in checkers:
-		fz.after(sim, events, t, where, was)
+	fuzz.after(sim, events, t, where, was)
 	r.max_local = maxf(float(r.max_local), sim.motion.position.length())
 	if watch:
 		for item in sim.plankton.items:

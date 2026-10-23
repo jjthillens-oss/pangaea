@@ -52,6 +52,9 @@ const VIEW_SET_MARGIN_TM := 11.5
 const MAX_ZONE_RADIUS_TM := 8.0
 ## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
 ## watching, noticing, chasing, attacking, fleeing or going home.
+## The Vector2 keys a rebase shifts on each plankton and carrion item (RebaseShift.items).
+const PLANKTON_POSITIONS: PackedStringArray = ["position", "anchor"]
+const CARRION_POSITIONS: PackedStringArray = ["position"]
 const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
 
 var content: WorldContent
@@ -215,12 +218,14 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 	sim.actor.position -= offset
 	if sim.creatures != null:
 		for c in sim.creatures.creatures:
-			RebaseShift.motion(c.motion, offset)
+			var m := c.motion   # RebaseShift.motion written out: once per creature, in a timed tick (G17)
+			m.position -= offset
+			m.prev_position -= offset
 			c.actor.position -= offset
 			if c.brain != null:
 				RebaseShift.memory(c.brain, offset)
-	RebaseShift.items(sim.plankton.items, PackedStringArray(["position", "anchor"]), offset)
-	RebaseShift.items(sim.carrion.items, PackedStringArray(["position"]), offset)
+	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
+	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
 	_rederive(sim)
 	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
 
@@ -703,35 +708,48 @@ func recompute_caps(sim: PoolSim) -> void:
 		sim.region.set_niche(role, per_role[role])
 
 
-## A site's local record from its WorldChunk entry (absolute) and its home chunk.
+## A site's local record from its WorldChunk entry (absolute) and its home chunk: its local home,
+## territory and reach (derived), and "abs_tm", their absolute values [home x, y, territory x, y,
+## reach x, y] (tm; the territory's NaN when it has none) that a rebase derives them from again.
 func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
 	var chunks: Array[Vector2i] = []
 	chunks.assign(s.chunks)
-	var rec := {"id": s.id, "species": s.species, "heading": float(s.heading), "chunks": chunks, "home_chunk": key, "abs": s}
-	_derive_site_local(rec)
+	var t: Dictionary = s.territory
+	var r: Dictionary = s.reach
+	var rec := {"id": s.id, "species": s.species, "heading": float(s.heading), "chunks": chunks, "home_chunk": key, "abs": s,
+		"abs_tm": PackedFloat64Array([float(s.x), float(s.y), NAN if t.is_empty() else float(t.x),
+			NAN if t.is_empty() else float(t.y), float(r.x), float(r.y)]),
+		"territory": {} if t.is_empty() else {"center": Vector2.ZERO, "radius": float(t.radius)},
+		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}}
+	_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)
 	return rec
 
 
-## A site record's local home, territory and reach, again from its absolute values.
-func _derive_site_local(rec: Dictionary) -> void:
-	var a: Dictionary = rec.abs
-	rec["home"] = local_of_tm(float(a.x), float(a.y))
-	var t: Dictionary = a.territory
-	rec["territory"] = {} if t.is_empty() else {"center": local_of_tm(float(t.x), float(t.y)), "radius": float(t.radius)}
-	var r: Dictionary = a.reach
-	rec["reach"] = {"center": local_of_tm(float(r.x), float(r.y)), "radius": float(r.radius)}
+## A site record's local home, territory centre and reach centre, again from "abs_tm", in place.
+## Each is local_of_tm's own float64 expression written out (so the same float32 result): a rebase
+## does this for every loaded site, and a rebase tick is timed (G17).
+static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) -> void:
+	var a: PackedFloat64Array = rec.abs_tm
+	rec.home = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
+	if not rec.territory.is_empty():
+		rec.territory.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
+	rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
 
 
-## Every local value that is derived from an absolute one, again from its absolute value.
+## Every local value that is derived from an absolute one, again from its absolute value (zones
+## with local_of_tm written out, as sites are).
 func _rederive(sim: PoolSim) -> void:
+	var k := _tm_to_am
+	var ox := origin_x_am
+	var oy := origin_y_am
 	if sim.arena is ChunkArena:
-		(sim.arena as ChunkArena).set_origin(origin_x_am / _tm_to_am, origin_y_am / _tm_to_am)
+		(sim.arena as ChunkArena).set_origin(ox / k, oy / k)
 	for z in sim.region.zones:
-		var a: PackedFloat64Array = _zone_abs.get(z.id, PackedFloat64Array())
-		if a.size() == 2:
-			z.center = local_of_tm(a[0], a[1])
+		var a: Variant = _zone_abs.get(z.id)
+		if a != null:
+			z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
 	for id in sites:
-		_derive_site_local(sites[id])
+		_derive_site_local(sites[id], k, ox, oy)
 
 
 ## chunk_loaded's payload (spine 3.12), in the frame in force now.
