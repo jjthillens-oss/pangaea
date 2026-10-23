@@ -55,7 +55,7 @@ const PERTURBATIONS: PackedStringArray = ["creature position.x by one float32 st
 	"creature heading", "creature health", "creature energy", "a cooldown", "phase_tick", "target", "lock_heading",
 	"a seen position", "an ignore entry", "landed_on", "the brain RNG", "the field RNG", "a queue at_tick",
 	"engaged_on_player", "the AI frozen switch", "the hidden switch", "the cell's death", "the shelter's end",
-	"the death streak", "fear_of"]
+	"the death streak", "fear_of", "two posts", "post", "post_since"]
 ## creatures_m1.json's relationships block with every rule on (spine 4.2; S2 plan B.6).
 const RELATIONSHIPS_ON := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
 	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
@@ -1630,6 +1630,13 @@ func _perturb(s: PoolSim, what: String) -> void:
 			s.death_streak += 1
 		"fear_of":
 			c.brain.fear_of = "c_9"
+		"two posts":
+			CreatureBrain.set_posts(c.brain, [{"home": c.brain.home, "heading": c.brain.home_heading, "territory": {}},
+				{"home": c.brain.home + Vector2(4.0, 0.0), "heading": 0.0, "territory": {}}])
+		"post":
+			c.brain.post = 1
+		"post_since":
+			c.brain.post_since += 1
 
 
 ## S2G1 (plan B.6): every M1 pair lies inside the relationship shares, so with every rule switched on

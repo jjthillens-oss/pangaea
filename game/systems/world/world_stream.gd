@@ -80,12 +80,15 @@ const FOOD_BOUND_SLACK_TM := 0.001
 var content: WorldContent
 var gen: WorldGen
 var size := 1
+## The build's top size (world file sizes.max_in_build), set with growth (S2); 1 without it.
+var max_size := 1
 var origin_x_am := 0.0
 var origin_y_am := 9.0
 var checkpoint_am := PackedFloat64Array([0.0, 9.0, -1.5708, 1.0])    ## x, y, heading, size
 ## Backstops that fired: awake_overflow (more awake creatures than the cap and none calm to sleep),
 ## chunk_waits (a load past the chunk cap waited), food_trimmed (a far zone's food hidden over the
-## item cap), evictions (a sleeper removed over the sleeper cap).
+## item cap), evictions (a sleeper removed over the sleeper cap). With growth (S2, BP-20) also
+## remnant_overflow (a growth tick with more remnants than their cap).
 var counters := {"awake_overflow": 0, "chunk_waits": 0, "food_trimmed": 0, "evictions": 0}
 ## The world file's rings (tm) and caps, read once.
 var rings := {}
@@ -500,7 +503,10 @@ func disc_keys(disc: Dictionary) -> Array[Vector2i]:
 	return out
 
 
-## The endless state for snapshots and hashing (spine 3.12's "world" block).
+## The endless state for snapshots and hashing (spine 3.12's "world" block). With growth (S2) it
+## also holds the meter ("growth"), and each carrion item's radius and lifetime where they are not
+## the field's ("carrion_radius", "carrion_lifetime"; D-66); without growth none of these keys exist
+## (BP-20), so the block is S1's.
 func snapshot(sim: PoolSim) -> Dictionary:
 	var keys := []
 	for key in _keys:
@@ -509,7 +515,7 @@ func snapshot(sim: PoolSim) -> Dictionary:
 	for id in _sorted(_zone_abs.keys()):
 		var stream: RandomNumberGenerator = sim.region.streams.get(id, null)
 		zone_rngs[id] = stream.state if stream != null else 0
-	return {
+	var out := {
 		"gen_version": gen_version, "size": size,
 		"origin_am": [origin_x_am, origin_y_am],
 		"checkpoint_am": [checkpoint_am[0], checkpoint_am[1], checkpoint_am[2], checkpoint_am[3]],
@@ -522,6 +528,19 @@ func snapshot(sim: PoolSim) -> Dictionary:
 		"cell_tile": [_cell_tile.x, _cell_tile.y],
 		"counters": counters.duplicate(),
 	}
+	if sim.growth != null:
+		out["growth"] = sim.growth.snapshot()
+		var radii := {}
+		var lifetimes := {}
+		var carrion := sim.carrion
+		for item in carrion.items:
+			if float(item.radius) != carrion.item_radius:
+				radii[item.id] = item.radius
+			if float(item.lifetime) != carrion.lifetime:
+				lifetimes[item.id] = item.lifetime
+		out["carrion_radius"] = _sorted_dict(radii)
+		out["carrion_lifetime"] = _sorted_dict(lifetimes)
+	return out
 
 
 # --- step 3: unload ---
@@ -1052,9 +1071,14 @@ func _apply_caps(sim: PoolSim) -> void:
 	if _site_role.size() != sites.size():
 		recompute_caps(sim)
 		return
+	# The roles (BP-10): every role already registered (a size drop leaves it at 0) and those of the
+	# species drawn at this size or below, so at size 1 the niches are S1's.
 	var per_role := {}
+	for role in sim.region.niches:
+		per_role[role] = 0
 	for id in sim.species.species_ids():
-		per_role[str(sim.species.niche_of(id).role)] = 0
+		if sim.species.entry_size(id) <= size:
+			per_role[str(sim.species.niche_of(id).role)] = 0
 	for role in _role_sites:
 		per_role[role] = int(per_role.get(role, 0)) + int(_role_sites[role])
 	var roles := per_role.keys()

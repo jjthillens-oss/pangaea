@@ -59,9 +59,12 @@ static func fixture_content(config_path: String = WorldConfig.DEFAULT_PATH) -> W
 ## An endless sim on this generator for a new omnivore lineage of `seed_value`, saved at the home
 ## spawn as a new game is (or at `at`, absolute am): the fixture content unless `content` is given,
 ## with creatures when `p_species` is, and a site per `p_site_period` x `p_site_period` chunks.
+## Growth (S2) is switched off unless `growth` is true, on every call (BP-6: the S1 tests run the
+## world as S1 did; the content may be shared).
 static func endless_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
-		content: WorldContent = null, at := PackedFloat64Array(), p_site_period := 4) -> PoolSim:
+		content: WorldContent = null, at := PackedFloat64Array(), p_site_period := 4, growth := false) -> PoolSim:
 	var c := content if content != null else fixture_content()
+	c.config.switches["growth"] = growth
 	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
 	var place: PackedFloat64Array = at if not at.is_empty() else c.home.spawn
 	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
@@ -114,13 +117,35 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 
 ## An endless sim on the real WorldGen (T1.9) and the fixture world (T1.7), for a new omnivore
 ## lineage of `seed_value` saved at the home spawn (or at `at`, absolute am), as a new game starts.
+## Growth (S2) as endless_sim: off unless `growth` is true (BP-6).
 static func real_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
-		at := PackedFloat64Array()) -> PoolSim:
+		at := PackedFloat64Array(), growth := false) -> PoolSim:
 	var c := WorldContent.load_from(FIXTURE_WORLD, layout, p_species)
+	c.config.switches["growth"] = growth
 	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
 	var place: PackedFloat64Array = at if not at.is_empty() else c.home.spawn
 	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
 	return PoolSim.create(r.save, catalog, layout, p_species, c)
+
+
+## The shipped species plus the two size-2 species as spine 4.2 builds them on the M1 ones, until T1.7
+## puts them in creatures_m1.json: a "lurker" (ambush) and an "elder_rammer" (territorial), entry_size
+## 2, each in a role of its own at cap 0. No habit: two posts are T1.6's.
+static func s2_species() -> SpeciesCatalog:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	if not data.species.has("lurker"):
+		var lurker: Dictionary = data.species.ambush_hunter.duplicate(true)
+		lurker.name = "Lurker"
+		lurker.entry_size = 2
+		lurker.niche = {"role": "lurker", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		data.species["lurker"] = lurker
+	if not data.species.has("elder_rammer"):
+		var elder: Dictionary = data.species.rammer.duplicate(true)
+		elder.name = "elder rammer"
+		elder.entry_size = 2
+		elder.niche = {"role": "elder_rammer", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		data.species["elder_rammer"] = elder
+	return SpeciesCatalog.from_dict(data)
 
 
 ## The chunks a disc (absolute tm) touches, sorted (y, x).

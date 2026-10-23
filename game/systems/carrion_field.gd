@@ -52,9 +52,11 @@ func place_initial(arena: PoolArena) -> void:
 
 
 ## Adds a carrion item. Energy defaults to the data's value; points default to the data's rate
-## (points per energy), so a smaller carcass is worth fewer points. Returns the item, or {} when
-## the position or energy is not usable.
-func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: int = -1) -> Dictionary:
+## (points per energy), so a smaller carcass is worth fewer points. Radius and lifetime default to
+## the field's (S2: a remnant's carcass and a morsel have their own, D-50, D-66). Returns the item,
+## or {} when the position or energy is not usable.
+func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: int = -1, p_radius: float = NAN,
+		p_lifetime: float = NAN) -> Dictionary:
 	var e := energy if is_nan(p_energy) else p_energy
 	if not position.is_finite() or not is_finite(e) or e <= 0.0:
 		return {}
@@ -63,11 +65,11 @@ func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: i
 		"id": "cr_%d" % next_number,
 		"kind": "meat",
 		"position": position,
-		"radius": item_radius,
+		"radius": p_radius if is_finite(p_radius) else item_radius,
 		"energy": e,
 		"points": pts,
 		"age": 0.0,
-		"lifetime": lifetime,
+		"lifetime": p_lifetime if is_finite(p_lifetime) else lifetime,
 		"source": source,
 	}
 	next_number += 1
@@ -102,6 +104,14 @@ func items_near(p: Vector2, reach: float) -> Array[Dictionary]:
 		if p.distance_squared_to(item.position) <= reach_sq:
 			out.append(item)
 	return out
+
+
+## The item with this id, or {} when there is none (the scene reads a morsel's item by its id, BP-7).
+func find(id: String) -> Dictionary:
+	for item in items:
+		if item.id == id:
+			return item
+	return {}
 
 
 func consume(id: String) -> bool:
