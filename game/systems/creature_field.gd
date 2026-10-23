@@ -20,6 +20,12 @@ extends RefCounted
 ## Other bodies are always engageable.
 ##
 ## Creatures are not saved: a continued run repopulates from the encounter seed.
+##
+## In the endless world (S1, `endless`) sites stream in and out with the ground, a far creature
+## sleeps (it is kept but not simulated: awake() leaves it out) and an awake one thinks on its own
+## slot of the 10 Hz schedule. Spawn checks then measure from every place the cell has (its body, and
+## its checkpoint while dead: PoolSim._player_places()). The pool never sets `endless`, so there the
+## field runs exactly as M1's: awake() is the creature list itself and every place list holds one.
 
 const ID_PREFIX := "c_"
 ## The id and species the player's body carries in the senses' body format.
@@ -31,6 +37,13 @@ const BRAIN_SEED_STRIDE := 31
 ## clear of rocks wins, else the center (plan section 10).
 const CARCASS_RINGS_M := [0.45, 0.9]
 const CARCASS_SOURCE := "kill"
+## Endless mode: dev and test creatures take numbers from here up, so they sort after every site
+## creature and their ids ("c_" + number) never meet a site creature's ("c_<size>_<site>_<count>").
+const DEBUG_NUMBER_BASE := 1 << 30
+## The think schedule's slots (10 Hz at 60 ticks a second) and the pass key of a sleeper in the
+## streaming block's sleep and wake pass (after every slot).
+const THINK_SLOTS := 6
+const ASLEEP_KEY := 6
 
 
 ## One creature. Its phenotype is shared with its species; everything else is its own.
@@ -54,6 +67,12 @@ class Creature:
 	## `script_move` like the player's intent and hits it through the player's path.
 	var scripted := false
 	var script_move := Vector2.ZERO
+	## Endless mode only. A sleeper lies still out of the tick; think_slot is the awake creature's
+	## slot of the 10 Hz think schedule (-1 asleep, and always in the pool); spawn_count is its
+	## site's spawn count when it spawned.
+	var asleep := false
+	var think_slot := -1
+	var spawn_count := 0
 
 
 var species: SpeciesCatalog
@@ -74,7 +93,15 @@ var engaged_on_player := PackedStringArray()
 ## sim last took them.
 var events: Array[Dictionary] = []
 
+## Endless mode (S1): set by create_endless; false in the pool.
+var endless := false
+var world: WorldStream = null
+
 var _phenotypes := {}   ## species id -> Phenotype
+## Endless mode: the awake creatures, sorted (number, id) like `creatures`.
+var _awake: Array[Creature] = []
+## Endless mode: how many awake creatures think on each slot.
+var _slot_counts := PackedInt32Array()
 var _senses := {}       ## species id -> {"sight", "fov" (radians, whole), "near"}
 
 
@@ -99,28 +126,54 @@ static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: 
 	return field
 
 
+## The creatures that act this tick, in number order: every creature in the pool (the list itself),
+## the awake ones in the endless world.
+func awake() -> Array[Creature]:
+	return _awake if endless else creatures
+
+
+## The endless world's field (S1): as create, but every niche starts at cap 0 (WorldStream sets the
+## caps from the sites it has loaded) and creatures come only from streamed sites. `rng` is seeded
+## but never drawn: every endless stream is a hash of the world seed and the site.
+static func create_endless(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: PoolLayout,
+		p_region: EcologyRegion, p_world: WorldStream, p_seed: int) -> CreatureField:
+	var field := create(p_species, p_catalog, p_layout, p_region, p_seed)
+	for role in field.region.niches:
+		field.region.set_niche(role, 0)
+	field.endless = true
+	field.world = p_world
+	field._slot_counts.resize(THINK_SLOTS)
+	field._slot_counts.fill(0)
+	return field
+
+
 ## Fills every site, in data order: a site that passes the spawn check gets its creature now, any
 ## other waits in the queue. `player_pos` is where the player is (the checkpoint while dead).
 func populate(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 	for s in species.sites:
 		if _occupant(s.id) != null:
 			continue
-		if not _try_site(s, arena, player_pos, tick):
+		if not _try_site(s, arena, [player_pos], tick):
 			_enqueue(s.id, s.species, tick + species.spawn_retry_ticks)
 
 
 ## Spawns the queue entries that are due and pass the spawn check; the others wait retry_s more.
 func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
+	tick_spawns_at(arena, [player_pos], tick)
+
+
+## tick_spawns, with the spawn check measured from every place in `places`.
+func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void:
 	if queue.is_empty() or int(queue[0].at_tick) > tick:
 		return
 	var due: Array[Dictionary] = []
 	while not queue.is_empty() and int(queue[0].at_tick) <= tick:
 		due.append(queue.pop_front())
 	for entry in due:
-		var s := species.site(str(entry.site))
+		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
 			continue   # a site holds one creature; a stale entry is dropped
-		if not _try_site(s, arena, player_pos, tick):
+		if not _try_site(s, arena, places, tick):
 			_enqueue(s.id, s.species, tick + species.spawn_retry_ticks)
 
 
@@ -128,14 +181,22 @@ func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 ## the widest camera view of the player, a home that is not clear, or another creature within
 ## min_gap_m of the home (the player is spawn_safe_m away already).
 func spawn_blocker(s: Dictionary, arena: PoolArena, player_pos: Vector2) -> String:
+	return blocker_from(s, arena, [player_pos])
+
+
+## spawn_blocker measured from every place in `places`: "near the player" when any place is within
+## spawn_safe_m, "in view" when the home is in any place's view, then M1's "not clear" and "occupied".
+func blocker_from(s: Dictionary, arena: PoolArena, places: Array[Vector2]) -> String:
 	var home: Vector2 = s.home
 	var r: float = _phenotypes[s.species].radius
 	var fairness := species.fairness
-	if home.distance_to(player_pos) < float(fairness.spawn_safe_m):
-		return "near the player"
+	for place in places:
+		if home.distance_to(place) < float(fairness.spawn_safe_m):
+			return "near the player"
 	var margin := float(layout.camera.look_ahead_max) + float(fairness.spawn_view_margin_m) + r
-	if ViewFootprint.contains(player_pos, home, layout.camera, float(layout.camera.zoom_max), float(fairness.spawn_view_aspect), margin):
-		return "in view"
+	for place in places:
+		if ViewFootprint.contains(place, home, layout.camera, float(layout.camera.zoom_max), float(fairness.spawn_view_aspect), margin):
+			return "in view"
 	if not arena.is_clear(home, r):
 		return "not clear"
 	for c in creatures:
@@ -189,6 +250,9 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	if at < 0:
 		return
 	creatures.remove_at(at)
+	if endless:
+		_awake.erase(c)
+		_release_slot(c)
 	if not c.debug:
 		region.on_creature_removed(c.role)
 	var token_at := engaged_on_player.find(c.id)
@@ -215,6 +279,11 @@ func respawn_delay(species_id: String) -> int:
 ## happen: at least spawn_safe_m from `player_pos` and out of the widest view. Each one's site is
 ## requeued. Elsewhere a stuck creature keeps trying, and the debug panel shows it.
 func remove_stuck(player_pos: Vector2, tick: int) -> void:
+	remove_stuck_at([player_pos], tick)
+
+
+## remove_stuck, keeping a stuck creature that is near or in view of any place in `places`.
+func remove_stuck_at(places: Array[Vector2], tick: int) -> void:
 	var fairness := species.fairness
 	var stuck: Array[Creature] = []
 	for c in creatures:
@@ -223,10 +292,14 @@ func remove_stuck(player_pos: Vector2, tick: int) -> void:
 	for c in stuck:
 		var at: Vector2 = c.motion.position
 		var margin: float = float(layout.camera.look_ahead_max) + float(fairness.spawn_view_margin_m) + c.phenotype.radius
-		if at.distance_to(player_pos) < float(fairness.spawn_safe_m) \
-				or ViewFootprint.contains(player_pos, at, layout.camera, float(layout.camera.zoom_max), float(fairness.spawn_view_aspect), margin):
-			continue
-		remove(c, "stuck", tick, true)
+		var seen := false
+		for place in places:
+			if at.distance_to(place) < float(fairness.spawn_safe_m) \
+					or ViewFootprint.contains(place, at, layout.camera, float(layout.camera.zoom_max), float(fairness.spawn_view_aspect), margin):
+				seen = true
+				break
+		if not seen:
+			remove(c, "stuck", tick, true)
 
 
 ## Where a dead creature's carcass chunks land: chunk i is tried at heading + i x TAU / chunks, at
@@ -267,13 +340,14 @@ func find(id: String) -> Creature:
 	return null
 
 
-## The start-of-tick snapshot the senses read: `player_body` first (unless empty), then every
-## creature in number order. Built once per tick, before anything moves.
+## The start-of-tick snapshot the senses read: `player_body` first (unless empty), then every awake
+## creature in number order (a sleeper is sensed by no one). Built once per tick, before anything
+## moves.
 func bodies(player_body: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if not player_body.is_empty():
 		out.append(player_body)
-	for c in creatures:
+	for c in awake():
 		out.append(body_of(c))
 	return out
 
@@ -301,8 +375,10 @@ func self_view_of(c: Creature) -> Dictionary:
 		"energy_share": c.state.energy / c.state.energy_capacity if c.state.energy_capacity > 0.0 else 0.0}
 
 
+## Whether the creature thinks this tick: on its number's slot of the schedule in the pool, on its
+## think slot in the endless world (where numbers are hashes, so slots keep the load even).
 func think_due(c: Creature, tick: int) -> bool:
-	return c.brain != null and CreatureBrain.think_due(c.brain, c.number, tick)
+	return c.brain != null and CreatureBrain.think_due(c.brain, c.think_slot if endless else c.number, tick)
 
 
 ## One creature's think: it perceives `bodies` (the tick's snapshot) through its own senses, sees
@@ -407,7 +483,7 @@ func snapshot() -> Dictionary:
 
 func _new_creature(species_id: String, p_phenotype: Phenotype, p: Vector2, heading: float, tick: int) -> Creature:
 	var c := Creature.new()
-	c.number = next_number
+	c.number = next_number + (DEBUG_NUMBER_BASE if endless else 0)
 	next_number += 1
 	c.id = ID_PREFIX + str(c.number)
 	c.species_id = species_id
@@ -421,16 +497,52 @@ func _new_creature(species_id: String, p_phenotype: Phenotype, p: Vector2, headi
 
 
 func _add(c: Creature) -> void:
-	creatures.append(c)
+	if endless:
+		_insert_sorted(creatures, c)
+		if not c.asleep:
+			if c.brain != null:
+				c.think_slot = _take_slot()
+			_insert_sorted(_awake, c)
+	else:
+		creatures.append(c)
 	events.append({"type": "creature_spawned", "id": c.id, "species": c.species_id, "site": c.site_id,
 		"position": c.motion.position, "heading": c.motion.heading, "debug": c.debug})
 
 
-## Spawns the site's creature now if the spawn check passes and its niche has room.
-func _try_site(s: Dictionary, arena: PoolArena, player_pos: Vector2, tick: int) -> bool:
-	if not spawn_blocker(s, arena, player_pos).is_empty():
+## Spawns the site's creature now if the spawn check passes (from every place) and its niche has room.
+func _try_site(s: Dictionary, arena: PoolArena, places: Array[Vector2], tick: int) -> bool:
+	if not blocker_from(s, arena, places).is_empty():
 		return false
 	return spawn_at(str(s.species), s.home, float(s.heading), str(s.id), tick) != null
+
+
+## Endless mode: the slot with the fewest awake creatures (ties to the lowest), taken.
+func _take_slot() -> int:
+	var best := 0
+	for i in range(1, _slot_counts.size()):
+		if _slot_counts[i] < _slot_counts[best]:
+			best = i
+	_slot_counts[best] += 1
+	return best
+
+
+func _release_slot(c: Creature) -> void:
+	if c.think_slot >= 0:
+		_slot_counts[c.think_slot] -= 1
+		c.think_slot = -1
+
+
+## A site's record by id: the species data's in the pool.
+func _site(site_id: String) -> Dictionary:
+	return species.site(site_id)
+
+
+## Inserts `c` keeping `list` sorted by (number, id).
+static func _insert_sorted(list: Array[Creature], c: Creature) -> void:
+	var i := list.size()
+	while i > 0 and (list[i - 1].number > c.number or (list[i - 1].number == c.number and list[i - 1].id > c.id)):
+		i -= 1
+	list.insert(i, c)
 
 
 ## Adds a queue entry, keeping the queue sorted by (at_tick, site).

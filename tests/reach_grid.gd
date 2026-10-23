@@ -5,26 +5,46 @@ extends RefCounted
 ## distances round rocks, never straight lines through them.
 ##
 ##     var grid = preload("res://tests/reach_grid.gd").new(layout, 0.5)
+##     var grid = preload("res://tests/reach_grid.gd").over(arena, zones, bounds, 0.5)   # any arena
 
 const STEP := 0.5
 const UNITS_PER_STEP := 10       ## integer path costs: straight 10, diagonal 14 (x STEP / 10 m)
 const DIAGONAL_UNITS := 14
 const UNREACHED := 1 << 30
 
-var layout: PoolLayout
+var layout: PoolLayout           ## null for a grid made by over()
 var arena: PoolArena
-var size := 0                     ## points per side
+var zones: Array[Dictionary] = [] ## {center, radius}: what zone_points() counts
+var size := 0                     ## points per row
+var rows := 0                     ## points per column (size, for a pool)
 var origin := Vector2.ZERO        ## plane position of index (0, 0)
 var open := PackedByteArray()
 
 
-func _init(p_layout: PoolLayout, body_r: float) -> void:
+## The grid over a pool layout's soft wall. With no layout, an empty grid for over() to fill.
+func _init(p_layout: PoolLayout = null, body_r: float = 0.0) -> void:
+	if p_layout == null:
+		return
 	layout = p_layout
-	arena = p_layout.build_arena()
 	var half := ceili(p_layout.soft_start / STEP)
-	size = half * 2 + 1
-	origin = Vector2(-half * STEP, -half * STEP)
-	open.resize(size * size)
+	_build(p_layout.build_arena(), p_layout.zones, Rect2(-half * STEP, -half * STEP, 2 * half * STEP, 2 * half * STEP), body_r)
+
+
+## The grid over `bounds` (points STEP apart from its corner, covering it) on any arena, with
+## `zones` for zone_points(): an endless world's chunk arena, a tile, a seam.
+static func over(p_arena: PoolArena, p_zones: Array[Dictionary], bounds: Rect2, body_r: float) -> RefCounted:
+	var grid = new()
+	grid._build(p_arena, p_zones, bounds, body_r)
+	return grid
+
+
+func _build(p_arena: PoolArena, p_zones: Array[Dictionary], bounds: Rect2, body_r: float) -> void:
+	arena = p_arena
+	zones = p_zones
+	origin = bounds.position
+	size = ceili(bounds.size.x / STEP) + 1
+	rows = ceili(bounds.size.y / STEP) + 1
+	open.resize(size * rows)
 	for i in open.size():
 		open[i] = 1 if arena.is_clear(point(i), body_r) else 0
 
@@ -35,7 +55,7 @@ func point(index: int) -> Vector2:
 
 func index_near(p: Vector2) -> int:
 	var x := clampi(roundi((p.x - origin.x) / STEP), 0, size - 1)
-	var y := clampi(roundi((p.y - origin.y) / STEP), 0, size - 1)
+	var y := clampi(roundi((p.y - origin.y) / STEP), 0, rows - 1)
 	return y * size + x
 
 
@@ -67,7 +87,7 @@ func distances_from(sources: PackedInt32Array, max_m: float = INF) -> PackedFloa
 				for dx in [-1, 0, 1]:
 					var nx: int = x + dx
 					var ny: int = y + dy
-					if (dx == 0 and dy == 0) or nx < 0 or ny < 0 or nx >= size or ny >= size:
+					if (dx == 0 and dy == 0) or nx < 0 or ny < 0 or nx >= size or ny >= rows:
 						continue
 					var n := ny * size + nx
 					if open[n] == 0:
@@ -105,7 +125,7 @@ func zone_points() -> PackedInt32Array:
 	for i in open.size():
 		if open[i] == 0:
 			continue
-		for z in layout.zones:
+		for z in zones:
 			if point(i).distance_to(z.center) <= z.radius:
 				out.append(i)
 				break

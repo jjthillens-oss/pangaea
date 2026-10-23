@@ -365,3 +365,92 @@ func _supply_on() -> Dictionary:
 	var data := layout.carrion.duplicate(true)
 	data.interim_supply.enabled = true
 	return data
+
+
+# --- the endless world's food view (S1 T2.3) ---
+
+## Ids of every item, oldest first.
+func _all_ids(field: PlanktonField) -> Array:
+	var ids := []
+	for item in field.items:
+		ids.append(item.id)
+	return ids
+
+
+func test_inactive_zones_spawn_nothing_and_fill_skips_them() -> void:
+	var region := layout.build_region(12)
+	var field := PlanktonField.create(layout.plankton)
+	field.endless = true
+	field.active_zones = {"z_center": true, "z_s": true}
+	field.fill(region, arena, 0, 0.0)
+	var zones := {}
+	for item in field.items:
+		zones[item.zone] = true
+	check_eq(zones.keys().size(), 2, "items only in the two active zones (%s)" % [zones.keys()])
+	check_eq(field.count_in("z_center"), field.target_count(region.zone("z_center")), "an active zone is full")
+	check_eq(field.count_in("z_n"), 0, "an inactive zone shows nothing")
+	# Empty an inactive zone: it neither spawns nor reports while inactive.
+	region.take("z_n", 1000.0)
+	for i in 600:
+		region.tick(DT)
+		field.tick(region, arena, i, i * DT)
+		for item in field.items:
+			check(field.active_zones.has(item.zone), "tick %d: %s is in an active zone" % [i, item.id])
+	check_eq(_zone_events(field, "z_n"), [], "no zone_empty for an inactive zone")
+	check(not field.is_regrowing("z_n"), "no flag either")
+	# A full zone activated spawns one item a tick, as any short zone does.
+	field.active_zones["z_ne"] = true
+	for i in 3:
+		region.tick(DT)
+		field.tick(region, arena, 600 + i, (600 + i) * DT)
+		check_eq(field.count_in("z_ne"), i + 1, "one item a tick (tick %d)" % i)
+	field.endless = false
+	var full := PlanktonField.create(layout.plankton)
+	full.fill(region, arena, 0, 0.0)
+	check_eq(full.count_in("z_ne"), full.target_count(region.zone("z_ne")), "the pool (endless off) fills every zone")
+
+
+func test_drop_zone_removes_items_and_flags_without_events() -> void:
+	var region := layout.build_region(13)
+	var field := _field(region)
+	for item in field.items.duplicate():
+		if item.zone == "z_center":
+			_eat(field, region, item)
+	region.take("z_center", 100.0)
+	region.tick(DT)
+	field.tick(region, arena, 0, 0.0)
+	check_eq(_zone_events(field, "z_center"), ["zone_empty"], "emptied and reported")
+	check(field.is_regrowing("z_center"), "regrowing")
+	var n_before := field.items.size()
+	var in_s := field.count_in("z_s")
+	check(in_s > 0, "z_s has items")
+	field.drop_zone("z_s")
+	field.drop_zone("z_center")
+	check_eq(field.count_in("z_s"), 0, "z_s's items are gone")
+	check_eq(field.items.size(), n_before - in_s, "and only those")
+	check(field.events.is_empty(), "no events")
+	check(not field.is_regrowing("z_center"), "the regrowing flag is forgotten")
+	# The latch is forgotten too: a dropped empty zone reports empty again when it comes back.
+	region.tick(DT)
+	field.tick(region, arena, 1, DT)
+	check_eq(_zone_events(field, "z_center"), ["zone_empty"], "reported afresh after the drop")
+	check_near(float(region.zone("z_s").amount), float(region.zone("z_s").capacity), 1e-6, "the stock is the region's, untouched")
+
+
+func test_fill_zone_fills_one_zone_as_fill_does() -> void:
+	var region_a := layout.build_region(14)
+	var region_b := layout.build_region(14)
+	var a := PlanktonField.create(layout.plankton)
+	a.fill(region_a, arena, 0, 0.0)
+	var b := PlanktonField.create(layout.plankton)
+	for z in region_b.zones:
+		b.fill_zone(z, region_b, arena, 0, 0.0)
+	check_eq(_all_ids(b), _all_ids(a), "the same items in the same order")
+	var same := a.items.size() == b.items.size()
+	for i in mini(a.items.size(), b.items.size()):
+		same = same and a.items[i].anchor == b.items[i].anchor and a.items[i].zone == b.items[i].zone
+	check(same, "at the same anchors")
+	check_eq(region_b.rng.state, region_a.rng.state, "the same draws")
+	var before := b.items.size()
+	b.fill_zone(region_b.zone("z_n"), region_b, arena, 0, 0.0)
+	check_eq(b.items.size(), before, "a full zone gets nothing more")

@@ -334,3 +334,87 @@ func test_rule_13_refuses_unknown_keys_so_a_removed_tuning_knob_cannot_return() 
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.species.rammer.niche.max = 9), "Rule 13 (unknown key): species 'rammer' niche")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.species.rammer.parts[0].size = 2), "Rule 13 (unknown key): species 'rammer' part")
 	check_has_error(_errors_after(func(d: Dictionary) -> void: d.extra = true), "Rule 13 (unknown key): the species data")
+
+
+# --- the S1 extractions (docs/s1/s1-interfaces.md 3.8): the endless world checks its tiles with them ---
+
+## territory_from and reach_disc_for, given the layout's zone, are the layout versions; and they
+## follow the site and zone into any frame, which is what a tile placed far out needs.
+func test_territory_from_and_reach_disc_for_equal_the_layout_versions_for_every_m1_site() -> void:
+	var cat := SpeciesCatalog.load_from()
+	var shift := Vector2(4096.0, -2048.0)
+	for s in cat.sites:
+		var zone := layout.zone(str(s.get("territory_zone", "")))
+		var territory := cat.territory_from(s, zone)
+		check_eq(territory, cat.territory_of(s, layout), "%s: the territory" % s.id)
+		# The brain's own leash disc, built as reach_disc built it before the extraction.
+		var cfg := cat.brain_config(str(s.species))
+		var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
+		check_eq(cat.reach_disc_for(s, territory), CreatureBrain.leash_disc(mem), "%s: the reach disc" % s.id)
+		check_eq(cat.reach_disc(s, layout), cat.reach_disc_for(s, territory), "%s: reach_disc delegates" % s.id)
+		var moved := s.duplicate()
+		moved.home = Vector2(s.home) + shift
+		var moved_zone := {} if zone.is_empty() else {"center": Vector2(zone.center) + shift, "radius": zone.radius}
+		var disc := cat.reach_disc_for(moved, cat.territory_from(moved, moved_zone))
+		check_eq(disc.radius, cat.reach_disc(s, layout).radius, "%s: the same radius anywhere" % s.id)
+		check(Vector2(disc.center).is_equal_approx(Vector2(cat.reach_disc(s, layout).center) + shift), "%s: the centre moves with the site" % s.id)
+	check(cat.territory_from(cat.site("terr_ne"), {}).is_empty(), "no zone, no territory")
+	check(cat.territory_from(cat.site("lair_s"), layout.zone("z_s")).is_empty(), "an ambush site guards none, even given a zone")
+
+
+func test_strike_room_problem_gives_rule_6s_message() -> void:
+	var cat := SpeciesCatalog.load_from()
+	for id in cat.species_ids():
+		check_eq(cat.strike_room_problem(id, 6.0, "species '%s'" % id, parts), "", "%s: the M1 lane fits" % id)
+	var data := _data()
+	data.species.ambush_hunter.leash_m = 3.5
+	var short := SpeciesCatalog.from_dict(data)
+	var text := short.strike_room_problem("ambush_hunter", 6.0, "species 'ambush_hunter'", parts)
+	check_eq(text, "species 'ambush_hunter' strike lane 3.68 m is longer than its leash (3.50 m).", "the leash case")
+	check(short.validate(layout, parts).has("Rule 6 (strike window): " + text), "rule 6 reports exactly that text")
+	# A rammer counts its smallest territory plus the margin: 5.67 m against 0.5 + 2 + territory.
+	data = _data()
+	data.species.rammer.leash_m = 0.5
+	var rammer := SpeciesCatalog.from_dict(data)
+	check_eq(rammer.strike_room_problem("rammer", 6.0, "species 'rammer'", parts), "", "an 8.5 m room holds the lane")
+	check_eq(rammer.strike_room_problem("rammer", 3.0, "species 'rammer'", parts),
+		"species 'rammer' strike lane 5.67 m is longer than its smallest territory plus its leash (5.50 m).", "a 3 m territory does not")
+	check_eq(cat.strike_room_problem("kraken", 6.0, "x", parts), "", "an unknown species is rule 7's to report")
+
+
+## Rules 9 and 10 for one disc: the same messages as the layout's, and an infinite wall drops only
+## the wall gap (the endless world has no wall).
+func test_check_disc_against_shells_with_an_infinite_wall_skips_only_the_wall_gap() -> void:
+	var cat := SpeciesCatalog.load_from()
+	var disc := {"center": Vector2.ZERO, "radius": 9.0}
+	var r := 0.75
+	var shells: Array[Dictionary] = [
+		{"id": "on_circle", "center": Vector2(9.5, 0.0), "radius": 1.0},     # rule 9: 0.50 - 1.0 = -0.50 m from the circle
+		{"id": "by_wall", "center": Vector2(0.0, 7.0), "radius": 1.0},       # rule 10: 1.00 m to a wall at 9
+		{"id": "pinch_a", "center": Vector2(-3.0, 0.0), "radius": 1.0},      # rule 10: 1.00 m between pinch_a and pinch_b
+		{"id": "pinch_b", "center": Vector2(-6.0, 0.0), "radius": 1.0},
+	]
+	var walled := PackedStringArray()
+	cat.check_disc_against_shells("site 'x'", disc, r, shells, 9.0, walled)
+	var open := PackedStringArray()
+	cat.check_disc_against_shells("site 'x'", disc, r, shells, INF, open)
+	check_has_error(walled, "Rule 9 (")
+	check_has_error(walled, "site 'x': on_circle lies -0.50 m from its leash circle")
+	check_has_error(walled, "site 'x': by_wall leaves 1.00 m to the soft wall; it needs 2.00 m.")
+	check_has_error(walled, "site 'x': pinch_a leaves 1.00 m to pinch_b; it needs 2.00 m.")
+	check_has_error(walled, "site 'x': pinch_b leaves 1.00 m to pinch_a; it needs 2.00 m.")
+	var expected := PackedStringArray()
+	for e in walled:
+		if not e.contains("soft wall"):
+			expected.append(e)
+	check_eq(open, expected, "an infinite wall drops the wall gaps and nothing else")
+	check(walled.size() > open.size(), "there was a wall gap to drop")
+	# The layout's own rules 9 and 10 go through it: rule 9's case reports the same text.
+	var data := _data()
+	_site(data, "lair_s").home = [-9.6, -16.6]
+	var moved := SpeciesCatalog.from_dict(data)
+	var direct := PackedStringArray()
+	var s := moved.site("lair_s")
+	moved.check_disc_against_shells("site 'lair_s'", moved.reach_disc(s, layout), moved.phenotype(s.species, parts).radius,
+		layout.rocks, layout.soft_start, direct)
+	check_eq(_rule_errors(moved.validate(layout, parts), 9), _rule_errors(direct, 9), "the layout's rule 9 is this check")

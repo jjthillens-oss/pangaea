@@ -149,3 +149,34 @@ func _data_with_supply(enabled: bool) -> Dictionary:
 ## The real carrion data with the interim supply switched back on.
 func _supply_on() -> Dictionary:
 	return _data_with_supply(true)
+
+
+# --- the endless world's carrion ring (S1 T2.3) ---
+
+func test_drop_beyond_removes_only_far_items_without_events() -> void:
+	var field := CarrionField.create(_data_with_supply(false), 38)
+	var near := field.spawn(Vector2(3.0, 4.0), "test")        # 5 m
+	var edge := field.spawn(Vector2(0.0, -52.0), "test")      # exactly at the ring
+	var far := field.spawn(Vector2(52.01, 0.0), "test")
+	var farther := field.spawn(Vector2(-80.0, 30.0), "test")
+	field.events.clear()
+	check_eq(field.drop_beyond(Vector2.ZERO, 52.0), 2, "two dropped")
+	var ids := []
+	for item in field.items:
+		ids.append(item.id)
+	check_eq(ids, [near.id, edge.id], "the near ones stay, in order")
+	check(field.events.is_empty(), "no events")
+	check(not ids.has(far.id) and not ids.has(farther.id), "the far ones are gone")
+	check_eq(field.drop_beyond(Vector2.ZERO, 52.0), 0, "nothing more to drop")
+
+
+func test_drop_all_empties_the_field_without_events() -> void:
+	var field := CarrionField.create(_data_with_supply(false), 39)
+	for i in 4:
+		field.spawn(Vector2(i, 0.0), "test")
+	field.events.clear()
+	var next := field.next_number
+	check_eq(field.drop_all(), 4, "four dropped")
+	check(field.items.is_empty(), "empty")
+	check(field.events.is_empty(), "no events")
+	check_eq(field.next_number, next, "ids keep counting (never reused)")

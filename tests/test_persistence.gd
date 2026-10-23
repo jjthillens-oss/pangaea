@@ -283,3 +283,98 @@ func test_a_save_that_cannot_be_moved_into_place_leaves_no_temp_file() -> void:
 	check(service.save_to(folder, _new_save()) != OK, "refused")
 	check(not FileAccess.file_exists(folder + ".tmp"), "no temp file left")
 	DirAccess.remove_absolute(folder)
+
+
+# Full precision (S1 T3.2): an endless save's float64 position must survive the file. Godot's
+# JSON parse is not correctly rounded, so "survives" means within one ulp: written with the
+# shortest digits that name the double, about 9% of values still read back one ulp off, never
+# more. At the default 15 digits most values come back several ulps off.
+
+## Where the doubles lie: 5 km, 100 km and 1e9 m from the origin.
+const ULP_MAGNITUDES := [5000.0, 100000.0, 1000000000.0]
+## Doubles per magnitude; each save carries two (position x and z).
+const ULP_COUNT := 1000
+## A Vector2 is float32: the pool places a save holds are float32 values.
+const POOL_PLACES := [Vector2(0.0, 9.0), Vector2(12.345678, -0.000123), Vector2(-35.71, 20.05)]
+
+
+## One unit in the last place of `a` (a finite non-zero double).
+static func _ulp(a: float) -> float:
+	var m := absf(a)
+	var e := floori(log(m) / log(2.0))
+	while pow(2.0, e) > m:
+		e -= 1
+	while pow(2.0, e + 1) <= m:
+		e += 1
+	return pow(2.0, e - 52)
+
+
+## A double near `magnitude` whose 53 mantissa bits are all random.
+static func _random_double(rng: RandomNumberGenerator, magnitude: float) -> float:
+	var bits := (rng.randi() >> 6) * 134217728 + (rng.randi() >> 5)   # 26 + 27 random bits
+	var u := float(bits) / 9007199254740992.0                         # [0, 1)
+	var sign := 1.0 if rng.randi() % 2 == 0 else -1.0
+	return sign * magnitude * (0.5 + u)
+
+
+func test_a_saved_double_reads_back_within_one_ulp() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var save := _new_save()
+	for magnitude in ULP_MAGNITUDES:
+		var worst := 0.0
+		var off := 0
+		var lossy := 0       # how many the default 15-digit text would bring back more than one ulp off
+		for i in ULP_COUNT / 2:
+			var x := _random_double(rng, magnitude)
+			var z := _random_double(rng, magnitude)
+			save.player["position"] = PlaneSpace.to_save_abs(x, z)
+			if service.save_to(PATH, save) != OK:
+				check(false, "saved at %.0f m" % magnitude)
+				return
+			var loaded := service.load_from(PATH)
+			if not loaded.ok:
+				check(false, "loaded at %.0f m: %s" % [magnitude, loaded.errors])
+				return
+			var back := PlaneSpace.from_save_abs(loaded.save.player.position)
+			for k in 2:
+				var want := x if k == 0 else z
+				var err := absf(back[k] - want) / _ulp(want)
+				worst = maxf(worst, err)
+				if err > 0.0:
+					off += 1
+				var plain: float = JSON.parse_string(JSON.stringify([want]))[0]
+				if absf(plain - want) > _ulp(want):
+					lossy += 1
+		check(worst <= 1.0, "at %.0f m every double reads back within one ulp; the worst was %.1f ulp (%d of %d off)"
+			% [magnitude, worst, off, ULP_COUNT])
+		check(lossy >= ULP_COUNT / 2, "the sample is one the default precision gets wrong: %d of %d more than one ulp off at %.0f m"
+			% [lossy, ULP_COUNT, magnitude])
+
+
+func test_a_pool_save_written_with_full_precision_loads_the_same_as_before() -> void:
+	# The text of every double changes; what a pool save means must not. A founded lineage's angles
+	# and scales come back equal, and a float32 place comes back as the same Vector2, exactly as from
+	# a file written the old way (the default 15 digits).
+	var old_path := DIR + "/old_writer.json"
+	for body in BodyText.ORDER:
+		for place in POOL_PLACES:
+			var founded := Lineage.found(77, "test+dev", catalog, body)
+			var save: SaveGame = founded.save
+			save.player["position"] = PlaneSpace.to_save(place)
+			check_eq(service.save_to(PATH, save), OK, "%s saved" % body)
+			_write_raw(old_path, JSON.stringify(save.to_dict(), "\t"))
+			var now := service.load_from(PATH)
+			var before := service.load_from(old_path)
+			check(now.ok and before.ok, "%s loads both ways: %s %s" % [body, now.errors, before.errors])
+			if not (now.ok and before.ok):
+				return
+			for loaded in [now.save, before.save]:
+				var parts: Array[Dictionary] = loaded.genome.parts
+				check_eq(parts.size(), save.genome.parts.size(), "%s parts" % body)
+				for i in mini(parts.size(), save.genome.parts.size()):
+					check(parts[i].angle == save.genome.parts[i].angle and parts[i].scale == save.genome.parts[i].scale,
+						"%s part %d: %s came back as %s" % [body, i, save.genome.parts[i], parts[i]])
+				check_eq(PlaneSpace.from_save(loaded.player.position), place, "%s at %s" % [body, place])
+			check_eq(JSON.stringify(now.save.genome.to_dict()), JSON.stringify(before.save.genome.to_dict()),
+				"%s: the same genome as the old writer's file" % body)
