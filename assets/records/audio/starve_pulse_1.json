@@ -1,0 +1,22 @@
+{
+  "id": "starve_pulse_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/starve_pulse_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "starve_pulse",
+  "variant": 1,
+  "purpose": "A weak heartbeat at most once a second while starving.",
+  "visual_equivalent": "Starving banner, grey cell and food arrow",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.5,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"starve_pulse\", 0)"
+}

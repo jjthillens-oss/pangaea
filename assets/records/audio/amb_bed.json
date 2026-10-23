@@ -1,0 +1,19 @@
+{
+  "id": "amb_bed",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "ambience",
+  "export_path": "assets/audio/ambience/amb_bed.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "purpose": "The deep fluid: slow swells of dark noise and a faint pressure tone, under every region.",
+  "bus": "Ambience",
+  "loop": true,
+  "sample_rate": 22050,
+  "channels": 2,
+  "length_s": 40.0,
+  "recipe": "tools/audio/make_cell_audio.gd _bed"
+}

@@ -1,0 +1,102 @@
+{
+  "id": "cpart_eye",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature eye part (PROPOSED): a glossy eyeball with a ringed amber iris in a rolled fleshy lid; blinks on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_eye.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_eye.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.123,
+    "y_forward": 0.124,
+    "z_up": 0.091
+  },
+  "triangles": 700,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEye_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEye_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEye_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EyeBall",
+    "M_EyeLid"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Eye",
+    "Lid"
+  ],
+  "part_type": "eye",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "eye",
+    "footprint_radius_m": 0.062,
+    "sink_depth_m": 0.03,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 45,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "handles": [
+      {
+        "key": "H1_Blink",
+        "meaning": "the lid ring rolls over the ball to a slit",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Bulge",
+        "meaning": "the ball pushed 25% further out",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1 is on Lid, H2 on Eye; both are 0 to 1000 per mille."
+  },
+  "paint_mix": {
+    "M_EyeBall": 0.0,
+    "M_EyeLid": 0.9
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 2560,
+    "triangles_after": 700
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

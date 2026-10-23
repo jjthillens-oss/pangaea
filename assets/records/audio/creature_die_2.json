@@ -1,0 +1,22 @@
+{
+  "id": "creature_die_2",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/creature_die_2.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "creature_die",
+  "variant": 2,
+  "purpose": "A creature dies: a membrane pop and a sinking fizz. Positional.",
+  "visual_equivalent": "The body turns to carrion",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 1.0,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"creature_die\", 1)"
+}

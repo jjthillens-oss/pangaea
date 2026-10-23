@@ -149,6 +149,20 @@ Coats and cross bands follow `spine_u` and the folded ring value. Spots, cells a
 
 Rendered with gl_compatibility under Xvfb.
 
+## 2.7 First parts (PROPOSED, built)
+
+`tools/blender/make_creature_parts.py` builds five parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+
+| Id | Type | Triangles | Handles | Notes |
+|---|---|---|---|---|
+| `cpart_beak` | beak, `forward_cone`, centreline required | 286 | H1_Length, H2_Open, H3_Hook | Keeled horn bill on a fleshy gape; the keel is on +X before the runtime's frame turns it |
+| `cpart_eye` | eye, `forward_cone` | 700 | H1_Blink (on `Lid`), H2_Bulge (on `Eye`) | Glossy ball, amber iris, rolled lid; paint_mix 0 on the ball |
+| `cpart_fin` | fin, `normal` | 506 | H1_Height, H2_Sweep, H3_Ripple | Ray-stiffened membrane swept to the tail; paint_mix 0.9 |
+| `cpart_foot` | foot, `ground`, limb_end | 622 | H1_Spread, H2_Long | Three padded toes with horn nails; the sole on the pivot, the ankle top at z 0.09 |
+| `cpart_horn` | horn, `normal`, chiral | 214 | H1_Length, H2_Curl | Right-hand side only; centreline forbidden |
+
+Every handle rests at 0. Blender adds shape keys at 1, so the generator zeroes them, or the GLB would carry them as default weights. `tests/test_assets.gd` measures meshes with blend shapes at their rest shape, because Godot's mesh AABB grows to cover every blend shape.
+
 ## 3. Blender side
 
 Art writes `tools/blender/creature_reference.py`. It rebuilds a `BodyDescription` JSON as a `.blend` using the runtime thread's Python port of the skin algorithm. It places the parts by the same anchor rules and applies `creature_skin` look-dev as a Blender material. It is used for:

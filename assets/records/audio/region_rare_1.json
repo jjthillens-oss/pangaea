@@ -1,0 +1,22 @@
+{
+  "id": "region_rare_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/region_rare_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "region_rare",
+  "variant": 1,
+  "purpose": "Endless world: a rare giant set piece is near (a swell and a shimmer).",
+  "visual_equivalent": "The set piece in view",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 4.0,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"region_rare\", 0)"
+}
