@@ -13,6 +13,17 @@ const MARCH_FRACTION := 0.25
 const LIMB_END_FROM_U := 900
 ## A click this close (per mille of a turn) to the middle line snaps onto it, for parts allowed there.
 const MIDDLE_SNAP := 25
+## A press on the top of the back (the normal's up component at least TOP_PRESS_UP: within about 37 degrees of straight
+## up, so a press on the upper flank still makes an arm) grows a limb up and out; a press
+## at the end of the spine (the normal within END_PRESS_ALONG of the spine's own direction `along`, zero away from
+## the ends) grows one on along it.
+const TOP_PRESS_UP := 0.8
+const END_PRESS_ALONG := 0.6
+## A side press blends the normal with straight down, so a limb hangs like an arm: outward and down, tip below the
+## attach point, the middle joint ARM_BEND of the limb's length forward.
+const ARM_OUT := 0.6
+const ARM_DOWN := 0.8
+const ARM_BEND := 0.12
 
 
 ## First point where the ray enters the skin: {hit: bool, point: Vector3, normal: Vector3}.
@@ -164,9 +175,12 @@ static func anchor_for_part(desc: RefCounted, rule: Dictionary, picked: Dictiona
 
 
 ## A new limb grown from skin point `p` with outward normal `normal` (PROPOSED defaults): three joints on the vertebra
-## nearest the click, straight out along the normal, 2.5 vertebra radii long and tapering. Joint 0 sits inside the
-## vertebra's sphere, so it touches it. A click off the middle plane makes a mirrored pair. Returns {attach, joints:
-## [[Vector3i, r], ...], mirror} for CreatureEditorSession.add_limb, or {reason}.
+## nearest the click, 2.5 vertebra radii long and tapering. Joint 0 sits inside the vertebra's sphere, so it touches
+## it. A press on the top of the back points up and out along the normal and a press past either end of the spine
+## points on along it; a press on a side (or the belly) hangs the limb like an arm: outward and down, its tip below
+## the attach point, with the middle joint a little forward for a bend (limb_direction). A click off the middle plane
+## makes a mirrored pair. Returns {attach, joints: [[Vector3i, r], ...], mirror} for CreatureEditorSession.add_limb,
+## or {reason}.
 static func limb_at(desc: RefCounted, rules: Dictionary, p: Vector3, normal: Vector3) -> Dictionary:
 	var s: float = desc.scale_m()
 	var best := 0
@@ -186,11 +200,31 @@ static func limb_at(desc: RefCounted, rules: Dictionary, p: Vector3, normal: Vec
 			/ float(rules["preview_divisions_max"])
 	var r0 := maxf(0.45 * rv, min_r)
 	var start := centre + out.normalized() * 0.6 * rv
-	var dir := normal.normalized() if normal.length_squared() > 0.0 else out.normalized()
+	var n: int = desc.vertebrae.size()
+	var along := Vector3.ZERO
+	if best == 0 and n > 1:
+		along = (desc.position_m(0) - desc.position_m(1)).normalized()
+	elif best == n - 1 and n > 1:
+		along = (desc.position_m(n - 1) - desc.position_m(n - 2)).normalized()
+	var pose := limb_direction(normal.normalized() if normal.length_squared() > 0.0 else out.normalized(), along)
+	var dir: Vector3 = pose["dir"]
 	var length := 2.5 * rv
 	var joints := []
 	for k in 3:
 		var at := start + dir * length * k / 2.0
+		if k == 1:
+			at += (pose["bend"] as Vector3) * length
 		var r := maxf(r0 * pow(0.85, k), min_r)
 		joints.append([Vector3i(int(round(at.x / s)), int(round(at.y / s)), int(round(at.z / s))), int(ceil(r / s))])
 	return {"attach": desc.vertebrae[best]["id"], "joints": joints, "mirror": mirror}
+
+
+## The direction a new limb takes from a skin press with outward `normal` ({dir: unit Vector3, bend: the middle
+## joint's offset per metre of limb}): straight along the normal on the top of the back and at the spine's ends,
+## otherwise outward and down with a slight forward bend. `along` is the spine's outward direction at the pressed
+## vertebra when it is an end, else zero.
+static func limb_direction(normal: Vector3, along := Vector3.ZERO) -> Dictionary:
+	if normal.y >= TOP_PRESS_UP or (along.length_squared() > 0.0 and normal.dot(along) >= END_PRESS_ALONG):
+		return {"dir": normal, "bend": Vector3.ZERO}
+	var dir := (normal * ARM_OUT + Vector3.DOWN * ARM_DOWN).normalized()
+	return {"dir": dir, "bend": Vector3.FORWARD * ARM_BEND}
