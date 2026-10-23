@@ -61,8 +61,12 @@ func zone(id: String) -> Dictionary:
 func tick(dt: float) -> void:
 	for z in zones:
 		var cap: float = z.capacity
-		var logistic: float = z.growth_rate * z.amount * (1.0 - z.amount / cap)
-		z.amount = minf(cap, z.amount + (logistic + cap * REGROW_FLOOR * z.growth_rate) * dt)
+		var amount: float = z.amount
+		if amount == cap:
+			continue   # full: the update below would write cap again (its growth is 0 and minf keeps cap)
+		var rate: float = z.growth_rate
+		var logistic: float = rate * amount * (1.0 - amount / cap)
+		z.amount = minf(cap, amount + (logistic + cap * REGROW_FLOOR * rate) * dt)
 
 
 ## Takes up to `amount` from a zone. Returns what was actually taken (never below zero).
