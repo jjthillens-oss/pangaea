@@ -112,14 +112,22 @@ func enter_world() -> void:
 	_connect(world, "died", _on_world_died)
 
 
-## Writes the state to the store. A failure is warned about and kept in last_save; play goes on.
+## Writes the state to the store, with the points the world's sim holds when the world is up (so a quit from the
+## world, Main.request_quit, keeps what was eaten). A failure is warned about and kept in last_save; play goes on.
 func save_now() -> Error:
 	if store == null or store_path.is_empty():
 		return ERR_UNCONFIGURED
+	sync_from_world()
 	last_save = store.save_to(store_path, state)
 	if last_save != OK:
 		push_warning("Creature stage: could not save to %s (%s)." % [store_path, error_string(last_save)])
 	return last_save
+
+
+## Copies the world's live points into the state while the world is up; nothing otherwise.
+func sync_from_world() -> void:
+	if _mode == "world" and world != null:
+		_take_points(_world_points())
 
 
 ## Leaves the stage: saves, then asks Main for the title.

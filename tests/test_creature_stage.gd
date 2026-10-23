@@ -151,6 +151,18 @@ func test_a_death_saves_what_the_sim_holds() -> void:
 	check_eq(exits, 0, "without leaving the stage")
 
 
+func test_save_now_in_the_world_keeps_the_points_the_sim_holds() -> void:
+	var stage := _stage()
+	(stage.editor as StubEditor).done_requested.emit(CreatureData.body("s1_quadruped").to_dict(), 100)
+	var sim := StubSim.new()
+	sim.points = 160
+	(stage.world as StubWorld).sim = sim
+	check_eq(stage.save_now(), OK, "a quit's save_now() from the world")
+	check_eq(stage.state["points"], 160, "takes the sim's points first")
+	check_eq(CreatureStore.new().load_from(path).state["points"], 160, "and writes them")
+	check_eq(stage.mode(), "world", "without leaving the world")
+
+
 func test_back_saves_and_asks_main_for_the_title() -> void:
 	var stage := _stage()
 	_escape(stage)
