@@ -1054,6 +1054,24 @@ func test_sleeper_eviction_removes_the_farthest_and_requeues_it_with_its_hashed_
 	check(sim.world.sites.has("x_s55"), "the site stays in the table")
 
 
+## Two sleepers over the cap in one tick: both farthest go, and the step returns (an evicted
+## creature left among the candidates was picked again forever).
+func test_two_sleepers_over_the_cap_are_both_evicted_in_one_tick() -> void:
+	var sim := _quiet()
+	sim.world.caps.awake = 2
+	sim.world.caps.sleepers = 1
+	var s45 := _site_creature(sim, "x_s45", Vector2(45.0, 0.0), true)
+	var s55 := _site_creature(sim, "x_s55", Vector2(0.0, 55.0), true)
+	var s50 := _site_creature(sim, "x_s50", Vector2(-50.0, 0.0), true)
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var removed := _of(sim.drain_events(), "creature_removed")
+	var ids := removed.map(func(e: Dictionary) -> String: return str(e.id))
+	check_eq(ids, [s55.id, s50.id], "the two farthest evicted, farthest first")
+	check(sim.creatures.find(s45.id) != null, "the nearest kept")
+	check_eq(int(sim.world.counters.evictions), 2, "both counted")
+
+
 ## C-6: a scripted body and a siteless (debug) creature never sleep; a site creature as far does.
 func test_scripted_and_siteless_creatures_never_sleep() -> void:
 	var sim := _quiet()
