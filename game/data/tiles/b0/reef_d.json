@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "Shell reef, the danger: shell clusters round ambush lairs that watch the meadows, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
+  "note": "Shell reef, the danger: shell clusters round ambush lairs that wait at the rims of the meadows they watch, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
   "id": "reef_d",
   "band": 0,
   "region": "reef",
@@ -11,11 +11,11 @@
   "set_piece": null,
   "shells": [
     {"id": "s0", "center": [-0.9, -14.0], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s1", "center": [-20.0, 6.9], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s2", "center": [-23.2, 3.9], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-18.8, 8.0], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-23.5, 3.9], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s3", "center": [22.3, -25.7], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s4", "center": [19.0, 9.5], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s5", "center": [-22.9, 14.5], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [-24.1, 14.7], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s6", "center": [-15.4, 9.5], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s7", "center": [-20.1, -17.0], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s8", "center": [-20.4, 13.0], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
@@ -43,7 +43,7 @@
     {"id": "f8", "center": [21.0, 26.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "la", "species": "ambush_hunter", "home": [-7.0, -4.0], "heading": -2.3562, "territory_zone": "", "sizes": [1]},
-    {"id": "lb", "species": "ambush_hunter", "home": [7.0, -4.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [-10.8, -7.8], "heading": -2.3562, "territory_zone": "", "sizes": [1]},
+    {"id": "lb", "species": "ambush_hunter", "home": [10.8, -7.8], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
   ]
 }

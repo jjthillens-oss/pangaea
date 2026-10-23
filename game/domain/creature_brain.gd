@@ -1189,11 +1189,15 @@ static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, aren
 
 
 ## _seek from the body's own position, radius, top speed and acceleration (the self view's values)
-## instead of a self view: PoolSim's usual drive, a forager's seek, builds none.
+## instead of a self view: PoolSim's usual drive, a forager's seek, builds none. With `keep` (the
+## creature's own, on a ChunkArena), the route comes from ChunkArena.route_point_kept: the same point.
 static func seek_from(mem: Memory, at: Vector2, radius: float, speed: float, acceleration: float, goal: Vector2,
-		share: float, arena: PoolArena, arrive: bool) -> Dictionary:
+		share: float, arena: PoolArena, arrive: bool, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var way := goal
-	if arena != null:
+	if keep != null:
+		way = (arena as ChunkArena).route_point_kept(at, goal, radius, float(mem.cfg.route_clearance),
+			float(mem.cfg.route_margin), mem.route_side, keep)
+	elif arena != null:
 		way = arena.route_point(at, goal, radius, float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
 			mem.route_side)
 	var to := way - at
