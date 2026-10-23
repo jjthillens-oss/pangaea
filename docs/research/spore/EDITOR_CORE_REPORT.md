@@ -113,8 +113,22 @@ refuses only what the finest grid cannot hold. The ten test bodies keep /48, so 
 
 The gameplay skin needs no change: it already runs coarser than the preview, at /40 or less, and stays closed.
 
-## 5. Next (PROPOSED)
+## 5. Limb tool and part turning (added after the merge of PR #59)
 
-1. Limb tools in the scene: drag a new limb out of the body, and rotate or turn parts with a gizmo ring.
+- **`EditorPicking.limb_at`** grows a limb from a click with PROPOSED defaults:
+  - three joints on the vertebra nearest the click, pointing straight out along the skin normal;
+  - 2.5 vertebra radii long, tapering, and thick enough for the finest preview grid;
+  - a click off the middle plane makes a mirrored pair; a click on it (the back, the tail tip) makes a single limb.
+  - Checks: on the quadruped, biped and hexapod, clicks on the side of the chest, the side of the neck, the top of the
+    back and past the tail tip each grow a valid limb (12 checks).
+- **Editor Lab.** The limb tool (6 or L) grows the limb and lets the mouse drag its tip out in the same gesture. The
+  growth and the drag are one undo step. Q and E turn the selected part; R and F tilt it. The record limits apply, so
+  turning past them is refused.
+- The demo clip now also grows a pair of arms from the neck, turns the fin, and stretches the tail until the toes are
+  too thin for the finest grid.
+
+## 6. Next (PROPOSED)
+
+1. A gizmo ring for turning parts with the mouse, instead of keys.
 2. Rebuild in a background thread while dragging, so the mouse never waits on the skin.
 3. Hand the core to S4's editor shell when the creature stage starts.

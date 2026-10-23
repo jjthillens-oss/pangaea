@@ -6,7 +6,8 @@ extends Node3D
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part) to move it; with a part tool chosen, left-click
 ## the skin to add one. Wheel over the selected vertebra or joint: thicker or thinner; elsewhere: zoom. Right-drag:
-## orbit. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 0 no tool, Delete removes the selection, Insert adds a
+## orbit. Keys: 1-5 part tools (eye, beak, fin, foot, horn), 6 or L limb tool (click the skin and drag the new limb's
+## tip out), 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the selection, Insert adds a
 ## vertebra or joint after the selection, Ctrl+Z / Ctrl+Y undo and redo, Enter commits.
 ##
 ## A vertebra on the middle line stays on it while dragged, so a symmetric body stays symmetric. Dragging a mirror
@@ -177,8 +178,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_report(session.redo(), "redo")
 		elif k.keycode >= KEY_1 and k.keycode <= KEY_5:
 			tool = TOOLS[k.keycode - KEY_1]
+		elif k.keycode == KEY_6 or k.keycode == KEY_L:
+			tool = "limb"
 		elif k.keycode == KEY_0:
 			tool = ""
+		elif k.keycode in [KEY_Q, KEY_E, KEY_R, KEY_F]:
+			turn_selected(k.keycode)
 		elif k.keycode == KEY_DELETE:
 			remove_selected()
 		elif k.keycode == KEY_INSERT:
@@ -205,6 +210,9 @@ func press(at: Vector2) -> void:
 	if not hit["hit"]:
 		message = "missed the body"
 		return
+	if tool == "limb":
+		_grow_limb(hit)
+		return
 	var a: Dictionary = Picking.anchor_for_part(session.working, part_rules[tool],
 			Picking.anchor_at(session.working, hit["field"], hit["point"]))
 	if a.has("reason"):
@@ -214,6 +222,24 @@ func press(at: Vector2) -> void:
 	_result(r, "added %s" % tool)
 	if r["ok"]:
 		selected = {"kind": "part", "id": r["part_id"], "twin": false}
+
+
+## Limb tool: a new limb grows from the click and its tip follows the mouse until release, all one undo step.
+func _grow_limb(hit: Dictionary) -> void:
+	var desc = session.working
+	var limb: Dictionary = Picking.limb_at(desc, session.rules, hit["point"], hit["normal"])
+	session.begin_gesture()
+	var r: Dictionary = session.add_limb(limb["attach"], limb["joints"], limb["mirror"])
+	_result(r, "grew a limb")
+	if not r["ok"]:
+		session.end_gesture()
+		return
+	var joints: Array = session.working.limbs[session.working.limb_index(r["limb_id"])]["joints"]
+	var tip: Dictionary = joints[-1]
+	var world: Vector3 = Vector3(float(tip["p"][0]), float(tip["p"][1]), float(tip["p"][2])) * desc.scale_m() + _rig_offset
+	selected = {"kind": "joint", "id": tip["id"], "limb": r["limb_id"], "copy": false, "twin": false, "world": world}
+	dragging = true
+	drag_plane = Plane(-camera.global_transform.basis.z, world)
 
 
 func drag_to(at: Vector2) -> void:
@@ -276,6 +302,16 @@ func wheel(direction: int) -> void:
 		for j in limb["joints"]:
 			if j["id"] == selected["id"]:
 				_result(session.set_joint_radius(selected["limb"], selected["id"], int(round(int(j["r"]) * f))), "")
+
+
+## Q/E turn the selected part 10 degrees left or right about its up axis, R/F tilt it.
+func turn_selected(key: Key) -> void:
+	if selected.is_empty() or selected["kind"] != "part":
+		return
+	var part: Dictionary = session.working.parts.filter(func(x): return x["id"] == selected["id"])[0]
+	var step := 10 if key in [KEY_E, KEY_R] else -10
+	var axis := "turn" if key in [KEY_Q, KEY_E] else "tilt"
+	_result(session.orient_part(selected["id"], {axis: int(part[axis]) + step}), "%s %+d" % [axis, step])
 
 
 func remove_selected() -> void:
@@ -419,13 +455,32 @@ func _demo_script() -> Array:
 		tool = ""
 		message = "drag the fin along the back"])
 	drag.call(7.0, 8.2, part.call("fin"), Vector3(0, 0, 0.3))
-	steps.append([8.6, func(): message = "stretch the tail: drag past the limit is refused"])
-	drag.call(8.8, 10.0, vertebra.call("v_9"), Vector3(0, 0.15, 1.2))
-	steps.append([10.6, func(): _report(session.undo(), "undo")])
-	steps.append([11.2, func(): _report(session.undo(), "undo")])
-	steps.append([11.8, func(): _report(session.redo(), "redo")])
-	steps.append([12.6, func(): commit()])
-	steps.append([14.0, func(): get_tree().quit()])
+	steps.append([8.6, func():
+		tool = "limb"
+		message = "limb tool: drag a pair of arms out of the neck"])
+	var arm := {}
+	steps.append([9.0, func():
+		var neck: Vector3 = vertebra.call("v_2").call()
+		var r: float = session.working.radius_m(1)
+		press(camera.unproject_position(neck + Vector3(0.9 * r, -0.2 * r, 0.0)))
+		arm["at"] = selected.get("world", neck)])
+	for i in range(1, 21):
+		steps.append([9.0 + 0.06 * i, func(): drag_to(camera.unproject_position(arm["at"] + Vector3(0.05, -0.12, -0.18) * (i / 20.0)))])
+	steps.append([10.3, func():
+		release()
+		tool = ""])
+	steps.append([10.8, func(): message = "turn the fin with Q / E"])
+	steps.append([11.0, func():
+		selected = handles.filter(func(h): return h["kind"] == "part" and h["id"] == "p_7" and not h["twin"])[0]
+		_dirty = true])
+	for i in 3:
+		steps.append([11.3 + 0.3 * i, func(): turn_selected(KEY_E)])
+	steps.append([12.4, func(): message = "stretch the tail: past the limit is refused"])
+	drag.call(12.6, 13.6, vertebra.call("v_9"), Vector3(0, 0.15, 1.2))
+	steps.append([14.0, func(): _report(session.undo(), "undo")])
+	steps.append([14.6, func(): _report(session.redo(), "redo")])
+	steps.append([15.4, func(): commit()])
+	steps.append([17.0, func(): get_tree().quit()])
 	return steps
 
 

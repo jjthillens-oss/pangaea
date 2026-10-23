@@ -40,6 +40,7 @@ func _init() -> void:
 	test_ray_to_skin()
 	test_pick_round_trip()
 	test_anchor_for_part()
+	test_limb_from_click()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -327,3 +328,36 @@ func test_anchor_for_part() -> void:
 	var length: float = desc.bounds_m().get_longest_axis_size()
 	check(r["ok"] and placed.size() == 2 and placed[1]["transform"].origin.distance_to(copy_ray["point"]) < 0.02 * length,
 			"a fin clicked on a leg's mirror copy is added to the leg, and its twin lands where the click was %s" % r["reason"])
+
+
+## Rays aimed at a body's vertebrae (side, top, past the tail tip); each click grows a valid limb.
+func test_limb_from_click() -> void:
+	for body_name in ["s1_quadruped", "s1_biped", "s1_hexapod"]:
+		var s := session(body_name)
+		var desc = s.working
+		var n: int = desc.vertebrae.size()
+		var chest: Vector3 = desc.position_m(n / 3)
+		var neck: Vector3 = desc.position_m(1)
+		var back: Vector3 = desc.position_m(n / 2)
+		var tail: Vector3 = desc.position_m(n - 1)
+		var tail_dir: Vector3 = (tail - desc.position_m(n - 2)).normalized()
+		var cases := {
+			"side of the chest": [chest + Vector3.RIGHT * 3.0, Vector3.LEFT, true],
+			"side of the neck": [neck + Vector3.RIGHT * 3.0, Vector3.LEFT, true],
+			"top of the back": [back + Vector3.UP * 3.0, Vector3.DOWN, false],
+			"tail tip": [tail + tail_dir * 3.0, -tail_dir, false],
+		}
+		for what in cases:
+			s = session(body_name)
+			var field = BodyField.from_description(s.working)
+			var c: Array = cases[what]
+			var hit: Dictionary = Picking.ray_to_skin(field, c[0], c[1])
+			if not hit["hit"]:
+				check(false, "%s: the ray at the %s hits the body" % [body_name, what])
+				continue
+			var limb: Dictionary = Picking.limb_at(s.working, rules, hit["point"], hit["normal"])
+			var before: int = s.working.limb_chains().size()
+			var r: Dictionary = s.add_limb(limb["attach"], limb["joints"], limb["mirror"])
+			check(r["ok"] and limb["mirror"] == c[2] and s.working.limb_chains().size() == before + (2 if c[2] else 1),
+					"%s: a limb grown from the %s is valid, %s %s" % [body_name, what, "a mirrored pair" if c[2] else "single",
+					r["reason"]])
