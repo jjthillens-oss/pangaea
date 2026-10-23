@@ -42,6 +42,9 @@ var settings := GameSettings.defaults()
 var load_source := ""
 ## What shared()'s first load found wrong (Main logs it as warnings).
 var load_problems := PackedStringArray()
+## True while a change (set_value, rebind) has not been written by save_file(). Main writes the
+## file on quit when it is set, so a quit from the settings screen keeps its changes.
+var unsaved := false
 var _focus_muted := false
 ## Theme -> {[type, name]: base size} before any text scale.
 var _base_sizes := {}
@@ -105,7 +108,10 @@ func save_file() -> Error:
 		return err
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
-	return DirAccess.rename_absolute(tmp, path)
+	err = DirAccess.rename_absolute(tmp, path)
+	if err == OK:
+		unsaved = false
+	return err
 
 
 func get_value(id: String) -> Variant:
@@ -119,6 +125,7 @@ func set_value(id: String, value: Variant) -> bool:
 	if not settings.set_value(id, value):
 		return false
 	if settings.get_value(id) != before:
+		unsaved = true
 		apply_one(id)
 		changed.emit(id)
 	return true
@@ -256,6 +263,7 @@ func rebind(action: String, code: String) -> void:
 			theirs[i] = old
 		settings.bindings[other] = theirs
 	settings.bindings[action] = codes
+	unsaved = true
 	apply_bindings()
 	changed.emit("bindings/" + action)
 
