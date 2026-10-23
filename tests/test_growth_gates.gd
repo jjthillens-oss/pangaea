@@ -22,7 +22,10 @@ extends TestCase
 ##    species that entered at the old size, now at q < 1, flees the cell inside the default-zoom
 ##    footprint (D-49: camera.distance, fairness.spawn_view_aspect, grown by its radius): a remnant,
 ##    or a creature in FLEE whose fear_of or attacker is the cell. Median at most 30 s; a run with
-##    none in 120 s counts 120 s.
+##    none in 120 s counts 120 s. In each of those runs every calm count before the first growth
+##    starts once the showcase is over (showcase_s after the ring filled) or with a creature that
+##    flips at the next size in view (D-49, Growth._flip_in_view): the reversal median alone does not
+##    see the showcase go, since a remnant in view at the growth reverses at once.
 ##  - soak, clumsy: ClumsyBot "clumsy" on the grazer and the omnivore, 6 seeds each; median first
 ##    growth at most 6 minutes (a run with none by CAP_S counts CAP_S).
 ##  - soak, die on purpose: ClumsyBot "die" on the same bodies and seeds; its median first growth is
@@ -307,9 +310,11 @@ func test_soak_the_first_growth_comes_in_3_to_5_minutes_and_old_threats_turn_wit
 		var mine: Array[float] = []
 		for seed_value in GROWTH_SEEDS:
 			var run := _growth_run(str(b.bot), str(b.body), seed_value, FIRST_MAX_S, true)
-			print("test-growth-gates: %s %s seed %d: first growth %s, reversal %s, %d deaths, %d meals" % [
-				b.bot, b.body, seed_value, _s(run.grew_s), _s(run.reversal_s), run.deaths, run.meals])
+			print("test-growth-gates: %s %s seed %d: first growth %s, reversal %s, %d deaths, %d meals, %d calm counts, %d unshown" % [
+				b.bot, b.body, seed_value, _s(run.grew_s), _s(run.reversal_s), run.deaths, run.meals, run.counts, run.unshown])
 			check(run.grew_s <= FIRST_MAX_S, "%s %s seed %d grew within 6 minutes (%s)" % [b.bot, b.body, seed_value, _s(run.grew_s)])
+			check_eq(int(run.unshown), 0, "%s %s seed %d: every calm count before the growth started after the showcase or with a flip in view" % [
+				b.bot, b.body, seed_value])
 			mine.append(run.grew_s)
 			firsts.append(run.grew_s)
 			if run.grew_s <= FIRST_MAX_S:
@@ -398,7 +403,8 @@ func _gate_waits(what: String, needs: PackedStringArray) -> bool:
 ## One run from home with growth on (auto): `bot_name` ("forage" wary, "hunt", "clumsy" or "die")
 ## on `body` until the first grew or `cap_s`; with `reversal`, on after grew until the reversal or
 ## REVERSAL_NONE_S. Returns {"grew_s" (INF for none), "reversal_s" (INF for none), "deaths",
-## "meals", "charges"}.
+## "meals", "charges", "counts" (calm counts started before the first growth), "unshown" (those that
+## started before the showcase was over with no flipping creature in view, D-49)}.
 func _growth_run(bot_name: String, body: String, seed_value: int, cap_s: float, reversal: bool) -> Dictionary:
 	var sim: Variant = Gates.make_sim(body, seed_value, true)
 	var bot: Variant
@@ -410,7 +416,7 @@ func _growth_run(bot_name: String, body: String, seed_value: int, cap_s: float, 
 			bot = HuntBot.new()
 		_:
 			bot = ClumsyBot.new(bot_name)
-	var out := {"grew_s": INF, "reversal_s": INF, "deaths": 0, "meals": 0, "charges": 0}
+	var out := {"grew_s": INF, "reversal_s": INF, "deaths": 0, "meals": 0, "charges": 0, "counts": 0, "unshown": 0}
 	var events: Array[Dictionary] = []
 	var dead := {}
 	var grew_at := -1
@@ -435,6 +441,11 @@ func _growth_run(bot_name: String, body: String, seed_value: int, cap_s: float, 
 						grew_at = sim.tick - 1   # the tick that grew
 						old_size = int(e.get("from", int(e.get("to", 2)) - 1))
 						out.grew_s = i / TPS
+		if grew_at < 0 and sim.growth.calm_ticks == 1:   # a calm count started on the tick just stepped
+			out.counts += 1
+			var g: Growth = sim.growth
+			if sim.tick - 1 - g.full_since < CreatureBrain.ticks(g.cfg.showcase_s) and not Growth._flip_in_view(sim, sim.size()):
+				out.unshown += 1
 		if grew_at >= 0 and sim.tick - 1 > grew_at and reversal and not is_finite(out.reversal_s) and reversed_in_view(sim, old_size):
 			out.reversal_s = (sim.tick - 1 - grew_at) / TPS
 	if bot_name in ["clumsy", "die"]:
