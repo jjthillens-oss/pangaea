@@ -58,6 +58,12 @@ const ANCHOR_GAP_BU := 0.5
 ## Rule 7: live creature sites per tile at the band's first and second sizes.
 const MAX_SITES_FIRST_SIZE := 4
 const MAX_SITES_SECOND_SIZE := 2
+## Rule 7 at the band's second size (PROPOSED): a sunlit or reef tile of this set needs a live site
+## there, not a threat: one of the first size's species the cell now outgrows (a rammer, a lair).
+## The other set's tiles each need a threat, so of two edge neighbours of a region (the sets
+## alternate, WorldGen) one holds a threat. A threat in every tile as well would put two live sites
+## in each, and the site sample (B-17) allows about one per 40 tm tile.
+const SECOND_SIZE_OUTGROWN_SET := 0
 const MIN_THREAT_BEHAVIORS := 2
 ## D-61: how far apart a two-post site's homes lie, in the species' own tm (q = 1), by its habit's
 ## post_switch: the Lurker's 4 to 6 tm, the elder rammer's 6.0 to 10.5 tm. Times k_of in bu.
@@ -603,7 +609,9 @@ static func post_path_problems(a: Vector2, b: Vector2, half_width: float, collid
 ## Rule 7: a zone in every tile (one not dropped at the band's second size), threats where they
 ## belong, the band's behaviours and density. A threat at `size` is a site live there whose species
 ## has a threat behaviour and entry size `size` (the ladder's "threat"; the M1 species are rivals and
-## prey at size 2). Also gathers rule 8's smallest live territory per species, bu (both posts' zones).
+## prey at size 2). At the second size a sunlit or reef tile of SECOND_SIZE_OUTGROWN_SET needs only a
+## live site; every other non-drift tile (a rare one's set is -1) needs a threat at each size. Also
+## gathers rule 8's smallest live territory per species, bu (both posts' zones).
 static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, behaviors: Dictionary,
 		smallest: Dictionary, errors: PackedStringArray) -> void:
 	var w: String = t.where
@@ -613,6 +621,7 @@ static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, be
 	elif size == first + 1 and t.zones.all(func(z: Dictionary) -> bool: return z.at_second_size == "drop"):
 		errors.append("%s: rule 7 at size %d: every zone is dropped; a tile keeps or thins one" % [w, size])
 	var threats := 0
+	var live := 0
 	var at_first := 0
 	var at_second := 0
 	var any_threat := false
@@ -624,6 +633,7 @@ static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, be
 		at_second += 1 if s.sizes.has(first + 1) else 0
 		if not s.sizes.has(size):
 			continue
+		live += 1
 		if threat and species.entry_size(s.species) == size:
 			threats += 1
 			if not behaviors.has(t.band):
@@ -636,6 +646,9 @@ static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, be
 					smallest[s.species] = minf(float(smallest.get(s.species, INF)), float(zone.radius))
 	if t.region == "drift" and any_threat:
 		errors.append("%s: rule 7: a drift tile has no threat site" % w)
+	elif t.region != "drift" and size == first + 1 and int(t.set) == SECOND_SIZE_OUTGROWN_SET:
+		if live == 0:
+			errors.append("%s: rule 7: a %s tile of set %d needs a live site at size %d" % [w, t.region, t.set, size])
 	elif t.region != "drift" and threats == 0:
 		errors.append("%s: rule 7: a %s tile needs a live threat site at size %d" % [w, t.region, size])
 	if at_first > MAX_SITES_FIRST_SIZE or at_second > MAX_SITES_SECOND_SIZE:

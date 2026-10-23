@@ -111,12 +111,13 @@ func test_problems_come_in_the_pinned_order() -> void:
 ## is listed once.
 func test_problems_check_every_size() -> void:
 	var content := _content()
-	var t: Dictionary = content.tiles.tiles.sunlit_a
+	# sunlit_b is of set 1, which keeps a threat at size 2 (TileCatalog's rule 7).
+	var t: Dictionary = content.tiles.tiles.sunlit_b
 	t.sites = t.sites.filter(func(s: Dictionary) -> bool: return s.id != "er")
 	var site: Dictionary = content.home.sites.filter(func(s: Dictionary) -> bool: return s.id == "terr_n_a")[0]
 	var zone: Dictionary = content.home.zones.filter(func(z: Dictionary) -> bool: return z.id == site.territory_zone)[0]
 	zone.at_second_size = "drop"
-	var tile_2 := "b0/sunlit_a: rule 7: a sunlit tile needs a live threat site at size 2"
+	var tile_2 := "b0/sunlit_b: rule 7: a sunlit tile needs a live threat site at size 2"
 	var home_2 := "home_min: rule 5 at size 2: site '%s' territory_zone '%s' is dropped at size 2"
 	check_eq(content.tiles.validate(species, content.kit, parts, 1), PackedStringArray(), "the tiles pass at size 1")
 	check_eq(content.home.validate(species, content.kit, parts, 1), PackedStringArray(), "the home block passes at size 1")

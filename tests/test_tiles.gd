@@ -13,7 +13,9 @@ extends TestCase
 ## 40 tm there; the cell keeps r 0.5 tm and the starving budget): the colliders there (no "sink"
 ## shells), the zones there ("drop" gone, "thin" at capacity x 0.4, a zone that can hold no item is
 ## no food), each live site's discs with k and, for two posts, both posts and their union. Threat
-## coverage at sizes 1 and 2 is the region design's and TileCatalog's rule 7.
+## coverage at sizes 1 and 2 is the region design's and TileCatalog's rule 7: at size 2 a sunlit or
+## reef tile of set 0 keeps one M1 site live (a rammer on the feast zone, a lair; the cell now
+## outgrows them), one of set 1 a size-2 threat, so edge neighbours of a region alternate.
 
 const WorldChecks := preload("res://tests/world_checks.gd")
 const ReachGrid := preload("res://tests/reach_grid.gd")
@@ -30,11 +32,15 @@ const REEF_SHELLS := 18
 const DRIFT_MAX_SHELLS := 5
 const DRIFT_MAX_CAPACITY := 16.0
 const DRIFT_MAX_ITEMS := 12
-## A sunlit tile's size-2 threat (S2): an elder rammer guarding a zone, or a Lurker where every zone's
-## disc would reach too near the landmark anchor (PROPOSED).
+## A sunlit tile's size-2 threat (S2, set 1): an elder rammer guarding a zone, or a Lurker where every
+## zone's disc would reach too near the landmark anchor (PROPOSED).
 const SUNLIT_THREATS_AT_TWO := ["elder_rammer", "lurker"]
+## The set whose sunlit and reef tiles keep an M1 site live at size 2 instead of a threat (PROPOSED;
+## TileCatalog's rule 7): one live site a tile, as the site sample allows (B-17: a 40 tm disc meets
+## about nine 40 tm tiles; with an M1 site and a threat in each it met 13, the limit is 10).
+const OUTGROWN_SET := TileCatalog.SECOND_SIZE_OUTGROWN_SET
 ## A tile's zones at size 2 (PROPOSED): one of this capacity or more thins (x 0.4; a thinned 8 or 16
-## would hold no item, floor(3.2 / 8) = 0), unless an elder rammer guards it there; the rest keep.
+## would hold no item, floor(3.2 / 8) = 0), unless a size-2 threat guards it there; the rest keep.
 ## So the food bound holds at size 2 (all kept, it measures 188 against the cap of 120).
 const THIN_FROM_CAPACITY := 32.0
 ## The smallest slack a site keeps inside its tile (rule 6's inset) and from the landmark anchor
@@ -50,9 +56,10 @@ const CONTROL_B := "giant_husk"
 const CONTROL_SHELL := [35.5, -4.0]
 const CONTROL_R := 0.6
 const IDENTITY: PackedInt32Array = [0]
-## The size-2 controls (S2G7): giant_husk's one-post Lurker, reef_a's two-post one, the ring's elder
-## rammer, and the home block's edge slot east of it.
+## The size-2 controls (S2G7): giant_husk's one-post Lurker, reef_e's two-post one (west of
+## giant_husk for its control), the ring's elder rammer, and the home block's edge slot east of it.
 const CONTROL_2_SITE := "lk"
+const CONTROL_U := "reef_e"
 const CONTROL_2_HOME_SITE := "re"
 const CONTROL_2_SLOT := Vector2i(1, -1)
 const FOOD_COARSE_TM := 4.0
@@ -213,16 +220,19 @@ func test_tiles_keep_their_region_design() -> void:
 			items += _items(z)
 		var rammers := 0
 		var ambushes := 0
-		# S2 (s2-interfaces 4.3): a size-2 threat lives at size 2 only, an M1 site at size 1 only: with the
-		# M1 sites the spine keeps at size 2 (a sunlit rammer, a set-0 reef lair) a 40 tm disc meets up
-		# to 13 live reach discs in a sunlit cluster, and the site sample allows 10 (PROPOSED).
+		# S2 (s2-interfaces 4.3, PROPOSED): a size-2 threat lives at size 2 only; an M1 site at size 1,
+		# and at size 2 too for the one a sunlit or reef tile of OUTGROWN_SET keeps there (the sunlit
+		# rammer on the feast zone, BP-5's parked grazer's; a reef lair), in place of a threat.
 		var threats_at_two := []
+		var outgrown_at_two := []
 		for s in t.sites:
 			if species.entry_size(s.species) == 2:
 				check_eq(s.sizes, [2] as Array[int], "%s site '%s': a size-2 threat lives at size 2 only" % [id, s.id])
 				threats_at_two.append(s.species)
 				continue
-			check_eq(s.sizes, [1] as Array[int], "%s site '%s': an M1 site lives at size 1 only" % [id, s.id])
+			if s.sizes.has(2):
+				outgrown_at_two.append("%s:%s" % [species.behavior_of(s.species), s.territory_zone])
+			check(s.sizes == ([1] as Array[int]) or s.sizes == ([1, 2] as Array[int]), "%s site '%s': an M1 site lives at size 1, or 1 and 2 (%s)" % [id, s.id, s.sizes])
 			if species.behavior_of(s.species) == "territorial":
 				var z := _zone_of(t, s.territory_zone)
 				if t.region == "sunlit" and float(z.get("capacity", 0.0)) >= SUNLIT_RAMMER_CAPACITY:
@@ -231,8 +241,9 @@ func test_tiles_keep_their_region_design() -> void:
 				ambushes += 1
 		var guarded := []
 		for s in t.sites:
-			if s.sizes.has(2) and not str(s.territory_zone).is_empty():
+			if s.sizes.has(2) and species.entry_size(s.species) == 2 and not str(s.territory_zone).is_empty():
 				guarded.append(s.territory_zone)
+		var outgrown: bool = t.region in ["sunlit", "reef"] and int(t.set) == OUTGROWN_SET
 		for z in t.zones:
 			var want := "thin" if float(z.capacity) >= THIN_FROM_CAPACITY and not guarded.has(z.id) else "keep"
 			check_eq(z.at_second_size, want, "%s zone '%s' (capacity %s%s) at size 2" % [id, z.id, z.capacity, ", guarded" if guarded.has(z.id) else ""])
@@ -243,12 +254,22 @@ func test_tiles_keep_their_region_design() -> void:
 					"%s: the feast zone ra is R %s, capacity %s (%s)" % [id, SUNLIT_RICH_R, SUNLIT_RICH_CAPACITY, rich])
 				check(rammers >= 1, "%s: a rammer guards a zone of capacity %s or more" % [id, SUNLIT_RAMMER_CAPACITY])
 				sunlit_least = mini(sunlit_least, items)
-				check(threats_at_two.size() == 1 and threats_at_two[0] in SUNLIT_THREATS_AT_TWO,
-					"%s: one size-2 threat, an elder rammer or a Lurker where the anchor leaves it no zone (%s)" % [id, threats_at_two])
+				if outgrown:
+					check_eq(threats_at_two, [], "%s (set %d): no threat at size 2" % [id, t.set])
+					check_eq(outgrown_at_two, ["territorial:ra"], "%s (set %d): its rammer on the feast zone lives at size 2" % [id, t.set])
+				else:
+					check(threats_at_two.size() == 1 and threats_at_two[0] in SUNLIT_THREATS_AT_TWO,
+						"%s: one size-2 threat, an elder rammer or a Lurker where the anchor leaves it no zone (%s)" % [id, threats_at_two])
+					check_eq(outgrown_at_two, [], "%s (set %d): no M1 site at size 2" % [id, t.set])
 			"reef":
 				check_eq(t.shells.size(), REEF_SHELLS, "%s: the reef's shells" % id)
 				check(t.sites.size() >= 2 and ambushes >= 1, "%s: at least 2 sites, an ambush lair among them (%d, %d)" % [id, t.sites.size(), ambushes])
-				check_eq(threats_at_two, ["lurker"], "%s: one Lurker at size 2" % id)
+				if outgrown:
+					check_eq(threats_at_two, [], "%s (set %d): no threat at size 2" % [id, t.set])
+					check_eq(outgrown_at_two, ["ambush:"], "%s (set %d): one lair lives at size 2" % [id, t.set])
+				else:
+					check_eq(threats_at_two, ["lurker"], "%s: one Lurker at size 2" % id)
+					check_eq(outgrown_at_two, [], "%s (set %d): no M1 site at size 2" % [id, t.set])
 			"drift":
 				check(t.sites.is_empty(), "%s: drift has no sites" % id)
 				check(t.shells.size() <= DRIFT_MAX_SHELLS, "%s: at most %d shells (%d)" % [id, DRIFT_MAX_SHELLS, t.shells.size()])
@@ -262,6 +283,7 @@ func test_tiles_keep_their_region_design() -> void:
 				check(not t.sites.filter(func(s: Dictionary) -> bool: return s.sizes.has(1) and TileCatalog.THREAT_BEHAVIORS.has(species.behavior_of(s.species))).is_empty(),
 					"%s: a live threat guards it" % id)
 				check(threats_at_two.size() >= 1, "%s: a threat guards it at size 2 too" % id)
+				check_eq(outgrown_at_two, [], "%s: no M1 site at size 2" % id)
 	check(drift_most < sunlit_least, "drift tiles hold fewer items (at most %d) than any sunlit tile (at least %d)" % [drift_most, sunlit_least])
 
 
@@ -458,9 +480,9 @@ func test_slow_seams_hold_between_tiles_and_against_the_home_edges() -> void:
 ## S2G7's seam controls at size 2, placed from the species' own discs (k_of, two_post_disc_for), not
 ## world_checks': a shell of the tile west of giant_husk on its Lurker's leash circle is reported, but
 ## not when the shell sinks at size 2 nor at size 1 (no Lurker there); a shell of giant_husk on the
-## leash circle of reef_a's two-post Lurker's union, clear of both posts' bands, is reported against
-## the union; a shell of the tile in the home block's edge slot on the ring elder rammer's leash
-## circle is reported across the block's edge.
+## leash circle of reef_e's two-post Lurker's union (reef_e west of giant_husk), clear of both posts'
+## bands, is reported against the union; a shell of the tile in the home block's edge slot on the
+## ring elder rammer's leash circle is reported across the block's edge.
 func test_the_size_2_seam_controls_are_reported() -> void:
 	var tile_bu := TileCatalog.HALF_TILE_BU * 2.0
 	var k := WorldConfig.k_of(2, 2)
@@ -482,7 +504,7 @@ func test_the_size_2_seam_controls_are_reported() -> void:
 		var near := WorldChecks.tile_seam_problems(_control(CONTROL_A, off + Vector2(tile_bu, 0.0), CONTROL_R), species, parts, 2, IDENTITY)
 		check_eq(not _control_reports(near, CONTROL_A, one).is_empty(), side[1], "a shell %+.2f tm from the band of %.2f tm: %s" % [side[0], band_tm, near])
 	# Two posts: the union's leash circle where it leaves both posts' discs.
-	var two := _site(tiles.tiles[CONTROL_A], CONTROL_2_SITE)
+	var two := _site(tiles.tiles[CONTROL_U], CONTROL_2_SITE)
 	var both := species.two_post_disc_for({"species": two.species, "home": _v(two.home), "heading": float(two.heading)}, {},
 		{"home": _v(two.post_b.home), "heading": float(two.post_b.heading)}, {}, k)
 	var axis := (Vector2(both.posts[1].center) - Vector2(both.posts[0].center)).normalized()
@@ -490,9 +512,9 @@ func test_the_size_2_seam_controls_are_reported() -> void:
 	var band := (float(species.fairness.leash_band_margin_m) + PoolLayout.CELL_RADIUS) / WorldConfig.bu_to_tm(2) + CONTROL_R
 	for post in both.posts:
 		check(point.distance_to(post.center) - float(post.radius) > band, "the point %s is clear of the post at %s" % [point, post.center])
-	var union := "site '%s' union of b0/%s@o0" % [CONTROL_2_SITE, CONTROL_A]
-	var found_u := WorldChecks.tile_seam_problems(_control(CONTROL_B, point - Vector2(tile_bu, 0.0), CONTROL_R), species, parts, 2, IDENTITY)
-	check(not _control_reports(found_u, CONTROL_B, union).is_empty(), "the shell at %s on %s's leash circle: %s" % [point, union, found_u])
+	var union := "site '%s' union of b0/%s@o0" % [CONTROL_2_SITE, CONTROL_U]
+	var found_u := WorldChecks.tile_seam_problems(_control(CONTROL_B, point - Vector2(tile_bu, 0.0), CONTROL_R, "keep", CONTROL_U), species, parts, 2, IDENTITY)
+	check(not _control_reports(found_u, CONTROL_B, union, CONTROL_U).is_empty(), "the shell at %s on %s's leash circle: %s" % [point, union, found_u])
 	# The home block's edge: the ring elder's leash circle, east of it, in the slot's tile frame.
 	var home := content.home
 	var re: Dictionary = home.sites.filter(func(x: Dictionary) -> bool: return x.id == CONTROL_2_HOME_SITE)[0]
@@ -506,7 +528,7 @@ func test_the_size_2_seam_controls_are_reported() -> void:
 	var hits := Array(found_h).filter(func(e: String) -> bool:
 		return e.contains("at tile %s" % CONTROL_2_SLOT) and e.contains("%s@o0:control" % CONTROL_A) and e.contains(edge))
 	check(not hits.is_empty(), "the shell at %s on %s's leash circle: %s" % [east, edge, found_h])
-	print("test-tiles: the size-2 controls report %s; %s; %s" % [_control_reports(found, CONTROL_A, one), _control_reports(found_u, CONTROL_B, union), hits])
+	print("test-tiles: the size-2 controls report %s; %s; %s" % [_control_reports(found, CONTROL_A, one), _control_reports(found_u, CONTROL_B, union, CONTROL_U), hits])
 
 
 func _site(t: Dictionary, id: String) -> Dictionary:
@@ -517,9 +539,9 @@ static func _v(p: PackedFloat64Array) -> Vector2:
 	return Vector2(p[0], p[1])
 
 
-## reef_a and giant_husk only, with one shell more in `tile` at `at` (bu), r `r`, that `second` at
-## size 2.
-func _control(tile: String, at: Vector2, r: float, second := "keep") -> WorldContent:
+## `west` (reef_a) and giant_husk only, with one shell more in `tile` at `at` (bu), r `r`, that
+## `second` at size 2.
+func _control(tile: String, at: Vector2, r: float, second := "keep", west := CONTROL_A) -> WorldContent:
 	var control := WorldContent.new()
 	control.config = content.config
 	control.kit = content.kit
@@ -527,17 +549,17 @@ func _control(tile: String, at: Vector2, r: float, second := "keep") -> WorldCon
 	control.layout = content.layout
 	control.tiles = TileCatalog.new()
 	control.tiles.bands = tiles.bands.duplicate()
-	for id in [CONTROL_A, CONTROL_B]:
+	for id in [west, CONTROL_B]:
 		control.tiles.tiles[id] = tiles.tiles[id].duplicate(true)
 	control.tiles.tiles[tile].shells.append({"id": "control", "center": PackedFloat64Array([at.x, at.y]), "radius": r, "at_second_size": second})
 	return control
 
 
-## The problems that name the control shell of `tile`, giant_husk east of reef_a, and `site`.
-static func _control_reports(found: PackedStringArray, tile: String, site: String) -> PackedStringArray:
+## The problems that name the control shell of `tile`, giant_husk east of `west` (reef_a), and `site`.
+static func _control_reports(found: PackedStringArray, tile: String, site: String, west := CONTROL_A) -> PackedStringArray:
 	var out := PackedStringArray()
 	for e in found:
-		if e.contains("%s@o0:control" % tile) and e.contains("seam b0/%s@o0 | b0/%s@o0 east" % [CONTROL_A, CONTROL_B]) and e.contains(site):
+		if e.contains("%s@o0:control" % tile) and e.contains("seam b0/%s@o0 | b0/%s@o0 east" % [west, CONTROL_B]) and e.contains(site):
 			out.append(e)
 	return out
 
