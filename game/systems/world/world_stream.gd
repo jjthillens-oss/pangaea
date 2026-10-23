@@ -90,6 +90,11 @@ var sites := {}
 ## site id -> how many creatures it has spawned this session (never cleared by an unload, so a
 ## reloaded site's next creature is a new one).
 var site_counts := {}
+## The niche caps' count kept as sites enter and leave the table, so a load or an unload need not
+## look up every site's species again: site id -> its species' role, and role -> how many sites of
+## the table fill it (a role leaves at 0).
+var _site_role := {}
+var _role_sites := {}
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
@@ -408,7 +413,7 @@ func _unload(sim: PoolSim) -> void:
 			_unload_chunk(sim, key)
 			any = true
 	if any:
-		recompute_caps(sim)   # after the unloaded sites' creatures left (G7)
+		_apply_caps(sim)   # after the unloaded sites' creatures left (G7)
 
 
 ## The chunks awake creatures hold: a site creature its site's reach chunks, a creature with no site
@@ -442,6 +447,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.creatures.queue = sim.creatures.queue.filter(func(e: Dictionary) -> bool: return not mine.has(e.site))
 	for id in mine:
 		sites.erase(id)
+		_forget_role(id)
 	for z in ch.zones:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
@@ -543,6 +549,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
 				sites[s.id] = _site_record(s, key)
+				_note_role(sim, s.id, str(s.species))
 				sim.creatures._enqueue(s.id, s.species, sim.tick)
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
@@ -556,7 +563,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_insert_key(key)
 	_chunks[key] = ch
 	_emit(sim, _chunk_loaded_event(ch))
-	recompute_caps(sim)
+	_apply_caps(sim)
 
 
 # --- sleep and wake (step 5) ---
@@ -693,20 +700,54 @@ func _slots(sim: PoolSim) -> Dictionary:
 
 ## The niche caps: per role, the live sites in the table whose species fills it (summed over the
 ## species, so two species sharing a role share the cap). Roles with no loaded site get 0. A niche
-## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap.
+## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap. This counts
+## the table afresh, for a caller that changed it; the stream's own loads and unloads keep the count.
 func recompute_caps(sim: PoolSim) -> void:
 	if sim.creatures == null:
+		return
+	_site_role.clear()
+	_role_sites.clear()
+	for id in sites:
+		_note_role(sim, id, str(sites[id].species))
+	_apply_caps(sim)
+
+
+## recompute_caps from the kept count (counted afresh if the table changed size behind it).
+func _apply_caps(sim: PoolSim) -> void:
+	if sim.creatures == null:
+		return
+	if _site_role.size() != sites.size():
+		recompute_caps(sim)
 		return
 	var per_role := {}
 	for id in sim.species.species_ids():
 		per_role[str(sim.species.niche_of(id).role)] = 0
-	for id in sites:
-		var role := str(sim.species.niche_of(str(sites[id].species)).role)
-		per_role[role] = int(per_role.get(role, 0)) + 1
+	for role in _role_sites:
+		per_role[role] = int(per_role.get(role, 0)) + int(_role_sites[role])
 	var roles := per_role.keys()
 	roles.sort()
 	for role in roles:
 		sim.region.set_niche(role, per_role[role])
+
+
+## Site `id` (of `species_id`) counted in its role, once.
+func _note_role(sim: PoolSim, id: String, species_id: String) -> void:
+	_forget_role(id)
+	var role := str(sim.species.niche_of(species_id).role)
+	_site_role[id] = role
+	_role_sites[role] = int(_role_sites.get(role, 0)) + 1
+
+
+func _forget_role(id: String) -> void:
+	if not _site_role.has(id):
+		return
+	var role: String = _site_role[id]
+	_site_role.erase(id)
+	var n := int(_role_sites[role]) - 1
+	if n == 0:
+		_role_sites.erase(role)
+	else:
+		_role_sites[role] = n
 
 
 ## A site's local record from its WorldChunk entry (absolute) and its home chunk: its local home,
