@@ -26,6 +26,8 @@ const STATIC := {
 	"camera": "camera tuning data",
 	"_next_chunks": "WorldChunks generated ahead for size n + 1: absolute tm at that size, no local positions",
 	"_next_arena": "the next size's arena: its own frame, origin A at size n + 1 (BP-4), kept and moved to A each tick it is used",
+	"_next_events": "chunk_loaded payloads prepared for the next size's chunks: every position Vector2.ZERO until the load places it",
+	"_retired": "what the growth tick let go of (the old chunks, plankton list and arena), held only to be freed after the beat: never read",
 }
 ## S2G10: what the growth tick builds again from the next size's chunks or starts over, so the
 ## re-expression walk does not compare it (path parts), with the reason.
