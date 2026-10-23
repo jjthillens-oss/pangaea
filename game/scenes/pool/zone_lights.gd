@@ -33,6 +33,8 @@ const RENDER_PRIORITY := -2
 ## One unit disc for every zone, scaled to each. The start fade's warm-up draws it too (pool.gd).
 var mesh: PlaneMesh
 
+var _discs := {}   ## key -> Array[MeshInstance3D]: the pool's under POOL_KEY, the endless sea's by chunk
+
 
 func _init() -> void:
 	var material := ShaderMaterial.new()
@@ -57,6 +59,14 @@ func build(zones: Array[Dictionary]) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
+	_discs.clear()
+	add_chunk(RockField.POOL_KEY, zones)
+
+
+## Lays one disc under each of `zones` ({id, center, radius}: layout zones or chunk_loaded zones)
+## under `key`. In the endless sea the pool passes only the zones of sunlit and home tiles.
+func add_chunk(key: Variant, zones: Array) -> void:
+	var discs: Array = _discs.get(key, [])
 	for zone in zones:
 		var disc := MeshInstance3D.new()
 		disc.name = String(zone.id)
@@ -66,6 +76,16 @@ func build(zones: Array[Dictionary]) -> void:
 		disc.position = WorldSpace.to_frame(self, zone.center, DEPTH_M)
 		disc.scale = Vector3(span, 1.0, span)
 		add_child(disc)
+		discs.append(disc)
+	_discs[key] = discs
+
+
+## Frees the discs laid under `key`; an unknown key changes nothing.
+func remove_chunk(key: Variant) -> void:
+	for disc: MeshInstance3D in _discs.get(key, []):
+		remove_child(disc)
+		disc.queue_free()
+	_discs.erase(key)
 
 
 ## Moves every disc by this node's position and the node back to the origin: nothing moves on

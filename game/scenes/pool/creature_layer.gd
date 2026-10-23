@@ -11,7 +11,8 @@ extends Node3D
 ## Across a rebase (S1) the live views need nothing, since sync() places them from the sim each
 ## frame; the two things that keep a place of their own are registered with the pool's WorldSpace:
 ## each view's strike lane (top_level, set in local coordinates when shown) and each dying view,
-## which is no longer synced.
+## which is no longer synced. A sleeper (Creature.asleep, at least 44 tm out) is not drawn: its view
+## hides on creature_slept and shows on creature_woke, placed where it woke with no slide.
 
 const VIEW_SCENE := preload("res://game/scenes/pool/creature_view.tscn")
 
@@ -33,7 +34,8 @@ func attach(p_sim: PoolSim, p_world_space: WorldSpace = null) -> void:
 	if sim.creatures == null:
 		return
 	for c in sim.creatures.creatures:
-		_add_view(c)
+		if not c.asleep:
+			_add_view(c)
 
 
 ## Frees every view, dying ones included.
@@ -49,13 +51,13 @@ func view_of(id: String) -> CreatureView:
 	return _views.get(id)
 
 
-## Live views in creature order (dying views are not counted).
+## Live views of awake creatures in creature order (dying views and sleepers are not counted).
 func views() -> Array[CreatureView]:
 	var out: Array[CreatureView] = []
 	if sim == null or sim.creatures == null:
 		return out
 	for c in sim.creatures.creatures:
-		if _views.has(c.id):
+		if _views.has(c.id) and not c.asleep:
 			out.append(_views[c.id])
 	return out
 
@@ -78,6 +80,20 @@ func on_event(event: Dictionary) -> void:
 				view.die()
 				if world_space != null:
 					world_space.register(view)   # no longer synced; it leaves when it frees itself
+		"creature_slept":
+			var view: CreatureView = _views.get(id)
+			if view != null:
+				view.hide_lane()
+				view.visible = false
+		"creature_woke":
+			var c := sim.creatures.find(id)
+			if c != null:
+				var view: CreatureView = _views.get(id)
+				if view == null:
+					view = _add_view(c)
+				view.visible = true
+				view.show_motion(c.motion, 1.0)   # where it woke, at once: no slide from where it slept
+				view.show_brain(c.brain, sim.tick, 1.0)
 		"creature_removed":
 			# A death has already let its view go; this is a stuck creature taken out of sight.
 			var view: CreatureView = _views.get(id)
@@ -110,6 +126,8 @@ func sync(fraction: float) -> void:
 	if sim == null or sim.creatures == null:
 		return
 	for c in sim.creatures.creatures:
+		if c.asleep:
+			continue
 		var view: CreatureView = _views.get(c.id)
 		if view == null:
 			view = _add_view(c)

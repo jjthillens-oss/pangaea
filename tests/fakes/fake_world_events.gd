@@ -46,10 +46,12 @@ static func pool_session(seed_value := SEED, body := "omnivore") -> GameSession:
 
 
 ## An endless session on FakeWorldGen (a shell per chunk, a zone per 2 x 2 chunks, a rammer site
-## per 4 x 4) with the M1 creatures, at the home spawn or at `at` (absolute am). Nothing is saved.
+## per 4 x 4) with the M1 creatures and the shipped placement kit (whose pieces the scene draws), at
+## the home spawn or at `at` (absolute am). Nothing is saved.
 static func endless_session(seed_value := SEED, at := PackedFloat64Array()) -> GameSession:
 	var session := GameSession.new(SLOT)
 	var content: WorldContent = FakeWorldGen.fixture_content()
+	content.kit = PlacementKit.load_from()
 	session.world = content
 	session.sim = FakeWorldGen.endless_sim(seed_value, session.catalog, session.layout, session.species, content, at)
 	return session
@@ -119,3 +121,8 @@ static func rebased(offset_tm: Vector2, origin_am := [0.0, 0.0]) -> Dictionary:
 
 static func tile_entered(tile: Vector2i, region: String, rare := "") -> Dictionary:
 	return {"type": "tile_entered", "tile": tile, "region": region, "rare": rare}
+
+
+## The chunk_loaded event of a chunk a WorldStream holds, through the scene's own builder.
+static func from_chunk(world: WorldStream, chunk: WorldChunk) -> Dictionary:
+	return WorldSpace.chunk_loaded_event(world, chunk)

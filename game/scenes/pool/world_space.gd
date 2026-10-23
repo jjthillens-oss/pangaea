@@ -25,6 +25,9 @@ extends Node
 const GROUP := &"world_space"
 ## A container farther than this (tm) from the pool's origin renormalises after a rebase.
 const RENORMALIZE_TM := 512.0
+## The keys a rare place carries beyond {id, kind, position}, copied when the stream sends them: its
+## orientation (docs/s1/s1-build-plan.md B-15).
+const PLACE_ORIENTATION_KEYS: PackedStringArray = ["yaw_deg", "mirror"]
 
 var _nodes: Array[Node3D] = []
 
@@ -86,3 +89,29 @@ static func to_frame(container: Node3D, p: Vector2, y: float = PlaneSpace.SWIM_Y
 		return at
 	return Vector3(at.x - container.position.x, at.y, at.z - container.position.z)
 
+
+## The spine 3.12 chunk_loaded payload of a loaded chunk, every position local through the world's
+## frame now: the scene's own copy of the stream's event (CT-13), so the pool can draw the chunks
+## already loaded when it is built.
+static func chunk_loaded_event(world: WorldStream, chunk: WorldChunk) -> Dictionary:
+	var shells := []
+	for s in chunk.shells:
+		shells.append({"id": s.id, "position": world.local_of_tm(float(s.x), float(s.y)), "radius": float(s.r),
+			"kind": s.kind, "asset": s.asset, "yaw_deg": s.yaw_deg, "scale": s.scale, "tint": s.tint})
+	var zones := []
+	for z in chunk.zones:
+		zones.append({"id": z.id, "center": world.local_of_tm(float(z.x), float(z.y)), "radius": float(z.radius),
+			"region": z.region})
+	var anchors := []
+	for a in chunk.anchors:
+		anchors.append({"id": a.id, "position": world.local_of_tm(float(a.x), float(a.y)), "model": a.model,
+			"dressing": a.dressing})
+	var places := []
+	for p in chunk.places:
+		var place := {"id": p.id, "kind": p.kind, "position": world.local_of_tm(float(p.x), float(p.y))}
+		for k in PLACE_ORIENTATION_KEYS:
+			if p.has(k):
+				place[k] = p[k]
+		places.append(place)
+	return {"type": "chunk_loaded", "key": chunk.key, "shells": shells, "zones": zones, "anchors": anchors,
+		"places": places}

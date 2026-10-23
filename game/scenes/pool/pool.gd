@@ -36,6 +36,8 @@ signal died(cause: String, reason: String)
 signal respawned(grace_s: float, teleport: bool)
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
+## The regions whose zones get sunlit patches in the sea: the feast region and home (CT-14).
+const PATCH_REGIONS: PackedStringArray = ["sunlit", "home"]
 const FADE_IN_S := 0.3
 ## The shader warm-up under the fade draws on the camera's view axis this deep (m): in the frustum
 ## at every zoom and inside the far plane, so it is really drawn, yet hidden behind the fluid's
@@ -59,15 +61,21 @@ var paused := false
 var hints := RefusalHints.new()
 
 var _built := false
+## Chunk keys drawn now (endless): chunk_loaded is idempotent per key, as the create-time events
+## and the first build both bring the view set (docs/s1/s1-build-plan.md B-23).
+var _loaded := {}
 var _step_costs := PackedInt64Array()
 var _step_cost_next := 0
 var _starve_pulse_t := 0.0
 
 ## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
 @onready var rim_node: Node3D = %Rim
-## The sunlit patches: soft light under each plankton zone.
+## The sunlit patches: soft light under each plankton zone (in the sea, of sunlit and home tiles).
 @onready var zone_lights: ZoneLights = %ZoneLights
+## The rocks, and in the sea every shell: one MultiMesh per piece.
 @onready var rocks: RockField = %Rocks
+## The sea's landmarks and rare set pieces.
+@onready var landmarks: LandmarkLayer = %Landmarks
 @onready var plankton_view: FoodView = %Plankton
 @onready var carrion_view: FoodView = %Carrion
 @onready var cell_view: PlayerCellView = %PlayerCell
@@ -166,21 +174,34 @@ func _build() -> void:
 		intent_provider = swim_input
 	hints.reset()
 	cell_view.attach_fx(world_fx)
-	for node: Node3D in [rim_node, zone_lights, rocks, feedback, world_fx]:
+	for node: Node3D in [rim_node, zone_lights, rocks, landmarks, feedback, world_fx]:
 		world_space.register(node)
 	for player in audio.get_children():
 		if player is AudioStreamPlayer3D:
 			world_space.register(player)
-	rim_node.visible = not is_endless()   # the dish wall is the pool's edge; the sea has none
-	rocks.build(session.layout)
-	zone_lights.build(session.layout.zones)
+	_loaded.clear()
+	if is_endless():
+		# The sea's ground comes from chunk events; the chunks already loaded are drawn now from
+		# the stream itself, and their queued create-time events change nothing (idempotent).
+		rim_node.visible = false   # the dish wall is the pool's edge; the sea has none
+		rocks.clear()
+		landmarks.setup(session.world.kit)
+		zone_lights.build([])
+		feedback.setup([], camera)
+		for key in sim.world.loaded_keys():
+			apply_world_event(WorldSpace.chunk_loaded_event(sim.world, sim.world.chunk(key)))
+	else:
+		rim_node.visible = true
+		rocks.build_pool(session.layout)
+		landmarks.clear()
+		zone_lights.build(session.layout.zones)
+		feedback.setup(session.layout.zones, camera)
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
 	creature_layer.attach(sim, world_space)
 	if sim.species != null:
 		audio.configure_tells(tell_lengths(sim.species))
-	feedback.setup(session.layout.zones, camera)
 	camera.configure(session.layout.camera)
 	camera.snap_to(cell_view.position)
 	_follow_camera()
@@ -193,12 +214,46 @@ func is_endless() -> bool:
 	return sim != null and sim.world != null
 
 
+## The chunk keys drawn now, sorted (endless; empty in the pool).
+func loaded_keys() -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for key in _loaded:
+		out.append(key)
+	out.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	return out
+
+
 ## A scene event of the endless world (spine 3.12), routed from the sim or, in tests, built by hand.
-## "rebased" {offset_tm}: every local position dropped by the offset, so the camera's focus and
-## every WorldSpace container drop with it in this frame, far containers renormalise, and the
-## camera-relative nodes follow the shifted focus. Never snap_to: the follow lag carries on (G10).
+##   chunk_loaded: the chunk's shells (kind "shell"), landmarks and rare places, its zones' labels,
+##     and patches under the zones of sunlit and home tiles; nothing when the key is drawn already.
+##   chunk_unloaded: all of that goes; an unknown key changes nothing.
+##   rebased {offset_tm}: every local position dropped by the offset, so the camera's focus and
+##     every WorldSpace container drop with it in this frame, far containers renormalise, and the
+##     camera-relative nodes follow the shifted focus. Never snap_to: the follow lag carries on (G10).
+##   tile_entered: nothing here; the HUD names the region.
 func apply_world_event(e: Dictionary) -> void:
 	match str(e.get("type", "")):
+		"chunk_loaded":
+			var key: Vector2i = e.key
+			if _loaded.has(key):
+				return
+			var shells: Array = e.get("shells", [])
+			rocks.add_chunk(key, shells.filter(func(s: Dictionary) -> bool: return s.kind == "shell"))
+			landmarks.add_chunk(key, shells.filter(func(s: Dictionary) -> bool: return s.kind == "landmark"),
+				e.get("anchors", []), e.get("places", []))
+			var zones: Array = e.get("zones", [])
+			zone_lights.add_chunk(key, zones.filter(func(z: Dictionary) -> bool: return z.region in PATCH_REGIONS))
+			feedback.add_zone_labels(key, zones)
+			_loaded[key] = true
+		"chunk_unloaded":
+			var key: Vector2i = e.key
+			if not _loaded.has(key):
+				return
+			rocks.remove_chunk(key)
+			landmarks.remove_chunk(key)
+			zone_lights.remove_chunk(key)
+			feedback.remove_zone_labels(key)
+			_loaded.erase(key)
 		"rebased":
 			var o: Vector2 = e.offset_tm
 			camera.shift_focus(-Vector3(o.x, 0.0, o.y))
@@ -410,7 +465,7 @@ func _route(event: Dictionary) -> void:
 				audio.play_at("bite" if event.get("kind") == "bite" else "ram", _world(event.position))
 		"creature_died":
 			audio.play_at("creature_die", _world(event.position))
-		"rebased":
+		"chunk_loaded", "chunk_unloaded", "rebased":
 			apply_world_event(event)
 		"debug":
 			# A dev rebase needs nothing more: its "rebased" event came first and shifted the view.

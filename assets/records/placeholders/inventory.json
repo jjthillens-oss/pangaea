@@ -334,7 +334,7 @@
     {
       "id": "zone_lights",
       "kind": "light",
-      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone, carrying zone_light.gdshader's soft shafts of cream light, blended round the zone's edge (micro-world plan C7). Light with no shape of its own, not a model.",
+      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone (in the endless sea, each zone of a sunlit or home tile, added and removed with its chunk), carrying zone_light.gdshader's soft shafts of cream light, blended round the zone's edge (micro-world plan C7). Light with no shape of its own, not a model.",
       "types": [
         "PlaneMesh"
       ],

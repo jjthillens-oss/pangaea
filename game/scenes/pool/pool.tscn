@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://game/scenes/pool/pool.gd" id="1_pool"]
 [ext_resource type="Environment" path="res://game/scenes/pool/pool_environment.tres" id="2_env"]
@@ -18,6 +18,7 @@
 [ext_resource type="Shader" path="res://game/scenes/pool/backdrop.gdshader" id="16_backdrop"]
 [ext_resource type="Script" path="res://game/scenes/pool/zone_lights.gd" id="17_zones"]
 [ext_resource type="Script" path="res://game/scenes/pool/world_space.gd" id="18_world_space"]
+[ext_resource type="Script" path="res://game/scenes/pool/landmark_layer.gd" id="19_landmarks"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_backdrop"]
 shader = ExtResource("16_backdrop")
@@ -60,6 +61,10 @@ script = ExtResource("17_zones")
 [node name="Rocks" type="Node3D" parent="."]
 unique_name_in_owner = true
 script = ExtResource("4_rocks")
+
+[node name="Landmarks" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("19_landmarks")
 
 [node name="Plankton" type="MultiMeshInstance3D" parent="." groups=["world_rebuilt"]]
 unique_name_in_owner = true

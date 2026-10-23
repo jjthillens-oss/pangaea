@@ -65,6 +65,7 @@ var _next_hit := 0
 var _dodged: Label3D
 var _dodged_age := DODGED_LIFE_S
 var _zone_labels := {}   ## zone id -> Label3D
+var _zone_label_keys := {}   ## chunk key -> the zone ids whose labels it added (endless sea)
 var _zone_refresh := 0.0
 var _camera: PoolCamera
 
@@ -78,6 +79,7 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 		child.queue_free()
 	_meal_labels.clear()
 	_zone_labels.clear()
+	_zone_label_keys.clear()
 	for i in MEAL_LABELS:
 		var label := _make_label(MEAL_COLOR)
 		label.name = "Meal%d" % i
@@ -111,6 +113,31 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 		label.name = "Regrowing_%s" % z.id
 		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y)
 		_zone_labels[z.id] = label
+
+
+## A "Regrowing" label over each of a loaded chunk's zones ({id, center}), in this node's frame.
+func add_zone_labels(key: Variant, zones: Array) -> void:
+	var ids := PackedStringArray()
+	for z in zones:
+		if _zone_labels.has(z.id):
+			continue
+		var label := _make_label(ZONE_COLOR)
+		label.name = "Regrowing_%s" % z.id
+		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y)
+		_zone_labels[z.id] = label
+		ids.append(z.id)
+	_zone_label_keys[key] = ids
+
+
+## Frees the labels a chunk added; an unknown key changes nothing.
+func remove_zone_labels(key: Variant) -> void:
+	for id in _zone_label_keys.get(key, PackedStringArray()):
+		var label: Label3D = _zone_labels.get(id)
+		if label != null:
+			remove_child(label)
+			label.queue_free()
+		_zone_labels.erase(id)
+	_zone_label_keys.erase(key)
 
 
 ## A meal label for an "ate" event: energy absorbed and points earned. It adds to the last label
