@@ -33,8 +33,8 @@ body("quadruped", 1200, quad_spine, quad_legs, [
     ("eye", "spine", {"u": 60, "ring": 170, "mirror": True, "scale": 800}),
     ("beak", "spine", {"u": 0, "elev": 20, "ring": 500, "scale": 900}),
     ("horn", "spine", {"u": 90, "ring": 90, "mirror": True, "scale": 1200}),
-    ("fin", "spine", {"u": 450, "ring": 0, "scale": 1300, "handles": [400, 300, 0]}),
-    ("foot", "l_1:end", {"mirror": True, "scale": 650}), ("foot", "l_2:end", {"mirror": True, "scale": 650})])
+    ("fin", "spine", {"u": 450, "ring": 0, "scale": 800, "handles": [0, 300, 0]}),
+    ("foot", "l_1:end", {"mirror": True, "scale": 1000}), ("foot", "l_2:end", {"mirror": True, "scale": 1000})])
 
 body("biped", 1000, [(0, 420, -380, 70), (0, 380, -260, 60), (0, 320, -150, 90), (0, 260, -20, 110), (0, 220, 100, 100),
     (0, 200, 240, 70), (0, 190, 380, 50), (0, 190, 500, 40)],
@@ -42,7 +42,7 @@ body("biped", 1000, [(0, 420, -380, 70), (0, 380, -260, 60), (0, 320, -150, 90),
      (5, True, [(100, 180, 100, 70), (135, -50, 20, 50), (125, -330, 120, 40), (125, -400, 0, 36)])],
     [("eye", "spine", {"u": 50, "ring": 200, "mirror": True, "scale": 700}),
      ("beak", "spine", {"u": 0, "elev": 30, "ring": 500, "scale": 800, "handles": [500, 300, 600]}),
-     ("foot", "l_2:end", {"mirror": True, "scale": 600})])
+     ("foot", "l_2:end", {"mirror": True, "scale": 900})])
 
 hz = [-400, -260, -130, 0, 130, 260, 400]
 body("hexapod", 600, [(0, 0, z, r) for z, r in zip(hz, [70, 90, 100, 100, 100, 90, 70])],

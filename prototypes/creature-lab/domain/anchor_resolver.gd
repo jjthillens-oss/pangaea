@@ -18,6 +18,8 @@ const MARCH_STEPS := 64
 ## The ankle top of a ground part above its sole, per metre of part scale (cpart_foot record: "the ankle top
 ## (z 0.09 m) meets the limb tip").
 const GROUND_ANKLE_M := 0.09
+## "forward_cone" parts (eyes, mouths) look along the head direction, turned towards the skin normal by at most this.
+const FORWARD_CONE_DEG := 45.0
 
 
 ## Returns [{part: id, twin: bool, transform: Transform3D (body space, with scale), bone: int}, ...]: one entry per
@@ -98,7 +100,10 @@ static func resolve(desc: RefCounted, field: RefCounted, part: Dictionary, orien
 		var up: Vector3 = field.normal(p, 0.05 * r)
 		# Forward: towards the head along the spine; on a limb, the body's forward.
 		var head := -tangent if host == "spine" else Vector3.FORWARD
-		place = Transform3D(_frame(up, head), p)
+		if orientation == "forward_cone":
+			place = Transform3D(_cone_frame(up, head), p)
+		else:
+			place = Transform3D(_frame(up, head), p)
 		bone_out = bones[k] if at["t"] < 0.5 else bones[k + 1]
 	var b := place.basis
 	b = b * Basis(Vector3.UP, deg_to_rad(float(part["turn"]))) * Basis(Vector3.RIGHT, deg_to_rad(float(part["tilt"]))) \
@@ -116,6 +121,25 @@ static func _frame(up: Vector3, forward: Vector3) -> Basis:
 	var z := -f.normalized()
 	var x := y.cross(z).normalized()
 	return Basis(x, y, x.cross(y))
+
+
+## A forward-cone part looks (-Z) along `head`, turned towards the skin normal by at most FORWARD_CONE_DEG, and keeps
+## body up as its up, so an eye on the side of the head looks forward and out, and a beak on the snout points ahead.
+static func _cone_frame(normal: Vector3, head: Vector3) -> Basis:
+	var h := head.normalized()
+	var n := normal.normalized()
+	var angle := h.angle_to(n)
+	var look := h
+	if angle > 1e-4:
+		var axis := h.cross(n)
+		look = h.rotated(axis.normalized(), minf(angle, deg_to_rad(FORWARD_CONE_DEG))) if axis.length_squared() > 1e-10 else n
+	var z := -look
+	var up := Vector3.UP - z * Vector3.UP.dot(z)
+	if up.length_squared() < 1e-8:
+		up = Vector3.BACK - z * z.z
+	var y := up.normalized()
+	var x := y.cross(z).normalized()
+	return Basis(x, z.cross(x), z)
 
 
 ## Point at arc fraction u along a joint line: {point, tangent (towards the line's end), segment, t}.

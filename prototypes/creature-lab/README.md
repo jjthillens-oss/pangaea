@@ -74,3 +74,5 @@ xvfb-run $G --path prototypes/creature-lab --rendering-method forward_plus --ren
 | `rig/spine_rig.gd` | Generated skeleton (vertebrae and limb joints), skinned mesh with CUSTOM0/CUSTOM1 |
 | `spine_lab.gd`, `spine_lab.tscn` | Viewer |
 | `domain/gait_body.gd`, `rig/walker_rig.gd`, `walker_lab.gd`, `walker_lab.tscn` | Generated bodies walking on the gait planner |
+| `domain/anchor_resolver.gd`, `rig/part_library.gd` | Part anchors on the skin; the art team's part GLBs and skin shader, loaded from the main project |
+| `tools/make_stage1_bodies.py` | Writes `data/stage1_bodies.json` |

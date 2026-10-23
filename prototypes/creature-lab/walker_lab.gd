@@ -9,6 +9,8 @@ const Drives := preload("res://lab_drives.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
 const GaitBody := preload("res://domain/gait_body.gd")
 const WalkerRig := preload("res://rig/walker_rig.gd")
+const BodyField := preload("res://domain/body_field.gd")
+const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 
 const PALETTE := [Color(0.93, 0.55, 0.36), Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 0.72, 0.36),
 		Color(0.72, 0.5, 0.86), Color(0.86, 0.45, 0.56), Color(0.45, 0.8, 0.76), Color(0.8, 0.8, 0.5)]
@@ -39,6 +41,7 @@ func _ready() -> void:
 		if not GaitBody.from_description(LabSpine.body(n))["legs"].is_empty():
 			names.append(n)
 	var table = Lab.table()
+	var orientations := LabSpine.part_orientations(LabSpine.part_rules())
 	var x := 0.0
 	for n in names.size():
 		var desc = LabSpine.body(names[n])
@@ -52,7 +55,10 @@ func _ready() -> void:
 		var rig = WalkerRig.new()
 		rig.name = names[n]
 		add_child(rig)
-		rig.setup(desc, SkinCpu.build(desc, 48), planner, info, PALETTE[n % PALETTE.size()])
+		rig.setup(desc, SkinCpu.build(desc, 48), planner, info, PALETTE[n % PALETTE.size()],
+				AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+		rig.body.use_skin_shader({"color_base": PALETTE[n % PALETTE.size()], "pattern_seed": n, "coat_pattern": 1 + n % 3,
+				"detail_pattern": [2, 1, 3, 0][n % 4]})
 		walkers.append(rig)
 	for w in walkers:
 		w.planner.position.x -= 0.5 * x
@@ -128,3 +134,7 @@ func _build_world() -> void:
 		hud.add_theme_color_override("font_outline_color", Color.BLACK)
 		hud.add_theme_constant_override("outline_size", 5)
 		layer.add_child(hud)
+
+
+func _exit_tree() -> void:
+	load("res://rig/part_library.gd").clear()

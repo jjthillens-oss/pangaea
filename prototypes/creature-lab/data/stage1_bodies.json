@@ -430,9 +430,9 @@
 					"turn": 0,
 					"tilt": 0,
 					"roll": 0,
-					"scale": 1300,
+					"scale": 800,
 					"handles": [
-						400,
+						0,
 						300,
 						0
 					],
@@ -449,7 +449,7 @@
 					"turn": 0,
 					"tilt": 0,
 					"roll": 0,
-					"scale": 650,
+					"scale": 1000,
 					"handles": [],
 					"mirror": true
 				},
@@ -464,7 +464,7 @@
 					"turn": 0,
 					"tilt": 0,
 					"roll": 0,
-					"scale": 650,
+					"scale": 1000,
 					"handles": [],
 					"mirror": true
 				}
@@ -680,7 +680,7 @@
 					"turn": 0,
 					"tilt": 0,
 					"roll": 0,
-					"scale": 600,
+					"scale": 900,
 					"handles": [],
 					"mirror": true
 				}

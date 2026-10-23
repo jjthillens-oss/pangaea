@@ -1,6 +1,7 @@
 extends Node3D
 ## Spine Lab viewer (prototypes 0b and Stage 1). Command line (after --): --body=NAME|all|stage1,
-## --anim=swim|pose|rest|live, --duration=SECONDS, --divisions=N (skin grid), --hud=0. "all" shows the spine bodies,
+## --anim=swim|pose|rest|live, --duration=SECONDS, --divisions=N (skin grid), --hud=0, --skin=art|plain (the art
+## team's creature skin shader, or flat colours). Bodies with parts wear the art team's part meshes. "all" shows the spine bodies,
 ## "stage1" the ten Stage 1 bodies with limbs (names s1_*). "pose" sweeps the spine through +-60 degrees and the limbs
 ## through +-90 degrees (CREATURE_GEOMETRY_SPEC.md section 10 test 6). "live" rebuilds the skin every frame while one
 ## vertebra moves, to show rebuild cost.
@@ -8,6 +9,8 @@ extends Node3D
 const Lab := preload("res://lab_spine.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
 const SpineRig := preload("res://rig/spine_rig.gd")
+const BodyField := preload("res://domain/body_field.gd")
+const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 
 const PALETTE := [Color(0.93, 0.55, 0.36), Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 0.72, 0.36),
 		Color(0.72, 0.5, 0.86), Color(0.86, 0.45, 0.56), Color(0.45, 0.8, 0.76)]
@@ -17,6 +20,7 @@ var anim := "swim"
 var duration := 0.0
 var divisions := 48
 var show_hud := true
+var art_skin := true
 
 var rigs: Array = []
 var time := 0.0
@@ -34,7 +38,9 @@ func _ready() -> void:
 			"duration": duration = float(kv[1])
 			"divisions": divisions = int(kv[1])
 			"hud": show_hud = kv[1] != "0"
+			"skin": art_skin = kv[1] != "plain"
 	_build_world()
+	var orientations := Lab.part_orientations(Lab.part_rules())
 	var names: Array = Lab.BODY_NAMES if body_choice == "all" else (Lab.stage1_names() if body_choice == "stage1"
 			else [body_choice])
 	# Display only: each body is scaled to about 1 m long and turned side-on (three-quarter view for bodies with
@@ -48,6 +54,11 @@ func _ready() -> void:
 		rig.name = names[n]
 		add_child(rig)
 		rig.setup(desc, arrays, PALETTE[n % PALETTE.size()])
+		if not desc.parts.is_empty():
+			rig.add_parts(AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+		if art_skin:
+			rig.use_skin_shader({"color_base": PALETTE[n % PALETTE.size()], "pattern_seed": n, "coat_pattern": 1 + n % 3,
+					"detail_pattern": [2, 1, 3, 0][n % 4]})
 		var box: AABB = desc.bounds_m()
 		var k := 1.0 / box.get_longest_axis_size()
 		rig.scale = Vector3.ONE * k
@@ -136,3 +147,7 @@ func _build_world() -> void:
 		hud.add_theme_color_override("font_outline_color", Color.BLACK)
 		hud.add_theme_constant_override("outline_size", 5)
 		layer.add_child(hud)
+
+
+func _exit_tree() -> void:
+	load("res://rig/part_library.gd").clear()

@@ -25,7 +25,8 @@ var _target_snapshot: Array[Vector3] = []
 var _synced := false
 
 
-func setup(desc: RefCounted, arrays: Dictionary, gait_planner: RefCounted, gait_info: Dictionary, color: Color) -> void:
+func setup(desc: RefCounted, arrays: Dictionary, gait_planner: RefCounted, gait_info: Dictionary, color: Color,
+		placements := [], orientations := {}) -> void:
 	planner = gait_planner
 	gait = gait_info
 	body = SpineRig.new()
@@ -33,6 +34,8 @@ func setup(desc: RefCounted, arrays: Dictionary, gait_planner: RefCounted, gait_
 	body.top_level = true
 	add_child(body)
 	body.setup(desc, arrays, color)
+	if not placements.is_empty():
+		body.add_parts(placements, orientations, true)
 	var skeleton: Skeleton3D = body.skeleton
 	skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 	ik = TwoBoneIK3D.new()
@@ -61,6 +64,11 @@ func setup(desc: RefCounted, arrays: Dictionary, gait_planner: RefCounted, gait_
 		ik.set_pole_node(i, ik.get_path_to(pole))
 		_stance_snapshot.append(0)
 		_target_snapshot.append(Vector3.ZERO)
+	# A leg wearing a foot stands on the foot's sole: the tip rides at the ankle height instead of its radius.
+	for i in leg_bones.size():
+		for p in body.part_nodes:
+			if p["ground"] and p["entry"]["bone"] == leg_bones[i][2]:
+				tip_lift[i] = load("res://domain/anchor_resolver.gd").GROUND_ANKLE_M * p["scale"]
 	skeleton.skeleton_updated.connect(_on_skeleton_updated)
 
 
@@ -87,6 +95,21 @@ func _on_skeleton_updated() -> void:
 	for i in leg_bones.size():
 		var tip := skeleton.global_transform * skeleton.get_bone_global_pose(leg_bones[i][2]).origin
 		solved_finite = solved_finite and tip.is_finite()
+		_place_ground_parts(leg_bones[i][2], tip)
 		if _stance_snapshot[i] == 0:
 			var length: float = planner.mech.legs[i]["length"]
 			max_stance_slip_ratio = maxf(max_stance_slip_ratio, tip.distance_to(_target_snapshot[i]) / length)
+
+
+## Ground parts (feet) on this tip bone stand on the tip, level, facing the creature's heading, so a foot stays flat
+## while the shin turns. Their twins are mirrored the same way.
+func _place_ground_parts(tip_bone: int, tip: Vector3) -> void:
+	var heading := Basis(Vector3.UP, planner.yaw)
+	for p in body.part_nodes:
+		if not p["ground"] or p["entry"]["bone"] != tip_bone:
+			continue
+		var b := heading.scaled_local(Vector3.ONE * p["scale"])
+		if p["entry"]["twin"]:
+			b = b * Basis(Vector3(-1, 0, 0), Vector3(0, 1, 0), Vector3(0, 0, 1))
+		var lift: float = load("res://domain/anchor_resolver.gd").GROUND_ANKLE_M * p["scale"]
+		(p["node"] as Node3D).global_transform = Transform3D(b, tip - Vector3(0.0, lift, 0.0))
