@@ -31,8 +31,10 @@ const ROUTE_KEEP_SLACK := 0.01
 
 ## What route_point_kept keeps for one caller between calls: the canonical indices of the colliders
 ## that could block its route from anywhere within ROUTE_KEEP_TM of where they were picked, and what
-## they were picked for, [epoch, from x, from y, to x, to y, body_r, clearance]. Floats, not
-## Vector2s: a rebase changes the epoch, so nothing here is a position to move.
+## they were picked for, [epoch, from x, from y, to x, to y, body_r, clearance], `from` and `to` as
+## absolute tm (origin + local, float64). A rebase keeps the indices and the absolute places, so a
+## caller the rebase moved with the colliders keeps its pick; one left where it was in local terms
+## has moved by the rebase's offset and picks again.
 class RouteKeep:
 	var key := PackedFloat64Array()
 	var near := PackedInt32Array()
@@ -42,8 +44,9 @@ var origin_x := 0.0               ## float64 abs tm of local (0, 0)
 var origin_y := 0.0
 ## How often settle() fell back to the reference; read only by tests.
 var settle_fallbacks := 0
-## Counts every change to the colliders' local centres or their canonical order (add_chunk,
-## remove_chunk, set_origin): a RouteKeep picked in another epoch is picked again.
+## Counts every change to the colliders' canonical order (add_chunk, remove_chunk): a RouteKeep
+## picked in another epoch is picked again. set_origin moves only the local centres, which a
+## RouteKeep's absolute places follow.
 var epoch := 0
 
 var _keys: Array[Vector2i] = []   # loaded, sorted (y, x): the canonical order
@@ -146,7 +149,9 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 
 
 ## Unloads chunk `key`: its colliders leave the arrays and every near grid. Unknown keys are ignored.
-func remove_chunk(key: Vector2i) -> void:
+## What held them (their records as added, their rock entries and the chunk's near grid) goes on the
+## end of `let_go`, for a caller that frees it later (WorldStream._let_go).
+func remove_chunk(key: Vector2i, let_go: Array = []) -> void:
 	if not _range.has(key):
 		return
 	epoch += 1
@@ -159,6 +164,7 @@ func remove_chunk(key: Vector2i) -> void:
 					if _may_reach(other, c):
 						_count(other, c, -1)
 	var span: Vector2i = _range[key]
+	let_go.append_array([own, _grids[key], rocks.slice(span.x, span.x + span.y)])
 	for i in span.y:
 		rocks.remove_at(span.x)
 		_centers.remove_at(span.x)
@@ -188,7 +194,6 @@ func chunk_keys() -> Array[Vector2i]:
 ## error accumulates). The near grids are absolute and do not change. One pass over locals (the
 ## packed arrays are references): a rebase does this for every loaded collider in a timed tick (G17).
 func set_origin(ox_tm: float, oy_tm: float) -> void:
-	epoch += 1
 	origin_x = ox_tm
 	origin_y = oy_tm
 	var centers := _centers
@@ -339,7 +344,9 @@ func route_point(from: Vector2, to: Vector2, body_r: float, clearance: float = R
 ## clearance of the segment from `from` to `to`; moving `from` by d moves that segment by at most d.
 ## `keep` holds every collider within that, plus ROUTE_KEEP_TM and ROUTE_KEEP_SLACK, of the segment
 ## it was picked for, and is picked again when the caller has moved farther, or `to`, body_r,
-## clearance or the epoch differ.
+## clearance or the epoch differ. Places are compared in absolute terms (float64): a rebase moves a
+## local place and its colliders' local centres by the same whole chunks, up to float32 rounding
+## (some 1e-5 tm), which ROUTE_KEEP_SLACK covers; a `to` the rounding moved at all picks again.
 func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: float, margin: float, side: int,
 		keep: RouteKeep) -> Vector2:
 	if not rock_grid:
@@ -349,8 +356,15 @@ func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: floa
 	if length < 1e-6:
 		return to
 	var key := keep.key
-	if key.size() != 7 or key[0] != epoch or key[3] != to.x or key[4] != to.y or key[5] != body_r \
-			or key[6] != clearance or Vector2(key[1], key[2]).distance_squared_to(from) > ROUTE_KEEP_TM * ROUTE_KEEP_TM:
+	var ox := origin_x
+	var oy := origin_y
+	var kept := key.size() == 7 and key[0] == epoch and key[3] == ox + to.x and key[4] == oy + to.y \
+			and key[5] == body_r and key[6] == clearance
+	if kept:
+		var dx: float = key[1] - ox - from.x
+		var dy: float = key[2] - oy - from.y
+		kept = dx * dx + dy * dy <= ROUTE_KEEP_TM * ROUTE_KEEP_TM
+	if not kept:
 		_keep_route(from, to, body_r, clearance, keep)
 	var dir := to_target / length
 	var blocking := -1
@@ -388,7 +402,8 @@ func _keep_route(from: Vector2, to: Vector2, body_r: float, clearance: float, ke
 			if Geometry2D.get_closest_point_to_segment(c, from, to).distance_to(c) < 2.0 * _radii[k] + pad:
 				near.append(k)
 	keep.near = near
-	keep.key = PackedFloat64Array([epoch, from.x, from.y, to.x, to.y, body_r, clearance])
+	keep.key = PackedFloat64Array([epoch, origin_x + from.x, origin_y + from.y, origin_x + to.x, origin_y + to.y,
+		body_r, clearance])
 
 
 func rock_contact(p: Vector2, r: float, slack: float = CONTACT_SLACK, facing: float = NAN, max_bearing: float = PI) -> String:

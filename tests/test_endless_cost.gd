@@ -16,14 +16,21 @@ extends TestCase
 ##    percentile is printed beside it. RACER as it is gets the same 3-run set: one run's own
 ##    percentile is load, not cost.
 ##  - Sleeper: after a swim the left-behind sleepers are timed against a twin sim with them removed,
-##    tick by tick in turn, 200 ticks each, 3 rounds: the median difference per sleeper is at most
-##    2 us. Debug creatures never sleep (core CC-6), so the sleepers are the world's own: the swim
-##    goes east at least SLEEPER_SWIM_TICKS and on until SLEEPER_STOP of them sleep, since how many
-##    sleep where it stops depends on the tiles there (on the real content 6 or 7 after 1,200 ticks).
-##    On the fixture world there may be too few to time, and the gate then waits for the real content.
+##    tick by tick in turn, 200 ticks each, 3 rounds: the difference of the two sims' median ticks
+##    per sleeper is at most 2 us. Each round builds the twins afresh, so the 3 rounds time the same
+##    ticks (their end hashes are equal), and each tick of each sim counts at its fastest of the 3,
+##    as P99.9's do; every round's own difference is printed beside it. The limit is in microseconds,
+##    so load that slows every tick alike still moves it. Debug creatures never sleep (core CC-6), so
+##    the sleepers are the world's own: the swim goes east at least SLEEPER_SWIM_TICKS and on until
+##    SLEEPER_STOP of them sleep, since how many sleep where it stops depends on the tiles there (on
+##    the real content 6 or 7 after 1,200 ticks). On the fixture world there may be too few to time,
+##    and the gate then waits for the real content.
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
-##    median excess is at most 2 yardsticks. The rebase goes against the cell's side of the origin, so
-##    the tick holds one rebase, not two.
+##    median excess is at most 2 yardsticks. The 3 runs time the same rebases (their end hashes are
+##    equal), and each tick, the rebase tick and the plain one, counts at its fastest of the 3, as
+##    P99.9's do, so one burst of load on either tick does not move the excess; the median run's own
+##    median is printed beside it. The rebase goes against the cell's side of the origin, so the
+##    tick holds one rebase, not two.
 ##  - Saturated (B-7): on DenseGen, T2's FakeWorldGen with 3 zones and 9 rammer sites a chunk, RACER
 ##    swims overdriven east for 1,200 ticks and then 600 timed ticks, 3 runs, with the awake cap
 ##    (12, at least 6 in view), the sleeper cap (30) and the food cap (120, less one zone's worth
@@ -217,13 +224,14 @@ func _swim_runs(overdriven: bool, size := 1) -> Array[Dictionary]:
 	return out
 
 
-## Each tick's yardsticks at its fastest of `runs` (which timed the same ticks).
-static func _fastest_per_tick(runs: Array[Dictionary]) -> Array[float]:
+## Each tick's yardsticks (or the run's `key` array) at its fastest of `runs` (which timed the same
+## ticks).
+static func _fastest_per_tick(runs: Array[Dictionary], key := "ratios") -> Array[float]:
 	var out: Array[float] = []
-	for i in (runs[0].ratios as Array).size():
+	for i in (runs[0][key] as Array).size():
 		var best := INF
 		for r in runs:
-			best = minf(best, r.ratios[i])
+			best = minf(best, r[key][i])
 		out.append(best)
 	return out
 
@@ -248,6 +256,12 @@ func test_the_percentile_and_fastest_tick_helpers() -> void:
 	var b: Array[float] = [4.0, 3.0, 9.5]
 	var runs: Array[Dictionary] = [{"ratios": a}, {"ratios": b}]
 	check_eq(_fastest_per_tick(runs), [4.0, 1.0, 9.0] as Array[float], "each tick at its fastest run")
+	var plain_a: Array[float] = [2.0, 3.0]
+	var plain_b: Array[float] = [9.0, 2.5]
+	var at_a: Array[float] = [4.0, 6.0]
+	var at_b: Array[float] = [3.5, 30.0]
+	var pairs: Array[Dictionary] = [{"before": plain_a, "at": at_a}, {"before": plain_b, "at": at_b}]
+	check_eq(_fastest_excess(pairs), [1.5, 3.5] as Array[float], "a rebase tick at its fastest less the plain tick at its fastest")
 	check_eq(_rebases([{"type": "debug"}, {"type": "rebased"}, {"type": "rebased"}]), 2, "rebased events counted")
 
 
@@ -466,41 +480,68 @@ func _check_p999(overdriven: bool) -> void:
 
 func _check_sleeper_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
+	var rounds: Array[Dictionary] = []
+	for k in SLEEPER_ROUNDS:
+		var r := _sleeper_round(overdriven)
+		rounds.append(r)
+		var n: int = r.n
+		check_eq(int(r.twin_asleep), n, "%s: the twin sims are the same" % mode)
+		if n < SLEEPER_MIN:
+			if Gates.content_path() != Gates.REAL_WORLD:
+				print("test-endless-cost: sleeper %s waits on the real content: %d sleepers on %s (need %d)" % [
+					mode, n, Gates.content_path(), SLEEPER_MIN])
+				return
+			check(false, "%s: only %d sleepers after the swim on the real content (need %d)" % [mode, n, SLEEPER_MIN])
+			return
+		check_eq(int(r.twin_left), 0, "%s: the twin has no sleepers" % mode)
+		check(int(r.asleep_end) == n, "%s: they slept through the timing" % mode)
+		_check_size_one(r.end, "sleeper %s" % mode)
+	var r0: Dictionary = rounds[0]
+	var n0: int = r0.n
+	for r in rounds:
+		check_eq(r.hash, r0.hash, "%s: every round timed the same ticks" % mode)
+	var per: Array[float] = []
+	for r in rounds:
+		per.append((Yardstick.median(r.with_us) - Yardstick.median(r.without_us)) / n0)
+	var cost := (Yardstick.median(_fastest_per_tick(rounds, "with_us")) - Yardstick.median(_fastest_per_tick(rounds, "without_us"))) / n0
+	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each, each tick at its fastest of %d rounds (rounds %s); %d still asleep at the end" % [
+		mode, n0, r0.swum, r0.east, cost, SLEEPER_ROUNDS, _joined(per, "%.2f"), r0.asleep_end])
+	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
+
+
+## One round of the sleeper gate: the twin sims built afresh (_sleeper_scene twice, the twin's
+## sleepers removed), then SLEEPER_TICKS still ticks of each, timed in turn. The sims are
+## deterministic, so every round times the same ticks. Returns the sleepers' count ("n") and the
+## twin's before the removal ("twin_asleep"), and, with at least SLEEPER_MIN of them, each sim's
+## timed ticks in us ("with_us", "without_us"), the twin's sleepers left ("twin_left"), the
+## sleepers still asleep at the end ("asleep_end"), the run's end (_end_of) and both sims' end hashes.
+static func _sleeper_round(overdriven: bool) -> Dictionary:
 	var with_them: Variant = _sleeper_scene(overdriven)
 	var without: Variant = _sleeper_scene(overdriven)
-	var swum: int = with_them.tick - SLEEPER_REST_TICKS
 	var sleepers: Array = []
 	for c in without.creatures.creatures:
 		if c.asleep:
 			sleepers.append(c)
-	var n := sleepers.size()
-	check_eq(with_them.world.sleeping_ids().size(), n, "%s: the twin sims are the same" % mode)
-	if n < SLEEPER_MIN:
-		if Gates.content_path() != Gates.REAL_WORLD:
-			print("test-endless-cost: sleeper %s waits on the real content: %d sleepers on %s (need %d)" % [
-				mode, n, Gates.content_path(), SLEEPER_MIN])
-			return
-		check(false, "%s: only %d sleepers after the swim on the real content (need %d)" % [mode, n, SLEEPER_MIN])
-		return
+	var out := {"n": sleepers.size(), "twin_asleep": with_them.world.sleeping_ids().size(),
+		"swum": with_them.tick - SLEEPER_REST_TICKS, "east": with_them.absolute_position_am()[0]}
+	if sleepers.size() < SLEEPER_MIN:
+		return out
 	for c in sleepers:
 		without.creatures.remove(c, "evicted", without.tick, false)
 	without.drain_events()
-	check_eq(without.world.sleeping_ids().size(), 0, "%s: the twin has no sleepers" % mode)
+	out.twin_left = without.world.sleeping_ids().size()
 	var still := SimIntent.new()
-	var per: Array[float] = []
-	for k in SLEEPER_ROUNDS:
-		var a: Array[float] = []
-		var b: Array[float] = []
-		for i in SLEEPER_TICKS:
-			a.append(_timed_step(with_them, still).us)
-			b.append(_timed_step(without, still).us)
-		per.append((Yardstick.median(a) - Yardstick.median(b)) / n)
-	var cost := Yardstick.median(per)
-	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each (rounds %s); %d still asleep at the end" % [
-		mode, n, swum, with_them.absolute_position_am()[0], cost, _joined(per, "%.2f"), with_them.world.sleeping_ids().size()])
-	check(with_them.world.sleeping_ids().size() == n, "%s: they slept through the timing" % mode)
-	_check_size_one(_end_of(with_them), "sleeper %s" % mode)
-	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
+	var a: Array[float] = []
+	var b: Array[float] = []
+	for i in SLEEPER_TICKS:
+		a.append(_timed_step(with_them, still).us)
+		b.append(_timed_step(without, still).us)
+	out.with_us = a
+	out.without_us = b
+	out.asleep_end = with_them.world.sleeping_ids().size()
+	out.end = _end_of(with_them)
+	out.hash = [with_them.state_hash(), without.state_hash()]
+	return out
 
 
 ## A racer that swam east (overdriven or as it is) and stopped, leaving the creatures it passed
@@ -526,32 +567,74 @@ static func _still(bot: Variant, sim: Variant) -> SimIntent:
 
 func _check_rebase_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
+	var runs: Array[Dictionary] = []
+	for run in RUNS:
+		runs.append(_rebase_run(overdriven))
+	var r0: Dictionary = runs[0]
+	var same := true
+	for r in runs:
+		check_eq(r.hash, r0.hash, "%s: every run timed the same rebases" % mode)
+		same = same and r.kept == r0.kept
+		_check_size_one(r.end, "rebase %s" % mode)
+	check(same, "%s: every run kept the same tries" % mode)
+	check_eq(r0.kept.size(), REBASES, "%s: %d rebase ticks timed in %d tries" % [mode, r0.kept.size(), r0.tries])
+	if not same or r0.kept.is_empty():
+		return
+	var excess := _fastest_excess(runs)
+	var m := Yardstick.median(excess)
+	var own: Array[float] = []
+	for r in runs:
+		own.append(Yardstick.median(_excess(r.at, r.before)))
+	print("test-endless-cost: %s: a rebase tick costs %.2f yardsticks more than the tick before it, each at its fastest of %d runs (median of %d: %s); the median run's own %.2f (runs %s)" % [
+		mode, m, RUNS, excess.size(), _joined(excess, "%.2f"), Yardstick.median(own), _joined(own, "%.2f")])
+	check(m <= REBASE_LIMIT_YARDSTICKS, "%s: a rebase tick costs %.2f yardsticks more (limit %.1f)" % [mode, m, REBASE_LIMIT_YARDSTICKS])
+
+
+## One run of the rebase gate: RACER swims east WARM_TICKS untimed, then up to REBASES * 3 tries of
+## REBASE_GAP_TICKS untimed, a timed plain tick and a timed tick with debug_rebase. A try is kept when
+## the plain tick held no rebase and the other exactly one. Returns each kept try's yardsticks (the
+## plain tick "before", the rebase tick "at"), the kept tries' numbers, the tries, the run's end
+## (_end_of) and the end hash.
+static func _rebase_run(overdriven: bool) -> Dictionary:
 	var sim: Variant = _swimmer()
 	var bot = _swim_bot()
 	for i in WARM_TICKS:
 		_swim_step(sim, bot, overdriven)
-	var excess: Array[float] = []
+	var before: Array[float] = []
+	var at: Array[float] = []
+	var kept: Array[int] = []
 	var tries := 0
-	while excess.size() < REBASES and tries < REBASES * 3:
+	while kept.size() < REBASES and tries < REBASES * 3:
 		tries += 1
 		for i in REBASE_GAP_TICKS:
 			_swim_step(sim, bot, overdriven)
 		Gates.drive(sim, overdriven)
-		var before := _timed_step(sim, bot.next_intent(sim))
-		if _rebases(before.events) != 0:
+		var plain := _timed_step(sim, bot.next_intent(sim))
+		if _rebases(plain.events) != 0:
 			continue
 		var by := Vector2i(REBASE_CHUNKS if sim.motion.position.x >= 0.0 else -REBASE_CHUNKS, 0)
 		Gates.drive(sim, overdriven)
-		var at := _timed_step(sim, bot.next_intent(sim), by)
-		if _rebases(at.events) != 1:
+		var rebased := _timed_step(sim, bot.next_intent(sim), by)
+		if _rebases(rebased.events) != 1:
 			continue
-		excess.append(float(at.ratio) - float(before.ratio))
-	check_eq(excess.size(), REBASES, "%s: %d rebase ticks timed in %d tries" % [mode, excess.size(), tries])
-	var m := Yardstick.median(excess) if not excess.is_empty() else INF
-	print("test-endless-cost: %s: a rebase tick costs %.2f yardsticks more than the tick before it (median of %d: %s)" % [
-		mode, m, excess.size(), _joined(excess, "%.2f")])
-	_check_size_one(_end_of(sim), "rebase %s" % mode)
-	check(m <= REBASE_LIMIT_YARDSTICKS, "%s: a rebase tick costs %.2f yardsticks more (limit %.1f)" % [mode, m, REBASE_LIMIT_YARDSTICKS])
+		before.append(float(plain.ratio))
+		at.append(float(rebased.ratio))
+		kept.append(tries)
+	return {"before": before, "at": at, "kept": kept, "tries": tries, "end": _end_of(sim), "hash": sim.state_hash()}
+
+
+## Each kept try's rebase tick at its fastest of `runs` less its plain tick at its fastest (the runs
+## timed the same ticks).
+static func _fastest_excess(runs: Array[Dictionary]) -> Array[float]:
+	return _excess(_fastest_per_tick(runs, "at"), _fastest_per_tick(runs, "before"))
+
+
+## at[i] - before[i] for each i.
+static func _excess(at: Array[float], before: Array[float]) -> Array[float]:
+	var out: Array[float] = []
+	for i in at.size():
+		out.append(at[i] - before[i])
+	return out
 
 
 static func _rebases(events: Array) -> int:

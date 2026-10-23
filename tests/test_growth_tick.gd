@@ -411,7 +411,7 @@ func test_the_next_arena_is_kept_across_new_size_chunks_and_gives_a_fresh_point(
 	var epoch := arena.epoch
 	q = w.next_size_clear_point(on)
 	check(is_same(arena, w._next_arena) and w._next_key == key + Vector2i(1, 0), "the same arena, round the new chunk")
-	check_eq(arena.epoch, epoch + 1, "the crossing added no chunk, only moved the arena to A")
+	check_eq(arena.epoch, epoch, "the crossing added no chunk, only moved the arena to A (set_origin keeps the epoch)")
 	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks after the crossing")
 	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
 	on.motion.velocity = Vector2.ZERO

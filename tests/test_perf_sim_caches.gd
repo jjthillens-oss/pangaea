@@ -253,6 +253,94 @@ func test_a_brain_forgets_an_attacker_that_leaves_while_it_notices_the_cell() ->
 		sim.drain_events()
 
 
+## CreatureField.remove_all leaves the field as remove on each creature in turn would: twins on the
+## saturated world take the same creatures away, one with remove_all and one one by one, while nothing
+## refers to them (the one pass), while a brain left has one of them as its target, while a brain not
+## engaged sits in the token list, and while one chases the cell without the token (one by one in the
+## last three). The events, the lists, the token and every brain left must be the same.
+func test_remove_all_leaves_the_field_as_removing_each_in_turn() -> void:
+	var sims: Array[PoolSim] = []
+	for i in 2:
+		var cost: GDScript = load(COST)
+		var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+		var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+		Gates.make_racer(r.save.genome, catalog)
+		r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+		var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+		sim.debug_set_hidden(true)
+		sim.drain_events()
+		sims.append(sim)
+	var a := sims[0]
+	var b := sims[1]
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var forgot := 0   # memories of the gone that the brains left dropped
+	for round in ["quiet", "target", "token", "chase"]:
+		for t in 150:
+			SwimBot.overdrive(a)
+			SwimBot.overdrive(b)
+			var intent = bot.next_intent(a)
+			a.step(intent)
+			b.step(intent)
+			a.drain_events()
+			b.drain_events()
+		var fa := a.creatures
+		var fb := b.creatures
+		var ids: Array[String] = []
+		var n := 0
+		for c in fa.creatures:
+			if not c.site_id.is_empty() and c.brain != null:
+				n += 1
+				if n % 3 == 0 and ids.size() < 6:
+					ids.append(c.id)
+		var stay := ""
+		for c in fa.creatures:
+			if c.brain != null and not ids.has(c.id) and stay.is_empty():
+				stay = c.id
+		for f: CreatureField in [fa, fb]:
+			var s := f.find(stay)
+			match round:
+				"target":
+					s.brain.target = ids[0]
+				"token":
+					f.engaged_on_player.append(s.id)
+				"chase":
+					s.brain.target = CreatureField.PLAYER_ID
+					s.brain.state = CreatureBrain.CHASE
+		for c in fa.creatures:
+			for id in ids:
+				forgot += 1 if c.brain != null and not ids.has(c.id) and c.brain.seen.has(id) else 0
+		var list_a: Array[CreatureField.Creature] = []
+		var list_b: Array[CreatureField.Creature] = []
+		for id in ids:
+			list_a.append(fa.find(id))
+			list_b.append(fb.find(id))
+		fa.remove_all(list_a, "unloaded", a.tick)
+		for c in list_b:
+			fb.remove(c, "unloaded", b.tick, false)
+		check_eq(var_to_str(fa.events), var_to_str(fb.events), "%s: the same events" % round)
+		check_eq(_field_state(fa), _field_state(fb), "%s: the same lists, token and brains" % round)
+		check_eq(a.state_hash(), b.state_hash(), "%s: the same hash" % round)
+		fa.events.clear()
+		fb.events.clear()
+	check(forgot >= 3, "brains left remembered the gone ones (%d)" % forgot)
+
+
+## The field's lists, token and site index, and every brain's script variables (an RNG as its seed
+## and state), by creature id.
+static func _field_state(f: CreatureField) -> String:
+	var brains := {}
+	for c in f.creatures:
+		var mem := {}
+		if c.brain != null:
+			for p in c.brain.get_property_list():
+				if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+					var v: Variant = c.brain.get(p.name)
+					mem[p.name] = [v.seed, v.state] if v is RandomNumberGenerator else v
+		brains[c.id] = mem
+	return var_to_str([f.creatures.map(func(c): return c.id), f.awake().map(func(c): return c.id), f.engaged_on_player,
+		f._by_site.keys(), brains])
+
+
 ## PlanktonField keeps each zone's item count, its packed copies of the items' drift phases and
 ## rates and radii, and its id index as items come and go, so count_in and the tick's counts are what
 ## a count over the items gives, the drift reads each item's own values, packed_radii() what reading
@@ -670,7 +758,9 @@ func test_the_view_free_seek_matches_drive() -> void:
 
 ## A forager's seek routes past the colliders kept for it (ChunkArena.route_point_kept): on the
 ## saturated world, through two rebases and a teleport, a twin whose creatures drop their keeps
-## before every step drives every creature the same on every tick, to the same hash.
+## before every step drives every creature the same on every tick, to the same hash. Keeps hold
+## through a rebase (the stream's own and the debug ones): a forager seeking before and after a step
+## that rebased keeps its pick (one picked again has a new key).
 func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() -> void:
 	var sims: Array[PoolSim] = []
 	for i in 2:
@@ -687,8 +777,13 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 	var b := sims[1]
 	var bot = SwimBot.new(Vector2.RIGHT)
 	var held := 0
+	var held_rebased := 0   # foragers seeking on both sides of a step that rebased, with their keeps held
 	var keys := {}
 	for t in 1500:
+		var seeking := {}
+		for c in a.creatures.awake():
+			if c.route_keep != null and _seeking(c):
+				seeking[c] = c.route_keep.key
 		if t == 400 or t == 800:
 			a.debug_rebase(Vector2i(-1, 1))
 			b.debug_rebase(Vector2i(-1, 1))
@@ -704,6 +799,12 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 		b.step(intent)
 		var drives_a := []
 		var drives_b := []
+		var events: Array = a.drain_events()
+		for e in events:
+			if e.type == "rebased":
+				for c in seeking:
+					held_rebased += 1 if _seeking(c) and c.route_keep.key == seeking[c] else 0
+				break
 		for c in a.creatures.awake():
 			drives_a.append(c.drive)
 			if c.route_keep != null:
@@ -712,7 +813,7 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 				keys[c.id] = c.route_keep.key
 		for c in b.creatures.awake():
 			drives_b.append(c.drive)
-		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(events) != var_to_str(b.drain_events()):
 			check(false, "tick %d: the twins' drives or events differ" % t)
 			return
 		if t % 60 == 59 and a.state_hash() != b.state_hash():
@@ -720,6 +821,14 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 			return
 	check_eq(a.state_hash(), b.state_hash(), "the same end")
 	check(held > 5000, "keeps held from tick to tick (%d)" % held)
+	check(held_rebased >= 5, "keeps held through rebases (%d)" % held_rebased)
+	print("test-perf-sim-caches: kept routes held %d times from tick to tick, %d through a rebase" % [held, held_rebased])
+
+
+## Whether the creature's drive seeks its goal along a kept route (PoolSim's usual drive for a forager).
+static func _seeking(c: CreatureField.Creature) -> bool:
+	var b := c.brain
+	return b != null and b.state == CreatureBrain.FORAGE and b.phase != CreatureBrain.EAT and b.goal.is_finite()
 
 
 ## The tick's leash clamp (CreatureBrain.leash_disc written out in PoolSim._contacts) is the brain's

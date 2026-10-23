@@ -49,6 +49,12 @@ const THINK_SLOTS := 6
 const ASLEEP_KEY := 6
 ## Endless site creatures' numbers lie in [1, SITE_NUMBERS].
 const SITE_NUMBERS := 1 << 30
+## Endless mode: how many site creatures a tick's spawn pass (PoolSim.step's tick_spawns_at) spawns
+## asleep at most; a due site that would spawn asleep after them waits, still due, for the next tick.
+const SLEEPER_SPAWNS_PER_TICK := 1
+## Endless mode: the creatures made ahead (prepare_site) are let go all at once when they outnumber
+## the stream's site table by more than this (those of chunks generated ahead but never loaded).
+const PREPARED_SLACK := 64
 
 
 ## One creature. Its phenotype is shared with its species; everything else is its own.
@@ -128,6 +134,9 @@ var _scan_all := true
 ## (and _scan_all is not set) no brain it scans has an event to take. -1 (a creature woke holding
 ## events) scans.
 var _taken_at := -1
+## Endless mode: site id -> [what it was made for (_made_for), the creature] for the creatures made
+## ahead of their spawn (prepare_site).
+var _prepared := {}
 
 
 ## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets the niche of each
@@ -215,8 +224,12 @@ func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 ## tick_spawns, with the spawn check measured from every place in `places`. In the endless world the
 ## sites that wait again go into the queue after the loop, in the same order (_enqueue_retries): the
 ## only other inserts meanwhile (a spawn loading its chunks queues their sites) are due now, never
-## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in.
-func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void:
+## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in. With
+## `sleepers` 0 or more (endless mode), once that many have spawned asleep each later due site that
+## would spawn asleep goes back as it was, still due, for the next tick (a chunk loaded with many
+## sites out of reach spawns them over a few ticks); awake spawns never wait. The world's creation
+## passes none, and spawns every site that passes.
+func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleepers := -1) -> void:
 	if queue.is_empty() or int(queue[0].at_tick) > tick:
 		return
 	var due: Array[Dictionary] = []
@@ -226,17 +239,26 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void
 	var later := endless and retry_at > tick
 	var retries: Array[Dictionary] = []
 	var full := _caps_full()   # then _try_site says "no room" to every site, and nothing spawns
+	var left := sleepers if endless else -1   # asleep spawns this tick may still make (-1: any)
+	var waiting: Array[Dictionary] = []
 	for entry in due:
 		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
 			continue   # a site holds one creature; a stale entry is dropped
+		if left == 0 and spawns_asleep(s, places):
+			waiting.append(entry)
+			continue
 		if full or not _try_site(s, arena, places, tick):
 			if later:
 				retries.append(s)
 			else:
 				_enqueue(s.id, s.species, retry_at)
+		elif left > 0 and _by_site[s.id].asleep:
+			left -= 1
 	if not retries.is_empty():
 		_enqueue_retries(retries, retry_at)
+	for entry in waiting:
+		queue.insert(_lower_bound(int(entry.at_tick), str(entry.site)), entry)
 
 
 ## Endless mode: the sleepers and the awake are both at their caps, so _try_site's "no room" holds
@@ -397,6 +419,57 @@ func take_for_growth(c: Creature) -> Creature:
 	return c
 
 
+## remove(c, reason, tick, false) on each creature of `list` (the field's, in that order), in one
+## pass over the others when no one holds the token and no brain's target or attacker is one of them
+## or is the player it chases or attacks: then each remove's _forget_in only drops the others'
+## memories of the gone (seen, landed_on), which come out the same in any order, and calls neither
+## on_target_gone nor update_token. Otherwise one by one. The unload does this for a chunk's sites.
+func remove_all(list: Array[Creature], reason: String, tick: int) -> void:
+	var gone := {}
+	for c in list:
+		gone[c.id] = true
+	var quiet := list.size() > 1 and engaged_on_player.is_empty()
+	if quiet:
+		for other in creatures:
+			var b := other.brain
+			if b != null and (gone.has(b.target) or gone.has(b.attacker) or (b.target == PLAYER_ID
+					and (b.state == CreatureBrain.CHASE or b.state == CreatureBrain.ATTACK))):
+				quiet = false
+				break
+	if not quiet:
+		for c in list:
+			remove(c, reason, tick, false)
+		return
+	# remove's own steps for each, in order, then the others forget them all at once (the gone
+	# creatures' own memories of each other are dropped with them).
+	for i in range(creatures.size() - 1, -1, -1):
+		if gone.has(creatures[i].id):
+			creatures.remove_at(i)
+	for c in list:
+		if endless:
+			_awake.erase(c)
+			_release_slot(c)
+			if not c.site_id.is_empty() and _by_site.get(c.site_id) == c:
+				_by_site.erase(c.site_id)
+		if not c.debug:
+			region.on_creature_removed(c.role)
+		var removed := {"type": "creature_removed", "id": c.id, "species": c.species_id, "reason": reason}
+		if endless:
+			removed["position"] = c.motion.position
+		events.append(removed)
+	_scan_all = true
+	for other in creatures:
+		var b := other.brain
+		if b == null:
+			continue
+		if not b.seen.is_empty():
+			for id in gone:
+				b.seen.erase(id)
+		if not b.landed_on.is_empty():
+			for id in gone:
+				b.landed_on.erase(id)
+
+
 ## Endless mode (B-6, the hold pass): an awake creature held beyond the hold ring leaves, "unloaded",
 ## and its site is queued at this tick with no respawn delay, so the spawn rule refills it as a
 ## sleeper (or not at all once its chunks unload). A debug or siteless creature is not requeued.
@@ -428,7 +501,8 @@ func respawn_delay_for(c: Creature) -> int:
 ## and its spawn count, which rises only on a real spawn. An awake spawn first has its site's reach
 ## chunks loaded (B-9). Its body, brain config and reach come from its record at the field's size
 ## (D-79); a two-post site's brain gets its posts when the world file switches habits on (S2, B.7).
-## Null when the niche is full or the species has no record here.
+## Null when the niche is full or the species has no record here. The creature made ahead for the
+## site (prepare_site) is taken when it was made for the same inputs; otherwise it is made now.
 func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	var site_id := str(s.id)
 	var species_id := str(s.species)
@@ -442,6 +516,59 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	if not asleep:
 		world.load_site_chunks(s)
 	world.site_counts[site_id] = count + 1
+	var c: Creature = null
+	if not _prepared.is_empty():
+		var made: Array = _prepared.get(site_id, [])
+		if not made.is_empty():
+			_prepared.erase(site_id)
+			if made[0] == _made_for(s, count):
+				c = made[1]
+	if c == null:
+		c = _site_creature(s, count, role)
+	c.born_tick = tick
+	CreatureBrain.start(c.brain, tick)
+	if s.has("posts") and bool(world.content.config.switches.get("habits", false)):
+		CreatureBrain.set_posts(c.brain, s.posts)
+	c.asleep = asleep
+	_by_site[site_id] = c
+	_add(c)
+	return c
+
+
+## Endless mode: makes site `s`'s next creature now, ahead of its spawn (the stream does it for the
+## sites of a chunk generated ahead, on quiet ticks), and keeps it for spawn_site with what it was
+## made for. It is the creature spawn_site would make from the same record and spawn count but for
+## its birth tick, its brain's start and its posts, which the spawn sets; nothing is drawn from a
+## shared stream. A species with no record at the field's size is left to spawn_site's refusal.
+func prepare_site(s: Dictionary) -> void:
+	var site_id := str(s.id)
+	var species_id := str(s.species)
+	if record_of(species_id).is_empty():
+		return
+	var count: int = world.site_counts.get(site_id, 0)
+	if _prepared.size() > world.sites.size() + PREPARED_SLACK:
+		_prepared.clear()   # mostly sites of chunks that never loaded: made again if needed
+	_prepared[site_id] = [_made_for(s, count), _site_creature(s, count, str(species.niche_of(species_id).role))]
+
+
+## Endless mode: drops what prepare_site made for site `id` (its ground unloaded or was let go).
+func forget_prepared(id: String) -> void:
+	_prepared.erase(id)
+
+
+## What a site's creature is made from besides the catalogs: the spawn count, the world's size,
+## seed and generator version, and the record's species, home, heading and territory.
+func _made_for(s: Dictionary, count: int) -> Array:
+	return [count, world.size, world.world_seed, world.gen_version, str(s.species), s.home, float(s.heading),
+		(s.territory as Dictionary).duplicate()]
+
+
+## Endless mode: site `s`'s creature for spawn count `count`, as spawn_site places it but for its
+## birth tick, its brain's start, its posts and its sleep.
+func _site_creature(s: Dictionary, count: int, role: String) -> Creature:
+	var site_id := str(s.id)
+	var species_id := str(s.species)
+	var rec := record_of(species_id)
 	var p: Phenotype = rec.phenotype
 	var c := Creature.new()
 	var site_hash := WorldHash.str32(site_id)   # for the number and the brain's seed
@@ -456,17 +583,11 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	c.actor = InteractionResolver.Actor.new(c.id, s.home, float(s.heading), p)
 	c.actor.reach_scale = float(rec.reach_scale)
 	c.drive = idle_drive(float(s.heading))
-	c.born_tick = tick
 	c.site_id = site_id
 	c.role = role
 	var cfg: Dictionary = rec.cfg
-	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
-		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])), tick)
-	if s.has("posts") and bool(world.content.config.switches.get("habits", false)):
-		CreatureBrain.set_posts(c.brain, s.posts)
-	c.asleep = asleep
-	_by_site[site_id] = c
-	_add(c)
+	c.brain = CreatureBrain.made(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
+		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])))
 	return c
 
 
@@ -875,12 +996,14 @@ func _site(site_id: String) -> Dictionary:
 	return world.sites.get(site_id, {}) if endless else species.site(site_id)
 
 
-## Inserts `c` keeping `list` sorted by (number, id).
+## Inserts `c` keeping `list` sorted by (number, id), after every creature not greater: no other
+## creature equals it (ids are unique), so that is the first one greater, found by binary search.
 static func _insert_sorted(list: Array[Creature], c: Creature) -> void:
-	var i := list.size()
-	while i > 0 and (list[i - 1].number > c.number or (list[i - 1].number == c.number and list[i - 1].id > c.id)):
-		i -= 1
-	list.insert(i, c)
+	list.insert(list.bsearch_custom(c, _creature_less), c)
+
+
+static func _creature_less(a: Creature, b: Creature) -> bool:
+	return a.number < b.number or (a.number == b.number and a.id < b.id)
 
 
 ## Adds a queue entry, keeping the queue sorted by (at_tick, site): before the first entry that is

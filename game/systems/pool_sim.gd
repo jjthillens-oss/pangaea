@@ -358,7 +358,7 @@ func step(intent: SimIntent) -> void:
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
-		creatures.tick_spawns_at(arena, _player_places(), tick)
+		creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK)
 		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()

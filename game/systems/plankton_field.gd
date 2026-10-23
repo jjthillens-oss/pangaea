@@ -169,11 +169,27 @@ func consume(id: String) -> bool:
 	return false
 
 
-## Removes every item of a zone (dev command; the caller empties the zone's stock).
+## Removes every item of a zone (dev command; the caller empties the zone's stock). The items go in
+## place, last first, with their packed copies and ids, until the zone's count is gone: the list a
+## filter keeps, without rebuilding the packed copies and the index of the rest (a food zone leaving
+## the endless view does this in a timed tick). A list changed from outside is filtered and repacked.
 func clear_zone(zone_id: String) -> void:
-	if int(_zone_counts.get(zone_id, 0)) > 0:
-		items = items.filter(func(item: Dictionary) -> bool: return item.zone != zone_id)
-		_repack()
+	var left := int(_zone_counts.get(zone_id, 0))
+	if left > 0:
+		if _phase.size() != items.size() or _by_id.size() != items.size():
+			items = items.filter(func(item: Dictionary) -> bool: return item.zone != zone_id)
+			_repack()
+		else:
+			var i := items.size() - 1
+			while left > 0 and i >= 0:
+				if items[i].zone == zone_id:
+					_by_id.erase(items[i].id)
+					items.remove_at(i)
+					_phase.remove_at(i)
+					_omega.remove_at(i)
+					_radii.remove_at(i)
+					left -= 1
+				i -= 1
 	_zone_counts.erase(zone_id)
 
 

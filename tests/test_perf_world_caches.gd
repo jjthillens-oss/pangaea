@@ -274,6 +274,44 @@ func test_the_hold_bound_lets_go_the_same_creatures_as_measuring_every_one() -> 
 	check(let_go >= 5, "creatures were let go while the ring was cut (%d)" % let_go)
 
 
+## The hold bound holds through a rebase: the hold centres, the cell's place and the path's last
+## place move by the same offset, so on a step after two debug rebases (there and back) that loads
+## and unloads nothing, the hold pass passes over the awake creatures held before on the same bounds
+## (a bound measured again is a new one).
+func test_the_hold_bound_holds_through_a_rebase() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the hold bound through a rebase waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 505)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var held := 0
+	var carried := -1
+	for t in 1200:
+		var kept := {}
+		for c in sim.creatures.awake():
+			if w._hold_bound.has(c):
+				kept[c] = w._hold_bound[c]
+		var rebase: bool = t >= 300 and kept.size() >= 5
+		if rebase:
+			sim.debug_rebase(Vector2i(1, 0))
+			sim.debug_rebase(Vector2i(-1, 0))
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		var chunks := false
+		for e in sim.drain_events():
+			chunks = chunks or e.type == "chunk_loaded" or e.type == "chunk_unloaded"
+		if rebase and not chunks:
+			held = kept.size()
+			carried = 0
+			for c in kept:
+				carried += 1 if is_same(kept[c], w._hold_bound.get(c)) else 0
+			break
+	print("test-perf-world-caches: the hold bound held %d of %d creatures through a rebase" % [carried, held])
+	check(carried >= 5 and carried * 4 >= held * 3, "the creatures held before the rebase were passed over on the same bounds (%d of %d)" % [
+		carried, held])
+
+
 ## An awake creature the hold bound holds goes on the first step that finds the cell past the hold
 ## ring from its hold centre: the cell swims on east, the ring set 2 tm past the distance of a creature
 ## left behind it.
@@ -782,6 +820,78 @@ func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_sw
 	check(w.sites.size() >= 100, "a dense table (%d sites)" % w.sites.size())
 
 
+# --- what the unloads let go (WorldStream._let_go, freed on the quiet ticks after them) ---
+
+## An unloaded chunk outlives its tick and every tick that loads, unloads or rebases, and the quiet
+## ticks after free what the unloads let go, never more than RELEASE_PER_TICK pieces a tick: a swim
+## east with a debug rebase there and back before every third step while something waits, then still
+## steps until nothing does. A teleport frees all that waits at once.
+func test_an_unload_lets_go_its_chunk_on_the_quiet_ticks_after_it() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: what an unload lets go waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 505)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var gone: Array[WeakRef] = []   # the unloaded chunks
+	var outlived := 0
+	var held := 0                   # busy ticks that began with something waiting
+	var bad := []
+	for t in 2000:
+		var still := t >= 1200
+		if still and w._let_go.is_empty():
+			break
+		var chunks := {}
+		for key in w.loaded_keys():
+			chunks[key] = weakref(w.chunk(key))
+		var rebase := not w._let_go.is_empty() and t % 3 == 2
+		if rebase:
+			sim.debug_rebase(Vector2i(1, 0))
+			sim.debug_rebase(Vector2i(-1, 0))
+		var before := w._let_go.size()
+		if not still:
+			SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.ZERO if still else Vector2.RIGHT))
+		var busy := rebase
+		for e in sim.drain_events():
+			busy = busy or e.type == "chunk_loaded" or e.type == "chunk_unloaded" or e.type == "rebased"
+			if e.type == "chunk_unloaded" and chunks.has(e.key):
+				var ref: WeakRef = chunks[e.key]
+				gone.append(ref)
+				outlived += 1 if ref.get_ref() != null else 0
+		var after := w._let_go.size()
+		if busy and after < before:
+			bad.append("tick %d freed %d pieces on a busy tick" % [t, before - after])
+		elif after < before - WorldStream.RELEASE_PER_TICK:
+			bad.append("tick %d freed %d pieces" % [t, before - after])
+		held += 1 if busy and before > 0 else 0
+	var freed := 0
+	for ref in gone:
+		freed += 1 if ref.get_ref() == null else 0
+	print("test-perf-world-caches: %d chunks unloaded, %d outlived their tick, %d freed after; %d busy ticks with pieces waiting" % [
+		gone.size(), outlived, freed, held])
+	check(bad.is_empty(), "no tick freed what it should not (%s)" % [bad.slice(0, 3)])
+	check(gone.size() >= 10 and outlived == gone.size(), "every unloaded chunk outlived its tick (%d of %d)" % [outlived, gone.size()])
+	check(w._let_go.is_empty() and freed == gone.size(), "the quiet ticks freed them all (%d of %d, %d pieces left)" % [
+		freed, gone.size(), w._let_go.size()])
+	check(held >= 10, "busy ticks came while pieces waited (%d)" % held)
+	var last: Array[WeakRef] = []
+	for t in 600:
+		var chunks := {}
+		for key in w.loaded_keys():
+			chunks[key] = weakref(w.chunk(key))
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.UP))
+		for e in sim.drain_events():
+			if e.type == "chunk_unloaded" and chunks.has(e.key):
+				last.append(chunks[e.key])
+		if not last.is_empty():
+			break
+	check(not last.is_empty() and last[0].get_ref() != null, "a chunk unloaded on the swim north waits")
+	w.teleport(sim, w.checkpoint_am[0], w.checkpoint_am[1])
+	check(w._let_go.is_empty() and last[0].get_ref() == null, "a teleport frees all that waits at once")
+
+
 # --- WorldStream's look-ahead generation (chunks generated on quiet ticks, handed out once) ---
 
 static func _chunk_text(ch: WorldChunk) -> String:
@@ -917,6 +1027,93 @@ func test_chunks_generated_ahead_are_forgotten_when_any_input_of_their_binding_c
 		check(w._ahead.is_empty(), "%s: the kept chunks are forgotten" % change)
 		w.gen = g
 		g.setup(content, species, seed)   # back to the world's own binding for the next round
+
+
+# --- Site records and creatures made ahead (for the chunks generated ahead, on quiet ticks) ---
+
+## Every script variable of `o`, the objects in it dumped the same way: a RandomNumberGenerator as its
+## seed and state, a phenotype (its species' own, shared) as its instance id.
+static func _dump(o: Object) -> Variant:
+	if o == null:
+		return null
+	if o is RandomNumberGenerator:
+		return [o.seed, o.state]
+	if o is Phenotype:
+		return o.get_instance_id()
+	var out := {}
+	for p in o.get_property_list():
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			var v: Variant = o.get(p.name)
+			out[p.name] = _dump(v) if v is Object else v
+	return out
+
+
+## On a dense swim every site record a load puts in the table equals _site_record's for it then, and
+## every site creature spawned equals, field for field, the one spawn_site makes from its record at
+## its spawn tick; most of each come from what was made ahead. A rebase between the making and the
+## load or the spawn moves the sites: the load derives the record again, and the spawn makes its own
+## creature (the one made ahead was made for the old frame).
+func test_slow_records_and_creatures_made_ahead_equal_those_made_at_the_load_and_the_spawn() -> void:
+	var cost: GDScript = load("res://tests/test_endless_cost.gd")
+	var fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
+	if fake == null or not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: what is made ahead waits on the endless world")
+		return
+	var d := Gates.data()
+	var content: Variant = fake.call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, d.catalog, "hunter")
+	Gates.make_racer(r.save.genome, d.catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim: PoolSim = PoolSim._create_endless(r.save, d.catalog, d.layout, d.species, content, cost.DenseGen.new(content, d.species, 2802))
+	sim.debug_set_hidden(true)
+	sim.drain_events()   # the creatures placed with the world have moved since
+	var w := sim.world
+	var field := sim.creatures
+	var records := 0   # records a load took from those made ahead
+	var made := 0      # creatures a spawn took from those made ahead
+	var stale := 0     # made ahead for the old frame
+	var spawns := 0
+	var bad := []
+	for t in 1500:
+		var ahead_recs := {}
+		for k in w._ahead_sites:
+			for id in w._ahead_sites[k]:
+				ahead_recs[id] = w._ahead_sites[k][id]
+		var before := {}
+		for id in field._prepared:
+			before[id] = field._prepared[id][1]
+		if t == 700:
+			sim.debug_rebase(Vector2i(-3, 0))   # and the stream rebases back on the next step
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		for e in sim.drain_events():
+			if e.type == "chunk_loaded":
+				for id in w._home_sites.get(e.key, {}):
+					var rec: Dictionary = w.sites[id]
+					records += 1 if is_same(ahead_recs.get(id), rec) else 0
+					if var_to_str(rec) != var_to_str(w._site_record(rec.abs, e.key)):
+						bad.append("tick %d: site %s's record differs from a new one" % [t, id])
+			elif e.type == "creature_spawned" and not e.debug:
+				var c := field.find(e.id)
+				spawns += 1
+				if before.has(c.site_id):
+					if is_same(before[c.site_id], c):
+						made += 1
+					else:
+						stale += 1
+				var fresh := field._site_creature(w.sites[c.site_id], c.spawn_count, c.role)
+				fresh.born_tick = c.born_tick
+				CreatureBrain.start(fresh.brain, c.born_tick)
+				fresh.asleep = c.asleep
+				fresh.think_slot = c.think_slot
+				if var_to_str(_dump(fresh)) != var_to_str(_dump(c)):
+					bad.append("tick %d: %s differs from the one made at its spawn" % [t, c.id])
+	check(bad.is_empty(), "%s" % [bad.slice(0, 3)])
+	check(records >= 100, "loads took the records made ahead (%d)" % records)
+	check(made >= 10 and spawns >= 50, "spawns took the creatures made ahead (%d of %d)" % [made, spawns])
+	check(stale >= 1, "some were made for the frame before a rebase and made again at the spawn (%d)" % stale)
+	print("test-perf-world-caches: made ahead: %d records loaded, %d of %d spawns, %d made again after a rebase" % [
+		records, made, spawns, stale])
 
 
 # --- WorldHash with mul32 and rotl32 written out ---
@@ -1273,6 +1470,31 @@ func test_a_kept_route_is_picked_again_for_a_new_goal_a_far_move_or_a_wider_body
 		check(want != c.to_2, "%s: the collider blocks the second route" % c.what)
 		check_eq(arena.route_point_kept(c.from_2, c.to_2, c.body_r_2, clearance, margin, 0, keep), want,
 			"%s: and the keep, picked again, goes round it" % c.what)
+
+
+## A keep holds through a rebase that moves its caller with the colliders (the same absolute places),
+## and is picked again for a caller the rebase leaves where it was in local terms: a collider the old
+## pick never looked at (36 tm off) is then across its route, and the kept route goes round it.
+func test_a_kept_route_holds_through_a_rebase_that_moves_its_caller_and_not_one_that_leaves_it() -> void:
+	var clearance := PoolArena.ROUTE_CLEARANCE
+	var margin := PoolArena.ROUTE_MARGIN
+	var shells: Array[Dictionary] = [{"id": "rock", "center": Vector2(38.0, 10.0), "radius": 1.0}]
+	var arena := ChunkArena.from_shells(shells)
+	var keep := ChunkArena.RouteKeep.new()
+	var from := Vector2(2.0, 10.0)
+	var to := Vector2(12.0, 10.0)
+	check_eq(arena.route_point_kept(from, to, 0.5, clearance, margin, 0, keep), to, "nothing blocks at first")
+	check(keep.near.is_empty(), "and the pick leaves the collider out")
+	var key := keep.key
+	var by := Vector2(32.0, 0.0)
+	arena.set_origin(by.x, by.y)   # the collider is now at local (6, 10)
+	check_eq(arena.route_point_kept(from - by, to - by, 0.5, clearance, margin, 0, keep), to - by,
+		"a caller the rebase moved still has nothing in its way")
+	check_eq(keep.key, key, "and keeps its pick")
+	var want := arena.route_point(from, to, 0.5, clearance, margin, 0)
+	check(want != to, "a caller the rebase left where it was has the collider across its route")
+	check_eq(arena.route_point_kept(from, to, 0.5, clearance, margin, 0, keep), want, "and the keep, picked again, goes round it")
+	check(keep.key != key, "picked again")
 
 
 ## Every collider that passes route_point's blocking test from `from` to `to` (its loop's arithmetic,
