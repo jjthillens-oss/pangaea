@@ -46,7 +46,7 @@ func _new_save() -> SaveGame:
 	var save := SaveGame.new_run(12345, "test+dev")
 	save.genome.add_part("mouth_jaw", 0.0)
 	save.genome.add_part("flagellum", PI)
-	save.discoveries.append({"id": "food_red_chunk", "generation": 1})
+	save.discoveries.append({"type": "place", "id": "giant_husk", "size": 1})
 	return save
 
 
@@ -171,7 +171,7 @@ func test_invalid_save_is_not_written_and_existing_file_survives() -> void:
 	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
 
 
-func test_m0_save_migrates_to_v2_with_no_adaptation_points() -> void:
+func test_m0_save_migrates_through_v2_to_v3_with_no_adaptation_points() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v1.json")
 	check(not text.is_empty(), "fixture readable")
 	_write_raw(PATH, text)
@@ -183,9 +183,10 @@ func test_m0_save_migrates_to_v2_with_no_adaptation_points() -> void:
 	check_eq(loaded.adaptation_points, 0, "starts with no points")
 	check_eq(loaded.lineage_id, "lineage_3f9a1c07b2e84d65", "lineage kept")
 	check_eq(loaded.genome.parts.size(), 2, "body kept")
+	check_eq(loaded.growth, {"size": 1, "meter": 0.0}, "size 1, empty meter")
 	check_eq(FileAccess.get_file_as_string(PATH), text, "file not rewritten on load")
 	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
-	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(PATH))["schema_version"]), 2, "written as v2")
+	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(PATH))["schema_version"]), 3, "written as v3")
 
 
 func test_negative_adaptation_points_are_refused() -> void:
@@ -234,7 +235,7 @@ func test_wrong_typed_lists_do_not_load_as_empty_and_the_backup_survives_the_nex
 	service.save_to(PATH, save)
 	var backup_text := FileAccess.get_file_as_string(PATH + ".bak")
 	var data := save.to_dict()
-	data["discoveries"] = {"id": "food_red_chunk", "generation": 1}
+	data["discoveries"] = {"type": "place", "id": "giant_husk", "size": 1}
 	data["genome"]["appearance"] = "red"
 	data["genome"]["parts"][1]["id"] = 2
 	_write_raw(PATH, JSON.stringify(data))
@@ -378,3 +379,199 @@ func test_a_pool_save_written_with_full_precision_loads_the_same_as_before() -> 
 				check_eq(PlaneSpace.from_save(loaded.player.position), place, "%s at %s" % [body, place])
 			check_eq(JSON.stringify(now.save.genome.to_dict()), JSON.stringify(before.save.genome.to_dict()),
 				"%s: the same genome as the old writer's file" % body)
+
+
+# Save v3 (S2, build plan 7.1; S2G19, S2G29). v3 is frozen once S2 ships (BP-18), so every field,
+# the exact v2 -> v3 step and every refusal are pinned here: changing any of them fails a test.
+
+const SessionTests := preload("res://tests/test_game_session.gd")
+## A slot the step 2 build wrote (v2; test_checkpoints continues it).
+const STEP2_SAVE := "res://tests/fixtures/save_v2_step2.json"
+## Values a v3 save must refuse: [field path, value, the field the refusal names].
+const BAD_V3 := [
+	["growth.size", 0, "growth.size"], ["growth.size", 11, "growth.size"], ["growth.size", 1.5, "growth.size"],
+	["growth.size", "2", "growth.size"], ["growth.meter", -0.5, "growth.meter"],
+	["growth.meter", "full", "growth.meter"], ["growth.meter", null, "growth.meter"],
+	["checkpoint.x_am", "812", "checkpoint.x_am"], ["checkpoint.y_am", null, "checkpoint.y_am"],
+	["checkpoint.heading", [1.25], "checkpoint.heading"], ["checkpoint.size", 0, "checkpoint.size"],
+	["checkpoint.size", 11, "checkpoint.size"], ["checkpoint.size", 2.5, "checkpoint.size"],
+	["gen_version", 0, "gen_version"], ["gen_version", 1.5, "gen_version"], ["gen_version", "1", "gen_version"],
+	["spawn", 5, "spawn"], ["spawn", [], "spawn"], ["spawn.heading", "north", "spawn.heading"],
+	["spawn.x_am", null, "spawn.x_am"],
+	["player.energy", -1.0, "player.energy"], ["player.energy", "full", "player.energy"],
+	["player.health", -0.25, "player.health"], ["player.health", {}, "player.health"],
+	["discoveries.0", 5, "discoveries[0]"], ["discoveries.1.type", "creature", "discoveries[1].type"],
+	["discoveries.1.type", null, "discoveries[1].type"], ["discoveries.2.id", "", "discoveries[2].id"],
+	["discoveries.2.id", 7, "discoveries[2].id"], ["discoveries.1.size", 0, "discoveries[1].size"],
+	["discoveries.1.size", 11, "discoveries[1].size"], ["discoveries.1.size", 1.5, "discoveries[1].size"],
+]
+## Values at the edges that a v3 save holds.
+const GOOD_V3 := [
+	["growth.size", 1], ["growth.size", 10], ["growth.meter", 0.0], ["checkpoint.size", 10],
+	["checkpoint.heading", -3.14159], ["gen_version", 3], ["spawn", null], ["player.energy", 0.0],
+	["player.energy", null], ["player.health", null], ["discoveries", []],
+]
+## Fields a file cannot carry a non-finite number in, but a running save could.
+const FINITE_V3 := ["growth.meter", "checkpoint.x_am", "checkpoint.y_am", "checkpoint.heading", "spawn.x_am",
+	"spawn.y_am", "spawn.heading", "player.energy", "player.health"]
+
+
+## A valid v3 save with every v3 field away from its default (build plan 7.1's values).
+func _v3_save() -> SaveGame:
+	var save := _new_save()
+	save.growth = {"size": 2, "meter": 37.5}
+	save.checkpoint = {"x_am": 812.25, "y_am": -40.0625, "heading": 1.25, "size": 2}
+	save.spawn = {"x_am": -3.5, "y_am": 120.75, "heading": 0.5}
+	save.gen_version = 2
+	save.player["position"] = PlaneSpace.to_save_abs(812.25, -40.0625)
+	save.player["energy"] = 40.5
+	save.player["health"] = 12.0
+	save.discoveries = [{"type": "place", "id": "giant_husk", "size": 1},
+		{"type": "landmark", "id": "landmark_arch", "size": 2}, {"type": "food", "id": "algae_ball", "size": 2}]
+	return save
+
+
+## Writes `data` as a save file would hold it and loads it.
+func _load_data(data: Dictionary) -> Dictionary:
+	_write_raw(PATH, JSON.stringify(data, "\t", true, true))
+	return service.load_from(PATH)
+
+
+## A copy of `data` with the value at a dotted path ("growth.size", "discoveries.1.id") set to
+## `value`, or erased when `erase`.
+static func _with(data: Dictionary, path: String, value: Variant, erase := false) -> Dictionary:
+	var out := data.duplicate(true)
+	var steps := path.split(".")
+	var at: Variant = out
+	for i in steps.size() - 1:
+		at = at[int(steps[i])] if at is Array else at[steps[i]]
+	var last := steps[steps.size() - 1]
+	if erase:
+		at.erase(last)
+	elif at is Array:
+		at[int(last)] = value
+	else:
+		at[last] = value
+	return out
+
+
+## How the save names a dotted path: "discoveries.1.id" -> "discoveries[1].id".
+static func _field_name(path: String) -> String:
+	var out := ""
+	for step in path.split("."):
+		out += "[%s]" % step if step.is_valid_int() else ("." if not out.is_empty() else "") + step
+	return out
+
+
+func test_v3_is_the_current_schema_and_a_new_run_holds_its_defaults() -> void:
+	check_eq(SaveGame.SCHEMA_VERSION, 3, "v3")
+	check_eq(PersistenceService.CURRENT_VERSION, 3, "the service reads up to v3, so a v4 file is refused")
+	var steps := SaveMigrations.all().keys()
+	steps.sort()
+	check_eq(steps, [1, 2], "one step from v1 and one from v2")
+	var data := SaveGame.new_run(7, "test+dev").to_dict()
+	var keys := data.keys()
+	keys.sort()
+	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v3 keys")
+	check_eq(data.growth, {"size": 1, "meter": 0.0}, "a new lineage starts at size 1 with an empty meter")
+	check_eq(data.checkpoint, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, "at the home spawn's checkpoint")
+	check_eq(data.spawn, null, "no spawn of its own: the checkpoint")
+	check_eq(data.gen_version, 1, "the first generator")
+	check_eq(data.player, {"position": [0.0, 0.0, 0.0], "energy": null, "health": null}, "fresh energy and health")
+	check(_new_save().validate(catalog).is_empty(), "a new run is a valid v3 save: %s" % [_new_save().validate(catalog)])
+
+
+func test_a_step_2_save_migrates_to_v3_exactly() -> void:
+	var text := FileAccess.get_file_as_string(STEP2_SAVE)
+	var v2: Dictionary = JSON.parse_string(text)
+	check_eq(int(v2.schema_version), 2, "the fixture is a v2 save")
+	var expected := v2.duplicate(true)
+	expected["schema_version"] = 3
+	expected["growth"] = {"size": 1, "meter": 0.0}
+	expected["checkpoint"] = {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}
+	expected["spawn"] = null
+	expected["gen_version"] = 1
+	expected["player"] = {"position": v2.player.position.duplicate(), "energy": null, "health": null}
+	var migrated := service.migrate(v2)
+	check(migrated.ok, "migrates: %s" % migrated.error)
+	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true),
+		"v2 -> v3 adds the growth, checkpoint, spawn, gen_version, energy and health, and changes nothing else")
+	check_eq(JSON.stringify(v2), JSON.stringify(JSON.parse_string(text)), "the v2 data it was given is untouched")
+
+	_write_raw(PATH, text)
+	var result := service.load_from(PATH)
+	check(result.ok, "the step 2 slot loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check_eq(loaded.growth, {"size": 1, "meter": 0.0}, "size 1, empty meter")
+	check_eq(loaded.checkpoint, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, "the home spawn's checkpoint")
+	check_eq(loaded.spawn, null, "spawn null")
+	check_eq(loaded.gen_version, 1, "gen_version 1")
+	check_eq(loaded.player, {"position": v2.player.position, "energy": null, "health": null}, "the same place, bit for bit")
+	check_eq(loaded.discoveries, [], "no discoveries")
+	check_eq(loaded.adaptation_points, 16, "its points")
+	check_eq(FileAccess.get_file_as_string(PATH), text, "the load rewrote nothing")
+	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(PATH))
+	var keys := data.keys()
+	keys.sort()
+	check_eq(keys, SessionTests.SAVE_KEYS, "written with exactly the v3 keys")
+	check_eq(int(data.schema_version), 3, "written as v3")
+
+
+func test_every_v3_field_round_trips() -> void:
+	var save := _v3_save()
+	check(save.validate(catalog).is_empty(), "valid: %s" % [save.validate(catalog)])
+	check_eq(service.save_to(PATH, save), OK, "saved")
+	var result := service.load_from(PATH)
+	check(result.ok, "loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	for field in ["growth", "checkpoint", "spawn", "gen_version", "player", "discoveries"]:
+		check_eq(loaded.get(field), save.get(field), field)
+	check(loaded.growth.size is int and loaded.checkpoint.size is int and loaded.discoveries[1].size is int,
+		"sizes come back as whole numbers, as a running save holds them")
+
+
+func test_every_v3_field_is_checked() -> void:
+	var good := _v3_save().to_dict()
+	var loaded := _load_data(good)
+	check(loaded.ok, "the valid v3 save loads: %s" % [loaded.errors])
+	for case in BAD_V3:
+		var result := _load_data(_with(good, case[0], case[1]))
+		check(not result.ok, "%s = %s is refused" % [case[0], JSON.stringify(case[1])])
+		check_has_error(result.errors, "'%s'" % case[2])
+	for case in GOOD_V3:
+		var result := _load_data(_with(good, case[0], case[1]))
+		check(result.ok, "%s = %s loads: %s" % [case[0], JSON.stringify(case[1]), result.errors])
+	for path in FINITE_V3:
+		for value in [INF, -INF, NAN]:
+			check_has_error(SaveGame.from_dict(_with(good, path, value)).validate(catalog), "'%s'" % path)
+
+
+func test_a_missing_v3_field_is_a_load_problem() -> void:
+	var good := _v3_save().to_dict()
+	for key in SessionTests.SAVE_KEYS:
+		var result := _load_data(_with(good, key, null, true))
+		check(not result.ok, "a save without '%s' is refused" % key)
+		match key:
+			"schema_version": check_has_error(result.errors, "missing schema version")
+			"genome": check_has_error(result.errors, "no genome")
+			_: check_has_error(result.errors, "'%s'" % key)
+	for path in ["player.position", "player.energy", "player.health", "growth.size", "growth.meter",
+			"checkpoint.x_am", "checkpoint.y_am", "checkpoint.heading", "checkpoint.size", "spawn.x_am",
+			"spawn.y_am", "spawn.heading", "discoveries.0.type", "discoveries.1.id", "discoveries.2.size"]:
+		var result := _load_data(_with(good, path, null, true))
+		check(not result.ok, "a save without '%s' is refused" % path)
+		check_has_error(result.errors, "'%s' is missing" % _field_name(path))
+
+
+func test_an_unknown_field_is_refused() -> void:
+	var good := _v3_save().to_dict()
+	for path in ["ring_colour", "growth.armed", "checkpoint.band", "spawn.size", "player.velocity",
+			"discoveries.0.generation"]:
+		var result := _load_data(_with(good, path, 1))
+		check(not result.ok, "a save with '%s' is refused" % path)
+		check_has_error(result.errors, "'%s' is not part of a v3 save" % _field_name(path))

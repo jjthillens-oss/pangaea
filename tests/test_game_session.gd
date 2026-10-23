@@ -1,14 +1,15 @@
 extends TestCase
-## Save, quit and continue bring back the same lineage, body, points and place, using the
-## existing v2 save schema; a death is applied once (test_checkpoints covers the death flow in
-## full). Saves go to a per-process folder under user://test_saves.
+## Save, quit and continue bring back the same lineage, body, points and place, using the v3 save
+## schema; a death is applied once (test_checkpoints covers the death flow in full). Saves go to a
+## per-process folder under user://test_saves.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
-## The v2 save's top-level keys. A field added without a schema version and migration fails here.
-const V2_KEYS := ["adaptation_points", "build_id", "discoveries", "era", "genome", "lineage_history",
-	"lineage_id", "pending_transactions", "player", "relationships", "saved_at_unix", "schema_version",
-	"settlements", "world_changes", "world_seed"]
+## The v3 save's top-level keys (v2's 15 plus S2's four). A field added without a schema version
+## and migration fails here; v3 is frozen once S2 ships (build plan BP-18).
+const SAVE_KEYS := ["adaptation_points", "build_id", "checkpoint", "discoveries", "era", "gen_version", "genome",
+	"growth", "lineage_history", "lineage_id", "pending_transactions", "player", "relationships", "saved_at_unix",
+	"schema_version", "settlements", "spawn", "world_changes", "world_seed"]
 
 var slot := ""
 var _swept := false
@@ -76,7 +77,7 @@ func test_continue_brings_back_the_same_lineage_body_points_and_place() -> void:
 	check(not again.dirty, "nothing unsaved right after continuing")
 
 
-func test_a_saved_file_has_exactly_the_v2_keys() -> void:
+func test_a_saved_file_has_exactly_the_v3_keys() -> void:
 	var session := GameSession.new(slot)
 	session.start_new("grazer", 1)
 	_play(session, 120)
@@ -84,10 +85,13 @@ func test_a_saved_file_has_exactly_the_v2_keys() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, V2_KEYS, "top-level keys")
-	check_eq(int(data.schema_version), 2, "schema version")
-	check_eq(data.player.keys(), ["position"], "the player holds only a position")
+	check_eq(keys, SAVE_KEYS, "top-level keys")
+	check_eq(int(data.schema_version), 3, "schema version")
+	var player_keys: Array = data.player.keys()
+	player_keys.sort()
+	check_eq(player_keys, ["energy", "health", "position"], "the player holds a position and step 4's two fields")
 	check_eq(data.player.position.size(), 3, "three numbers")
+	check(data.player.energy == null and data.player.health == null, "energy and health are null: fresh")
 
 
 func test_a_corrupt_save_continues_from_the_backup_and_peek_says_so() -> void:
