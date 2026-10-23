@@ -1,0 +1,26 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[sub_resource type="Shader" id="Shader_column"]
+code = "// The checkpoint column (marker_checkpoint_column): a soft cream light shaft, additive and unlit,
+// fading to nothing at both ends and toward its silhouette. Cull is off, so a ray through the
+// middle crosses the front and back walls and the peak is the tint (about L* 80 over black).
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
+
+uniform vec4 tint : source_color = vec4(0.814, 0.776, 0.723, 1.0);
+uniform float strength = 1.0;
+
+void fragment() {
+	float ends = smoothstep(0.0, 0.3, UV.y) * (1.0 - smoothstep(0.55, 1.0, UV.y));
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float soft = pow(facing, 1.5);
+	ALBEDO = tint.rgb * (0.5 * strength * ends * soft);
+}
+"
+
+[resource]
+resource_name = "M_CheckpointColumn"
+render_priority = 0
+shader = SubResource("Shader_column")
+shader_parameter/tint = Color(0.814, 0.776, 0.723, 1)
+shader_parameter/strength = 1.0

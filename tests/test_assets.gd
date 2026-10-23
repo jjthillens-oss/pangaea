@@ -754,6 +754,11 @@ func test_production_assets_carry_textures_and_log_every_outside_source() -> voi
 			continue
 		for mi in _mesh_instances(node):
 			for s in mi.mesh.get_surface_count():
+				# A light effect the engine draws with its own shader (the checkpoint column's shaft)
+				# names that material in its record and needs no texture.
+				if record.has("engine_material") and mi.mesh.surface_get_material(s) is ShaderMaterial:
+					check(mi.mesh.surface_get_material(s).resource_path == record.engine_material, "%s draws with %s" % [id, record.engine_material])
+					continue
 				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
 				var textured := mat != null and (mat.albedo_texture != null or (mat.vertex_color_use_as_albedo and mat.normal_texture != null))
 				check(textured, "%s %s surface %d has an albedo texture, or vertex colours and a normal map" % [id, mi.name, s])
