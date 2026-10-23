@@ -29,6 +29,7 @@ tools/export_windows.sh                # builds/windows/Pangaea.exe (release) an
 python tools/blender/make_sample_cell.py   # with `pip install bpy==5.2.2` (Python 3.13), or blender --background --python
 python tools/blender/make_m1_blockouts.py [--only id[,id...]]   # the M1 blockouts, the same way
 python tools/blender/make_m1_threats.py [--only id[,id...]]   # the step 3 threat bodies and the spike part, the same way; then --import
+python tools/blender/make_creature_world.py [--only id[,id...]]   # the creature stage's field, nest, fruit bush and meat chunk; then godot --import, --import, godot --import
 godot --headless --path . --script res://tools/audio/make_cell_audio.gd [-- --only=id|sfx|ambience|buses]   # the cell-stage effects and ambience; then --import
 python tools/make_part_rules.py [--check]   # game/data/creature/part_rules.json from the creature part records (the pack carries no records)
 # Tests only: godot --headless --path . --script res://tests/run_tests.gd [-- --skip-slow | -- --only=test_a,test_b]

@@ -1,0 +1,21 @@
+[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
+
+; The meat chunk's flesh material (assets/records/creature_meat_chunk.json): the GLB's baked greyscale detail times the flat colour #8E4C34, times the
+; MultiMesh instance colour (vertex_color_use_as_albedo; instance colours are read as sRGB like albedo_color, and
+; a white instance draws the asset as baked), with the baked ORM's roughness and normal map.
+; creature_meat_chunk.glb.import points the imported M_MeatFlesh here. Written by tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Texture2D" path="res://assets/export/creature_meat_chunk_T_CreatureMeatChunk_Albedo.png" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_meat_chunk_T_CreatureMeatChunk_ORM.png" id="2_orm"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_meat_chunk_T_CreatureMeatChunk_Normal.png" id="3_normal"]
+
+[resource]
+resource_name = "M_MeatFlesh"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(0.557, 0.298, 0.204, 1)
+albedo_texture = ExtResource("1_albedo")
+roughness_texture = ExtResource("2_orm")
+roughness_texture_channel = 1
+normal_enabled = true
+normal_texture = ExtResource("3_normal")
