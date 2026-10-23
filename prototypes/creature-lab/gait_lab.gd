@@ -24,6 +24,8 @@ var hud: Label
 var _footprints: Array[MeshInstance3D] = []
 var _next_print := 0
 var _last_state: Array = []
+var _cam_yaw := 0.0
+var _cam_centre := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -198,11 +200,14 @@ func _update_camera(dt: float) -> void:
 	centre /= maxf(1.0, rigs.size())
 	var yaw: float = rigs[0].planner.yaw if rigs.size() == 1 else 0.0
 	var distance := 1.4 + 3.6 * size + (3.5 if rigs.size() > 1 else 0.0)
-	# Three-quarter view from the front-left of the lead body, smoothed.
-	var offset := Basis(Vector3.UP, yaw + deg_to_rad(-40.0)) * Vector3(0.0, 0.0, -1.0) * distance
-	var eye := centre + offset + Vector3.UP * (0.55 * distance)
+	# Three-quarter view from the front-left of the lead body. The view angle and the centre are smoothed separately,
+	# so the camera swings around the body on a turn instead of cutting through it.
 	var k := 1.0 if time <= dt else 1.0 - exp(-3.0 * dt)
-	camera.global_position = camera.global_position.lerp(eye, k)
+	_cam_yaw = lerp_angle(_cam_yaw, yaw, k * 0.6)
+	_cam_centre = _cam_centre.lerp(centre, k)
+	var offset := Basis(Vector3.UP, _cam_yaw + deg_to_rad(-40.0)) * Vector3(0.0, 0.0, -1.0) * distance
+	camera.global_position = _cam_centre + offset + Vector3.UP * (0.55 * distance)
+	centre = _cam_centre
 	camera.look_at(centre + Vector3.UP * 0.5 * size, Vector3.UP)
 
 

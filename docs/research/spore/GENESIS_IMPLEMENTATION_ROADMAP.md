@@ -36,7 +36,8 @@ The checkpoint (`CHECKPOINT_1.md`) replaced "start with full Stage 1" by two sma
 
 - **0a Gait Lab** (`workstreams/locomotion.md` §9): two quadrupeds identical except for leg length, plus a hexapod,
   stepping with Godot's built-in two-bone IK on a flat plane. Tests that leg length sets speed and turning with no
-  foot slip, and whether Godot's IK is good enough. No skin. About 1–2 sessions. **Recommended first.**
+  foot slip, and whether Godot's IK is good enough. No skin. About 1–2 sessions. **Approved and built 2026-10-23;
+  all pass criteria met, built-in IK holds for legs** (`GAIT_LAB_REPORT.md`).
 - **0b Spine skin and codec** (`workstreams/creature_editor.md` §8): a 3–24 vertebra body with no limbs or parts, the
   capsule skin at two grid sizes timed in GDScript and in one native path (compute shader), and the compact
   description encoder. Decides how live editing will be made fast. About 1–2 sessions.
@@ -101,8 +102,7 @@ separate decision; nothing in this roadmap commits to it.
 
 ## 3. Decisions needed from the owner
 
-1. **Approve prototype 0a, Gait Lab** (recommended first), isolated in `prototypes/creature-lab/`. Nothing in
-   `game/` changes.
+1. ~~Approve prototype 0a, Gait Lab~~ Approved and built 2026-10-23 (`GAIT_LAB_REPORT.md`).
 2. Then approve 0b (spine skin and codec).
 3. Record sessions R2 and R3 when convenient (about 1.5 hours together).
 4. After 0b: if the compute shader path is not enough, choose whether to allow a C++ GDExtension (new toolchain and
