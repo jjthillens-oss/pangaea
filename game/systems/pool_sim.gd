@@ -987,11 +987,13 @@ func _contacts() -> void:
 ## creature order. A creature that starves dies.
 func _creature_metabolism(moved: Array[float]) -> void:
 	var list := creatures.awake().duplicate()
+	var blocks := species.species
 	for i in list.size():
 		var c: CreatureField.Creature = list[i]
-		var share := 1.0 if c.scripted else float(species.species[c.species_id].metabolism_share)
-		c.state.tick(c.phenotype, DT * share, moved[i] * share)
-		if not c.state.is_alive():
+		var share := 1.0 if c.scripted else float(blocks[c.species_id].metabolism_share)
+		var st := c.state
+		st.tick(c.phenotype, DT * share, moved[i] * share)
+		if not st.is_alive():
 			_creature_dies(c, "starved", "")
 
 
@@ -1014,8 +1016,10 @@ func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> voi
 
 func _sync_creatures() -> void:
 	for c in creatures.awake():
-		c.actor.position = c.motion.position
-		c.actor.heading = c.motion.heading
+		var m := c.motion
+		var a := c.actor
+		a.position = m.position
+		a.heading = m.heading
 
 
 ## Tick step 9 for creatures: each one whose drive names a food item eats it through the resolver,
@@ -1057,11 +1061,12 @@ func _combat(swim: Dictionary) -> void:
 	_killer = ""
 	var striking: Array[CreatureField.Creature] = []
 	for c in creatures.awake():
-		if c.brain == null or not c.state.is_alive():
+		var b := c.brain
+		if b == null or not c.state.is_alive():
 			continue
-		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
+		if b.phase == CreatureBrain.STRIKE and b.phase_tick == tick:
 			c.strike_hit = false   # a new strike
-		if CreatureBrain.is_striking(c.brain) and bool(c.drive.get("strike", false)) and not c.strike_hit:
+		if CreatureBrain.is_striking(b) and bool(c.drive.get("strike", false)) and not c.strike_hit:
 			striking.append(c)
 	if not dead:
 		_player_attacks(swim)
@@ -1076,11 +1081,13 @@ func _combat(swim: Dictionary) -> void:
 ## its reason is quiet. A landed hit ends the cell's shelter (grace_ended {reason: "attacked"}).
 func _player_attacks(swim: Dictionary) -> void:
 	var near: Array[Dictionary] = []
+	var at := motion.position
+	var own_r := phenotype.radius
 	for c in creatures.awake():
 		if not c.state.is_alive():
 			continue
-		var d := motion.position.distance_to(c.motion.position)
-		if d <= phenotype.radius + c.phenotype.radius + InteractionResolver.RAM_REACH:
+		var d := at.distance_to(c.motion.position)
+		if d <= own_r + c.phenotype.radius + InteractionResolver.RAM_REACH:
 			near.append({"d": d, "c": c})
 	if near.is_empty():
 		return

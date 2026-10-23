@@ -433,7 +433,8 @@ func remove_stuck_at(places: Array[Vector2], tick: int) -> void:
 	var fairness := species.fairness
 	var stuck: Array[Creature] = []
 	for c in creatures:
-		if c.brain != null and c.brain.stuck:
+		var b := c.brain
+		if b != null and b.stuck:
 			stuck.append(c)
 	for c in stuck:
 		var at: Vector2 = c.motion.position
