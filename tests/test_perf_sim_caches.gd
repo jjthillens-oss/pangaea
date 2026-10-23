@@ -54,6 +54,46 @@ func test_the_endless_queue_insert_matches_the_scan() -> void:
 	check_eq(fast.queue.size(), scan.queue.size(), "both queues hold the same entries")
 
 
+## A tick's spawn retries, queued together, land where one insert at a time puts them: batches in
+## site order (as the due entries come out) and out of order, with repeats, next to entries of their
+## own tick and others.
+func test_queued_retries_match_one_insert_at_a_time() -> void:
+	var fast := CreatureField.new()
+	fast.endless = true
+	var scan := CreatureField.new()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1848
+	var sites := ["a", "b", "b2", "c_1", "c_10", "c_2", "z"]
+	var made := 0
+	var in_order := 0
+	for batch in 300:
+		var at := rng.randi_range(0, 12)
+		var picks: Array[Dictionary] = []
+		for k in rng.randi_range(1, 6):
+			made += 1   # each record's species tells repeats of (at_tick, site) apart
+			picks.append({"id": sites[rng.randi_range(0, sites.size() - 1)], "species": "s%d" % made})
+		if rng.randf() < 0.6:
+			picks.sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
+				return str(x.id) < str(y.id) or (x.id == y.id and str(x.species) < str(y.species)))
+			in_order += 1
+		if rng.randf() < 0.3:
+			var one := {"id": sites[rng.randi_range(0, sites.size() - 1)], "species": "solo%d" % batch}
+			fast._enqueue(one.id, one.species, at)
+			scan._enqueue(one.id, one.species, at)
+		fast._enqueue_retries(picks, at)
+		for s in picks:
+			scan._enqueue(s.id, s.species, at)
+		if fast.queue != scan.queue:
+			check_eq(fast.queue, scan.queue, "batch %d at %d" % [batch, at])
+			return
+		if batch % 40 == 39:
+			var taken := rng.randi_range(0, 30)   # the due front
+			fast.queue = fast.queue.slice(taken)
+			scan.queue = scan.queue.slice(taken)
+	check(in_order > 100 and in_order < 250, "both kinds of batch (%d in order)" % in_order)
+	check_eq(fast.queue.size(), scan.queue.size(), "both queues hold the same entries")
+
+
 ## take_events reads only the awake brains unless a sleeper may hold events: after every step no brain,
 ## asleep or awake, still holds one. An omnivore swims east overdriven, leaving the creatures it
 ## passed asleep (some in a chase), comes back and forages, eating, chased, dying and respawning, with

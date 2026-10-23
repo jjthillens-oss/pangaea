@@ -174,19 +174,30 @@ func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 	tick_spawns_at(arena, [player_pos], tick)
 
 
-## tick_spawns, with the spawn check measured from every place in `places`.
+## tick_spawns, with the spawn check measured from every place in `places`. In the endless world the
+## sites that wait again go into the queue after the loop, in the same order (_enqueue_retries): the
+## only other inserts meanwhile (a spawn loading its chunks queues their sites) are due now, never
+## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in.
 func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void:
 	if queue.is_empty() or int(queue[0].at_tick) > tick:
 		return
 	var due: Array[Dictionary] = []
 	while not queue.is_empty() and int(queue[0].at_tick) <= tick:
 		due.append(queue.pop_front())
+	var retry_at := tick + species.spawn_retry_ticks
+	var later := endless and retry_at > tick
+	var retries: Array[Dictionary] = []
 	for entry in due:
 		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
 			continue   # a site holds one creature; a stale entry is dropped
 		if not _try_site(s, arena, places, tick):
-			_enqueue(s.id, s.species, tick + species.spawn_retry_ticks)
+			if later:
+				retries.append(s)
+			else:
+				_enqueue(s.id, s.species, retry_at)
+	if not retries.is_empty():
+		_enqueue_retries(retries, retry_at)
 
 
 ## Why a creature may not appear at this site now, or "": too close to the player (spawn_safe_m), in
@@ -710,25 +721,55 @@ static func _insert_sorted(list: Array[Creature], c: Creature) -> void:
 
 
 ## Adds a queue entry, keeping the queue sorted by (at_tick, site): before the first entry that is
-## not less. The endless world's queue only ever changes here, at its front and by an order-keeping
-## filter, so it is always sorted and a binary search finds that place; the pool's tests edit theirs,
-## so it keeps the scan.
+## not less. The endless world's queue only ever changes here and in _enqueue_retries, at its front
+## and by an order-keeping filter, so it is always sorted and a binary search finds that place; the
+## pool's tests edit theirs, so it keeps the scan.
 func _enqueue(site_id: String, species_id: String, at_tick: int) -> void:
 	var entry := {"site": site_id, "species": species_id, "at_tick": at_tick}
 	var i := 0
 	if endless:
-		var hi := queue.size()
-		while i < hi:
-			var mid := (i + hi) >> 1
-			var q: Dictionary = queue[mid]
-			if int(q.at_tick) < at_tick or (int(q.at_tick) == at_tick and str(q.site) < site_id):
-				i = mid + 1
-			else:
-				hi = mid
+		i = _lower_bound(at_tick, site_id)
 	else:
 		while i < queue.size() and (int(queue[i].at_tick) < at_tick or (int(queue[i].at_tick) == at_tick and str(queue[i].site) < site_id)):
 			i += 1
 	queue.insert(i, entry)
+
+
+## Endless mode: _enqueue for each site of `sites` in turn, all at `at_tick`. Entries ahead of the
+## last insert are less than it, so while each site is not less than the one before (the due entries
+## come out of the queue in site order) its place is found by scanning on from there, a step or two;
+## otherwise by the binary search. Either way it is the place _enqueue finds.
+func _enqueue_retries(sites: Array[Dictionary], at_tick: int) -> void:
+	var i := -1
+	var before := ""
+	for s in sites:
+		var site_id := str(s.id)
+		if i < 0 or site_id < before:
+			i = _lower_bound(at_tick, site_id)
+		else:
+			while i < queue.size():
+				var q: Dictionary = queue[i]
+				if int(q.at_tick) < at_tick or (int(q.at_tick) == at_tick and str(q.site) < site_id):
+					i += 1
+				else:
+					break
+		queue.insert(i, {"site": site_id, "species": str(s.species), "at_tick": at_tick})
+		before = site_id
+
+
+## The first queue index whose entry is not less than (at_tick, site_id), by binary search: the
+## endless queue is always sorted.
+func _lower_bound(at_tick: int, site_id: String) -> int:
+	var i := 0
+	var hi := queue.size()
+	while i < hi:
+		var mid := (i + hi) >> 1
+		var q: Dictionary = queue[mid]
+		if int(q.at_tick) < at_tick or (int(q.at_tick) == at_tick and str(q.site) < site_id):
+			i = mid + 1
+		else:
+			hi = mid
+	return i
 
 
 func _occupant(site_id: String) -> Creature:
