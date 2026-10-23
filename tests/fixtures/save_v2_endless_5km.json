@@ -1,0 +1,60 @@
+{
+	"adaptation_points": 0,
+	"build_id": "test+dev",
+	"discoveries": [],
+	"era": "microscopic",
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 1,
+		"genome_id": "genome_1876a0f343930402",
+		"lineage_id": "lineage_a50e1716180fee6e",
+		"next_part_number": 4,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.35,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_filter"
+			},
+			{
+				"angle": -0.35,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159,
+				"id": "part_3",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_1876a0f343930402"
+		}
+	],
+	"lineage_id": "lineage_a50e1716180fee6e",
+	"pending_transactions": [],
+	"player": {
+		"position": [
+			5000.123456789012,
+			0.0,
+			-3.25
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 1792735140,
+	"schema_version": 2,
+	"settlements": [],
+	"world_changes": [],
+	"world_seed": 4242
+}
