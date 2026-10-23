@@ -12,6 +12,9 @@ const Runner := preload("res://tests/run_tests.gd")
 const FAST_SEED := 401
 const SLOW_SEEDS: Array[int] = [402, 4242, 77]
 const SHORT_TICKS: Array[int] = [600, 3600]
+## CI's soak jobs (build plan B-14): soak-a runs these files, soak-b skips them.
+const SOAK_JOBS := {"soak-a": "--only", "soak-b": "--skip"}
+const SOAK_A_FILES := "test_endless_gates,test_endless_cost"
 
 
 func _check_scenarios(seeds: Array[int], ticks: Array[int]) -> void:
@@ -87,8 +90,8 @@ func test_soak_the_pool_scenarios_match_the_goldens_at_18000_ticks() -> void:
 
 
 ## The soak tier the 18,000-tick goldens run in (S1 spine 3.1): never in a default run, only with
-## --soak; tools/check_soak.sh passes --soak, and CI runs that in a parallel job.
-func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it() -> void:
+## --soak; tools/check_soak.sh passes --soak, and CI runs it in two parallel jobs (build plan B-14).
+func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it_in_two_jobs() -> void:
 	var plain := Runner._flags(PackedStringArray([]))
 	var soak := Runner._flags(PackedStringArray(["--soak", "--only=test_m1_goldens"]))
 	var quick := Runner._flags(PackedStringArray(["--skip-slow"]))
@@ -103,14 +106,83 @@ func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it() -> void:
 	check_eq(Runner.tier_of("test_x", plain), "run", "plain tests run")
 	check_eq(Runner.tier_of("helper", plain), "not a test", "other methods are not tests")
 	var script := FileAccess.get_file_as_string("res://tools/check_soak.sh")
-	check(script.contains("bounded 3600 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd -- --soak"),
-		"check_soak.sh runs the soak tier under a 3600 s limit")
+	check(script.contains("bounded 3600 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd -- --soak \"$@\""),
+		"check_soak.sh runs the soak tier under a 3600 s limit, passing its flags on")
 	check(script.contains("bounded 600 \"$GODOT\" --headless --path . --import"), "after an import")
+	check(script.contains("if [ $# -gt 0 ] && [ \"${1#--}\" = \"$1\" ]; then"), "a first argument that is a flag is not taken for the Godot path")
 	var ci := FileAccess.get_file_as_string("res://.github/workflows/ci.yml")
-	var job := ci.find("\n  soak:\n")
-	check(job >= 0, "CI has a job named soak")
-	var body := ci.substr(job)
-	check(body.contains("run: tools/check_soak.sh"), "the soak job runs tools/check_soak.sh")
-	check(body.contains("timeout-minutes: 75"), "with a 75-minute backstop")
-	check(not body.contains("needs:"), "in parallel with test-and-export")
-	check(not FileAccess.get_file_as_string("res://tools/check.sh").contains("--soak"), "check.sh leaves the soak tier to its job")
+	check(_ci_job(ci, "soak").is_empty(), "the one soak job is split in two")
+	var lists := {}
+	for job in SOAK_JOBS:
+		var body := _ci_job(ci, job)
+		check(not body.is_empty(), "CI has a job named %s" % job)
+		check(body.contains("timeout-minutes: 75"), "%s: a 75-minute backstop" % job)
+		check(not body.contains("needs:"), "%s: in parallel with test-and-export" % job)
+		var flag: String = SOAK_JOBS[job]
+		var at := body.find("run: tools/check_soak.sh %s=" % flag)
+		check(at >= 0, "%s runs tools/check_soak.sh %s=" % [job, flag])
+		if at >= 0:
+			var line := body.substr(at).get_slice("\n", 0)
+			lists[job] = line.trim_prefix("run: tools/check_soak.sh %s=" % flag).strip_edges()
+	check_eq(str(lists.get("soak-a", "")), SOAK_A_FILES, "soak-a runs the endless gates and cost cases (B-14)")
+	check_eq(str(lists.get("soak-b", "")), SOAK_A_FILES, "soak-b skips exactly the files soak-a runs")
+	check(not FileAccess.get_file_as_string("res://tools/check.sh").contains("--soak"), "check.sh leaves the soak tier to its jobs")
+
+
+## --skip=a,b (B-14) leaves those files out; a name in --only or --skip that matches no file fails the
+## run; and soak-a's and soak-b's flags take every test file exactly once between them.
+func test_skip_leaves_out_its_files_and_the_soak_jobs_split_every_file_once() -> void:
+	var skip := Runner._flags(PackedStringArray(["--skip=test_a, test_b.gd", "--skip-slow"]))
+	check_eq(skip.skip, PackedStringArray(["test_a", "test_b"]), "--skip parses, with or without .gd")
+	check(skip.skip_slow and skip.only.is_empty(), "--skip-slow is not a --skip list")
+	var plain := Runner._flags(PackedStringArray([]))
+	check(plain.skip.is_empty() and Runner.file_selected("test_a", plain), "no flag: every file runs")
+	check(not Runner.file_selected("test_a", skip) and not Runner.file_selected("test_b", skip), "a skipped file does not run")
+	check(Runner.file_selected("test_c", skip), "the others do")
+	var both := Runner._flags(PackedStringArray(["--only=test_a,test_c", "--skip=test_a"]))
+	check(not Runner.file_selected("test_a", both), "a file in both lists is skipped")
+	check(Runner.file_selected("test_c", both) and not Runner.file_selected("test_d", both), "--only still limits the run")
+	var files := PackedStringArray(["test_a.gd", "test_c.gd"])
+	check_eq(Runner.flag_problems(files, both), PackedStringArray(), "names that match files are fine")
+	check_eq(Runner.flag_problems(files, skip), PackedStringArray(["--skip: there is no tests/test_b.gd"]), "a misspelt --skip name fails")
+	var typo := Runner._flags(PackedStringArray(["--only=test_x"]))
+	check_eq(Runner.flag_problems(files, typo), PackedStringArray(["--only: there is no tests/test_x.gd"]), "so does a misspelt --only name")
+	var a := Runner._flags(PackedStringArray(["--soak", "--only=" + SOAK_A_FILES]))
+	var b := Runner._flags(PackedStringArray(["--soak", "--skip=" + SOAK_A_FILES]))
+	var all := DirAccess.get_files_at("res://tests")
+	check_eq(Runner.flag_problems(all, a), PackedStringArray(), "every file soak-a names exists")
+	var counted := 0
+	for file in all:
+		if file.begins_with("test_") and file.ends_with(".gd") and file != "test_case.gd":
+			counted += 1
+			var name := file.get_basename()
+			check(Runner.file_selected(name, a) != Runner.file_selected(name, b), "%s runs in exactly one soak job" % name)
+	check(counted > 10, "the split was checked over the test files (%d)" % counted)
+
+
+## G20 (build plan B-13): the unit suite's limit in tools/check.sh is 1200 s and CI's test-and-export
+## job times out after 40 minutes, holding the S1 fast (+48 s) and slow (+150 s) budgets.
+func test_the_suite_limit_and_the_ci_timeout_hold_the_s1_budgets() -> void:
+	var check_sh := FileAccess.get_file_as_string("res://tools/check.sh")
+	check(check_sh.contains("\nbounded 1200 \"$GODOT\" --headless --path . --script res://tests/run_tests.gd\n"),
+		"check.sh runs the unit suite under a 1200 s limit")
+	check(not check_sh.contains("bounded 900 "), "and no longer under 900 s")
+	var job := _ci_job(FileAccess.get_file_as_string("res://.github/workflows/ci.yml"), "test-and-export")
+	check(job.contains("run: tools/check.sh"), "test-and-export runs tools/check.sh")
+	check(job.contains("\n    timeout-minutes: 40\n"), "test-and-export times out after 40 minutes")
+
+
+## The text of CI job `name` (from its key to the next job), or "".
+static func _ci_job(ci: String, name: String) -> String:
+	var start := ci.find("\n  %s:\n" % name)
+	if start < 0:
+		return ""
+	var body := ci.substr(start + 1)
+	var lines := body.split("\n")
+	var out := PackedStringArray([lines[0]])
+	for k in range(1, lines.size()):
+		var line: String = lines[k]
+		if line.length() > 2 and line.begins_with("  ") and line[2] != " ":
+			break
+		out.append(line)
+	return "\n".join(out)
