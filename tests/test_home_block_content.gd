@@ -3,7 +3,8 @@ extends TestCase
 ## 5.3): the M1 pool exactly as pool mode builds it, unwalled, plus the seam ring of 20 zones and 8
 ## shells that fills the rest of the 128 x 128 bu block. HomeBlock's own rules are T1's
 ## (tests/test_home_block.gd, on a fixture); these tests hold the real content to them, to the
-## starving budget over the whole block, and to the margins the ring was authored with.
+## starving budget over the whole block, and to the margins the ring was authored with. The slow and
+## soak tests run the block with the tiles round it as WorldGen.chunk builds them, seed by seed.
 
 const WorldChecks := preload("res://tests/world_checks.gd")
 ## The starving budget as tests/test_pool_layout.gd computes it (30 health at 1.5 a second, the
@@ -22,12 +23,21 @@ const ZONE_GAP_BU := 1.0
 ## than rules 9 and 10 need (r + 0.1), so the ring never constrains M1 tuning.
 const SEAM_TO_M1_DISC_BU := 4.0
 const BLOCK := Rect2(-64.0, -64.0, 128.0, 128.0)
+## The block and the ring of tiles round it: 4 x 4 whole tiles, 8 x 8 chunks at size 1 (whole tiles,
+## so no point lacks food that lies beyond the bounds). B-17 asks for 50 seeds, 10 of them slow, but
+## one seed is a 512 x 512 grid of about 3 s here and B-13 moves any slow test over 20 s to soak: so
+## seeds 1 to 5 are slow and 6 to 50 soak.
+const NEIGHBOURS := Rect2(-128.0, -128.0, 256.0, 256.0)
+const NEIGHBOUR_CHUNKS := Rect2i(-4, -4, 8, 8)
+const SLOW_SEEDS := Vector2i(1, 5)
+const SOAK_SEEDS := Vector2i(6, 50)
 
 var species: SpeciesCatalog
 var parts: PartCatalog
 var layout: PoolLayout
 var kit: PlacementKit
 var home: HomeBlock
+var content: WorldContent
 
 
 func before_each() -> void:
@@ -165,3 +175,44 @@ func test_seam_shells_stay_well_clear_of_the_m1_reach_discs() -> void:
 			check(gap >= SEAM_TO_M1_DISC_BU, "ring shell %s is %.2f bu from site %s's reach circle" % [s.id, gap, site.id])
 	check_eq(checked, 7 * RING_SHELLS, "every M1 site against every ring shell")
 	print("test-home-content: nearest ring shell to an M1 reach circle %.2f bu" % nearest)
+
+
+## The home block and its neighbour tiles for each seed in [seeds.x, seeds.y], from the generator:
+## one arena of every shell, every chunk's zones, and the spawn and every live site home as
+## must-reach points. With `measure`, returns the worst walk to food on the first seed (a grid more).
+func _neighbours_reach(seeds: Vector2i, measure: bool) -> float:
+	var budget := _budget()
+	if content == null:
+		content = WorldContent.load_from(WorldConfig.DEFAULT_PATH, layout, species)
+	var worst := -1.0
+	for seed in range(seeds.x, seeds.y + 1):
+		var gen := WorldGen.create(content, species, seed)
+		var circles: Array[Dictionary] = []
+		var zones: Array[Dictionary] = []
+		var homes: Array[Vector2] = [Vector2(home.spawn[0], home.spawn[1])]
+		for cy in range(NEIGHBOUR_CHUNKS.position.y, NEIGHBOUR_CHUNKS.end.y):
+			for cx in range(NEIGHBOUR_CHUNKS.position.x, NEIGHBOUR_CHUNKS.end.x):
+				var c := gen.chunk(1, cx, cy)
+				for sh in c.shells:
+					circles.append({"id": sh.id, "center": Vector2(sh.x, sh.y), "radius": float(sh.r)})
+				for z in c.zones:
+					zones.append({"id": z.id, "center": Vector2(z.x, z.y), "radius": float(z.radius)})
+				for site in c.sites:
+					homes.append(Vector2(site.x, site.y))
+		check(zones.size() > home.zones.size() and homes.size() > home.sites.size() + 1, "seed %d: the tiles round home were built (%d zones, %d homes)" % [seed, zones.size(), homes.size()])
+		var arena := ChunkArena.from_shells(circles)
+		check_eq(WorldChecks.reach_problems(arena, zones, NEIGHBOURS, budget, homes), PackedStringArray(), "seed %d: [-128, 128)^2" % seed)
+		if measure and seed == seeds.x:
+			worst = float(WorldChecks.worst_reach(arena, zones, NEIGHBOURS).worst)
+	return worst
+
+
+## G3 across the block's edges: the home block and the tiles round it, seeds 1 to 5.
+func test_slow_the_home_block_and_its_neighbour_tiles_reach_food() -> void:
+	_neighbours_reach(SLOW_SEEDS, false)
+	print("test-home-content: home and neighbours, seeds %d to %d clean" % [SLOW_SEEDS.x, SLOW_SEEDS.y])
+
+
+func test_soak_the_home_block_and_its_neighbour_tiles_reach_food_on_45_more_seeds() -> void:
+	var worst := _neighbours_reach(SOAK_SEEDS, true)
+	print("test-home-content: home and neighbours, seeds %d to %d clean; reach worst on seed %d %.1f tm" % [SOAK_SEEDS.x, SOAK_SEEDS.y, SOAK_SEEDS.x, worst])
