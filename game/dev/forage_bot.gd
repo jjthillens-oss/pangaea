@@ -11,6 +11,10 @@ extends RefCounted
 ## cannot hear the sim's events; it watches the creatures' attack phases instead, as a player watches
 ## their poses, and hands EvadeBot the tells and their ends it sees.
 ##
+## In the endless world (S1, sim.world set) it minds only the awake creatures, and with no zone
+## loaded it waits where it is rather than heading for the pool's spawn, which is not in the cell's
+## frame there. The pool's output is unchanged (the golden M1 hashes drive it).
+##
 ##     var bot = load("res://game/dev/forage_bot.gd").new()
 ##     sim.step(bot.next_intent(sim))
 
@@ -74,7 +78,7 @@ func _wary_forage(sim: PoolSim) -> SimIntent:
 	if sim.dead:
 		return intent
 	var push := Vector2.ZERO
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		var off := sim.motion.position - c.motion.position
 		var d := off.length()
 		if d < THREAT_AVOID_M and d > 1e-6:
@@ -91,7 +95,7 @@ func _wary_forage(sim: PoolSim) -> SimIntent:
 func _attack_events(sim: PoolSim) -> Array:
 	var out: Array = []
 	var now := {}
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		var b := c.brain
 		if b == null or b.target != CreatureField.PLAYER_ID or b.state != CreatureBrain.ATTACK or b.phase == CreatureBrain.RECOVER:
 			continue
@@ -146,12 +150,14 @@ func _chosen_food(sim: PoolSim) -> Dictionary:
 
 
 ## With nothing to eat, wait at the nearest zone's center (carrion and plankton both appear there);
-## with avoid_threats, the nearest one with no creature within THREAT_FOOD_M (else the spawn).
+## with avoid_threats, the nearest one with no creature within THREAT_FOOD_M. With no such zone, the
+## spawn in the pool and the cell's own place in the endless world.
 func _waiting_spot(sim: PoolSim) -> Vector2:
+	var fallback := sim.motion.position if sim.get("world") != null else sim.layout.spawn
 	if not avoid_threats or sim.creatures == null:
 		var z := sim.region.zone(sim.nearest_zone_id())
-		return z.center if not z.is_empty() else sim.layout.spawn
-	var best := sim.layout.spawn
+		return z.center if not z.is_empty() else fallback
+	var best := fallback
 	var best_d := INF
 	for z in sim.region.zones:
 		var d := sim.motion.position.distance_to(z.center)
@@ -164,10 +170,18 @@ func _waiting_spot(sim: PoolSim) -> Vector2:
 static func _near_creature(sim: PoolSim, p: Vector2, within: float) -> bool:
 	if sim.creatures == null:
 		return false
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		if c.motion.position.distance_to(p) < within:
 			return true
 	return false
+
+
+## The creatures that act this tick: all of them in the pool, the awake ones in the endless world
+## (CreatureField.awake(), S1 spine 3.10, which is the creature list itself in the pool). Read by
+## name, so the bot also loads before the endless world.
+static func _active(sim: PoolSim) -> Array:
+	var field: Object = sim.creatures
+	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
 
 
 ## The point to swim at now: the target itself, or a point beside the first rock in the way
