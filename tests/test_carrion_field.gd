@@ -1,6 +1,8 @@
 extends TestCase
 ## Carrion enters only through spawn(): the interim supply is seeded and capped, items rot at
-## their lifetime, and step 3 kills can already drop carrion through the same call.
+## their lifetime, and step 3 kills can already drop carrion through the same call. The real data
+## turns the supply off since step 3 (carrion comes from kills); the block stays so turning it back
+## on is a data change, and the supply tests switch it on (_supply_on()).
 
 const DT := 1.0 / 60.0
 ## One zone with a rock inside it and one zone a rock covers completely; the supply runs every second.
@@ -26,7 +28,7 @@ func _run(field: CarrionField, seconds: float, on_tick: Callable = Callable()) -
 
 ## [time, position] of each interim spawn over `seconds`.
 func _interim_spawns(seed_value: int, seconds: float) -> Array:
-	var field := CarrionField.create(layout.carrion, seed_value)
+	var field := CarrionField.create(_supply_on(), seed_value)
 	var out := []
 	var collect := func(i: int) -> void:
 		for e in field.events:
@@ -47,7 +49,9 @@ func test_the_interim_supply_is_deterministic_per_seed() -> void:
 
 
 func test_interim_carrion_lands_clear_inside_a_zone() -> void:
-	for spawn in _interim_spawns(33, 600.0):
+	var spawns := _interim_spawns(33, 600.0)
+	check(spawns.size() >= 10, "the supply ran (%d spawns)" % spawns.size())
+	for spawn in spawns:
 		var p: Vector2 = spawn[1]
 		var inside := false
 		for z in layout.zones:
@@ -81,7 +85,7 @@ func test_interim_carrion_never_lands_on_a_rock_inside_a_zone() -> void:
 
 
 func test_the_supply_never_exceeds_max_live() -> void:
-	var field := CarrionField.create(layout.carrion, 34)
+	var field := CarrionField.create(_supply_on(), 34)
 	field.place_initial(arena)
 	var max_live: int = layout.carrion.interim_supply.max_live
 	var most := [0]
@@ -140,3 +144,8 @@ func _data_with_supply(enabled: bool) -> Dictionary:
 	var data := layout.carrion.duplicate(true)
 	data.interim_supply.enabled = enabled
 	return data
+
+
+## The real carrion data with the interim supply switched back on.
+func _supply_on() -> Dictionary:
+	return _data_with_supply(true)

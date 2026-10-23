@@ -11,28 +11,33 @@ Pinned in `tools/toolchain.env`. Inspected and verified on 2026-10-22.
 ## Verified in this repository
 
 - `godot --headless --import` imports every GLB in `assets/export/` with no errors.
-- `tools/check.sh` passes (2026-10-22, commit a53fc70): 252 tests, the M0 boot check, the launch run and both phases of the play smoke (96 and 23 checks), with no errors in the smoke logs.
+- `tools/check.sh` passes (2026-10-22, commit 1ebbe75): 480 tests, the M0 boot check, the launch run, the play smoke's found and continue phases (178 and 31 checks), the UI smoke (44), the death smoke's two processes (22 and 10), with no errors in the smoke logs, and the release pack (10 checks).
 - A rendered frame of the M0 boot scene (OpenGL under Xvfb) is in `docs/evidence/`.
 - `tools/export_windows.sh` produces `builds/windows/Pangaea.exe` and `builds/windows/Pangaea-dev.exe` (single files, embedded pack).
 
 **Windows gate status.**
 - M0: passed (launch check). On 2026-10-22 the owner launched the exported `Pangaea.exe` (built from commit 678ce8b plus the M0 working tree) on his Windows PC and saw the sample cell rotating with four PASS lines. Hardware was not recorded.
 - M1 step 2: open. On 2026-10-22 the owner ran the preview build (commit a927b0f) on his PC. The formal checklist, the adapter and the FPS are not recorded yet; see `docs/milestones/M1.md`. Later commits are exported but not Windows-verified.
+- M1 step 3: open. Exported but not Windows-verified; the owner checklist is in `docs/milestones/M1.md`.
 
 ## What `tools/check.sh` runs
 
-In this order; any failure stops it. It takes about 40 s in the Linux container.
+In this order; any failure stops it. It takes about 4.5 minutes in the Linux container, about 4 of them in the unit suite (its three slow gates about 2). Every Godot run has a time limit (the import and the release pack's export 600 s, the unit suite 900 s, every other run 300 s), so a hang fails the check with exit code 124 instead of running until CI cancels the job. The limits come from `tools/bounded.sh`, which keeps each run in the script's process group, so Ctrl-C stops the check at once and no Godot outlives it; `tools/test_bounded.sh` checks that before the import (about 12 s). The test runner prints each test's name as it starts and `ok` or `FAIL` as it ends, so a stopped suite still shows the results so far and names the test that hung; the failures are listed again above the totals.
 
 1. `--import`.
-2. `tests/run_tests.gd`: the whole test suite.
+2. `tests/run_tests.gd`: the whole test suite, slow gates included.
 3. The M0 checks: `game/scenes/boot.tscn` by path, with `-- --smoke`.
 4. Launch run: the main scene for 300 frames (`--fixed-fps 60 --quit-after 300`). It must open with no engine or script errors.
-5. Play smoke, found phase (`tests/smoke/play_smoke.gd -- --phase=found --seed=4242`): a grazer lineage is started from the start screen, eats, starves and recovers, dies and continues, then saves and quits to the title. Hunter and omnivore lineages eat too.
-6. Play smoke, continue phase, in a new process: Continue brings back the same lineage, body, parts, points and place.
+5. Play smoke, found phase (`tests/smoke/play_smoke.gd -- --phase=found --seed=4242`): a grazer lineage is started from the start screen, eats, starves and recovers, dies and continues. Then the threats: the creatures are drawn and listed in the debug panel, F9 and F10 work, an ambush hunter catches the cell (tell, hit, death notice, death saved), the cell continues sheltered, is caught again soon after with a longer shelter, and an edge arrow shows a hunter below the screen. Then it saves and quits to the title. Hunter and omnivore lineages eat too.
+6. Play smoke, continue phase, in a new process: Continue brings back the same lineage, body, parts, points, deaths and place, with the creatures back at their sites and the cell sheltered.
 7. UI smoke (`tests/smoke/ui_smoke.gd`): with a saved lineage, pressing Enter through New lineage, the body card, Start and the replace-lineage confirm keeps the lineage, because the confirm opens on Cancel. Then, for every starting body, the starving banner and a real "Not saved yet" message stay clear of the HUD's status and points panels, compared by their global rects.
-8. Error-log gate: fails if any `builds/smoke/*.log` has `SCRIPT ERROR` or a line starting `ERROR:`.
+8. Death smoke, in two more processes: `--phase=die_and_quit --slot=user://smoke/death.json --seed=4243` starts an omnivore, eats dev carrion, is caught, and closes the window at the death notice, which quits with no dialog because the death is already saved; `--phase=after_death` continues that slot and finds the points the death left, the cell at its checkpoint and sheltered, and the death last in its history.
+9. Error-log gate: fails if any `builds/smoke/*.log` has `SCRIPT ERROR` or a line starting `ERROR:`.
+10. Release gate (`tools/check_release.sh`): exports the release pack (no `game/dev/`, no tests) and starts it from an empty folder, then `tools/release_probe.gd` checks the start screen is up, there is no dev layer, `--perf-tour` is ignored and the pack holds nothing from `game/dev/` or `tests/`. Logs go to `builds/release/`.
 
-Steps 4 to 7 write `builds/smoke/launch.log`, `found.log`, `continue.log` and `ui.log`. Smoke saves go to `user://smoke/`, never to the player's slot. Run `tools/write_build_info.sh` first if the build id should name the commit; otherwise it says `dev`. To keep a check run away from your own Godot user data, set `XDG_DATA_HOME` to a scratch folder.
+Steps 4 to 8 write `builds/smoke/launch.log`, `found.log`, `continue.log`, `ui.log`, `die_and_quit.log` and `after_death.log`. Smoke saves go to `user://smoke/`, never to the player's slot. Run `tools/write_build_info.sh` first if the build id should name the commit; otherwise it says `dev`. To keep a check run away from your own Godot user data, set `XDG_DATA_HOME` to a scratch folder, as an absolute path (Godot ignores a relative one).
+
+The test runner takes two flags after `--`: `--skip-slow` skips the `test_slow_*` gates (for quick local loops) and `--only=test_creature_brain,test_threats_sim` runs only those files (a name that matches no file fails the run). `check.sh` and CI pass neither.
 
 ## Windows builds
 
@@ -41,7 +46,7 @@ Steps 4 to 7 write `builds/smoke/launch.log`, `found.log`, `continue.log` and `u
 | File | Preset | Contents |
 | --- | --- | --- |
 | `builds/windows/Pangaea.exe` | `Windows Desktop` (release) | The game. `game/dev/` and `tests/` are left out. |
-| `builds/windows/Pangaea-dev.exe` | `Windows Desktop Dev` (debug) | The game plus the dev tools in `game/dev/`: the debug panel (F3), dev keys (F5 to F8), gizmos, the forage bot and the perf tour. `tests/` is left out. |
+| `builds/windows/Pangaea-dev.exe` | `Windows Desktop Dev` (debug) | The game plus the dev tools in `game/dev/`: the debug panel (F3), dev keys (F5 to F10), gizmos, the bots and the perf tour. `tests/` is left out. |
 
 There is no console wrapper (`Pangaea-dev.console.exe`) yet, because `tools/setup_toolchain.sh` installs only the release and debug templates. CI runs `check.sh`, then the export, and uploads both exes as one artifact.
 
@@ -87,6 +92,18 @@ VK_ICD_FILENAMES=/tmp/lvp/lvp_icd.json xvfb-run -a -s "-screen 0 1920x1080x24" .
 2. Install Blender 5.2.2 LTS from blender.org.
 3. Open `project.godot` in Godot. The main scene is `game/scenes/main.tscn`: the start screen, then the tide pool. The M0 checks still live in `game/scenes/boot.tscn`; open it and run it as the current scene.
 4. To try a build without Godot, download the `pangaea-windows-<commit>` artifact from the latest CI run. Run `Pangaea.exe` to play, or `Pangaea-dev.exe` for the debug panel and the perf tour.
+
+## Blender scripts
+
+Each script builds its assets from code and writes the `.blend`, the GLB and the record; run it from the repository root, then `godot --headless --path . --import`. With the `bpy` module (`pip install bpy==5.2.2`, Python 3.13) run it with `python`; with the Blender app, `blender --background --python <script> -- <flags>`.
+
+| Script | Assets |
+| --- | --- |
+| `tools/blender/make_sample_cell.py` | The M0 sample cell. |
+| `tools/blender/make_m1_blockouts.py [--only id[,id...]]` | The step 2 blockouts: pool floor, rocks, plankton, carrion and four parts. |
+| `tools/blender/make_m1_threats.py [--only id[,id...]]` | The step 3 blockouts: `creature_ambush_body`, `creature_rammer_body` and `part_spike`. GLBs and records come out byte-identical on every run. |
+
+The threat bodies and the pool floor are vertex-coloured. Godot's glTF import ignores `COLOR_0`, so each `.glb.import` maps the surface material to an external `.tres` (`M_PoolFloor`, `M_AmbushBody`, `M_RammerBody`) through `_subresources`; keep that mapping when an import file is rewritten.
 
 ## Conventions
 

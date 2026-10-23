@@ -2,7 +2,9 @@ class_name FeedbackFx
 extends Node3D
 ## World-space feedback that follows confirmed sim events (M1 step 2, Bible 20): a "+8 energy · +1"
 ## label rising from each meal, and a "Regrowing" label over every emptied plankton zone until it
-## is full again. Labels are pooled Label3D nodes; nothing here changes the sim.
+## is full again. M1 step 3 adds a "−12" label rising from every hit the cell lands or takes
+## (threat pink when taken, cream when dealt) and a "Dodged!" label over the cell when a strike on
+## it ends without a hit. Labels are pooled Label3D nodes; nothing here changes the sim.
 ##
 ## Meals often come in quick runs through a plankton cluster. A meal soon after and close to the
 ## last one adds to its label ("+16 energy · +2") instead of drawing a second one on top of it.
@@ -25,6 +27,14 @@ const MEAL_NEAR_M := 3.0
 ## FONT_SIZE, so 0.44 m at PIXEL_SIZE, plus a little room.
 const MEAL_LINE_M := 0.46
 const MEAL_LIFT_RATE := 18.0      ## how fast a pushed label moves up (1/s, exponential)
+const HIT_LABELS := 4
+const HIT_RISE_M := 0.8
+const HIT_LIFE_S := 0.9
+const HIT_START_Y := 0.9
+const DODGED_TEXT := "Dodged!"
+const DODGED_RISE_M := 0.7
+const DODGED_LIFE_S := 0.8
+const DODGED_START_Y := 1.1
 const ZONE_LABEL_Y := 1.2
 const ZONE_REFRESH_S := 0.25
 const FONT_SIZE := 64
@@ -32,6 +42,9 @@ const PIXEL_SIZE := 0.005
 const OUTLINE_SIZE := 14
 const MEAL_COLOR := Color(1.0, 0.97, 0.86)
 const ZONE_COLOR := Color(0.86, 0.97, 0.8)
+const HIT_TAKEN_COLOR := Color(1.0, 0.55, 0.62)    ## a light threat pink (#D9466B lifted to read on the water)
+const HIT_DEALT_COLOR := Color(0.957, 0.918, 0.824)   ## cream highlight #F4EAD2
+const DODGED_COLOR := Color(0.62, 0.98, 1.0)
 const OUTLINE_COLOR := Color(0.03, 0.13, 0.15, 0.9)
 
 var _meal_labels: Array[Label3D] = []
@@ -42,6 +55,11 @@ var _meal_points := PackedInt32Array()
 var _meal_lift := PackedFloat32Array()      ## how far each label sits above MEAL_START_Y (stacking)
 var _meal_lift_shown := PackedFloat32Array()
 var _next_meal := 0
+var _hit_labels: Array[Label3D] = []
+var _hit_ages := PackedFloat32Array()
+var _next_hit := 0
+var _dodged: Label3D
+var _dodged_age := DODGED_LIFE_S
 var _zone_labels := {}   ## zone id -> Label3D
 var _zone_refresh := 0.0
 var _camera: PoolCamera
@@ -72,6 +90,18 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	_meal_lift.fill(0.0)
 	_meal_lift_shown.resize(MEAL_LABELS)
 	_meal_lift_shown.fill(0.0)
+	_hit_labels.clear()
+	for i in HIT_LABELS:
+		var label := _make_label(HIT_DEALT_COLOR)
+		label.name = "Hit%d" % i
+		_hit_labels.append(label)
+	_hit_ages.resize(HIT_LABELS)
+	_hit_ages.fill(HIT_LIFE_S)
+	_next_hit = 0
+	_dodged = _make_label(DODGED_COLOR)
+	_dodged.name = "Dodged"
+	_dodged.text = DODGED_TEXT
+	_dodged_age = DODGED_LIFE_S
 	for z in zones:
 		var label := _make_label(ZONE_COLOR)
 		label.name = "Regrowing_%s" % z.id
@@ -207,6 +237,59 @@ static func meal_text(event: Dictionary) -> String:
 	return text
 
 
+## A "−12" label rising from the target of a "hit" event the cell is part of: pink when the cell
+## took it, cream when it dealt it. Hits between creatures show nothing.
+func show_hit(event: Dictionary) -> void:
+	var taken: bool = event.get("target") == CreatureField.PLAYER_ID
+	if _hit_labels.is_empty() or not (taken or event.get("attacker") == CreatureField.PLAYER_ID):
+		return
+	var i := _next_hit
+	_next_hit = (_next_hit + 1) % _hit_labels.size()
+	var label := _hit_labels[i]
+	var color := HIT_TAKEN_COLOR if taken else HIT_DEALT_COLOR
+	label.text = hit_text(event)
+	label.modulate = color
+	label.outline_modulate.a = OUTLINE_COLOR.a
+	var at: Variant = event.get("position")
+	label.position = PlaneSpace.to_world(at if at is Vector2 else Vector2.ZERO, HIT_START_Y)
+	label.visible = true
+	_hit_ages[i] = 0.0
+
+
+## "−12": the health a hit took, rounded; a scratch that took any health shows at least 1.
+static func hit_text(event: Dictionary) -> String:
+	var dealt := float(event.get("dealt", event.get("damage", 0.0)))
+	var shown := roundi(dealt)
+	if shown == 0 and dealt > 0.0:
+		shown = 1
+	return "−%d" % shown
+
+
+## "Dodged!" rising over the cell at `at` for DODGED_LIFE_S.
+func show_dodged(at: Vector2) -> void:
+	if _dodged == null:
+		return
+	_dodged_age = 0.0
+	_dodged.position = PlaneSpace.to_world(at, DODGED_START_Y)
+	_dodged.modulate.a = 1.0
+	_dodged.outline_modulate.a = OUTLINE_COLOR.a
+	_dodged.visible = true
+
+
+## The hit labels on screen now (for checks).
+func hit_labels() -> Array[Label3D]:
+	var out: Array[Label3D] = []
+	for label in _hit_labels:
+		if label.visible:
+			out.append(label)
+	return out
+
+
+## The "Dodged!" label (for checks); visible while it shows.
+func dodged_label() -> Label3D:
+	return _dodged
+
+
 ## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again.
 func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float) -> void:
 	_zone_refresh -= delta
@@ -257,6 +340,25 @@ func _process(delta: float) -> void:
 		label.outline_modulate.a = OUTLINE_COLOR.a * label.modulate.a
 		if k >= 1.0:
 			label.visible = false
+	for i in _hit_labels.size():
+		if _hit_ages[i] >= HIT_LIFE_S:
+			continue
+		_hit_ages[i] += delta
+		_rise_label(_hit_labels[i], _hit_ages[i] / HIT_LIFE_S, HIT_START_Y, HIT_RISE_M)
+	if _dodged != null and _dodged_age < DODGED_LIFE_S:
+		_dodged_age += delta
+		_rise_label(_dodged, _dodged_age / DODGED_LIFE_S, DODGED_START_Y, DODGED_RISE_M)
+
+
+## Moves a floating label `k` (0..1) of its way up from `start_y` by `rise`, fading it out; hides it
+## at the end.
+func _rise_label(label: Label3D, k: float, start_y: float, rise: float) -> void:
+	k = clampf(k, 0.0, 1.0)
+	label.position.y = start_y + rise * ease(k, 0.4)
+	label.modulate.a = 1.0 - k * k
+	label.outline_modulate.a = OUTLINE_COLOR.a * label.modulate.a
+	if k >= 1.0:
+		label.visible = false
 
 
 func _make_label(color: Color) -> Label3D:

@@ -67,7 +67,7 @@ func _begin() -> void:
 		main.get_tree().quit(1)
 		return
 	main.pool.pause_on_focus_loss = false
-	main.pool.died.connect(func(_cause: String): main.continue_after_death.call_deferred())
+	main.pool.died.connect(func(_cause: String, _reason: String): main.continue_after_death.call_deferred())
 	_running = true
 	print("Perf tour: measuring %d s after a %d s warm-up." % [DURATION_S, WARM_UP_S])
 

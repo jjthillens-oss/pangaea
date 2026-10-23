@@ -3,6 +3,11 @@ extends Node
 ## The game's root scene (M1 step 2). It owns the GameSession and the launch flags (RunFlags),
 ## shows one screen at a time (the start screen or the pool) and answers the menus. Quitting
 ## asks "Save first?" when there is unsaved progress, for the window's close button too.
+##
+## A death (M1 step 3) is resolved the moment the pool reports it: GameSession.resolve_death()
+## takes the points and, with SAVE_ON_DEATH (owner decision OD1), saves the slot with the cell at
+## its checkpoint. The notice then names what the death cost, the killer's tip and whether it was
+## saved; a saved death leaves nothing to ask about on quit, a failed one gets its own warning.
 ## In debug builds it also adds the dev layer (debug panel, dev gizmos, dev keys) by loading
 ## game/dev by path; the release export leaves that folder out.
 ##
@@ -23,6 +28,8 @@ const DEV_PANEL_PATH := "res://game/dev/debug_panel.tscn"
 const DEV_GIZMOS_PATH := "res://game/dev/dev_gizmos.gd"
 const DEV_KEYS_PATH := "res://game/dev/dev_keys.gd"
 const DEV_PERF_TOUR_PATH := "res://game/dev/perf_tour.gd"
+## The quit dialog's words when the cell's death could not be saved (GameSession.death_save_failed).
+const DEATH_NOT_SAVED_TEXT := "Your cell's death could not be saved. Quit anyway?"
 
 var flags: RunFlags
 var session: GameSession
@@ -136,15 +143,15 @@ func resume() -> void:
 	get_viewport().gui_release_focus()
 
 
-## Death notice: Continue. Applies the death rule and puts the cell back at the start. Returns
-## the points lost.
+## Death notice: Continue. Puts the cell back at its checkpoint, sheltered (the death was applied
+## when it happened). Returns the points the death took.
 func continue_after_death() -> int:
 	if pool == null or not session.sim.dead:
 		return 0
 	death_notice.close()
 	pool.set_paused(false)
 	var lost := session.respawn_after_death()
-	hud.show_message("Back at the start: %s lost." % Hud.points_line(lost))
+	hud.show_message(respawn_text(Hud.shelter_seconds(session.sim)))
 	return lost
 
 
@@ -153,8 +160,9 @@ func quit_to_desktop() -> void:
 	request_quit()
 
 
-## Quits, or first asks "Save first?" when a run has unsaved progress (the window's close
-## button comes here too).
+## Quits, or first asks when a run has unsaved progress (the window's close button comes here
+## too): "Save first?", or a warning when the cell's death could not be saved (see quit_prompt).
+## A saved death is not unsaved progress, so quitting at its notice asks nothing.
 func request_quit() -> void:
 	if pool == null or not session.dirty:
 		_quit()
@@ -162,13 +170,8 @@ func request_quit() -> void:
 	if not pool.paused:
 		pool.set_paused(true)
 		_paused_for_quit = true
-	var body := "You have progress since your last save."
-	var choices := [["quit", "Quit without saving"], ["cancel", "Cancel"]]
-	if session.sim.dead:
-		body += " Saving is off until you continue after your cell's death."
-	else:
-		choices.push_front(["save_quit", "Save and quit", true])
-	quit_dialog.open("Save first?", body, choices, "cancel" if session.sim.dead else "save_quit", "cancel")
+	var prompt := quit_prompt(session.sim.dead, session.death_save_failed())
+	quit_dialog.open(prompt.title, prompt.body, prompt.choices, prompt.focus, "cancel")
 
 
 func toggle_fullscreen() -> void:
@@ -186,14 +189,68 @@ static func save_status_text(result: Dictionary) -> String:
 	return "Saved %02d:%02d" % [t.hour, t.minute]
 
 
-## The death notice's title. The body (`death_text`) already says how the cell died.
-static func death_title(cause: String) -> String:
-	return "Out of energy" if cause == "starved" else "Your cell died"
+## The quit dialog for a run with unsaved progress: {"title", "body", "choices", "focus"}.
+## Alive: "Save first?" with Save and quit. Dead with its death's save failed: a warning that
+## quitting loses that death. Dead and not saved yet (the OD1 fallback, SAVE_ON_DEATH false):
+## step 2's "Save first?", with no save while the cell is dead.
+static func quit_prompt(dead: bool, death_save_failed: bool) -> Dictionary:
+	if dead and death_save_failed:
+		return {"title": "Death not saved", "body": DEATH_NOT_SAVED_TEXT,
+			"choices": [["quit", "Quit"], ["cancel", "Cancel"]], "focus": "cancel"}
+	var body := "You have progress since your last save."
+	var choices := [["quit", "Quit without saving"], ["cancel", "Cancel"]]
+	if dead:
+		body += " Saving is off until you continue after your cell's death."
+	else:
+		choices.push_front(["save_quit", "Save and quit", true])
+	return {"title": "Save first?", "body": body, "choices": choices, "focus": "cancel" if dead else "save_quit"}
 
 
-static func death_text(cause: String, lost: int) -> String:
-	return "Your cell %s. The lineage continues. You lose a quarter of your unspent adaptation points (−%d)." \
-		% ["starved" if cause == "starved" else "died", lost]
+## The death notice's title: how the cell died. A kill names its killer (the species'
+## death_reason, such as "Caught by an ambush hunter").
+static func death_title(cause: String, reason: String = "") -> String:
+	if cause == "starved":
+		return "Out of energy"
+	if cause == "killed" and not reason.is_empty():
+		return reason
+	return "Your cell died"
+
+
+## The death notice's body: what the death cost, already applied ("You lost ... (−3)"), whether it
+## was saved, then the tip on a line of its own. `saved` is GameSession.resolve_death's
+## {"attempted", "ok", "error"}: "Saved.", "Could not save ...", or nothing when no save was tried
+## (the OD1 fallback). A starving death without a tip gets GameSession.starved_tip(phenotype), which
+## names only a food the body can eat, and no food without a phenotype.
+static func death_text(cause: String, lost: int, tip: String = "", saved: Dictionary = {}, generation: int = 1,
+		phenotype: Phenotype = null) -> String:
+	var text := "The lineage continues from the start of generation %d. You lost a quarter of your unspent adaptation points (−%d)." \
+		% [generation, lost]
+	var save_line := death_save_line(saved)
+	if not save_line.is_empty():
+		text += " " + save_line
+	if tip.is_empty() and cause == "starved":
+		tip = GameSession.starved_tip(phenotype)
+	if not tip.is_empty():
+		text += "\n" + tip
+	return text
+
+
+## "Saved.", the save's error ("Could not save to …: …."), or "" when no save was tried.
+static func death_save_line(saved: Dictionary) -> String:
+	if not bool(saved.get("attempted", false)):
+		return ""
+	if bool(saved.get("ok", false)):
+		return "Saved."
+	var error := str(saved.get("error", ""))
+	return error if error.begins_with("Could not save") else "Could not save: %s" % error
+
+
+## The message after Continue: "Back at the generation start · sheltered for 5 s." (no shelter
+## part when there is none, as in a pool without creatures).
+static func respawn_text(shelter_s: int) -> String:
+	if shelter_s <= 0:
+		return "Back at the generation start."
+	return "Back at the generation start · sheltered for %d s." % shelter_s
 
 
 ## "Seed 4242 · build 0.0.2-m1+abc1234" for the pause menu.
@@ -263,10 +320,16 @@ func _on_pause_requested(reason: String) -> void:
 	pause_menu.open(reason, footer_text(), not session.sim.dead)
 
 
-func _on_died(cause: String) -> void:
+## The pool reported the death: resolve it now (the points, and with SAVE_ON_DEATH the save), then
+## show what it cost.
+func _on_died(cause: String, reason: String = "") -> void:
 	pause_menu.close()
-	var lost := Lineage.death_loss(session.sim.save.adaptation_points)
-	death_notice.open(death_title(cause), death_text(cause, lost),
+	var d := session.resolve_death()
+	var lost := int(d.get("lost", 0))
+	var tip := str(d.get("tip", ""))
+	var saved: Dictionary = d.get("saved", {})
+	death_notice.open(death_title(cause, reason),
+		death_text(cause, lost, tip, saved, session.sim.save.genome.generation, session.sim.phenotype),
 		[["continue", "Continue", true]], "continue")
 
 
@@ -295,7 +358,7 @@ func _quit() -> void:
 	get_tree().quit()
 
 
-## Debug builds only: the debug panel (F3), dev gizmos and the dev keys (F5 to F8).
+## Debug builds only: the debug panel (F3), dev gizmos and the dev keys (F5 to F10).
 func _add_dev_layer() -> void:
 	if not OS.is_debug_build() or not ResourceLoader.exists(DEV_PANEL_PATH):
 		return

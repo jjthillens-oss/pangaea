@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "M1 step 3 threats: species, their niches and sites, the AI rates, combat and the fairness numbers. Every number is PROPOSED tuning; change it here, not in code. Durations are seconds and become 60 Hz ticks once, at load. Positions are plane [x, y] in meters (world x, z); headings are radians (0 faces +x, -1.5708 faces north). SpeciesCatalog.validate() checks every rule; the reasons are in docs/milestones/m1-step3-plan.md section 5.",
+  "ai": {
+    "think_hz": 10, "engaged_think_hz": 20, "dead_reckon_cap_s": 0.5,
+    "unreachable_window_s": 2.0, "unreachable_min_m": 0.5, "return_fail_limit": 3,
+    "settle_s": 3.0, "tell_start_max_speed": 0.3
+  },
+  "combat": {"player_bite_knockback": 0.8, "player_ram_knockback": 1.5, "max_speed_after_hit": 6.0},
+  "fairness": {
+    "min_tell_s": 1.2, "min_notice_s": 0.5, "min_recover_s": 0.5,
+    "max_pursue_share_of_slowest_fed": 0.9, "max_single_hit_share": 0.5,
+    "max_engaged_on_player": 1,
+    "spawn_safe_m": 20.0, "spawn_view_aspect": 2.4, "spawn_view_margin_m": 1.0,
+    "respawn_clear_m": 12.0, "leash_band_margin_m": 0.1, "pinch_margin_m": 0.5,
+    "grace_s": [5.0, 8.0, 10.0], "respawn_energy_share": [0.6, 0.8, 1.0],
+    "streak_window_s": 90.0, "killer_ignore_s": 30.0, "start_grace_s": 5.0
+  },
+  "spawning": {"retry_s": 1.0, "min_gap_m": 2.0, "fade_in_s": 1.0},
+  "species": {
+    "ambush_hunter": {
+      "name": "ambush hunter",
+      "death_reason": "Caught by an ambush hunter",
+      "death_tip": "Ambush hunters wait at the rims. When one coils, swim out of its line on the side you face; turning round takes too long.",
+      "behavior": "ambush", "body_asset": "creature_ambush_body", "body_size": 1.5,
+      "parts": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
+      "niche": {"role": "ambush", "cap": 3, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
+      "metabolism_share": 0.1, "start_energy_share": 0.9, "hungry_below": 0.6, "full_above": 0.85,
+      "senses": {"fov_deg": 200.0, "near_m": 1.0, "memory_s": 2.0},
+      "speeds": {"wander": 0.5, "forage": 0.6, "pursue": 0.85, "flee": 1.0},
+      "prey_max_radius_share": 1.6,
+      "notice_s": 0.5, "give_up_s": 5.0, "leash_m": 9.0,
+      "forage_radius_m": 18.0, "forage_timeout_s": 30.0, "forage_retry_s": 20.0,
+      "refractory_s": 6.0, "nav_timeout_s": 20.0,
+      "attack": {"kind": "bite", "tell": "lunge", "start_min_m": 2.5, "start_max_m": 3.0, "standoff_m": 2.75, "aim_deg": 20.0,
+                 "lead_s": 1.2, "lead_cap_m": 1.0, "tell_s": 1.2,
+                 "burst_speed": 4.5, "burst_s": 0.35, "glide_s": 0.25, "glide_drag": 6.0,
+                 "recover_s": 1.0, "blocked_recover_s": 1.0, "knockback": 1.5},
+      "flee": {"below_health_share": 0.35, "for_s": 4.0},
+      "carcass": {"chunks": 4, "energy": 24.0, "on_starve": false}
+    },
+    "rammer": {
+      "name": "territorial rammer",
+      "death_reason": "Rammed by a territorial rammer",
+      "death_tip": "Rammers guard the richest patches. When one puffs up, swim out of its line on the side you face, or leave its patch.",
+      "behavior": "territorial", "body_asset": "creature_rammer_body", "body_size": 1.25,
+      "parts": [{"type": "mouth_filter", "angle": 0.0},
+                {"type": "spike", "angle": 0.3, "scale": 0.8}, {"type": "spike", "angle": -0.3, "scale": 0.8},
+                {"type": "spike", "angle": 1.9, "scale": 0.8}, {"type": "spike", "angle": -1.9, "scale": 0.8},
+                {"type": "flagellum", "angle": 3.14159}],
+      "niche": {"role": "territorial", "cap": 4, "respawn_s": 30.0, "respawn_jitter_s": 6.0},
+      "metabolism_share": 0.25, "start_energy_share": 0.6, "hungry_below": 0.7, "full_above": 0.9,
+      "senses": {"fov_deg": 270.0, "near_m": 0.8, "memory_s": 3.0},
+      "speeds": {"wander": 0.45, "forage": 0.5, "pursue": 1.0, "flee": 1.0},
+      "intruder_min_radius": 0.3,
+      "notice_s": 0.5, "give_up_s": 8.0, "territory_margin_m": 2.0, "territory_exit_m": 1.0, "leash_m": 3.0,
+      "rest_s": [4.0, 8.0], "refractory_s": 3.0, "nav_timeout_s": 8.0,
+      "attack": {"kind": "ram", "tell": "puff", "start_min_m": 3.0, "start_max_m": 5.0, "standoff_m": 4.0, "aim_deg": 15.0,
+                 "lead_s": 1.6, "lead_cap_m": 1.2, "tell_s": 1.2,
+                 "burst_speed": 4.0, "burst_s": 0.9, "glide_s": 0.3, "glide_drag": 5.0,
+                 "recover_s": 1.2, "blocked_recover_s": 2.0, "knockback": 2.5},
+      "flee": {"below_health_share": 0.4, "for_s": 5.0},
+      "carcass": {"chunks": 3, "energy": 24.0, "on_starve": false}
+    }
+  },
+  "sites": [
+    {"id": "lair_se",  "species": "ambush_hunter", "home": [26.4, 12.6],  "heading": -2.9258},
+    {"id": "lair_sw",  "species": "ambush_hunter", "home": [-24.1, 16.6], "heading": -0.8419},
+    {"id": "lair_s",   "species": "ambush_hunter", "home": [5.0, 31.0],    "heading": -2.0779},
+    {"id": "terr_n_a", "species": "rammer", "home": [-2.5, -22.0], "heading": 1.5708, "territory_zone": "z_n"},
+    {"id": "terr_n_b", "species": "rammer", "home": [2.5, -22.0],  "heading": 1.5708, "territory_zone": "z_n"},
+    {"id": "terr_nw",  "species": "rammer", "home": [-19.1, -11.0], "heading": 0.5226, "territory_zone": "z_nw"},
+    {"id": "terr_ne",  "species": "rammer", "home": [19.1, -11.0],  "heading": 2.6190, "territory_zone": "z_ne"}
+  ]
+}

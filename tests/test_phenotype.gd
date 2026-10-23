@@ -114,3 +114,107 @@ func test_unknown_parts_add_nothing() -> void:
 	genome.parts.append({"id": "part_99", "type": "unknown_organ", "angle": 0.0, "scale": 1.0})
 	check_eq(JSON.stringify(Phenotype.derive(genome, catalog).to_dict()), JSON.stringify(before), "same stats")
 	check_has_error(genome.validate(catalog), "unknown_organ")
+
+
+# --- Body size (M1 step 3) ---
+
+## Everything derive() produces, including the fields to_dict() leaves out.
+func _full(p: Phenotype) -> String:
+	var d := p.to_dict()
+	d["radius"] = p.radius
+	d["mouths"] = p.mouths
+	d["spikes"] = p.spikes
+	d["spike_stacking"] = p.spike_stacking
+	d["move_cost"] = p.move_cost
+	return JSON.stringify(d, "", true, true)
+
+
+## The ambush hunter's parts (the hunter body) and the rammer's, as in the step 3 species plan.
+const AMBUSH_PARTS := [["mouth_jaw", 0.0], ["flagellum", 2.8], ["flagellum", -2.8]]
+const RAMMER_PARTS := [["mouth_filter", 0.0], ["spike", 0.3, 0.8], ["spike", -0.3, 0.8], ["spike", 1.9, 0.8],
+	["spike", -1.9, 0.8], ["flagellum", 3.14159]]
+
+
+func test_size_one_is_exactly_the_unsized_rule_for_every_starting_body_and_single_part() -> void:
+	var genomes := {}
+	for body_name in catalog.starting_bodies:
+		genomes[body_name] = Lineage.found(1, "test+dev", catalog, body_name).save.genome
+	for type_id in catalog.parts:
+		genomes["only " + type_id] = _body([[type_id, 0.4]])
+	check(genomes.size() >= 11, "3 starting bodies and every part alone (%d genomes)" % genomes.size())
+	for key in genomes:
+		var unsized := Phenotype.derive(genomes[key], catalog)
+		var sized := Phenotype.derive(genomes[key], catalog, 1.0)
+		check_eq(_full(sized), _full(unsized), "%s at size 1" % key)
+		check(_full(Phenotype.derive(genomes[key], catalog, 1.01)) != _full(unsized), "%s: size 1.01 differs, so the compare can fail" % key)
+
+
+func test_the_starting_bodies_keep_their_step_2_stats() -> void:
+	# Speed, acceleration, health, upkeep, sight, mass and radius, from the step 3 plan's body table.
+	var expected := {
+		"grazer": [2.906, 3.077, 30.0, 0.90, 9.0, 1.17, 0.5],
+		"hunter": [3.262, 3.046, 30.0, 1.15, 6.0, 1.30, 0.5],
+		"omnivore": [2.720, 2.880, 30.0, 0.95, 6.0, 1.25, 0.5],
+	}
+	for body_name in expected:
+		var p := Phenotype.derive(Lineage.found(1, "test+dev", catalog, body_name).save.genome, catalog)
+		var want: Array = expected[body_name]
+		var got := [p.speed, p.acceleration, p.max_health, p.upkeep, p.sight, p.mass, p.radius]
+		for i in want.size():
+			check_near(got[i], want[i], 0.001, "%s stat %d" % [body_name, i])
+
+
+func test_the_ambush_hunter_is_the_hunter_body_at_size_one_and_a_half() -> void:
+	var p := Phenotype.derive(_body(AMBUSH_PARTS), catalog, 1.5)
+	check_near(p.radius, 0.75, 1e-9, "radius")
+	check_near(p.mass, 1.95, 1e-9, "mass")
+	check_near(p.speed, 2.749, 0.001, "speed")
+	check_near(p.acceleration, 2.277, 0.001, "acceleration")
+	check_near(p.max_health, 45.0, 1e-9, "health")
+	check_near(p.upkeep, 1.725, 1e-9, "upkeep")
+	check_near(p.bite_damage, 12.0, 1e-9, "bite")
+	check_near(p.turn_rate, 2.5, 1e-9, "turn rate is not scaled")
+	check_near(p.sight, 6.0, 1e-9, "sight is not scaled")
+	check_near(p.energy_capacity, 100.0, 1e-9, "energy capacity is not scaled")
+
+
+func test_the_rammer_is_bigger_than_the_player_and_slower() -> void:
+	var p := Phenotype.derive(_body(RAMMER_PARTS), catalog, 1.25)
+	check_near(p.radius, 0.625, 1e-9, "radius")
+	check_near(p.mass, 2.0375, 1e-9, "mass")
+	check_near(p.speed, 1.840, 0.001, "speed")
+	check_near(p.acceleration, 1.840, 0.001, "acceleration")
+	check_near(p.max_health, 37.5, 1e-9, "health")
+	check_near(p.upkeep, 1.2, 1e-9, "upkeep")
+	check_eq(p.spikes.size(), 4, "four spikes")
+	for spike in p.spikes:
+		check_near(spike.damage, 6.0, 1e-9, "each spike: 6 x part scale 0.8 x size 1.25")
+
+
+func test_spike_damage_scales_with_part_scale_times_body_size() -> void:
+	for case in [[1.0, 1.0, 6.0], [0.8, 1.25, 6.0], [2.0, 1.5, 18.0], [0.5, 2.0, 6.0]]:
+		var p := Phenotype.derive(_body([["mouth_filter", 0.0], ["spike", 0.0, case[0]]]), catalog, case[1])
+		check_near(p.spikes[0].damage, case[2], 1e-9, "part scale %.2f at size %.2f" % [case[0], case[1]])
+		check_near(p.ram_damage, case[2], 1e-9, "a single spike's ram damage")
+
+
+func test_a_bigger_body_is_tougher_hungrier_and_slower() -> void:
+	var genome := _body(AMBUSH_PARTS)
+	var last := Phenotype.derive(genome, catalog, 1.0)
+	for size in [1.25, 1.5, 2.0]:
+		var p := Phenotype.derive(genome, catalog, size)
+		check(p.max_health > last.max_health, "size %.2f: more health" % size)
+		check(p.upkeep > last.upkeep, "size %.2f: more upkeep" % size)
+		check(p.bite_damage > last.bite_damage, "size %.2f: a harder bite" % size)
+		check(p.move_cost > last.move_cost, "size %.2f: moving costs more" % size)
+		check(p.speed < last.speed, "size %.2f: slower" % size)
+		check(p.acceleration < last.acceleration, "size %.2f: slower to speed up" % size)
+		last = p
+
+
+func test_body_size_is_clamped_to_its_range() -> void:
+	var genome := _body(RAMMER_PARTS)
+	check_eq(_full(Phenotype.derive(genome, catalog, 3.0)), _full(Phenotype.derive(genome, catalog, Phenotype.MAX_BODY_SIZE)), "above the range")
+	check_eq(_full(Phenotype.derive(genome, catalog, 0.1)), _full(Phenotype.derive(genome, catalog, Phenotype.MIN_BODY_SIZE)), "below the range")
+	check_eq(_full(Phenotype.derive(genome, catalog, NAN)), _full(Phenotype.derive(genome, catalog)), "not a number counts as size 1")
+	check_eq(_full(Phenotype.derive(genome, catalog, INF)), _full(Phenotype.derive(genome, catalog)), "infinity counts as size 1")

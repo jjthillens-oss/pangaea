@@ -1,6 +1,7 @@
 extends TestCase
 ## Save, quit and continue bring back the same lineage, body, points and place, using the
-## existing v2 save schema. Saves go to a per-process folder under user://test_saves.
+## existing v2 save schema; a death is applied once (test_checkpoints covers the death flow in
+## full). Saves go to a per-process folder under user://test_saves.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -214,6 +215,99 @@ func test_unsaved_changes_are_tracked() -> void:
 	check(not session.dirty, "saved")
 	Lineage.earn(session.sim.save, 1)
 	check(session.dirty, "points changed")
+
+
+func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more() -> void:
+	# Plan section 13: resolve_death() applies the death (and saves it, OD1); respawn_after_death()
+	# only brings the cell back. A step 2 caller that only respawns still pays once (test_pool_sim).
+	var session := GameSession.new(slot)
+	check(session.start_new("grazer", 8).ok, "started")
+	var sim := session.sim
+	Lineage.earn(sim.save, 20)
+	check_eq(session.resolve_death(), {}, "nothing to resolve while alive")
+	check_eq(session.respawn_after_death(), 0, "nor to respawn")
+	sim.debug_set_energy(0.0)
+	for i in 25 * 60:
+		sim.step(SimIntent.new())
+		if sim.dead:
+			break
+	check(sim.dead, "starved")
+	var resolved := session.resolve_death()
+	check_eq(resolved.cause, "starved", "the history cause")
+	check_eq(resolved.lost, 5, "a quarter of 20")
+	check_eq(resolved.reason, "", "no killer's reason")
+	check_eq(resolved.tip, GameSession.STARVED_TIP, "the starving tip")
+	check(resolved.saved.attempted and resolved.saved.ok, "saved at once")
+	check_eq(session.resolve_death(), resolved, "resolving again changes nothing")
+	check_eq(sim.save.adaptation_points, 15, "applied once")
+	check_eq(session.respawn_after_death(), 5, "the respawn reports the loss")
+	check_eq(sim.save.adaptation_points, 15, "and takes nothing more")
+	var deaths := sim.save.lineage_history.filter(func(e: Dictionary) -> bool: return e.event == "died")
+	check_eq(deaths.size(), 1, "one death in the history")
+	check(not sim.dead and session.death.is_empty(), "alive, with no death pending")
+	check_eq(session.respawn_after_death(), 0, "a second respawn does nothing")
+
+
+func test_a_starving_death_tip_names_only_food_the_body_can_eat() -> void:
+	# A hunter's jaw eats only carrion, which since step 3 comes only from kills (D1) once the
+	# world-start pieces are gone: its starving tip must say so, not send it to plankton it cannot
+	# eat, and must hold where it dies (those pieces may still lie there, and one bite does not kill
+	# a rammer). Each starting body starves for real.
+	for body in BodyText.ORDER:
+		var session := GameSession.new(slot)
+		check(session.start_new(body, 12).ok, "%s started" % body)
+		var sim := session.sim
+		sim.debug_set_energy(0.0)
+		for i in 25 * 60:
+			sim.step(SimIntent.new())
+			if sim.dead:
+				break
+		check(sim.dead, "the %s starved" % body)
+		if not sim.dead:
+			continue
+		var tip := str(session.resolve_death().tip)
+		check_eq(tip, GameSession.starved_tip(sim.phenotype), "the %s gets its body's starving tip" % body)
+		check(sim.phenotype.can_eat("plant") or not tip.to_lower().contains("plankton"),
+			"the %s cannot eat plankton and is not sent to it: %s" % [body, tip])
+		check(sim.phenotype.can_eat("meat") or not tip.to_lower().contains("carrion"),
+			"the %s cannot eat carrion and is not sent to it: %s" % [body, tip])
+		if body == "hunter":
+			check(tip.contains("carrion") or tip.contains("Carrion"), "the hunter's tip names its food: %s" % tip)
+			check(tip.contains("kills"), "and where it comes from: %s" % tip)
+			var lying := sim.carrion.items.filter(func(item: Dictionary) -> bool: return item.get("source", "") != "kill").size()
+			var qualified := RegEx.create_from_string("(?i)\\bmore\\b[^.:;]*only from kills")
+			check(lying == 0 or qualified.search(tip) != null,
+				"%d world-start pieces still lie in the pool, so the tip does not say all carrion comes from kills: %s" % [lying, tip])
+			var rammers := sim.creatures.creatures.filter(func(c: CreatureField.Creature) -> bool: return c.species_id == "rammer")
+			check(not rammers.is_empty(), "a rammer lives in the pool")
+			if not rammers.is_empty():
+				var r: CreatureField.Creature = rammers[0]
+				var bite := sim.phenotype.bite_damage * (1.0 - clampf(r.phenotype.defense, 0.0, InteractionResolver.MAX_DEFENSE))
+				var bites := ceili(r.phenotype.max_health / bite)
+				check(bites <= 1 or tip.contains("until it dies"),
+					"a rammer takes %d bites (%.1f health, %.1f a bite), so the tip says to keep biting: %s" % [bites, r.phenotype.max_health, bite, tip])
+		session.respawn_after_death()
+
+
+func test_a_session_runs_the_threats_by_default_and_the_step_2_pool_without_species_data() -> void:
+	var session := GameSession.new(slot)
+	check(session.species != null and session.start_new("grazer", 10).ok, "started with the species data")
+	check(session.sim.creatures != null and session.sim.creatures.creatures.size() == 7, "seven creatures")
+	check(session.sim.is_sheltered(), "the new lineage starts sheltered")
+	var plain := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "")
+	check(plain.species == null and plain.continue_run().ok, "continued without species data")
+	check(plain.sim.creatures == null and not plain.sim.is_sheltered(), "the step 2 pool: no creatures, no shelter")
+
+
+func test_unusable_species_data_stops_a_new_lineage_and_a_continue() -> void:
+	check(GameSession.new(slot).start_new("grazer", 11).ok, "a save to continue")
+	var broken := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "res://tests/fixtures/no_such_species.json")
+	var r := broken.start_new("grazer", 11)
+	check(not r.ok and broken.sim == null, "no new lineage")
+	check_has_error(r.errors, "missing or not readable")
+	var c := broken.continue_run()
+	check(not c.ok and broken.sim == null, "no continue")
+	check_has_error(c.errors, "missing or not readable")
 
 
 func test_starting_needs_a_known_body_and_picks_a_seed_when_none_is_given() -> void:

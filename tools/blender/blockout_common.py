@@ -1,4 +1,5 @@
-"""Shared helpers for the M1 blockout generators (tools/blender/make_m1_blockouts.py).
+"""Shared helpers for the M1 blockout generators (tools/blender/make_m1_blockouts.py for step 2,
+tools/blender/make_m1_threats.py for step 3).
 
 Scene reset, materials, mesh building (surfaces of revolution, swept tubes, icospheres), bounds,
 triangle counts, glTF export and the asset record writer. The export settings and the record
@@ -19,9 +20,17 @@ from mathutils import Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OWNER = "Joshua Jake"
 STATUS = "PROPOSED"
+# Record defaults: the step 2 generator. Other generators pass their own to export().
 REVIEW_STATE = "blockout - M1 step 2, not visually approved"
 GENERATOR = "tools/blender/make_m1_blockouts.py"
-PROVENANCE = "Authored procedurally in Blender by tools/blender/make_m1_blockouts.py; no external or generated meshes."
+
+
+def provenance_for(generator):
+    """The record's provenance line for assets built by `generator`."""
+    return f"Authored procedurally in Blender by {generator}; no external or generated meshes."
+
+
+PROVENANCE = provenance_for(GENERATOR)
 
 
 def paths(asset_id):
@@ -257,13 +266,14 @@ def world_bounds():
     return lo, hi
 
 
-def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=PROVENANCE):
+def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=None):
     """Saves the .blend, exports the GLB and writes the record. Fails if over the triangle budget.
 
     `fields` holds the asset-specific record keys (purpose, category and the gameplay contract
-    values that tests check, such as footprint_radius_m or item_radius_m). Production generators
-    pass their own review state, generator and provenance, and list baked images in
-    fields["textures"].
+    values that tests check, such as footprint_radius_m or item_radius_m). Other generators
+    pass their own review state and generator (the script's path from the repository root); the
+    provenance line defaults to one naming that generator. Production generators also pass their
+    own provenance and list baked images in fields["textures"].
     """
     bpy.context.view_layer.update()
     tris = triangle_count()
@@ -316,7 +326,7 @@ def export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERA
         "nodes": sorted(o.name for o in bpy.data.objects),
     }
     record.update(fields)
-    record["provenance"] = provenance
+    record["provenance"] = provenance if provenance is not None else provenance_for(generator)
     with open(record_path, "w") as f:
         json.dump(record, f, indent=2)
         f.write("\n")
