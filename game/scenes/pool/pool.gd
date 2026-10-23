@@ -375,7 +375,7 @@ func _process(delta: float) -> void:
 	_follow_camera()
 	_update_markers()
 	_draw_food(fraction)
-	feedback.update_zones(sim.region, sim.plankton, delta)
+	feedback.update_zones(sim.region, sim.plankton, delta, PlaneSpace.to_plane(cell_view.position), sim.phenotype.radius)
 	_update_starving(delta)
 	_update_target_ring()
 

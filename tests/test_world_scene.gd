@@ -427,6 +427,68 @@ func test_a_set_piece_draws_over_its_colliders_at_every_orientation() -> void:
 	pool.free()
 
 
+## A "Regrowing" label never covers the cell on screen (S1 review: it sat over the cell while the
+## cell waited in the zone it had emptied). Swept through the zone's middle from six ways at about
+## 4 m/s, a shown label always clears the cell; far from the cell it stands over the zone's centre.
+func test_a_regrowing_label_keeps_off_the_cell_on_screen() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session(FakeEvents.SEED, "grazer"))
+	var sim := pool.sim
+	var fx := pool.feedback
+	check(sim.debug_empty_zone("z_center"), "z_center emptied")
+	FakeEvents.frame(pool)
+	check(sim.plankton.is_regrowing("z_center"), "and regrowing after a step")
+	var label := fx.zone_label("z_center")
+	var center: Vector2 = sim.region.zone("z_center").center
+	var radius := sim.phenotype.radius
+	var dt := 1.0 / 60.0
+	fx.update_zones(sim.region, sim.plankton, FeedbackFx.ZONE_REFRESH_S, center + Vector2(30.0, 30.0), radius)
+	check(label.visible and is_equal_approx(label.modulate.a, 1.0) and is_equal_approx(label.position.y, FeedbackFx.ZONE_LABEL_Y),
+		"with the cell away it shows over the zone's centre (alpha %.2f, y %.2f)" % [label.modulate.a, label.position.y])
+	var worst := INF
+	var shown := 0
+	var hidden := 0
+	for way: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2(1.0, 1.0).normalized(), Vector2(-1.0, 0.5).normalized()]:
+		for side: float in [0.0, 0.6, -1.2]:
+			for step in 241:
+				var cell_at := center + way.orthogonal() * side + way * lerpf(-8.0, 8.0, step / 240.0)
+				pool.camera.snap_to(PlaneSpace.to_world(cell_at))
+				fx.update_zones(sim.region, sim.plankton, dt, cell_at, radius)
+				if not label.visible or label.modulate.a <= 0.0:
+					hidden += 1
+					continue
+				shown += 1
+				worst = minf(worst, _clear_of_cell_px(pool.camera, label, cell_at, radius))
+	check(worst >= -0.5, "a shown label always clears the cell and its mouth (closest %.1f px)" % worst)
+	check(shown > 3 * hidden, "and it shows most of the time (%d frames shown, %d hidden)" % [shown, hidden])
+	# The running pool passes its cell: a cell waiting in the zone's middle, as a forager does.
+	check(sim.debug_teleport(center + Vector2(0.0, -0.6), -PI / 2.0), "the cell moves into the zone's middle, just north of its centre")
+	for i in 30:
+		FakeEvents.frame(pool)
+	check(label.visible and label.modulate.a > 0.0, "the label shows there")
+	check(_clear_of_cell_px(pool.camera, label, PlaneSpace.to_plane(pool.cell_view.position), radius) >= -0.5,
+		"clear of the cell the pool draws (%.1f px)" % _clear_of_cell_px(pool.camera, label, PlaneSpace.to_plane(pool.cell_view.position), radius))
+	pool.free()
+
+
+## How far zone label `label` (a child of the pool's Feedback at the origin) shows from the cell at
+## `cell_at` on a 1920x1080 screen through `camera`, beyond FeedbackFx.ZONE_CELL_CLEAR of its radius.
+func _clear_of_cell_px(camera: Camera3D, label: Label3D, cell_at: Vector2, radius: float) -> float:
+	var project := func(p: Vector3) -> Vector2:
+		var view := camera.transform.affine_inverse() * p
+		var clip := Projection.create_perspective(camera.fov, 16.0 / 9.0, camera.near, camera.far) * Vector4(view.x, view.y, view.z, 1.0)
+		return Vector2(clip.x / clip.w + 1.0, 1.0 - clip.y / clip.w) * Vector2(960.0, 540.0)
+	var font: Font = ThemeDB.fallback_font
+	var text := Vector2(font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.font_size).x,
+		font.get_height(label.font_size)) * label.pixel_size
+	var at: Vector2 = project.call(label.position)
+	var half := Vector2((project.call(label.position + camera.basis.x * text.x * 0.5) as Vector2).distance_to(at),
+		(project.call(label.position + camera.basis.y * text.y * 0.5) as Vector2).distance_to(at))
+	var cell := PlaneSpace.to_world(cell_at)
+	var c: Vector2 = project.call(cell)
+	var reach := (project.call(cell + camera.basis.x * radius * FeedbackFx.ZONE_CELL_CLEAR) as Vector2).distance_to(c)
+	return c.clamp(at - half, at + half).distance_to(c) - reach
+
+
 func test_zone_labels_and_patches_follow_chunk_events() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var key := Vector2i(7, 7)
