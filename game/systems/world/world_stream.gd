@@ -160,7 +160,9 @@ var _cell_tile := Vector2i.ZERO
 ## to other content, species, seed or version) forgets them.
 var _ahead := {}
 var _ahead_gen: WorldGen = null
-var _ahead_binding := []               ## [content, species, world seed, gen version] they were made with
+## [content's and species' instance ids, world seed, gen version] they were made with (ids, so the
+## stream holds no second path to the absolute world data)
+var _ahead_binding := PackedInt64Array()
 var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
@@ -769,13 +771,18 @@ func _generated(key: Vector2i) -> WorldChunk:
 ## content, species, seed and version (WorldGen.chunk's every input but the key and the size).
 func _check_ahead_gen() -> void:
 	var g := gen
-	if is_same(_ahead_gen, g) and _ahead_binding.size() == 4 and is_same(_ahead_binding[0], g.content) \
-			and is_same(_ahead_binding[1], g.species) and _ahead_binding[2] == g.world_seed \
-			and _ahead_binding[3] == g.gen_version:
+	var binding := PackedInt64Array()
+	if g != null:
+		binding = PackedInt64Array([_id_of(g.content), _id_of(g.species), g.world_seed, g.gen_version])
+	if is_same(_ahead_gen, g) and binding == _ahead_binding:
 		return
 	_ahead.clear()
 	_ahead_gen = g
-	_ahead_binding = [g.content, g.species, g.world_seed, g.gen_version] if g != null else []
+	_ahead_binding = binding
+
+
+static func _id_of(o: Object) -> int:
+	return 0 if o == null else o.get_instance_id()
 
 
 ## On a tick that loads nothing: generates the missing chunk nearest the point AHEAD_LEAD_S ahead of
