@@ -161,3 +161,36 @@ static func anchor_for_part(desc: RefCounted, rule: Dictionary, picked: Dictiona
 	var middle: bool = int(a["ring"]) == 0 or int(a["ring"]) == 500 or (cap and int(a["elev"]) == 0)
 	a["mirror"] = not middle
 	return a
+
+
+## A new limb grown from skin point `p` with outward normal `normal` (PROPOSED defaults): three joints on the vertebra
+## nearest the click, straight out along the normal, 2.5 vertebra radii long and tapering. Joint 0 sits inside the
+## vertebra's sphere, so it touches it. A click off the middle plane makes a mirrored pair. Returns {attach, joints:
+## [[Vector3i, r], ...], mirror} for CreatureEditorSession.add_limb, or {reason}.
+static func limb_at(desc: RefCounted, rules: Dictionary, p: Vector3, normal: Vector3) -> Dictionary:
+	var s: float = desc.scale_m()
+	var best := 0
+	for i in desc.vertebrae.size():
+		if desc.position_m(i).distance_to(p) < desc.position_m(best).distance_to(p):
+			best = i
+	var centre: Vector3 = desc.position_m(best)
+	var rv: float = desc.radius_m(best)
+	var out := (p - centre).normalized() if p.distance_to(centre) > 0.0 else normal
+	var mirror := absf(p.x) > 0.25 * rv
+	if not mirror and absf(p.x) > 0.0:
+		p.x = 0.0
+		out.x = 0.0
+		normal.x = 0.0
+	# Thick enough for the finest preview grid even after the limb lengthens the body a little.
+	var min_r: float = 1.4 * float(rules["min_radius_preview_cells"]) * 1.15 * desc.bounds_m().get_longest_axis_size() \
+			/ float(rules["preview_divisions_max"])
+	var r0 := maxf(0.45 * rv, min_r)
+	var start := centre + out.normalized() * 0.6 * rv
+	var dir := normal.normalized() if normal.length_squared() > 0.0 else out.normalized()
+	var length := 2.5 * rv
+	var joints := []
+	for k in 3:
+		var at := start + dir * length * k / 2.0
+		var r := maxf(r0 * pow(0.85, k), min_r)
+		joints.append([Vector3i(int(round(at.x / s)), int(round(at.y / s)), int(round(at.z / s))), int(ceil(r / s))])
+	return {"attach": desc.vertebrae[best]["id"], "joints": joints, "mirror": mirror}
