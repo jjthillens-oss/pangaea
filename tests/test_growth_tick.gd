@@ -8,6 +8,7 @@ extends TestCase
 ## and every conversion is exact (S2G34).
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
 ## The fast seeds of S2G9, S2G12 and S2G35; their slow tests run SLOW_SEEDS seeds.
 const SEEDS := [7, 11, 23, 4242, 90001]
@@ -18,6 +19,8 @@ const SWIM_TICKS := 240
 const ROUTE_AM := 200.0
 ## The prefetch comparison's ticks (the growth is tick 60).
 const HASH_AT := [59, 60, 61, 75, 119]
+## The quiet-tick prefetch case's swim.
+const QUIET_TICKS := 240
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -83,13 +86,20 @@ static func _raw_point(sim: PoolSim) -> Vector2:
 static func _shell_at_next_size(sim: PoolSim, offset: Vector2, r: float) -> void:
 	var a := sim.world.abs_of_local(sim.motion.position)
 	var s1 := WorldConfig.tm_to_am(sim.size() + 1)
-	var x := a[0] / s1 + offset.x
-	var y := a[1] / s1 + offset.y
+	_extra_shell(sim, a[0] + offset.x * s1, a[1] + offset.y * s1, r)
+	sim.world._clear_next()
+
+
+## A size-2 shell of radius `r` (size-2 tm) centred on the absolute point (x_am, y_am), through the
+## fake's extra shells; the caches are left as they are.
+static func _extra_shell(sim: PoolSim, x_am: float, y_am: float, r: float) -> void:
+	var s1 := WorldConfig.tm_to_am(sim.size() + 1)
+	var x := x_am / s1
+	var y := y_am / s1
 	var key := Vector3i(floori(x / sim.world.chunk_tm), floori(y / sim.world.chunk_tm), sim.size() + 1)
 	var more: Array = sim.world.gen.extra_shells.get(key, [])
 	more.append({"x": x, "y": y, "r": r})
 	sim.world.gen.extra_shells[key] = more
-	sim.world._clear_next()
 
 
 # --- S2G9: the world one size up, the cell safe, settled, full and sheltered ---
@@ -362,6 +372,107 @@ func test_a_cache_miss_generates_the_chunk_and_keeps_it() -> void:
 	check(is_same(arena, w._next_arena), "the arena kept, moved to the new point")
 
 
+## BP-4's arena is kept, not rebuilt: on quiet ticks the 3 x 3 round the new-size chunk the cell
+## heads for joins it one chunk a tick, so the crossing into that chunk adds none; with the cell
+## still, a chunk in neither 3 x 3 leaves one a tick, and a crossing it did not head for adds the
+## chunks it lacks. Every point equals the one from freshly generated chunks (a twin with the caches
+## off), with a shell on the cell's point here and one and two chunks east, so the points are not the
+## cell's own.
+func test_the_next_arena_is_kept_across_new_size_chunks_and_gives_a_fresh_point() -> void:
+	var on := _sim(SEEDS[1])
+	var off := _sim(SEEDS[1])
+	off.world.next_cache = false
+	var w := on.world
+	var east := Vector2(w.chunk_tm * WorldConfig.tm_to_am(2), 0.0)   # a new-size chunk, in size-1 tm
+	var a := w.abs_of_local(on.motion.position)
+	for sim: PoolSim in [on, off]:
+		_extra_shell(sim, a[0], a[1], 1.4)
+		_extra_shell(sim, a[0] + east.x, a[1], 1.4)
+		_extra_shell(sim, a[0] + 2.0 * east.x, a[1], 1.4)
+		sim.growth.meter = 0.95 * sim.growth.ring(1)
+	for t in 25:
+		w._prefetch(on)
+	var q := w.next_size_clear_point(on)
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell moved it (%s)" % q)
+	var arena := w._next_arena
+	var key := w._next_key
+	check_eq(w._next_held.size(), 9, "the 3 x 3")
+	on.motion.velocity = east / WorldStream.NEXT_LEAD_S   # heading for the chunk east
+	for t in 3:
+		w._prefetch(on)
+		check_eq(w._next_held.size(), 10 + t, "quiet tick %d: one chunk of the 3 x 3 ahead joined" % t)
+	w._prefetch(on)
+	w._prefetch(on, false)
+	check_eq(w._next_held.size(), 12, "then none joins and none leaves")
+	for sim: PoolSim in [on, off]:
+		sim.motion.position += east
+	var epoch := arena.epoch
+	q = w.next_size_clear_point(on)
+	check(is_same(arena, w._next_arena) and w._next_key == key + Vector2i(1, 0), "the same arena, round the new chunk")
+	check_eq(arena.epoch, epoch + 1, "the crossing added no chunk, only moved the arena to A")
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks after the crossing")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
+	on.motion.velocity = Vector2.ZERO
+	for t in 5:
+		w._prefetch(on)
+	check_eq(w._next_held.size(), 12, "the prefetch's new column comes first")
+	for t in 3:
+		w._prefetch(on)
+	check_eq(w._next_held.size(), 9, "then the column behind leaves, one a quiet tick")
+	for k: Vector2i in w._next_held:
+		check(absi(k.x - w._next_key.x) <= 1 and absi(k.y - w._next_key.y) <= 1, "%s in the 3 x 3" % k)
+	check(w.next_size_clear_point(on) == q, "the point unchanged")
+	for sim: PoolSim in [on, off]:
+		sim.motion.position += east
+	q = w.next_size_clear_point(on)
+	check(is_same(arena, w._next_arena), "a crossing it did not head for keeps the arena too")
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			check(w._next_held.has(w._next_key + Vector2i(dx, dy)), "and adds the 3 x 3's chunk %s" % Vector2i(dx, dy))
+	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks there")
+	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
+
+
+## The prefetch generates only on a quiet tick, one that loaded no chunk and generated none ahead,
+## so a size-2 generation never lands on a tick that already made a chunk.
+func test_the_prefetch_waits_for_a_tick_that_loaded_and_generated_nothing() -> void:
+	var sim := _sim(SEEDS[2])
+	var w := sim.world
+	sim.growth.meter = 0.95 * sim.growth.ring(1)
+	w._prefetch(sim, false)
+	check(w._next_chunks.is_empty(), "a busy tick generates nothing")
+	w._prefetch(sim)
+	check_eq(w._next_chunks.size(), 1, "a quiet one does")
+	var dir := Vector2.from_angle(0.3)
+	var waited := {"load": 0, "ahead": 0}
+	var busy := 0
+	for t in QUIET_TICKS:
+		sim.growth.meter = 0.95 * sim.growth.ring(1)
+		var loads := w._loads
+		var ahead: Array = w._ahead.keys()
+		var before: Array = w._next_chunks.keys()
+		sim.step(SimIntent.new(dir))
+		var fresh := 0
+		for key in w._next_chunks:
+			fresh += 0 if before.has(key) else 1
+		var made := false   # a chunk generated ahead: a key in the keep that was not there
+		for key in w._ahead:
+			made = made or not ahead.has(key)
+		if w._loads != loads or made:
+			busy += 1
+			check_eq(fresh, 0, "tick %d loaded or generated ahead: no prefetch" % t)
+			if w._next_chunks.size() < 25:
+				waited["load" if w._loads != loads else "ahead"] += 1
+		else:
+			check(fresh <= 1, "tick %d: at most one a quiet tick" % t)
+	sim.drain_events()
+	print("test-growth-tick: the prefetch waited on %d load ticks and %d look-ahead ticks of %d busy in %d" % [
+		waited.load, waited.ahead, busy, QUIET_TICKS])
+	check(waited.load > 0 and waited.ahead > 0, "the prefetch waited on load and look-ahead ticks (%s)" % waited)
+	check_eq(w._next_chunks.size(), 25, "and filled the 5 x 5 on the quiet ones")
+
+
 func test_the_growth_tick_takes_its_view_set_from_the_cache() -> void:
 	var sim := _sim(SEEDS[0])
 	var w := sim.world
@@ -480,6 +591,36 @@ func _check_growth_equals_arrival(seed_value: int) -> void:
 	check_eq(direct.world.loaded_keys(), keys, "seed %d: the same chunks held" % seed_value)
 	check_eq(_content(direct, keys), _content(grown, keys), "seed %d: the same chunks, colliders, sites and zones" % seed_value)
 	check(direct.motion.position == p, "seed %d: the same settled point" % seed_value)
+
+
+## S2G12 on the shipped content (T3.5's size-2 sites): a hidden omnivore's growth after a swim from
+## home meets the world a debug_set_size(2) arrival at its point meets, size-2 sites among it.
+func test_on_the_shipped_content_a_growth_meets_the_world_a_direct_arrival_meets() -> void:
+	var waits := Gates.s2_missing(["set_size", "size_two_content"])
+	if not waits.is_empty():
+		print("test-growth-tick: the shipped-content S2G12 waits on: %s" % "; ".join(waits))
+		return
+	var grown: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	grown.debug_set_hidden(true)
+	for t in SWIM_TICKS:
+		grown.step(SimIntent.new(Vector2.from_angle(0.4 + 0.004 * t) * 0.6))
+	grown.drain_events()
+	var a := grown.world.abs_of_local(grown.motion.position)
+	grown.world.grow(grown)
+	var direct: PoolSim = Gates.make_sim("omnivore", SEEDS[0], true)
+	check(Gates.teleport(direct, a), "the direct run is placed on the point")
+	check(direct.world.abs_of_local(direct.motion.position) == a, "exactly")
+	check(direct.debug_set_size(2), "debug_set_size(2)")
+	var keys := grown.world.loaded_keys()
+	check_eq(direct.world.loaded_keys(), keys, "the same chunks held")
+	var want := _content(grown, keys)
+	check_eq(_content(direct, keys), want, "the same chunks, colliders, sites and zones")
+	check(direct.motion.position == grown.motion.position, "the same settled point")
+	var entering := Gates.species_entering_at(2)
+	var met := 0
+	for site: Array in want.sites:
+		met += 1 if entering.has(str(site[1])) else 0
+	check(met > 0, "size-2 sites among them (%d of %d)" % [met, want.sites.size()])
 
 
 func test_two_size_two_routes_meet_the_world_a_growth_makes() -> void:

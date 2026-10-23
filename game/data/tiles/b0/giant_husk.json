@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "The giant husk, a rare place (fixed at tile (2, -1) of band 0): the cracked-open glass husk of a dead giant microbe, picked clean, with no food on it. Two ambush lairs outside it watch small meadows further out (docs/s1/s1-content.md 3.5).",
+  "note": "The giant husk, a rare place (fixed at tile (2, -1) of band 0): the cracked-open glass husk of a dead giant microbe, picked clean, with no food on it. Two ambush lairs outside it wait at the rims of small meadows further out (docs/s1/s1-content.md 3.5).",
   "id": "giant_husk",
   "band": 0,
   "region": "rare",
@@ -30,7 +30,8 @@
     {"id": "f8", "center": [23.0, 25.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "la", "species": "ambush_hunter", "home": [-20.0, -4.0], "heading": -2.1294, "territory_zone": "", "sizes": [1]},
-    {"id": "lb", "species": "ambush_hunter", "home": [20.0, 6.0], "heading": 0.9505, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [-20.6, -9.6], "heading": -2.6779, "territory_zone": "", "sizes": [1]},
+    {"id": "lb", "species": "ambush_hunter", "home": [21.1, 9.8], "heading": 0.6871, "territory_zone": "", "sizes": [1, 2]},
+    {"id": "lk", "species": "lurker", "home": [13.0, 14.0], "heading": -2.3192, "territory_zone": "", "sizes": [2]}
   ]
 }

@@ -23,6 +23,11 @@ const ZONE_GAP_BU := 1.0
 ## than rules 9 and 10 need (r + 0.1), so the ring never constrains M1 tuning.
 const SEAM_TO_M1_DISC_BU := 4.0
 const BLOCK := Rect2(-64.0, -64.0, 128.0, 128.0)
+## D-37 (S2): the M1 sites that stay at size 2 (one ambush hunter, two rammers), the M1 zones thinned
+## there, and the ring's size-2 threats: [id, species, live sizes, two posts].
+const M1_AT_SIZE_2: PackedStringArray = ["lair_s", "terr_nw", "terr_ne"]
+const M1_ZONES_AT_SIZE_2 := "thin"
+const RING_SITES := [["rl", "lurker", [2], true], ["re", "elder_rammer", [2], false]]
 ## The block and the ring of tiles round it: 4 x 4 whole tiles, 8 x 8 chunks at size 1 (whole tiles,
 ## so no point lacks food that lies beyond the bounds). B-17 asks for 50 seeds, 10 of them slow, but
 ## one seed is a 512 x 512 grid of about 3 s here and B-13 moves any slow test over 20 s to soak: so
@@ -68,10 +73,33 @@ func _budget() -> float:
 func test_the_home_block_validates() -> void:
 	check_eq(home.validate(species, kit, parts, 1), PackedStringArray(), "home_b0 against the shipped kit at size 1")
 	check_eq(home.where, "home_b0", "messages name the file")
-	# S2 (T3.4): at size 2 too, with the size-2 species (WorldChecks.s2_species until T1.7 ships them).
-	var s2 := WorldChecks.s2_species()
-	check_eq(HomeBlock.load_from(HomeBlock.DEFAULT_PATH, layout, s2).validate(s2, kit, parts, 2), PackedStringArray(),
-		"home_b0 against the shipped kit at size 2")
+	# S2: at size 2 too (D-70), with the Lurker and the elder rammer the ring holds there.
+	check_eq(home.validate(species, kit, parts, 2), PackedStringArray(), "home_b0 against the shipped kit at size 2")
+
+
+## D-37 at size 2: five live sites, the three M1 sites it keeps (an ambush hunter and two rammers,
+## rivals and prey there) and the ring's two threats, a two-post Lurker and an elder rammer; the M1
+## zones thin. Both behaviours a threat can have are in the block at size 2.
+func test_the_home_block_at_size_2_is_d37s() -> void:
+	check_eq(home.m1_second_size_sites, M1_AT_SIZE_2, "the M1 sites kept at size 2")
+	check_eq(home.m1_zones_at_second_size, M1_ZONES_AT_SIZE_2, "the M1 zones at size 2")
+	check(home.zones.filter(func(z: Dictionary) -> bool: return z.m1).all(func(z: Dictionary) -> bool: return z.at_second_size == "thin"),
+		"every M1 zone thins at size 2")
+	var live := home.sites.filter(func(s: Dictionary) -> bool: return s.sizes.has(2))
+	check_eq(live.map(func(s: Dictionary) -> String: return s.id), Array(M1_AT_SIZE_2) + ["rl", "re"], "five sites live at size 2")
+	var behaviours := {}
+	for s in live:
+		if species.entry_size(s.species) == 2:
+			behaviours[species.behavior_of(s.species)] = true
+	check_eq(WorldConfig._sorted(behaviours.keys()), ["ambush", "territorial"], "both threat behaviours at size 2")
+	var ring := home.sites.filter(func(s: Dictionary) -> bool: return not s.m1)
+	check_eq(ring.size(), RING_SITES.size(), "the ring's sites")
+	for i in mini(ring.size(), RING_SITES.size()):
+		var want: Array = RING_SITES[i]
+		var sizes: Array[int] = []
+		sizes.assign(want[2])
+		check_eq([ring[i].id, ring[i].species, ring[i].sizes, not ring[i].post_b.is_empty()], [want[0], want[1], sizes, want[3]],
+			"ring site %d" % i)
 
 
 func test_the_ring_is_twenty_zones_and_eight_shells_outside_the_m1_pool() -> void:
@@ -126,13 +154,15 @@ func test_the_m1_pool_is_kept_exactly() -> void:
 		var h: Dictionary = home.zones[i]
 		check_eq([h.id, h.x, h.y, h.radius, h.capacity, h.growth_rate, h.m1],
 			[z.id, float(z.center.x), float(z.center.y), float(z.radius), float(z.capacity), float(z.growth_rate), true], "zone %d" % i)
-	check_eq(home.sites.size(), species.sites.size(), "the 7 M1 sites; S1's ring has none")
+	check_eq(home.sites.size(), species.sites.size() + RING_SITES.size(), "the 7 M1 sites, then the ring's (S2)")
 	for i in species.sites.size():
 		var s: Dictionary = species.sites[i]
 		var h: Dictionary = home.sites[i]
+		var sizes: Array[int] = []
+		sizes.assign([1, 2] if M1_AT_SIZE_2.has(s.id) else [1])
 		check_eq([h.id, h.species, h.x, h.y, h.heading, h.territory_zone, h.sizes],
-			[s.id, s.species, float(s.home.x), float(s.home.y), float(s.heading), str(s.get("territory_zone", "")), [1, 2] as Array[int]],
-			"site %d" % i)
+			[s.id, s.species, float(s.home.x), float(s.home.y), float(s.heading), str(s.get("territory_zone", "")), sizes],
+			"site %d, live at size 2 only when D-37 keeps it" % i)
 	check_eq(home.spawn, PackedFloat64Array([0.0, 9.0]), "the spawn")
 	check_eq(home.spawn_heading, -1.5708, "its heading")
 	var carrion := []

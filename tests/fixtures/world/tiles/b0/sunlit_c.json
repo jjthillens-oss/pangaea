@@ -8,7 +8,7 @@
 	"set": 0,
 	"rare": "",
 	"landmark_anchor": [
-		20.0,
+		25.0,
 		0.0
 	],
 	"set_piece": null,
@@ -152,8 +152,7 @@
 			],
 			"heading": -0.0,
 			"sizes": [
-				1,
-				2
+				1
 			],
 			"territory_zone": "a"
 		},
@@ -169,6 +168,19 @@
 				1,
 				2
 			]
+		},
+		{
+			"id": "er",
+			"species": "elder_rammer",
+			"home": [
+				-11.5,
+				11.5
+			],
+			"heading": -0.7854,
+			"sizes": [
+				2
+			],
+			"territory_zone": "a"
 		}
 	]
 }

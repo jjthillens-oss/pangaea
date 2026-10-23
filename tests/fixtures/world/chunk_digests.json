@@ -8,10 +8,10 @@
   {"key": [-1, 0], "digest": "f4a1ab161dc145d602aa1aceddc09bf33a86e4c70875e2160bd9aa03f00e8c80", "holds": "4 shells, 2 zones, 1 sites, 0 anchors, 0 places"},
   {"key": [0, 0], "digest": "93c6927b5beb745b37f012e6123586463620bc72a9a07e51f549c2321e764f51", "holds": "5 shells, 4 zones, 2 sites, 0 anchors, 0 places"},
   {"key": [1, 0], "digest": "25ce1951f1335d337159c8c331ce46b7bdb849a7c3863f947948b3827861deb9", "holds": "1 shells, 2 zones, 0 sites, 0 anchors, 0 places"},
-  {"key": [3, -12], "digest": "5c4aba36a6a8b918cf3bc9e3e5bfe9bfea6ea5f98d1531442fb9a018bc529bb3", "holds": "4 shells, 0 zones, 0 sites, 1 anchors, 0 places"},
+  {"key": [3, -12], "digest": "fd28fdd9617135a00ffa5d59df92f066c7f293c8f05e9ae2b3bee51d44f5d449", "holds": "4 shells, 0 zones, 0 sites, 1 anchors, 0 places"},
   {"key": [-6, -12], "digest": "5052f05b6293a813fb9cb9c2b8f70f83a461776e045e18790e296c058c0d0c00", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
-  {"key": [-7, -12], "digest": "1bee0b94b97a4a55032dbf7d7acbd7e3b577ab4805baba251c76f15d058c5216", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
+  {"key": [-7, -12], "digest": "f00fcba1ef546130d0679767e8192f3bd91d307b321306526a758617fcfee8d8", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
   {"key": [5, -2], "digest": "ed1b23a10b7877ee24a960806ce49f62d9b7a6d43b58c498079bb5aa1bfe84f2", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
   {"key": [11, 1], "digest": "9e874bf1ff54b9cb5bebc9f5d533fcf5eaa13870378cf2b0a3ec7ae33c25cb83", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
   {"key": [-3, -8], "digest": "215c0953b92fab3df456e86c347dd8ecf8abdfb6d35bf122ceb735158e9e809b", "holds": "3 shells, 0 zones, 0 sites, 0 anchors, 0 places"},
-  {"key": [3125, -3126], "digest": "0d70c5e7e0dffb458034221aa21d2e57b08db0e9d66fc84ce912002f52f1a621", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"}]}
+  {"key": [3125, -3126], "digest": "4dc7bd760cc2f58ff502a2f8681cc9f7db7e53cc6c9ece31b2505afa47c0a5e6", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"}]}

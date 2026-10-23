@@ -104,8 +104,7 @@
 			],
 			"heading": -1.5708,
 			"sizes": [
-				1,
-				2
+				1
 			],
 			"territory_zone": "a"
 		},
@@ -119,6 +118,18 @@
 			"heading": 0.0,
 			"sizes": [
 				1,
+				2
+			]
+		},
+		{
+			"id": "lk",
+			"species": "lurker",
+			"home": [
+				-13.0,
+				5.0
+			],
+			"heading": -0.3672,
+			"sizes": [
 				2
 			]
 		}

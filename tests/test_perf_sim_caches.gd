@@ -230,6 +230,29 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 	return out
 
 
+## A body that leaves (removed, or put to sleep) is forgotten by each brain as on_target_gone forgets
+## it, also by one that remembers it only as the attacker that hurt it while it notices the cell
+## (CreatureField._forget_in's shortcut): the hurt goes with the attacker, and what it notices stays.
+func test_a_brain_forgets_an_attacker_that_leaves_while_it_notices_the_cell() -> void:
+	var sim := _forager(5103)
+	var field := sim.creatures
+	for leave in ["removed", "asleep"]:
+		check(sim.debug_spawn_creature("ambush_hunter", Vector2(30.0, -30.0), 0.0), "%s: a hunter" % leave)
+		check(sim.debug_spawn_creature("rammer", Vector2(-30.0, -30.0), 0.0), "%s: a rammer" % leave)
+		var a: CreatureField.Creature = field.creatures[field.creatures.size() - 2]
+		var b: CreatureField.Creature = field.creatures[field.creatures.size() - 1]
+		CreatureBrain._notice(b.brain, CreatureField.PLAYER_ID, "sight", sim.tick)
+		b.brain.attacker = a.id
+		b.brain.pain = true
+		if leave == "removed":
+			field.remove(a, "killed", sim.tick, false)
+		else:
+			field.sleep(a, sim.tick)
+		check_eq([b.brain.attacker, b.brain.pain], ["", false], "%s: the rammer forgets the hunter that hurt it" % leave)
+		check_eq(b.brain.target, CreatureField.PLAYER_ID, "%s: and still notices the cell" % leave)
+		sim.drain_events()
+
+
 ## PlanktonField keeps each zone's item count, its packed copies of the items' drift phases and
 ## rates and radii, and its id index as items come and go, so count_in and the tick's counts are what
 ## a count over the items gives, the drift reads each item's own values, packed_radii() what reading
@@ -643,3 +666,87 @@ func test_the_view_free_seek_matches_drive() -> void:
 				differ += 1
 	check_eq(differ, 0, "foragers whose view-free seek differs from drive")
 	check(seeking > 2000, "foragers seeking (%d)" % seeking)
+
+
+## A forager's seek routes past the colliders kept for it (ChunkArena.route_point_kept): on the
+## saturated world, through two rebases and a teleport, a twin whose creatures drop their keeps
+## before every step drives every creature the same on every tick, to the same hash.
+func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() -> void:
+	var sims: Array[PoolSim] = []
+	for i in 2:
+		var cost: GDScript = load(COST)
+		var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+		var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+		Gates.make_racer(r.save.genome, catalog)
+		r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+		var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+		sim.debug_set_hidden(true)
+		sim.drain_events()
+		sims.append(sim)
+	var a := sims[0]
+	var b := sims[1]
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var held := 0
+	var keys := {}
+	for t in 1500:
+		if t == 400 or t == 800:
+			a.debug_rebase(Vector2i(-1, 1))
+			b.debug_rebase(Vector2i(-1, 1))
+		elif t == 1100:
+			a.debug_teleport(a.motion.position + Vector2(-20.0, 8.0))
+			b.debug_teleport(b.motion.position + Vector2(-20.0, 8.0))
+		for c in b.creatures.creatures:
+			c.route_keep = null
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		var intent = bot.next_intent(a)
+		a.step(intent)
+		b.step(intent)
+		var drives_a := []
+		var drives_b := []
+		for c in a.creatures.awake():
+			drives_a.append(c.drive)
+			if c.route_keep != null:
+				if keys.get(c.id) == c.route_keep.key:
+					held += 1
+				keys[c.id] = c.route_keep.key
+		for c in b.creatures.awake():
+			drives_b.append(c.drive)
+		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the twins' drives or events differ" % t)
+			return
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(held > 5000, "keeps held from tick to tick (%d)" % held)
+
+
+## The tick's leash clamp (CreatureBrain.leash_disc written out in PoolSim._contacts) is the brain's
+## leash disc: with the brains frozen, a hunter and a rammer put 0.5 tm inside their discs stay there,
+## and put 1 tm past them come back to the edge.
+func test_the_ticks_leash_clamp_is_the_brains_leash_disc() -> void:
+	var sim := _forager(5104)
+	check(sim.debug_set_ai_frozen(true), "the brains are frozen")
+	check(sim.debug_spawn_creature("ambush_hunter", Vector2(30.0, -30.0), 0.0), "a hunter")
+	check(sim.debug_spawn_creature("rammer", Vector2(-30.0, -30.0), 0.0), "a rammer")
+	var field := sim.creatures
+	for c in [field.creatures[field.creatures.size() - 2], field.creatures[field.creatures.size() - 1]]:
+		var disc := CreatureBrain.leash_disc(c.brain)
+		var center: Vector2 = disc.center
+		var radius: float = disc.radius
+		var dir := Vector2.ZERO
+		for k in 8:
+			var d := Vector2.from_angle(k * PI / 4.0)
+			if sim.arena.is_clear(center + d * (radius - 0.5), c.phenotype.radius) \
+					and sim.arena.is_clear(center + d * (radius + 1.0), c.phenotype.radius):
+				dir = d
+				break
+		check(dir != Vector2.ZERO, "%s: clear water at its leash's edge" % c.species_id)
+		for out in [-0.5, 1.0]:
+			c.motion.position = center + dir * (radius + out)
+			c.motion.velocity = Vector2.ZERO
+			sim.step(SimIntent.new())
+			check(absf(c.motion.position.distance_to(center) - minf(radius + out, radius)) < 1e-3,
+				"%s put %.1f tm off its leash's edge ends %.3f tm from the centre (leash %.3f)" % [
+					c.species_id, out, c.motion.position.distance_to(center), radius])

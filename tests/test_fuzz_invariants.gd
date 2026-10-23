@@ -6,9 +6,11 @@ extends TestCase
 ## The forced growth comes far from the world's origin (so the size-2 view set holds zones the size-1
 ## one did not), with the cell far from the frame's origin (a dev rebase the tick before) and a
 ## sleeper planted on the origin's side of the cell, where a checker that reads the old size's
-## positions with the new size's k (S1's reading) sees it on top of the cell.
+## positions with the new size's k (S1's reading) sees it on top of the cell. Since T3.5 a forced
+## growth on the shipped content runs clean too, and meets the size-2 species there (BP-2).
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
 const FuzzInvariants := preload("res://tests/fuzz_invariants.gd")
 const SEED := 4242
 ## Ticks a size-1 swim runs first, so creatures sleep and wake round the cell.
@@ -25,6 +27,11 @@ const FAR_ABS := Vector2(2000.0, 1000.0)
 const HAND_SHELL_R := 0.25
 ## Checkers _grown hands back for hand-built copies of the growth tick.
 const SPARES := 3
+## The shipped-content case: what it waits on (Gates.S2_NEEDS), its body, and its ticks after the
+## growth (the beat, then the size-2 sites round home spawning).
+const SHIPPED_NEEDS: PackedStringArray = ["force_growth", "fuzz_growth", "size_two_content"]
+const SHIPPED_BODY := "omnivore"
+const SHIPPED_AFTER_TICKS := 600
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -52,6 +59,36 @@ func test_a_forced_growth_runs_clean() -> void:
 		_step(r.sim, fuzz, "after tick %d" % t, Vector2.from_angle(0.002 * t) * 0.6)
 	check_eq(fuzz.report(), "", "and through the beat")
 	check(int(fuzz.counts.loads) >= 1, "chunks loaded after the growth (%s)" % fuzz.counts)
+
+
+## BP-2's real-content case (T3.5): on the shipped content, a hidden omnivore swims from home, is
+## grown by debug_force_growth, and swims on; every tick runs clean, and creatures of the species that
+## enter at size 2 spawn round it after the growth.
+func test_a_forced_growth_on_the_shipped_content_runs_clean() -> void:
+	var waits := Gates.s2_missing(SHIPPED_NEEDS)
+	if not waits.is_empty():
+		print("test-fuzz-invariants: the shipped-content growth waits on: %s" % "; ".join(waits))
+		return
+	var sim: PoolSim = Gates.make_sim(SHIPPED_BODY, SEED, true)
+	sim.debug_set_hidden(true)
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	for t in SWIM_TICKS:
+		_step(sim, fuzz, "swim tick %d" % t, Vector2.from_angle(0.4 + 0.004 * t) * 0.6)
+	var was := fuzz.before(sim)
+	check(sim.debug_force_growth(), "the forced growth")
+	_step(sim, fuzz, "growth tick", Vector2.ZERO, was)
+	check_eq(sim.size(), 2, "size 2")
+	var entering := Gates.species_entering_at(2)
+	var met := {}
+	for t in SHIPPED_AFTER_TICKS:
+		for e in _step(sim, fuzz, "after tick %d" % t, Vector2.from_angle(0.4 - 0.003 * t) * 0.6):
+			if e.type == "creature_spawned" and entering.has(str(e.species)):
+				met[str(e.species)] = true
+	print("test-fuzz-invariants: the shipped content grew; after it %s; size-2 species spawned: %s" % [fuzz.counts, met.keys()])
+	check_eq(fuzz.report(), "", "every invariant on every tick")
+	check_eq(int(fuzz.counts.growths), 1, "one growth tick (%s)" % fuzz.counts)
+	check(int(fuzz.counts.after_growth) >= 1 and int(fuzz.counts.loads) >= 1, "events checked after grew (%s)" % fuzz.counts)
+	check(not met.is_empty(), "a species that enters at size 2 spawned (of %s)" % entering)
 
 
 ## debug_set_size(2) then debug_set_size(1): each is a cut (BP-2 3), and the ticks after each run

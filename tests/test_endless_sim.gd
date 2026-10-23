@@ -40,6 +40,7 @@ const GROWN_SWIM_TICKS := 240           ## the growth base's swim before its for
 const GROWN_AFTER_TICKS := 30           ## and after it
 const GROWTH_RUN_TICKS := 720           ## each of the two runs through a growth (it grows near tick 430)
 const GROWTH_HASH_EVERY := 60
+const PREFETCH_WAIT_TICKS := 60    ## BP-4: the prefetch holds a chunk within this many ticks of the fill
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -216,8 +217,10 @@ func test_the_snapshot_has_no_prefetch_key() -> void:
 	var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species, PackedFloat64Array(), true)
 	var w := sim.world
 	check(sim.debug_fill_meter(0.95), "the ring nearly full (prefetch_share 0.9)")
-	for t in 8:
+	for t in PREFETCH_WAIT_TICKS:   # the first ticks load and generate ahead; the prefetch waits for a quiet one
 		sim.step(SimIntent.new(Vector2(0.4, 0.0)))
+		if not w._next_chunks.is_empty():
+			break
 	sim.drain_events()
 	check(not w._next_chunks.is_empty(), "the prefetch holds %d chunks" % w._next_chunks.size())
 	var snap := w.snapshot(sim)
