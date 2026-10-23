@@ -16,6 +16,11 @@ const KEYS := {
 const COMMON_KEYS := ["id", "kind", "band", "glb", "record", "scale", "yaw_rule", "dressings", "placeholder", "approved"]
 const YAW_RULES := {"shell": ["free", "slot"], "landmark": ["free", "steps_90"], "rare": ["fixed"], "marker": ["fixed"]}
 const BUDGETS := {"shell": 1300, "landmark": 6000, "rare": 12000, "marker": 800}
+const LAIR_ID := "marker_lair_mouth"
+const LAIR_NODE := "LairMouth"
+const LAIR_INNER := 1.3
+const LAIR_OUTER := 2.6
+const LAIR_FLOOR := -1.2
 const MAX_COLLIDER_R := 4.0
 const HOME_ROCKS := ["rock_a", "rock_b", "rock_c"]
 const BAND_HEIGHTS: Array[float] = [-0.45, -0.3375, -0.225, -0.1125, 0.0, 0.1125, 0.225, 0.3375, 0.45]
@@ -211,7 +216,8 @@ func test_every_kit_piece_meets_the_art_contract() -> void:
 		var id: String = a.id
 		var rec := _record(a.record)
 		var scene: Node3D = (load(a.glb) as PackedScene).instantiate()
-		check(scene.find_child(_pascal(id), true, false) != null, "%s: root mesh %s" % [id, _pascal(id)])
+		var root_name := LAIR_NODE if id == LAIR_ID else _pascal(id)
+		check(scene.find_child(root_name, true, false) != null, "%s: root mesh %s" % [id, root_name])
 		for d: Dictionary in a.dressings:
 			if d.growth != "":
 				check(scene.find_child(d.growth, true, false) != null, "%s: growth node %s" % [id, d.growth])
@@ -264,6 +270,18 @@ func test_every_kit_piece_meets_the_art_contract() -> void:
 			"marker":
 				if id == "marker_checkpoint_column":
 					check(box.size.x <= 0.5 + 1e-3 and box.size.z <= 0.5 + 1e-3, "%s: at most 0.5 wide" % id)
+				elif id == LAIR_ID:
+					# docs/s2/lurker-lair-mouth-spec.md: authored at the Lurker's radius R = 1, origin at the ring's
+					# centre on the lip top, everything below it, the hollow's floor at -1.2, outer radius about 2.6,
+					# and the horseshoe open toward +X (the lunge), so nothing stands in the opening near the lip.
+					check(box.end.y <= 1e-3, "%s: all geometry at or below the lip top, got %.3f" % [id, box.end.y])
+					check(box.position.y >= LAIR_FLOOR - 0.1, "%s: floor at about %.1f, got %.3f" % [id, LAIR_FLOOR, box.position.y])
+					var reach := 0.0
+					for v in verts:
+						reach = maxf(reach, Vector2(v.x, v.z).length())
+						if v.x > 0.0 and absf(atan2(-v.z, v.x)) < deg_to_rad(40.0):
+							check(v.y < -0.5 or Vector2(v.x, v.z).length() < LAIR_INNER + 0.05, "%s: the opening toward +X is clear" % id)
+					check(reach <= LAIR_OUTER * 1.15, "%s: outer radius about %.1f, got %.2f" % [id, LAIR_OUTER, reach])
 				else:
 					check(box.size.y <= 0.1 and maxf(box.size.x, box.size.z) <= 1.5, "%s: flat and at most 1.5 long" % id)
 		# No surface near the food or threat hue.
