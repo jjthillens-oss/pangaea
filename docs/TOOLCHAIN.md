@@ -61,7 +61,7 @@ CI runs it in two jobs, in parallel with `test-and-export` and with each other, 
 
 `tests/test_m1_goldens.gd` checks both jobs' commands and timeouts, and that between them they take every test file exactly once. S1 sign-off needs both green on the final commit. If either job measures over 60 minutes, the diagonal seam placements and any sample beyond 1,000 move to a nightly workflow, `ci-nightly.yml`.
 
-Measured on 2026-10-23 at T0.8, in the shared 4-CPU container: `soak-b`'s command took 86 s (the 18,000-tick goldens, after `test_bounded.sh` and the import), and `soak-a`'s 18 s, because its gates still wait on T2.8 and print what they wait on. The S1 planning estimates are about 28 minutes for `soak-a` and 35 for `soak-b` once every gate runs; each PR records its measured times.
+Measured on 2026-10-23 at T0.8, in the shared 4-CPU container: `soak-b`'s command took 86 s (the 18,000-tick goldens, after `test_bounded.sh` and the import), and `soak-a`'s 18 s, because its gates still wait on T2.8 and print what they wait on. At T0.9 the 10 km hash (G13), which reads no invariant, runs on T1's fixture world: 33 s a run overdriven (100,000 ticks) and 45 s a run for the racer as it is (136,218 ticks), so its two pairs take about 160 s. The S1 planning estimates are about 28 minutes for `soak-a` and 35 for `soak-b` once every gate runs; each PR records its measured times.
 
 ## Windows builds
 
