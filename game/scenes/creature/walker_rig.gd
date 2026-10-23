@@ -88,7 +88,9 @@ func sync(dt: float) -> void:
 
 
 func _on_skeleton_updated() -> void:
-	if not _synced:
+	# The skeleton's update can still fire once after the rig left the tree (the stage swapping the world out), where
+	# there is no global transform to read.
+	if not _synced or not is_inside_tree():
 		return
 	solved_frames += 1
 	var skeleton: Skeleton3D = body.skeleton
@@ -99,6 +101,10 @@ func _on_skeleton_updated() -> void:
 		if _stance_snapshot[i] == 0:
 			var length: float = planner.mech.legs[i]["length"]
 			max_stance_slip_ratio = maxf(max_stance_slip_ratio, tip.distance_to(_target_snapshot[i]) / length)
+
+
+func _exit_tree() -> void:
+	_synced = false
 
 
 ## Ground parts (feet) on this tip bone stand on the tip, level, facing the creature's heading, so a foot stays flat
