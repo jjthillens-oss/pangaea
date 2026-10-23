@@ -348,6 +348,132 @@ func test_a_moved_sleeper_is_measured_again_at_once() -> void:
 	check(not held.asleep, "put beside the cell, it wakes on the next step")
 
 
+## The wake bound holds for a view that reaches past the wake ring, and starts again when any one of
+## its inputs changes on its own: twin sims on a wide screen (its view reaches past the ring) swim
+## east past the creatures they leave asleep and back west into them, while the wake ring, then the
+## view margin, then the screen's aspect change and change back, each on its own ticks; before every
+## step the twin's bound restarts. Every tick's events and every hash must be the same.
+func test_the_wake_bound_holds_a_wide_view_and_starts_again_for_each_input() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the wide view's wake bound waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 505)
+	var b: Variant = Gates.make_sim(Gates.RACER, 505)
+	const WIDE := 3.5
+	var narrow: float = a.world.view_aspect
+	var wake_r := float(a.world.rings.wake)
+	var margin := float(a.world.view_margin)
+	for sim in [a, b]:
+		sim.debug_set_hidden(true)
+		sim.world.view_aspect = WIDE
+	check(float(a.world._wake_view(a).far) > wake_r, "the wide view reaches past the wake ring")
+	var woke := {}
+	var bounded := 0
+	for t in 1600:
+		for sim in [a, b]:
+			match t:
+				700:
+					sim.world.rings.wake = wake_r + 20.0
+				800:
+					sim.world.rings.wake = wake_r
+				1000:
+					sim.world.view_margin = margin + 10.0
+				1100:
+					sim.world.view_margin = margin
+				1300:
+					sim.world.view_aspect = narrow
+				1400:
+					sim.world.view_aspect = WIDE
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		if not a.world._wake_bound.is_empty():
+			bounded += 1
+		b.world._swum_from = Vector2.INF
+		var move := Vector2.RIGHT if t < 600 or (t >= 1150 and t < 1300) else Vector2.LEFT
+		a.step(SimIntent.new(move))
+		b.step(SimIntent.new(move))
+		var ea: Array = a.drain_events()
+		if var_to_str(ea) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the events differ" % t)
+			return
+		for e in ea:
+			if e.type == "creature_woke":
+				woke[t] = int(woke.get(t, 0)) + 1
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	print("test-perf-world-caches: the wide view's wake bound held on %d of 1600 ticks; woke on %s" % [bounded, woke])
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(bounded >= 800, "the bound held sleepers on most ticks (%d)" % bounded)
+
+
+## The wake bound measures to the view where the view reaches past the wake ring: a sleeper the bound
+## holds wakes on the next step once the cell is put where the view takes it in past the ring. First
+## with the ring cut to 20 tm (the bound was measured to the view), then on a screen made wide while
+## the sleeper is held (the bound starts again when the view's reach changes). Each time the cell
+## moves less than a bound measured to the ring alone would allow, so such a bound would still hold it.
+func test_a_held_sleeper_wakes_once_a_view_reaching_past_the_wake_ring_takes_it_in() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the view past the wake ring waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	for late in [false, true]:
+		var what := "a screen made wide while held" if late else "the ring cut to 20 tm"
+		var sim: Variant = Gates.make_sim(Gates.RACER, 501)
+		sim.debug_set_hidden(true)
+		var w: WorldStream = sim.world
+		var aspect := 5.0 if late else w.view_aspect
+		if not late:
+			w.rings.wake = 20.0
+		var held: CreatureField.Creature = null
+		var spot := Vector2.INF
+		for t in 1800:
+			SwimBot.overdrive(sim)
+			sim.step(SimIntent.new(Vector2.RIGHT if (t / 300) % 2 == 0 else Vector2.LEFT))
+			sim.drain_events()
+			for c in sim.creatures.creatures:
+				spot = _spot_seeing_past_the_ring(sim, c, aspect)
+				if spot.is_finite():
+					held = c
+					break
+			if held != null:
+				break
+		check(held != null, "%s: a held sleeper and a place whose view takes it in past the ring" % what)
+		if held == null:
+			continue
+		w.view_aspect = aspect
+		check(sim.debug_teleport(spot), "%s: the cell is put there" % what)
+		sim.step(SimIntent.new())
+		check(not held.asleep, "%s: the sleeper wakes on the next step" % what)
+
+
+## Where to put the cell, on the straight line from it to sleeper `c`, so that a view of `aspect`
+## takes `c` in past the wake ring, with the move there shorter than a bound measured to the ring
+## alone would allow: INF when the bound does not hold `c` or there is no such place.
+static func _spot_seeing_past_the_ring(sim: Variant, c: CreatureField.Creature, aspect: float) -> Vector2:
+	var w: WorldStream = sim.world
+	var b: Variant = w._wake_bound.get(c)
+	if not c.asleep or b == null or b[0] != c.motion.position or b[1] <= w._swum:
+		return Vector2.INF
+	var wake_r := float(w.rings.wake)
+	var r := c.phenotype.radius
+	# b[1] is the path swum when it was measured, plus the distance, less maxf(wake_r, reach + r) and
+	# the slack: measured to the ring alone, it would be b[1] plus the difference.
+	var reach := w._bound_view[0] + WorldStream.WAKE_FAR_TOLERANCE_TM + w.view_margin + 0.01
+	var ring_only: float = b[1] + maxf(wake_r, reach + r) - wake_r
+	var at := c.motion.position
+	var toward: Vector2 = (sim.motion.position - at).normalized()
+	for k in 30:
+		var to: Vector2 = at + toward * (wake_r + 32.0 - k)   # nearer to `c` each time, 2 tm past the ring at the end
+		var quad := ViewFootprint.corners(to, w.camera, float(w.camera.zoom_max), aspect)
+		if ViewFootprint.distance_outside(quad, at) > w.view_margin + r - 1.0:
+			continue
+		if w._swum + sim.motion.position.distance_to(to) >= ring_only - 1.0:
+			break   # the move only grows from here
+		if sim.arena.is_clear(to, sim.phenotype.radius):
+			return to
+	return Vector2.INF
+
+
 # --- WorldStream._food_view (packed zones, the trim picked lazily, the drop skipped when unchanged) ---
 
 ## WorldStream._food_view before the zones were packed.
@@ -674,6 +800,69 @@ func test_chunks_generated_ahead_are_forgotten_with_their_generators_binding() -
 		check(w._ahead.is_empty(), "round %d: the kept chunks are forgotten" % round)
 
 
+## The look-ahead's binding holds every input of WorldGen.chunk but the key and the size: chunks
+## generated ahead are forgotten when the generator is bound to other content or other species (its
+## version comes with its content), and when another generator bound the same takes its place. Each
+## round swims until a kept chunk is one the new binding builds otherwise, changes that one input,
+## and the next load of that chunk must be the new binding's.
+func test_chunks_generated_ahead_are_forgotten_when_any_input_of_their_binding_changes() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the look-ahead binding's inputs wait on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 504)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var g: WorldGen = w.gen
+	var content := g.content
+	var species := g.species
+	var seed := g.world_seed
+	var other_content := WorldContent.load_from(Gates.content_path(), content.layout, species)
+	var order: PackedStringArray = other_content.config.arrangement.region_order
+	other_content.config.arrangement.region_order = PackedStringArray([order[1], order[2], order[0]])   # every region moves
+	var other_species := SpeciesCatalog.load_from()
+	for id in other_species.configs:
+		var cfg: Dictionary = other_species.configs[id]
+		if cfg.has("leash_m"):
+			cfg.leash_m = float(cfg.leash_m) + 3.0   # every reach disc grows
+	for change in ["content", "species", "generator"]:
+		var probe: WorldGen   # bound as the stream's generator will be
+		match change:
+			"content":
+				probe = WorldGen.create(other_content, species, seed)
+			"species":
+				probe = WorldGen.create(content, other_species, seed)
+			"generator":
+				probe = (load("res://tests/fakes/fake_world_gen.gd") as GDScript).new(content, species, seed)
+		var k := Vector3i.MAX   # a kept chunk the new binding builds otherwise
+		var want := ""
+		for t in 1200:
+			SwimBot.overdrive(sim)
+			sim.step(SimIntent.new(Vector2.RIGHT if t < 600 else Vector2.DOWN))
+			sim.drain_events()
+			if t % 50 == 49:
+				for key: Vector3i in w._ahead:
+					want = _chunk_text(probe.chunk(key.z, key.x, key.y))
+					if want != _chunk_text(w._ahead[key]):
+						k = key
+						break
+				if k != Vector3i.MAX:
+					break
+		check(k != Vector3i.MAX, "%s: a kept chunk the new binding builds otherwise" % change)
+		if k == Vector3i.MAX:
+			return
+		match change:
+			"content":
+				g.setup(other_content, species, seed)
+			"species":
+				g.setup(content, other_species, seed)
+			"generator":
+				w.gen = probe
+		check_eq(_chunk_text(w._generated(Vector2i(k.x, k.y))), want, "%s: the load is the new binding's chunk" % change)
+		check(w._ahead.is_empty(), "%s: the kept chunks are forgotten" % change)
+		w.gen = g
+		g.setup(content, species, seed)   # back to the world's own binding for the next round
+
+
 # --- WorldHash with mul32 and rotl32 written out ---
 
 ## WorldHash's functions before mul32, rotl32 and the round were written out in place.
@@ -997,6 +1186,37 @@ func test_a_kept_route_keeps_a_blocker_past_the_goal_and_one_the_caller_moves_in
 	check(want != to, "the collider beside the route blocks once the caller has moved 0.99 tm")
 	check_eq(arena.route_point_kept(from, to, body_r, clearance, PoolArena.ROUTE_MARGIN, 0, keep), want, "and was kept")
 	check_eq(keep.key, key, "by the keep picked before the move")
+
+
+## A keep is picked again when one input of its key changes on its own: the goal (to past a collider
+## the old route never came near), where the caller is (a move of some 20 tm, well past ROUTE_KEEP_TM,
+## to beside one) or the body's radius (a wider body reaches one the narrow body's pick left out).
+## Each time the kept route must be route_point's, which goes round that collider.
+func test_a_kept_route_is_picked_again_for_a_new_goal_a_far_move_or_a_wider_body() -> void:
+	var clearance := PoolArena.ROUTE_CLEARANCE
+	var margin := PoolArena.ROUTE_MARGIN
+	var cases: Array[Dictionary] = [
+		{"what": "a new goal", "rock": Vector2(22.0, 10.0), "r": 1.0,
+			"from": Vector2(2.0, 10.0), "to": Vector2(12.0, 10.0), "body_r": 0.5,
+			"from_2": Vector2(2.0, 10.0), "to_2": Vector2(28.0, 10.0), "body_r_2": 0.5},
+		{"what": "a far move", "rock": Vector2(6.0, 16.0), "r": 1.0,
+			"from": Vector2(16.0, 2.0), "to": Vector2(16.0, 16.0), "body_r": 0.5,
+			"from_2": Vector2(2.0, 16.0), "to_2": Vector2(16.0, 16.0), "body_r_2": 0.5},
+		{"what": "a wider body", "rock": Vector2(7.0, 13.0 + clearance), "r": 0.5,
+			"from": Vector2(2.0, 10.0), "to": Vector2(12.0, 10.0), "body_r": 0.5,
+			"from_2": Vector2(2.0, 10.0), "to_2": Vector2(12.0, 10.0), "body_r_2": 3.0},
+	]
+	for c in cases:
+		var shells: Array[Dictionary] = [{"id": "rock", "center": c.rock, "radius": c.r}]
+		var arena := ChunkArena.from_shells(shells)
+		var keep := ChunkArena.RouteKeep.new()
+		check_eq(arena.route_point_kept(c.from, c.to, c.body_r, clearance, margin, 0, keep), c.to,
+			"%s: nothing blocks the first route" % c.what)
+		check(keep.near.is_empty(), "%s: and its pick leaves the collider out" % c.what)
+		var want := arena.route_point(c.from_2, c.to_2, c.body_r_2, clearance, margin, 0)
+		check(want != c.to_2, "%s: the collider blocks the second route" % c.what)
+		check_eq(arena.route_point_kept(c.from_2, c.to_2, c.body_r_2, clearance, margin, 0, keep), want,
+			"%s: and the keep, picked again, goes round it" % c.what)
 
 
 ## Every collider that passes route_point's blocking test from `from` to `to` (its loop's arithmetic,
