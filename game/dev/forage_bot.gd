@@ -15,6 +15,9 @@ extends RefCounted
 ## loaded it waits where it is rather than heading for the pool's spawn, which is not in the cell's
 ## frame there. The pool's output is unchanged (the golden M1 hashes drive it).
 ##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full; a bot that wraps it sends its own and blanks these.
+##
 ##     var bot = load("res://game/dev/forage_bot.gd").new()
 ##     sim.step(bot.next_intent(sim))
 
@@ -35,6 +38,7 @@ const EvadeBot := preload("res://game/dev/evade_bot.gd")
 ## Where to swim and stop instead of foraging; Vector2.INF to forage.
 var park_at := Vector2.INF
 var avoid_threats := false
+var keys := EvadeBot.GrowthKeys.new()
 var _target_id := ""
 var evade = null               ## with avoid_threats: the EvadeBot it dodges with, made when first needed
 var _attacking := {}           ## creature id -> true: telling or striking at the cell last tick
@@ -46,11 +50,16 @@ func target_id() -> String:
 
 
 func next_intent(sim: PoolSim) -> SimIntent:
+	return keys.apply(sim, _intent(sim))
+
+
+func _intent(sim: PoolSim) -> SimIntent:
 	if not avoid_threats or sim.creatures == null:
 		return _forage(sim)
 	if evade == null:
 		evade = EvadeBot.new()
 		evade.base = _wary_forage
+		evade.keys.trigger = ""   # this bot sends the keys
 	return evade.next_intent(sim, _attack_events(sim))
 
 

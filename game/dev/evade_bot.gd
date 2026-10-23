@@ -17,6 +17,9 @@ extends RefCounted
 ## Between threats it follows `base` (a Callable(sim) -> SimIntent; none: it stays still), for
 ## example a heading and throttle, or ForageBot's next_intent.
 ##
+## Its `keys` are the growth keys every bot has (GrowthKeys below, S2): a bot that wraps another
+## sends them itself and blanks the inner bot's.
+##
 ##     var bot = load("res://game/dev/evade_bot.gd").new()
 ##     bot.base = func(sim: PoolSim) -> SimIntent: return SimIntent.new(Vector2.UP * 0.3)
 ##     sim.step(bot.next_intent(sim, events_from_the_last_step))
@@ -26,6 +29,32 @@ const REACTION_TICKS := 24   ## 0.4 s after the tell starts (plan F2 and the S5 
 const AWAY_TICKS := 60       ## 1.0 s straight away from the creature once its strike is over
 const TIE_RAD := 1e-3        ## turns this close count as equal (then the lane side decides)
 
+
+## The player's growth keys, which every bot has (S2, s2-sim 3.12): the bot's first intent carries
+## `trigger`, the growth setting the run plays under ("auto" or "press"; "" sends none), and in a
+## press run with `press` it holds Grow on every tick its ring is full (Growth.is_full at the cell's
+## size), as a player who presses as soon as the ring fills. A press run with `press` off is a player
+## who never presses (BP-6: the size-1 cost runs and the S1 smoke phases). It reads only the cell's
+## own meter, which the ring round the cell shows, and writes only the intent. In the pool and with
+## growth off nothing reads either key, so the M1 and S1 hashes do not move.
+class GrowthKeys:
+	var trigger := "auto"
+	var press := true
+	var presses := 0          ## ticks it held Grow (tests guard that a press run pressed)
+	var _sent := false
+
+	## `intent` with the keys of this tick set.
+	func apply(sim: PoolSim, intent: SimIntent) -> SimIntent:
+		if not _sent:
+			_sent = true
+			intent.trigger = trigger
+		if trigger == "press" and press and sim.growth != null and sim.growth.is_full(sim.size()):
+			intent.grow = true
+			presses += 1
+		return intent
+
+
+var keys := GrowthKeys.new()
 var reaction_ticks := REACTION_TICKS
 var away_ticks := AWAY_TICKS
 var base := Callable()
@@ -41,6 +70,10 @@ var _away := {}              ## {"from": Vector2, "until": tick}
 ## The intent for the coming tick. `events` are the ones the sim reported since the last call (they
 ## happened on tick sim.tick - 1, unless an event names its own "tick").
 func next_intent(sim: PoolSim, events: Array) -> SimIntent:
+	return keys.apply(sim, _dodge(sim, events))
+
+
+func _dodge(sim: PoolSim, events: Array) -> SimIntent:
 	_observe(sim.tick - 1, events)
 	if sim.dead:
 		return SimIntent.new()
