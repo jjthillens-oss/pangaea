@@ -418,3 +418,252 @@ func test_check_disc_against_shells_with_an_infinite_wall_skips_only_the_wall_ga
 	moved.check_disc_against_shells("site 'lair_s'", moved.reach_disc(s, layout), moved.phenotype(s.species, parts).radius,
 		layout.rocks, layout.soft_start, direct)
 	check_eq(_rule_errors(moved.validate(layout, parts), 9), _rule_errors(direct, 9), "the layout's rule 9 is this check")
+
+
+# --- S2: the growth ladder (s2-sim 3.2; S2G2, S2G3, S2G29) ---
+
+## Every relationship rule on, as spine 4.2's block.
+const RELATIONSHIPS := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
+
+
+## The real data with the relationships block and two size-2 species built on the M1 ones (spine
+## 4.2): a two-post ambush "lurker" and a two-post territorial "elder_rammer".
+func _s2_data() -> Dictionary:
+	var data := _data()
+	data["relationships"] = RELATIONSHIPS.duplicate(true)
+	var lurker: Dictionary = data.species.ambush_hunter.duplicate(true)
+	lurker.name = "Lurker"
+	lurker.entry_size = 2
+	lurker.niche = {"role": "lurker", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+	lurker.habit = {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
+	var elder: Dictionary = data.species.rammer.duplicate(true)
+	elder.name = "elder rammer"
+	elder.entry_size = 2
+	elder.nav_timeout_s = 16.0
+	elder.niche = {"role": "elder_rammer", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+	elder.habit = {"post_switch": "nearer_cell", "post_hysteresis_m": 2.0}
+	data.species["lurker"] = lurker
+	data.species["elder_rammer"] = elder
+	return data
+
+
+func _s2_errors_after(change: Callable) -> PackedStringArray:
+	var data := _s2_data()
+	change.call(data)
+	return SpeciesCatalog.from_dict(data).validate(layout, parts)
+
+
+func test_s2_species_and_the_relationships_block_validate() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	var errors := cat.validate(layout, parts)
+	check(errors.is_empty(), "no errors: %s" % [errors])
+	check_eq(cat.relationships_cfg(), RELATIONSHIPS, "the block as written")
+
+
+func test_entry_size_defaults_to_one_and_q_is_exact_on_the_ladder() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	check_eq(cat.entry_size("ambush_hunter"), 1, "an M1 species names none: 1")
+	check_eq(cat.entry_size("lurker"), 2, "the data's")
+	check_eq(cat.entry_size("kraken"), 1, "an unknown species: 1")
+	check_eq(cat.q_of("rammer", 1), 1.0, "at its entry size")
+	check_eq(cat.q_of("rammer", 2), 0.625, "one size up")
+	check_eq(cat.q_of("rammer", 3), 0.390625, "two sizes up, exactly")
+	check_eq(cat.q_of("lurker", 2), 1.0, "a size-2 species at size 2")
+	check_eq(cat.q_of("lurker", 3), 0.625, "and one size up")
+	check_eq(cat.q_of("lurker", 1), 1.6, "seen from below (a ghost)")
+
+
+func test_live_at_runs_from_the_entry_size_until_the_species_is_haze() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	# rel at n: the rammer 1.25 x 0.625^(n - 1), haze below 0.25 (n = 5: 0.191); the ambush hunter
+	# 1.5 x 0.625^(n - 1) (n = 5: 0.229); the Lurker one size later.
+	var live := {"rammer": [1, 2, 3, 4], "ambush_hunter": [1, 2, 3, 4], "lurker": [2, 3, 4, 5], "elder_rammer": [2, 3, 4, 5]}
+	for id in live:
+		for n in range(1, 8):
+			check_eq(cat.live_at(id, n, parts), n in live[id], "%s at size %d" % [id, n])
+	check(not cat.live_at("kraken", 1), "an unknown species lives nowhere")
+	check_eq(str(cat.at_size("ambush_hunter", 5, parts).ladder_role), "haze", "where it ends: haze")
+	check_eq(str(cat.at_size("rammer", 4, parts).ladder_role), "morsel", "a morsel still lives")
+
+
+func test_habit_of_is_the_species_habit() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	check_eq(cat.habit_of("lurker"), {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}, "the Lurker's")
+	check(cat.habit_of("rammer").is_empty(), "an M1 species has none")
+	check(cat.habit_of("kraken").is_empty(), "nor an unknown one")
+
+
+## The record at the entry size is the species' own: every field of its body, its brain config, its
+## senses and carcass rings, bit for bit.
+func test_at_size_at_the_entry_size_is_the_species_own_record() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	for id in cat.species_ids():
+		var c := cat.entry_size(id)
+		var rec := cat.at_size(id, c, parts)
+		var own := cat.phenotype(id, parts)
+		var p: Phenotype = rec.phenotype
+		for prop in own.get_property_list():
+			if prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+				check_eq(p.get(prop.name), own.get(prop.name), "%s: %s" % [id, prop.name])
+		check_eq(rec.cfg, cat.brain_config(id), "%s: the brain config" % id)
+		check_eq(rec.q, 1.0, "%s: q" % id)
+		check_eq(rec.reach_scale, 1.0, "%s: reach scale" % id)
+		check_eq(rec.ladder_role, "threat", "%s: a threat" % id)
+		check_eq(rec.rel, own.radius / 0.5, "%s: rel" % id)
+		check_eq(rec.sight, own.sight, "%s: sight" % id)
+		check_eq(rec.near_m, float(cat.species[id].senses.near_m), "%s: near" % id)
+		check_eq(rec.fov, deg_to_rad(float(cat.species[id].senses.fov_deg)), "%s: field of view" % id)
+		check_eq(rec.carcass_rings, CreatureField.CARCASS_RINGS_M, "%s: the carcass rings" % id)
+		check_eq(rec.flee_share, float(cat.species[id].speeds.flee), "%s: flee share" % id)
+
+
+func test_at_size_above_the_entry_scales_body_cfg_senses_and_rings_by_q() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	var rec := cat.at_size("rammer", 2, parts)
+	var q := 0.625
+	var p: Phenotype = rec.phenotype
+	check_eq(rec.q, q, "q")
+	check_eq(p.radius, 0.390625, "radius 0.625 x 0.625")
+	check_eq(p.speed, cat.phenotype("rammer", parts).speed * q, "speed x q")
+	check_eq(rec.cfg, CreatureBrain.scale_cfg(cat.brain_config("rammer"), q), "cfg: scale_cfg at q")
+	check_eq(float(rec.cfg.leash_m), 3.0 * q, "the leash in tm at size 2")
+	check_eq(rec.near_m, 0.8 * q, "near sense x q")
+	check_eq(rec.sight, p.sight, "sight from the scaled body")
+	check_eq(rec.carcass_rings, [0.45 * q, 0.9 * q], "carcass rings x q (D-27)")
+	check_eq(rec.reach_scale, q, "the resolver's reach scale")
+	check_eq(rec.rel, 0.78125, "rel")
+	check_eq(rec.ladder_role, "prey", "a rammer is prey at size 2")
+	check_eq(str(cat.at_size("ambush_hunter", 2, parts).ladder_role), "rival", "an ambush hunter a rival (rel 0.9375)")
+	check(is_same(cat.at_size("rammer", 2, parts), rec), "memoised per (species, size)")
+	check(not is_same(cat.at_size("rammer", 3, parts), rec), "another size, another record")
+
+
+func test_at_size_has_no_record_below_the_entry_size() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	check(cat.at_size("lurker", 1, parts).is_empty(), "the Lurker is a ghost at size 1, with no record")
+	check(cat.at_size("kraken", 1, parts).is_empty(), "nor an unknown species")
+
+
+func test_the_relationships_block_reaches_every_brain_config() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	check_eq(float(cat.brain_config("ambush_hunter").prey_max_radius_share), 1.0, "rule 1: the block's prey share")
+	check_eq(float(cat.brain_config("rammer").intruder_max_radius_share), 1.2, "rule 2")
+	check_eq(float(cat.brain_config("rammer").fear_radius_share), 1.25, "rule 3")
+	check(bool(cat.brain_config("lurker").engage_rule), "rule 4")
+	check_eq(cat.brain_config("elder_rammer").post_switch, "nearer_cell", "the habit")
+	var none := _data()
+	none.erase("relationships")
+	var off := SpeciesCatalog.from_dict(none)
+	check(off.relationships_cfg().is_empty(), "no block")
+	check_eq(float(off.brain_config("ambush_hunter").prey_max_radius_share), 1.6, "every rule off: M1's share")
+	check(is_inf(float(off.brain_config("rammer").fear_radius_share)), "and no fear")
+
+
+## D-39: reach_disc_for at k is the leash disc of a brain whose cfg is scale_cfg(cfg, k), bit for bit,
+## for every M1 site, with its zone and with none.
+func test_reach_disc_for_at_k_is_the_leash_disc_of_the_brain_scaled_by_k() -> void:
+	var cat := SpeciesCatalog.load_from()
+	for k in [1.0, 1.6, 0.625, 0.390625]:
+		for s in cat.sites:
+			var cfg := CreatureBrain.scale_cfg(cat.brain_config(str(s.species)), k)
+			for territory in [cat.territory_of(s, layout), {}]:
+				var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
+				check_eq(cat.reach_disc_for(s, territory, k), CreatureBrain.leash_disc(mem),
+					"%s at k %s, %s" % [s.id, k, "its zone" if not territory.is_empty() else "no zone"])
+		check_eq(cat.reach_disc_for(cat.site("lair_se"), {}, k).radius, 9.0 * k, "a lair's leash x k (%s)" % k)
+	var s := cat.site("terr_nw")
+	check_eq(cat.reach_disc_for(s, cat.territory_of(s, layout)), cat.reach_disc_for(s, cat.territory_of(s, layout), 1.0),
+		"k defaults to 1")
+	check_eq(cat.reach_disc_for(s, cat.territory_of(s, layout), 1.6).radius, 6.0 + (2.0 + 3.0) * 1.6,
+		"a size-2 rammer's zone keeps its radius; margin and leash x 1.6")
+
+
+func test_two_post_disc_for_is_the_union_of_its_posts_discs() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	var lurker := {"id": "lk", "species": "lurker", "home": Vector2(-9.0, 6.0), "heading": 0.6}
+	var post_b := {"home": Vector2(-1.0, 10.5), "heading": 2.4}
+	var k := 1.6
+	var disc := cat.two_post_disc_for(lurker, {}, post_b, {}, k)
+	var a := cat.reach_disc_for(lurker, {}, k)
+	var b := cat.reach_disc_for({"species": "lurker", "home": post_b.home, "heading": post_b.heading}, {}, k)
+	check_eq(disc.posts, [a, b], "each post's own disc")
+	check_eq({"center": disc.center, "radius": disc.radius}, CreatureBrain.union_disc(a, b), "their union (D-82)")
+	var d := Vector2(-9.0, 6.0).distance_to(Vector2(-1.0, 10.5))
+	check_near(float(disc.radius), (d + 2.0 * 9.0 * k) / 2.0, 1e-5, "two equal discs: half the span")
+	for p in disc.posts:
+		check(Vector2(p.center).distance_to(disc.center) + float(p.radius) <= float(disc.radius) + 1e-4, "it holds each post's disc")
+	var elder := {"id": "er", "species": "elder_rammer", "home": Vector2(6.0, -4.0), "heading": 3.1}
+	var za := {"center": Vector2(6.0, -4.0), "radius": 3.0}
+	var zb := {"center": Vector2(14.0, 6.0), "radius": 2.0}
+	var two := cat.two_post_disc_for(elder, za, {"home": Vector2(14.0, 6.0), "heading": 1.2}, zb, k)
+	check_eq(two.posts[0].radius, 3.0 + 5.0 * k, "a territorial post: its zone, margin and leash")
+	check_eq(two.posts[1].center, Vector2(14.0, 6.0), "the second post's zone")
+	check(cat.two_post_disc_for({"species": "kraken", "home": Vector2.ZERO, "heading": 0.0}, {}, post_b, {}).is_empty(),
+		"an unknown species has none")
+
+
+func test_rule_15_a_species_one_size_past_its_entry_cannot_attack_the_cell() -> void:
+	# The Lurker: 0.75 x 0.625 x 1.0 = 0.46875 < 0.5; at body_size 1.64, 0.82 x 0.625 = 0.5125 is not.
+	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.species.lurker.body_size = 1.64), 15, "species 'lurker'")
+	# Within the tolerance below 0.5 is still "can attack": radius 0.7999992 x 0.625 = 0.4999995.
+	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.species.lurker.body_size = 1.5999984), 15, "0.499999")
+	# The elder rammer: 0.625 x 0.625 x 1.2 = 0.46875; at 1.34, 0.67 x 0.625 x 1.2 = 0.5025 (rule 5 also
+	# refuses that body: its spikes would hit too hard).
+	check_has_error(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.species.elder_rammer.body_size = 1.34), 15),
+		"species 'elder_rammer' one size past its entry reaches radius 0.418750 x intruder_max_radius_share 1.20")
+	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.intruder_max_radius_share = 1.3), 15,
+		"species 'elder_rammer'")
+	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.erase("relationships")), 15, "needs the relationships block")
+	# A size-1 species is never outgrown in this sense: the M1 ones pass with any shares.
+	check(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.prey_share = 1.9), 15).size() == 1,
+		"only the Lurker answers to the prey share")
+
+
+## S2G29: every new block refuses unknown and missing keys and wrong kinds, and its values.
+func test_the_s2_keys_refuse_unknown_missing_and_wrong_values() -> void:
+	var cases := [
+		[func(d: Dictionary) -> void: d.relationships.speed_share = 1.0, "Rule 13 (unknown key): relationships has an unknown key 'speed_share'"],
+		[func(d: Dictionary) -> void: d.relationships.rules.size_share = true, "Rule 13 (unknown key): relationships rules has an unknown key"],
+		[func(d: Dictionary) -> void: d.relationships.rules.erase("fear"), "relationships rules: 'fear' is missing"],
+		[func(d: Dictionary) -> void: d.relationships.rules.fear = 1, "'fear' must be true or false"],
+		[func(d: Dictionary) -> void: d.relationships.erase("tolerance"), "relationships: 'tolerance' is missing"],
+		[func(d: Dictionary) -> void: d.relationships.prey_share = "one", "'prey_share' must be a number"],
+		[func(d: Dictionary) -> void: d.relationships = [1], "'relationships' must be an object"],
+		[func(d: Dictionary) -> void: d.relationships.fear_radius_share = 0.0, "relationships: fear_radius_share must be above 0"],
+		[func(d: Dictionary) -> void: d.relationships.tolerance = 0.01, "relationships: tolerance 0.01 is not in"],
+		[func(d: Dictionary) -> void: d.species.lurker.entry_size = 2.5, "'entry_size' must be a whole number"],
+		[func(d: Dictionary) -> void: d.species.lurker.entry_size = 0, "entry_size 0 is outside 1..10"],
+		[func(d: Dictionary) -> void: d.species.lurker.entry_size = 11, "entry_size 11 is outside 1..10"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.lair_s = 3.0, "Rule 13 (unknown key): species 'lurker' habit"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.erase("post_switch"), "species 'lurker' habit: 'post_switch' is missing"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit = "lairs", "'habit' must be an object"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.post_switch = "wander", "habit.post_switch 'wander' is not one of"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.post_switch = "nearer_cell", "'nearer_cell' needs behavior 'territorial'"],
+		[func(d: Dictionary) -> void: d.species.elder_rammer.habit.post_switch = "out_of_sight", "'out_of_sight' needs behavior 'ambush'"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.erase("post_rest_s"), "'out_of_sight' needs post_rest_s above 0"],
+		[func(d: Dictionary) -> void: d.species.elder_rammer.habit.post_hysteresis_m = 0.0, "'nearer_cell' needs post_hysteresis_m above 0"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.post_rest_s = 0.001, "habit.post_rest_s 0.0010 s is shorter than one tick"],
+		[func(d: Dictionary) -> void: d.species.lurker.habit.trail_s = 0.0, "habit.trail_s must be above 0"],
+	]
+	for c in cases:
+		check_has_error(_s2_errors_after(c[0]), c[1])
+
+
+func test_strike_room_problem_at_a_size_uses_the_record_at_that_size() -> void:
+	var cat := SpeciesCatalog.from_dict(_s2_data())
+	for id in cat.species_ids():
+		for n in range(cat.entry_size(id), cat.entry_size(id) + 3):
+			check_eq(cat.strike_room_problem(id, 6.0 * cat.q_of(id, n), "x", parts, n), "", "%s at size %d: the lane fits" % [id, n])
+	var data := _data()
+	data.species.ambush_hunter.leash_m = 3.6
+	var short := SpeciesCatalog.from_dict(data)
+	check_eq(short.strike_room_problem("ambush_hunter", 6.0, "x", parts, 1), "x strike lane 3.68 m is longer than its leash (3.60 m).",
+		"at the entry size it is rule 6's own check")
+	check_eq(short.strike_room_problem("ambush_hunter", 6.0, "x", parts, 1), short.strike_room_problem("ambush_hunter", 6.0, "x", parts),
+		"the same text as with no size")
+	# At size 2 the lunge's lane is (2.129 travel + 0.75 radius + 0.3 reach) x 0.625 + 0.5 for the cell,
+	# whose radius is 0.5 tm at every size: 2.49 tm. The leash is 3.6 x 0.625 = 2.25 tm.
+	check_eq(short.strike_room_problem("ambush_hunter", 6.0, "x", parts, 2), "x strike lane 2.49 m is longer than its leash (2.25 m).",
+		"at size 2: the scaled lane against the scaled leash")

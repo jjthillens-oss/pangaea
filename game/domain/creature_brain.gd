@@ -385,6 +385,23 @@ static func leash_disc(mem: Memory) -> Dictionary:
 	return {"center": mem.home, "radius": float(mem.cfg.leash_m)}
 
 
+## The smallest disc holding two discs {"center", "radius"} (D-82): the larger one when it holds the
+## other (a tie keeps `a`), else the disc spanning both along the line through their centres. The
+## brain's two-post leash, the species catalog and the world generator all use it.
+static func union_disc(a: Dictionary, b: Dictionary) -> Dictionary:
+	var c1: Vector2 = a.center
+	var c2: Vector2 = b.center
+	var r1 := float(a.radius)
+	var r2 := float(b.radius)
+	var d := c1.distance_to(c2)
+	if d + r2 <= r1:
+		return {"center": c1, "radius": r1}
+	if d + r1 <= r2:
+		return {"center": c2, "radius": r2}
+	var r := (d + r1 + r2) / 2.0
+	return {"center": c1 + (c2 - c1) / d * (r - r1), "radius": r}
+
+
 ## True when the brain is in chase or attack with this body as its target (the token counts these).
 static func is_engaged_with(mem: Memory, id: String) -> bool:
 	return not id.is_empty() and mem.target == id and (mem.state == CHASE or mem.state == ATTACK)
