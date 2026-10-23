@@ -91,12 +91,36 @@ func test_problems_come_in_the_pinned_order() -> void:
 	content.home.zones.filter(func(z: Dictionary) -> bool: return not z.m1)[0].radius = 7.0
 	content.config.arrangement.fixed_rare.kind = "kraken_shell"
 	content.layout.camera.zoom_max = 25.0
+	content.config.local_bound_tm = 240.0
 	var problems := content.problems(parts, species)
 	var expected := ["world_cell.caps.awake", "placement_kit.assets[", "b0/sunlit_a: ", "home_min: rule 3",
-		"world_cell.arrangement.fixed_rare.kind", "layout.camera.zoom_max"]
+		"world_cell.arrangement.fixed_rare.kind", "layout.camera.zoom_max", "world_cell.origin.local_bound_tm"]
 	check_eq(problems.size(), expected.size(), "one problem each: %s" % [problems])
 	for i in mini(problems.size(), expected.size()):
 		check(problems[i].begins_with(expected[i]), "problem %d '%s' begins '%s'" % [i, problems[i], expected[i]])
+
+
+## B-6: rebase_beyond + hold + reach_max + chunk_tm x sqrt 2 stays below the local bound. reach_max
+## is the largest reach disc of a site live at size 1, tiles and home block alike; a bound just above
+## the sum passes and one at it fails (the world file's own rule 6 passes both, 237.25 < 240).
+func test_the_local_bound_covers_a_held_creatures_reach() -> void:
+	var content := _content()
+	var reach := content.reach_max(species)
+	print("test-world-content: reach_max %.2f tm at %s" % [reach.radius_tm, reach.where])
+	check_eq([reach.radius_tm, reach.where], [11.0, "home_min site 'terr_n_a'"], "the M1 rammer guarding z_n: 6 + 2 + 3 tm")
+	var at := 96.0 + 96.0 + float(reach.radius_tm) + 32.0 * sqrt(2.0)
+	content.config.local_bound_tm = at
+	var problems := content.problems(parts, species)
+	check_eq(problems.size(), 1, "one problem at the sum: %s" % [problems])
+	check_has_error(problems, "world_cell.origin.local_bound_tm: rebase_beyond_tm + hold + reach_max + chunk_tm x sqrt 2 (%.2f)" % at)
+	check_has_error(problems, "reach_max is %.2f tm, %s" % [reach.radius_tm, reach.where])
+	content.config.local_bound_tm = at + 0.01
+	check_eq(content.problems(parts, species), PackedStringArray(), "a hundredth above it passes")
+	# A wider leash on a tile's site raises reach_max to that site.
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	data.species.ambush_hunter.leash_m = float(data.species.ambush_hunter.leash_m) + 8.0
+	var wider := content.reach_max(SpeciesCatalog.from_dict(data))
+	check(float(wider.radius_tm) > float(reach.radius_tm) and str(wider.where).contains("site"), "a wider leash, %s" % [wider])
 
 
 func test_a_broken_world_file_gives_its_own_problems_alone() -> void:
