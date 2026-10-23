@@ -17,7 +17,7 @@ extends RefCounted
 ## The world (S1): with a world path the session reads WorldConfig, and the mode (the file's, or
 ## the world_mode argument, which is the --world flag) picks the endless world or the M1 pool.
 ## Without one it is the M1 pool, exactly as before, which is how every pool test runs. An endless
-## save is a plain v2 save whose position is absolute am in float64 (PlaneSpace.to_save_abs). In
+## save is a plain save whose position is absolute am in float64 (PlaneSpace.to_save_abs). In
 ## endless mode the sim respawns at its next step (respawn_pending), so between the request and
 ## that step the cell is still dead with its death already applied: resolve_death, a second
 ## respawn_after_death and save_now hold off, and the dirty test reads the death's own save.
