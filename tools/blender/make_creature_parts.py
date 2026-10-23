@@ -1053,6 +1053,304 @@ def build_mandibles():
             "part_rules": rules, "paint_mix": {"M_MandibleCollar": 0.8, "M_Mandible": 0.0}, "revision": 1, **baked}
 
 
+# --- Eye stalk ----------------------------------------------------------------------------------
+
+STALK_LEN = 0.11
+STALK_EYE_R = 0.028
+STALK_SINK = 0.02
+
+
+def _eye_ball_material(name, centre, look):
+    """The cpart_eye iris shader, with the pupil turned to look along `look` instead of +Z."""
+    eye = sf.Shader(name)
+    n = eye.vmath("NORMALIZE", eye.vmath("SUBTRACT", eye.pos, tuple(centre)))
+    facing = eye.vmath("DOT_PRODUCT", n, tuple(look.normalized()))
+    pupil = eye.remap(facing, 0.88, 0.9)
+    iris = eye.remap(facing, 0.55, 0.59)
+    fibres = eye.noise(160.0, 2.0, vector=mp._stretched(eye, (8.0, 8.0, 0.5)))
+    base = eye.mix(iris, (0.92, 0.92, 0.9, 1.0), eye.mix(fibres, (0.55, 0.55, 0.55, 1.0), (0.8, 0.8, 0.8, 1.0)))
+    base = eye.mix(pupil, base, (0.04, 0.04, 0.04, 1.0))
+    eye.bump(eye.math("MULTIPLY", iris, fibres), 0.1, 0.0005)
+    return eye.out(base, 0.08)
+
+
+def build_eye_stalk():
+    """An eyeball held up on a soft stalk that bows forward, cupped in a fleshy socket at the tip.
+    H1_Length raises the eye on a longer stalk, H2_Droop bends the stalk forward and down."""
+    cup_z = STALK_LEN - STALK_EYE_R * 0.9          # where the stalk opens into the socket
+    centre = Vector((0.0, 0.018, STALK_LEN))
+    path, radii = [], []
+    for k in range(13):
+        t = k / 12
+        z = -STALK_SINK * 0.95 + (cup_z + STALK_SINK * 0.95) * t
+        path.append(Vector((0.0, 0.018 * t * t, z)))      # starts square to the skin, bows forward
+        flare = 0.012 * max(0.0, 1.0 - t / 0.22) ** 2             # a soft root where it meets the skin
+        radii.append(0.0095 - 0.002 * t + flare)
+    # The socket: rings that flare from the stalk out round the lower half of the ball and lip over its equator.
+    for a in (-0.75, -0.45, -0.15, 0.1, 0.22):
+        r = STALK_EYE_R * (math.cos(a * math.pi / 2) * 1.06 + 0.04)
+        path.append(centre + Vector((0.0, 0.0, STALK_EYE_R * math.sin(a * math.pi / 2) * 1.02)))
+        radii.append(r if a < 0.2 else STALK_EYE_R * 0.98)
+    sverts, sfaces, _ = _tube(path, lambda i, a: radii[i] * (1.0 + 0.04 * math.cos(5 * a) * (i < 13)), 16)
+    flesh = sf.Shader("M_EyeStalkProc")
+    wr = flesh.noise(220.0, 3.0, vector=mp._stretched(flesh, (1.0, 1.0, 0.25)))
+    pores = flesh.remap(flesh.voronoi(300.0, 0.6), 0.2, 0.05)
+    flesh.bump(flesh.math("SUBTRACT", wr, flesh.math("MULTIPLY", pores, 0.5)), 0.3, 0.0008)
+    stalk_mat = flesh.out(_grey(flesh, flesh.remap(wr, 0.25, 0.75), 0.75), 0.55)
+    stalk = bc.mesh_object("EyeStalk", sverts, sfaces, [stalk_mat], fix_normals=False)
+    stalk_mat.name = "M_EyeStalk"
+    unit, faces = bc.icosphere(3)
+    ball_mat = _eye_ball_material("M_EyeStalkBallProc", centre, Vector((0.0, 1.0, 0.35)))
+    ball = bc.mesh_object("Eye", [tuple(centre + Vector(co).normalized() * STALK_EYE_R) for co in unit], faces, [ball_mat], parent=stalk)
+    ball_mat.name = "M_EyeBall"
+    baked = _bake([stalk, ball], "PartEyeStalk", {"M_EyeStalk": sf.tint(_lin("#B88E7E")), "M_EyeBall": sf.tint(_lin("#E8D7A0"))}, size=256)
+    pts = _check_pivot("eye_stalk", STALK_SINK)
+    foot = _footprint(pts)
+    mp._check(max(p.z for p in pts) > STALK_LEN + STALK_EYE_R * 0.9, "eye_stalk: the ball crowns the stalk")
+
+    def _k(co):
+        return min(1.0, max(0.0, co.z - 0.01) / (cup_z - 0.01))
+
+    def length(co):
+        return Vector((co.x, co.y, co.z + 0.05 * _k(co)))
+
+    def droop(co):
+        return Matrix.Rotation(math.radians(-40.0) * _k(co), 3, "X") @ co
+
+    handles = _shape_keys(stalk, [("H1_Length", length, "the eye raised 0.05 m on a longer stalk"),
+                                  ("H2_Droop", droop, "the stalk bent 40 degrees forward and down")])
+    _shape_keys(ball, [("H1_Length", length, ""), ("H2_Droop", droop, "")])
+    rules = _rules("eye_stalk", round(foot, 3), STALK_SINK, "normal", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "Both keys are on EyeStalk and Eye with the same names; the runtime sets them together. Above the socket the ball moves rigidly."
+    return {"purpose": "Creature eye part (PROPOSED): an eyeball on a soft stalk that bows forward, in a fleshy socket; the pupil looks forward.",
+            "category": "part", "part_type": "eye_stalk", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_EyeStalk": 0.9, "M_EyeBall": 0.0}, "revision": 1, **baked}
+
+
+# --- Compound eye -------------------------------------------------------------------------------
+
+CEYE_R = 0.042
+CEYE_H = 0.034
+CEYE_SINK = 0.015
+
+
+def build_compound_eye():
+    """A faceted insect eye: a domed lens of near-hexagonal ommatidia in a fleshy rim.
+    H1_Bulge raises the dome, H2_Wide spreads it across the head."""
+    steps = 14
+    profile = [(-CEYE_SINK * 0.95, CEYE_R * 0.96)]
+    for i in range(steps + 1):
+        a = 0.5 * math.pi * i / steps
+        profile.append((CEYE_H * math.sin(a), CEYE_R * math.cos(a) if i < steps else 0.0))
+    dv, df, _ = bc.revolve(profile, 40)
+    lens = sf.Shader("M_CompoundLensProc")
+    facets = lens.voronoi(400.0, 0.6, feature="DISTANCE_TO_EDGE")
+    domes = lens.remap(facets, 0.0, 0.2)
+    lens.bump(domes, 0.45, 0.0006)
+    sheen = lens.noise(18.0, 2.0)
+    base = lens.mix(lens.remap(facets, 0.0, 0.05), (0.35, 0.35, 0.35, 1.0), _grey(lens, lens.remap(sheen, 0.3, 0.7, 0.75, 1.0), 0.75))
+    lens_mat = lens.out(base, 0.12)
+    dome = bc.mesh_object("CompoundEye", _up(dv), df, [lens_mat])
+    lens_mat.name = "M_CompoundLens"
+    rim_profile = []
+    for i in range(13):
+        a = math.pi * i / 12
+        rim_profile.append((-CEYE_SINK * 0.95 + (CEYE_SINK * 0.95 + 0.006) * (1 - math.cos(a)) / 2, CEYE_R * 1.0 + 0.006 + 0.007 * math.sin(a) - 0.005 * (i / 12) ** 2))
+    rv, rf, _ = bc.revolve(rim_profile, 40)
+    rim_sh = sf.Shader("M_CompoundRimProc")
+    wr = rim_sh.noise(200.0, 3.0)
+    rim_sh.bump(wr, 0.3, 0.0008)
+    rim_mat = rim_sh.out(_grey(rim_sh, rim_sh.remap(wr, 0.3, 0.7), 0.75), 0.5)
+    rim = bc.mesh_object("Rim", _up(rv), rf, [rim_mat], parent=dome, fix_normals=False)
+    rim_mat.name = "M_CompoundRim"
+    baked = _bake([dome, rim], "PartCompoundEye", {"M_CompoundLens": sf.tint(_lin("#4B3F63")), "M_CompoundRim": sf.tint(_lin("#7C6A5C"))}, size=512)
+    pts = _check_pivot("compound_eye", CEYE_SINK)
+    foot = _footprint(pts)
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z * 1.45 if co.z > 0 else co.z))
+
+    def wide(co):
+        k = 1.0 + 0.3 * min(1.0, max(0.0, co.z + CEYE_SINK) / CEYE_SINK)
+        return Vector((co.x * k, co.y * k, co.z))
+
+    handles = _shape_keys(dome, [("H1_Bulge", bulge, "the dome 45% taller"), ("H2_Wide", wide, "the eye 30% wider")])
+    _shape_keys(rim, [("H1_Bulge", bulge, ""), ("H2_Wide", wide, "")])
+    rules = _rules("compound_eye", round(foot, 3), CEYE_SINK, "forward_cone", ["spine", "part"], 70, 50)
+    rules["handles"] = handles
+    rules["handles_note"] = "Both keys are on CompoundEye and Rim with the same names; the runtime sets them together."
+    return {"purpose": "Creature eye part (PROPOSED): a domed compound eye of near-hexagonal facets in a fleshy rim; dark violet lens.",
+            "category": "part", "part_type": "compound_eye", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_CompoundLens": 0.0, "M_CompoundRim": 0.85}, "revision": 1, **baked}
+
+
+# --- Maw (mouth) ----------------------------------------------------------------------------------
+
+MAW_RX = 0.05
+MAW_RY = 0.034
+MAW_LIP = 0.012
+MAW_SINK = 0.03
+MAW_TEETH = 14
+
+
+def build_maw():
+    """A round toothed maw: thick rolled lips round a dark throat, ringed with inward-raking fangs.
+    H1_Gape opens it 30% wider, H2_Fangs lengthens the teeth."""
+    # Lips and throat: one sweep of rings round the mouth's oval, from the outer skin over the lip and down the throat.
+    rings = []
+    lip_steps = 12
+    for i in range(lip_steps + 1):
+        a = math.pi * i / lip_steps
+        rings.append((1.0 + (MAW_LIP / MAW_RX) * math.cos(a) + 0.35 * (i == 0), 0.004 + MAW_LIP * math.sin(a) - MAW_SINK * 0.3 * (i == 0)))
+    for i in range(1, 6):
+        t = i / 5
+        rings.append(((1.0 - MAW_LIP / MAW_RX) * (1.0 - 0.75 * t), 0.004 - (MAW_SINK - 0.002) * math.sin(t * math.pi / 2)))
+    seg = 48
+    verts, faces, face_mats = [], [], []
+    ring_ix = []
+    for scale, z in rings:
+        ring_ix.append(list(range(len(verts), len(verts) + seg)))
+        for j in range(seg):
+            a = 2.0 * math.pi * j / seg
+            verts.append((MAW_RX * scale * math.cos(a), MAW_RY * scale * math.sin(a) * (1.0 + 0.0 * scale), z))
+    bottom = len(verts)
+    verts.append((0.0, 0.0, -MAW_SINK + 0.002))
+    for i in range(len(rings) - 1):
+        for j in range(seg):
+            k = (j + 1) % seg
+            faces.append((ring_ix[i][j], ring_ix[i][k], ring_ix[i + 1][k], ring_ix[i + 1][j]))
+            face_mats.append(0 if i < lip_steps else 1)
+    for j in range(seg):
+        faces.append((ring_ix[-1][j], ring_ix[-1][(j + 1) % seg], bottom))
+        face_mats.append(1)
+    lip_sh = sf.Shader("M_MawLipProc")
+    wr = lip_sh.noise(180.0, 3.0, vector=mp._stretched(lip_sh, (1.0, 1.0, 3.0)))
+    lip_sh.bump(wr, 0.35, 0.0008)
+    throat = sf.Shader("M_MawThroatProc")
+    folds = throat.noise(90.0, 2.0)
+    throat.bump(folds, 0.4, 0.001)
+    mats = [lip_sh.out(_grey(lip_sh, lip_sh.remap(wr, 0.3, 0.7), 0.75), 0.4),
+            throat.out(_grey(throat, throat.remap(folds, 0.3, 0.7), 0.6), 0.3)]
+    maw = bc.mesh_object("Maw", verts, faces, mats, face_mats, fix_normals=False)
+    mats[0].name, mats[1].name = "M_MawLip", "M_MawThroat"
+    # Teeth: cones rooted on the inner face of the lip, raking in toward the throat; long and short alternate.
+    tverts, tfaces, roots = [], [], []
+    for n in range(MAW_TEETH):
+        a = 2.0 * math.pi * (n + 0.5) / MAW_TEETH
+        rim = Vector((MAW_RX * math.cos(a), MAW_RY * math.sin(a), 0.0))
+        inward = -Vector((rim.x / MAW_RX ** 2, rim.y / MAW_RY ** 2, 0.0)).normalized()
+        root = rim * (1.0 - 0.75 * MAW_LIP / MAW_RX) + Vector((0.0, 0.0, 0.006))
+        length = 0.024 if n % 2 == 0 else 0.015
+        d = (inward + Vector((0.0, 0.0, 0.55))).normalized()
+        path = [root - d * 0.004 + (inward * 0.25 * length * t * t) + d * (length * t) for t in (0.0, 0.35, 0.7, 1.0)]
+        v, f, _ = _tube(path, lambda i, a, L=length: 0.0 if i == 3 else (0.0042 + 0.0016 * (L > 0.02)) * (1.0 - i / 3) ** 0.8, 8)
+        bc.append(tverts, tfaces, v, f)
+        roots.append(root)
+    tooth_sh = sf.Shader("M_MawToothProc")
+    streak = tooth_sh.noise(120.0, 3.0, vector=mp._stretched(tooth_sh, (4.0, 4.0, 0.4)))
+    tooth_sh.bump(streak, 0.15, 0.0005)
+    tooth_mat = tooth_sh.out(_grey(tooth_sh, tooth_sh.remap(streak, 0.2, 0.8, 0.8, 1.0), 0.8), 0.2)
+    teeth = bc.mesh_object("Teeth", tverts, tfaces, [tooth_mat], parent=maw)
+    tooth_mat.name = "M_MawTooth"
+    baked = _bake([maw, teeth], "PartMaw", {"M_MawLip": sf.tint(_lin("#B07A72")), "M_MawThroat": sf.tint(_lin("#3A2834")),
+                                            "M_MawTooth": sf.tint(_lin("#EDE3C8"))})
+    pts = _check_pivot("maw", MAW_SINK)
+    foot = _footprint(pts)
+
+    def gape_k(co):
+        return min(1.0, max(0.0, (co.z + MAW_SINK * 0.5) / (MAW_SINK * 0.5)))
+
+    def gape(co):
+        k = 1.0 + 0.3 * gape_k(co)
+        return Vector((co.x * k, co.y * k, co.z))
+
+    def nearest_root(co):
+        return min(roots, key=lambda r: (r - co).length)
+
+    def gape_tooth(co):
+        r = nearest_root(co)
+        return co + Vector((r.x, r.y, 0.0)) * 0.3
+
+    def fangs(co):
+        r = nearest_root(co)
+        return r + (co - r) * 1.6
+
+    handles = _shape_keys(maw, [("H1_Gape", gape, "the mouth 30% wider round its rim")])
+    _shape_keys(teeth, [("H1_Gape", gape_tooth, ""), ("H2_Fangs", fangs, "the teeth 60% longer")])
+    handles.append({"key": "H2_Fangs", "meaning": "the teeth 60% longer", "default_permille": 0})
+    rules = _rules("maw", round(foot, 3), MAW_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
+    return {"purpose": "Creature mouth part (PROPOSED): a round maw of rolled lips round a dark throat, ringed with fourteen inward-raking teeth.",
+            "category": "part", "part_type": "maw", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_MawLip": 0.85, "M_MawThroat": 0.0, "M_MawTooth": 0.0}, "revision": 1, **baked}
+
+
+# --- Quills -------------------------------------------------------------------------------------
+
+QUILL_LEN = 0.17
+QUILL_SINK = 0.02
+
+
+def build_quills():
+    """A patch of banded quills raked back from a bristled pad, like a porcupine's.
+    H1_Raise stands them up, H2_Length lengthens them."""
+    unit, ufaces = bc.icosphere(2)
+    pad = [(n.x * 0.05, n.y * 0.06, -0.014 + max(n.z, -0.2) * 0.026) for n in (Vector(co).normalized() for co in unit)]
+    verts, fcs = list(pad), list(ufaces)
+    face_mats = [0] * len(fcs)
+    spots = [(0.0, 0.03, 1.0), (-0.024, 0.012, 0.85), (0.024, 0.012, 0.85), (0.0, 0.0, 1.0), (-0.032, -0.014, 0.75),
+             (0.032, -0.014, 0.75), (-0.012, -0.022, 0.95), (0.012, -0.022, 0.95), (0.0, -0.04, 0.8), (-0.02, 0.035, 0.7),
+             (0.02, 0.035, 0.7)]
+    for n, (sx, sy, size) in enumerate(spots):
+        rake = math.radians(58.0 + 7.0 * math.sin(n * 2.3))
+        fan = math.atan2(sx, 0.06) * 0.8
+        d = Vector((math.sin(fan) * math.sin(rake), -math.cos(fan) * math.sin(rake), math.cos(rake)))
+        length = QUILL_LEN * size
+        base = Vector((sx, sy, -0.008))
+        path = [base + d * (length * t) + Vector((0.0, -0.018 * t * t, -0.012 * t * t)) for t in (0.0, 0.25, 0.55, 0.8, 1.0)]
+        v, f, _ = _tube(path, lambda i, a: 0.0 if i == 4 else 0.0042 * (1.0 - 0.15 * i) * (1.0 - (i / 4) ** 3), 6)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    pad_sh = sf.Shader("M_QuillPadProc")
+    bristle = pad_sh.noise(260.0, 3.0, vector=mp._stretched(pad_sh, (1.0, 4.0, 1.0)))
+    pad_sh.bump(bristle, 0.35, 0.0008)
+    quill = sf.Shader("M_QuillProc")
+    dist = quill.vmath("LENGTH", quill.pos)
+    bands = quill.remap(quill.math("SINE", quill.math("MULTIPLY", dist, 95.0)), -0.2, 0.2)
+    grain = quill.noise(140.0, 2.0, vector=mp._stretched(quill, (5.0, 5.0, 0.3)))
+    quill.bump(grain, 0.15, 0.0004)
+    qbase = quill.mix(bands, (0.32, 0.32, 0.32, 1.0), (0.95, 0.95, 0.93, 1.0))
+    qbase = quill.mix(quill.remap(dist, 0.03, 0.06), (0.95, 0.95, 0.93, 1.0), qbase)
+    mats = [pad_sh.out(_grey(pad_sh, pad_sh.remap(bristle, 0.3, 0.7), 0.7), 0.6), quill.out(qbase, 0.3)]
+    obj = bc.mesh_object("Quills", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name = "M_QuillPad", "M_Quill"
+    baked = _bake([obj], "PartQuills", {"M_QuillPad": sf.tint(_lin("#8A7868")), "M_Quill": sf.tint(_lin("#E6DCC4"))})
+    pts = _check_pivot("quills", QUILL_SINK)
+    foot = _footprint(pts)
+    mp._check(sum(p.y for p in pts if p.z > 0.05) < 0, "quills: rake back toward the tail (-Y)")
+
+    def raise_(co):
+        if co.z <= 0.0:
+            return co
+        k = min(1.0, co.z / 0.03)
+        return Matrix.Rotation(math.radians(38.0) * k, 3, "X") @ co
+
+    def length(co):
+        if co.z > 0.0:
+            return Vector((co.x * 1.4, co.y * 1.4, co.z * 1.4))
+        return co
+
+    handles = _shape_keys(obj, [("H1_Raise", raise_, "the quills stood up 38 degrees"), ("H2_Length", length, "the quills 40% longer")])
+    rules = _rules("quills", round(foot, 3), QUILL_SINK, "normal", ["spine"], 30, 20)
+    rules["handles"] = handles
+    rules["placement_note"] = "Rakes toward the tail (-Y); several patches along the back read as a coat."
+    return {"purpose": "Creature defence part (PROPOSED): eleven banded quills raked back from a bristled pad.",
+            "category": "part", "part_type": "quills", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_QuillPad": 0.8, "M_Quill": 0.25}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -1068,6 +1366,10 @@ ASSETS = {
     "cpart_antenna": (build_antenna, 1200),
     "cpart_tail_spikes": (build_tail_spikes, 1200),
     "cpart_mandibles": (build_mandibles, 1200),
+    "cpart_eye_stalk": (build_eye_stalk, 1200),
+    "cpart_compound_eye": (build_compound_eye, 1200),
+    "cpart_maw": (build_maw, 1200),
+    "cpart_quills": (build_quills, 1200),
 }
 
 

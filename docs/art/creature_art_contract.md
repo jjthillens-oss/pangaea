@@ -151,7 +151,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds thirteen parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds seventeen parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -168,6 +168,10 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_antenna` | antenna, `normal`, chiral | 656 | H1_Length, H2_Droop | Beaded feeler with a pitted sensory club; arcs forward and out to +X |
 | `cpart_tail_spikes` | tail_spikes, `normal`, spine, centreline required | 468 | H1_Length, H2_Splay | Two pairs of bony spikes on a horny pad for the tail cap |
 | `cpart_mandibles` | mandibles, `forward_cone`, centreline required | 596 | H1_Open, H2_Length | Two toothed horn jaws on a fleshy collar, meeting across x |
+| `cpart_eye_stalk` | eye_stalk, `normal` | 422 | H1_Length, H2_Droop (on `EyeStalk` and `Eye`) | Eyeball on a soft stalk that bows forward, in a fleshy socket; the pupil looks forward |
+| `cpart_compound_eye` | compound_eye, `forward_cone` | 489 | H1_Bulge, H2_Wide (on `CompoundEye` and `Rim`) | Dark violet faceted dome in a fleshy rim; paint_mix 0 on the lens |
+| `cpart_maw` | maw, `forward_cone`, centreline required | 540 | H1_Gape (on `Maw` and `Teeth`), H2_Fangs (on `Teeth`) | Rolled lips round a dark throat, ringed with fourteen inward-raking teeth |
+| `cpart_quills` | quills, `normal`, spine | 530 | H1_Raise, H2_Length | Eleven banded quills raked toward the tail from a bristled pad |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 
