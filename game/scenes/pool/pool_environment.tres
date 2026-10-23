@@ -2,14 +2,15 @@
 
 [resource]
 background_mode = 1
-background_color = Color(0.165, 0.498, 0.525, 1)
+background_color = Color(0.043, 0.18, 0.42, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.114, 0.208, 0.341, 1)
-ambient_light_energy = 2.2
+ambient_light_color = Color(0.184, 0.435, 0.722, 1)
+ambient_light_energy = 0.8
 tonemap_mode = 2
 fog_enabled = true
-fog_light_color = Color(0.165, 0.498, 0.525, 1)
-fog_density = 0.006
+fog_light_color = Color(0, 0.085, 0.2, 1)
+fog_sun_scatter = 0.05
+fog_density = 0.0
 fog_sky_affect = 0.0
-fog_height = -0.25
-fog_height_density = 0.5
+fog_height = -1.0
+fog_height_density = 0.09

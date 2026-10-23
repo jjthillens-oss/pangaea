@@ -1,8 +1,8 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://game/scenes/pool/pool.gd" id="1_pool"]
 [ext_resource type="Environment" path="res://game/scenes/pool/pool_environment.tres" id="2_env"]
-[ext_resource type="PackedScene" path="res://assets/export/pool_floor.glb" id="3_floor"]
+[ext_resource type="PackedScene" path="res://assets/export/pool_rim.glb" id="3_rim"]
 [ext_resource type="Script" path="res://game/scenes/pool/rock_field.gd" id="4_rocks"]
 [ext_resource type="Script" path="res://game/scenes/pool/food_view.gd" id="5_food"]
 [ext_resource type="PackedScene" path="res://assets/export/plankton.glb" id="6_plankton"]
@@ -15,6 +15,14 @@
 [ext_resource type="Script" path="res://game/scenes/pool/target_ring.gd" id="13_ring"]
 [ext_resource type="Script" path="res://game/scenes/pool/starving_arrow.gd" id="14_arrow"]
 [ext_resource type="Script" path="res://game/scenes/pool/creature_layer.gd" id="15_creatures"]
+[ext_resource type="Shader" path="res://game/scenes/pool/backdrop.gdshader" id="16_backdrop"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_backdrop"]
+shader = ExtResource("16_backdrop")
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_backdrop"]
+material = SubResource("ShaderMaterial_backdrop")
+size = Vector2(400, 400)
 
 [node name="Pool" type="Node3D"]
 script = ExtResource("1_pool")
@@ -25,13 +33,22 @@ environment = ExtResource("2_env")
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(-0.7071068, 0.579228, -0.4055798, 0, 0.5735764, 0.819152, 0.7071068, 0.579228, -0.4055798, 0, 20, 0)
 light_color = Color(0.957, 0.918, 0.824, 1)
-light_energy = 1.3
-shadow_enabled = true
-directional_shadow_mode = 1
-directional_shadow_split_1 = 0.6
-directional_shadow_max_distance = 40.0
+light_energy = 1.5
 
-[node name="Floor" parent="." instance=ExtResource("3_floor")]
+[node name="DepthGlow" type="DirectionalLight3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, -0.5735764, -0.819152, 0, 0.819152, -0.5735764, 0, 20, 0)
+light_color = Color(0.298, 0.608, 0.878, 1)
+light_cull_mask = 0
+sky_mode = 1
+
+[node name="Backdrop" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -40, 0)
+cast_shadow = 0
+mesh = SubResource("PlaneMesh_backdrop")
+
+[node name="Rim" parent="." instance=ExtResource("3_rim")]
 unique_name_in_owner = true
 
 [node name="Rocks" type="Node3D" parent="."]
@@ -111,4 +128,4 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.043, 0.2, 0.22, 1)
+color = Color(0.098, 0.29, 0.486, 1)

@@ -3,7 +3,7 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "blockout - M1 micro world, not visually approved",
-  "purpose": "M1 microscopic world's edge (engineering placeholder until the owner picks the look): a dark dish wall that drops from the swim plane into the fluid where the collision stops the cell, the floor's rim lip and a shelf out past the edge of the camera view. Not yet placed in the pool scene.",
+  "purpose": "M1 microscopic world's edge (engineering placeholder until the owner picks the look): a dark dish wall that drops from the swim plane into the fluid where the collision stops the cell, the floor's rim lip and a shelf out past the edge of the camera view. The pool scene places it as its Rim (micro-world plan C4).",
   "category": "rim",
   "source_blend": "assets/source/blender/pool_rim.blend",
   "generator_script": "tools/blender/make_m1_micro_rim.py",

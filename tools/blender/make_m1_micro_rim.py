@@ -173,7 +173,7 @@ def build_pool_rim():
     _check(min(lip) > 0.8, "pool_rim: lip above +0.8 m over r 41.5-43")
     brightest = max(0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] for c in colors)
     return {
-        "purpose": "M1 microscopic world's edge (engineering placeholder until the owner picks the look): a dark dish wall that drops from the swim plane into the fluid where the collision stops the cell, the floor's rim lip and a shelf out past the edge of the camera view. Not yet placed in the pool scene.",
+        "purpose": "M1 microscopic world's edge (engineering placeholder until the owner picks the look): a dark dish wall that drops from the swim plane into the fluid where the collision stops the cell, the floor's rim lip and a shelf out past the edge of the camera view. The pool scene places it as its Rim (micro-world plan C4).",
         "category": "rim",
         "revision": 1,
         "dependencies": ["assets/export/M_PoolRim.tres"],

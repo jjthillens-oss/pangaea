@@ -9,7 +9,7 @@ extends Node3D
 ## notices mount under %UI (CanvasLayer 10) and read `sim` directly; see the signals below.
 ##
 ## Threats (M1 step 3): CreatureLayer draws the sim's creatures, and creature events become the
-## "!" marker, the tell's floor lane, flashes, the player's hurt flinch and shelter rim, "−12" hit
+## "!" marker, the tell's strike lane, flashes, the player's hurt flinch and shelter rim, "−12" hit
 ## labels and "Dodged!" (FeedbackFx), attack hints, and positional cues. The HUD adds the shelter
 ## chip, the hurt vignette and the off-screen threat arrows from the same events and the sim. A pool
 ## without species has no creatures and none of this.
@@ -28,9 +28,9 @@ signal died(cause: String, reason: String)
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 const FADE_IN_S := 0.3
 ## The shader warm-up under the fade draws on the camera's view axis this deep (m): in the frustum
-## at every zoom and inside the far plane, so it is really drawn, yet hidden behind opaque ground,
-## the floor today and the fluid's backdrop (y −40) once the floor goes. Occlusion culling is off;
-## turning it on would cull the hidden draw, nothing would compile, and this point must move.
+## at every zoom and inside the far plane, so it is really drawn, yet hidden behind the fluid's
+## opaque Backdrop (y −40). Occlusion culling is off; turning it on would cull the hidden draw,
+## nothing would compile, and this point must move.
 const WARM_UP_Y := -45.0
 const STARVE_PULSE_S := 1.0
 
@@ -49,7 +49,8 @@ var _step_costs := PackedInt64Array()
 var _step_cost_next := 0
 var _starve_pulse_t := 0.0
 
-@onready var floor_node: Node3D = %Floor
+## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
+@onready var rim_node: Node3D = %Rim
 @onready var rocks: RockField = %Rocks
 @onready var plankton_view: FoodView = %Plankton
 @onready var carrion_view: FoodView = %Carrion
@@ -79,10 +80,8 @@ func setup(p_session: GameSession, provider: Object = null) -> void:
 
 
 func _ready() -> void:
-	for node in floor_node.find_children("*", "GeometryInstance3D", true, false):
-		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# The light is tuned for Forward+; the Compatibility renderer gets its own values (pool_look.gd).
-	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world_env, floor_node)
+	# One set of values for both renderers today; pool_look.gd keeps a per-renderer escape hatch.
+	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world_env)
 	swim_input.camera = camera
 	if session != null and not _built:
 		_build()
@@ -144,7 +143,7 @@ func _build() -> void:
 	_fade_in()
 
 
-## A short fade from the water colour hides the first frames, while the eat burst and both food
+## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and both food
 ## meshes draw once out of sight (warm_up_point), so their shaders are ready before play.
 func _fade_in() -> void:
 	_fade.visible = true
@@ -157,7 +156,7 @@ func _fade_in() -> void:
 
 
 ## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at
-## WARM_UP_Y. It does not rely on the floor lying under the cell, only on something opaque lying
+## WARM_UP_Y. It does not rely on anything lying under the cell, only on the opaque Backdrop lying
 ## between the point and the camera.
 static func warm_up_point(view: Transform3D) -> Vector3:
 	var forward := -view.basis.z
