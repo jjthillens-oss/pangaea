@@ -9,6 +9,26 @@ extends TestCase
 ##    q == 1 creature on screen until a hit, then passes that one over, and forages only after two
 ##    deaths; "die" swims at the nearest q == 1 creature within 40 tm below half its energy, holds
 ##    still with none, and forages above half.
+##
+## The gates (S2G16), on the real content with growth on and every bot in auto (its keys' default),
+## each run from home as a new endless game starts, a dead cell continued after the death notice:
+##  - soak, first growth: ForageBot grazer and omnivore (wary: avoid_threats) and HuntBot, 6 seeds
+##    each; the median of the 18 first growths lies in 3 to 5 minutes and none takes over 6 (a run
+##    with none by then fails). Each bot's median is printed.
+##  - soak, the reversal (BP-13), on the same 18 runs: the first tick after grew at which a body of a
+##    species that entered at the old size, now at q < 1, flees the cell inside the default-zoom
+##    footprint (D-49: camera.distance, fairness.spawn_view_aspect, grown by its radius): a remnant,
+##    or a creature in FLEE whose fear_of or attacker is the cell. Median at most 30 s; a run with
+##    none in 120 s counts 120 s.
+##  - soak, clumsy: ClumsyBot "clumsy" on the grazer and the omnivore, 6 seeds each; median first
+##    growth at most 6 minutes (a run with none by CAP_S counts CAP_S).
+##  - soak, die on purpose: ClumsyBot "die" on the same bodies and seeds; its median first growth is
+##    at least the wary foragers' (a run with none by CAP_S counts CAP_S).
+##  - slow, the parked grazer (BP-5): a ForageBot grazer at size 2 (debug_set_size) arrives at the
+##    nearest sunlit zone inside a live rammer territory and holds still there; from the tick it
+##    holds, a run of PARK_CALM_TICKS ticks with Growth.blocker_of(sim, false) == "" starts within
+##    28.5 s, on 6 seeds. Non-vacuous: a rammer flees the cell in view during each run.
+## Each waits on the S2 seams it reads (Gates.s2_missing).
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
@@ -24,6 +44,28 @@ const BOT_NAMES: PackedStringArray = ["forage", "forage_wary", "hunt", "kiter", 
 	"homing", "clumsy", "die"]
 const NEAR_M := 3.0               ## the cell is put this far from the creature it should charge
 const STRAIGHT_DOT := 0.9         ## "straight at it": the move's cosine to the line to the creature
+
+## The gates (S2G16). Seeds written here before any run.
+const GATE_NEEDS: PackedStringArray = ["set_size", "remnants", "size_two_content"]
+const PARK_NEEDS: PackedStringArray = ["set_size", "size_two_content"]
+const GROWTH_SEEDS: Array[int] = [601, 602, 603, 604, 605, 606]
+const FIRST_BOTS: Array[Dictionary] = [{"bot": "forage", "body": "grazer"}, {"bot": "forage", "body": "omnivore"},
+	{"bot": "hunt", "body": "hunter"}]
+const FIRST_MIN_S := 180.0        ## the median first growth: 3 to 5 minutes
+const FIRST_MAX_MEDIAN_S := 300.0
+const FIRST_MAX_S := 360.0        ## and none over 6
+const REVERSAL_MAX_MEDIAN_S := 30.0
+const REVERSAL_NONE_S := 120.0    ## a run with no reversal in this long counts this long
+const CLUMSY_BODIES: PackedStringArray = ["grazer", "omnivore"]
+const CLUMSY_MAX_MEDIAN_S := 360.0
+const CAP_S := 720.0              ## a clumsy or die run with no growth by now counts this long
+const DEATH_NOTICE_TICKS := 90    ## a player reading the death notice before Continue
+const PARK_SEEDS: Array[int] = [611, 612, 613, 614, 615, 616]
+const PARK_CALM_TICKS := 90
+const PARK_START_LIMIT_S := 28.5  ## the calm run starts by then, so it ends by 30 s
+const PARK_SETTLE_TICKS := 120    ## after the size is set, before the zone is chosen (the stream loads)
+const ARRIVE_GRACE_TICKS := 600   ## the parked bot's ticks to stop once it has arrived
+const TPS := 60.0
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -195,6 +237,260 @@ func test_a_die_bot_looks_no_farther_than_40_tm() -> void:
 		k.motion.position = sim.motion.position + off.normalized() * (ClumsyBot.DIE_REACH_TM + 1.0)
 	bot.next_intent(sim)
 	check(bot.target_id().is_empty(), "none within 40 tm: none sought")
+
+
+func test_soak_the_first_growth_comes_in_3_to_5_minutes_and_old_threats_turn_within_30_s() -> void:
+	if _gate_waits("first growth and the reversal", GATE_NEEDS):
+		return
+	var firsts: Array[float] = []
+	var reversals: Array[float] = []
+	for b in FIRST_BOTS:
+		var mine: Array[float] = []
+		for seed_value in GROWTH_SEEDS:
+			var run := _growth_run(str(b.bot), str(b.body), seed_value, FIRST_MAX_S, true)
+			print("test-growth-gates: %s %s seed %d: first growth %s, reversal %s, %d deaths, %d meals" % [
+				b.bot, b.body, seed_value, _s(run.grew_s), _s(run.reversal_s), run.deaths, run.meals])
+			check(run.grew_s <= FIRST_MAX_S, "%s %s seed %d grew within 6 minutes (%s)" % [b.bot, b.body, seed_value, _s(run.grew_s)])
+			mine.append(run.grew_s)
+			firsts.append(run.grew_s)
+			if run.grew_s <= FIRST_MAX_S:
+				reversals.append(minf(run.reversal_s, REVERSAL_NONE_S))
+		print("test-growth-gates: %s %s: median first growth %s" % [b.bot, b.body, _s(median(mine))])
+	var m := median(firsts)
+	print("test-growth-gates: first growth median %s over %d runs (max %s); reversal median %s over %d" % [
+		_s(m), firsts.size(), _s(firsts.max()), _s(median(reversals)), reversals.size()])
+	check(m >= FIRST_MIN_S and m <= FIRST_MAX_MEDIAN_S, "the median first growth lies in 3 to 5 minutes (%s)" % _s(m))
+	check(reversals.size() == firsts.size(), "every run grew, so every run has a reversal reading")
+	check(median(reversals) <= REVERSAL_MAX_MEDIAN_S, "the median reversal is within 30 s (%s)" % _s(median(reversals)))
+
+
+func test_soak_a_clumsy_player_still_grows_within_6_minutes() -> void:
+	if _gate_waits("the clumsy player", GATE_NEEDS):
+		return
+	var times: Array[float] = []
+	for body in CLUMSY_BODIES:
+		for seed_value in GROWTH_SEEDS:
+			var run := _growth_run("clumsy", body, seed_value, CAP_S, false)
+			print("test-growth-gates: clumsy %s seed %d: first growth %s, %d deaths, %d charges" % [
+				body, seed_value, _s(run.grew_s), run.deaths, run.charges])
+			times.append(minf(run.grew_s, CAP_S))
+	print("test-growth-gates: clumsy median first growth %s over %d runs" % [_s(median(times)), times.size()])
+	check(median(times) <= CLUMSY_MAX_MEDIAN_S, "the clumsy median is at most 6 minutes (%s)" % _s(median(times)))
+
+
+func test_soak_dying_on_purpose_never_grows_a_cell_faster_than_foraging() -> void:
+	if _gate_waits("die on purpose", GATE_NEEDS):
+		return
+	var dying: Array[float] = []
+	var foraging: Array[float] = []
+	for body in CLUMSY_BODIES:
+		for seed_value in GROWTH_SEEDS:
+			var die := _growth_run("die", body, seed_value, CAP_S, false)
+			var forage := _growth_run("forage", body, seed_value, CAP_S, false)
+			print("test-growth-gates: %s seed %d: dying grew at %s (%d deaths), foraging at %s" % [
+				body, seed_value, _s(die.grew_s), die.deaths, _s(forage.grew_s)])
+			dying.append(minf(die.grew_s, CAP_S))
+			foraging.append(minf(forage.grew_s, CAP_S))
+	print("test-growth-gates: median first growth dying %s, foraging %s" % [_s(median(dying)), _s(median(foraging))])
+	check(median(dying) >= median(foraging), "dying on purpose is no faster (%s against %s)" % [_s(median(dying)), _s(median(foraging))])
+
+
+func test_slow_a_parked_grazer_at_size_two_finds_its_calm_window_within_30_s() -> void:
+	if _gate_waits("the parked grazer", PARK_NEEDS):
+		return
+	for seed_value in PARK_SEEDS:
+		var run := _park_run(seed_value)
+		print("test-growth-gates: parked grazer seed %d: zone %s, arrived %s; calm run from %s after parking; %d ticks with a rammer fleeing in view; blockers %s" % [
+			seed_value, run.zone, run.arrival, _s(run.calm_s), run.fleeing_ticks, run.blockers])
+		check(not str(run.zone).is_empty(), "seed %d: a sunlit zone in a live rammer territory" % seed_value)
+		check(run.calm_s <= PARK_START_LIMIT_S, "seed %d: %d calm ticks in a row start within 28.5 s (%s)" % [
+			seed_value, PARK_CALM_TICKS, _s(run.calm_s)])
+		check(int(run.fleeing_ticks) > 0, "seed %d: a rammer fled the cell in view" % seed_value)
+
+
+## The median of `xs` (the mean of the middle two for an even count); INF for none.
+static func median(xs: Array[float]) -> float:
+	if xs.is_empty():
+		return INF
+	var s := xs.duplicate()
+	s.sort()
+	var n := s.size()
+	return s[n / 2] if n % 2 == 1 else (s[n / 2 - 1] + s[n / 2]) / 2.0
+
+
+static func _s(seconds: float) -> String:
+	return "none" if not is_finite(seconds) else "%.1f s" % seconds
+
+
+func _gate_waits(what: String, needs: PackedStringArray) -> bool:
+	var waits := Gates.s2_missing(needs)
+	if waits.is_empty():
+		return false
+	print("test-growth-gates: %s waits on: %s" % [what, "; ".join(waits)])
+	return true
+
+
+## One run from home with growth on (auto): `bot_name` ("forage" wary, "hunt", "clumsy" or "die")
+## on `body` until the first grew or `cap_s`; with `reversal`, on after grew until the reversal or
+## REVERSAL_NONE_S. Returns {"grew_s" (INF for none), "reversal_s" (INF for none), "deaths",
+## "meals", "charges"}.
+func _growth_run(bot_name: String, body: String, seed_value: int, cap_s: float, reversal: bool) -> Dictionary:
+	var sim: Variant = Gates.make_sim(body, seed_value, true)
+	var bot: Variant
+	match bot_name:
+		"forage":
+			bot = ForageBot.new()
+			bot.avoid_threats = true
+		"hunt":
+			bot = HuntBot.new()
+		_:
+			bot = ClumsyBot.new(bot_name)
+	var out := {"grew_s": INF, "reversal_s": INF, "deaths": 0, "meals": 0, "charges": 0}
+	var events: Array[Dictionary] = []
+	var dead := {}
+	var grew_at := -1
+	var old_size := 0
+	var cap := int(cap_s * TPS)
+	for i in cap + int(REVERSAL_NONE_S * TPS):
+		if grew_at < 0 and i >= cap:
+			break
+		if grew_at >= 0 and (not reversal or sim.tick - grew_at > int(REVERSAL_NONE_S * TPS)):
+			break
+		events.append_array(Gates.continue_after_death(sim, dead))
+		var intent: SimIntent = bot.next_intent(sim, events) if bot_name == "hunt" else bot.next_intent(sim)
+		events = Gates.tick(sim, intent)
+		for e in events:
+			match str(e.type):
+				"died":
+					out.deaths += 1
+				"ate":
+					out.meals += 1
+				"grew":
+					if grew_at < 0:
+						grew_at = sim.tick - 1   # the tick that grew
+						old_size = int(e.get("from", int(e.get("to", 2)) - 1))
+						out.grew_s = i / TPS
+		if grew_at >= 0 and sim.tick - 1 > grew_at and reversal and not is_finite(out.reversal_s) and reversed_in_view(sim, old_size):
+			out.reversal_s = (sim.tick - 1 - grew_at) / TPS
+	if bot_name in ["clumsy", "die"]:
+		out.charges = bot.charges
+	return out
+
+
+## The reversal on this tick (BP-13): a body of a species that entered at `old_size`, at q < 1 now,
+## flees the cell inside the default-zoom footprint (D-49): a remnant, or a creature in FLEE whose
+## fear_of or attacker is the cell.
+static func reversed_in_view(sim: Variant, old_size: int) -> bool:
+	var n: int = sim.size()
+	var sp: SpeciesCatalog = sim.species
+	var cam: Dictionary = sim.layout.camera
+	var aspect := float(sp.fairness.spawn_view_aspect)
+	var at: Vector2 = sim.motion.position
+	var p := CreatureField.PLAYER_ID
+	for r in sim.remnants.items:
+		if sp.has_species(r.species_id) and sp.entry_size(r.species_id) == old_size \
+				and ViewFootprint.contains(at, r.motion.position, cam, float(cam.distance), aspect, r.phenotype.radius):
+			return true
+	for c: CreatureField.Creature in sim.creatures.awake():
+		if c.brain == null or c.brain.state != CreatureBrain.FLEE or not sp.has_species(c.species_id):
+			continue
+		if sp.entry_size(c.species_id) != old_size or sp.q_of(c.species_id, n) >= 1.0:
+			continue
+		if (c.brain.fear_of == p or c.brain.attacker == p) \
+				and ViewFootprint.contains(at, c.motion.position, cam, float(cam.distance), aspect, c.phenotype.radius):
+			return true
+	return false
+
+
+## The parked grazer (BP-5): a grazer at size 2 arrives (Gates.arrive) at the nearest sunlit zone
+## whose centre lies in a live rammer territory, then a ForageBot parks on its centre. From the
+## first tick it holds still, each tick reads Growth.blocker_of(sim, false). Returns {"zone",
+## "arrival", "calm_s" (when the first PARK_CALM_TICKS calm run started, INF for none in 30 s),
+## "fleeing_ticks", "blockers" (ticks per blocker)}.
+func _park_run(seed_value: int) -> Dictionary:
+	var sim: Variant = Gates.make_sim("grazer", seed_value, true)
+	var out := {"zone": "", "arrival": "", "calm_s": INF, "fleeing_ticks": 0, "blockers": {}}
+	check(sim.debug_set_size(2), "seed %d: size 2" % seed_value)
+	sim.debug_set_hidden(true)
+	for i in PARK_SETTLE_TICKS:
+		Gates.keep_fed(sim)
+		Gates.tick(sim, SimIntent.new())
+	sim.debug_set_hidden(false)
+	var zone := _rammer_zone(sim)
+	if zone.is_empty():
+		return out
+	out.zone = str(zone.id)
+	var at: PackedFloat64Array = sim.world.abs_of_local(zone.center)
+	var arrival := Gates.arrive(sim, at, seed_value)
+	out.arrival = "%.1f tm off after %d ticks" % [arrival.left_tm, arrival.ticks]
+	var bot = ForageBot.new()
+	var parked_at := -1
+	var run_from := -1
+	var limit := int((PARK_START_LIMIT_S + PARK_CALM_TICKS / TPS) * TPS)
+	for i in limit + ARRIVE_GRACE_TICKS:
+		var z: Dictionary = sim.region.zone(out.zone)
+		if z.is_empty():
+			break
+		bot.park_at = z.center
+		var intent: SimIntent = bot.next_intent(sim)
+		if parked_at < 0 and intent.move == Vector2.ZERO:
+			parked_at = sim.tick
+		Gates.tick(sim, intent)
+		if parked_at < 0:
+			continue
+		if sim.tick - parked_at > limit:
+			break
+		var blocker: String = sim.growth.blocker_of(sim, false)
+		out.blockers[blocker] = int(out.blockers.get(blocker, 0)) + 1
+		if _rammer_flees_in_view(sim):
+			out.fleeing_ticks += 1
+		if blocker != "":
+			run_from = -1
+			continue
+		if run_from < 0:
+			run_from = sim.tick
+		if sim.tick - run_from + 1 >= PARK_CALM_TICKS and not is_finite(out.calm_s):
+			out.calm_s = (run_from - parked_at) / TPS
+	return out
+
+
+## The nearest loaded zone (to the cell) in the "sunlit" region (its chunk's zone record says so)
+## whose centre lies in the territory of a live rammer site; {} when none is loaded.
+static func _rammer_zone(sim: Variant) -> Dictionary:
+	var discs: Array = []
+	var region_of := {}
+	for key in sim.world.loaded_keys():
+		var chunk: Variant = sim.world.chunk(key)
+		for z in chunk.zones:
+			region_of[str(z.id)] = str(z.get("region", ""))
+		for s in chunk.sites:
+			var disc: Dictionary = s.get("territory", {})
+			if str(s.species) == "rammer" and not disc.is_empty() and HuntBot._live(s, sim.world):
+				discs.append({"center": sim.world.local_of_tm(float(disc.x), float(disc.y)), "radius": float(disc.radius)})
+	var best := {}
+	var best_d := INF
+	for z in sim.region.zones:
+		if region_of.get(str(z.id), "") != "sunlit" or not Gates.covered(z.center, discs):
+			continue
+		var d: float = sim.motion.position.distance_to(z.center)
+		if d < best_d:
+			best_d = d
+			best = z
+	return best
+
+
+## A rammer in FLEE from the cell inside the default-zoom footprint (D-49).
+static func _rammer_flees_in_view(sim: Variant) -> bool:
+	var cam: Dictionary = sim.layout.camera
+	var aspect := float(sim.species.fairness.spawn_view_aspect)
+	for c: CreatureField.Creature in sim.creatures.awake():
+		if c.species_id != "rammer" or c.brain == null or c.brain.state != CreatureBrain.FLEE:
+			continue
+		if c.brain.fear_of != CreatureField.PLAYER_ID and c.brain.attacker != CreatureField.PLAYER_ID:
+			continue
+		if ViewFootprint.contains(sim.motion.position, c.motion.position, cam, float(cam.distance), aspect, c.phenotype.radius):
+			return true
+	return false
 
 
 ## A pool sim (M1, every creature at q == 1) for `body`, its start shelter over.
