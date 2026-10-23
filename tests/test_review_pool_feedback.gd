@@ -58,7 +58,9 @@ func test_arrow_stops_short_of_visible_food() -> void:
 	var arrow := StarvingArrow.new()
 	arrow.size = Vector2(800.0, 600.0)
 	arrow.point(Vector2(400.0, 300.0), Vector2.RIGHT, Vector2(650.0, 300.0), 7.0)
-	check_near(arrow.arrow_position.x, 650.0 - StarvingArrow.SHORT_OF_FOOD_PX, 0.001, "food stays visible")
+	check_near(
+		arrow.arrow_position.x, 650.0 - StarvingArrow.SHORT_OF_FOOD_PX, 0.001, "food stays visible"
+	)
 	arrow.free()
 
 
@@ -66,8 +68,12 @@ func test_arrow_does_not_cover_cell_for_near_food() -> void:
 	var arrow := StarvingArrow.new()
 	arrow.size = Vector2(800.0, 600.0)
 	arrow.point(Vector2(400.0, 300.0), Vector2.RIGHT, Vector2(430.0, 300.0), 1.0, 30.0)
-	check_near(arrow.arrow_position.distance_to(arrow.cell_position), StarvingArrow.MIN_FROM_CELL_PX,
-		0.001, "minimum offset")
+	check_near(
+		arrow.arrow_position.distance_to(arrow.cell_position),
+		StarvingArrow.MIN_FROM_CELL_PX,
+		0.001,
+		"minimum offset"
+	)
 	check(not arrow._over_cell(arrow.label_rect()), "text clears the body")
 	arrow.free()
 
@@ -81,7 +87,9 @@ func test_fx_hit_text_prefers_actual_dealt_damage() -> void:
 
 
 func test_fx_meal_text_omits_unearned_points() -> void:
-	check_eq(FeedbackFx.meal_text({"absorbed": 3.6, "points": 0}), "+4 energy", "no zero point marker")
+	check_eq(
+		FeedbackFx.meal_text({"absorbed": 3.6, "points": 0}), "+4 energy", "no zero point marker"
+	)
 
 
 func test_fx_hit_lifetime_is_an_integer_number_of_sim_ticks() -> void:

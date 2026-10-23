@@ -32,7 +32,9 @@ func test_every_settings_row_names_a_persisted_key() -> void:
 	for key in shown:
 		check(GameSettings.SPEC.has(key), "%s has a saved settings specification" % key)
 	for key in GameSettings.SPEC:
-		check(shown.has(key) or key == "game/slot", "%s is reachable or is the dedicated slot" % key)
+		check(
+			shown.has(key) or key == "game/slot", "%s is reachable or is the dedicated slot" % key
+		)
 
 
 func test_default_menu_bindings_decode_for_both_devices() -> void:
@@ -48,8 +50,13 @@ func test_default_menu_bindings_decode_for_both_devices() -> void:
 
 
 func test_slot_lines_do_not_show_payload_fields() -> void:
-	var header := {"body": "grazer", "lineage_tag": "A1", "generation": 2,
-		"adaptation_points": 7, "saved_at_unix": 1000}
+	var header := {
+		"body": "grazer",
+		"lineage_tag": "A1",
+		"generation": 2,
+		"adaptation_points": 7,
+		"saved_at_unix": 1000
+	}
 	var peek := {"exists": true, "ok": true, "summary": header, "secret_payload": "DO_NOT_SHOW"}
 	var lines := "\n".join(SlotPicker.slot_lines(peek))
 	check(lines.contains("A1") and lines.contains("Generation 2"), "header appears")
@@ -62,9 +69,14 @@ func test_settings_tab_first_focus_is_an_enabled_visible_row() -> void:
 	for i in SettingsMenu.TABS.size():
 		menu.show_tab(i)
 		var first: Control = menu._first_focus()
-		check(first != null and first.visible, "%s has a visible first control" % SettingsMenu.TABS[i])
+		check(
+			first != null and first.visible, "%s has a visible first control" % SettingsMenu.TABS[i]
+		)
 		if first is BaseButton:
-			check(not (first as BaseButton).disabled, "%s starts on an enabled control" % SettingsMenu.TABS[i])
+			check(
+				not (first as BaseButton).disabled,
+				"%s starts on an enabled control" % SettingsMenu.TABS[i]
+			)
 	menu.free()
 
 
