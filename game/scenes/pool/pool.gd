@@ -33,6 +33,10 @@ const FADE_IN_S := 0.3
 ## nothing would compile, and this point must move.
 const WARM_UP_Y := -45.0
 const STARVE_PULSE_S := 1.0
+## Art's decor plug-in (micro-world plan section 7): mounted as the pool's single child "Ambience"
+## when the scene exists. It reads get_parent().camera and get_parent().cell_view and writes
+## nothing back; tests/test_ambience_contract.gd holds it to the rest of the contract.
+const AMBIENCE_SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
 
 ## Pause when the window loses focus (Bible 19). Off for tools that render without focus.
 @export var pause_on_focus_loss := true
@@ -83,8 +87,20 @@ func _ready() -> void:
 	# One set of values for both renderers today; pool_look.gd keeps a per-renderer escape hatch.
 	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world_env)
 	swim_input.camera = camera
+	_mount_ambience()
 	if session != null and not _built:
 		_build()
+
+
+## Mounts art's ambience scene, when there is one, as the single child "Ambience". The pool calls it
+## once the camera and cell view exist, so the plug-in can read them in its own _ready. Its layers
+## are in view from the first frame, so their shaders compile under the start fade.
+func _mount_ambience() -> void:
+	if has_node("Ambience") or not ResourceLoader.exists(AMBIENCE_SCENE):
+		return
+	var ambience := (load(AMBIENCE_SCENE) as PackedScene).instantiate()
+	ambience.name = "Ambience"
+	add_child(ambience)
 
 
 func set_paused(value: bool) -> void:
