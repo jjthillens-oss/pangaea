@@ -19,6 +19,12 @@ extends Node3D
 ## containers that hold world pieces, the camera shifts its focus (never snap_to), and what is
 ## placed from the sim each frame needs nothing. Every Node3D here is in one of three groups
 ## (world_space, world_rebuilt, camera_relative; see WorldSpace).
+##
+## Growth (S2): in the endless sea the sim's Growth (growth(), null in the pool, D-46) fills a meter
+## the HUD shows. A press of the grow action goes into the next tick's intent, for one tick and only
+## when the player swims (never a bot's); the growth trigger setting goes out with the first tick
+## after the build and again whenever the player changes it (V-16). Both come from main's
+## SettingsService, as does reduce camera motion (V-15).
 
 ## Every sim event, after the pool's own feedback has run (see PoolSim.drain_events for types).
 signal sim_event(event: Dictionary)
@@ -67,6 +73,17 @@ var _loaded := {}
 var _step_costs := PackedInt64Array()
 var _step_cost_next := 0
 var _starve_pulse_t := 0.0
+## Growth (S2): a grow press waiting for the next tick, the trigger setting waiting to go out with
+## it, and the settings service listened to.
+var _grow_pressed := false
+var _trigger_pending := ""
+var _settings: SettingsService
+## What the last tick's intent carried for growth: the press and the trigger ("" for none). The
+## dev panel and the tests read them.
+var sent_grow := false
+var sent_trigger := ""
+## Reduce camera motion (settings): the growth beat dissolves instead of moving the camera (V-17).
+var reduce_motion := false
 
 ## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
 @onready var rim_node: Node3D = %Rim
@@ -210,12 +227,64 @@ func _build() -> void:
 	camera.snap_to(cell_view.position)
 	_follow_camera()
 	_draw_food(1.0)
+	_listen_to_settings()
 	_fade_in()
 
 
 ## True in the endless sea (the sim streams a world), false in the M1 pool.
 func is_endless() -> bool:
 	return sim != null and sim.world != null
+
+
+## The sim's Growth (S2), or null: always null in the M1 pool (D-46). Only read here.
+func growth() -> Object:
+	return sim.get(&"growth") if sim != null else null
+
+
+## The cell's size in the sim: the world's in the sea, 1 in the pool.
+func sim_size() -> int:
+	return sim.world.size if is_endless() else 1
+
+
+## The size the scene shows now (the HUD, the markers): the sim's.
+func shown_size() -> int:
+	return sim_size()
+
+
+## The largest size this build reaches (world_cell.json sizes.max_in_build; 1 in the pool).
+func max_size() -> int:
+	return session.world.config.max_size_in_build if is_endless() else 1
+
+
+## Queues the growth trigger ("auto" or "press") into the next tick's intent. Nothing goes out
+## without a Growth.
+func send_trigger(trigger: String) -> void:
+	_trigger_pending = trigger if growth() != null else ""
+
+
+func set_reduce_motion(on: bool) -> void:
+	reduce_motion = on
+
+
+## Reads the growth trigger and reduce camera motion from the shared settings now, and again on
+## every change (V-15, V-16): the trigger then goes out with the next tick.
+func _listen_to_settings() -> void:
+	var settings := SettingsService.shared()
+	if _settings != settings:
+		if _settings != null and _settings.changed.is_connected(_on_setting_changed):
+			_settings.changed.disconnect(_on_setting_changed)
+		_settings = settings
+		_settings.changed.connect(_on_setting_changed)
+	_grow_pressed = false
+	send_trigger(settings.growth_trigger())
+	set_reduce_motion(settings.reduce_camera_motion())
+
+
+func _on_setting_changed(id: String) -> void:
+	if id == "gameplay/growth_trigger":
+		send_trigger(_settings.growth_trigger())
+	elif id == "accessibility/reduce_camera_motion":
+		set_reduce_motion(_settings.reduce_camera_motion())
 
 
 ## The chunk keys drawn now, sorted (endless; empty in the pool).
@@ -355,7 +424,9 @@ func _physics_process(_delta: float) -> void:
 	if paused or sim == null or not _built:
 		return
 	var t0 := Time.get_ticks_usec()
-	sim.step(intent_provider.next_intent(sim))
+	var intent: SimIntent = intent_provider.next_intent(sim)
+	_add_growth_intent(intent)
+	sim.step(intent)
 	_record_cost(Time.get_ticks_usec() - t0)
 	_route_events()
 
@@ -392,6 +463,24 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("zoom_out"):
 		camera.zoom_by(1)
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("grow") and growth() != null:
+		# A held key repeats as echo events, which is_action_pressed ignores: one press, one tick.
+		_grow_pressed = true
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
+
+
+## Puts the growth inputs into this tick's intent (V-16): a grow press only when the player swims
+## (a bot presses for itself), for this tick alone, and a queued trigger once.
+func _add_growth_intent(intent: SimIntent) -> void:
+	sent_grow = _grow_pressed and intent_provider == swim_input
+	sent_trigger = _trigger_pending
+	_grow_pressed = false
+	_trigger_pending = ""
+	if sent_grow:
+		intent.set(&"grow", true)
+	if sent_trigger != "":
+		intent.set(&"trigger", sent_trigger)
 
 
 func _notification(what: int) -> void:
