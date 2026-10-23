@@ -182,6 +182,50 @@ func test_slow_the_wake_bound_wakes_the_same_sleepers_as_measuring_every_one() -
 	check(counts.died == 1 and a.tick > 1400 + Gates.DEATH_NOTICE_TICKS and not a.dead, "the cell died and came back")
 
 
+## The wake bound starts again when what it was measured for changes: twin sims swim east past the
+## creatures they leave asleep, then the wake ring grows and the view margin with it, later both
+## shrink back; before every step the twin's bound restarts. The sleepers inside the grown ring wake
+## at once in both, and every tick's events and every hash must be the same.
+func test_the_wake_bound_starts_again_when_the_wake_ring_or_view_margin_changes() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the wake bound restart waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 505)
+	var b: Variant = Gates.make_sim(Gates.RACER, 505)
+	a.debug_set_hidden(true)
+	b.debug_set_hidden(true)
+	var wake_r := float(a.world.rings.wake)
+	var margin := float(a.world.view_margin)
+	var woke := {}
+	var bounded_before := 0
+	for t in 1500:
+		if t == 900 or t == 1200:
+			for sim in [a, b]:
+				sim.world.rings.wake = wake_r + 25.0 if t == 900 else wake_r
+				sim.world.view_margin = margin + 5.0 if t == 900 else margin
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		if t == 899 or t == 1199:
+			bounded_before += 1 if not a.world._wake_bound.is_empty() else 0
+		b.world._swum_from = Vector2.INF
+		a.step(SimIntent.new(Vector2.RIGHT))
+		b.step(SimIntent.new(Vector2.RIGHT))
+		var ea: Array = a.drain_events()
+		if var_to_str(ea) != var_to_str(b.drain_events()):
+			check(false, "tick %d: the events differ" % t)
+			return
+		for e in ea:
+			if e.type == "creature_woke":
+				woke[t] = int(woke.get(t, 0)) + 1
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check_eq(bounded_before, 2, "the bound held sleepers before each change")
+	check(int(woke.get(900, 0)) >= 1, "sleepers inside the grown ring woke at once (%s)" % woke)
+	check_eq(a.world._bound_view[1], wake_r, "the bound was measured again for the ring as it is now")
+
+
 ## A sleeper the bound holds is measured again once it is moved (a respawn sends the creatures near
 ## the checkpoint home, sleepers too): one put beside the cell wakes on the next step.
 func test_a_moved_sleeper_is_measured_again_at_once() -> void:
@@ -502,6 +546,38 @@ func test_chunks_generated_ahead_equal_the_generators_and_go_once() -> void:
 	check(not w._ahead.is_empty(), "chunks kept ahead at the end")
 	sim.debug_teleport_abs(5000.0, -3000.0)
 	check(w._ahead.is_empty(), "a teleport forgets them")
+
+
+## Chunks generated ahead are forgotten when the stream's generator is swapped for another or the
+## same one is bound again to another seed (WorldGen.setup): the next load is the new binding's
+## chunk, never one made before.
+func test_chunks_generated_ahead_are_forgotten_with_their_generators_binding() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the look-ahead binding waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 504)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	for round in 2:
+		for t in 300:
+			SwimBot.overdrive(sim)
+			sim.step(SimIntent.new(Vector2.RIGHT))
+			sim.drain_events()
+		check(not w._ahead.is_empty(), "round %d: chunks kept ahead" % round)
+		if w._ahead.is_empty():
+			return
+		var k: Vector3i = w._ahead.keys()[0]
+		var old_text := _chunk_text(w._ahead[k])
+		var seed := int(w.gen.world_seed) + 7919
+		if round == 0:
+			w.gen.setup(w.gen.content, w.gen.species, seed)   # the same generator, bound again
+		else:
+			var other := WorldGen.create(w.gen.content, w.gen.species, seed)
+			w.gen = other   # another generator
+		var want := _chunk_text(w.gen.chunk(k.z, k.x, k.y))
+		check(want != old_text, "round %d: the new binding's chunk differs" % round)
+		check_eq(_chunk_text(w._generated(Vector2i(k.x, k.y))), want, "round %d: the load is the new binding's chunk" % round)
+		check(w._ahead.is_empty(), "round %d: the kept chunks are forgotten" % round)
 
 
 # --- WorldHash with mul32 and rotl32 written out ---

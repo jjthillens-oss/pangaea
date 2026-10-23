@@ -105,7 +105,10 @@ var _chunks := {}                      ## Vector2i -> WorldChunk (absolute)
 var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 ## site id -> {id, species, home: Vector2, heading, territory: {} or {center: Vector2, radius},
 ## reach: {center: Vector2, radius}, chunks: Array[Vector2i], home_chunk: Vector2i, abs: the
-## WorldChunk's site}: the loaded live sites, local.
+## WorldChunk's site}: the loaded live sites, local. Read it freely; only _load_chunk and
+## _unload_chunk add or remove a site (they keep the home and role counts below with it). A site
+## added or removed elsewhere is taken in when the table's size no longer matches those counts
+## (they are recounted then); one that replaces another at the same size goes unseen.
 var sites := {}
 ## site id -> how many creatures it has spawned this session (never cleared by an unload, so a
 ## reloaded site's next creature is a new one).
@@ -153,9 +156,11 @@ var _cell_tile := Vector2i.ZERO
 ## Chunks generated ahead (WorldGen.chunk is pure, so a chunk is the same whatever tick builds it):
 ## on a tick that loads nothing, the missing chunk nearest where the cell is heading is generated
 ## and kept here, Vector3i(x, y, size) -> WorldChunk, so the tick that loads it does not pay for it.
-## Each is handed out once; a teleport or another generator forgets them.
+## Each is handed out once; a teleport, another generator or the same one bound again (WorldGen.setup
+## to other content, species, seed or version) forgets them.
 var _ahead := {}
 var _ahead_gen: WorldGen = null
+var _ahead_binding := []               ## [content, species, world seed, gen version] they were made with
 var _ahead_tick := 0                   ## the first tick the next look may run (a load resets it)
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
@@ -750,9 +755,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 
 ## Chunk `key` at the current size: the one generated ahead when there is one (taken), else now.
 func _generated(key: Vector2i) -> WorldChunk:
-	if not is_same(_ahead_gen, gen):
-		_ahead.clear()
-		_ahead_gen = gen
+	_check_ahead_gen()
 	var k := Vector3i(key.x, key.y, size)
 	var ch: WorldChunk = _ahead.get(k)
 	if ch == null:
@@ -760,6 +763,19 @@ func _generated(key: Vector2i) -> WorldChunk:
 	_ahead.erase(k)
 	_ahead_tick = 0
 	return ch
+
+
+## Forgets the chunks generated ahead unless `gen` is the generator they came from, bound to the same
+## content, species, seed and version (WorldGen.chunk's every input but the key and the size).
+func _check_ahead_gen() -> void:
+	var g := gen
+	if is_same(_ahead_gen, g) and _ahead_binding.size() == 4 and is_same(_ahead_binding[0], g.content) \
+			and is_same(_ahead_binding[1], g.species) and _ahead_binding[2] == g.world_seed \
+			and _ahead_binding[3] == g.gen_version:
+		return
+	_ahead.clear()
+	_ahead_gen = g
+	_ahead_binding = [g.content, g.species, g.world_seed, g.gen_version] if g != null else []
 
 
 ## On a tick that loads nothing: generates the missing chunk nearest the point AHEAD_LEAD_S ahead of
@@ -771,9 +787,7 @@ func _look_ahead(sim: PoolSim) -> void:
 	if sim.tick < _ahead_tick:
 		return
 	_ahead_tick = sim.tick + AHEAD_REFRESH_TICKS
-	if not is_same(_ahead_gen, gen):
-		_ahead.clear()
-		_ahead_gen = gen
+	_check_ahead_gen()
 	var a := abs_of_local(sim.motion.position + sim.motion.velocity * AHEAD_LEAD_S)
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
