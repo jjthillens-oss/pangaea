@@ -9,11 +9,24 @@ extends TestCase
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
+const Yardstick := preload("res://tests/cost_yardstick.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
 const PLAYER := "player"
-const STEP_COST_LIMIT_US := 1000.0
+## #28 (flake policy in docs/DECISIONS.md, M1 step 3 review fixes): the same 60 s are timed
+## STEP_COST_RUNS times, the bot's run and replays of its intents, and the fastest run counts. Its
+## average must stay under STEP_COST_LIMIT_US, about 2.5 times a quiet reading in the Linux container
+## (about 550 us; CI's runners read 250 to 365), so moderate load from other processes does not fail
+## it. Each step is also timed against the yardstick (tests/cost_yardstick.gd) run right after it,
+## and the median run's step time over its yardstick time must stay under STEP_COST_YARDSTICKS: a
+## tick reads 4.7 to 5.4 yardsticks at load 2 to 7 here and beside a busy loop or a cache-thrashing
+## process (4.6 on CI), and a step that costs twice as much 9.5 to 10.2. Heavy load can still move
+## the count, so only a pass on a quiet machine or on CI rules a regression out.
+const STEP_COST_LIMIT_US := 1500.0
+const STEP_COST_YARDSTICKS := 8.0
+const STEP_COST_RUNS := 3
+const STEP_COST_TICKS := 3600
 const BODIES: PackedStringArray = ["grazer", "hunter", "omnivore"]
 ## Open water in the threats fixture, far from the wall, the zone and the soft wall: strikes start here.
 const STRIKE_ORIGIN := Vector2(0.0, -16.0)
@@ -1685,19 +1698,51 @@ func test_creatures_and_their_respawns_never_draw_from_the_region_rng() -> void:
 
 
 func test_a_tick_with_seven_creatures_costs_well_under_a_millisecond() -> void:
-	var sim := _sim("omnivore", 91, Vector2.INF, 0.0, layout, species)
-	check_eq(sim.creatures.creatures.size(), 7, "seven creatures")
-	var bot = ForageBot.new()
-	var spent := 0
-	for i in 3600:
-		var intent: SimIntent = bot.next_intent(sim)
-		var t0 := Time.get_ticks_usec()
-		sim.step(intent)
-		spent += Time.get_ticks_usec() - t0
-		sim.drain_events()
-	var average := spent / 3600.0
-	print("test-threats-step-cost: %.1f us per tick over 3600 ticks with %d creatures" % [average, sim.creatures.creatures.size()])
-	check(average <= STEP_COST_LIMIT_US, "average %.1f us per tick" % average)
+	# Plan #28 with the real data. The name gives the expected cost (about 550 us here, 250 to 365
+	# on CI); the limits are STEP_COST_LIMIT_US and STEP_COST_YARDSTICKS. Only sim.step and the
+	# yardstick are timed; the replays end in the bot's run's state hash, so all the runs timed the
+	# same ticks. Each run's yardstick count is its step time over its yardstick time, and the
+	# median counts.
+	var intents: Array[Vector2] = []
+	var averages: Array[float] = []
+	var ratios: Array[float] = []
+	var end_hash := 0
+	var left := 0
+	for run in STEP_COST_RUNS:
+		var sim := _sim("omnivore", 91, Vector2.INF, 0.0, layout, species)
+		check_eq(sim.creatures.creatures.size(), 7, "run %d: seven creatures" % run)
+		var bot = ForageBot.new() if run == 0 else null
+		var spent := 0
+		var yard := 0
+		for i in STEP_COST_TICKS:
+			var intent: SimIntent
+			if run == 0:
+				intent = bot.next_intent(sim)
+				intents.append(intent.move)
+			else:
+				intent = SimIntent.new(intents[i])
+			var t0 := Time.get_ticks_usec()
+			sim.step(intent)
+			spent += Time.get_ticks_usec() - t0
+			yard += Yardstick.time_once()
+			sim.drain_events()
+		averages.append(spent / float(STEP_COST_TICKS))
+		ratios.append(spent / float(maxi(yard, 1)))
+		if run == 0:
+			end_hash = sim.state_hash()
+			left = sim.creatures.creatures.size()
+		else:
+			check_eq(sim.state_hash(), end_hash, "replay %d ended in the bot's run's state, so it timed the same ticks" % run)
+	var average: float = averages.min()
+	var ratio := Yardstick.median(ratios)
+	print("test-threats-step-cost: %.1f us per tick over %d ticks with %d creatures, the fastest of %d timed runs (%s); %.2f yardsticks, the median run (%s)" % [
+		average, STEP_COST_TICKS, left, STEP_COST_RUNS, _joined(averages, "%.1f"), ratio, _joined(ratios, "%.2f")])
+	check(average <= STEP_COST_LIMIT_US, "average %.1f us per tick (limit %.0f)" % [average, STEP_COST_LIMIT_US])
+	check(ratio <= STEP_COST_YARDSTICKS, "a tick costs %.2f yardsticks in the median run (limit %.1f)" % [ratio, STEP_COST_YARDSTICKS])
+
+
+static func _joined(values: Array[float], format: String) -> String:
+	return ", ".join(values.map(func(v: float) -> String: return format % v))
 
 
 func _no_vectors(value: Variant) -> bool:
