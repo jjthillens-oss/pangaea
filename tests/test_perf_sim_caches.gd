@@ -244,3 +244,79 @@ func test_packed_food_sense_matches_the_dictionary_one() -> void:
 				differ += 1
 	check_eq(differ, 0, "rounds where the packed sense differs")
 	check(found > 1000, "food was found (%d)" % found)
+
+
+## CreatureBrain.next_deadline with its states reordered (the usual ones first) and its fields read
+## once gives what the plain version below gives, for random memories in every state and phase.
+func test_next_deadline_matches_the_plain_version() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	var phases := ["", CreatureBrain.LURK, CreatureBrain.WATCH, CreatureBrain.PATROL, CreatureBrain.RETURN_HOME,
+		CreatureBrain.SEEK, CreatureBrain.EAT, CreatureBrain.WAIT, CreatureBrain.PURSUE, CreatureBrain.AIM,
+		CreatureBrain.TELL, CreatureBrain.STRIKE, CreatureBrain.GLIDE, CreatureBrain.RECOVER]
+	var states := [CreatureBrain.REST, CreatureBrain.WANDER, CreatureBrain.FORAGE, CreatureBrain.NOTICE,
+		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE]
+	var differ := 0
+	for id in ["rammer", "ambush_hunter"]:
+		var cfg := species.brain_config(id)
+		for i in 2000:
+			var mem := CreatureBrain.create(str(cfg.behavior), cfg.duplicate(true), Vector2.ZERO, 0.0, {}, i, 0)
+			mem.cfg.forage_timeout_ticks = [0, 300][rng.randi_range(0, 1)]
+			mem.state = states[rng.randi_range(0, states.size() - 1)]
+			mem.phase = phases[rng.randi_range(0, phases.size() - 1)]
+			mem.phase_tick = rng.randi_range(0, 500)
+			mem.state_tick = rng.randi_range(0, 500)
+			mem.goal_tick = rng.randi_range(0, 500)
+			mem.rest_until = rng.randi_range(0, 900)
+			mem.recover_ticks = rng.randi_range(0, 60)
+			mem.engaged_tick = rng.randi_range(0, 500)
+			mem.goal = Vector2(1.0, 2.0) if rng.randf() < 0.5 else Vector2.INF
+			mem.target = "t" if rng.randf() < 0.7 else ""
+			if rng.randf() < 0.5:
+				mem.seen["t"] = {"tick": rng.randi_range(0, 500)}
+			if rng.randf() < 0.5:
+				mem.progress = {"position": Vector2.ZERO, "tick": rng.randi_range(0, 500)}
+			if CreatureBrain.next_deadline(mem) != _plain_next_deadline(mem):
+				differ += 1
+	check_eq(differ, 0, "memories whose deadline differs")
+
+
+## next_deadline as it was before it was reordered.
+static func _plain_next_deadline(mem: CreatureBrain.Memory) -> int:
+	var due := CreatureBrain.NEVER
+	match mem.state:
+		CreatureBrain.NOTICE:
+			if mem.phase != CreatureBrain.WAIT:
+				due = mem.phase_tick + int(mem.cfg.notice_ticks)
+			due = mini(due, _plain_give_up_deadline(mem))
+		CreatureBrain.CHASE:
+			due = _plain_give_up_deadline(mem)
+			if mem.phase == CreatureBrain.PURSUE and not mem.progress.is_empty():
+				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+		CreatureBrain.ATTACK:
+			if mem.phase == CreatureBrain.RECOVER:
+				due = mem.phase_tick + mem.recover_ticks
+		CreatureBrain.FLEE:
+			due = mem.state_tick + int(mem.cfg.flee_ticks)
+		CreatureBrain.REST:
+			if mem.phase == CreatureBrain.WATCH and mem.seen.has(mem.target):
+				due = int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks)
+			elif mem.behavior == CreatureBrain.TERRITORIAL:
+				due = mem.rest_until
+		CreatureBrain.WANDER, CreatureBrain.FORAGE:
+			if mem.phase == CreatureBrain.RETURN_HOME:
+				due = mem.phase_tick + int(mem.cfg.nav_timeout_ticks)
+			elif mem.goal.is_finite() and mem.phase != CreatureBrain.EAT:
+				due = mem.goal_tick + int(mem.cfg.nav_timeout_ticks)
+			if mem.phase == CreatureBrain.SEEK and int(mem.cfg.forage_timeout_ticks) > 0:
+				due = mini(due, mem.phase_tick + int(mem.cfg.forage_timeout_ticks))
+			if not mem.progress.is_empty() and mem.phase != CreatureBrain.EAT:
+				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+	return due
+
+
+static func _plain_give_up_deadline(mem: CreatureBrain.Memory) -> int:
+	var due := mem.engaged_tick + int(mem.cfg.give_up_ticks)
+	if mem.seen.has(mem.target):
+		due = mini(due, int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks))
+	return due

@@ -287,8 +287,9 @@ static func is_striking(mem: Memory) -> bool:
 static func think_due(mem: Memory, number: int, tick: int) -> bool:
 	if mem.wake:
 		return true
-	var engaged := mem.state == CHASE or mem.state == ATTACK
-	var period: int = mem.cfg.engaged_think_ticks if engaged else mem.cfg.think_ticks
+	var state := mem.state
+	var cfg := mem.cfg
+	var period: int = cfg.engaged_think_ticks if state == CHASE or state == ATTACK else cfg.think_ticks
 	if posmod(tick + number, maxi(period, 1)) == 0:
 		return true
 	return tick >= next_deadline(mem)
@@ -296,37 +297,44 @@ static func think_due(mem: Memory, number: int, tick: int) -> bool:
 
 ## The first tick at which a timed decision falls due: a notice or recover ending, the target's
 ## memory running out, the give-up timer, the unreachable window, a flee or rest ending, or a
-## navigation timeout. NEVER when nothing is pending.
+## navigation timeout. NEVER when nothing is pending. (Wandering and foraging, the usual states, come
+## first; the cases are distinct, so their order changes nothing else.)
 static func next_deadline(mem: Memory) -> int:
 	var due := NEVER
+	var phase := mem.phase
+	var cfg := mem.cfg
 	match mem.state:
+		WANDER, FORAGE:
+			if phase == RETURN_HOME:
+				due = mem.phase_tick + int(cfg.nav_timeout_ticks)
+			elif phase != EAT and mem.goal.is_finite():
+				due = mem.goal_tick + int(cfg.nav_timeout_ticks)
+			if phase == SEEK:
+				var timeout := int(cfg.forage_timeout_ticks)
+				if timeout > 0:
+					due = mini(due, mem.phase_tick + timeout)
+			if phase != EAT:
+				var progress := mem.progress
+				if not progress.is_empty():
+					due = mini(due, int(progress.tick) + int(cfg.unreachable_ticks))
+		REST:
+			if phase == WATCH and mem.seen.has(mem.target):
+				due = int(mem.seen[mem.target].tick) + int(cfg.memory_ticks)
+			elif mem.behavior == TERRITORIAL:
+				due = mem.rest_until
 		NOTICE:
-			if mem.phase != WAIT:
-				due = mem.phase_tick + int(mem.cfg.notice_ticks)
+			if phase != WAIT:
+				due = mem.phase_tick + int(cfg.notice_ticks)
 			due = mini(due, _give_up_deadline(mem))
 		CHASE:
 			due = _give_up_deadline(mem)
-			if mem.phase == PURSUE and not mem.progress.is_empty():
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			if phase == PURSUE and not mem.progress.is_empty():
+				due = mini(due, int(mem.progress.tick) + int(cfg.unreachable_ticks))
 		ATTACK:
-			if mem.phase == RECOVER:
+			if phase == RECOVER:
 				due = mem.phase_tick + mem.recover_ticks
 		FLEE:
-			due = mem.state_tick + int(mem.cfg.flee_ticks)
-		REST:
-			if mem.phase == WATCH and mem.seen.has(mem.target):
-				due = int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks)
-			elif mem.behavior == TERRITORIAL:
-				due = mem.rest_until
-		WANDER, FORAGE:
-			if mem.phase == RETURN_HOME:
-				due = mem.phase_tick + int(mem.cfg.nav_timeout_ticks)
-			elif mem.goal.is_finite() and mem.phase != EAT:
-				due = mem.goal_tick + int(mem.cfg.nav_timeout_ticks)
-			if mem.phase == SEEK and int(mem.cfg.forage_timeout_ticks) > 0:
-				due = mini(due, mem.phase_tick + int(mem.cfg.forage_timeout_ticks))
-			if not mem.progress.is_empty() and mem.phase != EAT:
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			due = mem.state_tick + int(cfg.flee_ticks)
 	return due
 
 
