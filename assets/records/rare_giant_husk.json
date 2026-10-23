@@ -2,15 +2,15 @@
   "id": "rare_giant_husk",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "blockout - S1, not visually approved",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
   "purpose": "Endless world band-0 rare place (S1 rough): the cracked-open glass husk of a dead giant microbe, its lattice in pieces.",
   "category": "rare",
   "source_blend": "assets/source/blender/rare_giant_husk.blend",
-  "generator_script": "tools/blender/make_s1_kit.py",
+  "generator_script": "tools/blender/make_s1_production.py",
   "export_path": "assets/export/rare_giant_husk.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 9.066,
@@ -19,7 +19,35 @@
   },
   "triangles": 2908,
   "triangle_budget": 12000,
-  "textures": [],
+  "textures": [
+    {
+      "name": "T_RareGiantHusk_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_RareGiantHusk_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_RareGiantHusk_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
     "M_Core",
     "M_Frost",
@@ -74,5 +102,5 @@
     1.0,
     1.0
   ],
-  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_kit.py; no external or generated meshes."
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
 }
