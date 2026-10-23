@@ -24,6 +24,10 @@ signal paused_changed(paused: bool)
 ## The cell died; the sim keeps the world running. Resolve with GameSession.respawn_after_death().
 ## `reason` is the killer species' death_reason ("" for starving or a dev kill).
 signal died(cause: String, reason: String)
+## The cell is back at its checkpoint (the sim's "respawned" event, routed before the frame is
+## drawn), sheltered for `grace_s` seconds; `teleport` when the endless world moved it there behind
+## the cut (S1). Main shows the respawn message here in both modes.
+signal respawned(grace_s: float, teleport: bool)
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 const FADE_IN_S := 0.3
@@ -167,7 +171,8 @@ func _build() -> void:
 func _fade_in() -> void:
 	_fade.visible = true
 	_fade.modulate.a = 1.0
-	var hidden := warm_up_point(camera.global_transform)
+	# A pool built outside the tree (the scene tests) sits at the origin: the camera's own transform.
+	var hidden := warm_up_point(camera.global_transform if camera.is_inside_tree() else camera.transform)
 	cell_view.warm_up(warm_up_meshes(), hidden)
 	var tween := _fade.create_tween()
 	tween.tween_property(_fade, "modulate:a", 0.0, FADE_IN_S)
@@ -289,6 +294,7 @@ func _route(event: Dictionary) -> void:
 			camera.snap_to(cell_view.position)
 			hints.reset()
 			audio.play("respawn")
+			respawned.emit(float(event.get("grace_s", 0.0)), bool(event.get("teleport", false)))
 		"creature_noticed":
 			if event.get("target") == CreatureField.PLAYER_ID:
 				audio.play_at("notice", _world(event.position))

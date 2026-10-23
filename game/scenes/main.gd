@@ -146,15 +146,15 @@ func resume() -> void:
 
 
 ## Death notice: Continue. Puts the cell back at its checkpoint, sheltered (the death was applied
-## when it happened). Returns the points the death took.
+## when it happened). Returns the points the death took. The respawn message shows when the pool
+## reports the respawn (_on_respawned): at once in the pool, and in the endless world at the sim's
+## next step, which performs it (S1).
 func continue_after_death() -> int:
 	if pool == null or not session.sim.dead:
 		return 0
 	death_notice.close()
 	pool.set_paused(false)
-	var lost := session.respawn_after_death()
-	hud.show_message(respawn_text(Hud.shelter_seconds(session.sim)))
-	return lost
+	return session.respawn_after_death()
 
 
 ## Pause menu and start screen: Quit. Asks "Save first?" when there is unsaved progress.
@@ -288,6 +288,7 @@ func _open_pool() -> void:
 	ui.add_child(death_notice)
 	pool.pause_requested.connect(_on_pause_requested)
 	pool.died.connect(_on_died)
+	pool.respawned.connect(_on_respawned)
 	pause_menu.resume_requested.connect(resume)
 	pause_menu.save_requested.connect(save_now)
 	pause_menu.save_and_quit_requested.connect(save_and_quit_to_title, CONNECT_DEFERRED)
@@ -333,6 +334,12 @@ func _on_died(cause: String, reason: String = "") -> void:
 	death_notice.open(death_title(cause, reason),
 		death_text(cause, lost, tip, saved, session.sim.save.genome.generation, session.sim.phenotype),
 		[["continue", "Continue", true]], "continue")
+
+
+## The pool reported the respawn: "Back at the generation start · sheltered for 5 s.", in the frame
+## the cell shows there.
+func _on_respawned(grace_s: float, _teleport: bool) -> void:
+	hud.show_message(respawn_text(ceili(grace_s)))
 
 
 func _on_quit_choice(choice: String) -> void:

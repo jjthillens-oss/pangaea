@@ -1,0 +1,75 @@
+extends RefCounted
+## Test helper (not a test file): the endless world's scene, faked (S1 spine 3.16). It opens pools
+## the way main does, in pool mode or on T2's FakeWorldGen with the real placement kit, and builds
+## the stream's scene events (spine 3.12) by hand, so the scene's tests can drive
+## PoolScene.apply_world_event and the HUD without a streaming sim. Positions are local tm, as the
+## stream emits them.
+##
+##     const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
+##     var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+##     ...
+##     pool.free()
+
+const POOL_SCENE := preload("res://game/scenes/pool/pool.tscn")
+const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+## A slot the tests never write: their sessions are built here, not started through start_new.
+const SLOT := "user://test_world_scene/slot.json"
+const SEED := 4242
+const DT := 1.0 / 60.0
+
+
+## A cell that holds still.
+class Still:
+	func next_intent(_sim: PoolSim) -> SimIntent:
+		return SimIntent.new()
+
+
+## Swims one way at full throttle.
+class Straight:
+	var dir := Vector2.RIGHT
+
+	func _init(p_dir := Vector2.RIGHT) -> void:
+		dir = p_dir
+
+	func next_intent(_sim: PoolSim) -> SimIntent:
+		return SimIntent.new(dir)
+
+
+## A pool-mode session with the M1 creatures: a new `body` lineage of `seed_value` at the spawn,
+## its sim running and nothing saved.
+static func pool_session(seed_value := SEED, body := "omnivore") -> GameSession:
+	var session := GameSession.new(SLOT)
+	var founded := Lineage.found(seed_value, "test+dev", session.catalog, body)
+	founded.save.player["position"] = PlaneSpace.to_save(session.layout.spawn)
+	session.sim = PoolSim.create(founded.save, session.catalog, session.layout, session.species)
+	return session
+
+
+## An endless session on FakeWorldGen (a shell per chunk, a zone per 2 x 2 chunks, a rammer site
+## per 4 x 4) with the M1 creatures and the real placement kit, at the home spawn or at `at`
+## (absolute am). Nothing is saved.
+static func endless_session(seed_value := SEED, at := PackedFloat64Array()) -> GameSession:
+	var session := GameSession.new(SLOT)
+	var content: WorldContent = FakeWorldGen.fixture_content()
+	content.kit = PlacementKit.load_from()
+	session.world = content
+	session.sim = FakeWorldGen.endless_sim(seed_value, session.catalog, session.layout, session.species, content, at)
+	return session
+
+
+## The session's pool, built as main builds it but outside the tree (the test runner has none): set
+## up, then readied, which builds it. `provider` swims for the cell (a still cell by default). Free
+## it with pool.free().
+static func open_pool(session: GameSession, provider: Object = null) -> PoolScene:
+	var pool: PoolScene = POOL_SCENE.instantiate()
+	pool.pause_on_focus_loss = false
+	pool.setup(session, provider if provider != null else Still.new())
+	pool.notification(Node.NOTIFICATION_READY)
+	return pool
+
+
+## One tick and one frame, as the engine runs them at 60 fps: the sim steps and its events route,
+## then the frame draws.
+static func frame(pool: PoolScene) -> void:
+	pool._physics_process(DT)
+	pool._process(DT)
