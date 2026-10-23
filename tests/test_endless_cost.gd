@@ -570,6 +570,26 @@ func _size_two_waits(gate: String) -> bool:
 	return true
 
 
+## #29E's scene before its growth, which runs now (fast): the species a growth to size 2 keeps as
+## remnants are M1's at q < 1 there with a rival or prey role, and twelve dev creatures of them
+## stand on the ring round the cell at home at size 1.
+func test_the_29e_scene_rings_the_cell_with_twelve_future_remnants() -> void:
+	if _waits("#29E's scene"):
+		return
+	var sim: Variant = Gates.make_sim("omnivore", SIZE_TWO_SEED, true)
+	var kinds := remnant_species(sim.species, SIZE_TWO)
+	check(not kinds.is_empty(), "some species become remnants at size 2 (%s)" % [kinds])
+	for id in kinds:
+		check_eq(sim.species.entry_size(id), 1, "%s enters at size 1" % id)
+		check(sim.species.q_of(id, SIZE_TWO) < 1.0, "%s is at q < 1 at size 2" % id)
+	for id in sim.species.species_ids():
+		var role := str(sim.species.at_size(id, SIZE_TWO).get("ladder_role", "")) if sim.species.entry_size(id) <= SIZE_TWO else ""
+		check_eq(kinds.has(id), role == "rival" or role == "prey", "%s (%s at size 2) is a remnant species exactly when a rival or prey" % [id, role])
+	var before: int = sim.creatures.awake().size()
+	check_eq(_ring_of(sim, kinds, DENSE_REMNANTS), DENSE_REMNANTS, "every dev creature stands")
+	check_eq(sim.creatures.awake().size(), before + DENSE_REMNANTS, "and is awake")
+
+
 ## S2G17: #28E at size 2, the same swim after debug_set_size(2) at home (overdriven; the racer as it
 ## is in the soak case below).
 func test_slow_a_size_2_swim_costs_at_most_8_yardsticks_a_tick() -> void:
