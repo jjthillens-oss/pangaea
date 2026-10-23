@@ -60,12 +60,16 @@ func test_an_unknown_world_is_a_problem() -> void:
 	check(flags.other.is_empty(), "not passed on to a tool: %s" % [flags.other])
 
 
-func test_the_perf_tour_takes_an_optional_swim_route() -> void:
+func test_the_perf_tour_takes_an_optional_swim_or_grow_route() -> void:
 	var plain := RunFlags.from_args(PackedStringArray(["--perf-tour"]))
 	check(plain.perf_tour and plain.perf_route == "", "plain: the M1 tour (%s, '%s')" % [plain.perf_tour, plain.perf_route])
 	var swim := RunFlags.from_args(PackedStringArray(["--perf-tour=swim"]))
 	check(swim.perf_tour and swim.perf_route == "swim", "=swim: the swim route (%s, '%s')" % [swim.perf_tour, swim.perf_route])
 	check(swim.problems.is_empty() and swim.other.is_empty(), "=swim is understood: %s %s" % [swim.problems, swim.other])
+	var grow := RunFlags.from_args(PackedStringArray(["--perf-tour=grow"]))
+	check(grow.perf_tour and grow.perf_route == "grow", "=grow: the grow route (%s, '%s')" % [grow.perf_tour, grow.perf_route])
+	check(grow.problems.is_empty() and grow.other.is_empty(), "=grow is understood: %s %s" % [grow.problems, grow.other])
 	var fly := RunFlags.from_args(PackedStringArray(["--perf-tour=fly"]))
 	check(not fly.perf_tour and fly.perf_route == "", "=fly runs no tour (%s, '%s')" % [fly.perf_tour, fly.perf_route])
 	check(fly.problems.size() == 1 and fly.problems[0].contains("'fly'"), "=fly is a problem naming the value: %s" % [fly.problems])
+	check(fly.problems.size() == 1 and fly.problems[0].contains("=swim or =grow"), "and both routes: %s" % [fly.problems])

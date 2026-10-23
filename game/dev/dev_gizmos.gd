@@ -19,6 +19,10 @@ extends Node3D
 ## unload distances, each awake creature's reach disc and a cross at each sleeper (chunk_layer()).
 ## The AI layer draws the awake creatures only. Everything is drawn from sim-local positions every
 ## frame, so a rebase needs nothing.
+##
+## S2 (docs/s2/s2-view.md 9) adds, to the AI layer, a cross at each post of a creature with two
+## posts (B.7; the leash disc drawn is already their union, D-82) and, for each remnant, a grey
+## cross and a line along the way it flees, straight away from the cell (growth_layer()).
 
 const LIFT_M := 0.06
 const SEGMENTS := 48
@@ -57,6 +61,10 @@ const RING_COLORS := {
 const SITE_REACH_COLOR := Color(0.95, 0.55, 0.9, 0.7)
 const SLEEPER_COLOR := Color(0.7, 0.75, 1.0)
 const SLEEPER_MARK_M := 0.4
+const POST_MARK_M := 0.3            ## half a post's cross, as the lair's
+const REMNANT_COLOR := Color(0.6, 0.6, 0.6)
+const REMNANT_MARK_M := 0.4
+const REMNANT_FLEE_M := 1.5         ## the flee line's length
 
 var main: Node
 ## The endless sea's chunk layer (the debug panel's Chunk gizmo button).
@@ -151,6 +159,30 @@ func _draw_ai(sim: PoolSim) -> void:
 				_line(at, seen.position, TARGET_COLOR)
 		if not mem.lane.is_empty():
 			_lane(mem.lane)
+	var layer := growth_layer(sim)
+	for at: Vector2 in layer.posts:
+		_cross(at, POST_MARK_M, LEASH_COLOR)
+	for r: Dictionary in layer.remnants:
+		_cross(r.at, REMNANT_MARK_M, REMNANT_COLOR)
+		_line(r.at, r.at + r.flee * REMNANT_FLEE_M, REMNANT_COLOR)
+
+
+## What the growth marks draw, in sim-local coordinates: {"posts" (each post of each awake creature
+## with two posts, in creature order), "remnants" ({at, flee}: each remnant's place and the unit way
+## it flees, straight away from the cell as RemnantField.tick steers it)}. Empty lists without them.
+static func growth_layer(sim: PoolSim) -> Dictionary:
+	var out := {"posts": [], "remnants": []}
+	if sim.creatures != null:
+		for c in sim.creatures.awake():
+			if c.brain != null:
+				for post: Dictionary in c.brain.posts:
+					out.posts.append(post.home)
+	if sim.remnants != null:
+		for r in sim.remnants.items:
+			var away := r.motion.position - sim.motion.position
+			var flee := away.normalized() if away.length() > 1e-6 else Vector2.from_angle(r.motion.heading)
+			out.remnants.append({"at": r.motion.position, "flee": flee})
+	return out
 
 
 func _draw_chunks(sim: PoolSim) -> void:
@@ -163,8 +195,7 @@ func _draw_chunks(sim: PoolSim) -> void:
 	for disc: Dictionary in layer.reach:
 		_arc(disc.center, float(disc.radius), 0.0, TAU, SITE_REACH_COLOR, CHUNK_LIFT_M)
 	for at: Vector2 in layer.sleepers:
-		_line(at - Vector2(SLEEPER_MARK_M, SLEEPER_MARK_M), at + Vector2(SLEEPER_MARK_M, SLEEPER_MARK_M), SLEEPER_COLOR, CHUNK_LIFT_M)
-		_line(at - Vector2(SLEEPER_MARK_M, -SLEEPER_MARK_M), at + Vector2(SLEEPER_MARK_M, -SLEEPER_MARK_M), SLEEPER_COLOR, CHUNK_LIFT_M)
+		_cross(at, SLEEPER_MARK_M, SLEEPER_COLOR, CHUNK_LIFT_M)
 
 
 ## What the chunk layer draws, in sim-local coordinates: {"loaded", "view", "tiles" (Array of Rect2:
@@ -214,6 +245,11 @@ func _square(r: Rect2, color: Color) -> void:
 	var c := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
 	for i in 4:
 		_line(c[i], c[(i + 1) % 4], color, CHUNK_LIFT_M)
+
+
+func _cross(at: Vector2, half: float, color: Color, lift := LIFT_M) -> void:
+	_line(at - Vector2(half, half), at + Vector2(half, half), color, lift)
+	_line(at - Vector2(half, -half), at + Vector2(half, -half), color, lift)
 
 
 func _line(a: Vector2, b: Vector2, color: Color, lift := LIFT_M) -> void:

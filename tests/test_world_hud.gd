@@ -42,6 +42,12 @@ func test_the_origin_arrow_hides_within_40_tm_and_points_to_the_origin() -> void
 		var expected := PlaneSpace.to_world(cell + Vector2.LEFT * (sim.phenotype.radius + WorldMarkers.ARROW_RING_GAP), WorldMarkers.ARROW_Y)
 		check(arrow.position.is_equal_approx(expected), "beside the cell, outside its radius: %s, %s" % [arrow.position, expected])
 		check(pool.markers.arrow_tip().x < arrow.position.x, "its tip is the end toward home")
+		pool._route({"type": "growth_began", "from": 1, "to": 2, "center_old": sim.motion.position, "center_am": [0.0, 0.0], "factor": 1.6})
+		FakeEvents.frame(pool)
+		cell = PlaneSpace.to_plane(pool.cell_view.position)
+		var k := pool.depth_k()
+		expected = PlaneSpace.to_world(cell + Vector2.LEFT * (sim.phenotype.radius + WorldMarkers.ARROW_RING_GAP) * k, WorldMarkers.ARROW_Y)
+		check(k < 1.0 and arrow.position.is_equal_approx(expected), "through a growth (S2) at k of its offset from the cell (k %.3f): %s, %s" % [k, arrow.position, expected])
 	check(sim.debug_hurt_player(sim.state.max_health) and sim.dead, "the cell dies")
 	FakeEvents.frame(pool)
 	check(arrow != null and not arrow.visible, "the arrow hides while the cell is dead")
@@ -76,14 +82,18 @@ func test_the_column_holds_through_a_growth_then_cross_fades() -> void:
 		pool.free()
 		return
 	FakeEvents.frame(pool)
-	var old_place := column.position
+	var old_cp := world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1])
 	var height := column.scale.y
 	pool._route({"type": "growth_began", "from": 1, "to": 2, "center_old": sim.motion.position, "center_am": [0.0, 0.0], "factor": 1.6})
 	world.checkpoint_am = PackedFloat64Array([world.checkpoint_am[0] + 30.0, world.checkpoint_am[1], 0.0, 2.0])
 	var new_place := PlaneSpace.to_world(WorldMarkers.column_point(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1])))
 	FakeEvents.frame(pool)
 	check_near(column.scale.y, height * pool.depth_k(), 1e-6, "drawn at k of its height")
+	check(column.position.is_equal_approx(PlaneSpace.to_world(old_cp + WorldMarkers.COLUMN_BESIDE_TM * pool.depth_k())),
+		"beside the old checkpoint at k of its offset too (%s)" % column.position)
+	var old_place := PlaneSpace.to_world(WorldMarkers.column_point(old_cp, pool.depth_k()))
 	while pool.growth_beat.t() < GrowthBeat.RELATIONS_S - 1e-9:
+		old_place = PlaneSpace.to_world(WorldMarkers.column_point(old_cp, pool.depth_k()))
 		check(column.position.is_equal_approx(old_place), "at the old checkpoint at %.2f s" % pool.growth_beat.t())
 		check_near(pool.markers.column_fade(), 0.0, 1e-9, "whole until 2.0 s")
 		FakeEvents.frame(pool)

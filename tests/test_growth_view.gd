@@ -10,9 +10,10 @@ extends TestCase
 ## leftovers adopted by id or sunk away (never popped), reduce motion, the cell's settle, a clock
 ## that is the same at any frame rate, and "Now food" with the relations. The old food (T5.4, V-10,
 ## V-22): the new plankton grows in as the algae ball while the old food is drawn on, re-expressed,
-## from copies that fade, and glitter sinks from where the old plankton and haze were. The lair
-## mouths (V-25): re-expressed and held at k of their depth, adopted by site and post, new ones in
-## from the veil after the settle, the leftovers sunk and freed. Most growth
+## from copies that fade, and glitter sinks from where the old plankton and haze were. On the real
+## sim the whole pool's frame 0 draws everything where frame A drew it (S2G13), and the tick that grew
+## is saved. The lair mouths (V-25): re-expressed and held at k of their depth, adopted by site and
+## post, new ones in from the veil after the settle, the leftovers sunk and freed. Most growth
 ## events are faked (tests/fakes/fake_growth_events.gd); the food's is T2's real growth tick. The
 ## tests use their own settings file and never save it.
 
@@ -790,6 +791,70 @@ func test_new_plankton_grows_in() -> void:
 	check(pool.growth_beat.glitter().is_empty() and pool.growth_beat.fx.get_child_count() == 0, "6.0 s: gone")
 	check(not pool.growth_beat.running(), "and the beat is idle")
 	pool.free()
+
+
+## On the real sim (S2G13, from I-4): a forced growth's frame 0 draws the whole pool where frame A
+## drew it. A still endless pool with the AI frozen, two rammers, carrion and a landmark chunk in
+## view; frame A is a frame with no tick, then debug_force_growth() and one frame. Every point
+## tracked in both frames (the cell, the creature and remnant views, shells by id, the landmark,
+## zone patches and labels, the column, the Backdrop's centre, silt) projects within 0.5 px of where
+## frame A drew it, at least 50 of them; the ghosts, which drift and cross on their own, within 0.5 px
+## more than they moved in the tick before. The pool hands the tick's events to the session, which
+## saves the tick that grew at once (D-75).
+func test_whole_pool_frame_zero() -> void:
+	var session := FakeEvents.shipped_session()
+	var pool := FakeEvents.open_pool(session)
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	var c := sim.motion.position
+	check(sim.debug_spawn_creature("rammer", c + Vector2(6.0, -3.0), PI), "a rammer")
+	check(sim.debug_spawn_creature("rammer", c + Vector2(-5.0, 4.0), 0.0), "a second rammer")
+	sim.carrion.spawn(c + Vector2(3.0, 1.0), "rammer")
+	pool._route(_chunk_event(c, Vector2i(900, 900), 1.0, true))
+	for i in 40:
+		Frames.frame(pool)
+	var before := _pool_pixels(pool)
+	Frames.frame(pool)
+	var own := _pool_pixels(pool)
+	for key: String in own.keys():
+		own[key] = (own[key] as Vector2).distance_to(before.get(key, own[key]))
+	Frames.frame(pool, false)
+	var a := _pool_pixels(pool)
+	var saves_before: Dictionary = session.last_save
+	check(sim.debug_force_growth(), "a forced growth")
+	Frames.frame(pool)
+	check_eq(sim.size(), 2, "the tick grew the world")
+	var b := _pool_pixels(pool)
+	var compared := 0
+	var worst := 0.0
+	var worst_what := ""
+	var kinds := {}
+	for key: String in a:
+		if not b.has(key):
+			continue
+		compared += 1
+		kinds[key.get_slice(" ", 0)] = true
+		var d: float = (a[key] as Vector2).distance_to(b[key])
+		if key.begins_with("ghost "):
+			d -= float(own.get(key, 0.0))
+		if d > worst:
+			worst = d
+			worst_what = "%s (A %s, 0 %s)" % [key, a[key], b[key]]
+	check(compared >= 50, "points tracked in both frames: %d" % compared)
+	for kind in ["cell", "creature", "shell", "landmark", "patch", "column", "backdrop", "ghost"]:
+		check(kinds.has(kind), "among them %s points (%s)" % [kind, kinds.keys()])
+	check(worst <= 0.5, "frame 0 draws every one where frame A did (worst %.4f px: %s)" % [worst, worst_what])
+	check(saves_before.is_empty() and bool(session.last_save.get("ok", false)), "the tick that grew was saved at once (%s)" % [session.last_save])
+	pool.free()
+
+
+## Every tracked point of the pool (tests/scene_frames.gd), as pixels.
+static func _pool_pixels(pool: PoolScene) -> Dictionary:
+	var out := {}
+	var points := Frames.tracked_points(pool)
+	for key: String in points:
+		out[key] = Frames.project(pool.camera, points[key])
+	return out
 
 
 ## The glitter (V-22): a sprite per plant haze entry, the nearest GLITTER_MAX to the cell, the old

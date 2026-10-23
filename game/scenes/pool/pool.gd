@@ -32,7 +32,9 @@ extends Node3D
 ## drawn at k = 1 / factor of its depth (apply_depth_k), so frame 0 looks as the last frame did;
 ## GrowthBeat then times the swell, the dolly back out, the chord (growth_chord, for the HUD) and the
 ## relations. Leftover chunks retire (chunk_unloaded {reason: "growth"}) and sink away; the new
-## ones fade in. A respawn, a teleport or a dev size change ends a running beat at once.
+## ones fade in. A respawn, a teleport or a dev size change ends a running beat at once. Each tick's
+## events go to the session after they are routed (GameSession.after_events), which saves a tick
+## that grew at once (D-75).
 ##
 ## The ghosts (S2, s2-view 6): GhostLayer ("Ghosts", camera_relative) draws the species of the next
 ## sizes far below, and the giants further down, from scale_view() and the camera alone, in both
@@ -833,8 +835,11 @@ func _draw_food(fraction: float) -> void:
 
 
 func _route_events() -> void:
-	for event in sim.drain_events():
+	var events := sim.drain_events()
+	for event in events:
 		_route(event)
+	if session != null:
+		session.after_events(events)
 
 
 func _route(event: Dictionary) -> void:

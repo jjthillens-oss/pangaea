@@ -19,9 +19,11 @@ extends Node3D
 ##
 ## Growth (S2, V-18): the arrow's threshold is ARROW_FROM_TM in the current tm (64 am at size 2),
 ## while the distance it reports stays in am, so a growth never changes the number. Through the
-## growth beat both pieces are drawn at k of their size (set_size_k), and the column holds at the
-## old checkpoint until the relations change (hold_column_until), then fades out there over
-## COLUMN_FADE_S and in at the new one over the next COLUMN_FADE_S.
+## growth beat both pieces are drawn at k of their size (set_size_k), and so are their offsets (the
+## column's beside the checkpoint, the arrow's from the cell), so frame 0 draws them where the last
+## frame did; the column holds at the old checkpoint until the relations change
+## (hold_column_until), then fades out there over COLUMN_FADE_S and in at the new one over the next
+## COLUMN_FADE_S.
 
 const ARROW_FROM_TM := 40.0         ## the arrow shows beyond this distance from the origin (plan A.6)
 const ARROW_RING_GAP := 1.2         ## the arrow sits this far outside the cell's radius
@@ -121,13 +123,13 @@ func update(sim: PoolSim, cell_at: Vector2, shown_size := 0) -> void:
 		else:
 			_held_cp = PackedFloat64Array()
 	_shown_cp = cp
-	_column.position = PlaneSpace.to_world(column_point(sim.world.local_of_abs(cp[0], cp[1])))
+	_column.position = PlaneSpace.to_world(column_point(sim.world.local_of_abs(cp[0], cp[1]), _size_k))
 	_set_column_fade(fade)
 	_arrow_state = origin_arrow(sim.absolute_position_am(), PackedFloat64Array(ORIGIN_AM), WorldConfig.tm_to_am(shown_size if shown_size > 0 else sim.world.size))
 	_arrow.visible = _arrow_state.visible and not sim.dead
 	if _arrow.visible:
 		var d: Vector2 = _arrow_state.direction
-		_arrow.position = PlaneSpace.to_world(cell_at + d * (sim.phenotype.radius + ARROW_RING_GAP), ARROW_Y)
+		_arrow.position = PlaneSpace.to_world(cell_at + d * (sim.phenotype.radius + ARROW_RING_GAP) * _size_k, ARROW_Y)
 		_arrow.rotation = Vector3(0.0, PlaneSpace.yaw_for_heading(d.angle()), 0.0)
 
 
@@ -179,9 +181,10 @@ static func origin_arrow(cell_abs: PackedFloat64Array, target_abs := PackedFloat
 	return {"visible": d > ARROW_FROM_TM * tm_to_am, "direction": direction, "distance_am": d, "distance_tm": d}
 
 
-## Pure: where the column stands (the pool's plane) for a checkpoint at `checkpoint_local`.
-static func column_point(checkpoint_local: Vector2) -> Vector2:
-	return checkpoint_local + COLUMN_BESIDE_TM
+## Pure: where the column stands (the pool's plane) for a checkpoint at `checkpoint_local`, drawn at
+## `k` of its size (its offset too).
+static func column_point(checkpoint_local: Vector2, k := 1.0) -> Vector2:
+	return checkpoint_local + COLUMN_BESIDE_TM * k
 
 
 ## Pure: the column's y scale for a piece whose meshes reach `top_m` above its origin: 1, or less

@@ -49,15 +49,16 @@ static func project(camera: Camera3D, p: Vector3, screen := SCREEN) -> Vector2:
 	return Vector2((ndc.x + 1.0) * 0.5 * screen.x, (1.0 - ndc.y) * 0.5 * screen.y)
 
 
-## The views a growth must keep in place, by name -> point in the pool's space: the cell, the
-## creature views, every shell instance (live, retiring and fresh) by id, the landmark pieces, the
+## The views a growth must keep in place, by name -> point in the pool's space: the cell, every
+## creature view under the layer (live, remnant, morsel and fading ones, by creature id), every shell instance (live, retiring and fresh) by id, the landmark pieces, the
 ## zone patches and labels, the markers, the Backdrop's centre, the beat's effects (with the first
 ## instances of its old food copies and glitter), the silt trail's ribbons and lair mouths and the
 ## ghosts drawn ("ghost <name>").
 static func tracked_points(pool: PoolScene) -> Dictionary:
 	var out := {"cell": pool.cell_view.position}
-	for view in pool.creature_layer.views():
-		out["creature " + view.name] = in_pool(pool, view)
+	for view in pool.creature_layer.get_children():
+		if view is CreatureView and not view.is_queued_for_deletion():
+			out["creature " + view.name] = in_pool(pool, view)
 	var rocks := pool.rocks
 	for asset in rocks.assets_in_use():
 		for e in rocks.instances_of(asset):

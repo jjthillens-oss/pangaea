@@ -8,6 +8,8 @@ extends RefCounted
 ##                   without it the world file's own mode applies (endless)
 ##   --perf-tour     run the dev performance tour (dev builds only): the M1 90 s forage tour
 ##   --perf-tour=swim  the S1 swim route instead: 5 min straight out, a far death, the way home
+##                   (with S2's growths on the way out)
+##   --perf-tour=grow  the S2 grow route instead: 40 s still, two growths and a step back to size 1
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -18,14 +20,15 @@ const MAX_SEED_DIGITS := 18
 ## A drive letter, a colon and a separator: an absolute Windows path.
 const DRIVE_PATTERN := "^[A-Za-z]:[/\\\\]"
 ## The routes --perf-tour= may name.
-const PERF_ROUTES: PackedStringArray = ["swim"]
+const PERF_ROUTES: PackedStringArray = ["swim", "grow"]
 
 var seed_value := -1           ## -1: none given
 var slot := ""                 ## "": the default slot
 var perf_tour := false
 ## "", "pool" or "endless": the --world flag, "" when none was given (the world file's mode then).
 var world := ""
-## "" for plain --perf-tour (the M1 tour) or "swim" for --perf-tour=swim; perf_tour is true for both.
+## "" for plain --perf-tour (the M1 tour), or the route --perf-tour= names ("swim" or "grow");
+## perf_tour is true for all.
 var perf_route := ""
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
@@ -63,7 +66,7 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 				flags.perf_tour = true
 				flags.perf_route = route
 			else:
-				flags.problems.append("--perf-tour takes no value or =swim (got '%s')" % route)
+				flags.problems.append("--perf-tour takes no value, =swim or =grow (got '%s')" % route)
 		else:
 			flags.other.append(arg)
 	return flags

@@ -7,6 +7,10 @@ extends TestCase
 ## S1 (docs/s1/s1-content.md 6.14, 7.5 and 9): the endless sea's buttons, world line, zone rows and
 ## AI lines, on a panel refreshed from a real endless pool on the shipped world (a fake main holds
 ## it); the chunk gizmo's layer; and the swim tour's route, long-frame tags and G18 gate.
+##
+## S2 (docs/s2/s2-view.md 9, 10.4 and 12.2): the growth buttons and commands, the growth line and the
+## size refusal, on a panel over a growing endless pool (FakeWorldGen); the gizmo's posts and
+## remnants; the swim route's growth steps, the grow route, the growth windows and the S2G26 gate.
 
 const DebugPanel := preload("res://game/dev/debug_panel.gd")
 const DevGizmos := preload("res://game/dev/dev_gizmos.gd")
@@ -55,6 +59,18 @@ class RouteSim:
 	func debug_hurt_player(amount: float) -> bool:
 		calls.append(["hurt %.0f" % amount, tick])
 		dead = true
+		return true
+
+	func debug_fill_meter(share := 1.0) -> bool:
+		calls.append(["fill %.1f" % share, tick])
+		return true
+
+	func debug_force_growth() -> bool:
+		calls.append(["force", tick])
+		return true
+
+	func debug_set_size(n: int) -> bool:
+		calls.append(["size %d" % n, tick])
 		return true
 
 	func absolute_position_am() -> PackedFloat64Array:
@@ -218,7 +234,7 @@ func test_endless_mode_shows_the_world_buttons_and_line() -> void:
 			var w := sim.world
 			var line: String = panel.fields.world_line
 			check_eq(line, DebugPanel.world_line(sim), "the line shown is world_line(sim)")
-			check(panel._sim.text.ends_with(line), "last in the sim section")
+			check(panel._sim.text.ends_with(line + "\n" + panel.fields.growth_line), "last in the sim section but for the growth line")
 			check(absf(w.origin_x_am - 5000.0) <= w.chunk_tm and absf(w.origin_y_am + 3000.0) <= w.chunk_tm, "the origin moved there (%s)" % line)
 			check(line.begins_with("origin %.1f, %.1f km · tile 78,-47 " % [w.origin_x_am / 1000.0, w.origin_y_am / 1000.0]),
 				"it names the origin in km and the tile under the cell (%s)" % line)
@@ -465,3 +481,207 @@ func test_the_swim_tour_gates_g18() -> void:
 	DirAccess.remove_absolute(path)
 	check_eq(PerfTour.m1_gpu_p99_ms(path), -1.0, "no M1 report reads -1")
 
+
+
+# --- S2: growth (s2-view 9 and 12.2) ---
+
+func test_the_growth_buttons_run_the_dev_commands_and_refuse_a_size_above_the_top() -> void:
+	for grows: bool in [true, false]:
+		var tag := "growth on" if grows else "growth off"
+		var panel := _panel(FakeEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), grows)))
+		var pool: PoolScene = panel.main.pool
+		var sim := pool.sim
+		_frames(pool, 2)
+		panel.refresh()
+		for command in DebugPanel.GROWTH_BUTTONS:
+			check_eq((panel._buttons[command] as Button).visible, grows, "%s: the %s button shows only where the sea grows" % [tag, command])
+		check(panel._buttons.fill_meter.text == "Fill meter (F4)" and panel._buttons.force_growth.text == "Force growth (F2)"
+			and panel._buttons.size_1.text == "Size 1" and panel._buttons.size_2.text == "Size 2", "%s: the buttons name what they do" % tag)
+		check_eq(panel.fields.growth_line, DebugPanel.growth_line(sim), "%s: the line shown is growth_line(sim)" % tag)
+		check(panel._sim.text.contains(panel.fields.growth_line), "%s: in the sim section" % tag)
+		if not grows:
+			check_eq(panel.fields.growth_line, "Growth: off", "growth off says so")
+			check(not panel.run("fill_meter") and not panel.run("force_growth"), "growth off: fill and force do nothing")
+			check(not panel.run("size_2") and sim.size() == 1, "growth off: no size 2")
+			check_eq(panel.fields.refusal, "Size 2: the sea does not grow here", "and the refusal says why")
+			check(panel._sim.text.ends_with("Refused: Size 2: the sea does not grow here"), "under the growth line")
+			_free_panel(panel)
+			continue
+		var g := sim.growth
+		check(panel.run("fill_meter"), "fill_meter applies")
+		check(is_equal_approx(g.meter, g.ring(1)) and g.full_since >= 0, "the ring is full (%.1f of %.0f)" % [g.meter, g.ring(1)])
+		check(panel.run("force_growth") and g.due, "force_growth makes the growth due")
+		check(panel._sim.text.contains("Growth: size 1 · meter %.1f/%.0f · " % [g.ring(1), g.ring(1)]), "the line shows the full ring (%s)" % panel._sim.text)
+		g.due = false
+		var top := sim.world.max_size
+		sim.world.max_size = 1
+		check(not panel.run("size_2") and sim.size() == 1, "size 2 above a top of 1 is refused")
+		check_eq(panel.fields.refusal, "Size 2: above this build's top (size 1)", "the refusal names the top")
+		check(panel._sim.text.ends_with("Refused: Size 2: above this build's top (size 1)"), "under the growth line (%s)" % panel._sim.text)
+		sim.world.max_size = top
+		check(top >= 2, "the build's top is at least size 2 (%d)" % top)
+		var events := []
+		pool.sim_event.connect(func(e: Dictionary): events.append(e))
+		check(panel.run("size_2"), "size 2 under the top applies")
+		check_eq(sim.size(), 2, "the sea is at size 2")
+		check_eq(panel.fields.refusal, "", "and the refusal is gone")
+		check(not panel._sim.text.contains("Refused"), "from the section too")
+		check(panel._sim.text.contains("Growth: size 2 · meter 0.0/%.0f · " % g.ring(2)), "the line names size 2 and its ring (%s)" % panel._sim.text)
+		_frames(pool, 1)
+		check(events.any(func(e: Dictionary) -> bool: return e.type == "debug" and e.command == "set_size" and e.size == 2),
+			"the pool routes debug {command: set_size}")
+		check(DebugPanel.threat_species(sim).has("lurker") and DebugPanel.threat_species(sim).has("elder_rammer"),
+			"at size 2 F9 takes turns through the lurker and the elder rammer too (%s)" % DebugPanel.threat_species(sim))
+		check(panel.run("size_1") and sim.size() == 1, "size 1 goes back")
+		sim.dead = true
+		check(not panel.run("size_2") and sim.size() == 1, "not while dead")
+		check_eq(panel.fields.refusal, "Size 2: not now (dead or waiting to respawn)", "and the refusal says so")
+		sim.dead = false
+		_free_panel(panel)
+
+
+func test_the_growth_line_names_every_part() -> void:
+	var session := FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true)
+	var sim := session.sim
+	var g := sim.growth
+	check_eq(DebugPanel.growth_line(sim), "Growth: size 1 · meter 0.0/%.0f · calm 0/%d · blocker none · trigger auto · remnants 0" % [
+		g.ring(1), int(g.cfg.calm_ticks)], "a fresh growth")
+	g.meter = 37.54
+	g.calm_ticks = 12
+	g.blocker = "hunted"
+	g.trigger = "press"
+	g.armed = true
+	var r := RemnantField.Remnant.new()
+	r.motion = Locomotion.MotionState.new(Vector2(3.0, 0.0), 0.0)
+	sim.remnants.items.append(r)
+	check_eq(DebugPanel.growth_line(sim), "Growth: size 1 · meter 37.5/%.0f · calm 12/%d · blocker hunted · trigger press (armed) · remnants 1" % [
+		g.ring(1), int(g.cfg.calm_ticks)], "meter to a tenth, calm over its window, the blocker, an armed press and the remnants")
+	g.armed = false
+	check(DebugPanel.growth_line(sim).contains(" · trigger press · "), "a press not yet made is not armed")
+	check_eq(DebugPanel.growth_line(_sim(4242)), "Growth: off", "the pool does not grow")
+	check_eq(DebugPanel.threat_species(_sim(4242)), PackedStringArray(["ambush_hunter", "rammer"]),
+		"F9 takes turns through the species living at size 1 only")
+
+
+func test_the_gizmo_marks_posts_and_remnants() -> void:
+	var session := FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true)
+	var sim := session.sim
+	for i in 30:
+		sim.step(SimIntent.new())
+		sim.drain_events()
+	check(DevGizmos.growth_layer(sim).posts.is_empty() and DevGizmos.growth_layer(sim).remnants.is_empty(), "nothing without posts or remnants")
+	check(sim.debug_spawn_threat_ahead(sim.species.species_ids()[0]), "a creature ahead")
+	var c: CreatureField.Creature = null
+	for awake in sim.creatures.awake():
+		if awake.brain != null:
+			c = awake
+	check(c != null, "an awake creature with a brain")
+	if c == null:
+		return
+	var a := c.brain.home
+	var b := a + Vector2(4.0, 1.0)
+	CreatureBrain.set_posts(c.brain, [{"home": a, "heading": 0.0, "territory": {}}, {"home": b, "heading": 1.0, "territory": {}}])
+	var cell := sim.motion.position
+	var r := RemnantField.Remnant.new()
+	r.motion = Locomotion.MotionState.new(cell + Vector2(0.0, -5.0), 2.0)
+	var on := RemnantField.Remnant.new()
+	on.motion = Locomotion.MotionState.new(cell, 0.5)
+	sim.remnants.items.append_array([r, on])
+	var layer := DevGizmos.growth_layer(sim)
+	check_eq(layer.posts, [a, b], "a cross at each post")
+	check_eq(layer.remnants.size(), 2, "a mark per remnant")
+	if layer.remnants.size() == 2:
+		check(layer.remnants[0].at == r.motion.position and layer.remnants[0].flee.is_equal_approx(Vector2(0.0, -1.0)),
+			"at the remnant, fleeing straight away from the cell (%s)" % [layer.remnants[0]])
+		check(layer.remnants[1].flee.is_equal_approx(Vector2.from_angle(0.5)), "one on the cell flees along its heading (%s)" % [layer.remnants[1]])
+	check(DevGizmos.growth_layer(_sim(4242)).remnants.is_empty(), "the pool has no remnants")
+
+
+func test_the_tours_take_their_growth_steps() -> void:
+	var settings := SettingsService.new("user://test_debug_panel/settings.cfg")
+	for step: int in [1, 7]:
+		var tag := "%d ticks a call" % step
+		# The swim route's 16,000 ticks are walked at least 4 a call (the fast tier's time; every step
+		# tick is a multiple of 4, so each is still met on its tick); the grow route's take every step.
+		var swim_step := maxi(step, 4)
+		var sim := RouteSim.new()
+		var route := PerfTour.SwimRoute.new(settings)
+		var start := sim.tick
+		var reduce := {}
+		while sim.tick - start < 16000:
+			route.next_intent(sim)
+			reduce[sim.tick - start] = settings.reduce_camera_motion()
+			sim.tick += swim_step
+		var steps := sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in ["fill 1.0", "force", "size 1"])
+		check_eq(steps.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "size 1", "fill 1.0", "force"],
+			"%s: a growth, back to size 1, a growth" % tag)
+		if steps.size() == 5:
+			for i: int in 5:
+				var due: int = [7200, 7200, 14400, 15000, 15000][i]
+				check(steps[i][1] - start >= due and steps[i][1] - start < due + swim_step, "%s: step %d at %d (%d)" % [tag, i, due, steps[i][1] - start])
+		for t: int in reduce:
+			check_eq(reduce[t], t >= 15000 and t < 15900, "%s: reduce motion on from 15,000 to 15,900 only (at %d)" % [tag, t])
+			if reduce[t] != (t >= 15000 and t < 15900):
+				break
+		var grow_sim := RouteSim.new()
+		var grow := PerfTour.GrowRoute.new(settings)
+		var begin := grow_sim.tick
+		var seen_reduce := []
+		var done_at := -1
+		while grow_sim.tick - begin < 3000:
+			var v := grow.next_intent(grow_sim).move
+			check_eq(v, Vector2.ZERO, "%s: the grow route keeps the cell still" % tag)
+			if v != Vector2.ZERO:
+				break
+			if grow.done:
+				done_at = grow_sim.tick - begin
+				break
+			if settings.reduce_camera_motion():
+				seen_reduce.append(grow_sim.tick - begin)
+			grow_sim.tick += step
+		check(done_at >= PerfTour.GROW_ROUTE_TICKS and done_at < PerfTour.GROW_ROUTE_TICKS + step,
+			"%s: done at the first call from 2,400 ticks (%d)" % [tag, done_at])
+		check_eq(grow_sim.calls[0], ["hidden true", begin], "%s: hidden at once" % tag)
+		var acts := grow_sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in ["fill 1.0", "force", "size 1"])
+		check_eq(acts.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "size 1", "fill 1.0", "force"], "%s: the grow route's steps" % tag)
+		if acts.size() == 5:
+			for i: int in 5:
+				var due: int = [300, 300, 1200, 1500, 1500][i]
+				check(acts[i][1] - begin >= due and acts[i][1] - begin < due + step, "%s: grow step %d at %d (%d)" % [tag, i, due, acts[i][1] - begin])
+		check(not seen_reduce.is_empty() and seen_reduce.min() >= 1500 and seen_reduce.max() < 2100 + step,
+			"%s: reduce motion on from 1,500 to 2,100" % tag)
+		check(not settings.reduce_camera_motion(), "%s: and back off after" % tag)
+	settings.set_value(PerfTour.REDUCE_MOTION, true)
+	var kept := RouteSim.new()
+	var keep_route := PerfTour.GrowRoute.new(settings)
+	var from := kept.tick
+	while not keep_route.done:
+		keep_route.next_intent(kept)
+		kept.tick += 1
+	check(settings.reduce_camera_motion(), "a player's own reduce motion is put back on (from %d)" % from)
+	check(not FileAccess.file_exists("user://test_debug_panel/settings.cfg"), "and never saved")
+
+
+func test_the_tours_judge_the_frames_round_each_growth() -> void:
+	var frames := []
+	for i in 600:
+		frames.append({"t_s": i / 60.0, "ms": 16.0, "tick": i})
+	frames[150].ms = 49.0
+	frames[400].ms = 70.0
+	var growths := [{"tick": 120, "t_s": 2.0, "reduce_motion": false}, {"tick": 480, "t_s": 8.0, "reduce_motion": true}]
+	var w := PerfTour.growth_windows(frames, growths)
+	check_eq(w.size(), 2, "a window per growth")
+	if w.size() == 2:
+		check_eq(w[0], {"tick": 120, "t_s": 2.0, "max_frame_ms": 49.0, "frames": 271, "reduce_motion": false},
+			"the frames within 2.5 s either side, their longest and the setting (%s)" % [w[0]])
+		check_eq(w[1].max_frame_ms, 70.0, "the second window holds the 70 ms frame (5.5 s to 10 s)")
+		check_eq(w[1].reduce_motion, true, "with reduce motion on")
+	check_eq(PerfTour.growth_windows(frames, growths, 0.5)[1].max_frame_ms, 16.0, "a narrower window misses it")
+	var g := PerfTour.growth_gate(w)
+	check(not g.growth_pass and g.growth_failed == ["growth at tick 480: 70.0 ms"], "a frame over 50 ms fails S2G26 (%s)" % [g])
+	check_eq(PerfTour.growth_verdict(g), " · S2G26 FAIL: growth at tick 480: 70.0 ms", "and the line says where")
+	frames[400].ms = 50.0
+	var ok := PerfTour.growth_gate(PerfTour.growth_windows(frames, growths))
+	check(ok.growth_pass and ok.growth_failed.is_empty(), "50 ms passes (%s)" % [ok])
+	check_eq(PerfTour.growth_verdict(ok), " · S2G26 pass", "and the line says so")
+	check_eq(PerfTour.growth_gate([]), {"growth_pass": false, "growth_failed": ["no growth"]}, "a tour with no growth fails")

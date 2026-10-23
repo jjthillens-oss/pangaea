@@ -22,6 +22,14 @@ extends Node
 ## loaded chunks, awake creatures and sleepers, the stream's counters), the most draw calls and
 ## primitives in a frame, the long frames (over LONG_FRAME_MS) tagged with the events within
 ## TAG_WINDOW_S of them, and the G18 gate (gate()). The pool (--world=pool) has no swim route.
+##
+## S2 (docs/s2/s2-view.md 12.2; S2G26) puts growths on the swim route's way out (SWIM_GROWTH_STEPS:
+## a forced growth at 2:00, back to size 1 at 4:00, a growth under reduce camera motion at 4:10)
+## and adds `-- --perf-tour=grow` (GrowRoute, GROW_ROUTE_TICKS of a still cell, GROW_STEPS). Both
+## record each growth_began with the reduce-motion setting then, report the frames within
+## GROWTH_WINDOW_S of each (growth_windows()) as `growths`, and judge S2G26 (growth_gate(): no such
+## frame over GROWTH_MAX_FRAME_MS) as gate.growth_pass; the printed line ends with the verdict. The
+## setting is changed in the shared settings and put back, never saved.
 
 const DURATION_S := 90.0
 const WARM_UP_S := 2.0             ## the first frames (shader warm-up, fade-in) are not measured
@@ -42,6 +50,46 @@ const G18_LOW_1PCT_MS := 8.3       ## the slowest 1% of frames average at most t
 const G18_MAX_FRAME_MS := 50.0     ## ...no frame is longer...
 const G18_MAX_DRAW_CALLS := 96     ## ...no frame draws more...
 const G18_GPU_OVER_M1_MS := 2.0    ## ...and the GPU's P99 is at most the M1 tour's P99 plus this
+# S2's growths (s2-view 12.2; S2G26). Steps are [tick from the route's start, action], taken in order
+# at the first call at or after their tick: "grow" fills the ring and forces a growth, "size_1" goes
+# back to size 1, "reduce_on" and "reduce_off" turn reduce camera motion on and back.
+const SWIM_GROWTH_STEPS := [[7200, "grow"], [14400, "size_1"], [15000, "reduce_on"], [15000, "grow"], [15900, "reduce_off"]]
+const GROW_ROUTE_TICKS := 2400     ## 40 s still
+const GROW_STEPS := [[300, "grow"], [1200, "size_1"], [1500, "reduce_on"], [1500, "grow"], [2100, "reduce_off"]]
+const REDUCE_MOTION := "accessibility/reduce_camera_motion"
+const GROWTH_WINDOW_S := 2.5       ## the frames this near a growth, either side, are its window
+const GROWTH_MAX_FRAME_MS := 50.0  ## S2G26: no frame in a growth's window is longer
+
+
+## A route's growth steps (SWIM_GROWTH_STEPS or GROW_STEPS), taken through PoolSim's dev commands
+## and `settings` (the shared settings unless given). Reduce camera motion goes back to what it was.
+class GrowthSteps:
+	extends RefCounted
+
+	var steps: Array
+	var settings: SettingsService
+	var taken := 0                      ## how many steps have run
+	var _reduce_before := false
+
+	func _init(p_steps: Array, p_settings: SettingsService = null) -> void:
+		steps = p_steps
+		settings = p_settings if p_settings != null else SettingsService.shared()
+
+	## Runs every step due by `t` ticks from the route's start that has not run yet, in order.
+	func take(sim, t: int) -> void:
+		while taken < steps.size() and t >= int(steps[taken][0]):
+			match str(steps[taken][1]):
+				"grow":
+					sim.debug_fill_meter(1.0)
+					sim.debug_force_growth()
+				"size_1":
+					sim.debug_set_size(1)
+				"reduce_on":
+					_reduce_before = settings.reduce_camera_motion()
+					settings.set_value(REDUCE_MOTION, true)
+				"reduce_off":
+					settings.set_value(REDUCE_MOTION, _reduce_before)
+			taken += 1
 
 
 ## The swim route, keyed on the sim's ticks from the first it sees, so it does not matter how often
@@ -57,14 +105,16 @@ class SwimRoute:
 	var back_from_tick := -1            ## when the cell came back
 	var out_from_am := PackedFloat64Array()
 	var out_to_am := PackedFloat64Array()
+	var growth_steps: GrowthSteps
 	var _next_refill := 0
 	var _east: RefCounted
 	var _north: RefCounted
 
-	func _init() -> void:
+	func _init(settings: SettingsService = null) -> void:
 		var bot: GDScript = load(SWIM_BOT_PATH)
 		_east = bot.new(Vector2.RIGHT)
 		_north = bot.new(Vector2.UP)
+		growth_steps = GrowthSteps.new(SWIM_GROWTH_STEPS, settings)
 
 	func next_intent(sim) -> SimIntent:
 		if start_tick < 0:
@@ -79,6 +129,7 @@ class SwimRoute:
 			_next_refill = (t / REFILL_TICKS + 1) * REFILL_TICKS
 		if died_at_tick < 0:
 			if t < SWIM_OUT_TICKS:
+				growth_steps.take(sim, t)
 				return _east.next_intent(sim)
 			out_to_am = sim.absolute_position_am()
 			died_at_tick = sim.tick
@@ -104,6 +155,43 @@ class SwimRoute:
 		return Vector2(out_to_am[0] - out_from_am[0], out_to_am[1] - out_from_am[1]).length()
 
 
+## The grow route (S2): a still cell, hidden from the AI at once and refilled every REFILL_TICKS,
+## takes GROW_STEPS and is done GROW_ROUTE_TICKS from its first tick. Keyed on the sim's ticks, like
+## SwimRoute.
+class GrowRoute:
+	extends RefCounted
+
+	var done := false
+	var start_tick := -1
+	var growth_steps: GrowthSteps
+	var _next_refill := 0
+
+	func _init(settings: SettingsService = null) -> void:
+		growth_steps = GrowthSteps.new(GROW_STEPS, settings)
+
+	func next_intent(sim) -> SimIntent:
+		if start_tick < 0:
+			start_tick = sim.tick
+			sim.debug_set_hidden(true)
+		if done or sim.dead:
+			return SimIntent.new()
+		var t: int = sim.tick - start_tick
+		if t >= GROW_ROUTE_TICKS:
+			done = true
+			return SimIntent.new()
+		if t >= _next_refill:
+			sim.debug_set_energy(sim.state.energy_capacity)
+			_next_refill = (t / REFILL_TICKS + 1) * REFILL_TICKS
+		growth_steps.take(sim, t)
+		return SimIntent.new()
+
+	func on_event(_e: Dictionary, _tick: int) -> void:
+		pass
+
+	func distance_tm() -> float:
+		return 0.0
+
+
 var main: Node
 var report_path := ""
 ## The measured frame times in ms, by the wall clock.
@@ -114,8 +202,10 @@ var _running := false
 var _warm_up_end_usec := -1        ## set by the first sample
 var _last_usec := -1               ## the previous measured frame; -1 until the warm-up is over
 var _measured_ms := 0.0
-# The swim route's state (null and empty on the M1 tour).
-var _route: SwimRoute
+# The route's state (null and empty on the M1 tour): a SwimRoute or a GrowRoute.
+var _route: RefCounted
+var _route_name := ""
+var _growths: Array[Dictionary] = []     ## {tick, t_s, reduce_motion} of each growth_began
 var _frames: Array[Dictionary] = []      ## {t_s, ms, tick} of each measured frame
 var _events: Array[Dictionary] = []      ## {t_s, text} of each sim event
 var _world := {"rebases": 0, "chunk_loads": 0, "chunk_unloads": 0, "max_loaded_chunks": 0, "max_awake": 0,
@@ -194,6 +284,40 @@ static func _tm_text(v: float) -> String:
 	return str(int(r)) if r == roundf(r) else "%.1f" % r
 
 
+## The frames within `window_s` of each growth, either side: [{tick, t_s, max_frame_ms, frames,
+## reduce_motion}] in growth order, `frames` counting them. `frames` are {t_s, ms, tick} and `growths`
+## {tick, t_s, reduce_motion}, on the same clock.
+static func growth_windows(frames: Array, growths: Array, window_s := GROWTH_WINDOW_S) -> Array:
+	var out := []
+	for g: Dictionary in growths:
+		var worst := 0.0
+		var n := 0
+		for f: Dictionary in frames:
+			if absf(float(f.t_s) - float(g.t_s)) <= window_s:
+				worst = maxf(worst, float(f.ms))
+				n += 1
+		out.append({"tick": g.tick, "t_s": g.t_s, "max_frame_ms": worst, "frames": n, "reduce_motion": g.reduce_motion})
+	return out
+
+
+## S2G26 on the growth windows: {"growth_pass", "growth_failed": [which]}. It passes when there was a
+## growth and no window holds a frame over GROWTH_MAX_FRAME_MS; the failures name the first such
+## growth ("growth at tick 7201: 62.5 ms") or say there was none.
+static func growth_gate(windows: Array) -> Dictionary:
+	var failed := []
+	if windows.is_empty():
+		failed.append("no growth")
+	for w: Dictionary in windows:
+		if float(w.max_frame_ms) > GROWTH_MAX_FRAME_MS:
+			failed.append("growth at tick %d: %.1f ms" % [int(w.tick), float(w.max_frame_ms)])
+	return {"growth_pass": failed.is_empty(), "growth_failed": failed}
+
+
+## The verdict the printed line ends with: " · S2G26 pass", or " · S2G26 FAIL: " and the first failure.
+static func growth_verdict(g: Dictionary) -> String:
+	return " · S2G26 pass" if g.growth_pass else " · S2G26 FAIL: %s" % g.growth_failed[0]
+
+
 ## G18 on the swim route: {"low_1pct_ms", "max_frame_ms", "max_draw_calls", "gpu_p99_ms",
 ## "gpu_m1_p99_ms", "failed": [which], "pass"}. `report` is a swim report so far (summarize's
 ## fields and max_draw_calls); `m1_gpu_p99_ms` is the M1 tour's GPU P99 on the same machine, or a
@@ -237,29 +361,35 @@ static func _spread(ms: PackedFloat32Array) -> Dictionary:
 func _begin() -> void:
 	if main.flags.slot.is_empty():
 		main.open_session(SLOT)
-	var swim: bool = main.flags.perf_route == "swim"
-	if swim:
-		_route = SwimRoute.new()
-	main.intent_provider = _route if swim else load(BOT_PATH).new()
+	_route_name = main.flags.perf_route
+	match _route_name:
+		"swim":
+			_route = SwimRoute.new()
+		"grow":
+			_route = GrowRoute.new()
+	main.intent_provider = _route if _route != null else load(BOT_PATH).new()
 	var seed_value: int = main.flags.seed_value if main.flags.seed_value >= 0 else SEED
 	var result: Dictionary = main.start_new(BODY, seed_value)
 	if not result.ok:
 		printerr("Perf tour could not start: %s" % "; ".join(result.errors))
 		main.get_tree().quit(1)
 		return
-	if swim and not main.pool.is_endless():
-		printerr("--perf-tour=swim needs the endless world")
+	if _route != null and not main.pool.is_endless():
+		printerr("--perf-tour=%s needs the endless world" % _route_name)
 		main.get_tree().quit(1)
 		return
 	main.pool.pause_on_focus_loss = false
 	RenderingServer.viewport_set_measure_render_time(main.get_viewport().get_viewport_rid(), true)
 	main.pool.died.connect(func(_cause: String, _reason: String): main.continue_after_death.call_deferred())
-	if swim:
+	if _route != null:
 		main.pool.sim_event.connect(_on_event)
 	_running = true
-	if swim:
+	if _route_name == "swim":
 		print("Perf tour (swim): %d s east, a far death, %d s north, after a %d s warm-up." % [
 			SWIM_OUT_TICKS / 60, SWIM_BACK_TICKS / 60, WARM_UP_S])
+	elif _route_name == "grow":
+		print("Perf tour (grow): %d s still with %d growths, after a %d s warm-up." % [
+			GROW_ROUTE_TICKS / 60, GROW_STEPS.filter(func(step: Array) -> bool: return step[1] == "grow").size(), WARM_UP_S])
 	else:
 		print("Perf tour: measuring %d s after a %d s warm-up." % [DURATION_S, WARM_UP_S])
 
@@ -317,16 +447,21 @@ func _sample_world() -> void:
 	_world.max_primitives = maxi(_world.max_primitives, int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
 
 
-## The swim route's sim events: counted, kept for the long frames' tags, and passed to the route.
+## The route's sim events: counted, kept for the long frames' tags, and passed to the route; each
+## growth_began is kept with the reduce-motion setting then.
 func _on_event(e: Dictionary) -> void:
+	var now_s := _clock_s(Time.get_ticks_usec())
 	match str(e.get("type", "")):
+		"growth_began":
+			_growths.append({"tick": main.pool.sim.tick, "t_s": now_s,
+				"reduce_motion": SettingsService.shared().reduce_camera_motion()})
 		"rebased":
 			_world.rebases += 1
 		"chunk_loaded":
 			_world.chunk_loads += 1
 		"chunk_unloaded":
 			_world.chunk_unloads += 1
-	_events.append({"t_s": _clock_s(Time.get_ticks_usec()), "text": event_text(e)})
+	_events.append({"t_s": now_s, "text": event_text(e)})
 	_route.on_event(e, main.pool.sim.tick)
 
 
@@ -355,9 +490,9 @@ func _finish() -> void:
 		"step_cost_usec": main.pool.step_cost_usec(),
 	})
 	if _route != null:
-		_add_swim_fields(report)
+		_add_route_fields(report)
 	DirAccess.make_dir_recursive_absolute(REPORT_DIR)
-	report_path = "%s/perf_%s%s.json" % [REPORT_DIR, "swim_" if _route != null else "", BuildInfo.build_id().validate_filename()]
+	report_path = "%s/perf_%s%s.json" % [REPORT_DIR, _route_name + "_" if _route != null else "", BuildInfo.build_id().validate_filename()]
 	var file := FileAccess.open(report_path, FileAccess.WRITE)
 	if file == null:
 		printerr("Perf tour could not write %s: %s" % [report_path, error_string(FileAccess.get_open_error())])
@@ -368,25 +503,32 @@ func _finish() -> void:
 	var line := "Perf tour: %.1f FPS average, %.1f FPS 1%% low, %.1f ms longest frame, GPU %.2f ms average (%d frames). Report: %s" % [
 		report.avg_fps, report.low_1pct_fps, report.max_frame_ms, report.gpu_avg_ms, report.gpu_frames,
 		ProjectSettings.globalize_path(report_path)]
-	if _route != null:
+	if _route_name == "swim":
 		line += " · G18 pass" if report.gate.pass else " · G18 FAIL: %s" % "; ".join(report.gate.failed)
+	if _route != null:
+		line += growth_verdict(report.gate)
 	print(line)
 	main.get_tree().quit(0)
 
 
-## The swim route's fields (section 9): the route, its ticks and the out leg's distance, the world's
-## streaming, the frame maxima, the long frames and the G18 gate against this machine's M1 tour.
-func _add_swim_fields(report: Dictionary) -> void:
+## The route's fields (S1 section 9, S2 12.2): the route, its ticks and the out leg's distance, the
+## world's streaming, the frame maxima, the long frames, the growths' windows, and the gate: on the
+## swim route G18 against this machine's M1 tour, on both S2G26 (growth_pass).
+func _add_route_fields(report: Dictionary) -> void:
 	var w: WorldStream = main.pool.sim.world
+	var windows := growth_windows(_frames, _growths)
 	report.merge(_world)
 	report.merge({
-		"route": "swim",
-		"ticks": main.pool.sim.tick - _route.start_tick,
+		"route": _route_name,
+		"ticks": main.pool.sim.tick - int(_route.start_tick),
 		"distance_tm": _route.distance_tm(),
 		"counters": w.counters.duplicate(),
 		"long_frames": long_frames(_frames, _events),
+		"growths": windows,
 	})
-	report.gate = gate(report, m1_gpu_p99_ms("%s/perf_%s.json" % [REPORT_DIR, BuildInfo.build_id().validate_filename()]))
+	report.gate = gate(report, m1_gpu_p99_ms("%s/perf_%s.json" % [REPORT_DIR, BuildInfo.build_id().validate_filename()])) \
+		if _route_name == "swim" else {}
+	report.gate.merge(growth_gate(windows))
 
 
 ## The GPU P99 in the M1 tour's report at `path` (this machine and build's perf_<build>.json), or

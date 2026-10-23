@@ -25,6 +25,12 @@ const DEPTHS := {["lurker", 1]: [-11.2, 1.0], ["elder_rammer", 1]: [-8.0, 1.065]
 const RESERVED := {"food": Color("#CFE86A"), "threat": Color("#D9466B")}
 
 
+## Saves that are taken as written without touching the disk (test_rise's growth autosaves).
+class UnwrittenSaves extends PersistenceService:
+	func save_to(_path: String, _save: SaveGame) -> Error:
+		return OK
+
+
 func before_each() -> void:
 	SettingsService.set_shared(SettingsService.new(SETTINGS_PATH))
 
@@ -160,21 +166,49 @@ func test_body_rects_match_the_pngs() -> void:
 			check(false, "%s loads" % path)
 			continue
 		img.convert(Image.FORMAT_RGBA8)
-		var data := img.get_data()
 		var w := img.get_width()
 		var h := img.get_height()
-		var lo := Vector2i(w, h)
-		var hi := Vector2i(-1, -1)
-		for y in h:
-			for x in w:
-				if data[(y * w + x) * 4 + 3] >= 26:   # alpha >= 0.1
-					lo = Vector2i(mini(lo.x, x), mini(lo.y, y))
-					hi = Vector2i(maxi(hi.x, x), maxi(hi.y, y))
-		var measured := [float(lo.x), float(lo.y), float(hi.x + 1), float(hi.y + 1)]
+		var measured := _alpha_rect(img.get_data(), w, h)
 		var rect: Array = rects[path]
 		for i in 4:
 			var scale := w if i % 2 == 0 else h
 			check(absf(float(rect[i]) * scale - measured[i]) <= 2.0, "%s rect[%d] %.3f within 2 px of %.3f" % [path.get_file(), i, rect[i], measured[i] / scale])
+
+
+## The rect [x0, y0, x1, y1] (pixels, x1 and y1 past the end) of the pixels with alpha at least 0.1
+## in RGBA8 `data` of `w` by `h`, reading only the margins round it: the first and last such rows,
+## then each row between from either side as far as the rect reaches so far.
+static func _alpha_rect(data: PackedByteArray, w: int, h: int) -> Array:
+	var y0 := 0
+	while y0 < h and _row_clear(data, w, y0):
+		y0 += 1
+	if y0 == h:
+		return [float(w), float(h), 0.0, 0.0]
+	var y1 := h - 1
+	while _row_clear(data, w, y1):
+		y1 -= 1
+	var x0 := w
+	var x1 := -1
+	for y in range(y0, y1 + 1):
+		var row := y * w * 4 + 3
+		var x := 0
+		while x < x0 and data[row + x * 4] < 26:
+			x += 1
+		x0 = mini(x0, x)
+		x = w - 1
+		while x > x1 and data[row + x * 4] < 26:
+			x -= 1
+		x1 = maxi(x1, x)
+	return [float(x0), float(y0), float(x1 + 1), float(y1 + 1)]
+
+
+## Whether row `y` of RGBA8 `data`, `w` wide, has no pixel with alpha at least 0.1 (26 of 255).
+static func _row_clear(data: PackedByteArray, w: int, y: int) -> bool:
+	var row := y * w * 4 + 3
+	for x in w:
+		if data[row + x * 4] >= 26:
+			return false
+	return true
 
 
 func test_near_depths_reach_the_design_multiple() -> void:
@@ -469,6 +503,8 @@ func test_rise() -> void:
 func _rise_with(lineage: String) -> int:
 	var session := FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true)
 	session.sim.save.lineage_id = lineage
+	session.sim.save.genome.lineage_id = lineage
+	session.persistence = UnwrittenSaves.new(session.catalog)   # the growth's autosave is not this test's
 	var pool := FakeEvents.open_pool(session)
 	var sim := pool.sim
 	sim.debug_set_ai_frozen(true)
