@@ -365,6 +365,11 @@ func show_lane(lane: Dictionary) -> void:
 	_apply_lane()
 
 
+## The strike lane: top_level, so the pool's WorldSpace shifts it across a rebase (S1).
+func lane() -> MeshInstance3D:
+	return _lane
+
+
 ## A lane quad with a lane material of its own, for the start fade's shader warm-up (pool.gd): a
 ## lane first shows at a tell, in play, where its first compile would show as a hitch.
 static func warm_up_lane_mesh() -> Mesh:

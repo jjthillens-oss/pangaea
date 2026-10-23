@@ -7,19 +7,28 @@ extends Node3D
 ## sim's last two ticks and poses it from its brain. It only draws; PoolScene routes the events.
 ##
 ## A pool without species (the step 2 pool) has no CreatureField, and the layer stays empty.
+##
+## Across a rebase (S1) the live views need nothing, since sync() places them from the sim each
+## frame; the two things that keep a place of their own are registered with the pool's WorldSpace:
+## each view's strike lane (top_level, set in local coordinates when shown) and each dying view,
+## which is no longer synced.
 
 const VIEW_SCENE := preload("res://game/scenes/pool/creature_view.tscn")
 
 var sim: PoolSim
 var catalog: PartCatalog
+## The pool's WorldSpace, or null (a layer outside a pool: nothing shifts).
+var world_space: WorldSpace
 
 var _views := {}   ## creature id -> CreatureView, live creatures only
 
 
 ## Starts drawing `p_sim`'s creatures: a view for each one alive now, placed at its current tick.
-func attach(p_sim: PoolSim) -> void:
+## `p_world_space` shifts the lanes and dying views across a rebase.
+func attach(p_sim: PoolSim, p_world_space: WorldSpace = null) -> void:
 	clear()
 	sim = p_sim
+	world_space = p_world_space
 	catalog = sim.catalog
 	if sim.creatures == null:
 		return
@@ -67,6 +76,8 @@ func on_event(event: Dictionary) -> void:
 			if view != null:
 				_views.erase(id)
 				view.die()
+				if world_space != null:
+					world_space.register(view)   # no longer synced; it leaves when it frees itself
 		"creature_removed":
 			# A death has already let its view go; this is a stuck creature taken out of sight.
 			var view: CreatureView = _views.get(id)
@@ -117,6 +128,8 @@ func _add_view(c: CreatureField.Creature) -> CreatureView:
 	view.name = c.id
 	view.build(sim.species, c.species_id, catalog, c.id)
 	add_child(view)
+	if world_space != null:
+		world_space.register(view.lane())
 	view.show_motion(c.motion, 1.0)
 	view.show_brain(c.brain, sim.tick, 1.0)
 	_views[c.id] = view

@@ -227,7 +227,7 @@
         "game/scenes/pool/player_cell_view.gd",
         "game/scenes/pool/feedback_fx.gd"
       ],
-      "node": "PlayerCell/EatFx"
+      "node": "Pool/WorldFx/EatFx"
     },
     {
       "id": "feedback_labels",

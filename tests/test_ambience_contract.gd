@@ -82,6 +82,7 @@ const TEXEL_GRID := 64
 ## A number in shader code.
 const NUMBER := "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?"
 const LookProbe := preload("res://tools/godot/look_probe.gd")
+const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 
 
 ## A pool whose camera and cell view are set as its ready sets them. Free it.
@@ -976,3 +977,39 @@ func test_pale_decor_is_too_faint_to_lift_the_fluid_or_cut_the_lane() -> void:
 			if below:
 				check(top <= MAX_LUMA_BELOW + 1e-4, "%s under the plane: luminance %.3f, at most %.2f" % [geo.name, top, MAX_LUMA_BELOW])
 	ambience.get_parent().free()
+
+
+## S1 (the endless sea): a rebase moves every local position by -offset, the camera's focus with
+## it. The ambience follows the camera itself, so its layers must look the same relative to the view
+## after the pool's rebase as before: the pool moves each layer with the world (a layer wrapped in a
+## "box" uniform may land a whole box away, which draws the same), and particles under it must use
+## local coordinates or those already in the water would stay behind.
+func test_the_ambience_follows_the_camera_across_a_rebase() -> void:
+	if not ResourceLoader.exists(SCENE):
+		return
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var ambience := pool.get_node_or_null("Ambience") as Node3D
+	if ambience == null:
+		check(false, "the endless pool mounts %s as its child Ambience" % SCENE)
+		pool.free()
+		return
+	FakeEvents.ready_tree(ambience)
+	check(ambience.is_in_group(&"camera_relative"), "the ambience root is camera_relative")
+	var layers: Array[Node3D] = []
+	var before: Array[Vector3] = []
+	for child in ambience.get_children():
+		if child is Node3D:
+			layers.append(child)
+			before.append(ambience.transform * (child as Node3D).position - pool.camera.position)
+	check(not layers.is_empty(), "the ambience has layers to follow")
+	pool.apply_world_event(FakeEvents.rebased(Vector2(32.0, 0.0)))
+	for i in layers.size():
+		var moved := ambience.transform * layers[i].position - pool.camera.position - before[i]
+		var box := PoolScene.wrap_box(layers[i])
+		if box != Vector2.ZERO:
+			moved.x = moved.x - box.x * roundf(moved.x / box.x)
+			moved.z = moved.z - box.y * roundf(moved.z / box.y)
+		check(moved.length() <= 1e-3, "%s keeps its place relative to the camera across the rebase (moved %s)" % [layers[i].name, moved])
+	for p in _nodes(ambience, "CPUParticles3D") + _nodes(ambience, "GPUParticles3D"):
+		check(bool(p.get("local_coords")), "%s keeps its particles in local coordinates, so they ride the rebase" % p.name)
+	pool.free()

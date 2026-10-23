@@ -14,6 +14,10 @@ extends Node3D
 ## they would touch), and one that shows above it is pushed up a line clear of it (see _stack).
 ## Every frame, labels that have come closer than a line on screen, as the camera moves, are moved
 ## apart again (see _keep_apart). Labels only ever move up, so they never cross.
+##
+## The pool's WorldSpace shifts this node across a rebase (S1), so every label rides it: each event
+## point is turned into this node's frame (WorldSpace.frame_of) as it arrives, and _meal_at holds
+## frame points. renormalize() brings the node back to the origin when it has drifted far.
 
 const MEAL_LABELS := 6
 const MEAL_RISE_M := 0.9
@@ -49,7 +53,7 @@ const OUTLINE_COLOR := Color(UiPalette.KEYLINE, 0.9)
 
 var _meal_labels: Array[Label3D] = []
 var _meal_ages := PackedFloat32Array()
-var _meal_at := PackedVector2Array()        ## plane position of each label's last meal
+var _meal_at := PackedVector2Array()        ## plane position of each label's last meal, in this node's frame
 var _meal_energy := PackedFloat32Array()    ## energy and points each label shows
 var _meal_points := PackedInt32Array()
 var _meal_lift := PackedFloat32Array()      ## how far each label sits above MEAL_START_Y (stacking)
@@ -105,7 +109,7 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	for z in zones:
 		var label := _make_label(ZONE_COLOR)
 		label.name = "Regrowing_%s" % z.id
-		label.position = PlaneSpace.to_world(z.center, ZONE_LABEL_Y)
+		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y)
 		_zone_labels[z.id] = label
 
 
@@ -114,7 +118,7 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 func show_meal(event: Dictionary) -> void:
 	if _meal_labels.is_empty():
 		return
-	var at: Vector2 = event.position
+	var at: Vector2 = event.position + WorldSpace.frame_of(self)
 	var i := posmod(_next_meal - 1, _meal_labels.size())
 	if _meal_labels[i].visible and _meal_ages[i] < MEAL_MERGE_S and _meal_at[i].distance_to(at) <= MEAL_MERGE_M:
 		_meal_energy[i] += float(event.get("absorbed", 0.0))
@@ -185,12 +189,12 @@ func _by_height(eye: Transform3D, skip: int) -> Array[int]:
 	return order
 
 
-## The pool camera in this node's space. Outside the tree (tests) it is the camera's own transform:
-## both nodes are children of the pool.
+## The pool camera in this node's space. Outside the tree (tests) both nodes are children of the
+## pool, so it is the camera's transform seen from this node's.
 func _eye() -> Transform3D:
 	if is_inside_tree() and _camera.is_inside_tree():
 		return global_transform.affine_inverse() * _camera.global_transform
-	return _camera.transform
+	return transform.affine_inverse() * _camera.transform
 
 
 ## Where label i's anchor is, at its stacked height, with or without what it has risen so far.
@@ -251,7 +255,7 @@ func show_hit(event: Dictionary) -> void:
 	label.modulate = color
 	label.outline_modulate.a = OUTLINE_COLOR.a
 	var at: Variant = event.get("position")
-	label.position = PlaneSpace.to_world(at if at is Vector2 else Vector2.ZERO, HIT_START_Y)
+	label.position = WorldSpace.to_frame(self, at if at is Vector2 else Vector2.ZERO, HIT_START_Y)
 	label.visible = true
 	_hit_ages[i] = 0.0
 
@@ -270,7 +274,7 @@ func show_dodged(at: Vector2) -> void:
 	if _dodged == null:
 		return
 	_dodged_age = 0.0
-	_dodged.position = PlaneSpace.to_world(at, DODGED_START_Y)
+	_dodged.position = WorldSpace.to_frame(self, at, DODGED_START_Y)
 	_dodged.modulate.a = 1.0
 	_dodged.outline_modulate.a = OUTLINE_COLOR.a
 	_dodged.visible = true
@@ -288,6 +292,18 @@ func hit_labels() -> Array[Label3D]:
 ## The "Dodged!" label (for checks); visible while it shows.
 func dodged_label() -> Label3D:
 	return _dodged
+
+
+## Moves every label by this node's position and the node back to the origin (S1): nothing moves
+## on screen, and the labels' coordinates stay small however far the cell swims.
+func renormalize() -> void:
+	var shift := position
+	for child in get_children():
+		if child is Node3D:
+			child.position += shift
+	for i in _meal_at.size():
+		_meal_at[i] += Vector2(shift.x, shift.z)
+	position = Vector3.ZERO
 
 
 ## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again.

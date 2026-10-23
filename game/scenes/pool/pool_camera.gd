@@ -47,6 +47,13 @@ func snap_to(target: Vector3) -> void:
 	_place()
 
 
+## A rebase moved the world by `delta` (S1): moves the focus and the camera with it, keeping the zoom
+## easing and the follow lag, so nothing on screen jumps. Respawns and teleports snap_to instead.
+func shift_focus(delta: Vector3) -> void:
+	focus += delta
+	_place()
+
+
 ## Eases toward `target` plus a look-ahead along `velocity` (plane m/s), capped at look_ahead_max.
 func follow(target: Vector3, velocity: Vector2, delta: float) -> void:
 	var ahead := (velocity * look_ahead_s).limit_length(look_ahead_max)
