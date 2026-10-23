@@ -145,6 +145,20 @@ const IDENTITY_RUNS: Array[Dictionary] = [
 	{"name": "circle_hunter", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle"}]
 const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
 
+## S2's growth gates (test_threat_fuzz's size-2 runner, test_endless_fuzz's growth fuzz,
+## test_growth_gates, test_endless_cost's size-2 cases) wait on the S2 seams they read (S2 build plan
+## 5.2), each named in S2_NEEDS, as the S1 gates wait on gaps(): s2_missing(needs) names what has not
+## landed, and a gap is allowed only while its marker file is not in the tree ("" for a data check
+## with no file of its own).
+const S2_NEEDS := {
+	"set_size": {"what": "the growth tick and PoolSim.debug_set_size and debug_force_growth (T2.5, T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"fuzz_growth": {"what": "FuzzInvariants through a growth and a set_size cut (T2.6b)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"blocker": {"what": "Growth.blocker_of (T2.3)", "marker": "res://game/systems/world/remnant_field.gd"},
+	"remnants": {"what": "PoolSim.remnants (T2.4)", "marker": "res://game/systems/world/remnant_field.gd"},
+	"size_two_species": {"what": "species that enter at size 2 (T1.7)", "marker": "res://tests/fixtures/creatures_posts_test.json"},
+	"size_two_content": {"what": "the real content's size-2 sites (T3.5)", "marker": ""},
+}
+
 
 # ---- The harness (static, shared) ----
 
@@ -194,6 +208,61 @@ static func missing(need := ALL) -> PackedStringArray:
 	for g in gaps():
 		if int(g.need) <= need:
 			out.append(g.what)
+	return out
+
+
+## The S2 seams of `needs` (S2_NEEDS keys) that have not landed, in words; empty when the gate can
+## run. The S1 levels it rests on (ALL) come first.
+static func s2_missing(needs: PackedStringArray) -> PackedStringArray:
+	var out := missing(ALL)
+	if not out.is_empty():
+		return out
+	for need in needs:
+		if not s2_has(need):
+			out.append(str(S2_NEEDS[need].what))
+	return out
+
+
+## Whether the S2 seam `need` (an S2_NEEDS key) is in the tree.
+static func s2_has(need: String) -> bool:
+	var sim_script := load(POOL_SIM_PATH) as GDScript
+	match need:
+		"set_size":
+			return _lacking(sim_script, {"debug_set_size": 1, "debug_force_growth": 0}, []).is_empty()
+		"fuzz_growth":
+			var fuzz: Variant = new_fuzz()
+			fuzz.start_run()
+			return (fuzz.counts as Dictionary).has("growths") and (fuzz.counts as Dictionary).has("set_sizes")
+		"blocker":
+			return _lacking(load("res://game/systems/world/growth.gd") as GDScript, {"blocker_of": 1}, []).is_empty()
+		"remnants":
+			return _lacking(sim_script, {}, ["remnants"]).is_empty()
+		"size_two_species":
+			return not species_entering_at(2).is_empty()
+		"size_two_content":
+			if content_path() != REAL_WORLD or species_entering_at(2).is_empty():
+				return false
+			var entering := species_entering_at(2)
+			var content: Variant = data().content
+			var sites: Array = content.home.sites.duplicate()
+			for id in content.tiles.tiles:
+				sites.append_array(content.tiles.tiles[id].sites)
+			for site in sites:
+				if entering.has(str(site.species)):
+					return true
+			return false
+	push_error("Gates.s2_has: no seam '%s'" % need)
+	return false
+
+
+## The ids of the species whose entry size is `n`, sorted.
+static func species_entering_at(n: int) -> PackedStringArray:
+	var species: SpeciesCatalog = data().species
+	var out := PackedStringArray()
+	for id in species.species_ids():
+		if species.entry_size(id) == n:
+			out.append(id)
+	out.sort()
 	return out
 
 
@@ -493,6 +562,58 @@ func test_the_gates_wait_only_on_what_has_not_landed() -> void:
 	check_eq(int(sim.world.counters.awake_overflow) + int(sim.world.counters.chunk_waits), 0, "no overflow and no chunk waits")
 	print("test-endless-gates: the harness ran on %s: %d chunks loaded, %.1f tm east in 120 ticks" % [
 		content_path(), sim.world.loaded_keys().size(), end[0] - start[0]])
+
+
+## S2's seams: each gap is allowed only while its marker file is not in the tree, and the waits
+## name what they wait on.
+func test_the_s2_gates_wait_only_on_what_has_not_landed() -> void:
+	if _waits("the S2 seams check", ALL):
+		return
+	var waiting := PackedStringArray()
+	for need in S2_NEEDS:
+		var marker := str(S2_NEEDS[need].marker)
+		if s2_has(need):
+			continue
+		waiting.append(str(S2_NEEDS[need].what))
+		check(marker.is_empty() or not FileAccess.file_exists(marker), "%s is in the tree, so %s has landed, but the harness misses it" % [
+			marker, S2_NEEDS[need].what])
+	check_eq(s2_missing(PackedStringArray(S2_NEEDS.keys())), waiting, "s2_missing names every missing seam")
+	print("test-endless-gates: the S2 gates wait on: %s" % ("nothing" if waiting.is_empty() else "; ".join(waiting)))
+
+
+## S2G30's budget report (run_tests.gd): every test file 5.1 names belongs to one track, each track's
+## fast time is its files' time now less on S2's base, and a track over its share is marked.
+func test_the_fast_suite_budget_report_gives_each_file_to_one_track() -> void:
+	var Runner: GDScript = load("res://tests/run_tests.gd")
+	var shares: Dictionary = Runner.get("BUDGET_SHARES")
+	var owned: Dictionary = Runner.get("BUDGET_FILES")
+	check_eq(owned.keys(), shares.keys(), "every track has its files and its share")
+	var seen := {}
+	for track in owned:
+		for file in owned[track]:
+			check(not seen.has(file), "%s belongs to %s and %s" % [file, seen.get(file, ""), track])
+			seen[file] = track
+			check_eq(Runner.track_of(file), track, "%s is %s's" % [file, track])
+	check_eq(Runner.track_of("test_pool_sim"), "S1", "a file no S2 track names is S1's")
+	var base: Dictionary = Runner.get("S1_FAST_MS")
+	check(base.has("test_threats_sim") and not base.has("test_growth_gates"), "the base times hold S1's files and none of S2's new ones")
+	var now := {"test_growth_gates": 3500.0, "test_threats_sim": 2000.0, "test_pool_sim": 100.0}
+	var rows: Array[Dictionary] = Runner.budget_rows(now, {"test_threats_sim": 1500.0, "test_pool_sim": 300.0})
+	var by := {}
+	for row in rows:
+		by[row.track] = row
+	check_eq(by.keys(), ["T0", "T1", "T2", "T3", "T4", "T5", "S1", "all"], "a row per track, S1's files, then all")
+	check_eq([by.T0.now_s, by.T0.base_s, by.T0.added_s], [3.5, 0.0, 3.5], "T0: a new file counts from 0")
+	check_near(float(by.T1.added_s), 0.5, 1e-9, "T1: its file's time less the base")
+	check_near(float(by.S1.added_s), -0.2, 1e-9, "S1's own files")
+	check_near(float(by.all.added_s), 3.8, 1e-9, "the whole fast tier")
+	check_eq(by.all.share_s, 31.0, "the whole tier's share is the tracks' sum")
+	var report: PackedStringArray = Runner.budget_report(now, {"test_threats_sim": 1500.0})
+	var over := PackedStringArray()
+	for line in report:
+		if line.contains("OVER"):
+			over.append(line.strip_edges().get_slice(" ", 0))
+	check_eq(over, PackedStringArray(["T0"]), "only T0 (3.5 s against 3) is marked over its share")
 
 
 ## The swim body is the fastest legal one: legal, faster than every starting body, and no part could

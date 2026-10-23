@@ -355,7 +355,7 @@ func _lairs(sim: PoolSim) -> Array[Vector2]:
 	if world != null:
 		for s in _loaded_sites(world):
 			if _live(s, world) and sim.species.behavior_of(str(s.species)) == CreatureBrain.AMBUSH:
-				out.append(world.local_of_abs(float(s.x), float(s.y)))
+				out.append(world.local_of_tm(float(s.x), float(s.y)))
 		return out
 	for s in sim.species.sites:
 		if sim.species.behavior_of(str(s.species)) == CreatureBrain.AMBUSH:
@@ -385,7 +385,8 @@ static func _active(sim: PoolSim) -> Array:
 	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
 
 
-## Every site of every loaded chunk (WorldChunk.sites: absolute tm), in the stream's canonical order.
+## Every site of every loaded chunk (WorldChunk.sites: absolute tm at the stream's size, which
+## local_of_tm takes to the cell's frame; S2), in the stream's canonical order.
 static func _loaded_sites(world: Object) -> Array:
 	var out: Array = []
 	for key in world.loaded_keys():
@@ -411,5 +412,5 @@ static func live_site_discs(sim: PoolSim, which: String) -> Array:
 	for s in _loaded_sites(world):
 		var disc: Dictionary = s.get(which, {})
 		if not disc.is_empty() and _live(s, world):
-			out.append({"center": world.local_of_abs(float(disc.x), float(disc.y)), "radius": float(disc.radius)})
+			out.append({"center": world.local_of_tm(float(disc.x), float(disc.y)), "radius": float(disc.radius)})
 	return out
