@@ -10,7 +10,8 @@ extends Control
 ##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
 ##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
 ##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
-##   bottom left:  the controls, from the key bindings, until the first meal or for 30 s
+##   bottom left:  the controls, from the key bindings, for 30 s, or until the first meal once they
+##                 have been up for 12 s
 ##
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
 ##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
@@ -30,6 +31,9 @@ const HINT_S := 2.8
 const HINT_FADE_S := 0.4
 const MESSAGE_S := 5.0
 const CONTROLS_HINT_S := 30.0
+## The first meal hides the controls, but never before they have been up this long: at the spawn
+## the first plankton is about 2 s away, too soon to read five lines.
+const CONTROLS_MIN_S := 12.0
 const BANNER_PULSE_HZ := 1.0
 ## At the top of each pulse the banner's panel brightens this much and its icon grows this much;
 ## the words never fade.
@@ -62,6 +66,8 @@ var _flash_t := 0.0
 var _hint_t := 0.0
 var _message_t := 0.0
 var _controls_t := 0.0
+## When the controls hide: CONTROLS_HINT_S, or sooner after the first meal (hide_controls()).
+var _controls_until := CONTROLS_HINT_S
 var _banner_t := 0.0
 var _toasts: Array[Dictionary] = []   ## {"node": Control, "age": float}
 var _vignette_t := INF                ## seconds since the last vignette pulse
@@ -119,6 +125,7 @@ func bind(p_pool: PoolScene) -> void:
 	first_meal_text.text = first_meal_line(pool.sim.phenotype)
 	controls.visible = true
 	_controls_t = 0.0
+	_controls_until = CONTROLS_HINT_S
 	_vignette_t = INF
 	_set_vignette(0.0)
 	threat_indicators.bind(pool)
@@ -247,6 +254,13 @@ static func rested_line(state: ActorState) -> String:
 	return "Your cell rested: Energy %d%%, Health %s" % [roundi(100.0 * state.energy / state.energy_capacity), health]
 
 
+## The first meal: the controls go once they have been readable for CONTROLS_MIN_S.
+func hide_controls() -> void:
+	_controls_until = minf(_controls_until, maxf(_controls_t, CONTROLS_MIN_S))
+	if _controls_t >= _controls_until:
+		controls.visible = false
+
+
 ## The controls, named from the current key bindings.
 static func controls_lines() -> PackedStringArray:
 	var keys := PackedStringArray()
@@ -331,7 +345,7 @@ func _process(delta: float) -> void:
 		_refresh_t = LABEL_REFRESH_S
 		refresh()
 	_controls_t += delta
-	if controls.visible and _controls_t >= CONTROLS_HINT_S:
+	if controls.visible and _controls_t >= _controls_until:
 		controls.visible = false
 	_banner_t = fmod(_banner_t + delta, 1.0 / BANNER_PULSE_HZ)
 	var pulse := 0.5 - 0.5 * cos(_banner_t * BANNER_PULSE_HZ * TAU)
@@ -360,7 +374,7 @@ func _update_bars() -> void:
 func _on_sim_event(event: Dictionary) -> void:
 	match event.type:
 		"ate":
-			controls.visible = false
+			hide_controls()
 			_add_toast(meal_toast(event))
 			_flash(int(event.get("points", 0)))
 		"earned":
