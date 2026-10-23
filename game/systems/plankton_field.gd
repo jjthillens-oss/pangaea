@@ -37,6 +37,9 @@ var active_zones := {}                ## zone id -> true (endless mode)
 var _empty_latched := {}
 var _regrowing := {}
 var _zone_counts := {}                ## zone id -> how many of `items` it shows (kept with every change)
+## Each item's drift phase and rates, in `items` order: the drift loop's packed copy (they never change).
+var _phase := PackedVector2Array()
+var _omega := PackedVector2Array()
 
 
 ## config: the layout's "plankton" block.
@@ -108,11 +111,15 @@ func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float)
 			have -= 1
 		if have == 0 or _empty_latched.has(id) or _regrowing.has(id):
 			_update_flags(zone, have)   # otherwise it changes nothing
+	if _phase.size() != items.size():
+		_repack()   # only if something outside this file changed `items`
 	var amp := drift_amplitude
+	var i := 0
 	for item in items:
-		var phase: Vector2 = item.phase   # _drifted written out
-		var omega: Vector2 = item.omega
+		var phase := _phase[i]   # _drifted written out
+		var omega := _omega[i]
 		item.position = item.anchor + amp * Vector2(sin(now * omega.x + phase.x), cos(now * omega.y + phase.y))
+		i += 1
 
 
 ## Items whose centers lie within `reach` of `p`, in insertion order.
@@ -131,6 +138,8 @@ func consume(id: String) -> bool:
 		if items[i].id == id:
 			_zone_counts[items[i].zone] -= 1
 			items.remove_at(i)
+			_phase.remove_at(i)
+			_omega.remove_at(i)
 			return true
 	return false
 
@@ -139,6 +148,7 @@ func consume(id: String) -> bool:
 func clear_zone(zone_id: String) -> void:
 	if int(_zone_counts.get(zone_id, 0)) > 0:
 		items = items.filter(func(item: Dictionary) -> bool: return item.zone != zone_id)
+		_repack()
 	_zone_counts.erase(zone_id)
 
 
@@ -183,7 +193,18 @@ func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> voi
 	}
 	item.position = _drifted(item, now)
 	items.append(item)
+	_phase.append(item.phase)
+	_omega.append(item.omega)
 	_zone_counts[zone_id] = int(_zone_counts.get(zone_id, 0)) + 1
+
+
+## The drift loop's packed copy of every item's phase and rates, from the items.
+func _repack() -> void:
+	_phase.resize(items.size())
+	_omega.resize(items.size())
+	for i in items.size():
+		_phase[i] = items[i].phase
+		_omega[i] = items[i].omega
 
 
 func _drifted(item: Dictionary, now: float) -> Vector2:
@@ -197,6 +218,8 @@ func _remove_newest(zone_id: String) -> void:
 		if items[i].zone == zone_id:
 			_zone_counts[zone_id] -= 1
 			items.remove_at(i)
+			_phase.remove_at(i)
+			_omega.remove_at(i)
 			return
 
 

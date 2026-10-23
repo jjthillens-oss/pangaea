@@ -143,9 +143,10 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 	return out
 
 
-## PlanktonField keeps each zone's item count as items come and go, so count_in and the tick's
-## counts are what a count over the items gives: random meals, takes (the newest item goes), clears,
-## drops, fills and active-zone changes, in the pool and in the endless world.
+## PlanktonField keeps each zone's item count, and its packed copy of the items' drift phases and
+## rates, as items come and go, so count_in and the tick's counts are what a count over the items
+## gives and the drift reads each item's own values: random meals, takes (the newest item goes),
+## clears, drops, fills and active-zone changes, in the pool and in the endless world.
 func test_plankton_zone_counts_follow_every_change() -> void:
 	for endless in [false, true]:
 		var region := layout.build_region(21)
@@ -159,6 +160,7 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 99
 		var wrong := 0
+		var unpacked := 0
 		for t in 1500:
 			var roll := rng.randf()
 			var zone_id: String = ids[rng.randi_range(0, ids.size() - 1)]
@@ -188,7 +190,12 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 			for id in ids + ["no_such_zone"]:
 				if field.count_in(id) != int(counts.get(id, 0)):
 					wrong += 1
+			for i in field.items.size():
+				if field._phase[i] != field.items[i].phase or field._omega[i] != field.items[i].omega:
+					unpacked += 1
 		check_eq(wrong, 0, "endless %s: counts that differ from the items" % endless)
+		check_eq(field._phase.size(), field.items.size(), "endless %s: one drift entry per item" % endless)
+		check_eq(unpacked, 0, "endless %s: drift entries that differ from their item's" % endless)
 		check(field.next_number > 40, "endless %s: items came and went (%d)" % [endless, field.next_number])
 
 
