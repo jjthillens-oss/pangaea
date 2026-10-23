@@ -4,7 +4,8 @@ extends RefCounted
 ## Pure rules: no scene or file access.
 
 const BodyDescription := preload("res://domain/body_description.gd")
-const KNOWN_KEYS := ["body_version", "plan", "reference_length_mm", "generator", "vertebrae", "limbs", "next"]
+const KNOWN_KEYS := ["body_version", "plan", "reference_length_mm", "generator", "vertebrae", "limbs", "parts", "next"]
+const PART_INTS := ["u", "ring", "elev", "height", "turn", "tilt", "roll", "scale"]
 
 
 static func encode(desc: RefCounted) -> String:
@@ -27,6 +28,16 @@ static func encode(desc: RefCounted) -> String:
 		limbs.append("{\"id\":%s,\"attach\":%s,\"mirror\":%s,\"joints\":[%s]}" % [JSON.stringify(String(limb["id"])),
 				JSON.stringify(String(limb["attach"])), "true" if limb["mirror"] else "false", ",".join(joints)])
 	parts.append("\"limbs\":[%s]" % ",".join(limbs))
+	var part_texts := PackedStringArray()
+	for p in desc.parts:
+		var fields := PackedStringArray(["\"id\":%s" % JSON.stringify(String(p["id"])), "\"type\":%s" % JSON.stringify(String(p["type"])),
+				"\"host\":%s" % JSON.stringify(String(p["host"]))])
+		for k in PART_INTS:
+			fields.append("\"%s\":%d" % [k, int(p[k])])
+		fields.append("\"handles\":[%s]" % ",".join((p["handles"] as Array).map(func(h): return str(int(h)))))
+		fields.append("\"mirror\":%s" % ("true" if p["mirror"] else "false"))
+		part_texts.append("{%s}" % ",".join(fields))
+	parts.append("\"parts\":[%s]" % ",".join(part_texts))
 	var next_keys: Array = desc.next_ids.keys()
 	next_keys.sort()
 	var nexts := PackedStringArray()
@@ -86,6 +97,22 @@ static func from_dict(d: Dictionary) -> RefCounted:
 					_int(p[2], "p", desc)], "r": _int(j.get("r", 0), "r", desc)})
 		desc.limbs.append({"id": String(limb.get("id", "")), "attach": String(limb.get("attach", "")),
 				"mirror": bool(limb.get("mirror", false)), "joints": joints})
+	var part_list = d.get("parts", [])
+	if not part_list is Array:
+		desc.load_problems.append("parts is not a list")
+		desc.extra["parts_unread"] = part_list
+		part_list = []
+	for p in part_list:
+		if not p is Dictionary:
+			desc.load_problems.append("a part is not an object: %s" % JSON.stringify(p))
+			continue
+		var entry := {"id": String(p.get("id", "")), "type": String(p.get("type", "")), "host": String(p.get("host", "spine"))}
+		for k in PART_INTS:
+			entry[k] = _int(p.get(k, 1000 if k == "scale" else 0), k, desc)
+		var handles = p.get("handles", [])
+		entry["handles"] = (handles as Array).map(func(h): return _int(h, "handles", desc)) if handles is Array else []
+		entry["mirror"] = bool(p.get("mirror", false))
+		desc.parts.append(entry)
 	var nexts = d.get("next", {})
 	desc.next_ids = {}
 	if nexts is Dictionary:
@@ -95,10 +122,12 @@ static func from_dict(d: Dictionary) -> RefCounted:
 		desc.next_ids["v"] = desc.vertebrae.size() + 1
 		desc.load_problems.append("next id counter was missing; set to v_%d" % desc.next_ids["v"])
 	# Version 1 bodies have no limb or joint counters.
-	for kind in ["l", "j"]:
+	for kind in ["l", "j", "p"]:
 		if not desc.next_ids.has(kind):
-			desc.next_ids[kind] = 1 + (desc.limbs.size() if kind == "l" else desc.limbs.reduce(
-					func(acc, l): return acc + (l["joints"] as Array).size(), 0))
+			match kind:
+				"l": desc.next_ids[kind] = 1 + desc.limbs.size()
+				"j": desc.next_ids[kind] = 1 + desc.limbs.reduce(func(acc, l): return acc + (l["joints"] as Array).size(), 0)
+				"p": desc.next_ids[kind] = 1 + desc.parts.size()
 	for k in d:
 		if not KNOWN_KEYS.has(k):
 			desc.extra[k] = d[k]

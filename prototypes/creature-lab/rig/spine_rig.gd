@@ -8,6 +8,8 @@ var mesh_instance: MeshInstance3D
 var root_bone := 0
 ## First bone of each limb chain (its joint 0), in limb_chains() order.
 var limb_roots := PackedInt32Array()
+## Placed parts: {node: Node3D, entry: placement from AnchorResolver, ground: bool, scale: float}.
+var part_nodes: Array = []
 var swim_amplitude_deg := 9.0
 var swim_wavelength := 0.9  # in body lengths
 var swim_frequency := 0.8  # cycles per second
@@ -138,3 +140,43 @@ func body_length_m() -> float:
 	for i in n - 1:
 		length += desc.position_m(i).distance_to(desc.position_m(i + 1))
 	return length
+
+
+## Puts the art team's part meshes on the body. `placements` comes from AnchorResolver.resolve_all. Each part rides on
+## its host bone through a BoneAttachment3D; with `free_ground`, ground parts (feet) are left as top-level nodes for a
+## walker to place each frame, so they stay flat while the shin turns.
+func add_parts(placements: Array, orientations: Dictionary, free_ground := false) -> void:
+	var PartLibrary := load("res://rig/part_library.gd")
+	for e in placements:
+		var part: Dictionary = desc.parts.filter(func(x): return x["id"] == e["part"])[0]
+		var node: Node3D = PartLibrary.instance(part["type"])
+		if node == null:
+			continue
+		PartLibrary.set_handles(node, part["handles"])
+		node.name = "%s_%s%s" % [part["type"], part["id"], "_twin" if e["twin"] else ""]
+		var ground: bool = orientations.get(part["type"], "normal") == "ground"
+		var t: Transform3D = e["transform"]
+		if ground and free_ground:
+			node.top_level = true
+			add_child(node)
+		else:
+			var attach := BoneAttachment3D.new()
+			attach.bone_idx = e["bone"]
+			skeleton.add_child(attach)
+			attach.add_child(node)
+			node.transform = skeleton.get_bone_global_rest(e["bone"]).affine_inverse() * t
+		part_nodes.append({"node": node, "entry": e, "ground": ground, "scale": float(part["scale"]) / 1000.0})
+
+
+## Uses the art team's creature skin shader on the body, sized by its length. Returns false if it is missing.
+func use_skin_shader(params := {}) -> bool:
+	var shader: Shader = load("res://rig/part_library.gd").skin_shader()
+	if shader == null:
+		return false
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("body_length_m", body_length_m())
+	for k in params:
+		mat.set_shader_parameter(k, params[k])
+	mesh_instance.material_override = mat
+	return true

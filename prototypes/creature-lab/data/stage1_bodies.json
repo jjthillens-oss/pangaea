@@ -2,7 +2,7 @@
 	"note": "Stage 1 test bodies (CREATURE_GEOMETRY_SPEC.md section 10 test matrix), in canonical description form. Invented shapes; no outside data.",
 	"bodies": {
 		"snake": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 2400,
 			"generator": "skin-1",
@@ -189,14 +189,16 @@
 				}
 			],
 			"limbs": [],
+			"parts": [],
 			"next": {
 				"j": 1,
 				"l": 1,
+				"p": 1,
 				"v": 21
 			}
 		},
 		"quadruped": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 1200,
 			"generator": "skin-1",
@@ -371,14 +373,111 @@
 					]
 				}
 			],
+			"parts": [
+				{
+					"id": "p_1",
+					"type": "eye",
+					"host": "spine",
+					"u": 60,
+					"ring": 170,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 800,
+					"handles": [],
+					"mirror": true
+				},
+				{
+					"id": "p_2",
+					"type": "beak",
+					"host": "spine",
+					"u": 0,
+					"ring": 500,
+					"elev": 20,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 900,
+					"handles": [],
+					"mirror": false
+				},
+				{
+					"id": "p_3",
+					"type": "horn",
+					"host": "spine",
+					"u": 90,
+					"ring": 90,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 1200,
+					"handles": [],
+					"mirror": true
+				},
+				{
+					"id": "p_4",
+					"type": "fin",
+					"host": "spine",
+					"u": 450,
+					"ring": 0,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 800,
+					"handles": [
+						0,
+						300,
+						0
+					],
+					"mirror": false
+				},
+				{
+					"id": "p_5",
+					"type": "foot",
+					"host": "l_1:end",
+					"u": 500,
+					"ring": 0,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 1000,
+					"handles": [],
+					"mirror": true
+				},
+				{
+					"id": "p_6",
+					"type": "foot",
+					"host": "l_2:end",
+					"u": 500,
+					"ring": 0,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 1000,
+					"handles": [],
+					"mirror": true
+				}
+			],
 			"next": {
 				"j": 9,
 				"l": 3,
+				"p": 7,
 				"v": 10
 			}
 		},
 		"biped": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 1000,
 			"generator": "skin-1",
@@ -535,14 +634,66 @@
 					]
 				}
 			],
+			"parts": [
+				{
+					"id": "p_1",
+					"type": "eye",
+					"host": "spine",
+					"u": 50,
+					"ring": 200,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 700,
+					"handles": [],
+					"mirror": true
+				},
+				{
+					"id": "p_2",
+					"type": "beak",
+					"host": "spine",
+					"u": 0,
+					"ring": 500,
+					"elev": 30,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 800,
+					"handles": [
+						500,
+						300,
+						600
+					],
+					"mirror": false
+				},
+				{
+					"id": "p_3",
+					"type": "foot",
+					"host": "l_2:end",
+					"u": 500,
+					"ring": 0,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 900,
+					"handles": [],
+					"mirror": true
+				}
+			],
 			"next": {
 				"j": 8,
 				"l": 3,
+				"p": 4,
 				"v": 9
 			}
 		},
 		"hexapod": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 600,
 			"generator": "skin-1",
@@ -715,14 +866,65 @@
 					]
 				}
 			],
+			"parts": [
+				{
+					"id": "p_1",
+					"type": "eye",
+					"host": "spine",
+					"u": 80,
+					"ring": 150,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 500,
+					"handles": [],
+					"mirror": true
+				},
+				{
+					"id": "p_2",
+					"type": "horn",
+					"host": "spine",
+					"u": 40,
+					"ring": 60,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 700,
+					"handles": [
+						0,
+						800
+					],
+					"mirror": true
+				},
+				{
+					"id": "p_3",
+					"type": "fin",
+					"host": "spine",
+					"u": 600,
+					"ring": 0,
+					"elev": 0,
+					"height": 0,
+					"turn": 0,
+					"tilt": 0,
+					"roll": 0,
+					"scale": 600,
+					"handles": [],
+					"mirror": false
+				}
+			],
 			"next": {
 				"j": 10,
 				"l": 4,
+				"p": 4,
 				"v": 8
 			}
 		},
 		"twelve_limbs": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 900,
 			"generator": "skin-1",
@@ -1024,14 +1226,16 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 19,
 				"l": 7,
+				"p": 1,
 				"v": 11
 			}
 		},
 		"giant_limb": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 800,
 			"generator": "skin-1",
@@ -1161,14 +1365,16 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 8,
 				"l": 3,
+				"p": 1,
 				"v": 6
 			}
 		},
 		"tiny": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 100,
 			"generator": "skin-1",
@@ -1253,14 +1459,16 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 5,
 				"l": 3,
+				"p": 1,
 				"v": 4
 			}
 		},
 		"max_vertebrae": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 3000,
 			"generator": "skin-1",
@@ -1588,14 +1796,16 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 11,
 				"l": 3,
+				"p": 1,
 				"v": 25
 			}
 		},
 		"thin": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 1000,
 			"generator": "skin-1",
@@ -1759,14 +1969,16 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 10,
 				"l": 4,
+				"p": 1,
 				"v": 7
 			}
 		},
 		"asymmetric": {
-			"body_version": 2,
+			"body_version": 3,
 			"plan": "spine",
 			"reference_length_mm": 900,
 			"generator": "skin-1",
@@ -1964,9 +2176,11 @@
 					]
 				}
 			],
+			"parts": [],
 			"next": {
 				"j": 13,
 				"l": 5,
+				"p": 1,
 				"v": 7
 			}
 		}
