@@ -172,6 +172,36 @@ func test_an_endless_session_loads_the_5km_fixture_near_its_position() -> void:
 	check(not session.dirty, "nothing unsaved right after continuing")
 
 
+func test_a_continue_into_a_shell_lands_at_the_nearest_clear_point() -> void:
+	# A save whose place is a shell's centre (the world moved, or the file was edited).
+	var session := _endless(4244)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	var shell := {}
+	for rock in sim.arena.rocks:
+		if shell.is_empty() or rock.center.length() < shell.center.length():
+			shell = rock
+	check(not shell.is_empty(), "a shell is loaded near home")
+	if shell.is_empty():
+		return
+	var centre := sim.world.abs_of_local(shell.center)
+	sim.save.player["position"] = PlaneSpace.to_save_abs(centre[0], centre[1])
+	check_eq(PersistenceService.new(session.catalog).save_to(slot, sim.save), OK, "a save at %s's centre" % shell.id)
+	var again := _continue()
+	if again == null:
+		return
+	var cell := again.sim
+	check(cell.arena.is_clear(cell.motion.position, cell.phenotype.radius), "the cell is in open water")
+	var at := cell.absolute_position_am()
+	var dx := at[0] - centre[0]
+	var dy := at[1] - centre[1]
+	var moved := sqrt(dx * dx + dy * dy)
+	check(moved <= CLEAR_SEARCH_TM, "within %.0f tm: %.3f" % [CLEAR_SEARCH_TM, moved])
+	check(moved >= float(shell.radius) + cell.phenotype.radius - PoolArena.CLEAR_EPSILON,
+		"outside the shell: %.4f from its centre, radius %.3f + body %.3f" % [moved, shell.radius, cell.phenotype.radius])
+
+
 func test_slow_ten_save_and_continue_cycles_do_not_drift() -> void:
 	var session := _endless(4245)
 	if session.sim == null:

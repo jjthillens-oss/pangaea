@@ -19,6 +19,10 @@ var home: HomeBlock
 var kit: PlacementKit
 ## The M1 pool layout the home block builds on (its camera and carrion are checked here too).
 var layout: PoolLayout
+## What WorldGen derives from the content alone (each tile's objects in each orientation, the kit's
+## fitting shells per slot radius), cached here so every generator bound to this content shares
+## it. Only WorldGen reads or writes it; change the content only before the first generator runs.
+var derived := {}
 
 
 ## Never null; what failed to load shows in problems(). A null layout is loaded from

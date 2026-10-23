@@ -222,6 +222,8 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 			p_save.world_seed * SEED_STRIDE + ENCOUNTER_SEED_OFFSET)
 	world.load_view_set_now(sim, Vector2.ZERO)
 	var place := sim._clear_point_near(Vector2.ZERO, sim.phenotype.radius)
+	# A restored place inside a collider moves the cell off the origin: its own view set loads too (B-8).
+	world.load_view_set_now(sim, place)
 	var at_spawn := at[0] == p_world.home.spawn[0] and at[1] == p_world.home.spawn[1]
 	var heading := p_world.home.spawn_heading if at_spawn else sim._nearest_zone_direction(place).angle()
 	sim.motion = Locomotion.MotionState.new(place, heading)

@@ -314,6 +314,56 @@ func test_a_teleport_unloads_then_rebases_then_loads() -> void:
 		check_eq(sim.plankton.count_in(id), sim.plankton.target_count(sim.region.zone(id)), "zone %s filled at once (C-9)" % id)
 
 
+## B-4: on a teleport tick with awake creatures every creature_removed comes before rebased, and no
+## event after rebased holds a position more than 256 tm from the new origin.
+func test_a_teleport_with_awake_creatures_removes_them_before_rebased() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	for t in 60:
+		sim.step(SimIntent.new())
+	var before := sim.creatures.creatures.size()
+	check(sim.creatures.awake().size() >= 2, "awake creatures about (%d)" % sim.creatures.awake().size())
+	sim.drain_events()
+	check(sim.debug_teleport_abs(5000.0, 9.0), "teleported 5 km east")
+	var events := sim.drain_events()
+	var r := -1
+	var removed_after := 0
+	var removed := 0
+	var far := 0
+	var first_far := ""
+	for i in events.size():
+		var e: Dictionary = events[i]
+		if e.type == "rebased":
+			r = i
+		elif e.type == "creature_removed":
+			removed += 1
+			if r >= 0:
+				removed_after += 1
+		if r >= 0 and i > r:
+			for v in _event_vectors(e):
+				if v.length() > 256.0:
+					far += 1
+					if first_far.is_empty():
+						first_far = "%s %s" % [e.type, v]
+	check(r > 0, "a rebased")
+	check_eq(removed, before, "every creature removed")
+	check_eq(removed_after, 0, "all before rebased")
+	check_eq(far, 0, "no old-frame position after rebased (%s)" % first_far)
+
+
+## Every Vector2 in an event, nested dictionaries and arrays included.
+static func _event_vectors(v: Variant) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	if v is Vector2:
+		out.append(v)
+	elif v is Dictionary:
+		for k in v:
+			out.append_array(_event_vectors(v[k]))
+	elif v is Array:
+		for x in v:
+			out.append_array(_event_vectors(x))
+	return out
+
+
 func test_no_event_is_pending_when_the_streaming_block_starts() -> void:
 	var sim := _endless()
 	check(sim.debug_spawn_creature("rammer", Vector2(8.0, -8.0), 0.0), "a creature about")
