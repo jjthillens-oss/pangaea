@@ -89,11 +89,11 @@ def sh_glass_dome(m, fr):
 
 SHELLS = {
     # id: (builder, footprint class, footprint radius, scale range, what)
-    "shell_b1_lattice_cap": (sh_lattice_cap, "fp_s", 0.8, [0.8, 1.12], "a glass drum under a low lattice cap"),
-    "shell_b1_tiered_disc": (sh_tiered_disc, "fp_s", 0.7, [0.86, 1.28], "a stepped, scalloped glass disc with an amber core"),
-    "shell_b1_rimmed_cup": (sh_rimmed_cup, "fp_m", 1.0, [0.9, 1.18], "an open glass cup with a rolled lip, a lavender pearl inside"),
-    "shell_b1_spined_drum": (sh_spined_drum, "fp_m", 1.1, [0.82, 1.08], "a frosted drum with a star of glass spines on its crown"),
-    "shell_b1_glass_dome": (sh_glass_dome, "fp_l", 1.35, [0.9, 1.1], "a broad ribbed glass dome ringed with lavender pores"),
+    "shell_b1_lattice_cap": (sh_lattice_cap, "fp_s", 0.8, [0.75, 1.13], "a glass drum under a low lattice cap"),
+    "shell_b1_tiered_disc": (sh_tiered_disc, "fp_s", 0.7, [0.85, 1.29], "a stepped, scalloped glass disc with an amber core"),
+    "shell_b1_rimmed_cup": (sh_rimmed_cup, "fp_m", 1.0, [0.90, 1.20], "an open glass cup with a rolled lip, a lavender pearl inside"),
+    "shell_b1_spined_drum": (sh_spined_drum, "fp_m", 1.1, [0.81, 1.37], "a frosted drum with a star of glass spines on its crown"),
+    "shell_b1_glass_dome": (sh_glass_dome, "fp_l", 1.35, [0.88, 1.12], "a broad ribbed glass dome ringed with lavender pores"),
 }
 
 
