@@ -112,6 +112,23 @@ func consume(id: String) -> bool:
 	return false
 
 
+## Endless mode: drops every item farther than `r` from `p`, for good and without events (it is
+## out of view: WorldStream's food ring lies beyond the camera's reach). Returns how many went.
+func drop_beyond(p: Vector2, r: float) -> int:
+	var before := items.size()
+	var r_sq := r * r
+	items = items.filter(func(item: Dictionary) -> bool: return p.distance_squared_to(item.position) <= r_sq)
+	return before - items.size()
+
+
+## Endless mode: drops every item without events (a far respawn, behind the camera cut). Returns
+## how many went.
+func drop_all() -> int:
+	var before := items.size()
+	items.clear()
+	return before
+
+
 func _next_interval() -> float:
 	return float(supply.interval_s) + rng.randf_range(-float(supply.jitter_s), float(supply.jitter_s))
 

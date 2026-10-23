@@ -398,3 +398,73 @@ func _no_vectors(value: Variant) -> bool:
 			if not _no_vectors(v):
 				return false
 	return true
+
+
+# --- the endless world's place lists (S1 T2.5): in the pool they reduce to M1's one place ---
+
+func test_awake_is_the_creature_list_itself_in_pool_mode() -> void:
+	var field := _field()
+	field.populate(layout.build_arena(), layout.spawn, 0)
+	check(not field.endless, "the pool field is not endless")
+	check(is_same(field.awake(), field.creatures), "awake() is the very list (the pool tick runs over it unchanged)")
+	var bodies := field.bodies(_player(layout.spawn))
+	check_eq(bodies.size(), 8, "the player and all seven")
+	var stray := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	check(field.awake().has(stray), "a new creature is awake in the pool at once")
+	check_eq(field.creatures[-1], stray, "appended in the pool (numbers rise)")
+
+
+func test_blocker_from_one_place_equals_the_m1_spawn_blocker() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	var squatter := field.spawn_at("rammer", species.site("lair_sw").home + Vector2(1.5, 0.0), 0.0, "", 0, true)
+	var places: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE, NORTH_OF_LAIR_SE, Vector2(30.0, -30.0), Vector2(-25.0, 20.0)]
+	var on_rock := {"id": "on_rock", "species": "ambush_hunter", "home": layout.rocks[16].center, "heading": 0.0}
+	var sites: Array = species.sites.duplicate()
+	sites.append(on_rock)
+	var reasons := {}
+	for s in sites:
+		for p in places:
+			var one: Array[Vector2] = [p]
+			var m1 := field.spawn_blocker(s, arena, p)
+			check_eq(field.blocker_from(s, arena, one), m1, "%s from %s" % [s.id, p])
+			reasons[m1] = true
+	for r in ["", "near the player", "in view", "not clear", "occupied"]:
+		check(reasons.has(r), "the cases cover %s" % ("a free site" if r.is_empty() else "'%s'" % r))
+	# Two places: the nearer rule wins from either, and "near" is checked before "in view".
+	var lair: Dictionary = species.site("lair_se")
+	var two: Array[Vector2] = [layout.spawn, NORTH_OF_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, two), "near the player", "near from the second place")
+	var both: Array[Vector2] = [BESIDE_LAIR_SE, NORTH_OF_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, both), "near the player", "near before in view, whatever the place order")
+	var seen: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, seen), "in view", "in view from the second place")
+	field.remove(squatter, "test", 0, false)
+
+
+func test_remove_stuck_at_one_place_equals_remove_stuck() -> void:
+	for p in [NORTH_OF_LAIR_SE, BESIDE_LAIR_SE, layout.spawn]:
+		var a := _field()
+		var b := _field()
+		var arena := layout.build_arena()
+		a.populate(arena, layout.spawn, 0)
+		b.populate(arena, layout.spawn, 0)
+		for f in [a, b]:
+			f.take_events()
+			f.find("c_1").brain.stuck = true
+			f.find("c_4").brain.stuck = true
+		a.remove_stuck(p, 50)
+		var one: Array[Vector2] = [p]
+		b.remove_stuck_at(one, 50)
+		check_eq(_site_ids(b), _site_ids(a), "the same creatures stay with the player at %s" % p)
+		check_eq(b.queue, a.queue, "the same queue")
+	# Two places: a stuck creature near or in view of either stays.
+	var c := _field()
+	c.populate(layout.build_arena(), layout.spawn, 0)
+	c.find("c_1").brain.stuck = true
+	var places: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE]
+	c.remove_stuck_at(places, 60)
+	check(c.find("c_1") != null, "kept: the second place sees it")
+	var far: Array[Vector2] = [layout.spawn, Vector2(-30.0, -20.0)]
+	c.remove_stuck_at(far, 61)
+	check(c.find("c_1") == null, "removed when no place is near or sees it")

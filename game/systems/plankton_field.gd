@@ -8,6 +8,9 @@ extends RefCounted
 ## Items drift around an anchor. The drift is simulated, not just drawn, because reach depends on
 ## it. Spawn points come from the region's seeded RNG; drift phases come from the item number, so
 ## the field draws no random numbers of its own.
+##
+## In the endless world (S1) only the zones near the cell show plankton: `active_zones` names them
+## (WorldStream's food view sets it every tick), the others keep their stock but show no items.
 
 const SPAWN_TRIES := 8
 const COUNT_EPSILON := 1e-6           ## 23.9999999 energy still shows three 8-energy items
@@ -28,6 +31,9 @@ var items: Array[Dictionary] = []
 var next_number := 1
 ## zone_empty / zone_regrown events since PoolSim last took them: {"type", "zone"}
 var events: Array[Dictionary] = []
+## Endless mode: only the zones in `active_zones` spawn, fill or report; the pool shows every zone.
+var endless := false
+var active_zones := {}                ## zone id -> true (endless mode)
 var _empty_latched := {}
 var _regrowing := {}
 
@@ -75,8 +81,15 @@ func is_regrowing(zone_id: String) -> bool:
 ## Fills every zone up to its count at once (a new world starts full).
 func fill(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
 	for zone in region.zones:
-		for i in target_count(zone) - count_in(zone.id):
-			_try_spawn(zone, region, arena, tick_number, now)
+		if endless and not active_zones.has(zone.id):
+			continue
+		fill_zone(zone, region, arena, tick_number, now)
+
+
+## Fills one zone up to its count at once (endless mode: a zone that must not grow in view).
+func fill_zone(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
+	for i in target_count(zone) - count_in(zone.id):
+		_try_spawn(zone, region, arena, tick_number, now)
 
 
 func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
@@ -84,6 +97,8 @@ func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float)
 	for item in items:
 		counts[item.zone] = int(counts.get(item.zone, 0)) + 1
 	for zone in region.zones:
+		if endless and not active_zones.has(zone.id):
+			continue
 		var have: int = counts.get(zone.id, 0)
 		var want := target_count(zone)
 		if have < want and _try_spawn(zone, region, arena, tick_number, now):
@@ -118,6 +133,14 @@ func consume(id: String) -> bool:
 ## Removes every item of a zone (dev command; the caller empties the zone's stock).
 func clear_zone(zone_id: String) -> void:
 	items = items.filter(func(item: Dictionary) -> bool: return item.zone != zone_id)
+
+
+## Endless mode: a zone left the food view (or its ground unloaded). Its items go without events
+## (they are out of view) and its empty/regrown flags are forgotten; its stock is the region's.
+func drop_zone(zone_id: String) -> void:
+	clear_zone(zone_id)
+	_empty_latched.erase(zone_id)
+	_regrowing.erase(zone_id)
 
 
 func _try_spawn(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> bool:

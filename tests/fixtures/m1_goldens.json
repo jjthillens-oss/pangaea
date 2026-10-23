@@ -1,0 +1,280 @@
+{
+	"schema_version": 1,
+	"recorded_at": "986f668",
+	"reverified_at": [
+		"ac03f1e",
+		"e076d3f"
+	],
+	"engine": "4.7.2-stable (official)",
+	"body": "omnivore",
+	"scenarios": [
+		"pool",
+		"threats_forage",
+		"threats_kiter"
+	],
+	"seeds": [
+		401,
+		402,
+		4242,
+		77
+	],
+	"ticks": [
+		600,
+		3600,
+		18000
+	],
+	"hashes": [
+		{
+			"scenario": "pool",
+			"seed": 401,
+			"tick": 600,
+			"hash": 3508933591,
+			"sha256": "b735b483e9c355e0fab799c5356756c48dfd4a0c4b99af9d756d9f6607c69935"
+		},
+		{
+			"scenario": "pool",
+			"seed": 401,
+			"tick": 3600,
+			"hash": 444405447,
+			"sha256": "7b3bda5e8650bb50a91d8e9eb115866e96495faab57a3036d45de3e9ac8426fb"
+		},
+		{
+			"scenario": "pool",
+			"seed": 401,
+			"tick": 18000,
+			"hash": 2151865420,
+			"sha256": "00768be519e46bf0fd0713002d781ddb910b9167c863532fc6765aa936b6b6e0"
+		},
+		{
+			"scenario": "pool",
+			"seed": 402,
+			"tick": 600,
+			"hash": 2619314646,
+			"sha256": "8519e101ce606360bc8eb8aa9b0d95d33ad66df3e636eff60b5c109439cb8e04"
+		},
+		{
+			"scenario": "pool",
+			"seed": 402,
+			"tick": 3600,
+			"hash": 2765749888,
+			"sha256": "c60823e8d56d951647ffd6c09956a4955e105040dca609c4dd531a43f97cf188"
+		},
+		{
+			"scenario": "pool",
+			"seed": 402,
+			"tick": 18000,
+			"hash": 1882891496,
+			"sha256": "01f03c717b5ae78a2aef7bbc9d79e7f32c8dc9589d4b830cd9ee3cb3b0d04661"
+		},
+		{
+			"scenario": "pool",
+			"seed": 4242,
+			"tick": 600,
+			"hash": 981828579,
+			"sha256": "ede9b03398ef7e6a49ddf931d27ca0f64ad8d482dc49dbc97c5ba2674fa8be67"
+		},
+		{
+			"scenario": "pool",
+			"seed": 4242,
+			"tick": 3600,
+			"hash": 3612020644,
+			"sha256": "e4b5e6d167aacf86479cdd9216b1c557bb892a243b0089cc599b903462beee8c"
+		},
+		{
+			"scenario": "pool",
+			"seed": 4242,
+			"tick": 18000,
+			"hash": 2792245988,
+			"sha256": "2fd016d366b2e8fe5ef44a3b1e23b8eb3d4ca25876dc146ba82603b91152dd74"
+		},
+		{
+			"scenario": "pool",
+			"seed": 77,
+			"tick": 600,
+			"hash": 4198669806,
+			"sha256": "83bda82970178a97fc2ad041bdd11c1ada5b6e80e15366285628227c0d7e246f"
+		},
+		{
+			"scenario": "pool",
+			"seed": 77,
+			"tick": 3600,
+			"hash": 2283345459,
+			"sha256": "048c55022b42aa062091cad494480715986a6eb36719cb75e9d7fc4889d06e2d"
+		},
+		{
+			"scenario": "pool",
+			"seed": 77,
+			"tick": 18000,
+			"hash": 2918940561,
+			"sha256": "644e6afc67e09236f08a345f8461292e354028a15a070cf37a980eb2cafce3cb"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 401,
+			"tick": 600,
+			"hash": 2056924140,
+			"sha256": "c5700d4e883fb593cca314f95b2f0e0d4e51b583ee6e8fa8988d638a487ec20e"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 401,
+			"tick": 3600,
+			"hash": 3804684997,
+			"sha256": "5786625d42a7a8ada5d782779b5cb47d8f4bf6b3f4a2b5c84bc33acb13057a9b"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 401,
+			"tick": 18000,
+			"hash": 2599067847,
+			"sha256": "127786d6bb6688444708b4ee2185eb1ff77f90377ab3a83d1060ff92db4ab1b5"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 402,
+			"tick": 600,
+			"hash": 2891722313,
+			"sha256": "3c3a8c066240d1bf472e6212cbacd7d11f77785ea24d3e770645b79447d8d621"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 402,
+			"tick": 3600,
+			"hash": 2077324025,
+			"sha256": "cab7d7d5e9d58e79a656871f8e8f59da37adab580f059afc2ea3cc531e1d0392"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 402,
+			"tick": 18000,
+			"hash": 2353220579,
+			"sha256": "3061a495f54a1a0fdd0821ab267207b95629007e97c181121aa758bfca52138f"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 4242,
+			"tick": 600,
+			"hash": 1558643537,
+			"sha256": "28c572f709955bb997e126b3569f4b24682247effd82b96eaf01335644c7cb8d"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 4242,
+			"tick": 3600,
+			"hash": 3333729406,
+			"sha256": "057e4beebbf32d825aced7a83ee0eb7171581a9ceb02a5150c168acf6c83cfaf"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 4242,
+			"tick": 18000,
+			"hash": 636629997,
+			"sha256": "9702690edae9f3b71d9a4a148dcfc0c20a055bc57f839496594f2d5436c6d9ea"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 77,
+			"tick": 600,
+			"hash": 1787099919,
+			"sha256": "96ba958a4f1dd9661653ff983ba5f7723906c398caea1cc4bf976840bee3d9b2"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 77,
+			"tick": 3600,
+			"hash": 2486244744,
+			"sha256": "17388ad2f5165a95c4536b30748fb10e2c1a6cb90a6363d2379e878d7c1b4f49"
+		},
+		{
+			"scenario": "threats_forage",
+			"seed": 77,
+			"tick": 18000,
+			"hash": 97185641,
+			"sha256": "8a3e8c80274a5e70579a620606bcc74e97f5313c39b7cf488eff3f3f436e0afc"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 401,
+			"tick": 600,
+			"hash": 3732654930,
+			"sha256": "3b2ac1f873a81bb20ad9b281bb61300df15a764b17a27fcb5efe54031c3c9ced"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 401,
+			"tick": 3600,
+			"hash": 1654578618,
+			"sha256": "efc544cd83ac82735130f74084cc3c6ad7321edf1c81274ce87a9d53d00c8a61"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 401,
+			"tick": 18000,
+			"hash": 442146783,
+			"sha256": "93b5a1fb012efc95df470ef424c7c1a6d209b790b9818a4eaa9e344cd5008858"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 402,
+			"tick": 600,
+			"hash": 1652861701,
+			"sha256": "cc5761f94777866114f541214b9cfeb4bd9f05cf1183eaae8f6393bc81742993"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 402,
+			"tick": 3600,
+			"hash": 4241256835,
+			"sha256": "f9d6eae49aba622be8599ec3f37d080d65d6a1b36cbb2a8ec94ad9b2ef6d1130"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 402,
+			"tick": 18000,
+			"hash": 850712053,
+			"sha256": "6c650e176e3dc33af576886f1320e69186ccc47a5199d4d77961f8b5cbbcd4d2"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 4242,
+			"tick": 600,
+			"hash": 1391562059,
+			"sha256": "2569168acdd5cb1c85580f5a9628b0f196751774243c1729cb6fd243f5294ed2"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 4242,
+			"tick": 3600,
+			"hash": 4275605932,
+			"sha256": "996c8f3b2418a98595f169f581a451cb2b41c536aae7e805ba5c9d5fb09d4415"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 4242,
+			"tick": 18000,
+			"hash": 1974009202,
+			"sha256": "5df1f703150bbf43eac8786ba879f3625eadddd9f5436b3f7653e5825f5b6de4"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 77,
+			"tick": 600,
+			"hash": 782639207,
+			"sha256": "5ee77fe6bd955f5fddd987ffc070ff0534be4256e72c9a9f3caac400baeca03f"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 77,
+			"tick": 3600,
+			"hash": 1032753286,
+			"sha256": "6d76b148517003706ab14fa18718aa7c55d1feb5735b9d324ba5f067e1890c0a"
+		},
+		{
+			"scenario": "threats_kiter",
+			"seed": 77,
+			"tick": 18000,
+			"hash": 1697326859,
+			"sha256": "f912148e51adcb2990dd76bea6600aa7b85396eef9bde5b4f462b33fe1b24186"
+		}
+	]
+}
