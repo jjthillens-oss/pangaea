@@ -2,9 +2,10 @@ extends TestCase
 ## The debug panel's AI section (M1 step 3, plan section 16; the debug AI lines are never cut): two
 ## lines per creature, then the niches, the respawn queue and the token, then the cell. They are
 ## built from the running sim of the real pool. The panel on screen, F9 and F10 are covered by the
-## scene smoke.
+## scene smoke. The render section's GPU line (micro-world plan C1) is checked from fed readings.
 
 const DebugPanel := preload("res://game/dev/debug_panel.gd")
+const PANEL_SCENE := "res://game/dev/debug_panel.tscn"
 const PLAYER := "player"
 const IN_FRONT_M := 2.75              ## inside the ambush hunter's lunge window (plan section 19)
 const TELL_LIMIT_TICKS := 600
@@ -95,3 +96,26 @@ func test_a_killed_creature_s_site_waits_in_the_queue_and_a_death_shows_on_the_c
 	check(DebugPanel.player_line(sim).contains("  last death killed:ambush_hunter  "), "the cell's last death is named")
 	var bare := PoolSim.create(Lineage.found(1, "test+dev", catalog, "grazer").save, catalog, layout)
 	check_eq(DebugPanel.ai_lines(bare)[0], "No creatures in this pool.", "a pool without species says so")
+
+
+func test_the_render_section_shows_the_gpu_time_of_the_frames_the_renderer_timed() -> void:
+	check_eq(DebugPanel.gpu_line(PackedFloat32Array([2.0, 3.0, 7.0])), "GPU 4.00 ms · longest 7.00 ms (last 3 frames)",
+		"the GPU line gives the average and the longest GPU time")
+	check_eq(DebugPanel.gpu_line(PackedFloat32Array()), "GPU n/a (the renderer has timed no frame)",
+		"a renderer that times nothing (headless) shows n/a")
+	var panel: CanvasLayer = (load(PANEL_SCENE) as PackedScene).instantiate()
+	var lines: PackedStringArray = panel.call("_render_lines")
+	check(lines.has("GPU n/a (the renderer has timed no frame)") and panel.fields.gpu_ms == 0.0,
+		"before any timed frame the render section shows n/a and gpu_ms 0 (%s)" % [lines])
+	panel.take_gpu_sample(0.0)
+	panel.take_gpu_sample(-1.0)
+	panel.take_gpu_sample(9.0)
+	for i in DebugPanel.FRAME_WINDOW:
+		panel.take_gpu_sample(2.0)
+	lines = panel.call("_render_lines")
+	check(lines.has("GPU 2.00 ms · longest 2.00 ms (last %d frames)" % DebugPanel.FRAME_WINDOW),
+		"untimed frames are skipped and the oldest leave the window (%s)" % [lines])
+	check(lines.find("GPU 2.00 ms · longest 2.00 ms (last %d frames)" % DebugPanel.FRAME_WINDOW) == 1, "the GPU line follows the FPS line")
+	check_eq(panel.fields.gpu_ms, 2.0, "fields.gpu_ms is the average shown")
+	check_eq(panel.fields.gpu_longest_ms, 2.0, "fields.gpu_longest_ms is the longest shown")
+	panel.free()

@@ -10,11 +10,15 @@ extends CanvasLayer
 ## threat commands: F9 spawns a threat ahead (the species alternate), F10 kills the nearest
 ## creature, and buttons freeze every brain, hide the cell from them and hurt the cell.
 ##
+## The render section shows the GPU frame time (micro-world plan C1): showing the panel turns on the
+## renderer's timing of the root viewport (RenderingServer.viewport_set_measure_render_time), and
+## it stays on. A renderer that times nothing (headless) shows "n/a".
+##
 ## Main loads it by path from its guarded dev loader (no class_name, so nothing outside game/dev
 ## can depend on it). `fields` keeps the latest shown values by name, for checks.
 
 const REFRESH_S := 0.25
-const FRAME_WINDOW := 60            ## frames the longest-frame figure looks back over
+const FRAME_WINDOW := 60            ## frames the longest-frame and GPU figures look back over
 ## Health the Hurt button takes from the cell (plan section 16).
 const HURT_SELF_HP := 10.0
 const VSYNC_NAMES := {
@@ -24,15 +28,18 @@ const VSYNC_NAMES := {
 
 var main: Node
 ## The latest shown values by name: build_id, genome_id, lineage_id, world_seed, slot, tick,
-## fps, longest_frame_ms, draw_calls, adapter, driver, vsync, energy, position, and so on. The AI
-## section adds ai_creatures (the ids it lists, in order), ai_summary (the niche, queue and token
-## line) and ai_player (the cell's line); spawn_threat adds last_threat (the species spawned).
+## fps, longest_frame_ms, gpu_ms (the average GPU time, 0 for none), gpu_longest_ms, draw_calls,
+## adapter, driver, vsync, energy, position, and so on. The AI section adds ai_creatures (the ids
+## it lists, in order), ai_summary (the niche, queue and token line) and ai_player (the cell's
+## line); spawn_threat adds last_threat (the species spawned).
 var fields := {}
 
 var _refresh_t := 0.0
 ## Wall-clock frame times in ms, as in perf_tour.gd (the process delta caps a stall near 150 ms).
 var _frame_ms := PackedFloat32Array()
 var _last_frame_usec := -1
+## The renderer's GPU times of the last FRAME_WINDOW frames it timed, in ms.
+var _gpu_ms := PackedFloat32Array()
 var _zone_rows := {}                 ## zone id -> {"bar": ProgressBar, "text": Label}
 var _zones_sim: PoolSim              ## the sim the zone rows were built for
 var _threat_turn := 0                ## which species the next spawn_threat places
@@ -70,6 +77,7 @@ func attach(p_main: Node) -> void:
 func toggle() -> void:
 	visible = not visible
 	if visible:
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 		refresh()
 
 
@@ -151,12 +159,22 @@ func _process(delta: float) -> void:
 		if _frame_ms.size() > FRAME_WINDOW:
 			_frame_ms.remove_at(0)
 	_last_frame_usec = now
+	take_gpu_sample(RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()))
 	if not visible:
 		return
 	_refresh_t -= delta
 	if _refresh_t <= 0.0:
 		_refresh_t = REFRESH_S
 		refresh()
+
+
+## Keeps one frame's GPU time in ms for the render section; 0 or less (not timed) is skipped.
+func take_gpu_sample(ms: float) -> void:
+	if ms <= 0.0:
+		return
+	_gpu_ms.append(ms)
+	if _gpu_ms.size() > FRAME_WINDOW:
+		_gpu_ms.remove_at(0)
 
 
 func _current_sim() -> PoolSim:
@@ -211,6 +229,9 @@ func _render_lines() -> PackedStringArray:
 	var fps := Engine.get_frames_per_second()
 	fields.fps = fps
 	fields.longest_frame_ms = worst
+	var gpu := gpu_spread(_gpu_ms)
+	fields.gpu_ms = gpu.avg
+	fields.gpu_longest_ms = gpu.longest
 	fields.draw_calls = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	fields.adapter = "%s (%s)" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor()]
 	fields.driver = "%s, %s" % [RenderingServer.get_current_rendering_driver_name(), RenderingServer.get_current_rendering_method()]
@@ -219,11 +240,30 @@ func _render_lines() -> PackedStringArray:
 	var window := Vector2i.ZERO if headless else DisplayServer.window_get_size()
 	return PackedStringArray([
 		"FPS %.0f · frame %.1f ms · longest %.1f ms (last %d frames)" % [fps, 1000.0 / maxf(fps, 1.0), worst, _frame_ms.size()],
+		gpu_line(_gpu_ms),
 		"Draw calls %d" % fields.draw_calls,
 		"Adapter %s" % fields.adapter,
 		"Driver %s" % fields.driver,
 		"VSync %s · window %d×%d" % [fields.vsync, window.x, window.y],
 	])
+
+
+## {"avg", "longest"} of GPU times in ms; zeros for none.
+static func gpu_spread(gpu_ms: PackedFloat32Array) -> Dictionary:
+	var total := 0.0
+	var longest := 0.0
+	for ms in gpu_ms:
+		total += ms
+		longest = maxf(longest, ms)
+	return {"avg": total / gpu_ms.size() if not gpu_ms.is_empty() else 0.0, "longest": longest}
+
+
+## The render section's GPU line: the average and longest GPU time over the frames the renderer timed.
+static func gpu_line(gpu_ms: PackedFloat32Array) -> String:
+	if gpu_ms.is_empty():
+		return "GPU n/a (the renderer has timed no frame)"
+	var gpu := gpu_spread(gpu_ms)
+	return "GPU %.2f ms · longest %.2f ms (last %d frames)" % [gpu.avg, gpu.longest, gpu_ms.size()]
 
 
 func _actor_lines(sim: PoolSim) -> PackedStringArray:
