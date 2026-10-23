@@ -1,0 +1,104 @@
+{
+  "id": "cpart_beak",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a keeled two-part horn beak with a fleshy gape, opening on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_beak.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_beak.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.134,
+    "y_forward": 0.094,
+    "z_up": 0.18
+  },
+  "triangles": 286,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartBeak_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartBeak_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartBeak_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_BeakGape",
+    "M_BeakHorn"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Beak"
+  ],
+  "part_type": "beak",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "beak",
+    "footprint_radius_m": 0.074,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the bill 60% longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Open",
+        "meaning": "mandibles parted 18 degrees each about the gape",
+        "default_permille": 0
+      },
+      {
+        "key": "H3_Hook",
+        "meaning": "the tip hooked further toward the tail",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_BeakGape": 0.8,
+    "M_BeakHorn": 0.1
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1408,
+    "triangles_after": 286
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
