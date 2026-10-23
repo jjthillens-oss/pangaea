@@ -1195,8 +1195,8 @@ static func seek_from(mem: Memory, at: Vector2, radius: float, speed: float, acc
 		share: float, arena: PoolArena, arrive: bool, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var way := goal
 	if keep != null:
-		way = (arena as ChunkArena).route_point_kept(at, goal, radius, float(mem.cfg.route_clearance),
-			float(mem.cfg.route_margin), mem.route_side, keep)
+		way = (arena as ChunkArena).route_point_kept(at, goal, radius, float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
+			mem.route_side, keep)
 	elif arena != null:
 		way = arena.route_point(at, goal, radius, float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
 			mem.route_side)

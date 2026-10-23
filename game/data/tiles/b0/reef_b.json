@@ -11,7 +11,7 @@
   "set_piece": null,
   "shells": [
     {"id": "s0", "center": [19.1, -21.2], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s1", "center": [-0.6, -16.6], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-0.6, -16.6], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s2", "center": [-6.3, -22.8], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s3", "center": [7.7, 21.0], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s4", "center": [25.3, 5.1], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
@@ -24,7 +24,7 @@
     {"id": "s11", "center": [-1.7, 14.6], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s12", "center": [16.4, -14.3], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s13", "center": [16.1, -18.7], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s14", "center": [-4.2, -19.5], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s14", "center": [-4.2, -19.5], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s15", "center": [18.3, 3.4], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s16", "center": [-0.5, -22.0], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s17", "center": [18.5, -0.6], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
@@ -44,7 +44,8 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [6.0, -3.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [-9.8, -9.8], "heading": -2.3562, "territory_zone": "", "sizes": [1]},
-    {"id": "lb", "species": "ambush_hunter", "home": [10.0, 15.5], "heading": 0.0831, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [-9.8, -9.8], "heading": -2.3562, "territory_zone": "", "sizes": [1, 2]},
+    {"id": "lb", "species": "ambush_hunter", "home": [10.0, 15.5], "heading": 0.0831, "territory_zone": "", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [-4.0, -15.0], "heading": 1.3102, "territory_zone": "", "sizes": [2]}
   ]
 }

@@ -7,7 +7,9 @@ extends SceneTree
 ## tile's place, a hashed rare tile's place at a mirrored orientation, a drift zone, and a chunk 100 km
 ## out (at size 2 the same keys, which hold what lies there, and KEYS_S2). Re-record only for a
 ## deliberate change to the generator or the fixture world (core C-15: once at the region-rule
-## answer; S2 T3.3 added size 2 with size 1 unchanged), and say why in the commit:
+## answer; S2 T3.3 added size 2 with size 1 unchanged; S2 T3.5 re-recorded both when the fixture
+## tiles took their size-2 threats, sizes on every site and the threat anchor at (0, -25)), and say
+## why in the commit:
 ##
 ##     godot --headless --path . --script res://tests/fixtures/world/record_chunk_digests.gd
 
