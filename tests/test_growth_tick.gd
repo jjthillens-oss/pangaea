@@ -596,6 +596,34 @@ func test_the_old_world_is_freed_on_quiet_ticks_after_the_beat() -> void:
 		_tick(sim)
 	check(w._retired.is_empty(), "all freed after it (%d left)" % w._retired.size())
 
+
+## The growth tick's unload (_unload_all: the zones' plankton in one pass, the zones in the region's
+## order) leaves what unloading every chunk one at a time ("growth") leaves: the region, its streams,
+## the food, the zone index and records, the sites, the queue, the counters and the events; only the
+## arena is left to grow, which replaces it.
+func test_the_growth_unload_leaves_what_unloading_each_chunk_leaves() -> void:
+	for seed_value: int in SEEDS:
+		var whole := _swum(seed_value)
+		var each := _swum(seed_value)
+		check(not whole.region.zones.is_empty() and not whole.plankton.items.is_empty() and not whole.world.sites.is_empty(),
+			"seed %d: zones, food and sites to unload" % seed_value)
+		whole.world._unload_all(whole)
+		for key in each.world.loaded_keys():
+			each.world._unload_chunk(each, key, "growth")
+		check_eq(_unloaded_state(whole), _unloaded_state(each), "seed %d: the same world" % seed_value)
+		check_eq(whole.drain_events(), each.drain_events(), "seed %d: the same events" % seed_value)
+
+
+static func _unloaded_state(sim: PoolSim) -> Dictionary:
+	var w := sim.world
+	var pk := sim.plankton
+	return {"zones": sim.region.zones, "streams": sim.region.streams.keys(), "niches": sim.region.niches,
+		"items": pk.items, "active": pk.active_zones, "counts": pk._zone_counts, "latched": pk._empty_latched,
+		"regrowing": pk._regrowing, "keys": w.loaded_keys(), "zone_abs": w._zone_abs, "zone_chunk": w._zone_chunk,
+		"fill": w._fill, "trimmed": w._trimmed, "index": [w._zone_ids, w._zone_c, w._zone_r, w._zone_refs, w._zone_ax, w._zone_ay],
+		"versions": [w._zones_version, w._zones_indexed, w._index_epoch, w._site_epoch], "sites": w.sites, "queue": sim.creatures.queue,
+		"creatures": sim.creatures.creatures.map(func(c: CreatureField.Creature) -> String: return c.id), "roles": w.site_counts}
+
 ## An arena's state but its epoch (which only grows): its chunks in canonical order, the canonical
 ## arrays, each chunk's span, near grid and colliders as added, its origin and its switches.
 static func _arena_state(arena: ChunkArena) -> Dictionary:

@@ -225,25 +225,27 @@ func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> voi
 	# Golden-ratio steps spread phases and periods evenly without a random draw.
 	var period_x := lerpf(drift_period.x, drift_period.y, fposmod(n * GOLDEN_RATIO_FRACTION, 1.0))
 	var period_y := lerpf(drift_period.x, drift_period.y, fposmod(n * GOLDEN_RATIO_FRACTION * 2.0 + 0.5, 1.0))
+	var phase := Vector2(fposmod(n * GOLDEN_ANGLE, TAU), fposmod(n * GOLDEN_ANGLE * 2.0, TAU))
+	var omega := Vector2(TAU / period_x, TAU / period_y)
+	var id := "pk_" + str(n)
 	var item := {
-		"id": "pk_%d" % n,
+		"id": id,
 		"zone": zone_id,
 		"kind": "plant",
-		"position": anchor,
+		"position": anchor + drift_amplitude * Vector2(sin(now * omega.x + phase.x), cos(now * omega.y + phase.y)),   # _drifted
 		"radius": item_radius,
 		"energy": unit_energy,
 		"points": points,
 		"anchor": anchor,
-		"phase": Vector2(fposmod(n * GOLDEN_ANGLE, TAU), fposmod(n * GOLDEN_ANGLE * 2.0, TAU)),
-		"omega": Vector2(TAU / period_x, TAU / period_y),
+		"phase": phase,
+		"omega": omega,
 		"born_tick": tick_number,
 	}
-	item.position = _drifted(item, now)
 	items.append(item)
-	_phase.append(item.phase)
-	_omega.append(item.omega)
-	_radii.append(item.radius)
-	_by_id[item.id] = item
+	_phase.append(phase)
+	_omega.append(omega)
+	_radii.append(item_radius)
+	_by_id[id] = item
 	_zone_counts[zone_id] = int(_zone_counts.get(zone_id, 0)) + 1
 
 
