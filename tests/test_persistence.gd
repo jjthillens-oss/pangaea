@@ -85,6 +85,34 @@ func test_write_leaves_no_temp_file_and_keeps_backup_of_previous_save() -> void:
 		check_eq(backup.save.genome.parts.size(), 2, "backup holds the previous save")
 
 
+func test_a_verified_temp_file_left_by_an_interrupted_move_is_the_save_that_loads() -> void:
+	# save_to moves the primary to .bak and then .tmp into place; a crash between the two leaves
+	# the older save as .bak and the newest as .tmp.
+	var save := _new_save()
+	service.save_to(PATH, save)
+	save.adaptation_points = 15
+	service.save_to(PATH, save)
+	var newest := FileAccess.get_file_as_string(PATH)
+	DirAccess.remove_absolute(PATH + ".bak")
+	DirAccess.rename_absolute(PATH, PATH + ".bak")
+	_write_raw(PATH + ".tmp", newest)
+	var result := service.load_from(PATH)
+	check(result.ok, "loads")
+	check_eq(result.source, "recovered", "from the temp file, not the older backup")
+	check_eq(result.errors.size(), 0, "nothing was unreadable")
+	if result.ok:
+		check_eq(result.save.adaptation_points, 15, "the newest points")
+	check(FileAccess.file_exists(PATH + ".tmp") and not FileAccess.file_exists(PATH), "loading moved nothing")
+	# The next save takes the empty place; the recovered state is not lost.
+	result.save.adaptation_points = 20
+	check_eq(service.save_to(PATH, result.save), OK, "next save writes")
+	check(not FileAccess.file_exists(PATH + ".tmp"), "no temp file after it")
+	check_eq(service.load_from(PATH).source, "primary", "primary again")
+	_write_raw(PATH + ".tmp", "{ half a save")
+	DirAccess.remove_absolute(PATH)
+	check_eq(service.load_from(PATH).source, "backup", "a damaged temp file is ignored for the backup")
+
+
 func test_corrupt_primary_falls_back_to_backup_without_touching_files() -> void:
 	var save := _new_save()
 	service.save_to(PATH, save)

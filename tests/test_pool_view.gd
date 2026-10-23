@@ -131,6 +131,10 @@ func test_facing_and_full_hints_follow_their_own_rules() -> void:
 	check_eq(hints.consider(facing, 1.0), "", "touching for less than half a second")
 	facing.contact_s = 0.5
 	check_eq(hints.consider(facing, 1.3), "Turn your mouth toward it", "after half a second")
+	facing.contact_s = 1.0
+	check_eq(hints.consider(facing, 1.8), "", "the sim repeats the refusal every 0.5 s; the hint and its sound do not")
+	facing.contact_s = 4.5
+	check_eq(hints.consider(facing, 5.3), "Turn your mouth toward it", "shown again after FACING_REPEAT_S")
 	var full := {"reason": "not hungry", "touching": true, "contact_s": 0.0}
 	check_eq(hints.consider(full, 2.0), "Full", "full")
 	check_eq(hints.consider(full, 6.9), "", "within five seconds")

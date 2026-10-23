@@ -51,7 +51,7 @@ var layout: PoolLayout
 var species: SpeciesCatalog
 var persistence: PersistenceService
 var sim: PoolSim
-## Where the running save came from: "new", "primary" or "backup" ("" before a run starts).
+## Where the running save came from: "new", "primary", "recovered" or "backup" ("" before a run starts).
 var load_source := ""
 ## The last save attempt: {"ok", "error"} ({} before any).
 var last_save := {}
@@ -118,7 +118,7 @@ static func lineage_tag(lineage_id: String) -> String:
 
 
 ## What the slot holds, without writing anything:
-## {"exists", "ok", "source": "primary"|"backup"|"", "summary", "errors"}. The summary (when ok) is
+## {"exists", "ok", "source": "primary"|"recovered"|"backup"|"", "summary", "errors"}. The summary (when ok) is
 ## {"lineage_id", "lineage_tag", "body" ("" for an evolved body), "generation",
 ##  "adaptation_points", "saved_at_unix", "world_seed", "genome": Genome}.
 func peek_slot() -> Dictionary:

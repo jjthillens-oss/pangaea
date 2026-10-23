@@ -271,12 +271,14 @@ func choose_slot(n: int) -> void:
 ## Returns the error, OK when the files are gone.
 func delete_slot(n: int) -> Error:
 	var err := SaveSlots.delete(SaveSlots.path(n))
+	# The title first (its rebuild grabs focus), then the slots screen, so focus ends on the slots
+	# screen that is still open on top.
+	if err == OK and start_screen != null and SaveSlots.number_of(session.slot) == n:
+		start_screen.setup(session.peek_slot(), session.catalog, n)
 	if slot_picker != null:
 		slot_picker.show_slots(SaveSlots.peek_all(), SaveSlots.number_of(session.slot))
 	if err != OK:
 		_alert("Could not delete slot %d" % n, PackedStringArray([error_string(err)]))
-	elif start_screen != null and SaveSlots.number_of(session.slot) == n:
-		start_screen.setup(session.peek_slot(), session.catalog, n)
 	return err
 
 
@@ -315,15 +317,19 @@ static func death_title(cause: String, reason: String = "") -> String:
 	return "Your cell died"
 
 
-## The death notice's body: what the death cost, already applied ("You lost ... (−3)"), whether it
+## The death notice's body: what the death cost, already applied ("You lost ... (−3)", or that there
+## was too little to lose: a quarter of fewer than 4 points rounds down to nothing), whether it
 ## was saved, then the tip on a line of its own. `saved` is GameSession.resolve_death's
 ## {"attempted", "ok", "error"}: "Saved.", "Could not save ...", or nothing when no save was tried
 ## (the OD1 fallback). A starving death without a tip gets GameSession.starved_tip(phenotype), which
 ## names only a food the body can eat, and no food without a phenotype.
 static func death_text(cause: String, lost: int, tip: String = "", saved: Dictionary = {}, generation: int = 1,
 		phenotype: Phenotype = null) -> String:
-	var text := "The lineage continues from the start of generation %d. You lost a quarter of your unspent adaptation points (−%d)." \
-		% [generation, lost]
+	var text := "The lineage continues from the start of generation %d. " % generation
+	if lost > 0:
+		text += "You lost a quarter of your unspent adaptation points (−%d)." % lost
+	else:
+		text += "You had too few unspent adaptation points to lose any."
 	var save_line := death_save_line(saved)
 	if not save_line.is_empty():
 		text += " " + save_line
@@ -498,8 +504,13 @@ func _on_slots_closed() -> void:
 	if slot_picker != null:
 		slot_picker.queue_free()
 	slot_picker = null
-	if start_screen != null:
+	if start_screen == null:
+		return
+	if start_screen.main_view.visible:
 		start_screen.slots_button.grab_focus()
+	else:
+		# The title was left on another view under the overlay: back to its main view, focused.
+		start_screen.show_main()
 
 
 func _on_quit_choice(choice: String) -> void:
@@ -524,6 +535,12 @@ func _alert(title: String, errors: PackedStringArray) -> void:
 
 
 func _quit() -> void:
+	# The settings screen writes its file when it closes; a quit from the window's close button (or
+	# the pause menu's dialog) while it is open would otherwise drop every change made in it.
+	if settings != null and settings.unsaved:
+		var err := settings.save_file()
+		if err != OK:
+			push_warning("Settings could not be saved (%s)." % error_string(err))
 	get_tree().quit()
 
 

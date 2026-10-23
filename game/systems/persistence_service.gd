@@ -6,7 +6,10 @@ extends RefCounted
 ## save to <path>.bak -> move .tmp into place. An interrupted write leaves either the old save or
 ## the backup intact, and a refused or failed write removes its .tmp.
 ## Loading: never modifies files. If the primary file is unreadable, invalid or from a newer
-## build, the backup is tried. Errors explain what went wrong.
+## build, the backup is tried. Errors explain what went wrong. One more case: a write interrupted
+## between its two moves leaves no primary, the older save as .bak and the newest, already
+## verified save as .tmp; that .tmp is then loaded ("recovered") instead of the older backup, and
+## the next save moves its own .tmp into the empty place as usual.
 
 const CURRENT_VERSION := SaveGame.SCHEMA_VERSION
 const BACKUP_SUFFIX := ".bak"
@@ -70,12 +73,19 @@ func save_to(path: String, save: SaveGame) -> Error:
 	return moved
 
 
-## Returns {"ok": bool, "save": SaveGame or null, "source": "primary" | "backup" | "", "errors": PackedStringArray}
+## Returns {"ok": bool, "save": SaveGame or null, "source": "primary" | "recovered" | "backup" | "",
+## "errors": PackedStringArray}
 func load_from(path: String) -> Dictionary:
 	var primary := _read_current_version(path)
 	if primary.ok:
 		primary.source = "primary"
 		return primary
+	if not FileAccess.file_exists(path):
+		var pending := _read_current_version(path + TEMP_SUFFIX)
+		if pending.ok:
+			pending.source = "recovered"
+			pending.errors = PackedStringArray()
+			return pending
 	var backup := _read_current_version(path + BACKUP_SUFFIX)
 	if backup.ok:
 		backup.source = "backup"

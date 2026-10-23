@@ -147,6 +147,9 @@ func test_the_death_notice_names_the_points_the_death_rule_takes() -> void:
 		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the body's starving tip follows")
 	check(Main.death_text("starved", 2).ends_with("(−2).\n" + GameSession.STARVED_TIP_ANY),
 		"without a body the fallback tip names no food: %s" % Main.death_text("starved", 2))
+	var nothing_lost := Main.death_text("killed", 0, "tip", {"attempted": true, "ok": true}, 1)
+	check(nothing_lost.contains("too few unspent adaptation points to lose any") and not nothing_lost.contains("−0"),
+		"a quarter of fewer than 4 points rounds down to nothing, and the notice says so: %s" % nothing_lost)
 	check_eq(Main.death_title("starved"), "Out of energy", "the title does not repeat the body")
 	check_eq(Main.save_status_text({"ok": false, "error": "Could not save to x: disk full."}), "Could not save to x: disk full.", "errors as given")
 	check(Main.save_status_text({"ok": true, "error": ""}).begins_with("Saved "), "a save names its time")
