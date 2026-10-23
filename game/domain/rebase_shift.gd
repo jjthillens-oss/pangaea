@@ -39,8 +39,9 @@ static func motion(m: Locomotion.MotionState, by: Vector2) -> void:
 ## check, what it flees, its home and its territory.
 ## (point() written out: a rebase does this for every creature, and a rebase tick is timed, G17.)
 static func memory(mem: CreatureBrain.Memory, by: Vector2) -> void:
-	for entry in mem.seen.values():
-		entry.position -= by
+	if not mem.seen.is_empty():
+		for entry in mem.seen.values():
+			entry.position -= by
 	if not mem.lane.is_empty():
 		mem.lane.origin -= by
 	if mem.goal.is_finite():
@@ -55,7 +56,15 @@ static func memory(mem: CreatureBrain.Memory, by: Vector2) -> void:
 
 
 ## The named Vector2 keys of every item in `list` (plankton: position and anchor; carrion: position).
+## Item by item, so each item is visited once (each key moves once either way).
 static func items(list: Array[Dictionary], keys: PackedStringArray, by: Vector2) -> void:
-	for k in keys:
+	if keys.size() == 2:
+		var k0 := keys[0]
+		var k1 := keys[1]
 		for item in list:
+			item[k0] -= by
+			item[k1] -= by
+		return
+	for item in list:
+		for k in keys:
 			item[k] -= by

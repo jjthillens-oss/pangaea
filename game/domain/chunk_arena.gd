@@ -168,14 +168,20 @@ func chunk_keys() -> Array[Vector2i]:
 
 
 ## Moves the frame: every local centre is recomputed from its absolute value (never shifted, so no
-## error accumulates). The near grids are absolute and do not change.
+## error accumulates). The near grids are absolute and do not change. One pass over locals (the
+## packed arrays are references): a rebase does this for every loaded collider in a timed tick (G17).
 func set_origin(ox_tm: float, oy_tm: float) -> void:
 	origin_x = ox_tm
 	origin_y = oy_tm
-	for k in _centers.size():
-		var local := Vector2(_abs_x[k] - origin_x, _abs_y[k] - origin_y)
-		_centers[k] = local
-		rocks[k].center = local
+	var centers := _centers
+	var ax := _abs_x
+	var ay := _abs_y
+	var k := 0
+	for rock in rocks:
+		var local := Vector2(ax[k] - ox_tm, ay[k] - oy_tm)
+		centers[k] = local
+		rock.center = local
+		k += 1
 
 
 # --- the overrides ---

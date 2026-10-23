@@ -119,14 +119,17 @@ var _fill := {}                        ## zone id -> true: fill at once in the n
 var _fill_all := false                 ## fill every food zone at once in the next food view
 var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
 ## The region's zones packed for the food view, in their order: id, centre, radius and the zone
-## itself. This stream is the only one to add, remove or move a zone in the endless world, and bumps
-## _zones_version when it does; the index is rebuilt when that or the zone count changed.
+## itself, and for a rebase its absolute centre (tm; NaN for a zone without one). This stream is the
+## only one to add, remove or move a zone in the endless world, and bumps _zones_version when it
+## does; the index is rebuilt when that or the zone count changed.
 var _zones_version := 0
 var _zones_indexed := -1
 var _zone_ids := PackedStringArray()
 var _zone_c := PackedVector2Array()
 var _zone_r := PackedFloat64Array()
 var _zone_refs: Array[Dictionary] = []
+var _zone_ax := PackedFloat64Array()
+var _zone_ay := PackedFloat64Array()
 var _cell_tile := Vector2i.ZERO
 ## Chunks generated ahead (WorldGen.chunk is pure, so a chunk is the same whatever tick builds it):
 ## on a tick that loads nothing, the missing chunk nearest where the cell is heading is generated
@@ -1010,7 +1013,9 @@ static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) 
 
 
 ## Every local value that is derived from an absolute one, again from its absolute value (zones
-## with local_of_tm written out, as sites are).
+## with local_of_tm written out, as sites are). With the food view's index current, a zone's
+## absolute centre comes from its packed copy there (the same float64 values as _zone_abs); a zone
+## that is not the index's own at its place sends the index to a rebuild.
 func _rederive(sim: PoolSim) -> void:
 	var k := _tm_to_am
 	var ox := origin_x_am
@@ -1018,21 +1023,38 @@ func _rederive(sim: PoolSim) -> void:
 	if sim.arena is ChunkArena:
 		(sim.arena as ChunkArena).set_origin(ox / k, oy / k)
 	var indexed := _zones_indexed == _zones_version and _zone_refs.size() == sim.region.zones.size()
+	var refs := _zone_refs
+	var ax := _zone_ax
+	var ay := _zone_ay
+	var cs := _zone_c
 	var i := 0
 	for z in sim.region.zones:
-		var a: Variant = _zone_abs.get(z.id)
-		if a != null:
-			z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
-		if indexed:
-			_zone_c[i] = z.center   # the food view's index moves with its zones
+		if indexed and is_same(refs[i], z):
+			if not is_nan(ax[i]):
+				var c := Vector2((ax[i] * k - ox) / k, (ay[i] * k - oy) / k)
+				z.center = c
+				cs[i] = c   # the food view's index moves with its zones
+			else:
+				cs[i] = z.center
+		else:
+			indexed = false
+			var a: Variant = _zone_abs.get(z.id)
+			if a != null:
+				z.center = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
 		i += 1
 	_zones_version += 1
 	if indexed:
 		_zones_indexed = _zones_version
 	else:
 		_index_zones(sim.region)
-	for id in sites:
-		_derive_site_local(sites[id], k, ox, oy)
+	# _derive_site_local written out.
+	for rec: Dictionary in sites.values():
+		var a: PackedFloat64Array = rec.abs_tm
+		rec.home = Vector2((a[0] * k - ox) / k, (a[1] * k - oy) / k)
+		var t: Dictionary = rec.territory
+		if not t.is_empty():
+			t.center = Vector2((a[2] * k - ox) / k, (a[3] * k - oy) / k)
+		rec.reach.center = Vector2((a[4] * k - ox) / k, (a[5] * k - oy) / k)
 
 
 ## chunk_loaded's payload (spine 3.12), in the frame in force now.
@@ -1153,11 +1175,16 @@ func _index_zones(region: EcologyRegion) -> void:
 	_zone_c.clear()
 	_zone_r.clear()
 	_zone_refs.clear()
+	_zone_ax.clear()
+	_zone_ay.clear()
 	for z in region.zones:
 		_zone_ids.append(z.id)
 		_zone_c.append(z.center)
 		_zone_r.append(float(z.radius))
 		_zone_refs.append(z)
+		var a: Variant = _zone_abs.get(z.id)
+		_zone_ax.append(NAN if a == null else float(a[0]))
+		_zone_ay.append(NAN if a == null else float(a[1]))
 	_zones_indexed = _zones_version
 
 
