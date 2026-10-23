@@ -156,6 +156,31 @@
         "game/scenes/title/title_world.gd"
       ],
       "node": "StartScreen/World/Backdrop"
+    },
+    {
+      "id": "ghost_quads",
+      "kind": "ui",
+      "description": "The ghosts of the sizes ahead (S2 ghost ladder): one shared unit QuadMesh, flat (PlaneMesh.FACE_Y), each ghost an instance scaled to its size and carrying a recorded T_Ghost_* texture through the ghost shader. Gameplay UI drawn on the swim plane, not a model.",
+      "types": [
+        "QuadMesh",
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/ghost_layer.gd"
+      ],
+      "node": "Pool/Ghosts"
+    },
+    {
+      "id": "glitter_quads",
+      "kind": "particles",
+      "description": "The growth beat's glitter (S2): one shared unit QuadMesh drawn as still instances carrying the food looks' recorded haze sprites, and the same quad warmed up once at the start fade so the beat's shaders are ready. Particles, not a model.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/growth_beat.gd"
+      ],
+      "node": "Pool/BeatFx"
     }
   ]
 }
