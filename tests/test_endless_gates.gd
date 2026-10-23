@@ -151,7 +151,8 @@ const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
 ## landed, and a gap is allowed only while its marker file is not in the tree ("" for a data check
 ## with no file of its own).
 const S2_NEEDS := {
-	"set_size": {"what": "the growth tick and PoolSim.debug_set_size and debug_force_growth (T2.5, T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
+	"set_size": {"what": "the growth tick and PoolSim.debug_set_size (T2.5)", "marker": "res://tests/test_growth_tick.gd"},
+	"force_growth": {"what": "PoolSim.debug_force_growth and debug_fill_meter (T2.6)", "marker": "res://tests/test_fuzz_invariants.gd"},
 	"fuzz_growth": {"what": "FuzzInvariants through a growth and a set_size cut (T2.6b)", "marker": "res://tests/test_fuzz_invariants.gd"},
 	"blocker": {"what": "Growth.blocker_of (T2.3)", "marker": "res://game/systems/world/remnant_field.gd"},
 	"remnants": {"what": "PoolSim.remnants (T2.4)", "marker": "res://game/systems/world/remnant_field.gd"},
@@ -228,7 +229,9 @@ static func s2_has(need: String) -> bool:
 	var sim_script := load(POOL_SIM_PATH) as GDScript
 	match need:
 		"set_size":
-			return _lacking(sim_script, {"debug_set_size": 1, "debug_force_growth": 0}, []).is_empty()
+			return _lacking(sim_script, {"debug_set_size": 1}, []).is_empty() and FileAccess.file_exists(S2_NEEDS.set_size.marker)
+		"force_growth":
+			return _lacking(sim_script, {"debug_force_growth": 0, "debug_fill_meter": 0}, []).is_empty()
 		"fuzz_growth":
 			var fuzz: Variant = new_fuzz()
 			fuzz.start_run()

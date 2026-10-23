@@ -2,7 +2,9 @@ extends TestCase
 ## The endless sim end to end (S1 T2.9), on the real WorldGen with the fixture world (T1.7, T1.9):
 ## the save path (the absolute position in am, float64, written and restored exactly), and
 ## determinism: two runs of a straight swim hash the same (G13), and every key of the world's
-## snapshot is in the hash (T2.9b).
+## snapshot is in the hash (T2.9b). With growth (S2 T2.7, S2G21): every key the growth adds to the
+## world block (the meter's, the remnants', the carrion's own radii and lifetimes) is in the hash,
+## the prefetch is not, and two runs through a growth hash the same.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
@@ -24,6 +26,20 @@ const WORLD_PERTURBATIONS := {
 	"gen_version": "gen_version",
 	"size": "size",
 }
+
+## The world keys growth adds (BP-20: none without it), each with its perturbation's name.
+const GROWTH_WORLD_KEYS := {"growth": "growth meter", "remnants": "remnant position", "carrion_radius": "carrion radius",
+	"carrion_lifetime": "carrion lifetime"}
+## Every key of Growth.snapshot(), each perturbed by _perturb_growth("growth <key>").
+const GROWTH_KEYS: PackedStringArray = ["armed", "beat_until", "blocked", "blocker", "calm", "closing", "discoveries", "due",
+	"energy_at_death", "full_since", "last_bite", "last_meal", "last_ram", "meter", "paid", "trigger"]
+## Every key of a remnant's snapshot, each perturbed by _perturb_growth("remnant <key>").
+const REMNANT_KEYS: PackedStringArray = ["born_tick", "flee_speed", "heading", "health", "id", "leaving", "number", "position",
+	"prev_position", "radius", "species", "velocity"]
+const GROWN_SWIM_TICKS := 240           ## the growth base's swim before its forced growth
+const GROWN_AFTER_TICKS := 30           ## and after it
+const GROWTH_RUN_TICKS := 720           ## each of the two runs through a growth (it grows near tick 430)
+const GROWTH_HASH_EVERY := 60
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -160,6 +176,221 @@ func test_every_world_key_changes_the_state_hash() -> void:
 		undo.call()
 		check_eq(sim.state_hash(), h0, "and undoing %s restores it" % what)
 	check_eq(_sorted_keys(covers), _sorted_keys(w.snapshot(sim)), "every world key has its perturbation")
+
+
+## S2G21: with growth on, every key growth adds to the world block changes state_hash(): each key
+## of the meter's snapshot, each key of a remnant's, a carrion item's own radius and its own
+## lifetime; undone, the hash is the base's again. The lists are the snapshot's keys exactly, so a
+## key the snapshot drops (or adds without a perturbation here) fails the test.
+func test_every_growth_key_changes_the_state_hash() -> void:
+	var sim := _grown_endless()
+	var w := sim.world
+	var h0 := sim.state_hash()
+	check_eq(_grown_endless().state_hash(), h0, "the same build hashes the same")
+	check_eq(sim.size(), 2, "the base grew")
+	check(not sim.remnants.items.is_empty(), "a remnant")
+	check(not sim.carrion.items.is_empty(), "a carrion item")
+	var snap := w.snapshot(sim)
+	check_eq(_sorted_keys(snap.growth), Array(GROWTH_KEYS), "the meter's snapshot keys")
+	check_eq(_sorted_keys(snap.remnants[0]), Array(REMNANT_KEYS), "a remnant's snapshot keys")
+	var covers := {"counters": true}
+	for what in WORLD_PERTURBATIONS:
+		covers[WORLD_PERTURBATIONS[what]] = true
+	covers.merge(GROWTH_WORLD_KEYS)
+	check_eq(_sorted_keys(covers), _sorted_keys(snap), "every world key with growth on has its perturbation")
+	var names: Array = GROWTH_WORLD_KEYS.values()
+	for key in GROWTH_KEYS:
+		names.append("growth %s" % key)
+	for key in REMNANT_KEYS:
+		names.append("remnant %s" % key)
+	for what: String in names:
+		var undo: Callable = _perturb_growth(sim, what)
+		check(sim.state_hash() != h0, "perturbing %s changes the hash" % what)
+		undo.call()
+		check_eq(sim.state_hash(), h0, "and undoing %s restores it" % what)
+
+
+## BP-4: the next size's prefetch is a cache, not state: while it holds chunks the snapshot has no
+## key for it (world block or meter), and emptying it leaves the hash as it was.
+func test_the_snapshot_has_no_prefetch_key() -> void:
+	var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species, PackedFloat64Array(), true)
+	var w := sim.world
+	check(sim.debug_fill_meter(0.95), "the ring nearly full (prefetch_share 0.9)")
+	for t in 8:
+		sim.step(SimIntent.new(Vector2(0.4, 0.0)))
+	sim.drain_events()
+	check(not w._next_chunks.is_empty(), "the prefetch holds %d chunks" % w._next_chunks.size())
+	var snap := w.snapshot(sim)
+	var keys: Array = snap.keys() + (snap.growth as Dictionary).keys()
+	for key: String in keys:
+		check(not key.contains("prefetch") and not key.contains("next"), "no prefetch key (%s)" % key)
+	var h := sim.state_hash()
+	w._clear_next()
+	check(w._next_chunks.is_empty(), "the prefetch emptied")
+	check_eq(sim.state_hash(), h, "the same hash without it")
+
+
+## S2G21: two runs of the same swim through a growth (the ring filled by the dev command, the calm
+## window grows it) hash the same every GROWTH_HASH_EVERY ticks, by state_hash() and by the
+## snapshot's sha256, and grow on the same tick.
+func test_two_runs_through_a_growth_give_the_same_hash() -> void:
+	var runs: Array[Dictionary] = []
+	for i in 2:
+		var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species, PackedFloat64Array(), true)
+		var bot = SwimBot.new(Vector2.RIGHT)
+		var run := {"hashes": [], "shas": [], "grew_at": -1}
+		for t in GROWTH_RUN_TICKS:
+			if t == 120:
+				check(sim.debug_fill_meter(1.0), "the ring full")
+			sim.step(bot.next_intent(sim) if run.grew_at < 0 else SimIntent.new(Vector2(0.3, 0.2)))
+			for e in sim.drain_events():
+				if e.type == "grew":
+					run.grew_at = t
+			if (t + 1) % GROWTH_HASH_EVERY == 0:
+				run.hashes.append(sim.state_hash())
+				run.shas.append(JSON.stringify(sim.snapshot(), "", true, true).sha256_text())
+		run["size"] = sim.size()
+		runs.append(run)
+	print("test-endless-sim: two runs through a growth: grew at tick %d, size %d; last hash %d" % [runs[0].grew_at, runs[0].size,
+		runs[0].hashes[-1]])
+	check(int(runs[0].grew_at) > 120, "the first run grew (tick %d)" % runs[0].grew_at)
+	check_eq(runs[1].grew_at, runs[0].grew_at, "on the same tick")
+	check_eq(runs[1].hashes, runs[0].hashes, "the same state_hash() every %d ticks" % GROWTH_HASH_EVERY)
+	check_eq(runs[1].shas, runs[0].shas, "and the same snapshot sha256")
+
+
+## The growth base: the real fixture world with growth on, a GROWN_SWIM_TICKS swim east, a rammer
+## (prey at size 2) beside the cell and a carrion item before it, the creatures frozen, then a
+## forced growth and GROWN_AFTER_TICKS ticks: a remnant, carrion of its own radius, a meter at size 2.
+func _grown_endless() -> PoolSim:
+	var sim := FakeWorldGen.real_sim(SEED, catalog, layout, species, PackedFloat64Array(), true)
+	var bot = SwimBot.new(Vector2.RIGHT)
+	for t in GROWN_SWIM_TICKS:
+		sim.step(bot.next_intent(sim))
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(-6.0, 3.0), 0.0), "a rammer beside the cell")
+	sim.carrion.spawn(sim.motion.position + Vector2(2.0, -3.0), "test", 20.0)
+	check(sim.debug_force_growth(), "the forced growth")
+	for t in GROWN_AFTER_TICKS:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	return sim
+
+
+## Applies `what` (a growth world key's, a meter key's or a remnant key's perturbation) to `sim`
+## and returns the Callable that undoes it.
+func _perturb_growth(sim: PoolSim, what: String) -> Callable:
+	var g := sim.growth
+	var r: RemnantField.Remnant = sim.remnants.items[0] if not sim.remnants.items.is_empty() else null
+	var item: Dictionary = sim.carrion.items[0] if not sim.carrion.items.is_empty() else {}
+	match what:
+		"growth meter":
+			var m := g.meter
+			g.meter = m + 0.5
+			return func() -> void: g.meter = m
+		"growth trigger":
+			var v := g.trigger
+			g.trigger = "press" if v != "press" else "auto"
+			return func() -> void: g.trigger = v
+		"growth armed":
+			g.armed = not g.armed
+			return func() -> void: g.armed = not g.armed
+		"growth due":
+			g.due = not g.due
+			return func() -> void: g.due = not g.due
+		"growth calm":
+			g.calm_ticks += 1
+			return func() -> void: g.calm_ticks -= 1
+		"growth full_since":
+			g.full_since += 1
+			return func() -> void: g.full_since -= 1
+		"growth blocked":
+			g.blocked_ticks += 1
+			return func() -> void: g.blocked_ticks -= 1
+		"growth blocker":
+			var v := g.blocker
+			g.blocker = "eating" if v != "eating" else "hunted"
+			return func() -> void: g.blocker = v
+		"growth beat_until":
+			g.beat_until += 1
+			return func() -> void: g.beat_until -= 1
+		"growth last_meal":
+			g.last_meal += 1
+			return func() -> void: g.last_meal -= 1
+		"growth last_bite":
+			g.last_bite += 1
+			return func() -> void: g.last_bite -= 1
+		"growth last_ram":
+			g.last_ram += 1
+			return func() -> void: g.last_ram -= 1
+		"growth closing":
+			g.closing.append([sim.tick, {"c_x": 1.0}])
+			return func() -> void: g.closing.pop_back()
+		"growth paid":
+			(g.paid.food as Array).append("x_look")
+			return func() -> void: (g.paid.food as Array).pop_back()
+		"growth discoveries":
+			g.discoveries.append({"type": "place", "id": "x_place", "size": 2})
+			return func() -> void: g.discoveries.pop_back()
+		"growth energy_at_death":
+			var v := g.energy_at_death
+			g.energy_at_death = v + 1.0
+			return func() -> void: g.energy_at_death = v
+		"carrion radius":
+			var v := float(item.radius)
+			item.radius = v + 0.1
+			return func() -> void: item.radius = v
+		"carrion lifetime":
+			var v := float(item.lifetime)
+			item.lifetime = v + 1.0
+			return func() -> void: item.lifetime = v
+		"remnant position":
+			var v := r.motion.position
+			r.motion.position = v + Vector2(0.5, 0.0)
+			return func() -> void: r.motion.position = v
+		"remnant prev_position":
+			var v := r.motion.prev_position
+			r.motion.prev_position = v + Vector2(0.5, 0.0)
+			return func() -> void: r.motion.prev_position = v
+		"remnant velocity":
+			var v := r.motion.velocity
+			r.motion.velocity = v + Vector2(0.5, 0.0)
+			return func() -> void: r.motion.velocity = v
+		"remnant heading":
+			var v := r.motion.heading
+			r.motion.heading = v + 0.1
+			return func() -> void: r.motion.heading = v
+		"remnant radius":
+			var v := r.phenotype.radius
+			r.phenotype.radius = v + 0.1
+			return func() -> void: r.phenotype.radius = v
+		"remnant health":
+			var v := r.state.health
+			r.state.health = v * 0.5
+			return func() -> void: r.state.health = v
+		"remnant flee_speed":
+			var v := r.flee_speed
+			r.flee_speed = v + 0.5
+			return func() -> void: r.flee_speed = v
+		"remnant born_tick":
+			r.born_tick += 1
+			return func() -> void: r.born_tick -= 1
+		"remnant leaving":
+			r.leaving = not r.leaving
+			return func() -> void: r.leaving = not r.leaving
+		"remnant number":
+			r.number += 1
+			return func() -> void: r.number -= 1
+		"remnant id":
+			var v := r.id
+			r.id = v + "x"
+			return func() -> void: r.id = v
+		"remnant species":
+			var v := r.species_id
+			r.species_id = v + "x"
+			return func() -> void: r.species_id = v
+	check(false, "no perturbation named %s" % what)
+	return func() -> void: pass
 
 
 ## The perturbation base: the swim east at the cell's own speed for RICH_TICKS.
