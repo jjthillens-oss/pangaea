@@ -12,6 +12,10 @@ extends RefCounted
 ##     WorldChecks.seam_problems(content, species, parts, 1)
 
 const ReachGrid := preload("res://tests/reach_grid.gd")
+## S2 spine 4.2's relationships block, every rule on.
+const S2_RELATIONSHIPS := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
 ## A starving cell should reach food using at most this share of the distance it can swim before it
 ## dies (tests/test_pool_layout.gd, the pool's own starvation rule).
 const STARVATION_PATH_SHARE := 0.6
@@ -103,6 +107,39 @@ static func worst_reach(arena: PoolArena, zones: Array[Dictionary], bounds: Rect
 	return {"worst": worst, "at": at}
 
 
+# --- the size-2 species (S2) ---
+
+## The shipped species data with S2's two size-2 species and the relationships block (spine 4.2),
+## for the world checks at size 2: the Lurker (the ambush hunter's body and attack, entry size 2,
+## habit "out_of_sight") and the elder rammer (the rammer's, entry size 2, nav_timeout_s 16 by D-61,
+## habit "nearer_cell"). Each one the shipped data already holds is kept as it is, so once S2 T1.7
+## ships them this is the shipped data unchanged.
+static func s2_species_data() -> Dictionary:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	if not data.has("relationships"):
+		data["relationships"] = S2_RELATIONSHIPS.duplicate(true)
+	if not data.species.has("lurker"):
+		var lurker: Dictionary = data.species.ambush_hunter.duplicate(true)
+		lurker.name = "Lurker"
+		lurker.entry_size = 2
+		lurker.niche = {"role": "lurker", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		lurker.habit = {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
+		data.species["lurker"] = lurker
+	if not data.species.has("elder_rammer"):
+		var elder: Dictionary = data.species.rammer.duplicate(true)
+		elder.name = "elder rammer"
+		elder.entry_size = 2
+		elder.nav_timeout_s = 16.0
+		elder.niche = {"role": "elder_rammer", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0}
+		elder.habit = {"post_switch": "nearer_cell", "post_hysteresis_m": 2.0}
+		data.species["elder_rammer"] = elder
+	return data
+
+
+static func s2_species() -> SpeciesCatalog:
+	return SpeciesCatalog.from_dict(s2_species_data())
+
+
 # --- every orientation (B-16) ---
 
 ## Every orientation, 0 to 7: m = o >> 2 mirrors x first, k = o & 3 quarter turns (WorldGen).
@@ -122,6 +159,9 @@ static func oriented_tile(t: Dictionary, o: int) -> Dictionary:
 	for s in out.sites:
 		s.home = WorldGen.orient_point(s.home[0], s.home[1], o)
 		s.heading = WorldGen.orient_heading(float(s.heading), o)
+		if not s.get("post_b", {}).is_empty():
+			s.post_b.home = WorldGen.orient_point(s.post_b.home[0], s.post_b.home[1], o)
+			s.post_b.heading = WorldGen.orient_heading(float(s.post_b.heading), o)
 	if t.landmark_anchor.size() == 2:
 		out.landmark_anchor = WorldGen.orient_point(t.landmark_anchor[0], t.landmark_anchor[1], o)
 	if not t.set_piece.is_empty():
