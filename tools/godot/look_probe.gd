@@ -44,7 +44,8 @@ extends SceneTree
 ## Frames, in --out: <scene>.png is what the player sees; <scene>_fluid.png is the same moment with
 ## every body, food item, rock, world label and the 2D layer hidden, so it shows what lies behind
 ## them. tell and puff add <scene>_nolane.png (the lane hidden), <scene>_decor.png and
-## <scene>_decor_nolane.png (a pale decor stand-in under the lane, with and without it); hud adds
+## <scene>_decor_nolane.png (a pale decor stand-in under the lane, with and without it) and
+## <scene>_marker.png (the "!" popped over the telling creature, the stand-in hidden); hud adds
 ## <scene>_vignette.png (the 3D frame and the vignette alone) and <scene>_world.png (no 2D layer).
 ## <scene>_points.png outlines every sampled region in yellow.
 ##
@@ -59,7 +60,8 @@ extends SceneTree
 ## clear of bodies and HUD panels; hue span, highest channel, hue gap from the threat colour); tell
 ## and puff add lane (the outline's largest |dL*| against the same pixels without the lane, across
 ## the lane's edge at 30, 50 and 70% of its length on both sides, skipping places a body covers;
-## over the fluid and over the decor stand-in); rim_north adds skirt (L* down the north wall from
+## over the fluid and over the decor stand-in) and marker (the "!"'s outline and glyph pixels, the
+## fluid behind them and their WCAG contrast ratios); rim_north adds skirt (L* down the north wall from
 ## 1 m to 30 m deep, and its largest step between neighbouring samples); hud adds vignette (the four
 ## corners with the vignette alone), vignette_behind and vignette_dE. With --parity every scene adds
 ## parity: the median CIE76 between the two runs over the whole frame, the fluid frame and the cell.
@@ -102,6 +104,8 @@ const SKIRT_BOTTOM_Y := -30.0
 const SKIRT_STEP_M := 0.5
 const SKIRT_BOX_PX := 5
 const PARITY_STRIDE := 4
+const MARKER_BOX_PX := 60                ## the "!" marker is measured within this many px of its anchor...
+const MARKER_CHANGE := 0.1               ## ...where it changes a channel by more than this
 const BOX_COLOR := Color(1.0, 0.95, 0.0)
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
@@ -132,6 +136,7 @@ const GATES := {
 		{"id": "plankton_clip", "path": "lineup.plankton.max_channel", "max": 254.0, "what": "plankton never clips (highest channel)"},
 		{"id": "carrion_hue", "path": "lineup.carrion.threat_hue_gap", "min": 15.0, "what": "carrion hue away from the threat colour (degrees)"},
 		{"id": "vignette_hue", "path": "hud.vignette.h", "min": 15.0, "max": 45.0, "what": "hurt vignette outer band (h)"},
+		{"id": "marker_outline", "path": "tell.marker.outline_contrast", "min": 3.0, "what": "the \"!\" marker's outline against the fluid behind it (WCAG contrast)"},
 		{"id": "starving_contrast", "path": "starving.cell_dL", "min": 10.0, "what": "starving cell against the fluid (|dL*|)"},
 		{"id": "skirt_edge", "path": "rim_north.skirt.max_step_dL", "max": 6.0, "what": "no hard lower edge on the rim wall (largest dL* step)"},
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 2.0, "parity": true, "what": "renderer parity, fluid (median CIE76)"},
@@ -532,6 +537,7 @@ func _shoot_lane(scene: String) -> void:
 	_save(scene, "decor", decor)
 	_save(scene, "decor_nolane", decor_bare)
 	results[scene].readings.lane = _lane_readings(lane, frames[0], bare, decor, decor_bare)
+	results[scene].readings.marker = await _marker_readings(scene, view)
 	_write_points(scene, frames[0])
 
 
@@ -664,6 +670,50 @@ func _lane_readings(lane: Dictionary, on: Image, off: Image, decor_on: Image, de
 		out[key + "_points"] = measured.size()
 		if measured.size() >= LANE_POINTS_NEEDED:
 			out[key + "_min_dL"] = measured.map(func(p: Dictionary) -> float: return p.dL).min()
+	return out
+
+
+## The "!" over the telling creature, popped to full size, against the same moment without it
+## (saved as <scene>_marker.png), over the fluid (the decor stand-in hidden): each pixel it changes
+## counts as outline or glyph, whichever of the two colours it is nearer, and the frame without it
+## gives what lies behind those pixels.
+## {"outline", "glyph", "behind" (points), "outline_px", "glyph_px", "outline_contrast",
+## "glyph_contrast", "outline_glyph_contrast" (WCAG contrast ratios)}.
+func _marker_readings(scene: String, view: CreatureView) -> Dictionary:
+	var marker := view.get_node("%Marker") as Label3D
+	if _decor != null:
+		_decor.visible = false
+	view.show_marker()
+	view._process(CreatureView.MARKER_POP_S)
+	if not marker.visible:
+		return {"error": "the marker does not show"}
+	var on := await _capture()
+	marker.visible = false
+	var off := await _capture()
+	_save(scene, "marker", on)
+	var at := Vector2i(_px(marker.global_position))
+	var box := Rect2i(at - Vector2i.ONE * MARKER_BOX_PX, Vector2i.ONE * MARKER_BOX_PX * 2).intersection(Rect2i(Vector2i.ZERO, on.get_size()))
+	_boxes.append(box)
+	var outline := PackedColorArray()
+	var glyph := PackedColorArray()
+	var behind := PackedColorArray()
+	for y in range(box.position.y, box.end.y):
+		for x in range(box.position.x, box.end.x):
+			var a := on.get_pixel(x, y)
+			var b := off.get_pixel(x, y)
+			if maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b))) <= MARKER_CHANGE:
+				continue
+			var to_outline := Vector3(a.r, a.g, a.b).distance_to(Vector3(CreatureView.MARKER_OUTLINE.r, CreatureView.MARKER_OUTLINE.g, CreatureView.MARKER_OUTLINE.b))
+			var to_glyph := Vector3(a.r, a.g, a.b).distance_to(Vector3(CreatureView.MARKER_COLOR.r, CreatureView.MARKER_COLOR.g, CreatureView.MARKER_COLOR.b))
+			(outline if to_outline < to_glyph else glyph).append(a)
+			behind.append(b)
+	if outline.is_empty() or glyph.is_empty():
+		return {"error": "no marker pixels", "outline_px": outline.size(), "glyph_px": glyph.size()}
+	var out := {"outline": reading(median_color(outline)), "glyph": reading(median_color(glyph)), "behind": reading(median_color(behind)),
+		"outline_px": outline.size(), "glyph_px": glyph.size()}
+	out.outline_contrast = snappedf(contrast(median_color(outline), median_color(behind)), 0.01)
+	out.glyph_contrast = snappedf(contrast(median_color(glyph), median_color(behind)), 0.01)
+	out.outline_glyph_contrast = snappedf(contrast(median_color(outline), median_color(glyph)), 0.01)
 	return out
 
 
@@ -953,6 +1003,31 @@ static func median_of(img: Image, rect: Rect2i, stride := 1, center := Vector2.I
 	b.sort()
 	var m := r.size() / 2
 	return {"color": Color(r[m], g[m], b[m]), "max_channel": roundi(top * 255.0), "count": r.size()}
+
+
+## The per-channel median of a list of colours (black for none).
+static func median_color(colors: PackedColorArray) -> Color:
+	if colors.is_empty():
+		return Color.BLACK
+	var r := PackedFloat32Array()
+	var g := PackedFloat32Array()
+	var b := PackedFloat32Array()
+	for c in colors:
+		r.append(c.r)
+		g.append(c.g)
+		b.append(c.b)
+	r.sort()
+	g.sort()
+	b.sort()
+	var m := colors.size() / 2
+	return Color(r[m], g[m], b[m])
+
+
+## The WCAG contrast ratio of two sRGB colours: 1 (the same) to 21 (black on white).
+static func contrast(a: Color, b: Color) -> float:
+	var la := a.srgb_to_linear().get_luminance()
+	var lb := b.srgb_to_linear().get_luminance()
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
 
 
 ## The median CIE76 between two frames' pixels in `rect` (as median_of picks them), to 0.1; NAN

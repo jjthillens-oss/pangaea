@@ -372,17 +372,17 @@ func test_food_views_draw_items_on_the_swim_plane_and_shrink_rotting_carrion() -
 	meat.free()
 
 
-func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there() -> void:
+func test_new_carrion_sinks_onto_the_swim_plane_and_starting_carrion_is_simply_there() -> void:
 	var meat := FoodView.new()
 	meat.kind = "meat"
 	var start := {"id": "cr_2", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "initial"}
 	var t := meat._transform_for(start, 0.0)
 	check_near(t.basis.get_scale().x, 1.0, 1e-5, "starting carrion is full size")
-	check_near(t.origin.y, FoodView.MEAT_Y, 1e-6, "and on the floor")
+	check_near(t.origin.y, FoodView.MEAT_Y, 1e-6, "and lying just under the swim plane")
 	var dropped := {"id": "cr_3", "position": Vector2(1.0, 2.0), "age": 0.0, "lifetime": 90.0, "source": "interim"}
 	t = meat._transform_for(dropped, 0.0)
 	check(t.basis.get_scale().x < 0.5 and t.origin.y > FoodView.MEAT_Y + 0.3,
-		"new carrion appears small and above the floor (scale %.2f, y %.2f)" % [t.basis.get_scale().x, t.origin.y])
+		"new carrion appears small and above where it settles (scale %.2f, y %.2f)" % [t.basis.get_scale().x, t.origin.y])
 	var steady := true
 	var last := t
 	for tick in range(1, 37):
@@ -392,7 +392,7 @@ func test_new_carrion_sinks_onto_the_floor_and_starting_carrion_is_simply_there(
 		last = t
 	check(steady, "it only grows and sinks")
 	check_near(t.basis.get_scale().x, 1.0, 1e-5, "full size after %.1f s" % FoodView.MEAT_SETTLE_S)
-	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and on the floor where it landed")
+	check(t.origin.is_equal_approx(PlaneSpace.to_world(Vector2(1.0, 2.0), FoodView.MEAT_Y)), "and settled where it landed")
 	meat.free()
 
 
@@ -682,7 +682,7 @@ func test_the_creature_layer_shows_the_marker_lane_and_flash_its_events_ask_for(
 	layer.free()
 
 
-func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() -> void:
+func test_a_tell_on_the_player_lays_its_strike_lane_on_the_swim_plane_and_fills_it() -> void:
 	var view := _creature_view("ambush_hunter")
 	var sim := _threat_sim()
 	var species := sim.species
@@ -693,7 +693,7 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 	var material := node.material_override as ShaderMaterial
 	check(view.lane_visible(), "the lane shows")
 	# The view's state and the uniform the shader multiplies every pixel's alpha by. The lane's pixels
-	# themselves (alpha math, depth against the floor) are checked only in rendered frames.
+	# themselves (alpha math, depth against what lies behind) are checked only in rendered frames.
 	check_eq(material.get_shader_parameter("strength"), 1.0, "at full strength")
 	# The unit quad's corners land on the lane rectangle: from its origin forward along its heading.
 	var t := node.transform   # the lane is top_level, so this is its world transform
@@ -768,6 +768,20 @@ func test_the_lane_draws_over_every_world_transparent_but_the_dev_gizmos() -> vo
 	view.free()
 
 
+func test_outlines_badges_and_the_lane_edge_share_one_navy_keyline() -> void:
+	var key := UiPalette.KEYLINE
+	check(key.b > key.g and key.g > key.r and key.get_luminance() > 0.0, "the keyline is navy, blue and never black: %s" % key)
+	var outlines := {"FeedbackFx.OUTLINE_COLOR": FeedbackFx.OUTLINE_COLOR, "TargetRing.OUTLINE": TargetRing.OUTLINE,
+		"StarvingArrow.OUTLINE": StarvingArrow.OUTLINE, "ThreatIndicators.BADGE_COLOR": ThreatIndicators.BADGE_COLOR}
+	for name: String in outlines:
+		var c: Color = outlines[name]
+		check(Color(c, 1.0).is_equal_approx(key), "%s is the keyline (%s)" % [name, c])
+	var view := _creature_view("ambush_hunter")
+	var material := (view.get_node("%Lane") as MeshInstance3D).material_override as ShaderMaterial
+	check(Color(material.get_shader_parameter("key")).is_equal_approx(key), "and so is the strike lane's edge")
+	view.free()
+
+
 func test_the_start_fade_warms_the_lane_shader_at_the_lanes_priority() -> void:
 	var pool := (load("res://game/scenes/pool/pool.tscn") as PackedScene).instantiate()
 	pool.notification(Node.NOTIFICATION_READY)
@@ -831,7 +845,7 @@ func test_a_hit_flashes_and_flinches_the_cell_and_shelter_rims_it_softly() -> vo
 	view.free()
 
 
-func test_the_footprint_contains_every_floor_point_the_pool_camera_shows() -> void:
+func test_the_footprint_contains_every_swim_plane_point_the_pool_camera_shows() -> void:
 	var layout := PoolLayout.load_from()
 	var camera := PoolCamera.new()
 	camera.configure(layout.camera)

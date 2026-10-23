@@ -102,6 +102,16 @@ func test_a_median_is_per_channel_over_the_pixels_it_picks() -> void:
 	check_eq(outside.max_channel, 0, "and no channel")
 
 
+func test_contrast_is_the_wcag_ratio_and_a_colour_list_has_a_per_channel_median() -> void:
+	check_near(LookProbe.contrast(Color.WHITE, Color.BLACK), 21.0, 1e-4, "black on white")
+	check_near(LookProbe.contrast(Color.BLACK, Color.WHITE), 21.0, 1e-4, "either way round")
+	check_near(LookProbe.contrast(Color("777777"), Color.WHITE), 4.48, 0.01, "mid grey on white, WCAG's 4.5:1 line")
+	check_near(LookProbe.contrast(Color("1D5084"), Color("1D5084")), 1.0, 1e-6, "a colour against itself")
+	var colors := PackedColorArray([Color8(10, 200, 30), Color8(20, 100, 60), Color8(250, 0, 90)])
+	check_eq(LookProbe.median_color(colors).to_html(false), Color8(20, 100, 60).to_html(false), "each channel's middle value")
+	check_eq(LookProbe.median_color(PackedColorArray()), Color.BLACK, "none: black")
+
+
 func test_the_median_difference_of_two_frames() -> void:
 	var a := Image.create(4, 4, false, Image.FORMAT_RGB8)
 	a.fill(Color8(40, 110, 116))
@@ -171,7 +181,7 @@ func test_the_micro_gates_are_section_6() -> void:
 		"fluid_hue": [268.0, 288.0], "fluid_chroma": [25.0, null], "fluid_threat_gap": [90.0, null], "fluid_corners": [15.0, null],
 		"lane_fluid_tell": [15.0, null], "lane_decor_tell": [15.0, null], "lane_fluid_puff": [15.0, null],
 		"lane_decor_puff": [15.0, null], "plankton_hue_low": [110.0, null], "plankton_hue_high": [null, 145.0],
-		"plankton_clip": [null, 254.0], "carrion_hue": [15.0, null], "vignette_hue": [15.0, 45.0],
+		"plankton_clip": [null, 254.0], "carrion_hue": [15.0, null], "vignette_hue": [15.0, 45.0], "marker_outline": [3.0, null],
 		"starving_contrast": [10.0, null], "parity_fluid": [null, 2.0], "parity_cell": [null, 2.0],
 	}
 	for id: String in ranges:

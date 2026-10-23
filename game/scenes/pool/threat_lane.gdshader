@@ -29,7 +29,7 @@ const float FILL_LIFT = 0.85;     // how far the filled inside moves from the da
 
 uniform vec4 color : source_color = vec4(0.851, 0.275, 0.420, 1.0);   // threat #D9466B
 uniform vec4 shade : source_color = vec4(0.541, 0.169, 0.271, 1.0);   // spike tip #8A2B45
-uniform vec4 key : source_color = vec4(0.035, 0.071, 0.161, 1.0);     // keyline #091229
+uniform vec4 key : source_color = vec4(0.035, 0.071, 0.161, 1.0);     // keyline #091229 (UiPalette.KEYLINE)
 uniform vec2 size_m = vec2(3.0, 3.7);   // (width, length) of the lane in metres
 uniform float fill : hint_range(0.0, 1.0) = 0.0;
 uniform float strength : hint_range(0.0, 1.0) = 1.0;

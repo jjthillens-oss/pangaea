@@ -163,7 +163,8 @@ func show_hint(text: String) -> void:
 	_hint_t = HINT_S
 
 
-## The hurt vignette's strength now (its alpha at the screen's edges), for checks.
+## The hurt vignette's strength now, for checks: its alpha where the edge band is full (the
+## shader's outer band lifts the corners a little more).
 func vignette_alpha() -> float:
 	return float((hurt_vignette.material as ShaderMaterial).get_shader_parameter(&"strength"))
 

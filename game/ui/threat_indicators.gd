@@ -22,7 +22,7 @@ const POINTER_HALF_W_PX := 12.0
 const GLYPH_PX := 36.0
 const PULSE_HZ := 3.0
 const PULSE_GROW := 0.25            ## a telling arrow grows this much at the top of each pulse
-const BADGE_COLOR := Color(0.03, 0.11, 0.13, 0.9)
+const BADGE_COLOR := Color(UiPalette.KEYLINE, 0.9)   ## the badge, and the outline of its glyph and "!"
 const THREAT_COLOR := Color(0.851, 0.275, 0.42)       ## threat #D9466B (docs/art/ART_DIRECTION.md)
 const GLYPH_COLOR := Color(0.957, 0.918, 0.824)       ## cream highlight #F4EAD2
 ## The "!" of a notice or a tell: a bar over a dot, MARK_PX tall, upright wherever the arrow is,
