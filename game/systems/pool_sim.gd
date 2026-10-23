@@ -900,7 +900,9 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 		var self_view := creatures.self_view_of(c)
 		if creatures.think_due(c, tick):
 			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
-				food = plankton.items + carrion.items
+				# The two lists joined (a new array), or the plankton list itself when there is no
+				# carrion: the senses only read it.
+				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
 				food_listed = true
 			creatures.think(c, snapshot_bodies, food, arena, tick, self_view)
 		var d := creatures.drive(c, arena, tick, self_view)
