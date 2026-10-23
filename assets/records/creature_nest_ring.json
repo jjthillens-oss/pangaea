@@ -1,0 +1,77 @@
+{
+  "id": "creature_nest_ring",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature stage nest (PROPOSED): a ring mound of packed earth and straw, heaped unevenly, with twigs and stones across it, round a clear flat floor where the creature stands.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_nest_ring.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_nest_ring.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 13.1,
+    "y_forward": 13.1,
+    "z_up": 0.564
+  },
+  "triangles": 3055,
+  "triangle_budget": 4000,
+  "textures": [
+    {
+      "name": "T_CreatureNestRing_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CreatureNestRing_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureNestRing_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_NestEarth",
+    "M_NestStone",
+    "M_NestTwig"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "CreatureNestRing"
+  ],
+  "kind": "nest",
+  "pivot": "the nest's centre on the ground (Godot y = 0)",
+  "ring_m": {
+    "inner": 5.2,
+    "crown": 5.8,
+    "outer": 6.55,
+    "height": 0.5
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.012,
+    "triangles_before": 4756,
+    "triangles_after": 3055
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
+}

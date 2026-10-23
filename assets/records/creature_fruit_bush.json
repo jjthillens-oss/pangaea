@@ -1,0 +1,80 @@
+{
+  "id": "creature_fruit_bush",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature stage food (PROPOSED): a lumpy blue-green leaf clump with amber fruit; the Fruit mesh is drawn only while ripe. Both materials take a MultiMesh instance colour.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_fruit_bush.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_fruit_bush.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.889,
+    "y_forward": 0.817,
+    "z_up": 0.732
+  },
+  "triangles": 914,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_CreatureFruitBush_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CreatureFruitBush_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureFruitBush_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_BushFruit",
+    "M_BushLeaf"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Bush",
+    "Fruit"
+  ],
+  "kind": "food",
+  "pivot": "under the bush on the ground (Godot y = 0)",
+  "instance_tint": "M_BushLeaf.tres and M_BushFruit.tres (mapped in the .glb.import) set vertex_color_use_as_albedo, so a MultiMesh instance colour tints them; white draws them as baked.",
+  "states": {
+    "ripe": "draw Bush and Fruit",
+    "bare": "draw Bush only"
+  },
+  "fruit_count": 9,
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
+    "tolerance_m": {
+      "Bush": 0.025,
+      "Fruit": 0.006
+    },
+    "triangles_before": 5840,
+    "triangles_after": 914
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
+}
