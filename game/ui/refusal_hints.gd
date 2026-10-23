@@ -6,7 +6,8 @@ extends RefCounted
 ##
 ##   diet ("needs a jaw" / "needs a filter mouth"): only while touching; the same reason at most
 ##       once per DIET_REPEAT_S
-##   "mouth is not facing it": after touching it for FACING_AFTER_S
+##   "mouth is not facing it": after touching it for FACING_AFTER_S, then at most once per
+##       FACING_REPEAT_S (the sim repeats the refusal every 0.5 s while the contact lasts)
 ##   "not hungry": at most once per FULL_REPEAT_S
 ##   anything else: as the rules give it
 ##
@@ -17,6 +18,7 @@ extends RefCounted
 
 const DIET_REPEAT_S := 4.0
 const FACING_AFTER_S := 0.5
+const FACING_REPEAT_S := 4.0
 const FULL_REPEAT_S := 5.0
 const TEXTS := {
 	"needs a jaw": "Needs a jaw: your filter mouth only eats plankton",
@@ -54,6 +56,7 @@ func consider(event: Dictionary, now: float) -> String:
 	elif reason == "mouth is not facing it":
 		if not touching or float(event.get("contact_s", 0.0)) < FACING_AFTER_S:
 			return ""
+		repeat = FACING_REPEAT_S
 	elif reason == "not hungry":
 		repeat = FULL_REPEAT_S
 	if reason.is_empty():
