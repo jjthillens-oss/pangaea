@@ -56,6 +56,18 @@ func test_slot_lines_do_not_show_payload_fields() -> void:
 	check(not lines.contains("DO_NOT_SHOW"), "unknown full-save data is not displayed")
 
 
+func test_settings_tab_first_focus_is_an_enabled_visible_row() -> void:
+	var menu := SettingsMenu.new()
+	menu.open(SettingsService.new("user://test_review_presentation_audio.cfg"))
+	for i in SettingsMenu.TABS.size():
+		menu.show_tab(i)
+		var first: Control = menu._first_focus()
+		check(first != null and first.visible, "%s has a visible first control" % SettingsMenu.TABS[i])
+		if first is BaseButton:
+			check(not (first as BaseButton).disabled, "%s starts on an enabled control" % SettingsMenu.TABS[i])
+	menu.free()
+
+
 func test_positional_effect_flat_fallback_routes_to_sfx() -> void:
 	var node := CellAudio.new()
 	var player := node._flat_for_positional("tell_lunge")
@@ -64,10 +76,19 @@ func test_positional_effect_flat_fallback_routes_to_sfx() -> void:
 	node.free()
 
 
+func test_ambience_loop_routes_to_ambience_bus() -> void:
+	var node := CellAudio.new()
+	var player := node._loop_player("ambience_probe", "amb_bed", CellAudio.BED_DB)
+	check_eq(player.bus, &"Ambience", "bed uses independently mutable ambience bus")
+	check(player.stream != null, "bed has a loadable stream")
+	node.free()
+
+
 func test_music_creates_no_players_during_600_ticks() -> void:
 	var node := Soundtrack.new()
 	node._ready()
 	var before := node.get_child_count()
+	check_eq(before, Soundtrack.LAYERS.size(), "one fixed player per layer")
 	for tick in 600:
 		node._process(1.0 / 60.0)
 	check_eq(node.get_child_count(), before, "no tick-driven allocation")
@@ -83,6 +104,7 @@ func test_music_bus_mute_covers_all_soundtrack_layers() -> void:
 	(Engine.get_main_loop() as SceneTree).root.add_child(node)
 	if node._players.is_empty():
 		node._ready()
+	check_eq(node._players.size(), Soundtrack.LAYERS.size(), "every layer exists")
 	var old := AudioServer.is_bus_mute(bus)
 	AudioServer.set_bus_mute(bus, true)
 	for player in node._players.values():
