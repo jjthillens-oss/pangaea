@@ -15,7 +15,7 @@ in Godot 4 using Blender for production assets."
 | Generated skin (implicit surface) | Published facts gathered (S7, S12, S13); details of Spore's tessellation and weighting not published | `CREATURE_GEOMETRY_SPEC.md` §3–5 |
 | Procedural skeleton | Published (S1, S12) | `CREATURE_GEOMETRY_SPEC.md` §4 |
 | Automatic rigging | Not published by Maxis; our method stated, Spore's left as HYPOTHESIS | `CREATURE_GEOMETRY_SPEC.md` §6 |
-| Anatomy-driven animation | Published in depth (S1, S2, S13) | `PROCEDURAL_ANIMATION_SPEC.md` |
+| Anatomy-driven animation | Published in depth (S1, S13); S2 (GDC 2007) not read yet |  `PROCEDURAL_ANIMATION_SPEC.md` |
 | Locomotion feel | Needs recordings (R2xx, R3xx) | `MEASUREMENT_PLAN.md` |
 | Parts and handles | Published (S3) | `CREATURE_CREATOR_ANALYSIS.md` §1.2, §3 |
 | Paint | Published (S4) | `CREATURE_GEOMETRY_SPEC.md` §8 |
@@ -26,11 +26,24 @@ and GDC 2007 slides when chrishecker.com is back (S2, S7); fuller patent search 
 
 ## 2. Engineering plan
 
-All prototype work lives in `prototypes/creature-lab/`. It does not use code from `game/`, and Stage 1's first step
-makes sure the main project's import, tests and Windows export skip that folder (checked by a test). Each stage has its own tests, run headless the same way `tools/check.sh` runs tests.
+All prototype work lives in `prototypes/creature-lab/`. It does not use code from `game/`, and the first prototype's
+first step makes sure the main project's import, tests and Windows export skip that folder (checked by a test). Each stage has its own tests, run headless the same way `tools/check.sh` runs tests.
 Commit and push after every step.
 
-### Stage 1: Body and skin (first prototype, **gate: awaiting approval**)
+### Stage 0: two small probes before Stage 1 (updated after the checkpoint, **gate: awaiting approval**)
+
+The checkpoint (`CHECKPOINT_1.md`) replaced "start with full Stage 1" by two smaller prototypes, in this order:
+
+- **0a Gait Lab** (`workstreams/locomotion.md` §9): two quadrupeds identical except for leg length, plus a hexapod,
+  stepping with Godot's built-in two-bone IK on a flat plane. Tests that leg length sets speed and turning with no
+  foot slip, and whether Godot's IK is good enough. No skin. About 1–2 sessions. **Recommended first.**
+- **0b Spine skin and codec** (`workstreams/creature_editor.md` §8): a 3–24 vertebra body with no limbs or parts, the
+  capsule skin at two grid sizes timed in GDScript and in one native path (compute shader), and the compact
+  description encoder. Decides how live editing will be made fast. About 1–2 sessions.
+
+Each gets its own owner approval. Stage 1 below starts only after 0b, and uses its timing result.
+
+### Stage 1: Body and skin (**gate**)
 
 What: `BodyDescription` + validation, skeleton layout, capsule primitives, field, Surface Nets mesh, smoothing,
 normals, automatic weights, a `Skeleton3D` + `Skin` + `ArrayMesh` in a viewer scene. Ten fixed test bodies from data
@@ -38,11 +51,13 @@ files (snake, biped, quadruped, hexapod, 12-limb, giant limb, tiny, max vertebra
 orbits each body and poses its skeleton through a scripted range. No editor UI yet, no parts yet (sockets only), no
 animation beyond the posing sweep.
 
-Acceptance: `CREATURE_GEOMETRY_SPEC.md` §10 items 1–7 (Blender parity, item 8, comes in stage 4). Contact sheet of
-all ten bodies at rest and posed, in both renderers.
+Limbs attach to vertebrae only in Stage 1 (no limbs branching from limbs; a later option).
 
-Size: about 2–4 working sessions. Output: the prototype, its tests, contact sheets, measured rebuild times, and a short
-report on whether GDScript is fast enough.
+Acceptance: `CREATURE_GEOMETRY_SPEC.md` §10 items 1–3 and 5–7, plus **measured** rebuild and bake times in the path
+chosen after 0b. The 33 ms live-preview target moves to Stage 2; probe 0b already showed GDScript alone cannot meet it.
+Blender parity (item 8) comes in Stage 4. Contact sheet of all ten bodies at rest and posed, in both renderers.
+
+Size: about 2–4 working sessions. Output: the prototype, its tests, contact sheets and timings.
 
 ### Stage 2: Live editing (**gate**)
 
@@ -86,11 +101,15 @@ separate decision; nothing in this roadmap commits to it.
 
 ## 3. Decisions needed from the owner
 
-1. **Approve Stage 1** as an isolated prototype in `prototypes/creature-lab/` (recommended). Nothing in `game/`
-   changes.
-2. Record sessions R2 and R3 when convenient (about 1.5 hours together).
-3. Later, at Stage 2: if GDScript is too slow, choose between a compute shader (no new dependency, not available on the
-   Compatibility renderer) and a C++ GDExtension (new toolchain and the MIT `godot-cpp` dependency).
+1. **Approve prototype 0a, Gait Lab** (recommended first), isolated in `prototypes/creature-lab/`. Nothing in
+   `game/` changes.
+2. Then approve 0b (spine skin and codec).
+3. Record sessions R2 and R3 when convenient (about 1.5 hours together).
+4. After 0b: if the compute shader path is not enough, choose whether to allow a C++ GDExtension (new toolchain and
+   the MIT `godot-cpp` dependency).
+5. Bible §7 says "Support a small approved set of body plans first"; the 2026-10-23 decision asks for full free-form
+   bodies like Spore. Confirm whether free-form bodies replace that line, or whether the first playable version ships
+   a small approved set of body plans built with the free-form system.
 
 ## 4. Out of scope for now
 
