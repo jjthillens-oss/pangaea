@@ -194,6 +194,8 @@ func chunk_keys() -> Array[Vector2i]:
 ## error accumulates). The near grids are absolute and do not change. One pass over locals (the
 ## packed arrays are references): a rebase does this for every loaded collider in a timed tick (G17).
 func set_origin(ox_tm: float, oy_tm: float) -> void:
+	if ox_tm == origin_x and oy_tm == origin_y:
+		return   # every centre is already this origin's (add_chunk makes them from it)
 	origin_x = ox_tm
 	origin_y = oy_tm
 	var centers := _centers

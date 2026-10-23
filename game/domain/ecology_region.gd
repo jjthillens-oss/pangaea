@@ -54,8 +54,31 @@ func remove_zone(id: String) -> bool:
 	return true
 
 
+## Every zone out at once, with its stream (the endless growth tick): the tables go to the caller
+## (zones, by id, streams), to let go of when it likes, and fresh ones take their place.
+func take_all_zones() -> Array:
+	var old := [zones, _by_id, streams]
+	var fresh: Array[Dictionary] = []
+	zones = fresh
+	_by_id = {}
+	streams = {}
+	return old
+
+
 func zone(id: String) -> Dictionary:
 	return _by_id.get(id, {})
+
+
+## add_zone with the zone's dictionary `z` made ahead (the endless world's prefetch), as add_zone makes
+## it but its centre, set here; `z` goes in itself. The same refusals (a known id, a centre not
+## finite), which leave `z` as it was; its other values were checked when it was made.
+func add_zone_prepared(z: Dictionary, center: Vector2) -> bool:
+	if _by_id.has(z.id) or not center.is_finite():
+		return false
+	z.center = center
+	zones.append(z)
+	_by_id[z.id] = z
+	return true
 
 
 func tick(dt: float) -> void:

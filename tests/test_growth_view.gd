@@ -757,12 +757,7 @@ func test_new_plankton_grows_in() -> void:
 	check_eq(sim.size(), 2, "the tick grew the world")
 	check(pool.plankton_view.look == "algae_ball" and pool.plankton_view.multimesh.mesh == FoodView.look_mesh("algae_ball"),
 		"frame 0: the plants are algae balls")
-	var plants_0 := pool.plankton_view.snapshot()
-	check(not plants_0.is_empty(), "the new zones are filled")
-	var biggest := 0.0
-	for t: Transform3D in plants_0.values():
-		biggest = maxf(biggest, t.basis.get_scale().x)
-	check(biggest <= 0.05, "every new plant item draws at scale <= 0.05 at frame 0 (%.3f)" % biggest)
+	check(pool.plankton_view.snapshot().is_empty(), "frame 0: the new zones wait for the beat's first tick (the growth tick fills none)")
 	var meat_0: Transform3D = pool.carrion_view.snapshot()[kept.id]
 	check_near(meat_0.basis.get_scale().x / meat_a.basis.get_scale().x, 0.625, 1e-4, "the kept carrion draws at 0.625")
 	var moved := Frames.project(pool.camera, meat_0.origin).distance_to(meat_px_a)
@@ -777,6 +772,13 @@ func test_new_plankton_grows_in() -> void:
 	var glitter: StillInstances = pool.growth_beat.glitter()[0]
 	check_eq(glitter.transforms.size(), mini(plants_a.size(), GrowthBeat.GLITTER_MAX), "a glitter sprite per old plant item")
 	check_near(_glitter_alpha(glitter), 0.0, 1e-9, "the glitter comes in from nothing")
+	Frames.frame(pool)   # the tick after the growth fills the nearest zones (C-V15 as amended)
+	var plants_1 := pool.plankton_view.snapshot()
+	check(not plants_1.is_empty(), "frame 1: the new zones begin to fill")
+	var biggest := 0.0
+	for t: Transform3D in plants_1.values():
+		biggest = maxf(biggest, t.basis.get_scale().x)
+	check(biggest <= 0.05, "every new plant item draws at scale <= 0.05 on its first frame (%.3f)" % biggest)
 	var t0: float = pool.growth_beat._t0
 	pool.growth_beat.advance(t0 + 0.3)
 	check(is_instance_valid(copy) and copy.transparency > 0.0 and copy.transparency < 1.0, "0.3 s: the copy fading")

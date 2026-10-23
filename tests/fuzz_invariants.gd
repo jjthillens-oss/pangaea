@@ -164,7 +164,7 @@ func before(sim: PoolSim) -> Dictionary:
 		"k": w._tm_to_am, "size": w.size, "cell_am": w.abs_of_local(sim.motion.position), "remnants": remnants,
 		"checkpoint": w.checkpoint_local(),
 		"chunks": chunks, "active": sim.plankton.active_zones.duplicate(), "zones": zones, "plankton": plankton,
-		"carrion": carrion, "radii": radii})
+		"pending": sim.plankton.pending_fill.duplicate(), "carrion": carrion, "radii": radii})
 	return was
 
 
@@ -681,8 +681,11 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 	var has := {}
 	for item in sim.plankton.items:
 		has[item.zone] = int(has.get(item.zone, 0)) + 1
+	# A zone whose growth fill was pending before the step fills at once on its tick (C-V15 as amended:
+	# FILL_ZONES_PER_TICK a tick after the growth tick, nearest first); any other gains one item a tick.
+	var pending: Dictionary = was.get("pending", {})
 	for zone in has:
-		if int(has[zone]) - int(had.get(zone, 0)) > 1:
+		if int(has[zone]) - int(had.get(zone, 0)) > 1 and not pending.has(zone):
 			_fail(12, "%s: zone %s gained %d plankton items" % [where, zone, int(has[zone]) - int(had.get(zone, 0))])
 	_check_food_gone(sim, where, was, gone_carrion, cell_block, false)
 

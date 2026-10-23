@@ -52,6 +52,9 @@ const SITE_NUMBERS := 1 << 30
 ## Endless mode: how many site creatures a tick's spawn pass (PoolSim.step's tick_spawns_at) spawns
 ## asleep at most; a due site that would spawn asleep after them waits, still due, for the next tick.
 const SLEEPER_SPAWNS_PER_TICK := 1
+## S2: in a growth's beat, the sites one tick's spawn pass tries (blocker_from and the spawn): the growth
+## tick enqueues every site of its view set at once; the rest wait a tick, in their order.
+const BEAT_TRIES_PER_TICK := 6
 ## Endless mode: the creatures made ahead (prepare_site) are let go all at once when they outnumber
 ## the stream's site table by more than this (those of chunks generated ahead but never loaded).
 const PREPARED_SLACK := 64
@@ -227,9 +230,11 @@ func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 ## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in. With
 ## `sleepers` 0 or more (endless mode), once that many have spawned asleep each later due site that
 ## would spawn asleep goes back as it was, still due, for the next tick (a chunk loaded with many
-## sites out of reach spawns them over a few ticks); awake spawns never wait. The world's creation
-## passes none, and spawns every site that passes.
-func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleepers := -1) -> void:
+## sites out of reach spawns them over a few ticks); awake spawns never wait. With `tries` 0 or more
+## (S2: a growth's beat), once that many sites have been tried (blocker_from and the spawn) the rest of
+## the due sites go back the same way, still due, unless the caps are full (then nothing is tried).
+## The world's creation passes neither, and spawns every site that passes.
+func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleepers := -1, tries := -1) -> void:
 	if queue.is_empty() or int(queue[0].at_tick) > tick:
 		return
 	var due: Array[Dictionary] = []
@@ -241,6 +246,7 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleeper
 	var full := _caps_full()   # then _try_site says "no room" to every site, and nothing spawns
 	var left := sleepers if endless else -1   # asleep spawns this tick may still make (-1: any)
 	var waiting: Array[Dictionary] = []
+	var tried := 0
 	for entry in due:
 		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
@@ -248,6 +254,10 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleeper
 		if left == 0 and spawns_asleep(s, places):
 			waiting.append(entry)
 			continue
+		if not full and tries >= 0 and tried >= tries:
+			waiting.append(entry)   # over this tick's tries: due again next tick, in its place
+			continue
+		tried += 1
 		if full or not _try_site(s, arena, places, tick):
 			if later:
 				retries.append(s)
@@ -554,6 +564,11 @@ func prepare_site(s: Dictionary) -> void:
 ## Endless mode: drops what prepare_site made for site `id` (its ground unloaded or was let go).
 func forget_prepared(id: String) -> void:
 	_prepared.erase(id)
+
+
+## Every prepared creature forgotten (the growth tick: every site is made again at the new size).
+func forget_all_prepared() -> void:
+	_prepared.clear()
 
 
 ## What a site's creature is made from besides the catalogs: the spawn count, the world's size,

@@ -37,6 +37,7 @@ var events: Array[Dictionary] = []
 ## Endless mode: only the zones in `active_zones` spawn, fill or report; the pool shows every zone.
 var endless := false
 var active_zones := {}                ## zone id -> true (endless mode)
+var pending_fill := {}                ## zone id -> true while a growth's fill is queued for it (S2): it does not regrow meanwhile
 var _empty_latched := {}
 var _regrowing := {}
 var _zone_counts := {}                ## zone id -> how many of `items` it shows (kept with every change)
@@ -106,11 +107,12 @@ func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float)
 	if _phase.size() != items.size():
 		_repack()   # only if something outside this file changed `items`
 	var active := active_zones
+	var pending := pending_fill
 	var most := max_items_per_zone
 	var unit := unit_energy
 	for zone in region.zones:
 		var id: String = zone.id
-		if endless and not active.has(id):
+		if endless and (not active.has(id) or pending.has(id)):
 			continue
 		var have: int = _zone_counts.get(id, 0)   # only this zone's own spawn or removal changes it
 		var want := mini(most, floori(float(zone.amount) / unit + COUNT_EPSILON))   # target_count written out
@@ -199,6 +201,7 @@ func drop_zone(zone_id: String) -> void:
 	clear_zone(zone_id)
 	_empty_latched.erase(zone_id)
 	_regrowing.erase(zone_id)
+	pending_fill.erase(zone_id)
 
 
 ## drop_zone for every zone of `zone_ids` (zone id -> true) in one pass over the items, where one
@@ -221,6 +224,25 @@ func drop_zones(zone_ids: Dictionary) -> void:
 		_zone_counts.erase(id)
 		_empty_latched.erase(id)
 		_regrowing.erase(id)
+		pending_fill.erase(id)
+
+
+## drop_zones for every zone at once (the growth tick): the items and the tables (the counts, the
+## latches, the regrowing and pending flags, the id index) go to the caller to let go of when it
+## likes, and fresh empty ones take their place. What drop_zones over every zone leaves.
+func drop_all_zones() -> Array:
+	var old := [items, _zone_counts, _empty_latched, _regrowing, pending_fill, _by_id]
+	var none: Array[Dictionary] = []
+	items = none
+	_zone_counts = {}
+	_empty_latched = {}
+	_regrowing = {}
+	pending_fill = {}
+	_by_id = {}
+	_phase.resize(0)
+	_omega.resize(0)
+	_radii.resize(0)
+	return old
 
 
 func _try_spawn(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> bool:

@@ -75,11 +75,19 @@ const AHEAD_REFRESH_TICKS := 15
 ## s: how far ahead along its velocity the cell is taken to be when the next size's arena gets the
 ## 3 x 3 round the new-size chunk it heads for (BP-4; _arena_chore).
 const NEXT_LEAD_S := 2.0
+## Ticks the chore keeps the set of next-size chunks it wants the arena to hold (the growth tick's
+## view set round the cell's point and the 3 x 3 round the chunk it heads for) before taking it again,
+## unless the cell's or the heading's new-size chunk changes first.
+const NEXT_WANT_TICKS := 30
 ## How many sites of the chunks generated ahead have their record and creature made on a quiet tick
 ## (_prepare_ahead).
 const PREPARE_PER_TICK := 2
 ## How many of the pieces the unloads let go (_let_go) a quiet tick frees.
 const RELEASE_PER_TICK := 1
+## S2 (C-V15 as amended): the food zones each tick of a growth's beat fills, nearest first, from the tick
+## after the growth (which fills none) until every zone shown at the growth has filled (the beat is 120
+## ticks; a view set shows about 16).
+const FILL_ZONES_PER_TICK := 4
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -148,6 +156,10 @@ var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
 var _fill := {}                        ## zone id -> true: fill at once in the next food view
 var _fill_all := false                 ## fill every food zone at once in the next food view
+var _fill_spread := false              ## the growth tick: every shown food zone waits for its fill
+var _fill_sort := false                ## the tick after it: queue the waiting zones nearest first
+var grew_tick := -1                    ## the tick of the last growth (the sim's spawn pass skips it)
+var _fill_queue: Array[String] = []    ## zone ids still to fill, FILL_ZONES_PER_TICK a tick (the beat)
 var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
 ## The region's zones packed for the food view, in their order: id, centre, radius and the zone
 ## itself, and for a rebase its absolute centre (tm; NaN for a zone without one). This stream is the
@@ -245,30 +257,42 @@ var _unload_bound := PackedFloat64Array()
 ## and the rings the point's spiral may go out (growth.wedge_tm / CLEAR_SPIRAL_STEP_M). WorldGen.chunk
 ## is pure, so a chunk from here is the one a load would make: the caches never change a result.
 ## The arena is kept, not rebuilt: a new _next_key adds only the chunks of its 3 x 3 it lacks, and
-## on quiet ticks _arena_chore adds the 3 x 3 round the chunk the cell heads for, one chunk a tick,
-## and takes out one a tick that is in neither (_next_held, the arena's keys). A collider outside
-## A's own 3 x 3 cannot reach the spiral (the largest-shell rule), so the extra chunks never change a
-## point; they keep the tick A crosses into a new chunk from adding three (about 160 us each).
+## on quiet ticks _arena_chore adds the chunks it wants held (_next_want: the view set the growth
+## tick at the cell's point would load, and the 3 x 3 round the chunk the cell heads for), one chunk
+## a tick, and takes out one a tick that is in neither that set nor _next_key's 3 x 3 (_next_held, the
+## arena's keys). A collider outside A's own 3 x 3 cannot reach the spiral (the largest-shell rule),
+## so the extra chunks never change a point; they keep the tick A crosses into a new chunk from
+## adding three (about 160 us each), and the growth tick from adding the view set's chunks (about
+## 100 us each): its loads find them held.
 var _next_chunks := {}
 var _next_arena: ChunkArena = null
 var _next_key := Vector2i.MAX
 var _next_held := {}                   ## Vector2i -> true: the chunks _next_arena holds
 var _next_from := PackedFloat64Array()
+var _next_want := {}                   ## Vector2i -> true: the chunks the chore wants held
+var _next_want_c := Vector2i.MAX       ## the cell's new-size chunk when _next_want was taken
+var _next_want_head := Vector2i.MAX    ## the heading's new-size chunk when _next_want was taken
+var _next_want_tick := 0               ## the tick _next_want is taken again by
 var _next_size := 0
 ## Quiet ticks with nothing to generate and no arena chore prepare the cached chunks' loads, one chunk a
-## tick: its zones' plankton streams, seeded and unused (zone id -> RandomNumberGenerator), and its
-## chunk_loaded payload with every position still to place (key -> that). A load from the cache takes
-## them, so the growth tick does not make them; each is what the load would make.
+## tick: its zones' plankton streams, seeded and unused (zone id -> RandomNumberGenerator), its
+## chunk_loaded payload with every position still to place (key -> that), its zones' region records
+## with their centres still to place and their absolute places (key -> [records, places]), and its
+## sites' records with their local places still to derive (key -> site id -> record). A load from the
+## cache takes them, so the growth tick does not make them; each is what the load would make.
 var _next_streams := {}
 var _next_events := {}
+var _next_zones := {}
+var _next_sites := {}
 var wedge_rings := 4
 ## Tests turn this off to show the caches never change a result (S2G35): every point is then
 ## computed from freshly generated chunks, and nothing is prefetched or taken from the cache.
 var next_cache := true
 var _growing := false                  ## inside grow: its loads take from the next size's chunks
-## What the growth tick lets go of (the old size's chunks, its arena and its plankton list), held so
-## that freeing it, a large share of that tick's cost, falls on quiet ticks after the beat instead:
-## one a tick (step). Nothing reads it; it changes no result.
+## What the growth tick lets go of (the old size's chunks, its arena, its plankton list and the
+## tables of the old size's zones, sites and chunks), held so that freeing it, a large share of that
+## tick's cost, falls on quiet ticks after the beat instead: one a tick (step). Nothing reads it; it
+## changes no result.
 var _retired: Array = []
 
 
@@ -302,9 +326,11 @@ func step(sim: PoolSim) -> void:
 	if sim.respawn_pending:
 		_respawn(sim)
 	var g := sim.growth
+	var grew := false
 	if g != null and g.due:
 		if not sim.dead and not sim.respawn_pending and size < max_size:
 			grow(sim)
+			grew = true
 		else:
 			g.due = false
 	var p := sim.motion.position
@@ -313,8 +339,9 @@ func step(sim: PoolSim) -> void:
 	_unload(sim)
 	var view := _wake_view(sim)
 	var loads := _loads
-	_load(sim, view)
-	var quiet := _loads == loads   # nothing loaded: the ahead work, the prefetch and the frees may run
+	if not grew:
+		_load(sim, view)   # the growth tick's loads are its view set; the beat's begin the next tick
+	var quiet := _loads == loads and not grew   # nothing loaded: the ahead work, the prefetch and the frees may run
 	var made := quiet and _look_ahead(sim)   # one chunk generation a tick: the prefetch waits
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
@@ -577,30 +604,49 @@ func view_set_keys(center_local: Vector2) -> Array[Vector2i]:
 			found[Vector2i(c.x + dx, c.y + dy)] = true
 	var quad := ViewFootprint.corners(center_local, camera, float(camera.zoom_max), view_aspect)
 	if not quad.is_empty():
-		# The quad in chunk-relative float64 coordinates: local + origin, in tm.
-		var qx := PackedFloat64Array()
-		var qy := PackedFloat64Array()
-		var ox := origin_x_am / _tm_to_am
-		var oy := origin_y_am / _tm_to_am
-		for v in quad:
-			qx.append(ox + float(v.x))
-			qy.append(oy + float(v.y))
-		var lo_x := floori((_min(qx) - VIEW_SET_MARGIN_TM) / chunk_tm)
-		var hi_x := floori((_max(qx) + VIEW_SET_MARGIN_TM) / chunk_tm)
-		var lo_y := floori((_min(qy) - VIEW_SET_MARGIN_TM) / chunk_tm)
-		var hi_y := floori((_max(qy) + VIEW_SET_MARGIN_TM) / chunk_tm)
-		for ky in range(lo_y, hi_y + 1):
-			for kx in range(lo_x, hi_x + 1):
-				var key := Vector2i(kx, ky)
-				if found.has(key):
-					continue
-				if _quad_square_distance(qx, qy, kx * chunk_tm, ky * chunk_tm, chunk_tm) <= VIEW_SET_MARGIN_TM:
-					found[key] = true
+		_add_keys_near_quad(found, quad, origin_x_am / _tm_to_am, origin_y_am / _tm_to_am)
 	var out: Array[Vector2i] = []
 	for key in found:
 		out.append(key)
 	out.sort_custom(_key_less)
 	return out
+
+
+## Adds to `found` every chunk (not in it yet) whose square comes within VIEW_SET_MARGIN_TM of `quad`
+## (local tm corners) with the origin at (ox, oy) tm.
+func _add_keys_near_quad(found: Dictionary, quad: PackedVector2Array, ox: float, oy: float) -> void:
+	# The quad in chunk-relative float64 coordinates: local + origin, in tm.
+	var qx := PackedFloat64Array()
+	var qy := PackedFloat64Array()
+	for v in quad:
+		qx.append(ox + float(v.x))
+		qy.append(oy + float(v.y))
+	var lo_x := floori((_min(qx) - VIEW_SET_MARGIN_TM) / chunk_tm)
+	var hi_x := floori((_max(qx) + VIEW_SET_MARGIN_TM) / chunk_tm)
+	var lo_y := floori((_min(qy) - VIEW_SET_MARGIN_TM) / chunk_tm)
+	var hi_y := floori((_max(qy) + VIEW_SET_MARGIN_TM) / chunk_tm)
+	for ky in range(lo_y, hi_y + 1):
+		for kx in range(lo_x, hi_x + 1):
+			var key := Vector2i(kx, ky)
+			if found.has(key):
+				continue
+			if _quad_square_distance(qx, qy, kx * chunk_tm, ky * chunk_tm, chunk_tm) <= VIEW_SET_MARGIN_TM:
+				found[key] = true
+
+
+## The chunks the growth tick at the cell's absolute point `a` (am) would load, view_set_keys(ZERO)
+## at size + 1 with the origin at `a`, expression for expression: Vector2i -> true, in that order.
+func _next_view_keys(a: PackedFloat64Array) -> Dictionary:
+	var s1 := WorldConfig.tm_to_am(size + 1)
+	var c := Vector2i(floori(a[0] / s1 / chunk_tm), floori(a[1] / s1 / chunk_tm))
+	var found := {}
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			found[Vector2i(c.x + dx, c.y + dy)] = true
+	var quad := ViewFootprint.corners(Vector2.ZERO, camera, float(camera.zoom_max), view_aspect)
+	if not quad.is_empty():
+		_add_keys_near_quad(found, quad, a[0] / s1, a[1] / s1)
+	return found
 
 
 ## Loads every missing chunk of the view set round `center_local` now (a new world, a Continue, a
@@ -797,19 +843,78 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", whole := false) ->
 ## zones' plankton goes in one pass (PlanktonField.drop_zones) and the zones leave in the region's own
 ## order (each removal finds its zone first). The arena is left as it is: another takes its place
 ## (step 5). The chunks and the plankton list are freed after the beat (_retired).
+## The growth tick: every chunk unloads at once ("growth"), whole (the chunks and the plankton items go
+## to _retired, nothing to _let_go), by one pass each: every zone leaves the food set, the region and
+## the index (rebuilt by the next food view), every site leaves the table with its home, its role, its
+## prepared creature and its queue entries (every entry is a loaded site's; the creatures are gone
+## already, grow's steps 2 and 3), then chunk_unloaded per key in key order. The state after it is
+## _unload_chunk's for every key in turn.
 func _unload_all(sim: PoolSim) -> void:
-	var dropped := {}
 	for key in _keys:
 		_retired.append(_chunks[key])
-		for z in _chunks[key].zones:
-			dropped[z.id] = true
-	_retired.append(sim.plankton.items)
-	sim.plankton.drop_zones(dropped)
-	for z: Dictionary in sim.region.zones.duplicate():
-		if dropped.has(z.id):
-			_drop_zone(sim, z.id)
-	for key in _keys.duplicate():
-		_unload_chunk(sim, key, "growth", true)
+	# The zones, as _drop_zone each in turn leaves them: the versions count each; the index, when it
+	# was current, ends empty and current with an epoch per zone, else stays as it was. The tables go
+	# to _retired whole, each in place of a fresh one, so that freeing their entries (the zones, the
+	# streams, the items' index) falls on quiet ticks after the beat.
+	var n := sim.region.zones.size()
+	var current := _zones_indexed == _zones_version and _zone_refs.size() == n
+	_retired.append(sim.plankton.drop_all_zones())
+	sim.plankton.active_zones = {}
+	_retired.append(sim.region.take_all_zones())
+	_zones_version += n
+	var tables := [_zone_abs, _zone_chunk, _fill, _fill_queue, _trimmed]
+	if current and n > 0:
+		_zone_ids.clear()
+		_zone_c.clear()
+		_zone_r.clear()
+		tables.append(_zone_refs)
+		var refs: Array[Dictionary] = []
+		_zone_refs = refs
+		_zone_ax.clear()
+		_zone_ay.clear()
+		_zones_indexed = _zones_version
+		_index_epoch += n
+	var queue_fresh: Array[String] = []
+	_retired.append(tables)
+	_zone_abs = {}
+	_zone_chunk = {}
+	_fill = {}
+	_fill_queue = queue_fresh
+	_trimmed = {}
+	# The chunks, each in key order: its sites' creatures leave ("unloaded"), then chunk_unloaded; the
+	# table, the roles, the homes, the prepared creatures and the queue entries go once at the end.
+	var keys := _keys.duplicate()
+	_site_epoch += keys.size()
+	_quiet = false
+	if _home_count != sites.size():
+		_index_homes()
+	var field := sim.creatures
+	for key in keys:
+		if field != null and not field.creatures.is_empty():
+			var mine: Dictionary = _home_sites.get(key, {})
+			var leaving: Array[CreatureField.Creature] = []
+			for c in field.creatures:
+				if mine.has(c.site_id):
+					leaving.append(c)
+			if not leaving.is_empty():
+				field.remove_all(leaving, "unloaded", sim.tick)
+		_emit(sim, {"type": "chunk_unloaded", "key": key, "reason": "growth"})
+	if field != null:
+		var queue := field.queue
+		for i in range(queue.size() - 1, -1, -1):
+			if sites.has(queue[i].site):
+				queue.remove_at(i)
+		field.forget_all_prepared()
+	var keys_fresh: Array[Vector2i] = []
+	_retired.append([sites, _site_role, _role_sites, _home_sites, _chunks, _keys])
+	sites = {}
+	_site_role = {}
+	_role_sites = {}
+	_home_sites = {}
+	_home_count = 0
+	_chunks = {}
+	_keys = keys_fresh
+	_load_bound = PackedFloat64Array()
 
 
 ## A zone of an unloading chunk leaves the food set, the region (with its stream) and the index; its
@@ -823,6 +928,8 @@ func _drop_zone(sim: PoolSim, id: String) -> Dictionary:
 	_zone_abs.erase(id)
 	_zone_chunk.erase(id)
 	_fill.erase(id)
+	_fill_queue.erase(id)
+	sim.plankton.pending_fill.erase(id)
 	_trimmed.erase(id)
 	return was
 
@@ -936,12 +1043,18 @@ static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: f
 func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	var ch: WorldChunk = null
 	var made: Dictionary = {}
+	var zone_recs: Array = []
+	var site_recs: Dictionary = {}
 	if _next_size == size and next_cache and (_growing or (sim.growth != null and sim.tick < sim.growth.beat_until)):
 		ch = _next_chunks.get(key)
 		_next_chunks.erase(key)
 		if ch != null:
 			made = _next_events.get(key, {})
+			zone_recs = _next_zones.get(key, [])
+			site_recs = _next_sites.get(key, {})
 		_next_events.erase(key)
+		_next_zones.erase(key)
+		_next_sites.erase(key)
 	if ch == null:
 		ch = _generated(key)
 	_loads += 1
@@ -951,26 +1064,37 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	if not (_growing and arena.has_chunk(key)):
 		arena.add_chunk(key, _colliders(ch))
 	var k := _tm_to_am   # local_of_tm written out: (x k - origin) / k, through float64
+	var region := sim.region
+	var prepared := zone_recs.size() == 2 and (zone_recs[0] as Array).size() == ch.zones.size()
+	var i := 0
 	for z in ch.zones:
-		var fresh := sim.region.add_zone(z.id, Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k),
-			float(z.radius), float(z.capacity), float(z.growth_rate))
+		var fresh: bool
+		if prepared:   # the record and the place as made ahead (what add_zone makes), its centre placed now
+			fresh = region.add_zone_prepared(zone_recs[0][i], Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k))
+			_zone_abs[z.id] = zone_recs[1][i]
+		else:
+			fresh = region.add_zone(z.id, Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k),
+				float(z.radius), float(z.capacity), float(z.growth_rate))
+			_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+		i += 1
 		var stream: RandomNumberGenerator = _next_streams.get(z.id)
 		if stream == null:
 			stream = _zone_stream(z.id)
 		else:
 			_next_streams.erase(z.id)
-		sim.region.streams[z.id] = stream
-		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+		region.streams[z.id] = stream
 		_zone_chunk[z.id] = key
 		_zones_version += 1
 		if fresh:
-			_index_added_zone(sim.region)
+			_index_added_zone(region)
 	if sim.creatures != null:
 		var ahead: Dictionary = _ahead_sites.get(Vector3i(key.x, key.y, size), {})
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
 				_note_home(s.id, key)
 				var rec: Dictionary = ahead.get(s.id, {})
+				if rec.is_empty():
+					rec = site_recs.get(s.id, {})   # made ahead for the next size (now this one)
 				if not rec.is_empty() and is_same(rec.abs, s):
 					_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
 				else:
@@ -1399,10 +1523,16 @@ func _clear_next() -> void:
 	_next_chunks = {}
 	_next_streams = {}
 	_next_events = {}
+	_next_zones = {}
+	_next_sites = {}
 	_next_arena = null
 	_next_held = {}
 	_next_key = Vector2i.MAX
 	_next_from = PackedFloat64Array()
+	_next_want = {}
+	_next_want_c = Vector2i.MAX
+	_next_want_head = Vector2i.MAX
+	_next_want_tick = 0
 	_next_size = 0
 
 
@@ -1436,6 +1566,8 @@ func _prefetch(sim: PoolSim, quiet := true) -> bool:
 		if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
 			if _next_events.has(key):
 				_next_events.erase(key)
+				_next_zones.erase(key)
+				_next_sites.erase(key)
 				for z in _next_chunks[key].zones:
 					_next_streams.erase(z.id)
 			_next_chunks.erase(key)
@@ -1463,44 +1595,70 @@ func _prefetch(sim: PoolSim, quiet := true) -> bool:
 	return made > 0 or _arena_chore(sim) or _prepare_next()
 
 
-## One quiet tick's preparing (_next_events): the first cached chunk, in the order they were made
-## (nearest first), whose load is not prepared yet. True when it prepared one.
+## One quiet tick's preparing (_next_events, _next_zones, _next_sites): the first cached chunk, in the
+## order they were made (nearest first), whose load is not prepared yet. True when it prepared one.
+## A chunk with a zone add_zone would refuse has no zone records prepared: its load makes them.
 func _prepare_next() -> bool:
 	if _next_events.size() >= _next_chunks.size():
 		return false
 	for key: Vector2i in _next_chunks:
 		if not _next_events.has(key):
 			var ch: WorldChunk = _next_chunks[key]
+			var records: Array[Dictionary] = []
+			var places: Array[PackedFloat64Array] = []
+			var sound := true
 			for z in ch.zones:
 				_next_streams[z.id] = _zone_stream(z.id)
+				var radius := float(z.radius)
+				var capacity := float(z.capacity)
+				var rate := float(z.growth_rate)
+				for value in [radius, capacity, rate]:
+					if not (is_finite(value) and value > 0.0):
+						sound = false
+				records.append({"id": z.id, "center": Vector2.ZERO, "radius": radius, "capacity": capacity,
+					"growth_rate": rate, "amount": capacity})
+				places.append(PackedFloat64Array([float(z.x), float(z.y)]))
+			if sound:
+				_next_zones[key] = [records, places]
+			var recs := {}
+			for s in ch.sites:
+				if (s.sizes as Array).has(ch.size):
+					recs[s.id] = _site_record_abs(s, key)
+			_next_sites[key] = recs
 			_next_events[key] = _event_of(ch, false)
 			return true
 	return false
 
 
-## One quiet tick's care of the next size's arena (BP-4), once it is in use: the first chunk of the
-## 3 x 3 round the new-size chunk the cell heads for (its point NEXT_LEAD_S along its velocity) that the
-## arena lacks and the prefetch holds goes in; with none, the first chunk in neither that 3 x 3 nor
-## _next_key's comes out. True when it did either.
+## One quiet tick's care of the next size's arena (BP-4), once it is in use. The chunks it wants held
+## (_next_want): the view set the growth tick would load at the cell's point now (_next_view_keys), and
+## the 3 x 3 round the new-size chunk the cell heads for (its point NEXT_LEAD_S along its velocity);
+## taken again when the cell's or the heading's new-size chunk changes, or NEXT_WANT_TICKS ticks on.
+## The first wanted chunk the arena lacks and the prefetch holds goes in; with none, the first held
+## chunk in neither the wanted set nor _next_key's 3 x 3 comes out. True when it did either.
 func _arena_chore(sim: PoolSim) -> bool:
 	if _next_arena == null or _next_key == Vector2i.MAX:
 		return false
 	var s1 := WorldConfig.tm_to_am(size + 1)
+	var a := abs_of_local(sim.motion.position)
+	var c := Vector2i(floori(a[0] / s1 / chunk_tm), floori(a[1] / s1 / chunk_tm))
 	var h := abs_of_local(sim.motion.position + sim.motion.velocity * NEXT_LEAD_S)
 	var head := Vector2i(floori(h[0] / s1 / chunk_tm), floori(h[1] / s1 / chunk_tm))
-	if head != _next_key:
+	if c != _next_want_c or head != _next_want_head or sim.tick >= _next_want_tick:
+		_next_want = _next_view_keys(a)
 		for dy in range(-1, 2):
 			for dx in range(-1, 2):
-				var k := Vector2i(head.x + dx, head.y + dy)
-				if not _next_held.has(k) and _next_chunks.has(k):
-					_next_arena.add_chunk(k, _colliders(_next_chunks[k]))
-					_next_held[k] = true
-					return true
-	if _next_held.size() <= 9:
-		return false
+				_next_want[Vector2i(head.x + dx, head.y + dy)] = true
+		_next_want_c = c
+		_next_want_head = head
+		_next_want_tick = sim.tick + NEXT_WANT_TICKS
+	for k: Vector2i in _next_want:
+		if not _next_held.has(k) and _next_chunks.has(k):
+			_next_arena.add_chunk(k, _colliders(_next_chunks[k]))
+			_next_held[k] = true
+			return true
 	for k: Vector2i in _next_held:
-		if maxi(absi(k.x - _next_key.x), absi(k.y - _next_key.y)) > 1 \
-				and maxi(absi(k.x - head.x), absi(k.y - head.y)) > 1:
+		if not _next_want.has(k) and maxi(absi(k.x - _next_key.x), absi(k.y - _next_key.y)) > 1:
 			_next_arena.remove_chunk(k)
 			_next_held.erase(k)
 			return true
@@ -1520,7 +1678,10 @@ func _arena_chore(sim: PoolSim) -> bool:
 ##    made are kept as they are (D-66); plankton becomes haze; every chunk unloads ("growth"); caps.
 ## 4. Size n + 1 with the origin exactly A: the cell at (0, 0), its previous point and the remnants and
 ##    carrion again from their absolute values, its velocity / 1.6; the field takes size n + 1.
-## 5. The view set round A loads (from the next size's cache) without settling; every zone fills.
+## 5. The view set round A loads (from the next size's cache) without settling; the food zones fill
+##    nearest first, FILL_ZONES_PER_TICK on this tick and on each tick after it until all have (C-V15
+##    as amended: each item is born on the tick that filled its zone). The beat's further loads begin
+##    the next tick (D-80 as amended), and this tick does none of a quiet tick's work.
 ## 6. The cell settles by the spiral on the new arena: when q was finite this is q bit for bit
 ##    (push_error otherwise; test_growth_tick fails on it). The remnants settle.
 ## 7. The checkpoint is the settled point at n + 1; full energy; the shelter; the meter starts again;
@@ -1534,6 +1695,7 @@ func grow(sim: PoolSim) -> void:
 	var f := WorldConfig.GROWTH_FACTOR
 	var cell := sim.motion
 	var r_cell := sim.phenotype.radius
+	grew_tick = sim.tick
 	# 1. Record.
 	var a := abs_of_local(cell.position)
 	var ap := abs_of_local(cell.prev_position)
@@ -1643,6 +1805,8 @@ func grow(sim: PoolSim) -> void:
 	var next_size := _next_size
 	var streams := _next_streams
 	var events := _next_events
+	var zones := _next_zones
+	var next_sites := _next_sites
 	var next_arena := _next_arena if next_cache and _next_size == n + 1 and _next_from == a else null
 	set_size(n + 1)
 	_ahead.clear()   # generated ahead at size n, with its sites' records and creatures
@@ -1652,6 +1816,8 @@ func grow(sim: PoolSim) -> void:
 	_next_size = next_size
 	_next_streams = streams
 	_next_events = events
+	_next_zones = zones
+	_next_sites = next_sites
 	origin_x_am = a[0]
 	origin_y_am = a[1]
 	_rederive(sim)
@@ -1669,9 +1835,10 @@ func grow(sim: PoolSim) -> void:
 	if sim.creatures != null:
 		sim.creatures.set_size(n + 1)
 	# 5. Load the view set, unsettled. The next size's arena (BP-4) holds the 3 x 3 round A at size
-	# n + 1, at origin A by the expression _rederive's set_origin uses, so it is taken as the arena once
-	# it gives up its chunks outside the view set: equal colliders and an equal origin are an equal
-	# arena (its arrays in canonical order, its near grids counts), whichever order they came in.
+	# n + 1 (and, after the chore's quiet ticks, the view set round A), at origin A by the expression
+	# _rederive's set_origin uses, so it is taken as the arena once it gives up its chunks outside the
+	# view set: equal colliders and an equal origin are an equal arena (its arrays in canonical order,
+	# its near grids counts), whichever order they came in. The loads add only the chunks it lacks.
 	var view := view_set_keys(Vector2.ZERO)
 	if next_arena != null:
 		for key in next_arena.chunk_keys():
@@ -1683,7 +1850,7 @@ func grow(sim: PoolSim) -> void:
 		_load_chunk(sim, key, false)
 	_growing = false
 	_apply_caps(sim)
-	_fill_all = true
+	_fill_spread = true
 	# 6. Settle.
 	var p := PoolSim.clear_point_on(sim.arena, Vector2.ZERO, r_cell)
 	if q.is_finite() and p != q:
@@ -1804,6 +1971,14 @@ func _forget_role(id: String) -> void:
 ## two-post site (S2) also gets local "posts" [{home, heading, territory: {} or {center, radius}}] x 2,
 ## as CreatureBrain.set_posts takes them, from "abs_posts" [home x, y, territory x, y] per post.
 func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
+	var rec := _site_record_abs(s, key)
+	_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)
+	return rec
+
+
+## _site_record but its local places (home, the territory and reach centres, the posts'), which
+## _derive_site_local sets in the frame in force: Vector2.ZERO until then.
+static func _site_record_abs(s: Dictionary, key: Vector2i) -> Dictionary:
 	var chunks: Array[Vector2i] = []
 	chunks.assign(s.chunks)
 	var t: Dictionary = s.territory
@@ -1824,7 +1999,6 @@ func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
 				"territory": {} if pt.is_empty() else {"center": Vector2.ZERO, "radius": float(pt.radius)}})
 		rec["posts"] = posts
 		rec["abs_posts"] = abs_posts
-	_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)
 	return rec
 
 
@@ -2122,11 +2296,52 @@ func _food_view(sim: PoolSim) -> void:
 			sim.plankton.fill_zone(sim.region.zone(id), sim.region, sim.arena, sim.tick, sim.now())
 	_fill.clear()
 	_fill_all = false
+	if _fill_spread:
+		# The growth tick: every zone shown waits for its fill and does not regrow meanwhile. The tick
+		# after it queues them nearest first (the sort is its cost, not the growth tick's) and fills the
+		# first FILL_ZONES_PER_TICK; a zone that left the food set by then regrows instead.
+		_fill_spread = false
+		_fill_sort = true
+		var pending := {}
+		for i in shown:
+			pending[_zone_ids[i]] = true
+		plankton.pending_fill = pending
+	elif _fill_sort:
+		_fill_sort = false
+		var pending: Dictionary = plankton.pending_fill
+		var waiting := PackedInt32Array()
+		for i in shown:
+			if pending.has(_zone_ids[i]):
+				waiting.append(i)
+		_fill_queue = _nearest_first(waiting, body)
+		pending.clear()
+		for id in _fill_queue:
+			pending[id] = true
+	var filled := 0
+	while filled < FILL_ZONES_PER_TICK and not _fill_queue.is_empty():
+		var id: String = _fill_queue.pop_front()
+		plankton.pending_fill.erase(id)
+		if food.has(id):   # still shown; a zone that left the food set regrows by the plankton's own tick
+			plankton.fill_zone(sim.region.zone(id), sim.region, sim.arena, sim.tick, sim.now())
+			filled += 1
 	var tile := tile_of_local(body)
 	if tile != _cell_tile:
 		_cell_tile = tile
 		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
 		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
+
+
+## The shown food zones' ids nearest the body first: by the distance from the body to the zone's edge,
+## ties by id (the index is current: _food_view built it this tick).
+func _nearest_first(shown: PackedInt32Array, body: Vector2) -> Array[String]:
+	var rows := []
+	for i in shown:
+		rows.append([body.distance_to(_zone_c[i]) - _zone_r[i], _zone_ids[i]])
+	rows.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var ids: Array[String] = []
+	for row in rows:
+		ids.append(row[1])
+	return ids
 
 
 ## The zone add_zone just appended, appended to the index too when the index was current before it

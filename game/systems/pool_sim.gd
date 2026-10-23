@@ -358,7 +358,12 @@ func step(intent: SimIntent) -> void:
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
-		creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK)
+		# S2: the growth tick tries no site (every site of its view set is due at once); the beat's ticks
+		# try a few each.
+		var tries := -1
+		if growth != null and world != null and tick < growth.beat_until:
+			tries = 0 if world.grew_tick == tick else CreatureField.BEAT_TRIES_PER_TICK
+		creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK, tries)
 		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()

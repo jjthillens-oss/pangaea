@@ -150,6 +150,10 @@ func test_slow_the_growth_tick_leaves_no_creature_that_can_attack_near_the_cell_
 	_check_safe_after_growth(seeds)
 
 
+## The growth tick converts the awake creatures and tries no site (every site of its view set is due
+## at once); the beat's ticks then spawn them a few a tick, each where the cell cannot see it happen
+## at that tick: spawn_safe_m away and out of the widest view (the spawn check against the cell's
+## places, which the step takes after the cell has moved).
 func _check_safe_after_growth(seeds: Array) -> void:
 	var converted := 0
 	var spawned := 0
@@ -159,20 +163,34 @@ func _check_safe_after_growth(seeds: Array) -> void:
 		_due(sim)
 		var ev := _tick(sim)
 		check_eq(_of(ev, "grew").size(), 1, "seed %d: grew" % seed_value)
-		spawned += _of(ev, "creature_spawned").size()
-		var fair := sim.species.fairness
-		var cam: Dictionary = layout.camera
-		var cell := sim.motion.position
+		check_eq(_of(ev, "creature_spawned").size(), 0, "seed %d: the growth tick tries no site" % seed_value)
 		for c in sim.creatures.awake():
-			var margin := float(cam.look_ahead_max) + float(fair.spawn_view_margin_m) + c.phenotype.radius
-			check(cell.distance_to(c.motion.position) >= float(fair.spawn_safe_m),
-				"seed %d: %s is spawn_safe_m away" % [seed_value, c.id])
-			check(not ViewFootprint.contains(cell, c.motion.position, cam, float(cam.zoom_max), float(fair.spawn_view_aspect), margin),
-				"seed %d: %s is out of view" % [seed_value, c.id])
+			_check_unseen(sim, c, c.motion.position, "seed %d: %s left by the growth tick" % [seed_value, c.id])
 		check(sim.remnants.items.all(func(r: RemnantField.Remnant) -> bool: return r.brain == null),
 			"seed %d: remnants have no brain to attack with" % seed_value)
+		var beat := sim.growth.beat_until - sim.tick
+		check(beat > 0, "seed %d: the beat follows the growth tick" % seed_value)
+		for t in beat:
+			var births := _of(_tick(sim), "creature_spawned")
+			spawned += births.size()
+			for b in births:
+				var c: CreatureField.Creature = sim.creatures.find(b.id)
+				check(c != null, "seed %d: %s is in the field" % [seed_value, b.id])
+				if c != null:
+					_check_unseen(sim, c, b.position, "seed %d: %s born on beat tick %d" % [seed_value, c.id, t])
 	check(converted > 0, "creatures were awake to convert (%d)" % converted)
-	check(spawned > 0, "size-2 creatures spawned in the growth tick (%d)" % spawned)
+	check(spawned > 0, "size-2 creatures spawned in the beat (%d)" % spawned)
+
+
+## `c`, at `at` (where it is or was born), is spawn_safe_m from the cell and out of its widest view.
+func _check_unseen(sim: PoolSim, c: CreatureField.Creature, at: Vector2, what: String) -> void:
+	var fair := sim.species.fairness
+	var cam: Dictionary = layout.camera
+	var cell := sim.motion.position
+	var margin: float = float(cam.look_ahead_max) + float(fair.spawn_view_margin_m) + c.phenotype.radius
+	check(cell.distance_to(at) >= float(fair.spawn_safe_m), "%s: spawn_safe_m away" % what)
+	check(not ViewFootprint.contains(cell, at, cam, float(cam.zoom_max), float(fair.spawn_view_aspect), margin),
+		"%s: out of view" % what)
 
 
 func test_step_one_grows_only_a_living_cell_below_the_top() -> void:
@@ -400,12 +418,25 @@ func test_the_next_arena_is_kept_across_new_size_chunks_and_gives_a_fresh_point(
 	var key := w._next_key
 	check_eq(w._next_held.size(), 9, "the 3 x 3")
 	on.motion.velocity = east / WorldStream.NEXT_LEAD_S   # heading for the chunk east
+	var want := w._next_view_keys(a)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			want[key + Vector2i(1 + dx, dy)] = true
+	var missing := 0
+	for k: Vector2i in want:
+		if not w._next_held.has(k):
+			missing += 1
+	check(missing >= 3, "the view set round A and the 3 x 3 ahead want chunks the arena lacks (%d)" % missing)
 	for t in 3:
 		w._prefetch(on)
-		check_eq(w._next_held.size(), 10 + t, "quiet tick %d: one chunk of the 3 x 3 ahead joined" % t)
+		check_eq(w._next_held.size(), 10 + t, "quiet tick %d: one wanted chunk joined" % t)
+		for k: Vector2i in w._next_held:
+			check(want.has(k), "quiet tick %d: %s wanted" % [t, k])
+	for t in missing - 3:
+		w._prefetch(on)
 	w._prefetch(on)
 	w._prefetch(on, false)
-	check_eq(w._next_held.size(), 12, "then none joins and none leaves")
+	check_eq(w._next_held.size(), 9 + missing, "then every wanted chunk is held, and none joins or leaves")
 	for sim: PoolSim in [on, off]:
 		sim.motion.position += east
 	var epoch := arena.epoch
@@ -415,14 +446,16 @@ func test_the_next_arena_is_kept_across_new_size_chunks_and_gives_a_fresh_point(
 	check(q == off.world.next_size_clear_point(off), "the point as from fresh chunks after the crossing")
 	check(q.distance_to(on.motion.position) > 1.0, "the shell there moved it (%s)" % q)
 	on.motion.velocity = Vector2.ZERO
+	want = w._next_view_keys(w.abs_of_local(on.motion.position))
+	var held := w._next_held.size()
 	for t in 5:
 		w._prefetch(on)
-	check_eq(w._next_held.size(), 12, "the prefetch's new column comes first")
-	for t in 3:
+	check(w._next_held.size() >= held, "the view set round the new point comes first (%d held)" % w._next_held.size())
+	for t in 12:
 		w._prefetch(on)
-	check_eq(w._next_held.size(), 9, "then the column behind leaves, one a quiet tick")
+	check_eq(w._next_held.keys().size(), want.size(), "then the chunks behind leave, one a quiet tick")
 	for k: Vector2i in w._next_held:
-		check(absi(k.x - w._next_key.x) <= 1 and absi(k.y - w._next_key.y) <= 1, "%s in the 3 x 3" % k)
+		check(want.has(k), "%s in the view set round the new point" % k)
 	check(w.next_size_clear_point(on) == q, "the point unchanged")
 	for sim: PoolSim in [on, off]:
 		sim.motion.position += east
@@ -490,7 +523,8 @@ func test_the_growth_tick_takes_its_view_set_from_the_cache() -> void:
 	var view := w.view_set_keys(Vector2.ZERO)
 	for key in view:
 		check(not gen.built.has(key), "view chunk %s came from the cache" % key)
-	check(_of(ev, "chunk_loaded").size() > view.size(), "the beat loaded beyond the view set in the same tick")
+	check_eq(_of(ev, "chunk_loaded").size(), view.size(), "the growth tick loads its view set and no more (D-80 as amended)")
+	check(_of(_tick(sim), "chunk_loaded").size() > 0, "the beat's loads begin the tick after the growth tick")
 	# The beat keeps taking from the cache; after it the cache is forgotten.
 	while sim.tick < g.beat_until:
 		_tick(sim)
@@ -519,7 +553,7 @@ func test_the_growth_tick_takes_the_next_arena_as_the_arena_the_caches_off_build
 		var old := on.arena as ChunkArena
 		check(next != null and next.chunk_keys().size() == 9, "seed %d: the next arena ready" % seed_value)
 		# Three quiet ticks' chore while heading two new-size chunks out on the diagonal: the arena
-		# takes three chunks beyond the 3 x 3, the far corner among them, which the view set lacks.
+		# takes three chunks beyond the 3 x 3 (of the view set round A or the 3 x 3 ahead).
 		var v := on.motion.velocity
 		var s1 := WorldConfig.tm_to_am(2)
 		on.motion.velocity = Vector2(2.0, 2.0) * on.world.chunk_tm * s1 / WorldStream.NEXT_LEAD_S
@@ -586,7 +620,7 @@ func test_the_old_world_is_freed_on_quiet_ticks_after_the_beat() -> void:
 	_due(sim)
 	_tick(sim)
 	check(sim.size() == 2, "grew")
-	check_eq(w._retired.size(), chunks + 2, "the old chunks, the plankton list and the arena held")
+	check_eq(w._retired.size(), chunks + 5, "the old chunks, the plankton list, the arena and three sets of tables held")
 	check(w._retired.has(old), "the old arena among them")
 	var held := w._retired.size()
 	while sim.tick < sim.growth.beat_until:
@@ -701,16 +735,40 @@ func test_the_beat_loads_two_chunks_a_tick_then_one() -> void:
 	check(during > 0, "loads during the beat (%d)" % during)
 
 
-func test_food_filled_by_the_growth_tick_is_born_on_it() -> void:
+## C-V15 as amended: the growth tick fills its nearest FILL_ZONES_PER_TICK food zones at once, and each
+## tick after it fills the next nearest, until every zone shown at the growth has filled; every item is
+## born on the tick that filled its zone (so the view grows each plant in).
+func test_food_is_born_on_the_tick_that_fills_its_zone_from_the_tick_after_the_growth() -> void:
 	var sim := _sim(SEEDS[2])
 	_due(sim)
 	var t0 := sim.tick
 	_tick(sim)
-	var n := 0
+	var w := sim.world
+	check(sim.plankton.items.is_empty(), "the growth tick fills no zone (C-V15 as amended)")
+	var queued: int = sim.plankton.pending_fill.size()
+	check(queued > 0 and w._fill_queue.is_empty(),
+		"every zone shown at the growth waits for its fill (%d); the tick after queues them" % queued)
+	_tick(sim)
+	check_eq(w._fill_queue.size() + mini(queued, WorldStream.FILL_ZONES_PER_TICK), queued, "the tick after the growth queued them all and filled the first")
+	var first := {}
 	for item in sim.plankton.items:
-		check_eq(int(item.born_tick), t0, "%s born on the growth tick (C-V15)" % item.id)
-		n += 1
-	check(n > 0, "the zones filled at once (%d items)" % n)
+		check_eq(int(item.born_tick), t0 + 1, "%s born on the tick after the growth" % item.id)
+		first[item.zone] = true
+	check(first.size() > 0 and first.size() <= WorldStream.FILL_ZONES_PER_TICK,
+		"the tick after the growth fills at most FILL_ZONES_PER_TICK zones (%d)" % first.size())
+	var ticks := ceili(float(queued) / WorldStream.FILL_ZONES_PER_TICK)
+	for t in ticks - 1:
+		_tick(sim)
+	check(w._fill_queue.is_empty() and sim.plankton.pending_fill.is_empty(),
+		"every zone queued at the growth (%d) filled within %d ticks" % [queued, ticks])
+	var zones := {}
+	for item in sim.plankton.items:
+		var born := int(item.born_tick)
+		check(born >= t0 + 1 and born <= t0 + ticks, "%s born on the tick that filled its zone (%d)" % [item.id, born])
+		zones[item.zone] = true
+	check(zones.size() >= first.size(), "the beat's ticks fill the rest (%d zones)" % zones.size())
+	if queued > WorldStream.FILL_ZONES_PER_TICK:
+		check(zones.size() > first.size(), "more zones show food after the queued fills (%d of %d)" % [zones.size(), queued])
 
 
 # --- S2G12: the size-2 world is the one a direct arrival meets ---
