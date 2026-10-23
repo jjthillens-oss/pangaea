@@ -69,6 +69,10 @@ const WAKE_SLACK_TM := 0.05
 ## tm: how far the view's reach may differ from the bound's before the bound restarts (a float32
 ## footprint at another place differs by about 1e-5).
 const WAKE_FAR_TOLERANCE_TM := 0.001
+## tm: the load bound scans this much beyond the load ring, so every chunk outside its box lies at
+## least this far beyond the ring; and what the load and unload bounds allow for float64 rounding.
+const LOAD_BOUND_TM := 8.0
+const RING_BOUND_SLACK_TM := 1e-6
 
 var content: WorldContent
 var gen: WorldGen
@@ -158,6 +162,14 @@ var _wake_bound := {}                  ## sleeper (Creature) -> [position, path 
 var _swum := 0.0                       ## tm the cell's one place has moved since the bound restarted
 var _swum_from := Vector2.INF          ## that place at the last _wakers
 var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, view margin] it holds for
+## The ring bounds. A chunk's distance from the body changes by no more than the body moves, so after
+## a scan found no missing chunk within the load ring (_nearest_missing), none can come within it
+## before the body has moved the nearest missing one's distance less the ring, unless a chunk
+## unloads; and after a scan found every loaded chunk within the unload ring (_unload), none can leave
+## it before the body has moved the farthest one's distance short of the ring, unless a chunk loads.
+## Each is [the body's absolute x, y (tm) at the scan, that distance, the ring], or empty.
+var _load_bound := PackedFloat64Array()
+var _unload_bound := PackedFloat64Array()
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -472,14 +484,26 @@ func _unload(sim: PoolSim) -> void:
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
 	var ring := float(rings.unload)
+	if _within_bound(_unload_bound, x, y, ring):
+		return   # every loaded chunk is still within the ring
 	var held: Variant = null   # the holds are only needed for a chunk beyond the ring
 	var gone: Array[Vector2i] = []
+	var far := 0.0
+	var size_tm := chunk_tm
 	for key in _keys:
-		if _square_distance(key, x, y) > ring:
+		# _square_distance written out.
+		var x0 := key.x * size_tm
+		var y0 := key.y * size_tm
+		var dx := maxf(maxf(x0 - x, x - (x0 + size_tm)), 0.0)
+		var dy := maxf(maxf(y0 - y, y - (y0 + size_tm)), 0.0)
+		var d := sqrt(dx * dx + dy * dy)
+		far = maxf(far, d)
+		if d > ring:
 			if held == null:
 				held = _held_keys(sim)
 			if not held.has(key):
 				gone.append(key)
+	_unload_bound = _bound_at(x, y, ring - far, ring) if far <= ring else PackedFloat64Array()
 	for key in gone:
 		_unload_chunk(sim, key)
 	if not gone.is_empty():
@@ -537,6 +561,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
+	_load_bound = PackedFloat64Array()   # a missing chunk now
 	_emit(sim, {"type": "chunk_unloaded", "key": key})
 
 
@@ -591,19 +616,48 @@ func _nearest_missing(body: Vector2, ring: float) -> Variant:
 	var a := abs_of_local(body)
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
+	if _within_bound(_load_bound, x, y, ring):
+		return null   # still no missing chunk within the ring
 	var best: Variant = null
 	var best_d := INF
+	# The ring's box, scanned within the bound's wider box (every chunk outside that lies at least
+	# `wide` away); the nearest missing chunk of the wider box sets the bound.
+	var kx0 := floori((x - ring) / chunk_tm)
+	var kx1 := floori((x + ring) / chunk_tm)
+	var ky0 := floori((y - ring) / chunk_tm)
+	var ky1 := floori((y + ring) / chunk_tm)
+	var wide := ring + LOAD_BOUND_TM
+	var nearest_d := wide
 	# Keys run (y, x), so the first of equal distances is the least key.
-	for ky in range(floori((y - ring) / chunk_tm), floori((y + ring) / chunk_tm) + 1):
-		for kx in range(floori((x - ring) / chunk_tm), floori((x + ring) / chunk_tm) + 1):
+	for ky in range(floori((y - wide) / chunk_tm), floori((y + wide) / chunk_tm) + 1):
+		for kx in range(floori((x - wide) / chunk_tm), floori((x + wide) / chunk_tm) + 1):
 			var key := Vector2i(kx, ky)
 			if _chunks.has(key):
 				continue
 			var d := _square_distance(key, x, y)
-			if d <= ring and d < best_d:
+			nearest_d = minf(nearest_d, d)
+			if d <= ring and d < best_d and kx >= kx0 and kx <= kx1 and ky >= ky0 and ky <= ky1:
 				best = key
 				best_d = d
+	_load_bound = _bound_at(x, y, nearest_d - ring, ring) if best == null else PackedFloat64Array()
 	return best
+
+
+## A ring bound for a body at absolute (x, y) that may move `room` tm (less the rounding slack), or
+## empty when it may not move at all.
+static func _bound_at(x: float, y: float, room: float, ring: float) -> PackedFloat64Array:
+	var r := room - RING_BOUND_SLACK_TM
+	return PackedFloat64Array([x, y, r, ring]) if r > 0.0 else PackedFloat64Array()
+
+
+## Whether a body at absolute (x, y) lies strictly within `bound`'s room of where it was set, for
+## the same ring.
+static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: float) -> bool:
+	if bound.size() != 4 or bound[3] != ring:
+		return false
+	var dx := x - bound[0]
+	var dy := y - bound[1]
+	return dx * dx + dy * dy < bound[2] * bound[2]
 
 
 ## Loads one chunk: its colliders into the arena, its zones into the region (each with its own
@@ -646,6 +700,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
 	_chunks[key] = ch
+	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
 	_emit(sim, _chunk_loaded_event(ch))
 	_apply_caps(sim)
 
