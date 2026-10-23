@@ -234,7 +234,7 @@ func test_a_rebase_every_60_ticks_keeps_places_continuous_and_small() -> void:
 		if far >= LOCAL_BOUND:
 			problem = "a local position at %.1f tm" % far
 		if not _derived_exactly(sim):
-			problem = "a zone or collider off its absolute place"
+			problem = "a zone, site or collider off its absolute place"
 		if not problem.is_empty():
 			bad += 1
 			if first.is_empty():
@@ -359,7 +359,7 @@ func test_zones_and_colliders_are_re_derived_not_accumulated() -> void:
 	# The origin itself adds in float64: back within a few of its ulps (4.5e-13 at 2 km).
 	check_near(sim.world.origin_x_am, 1000.3, 1e-9, "back at the start x")
 	check_near(sim.world.origin_y_am, -2000.7, 1e-9, "and y")
-	check(_derived_exactly(sim), "every zone centre and collider equals a fresh derivation")
+	check(_derived_exactly(sim), "every zone centre, site and collider equals a fresh derivation")
 	# 1,000 km out and back: a shifted float32 would keep only 1/16 tm out there.
 	sim.debug_rebase(Vector2i(31251, -31251))
 	check(_derived_exactly(sim), "also 1,000 km out")
@@ -388,6 +388,16 @@ func _derived_exactly(sim: PoolSim) -> bool:
 		for z in w.chunk(key).zones:
 			var rz := sim.region.zone(z.id)
 			if rz.is_empty() or rz.center != Vector2(float(z.x) - w.origin_x_am, float(z.y) - w.origin_y_am):
+				return false
+		for s in w.chunk(key).sites:
+			if not w.sites.has(s.id):
+				continue
+			var rec: Dictionary = w.sites[s.id]
+			if rec.home != Vector2(float(s.x) - w.origin_x_am, float(s.y) - w.origin_y_am):
+				return false
+			if rec.reach.center != Vector2(float(s.reach.x) - w.origin_x_am, float(s.reach.y) - w.origin_y_am):
+				return false
+			if not s.territory.is_empty() and rec.territory.center != Vector2(float(s.territory.x) - w.origin_x_am, float(s.territory.y) - w.origin_y_am):
 				return false
 	var arena := sim.arena as ChunkArena
 	var i := 0
