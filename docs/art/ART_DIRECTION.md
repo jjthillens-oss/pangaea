@@ -31,15 +31,18 @@ each era its own look without starting a new style every time.
 
 ## 3. Palette
 
-Values are a starting board, PROPOSED. Swatches: `docs/art/renders/palette.png`; material spheres (left to right: clay, membrane, teal membrane, organelle, eye, lid and lip, food, threat): `docs/art/renders/material_sheet.jpg`. Both come from `tools/blender/render_material_sheet.py`. Habitats are cool and slightly desaturated; living
-things and anything interactive are warmer and more saturated, so they read against the
-background before detail does. Color is never the only signal (Bible section 20): food, threat
+Values are a starting board, PROPOSED. Swatches: `docs/art/renders/palette.png`; material spheres (left to right: clay, membrane, teal membrane, organelle, eye, lid and lip, food, threat): `docs/art/renders/material_sheet.jpg`. Both come from `tools/blender/render_material_sheet.py`. Habitats are cool and dark: the
+microscopic fluid is a deep, saturated blue held low in value (the rule below), and other habitat
+colours are slightly desaturated. Living things and anything interactive are warmer and
+lighter, so they read against the background before detail does. Color is never the only signal (Bible section 20): food, threat
 and mate also differ in shape and motion.
 
 | Role | Hex | Use |
 | --- | --- | --- |
 | Deep shadow | `#1D3557` | Pool depths, ambient shadow color. Shadows go blue, never black. |
-| Pool teal | `#2A7F86` | Water tint, far habitat. |
+| Fluid deep | `#0B2E6B` | The microscopic fluid at depth: the Backdrop and the background. |
+| Fluid light | `#4C9BE0` | The lit field round the view centre (the DepthGlow's colour, seen only through the fog's scatter). Never a surface colour: as a surface it is lighter than the coral cell. |
+| Ambient | `#2F6FB8` | Ambient light in the pool (energy 0.8), so shadows go blue. |
 | Shallow turquoise | `#49B3A6` | Lit habitat surfaces. |
 | Algae green | `#6BAB5A` | Plants and grazer-friendly zones. |
 | Moss deep | `#2F6B4A` | Habitat mid-tones. |
@@ -51,8 +54,27 @@ and mate also differ in shape and motion.
 | Threat | `#D9466B` | Spikes and attack tells. Always paired with a sharp shape. |
 | Clay | `#B9B3A8` | Neutral clay renders (Bible section 15 asks for clay next to beauty). |
 
-Saturation discipline: habitat colors stay below about 55% saturation, creature colors may go
-to about 75%, and only food and threat may exceed that.
+Pool teal (`#2A7F86`) is retired as a habitat colour (micro-world plan, C9): the owner-approved
+deep-blue fluid replaced the teal pool on 2026-10-22. The hex survives only as an eye-iris tint in
+the Blender scripts (`lookdev.py` key `pool_teal`), which is a creature colour; the palette board
+leaves it out.
+
+Saturation discipline: habitat colors other than the fluid stay below about 55% saturation,
+creature colors may go to about 75%, and only food and threat may exceed that.
+
+**The fluid's rule (PROPOSED, for art's sign-off).** The approved fluid measures about 93% HSL
+saturation, well over the habitat cap, so the fluid is exempt from the cap. These checks hold it
+instead:
+- the fluid's brightest radiance (the fog colour plus the glow's scatter) has luminance at most
+  0.12;
+- it is blue (blue above green above red), with LAB hue 268 to 288 degrees. That keeps it more
+  than 150 degrees from food (`#CFE86A`, h 114) and at least 83 from the threat pink (`#D9466B`,
+  h 11) in the stored colours (`tests/test_pool_look.gd`);
+- on screen, the look probe holds the fluid near the cell to L\* 26 to 36, at least 90 degrees of
+  LAB hue from the threat pink, and the coral cell at least 15 L\* away from it
+  (`tools/godot/look_probe.gd`, gates `fluid_value`, `fluid_threat_gap` and `cell_contrast`).
+
+Art signs off on this wording; until then it is engineering's proposal.
 
 ## 4. Materials
 
@@ -102,6 +124,10 @@ Turntables use one setup so rungs and assets compare fairly: a warm key light fr
 front-left above, a cool fill from the right, a teal rim from behind, and a soft blue-grey
 world. Shadows stay readable and tinted blue. Each review sheet shows clay and beauty side by
 side, plus the gameplay-camera silhouette.
+
+In-engine review frames (`tools/godot/capture_asset.gd`) show the asset over the fluid it lives
+in: the pool's own environment, Sun, DepthGlow and Backdrop, in either renderer. They replaced the
+old teal review floor (micro-world plan, C9).
 
 ## 7. The quality ladder
 
