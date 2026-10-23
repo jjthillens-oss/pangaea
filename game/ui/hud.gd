@@ -145,6 +145,7 @@ func bind(p_pool: PoolScene) -> void:
 	pool = p_pool
 	pool.sim_event.connect(_on_sim_event)
 	pool.refusal_hint.connect(func(text: String, _reason: String): show_hint(text))
+	pool.growth_chord.connect(on_growth_chord)
 	_body = Lineage.starting_body_of(pool.sim.save.genome, pool.sim.catalog)
 	controls_text.text = "\n".join(controls_lines())
 	first_meal_text.text = first_meal_line(pool.sim.phenotype)
@@ -198,6 +199,14 @@ func show_message(text: String, seconds: float = MESSAGE_S) -> void:
 	_fit_center(message_text, message)
 	message.modulate.a = 1.0
 	_message_t = seconds
+
+
+## The growth beat's chord (S2, 1.9 s in): the new size's message ("Size 2 · about 32 µm"); the
+## badge and the ring follow pool.shown_size(), which turns to the new size at the same moment.
+func on_growth_chord(size: int) -> void:
+	show_message(GrowthHud.badge_text(size, pool.session.world.config.ladder.get("labels", [])))
+	update_growth()
+	refresh()
 
 
 ## A refusal hint at the bottom of the screen.
@@ -653,7 +662,7 @@ class WorldOverlay extends Control:
 			if not tip.behind and (tip.at as Vector2).is_finite():
 				var side := ((tip.at as Vector2) - (back.at as Vector2)).normalized()
 				label = {"at": tip.at, "side": side if side.is_finite() and side != Vector2.ZERO else Vector2.RIGHT,
-					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_tm)}
+					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_am)}
 		queue_redraw()
 
 	## The pip at `at` on the edge band of `rect` with its words; where either would come within

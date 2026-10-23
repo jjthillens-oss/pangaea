@@ -48,6 +48,61 @@ func test_the_origin_arrow_hides_within_40_tm_and_points_to_the_origin() -> void
 	pool.free()
 
 
+## S2 (V-18): the arrow's threshold is 40 tm at every size, so 64 am at size 2, and the distance it
+## reports stays in am, the same number before and after a growth.
+func test_the_arrow_threshold_is_in_tm_and_its_distance_in_am() -> void:
+	var at_2 := WorldConfig.tm_to_am(2)
+	check_near(at_2, 1.6, 1e-12, "1 tm is 1.6 am at size 2")
+	check(WorldMarkers.origin_arrow(PackedFloat64Array([50.0, 0.0])).visible, "50 am out: shown at size 1")
+	check(not WorldMarkers.origin_arrow(PackedFloat64Array([50.0, 0.0]), PackedFloat64Array([0.0, 0.0]), at_2).visible,
+		"hidden at size 2 (31 tm)")
+	check(WorldMarkers.origin_arrow(PackedFloat64Array([65.0, 0.0]), PackedFloat64Array([0.0, 0.0]), at_2).visible,
+		"shown beyond 64 am at size 2")
+	var one := WorldMarkers.origin_arrow(PackedFloat64Array([300.0, 40.0]))
+	var two := WorldMarkers.origin_arrow(PackedFloat64Array([300.0, 40.0]), PackedFloat64Array([0.0, 0.0]), at_2)
+	check_near(two.distance_am, one.distance_am, 1e-12, "the distance is the same across a growth")
+	check_eq(WorldMarkers.distance_text(two.distance_am), WorldMarkers.distance_text(one.distance_am), "and so is its text")
+
+
+## S2: through a growth the column keeps standing at the old checkpoint until the relations change
+## (2.0 s), then fades out there and in at the new one; both markers are drawn at k of their size.
+func test_the_column_holds_through_a_growth_then_cross_fades() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var sim := pool.sim
+	var world := sim.world
+	var column := pool.markers.column()
+	check(column != null, "the sea has a column")
+	if column == null:
+		pool.free()
+		return
+	FakeEvents.frame(pool)
+	var old_place := column.position
+	var height := column.scale.y
+	pool._route({"type": "growth_began", "from": 1, "to": 2, "center_old": sim.motion.position, "center_am": [0.0, 0.0], "factor": 1.6})
+	world.checkpoint_am = PackedFloat64Array([world.checkpoint_am[0] + 30.0, world.checkpoint_am[1], 0.0, 2.0])
+	var new_place := PlaneSpace.to_world(WorldMarkers.column_point(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1])))
+	FakeEvents.frame(pool)
+	check_near(column.scale.y, height * pool.depth_k(), 1e-6, "drawn at k of its height")
+	while pool.growth_beat.t() < GrowthBeat.RELATIONS_S - 1e-9:
+		check(column.position.is_equal_approx(old_place), "at the old checkpoint at %.2f s" % pool.growth_beat.t())
+		check_near(pool.markers.column_fade(), 0.0, 1e-9, "whole until 2.0 s")
+		FakeEvents.frame(pool)
+	var mid_out := false
+	var mid_in := false
+	while pool.growth_beat.t() < GrowthBeat.RELATIONS_S + 2.0 * WorldMarkers.COLUMN_FADE_S + 0.05:
+		FakeEvents.frame(pool)
+		var since := pool.growth_beat.t() - GrowthBeat.RELATIONS_S
+		if since > 0.2 and since < 0.3:
+			mid_out = column.position.is_equal_approx(old_place) and pool.markers.column_fade() > 0.3
+		if since > 0.7 and since < 0.8:
+			mid_in = column.position.is_equal_approx(new_place) and pool.markers.column_fade() < 0.7
+	check(mid_out, "fading out at the old checkpoint")
+	check(mid_in, "then in at the new one")
+	check(column.position.is_equal_approx(new_place) and is_zero_approx(pool.markers.column_fade()), "then whole at the new one")
+	check_near(column.scale.y, height, 1e-6, "at its own height again")
+	pool.free()
+
+
 func test_distance_text_reads_metres_then_kilometres() -> void:
 	var cases := [[0.0, "0 m"], [312.4, "312 m"], [999.4, "999 m"], [999.6, "1.0 km"], [1400.0, "1.4 km"],
 		[99949.0, "99.9 km"], [100000.0, "100 km"], [123456.0, "123 km"]]

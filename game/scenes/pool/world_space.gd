@@ -6,7 +6,8 @@ extends Node
 ## it holds drops by that offset at once. The scene must follow in the same frame without a jump.
 ##
 ## Every Node3D under the pool is covered by one of three groups (test_world_scene checks it):
-##   world_space      registered here and shifted by -offset on a rebase: the containers that hold
+##   world_space      registered here and shifted by -offset on a rebase (and re-expressed at a
+##                    growth, apply_growth): the containers that hold
 ##                    world pieces (shells, landmarks, zone patches and labels, effects) and the
 ##                    leaves that keep a position of their own (strike lanes, dying creature views,
 ##                    positional audio players);
@@ -57,6 +58,25 @@ func apply_rebase(offset_tm: Vector2) -> void:
 	var shift := Vector3(offset_tm.x, 0.0, offset_tm.y)
 	for node in registered():
 		node.position -= shift
+
+
+## A growth re-expressed every local position round `center_old` by 1 / `factor` (S2, C-V2): each
+## registered container re-expresses its own children in place and stays at position 0 and scale 1
+## (its apply_growth; a container never scales, see to_frame); any other registered node (a leaf:
+## lanes, dying views, audio players, WorldFx, the beat's effects) moves and shrinks by itself.
+func apply_growth(center_old: Vector2, factor: float) -> void:
+	for node in registered():
+		if node.has_method(&"apply_growth"):
+			node.call(&"apply_growth", center_old, factor)
+		else:
+			node.position = reexpress_point(node.position, center_old, factor)
+			node.scale /= factor
+
+
+## A point of the old frame in the new one: ((x - cx) / f, y / f, (z - cy) / f). PlaneSpace puts a
+## plane point c at x = c.x, z = c.y.
+static func reexpress_point(p: Vector3, center_old: Vector2, factor: float) -> Vector3:
+	return Vector3((p.x - center_old.x) / factor, p.y / factor, (p.z - center_old.y) / factor)
 
 
 ## The registered nodes still alive, in registration order.

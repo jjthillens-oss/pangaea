@@ -92,6 +92,18 @@ static func relation_of(species: SpeciesCatalog, species_id: String, q: float, r
 		"rimmed": role in ["prey", "morsel"] and cell.can_eat("meat")}
 
 
+## A growth re-expressed the world round `center_old` by 1 / `factor` (growth_began): every view
+## is drawn factor times smaller where it was, so a view the tick removes or converts leaves from
+## the right place; the live ones are placed from the sim again on the next sync.
+func apply_growth(center_old: Vector2, factor: float) -> void:
+	for group in [_views, _remnant_views, _morsel_views]:
+		for key in group:
+			var view: CreatureView = group[key]
+			if is_instance_valid(view):
+				view.set_q(view.view_q / factor)
+				view.position = WorldSpace.reexpress_point(view.position, center_old, factor)
+
+
 ## Sets every view's ink and rim for the cell at size n, fading over `fade_s` (0: at once).
 func apply_relations(n: int, fade_s: float) -> void:
 	if sim == null or sim.species == null:

@@ -116,6 +116,28 @@ func test_badge_and_message() -> void:
 	var shown: Array = ladder.get("labels", []) if ladder is Dictionary else []
 	check_eq(hud.size_badge.text, GrowthHud.badge_text(pool.shown_size(), shown), "the badge names the size shown")
 	check_eq(hud.meter_ring.size_n, pool.shown_size(), "and so does the ring")
+	# Through a growth the HUD keeps the old size and a full ring until the beat's chord at 1.9 s
+	# (V-7), then shows the new size's message, badge and ring at once.
+	_grow_to_2(pool)
+	g.fill(1)
+	pool._route(FakeGrowthEvents.began(pool.sim.motion.position, 1, 2))
+	pool.sim.world.size = 2   # as the tick leaves it
+	g.meter = 0.0
+	g.full_since = -1
+	pool._route(FakeGrowthEvents.grew(Vector2.ZERO))
+	var size_2 := GrowthHud.badge_text(2, shown)
+	while true:
+		FakeEvents.frame(pool)
+		hud._process(FakeEvents.DT)
+		if pool.growth_beat.t() >= GrowthBeat.CHORD_S:
+			break
+		check(not (hud.message.visible and hud.message_text.text == size_2), "no size message before 1.9 s (%.2f s)" % pool.growth_beat.t())
+		check_eq(hud.size_badge.text, GrowthHud.badge_text(1, shown), "the badge names size 1 until the chord")
+		check_near(hud.meter_ring.shown_share(), 1.0, 1e-9, "the ring reads full until the chord")
+	check(hud.message.visible and hud.message_text.text == size_2, "the chord: \"%s\"" % hud.message_text.text)
+	check_eq(hud.size_badge.text, size_2, "the badge names size 2")
+	check_eq(hud.meter_ring.size_n, 2, "the ring's numeral too")
+	check_near(hud.meter_ring.shown_share(), 0.0, 1e-9, "and the ring is empty")
 	hud.free()
 	pool.free()
 

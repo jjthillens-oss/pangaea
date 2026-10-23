@@ -17,6 +17,7 @@ extends TestCase
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const LookProbe := preload("res://tools/godot/look_probe.gd")
+const Frames := preload("res://tests/scene_frames.gd")
 const T := 180
 const TURN_TICKS := 120
 const SCREEN := Vector2(1920.0, 1080.0)
@@ -62,6 +63,60 @@ func test_a_rebase_moves_nothing_on_screen() -> void:
 				worst_what = "%s at frame %d (A %s, B %s)" % [key, frame, pa[key], pb[key]]
 	check(compared >= 5 * 40, "about 50 points a frame over 5 frames: %d compared" % compared)
 	check(worst <= TOLERANCE_PX, "every tracked point stays on its pixel across the rebase (worst %.4f px: %s)" % [worst, worst_what])
+
+
+## S2: a rebase half a second into a growth beat moves nothing either: the retiring and fresh
+## shells, the landmarks, the patches and labels, the beat's effects and the dollying camera all
+## follow it (two runs, B rebasing at beat t 0.5 s).
+func test_a_rebase_during_a_growth_beat_moves_nothing() -> void:
+	var a := _open()
+	var b := _open()
+	var key: Vector2i = a.loaded_keys()[0]
+	for pool in [a, b]:
+		for i in 20:
+			_frame(pool)
+		var c: Vector2 = pool.sim.motion.position
+		pool._route({"type": "growth_began", "from": 1, "to": 2, "center_old": c, "center_am": [0.0, 0.0], "factor": 1.6})
+		pool._route(FakeEvents.unloaded(key, "growth"))
+		pool._route(FakeEvents.loaded(Vector2i(901, 901), [FakeEvents.shell("fresh_rv", Vector2(2.0, -3.0), 0.4, "rock_a")]))
+		pool._route({"type": "grew", "from": 1, "to": 2, "settled_to": Vector2.ZERO, "haze": [], "remnants": [], "morsels": [],
+			"checkpoint_am": [0.0, 0.0, 0.0, 2.0]})
+	check(not a.rocks.retiring_of("rock_a").is_empty() and not a.rocks.fresh_of("rock_a").is_empty(), "shells retire and come in")
+	var worst := 0.0
+	var worst_what := ""
+	var compared := 0
+	var rebased := false
+	while a.growth_beat.t() < 0.8:
+		if not rebased and a.growth_beat.t() >= 0.5:
+			rebased = true
+			check(b.sim.debug_rebase(REBASE_BY), "B shifts the origin at beat t 0.5 s")
+		_frame(a)
+		_frame(b)
+		if rebased:
+			var pa := _beat_pixels(a)
+			var pb := _beat_pixels(b)
+			check_eq(pb.keys(), pa.keys(), "both runs track the same points")
+			for k in pa:
+				if pb.has(k):
+					compared += 1
+					var d: float = (pa[k] as Vector2).distance_to(pb[k])
+					if d > worst:
+						worst = d
+						worst_what = "%s (A %s, B %s)" % [k, pa[k], pb[k]]
+	check(rebased and b.sim.world.origin_x_am != a.sim.world.origin_x_am, "only B's origin moved")
+	check(compared > 100, "points compared over the beat: %d" % compared)
+	check(worst <= TOLERANCE_PX, "every point stays on its pixel (worst %.4f px: %s)" % [worst, worst_what])
+	_close(a)
+	_close(b)
+
+
+## The growth beat's tracked points (tests/scene_frames.gd), as pixels.
+func _beat_pixels(pool: PoolScene) -> Dictionary:
+	var out := {}
+	var points := Frames.tracked_points(pool)
+	for k in points:
+		out[k] = _project(pool.camera, points[k])
+	return out
 
 
 func test_a_lane_shown_before_a_rebase_stays_on_its_creature() -> void:

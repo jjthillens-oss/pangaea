@@ -25,6 +25,14 @@ extends Node3D
 ## when the player swims (never a bot's); the growth trigger setting goes out with the first tick
 ## after the build and again whenever the player changes it (V-16). Both come from main's
 ## SettingsService, as does reduce camera motion (V-15).
+##
+## The growth beat (S2, s2-view 4): the sim grows in one tick (growth_began ... grew, routed in one
+## frame). At growth_began every local position is re-expressed round the old centre by 1 / factor
+## (the camera, WorldSpace's containers and leaves, the creature views) and every depth layer is
+## drawn at k = 1 / factor of its depth (apply_depth_k), so frame 0 looks as the last frame did;
+## GrowthBeat then times the swell, the dolly back out, the chord (growth_chord, for the HUD) and the
+## relations. Leftover chunks retire (chunk_unloaded {reason: "growth"}) and sink away; the new
+## ones fade in. A respawn, a teleport or a dev size change ends a running beat at once.
 
 ## Every sim event, after the pool's own feedback has run (see PoolSim.drain_events for types).
 signal sim_event(event: Dictionary)
@@ -40,6 +48,9 @@ signal died(cause: String, reason: String)
 ## drawn), sheltered for `grace_s` seconds; `teleport` when the endless world moved it there behind
 ## the cut (S1). Main shows the respawn message here in both modes.
 signal respawned(grace_s: float, teleport: bool)
+## The growth beat's chord (S2, 1.9 s in): the scene now shows `size`; the HUD shows its message,
+## badge and ring for it.
+signal growth_chord(size: int)
 
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The regions whose zones get sunlit patches in the sea: the feast region and home (CT-14).
@@ -51,6 +62,8 @@ const FADE_IN_S := 0.3
 ## nothing would compile, and this point must move.
 const WARM_UP_Y := -45.0
 const STARVE_PULSE_S := 1.0
+## The cell's Stretch pulse while it is about to grow ("Growing…", s2-view 4.3).
+const GROWING_PULSE_HZ := 1.2
 ## Art's decor plug-in (micro-world plan section 7): mounted as the pool's single child "Ambience"
 ## when the scene exists. It reads get_parent().camera and get_parent().cell_view and writes
 ## nothing back; tests/test_ambience_contract.gd holds it to the rest of the contract.
@@ -84,6 +97,15 @@ var sent_grow := false
 var sent_trigger := ""
 ## Reduce camera motion (settings): the growth beat dissolves instead of moving the camera (V-17).
 var reduce_motion := false
+## Times the growth beat on screen (S2); idle outside a growth.
+var growth_beat: GrowthBeat
+## The depth factor drawn now (apply_depth_k), and the base depths it scales: the Backdrop's height
+## and scale, and the fog of the environment they were read from (re-read if it is replaced).
+var _depth_k := 1.0
+var _backdrop_y := -40.0
+var _backdrop_scale := Vector3.ONE
+var _fog_env: Environment
+var _fog_base := {}
 
 ## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
 @onready var rim_node: Node3D = %Rim
@@ -132,7 +154,16 @@ func setup(p_session: GameSession, provider: Object = null) -> void:
 func _ready() -> void:
 	# One set of values for both renderers today; pool_look.gd keeps a per-renderer escape hatch.
 	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()), _sun, _world_env)
+	# The growth beat scales the fog (apply_depth_k): the pool lights its own copy, never the .tres.
+	if _world_env.environment != null and not _world_env.environment.resource_path.is_empty():
+		_world_env.environment = _world_env.environment.duplicate()
+	_backdrop_y = backdrop.position.y
+	_backdrop_scale = backdrop.scale
 	swim_input.camera = camera
+	if growth_beat == null:
+		growth_beat = GrowthBeat.new()
+		growth_beat.name = "GrowthBeat"
+		add_child(growth_beat)
 	_mount_ambience()
 	if session != null and not _built:
 		_build()
@@ -199,6 +230,8 @@ func _build() -> void:
 		if player is AudioStreamPlayer3D:
 			world_space.register(player)
 	_loaded.clear()
+	growth_beat.setup(self)
+	apply_depth_k(1.0)
 	if is_endless():
 		# The sea's ground comes from chunk events; the chunks already loaded are drawn now from
 		# the stream itself, and their queued create-time events change nothing (idempotent).
@@ -246,9 +279,94 @@ func sim_size() -> int:
 	return sim.world.size if is_endless() else 1
 
 
-## The size the scene shows now (the HUD, the markers): the sim's.
+## The size the scene shows now (the HUD, the markers): the old size through a growth beat until
+## its chord (V-7), else the sim's.
 func shown_size() -> int:
-	return sim_size()
+	return growth_beat.shown_size() if growth_beat != null and growth_beat.running() else sim_size()
+
+
+## The containers that follow the growth beat's contract (apply_growth, retire_chunk, settle_growth,
+## beat_frame, end_growth).
+func growth_containers() -> Array:
+	return [rocks, landmarks, zone_lights, feedback]
+
+
+## Every depth layer at k of its depth (the growth beat; 1 otherwise), s2-view 4.2: the Backdrop's
+## height and size, the fog (heights times k, densities over k, so the attenuation over a path
+## that is k times as long in tm stays), the zone patches' depth, the zone labels and the markers.
+## At k = 1 / factor, the first frame after a growth draws every layer where the last one did.
+func apply_depth_k(k: float) -> void:
+	# Exactly: the last step of the dolly is within is_equal_approx of 1, and must still land on 1.
+	if k == _depth_k and _fog_env == _world_env.environment:
+		return
+	_depth_k = k
+	backdrop.position.y = _backdrop_y * k
+	backdrop.scale = _backdrop_scale * k
+	var env := _world_env.environment
+	if env != null:
+		if env != _fog_env:
+			_fog_env = env
+			_fog_base = {"fog_height": env.fog_height, "fog_height_density": env.fog_height_density,
+				"fog_density": env.fog_density}
+		env.fog_height = _fog_base.fog_height * k
+		env.fog_height_density = _fog_base.fog_height_density / k
+		env.fog_density = _fog_base.fog_density / k
+	zone_lights.set_depth_k(k)
+	feedback.set_depth_k(k)
+	markers.set_size_k(k)
+
+
+## The depth factor drawn now (1 outside a growth beat).
+func depth_k() -> float:
+	return _depth_k
+
+
+## What the scale-aware layers draw from (s2-view 4.2): {size, band, region, tile, depth_k, size_k,
+## focus_am, tm_to_am, time_s}. Art's ambience gets it each frame (apply_scale_view, when it has one).
+func scale_view() -> Dictionary:
+	var focus := Vector2(camera.focus.x, camera.focus.z)
+	var endless := is_endless()
+	var n := shown_size()
+	return {"size": sim_size(), "band": 0, "region": sim.region if sim != null else "",
+		"tile": sim.world.tile_of_local(focus) if endless else Vector2i.ZERO,
+		"depth_k": _depth_k, "size_k": _depth_k,
+		"focus_am": sim.world.abs_of_local(focus) if endless else PackedFloat64Array([focus.x, focus.y]),
+		"tm_to_am": WorldConfig.tm_to_am(n) if endless else 1.0,
+		"time_s": _draw_time(1.0 if paused else Engine.get_physics_interpolation_fraction()) if sim != null else 0.0}
+
+
+## The fade over the whole view (the start fade; the growth beat's headless reduce-motion dip).
+func fade_rect() -> ColorRect:
+	return _fade
+
+
+## The growth beat's chord: the HUD switches to `size`, and the soundtrack follows.
+func on_growth_chord(size: int) -> void:
+	if audio.has_method(&"set_size"):
+		audio.call(&"set_size", size)
+	growth_chord.emit(size)
+
+
+## The growth beat's relations moment (RELATIONS_S): ink, rims and remnants turn for `size` over
+## `fade_s` (0 when a beat is cut short); a full beat also puts "Now food" over the nearest rimmed
+## views in sight, with its cue.
+func on_growth_relations(size: int, fade_s: float) -> void:
+	creature_layer.apply_relations(size, fade_s)
+	if fade_s <= 0.0:
+		return
+	var now_food := creature_layer.rimmed_in_view(camera, view_size(), GrowthBeat.NOW_FOOD_MAX)
+	for view in now_food:
+		view.show_now_food(GrowthBeat.NOW_FOOD_S)
+	if not now_food.is_empty():
+		audio.play("now_food")
+
+
+## The size of the view drawn (the project's window size outside the tree).
+func view_size() -> Vector2:
+	if is_inside_tree():
+		return get_viewport().get_visible_rect().size
+	return Vector2(ProjectSettings.get_setting("display/window/size/viewport_width", 1920),
+		ProjectSettings.get_setting("display/window/size/viewport_height", 1080))
 
 
 ## The largest size this build reaches (world_cell.json sizes.max_in_build; 1 in the pool).
@@ -299,7 +417,9 @@ func loaded_keys() -> Array[Vector2i]:
 ## A scene event of the endless world (spine 3.12), routed from the sim or, in tests, built by hand.
 ##   chunk_loaded: the chunk's shells (kind "shell"), landmarks and rare places, its zones' labels,
 ##     and patches under the zones of sunlit and home tiles; nothing when the key is drawn already.
-##   chunk_unloaded: all of that goes; an unknown key changes nothing.
+##   chunk_unloaded: all of that goes; an unknown key changes nothing. At a growth (reason "growth",
+##     while the beat runs) it retires instead: drawn by id until the beat sinks it away, unless the
+##     same id comes back in the new chunks (adopted).
 ##   rebased {offset_tm}: every local position dropped by the offset, so the camera's focus and
 ##     every WorldSpace container drop with it in this frame, far containers renormalise, and the
 ##     camera-relative nodes follow the shifted focus. Never snap_to: the follow lag carries on (G10).
@@ -322,10 +442,14 @@ func apply_world_event(e: Dictionary) -> void:
 			var key: Vector2i = e.key
 			if not _loaded.has(key):
 				return
-			rocks.remove_chunk(key)
-			landmarks.remove_chunk(key)
-			zone_lights.remove_chunk(key)
-			feedback.remove_zone_labels(key)
+			if str(e.get("reason", "")) == "growth" and growth_beat != null and growth_beat.running():
+				for c in growth_containers():
+					c.retire_chunk(key)
+			else:
+				rocks.remove_chunk(key)
+				landmarks.remove_chunk(key)
+				zone_lights.remove_chunk(key)
+				feedback.remove_zone_labels(key)
 			_loaded.erase(key)
 		"rebased":
 			var o: Vector2 = e.offset_tm
@@ -344,11 +468,24 @@ func apply_world_event(e: Dictionary) -> void:
 func _renormalize_fx() -> void:
 	if Vector2(world_fx.position.x, world_fx.position.z).length() <= WorldSpace.RENORMALIZE_TM:
 		return
+	_bake_fx()
+
+
+## Moves WorldFx's own transform into its children's positions and WorldFx back to the identity,
+## when no meal ghost is in flight (false otherwise). A growth leaves WorldFx re-expressed as a leaf
+## (V-5); its scale is then dropped rather than baked into the children, since the eat burst is sized
+## for the cell, which a growth leaves the same size in tm.
+func _bake_fx() -> bool:
+	if world_fx.transform == Transform3D.IDENTITY:
+		return true
 	if world_fx.get_children().any(func(c: Node) -> bool: return c is MeshInstance3D):
-		return
+		return false
 	for child in world_fx.get_children():
-		(child as Node3D).position += world_fx.position
-	world_fx.position = Vector3.ZERO
+		var n := child as Node3D
+		if n != null:
+			n.position = world_fx.transform * n.position
+	world_fx.transform = Transform3D.IDENTITY
+	return true
 
 
 ## Art's ambience wraps world-placed specks and backdrops round the camera's focus, so it follows
@@ -387,9 +524,47 @@ func _follow_camera() -> void:
 		node.position.z = camera.focus.z
 
 
-## The column and the arrow home stand where the sim says, beside the cell as it is drawn now.
+## The column and the arrow home stand where the sim says, beside the cell as it is drawn now, at
+## the size shown.
 func _update_markers() -> void:
-	markers.update(sim, PlaneSpace.to_plane(cell_view.position))
+	markers.update(sim, PlaneSpace.to_plane(cell_view.position), shown_size())
+
+
+## growth_began (s2-view 4.1): the beat starts (under reduce motion it keeps the last frame first),
+## then every local position is re-expressed round the old centre by 1 / factor at once, with the
+## depth layers at k = 1 / factor, so nothing moves on screen.
+func _begin_growth(e: Dictionary) -> void:
+	growth_beat.begin(e, reduce_motion)
+	var center: Vector2 = e.get("center_old", Vector2.ZERO)
+	var factor := float(e.get("factor", 1.0 / GrowthBeat.K_FROM))
+	camera.reexpress(center, factor)
+	if growth_beat.reduced():
+		camera.end_dolly()
+	world_space.apply_growth(center, factor)
+	_bake_fx()
+	creature_layer.apply_growth(center, factor)
+	markers.hold_column_until(GrowthBeat.RELATIONS_S)
+	apply_depth_k(growth_beat.k())
+	_follow_camera()
+
+
+## Ends a running growth beat at once, before the camera snaps (a respawn, a teleport, a dev size).
+func _cancel_growth() -> void:
+	growth_beat.cancel()
+	apply_depth_k(1.0)
+
+
+## The Stretch shape's weight now: the beat's, or while the ring waits to grow ("Growing…") a slow
+## pulse (none under reduce flashing).
+func _stretch_now(time_s: float) -> float:
+	if growth_beat.running():
+		return growth_beat.stretch()
+	var growth := growth()
+	if growth == null or GrowthHud.state_of(growth, sim_size(), max_size()) != "growing":
+		return 0.0
+	if _settings != null and _settings.reduce_flashing():
+		return 0.0
+	return 0.5 + 0.5 * sin(TAU * GROWING_PULSE_HZ * time_s)
 
 
 ## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and the
@@ -439,6 +614,14 @@ func _process(delta: float) -> void:
 	_route_events()
 	# While paused the sim is still, so draw its current tick instead of a moving fraction.
 	var fraction := 1.0 if paused else Engine.get_physics_interpolation_fraction()
+	# The growth beat's clock is the drawn moment's sim time (V-1): it stops while paused.
+	var draw_t := _draw_time(fraction)
+	growth_beat.advance(draw_t)
+	cell_view.set_growth_pose(growth_beat.swell(), growth_beat.cell_offset(), _stretch_now(draw_t))
+	cell_view.set_ripeness(GrowthHud.share_of(growth(), sim_size()) if growth() != null else 0.0)
+	markers.beat_t = growth_beat.t()
+	if world_fx.scale != Vector3.ONE:
+		_bake_fx()   # a meal ghost was in flight at the growth: once it has landed
 	cell_view.show_motion(sim.motion, fraction)
 	cell_view.set_sheltered(sim.is_sheltered())
 	creature_layer.sync(fraction)
@@ -446,6 +629,7 @@ func _process(delta: float) -> void:
 	_follow_camera()
 	_update_markers()
 	_draw_food(fraction)
+	_apply_scale_view()
 	feedback.update_zones(sim.region, sim.plankton, delta, PlaneSpace.to_plane(cell_view.position), sim.phenotype.radius)
 	_update_starving(delta)
 	_update_target_ring()
@@ -457,12 +641,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
 		request_pause("key")
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("zoom_in"):
-		camera.zoom_by(-1)
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("zoom_out"):
-		camera.zoom_by(1)
-		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("zoom_in") or event.is_action_pressed("zoom_out"):
+		# The growth beat's dolly owns the distance until it hands back (V-3).
+		if not camera.dolly_active():
+			camera.zoom_by(-1 if event.is_action_pressed("zoom_in") else 1)
+		if is_inside_tree():
+			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("grow") and growth() != null:
 		# A held key repeats as echo events, which is_action_pressed ignores: one press, one tick.
 		_grow_pressed = true
@@ -537,6 +721,8 @@ func _route(event: Dictionary) -> void:
 			release_input()
 			died.emit(str(event.get("cause", "")), str(event.get("reason", "")))
 		"respawned":
+			_cancel_growth()
+			cell_view.set_growth_pose(1.0, Vector2.ZERO, 0.0)
 			cell_view.set_dead(false)
 			cell_view.place(sim.motion)
 			camera.snap_to(cell_view.position)
@@ -567,13 +753,43 @@ func _route(event: Dictionary) -> void:
 			audio.play_at("creature_die", _world(event.position))
 		"chunk_loaded", "chunk_unloaded", "rebased":
 			apply_world_event(event)
+		"growth_began":
+			_begin_growth(event)
+		"grew":
+			growth_beat.apply_grew(event)
+			audio.play("grow")
+		"carrion_expired":
+			if event.get("reason") == "growth":
+				growth_beat.on_event(event)
+		"creature_converted":
+			if event.get("to") == "haze":
+				growth_beat.on_event(event)
 		"debug":
 			# A dev rebase needs nothing more: its "rebased" event came first and shifted the view.
 			if event.get("command") == "teleport" or event.get("command") == "teleport_abs":
+				_cancel_growth()
+				cell_view.set_growth_pose(1.0, Vector2.ZERO, 0.0)
 				cell_view.place(sim.motion)
 				camera.snap_to(cell_view.position)
+			elif event.get("command") == "set_size":
+				# No beat (C-V9): the scene jumps to the new size at once.
+				_cancel_growth()
+				cell_view.set_growth_pose(1.0, Vector2.ZERO, 0.0)
+				cell_view.place(sim.motion)
+				camera.snap_to(cell_view.position)
+				creature_layer.attach(sim, world_space)
+				creature_layer.apply_relations(sim_size(), 0.0)
+				if audio.has_method(&"set_size"):
+					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)
 	sim_event.emit(event)
+
+
+## Art's ambience reads the scale view each frame when it can (s2-view 4.2, 11.2).
+func _apply_scale_view() -> void:
+	var ambience := get_node_or_null(^"Ambience")
+	if ambience != null and ambience.has_method(&"apply_scale_view"):
+		ambience.call(&"apply_scale_view", scale_view())
 
 
 func _world(p: Variant) -> Vector3:

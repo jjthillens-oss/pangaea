@@ -125,8 +125,11 @@ static func loaded(key: Vector2i, shells := [], zones := [], anchors := [], plac
 	return {"type": "chunk_loaded", "key": key, "shells": shells, "zones": zones, "anchors": anchors, "places": places}
 
 
-static func unloaded(key: Vector2i) -> Dictionary:
-	return {"type": "chunk_unloaded", "key": key}
+## `reason` "growth" (S2): the chunk unloads at a growth tick, and the scene retires it.
+static func unloaded(key: Vector2i, reason := "") -> Dictionary:
+	if reason == "":
+		return {"type": "chunk_unloaded", "key": key}
+	return {"type": "chunk_unloaded", "key": key, "reason": reason}
 
 
 static func rebased(offset_tm: Vector2, origin_am := [0.0, 0.0]) -> Dictionary:

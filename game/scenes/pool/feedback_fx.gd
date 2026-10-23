@@ -24,6 +24,12 @@ extends Node3D
 ## The pool's WorldSpace shifts this node across a rebase (S1), so every label rides it: each event
 ## point is turned into this node's frame (WorldSpace.frame_of) as it arrives, and _meal_at holds
 ## frame points. renormalize() brings the node back to the origin when it has drifted far.
+##
+## A growth (S2, s2-view 4.5, the growth-container contract): apply_growth re-expresses every label
+## and _meal_at in place; set_depth_k keeps the zone labels at their old height and size on screen
+## through the beat. The labels of the tick's unloaded chunks retire, kept by zone id and adopted back
+## when the tick loads the same zone again; after the settle the leftovers fade over RETIRE_LABEL_S
+## and end_growth frees them.
 
 const MEAL_LABELS := 6
 const MEAL_RISE_M := 0.9
@@ -64,6 +70,8 @@ const HIT_TAKEN_COLOR := Color(1.0, 0.55, 0.62)    ## a light threat pink (#D946
 const HIT_DEALT_COLOR := Color(0.957, 0.918, 0.824)   ## cream highlight #F4EAD2
 const DODGED_COLOR := Color(0.62, 0.98, 1.0)
 const OUTLINE_COLOR := Color(UiPalette.KEYLINE, 0.9)
+## A retired zone label fades this long from the settle.
+const RETIRE_LABEL_S := 0.6
 
 var _meal_labels: Array[Label3D] = []
 var _meal_ages := PackedFloat32Array()
@@ -84,6 +92,13 @@ var _zone_lift := {}   ## zone id -> how far its shown label sits above ZONE_LAB
 var _zone_alpha := {}  ## zone id -> its shown label's alpha now
 var _zone_refresh := 0.0
 var _camera: PoolCamera
+## A growth: retiring zone labels by zone id, whether a beat is open, the beat time of the settle
+## (-1 before), the beat time now, and the depth factor of the zone labels.
+var _retiring := {}
+var _beat := false
+var _settled_t := -1.0
+var _beat_t := 0.0
+var _depth_k := 1.0
 
 
 ## zones: PoolLayout.zones. camera: the pool camera, whose pitch sets the labels' screen order.
@@ -98,6 +113,9 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	_zone_label_keys.clear()
 	_zone_lift.clear()
 	_zone_alpha.clear()
+	_retiring.clear()
+	_beat = false
+	_settled_t = -1.0
 	for i in MEAL_LABELS:
 		var label := _make_label(MEAL_COLOR)
 		label.name = "Meal%d" % i
@@ -134,14 +152,22 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 
 
 ## A "Regrowing" label over each of a loaded chunk's zones ({id, center}), in this node's frame.
+## During a growth beat a label retired with the same zone id is adopted back.
 func add_zone_labels(key: Variant, zones: Array) -> void:
 	var ids := PackedStringArray()
 	for z in zones:
 		if _zone_labels.has(z.id):
 			continue
-		var label := _make_label(ZONE_COLOR)
-		label.name = "Regrowing_%s" % z.id
-		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y)
+		var label: Label3D = _retiring.get(z.id) if _beat else null
+		if label != null:
+			_retiring.erase(z.id)
+			label.modulate.a = 1.0
+			label.outline_modulate.a = OUTLINE_COLOR.a
+		else:
+			label = _make_label(ZONE_COLOR)
+			label.name = "Regrowing_%s" % z.id
+		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y * _depth_k)
+		label.scale = Vector3.ONE * _depth_k
 		_zone_labels[z.id] = label
 		ids.append(z.id)
 	_zone_label_keys[key] = ids
@@ -158,6 +184,77 @@ func remove_zone_labels(key: Variant) -> void:
 		_zone_lift.erase(id)
 		_zone_alpha.erase(id)
 	_zone_label_keys.erase(key)
+
+
+## A growth (the container contract): every label and meal point re-expressed in place round
+## `center_old` by 1 / `factor`, this node back at the origin; a beat opens.
+func apply_growth(center_old: Vector2, factor: float) -> void:
+	var shift := position
+	position = Vector3.ZERO
+	for child in get_children():
+		if child is Node3D:
+			child.position = WorldSpace.reexpress_point(child.position + shift, center_old, factor)
+	for i in _meal_at.size():
+		var p := WorldSpace.reexpress_point(PlaneSpace.to_world(_meal_at[i] + Vector2(shift.x, shift.z)), center_old, factor)
+		_meal_at[i] = Vector2(p.x, p.z)
+	_beat = true
+	_settled_t = -1.0
+	_beat_t = 0.0
+
+
+## The zone labels at ZONE_LABEL_Y x k and scale k (1 when no beat runs).
+func set_depth_k(k: float) -> void:
+	_depth_k = k
+	for id in _zone_labels:
+		(_zone_labels[id] as Label3D).scale = Vector3.ONE * k
+	for id in _retiring:
+		(_retiring[id] as Label3D).scale = Vector3.ONE * k
+
+
+## chunk_unloaded {reason: "growth"}: the chunk's zone labels keep drawing, retiring, by zone id.
+func retire_chunk(key: Variant) -> void:
+	for id in _zone_label_keys.get(key, PackedStringArray()):
+		var label: Label3D = _zone_labels.get(id)
+		if label != null:
+			_retiring[id] = label
+		_zone_labels.erase(id)
+		_zone_lift.erase(id)
+		_zone_alpha.erase(id)
+	_zone_label_keys.erase(key)
+
+
+func settle_growth() -> void:
+	if _beat:
+		_settled_t = _beat_t
+
+
+## Each beat frame: the retired labels fade from the settle.
+func beat_frame(t: float, _k: float) -> void:
+	_beat_t = t
+	if not _beat or _settled_t < 0.0:
+		return
+	var a := 1.0 - clampf((t - _settled_t) / RETIRE_LABEL_S, 0.0, 1.0)
+	for id in _retiring:
+		var label: Label3D = _retiring[id]
+		label.modulate.a = minf(label.modulate.a, a)
+		label.outline_modulate.a = OUTLINE_COLOR.a * label.modulate.a
+
+
+func end_growth() -> void:
+	if not _beat:
+		return
+	for id in _retiring:
+		var label: Label3D = _retiring[id]
+		remove_child(label)
+		label.queue_free()
+	_retiring.clear()
+	_beat = false
+	_settled_t = -1.0
+
+
+## The retiring zone labels by zone id (tests).
+func retiring() -> Dictionary:
+	return _retiring.duplicate()
 
 
 ## A meal label for an "ate" event: energy absorbed and points earned. It adds to the last label
@@ -403,7 +500,7 @@ func _keep_zone_labels_off(cell_at: Vector2, cell_radius: float, delta: float) -
 			alpha = minf(alpha + delta / ZONE_FADE_IN_S, 1.0)
 		_zone_lift[id] = lift
 		_zone_alpha[id] = alpha
-		label.position.y = ZONE_LABEL_Y + lift
+		label.position.y = (ZONE_LABEL_Y + lift) * _depth_k
 		label.modulate.a = alpha
 		label.outline_modulate.a = OUTLINE_COLOR.a * alpha
 
