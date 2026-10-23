@@ -11,6 +11,10 @@
 #             and nothing errors. The runner has no Vulkan and no audio device, so Godot switches
 #             to Direct3D 12 and the dummy audio driver; those errors are the runner's, not the
 #             build's, and are the only ones let through (RUNNER_ONLY).
+#   grow:     (S2) Pangaea-dev.exe, rendered, runs --perf-tour=grow: the cell still in the sea for
+#             40 s with two growths, the second with reduce motion. Its frame times mean nothing
+#             here either (S2G26 is a run on Joshua's machine); what counts is that the growth
+#             renders on Windows, the tour finishes and nothing errors.
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
@@ -64,11 +68,14 @@ run() {
 
 run launch "$BUILD/Pangaea.exe" --headless --fixed-fps 60 --quit-after 120 -- --slot=user://smoke/windows_launch.json
 run rendered "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour
+run grow "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour=grow --slot=user://smoke/windows_grow.json
 
-if ! grep -q "^Perf tour: .* FPS average" "$LOGS/rendered.log"; then
-  echo "The perf tour did not finish in the rendered run."
-  status=1
-fi
+for name in rendered grow; do
+  if ! grep -q "^Perf tour: .* FPS average" "$LOGS/$name.log"; then
+    echo "The perf tour did not finish in the $name run."
+    status=1
+  fi
+done
 # Each error with the line after it (its "at:"), less the runner's own.
 errors="$(awk -v skip="$RUNNER_ONLY" '
   FNR == 1 && pending != "" { if (pending !~ skip) print file ": " pending; pending = "" }

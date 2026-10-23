@@ -25,8 +25,22 @@ extends SceneTree
 ##       A new omnivore swims north-east; at sim tick FPS_TICK the provider records the sim's
 ##       state hash and the SHA-256 of its snapshot, and the pool pauses. --fps-out writes the
 ##       record; --compare fails unless both match the file (G13: the same sim at any frame rate).
+##   -- --phase=grow --world=endless --slot=user://smoke/grow.json --seed=4246
+##       S2 (docs/s2/s2-view.md 12.1; S2G31): a new omnivore, still and hidden, has its ring filled
+##       at tick GROW_FILL_TICK and grows by the automatic trigger within GROW_CAP_TICKS. Then
+##       GROW_AFTER_FRAMES more frames: one growth_began and one grew, size 2, the badge and (in
+##       the frame at the chord, beat second 1.9) the message read "Size 2 · about 32 µm", the
+##       dolly has handed the camera back, the beat is over and left nothing in BeatFx, the plants
+##       are algae balls and the slot on disk holds size 2 (the autosave on grew). It saves and
+##       writes user://smoke/grow_expect.json.
+##   -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json
+##       A new process continues that slot at size 2: the same absolute place within 1e-6 am, the
+##       same checkpoint, algae balls, the badge, the same near ghosts, and the camera at rest.
 ##
-## Saves stay under user://smoke/: the smoke stops before playing if --slot points anywhere else.
+## Every phase plays on its own settings (SETTINGS_PATH, deleted first and never saved) and the
+## player memory beside the slot; the S1 phases set the growth trigger to press and never press, so
+## the cell never grows there. Saves stay under user://smoke/: the smoke stops before playing if
+## --slot points anywhere else.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SWIM_BOT_PATH := "res://game/dev/swim_bot.gd"
@@ -55,16 +69,29 @@ const GHOST_STEP_M := 0.5
 const REBASE_BY := Vector2i(1, 0)
 const FPS_TICK := 1200
 const FPS_FRAMES := 6000            ## 1,200 ticks take 2,880 frames at 144 fps
+# S2's growth (s2-view 12.1).
+const SETTINGS_PATH := "user://smoke/grow_settings.cfg"
+const MEMORY_PATH := "user://smoke/player_memory.cfg"
+const GROW_EXPECT_PATH := "user://smoke/grow_expect.json"
+const GROW_FILL_TICK := 60
+const GROW_CAP_TICKS := 2400        ## the showcase window (20 s) and the calm window (1.5 s): about 1,350
+const GROW_AFTER_FRAMES := 360      ## 6 s: the beat, the dolly and the glitter are over
+const GROW_SETTLE_FRAMES := 30      ## at most this many more for the beat's last frame
+const BADGE_SIZE_2 := "Size 2 · about 32 µm"
+const SIZE_2_LOOK := "algae_ball"
+const CAMERA_TOLERANCE := 1e-3
 
 
 ## The intent provider: `bot` swims (null holds still), and the dev calls are keyed on sim.tick:
-## hidden from the AI at its first tick, the energy refilled every REFILL_TICKS from then. At
-## `record_tick` it calls `on_record` once, before that tick's step.
+## hidden from the AI at its first tick, the energy refilled every REFILL_TICKS from then, and (S2)
+## the ring filled `fill_tick` ticks after the first. At `record_tick` it calls `on_record` once,
+## before that tick's step.
 class Driver:
 	var bot: RefCounted
 	var first_tick := -1
 	var record_tick := -1
 	var on_record: Callable
+	var fill_tick := -1                 ## S2: the ring is filled this many ticks after the first
 	var _next_refill := 0
 
 	func _init(p_bot: RefCounted = null) -> void:
@@ -78,6 +105,8 @@ class Driver:
 		if t >= _next_refill:
 			sim.debug_set_energy(sim.state.energy_capacity)
 			_next_refill = (floori(float(t) / REFILL_TICKS) + 1) * REFILL_TICKS
+		if t == fill_tick:
+			sim.debug_fill_meter(1.0)
 		if sim.tick == record_tick and on_record.is_valid():
 			on_record.call(sim)
 			on_record = Callable()
@@ -112,6 +141,7 @@ func _initialize() -> void:
 		elif arg.begins_with("--compare="):
 			compare = arg.trim_prefix("--compare=")
 	print("Endless smoke, phase '%s', build %s" % [phase, BuildInfo.build_id()])
+	_use_own_settings(phase)
 	match phase:
 		"endless_out":
 			await _endless_out()
@@ -119,8 +149,12 @@ func _initialize() -> void:
 			await _endless_continue()
 		"fps":
 			await _fps(fps_out, compare)
+		"grow":
+			await _grow()
+		"grow_continue":
+			await _grow_continue()
 		_:
-			_check(false, "--phase is endless_out, endless_continue or fps (got '%s')" % phase)
+			_check(false, "--phase is endless_out, endless_continue, fps, grow or grow_continue (got '%s')" % phase)
 	_finished = true
 	_report()
 
@@ -174,6 +208,8 @@ func _endless_out() -> void:
 	var attacks := _log.filter(func(e: Dictionary) -> bool:
 		return (e.type == "hit" or e.type == "creature_tell" or e.type == "creature_noticed") and e.get("target") == CreatureField.PLAYER_ID)
 	_check(attacks.is_empty() and not sim.dead, "nothing noticed, told at or hit the hidden cell (%d)" % attacks.size())
+	_check(sim.growth == null or (sim.growth.trigger == "press" and int(_events.get("growth_began", 0)) == 0),
+		"in press mode with no press the cell never grew (S2)")
 	_end()
 
 	_begin("save")
@@ -407,7 +443,124 @@ func _on_fps_record(sim: PoolSim) -> void:
 	main.pool.set_paused.call_deferred(true)
 
 
+# grow (S2)
+
+func _grow() -> void:
+	_begin("grow")
+	var flags := RunFlags.current()
+	_remove_slot(flags.slot)
+	DirAccess.remove_absolute(GROW_EXPECT_PATH)
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	var driver := Driver.new()
+	driver.fill_tick = GROW_FILL_TICK
+	main.intent_provider = driver
+	var started := main.start_new(BODY)
+	var pool := main.pool
+	_check(started.ok and pool != null and pool.is_endless() and pool.growth() != null,
+		"a new %s lineage opens the growing sea (%s)" % [BODY, started])
+	if pool == null or pool.growth() == null:
+		return
+	_check(main.settings.growth_trigger() == "auto", "the trigger is automatic (%s)" % main.settings.growth_trigger())
+	_check(main.player_memory_path() == MEMORY_PATH and main.hud.idea_hints.memory == main.player_memory,
+		"the HUD's idea hints use main's player memory, beside the slot (%s)" % main.player_memory_path())
+	_watch(pool)
+	var sim := pool.sim
+	var ticks := await _ticks_until(sim, func() -> bool: return int(_events.get("grew", 0)) >= 1, GROW_CAP_TICKS)
+	_check(int(_events.get("grew", 0)) >= 1 and sim.growth.trigger == "auto",
+		"the cell grew %d ticks in by the automatic trigger (cap %d)" % [ticks, GROW_CAP_TICKS])
+	_end()
+
+	_begin("after the growth")
+	var chord := {}
+	for frame in GROW_AFTER_FRAMES:
+		await process_frame
+		if chord.is_empty() and pool.growth_beat.t() >= GrowthBeat.CHORD_S:
+			chord = {"t": pool.growth_beat.t(), "shown": main.hud.message.visible, "text": str(main.hud.message_text.text)}
+	var extra := await _frames_until(func() -> bool: return not pool.growth_beat.running(), GROW_SETTLE_FRAMES)
+	_check(int(_events.get("growth_began", 0)) == 1 and int(_events.get("grew", 0)) == 1,
+		"one growth_began and one grew (%d, %d)" % [int(_events.get("growth_began", 0)), int(_events.get("grew", 0))])
+	_check(sim.size() == 2, "the sea is at size 2 (%d)" % sim.size())
+	_check(main.hud.size_badge.text == BADGE_SIZE_2, "the badge reads '%s' (%s)" % [BADGE_SIZE_2, main.hud.size_badge.text])
+	_check(not chord.is_empty() and chord.shown and chord.text == BADGE_SIZE_2,
+		"in the frame at the chord the message reads '%s' (%s)" % [BADGE_SIZE_2, chord])
+	var camera := pool.camera
+	_check(absf(camera._shown_distance - camera.distance) < CAMERA_TOLERANCE,
+		"the dolly handed the camera back (%.4f, %.4f)" % [camera._shown_distance, camera.distance])
+	_check(not pool.growth_beat.active() and not pool.growth_beat.running() and pool.growth_beat.fx.get_child_count() == 0,
+		"the beat is over and left nothing in BeatFx (%d more frames)" % extra)
+	_check(pool.plankton_view.look == SIZE_2_LOOK, "the plants are %s (%s)" % [SIZE_2_LOOK, pool.plankton_view.look])
+	var on_disk: Variant = JSON.parse_string(FileAccess.get_file_as_string(flags.slot))
+	var saved_size := int((on_disk as Dictionary).get("growth", {}).get("size", 0)) if on_disk is Dictionary else 0
+	_check(saved_size == 2, "the slot on disk holds size 2, saved at the growth (%d)" % saved_size)
+	_end()
+
+	_begin("save")
+	var saved := main.save_now()
+	_check(saved.ok, "the run saves (%s)" % [saved])
+	var expect := {
+		"lineage_id": sim.save.lineage_id,
+		"position_am": Array(sim.absolute_position_am()),
+		"checkpoint_am": Array(sim.world.checkpoint_am),
+		"size": sim.size(),
+		"look": pool.plankton_view.look,
+		"near": Array(pool.ghosts.near_species(2)),
+	}
+	var file := FileAccess.open(GROW_EXPECT_PATH, FileAccess.WRITE)
+	_check(file != null, "wrote %s" % GROW_EXPECT_PATH)
+	if file != null:
+		file.store_string(JSON.stringify(expect, "\t", true, true))
+		file.close()
+	_end()
+
+
+func _grow_continue() -> void:
+	_begin("grow continue")
+	var expect: Variant = JSON.parse_string(FileAccess.get_file_as_string(GROW_EXPECT_PATH))
+	_check(expect is Dictionary, "grow left %s" % GROW_EXPECT_PATH)
+	if not expect is Dictionary:
+		return
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	main.intent_provider = Driver.new()
+	var result := main.continue_run()
+	var pool := main.pool
+	_check(result.ok and str(main.last_run.get("source", "")) == "primary" and pool != null and pool.is_endless(),
+		"Continue opens the sea from the primary save (%s)" % [result])
+	if pool == null or not pool.is_endless():
+		return
+	var sim := pool.sim
+	_check(sim.save.lineage_id == expect.lineage_id, "the lineage is the same (%s)" % sim.save.lineage_id)
+	_check(sim.size() == int(expect.size) and sim.size() == 2, "at size 2 (%d)" % sim.size())
+	var at := sim.absolute_position_am()
+	var want: Array = expect.position_am
+	_check(absf(at[0] - float(want[0])) <= POSITION_TOLERANCE_TM and absf(at[1] - float(want[1])) <= POSITION_TOLERANCE_TM,
+		"the cell is back at its absolute place within 1e-6 am (%.9f, %.9f; saved %.9f, %.9f)" % [at[0], at[1], want[0], want[1]])
+	_check(Array(sim.world.checkpoint_am) == expect.checkpoint_am, "the checkpoint is the same (%s)" % [sim.world.checkpoint_am])
+	await _frames(2)
+	_check(pool.plankton_view.look == SIZE_2_LOOK and pool.plankton_view.look == str(expect.look),
+		"the plants are %s (%s)" % [SIZE_2_LOOK, pool.plankton_view.look])
+	_check(main.hud.size_badge.text == BADGE_SIZE_2, "the badge reads '%s' (%s)" % [BADGE_SIZE_2, main.hud.size_badge.text])
+	_check(Array(pool.ghosts.near_species(2)) == expect.near, "the near ghosts are the same (%s)" % [pool.ghosts.near_species(2)])
+	_check(pool.camera._shown_distance == pool.camera.distance, "the camera is at rest (%.4f, %.4f)" % [pool.camera._shown_distance, pool.camera.distance])
+	_end()
+
+
 # helpers
+
+## Every phase plays on SETTINGS_PATH, deleted first and never saved; the S1 phases set the growth
+## trigger to press and never press, so they play as S1 did.
+func _use_own_settings(phase: String) -> void:
+	DirAccess.make_dir_recursive_absolute(SMOKE_DIR)
+	if FileAccess.file_exists(SETTINGS_PATH):
+		DirAccess.remove_absolute(SETTINGS_PATH)
+	var settings := SettingsService.new(SETTINGS_PATH)
+	SettingsService.set_shared(settings)
+	if not phase.begins_with("grow"):
+		settings.set_value("gameplay/growth_trigger", "press")
+
 
 func _open_main() -> void:
 	main = (load(MAIN_SCENE) as PackedScene).instantiate()
