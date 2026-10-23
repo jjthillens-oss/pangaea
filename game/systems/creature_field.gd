@@ -225,8 +225,9 @@ func blocker_from(s: Dictionary, arena: PoolArena, places: Array[Vector2]) -> St
 			return "in view"
 	if not arena.is_clear(home, r):
 		return "not clear"
+	var gap := float(species.spawning.min_gap_m)
 	for c in creatures:
-		if c.motion.position.distance_to(home) < float(species.spawning.min_gap_m):
+		if c.motion.position.distance_to(home) < gap:
 			return "occupied"
 	# Endless runtime rule 8: no site whose reach comes within respawn_clear_m of the checkpoint
 	# spawns, so a respawned cell never finds a creature at its door.
@@ -366,7 +367,8 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	world.site_counts[site_id] = count + 1
 	var p: Phenotype = _phenotypes[species_id]
 	var c := Creature.new()
-	c.number = 1 + WorldHash.mix32(WorldHash.str32(site_id), count) % SITE_NUMBERS
+	var site_hash := WorldHash.str32(site_id)   # for the number and the brain's seed
+	c.number = 1 + WorldHash.mix32(site_hash, count) % SITE_NUMBERS
 	c.id = "c_%d_%s_%d" % [world.size, site_id, count]
 	c.spawn_count = count
 	c.species_id = species_id
@@ -381,7 +383,7 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	c.role = role
 	var cfg := species.brain_config(species_id)
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, s.home, float(s.heading), s.territory,
-		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, WorldHash.str32(site_id), count, _str_brain])), tick)
+		WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version, site_hash, count, _str_brain])), tick)
 	c.asleep = asleep
 	_by_site[site_id] = c
 	_add(c)
