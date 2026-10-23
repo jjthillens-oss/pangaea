@@ -670,7 +670,9 @@ func test_the_view_free_seek_matches_drive() -> void:
 
 ## A forager's seek routes past the colliders kept for it (ChunkArena.route_point_kept): on the
 ## saturated world, through two rebases and a teleport, a twin whose creatures drop their keeps
-## before every step drives every creature the same on every tick, to the same hash.
+## before every step drives every creature the same on every tick, to the same hash. Keeps hold
+## through a rebase (the stream's own and the debug ones): a forager seeking before and after a step
+## that rebased keeps its pick (one picked again has a new key).
 func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() -> void:
 	var sims: Array[PoolSim] = []
 	for i in 2:
@@ -687,8 +689,13 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 	var b := sims[1]
 	var bot = SwimBot.new(Vector2.RIGHT)
 	var held := 0
+	var held_rebased := 0   # foragers seeking on both sides of a step that rebased, with their keeps held
 	var keys := {}
 	for t in 1500:
+		var seeking := {}
+		for c in a.creatures.awake():
+			if c.route_keep != null and _seeking(c):
+				seeking[c] = c.route_keep.key
 		if t == 400 or t == 800:
 			a.debug_rebase(Vector2i(-1, 1))
 			b.debug_rebase(Vector2i(-1, 1))
@@ -704,6 +711,12 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 		b.step(intent)
 		var drives_a := []
 		var drives_b := []
+		var events: Array = a.drain_events()
+		for e in events:
+			if e.type == "rebased":
+				for c in seeking:
+					held_rebased += 1 if _seeking(c) and c.route_keep.key == seeking[c] else 0
+				break
 		for c in a.creatures.awake():
 			drives_a.append(c.drive)
 			if c.route_keep != null:
@@ -712,7 +725,7 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 				keys[c.id] = c.route_keep.key
 		for c in b.creatures.awake():
 			drives_b.append(c.drive)
-		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(a.drain_events()) != var_to_str(b.drain_events()):
+		if var_to_str(drives_a) != var_to_str(drives_b) or var_to_str(events) != var_to_str(b.drain_events()):
 			check(false, "tick %d: the twins' drives or events differ" % t)
 			return
 		if t % 60 == 59 and a.state_hash() != b.state_hash():
@@ -720,6 +733,14 @@ func test_a_forager_seeks_the_same_with_its_route_kept_or_picked_every_tick() ->
 			return
 	check_eq(a.state_hash(), b.state_hash(), "the same end")
 	check(held > 5000, "keeps held from tick to tick (%d)" % held)
+	check(held_rebased >= 5, "keeps held through rebases (%d)" % held_rebased)
+	print("test-perf-sim-caches: kept routes held %d times from tick to tick, %d through a rebase" % [held, held_rebased])
+
+
+## Whether the creature's drive seeks its goal along a kept route (PoolSim's usual drive for a forager).
+static func _seeking(c: CreatureField.Creature) -> bool:
+	var b := c.brain
+	return b != null and b.state == CreatureBrain.FORAGE and b.phase != CreatureBrain.EAT and b.goal.is_finite()
 
 
 ## The tick's leash clamp (CreatureBrain.leash_disc written out in PoolSim._contacts) is the brain's

@@ -274,6 +274,44 @@ func test_the_hold_bound_lets_go_the_same_creatures_as_measuring_every_one() -> 
 	check(let_go >= 5, "creatures were let go while the ring was cut (%d)" % let_go)
 
 
+## The hold bound holds through a rebase: the hold centres, the cell's place and the path's last
+## place move by the same offset, so on a step after two debug rebases (there and back) that loads
+## and unloads nothing, the hold pass passes over the awake creatures held before on the same bounds
+## (a bound measured again is a new one).
+func test_the_hold_bound_holds_through_a_rebase() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the hold bound through a rebase waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 505)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var held := 0
+	var carried := -1
+	for t in 1200:
+		var kept := {}
+		for c in sim.creatures.awake():
+			if w._hold_bound.has(c):
+				kept[c] = w._hold_bound[c]
+		var rebase: bool = t >= 300 and kept.size() >= 5
+		if rebase:
+			sim.debug_rebase(Vector2i(1, 0))
+			sim.debug_rebase(Vector2i(-1, 0))
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		var chunks := false
+		for e in sim.drain_events():
+			chunks = chunks or e.type == "chunk_loaded" or e.type == "chunk_unloaded"
+		if rebase and not chunks:
+			held = kept.size()
+			carried = 0
+			for c in kept:
+				carried += 1 if is_same(kept[c], w._hold_bound.get(c)) else 0
+			break
+	print("test-perf-world-caches: the hold bound held %d of %d creatures through a rebase" % [carried, held])
+	check(carried >= 5 and carried * 4 >= held * 3, "the creatures held before the rebase were passed over on the same bounds (%d of %d)" % [
+		carried, held])
+
+
 ## An awake creature the hold bound holds goes on the first step that finds the cell past the hold
 ## ring from its hold centre: the cell swims on east, the ring set 2 tm past the distance of a creature
 ## left behind it.
@@ -1360,6 +1398,31 @@ func test_a_kept_route_is_picked_again_for_a_new_goal_a_far_move_or_a_wider_body
 		check(want != c.to_2, "%s: the collider blocks the second route" % c.what)
 		check_eq(arena.route_point_kept(c.from_2, c.to_2, c.body_r_2, clearance, margin, 0, keep), want,
 			"%s: and the keep, picked again, goes round it" % c.what)
+
+
+## A keep holds through a rebase that moves its caller with the colliders (the same absolute places),
+## and is picked again for a caller the rebase leaves where it was in local terms: a collider the old
+## pick never looked at (36 tm off) is then across its route, and the kept route goes round it.
+func test_a_kept_route_holds_through_a_rebase_that_moves_its_caller_and_not_one_that_leaves_it() -> void:
+	var clearance := PoolArena.ROUTE_CLEARANCE
+	var margin := PoolArena.ROUTE_MARGIN
+	var shells: Array[Dictionary] = [{"id": "rock", "center": Vector2(38.0, 10.0), "radius": 1.0}]
+	var arena := ChunkArena.from_shells(shells)
+	var keep := ChunkArena.RouteKeep.new()
+	var from := Vector2(2.0, 10.0)
+	var to := Vector2(12.0, 10.0)
+	check_eq(arena.route_point_kept(from, to, 0.5, clearance, margin, 0, keep), to, "nothing blocks at first")
+	check(keep.near.is_empty(), "and the pick leaves the collider out")
+	var key := keep.key
+	var by := Vector2(32.0, 0.0)
+	arena.set_origin(by.x, by.y)   # the collider is now at local (6, 10)
+	check_eq(arena.route_point_kept(from - by, to - by, 0.5, clearance, margin, 0, keep), to - by,
+		"a caller the rebase moved still has nothing in its way")
+	check_eq(keep.key, key, "and keeps its pick")
+	var want := arena.route_point(from, to, 0.5, clearance, margin, 0)
+	check(want != to, "a caller the rebase left where it was has the collider across its route")
+	check_eq(arena.route_point_kept(from, to, 0.5, clearance, margin, 0, keep), want, "and the keep, picked again, goes round it")
+	check(keep.key != key, "picked again")
 
 
 ## Every collider that passes route_point's blocking test from `from` to `to` (its loop's arithmetic,

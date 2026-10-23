@@ -194,12 +194,16 @@ var _swum := 0.0                       ## tm the cell's one place has moved sinc
 var _swum_from := Vector2.INF          ## that place at the last _wakers
 var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, view margin] it holds for
 ## The hold pass's bound, on the same path: an awake creature's hold centre (its site's reach centre,
-## or its leash disc's) stays put until a load, an unload or a re-derive (_site_epoch) or a change of
-## the table's size, so one measured inside the hold ring cannot leave it before the place has moved
-## the ring less its distance. Each keeps [_site_epoch, the table's size, the path length at which it
-## may first leave, the hold ring]; the bound restarts with the wake bound's.
+## or its leash disc's) stays put until a load, an unload or an origin set (_site_epoch) or a change
+## of the table's size, so one measured inside the hold ring cannot leave it before the place has
+## moved the ring less its distance. Each keeps [_site_epoch, the table's size, the path length at
+## which it may first leave, the hold ring]; the bound restarts with the wake bound's. A rebase moves
+## the centres, the place and the path's last place by the same offset, so it holds through one: each
+## distance changes by float32 rounding only (some 1e-5 tm), and a bound lives no more than the hold
+## ring of path, over which the stream rebases once or twice (it waits for 80 tm swum), well inside
+## WAKE_SLACK_TM.
 var _hold_bound := {}                  ## awake creature (Creature) -> that
-var _site_epoch := 0                   ## bumped by every load, unload and re-derive
+var _site_epoch := 0                   ## bumped by every load, unload and set_origin_abs
 ## The ring bounds. A chunk's distance from the body changes by no more than the body moves, so after
 ## a scan found no missing chunk within the load ring (_nearest_missing), none can come within it
 ## before the body has moved the nearest missing one's distance less the ring, unless a chunk
@@ -313,6 +317,7 @@ func chunk_of_local(p: Vector2) -> Vector2i:
 ## Moves the origin to an absolute point (am) exactly and re-derives every local value that comes
 ## from an absolute one: the arena's colliders and the zones. Bodies and items are the caller's.
 func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
+	_site_epoch += 1   # the bodies are the caller's: the hold bound measures again
 	origin_x_am = x_am
 	origin_y_am = y_am
 	_rederive(sim)
@@ -1229,7 +1234,6 @@ static func _derive_site_local(rec: Dictionary, k: float, ox: float, oy: float) 
 ## that is not the index's own at its place sends the index to a rebuild. True when the index kept
 ## its places and every zone in it has an absolute centre (so each moved with the origin).
 func _rederive(sim: PoolSim) -> bool:
-	_site_epoch += 1
 	var k := _tm_to_am
 	var ox := origin_x_am
 	var oy := origin_y_am
