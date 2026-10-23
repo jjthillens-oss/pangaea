@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Test fixture: game/data/world_cell.json with its content paths pointing at the minimal fixtures in tests/fixtures/world (the kit, 20 tiles and the home ring). Every other key equals the shipped file; tests/test_world_content.gd checks that. The endless gates run on it until the real tiles land.",
+  "mode": "endless",
+  "gen_version": 1,
+  "sizes": {"start": 1, "max_in_build": 1},
+  "units": {"growth_factor": 1.6, "band_factor": 2.56, "tile_bu": 64.0, "chunk_tm": 32.0},
+  "rings_tm": {"mirror": 20.0, "view": 33.9, "wake": 40.0, "sleep": 44.0, "food": 52.0, "load": 56.0, "unload": 72.0},
+  "caps": {"awake": 12, "sleepers": 30, "food_items": 120, "food_per_zone": 12, "chunks": 36, "view_set_chunks": 12,
+           "loads_per_tick": 1},
+  "origin": {"rebase_beyond_tm": 96.0, "rebase_step_tm": 32.0, "local_bound_tm": 256.0},
+  "arrangement": {"region_period_tiles": 8, "region_order": ["drift", "sunlit", "reef"], "region_thresholds": [0.395, 0.605],
+                  "max_drift_run": 2, "landmark_cell_tiles": 2, "rare_block_tiles": 6, "rare_block_first_tile": -3,
+                  "home_tiles": [-1, 0], "fixed_rare": {"tile": [2, -1], "kind": "giant_husk"}},
+  "content": {"home": "res://tests/fixtures/world/home_min.json", "tiles": {"0": "res://tests/fixtures/world/tiles/b0"},
+              "kit": "res://tests/fixtures/world/kit_min.json"},
+  "switches": {"generated_creatures": true}
+}
