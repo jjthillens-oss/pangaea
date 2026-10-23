@@ -130,8 +130,8 @@ func _shares(gen: WorldGen, n: int, raw: bool) -> Dictionary:
 	return out
 
 
-## The thresholds are the region noise's measured third quantiles (core 0.2), so before the swap
-## each region holds a third of the tiles (measured worst 0.026 off at this size).
+## The thresholds are the region noise's measured third quantiles (core 0.2), so before the drift
+## rule each region holds a third of the tiles (measured worst 0.026 off at this size).
 func test_region_shares_are_a_third_each_before_the_drift_rule() -> void:
 	var shares := _shares(_gen(401), 320, true)
 	print("test-world-gen: raw shares at seed 401 over 320 x 320 tiles: %s" % [shares])
@@ -139,18 +139,21 @@ func test_region_shares_are_a_third_each_before_the_drift_rule() -> void:
 		check_near(shares[r], 1.0 / 3.0, 0.05, "%s share" % r)
 
 
+## And on three more seeds, the final shares the coordinate rule keeps.
 func test_slow_region_shares_are_a_third_each_on_four_seeds() -> void:
 	for s in [0, 1, 401, 4242]:
 		var shares := _shares(_gen(s), 320, true)
 		print("test-world-gen: raw shares at seed %d: %s" % [s, shares])
 		for r in shares:
 			check_near(shares[r], 1.0 / 3.0, 0.05, "seed %d %s share" % [s, r])
+		if s != 401:
+			_check_final_shares(s)
 
 
 static var _region_grids := {}
 
 
-## Final regions of the ordinary rule over [-64, 64)^2 tiles, row-major, per seed (shared by two tests).
+## Final regions of the ordinary rule over [-64, 64)^2 tiles, row-major, per seed.
 static func _region_grid(seed_value: int) -> PackedStringArray:
 	if not _region_grids.has(seed_value):
 		var gen := _gen(seed_value)
@@ -177,18 +180,19 @@ func test_no_three_drift_tiles_run_in_a_row_or_a_column() -> void:
 		check_eq(runs, 0, "seed %d: runs of three drift tiles" % s)
 
 
-## The pinned swap (spine 3.6 step 2) keeps 1% to 3% drift (measured 1.7%; core C-15 and question 1).
+## The coordinate rule (B-11) keeps drift near 14.8% (two thirds of the raw third), and every final
+## region keeps at least 10% of the tiles. Over 320 x 320 tiles the reference measures 14.8% to 15.8%
+## on eight seeds; a 128-tile square swings from 11% to 20%, too few lattice cells to judge.
 func test_the_drift_share_after_the_rule_is_as_measured() -> void:
-	var drift := 0
-	var total := 0
-	for s in [401, 4242]:
-		for r in _region_grid(s):
-			total += 1
-			if r == "drift":
-				drift += 1
-	var share := float(drift) / total
-	print("test-world-gen: drift after the swap is %.2f%% of %d tiles" % [share * 100.0, total])
-	check(share >= 0.01 and share <= 0.03, "drift share %.4f in [0.01, 0.03]" % share)
+	_check_final_shares(401)
+
+
+func _check_final_shares(seed_value: int) -> void:
+	var shares := _shares(_gen(seed_value), 320, false)
+	print("test-world-gen: final shares at seed %d over 320 x 320 tiles: %s" % [seed_value, shares])
+	check(shares.drift >= 0.12 and shares.drift <= 0.18, "seed %d: drift share %.4f in [0.12, 0.18]" % [seed_value, shares.drift])
+	for r in shares:
+		check(shares[r] >= 0.10, "seed %d: %s keeps %.4f of the tiles, at least 0.10" % [seed_value, r, shares[r]])
 
 
 ## G15: a tile and its east and south neighbours never share an id (sets alternate, and the rare

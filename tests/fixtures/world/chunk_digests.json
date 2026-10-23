@@ -13,5 +13,5 @@
   {"key": [-7, -12], "digest": "1bee0b94b97a4a55032dbf7d7acbd7e3b577ab4805baba251c76f15d058c5216", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"},
   {"key": [5, -2], "digest": "ed1b23a10b7877ee24a960806ce49f62d9b7a6d43b58c498079bb5aa1bfe84f2", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
   {"key": [11, 1], "digest": "9e874bf1ff54b9cb5bebc9f5d533fcf5eaa13870378cf2b0a3ec7ae33c25cb83", "holds": "2 shells, 0 zones, 0 sites, 0 anchors, 1 places"},
-  {"key": [-3, -8], "digest": "3c389abef6e3e83b09448b9aca20cbda9826538e845940a632ef9825b6071e85", "holds": "1 shells, 1 zones, 0 sites, 0 anchors, 0 places"},
+  {"key": [-3, -8], "digest": "215c0953b92fab3df456e86c347dd8ecf8abdfb6d35bf122ceb735158e9e809b", "holds": "3 shells, 0 zones, 0 sites, 0 anchors, 0 places"},
   {"key": [3125, -3126], "digest": "0d70c5e7e0dffb458034221aa21d2e57b08db0e9d66fc84ce912002f52f1a621", "holds": "1 shells, 1 zones, 1 sites, 0 anchors, 0 places"}]}
