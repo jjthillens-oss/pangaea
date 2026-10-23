@@ -65,7 +65,10 @@ func test_the_column_stands_at_the_checkpoint_across_a_rebase() -> void:
 		pool.free()
 		return
 	var at_checkpoint := func() -> Vector3:
-		return PlaneSpace.to_world(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1]))
+		return PlaneSpace.to_world(WorldMarkers.column_point(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1])))
+	var checkpoint := PlaneSpace.to_world(world.local_of_abs(world.checkpoint_am[0], world.checkpoint_am[1]))
+	check_near(column.position.distance_to(checkpoint), WorldMarkers.COLUMN_BESIDE_TM.length(), 1e-4,
+		"beside the checkpoint, not on it")
 	check(column.position.is_equal_approx(at_checkpoint.call()), "at the checkpoint from the first frame: %s" % column.position)
 	var before := column.position
 	check(sim.debug_rebase(Vector2i(3, -2)), "a dev rebase")
@@ -79,6 +82,60 @@ func test_the_column_stands_at_the_checkpoint_across_a_rebase() -> void:
 	check(sim.debug_hurt_player(sim.state.max_health) and sim.dead, "the cell dies")
 	FakeEvents.frame(pool)
 	check(column.visible and pool.markers.visible, "the column stays while the cell is dead")
+	pool.free()
+
+
+## The cell starts next to the column, never inside it, and the column's top shows on screen at the
+## default camera (art may hand over a taller or opaque piece: its drawn height is clamped).
+func test_a_new_cell_starts_beside_the_column_and_sees_its_top() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	FakeEvents.frame(pool)
+	var column := pool.markers.column()
+	check(column != null, "the sea has a column")
+	if column == null:
+		pool.free()
+		return
+	var cell := PlaneSpace.to_plane(pool.cell_view.position)
+	var base := PlaneSpace.to_plane(column.position)
+	var radius := pool.sim.phenotype.radius
+	check(base.distance_to(cell) >= radius + 0.25 + 1.0, "a clear gap between the cell (r %.2f) and the column: %.2f tm apart" % [radius, base.distance_to(cell)])
+	var top := WorldMarkers._top_of(column) * column.scale.y
+	check(top <= WorldMarkers.COLUMN_TOP_MAX_M + 1e-4 and top > 1.0, "drawn up to %.2f m above the plane" % top)
+	var project := _projector(pool.camera)
+	var at_cell: Dictionary = project.call(pool.cell_view.position)
+	var cell_px: float = (project.call(pool.cell_view.position + Vector3.RIGHT * radius).at as Vector2).distance_to(at_cell.at)
+	var foot: Vector2 = project.call(column.position).at
+	var head: Dictionary = project.call(column.position + Vector3.UP * top)
+	check(not head.behind and Rect2(Vector2.ZERO, SCREEN).grow(-40.0).has_point(head.at),
+		"its top is on screen, 40 px clear of the edge: %s" % head.at)
+	var nearest := Geometry2D.get_closest_point_to_segment(at_cell.at, foot, head.at)
+	check(nearest.distance_to(at_cell.at) > cell_px * 1.5, "and on screen it stands beside the cell, not across it: %.0f px from its centre, the cell %.0f px across" % [nearest.distance_to(at_cell.at), cell_px * 2.0])
+	# A piece taller than the kit's, and opaque (the rough kit's 12 m pillar), is squashed to
+	# COLUMN_TOP_MAX_M; a shorter one keeps its height.
+	var tall := Node3D.new()
+	var mesh := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.5, 12.0, 0.5)
+	box.material = StandardMaterial3D.new()
+	mesh.mesh = box
+	mesh.position.y = 4.5
+	tall.add_child(mesh)
+	mesh.owner = tall
+	var packed := PackedScene.new()
+	packed.pack(tall)
+	tall.free()
+	var path := "user://test_world_hud/tall_column.tscn"
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	check_eq(ResourceSaver.save(packed, path), OK, "a tall stand-in column saved")
+	var kit := PlacementKit.load_from()
+	kit.assets[WorldMarkers.COLUMN_ID] = {"glb": path}
+	pool.markers.setup(pool.sim, kit)
+	FakeEvents.frame(pool)
+	column = pool.markers.column()
+	check_near(WorldMarkers._top_of(column), 10.5, 1e-4, "the stand-in reaches 10.5 m as made")
+	check_near(WorldMarkers._top_of(column) * column.scale.y, WorldMarkers.COLUMN_TOP_MAX_M, 1e-4, "and is drawn to the cap")
+	check_eq(WorldMarkers.column_scale(3.0), 1.0, "a shorter piece keeps its height")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	pool.free()
 
 
@@ -233,9 +290,9 @@ func test_an_endless_respawn_reports_whether_the_world_moved_home() -> void:
 			check(not h.dead, "%s: alive when the message shows" % tag)
 			if case.teleport:
 				check(sim.world.local_of_abs(cp[0], cp[1]).length() < 1e-3, "%s: the origin moved to the checkpoint" % tag)
-			var column := PlaneSpace.to_world(sim.world.local_of_abs(cp[0], cp[1]))
+			var column := PlaneSpace.to_world(WorldMarkers.column_point(sim.world.local_of_abs(cp[0], cp[1])))
 			FakeEvents.frame(pool)
-			check(pool.markers.column().position.is_equal_approx(column), "%s: the column stands at the checkpoint" % tag)
+			check(pool.markers.column().position.is_equal_approx(column), "%s: the column stands beside the checkpoint" % tag)
 		pool.free()
 
 
