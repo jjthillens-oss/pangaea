@@ -505,7 +505,7 @@ func _grow() -> void:
 		"checkpoint_am": Array(sim.world.checkpoint_am),
 		"size": sim.size(),
 		"look": pool.plankton_view.look,
-		"near": Array(pool.ghosts.near_species(2)),
+		"near": Array(pool.ghosts.near_species(pool.ghosts.shown_size())),
 	}
 	var file := FileAccess.open(GROW_EXPECT_PATH, FileAccess.WRITE)
 	_check(file != null, "wrote %s" % GROW_EXPECT_PATH)
@@ -543,7 +543,9 @@ func _grow_continue() -> void:
 	_check(pool.plankton_view.look == SIZE_2_LOOK and pool.plankton_view.look == str(expect.look),
 		"the plants are %s (%s)" % [SIZE_2_LOOK, pool.plankton_view.look])
 	_check(main.hud.size_badge.text == BADGE_SIZE_2, "the badge reads '%s' (%s)" % [BADGE_SIZE_2, main.hud.size_badge.text])
-	_check(Array(pool.ghosts.near_species(2)) == expect.near, "the near ghosts are the same (%s)" % [pool.ghosts.near_species(2)])
+	var shown := pool.ghosts.shown_size()
+	_check(shown == 2 and Array(pool.ghosts.near_species(shown)) == expect.near,
+		"the near ghosts are size 2's, as saved (size %d: %s)" % [shown, pool.ghosts.near_species(shown)])
 	_check(pool.camera._shown_distance == pool.camera.distance, "the camera is at rest (%.4f, %.4f)" % [pool.camera._shown_distance, pool.camera.distance])
 	_end()
 

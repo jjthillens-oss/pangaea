@@ -416,6 +416,11 @@ func ladder() -> Dictionary:
 	return _ladder
 
 
+## The size whose ghosts the layer draws now (the new size from a growth's begin_growth).
+func shown_size() -> int:
+	return _size
+
+
 ## The ladder species that enter at the next two sizes, in the ladder's order: what the near ghosts of
 ## `size` show.
 func near_species(size: int) -> PackedStringArray:
