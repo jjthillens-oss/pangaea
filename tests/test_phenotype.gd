@@ -218,3 +218,95 @@ func test_body_size_is_clamped_to_its_range() -> void:
 	check_eq(_full(Phenotype.derive(genome, catalog, 0.1)), _full(Phenotype.derive(genome, catalog, Phenotype.MIN_BODY_SIZE)), "below the range")
 	check_eq(_full(Phenotype.derive(genome, catalog, NAN)), _full(Phenotype.derive(genome, catalog)), "not a number counts as size 1")
 	check_eq(_full(Phenotype.derive(genome, catalog, INF)), _full(Phenotype.derive(genome, catalog)), "infinity counts as size 1")
+
+
+# --- Scaled to another size (S2, plan B.6) ---
+
+## Phenotype.scaled sorts every field: multiplied by q, or copied as it is. "spikes" is both: each
+## spike's damage is multiplied and its type, angle and arc are copied. A new Phenotype field fails
+## test_every_field_is_sorted_into_scaled_or_kept until it is added to one of these lists.
+const SCALED_FIELDS: PackedStringArray = ["speed", "acceleration", "max_health", "energy_capacity", "upkeep",
+	"move_cost", "sight", "mass", "radius", "bite_damage", "ram_damage"]
+const KEPT_FIELDS: PackedStringArray = ["turn_rate", "defense", "spike_stacking", "diets", "mouths"]
+## q at size 2 for a size-1 species, at size 3, and a size-2 species seen from size 1.
+const LADDER_QS := [0.625, 0.390625, 1.6]
+
+
+## The three starting bodies, the ambush hunter and the rammer.
+func _ladder_bodies() -> Dictionary:
+	var out := {}
+	for body_name in catalog.starting_bodies:
+		out[body_name] = Phenotype.derive(Lineage.found(1, "test+dev", catalog, body_name).save.genome, catalog)
+	out["ambush hunter"] = Phenotype.derive(_body(AMBUSH_PARTS), catalog, 1.5)
+	out["rammer"] = Phenotype.derive(_body(RAMMER_PARTS), catalog, 1.25)
+	return out
+
+
+func _fields(p: Phenotype) -> PackedStringArray:
+	var out := PackedStringArray()
+	for prop in p.get_property_list():
+		if prop.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			out.append(prop.name)
+	return out
+
+
+func test_every_field_is_sorted_into_scaled_or_kept() -> void:
+	var fields := _fields(Phenotype.new())
+	var sorted := SCALED_FIELDS + KEPT_FIELDS + PackedStringArray(["spikes"])
+	check(fields.size() >= 15, "the reflection finds the fields (%d)" % fields.size())
+	for f in fields:
+		check(f in sorted, "'%s' is sorted into scaled or kept" % f)
+	for f in sorted:
+		check(f in fields, "'%s' is a Phenotype field" % f)
+
+
+func test_scaled_by_one_is_the_same_body_bit_for_bit() -> void:
+	var bodies := _ladder_bodies()
+	for key in bodies:
+		var p: Phenotype = bodies[key]
+		var same := p.scaled(1.0)
+		for f in _fields(p):
+			check_eq(same.get(f), p.get(f), "%s: %s" % [key, f])
+		check_eq(_full(same), _full(p), "%s: every stat" % key)
+
+
+func test_scaled_multiplies_each_size_stat_by_q_and_copies_the_rest() -> void:
+	var bodies := _ladder_bodies()
+	for q in LADDER_QS:
+		for key in bodies:
+			var p: Phenotype = bodies[key]
+			var s := p.scaled(q)
+			var where := "%s at q %.6f" % [key, q]
+			for f in SCALED_FIELDS:
+				check_eq(s.get(f), float(p.get(f)) * q, "%s: %s x q" % [where, f])
+			for f in KEPT_FIELDS:
+				check_eq(s.get(f), p.get(f), "%s: %s kept" % [where, f])
+			check(s.radius != p.radius and s.speed != p.speed, where + ": the radius and speed did change")
+			check_eq(s.spikes.size(), p.spikes.size(), where + ": every spike")
+			for i in mini(s.spikes.size(), p.spikes.size()):
+				check_eq(float(s.spikes[i].damage), float(p.spikes[i].damage) * q, "%s: spike %d damage x q" % [where, i])
+				for k in ["type", "angle", "arc"]:
+					check_eq(s.spikes[i][k], p.spikes[i][k], "%s: spike %d %s kept" % [where, i, k])
+	check(not bodies.rammer.spikes.is_empty(), "the rammer has spikes to scale")
+
+
+func test_a_scaled_copy_shares_nothing_with_its_body() -> void:
+	var p := Phenotype.derive(_body(RAMMER_PARTS), catalog, 1.25)
+	var before := _full(p)
+	var s := p.scaled(0.625)
+	s.mouths[0]["arc"] = 9.0
+	s.spikes[0]["angle"] = 9.0
+	s.diets.append("rock")
+	check_eq(_full(p), before, "changing the copy's mouths, spikes and diets leaves the body as it was")
+
+
+func test_a_scaled_down_body_is_slower_where_a_re_derived_one_would_be_faster() -> void:
+	# The linear law keeps the ladder's fear rule honest: a re-derived small body sheds mass and speeds up.
+	var genome := _body(AMBUSH_PARTS)
+	var p := Phenotype.derive(genome, catalog, 1.5)
+	var s := p.scaled(0.625)
+	var rederived := Phenotype.derive(genome, catalog, 1.5 * 0.625)
+	check_near(s.radius, rederived.radius, 1e-12, "the same radius either way (0.46875)")
+	check(s.speed < p.speed, "scaled: slower (%.3f < %.3f)" % [s.speed, p.speed])
+	check(rederived.speed > p.speed, "re-derived: faster (%.3f > %.3f)" % [rederived.speed, p.speed])
+	check_near(s.turn_rate, p.turn_rate, 0.0, "the turn rate stays")
