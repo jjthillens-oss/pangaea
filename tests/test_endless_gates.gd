@@ -403,6 +403,25 @@ func test_the_racer_is_the_fastest_legal_body() -> void:
 	print("test-endless-gates: the racer swims at %.3f tm/s (the cap is %.1f)" % [speed, PoolLayout.MAX_SPEED])
 
 
+## Core Q3 (S1 build plan section 3): the endless #33 camper skips the guarded M1 zones, as M1's #33
+## does (tests/test_threat_gates.gd): its home zones are M1's camp zones, and no M1 site's territory
+## zone (z_n, z_nw, z_ne: the rammers') is among them.
+func test_the_endless_camper_skips_the_guarded_m1_zones() -> void:
+	var m1: PackedStringArray = (load("res://tests/test_threat_gates.gd") as GDScript).get_script_constant_map().CAMP_ZONES
+	var ours := CAMP_HOME_ZONES.duplicate()
+	var theirs := m1.duplicate()
+	ours.sort()
+	theirs.sort()
+	check_eq(ours, theirs, "the endless camper's home zones are M1's #33 zones")
+	var guarded := PackedStringArray()
+	for s in SpeciesCatalog.load_from().sites:
+		if not str(s.territory_zone).is_empty() and not guarded.has(str(s.territory_zone)):
+			guarded.append(str(s.territory_zone))
+	check(guarded.has("z_n") and guarded.has("z_nw"), "z_n and z_nw are guarded in M1 (%s)" % ", ".join(guarded))
+	for id in guarded:
+		check(not CAMP_HOME_ZONES.has(id), "%s is a territory, so the camper skips it" % id)
+
+
 func test_random_points_repeat_and_stay_in_their_square() -> void:
 	var a := random_points(77, 50, 100.0)
 	var b := random_points(77, 50, 100.0)
