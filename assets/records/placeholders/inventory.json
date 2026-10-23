@@ -7,12 +7,13 @@
       "id": "creature_editor_floor",
       "kind": "environment",
       "asset_id": "creature_editor_room",
-      "description": "The creature editor's ground disc: a flat CylinderMesh under the creature, dark blue, scaled to the body, so the Spore-style room has a floor until the creature-stage art pass gives the editor a modelled room.",
+      "description": "The creature editor's ground disc: a flat CylinderMesh under the creature, dark blue with a soft pool of light at its centre and an edge that feathers out (editor_floor.gdshader), scaled to the body, so the Spore-style room has a floor until the creature-stage art pass gives the editor a modelled room.",
       "types": [
         "CylinderMesh"
       ],
       "files": [
-        "game/scenes/creature/creature_editor.tscn"
+        "game/scenes/creature/creature_editor.tscn",
+        "game/scenes/creature/editor_floor.gdshader"
       ],
       "node": "CreatureEditor/Floor",
       "remove_by": "creature-stage art pass (M2)"

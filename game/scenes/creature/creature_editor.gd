@@ -45,6 +45,11 @@ const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
 const STAGE_TUNING_PATH := "res://game/data/creature/creature_stage.json"
 
 const HANDLE_PICK_PX := 16.0
+## Handles keep one size on screen whatever the zoom: this radius in pixels (at the project's 1080 rows, scaled with
+## the viewport), unselected part handles at HANDLE_PART_SCALE of it and the selection at HANDLE_SELECTED_SCALE.
+const HANDLE_SCREEN_PX := 9.0
+const HANDLE_PART_SCALE := 0.6
+const HANDLE_SELECTED_SCALE := 1.5
 const REFUSAL_S := 2.0
 const ORBIT_MOUSE_RATE := 0.008
 const ORBIT_STICK_RATE := 2.2
@@ -82,6 +87,7 @@ var selected := {}
 var dragging := false
 var drag_plane := Plane()
 var handles: Array = []   ## {kind, id, limb, copy, twin, world: Vector3}
+var _handle_meshes: Array = []   ## {mesh: MeshInstance3D, scale: float}, resized to the camera each frame
 var skin_color: Color = SKIN_COLORS[0]
 ## The skin-shader pattern (pattern_seed, coat_pattern, detail_pattern), from the body or Look.DEFAULT_PATTERN.
 var skin_pattern: Dictionary = Look.DEFAULT_PATTERN.duplicate()
@@ -247,21 +253,22 @@ func _collect_skin() -> void:
 
 func _rebuild_handles(desc: RefCounted, placed: Array) -> void:
 	handles.clear()
+	_handle_meshes.clear()
 	for c in handle_root.get_children():
 		c.free()
-	var r: float = 0.018 * desc.bounds_m().get_longest_axis_size()
+	var r: float = 0.018 * desc.bounds_m().get_longest_axis_size()   # the turn ring's unit; the spheres size to the screen
 	for i in desc.vertebrae.size():
-		_add_handle({"kind": "vertebra", "id": desc.vertebrae[i]["id"]}, desc.position_m(i), r)
+		_add_handle({"kind": "vertebra", "id": desc.vertebrae[i]["id"]}, desc.position_m(i), 1.0)
 	var chains: Array = desc.limb_chains()
 	for c in chains.size():
 		var copy: bool = c > 0 and chains[c - 1]["source"] == chains[c]["source"]
 		var limb: Dictionary = desc.limbs[desc.limb_index(String(chains[c]["source"]))]
 		var pts: PackedVector3Array = chains[c]["points"]
 		for k in range(1, pts.size()):  # joint 0 rides on its vertebra
-			_add_handle({"kind": "joint", "id": limb["joints"][k]["id"], "limb": limb["id"], "copy": copy}, pts[k], r)
+			_add_handle({"kind": "joint", "id": limb["joints"][k]["id"], "limb": limb["id"], "copy": copy}, pts[k], 1.0)
 	for e in placed:
 		var t: Transform3D = e["transform"]
-		_add_handle({"kind": "part", "id": e["part"], "twin": e["twin"]}, t.origin, 1.15 * r)
+		_add_handle({"kind": "part", "id": e["part"], "twin": e["twin"]}, t.origin, HANDLE_PART_SCALE)
 		# The selected part's turn ring: a circle around its up axis, with a handle on its side to drag round.
 		if not e["twin"] and not selected.is_empty() and selected["kind"] in ["part", "turn"] and selected["id"] == e["part"]:
 			var up := t.basis.y.normalized()
@@ -269,8 +276,9 @@ func _rebuild_handles(desc: RefCounted, placed: Array) -> void:
 			var ring_r := 5.0 * r
 			_add_ring(t.origin, up, side, ring_r)
 			_add_handle({"kind": "turn", "id": e["part"], "origin": t.origin + _rig_offset, "up": up},
-					t.origin + side * ring_r, r)
+					t.origin + side * ring_r, 1.0)
 	handle_root.visible = walker == null
+	_scale_handles()
 
 
 func _add_ring(centre: Vector3, up: Vector3, side: Vector3, radius: float) -> void:
@@ -290,7 +298,8 @@ func _add_ring(centre: Vector3, up: Vector3, side: Vector3, radius: float) -> vo
 	handle_root.add_child(mi)
 
 
-func _add_handle(h: Dictionary, body_pos: Vector3, r: float) -> void:
+## A handle sphere at `body_pos`, drawn at `scale` times HANDLE_SCREEN_PX (the selection larger).
+func _add_handle(h: Dictionary, body_pos: Vector3, scale: float) -> void:
 	h["world"] = body_pos + _rig_offset
 	handles.append(h)
 	var mi := MeshInstance3D.new()
@@ -304,8 +313,21 @@ func _add_handle(h: Dictionary, body_pos: Vector3, r: float) -> void:
 	mat.albedo_color = col.lightened(0.6) if is_sel else col
 	mi.material_override = mat
 	mi.position = h["world"]
-	mi.scale = Vector3.ONE * r * (1.6 if is_sel else 1.0)
+	_handle_meshes.append({"mesh": mi, "scale": HANDLE_SELECTED_SCALE if is_sel else scale})
 	handle_root.add_child(mi)
+
+
+## Sizes every handle sphere to its screen size at the camera's current distance (perspective: a sphere of radius
+## r at distance d covers r / (d * tan(fov / 2)) of the half-height).
+func _scale_handles() -> void:
+	if _handle_meshes.is_empty():
+		return
+	var eye := _camera_xform().origin
+	var per_px := 2.0 * tan(deg_to_rad(camera.fov) * 0.5) / maxf(_screen_size().y, 1.0)
+	for e in _handle_meshes:
+		var mi: MeshInstance3D = e["mesh"]
+		var r := HANDLE_SCREEN_PX * float(e["scale"]) * per_px * maxf(mi.position.distance_to(eye), 0.05)
+		mi.scale = Vector3.ONE * r
 
 
 static func _same(a: Dictionary, b: Dictionary) -> bool:
@@ -888,6 +910,7 @@ func _update_camera() -> void:
 		floor_disc.position = Vector3(focus.x, floor_disc.position.y, focus.z)   # the floor keeps up with the walk
 	var at := focus + _distance * Vector3(sin(_orbit.x) * cos(_orbit.y), sin(_orbit.y), cos(_orbit.x) * cos(_orbit.y))
 	camera.transform = Transform3D(Basis.looking_at(focus - at, Vector3.UP), at)
+	_scale_handles()
 
 
 func _refresh_hud() -> void:
