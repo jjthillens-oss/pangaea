@@ -24,6 +24,9 @@ const REEF_SHELLS := 18
 const DRIFT_MAX_SHELLS := 5
 const DRIFT_MAX_CAPACITY := 16.0
 const DRIFT_MAX_ITEMS := 12
+## A sunlit tile's size-2 threat (S2): an elder rammer guarding a zone, or a Lurker where every zone's
+## disc would reach too near the landmark anchor (PROPOSED).
+const SUNLIT_THREATS_AT_TWO := ["elder_rammer", "lurker"]
 ## The smallest slack a site keeps inside its tile (rule 6's inset) and from the landmark anchor
 ## (rule 8), so retuning cannot wear them down to the rule unnoticed.
 const MIN_INSET_SLACK := 1.0
@@ -173,8 +176,17 @@ func test_tiles_keep_their_region_design() -> void:
 			items += _items(z)
 		var rammers := 0
 		var ambushes := 0
+		# S2 (s2-interfaces 4.3): an M1 site lives at size 1, or at 1 and 2; a size-2 threat at 2 only.
+		var m1_at_two := {}
+		var threats_at_two := []
 		for s in t.sites:
-			check_eq(s.sizes, [1] as Array[int], "%s site '%s' is live at size 1 only (S2 revisits it)" % [id, s.id])
+			if species.entry_size(s.species) == 2:
+				check_eq(s.sizes, [2] as Array[int], "%s site '%s': a size-2 threat lives at size 2 only" % [id, s.id])
+				threats_at_two.append(s.species)
+				continue
+			check(s.sizes == ([1] as Array[int]) or s.sizes == ([1, 2] as Array[int]), "%s site '%s' lives at size 1, or 1 and 2 (%s)" % [id, s.id, s.sizes])
+			if s.sizes.has(2):
+				m1_at_two[s.species] = int(m1_at_two.get(s.species, 0)) + 1
 			if species.behavior_of(s.species) == "territorial":
 				var z := _zone_of(t, s.territory_zone)
 				if t.region == "sunlit" and float(z.get("capacity", 0.0)) >= SUNLIT_RAMMER_CAPACITY:
@@ -188,9 +200,14 @@ func test_tiles_keep_their_region_design() -> void:
 					"%s: the feast zone ra is R %s, capacity %s (%s)" % [id, SUNLIT_RICH_R, SUNLIT_RICH_CAPACITY, rich])
 				check(rammers >= 1, "%s: a rammer guards a zone of capacity %s or more" % [id, SUNLIT_RAMMER_CAPACITY])
 				sunlit_least = mini(sunlit_least, items)
+				check_eq(m1_at_two, {"rammer": 1}, "%s: at size 2 one M1 rammer stays" % id)
+				check(threats_at_two.size() == 1 and threats_at_two[0] in SUNLIT_THREATS_AT_TWO,
+					"%s: one size-2 threat, an elder rammer or a Lurker where the anchor leaves it no zone (%s)" % [id, threats_at_two])
 			"reef":
 				check_eq(t.shells.size(), REEF_SHELLS, "%s: the reef's shells" % id)
 				check(t.sites.size() >= 2 and ambushes >= 1, "%s: at least 2 sites, an ambush lair among them (%d, %d)" % [id, t.sites.size(), ambushes])
+				check_eq(threats_at_two, ["lurker"], "%s: one Lurker at size 2" % id)
+				check_eq(m1_at_two, {"ambush_hunter": 1} if t.set == 0 else {}, "%s: an ambush hunter stays at size 2 in set 0 only" % id)
 			"drift":
 				check(t.sites.is_empty(), "%s: drift has no sites" % id)
 				check(t.shells.size() <= DRIFT_MAX_SHELLS, "%s: at most %d shells (%d)" % [id, DRIFT_MAX_SHELLS, t.shells.size()])
@@ -203,6 +220,7 @@ func test_tiles_keep_their_region_design() -> void:
 				check_eq(str(t.set_piece.asset), kit.rare_asset(0, t.rare), "%s: the kit's piece of its kind" % id)
 				check(not t.sites.filter(func(s: Dictionary) -> bool: return s.sizes.has(1) and TileCatalog.THREAT_BEHAVIORS.has(species.behavior_of(s.species))).is_empty(),
 					"%s: a live threat guards it" % id)
+				check(threats_at_two.size() >= 1, "%s: a threat guards it at size 2 too" % id)
 	check(drift_most < sunlit_least, "drift tiles hold fewer items (at most %d) than any sunlit tile (at least %d)" % [drift_most, sunlit_least])
 
 

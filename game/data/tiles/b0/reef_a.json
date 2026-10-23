@@ -12,12 +12,12 @@
   "shells": [
     {"id": "s0", "center": [1.1, 20.8], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s1", "center": [-2.7, 22.7], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s2", "center": [-23.0, 6.8], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-23.0, 6.8], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s3", "center": [9.4, -8.2], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s4", "center": [-23.1, -17.1], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s5", "center": [-21.3, 3.5], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s6", "center": [5.1, -15.7], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s7", "center": [-20.7, 8.6], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [-20.7, 8.6], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s8", "center": [17.2, 3.9], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s9", "center": [-6.4, 26.2], "radius": 1.45, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s10", "center": [20.2, -4.8], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
@@ -44,8 +44,9 @@
     {"id": "f8", "center": [-23.0, 25.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "la", "species": "ambush_hunter", "home": [-8.0, -2.0], "heading": -2.5536, "territory_zone": "", "sizes": [1]},
+    {"id": "la", "species": "ambush_hunter", "home": [-8.0, -2.0], "heading": -2.5536, "territory_zone": "", "sizes": [1, 2]},
     {"id": "lb", "species": "ambush_hunter", "home": [2.0, 8.0], "heading": 0.9828, "territory_zone": "", "sizes": [1]},
-    {"id": "lc", "species": "ambush_hunter", "home": [-9.0, 9.0], "heading": 2.3562, "territory_zone": "", "sizes": [1]}
+    {"id": "lc", "species": "ambush_hunter", "home": [-9.0, 9.0], "heading": 2.3562, "territory_zone": "", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [-10.0, 2.0], "heading": -0.1974, "territory_zone": "", "sizes": [2], "post_b": {"home": [-14.81, 6.81], "heading": -0.4309}}
   ]
 }

@@ -9,7 +9,7 @@
 	"rare": "",
 	"landmark_anchor": [
 		0.0,
-		-20.0
+		-25.0
 	],
 	"set_piece": null,
 	"shells": [
@@ -178,8 +178,7 @@
 			],
 			"heading": -1.5708,
 			"sizes": [
-				1,
-				2
+				1
 			],
 			"territory_zone": "a"
 		},
@@ -193,6 +192,18 @@
 			"heading": -3.1416,
 			"sizes": [
 				1,
+				2
+			]
+		},
+		{
+			"id": "lk",
+			"species": "lurker",
+			"home": [
+				-8.0,
+				14.0
+			],
+			"heading": -1.0517,
+			"sizes": [
 				2
 			]
 		}

@@ -17,7 +17,7 @@
     {"id": "s4", "center": [26.6, -2.6], "radius": 1.15, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s5", "center": [0.0, 18.3], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
     {"id": "s6", "center": [-11.7, 15.0], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
-    {"id": "s7", "center": [26.7, 1.9], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [26.7, 1.9], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
     {"id": "s8", "center": [18.8, 4.4], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
   ],
   "zones": [
@@ -33,7 +33,8 @@
     {"id": "f7", "center": [0.0, 24.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "ma", "species": "rammer", "home": [6.0, -5.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1]},
-    {"id": "mb", "species": "rammer", "home": [6.0, 7.0], "heading": 1.5708, "territory_zone": "rb", "sizes": [1]}
+    {"id": "ma", "species": "rammer", "home": [6.0, -5.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1, 2]},
+    {"id": "mb", "species": "rammer", "home": [6.0, 7.0], "heading": 1.5708, "territory_zone": "rb", "sizes": [1]},
+    {"id": "er", "species": "elder_rammer", "home": [17.5, -5.5], "heading": 2.8371, "territory_zone": "f3", "sizes": [2]}
   ]
 }

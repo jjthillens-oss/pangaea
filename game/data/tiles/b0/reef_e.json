@@ -44,6 +44,7 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [-4.0, -5.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [6.0, -8.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [6.0, -8.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [-10.0, -16.0], "heading": 1.0122, "territory_zone": "", "sizes": [2], "post_b": {"home": [-10.0, -9.2], "heading": 0.7438}}
   ]
 }

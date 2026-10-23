@@ -39,17 +39,24 @@ static func load_from(config_path: String, p_layout: PoolLayout, species: Specie
 
 
 ## Problems across the content; empty when the world can run. Cheap checks only (at most 50 ms,
-## tests/test_world_content.gd), in this order: the world file, the kit, the tiles, the home block,
-## then the checks across files: the fixed rare kind, the interim carrion supply (C-13), the camera
-## the rings assume, the local bound round a held creature's reach (B-6) and the largest shell (BP-4).
-## A world file that did not read gives its own problems alone, since the content paths came from it.
+## tests/test_world_content.gd), in this order: the world file, the kit, the tiles and the home block
+## at each size from size_start to max_size_in_build (D-70), then the checks across files: the fixed
+## rare kind, the interim carrion supply (C-13), the camera the rings assume, the local bound round a
+## held creature's reach (B-6) and the largest shell (BP-4). A world file that did not read gives its
+## own problems alone, since the content paths came from it.
 func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStringArray:
 	var out := config.validate()
 	if not config.load_problems.is_empty():
 		return out
 	out.append_array(kit.validate())
-	out.append_array(tiles.validate(species, kit, part_catalog, config.size_start))
-	out.append_array(home.validate(species, kit, part_catalog, config.size_start))
+	# D-70: the tiles, then the home block, at every size the build runs; a problem the same at two
+	# sizes (a size-free rule's, or a reading problem) is listed once, where it first came.
+	var sizes := range(config.size_start, config.max_size_in_build + 1)
+	var seen := {}
+	for n in sizes:
+		_add_new(out, seen, tiles.validate(species, kit, part_catalog, n))
+	for n in sizes:
+		_add_new(out, seen, home.validate(species, kit, part_catalog, n))
 	var kind := str(config.arrangement.fixed_rare.kind)
 	var kinds := tiles.rare_kinds(0)
 	if not kinds.has(kind):
@@ -76,12 +83,19 @@ func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStrin
 	# chunks round it; a shell no wider than chunk_tm - 2 x wedge_tm keeps every collider that can touch
 	# it in those chunks. At every size the build runs (the widest is at a band's first size).
 	var widest := config.chunk_tm - 2.0 * float(config.growth.get("wedge_tm", 0.0))
-	for n in range(config.size_start, config.max_size_in_build + 1):
+	for n in sizes:
 		var shell := largest_shell(n)
 		if float(shell.radius_tm) > widest:
 			out.append("%s: BP-4: radius %.2f tm at size %d; every shell keeps <= chunk_tm - 2 x wedge_tm (%.2f tm)"
 				% [shell.where, shell.radius_tm, n, widest])
 	return out
+
+
+static func _add_new(out: PackedStringArray, seen: Dictionary, problems: PackedStringArray) -> void:
+	for p in problems:
+		if not seen.has(p):
+			seen[p] = true
+			out.append(p)
 
 
 ## The largest reach-disc radius in tm over the home block and every tile, among the sites live at
