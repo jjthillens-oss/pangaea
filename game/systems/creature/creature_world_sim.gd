@@ -397,7 +397,8 @@ func player() -> Dictionary:
 	return {"position": me["position"], "yaw": me["yaw"], "health": me["health"],
 			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "has_legs": s["has_legs"],
 			"has_mouth": s["has_mouth"], "bite_power": float(s["bite_power"]), "bite_reach_m": float(s["bite_reach_m"]),
-			"sight_m": float(s["sight_m"]), "mass_kg": float(s["mass_kg"]), "cooldown": me["cooldown"]}
+			"sight_m": float(s["sight_m"]), "mass_kg": float(s["mass_kg"]), "cooldown": me["cooldown"],
+			"body_length_m": float(s["body_length_m"]), "at_nest": at_nest()}
 
 
 func at_nest() -> bool:
