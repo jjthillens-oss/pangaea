@@ -1,0 +1,15 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; The pool rim's material (assets/records/pool_rim.json), an engineering placeholder until the owner
+; picks how the microscopic world's edge looks. Its colour is the mesh's vertex colours, which the
+; glTF importer would leave unused: dark, cool stone on the lip and shelf and a lighter navy on the
+; wall's shadowed inner face, stored sRGB-encoded so both renderers shade them like an albedo
+; colour. Roughness matches the Blender material M_PoolRim. pool_rim.glb.import points the imported
+; material here; a new look points it at another material, and the shape's tests in
+; tests/test_assets.gd never read this one.
+
+[resource]
+resource_name = "M_PoolRim"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+roughness = 0.9

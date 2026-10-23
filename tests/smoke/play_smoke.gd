@@ -11,7 +11,7 @@ extends SceneTree
 ##       recovers, dies and continues. Then the threats (M1 step 3, plan section 19): every
 ##       creature is drawn where the sim has it and listed in the debug panel, F9 and F10 place
 ##       and kill threats, lair_se's ambush hunter catches the cell parked in front of it (its
-##       tell on its body, the floor and an edge arrow while the camera looks away, the hit on the
+##       tell on its body, the swim plane and an edge arrow while the camera looks away, the hit on the
 ##       HUD, the notice, the death already on disk), Continue brings it back sheltered, lair_sw's
 ##       hunter catches it again soon after (a longer shelter), and a hunter just below the screen
 ##       gets an edge arrow drawn by the HUD's own refresh. Then the grazer pauses and resumes,
@@ -528,7 +528,7 @@ func _check_creatures(pool: PoolScene) -> void:
 ## `site`'s ambush hunter, facing away, and holds that spot until it dies. A hit knocks it out of
 ## the lunge window and a fed hunter does not chase it, so a parked forage bot swims it back, as
 ## in test_checkpoints (a cell left still would sit out of reach). With `cues`: a third into the
-## tell the hunter has coiled, its eyes glow and its lane shows on the floor, and a hit pulses the
+## tell the hunter has coiled, its eyes glow and its lane shows on the swim plane, and a hit pulses the
 ## hurt vignette and shows the health bar. The notice names the hunter, gives its tip and says the
 ## death was saved, and the slot on disk already holds it (OD1). Returns the died event, {} if none
 ## came.
@@ -573,7 +573,7 @@ func _caught_at(pool: PoolScene, site: String, cues: bool) -> Dictionary:
 		var glow := material.emission_energy_multiplier if material != null else 0.0
 		_check(telling and coil < COIL_SHOWN, "%d frames into the tell the hunter has coiled to %.2f of its length" % [TELL_POSE_FRAMES, coil])
 		_check(glow > CreatureView.EYE_GLOW_ALERT / CreatureView.EYE_EMISSION_REST, "its eyes glow brighter than when it watches (%.2f)" % glow)
-		_check(view != null and view.lane_visible(), "its strike lane shows on the floor")
+		_check(view != null and view.lane_visible(), "its strike lane shows on the swim plane")
 		# A tell cannot be staged off screen (the lunge window is on screen at every zoom), so the
 		# camera looks away for a moment instead; it eases back and the sim never sees it.
 		pool.camera.snap_to(PlaneSpace.to_world(sim.motion.position + Vector2(0.0, -CAMERA_AWAY_M)))

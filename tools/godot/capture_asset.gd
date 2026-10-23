@@ -3,10 +3,16 @@ extends SceneTree
 ## Usage: godot --path . --script res://tools/godot/capture_asset.gd -- <glb path> <out prefix> [clip]
 ## Writes <out prefix>_game.jpg (gameplay camera from game/data pool settings: 55 deg pitch,
 ## 45 deg FOV, 14 m) and <out prefix>_close.jpg (3/4 close-up). Needs a display (xvfb-run works).
+## The asset is reviewed over the fluid it lives in (micro-world plan C9): the pool's own
+## environment, Sun, DepthGlow and Backdrop, taken from pool.tscn, so the review shows the blue
+## fluid, the blue ambient and the fog the game draws, not the old teal floor.
 
 const PITCH_DEG := 55.0
 const FOV_DEG := 45.0
 const DISTANCE := 14.0
+const POOL_SCENE := "res://game/scenes/pool/pool.tscn"
+## The pool's nodes that make the fluid and its light.
+const FLUID_NODES: Array[String] = ["WorldEnvironment", "Sun", "DepthGlow", "Backdrop"]
 
 
 func _initialize() -> void:
@@ -17,38 +23,17 @@ func _initialize() -> void:
 	var root := Node3D.new()
 	get_root().add_child(root)
 
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#2A5F6E")
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("#8FB3C4")
-	env.ambient_light_energy = 0.6
-	env.tonemap_mode = Environment.TONE_MAPPER_AGX
-	var world := WorldEnvironment.new()
-	world.environment = env
-	root.add_child(world)
-
-	var key := DirectionalLight3D.new()
-	key.light_color = Color("#FFE8C8")
-	key.light_energy = 1.6
-	key.shadow_enabled = true
-	key.rotation_degrees = Vector3(-50, -35, 0)
-	root.add_child(key)
-	var rim := DirectionalLight3D.new()
-	rim.light_color = Color("#8FF0DC")
-	rim.light_energy = 0.7
-	rim.rotation_degrees = Vector3(-25, 160, 0)
-	root.add_child(rim)
-
-	var floor_mesh := PlaneMesh.new()  # review backdrop only, not a game asset
-	floor_mesh.size = Vector2(60, 60)
-	var floor_mat := StandardMaterial3D.new()
-	floor_mat.albedo_color = Color("#2A7F86").darkened(0.2)
-	floor_mesh.material = floor_mat
-	var floor_node := MeshInstance3D.new()
-	floor_node.mesh = floor_mesh
-	floor_node.position.y = -0.45
-	root.add_child(floor_node)
+	# Borrow the fluid from the pool scene without readying the pool itself, and give it the
+	# renderer's profile as pool.gd does.
+	var pool := (load(POOL_SCENE) as PackedScene).instantiate()
+	for node_name in FLUID_NODES:
+		var node := pool.get_node(node_name)
+		pool.remove_child(node)
+		node.owner = null
+		root.add_child(node)
+	pool.free()
+	PoolLook.apply(PoolLook.profile_for(RenderingServer.get_current_rendering_method()),
+			root.get_node("Sun") as DirectionalLight3D, root.get_node("WorldEnvironment") as WorldEnvironment)
 
 	var asset: Node3D = (load(glb) as PackedScene).instantiate()
 	root.add_child(asset)
@@ -66,8 +51,10 @@ func _initialize() -> void:
 	var pitch := deg_to_rad(PITCH_DEG)
 	cam.look_at_from_position(target + Vector3(0, sin(pitch), cos(pitch)) * DISTANCE, target)
 	await _shot(prefix + "_game.jpg")
+	# The close-up looks down about 30 degrees, so the backdrop's far edge stays out of frame as it
+	# does in game.
 	cam.fov = 30.0
-	cam.look_at_from_position(target + Vector3(-2.2, 1.3, -2.6), target)
+	cam.look_at_from_position(target + Vector3(-2.2, 2.0, -2.6), target)
 	await _shot(prefix + "_close.jpg")
 	quit(0)
 

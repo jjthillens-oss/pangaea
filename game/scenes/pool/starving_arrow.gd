@@ -14,7 +14,7 @@ const OUTLINE_PX := 3.0
 const PULSE_HZ := 1.0
 const PULSE_SHARE := 0.15
 const COLOR := Color(1.0, 0.83, 0.42)
-const OUTLINE := Color(0.03, 0.13, 0.15, 0.85)
+const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
 const FONT_SIZE := 22
 const LABEL_GAP_PX := 6.0
 ## The label keeps clear of this many cell radii, which takes in the mouth and eyes.

@@ -45,7 +45,7 @@ const ZONE_COLOR := Color(0.86, 0.97, 0.8)
 const HIT_TAKEN_COLOR := Color(1.0, 0.55, 0.62)    ## a light threat pink (#D9466B lifted to read on the water)
 const HIT_DEALT_COLOR := Color(0.957, 0.918, 0.824)   ## cream highlight #F4EAD2
 const DODGED_COLOR := Color(0.62, 0.98, 1.0)
-const OUTLINE_COLOR := Color(0.03, 0.13, 0.15, 0.9)
+const OUTLINE_COLOR := Color(UiPalette.KEYLINE, 0.9)
 
 var _meal_labels: Array[Label3D] = []
 var _meal_ages := PackedFloat32Array()

@@ -256,12 +256,13 @@
     {
       "id": "threat_lane",
       "kind": "ui",
-      "description": "The floor lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (alpha at most 0.25). Gameplay UI drawn on the swim plane, not a model.",
+      "description": "The strike lane of a tell on the player: a unit quad scaled to CreatureBrain.strike_lane() with threat_lane.gdshader (the inside at alpha 0.25 at most, the thin outline at 0.7). Gameplay UI drawn on the swim plane, not a model. creature_view.gd builds one more unit quad with the lane's material for the start fade's shader warm-up, drawn out of sight.",
       "types": [
         "QuadMesh"
       ],
       "files": [
-        "game/scenes/pool/creature_view.tscn"
+        "game/scenes/pool/creature_view.tscn",
+        "game/scenes/pool/creature_view.gd"
       ],
       "node": "Pool/Creatures/<id>/Lane"
     },
@@ -317,6 +318,30 @@
         "game/ui/hud.tscn"
       ],
       "node": "Pool/UI/Hud/ThreatIndicators"
+    },
+    {
+      "id": "fluid_backdrop",
+      "kind": "environment",
+      "description": "The fluid's opaque bottom: a 400 x 400 m PlaneMesh 40 m under the swim plane with backdrop.gdshader (unshaded, engine fog on). The height fog covers it to 97%, so every pixel shows only the fog colour at that depth and no shape of its own; it is the background that art's decor fades into, not a model (micro-world plan section 3).",
+      "types": [
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/pool.tscn"
+      ],
+      "node": "Pool/Backdrop"
+    },
+    {
+      "id": "zone_lights",
+      "kind": "light",
+      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone, carrying zone_light.gdshader's soft shafts of cream light, blended round the zone's edge (micro-world plan C7). Light with no shape of its own, not a model.",
+      "types": [
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/zone_lights.gd"
+      ],
+      "node": "Pool/ZoneLights"
     }
   ]
 }

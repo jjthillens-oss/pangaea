@@ -2,7 +2,7 @@ extends Node3D
 ## Debug builds only (M1 step 2): lines over the pool drawn from the rules' own numbers, so what
 ## the player sees can be checked against what the resolver uses. Zone rings, the body circle,
 ## the feeding reach circle and each mouth's facing arc (green for plankton, orange for carrion).
-## The debug panel toggles it. Lines ignore depth, so the floor never hides them.
+## The debug panel toggles it. Lines ignore depth, so the rim and art's decor never hide them.
 ##
 ## M1 step 3 adds the creatures' AI (plan section 16), from the brain's own memory and helpers:
 ## each sight cone (range and field of view, coloured by state) and near-sense circle; the leash

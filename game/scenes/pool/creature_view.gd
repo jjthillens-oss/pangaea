@@ -60,10 +60,18 @@ const MARKER_FADE_S := 0.15      ## ...and fading over the last of it
 const MARKER_Y := 1.25           ## m above the swim plane...
 const MARKER_NORTH := 1.0        ## ...and this many body radii north, so it clears the body on screen
 const MARKER_COLOR := Color(0.851, 0.275, 0.42)    ## threat #D9466B (docs/art/ART_DIRECTION.md)
-const MARKER_OUTLINE := Color(0.114, 0.208, 0.341)  ## deep shadow #1D3557
+## The "!"'s outline: cream highlight #F4EAD2. The teal-era deep shadow #1D3557 measured 1.5:1
+## against the fluid behind it (WCAG contrast; look probe, tell scene), so the "!" lost its edge on
+## the navy; cream measures 7.8:1 there and 3:1 against the pink inside it (micro-world plan C8).
+const MARKER_OUTLINE := Color(0.957, 0.918, 0.824)
 const LANE_Y := -0.02            ## the lane lies just under the swim plane, where the bodies swim
 const LANE_FADE_S := 0.3         ## the lane fades out over this long when the strike ends
 const LANE_COLOR := Color(0.851, 0.275, 0.42)
+const LANE_SHADER := preload("res://game/scenes/pool/threat_lane.gdshader")
+## The lane draws over every other world transparent (the sunlit patches and art's ambience stay
+## below it, so pale decor never covers its outline) and under the dev gizmos at 10 (micro-world
+## plan section 3).
+const LANE_PRIORITY := 8
 const WAG_DEG := 15.0            ## flagellum wag, as on the player's cell
 const WAG_HZ_REST := 1.5
 const WAG_HZ_TOP := 5.0
@@ -260,13 +268,16 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 			_spikes.append(holder)
 			_spike_rest.append(holder.transform)
 		parts.add_child(holder)
-	# Bodies cast shadows (all but the rammer's crest, in _find_pose_nodes); parts do not (plan section 20).
+	# Parts cast no shadow (plan section 20). The bodies keep theirs, all but the rammer's crest
+	# (_find_pose_nodes), though the micro look's sun casts none, so nothing shows one today.
 	for node in parts.find_children("*", "GeometryInstance3D", true, false):
 		(node as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_hurt_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_hurt_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_lane_material.shader = preload("res://game/scenes/pool/threat_lane.gdshader")
+	_lane_material.shader = LANE_SHADER
+	_lane_material.render_priority = LANE_PRIORITY
 	_lane_material.set_shader_parameter("color", LANE_COLOR)
+	_lane_material.set_shader_parameter("key", UiPalette.KEYLINE)
 	_lane_material.set_shader_parameter("strength", 0.0)
 	_lane.material_override = _lane_material
 	_lane.visible = false
@@ -354,6 +365,20 @@ func show_lane(lane: Dictionary) -> void:
 	_apply_lane()
 
 
+## A lane quad with a lane material of its own, for the start fade's shader warm-up (pool.gd): a
+## lane first shows at a tell, in play, where its first compile would show as a hitch.
+static func warm_up_lane_mesh() -> Mesh:
+	var material := ShaderMaterial.new()
+	material.shader = LANE_SHADER
+	material.render_priority = LANE_PRIORITY
+	material.set_shader_parameter("color", LANE_COLOR)
+	material.set_shader_parameter("strength", 1.0)
+	var quad := QuadMesh.new()
+	quad.orientation = QuadMesh.FACE_Y
+	quad.material = material
+	return quad
+
+
 ## Takes the lane down: at once for a cancelled tell, or fading over `fade_s`.
 func hide_lane(fade_s := 0.0) -> void:
 	if not _lane_on:
@@ -367,7 +392,8 @@ func hide_lane(fade_s := 0.0) -> void:
 
 
 ## The lane is on screen: shown, and drawn at a strength (its shader's alpha scale) above 0. Its
-## pixels themselves (the alpha math, its depth against the floor) show only in rendered frames.
+## pixels themselves (the alpha math, its depth against what lies behind it) show only in rendered
+## frames.
 func lane_visible() -> bool:
 	return _lane.visible and float(_lane_material.get_shader_parameter("strength")) > 0.0
 

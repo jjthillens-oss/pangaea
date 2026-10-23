@@ -335,6 +335,32 @@ func test_the_hurt_vignette_pulses_once_and_never_past_its_peak() -> void:
 	check(Hud.VIGNETTE_MIN_GAP_S >= Hud.VIGNETTE_FALL_S, "a pulse ends before the next may start")
 
 
+func test_the_hurt_vignette_reads_red_over_the_fluid_and_keeps_the_middle_clear() -> void:
+	var shader: Shader = load("res://game/ui/hurt_vignette.gdshader")
+	var hud := (load(HUD_SCENE) as PackedScene).instantiate()
+	var material := (hud.get_node("%HurtVignette") as ColorRect).material as ShaderMaterial
+	# A uniform the scene leaves unset takes the shader's default, read from its code (the headless
+	# renderer gives no defaults for canvas shaders).
+	var value := func(uniform_name: String) -> Variant:
+		var v: Variant = material.get_shader_parameter(uniform_name)
+		if v != null:
+			return v
+		var m := RegEx.create_from_string("uniform\\s+\\w+\\s+%s\\b[^=;]*=\\s*([^;]+);" % uniform_name).search(shader.code)
+		var e := Expression.new()
+		if m == null or e.parse(m.get_string(1).replace("vec4", "Color")) != OK:
+			return null
+		return e.execute()
+	check(material.shader == shader, "the HUD's vignette draws hurt_vignette.gdshader")
+	# A thin dark red over the navy fluid blends to purple (micro-world plan C8).
+	var tint: Color = value.call("tint") if value.call("tint") is Color else Color.BLACK
+	check(tint.r >= 3.0 * tint.b and tint.r > 0.0, "the tint is warm, red at least three times blue: %s" % tint)
+	check(float(value.call("inner")) >= 0.5, "the middle of the screen stays clear (inner %.2f half-screens)" % float(value.call("inner")))
+	check(float(value.call("band")) > 0.0, "the outermost band is stronger than the rest (band %.2f)" % float(value.call("band")))
+	var corner := Hud.VIGNETTE_PEAK * (1.0 + float(value.call("band")))
+	check(corner <= 0.5, "the outer band lifts the corners' alpha to at most 0.5 at the peak (%.2f)" % corner)
+	hud.free()
+
+
 func _ids(choices: Array) -> PackedStringArray:
 	var out := PackedStringArray()
 	for c in choices:
@@ -354,12 +380,24 @@ func test_the_perf_tour_reports_the_average_and_the_slowest_one_percent() -> voi
 		frames.append(10.0)
 	frames.append(40.0)
 	frames.append(20.0)
-	var report: Dictionary = tour.summarize(frames)
+	var gpu := PackedFloat32Array()
+	for i in 199:
+		gpu.append(2.0)
+	gpu.append(9.0)
+	var report: Dictionary = tour.summarize(frames, gpu)
 	check_eq(report.frames, 200, "frames")
 	check_near(report.avg_frame_ms, 10.2, 1e-4, "average frame")
 	check_near(report.low_1pct_fps, 1000.0 / 30.0, 1e-3, "1% low over the two slowest frames")
 	check_near(report.max_frame_ms, 40.0, 1e-6, "longest frame")
-	check_eq(tour.summarize(PackedFloat32Array()).frames, 0, "no frames")
+	check_eq(report.gpu_frames, 200, "GPU frames")
+	check_near(report.gpu_avg_ms, 2.035, 1e-4, "average GPU time")
+	check_near(report.gpu_slow_1pct_ms, 5.5, 1e-4, "GPU slow 1%: the two slowest GPU frames")
+	check_near(report.gpu_max_ms, 9.0, 1e-6, "longest GPU frame")
+	var empty: Dictionary = tour.summarize(PackedFloat32Array())
+	check_eq(empty.frames, 0, "no frames")
+	check(empty.gpu_frames == 0 and empty.gpu_avg_ms == 0.0 and empty.gpu_slow_1pct_ms == 0.0 and empty.gpu_max_ms == 0.0,
+		"no GPU times give zeros, as a headless run reports (%s)" % empty)
+	check_eq(tour.summarize(frames).gpu_frames, 0, "a renderer that times nothing reports no GPU frames")
 
 
 func test_the_perf_tour_times_frames_by_the_wall_clock_so_a_long_stall_counts_in_full() -> void:
@@ -386,6 +424,23 @@ func test_the_perf_tour_times_frames_by_the_wall_clock_so_a_long_stall_counts_in
 		measured_ms += ms
 	check(done and measured_ms >= script.DURATION_S * 1000.0 and measured_ms < script.DURATION_S * 1000.0 + 100.0,
 		"the tour ends once %.0f s of wall time are measured (%.3f s)" % [script.DURATION_S, measured_ms / 1000.0])
+	tour.free()
+
+
+func test_the_perf_tour_keeps_the_gpu_time_of_each_measured_frame_the_renderer_timed() -> void:
+	var script: GDScript = load(PERF_TOUR)
+	var tour: Node = script.new()
+	var now := 3_000_000
+	tour.sample(now, 50.0)
+	now += int(script.WARM_UP_S * 1e6)
+	tour.sample(now, 40.0)
+	check_eq(tour.gpu_ms.size(), 0, "nothing is kept during the warm-up or from the frame that starts the clock")
+	for reading in [2.5, 0.0, 3.5, -1.0]:
+		now += 16_000
+		tour.sample(now, reading)
+	check_eq(tour.frame_ms.size(), 4, "every frame is timed by the wall clock")
+	check_eq(tour.gpu_ms, PackedFloat32Array([2.5, 3.5]), "only frames with a GPU reading keep one")
+	check_eq(script.gpu_reading(tour), 0.0, "a tour outside the tree reads no GPU time")
 	tour.free()
 
 
