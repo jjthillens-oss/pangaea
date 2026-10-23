@@ -91,8 +91,10 @@ radius, no NaN, symmetry consistency. Invalid edits are refused with a reason th
 
 Feasibility probe (OBSERVED, scratch test, not in the repo): splatting 40 compact-support blobs into a 48³ grid in
 GDScript took about 13 ms on the cloud test machine (Intel Xeon 2.1 GHz, Godot 4.7.2 headless), plus about 4 ms to
-scan for surface crossings. HYPOTHESIS: a full preview rebuild in GDScript lands at 30–80 ms, fine on handle release
-and borderline for live dragging. Fallbacks if too slow, in order: dirty-region rebuild; lower preview grid;
+scan for surface crossings. A later full-pipeline probe (`workstreams/creature_editor.md`, OBSERVED, same machine,
+naive GDScript) took 203 ms for a small body and 578 ms for a large one at the coarse grid, and 1.3–3.0 s at the fine
+grid, with 7.8k–12k and 31k–49k triangles. So **GDScript cannot meet the 33 ms live-preview target**; an earlier
+30–80 ms guess here was wrong. A native path is needed for live dragging. Options, in order: dirty-region rebuild; lower preview grid;
 a compute shader (works on Forward+ and Mobile, not on the Compatibility renderer); a C++ GDExtension (needs owner
 approval: new toolchain and the MIT `godot-cpp` dependency).
 
