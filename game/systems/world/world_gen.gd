@@ -20,7 +20,12 @@ extends RefCounted
 ## discs (built small in the tile's own frame, then oriented and placed), landmark anchors and
 ## colliders, and rare set pieces with their colliders. Places also carry the yaw and mirror their
 ## colliders were placed with (docs/s1/s1-content.md 17.10), so the scene can draw them over them.
-## S1 builds size 1 only; at_second_size (S2) is carried in the data and not applied here.
+##
+## At a band's second size (S2, docs/s2/s2-sim.md 3.10) at_second_size applies: "sink" shells and
+## "drop" zones are not generated, and a "thin" zone holds capacity x second_size.zone_thin_share
+## (D-60). Reach discs are the species' lengths times k (WorldConfig.k_of, D-39, D-69); a two-post
+## site carries `posts` and reaches over their union disc (D-82). Every shell, set-piece and landmark
+## `scale` is x s, as its radius is (BP-16). At a band's first size every chunk is S1's, byte for byte.
 
 const HOME := "home"
 const RARE := "rare"
@@ -74,8 +79,8 @@ var _models_memo := {}
 ## band -> {r_bu -> the kit's sorted fitting shells}: content.derived's, shared with every generator
 ## bound to the same content.
 var _fit_memo := {}
-## "<tile id or home>/<site id>" -> {territory, reach} in the tile's (or the block's) own frame, bu:
-## content.derived's, per species catalog.
+## "<band>/<tile id or home>/<site id>" -> {territory, reach, posts?} in the tile's (or the block's)
+## own frame, bu: content.derived's, per species catalog (k is the band's).
 var _disc_memo := {}
 ## "<tile id>/<o>" -> the tile's objects in its oriented frame (_framed): content.derived's too.
 var _frame_memo := {}
@@ -197,10 +202,14 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 	var quarter := -1
 	if n == 1:
 		quarter = 1 << ((out.key.x - 2 * tx) + 2 * (out.key.y - 2 * ty))
+	var second := WorldConfig.is_second_size(n)
 	# Shells: a kit asset that fits the slot, a yaw and a dressing per slot from the slot's hash.
 	var shell_key := -1
 	for e in f.shells:
 		if quarter > 0 and e.q & quarter == 0:
+			continue
+		var sh: Dictionary = t.shells[e.k]
+		if second and sh.at_second_size == "sink":
 			continue
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
@@ -208,7 +217,6 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 			continue
 		if shell_key < 0:
 			shell_key = _key(b, tx, ty, STR_SHELL)
-		var sh: Dictionary = t.shells[e.k]
 		_append_shell(out, "s_%s_%s" % [prefix, sh.id], x, y, float(sh.radius), s, WorldHash.mix32(shell_key, e.k), b,
 			sh.yaw_deg, o)
 	# The landmark, when this tile is its cell's pick.
@@ -230,7 +238,7 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 		var y: float = (cy + e.y) * s
 		if (quarter < 0 or e.q & quarter != 0) and _in(out, x, y):
 			out.shells.append({"id": "s_%s_r%d" % [prefix, e.k], "x": x, "y": y, "r": float(e.r) * s,
-				"kind": "set_piece", "asset": t.set_piece.asset, "yaw_deg": yaw, "scale": 1.0, "tint": ""})
+				"kind": "set_piece", "asset": t.set_piece.asset, "yaw_deg": yaw, "scale": 1.0 * s, "tint": ""})
 	for e in f.place:
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
@@ -242,10 +250,10 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 			continue
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
-		if _in(out, x, y):
-			var z: Dictionary = t.zones[e.k]
+		var z: Dictionary = t.zones[e.k]
+		if _in(out, x, y) and not (second and z.at_second_size == "drop"):
 			out.zones.append({"id": "z_%s_%s" % [prefix, z.id], "x": x, "y": y, "radius": float(z.radius) * s,
-				"capacity": float(z.capacity), "growth_rate": float(z.growth_rate), "tile": tile, "region": info.region})
+				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate), "tile": tile, "region": info.region})
 	if not bool(content.config.switches.get("generated_creatures", true)):
 		return
 	for e in f.sites:
@@ -256,7 +264,8 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 		var y: float = (cy + e.y) * s
 		if not (site.sizes as Array).has(n) or not _in(out, x, y):
 			continue
-		var discs := _site_discs("%s/%s" % [t.id, site.id], site, TileCatalog._zone(t, site.territory_zone))
+		var discs := _site_discs("%d/%s/%s" % [b, t.id, site.id], site, TileCatalog._zone(t, site.territory_zone),
+			_k(site.species, n), TileCatalog._zone(t, str(site.get("post_b", {}).get("territory_zone", ""))))
 		out.sites.append(_placed_site("t_%s_%s" % [prefix, site.id], site, discs, x, y, cx, cy, o, s, tile))
 
 
@@ -313,16 +322,19 @@ func _emit_home(out: WorldChunk, n: int, b: int, s: float) -> void:
 	var home := content.home
 	var index := _home_index()
 	var at: Dictionary = index.chunks.get(out.key, {}) if n == 1 else index.all
+	var second := WorldConfig.is_second_size(n)
 	var ring_key := -1
 	for i in at.get("shells", []):
 		var sh: Dictionary = home.shells[i]
+		if second and sh.at_second_size == "sink":
+			continue
 		var x: float = sh.x * s
 		var y: float = sh.y * s
 		if not _in(out, x, y):
 			continue
 		if sh.fixed:
 			out.shells.append({"id": sh.id, "x": x, "y": y, "r": float(sh.r) * s, "kind": "shell", "asset": sh.asset,
-				"yaw_deg": float(sh.yaw_deg), "scale": float(sh.scale), "tint": ""})
+				"yaw_deg": float(sh.yaw_deg), "scale": float(sh.scale) * s, "tint": ""})
 			continue
 		if ring_key < 0:
 			ring_key = _key(b, 0, 0, STR_HOME)
@@ -332,9 +344,9 @@ func _emit_home(out: WorldChunk, n: int, b: int, s: float) -> void:
 		var z: Dictionary = home.zones[i]
 		var x: float = z.x * s
 		var y: float = z.y * s
-		if _in(out, x, y):
+		if _in(out, x, y) and not (second and z.at_second_size == "drop"):
 			out.zones.append({"id": z.id if z.m1 else "z_h_%s" % z.id, "x": x, "y": y, "radius": float(z.radius) * s,
-				"capacity": float(z.capacity), "growth_rate": float(z.growth_rate), "tile": _home_tile(z.x, z.y),
+				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate), "tile": _home_tile(z.x, z.y),
 				"region": HOME})
 	var generated := bool(content.config.switches.get("generated_creatures", true))
 	for i in at.get("sites", []):
@@ -347,7 +359,11 @@ func _emit_home(out: WorldChunk, n: int, b: int, s: float) -> void:
 			continue
 		var data := {"species": site.species, "home": PackedFloat64Array([site.x, site.y]), "heading": site.heading,
 			"sizes": site.sizes}
-		var discs := _site_discs("home/%s" % site.id, data, index.zones_by_id.get(site.territory_zone, {}))
+		var post: Dictionary = site.get("post_b", {})
+		if not post.is_empty():
+			data["post_b"] = post
+		var discs := _site_discs("%d/home/%s" % [b, site.id], data, index.zones_by_id.get(site.territory_zone, {}),
+			_k(site.species, n), index.zones_by_id.get(str(post.get("territory_zone", "")), {}))
 		var id: String = site.id if site.m1 else "t_h_%s" % site.id
 		out.sites.append(_placed_site(id, data, discs, x, y, 0.0, 0.0, 0, s, _home_tile(site.x, site.y)))
 
@@ -399,14 +415,14 @@ func _emit_landmark(out: WorldChunk, lm: Dictionary, b: int, lx: int, ly: int, o
 	if model.get("yaw_rule", "") == "steps_90":
 		yaw = orient_yaw_deg(90.0 * WorldHash.pick(h, 4), o)
 	out.shells.append({"id": "s_%s_lm" % prefix, "x": x, "y": y, "r": content.kit.collide_radius_bu * s, "kind": "landmark",
-		"asset": lm.model, "yaw_deg": yaw, "scale": float(dressing.get("scale", 1.0)), "tint": str(dressing.get("tint", ""))})
+		"asset": lm.model, "yaw_deg": yaw, "scale": float(dressing.get("scale", 1.0)) * s, "tint": str(dressing.get("tint", ""))})
 	out.anchors.append({"id": "a_%d_%d_%d" % [b, lx, ly], "x": x, "y": y, "model": lm.model, "dressing": lm.dressing,
 		"tile": tile})
 
 
 ## Appends a shell slot's shell: its asset (one of the kit's fitting shells), yaw (free, or within
 ## the slot's range for a "slot" asset; then oriented by o) and dressing tint from the slot's hash h,
-## at scale radius / footprint.
+## at scale radius / footprint (x s: the radius in tm over the footprint, BP-16).
 func _append_shell(out: WorldChunk, id: String, x: float, y: float, r_bu: float, s: float, h: int, b: int,
 		yaw_range: PackedFloat64Array, o: int) -> void:
 	if not _fit_memo.has(b):
@@ -417,7 +433,7 @@ func _append_shell(out: WorldChunk, id: String, x: float, y: float, r_bu: float,
 	var ids: PackedStringArray = fits[r_bu]
 	if ids.is_empty():
 		out.shells.append({"id": id, "x": x, "y": y, "r": r_bu * s, "kind": "shell", "asset": "", "yaw_deg": 0.0,
-			"scale": 1.0, "tint": ""})
+			"scale": 1.0 * s, "tint": ""})
 		return
 	var asset: Dictionary = content.kit.assets[ids[WorldHash.pick(h, ids.size())]]
 	var u := WorldHash.unit(WorldHash.mix32(h, 1))
@@ -431,40 +447,80 @@ func _append_shell(out: WorldChunk, id: String, x: float, y: float, r_bu: float,
 	elif dressings.size() > 1:
 		tint = dressings[WorldHash.pick(WorldHash.mix32(h, 2), dressings.size())].tint
 	out.shells.append({"id": id, "x": x, "y": y, "r": r_bu * s, "kind": "shell", "asset": asset.id,
-		"yaw_deg": orient_yaw_deg(yaw, o), "scale": r_bu / float(asset.footprint_radius_m), "tint": tint})
+		"yaw_deg": orient_yaw_deg(yaw, o), "scale": r_bu / float(asset.footprint_radius_m) * s, "tint": tint})
 
 
-## A site's territory and reach disc in its own frame (bu), built once per tile and site: small
+## A site's territory and reach disc in its own frame (bu), built once per band, tile and site: small
 ## numbers, so the brain's float32 disc is exact enough (a home 100 km out would round to 7.8 mm).
-func _site_discs(memo_key: String, site: Dictionary, zone: Dictionary) -> Dictionary:
+## k is the band's (_k). A two-post site (post_b, its zone `zone_b`) reaches over the union of its
+## posts' discs (SpeciesCatalog.two_post_disc_for) and keeps each post's territory in "posts".
+func _site_discs(memo_key: String, site: Dictionary, zone: Dictionary, k := 1.0, zone_b := {}) -> Dictionary:
 	if not _disc_memo.has(memo_key):
 		var home := Vector2(site.home[0], site.home[1])
-		var z := {} if zone.is_empty() else {"center": Vector2(zone.center[0], zone.center[1]), "radius": float(zone.radius)}
 		var s := {"species": site.species, "home": home, "heading": float(site.heading)}
-		var territory := species.territory_from(s, z) if species != null else {}
-		var reach := species.reach_disc_for(s, territory) if species != null else {}
-		_disc_memo[memo_key] = {"territory": territory, "reach": reach}
+		var territory := species.territory_from(s, _circle(zone)) if species != null else {}
+		var post: Dictionary = site.get("post_b", {})
+		if post.is_empty() or species == null:
+			var reach := species.reach_disc_for(s, territory, k) if species != null else {}
+			_disc_memo[memo_key] = {"territory": territory, "reach": reach}
+		else:
+			var territory_b := species.territory_from(s, _circle(zone_b))
+			var both := species.two_post_disc_for(s, territory, {"home": Vector2(post.home[0], post.home[1]),
+				"heading": float(post.heading)}, territory_b, k)
+			var reach := {} if both.is_empty() else {"center": both.center, "radius": both.radius}
+			_disc_memo[memo_key] = {"territory": territory, "reach": reach, "posts": [territory, territory_b]}
 	return _disc_memo[memo_key]
 
 
+## A zone's {center: Vector2, radius} for SpeciesCatalog.territory_from ({} for none).
+static func _circle(zone: Dictionary) -> Dictionary:
+	return {} if zone.is_empty() else {"center": Vector2(zone.center[0], zone.center[1]), "radius": float(zone.radius)}
+
+
+## k for a site of `species_id` at size n (D-39): 1 for an entry-size-1 species in band 0.
+func _k(species_id: String, n: int) -> float:
+	return WorldConfig.k_of(species.entry_size(species_id), n) if species != null else 1.0
+
+
+## A zone's capacity at the size: x second_size.zone_thin_share for a "thin" zone at a band's second
+## size (D-60), else its own.
+func _capacity(z: Dictionary, second: bool) -> float:
+	if second and z.at_second_size == "thin":
+		return float(z.capacity) * float(content.config.second_size.zone_thin_share)
+	return float(z.capacity)
+
+
 ## A site's chunk record: its discs oriented and placed like its home, and the chunks its reach disc
-## touches.
+## touches. A two-post site also gets `posts`: [{x, y, heading, territory}] for its two posts, each
+## placed and oriented like the home (the first post is the home), its reach the union disc.
 func _placed_site(id: String, site: Dictionary, discs: Dictionary, x: float, y: float, cx: float, cy: float, o: int,
 		s: float, tile: Vector2i) -> Dictionary:
-	var territory := {}
-	if not discs.territory.is_empty():
-		var p := orient_point(discs.territory.center.x, discs.territory.center.y, o)
-		territory = {"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "radius": float(discs.territory.radius) * s}
-	var reach := {}
+	var territory := _placed_disc(discs.territory, cx, cy, o, s)
+	var reach := _placed_disc(discs.reach, cx, cy, o, s)
 	var chunks: Array[Vector2i] = []
-	if not discs.reach.is_empty():
-		var p := orient_point(discs.reach.center.x, discs.reach.center.y, o)
-		reach = {"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "radius": float(discs.reach.radius) * s}
+	if not reach.is_empty():
 		chunks = disc_chunks(reach.x, reach.y, reach.radius, content.config.chunk_tm)
 	var sizes: Array[int] = []
 	sizes.assign(site.sizes)
-	return {"id": id, "species": site.species, "x": x, "y": y, "heading": orient_heading(float(site.heading), o),
+	var heading := orient_heading(float(site.heading), o)
+	var out := {"id": id, "species": site.species, "x": x, "y": y, "heading": heading,
 		"territory": territory, "reach": reach, "chunks": chunks, "sizes": sizes, "tile": tile}
+	if discs.has("posts"):
+		var post: Dictionary = site.post_b
+		var p := orient_point(post.home[0], post.home[1], o)
+		out["posts"] = [{"x": x, "y": y, "heading": heading, "territory": territory},
+			{"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "heading": orient_heading(float(post.heading), o),
+				"territory": _placed_disc(discs.posts[1], cx, cy, o, s)}]
+	return out
+
+
+## A disc ({center: Vector2, radius} bu in the tile's frame, or {}) oriented and placed: {x, y,
+## radius} in absolute tm, or {}.
+static func _placed_disc(disc: Dictionary, cx: float, cy: float, o: int, s: float) -> Dictionary:
+	if disc.is_empty():
+		return {}
+	var p := orient_point(disc.center.x, disc.center.y, o)
+	return {"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "radius": float(disc.radius) * s}
 
 
 ## Every chunk whose square a disc touches (the nearest point of the square closer than r), sorted

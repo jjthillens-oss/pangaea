@@ -405,7 +405,10 @@ func test_orientation_helpers_agree_for_all_eight_orientations() -> void:
 # --- chunks (T1.9; core 6.5 and 12.2) ---
 
 const DIGESTS := "res://tests/fixtures/world/chunk_digests.json"
+## S2 (S2G12): the same fixture world at size 2, recorded with size 1 unchanged.
+const DIGESTS_S2 := "res://tests/fixtures/world/chunk_digests_s2.json"
 const Yardstick := preload("res://tests/cost_yardstick.gd")
+const WorldChecks := preload("res://tests/world_checks.gd")
 
 
 ## Chunk keys in a square spiral out from (0, 0).
@@ -470,17 +473,21 @@ func test_chunks_are_the_same_along_any_route() -> void:
 	check(objects > 600, "the routes hold objects (%d)" % objects)
 
 
+## The size-1 golden is S1's, untouched by S2's generator (BP-7: one-post sites carry no posts key);
+## the size-2 golden pins sunk shells, dropped and thinned zones, k and scale x s (S2G12).
 func test_the_chunk_digest_golden_holds() -> void:
-	var golden: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(DIGESTS))
-	check_eq(golden.world, WORLD, "the golden is of the fixture world")
-	var gen := _gen(int(golden.seed))
-	var homes := 0
-	for e in golden.chunks:
-		var k := Vector2i(int(e.key[0]), int(e.key[1]))
-		check_eq(gen.chunk(int(golden.size), k.x, k.y).digest(), e.digest, "chunk %s (%s)" % [k, e.holds])
-		if k.x >= -2 and k.x <= 1 and k.y >= -1 and k.y <= 0:
-			homes += 1
-	check_eq(homes, 8, "the eight home chunks x -2 to 1, y -1 to 0")
+	for path in [DIGESTS, DIGESTS_S2]:
+		var golden: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+		check_eq(golden.world, WORLD, "the golden is of the fixture world")
+		check_eq(int(golden.size), 1 if path == DIGESTS else 2, "its size")
+		var gen := _gen(int(golden.seed))
+		var homes := 0
+		for e in golden.chunks:
+			var k := Vector2i(int(e.key[0]), int(e.key[1]))
+			check_eq(gen.chunk(int(golden.size), k.x, k.y).digest(), e.digest, "size %d chunk %s (%s)" % [golden.size, k, e.holds])
+			if k.x >= -2 and k.x <= 1 and k.y >= -1 and k.y <= 0:
+				homes += 1
+		check_eq(homes, 8, "the eight home chunks x -2 to 1, y -1 to 0")
 
 
 ## Every shell, zone, site, anchor and place of 100 random chunks and the 16 home chunks lies in its
@@ -766,3 +773,272 @@ func test_slow_cold_chunks_cost_at_most_150_us_median_and_300_us_max() -> void:
 		% [median, median_ratio, best[worst], keys[worst], top])
 	check(median <= 150.0 and median_ratio <= 1.5, "median %.0f us, %.2f yardsticks" % [median, median_ratio])
 	check(best[worst] <= 300.0 and top <= 3.0, "max %.0f us, %.2f yardsticks" % [best[worst], top])
+
+
+# --- size 2 (S2 T3.3; docs/s2/s2-sim.md 3.10, build plan BP-7, BP-16) ---
+
+## The objects of tile t (tile coordinates) at size n, by id: those of the chunks the tile covers whose
+## id names the tile (s_0_tx_ty_*, z_0_tx_ty_*, t_0_tx_ty_*, p_0_tx_ty).
+static func _tile_objects(gen: WorldGen, n: int, t: Vector2i) -> Dictionary:
+	var tile_tm := 64.0 * WorldConfig.bu_to_tm(n)
+	var tag := "0_%d_%d" % [t.x, t.y]
+	var out := {}
+	for ky in range(floori(t.y * tile_tm / 32.0), ceili((t.y + 1) * tile_tm / 32.0)):
+		for kx in range(floori(t.x * tile_tm / 32.0), ceili((t.x + 1) * tile_tm / 32.0)):
+			for o in _objects(gen.chunk(n, kx, ky)):
+				var parts: PackedStringArray = str(o[1].id).split("_")
+				if parts.size() >= 4 and "%s_%s_%s" % [parts[1], parts[2], parts[3]] == tag:
+					out[o[1].id] = o[1]
+	return out
+
+
+## S2G12's pure function at size 2: a fresh generator per chunk, one shared and one cleared every 10
+## chunks give equal digests along a spiral and a line.
+func test_size_2_chunks_are_the_same_along_any_route() -> void:
+	var line: Array[Vector2i] = []
+	for i in 100:
+		line.append(Vector2i(-50 + i, -4))
+	var shared := _gen(401)
+	var cleared := _gen(401)
+	var differ := 0
+	var objects := 0
+	for route in [_spiral(100), line]:
+		for i in route.size():
+			var k: Vector2i = route[i]
+			if i % 10 == 0:
+				cleared.clear_memo()
+			var a := _gen(401).chunk(2, k.x, k.y)
+			objects += _objects(a).size()
+			if a.digest() != shared.chunk(2, k.x, k.y).digest() or a.digest() != cleared.chunk(2, k.x, k.y).digest():
+				differ += 1
+	check_eq(differ, 0, "size-2 chunks that depend on the route or the memo")
+	check(objects > 300, "the routes hold objects (%d)" % objects)
+
+
+## S2G7 at the band's second size: a "sink" shell is not generated, a "drop" zone neither, a "thin"
+## zone holds capacity x 0.4 (D-60) and a "keep" one its own; everything else is the size-1 object
+## at 0.625 of its place and radius, with the same asset, yaw and tint, and its scale x 0.625 (BP-16).
+func test_the_second_size_sinks_drops_and_thins() -> void:
+	var gen := _shared_gen(401)
+	var content := _content()
+	var counts := {"sink": 0, "drop": 0, "thin": 0, "keep": 0}
+	for i in 24:
+		var t := Vector2i(i * 3 - 30, 17 - i * 2)
+		var info := gen.tile_info(0, t.x, t.y)
+		var data: Dictionary = content.tiles.tiles.get(info.id, {})
+		if data.is_empty():
+			continue
+		var one := _tile_objects(gen, 1, t)
+		var two := _tile_objects(gen, 2, t)
+		var prefix := "0_%d_%d_" % [t.x, t.y]
+		for sh in data.shells:
+			var a: Dictionary = one.get("s_" + prefix + sh.id, {})
+			var b: Dictionary = two.get("s_" + prefix + sh.id, {})
+			check(not a.is_empty(), "%s shell %s at size 1" % [info.id, sh.id])
+			if sh.at_second_size == "sink":
+				counts.sink += 1
+				check(b.is_empty(), "%s shell %s sinks at size 2" % [info.id, sh.id])
+				continue
+			check(not b.is_empty() and b.x == a.x * 0.625 and b.y == a.y * 0.625 and b.r == a.r * 0.625
+				and b.scale == a.scale * 0.625 and b.asset == a.asset and b.yaw_deg == a.yaw_deg and b.tint == a.tint,
+				"%s shell %s: %s against %s" % [info.id, sh.id, b, a])
+		for z in data.zones:
+			var a: Dictionary = one.get("z_" + prefix + z.id, {})
+			var b: Dictionary = two.get("z_" + prefix + z.id, {})
+			counts[z.at_second_size] += 1
+			if z.at_second_size == "drop":
+				check(b.is_empty(), "%s zone %s is dropped at size 2" % [info.id, z.id])
+				continue
+			var capacity: float = float(z.capacity) * (0.4 if z.at_second_size == "thin" else 1.0)
+			check(not b.is_empty() and b.capacity == capacity and a.capacity == float(z.capacity) and b.radius == a.radius * 0.625
+				and b.x == a.x * 0.625 and b.growth_rate == a.growth_rate, "%s zone %s (%s): %s against %s" % [info.id, z.id, z.at_second_size, b, a])
+	check(counts.sink > 5 and counts.drop > 1 and counts.thin > 5 and counts.keep > 5, "every kind met: %s" % counts)
+	# The home block's ring: its thin zones too; the M1 zones keep.
+	var home := {}
+	for cy in range(-2, 2):
+		for cx in range(-2, 2):
+			for o in _objects(gen.chunk(2, cx, cy)):
+				home[o[1].id] = o[1]
+	var thin := 0
+	for z in content.home.zones:
+		var e: Dictionary = home.get(z.id if z.m1 else "z_h_%s" % z.id, {})
+		var want: float = float(z.capacity) * (0.4 if z.at_second_size == "thin" else 1.0)
+		thin += 1 if z.at_second_size == "thin" else 0
+		check(not e.is_empty() and e.capacity == want, "home zone %s (%s): %s" % [z.id, z.at_second_size, e])
+	check(thin > 0, "the fixture ring has thin zones")
+
+
+## The home block's ring at size 2: a "sink" ring shell and a "drop" ring zone are not generated, the
+## rest are (the fixture ring keeps every shell, so one of each is changed on a fresh content).
+func test_the_home_ring_sinks_and_drops_at_size_2() -> void:
+	var content := WorldContent.load_from(WORLD, PoolLayout.load_from(), _species_cache)
+	var ring: Array = content.home.shells.filter(func(e: Dictionary) -> bool: return not e.fixed)
+	var zones: Array = content.home.zones.filter(func(e: Dictionary) -> bool: return not e.m1 and e.at_second_size == "keep")
+	ring[0].at_second_size = "sink"
+	zones[0].at_second_size = "drop"
+	var gen := WorldGen.create(content, _species_cache, 401)
+	var at := {1: {}, 2: {}}
+	for n in [1, 2]:
+		for cy in range(-3, 3):
+			for cx in range(-3, 3):
+				for o in _objects(gen.chunk(n, cx, cy)):
+					at[n][o[1].id] = o[1]
+	for e in ring:
+		var id: String = "s_h_" + e.id
+		check(at[1].has(id) and at[2].has(id) != (e.at_second_size == "sink"), "ring shell %s (%s)" % [id, e.at_second_size])
+	for e in content.home.zones:
+		var id: String = e.id if e.m1 else "z_h_" + e.id
+		check(at[1].has(id) and at[2].has(id) != (e.at_second_size == "drop"), "home zone %s (%s)" % [id, e.at_second_size])
+
+
+## An M1 site at size 2 is its size-1 record at 0.625: k is 1 for an entry-size-1 species in band 0,
+## so its bu discs are the same and only the placing scales. One-post sites carry no posts key.
+func test_m1_sites_at_size_2_scale_their_discs_by_s() -> void:
+	var gen := _shared_gen(401)
+	var checked := 0
+	for i in 30:
+		var t := Vector2i(i * 5 - 70, 9 - i)
+		var one := _tile_objects(gen, 1, t)
+		var two := _tile_objects(gen, 2, t)
+		for id in one:
+			if not str(id).begins_with("t_"):
+				continue
+			var a: Dictionary = one[id]
+			var b: Dictionary = two.get(id, {})
+			if not (a.sizes as Array).has(2):
+				check(b.is_empty(), "%s is not live at size 2" % id)
+				continue
+			check(not b.is_empty() and b.x == a.x * 0.625 and b.reach.radius == a.reach.radius * 0.625
+				and b.reach.x == a.reach.x * 0.625 and b.heading == a.heading, "%s: %s against %s" % [id, b, a])
+			check(not b.has("posts") and not a.has("posts"), "%s has no posts" % id)
+			if not a.territory.is_empty():
+				check(b.territory.radius == a.territory.radius * 0.625, "%s territory" % id)
+			checked += 1
+	check(checked > 10, "sites checked: %d" % checked)
+
+
+## BP-16: a mesh's scale is x s wherever its radius is: shells (radius / footprint, so r / footprint at
+## either size), set pieces (s), landmarks (the dressing's scale x s) and the home block's M1 rocks
+## (the layout's scale x s).
+func test_every_scale_is_times_s_at_size_2() -> void:
+	var gen := _shared_gen(401)
+	var kit := _content().kit
+	var kinds := {}
+	var keys: Array[Vector2i] = [Vector2i(1, 1), Vector2i(3, -1), Vector2i(0, -8)]
+	for cy in range(-2, 2):
+		for cx in range(-2, 2):
+			keys.append(Vector2i(cx, cy))
+	var rocks := {}
+	for r in _content().layout.rocks:
+		rocks[r.id] = float(r.scale)
+	for k in keys:
+		for s in gen.chunk(2, k.x, k.y).shells:
+			kinds[s.kind] = true
+			match s.kind:
+				"set_piece":
+					check_eq(s.scale, 0.625, "%s: a set piece at s" % s.id)
+				"landmark":
+					# The same landmark at size 1, in the chunk its size-1 place lies in.
+					var at := Vector2i(floori(s.x / 0.625 / 32.0), floori(s.y / 0.625 / 32.0))
+					var one: Array = gen.chunk(1, at.x, at.y).shells.filter(func(e: Dictionary) -> bool: return e.id == s.id)
+					check(one.size() == 1 and s.scale == float(one[0].scale) * 0.625 and s.tint == one[0].tint,
+						"%s: a landmark's scale %s is its dressing's %s x 0.625" % [s.id, s.scale, one])
+				"shell":
+					if rocks.has(s.id):
+						check_eq(s.scale, rocks[s.id] * 0.625, "M1 rock %s" % s.id)
+					else:
+						check(is_equal_approx(s.scale, s.r / float(kit.assets[s.asset].footprint_radius_m)), "%s: scale %s, r %s" % [s.id, s.scale, s.r])
+	check_eq(kinds.size(), 3, "shells, set pieces and a landmark met: %s" % [kinds.keys()])
+	# A slot no kit shell fits gets no asset and scale 1 at size 1, so 0.625 at size 2.
+	var bare := WorldContent.load_from(WORLD, PoolLayout.load_from(), _species_cache)
+	for id in bare.kit.assets:
+		bare.kit.assets[id].pickable = false
+	var unfit := WorldGen.create(bare, _species_cache, 401)
+	var met := {1: 0, 2: 0}
+	for n in [1, 2]:
+		for k in keys:
+			for s in unfit.chunk(n, k.x, k.y).shells:
+				if s.kind == "shell" and not rocks.has(s.id):
+					check(s.asset == "" and s.scale == (1.0 if n == 1 else 0.625), "size %d unfit %s: scale %s" % [n, s.id, s.scale])
+					met[n] += 1
+	check(met[1] > 5 and met[2] > 5, "unfit shells met: %s" % met)
+
+
+
+## D-38, D-82 on the chunk side: a two-post site's record carries `posts`, its first post the site
+## itself (place, heading, territory) and its second the site's post_b placed and oriented like its
+## home, with post_b's zone as its territory; its reach is the union of the two posts' reach discs at
+## k 1.6 (an entry-size-2 species in band 0) and lists every chunk the union touches. One-post sites
+## carry no posts, and a size-2 site is not generated at size 1. The fixture world with the two
+## two-post fixture tiles added (tests/fixtures/world/tiles_s2).
+func test_two_post_sites_carry_both_posts_and_reach_over_their_union() -> void:
+	var species := WorldChecks.s2_species()
+	var content := WorldContent.load_from(WORLD, PoolLayout.load_from(), species)
+	for id in ["reef_posts", "sunlit_posts"]:
+		var path := "res://tests/fixtures/world/tiles_s2/b0/%s.json" % id
+		content.tiles.add_tile(JSON.parse_string(FileAccess.get_file_as_string(path)), 0, id)
+	check_eq(content.tiles.load_problems, PackedStringArray(), "the fixture tiles load")
+	var gen := WorldGen.create(content, species, 401)
+	var k := 1.6
+	var met := {"lk": 0, "er": 0}
+	var orientations := {}
+	for ty in range(-12, 12):
+		for tx in range(-12, 12):
+			var info := gen.tile_info(0, tx, ty)
+			if not info.id in ["reef_posts", "sunlit_posts"]:
+				continue
+			var t: Dictionary = content.tiles.tile(info.id)
+			var o: int = info.orientation
+			orientations[o] = true
+			var cx := 32.0 * (2 * tx + 1)
+			var cy := 32.0 * (2 * ty + 1)
+			var two := _tile_objects(gen, 2, Vector2i(tx, ty))
+			var one := _tile_objects(gen, 1, Vector2i(tx, ty))
+			var prefix := "0_%d_%d_" % [tx, ty]
+			for site in t.sites:
+				var id: String = "t_" + prefix + site.id
+				var r: Dictionary = two.get(id, {})
+				check(r.is_empty() != (site.sizes as Array).has(2), "%s at size 2 as its sizes %s say" % [id, site.sizes])
+				if r.is_empty():
+					check(one.has(id) and not one[id].has("posts"), "%s at size 1, with no posts" % id)
+					continue
+				if site.post_b.is_empty():
+					check(not r.has("posts") and not one.get(id, {}).has("posts"), "%s: a one-post site has no posts" % id)
+					continue
+				met[site.id] += 1
+				check(not one.has(id), "%s: a size-2 site is not generated at size 1" % id)
+				var posts: Array = r.get("posts", [])
+				check_eq(posts.size(), 2, "%s: two posts" % id)
+				if posts.size() != 2:
+					continue
+				check_eq(posts[0], {"x": r.x, "y": r.y, "heading": r.heading, "territory": r.territory}, "%s: post a is the site" % id)
+				var p := WorldGen.orient_point(site.post_b.home[0], site.post_b.home[1], o)
+				check(posts[1].x == (cx + p[0]) * 0.625 and posts[1].y == (cy + p[1]) * 0.625
+					and posts[1].heading == WorldGen.orient_heading(float(site.post_b.heading), o), "%s post b: %s" % [id, posts[1]])
+				# Each post's territory is its zone's chunk record.
+				for i in 2:
+					var zone_id: String = [site.get("territory_zone", ""), site.post_b.get("territory_zone", "")][i]
+					var want := {}
+					if not zone_id.is_empty():
+						var z: Dictionary = two.get("z_" + prefix + zone_id, {"x": NAN, "y": NAN, "radius": NAN})
+						want = {"x": z.x, "y": z.y, "radius": z.radius}
+					check_eq(posts[i].territory, want, "%s post %d territory" % [id, i])
+				# The reach: the union of the posts' reach discs at k, in tm.
+				var discs := []
+				var discs_k1 := []
+				for i in 2:
+					var post: Dictionary = posts[i]
+					var at := {"species": site.species, "home": Vector2(post.x, post.y) / 0.625, "heading": post.heading}
+					var terr := {}
+					if not post.territory.is_empty():
+						terr = {"center": Vector2(post.territory.x, post.territory.y) / 0.625, "radius": post.territory.radius / 0.625}
+					discs.append(species.reach_disc_for(at, terr, k))
+					discs_k1.append(species.reach_disc_for(at, terr, 1.0))
+				var union := CreatureBrain.union_disc(discs[0], discs[1])
+				check(is_equal_approx(r.reach.radius, union.radius * 0.625) and is_equal_approx(r.reach.radius / 0.625, union.radius)
+					and absf(r.reach.x - union.center.x * 0.625) < 1e-6 and absf(r.reach.y - union.center.y * 0.625) < 1e-6,
+					"%s reach %s is the union %s x 0.625" % [id, r.reach, union])
+				var union_k1 := CreatureBrain.union_disc(discs_k1[0], discs_k1[1])
+				check(float(r.reach.radius) > float(union_k1.radius) * 0.625 + 0.5, "%s: k 1.6 widens the reach (%s at k 1)" % [id, union_k1])
+				check_eq(r.chunks, WorldGen.disc_chunks(r.reach.x, r.reach.y, r.reach.radius, 32.0), "%s: the union's chunks" % id)
+	check(met.lk >= 3 and met.er >= 3 and orientations.size() >= 4, "two-post sites met %s in orientations %s" % [met, orientations.keys()])

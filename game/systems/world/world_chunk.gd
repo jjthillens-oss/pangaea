@@ -9,12 +9,16 @@ extends RefCounted
 
 var key := Vector2i.ZERO
 var size := 1
-## {id, x, y, r, kind: "shell"|"landmark"|"set_piece", asset, yaw_deg, scale, tint}
+## {id, x, y, r, kind: "shell"|"landmark"|"set_piece", asset, yaw_deg, scale, tint}; scale is the
+## mesh's at this size (x bu_to_tm(size), BP-16)
 var shells: Array[Dictionary] = []
-## {id, x, y, radius, capacity, growth_rate, tile: Vector2i, region}
+## {id, x, y, radius, capacity, growth_rate, tile: Vector2i, region}; capacity is the size's (a
+## "thin" zone's x second_size.zone_thin_share at a band's second size)
 var zones: Array[Dictionary] = []
 ## {id, species, x, y, heading, territory: {} or {x, y, radius}, reach: {x, y, radius},
-##  chunks: Array[Vector2i], sizes: Array[int], tile: Vector2i}
+##  chunks: Array[Vector2i], sizes: Array[int], tile: Vector2i}; a two-post site (S2) also has
+##  posts: [{x, y, heading, territory}] x 2 (the first is the home), its reach their union disc, and a
+##  one-post site has no posts key, so its digest is S1's
 var sites: Array[Dictionary] = []
 ## {id, x, y, model, dressing, tile}: the visual; its collider is a "landmark" shell
 var anchors: Array[Dictionary] = []
