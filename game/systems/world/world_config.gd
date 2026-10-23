@@ -4,6 +4,10 @@ extends RefCounted
 ## the streaming rings and caps, the floating origin, the tile arrangement and where the content
 ## lives. Plain data plus checks of the data itself (docs/s1/s1-interfaces.md, section 4.1).
 ##
+## S2 adds the growth economy (growth), the band's second size (second_size), the size ladder's
+## labels and food looks (ladder) and three switches (docs/s2/s2-interfaces.md 4.1, docs/s2/s2-sim.md
+## 3.10, docs/s2/s2-build-plan.md 7.3), and lets the build reach size 2.
+##
 ## Also the schema helper the four world loaders share (world_cell, placement kit, tiles, home
 ## block): every file refuses unknown and missing keys, and every problem names its JSON path, as
 ## "world_cell.rings_tm.foo: unknown key". Numbers are JSON numbers (JSON parses every number as a
@@ -19,7 +23,7 @@ const STATUSES: PackedStringArray = ["PROPOSED", "APPROVED"]
 const FILE_NAME := "world_cell"
 const HEADER_KEYS: PackedStringArray = ["schema_version", "status", "note"]
 const TOP_KEYS: PackedStringArray = ["schema_version", "status", "note", "mode", "gen_version", "sizes", "units",
-	"rings_tm", "caps", "origin", "arrangement", "content", "switches"]
+	"rings_tm", "caps", "growth", "second_size", "ladder", "origin", "arrangement", "content", "switches"]
 const SIZES_KEYS: PackedStringArray = ["start", "max_in_build"]
 const UNITS_KEYS: PackedStringArray = ["growth_factor", "band_factor", "tile_bu", "chunk_tm"]
 ## Inner to outer: every ring lies strictly outside the one before it (rule 4).
@@ -31,8 +35,38 @@ const ARRANGEMENT_KEYS: PackedStringArray = ["region_period_tiles", "region_orde
 	"landmark_cell_tiles", "rare_block_tiles", "rare_block_first_tile", "home_tiles", "fixed_rare"]
 const FIXED_RARE_KEYS: PackedStringArray = ["tile", "kind"]
 const CONTENT_KEYS: PackedStringArray = ["home", "tiles", "kit"]
-const SWITCH_KEYS: PackedStringArray = ["generated_creatures"]
+const SWITCH_KEYS: PackedStringArray = ["generated_creatures", "growth", "lumps", "habits"]
 const REGIONS: PackedStringArray = ["drift", "sunlit", "reef"]
+## The growth block (rule 10). Its nested objects are lumps, remnants and discovery.
+const GROWTH_KEYS: PackedStringArray = ["trigger", "rings", "drain_floor_share", "drain_ring_seconds", "calm_ticks",
+	"quiet_ticks", "chase_window_ticks", "chase_close_tm", "chase_track_tm", "wedge_tm", "showcase_s", "blocked_hint_s",
+	"shelter_s", "beat_s", "beat_loads_per_tick", "death_meter_share", "respawn_floor_share", "respawn_cap_over_death",
+	"top_payout_points", "prefetch_share", "prefetch_per_tick", "lumps", "remnants", "discovery"]
+const LUMP_KEYS: PackedStringArray = ["threat_kill", "place", "landmark_at_top", "food_look", "kill_carcass_share"]
+const REMNANT_KEYS: PackedStringArray = ["cap", "min_rel", "morsel_min_rel", "life_s", "morsel_max_radius_tm", "morsel_rot_s"]
+const DISCOVERY_KEYS: PackedStringArray = ["place_find_tm", "landmark_find_tm"]
+const SECOND_SIZE_KEYS: PackedStringArray = ["zone_thin_share"]
+const LADDER_KEYS: PackedStringArray = ["labels", "food_looks"]
+const FOOD_LOOK_KEYS: PackedStringArray = ["plant", "meat"]
+## Rule 10, by kind. Shares lie in (0, 1]; counts are whole and 1 or more; lengths and times are
+## above 0; the two "at least 0" numbers may be 0.
+const GROWTH_SHARES: PackedStringArray = ["drain_floor_share", "death_meter_share", "respawn_floor_share", "prefetch_share"]
+const GROWTH_COUNTS: PackedStringArray = ["calm_ticks", "quiet_ticks", "chase_window_ticks", "beat_loads_per_tick",
+	"prefetch_per_tick"]
+const GROWTH_POSITIVE: PackedStringArray = ["drain_ring_seconds", "chase_close_tm", "chase_track_tm", "wedge_tm", "showcase_s",
+	"blocked_hint_s", "shelter_s", "beat_s"]
+const GROWTH_AT_LEAST_0: PackedStringArray = ["respawn_cap_over_death", "top_payout_points"]
+const REMNANT_POSITIVE: PackedStringArray = ["life_s", "morsel_max_radius_tm", "morsel_rot_s"]
+## The trigger the sim starts with when no intent names one (tests and bots; BP-3: the player's
+## choice comes from SettingsService through SimIntent.trigger).
+const TRIGGERS: PackedStringArray = ["auto", "press"]
+## The food looks the scene can draw (s2-sim 3.10): a plant look per size, and carrion for meat.
+const PLANT_LOOKS: PackedStringArray = ["plankton", "algae_ball"]
+const MEAT_LOOKS: PackedStringArray = ["carrion"]
+## D-68: the conversion thresholds are the ladder's (Relationships.PREY_MIN_REL and MORSEL_MIN_REL,
+## plan B.7). The file keeps them for the reader, and any other value is refused.
+const REMNANT_MIN_REL := 0.45
+const MORSEL_MIN_REL := 0.25
 
 # The numbers the S1 code is written for (rules 3 and 7).
 const GROWTH_FACTOR := 1.6     ## tm grows by this per size (plan A.1)
@@ -41,6 +75,7 @@ const TILE_BU := 64.0
 const CHUNK_TM := 32.0
 const MAX_SIZE := 10
 const S1_MAX_SIZE := 1         ## a larger size needs growth, which is S2
+const S2_MAX_SIZE := 2         ## the top this build can reach: S2 has content for sizes 1 and 2 (BP-5)
 const MAX_DRIFT_RUN := 2
 const LANDMARK_CELL_TILES := 2
 const RARE_BLOCK_TILES := 6
@@ -74,7 +109,18 @@ var local_bound_tm := 256.0
 var arrangement := {}
 ## {"home": String, "tiles": {band String -> dir String}, "kit": String}, res:// paths
 var content := {}
-## {"generated_creatures": bool}
+## The growth economy (rule 10; s2-sim 4.1, BP-4): {"trigger": "auto"|"press", "rings":
+## PackedFloat64Array (the meter's ring at sizes 1 to 9), the shares, tm and seconds as float, the
+## tick and other counts as int, "lumps": {kind -> share}, "remnants": {cap: int, min_rel,
+## morsel_min_rel, life_s, morsel_max_radius_tm, morsel_rot_s}, "discovery": {place_find_tm,
+## landmark_find_tm}}.
+var growth := {}
+## {"zone_thin_share": float}: a "thin" zone's capacity factor at a band's second size (D-60).
+var second_size := {}
+## {"labels": PackedStringArray (one per size, 1 to MAX_SIZE), "food_looks": [{plant, meat}, ...]
+## (one per size the build can reach, or more)}
+var ladder := {}
+## {"generated_creatures": bool, "growth": bool, "lumps": bool, "habits": bool}
 var switches := {}
 
 
@@ -134,9 +180,59 @@ static func from_dict(data: Variant) -> WorldConfig:
 	config.content = {"home": text_at(w + ".content", content_data, "home", problems), "tiles": tile_dirs,
 		"kit": text_at(w + ".content", content_data, "kit", problems)}
 
+	config.growth = _read_growth(w + ".growth", object_at(w, data, "growth", GROWTH_KEYS, problems), problems)
+	var second := object_at(w, data, "second_size", SECOND_SIZE_KEYS, problems)
+	config.second_size = {"zone_thin_share": number_at(w + ".second_size", second, "zone_thin_share", problems)}
+	config.ladder = _read_ladder(w + ".ladder", object_at(w, data, "ladder", LADDER_KEYS, problems), problems)
+
 	var switch_data := object_at(w, data, "switches", SWITCH_KEYS, problems)
-	config.switches = {"generated_creatures": flag_at(w + ".switches", switch_data, "generated_creatures", problems)}
+	for key in SWITCH_KEYS:
+		config.switches[key] = flag_at(w + ".switches", switch_data, key, problems)
 	return config
+
+
+static func _read_growth(w: String, g: Dictionary, problems: PackedStringArray) -> Dictionary:
+	var out := {"trigger": text_at(w, g, "trigger", problems)}
+	var rings := PackedFloat64Array()
+	var raw_rings := list_at(w, g, "rings", problems)
+	for i in raw_rings.size():
+		rings.append(number_at(w + ".rings", {str(i): raw_rings[i]}, str(i), problems))
+	out.rings = rings
+	for key in GROWTH_KEYS:
+		if out.has(key) or key in ["lumps", "remnants", "discovery"]:
+			continue
+		var whole := GROWTH_COUNTS.has(key) or key == "top_payout_points"
+		var v := number_at(w, g, key, problems, whole)
+		out[key] = int(v) if whole else v
+	var lumps := object_at(w, g, "lumps", LUMP_KEYS, problems)
+	out.lumps = {}
+	for key in LUMP_KEYS:
+		out.lumps[key] = number_at(w + ".lumps", lumps, key, problems)
+	var remnants := object_at(w, g, "remnants", REMNANT_KEYS, problems)
+	out.remnants = {"cap": int(number_at(w + ".remnants", remnants, "cap", problems, true))}
+	for key in REMNANT_KEYS:
+		if key != "cap":
+			out.remnants[key] = number_at(w + ".remnants", remnants, key, problems)
+	var discovery := object_at(w, g, "discovery", DISCOVERY_KEYS, problems)
+	out.discovery = {}
+	for key in DISCOVERY_KEYS:
+		out.discovery[key] = number_at(w + ".discovery", discovery, key, problems)
+	return out
+
+
+static func _read_ladder(w: String, l: Dictionary, problems: PackedStringArray) -> Dictionary:
+	var labels := PackedStringArray()
+	var raw_labels := list_at(w, l, "labels", problems)
+	for i in raw_labels.size():
+		labels.append(text_at(w + ".labels", {str(i): raw_labels[i]}, str(i), problems))
+	var looks: Array[Dictionary] = []
+	var raw_looks := list_at(w, l, "food_looks", problems)
+	for i in raw_looks.size():
+		var lw := "%s.food_looks[%d]" % [w, i]
+		problems.append_array(schema_problems(lw, raw_looks[i], FOOD_LOOK_KEYS))
+		var look: Dictionary = raw_looks[i] if raw_looks[i] is Dictionary else {}
+		looks.append({"plant": text_at(lw, look, "plant", problems), "meat": text_at(lw, look, "meat", problems)})
+	return {"labels": labels, "food_looks": looks}
 
 
 static func _read_arrangement(w: String, a: Dictionary, problems: PackedStringArray) -> Dictionary:
@@ -193,8 +289,9 @@ func validate() -> PackedStringArray:
 		errors.append("%s.sizes.start: must be 1 (%d)" % [w, size_start])
 	if max_size_in_build < 1 or max_size_in_build > MAX_SIZE:
 		errors.append("%s.sizes.max_in_build: must be 1 to %d (%d)" % [w, MAX_SIZE, max_size_in_build])
-	elif max_size_in_build > S1_MAX_SIZE:
-		errors.append("%s.sizes.max_in_build: size %d needs growth (S2)" % [w, max_size_in_build])
+	elif max_size_in_build > S2_MAX_SIZE:
+		errors.append("%s.sizes.max_in_build: size %d is above this build's top (%d; S2 has content for sizes 1 and 2)"
+			% [w, max_size_in_build, S2_MAX_SIZE])
 
 	# Rule 3: the units the S1 code assumes.
 	for pair in [["growth_factor", growth_factor, GROWTH_FACTOR], ["band_factor", band_factor, BAND_FACTOR],
@@ -246,9 +343,8 @@ func validate() -> PackedStringArray:
 	for key in ["home", "kit"]:
 		_check_path("%s.content.%s" % [w, key], str(content[key]), false, errors)
 	var tile_dirs: Dictionary = content.tiles
-	# Every band the build can reach needs its tiles (judged on the sizes only when rule 2 holds).
-	var top := max_size_in_build if size_start == 1 and max_size_in_build >= 1 and max_size_in_build <= S1_MAX_SIZE else 1
-	for band in range(band_of(1), band_of(top) + 1):
+	# Every band the build can reach needs its tiles.
+	for band in range(band_of(1), band_of(_top()) + 1):
 		if not tile_dirs.has(str(band)):
 			errors.append("%s.content.tiles.%d: missing (band %d is reachable)" % [w, band, band])
 	for band in _sorted(tile_dirs.keys()):
@@ -256,7 +352,90 @@ func validate() -> PackedStringArray:
 			errors.append("%s.content.tiles.%s: a band must be a whole number of 0 or more" % [w, band])
 		_check_path("%s.content.tiles.%s" % [w, band], str(tile_dirs[band]), true, errors)
 	# Rule 9 (switches are bools) is a reading rule: from_dict refuses anything else.
+
+	# Rules 10 to 12 (S2): the growth economy, the second size and the ladder.
+	_check_growth(w + ".growth", errors)
+	var thin := float(second_size.zone_thin_share)
+	if not (thin > 0.0 and thin <= 1.0):
+		errors.append("%s.second_size.zone_thin_share: rule 11: must lie in (0, 1] (%s)" % [w, thin])
+	_check_ladder(w + ".ladder", errors)
 	return errors
+
+
+## The largest size the build reaches, for the rules that depend on it; 1 while rule 2 fails, so a
+## wrong top is rule 2's one problem.
+func _top() -> int:
+	return max_size_in_build if size_start == 1 and max_size_in_build >= 1 and max_size_in_build <= S2_MAX_SIZE else 1
+
+
+## Rule 10: the growth block. The rings: one per size below the ladder's top, each above 0. Shares
+## in (0, 1]; counts whole and 1 or more; lengths and times above 0; the chase window shorter than
+## the quiet time (a bite inside the window must still break the calm); the conversion thresholds
+## the ladder's (D-68).
+func _check_growth(w: String, errors: PackedStringArray) -> void:
+	var g := growth
+	if not TRIGGERS.has(str(g.trigger)):
+		errors.append("%s.trigger: rule 10: '%s' is not one of %s" % [w, g.trigger, ", ".join(TRIGGERS)])
+	var rings_ok: bool = (g.rings as PackedFloat64Array).size() == MAX_SIZE - 1
+	for v in g.rings:
+		rings_ok = rings_ok and v > 0.0
+	if not rings_ok:
+		errors.append("%s.rings: rule 10: must be %d numbers above 0, one per size from 1 to %d (%s)"
+			% [w, MAX_SIZE - 1, MAX_SIZE - 1, g.rings])
+	var shares := []
+	for key in GROWTH_SHARES:
+		shares.append([key, g[key]])
+	for key in LUMP_KEYS:
+		shares.append(["lumps." + key, g.lumps[key]])
+	for pair in shares:
+		if not (float(pair[1]) > 0.0 and float(pair[1]) <= 1.0):
+			errors.append("%s.%s: rule 10: a share must lie in (0, 1] (%s)" % [w, pair[0], pair[1]])
+	var counts := []
+	for key in GROWTH_COUNTS:
+		counts.append([key, g[key]])
+	counts.append(["remnants.cap", g.remnants.cap])
+	for pair in counts:
+		if int(pair[1]) < 1:
+			errors.append("%s.%s: rule 10: must be 1 or more (%s)" % [w, pair[0], pair[1]])
+	var positive := []
+	for key in GROWTH_POSITIVE:
+		positive.append([key, g[key]])
+	for key in REMNANT_POSITIVE:
+		positive.append(["remnants." + key, g.remnants[key]])
+	for key in DISCOVERY_KEYS:
+		positive.append(["discovery." + key, g.discovery[key]])
+	for pair in positive:
+		if not float(pair[1]) > 0.0:
+			errors.append("%s.%s: rule 10: must be above 0 (%s)" % [w, pair[0], pair[1]])
+	for key in GROWTH_AT_LEAST_0:
+		if float(g[key]) < 0.0:
+			errors.append("%s.%s: rule 10: must be 0 or more (%s)" % [w, key, g[key]])
+	if int(g.chase_window_ticks) >= int(g.quiet_ticks):
+		errors.append("%s.chase_window_ticks: rule 10: must be below quiet_ticks (%d >= %d)" % [w, g.chase_window_ticks, g.quiet_ticks])
+	for pair in [["min_rel", REMNANT_MIN_REL], ["morsel_min_rel", MORSEL_MIN_REL]]:
+		if float(g.remnants[pair[0]]) != pair[1]:
+			errors.append("%s.remnants.%s: rule 10: must be %s, the ladder's threshold (D-68), not %s"
+				% [w, pair[0], pair[1], g.remnants[pair[0]]])
+
+
+## Rule 12: a label for every size of the ladder, and a food look for every size the build reaches,
+## each one the scene can draw.
+func _check_ladder(w: String, errors: PackedStringArray) -> void:
+	var labels: PackedStringArray = ladder.labels
+	var labels_ok := labels.size() == MAX_SIZE
+	for label in labels:
+		labels_ok = labels_ok and not label.is_empty()
+	if not labels_ok:
+		errors.append("%s.labels: rule 12: must be %d texts, one per size (%d given)" % [w, MAX_SIZE, labels.size()])
+	var looks: Array = ladder.food_looks
+	if looks.size() < _top():
+		errors.append("%s.food_looks: rule 12: %d looks for %d sizes; every size the build reaches needs one"
+			% [w, looks.size(), _top()])
+	for i in looks.size():
+		if not PLANT_LOOKS.has(str(looks[i].plant)):
+			errors.append("%s.food_looks[%d].plant: rule 12: '%s' is not one of %s" % [w, i, looks[i].plant, ", ".join(PLANT_LOOKS)])
+		if not MEAT_LOOKS.has(str(looks[i].meat)):
+			errors.append("%s.food_looks[%d].meat: rule 12: '%s' is not one of %s" % [w, i, looks[i].meat, ", ".join(MEAT_LOOKS)])
 
 
 func _check_arrangement(w: String, errors: PackedStringArray) -> void:
@@ -329,6 +508,33 @@ static func bu_to_tm(n: int) -> float:
 ## The band of size n (n >= 1): sizes 1 and 2 are band 0, 3 and 4 band 1, and so on.
 static func band_of(n: int) -> int:
 	return (n - 1) / 2
+
+
+## How many am one tm is at size n: growth_factor^(n - 1) (1.0 at size 1, 1.6 at size 2). Built by
+## multiplication, not pow(), so every platform gives the same float64 (the stream's frame rests on it).
+static func tm_to_am(n: int) -> float:
+	var k := 1.0
+	for i in n - 1:
+		k *= GROWTH_FACTOR
+	return k
+
+
+## Whether size n is its band's second size (2, 4, ...), where a bu is 1 / 1.6 tm and the tiles'
+## at_second_size applies.
+static func is_second_size(n: int) -> bool:
+	return posmod(n - 1, 2) == 1
+
+
+## k (s2-sim's words, D-39): the factor that turns a species' q = 1 lengths into the bu of size n's
+## tile frame, tm_to_am(entry_size) / band_factor^band_of(n). Since band_factor is growth_factor
+## squared, that is growth_factor^(entry_size - 1 - 2 band_of(n)), built from exact factors (1.6 up,
+## 0.625 down) as Relationships.q_of is: 1 for an entry-size-1 species in band 0, 1.6 for entry size 2.
+static func k_of(entry_size: int, n: int) -> float:
+	var e := entry_size - 1 - 2 * band_of(n)
+	var k := 1.0
+	for i in absi(e):
+		k *= GROWTH_FACTOR if e > 0 else 1.0 / GROWTH_FACTOR
+	return k
 
 
 # --- the schema helper the world loaders share ---
