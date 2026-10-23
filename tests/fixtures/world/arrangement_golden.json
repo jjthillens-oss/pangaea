@@ -722,7 +722,7 @@
   {"lx": 2, "ly": 6, "seed": 4242, "value": {"dressing": "algae", "model": "landmark_arch", "tile": [4, 12]}},
   {"lx": 4, "ly": 6, "seed": 4242, "value": {"dressing": "tall", "model": "landmark_arch", "tile": [9, 13]}},
   {"lx": 6, "ly": 6, "seed": 4242, "value": {"dressing": "pale", "model": "landmark_arch", "tile": [13, 12]}},
-  {"lx": -1, "ly": -1, "seed": 4242, "value": {"dressing": "algae", "model": "landmark_giant_carcass", "tile": [-2, -2]}},
+  {"lx": -1, "ly": -1, "seed": 4242, "value": {"dressing": "algae", "model": "landmark_shed_husk", "tile": [-2, -2]}},
   {"lx": 0, "ly": 0, "seed": 4242, "value": {"dressing": "algae", "model": "landmark_arch", "tile": [1, 0]}},
   {"lx": 781, "ly": -782, "seed": 4242, "value": {"dressing": "tall", "model": "landmark_great_shell", "tile": [1562, -1563]}},
   {"lx": -6, "ly": -6, "seed": 401, "value": {"dressing": "algae", "model": "landmark_fan", "tile": [-11, -11]}},
@@ -760,6 +760,6 @@
   {"lx": 2, "ly": 6, "seed": 401, "value": {"dressing": "algae", "model": "landmark_arch", "tile": [5, 12]}},
   {"lx": 4, "ly": 6, "seed": 401, "value": {"dressing": "tall", "model": "landmark_fan", "tile": [9, 12]}},
   {"lx": 6, "ly": 6, "seed": 401, "value": {"dressing": "algae", "model": "landmark_arch", "tile": [13, 12]}},
-  {"lx": -1, "ly": -1, "seed": 401, "value": {"dressing": "tall", "model": "landmark_giant_carcass", "tile": [-2, -1]}},
+  {"lx": -1, "ly": -1, "seed": 401, "value": {"dressing": "tall", "model": "landmark_shed_husk", "tile": [-2, -1]}},
   {"lx": 0, "ly": 0, "seed": 401, "value": {"dressing": "algae", "model": "landmark_fan", "tile": [1, 1]}},
   {"lx": 781, "ly": -782, "seed": 401, "value": {"dressing": "pale", "model": "landmark_great_shell", "tile": [1563, -1564]}}]}

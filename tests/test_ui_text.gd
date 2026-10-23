@@ -18,6 +18,10 @@ const NOTICE_MARGIN_PX := 60.0
 ## Words that name each food, for checking a tip names only food the body can eat.
 const FOOD_WORDS := {"plant": ["plankton"], "meat": ["carrion", "kill"]}
 const PERF_STALL_MS := 100           ## a real stall, far longer than the one-tick delta it comes with
+## The fluid behind the hurt vignette's corners as the look probe reads it in its hud scene
+## (hud.vignette_behind: #072A55 | #082A55, Compatibility | Forward+).
+const FLUID_CORNER := Color("#072A55")
+const LookProbe := preload("res://tools/godot/look_probe.gd")
 
 var catalog := PartCatalog.load_from()
 
@@ -358,6 +362,12 @@ func test_the_hurt_vignette_reads_red_over_the_fluid_and_keeps_the_middle_clear(
 	check(float(value.call("band")) > 0.0, "the outermost band is stronger than the rest (band %.2f)" % float(value.call("band")))
 	var corner := Hud.VIGNETTE_PEAK * (1.0 + float(value.call("band")))
 	check(corner <= 0.5, "the outer band lifts the corners' alpha to at most 0.5 at the peak (%.2f)" % corner)
+	# At that alpha over the fluid in the corners, blended in sRGB as both renderers blend the 2D
+	# layer, the band reads red: LAB h 15 to 45, the look probe's vignette_hue gate. The old tint,
+	# (0.55, 0.04, 0.10), lands at h 339 there, purple.
+	var shown := FLUID_CORNER.lerp(Color(tint.r, tint.g, tint.b), corner)
+	var h := LookProbe.hue(LookProbe.lab(shown))
+	check(h >= 15.0 and h <= 45.0, "over the fluid in the corners the outer band reads red: %s, LAB h %.1f (15 to 45)" % [shown.to_html(false), h])
 	hud.free()
 
 

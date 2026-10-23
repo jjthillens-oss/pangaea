@@ -2,63 +2,100 @@
   "id": "landmark_spire",
   "owner": "Joshua Jake",
   "status": "PROPOSED",
-  "review_state": "rough - endless world S1, not visually approved",
-  "purpose": "Endless world S1 rough: A twisted sponge-spicule tower with whorls of hooks and an amber tip. Swapped for the finished piece under the same id.",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-0 landmark (S1 rough): a braided sponge-spicule spire with whorls of hooks. Collides as a 2 bu circle; the visual fills the 3 bu anchor.",
   "category": "landmark",
   "source_blend": "assets/source/blender/landmark_spire.blend",
-  "generator_script": "tools/blender/make_s1_world_kit.py",
+  "generator_script": "tools/blender/make_s1_production.py",
   "export_path": "assets/export/landmark_spire.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 4.64,
-    "y_forward": 4.708,
-    "z_up": 11.35
+    "x": 5.443,
+    "y_forward": 5.524,
+    "z_up": 7.15
   },
-  "triangles": 5084,
-  "triangle_budget": 9000,
-  "textures": [],
+  "triangles": 4224,
+  "triangle_budget": 6000,
+  "textures": [
+    {
+      "name": "T_LandmarkSpire_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_LandmarkSpire_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_LandmarkSpire_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
   "materials": [
+    "M_Amber",
     "M_Core",
-    "M_Silica",
-    "M_SilicaFrost"
+    "M_Frost",
+    "M_Silica"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
-    "Landmark"
+    "Growth_Beads",
+    "Growth_Needles",
+    "LandmarkSpire"
   ],
+  "kind": "landmark",
   "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
-  "anchor_radius_m": 3.0,
-  "swim_band_reach_m": 1.247,
-  "scale_range": [
-    0.9,
-    1.06
-  ],
+  "group": 1,
+  "footprint_radius_m": 2.0,
+  "collide_radius_bu": 2.0,
+  "anchor_radius_bu": 3.0,
+  "yaw_rule": "free",
   "dressings": [
     {
       "id": "plain",
       "tint": "#FFFFFF",
-      "growth": null,
+      "growth": "",
       "scale": 1.0
     },
     {
       "id": "frosted",
-      "tint": "#C9D4EE",
-      "growth": null,
-      "scale": 0.92
+      "tint": "#D6E0F5",
+      "growth": "Growth_Needles",
+      "scale": 0.96
     },
     {
-      "id": "amber_bloom",
-      "tint": "#F2E2C2",
-      "growth": null,
-      "scale": 1.05
+      "id": "amber",
+      "tint": "#F3E3C6",
+      "growth": "Growth_Beads",
+      "scale": 1.04
     }
   ],
-  "top_m": 7.85,
-  "bottom_m": -3.5,
-  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_world_kit.py; no external or generated meshes."
+  "swim_band_min_radius_m": 1.996,
+  "swim_band_radius_m": 2.0,
+  "top_m": 3.75,
+  "bottom_m": -3.4,
+  "scale_range": [
+    0.92,
+    1.06
+  ],
+  "provenance": "Original geometry from tools/blender/make_s1_kit.py, surfaced in Blender by tools/blender/make_s1_production.py: procedural shaders baked to textures. No outside sources."
 }
