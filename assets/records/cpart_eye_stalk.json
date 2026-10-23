@@ -1,0 +1,102 @@
+{
+  "id": "cpart_eye_stalk",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature eye part (PROPOSED): an eyeball on a soft stalk that bows forward, in a fleshy socket; the pupil looks forward.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_eye_stalk.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_eye_stalk.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.061,
+    "y_forward": 0.069,
+    "z_up": 0.157
+  },
+  "triangles": 422,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEyeStalk_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEyeStalk_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEyeStalk_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EyeBall",
+    "M_EyeStalk"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Eye",
+    "EyeStalk"
+  ],
+  "part_type": "eye_stalk",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "eye_stalk",
+    "footprint_radius_m": 0.022,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 45,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the eye raised 0.05 m on a longer stalk",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Droop",
+        "meaning": "the stalk bent 40 degrees forward and down",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both keys are on EyeStalk and Eye with the same names; the runtime sets them together. Above the socket the ball moves rigidly."
+  },
+  "paint_mix": {
+    "M_EyeStalk": 0.9,
+    "M_EyeBall": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 880,
+    "triangles_after": 422
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
