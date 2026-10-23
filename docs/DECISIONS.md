@@ -380,3 +380,19 @@ The owner asked the studio to run a Menus and UI department (2026-10-23 07:31, a
 - **Save slots**: `user://saves/slot_1.json` to `slot_3.json` (`SaveSlots`). Slot 1 is the old default file, so an existing lineage appears there. The chosen slot is remembered in the settings; `--slot` still overrides it. Delete asks first with Cancel focused and removes the save and its backup, keeping any `.corrupt-*` file. IMPLEMENTED.
 - **Controller**: defaults in `project.godot` (left stick and d-pad swim, RB/LB zoom in/out, Menu pauses, Y grows; `grow` also on G for S2). Menus add A (choose), B (back) and the left stick at runtime because the engine's `ui_accept`/`ui_cancel` have no controller buttons; LB/RB (Q/E on keys) change settings tabs. Hints and the pause menu's controls name the inputs of the device used last (`InputPrompts`). IMPLEMENTED; not tested with a physical controller yet.
 - **Look**: the theme moves from teal to the deep-blue palette (navy panels, blue borders, amber focus and primary buttons kept). The title backdrop is a procedural shader (light shafts and drifting motes, original), slowed to 15% by Reduce camera motion. PROPOSED; the owner judges the look.
+
+## 2026-10-23 · A live title world (direction CONFIRMED by owner; look PROPOSED)
+
+The owner asked for menus that feel like Spore's "but Pangaea style" (2026-10-23 08:08). Nothing is copied: the feel
+(a living scene behind the menu, playful motion) is the brief, and the layout, art and motion are our own.
+
+- **The title is a live 3D scene** (`TitleWorld`): the pool's own environment, lights, backdrop and ambience, art's
+  landmarks and shells in the haze, and the saved cell swimming lazy figure-of-eight loops with the game's own
+  Locomotion, plus two other starting bodies in the distance. A slow camera drift (15% under Reduce camera motion).
+  With no save, a grazer swims there. It only draws; it never touches a save or the sim. IMPLEMENTED.
+- **The New lineage picker puts the picked body in the world** (it pops in), replacing the small preview box; the big
+  Continue card becomes a translucent nameplate beside the cell. The 2D backdrop shader stays as an unused fallback.
+  IMPLEMENTED.
+- **Playful motion** (`MenuBounce`): title buttons are pills that swell with a little overshoot when focused or hovered
+  and squash when pressed; views slide and fade in with their buttons arriving one after another. Reduce camera motion
+  removes the overshoot and the slide. IMPLEMENTED; the owner judges the look.

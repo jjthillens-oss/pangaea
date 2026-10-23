@@ -62,6 +62,23 @@ func _title() -> void:
 			ids.append(str(b.name))
 	_check(ids == ["ContinueButton", "NewButton", "SlotsButton", "SettingsButton", "QuitButton"],
 		"the menu is Continue, New lineage, Save slots, Settings, Quit (%s)" % [ids])
+	var world := start.world
+	_check(world != null and world.camera.current, "the live world is behind the title, its camera on")
+	_check(world.hero_genome != null and Lineage.starting_body_of(world.hero_genome, main.session.catalog) == "hunter",
+		"the saved hunter swims in it")
+	var start_at := world.hero.position
+	await _frames(30)
+	_check(world.hero.position.distance_to(start_at) > 0.01, "and it swims (%.3f m)" % world.hero.position.distance_to(start_at))
+	_check(start.continue_button.scale.x > 1.01, "the focused button has swelled (%.3f)" % start.continue_button.scale.x)
+	_check(is_equal_approx(start.new_button.scale.x, 1.0), "the others have not")
+	start.open_picker()
+	start.select("omnivore")
+	await _frames(2)
+	_check(world.hero_genome == start._genomes["omnivore"], "picking the omnivore puts it in the world")
+	start.show_main()
+	await _frames(2)
+	_check(Lineage.starting_body_of(world.hero_genome, main.session.catalog) == "hunter", "Back brings the saved hunter back")
+	_check(_focus() == start.continue_button, "with Continue focused again")
 
 
 func _settings_with_a_controller() -> void:
