@@ -123,10 +123,25 @@ func _mesh_bounds(root: Node3D) -> AABB:
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
 		if n is MeshInstance3D and n.mesh:
-			var box := _relative(n, root) * (n as MeshInstance3D).mesh.get_aabb()
+			var box := _relative(n, root) * _rest_aabb((n as MeshInstance3D).mesh)
 			bounds = box if first else bounds.merge(box)
 			first = false
 	return bounds
+
+
+## A mesh's bounds in its rest shape. Godot grows get_aabb() to cover every blend shape at full
+## weight, but records measure the rest shape, so meshes with blend shapes are measured from their
+## vertices.
+func _rest_aabb(mesh: Mesh) -> AABB:
+	if not mesh is ArrayMesh or (mesh as ArrayMesh).get_blend_shape_count() == 0:
+		return mesh.get_aabb()
+	var box := AABB()
+	var first := true
+	for s in mesh.get_surface_count():
+		for v: Vector3 in mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]:
+			box = AABB(v, Vector3.ZERO) if first else box.expand(v)
+			first = false
+	return box
 
 
 func _record(id: String) -> Dictionary:
