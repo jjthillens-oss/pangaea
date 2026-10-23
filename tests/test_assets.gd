@@ -17,7 +17,8 @@ const BLOCKOUT_BUDGETS := {
 	"plankton": 400, "carrion": 400,
 	"part_mouth_filter": 1500, "part_mouth_jaw": 1500, "part_flagellum": 1500, "part_eye_spot": 1500,
 }
-const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot", "part_spike"]
+const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot", "part_spike",
+		"part_cilia", "part_shell_plate", "part_toxin_gland"]
 const ROCK_IDS := ["rock_a", "rock_b", "rock_c"]
 ## Food record id -> its block in the pool layout, which holds the gameplay item_radius.
 const FOOD_LAYOUT_KEYS := {"plankton": "plankton", "carrion": "carrion"}
