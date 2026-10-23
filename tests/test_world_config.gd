@@ -4,10 +4,6 @@ extends TestCase
 ## missing keys are refused with their JSON path (G24), the --world override, the size ladder's
 ## units, and the cross-file numbers the rings and caps rest on.
 
-## The content files T4 ships. Until they land, the shipped file may name them although they do not
-## exist yet; nothing else may be wrong with it.
-const T4_CONTENT: PackedStringArray = ["res://game/data/home_b0.json", "res://game/data/tiles/b0",
-	"res://game/data/placement_kit.json"]
 ## Existing paths that stand in for the content in the rule cases, so a case's one problem is its own.
 const PRESENT_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
 	"kit": "res://game/data/creatures_m1.json"}
@@ -49,17 +45,7 @@ func _problems_after(path: String, value: Variant) -> PackedStringArray:
 
 func test_the_shipped_world_cell_has_no_problems() -> void:
 	var config := WorldConfig.load_from()
-	var problems := config.validate()
-	var waiting := PackedStringArray()
-	for p in problems:
-		var allowed := false
-		for path in T4_CONTENT:
-			allowed = allowed or (p.contains("'%s' does not exist" % path) and not (FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path)))
-		if allowed:
-			waiting.append(p)
-		else:
-			check(false, "unexpected problem: %s" % p)
-	check(waiting.size() <= T4_CONTENT.size(), "only T4's missing content may be named: %s" % [waiting])
+	check_eq(config.validate(), PackedStringArray(), "the shipped world file, with the content it names")
 	check(WorldConfig.from_dict(_base()).validate().is_empty(), "with content that exists, no problems: %s" % [WorldConfig.from_dict(_base()).validate()])
 	check_eq(config.mode, "endless", "Joshua plays the endless world (D-4)")
 	check_eq(config.gen_version, 1, "generator version")
