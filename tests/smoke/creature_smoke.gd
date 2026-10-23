@@ -15,7 +15,8 @@ extends SceneTree
 ##   -- --phase=reload --creature --creature-store=user://smoke/creature.json
 ##       A new process opens the stage from that store and finds the same body SHA-256, points and generation.
 ##
-## The store stays under user://smoke/: the smoke stops before playing if --creature-store points anywhere else.
+## The store stays under user://smoke/ (the build phase clears it with its .tmp and .bak first): the smoke stops before
+## playing if --creature-store points anywhere else.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -105,6 +106,7 @@ func _build() -> void:
 		return
 	_remove(main.creature_store_path())
 	_remove(main.creature_store_path() + CreatureStore.TEMP_SUFFIX)
+	_remove(main.creature_store_path() + CreatureStore.BACKUP_SUFFIX)   # a load falls back to the .bak
 	# Opened before the store was cleared: open it again on the empty store.
 	var stage := main.open_creature_stage()
 	await _frames(SETTLE_FRAMES)
