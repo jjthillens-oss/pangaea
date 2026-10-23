@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Glass reef (S3 band 1): dense shell reef cut by channels; veils drift through, an ambush hunter and a Lurker hide in it, and a Deep lurker waits at a channel end (docs/s3: s3-sim 4.3).",
+  "id": "glass_reef_b",
+  "band": 1,
+  "region": "glass_reef",
+  "set": 0,
+  "rare": "",
+  "landmark_anchor": [-23.5, -22.5],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [7.0, 5.0], "radius": 1.1, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [7.0, 13.0], "radius": 1.1, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [14.5, 5.4], "radius": 0.9, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [14.5, 12.6], "radius": 0.9, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [20.4, 6.2], "radius": 1.18, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [1.2, -15.3], "radius": 1.1, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s6", "center": [23.7, -15.4], "radius": 0.79, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [24.8, -24.7], "radius": 1.13, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s8", "center": [-14.1, -11.5], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s9", "center": [-0.5, 21.4], "radius": 1.44, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s10", "center": [-26.1, 22.7], "radius": 0.83, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s11", "center": [17.8, 18.1], "radius": 1.27, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s12", "center": [-5.6, -5.3], "radius": 1.43, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s13", "center": [23.1, -7.8], "radius": 0.71, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s14", "center": [11.3, 18.1], "radius": 1.29, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "zl", "center": [-2.0, 9.0], "radius": 3.0, "capacity": 10.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f1", "center": [-8.5, 26.5], "radius": 3.04, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [23.5, 10.5], "radius": 3.03, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f3", "center": [-27.1, 9.9], "radius": 3.38, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f4", "center": [-25.4, -16.4], "radius": 3.11, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f5", "center": [12.4, -23.6], "radius": 2.85, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f6", "center": [-11.1, -18.1], "radius": 3.44, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f7", "center": [17.1, 25.1], "radius": 3.62, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f8", "center": [17.5, -15.5], "radius": 3.01, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f9", "center": [-27.4, 17.6], "radius": 3.09, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f10", "center": [15.9, -6.1], "radius": 3.35, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f11", "center": [19.2, -26.8], "radius": 3.73, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "dl", "species": "deep_lurker", "home": [11.0, 9.0], "heading": 3.1416, "territory_zone": "", "sizes": [4]},
+    {"id": "lu", "species": "lurker", "home": [-16.0, 17.0], "heading": 1.6338, "territory_zone": "", "sizes": [3, 4], "post_b": {"home": [-12.5, 17.0], "heading": -1.4011}},
+    {"id": "ah", "species": "ambush_hunter", "home": [18.0, -18.0], "heading": 0.1182, "territory_zone": "", "sizes": [3, 4]},
+    {"id": "va", "species": "veil", "home": [-21.0, 3.0], "heading": 1.3286, "territory_zone": "", "sizes": [3]}
+  ]
+}
