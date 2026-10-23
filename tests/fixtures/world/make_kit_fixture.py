@@ -12,17 +12,17 @@ def shell(id, glb, cls, fr, scale, yaw="free", pickable=True, dress=None, placeh
             "dressings": dress or [{"id": "plain", "tint": "#FFFFFF", "growth": "", "scale": 1.0}],
             "pickable": pickable, "placeholder": placeholder, "approved": False}
 assets += [
-    shell("shell_s_pill", "shell_small_pill", "fp_s", 0.75, [0.8, 1.2],
+    shell("shell_s_pill", "shell_diatom_disc", "fp_s", 0.75, [0.8, 1.2],
           dress=[{"id": "plain", "tint": "#FFFFFF", "growth": "", "scale": 1.0},
                  {"id": "algae", "tint": "#C8D8B0", "growth": "Growth_Algae", "scale": 1.0}]),
-    shell("shell_s_lens", "shell_small_lens", "fp_s", 0.6, [1.0, 1.5]),
-    shell("shell_m_pill", "shell_small_pill", "fp_m", 1.0, [0.9, 1.2], yaw="slot"),
-    shell("shell_m_lens", "shell_small_lens", "fp_m", 0.9, [1.0, 1.4]),
-    shell("shell_l_bell", "shell_large_bell", "fp_l", 1.25, [0.96, 1.2]),
-    shell("shell_l_tower", "shell_large_tower", "fp_l", 1.5, [0.8, 1.0], yaw="slot"),
-    shell("shell_l_wide", "shell_large_bell", "fp_l", 1.2, [1.0, 1.25]),
+    shell("shell_s_lens", "shell_radiolarian_lens", "fp_s", 0.6, [1.0, 1.5]),
+    shell("shell_m_pill", "shell_diatom_disc", "fp_m", 1.0, [0.9, 1.2], yaw="slot"),
+    shell("shell_m_lens", "shell_radiolarian_lens", "fp_m", 0.9, [1.0, 1.4]),
+    shell("shell_l_bell", "shell_bell", "fp_l", 1.25, [0.96, 1.2]),
+    shell("shell_l_tower", "shell_fluted_tower", "fp_l", 1.5, [0.8, 1.0], yaw="slot"),
+    shell("shell_l_wide", "shell_bell", "fp_l", 1.2, [1.0, 1.25]),
 ]
-lm_glbs = ["landmark_arch", "landmark_fan", "landmark_great_shell", "landmark_ring", "landmark_spire", "landmark_giant_carcass"]
+lm_glbs = ["landmark_arch", "landmark_fan", "landmark_great_shell", "landmark_ring", "landmark_spire", "landmark_shed_husk"]
 lm_groups = [0, 0, 1, 1, 2, 3]
 for glb, g in zip(lm_glbs, lm_groups):
     assets.append({"id": glb, "kind": "landmark", "band": 0, "glb": "res://assets/export/%s.glb" % glb, "record": rec(glb),
@@ -31,16 +31,16 @@ for glb, g in zip(lm_glbs, lm_groups):
                                  {"id": "algae", "tint": "#C8D8B0", "growth": "Growth_Algae", "scale": 0.95},
                                  {"id": "tall", "tint": "#D8D0C0", "growth": "", "scale": 1.1}],
                    "placeholder": True, "approved": False})
-assets.append({"id": "rare_giant_husk", "kind": "rare", "band": 0, "glb": "res://assets/export/setpiece_giant_bones.glb",
+assets.append({"id": "rare_giant_husk", "kind": "rare", "band": 0, "glb": "res://assets/export/rare_giant_husk.glb",
                "record": rec("rare_giant_husk"), "rare_kind": "giant_husk",
                "colliders": [{"center": [0.0, 0.0], "radius": 3.0}], "scale": [1.0, 1.0], "yaw_rule": "fixed",
                "dressings": [], "placeholder": True, "approved": False})
-assets.append({"id": "rare_shell_cathedral", "kind": "rare", "band": 0, "glb": "res://assets/export/setpiece_shell_cathedral.glb",
+assets.append({"id": "rare_shell_cathedral", "kind": "rare", "band": 0, "glb": "res://assets/export/rare_shell_cathedral.glb",
                "record": rec("rare_shell_cathedral"), "rare_kind": "shell_cathedral",
                "colliders": [{"center": [-1.5, 0.0], "radius": 2.0}, {"center": [1.5, 0.5], "radius": 1.5}], "scale": [1.0, 1.0],
                "yaw_rule": "fixed", "dressings": [], "placeholder": True, "approved": False})
-for mid, glb in [("marker_checkpoint_column", "marker_light_column"), ("marker_origin_arrow", "marker_origin_arrow")]:
-    assets.append({"id": mid, "kind": "marker", "band": -1, "glb": "res://assets/export/%s.glb" % glb, "record": rec(mid),
+for mid in ["marker_checkpoint_column", "marker_origin_arrow"]:
+    assets.append({"id": mid, "kind": "marker", "band": -1, "glb": "res://assets/export/%s.glb" % mid, "record": rec(mid),
                    "scale": [1.0, 1.0], "yaw_rule": "fixed", "dressings": [], "placeholder": True, "approved": False})
 for r in ["rock_a", "rock_b", "rock_c"]:
     assets.append(shell(r, r, "fp_m", 1.0, [0.8, 1.5], pickable=False, placeholder=False))
@@ -67,7 +67,7 @@ pill = assets[0]
 V = os.path.join(base, "records/variants")
 write_rec(os.path.join(V, "wrong_id.json"), pill, id="shell_s_other")
 write_rec(os.path.join(V, "wrong_radius.json"), pill, footprint_radius_m=0.7)
-write_rec(os.path.join(V, "wrong_export.json"), pill, export_path="assets/export/shell_small_lens.glb")
+write_rec(os.path.join(V, "wrong_export.json"), pill, export_path="assets/export/shell_radiolarian_lens.glb")
 write_rec(os.path.join(V, "finished.json"), pill, review_state="production - S1 test fixture")
 write_rec(os.path.join(V, "approved.json"), pill, review_state="approved - S1 test fixture", status="APPROVED")
 write_rec(os.path.join(V, "finished_proposed.json"), pill, review_state="production - S1 test fixture", status="PROPOSED")
