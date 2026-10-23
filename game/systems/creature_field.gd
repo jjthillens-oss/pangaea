@@ -349,6 +349,57 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 		_enqueue(c.site_id, c.species_id, tick + wait)
 
 
+## remove(c, reason, tick, false) on each creature of `list` (the field's, in that order), in one
+## pass over the others when no one holds the token and no brain's target or attacker is one of them
+## or is the player it chases or attacks: then each remove's _forget_in only drops the others'
+## memories of the gone (seen, landed_on), which come out the same in any order, and calls neither
+## on_target_gone nor update_token. Otherwise one by one. The unload does this for a chunk's sites.
+func remove_all(list: Array[Creature], reason: String, tick: int) -> void:
+	var gone := {}
+	for c in list:
+		gone[c.id] = true
+	var quiet := list.size() > 1 and engaged_on_player.is_empty()
+	if quiet:
+		for other in creatures:
+			var b := other.brain
+			if b != null and (gone.has(b.target) or gone.has(b.attacker) or (b.target == PLAYER_ID
+					and (b.state == CreatureBrain.CHASE or b.state == CreatureBrain.ATTACK))):
+				quiet = false
+				break
+	if not quiet:
+		for c in list:
+			remove(c, reason, tick, false)
+		return
+	# remove's own steps for each, in order, then the others forget them all at once (the gone
+	# creatures' own memories of each other are dropped with them).
+	for i in range(creatures.size() - 1, -1, -1):
+		if gone.has(creatures[i].id):
+			creatures.remove_at(i)
+	for c in list:
+		if endless:
+			_awake.erase(c)
+			_release_slot(c)
+			if not c.site_id.is_empty() and _by_site.get(c.site_id) == c:
+				_by_site.erase(c.site_id)
+		if not c.debug:
+			region.on_creature_removed(c.role)
+		var removed := {"type": "creature_removed", "id": c.id, "species": c.species_id, "reason": reason}
+		if endless:
+			removed["position"] = c.motion.position
+		events.append(removed)
+	_scan_all = true
+	for other in creatures:
+		var b := other.brain
+		if b == null:
+			continue
+		if not b.seen.is_empty():
+			for id in gone:
+				b.seen.erase(id)
+		if not b.landed_on.is_empty():
+			for id in gone:
+				b.landed_on.erase(id)
+
+
 ## Endless mode (B-6, the hold pass): an awake creature held beyond the hold ring leaves, "unloaded",
 ## and its site is queued at this tick with no respawn delay, so the spawn rule refills it as a
 ## sleeper (or not at all once its chunks unload). A debug or siteless creature is not requeued.
