@@ -252,6 +252,41 @@ func test_a_zones_first_anchors_are_the_same_along_two_routes() -> void:
 	check(_same_places(north, west), "and the same anchors from the north: %s and %s" % [north, west])
 
 
+## B-3: a zone whose disc crosses into a neighbour chunk, with a shell there exactly the 0.7 bu gap
+## from the disc, draws the same 12 anchors whether or not that neighbour is loaded.
+func test_a_zone_crossing_a_chunk_edge_draws_the_same_anchors_with_and_without_its_neighbour() -> void:
+	var without := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array([-39.0, 48.0]))
+	var with := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array([-60.0, 48.0]))
+	var neighbour := FakeWorldGen.EDGE_CHUNK + Vector2i(-1, 0)
+	check(without.world.chunk(FakeWorldGen.EDGE_CHUNK) != null and without.world.chunk(neighbour) == null,
+		"one sim has the zone's chunk without its neighbour")
+	check(with.world.chunk(neighbour) != null, "the other has both")
+	var a := _anchors_abs(without, "z_edge")
+	var b := _anchors_abs(with, "z_edge")
+	check_eq(a.size(), 12, "12 anchors filled at once")
+	check(_same_places(a, b), "the same anchors: %s and %s" % [a, b])
+	# Not luck: every place an anchor can take (within radius - drift reach of the centre) is clear
+	# of the neighbour's shell, so no draw is ever refused because of it.
+	var z := with.region.zone("z_edge")
+	var reach := float(z.radius) - with.plankton.drift_reach()
+	var blocked := 0
+	for i in 41:
+		for j in 41:
+			var p: Vector2 = z.center + Vector2(i - 20, j - 20) * (reach / 20.0)
+			if p.distance_to(z.center) <= reach and not with.arena.is_clear(p, with.plankton.anchor_clearance()):
+				blocked += 1
+	check_eq(blocked, 0, "every possible anchor is clear with the neighbour loaded")
+
+
+func _anchors_abs(sim: PoolSim, zone_id: String) -> Array:
+	var out := []
+	for item in sim.plankton.items:
+		if item.zone == zone_id:
+			var p := sim.world.abs_of_local(item.anchor)
+			out.append(Vector2(p[0], p[1]))
+	return out
+
+
 ## Unloaded and reloaded, a zone's stream starts over: its first anchors repeat.
 func test_a_reloaded_zone_restarts_its_stream() -> void:
 	var sim := _endless()

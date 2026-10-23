@@ -50,6 +50,11 @@ static func create(config: Dictionary) -> PlanktonField:
 	return field
 
 
+## How far an anchor keeps from every collider: the item and its whole drift.
+func anchor_clearance() -> float:
+	return item_radius + drift_reach()
+
+
 ## Furthest an item gets from its anchor (each axis swings by drift_amplitude).
 func drift_reach() -> float:
 	return drift_amplitude * sqrt(2.0)
@@ -149,7 +154,7 @@ func _try_spawn(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_
 	var inset := maxf(0.0, radius - drift_reach()) / radius
 	for i in SPAWN_TRIES:
 		var anchor: Vector2 = zone.center + (region.random_point_in(zone.id) - zone.center) * inset
-		if arena.is_clear(anchor, item_radius + drift_reach()):
+		if arena.is_clear(anchor, anchor_clearance()):
 			_add(zone.id, anchor, tick_number, now)
 			return true
 	return false

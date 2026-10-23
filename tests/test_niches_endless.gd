@@ -53,22 +53,38 @@ func _loaded_sites(sim: PoolSim) -> Array:
 	return out
 
 
+## On every tick of a long swim with twenty chunks or more loaded, the table holds exactly the
+## loaded chunks' live sites, and each is filled or queued, never both.
 func test_with_twenty_chunks_loaded_every_live_site_is_filled_or_queued() -> void:
 	var sim := _endless()
+	var seen := {}
+	var bad := 0
+	var first := ""
+	var checked := 0
 	for t in 6000:
-		if sim.world.loaded_keys().size() >= 20 and sim.world.sites.size() >= 2 and t > 600:
-			break
-		sim.step(SimIntent.new(Vector2(0.8, 0.6)))
-	check(sim.world.loaded_keys().size() >= 20, "%d chunks loaded" % sim.world.loaded_keys().size())
-	var table := sim.world.sites.keys()
-	table.sort()
-	check_eq(table, _loaded_sites(sim), "the table holds exactly the loaded chunks' sites")
-	check(table.size() >= 2, "%d sites" % table.size())
-	check(table.all(func(id: String) -> bool: return id.begins_with("t_f_")), "no size 2 site is live at size 1")
-	for id in table:
-		var occupied := sim.creatures._occupant(id) != null
-		var queued := sim.creatures.queue.any(func(e: Dictionary) -> bool: return e.site == id)
-		check(occupied != queued, "site %s is filled or queued, not both (filled %s, queued %s)" % [id, occupied, queued])
+		sim.step(SimIntent.new(Vector2.from_angle(0.6 + 0.0004 * t)))
+		if sim.world.loaded_keys().size() < 20:
+			continue
+		checked += 1
+		var table := sim.world.sites.keys()
+		table.sort()
+		var problem := ""
+		if table != _loaded_sites(sim):
+			problem = "table %s, loaded %s" % [table, _loaded_sites(sim)]
+		for id in table:
+			seen[id] = true
+			var occupied := sim.creatures._occupant(id) != null
+			var queued := sim.creatures.queue.any(func(e: Dictionary) -> bool: return e.site == id)
+			if occupied == queued:
+				problem = "site %s filled %s, queued %s" % [id, occupied, queued]
+		if not problem.is_empty():
+			bad += 1
+			if first.is_empty():
+				first = "tick %d: %s" % [t, problem]
+	check_eq(bad, 0, "every tick (%s)" % first)
+	check(checked > 3000, "%d ticks with twenty chunks loaded" % checked)
+	check(seen.size() >= 3, "%d sites met" % seen.size())
+	check(seen.keys().all(func(id: String) -> bool: return id.begins_with("t_f_")), "no size 2 site is live at size 1")
 
 
 ## At create the loaded sites that pass their checks spawn at once (M1's populate), and the start is
@@ -291,6 +307,77 @@ func test_a_moved_checkpoint_makes_a_nearby_site_dormant() -> void:
 	check(not sim.creatures._try_site(s, sim.arena, far, sim.tick), "and it does not spawn")
 
 
+## C-5 and D-12: a site whose creature would spawn asleep (its home at least the wake ring from
+## every place) waits with "no room" while the sleepers are at their cap, and one that would spawn
+## awake while the awake creatures are at theirs; with room each spawns, asleep or awake as its
+## distance says, and a refusal leaves the spawn count alone.
+func test_a_spawn_over_the_sleeper_or_awake_cap_waits_with_no_room() -> void:
+	var sim := _endless()
+	var site := "t_f_6_2"
+	_reach_site(sim, site, Vector2(150.0, 80.0), Vector2.RIGHT)
+	var s: Dictionary = sim.world.sites[site]
+	sim.creatures.remove(sim.creatures._occupant(site), "test", sim.tick, false)
+	var count: int = sim.world.site_counts[site]
+	var sleepers := sim.creatures.creatures.size() - sim.creatures.awake().size()
+	var awake := sim.creatures.awake().size()
+	var far: Array[Vector2] = [s.home + Vector2(-60.0, 0.0)]
+	var near: Array[Vector2] = [s.home + Vector2(0.0, 37.0)]   # inside the wake ring, out of view (> 35.7)
+	check(sim.creatures.spawns_asleep(s, far), "60 tm out it would sleep")
+	check(not sim.creatures.spawns_asleep(s, near), "37 tm out it would be awake")
+	var both: Array[Vector2] = [far[0], near[0]]
+	check(not sim.creatures.spawns_asleep(s, both), "awake when any place is inside the wake ring")
+	sim.world.caps.sleepers = sleepers
+	check_eq(sim.creatures.blocker_from(s, sim.arena, far), "no room", "the sleepers at their cap")
+	check(not sim.creatures._try_site(s, sim.arena, far, sim.tick), "no spawn")
+	check_eq(sim.world.site_counts[site], count, "the count unchanged")
+	check_eq(sim.creatures.blocker_from(s, sim.arena, near), "", "an awake spawn is not limited by the sleepers")
+	sim.world.caps.awake = awake
+	check_eq(sim.creatures.blocker_from(s, sim.arena, near), "no room", "the awake ones at their cap")
+	sim.world.caps.sleepers = sleepers + 1
+	check_eq(sim.creatures.blocker_from(s, sim.arena, far), "", "a sleeper spawn is not limited by the awake")
+	sim.drain_events()
+	check(sim.creatures._try_site(s, sim.arena, far, sim.tick), "with room it spawns")
+	var c := sim.creatures._occupant(site)
+	check(c != null and c.asleep, "asleep")
+	var spawned := sim.creatures.take_events().filter(func(e: Dictionary) -> bool: return e.type == "creature_spawned")
+	check(spawned.size() == 1 and spawned[0].asleep == true, "its event says so")
+	check_eq(c.think_slot, -1, "no think slot")
+	check(not sim.creatures.awake().has(c), "not among the awake")
+	sim.creatures.remove(c, "test", sim.tick, false)
+	sim.world.caps.awake = awake + 1
+	check(sim.creatures._try_site(s, sim.arena, near, sim.tick), "and awake")
+	c = sim.creatures._occupant(site)
+	check(c != null and not c.asleep and c.think_slot >= 0, "awake on a slot")
+
+
+## B-9: after a teleport, every creature that spawns awake has its site's chunks loaded on its spawn
+## tick, even those the view set did not hold.
+func test_an_awake_spawn_has_its_site_chunks_loaded_on_its_spawn_tick() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	# Measured: from here two awake spawns' east chunks lie outside the view set.
+	check(sim.debug_teleport_abs(5015.9, 9.0), "teleported")
+	sim.drain_events()
+	var awake_spawns := 0
+	var missing_before := 0
+	var bad := 0
+	for t in 120:
+		var loaded := sim.world.loaded_keys()
+		sim.step(SimIntent.new())
+		for e in sim.drain_events():
+			if e.type != "creature_spawned" or e.debug or e.asleep:
+				continue
+			awake_spawns += 1
+			var chunks: Array = sim.world.sites[e.site].chunks
+			if chunks.any(func(k: Vector2i) -> bool: return not loaded.has(k)):
+				missing_before += 1
+			for key in chunks:
+				if sim.world.chunk(key) == null:
+					bad += 1
+	check(awake_spawns >= 3, "%d awake spawns" % awake_spawns)
+	check(missing_before >= 1, "%d of them had a site chunk missing when the tick began" % missing_before)
+	check_eq(bad, 0, "every awake spawn's site chunks loaded")
+
+
 ## C-14: debug creatures take numbers from 2^30 up and keep "c_" + number ids, so they sort after
 ## every site creature and never meet a site creature's id.
 func test_debug_creatures_sort_after_site_creatures_and_keep_c_ids() -> void:
@@ -347,13 +434,13 @@ func test_an_unloaded_site_leaves_the_table_and_the_queue() -> void:
 	check_eq(_caps(sim), _want_caps(sim), "the caps follow")
 
 
-## Swims to `start` (absolute) by a debug teleport and on along `dir` until the site's creature exists;
-## that creature, or null after 1,200 ticks.
+## Swims to `start` (absolute) by a debug teleport and on along `dir` until the site's creature exists
+## and is awake; that creature, or null after 1,200 ticks.
 func _reach_site(sim: PoolSim, site: String, start: Vector2, dir: Vector2) -> CreatureField.Creature:
 	check(sim.debug_teleport(sim.world.local_of_abs(start.x, start.y)), "the cell at %s" % start)
 	for t in 1200:
 		var c := sim.creatures._occupant(site)
-		if c != null:
+		if c != null and not c.asleep:
 			return c
 		sim.step(SimIntent.new(dir))
 	return sim.creatures._occupant(site)

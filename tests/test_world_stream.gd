@@ -69,6 +69,17 @@ func test_create_loads_the_view_set_at_once_and_places_the_cell_at_the_origin() 
 				check_eq(rz.center, Vector2(float(z.x) - 0.0, float(z.y) - 9.0), "zone %s at its local place" % z.id)
 	check(zones > 0, "the view set holds zones")
 	check_eq(sim.region.zones.size(), zones, "and only those")
+	# B-8: a save restored inside a shell (chunk (2, 0)'s, at (88, 24)) puts the cell 1.5 tm off the
+	# origin, where the view set reaches one chunk further east: that chunk is loaded before the
+	# first step too.
+	var moved := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array([88.0, 24.0]))
+	var place := moved.motion.position
+	check(place.length() > 1.0, "the cell moved off the shell (%s)" % place)
+	var extra := moved.world.view_set_keys(place).filter(func(k: Vector2i) -> bool:
+		return not moved.world.view_set_keys(Vector2.ZERO).has(k))
+	check(not extra.is_empty(), "its view set reaches a chunk the origin's does not")
+	for key in moved.world.view_set_keys(place):
+		check(moved.world.chunk(key) != null, "view-set chunk %s of the placed cell loaded" % key)
 
 
 func test_a_pool_sim_has_no_world() -> void:
@@ -331,40 +342,43 @@ func test_a_chunk_unloads_only_beyond_72_tm() -> void:
 
 
 ## Over the chunk cap only the view set loads: every other load waits and is counted once a tick.
-func test_at_the_chunk_cap_loads_outside_the_view_set_wait_and_count() -> void:
+## B-5: at the chunk cap the nearest missing view-set chunk loads in place of a nearer chunk outside
+## the view set, and chunk_waits counts the give-way; with no view-set chunk missing the load waits
+## and counts.
+func test_at_the_chunk_cap_a_view_set_chunk_loads_in_place_of_a_nearer_one_and_counts() -> void:
 	var sim := _endless(SEED, null, false)
+	# Here the view set reaches 36.7 tm sideways, and the chunk two rows up is 32 tm off.
+	check(sim.debug_teleport(Vector2(-14.0, -9.0)), "the cell placed")
+	for t in 40:
+		sim.step(SimIntent.new())
+	var body := sim.motion.position
+	var view := sim.world.view_set_keys(body)
+	# The farthest view-set chunk, and a loaded chunk outside the view set nearer than it.
+	var far_view: Vector2i = view[0]
+	for key in view:
+		if sim.world.nearest(key, body) > sim.world.nearest(far_view, body):
+			far_view = key
+	var near_other: Variant = null
+	for key in sim.world.loaded_keys():
+		if not view.has(key) and sim.world.nearest(key, body) < sim.world.nearest(far_view, body):
+			if near_other == null or sim.world.nearest(key, body) < sim.world.nearest(near_other, body):
+				near_other = key
+	check(near_other != null, "a chunk outside the view set nearer than the view set's farthest")
+	if near_other == null:
+		return
+	sim.world._unload_chunk(sim, far_view)
+	sim.world._unload_chunk(sim, near_other)
+	sim.world.caps.chunks = sim.world.loaded_keys().size()
+	check_eq(sim.world._nearest_missing(body, 56.0), near_other, "the nearest missing chunk is the outsider")
 	sim.drain_events()
-	var cap := sim.world.loaded_keys().size() + 2
-	sim.world.caps.chunks = cap
-	var waits := 0
-	var bad := 0
-	var first := ""
-	for t in 600:
-		var a := sim.absolute_position_am()
-		var before := sim.world.loaded_keys()
-		var view := sim.world.view_set_keys(sim.motion.position)
-		var waits_before := int(sim.world.counters.chunk_waits)
-		sim.step(SimIntent.new(Vector2.DOWN))
-		var loaded: Array = []
-		for e in sim.drain_events():
-			if e.type == "chunk_loaded":
-				loaded.append(e.key)
-		var kept := before.filter(func(k: Vector2i) -> bool: return _ref_nearest(k, a[0], a[1]) <= 72.0)
-		var best: Variant = _ref_nearest_missing(kept, a[0], a[1], 56.0)
-		var want_wait := best != null and kept.size() >= cap and not view.has(best)
-		var waited := int(sim.world.counters.chunk_waits) - waits_before
-		if waited != (1 if want_wait else 0) or (want_wait and not loaded.is_empty()):
-			bad += 1
-			if first.is_empty():
-				first = "tick %d: waited %d, loaded %s, want a wait %s" % [t, waited, loaded, want_wait]
-		for key in loaded:
-			if kept.size() >= cap and not view.has(key):
-				bad += 1
-		waits += waited
-	check_eq(bad, 0, "a wait exactly when the nearest missing chunk is outside the view set at the cap (%s)" % first)
-	check(waits > 0, "the cap was reached (%d waits)" % waits)
-	for key in sim.world.view_set_keys(sim.motion.position):
-		check(sim.world.chunk(key) != null, "view-set chunk %s loaded past the cap" % key)
+	sim.step(SimIntent.new())
+	var loaded := _of(sim.drain_events(), "chunk_loaded").map(func(e: Dictionary) -> Vector2i: return e.key)
+	check_eq(loaded, [far_view], "the view-set chunk loaded in its place")
+	check_eq(int(sim.world.counters.chunk_waits), 1, "and the give-way counted")
+	sim.step(SimIntent.new())
+	check(_of(sim.drain_events(), "chunk_loaded").is_empty(), "then nothing more: the view set is whole")
+	check(sim.world.chunk(near_other) == null, "the outsider waits")
+	check_eq(int(sim.world.counters.chunk_waits), 2, "and the wait counted")
 
 
 ## An awake creature's reach holds its chunks however far the cell swims; once it is gone they go.
@@ -631,3 +645,387 @@ static func _no_vectors(value: Variant) -> bool:
 				if not _no_vectors(v):
 					return false
 	return true
+
+
+# --- sleep and wake (T2.6) ---
+
+## A sim with no generated creatures and the AI frozen, so a test places site creatures (_site_creature)
+## where it wants them and they stay there, calm (a frozen brain keeps its starting rest). It waits
+## until every chunk within the load ring has loaded.
+func _quiet() -> PoolSim:
+	var content := FakeWorldGen.fixture_content()
+	content.config.switches.generated_creatures = false
+	var sim := _endless(SEED, content)
+	sim.debug_set_ai_frozen(true)
+	for t in 40:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	return sim
+
+
+## A rammer site of its own homed at local `home` (in the chunk under it, which must be loaded),
+## entered into the site table with the caps recomputed, and its creature spawned now: awake unless
+## `asleep`.
+func _site_creature(sim: PoolSim, id: String, home: Vector2, asleep := false) -> CreatureField.Creature:
+	var a := sim.world.abs_of_local(home)
+	var key := sim.world.chunk_of_local(home)
+	check(sim.world.chunk(key) != null, "the home chunk of %s is loaded" % id)
+	var s := {"id": id, "species": "rammer", "x": a[0], "y": a[1], "heading": 0.0,
+		"territory": {"x": a[0], "y": a[1], "radius": 3.0}, "reach": {"x": a[0], "y": a[1], "radius": 6.0},
+		"chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int], "tile": Vector2i.ZERO}
+	sim.world.sites[id] = sim.world._site_record(s, key)
+	sim.world.recompute_caps(sim)
+	var c := sim.creatures.spawn_site(sim.world.sites[id], sim.tick, asleep)
+	check(c != null and c.asleep == asleep, "%s spawned %s" % [id, "asleep" if asleep else "awake"])
+	return c
+
+
+## The think slots agree with the creatures: each slot's count is the awake creatures on it, and no
+## sleeper holds one.
+func _check_slots(sim: PoolSim, where: String) -> void:
+	var counts := [0, 0, 0, 0, 0, 0]
+	for c in sim.creatures.creatures:
+		if c.asleep:
+			check_eq(c.think_slot, -1, "%s: sleeper %s holds no slot" % [where, c.id])
+		elif c.think_slot >= 0:
+			counts[c.think_slot] += 1
+	check_eq(Array(sim.creatures._slot_counts), counts, "%s: slot counts" % where)
+
+
+## Whether a body at `p` of radius `r` is in the widest view of `place` grown by the spawn margin.
+func _in_view(sim: PoolSim, place: Vector2, p: Vector2, r: float) -> bool:
+	var margin := float(layout.camera.look_ahead_max) + float(species.fairness.spawn_view_margin_m) + r
+	return ViewFootprint.contains(place, p, layout.camera, float(layout.camera.zoom_max), float(species.fairness.spawn_view_aspect), margin)
+
+
+## Spine 3.11 step 3 and D-9: an awake site creature's reach chunks stay loaded past the unload ring
+## however long it stays awake; once it sleeps they unload on the next tick, its site and its
+## creature with them.
+func test_a_chunk_under_an_awake_creatures_reach_disc_stays_loaded() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_hold", Vector2(-20.0, 0.0))
+	var key := sim.world.chunk_of_local(c.motion.position)
+	sim.world.rings.wake = 990.0   # a config copy: it cannot sleep while the cell swims away
+	sim.world.rings.sleep = 1000.0
+	var beyond := 0
+	for t in 2400:
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		var a := sim.absolute_position_am()
+		if _ref_nearest(key, a[0], a[1]) > 72.0:
+			beyond += 1
+			if beyond >= 120:
+				break
+	check_eq(beyond, 120, "120 ticks with its chunk beyond the unload ring")
+	check(sim.world.chunk(key) != null, "held while it is awake")
+	sim.world.rings.wake = 40.0
+	sim.world.rings.sleep = 44.0
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	check(c.asleep, "it sleeps")
+	check(sim.world.chunk(key) != null, "the chunk is still there on its sleeping tick (step 3 ran first)")
+	sim.step(SimIntent.new())
+	check(sim.world.chunk(key) == null, "and gone on the next")
+	check(not sim.world.sites.has("x_hold"), "the site with it")
+	var removed := _of(sim.drain_events(), "creature_removed")
+	check(removed.size() == 1 and removed[0].id == c.id and removed[0].reason == "unloaded", "its sleeper left, unloaded")
+
+
+## G14: out 100 tm, back and out again through a site in every chunk: every creature_spawned id is
+## new, and the site counts rise by exactly one per spawn.
+func test_no_creature_id_is_spawned_twice_across_sleep_wake_unload_and_reload() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	sim.debug_set_hidden(true)
+	var before := 0
+	for site in sim.world.site_counts:
+		before += int(sim.world.site_counts[site])
+	check(before > 0, "creatures at create (%d)" % before)
+	var ids := {}
+	for c in sim.creatures.creatures:
+		ids[c.id] = true
+	var spawns := 0
+	var again := 0
+	var counts := {"creature_slept": 0, "creature_woke": 0, "chunk_unloaded": 0}
+	for t in 5400:
+		var leg := t / 1800
+		var dir := Vector2.RIGHT if leg != 1 else Vector2.LEFT
+		sim.step(SimIntent.new(dir))
+		for e in sim.drain_events():
+			if counts.has(e.type):
+				counts[e.type] += 1
+			if e.type == "creature_spawned" and not e.debug:
+				spawns += 1
+				if ids.has(e.id):
+					again += 1
+				ids[e.id] = true
+	var total := 0
+	for site in sim.world.site_counts:
+		total += int(sim.world.site_counts[site])
+	check_eq(again, 0, "no id spawned twice (%d spawns)" % spawns)
+	check_eq(total - before, spawns, "the site counts rose once per spawn")
+	check(spawns >= 20, "%d spawns" % spawns)
+	for type in counts:
+		check(int(counts[type]) > 0, "%d %s" % [counts[type], type])
+
+
+## Spine 3.11 step 5: a calm awake creature sleeps on the first tick it is beyond the sleep ring, out
+## of view and not a token holder, and not a tick before.
+func test_a_calm_creature_beyond_44_tm_and_out_of_view_sleeps() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_calm", Vector2(30.0, 0.0))
+	var r := c.phenotype.radius
+	var slept_at := -1
+	var early := 0
+	for t in 600:
+		var d := sim.motion.position.distance_to(c.motion.position)
+		var due := d > 44.0 and not _in_view(sim, sim.motion.position, c.motion.position, r) \
+			and not sim.creatures.engaged_on_player.has(c.id)
+		sim.step(SimIntent.new(Vector2.LEFT))
+		if c.asleep and not due:
+			early += 1
+		if due:
+			slept_at = t if c.asleep else -2
+			break
+	check_eq(early, 0, "not before")
+	check(slept_at >= 0, "it slept on the first tick it was due (%d)" % slept_at)
+	check(slept_at > 60, "after a swim (%d ticks)" % slept_at)
+	check_eq(Array(sim.world.sleeping_ids()), [c.id], "sleeping_ids")
+	_check_slots(sim, "after its sleep")
+
+
+## Not calm (chasing, watching or going home) or holding the token: awake at 50 tm.
+func test_a_creature_that_is_not_calm_or_holds_a_token_stays_awake() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_busy", Vector2(50.0, 0.0))
+	for pair in [["chase", "pursue"], ["rest", "watch"], ["wander", "return"], ["attack", "tell"], ["flee", ""]]:
+		c.brain.state = pair[0]
+		c.brain.phase = pair[1]
+		sim.step(SimIntent.new())
+		check(not c.asleep, "%s/%s stays awake" % pair)
+	c.brain.state = "rest"
+	c.brain.phase = ""
+	sim.creatures.engaged_on_player.append(c.id)
+	sim.step(SimIntent.new())
+	check(not c.asleep, "a token holder stays awake")
+	sim.creatures.engaged_on_player.remove_at(sim.creatures.engaged_on_player.find(c.id))
+	sim.step(SimIntent.new())
+	check(c.asleep, "calm and without the token it sleeps")
+
+
+## A sleeper wakes inside the wake ring (one beyond it stays asleep), and each waker takes the think
+## slot with the fewest awake creatures, ties to the lowest: after 24 wakes the slots hold 4 each.
+func test_a_sleeper_wakes_inside_40_tm_or_in_view_and_takes_the_emptiest_slot() -> void:
+	var sim := _quiet()
+	sim.world.caps.awake = 30
+	sim.world.caps.sleepers = 40
+	var near: Array[CreatureField.Creature] = []
+	var far: Array[CreatureField.Creature] = []
+	for i in 24:
+		var p := Vector2.from_angle(i * TAU / 24.0) * (10.0 + i)
+		near.append(_site_creature(sim, "x_n%02d" % i, p, true))
+	for i in 6:
+		far.append(_site_creature(sim, "x_f%d" % i, Vector2.from_angle(i * TAU / 6.0 + 0.3) * (41.0 + 2.0 * i), true))
+	check(sim.creatures.awake().is_empty(), "everyone asleep")
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var woke := _of(sim.drain_events(), "creature_woke")
+	check_eq(woke.size(), 24, "the 24 inside the wake ring woke")
+	var model := [0, 0, 0, 0, 0, 0]
+	var wrong := 0
+	for e in woke:
+		var want := model.find(model.min())
+		if int(e.slot) != want:
+			wrong += 1
+		model[want] += 1
+	check_eq(wrong, 0, "each took the emptiest slot, ties to the lowest")
+	check_eq(Array(sim.creatures._slot_counts), [4, 4, 4, 4, 4, 4], "equal")
+	for c in near:
+		check(not c.asleep, "%s awake" % c.id)
+		check(c.brain.wake, "%s re-decides on its first think" % c.id)
+	_check_slots(sim, "after 24 wakes")
+	for c in far:
+		check(c.asleep, "%s, %.1f tm out, still asleep" % [c.id, c.motion.position.length()])
+
+
+## C-7: a sleeper lies still (no velocity, its previous pose its pose, an idle drive), and no awake
+## brain keeps it in mind.
+func test_a_sleeper_lies_still_and_no_brain_keeps_it_as_a_target() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_still", Vector2(50.0, 0.0))
+	var other := _site_creature(sim, "x_mind", Vector2(10.0, 0.0))
+	other.brain.state = "chase"
+	other.brain.phase = "pursue"
+	other.brain.target = c.id
+	other.brain.seen[c.id] = {"position": c.motion.position, "velocity": Vector2.ZERO, "tick": sim.tick, "by": "sight",
+		"species": "rammer", "radius": c.phenotype.radius, "engageable": true}
+	other.brain.landed_on[c.id] = sim.tick
+	c.motion.velocity = Vector2(1.0, 0.5)
+	c.motion.prev_position = c.motion.position - Vector2(0.1, 0.0)
+	c.motion.prev_heading = c.motion.heading + 0.2
+	c.drive = {"mode": CreatureBrain.MODE_STEER, "move": Vector2.RIGHT, "speed_mul": 1.0, "face": 0.5, "strike": false,
+		"target": "", "feed": ""}
+	sim.step(SimIntent.new())
+	check(c.asleep, "it sleeps")
+	check_eq(c.motion.velocity, Vector2.ZERO, "still")
+	check_eq(c.motion.prev_position, c.motion.position, "no motion to interpolate")
+	check_eq(c.motion.prev_heading, c.motion.heading, "nor a turn")
+	check_eq(c.drive, CreatureField.idle_drive(c.motion.heading), "an idle drive")
+	check(not other.brain.seen.has(c.id), "forgotten")
+	check(not other.brain.landed_on.has(c.id), "its hits too")
+	check(other.brain.target != c.id, "not a target")
+	check(not sim.creatures.engaged_on_player.has(c.id), "no token")
+
+
+## G17: a sleeper is not among the bodies the senses read.
+func test_sleepers_are_not_among_the_bodies() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_sleeper", Vector2(50.0, 0.0))
+	var awake := _site_creature(sim, "x_awake", Vector2(10.0, 0.0))
+	sim.step(SimIntent.new())
+	check(c.asleep and not awake.asleep, "one asleep, one awake")
+	var ids := sim.creatures.bodies({}).map(func(b: Dictionary) -> String: return b.id)
+	check(not ids.has(c.id), "no sleeper among the bodies")
+	check(ids.has(awake.id), "the awake one is")
+	check(not sim.creatures.awake().has(c), "nor among the awake")
+
+
+## Spine 3.11 step 4.1: on the tick a sleeper wakes, every chunk its site lists is loaded first.
+func test_a_wakers_reach_chunks_load_before_it_wakes() -> void:
+	var sim := _quiet()
+	var c := _site_creature(sim, "x_waker", Vector2(60.0, 0.0), true)
+	var far_key := sim.world.chunk_of_local(Vector2(0.0, -200.0))
+	check(sim.world.chunk(far_key) == null, "a far chunk, not loaded")
+	sim.world.sites["x_waker"].chunks = [sim.world.chunk_of_local(c.motion.position), far_key] as Array[Vector2i]
+	c.motion.place(Vector2(30.0, 0.0), 0.0)   # inside the wake ring now
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	check(not c.asleep, "it woke")
+	var order: Array = []
+	for e in sim.drain_events():
+		if (e.type == "chunk_loaded" and e.key == far_key) or e.type == "creature_woke":
+			order.append(e.type)
+	check_eq(order, ["chunk_loaded", "creature_woke"], "its chunk loaded first")
+	check(sim.world.chunk(far_key) != null, "and is loaded")
+	sim.step(SimIntent.new())
+	check(sim.world.chunk(far_key) != null, "held while it is awake")
+
+
+## Over caps.awake the farthest calm creature between the rings sleeps (ties by id), one at a time;
+## with none there awake_overflow counts once a tick.
+func test_awake_overflow_sleeps_the_farthest_calm_creature_in_the_band_or_counts() -> void:
+	var sim := _quiet()
+	sim.world.caps.awake = 2
+	sim.world.caps.sleepers = 2
+	var a := _site_creature(sim, "x_a41", Vector2(41.0, 0.0))
+	var b := _site_creature(sim, "x_b43", Vector2(0.0, -43.0))
+	var d := _site_creature(sim, "x_d43", Vector2(-43.5, 0.0))
+	var near := _site_creature(sim, "x_near", Vector2(0.0, 20.0))
+	d.brain.state = "chase"   # not calm: never picked
+	d.brain.phase = "pursue"
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var slept := _of(sim.drain_events(), "creature_slept").map(func(e: Dictionary) -> String: return e.id)
+	check_eq(slept, [b.id, a.id], "the farthest calm one first, then the next")
+	check(not d.asleep and not near.asleep, "the busy one and the near one stay awake")
+	check_eq(int(sim.world.counters.awake_overflow), 0, "no overflow")
+	# Now none is in the band: d is busy, near is inside the wake ring.
+	near.motion.place(Vector2(0.0, 10.0), 0.0)
+	var c2 := _site_creature(sim, "x_c2", Vector2(15.0, 5.0))
+	for t in 3:
+		sim.step(SimIntent.new())
+	check_eq(sim.creatures.awake().size(), 3, "three awake over a cap of 2")
+	check_eq(int(sim.world.counters.awake_overflow), 3, "counted once a tick")
+	check(not c2.asleep, "c2 awake")
+
+
+## Over caps.sleepers the farthest sleeper is evicted ("evicted") and its site waits its hashed
+## respawn delay.
+func test_sleeper_eviction_removes_the_farthest_and_requeues_it_with_its_hashed_delay() -> void:
+	var sim := _quiet()
+	sim.world.caps.awake = 2
+	sim.world.caps.sleepers = 2
+	var s45 := _site_creature(sim, "x_s45", Vector2(45.0, 0.0), true)
+	var s55 := _site_creature(sim, "x_s55", Vector2(0.0, 55.0), true)
+	var s50 := _site_creature(sim, "x_s50", Vector2(-50.0, 0.0), true)
+	var delay := sim.creatures.respawn_delay_for(s55)
+	sim.drain_events()
+	var at := sim.tick
+	sim.step(SimIntent.new())
+	var removed := _of(sim.drain_events(), "creature_removed")
+	check(removed.size() == 1 and removed[0].id == s55.id and removed[0].reason == "evicted", "the farthest evicted")
+	check(sim.creatures.find(s45.id) != null and sim.creatures.find(s50.id) != null, "the others kept")
+	check_eq(int(sim.world.counters.evictions), 1, "counted")
+	var entry: Array = sim.creatures.queue.filter(func(e: Dictionary) -> bool: return e.site == "x_s55")
+	check_eq(entry.size(), 1, "its site queued")
+	if entry.size() == 1:
+		check_eq(int(entry[0].at_tick), at + delay, "at its hashed delay")
+	check(sim.world.sites.has("x_s55"), "the site stays in the table")
+
+
+## C-6: a scripted body and a siteless (debug) creature never sleep; a site creature as far does.
+func test_scripted_and_siteless_creatures_never_sleep() -> void:
+	var sim := _quiet()
+	check(sim.debug_spawn_creature("rammer", Vector2(50.0, 0.0), 0.0), "a debug creature")
+	var debug_c := sim.creatures.creatures[-1]
+	var scripted := sim.creatures.spawn_scripted("decoy", sim.phenotype, Vector2(0.0, 50.0), 0.0, sim.tick)
+	var site_c := _site_creature(sim, "x_far", Vector2(-50.0, 0.0))
+	for t in 3:
+		sim.step(SimIntent.new())
+	check(not debug_c.asleep and sim.creatures.awake().has(debug_c), "the debug creature awake")
+	check(not scripted.asleep and sim.creatures.awake().has(scripted), "the scripted body awake")
+	check(site_c.asleep, "the site creature asleep")
+
+
+## Step 5's one pass runs (slot, number, id) over the awake, then the sleepers by (number, id): the
+## order of six transitions on one tick.
+func test_the_pass_order_is_slot_then_number_then_id() -> void:
+	var sim := _quiet()
+	sim.world.caps.awake = 30
+	sim.world.caps.sleepers = 30
+	var awake: Array[CreatureField.Creature] = []
+	for i in 8:
+		awake.append(_site_creature(sim, "x_w%d" % i, Vector2.from_angle(i * TAU / 8.0) * 12.0))
+	check_eq(awake.map(func(c: CreatureField.Creature) -> int: return c.think_slot), [0, 1, 2, 3, 4, 5, 0, 1], "slots in spawn order")
+	var sleepers: Array[CreatureField.Creature] = []
+	for i in 2:
+		sleepers.append(_site_creature(sim, "x_z%d" % i, Vector2(0.0, 18.0 + 4.0 * i), true))
+	# Four go far (slots 1, 0, 0, 3), the two sleepers are inside the wake ring.
+	var movers: Array[CreatureField.Creature] = [awake[1], awake[0], awake[6], awake[3]]
+	for i in movers.size():
+		movers[i].motion.place(Vector2.from_angle(0.4 + i * TAU / 4.0) * 50.0, 0.0)
+	var want: Array = []
+	var by_pass := movers.duplicate()
+	by_pass.sort_custom(func(p: CreatureField.Creature, q: CreatureField.Creature) -> bool:
+		return p.think_slot < q.think_slot or (p.think_slot == q.think_slot and (p.number < q.number or (p.number == q.number and p.id < q.id))))
+	for c in by_pass:
+		want.append("slept " + c.id)
+	var waking := sleepers.duplicate()
+	waking.sort_custom(func(p: CreatureField.Creature, q: CreatureField.Creature) -> bool:
+		return p.number < q.number or (p.number == q.number and p.id < q.id))
+	for c in waking:
+		want.append("woke " + c.id)
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	var got: Array = []
+	for e in sim.drain_events():
+		if e.type == "creature_slept":
+			got.append("slept " + e.id)
+		elif e.type == "creature_woke":
+			got.append("woke " + e.id)
+	check_eq(got, want, "slot, number, id; sleepers last")
+	_check_slots(sim, "after six transitions")
+	check(awake[0].number != awake[6].number, "(two on slot 0 ordered by number)")
+
+
+## The snapshot's sleeping and slots: the sleepers' ids sorted, and every awake creature's slot.
+func test_the_snapshot_holds_the_sleepers_and_the_slots() -> void:
+	var sim := _quiet()
+	var a := _site_creature(sim, "x_s1", Vector2(10.0, 0.0))
+	var b := _site_creature(sim, "x_s2", Vector2(-10.0, 0.0))
+	var z := _site_creature(sim, "x_s3", Vector2(0.0, 60.0), true)
+	var w: Dictionary = sim.snapshot().world
+	check_eq(w.sleeping, [z.id], "sleeping")
+	var want := {a.id: a.think_slot, b.id: b.think_slot}
+	check_eq(w.slots, want, "slots")
+	var ids := want.keys()
+	ids.sort()
+	check_eq(w.slots.keys(), ids, "in id order")
