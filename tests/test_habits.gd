@@ -2,12 +2,10 @@ extends TestCase
 ## S2's habits (B.7, D-23, gate S2G6): a brain with two posts moves between them only from a CALM
 ## state with no target, the Lurker after its dwell with the cell out of sight, the elder rammer when
 ## the cell is nearer the other zone by the hysteresis; its leash disc is the union of the two posts'
-## (D-82), its moves stay inside it, and a rebase shifts the posts (D-83). The brains are built from
-## creatures_m1.json's ambush hunter and rammer with spine 4.2's habits, as the two new species are.
+## (D-82), its moves stay inside it, and a rebase shifts the posts (D-83). The brains are
+## creatures_m1.json's Lurker and elder rammer at their entry size.
 
 const DT := 1.0 / 60.0
-const LURKER_HABIT := {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
-const ELDER_HABIT := {"post_switch": "nearer_cell", "post_hysteresis_m": 2.0}
 ## Every state and phase the brain has, so the CALM table is checked against all their pairs.
 const STATES := ["rest", "wander", "forage", "notice", "chase", "attack", "flee"]
 const PHASES := ["", "lurk", "watch", "patrol", "return", "seek", "eat", "wait", "pursue", "aim", "tell", "strike",
@@ -18,6 +16,9 @@ const LURK_B := Vector2(8.0, 0.0)
 const ZONE_A := Vector2(0.0, 0.0)
 const ZONE_B := Vector2(10.0, 0.0)
 const ZONE_R := 3.0
+## Two-post sites on a bounded arena, before the tiles exist (spine 3.17); other test files read it
+## through posts_fixture().
+const POSTS_FIXTURE := "res://tests/fixtures/creatures_posts_test.json"
 
 var parts: PartCatalog
 var species: SpeciesCatalog
@@ -54,15 +55,58 @@ class Critter:
 func before_each() -> void:
 	parts = PartCatalog.load_from()
 	species = SpeciesCatalog.load_from()
-	lurker_cfg = _cfg("lurker", "ambush_hunter", LURKER_HABIT)
-	elder_cfg = _cfg("elder_rammer", "rammer", ELDER_HABIT, {"nav_timeout_s": 16.0})
+	lurker_cfg = species.brain_config("lurker")
+	elder_cfg = species.brain_config("elder_rammer")
 
 
-func _cfg(id: String, parent: String, habit: Dictionary, extra := {}) -> Dictionary:
-	var block: Dictionary = species.species[parent].duplicate(true)
-	block["habit"] = habit
-	block.merge(extra, true)
-	return CreatureBrain.config(id, block, species.ai)
+## creatures_posts_test.json read for tests: {"soft_start", "rocks": [{"id", "center", "radius"}],
+## "sites": [{"id", "species", "home", "heading", "territory", "post_b": {"home", "heading",
+## "territory"}, "posts" (CreatureBrain.set_posts' two posts)}]}, each territory its zone's circle ({}
+## for an ambush post).
+static func posts_fixture() -> Dictionary:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(POSTS_FIXTURE))
+	var zones := {}
+	for z in data.zones:
+		zones[z.id] = {"center": Vector2(z.center[0], z.center[1]), "radius": float(z.radius)}
+	var rocks: Array[Dictionary] = []
+	for r in data.arena.rocks:
+		rocks.append({"id": str(r.id), "center": Vector2(r.center[0], r.center[1]), "radius": float(r.radius)})
+	var sites: Array[Dictionary] = []
+	for s in data.sites:
+		var b: Dictionary = s.post_b
+		var site := {"id": str(s.id), "species": str(s.species), "home": Vector2(s.home[0], s.home[1]), "heading": float(s.heading),
+			"territory": zones.get(str(s.get("territory_zone", "")), {}),
+			"post_b": {"home": Vector2(b.home[0], b.home[1]), "heading": float(b.heading),
+				"territory": zones.get(str(b.get("territory_zone", "")), {})}}
+		site["posts"] = [{"home": site.home, "heading": site.heading, "territory": site.territory}, site.post_b.duplicate()]
+		sites.append(site)
+	return {"soft_start": float(data.arena.soft_start), "rocks": rocks, "sites": sites}
+
+
+## The site's two posts moved so that post a's home is `at` (zones with them), as set_posts takes them.
+static func posts_at(site: Dictionary, at: Vector2) -> Array:
+	var by: Vector2 = at - Vector2(site.home)
+	var out: Array = []
+	for p in site.posts:
+		var t: Dictionary = p.territory
+		out.append({"home": Vector2(p.home) + by, "heading": p.heading,
+			"territory": {} if t.is_empty() else {"center": Vector2(t.center) + by, "radius": t.radius}})
+	return out
+
+
+## The shells within the post-path capsule of a two-post site (BP-11): the segment between its post
+## homes, widened by the body's radius plus the route clearance, both at q (the species' own size).
+static func capsule_hits(site: Dictionary, radius: float, q: float, rocks: Array[Dictionary]) -> Array:
+	var reach := radius + float(CreatureBrain.WORLD_LENGTHS.route_clearance) * q
+	var a: Vector2 = site.home
+	var b: Vector2 = site.post_b.home
+	var out := []
+	for r in rocks:
+		var p: Vector2 = r.center
+		var t := clampf((p - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
+		if p.distance_to(a + (b - a) * t) - float(r.radius) <= reach:
+			out.append(r.id)
+	return out
 
 
 ## A settled Lurker resting at post A, posts A and B.
@@ -73,7 +117,7 @@ func _lurker(tick := 0) -> Critter:
 	CreatureBrain.set_posts(c.mem, [{"home": LURK_A, "heading": 0.0, "territory": {}},
 		{"home": LURK_B, "heading": PI, "territory": {}}])
 	c.m = Locomotion.MotionState.new(LURK_A, 0.0)
-	c.p = species.phenotype("ambush_hunter", parts)
+	c.p = species.phenotype("lurker", parts)
 	return c
 
 
@@ -87,7 +131,7 @@ func _elder(tick := 0, cfg := {}) -> Critter:
 	CreatureBrain.set_posts(c.mem, [{"home": home_a, "heading": PI / 2.0, "territory": {"center": ZONE_A, "radius": ZONE_R}},
 		{"home": ZONE_B + Vector2(0.0, 1.0), "heading": -PI / 2.0, "territory": {"center": ZONE_B, "radius": ZONE_R}}])
 	c.m = Locomotion.MotionState.new(home_a, PI / 2.0)
-	c.p = species.phenotype("rammer", parts)
+	c.p = species.phenotype("elder_rammer", parts)
 	return c
 
 
@@ -149,7 +193,7 @@ func test_set_posts_takes_post_zero_and_its_leash_disc_is_the_union_of_its_posts
 	var want := CreatureBrain.union_disc({"center": LURK_A, "radius": leash}, {"center": LURK_B, "radius": leash})
 	check_eq(CreatureBrain.leash_disc(c.mem), want, "the Lurker's leash disc is its two posts' union")
 	check_eq(want.radius, leash + 4.0, "which spans both posts")
-	var site := {"species": "ambush_hunter", "home": LURK_A, "heading": 0.0}
+	var site := {"species": "lurker", "home": LURK_A, "heading": 0.0}
 	var catalog := species.two_post_disc_for(site, {}, {"home": LURK_B, "heading": PI}, {})
 	check_eq(CreatureBrain.leash_disc(c.mem), {"center": catalog.center, "radius": catalog.radius},
 		"and the species catalog's two-post disc (the worldgen's reach)")
@@ -164,7 +208,7 @@ func test_set_posts_takes_post_zero_and_its_leash_disc_is_the_union_of_its_posts
 		"the elder rammer's leash disc is the union of its one-post discs")
 	check_eq(e.mem.territory_center, ZONE_A, "it guards zone A")
 	check_eq(e.mem.territory_r, ZONE_R + float(elder_cfg.territory_margin_m), "with its margin")
-	var e_site := {"species": "rammer", "home": e.mem.posts[0].home, "heading": PI / 2.0}
+	var e_site := {"species": "elder_rammer", "home": e.mem.posts[0].home, "heading": PI / 2.0}
 	var e_catalog := species.two_post_disc_for(e_site, {"center": ZONE_A, "radius": ZONE_R}, e.mem.posts[1],
 		{"center": ZONE_B, "radius": ZONE_R})
 	check_eq(CreatureBrain.leash_disc(e.mem), {"center": e_catalog.center, "radius": e_catalog.radius},
@@ -373,3 +417,27 @@ func test_a_rebase_shifts_every_post_and_the_union_centre() -> void:
 	var plain := CreatureBrain.create("ambush", lurker_cfg, LURK_A, 0.0, {}, 7, 0)
 	RebaseShift.posts(plain, by)
 	check(not plain.leash_center.is_finite(), "a brain without posts is left as it is")
+
+
+# --- the posts fixture (BP-11) ---
+
+func test_the_posts_fixture_puts_no_shell_within_any_post_path_capsule() -> void:
+	var fx := posts_fixture()
+	check_eq(fx.sites.map(func(s: Dictionary) -> String: return s.species), ["lurker", "elder_rammer"], "one site of each")
+	for site: Dictionary in fx.sites:
+		var id: String = site.species
+		var n := species.entry_size(id)
+		var record := species.at_size(id, n, parts)
+		var radius: float = (record.phenotype as Phenotype).radius
+		check_eq(record.q, 1.0, "%s at its entry size" % id)
+		check_eq(capsule_hits(site, radius, record.q, fx.rocks), [], "%s: the path between its posts is clear" % site.id)
+		# The same check finds a shell put across the path, and one just touching the capsule.
+		var mid: Vector2 = (Vector2(site.home) + Vector2(site.post_b.home)) / 2.0
+		var across: Array[Dictionary] = [{"id": "across", "center": mid, "radius": 0.5}]
+		check_eq(capsule_hits(site, radius, record.q, across), ["across"], "%s: a shell across the path is found" % site.id)
+		var side := (Vector2(site.post_b.home) - Vector2(site.home)).orthogonal().normalized()
+		var reach := radius + float(CreatureBrain.WORLD_LENGTHS.route_clearance)
+		var touching: Array[Dictionary] = [{"id": "touching", "center": mid + side * (reach + 0.5 - 1e-3), "radius": 0.5}]
+		check_eq(capsule_hits(site, radius, record.q, touching), ["touching"], "%s: so is one touching the capsule" % site.id)
+		var clear: Array[Dictionary] = [{"id": "clear", "center": mid + side * (reach + 0.5 + 1e-3), "radius": 0.5}]
+		check_eq(capsule_hits(site, radius, record.q, clear), [], "%s: and not one just clear of it" % site.id)
