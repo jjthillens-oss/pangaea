@@ -31,13 +31,16 @@ const RIVAL_LOD_M := 40.0
 const MEAT_INSTANCES_MAX := 64
 const NO_LEGS_NOTICE := "This creature needs legs to walk"
 const DEATH_NOTICE := "You were %s. Back at the nest; %d points lost."
-## Camera (PROPOSED): behind and above, the distance from the body length, orbit by the right stick or a middle-drag.
-const CAMERA_DISTANCE_PER_BODY_M := 3.2
-const CAMERA_DISTANCE_MIN_M := 3.0
-const CAMERA_DISTANCE_MAX_M := 14.0
-const CAMERA_PITCH_DEG := 22.0
-const CAMERA_PITCH_MIN_DEG := 5.0
+## Camera (PROPOSED): behind and above, the distance from the body length (Spore-close: the creature fills a good
+## part of the frame), orbit by the right stick or a middle-drag. The eye never goes under the field: it is held at
+## least CAMERA_GROUND_CLEARANCE_M over the plane whatever the pitch.
+const CAMERA_DISTANCE_PER_BODY_M := 2.4
+const CAMERA_DISTANCE_MIN_M := 2.6
+const CAMERA_DISTANCE_MAX_M := 12.0
+const CAMERA_PITCH_DEG := 16.0
+const CAMERA_PITCH_MIN_DEG := 3.0
 const CAMERA_PITCH_MAX_DEG := 70.0
+const CAMERA_GROUND_CLEARANCE_M := 0.35
 const CAMERA_STICK_RAD_S := 2.4
 const CAMERA_DRAG_RAD_PX := 0.006
 const CAMERA_FOLLOW_HALF_LIFE_S := 0.1
@@ -51,10 +54,13 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 ## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
-const FIELD_COLOR := Color(0.36, 0.47, 0.27)
-const NEST_COLOR := Color(0.78, 0.66, 0.42)
-const FRUIT_RIPE_COLOR := Color(0.82, 0.3, 0.32)
-const FRUIT_BARE_COLOR := Color(0.3, 0.45, 0.24)
+## The field's look (PROPOSED): a mid-dark grass under a soft sun, so the fruit (the food cue) and the skins read
+## against it; roughness 1 keeps the plane from catching a sheen.
+const FIELD_COLOR := Color(0.2, 0.3, 0.14)
+const FIELD_ROUGHNESS := 1.0
+const NEST_COLOR := Color(0.7, 0.58, 0.36)
+const FRUIT_RIPE_COLOR := Color(0.92, 0.3, 0.3)
+const FRUIT_BARE_COLOR := Color(0.28, 0.42, 0.2)
 const MEAT_COLOR := Color(0.6, 0.2, 0.18)
 
 var sim: CreatureWorldSim
@@ -212,7 +218,7 @@ func _build_ground() -> void:
 	plane.size = Vector2(2.0 * sim.half_size, 2.0 * sim.half_size)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = FIELD_COLOR
-	mat.roughness = 0.95
+	mat.roughness = FIELD_ROUGHNESS
 	plane.material = mat
 	field.mesh = plane
 	add_child(field)
@@ -383,7 +389,9 @@ func _follow_camera(delta: float) -> void:
 func _place_camera() -> void:
 	var back := Vector3(sin(camera_yaw), 0.0, cos(camera_yaw))
 	var offset := back * cos(camera_pitch) * camera_distance + Vector3(0.0, sin(camera_pitch) * camera_distance, 0.0)
-	camera.look_at_from_position(_focus + offset, _focus, Vector3.UP)
+	var eye := _focus + offset
+	eye.y = maxf(eye.y, CAMERA_GROUND_CLEARANCE_M)
+	camera.look_at_from_position(eye, _focus, Vector3.UP)
 
 
 ## The skin colour the body carries ("skin_color", "rrggbb" or "#rrggbb" from the editor's swatch), else

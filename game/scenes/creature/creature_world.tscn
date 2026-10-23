@@ -4,13 +4,14 @@
 [ext_resource type="PackedScene" path="res://game/ui/creature_world_hud.tscn" id="2_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_material"]
-sky_top_color = Color(0.16, 0.3, 0.62, 1)
-sky_horizon_color = Color(0.68, 0.78, 0.9, 1)
-sky_curve = 0.12
-ground_bottom_color = Color(0.12, 0.17, 0.22, 1)
-ground_horizon_color = Color(0.62, 0.7, 0.78, 1)
-sun_angle_max = 20.0
-sun_curve = 0.1
+sky_top_color = Color(0.13, 0.3, 0.6, 1)
+sky_horizon_color = Color(0.52, 0.64, 0.78, 1)
+sky_curve = 0.09
+ground_bottom_color = Color(0.42, 0.54, 0.66, 1)
+ground_horizon_color = Color(0.52, 0.64, 0.78, 1)
+ground_curve = 0.08
+sun_angle_max = 18.0
+sun_curve = 0.12
 
 [sub_resource type="Sky" id="Sky_daylight"]
 sky_material = SubResource("Sky_material")
@@ -19,14 +20,22 @@ sky_material = SubResource("Sky_material")
 background_mode = 2
 sky = SubResource("Sky_daylight")
 ambient_light_source = 3
-ambient_light_energy = 0.55
+ambient_light_energy = 0.4
 tonemap_mode = 2
+tonemap_exposure = 0.9
 tonemap_white = 1.3
 ssao_enabled = false
 fog_enabled = true
-fog_light_color = Color(0.72, 0.8, 0.9, 1)
-fog_density = 0.0035
-fog_sky_affect = 0.15
+fog_mode = 1
+fog_light_color = Color(0.52, 0.64, 0.78, 1)
+fog_light_energy = 1.0
+fog_sun_scatter = 0.0
+fog_density = 1.0
+fog_aerial_perspective = 0.5
+fog_sky_affect = 0.0
+fog_depth_curve = 1.2
+fog_depth_begin = 20.0
+fog_depth_end = 78.0
 
 [node name="CreatureWorld" type="Node3D"]
 script = ExtResource("1_world")
@@ -36,8 +45,8 @@ environment = SubResource("Environment_field")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 rotation = Vector3(-0.872665, -0.523599, 0)
-light_color = Color(1, 0.97, 0.9, 1)
-light_energy = 1.4
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.0
 shadow_enabled = true
 directional_shadow_mode = 1
 directional_shadow_max_distance = 80.0

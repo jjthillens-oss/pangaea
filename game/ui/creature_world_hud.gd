@@ -6,7 +6,8 @@ extends Control
 ##   top right:     points, with a "+N" flash after a meal
 ##   top center:    one notice line at a time: "Return to the nest to evolve", the death notice, "This creature
 ##                  needs legs to walk" (which stays while it is true)
-##   bottom center: the controls, named from the bindings for the device in use (InputPrompts)
+##   bottom center: the controls, named from the bindings for the device in use (InputPrompts), on the same dark
+##                  pill as the cards so they read over the field
 ## Labels refresh at 10 Hz; the bar every frame. The HUD ignores the mouse, so the orbit drag reaches the camera.
 
 const LABEL_REFRESH_S := 0.1
