@@ -22,7 +22,7 @@ Pinned in `tools/toolchain.env`. Inspected and verified on 2026-10-22.
 
 ## What `tools/check.sh` runs
 
-In this order; any failure stops it. It takes about 4.5 minutes in the Linux container, about 4 of them in the unit suite (its three slow gates about 2). Every Godot run has a time limit (the import and the release pack's export 600 s, the unit suite 900 s, every other run 300 s), so a hang fails the check with exit code 124 instead of running until CI cancels the job. The limits come from `tools/bounded.sh`, which keeps each run in the script's process group, so Ctrl-C stops the check at once and no Godot outlives it; `tools/test_bounded.sh` checks that before the import (about 12 s). The test runner prints each test's name as it starts and `ok` or `FAIL` as it ends, so a stopped suite still shows the results so far and names the test that hung; the failures are listed again above the totals.
+In this order; any failure stops it. It takes about 6 minutes in the shared 4-CPU Linux container (5 min 44 s at T0.8 on 2026-10-23: 586 tests), most of it in the unit suite. Every Godot run has a time limit (the import and the release pack's export 600 s, the unit suite 1200 s, every other run 300 s), so a hang fails the check with exit code 124 instead of running until CI cancels the job. The unit suite's 1200 s (900 s until S1) and CI's 40-minute `test-and-export` timeout (30 until S1) hold the S1 budgets (S1 build plan B-13): the fast tier may grow by 48 s over the S1 base and the slow tier by 150 s, in per-track shares, and each PR records its measured slow time. The limits come from `tools/bounded.sh`, which keeps each run in the script's process group, so Ctrl-C stops the check at once and no Godot outlives it; `tools/test_bounded.sh` checks that before the import (about 12 s). The test runner prints each test's name as it starts and `ok` or `FAIL` as it ends, so a stopped suite still shows the results so far and names the test that hung; the failures are listed again above the totals.
 
 1. `--import`.
 2. `tests/run_tests.gd`: the whole test suite, slow gates included.
@@ -37,7 +37,31 @@ In this order; any failure stops it. It takes about 4.5 minutes in the Linux con
 
 Steps 4 to 8 write `builds/smoke/launch.log`, `found.log`, `continue.log`, `ui.log`, `die_and_quit.log` and `after_death.log`. Smoke saves go to `user://smoke/`, never to the player's slot. Run `tools/write_build_info.sh` first if the build id should name the commit; otherwise it says `dev`. To keep a check run away from your own Godot user data, set `XDG_DATA_HOME` to a scratch folder, as an absolute path (Godot ignores a relative one).
 
-The test runner takes two flags after `--`: `--skip-slow` skips the `test_slow_*` gates (for quick local loops) and `--only=test_creature_brain,test_threats_sim` runs only those files (a name that matches no file fails the run). `check.sh` and CI pass neither.
+The test runner (`tests/run_tests.gd`) takes these flags after `--`. `check.sh` passes none, so it runs every fast and slow test and no soak test.
+
+| Flag | Effect |
+| --- | --- |
+| `--skip-slow` | Skips the `test_slow_*` gates, for quick local loops. |
+| `--only=test_creature_brain,test_threats_sim` | Runs only those files, named without `.gd`. |
+| `--skip=test_endless_gates,test_endless_cost` | Runs every file but those. A file named in both lists is skipped. |
+| `--soak` | Runs only the `test_soak_*` methods (the soak tier, below), still honouring `--only` and `--skip`. Without it no soak test runs, and the totals note how many were skipped. |
+
+A name in `--only` or `--skip` that matches no file fails the run, and so does a run in which no test ran, so a typo cannot pass unnoticed.
+
+## The soak tier: `tools/check_soak.sh`
+
+The long S1 gates are `test_soak_*` methods: the golden M1 hashes at 18,000 ticks and, as the endless world lands, the long swims, the seams and the samples. `tools/check.sh` never runs them. `tools/check_soak.sh [path-to-godot] [--only=a,b | --skip=a,b]` runs `tools/test_bounded.sh`, the import (600 s limit), then `tests/run_tests.gd -- --soak` with any runner flags passed on, under a 3600 s limit. The flags may come without the Godot path.
+
+CI runs it in two jobs, in parallel with `test-and-export` and with each other, each with a 75-minute timeout (S1 build plan B-14):
+
+| Job | Command | Holds |
+| --- | --- | --- |
+| `soak-a` | `tools/check_soak.sh --only=test_endless_gates,test_endless_cost` | The endless gates (straight swims, the corner circle, #32, #33, hunter viability, F9, the 10 km hash) and the cost soak cases. |
+| `soak-b` | `tools/check_soak.sh --skip=test_endless_gates,test_endless_cost` | Every other soak file, so a new one lands here without a list edit: the 18,000-tick goldens, and later the seams, the content passes, `sample_sites` and the home ring. |
+
+`tests/test_m1_goldens.gd` checks both jobs' commands and timeouts, and that between them they take every test file exactly once. S1 sign-off needs both green on the final commit. If either job measures over 60 minutes, the diagonal seam placements and any sample beyond 1,000 move to a nightly workflow, `ci-nightly.yml`.
+
+Measured on 2026-10-23 at T0.8, in the shared 4-CPU container: `soak-b`'s command took 86 s (the 18,000-tick goldens, after `test_bounded.sh` and the import), and `soak-a`'s 18 s, because its gates still wait on T2.8 and print what they wait on. The S1 planning estimates are about 28 minutes for `soak-a` and 35 for `soak-b` once every gate runs; each PR records its measured times.
 
 ## Windows builds
 
@@ -48,7 +72,7 @@ The test runner takes two flags after `--`: `--skip-slow` skips the `test_slow_*
 | `builds/windows/Pangaea.exe` | `Windows Desktop` (release) | The game. `game/dev/` and `tests/` are left out. |
 | `builds/windows/Pangaea-dev.exe` | `Windows Desktop Dev` (debug) | The game plus the dev tools in `game/dev/`: the debug panel (F3), dev keys (F5 to F10), gizmos, the bots and the perf tour. `tests/` is left out. |
 
-There is no console wrapper (`Pangaea-dev.console.exe`) yet, because `tools/setup_toolchain.sh` installs only the release and debug templates. CI runs `check.sh`, then the export, and uploads both exes as one artifact.
+There is no console wrapper (`Pangaea-dev.console.exe`) yet, because `tools/setup_toolchain.sh` installs only the release and debug templates. CI's `test-and-export` job (40-minute timeout) runs `check.sh`, then the export, and uploads both exes as one artifact; the soak jobs run beside it.
 
 ## Launch flags
 
@@ -176,6 +200,8 @@ Each script builds its assets from code and writes the `.blend`, the GLB and the
 | `tools/blender/make_m1_blockouts.py [--only id[,id...]]` | The step 2 blockouts: pool floor, rocks, plankton, carrion and four parts. |
 | `tools/blender/make_m1_threats.py [--only id[,id...]]` | The step 3 blockouts: `creature_ambush_body`, `creature_rammer_body` and `part_spike`. GLBs and records come out byte-identical on every run. |
 | `tools/blender/make_m1_micro_rim.py` | `pool_rim`, the microscopic world's placeholder dish wall, which takes the floor's place at the pool's edge. It reads the old floor's rim height field from `make_m1_blockouts.py`. GLB and record come out byte-identical on every run. |
+| `tools/blender/make_s1_kit.py [--only id[,id...]]` | The endless world's band-0 placement kit (S1): five shells, six landmarks, the two rare set pieces and the two markers. It checks each piece against the kit's art contract before export, then writes `game/data/placement_kit.json` from the records, the home rocks `rock_a` to `rock_c` included; `tests/test_kit_assets.gd` checks the same contract. See `docs/art/endless_s1_kit.md`. |
+| `tools/blender/make_s1_production.py [--only id[,id...]]` | The finished versions of the same kit pieces: `make_s1_kit.py`'s builders, so the same geometry, ids and colliders, surfaced and baked to one texture set each. It rewrites `game/data/placement_kit.json` too. |
 
 The threat bodies and the pool rim are vertex-coloured. Godot's glTF import ignores `COLOR_0`, so each `.glb.import` maps the surface material to an external `.tres` (`M_PoolRim`, `M_AmbushBody`, `M_RammerBody`) through `_subresources`; keep that mapping when an import file is rewritten.
 

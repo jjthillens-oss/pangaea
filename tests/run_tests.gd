@@ -7,12 +7,16 @@ extends SceneTree
 ## time limit (tools/check.sh) still shows every result so far and names the test that hung; the
 ## failures are repeated after the last test, above the totals.
 ##
-## Flags, for quick local loops only (tools/check.sh and CI pass none and run everything but soak):
-##   --skip-slow     skips the methods named test_slow_*
+## Flags (tools/check.sh passes none and runs everything but soak):
+##   --skip-slow     skips the methods named test_slow_*, for quick local loops
 ##   --only=a,b      runs only these files, named without ".gd" (test_creature_brain,test_pool_sim)
+##   --skip=a,b      runs every file but these (S1 build plan B-14); a file named in both is skipped
+## A name in --only or --skip that matches no file fails the run, so a typo cannot pass unnoticed.
 ##
 ## Soak tier (S1): the methods named test_soak_* never run by default; --soak runs only them (still
-## honouring --only=). tools/check_soak.sh passes --soak, in CI's parallel job "soak".
+## honouring --only= and --skip=). tools/check_soak.sh passes --soak, in CI's two parallel jobs:
+## soak-a runs --only=test_endless_gates,test_endless_cost and soak-b --skip= the same files, so a
+## new soak file lands in soak-b without a list edit.
 
 
 ## Counts script errors (not push_error messages, which some tests expect) as they are logged.
@@ -36,23 +40,21 @@ func _initialize() -> void:
 	var errors := ScriptErrorCounter.new()
 	OS.add_logger(errors)
 	var flags := _flags(OS.get_cmdline_user_args())
-	var only: PackedStringArray = flags.only
 	var files := DirAccess.get_files_at("res://tests")
 	var total := 0
 	var failed := 0
 	var skipped := 0
 	var soak_skipped := 0
 	var failures: Array[String] = []   ## every FAIL line and its details, repeated at the end
-	for wanted in only:
-		if not files.has(wanted + ".gd"):
-			# A misspelt name would otherwise run nothing and look like a pass.
-			total += 1
-			failed += 1
-			_report(failures, ["FAIL --only: there is no tests/%s.gd" % wanted])
+	for problem in flag_problems(files, flags):
+		# A misspelt name would otherwise run nothing (--only) or everything (--skip) and look fine.
+		total += 1
+		failed += 1
+		_report(failures, ["FAIL " + problem])
 	for file in files:
 		if not (file.begins_with("test_") and file.ends_with(".gd")) or file == "test_case.gd":
 			continue
-		if not only.is_empty() and not only.has(file.get_basename()):
+		if not file_selected(file.get_basename(), flags):
 			continue
 		var script: GDScript = load("res://tests/" + file)
 		if script == null or not script.can_instantiate():
@@ -133,17 +135,47 @@ static func tier_of(method_name: String, flags: Dictionary) -> String:
 	return "run"
 
 
-## {"skip_slow": bool, "soak": bool, "only": PackedStringArray} from the arguments after "--".
+## Whether the run takes the test file `name` (without ".gd"): in --only when it is given, and
+## never in --skip. tests/test_m1_goldens.gd checks it.
+static func file_selected(name: String, flags: Dictionary) -> bool:
+	var only: PackedStringArray = flags.only
+	var skip: PackedStringArray = flags.skip
+	return not skip.has(name) and (only.is_empty() or only.has(name))
+
+
+## One message for each name in --only or --skip that matches none of `files` (the file names in
+## tests/), each of which fails the run.
+static func flag_problems(files: PackedStringArray, flags: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	for flag in ["only", "skip"]:
+		for wanted in flags[flag]:
+			if not files.has(wanted + ".gd"):
+				out.append("--%s: there is no tests/%s.gd" % [flag, wanted])
+	return out
+
+
+## {"skip_slow": bool, "soak": bool, "only": PackedStringArray, "skip": PackedStringArray} from the
+## arguments after "--".
 static func _flags(args: PackedStringArray) -> Dictionary:
 	var skip_slow := false
 	var soak := false
 	var only := PackedStringArray()
+	var skip := PackedStringArray()
 	for arg in args:
 		if arg == "--skip-slow":
 			skip_slow = true
 		elif arg == "--soak":
 			soak = true
 		elif arg.begins_with("--only="):
-			for name in arg.trim_prefix("--only=").split(",", false):
-				only.append(name.strip_edges().trim_suffix(".gd"))
-	return {"skip_slow": skip_slow, "soak": soak, "only": only}
+			only.append_array(_names(arg.trim_prefix("--only=")))
+		elif arg.begins_with("--skip="):
+			skip.append_array(_names(arg.trim_prefix("--skip=")))
+	return {"skip_slow": skip_slow, "soak": soak, "only": only, "skip": skip}
+
+
+## "a, b.gd" -> ["a", "b"].
+static func _names(list: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for name in list.split(",", false):
+		out.append(name.strip_edges().trim_suffix(".gd"))
+	return out

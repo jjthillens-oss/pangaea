@@ -20,10 +20,11 @@
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests) and starts it
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
-# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 900 s, each
-# other run 300 s, about three times its usual length on the shared 4-CPU container), so a hang
-# fails the check with exit code 124 and the output so far instead of running until CI's job
-# timeout; tools/test_bounded.sh checks those limits first, and that a Ctrl-C still stops it all.
+# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each
+# other run 300 s, about three times its usual length on the shared 4-CPU container; the suite's
+# limit holds the S1 fast and slow budgets, build plan B-13), so a hang fails the check with exit
+# code 124 and the output so far instead of running until CI's job timeout (40 minutes);
+# tools/test_bounded.sh checks those limits first, and that a Ctrl-C still stops it all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/toolchain.env
@@ -33,7 +34,7 @@ source tools/bounded.sh
 
 tools/test_bounded.sh
 bounded 600 "$GODOT" --headless --path . --import
-bounded 900 "$GODOT" --headless --path . --script res://tests/run_tests.gd
+bounded 1200 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 bounded 300 "$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
 rm -rf builds/smoke
 mkdir -p builds/smoke
