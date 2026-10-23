@@ -183,10 +183,11 @@ static func _cancelled(events: Array[Dictionary]) -> Array:
 	return out
 
 
-## PlanktonField keeps each zone's item count, and its packed copy of the items' drift phases and
-## rates, as items come and go, so count_in and the tick's counts are what a count over the items
-## gives and the drift reads each item's own values: random meals, takes (the newest item goes),
-## clears, drops, fills and active-zone changes, in the pool and in the endless world.
+## PlanktonField keeps each zone's item count, its packed copy of the items' drift phases and rates,
+## and its id index as items come and go, so count_in and the tick's counts are what a count over the
+## items gives, the drift reads each item's own values and find() what a scan finds: random meals,
+## takes (the newest item goes), clears, drops, fills and active-zone changes, in the pool and in the
+## endless world.
 func test_plankton_zone_counts_follow_every_change() -> void:
 	for endless in [false, true]:
 		var region := layout.build_region(21)
@@ -201,6 +202,8 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 		rng.seed = 99
 		var wrong := 0
 		var unpacked := 0
+		var unindexed := 0
+		var gone: Array[String] = []
 		for t in 1500:
 			var roll := rng.randf()
 			var zone_id: String = ids[rng.randi_range(0, ids.size() - 1)]
@@ -208,6 +211,7 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 				var item: Dictionary = field.items[rng.randi_range(0, field.items.size() - 1)]
 				region.take(item.zone, float(item.energy))
 				field.consume(item.id)
+				gone.append(item.id)
 			elif roll < 0.10:
 				region.take(zone_id, rng.randf_range(0.0, 40.0))
 			elif roll < 0.11:
@@ -233,9 +237,19 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 			for i in field.items.size():
 				if field._phase[i] != field.items[i].phase or field._omega[i] != field.items[i].omega:
 					unpacked += 1
+			if field._by_id.size() != field.items.size():
+				unindexed += 1   # find() would rebuild it: the bookkeeping missed a change
+			for item in field.items:
+				if not is_same(field.find(item.id), item):
+					unindexed += 1
+			for id in gone:
+				if not field.find(id).is_empty():
+					unindexed += 1
 		check_eq(wrong, 0, "endless %s: counts that differ from the items" % endless)
 		check_eq(field._phase.size(), field.items.size(), "endless %s: one drift entry per item" % endless)
 		check_eq(unpacked, 0, "endless %s: drift entries that differ from their item's" % endless)
+		check_eq(unindexed, 0, "endless %s: id index entries that differ from the items" % endless)
+		check(gone.size() > 20, "endless %s: items were eaten (%d)" % [endless, gone.size()])
 		check(field.next_number > 40, "endless %s: items came and went (%d)" % [endless, field.next_number])
 
 

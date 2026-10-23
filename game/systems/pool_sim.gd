@@ -1237,10 +1237,12 @@ func _log_attack(target_id: String, kind: String, allowed: bool, reason: String)
 
 
 func _food_item(id: String) -> Dictionary:
-	for list in [plankton.items, carrion.items]:
-		for item in list:
-			if item.id == id:
-				return item
+	var plant := plankton.find(id)   # by its id index: the first match of a scan (ids are unique)
+	if not plant.is_empty():
+		return plant
+	for item in carrion.items:
+		if item.id == id:
+			return item
 	return {}
 
 

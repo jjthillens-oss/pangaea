@@ -40,6 +40,7 @@ var _zone_counts := {}                ## zone id -> how many of `items` it shows
 ## Each item's drift phase and rates, in `items` order: the drift loop's packed copy (they never change).
 var _phase := PackedVector2Array()
 var _omega := PackedVector2Array()
+var _by_id := {}                      ## item id -> the item (ids are unique: "pk_" and next_number)
 
 
 ## config: the layout's "plankton" block.
@@ -132,11 +133,19 @@ func items_near(p: Vector2, reach: float) -> Array[Dictionary]:
 	return out
 
 
+## The item with this id, or {}: what a scan of `items` finds.
+func find(id: String) -> Dictionary:
+	if _by_id.size() != items.size():
+		_repack()   # only if something outside this file changed `items`
+	return _by_id.get(id, {})
+
+
 ## Removes an eaten item. The caller has already taken its energy from the zone.
 func consume(id: String) -> bool:
 	for i in items.size():
 		if items[i].id == id:
 			_zone_counts[items[i].zone] -= 1
+			_by_id.erase(id)
 			items.remove_at(i)
 			_phase.remove_at(i)
 			_omega.remove_at(i)
@@ -195,16 +204,19 @@ func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> voi
 	items.append(item)
 	_phase.append(item.phase)
 	_omega.append(item.omega)
+	_by_id[item.id] = item
 	_zone_counts[zone_id] = int(_zone_counts.get(zone_id, 0)) + 1
 
 
-## The drift loop's packed copy of every item's phase and rates, from the items.
+## The drift loop's packed copy of every item's phase and rates, and the id index, from the items.
 func _repack() -> void:
 	_phase.resize(items.size())
 	_omega.resize(items.size())
+	_by_id.clear()
 	for i in items.size():
 		_phase[i] = items[i].phase
 		_omega[i] = items[i].omega
+		_by_id[items[i].id] = items[i]
 
 
 func _drifted(item: Dictionary, now: float) -> Vector2:
@@ -217,6 +229,7 @@ func _remove_newest(zone_id: String) -> void:
 	for i in range(items.size() - 1, -1, -1):
 		if items[i].zone == zone_id:
 			_zone_counts[zone_id] -= 1
+			_by_id.erase(items[i].id)
 			items.remove_at(i)
 			_phase.remove_at(i)
 			_omega.remove_at(i)
