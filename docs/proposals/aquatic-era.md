@@ -34,4 +34,3 @@ Bible §6 names habitat zones and gradual depth but not a minimum slice. The thr
 2. Should the first slice include a competing rival lineage, a cooperative encounter, or both?
 3. What evidence would justify adding oxygen or pressure beyond route and predator hazards?
 4. How much earlier microscopic habitat should remain directly visitable once aquatic play begins?
-

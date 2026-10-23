@@ -34,4 +34,3 @@ Bible §7 requires shore connections, terrain choices and a small set of body pl
 2. What minimum aquatic activity must remain directly playable after a land transition?
 3. Does the first nest persist as a single location, or may the player choose among several sites? This would affect save design.
 4. Which relationship from aquatic play should appear in the first shoreline encounter?
-
