@@ -109,7 +109,8 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 	_range[key] = Vector2i(first, kept.size())
 	_chunk_colliders[key] = kept
 	# 2. Its grid counts its own colliders and its loaded neighbours' that reach into it;
-	# 3. its colliders are counted into the loaded neighbours' grids they reach.
+	# 3. its colliders are counted into the loaded neighbours' grids they reach. A collider clear of
+	# a chunk (_may_reach false: most neighbours' are) would mark none of its cells, so is skipped.
 	var grid := PackedInt32Array()
 	grid.resize(CHUNK_GRID_N * CHUNK_GRID_N)
 	grid.fill(0)
@@ -120,10 +121,12 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 			if not _range.has(other):
 				continue
 			for c in _chunk_colliders[other]:
-				_count(key, c, 1)
+				if other == key or _may_reach(key, c):
+					_count(key, c, 1)
 			if other != key:
 				for c in kept:
-					_count(other, c, 1)
+					if _may_reach(other, c):
+						_count(other, c, 1)
 
 
 ## Unloads chunk `key`: its colliders leave the arrays and every near grid. Unknown keys are ignored.
@@ -136,7 +139,8 @@ func remove_chunk(key: Vector2i) -> void:
 			var other := key + Vector2i(dx, dy)
 			if other != key and _range.has(other):
 				for c in own:
-					_count(other, c, -1)
+					if _may_reach(other, c):
+						_count(other, c, -1)
 	var span: Vector2i = _range[key]
 	for i in span.y:
 		rocks.remove_at(span.x)
@@ -164,14 +168,20 @@ func chunk_keys() -> Array[Vector2i]:
 
 
 ## Moves the frame: every local centre is recomputed from its absolute value (never shifted, so no
-## error accumulates). The near grids are absolute and do not change.
+## error accumulates). The near grids are absolute and do not change. One pass over locals (the
+## packed arrays are references): a rebase does this for every loaded collider in a timed tick (G17).
 func set_origin(ox_tm: float, oy_tm: float) -> void:
 	origin_x = ox_tm
 	origin_y = oy_tm
-	for k in _centers.size():
-		var local := Vector2(_abs_x[k] - origin_x, _abs_y[k] - origin_y)
-		_centers[k] = local
-		rocks[k].center = local
+	var centers := _centers
+	var ax := _abs_x
+	var ay := _abs_y
+	var k := 0
+	for rock in rocks:
+		var local := Vector2(ax[k] - ox_tm, ay[k] - oy_tm)
+		centers[k] = local
+		rock.center = local
+		k += 1
 
 
 # --- the overrides ---
@@ -418,6 +428,20 @@ func _count(grid_key: Vector2i, c: Dictionary, delta: int) -> void:
 			if dx * dx + dy * dy < reach * reach:
 				grid[gy * CHUNK_GRID_N + gx] += delta
 	_grids[grid_key] = grid
+
+
+## False when collider `c` ({x, y, r}, abs) lies farther than its near reach (r + GRID_BODY_R +
+## GRID_SLACK) outside chunk `grid_key`'s square on some axis, by a margin of 1e-6 tm per tm of
+## coordinate: then _count(grid_key, c, ...) marks no cell, since a cell is marked only where both
+## its axis distances are below the reach, and float64 rounds those distances by a few 1e-16 per tm,
+## far less than the margin. True means only that _count must look.
+func _may_reach(grid_key: Vector2i, c: Dictionary) -> bool:
+	var x: float = c.x
+	var y: float = c.y
+	var m: float = c.r + GRID_BODY_R + GRID_SLACK + 1e-6 * (1.0 + absf(x) + absf(y))
+	var x0 := grid_key.x * chunk_tm
+	var y0 := grid_key.y * chunk_tm
+	return x > x0 - m and x < x0 + chunk_tm + m and y > y0 - m and y < y0 + chunk_tm + m
 
 
 ## Canonical key order: by y, then x.
