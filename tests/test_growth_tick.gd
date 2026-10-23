@@ -1,0 +1,674 @@
+extends TestCase
+## The growth tick (S2 T2.5; WorldStream.grow, s2-sim 3.7 as the build plan's BP-4 changes it) on
+## FakeWorldGen at sizes 1 and 2: the world is re-expressed one size up round the cell's absolute
+## point and the cell comes out of it safe, settled, full and sheltered (S2G9); the settle lands on
+## the next size's pure point bit for bit, the point is INF exactly when no ring within the wedge is
+## clear, and the prefetch never changes a result (S2G35); the size-2 world a growth makes is the one
+## a direct arrival meets (S2G12, BP-8); the tick's events come in order with their frames (S2G33);
+## and every conversion is exact (S2G34).
+
+const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
+## The fast seeds of S2G9, S2G12 and S2G35; their slow tests run SLOW_SEEDS seeds.
+const SEEDS := [7, 11, 23, 4242, 90001]
+const SLOW_SEEDS := 50
+## Ticks a size-1 swim runs before the growth, so creatures are awake round the cell.
+const SWIM_TICKS := 240
+## am: how far out the two size-2 routes of S2G12 start (BP-8).
+const ROUTE_AM := 200.0
+## The prefetch comparison's ticks (the growth is tick 60).
+const HASH_AT := [59, 60, 61, 75, 119]
+
+var catalog: PartCatalog
+var layout: PoolLayout
+
+
+func before_each() -> void:
+	catalog = PartCatalog.load_from()
+	layout = PoolLayout.load_from()
+
+
+## An endless sim on the fake generator with growth on (size 2 is the build top) and a site in
+## every `period` x `period` chunks, its start events drained.
+func _sim(seed_value: int, species: SpeciesCatalog = null, period := 2, at := PackedFloat64Array()) -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(seed_value, catalog, layout, species, null, at, period, true)
+	sim.drain_events()
+	return sim
+
+
+## A size-1 sim that has swum SWIM_TICKS ticks among the size-2 species, a diagonal that depends on
+## the seed.
+func _swum(seed_value: int) -> PoolSim:
+	var sim := _sim(seed_value, FakeWorldGen.s2_species())
+	var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0)
+	for t in SWIM_TICKS:
+		sim.step(SimIntent.new(dir * 0.6))
+	sim.drain_events()
+	return sim
+
+
+## The next tick grows: the ring full and due, as the calm window leaves it.
+static func _due(sim: PoolSim) -> void:
+	var g := sim.growth
+	g.meter = g.ring(sim.size())
+	g.full_since = sim.tick
+	g.due = true
+
+
+static func _tick(sim: PoolSim, move := Vector2.ZERO) -> Array[Dictionary]:
+	sim.step(SimIntent.new(move))
+	return sim.drain_events()
+
+
+static func _of(events: Array[Dictionary], type: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for e in events:
+		if e.type == type:
+			out.append(e)
+	return out
+
+
+static func _first(events: Array[Dictionary], type: String) -> Dictionary:
+	var found := _of(events, type)
+	return found[0] if not found.is_empty() else {}
+
+
+## The next size's point round the cell, in the next size's frame (the spiral's own result).
+static func _raw_point(sim: PoolSim) -> Vector2:
+	return sim.world._next_point(sim.world.abs_of_local(sim.motion.position), sim.phenotype.radius)
+
+
+## A size-2 shell of radius `r` centred `offset` (size-2 tm) from the cell's absolute point, through the
+## fake's extra shells (before anything has generated that chunk at size 2).
+static func _shell_at_next_size(sim: PoolSim, offset: Vector2, r: float) -> void:
+	var a := sim.world.abs_of_local(sim.motion.position)
+	var s1 := WorldConfig.tm_to_am(sim.size() + 1)
+	var x := a[0] / s1 + offset.x
+	var y := a[1] / s1 + offset.y
+	var key := Vector3i(floori(x / sim.world.chunk_tm), floori(y / sim.world.chunk_tm), sim.size() + 1)
+	var more: Array = sim.world.gen.extra_shells.get(key, [])
+	more.append({"x": x, "y": y, "r": r})
+	sim.world.gen.extra_shells[key] = more
+	sim.world._clear_next()
+
+
+# --- S2G9: the world one size up, the cell safe, settled, full and sheltered ---
+
+func test_a_growth_re_expresses_the_world_one_size_up_round_the_cell() -> void:
+	var sim := _swum(SEEDS[0])
+	var w := sim.world
+	var a := w.abs_of_local(sim.motion.position)
+	var ap := w.abs_of_local(sim.motion.prev_position)
+	var v := sim.motion.velocity
+	var heading := sim.motion.heading
+	var t0 := sim.tick
+	w.grow(sim)
+	check_eq(sim.size(), 2, "size 2")
+	check_eq(sim.creatures.size, 2, "the creature field at size 2")
+	check(w.origin_x_am == a[0] and w.origin_y_am == a[1], "the origin is the cell's absolute point exactly")
+	check(sim.motion.prev_position == w.local_of_abs(ap[0], ap[1]), "the previous point from its absolute value")
+	check(sim.motion.velocity == v / WorldConfig.GROWTH_FACTOR, "velocity / 1.6")
+	check_eq(sim.motion.heading, heading, "the heading kept")
+	check(sim.motion.position.length() <= float(sim.growth.cfg.wedge_tm) + 1e-6,
+		"settled within %s new tm (%s)" % [sim.growth.cfg.wedge_tm, sim.motion.position])
+	check(sim.actor.position == sim.motion.position, "the actor synced")
+	var cp := w.abs_of_local(sim.motion.position)
+	check_eq(Array(w.checkpoint_am), [cp[0], cp[1], heading, 2.0], "the checkpoint is the settled point at size 2")
+	check_eq(sim.state.energy, sim.state.energy_capacity, "energy full")
+	check_eq(sim.grace_until, t0 + CreatureBrain.ticks(sim.growth.cfg.shelter_s), "sheltered for shelter_s")
+	check_eq(sim.growth.beat_until, t0 + CreatureBrain.ticks(sim.growth.cfg.beat_s), "the beat")
+	check_eq(sim.growth.meter, 0.0, "the meter starts again")
+	check(not sim.growth.due and sim.growth.full_since == -1 and sim.growth.calm_ticks == 0, "the window starts again")
+	var keys := w.loaded_keys()
+	check_eq(keys, w.view_set_keys(Vector2.ZERO), "the view set round the cell's point, at size 2")
+	for key in keys:
+		check_eq(w.chunk(key).size, 2, "chunk %s at size 2" % key)
+	check(sim.creatures.creatures.is_empty(), "no creature of size 1 is left: they converted or left")
+	for id in w.sites:
+		check((w.sites[id].abs.sizes as Array).has(2), "site %s lives at size 2" % id)
+
+
+func test_the_growth_tick_leaves_no_creature_that_can_attack_near_the_cell_or_in_view() -> void:
+	_check_safe_after_growth(SEEDS)
+
+
+func test_slow_the_growth_tick_leaves_no_creature_that_can_attack_near_the_cell_or_in_view_on_50_seeds() -> void:
+	var seeds := []
+	for i in SLOW_SEEDS:
+		seeds.append(1000 + 37 * i)
+	_check_safe_after_growth(seeds)
+
+
+func _check_safe_after_growth(seeds: Array) -> void:
+	var converted := 0
+	var spawned := 0
+	for seed_value: int in seeds:
+		var sim := _swum(seed_value)
+		converted += sim.creatures.awake().size()
+		_due(sim)
+		var ev := _tick(sim)
+		check_eq(_of(ev, "grew").size(), 1, "seed %d: grew" % seed_value)
+		spawned += _of(ev, "creature_spawned").size()
+		var fair := sim.species.fairness
+		var cam: Dictionary = layout.camera
+		var cell := sim.motion.position
+		for c in sim.creatures.awake():
+			var margin := float(cam.look_ahead_max) + float(fair.spawn_view_margin_m) + c.phenotype.radius
+			check(cell.distance_to(c.motion.position) >= float(fair.spawn_safe_m),
+				"seed %d: %s is spawn_safe_m away" % [seed_value, c.id])
+			check(not ViewFootprint.contains(cell, c.motion.position, cam, float(cam.zoom_max), float(fair.spawn_view_aspect), margin),
+				"seed %d: %s is out of view" % [seed_value, c.id])
+		check(sim.remnants.items.all(func(r: RemnantField.Remnant) -> bool: return r.brain == null),
+			"seed %d: remnants have no brain to attack with" % seed_value)
+	check(converted > 0, "creatures were awake to convert (%d)" % converted)
+	check(spawned > 0, "size-2 creatures spawned in the growth tick (%d)" % spawned)
+
+
+func test_step_one_grows_only_a_living_cell_below_the_top() -> void:
+	var sim := _sim(SEEDS[1])
+	sim.respawn_pending = false
+	sim.dead = true
+	_due(sim)
+	sim.world.step(sim)
+	check_eq(sim.size(), 1, "a dead cell does not grow")
+	check(not sim.growth.due, "and the due is dropped")
+	sim.dead = false
+	check(sim.debug_set_size(2), "to the top")
+	_due(sim)
+	sim.world.step(sim)
+	check_eq(sim.size(), 2, "the top does not grow")
+	check(not sim.growth.due, "and the due is dropped")
+
+
+# --- S2G35: the point, the wedge and the prefetch ---
+
+func test_the_settle_lands_on_the_next_size_point_bit_for_bit() -> void:
+	_check_point_equals_settle(SEEDS)
+
+
+func test_slow_the_settle_lands_on_the_next_size_point_bit_for_bit_on_50_seeds() -> void:
+	var seeds := []
+	for i in SLOW_SEEDS:
+		seeds.append(2000 + 53 * i)
+	_check_point_equals_settle(seeds)
+
+
+## For each seed: a size-2 shell 0.9 tm from the cell, in a direction of the seed's, so the settle must
+## move it; the point taken before the tick is the grew event's settled_to exactly, and the
+## checkpoint is its absolute value.
+func _check_point_equals_settle(seeds: Array) -> void:
+	var moved := 0
+	for seed_value: int in seeds:
+		var sim := _swum(seed_value)
+		_shell_at_next_size(sim, Vector2.from_angle(float(seed_value % 628) / 100.0) * 0.9, 1.0)
+		var a := sim.world.abs_of_local(sim.motion.position)
+		var q := _raw_point(sim)
+		check(q.is_finite(), "seed %d: not wedged" % seed_value)
+		var current := sim.world.next_size_clear_point(sim)
+		var s1 := WorldConfig.tm_to_am(2)
+		check(current == sim.world.local_of_abs(a[0] + q.x * s1, a[1] + q.y * s1), "seed %d: the point in the current frame" % seed_value)
+		_due(sim)
+		var grew := _first(_tick(sim), "grew")
+		check(grew.settled_to == q, "seed %d: settled %s == point %s bit for bit" % [seed_value, grew.get("settled_to"), q])
+		check(float(grew.checkpoint_am[0]) == a[0] + float(q.x) * s1 and float(grew.checkpoint_am[1]) == a[1] + float(q.y) * s1,
+			"seed %d: the checkpoint is the point's absolute value" % seed_value)
+		if q != Vector2.ZERO:
+			moved += 1
+	check(moved * 2 >= seeds.size(), "the settle moved the cell on most seeds (%d of %d)" % [moved, seeds.size()])
+
+
+func test_the_point_is_inf_exactly_when_no_ring_within_the_wedge_is_clear() -> void:
+	var r := 0.5   # the cell's radius
+	check_eq(_sim(SEEDS[2]).phenotype.radius, r, "the cell the numbers below assume")
+	check_eq(_sim(SEEDS[2]).world.wedge_rings, 4, "ceil(wedge_tm / 0.5) rings (BP-4)")
+	# A shell of radius 1.8 on the point blocks every point nearer than 2.3: the four rings (to 2 tm)
+	# are shut and the fifth (2.5 tm) is open.
+	var shut := _sim(SEEDS[2])
+	_shell_at_next_size(shut, Vector2.ZERO, 1.8)
+	check(_raw_point(shut) == Vector2.INF, "wedged: INF")
+	check(shut.world.next_size_clear_point(shut) == Vector2.INF, "and INF in the current frame")
+	check(PoolSim.clear_point_on(shut.world._next_arena, Vector2.ZERO, r, 5).is_finite(), "the fifth ring is clear")
+	check_eq(shut.growth.blocker_of(shut), "wedged", "the blocker names it")
+	# Radius 1.4 shuts everything nearer than 1.9: the fourth ring is the first clear one.
+	var open := _sim(SEEDS[2])
+	_shell_at_next_size(open, Vector2.ZERO, 1.4)
+	var q := _raw_point(open)
+	check(q.is_finite(), "not wedged: finite")
+	check_near(q.length(), 2.0, 1e-5, "on the fourth ring")
+	check_eq(open.growth.blocker_of(open), "", "no blocker")
+	# Unwedged by moving: the point follows the cell's absolute point alone.
+	var far := _sim(SEEDS[2])
+	check(_raw_point(far) == Vector2.ZERO, "open water: the cell's own point")
+
+
+func test_prefetch_on_and_off_give_equal_hashes_through_a_growth() -> void:
+	_check_prefetch_on_off(SEEDS)
+
+
+func test_slow_prefetch_on_and_off_give_equal_hashes_through_a_growth_on_50_seeds() -> void:
+	var seeds := []
+	for i in SLOW_SEEDS:
+		seeds.append(3000 + 71 * i)
+	_check_prefetch_on_off(seeds)
+
+
+## Two runs of each seed, one with the next size's caches off: the meter held at 0.95 of the ring for
+## 60 ticks (the prefetch runs), then a growth and 60 ticks more; the hashes are equal before the
+## growth tick, after it, and at HASH_AT ticks after.
+func _check_prefetch_on_off(seeds: Array) -> void:
+	var hits := 0
+	for seed_value: int in seeds:
+		var on := _sim(seed_value, FakeWorldGen.s2_species())
+		var off := _sim(seed_value, FakeWorldGen.s2_species())
+		off.world.next_cache = false
+		var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0) * 0.6
+		var parted := -1
+		for t in 120:
+			if t < 60:
+				for sim: PoolSim in [on, off]:
+					sim.growth.meter = 0.95 * sim.growth.ring(1)
+			if t == 60:
+				hits += on.world._next_chunks.size()
+				check(off.world._next_chunks.is_empty(), "seed %d: nothing cached with the caches off" % seed_value)
+				_due(on)
+				_due(off)
+			on.step(SimIntent.new(dir))
+			off.step(SimIntent.new(dir))
+			if HASH_AT.has(t) and parted < 0 and on.state_hash() != off.state_hash():
+				parted = t
+		check(parted < 0 and on.size() == 2, "seed %d: equal through the growth (parted at %d)" % [seed_value, parted])
+	check(hits >= 9 * seeds.size(), "the prefetch had the chunks ready (%d)" % hits)
+
+
+func test_the_prefetch_takes_the_nearest_missing_new_size_chunk_a_tick_while_the_ring_is_nearly_full() -> void:
+	var sim := _sim(SEEDS[3])
+	var w := sim.world
+	var g := sim.growth
+	var gen = w.gen
+	check(g.prefetch_per_tick == 1 and g.prefetch_share == 0.9, "the world file's prefetch (BP-4)")
+	g.meter = 0.89 * g.ring(1)
+	w._prefetch(sim)
+	check(w._next_chunks.is_empty(), "below the share: nothing")
+	g.meter = 0.9 * g.ring(1)
+	var a := w.abs_of_local(sim.motion.position)
+	var s1 := WorldConfig.tm_to_am(2)
+	var c := Vector2i(floori(a[0] / s1 / w.chunk_tm), floori(a[1] / s1 / w.chunk_tm))
+	var order: Array[Vector2i] = []
+	for i in 25:
+		gen.built.clear()
+		w._prefetch(sim)
+		check_eq(gen.built.size(), 1, "one chunk a tick (%d)" % i)
+		for key in gen.built:
+			order.append(key)
+	gen.built.clear()
+	w._prefetch(sim)
+	check(gen.built.is_empty(), "the 5 x 5 is full: nothing more")
+	var want: Array[Vector2i] = []
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			want.append(Vector2i(c.x + dx, c.y + dy))
+	var x := a[0] / s1
+	var y := a[1] / s1
+	want.sort_custom(func(p: Vector2i, q: Vector2i) -> bool:
+		var dp := Vector2((p.x + 0.5) * w.chunk_tm - x, (p.y + 0.5) * w.chunk_tm - y).length_squared()
+		var dq := Vector2((q.x + 0.5) * w.chunk_tm - x, (q.y + 0.5) * w.chunk_tm - y).length_squared()
+		return dp < dq or (dp == dq and (p.y < q.y or (p.y == q.y and p.x < q.x))))
+	check_eq(order, want, "nearest the cell first, ties by (y, x)")
+	for key in w._next_chunks:
+		check_eq(w._next_chunks[key].size, 2, "chunk %s at the next size" % key)
+	# The window follows the cell: a chunk-width move drops the far column.
+	sim.motion.position += Vector2(w.chunk_tm * WorldConfig.tm_to_am(2), 0.0)
+	w._prefetch(sim)
+	var c2 := Vector2i(c.x + 1, c.y)
+	for key in w._next_chunks:
+		check(absi(key.x - c2.x) <= 2 and absi(key.y - c2.y) <= 2, "%s inside the moved window" % key)
+	check_eq(w._next_chunks.size(), 21, "the 20 kept and one new")
+	# Below the share it forgets; so do a size change, a teleport and a respawn.
+	g.meter = 0.5 * g.ring(1)
+	w._prefetch(sim)
+	check(w._next_chunks.is_empty() and w._next_arena == null, "below the share: forgotten")
+	for how in ["set_size", "teleport", "respawn"]:
+		g.meter = g.ring(1) * 0.95
+		w._prefetch(sim)
+		w.next_size_clear_point(sim)
+		check(not w._next_chunks.is_empty() and w._next_arena != null, "%s: cached first" % how)
+		match how:
+			"set_size":
+				w.set_size(1)
+			"teleport":
+				w.teleport(sim, w.origin_x_am + 500.0, w.origin_y_am)
+				sim.motion.place(Vector2.ZERO, 0.0)
+			"respawn":
+				w._respawn(sim)
+		check(w._next_chunks.is_empty() and w._next_arena == null, "%s forgets the caches" % how)
+
+
+func test_a_cache_miss_generates_the_chunk_and_keeps_it() -> void:
+	var sim := _sim(SEEDS[4])
+	var w := sim.world
+	var gen = w.gen
+	gen.built.clear()
+	var q := w.next_size_clear_point(sim)
+	check(q.is_finite(), "a point")
+	check_eq(gen.built.size(), 9, "the 3 x 3 generated once")
+	check_eq(w._next_chunks.size(), 9, "and kept")
+	gen.built.clear()
+	for i in 3:
+		check(w.next_size_clear_point(sim) == q, "the same point again")
+	check(gen.built.is_empty(), "nothing generated again while the cell's new-size chunk is the same")
+	var arena := w._next_arena
+	sim.motion.position += Vector2(0.25, 0.0)
+	w.next_size_clear_point(sim)
+	check(is_same(arena, w._next_arena), "the arena kept, moved to the new point")
+
+
+func test_the_growth_tick_takes_its_view_set_from_the_cache() -> void:
+	var sim := _sim(SEEDS[0])
+	var w := sim.world
+	var gen = w.gen
+	var g := sim.growth
+	g.meter = 0.95 * g.ring(1)
+	for t in 25:
+		w._prefetch(sim)
+	check_eq(w._next_chunks.size(), 25, "the 5 x 5 ready")
+	gen.built.clear()
+	_due(sim)
+	var ev := _tick(sim)
+	check_eq(_of(ev, "grew").size(), 1, "grew")
+	var view := w.view_set_keys(Vector2.ZERO)
+	for key in view:
+		check(not gen.built.has(key), "view chunk %s came from the cache" % key)
+	check(_of(ev, "chunk_loaded").size() > view.size(), "the beat loaded beyond the view set in the same tick")
+	# The beat keeps taking from the cache; after it the cache is forgotten.
+	while sim.tick < g.beat_until:
+		_tick(sim)
+	_tick(sim)
+	check(w._next_chunks.is_empty(), "forgotten after the beat")
+
+
+# --- the beat (D-80) and the fills (C-V15) ---
+
+func test_the_beat_loads_two_chunks_a_tick_then_one() -> void:
+	var sim := _sim(SEEDS[1])
+	_due(sim)
+	_tick(sim)
+	var g := sim.growth
+	var during := 0
+	var most := 0
+	while sim.tick < g.beat_until:
+		var n := _of(_tick(sim), "chunk_loaded").size()
+		during += n
+		most = maxi(most, n)
+	check_eq(most, int(g.cfg.beat_loads_per_tick), "at most beat_loads_per_tick a tick, reached")
+	var after := 0
+	for t in 60:
+		after = maxi(after, _of(_tick(sim), "chunk_loaded").size())
+	check(after <= int(sim.world.caps.loads_per_tick), "caps.loads_per_tick after the beat (%d)" % after)
+	check(during > 0, "loads during the beat (%d)" % during)
+
+
+func test_food_filled_by_the_growth_tick_is_born_on_it() -> void:
+	var sim := _sim(SEEDS[2])
+	_due(sim)
+	var t0 := sim.tick
+	_tick(sim)
+	var n := 0
+	for item in sim.plankton.items:
+		check_eq(int(item.born_tick), t0, "%s born on the growth tick (C-V15)" % item.id)
+		n += 1
+	check(n > 0, "the zones filled at once (%d items)" % n)
+
+
+# --- S2G12: the size-2 world is the one a direct arrival meets ---
+
+## The stream's content state over `keys`: whether each is loaded, each chunk's digest, the arena's
+## colliders there (sorted absolute tuples, hashed), the sites homed there (id, species, absolute home
+## and posts) and the zones there (id, absolute centre, radius, capacity).
+static func _content(sim: PoolSim, keys: Array[Vector2i]) -> Dictionary:
+	var w := sim.world
+	var arena := sim.arena as ChunkArena
+	var digests := {}
+	var tuples := []
+	for key in keys:
+		var ch := w.chunk(key)
+		digests[str(key)] = ch.digest() if ch != null else "missing"
+		for c: Dictionary in arena._chunk_colliders.get(key, []):
+			tuples.append([float(c.x), float(c.y), float(c.r)])
+	tuples.sort()
+	var sites := []
+	var ids := w.sites.keys()
+	ids.sort()
+	for id in ids:
+		var rec: Dictionary = w.sites[id]
+		if keys.has(rec.home_chunk):
+			sites.append([id, rec.species, _plain(rec.abs_tm), _plain(rec.get("abs_posts", PackedFloat64Array()))])
+	var zones := []
+	for z in sim.region.zones:
+		if keys.has(w._zone_chunk.get(z.id)):
+			zones.append([z.id, Array(w._zone_abs[z.id]), z.radius, z.capacity])
+	zones.sort()
+	return {"digests": digests, "colliders": hash(JSON.stringify(tuples)), "sites": sites, "zones": zones}
+
+
+## The values, a missing one (NaN: no territory) as null, so equal records compare equal.
+static func _plain(values: PackedFloat64Array) -> Array:
+	var out := []
+	for v in values:
+		out.append(null if is_nan(v) else v)
+	return out
+
+
+func test_a_growth_meets_the_world_a_direct_size_two_arrival_meets() -> void:
+	for seed_value: int in SEEDS:
+		_check_growth_equals_arrival(seed_value)
+
+
+func test_slow_a_growth_meets_the_world_a_direct_size_two_arrival_meets_on_50_seeds() -> void:
+	for i in SLOW_SEEDS:
+		_check_growth_equals_arrival(4000 + 97 * i)
+
+
+func _check_growth_equals_arrival(seed_value: int) -> void:
+	var grown := _swum(seed_value)
+	var a := grown.world.abs_of_local(grown.motion.position)
+	grown.world.grow(grown)
+	var p := grown.motion.position
+	var direct := _sim(seed_value, FakeWorldGen.s2_species(), 2, a)
+	check(direct.motion.position == Vector2.ZERO, "seed %d: the direct run starts on the point" % seed_value)
+	check(direct.debug_set_size(2), "seed %d: debug_set_size(2)" % seed_value)
+	var keys := grown.world.loaded_keys()
+	check_eq(direct.world.loaded_keys(), keys, "seed %d: the same chunks held" % seed_value)
+	check_eq(_content(direct, keys), _content(grown, keys), "seed %d: the same chunks, colliders, sites and zones" % seed_value)
+	check(direct.motion.position == p, "seed %d: the same settled point" % seed_value)
+
+
+func test_two_size_two_routes_meet_the_world_a_growth_makes() -> void:
+	_check_routes(SEEDS[0], null)
+
+
+func test_slow_two_size_two_routes_meet_the_world_a_growth_makes_on_50_seeds() -> void:
+	for i in SLOW_SEEDS:
+		_check_routes(5000 + 89 * i, FakeWorldGen.s2_species())
+
+
+## A growth at P against two size-2 swims to P (from P - (ROUTE_AM, 0) and P + (0, ROUTE_AM)): once each
+## has held still 120 ticks at P, the 3 x 3 chunks round P hold the same content in all three.
+func _check_routes(seed_value: int, species: SpeciesCatalog) -> void:
+	var grown := _sim(seed_value, species)
+	grown.world.grow(grown)
+	var p := grown.world.abs_of_local(grown.motion.position)
+	for t in 120:
+		grown.step(SimIntent.new())
+	var keys := _round(grown, p)
+	var want := _content(grown, keys)
+	for from in [Vector2(-ROUTE_AM, 0.0), Vector2(0.0, ROUTE_AM)]:
+		var swim := _sim(seed_value, species, 2, PackedFloat64Array([p[0] + from.x, p[1] + from.y]))
+		check(swim.debug_set_size(2), "seed %d: at size 2" % seed_value)
+		var bot = SwimBot.toward(p)
+		var t := 0
+		while t < 6000 and swim.world.local_of_abs(p[0], p[1]).distance_to(swim.motion.position) > 1.0:
+			SwimBot.overdrive(swim)
+			swim.step(bot.next_intent(swim))
+			t += 1
+		check(t < 6000, "seed %d: the swim from %s arrived" % [seed_value, from])
+		for i in 120:
+			swim.step(SimIntent.new())
+		check_eq(_content(swim, keys), want, "seed %d: the route from %s meets the same world" % [seed_value, from])
+
+
+## The 3 x 3 chunk keys round absolute point `p` at the sim's size.
+static func _round(sim: PoolSim, p: PackedFloat64Array) -> Array[Vector2i]:
+	var c := sim.world.chunk_of_local(sim.world.local_of_abs(p[0], p[1]))
+	var out: Array[Vector2i] = []
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			out.append(Vector2i(c.x + dx, c.y + dy))
+	return out
+
+
+# --- S2G33: the events, in order, with their frames ---
+
+func test_growth_tick_events_come_in_order_with_their_frames() -> void:
+	var sim := _sim(SEEDS[3], FakeWorldGen.ladder_species())
+	var cell := sim.motion.position
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", cell + Vector2(-7.0, 3.0), 0.0), "a rammer (prey at size 2)")
+	check(sim.debug_spawn_creature("minnow", cell + Vector2(6.0, 0.0), 0.0), "a minnow (a morsel at size 2), converted after it")
+	var sleeper := _sleeping_site_creature(sim)
+	check(sleeper != null, "a sleeper")
+	var near: Dictionary = sim.carrion.spawn(cell + Vector2(3.0, -4.0), "test", 20.0)
+	var far: Dictionary = sim.carrion.spawn(cell + Vector2(60.0, 0.0), "test", 20.0)
+	sim.drain_events()
+	var before := {}
+	for c in sim.creatures.creatures:
+		before[c.id] = c.motion.position
+	var far_at: Vector2 = far.position
+	_due(sim)
+	var ev := _tick(sim)
+	var order := []
+	for e in ev:
+		var tag := str(e.type)
+		if e.has("reason") and str(e.reason) == "growth":
+			tag += "{growth}"
+		if order.is_empty() or order[-1] != tag:
+			order.append(tag)
+	var at_grew := order.find("grew")
+	check_eq(order.slice(0, at_grew + 1), ["growth_began", "creature_converted", "carrion_spawned", "creature_converted",
+		"creature_removed{growth}", "carrion_expired{growth}", "chunk_unloaded{growth}", "chunk_loaded", "grew"],
+		"the order (S2G33): began, conversions (a morsel's carrion first), sleepers, carrion, unloads, loads, grew")
+	check_eq(_first(ev, "carrion_spawned").source, "morsel", "the carrion is the morsel")
+	# Old frame before the origin moves; new frame after.
+	for e in _of(ev, "creature_converted"):
+		check(e.position == before[e.id], "creature_converted %s in the old frame" % e.id)
+	var removed := {}
+	for e in _of(ev, "creature_removed"):
+		if e.id == sleeper.id:
+			removed = e
+	check(removed.get("reason") == "growth" and removed.position == before[sleeper.id], "the sleeper's removal in the old frame")
+	var expired := _first(ev, "carrion_expired")
+	check(expired.food_id == far.id and expired.position == far_at, "the far carrion's expiry in the old frame")
+	check(sim.carrion.find(near.id).size() > 0, "the near carrion kept")
+	var w := sim.world
+	for e in _of(ev, "chunk_loaded"):
+		var ch := w.chunk(e.key)
+		if ch != null and not ch.shells.is_empty():
+			var s: Dictionary = ch.shells[0]
+			check(e.shells[0].position == w.local_of_tm(float(s.x), float(s.y)), "chunk_loaded %s in the new frame" % e.key)
+	var grew := _first(ev, "grew")
+	check(grew.center == Vector2.ZERO and grew.settled_from == Vector2.ZERO, "grew's centre is the new origin")
+	check_eq(grew.morsels.size(), 1, "one morsel")
+	check(grew.remnants.size() >= 1, "the rammer a remnant")
+	check(_of(ev, "rebased").is_empty(), "no rebased (D-65)")
+
+
+## A site creature of `sim`, put to sleep (it is far from the cell or not: the growth tick takes every
+## sleeper).
+func _sleeping_site_creature(sim: PoolSim) -> CreatureField.Creature:
+	for t in 600:
+		for c in sim.creatures.creatures:
+			if not c.site_id.is_empty():
+				if not c.asleep:
+					sim.creatures.sleep(c, sim.tick)
+				return c
+		sim.step(SimIntent.new())
+	return null
+
+
+# --- S2G34: every conversion exact ---
+
+func test_conversions_are_exact() -> void:
+	var sim := _sim(SEEDS[4], FakeWorldGen.ladder_species(), 64)   # no site creature near
+	var cell := sim.motion.position
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("ambush_hunter", cell + Vector2(5.0, 2.0), 1.0), "an ambush hunter (a rival at size 2)")
+	check(sim.debug_spawn_creature("minnow", cell + Vector2(-6.0, 0.0), 0.0), "a minnow")
+	var hunter: CreatureField.Creature = null
+	for c in sim.creatures.creatures:
+		if c.species_id == "ambush_hunter":
+			hunter = c
+	hunter.state.health = hunter.phenotype.max_health * 0.5
+	hunter.state.energy = 30.0
+	hunter.motion.velocity = Vector2(0.8, -0.4)
+	var scripted := sim.creatures.spawn_scripted("rammer", hunter.phenotype, cell + Vector2(0.0, 8.0), 0.0, sim.tick)
+	var item: Dictionary = sim.carrion.spawn(cell + Vector2(2.0, 5.0), "kill", 18.0, -1, 0.27, 75.0)
+	item.age = 12.5
+	var was := item.duplicate()
+	var r_minnow := float(sim.species.at_size("minnow", 2, catalog).phenotype.radius)
+	sim.drain_events()
+	_due(sim)
+	var ev := _tick(sim)
+	var f := WorldConfig.GROWTH_FACTOR
+	# Carrion: id, age, lifetime and source kept; radius and energy / 1.6; points from the energy.
+	var now := sim.carrion.find(was.id)
+	check(not now.is_empty(), "the carrion kept its id")
+	check_eq(now.source, was.source, "its source")
+	check_eq(now.lifetime, was.lifetime, "its lifetime")
+	check_near(float(now.age), float(was.age) + PoolSim.DT, 1e-9, "its age (and one tick on)")
+	check_eq(now.radius, float(was.radius) / f, "radius / 1.6")
+	check_eq(now.energy, float(was.energy) / f, "energy / 1.6")
+	check_eq(now.points, floori(float(was.energy) / f / sim.carrion.energy * sim.carrion.points + 1e-6), "points from the energy")
+	# The morsel: made once at the new size, never shrunk again (D-66).
+	var conv := {}
+	for e in _of(ev, "creature_converted"):
+		conv[e.species] = e
+	check_eq(conv.minnow.to, "morsel", "the minnow is a morsel")
+	var morsel := sim.carrion.find(conv.minnow.food_id)
+	var max_r := float(sim.growth.cfg.remnants.morsel_max_radius_tm)
+	check_eq(morsel.radius, minf(r_minnow, max_r), "the morsel's radius, once")
+	check_eq(morsel.energy, sim.carrion.energy * r_minnow / Relationships.PLAYER_RADIUS, "its energy from its new radius")
+	check_eq(morsel.lifetime, float(sim.growth.cfg.remnants.morsel_rot_s), "it rots in morsel_rot_s")
+	check_eq(conv.minnow.radius, r_minnow, "the event's radius is the new one")
+	# The remnant: at_size(n + 1)'s body, health and velocity / 1.6.
+	check_eq(conv.ambush_hunter.to, "remnant", "the hunter is a remnant")
+	var rem := sim.remnants.find(hunter.id)
+	check(rem != null, "the remnant keeps the id")
+	var rec := sim.species.at_size("ambush_hunter", 2, catalog)
+	check(is_same(rem.phenotype, rec.phenotype), "its body is at_size(2)'s")
+	check_eq(rem.state.health, minf(hunter.state.health / f, rec.phenotype.max_health), "health / 1.6")
+	check_eq(rem.state.energy, 30.0 / f, "energy / 1.6")
+	check(rem.born_tick == sim.tick - 1, "born on the growth tick")
+	# The scripted body is haze.
+	check_eq(str(conv.get("rammer", {}).get("to", "")), "haze", "a scripted body is haze")
+	check(sim.creatures.find(scripted.id) == null, "and gone")
+
+
+func test_remnants_over_the_cap_turn_to_haze_nearest_kept() -> void:
+	var sim := _sim(SEEDS[0], FakeWorldGen.ladder_species(), 64)
+	sim.debug_set_ai_frozen(true)
+	sim.remnants.cap = 2
+	var cell := sim.motion.position
+	var ids := []
+	for i in 4:
+		var p := cell + Vector2.from_angle(1.3 * i) * (8.0 + 3.0 * i)
+		check(sim.debug_spawn_creature("rammer", p, 0.0), "rammer %d" % i)
+	for c in sim.creatures.creatures:
+		ids.append([cell.distance_to(c.motion.position), c.id])
+	ids.sort()
+	_due(sim)
+	var ev := _tick(sim)
+	var to := {}
+	for e in _of(ev, "creature_converted"):
+		to[e.id] = e.to
+	check_eq([to[ids[0][1]], to[ids[1][1]], to[ids[2][1]], to[ids[3][1]]], ["remnant", "remnant", "haze", "haze"],
+		"the nearest two kept (D-78)")
+	check_eq(sim.world.counters.remnant_overflow, 1, "counted once")

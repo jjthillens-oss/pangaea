@@ -545,3 +545,45 @@ func test_auto_counts_at_once_with_a_flipping_creature_in_view() -> void:
 	near.motion.position = sim.motion.position + Vector2(0.0, -45.0)
 	_tick(sim)
 	check_eq(g.calm_ticks, 2, "a started count goes on")
+
+
+## S2G35 (BP-4): a cell whose point is shut at the next size (a shell there over every ring within the
+## wedge, though the water is open at size 1) is "wedged": the window never counts and the blocker is
+## named once it has blocked for blocked_hint_s; once the cell is clear the window counts again and the
+## cell grows once, onto open water.
+func test_the_wedge_blocker_holds_a_shut_cell_and_lets_it_grow_once_clear() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	g.cfg.showcase_s = SHOWCASE_S
+	var w := sim.world
+	var a := w.abs_of_local(sim.motion.position)
+	var s1 := WorldConfig.tm_to_am(2)
+	var x := a[0] / s1
+	var y := a[1] / s1
+	w.gen.extra_shells[Vector3i(floori(x / w.chunk_tm), floori(y / w.chunk_tm), 2)] = [{"x": x, "y": y, "r": 1.8}]
+	w._clear_next()
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "open water at size 1")
+	check(not w.next_size_clear_point(sim).is_finite(), "shut at size 2")
+	_fill(sim)
+	var blocked: Array[Dictionary] = []
+	for t in CreatureBrain.ticks(SHOWCASE_S) + g._hint_ticks() + 30:
+		blocked.append_array(_of(_tick(sim), "growth_blocked"))
+	check_eq([g.blocker, g.calm_ticks, g.due, sim.size()], ["wedged", 0, false, 1], "held: wedged, no calm tick, not due")
+	check_eq(blocked.size(), 1, "named once")
+	if blocked.size() == 1:
+		check_eq(blocked[0].blocker, "wedged", "as wedged")
+	# 4 tm east at size 1 is 2.5 tm at size 2: past the shell's 1.8 and the cell's 0.5.
+	check(sim.debug_teleport(sim.motion.position + Vector2(4.0, 0.0)), "4 tm east")
+	var events: Array[Dictionary] = []
+	var grew_at := -1
+	for t in int(g.cfg.calm_ticks) + 5:
+		var ev := _tick(sim)
+		events.append_array(ev)
+		if not _of(ev, "grew").is_empty():
+			grew_at = t
+			break
+	check_eq(_of(events, "growth_unblocked").size(), 1, "unblocked")
+	check_eq(_of(events, "grew").size(), 1, "it grows once")
+	check_eq(grew_at, int(g.cfg.calm_ticks), "the tick after calm_ticks calm ticks")
+	check_eq(sim.size(), 2, "at size 2")
+	check_eq(sim.motion.position, Vector2.ZERO, "on its own point: the water there is open")

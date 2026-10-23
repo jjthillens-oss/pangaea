@@ -334,6 +334,26 @@ func _drain(sim: PoolSim) -> void:
 	add(sim, amount, "drain", "")
 
 
+## A new size (the growth tick, D-76's debug_set_size): the meter, the window and the press start
+## again, and the paid lists are the ledger's finds at size `n` (a size met before keeps what it paid).
+func reset_for_size(n: int) -> void:
+	meter = 0.0
+	calm_ticks = 0
+	blocked_ticks = 0
+	blocker = ""
+	armed = false
+	due = false
+	full_since = -1
+	closing.clear()
+	paid = {"place": [], "landmark": [], "food": []}
+	for d: Dictionary in discoveries:
+		var kind := str(d.type)
+		if int(d.size) == n and paid.has(kind) and not paid[kind].has(d.id):
+			paid[kind].append(d.id)
+	for kind: String in paid:
+		paid[kind].sort()
+
+
 ## The meter's state for the endless snapshot (spine 3.12): closing ids and paid lists sorted.
 func snapshot() -> Dictionary:
 	var hist := []
