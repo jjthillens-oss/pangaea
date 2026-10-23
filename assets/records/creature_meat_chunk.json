@@ -1,0 +1,71 @@
+{
+  "id": "creature_meat_chunk",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature stage food (PROPOSED): a torn haunch with a bone end, lying on the ground where a kill fell. The flesh material takes a MultiMesh instance colour.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_meat_chunk.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_meat_chunk.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.321,
+    "y_forward": 0.583,
+    "z_up": 0.27
+  },
+  "triangles": 604,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_CreatureMeatChunk_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CreatureMeatChunk_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureMeatChunk_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_MeatBone",
+    "M_MeatFlesh"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "MeatChunk"
+  ],
+  "kind": "food",
+  "pivot": "under the chunk on the ground (Godot y = 0)",
+  "instance_tint": "M_MeatFlesh.tres (mapped in the .glb.import) sets vertex_color_use_as_albedo, so a MultiMesh instance colour tints it; white draws it as baked.",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.003,
+    "triangles_before": 1684,
+    "triangles_after": 604
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
+}
