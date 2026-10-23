@@ -56,6 +56,12 @@ const CARRION_POSITIONS: PackedStringArray = ["position"]
 ## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
 ## watching, noticing, chasing, attacking, fleeing or going home. _calm tests them without a key.
 const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
+## is under a thousandth of this at 128 tm and a million ticks.
+const WAKE_SLACK_TM := 0.05
+## tm: how far the view's reach may differ from the bound's before the bound restarts (a float32
+## footprint at another place differs by about 1e-5).
+const WAKE_FAR_TOLERANCE_TM := 0.001
 
 var content: WorldContent
 var gen: WorldGen
@@ -111,6 +117,16 @@ var _sim: WeakRef = null               ## the sim (weak: it holds this stream), 
 var _waking_view: Variant = null
 var _waking: Array[CreatureField.Creature] = []
 var _waking_d := PackedFloat64Array()
+## The wake bound. A sleeper lies still, and while the cell has one place it comes no nearer a
+## sleeper than the path that place has moved, so a sleeper measured as not waking cannot wake before
+## the place has moved by its distance less the farthest it could wake from (the wake ring, or the
+## view's reach plus its margin and radius). Each such sleeper keeps [its position, the path length
+## at which it may first wake] and _wakers skips its test until then (or until it is moved). The bound
+## restarts, every sleeper measured again, when the cell has two places or the view or rings change.
+var _wake_bound := {}                  ## sleeper (Creature) -> [position, path length]
+var _swum := 0.0                       ## tm the cell's one place has moved since the bound restarted
+var _swum_from := Vector2.INF          ## that place at the last _wakers
+var _bound_view := PackedFloat64Array([-1.0, 0.0, 0.0])   ## [far, wake ring, view margin] it holds for
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -237,6 +253,10 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 				RebaseShift.memory(c.brain, offset)
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
+	if _swum_from.is_finite():
+		_swum_from -= offset   # the wake bound's place and sleepers, as the bodies moved
+	for b in _wake_bound.values():
+		b[0] -= offset
 	_rederive(sim)
 	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
 
@@ -252,6 +272,8 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		for c in sim.creatures.creatures.duplicate():
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
+	_wake_bound.clear()
+	_swum_from = Vector2.INF
 	var old_x := origin_x_am
 	var old_y := origin_y_am
 	set_origin_abs(sim, x_am, y_am)
@@ -620,21 +642,43 @@ func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 	if sim.creatures == null:
 		return out
 	var wake_r := float(rings.wake)
+	var places: Array = view_from.places
+	var far := float(view_from.far)
+	var bounded := places.size() == 1
+	if bounded and _swum_from.is_finite() and absf(far - _bound_view[0]) <= WAKE_FAR_TOLERANCE_TM \
+			and wake_r == _bound_view[1] and view_margin == _bound_view[2]:
+		var place: Vector2 = places[0]
+		_swum += place.distance_to(_swum_from)
+		_swum_from = place
+	else:
+		_wake_bound.clear()
+		_swum = 0.0
+		_swum_from = places[0] if bounded else Vector2.INF
+		_bound_view = PackedFloat64Array([far, wake_r, view_margin])
+	if _wake_bound.size() > sim.creatures.creatures.size() + 64:
+		_wake_bound.clear()   # mostly creatures gone since: measure the rest again
+	var reach := _bound_view[0] + WAKE_FAR_TOLERANCE_TM + view_margin + 0.01   # _in_view's own cut, plus r
 	for c in sim.creatures.creatures:
 		if not c.asleep:
+			continue
+		var b: Variant = _wake_bound.get(c)
+		if b != null and _swum < b[1] and b[0] == c.motion.position:
 			continue
 		var passed := _in_pass(c)
 		var sited := sites.has(c.site_id)
 		if not passed and not sited:
 			continue
 		var at := c.motion.position
+		var r := c.phenotype.radius
 		var d := _wake_distance(at, view_from)
-		if d < wake_r or _in_view(at, c.phenotype.radius, d, view_from):
+		if d < wake_r or _in_view(at, r, d, view_from):
 			if sited:
 				out.append(c)
 			if passed:
 				_waking.append(c)
 				_waking_d.append(d)
+		elif bounded:
+			_wake_bound[c] = [at, _swum + d - maxf(wake_r, reach + r) - WAKE_SLACK_TM]
 	return out
 
 

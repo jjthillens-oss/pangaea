@@ -104,3 +104,64 @@ func test_reach_disc_for_equals_the_brains_own_leash_disc() -> void:
 			checked += 1
 	check(behaviors.has(CreatureBrain.TERRITORIAL) and behaviors.has(CreatureBrain.AMBUSH), "both behaviors checked (%s)" % [behaviors.keys()])
 	check(checked >= 60, "%d discs checked" % checked)
+
+
+# --- WorldStream's wake bound (a sleeper measured again only once the cell may have come near) ---
+
+const Gates := preload("res://tests/test_endless_gates.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
+
+## Two sims of the same seed swim the same route, east and back west past the creatures they left
+## asleep, overdriven and seen, with a debug rebase, a death (two places, then the respawn's jump)
+## and a debug teleport on the way. Before every step the twin's bound restarts, so it measures every
+## sleeper every tick as the stream did before. Every tick's events and every hash must be the same.
+func test_slow_the_wake_bound_wakes_the_same_sleepers_as_measuring_every_one() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the wake bound waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var a: Variant = Gates.make_sim(Gates.RACER, 501)
+	var b: Variant = Gates.make_sim(Gates.RACER, 501)
+	var counts := {"creature_woke": 0, "creature_slept": 0, "rebased": 0, "died": 0}
+	var bounded := 0
+	var dead_since := -1
+	for t in 2400:
+		SwimBot.overdrive(a)
+		SwimBot.overdrive(b)
+		if a.dead:
+			if dead_since < 0:
+				dead_since = t
+			elif t - dead_since >= Gates.DEATH_NOTICE_TICKS and not a.respawn_pending:
+				a.respawn_player()
+				b.respawn_player()
+				dead_since = -1
+		if t == 1000:
+			a.debug_rebase(Vector2i(-2, 1))
+			b.debug_rebase(Vector2i(-2, 1))
+		elif t == 1400:
+			a.debug_hurt_player(1e6)
+			b.debug_hurt_player(1e6)
+		elif t == 2000:
+			a.debug_teleport(a.motion.position + Vector2(-30.0, 12.0))
+			b.debug_teleport(b.motion.position + Vector2(-30.0, 12.0))
+		var move := Vector2.RIGHT if (t / 600) % 2 == 0 else Vector2.LEFT
+		b.world._swum_from = Vector2.INF
+		a.step(SimIntent.new(move))
+		b.step(SimIntent.new(move))
+		var ea: Array = a.drain_events()
+		var eb: Array = b.drain_events()
+		if var_to_str(ea) != var_to_str(eb):
+			check(false, "tick %d: the events differ" % t)
+			return
+		for e in ea:
+			if counts.has(e.type):
+				counts[e.type] += 1
+		if not a.world._wake_bound.is_empty():
+			bounded += 1
+		if t % 60 == 59 and a.state_hash() != b.state_hash():
+			check(false, "tick %d: the hashes differ" % t)
+			return
+	print("test-perf-world-caches: the wake bound held on %d of 2400 ticks; %s" % [bounded, counts])
+	check_eq(a.state_hash(), b.state_hash(), "the same end")
+	check(counts.creature_woke >= 3 and counts.creature_slept >= 3, "sleepers slept and woke (%s)" % counts)
+	check(bounded >= 1000, "the bound skipped sleepers on most ticks (%d)" % bounded)
+	check(counts.died == 1 and a.tick > 1400 + Gates.DEATH_NOTICE_TICKS and not a.dead, "the cell died and came back")
