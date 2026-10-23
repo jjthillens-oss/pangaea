@@ -1,14 +1,24 @@
 extends TestCase
 ## The rules and the simulation stay pure (M1 step 2 layering): no clock, input, OS, scene tree,
 ## files or global random numbers, so the same seed and intents always give the same world and
-## the sim runs headless. Only seeded RandomNumberGenerator instances are allowed.
+## the sim runs headless. Only seeded RandomNumberGenerator instances are allowed. The endless
+## world's sim files live in WORLD_DIR (S1 spine D-1), and every script there is scanned as it lands.
 
 const DOMAIN_DIR := "res://game/domain"
 const SIM_FILES: PackedStringArray = ["res://game/systems/pool_sim.gd", "res://game/systems/plankton_field.gd",
 	"res://game/systems/carrion_field.gd", "res://game/systems/sim_intent.gd", "res://game/systems/species_catalog.gd",
 	"res://game/systems/creature_field.gd"]
-## part_catalog.gd and species_catalog.gd read their tuning data from a file (read-only loads).
-const FILE_ALLOWED: PackedStringArray = ["res://game/domain/part_catalog.gd", "res://game/systems/species_catalog.gd"]
+## Every .gd in it and its subfolders is scanned, like DOMAIN_DIR (S1: the endless world's sim).
+const WORLD_DIR := "res://game/systems/world"
+## These read their tuning data from a file (read-only loads): the part and species catalogs, and the
+## endless world's four loaders (S1 spine 3.1). world_content.gd only calls the loaders.
+const FILE_ALLOWED: PackedStringArray = ["res://game/domain/part_catalog.gd", "res://game/systems/species_catalog.gd",
+	"res://game/systems/world/world_config.gd", "res://game/systems/world/tile_catalog.gd",
+	"res://game/systems/world/home_block.gd", "res://game/systems/world/placement_kit.gd"]
+## Files that must be scanned once they exist (non-vacuity: a scan that silently skipped them would
+## pass): the world's generator and stream, and the endless domain rules.
+const MUST_SCAN: PackedStringArray = ["res://game/systems/world/world_gen.gd", "res://game/systems/world/world_stream.gd",
+	"res://game/domain/chunk_arena.gd", "res://game/domain/rebase_shift.gd", "res://game/domain/world_hash.gd"]
 const BANNED := {
 	"global random numbers": "(?<![\\w.])(randf|randi|randomize|randf_range|randi_range|randfn|seed)\\(",
 	"the clock": "\\bTime\\.",
@@ -33,7 +43,19 @@ func _scanned() -> PackedStringArray:
 		if f.ends_with(".gd"):
 			out.append(DOMAIN_DIR + "/" + f)
 	out.append_array(SIM_FILES)
+	_gd_files_under(WORLD_DIR, out)
 	return out
+
+
+## Every .gd under dir, subfolders included; nothing when dir does not exist.
+static func _gd_files_under(dir: String, out: PackedStringArray) -> void:
+	if not DirAccess.dir_exists_absolute(dir):
+		return
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd"):
+			out.append(dir.path_join(f))
+	for sub in DirAccess.get_directories_at(dir):
+		_gd_files_under(dir.path_join(sub), out)
 
 
 ## The source with comments and string contents removed, so prose cannot trip the scan.
@@ -91,6 +113,22 @@ func test_rules_and_sim_use_no_clock_input_files_tree_or_global_random() -> void
 			check(not _matches(code, BANNED[what]), "%s uses %s" % [path, what])
 		if not FILE_ALLOWED.has(path):
 			check(not _matches(code, FILES_PATTERN), "%s touches files" % path)
+
+
+func test_the_scan_covers_the_world_directory() -> void:
+	var files := _scanned()
+	var world := PackedStringArray()
+	_gd_files_under(WORLD_DIR, world)
+	for path in world:
+		check(files.has(path), "%s is scanned" % path)
+	for path in MUST_SCAN:
+		if FileAccess.file_exists(path):
+			check(files.has(path), "%s exists and is scanned" % path)
+	check(files.has("res://game/domain/world_hash.gd"), "the endless hash (T0.1) is scanned through the domain directory")
+	for path in FILE_ALLOWED:
+		check(not path.begins_with(WORLD_DIR) or path.get_file() in ["world_config.gd", "tile_catalog.gd", "home_block.gd", "placement_kit.gd"],
+			"only the four loaders may touch files in the world directory (%s)" % path)
+	print("test-sim-purity: %d files scanned, %d in %s" % [files.size(), world.size(), WORLD_DIR])
 
 
 func test_the_scan_catches_what_it_is_for() -> void:
