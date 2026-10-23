@@ -587,3 +587,298 @@ func test_the_wedge_blocker_holds_a_shut_cell_and_lets_it_grow_once_clear() -> v
 	check_eq(grew_at, int(g.cfg.calm_ticks), "the tick after calm_ticks calm ticks")
 	check_eq(sim.size(), 2, "at size 2")
 	check_eq(sim.motion.position, Vector2.ZERO, "on its own point: the water there is open")
+
+
+# --- T2.6: the ledger and lumps, the death cost, respawn energy, the dev commands, the save (S2G20,
+# S2G32; D-35, D-71 to D-76) ---
+
+## The meter_lump events among `events`, as [reason, amount, id].
+static func _lumps_of(events: Array[Dictionary]) -> Array:
+	var out := []
+	for e in _of(events, "meter_lump"):
+		out.append([e.reason, e.amount, e.id])
+	return out
+
+
+## A growth sim among the size-2 species (so kills have species).
+func _species_sim() -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species(), null, PackedFloat64Array(), 4, true)
+	sim.drain_events()
+	return sim
+
+
+## A Continue of `save` on the fake generator: growth as `growth` says, no creatures.
+func _continue(save: SaveGame, growth := true) -> PoolSim:
+	var content := FakeWorldGen.fixture_content()
+	content.config.switches["growth"] = growth
+	var sim := PoolSim._create_endless(save, catalog, layout, null, content, FakeWorldGen.new(content, null, save.world_seed))
+	sim.drain_events()
+	return sim
+
+
+## D-71: every look at size 1 is new; at size 2 the algae ball is and carrion (size 1's meat) is not.
+## A new look is written to the ledger once per size and, with lumps, pays food_look x the ring once.
+func test_a_food_look_new_at_the_size_pays_once_and_is_written_to_the_ledger() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	check_eq(float(g.cfg.lumps.food_look), 0.05, "food_look is 5 % of the ring")
+	var plant := {"type": "ate", "kind": "plant"}
+	var meat := {"type": "ate", "kind": "meat"}
+	g.observe(sim, [plant, plant, meat])
+	check_eq(_lumps_of(sim.drain_events()), [["food_look", 0.05 * 90.0, "plankton"], ["food_look", 0.05 * 90.0, "carrion"]],
+		"size 1: plankton and carrion, once each")
+	check_eq(g.discoveries, [{"type": "food", "id": "plankton", "size": 1}, {"type": "food", "id": "carrion", "size": 1}], "the ledger")
+	check_eq(g.paid.food, ["carrion", "plankton"], "paid at size 1, sorted")
+	check(sim.debug_set_size(2), "size 2")
+	sim.drain_events()
+	g.observe(sim, [plant, meat, plant])
+	check_eq(_lumps_of(sim.drain_events()), [["food_look", 0.05 * 120.0, "algae_ball"]], "size 2: the algae ball alone")
+	check_eq(g.discoveries.back(), {"type": "food", "id": "algae_ball", "size": 2}, "written at size 2")
+	check_eq(g.paid.food, ["algae_ball"], "paid at size 2")
+	check(sim.debug_set_size(1), "back to size 1")
+	sim.drain_events()
+	g.observe(sim, [plant, meat])
+	check_eq(_lumps_of(sim.drain_events()), [], "size 1 again: its looks were paid (the ledger)")
+	check_eq(g.discoveries.size(), 3, "and nothing is written twice")
+	var content := FakeWorldGen.fixture_content()
+	content.config.switches["lumps"] = false
+	var off := FakeWorldGen.endless_sim(SEED, catalog, layout, null, content, PackedFloat64Array(), 4, true)
+	off.drain_events()
+	off.growth.observe(off, [plant])
+	check_eq(_lumps_of(off.drain_events()), [], "lumps off: no lump")
+	check_eq(off.growth.discoveries, [{"type": "food", "id": "plankton", "size": 1}], "but the ledger still")
+
+
+## D-72: a kill by the cell of a species drawn at the size (q 1) pays threat_kill x the ring every
+## time; any other kill pays kill_carcass_share x the summed energy of its carcass items still in the
+## carrion field; a kill by anyone else pays nothing.
+func test_a_kill_pays_threat_kill_at_q_one_and_a_carcass_share_otherwise() -> void:
+	var sim := _species_sim()
+	var g := sim.growth
+	var me := CreatureField.PLAYER_ID
+	g.observe(sim, [{"type": "creature_died", "id": "c_a", "species": "rammer", "by": me, "carcass": []},
+		{"type": "creature_died", "id": "c_b", "species": "rammer", "by": me, "carcass": []},
+		{"type": "creature_died", "id": "c_c", "species": "rammer", "by": "c_9", "carcass": []}])
+	check_eq(_lumps_of(sim.drain_events()), [["threat_kill", 0.15 * 90.0, "c_a"], ["threat_kill", 0.15 * 90.0, "c_b"]],
+		"size 1: a rammer (q 1) pays 15 % of the ring on every kill by the cell")
+	check(sim.debug_set_size(2), "size 2")
+	var a := sim.carrion.spawn(sim.motion.position + Vector2(3.0, 0.0), "carcass", 24.0)
+	var b := sim.carrion.spawn(sim.motion.position + Vector2(-3.0, 0.0), "carcass", 10.0)
+	sim.drain_events()
+	g.observe(sim, [{"type": "creature_died", "id": "c_d", "species": "rammer", "by": me, "carcass": [a.id, b.id, "cr_gone"]},
+		{"type": "creature_died", "id": "c_e", "species": "lurker", "by": me, "carcass": [a.id]}])
+	check_eq(_lumps_of(sim.drain_events()), [["kill", 0.25 * 34.0, "c_d"], ["threat_kill", 0.15 * 120.0, "c_e"]],
+		"size 2: a rammer (q 0.625) pays 25 % of its carcass; a Lurker (q 1) 15 % of the ring")
+	var content := FakeWorldGen.fixture_content()
+	content.config.switches["lumps"] = false
+	var off := FakeWorldGen.endless_sim(SEED, catalog, layout, FakeWorldGen.s2_species(), content, PackedFloat64Array(), 4, true)
+	off.drain_events()
+	off.growth.observe(off, [{"type": "creature_died", "id": "c_a", "species": "rammer", "by": me, "carcass": []}])
+	check_eq(_lumps_of(off.drain_events()), [], "lumps off: nothing")
+
+
+## Step 10: a place within place_find_tm (10) and a landmark anchor within landmark_find_tm (6) of
+## the cell are found once per size, in id order, each with discovered {kind, id, size, lump}; a place
+## pays place x the ring, a landmark landmark_at_top x the ring at the build top only.
+func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	var key := FakeWorldGen.PLACE_CHUNK
+	var c := Vector2(32.0 * key.x + 16.0, 32.0 * key.y + 16.0)
+	for n in [1, 2]:
+		sim.world.gen.extra_anchors[Vector3i(key.x, key.y, n)] = [{"id": "a_f_arch", "x": c.x + 4.0, "y": c.y + 6.0,
+			"model": "landmark_arch"}]
+	(sim.world.gen.extra_anchors[Vector3i(key.x, key.y, 1)] as Array).append({"id": "a_f_arch2", "x": c.x + 1.0,
+		"y": c.y + 9.0, "model": "landmark_arch"})   # a second arch: two of a kind in one tick
+	check(sim.debug_teleport_abs(c.x + 30.0, c.y), "30 tm from the place")
+	check_eq(_of(_tick(sim) + _tick(sim), "discovered"), [], "nothing found that far")
+	check(sim.debug_teleport_abs(c.x - 9.0, c.y), "9 tm from the place, 14 from the arch")
+	var events := _tick(sim)
+	check_eq(_of(events, "discovered"), [{"type": "discovered", "kind": "place", "id": "giant_husk", "size": 1, "lump": true}],
+		"the place")
+	check_eq(_lumps_of(events), [["place", 0.1 * 90.0, "giant_husk"]], "pays 10 % of the ring")
+	events = _tick(sim)
+	check_eq(_of(events, "discovered") + _of(events, "meter_lump"), [], "once")
+	check(sim.debug_teleport_abs(c.x - 1.0, c.y + 6.0), "5 tm from the arch, 3.6 from the second")
+	events = _tick(sim)
+	check_eq(_of(events, "discovered"), [{"type": "discovered", "kind": "landmark", "id": "landmark_arch", "size": 1, "lump": false}],
+		"the landmark once though two arches are near, no lump below the top")
+	check_eq(_lumps_of(events), [], "nothing paid")
+	check_eq(g.discoveries, [{"type": "place", "id": "giant_husk", "size": 1}, {"type": "landmark", "id": "landmark_arch", "size": 1}],
+		"the ledger")
+	check(sim.debug_set_size(2), "size 2, the top")
+	var k := WorldConfig.tm_to_am(2)
+	check(sim.debug_teleport_abs((c.x - 1.0) * k, (c.y + 6.0) * k), "5 tm from the arch at size 2, 6.1 from the place")
+	sim.drain_events()
+	events = _tick(sim)
+	check_eq(_of(events, "discovered"), [{"type": "discovered", "kind": "landmark", "id": "landmark_arch", "size": 2, "lump": true},
+		{"type": "discovered", "kind": "place", "id": "giant_husk", "size": 2, "lump": true}], "both again at size 2, in id order")
+	check_eq(_lumps_of(events), [["landmark", 0.1 * 120.0, "landmark_arch"], ["place", 0.1 * 120.0, "giant_husk"]],
+		"the landmark pays at the top")
+	check_eq(g.paid, {"place": ["giant_husk"], "landmark": ["landmark_arch"], "food": []}, "paid at size 2")
+
+
+## on_death (D-35): the energy the cell died with is kept; from size 2 the death costs 25 % of the
+## ring (never below 0, full no more); the window, the press and the closing history start again.
+func test_a_death_costs_a_quarter_ring_from_size_two_and_none_at_size_one() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	check_eq(float(g.cfg.death_meter_share), 0.25, "death_meter_share")
+	check(sim.debug_fill_meter(0.5), "half full")
+	g.calm_ticks = 5
+	g.blocked_ticks = 7
+	g.blocker = "eating"
+	g.armed = true
+	g.due = true
+	g.closing.append([sim.tick, {}])
+	sim.state.energy = 31.0
+	sim._player_dies("starved", "", "", "test")
+	check_eq(g.meter, 45.0, "size 1: the meter kept")
+	check_eq(g.energy_at_death, 31.0, "the energy it died with")
+	check_eq([g.calm_ticks, g.blocked_ticks, g.blocker, g.armed, g.due, g.closing], [0, 0, "", false, false, []], "the window cleared")
+	var two := _growth_sim()
+	two.world.max_size = 3   # a build whose top is 3, so size 2 has a window
+	check(two.debug_set_size(2), "size 2")
+	check(two.debug_fill_meter(1.0), "full")
+	check(two.growth.full_since >= 0, "full")
+	two._player_dies("killed", "c_1", "rammer", "")
+	check_eq(two.growth.meter, 120.0 - 30.0, "size 2: 25 % of the ring (30) gone")
+	check_eq(two.growth.full_since, -1, "no longer full")
+	var low := _growth_sim()
+	check(low.debug_set_size(2), "size 2, the top")
+	check(low.debug_fill_meter(0.1), "12 in the meter")
+	low._player_dies("starved", "", "", "test")
+	check_eq(low.growth.meter, 0.0, "never below 0")
+
+
+## D-35: the streak's share of the capacity, at most 20 over the energy the cell died with, and at
+## size 1 (before the first growth) at least 80 %; the share alone with no death recorded.
+func test_respawn_energy_is_the_share_capped_over_the_death_with_the_size_one_floor() -> void:
+	var g := _growth_sim().growth
+	check_eq([float(g.cfg.respawn_floor_share), float(g.cfg.respawn_cap_over_death)], [0.8, 20.0], "the data")
+	check_eq(g.respawn_energy(100.0, 0.6, 1), 60.0, "no death recorded: the share")
+	g.energy_at_death = 5.0
+	check_eq(g.respawn_energy(100.0, 0.6, 1), 80.0, "size 1: the 80 % floor")
+	check_eq(g.respawn_energy(100.0, 0.6, 2), 25.0, "size 2: 20 over the death")
+	g.energy_at_death = 70.0
+	check_eq(g.respawn_energy(100.0, 0.6, 2), 60.0, "the share caps it")
+	check_eq(g.respawn_energy(100.0, 1.0, 1), 90.0, "size 1: 20 over the death above the floor")
+	g.energy_at_death = 95.0
+	check_eq(g.respawn_energy(100.0, 1.0, 2), 100.0, "never past the capacity")
+
+
+## D-73: the respawn (step 0's _respawn_now) takes its energy from respawn_energy with growth on, and
+## the streak's share alone with growth off (S1).
+func test_a_respawn_takes_its_energy_from_respawn_energy() -> void:
+	for growth in [true, false]:
+		for n in ([1, 2] if growth else [1]):
+			var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, SpeciesCatalog.load_from(), null, PackedFloat64Array(), 4, growth)
+			if n == 2:
+				check(sim.debug_set_size(2), "size 2")
+			sim.state.energy = 10.0
+			sim._player_dies("starved", "", "", "test")
+			sim.respawn_player()
+			sim.drain_events()
+			for t in 3:
+				if sim.dead or sim.respawn_pending:
+					sim.step(SimIntent.new())
+			check(not sim.dead, "respawned (growth %s, size %d)" % [growth, n])
+			var cap := sim.state.energy_capacity
+			var share := RespawnRules.pick(sim.species.respawn_energy_share, sim.death_streak)
+			var want := cap * share
+			if growth:
+				want = maxf(0.8 * cap, minf(share * cap, 30.0)) if n == 1 else minf(share * cap, 30.0)
+			check_near(sim.state.energy, want, 0.05, "growth %s, size %d: energy %.2f" % [growth, n, sim.state.energy])
+
+
+## The dev commands: fill_meter through Growth.add (debug event after the lump), force_growth makes the
+## next tick grow even while hunted or wedged; both refuse with growth off, dead, or (force) at the top.
+func test_the_dev_meter_commands_fill_and_force() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	check(sim.debug_fill_meter(0.5), "half")
+	var events := sim.drain_events()
+	check_eq(g.meter, 45.0, "45 of 90")
+	check_eq(_lumps_of(events), [["debug", 45.0, ""]], "through add")
+	check_eq(events.back(), {"type": "debug", "command": "fill_meter", "share": 0.5}, "then the debug event")
+	check(not sim.debug_fill_meter(1.5) and not sim.debug_fill_meter(-0.1), "a share outside 0 to 1 is refused")
+	check(sim.debug_force_growth(), "forced")
+	check_eq([g.meter, g.due], [90.0, true], "full and due")
+	check_eq(sim.drain_events().back(), {"type": "debug", "command": "force_growth"}, "its event")
+	check_eq(_of(_tick(sim), "grew").size(), 1, "the next tick grows")
+	check_eq(sim.size(), 2, "size 2")
+	check(not sim.debug_force_growth(), "not at the top")
+	check(sim.debug_fill_meter(0.5), "fill still works at the top")
+	sim._player_dies("starved", "", "", "test")
+	check(not sim.debug_fill_meter(1.0) and not sim.debug_force_growth(), "not while dead")
+	var off := FakeWorldGen.endless_sim(SEED, catalog, layout, null)
+	check(not off.debug_fill_meter(1.0) and not off.debug_force_growth(), "not with growth off")
+	# Wedged: a shell over every ring of the next size's point. Forced, it grows onto the nearest clear
+	# point beyond the wedge (the settle is asserted only against a finite point).
+	var shut := _growth_sim()
+	var w := shut.world
+	var a := w.abs_of_local(shut.motion.position)
+	var x := a[0] / WorldConfig.tm_to_am(2)
+	var y := a[1] / WorldConfig.tm_to_am(2)
+	w.gen.extra_shells[Vector3i(floori(x / w.chunk_tm), floori(y / w.chunk_tm), 2)] = [{"x": x, "y": y, "r": 1.8}]
+	w._clear_next()
+	check(not w.next_size_clear_point(shut).is_finite(), "wedged")
+	check(shut.debug_force_growth(), "forced while wedged")
+	check_eq(_of(_tick(shut), "grew").size(), 1, "it grows")
+	check(shut.arena.is_clear(shut.motion.position, shut.phenotype.radius), "clear")
+	check(shut.motion.position.length() > 2.0 + 1e-3, "past the wedge (%s)" % shut.motion.position)
+
+
+## The v3 fields (spine 4.6): write_growth_to_save writes the size and meter, the checkpoint, the
+## ledger and the generator version; a Continue (D-74) comes back at that size with that meter,
+## checkpoint and ledger, and never pays a find twice (S2G32).
+func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_restores_them() -> void:
+	var sim := _growth_sim()
+	var g := sim.growth
+	var key := FakeWorldGen.PLACE_CHUNK
+	var c := Vector2(32.0 * key.x + 16.0, 32.0 * key.y + 16.0)
+	g.observe(sim, [{"type": "ate", "kind": "plant"}])
+	check(sim.debug_teleport_abs(c.x - 9.0, c.y), "beside the place")
+	_tick(sim)
+	check_eq(g.discoveries, [{"type": "food", "id": "plankton", "size": 1}, {"type": "place", "id": "giant_husk", "size": 1}],
+		"two finds at size 1")
+	check(sim.debug_set_size(2), "size 2")
+	check(sim.debug_fill_meter(0.25), "30 in the meter")
+	sim.write_position_to_save()
+	sim.write_growth_to_save()
+	var cp := sim.world.checkpoint_am
+	check_eq(sim.save.growth, {"size": 2, "meter": 30.0}, "growth")
+	check_eq(sim.save.checkpoint, {"x_am": cp[0], "y_am": cp[1], "heading": cp[2], "size": 2}, "the checkpoint")
+	check_eq(sim.save.discoveries, g.discoveries, "the ledger")
+	check(not is_same(sim.save.discoveries, g.discoveries), "a copy")
+	check_eq(sim.save.gen_version, sim.world.gen_version, "gen_version")
+	check_eq(sim.save.validate(catalog), PackedStringArray(), "a valid v3 save")
+	var back := _continue(sim.save)
+	check_eq(back.size(), 2, "Continue at size 2")
+	check_eq([back.growth.meter, back.growth.full_since], [30.0, -1], "the meter")
+	check_eq(back.world.checkpoint_am, cp, "the checkpoint")
+	check_eq(back.growth.discoveries, g.discoveries, "the ledger")
+	check_eq(back.growth.paid, {"place": [], "landmark": [], "food": []}, "nothing paid at size 2 yet")
+	var a := back.absolute_position_am()
+	var b := sim.absolute_position_am()
+	check(absf(a[0] - b[0]) < 1e-6 and absf(a[1] - b[1]) < 1e-6, "at its place")
+	check(back.debug_set_size(1), "back at size 1")
+	check_eq(back.growth.paid, {"place": ["giant_husk"], "landmark": [], "food": ["plankton"]}, "size 1's finds are paid")
+	check(back.debug_teleport_abs(c.x - 9.0, c.y), "beside the place again")
+	back.growth.observe(back, [{"type": "ate", "kind": "plant"}])
+	var events := back.drain_events() + _tick(back)
+	check_eq(_of(events, "discovered") + _of(events, "meter_lump"), [], "a Continue never pays twice")
+	# D-74: the size clamped to the build's sizes, the meter to the ring (a full ring at the top pays
+	# out on the first tick); with growth off, size 1 and no meter.
+	sim.save.growth = {"size": 5, "meter": 999.0}
+	var clamped := _continue(sim.save)
+	check_eq([clamped.size(), clamped.growth.meter, clamped.growth.full_since, int(clamped.world.checkpoint_am[3])], [2, 120.0, 0, 2],
+		"size 5 is 2 here; the meter the ring")
+	check_eq(_of(_tick(clamped), "ring_paid").size(), 1, "full at the top: it pays out")
+	check_eq(clamped.growth.meter, 0.0, "and starts again")
+	var s1 := _continue(sim.save, false)
+	check_eq([s1.size(), s1.growth, s1.world.checkpoint_am[3]], [1, null, 1.0], "growth off: size 1")
+	var pool := PoolSim.create(Lineage.found(SEED, "test+dev", catalog, "omnivore").save, catalog, layout, null)
+	pool.write_growth_to_save()
+	check_eq([pool.save.growth, pool.save.checkpoint, pool.save.gen_version],
+		[{"size": 1, "meter": 0.0}, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, 1], "the pool writes the defaults")
