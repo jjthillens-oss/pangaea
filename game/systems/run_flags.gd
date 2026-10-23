@@ -7,6 +7,8 @@ extends RefCounted
 ##   --perf-tour     run the dev performance tour (dev builds only)
 ##   --creature      open the creature stage preview instead of the title (its own save file under
 ##                   user://creature_stage/; --slot does not apply to it)
+##   --creature-store=PATH  the creature stage's save file instead of its slot file (the creature
+##                   smoke's, under user://smoke/); a file under user:// or at an absolute path
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -21,6 +23,7 @@ var seed_value := -1           ## -1: none given
 var slot := ""                 ## "": the default slot
 var perf_tour := false
 var creature := false
+var creature_store := ""       ## "": the slot's file under user://creature_stage/
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
 var problems: PackedStringArray = []
@@ -46,6 +49,12 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 			flags.perf_tour = true
 		elif arg == "--creature":
 			flags.creature = true
+		elif arg.begins_with("--creature-store="):
+			var path := arg.trim_prefix("--creature-store=")
+			if _is_file_slot(path):
+				flags.creature_store = path
+			else:
+				flags.problems.append("--creature-store needs a file under user:// or at an absolute path, got '%s'." % path)
 		else:
 			flags.other.append(arg)
 	return flags

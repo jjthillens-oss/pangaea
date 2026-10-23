@@ -24,8 +24,8 @@ extends Node
 ##
 ## Creature stage preview (creature-stage plan, PROPOSED): open_creature_stage() puts the CreatureStage
 ## in place of the screen; the title's "Creature stage" button and --creature open it. It keeps its
-## own save file (CreatureStore.default_path of the settings' slot number; --slot does not apply) and
-## comes back to the title through exit_requested.
+## own save file (CreatureStore.default_path of the settings' slot number, or --creature-store's
+## file; --slot does not apply) and comes back to the title through exit_requested.
 
 signal screen_changed(screen: Node)
 
@@ -129,9 +129,12 @@ func open_creature_stage() -> CreatureStage:
 	return creature_stage
 
 
-## The creature stage's store file: user://creature_stage/slot_<n>.json, n the settings' slot number
-## (1 when the slot in use is a --slot file that is none of the numbered ones).
+## The creature stage's store file: --creature-store when given (the creature smoke's), else
+## user://creature_stage/slot_<n>.json, n the settings' slot number (1 when the slot in use is a
+## --slot file that is none of the numbered ones).
 func creature_store_path() -> String:
+	if flags != null and not flags.creature_store.is_empty():
+		return flags.creature_store
 	var n := SaveSlots.number_of(session.slot) if session != null else 0
 	if n == 0 and settings != null:
 		n = SaveSlots.number_of(settings.current_slot_path())
