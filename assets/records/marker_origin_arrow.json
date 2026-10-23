@@ -3,7 +3,7 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Endless world marker (S1 rough): the cream arrow toward the origin, 'where you began'. Lies flat; a different shape from the column.",
+  "purpose": "Endless world marker (S1): the cream arrow toward the origin, 'where you began'. Lies flat; a different shape from the column. Drawn with M_OriginArrow.tres (unshaded cream at about L* 85).",
   "category": "marker",
   "source_blend": "assets/source/blender/marker_origin_arrow.blend",
   "generator_script": "tools/blender/make_s1_production.py",
@@ -57,6 +57,7 @@
   "nodes": [
     "MarkerOriginArrow"
   ],
+  "engine_material": "res://assets/export/M_OriginArrow.tres",
   "kind": "marker",
   "pivot": "centre of the arrow; it points Godot -Z",
   "yaw_rule": "fixed",

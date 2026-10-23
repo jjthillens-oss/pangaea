@@ -55,7 +55,8 @@ FLAT = {
     "cream": ((0.84, 0.66, 0.44), 0.5), "lavender": ((0.40, 0.33, 0.68), 0.45),
     "husk": ((0.55, 0.50, 0.66), 0.5), "amber": ((0.69, 0.38, 0.10), 0.45),
 }
-TINTS = {"plain": "#FFFFFF", "frost": "#D6E0F5", "warm": "#F3E3C6"}
+# warm was #F3E3C6 until T4 found five albedo x tint products over the look rule; #EAE5C7 clears them all.
+TINTS = {"plain": "#FFFFFF", "frost": "#D6E0F5", "warm": "#EAE5C7"}
 
 
 def _mats():
@@ -581,12 +582,18 @@ def build_rare(asset_id):
 # --- Markers ------------------------------------------------------------------------------------
 
 
+COLUMN_BOTTOM, COLUMN_TOP = -1.5, 4.5     # 6 m: stays on screen at the default camera (fov 45, pitch 55, distance 14)
+
+
 def build_checkpoint_column():
-    """Where you come back: an open cream tube 0.5 bu wide, from deep below to high above the
-    plane. UV v runs 0 at the bottom to 1 at the top, so the engine's unlit shader fades both ends."""
+    """Where you come back: a soft light shaft, an open tube 0.5 bu wide and 6 m tall around the
+    swim plane. UV v runs 0 at the bottom to 1 at the top. The engine draws it with the external
+    M_CheckpointColumn.tres (mapped in its .glb.import): additive, unlit, no fog, cream, fading to
+    nothing at both ends and toward the shaft's edges."""
     mat = bc.material("M_Column", (0.84, 0.66, 0.44), 0.5, emission=(0.84, 0.66, 0.44), emission_strength=2.0)
     verts, faces, seg = [], [], 24
-    heights = [-4.0 + 2.0 * i for i in range(8)]
+    rows = 7
+    heights = [COLUMN_BOTTOM + (COLUMN_TOP - COLUMN_BOTTOM) * i / (rows - 1) for i in range(rows)]
     for z in heights:
         for j in range(seg):
             a = math.tau * j / seg
@@ -596,10 +603,11 @@ def build_checkpoint_column():
             k = (j + 1) % seg
             faces.append((i * seg + j, i * seg + k, (i + 1) * seg + k, (i + 1) * seg + j))
     bc.mesh_object("MarkerCheckpointColumn", verts, faces, [mat], fix_normals=False,
-                   uv=lambda co: ((math.atan2(co.y, co.x) / math.tau) % 1.0, (co.z + 4.0) / 14.0))
+                   uv=lambda co: ((math.atan2(co.y, co.x) / math.tau) % 1.0, (co.z - COLUMN_BOTTOM) / (COLUMN_TOP - COLUMN_BOTTOM)))
     return {
-        "purpose": "Endless world marker (S1 rough): the cream light column at the current checkpoint, 'where you come back'. No collision; drawn unlit by the engine.",
+        "purpose": "Endless world marker (S1): a soft cream light shaft at the current checkpoint, 'where you come back'. No collision. Drawn with M_CheckpointColumn.tres: additive, unshaded, fog off, fading at both ends; peak about L* 80.",
         "category": "marker", "kind": "marker", "pivot": "the checkpoint on the swim plane (Godot y = 0)",
+        "engine_material": "res://assets/export/M_CheckpointColumn.tres",
         "yaw_rule": "fixed", "dressings": [], "scale_range": [1.0, 1.0],
     }
 
@@ -615,7 +623,8 @@ def build_origin_arrow():
     faces += [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
     bc.mesh_object("MarkerOriginArrow", verts, faces, [mat], smooth=False)
     return {
-        "purpose": "Endless world marker (S1 rough): the cream arrow toward the origin, 'where you began'. Lies flat; a different shape from the column.",
+        "purpose": "Endless world marker (S1): the cream arrow toward the origin, 'where you began'. Lies flat; a different shape from the column. Drawn with M_OriginArrow.tres (unshaded cream at about L* 85).",
+        "engine_material": "res://assets/export/M_OriginArrow.tres",
         "category": "marker", "kind": "marker", "pivot": "centre of the arrow; it points Godot -Z",
         "yaw_rule": "fixed", "dressings": [], "scale_range": [1.0, 1.0],
     }
