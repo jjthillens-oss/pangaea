@@ -233,11 +233,21 @@ var _next_key := Vector2i.MAX
 var _next_held := {}                   ## Vector2i -> true: the chunks _next_arena holds
 var _next_from := PackedFloat64Array()
 var _next_size := 0
+## Quiet ticks with nothing to generate and no arena chore prepare the cached chunks' loads, one chunk a
+## tick: its zones' plankton streams, seeded and unused (zone id -> RandomNumberGenerator), and its
+## chunk_loaded payload with every position still to place (key -> that). A load from the cache takes
+## them, so the growth tick does not make them; each is what the load would make.
+var _next_streams := {}
+var _next_events := {}
 var wedge_rings := 4
 ## Tests turn this off to show the caches never change a result (S2G35): every point is then
 ## computed from freshly generated chunks, and nothing is prefetched or taken from the cache.
 var next_cache := true
 var _growing := false                  ## inside grow: its loads take from the next size's chunks
+## What the growth tick lets go of (the old size's chunks, its arena and its plankton list), held so
+## that freeing it, a large share of that tick's cost, falls on quiet ticks after the beat instead:
+## one a tick (step). Nothing reads it; it changes no result.
+var _retired: Array = []
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -291,6 +301,8 @@ func step(sim: PoolSim) -> void:
 	_food_view(sim)
 	if g != null:
 		_prefetch(sim, quiet)
+		if quiet and not _retired.is_empty() and sim.tick >= g.beat_until:
+			_retired.pop_back()
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -849,9 +861,13 @@ static func _within_bound(bound: PackedFloat64Array, x: float, y: float, ring: f
 ## (the next size's arena, taken as it is), and the caps are applied once after its loads.
 func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	var ch: WorldChunk = null
+	var made: Dictionary = {}
 	if _next_size == size and next_cache and (_growing or (sim.growth != null and sim.tick < sim.growth.beat_until)):
 		ch = _next_chunks.get(key)
 		_next_chunks.erase(key)
+		if ch != null:
+			made = _next_events.get(key, {})
+		_next_events.erase(key)
 	if ch == null:
 		ch = _generated(key)
 	_loads += 1
@@ -862,8 +878,11 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	for z in ch.zones:
 		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
 			float(z.growth_rate))
-		var stream := RandomNumberGenerator.new()
-		stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(z.id), _str_plankton]))
+		var stream: RandomNumberGenerator = _next_streams.get(z.id)
+		if stream == null:
+			stream = _zone_stream(z.id)
+		else:
+			_next_streams.erase(z.id)
 		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
@@ -889,7 +908,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	_insert_key(key)
 	_chunks[key] = ch
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
-	_emit(sim, chunk_loaded_event(ch))
+	_emit(sim, chunk_loaded_event(ch) if made.is_empty() else _placed_event(made, ch))
 	if not _growing:
 		_apply_caps(sim)
 
@@ -900,6 +919,14 @@ static func _colliders(ch: WorldChunk) -> Array[Dictionary]:
 	for s in ch.shells:
 		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
 	return colliders
+
+
+## Zone `id`'s plankton stream, seeded: a pure function of the world seed, the generator version and
+## the id.
+func _zone_stream(id: String) -> RandomNumberGenerator:
+	var stream := RandomNumberGenerator.new()
+	stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(id), _str_plankton]))
+	return stream
 
 
 ## Chunk `key` at the current size: the one generated ahead when there is one (taken), else now.
@@ -1240,6 +1267,8 @@ func _next_chunk(key: Vector2i) -> WorldChunk:
 
 func _clear_next() -> void:
 	_next_chunks = {}
+	_next_streams = {}
+	_next_events = {}
 	_next_arena = null
 	_next_held = {}
 	_next_key = Vector2i.MAX
@@ -1254,7 +1283,8 @@ func _clear_next() -> void:
 ## other tick forgets the cache, except the growth tick and its beat, whose loads take from it.
 ## Only a `quiet` tick (step: none loaded, none generated ahead) generates, so a chunk generation does
 ## not land on a tick that already made one; a quiet tick with nothing to generate does the arena's
-## chore instead. The caches never change a result, so neither does which tick fills them.
+## chore instead, or with no chore prepares a cached chunk's load (_next_events). The caches never
+## change a result, so neither does which tick fills them.
 func _prefetch(sim: PoolSim, quiet := true) -> void:
 	var g := sim.growth
 	if sim.tick < g.beat_until:
@@ -1273,6 +1303,10 @@ func _prefetch(sim: PoolSim, quiet := true) -> void:
 	var c := Vector2i(floori(x / chunk_tm), floori(y / chunk_tm))
 	for key: Vector2i in _next_chunks.keys():
 		if absi(key.x - c.x) > 2 or absi(key.y - c.y) > 2:
+			if _next_events.has(key):
+				_next_events.erase(key)
+				for z in _next_chunks[key].zones:
+					_next_streams.erase(z.id)
 			_next_chunks.erase(key)
 	if not quiet:
 		return
@@ -1295,17 +1329,31 @@ func _prefetch(sim: PoolSim, quiet := true) -> void:
 			break
 		_next_chunks[best] = gen.chunk(size + 1, best.x, best.y)
 		made += 1
-	if made == 0:
-		_arena_chore(sim)
+	if made == 0 and not _arena_chore(sim):
+		_prepare_next()
+
+
+## One quiet tick's preparing (_next_events): the first cached chunk, in the order they were made
+## (nearest first), whose load is not prepared yet.
+func _prepare_next() -> void:
+	if _next_events.size() >= _next_chunks.size():
+		return
+	for key: Vector2i in _next_chunks:
+		if not _next_events.has(key):
+			var ch: WorldChunk = _next_chunks[key]
+			for z in ch.zones:
+				_next_streams[z.id] = _zone_stream(z.id)
+			_next_events[key] = _event_of(ch, false)
+			return
 
 
 ## One quiet tick's care of the next size's arena (BP-4), once it is in use: the first chunk of the
 ## 3 x 3 round the new-size chunk the cell heads for (its point NEXT_LEAD_S along its velocity) that the
 ## arena lacks and the prefetch holds goes in; with none, the first chunk in neither that 3 x 3 nor
-## _next_key's comes out.
-func _arena_chore(sim: PoolSim) -> void:
+## _next_key's comes out. True when it did either.
+func _arena_chore(sim: PoolSim) -> bool:
 	if _next_arena == null or _next_key == Vector2i.MAX:
-		return
+		return false
 	var s1 := WorldConfig.tm_to_am(size + 1)
 	var h := abs_of_local(sim.motion.position + sim.motion.velocity * NEXT_LEAD_S)
 	var head := Vector2i(floori(h[0] / s1 / chunk_tm), floori(h[1] / s1 / chunk_tm))
@@ -1316,15 +1364,16 @@ func _arena_chore(sim: PoolSim) -> void:
 				if not _next_held.has(k) and _next_chunks.has(k):
 					_next_arena.add_chunk(k, _colliders(_next_chunks[k]))
 					_next_held[k] = true
-					return
+					return true
 	if _next_held.size() <= 9:
-		return
+		return false
 	for k: Vector2i in _next_held:
 		if maxi(absi(k.x - _next_key.x), absi(k.y - _next_key.y)) > 1 \
 				and maxi(absi(k.x - head.x), absi(k.y - head.y)) > 1:
 			_next_arena.remove_chunk(k)
 			_next_held.erase(k)
-			return
+			return true
+	return false
 
 
 ## The growth tick (streaming step 1; plan B.4, s2-sim 3.7 as BP-4 changes it), when the meter is due
@@ -1453,24 +1502,33 @@ func grow(sim: PoolSim) -> void:
 		haze.append({"kind": "plant", "look": plant, "position": item.position})
 	haze.append_array(body_haze)
 	# Every zone goes, so its plankton goes in one pass (PlanktonField.drop_zones), and the arena is
-	# not emptied chunk by chunk: another takes its place (step 5).
+	# not emptied chunk by chunk: another takes its place (step 5). The chunks, the plankton list and
+	# the arena are freed after the beat (_retired).
 	var dropped := {}
 	for key in _keys:
+		_retired.append(_chunks[key])
 		for z in _chunks[key].zones:
 			dropped[z.id] = true
+	_retired.append(sim.plankton.items)
 	sim.plankton.drop_zones(dropped)
 	for key in _keys.duplicate():
 		_unload_chunk(sim, key, "growth", false)
 	var old_arena := sim.arena as ChunkArena
+	_retired.append(old_arena)
 	sim.arena = _arena_after(old_arena, ChunkArena.create_endless(chunk_tm))
 	recompute_caps(sim)
-	# 4. Size and origin: the next size's cache and arena stay for step 5 and the beat.
+	# 4. Size and origin: the next size's cache, its prepared loads and its arena stay for step 5 and
+	# the beat.
 	var next := _next_chunks
 	var next_size := _next_size
+	var streams := _next_streams
+	var events := _next_events
 	var next_arena := _next_arena if next_cache and _next_size == n + 1 and _next_from == a else null
 	set_size(n + 1)
 	_next_chunks = next
 	_next_size = next_size
+	_next_streams = streams
+	_next_events = events
 	origin_x_am = a[0]
 	origin_y_am = a[1]
 	_rederive(sim)
@@ -1730,19 +1788,34 @@ func _rederive(sim: PoolSim) -> bool:
 ## the chunk's size (BP-16), and `sites` lists every site live at that size with its posts
 ## [{position, heading}] (a one-post site: one, at its home; C-V10).
 func chunk_loaded_event(ch: WorldChunk) -> Dictionary:
+	return _event_of(ch, true)
+
+
+## chunk_loaded_event's payload, with every position (and zone centre) at Vector2.ZERO unless `placed`:
+## the part that does not depend on the frame (_placed_event places the rest).
+func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
+	var at := Vector2.ZERO
 	var shells := []
 	for s in ch.shells:
-		shells.append({"id": s.id, "position": local_of_tm(float(s.x), float(s.y)), "radius": float(s.r), "kind": s.kind,
+		if placed:
+			at = local_of_tm(float(s.x), float(s.y))
+		shells.append({"id": s.id, "position": at, "radius": float(s.r), "kind": s.kind,
 			"asset": s.asset, "yaw_deg": s.yaw_deg, "scale": s.scale, "tint": s.tint})
 	var zones := []
 	for z in ch.zones:
-		zones.append({"id": z.id, "center": local_of_tm(float(z.x), float(z.y)), "radius": float(z.radius), "region": z.region})
+		if placed:
+			at = local_of_tm(float(z.x), float(z.y))
+		zones.append({"id": z.id, "center": at, "radius": float(z.radius), "region": z.region})
 	var anchors := []
 	for a in ch.anchors:
-		anchors.append({"id": a.id, "position": local_of_tm(float(a.x), float(a.y)), "model": a.model, "dressing": a.dressing})
+		if placed:
+			at = local_of_tm(float(a.x), float(a.y))
+		anchors.append({"id": a.id, "position": at, "model": a.model, "dressing": a.dressing})
 	var places := []
 	for p in ch.places:
-		places.append({"id": p.id, "kind": p.kind, "position": local_of_tm(float(p.x), float(p.y)), "yaw_deg": float(p.yaw_deg),
+		if placed:
+			at = local_of_tm(float(p.x), float(p.y))
+		places.append({"id": p.id, "kind": p.kind, "position": at, "yaw_deg": float(p.yaw_deg),
 			"mirror": bool(p.mirror), "scale": WorldConfig.bu_to_tm(ch.size)})
 	var site_list := []
 	for s in ch.sites:
@@ -1751,12 +1824,56 @@ func chunk_loaded_event(ch: WorldChunk) -> Dictionary:
 		var posts := []
 		if s.has("posts"):
 			for post: Dictionary in s.posts:
-				posts.append({"position": local_of_tm(float(post.x), float(post.y)), "heading": float(post.heading)})
+				if placed:
+					at = local_of_tm(float(post.x), float(post.y))
+				posts.append({"position": at, "heading": float(post.heading)})
 		else:
-			posts.append({"position": local_of_tm(float(s.x), float(s.y)), "heading": float(s.heading)})
+			if placed:
+				at = local_of_tm(float(s.x), float(s.y))
+			posts.append({"position": at, "heading": float(s.heading)})
 		site_list.append({"id": s.id, "species": s.species, "posts": posts})
 	return {"type": "chunk_loaded", "key": ch.key, "shells": shells, "zones": zones, "anchors": anchors, "places": places,
 		"sites": site_list}
+
+
+## `event`, _event_of(ch, false), with its positions placed in the frame in force now: then it equals
+## chunk_loaded_event(ch).
+func _placed_event(event: Dictionary, ch: WorldChunk) -> Dictionary:
+	var out: Array = event.shells
+	var i := 0
+	for s in ch.shells:
+		out[i].position = local_of_tm(float(s.x), float(s.y))
+		i += 1
+	out = event.zones
+	i = 0
+	for z in ch.zones:
+		out[i].center = local_of_tm(float(z.x), float(z.y))
+		i += 1
+	out = event.anchors
+	i = 0
+	for a in ch.anchors:
+		out[i].position = local_of_tm(float(a.x), float(a.y))
+		i += 1
+	out = event.places
+	i = 0
+	for p in ch.places:
+		out[i].position = local_of_tm(float(p.x), float(p.y))
+		i += 1
+	out = event.sites
+	i = 0
+	for s in ch.sites:
+		if not (s.sizes as Array).has(ch.size):
+			continue
+		var posts: Array = out[i].posts
+		if s.has("posts"):
+			var j := 0
+			for post: Dictionary in s.posts:
+				posts[j].position = local_of_tm(float(post.x), float(post.y))
+				j += 1
+		else:
+			posts[0].position = local_of_tm(float(s.x), float(s.y))
+		i += 1
+	return event
 
 
 ## Every stream event goes out after the field and brain events already pending, so the drained list
