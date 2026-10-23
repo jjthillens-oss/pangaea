@@ -1,0 +1,103 @@
+{
+  "id": "cpart_lure",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature lure part (PROPOSED): a slender stalk arching forward over the head to a glowing pale-cyan bulb.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_lure.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_lure.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.042,
+    "y_forward": 0.19,
+    "z_up": 0.144
+  },
+  "triangles": 602,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartLure_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartLure_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartLure_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_LureBulb",
+    "M_LurePad",
+    "M_LureStalk"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Lure"
+  ],
+  "part_type": "lure",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "lure",
+    "footprint_radius_m": 0.02,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 45,
+    "tilt_limit_deg": 40,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the stalk and bulb carried 40% further from the pad",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Droop",
+        "meaning": "the stalk bent 45 degrees forward and down from its root",
+        "default_permille": 0
+      }
+    ],
+    "placement_note": "Meant for the brow: the stalk arches forward over the head and the bulb's emission is baked flat, so it glows the same in every light."
+  },
+  "paint_mix": {
+    "M_LurePad": 0.9,
+    "M_LureStalk": 0.7,
+    "M_LureBulb": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0004,
+    "triangles_before": 730,
+    "triangles_after": 602
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

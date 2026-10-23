@@ -1,0 +1,98 @@
+{
+  "id": "cpart_flipper",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature limb end part (PROPOSED): a flattened swimming paddle with stiffening ridges, broad across x and thin fore-aft.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_flipper.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_flipper.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.084,
+    "y_forward": 0.043,
+    "z_up": 0.214
+  },
+  "triangles": 238,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartFlipper_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFlipper_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFlipper_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FlipperSkin"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Flipper"
+  ],
+  "part_type": "flipper",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "flipper",
+    "footprint_radius_m": 0.04,
+    "sink_depth_m": 0.015,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 30,
+    "tilt_limit_deg": 30,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the blade 40% longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Width",
+        "meaning": "the blade 35% broader",
+        "default_permille": 0
+      }
+    ],
+    "placement_note": "A limb end: +Z runs on along the limb and the blade's broad faces look fore and aft."
+  },
+  "paint_mix": {
+    "M_FlipperSkin": 0.9
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0004,
+    "triangles_before": 792,
+    "triangles_after": 238
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

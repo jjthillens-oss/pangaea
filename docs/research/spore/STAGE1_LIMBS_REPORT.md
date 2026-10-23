@@ -132,7 +132,22 @@ in place, over 40 runs:
 The snake has no legs. The tiny body's legs are two-joint stubs, which need a one-bone solver that is not built. The
 biped walks because the planner does not model balance; it has no balance yet.
 
-## 7. Next (PROPOSED)
+## 7. Hip volume at large swings (PR #71, checked after the merge)
+
+PR #71 cut the trunk's pull to 10% on skin points a limb capsule dominates (`BodyField.HIP_SPINE_BLEND`, the same
+constant in `skin/surface_nets.glsl`). Checked on 2026-10-23 on the cloud machine with software Vulkan:
+
+- `tools/skin_bench.gd` re-run: the GPU and GDScript builders still give the same mesh and the same bone weights on all
+  34 rows (17 bodies at /48 and /96), watertight throughout. `results/skin_bench.json` is regenerated; only the
+  timings moved.
+- `tools/hip_swing_shot.gd` (new) renders a body with every limb root swung by a fixed angle. At 90° on the
+  quadruped, the thigh used to pinch to a thin band where it leaves the shoulder; it now keeps its round section.
+  No new crease shows at the dominance boundary. The before/after is `hip_swing_90_before_after.png` in the project
+  files.
+- `run_skin_volume_tests.gd`: hip radius 1.000 / 0.881 / 0.767 of rest at 0° / 45° / 90°, over the 0.75 floor.
+- The posed-surface error at 30° grew a little on some bodies (biped 2.1% → 3.4%, still under the 5% limit).
+
+## 8. Next (PROPOSED)
 
 1. Parts on the skin, using the art team's first five parts (PR #29) and limb-end pivots. The foot's ankle top sits
    0.09 above the sole, so the limb tip goes there.

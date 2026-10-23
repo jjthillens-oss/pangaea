@@ -49,24 +49,33 @@ Notes for the studio:
 - Keep at least one `godfrey-task` issue open. When the queue is empty the prompt falls back to the coordinator's
   list, which includes the jobs held as `godfrey-later`.
 
-## Current queue (updated 2026-10-23 09:40 UTC)
+## Current queue (updated 2026-10-23 22:50 UTC)
 
 | Issue | Branch | Status |
 | --- | --- | --- |
 | #30 Architecture map | `godfrey/docs-onboarding` | merged (PR #46) |
 | #31 Rival evolution prototype | `godfrey/rival-evolution` | merged (PR #50) |
-| #32 Legless slither and stub-leg gait | `godfrey/legless-locomotion` | ready |
-| #33 Skin volume at extreme swings | `godfrey/skinning-fix` | ready |
+| #32 Legless slither and stub-leg gait | `godfrey/legless-locomotion` | merged (PR #70) |
+| #33 Skin volume at extreme swings | `godfrey/skinning-fix` | merged (PR #71) |
 | #34 Test gaps and code review | `godfrey/test-review` | merged (PR #45) |
 | #35 Aquatic and land era proposals | `godfrey/era-proposals` | merged (PR #47) |
 | #36 Accessibility audit | `godfrey/accessibility-audit` | merged (PR #48) |
 | #37 Non-blocking lint job | `godfrey/ci-lint` | merged (PR #51) |
-| #53 Test review, round 2 | `godfrey/test-review-2` | ready |
-| #54 Rival evolution v2 | `godfrey/rival-evolution-2` | ready |
-| #55 Proposals for the remaining eras | `godfrey/era-proposals-2` | ready |
-| #38 Save fuzzing | `godfrey/save-fuzz` | later: after S1 saves land |
-| #39 Performance pass | `godfrey/perf-pass` | later: after S1 lands |
+| #53 Test review, round 2 | `godfrey/test-review-2` | merged (PR #72) |
+| #54 Rival evolution v2 | `godfrey/rival-evolution-2` | merged (PR #73) |
+| #55 Proposals for the remaining eras | `godfrey/era-proposals-2` | merged (PR #74) |
+| #75 Creature lab follow-ups from the #70/#71 review | `godfrey/creature-lab-followups` | merged (PR #83) |
+| #76 Rival evolution v3: long-run ecology | `godfrey/rival-evolution-3` | PR #85: changes requested (ecology freezes at gen 4) |
+| #77 Test review, round 3: services and determinism | `godfrey/test-review-3` | claimed |
+| #86 Docs path checker tool and non-blocking CI step | `godfrey/docs-check` | ready |
+| #87 Species and lineage name generator prototype | `godfrey/naming-prototype` | ready |
+| #89 Terrain chunk prototype for the land era | `godfrey/terrain-prototype` | ready |
+| #90 Save format reference document | `godfrey/save-format-doc` | ready |
+| #91 Creature lab swim gait | `godfrey/swim-gait` | ready |
+| #38 Save fuzzing | `godfrey/save-fuzz` | later: after S1 (PR #69) lands |
+| #39 Performance pass | `godfrey/perf-pass` | later: after S1 lands; base on post-S1 main |
 | #40 Localisation prep | `godfrey/l10n-prep` | later: after S1 |
+| #92 Accessibility fixes from the audit | `godfrey/a11y-fixes` | later: after S1; menus thread owns game/ui |
 
 Every job branches off the latest `main`. The creature lab reached `main` with PR #12, so #32 and #33 use `main` too.
 
@@ -75,6 +84,7 @@ Every job branches off the latest `main`. The creature lab reached `main` with P
 | Area | Reviewing thread |
 | --- | --- |
 | Game code, saves, CI, performance, tests | Spore-style evolution game (engineering) |
+| Creature lab changes to `body_field.gd`, `surface_nets.glsl`, `skin_*.gd`, `gait_*.gd`, walker/spine rig behaviour | Also tell the Creature stage thread the PR number; it re-ports the change into `game/` so the two copies do not drift |
 | Creature lab (`prototypes/creature-lab/`, creature research) | Spore research protocol |
 | Menus, UI strings, accessibility | Menus and UI |
 | Docs and proposals | Engineering, with the owner for design calls |

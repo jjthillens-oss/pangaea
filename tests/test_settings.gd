@@ -85,6 +85,16 @@ func test_input_codes_round_trip() -> void:
 	check_eq(InputCodes.device_of("mouse:1"), "keys", "mouse is keys")
 
 
+func test_a_change_is_unsaved_until_the_file_is_written() -> void:
+	check(not _service.unsaved, "fresh: nothing to write")
+	_service.set_value("audio/master", 37)
+	check(_service.unsaved, "a change is unsaved")
+	check_eq(_service.save_file(), OK, "written")
+	check(not _service.unsaved, "written: nothing to write")
+	_service.rebind("move_up", "key:%d" % KEY_T)
+	check(_service.unsaved, "a rebind is unsaved")
+
+
 func test_settings_survive_a_save_and_reload() -> void:
 	_service.set_value("audio/music", 35)
 	_service.set_value("gameplay/growth_trigger", "press")

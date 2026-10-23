@@ -151,7 +151,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds seventeen parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds twenty-six parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -172,6 +172,15 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_compound_eye` | compound_eye, `forward_cone` | 489 | H1_Bulge, H2_Wide (on `CompoundEye` and `Rim`) | Dark violet faceted dome in a fleshy rim; paint_mix 0 on the lens |
 | `cpart_maw` | maw, `forward_cone`, centreline required | 540 | H1_Gape (on `Maw` and `Teeth`), H2_Fangs (on `Teeth`) | Rolled lips round a dark throat, ringed with fourteen inward-raking teeth |
 | `cpart_quills` | quills, `normal`, spine | 530 | H1_Raise, H2_Length | Eleven banded quills raked toward the tail from a bristled pad |
+| `cpart_frill` | frill, `normal`, spine, centreline required | 1635 | H1_Fold, H2_Span (on `Frill` and `FrillWeb`) | Seven knobbed horn ribs with a scalloped fleshy web, leaning back toward the tail |
+| `cpart_proboscis` | proboscis, `forward_cone`, centreline required | 928 | H1_Length, H2_Curl (on `Proboscis` and `ProboscisTip`) | Ringed trunk-like snout curving forward and down to a flared sucker pad |
+| `cpart_tusk` | tusk, `forward_cone`, chiral | 720 | H1_Length, H2_Curve | Grooved ivory tusk sweeping forward and out to +X from a rolled gum; paint_mix 0 on the ivory |
+| `cpart_gill_fan` | gill_fan, `normal`, chiral, spine | 786 | H1_Spread, H2_Length (on `GillFan` and `GillPlumes`) | Five feathery gill plumes on a fleshy ridge, leaning out to +X; meant for the neck sides |
+| `cpart_flipper` | flipper, `normal`, limb_end | 238 | H1_Length, H2_Width | Flattened swimming paddle out along +Z, broad across x, thin fore-aft; ridges in the normal map |
+| `cpart_hoof` | hoof, `ground`, limb_end | 268 | H1_Wide, H2_Tall | Cloven horn hoof on a short skin pastern; the sole on the pivot, the pastern top at z 0.075 |
+| `cpart_club_tail` | club_tail, `normal`, spine, centreline required | 1053 | H1_Length, H2_Size | Knobbed bony club on a thick fleshy stalk for the tail cap |
+| `cpart_lure` | lure, `normal` | 602 | H1_Length, H2_Droop | Slender stalk arching forward over the head to a glowing pale-cyan bulb (flat emission); paint_mix 0 on the bulb |
+| `cpart_barbels` | barbels, `forward_cone`, centreline required | 476 | H1_Length, H2_Lift | Two long and two short whisker barbels on a fleshy chin pad |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 
