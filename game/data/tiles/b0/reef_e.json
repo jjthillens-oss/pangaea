@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "Shell reef, the danger: shell clusters round ambush lairs that watch the meadows, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
+  "note": "Shell reef, the danger: shell clusters round ambush lairs that wait at the rims of the meadows they watch, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
   "id": "reef_e",
   "band": 0,
   "region": "reef",
@@ -44,6 +44,6 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [-4.0, -5.0], "heading": -1.5708, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [6.0, -8.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [9.8, -11.8], "heading": -0.7854, "territory_zone": "", "sizes": [1]}
   ]
 }

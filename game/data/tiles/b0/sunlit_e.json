@@ -34,6 +34,6 @@
   ],
   "sites": [
     {"id": "ma", "species": "rammer", "home": [-5.0, 6.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
-    {"id": "la", "species": "ambush_hunter", "home": [8.0, 4.0], "heading": 0.7854, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [10.4, 9.9], "heading": 0.3588, "territory_zone": "", "sizes": [1]}
   ]
 }

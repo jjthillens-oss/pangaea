@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "PROPOSED",
-  "note": "Shell reef, the danger: shell clusters round ambush lairs that watch the meadows, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
+  "note": "Shell reef, the danger: shell clusters round ambush lairs that wait at the rims of the meadows they watch, light zones round the edge (docs/s1/s1-content.md 3.2 and 3.4).",
   "id": "reef_c",
   "band": 0,
   "region": "reef",
@@ -44,8 +44,8 @@
     {"id": "f8", "center": [17.85, 21.95], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
   ],
   "sites": [
-    {"id": "la", "species": "ambush_hunter", "home": [6.0, -8.0], "heading": -0.7854, "territory_zone": "", "sizes": [1]},
-    {"id": "lb", "species": "ambush_hunter", "home": [10.0, 4.0], "heading": 0.7854, "territory_zone": "", "sizes": [1]},
-    {"id": "lc", "species": "ambush_hunter", "home": [2.0, 10.0], "heading": 1.1526, "territory_zone": "", "sizes": [1]}
+    {"id": "la", "species": "ambush_hunter", "home": [9.8, -11.8], "heading": -0.7854, "territory_zone": "", "sizes": [1]},
+    {"id": "lb", "species": "ambush_hunter", "home": [13.8, 7.8], "heading": 0.7854, "territory_zone": "", "sizes": [1]},
+    {"id": "lc", "species": "ambush_hunter", "home": [3.6, 13.5], "heading": 1.1593, "territory_zone": "", "sizes": [1]}
   ]
 }
