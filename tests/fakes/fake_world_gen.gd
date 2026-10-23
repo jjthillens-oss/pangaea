@@ -38,6 +38,16 @@ static func fixture_content(config_path: String = WorldConfig.DEFAULT_PATH) -> W
 	return c
 
 
+## An endless sim on this generator for a new omnivore lineage of `seed_value`: the fixture content
+## unless `content` is given, with creatures when `p_species` is.
+static func endless_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
+		content: WorldContent = null) -> PoolSim:
+	var c := content if content != null else fixture_content()
+	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
+	var Fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
+	return PoolSim._create_endless(r.save, catalog, layout, p_species, c, Fake.new(c, p_species, seed_value))
+
+
 func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	var key := Vector2i(cx, cy)
 	built[key] = int(built.get(key, 0)) + 1

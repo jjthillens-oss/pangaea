@@ -8,7 +8,10 @@ extends RefCounted
 ## Positions. The sim keeps float32 local positions in tm, relative to the origin; the origin and
 ## every generated object are absolute and float64 (am, at size 1 equal to tm). A local value is
 ## always derived from an absolute one by subtracting in float64 and then casting, never by adding up
-## shifts, so a zone, site or collider is exact however far the cell swims.
+## shifts, so a zone, site or collider is exact however far the cell swims. When the cell gets more
+## than rebase_beyond_tm from the origin, the origin moves by whole chunks (rebase): bodies, brain
+## memories and food items shift by exactly that offset (RebaseShift), everything else re-derives,
+## and "rebased" tells the scene.
 ##
 ## Chunks are 32 tm squares keyed by Vector2i, loaded from WorldGen.chunk (pure, so a chunk comes
 ## back the same whatever route reaches it). The view set (view_set_keys) is the 3 x 3 chunks round
@@ -18,6 +21,12 @@ extends RefCounted
 ## unload ring and no awake creature's reach touches it; the gap between the rings keeps a chunk
 ## from flickering in and out at a boundary. Unloading forgets a chunk entirely: it comes back from
 ## the generator, with its food zones' streams restarted.
+##
+## Food. Only the zones whose nearest point lies within the food ring (52 tm) show plankton, and
+## carrion beyond it is dropped for good: both happen out of view (the view reaches 35.7 tm with its
+## margin). A zone entering the ring regrows one item a tick, out of view. Over caps.food_items the
+## farthest zones wholly out of view are trimmed. A new world, a Continue and a teleport fill every
+## food zone at once (S1 core C-9).
 
 ## tm: look_ahead_max (2.5) + spawn_view_margin_m (1.0) + MAX_ZONE_RADIUS_TM. Every zone touching the
 ## view plus its margin has its centre in a view-set chunk (S1 core C-1).
@@ -39,6 +48,8 @@ var counters := {"awake_overflow": 0, "chunk_waits": 0, "food_trimmed": 0, "evic
 var rings := {}
 var caps := {}
 var chunk_tm := 32.0
+var rebase_beyond_tm := 96.0
+var rebase_step_tm := 32.0
 var world_seed := 0
 var gen_version := 1
 ## The camera table the view set is measured with (the layout's camera), and the spawn view's
@@ -52,6 +63,9 @@ var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
+var _fill := {}                        ## zone id -> true: fill at once in the next food view
+var _fill_all := false                 ## fill every food zone at once in the next food view
+var _trimmed := {}                     ## zone id -> true while trimmed (counted once, C-11)
 var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 
@@ -65,6 +79,8 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	w.rings = config.rings.duplicate()
 	w.caps = config.caps.duplicate()
 	w.chunk_tm = config.chunk_tm
+	w.rebase_beyond_tm = config.rebase_beyond_tm
+	w.rebase_step_tm = config.rebase_step_tm
 	w.world_seed = p_gen.world_seed
 	w.gen_version = p_gen.gen_version
 	var spawn: PackedFloat64Array = p_content.home.spawn
@@ -74,11 +90,22 @@ static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
 	return w
 
 
-## The streaming block, first in every endless tick (spine 3.11): unload (step 3), then load (step 4).
-## Load, unload and food always measure from the body, alive or dead.
+## The streaming block, first in every endless tick (spine 3.11): the floating origin (step 2),
+## unload (step 3), load (step 4), then the food view (step 6). Load, unload and food always measure
+## from the body, alive or dead.
 func step(sim: PoolSim) -> void:
+	var p := sim.motion.position
+	if p.length() > rebase_beyond_tm:
+		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
 	_unload(sim)
 	_load(sim)
+	_food_view(sim)
+
+
+## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
+func fill_all_food_now(sim: PoolSim) -> void:
+	_fill_all = true
+	_food_view(sim)
 
 
 ## The rest of a new world once the cell is placed (PoolSim._create_endless): the cell's tile.
@@ -122,6 +149,48 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 	origin_x_am = x_am
 	origin_y_am = y_am
 	_rederive(sim)
+
+
+## Moves the origin by `offset` (tm, whole chunks in each axis): every position the sim stores moves
+## by -offset. Bodies (with their previous positions, so the view's interpolation stays continuous),
+## actors, every creature's memories (sleepers too) and food items shift by it exactly; zones and
+## colliders re-derive from their absolute values. Emits rebased {offset_tm, origin_am}.
+func rebase(sim: PoolSim, offset: Vector2) -> void:
+	origin_x_am += float(offset.x) * _tm_to_am
+	origin_y_am += float(offset.y) * _tm_to_am
+	RebaseShift.motion(sim.motion, offset)
+	sim.actor.position -= offset
+	if sim.creatures != null:
+		for c in sim.creatures.creatures:
+			RebaseShift.motion(c.motion, offset)
+			c.actor.position -= offset
+			if c.brain != null:
+				RebaseShift.memory(c.brain, offset)
+	RebaseShift.items(sim.plankton.items, PackedStringArray(["position", "anchor"]), offset)
+	RebaseShift.items(sim.carrion.items, PackedStringArray(["position"]), offset)
+	_rederive(sim)
+	_emit(sim, {"type": "rebased", "offset_tm": offset, "origin_am": [origin_x_am, origin_y_am]})
+
+
+## The teleport path (spine 3.11 step 0, D-10), behind a camera cut: every loaded chunk unloads,
+## every creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
+## point exactly (rebased), and the view set round it loads at once, its food zones flagged to fill
+## at once (C-9). The caller places the cell near the new origin.
+func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
+	for key in _keys.duplicate():
+		_unload_chunk(sim, key)
+	if sim.creatures != null:
+		for c in sim.creatures.creatures.duplicate():
+			sim.creatures.remove(c, "unloaded", sim.tick, false)
+	sim.carrion.drop_all()
+	var old_x := origin_x_am
+	var old_y := origin_y_am
+	set_origin_abs(sim, x_am, y_am)
+	_emit(sim, {"type": "rebased", "offset_tm": Vector2((origin_x_am - old_x) / _tm_to_am, (origin_y_am - old_y) / _tm_to_am),
+		"origin_am": [origin_x_am, origin_y_am]})
+	for key in view_set_keys(Vector2.ZERO):
+		_load_chunk(sim, key)
+	_fill_all = true
 
 
 # --- chunks ---
@@ -265,6 +334,8 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.region.remove_zone(z.id)
 		_zone_abs.erase(z.id)
 		_zone_chunk.erase(z.id)
+		_fill.erase(z.id)
+		_trimmed.erase(z.id)
 	(sim.arena as ChunkArena).remove_chunk(key)
 	_chunks.erase(key)
 	_keys.erase(key)
@@ -386,6 +457,66 @@ func _insert_key(key: Vector2i) -> void:
 
 static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 	return a.y < b.y or (a.y == b.y and a.x < b.x)
+
+
+# --- step 6: food view ---
+
+## Which zones show plankton: those whose nearest point lies within the food ring of the body. Over
+## caps.food_items (their summed item targets), the zones wholly out of view (by the spawn view's
+## margin plus their radius) are trimmed, farthest first, ties to the lower id, until the rest fit;
+## a zone in view is never trimmed. Zones that leave the set drop their items without events (they
+## are out of view). Carrion beyond the ring goes for good. Zones flagged to fill at once fill now.
+## Last, tile_entered when the cell's tile changed.
+func _food_view(sim: PoolSim) -> void:
+	var body := sim.motion.position
+	var food := {}
+	var reach := {}
+	for z in sim.region.zones:
+		var d := body.distance_to(z.center) - float(z.radius)
+		if d <= float(rings.food):
+			food[z.id] = true
+			reach[z.id] = d
+	var total := 0
+	for id in food:
+		total += sim.plankton.target_count(sim.region.zone(id))
+	if total > int(caps.food_items):
+		var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
+		var out: Array = []
+		for id in food:
+			var z := sim.region.zone(id)
+			if quad.is_empty() or ViewFootprint.distance_outside(quad, z.center) > view_margin + float(z.radius):
+				out.append(id)
+		out.sort_custom(func(a: String, b: String) -> bool:
+			return reach[a] > reach[b] or (reach[a] == reach[b] and a < b))
+		for id in out:
+			if total <= int(caps.food_items):
+				break
+			food.erase(id)
+			total -= sim.plankton.target_count(sim.region.zone(id))
+			if not _trimmed.has(id):
+				_trimmed[id] = true
+				counters.food_trimmed += 1
+	# A zone stays counted as trimmed until it shows food again (or unloads).
+	for id in _trimmed.keys():
+		if food.has(id) or sim.region.zone(id).is_empty():
+			_trimmed.erase(id)
+	for id in sim.plankton.active_zones.keys():
+		if not food.has(id):
+			sim.plankton.drop_zone(id)
+	sim.plankton.active_zones = food
+	sim.carrion.drop_beyond(body, float(rings.food))
+	var fill: Array = food.keys() if _fill_all else _fill.keys()
+	fill.sort()
+	for id in fill:
+		if food.has(id):
+			sim.plankton.fill_zone(sim.region.zone(id), sim.region, sim.arena, sim.tick, sim.now())
+	_fill.clear()
+	_fill_all = false
+	var tile := tile_of_local(body)
+	if tile != _cell_tile:
+		_cell_tile = tile
+		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
+		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
 
 
 ## The distance from the absolute point (x, y) (tm) to the square of chunk `key`, in float64.
