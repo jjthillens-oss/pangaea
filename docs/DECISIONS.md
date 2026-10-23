@@ -386,4 +386,8 @@ The owner chose decision 1 of the endless cell plan (`docs/endless-cell-plan.md`
     - G13: two runs of a 10 km swim at 0.25 rad, compared every 18,000 ticks and at the end.
 
     Together they step about 1.7 million endless ticks.
+  - **Cost gates** (`tests/test_endless_cost.gd`, slow).
+    - **P99.9** counts each tick at its fastest of the 3 identical runs, as #29's windows do, so a single burst from another process cannot fail it. The median run's own percentile is printed beside it.
+    - **The sleeper cost** uses the world's own sleepers after a 1,200-tick swim, because debug creatures never sleep (C-6). It times them against a twin sim with them removed, tick by tick in turn, over 3 rounds of 200 ticks. It needs at least 8 sleepers, and on the fixture world it waits for the real content.
+    - **The rebase tick** goes 3 chunks against the cell's side of the origin, so the timed tick holds one rebase and not two.
 - **Open S1 questions** (spine section 9 and core section 17; the build follows the working answer in brackets until the owner or the integrator answers): the region rule (keep the pinned drift swap, about 1.7% drift, or a coordinate rule, 14% to 16% [recommended: the coordinate rule]); threat sites on rare tiles [yes, as tile rule 7]; arch landmarks over swimmable water [no overhang outside the 2 bu collider]; whether `--world=pool` is enough for comparing with the old pool [the flag only]; a soak run above 60 minutes [the sample and the seam pairs move to nightly first]; an awake-overflow count above 0 after density testing [lower the site density, as plan F says]; whether #33's endless camper skips the home block's guarded zones [it does]; whether a sleeper keeps its sight memory [it does].
