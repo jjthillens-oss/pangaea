@@ -318,6 +318,20 @@ func test_limb_from_click() -> void:
 			check(r["ok"] and limb["mirror"] == c[2] and s.working.limb_chains().size() == before + (2 if c[2] else 1),
 					"%s: a limb grown from the %s is valid, %s %s" % [body_name, what, "a mirrored pair" if c[2] else "single",
 					r["reason"]])
+			var j: Array = limb["joints"]
+			var root: Vector3i = j[0][0]
+			var mid: Vector3i = j[1][0]
+			var tip: Vector3i = j[2][0]
+			if what.begins_with("side"):
+				# An arm: it hangs outward and down, the tip below the shoulder and the elbow a little forward.
+				check(tip.y < root.y and tip.y < mid.y and tip.x > root.x and mid.z < (root.z + tip.z) / 2,
+						"%s: the limb from the %s hangs down and out with the elbow forward (%s %s %s)"
+						% [body_name, what, root, mid, tip])
+			elif what == "top of the back":
+				check(tip.y > root.y, "%s: the limb from the back points up (%s %s)" % [body_name, root, tip])
+			else:
+				check((tip - root).z > absi((tip - root).y), "%s: the limb at the tail tip points back (%s %s)"
+						% [body_name, root, tip])
 
 
 ## Every part type in the art records can be added through picking at a spot that suits it: the side of the chest,
