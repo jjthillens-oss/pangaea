@@ -13,6 +13,12 @@ extends Node3D
 ## labels and "Dodged!" (FeedbackFx), attack hints, and positional cues. The HUD adds the shelter
 ## chip, the hurt vignette and the off-screen threat arrows from the same events and the sim. A pool
 ## without species has no creatures and none of this.
+##
+## The endless sea (S1): the sim keeps positions local to a floating origin and rebases it by whole
+## chunks ("rebased"). The scene follows in the same frame with no jump: WorldSpace shifts the
+## containers that hold world pieces, the camera shifts its focus (never snap_to), and what is
+## placed from the sim each frame needs nothing. Every Node3D here is in one of three groups
+## (world_space, world_rebuilt, camera_relative; see WorldSpace).
 
 ## Every sim event, after the pool's own feedback has run (see PoolSim.drain_events for types).
 signal sim_event(event: Dictionary)
@@ -75,6 +81,13 @@ var _starve_pulse_t := 0.0
 @onready var starving_arrow: StarvingArrow = %StarvingArrow
 @onready var _fade: ColorRect = %Fade
 @onready var _sun: DirectionalLight3D = $Sun
+@onready var _depth_glow: DirectionalLight3D = %DepthGlow
+## The fluid's far plane under the view; it follows the camera's focus (camera_relative).
+@onready var backdrop: MeshInstance3D = %Backdrop
+## Shifts the world's containers across a rebase.
+@onready var world_space: WorldSpace = %WorldSpace
+## The eat burst and the meal ghosts, in the world's frame so they ride a rebase.
+@onready var world_fx: Node3D = %WorldFx
 @onready var _world_env: WorldEnvironment = $WorldEnvironment
 
 
@@ -106,6 +119,7 @@ func _mount_ambience() -> void:
 		return
 	var ambience := (load(AMBIENCE_SCENE) as PackedScene).instantiate()
 	ambience.name = "Ambience"
+	ambience.add_to_group(&"camera_relative")   # it follows the camera itself (ambience contract)
 	add_child(ambience)
 
 
@@ -151,19 +165,83 @@ func _build() -> void:
 	if intent_provider == null:
 		intent_provider = swim_input
 	hints.reset()
+	cell_view.attach_fx(world_fx)
+	for node: Node3D in [rim_node, zone_lights, rocks, feedback, world_fx]:
+		world_space.register(node)
+	for player in audio.get_children():
+		if player is AudioStreamPlayer3D:
+			world_space.register(player)
+	rim_node.visible = not is_endless()   # the dish wall is the pool's edge; the sea has none
 	rocks.build(session.layout)
 	zone_lights.build(session.layout.zones)
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
-	creature_layer.attach(sim)
+	creature_layer.attach(sim, world_space)
 	if sim.species != null:
 		audio.configure_tells(tell_lengths(sim.species))
 	feedback.setup(session.layout.zones, camera)
 	camera.configure(session.layout.camera)
 	camera.snap_to(cell_view.position)
+	_follow_camera()
 	_draw_food(1.0)
 	_fade_in()
+
+
+## True in the endless sea (the sim streams a world), false in the M1 pool.
+func is_endless() -> bool:
+	return sim != null and sim.world != null
+
+
+## A scene event of the endless world (spine 3.12), routed from the sim or, in tests, built by hand.
+## "rebased" {offset_tm}: every local position dropped by the offset, so the camera's focus and
+## every WorldSpace container drop with it in this frame, far containers renormalise, and the
+## camera-relative nodes follow the shifted focus. Never snap_to: the follow lag carries on (G10).
+func apply_world_event(e: Dictionary) -> void:
+	match str(e.get("type", "")):
+		"rebased":
+			var o: Vector2 = e.offset_tm
+			camera.shift_focus(-Vector3(o.x, 0.0, o.y))
+			world_space.apply_rebase(o)
+			world_space.renormalize_far()
+			_shift_ambience(o)
+			_follow_camera()
+
+
+## Art's ambience wraps world-placed specks and backdrops round the camera's focus, so it follows
+## the camera by itself; across a rebase its layers move with the world, so the wrap sees nothing
+## change and no speck jumps. A layer whose shader wraps it in a box (its "box" uniform, x and z)
+## draws the same moved by whole boxes, so it is kept within half a box of the origin, where its
+## culling box stays round the view. Particles under it must use local coordinates (ambience
+## contract).
+func _shift_ambience(offset: Vector2) -> void:
+	var ambience := get_node_or_null("Ambience")
+	if ambience == null:
+		return
+	for child in ambience.get_children():
+		var node := child as Node3D
+		if node == null:
+			continue
+		node.position -= Vector3(offset.x, 0.0, offset.y)
+		var box := wrap_box(node)
+		if box != Vector2.ZERO:
+			node.position.x = fposmod(node.position.x + box.x * 0.5, box.x) - box.x * 0.5
+			node.position.z = fposmod(node.position.z + box.y * 0.5, box.y) - box.y * 0.5
+
+
+## The box an ambience layer's shader wraps it in round the focus (its "box" uniform), or ZERO.
+static func wrap_box(node: Node3D) -> Vector2:
+	var material := (node as GeometryInstance3D).material_override as ShaderMaterial if node is GeometryInstance3D else null
+	var box: Variant = material.get_shader_parameter("box") if material != null else null
+	return box if box is Vector2 and box.x > 0.0 and box.y > 0.0 else Vector2.ZERO
+
+
+## The Backdrop and the lights stay under the camera's focus in x and z, each keeping its height and
+## turn, so the fluid's far plane covers the view wherever the cell swims.
+func _follow_camera() -> void:
+	for node: Node3D in [backdrop, _sun, _depth_glow]:
+		node.position.x = camera.focus.x
+		node.position.z = camera.focus.z
 
 
 ## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and the
@@ -215,6 +293,7 @@ func _process(delta: float) -> void:
 	cell_view.set_sheltered(sim.is_sheltered())
 	creature_layer.sync(fraction)
 	camera.follow(cell_view.position, Vector2.ZERO if paused else sim.display_velocity(), delta)
+	_follow_camera()
 	_draw_food(fraction)
 	feedback.update_zones(sim.region, sim.plankton, delta)
 	_update_starving(delta)
@@ -317,8 +396,11 @@ func _route(event: Dictionary) -> void:
 				audio.play_at("bite" if event.get("kind") == "bite" else "ram", _world(event.position))
 		"creature_died":
 			audio.play_at("creature_die", _world(event.position))
+		"rebased":
+			apply_world_event(event)
 		"debug":
-			if event.get("command") == "teleport":
+			# A dev rebase needs nothing more: its "rebased" event came first and shifted the view.
+			if event.get("command") == "teleport" or event.get("command") == "teleport_abs":
 				cell_view.place(sim.motion)
 				camera.snap_to(cell_view.position)
 	creature_layer.on_event(event)

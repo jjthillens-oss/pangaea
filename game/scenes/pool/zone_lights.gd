@@ -6,7 +6,8 @@ extends Node3D
 ## blended over the fluid in the Sun's colour and never in food's glow, with no fog, no depth and
 ## under every cue (zone_light.gdshader). The light lies round the zone's edge and leaves its feeding
 ## middle clear, so the cell and the food there keep their contrast. It reads the layout's zones and
-## never the sim.
+## never the sim. The pool's WorldSpace shifts it across a rebase (S1), so the discs are placed in
+## its frame (WorldSpace.to_frame).
 
 const SHADER := preload("res://game/scenes/pool/zone_light.gdshader")
 ## The disc spans this many zone radii across; the shader's light reaches 1.3 zone radii out, so
@@ -62,6 +63,14 @@ func build(zones: Array[Dictionary]) -> void:
 		disc.mesh = mesh
 		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var span := float(zone.radius) * SPAN_PER_ZONE_RADIUS
-		disc.position = PlaneSpace.to_world(zone.center, DEPTH_M)
+		disc.position = WorldSpace.to_frame(self, zone.center, DEPTH_M)
 		disc.scale = Vector3(span, 1.0, span)
 		add_child(disc)
+
+
+## Moves every disc by this node's position and the node back to the origin: nothing moves on
+## screen (WorldSpace.renormalize_far).
+func renormalize() -> void:
+	for child in get_children():
+		(child as Node3D).position += position
+	position = Vector3.ZERO

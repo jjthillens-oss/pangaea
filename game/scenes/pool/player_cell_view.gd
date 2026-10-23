@@ -76,6 +76,11 @@ var _overlay := ShaderMaterial.new()
 var _overlay_on := false
 var _warm_overlay := 0   ## frames left to draw the overlay unseen, so its shader is ready before play
 
+## The eat burst, kept here because attach_fx moves it out of this scene (where % no longer finds it).
+var _eat_fx: CPUParticles3D
+## Where the eat burst and the meal ghosts live (the pool's WorldFx), or null outside a pool.
+var _fx_root: Node3D
+
 @onready var _pivot: Node3D = %Pivot
 
 
@@ -215,9 +220,29 @@ func warm_up(meshes: Array[Mesh], at: Vector3) -> void:
 			_ghost(mesh, at, at)
 
 
+## Moves the eat burst under `root` (the pool's WorldFx, which a rebase shifts) with local particle
+## coordinates, so a burst in the air rides the rebase with the world (S1). The ghosts go there too.
+func attach_fx(root: Node3D) -> void:
+	var fx := _fx()
+	_fx_root = root
+	if fx.get_parent() != root:
+		fx.reparent(root, false)
+	fx.local_coords = true
+
+
+func _fx() -> CPUParticles3D:
+	if _eat_fx == null:
+		_eat_fx = %EatFx
+	return _eat_fx
+
+
+## The burst at `at` (the pool's space): in WorldFx's frame once attached, else at the global point.
 func _burst(at: Vector3, color: Color) -> void:
-	var fx: CPUParticles3D = %EatFx
-	fx.global_position = at
+	var fx := _fx()
+	if _fx_root != null:
+		fx.position = WorldSpace.to_frame(_fx_root, Vector2(at.x, at.z), at.y)
+	else:
+		fx.global_position = at
 	fx.color = color
 	fx.restart()
 	fx.emitting = true
@@ -227,10 +252,18 @@ func _ghost(mesh: Mesh, from: Vector3, to: Vector3) -> void:
 	var ghost := MeshInstance3D.new()
 	ghost.mesh = mesh
 	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_parent().add_child(ghost)
-	ghost.global_position = from
-	var tween := ghost.create_tween().set_parallel()
-	tween.tween_property(ghost, "global_position", to, GHOST_S).set_ease(Tween.EASE_IN)
+	var tween: Tween
+	if _fx_root != null:
+		# In WorldFx's frame, so a rebase during the flight shifts the ghost with its container.
+		_fx_root.add_child(ghost)
+		ghost.position = WorldSpace.to_frame(_fx_root, Vector2(from.x, from.z), from.y)
+		tween = ghost.create_tween().set_parallel()
+		tween.tween_property(ghost, "position", WorldSpace.to_frame(_fx_root, Vector2(to.x, to.z), to.y), GHOST_S).set_ease(Tween.EASE_IN)
+	else:
+		get_parent().add_child(ghost)
+		ghost.global_position = from
+		tween = ghost.create_tween().set_parallel()
+		tween.tween_property(ghost, "global_position", to, GHOST_S).set_ease(Tween.EASE_IN)
 	tween.tween_property(ghost, "scale", Vector3.ONE * GHOST_END_SCALE, GHOST_S)
 	tween.chain().tween_callback(ghost.queue_free)
 

@@ -46,26 +46,32 @@ static func pool_session(seed_value := SEED, body := "omnivore") -> GameSession:
 
 
 ## An endless session on FakeWorldGen (a shell per chunk, a zone per 2 x 2 chunks, a rammer site
-## per 4 x 4) with the M1 creatures and the real placement kit, at the home spawn or at `at`
-## (absolute am). Nothing is saved.
+## per 4 x 4) with the M1 creatures, at the home spawn or at `at` (absolute am). Nothing is saved.
 static func endless_session(seed_value := SEED, at := PackedFloat64Array()) -> GameSession:
 	var session := GameSession.new(SLOT)
 	var content: WorldContent = FakeWorldGen.fixture_content()
-	content.kit = PlacementKit.load_from()
 	session.world = content
 	session.sim = FakeWorldGen.endless_sim(seed_value, session.catalog, session.layout, session.species, content, at)
 	return session
 
 
 ## The session's pool, built as main builds it but outside the tree (the test runner has none): set
-## up, then readied, which builds it. `provider` swims for the cell (a still cell by default). Free
-## it with pool.free().
+## up, then readied as the tree readies it (children first), which builds it. `provider` swims for
+## the cell (a still cell by default). Art's ambience, mounted during the pool's ready, is not
+## readied; ready_tree(pool.get_node("Ambience")) does it. Free the pool with pool.free().
 static func open_pool(session: GameSession, provider: Object = null) -> PoolScene:
 	var pool: PoolScene = POOL_SCENE.instantiate()
 	pool.pause_on_focus_loss = false
 	pool.setup(session, provider if provider != null else Still.new())
-	pool.notification(Node.NOTIFICATION_READY)
+	ready_tree(pool)
 	return pool
+
+
+## Readies `node` as the tree would: its children first, then itself.
+static func ready_tree(node: Node) -> void:
+	for child in node.get_children():
+		ready_tree(child)
+	node.notification(Node.NOTIFICATION_READY)
 
 
 ## One tick and one frame, as the engine runs them at 60 fps: the sim steps and its events route,
