@@ -11,6 +11,9 @@ const GaitBody := preload("res://domain/gait_body.gd")
 const WalkerRig := preload("res://rig/walker_rig.gd")
 const GroundDrive := preload("res://domain/ground_drive.gd")
 const GroundDriveRig := preload("res://rig/ground_drive_rig.gd")
+const SwimDrive := preload("res://domain/swim_drive.gd")
+const SwimRig := preload("res://rig/swim_rig.gd")
+const LabSwim := preload("res://lab_swim.gd")
 const BodyField := preload("res://domain/body_field.gd")
 const AnchorResolver := preload("res://domain/anchor_resolver.gd")
 
@@ -21,6 +24,7 @@ var body_choice := "all"
 var drive := "demo"
 var duration := 0.0
 var show_hud := true
+var medium := "air"
 
 var walkers: Array = []
 var time := 0.0
@@ -37,23 +41,35 @@ func _ready() -> void:
 			"drive": drive = kv[1]
 			"duration": duration = float(kv[1])
 			"hud": show_hud = kv[1] != "0"
+			"medium": medium = kv[1]
 	_build_world()
 	var names: Array = []
-	for n in (LabSpine.stage1_names() if body_choice == "all" else [body_choice]):
-		var d = LabSpine.body(n)
-		if not GaitBody.from_description(d)["legs"].is_empty() or not GroundDrive.create(d).mode.is_empty():
+	var choices: Array = LabSpine.stage1_names() + LabSwim.names() if body_choice == "all" else [body_choice]
+	for n in choices:
+		var d = LabSwim.body(n) if LabSwim.names().has(n) else LabSpine.body(n)
+		if SwimDrive.aquatic(d, medium) or not GaitBody.from_description(d)["legs"].is_empty() \
+				or not GroundDrive.create(d).mode.is_empty():
 			names.append(n)
 	var table = Lab.table()
 	var orientations := LabSpine.part_orientations(LabSpine.part_rules())
 	var x := 0.0
 	for n in names.size():
-		var desc = LabSpine.body(names[n])
+		var desc = LabSwim.body(names[n]) if LabSwim.names().has(names[n]) else LabSpine.body(names[n])
 		var info := GaitBody.from_description(desc)
 		var width: float = desc.bounds_m().size.x
 		if n > 0:
 			x += 0.5 * width + 0.6
 		var rig: Node3D
-		if not info["legs"].is_empty():
+		# Water override wins; otherwise anatomy selects swim before the legged gait.
+		if SwimDrive.aquatic(desc, medium):
+			var swim = SwimDrive.create(desc, medium)
+			swim.position = Vector3(x, 0.6, 0.0)
+			rig = SwimRig.new()
+			rig.name = names[n]
+			add_child(rig)
+			rig.setup(desc, SkinCpu.build(desc, 48), swim, PALETTE[n % PALETTE.size()],
+					AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+		elif not info["legs"].is_empty():
 			var mech = Lab.BodyMechanics.create(names[n], info["body"], table)
 			var planner = Lab.GaitPlanner.create(mech, Vector3(x, 0.0, 0.0), 0.0)
 			rig = WalkerRig.new()
@@ -98,7 +114,10 @@ func _process(_delta: float) -> void:
 		var lines := PackedStringArray(["WALKER LAB  generated Stage 1 bodies on Gait Lab legs  drive: %s  t=%.1f s"
 				% [drive, time]])
 		for w in walkers:
-			if w.get_script() == GroundDriveRig:
+			if w.get_script() == SwimRig:
+				lines.append("%-16s %s  speed %.3f m/s  cycle progress %.3f m"
+						% [w.name, w.mode, w.planner.v, w.planner.last_cycle_progress])
+			elif w.get_script() == GroundDriveRig:
 				lines.append("%-16s %s  speed %.3f m/s  max contact slip %.2f%%"
 						% [w.name, w.mode, w.planner.v, 100.0 * w.max_stance_slip_ratio])
 			else:
