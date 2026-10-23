@@ -649,6 +649,62 @@ func test_the_food_bound_shows_the_same_zones_as_measuring_every_one() -> void:
 	check(int(a.world.counters.food_trimmed) > 0, "zones were trimmed (%d)" % int(a.world.counters.food_trimmed))
 
 
+## The food set kept from the last food view is given again only while the index places it was built
+## for hold the same zones: the region's zones are put in another order (so the index is built again)
+## in which zones near another place take the index places of the zones shown, and the body moves
+## there. The same places are shown, and the food set must be the zones now near the body. The food
+## ring is cut to 8 tm so that the two places' zones are apart.
+func test_the_kept_food_set_is_built_again_when_its_index_places_hold_other_zones() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the kept food set waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 506)
+	var w: WorldStream = sim.world
+	w.rings.food = 8.0
+	w.caps.food_items = 1000
+	var zones: Array[Dictionary] = sim.region.zones
+	var p: Vector2 = sim.motion.position
+	var near_p := _zones_within(zones, p, 8.0)
+	var q := Vector2.INF
+	var near_q := []
+	for i in 441:   # a place 4 tm apart on a grid round p with as many zones near it, none of p's
+		var at := p + Vector2(float(i % 21 - 10), float(i / 21 - 10)) * 4.0
+		var near := _zones_within(zones, at, 8.0)
+		if near.size() == near_p.size() and near.all(func(k: int) -> bool: return not near_p.has(k)):
+			q = at
+			near_q = near
+			break
+	check(not near_p.is_empty() and q.is_finite(), "zones near the body (%s) and as many near another place" % [near_p])
+	if near_p.is_empty() or not q.is_finite():
+		return
+	w._food_view(sim)
+	check_eq(w._shown_at, PackedInt32Array(near_p), "the zones near the body are shown")
+	for j in near_p.size():
+		var z: Dictionary = zones[near_p[j]]
+		zones[near_p[j]] = zones[near_q[j]]
+		zones[near_q[j]] = z
+	w._zones_version += 1   # as every change to the region's zones does
+	sim.motion.position = q
+	w._food_view(sim)
+	check_eq(w._shown_at, PackedInt32Array(near_p), "the same index places are shown")
+	var want := []
+	for k in near_p:
+		want.append(zones[k].id)
+	var got: Array = sim.plankton.active_zones.keys()
+	want.sort()
+	got.sort()
+	check_eq(got, want, "and the food set is the zones near the body now")
+
+
+## The places in `zones` of the zones whose nearest point lies within `ring` of `p`, ascending.
+static func _zones_within(zones: Array[Dictionary], p: Vector2, ring: float) -> Array:
+	var out := []
+	for k in zones.size():
+		if p.distance_to(zones[k].center) - float(zones[k].radius) <= ring:
+			out.append(k)
+	return out
+
+
 ## Whether two food zones lie at the same distance from `p`.
 static func _has_tie(w: WorldStream, p: Vector2) -> bool:
 	var seen := {}
