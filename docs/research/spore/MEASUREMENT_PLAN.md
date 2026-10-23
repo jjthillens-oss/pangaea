@@ -32,7 +32,13 @@ Status: PROPOSED, 2026-10-23. Labels as in `LEGAL_RESEARCH_BOUNDARIES.md`. Rows 
 | R4 Combat and social | Use each combat ability on the same NPC species five times (R401, R402); try to befriend the same species (R403); note DNA points for each result (R504). | R401–R403, R504 | ~40 min |
 | R5 NPC behaviour | Approach an aggressive species slowly until it chases, five times (R501); run until it gives up (R502); count your pack at each brain level (R503). | R501–R503 | ~30 min |
 
-Order: R1 and R2 first; they matter most for the current GENESIS milestones (microscopic era and the editor).
+Order (updated 2026-10-23 to the owner's priority): **R2 and R3 first** (creature editor, skin, rigging, animation
+and locomotion), then R1, R4 and R5. R2 also covers rows R207–R211 and R308, R310, R311 (test drive); R3 also covers
+R307 and R309.
+
+The single most useful experiment is **R307**: give one creature the same feet on short legs and then on long legs
+and compare top speed. A Spore designer wrote that shape did not change stats (S14). If that holds, it is the clearest
+place for GENESIS to be better.
 
 ## 4. How values are extracted
 

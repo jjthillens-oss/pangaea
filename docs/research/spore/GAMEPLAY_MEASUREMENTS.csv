@@ -35,3 +35,13 @@ R501,spore,planned,creature,npc,Distance at which an aggressive NPC starts to ch
 R502,spore,planned,creature,npc,Distance at which a chasing NPC gives up,Measure distance at give-up,,body lengths,,5,,OBSERVED,,R5 clips,,1080p60,,owner,
 R503,spore,planned,creature,npc,Pack size per brain level,Count followers,,creatures,,1,,OBSERVED,,R5 clips,,1080p60,,owner,
 R504,spore,planned,creature,progression,DNA points per befriend and per kill,Read on-screen counter,,points,,5,,OBSERVED,,R4 and R5 clips,,1080p60,,owner,
+R207,spore,planned,creature editor,body,Skin update lag while dragging a vertebra,Count frames between handle move and skin change,,frames at 60 fps,,5,,OBSERVED,,R2 clips,,1080p60,,owner,Sets the GENESIS preview rebuild target.
+R208,spore,planned,creature editor,body,Maximum joints per limb,Add joints until refused,,joints,,1,,OBSERVED,,R2 clips,,1080p60,,owner,
+R209,spore,planned,creature editor,body,Maximum limbs and parts before the complexity meter is full,Add plain limbs then plain parts,,count,,1,,OBSERVED,,R2 clips,,1080p60,,owner,Two runs: limbs only and parts only.
+R210,spore,planned,creature editor,body,How two limbs placed close together blend,Describe and screenshot-reference with timestamp,,n/a,,1,,OBSERVED,,R2 clips,,1080p60,,owner,Do they merge into one blob? Informs GENESIS blend rules.
+R211,spore,planned,creature editor,body,Vertebra thickness range,Measure thinnest and thickest vertebra against body length,,ratio,,1,,OBSERVED,,R2 clips,,1080p60,,owner,
+R307,spore,planned,creature,movement,Top speed with the same feet on short versus long legs,Frames to cross a span; same parts and speed level,,body lengths/s,,5,,OBSERVED,,R3 clips,,1080p60,,owner,Tests S14's claim that shape does not change stats. Measure in m-free units and also in absolute screen distance.
+R308,spore,planned,creature,animation,Foot order for 2 4 6 and 8 legs,Frame-step and write the order of foot lifts,,n/a,,1,,OBSERVED,,R2 test drive and R3 clips,,1080p60,,owner,
+R309,spore,planned,creature,animation,Visible foot sliding during stance,Track one foot over a stance phase frame by frame,,body lengths,,5,,OBSERVED,,R3 clips,,1080p60,,owner,Compare with GENESIS acceptance (under 2% of leg length).
+R310,spore,planned,creature,animation,Step-rate ratio between long and short leg groups,Count steps per group over 10 s,,ratio,,3,,OBSERVED,,R2 test drive clips,,1080p60,,owner,"S1 says groups snap to small rational ratios; check what is visible."
+R311,spore,planned,creature,animation,Behaviour of a legless creature,Describe movement with timestamps,,n/a,,1,,OBSERVED,,R2 test drive clips,,1080p60,,owner,S13 reports an inchworm-like slither.
