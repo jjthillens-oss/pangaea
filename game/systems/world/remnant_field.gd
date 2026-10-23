@@ -68,8 +68,9 @@ func add_from(c: CreatureField.Creature, rec: Dictionary, p_tick: int) -> Remnan
 
 
 ## Once a tick, after the creatures move (D-58): each remnant steers straight away from the cell at
-## its flee speed and moves through the arena (sliding along rocks); then those D-84 lets go leave, in
-## order. Nothing moves while the dev freeze holds (C-V14).
+## its flee speed and moves through the arena as a creature does (PoolSim.move_body: sliding along
+## rocks, held at the mouth of a crack narrower than it); then those D-84 lets go leave, in order.
+## Nothing moves while the dev freeze holds (C-V14).
 func tick(sim: PoolSim) -> void:
 	if items.is_empty() or sim.dev_ai_frozen:
 		return
@@ -81,7 +82,7 @@ func tick(sim: PoolSim) -> void:
 		var away := m.position - cell
 		var dir := away.normalized() if away.length() > 1e-6 else Vector2.from_angle(m.heading)
 		Locomotion.steer(m, dir, r.phenotype, r.flee_speed / r.phenotype.speed, PoolSim.DT)
-		sim.arena.move(m, r.phenotype.radius, PoolSim.DT)
+		sim.move_body(m, r.phenotype.radius)
 		r.leaving = sim.tick - r.born_tick >= life_ticks \
 			or not ViewFootprint.contains(cell, m.position, cam, float(cam.distance), aspect, r.phenotype.radius)
 	var places := sim._player_places()

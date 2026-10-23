@@ -385,10 +385,10 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		_check_stall(c, t, where, label, k)
 		var looked: Dictionary = before.looks.get(c.id, {})
 		if b.target == CreatureField.PLAYER_ID and not looked.is_empty() and looked.target != CreatureField.PLAYER_ID:
-			_check_sensed(c, t, where, looked, before.cell, sim.arena, k)
+			_check_sensed(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
 		var memory := _sensed_part(b.seen.get(CreatureField.PLAYER_ID, {}))
 		if not looked.is_empty() and not memory.is_empty() and memory != looked.memory:
-			_check_memory(c, t, where, looked, before.cell, sim.arena, k)
+			_check_memory(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
 		k.label[c.id] = label
 
 
@@ -459,8 +459,8 @@ static func _went_away(ring: Array, from: Vector2) -> bool:
 ## Invariant 9: CreatureSenses again, from where the creature looked before the step, on the cell's
 ## body alone (other bodies never hide it; only rocks do).
 func _check_sensed(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
-		k: Dictionary) -> void:
-	if not CreatureSenses.perceive(_viewer(c, looked), [cell], arena).is_empty():
+		k: Dictionary, field: CreatureField = null) -> void:
+	if not CreatureSenses.perceive(_viewer(c, looked, field), [cell], arena).is_empty():
 		return
 	var hurt: int = int(k.hurt_by_cell.get(c.id, -1))
 	if hurt >= 0 and t - hurt <= int(c.brain.cfg.memory_ticks):
@@ -474,7 +474,7 @@ func _check_sensed(c: CreatureField.Creature, t: int, where: String, looked: Dic
 ## without a new percept, or a percept the senses would not give (an eye in the back of its head,
 ## a memory that follows the cell), fails.
 func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dictionary, cell: Dictionary, arena: PoolArena,
-		k: Dictionary) -> void:
+		k: Dictionary, field: CreatureField = null) -> void:
 	k.memory_checks += 1
 	var e: Dictionary = c.brain.seen[CreatureField.PLAYER_ID]
 	var by := str(e.by)
@@ -485,7 +485,7 @@ func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dic
 		if int(k.hurt_by_cell.get(c.id, -1)) != t:
 			_fail(9, "%s: %s felt the cell's pain without a hit by it" % [where, c.id])
 		return
-	var got := CreatureSenses.perceive(_viewer(c, looked), [cell], arena)
+	var got := CreatureSenses.perceive(_viewer(c, looked, field), [cell], arena)
 	if got.is_empty():
 		_fail(9, "%s: %s holds a %s percept of the cell its senses do not give from %s" % [where, c.id, by, looked.position])
 	elif got[0].by != by or not Vector2(got[0].position).is_equal_approx(e.position) \
@@ -494,8 +494,16 @@ func _check_memory(c: CreatureField.Creature, t: int, where: String, looked: Dic
 			got[0].by, got[0].position])
 
 
-## The creature as CreatureSenses' viewer, where it looked from before the step.
-func _viewer(c: CreatureField.Creature, looked: Dictionary) -> Dictionary:
+## The creature as CreatureSenses' viewer, where it looked from before the step: its senses are
+## `field`'s at its size (CreatureField.viewer_of: SpeciesCatalog.at_size's sight, fov and near_m x q).
+## Without a field (a caller's hand-built check), its species block's own, which are the same at the
+## species' entry size, so everywhere in S1.
+func _viewer(c: CreatureField.Creature, looked: Dictionary, field: CreatureField = null) -> Dictionary:
+	if field != null:
+		var out := field.viewer_of(c)
+		out.position = looked.position
+		out.heading = looked.heading
+		return out
 	var senses: Dictionary = species.species[c.species_id].senses
 	return {"id": c.id, "species": c.species_id, "position": looked.position, "heading": looked.heading,
 		"radius": c.phenotype.radius, "sight": c.phenotype.sight, "fov": deg_to_rad(float(senses.fov_deg)),

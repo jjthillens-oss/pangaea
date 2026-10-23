@@ -17,10 +17,12 @@ extends RefCounted
 ##     senses; the token decides whether the player is engageable to it), drive, and set its
 ##     velocity by the drive (steer, tell, burst or glide). A frozen creature (dev) coasts;
 ##  3. the player steers;
-##  4. the player moves, then each creature;
+##  4. the player moves, then each creature (move_body: from size 2 a move left inside a rock is
+##     taken back);
 ##  5. contacts: overlapping bodies are pushed apart once (positions only, by inverse mass), each
-##     pushed body settles against rocks and the wall, every creature is clamped to its leash disc
-##     last, and a striking creature touching a rock ahead is blocked;
+##     pushed body settles against rocks and the wall (from size 2, a push left inside a rock is taken
+##     back), every creature is clamped to its leash disc last, and a striking creature touching a
+##     rock ahead is blocked;
 ##  6. metabolism: the player as in step 2, creatures at their species' metabolism share (a
 ##     starved creature dies and leaves no carcass);
 ##  7. ecology, then the creature field's respawn queue and stuck removals;
@@ -335,7 +337,7 @@ func step(intent: SimIntent) -> void:
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
 		Locomotion.steer(motion, move, phenotype, state.speed_multiplier(), DT)
-		moved = arena.move(motion, phenotype.radius, DT)
+		moved = move_body(motion, phenotype.radius)
 		stats.distance_m += moved
 	else:
 		motion.prev_position = motion.position
@@ -1086,8 +1088,31 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 func _move_creatures() -> Array[float]:
 	var out: Array[float] = []
 	for c in creatures.awake():
-		out.append(arena.move(c.motion, c.phenotype.radius, DT))
+		out.append(move_body(c.motion, c.phenotype.radius))
 	return out
+
+
+## Tick step 4's move of one body (the cell, a creature, a remnant): PoolArena.move, and from size 2 a
+## move that the arena's settle leaves inside a rock is taken back, so the body stays where it was and
+## stops. The tiles keep every crack a cell wide at size 1 (#32), but a 1.5 tm crack there is 0.94 tm
+## at size 2, and the settle's two passes, pushed from one shell into the other, end inside one: in
+## the growth fuzz up to 33 mm into a reef shell (FuzzInvariants' invariant 1 forgives 1 mm). In the
+## pool and at size 1 this is PoolArena.move alone, to the bit. Returns the distance moved.
+func move_body(m: Locomotion.MotionState, r: float) -> float:
+	if world == null or world.size < 2:
+		return arena.move(m, r, DT)
+	var aim := m.position + m.velocity * DT   # where the move lands unless the settle pushes it
+	var moved := arena.move(m, r, DT)
+	if m.position != aim and _wedged(m.position, m.prev_position, r):
+		m.position = m.prev_position
+		m.velocity = Vector2.ZERO
+		return 0.0
+	return moved
+
+
+## True when a body of radius `r` at `p` is inside a rock and at `was` it was not (move_body).
+func _wedged(p: Vector2, was: Vector2, r: float) -> bool:
+	return not arena.is_clear(p, r) and arena.is_clear(was, r)
 
 
 ## Tick step 5: one separation pass over every overlapping pair (the cell first, then creatures in
@@ -1111,6 +1136,8 @@ func _contacts() -> void:
 	var at := PackedVector2Array()
 	for m in motions:
 		at.append(m.position)
+	# From size 2 a push the settle leaves inside a rock is taken back, as in move_body.
+	var held := at.duplicate() if world != null and world.size >= 2 else PackedVector2Array()
 	var pushed := PackedByteArray()
 	pushed.resize(n)
 	for i in n:
@@ -1129,6 +1156,8 @@ func _contacts() -> void:
 	for i in n:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
+			if not held.is_empty() and _wedged(motions[i].position, held[i], radii[i]):
+				motions[i].position = held[i]
 	for c in creatures.awake():
 		var mem := c.brain
 		if mem == null:

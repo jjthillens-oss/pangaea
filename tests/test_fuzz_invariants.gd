@@ -19,6 +19,8 @@ const SWIM_TICKS := 240
 const AFTER_TICKS := 150
 ## Ticks checked after each dev size change.
 const SET_SIZE_TICKS := 90
+## Ticks the size-2 senses case runs: the hunter thinks and notices within them.
+const SENSE_TICKS := 30
 ## tm: how far from the origin the dev rebase puts the cell (under rebase_beyond_tm, 96).
 const FAR_FROM_ORIGIN := 80.0
 ## Absolute tm: far from the world's origin, so a stored tm read as am is far from where it is.
@@ -109,6 +111,44 @@ func test_set_size_two_then_one_runs_clean() -> void:
 	check_eq(int(fuzz.counts.set_sizes), 2, "two size changes (%s)" % fuzz.counts)
 	check(int(fuzz.counts.cuts) >= 2, "each a cut (%s)" % fuzz.counts)
 	check_eq(int(fuzz.counts.growths), 0, "no growth")
+
+
+## Invariant 9 at size 2 reads a creature's senses at the field's size: an ambush hunter (entry size
+## 1) there notices with near_m x q (q = 1 / 1.6), so the cell between that and its species block's
+## near_m is a sight percept, not a near one. A checker reading the block's own senses (S1's reading)
+## calls every such percept wrong.
+func test_at_size_two_invariant_9_reads_the_senses_at_that_size() -> void:
+	var sim := _sim(FakeWorldGen.s2_species())
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var was := fuzz.before(sim)
+	check(sim.debug_set_size(2), "size 2")
+	_step(sim, fuzz, "set_size tick", Vector2.ZERO, was)
+	sim.grace_until = sim.tick   # out of the shelter, so it may be sensed
+	var rec := sim.creatures.record_of("ambush_hunter")
+	var block_near := float(sim.species.species.ambush_hunter.senses.near_m)
+	var near := float(rec.near_m)
+	check(near < block_near, "near_m x q at size 2 (%.3f) is under the block's %.3f" % [near, block_near])
+	var reach: float = rec.phenotype.radius + sim.phenotype.radius
+	var d := reach + 0.5 * (near + block_near)   # sight at size 2; near by the block's own
+	var at := sim.motion.position + Vector2(d, 0.0)
+	check(sim.debug_spawn_creature("ambush_hunter", at, PI), "a hunter %.2f tm east, facing the cell" % d)
+	var hunter: CreatureField.Creature = null
+	for c in sim.creatures.creatures:
+		if c.species_id == "ambush_hunter" and c.motion.position == at:
+			hunter = c
+	check(hunter != null, "spawned")
+	if hunter == null:
+		return
+	var seen := ""
+	var checks := int(fuzz.counts.memory_checks)
+	for t in SENSE_TICKS:
+		_step(sim, fuzz, "sense tick %d" % t)
+		var memory: Dictionary = hunter.brain.seen.get(CreatureField.PLAYER_ID, {})
+		if seen.is_empty() and not memory.is_empty():
+			seen = str(memory.by)
+	check_eq(seen, "sight", "it first sensed the cell by sight")
+	check(int(fuzz.counts.memory_checks) > checks, "invariant 9 checked its memory (%d)" % (int(fuzz.counts.memory_checks) - checks))
+	check_eq(fuzz.report(), "", "every invariant on every tick")
 
 
 ## A sleeper the growth removes in view fails 12 (it is checked, not exempt, before grew), and so does
