@@ -5,6 +5,7 @@ extends RefCounted
 ## keeps state. Pure rules: no scene or file access; every draw comes from the RandomNumberGenerator it is handed.
 
 const Session := preload("res://game/domain/creature/creature_editor_session.gd")
+const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
 
 ## A heading error this large (rad) asks for the full turn rate; the throttle falls with the cosine of the error and
@@ -115,7 +116,7 @@ static func pick_rival_starters(starters: Dictionary, count: int, rng: RandomNum
 	names.sort()
 	var legged := []
 	for n in names:
-		var body = load("res://game/domain/creature/body_codec.gd").from_dict(starters[n])
+		var body = BodyCodec.from_dict(starters[n])
 		if not (GaitBody.from_description(body)["body"]["legs"] as Array).is_empty():
 			legged.append(n)
 	var out := []
@@ -127,16 +128,19 @@ static func pick_rival_starters(starters: Dictionary, count: int, rng: RandomNum
 
 
 ## Dresses a starter body with 0..RIVAL_PARTS_MAX parts drawn from `rng` on anchors that validate (the editor
-## session refuses what the rules do not allow, so a refused draw is skipped). Returns a new description.
+## session refuses what the rules do not allow, so a refused draw is skipped). Returns a new description, or the
+## starter itself when no part type goes on a spine (a build without the part records).
 static func draw_rival_body(starter: RefCounted, rng: RandomNumberGenerator, body_rules: Dictionary,
 		part_rules: Dictionary, costs: Dictionary) -> RefCounted:
-	var session = Session.new(starter, body_rules, part_rules, costs, 1000000)
 	var types: Array = part_rules.keys()
 	types.sort()
 	var spine_types := []
 	for t in types:
 		if (part_rules[t]["hosts"] as Array).has("spine"):
 			spine_types.append(t)
+	if spine_types.is_empty():
+		return starter
+	var session = Session.new(starter, body_rules, part_rules, costs, 1000000)
 	var wanted := rng.randi_range(0, RIVAL_PARTS_MAX)
 	for i in wanted:
 		var type: String = spine_types[rng.randi_range(0, spine_types.size() - 1)]

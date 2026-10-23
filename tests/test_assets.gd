@@ -24,6 +24,7 @@ const ROCK_IDS := ["rock_a", "rock_b", "rock_c"]
 const FOOD_LAYOUT_KEYS := {"plankton": "plankton", "carrion": "carrion"}
 ## Where the camera's view lands on a level plane (shared with tests/test_pool_look.gd).
 const ViewReach := preload("res://tests/view_reach.gd")
+const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 ## The rim's shelf (the old pool floor's) starts here; past it the rim is flat at about +1.0 m.
 const SHELF_R := 45.0
 ## A rock reaches at least this far below the swim plane (m), into the fluid's height fog.
@@ -251,6 +252,17 @@ func test_every_export_has_a_record_and_blender_source() -> void:
 			check(record.has(key), "%s: record has %s" % [record.get("id"), key])
 	for path in exported:
 		check(exported[path], "%s has an asset record" % path)
+
+
+## The creature part rules the game reads (game/data/creature/part_rules.json, in the release pack) are the
+## records' part_rules, type for type: tools/make_part_rules.py regenerates the file after an art change.
+func test_the_creature_part_rules_file_matches_the_records() -> void:
+	var from_records: Dictionary = CreatureData.part_rules_from_records()
+	var from_file: Dictionary = CreatureData.part_rules()
+	check(from_records.size() >= 17, "part records found (%d)" % from_records.size())
+	check_eq(from_file.keys(), from_records.keys(), "the same part types, in order")
+	for type in from_records:
+		check(from_file.get(type) == from_records[type], "%s: part_rules.json matches the record (run tools/make_part_rules.py)" % type)
 
 
 func test_every_export_loads() -> void:

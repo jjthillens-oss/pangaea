@@ -1,7 +1,8 @@
 extends RefCounted
-## Loads the creature stage's data files (game/data/creature/) and the part rules from the art team's records
-## (assets/records/cpart_<type>.json). Not domain code: it reads files. Replaces the creature lab's lab_spine.gd and
-## lab_data.gd; the lab's test-only bodies live under tests/fixtures/creature/.
+## Loads the creature stage's data files (game/data/creature/), among them the part rules compiled from the art
+## team's records (assets/records/cpart_<type>.json) into part_rules.json by tools/make_part_rules.py: the records
+## folder is .gdignore'd, so a release pack never carries it. Not domain code: it reads files. Replaces the creature
+## lab's lab_spine.gd and lab_data.gd; the lab's test-only bodies live under tests/fixtures/creature/.
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const GaitTable := preload("res://game/domain/creature/gait_table.gd")
@@ -52,8 +53,14 @@ static func body(body_name: String) -> RefCounted:
 	return BodyCodec.from_dict(bodies[key])
 
 
-## Part rules from the art team's records: type -> part_rules.
+## Part rules, type -> part_rules, from data/creature/part_rules.json (the compiled records; the release pack
+## carries this file and not the records). tests/test_assets.gd keeps it equal to part_rules_from_records().
 static func part_rules() -> Dictionary:
+	return read_json(DATA_DIR + "/part_rules.json")["rules"]
+
+
+## The same rules read straight from the records (the project only, never a pack): what the data file must match.
+static func part_rules_from_records() -> Dictionary:
 	var out := {}
 	var files := DirAccess.get_files_at(RECORDS_DIR)
 	files.sort()
