@@ -38,6 +38,16 @@ func _init() -> void:
 
 func _ready() -> void:
 	_ensure_built()
+	_dress()
+
+
+## The playful touch (MenuBounce): buttons that swell when focused.
+func _dress() -> void:
+	for b: Button in _delete_buttons + [_back]:
+		MenuBounce.pill(b)
+	# Play changes its look (primary or not) with the slot in use, so it keeps the theme's shape.
+	for b: Button in _play_buttons + _delete_buttons + [_back]:
+		MenuBounce.attach(b)
 
 
 ## Builds the screen once, on entering the tree or on the first open(), whichever comes first.
@@ -51,6 +61,7 @@ func open(p_peeks: Array[Dictionary], p_current: int, p_catalog: PartCatalog) ->
 	catalog = p_catalog
 	_ensure_built()
 	visible = true
+	MenuBounce.arrive(self, [], Vector2.ZERO)   # fade only: a sliding dim would uncover an edge
 	show_slots(p_peeks, p_current)
 
 

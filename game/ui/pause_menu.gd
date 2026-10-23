@@ -30,6 +30,9 @@ func _ready() -> void:
 	quit_button.pressed.connect(func(): quit_requested.emit())
 	settings_button.pressed.connect(func(): settings_requested.emit())
 	_controls.text = "\n".join(Hud.controls_lines())
+	for b: Button in [resume_button, save_button, settings_button, save_quit_button, quit_button]:
+		MenuBounce.pill(b)
+		MenuBounce.attach(b)
 
 
 ## The controls as a controller plays them, from its bindings (UI pass).
@@ -59,6 +62,7 @@ func open(reason: String, footer: String, can_save: bool) -> void:
 	_footer.text = footer
 	_controls.text = "\n".join(pad_controls_lines() if InputPrompts.device == "pad" else Hud.controls_lines())
 	visible = true
+	MenuBounce.arrive(self, [], Vector2.ZERO)   # fade only: a sliding dim would uncover an edge
 	if is_inside_tree():
 		resume_button.grab_focus()
 

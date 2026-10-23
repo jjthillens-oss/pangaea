@@ -24,8 +24,11 @@ static func _calm() -> bool:
 	return SettingsService.shared().reduce_camera_motion()
 
 
-## Makes `control` swell on focus and hover, and squash on press when it is a button.
+## Makes `control` swell on focus and hover, and squash on press when it is a button (once; a
+## second call does nothing).
 static func attach(control: Control, grow: float = GROW) -> void:
+	if control.has_meta(&"bounce_grow"):
+		return
 	control.set_meta(&"bounce_grow", grow)
 	control.resized.connect(func(): control.pivot_offset = control.size * 0.5)
 	control.pivot_offset = control.size * 0.5
@@ -71,8 +74,12 @@ static func _tween_scale(control: Control, to: float, seconds: float, trans: Twe
 	control.set_meta(&"bounce_tween", tween)
 
 
-## Rounds a button's styles into a pill (as overrides; the shared theme is untouched).
+## Rounds a button's styles into a pill (as overrides; the shared theme is untouched). Call it
+## once the button is in the tree, where it sees the game's theme; a second call does nothing.
 static func pill(button: Button) -> void:
+	if not button.is_inside_tree() or button.has_meta(&"bounce_pill"):
+		return   # outside the tree the theme is the engine's, not ours
+	button.set_meta(&"bounce_pill", true)
 	for style_name in STYLES:
 		var style := button.get_theme_stylebox(style_name)
 		if not style is StyleBoxFlat:

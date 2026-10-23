@@ -80,6 +80,17 @@ func _init() -> void:
 
 func _ready() -> void:
 	_ensure_built()
+	_dress()
+
+
+## The playful touch (MenuBounce): pill buttons along the bottom, and every tab and button that
+## is not a row's value swells when focused.
+func _dress() -> void:
+	for b: Button in [_reset_binds, _reset, _back]:
+		MenuBounce.pill(b)
+		MenuBounce.attach(b)
+	for b in _tab_buttons:
+		MenuBounce.attach(b, 1.04)
 
 
 ## Builds the screen once, on entering the tree or on the first open(), whichever comes first.
@@ -95,6 +106,7 @@ func open(p_service: SettingsService = null, start_tab: int = 0) -> void:
 	if not service.changed.is_connected(_on_changed):
 		service.changed.connect(_on_changed)
 	visible = true
+	MenuBounce.arrive(self, [], Vector2.ZERO)   # fade only: a sliding dim would uncover an edge
 	show_tab(start_tab)
 
 
