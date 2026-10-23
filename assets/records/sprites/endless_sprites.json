@@ -19,6 +19,16 @@
       "kind": "material_override"
     },
     {
+      "name": "T_BloomTint",
+      "path": "assets/export/ambience/T_BloomTint.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "bloom tint: a soft round gradient, white to clear, that the engine tints #E8D27A over a blooming meadow",
+      "source": "tools/blender/make_endless_extras.py"
+    },
+    {
       "name": "T_Ghost_deep_lurker",
       "path": "assets/export/ambience/T_Ghost_deep_lurker.png",
       "size": [
@@ -46,6 +56,26 @@
         512
       ],
       "source": "assets/source/blender/creature_elder_warden_body.blend",
+      "kind": "near ghost"
+    },
+    {
+      "name": "T_Ghost_engulfer",
+      "path": "assets/export/ambience/T_Ghost_engulfer.png",
+      "size": [
+        512,
+        512
+      ],
+      "source": "assets/source/blender/ghost_engulfer.blend",
+      "kind": "near ghost"
+    },
+    {
+      "name": "T_Ghost_lancer",
+      "path": "assets/export/ambience/T_Ghost_lancer.png",
+      "size": [
+        512,
+        512
+      ],
+      "source": "assets/source/blender/ghost_lancer.blend",
       "kind": "near ghost"
     },
     {

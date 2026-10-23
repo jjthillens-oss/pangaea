@@ -362,6 +362,15 @@ The owner approved a new look for the M1 cell stage: a microscopic world, a deep
   - Art's production log (`docs/art/production_m1.md`) still listed `pool_floor` in its asset and budget tables and credited the CC0 sand scan to the deleted `assets/export/T_PoolFloor_Normal.png`. An engineering note above the tables now says the micro look retired the floor (C4), that the `pool_floor` rows are history, not budget, and that the Aerial Beach credit covers only the kept source scan in `assets/source/textures/cc0/polyhaven_aerial_beach_01/`. The rows themselves stay as written: art PR #10 edits the rock rows next to each of them, and a change there would conflict with it (checked with `git merge-tree`); art can drop them in its next pass.
 - **Final gates after round 4 (2026-10-23).** Nothing that draws changed in round 4 (the contract, a unit test and the docs), and the look probe at `14d6337` reads value for value as at `d014a20` in both renderers: every gate passes but `plankton_clip` (255, art's), 26 of 29 in Compatibility (the parity gates skip there) and 28 of 29 in Forward+ with parity (fluid 0.0, cell 0.6). The `final_` frames in `screenshots/micro-world/engineering/` were re-shot from these runs; against the earlier set only the HUD's random lineage id differs.
 
+## 2026-10-23 · Steam store prep drafts (PROPOSED)
+Drafts for a Steam presence live in `docs/store/`: store copy and tags, capsule concepts, a trailer plan and the
+Steamworks steps only the owner's account can do. Nothing is published. Store material never names other games and
+describes only what the build contains. The capsule concepts are crops of a Blender key art render of the approved
+mood scene (`tools/blender/render_store_keyart.py`); `tools/store/make_capsules.py` uses Pillow as marketing tooling
+only, never as a game dependency. Open for the owner: the player-facing name (see "Product name"; existing Steam games
+called *Pangea* argue for a distinctive subtitle), the release model, individual or company, and the AI-content
+disclosure wording.
+
 ## 2026-10-23 · Cell-stage audio (PROPOSED)
 
 M1 step 5's "real audio", built by the sound and music thread while engineering builds S1. Every sound is PROPOSED until Joshua listens; a listening preview (about two minutes of title, feeding, a hunt, starving, death, respawn and the endless-world stings) is in the project files at `pangaea/audio/cell_audio_preview.mp3`.
