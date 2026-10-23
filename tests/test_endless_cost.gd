@@ -17,8 +17,10 @@ extends TestCase
 ##    percentile is load, not cost.
 ##  - Sleeper: after a swim the left-behind sleepers are timed against a twin sim with them removed,
 ##    tick by tick in turn, 200 ticks each, 3 rounds: the median difference per sleeper is at most
-##    2 us. Debug creatures never sleep (core CC-6), so the sleepers are the world's own; on the
-##    fixture world there may be too few to time, and the gate then waits for the real content.
+##    2 us. Debug creatures never sleep (core CC-6), so the sleepers are the world's own: the swim
+##    goes east at least SLEEPER_SWIM_TICKS and on until SLEEPER_STOP of them sleep, since how many
+##    sleep where it stops depends on the tiles there (on the real content 6 or 7 after 1,200 ticks).
+##    On the fixture world there may be too few to time, and the gate then waits for the real content.
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
 ##    median excess is at most 2 yardsticks. The rebase goes against the cell's side of the origin, so
 ##    the tick holds one rebase, not two.
@@ -43,7 +45,9 @@ const LIMIT_US := 1500.0
 const LIMIT_YARDSTICKS := 8.0
 const P999_YARDSTICKS := 16.0
 const P999 := 0.999
-const SLEEPER_SWIM_TICKS := 1200      ## about 120 tm east overdriven (88 as it is), leaving the home block's creatures behind
+const SLEEPER_SWIM_TICKS := 1200      ## at least about 120 tm east overdriven (88 as it is), leaving the home block's creatures behind,
+const SLEEPER_STOP := 10              ## then on east until this many of the world's own creatures sleep (SLEEPER_MIN and two)
+const SLEEPER_SWIM_MAX_TICKS := 4800  ## or until this many ticks in all
 const SLEEPER_REST_TICKS := 60
 const SLEEPER_TICKS := 200
 const SLEEPER_ROUNDS := 3
@@ -378,6 +382,7 @@ func _check_sleeper_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
 	var with_them: Variant = _sleeper_scene(overdriven)
 	var without: Variant = _sleeper_scene(overdriven)
+	var swum: int = with_them.tick - SLEEPER_REST_TICKS
 	var sleepers: Array = []
 	for c in without.creatures.creatures:
 		if c.asleep:
@@ -405,18 +410,21 @@ func _check_sleeper_cost(overdriven: bool) -> void:
 			b.append(_timed_step(without, still).us)
 		per.append((Yardstick.median(a) - Yardstick.median(b)) / n)
 	var cost := Yardstick.median(per)
-	print("test-endless-cost: %s: %d sleepers cost %.2f us each (rounds %s); %d still asleep at the end" % [
-		mode, n, cost, _joined(per, "%.2f"), with_them.world.sleeping_ids().size()])
+	print("test-endless-cost: %s: %d sleepers after %d ticks east (%.0f tm) cost %.2f us each (rounds %s); %d still asleep at the end" % [
+		mode, n, swum, with_them.absolute_position_am()[0], cost, _joined(per, "%.2f"), with_them.world.sleeping_ids().size()])
 	check(with_them.world.sleeping_ids().size() == n, "%s: they slept through the timing" % mode)
 	check(cost <= SLEEPER_LIMIT_US, "%s: a sleeper costs %.2f us (limit %.1f)" % [mode, cost, SLEEPER_LIMIT_US])
 
 
 ## A racer that swam east (overdriven or as it is) and stopped, leaving the creatures it passed
-## asleep behind it.
+## asleep behind it: at least SLEEPER_SWIM_TICKS, then on until SLEEPER_STOP sleep (or
+## SLEEPER_SWIM_MAX_TICKS in all).
 static func _sleeper_scene(overdriven: bool) -> Variant:
 	var sim: Variant = _swimmer()
 	var bot = SwimBot.new(Vector2.RIGHT)
-	for i in SLEEPER_SWIM_TICKS:
+	for i in SLEEPER_SWIM_MAX_TICKS:
+		if i >= SLEEPER_SWIM_TICKS and sim.world.sleeping_ids().size() >= SLEEPER_STOP:
+			break
 		_swim_step(sim, bot, overdriven)
 	for i in SLEEPER_REST_TICKS:
 		sim.step(SimIntent.new())
