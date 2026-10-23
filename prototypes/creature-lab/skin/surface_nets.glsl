@@ -234,7 +234,7 @@ void main() {
 		}
 		float own = caps[4 * pk + 2].w;
 		// Match BodyField.HIP_SPINE_BLEND: limb-dominant vertices follow the limb at large swings.
-		const float hip_spine_blend = 0.1;
+		const float hip_spine_blend = 0.02;
 		float total = 0.0;
 		for (int k = 0; k < params.counts.x; k++) {
 			if (caps[4 * k + 2].w != 0.0 && caps[4 * k + 2].w != own) continue;
