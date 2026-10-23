@@ -820,6 +820,78 @@ func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_sw
 	check(w.sites.size() >= 100, "a dense table (%d sites)" % w.sites.size())
 
 
+# --- what the unloads let go (WorldStream._let_go, freed on the quiet ticks after them) ---
+
+## An unloaded chunk outlives its tick and every tick that loads, unloads or rebases, and the quiet
+## ticks after free what the unloads let go, never more than RELEASE_PER_TICK pieces a tick: a swim
+## east with a debug rebase there and back before every third step while something waits, then still
+## steps until nothing does. A teleport frees all that waits at once.
+func test_an_unload_lets_go_its_chunk_on_the_quiet_ticks_after_it() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: what an unload lets go waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 505)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var gone: Array[WeakRef] = []   # the unloaded chunks
+	var outlived := 0
+	var held := 0                   # busy ticks that began with something waiting
+	var bad := []
+	for t in 2000:
+		var still := t >= 1200
+		if still and w._let_go.is_empty():
+			break
+		var chunks := {}
+		for key in w.loaded_keys():
+			chunks[key] = weakref(w.chunk(key))
+		var rebase := not w._let_go.is_empty() and t % 3 == 2
+		if rebase:
+			sim.debug_rebase(Vector2i(1, 0))
+			sim.debug_rebase(Vector2i(-1, 0))
+		var before := w._let_go.size()
+		if not still:
+			SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.ZERO if still else Vector2.RIGHT))
+		var busy := rebase
+		for e in sim.drain_events():
+			busy = busy or e.type == "chunk_loaded" or e.type == "chunk_unloaded" or e.type == "rebased"
+			if e.type == "chunk_unloaded" and chunks.has(e.key):
+				var ref: WeakRef = chunks[e.key]
+				gone.append(ref)
+				outlived += 1 if ref.get_ref() != null else 0
+		var after := w._let_go.size()
+		if busy and after < before:
+			bad.append("tick %d freed %d pieces on a busy tick" % [t, before - after])
+		elif after < before - WorldStream.RELEASE_PER_TICK:
+			bad.append("tick %d freed %d pieces" % [t, before - after])
+		held += 1 if busy and before > 0 else 0
+	var freed := 0
+	for ref in gone:
+		freed += 1 if ref.get_ref() == null else 0
+	print("test-perf-world-caches: %d chunks unloaded, %d outlived their tick, %d freed after; %d busy ticks with pieces waiting" % [
+		gone.size(), outlived, freed, held])
+	check(bad.is_empty(), "no tick freed what it should not (%s)" % [bad.slice(0, 3)])
+	check(gone.size() >= 10 and outlived == gone.size(), "every unloaded chunk outlived its tick (%d of %d)" % [outlived, gone.size()])
+	check(w._let_go.is_empty() and freed == gone.size(), "the quiet ticks freed them all (%d of %d, %d pieces left)" % [
+		freed, gone.size(), w._let_go.size()])
+	check(held >= 10, "busy ticks came while pieces waited (%d)" % held)
+	var last: Array[WeakRef] = []
+	for t in 600:
+		var chunks := {}
+		for key in w.loaded_keys():
+			chunks[key] = weakref(w.chunk(key))
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.UP))
+		for e in sim.drain_events():
+			if e.type == "chunk_unloaded" and chunks.has(e.key):
+				last.append(chunks[e.key])
+		if not last.is_empty():
+			break
+	check(not last.is_empty() and last[0].get_ref() != null, "a chunk unloaded on the swim north waits")
+	w.teleport(sim, w.checkpoint_am[0], w.checkpoint_am[1])
+	check(w._let_go.is_empty() and last[0].get_ref() == null, "a teleport frees all that waits at once")
+
+
 # --- WorldStream's look-ahead generation (chunks generated on quiet ticks, handed out once) ---
 
 static func _chunk_text(ch: WorldChunk) -> String:

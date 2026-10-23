@@ -149,7 +149,9 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 
 
 ## Unloads chunk `key`: its colliders leave the arrays and every near grid. Unknown keys are ignored.
-func remove_chunk(key: Vector2i) -> void:
+## What held them (their records as added, their rock entries and the chunk's near grid) goes on the
+## end of `let_go`, for a caller that frees it later (WorldStream._let_go).
+func remove_chunk(key: Vector2i, let_go: Array = []) -> void:
 	if not _range.has(key):
 		return
 	epoch += 1
@@ -162,6 +164,7 @@ func remove_chunk(key: Vector2i) -> void:
 					if _may_reach(other, c):
 						_count(other, c, -1)
 	var span: Vector2i = _range[key]
+	let_go.append_array([own, _grids[key], rocks.slice(span.x, span.x + span.y)])
 	for i in span.y:
 		rocks.remove_at(span.x)
 		_centers.remove_at(span.x)

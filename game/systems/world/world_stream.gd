@@ -66,6 +66,8 @@ const AHEAD_REFRESH_TICKS := 15
 ## How many sites of the chunks generated ahead have their record and creature made on a quiet tick
 ## (_prepare_ahead).
 const PREPARE_PER_TICK := 2
+## How many of the pieces the unloads let go (_let_go) a quiet tick frees.
+const RELEASE_PER_TICK := 1
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -173,6 +175,14 @@ var _ahead_tick := 0                   ## the first tick the next look may run (
 ## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn.
 var _ahead_sites := {}
 var _prepare_todo: Array = []
+## What the ring's unloads let go, in pieces (each chunk; the creatures that left; its site records
+## and zones; its colliders), freed RELEASE_PER_TICK pieces a tick, the last first, on the ticks that
+## generate, load, unload and rebase nothing. Freed on the unload tick, which often loads a chunk too,
+## their few thousand small blocks cost that tick their teardown and the allocator's sweep of them
+## (glibc's malloc sweeps its fast bins at the next large request), B-7's tick 564 most of all.
+## Nothing reads them, so when they are freed changes nothing else; a teleport frees them at once.
+var _let_go: Array = []
+var _quiet := true                     ## nothing loaded, unloaded or rebased since the last step ended
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
@@ -250,8 +260,12 @@ func step(sim: PoolSim) -> void:
 	_load(sim, view)
 	if _loads == loads and not _look_ahead(sim):
 		_prepare_ahead(sim)
+		if _quiet:
+			for i in mini(RELEASE_PER_TICK, _let_go.size()):
+				_let_go.pop_back()
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
+	_quiet = true
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -318,6 +332,7 @@ func chunk_of_local(p: Vector2) -> Vector2i:
 ## from an absolute one: the arena's colliders and the zones. Bodies and items are the caller's.
 func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 	_site_epoch += 1   # the bodies are the caller's: the hold bound measures again
+	_quiet = false
 	origin_x_am = x_am
 	origin_y_am = y_am
 	_rederive(sim)
@@ -328,6 +343,7 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 ## actors, every creature's memories (sleepers too) and food items shift by it exactly; zones and
 ## colliders re-derive from their absolute values. Emits rebased {offset_tm, origin_am}.
 func rebase(sim: PoolSim, offset: Vector2) -> void:
+	_quiet = false
 	origin_x_am += float(offset.x) * _tm_to_am
 	origin_y_am += float(offset.y) * _tm_to_am
 	RebaseShift.motion(sim.motion, offset)
@@ -403,6 +419,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		_load_chunk(sim, key)
 	_fill_all = true
 	recompute_caps(sim)
+	_let_go.clear()   # behind the camera cut
 
 
 ## Step 0 (spine 3.11, D-10, D-11): the pending respawn. When the checkpoint's whole view set is
@@ -600,10 +617,13 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 
 ## Forgets one chunk: the creatures of the sites homed in it leave ("unloaded", in (number, id)
 ## order) with their queue entries and site records, its zones' plankton is dropped and the zones
-## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene.
+## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene. The chunk,
+## the creatures, the records, the zones and the colliders wait in _let_go for the quiet ticks.
 func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch: WorldChunk = _chunks[key]
 	_site_epoch += 1
+	_quiet = false
+	_let_go.append(ch)
 	if _home_count != sites.size():
 		_index_homes()
 	var mine: Dictionary = _home_sites.get(key, {})
@@ -615,12 +635,15 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 			if mine.has(c.site_id):
 				leaving.append(c)
 		sim.creatures.remove_all(leaving, "unloaded", sim.tick)
+		_let_go.append(leaving)
 		# Their queue entries leave in place, last first: the others keep their order.
 		var queue := sim.creatures.queue
 		for i in range(queue.size() - 1, -1, -1):
 			if mine.has(queue[i].site):
 				queue.remove_at(i)
+	var records := []
 	for id in mine:
+		records.append(sites.get(id))
 		sites.erase(id)
 		_forget_role(id)
 		if sim.creatures != null:
@@ -629,6 +652,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
 		var was := sim.region.zone(z.id)
+		records.append(was)
 		sim.region.remove_zone(z.id)
 		_zones_version += 1
 		_unindex_zone(sim.region, was)
@@ -636,7 +660,10 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 		_zone_chunk.erase(z.id)
 		_fill.erase(z.id)
 		_trimmed.erase(z.id)
-	(sim.arena as ChunkArena).remove_chunk(key)
+	_let_go.append(records)
+	var colliders := []
+	(sim.arena as ChunkArena).remove_chunk(key, colliders)
+	_let_go.append(colliders)
 	_chunks.erase(key)
 	_keys.erase(key)
 	_load_bound = PackedFloat64Array()   # a missing chunk now
@@ -746,6 +773,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch := _generated(key)
 	_loads += 1
 	_site_epoch += 1
+	_quiet = false
 	var colliders: Array[Dictionary] = []
 	for s in ch.shells:
 		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
