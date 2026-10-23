@@ -29,9 +29,12 @@ func _endless(at := PackedFloat64Array()) -> PoolSim:
 
 ## The caps the table implies, worked out here: per role of a species drawn at the world's size
 ## (entry_size at most the size: BP-10, so the real catalog's size-2 species add no role at size 1),
-## the sites whose species fills it.
+## and per role already registered (a drop back to a smaller size keeps it, at 0 with no site), the
+## sites whose species fills it.
 func _want_caps(sim: PoolSim) -> Dictionary:
 	var out := {}
+	for role in sim.region.niches:
+		out[role] = 0
 	for id in species.species_ids():
 		if species.entry_size(id) <= sim.size():
 			out[str(species.niche_of(id).role)] = 0
@@ -132,6 +135,41 @@ func test_at_size_two_every_live_site_is_filled_or_queued_and_the_caps_follow() 
 		check(seen.keys().any(func(id: String) -> bool: return id.begins_with(prefix)), "a %s site met (%s)" % [prefix, seen.keys()])
 	check(not seen.keys().any(func(id: String) -> bool: return id.begins_with("t_f_")), "no size-1 site is live at size 2")
 	check(filled > 0, "sites filled (%d site-ticks)" % filled)
+
+
+## After a swim at size 2 and a drop back to size 1 (debug_set_size, D-76), on every tick of a swim at
+## size 1: the caps are the table's sites per role, the size-2 species' roles stay registered at 0,
+## and no size-2 site is live.
+func test_after_a_drop_to_size_one_the_caps_follow_and_the_size_two_roles_stay_at_0() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 4, true)
+	check(sim.debug_set_size(2), "size 2")
+	for t in 600:
+		sim.step(SimIntent.new(Vector2.from_angle(0.6)))
+	sim.drain_events()
+	var size_two_roles := []
+	for id in species.species_ids():
+		if species.entry_size(id) == 2:
+			size_two_roles.append(str(species.niche_of(id).role))
+	check(not size_two_roles.is_empty(), "the catalog has size-2 species (%s)" % [size_two_roles])
+	for role in size_two_roles:
+		check(sim.region.niches.has(role), "the %s role joined at size 2" % role)
+	check(sim.debug_set_size(1), "back to size 1")
+	sim.drain_events()
+	var bad := 0
+	var first := ""
+	for t in 1200:
+		sim.step(SimIntent.new(Vector2.from_angle(0.6 + PI)))
+		sim.drain_events()
+		var want := _want_caps(sim)
+		if _caps(sim) != want:
+			bad += 1
+			if first.is_empty():
+				first = "tick %d: %s, want %s" % [t, _caps(sim), want]
+	check_eq(bad, 0, "caps = the table's sites per role on every tick at size 1 (%s)" % first)
+	check_eq(sim.size(), 1, "still size 1")
+	for role in size_two_roles:
+		check(sim.region.niches.has(role) and int(sim.region.niches[role].cap) == 0, "the %s role stays, at 0" % role)
+	check(sim.world.sites.keys().all(func(id: String) -> bool: return id.begins_with("t_f_")), "no size-2 site is live at size 1")
 
 
 ## At create the loaded sites that pass their checks spawn at once (M1's populate), and the start is
