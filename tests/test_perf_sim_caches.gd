@@ -4,6 +4,9 @@ extends TestCase
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
+const Gates := preload("res://tests/test_endless_gates.gd")
+const COST := "res://tests/test_endless_cost.gd"
+const FAKE_GEN := "res://tests/fakes/fake_world_gen.gd"
 const FIXTURE_WORLD := "res://tests/fixtures/world/world_min.json"
 const BUILD_ID := "test+dev"
 const HOME := Vector2(0.0, 9.0)
@@ -92,6 +95,50 @@ func test_queued_retries_match_one_insert_at_a_time() -> void:
 			scan.queue = scan.queue.slice(taken)
 	check(in_order > 100 and in_order < 250, "both kinds of batch (%d in order)" % in_order)
 	check_eq(fast.queue.size(), scan.queue.size(), "both queues hold the same entries")
+
+
+## tick_spawns_at turns every due site away without the spawn check while the sleepers and the awake
+## are both at their caps: on the saturated world (the cost case's DenseGen, swum through
+## overdriven), _caps_full() is exactly that, and then every free site's _try_site says no.
+func test_full_caps_turn_every_site_away() -> void:
+	var cost: GDScript = load(COST)
+	var content: Variant = (load(FAKE_GEN) as GDScript).call("fixture_content")
+	var r := Lineage.found(2802, Gates.BUILD_ID, catalog, "hunter")
+	Gates.make_racer(r.save.genome, catalog)
+	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, 16.0)
+	var sim := PoolSim._create_endless(r.save, catalog, layout, species, content, cost.DenseGen.new(content, species, 2802))
+	sim.debug_set_hidden(true)
+	sim.drain_events()
+	var f := sim.creatures
+	var bot = SwimBot.new(Vector2.RIGHT)
+	var wrong := 0
+	var both := 0
+	var one := 0
+	var refused := 0
+	for t in 1500:
+		SwimBot.overdrive(sim)
+		sim.step(bot.next_intent(sim))
+		sim.drain_events()
+		var sleepers_full := f.creatures.size() - f.awake().size() >= int(sim.world.caps.sleepers)
+		var awake_full := f.awake().size() >= int(sim.world.caps.awake)
+		if f._caps_full() != (sleepers_full and awake_full):
+			wrong += 1
+		if sleepers_full != awake_full:
+			one += 1
+		if f._caps_full() and t % 25 == 0:
+			both += 1
+			for id in sim.world.sites:
+				var s: Dictionary = sim.world.sites[id]
+				if f._occupant(s.id) != null:
+					continue
+				if f._try_site(s, sim.arena, sim._player_places(), sim.tick):
+					wrong += 1   # it spawned
+				else:
+					refused += 1
+	check_eq(wrong, 0, "ticks where _caps_full() differs from both caps, or a full world took a creature")
+	check(both > 10, "the caps were both full (%d checks)" % both)
+	check(one > 0, "and only one of them at times (%d ticks)" % one)
+	check(refused > 100, "free sites were turned away (%d)" % refused)
 
 
 ## take_events reads only the awake brains unless a sleeper may hold events: after every step no brain,

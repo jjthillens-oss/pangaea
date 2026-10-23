@@ -187,17 +187,25 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void
 	var retry_at := tick + species.spawn_retry_ticks
 	var later := endless and retry_at > tick
 	var retries: Array[Dictionary] = []
+	var full := _caps_full()   # then _try_site says "no room" to every site, and nothing spawns
 	for entry in due:
 		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
 			continue   # a site holds one creature; a stale entry is dropped
-		if not _try_site(s, arena, places, tick):
+		if full or not _try_site(s, arena, places, tick):
 			if later:
 				retries.append(s)
 			else:
 				_enqueue(s.id, s.species, retry_at)
 	if not retries.is_empty():
 		_enqueue_retries(retries, retry_at)
+
+
+## Endless mode: the sleepers and the awake are both at their caps, so _try_site's "no room" holds
+## whether a site's creature would sleep or not.
+func _caps_full() -> bool:
+	return endless and creatures.size() - _awake.size() >= int(world.caps.sleepers) \
+			and _awake.size() >= int(world.caps.awake)
 
 
 ## Why a creature may not appear at this site now, or "": too close to the player (spawn_safe_m), in
