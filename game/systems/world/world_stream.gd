@@ -22,6 +22,11 @@ extends RefCounted
 ## from flickering in and out at a boundary. Unloading forgets a chunk entirely: it comes back from
 ## the generator, with its food zones' streams restarted.
 ##
+## Sites. A loaded chunk's live creature sites enter the site table (local records re-derived from
+## their absolute values on every origin move) and are queued to spawn at once; the niche caps are
+## the table's sites per role, recomputed on every change, so a niche never holds more creatures than
+## the ground loaded round the cell can home. A site's creature leaves with its home chunk.
+##
 ## Food. Only the zones whose nearest point lies within the food ring (52 tm) show plankton, and
 ## carrion beyond it is dropped for good: both happen out of view (the view reaches 35.7 tm with its
 ## margin). A zone entering the ring regrows one item a tick, out of view. Over caps.food_items the
@@ -60,6 +65,13 @@ var view_margin := 3.5
 
 var _chunks := {}                      ## Vector2i -> WorldChunk (absolute)
 var _keys: Array[Vector2i] = []        ## loaded, sorted (y, x)
+## site id -> {id, species, home: Vector2, heading, territory: {} or {center: Vector2, radius},
+## reach: {center: Vector2, radius}, chunks: Array[Vector2i], home_chunk: Vector2i, abs: the
+## WorldChunk's site}: the loaded live sites, local.
+var sites := {}
+## site id -> how many creatures it has spawned this session (never cleared by an unload, so a
+## reloaded site's next creature is a new one).
+var site_counts := {}
 var _zone_abs := {}                    ## zone id -> PackedFloat64Array [x, y] (absolute tm)
 var _zone_chunk := {}                  ## zone id -> Vector2i
 var _str_plankton := WorldHash.str32("plankton")
@@ -114,6 +126,11 @@ func start(sim: PoolSim) -> void:
 
 
 # --- frames ---
+
+## The checkpoint's local position (it may be far outside the loaded ground).
+func checkpoint_local() -> Vector2:
+	return local_of_abs(checkpoint_am[0], checkpoint_am[1])
+
 
 ## The local position (tm, float32) of an absolute point (am), through float64.
 func local_of_abs(x_am: float, y_am: float) -> Vector2:
@@ -181,7 +198,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 		_unload_chunk(sim, key)
 	if sim.creatures != null:
 		for c in sim.creatures.creatures.duplicate():
-			sim.creatures.remove(c, "unloaded", sim.tick, false)
+			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
 	sim.carrion.drop_all()
 	var old_x := origin_x_am
 	var old_y := origin_y_am
@@ -191,6 +208,7 @@ func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	for key in view_set_keys(Vector2.ZERO):
 		_load_chunk(sim, key)
 	_fill_all = true
+	recompute_caps(sim)
 
 
 # --- chunks ---
@@ -290,7 +308,7 @@ func snapshot(sim: PoolSim) -> Dictionary:
 		"respawn_pending": sim.respawn_pending,
 		"chunks": keys,
 		"zone_rngs": zone_rngs,
-		"site_counts": {},
+		"site_counts": _sorted_dict(site_counts),
 		"sleeping": Array(sleeping_ids()),
 		"slots": {},
 		"cell_tile": [_cell_tile.x, _cell_tile.y],
@@ -306,12 +324,17 @@ func snapshot(sim: PoolSim) -> Dictionary:
 func _unload(sim: PoolSim) -> void:
 	var held := _held_keys(sim)
 	var body := sim.motion.position
+	var any := false
 	for key in _keys.duplicate():
 		if nearest(key, body) > float(rings.unload) and not held.has(key):
 			_unload_chunk(sim, key)
+			any = true
+	if any:
+		recompute_caps(sim)   # after the unloaded sites' creatures left (G7)
 
 
-## The chunks awake creatures hold: a scripted body (no brain) holds none.
+## The chunks awake creatures hold: a site creature its site's reach chunks, a creature with no site
+## the chunks its leash disc reaches (C-6); a scripted body (no brain) holds none.
 func _held_keys(sim: PoolSim) -> Dictionary:
 	var held := {}
 	if sim.creatures == null:
@@ -319,15 +342,28 @@ func _held_keys(sim: PoolSim) -> Dictionary:
 	for c in sim.creatures.awake():
 		if c.brain == null:
 			continue
-		for key in disc_keys(CreatureBrain.leash_disc(c.brain)):
+		var keys: Array[Vector2i] = sites[c.site_id].chunks if sites.has(c.site_id) else disc_keys(CreatureBrain.leash_disc(c.brain))
+		for key in keys:
 			held[key] = true
 	return held
 
 
-## Forgets one chunk: its zones' plankton is dropped and the zones leave the region, its colliders
-## leave the arena, and chunk_unloaded tells the scene.
+## Forgets one chunk: the creatures of the sites homed in it leave ("unloaded", in (number, id)
+## order) with their queue entries and site records, its zones' plankton is dropped and the zones
+## leave the region, its colliders leave the arena, and chunk_unloaded tells the scene.
 func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	var ch: WorldChunk = _chunks[key]
+	var mine := {}
+	for id in sites:
+		if sites[id].home_chunk == key:
+			mine[id] = true
+	if sim.creatures != null and not mine.is_empty():
+		for c in sim.creatures.creatures.duplicate():
+			if mine.has(c.site_id):
+				sim.creatures.remove(c, "unloaded", sim.tick, false)
+		sim.creatures.queue = sim.creatures.queue.filter(func(e: Dictionary) -> bool: return not mine.has(e.site))
+	for id in mine:
+		sites.erase(id)
 	for z in ch.zones:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
@@ -401,6 +437,11 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
+	if sim.creatures != null:
+		for s in ch.sites:
+			if (s.sizes as Array).has(size):
+				sites[s.id] = _site_record(s, key)
+				sim.creatures._enqueue(s.id, s.species, sim.tick)
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
 	if sim.creatures != null:
@@ -413,6 +454,44 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_insert_key(key)
 	_chunks[key] = ch
 	_emit(sim, _chunk_loaded_event(ch))
+	recompute_caps(sim)
+
+
+## The niche caps: per role, the live sites in the table whose species fills it (summed over the
+## species, so two species sharing a role share the cap). Roles with no loaded site get 0. A niche
+## keeps its count (EcologyRegion.set_niche), so no creature is removed by a lower cap.
+func recompute_caps(sim: PoolSim) -> void:
+	if sim.creatures == null:
+		return
+	var per_role := {}
+	for id in sim.species.species_ids():
+		per_role[str(sim.species.niche_of(id).role)] = 0
+	for id in sites:
+		var role := str(sim.species.niche_of(str(sites[id].species)).role)
+		per_role[role] = int(per_role.get(role, 0)) + 1
+	var roles := per_role.keys()
+	roles.sort()
+	for role in roles:
+		sim.region.set_niche(role, per_role[role])
+
+
+## A site's local record from its WorldChunk entry (absolute) and its home chunk.
+func _site_record(s: Dictionary, key: Vector2i) -> Dictionary:
+	var chunks: Array[Vector2i] = []
+	chunks.assign(s.chunks)
+	var rec := {"id": s.id, "species": s.species, "heading": float(s.heading), "chunks": chunks, "home_chunk": key, "abs": s}
+	_derive_site_local(rec)
+	return rec
+
+
+## A site record's local home, territory and reach, again from its absolute values.
+func _derive_site_local(rec: Dictionary) -> void:
+	var a: Dictionary = rec.abs
+	rec["home"] = local_of_tm(float(a.x), float(a.y))
+	var t: Dictionary = a.territory
+	rec["territory"] = {} if t.is_empty() else {"center": local_of_tm(float(t.x), float(t.y)), "radius": float(t.radius)}
+	var r: Dictionary = a.reach
+	rec["reach"] = {"center": local_of_tm(float(r.x), float(r.y)), "radius": float(r.radius)}
 
 
 ## Every local value that is derived from an absolute one, again from its absolute value.
@@ -423,6 +502,8 @@ func _rederive(sim: PoolSim) -> void:
 		var a: PackedFloat64Array = _zone_abs.get(z.id, PackedFloat64Array())
 		if a.size() == 2:
 			z.center = local_of_tm(a[0], a[1])
+	for id in sites:
+		_derive_site_local(sites[id])
 
 
 ## chunk_loaded's payload (spine 3.12), in the frame in force now.
@@ -592,6 +673,13 @@ static func _max(a: PackedFloat64Array) -> float:
 	for v in a:
 		m = maxf(m, v)
 	return m
+
+
+static func _sorted_dict(d: Dictionary) -> Dictionary:
+	var out := {}
+	for k in _sorted(d.keys()):
+		out[k] = d[k]
+	return out
 
 
 static func _sorted(keys: Array) -> Array:
