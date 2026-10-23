@@ -49,6 +49,9 @@ const THINK_SLOTS := 6
 const ASLEEP_KEY := 6
 ## Endless site creatures' numbers lie in [1, SITE_NUMBERS].
 const SITE_NUMBERS := 1 << 30
+## Endless mode: how many site creatures a tick's spawn pass (PoolSim.step's tick_spawns_at) spawns
+## asleep at most; a due site that would spawn asleep after them waits, still due, for the next tick.
+const SLEEPER_SPAWNS_PER_TICK := 1
 ## Endless mode: the creatures made ahead (prepare_site) are let go all at once when they outnumber
 ## the stream's site table by more than this (those of chunks generated ahead but never loaded).
 const PREPARED_SLACK := 64
@@ -192,8 +195,12 @@ func tick_spawns(arena: PoolArena, player_pos: Vector2, tick: int) -> void:
 ## tick_spawns, with the spawn check measured from every place in `places`. In the endless world the
 ## sites that wait again go into the queue after the loop, in the same order (_enqueue_retries): the
 ## only other inserts meanwhile (a spawn loading its chunks queues their sites) are due now, never
-## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in.
-func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void:
+## at the retry tick, and a sorted queue ends the same whatever order distinct keys arrive in. With
+## `sleepers` 0 or more (endless mode), once that many have spawned asleep each later due site that
+## would spawn asleep goes back as it was, still due, for the next tick (a chunk loaded with many
+## sites out of reach spawns them over a few ticks); awake spawns never wait. The world's creation
+## passes none, and spawns every site that passes.
+func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int, sleepers := -1) -> void:
 	if queue.is_empty() or int(queue[0].at_tick) > tick:
 		return
 	var due: Array[Dictionary] = []
@@ -203,17 +210,26 @@ func tick_spawns_at(arena: PoolArena, places: Array[Vector2], tick: int) -> void
 	var later := endless and retry_at > tick
 	var retries: Array[Dictionary] = []
 	var full := _caps_full()   # then _try_site says "no room" to every site, and nothing spawns
+	var left := sleepers if endless else -1   # asleep spawns this tick may still make (-1: any)
+	var waiting: Array[Dictionary] = []
 	for entry in due:
 		var s := _site(str(entry.site))
 		if s.is_empty() or _occupant(s.id) != null:
 			continue   # a site holds one creature; a stale entry is dropped
+		if left == 0 and spawns_asleep(s, places):
+			waiting.append(entry)
+			continue
 		if full or not _try_site(s, arena, places, tick):
 			if later:
 				retries.append(s)
 			else:
 				_enqueue(s.id, s.species, retry_at)
+		elif left > 0 and _by_site[s.id].asleep:
+			left -= 1
 	if not retries.is_empty():
 		_enqueue_retries(retries, retry_at)
+	for entry in waiting:
+		queue.insert(_lower_bound(int(entry.at_tick), str(entry.site)), entry)
 
 
 ## Endless mode: the sleepers and the awake are both at their caps, so _try_site's "no room" holds

@@ -378,6 +378,85 @@ func test_an_awake_spawn_has_its_site_chunks_loaded_on_its_spawn_tick() -> void:
 	check_eq(bad, 0, "every awake spawn's site chunks loaded")
 
 
+## B-7: a tick's spawn pass (PoolSim.step) spawns at most CreatureField.SLEEPER_SPAWNS_PER_TICK
+## creatures asleep; each due site that would sleep after them stays in the queue as it was, due, and
+## the next ticks spawn them in queue order. An awake spawn never waits, and the world's creation
+## spawns every site that passes.
+func test_a_tick_spawns_one_sleeper_and_the_rest_wait_due_in_order() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	sim.world.caps.sleepers = 1000
+	sim.world.caps.awake = 1000
+	var asleep := sim.creatures.creatures.filter(func(c: CreatureField.Creature) -> bool: return c.asleep).size()
+	check(asleep >= 2, "the creation pass spawned %d asleep at once" % asleep)
+	for t in 120:
+		sim.step(SimIntent.new())   # the rest of the load ring loads, a chunk a tick, and its sites spawn
+	var sleepers: Array[CreatureField.Creature] = []
+	for c in sim.creatures.creatures:
+		if c.asleep:
+			sleepers.append(c)
+	# The sleepers leave; those whose sites then pass the spawn check from the cell are the ones used.
+	var places := sim._player_places()
+	var free: Array[String] = []
+	for c in sleepers:
+		sim.creatures.remove(c, "test", sim.tick, false)
+	for c in sleepers:
+		if sim.creatures.blocker_from(sim.world.sites[c.site_id], sim.arena, places).is_empty():
+			free.append(c.site_id)
+	free.sort()
+	check(free.size() >= 6, "%d sites free to spawn asleep" % free.size())
+	if free.size() < 6:
+		return
+	sim.creatures.queue.clear()   # nothing else comes due
+	sim.drain_events()
+	# Four come due on the next tick, the cell still: one spawns a tick, in queue (site) order.
+	var due := free.slice(0, 4)
+	var at := sim.tick
+	for id in due:
+		sim.creatures._enqueue(id, str(sim.world.sites[id].species), at)
+	for i in due.size():
+		sim.step(SimIntent.new())
+		var spawned := []
+		for e in sim.drain_events():
+			if e.type == "creature_spawned":
+				spawned.append([e.site, e.asleep])
+		check_eq(spawned, [[due[i], true]], "tick %d spawns the next due site asleep" % i)
+		var waiting := []
+		for e in sim.creatures.queue:
+			if due.has(e.site):
+				waiting.append([e.site, e.at_tick])
+		var want := []
+		for id in due.slice(i + 1):
+			want.append([id, at])
+		check_eq(waiting, want, "the rest wait as they were, due since tick %d" % at)
+	# One pass from a place 37 tm from one site (inside the wake ring, out of view): of three due
+	# sites the first sleeps, the one near the place wakes after it, and the last waits.
+	var picked := []
+	for b in free.slice(4):
+		var place: Array[Vector2] = [sim.world.sites[b].home + Vector2(0.0, 37.0)]
+		var others := free.slice(4).filter(func(id: String) -> bool: return id != b \
+				and sim.creatures.spawns_asleep(sim.world.sites[id], place) \
+				and sim.creatures.blocker_from(sim.world.sites[id], sim.arena, place).is_empty())
+		var before := others.filter(func(id: String) -> bool: return id < b)
+		var after := others.filter(func(id: String) -> bool: return id > b)
+		if not before.is_empty() and not after.is_empty() and not sim.creatures.spawns_asleep(sim.world.sites[b], place) \
+				and sim.creatures.blocker_from(sim.world.sites[b], sim.arena, place).is_empty():
+			picked = [before[0], b, after[0], place]
+			break
+	check(not picked.is_empty(), "three sites to spawn asleep, awake and asleep from one place")
+	if picked.is_empty():
+		return
+	for id in picked.slice(0, 3):
+		sim.creatures._enqueue(id, str(sim.world.sites[id].species), sim.tick)
+	sim.drain_events()
+	sim.creatures.tick_spawns_at(sim.arena, picked[3], sim.tick, CreatureField.SLEEPER_SPAWNS_PER_TICK)
+	var spawned := []
+	for e in sim.creatures.take_events():
+		if e.type == "creature_spawned":
+			spawned.append([e.site, e.asleep])
+	check_eq(spawned, [[picked[0], true], [picked[1], false]], "the first sleeps and the next wakes after it")
+	check_eq(sim.creatures.queue.map(func(e: Dictionary) -> String: return e.site), [picked[2]], "the last, asleep, waits")
+
+
 ## C-14: debug creatures take numbers from 2^30 up and keep "c_" + number ids, so they sort after
 ## every site creature and never meet a site creature's id.
 func test_debug_creatures_sort_after_site_creatures_and_keep_c_ids() -> void:
