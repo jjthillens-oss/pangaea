@@ -330,17 +330,15 @@ func test_lineage_tags_are_two_groups_of_four_hex_digits() -> void:
 # The world (S1 T3.3). Without a world path a session is the M1 pool; with one, the world file and
 # the mode argument pick endless or pool.
 
-## Existing files standing in for the world's content (home block, tiles, kit) while T4's are not in
-## yet, as test_world_config does: the endless cases need a world file with no problems.
-const STAND_IN_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
-	"kit": "res://game/data/creatures_m1.json"}
+## T1's fixture world: the shipped settings with their content paths on the minimal fixtures (home
+## block, band 0 tiles, kit), whose real files are T4's. The endless cases need a world with no problems.
+const FIXTURE_WORLD := "res://tests/fixtures/world/world_min.json"
 
 
-## The shipped world settings with the stand-in content and `changes` over its top-level keys,
-## written into this test's folder. Returns its path.
+## The fixture world with `changes` over its top-level keys, written into this test's folder.
+## Returns its path.
 func _world_file(file: String = "world.json", changes: Dictionary = {}) -> String:
-	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
-	data.content = STAND_IN_CONTENT.duplicate(true)
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE_WORLD))
 	data.merge(changes, true)
 	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
 	var path := SaveFolder.path(file)
@@ -410,8 +408,8 @@ func test_world_problems_stop_an_endless_start_and_continue() -> void:
 	check(not none.ok, "so does a missing one")
 	check_has_error(none.errors, "no_such_world.json")
 	var content_missing := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH,
-		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json", "tiles": {"0": "res://game/data"},
-			"kit": "res://game/data/creatures_m1.json"}}))
+		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json",
+			"tiles": {"0": "res://tests/fixtures/world/tiles/b0"}, "kit": "res://tests/fixtures/world/kit_min.json"}}))
 	var bad := content_missing.start_new("grazer", 26)
 	check(not bad.ok, "an endless world whose content is missing starts nothing")
 	check_has_error(bad.errors, "no_such_home.json")
@@ -425,3 +423,61 @@ func test_endless_mode_without_creature_data_is_a_problem() -> void:
 	check_has_error(r.errors, "Endless mode needs the creature data")
 	var pooled := GameSession.new(slot, PoolLayout.DEFAULT_PATH, "", _world_file(), "pool")
 	check(pooled.start_new("grazer", 27).ok, "the step 2 pool needs none")
+
+
+## The slot's position as written, as absolute [x, y].
+func _saved_abs(session: GameSession) -> PackedFloat64Array:
+	var data = JSON.parse_string(FileAccess.get_file_as_string(session.slot))
+	if not (data is Dictionary):
+		return PackedFloat64Array()
+	return PlaneSpace.from_save_abs(data.get("player", {}).get("position"))
+
+
+func test_an_endless_session_starts_at_the_home_spawn_and_saves_an_absolute_position() -> void:
+	var session := _endless(24)
+	if session.sim == null:
+		return
+	check(session.is_endless() and session.sim.is_endless(), "endless")
+	var spawn := session.world.home.spawn
+	check_eq(spawn, PackedFloat64Array([0.0, 9.0]), "the fixture home's spawn is the pool's")
+	check_eq(_saved_abs(session), spawn, "the file holds the home spawn, absolute")
+	check_eq(session.sim.absolute_position_am(), spawn, "and the cell is there")
+	check(not session.dirty, "nothing unsaved")
+
+
+func test_continue_in_endless_mode_restores_the_float64_position() -> void:
+	var session := _endless(25)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.debug_teleport_abs(5000.123456789012, -3.25), "teleported 5 km out")
+	for i in 120:
+		sim.step(SimIntent.new(Vector2(1.0, 0.3)))
+	var before := sim.absolute_position_am()
+	check(Vector2(before[0], before[1]).x != before[0], "a place a float32 cannot hold: %.9f" % before[0])
+	check(session.save_now().ok, "saved")
+	var again := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, _world_file())
+	var r := again.continue_run()
+	check(r.ok, "continued: %s" % [r.errors])
+	if not r.ok:
+		return
+	var after := again.sim.absolute_position_am()
+	check(absf(after[0] - before[0]) <= 1e-6 and absf(after[1] - before[1]) <= 1e-6,
+		"within a micrometre: saved (%.9f, %.9f), continued (%.9f, %.9f)" % [before[0], before[1], after[0], after[1]])
+	check(not again.dirty, "nothing unsaved right after continuing")
+
+
+func test_endless_dirty_compares_absolute_positions() -> void:
+	var session := _endless(33)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	var local := sim.motion.position
+	check(sim.debug_rebase(Vector2i(1, -1)), "rebased")
+	check(not sim.motion.position.is_equal_approx(local), "the local position moved: %s to %s" % [local, sim.motion.position])
+	check(not session.dirty, "a rebase alone is not an unsaved change")
+	check(sim.debug_teleport(sim.motion.position + Vector2(0.99, 0.0)), "moved 0.99 tm")
+	check(not session.dirty, "under a metre is not one either")
+	check(sim.debug_teleport(sim.motion.position + Vector2(0.02, 0.0)), "then 0.02 more")
+	check(session.dirty, "1.01 tm from the save is")
+	check(session.save_now().ok and not session.dirty, "saved")
