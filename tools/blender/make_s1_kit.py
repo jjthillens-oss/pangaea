@@ -55,7 +55,8 @@ FLAT = {
     "cream": ((0.84, 0.66, 0.44), 0.5), "lavender": ((0.40, 0.33, 0.68), 0.45),
     "husk": ((0.55, 0.50, 0.66), 0.5), "amber": ((0.69, 0.38, 0.10), 0.45),
 }
-TINTS = {"plain": "#FFFFFF", "frost": "#D6E0F5", "warm": "#F3E3C6"}
+# warm was #F3E3C6 until T4 found five albedo x tint products over the look rule; #EAE5C7 clears them all.
+TINTS = {"plain": "#FFFFFF", "frost": "#D6E0F5", "warm": "#EAE5C7"}
 
 
 def _mats():
