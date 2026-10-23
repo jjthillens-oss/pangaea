@@ -6,7 +6,7 @@
   "purpose": "S2 Lurker body (role: lurker, size 2's two-lair reef threat): a flat, long-backed reef dweller in violet-grey with dark mottles, three low ridges down its back and pale cold eyes set wide on its flanks for its wide sight, under a heavy brow. Body only; its parts come from the part GLBs.",
   "category": "creature_body",
   "source_blend": "assets/source/blender/creature_lurker_body.blend",
-  "generator_script": "tools/blender/make_s2_threats.py",
+  "generator_script": "tools/blender/make_endless_threats.py",
   "export_path": "assets/export/creature_lurker_body.glb",
   "export_format": "GLB",
   "dependencies": [
@@ -102,5 +102,5 @@
     "triangles_after": 3018
   },
   "variant_of": "creature_ambush_body",
-  "provenance": "Authored procedurally in Blender by tools/blender/make_s2_threats.py on the step 3 body code (make_m1_threats.py, make_m1_production.py); no external or generated meshes. Textures baked in Blender from procedural shaders."
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_threats.py on the step 3 body code (make_m1_threats.py, make_m1_production.py); no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

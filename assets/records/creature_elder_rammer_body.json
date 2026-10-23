@@ -6,7 +6,7 @@
   "purpose": "S2 elder rammer body (role: territorial, size 2's guard of two feast zones): the rammer grown old, bulkier and darker, a weathered ochre hide with three deep rust bands, heavier frowning lids and a taller seven-point crest. Body only; its parts come from the part GLBs.",
   "category": "creature_body",
   "source_blend": "assets/source/blender/creature_elder_rammer_body.blend",
-  "generator_script": "tools/blender/make_s2_threats.py",
+  "generator_script": "tools/blender/make_endless_threats.py",
   "export_path": "assets/export/creature_elder_rammer_body.glb",
   "export_format": "GLB",
   "dependencies": [
@@ -103,5 +103,5 @@
     "triangles_after": 3484
   },
   "variant_of": "creature_rammer_body",
-  "provenance": "Authored procedurally in Blender by tools/blender/make_s2_threats.py on the step 3 body code (make_m1_threats.py, make_m1_production.py); no external or generated meshes. Textures baked in Blender from procedural shaders."
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_threats.py on the step 3 body code (make_m1_threats.py, make_m1_production.py); no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
