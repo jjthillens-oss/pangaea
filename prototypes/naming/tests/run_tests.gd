@@ -8,6 +8,9 @@ func _init() -> void:
 	_check(Names.valid_traits(base), "default traits valid")
 	_check(not Names.valid_traits({"diet": "none", "habitat": "sea", "size": "small", "limbs": 2}), "bad diet rejected")
 	_check(not Names.valid_traits({"diet": "herbivore", "habitat": "sea", "size": "small", "limbs": 7}), "bad limb count rejected")
+	_check(Names.is_blocked("XoShItari") and Names.is_blocked("riavagina"), "case-insensitive embedded block list")
+	for vowel in Names.VOWELS:
+		_check(_has_vowel(vowel), "every syllable nucleus has a vowel")
 	var first := JSON.stringify(Names.generate_many(12, base, 100))
 	_check(first == JSON.stringify(Names.generate_many(12, base, 100)), "same seed/traits byte-identical")
 	_check(first != JSON.stringify(Names.generate_many(13, base, 100)), "seed changes names")
@@ -19,6 +22,7 @@ func _init() -> void:
 		_check_word(row.lineage.replace(" ", ""), "lineage")
 		_check(not Names.is_blocked(row.genus + row.common + row.lineage), "block list")
 	_check(unique.size() >= 980, "at most 2 percent duplicate lineages (got %d)" % (1000 - unique.size()))
+	print("UNIQUE LINEAGES: %d/1000" % unique.size())
 	var sample: Dictionary = thousand[0]
 	_check(sample.lineage.begins_with(sample.genus + " "), "lineage begins with genus")
 	_check(sample.short == sample.genus + " I", "generation I tag")
@@ -53,6 +57,12 @@ func _check_word(word: String, label: String) -> void:
 			if consonants >= 3:
 				_check(false, "%s has three consonants: %s" % [label, word])
 				return
+
+func _has_vowel(text: String) -> bool:
+	for letter in text:
+		if "aeiou".contains(letter):
+			return true
+	return false
 
 func _check(condition: bool, message: String) -> void:
 	if not condition:

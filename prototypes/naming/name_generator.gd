@@ -12,7 +12,7 @@ const HABITAT_WORDS := {"sea": ["Tide", "Reef", "Current"], "shore": ["Dune", "E
 const DIET_WORDS := {"herbivore": ["Forager", "Grazer", "Browser"], "carnivore": ["Hunter", "Prowler", "Stalker"], "omnivore": ["Seeker", "Wanderer", "Gatherer"]}
 const SIZE_WORDS := {"small": ["Little", "Fine", "Pip"], "medium": ["Broad", "Mottled", "Soft"], "large": ["Great", "Heavy", "Tall"]}
 const LIMB_WORDS := {0: ["Drifter", "Ribbon"], 1: ["Skipper", "Hopper"], 2: ["Strider", "Darter"], 3: ["Pacer", "Creeper"], 4: ["Walker", "Climber"], 5: ["Crawler", "Scrambler"], 6: ["Scuttler", "Rambler"]}
-const BLOCKED := ["fuck", "shit", "cunt", "bitch", "piss", "dick", "cock", "twat", "wank", "nigger", "faggot"]
+const BLOCKED := ["fuck", "shit", "cunt", "bitch", "piss", "dick", "cock", "twat", "wank", "nigger", "faggot", "vagina", "penis"]
 const DEFAULT_TRAITS := {"diet": "herbivore", "habitat": "sea", "size": "medium", "limbs": 2}
 
 static func valid_traits(traits: Dictionary) -> bool:
@@ -34,6 +34,9 @@ static func generate_many(seed_value: int, traits: Dictionary, count: int, gener
 			epithet = _scientific_piece(rng, traits, false)
 			if not is_blocked(genus + epithet):
 				break
+		if is_blocked(genus + epithet):
+			genus = "Luma"
+			epithet = "lumeria"
 		var habitat: String = traits["habitat"]
 		var diet: String = traits["diet"]
 		var size: String = traits["size"]
