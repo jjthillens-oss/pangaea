@@ -1,6 +1,7 @@
 extends TestCase
-## The endless sim end to end (S1 T2.9), on FakeWorldGen: the save path (the absolute position in
-## am, float64, written and restored exactly), and determinism.
+## The endless sim end to end (S1 T2.9), on the real WorldGen with the fixture world (T1.7, T1.9):
+## the save path (the absolute position in am, float64, written and restored exactly), and
+## determinism.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SEED := 4309
@@ -17,7 +18,7 @@ func before_each() -> void:
 
 
 func _endless(at := PackedFloat64Array()) -> PoolSim:
-	return FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, at)
+	return FakeWorldGen.real_sim(SEED, catalog, layout, species, at)
 
 
 func test_an_endless_save_writes_the_absolute_position() -> void:
@@ -56,21 +57,31 @@ func test_an_endless_create_restores_the_origin_from_the_save_exactly() -> void:
 
 func test_a_new_game_at_the_spawn_faces_the_spawn_heading() -> void:
 	var sim := _endless()
-	check_eq(sim.world.origin_x_am, 0.0, "origin at the spawn")
-	check_eq(sim.world.origin_y_am, 9.0, "origin at the spawn")
-	check_near(sim.motion.heading, -1.5708, 1e-9, "the spawn heading")
+	var home := sim.world.content.home
+	check_eq(sim.world.origin_x_am, home.spawn[0], "origin at the spawn")
+	check_eq(sim.world.origin_y_am, home.spawn[1], "origin at the spawn")
+	check_near(sim.motion.heading, home.spawn_heading, 1e-9, "the spawn heading")
 
 
 ## A save inside a shell: the origin is still the saved place, and the cell takes the nearest clear
 ## point (plan E).
 func test_a_restored_place_inside_a_shell_moves_the_cell_not_the_origin() -> void:
-	# Chunk (3, 3)'s fake shell is centred at abs (120, 120), radius 1.
-	var at := PackedFloat64Array([120.0, 120.0])
+	# The centre of the largest shell the home view set holds.
+	var home := _endless()
+	var shell := {}
+	for key in home.world.loaded_keys():
+		for s in home.world.chunk(key).shells:
+			if s.kind == "shell" and (shell.is_empty() or float(s.r) > float(shell.r)):
+				shell = s
+	check(not shell.is_empty(), "a shell near home")
+	if shell.is_empty():
+		return
+	var at := PackedFloat64Array([float(shell.x), float(shell.y)])
 	var sim := _endless(at)
-	check_eq(sim.world.origin_x_am, 120.0, "origin x")
-	check_eq(sim.world.origin_y_am, 120.0, "origin y")
-	check(sim.motion.position.length() >= FakeWorldGen.SHELL_R + sim.phenotype.radius - 1e-4,
-		"the cell outside the shell (%.3f)" % sim.motion.position.length())
+	check_eq(sim.world.origin_x_am, at[0], "origin x")
+	check_eq(sim.world.origin_y_am, at[1], "origin y")
+	check(sim.motion.position.length() >= float(shell.r) + sim.phenotype.radius - 1e-4,
+		"the cell outside the shell (%.3f, r %.2f)" % [sim.motion.position.length(), float(shell.r)])
 	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "at a clear point")
 
 
