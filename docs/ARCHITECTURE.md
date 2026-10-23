@@ -63,6 +63,7 @@ write before replacing a primary file, keeps a backup, and consults
 `SaveMigrations` while loading older versions. `SaveSlots` maps the numbered
 slots used by the menus. A save stores lineage and checkpoint information;
 the live food and creatures are reconstructed when a run continues.
+The implemented on-disk schema, migrations and slot rules are indexed in [the save format reference](saves/SAVE_FORMAT.md).
 
 ## Checks and builds
 
