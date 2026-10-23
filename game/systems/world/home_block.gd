@@ -27,7 +27,9 @@ const MAX_RING_ZONE_R := 6.0
 const MIN_RING_CAPACITY := 8.0
 const MAX_RING_CAPACITY := 24.0
 const ZONE_GAP_BU := 1.0          ## ring zones keep this far from each other
-const ZONE_SHELL_GAP_BU := 0.5    ## and this far from every shell
+## Every home zone, M1 and ring, keeps this far from every home collider, the M1 rocks and the ring
+## shells (docs/s1/s1-build-plan.md B-2; the gap rule of PoolLayout.zone_problems, B-3).
+const ZONE_SHELL_GAP_BU := PoolLayout.ZONE_CLEAR_MARGIN
 ## Rule 4: no new site inside this radius at the band's first size.
 const MIN_SITE_R_FIRST_SIZE := 44.0
 
@@ -160,6 +162,7 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 				errors.append("%s: rule 1: the ring's id '%s' is an M1 id" % [w, item.id])
 	_check_ring_shells(ring_shells, kit, errors)
 	_check_ring_zones(ring_zones, errors)
+	_check_zone_gaps(errors)
 	_check_sites(ring_sites, species, part_catalog, size, errors)
 	return errors
 
@@ -196,7 +199,8 @@ func _check_ring_shells(ring: Array, kit: PlacementKit, errors: PackedStringArra
 
 
 ## Rule 3 (amended): 16 to 24 ring zones, R 4 to 6, capacity 8 to 24, outside seam_inner_r and 1 bu
-## clear of the edges, 1 bu from each other and 0.5 bu from every shell, and static #33.
+## clear of the edges, 1 bu from each other, and static #33. The gap to the colliders is checked for
+## every home zone in _check_zone_gaps.
 func _check_ring_zones(ring: Array, errors: PackedStringArray) -> void:
 	var w := where
 	if ring.size() < MIN_RING_ZONES or ring.size() > MAX_RING_ZONES:
@@ -217,16 +221,23 @@ func _check_ring_zones(ring: Array, errors: PackedStringArray) -> void:
 			errors.append("%s: rule 3: zone '%s' at_second_size '%s' is not one of %s" % [w, z.id, z.at_second_size, ", ".join(TileCatalog.ZONE_SECOND_SIZE)])
 		var yield_rate := float(z.growth_rate) * float(z.capacity) * (TileCatalog.YIELD_SHARE + EcologyRegion.REGROW_FLOOR)
 		if yield_rate > TileCatalog.MAX_ZONE_YIELD:
-			errors.append("%s: rule 3: zone '%s' yields %.3f a second; static #33 allows %.3f" % [w, z.id, yield_rate, TileCatalog.MAX_ZONE_YIELD])
+			errors.append("%s: rule 3: zone '%s' yields %.3f a second; static #33 allows <= %.3f, %s" % [w, z.id, yield_rate, TileCatalog.MAX_ZONE_YIELD, TileCatalog.STATIC_33_LABEL])
 		for j in range(i + 1, ring.size()):
 			var o: Dictionary = ring[j]
 			var gap := c.distance_to(Vector2(o.x, o.y)) - r - float(o.radius)
 			if gap < ZONE_GAP_BU:
 				errors.append("%s: rule 3: zones '%s' and '%s' are %.2f bu apart; they keep %.1f" % [w, z.id, o.id, gap, ZONE_GAP_BU])
-		for s in shells:
-			var gap := c.distance_to(Vector2(s.x, s.y)) - r - float(s.r)
-			if gap < ZONE_SHELL_GAP_BU:
-				errors.append("%s: rule 3: zone '%s' is %.2f bu from shell '%s'; it keeps %.1f" % [w, z.id, gap, s.id, ZONE_SHELL_GAP_BU])
+
+
+## Rule 3's gap (B-2): every home zone, M1 and ring, keeps ZONE_SHELL_GAP_BU from every home collider,
+## M1 rocks included. A zone whose values the ring check refused is left to that message.
+func _check_zone_gaps(errors: PackedStringArray) -> void:
+	var valid: Array[Dictionary] = []
+	for z in zone_list():
+		if z.radius > 0.0 and z.capacity > 0.0 and z.growth_rate > 0.0:
+			valid.append(z)
+	for p in PoolLayout.zone_problems(valid, circles(), INF):
+		errors.append("%s: rule 3: %s" % [where, p])
 
 
 ## Rules 4 to 6: the ring's sites (species, sizes, no new site inside r 44 at the first size), and

@@ -105,10 +105,7 @@ func test_each_tile_rule_has_a_failing_variant() -> void:
 		[func(f: Dictionary) -> void: f.sunlit_a.zones[1].center = [-14.0, 29.0], "b0/sunlit_a: rule 3: zone 'b' at [-14.0, 29.0] comes within 1.0 bu", 1],
 		[func(f: Dictionary) -> void: f.sunlit_a.zones[1].at_second_size = "grow", "b0/sunlit_a: rule 3: zone 'b' at_second_size 'grow'", 1],
 		[func(f: Dictionary) -> void: f.sunlit_a.zones[1].capacity = 50.0, "b0/sunlit_a: rule 3: zone 'b' yields 1.200 a second", 1],
-		[func(f: Dictionary) -> void:
-			f.drift_a.shells[5] = _shell("f", 5.0, 8.0, 1.5)
-			f.drift_a.shells[4] = _shell("e", 8.0, 8.5, 1.2),
-			"b0/drift_a: rule 3: Zone 'a' has", 1],
+		[func(f: Dictionary) -> void: f.drift_a.shells[4] = _shell("e", -9.11, -10.0, 1.2), "b0/drift_a: rule 3: Zone 'b' is 0.69 bu from collider 'e'; it keeps 0.7.", 1],
 		# Rule 4: the landmark anchor.
 		[func(f: Dictionary) -> void: f.sunlit_a.landmark_anchor = [0.0, -26.0], "b0/sunlit_a: rule 4: the landmark anchor [0.0, -26.0] lies beyond", 1],
 		[func(f: Dictionary) -> void: f.sunlit_a.shells[2].center = [-3.5, -23.0], "b0/sunlit_a: rule 4: the landmark collider leaves 1.61 bu to shell 'c'", 1],
@@ -165,11 +162,33 @@ func test_rule_6_refuses_a_home_outside_its_reach_disc() -> void:
 	check(_problems(func(f: Dictionary) -> void: f.sunlit_a.sites[0].home = [12.0, 12.0 + 9.0 - r - 0.1]).is_empty(), "0.1 inside passes")
 
 
-## Static #33: growth x capacity x (0.25 + REGROW_FLOOR) <= 1.152, the unguarded M1 maximum.
+## Static #33: growth x capacity x (0.25 + REGROW_FLOOR) <= 1.152, the M1 unguarded maximum (z_center, z_s).
 func test_static_33_refuses_a_zone_that_yields_more_than_the_unguarded_m1_maximum() -> void:
 	var refused := _problems(func(f: Dictionary) -> void: f.sunlit_a.zones[1].capacity = 1.16 / 0.3 / 0.08)
-	_check_case(refused, "b0/sunlit_a: rule 3: zone 'b' yields 1.160 a second; static #33 allows 1.152", 1, "1.16")
+	_check_case(refused, "b0/sunlit_a: rule 3: zone 'b' yields 1.160 a second; static #33 allows <= 1.152, the M1 unguarded maximum (z_center, z_s)", 1, "1.16")
 	check(_problems(func(f: Dictionary) -> void: f.sunlit_a.zones[1].capacity = 48.0).is_empty(), "z_center's 48 x 0.08 x 0.30 = 1.152 passes")
+
+
+## The gap rule (B-3): every zone keeps 0.7 bu from every collider of its tile: a shell, the landmark
+## collider (r 2.0 round the anchor) and a set piece's colliders. 0.69 bu is refused, 0.70 passes.
+## drift_a's zone 'b' is (-14, -10) r 3, and the husk's fixture collider r 3 sits at (0, -14).
+func test_rule_3_keeps_every_zone_0_7_bu_from_every_collider() -> void:
+	for gap in [0.69, 0.70]:
+		var label := "%.2f bu" % gap
+		var cases := [
+			[func(f: Dictionary) -> void: f.drift_a.shells[4] = _shell("e", -14.0 + 3.0 + 1.2 + gap, -10.0, 1.2),
+				"b0/drift_a: rule 3: Zone 'b' is 0.69 bu from collider 'e'; it keeps 0.7.", "a shell"],
+			[func(f: Dictionary) -> void: f.drift_a.landmark_anchor = [-14.0 + 3.0 + 2.0 + gap, -10.0],
+				"b0/drift_a: rule 3: Zone 'b' is 0.69 bu from collider 'lm'; it keeps 0.7.", "the landmark collider"],
+			[func(f: Dictionary) -> void: f.rare_giant_husk.zones[1].center = [-3.0 - 3.0 - gap, -14.0],
+				"b0/rare_giant_husk: rule 3: Zone 'b' is 0.69 bu from collider 'r0'; it keeps 0.7.", "a set-piece collider"],
+		]
+		for c in cases:
+			var problems := _problems(c[0])
+			if gap < 0.7:
+				check_eq(problems, PackedStringArray([c[1]]), "%s from %s is refused" % [label, c[2]])
+			else:
+				check_eq(problems, PackedStringArray(), "%s from %s passes" % [label, c[2]])
 
 
 func test_ids_of_returns_three_sorted_ids_per_region_and_set() -> void:
