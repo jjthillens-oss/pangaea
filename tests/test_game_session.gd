@@ -407,12 +407,25 @@ func test_world_problems_stop_an_endless_start_and_continue() -> void:
 	var none := missing.start_new("grazer", 26)
 	check(not none.ok, "so does a missing one")
 	check_has_error(none.errors, "no_such_world.json")
-	var content_missing := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH,
-		_world_file("no_content.json", {"content": {"home": "res://no_such_home.json",
-			"tiles": {"0": "res://tests/fixtures/world/tiles/b0"}, "kit": "res://tests/fixtures/world/kit_min.json"}}))
-	var bad := content_missing.start_new("grazer", 26)
-	check(not bad.ok, "an endless world whose content is missing starts nothing")
-	check_has_error(bad.errors, "no_such_home.json")
+
+
+## B-1: no silent fallback. An endless world file naming content that is not there (as the shipped
+## world_cell.json does until T4's files land) is reported, and neither the world nor the pool starts.
+func test_an_endless_world_naming_a_missing_content_file_is_reported_and_nothing_starts() -> void:
+	check(_endless(34).sim != null, "a save to continue")
+	var before := FileAccess.get_file_as_string(slot)
+	var missing := {"home": "res://tests/fixtures/world/no_such_home.json",
+		"tiles": {"0": "res://tests/fixtures/world/tiles/b0"}, "kit": "res://tests/fixtures/world/kit_min.json"}
+	var path := _world_file("missing_content.json", {"content": missing})
+	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, path)
+	check(session.world_config != null and session.world_config.mode == "endless", "an endless world file")
+	var r := session.start_new("grazer", 34)
+	check(not r.ok and session.sim == null, "no new lineage, endless or pool")
+	check_has_error(r.errors, "no_such_home.json")
+	var c := session.continue_run()
+	check(not c.ok and session.sim == null, "no Continue either")
+	check_has_error(c.errors, "no_such_home.json")
+	check_eq(FileAccess.get_file_as_string(slot), before, "the save is untouched")
 
 
 func test_endless_mode_without_creature_data_is_a_problem() -> void:

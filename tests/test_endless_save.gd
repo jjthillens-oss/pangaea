@@ -12,6 +12,7 @@ extends TestCase
 ##     godot --headless --path . --script /tmp/write_fixture.gd
 
 const SaveFolder := preload("res://tests/save_folder.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
 const FIXTURE := "res://tests/fixtures/save_v2_endless_5km.json"
 ## The fixture's place: absolute am at size 1, 5 km east of home. A float32 cannot hold its x.
 const FIXTURE_X := 5000.123456789012
@@ -112,10 +113,11 @@ func _continue() -> GameSession:
 	return again if r.ok else null
 
 
-## Swims straight for `ticks` (a SwimBot's straight line, without the bot).
+## Swims straight along `direction` for `ticks`, driven by a SwimBot.
 static func _swim(sim: PoolSim, ticks: int, direction: Vector2) -> void:
+	var bot = SwimBot.new(direction)
 	for i in ticks:
-		sim.step(SimIntent.new(direction))
+		sim.step(bot.next_intent(sim))
 
 
 ## Teleports to (x, y) am, swims 60 ticks, saves, continues in a new session, and checks the
@@ -128,9 +130,9 @@ func _save_and_continue_at(x: float, y: float, seed_value: int) -> GameSession:
 	check(sim.debug_teleport_abs(x, y), "teleported to (%.6f, %.6f)" % [x, y])
 	_swim(sim, 60, Vector2(0.6, -0.8))
 	var before := sim.absolute_position_am()
-	# A float32 anywhere on the path would show: the place is not one a float32 holds.
-	check(float(Vector2(before[0], 0.0).x) != before[0] or float(Vector2(before[1], 0.0).x) != before[1],
-		"the place is beyond float32: (%.9f, %.9f)" % [before[0], before[1]])
+	# A float32 anywhere on the path would show: x is not one a float32 holds, and its float32 is
+	# far more than a micrometre off (0.24 mm at 5 km). y near home could not show it.
+	check(float(Vector2(before[0], 0.0).x) != before[0], "x is beyond float32: (%.9f, %.9f)" % [before[0], before[1]])
 	check(session.save_now().ok, "saved")
 	var again := _continue()
 	if again == null:
@@ -168,6 +170,36 @@ func test_an_endless_session_loads_the_5km_fixture_near_its_position() -> void:
 		check(absf(dx) <= MICROMETRE and absf(dy) <= MICROMETRE, "the saved place is clear, so the cell is there: off by (%s, %s)"
 			% [dx, dy])
 	check(not session.dirty, "nothing unsaved right after continuing")
+
+
+func test_a_continue_into_a_shell_lands_at_the_nearest_clear_point() -> void:
+	# A save whose place is a shell's centre (the world moved, or the file was edited).
+	var session := _endless(4244)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	var shell := {}
+	for rock in sim.arena.rocks:
+		if shell.is_empty() or rock.center.length() < shell.center.length():
+			shell = rock
+	check(not shell.is_empty(), "a shell is loaded near home")
+	if shell.is_empty():
+		return
+	var centre := sim.world.abs_of_local(shell.center)
+	sim.save.player["position"] = PlaneSpace.to_save_abs(centre[0], centre[1])
+	check_eq(PersistenceService.new(session.catalog).save_to(slot, sim.save), OK, "a save at %s's centre" % shell.id)
+	var again := _continue()
+	if again == null:
+		return
+	var cell := again.sim
+	check(cell.arena.is_clear(cell.motion.position, cell.phenotype.radius), "the cell is in open water")
+	var at := cell.absolute_position_am()
+	var dx := at[0] - centre[0]
+	var dy := at[1] - centre[1]
+	var moved := sqrt(dx * dx + dy * dy)
+	check(moved <= CLEAR_SEARCH_TM, "within %.0f tm: %.3f" % [CLEAR_SEARCH_TM, moved])
+	check(moved >= float(shell.radius) + cell.phenotype.radius - PoolArena.CLEAR_EPSILON,
+		"outside the shell: %.4f from its centre, radius %.3f + body %.3f" % [moved, shell.radius, cell.phenotype.radius])
 
 
 func test_slow_ten_save_and_continue_cycles_do_not_drift() -> void:
