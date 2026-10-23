@@ -1,0 +1,40 @@
+{
+  "id": "veil_threads",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, engine-drawn materials, awaiting owner look review",
+  "purpose": "S3 stinger veil thread rig: twelve tapered threads trailing from the veil's rim in the swim plane, unit length, drawn with M_VeilThreadInk while they sting and M_VeilThreadNeutral when they no longer can.",
+  "category": "part",
+  "source_blend": "assets/source/blender/veil_threads.blend",
+  "generator_script": "tools/blender/make_endless_extras.py",
+  "export_path": "assets/export/veil_threads.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    "assets/export/M_VeilThreadInk.tres",
+    "assets/export/M_VeilThreadNeutral.tres"
+  ],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.637,
+    "y_forward": 2.0,
+    "z_up": 0.024
+  },
+  "triangles": 1344,
+  "triangle_budget": 2000,
+  "textures": [],
+  "materials": [
+    "M_VeilThread"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "VeilThreads"
+  ],
+  "kind": "rig",
+  "pivot": "centre of the veil on the swim plane; threads trail toward Godot +Z (behind the veil, which faces -Z)",
+  "length_m": 1.0,
+  "rig": "no bones: UV v and COLOR_0 red run 0 at the rim to 1 at each tip, for a vertex shader's sway",
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_extras.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
