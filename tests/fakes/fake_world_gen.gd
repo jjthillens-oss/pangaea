@@ -4,10 +4,11 @@ extends WorldGen
 ##   - one shell of radius SHELL_R at the chunk's centre + (8, 8);
 ##   - with cx and cy both even (one per 2 x 2 chunks), a zone of radius ZONE_R and capacity
 ##     ZONE_CAPACITY at the chunk's centre;
-##   - with cx and cy both 2 mod 4 (one per 4 x 4 chunks), a rammer site whose territory is that
-##     zone, home ZONE_R - 2 east of its centre, reach disc of radius REACH_R on the zone (so it
-##     lies inside the chunk), live at size 1; and beside it a second rammer site of the same shape,
-##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
+##   - with cx and cy both 2 mod 4 (one per 4 x 4 chunks; `site_period` changes the 4), a rammer
+##     site "t_f_<cx>_<cy>" whose territory is the disc of radius ZONE_R at the chunk's centre (the
+##     zone's, where there is one), home ZONE_R - 2 east of that centre, reach disc of radius
+##     REACH_R there (so it lies inside the chunk), live at size 1; and beside it a second rammer
+##     site of the same shape, "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
 ## The nearest sites to the home spawn (0, 9) are at (-48, -48) and (80, 80) and so on: no creature
 ## starts in view. tile_info gives every tile the "sunlit" region.
 ##
@@ -24,6 +25,8 @@ const SITE_HEADING := -PI / 2.0
 
 ## Chunks built so far, by key: tests count generator calls with it.
 var built := {}
+## A site per site_period x site_period chunks (1: one in every chunk).
+var site_period := 4
 
 
 func _init(p_content: WorldContent = null, p_species: SpeciesCatalog = null, p_seed := 0) -> void:
@@ -41,15 +44,17 @@ static func fixture_content(config_path: String = WorldConfig.DEFAULT_PATH) -> W
 
 ## An endless sim on this generator for a new omnivore lineage of `seed_value`, saved at the home
 ## spawn as a new game is (or at `at`, absolute am): the fixture content unless `content` is given,
-## with creatures when `p_species` is.
+## with creatures when `p_species` is, and a site per `p_site_period` x `p_site_period` chunks.
 static func endless_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
-		content: WorldContent = null, at := PackedFloat64Array()) -> PoolSim:
+		content: WorldContent = null, at := PackedFloat64Array(), p_site_period := 4) -> PoolSim:
 	var c := content if content != null else fixture_content()
 	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
 	var place: PackedFloat64Array = at if not at.is_empty() else c.home.spawn
 	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
 	var Fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
-	return PoolSim._create_endless(r.save, catalog, layout, p_species, c, Fake.new(c, p_species, seed_value))
+	var gen: Variant = Fake.new(c, p_species, seed_value)
+	gen.site_period = p_site_period
+	return PoolSim._create_endless(r.save, catalog, layout, p_species, c, gen)
 
 
 func chunk(n: int, cx: int, cy: int) -> WorldChunk:
@@ -68,7 +73,8 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 		c.zones.append({"id": "z_f_%d_%d" % [cx, cy], "x": x0 + 16.0, "y": y0 + 16.0, "radius": ZONE_R,
 			"capacity": ZONE_CAPACITY, "growth_rate": ZONE_GROWTH, "tile": tile, "region": "sunlit"})
 	var creatures_on: bool = content == null or bool(content.config.switches.get("generated_creatures", true))
-	if posmod(cx, 4) == 2 and posmod(cy, 4) == 2 and creatures_on:
+	var at := site_period >> 1
+	if posmod(cx, site_period) == at and posmod(cy, site_period) == at and creatures_on:
 		var zx := x0 + 16.0
 		var zy := y0 + 16.0
 		c.sites.append({"id": "t_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx + ZONE_R - 2.0, "y": zy,

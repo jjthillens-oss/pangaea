@@ -195,7 +195,9 @@ func spawn_blocker(s: Dictionary, arena: PoolArena, player_pos: Vector2) -> Stri
 
 ## spawn_blocker measured from every place in `places`: "near the player" when any place is within
 ## spawn_safe_m, "in view" when the home is in any place's view, then M1's "not clear" and "occupied",
-## then in the endless world "dormant" (the site's reach comes near the checkpoint).
+## then in the endless world "dormant" (the site's reach comes near the checkpoint) and "no room"
+## (the creature would spawn asleep with the sleepers at their cap, or awake with the awake ones at
+## theirs: S1 core C-5, D-12).
 func blocker_from(s: Dictionary, arena: PoolArena, places: Array[Vector2]) -> String:
 	var home: Vector2 = s.home
 	var r: float = _phenotypes[s.species].radius
@@ -218,7 +220,23 @@ func blocker_from(s: Dictionary, arena: PoolArena, places: Array[Vector2]) -> St
 		var reach: Dictionary = s.reach
 		if world.checkpoint_local().distance_to(reach.center) - float(reach.radius) - r < float(fairness.respawn_clear_m):
 			return "dormant"
+		if spawns_asleep(s, places):
+			if creatures.size() - _awake.size() >= int(world.caps.sleepers):
+				return "no room"
+		elif _awake.size() >= int(world.caps.awake):
+			return "no room"
 	return ""
+
+
+## Endless mode: whether site `s`'s creature would spawn asleep, its home at least the wake ring from
+## every place (and, past the spawn check's "in view", out of view of every place: the negation of
+## the wake test).
+func spawns_asleep(s: Dictionary, places: Array[Vector2]) -> bool:
+	var home: Vector2 = s.home
+	for place in places:
+		if home.distance_to(place) < float(world.rings.wake):
+			return false
+	return true
 
 
 ## Places a creature now, at rest at `p` facing `heading`, with `p` as its home. A site's creature
@@ -341,6 +359,35 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 	_by_site[site_id] = c
 	_add(c)
 	return c
+
+
+## Endless mode (S1 core C-7): `c` sleeps where it lies. It leaves the awake list and its think slot,
+## stops (no velocity, an idle drive, its previous pose its pose, so no view interpolates it), and
+## every awake brain forgets it as if it had gone, the token following.
+func sleep(c: Creature, tick: int) -> void:
+	c.asleep = true
+	_release_slot(c)
+	_awake.erase(c)
+	c.motion.velocity = Vector2.ZERO
+	c.motion.prev_position = c.motion.position
+	c.motion.prev_heading = c.motion.heading
+	c.drive = idle_drive(c.motion.heading)
+	for other in _awake:
+		if other.brain != null:
+			CreatureBrain.on_target_gone(other.brain, c.id, tick)
+			update_token(other, tick)
+	events.append({"type": "creature_slept", "id": c.id, "position": c.motion.position})
+
+
+## Endless mode: `c` wakes on the think slot with the fewest awake creatures and re-decides on its
+## first tick.
+func wake(c: Creature, _tick: int) -> void:
+	c.asleep = false
+	c.think_slot = _take_slot()
+	_insert_sorted(_awake, c)
+	if c.brain != null:
+		c.brain.wake = true
+	events.append({"type": "creature_woke", "id": c.id, "position": c.motion.position, "slot": c.think_slot})
 
 
 ## Removes stuck creatures (their brain gave up returning home, D17) where the player cannot see it
@@ -585,7 +632,7 @@ func _try_site(s: Dictionary, arena: PoolArena, places: Array[Vector2], tick: in
 	if not blocker_from(s, arena, places).is_empty():
 		return false
 	if endless:
-		return spawn_site(s, tick) != null
+		return spawn_site(s, tick, spawns_asleep(s, places)) != null
 	return spawn_at(str(s.species), s.home, float(s.heading), str(s.id), tick) != null
 
 
