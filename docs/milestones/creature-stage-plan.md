@@ -35,8 +35,15 @@ Ported into `game/` (2026-10-23, commits 64876e0 to 1f4f93e): the lab's `domain/
 `part_library.gd` as `game/scenes/creature/`, the data files as `game/data/creature/` (`stage1_bodies.json` as
 `starter_bodies.json`), the test-only bodies, drives and mesh checks under `tests/`, and the lab's four runners as
 `tests/test_creature_{body,skin,anchors,editor,gait}.gd`. The purity scan now walks `game/domain/` recursively and
-the generated skin is listed in the placeholder inventory. Not yet ported (later tracks): `creature_stats.gd`,
-`creature_world_rules.gd`, `creature_store.gd`, `creature_world_sim.gd`, the scenes, UI and smoke.
+the generated skin is listed in the placeholder inventory.
+
+Built since (2026-10-23, three parallel tracks merged at `5ad28f1`): the world's `creature_stats.gd`,
+`creature_world_rules.gd`, `creature_rival_brain.gd`, `creature_world_sim.gd`, `creature_world.tscn/.gd` and
+`creature_world_hud` (`0c35b8b`, `e00ba1a`, `2afafd6`); the editor scene and its HUD (`366d0b9`); the stage root and
+`creature_store.gd` with the hooks in `main.gd`, `start_screen.gd` and `run_flags.gd` (`e5d0125`, `2a4e6a6`); the
+two-process smoke (`1227b47`). The review after the merge (`703004f` to `298f641`) made a quit from the world keep
+the sim's points, moved the part rules into `game/data/creature/part_rules.json` so the release pack carries them
+(`tools/make_part_rules.py`, checked by `tests/test_assets.gd`) and added the stage to `tools/check_release.sh`.
 
 ## 2. Layout (new files)
 
@@ -50,8 +57,10 @@ the generated skin is listed in the placeholder inventory. Not yet ported (later
 | `tests/test_creature_*.gd`, `tests/smoke/creature_smoke.gd` | Ported lab tests in the main runner, the new rules' tests, and a scripted play-through smoke |
 
 Main gets `open_creature_stage()`; the title screen gets a "Creature stage" button (marked as a preview); `--creature`
-after `--` launches straight into it. Both are small edits to files other departments own (`main.gd`,
-`start_screen.gd`, `run_flags.gd`); keep them to the hook and the button.
+after `--` launches straight into it, and `--creature-store=PATH` names the stage's save file in place of its slot
+file (the smoke's two processes share `user://smoke/creature.json` this way and clean it up; the smoke stops before
+playing if the path is anywhere else). `--slot` does not apply to the stage. Both are small edits to files other
+departments own (`main.gd`, `start_screen.gd`, `run_flags.gd`); keep them to the hook and the button.
 
 ## 3. Saves (owner decision pending)
 
@@ -75,7 +84,13 @@ text, so `--load=PATH` style imports are cheap later.
   up.
 - "Test drive" walks the working body on the gait planner's legs in place of the editor view; a body with no legs
   says so (slither comes with Godfrey's #70).
-- "Done" commits (validates, charges the points, writes the store) and enters the world; "Back" leaves to the title.
+- Skin colour: eight swatches (`SKIN_COLORS`, `set_skin_color`); the choice rides in the body dictionary's extra
+  `skin_color` key, so the world and the store carry it without a schema change. Paint beyond a flat colour stays out.
+- "Done" commits (validates, charges the points, writes the store) and enters the world; a body with no legs is
+  asked about once first. Escape and "Back" are progressive: the tool and the selection clear first, unsaved edits
+  are asked about once, then it leaves to the title.
+- Mouse-first: the pad orbits (right stick) and leaves (B); the tools, Done, Undo and the test drive are mouse and
+  keyboard in this slice.
 - Every mouse and key path has a method twin (`add_part_at(screen_pos)`, `choose_tool(type)`, `drag(from, to)`, ...)
   so the smoke and the UI tests drive it without input events, as `tests/smoke/play_smoke.gd` drives the pool.
 
@@ -115,9 +130,11 @@ only presents it.
    pass removes.
 5. A Windows export (`tools/export_windows.sh`), zipped to the project files as
    `Pangaea-M2-creature-preview-windows.zip`. Exported but not Windows-verified until the owner launches it.
+   Pending: the zip is not on the project files mount yet (`builds/` holds the M0 and M1 zips); it waits for an
+   export made after the part-rules fix above, since the export before it shipped a stage without tools.
 
 ## 7. Out of this slice (next)
 
-Slither and stub gaits (Godfrey #70), skin volume at extreme swings (#71), paint and skin colour choice, more
-biomes and terrain relief, social play (packs, calls), the lineage save schema v3, Blender parity exports of a
+Slither and stub gaits (Godfrey #70), skin volume at extreme swings (#71), paint patterns beyond the flat skin
+colour, full pad control of the editor, more biomes and terrain relief, social play (packs, calls), the lineage save schema v3, Blender parity exports of a
 built creature, and the look pass on the field, nest and fruit.
