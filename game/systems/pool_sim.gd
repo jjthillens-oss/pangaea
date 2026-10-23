@@ -692,6 +692,25 @@ func debug_teleport_abs(x_am: float, y_am: float, heading: float = NAN) -> bool:
 	return true
 
 
+## Dev (endless, D-76): the world at size `n` (1 to the build top) round the living cell's absolute
+## place now, by the teleport path (WorldStream.set_size_teleport): the remnants leave, the view set
+## loads at size n with its food, the cell takes the clear point nearest its place, and the meter
+## starts again at size n (its paid lists from the ledger). Emits debug {command: "set_size", size}
+## (C-V9). False in the pool, while dead or waiting to respawn, or for a size outside the ladder.
+func debug_set_size(n: int) -> bool:
+	if world == null or dead or respawn_pending or n < 1 or n > world.max_size:
+		return false
+	world.set_size_teleport(self, n)
+	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), motion.heading)
+	_sync_actor()
+	_contact.clear()
+	if growth != null:
+		growth.reset_for_size(n)
+	world.fill_all_food_now(self)
+	_emit({"type": "debug", "command": "set_size", "size": n})
+	return true
+
+
 ## Dev (endless): moves the floating origin by whole chunks now, as the streaming block does when the
 ## cell swims far from it. False in the pool.
 func debug_rebase(by_chunks: Vector2i) -> bool:
@@ -893,16 +912,25 @@ func _player_places() -> Array[Vector2]:
 ## Rule C1: `p` when a body of radius `r` fits there, else the first clear point on rings
 ## CLEAR_SPIRAL_STEP_M apart going out from it (each ring in angle order from +x), else `p`.
 func _clear_point_near(p: Vector2, r: float) -> Vector2:
-	if arena.is_clear(p, r):
+	return clear_point_on(arena, p, r)
+
+
+## The one spiral (rule C1; S2 BP-4) on any arena: `p` when a body of radius `r` fits there, else the
+## first clear point on rings CLEAR_SPIRAL_STEP_M apart going out from it, each ring in angle order
+## from +x. With max_rings < 0 it goes out CLEAR_SPIRAL_RINGS rings and gives `p` when none is clear;
+## with max_rings >= 0 it stops after that many rings and gives Vector2.INF when none is clear (the
+## next size's wedge test). Equal colliders and an equal origin give bit-equal points.
+static func clear_point_on(on: PoolArena, p: Vector2, r: float, max_rings := -1) -> Vector2:
+	if on.is_clear(p, r):
 		return p
-	for ring in range(1, CLEAR_SPIRAL_RINGS + 1):
+	for ring in range(1, (CLEAR_SPIRAL_RINGS if max_rings < 0 else max_rings) + 1):
 		var d := ring * CLEAR_SPIRAL_STEP_M
 		var n := ceili(TAU * d / CLEAR_SPIRAL_STEP_M)
 		for k in n:
 			var q := p + Vector2.from_angle(k * TAU / n) * d
-			if arena.is_clear(q, r):
+			if on.is_clear(q, r):
 				return q
-	return p
+	return p if max_rings < 0 else Vector2.INF
 
 
 ## Rules C2 and C3 at a respawn at `at`: every creature within respawn_clear_m goes back to its

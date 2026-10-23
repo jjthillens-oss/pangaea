@@ -26,9 +26,6 @@ const SETS := 2
 const TILES_PER_SET := 3
 ## Band 0's rare kinds (rule 1). The fixed rare tile of world_cell.json names one of them.
 const BAND0_RARE_KINDS: PackedStringArray = ["giant_husk", "shell_cathedral"]
-## The species the home block lets a site name at a band's second size (S1's rule; T3.4 moves the home
-## block to SpeciesCatalog.live_at as the tiles here).
-const S1_SPECIES: PackedStringArray = ["ambush_hunter", "rammer"]
 ## Rule 7: the behaviours of a threat (a threat at size n is also of entry size n: the ladder's
 ## "threat" role, Relationships.ladder_role).
 const THREAT_BEHAVIORS: PackedStringArray = ["ambush", "territorial"]
@@ -443,7 +440,10 @@ static func _check_set_piece(t: Dictionary, kit: PlacementKit, colliders: Array[
 ## passes _check_disc. A two-post site (B.7, D-38) also has its second post's home clear and its zone
 ## there, passes _check_disc on each post's disc and on their union (D-82), keeps the union's reach
 ## (D-61) and a path between its posts (post_path_problems, BP-11). `there` is colliders_at(t, …,
-## size); lengths are bu, a fairness length its tm / bu_to_tm(size).
+## size); lengths are bu, a fairness length its tm / bu_to_tm(size). Rule 8 against the anchor (the
+## checkpoint's respawn clearance) binds the species that can attack the cell at the size
+## (Relationships.can_attack_player): every live one at a band's first size, the band's own threats at
+## its second (the M1 species are rivals and prey there).
 static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictionary, kit: PlacementKit,
 		there: Array[Dictionary], part_catalog: PartCatalog, size: int, errors: PackedStringArray) -> void:
 	var w: String = t.where
@@ -517,18 +517,20 @@ static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictiona
 			var half := r + float(CreatureBrain.WORLD_LENGTHS.route_clearance) * species.q_of(site.species, size) / s
 			for p in post_path_problems(home, home_b, half, there):
 				errors.append("%s: %s" % [where, p])
+		var attacks := Relationships.can_attack_player(species.q_of(site.species, size))
 		for d in discs:
 			_check_disc(t, "site '%s'%s" % [site.id, d.label], where + d.label, d.disc, d.homes, r, s, rule, species, kit,
-				scaled, errors)
+				scaled, attacks, errors)
 
 
 ## One reach disc of a live site (`label` names it in rules 9 and 10, `where` elsewhere): inside the
 ## tile, inset (|disc.c| + disc.r + r + leash_band_margin_m <= 32 bu on both axes), holding each of
-## `homes`, rules 9 and 10 against the colliders there with no wall, and rule 8 against the landmark
-## anchor. Rules 9 and 10 run in tm (the disc, r and `scaled`, the colliders, times s), so their own
-## margins stay the species'; at s 1 every value is S1's.
+## `homes`, rules 9 and 10 against the colliders there with no wall, and, when the species `attacks`
+## the cell at the size, rule 8 against the landmark anchor. Rules 9 and 10 run in tm (the disc, r and
+## `scaled`, the colliders, times s), so their own margins stay the species'; at s 1 every value is S1's.
 static func _check_disc(t: Dictionary, label: String, where: String, disc: Dictionary, homes: Array, r: float, s: float,
-		rule: String, species: SpeciesCatalog, kit: PlacementKit, scaled: Array[Dictionary], errors: PackedStringArray) -> void:
+		rule: String, species: SpeciesCatalog, kit: PlacementKit, scaled: Array[Dictionary], attacks: bool,
+		errors: PackedStringArray) -> void:
 	var fair := species.fairness
 	var c: Vector2 = disc.center
 	var reach := float(disc.radius)
@@ -544,7 +546,7 @@ static func _check_disc(t: Dictionary, label: String, where: String, disc: Dicti
 	species.check_disc_against_shells(label, in_tm, r * s, scaled, INF, pinches)
 	for p in pinches:
 		errors.append("%s: %s: %s" % [t.where, rule, p])
-	if t.landmark_anchor.size() == 2:
+	if attacks and t.landmark_anchor.size() == 2:
 		var clear := _vec(t.landmark_anchor).distance_to(c) - reach - r - (kit.collide_radius_bu + PoolLayout.CELL_RADIUS / s + ANCHOR_GAP_BU)
 		var need := (float(fair.respawn_clear_m) + ANCHOR_CLEAR_EXTRA) / s
 		if clear < need:
