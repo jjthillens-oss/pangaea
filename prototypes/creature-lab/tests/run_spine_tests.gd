@@ -62,7 +62,7 @@ func test_validation_refuses_each_limit() -> void:
 		"radius above 400": straight(5, 401),
 		"radius below 20": straight(5, 19),
 	}
-	var thin = straight(8, 30)  # 30/1000 of a 1 m body is under 1.5 cells of length/48
+	var thin = straight(8, 20)  # 20/1000 of a 1 m body is under 1.5 cells of the finest preview grid, length/72
 	cases["thin feature"] = thin
 	var ratio = straight(5, 120)
 	ratio.vertebrae[2]["r"] = 361
@@ -168,7 +168,7 @@ func test_size_budget() -> void:
 func test_skin_watertight_and_wound() -> void:
 	for body_name in Lab.BODY_NAMES:
 		var desc = Lab.body(body_name)
-		var skin := SkinCpu.build(desc, int(rules["preview_divisions"]))
+		var skin := SkinCpu.build(desc, desc.preview_divisions(rules))
 		check(MeshChecks.watertight(skin["indices"]), "%s skin is closed and one piece (%d triangles)"
 				% [body_name, skin["indices"].size() / 3])
 		check(MeshChecks.wrong_winding_fraction(skin) == 0.0, "%s skin winds clockwise seen from outside" % body_name)
@@ -201,7 +201,8 @@ func test_random_bodies_watertight() -> void:
 	var fixes := 0
 	var total := 25
 	for i in total:
-		var skin := SkinCpu.build(random_valid_spine(rng), int(rules["preview_divisions"]))
+		var spine = random_valid_spine(rng)
+		var skin := SkinCpu.build(spine, spine.preview_divisions(rules))
 		fixes += int(skin["topology_fixes"])
 		if MeshChecks.watertight(skin["indices"]) and MeshChecks.wrong_winding_fraction(skin) == 0.0:
 			closed += 1
