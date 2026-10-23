@@ -1,0 +1,26 @@
+{
+  "id": "mus_frenzied_swimming",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_frenzied_swimming.ogg",
+  "purpose": "Tense underwater chase music: faded in while a creature hunts the cell, looped.",
+  "role": "danger",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 64.0,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Frenzied Swimming",
+      "author": "ShoninyasTube",
+      "url": "https://opengameart.org/content/frenzied-swimming",
+      "download": "https://opengameart.org/sites/default/files/frenzied_swimming.ogg",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none"
+    }
+  ]
+}
