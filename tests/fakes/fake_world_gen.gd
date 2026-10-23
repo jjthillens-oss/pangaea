@@ -10,6 +10,8 @@ extends WorldGen
 ##     REACH_R centred REACH_SHIFT east of it (so it reaches into the chunk to the east: its chunks
 ##     are both), live at size 1; and beside it a second rammer site of the same shape,
 ##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
+## Chunk (-2, 3) holds a rare place, "p_f_husk" (kind "giant_husk"), at its centre with yaw_deg
+## PLACE_YAW and mirrored, as WorldGen emits places (B-15).
 ## Chunk (-3, 1) also holds the zone "z_edge" (capacity EDGE_CAPACITY) centred 2 tm inside its west
 ## edge, so its disc crosses into chunk (-4, 1), which holds the shell "s_edge" exactly
 ## ZONE_CLEAR_MARGIN from that disc (the gap rule, B-3).
@@ -27,6 +29,10 @@ const REACH_R := 12.0
 const SITE_SPECIES := "rammer"
 const SITE_HEADING := -PI / 2.0
 const REACH_SHIFT := 6.0
+## The fixture world the integration tests run the real generator on.
+const FIXTURE_WORLD := "res://tests/fixtures/world/world_min.json"
+const PLACE_CHUNK := Vector2i(-2, 3)
+const PLACE_YAW := 135.0
 const EDGE_CHUNK := Vector2i(-3, 1)
 const EDGE_CAPACITY := 96.0
 const ZONE_CLEAR_MARGIN := 0.7
@@ -77,6 +83,9 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	var tile := Vector2i(floori(cx / 2.0), floori(cy / 2.0))
 	c.shells.append({"id": "s_f_%d_%d" % [cx, cy], "x": x0 + 16.0 + SHELL_OFFSET, "y": y0 + 16.0 + SHELL_OFFSET,
 		"r": SHELL_R, "kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	if key == PLACE_CHUNK:
+		c.places.append({"id": "p_f_husk", "kind": "giant_husk", "x": x0 + 16.0, "y": y0 + 16.0, "tile": tile,
+			"yaw_deg": PLACE_YAW, "mirror": true})
 	var edge := Vector2(chunk_tm * EDGE_CHUNK.x + 2.0, chunk_tm * EDGE_CHUNK.y + 16.0)
 	if key == EDGE_CHUNK:
 		c.zones.append({"id": "z_edge", "x": edge.x, "y": edge.y, "radius": ZONE_R, "capacity": EDGE_CAPACITY,
@@ -101,6 +110,17 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
 			"reach": reach.duplicate(), "chunks": reach_chunks.duplicate(), "sizes": [2] as Array[int], "tile": tile})
 	return c
+
+
+## An endless sim on the real WorldGen (T1.9) and the fixture world (T1.7), for a new omnivore
+## lineage of `seed_value` saved at the home spawn (or at `at`, absolute am), as a new game starts.
+static func real_sim(seed_value: int, catalog: PartCatalog, layout: PoolLayout, p_species: SpeciesCatalog,
+		at := PackedFloat64Array()) -> PoolSim:
+	var c := WorldContent.load_from(FIXTURE_WORLD, layout, p_species)
+	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
+	var place: PackedFloat64Array = at if not at.is_empty() else c.home.spawn
+	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
+	return PoolSim.create(r.save, catalog, layout, p_species, c)
 
 
 ## The chunks a disc (absolute tm) touches, sorted (y, x).
