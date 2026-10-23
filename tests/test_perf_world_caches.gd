@@ -56,6 +56,21 @@ func test_corners_equal_the_old_corners_for_any_camera_target_and_screen() -> vo
 	check(ViewFootprint._shapes.size() <= ViewFootprint._SHAPES_MAX, "the kept shapes stay bounded")
 
 
+## A kept shape answers for its own camera only: cameras that differ in one input alone (pitch,
+## field of view, distance or aspect) each get their own corners, asked back to back.
+func test_corners_tell_apart_cameras_that_differ_in_one_input() -> void:
+	var target := Vector2(3.0, -7.0)
+	var cameras: Array[Array] = [[{"pitch_deg": 50.0, "fov_deg": 40.0}, 20.0, 1.5],
+		[{"pitch_deg": 60.0, "fov_deg": 40.0}, 20.0, 1.5], [{"pitch_deg": 50.0, "fov_deg": 55.0}, 20.0, 1.5],
+		[{"pitch_deg": 50.0, "fov_deg": 40.0}, 30.0, 1.5], [{"pitch_deg": 50.0, "fov_deg": 40.0}, 20.0, 2.0]]
+	var mismatches := 0
+	for round in 2:
+		for c in cameras:
+			if ViewFootprint.corners(target, c[0], c[1], c[2]) != _corners_before(target, c[0], c[1], c[2]):
+				mismatches += 1
+	check_eq(mismatches, 0, "every camera's own corners")
+
+
 # --- WorldStream._calm (a match instead of the CALM key) ---
 
 func test_calm_agrees_with_the_calm_table_for_every_state_and_phase() -> void:
