@@ -521,8 +521,10 @@ func think_due(c: Creature, tick: int) -> bool:
 ## creature engage now: the flag goes on a fresh percept and on the brain's remembered entry alike,
 ## so no decision runs on a flag from an older think (or from a hurt, which marks its attacker
 ## engageable). The token list follows the brain right after. `self_view` may be passed in when the
-## caller already built it this tick (the body has not moved since).
-func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int, self_view := {}) -> void:
+## caller already built it this tick (the body has not moved since), and so may a packed copy of the
+## food's positions and radii (CreatureSenses.perceive_food_packed), taken with `food_items`.
+func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int, self_view := {},
+		food_at := PackedVector2Array(), food_r := PackedFloat64Array()) -> void:
 	var viewer := viewer_of(c)
 	var percepts := CreatureSenses.perceive(viewer, p_bodies, arena)
 	var may := may_engage_player(c)
@@ -533,7 +535,10 @@ func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, ti
 		c.brain.seen[PLAYER_ID].engageable = may
 	var food: Array[Dictionary] = []
 	if c.brain.state == CreatureBrain.FORAGE:
-		food = CreatureSenses.perceive_food(viewer, food_items, c.phenotype.diets)
+		if food_at.size() == food_items.size() and food_r.size() == food_items.size():
+			food = CreatureSenses.perceive_food_packed(viewer, food_items, food_at, food_r, c.phenotype.diets)
+		else:
+			food = CreatureSenses.perceive_food(viewer, food_items, c.phenotype.diets)
 	CreatureBrain.think(c.brain, self_view if not self_view.is_empty() else self_view_of(c), percepts, food, tick, arena)
 	update_token(c, tick)
 

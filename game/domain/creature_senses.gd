@@ -78,6 +78,32 @@ static func perceive_food(viewer: Dictionary, items: Array, kinds: PackedStringA
 	return out
 
 
+## perceive_food over a packed copy of the items' positions and radii (`at` and `radii`, in `items`
+## order, taken while nothing moves): the same range test on the same values, so the same food in the
+## same order, reading an item's dictionary only when it is in range. The sim takes the copy once a
+## tick for all its foragers.
+static func perceive_food_packed(viewer: Dictionary, items: Array, at: PackedVector2Array, radii: PackedFloat64Array,
+		kinds: PackedStringArray) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var from: Vector2 = viewer.position
+	var sight: float = viewer.sight
+	var half_fov: float = float(viewer.fov) / 2.0
+	for i in at.size():
+		var p := at[i]
+		var d := from.distance_to(p)
+		var r := radii[i]
+		if not (d <= sight + r):
+			continue
+		var item: Dictionary = items[i]
+		if not kinds.has(str(item.kind)):
+			continue
+		var b := bearing(viewer, p)
+		if absf(b) <= half_fov + FOV_EPSILON:
+			out.append({"id": str(item.id), "kind": str(item.kind), "position": p, "radius": r, "distance": d, "bearing": b})
+	out.sort_custom(_nearer)
+	return out
+
+
 ## The angle from the viewer's heading to `p`, in -PI..PI (positive is clockwise seen from above,
 ## the viewer's right).
 static func bearing(viewer: Dictionary, p: Vector2) -> float:

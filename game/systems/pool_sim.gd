@@ -887,6 +887,8 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 ## their script; frozen creatures coast.
 func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 	var food: Array = []
+	var food_at := PackedVector2Array()    # the food's positions and radii, packed for the senses
+	var food_r := PackedFloat64Array()
 	var food_listed := false
 	for c in creatures.awake():
 		var speed_mul := c.state.speed_multiplier()
@@ -903,8 +905,14 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 				# The two lists joined (a new array), or the plankton list itself when there is no
 				# carrion: the senses only read it.
 				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
+				food_at.resize(food.size())
+				food_r.resize(food.size())
+				for i in food.size():
+					var item: Dictionary = food[i]
+					food_at[i] = item.position
+					food_r[i] = item.radius
 				food_listed = true
-			creatures.think(c, snapshot_bodies, food, arena, tick, self_view)
+			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
 		var d := creatures.drive(c, arena, tick, self_view)
 		CreatureBrain.move_body(c.brain, c.motion, d, c.phenotype, speed_mul, DT)
 	_take_field_events()

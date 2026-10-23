@@ -190,3 +190,57 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 					wrong += 1
 		check_eq(wrong, 0, "endless %s: counts that differ from the items" % endless)
 		check(field.next_number > 40, "endless %s: items came and went (%d)" % [endless, field.next_number])
+
+
+## perceive_food over the packed positions and radii finds the same food in the same order as over
+## the dictionaries: random viewers among random items of both kinds, with items on the range edge
+## (either side by a float32 step), on the field-of-view edge, at equal distances and on the viewer.
+func test_packed_food_sense_matches_the_dictionary_one() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var differ := 0
+	var found := 0
+	for round in 300:
+		# Every other round on whole numbers, where an item straight along an axis lies exactly at
+		# sight + radius.
+		var exact := round % 2 == 0
+		var from := Vector2(rng.randi_range(-40, 40), rng.randi_range(-40, 40)) if exact \
+			else Vector2(rng.randf_range(-40.0, 40.0), rng.randf_range(-40.0, 40.0))
+		var heading := rng.randf_range(-PI, PI)
+		var viewer := {"id": "c_1", "species": "s", "position": from, "heading": heading, "radius": 0.5,
+			"sight": float(rng.randi_range(3, 9)) if exact else rng.randf_range(3.0, 9.0),
+			"fov": deg_to_rad(rng.randf_range(90.0, 300.0)), "near": 1.0}
+		var items: Array = []
+		for i in rng.randi_range(0, 60):
+			var kind := "plant" if rng.randf() < 0.7 else "meat"
+			var r := (0.25 if kind == "plant" else 0.5) if exact else (0.18 if kind == "plant" else 0.3)
+			var p := from + Vector2.from_angle(rng.randf_range(-PI, PI)) * rng.randf_range(0.0, 14.0)
+			match rng.randi_range(0, 5):
+				0:   # on the range edge (straight along an axis), or a float32 step either side of it
+					var edge := float(viewer.sight) + r
+					if exact:
+						p = from + [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN][rng.randi_range(0, 3)] * edge
+					else:
+						p = from + Vector2.from_angle(rng.randf_range(-PI, PI)) * edge * (1.0 + rng.randi_range(-1, 1) * 1.2e-7)
+				1:   # on the field of view's edge
+					p = from + Vector2.from_angle(heading + float(viewer.fov) / 2.0 * (1.0 if rng.randf() < 0.5 else -1.0)) * 2.0
+				2:   # as far as an earlier item
+					if not items.is_empty():
+						var other: Dictionary = items[rng.randi_range(0, items.size() - 1)]
+						p = from + (Vector2(other.position) - from).rotated(rng.randf_range(-0.5, 0.5))
+				3:
+					p = from
+			items.append({"id": ("pk_%d" if kind == "plant" else "cr_%d") % i, "kind": kind, "position": p, "radius": r})
+		var at := PackedVector2Array()
+		var radii := PackedFloat64Array()
+		for item in items:
+			at.append(item.position)
+			radii.append(item.radius)
+		for kinds in [PackedStringArray(["plant"]), PackedStringArray(["meat"]), PackedStringArray(["plant", "meat"]), PackedStringArray()]:
+			var want := CreatureSenses.perceive_food(viewer, items, kinds)
+			var got := CreatureSenses.perceive_food_packed(viewer, items, at, radii, kinds)
+			found += want.size()
+			if var_to_str(got) != var_to_str(want):
+				differ += 1
+	check_eq(differ, 0, "rounds where the packed sense differs")
+	check(found > 1000, "food was found (%d)" % found)
