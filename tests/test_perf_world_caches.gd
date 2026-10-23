@@ -182,6 +182,34 @@ func test_slow_the_wake_bound_wakes_the_same_sleepers_as_measuring_every_one() -
 	check(counts.died == 1 and a.tick > 1400 + Gates.DEATH_NOTICE_TICKS and not a.dead, "the cell died and came back")
 
 
+## A sleeper the bound holds is measured again once it is moved (a respawn sends the creatures near
+## the checkpoint home, sleepers too): one put beside the cell wakes on the next step.
+func test_a_moved_sleeper_is_measured_again_at_once() -> void:
+	if not Gates.missing(Gates.WORLD).is_empty():
+		print("test-perf-world-caches: the moved sleeper waits on: %s" % "; ".join(Gates.missing(Gates.WORLD)))
+		return
+	var sim: Variant = Gates.make_sim(Gates.RACER, 501)
+	sim.debug_set_hidden(true)
+	var w: WorldStream = sim.world
+	var held: CreatureField.Creature = null
+	for t in 1200:
+		SwimBot.overdrive(sim)
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		sim.drain_events()
+		for c in sim.creatures.creatures:
+			var b: Variant = w._wake_bound.get(c)
+			if c.asleep and b != null and b[1] - w._swum > 1.0:
+				held = c
+		if held != null:
+			break
+	check(held != null, "a sleeper the bound holds")
+	if held == null:
+		return
+	held.motion.position = sim.motion.position + Vector2(0.0, 6.0)
+	sim.step(SimIntent.new())
+	check(not held.asleep, "put beside the cell, it wakes on the next step")
+
+
 # --- WorldStream._food_view (packed zones, the trim picked lazily, the drop skipped when unchanged) ---
 
 ## WorldStream._food_view before the zones were packed.
