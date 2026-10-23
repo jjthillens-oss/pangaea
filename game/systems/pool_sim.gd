@@ -41,6 +41,11 @@ extends RefCounted
 ## Positions stay local (tm, float32) to the origin; absolute_position_am() is the float64 place.
 ## Pool mode (p_world null) never builds any of it, so its ticks and hashes are exactly M1's.
 ##
+## Growth (S2): with the world file's growth switch on, `growth` (a Growth) holds the meter round the
+## cell. step() keeps the intent's grow press and trigger for it, and at the end of the tick, after
+## every field event is taken, Growth.observe reads the tick's events (D-58). Off (or in the pool)
+## `growth` is null and the tick is exactly S1's (D-46).
+##
 ## Checkpoints (plan section 13): a death returns the cell to checkpoint(), the generation start.
 ## With creatures, respawn_player() follows rules C1-C5: the cell at the checkpoint (or the nearest
 ## clear point), every creature within respawn_clear_m sent home, every brain forgetting the cell
@@ -109,6 +114,11 @@ var grace_until := -1
 ## Deaths in a row, each within streak_window_s of the last respawn (RespawnRules.streak_after); it
 ## picks the shelter and the energy of the next respawn. 0 before the first death; not saved (D16).
 var death_streak := 0
+## The endless world's growth meter (S2); null in the pool and with growth switched off (D-46).
+var growth: Growth = null
+## This tick's intent for Growth (D-58): a Grow press, and the trigger setting ("" for no change).
+var intent_grow := false
+var intent_trigger := ""
 var stats := {"plankton_eaten": 0, "carrion_eaten": 0, "plant_taken": 0.0, "energy_supplied": 0.0,
 	"energy_absorbed": 0.0, "points_food": 0, "points_survival": 0, "distance_m": 0.0,
 	"kills": 0, "hits_dealt": 0, "hits_taken": 0, "damage_dealt": 0.0, "damage_taken": 0.0, "dodges": 0,
@@ -229,6 +239,7 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	sim.motion = Locomotion.MotionState.new(place, heading)
 	sim.actor = InteractionResolver.Actor.new("player", place, heading, sim.phenotype)
 	world.start(sim)
+	sim._start_growth(Growth.config_of(p_world.config), p_world.config.max_size_in_build)
 	# The home block's starting carrion that lies within the food ring (absolute pairs).
 	for p: Array in p_world.home.carrion_initial:
 		var local := world.local_of_abs(float(p[0]), float(p[1]))
@@ -248,9 +259,31 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	return sim
 
 
+## Growth for the endless world (S2) from the world file's growth block; nothing for an empty one
+## (growth off). The world's top size is the build's (max_in_build), and only then do the growth keys
+## join the snapshot (BP-20).
+func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
+	if world == null or cfg.is_empty():
+		return
+	growth = Growth.create(cfg, str(cfg.trigger))
+	world.max_size = max_in_build
+	world.counters["remnant_overflow"] = 0
+
+
 ## True in the endless world (S1), false in the pool.
 func is_endless() -> bool:
 	return world != null
+
+
+## The cell's size on the ladder: the world's, or 1 in the pool.
+func size() -> int:
+	return world.size if world != null else 1
+
+
+## Energy to capacity (the build top's payout, D-32; the growth tick, B.4 step 7).
+func refill_energy() -> void:
+	state.energy = state.energy_capacity
+	_update_starving()
 
 
 ## The cell's absolute place in am, float64: the checkpoint's exactly while dead or waiting for its
@@ -271,6 +304,9 @@ func now() -> float:
 
 
 func step(intent: SimIntent) -> void:
+	intent_grow = intent != null and intent.grow
+	intent_trigger = intent.trigger if intent != null else ""
+	var mark := _events.size()   # this tick's events start here (Growth.observe reads them)
 	if world != null:
 		world.step(self)   # the streaming block (S1 spine 3.11): first, reading sim state only
 	if creatures != null:
@@ -313,6 +349,9 @@ func step(intent: SimIntent) -> void:
 		_emit_dodges()
 		if not dead and grace_until == tick + 1:
 			_emit({"type": "grace_ended", "reason": "timeout"})   # this was the shelter's last tick
+	if growth != null:
+		_take_field_events()
+		growth.observe(self, _events.slice(mark))
 	tick += 1
 
 
