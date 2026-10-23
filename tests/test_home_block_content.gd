@@ -76,15 +76,28 @@ func test_the_ring_is_twenty_zones_and_eight_shells_outside_the_m1_pool() -> voi
 			if o.id != z.id:
 				var gap: float = c.distance_to(Vector2(o.x, o.y)) - z.radius - o.radius
 				check(gap >= ZONE_GAP_BU, "%s is %.2f bu from zone %s" % [label, gap, o.id])
-		# Every home shell, the M1 rocks too, keeps the open water a plankton anchor needs
-		# (PoolLayout.ZONE_CLEAR_MARGIN): no point of a ring zone depends on a neighbour's shells.
-		for s in home.shells:
-			var gap: float = c.distance_to(Vector2(s.x, s.y)) - z.radius - s.r
-			check(gap >= PoolLayout.ZONE_CLEAR_MARGIN, "%s is %.2f bu from shell %s" % [label, gap, s.id])
 	for s in shells:
 		var c := Vector2(s.x, s.y)
 		check(c.length() - s.r >= home.seam_inner_r, "shell %s at %s keeps outside seam_inner_r" % [s.id, c])
 		check(absf(s.x) + s.r <= SHELL_EDGE_BU and absf(s.y) + s.r <= SHELL_EDGE_BU, "shell %s keeps 4 bu inside the block" % s.id)
+
+
+## B-2 and B-3: every home zone, the M1 zones and the ring, keeps the open water a plankton anchor
+## needs (PoolLayout.ZONE_CLEAR_MARGIN, 0.7 bu) from every home collider, the M1 rocks and the ring
+## shells, so no zone's anchors depend on what else is loaded.
+func test_every_home_zone_keeps_0_7_bu_from_every_home_collider() -> void:
+	var least := INF
+	var least_at := ""
+	for z in home.zones:
+		var c := Vector2(z.x, z.y)
+		for s in home.shells:
+			var gap: float = c.distance_to(Vector2(s.x, s.y)) - z.radius - s.r
+			check(gap >= PoolLayout.ZONE_CLEAR_MARGIN, "zone %s is %.2f bu from shell %s; it keeps %.1f" % [z.id, gap, s.id, PoolLayout.ZONE_CLEAR_MARGIN])
+			if gap < least:
+				least = gap
+				least_at = "%s to %s" % [z.id, s.id]
+	check(home.zones.size() > RING_ZONES and home.shells.size() > RING_SHELLS, "the M1 zones and rocks are counted too")
+	print("test-home-content: least zone gap %.2f bu (%s)" % [least, least_at])
 
 
 func test_the_m1_pool_is_kept_exactly() -> void:
