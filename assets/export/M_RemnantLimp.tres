@@ -1,0 +1,12 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+; A brainless remnant after a growth (docs/endless-cell-plan.md B.4, I): the body's vertex colours
+; greyed and cooled so it reads as spent, with no threat colour (a material_override replaces every
+; surface). Written by tools/blender/make_endless_sprites.py.
+
+[resource]
+resource_name = "M_RemnantLimp"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(0.6, 0.64, 0.74, 1)
+roughness = 0.8
