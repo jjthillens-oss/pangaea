@@ -8,9 +8,16 @@ The pieces come from `tools/blender/make_s1_kit.py`, which also writes `game/dat
 art contract (bounds, swim-band outline, heights, triangle budgets, node names, growth children,
 colours clear of the food and threat hues).
 
-Their review state is `blockout - S1, not visually approved`. They are flat-coloured blockouts at
-final size, so engineering can wire the world in early. Each will be swapped for a finished piece
-with the same id, node name, footprint and growth slots. Joshua judges the look.
+The finished pieces come from `tools/blender/make_s1_production.py`. It runs the kit's own
+builders, so the geometry and contract are unchanged. It then turns each flat material into
+greyscale procedural detail and bakes one texture set per piece: albedo detail with ambient
+occlusion, ORM and a normal map. The detail is silica ribs, pore rings and striae on the glass,
+membrane cells on the casings, glowing granules on the amber and fibres on the stalks. Each
+material keeps its name and flat colour, and the engine draws the baked detail times that colour.
+Textures are 512 px for shells, 1024 px for landmarks and rare pieces, and 256 px for markers.
+The review state is `production rev 1 - M1, awaiting owner look review`, so the kit marks no piece
+as a placeholder. Joshua judges the look. Review sheets are in
+`docs/art/renders/production/<id>_sheet.jpg` (`tools/blender/render_production.py <id>`).
 
 The concept sheet is `docs/art/renders/concept/landmarks_sheet.jpg`
 (`tools/blender/render_landmark_concepts.py`).
