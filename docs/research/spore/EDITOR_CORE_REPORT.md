@@ -149,7 +149,19 @@ gets a message instead. A leg needs a knee and must reach the ground.
 The demo clip ends with the edited quadruped walking: arms on the neck, a long tail and two fins. The crouched stance
 at a trot is the Walker Lab's existing gait, and the unedited quadruped shows the same stance.
 
-## 8. Next (PROPOSED)
+## 8. Every part, saves and a showcase
+
+- **All 13 art parts** are in the palette now: antenna, beak, claw, crest, eye, fin, foot, hand, horn, mandibles,
+  tail fluke, tail spikes and wing. The palette is built from the part records, so a new record shows up as a tool.
+  Keys 1–9 pick a tool, Tab or [ and ] cycle through them, and L is the limb tool.
+  `test_every_part_type` places each type through a camera ray on the quadruped and checks the body stays valid.
+- **Saves.** Ctrl+S writes the body as canonical text to `user://creatures/creature_<n>.json`, using the same codec
+  as the test bodies. Ctrl+O loads the newest one, and `--load=PATH` opens one at launch. A file that breaks the
+  body rules is refused. This is a lab format only, not the game's save schema.
+- **`--showcase`** grows arms on the quadruped's neck and places every part type it is missing through the same rays
+  a click uses. Saved with `--save` and loaded back, the body has the same 22 parts and walks in the test drive.
+
+## 9. Next (PROPOSED)
 
 1. Hand the core to S4's editor shell when the creature stage starts.
 2. A taller stance for the walkers at a trot (the gait's hip height).
