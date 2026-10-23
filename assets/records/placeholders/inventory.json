@@ -355,6 +355,18 @@
         "game/scenes/pool/ambience/pool_ambience.gd"
       ],
       "node": "Pool/Ambience"
+    },
+    {
+      "id": "title_backdrop",
+      "kind": "environment",
+      "description": "The title world's copy of fluid_backdrop: the same 400 x 400 m PlaneMesh 40 m under the swim plane with backdrop.gdshader, so the title's sea fades into the same fog colour as the pool's. No shape of its own, not a model.",
+      "types": [
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/title/title_world.gd"
+      ],
+      "node": "StartScreen/World/Backdrop"
     }
   ]
 }
