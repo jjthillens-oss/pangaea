@@ -581,6 +581,41 @@ func test_the_s2_gates_wait_only_on_what_has_not_landed() -> void:
 	print("test-endless-gates: the S2 gates wait on: %s" % ("nothing" if waiting.is_empty() else "; ".join(waiting)))
 
 
+## S2G30's budget report (run_tests.gd): every test file 5.1 names belongs to one track, each track's
+## fast time is its files' time now less on S2's base, and a track over its share is marked.
+func test_the_fast_suite_budget_report_gives_each_file_to_one_track() -> void:
+	var Runner: GDScript = load("res://tests/run_tests.gd")
+	var shares: Dictionary = Runner.get("BUDGET_SHARES")
+	var owned: Dictionary = Runner.get("BUDGET_FILES")
+	check_eq(owned.keys(), shares.keys(), "every track has its files and its share")
+	var seen := {}
+	for track in owned:
+		for file in owned[track]:
+			check(not seen.has(file), "%s belongs to %s and %s" % [file, seen.get(file, ""), track])
+			seen[file] = track
+			check_eq(Runner.track_of(file), track, "%s is %s's" % [file, track])
+	check_eq(Runner.track_of("test_pool_sim"), "S1", "a file no S2 track names is S1's")
+	var base: Dictionary = Runner.get("S1_FAST_MS")
+	check(base.has("test_threats_sim") and not base.has("test_growth_gates"), "the base times hold S1's files and none of S2's new ones")
+	var now := {"test_growth_gates": 3500.0, "test_threats_sim": 2000.0, "test_pool_sim": 100.0}
+	var rows: Array[Dictionary] = Runner.budget_rows(now, {"test_threats_sim": 1500.0, "test_pool_sim": 300.0})
+	var by := {}
+	for row in rows:
+		by[row.track] = row
+	check_eq(by.keys(), ["T0", "T1", "T2", "T3", "T4", "T5", "S1", "all"], "a row per track, S1's files, then all")
+	check_eq([by.T0.now_s, by.T0.base_s, by.T0.added_s], [3.5, 0.0, 3.5], "T0: a new file counts from 0")
+	check_near(float(by.T1.added_s), 0.5, 1e-9, "T1: its file's time less the base")
+	check_near(float(by.S1.added_s), -0.2, 1e-9, "S1's own files")
+	check_near(float(by.all.added_s), 3.8, 1e-9, "the whole fast tier")
+	check_eq(by.all.share_s, 31.0, "the whole tier's share is the tracks' sum")
+	var report: PackedStringArray = Runner.budget_report(now, {"test_threats_sim": 1500.0})
+	var over := PackedStringArray()
+	for line in report:
+		if line.contains("OVER"):
+			over.append(line.strip_edges().get_slice(" ", 0))
+	check_eq(over, PackedStringArray(["T0"]), "only T0 (3.5 s against 3) is marked over its share")
+
+
 ## The swim body is the fastest legal one: legal, faster than every starting body, and no part could
 ## be added or scaled up.
 func test_the_racer_is_the_fastest_legal_body() -> void:
