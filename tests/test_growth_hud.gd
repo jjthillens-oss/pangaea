@@ -91,6 +91,8 @@ func test_growth_line_shows_hint_verbatim() -> void:
 		check_eq(hud.growth_line.text, line, "the line is the hint as it is (ring %s)" % hud.meter_ring.state)
 		check(hud.growth_line.visible == (line != ""), "'%s' %s" % [line, "shows" if line != "" else "hides the line"])
 		check(hud.growth_row.visible, "the ring and badge show with growth")
+	check_eq(GrowthHud.hint_of(null), "", "no growth, no line")
+	check_eq(GrowthHud.hint_of(RefCounted.new()), "", "a Growth that does not word its hint yet: no line")
 	# The player rebinds grow: the line names the new key, the rest of it unchanged (BP-19).
 	_settings.rebind("grow", "key:%d" % KEY_H)
 	g.show_line("Ready to grow (G)")
@@ -236,8 +238,10 @@ func test_trigger_sent_on_start_and_change() -> void:
 	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(), g)
 	FakeEvents.frame(pool)
 	check_eq(pool.sent_trigger, "press", "the first tick carries the setting")
+	check_eq(pool.sim.intent_trigger, "press", "and the sim reads it (SimIntent.trigger)")
 	FakeEvents.frame(pool)
 	check_eq(pool.sent_trigger, "", "once")
+	check_eq(pool.sim.intent_trigger, "", "the sim too")
 	check(_settings.set_value("gameplay/growth_trigger", "auto"), "the player switches to auto")
 	FakeEvents.frame(pool)
 	check_eq(pool.sent_trigger, "auto", "the next tick carries the change")
@@ -313,12 +317,18 @@ func _presses(pool: PoolScene, frames: int) -> int:
 		key.echo = i > 0
 		pool._unhandled_input(key)
 		FakeEvents.frame(pool)
-		count += 1 if pool.sent_grow else 0
+		count += _sent_grow(pool)
 	if frames == 0:
 		for i in 3:
 			FakeEvents.frame(pool)
-			count += 1 if pool.sent_grow else 0
+			count += _sent_grow(pool)
 	return count
+
+
+## 1 when the last tick's intent carried the press, as the sim read it (SimIntent.grow, T2.1).
+func _sent_grow(pool: PoolScene) -> int:
+	check_eq(pool.sim.intent_grow, pool.sent_grow, "the sim reads the press the pool sent")
+	return 1 if pool.sim.intent_grow else 0
 
 
 ## The fixture world tops out at size 1, where a full ring pays out at once; this makes it grow to

@@ -238,7 +238,7 @@ func is_endless() -> bool:
 
 ## The sim's Growth (S2), or null: always null in the M1 pool (D-46). Only read here.
 func growth() -> Object:
-	return sim.get(&"growth") if sim != null else null
+	return sim.growth if sim != null else null
 
 
 ## The cell's size in the sim: the world's in the sea, 1 in the pool.
@@ -478,9 +478,9 @@ func _add_growth_intent(intent: SimIntent) -> void:
 	_grow_pressed = false
 	_trigger_pending = ""
 	if sent_grow:
-		intent.set(&"grow", true)
+		intent.grow = true
 	if sent_trigger != "":
-		intent.set(&"trigger", sent_trigger)
+		intent.trigger = sent_trigger
 
 
 func _notification(what: int) -> void:

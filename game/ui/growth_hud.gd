@@ -41,6 +41,14 @@ static func share_of(growth: Object, n: int) -> float:
 	return clampf(growth.meter / ring, 0.0, 1.0) if ring > 0.0 else 0.0
 
 
+## The growth line: Growth.hint() as it is, "" with no growth. Until the sim words its hint (T2.3)
+## a Growth without hint() shows no line.
+static func hint_of(growth: Object) -> String:
+	if growth == null or not growth.has_method(&"hint"):
+		return ""
+	return growth.hint()
+
+
 ## "Size 2 · about 32 µm", from the ladder's labels (world_cell.json ladder.labels); "Size 2" when
 ## the labels do not reach that size.
 static func badge_text(n: int, labels: Array) -> String:

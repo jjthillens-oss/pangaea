@@ -437,9 +437,8 @@ func update_growth() -> void:
 	var share := 1.0 if n < pool.sim_size() else GrowthHud.share_of(growth, n)
 	meter_ring.reduce_flashing = SettingsService.shared().reduce_flashing()
 	meter_ring.show_ring(share, n, state)
-	var ladder: Variant = config.get(&"ladder")
-	_set_text(size_badge, GrowthHud.badge_text(n, ladder.get("labels", []) if ladder is Dictionary else []))
-	var hint: String = growth.hint()
+	_set_text(size_badge, GrowthHud.badge_text(n, config.ladder.get("labels", [])))
+	var hint: String = GrowthHud.hint_of(growth)
 	if hint.contains("(G)"):
 		hint = GrowthHud.with_grow_key(hint, grow_key_name())
 	_set_text(growth_line, hint)
