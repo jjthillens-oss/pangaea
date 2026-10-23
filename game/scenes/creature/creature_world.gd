@@ -59,7 +59,7 @@ const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
 const FIELD_COLOR := Color(0.2, 0.3, 0.14)
 const FIELD_ROUGHNESS := 1.0
 const NEST_COLOR := Color(0.7, 0.58, 0.36)
-const FRUIT_RIPE_COLOR := Color(0.92, 0.3, 0.3)
+const FRUIT_RIPE_COLOR := Color(0.9, 0.2, 0.22)
 const FRUIT_BARE_COLOR := Color(0.28, 0.42, 0.2)
 const MEAT_COLOR := Color(0.6, 0.2, 0.18)
 
