@@ -1,0 +1,6 @@
+; PROPOSED standalone terrain research prototype. The game does not load it.
+config_version=5
+
+[application]
+config/name="Terrain Chunk Prototype"
+config/features=PackedStringArray("4.7")
