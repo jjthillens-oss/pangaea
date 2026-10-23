@@ -424,6 +424,10 @@ The owner asked for menus that feel like Spore's "but Pangaea style" (2026-10-23
   slots use MenuBounce too and fade in (fade only, so a dim never uncovers an edge), and under them the title's menu
   fades out so only the sea shows. A "dive" into the pool on Continue was considered and left out: the pool opens at
   once (the smokes and session code expect it) and already fades in. IMPLEMENTED.
+- **Accessibility audit fixes** (`docs/accessibility-audit.md`, 2026-10-23): with Reduce flashing on, the player's and
+  rivals' hit flashes swell in and out at 40% instead of jumping to full (the flinch and squash still show the hit); the
+  starving arrow's label follows Text size; the settings footer reads Change, Select and Back from the input map for
+  the device in use, and Q / E or LB / RB for tabs stays fixed menu navigation. IMPLEMENTED.
 
 ## 2026-10-23 · Cell-stage audio (PROPOSED)
 

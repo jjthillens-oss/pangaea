@@ -242,10 +242,31 @@ static func _is_tab_key(event: InputEvent, direction: int) -> bool:
 func _update_hint() -> void:
 	if _hint == null:
 		return
-	if InputPrompts.device == "pad":
-		_hint.text = "LB / RB  Tabs   ·   Left / Right  Change   ·   A  Select   ·   B  Back"
-	else:
-		_hint.text = "Q / E  Tabs   ·   Left / Right  Change   ·   Enter  Select   ·   Esc  Back"
+	_hint.text = hint_text()
+
+
+## The footer: the inputs of the device in use, read from the input map, so a rebound or
+## controller input shows as it is. Tab switching is fixed menu navigation (_is_tab_key), not a
+## rebindable action, and says so by being the same everywhere.
+static func hint_text() -> String:
+	var parts := PackedStringArray(["%s  Tabs" % ("LB / RB" if InputPrompts.device == "pad" else "Q / E")])
+	var left := InputPrompts.names_for(&"ui_left")
+	var right := InputPrompts.names_for(&"ui_right")
+	if not left.is_empty() and not right.is_empty():
+		parts.append("%s  Change" % pair_name(left[0], right[0]))
+	var rest := InputPrompts.hint_line([[&"ui_accept", "Select"], [&"ui_cancel", "Back"]])
+	if not rest.is_empty():
+		parts.append(rest)
+	return "   ·   ".join(parts)
+
+
+## Two inputs as one name: "Left / Right", or "D-pad" for "D-pad left" and "D-pad right".
+static func pair_name(left: String, right: String) -> String:
+	var lw := left.split(" ")
+	var rw := right.split(" ")
+	if lw.size() > 1 and rw.size() > 1 and lw[0] == rw[0]:
+		return lw[0]
+	return "%s / %s" % [left, right]
 
 
 func _build() -> void:

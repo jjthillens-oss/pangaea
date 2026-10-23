@@ -183,3 +183,38 @@ func test_input_prompts_follow_the_device_in_use() -> void:
 	InputPrompts.note(key)
 	check_eq(InputPrompts.device, "keys", "a key brings the keys back")
 	check(InputPrompts.names_for(&"move_up").has("W") or DisplayServer.get_name() == "headless", "key names")
+
+
+func test_hit_flashes_swell_gently_when_flashing_is_reduced() -> void:
+	check_eq(PlayerCellView.hit_flash(0.0, 0.15), 1.0, "a hit starts at full strength")
+	check_eq(PlayerCellView.hit_flash(-1.0, 0.15), 0.0, "no hit, no flash")
+	check_eq(PlayerCellView.hit_flash(0.15, 0.15), 0.0, "over after its length")
+	check_eq(PlayerCellView.hit_flash(0.0, 0.15, true), 0.0, "reduced: it does not jump on")
+	var peak := 0.0
+	for i in 16:
+		peak = maxf(peak, PlayerCellView.hit_flash(0.01 * i, 0.15, true))
+	check(peak > 0.3 and peak <= PlayerCellView.REDUCED_FLASH_PEAK + 0.0001, "reduced: it peaks at %.2f" % peak)
+
+
+func test_the_starving_arrow_label_follows_text_size() -> void:
+	var old := SettingsService.shared()
+	SettingsService.set_shared(_service)
+	check_eq(StarvingArrow.font_size(), StarvingArrow.FONT_SIZE, "100%")
+	_service.set_value("accessibility/text_scale", 130)
+	check_eq(StarvingArrow.font_size(), roundi(StarvingArrow.FONT_SIZE * 1.3), "130%")
+	_service.set_value("accessibility/text_scale", 100)
+	SettingsService.set_shared(old)
+
+
+func test_the_settings_footer_names_the_inputs_of_the_device_in_use() -> void:
+	_service.apply_bindings()
+	InputPrompts.device = "pad"
+	var pad := SettingsMenu.hint_text()
+	check(pad.begins_with("LB / RB  Tabs"), "the controller's tab buttons (%s)" % pad)
+	check(pad.contains("A  Select") and pad.contains("B  Back"), "A and B from the input map (%s)" % pad)
+	check(pad.contains("D-pad  Change"), "the d-pad changes values (%s)" % pad)
+	InputPrompts.device = "keys"
+	var keys := SettingsMenu.hint_text()
+	check(keys.begins_with("Q / E  Tabs") and not keys.contains("A  Select"), "the keyboard's (%s)" % keys)
+	check_eq(SettingsMenu.pair_name("Left", "Right"), "Left / Right", "two keys")
+	check_eq(SettingsMenu.pair_name("D-pad left", "D-pad right"), "D-pad", "one pad")
