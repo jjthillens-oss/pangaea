@@ -754,6 +754,305 @@ def build_tail_fluke():
             "part_rules": rules, "paint_mix": {"M_Fluke": 0.9}, "revision": 1, **baked}
 
 
+# --- Shared: a double-sided membrane patch ---------------------------------------------------------
+
+def _membrane(verts, fcs, point, cols, rows, thickness=0.0015, facing=Vector((1.0, 0.0, 0.0))):
+    """Two thin layers of a patch point(s, c) (s, c in [0, 1]), offset along `facing` (the patch normal)
+    by +-thickness, each wound to face away from the other. Returns the face indices added."""
+    grid = [[point(r / rows, c / cols) for c in range(cols + 1)] for r in range(rows + 1)]
+    added = []
+    for sign in (1.0, -1.0):
+        base = len(verts)
+        for row in grid:
+            for p in row:
+                verts.append(tuple(p + facing * (sign * thickness)))
+        w = cols + 1
+        for r in range(rows):
+            for c in range(cols):
+                a, b, d, e = base + r * w + c, base + r * w + c + 1, base + (r + 1) * w + c, base + (r + 1) * w + c + 1
+                quad = (a, b, e, d)
+                n = (Vector(verts[b]) - Vector(verts[a])).cross(Vector(verts[d]) - Vector(verts[a]))
+                if n.length > 1e-12 and n.dot(facing) * sign < 0:
+                    quad = (a, d, e, b)
+                fcs.append(quad)
+                added.append(len(fcs) - 1)
+    return added
+
+
+# --- Wing -------------------------------------------------------------------------------------------
+
+WING_SPAN = 0.34
+WING_SINK = 0.015
+
+
+def build_wing():
+    """A bat-like membrane wing in the skin's YZ plane: an arm bone out along +Z to the wrist, three finger
+    struts fanning back toward the tail, and a scalloped membrane between them and the body. Chiral: the
+    right-hand piece cups toward -X. H1_Fold furls the fingers back, H2_Flap bends the outer wing toward -X."""
+    root, body_trail = Vector((0.0, 0.03, -WING_SINK)), Vector((0.0, -0.11, -WING_SINK))
+    wrist = Vector((0.0, 0.0, 0.16))
+    tips = [Vector((0.0, -0.03, WING_SPAN)), Vector((0.0, -0.15, 0.29)), Vector((0.0, -0.22, 0.17))]
+    verts, fcs = [], []
+    face_mats = []
+
+    def cup(p):
+        # A gentle camber toward -X, deepest mid-membrane.
+        d = (p - wrist).length
+        return p + Vector((-0.02 * math.sin(min(1.0, d / 0.2) * math.pi), 0.0, 0.0))
+
+    # Bones: the arm (root to wrist) and the three fingers (wrist to tip).
+    def bone(a, b, r0, r1, bend):
+        path = []
+        for k in range(9):
+            t = k / 8
+            p = a.lerp(b, t)
+            path.append(cup(p) + Vector((0.0, 0.0, 0.0)) + (b - a).cross(Vector((1.0, 0.0, 0.0))).normalized() * bend * math.sin(math.pi * t))
+        v, f, _ = _tube(path, lambda i, ang: 0.0 if i == 8 else r0 + (r1 - r0) * i / 8 * (1.0 + 0.15 * math.exp(-((i - 4) / 1.2) ** 2)), 10)
+        added = bc.append(verts, fcs, v, f)
+        face_mats.extend([1] * (len(fcs) - len(face_mats)))
+        return path
+
+    bone(root, wrist, 0.011, 0.008, 0.0)
+    for tip in tips:
+        bone(wrist, tip, 0.007, 0.003, 0.008)
+    # Membrane: three fans from the wrist between neighbouring struts, plus the inner panel from the arm to
+    # the last finger and back along the body. Free edges scallop in toward the bones.
+    edges = [tips[0], tips[1], tips[2]]
+    for k in range(2):
+        a, b = edges[k], edges[k + 1]
+
+        def fan(s, c, a=a, b=b):
+            q = a.lerp(b, c)
+            return cup(wrist + (q - wrist) * s * (1.0 - 0.2 * math.sin(math.pi * c) * s ** 2))
+        _membrane(verts, fcs, fan, 8, 8)
+    def inner(s, c):
+        c = c * (1.0 - 0.22 * math.sin(math.pi * s) * c ** 2)    # the trailing edge scallops in
+        top = wrist.lerp(tips[2], c)          # s = 1: from the wrist along the last finger
+        bottom = root.lerp(body_trail, c)     # s = 0: along the body
+        return cup(bottom.lerp(top, s))
+    _membrane(verts, fcs, inner, 10, 10)
+    face_mats.extend([0] * (len(fcs) - len(face_mats)))
+    mem = sf.Shader("M_WingMembraneProc")
+    veins = mem.remap(mem.voronoi(70.0, 0.9, feature="DISTANCE_TO_EDGE"), 0.0, 0.04)
+    mem.bump(mem.math("SUBTRACT", 1.0, veins), 0.3, 0.0008)
+    bonesh = sf.Shader("M_WingBoneProc")
+    knob = bonesh.noise(120.0, 3.0)
+    bonesh.bump(knob, 0.25, 0.0008)
+    mats = [mem.out(_grey(mem, mem.math("ADD", 0.75, mem.math("MULTIPLY", veins, 0.25)), 0.7), 0.5),
+            bonesh.out(_grey(bonesh, bonesh.remap(knob, 0.3, 0.7), 0.75), 0.5)]
+    wing = bc.mesh_object("Wing", verts, fcs, mats, face_mats, fix_normals=False)
+    mats[0].name, mats[1].name = "M_WingMembrane", "M_WingBone"
+    baked = _bake([wing], "PartWing", {"M_WingMembrane": sf.tint(_lin("#B8A6C4")), "M_WingBone": sf.tint(_lin("#A08C84"))},
+                  tolerance=0.00005)
+    pts = _check_pivot("wing", WING_SINK + 0.012)
+    foot = max(abs(p.y) for p in pts if p.z <= 0.01)
+    mp._check(sum(p.x for p in pts) < 0, "wing: cups toward -X (the right-hand piece ships)")
+
+    def fold(co):
+        if co.z > 0.02:
+            k = min(1.0, (co.z - 0.02) / 0.3)
+            co.y -= 0.12 * k
+            co.z -= 0.1 * k * k
+        return co
+
+    def flap(co):
+        k = max(0.0, co.z) / WING_SPAN
+        co.x -= 0.12 * k * k
+        return co
+
+    handles = _shape_keys(wing, [("H1_Fold", fold, "fingers furled back toward the tail"),
+                                 ("H2_Flap", flap, "the outer wing bent toward -X for the downstroke")])
+    rules = _rules("wing", round(foot, 3), WING_SINK + 0.012, "normal", ["spine", "limb"], 30, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature wing part (PROPOSED): a membrane wing on an arm and three finger struts, right-hand piece (mirrored for the left).",
+            "category": "part", "part_type": "wing", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_WingMembrane": 0.85, "M_WingBone": 0.5}, "revision": 1, **baked}
+
+
+# --- Antenna ----------------------------------------------------------------------------------------
+
+ANT_LEN = 0.24
+
+
+def build_antenna():
+    """A beaded feeler that rises from a socket, arcs forward (+Y) and out (+X), and ends in a sensory club.
+    Chiral. H1_Length lengthens it, H2_Droop lets the tip sag toward the tail."""
+    steps = 40
+    path = []
+    for i in range(steps + 1):
+        t = i / steps
+        a = 1.0 * t
+        path.append(Vector((0.03 * t * t, 0.11 * (1 - math.cos(a)) / (1 - math.cos(1.0)), -0.012 + (ANT_LEN + 0.012) * math.sin(a) / math.sin(1.0))))
+
+    def radius(i, a):
+        t = i / steps
+        if i == steps:
+            return 0.0
+        r = 0.0065 * (1.0 - 0.45 * t)
+        r *= 1.0 + 0.18 * max(0.0, math.cos(t * 18 * math.pi)) ** 4      # beaded segments
+        if t < 0.08:
+            r *= 1.0 + 1.4 * (1.0 - t / 0.08)                             # the socket bulb
+        if t > 0.82:
+            r = 0.012 * math.sqrt(max(0.0, 1.0 - ((t - 0.91) / 0.09) ** 2))   # the club
+        return r
+
+    verts, faces, face_ring = _tube(path, radius, 12)
+    face_mats = [1 if r >= int(0.82 * steps) else 0 for r in face_ring]
+    stalk = sf.Shader("M_AntennaProc")
+    rings = stalk.math("SINE", stalk.math("MULTIPLY", stalk.axis("Z"), 700.0))
+    stalk.bump(rings, 0.2, 0.0006)
+    club = sf.Shader("M_AntennaClubProc")
+    pits = club.remap(club.voronoi(400.0, 0.8), 0.0, 0.4)
+    club.bump(pits, 0.3, 0.0005)
+    mats = [stalk.out(_grey(stalk, stalk.remap(rings, -1.0, 1.0), 0.8), 0.45),
+            club.out(_grey(club, pits, 0.7), 0.4)]
+    ant = bc.mesh_object("Antenna", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_Antenna", "M_AntennaClub"
+    baked = _bake([ant], "PartAntenna", {"M_Antenna": sf.tint(_lin("#8E7A6A")), "M_AntennaClub": sf.tint(_lin("#D7B56A"))},
+                  tolerance=0.0002)
+    pts = _check_pivot("antenna", 0.015)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) > 0, "antenna: arcs out toward +X (the right-hand piece ships)")
+
+    def length(co):
+        if co.z > 0:
+            co.z *= 1.4
+            co.y *= 1.3
+        return co
+
+    def droop(co):
+        k = max(0.0, co.z) / ANT_LEN
+        co.y -= 0.06 * k ** 3
+        co.z -= 0.07 * k ** 3
+        return co
+
+    handles = _shape_keys(ant, [("H1_Length", length, "the feeler 40% longer"), ("H2_Droop", droop, "the tip sagged toward the tail")])
+    rules = _rules("antenna", round(foot, 3), 0.015, "normal", ["spine"], 60, 50, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature antenna part (PROPOSED): a beaded feeler ending in a pitted sensory club, right-hand piece (mirrored for the left).",
+            "category": "part", "part_type": "antenna", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_Antenna": 0.6, "M_AntennaClub": 0.1}, "revision": 1, **baked}
+
+
+# --- Tail spikes ------------------------------------------------------------------------------------
+
+def build_tail_spikes():
+    """Four bony spikes splayed in two pairs from a horny pad, for the tail cap (+Z out along the spine).
+    H1_Length lengthens them, H2_Splay spreads them wider."""
+    unit, ufaces = bc.icosphere(3)
+    pad = [(n.x * 0.05, n.y * 0.045, -0.02 + max(n.z, -0.2) * 0.035) for n in (Vector(co).normalized() for co in unit)]
+    verts, fcs = list(pad), list(ufaces)
+    face_mats = [0] * len(fcs)
+    spikes = [(0.035, 0.0, 0.004, 55.0, 0.13), (-0.035, 0.0, 0.004, -55.0, 0.13),
+              (0.02, 0.0, 0.03, 30.0, 0.1), (-0.02, 0.0, 0.03, -30.0, 0.1)]
+    for sx, sy, sz, ang, length in spikes:
+        d = Vector((math.sin(math.radians(ang)), 0.0, math.cos(math.radians(ang))))
+        base = Vector((sx, sy, sz)) - d * 0.015
+        path = [base + d * (length * t) + Vector((0.0, -0.02 * t * t, 0.01 * t * t)) for t in (0.0, 0.15, 0.3, 0.5, 0.7, 0.85, 1.0)]
+        v, f, _ = _tube(path, lambda i, a: 0.0 if i == 6 else 0.016 * (1.0 - i / 6) ** 0.9 * (1.0 + 0.05 * math.cos(4 * a)), 14)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    pad_sh = sf.Shader("M_SpikePadProc")
+    scutes = pad_sh.remap(pad_sh.voronoi(160.0, 0.8, feature="DISTANCE_TO_EDGE"), 0.0, 0.06)
+    pad_sh.bump(scutes, 0.35, 0.0008)
+    bone = sf.Shader("M_TailSpikeProc")
+    streak = bone.noise(70.0, 3.0, vector=mp._stretched(bone, (5.0, 5.0, 0.3)))
+    bone.bump(streak, 0.3, 0.001)
+    mats = [pad_sh.out(_grey(pad_sh, pad_sh.math("ADD", 0.7, pad_sh.math("MULTIPLY", scutes, 0.3)), 0.75), 0.55),
+            bone.out(_grey(bone, bone.remap(streak, 0.25, 0.75), 0.7), 0.3)]
+    obj = bc.mesh_object("TailSpikes", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name = "M_SpikePad", "M_TailSpike"
+    baked = _bake([obj], "PartTailSpikes", {"M_SpikePad": sf.tint(_lin("#9C8A7A")), "M_TailSpike": sf.tint(_lin("#E0D2B0"))})
+    pts = _check_pivot("tail_spikes", 0.03)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.03 or abs(co.x) > 0.05:
+            co.x *= 1.35
+            co.z = 0.03 + (co.z - 0.03) * 1.35 if co.z > 0.03 else co.z
+        return co
+
+    def splay(co):
+        if co.z > 0.0:
+            k = co.z / 0.12
+            co.x += 0.06 * k * (1 if co.x > 0 else -1)
+            co.z -= 0.02 * k
+        return co
+
+    handles = _shape_keys(obj, [("H1_Length", length, "spikes 35% longer"), ("H2_Splay", splay, "spikes spread wider")])
+    rules = _rules("tail_spikes", round(foot, 3), 0.03, "normal", ["spine"], 15, 20, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1); the pairs splay across the body's x."
+    return {"purpose": "Creature tail weapon part (PROPOSED): two pairs of bony spikes splayed from a horny pad on the tail tip.",
+            "category": "part", "part_type": "tail_spikes", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_SpikePad": 0.7, "M_TailSpike": 0.0}, "revision": 1, **baked}
+
+
+# --- Mandibles (mouth) --------------------------------------------------------------------------------
+
+MAND_LEN = 0.12
+
+
+def build_mandibles():
+    """A pincer mouth: a fleshy mouth collar with two curved horn jaws that meet at their tips across x,
+    each with three inner teeth. H1_Open swings the jaws apart 28 degrees each, H2_Length lengthens them."""
+    unit, ufaces = bc.icosphere(3)
+    collar = [(n.x * 0.045, n.y * 0.04, -0.015 + max(n.z, -0.3) * 0.03) for n in (Vector(co).normalized() for co in unit)]
+    verts, fcs = list(collar), list(ufaces)
+    face_mats = [0] * len(fcs)
+    for side in (1.0, -1.0):
+        path = []
+        for k in range(15):
+            t = k / 14
+            a = 1.3 * t
+            path.append(Vector((side * (0.03 + 0.03 * math.sin(a) - 0.07 * t ** 2.2), 0.0, 0.0 + MAND_LEN * math.sin(a * 0.95) / math.sin(1.3 * 0.95))))
+        v, f, _ = _tube(path, lambda i, a: 0.0 if i == 14 else 0.013 * (1.0 - i / 14) ** 0.7 * math.sqrt((1.0 * math.cos(a)) ** 2 + (0.7 * math.sin(a)) ** 2), 14)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([1] * (len(fcs) - len(face_mats)))
+        for t in (0.35, 0.55, 0.75):
+            k = t * 14
+            p = path[int(k)].lerp(path[min(14, int(k) + 1)], k - int(k))
+            inward = Vector((-side, 0.0, 0.25)).normalized()
+            tooth = [p + inward * (0.004 + 0.016 * u) for u in (0.0, 0.5, 1.0)]
+            v, f, _ = _tube(tooth, lambda i, a: 0.0 if i == 2 else 0.005 * (1.0 - i / 2.0), 8)
+            bc.append(verts, fcs, v, f)
+            face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    flesh = sf.Shader("M_MandibleCollarProc")
+    wr = flesh.noise(150.0, 3.0)
+    flesh.bump(wr, 0.3, 0.0008)
+    horn = sf.Shader("M_MandibleProc")
+    streak = horn.noise(80.0, 3.0, vector=mp._stretched(horn, (5.0, 5.0, 0.3)))
+    horn.bump(streak, 0.25, 0.001)
+    mats = [flesh.out(_grey(flesh, flesh.remap(wr, 0.3, 0.7), 0.8), 0.6),
+            horn.out(_grey(horn, horn.remap(streak, 0.25, 0.75), 0.6), 0.25)]
+    obj = bc.mesh_object("Mandibles", verts, fcs, mats, face_mats)
+    mats[0].name, mats[1].name = "M_MandibleCollar", "M_Mandible"
+    baked = _bake([obj], "PartMandibles", {"M_MandibleCollar": sf.tint(_lin("#B98476")), "M_Mandible": sf.tint(_lin("#5A4438"))})
+    pts = _check_pivot("mandibles", 0.03)
+    foot = _footprint(pts)
+
+    def open_(co):
+        if co.z <= 0.005 or abs(co.x) < 0.01 and co.z < 0.02:
+            return co
+        side = 1.0 if co.x > 0 else -1.0
+        hinge = Vector((side * 0.03, 0.0, 0.0))
+        rot = Matrix.Rotation(math.radians(28.0) * side, 3, "Y") @ (co - hinge)
+        return hinge + rot
+
+    def length(co):
+        if co.z > 0.01:
+            co.z = 0.01 + (co.z - 0.01) * 1.4
+        return co
+
+    handles = _shape_keys(obj, [("H1_Open", open_, "jaws swung apart 28 degrees each about their roots"),
+                                ("H2_Length", length, "jaws 40% longer")])
+    rules = _rules("mandibles", round(foot, 3), 0.03, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules["handles"] = handles
+    return {"purpose": "Creature mouth part (PROPOSED): a pincer mouth of two toothed horn jaws on a fleshy collar, opening on a shape key.",
+            "category": "part", "part_type": "mandibles", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_MandibleCollar": 0.8, "M_Mandible": 0.0}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -765,6 +1064,10 @@ ASSETS = {
     "cpart_hand": (build_hand, 2500),
     "cpart_crest": (build_crest, 1200),
     "cpart_tail_fluke": (build_tail_fluke, 1200),
+    "cpart_wing": (build_wing, 2500),
+    "cpart_antenna": (build_antenna, 1200),
+    "cpart_tail_spikes": (build_tail_spikes, 1200),
+    "cpart_mandibles": (build_mandibles, 1200),
 }
 
 

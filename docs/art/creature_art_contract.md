@@ -151,7 +151,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds nine parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds thirteen parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -164,6 +164,10 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_hand` | hand, `normal`, limb_end, grasper | 871 | H1_Grip, H2_Spread | Three knuckled fingers and an opposed thumb with rounded pads |
 | `cpart_crest` | crest, `normal`, spine, centreline required | 526 | H1_Raise, H2_Fold | Five spines with a scalloped web; sinks 0.02 m |
 | `cpart_tail_fluke` | tail_fluke, `normal`, spine, centreline required | 424 | H1_Span, H2_Beat | Notched crescent for the tail cap (spine_u = 1); the blade spreads across x |
+| `cpart_wing` | wing, `normal`, chiral, spine or limb | 1542 | H1_Fold, H2_Flap | Arm bone and three finger struts with a scalloped membrane; cups toward -X on the right-hand piece |
+| `cpart_antenna` | antenna, `normal`, chiral | 656 | H1_Length, H2_Droop | Beaded feeler with a pitted sensory club; arcs forward and out to +X |
+| `cpart_tail_spikes` | tail_spikes, `normal`, spine, centreline required | 468 | H1_Length, H2_Splay | Two pairs of bony spikes on a horny pad for the tail cap |
+| `cpart_mandibles` | mandibles, `forward_cone`, centreline required | 596 | H1_Open, H2_Length | Two toothed horn jaws on a fleshy collar, meeting across x |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 
