@@ -10,6 +10,7 @@ const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const Yardstick := preload("res://tests/cost_yardstick.gd")
+const Scenarios := preload("res://tests/m1_scenarios.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
@@ -54,7 +55,11 @@ const PERTURBATIONS: PackedStringArray = ["creature position.x by one float32 st
 	"creature heading", "creature health", "creature energy", "a cooldown", "phase_tick", "target", "lock_heading",
 	"a seen position", "an ignore entry", "landed_on", "the brain RNG", "the field RNG", "a queue at_tick",
 	"engaged_on_player", "the AI frozen switch", "the hidden switch", "the cell's death", "the shelter's end",
-	"the death streak"]
+	"the death streak", "fear_of", "two posts", "post", "post_since"]
+## creatures_m1.json's relationships block with every rule on (spine 4.2; S2 plan B.6).
+const RELATIONSHIPS_ON := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
 
 var catalog: PartCatalog
 var fixture: PoolLayout
@@ -1623,6 +1628,46 @@ func _perturb(s: PoolSim, what: String) -> void:
 			s.grace_until += 1
 		"the death streak":
 			s.death_streak += 1
+		"fear_of":
+			c.brain.fear_of = "c_9"
+		"two posts":
+			CreatureBrain.set_posts(c.brain, [{"home": c.brain.home, "heading": c.brain.home_heading, "territory": {}},
+				{"home": c.brain.home + Vector2(4.0, 0.0), "heading": 0.0, "territory": {}}])
+		"post":
+			c.brain.post = 1
+		"post_since":
+			c.brain.post_since += 1
+
+
+## S2G1 (plan B.6): every M1 pair lies inside the relationship shares, so with every rule switched on
+## the M1 threat scenarios hash exactly as their goldens. Scenarios.make, with the catalog's brain
+## configs built from the relationships block.
+func test_with_every_relationship_rule_on_the_m1_threat_scenarios_hash_as_their_goldens() -> void:
+	var goldens := Scenarios.load_goldens()
+	check(not goldens.is_empty(), "the goldens file loads")
+	for scenario in ["threats_forage", "threats_kiter"]:
+		var r := Lineage.found(401, Scenarios.BUILD_ID, catalog, Scenarios.BODY)
+		r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+		var ruled := SpeciesCatalog.load_from()
+		for id in ruled.configs:
+			var on := CreatureBrain.config(id, ruled.species[id], ruled.ai, RELATIONSHIPS_ON)
+			check(on != ruled.configs[id], "%s: %s's cfg has the rules on" % [scenario, id])
+			check(bool(on.engage_rule) and not is_inf(float(on.fear_radius_share)), "%s: %s fears and flees" % [scenario, id])
+			ruled.configs[id] = on
+		var sim := PoolSim.create(r.save, catalog, layout, ruled)
+		var bot: Object = Scenarios.KiterBot.new(401) if scenario == "threats_kiter" else ForageBot.new()
+		var kinds := {}
+		while sim.tick < 3600:
+			sim.step(bot.next_intent(sim))
+			for e in sim.drain_events():
+				kinds[e.type] = true
+			if sim.tick == 600 or sim.tick == 3600:
+				var got := Scenarios.record_of(scenario, 401, sim)
+				var why := Scenarios.difference(got, Scenarios.golden(goldens, scenario, 401, sim.tick))
+				check(why.is_empty(), "every rule on: " + why)
+		if scenario == "threats_kiter":
+			for kind in ["creature_noticed", "creature_tell"]:
+				check(kinds.has(kind), "the kiter run includes a %s: %s" % [kind, kinds.keys()])
 
 
 func test_without_creatures_the_species_machinery_changes_nothing_in_the_step_2_pool() -> void:

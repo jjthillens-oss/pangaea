@@ -29,16 +29,22 @@ func test_the_fixture_content_has_no_problems() -> void:
 
 
 ## The endless gates run on the fixture world until the real tiles land, so its settings must be the
-## shipped ones: only the note and the content paths differ.
+## shipped ones: only the note, the content paths and switches.growth differ. Growth is off there, so
+## S1's gates on it keep S1's endless world (docs/s2/s2-build-plan.md BP-6).
 func test_the_fixture_world_has_the_shipped_settings() -> void:
 	var fixture: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WORLD))
 	var shipped: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
 	check_eq(fixture.keys(), shipped.keys(), "the same keys in the same order")
 	for key in shipped:
-		if key not in ["note", "content"]:
+		if key not in ["note", "content", "switches"]:
 			check_eq(fixture[key], shipped[key], key)
 	check_eq(fixture.content.keys(), shipped.content.keys(), "the same content keys")
 	check(str(fixture.content.home).begins_with("res://tests/fixtures/world/"), "fixture paths")
+	check_eq(fixture.switches.keys(), shipped.switches.keys(), "the same switches in the same order")
+	for key in shipped.switches:
+		if key != "growth":
+			check_eq(fixture.switches[key], shipped.switches[key], "switches." + key)
+	check_eq([fixture.switches.growth, shipped.switches.growth], [false, true], "growth off in the fixture, on in the game")
 
 
 func test_an_unknown_fixed_rare_kind_is_a_problem() -> void:

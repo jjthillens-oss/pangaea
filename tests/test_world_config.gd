@@ -2,7 +2,9 @@ extends TestCase
 ## The endless world's settings (game/data/world_cell.json, S1): the shipped file passes its checks,
 ## each rule of docs/s1/s1-interfaces.md section 4.1 refuses the mistake it is for, unknown and
 ## missing keys are refused with their JSON path (G24), the --world override, the size ladder's
-## units, and the cross-file numbers the rings and caps rest on.
+## units, and the cross-file numbers the rings and caps rest on. S2 (docs/s2/s2-sim.md 3.10 and 4.1,
+## docs/s2/s2-build-plan.md 7.3): the growth, second_size and ladder blocks and the new switches,
+## each of their rules with a failing case (S2G29), and the size ladder's tm_to_am and k.
 
 ## Existing paths that stand in for the content in the rule cases, so a case's one problem is its own.
 const PRESENT_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
@@ -55,7 +57,35 @@ func test_the_shipped_world_cell_has_no_problems() -> void:
 	check_eq(config.arrangement.fixed_rare.tile, Vector2i(2, -1), "the fixed rare tile")
 	check_eq(config.arrangement.fixed_rare.kind, "giant_husk", "is the giant husk")
 	check_eq(config.content.tiles, {"0": "res://game/data/tiles/b0"}, "band 0 tiles")
-	check_eq(config.switches.generated_creatures, true, "tile creatures on")
+	check_eq(config.switches, {"generated_creatures": true, "growth": true, "lumps": true, "habits": true},
+		"tile creatures, growth, lumps and habits on")
+	check_eq(config.max_size_in_build, 2, "S2's top is size 2 (BP-5)")
+
+
+## The S2 numbers as s2-sim 4.1 and the build plan (BP-4, D-60, D-68) give them.
+func test_the_shipped_growth_ladder_and_second_size() -> void:
+	var config := WorldConfig.load_from()
+	var g := config.growth
+	check_eq(g.trigger, "auto", "the sim's default trigger (BP-3: the player's comes through the intent)")
+	check_eq(g.rings, PackedFloat64Array([90, 120, 150, 170, 180, 190, 200, 205, 210]), "a ring per size 1 to 9")
+	check_eq([g.drain_floor_share, g.drain_ring_seconds], [0.8, 180.0], "the drain")
+	check_eq([g.calm_ticks, g.quiet_ticks, g.chase_window_ticks], [90, 120, 60], "the calm window, as ticks")
+	check(g.calm_ticks is int and g.beat_loads_per_tick is int and g.prefetch_per_tick is int and g.remnants.cap is int
+		and g.top_payout_points is int, "counts are ints")
+	check_eq([g.chase_close_tm, g.chase_track_tm, g.wedge_tm], [1.0, 15.0, 2.0], "the chase and wedge lengths")
+	check_eq([g.showcase_s, g.blocked_hint_s, g.shelter_s, g.beat_s, g.beat_loads_per_tick], [20.0, 3.0, 5.0, 2.0, 2], "times and beat loads")
+	check_eq([g.death_meter_share, g.respawn_floor_share, g.respawn_cap_over_death, g.top_payout_points], [0.25, 0.8, 20.0, 10],
+		"death, respawn and the top payout")
+	check_eq([g.prefetch_share, g.prefetch_per_tick], [0.9, 1], "the prefetch (BP-4)")
+	check_eq(g.lumps, {"threat_kill": 0.15, "place": 0.10, "landmark_at_top": 0.10, "food_look": 0.05, "kill_carcass_share": 0.25}, "lumps")
+	check_eq(g.remnants, {"cap": 12, "min_rel": 0.45, "morsel_min_rel": 0.25, "life_s": 30.0, "morsel_max_radius_tm": 0.225,
+		"morsel_rot_s": 120.0}, "remnants")
+	check_eq(g.discovery, {"place_find_tm": 10.0, "landmark_find_tm": 6.0}, "discovery")
+	check_eq(config.second_size, {"zone_thin_share": 0.4}, "a thin zone keeps 0.4 of its capacity (D-60)")
+	check_eq(config.ladder.labels.size(), WorldConfig.MAX_SIZE, "a label per size")
+	check_eq([config.ladder.labels[0], config.ladder.labels[1]], ["about 20 µm", "about 32 µm"], "sizes 1 and 2")
+	check_eq(config.ladder.food_looks, [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "carrion"}],
+		"plankton at size 1, the algae ball at size 2")
 
 
 func test_each_rule_has_a_failing_case() -> void:
@@ -65,7 +95,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		["mode", "lake", "world_cell.mode: 'lake'"],
 		["gen_version", 0, "world_cell.gen_version:"],
 		["sizes.start", 2, "world_cell.sizes.start:"],
-		["sizes.max_in_build", 2, "world_cell.sizes.max_in_build: size 2 needs growth"],
+		["sizes.max_in_build", 3, "world_cell.sizes.max_in_build: size 3 is above this build's top (2"],
 		["sizes.max_in_build", 11, "world_cell.sizes.max_in_build: must be 1 to 10"],
 		["units.growth_factor", 1.5, "world_cell.units.growth_factor:"],
 		["units.band_factor", 2.5, "world_cell.units.band_factor:"],
@@ -104,6 +134,57 @@ func test_each_rule_has_a_failing_case() -> void:
 		["content.tiles", {"0": "res://game/data/tiles/nowhere"}, "world_cell.content.tiles.0:"],
 		["content.tiles", {}, "world_cell.content.tiles.0: missing"],
 		["switches.generated_creatures", "yes", "world_cell.switches.generated_creatures:"],
+		["switches.growth", "yes", "world_cell.switches.growth: must be true or false"],
+		["switches.lumps", 1, "world_cell.switches.lumps: must be true or false"],
+		["switches.habits", null, "world_cell.switches.habits: must be true or false"],
+		# Rule 10: the growth block.
+		["growth.trigger", "sometimes", "world_cell.growth.trigger: rule 10: 'sometimes'"],
+		["growth.trigger", 1, "world_cell.growth.trigger: must be text"],
+		["growth.rings", [90, 120], "world_cell.growth.rings: rule 10"],
+		["growth.rings", [90, 0, 150, 170, 180, 190, 200, 205, 210], "world_cell.growth.rings: rule 10"],
+		["growth.rings", [90, "a", 150, 170, 180, 190, 200, 205, 210], "world_cell.growth.rings.1: must be a number"],
+		["growth.rings", 90, "world_cell.growth.rings: must be a list"],
+		["growth.drain_floor_share", 0.0, "world_cell.growth.drain_floor_share: rule 10: a share"],
+		["growth.death_meter_share", 1.25, "world_cell.growth.death_meter_share: rule 10: a share"],
+		["growth.respawn_floor_share", -0.5, "world_cell.growth.respawn_floor_share: rule 10: a share"],
+		["growth.prefetch_share", 0.0, "world_cell.growth.prefetch_share: rule 10: a share"],
+		["growth.prefetch_share", 1.01, "world_cell.growth.prefetch_share: rule 10: a share"],
+		["growth.lumps.food_look", 0.0, "world_cell.growth.lumps.food_look: rule 10: a share"],
+		["growth.lumps.kill_carcass_share", 2.0, "world_cell.growth.lumps.kill_carcass_share: rule 10: a share"],
+		["growth.prefetch_per_tick", 0, "world_cell.growth.prefetch_per_tick: rule 10: must be 1 or more"],
+		["growth.prefetch_per_tick", 1.5, "world_cell.growth.prefetch_per_tick: must be a whole number"],
+		["growth.calm_ticks", 0, "world_cell.growth.calm_ticks: rule 10: must be 1 or more"],
+		["growth.beat_loads_per_tick", 0, "world_cell.growth.beat_loads_per_tick: rule 10: must be 1 or more"],
+		["growth.remnants.cap", 0, "world_cell.growth.remnants.cap: rule 10: must be 1 or more"],
+		["growth.remnants.cap", 2.5, "world_cell.growth.remnants.cap: must be a whole number"],
+		["growth.quiet_ticks", 60, "world_cell.growth.chase_window_ticks: rule 10: must be below quiet_ticks"],
+		["growth.chase_window_ticks", 120, "world_cell.growth.chase_window_ticks: rule 10: must be below quiet_ticks"],
+		["growth.drain_ring_seconds", 0.0, "world_cell.growth.drain_ring_seconds: rule 10: must be above 0"],
+		["growth.wedge_tm", 0.0, "world_cell.growth.wedge_tm: rule 10: must be above 0"],
+		["growth.chase_track_tm", -1.0, "world_cell.growth.chase_track_tm: rule 10: must be above 0"],
+		["growth.beat_s", 0.0, "world_cell.growth.beat_s: rule 10: must be above 0"],
+		["growth.remnants.morsel_rot_s", 0.0, "world_cell.growth.remnants.morsel_rot_s: rule 10: must be above 0"],
+		["growth.discovery.landmark_find_tm", 0.0, "world_cell.growth.discovery.landmark_find_tm: rule 10: must be above 0"],
+		["growth.respawn_cap_over_death", -1.0, "world_cell.growth.respawn_cap_over_death: rule 10: must be 0 or more"],
+		["growth.top_payout_points", -1, "world_cell.growth.top_payout_points: rule 10: must be 0 or more"],
+		["growth.top_payout_points", 0.5, "world_cell.growth.top_payout_points: must be a whole number"],
+		# D-68: the conversion thresholds are the ladder's.
+		["growth.remnants.min_rel", 0.5, "world_cell.growth.remnants.min_rel: rule 10: must be 0.45"],
+		["growth.remnants.morsel_min_rel", 0.2, "world_cell.growth.remnants.morsel_min_rel: rule 10: must be 0.25"],
+		# Rule 11: the second size (D-60).
+		["second_size.zone_thin_share", 0.0, "world_cell.second_size.zone_thin_share: rule 11"],
+		["second_size.zone_thin_share", 1.5, "world_cell.second_size.zone_thin_share: rule 11"],
+		# Rule 12: the ladder.
+		["ladder.labels", ["a", "b", "c", "d", "e", "f", "g", "h", "i"], "world_cell.ladder.labels: rule 12"],
+		["ladder.labels", ["a", "b", "c", "d", "", "f", "g", "h", "i", "j"], "world_cell.ladder.labels: rule 12"],
+		["ladder.labels", ["a", "b", "c", "d", 5, "f", "g", "h", "i", "j"], "world_cell.ladder.labels.4: must be text"],
+		["ladder.food_looks", [{"plant": "plankton", "meat": "carrion"}], "world_cell.ladder.food_looks: rule 12: 1 looks for 2 sizes"],
+		["ladder.food_looks", [{"plant": "plankton", "meat": "carrion"}, {"plant": "kelp", "meat": "carrion"}],
+			"world_cell.ladder.food_looks[1].plant: rule 12: 'kelp'"],
+		["ladder.food_looks", [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "fish"}],
+			"world_cell.ladder.food_looks[1].meat: rule 12: 'fish'"],
+		["ladder.food_looks", [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball"}],
+			"world_cell.ladder.food_looks[1].meat: missing"],
 	]
 	for c in cases:
 		var problems := _problems_after(c[0], c[1])
@@ -132,6 +213,51 @@ func test_unknown_and_missing_keys_are_refused_with_their_path() -> void:
 	check_eq(WorldConfig.from_dict([1]).validate(), PackedStringArray(["world_cell: must be an object"]), "the top")
 	var missing := WorldConfig.load_from("res://game/data/no_world.json")
 	check_eq(missing.validate(), PackedStringArray(["no_world.json: missing or not readable JSON"]), "never null")
+
+
+## S2G29: the S2 blocks refuse unknown and missing keys too, each named by its path.
+func test_the_s2_blocks_refuse_unknown_and_missing_keys() -> void:
+	var data := _base()
+	data.growth["ring"] = 90
+	_erase_at(data, "growth.lumps.place")
+	data.growth.remnants["leave_s"] = 3.0
+	_erase_at(data, "growth.discovery.place_find_tm")
+	data.second_size["zone_drop_share"] = 0.0
+	data.ladder.food_looks[1]["fish"] = "carrion"
+	_erase_at(data, "switches.habits")
+	check_eq(WorldConfig.from_dict(data).validate(), PackedStringArray(["world_cell.growth.ring: unknown key",
+		"world_cell.growth.lumps.place: missing", "world_cell.growth.remnants.leave_s: unknown key",
+		"world_cell.growth.discovery.place_find_tm: missing", "world_cell.second_size.zone_drop_share: unknown key",
+		"world_cell.ladder.food_looks[1].fish: unknown key", "world_cell.switches.habits: missing"]), "each by its path")
+	for key in ["growth", "second_size", "ladder"]:
+		var without := _base()
+		without.erase(key)
+		check_eq(WorldConfig.from_dict(without).validate(), PackedStringArray(["world_cell.%s: missing" % key]), "%s is required" % key)
+	var not_object := _base()
+	not_object.ladder.food_looks = ["plankton", {"plant": "algae_ball", "meat": "carrion"}]
+	check_eq(WorldConfig.from_dict(not_object).validate(), PackedStringArray(["world_cell.ladder.food_looks[0]: must be an object"]),
+		"a look is an object")
+
+
+## tm_to_am is the stream's frame factor and k turns a species' q = 1 lengths into a tile frame's bu
+## (D-39): both exact in float64 at the sizes S2 runs.
+func test_tm_to_am_is_second_size_and_k_follow_the_ladder() -> void:
+	check_eq([WorldConfig.tm_to_am(1), WorldConfig.tm_to_am(2)], [1.0, 1.6], "1 and 1.6 exactly")
+	check_eq(WorldConfig.tm_to_am(3), 1.6 * 1.6, "the product, the same on every platform")
+	for n in range(1, 11):
+		check_near(WorldConfig.tm_to_am(n), pow(WorldConfig.GROWTH_FACTOR, n - 1), 1e-9 * WorldConfig.tm_to_am(n), "size %d is 1.6^(n - 1)" % n)
+		# A bu is the same length at both sizes of a band: am per bu is band_factor^band.
+		check_near(WorldConfig.tm_to_am(n) * WorldConfig.bu_to_tm(n), pow(WorldConfig.BAND_FACTOR, WorldConfig.band_of(n)), 1e-9,
+			"size %d: am per bu" % n)
+	check_eq([WorldConfig.is_second_size(1), WorldConfig.is_second_size(2), WorldConfig.is_second_size(3), WorldConfig.is_second_size(4)],
+		[false, true, false, true], "the second size of each band")
+	check_eq([WorldConfig.k_of(1, 1), WorldConfig.k_of(1, 2), WorldConfig.k_of(2, 2)], [1.0, 1.0, 1.6], "band 0: 1, 1 and 1.6 exactly")
+	check_eq([WorldConfig.k_of(3, 3), WorldConfig.k_of(4, 4), WorldConfig.k_of(1, 3), WorldConfig.k_of(2, 4)], [1.0, 1.6, 0.390625, 0.625],
+		"band 1: exact powers of 1.6 and 0.625")
+	for c in range(1, 5):
+		for n in range(c, 7):
+			var formula := WorldConfig.tm_to_am(c) / pow(WorldConfig.BAND_FACTOR, WorldConfig.band_of(n))
+			check_near(WorldConfig.k_of(c, n), formula, 1e-12, "k(%d, %d) is tm_to_am(c) / 2.56^band(n)" % [c, n])
 
 
 func test_with_mode_overrides_the_mode_and_refuses_an_unknown_one() -> void:
