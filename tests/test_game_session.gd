@@ -221,6 +221,54 @@ func test_unsaved_changes_are_tracked() -> void:
 	check(session.dirty, "points changed")
 
 
+func test_a_tick_in_which_the_cell_grew_is_saved_at_once() -> void:
+	# S2 D-75: the scene hands each tick's events to after_events; a "grew" among them saves.
+	var session := GameSession.new(slot)
+	check(session.start_new("grazer", 40).ok, "started")
+	_play(session, 120)
+	Lineage.earn(session.sim.save, 3)
+	check(session.dirty, "points earned since the start's save")
+	var files := _files()
+	check_eq(session.after_events([]), {}, "a tick with no events saves nothing")
+	session.sim.step(SimIntent.new())
+	check_eq(session.after_events(session.sim.drain_events()), {}, "nor does a tick with no growth")
+	check_eq(session.after_events([{"type": "ate"}, {"type": "ring_full", "size": 1, "ring": 90.0}]), {},
+		"nor a full ring")
+	check_eq(_files(), files, "nothing was written")
+	check(session.dirty, "still unsaved")
+	var grew := {"type": "grew", "from": 1, "to": 2, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
+		"settled_to": Vector2.ZERO, "remnants": [], "morsels": [], "haze": [], "checkpoint_am": [0.0, 9.0, -1.5708, 2]}
+	var saved := session.after_events([{"type": "growth_began"}, grew, {"type": "chunk_loaded"}])
+	check(saved.get("ok", false), "a tick that grew is saved: %s" % [saved])
+	check_eq(session.last_save, saved, "as save_now saves")
+	check(not session.dirty, "nothing unsaved after it")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	check_eq(int(data.adaptation_points), session.sim.save.adaptation_points, "the file holds this tick's points")
+
+
+## Sets the endless world's size the way a growth leaves it, for the dirty test: only the number
+## (the frame and the chunks stay), which is all the session reads.
+func _set_size(sim: PoolSim, n: int) -> void:
+	sim.world.size = n
+
+
+func test_a_size_other_than_the_saved_one_is_an_unsaved_change() -> void:
+	var session := _endless(35)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(not session.dirty, "saved at size 1")
+	_set_size(sim, 2)
+	check(session.dirty, "a growth is an unsaved change, though the cell has not moved")
+	check(session.save_now().ok, "saved")
+	check(not session.dirty, "saved at size 2")
+	_set_size(sim, 1)
+	check(session.dirty, "and so is a size back down")
+	check(session.save_now().ok and not session.dirty, "saved again")
+	var pool := GameSession.new(SaveFolder.path("pool_slot.json"))
+	check(pool.start_new("grazer", 35).ok and not pool.dirty, "the pool is always size 1")
+
+
 func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more() -> void:
 	# Plan section 13: resolve_death() applies the death (and saves it, OD1); respawn_after_death()
 	# only brings the cell back. A step 2 caller that only respawns still pays once (test_pool_sim).
