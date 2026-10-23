@@ -329,6 +329,18 @@
         "game/scenes/pool/pool.tscn"
       ],
       "node": "Pool/Backdrop"
+    },
+    {
+      "id": "zone_lights",
+      "kind": "light",
+      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone, carrying zone_light.gdshader's soft additive cream light (micro-world plan C7). A light pool with no shape of its own, not a model.",
+      "types": [
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/zone_lights.gd"
+      ],
+      "node": "Pool/ZoneLights"
     }
   ]
 }

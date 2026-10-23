@@ -55,6 +55,8 @@ var _starve_pulse_t := 0.0
 
 ## The world's edge: the dish wall the collision stops the cell at, with its lip and shelf.
 @onready var rim_node: Node3D = %Rim
+## The sunlit patches: soft light under each plankton zone.
+@onready var zone_lights: ZoneLights = %ZoneLights
 @onready var rocks: RockField = %Rocks
 @onready var plankton_view: FoodView = %Plankton
 @onready var carrion_view: FoodView = %Carrion
@@ -146,6 +148,7 @@ func _build() -> void:
 		intent_provider = swim_input
 	hints.reset()
 	rocks.build(session.layout)
+	zone_lights.build(session.layout.zones)
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
@@ -159,16 +162,22 @@ func _build() -> void:
 	_fade_in()
 
 
-## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and both food
-## meshes draw once out of sight (warm_up_point), so their shaders are ready before play.
+## A short fade from the fluid's mid-tone hides the first frames, while the eat burst and the
+## warm-up meshes draw once out of sight (warm_up_point), so their shaders are ready before play.
 func _fade_in() -> void:
 	_fade.visible = true
 	_fade.modulate.a = 1.0
 	var hidden := warm_up_point(camera.global_transform)
-	cell_view.warm_up([plankton_view.food_mesh(), carrion_view.food_mesh()] as Array[Mesh], hidden)
+	cell_view.warm_up(warm_up_meshes(), hidden)
 	var tween := _fade.create_tween()
 	tween.tween_property(_fade, "modulate:a", 0.0, FADE_IN_S)
 	tween.tween_callback(_fade.hide)
+
+
+## What the start fade draws out of sight besides the eat burst: both food meshes, which first show
+## at a meal, and the zone light, whose patches may first come into view later.
+func warm_up_meshes() -> Array[Mesh]:
+	return [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh] as Array[Mesh]
 
 
 ## Where the shader warm-up draws for a camera at `view` (its global transform): its view axis at

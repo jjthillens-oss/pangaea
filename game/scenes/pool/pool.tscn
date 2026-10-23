@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://game/scenes/pool/pool.gd" id="1_pool"]
 [ext_resource type="Environment" path="res://game/scenes/pool/pool_environment.tres" id="2_env"]
@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://game/scenes/pool/starving_arrow.gd" id="14_arrow"]
 [ext_resource type="Script" path="res://game/scenes/pool/creature_layer.gd" id="15_creatures"]
 [ext_resource type="Shader" path="res://game/scenes/pool/backdrop.gdshader" id="16_backdrop"]
+[ext_resource type="Script" path="res://game/scenes/pool/zone_lights.gd" id="17_zones"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_backdrop"]
 shader = ExtResource("16_backdrop")
@@ -50,6 +51,10 @@ mesh = SubResource("PlaneMesh_backdrop")
 
 [node name="Rim" parent="." instance=ExtResource("3_rim")]
 unique_name_in_owner = true
+
+[node name="ZoneLights" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("17_zones")
 
 [node name="Rocks" type="Node3D" parent="."]
 unique_name_in_owner = true
