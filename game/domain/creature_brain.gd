@@ -409,8 +409,12 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 ## multiplier (ActorState.speed_multiplier()); a strike ignores it. The caller then moves the body
 ## (PoolArena.move) and clamps it to leash_disc().
 static func move_body(mem: Memory, m: Locomotion.MotionState, d: Dictionary, p: Phenotype, speed_mul: float, dt: float) -> void:
+	var mode := str(d.mode)
+	if mode == MODE_STEER:   # the usual one, ahead of the match (whose default it is)
+		Locomotion.steer(m, d.move, p, float(d.speed_mul) * speed_mul, dt)
+		return
 	var attack: Dictionary = mem.cfg.attack
-	match str(d.mode):
+	match mode:
 		MODE_BURST:
 			Locomotion.burst(m, float(d.face), float(attack.burst_speed))
 		MODE_GLIDE:
@@ -871,16 +875,17 @@ static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, aren
 	if arena != null:
 		way = arena.route_point(at, goal, float(me.radius), PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
 	var to := way - at
-	if to.length() < 1e-6:
+	var length := to.length()
+	if length < 1e-6:
 		return _coast(mem, share)
 	var throttle := 1.0
 	if arrive:
 		var top := maxf(float(me.speed) * share, 1e-3)
 		var brake := float(me.acceleration) * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
 		throttle = clampf(sqrt(2.0 * brake * at.distance_to(goal)) / top, 0.0, 1.0)
-	var out := _coast(mem, share)
-	out.move = to / to.length() * throttle
-	return out
+	# _coast's dictionary with the move in it, built once (its keys in its order).
+	return {"mode": MODE_STEER, "move": to / length * throttle, "speed_mul": share, "face": 0.0, "strike": false,
+		"target": mem.target, "feed": ""}
 
 
 static func _coast(mem: Memory, share: float) -> Dictionary:
