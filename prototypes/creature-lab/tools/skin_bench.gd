@@ -1,5 +1,5 @@
 extends SceneTree
-## Spine skin bench: GDScript builder versus the compute-shader builder on every spine test body, at the preview and
+## Skin bench: GDScript builder versus the compute-shader builder on every spine and Stage 1 test body, at the preview and
 ## bake grids. Checks that both give the same mesh and times them. The GPU path needs a Vulkan device:
 ## xvfb-run godot --path prototypes/creature-lab --rendering-method forward_plus --rendering-driver vulkan \
 ##   --script res://tools/skin_bench.gd
@@ -19,11 +19,11 @@ func _init() -> void:
 			"cpu": OS.get_processor_name(), "bodies": []}
 	print("GPU device: %s" % (gpu.device_name() if gpu.is_available() else "none (GDScript only)"))
 	var rules := Lab.rules()
-	for body_name in Lab.BODY_NAMES:
+	for body_name in Lab.BODY_NAMES + Lab.stage1_names():
 		var desc = Lab.body(body_name)
 		for divisions in [int(rules["preview_divisions"]), int(rules["bake_divisions"])]:
 			var cpu := SkinCpu.build(desc, divisions)
-			var row := {"body": body_name, "divisions": divisions, "vertebrae": desc.vertebrae.size(),
+			var row := {"body": body_name, "divisions": divisions, "vertebrae": desc.vertebrae.size(), "bones": desc.bone_count(),
 					"vertices": cpu["vertices"].size(), "triangles": cpu["indices"].size() / 3,
 					"cpu_ms": cpu["ms"], "watertight_cpu": MeshChecks.watertight(cpu["indices"]),
 					"topology_fixes": cpu["topology_fixes"]}
@@ -45,11 +45,17 @@ func _init() -> void:
 				row["same_topology"] = first["indices"] == cpu["indices"]
 				row["max_vertex_gap_cells"] = MeshChecks.max_vertex_gap(cpu["vertices"], first["vertices"]) / cpu["cell"]
 				row["watertight_gpu"] = MeshChecks.watertight(first["indices"])
+				row["same_bones"] = first["bones"] == cpu["bones"]
+				var gap := 0.0
+				for k in cpu["custom0"].size():
+					gap = maxf(gap, absf(cpu["custom0"][k] - first["custom0"][k]))
+				row["max_custom0_gap"] = gap
 			report["bodies"].append(row)
-			print("%-8s /%-3d %6d tris  GDScript %7.1f ms  GPU %s  same mesh %s  watertight %s"
+			print("%-16s /%-3d %6d tris  GDScript %7.1f ms  GPU %s  same mesh %s  same bones %s  paint gap %s  watertight %s"
 					% [body_name, divisions, row["triangles"], cpu["ms"]["total"],
 					("%6.1f ms" % row["gpu_ms_median"]) if row.has("gpu_ms_median") else "  n/a",
-					str(row.get("same_topology", "n/a")), str(row["watertight_cpu"])])
+					str(row.get("same_topology", "n/a")), str(row.get("same_bones", "n/a")),
+					str(snappedf(row.get("max_custom0_gap", -1.0), 0.0001)), str(row["watertight_cpu"])])
 	gpu.free_resources()
 	var f := FileAccess.open("res://results/skin_bench.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(report, "\t", false, true) + "\n")
