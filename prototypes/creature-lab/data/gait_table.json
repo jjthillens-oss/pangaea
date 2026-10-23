@@ -9,13 +9,30 @@
 	"min_rel_stride": 0.25,
 	"swing_lift_ratio": 0.2,
 	"max_swing_time": 0.5,
+	"min_swing_time": 0.12,
 	"band_hysteresis": 0.1,
+	"phase_coupling": 1.0,
 	"accel_cycles": 1.0,
 	"settle_threshold_ratio": 0.15,
 	"settle_idle_time": 0.25,
 	"bands": [
-		{"name": "walk", "fr_max": 0.4, "duty": 0.65, "pattern": "walk"},
-		{"name": "trot", "fr_max": 1.5, "duty": 0.45, "pattern": "trot"},
-		{"name": "run", "fr_max": 3.0, "duty": 0.30, "pattern": "trot"}
+		{
+			"name": "walk",
+			"fr_max": 0.4,
+			"duty": 0.65,
+			"pattern": "walk"
+		},
+		{
+			"name": "trot",
+			"fr_max": 1.5,
+			"duty": 0.45,
+			"pattern": "trot"
+		},
+		{
+			"name": "run",
+			"fr_max": 3.0,
+			"duty": 0.3,
+			"pattern": "trot"
+		}
 	]
 }
