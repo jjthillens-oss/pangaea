@@ -112,6 +112,9 @@ var _by_site := {}
 var _str_brain := WorldHash.str32("brain")
 var _str_respawn := WorldHash.str32("respawn")
 var _senses := {}       ## species id -> {"sight", "fov" (radians, whole), "near"}
+## Endless mode: a sleeper's brain may hold events (it went to sleep with some, or a hook on every
+## brain gave it some), so the next take_events scans every creature; otherwise the awake ones only.
+var _scan_all := true
 
 
 ## `seed_value` is the encounter seed (PoolSim: world seed x SEED_STRIDE + 3). Sets each species'
@@ -294,6 +297,7 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	var token_at := engaged_on_player.find(c.id)
 	if token_at >= 0:
 		engaged_on_player.remove_at(token_at)
+	_scan_all = true   # the hooks below reach sleepers too
 	for other in creatures:
 		if other.brain != null:
 			CreatureBrain.on_target_gone(other.brain, c.id, tick)
@@ -378,6 +382,7 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 ## what it had seen (B-21: it re-decides on waking), and every awake brain forgets it as if it had
 ## gone, the token following.
 func sleep(c: Creature, tick: int) -> void:
+	_scan_all = true   # its brain may still hold events
 	c.asleep = true
 	_release_slot(c)
 	_awake.erase(c)
@@ -571,8 +576,10 @@ func update_token(c: Creature, tick: int) -> void:
 ## Field events plus every creature's brain events (each with its creature's id, and its position
 ## when the brain gave none), in creature order, oldest first; clears them.
 func take_events() -> Array[Dictionary]:
-	for c in creatures:
-		if c.brain == null:
+	var scan: Array[Creature] = _awake if endless and not _scan_all else creatures
+	_scan_all = false
+	for c in scan:
+		if c.brain == null or c.brain.events.is_empty():
 			continue
 		for e in c.brain.events:
 			var tagged: Dictionary = e.duplicate()
@@ -639,6 +646,8 @@ func _add(c: Creature) -> void:
 		"position": c.motion.position, "heading": c.motion.heading, "debug": c.debug}
 	if endless:
 		spawned["asleep"] = c.asleep
+		if c.asleep:
+			_scan_all = true
 	events.append(spawned)
 
 

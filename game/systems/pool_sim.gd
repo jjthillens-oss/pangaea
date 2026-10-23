@@ -858,6 +858,7 @@ func _clear_point_near(p: Vector2, r: float) -> Vector2:
 ## home and heading now, and every brain forgets the cell, `killer` ignoring it for killer_ignore_s;
 ## the token is freed. Returns the ids sent home, sorted. A scripted body has no home and stays.
 func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
+	creatures._scan_all = true   # every brain is told, sleepers too
 	var minded: Array[Dictionary] = []
 	for c in creatures.creatures:
 		if c.brain != null:
@@ -1231,6 +1232,7 @@ func _food_item(id: String) -> Dictionary:
 
 ## Every brain forgets the cell, as if it had left the world (target_gone), and the token is freed.
 func _forget_player_everywhere() -> void:
+	creatures._scan_all = true   # every brain is told, sleepers too
 	for c in creatures.creatures:
 		if c.brain != null:
 			CreatureBrain.on_target_gone(c.brain, CreatureField.PLAYER_ID, tick)
