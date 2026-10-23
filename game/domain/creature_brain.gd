@@ -68,6 +68,10 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
+# The brain's lengths and its one speed below are the defaults config() copies into cfg; the brain
+# reads them from cfg only, so scale_cfg() can scale them for a creature drawn below its entry size
+# (S2, plan B.6). tests/test_brain_sources.gd holds this file to that.
+
 ## m: home is reached within this (the plan's arrival distance).
 const ARRIVE_HOME_M := 0.3
 ## m: a resting creature pushed farther than this from home (by a body or a rock) swims back.
@@ -98,6 +102,43 @@ const CANCEL_RECOVER_TICKS := 24
 const FLEE_LOOKAHEAD_M := 4.0
 ## m: this close to the leash circle, fleeing slides along it instead of pushing out.
 const FLEE_EDGE_M := 1.0
+## m: an elder rammer moves to its other post only when the cell is this much nearer that post's zone
+## (D-23; a species' habit.post_hysteresis_m overrides it).
+const POST_HYSTERESIS_M := 2.0
+## m: the lengths cfg takes from other classes (D-55): InteractionResolver's feed, bite and ram
+## reaches and PoolArena's routing clearance and margin. They are copied here, never named, so a
+## creature's own copies scale with the rest of its cfg; tests/test_brain_sources.gd checks they
+## still equal the originals.
+const WORLD_LENGTHS := {"feed_reach": 0.25, "bite_reach": 0.3, "ram_reach": 0.35, "route_margin": 0.6,
+	"route_clearance": 0.1}
+## What each cfg key measures (D-25), by its path in config()'s dictionary ("attack.burst_speed"):
+## "length" and "speed" are multiplied by q at another size (scale_cfg); "time", "rate", "share",
+## "count", "angle", "text" and "flag" are kept. The list is closed: key_kind() of a key missing here
+## is "", which the classification walk in tests/test_brain_sources.gd refuses.
+const KEY_KINDS := {
+	"species_id": "text", "behavior": "text", "post_switch": "text", "engage_rule": "flag",
+	"think_ticks": "time", "engaged_think_ticks": "time", "dead_reckon_ticks": "time", "unreachable_ticks": "time",
+	"settle_ticks": "time", "memory_ticks": "time", "notice_ticks": "time", "give_up_ticks": "time",
+	"forage_timeout_ticks": "time", "forage_retry_ticks": "time", "refractory_ticks": "time",
+	"nav_timeout_ticks": "time", "rest_ticks": "time", "flee_ticks": "time", "post_rest_ticks": "time",
+	"return_fail_limit": "count",
+	"hungry_below": "share", "full_above": "share", "flee_below": "share", "prey_max_radius_share": "share",
+	"intruder_max_radius_share": "share", "fear_radius_share": "share", "share_tolerance": "share",
+	"speeds.wander": "share", "speeds.forage": "share", "speeds.pursue": "share", "speeds.flee": "share",
+	"unreachable_min_m": "length", "intruder_min_radius": "length", "leash_m": "length", "forage_radius_m": "length",
+	"territory_margin_m": "length", "territory_exit_m": "length",
+	"arrive_home_m": "length", "home_slack_m": "length", "arrive_goal_m": "length", "face_at_standoff_m": "length",
+	"leash_give_up_m": "length", "forage_patrol_m": "length", "patrol_inset_m": "length",
+	"default_territory_m": "length", "flee_lookahead_m": "length", "flee_edge_m": "length",
+	"feed_reach": "length", "route_margin": "length", "route_clearance": "length", "post_hysteresis_m": "length",
+	"tell_start_max_speed": "speed", "approach_wait_mps": "speed",
+	"attack.kind": "text", "attack.tell": "text", "attack.aim": "angle", "attack.lead_s": "time",
+	"attack.tell_ticks": "time", "attack.burst_ticks": "time", "attack.glide_ticks": "time",
+	"attack.recover_ticks": "time", "attack.blocked_recover_ticks": "time", "attack.glide_drag": "rate",
+	"attack.start_min_m": "length", "attack.start_max_m": "length", "attack.standoff_m": "length",
+	"attack.lead_cap_m": "length", "attack.reach": "length", "attack.travel": "length",
+	"attack.burst_speed": "speed", "attack.knockback": "speed",
+}
 ## Random goal tries (each must be clear of rocks) before falling back to home.
 const GOAL_TRIES := 12
 ## rad: a striking creature is blocked by a rock it touches within this of its heading (60 degrees).
@@ -190,10 +231,19 @@ static func ticks(seconds: Variant) -> int:
 ## A brain's cfg from a species block and the shared "ai" block of creatures_m1.json: every duration
 ## in ticks, angles in radians, and the strike's travel and reach worked out. SpeciesCatalog builds
 ## it once at load (and validates the data); tests build it from inline blocks.
-static func config(species_id: String, species: Dictionary, ai: Dictionary) -> Dictionary:
+##
+## S2 adds the brain's own lengths (the constants above, WORLD_LENGTHS and the species' habit), and
+## the relationship rules from creatures_m1.json's "relationships" block (D-18), each behind its
+## switch in relationships.rules: prey_share sets prey_max_radius_share to the block's (rule 1);
+## intruder_share sets intruder_max_radius_share (rule 2; INF when off); fear sets fear_radius_share
+## (rule 3; INF when off); no_engage_above sets engage_rule (rule 4). An absent block is every rule
+## off, so the cfg decides exactly as M1's did.
+static func config(species_id: String, species: Dictionary, ai: Dictionary, relationships := {}) -> Dictionary:
 	var attack: Dictionary = species.get("attack", {})
 	var senses: Dictionary = species.get("senses", {})
 	var flee: Dictionary = species.get("flee", {})
+	var habit: Dictionary = species.get("habit", {})
+	var rules: Dictionary = relationships.get("rules", {})
 	var kind := str(attack.get("kind", ""))
 	var a := {
 		"kind": kind, "tell": str(attack.get("tell", "")),
@@ -205,11 +255,14 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"glide_drag": float(attack.get("glide_drag", 0.0)), "recover_ticks": ticks(attack.get("recover_s", 0.0)),
 		"blocked_recover_ticks": ticks(attack.get("blocked_recover_s", 0.0)),
 		"knockback": float(attack.get("knockback", 0.0)),
-		"reach": InteractionResolver.BITE_REACH if kind == "bite" else InteractionResolver.RAM_REACH,
+		"reach": float(WORLD_LENGTHS.bite_reach) if kind == "bite" else float(WORLD_LENGTHS.ram_reach),
 	}
 	a["travel"] = Locomotion.strike_travel(a.burst_speed, a.burst_ticks, a.glide_drag, a.glide_ticks, DT)
 	var rest: Array = species.get("rest_s", [0.0, 0.0])
 	var speeds: Dictionary = species.get("speeds", {})
+	var prey_share := float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT))
+	if rules.get("prey_share", false):
+		prey_share = float(relationships.prey_share)
 	return {
 		"species_id": species_id, "behavior": str(species.get("behavior", "")),
 		"think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("think_hz", 10.0)))),
@@ -224,7 +277,11 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"memory_ticks": ticks(senses.get("memory_s", 2.0)),
 		"speeds": {"wander": float(speeds.get("wander", 0.5)), "forage": float(speeds.get("forage", 0.5)),
 			"pursue": float(speeds.get("pursue", 1.0)), "flee": float(speeds.get("flee", 1.0))},
-		"prey_max_radius_share": float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT)),
+		"prey_max_radius_share": prey_share,
+		"intruder_max_radius_share": float(relationships.intruder_max_radius_share) if rules.get("intruder_share", false) else INF,
+		"fear_radius_share": float(relationships.fear_radius_share) if rules.get("fear", false) else INF,
+		"engage_rule": bool(rules.get("no_engage_above", false)),
+		"share_tolerance": float(relationships.get("tolerance", Relationships.TOLERANCE)),
 		"intruder_min_radius": float(species.get("intruder_min_radius", 0.0)),
 		"notice_ticks": ticks(species.get("notice_s", 0.5)), "give_up_ticks": ticks(species.get("give_up_s", 5.0)),
 		"leash_m": float(species.get("leash_m", 0.0)),
@@ -237,8 +294,49 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"territory_exit_m": float(species.get("territory_exit_m", 0.0)),
 		"rest_ticks": [ticks(rest[0]), ticks(rest[1])] if rest.size() == 2 else [0, 0],
 		"flee_below": float(flee.get("below_health_share", 0.0)), "flee_ticks": ticks(flee.get("for_s", 0.0)),
+		"arrive_home_m": ARRIVE_HOME_M, "home_slack_m": HOME_SLACK_M, "arrive_goal_m": ARRIVE_GOAL_M,
+		"face_at_standoff_m": FACE_AT_STANDOFF_M, "leash_give_up_m": LEASH_GIVE_UP_M, "forage_patrol_m": FORAGE_PATROL_M,
+		"patrol_inset_m": PATROL_INSET_M, "default_territory_m": DEFAULT_TERRITORY_M,
+		"flee_lookahead_m": FLEE_LOOKAHEAD_M, "flee_edge_m": FLEE_EDGE_M, "approach_wait_mps": APPROACH_WAIT_MPS,
+		"feed_reach": float(WORLD_LENGTHS.feed_reach), "route_margin": float(WORLD_LENGTHS.route_margin),
+		"route_clearance": float(WORLD_LENGTHS.route_clearance),
+		"post_switch": str(habit.get("post_switch", "")), "post_rest_ticks": ticks(habit.get("post_rest_s", 0.0)),
+		"post_hysteresis_m": float(habit.get("post_hysteresis_m", POST_HYSTERESIS_M)),
 		"attack": a,
 	}
+
+
+## The cfg of a creature drawn at q times its entry-size self (S2, plan B.6): every "length" and
+## "speed" key (key_kind) multiplied by q, the rest kept, and the strike's travel worked out again
+## from the scaled burst speed (D-26: travel x q is not bit-equal to the strike's own flight). INF
+## stays INF. q == 1.0 returns a deep copy, equal to cfg.
+static func scale_cfg(cfg: Dictionary, q: float) -> Dictionary:
+	var out := cfg.duplicate(true)
+	if q == 1.0:
+		return out
+	_scale_lengths(out, "", q)
+	var a: Dictionary = out.get("attack", {})
+	if a.has("travel"):
+		a["travel"] = Locomotion.strike_travel(float(a.burst_speed), int(a.burst_ticks), float(a.glide_drag),
+			int(a.glide_ticks), DT)
+	return out
+
+
+## What a cfg key measures (KEY_KINDS), by its path: "attack.burst_speed" is "speed". "" for a key
+## the list does not know.
+static func key_kind(path: String) -> String:
+	return str(KEY_KINDS.get(path, ""))
+
+
+static func _scale_lengths(d: Dictionary, prefix: String, q: float) -> void:
+	for key in d.keys():
+		var path := prefix + str(key)
+		if d[key] is Dictionary:
+			_scale_lengths(d[key], path + ".", q)
+			continue
+		var kind := key_kind(path)
+		if kind == "length" or kind == "speed":
+			d[key] = float(d[key]) * q
 
 
 ## A new brain, resting at home and settling (it notices nothing for cfg.settle_ticks).
@@ -254,7 +352,7 @@ static func create(behavior: String, cfg: Dictionary, home: Vector2, home_headin
 	mem.rng.seed = seed_value
 	if behavior == TERRITORIAL:
 		mem.territory_center = territory.get("center", home)
-		mem.territory_r = float(territory.get("radius", DEFAULT_TERRITORY_M)) + float(cfg.territory_margin_m)
+		mem.territory_r = float(territory.get("radius", cfg.default_territory_m)) + float(cfg.territory_margin_m)
 	mem.ignore_all_until = tick + int(cfg.settle_ticks)
 	mem.state_tick = tick
 	if behavior == AMBUSH:
@@ -422,16 +520,15 @@ static func move_body(mem: Memory, m: Locomotion.MotionState, d: Dictionary, p: 
 			Locomotion.steer(m, d.move, p, float(d.speed_mul) * speed_mul, dt)
 
 
-## The danger lane of a strike from `origin` along `heading`: the body travels `travel` (the per-tick
-## burst and glide, Locomotion.strike_travel) and can hit a prey of radius `prey_radius` within its
-## own radius plus the weapon's reach. {"origin", "heading", "travel", "length" (travel + radius +
-## reach + prey radius), "half_width" (radius + reach + prey radius)}. The brain's leash check, the
-## view's floor lane, the gizmos and the tests all use this.
+## The danger lane of a strike from `origin` along `heading`: the body travels attack.travel (the
+## per-tick burst and glide, Locomotion.strike_travel, as config() or scale_cfg() worked it out) and
+## can hit a prey of radius `prey_radius` within its own radius plus attack.reach, the weapon's.
+## {"origin", "heading", "travel", "length" (travel + radius + reach + prey radius), "half_width"
+## (radius + reach + prey radius)}. The brain's leash check, the view's floor lane, the gizmos and the
+## tests all use this, so at any size the lane is the strike the cfg will run.
 static func strike_lane(attack: Dictionary, own_radius: float, prey_radius: float, origin: Vector2, heading: float) -> Dictionary:
-	var travel := Locomotion.strike_travel(float(attack.burst_speed), int(attack.burst_ticks), float(attack.glide_drag),
-		int(attack.glide_ticks), DT)
-	var reach := InteractionResolver.BITE_REACH if str(attack.kind) == "bite" else InteractionResolver.RAM_REACH
-	var half := own_radius + reach + prey_radius
+	var travel := float(attack.travel)
+	var half := own_radius + float(attack.reach) + prey_radius
 	return {"origin": origin, "heading": heading, "travel": travel, "length": travel + half, "half_width": half}
 
 
@@ -551,7 +648,7 @@ static func force_return(mem: Memory, forget_id: String, ignore_until: int, tick
 # --- think, per state ---
 
 static func _think_rest(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> void:
-	if mem.behavior == AMBUSH and Vector2(me.position).distance_to(mem.home) > HOME_SLACK_M:
+	if mem.behavior == AMBUSH and Vector2(me.position).distance_to(mem.home) > float(mem.cfg.home_slack_m):
 		_enter(mem, WANDER, RETURN_HOME, tick, me.position)
 		return
 	var found := _pick_new_target(mem, me, percepts, tick)
@@ -570,7 +667,7 @@ static func _think_watch(mem: Memory, me: Dictionary, tick: int) -> void:
 		mem.target = ""
 		_enter(mem, REST, LURK, tick)
 		return
-	if Vector2(me.position).distance_to(mem.home) > HOME_SLACK_M:
+	if Vector2(me.position).distance_to(mem.home) > float(mem.cfg.home_slack_m):
 		mem.target = ""
 		_enter(mem, WANDER, RETURN_HOME, tick, me.position)
 		return
@@ -595,7 +692,7 @@ static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: in
 		return
 	var at: Vector2 = me.position
 	if mem.phase == RETURN_HOME:
-		if at.distance_to(mem.home) <= ARRIVE_HOME_M:
+		if at.distance_to(mem.home) <= float(mem.cfg.arrive_home_m):
 			mem.return_fails = 0
 			mem.stuck = false
 			if mem.behavior == AMBUSH:
@@ -613,9 +710,9 @@ static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: in
 		return
 	# Patrol (territorial): a random clear point in the territory, then a rest.
 	if not mem.goal.is_finite() or tick - mem.goal_tick >= int(mem.cfg.nav_timeout_ticks):
-		_set_goal(mem, _random_point(mem, me, mem.territory_center, maxf(0.0, mem.territory_r - PATROL_INSET_M), arena), tick, at)
+		_set_goal(mem, _random_point(mem, me, mem.territory_center, maxf(0.0, mem.territory_r - float(mem.cfg.patrol_inset_m)), arena), tick, at)
 		return
-	if at.distance_to(mem.goal) <= ARRIVE_GOAL_M:
+	if at.distance_to(mem.goal) <= float(mem.cfg.arrive_goal_m):
 		_rest(mem, tick)
 		return
 	_check_progress(mem, me, tick)
@@ -640,7 +737,7 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 		for f in food:
 			if f.id == mem.food_id:
 				still = f
-		if still.is_empty() or not _touching(me, still):
+		if still.is_empty() or not _touching(mem, me, still):
 			_start_forage(mem, me, tick)
 		else:
 			mem.goal = still.position
@@ -663,7 +760,7 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 			_set_goal(mem, meal.position, tick, at)
 			mem.route_side = side
 		mem.goal = meal.position
-		if _touching(me, meal):
+		if _touching(mem, me, meal):
 			_enter(mem, FORAGE, EAT, tick)
 			return
 		_check_progress(mem, me, tick)
@@ -673,9 +770,9 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 		mem.food_id = ""
 		mem.goal = Vector2.INF
 	var stale := tick - mem.goal_tick >= int(mem.cfg.nav_timeout_ticks)
-	if not mem.goal.is_finite() or at.distance_to(mem.goal) <= ARRIVE_GOAL_M or stale:
+	if not mem.goal.is_finite() or at.distance_to(mem.goal) <= float(mem.cfg.arrive_goal_m) or stale:
 		var center := mem.home if mem.behavior == AMBUSH else mem.territory_center
-		var r := FORAGE_PATROL_M if mem.behavior == AMBUSH else maxf(0.0, mem.territory_r - PATROL_INSET_M)
+		var r := float(mem.cfg.forage_patrol_m) if mem.behavior == AMBUSH else maxf(0.0, mem.territory_r - float(mem.cfg.patrol_inset_m))
 		_set_goal(mem, _random_point(mem, me, center, r, arena), tick, at)
 		return
 	_check_progress(mem, me, tick)
@@ -729,7 +826,7 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 		return
 	if mem.behavior == AMBUSH and not _wants_chase(mem, me):
 		# A sated hunter that struck from watching goes back to watching, or home.
-		if Vector2(me.position).distance_to(mem.home) <= HOME_SLACK_M:
+		if Vector2(me.position).distance_to(mem.home) <= float(mem.cfg.home_slack_m):
 			_enter(mem, REST, WATCH, tick)
 		else:
 			_drop_target(mem)
@@ -827,7 +924,7 @@ static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolAren
 	var reach: Vector2 = standoff - disc.center
 	if reach.length() > float(disc.radius):
 		standoff = disc.center + reach / reach.length() * float(disc.radius)
-	if at.distance_to(standoff) <= FACE_AT_STANDOFF_M:
+	if at.distance_to(standoff) <= float(mem.cfg.face_at_standoff_m):
 		return _turn(mem, _face(me, target_at), share)
 	return _seek(mem, me, standoff, share, arena, true)
 
@@ -854,13 +951,13 @@ static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictio
 	# Near the leash circle, slide along it: drop the outward part of the way out.
 	var disc := leash_disc(mem)
 	var off: Vector2 = at - disc.center
-	if off.length() > float(disc.radius) - FLEE_EDGE_M and off.length() > 1e-6:
+	if off.length() > float(disc.radius) - float(mem.cfg.flee_edge_m) and off.length() > 1e-6:
 		var n := off / off.length()
 		var outward := away.dot(n)
 		if outward > 0.0:
 			away -= n * outward
 			away = away / away.length() if away.length() > 1e-3 else n.orthogonal()
-	return _seek(mem, me, at + away * FLEE_LOOKAHEAD_M, float(mem.cfg.speeds.flee), arena, false)
+	return _seek(mem, me, at + away * float(mem.cfg.flee_lookahead_m), float(mem.cfg.speeds.flee), arena, false)
 
 
 ## Steers toward `goal` (round the first rock in the way), slowing on arrival when `arrive` is set
@@ -869,7 +966,8 @@ static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, aren
 	var at: Vector2 = me.position
 	var way := goal
 	if arena != null:
-		way = arena.route_point(at, goal, float(me.radius), PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
+		way = arena.route_point(at, goal, float(me.radius), float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
+			mem.route_side)
 	var to := way - at
 	if to.length() < 1e-6:
 		return _coast(mem, share)
@@ -921,7 +1019,7 @@ static func _pick_food(mem: Memory, me: Dictionary, food: Array) -> Dictionary:
 	for f in food:
 		var at: Vector2 = f.position
 		# Food it cannot reach from inside its leash is no meal.
-		if at.distance_to(disc.center) > float(disc.radius) + float(me.radius) + float(f.radius) + InteractionResolver.FEED_REACH:
+		if at.distance_to(disc.center) > float(disc.radius) + float(me.radius) + float(f.radius) + float(mem.cfg.feed_reach):
 			continue
 		if mem.behavior == AMBUSH and at.distance_to(mem.home) > float(mem.cfg.forage_radius_m):
 			continue
@@ -945,7 +1043,7 @@ static func _give_up_reason(mem: Memory, me: Dictionary, tick: int) -> String:
 	var target_at := _reckon(mem, mem.target, tick)
 	if mem.behavior == AMBUSH:
 		var own := Vector2(me.position).distance_to(mem.home)
-		if own >= float(mem.cfg.leash_m) - LEASH_GIVE_UP_M and target_at.distance_to(mem.home) > own:
+		if own >= float(mem.cfg.leash_m) - float(mem.cfg.leash_give_up_m) and target_at.distance_to(mem.home) > own:
 			return "leash"
 	elif target_at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.leash_m):
 		return "left_territory"
@@ -991,14 +1089,14 @@ static func _in_window(mem: Memory, me: Dictionary, tick: int) -> bool:
 	return d >= float(mem.cfg.attack.start_min_m) and d <= float(mem.cfg.attack.start_max_m)
 
 
-## The target is beyond the window and closing on it at APPROACH_WAIT_MPS or more: aim and let it come.
+## The target is beyond the window and closing on it at cfg.approach_wait_mps or more: aim and let it come.
 static func _approaching(mem: Memory, me: Dictionary, tick: int) -> bool:
 	if not mem.seen.has(mem.target):
 		return false
 	var to_me: Vector2 = Vector2(me.position) - _reckon(mem, mem.target, tick)
 	if to_me.length() <= float(mem.cfg.attack.start_max_m):
 		return false
-	return Vector2(mem.seen[mem.target].velocity).dot(to_me / to_me.length()) >= APPROACH_WAIT_MPS
+	return Vector2(mem.seen[mem.target].velocity).dot(to_me / to_me.length()) >= float(mem.cfg.approach_wait_mps)
 
 
 static func _aimed(mem: Memory, me: Dictionary, tick: int) -> bool:
@@ -1035,8 +1133,8 @@ static func _fresh(mem: Memory, id: String, tick: int) -> bool:
 	return mem.seen.has(id) and int(mem.seen[id].tick) == tick
 
 
-static func _touching(me: Dictionary, food: Dictionary) -> bool:
-	var reach := float(me.radius) + float(food.radius) + InteractionResolver.FEED_REACH
+static func _touching(mem: Memory, me: Dictionary, food: Dictionary) -> bool:
+	var reach := float(me.radius) + float(food.radius) + float(mem.cfg.feed_reach)
 	return Vector2(me.position).distance_to(food.position) <= reach
 
 

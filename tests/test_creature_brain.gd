@@ -1329,3 +1329,145 @@ func test_forgetting_a_body_drops_it_and_a_forced_return_rests_the_creature_at_h
 		u += 1
 		_tick(mid, u, [])
 	check(mid.of("creature_strike").is_empty(), "and no strike follows")
+
+
+# --- S2: the cfg's own lengths, the relationship switches and scale_cfg (plan B.6) ---
+
+## creatures_m1.json's relationships block with every rule on (spine 4.2).
+const RELATIONSHIPS_ON := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
+const LADDER_QS := [0.625, 0.390625]
+
+
+## Every leaf of a cfg as [path, value] ("attack.reach"); dictionaries are walked into, lists are leaves.
+static func leaves(d: Dictionary, prefix := "") -> Array:
+	var out := []
+	for key in d:
+		var path := prefix + str(key)
+		if d[key] is Dictionary:
+			out.append_array(leaves(d[key], path + "."))
+		else:
+			out.append([path, d[key]])
+	return out
+
+
+static func _at(d: Dictionary, path: String) -> Variant:
+	var v: Variant = d
+	for part in path.split("."):
+		v = v[part]
+	return v
+
+
+func _rules_only(rule: String) -> Dictionary:
+	var rel: Dictionary = RELATIONSHIPS_ON.duplicate(true)
+	for r in rel.rules:
+		rel.rules[r] = r == rule
+	return rel
+
+
+func test_the_config_copies_todays_lengths_into_cfg_and_keeps_m1s_shares_with_no_relationships() -> void:
+	var want := {"arrive_home_m": 0.3, "home_slack_m": 1.0, "arrive_goal_m": 0.5, "face_at_standoff_m": 0.25,
+		"leash_give_up_m": 0.25, "forage_patrol_m": 6.0, "patrol_inset_m": 1.0, "default_territory_m": 6.0,
+		"flee_lookahead_m": 4.0, "flee_edge_m": 1.0, "approach_wait_mps": 0.2, "feed_reach": 0.25, "route_margin": 0.6,
+		"route_clearance": 0.1, "post_hysteresis_m": 2.0, "share_tolerance": 1e-6}
+	for cfg in [ambush_cfg, rammer_cfg]:
+		for key in want:
+			check_eq(cfg[key], want[key], "%s %s" % [cfg.species_id, key])
+		check(is_inf(cfg.intruder_max_radius_share) and is_inf(cfg.fear_radius_share), cfg.species_id + ": rules 2 and 3 off")
+		check_eq(cfg.engage_rule, false, cfg.species_id + ": rule 4 off")
+		check_eq([cfg.post_switch, cfg.post_rest_ticks], ["", 0], cfg.species_id + ": no habit")
+	check_eq(ambush_cfg.prey_max_radius_share, 1.6, "the ambush hunter's own share")
+	check_eq(rammer_cfg.prey_max_radius_share, InteractionResolver.BITE_SIZE_LIMIT, "the default share")
+	check_eq(ambush_cfg.attack.reach, InteractionResolver.BITE_REACH, "a bite reaches as the resolver's")
+	check_eq(rammer_cfg.attack.reach, InteractionResolver.RAM_REACH, "a ram too")
+
+
+func test_the_relationships_block_sets_each_rule_behind_its_own_switch() -> void:
+	var on := CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, RELATIONSHIPS_ON)
+	check_eq(on.prey_max_radius_share, 1.0, "rule 1: the block's prey share")
+	check_eq(on.intruder_max_radius_share, 1.2, "rule 2")
+	check_eq(on.fear_radius_share, 1.25, "rule 3")
+	check_eq(on.engage_rule, true, "rule 4")
+	for rule in ["prey_share", "intruder_share", "fear", "no_engage_above"]:
+		var cfg := CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, _rules_only(rule))
+		check_eq(cfg.prey_max_radius_share, 1.0 if rule == "prey_share" else 1.6, rule + " alone: the prey share")
+		check_eq(is_inf(cfg.intruder_max_radius_share), rule != "intruder_share", rule + " alone: the intruder share")
+		check_eq(is_inf(cfg.fear_radius_share), rule != "fear", rule + " alone: the fear share")
+		check_eq(cfg.engage_rule, rule == "no_engage_above", rule + " alone: the engage rule")
+	check_eq(CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, _rules_only("")), ambush_cfg,
+		"a block with every rule off gives M1's cfg")
+	var loose: Dictionary = RELATIONSHIPS_ON.duplicate(true)
+	loose.tolerance = 1e-4
+	check_eq(CreatureBrain.config("rammer", RAMMER_BLOCK, AI, loose).share_tolerance, 1e-4, "the block's tolerance")
+	var lurker: Dictionary = AMBUSH_BLOCK.duplicate(true)
+	lurker["habit"] = {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
+	var elder: Dictionary = RAMMER_BLOCK.duplicate(true)
+	elder["habit"] = {"post_switch": "nearer_cell", "post_hysteresis_m": 3.0}
+	var l := CreatureBrain.config("lurker", lurker, AI)
+	var e := CreatureBrain.config("elder_rammer", elder, AI)
+	check_eq([l.post_switch, l.post_rest_ticks, l.post_hysteresis_m], ["out_of_sight", 480, 2.0], "a lurker's habit")
+	check_eq([e.post_switch, e.post_rest_ticks, e.post_hysteresis_m], ["nearer_cell", 0, 3.0], "an elder rammer's")
+
+
+func test_scale_cfg_at_q_one_is_an_equal_copy() -> void:
+	for cfg in [ambush_cfg, rammer_cfg, CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, RELATIONSHIPS_ON)]:
+		var same := CreatureBrain.scale_cfg(cfg, 1.0)
+		check_eq(same, cfg, cfg.species_id + ": equal")
+		same.attack.reach = 9.0
+		same.speeds.flee = 9.0
+		same.leash_m = 99.0
+		check(cfg.attack.reach != 9.0 and cfg.speeds.flee != 9.0 and cfg.leash_m != 99.0, cfg.species_id + ": a deep copy")
+
+
+func test_scale_cfg_scales_every_length_and_speed_by_q_and_keeps_the_rest() -> void:
+	var cfgs := {"ambush": ambush_cfg, "rammer": rammer_cfg,
+		"rules on": CreatureBrain.config("rammer", RAMMER_BLOCK, AI, RELATIONSHIPS_ON)}
+	var scaled_keys := 0
+	for q in LADDER_QS:
+		for name in cfgs:
+			var cfg: Dictionary = cfgs[name]
+			var s := CreatureBrain.scale_cfg(cfg, q)
+			for leaf in leaves(cfg):
+				var path: String = leaf[0]
+				var kind := CreatureBrain.key_kind(path)
+				if path == "attack.travel":
+					continue
+				if kind == "length" or kind == "speed":
+					check_eq(_at(s, path), float(leaf[1]) * q, "%s q %.6f: %s x q" % [name, q, path])
+					scaled_keys += 1
+				else:
+					check_eq(_at(s, path), leaf[1], "%s q %.6f: %s kept" % [name, q, path])
+			var a: Dictionary = s.attack
+			var flight := Locomotion.strike_travel(float(a.burst_speed), int(a.burst_ticks), float(a.glide_drag),
+				int(a.glide_ticks), CreatureBrain.DT)
+			check_eq(a.travel, flight, "%s q %.6f: the travel is the scaled burst's own (D-26)" % [name, q])
+			check(a.travel != float(cfg.attack.travel) * q, "%s q %.6f: which is not travel x q" % [name, q])
+	check(scaled_keys >= 3 * 2 * 25, "the lengths and speeds were scaled (%d)" % scaled_keys)
+	var small := CreatureBrain.scale_cfg(rammer_cfg, 0.625)
+	check(is_inf(small.forage_radius_m), "INF stays INF")
+	check_eq(CreatureBrain.scale_cfg(cfgs["rules on"], 0.625).fear_radius_share, 1.25, "a share is kept")
+	check_eq([small.leash_m, small.attack.reach, small.feed_reach, small.attack.burst_speed], [1.875, 0.21875, 0.15625, 2.5],
+		"the rammer's leash, ram reach, feed reach and burst at q 0.625")
+	check_eq([small.speeds.flee, small.attack.burst_ticks, small.attack.aim, small.hungry_below],
+		[rammer_cfg.speeds.flee, rammer_cfg.attack.burst_ticks, rammer_cfg.attack.aim, rammer_cfg.hungry_below],
+		"its speed shares, ticks, aim and hunger share kept")
+
+
+func test_a_scaled_cfgs_strike_lane_is_the_strike_it_runs() -> void:
+	for q in LADDER_QS:
+		for kind in ["ambush", "rammer"]:
+			var a: Dictionary = CreatureBrain.scale_cfg(ambush_cfg if kind == "ambush" else rammer_cfg, q).attack
+			var body := (ambush_body if kind == "ambush" else rammer_body).scaled(q)
+			var lane := CreatureBrain.strike_lane(a, body.radius, 0.5, Vector2.ZERO, 0.0)
+			var where := "%s at q %.6f" % [kind, q]
+			check_eq(lane.travel, a.travel, where + ": the lane runs the cfg's travel")
+			check_eq(lane.half_width, body.radius + float(a.reach) + 0.5, where + ": as wide as its scaled radius and reach")
+			var m := Locomotion.MotionState.new(Vector2.ZERO, 0.0)
+			for i in int(a.burst_ticks):
+				Locomotion.burst(m, 0.0, float(a.burst_speed))
+				m.position += m.velocity * DT
+			for i in int(a.glide_ticks):
+				Locomotion.glide(m, float(a.glide_drag), DT)
+				m.position += m.velocity * DT
+			check_near(float(lane.travel), m.position.x, 0.01 * q, where + ": the travel is the scaled strike's flight")
