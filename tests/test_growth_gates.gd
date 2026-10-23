@@ -25,9 +25,11 @@ extends TestCase
 ##  - soak, die on purpose: ClumsyBot "die" on the same bodies and seeds; its median first growth is
 ##    at least the wary foragers' (a run with none by CAP_S counts CAP_S).
 ##  - slow, the parked grazer (BP-5): a ForageBot grazer at size 2 (debug_set_size) arrives at the
-##    nearest sunlit zone inside a live rammer territory and holds still there; from the tick it
-##    holds, a run of PARK_CALM_TICKS ticks with Growth.blocker_of(sim, false) == "" starts within
-##    28.5 s, on 6 seeds. Non-vacuous: a rammer flees the cell in view during each run.
+##    nearest sunlit zone inside a live rammer territory, read from WorldGen.chunk up to
+##    PARK_SEARCH_RINGS chunks round the cell's (the loaded chunks alone hold none on some seeds),
+##    and holds still there; from the tick it holds, a run of PARK_CALM_TICKS ticks with
+##    Growth.blocker_of(sim, false) == "" starts within 28.5 s, on 6 seeds. Non-vacuous: a rammer
+##    flees the cell in view during each run.
 ## Each waits on the S2 seams it reads (Gates.s2_missing).
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
@@ -65,6 +67,9 @@ const PARK_CALM_TICKS := 90
 const PARK_START_LIMIT_S := 28.5  ## the calm run starts by then, so it ends by 30 s
 const PARK_SETTLE_TICKS := 120    ## after the size is set, before the zone is chosen (the stream loads)
 const ARRIVE_GRACE_TICKS := 600   ## the parked bot's ticks to stop once it has arrived
+## The parked grazer's zone is looked for in the chunks up to this many rings round the cell's: 8
+## rings at size 2 reach 256 tm, about six 40 tm tiles, each way.
+const PARK_SEARCH_RINGS := 8
 const TPS := 60.0
 
 var catalog: PartCatalog
@@ -420,9 +425,9 @@ func _park_run(seed_value: int) -> Dictionary:
 	if zone.is_empty():
 		return out
 	out.zone = str(zone.id)
-	var at: PackedFloat64Array = sim.world.abs_of_local(zone.center)
-	var arrival := Gates.arrive(sim, at, seed_value)
-	out.arrival = "%.1f tm off after %d ticks" % [arrival.left_tm, arrival.ticks]
+	var to_am := WorldConfig.tm_to_am(sim.size())
+	var arrival := Gates.arrive(sim, PackedFloat64Array([float(zone.x) * to_am, float(zone.y) * to_am]), seed_value)
+	out.arrival = "%.0f tm away, %.1f tm off after %d ticks" % [zone.distance, arrival.left_tm, arrival.ticks]
 	var bot = ForageBot.new()
 	var parked_at := -1
 	var run_from := -1
@@ -454,29 +459,65 @@ func _park_run(seed_value: int) -> Dictionary:
 	return out
 
 
-## The nearest loaded zone (to the cell) in the "sunlit" region (its chunk's zone record says so)
-## whose centre lies in the territory of a live rammer site; {} when none is loaded.
+## The nearest zone to the cell in the "sunlit" region (its chunk's zone record says so) whose centre
+## lies in the territory of a site of a rammer live at the cell's size, as {"id", "x", "y" (absolute
+## tm at that size), "distance" (tm)}; {} when none lies within PARK_SEARCH_RINGS chunks of the
+## cell's. The chunks are read from WorldGen.chunk (pure, as the stream would load them), ring by
+## ring round the cell's chunk: at size 2 the stream's 16 loaded chunks hold no such zone on some
+## seeds (612, 613). Once a ring finds one, the next ring is read too, so that a nearer zone there,
+## or a site there whose territory reaches back, is not missed.
 static func _rammer_zone(sim: Variant) -> Dictionary:
-	var discs: Array = []
-	var region_of := {}
-	for key in sim.world.loaded_keys():
-		var chunk: Variant = sim.world.chunk(key)
-		for z in chunk.zones:
-			region_of[str(z.id)] = str(z.get("region", ""))
-		for s in chunk.sites:
-			var disc: Dictionary = s.get("territory", {})
-			if str(s.species) == "rammer" and not disc.is_empty() and HuntBot._live(s, sim.world):
-				discs.append({"center": sim.world.local_of_tm(float(disc.x), float(disc.y)), "radius": float(disc.radius)})
+	var world: Variant = sim.world
+	var n: int = world.size
+	var to_am := WorldConfig.tm_to_am(n)
+	var here: PackedFloat64Array = world.abs_of_local(sim.motion.position)
+	var hx := here[0] / to_am
+	var hy := here[1] / to_am
+	var center: Vector2i = world.chunk_of_local(sim.motion.position)
+	var zones: Array[Dictionary] = []
+	var discs: Array[Dictionary] = []
 	var best := {}
-	var best_d := INF
-	for z in sim.region.zones:
-		if region_of.get(str(z.id), "") != "sunlit" or not Gates.covered(z.center, discs):
-			continue
-		var d: float = sim.motion.position.distance_to(z.center)
-		if d < best_d:
-			best_d = d
-			best = z
+	var last := PARK_SEARCH_RINGS
+	for r in PARK_SEARCH_RINGS + 1:
+		if r > last:
+			break
+		for key in _chunk_ring(center, r):
+			var ch: WorldChunk = world.gen.chunk(n, key.x, key.y)
+			for z in ch.zones:
+				if str(z.get("region", "")) == "sunlit":
+					zones.append(z)
+			for s in ch.sites:
+				var disc: Dictionary = s.get("territory", {})
+				if str(s.species) == "rammer" and not disc.is_empty() and HuntBot._live(s, world):
+					discs.append(disc)
+		var best_d := INF
+		for z in zones:
+			var d := Vector2(float(z.x) - hx, float(z.y) - hy).length()
+			if d < best_d and _in_a_disc(float(z.x), float(z.y), discs):
+				best_d = d
+				best = {"id": str(z.id), "x": float(z.x), "y": float(z.y), "distance": d}
+		if not best.is_empty() and last == PARK_SEARCH_RINGS:
+			last = mini(r + 1, PARK_SEARCH_RINGS)
 	return best
+
+
+## The chunk keys at Chebyshev distance `r` from `center`, in (y, x) order.
+static func _chunk_ring(center: Vector2i, r: int) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			if maxi(absi(dx), absi(dy)) == r:
+				out.append(center + Vector2i(dx, dy))
+	return out
+
+
+## Whether the absolute tm point (x, y) lies inside one of `discs` ({x, y, radius}, absolute tm), as
+## Gates.covered measures.
+static func _in_a_disc(x: float, y: float, discs: Array[Dictionary]) -> bool:
+	for disc in discs:
+		if Vector2(x - float(disc.x), y - float(disc.y)).length() < float(disc.radius):
+			return true
+	return false
 
 
 ## A rammer in FLEE from the cell inside the default-zoom footprint (D-49).
