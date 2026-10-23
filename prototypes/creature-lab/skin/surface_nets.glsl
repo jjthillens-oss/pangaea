@@ -233,14 +233,17 @@ void main() {
 			if (f > pf) { pf = f; pk = k; }
 		}
 		float own = caps[4 * pk + 2].w;
+		// Match BodyField.HIP_SPINE_BLEND: limb-dominant vertices follow the limb at large swings.
+		const float hip_spine_blend = 0.1;
 		float total = 0.0;
 		for (int k = 0; k < params.counts.x; k++) {
 			if (caps[4 * k + 2].w != 0.0 && caps[4 * k + 2].w != own) continue;
 			vec2 c = capsule(k, p);
 			if (c.x > 0.0) {
-				w[int(caps[4 * k + 3].x)] += c.x * (1.0 - c.y);
-				w[int(caps[4 * k + 3].y)] += c.x * c.y;
-				total += c.x;
+				float influence = c.x * ((own != 0.0 && caps[4 * k + 2].w == 0.0) ? hip_spine_blend : 1.0);
+				w[int(caps[4 * k + 3].x)] += influence * (1.0 - c.y);
+				w[int(caps[4 * k + 3].y)] += influence * c.y;
+				total += influence;
 			}
 		}
 		if (total <= 0.0) {
