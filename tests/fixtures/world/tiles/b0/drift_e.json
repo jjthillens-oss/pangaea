@@ -1,0 +1,120 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "T1 test fixture: the smallest tile set the rules accept; not game content.",
+	"id": "drift_e",
+	"band": 0,
+	"region": "drift",
+	"set": 0,
+	"rare": "",
+	"landmark_anchor": [
+		-16.0,
+		-10.0
+	],
+	"set_piece": null,
+	"shells": [
+		{
+			"id": "a",
+			"center": [
+				18.0,
+				20.0
+			],
+			"radius": 1.08,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				22.0,
+				6.0
+			],
+			"radius": 0.62,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "sink"
+		},
+		{
+			"id": "c",
+			"center": [
+				14.0,
+				-20.0
+			],
+			"radius": 1.48,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "d",
+			"center": [
+				-2.0,
+				-22.0
+			],
+			"radius": 0.82,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "e",
+			"center": [
+				-22.0,
+				22.0
+			],
+			"radius": 1.28,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "f",
+			"center": [
+				-4.0,
+				-2.0
+			],
+			"radius": 0.6,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		}
+	],
+	"zones": [
+		{
+			"id": "a",
+			"center": [
+				8.0,
+				-6.0
+			],
+			"radius": 5.0,
+			"capacity": 40.0,
+			"growth_rate": 0.06,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				-10.0,
+				14.0
+			],
+			"radius": 3.0,
+			"capacity": 24.0,
+			"growth_rate": 0.08,
+			"at_second_size": "drop"
+		}
+	],
+	"sites": []
+}
