@@ -77,6 +77,7 @@ var fruit: Array = []
 var meat: Array = []
 var _next_meat := 1
 var _evolve_held := false
+var _bite_held := false
 var _last_notice := ""
 
 
@@ -188,8 +189,13 @@ func tick(intent: Dictionary) -> Array:
 		_eat(c, events)
 	# 7. Bites.
 	var biters := bodies.duplicate()
-	if intent.get("bite", false):
-		_bite(me, biters, events)
+	var bite := bool(intent.get("bite", false))
+	if bite:
+		if me["stats"]["has_mouth"]:
+			_bite(me, biters, events)
+		elif not _bite_held:
+			events.append({"kind": "refused", "reason": "No mouth to bite with"})
+	_bite_held = bite
 	for r in rivals:
 		if r["alive"] and r.get("wants_bite", false):
 			_bite(r, biters, events)
@@ -198,7 +204,7 @@ func tick(intent: Dictionary) -> Array:
 		var lost := points - Rules.points_after_death(points, float(tuning["death"]["points_loss_share"]))
 		points -= lost
 		_drop_meat(me["position"])
-		events.append({"kind": "died", "who": PLAYER_ID, "cause": "killed by %s" % me.get("last_hit_by", "a rival"),
+		events.append({"kind": "died", "who": PLAYER_ID, "cause": "killed by %s" % _killer_name(me.get("last_hit_by", "")),
 				"by": me.get("last_hit_by", ""), "position": me["position"], "points": points, "points_lost": lost})
 		_respawn(me, nest, 0.0)
 	for r in rivals:
@@ -206,7 +212,7 @@ func tick(intent: Dictionary) -> Array:
 			r["alive"] = false
 			r["respawn_at"] = tick_count + int(ticks["rival_respawn"])
 			_drop_meat(r["position"])
-			events.append({"kind": "died", "who": r["id"], "cause": "killed by %s" % r.get("last_hit_by", "a rival"),
+			events.append({"kind": "died", "who": r["id"], "cause": "killed by %s" % _killer_name(r.get("last_hit_by", "")),
 					"by": r.get("last_hit_by", ""), "position": r["position"], "points": 0})
 	# 9. Respawns, regrowth, decay.
 	for r in rivals:
@@ -289,8 +295,8 @@ func _percepts(r: Dictionary, noted: Dictionary) -> Dictionary:
 	best = INF
 	var creature := {}
 	for id in _creature_ids():
-		if id == r["id"] or not noted[id]["alive"]:
-			continue
+		if id == r["id"] or not noted[id]["alive"] or _at_nest(noted[id]["position"]):
+			continue   # a creature at the nest is not prey
 		var d := _ground_distance(me, noted[id]["position"])
 		if d < best and d <= sight:
 			best = d
@@ -331,13 +337,15 @@ func _eat(c: Dictionary, events: Array) -> void:
 			return
 
 
+## A bite from `biter` on the nearest body in its cone and reach. Nothing at the nest can be bitten: it is the
+## player's safe ground (and the respawn point), so a hungry rival cannot farm a creature that cannot leave it.
 func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 	if not biter["alive"] or biter["cooldown"] > 0 or not biter["stats"]["has_mouth"]:
 		return
 	var best := INF
 	var target := {}
 	for c in bodies:
-		if c["id"] == biter["id"]:
+		if c["id"] == biter["id"] or _at_nest(c["position"]):
 			continue
 		if Rules.bite_lands(biter["position"], biter["yaw"], float(biter["stats"]["bite_reach_m"]), c["position"],
 				float(c["stats"]["body_radius_m"])):
@@ -402,7 +410,21 @@ func player() -> Dictionary:
 
 
 func at_nest() -> bool:
-	return _ground_distance(me["position"], nest) <= nest_radius
+	return _at_nest(me["position"])
+
+
+func _at_nest(at: Vector3) -> bool:
+	return _ground_distance(at, nest) <= nest_radius
+
+
+## "a hexapod" for a rival id, "you" for the player, "a rival" for anything else: what a death notice reads.
+func _killer_name(id: String) -> String:
+	if id == PLAYER_ID:
+		return "you"
+	var c := _creature(id)
+	if c.is_empty() or String(c["starter"]).is_empty():
+		return "a rival"
+	return "a %s" % String(c["starter"]).trim_prefix("s1_").replace("_", " ")
 
 
 ## The gait planner of a creature (the player's with PLAYER_ID), for the scene's walker rigs; null without legs.

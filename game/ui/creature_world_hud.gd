@@ -56,6 +56,7 @@ func bind(p_world: Node3D) -> void:
 	world = p_world
 	_refresh_t = 0.0
 	refresh()
+	_refresh_hints()   # the bite entry depends on the body
 
 
 func set_title(creature_name: String, generation: int) -> void:
@@ -127,7 +128,30 @@ func refresh() -> void:
 
 func _refresh_hints() -> void:
 	_prompts_generation = InputPrompts.generation
-	var pairs := [[&"move_up", "Move"], [&"creature_bite", "Bite"], [&"creature_evolve", "Evolve at the nest"]]
+	var pairs := [[&"creature_bite", "Bite"], [&"creature_evolve", "Evolve at the nest"], [&"ui_cancel", "Back to the editor"]]
+	if world != null and world.sim != null and not bool(world.sim.player()["has_mouth"]):
+		pairs.remove_at(0)   # nothing to bite with
 	var line := InputPrompts.hint_line(pairs)
+	var move := move_name()
+	if not move.is_empty():
+		line = "%s  Move" % move + ("   ·   " + line if not line.is_empty() else "")
 	var orbit := "Right stick  Orbit" if InputPrompts.device == "pad" else "Middle drag  Orbit"
 	_hint_text.text = line + "   ·   " + orbit if not line.is_empty() else orbit
+
+
+## The four move_* bindings of the device in use as one name ("WASD" or "Arrows" for the keys, "Left stick" for
+## the pad), the direction suffixes trimmed as PauseMenu.pad_controls_lines() trims them; "" when none is bound.
+static func move_name() -> String:
+	var names := PackedStringArray()
+	var letters := true
+	for action: StringName in [&"move_up", &"move_left", &"move_down", &"move_right"]:
+		var found := InputPrompts.names_for(action)
+		if found.is_empty():
+			continue
+		var short := found[0].trim_suffix(" up").trim_suffix(" down").trim_suffix(" left").trim_suffix(" right")
+		letters = letters and short.length() == 1
+		if not short in names:
+			names.append(short)
+	if names.is_empty():
+		return ""
+	return "".join(names) if letters and names.size() == 4 else " / ".join(names)

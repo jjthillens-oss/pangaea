@@ -134,6 +134,56 @@ func test_a_bite_in_reach_hurts_and_cools_down() -> void:
 	check(miss.filter(func(e): return e["kind"] == "bit").is_empty(), "nothing in reach, nothing bitten")
 
 
+func test_biting_without_a_mouth_is_refused_once_per_press() -> void:
+	var sim := make("s1_tiny")
+	if sim.player()["has_mouth"]:
+		check(true, "the tiny starter grew a mouth; nothing to refuse")
+		return
+	var first: Array = sim.tick({"move": Vector2.ZERO, "bite": true, "evolve": false})
+	var refused := first.filter(func(e): return e["kind"] == "refused")
+	check(refused.size() == 1 and refused[0]["reason"] == "No mouth to bite with", "the press is refused with the reason (%s)" % [first])
+	var held: Array = sim.tick({"move": Vector2.ZERO, "bite": true, "evolve": false})
+	check(held.filter(func(e): return e["kind"] == "refused").is_empty(), "holding the key says nothing more")
+	sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false})
+	var again: Array = sim.tick({"move": Vector2.ZERO, "bite": true, "evolve": false})
+	check_eq(again.filter(func(e): return e["kind"] == "refused").size(), 1, "the next press is refused again")
+
+
+func test_nothing_at_the_nest_can_be_bitten() -> void:
+	var sim := make("s1_snake")
+	check(not sim.player()["has_legs"] and sim.at_nest(), "a legless player at the nest")
+	var rival: Dictionary = sim.rivals[0]
+	rival["fullness"] = 0.0
+	var reach := float(rival["stats"]["bite_reach_m"])
+	var step := reach * 0.5 + float(sim.me["stats"]["body_radius_m"]) + float(rival["stats"]["body_radius_m"])
+	sim._place(rival, Vector3(0.0, 0.0, step))
+	rival["yaw"] = 0.0   # faces -Z, at the player
+	if rival["planner"] != null:
+		rival["planner"].yaw = 0.0
+	var before: float = sim.me["health"]
+	var bitten := 0
+	for t in 120:
+		for e in sim.tick({"move": Vector2.ZERO, "bite": false, "evolve": false}):
+			if e["kind"] == "hit" and e["target"] == Sim.PLAYER_ID:
+				bitten += 1
+	check(bitten == 0 and sim.me["health"] >= before - 0.001, "a hungry rival next to the nest takes nothing (%d hits)" % bitten)
+	# Away from the nest the same rival in the same place bites.
+	var away := make("s1_snake")
+	var r2: Dictionary = away.rivals[0]
+	away._place(away.me, Vector3(30.0, 0.0, 0.0))
+	away.me["cooldown"] = 0
+	r2["fullness"] = 0.0
+	away._place(r2, Vector3(30.0, 0.0, step))
+	r2["yaw"] = 0.0
+	if r2["planner"] != null:
+		r2["planner"].yaw = 0.0
+	r2["wants_bite"] = true
+	var events := []
+	away._bite(r2, away._alive_creatures(), events)
+	check(events.filter(func(e): return e["kind"] == "hit" and e["target"] == Sim.PLAYER_ID).size() == 1,
+			"the same bite lands away from the nest (%s)" % [events])
+
+
 func test_death_sends_the_player_to_the_nest_with_the_points_loss() -> void:
 	var sim := make()
 	sim._place(sim.me, Vector3(30.0, 0.0, -10.0))
@@ -145,6 +195,8 @@ func test_death_sends_the_player_to_the_nest_with_the_points_loss() -> void:
 	if died.size() == 1:
 		check_eq(died[0]["points_lost"], 30, "a fifth of 150")
 		check_eq(died[0]["by"], "r2", "names the killer")
+		var starter := String(sim.rivals[1]["starter"]).trim_prefix("s1_").replace("_", " ")
+		check_eq(died[0]["cause"], "killed by a %s" % starter, "the cause reads as the rival's starter, not its id")
 	check_eq(sim.points, 120, "points after the loss")
 	check(sim.at_nest(), "back at the nest")
 	check(is_equal_approx(sim.player()["health"], sim.player()["max_health"]), "full health")
