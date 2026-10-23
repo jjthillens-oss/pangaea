@@ -17,7 +17,8 @@ const BLOCKOUT_BUDGETS := {
 	"plankton": 400, "carrion": 400,
 	"part_mouth_filter": 1500, "part_mouth_jaw": 1500, "part_flagellum": 1500, "part_eye_spot": 1500,
 }
-const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot", "part_spike"]
+const PART_IDS := ["part_mouth_filter", "part_mouth_jaw", "part_flagellum", "part_eye_spot", "part_spike",
+		"part_cilia", "part_shell_plate", "part_toxin_gland"]
 const ROCK_IDS := ["rock_a", "rock_b", "rock_c"]
 ## Food record id -> its block in the pool layout, which holds the gameplay item_radius.
 const FOOD_LAYOUT_KEYS := {"plankton": "plankton", "carrion": "carrion"}
@@ -123,10 +124,25 @@ func _mesh_bounds(root: Node3D) -> AABB:
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
 		if n is MeshInstance3D and n.mesh:
-			var box := _relative(n, root) * (n as MeshInstance3D).mesh.get_aabb()
+			var box := _relative(n, root) * _rest_aabb((n as MeshInstance3D).mesh)
 			bounds = box if first else bounds.merge(box)
 			first = false
 	return bounds
+
+
+## A mesh's bounds in its rest shape. Godot grows get_aabb() to cover every blend shape at full
+## weight, but records measure the rest shape, so meshes with blend shapes are measured from their
+## vertices.
+func _rest_aabb(mesh: Mesh) -> AABB:
+	if not mesh is ArrayMesh or (mesh as ArrayMesh).get_blend_shape_count() == 0:
+		return mesh.get_aabb()
+	var box := AABB()
+	var first := true
+	for s in mesh.get_surface_count():
+		for v: Vector3 in mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]:
+			box = AABB(v, Vector3.ZERO) if first else box.expand(v)
+			first = false
+	return box
 
 
 func _record(id: String) -> Dictionary:
@@ -257,6 +273,27 @@ func test_sample_cell_scale_matches_blender_meters() -> void:
 	check_near(size.y, record.dimensions_m.z_up, 0.05, "height")
 	check_near(size.z, record.dimensions_m.y_forward, 0.05, "length")
 	node.free()
+
+
+## Blender adds shape keys at full value, and the GLB stores that as each mesh's default morph weights.
+## Godot's importer leaves blend shapes at 0, but Blender, viewers and other glTF readers draw those
+## defaults, so a key left at 1 shows the cell ripe and stretched there. Reads the GLB's JSON chunk.
+func test_sample_cell_morph_weights_rest_at_zero() -> void:
+	var bytes := FileAccess.get_file_as_bytes("res://assets/export/sample_cell.glb")
+	check(bytes.size() > 20, "sample_cell.glb reads")
+	if bytes.size() <= 20:
+		return
+	var length := bytes.decode_u32(12)
+	var gltf: Variant = JSON.parse_string(bytes.slice(20, 20 + length).get_string_from_utf8())
+	check(gltf is Dictionary, "sample_cell.glb has a JSON chunk")
+	if not gltf is Dictionary:
+		return
+	var found := 0
+	for mesh: Dictionary in gltf.get("meshes", []):
+		for w in mesh.get("weights", []):
+			found += 1
+			check_near(float(w), 0.0, 1e-6, "%s morph weight rests at 0" % mesh.get("name", "?"))
+	check(found >= 2, "sample_cell has its Ripeness and Stretch morph targets, found %d" % found)
 
 
 func test_sample_cell_faces_godot_forward_and_has_sockets() -> void:
@@ -717,6 +754,11 @@ func test_production_assets_carry_textures_and_log_every_outside_source() -> voi
 			continue
 		for mi in _mesh_instances(node):
 			for s in mi.mesh.get_surface_count():
+				# A light effect the engine draws with its own shader (the checkpoint column's shaft)
+				# names that material in its record and needs no texture.
+				if record.has("engine_material") and mi.mesh.surface_get_material(s) is ShaderMaterial:
+					check(mi.mesh.surface_get_material(s).resource_path == record.engine_material, "%s draws with %s" % [id, record.engine_material])
+					continue
 				var mat := mi.mesh.surface_get_material(s) as BaseMaterial3D
 				var textured := mat != null and (mat.albedo_texture != null or (mat.vertex_color_use_as_albedo and mat.normal_texture != null))
 				check(textured, "%s %s surface %d has an albedo texture, or vertex colours and a normal map" % [id, mi.name, s])

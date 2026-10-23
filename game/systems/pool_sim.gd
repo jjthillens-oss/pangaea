@@ -274,7 +274,7 @@ func step(intent: SimIntent) -> void:
 	if world != null:
 		world.step(self)   # the streaming block (S1 spine 3.11): first, reading sim state only
 	if creatures != null:
-		_creatures_act(creatures.bodies(player_body()))
+		_creatures_act(creatures.body_snapshot(player_body()))
 	var moved := 0.0
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
@@ -858,6 +858,7 @@ func _clear_point_near(p: Vector2, r: float) -> Vector2:
 ## home and heading now, and every brain forgets the cell, `killer` ignoring it for killer_ignore_s;
 ## the token is freed. Returns the ids sent home, sorted. A scripted body has no home and stays.
 func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
+	creatures.note_every_brain_told()
 	var minded: Array[Dictionary] = []
 	for c in creatures.creatures:
 		if c.brain != null:
@@ -884,11 +885,14 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 ## Tick steps 1-2: each creature in number order thinks when due (on `snapshot`, the bodies as
 ## they were at the start of the tick), drives, and sets its velocity. Scripted bodies swim by
 ## their script; frozen creatures coast.
-func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
+func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 	var food: Array = []
+	var food_at := PackedVector2Array()    # the food's positions and radii, packed for the senses
+	var food_r := PackedFloat64Array()
 	var food_listed := false
+	var endless := creatures.endless
 	for c in creatures.awake():
-		var speed_mul := c.state.speed_multiplier()
+		var speed_mul := ActorState.STARVING_SPEED if c.state.energy <= 0.0 else 1.0   # speed_multiplier()
 		if c.scripted:
 			Locomotion.steer(c.motion, c.script_move, c.phenotype, speed_mul, DT)
 			continue
@@ -896,14 +900,39 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 			c.drive = CreatureField.idle_drive(c.motion.heading)
 			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
 			continue
-		var self_view := creatures.self_view_of(c)
-		if creatures.think_due(c, tick):
-			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
-				food = plankton.items + carrion.items
+		var brain := c.brain
+		var self_view := {}   # built when a think or drive needs it (the body does not move before both)
+		# creatures.think_due(c, tick) written out (a creature here always has a brain).
+		if CreatureBrain.think_due(brain, c.think_slot if endless else c.number, tick):
+			self_view = creatures.self_view_of(c)
+			if brain.state == CreatureBrain.FORAGE and not food_listed:
+				# The two lists joined (a new array), or the plankton list itself when there is no
+				# carrion: the senses only read it.
+				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
+				food_at.resize(food.size())
+				for i in food.size():
+					food_at[i] = food[i].position
+				food_r = plankton.packed_radii()   # the plankton's own copy, then the carrion's
+				for item in carrion.items:
+					food_r.append(item.radius)
 				food_listed = true
-			creatures.think(c, snapshot_bodies, food, arena, tick, self_view)
-		var d := creatures.drive(c, arena, tick, self_view)
-		CreatureBrain.move_body(c.brain, c.motion, d, c.phenotype, speed_mul, DT)
+			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
+		# creatures.drive(c, ...) written out, then move_body's steer, the usual drive, without the call.
+		# A forager seeking its goal (the usual drive) seeks from the body's own values, without a view.
+		var d: Dictionary
+		if brain.state == CreatureBrain.FORAGE and brain.phase != CreatureBrain.EAT and brain.goal.is_finite():
+			var p := c.phenotype
+			d = CreatureBrain.seek_from(brain, c.motion.position, p.radius, p.speed, p.acceleration, brain.goal,
+				float(brain.cfg.speeds.forage), arena, true)
+		else:
+			if self_view.is_empty():
+				self_view = creatures.self_view_of(c)
+			d = CreatureBrain.drive(brain, self_view, tick, arena)
+		c.drive = d
+		if d.mode == CreatureBrain.MODE_STEER:
+			Locomotion.steer(c.motion, d.move, c.phenotype, float(d.speed_mul) * speed_mul, DT)
+		else:
+			CreatureBrain.move_body(brain, c.motion, d, c.phenotype, speed_mul, DT)
 	_take_field_events()
 
 
@@ -955,15 +984,19 @@ func _contacts() -> void:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
 	for c in creatures.awake():
-		if c.brain == null:
+		var mem := c.brain
+		if mem == null:
 			continue
-		var disc := CreatureBrain.leash_disc(c.brain)
-		PoolArena.clamp_to_disc(c.motion, disc.center, disc.radius)
-		if CreatureBrain.is_striking(c.brain):
+		# CreatureBrain.leash_disc written out, without its dictionary.
+		if mem.behavior == CreatureBrain.TERRITORIAL:
+			PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
+		else:
+			PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
+		if mem.state == CreatureBrain.ATTACK and CreatureBrain.is_striking(mem):   # a strike is an attack phase
 			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
 				CreatureBrain.BLOCKED_BEARING)
 			if not rock.is_empty():
-				CreatureBrain.on_blocked(c.brain, tick)
+				CreatureBrain.on_blocked(mem, tick)
 	_take_field_events()
 
 
@@ -972,11 +1005,13 @@ func _contacts() -> void:
 ## creature order. A creature that starves dies.
 func _creature_metabolism(moved: Array[float]) -> void:
 	var list := creatures.awake().duplicate()
+	var blocks := species.species
 	for i in list.size():
 		var c: CreatureField.Creature = list[i]
-		var share := 1.0 if c.scripted else float(species.species[c.species_id].metabolism_share)
-		c.state.tick(c.phenotype, DT * share, moved[i] * share)
-		if not c.state.is_alive():
+		var share := 1.0 if c.scripted else float(blocks[c.species_id].metabolism_share)
+		var st := c.state
+		st.tick(c.phenotype, DT * share, moved[i] * share)
+		if not st.is_alive():
 			_creature_dies(c, "starved", "")
 
 
@@ -999,8 +1034,10 @@ func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> voi
 
 func _sync_creatures() -> void:
 	for c in creatures.awake():
-		c.actor.position = c.motion.position
-		c.actor.heading = c.motion.heading
+		var m := c.motion
+		var a := c.actor
+		a.position = m.position
+		a.heading = m.heading
 
 
 ## Tick step 9 for creatures: each one whose drive names a food item eats it through the resolver,
@@ -1042,11 +1079,12 @@ func _combat(swim: Dictionary) -> void:
 	_killer = ""
 	var striking: Array[CreatureField.Creature] = []
 	for c in creatures.awake():
-		if c.brain == null or not c.state.is_alive():
+		var b := c.brain
+		if b == null or not c.state.is_alive():
 			continue
-		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
+		if b.phase == CreatureBrain.STRIKE and b.phase_tick == tick:
 			c.strike_hit = false   # a new strike
-		if CreatureBrain.is_striking(c.brain) and bool(c.drive.get("strike", false)) and not c.strike_hit:
+		if CreatureBrain.is_striking(b) and bool(c.drive.get("strike", false)) and not c.strike_hit:
 			striking.append(c)
 	if not dead:
 		_player_attacks(swim)
@@ -1061,11 +1099,13 @@ func _combat(swim: Dictionary) -> void:
 ## its reason is quiet. A landed hit ends the cell's shelter (grace_ended {reason: "attacked"}).
 func _player_attacks(swim: Dictionary) -> void:
 	var near: Array[Dictionary] = []
+	var at := motion.position
+	var own_r := phenotype.radius
 	for c in creatures.awake():
 		if not c.state.is_alive():
 			continue
-		var d := motion.position.distance_to(c.motion.position)
-		if d <= phenotype.radius + c.phenotype.radius + InteractionResolver.RAM_REACH:
+		var d := at.distance_to(c.motion.position)
+		if d <= own_r + c.phenotype.radius + InteractionResolver.RAM_REACH:
 			near.append({"d": d, "c": c})
 	if near.is_empty():
 		return
@@ -1222,15 +1262,18 @@ func _log_attack(target_id: String, kind: String, allowed: bool, reason: String)
 
 
 func _food_item(id: String) -> Dictionary:
-	for list in [plankton.items, carrion.items]:
-		for item in list:
-			if item.id == id:
-				return item
+	var plant := plankton.find(id)   # by its id index: the first match of a scan (ids are unique)
+	if not plant.is_empty():
+		return plant
+	for item in carrion.items:
+		if item.id == id:
+			return item
 	return {}
 
 
 ## Every brain forgets the cell, as if it had left the world (target_gone), and the token is freed.
 func _forget_player_everywhere() -> void:
+	creatures.note_every_brain_told()
 	for c in creatures.creatures:
 		if c.brain != null:
 			CreatureBrain.on_target_gone(c.brain, CreatureField.PLAYER_ID, tick)

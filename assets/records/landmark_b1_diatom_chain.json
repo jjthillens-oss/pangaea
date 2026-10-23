@@ -1,0 +1,101 @@
+{
+  "id": "landmark_b1_diatom_chain",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Endless world band-1 landmark (S3): a zig-zag chain of diatom drums joined valve to valve. Collides as a 2 bu circle; the visual fills the 3 bu anchor.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/landmark_b1_diatom_chain.blend",
+  "generator_script": "tools/blender/make_s3_kit.py",
+  "export_path": "assets/export/landmark_b1_diatom_chain.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 5.125,
+    "y_forward": 4.989,
+    "z_up": 6.579
+  },
+  "triangles": 4944,
+  "triangle_budget": 6000,
+  "textures": [
+    {
+      "name": "T_LandmarkB1DiatomChain_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_LandmarkB1DiatomChain_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_LandmarkB1DiatomChain_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Amber",
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Growth_Beads",
+    "Growth_Needles",
+    "LandmarkB1DiatomChain"
+  ],
+  "kind": "landmark",
+  "band": 1,
+  "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
+  "group": 2,
+  "footprint_radius_m": 2.0,
+  "collide_radius_bu": 2.0,
+  "anchor_radius_bu": 3.0,
+  "yaw_rule": "steps_90",
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": "",
+      "scale": 1.0
+    },
+    {
+      "id": "frosted",
+      "tint": "#D6E0F5",
+      "growth": "Growth_Needles",
+      "scale": 0.96
+    },
+    {
+      "id": "amber",
+      "tint": "#EAE5C7",
+      "growth": "Growth_Beads",
+      "scale": 1.04
+    }
+  ],
+  "swim_band_min_radius_m": 1.996,
+  "swim_band_radius_m": 2.0,
+  "top_m": 3.579,
+  "bottom_m": -3.0,
+  "scale_range": [
+    0.92,
+    1.06
+  ],
+  "provenance": "Original geometry from tools/blender/make_s3_kit.py (band-0 kit helpers in make_s1_kit.py), surfaced by make_s1_production.finish(): procedural shaders baked to textures. No outside sources."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "tell_cancel_1",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner listen",
+  "category": "sfx",
+  "export_path": "assets/audio/sfx/tell_cancel_1.wav",
+  "generator_script": "tools/audio/make_cell_audio.gd",
+  "synth_library": "game/scenes/audio/audio_synth.gd",
+  "license": "Original work made for Pangaea by its generator; no samples or third-party audio.",
+  "third_party_sources": [],
+  "cue": "tell_cancel",
+  "variant": 1,
+  "purpose": "A creature gives up its tell: air let out. Positional.",
+  "visual_equivalent": "The creature deflates and the lane clears",
+  "bus": "SFX",
+  "loop": false,
+  "sample_rate": 44100,
+  "channels": 1,
+  "length_s": 0.5,
+  "recipe": "game/scenes/audio/audio_synth.gd AudioSynth._sfx(\"tell_cancel\", 0)"
+}

@@ -15,6 +15,12 @@ extends Node3D
 ## Every frame, labels that have come closer than a line on screen, as the camera moves, are moved
 ## apart again (see _keep_apart). Labels only ever move up, so they never cross.
 ##
+## A zone's "Regrowing" label stands over the zone's centre but keeps off the cell on screen (S1
+## review): while the cell would touch it, it rises just clear of the cell's top, at once, and settles
+## back smoothly once the cell has gone; when it would have to rise more than ZONE_LIFT_MAX_M (the
+## cell is on it from above) it hides at once instead and fades back in when the cell is clear, so
+## it never slides across the cell.
+##
 ## The pool's WorldSpace shifts this node across a rebase (S1), so every label rides it: each event
 ## point is turned into this node's frame (WorldSpace.frame_of) as it arrives, and _meal_at holds
 ## frame points. renormalize() brings the node back to the origin when it has drifted far.
@@ -41,6 +47,14 @@ const DODGED_LIFE_S := 0.8
 const DODGED_START_Y := 1.1
 const ZONE_LABEL_Y := 1.2
 const ZONE_REFRESH_S := 0.25
+## A zone label keeps this many cell radii clear of the cell's centre (its mouth and eyes, as the
+## food arrow's label, StarvingArrow.CELL_CLEAR) plus ZONE_GAP_M round its own text.
+const ZONE_CELL_CLEAR := 1.35
+const ZONE_GAP_M := 0.08
+## The most a zone label rises to clear the cell; past it, it hides until the cell is clear.
+const ZONE_LIFT_MAX_M := 1.2
+const ZONE_FADE_IN_S := 0.25
+const ZONE_SETTLE_RATE := 8.0     ## how fast a lifted zone label settles back (1/s, exponential)
 const FONT_SIZE := 64
 const PIXEL_SIZE := 0.005
 const OUTLINE_SIZE := 14
@@ -66,6 +80,8 @@ var _dodged: Label3D
 var _dodged_age := DODGED_LIFE_S
 var _zone_labels := {}   ## zone id -> Label3D
 var _zone_label_keys := {}   ## chunk key -> the zone ids whose labels it added (endless sea)
+var _zone_lift := {}   ## zone id -> how far its shown label sits above ZONE_LABEL_Y now
+var _zone_alpha := {}  ## zone id -> its shown label's alpha now
 var _zone_refresh := 0.0
 var _camera: PoolCamera
 
@@ -80,6 +96,8 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	_meal_labels.clear()
 	_zone_labels.clear()
 	_zone_label_keys.clear()
+	_zone_lift.clear()
+	_zone_alpha.clear()
 	for i in MEAL_LABELS:
 		var label := _make_label(MEAL_COLOR)
 		label.name = "Meal%d" % i
@@ -137,6 +155,8 @@ func remove_zone_labels(key: Variant) -> void:
 			remove_child(label)
 			label.queue_free()
 		_zone_labels.erase(id)
+		_zone_lift.erase(id)
+		_zone_alpha.erase(id)
 	_zone_label_keys.erase(key)
 
 
@@ -237,6 +257,14 @@ static func _seen(eye: Transform3D, p: Vector3) -> Vector2:
 	return Vector2(d.dot(eye.basis.y) / depth, depth)
 
 
+## Where point p shows through the camera `eye`: x is how far right and y how high on screen, as
+## tangents of its angles off the view axis, and z its depth along that axis.
+static func _seen_xy(eye: Transform3D, p: Vector3) -> Vector3:
+	var d := p - eye.origin
+	var depth := -d.dot(eye.basis.z)
+	return Vector3(d.dot(eye.basis.x) / depth, d.dot(eye.basis.y) / depth, depth)
+
+
 ## How far point p must move up (world height) to show at height `up` (as _seen's x).
 static func _raise_to(eye: Transform3D, p: Vector3, up: float) -> float:
 	var d := p - eye.origin
@@ -333,19 +361,68 @@ func renormalize() -> void:
 	position = Vector3.ZERO
 
 
-## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again.
-func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float) -> void:
+## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again
+## (refreshed every ZONE_REFRESH_S), and keeps those labels off the cell drawn at `cell_at` (the
+## pool's plane) with radius `cell_radius` every frame; without a cell they stand where they are.
+func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float, cell_at := Vector2.INF,
+		cell_radius := 0.0) -> void:
 	_zone_refresh -= delta
-	if _zone_refresh > 0.0:
-		return
-	_zone_refresh = ZONE_REFRESH_S
-	for z in region.zones:
-		var label: Label3D = _zone_labels.get(z.id)
-		if label == null:
+	if _zone_refresh <= 0.0:
+		_zone_refresh = ZONE_REFRESH_S
+		for z in region.zones:
+			var label: Label3D = _zone_labels.get(z.id)
+			if label == null:
+				continue
+			label.visible = plankton.is_regrowing(z.id)
+			if label.visible:
+				label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
+	_keep_zone_labels_off(cell_at, cell_radius, delta)
+
+
+## Places every shown zone label for this frame: lifted at once to clear the cell, settling back
+## smoothly, or hidden at once when it would rise past ZONE_LIFT_MAX_M and faded back in after.
+func _keep_zone_labels_off(cell_at: Vector2, cell_radius: float, delta: float) -> void:
+	var eye := _eye() if _camera != null else Transform3D.IDENTITY
+	var cell := WorldSpace.to_frame(self, cell_at) if cell_at.is_finite() else Vector3.INF
+	for id in _zone_labels:
+		var label: Label3D = _zone_labels[id]
+		if not label.visible:
+			_zone_lift.erase(id)
+			_zone_alpha.erase(id)
 			continue
-		label.visible = plankton.is_regrowing(z.id)
-		if label.visible:
-			label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
+		var want := zone_label_lift(eye, label, cell, cell_radius) if _camera != null and cell.is_finite() else 0.0
+		var alpha: float = _zone_alpha.get(id, 0.0)
+		var lift: float = _zone_lift.get(id, want)
+		if want > ZONE_LIFT_MAX_M:
+			alpha = 0.0
+		elif alpha <= 0.0:
+			lift = want
+			alpha = minf(delta / ZONE_FADE_IN_S, 1.0) if _zone_alpha.has(id) else 1.0
+		else:
+			lift = maxf(want, lerpf(lift, want, minf(delta * ZONE_SETTLE_RATE, 1.0)))
+			alpha = minf(alpha + delta / ZONE_FADE_IN_S, 1.0)
+		_zone_lift[id] = lift
+		_zone_alpha[id] = alpha
+		label.position.y = ZONE_LABEL_Y + lift
+		label.modulate.a = alpha
+		label.outline_modulate.a = OUTLINE_COLOR.a * alpha
+
+
+## How far zone label `label` must rise above ZONE_LABEL_Y to show clear of a cell of radius
+## `radius` at `cell` (this node's frame, on the swim plane), seen through `eye` (the camera in
+## this node's space): 0 when, standing at ZONE_LABEL_Y, it already shows beside, above or below it.
+func zone_label_lift(eye: Transform3D, label: Label3D, cell: Vector3, radius: float) -> float:
+	var base := Vector3(label.position.x, ZONE_LABEL_Y, label.position.z)
+	var font: Font = label.font if label.font != null else ThemeDB.fallback_font
+	var text := Vector2(font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.font_size).x,
+		font.get_height(label.font_size)) * label.pixel_size
+	var at := _seen_xy(eye, base)
+	var c := _seen_xy(eye, cell)
+	var reach := radius * ZONE_CELL_CLEAR / c.z
+	var half := (text * 0.5 + Vector2.ONE * ZONE_GAP_M) / at.z
+	if absf(at.x - c.x) >= half.x + reach or at.y - half.y >= c.y + reach or at.y + half.y <= c.y - reach:
+		return 0.0
+	return maxf(0.0, _raise_to(eye, base, c.y + reach + half.y))
 
 
 ## The meal labels on screen now, oldest first (for checks).

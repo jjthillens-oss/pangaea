@@ -10,7 +10,7 @@
   "export_path": "assets/export/sample_cell.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 2,
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.928,
@@ -87,6 +87,12 @@
     "socket_tail",
     "socket_top"
   ],
+  "shape_keys": {
+    "Ripeness": "the growth ring filling: the body swells evenly by 5% across and 3% in height",
+    "Stretch": "just before a growth: the membrane drawn taut, 5% longer, 2% narrower and 2% lower",
+    "max_swell": 0.05,
+    "note": "Blend shapes on Body (glTF morph targets). Eyes, lips and the flagellum are child nodes and do not follow; at 5% they stay seated."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0015,

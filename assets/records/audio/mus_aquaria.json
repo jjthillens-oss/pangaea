@@ -1,0 +1,26 @@
+{
+  "id": "mus_aquaria",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_aquaria.ogg",
+  "purpose": "Looping underwater ambience: the calm playlist.",
+  "role": "calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 43.96,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Aquaria",
+      "author": "The Cynic Project (cynicmusic, pixelsphere.org)",
+      "url": "https://opengameart.org/content/aquaria",
+      "download": "https://opengameart.org/sites/default/files/TylerSong3_Normal.wav",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "re-encoded from the WAV to Ogg Vorbis q6; nothing else changed"
+    }
+  ]
+}

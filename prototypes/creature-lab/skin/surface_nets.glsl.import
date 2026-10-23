@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://djyobc8j8hqbl"
+path="res://.godot/imported/surface_nets.glsl-1a363a8275a01e25554ee847b72e6038.res"
+
+[deps]
+
+source_file="res://skin/surface_nets.glsl"
+dest_files=["res://.godot/imported/surface_nets.glsl-1a363a8275a01e25554ee847b72e6038.res"]
+
+[params]
+

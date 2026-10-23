@@ -1,0 +1,67 @@
+{
+  "id": "home_beacon",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "S3 home beacon: a giant glass radiolarian spire over home, seen far below the plane, its amber heart a landmark for the way back.",
+  "category": "dressing",
+  "source_blend": "assets/source/blender/home_beacon.blend",
+  "generator_script": "tools/blender/make_endless_extras.py",
+  "export_path": "assets/export/home_beacon.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 12.3,
+    "y_forward": 12.447,
+    "z_up": 27.286
+  },
+  "triangles": 2244,
+  "triangle_budget": 8000,
+  "textures": [
+    {
+      "name": "T_HomeBeacon_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_HomeBeacon_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_HomeBeacon_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Core",
+    "M_Frost",
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "HomeBeacon"
+  ],
+  "kind": "background",
+  "band": 0,
+  "pivot": "home on the swim plane; the whole beacon lies below -12 bu",
+  "top_bu": -12.71,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_endless_extras.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

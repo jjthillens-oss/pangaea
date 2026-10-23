@@ -1,0 +1,19 @@
+[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
+
+; The elder warden body's material (assets/records/creature_elder_warden_body.json). As the base body's material: its colour is
+; the mesh's vertex colours (sRGB-encoded), times the GLB's baked greyscale detail, with the baked
+; ORM's roughness and normal map. creature_elder_warden_body.glb.import points the imported M_RammerBody here.
+
+[ext_resource type="Texture2D" path="res://assets/export/creature_elder_warden_body_T_Rammer_Albedo.png" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_elder_warden_body_T_Rammer_ORM.png" id="2_orm"]
+[ext_resource type="Texture2D" path="res://assets/export/creature_elder_warden_body_T_Rammer_Normal.png" id="3_normal"]
+
+[resource]
+resource_name = "M_RammerBody"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_texture = ExtResource("1_albedo")
+roughness_texture = ExtResource("2_orm")
+roughness_texture_channel = 1
+normal_enabled = true
+normal_texture = ExtResource("3_normal")

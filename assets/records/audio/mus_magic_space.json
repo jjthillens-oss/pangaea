@@ -1,0 +1,26 @@
+{
+  "id": "mus_magic_space",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 2 - M1, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_magic_space.mp3",
+  "purpose": "Uplifting cosmic ambience: the title screen, looped.",
+  "role": "title",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 54.91,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Magic Space",
+      "author": "codemanu",
+      "url": "https://opengameart.org/content/magic-space",
+      "download": "https://opengameart.org/sites/default/files/magic%20space.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none"
+    }
+  ]
+}

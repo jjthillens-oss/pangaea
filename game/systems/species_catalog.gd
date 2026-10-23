@@ -258,12 +258,18 @@ func reach_disc(s: Dictionary, layout: PoolLayout) -> Dictionary:
 
 
 ## reach_disc with the territory given (territory_from's answer), for a site that is not the layout's.
+## CreatureBrain.create's territory and CreatureBrain.leash_disc written out, the same expressions,
+## without building a brain (a world chunk asks for each of its sites).
 func reach_disc_for(s: Dictionary, territory: Dictionary) -> Dictionary:
 	var cfg := brain_config(str(s.species))
 	if cfg.is_empty():
 		return {}
-	var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
-	return CreatureBrain.leash_disc(mem)
+	var home: Vector2 = s.home
+	if str(cfg.behavior) == CreatureBrain.TERRITORIAL:
+		var center: Vector2 = territory.get("center", home)
+		var territory_r := float(territory.get("radius", CreatureBrain.DEFAULT_TERRITORY_M)) + float(cfg.territory_margin_m)
+		return {"center": center, "radius": territory_r + float(cfg.leash_m)}
+	return {"center": home, "radius": float(cfg.leash_m)}
 
 
 ## Rule 6's lane check: the strike lane against what the creature may reach (its leash, plus its

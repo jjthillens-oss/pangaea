@@ -23,6 +23,9 @@
 #             same chunks; the column, the arrow home and its distance; a meal ghost keeping its
 #             place across a dev rebase; a far death whose respawn message waits for the respawn
 #   fps30, fps144: the same sim state hash at tick 1,200 at 30 and at 144 frames a second
+#   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
+#             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
+#             run; its own settings file and slots under user://smoke/menus
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests), starts it
 #             and checks it holds the endless content
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
@@ -58,6 +61,11 @@ bounded 120 "$GODOT" --headless --fixed-fps 30 --resolution 1280x720 --path . --
 bounded 120 "$GODOT" --headless --fixed-fps 144 --resolution 1920x1080 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps144.json --compare=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps144.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
+  exit 1
+fi
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/menus_smoke.gd 2>&1 | tee builds/smoke/menus.log
+if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/menus.log; then
+  echo "Engine or script errors in the menus smoke log (builds/smoke/menus.log)."
   exit 1
 fi
 tools/check_release.sh "$GODOT"

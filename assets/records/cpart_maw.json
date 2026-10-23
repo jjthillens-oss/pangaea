@@ -1,0 +1,103 @@
+{
+  "id": "cpart_maw",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a round maw of rolled lips round a dark throat, ringed with fourteen inward-raking teeth.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_maw.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_maw.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.159,
+    "y_forward": 0.108,
+    "z_up": 0.044
+  },
+  "triangles": 540,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartMaw_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartMaw_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartMaw_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_MawLip",
+    "M_MawThroat",
+    "M_MawTooth"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Maw",
+    "Teeth"
+  ],
+  "part_type": "maw",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "maw",
+    "footprint_radius_m": 0.079,
+    "sink_depth_m": 0.03,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "handles": [
+      {
+        "key": "H1_Gape",
+        "meaning": "the mouth 30% wider round its rim",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Fangs",
+        "meaning": "the teeth 60% longer",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
+  },
+  "paint_mix": {
+    "M_MawLip": 0.85,
+    "M_MawThroat": 0.0,
+    "M_MawTooth": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 2352,
+    "triangles_after": 540
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

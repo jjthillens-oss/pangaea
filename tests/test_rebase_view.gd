@@ -32,9 +32,9 @@ class Turning:
 		return SimIntent.new(Vector2.RIGHT.rotated(-PI / 2.0 * float(sim.tick / TURN_TICKS)))
 
 
-## The placeholder cues, silent: a positional cue places its player by global_position, which a
+## The cues, silent: a positional cue places its player by global_position, which a
 ## pool outside the tree has none of. Cues are not tracked points.
-class QuietAudio extends PlaceholderAudio:
+class QuietAudio extends CellAudio:
 	func play(_cue: String) -> void:
 		pass
 

@@ -1,11 +1,12 @@
 extends TestCase
-## The S1 dev bots (S1 spine 3.15; core 12.1 and CC-21): SwimBot's straight swimmer, camper and
-## overdrive (S1 build plan B-12), HuntBot's zones in the pool and its endless rule, and ForageBot's
-## endless fallback. The pool cases and the endless rule's arithmetic run in any tree; the cases on
-## an endless sim run once the endless world they read has landed (tests/test_endless_gates.gd,
-## Gates.missing(Gates.WORLD); they read no invariant, so they do not wait on T2.8), and until then
-## print what they wait on. The overdriven speed test swims on T2's
-## FakeWorldGen, whose lane along y = 9 holds no collider, so no content can block it.
+## The S1 dev bots (S1 spine 3.15; core 12.1 and CC-21): SwimBot's straight swimmer, camper, homing
+## swimmer, Unjam and overdrive (S1 build plan B-12), HuntBot's zones in the pool and its endless
+## rule and roaming, and ForageBot's endless fallback. The pool cases (Unjam's crack among them) and
+## the endless rule's arithmetic run in any tree; the cases on an endless sim run once the endless
+## world they read has landed (tests/test_endless_gates.gd, Gates.missing(Gates.WORLD); they read no
+## invariant, so they do not wait on T2.8), and until then print what they wait on. The overdriven
+## speed test and the homing swim run on T2's FakeWorldGen, whose lane along y = 9 holds no
+## collider, so no content can block the speed test.
 ## test_the_gates_wait_only_on_what_has_not_landed keeps that wait honest.
 
 const Gates := preload("res://tests/test_endless_gates.gd")
@@ -23,6 +24,26 @@ const GREEDY_HUNGER := 0.3            ## the greedy camper is kept hungry: energ
 const GREEDY_HUNGER_EVERY := 300      ## every this many ticks, so it keeps eating
 const REBASE_ZONE_FROM_M := 8.0       ## the rebase camper heads for a zone at least this far off
 const REBASE_AFTER_TICKS := 20        ## and is on its way when the origin moves
+## The homing swimmer: from FakeWorldGen's home spawn to a point this far off (am), with a rebase on
+## the way after HOMING_REBASE_AFTER ticks, within HOMING_TICKS.
+const HOMING_TO := Vector2(40.0, 25.0)
+const HOMING_REBASE_AFTER := 120
+const HOMING_TICKS := 1500
+## Unjam: a row of CRACK_ROCKS rocks of radius CRACK_R across the way at x = CRACK_X, their surfaces
+## CRACK_GAP apart (less than the body is wide); the cell starts CRACK_FROM west of the row and
+## heads for a point as far east of it.
+const CRACK_X := 10.0
+const CRACK_R := 1.0
+const CRACK_GAP := 0.6
+const CRACK_ROCKS := 3
+const CRACK_FROM := 6.0
+const CRACK_Y := 0.3                  ## off the middle rock's centre, so the way round picks a side
+const CRACK_TICKS := 1500
+## The roaming hunter (endless): points out in the sea with rammers asleep round them, each settled
+## ROAM_SETTLE_TICKS, where the nearest patrol zone lies away from the sleeper and from home.
+const ROAM_SLEEPER_AT := Vector2(348.0, -1823.0)
+const ROAM_HOME_AT := Vector2(-574.0, -1810.0)
+const ROAM_SETTLE_TICKS := 120
 ## The overdriven swim (B-12): east from FakeWorldGen's home spawn (0, 9), timed from tick 300 to 900.
 const FAKE_GEN := "res://tests/fakes/fake_world_gen.gd"   ## T2's permanent test generator
 const OVERDRIVE_FROM_TICK := 300
@@ -122,6 +143,73 @@ func _fake_racer() -> Variant:
 		[r.save, catalog, layout, null, content, Fake.new(content, null, SEED)])
 	sim.drain_events()
 	return sim
+
+
+## A homing swimmer reaches its absolute point through a rebase, and asks for no move once there.
+func test_a_homing_swimmer_reaches_its_absolute_point_through_a_rebase() -> void:
+	var what := Gates.missing(Gates.WORLD)
+	if not FileAccess.file_exists(FAKE_GEN):
+		what.append("tests/fakes/fake_world_gen.gd (T2.1)")
+	if not what.is_empty():
+		print("test-swim-bot: the homing swim waits on: %s" % "; ".join(what))
+		return
+	var sim: Variant = _fake_racer()
+	var start: PackedFloat64Array = sim.absolute_position_am()
+	var goal := PackedFloat64Array([start[0] + HOMING_TO.x, start[1] + HOMING_TO.y])
+	var bot = SwimBot.toward(goal)
+	var arrived := -1
+	for i in HOMING_TICKS:
+		if i == HOMING_REBASE_AFTER:
+			check(sim.debug_rebase(Vector2i(1, 1)), "rebased on the way")
+			sim.drain_events()
+		var before: int = sim.state_hash()
+		var intent: SimIntent = bot.next_intent(sim)
+		check(sim.state_hash() == before, "next_intent leaves the sim as it was")
+		if Gates.abs_distance(sim.absolute_position_am(), goal) <= SwimBot.ARRIVE_M:
+			check_eq(intent.move, Vector2.ZERO, "within ARRIVE_M it asks for no move")
+			arrived = i
+			break
+		sim.step(intent)
+		sim.drain_events()
+	check(arrived >= 0, "it arrived within %.1f tm of its point (%.2f tm off)" % [SwimBot.ARRIVE_M,
+		Gates.abs_distance(sim.absolute_position_am(), goal)])
+	print("test-swim-bot: the homing swimmer arrived %.0f tm off in %.1f s, through a rebase" % [HOMING_TO.length(), arrived / 60.0])
+
+
+## A row of rocks with cracks narrower than the body: route_point alone wedges the cell in a crack;
+## SwimBot.Unjam steps it aside along the row until it passes the end, and it arrives.
+func test_unjam_frees_a_cell_wedged_in_a_crack_between_rocks() -> void:
+	var goal := Vector2(CRACK_X + CRACK_FROM, CRACK_Y)
+	var reached := {}
+	var wedges := 0
+	for unjam in [false, true]:
+		var sim := _pool_sim("grazer", layout.spawn)
+		sim.arena = PoolArena.create(layout.pool_radius, layout.soft_start, layout.hard_radius)
+		var step := 2.0 * CRACK_R + CRACK_GAP
+		for k in CRACK_ROCKS:
+			sim.arena.add_rock("crack_%d" % k, Vector2(CRACK_X, (k - (CRACK_ROCKS - 1) / 2.0) * step), CRACK_R)
+		check(2.0 * sim.phenotype.radius > CRACK_GAP, "the cracks (%.2f) are narrower than the body (%.2f)" % [
+			CRACK_GAP, 2.0 * sim.phenotype.radius])
+		check(sim.debug_teleport(Vector2(CRACK_X - CRACK_FROM, CRACK_Y), 0.0), "placed west of the row")
+		sim.drain_events()
+		var helper = SwimBot.Unjam.new()
+		reached[unjam] = -1
+		for i in CRACK_TICKS:
+			if i % 300 == 0:
+				sim.debug_set_energy(sim.state.energy_capacity)
+			var pos := sim.motion.position
+			if pos.distance_to(goal) <= 1.0:
+				reached[unjam] = i
+				break
+			var aim: Vector2 = helper.aim(sim, goal) if unjam else sim.arena.route_point(pos, goal, sim.phenotype.radius)
+			sim.step(SimIntent.new((aim - pos).normalized() if aim.distance_to(pos) > 1e-6 else Vector2.ZERO))
+			sim.drain_events()
+		wedges = helper.wedges
+	check_eq(int(reached[false]), -1, "route_point alone stays wedged in a crack (the row is a real trap)")
+	check(int(reached[true]) >= 0, "with Unjam the cell gets round the row")
+	check(wedges >= 1, "it stepped aside (%d times)" % wedges)
+	print("test-swim-bot: in the crack route_point alone never arrived; with Unjam it stepped aside %d times and arrived in %.1f s" % [
+		wedges, int(reached[true]) / 60.0])
 
 
 ## overdrive is for tests and soak gates only: no game script but swim_bot.gd itself, and no smoke,
@@ -352,6 +440,62 @@ func test_hunt_bot_in_endless_mode_retreats_to_an_unguarded_zone_and_patrols_ter
 		check(d >= last, "nearest first")
 		last = d
 	print("test-swim-bot: endless HuntBot at home: retreat %s, patrol %s" % [retreat, patrol])
+
+
+## Endless, between hunting and patrolling: with no rammer awake it swims for the nearest sleeping
+## one, and with no rammer alive in the loaded ground it heads home, not to its patrol zones.
+func test_hunt_bot_in_endless_mode_wakes_sleeping_rammers_and_heads_home_with_none() -> void:
+	if _waits("HuntBot roaming"):
+		return
+	var sim: Variant = _settled_hunter(ROAM_SLEEPER_AT)
+	for c in sim.creatures.awake().duplicate():
+		sim.creatures.remove(c, "evicted", sim.tick, false)
+	sim.drain_events()
+	var sleeper: CreatureField.Creature = null
+	for c in sim.creatures.creatures:
+		if c.asleep and c.brain.behavior == CreatureBrain.TERRITORIAL and (sleeper == null
+				or sim.motion.position.distance_to(c.motion.position) < sim.motion.position.distance_to(sleeper.motion.position)):
+			sleeper = c
+	check(sleeper != null, "a rammer sleeps round (%.0f, %.0f)" % [ROAM_SLEEPER_AT.x, ROAM_SLEEPER_AT.y])
+	if sleeper == null:
+		return
+	var to_sleeper: Vector2 = (sleeper.motion.position - sim.motion.position).normalized()
+	var bot = HuntBot.new()
+	check(_to_patrol(sim, bot).dot(to_sleeper) < 0.9, "the patrol zone lies elsewhere, so the check tells them apart")
+	var move: Vector2 = bot.next_intent(sim, []).move
+	print("test-swim-bot: roaming hunter: %.2f toward the sleeping rammer (the patrol zone %.2f)" % [
+		move.dot(to_sleeper), _to_patrol(sim, bot).dot(to_sleeper)])
+	check(move.dot(to_sleeper) > 0.95, "it swims for the nearest sleeping rammer")
+	sim = _settled_hunter(ROAM_HOME_AT)
+	for c in sim.creatures.creatures.duplicate():
+		sim.creatures.remove(c, "evicted", sim.tick, false)
+	sim.drain_events()
+	var home: Vector2 = (sim.world.local_of_abs(0.0, 0.0) - sim.motion.position).normalized()
+	bot = HuntBot.new()
+	check(_to_patrol(sim, bot).dot(home) < 0.9, "territories wait to respawn, away from home, so the check tells them apart")
+	move = bot.next_intent(sim, []).move
+	print("test-swim-bot: roaming hunter with no rammer: %.2f toward home (the patrol zone %.2f)" % [
+		move.dot(home), _to_patrol(sim, bot).dot(home)])
+	check(move.dot(home) > 0.95, "with no rammer alive it heads home")
+
+
+## A hidden hunter teleported to `at` (am) and left still for ROAM_SETTLE_TICKS, so the sites round it
+## spawn.
+func _settled_hunter(at: Vector2) -> Variant:
+	var sim: Variant = Gates.make_sim("hunter", SEED)
+	sim.debug_set_hidden(true)
+	check(Gates.teleport(sim, PackedFloat64Array([at.x, at.y])), "placed at (%.0f, %.0f)" % [at.x, at.y])
+	for i in ROAM_SETTLE_TICKS:
+		Gates.tick(sim, SimIntent.new())
+	return sim
+
+
+## The way to the hunter's nearest patrol zone, or ZERO with none.
+static func _to_patrol(sim: Variant, bot: Variant) -> Vector2:
+	var patrol: PackedStringArray = bot.patrol_zone_ids(sim)
+	if patrol.is_empty():
+		return Vector2.ZERO
+	return (sim.region.zone(patrol[0]).center - sim.motion.position).normalized()
 
 
 static func _on_edge(p: Vector2, discs: Array) -> bool:

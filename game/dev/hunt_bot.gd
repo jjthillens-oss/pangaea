@@ -28,11 +28,18 @@ extends RefCounted
 ## the loaded ambush sites' homes. It hunts awake creatures only. In the pool it keeps RETREAT_ZONE
 ## and PATROL, which #30 and threats_sim #22 are tuned on: there the endless rule picks the same
 ## zones, but patrols them in another order.
+## The endless world also asks it to roam, as a player who has eaten the rammers round them swims
+## on to find more (S1 integration, docs/DECISIONS.md): between 4 and 5 it swims to the nearest
+## sleeping rammer, which wakes as it nears; with no rammer alive in the loaded ground it heads home,
+## where the arrow points, hunting what it meets on the way; and its travel frees itself where it
+## wedges between shells (SwimBot.Unjam). Patrolling a cluster whose rammers it has killed would keep
+## their sites in its view, so they would never respawn, and it would starve there.
 ##
 ##     var bot = load("res://game/dev/hunt_bot.gd").new()
 ##     sim.step(bot.next_intent(sim, events_from_the_last_step))
 
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
 
 ## m: the point it closes on lies this far behind the rammer's tail (plan section 16).
 const BEHIND_M := 1.2
@@ -64,6 +71,7 @@ var _prey_id := ""
 var _patrol_index := 0
 var _patrol_zone := ""             ## endless: the zone it patrols to now
 var _retreating := false
+var _unjam = null                  ## endless: its SwimBot.Unjam, made on its first travel
 
 
 func _init() -> void:
@@ -112,6 +120,11 @@ func _hunt(sim: PoolSim) -> SimIntent:
 	if prey != null:
 		return _close_on(sim, prey)
 	if _world(sim) != null:
+		var sleeper := _sleeping_prey(sim)
+		if sleeper != null:
+			return _travel(sim, sleeper.motion.position, 0.0)
+		if not _any_rammer(sim):
+			return _travel(sim, _world(sim).local_of_abs(0.0, 0.0), 0.0)
 		return _travel(sim, _endless_patrol_goal(sim), 0.0)
 	var goal := _zone_center(sim, PATROL[_patrol_index % PATROL.size()])
 	if pos.distance_to(goal) <= PATROL_ARRIVE_M:
@@ -173,7 +186,7 @@ static func endless_patrol_zones(from: Vector2, zones: Array, territories: Array
 
 
 ## Endless patrol: toward the current patrol zone; on arrival (or when it is gone) the nearest other
-## patrol zone. With no territory loaded it holds where it is.
+## patrol zone. With no territory loaded it holds where it is (_hunt heads home instead).
 func _endless_patrol_goal(sim: PoolSim) -> Vector2:
 	var pos := sim.motion.position
 	var zones := patrol_zone_ids(sim)
@@ -242,6 +255,29 @@ func _prey(sim: PoolSim) -> CreatureField.Creature:
 	return best
 
 
+## Endless: the nearest sleeping rammer (ties by id), or null. It wakes once the cell is inside the
+## wake ring.
+func _sleeping_prey(sim: PoolSim) -> CreatureField.Creature:
+	var best: CreatureField.Creature = null
+	var best_d := INF
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if not c.asleep or c.brain == null or c.brain.behavior != CreatureBrain.TERRITORIAL:
+			continue
+		var d := sim.motion.position.distance_to(c.motion.position)
+		if d < best_d or (d == best_d and c.id < best.id):
+			best_d = d
+			best = c
+	return best
+
+
+## Endless: whether any rammer lives in the loaded ground, awake or asleep.
+static func _any_rammer(sim: PoolSim) -> bool:
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.brain != null and c.brain.behavior == CreatureBrain.TERRITORIAL:
+			return true
+	return false
+
+
 ## Telling or striking: its line is set, so the cell keeps off it (the EvadeBot reaction handles a
 ## line aimed at the cell).
 static func _committed(c: CreatureField.Creature) -> bool:
@@ -268,7 +304,13 @@ func _travel(sim: PoolSim, goal: Vector2, stop_m: float, mind_lairs := true) -> 
 	if pos.distance_to(goal) <= stop_m:
 		return SimIntent.new()
 	var via := _round_lairs(sim, pos, goal) if mind_lairs else goal
-	var aim := sim.arena.route_point(pos, via, sim.phenotype.radius)
+	var aim: Vector2
+	if _world(sim) != null:
+		if _unjam == null:
+			_unjam = SwimBot.Unjam.new()
+		aim = _unjam.aim(sim, via)
+	else:
+		aim = sim.arena.route_point(pos, via, sim.phenotype.radius)
 	var to := aim - pos
 	if to.length() < 1e-6:
 		return SimIntent.new()

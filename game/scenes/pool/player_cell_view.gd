@@ -40,6 +40,9 @@ const STARVING_TINT := Color(0.42, 0.44, 0.47, 0.55)
 const HURT_S := 0.15
 const HURT_TINT := Color(0.93, 0.2, 0.2, 0.75)   ## below about 0.6 alpha the cyan cell turns grey, not red
 const FLINCH_S := 0.15
+## "Reduce flashing effects" (settings, Bible 19): the hit flash swells in and out instead of
+## starting at full strength, and peaks at this share of it. The flinch still shows the hit.
+const REDUCED_FLASH_PEAK := 0.4
 const FLINCH_SQUASH := 0.15
 const FLINCH_BACK_M := 0.08
 ## Shelter (M1 step 3): a soft rim pulsing once a second, never above alpha 0.25, so it never flashes.
@@ -318,8 +321,7 @@ func _update_overlay(delta: float) -> void:
 	_tint = move_toward(_tint, want, delta / TINT_FADE_S)
 	_shelter = move_toward(_shelter, 1.0 if _sheltered and not _dead else 0.0, delta / SHELTER_FADE_S)
 	_shelter_phase = fmod(_shelter_phase + TAU * SHELTER_HZ * delta, TAU) if _shelter > 0.0 else 0.0
-	# Eased out (1 - k^2), so the first frames after a hit show it at nearly full red.
-	var flash := 1.0 - pow(_hurt_t / HURT_S, 2.0) if _hurt_t >= 0.0 and _hurt_t < HURT_S else 0.0
+	var flash := hit_flash(_hurt_t, HURT_S, SettingsService.shared().reduce_flashing())
 	var tint := Color(STARVING_TINT, STARVING_TINT.a * _tint)
 	if flash > 0.0:
 		tint = Color(tint.lerp(HURT_TINT, flash), maxf(tint.a, HURT_TINT.a * flash))
@@ -338,3 +340,14 @@ func _apply_overlay(material: Material) -> void:
 	for root: Node in [%Model, %Parts]:
 		for node in root.find_children("*", "GeometryInstance3D", true, false):
 			(node as GeometryInstance3D).material_overlay = material
+
+
+## A hit flash's strength `t` seconds into it (below 0 or past `length`: none). Eased out
+## (1 - k^2), so the first frames after a hit show it at nearly full strength; `reduced` (Reduce
+## flashing effects) swells it in and out instead, never above REDUCED_FLASH_PEAK. The rivals'
+## views use it too.
+static func hit_flash(t: float, length: float, reduced: bool = false) -> float:
+	if t < 0.0 or t >= length:
+		return 0.0
+	var k := t / length
+	return REDUCED_FLASH_PEAK * sin(PI * k) if reduced else 1.0 - k * k

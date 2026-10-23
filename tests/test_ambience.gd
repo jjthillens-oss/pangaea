@@ -100,8 +100,8 @@ func test_the_ambience_stays_inside_its_budgets() -> void:
 	node._ready()
 	check(node.particle_count() > 0 and node.particle_count() <= MAX_PARTICLES,
 		"%d drifting quads, at most %d" % [node.particle_count(), MAX_PARTICLES])
-	check(node.backdrop_count() > 0 and node.backdrop_count() <= MAX_BACKDROPS,
-		"%d backdrop organisms, at most %d" % [node.backdrop_count(), MAX_BACKDROPS])
+	# The S2 ghost layer draws the far giants, so the ambience draws no backdrops (s2-view 11.1).
+	check_eq(node.backdrop_count(), 0, "no drifting backdrops; the ghost layer owns the far layer")
 	for child in node.get_children():
 		if child is GeometryInstance3D:
 			var geo := child as GeometryInstance3D
@@ -167,3 +167,24 @@ func test_pale_decor_is_too_faint_to_lift_the_fluid() -> void:
 				top_alpha = maxf(top_alpha, luma * t.a * PoolAmbience.BACKDROP_OPACITY.y)
 		check(top <= MAX_LUMA_BELOW, "%s: brightest texel luminance %.2f" % [file, top])
 		check(top_alpha <= MAX_LUMA_ALPHA, "%s: luminance x opacity %.2f" % [file, top_alpha])
+
+
+func test_apply_scale_view_scales_bands_and_sizes_and_is_identity_at_one() -> void:
+	var node: PoolAmbience = (load(SCENE) as PackedScene).instantiate()
+	node._ready()
+	var before := {}
+	for child in node.get_children():
+		if child is MultiMeshInstance3D:
+			before[child.name] = (child as MultiMeshInstance3D).material_override.get_shader_parameter("height_range")
+	node.apply_scale_view({"depth_k": 1.0, "size_k": 1.0})
+	for child in node.get_children():
+		if child is MultiMeshInstance3D:
+			var m := (child as MultiMeshInstance3D).material_override as ShaderMaterial
+			check_eq(m.get_shader_parameter("height_range"), before[child.name], "%s: k = 1 leaves the band" % child.name)
+	node.apply_scale_view({"depth_k": 0.625, "size_k": 0.625})
+	for child in node.get_children():
+		if child is MultiMeshInstance3D:
+			var m := (child as MultiMeshInstance3D).material_override as ShaderMaterial
+			check_eq(m.get_shader_parameter("height_range"), (before[child.name] as Vector2) * 0.625, "%s: band scales by depth_k" % child.name)
+			check_eq(m.get_shader_parameter("size_k"), 0.625, "%s: sizes scale by size_k" % child.name)
+	node.free()

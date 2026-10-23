@@ -1,0 +1,180 @@
+{
+	"note": "Gait Lab test bodies. Lengths in metres. Body-local axes: +X right, +Y up, -Z forward. Legs are listed front to back, left then right. \"knee\": which way the middle joint points (forward, back, out).",
+	"bodies": {
+		"quad_short": {
+			"body_length": 1.2,
+			"body_width": 0.5,
+			"mass": 20.0,
+			"legs": [
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						-0.45
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "back"
+				},
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						0.45
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "forward"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						-0.45
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "back"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						0.45
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "forward"
+				}
+			]
+		},
+		"quad_long": {
+			"body_length": 1.2,
+			"body_width": 0.5,
+			"mass": 20.0,
+			"legs": [
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						-0.45
+					],
+					"upper": 0.5,
+					"lower": 0.5,
+					"knee": "back"
+				},
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						0.45
+					],
+					"upper": 0.5,
+					"lower": 0.5,
+					"knee": "forward"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						-0.45
+					],
+					"upper": 0.5,
+					"lower": 0.5,
+					"knee": "back"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						0.45
+					],
+					"upper": 0.5,
+					"lower": 0.5,
+					"knee": "forward"
+				}
+			]
+		},
+		"hexapod": {
+			"body_length": 1.4,
+			"body_width": 0.5,
+			"mass": 20.0,
+			"legs": [
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						-0.55
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				},
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						0.0
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				},
+				{
+					"side": "L",
+					"hip": [
+						-0.25,
+						0.0,
+						0.55
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						-0.55
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						0.0
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				},
+				{
+					"side": "R",
+					"hip": [
+						0.25,
+						0.0,
+						0.55
+					],
+					"upper": 0.25,
+					"lower": 0.25,
+					"knee": "out"
+				}
+			]
+		}
+	}
+}

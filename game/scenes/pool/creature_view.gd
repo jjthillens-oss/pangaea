@@ -516,9 +516,7 @@ func _apply_pose(p: Dictionary) -> void:
 		_brow.position = _brow_rest + Vector3.DOWN * BROW_DROP_M * float(p.get("brow", 0.0))
 	if _eye_material != null:
 		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / EYE_EMISSION_REST
-	var flash := 0.0
-	if _hurt_t >= 0.0 and _hurt_t < HURT_S:
-		flash = 1.0 - pow(_hurt_t / HURT_S, 2.0)   # eased out, like the player's flash
+	var flash := PlayerCellView.hit_flash(_hurt_t, HURT_S, SettingsService.shared().reduce_flashing())
 	_hurt_overlay.albedo_color = Color(HURT_COLOR, HURT_COLOR.a * flash)
 	# Overlay and transparency change only now and then; set them on the meshes only when they do.
 	if (flash > 0.0) != _overlay_on or transparency != _transparency:

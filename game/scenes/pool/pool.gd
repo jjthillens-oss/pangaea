@@ -85,7 +85,7 @@ var _starve_pulse_t := 0.0
 @onready var feedback: FeedbackFx = %Feedback
 @onready var camera: PoolCamera = %Camera
 @onready var swim_input: SwimInput = %SwimInput
-@onready var audio: PlaceholderAudio = %Audio
+@onready var audio: CellAudio = %Audio
 @onready var ui: CanvasLayer = %UI
 @onready var target_ring: TargetRing = %TargetRing
 @onready var starving_arrow: StarvingArrow = %StarvingArrow
@@ -375,7 +375,7 @@ func _process(delta: float) -> void:
 	_follow_camera()
 	_update_markers()
 	_draw_food(fraction)
-	feedback.update_zones(sim.region, sim.plankton, delta)
+	feedback.update_zones(sim.region, sim.plankton, delta, PlaneSpace.to_plane(cell_view.position), sim.phenotype.radius)
 	_update_starving(delta)
 	_update_target_ring()
 

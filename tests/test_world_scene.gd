@@ -102,7 +102,7 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
 	check_eq(names.slice(0, 6), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx"], "the containers register in their fixed order")
-	check_eq(names.size(), 6 + PlaceholderAudio.POSITIONAL_PLAYERS + pool.creature_layer.views().size(),
+	check_eq(names.size(), 6 + CellAudio.POSITIONAL_PLAYERS + pool.creature_layer.views().size(),
 		"then the positional players, then each creature's lane")
 	check(pool.cell_view.get_node_or_null("EatFx") == null and pool.world_fx.get_node_or_null("EatFx") is CPUParticles3D,
 		"the eat burst has moved to WorldFx")
@@ -364,6 +364,39 @@ func test_chunk_events_add_and_remove_shell_instances() -> void:
 	pool.free()
 
 
+func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
+	# From a clean slate: the pieces earlier tests loaded are dropped (a pending load taken first).
+	for path in LandmarkLayer._loading.keys():
+		LandmarkLayer._scene(path)
+	LandmarkLayer._scenes.clear()
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var kit: PlacementKit = pool.session.world.kit
+	var paths := {}
+	for id in kit.assets:
+		if str(kit.assets[id].kind) in ["landmark", "rare"]:
+			paths[str(kit.assets[id].glb)] = true
+	check(paths.size() >= 5, "the kit has landmark and rare pieces (%d)" % paths.size())
+	for path in paths:
+		check(LandmarkLayer._loading.has(path), "setup starts loading %s" % path.get_file())
+	var loaded := func() -> bool: return paths.keys().all(func(path: String) -> bool: return LandmarkLayer.is_loaded(path))
+	var waited := 0
+	while waited < 10000 and not loaded.call():
+		OS.delay_msec(10)
+		waited += 10
+	check(loaded.call(), "every piece is loaded with no chunk asking for one (%d ms)" % waited)
+	pool.landmarks.setup(kit)
+	check_eq(LandmarkLayer._loading.size(), paths.size(), "a second setup (a new session) starts no load again")
+	pool.apply_world_event(_rare_chunk(Vector2i(53, 53)))
+	check(pool.landmarks.pieces().size() >= 2, "a chunk takes its landmark and its set piece")
+	check(LandmarkLayer._scenes.size() >= 2 and LandmarkLayer._loading.size() == paths.size() - LandmarkLayer._scenes.size(),
+		"from the loads already done (%d taken)" % LandmarkLayer._scenes.size())
+	pool.free()
+	check(LandmarkLayer._loading.is_empty(), "the layer takes every load still pending as it goes, so none leaks at exit")
+	for path in paths:
+		check_eq(ResourceLoader.load_threaded_get_status(path), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
+			"and no request for %s is left with the loader (each was made once and taken once)" % path.get_file())
+
+
 func test_a_landmark_shows_its_model_yaw_scale_tint_and_growth() -> void:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var kit: PlacementKit = pool.session.world.kit
@@ -425,6 +458,68 @@ func test_a_set_piece_draws_over_its_colliders_at_every_orientation() -> void:
 	check(piece != null and piece.basis.is_equal_approx(Basis(Vector3.UP, deg_to_rad(-90.0)) * Basis.from_scale(Vector3(-1.0, 1.0, 1.0))),
 		"a place with yaw -90 and mirror gets exactly that basis")
 	pool.free()
+
+
+## A "Regrowing" label never covers the cell on screen (S1 review: it sat over the cell while the
+## cell waited in the zone it had emptied). Swept through the zone's middle from six ways at about
+## 4 m/s, a shown label always clears the cell; far from the cell it stands over the zone's centre.
+func test_a_regrowing_label_keeps_off_the_cell_on_screen() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session(FakeEvents.SEED, "grazer"))
+	var sim := pool.sim
+	var fx := pool.feedback
+	check(sim.debug_empty_zone("z_center"), "z_center emptied")
+	FakeEvents.frame(pool)
+	check(sim.plankton.is_regrowing("z_center"), "and regrowing after a step")
+	var label := fx.zone_label("z_center")
+	var center: Vector2 = sim.region.zone("z_center").center
+	var radius := sim.phenotype.radius
+	var dt := 1.0 / 60.0
+	fx.update_zones(sim.region, sim.plankton, FeedbackFx.ZONE_REFRESH_S, center + Vector2(30.0, 30.0), radius)
+	check(label.visible and is_equal_approx(label.modulate.a, 1.0) and is_equal_approx(label.position.y, FeedbackFx.ZONE_LABEL_Y),
+		"with the cell away it shows over the zone's centre (alpha %.2f, y %.2f)" % [label.modulate.a, label.position.y])
+	var worst := INF
+	var shown := 0
+	var hidden := 0
+	for way: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2(1.0, 1.0).normalized(), Vector2(-1.0, 0.5).normalized()]:
+		for side: float in [0.0, 0.6, -1.2]:
+			for step in 241:
+				var cell_at := center + way.orthogonal() * side + way * lerpf(-8.0, 8.0, step / 240.0)
+				pool.camera.snap_to(PlaneSpace.to_world(cell_at))
+				fx.update_zones(sim.region, sim.plankton, dt, cell_at, radius)
+				if not label.visible or label.modulate.a <= 0.0:
+					hidden += 1
+					continue
+				shown += 1
+				worst = minf(worst, _clear_of_cell_px(pool.camera, label, cell_at, radius))
+	check(worst >= -0.5, "a shown label always clears the cell and its mouth (closest %.1f px)" % worst)
+	check(shown > 3 * hidden, "and it shows most of the time (%d frames shown, %d hidden)" % [shown, hidden])
+	# The running pool passes its cell: a cell waiting in the zone's middle, as a forager does.
+	check(sim.debug_teleport(center + Vector2(0.0, -0.6), -PI / 2.0), "the cell moves into the zone's middle, just north of its centre")
+	for i in 30:
+		FakeEvents.frame(pool)
+	check(label.visible and label.modulate.a > 0.0, "the label shows there")
+	check(_clear_of_cell_px(pool.camera, label, PlaneSpace.to_plane(pool.cell_view.position), radius) >= -0.5,
+		"clear of the cell the pool draws (%.1f px)" % _clear_of_cell_px(pool.camera, label, PlaneSpace.to_plane(pool.cell_view.position), radius))
+	pool.free()
+
+
+## How far zone label `label` (a child of the pool's Feedback at the origin) shows from the cell at
+## `cell_at` on a 1920x1080 screen through `camera`, beyond FeedbackFx.ZONE_CELL_CLEAR of its radius.
+func _clear_of_cell_px(camera: Camera3D, label: Label3D, cell_at: Vector2, radius: float) -> float:
+	var project := func(p: Vector3) -> Vector2:
+		var view := camera.transform.affine_inverse() * p
+		var clip := Projection.create_perspective(camera.fov, 16.0 / 9.0, camera.near, camera.far) * Vector4(view.x, view.y, view.z, 1.0)
+		return Vector2(clip.x / clip.w + 1.0, 1.0 - clip.y / clip.w) * Vector2(960.0, 540.0)
+	var font: Font = ThemeDB.fallback_font
+	var text := Vector2(font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.font_size).x,
+		font.get_height(label.font_size)) * label.pixel_size
+	var at: Vector2 = project.call(label.position)
+	var half := Vector2((project.call(label.position + camera.basis.x * text.x * 0.5) as Vector2).distance_to(at),
+		(project.call(label.position + camera.basis.y * text.y * 0.5) as Vector2).distance_to(at))
+	var cell := PlaneSpace.to_world(cell_at)
+	var c: Vector2 = project.call(cell)
+	var reach := (project.call(cell + camera.basis.x * radius * FeedbackFx.ZONE_CELL_CLEAR) as Vector2).distance_to(c)
+	return c.clamp(at - half, at + half).distance_to(c) - reach
 
 
 func test_zone_labels_and_patches_follow_chunk_events() -> void:

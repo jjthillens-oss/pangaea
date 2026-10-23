@@ -32,6 +32,11 @@ extends TestCase
 ##  - G13: two overdriven runs of a 10 km straight swim (100,000 ticks) give the same hashes and
 ##    snapshot strings throughout, and so do two runs of RACER as it is (about 136,000 ticks): a hash
 ##    needs two runs, so G13's racer run is a pair. Its mutation is T2's zone stream left unseeded.
+## A #32 or hunter run from a point arrives there as a player does (arrive()): it swims in, hidden,
+## from 100 tm out, so the sites round the point spawn while it is still far off. Dropped onto the
+## point by a teleport it found the sea round it empty, since no site spawns within spawn_safe_m of
+## the cell or in its view. In the sea HuntBot roams to find prey and frees itself from cracks
+## between shells (game/dev/hunt_bot.gd; docs/DECISIONS.md, the S1 integration gate harness).
 ## The cell is hidden from the creatures (debug_set_hidden) where a gate is about streaming, not
 ## about threats, and kept fed (debug_set_energy) on the long swims.
 
@@ -63,6 +68,14 @@ const RACER := "racer"                 ## make_sim's name for the fastest legal 
 const FEED_BELOW := 0.5                ## keep_fed tops the cell up below this share of its capacity
 const DEATH_NOTICE_TICKS := 90         ## a player reading the death notice before Continue (as M1)
 const POINTS_HALF_TM := 2000.0         ## random points lie in [-2 km, 2 km] squared round home
+## Arrival (arrive()): a run from a point starts this far out on a bearing drawn from seed
+## ARRIVE_BEARING_SEED + its run seed, beyond the load ring (56 tm) from every site in view of the
+## point, and swims in until this near it or the limit (about twice the slowest body's swim).
+const ARRIVE_FROM_TM := 100.0
+const ARRIVE_BEARING_SEED := 3210
+const ARRIVE_WITHIN_TM := 2.0
+const ARRIVE_LIMIT_TICKS := 6000
+const ARRIVE_NEAR_TM := 10.0           ## a run that ends its arrival farther off than this fails
 
 ## Straight swims: each swim's ticks, and the distance it must at least cover so its invariants
 ## were checked on a moving cell (4 chunks; it prints what it covered). Eight overdriven directions,
@@ -225,6 +238,37 @@ static func teleport(sim: Variant, at: PackedFloat64Array) -> bool:
 	var ok: bool = sim.debug_teleport_abs(at[0], at[1])
 	sim.drain_events()
 	return ok
+
+
+## Brings a cell made by make_sim to the absolute point `at` (am) as a player arrives there: placed
+## ARRIVE_FROM_TM out on a bearing drawn from `seed_value`, it swims in with a homing SwimBot, hidden
+## from the creatures and kept fed, until within ARRIVE_WITHIN_TM of the point or ARRIVE_LIMIT_TICKS.
+## The sites round the point load and spawn while the cell is still far off, as they do for a player.
+## A teleport onto the point instead keeps every site within spawn_safe_m of the cell, or in its
+## view, from spawning for as long as the cell stays near (CreatureField.blocker_from), so the runs
+## from points used to start in a sea emptied round the cell. The cell then shows itself again with
+## the energy it had before. Returns {"placed", "ticks", "left_tm", "bearing"}.
+static func arrive(sim: Variant, at: PackedFloat64Array, seed_value: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = ARRIVE_BEARING_SEED + seed_value
+	var bearing := rng.randf() * TAU
+	var out := {"placed": false, "ticks": 0, "left_tm": INF, "bearing": bearing}
+	var energy: float = sim.state.energy
+	var from := Vector2.from_angle(bearing) * ARRIVE_FROM_TM
+	if not teleport(sim, PackedFloat64Array([at[0] + from.x, at[1] + from.y])):
+		return out
+	out.placed = true
+	sim.debug_set_hidden(true)
+	var bot = SwimBot.toward(at)
+	while int(out.ticks) < ARRIVE_LIMIT_TICKS and abs_distance(sim.absolute_position_am(), at) > ARRIVE_WITHIN_TM:
+		keep_fed(sim)
+		tick(sim, bot.next_intent(sim))
+		out.ticks += 1
+	out.left_tm = abs_distance(sim.absolute_position_am(), at)
+	sim.debug_set_hidden(false)
+	sim.debug_set_energy(energy)
+	sim.drain_events()
+	return out
 
 
 ## Tops the cell's energy up to full when it is below FEED_BELOW of its capacity.
@@ -543,9 +587,9 @@ func test_soak_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() ->
 				met_in += 1 if met > 0 else 0
 				deaths += int(run.killed)
 				starved += int(run.starved)
-				print("test-endless-gates: #32 %s %s seed %d: %d notices, %d tells, %d dodged, %d hits taken, %d killed, %d starved, %d meals" % [
+				print("test-endless-gates: #32 %s %s seed %d: %d notices, %d tells, %d dodged, %d hits taken, %d killed, %d starved, %d meals%s" % [
 					body, "home" if from_home else "point (%.0f, %.0f)" % [at[0], at[1]], seed_value, run.notices, run.tells,
-					run.dodges, run.hits_taken, run.killed, run.starved, run.meals])
+					run.dodges, run.hits_taken, run.killed, run.starved, run.meals, "" if from_home else "; " + str(run.arrival)])
 			var group_minutes := starts.size() * PRESSURE_TICKS / 3600.0
 			minutes += group_minutes
 			var where := "%s from %s" % [body, "home" if from_home else "points"]
@@ -560,12 +604,13 @@ func test_soak_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() ->
 
 func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array) -> Dictionary:
 	var sim: Variant = make_sim(body, seed_value)
+	var run := {"notices": 0, "tells": 0, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0, "meals": 0,
+		"arrival": ""}
 	if not at.is_empty():
-		check(teleport(sim, at), "%s seed %d: placed at (%.0f, %.0f)" % [body, seed_value, at[0], at[1]])
+		run.arrival = _arrived(sim, at, seed_value, "%s seed %d" % [body, seed_value])
 	var forager = ForageBot.new()
 	var bot = EvadeBot.new()
 	bot.base = forager.next_intent
-	var run := {"notices": 0, "tells": 0, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0, "meals": 0}
 	var events: Array[Dictionary] = []
 	var dead := {"since": -1}
 	for i in PRESSURE_TICKS:
@@ -586,6 +631,16 @@ func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array) -> Dic
 				"ate":
 					run.meals += 1
 	return run
+
+
+## arrive(), checked: the cell was placed and ended its arrival within ARRIVE_NEAR_TM of the point.
+## Returns the arrival in words for the run's line.
+func _arrived(sim: Variant, at: PackedFloat64Array, seed_value: int, who: String) -> String:
+	var a := arrive(sim, at, seed_value)
+	check(bool(a.placed), "%s: placed %.0f tm out from (%.0f, %.0f)" % [who, ARRIVE_FROM_TM, at[0], at[1]])
+	check(float(a.left_tm) <= ARRIVE_NEAR_TM, "%s: arrived within %.0f tm of (%.0f, %.0f) (%.1f tm off)" % [
+		who, ARRIVE_NEAR_TM, at[0], at[1], a.left_tm])
+	return "arrived from %.0f deg in %.1f s, %.1f tm off" % [rad_to_deg(a.bearing), int(a.ticks) / 60.0, a.left_tm]
 
 
 ## #33: a greedy camper that starts full in an unguarded zone runs dry there (M1's checks).
@@ -709,8 +764,9 @@ func test_soak_a_hunter_lineage_lives_on_its_kills_from_home_and_ten_points() ->
 
 func _hunter_pass(seed_value: int, at: PackedFloat64Array) -> bool:
 	var sim: Variant = make_sim("hunter", seed_value)
+	var arrival := ""
 	if not at.is_empty():
-		check(teleport(sim, at), "hunter seed %d: placed at (%.0f, %.0f)" % [seed_value, at[0], at[1]])
+		arrival = "; " + _arrived(sim, at, seed_value, "hunter seed %d" % seed_value)
 	var bot = HuntBot.new()
 	var run := {"starved": 0, "killed": 0, "meat": 0, "kills": 0}
 	var events: Array[Dictionary] = []
@@ -727,9 +783,9 @@ func _hunter_pass(seed_value: int, at: PackedFloat64Array) -> bool:
 				"creature_died":
 					run.kills += 1 if e.by == CreatureField.PLAYER_ID else 0
 	var ok: bool = run.starved == 0 and run.killed <= HUNTER_MAX_THREAT_DEATHS and run.meat >= HUNTER_MIN_MEAT
-	print("test-endless-gates: hunter seed %d from %s: %s; %d kills, %d meat eaten, %d starved, %d killed" % [
+	print("test-endless-gates: hunter seed %d from %s: %s; %d kills, %d meat eaten, %d starved, %d killed%s" % [
 		seed_value, "home" if at.is_empty() else "(%.0f, %.0f)" % [at[0], at[1]], "pass" if ok else "FAIL", run.kills,
-		run.meat, run.starved, run.killed])
+		run.meat, run.starved, run.killed, arrival])
 	return ok
 
 
