@@ -54,3 +54,24 @@ func test_corners_equal_the_old_corners_for_any_camera_target_and_screen() -> vo
 	check_eq(mismatches, 0, "every corner equal to the old one")
 	check(empty > 0, "some cameras saw no far end (%d)" % empty)
 	check(ViewFootprint._shapes.size() <= ViewFootprint._SHAPES_MAX, "the kept shapes stay bounded")
+
+
+# --- WorldStream._calm (a match instead of the CALM key) ---
+
+func test_calm_agrees_with_the_calm_table_for_every_state_and_phase() -> void:
+	var states: Array[String] = [CreatureBrain.REST, CreatureBrain.WANDER, CreatureBrain.FORAGE, CreatureBrain.NOTICE,
+		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE, ""]
+	var phases: Array[String] = ["", CreatureBrain.LURK, CreatureBrain.WATCH, CreatureBrain.PATROL, CreatureBrain.RETURN_HOME,
+		CreatureBrain.SEEK, CreatureBrain.EAT, CreatureBrain.WAIT, CreatureBrain.PURSUE, CreatureBrain.AIM, CreatureBrain.TELL,
+		CreatureBrain.STRIKE, CreatureBrain.GLIDE, CreatureBrain.RECOVER]
+	var c := CreatureField.Creature.new()
+	c.brain = CreatureBrain.Memory.new()
+	var calm := 0
+	for state in states:
+		for phase in phases:
+			c.brain.state = state
+			c.brain.phase = phase
+			var want := WorldStream.CALM.has(state + "/" + phase)
+			check_eq(WorldStream._calm(c), want, "%s/%s" % [state, phase])
+			calm += 1 if want else 0
+	check_eq(calm, WorldStream.CALM.size(), "every calm pair met")

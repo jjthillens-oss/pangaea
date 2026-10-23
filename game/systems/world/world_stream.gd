@@ -50,11 +50,11 @@ extends RefCounted
 const VIEW_SET_MARGIN_TM := 11.5
 ## tm: the largest zone radius at size 1 (tile rule 3).
 const MAX_ZONE_RADIUS_TM := 8.0
-## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
-## watching, noticing, chasing, attacking, fleeing or going home.
 ## The Vector2 keys a rebase shifts on each plankton and carrion item (RebaseShift.items).
 const PLANKTON_POSITIONS: PackedStringArray = ["position", "anchor"]
 const CARRION_POSITIONS: PackedStringArray = ["position"]
+## The (state/phase) pairs a creature may sleep in (spine 3.11): resting, patrolling or foraging, not
+## watching, noticing, chasing, attacking, fleeing or going home. _calm tests them without a key.
 const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
 
 var content: WorldContent
@@ -685,8 +685,16 @@ func _hold_pass(sim: PoolSim, view_from: Dictionary) -> void:
 			sim.creatures.let_go(c, sim.tick)
 
 
+## Whether the creature's (state/phase) is in CALM, without building the key (a pass asks for every
+## awake creature; tests/test_perf_world_caches.gd holds the two together).
 static func _calm(c: CreatureField.Creature) -> bool:
-	return CALM.has(c.brain.state + "/" + c.brain.phase)
+	var m := c.brain
+	var state := m.state
+	if state == "forage":
+		return m.phase == "seek" or m.phase == "eat"
+	if state == "rest":
+		return m.phase == "lurk" or m.phase == ""
+	return state == "wander" and m.phase == "patrol"
 
 
 ## {creature id: think slot} of the awake creatures, sorted by id.
