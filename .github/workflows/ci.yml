@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # nightly.yml runs the whole of CI on main and publishes the build only when every job passes.
+  workflow_call:
 
 jobs:
   test-and-export:
@@ -46,3 +48,33 @@ jobs:
           name: pangaea-windows-${{ github.sha }}
           path: builds/windows/
           retention-days: 30
+
+  # Proves the uploaded build starts on Windows itself: the release exe headless (main scene and
+  # the release probe) and the dev exe with a real renderer (the --perf-tour swim). See
+  # tools/check_windows_launch.sh.
+  windows-launch:
+    needs: test-and-export
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: pangaea-windows-${{ github.sha }}
+          path: builds/windows
+
+      - name: Launch the build on Windows
+        run: tools/check_windows_launch.sh builds/windows
+
+      - name: Upload the launch logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-launch-logs-${{ github.sha }}
+          path: builds/windows-launch/
+          retention-days: 14

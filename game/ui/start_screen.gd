@@ -1,17 +1,21 @@
 class_name StartScreen
 extends Control
-## The title screen (M1 step 2). Continue (with a card naming the saved body, lineage tag,
-## generation, points and save time over a preview of the saved cell), New lineage (a picker of
-## the three starting bodies with their real stats and a shared preview), and Quit. Everything
-## works from the keyboard and the first button has focus.
+## The title screen (M1 step 2; the UI pass added the moving backdrop, Save slots, Settings and the
+## controller). Continue (with a card naming the slot, saved body, lineage tag, generation, points
+## and save time over a preview of the saved cell), New lineage (a picker of the three starting
+## bodies with their real stats and a shared preview), Save slots, Settings and Quit. Everything
+## works from the keyboard or a controller and the first button has focus; the hint at the bottom
+## names the inputs of the device in use.
 ##
-## It only asks: Main answers new_requested, continue_requested and quit_requested with the same
-## methods the scene smoke calls. The slot summary comes from GameSession.peek_slot(), which
+## It only asks: Main answers new_requested, continue_requested, slots_requested,
+## settings_requested and quit_requested with the same methods the scene smoke calls. The slot summary comes from GameSession.peek_slot(), which
 ## never writes, and nothing here deletes a save.
 
 signal new_requested(body: String)
 signal continue_requested
 signal quit_requested
+signal slots_requested
+signal settings_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
 const REPLACE_TEXT := "This replaces your current lineage. The previous save is kept as a backup until your next save."
@@ -23,17 +27,25 @@ const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
 var peek := {}
 var catalog: PartCatalog
 var selected_body := "grazer"
+## The numbered save slot shown (SaveSlots), or 0 for a --slot file that is none of them.
+var slot_number := 0
 
 var _group := ButtonGroup.new()
 var _cards := {}       ## body -> BodyCard
 var _genomes := {}     ## body -> Genome of the founded starting body
 var _built := false
+var _hint_generation := -1
 
 @onready var main_view: Control = %MainView
 @onready var picker_view: Control = %PickerView
 @onready var continue_button: Button = %ContinueButton
 @onready var new_button: Button = %NewButton
 @onready var quit_button: Button = %QuitButton
+@onready var slots_button: Button = %SlotsButton
+@onready var settings_button: Button = %SettingsButton
+@onready var background: ColorRect = %Background
+@onready var hint: Label = %Hint
+@onready var _card_title: Label = %CardTitle
 @onready var continue_card: Control = %ContinueCard
 @onready var continue_preview: CellPreview = %ContinuePreview
 @onready var start_button: Button = %StartButton
@@ -52,9 +64,11 @@ var _built := false
 
 
 ## Shows the slot summary and the starting bodies. Call it before or after the screen enters the tree.
-func setup(p_peek: Dictionary, p_catalog: PartCatalog) -> void:
+## `p_slot` is the numbered slot the summary is from (0: none, as for a --slot file).
+func setup(p_peek: Dictionary, p_catalog: PartCatalog, p_slot: int = 0) -> void:
 	peek = p_peek
 	catalog = p_catalog
+	slot_number = p_slot
 	_built = false
 	if is_node_ready():
 		_build()
@@ -64,6 +78,10 @@ func _ready() -> void:
 	continue_button.pressed.connect(func(): continue_requested.emit())
 	new_button.pressed.connect(open_picker)
 	quit_button.pressed.connect(func(): quit_requested.emit())
+	slots_button.pressed.connect(func(): slots_requested.emit())
+	settings_button.pressed.connect(func(): settings_requested.emit())
+	resized.connect(fit_backdrop)
+	fit_backdrop()
 	start_button.pressed.connect(request_start)
 	back_button.pressed.connect(show_main)
 	confirm.chosen.connect(_on_confirm)
@@ -80,6 +98,34 @@ func _build() -> void:
 	if bool(peek.get("exists", false)) and not bool(peek.get("ok", false)):
 		confirm.open("Your save could not be read", UNREADABLE_TEXT + " The files are still in the save folder.",
 			[["ok", "OK", true]], "ok", "ok", "\n".join(peek.get("errors", PackedStringArray())))
+
+
+## The backdrop's motion follows "Reduce camera motion"; its aspect follows the screen.
+func fit_backdrop() -> void:
+	var mat := background.material as ShaderMaterial
+	if mat == null:
+		return
+	mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0) if size.y > 0.0 else 16.0 / 9.0)
+	mat.set_shader_parameter("motion", 0.15 if SettingsService.shared().reduce_camera_motion() else 1.0)
+
+
+## The hint at the bottom: the inputs of the device in use.
+func hint_text() -> String:
+	var move := "D-pad or left stick  Move" if InputPrompts.device == "pad" else "Arrows or mouse  Move"
+	var rest := InputPrompts.hint_line([[&"ui_accept", "Select"], [&"ui_cancel", "Back"]])
+	return move + ("   ·   " + rest if not rest.is_empty() else "")
+
+
+func _process(_delta: float) -> void:
+	if _hint_generation != InputPrompts.generation:
+		_hint_generation = InputPrompts.generation
+		hint.text = hint_text()
+
+
+## Puts focus back on the main view's first live button (after an overlay closes).
+func focus_main() -> void:
+	if main_view.visible and is_inside_tree():
+		(new_button if continue_button.disabled else continue_button).grab_focus()
 
 
 ## The title view, with focus on Continue when it is available, else New lineage.
@@ -182,6 +228,7 @@ func _fill_continue_card() -> void:
 	for label: Label in [_card_name, _card_tag, _card_progress, _card_saved]:
 		label.visible = ok
 	_card_note.visible = true
+	_card_title.text = "Slot %d  ·  Your lineage" % slot_number if slot_number > 0 else "Your lineage"
 	if ok:
 		var summary: Dictionary = peek.summary
 		_card_name.text = BodyText.body_name(summary.body)

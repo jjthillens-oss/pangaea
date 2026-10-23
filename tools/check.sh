@@ -17,6 +17,9 @@
 #             the window's close button at the death notice quits with no dialog
 #   after_death:  a new process continues that slot: the points the death left, the cell at its
 #             checkpoint and sheltered, the death last in its history
+#   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
+#             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
+#             run; its own settings file and slots under user://smoke/menus
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests) and starts it
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
@@ -45,6 +48,11 @@ bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
+  exit 1
+fi
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/menus_smoke.gd 2>&1 | tee builds/smoke/menus.log
+if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/menus.log; then
+  echo "Engine or script errors in the menus smoke log (builds/smoke/menus.log)."
   exit 1
 fi
 tools/check_release.sh "$GODOT"

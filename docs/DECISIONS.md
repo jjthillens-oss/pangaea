@@ -371,6 +371,16 @@ only, never as a game dependency. Open for the owner: the player-facing name (se
 called *Pangea* argue for a distinctive subtitle), the release model, individual or company, and the AI-content
 disclosure wording.
 
+## 2026-10-23 · Menus and UI pass: settings, save slots, controller, title (scope CONFIRMED by owner direction; details PROPOSED)
+
+The owner asked the studio to run a Menus and UI department (2026-10-23 07:31, approving the coordinator's list: "title screen, settings, save slots and controller support"). That widens M1's "1 save slot" cap (scope caps above) to three slots; the save schema is unchanged.
+
+- **Settings are account settings, apart from run state** (Bible 18): `user://settings.cfg`, written by `SettingsService` (temp file and rename), checked by `GameSettings` against a spec (a bad or missing value falls back to its default and is logged as a warning). IMPLEMENTED.
+- **What the settings cover** (Bible 19): display mode, vsync, frame cap, 3D resolution, MSAA; master, music, effects and ambience volumes (by bus name, a missing bus skipped; the sound thread adds the layout) and mute in the background; zoom speed, invert zoom, stick deadzone; every rebindable action per device (keyboard and mouse, controller) with a swap when an input is taken; text size 100, 115 or 130% (scales every font size in the theme); reduce camera motion; reduce flashing (the hurt vignette at 40%); growth trigger (auto or press Grow, read by S2); pause on focus loss. Subtitles wait for the first spoken lines. IMPLEMENTED, values PROPOSED.
+- **Save slots**: `user://saves/slot_1.json` to `slot_3.json` (`SaveSlots`). Slot 1 is the old default file, so an existing lineage appears there. The chosen slot is remembered in the settings; `--slot` still overrides it. Delete asks first with Cancel focused and removes the save and its backup, keeping any `.corrupt-*` file. IMPLEMENTED.
+- **Controller**: defaults in `project.godot` (left stick and d-pad swim, RB/LB zoom in/out, Menu pauses, Y grows; `grow` also on G for S2). Menus add A (choose), B (back) and the left stick at runtime because the engine's `ui_accept`/`ui_cancel` have no controller buttons; LB/RB (Q/E on keys) change settings tabs. Hints and the pause menu's controls name the inputs of the device used last (`InputPrompts`). IMPLEMENTED; not tested with a physical controller yet.
+- **Look**: the theme moves from teal to the deep-blue palette (navy panels, blue borders, amber focus and primary buttons kept). The title backdrop is a procedural shader (light shafts and drifting motes, original), slowed to 15% by Reduce camera motion. PROPOSED; the owner judges the look.
+
 ## 2026-10-23 · Cell-stage audio (PROPOSED)
 
 M1 step 5's "real audio", built by the sound and music thread while engineering builds S1. Every sound is PROPOSED until Joshua listens; a listening preview (about two minutes of title, feeding, a hunt, starving, death, respawn and the endless-world stings) is in the project files at `pangaea/audio/cell_audio_preview.mp3`.

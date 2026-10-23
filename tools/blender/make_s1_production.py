@@ -71,6 +71,16 @@ def _detail(name):
                        [(0.1, (0.45, 0.45, 0.45, 1)), (0.5, (0.8, 0.8, 0.8, 1)), (0.9, (1, 1, 1, 1))])
         height = beads
         rough = sh.remap(beads, 0.0, 1.0, 0.5, 0.3)
+    elif key == "lairmouth":
+        # Silt-crusted shell grit: coarse grains and pits, darkening down into the hollow's silt floor.
+        grit = sh.remap(sh.voronoi(14.0, 1.0), 0.05, 0.35)
+        fine = sh.noise(40.0, 3.0)
+        depth = sh.remap(sh.axis("Z"), -1.15, -0.5)             # 0 on the hollow floor, 1 up on the crust
+        tone = sh.math("ADD", sh.math("MULTIPLY", grit, 0.45), sh.math("MULTIPLY", fine, 0.35))
+        tone = sh.math("MULTIPLY", tone, sh.math("ADD", 0.2, sh.math("MULTIPLY", depth, 0.8)))
+        base = sh.ramp(tone, [(0.0, (0.35, 0.35, 0.35, 1)), (0.45, (0.72, 0.72, 0.72, 1)), (0.8, (1, 1, 1, 1))])
+        height = sh.math("ADD", grit, sh.math("MULTIPLY", fine, 0.4))
+        rough = sh.remap(grit, 0.0, 1.0, 0.95, 0.75)
     else:
         # Stalks (cream): fibres running along the length, with fine cross banding.
         fibres = sh.noise(2.0, 6.0, 0.7, vector=sh.vmath("MULTIPLY", sh.pos, (24.0, 24.0, 2.0)))
