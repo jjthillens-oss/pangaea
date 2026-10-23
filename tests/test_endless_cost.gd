@@ -22,8 +22,11 @@ extends TestCase
 ##    sleep where it stops depends on the tiles there (on the real content 6 or 7 after 1,200 ticks).
 ##    On the fixture world there may be too few to time, and the gate then waits for the real content.
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
-##    median excess is at most 2 yardsticks. The rebase goes against the cell's side of the origin, so
-##    the tick holds one rebase, not two.
+##    median excess is at most 2 yardsticks. The 3 runs time the same rebases (their end hashes are
+##    equal), and each tick, the rebase tick and the plain one, counts at its fastest of the 3, as
+##    P99.9's do, so one burst of load on either tick does not move the excess; the median run's own
+##    median is printed beside it. The rebase goes against the cell's side of the origin, so the
+##    tick holds one rebase, not two.
 ##  - Saturated (B-7): on DenseGen, T2's FakeWorldGen with 3 zones and 9 rammer sites a chunk, RACER
 ##    swims overdriven east for 1,200 ticks and then 600 timed ticks, 3 runs, with the awake cap
 ##    (12, at least 6 in view), the sleeper cap (30) and the food cap (120, less one zone's worth
@@ -138,13 +141,14 @@ func _swim_runs(overdriven: bool) -> Array[Dictionary]:
 	return out
 
 
-## Each tick's yardsticks at its fastest of `runs` (which timed the same ticks).
-static func _fastest_per_tick(runs: Array[Dictionary]) -> Array[float]:
+## Each tick's yardsticks (or the run's `key` array) at its fastest of `runs` (which timed the same
+## ticks).
+static func _fastest_per_tick(runs: Array[Dictionary], key := "ratios") -> Array[float]:
 	var out: Array[float] = []
-	for i in (runs[0].ratios as Array).size():
+	for i in (runs[0][key] as Array).size():
 		var best := INF
 		for r in runs:
-			best = minf(best, r.ratios[i])
+			best = minf(best, r[key][i])
 		out.append(best)
 	return out
 
@@ -169,6 +173,12 @@ func test_the_percentile_and_fastest_tick_helpers() -> void:
 	var b: Array[float] = [4.0, 3.0, 9.5]
 	var runs: Array[Dictionary] = [{"ratios": a}, {"ratios": b}]
 	check_eq(_fastest_per_tick(runs), [4.0, 1.0, 9.0] as Array[float], "each tick at its fastest run")
+	var plain_a: Array[float] = [2.0, 3.0]
+	var plain_b: Array[float] = [9.0, 2.5]
+	var at_a: Array[float] = [4.0, 6.0]
+	var at_b: Array[float] = [3.5, 30.0]
+	var pairs: Array[Dictionary] = [{"before": plain_a, "at": at_a}, {"before": plain_b, "at": at_b}]
+	check_eq(_fastest_excess(pairs), [1.5, 3.5] as Array[float], "a rebase tick at its fastest less the plain tick at its fastest")
 	check_eq(_rebases([{"type": "debug"}, {"type": "rebased"}, {"type": "rebased"}]), 2, "rebased events counted")
 
 
@@ -434,31 +444,72 @@ static func _sleeper_scene(overdriven: bool) -> Variant:
 
 func _check_rebase_cost(overdriven: bool) -> void:
 	var mode := _mode(overdriven)
+	var runs: Array[Dictionary] = []
+	for run in RUNS:
+		runs.append(_rebase_run(overdriven))
+	var r0: Dictionary = runs[0]
+	var same := true
+	for r in runs:
+		check_eq(r.hash, r0.hash, "%s: every run timed the same rebases" % mode)
+		same = same and r.kept == r0.kept
+	check(same, "%s: every run kept the same tries" % mode)
+	check_eq(r0.kept.size(), REBASES, "%s: %d rebase ticks timed in %d tries" % [mode, r0.kept.size(), r0.tries])
+	if not same or r0.kept.is_empty():
+		return
+	var excess := _fastest_excess(runs)
+	var m := Yardstick.median(excess)
+	var own: Array[float] = []
+	for r in runs:
+		own.append(Yardstick.median(_excess(r.at, r.before)))
+	print("test-endless-cost: %s: a rebase tick costs %.2f yardsticks more than the tick before it, each at its fastest of %d runs (median of %d: %s); the median run's own %.2f (runs %s)" % [
+		mode, m, RUNS, excess.size(), _joined(excess, "%.2f"), Yardstick.median(own), _joined(own, "%.2f")])
+	check(m <= REBASE_LIMIT_YARDSTICKS, "%s: a rebase tick costs %.2f yardsticks more (limit %.1f)" % [mode, m, REBASE_LIMIT_YARDSTICKS])
+
+
+## One run of the rebase gate: RACER swims east WARM_TICKS untimed, then up to REBASES * 3 tries of
+## REBASE_GAP_TICKS untimed, a timed plain tick and a timed tick with debug_rebase. A try is kept when
+## the plain tick held no rebase and the other exactly one. Returns each kept try's yardsticks (the
+## plain tick "before", the rebase tick "at"), the kept tries' numbers, the tries and the end hash.
+static func _rebase_run(overdriven: bool) -> Dictionary:
 	var sim: Variant = _swimmer()
 	var bot = SwimBot.new(Vector2.RIGHT)
 	for i in WARM_TICKS:
 		_swim_step(sim, bot, overdriven)
-	var excess: Array[float] = []
+	var before: Array[float] = []
+	var at: Array[float] = []
+	var kept: Array[int] = []
 	var tries := 0
-	while excess.size() < REBASES and tries < REBASES * 3:
+	while kept.size() < REBASES and tries < REBASES * 3:
 		tries += 1
 		for i in REBASE_GAP_TICKS:
 			_swim_step(sim, bot, overdriven)
 		Gates.drive(sim, overdriven)
-		var before := _timed_step(sim, bot.next_intent(sim))
-		if _rebases(before.events) != 0:
+		var plain := _timed_step(sim, bot.next_intent(sim))
+		if _rebases(plain.events) != 0:
 			continue
 		var by := Vector2i(REBASE_CHUNKS if sim.motion.position.x >= 0.0 else -REBASE_CHUNKS, 0)
 		Gates.drive(sim, overdriven)
-		var at := _timed_step(sim, bot.next_intent(sim), by)
-		if _rebases(at.events) != 1:
+		var rebased := _timed_step(sim, bot.next_intent(sim), by)
+		if _rebases(rebased.events) != 1:
 			continue
-		excess.append(float(at.ratio) - float(before.ratio))
-	check_eq(excess.size(), REBASES, "%s: %d rebase ticks timed in %d tries" % [mode, excess.size(), tries])
-	var m := Yardstick.median(excess) if not excess.is_empty() else INF
-	print("test-endless-cost: %s: a rebase tick costs %.2f yardsticks more than the tick before it (median of %d: %s)" % [
-		mode, m, excess.size(), _joined(excess, "%.2f")])
-	check(m <= REBASE_LIMIT_YARDSTICKS, "%s: a rebase tick costs %.2f yardsticks more (limit %.1f)" % [mode, m, REBASE_LIMIT_YARDSTICKS])
+		before.append(float(plain.ratio))
+		at.append(float(rebased.ratio))
+		kept.append(tries)
+	return {"before": before, "at": at, "kept": kept, "tries": tries, "hash": sim.state_hash()}
+
+
+## Each kept try's rebase tick at its fastest of `runs` less its plain tick at its fastest (the runs
+## timed the same ticks).
+static func _fastest_excess(runs: Array[Dictionary]) -> Array[float]:
+	return _excess(_fastest_per_tick(runs, "at"), _fastest_per_tick(runs, "before"))
+
+
+## at[i] - before[i] for each i.
+static func _excess(at: Array[float], before: Array[float]) -> Array[float]:
+	var out: Array[float] = []
+	for i in at.size():
+		out.append(at[i] - before[i])
+	return out
 
 
 static func _rebases(events: Array) -> int:
