@@ -67,6 +67,10 @@ var _paused_for_quit := false
 
 func _ready() -> void:
 	get_tree().auto_accept_quit = false
+	# The canvas expands to the window's aspect (project settings), but headless has no window (a
+	# 64 x 64 root, which would expand to 1920 x 1920), so the smokes keep the 1920 x 1080 design canvas.
+	if DisplayServer.get_name() == "headless":
+		get_tree().root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
 	flags = RunFlags.current()
 	for problem in flags.problems:
 		push_warning(problem)
