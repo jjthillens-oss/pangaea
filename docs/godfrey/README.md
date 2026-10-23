@@ -49,23 +49,26 @@ Notes for the studio:
 - Keep at least one `godfrey-task` issue open. When the queue is empty the prompt falls back to the coordinator's
   list, which includes the jobs held as `godfrey-later`.
 
-## Current queue (2026-10-23)
+## Current queue (updated 2026-10-23 09:40 UTC)
 
-| Order | Issue | Branch | Base | Status |
-| --- | --- | --- | --- | --- |
-| 1 | #30 Architecture map | `godfrey/docs-onboarding` | `main` | ready |
-| 2 | #31 Rival evolution prototype | `godfrey/rival-evolution` | `main` | ready |
-| 3 | #32 Legless slither and stub-leg gait | `godfrey/legless-locomotion` | `claude/project-thread-uqwkit` | ready |
-| 4 | #33 Skin volume at extreme swings | `godfrey/skinning-fix` | `claude/project-thread-uqwkit` | ready |
-| 5 | #34 Test gaps and code review | `godfrey/test-review` | `main` | ready |
-| 6 | #35 Aquatic and land era proposals | `godfrey/era-proposals` | `main` | ready |
-| 7 | #36 Accessibility audit | `godfrey/accessibility-audit` | `main` | ready |
-| 8 | #37 Non-blocking lint job | `godfrey/ci-lint` | `main` | ready |
-| - | #38 Save fuzzing | `godfrey/save-fuzz` | `main` | later: after S1 saves land |
-| - | #39 Performance pass | `godfrey/perf-pass` | `main` | later: after S1 lands |
-| - | #40 Localisation prep | `godfrey/l10n-prep` | `main` | later: after PR #28 and S1 |
+| Issue | Branch | Status |
+| --- | --- | --- |
+| #30 Architecture map | `godfrey/docs-onboarding` | merged (PR #46) |
+| #31 Rival evolution prototype | `godfrey/rival-evolution` | merged (PR #50) |
+| #32 Legless slither and stub-leg gait | `godfrey/legless-locomotion` | ready |
+| #33 Skin volume at extreme swings | `godfrey/skinning-fix` | ready |
+| #34 Test gaps and code review | `godfrey/test-review` | merged (PR #45) |
+| #35 Aquatic and land era proposals | `godfrey/era-proposals` | merged (PR #47) |
+| #36 Accessibility audit | `godfrey/accessibility-audit` | merged (PR #48) |
+| #37 Non-blocking lint job | `godfrey/ci-lint` | merged (PR #51) |
+| #53 Test review, round 2 | `godfrey/test-review-2` | ready |
+| #54 Rival evolution v2 | `godfrey/rival-evolution-2` | ready |
+| #55 Proposals for the remaining eras | `godfrey/era-proposals-2` | ready |
+| #38 Save fuzzing | `godfrey/save-fuzz` | later: after S1 saves land |
+| #39 Performance pass | `godfrey/perf-pass` | later: after S1 lands |
+| #40 Localisation prep | `godfrey/l10n-prep` | later: after S1 |
 
-The creature-lab jobs (#32, #33) branch off the creature lab branch because the lab is not on `main` yet (PR #12).
+Every job branches off the latest `main`. The creature lab reached `main` with PR #12, so #32 and #33 use `main` too.
 
 ## Routing reviews
 
