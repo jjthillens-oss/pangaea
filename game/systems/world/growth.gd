@@ -180,8 +180,8 @@ func observe(sim: PoolSim, ev: Array) -> void:
 
 
 ## The first B.3 calm condition the tick fails, in priority order (BP-5), or "" when it is calm:
-## - "hunted": a creature holds the token on the cell, aims a tell, strike or glide at it, or touches
-##   it (within both radii and PoolSim.TOUCH_MARGIN);
+## - "hunted": a creature holds the token on the cell, aims a tell, strike or glide at it, or a
+##   creature or remnant touches it (within both radii and PoolSim.TOUCH_MARGIN);
 ## - "chasing": the cell bit or rammed within quiet_ticks, or closed more than chase_close_tm over
 ##   chase_window_ticks on a fleeing creature it could hurt (the closing history);
 ## - "eating": the cell ate within quiet_ticks;
@@ -235,12 +235,16 @@ func _hunted(sim: PoolSim) -> bool:
 			return true
 		if at.distance_to(c.motion.position) <= r_cell + c.phenotype.radius + PoolSim.TOUCH_MARGIN:
 			return true
+	if sim.remnants != null:
+		for r in sim.remnants.items:
+			if at.distance_to(r.motion.position) <= r_cell + r.phenotype.radius + PoolSim.TOUCH_MARGIN:
+				return true
 	return false
 
 
-## Step 5: this tick's distances to every fleeing creature within chase_track_tm that the cell could
-## hurt (its jaw can bite it, or one of its spikes faces it), ids sorted; entries older than
-## chase_window_ticks drop off the front.
+## Step 5: this tick's distances to every fleeing creature and every remnant (they always flee) within
+## chase_track_tm that the cell could hurt (its jaw can bite it, or one of its spikes faces it), ids
+## sorted; entries older than chase_window_ticks drop off the front.
 func _note_closing(sim: PoolSim) -> void:
 	var d := {}
 	if sim.creatures != null:
@@ -252,6 +256,13 @@ func _note_closing(sim: PoolSim) -> void:
 			var dist := at.distance_to(c.motion.position)
 			if dist <= track and _can_hurt(sim, c.motion.position, c.phenotype.radius):
 				d[c.id] = dist
+	if sim.remnants != null:
+		var at := sim.motion.position
+		var track := float(cfg.chase_track_tm)
+		for r in sim.remnants.items:
+			var dist := at.distance_to(r.motion.position)
+			if dist <= track and _can_hurt(sim, r.motion.position, r.phenotype.radius):
+				d[r.id] = dist
 	var ids := d.keys()
 	ids.sort()
 	var sorted := {}

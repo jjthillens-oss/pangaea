@@ -340,6 +340,10 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 			mem.home -= offset
 			if mem.territory_center.is_finite():
 				mem.territory_center -= offset
+	if sim.remnants != null:
+		for r in sim.remnants.items:   # S2: a remnant is a body and an actor, with no brain
+			RebaseShift.motion(r.motion, offset)
+			r.actor.position -= offset
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
 	if _swum_from.is_finite():
@@ -361,12 +365,15 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 
 
 ## The teleport path (spine 3.11 step 0, D-10), behind a camera cut: every loaded chunk unloads,
-## every creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
+## every remnant and creature leaves ("unloaded"), all carrion goes (C-10), the origin moves to the absolute
 ## point exactly (rebased), and the view set round it loads at once, its food zones flagged to fill
 ## at once (C-9). The caller places the cell near the new origin.
 func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	for key in _keys.duplicate():
 		_unload_chunk(sim, key)
+	if sim.remnants != null:
+		for r in sim.remnants.items.duplicate():
+			sim.remnants.remove(r, "unloaded", sim.tick)
 	if sim.creatures != null:
 		for c in sim.creatures.creatures.duplicate():
 			sim.creatures.remove(c, "unloaded", sim.tick, false)   # siteless ones too
@@ -530,6 +537,7 @@ func snapshot(sim: PoolSim) -> Dictionary:
 	}
 	if sim.growth != null:
 		out["growth"] = sim.growth.snapshot()
+		out["remnants"] = sim.remnants.snapshot()
 		var radii := {}
 		var lifetimes := {}
 		var carrion := sim.carrion
