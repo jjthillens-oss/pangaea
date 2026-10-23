@@ -46,3 +46,27 @@ jobs:
           name: pangaea-windows-${{ github.sha }}
           path: builds/windows/
           retention-days: 30
+
+  soak:
+    # The soak tier (tools/check_soak.sh: test_soak_*, the long S1 gates), in parallel with
+    # test-and-export. Its Godot run stops itself after 60 minutes (tools/bounded.sh) and fails
+    # with its output so far; this timeout is the backstop. S1 sign-off needs it green.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pinned toolchain
+        run: grep -E "^[A-Z_]+=" tools/toolchain.env >> "$GITHUB_ENV"
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: .toolchain
+          key: godot-${{ env.GODOT_RELEASE }}-linux
+
+      - name: Install Godot
+        run: tools/setup_toolchain.sh
+
+      - name: Import and run the soak tests
+        run: tools/check_soak.sh

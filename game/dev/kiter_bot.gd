@@ -10,6 +10,8 @@ extends RefCounted
 ## it closes in, at full throttle, on the creature once that one is committed to a strike (burst,
 ## glide and recover), so the cell's jaw (contact combat, OD3) wounds creatures until they flee.
 ##
+## In the endless world (S1) it circles awake creatures only: one that falls asleep is passed over.
+##
 ## Unlike EvadeBot it reads the sim's creatures (bodies and brains), as a test would. Like player
 ## input it only returns a SimIntent and never changes the sim. Its choices come from its own seeded
 ## RNG, so a run repeats exactly.
@@ -63,7 +65,7 @@ func next_intent(sim: PoolSim) -> SimIntent:
 		_target = ""
 		return SimIntent.new()
 	var c := sim.creatures.find(_target)
-	if c == null or (_arrived and _dwell_left <= 0):
+	if c == null or c.get("asleep") == true or (_arrived and _dwell_left <= 0):
 		c = _choose(sim)
 	if c == null:
 		return SimIntent.new()
@@ -105,7 +107,7 @@ func _choose(sim: PoolSim) -> CreatureField.Creature:
 	var best_d := INF
 	var fallback: CreatureField.Creature = null
 	var fallback_d := INF
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		if c.brain == null:
 			continue
 		var d := sim.motion.position.distance_to(c.motion.position)
@@ -143,3 +145,11 @@ static func _committed(c: CreatureField.Creature) -> bool:
 	if c.brain == null or c.brain.state != CreatureBrain.ATTACK:
 		return false
 	return c.brain.phase == CreatureBrain.STRIKE or c.brain.phase == CreatureBrain.GLIDE or c.brain.phase == CreatureBrain.RECOVER
+
+
+## The creatures that act this tick: all of them in the pool, the awake ones in the endless world
+## (CreatureField.awake(), S1 spine 3.10, which is the creature list itself in the pool). Read by
+## name, so the bot also loads before the endless world.
+static func _active(sim: PoolSim) -> Array:
+	var field: Object = sim.creatures
+	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
