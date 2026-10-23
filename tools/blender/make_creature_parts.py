@@ -45,6 +45,43 @@ def _up(verts):
     return [tuple(UP @ Vector(v)) for v in verts]
 
 
+def _tube(path, radius_at, sides):
+    """Like mp._sweep, but the ring frame is carried along the path by parallel transport, so a
+    curving path never flips its frame (mp._sweep switches its reference axis and twists the rings).
+    Returns verts, faces and each face's ring index (0 = the capped start)."""
+    verts, faces, rings, face_ring = [], [], [], []
+    n = len(path)
+    t0 = (path[1] - path[0]).normalized()
+    side = t0.cross(Vector((0.0, 0.0, 1.0)) if abs(t0.z) < 0.9 else Vector((1.0, 0.0, 0.0))).normalized()
+    for i, p in enumerate(path):
+        t = (path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized()
+        side = (side - t * side.dot(t)).normalized() if i else side
+        up = side.cross(t).normalized()
+        if radius_at(i, 0.0) <= 0.0:
+            rings.append([len(verts)])
+            verts.append(tuple(p))
+            continue
+        ring = []
+        for j in range(sides):
+            a = 2.0 * math.pi * j / sides
+            r = radius_at(i, a)
+            ring.append(len(verts))
+            verts.append(tuple(p + side * (r * math.cos(a)) + up * (r * math.sin(a))))
+        rings.append(ring)
+    cap = len(verts)
+    verts.append(tuple(path[0]))
+    for j in range(sides):
+        faces.append((cap, rings[0][(j + 1) % sides], rings[0][j]))
+        face_ring.append(0)
+    for i in range(n - 1):
+        a, b = rings[i], rings[i + 1]
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a[j], a[k], b[0]) if len(b) == 1 else (a[j], a[k], b[k], b[j]))
+            face_ring.append(i)
+    return verts, faces, face_ring
+
+
 def _shape_keys(obj, handles):
     """handles: [(name, fn(co) -> new co, meaning)]. Added after the bake (decimation cannot run on shape keys)."""
     obj.shape_key_add(name="Basis", from_mix=False)
@@ -471,6 +508,252 @@ def build_horn():
             "part_rules": rules, "paint_mix": {"M_Horn": 0.15}, "revision": 1, **baked}
 
 
+# --- Claw -------------------------------------------------------------------------------------
+
+CLAW_LEN = 0.12
+CLAW_R = 0.022
+
+
+def build_claw():
+    """A hooked sickle claw on a padded sheath, curving forward (+Y) and in toward the body's midline
+    (-X): chiral, so the runtime mirrors it for the left. H1_Length lengthens it, H2_Hook curls the tip."""
+    steps = 18
+    path = []
+    for i in range(steps + 1):
+        t = i / steps
+        a = 1.1 * t
+        path.append(Vector((-0.012 * t * t, 0.06 * (1 - math.cos(a)) / (1 - math.cos(1.1)), -0.015 + (CLAW_LEN + 0.015) * math.sin(a) / math.sin(1.1))))
+    verts, faces, face_ring = _tube(path, lambda i, a: 0.0 if i == steps else CLAW_R * (1.0 - i / steps) ** 0.8 * (1.0 + 0.25 * max(0.0, -math.sin(a)) ** 2), 18)
+    face_materials = [0 if r < 2 else 1 for r in face_ring]     # the sheath is the first two rings
+    sheath = sf.Shader("M_ClawSheathProc")
+    wr = sheath.noise(160.0, 3.0)
+    sheath.bump(wr, 0.3, 0.0008)
+    horn = sf.Shader("M_ClawProc")
+    streak = horn.noise(70.0, 3.0, vector=mp._stretched(horn, (5.0, 5.0, 0.3)))
+    horn.bump(streak, 0.25, 0.001)
+    mats = [sheath.out(_grey(sheath, sheath.remap(wr, 0.3, 0.7), 0.8), 0.6),
+            horn.out(_grey(horn, horn.remap(streak, 0.25, 0.75), 0.65), 0.25)]
+    claw = bc.mesh_object("Claw", verts, faces, mats, face_materials)
+    mats[0].name, mats[1].name = "M_ClawSheath", "M_Claw"
+    baked = _bake([claw], "PartClaw", {"M_ClawSheath": sf.tint(_lin("#B48E78")), "M_Claw": sf.tint(_lin("#4A3C34"))})
+    pts = _check_pivot("claw", 0.02)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) < 0, "claw: curls in toward the midline (-X on the right-hand piece)")
+
+    def length(co):
+        if co.z > 0.01:
+            co.z = 0.01 + (co.z - 0.01) * 1.4
+            co.y *= 1.3
+        return co
+
+    def hook(co):
+        k = max(0.0, co.z) / CLAW_LEN
+        co.y += 0.04 * k ** 3
+        co.z -= 0.02 * k ** 3
+        return co
+
+    handles = _shape_keys(claw, [("H1_Length", length, "the claw 40% longer"), ("H2_Hook", hook, "the tip hooked further forward and down")])
+    rules = _rules("claw", round(foot, 3), 0.02, "normal", ["limb_end", "limb"], 30, 30, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature claw part (PROPOSED): a dark hooked sickle claw on a padded sheath, right-hand piece (mirrored at bake for the left).",
+            "category": "part", "part_type": "claw", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_ClawSheath": 0.8, "M_Claw": 0.0}, "revision": 1, **baked}
+
+
+# --- Hand -------------------------------------------------------------------------------------
+
+FINGER_T = (0.0, 0.2, 0.4, 0.55, 0.7, 0.82, 0.91, 0.97, 1.0)
+
+
+def _finger_r(t, r0):
+    """A finger's radius along its length: two knuckle swells, then a rounded (not pointed) pad at the tip."""
+    r = r0 * (1.0 - 0.25 * t) * (1.0 + 0.12 * math.exp(-((t - 0.45) / 0.07) ** 2) + 0.1 * math.exp(-((t - 0.72) / 0.06) ** 2))
+    if t > 0.8:
+        r *= math.sqrt(max(0.0, 1.0 - ((t - 0.8) / 0.2) ** 2))
+    return r
+
+
+def build_hand():
+    """A three-fingered grasping hand with an opposed thumb, palm on the pivot along the limb axis (+Z out).
+    H1_Grip curls the fingers and thumb closed; H2_Spread fans them."""
+    unit, faces = bc.icosphere(3)
+    palm = [tuple(Vector((n.x * 0.04, n.y * 0.025, 0.035 + n.z * 0.038))) for n in (Vector(co).normalized() for co in unit)]
+    verts, fcs = list(palm), list(faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.0, -0.01, -0.02)], lambda i, a: 0.026 + 0.003 * i, 16)
+    bc.append(verts, fcs, wv, wf)
+    fingers = [(-0.024, 0.0, 0.06), (0.0, 0.0, 0.065), (0.024, 0.0, 0.06)]
+    for fx, fy, fz in fingers:
+        base = Vector((fx, fy, fz))
+        path = [base + Vector((fx * 0.3 * t, 0.012 * t * t, 0.07 * t)) for t in FINGER_T]
+        v, f, _ = _tube(path, lambda i, a: _finger_r(FINGER_T[i], 0.011), 12)
+        bc.append(verts, fcs, v, f)
+    tpath = [Vector((0.035, 0.012, 0.03)) + Vector((0.035 * t, 0.02 * t, 0.025 * t)) for t in FINGER_T]
+    v, f, _ = _tube(tpath, lambda i, a: _finger_r(FINGER_T[i], 0.012), 12)
+    bc.append(verts, fcs, v, f)
+    sh = sf.Shader("M_HandSkinProc")
+    creases = sh.remap(sh.voronoi(140.0, 0.7, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    sh.bump(creases, 0.3, 0.0008)
+    mat = sh.out(_grey(sh, sh.math("ADD", 0.7, sh.math("MULTIPLY", creases, 0.3)), 0.8), 0.6)
+    hand = bc.mesh_object("Hand", verts, fcs, [mat])
+    mat.name = "M_HandSkin"
+    baked = _bake([hand], "PartHand", {"M_HandSkin": sf.tint(_lin("#C4A088"))})
+    pts = _check_pivot("hand", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def grip(co):
+        if co.z > 0.06:
+            k = (co.z - 0.06) / 0.07
+            ang = math.radians(80.0) * k
+            dz = co.z - 0.06
+            return Vector((co.x, co.y + dz * math.sin(ang), 0.06 + dz * math.cos(ang)))
+        if co.x > 0.035:      # the thumb folds across
+            return Vector((co.x - 0.02 * (co.x - 0.035) / 0.035, co.y + 0.01, co.z))
+        return co
+
+    def spread(co):
+        if co.z > 0.06:
+            co.x *= 1.0 + 0.6 * (co.z - 0.06) / 0.07
+        return co
+
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 80 degrees closed, the thumb folds across"),
+                                 ("H2_Spread", spread, "fingers fan 60% wider at the tips")])
+    rules = _rules("hand", round(foot, 3), 0.025, "normal", ["limb_end"], 40, 40)
+    rules["handles"] = handles
+    rules["capabilities"] = ["grasper"]
+    return {"purpose": "Creature hand part (PROPOSED): a three-fingered grasping hand with an opposed thumb; grips on a shape key.",
+            "category": "part", "part_type": "hand", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_HandSkin": 0.85}, "revision": 1, **baked}
+
+
+# --- Crest ------------------------------------------------------------------------------------
+
+CREST_LEN = 0.3
+CREST_H = 0.12
+
+
+def build_crest():
+    """A dorsal crest of five webbed spines along the spine (Y), on the midline. H1_Raise lifts it,
+    H2_Fold lays the spines back toward the tail."""
+    verts, fcs = [], []
+    spines = 5
+    tips = []
+    for k in range(spines):
+        t = k / (spines - 1)
+        y = CREST_LEN * (0.5 - t)
+        h = CREST_H * (0.55 + 0.45 * math.sin(math.pi * (0.25 + 0.6 * t)))
+        path = [Vector((0.0, y - 0.03 * u * u, -0.015 + (h + 0.015) * u)) for u in (0.0, 0.25, 0.5, 0.75, 1.0)]
+        v, f = mp._sweep(path, lambda i, a: 0.0 if i == 4 else 0.009 * (1.0 - 0.2 * i), 10)
+        bc.append(verts, fcs, v, f)
+        tips.append(path)
+    # The web: a thin double-sided membrane between neighbouring spines, scalloped down between the tips.
+    cols, rows = 6, 6
+    for k in range(spines - 1):
+        grid = []
+        for c in range(cols + 1):
+            sc = c / cols
+            top = 0.82 - 0.32 * math.sin(math.pi * sc)
+            col = []
+            for r in range(rows + 1):
+                u = r / rows * top
+                pa = tips[k][0].lerp(tips[k][-1], u)
+                pb = tips[k + 1][0].lerp(tips[k + 1][-1], u)
+                p = pa.lerp(pb, sc)
+                p.y -= 0.03 * u * u
+                col.append((len(verts), len(verts) + 1))
+                verts.append((0.0025, p.y, p.z))
+                verts.append((-0.0025, p.y, p.z))
+            grid.append(col)
+        for c in range(cols):
+            for r in range(rows):
+                a, b, d, e = grid[c][r], grid[c + 1][r], grid[c][r + 1], grid[c + 1][r + 1]
+                fcs.append((a[0], d[0], e[0], b[0]))     # +X side, facing +X (columns run toward -Y, rows up +Z)
+                fcs.append((a[1], b[1], e[1], d[1]))     # -X side, facing -X
+    sh = sf.Shader("M_CrestProc")
+    veins = sh.noise(60.0, 3.0, vector=mp._stretched(sh, (1.0, 0.6, 5.0)))
+    sh.bump(veins, 0.25, 0.0008)
+    mat = sh.out(_grey(sh, sh.remap(veins, 0.2, 0.8), 0.75), 0.45)
+    crest = bc.mesh_object("Crest", verts, fcs, [mat], fix_normals=False)
+    mat.name = "M_Crest"
+    baked = _bake([crest], "PartCrest", {"M_Crest": sf.tint(_lin("#C77F5A"))}, tolerance=0.0002)
+    pts = _check_pivot("crest", 0.02)
+    foot = max(abs(p.y) for p in pts if p.z <= 0.01)
+
+    def raise_(co):
+        if co.z > 0:
+            co.z *= 1.45
+        return co
+
+    def fold(co):
+        if co.z > 0:
+            k = co.z / CREST_H
+            co.y -= 0.08 * k
+            co.z *= 1.0 - 0.45 * k
+        return co
+
+    handles = _shape_keys(crest, [("H1_Raise", raise_, "spines 45% taller"), ("H2_Fold", fold, "spines laid back toward the tail")])
+    rules = _rules("crest", round(foot, 3), 0.02, "normal", ["spine"], 10, 15, centerline="required")
+    rules["handles"] = handles
+    return {"purpose": "Creature crest part (PROPOSED): a dorsal crest of five webbed spines on the midline that raises or folds on shape keys; takes the creature's paint.",
+            "category": "part", "part_type": "crest", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_Crest": 0.75}, "revision": 1, **baked}
+
+
+# --- Tail fluke --------------------------------------------------------------------------------
+
+def build_tail_fluke():
+    """A crescent tail fluke for the spine's tail cap: +Z out along the spine (the cap's normal), the blade
+    spreading across X. H1_Span widens it, H2_Beat bends it for the swim stroke."""
+    cols, rows = 24, 6
+    span = 0.17
+    verts, fcs, grid = [], [], []
+    for r in range(rows + 1):
+        v = r / rows
+        row = []
+        for c in range(cols + 1):
+            u = c / cols * 2.0 - 1.0
+            x = span * u
+            lead = -0.015 + 0.12 * abs(u) ** 1.8                       # the leading edge sweeps out to the tips
+            trail = 0.07 + 0.05 * u * u - 0.012 * math.exp(-(u / 0.08) ** 2)   # crescent, notched at the middle
+            z = lead + v * (trail - lead)
+            t = 0.012 * (1.0 - abs(u) ** 2) * math.sin(math.pi * max(0.05, min(0.95, v)))
+            for side in (t, -t):
+                row.append(len(verts))
+                verts.append((x, side, z))
+        grid.append(row)
+    for r in range(rows):
+        for c in range(cols):
+            for s in (0, 1):
+                a, b = grid[r][2 * c + s], grid[r][2 * (c + 1) + s]
+                d, e = grid[r + 1][2 * c + s], grid[r + 1][2 * (c + 1) + s]
+                fcs.append((a, b, e, d) if s == 0 else (a, d, e, b))
+    sh = sf.Shader("M_FlukeProc")
+    rays = sh.math("ABSOLUTE", sh.math("SINE", sh.math("MULTIPLY", sh.axis("X"), 120.0)))
+    sh.bump(sh.remap(rays, 0.85, 1.0), 0.3, 0.0008)
+    mat = sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", sh.remap(rays, 0.85, 1.0), 0.2)), 0.8), 0.4)
+    fluke = bc.mesh_object("TailFluke", verts, fcs, [mat], fix_normals=True)
+    mat.name = "M_Fluke"
+    baked = _bake([fluke], "PartTailFluke", {"M_Fluke": sf.tint(_lin("#9FB4CC"))}, tolerance=0.0002)
+    pts = _check_pivot("tail_fluke", 0.015)
+    foot = max(abs(p.x) for p in pts if p.z <= 0.01)
+
+    def span_(co):
+        co.x *= 1.35
+        return co
+
+    def beat(co):
+        k = max(0.0, co.z) / 0.15
+        co.y += 0.05 * k * k
+        return co
+
+    handles = _shape_keys(fluke, [("H1_Span", span_, "the blade 35% wider"), ("H2_Beat", beat, "the blade bent for the swim stroke")])
+    rules = _rules("tail_fluke", round(foot, 3), 0.015, "normal", ["spine"], 15, 20, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1); the blade spreads across the body's x."
+    return {"purpose": "Creature tail fluke part (PROPOSED): a ray-stiffened crescent fluke for the tail cap that beats on a shape key.",
+            "category": "part", "part_type": "tail_fluke", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_Fluke": 0.9}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -478,6 +761,10 @@ ASSETS = {
     "cpart_fin": (build_fin, 1200),
     "cpart_foot": (build_foot, 2500),
     "cpart_horn": (build_horn, 1200),
+    "cpart_claw": (build_claw, 1200),
+    "cpart_hand": (build_hand, 2500),
+    "cpart_crest": (build_crest, 1200),
+    "cpart_tail_fluke": (build_tail_fluke, 1200),
 }
 
 

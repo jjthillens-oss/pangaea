@@ -151,7 +151,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds five parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds nine parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -160,6 +160,12 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_fin` | fin, `normal` | 506 | H1_Height, H2_Sweep, H3_Ripple | Ray-stiffened membrane swept to the tail; paint_mix 0.9 |
 | `cpart_foot` | foot, `ground`, limb_end | 622 | H1_Spread, H2_Long | Three padded toes with horn nails; the sole on the pivot, the ankle top at z 0.09 |
 | `cpart_horn` | horn, `normal`, chiral | 214 | H1_Length, H2_Curl | Right-hand side only; centreline forbidden |
+| `cpart_claw` | claw, `normal`, chiral, limb_end or limb | 188 | H1_Length, H2_Hook | Dark sickle on a padded sheath; curls toward -X on the right-hand piece; paint_mix 0 on the horn |
+| `cpart_hand` | hand, `normal`, limb_end, grasper | 871 | H1_Grip, H2_Spread | Three knuckled fingers and an opposed thumb with rounded pads |
+| `cpart_crest` | crest, `normal`, spine, centreline required | 526 | H1_Raise, H2_Fold | Five spines with a scalloped web; sinks 0.02 m |
+| `cpart_tail_fluke` | tail_fluke, `normal`, spine, centreline required | 424 | H1_Span, H2_Beat | Notched crescent for the tail cap (spine_u = 1); the blade spreads across x |
+
+Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 
 Every handle rests at 0. Blender adds shape keys at 1, so the generator zeroes them, or the GLB would carry them as default weights. `tests/test_assets.gd` measures meshes with blend shapes at their rest shape, because Godot's mesh AABB grows to cover every blend shape.
 
