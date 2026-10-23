@@ -36,6 +36,20 @@ static func motion(m: Locomotion.MotionState, by: Vector2) -> void:
 	m.prev_position -= by
 
 
+## A two-post brain's posts (their homes and zone centres) and the centre of its union leash disc
+## (D-83); a brain without posts is left as it is. WorldStream.rebase shifts the rest of a brain's
+## memory itself and calls this for the posts.
+static func posts(mem: CreatureBrain.Memory, by: Vector2) -> void:
+	if mem.posts.is_empty():
+		return
+	for p in mem.posts:
+		p.home -= by
+		var t: Dictionary = p.territory
+		if not t.is_empty():
+			t.center -= by
+	mem.leash_center = point(mem.leash_center, by)
+
+
 ## The named Vector2 keys of every item in `list` (plankton: position and anchor; carrion: position).
 ## Item by item, so each item is visited once (each key moves once either way).
 static func items(list: Array[Dictionary], keys: PackedStringArray, by: Vector2) -> void:
