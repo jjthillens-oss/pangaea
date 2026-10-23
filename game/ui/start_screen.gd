@@ -43,6 +43,7 @@ var _cards := {}       ## body -> BodyCard
 var _genomes := {}     ## body -> Genome of the founded starting body
 var _built := false
 var _hint_generation := -1
+var _covered := false
 ## The genome and phenotype of the saved lineage, or null when the slot holds none.
 var _saved_genome: Genome
 var _saved_phenotype: Phenotype
@@ -162,6 +163,7 @@ func _process(_delta: float) -> void:
 		_hint_generation = InputPrompts.generation
 		hint.text = hint_text()
 		fit_backdrop()
+	_cover(_overlay_open())
 
 
 ## Puts focus back on the main view's first live button (after an overlay closes).
@@ -360,3 +362,21 @@ func _make_shade() -> TextureRect:
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	return shade
+
+
+## Whether the settings or the save slots are open over this screen.
+func _overlay_open() -> bool:
+	for child in get_children():
+		if (child is SettingsMenu or child is SlotPicker) and (child as Control).visible:
+			return true
+	return false
+
+
+## Under an overlay the title's menu and nameplate fade away, so only the sea and the cell show
+## through the overlay's dim; they come back when it closes.
+func _cover(covered: bool) -> void:
+	if covered == _covered:
+		return
+	_covered = covered
+	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(main_view, "modulate:a", 0.0 if covered else 1.0, 0.2)

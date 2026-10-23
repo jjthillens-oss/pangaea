@@ -420,6 +420,10 @@ The owner asked for menus that feel like Spore's "but Pangaea style" (2026-10-23
 - **Playful motion** (`MenuBounce`): title buttons are pills that swell with a little overshoot when focused or hovered
   and squash when pressed; views slide and fade in with their buttons arriving one after another. Reduce camera motion
   removes the overshoot and the slide. IMPLEMENTED; the owner judges the look.
+- **The same touch everywhere** (2026-10-23, after the owner's go-ahead to continue): the pause menu, settings and save
+  slots use MenuBounce too and fade in (fade only, so a dim never uncovers an edge), and under them the title's menu
+  fades out so only the sea shows. A "dive" into the pool on Continue was considered and left out: the pool opens at
+  once (the smokes and session code expect it) and already fades in. IMPLEMENTED.
 
 ## 2026-10-23 · Cell-stage audio (PROPOSED)
 

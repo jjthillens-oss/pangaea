@@ -52,7 +52,7 @@ func _run() -> void:
 	await _frames(20)
 
 	main.open_slots()
-	await _frames(20)
+	await _frames(60)   # past the fade-in
 	await _shot("slots")
 	main.slot_picker.close()
 	await _frames(5)

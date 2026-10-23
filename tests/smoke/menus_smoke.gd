@@ -203,6 +203,8 @@ func _pause_menu_with_a_controller() -> void:
 	await _pad(JOY_BUTTON_DPAD_DOWN)
 	await _pad(JOY_BUTTON_DPAD_DOWN)
 	_check(_focus() == main.pause_menu.settings_button, "Settings is two presses down (%s)" % _focus_name())
+	_check(MenuBounce.rest_scale(main.pause_menu.settings_button) > 1.0 and MenuBounce.rest_scale(main.pause_menu.resume_button) == 1.0,
+		"the focused pause button swells, the others rest")
 	await _pad(JOY_BUTTON_A)
 	_check(main.settings_menu != null and main.settings_menu.is_open(), "A opens the settings over the run")
 	await _pad(JOY_BUTTON_B)
