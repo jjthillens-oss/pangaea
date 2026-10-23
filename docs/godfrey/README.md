@@ -41,6 +41,11 @@ Rules:
 
 Notes for the studio:
 - Where an issue names a different base branch (the creature-lab jobs), the issue wins over step 3.
+- Godfrey's environment has no Godot. It can try `tools/setup_toolchain.sh` (downloads the pinned Godot into
+  `.toolchain/`); if that fails its PRs say "tests not run locally". CI runs the full `tools/check.sh` gate on every PR,
+  and the reviewing thread runs the tests itself before merging. Claims may be posted through the GitHub CLI or API
+  (Joshua approved this on 2026-10-23).
+- Joshua approved (2026-10-23 08:58) merging Godfrey PRs that pass our review and CI, without waiting for him.
 - Keep at least one `godfrey-task` issue open. When the queue is empty the prompt falls back to the coordinator's
   list, which includes the jobs held as `godfrey-later`.
 
