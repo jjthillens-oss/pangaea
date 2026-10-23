@@ -24,14 +24,25 @@ extends RefCounted
 ## body it fears on sight (D-63), and rule 4 makes it flee a hurt from a body above its engage share
 ## instead of answering it. With every switch off the brain is M1's.
 ##
+## S2's habits (B.7, D-23): a brain given two posts (set_posts) guards one at a time and moves to the
+## other only from a CALM state with no target, by the M1 return path: the Lurker when it has rested
+## its dwell with the cell out of sight (out_of_sight), the elder rammer when the cell is nearer the
+## other post's zone by the hysteresis (nearer_cell). Its leash disc is then the union of the two
+## posts' discs (D-82). A brain with no posts never reads the habit.
+##
 ## The sim's side of the contract (CreatureField and PoolSim):
 ## - self_view: {"id", "species", "position", "heading", "velocity", "speed_now", "radius", "speed",
 ##   "acceleration", "health_share", "energy_share"}; speed and acceleration are the phenotype's.
+##   S2 adds "cell" (the cell's position wherever it is, Vector2.INF when it is dead or concealed) and
+##   "cell_seen" (the percepts include it), D-59; only habits read them, and a view without them is a
+##   cell neither placed nor seen.
 ## - Each tick: think() when think_due(), then drive(), then move_body() and PoolArena.move(), then
 ##   PoolArena.clamp_to_disc() to leash_disc(). Drain `events` and add the creature's id.
 ## - Hooks: on_hurt() for every landed hit on it; on_strike_landed() and on_blocked() during a strike;
 ##   on_target_gone() when a body it may remember dies, is removed or is concealed; forget() and
-##   force_return() at the player's respawn.
+##   force_return() at the player's respawn; set_posts() after create() for a two-post site.
+## - A rebase shifts the memory's positions; RebaseShift.posts() shifts a two-post brain's posts and
+##   its union disc's centre (D-83).
 ## - The token: before a think, set "engageable" on the player's percept and on its entry in `seen`
 ##   (decisions read the remembered entry, which may be older than the token's last change); after a
 ##   think or a hook, read is_engaged_with().
@@ -72,6 +83,15 @@ const MODE_BURST := "burst"
 const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
+
+# habit.post_switch values (D-23).
+const OUT_OF_SIGHT := "out_of_sight"
+const NEARER_CELL := "nearer_cell"
+
+## The calm (state/phase) labels (S1 3.11, D-62): resting, patrolling and foraging, never watching,
+## noticing, chasing, attacking, fleeing or going home. A post move starts only from one of these, and
+## WorldStream sleeps only creatures in one. is_calm() tests it without building the key.
+const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
 
 ## How many events brains have emitted so far, every brain of every sim together: a creature field
 ## that took every event and finds this unchanged knows no brain holds a new one.
@@ -192,6 +212,13 @@ class Memory:
 	var home_heading := 0.0
 	var territory_center := Vector2.INF
 	var territory_r := 0.0
+	## Two posts (set_posts): [{"home", "heading", "territory": {} or {"center", "radius"}}] x 2, the
+	## zone's own radius as in create(); `post` is the one it guards now, taken at `post_since`.
+	var posts: Array = []
+	var post := 0
+	var post_since := 0
+	var leash_center := Vector2.INF  ## the union of the two posts' leash discs (D-82), when posts are set
+	var leash_r := 0.0
 	var wake := false                ## think on the next tick whatever the schedule
 	var trace := false               ## emit creature_state on every state change (debug)
 	var rng := RandomNumberGenerator.new()
@@ -235,6 +262,21 @@ class Memory:
 		}
 		if not fear_of.is_empty():
 			out["fear_of"] = fear_of
+		if not posts.is_empty():
+			var posts_out: Array = []
+			for p in posts:
+				var t: Dictionary = p.territory
+				posts_out.append({"home": CreatureBrain._pair(p.home), "heading": p.heading,
+					"territory": {} if t.is_empty() else {"center": CreatureBrain._pair(t.center), "radius": t.radius}})
+			out["posts"] = posts_out
+		if post != 0:
+			out["post"] = post
+		if post_since != 0:
+			out["post_since"] = post_since
+		if leash_center.is_finite():
+			out["leash_center"] = CreatureBrain._pair(leash_center)
+		if leash_r != 0.0:
+			out["leash_r"] = leash_r
 		return out
 
 
@@ -377,12 +419,43 @@ static func create(behavior: String, cfg: Dictionary, home: Vector2, home_headin
 	return mem
 
 
+## Gives a brain two posts (B.7), each {"home": Vector2, "heading": float, "territory": {} or
+## {"center", "radius"}} (the zone's own circle, as create() takes it; a territorial post without one
+## guards cfg.default_territory_m round its home). The brain keeps its own deep copy, takes post 0 (its
+## home, heading and territory) with post_since its state tick, and caches the union of the two posts'
+## leash discs (D-82), which leash_disc() returns from now on.
+static func set_posts(mem: Memory, posts: Array) -> void:
+	if posts.size() != 2:
+		push_error("CreatureBrain.set_posts takes two posts, not %d." % posts.size())
+		return
+	mem.posts = posts.duplicate(true)
+	_take_post(mem, 0)
+	mem.post_since = mem.state_tick
+	var disc := union_disc(_post_disc(mem, mem.posts[0]), _post_disc(mem, mem.posts[1]))
+	mem.leash_center = disc.center
+	mem.leash_r = float(disc.radius)
+
+
 ## The disc the sim clamps the body to after every move: (home, leash) for an ambush brain,
-## (territory center, territory radius + leash) for a territorial one. {"center", "radius"}.
+## (territory center, territory radius + leash) for a territorial one, and the union of its two posts'
+## discs for a brain with posts. {"center", "radius"}.
 static func leash_disc(mem: Memory) -> Dictionary:
+	if not mem.posts.is_empty():
+		return {"center": mem.leash_center, "radius": mem.leash_r}
 	if mem.behavior == TERRITORIAL:
 		return {"center": mem.territory_center, "radius": mem.territory_r + float(mem.cfg.leash_m)}
 	return {"center": mem.home, "radius": float(mem.cfg.leash_m)}
+
+
+## Whether the brain's (state, phase) is in CALM (D-62), without building the key: a pass of the
+## stream asks it of every awake creature. tests/test_habits.gd holds it to CALM.
+static func is_calm(mem: Memory) -> bool:
+	var state := mem.state
+	if state == FORAGE:
+		return mem.phase == SEEK or mem.phase == EAT
+	if state == REST:
+		return mem.phase == LURK or mem.phase == ""
+	return state == WANDER and mem.phase == PATROL
 
 
 ## The smallest disc holding two discs {"center", "radius"} (D-82): the larger one when it holds the
@@ -480,6 +553,8 @@ static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Arr
 		if _answer_pain(mem, self_view, tick):
 			return
 	if _answer_fear(mem, self_view, percepts, tick):
+		return
+	if mem.posts.size() == 2 and mem.target.is_empty() and is_calm(mem) and _post_switch(mem, self_view, tick):
 		return
 	match mem.state:
 		REST:
@@ -977,6 +1052,59 @@ static func _answer_fear(mem: Memory, me: Dictionary, percepts: Array, tick: int
 	mem.state_tick = tick
 	_emit(mem, {"type": "creature_fled", "from": feared.id})
 	return true
+
+
+## A habit's post move (D-23), from a CALM state with no target (think checks both): out_of_sight
+## when it has rested post_rest_ticks, at this post at least as long, and the cell is not among its
+## percepts; nearer_cell when the cell (wherever it is, D-59) is nearer the other post's zone centre
+## than this one's by more than post_hysteresis_m. It takes the other post and swims there by the M1
+## return path at wander speed, emitting creature_post_move {post, from, to}. Returns true when it moved.
+static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
+	var cfg := mem.cfg
+	match str(cfg.post_switch):
+		OUT_OF_SIGHT:
+			var dwell := int(cfg.post_rest_ticks)
+			if mem.state != REST or tick - mem.state_tick < dwell or tick - mem.post_since < dwell:
+				return false
+			if bool(me.get("cell_seen", false)):
+				return false
+		NEARER_CELL:
+			var cell: Vector2 = me.get("cell", Vector2.INF)
+			var here: Dictionary = mem.posts[mem.post].territory
+			var there: Dictionary = mem.posts[1 - mem.post].territory
+			if not cell.is_finite() or here.is_empty() or there.is_empty():
+				return false
+			if not (cell.distance_to(there.center) < cell.distance_to(here.center) - float(cfg.post_hysteresis_m)):
+				return false
+		_:
+			return false
+	var from := mem.home
+	_take_post(mem, 1 - mem.post)
+	mem.post_since = tick
+	_emit(mem, {"type": "creature_post_move", "post": mem.post, "from": from, "to": mem.home})
+	_enter(mem, WANDER, RETURN_HOME, tick, me.position)
+	return true
+
+
+## Takes post `i`: its home and heading, and for a territorial brain its territory (create()'s rule).
+static func _take_post(mem: Memory, i: int) -> void:
+	var p: Dictionary = mem.posts[i]
+	mem.post = i
+	mem.home = p.home
+	mem.home_heading = float(p.heading)
+	if mem.behavior == TERRITORIAL:
+		var t: Dictionary = p.territory
+		mem.territory_center = t.get("center", p.home)
+		mem.territory_r = float(t.get("radius", mem.cfg.default_territory_m)) + float(mem.cfg.territory_margin_m)
+
+
+## One post's leash disc, as leash_disc() would give for a brain with that post alone.
+static func _post_disc(mem: Memory, p: Dictionary) -> Dictionary:
+	if mem.behavior == TERRITORIAL:
+		var t: Dictionary = p.territory
+		var r := float(t.get("radius", mem.cfg.default_territory_m)) + float(mem.cfg.territory_margin_m)
+		return {"center": t.get("center", p.home), "radius": r + float(mem.cfg.leash_m)}
+	return {"center": p.home, "radius": float(mem.cfg.leash_m)}
 
 
 ## The share above which a hurt is fled, not answered (rule 4): the prey share for an ambush brain,
