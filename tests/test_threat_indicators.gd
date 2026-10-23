@@ -1,7 +1,9 @@
 extends TestCase
 ## The off-screen threat arrows (M1 step 3, plan section 15; never cut): where an arrow goes on the
-## screen edge for a creature off screen, and which creatures get one. The HUD drawing them from
-## the live pool camera is covered by the scene smoke.
+## screen edge for a creature off screen, which creatures get one, what each arrow row copies from
+## its brain and the shapes it is drawn with. The HUD drawing them from the live pool camera (its
+## own refresh, the drawn record, a telling arrow) is covered by the scene smoke, because these
+## tests run before the scene tree does.
 
 const RECT := Rect2(0.0, 0.0, 1920.0, 1080.0)
 const MARGIN := 70.0
@@ -122,3 +124,89 @@ func test_each_threat_behavior_has_its_own_glyph() -> void:
 	var species := SpeciesCatalog.load_from()
 	for id in species.species_ids():
 		check(ThreatIndicators.GLYPHS.has(str(species.species[id].behavior)), "%s's behavior has a glyph" % id)
+
+
+func test_an_arrow_row_copies_its_brains_tell_and_glyph() -> void:
+	var player := CreatureField.PLAYER_ID
+	var tell := _memory(CreatureBrain.ATTACK, CreatureBrain.TELL, player)
+	tell.behavior = CreatureBrain.TERRITORIAL
+	var row := ThreatIndicators.indicator_for("c_3", "rammer", tell, Vector2(960, 1010), Vector2(0, 470))
+	check(row.id == "c_3" and row.species == "rammer" and row.glyph == "star" and row.position == Vector2(960, 1010),
+		"the row names the creature, its glyph and its place (%s)" % row)
+	check(row.direction.is_equal_approx(Vector2.DOWN), "its direction is a unit vector (%s)" % row.direction)
+	check(row.telling, "a tell's arrow is telling")
+	var watch := _memory(CreatureBrain.REST, CreatureBrain.WATCH, player)
+	watch.behavior = CreatureBrain.AMBUSH
+	var calm := ThreatIndicators.indicator_for("c_1", "ambush_hunter", watch, Vector2(70, 540), Vector2.ZERO)
+	check(not calm.telling and not calm.noticing and calm.glyph == "jaw", "a watching hunter's arrow is not telling or noticing and shows the jaw")
+	check(calm.direction == Vector2.DOWN, "a zero direction falls back to down")
+	check(not row.noticing, "a tell is not a notice")
+	var notice := ThreatIndicators.indicator_for("c_2", "ambush_hunter", _memory(CreatureBrain.NOTICE, "", player), Vector2(960, 1010), Vector2.DOWN)
+	check(notice.noticing and not notice.telling, "a creature noticing the cell has a noticing arrow")
+	var wait := ThreatIndicators.indicator_for("c_4", "rammer", _memory(CreatureBrain.NOTICE, CreatureBrain.WAIT, player), Vector2(960, 1010), Vector2.DOWN)
+	check(not wait.noticing, "a rammer waiting for its turn is past its notice")
+
+
+## True when `rect` overlaps the disc of radius `r` around `c`.
+func _hits_disc(rect: Rect2, c: Vector2, r: float) -> bool:
+	return c.clamp(rect.position, rect.end).distance_to(c) < r
+
+
+func _row(at: Vector2, telling: bool, noticing := false) -> Dictionary:
+	return {"id": "c_1", "glyph": "jaw", "position": at, "direction": (at - RECT.get_center()).normalized(),
+		"telling": telling, "noticing": noticing}
+
+
+func test_only_a_telling_arrow_pulses_and_shows_its_mark_clear_of_the_badge() -> void:
+	var at := Vector2(1400, INNER.end.y)
+	var calm := ThreatIndicators.arrow_shape(_row(at, false), 1.0, RECT)
+	check_eq(calm.radius, ThreatIndicators.BADGE_RADIUS_PX, "an arrow that is not telling never pulses")
+	check(not (calm.mark as Rect2).has_area() and calm.mark_h == 0.0, "and shows no '!'")
+	# Off screen the creature's own "!" is hidden, so its arrow carries the notice: a "!" with no pulse.
+	var notice := ThreatIndicators.arrow_shape(_row(at, false, true), 1.0, RECT)
+	check_eq(notice.radius, ThreatIndicators.BADGE_RADIUS_PX, "a noticing arrow does not pulse")
+	check((notice.mark as Rect2).has_area() and notice.mark_h == ThreatIndicators.MARK_PX, "but shows its '!' at rest size")
+	var rest := ThreatIndicators.arrow_shape(_row(at, true), 0.0, RECT)
+	var top := ThreatIndicators.arrow_shape(_row(at, true), 1.0, RECT)
+	check_eq(rest.radius, ThreatIndicators.BADGE_RADIUS_PX, "a telling arrow at the bottom of its pulse")
+	check_near(top.radius, ThreatIndicators.BADGE_RADIUS_PX * (1.0 + ThreatIndicators.PULSE_GROW), 1e-4, "grows at the top of it")
+	# Around the inset edge, at both ends of the pulse: the mark is on screen and clear of the badge.
+	var bad := PackedStringArray()
+	for i in 72:
+		var p := INNER.get_center() + Vector2.from_angle(TAU * i / 72.0) * 3000.0
+		var edge := ThreatIndicators.edge_point(RECT, p, false, MARGIN)
+		for pulse in [0.0, 1.0]:
+			var shape := ThreatIndicators.arrow_shape(_row(edge, true), pulse, RECT)
+			var mark: Rect2 = shape.mark
+			if not mark.has_area() or _hits_disc(mark, shape.center, shape.radius) or not RECT.encloses(mark) or not RECT.encloses(shape.badge):
+				bad.append("%s pulse %.0f: mark %s badge %s" % [edge, pulse, mark, shape.badge])
+	check(bad.is_empty(), "every telling arrow's '!' is on screen and clear of its badge: %s" % bad)
+
+
+func test_the_hud_draws_the_arrows_last_and_never_hides_them() -> void:
+	var hud := (load("res://game/ui/hud.tscn") as PackedScene).instantiate() as Control
+	var arrows := hud.get_node_or_null("ThreatIndicators") as Control
+	check(arrows is ThreatIndicators, "the HUD has the arrow layer")
+	if arrows != null:
+		check(arrows.visible, "visible in the scene")
+		check_eq(arrows.get_index(), hud.get_child_count() - 1, "the last child, so it draws over the rest of the HUD")
+		check(arrows.anchor_right == 1.0 and arrows.anchor_bottom == 1.0, "and spans the screen")
+	hud.free()
+
+
+func test_top_and_bottom_arrows_keep_to_their_band_with_the_mark_beside_the_badge() -> void:
+	var band := ThreatIndicators.band_px()
+	check_near(band, 70.0 + 30.0 * 1.25, 1e-4, "the band is the margin plus a badge at the top of its pulse")
+	var bad := PackedStringArray()
+	for x in range(int(INNER.position.x), int(INNER.end.x) + 1, 5):
+		for y in [INNER.position.y, INNER.end.y]:
+			var at := Vector2(x, y)
+			for pulse in [0.0, 1.0]:
+				var shape := ThreatIndicators.arrow_shape(_row(at, true), pulse, RECT)
+				var reach: Rect2 = (shape.badge as Rect2).merge(shape.mark)
+				var from_edge: float = RECT.end.y - reach.position.y if y > RECT.get_center().y else reach.end.y - RECT.position.y
+				var mark_at: Vector2 = shape.mark_at
+				var inward := mark_at.x > x if x <= RECT.get_center().x else mark_at.x < x
+				if from_edge > band + 1e-3 or not RECT.encloses(reach) or absf(mark_at.y - y) > 1e-3 or not inward:
+					bad.append("%s pulse %.0f: reach %s, mark at %s" % [at, pulse, reach, mark_at])
+	check(bad.is_empty(), "every top and bottom arrow stays within %.1f px of its edge, its '!' beside the badge toward the middle: %s" % [band, bad.slice(0, 4)])

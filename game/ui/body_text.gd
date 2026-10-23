@@ -11,7 +11,7 @@ const NAMES := {"grazer": "Grazer", "hunter": "Hunter", "omnivore": "Omnivore"}
 const EVOLVED_NAME := "Evolved cell"
 const ROLES := {
 	"grazer": "A steady drifter with an eye spot and a filter mouth.",
-	"hunter": "Two tails for speed and a jaw that tears carrion.",
+	"hunter": "Two tails for speed and a jaw for carrion. Hunters must hunt to eat.",
 	"omnivore": "A filter mouth and a jaw, so it can eat anything it finds.",
 }
 const DIET_WORDS := {"plant": "plankton", "meat": "carrion"}

@@ -219,15 +219,17 @@ static func death_title(cause: String, reason: String = "") -> String:
 ## The death notice's body: what the death cost, already applied ("You lost ... (−3)"), whether it
 ## was saved, then the tip on a line of its own. `saved` is GameSession.resolve_death's
 ## {"attempted", "ok", "error"}: "Saved.", "Could not save ...", or nothing when no save was tried
-## (the OD1 fallback). A starving death without a tip gets GameSession.STARVED_TIP.
-static func death_text(cause: String, lost: int, tip: String = "", saved: Dictionary = {}, generation: int = 1) -> String:
+## (the OD1 fallback). A starving death without a tip gets GameSession.starved_tip(phenotype), which
+## names only a food the body can eat, and no food without a phenotype.
+static func death_text(cause: String, lost: int, tip: String = "", saved: Dictionary = {}, generation: int = 1,
+		phenotype: Phenotype = null) -> String:
 	var text := "The lineage continues from the start of generation %d. You lost a quarter of your unspent adaptation points (−%d)." \
 		% [generation, lost]
 	var save_line := death_save_line(saved)
 	if not save_line.is_empty():
 		text += " " + save_line
 	if tip.is_empty() and cause == "starved":
-		tip = GameSession.STARVED_TIP
+		tip = GameSession.starved_tip(phenotype)
 	if not tip.is_empty():
 		text += "\n" + tip
 	return text
@@ -326,7 +328,8 @@ func _on_died(cause: String, reason: String = "") -> void:
 	var lost := int(d.get("lost", 0))
 	var tip := str(d.get("tip", ""))
 	var saved: Dictionary = d.get("saved", {})
-	death_notice.open(death_title(cause, reason), death_text(cause, lost, tip, saved, session.sim.save.genome.generation),
+	death_notice.open(death_title(cause, reason),
+		death_text(cause, lost, tip, saved, session.sim.save.genome.generation, session.sim.phenotype),
 		[["continue", "Continue", true]], "continue")
 
 

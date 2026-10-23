@@ -22,7 +22,7 @@
     "ambush_hunter": {
       "name": "ambush hunter",
       "death_reason": "Caught by an ambush hunter",
-      "death_tip": "Ambush hunters wait at the rims. When one coils, swim sideways, out of its line.",
+      "death_tip": "Ambush hunters wait at the rims. When one coils, swim out of its line on the side you face; turning round takes too long.",
       "behavior": "ambush", "body_asset": "creature_ambush_body", "body_size": 1.5,
       "parts": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
       "niche": {"role": "ambush", "cap": 3, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
@@ -43,7 +43,7 @@
     "rammer": {
       "name": "territorial rammer",
       "death_reason": "Rammed by a territorial rammer",
-      "death_tip": "Rammers guard the richest patches. When one puffs up, swim sideways out of its line, or leave its patch.",
+      "death_tip": "Rammers guard the richest patches. When one puffs up, swim out of its line on the side you face, or leave its patch.",
       "behavior": "territorial", "body_asset": "creature_rammer_body", "body_size": 1.25,
       "parts": [{"type": "mouth_filter", "angle": 0.0},
                 {"type": "spike", "angle": 0.3, "scale": 0.8}, {"type": "spike", "angle": -0.3, "scale": 0.8},
@@ -67,7 +67,7 @@
   "sites": [
     {"id": "lair_se",  "species": "ambush_hunter", "home": [26.4, 12.6],  "heading": -2.9258},
     {"id": "lair_sw",  "species": "ambush_hunter", "home": [-24.1, 16.6], "heading": -0.8419},
-    {"id": "lair_gap", "species": "ambush_hunter", "home": [-9.4, -16.3], "heading": 1.0472},
+    {"id": "lair_s",   "species": "ambush_hunter", "home": [5.0, 31.0],    "heading": -2.0779},
     {"id": "terr_n_a", "species": "rammer", "home": [-2.5, -22.0], "heading": 1.5708, "territory_zone": "z_n"},
     {"id": "terr_n_b", "species": "rammer", "home": [2.5, -22.0],  "heading": 1.5708, "territory_zone": "z_n"},
     {"id": "terr_nw",  "species": "rammer", "home": [-19.1, -11.0], "heading": 0.5226, "territory_zone": "z_nw"},

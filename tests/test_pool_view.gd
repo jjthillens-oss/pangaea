@@ -489,6 +489,51 @@ func test_no_pose_stretches_outside_a_strike_and_recovery_returns_to_rest() -> v
 	check_eq(CreatureView.pose("territorial", "attack/recover", 0.2, "missed", 1.2).wobble, 0.0, "a miss does not wobble")
 
 
+## How far a shown pose is from rest: its scale's distance from one and each 0..1 amount.
+func _tell_amounts(p: Dictionary) -> PackedFloat64Array:
+	var s: Vector3 = p.scale
+	return PackedFloat64Array([(s - Vector3.ONE).length(), p.jaw_open, p.hood, p.spike_raise, p.brow])
+
+
+func test_a_cancelled_tell_deflates_from_the_pose_it_reached_and_never_swells_first() -> void:
+	for species_id in ["rammer", "ambush_hunter"]:
+		for cancel_at in [5, 20, 47]:
+			# A real view drawn at 60 fps: the tell entered at tick 100, so the sim's tick is 101 at its
+			# first drawn frame; the step at tick T cancels it into recover, drawn from tick T + 1.
+			var view := _creature_view(species_id)
+			var mem := _memory_in(view, "attack", "tell")
+			var tick := 101
+			for i in cancel_at:
+				view.show_brain(mem, tick, 0.0)
+				view._process(1.0 / 60.0)
+				tick += 1
+			var at_cancel := view.shown_pose.duplicate()
+			mem.phase = CreatureBrain.RECOVER
+			mem.phase_tick = tick - 1
+			mem.outcome = "cancelled"
+			mem.recover_ticks = CreatureBrain.CANCEL_RECOVER_TICKS
+			var last := _tell_amounts(at_cancel)
+			var rises := PackedStringArray()
+			var first := {}
+			for i in mem.recover_ticks + 6:
+				view.show_brain(mem, tick, 0.0)
+				view._process(1.0 / 60.0)
+				if first.is_empty():
+					first = view.shown_pose.duplicate()
+				var now := _tell_amounts(view.shown_pose)
+				for k in now.size():
+					if now[k] > last[k] + 1e-6:
+						rises.append("frame %d: %.3f > %.3f" % [i, now[k], last[k]])
+				last = now
+				tick += 1
+			var what := "%s cancelled %d ticks into its tell" % [species_id, cancel_at]
+			check(_tell_amounts(at_cancel)[0] > 0.01, "%s had begun its tell (scale %s)" % [what, at_cancel.scale])
+			check((first.scale as Vector3).is_equal_approx(at_cancel.scale), "%s starts its recover from the pose it reached (%s, then %s)" % [what, at_cancel.scale, first.scale])
+			check(rises.is_empty(), "%s only deflates: %s" % [what, rises])
+			check((view.shown_pose.scale as Vector3).is_equal_approx(Vector3.ONE), "%s ends at rest" % what)
+			view.free()
+
+
 func test_the_pose_progress_follows_the_sim_tick_and_the_draw_fraction() -> void:
 	var sim := _threat_sim()
 	var c: CreatureField.Creature = sim.creatures.creatures[0]
@@ -519,6 +564,13 @@ func test_a_creature_view_builds_its_species_body_parts_and_its_own_eye_glow() -
 	check_eq(spikes.size(), 4, "four spike holders")
 	check(spikes.all(func(n: Node) -> bool: return n.get_child_count() == 1), "each with the spike model")
 	check(rammer.get_node_or_null("%Model/Body/Body/Hood") != null, "the rammer body with its crest")
+	# The thin crest's shadow read as a dark hole in the pale back; the bodies keep theirs.
+	var hood := rammer.get_node_or_null("%Model/Body/Body/Hood") as GeometryInstance3D
+	check(hood != null and hood.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "the crest casts no shadow")
+	for view in [ambush, rammer]:
+		var body := view.get_node("%Model/Body/Body") as GeometryInstance3D
+		check(body.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "the %s body casts its shadow" % view.species_id)
+	check(ambush.get_node_or_null("%Model/Body/Body/Hood") == null, "an ambush body has no crest and builds without one")
 	var other := _creature_view("ambush_hunter")
 	other.show_brain(_memory_in(other, "attack", "tell"), 173, 1.0)
 	var eye := ambush.get_node("%Model/Body/Body/Eye_L") as MeshInstance3D
@@ -638,7 +690,11 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 	var lane := CreatureBrain.strike_lane(cfg.attack, 0.75, 0.5, Vector2(3.0, -4.0), 0.6)
 	view.show_lane(lane)
 	var node := view.get_node("%Lane") as MeshInstance3D
+	var material := node.material_override as ShaderMaterial
 	check(view.lane_visible(), "the lane shows")
+	# The view's state and the uniform the shader multiplies every pixel's alpha by. The lane's pixels
+	# themselves (alpha math, depth against the floor) are checked only in rendered frames.
+	check_eq(material.get_shader_parameter("strength"), 1.0, "at full strength")
 	# The unit quad's corners land on the lane rectangle: from its origin forward along its heading.
 	var t := node.transform   # the lane is top_level, so this is its world transform
 	check(node.top_level, "the lane does not turn with the creature")
@@ -654,9 +710,10 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 		"the near end is at the creature (%s vs %s)" % [near_right, near_corner])
 	check(t.basis.get_scale().is_equal_approx(Vector3(2.0 * float(lane.half_width), 1.0, float(lane.length))), "the lane's size")
 	check(t.origin.y < 0.0 and t.origin.y > -0.1, "just under the swim plane")
-	var material := node.material_override as ShaderMaterial
 	view.show_brain(_memory_in(view, "attack", "tell"), 137, 0.0)
+	view._process(1.0 / 60.0)
 	check_near(material.get_shader_parameter("fill"), 36.0 / 72.0, 1e-6, "filled halfway through the tell")
+	check(view.lane_visible() and material.get_shader_parameter("strength") == 1.0, "and still at full strength")
 	view.hide_lane()
 	check(not view.lane_visible(), "a cancelled tell takes the lane down at once")
 	view.show_lane(lane)
@@ -668,16 +725,28 @@ func test_a_tell_on_the_player_lays_its_strike_lane_on_the_floor_and_fills_it() 
 	view.free()
 
 
-func test_the_lane_shader_never_draws_above_a_quarter_alpha() -> void:
+## The shader constant `name`'s value, or NAN when it is missing.
+func _shader_const(code: String, name: String) -> float:
+	var at := code.find("const float %s = " % name)
+	return float(code.substr(at).get_slice("=", 1).get_slice(";", 0)) if at >= 0 else NAN
+
+
+func test_the_lane_keeps_its_inside_under_a_quarter_alpha_and_only_its_thin_outline_above() -> void:
 	var code := (load("res://game/scenes/pool/threat_lane.gdshader") as Shader).code
-	check(code.contains("const float MAX_ALPHA = 0.25;"), "the lane's alpha cap is 0.25 (plan section 14)")
-	check(code.contains("ALPHA = min(a, MAX_ALPHA) * strength;"), "and every pixel is capped by it")
-	var writes := Array(code.split("\n")).filter(func(line: String) -> bool: return line.strip_edges().begins_with("ALPHA"))
-	check_eq(writes.size(), 1, "with no other alpha written")
+	check_eq(_shader_const(code, "MAX_ALPHA"), 0.25, "the inside's alpha cap is 0.25 (plan section 14)")
 	for name in ["BASE_ALPHA", "FILL_ALPHA", "CHEVRON_ALPHA"]:
-		var at := code.find("const float %s = " % name)
-		var value := float(code.substr(at).get_slice("=", 1).get_slice(";", 0))
-		check(at >= 0 and value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
+		var value := _shader_const(code, name)
+		check(value > 0.0 and value < 0.25, "%s is under the cap (%.2f)" % [name, value])
+	# Under a quarter alpha no red survives over the lit teal floor, so the thin outline alone goes
+	# higher (PROPOSED, DECISIONS 2026-10-22 visual); the floor still shows through it.
+	var line := _shader_const(code, "LINE_ALPHA")
+	check(line > 0.25 and line <= 0.75, "the outline's alpha is above the cap and at most 0.75 (%.2f)" % line)
+	check(_shader_const(code, "EDGE_M") + _shader_const(code, "ACCENT_M") <= 0.25, "and the outline is at most 0.25 m wide")
+	check(code.contains("float a = max(min(inside, MAX_ALPHA), LINE_ALPHA * max(border, accent));"),
+		"the inside is capped by MAX_ALPHA and only the border and its line reach LINE_ALPHA")
+	check(code.contains("ALPHA = a * strength;"), "and every pixel is scaled by the lane's strength")
+	var writes := Array(code.split("\n")).filter(func(line_text: String) -> bool: return line_text.strip_edges().begins_with("ALPHA"))
+	check_eq(writes.size(), 1, "with no other alpha written")
 
 
 func test_the_player_view_builds_a_spike_model_for_a_spike_part() -> void:

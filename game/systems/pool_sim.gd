@@ -708,7 +708,7 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 			CreatureBrain.force_return(c.brain, CreatureField.PLAYER_ID, until, tick)
 		else:
 			CreatureBrain.forget(c.brain, CreatureField.PLAYER_ID, until, tick)
-		creatures.update_token(c)
+		creatures.update_token(c, tick)
 	_take_field_events()
 	return ids
 
@@ -1068,7 +1068,7 @@ func _forget_player_everywhere() -> void:
 	for c in creatures.creatures:
 		if c.brain != null:
 			CreatureBrain.on_target_gone(c.brain, CreatureField.PLAYER_ID, tick)
-			creatures.update_token(c)
+			creatures.update_token(c, tick)
 	_take_field_events()
 
 

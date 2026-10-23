@@ -5,17 +5,38 @@ extends TestCase
 ## Their seeds were written here before any run. If a gate fails after a change, the data is tuned
 ## (plan section 10: five knobs, in order, within their bounds), never the gate.
 ##
-## #29 stress: 24 creatures round a ring for 30 s; the average tick stays under 2.5 ms. The same 30 s
-##     are timed three times (the bot's run, then two replays of its intents) and each 5 s window
-##     counts at its fastest, so a burst of load from other processes on a shared machine does not
-##     fail the gate. The replays end in the bot's run's state hash: all three timed the same ticks.
+## #29 stress: 24 creatures round a ring for 30 s. The same 30 s are timed three times (the bot's
+##     run, then two replays of its intents) and each 5 s window counts at its fastest, so a burst
+##     of load from other processes on a shared machine does not fail the gate. The replays end in
+##     the bot's run's state hash: all three timed the same ticks. The average tick stays under
+##     4.4 ms, about 2.5 times a quiet reading here (about 1700 us; CI's runners read 810 to 1185),
+##     so moderate load does not fail it either; and each step is timed against the yardstick
+##     (tests/cost_yardstick.gd) run right after it: in the median run a tick reads 15.1 to 16.9
+##     yardsticks at load 2 to 7 here and beside a busy loop or a cache-thrashing process (14.6 on
+##     CI), and a step that costs twice as much 28.2 to 33.3, past STRESS_YARDSTICKS. Heavy load can
+##     still move the count, so only a pass on a quiet machine or on CI rules a regression out. Flake
+##     policy: docs/DECISIONS.md, M1 step 3 review fixes.
 ## #30 hunter viability (plan D2): HuntBot keeps a hunter lineage alive on what it kills, now that
 ##     the interim carrion supply is off, in at least 5 of 6 seeds.
 ## #31 predation balance: with the cell hidden at the spawn, five minutes of creatures preying on
 ##     each other empty no niche for long, kill few, and leave nobody stalled.
+## #32 pressure (step 3 review): a forager started at the spawn meets threats, and one that dodges
+##     is not worn down by them. ForageBot swims for the nearest food its body eats and never minds a
+##     creature; EvadeBot dodges each tell aimed at the cell 0.4 s after it starts (F2), as a player
+##     reading the tells would. Notices of the cell and tells at it are its meetings with threats.
+## #33 no larder for a greedy camper (step 3 review): neither zone by the spawn feeds a cell that
+##     stays in it and eats what it touches. No reach can cover them: rule 8 keeps every reach out
+##     of all but z_center's far 2 m, and F6 keeps lair_s from spawning while the cell is anywhere
+##     in z_s, so a cell that continues there or outlasts lair_s's hunter would be safe for ever.
+##     A camper starts full in each zone (a Continue from a save made there puts it there with
+##     60%, D16) and eats only that zone's food, each item as soon as it has room for half of it,
+##     as touching one does; it must run dry. A camper that rests and eats in bursts when hungry
+##     still lives there (DECISIONS, pressure item 3: an owner question, not gated).
 
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const Yardstick := preload("res://tests/cost_yardstick.gd")
 
 ## #29: 24 creatures, ambush hunters and rammers in turn, 28 m out from the pool's center, facing in.
 ## The ring starts 7.5 degrees off north-east-south-west so every site sits between the rim rocks
@@ -25,7 +46,8 @@ const STRESS_RING_M := 28.0
 const STRESS_RING_START := PI / 24.0
 const STRESS_SPECIES: PackedStringArray = ["ambush_hunter", "rammer"]
 const STRESS_TICKS := 1800
-const STRESS_LIMIT_US := 2500.0
+const STRESS_LIMIT_US := 4400.0
+const STRESS_YARDSTICKS := 22.0
 const STRESS_RUNS := 3              ## the bot's run and two replays of its intents
 const STRESS_WINDOW_TICKS := 300    ## each 5 s window of the 30 counts at its fastest of the runs
 ## #30 (plan section 10): seeds fixed before any run; a seed passes with no starvation death, at most
@@ -47,6 +69,18 @@ const MAX_PREDATION_DEATHS := 6            ## creatures killed by creatures, per
 const MOVE_WINDOW_TICKS := 3600
 const MOVE_MIN_M := 1.0
 const ON_THE_MOVE_MIN_TICKS := 300
+## #32 (docs/DECISIONS.md, "M1 step 3 review fixes: pressure"): seeds fixed before any run, 300 s
+## each for each plankton body. A dead cell continues at its checkpoint after DEATH_NOTICE_TICKS.
+const PRESSURE_SEEDS: Array[int] = [501, 502, 503]
+const PRESSURE_BODIES: PackedStringArray = ["grazer", "omnivore"]
+const PRESSURE_TICKS := 300 * 60
+const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0   ## for each body, over its seeds, and some in every seed
+const PRESSURE_MAX_DEATHS_PER_5_MIN := 0.5   ## over every run: a careful player is not worn down
+## #33: one seed fixed before any run, for each zone by the spawn and each plankton body.
+const CAMP_ZONES: PackedStringArray = ["z_s", "z_center"]
+const CAMP_SEED := 331
+const CAMP_LIMIT_TICKS := 420 * 60     ## a camper that starts full runs dry within 7 minutes
+const CAMP_MIN_IN_ZONE_SHARE := 0.9    ## it really camps: inside the zone this share of the time
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -70,9 +104,12 @@ func _sim(body: String, seed_value: int, p_species: SpeciesCatalog = null) -> Po
 	return sim
 
 
-func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick() -> void:
+func test_slow_twenty_four_creatures_cost_about_two_milliseconds_a_tick() -> void:
 	# Plan #29: the real species placed as dev creatures (outside the niche caps, so none need
-	# raising), with the cell foraging at the spawn while minding them. Only sim.step is timed.
+	# raising), with the cell foraging at the spawn while minding them. The name gives the expected
+	# cost (about 1.7 ms here, 0.8 to 1.2 on CI); the limits are STRESS_LIMIT_US and
+	# STRESS_YARDSTICKS. Only sim.step and the yardstick are timed; each run's yardstick count is its
+	# step time over its yardstick time, and the median counts.
 	var windows := ceili(float(STRESS_TICKS) / STRESS_WINDOW_TICKS)
 	var best := PackedInt64Array()
 	best.resize(windows)
@@ -82,6 +119,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 	var deaths := 0
 	var left := 0
 	var end_hash := 0
+	var ratios: Array[float] = []
 	for run in STRESS_RUNS:
 		var sim := _stress_sim()
 		check_eq(sim.creatures.creatures.size(), STRESS_CREATURES, "run %d: %d creatures" % [run, STRESS_CREATURES])
@@ -91,6 +129,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 			bot.avoid_threats = true
 		var spent := PackedInt64Array()
 		spent.resize(windows)
+		var yard := 0
 		for i in STRESS_TICKS:
 			var intent: SimIntent
 			if run == 0:
@@ -101,6 +140,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 			var t0 := Time.get_ticks_usec()
 			sim.step(intent)
 			spent[floori(float(i) / STRESS_WINDOW_TICKS)] += Time.get_ticks_usec() - t0
+			yard += Yardstick.time_once()
 			for e in sim.drain_events():
 				if run == 0 and e.type == "creature_died":
 					deaths += 1
@@ -108,6 +148,7 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 		for w in windows:
 			best[w] = mini(best[w], spent[w])
 			total += spent[w]
+		ratios.append(total / float(maxi(yard, 1)))
 		if run == 0:
 			first_average = total / float(STRESS_TICKS)
 			left = sim.creatures.creatures.size()
@@ -118,9 +159,12 @@ func test_slow_twenty_four_creatures_cost_well_under_three_milliseconds_a_tick()
 	for w in windows:
 		average += best[w]
 	average /= float(STRESS_TICKS)
-	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left)" % [
-		average, STRESS_TICKS, STRESS_CREATURES, STRESS_RUNS, first_average, deaths, left])
+	var ratio := Yardstick.median(ratios)
+	print("test-threats-stress-cost: %.1f us per tick over %d ticks with %d creatures, each window at its best of %d runs (the bot's run alone %.1f us; %d died, %d left); %.2f yardsticks, the median run (%s)" % [
+		average, STRESS_TICKS, STRESS_CREATURES, STRESS_RUNS, first_average, deaths, left, ratio,
+		", ".join(ratios.map(func(r: float) -> String: return "%.2f" % r))])
 	check(average <= STRESS_LIMIT_US, "average %.1f us per tick (limit %.0f)" % [average, STRESS_LIMIT_US])
+	check(ratio <= STRESS_YARDSTICKS, "a tick costs %.2f yardsticks in the median run (limit %.1f)" % [ratio, STRESS_YARDSTICKS])
 
 
 ## The #29 pool: a new omnivore lineage at the spawn, and the ring of creatures facing in.
@@ -289,3 +333,152 @@ static func _on_the_move(c: CreatureField.Creature) -> bool:
 		CreatureBrain.CHASE:
 			return c.brain.phase == CreatureBrain.PURSUE
 	return false
+
+
+func test_slow_a_forager_near_the_spawn_meets_threats_and_one_that_dodges_is_not_worn_down() -> void:
+	# #32, the pressure gate: the zones by the spawn no longer feed a cell for ever out of every
+	# threat's reach (lair_s watches z_s, and z_center alone no longer feeds a cell).
+	var deaths := 0
+	var starved := 0
+	var minutes := 0.0
+	for body in PRESSURE_BODIES:
+		var meetings := 0
+		var met_in := 0
+		for seed_value in PRESSURE_SEEDS:
+			var run := _pressure_run(body, seed_value)
+			var met := int(run.notices) + int(run.tells)
+			meetings += met
+			met_in += 1 if met > 0 else 0
+			deaths += int(run.killed)
+			starved += int(run.starved)
+			print("test-threats-pressure: %s seed %d: %d notices and %d tells (first at %s), %d dodged, %d hits taken, %d killed, %d starved, %d meals; fed most in %s" % [
+				body, seed_value, run.notices, run.tells, "%.0f s" % (run.first_met / 60.0) if run.first_met >= 0 else "none",
+				run.dodges, run.hits_taken, run.killed, run.starved, run.meals, run.fed_most])
+		var body_minutes := PRESSURE_SEEDS.size() * PRESSURE_TICKS / 3600.0
+		minutes += body_minutes
+		var rate := meetings / body_minutes
+		print("test-threats-pressure: %s: %.2f meetings a minute (need %.1f), met in %d of %d seeds" % [
+			body, rate, PRESSURE_MIN_MEETINGS_PER_MIN, met_in, PRESSURE_SEEDS.size()])
+		check(rate >= PRESSURE_MIN_MEETINGS_PER_MIN, "%s: %.2f meetings a minute (need %.1f)" % [body, rate, PRESSURE_MIN_MEETINGS_PER_MIN])
+		# Every seed, not just the average: a run spent feeding in one quiet zone must not hide
+		# behind the others' meetings.
+		check_eq(met_in, PRESSURE_SEEDS.size(), "%s: met a threat in every seed" % body)
+	var death_rate := deaths / minutes * 5.0
+	print("test-threats-pressure: %d deaths in %.0f minutes, %.2f per 5 minutes (at most %.1f); %d starved" % [
+		deaths, minutes, death_rate, PRESSURE_MAX_DEATHS_PER_5_MIN, starved])
+	check(death_rate <= PRESSURE_MAX_DEATHS_PER_5_MIN, "%.2f deaths per 5 minutes (at most %.1f)" % [death_rate, PRESSURE_MAX_DEATHS_PER_5_MIN])
+	check_eq(starved, 0, "the forager never starved, so the zones it roams to still feed it")
+
+
+## One seed's 300 s: a new `body` lineage at the spawn, ForageBot's nearest food under EvadeBot's dodge.
+func _pressure_run(body: String, seed_value: int) -> Dictionary:
+	var sim := _sim(body, seed_value)
+	var forager = ForageBot.new()
+	var bot = EvadeBot.new()
+	bot.base = forager.next_intent
+	var run := {"notices": 0, "tells": 0, "first_met": -1, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0, "meals": 0,
+		"fed_most": ""}
+	var fed := {}   # zone id -> meals there ("" for carrion)
+	var events: Array = []
+	var dead_since := -1
+	for i in PRESSURE_TICKS:
+		if sim.dead:
+			if dead_since < 0:
+				dead_since = sim.tick
+			elif sim.tick - dead_since >= DEATH_NOTICE_TICKS:
+				sim.respawn_player()
+				dead_since = -1
+				events.append_array(sim.drain_events())
+		sim.step(bot.next_intent(sim, events))
+		events = sim.drain_events()
+		for e in events:
+			match str(e.type):
+				"creature_noticed", "creature_tell":
+					if e.target != CreatureField.PLAYER_ID:
+						continue
+					run[("notices" if e.type == "creature_noticed" else "tells")] += 1
+					if run.first_met < 0:
+						run.first_met = sim.tick
+				"dodged":
+					run.dodges += 1
+				"hit":
+					if e.target == CreatureField.PLAYER_ID:
+						run.hits_taken += 1
+				"died":
+					run[("starved" if e.cause == "starved" else "killed")] += 1
+				"ate":
+					run.meals += 1
+					fed[str(e.zone)] = int(fed.get(str(e.zone), 0)) + 1
+	var most := 0
+	for zone in fed:
+		if int(fed[zone]) > most:
+			most = int(fed[zone])
+			run.fed_most = zone if not str(zone).is_empty() else "carrion"
+	return run
+
+
+func test_slow_a_greedy_camper_in_a_zone_by_the_spawn_runs_dry() -> void:
+	# #33: z_s at 0.06 and z_center at 0.08 both top out at 1.15 energy a second (growth x capacity x
+	# 0.30), and a camper eating every item it has room for draws about 1.45: it eats its zone down,
+	# and what an eaten-down zone regrows cannot feed it.
+	for zone_id in CAMP_ZONES:
+		for body in PRESSURE_BODIES:
+			var run := _camp_run(body, zone_id)
+			var share := float(run.in_zone) / maxi(1, run.ticks)
+			print("test-threats-camp: %s %s: ran dry after %s, %d meals, %.0f%% of the time in the zone, %d meetings, %d killed; sites at the start %s" % [
+				zone_id, body, "%.0f s" % (run.dry_at / 60.0) if run.dry_at >= 0 else "never in %d s" % (CAMP_LIMIT_TICKS / 60),
+				run.meals, 100.0 * share, run.meetings, run.killed, run.sites])
+			check_eq(run.killed, 0, "%s %s: no threat killed the camper" % [zone_id, body])
+			check(run.dry_at >= 0, "%s %s: a camper that starts full runs dry within %d s" % [zone_id, body, CAMP_LIMIT_TICKS / 60])
+			check(share >= CAMP_MIN_IN_ZONE_SHARE, "%s %s: it camped (%.0f%% in the zone)" % [zone_id, body, 100.0 * share])
+			check(run.meals >= run.full_stock, "%s %s: it ate there, more than the zone holds when full (%d meals)" % [zone_id, body, run.meals])
+
+
+## A new `body` lineage placed full at the centre of `zone_id`, eating only that zone's food and
+## dodging tells, until its energy first runs out or CAMP_LIMIT_TICKS pass.
+func _camp_run(body: String, zone_id: String) -> Dictionary:
+	var z := layout.zone(zone_id)
+	var r := Lineage.found(CAMP_SEED, "test+dev", catalog, body)
+	r.save.player["position"] = PlaneSpace.to_save(z.center)
+	var sim := PoolSim.create(r.save, catalog, layout, species)
+	sim.state.energy = sim.state.energy_capacity
+	sim.drain_events()
+	var run := {"ticks": 0, "dry_at": -1, "meals": 0, "in_zone": 0, "meetings": 0, "killed": 0, "sites": PackedStringArray(),
+		"full_stock": sim.plankton.max_count(sim.region.zone(zone_id))}
+	for c in sim.creatures.creatures:
+		run.sites.append(c.site_id)
+	var forager = ForageBot.new()
+	var bot = EvadeBot.new()
+	bot.base = func(s: PoolSim) -> SimIntent:
+		var food := {}
+		var best := INF
+		for list in [s.plankton.items, s.carrion.items]:
+			for item in list:
+				var d: float = s.motion.position.distance_to(item.position)
+				if s.phenotype.can_eat(item.kind) and Vector2(item.position).distance_to(z.center) <= float(z.radius) and d < best:
+					best = d
+					food = item
+		if not food.is_empty() and s.state.energy_capacity - s.state.energy < float(food.energy) * InteractionResolver.FEED_MIN_ROOM_SHARE:
+			return SimIntent.new()   # too full to eat it: wait
+		forager.park_at = Vector2(z.center) if food.is_empty() else Vector2(food.position)
+		return forager.next_intent(s)
+	var events: Array = []
+	while run.ticks < CAMP_LIMIT_TICKS and not sim.dead:
+		sim.step(bot.next_intent(sim, events))
+		run.ticks += 1
+		events = sim.drain_events()
+		if sim.motion.position.distance_to(z.center) <= float(z.radius):
+			run.in_zone += 1
+		for e in events:
+			match str(e.type):
+				"creature_noticed", "creature_tell":
+					if e.target == CreatureField.PLAYER_ID:
+						run.meetings += 1
+				"died":
+					run.killed += 1 if e.cause != "starved" else 0
+				"ate":
+					run.meals += 1
+		if sim.state.energy <= 0.0:
+			run.dry_at = sim.tick
+			break
+	return run

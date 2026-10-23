@@ -14,9 +14,10 @@ extends RefCounted
 ## region's). Debug spawns bypass the niche cap, are not counted and never respawn.
 ##
 ## The token (fairness F4): at most max_engaged_on_player creatures chase or attack the player at
-## once. Before each creature's think, in number order, the player's percept is engageable only while
-## the token has room or that creature already holds it; right after the think (or a hook) the list
-## is updated from the brain. Other bodies are always engageable.
+## once. Before each creature's think, in number order, the player is engageable (on its percept and
+## on the brain's memory of it) only while the token has room or that creature already holds it;
+## right after the think (or a hook) the list is updated from the brain, and never past its limit.
+## Other bodies are always engageable.
 ##
 ## Creatures are not saved: a continued run repopulates from the encounter seed.
 
@@ -196,7 +197,7 @@ func remove(c: Creature, reason: String, tick: int, requeue: bool) -> void:
 	for other in creatures:
 		if other.brain != null:
 			CreatureBrain.on_target_gone(other.brain, c.id, tick)
-			update_token(other)
+			update_token(other, tick)
 	events.append({"type": "creature_removed", "id": c.id, "species": c.species_id, "reason": reason})
 	if requeue and not c.debug and not c.site_id.is_empty():
 		var wait := species.spawn_retry_ticks if reason == "stuck" else respawn_delay(c.species_id)
@@ -305,20 +306,25 @@ func think_due(c: Creature, tick: int) -> bool:
 
 
 ## One creature's think: it perceives `bodies` (the tick's snapshot) through its own senses, sees
-## food only while foraging, and decides. The player's percept is engageable only if the token lets
-## this creature engage; the token list follows the brain right after. `self_view` may be passed in
-## when the caller already built it this tick (the body has not moved since).
+## food only while foraging, and decides. The player is engageable only if the token lets this
+## creature engage now: the flag goes on a fresh percept and on the brain's remembered entry alike,
+## so no decision runs on a flag from an older think (or from a hurt, which marks its attacker
+## engageable). The token list follows the brain right after. `self_view` may be passed in when the
+## caller already built it this tick (the body has not moved since).
 func think(c: Creature, p_bodies: Array, food_items: Array, arena: PoolArena, tick: int, self_view := {}) -> void:
 	var viewer := viewer_of(c)
 	var percepts := CreatureSenses.perceive(viewer, p_bodies, arena)
+	var may := may_engage_player(c)
 	for percept in percepts:
 		if percept.id == PLAYER_ID:
-			percept.engageable = may_engage_player(c)
+			percept.engageable = may
+	if c.brain.seen.has(PLAYER_ID):
+		c.brain.seen[PLAYER_ID].engageable = may
 	var food: Array[Dictionary] = []
 	if c.brain.state == CreatureBrain.FORAGE:
 		food = CreatureSenses.perceive_food(viewer, food_items, c.phenotype.diets)
 	CreatureBrain.think(c.brain, self_view if not self_view.is_empty() else self_view_of(c), percepts, food, tick, arena)
-	update_token(c)
+	update_token(c, tick)
 
 
 ## A drive that does nothing: no thrust, no turn, no strike (a new, frozen or scripted creature).
@@ -339,12 +345,19 @@ func may_engage_player(c: Creature) -> bool:
 
 
 ## Brings the token list in line with the creature's brain: it holds the token exactly while it is
-## engaged with the player.
-func update_token(c: Creature) -> void:
+## engaged with the player. The list never grows past max_engaged_on_player: a brain that engaged
+## while the token was full (which the engageable flag should make impossible) is refused and
+## stands down, forgetting the player, and the refusal is logged as an error.
+func update_token(c: Creature, tick: int) -> void:
 	var engaged := c.brain != null and CreatureBrain.is_engaged_with(c.brain, PLAYER_ID)
 	var at := engaged_on_player.find(c.id)
 	if engaged and at < 0:
-		engaged_on_player.append(c.id)
+		if engaged_on_player.size() < int(species.fairness.max_engaged_on_player):
+			engaged_on_player.append(c.id)
+			return
+		push_error("CreatureField: %s engaged the player at tick %d while %s held the token; it stands down" % [
+			c.id, tick, engaged_on_player])
+		CreatureBrain.forget(c.brain, PLAYER_ID, 0, tick)
 	elif not engaged and at >= 0:
 		engaged_on_player.remove_at(at)
 

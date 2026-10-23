@@ -8,7 +8,8 @@ extends Control
 ##                 (whenever health is below full, or while starving) and the lineage line
 ##   top right:    adaptation points with a "+N" flash, and meal and survival toasts
 ##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
-##   bottom center: refusal hints, worded by RefusalHints
+##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
+##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
 ##   bottom left:  the controls, from the key bindings, until the first meal or for 30 s
 ##
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
@@ -265,7 +266,9 @@ static func controls_lines() -> PackedStringArray:
 	])
 
 
-## How this body eats, in words that do not lean on colour alone.
+## How this body eats, in words that do not lean on colour alone. A body that eats only carrion is
+## also told that, past the world-start pieces it may see now, more comes only from kills (D1); its
+## starving tip says how to make one.
 static func first_meal_line(p: Phenotype) -> String:
 	var plants := p.can_eat("plant")
 	var meat := p.can_eat("meat")
@@ -274,7 +277,7 @@ static func first_meal_line(p: Phenotype) -> String:
 	if plants:
 		return "Eat by touching drifting plankton (small green blobs) with your filter mouth."
 	if meat:
-		return "Eat by touching carrion (still brown chunks) with your jaw."
+		return "Eat by touching carrion (still brown chunks) with your jaw; more comes only from kills."
 	return "This body has no mouth that can eat."
 
 

@@ -115,7 +115,7 @@ func test_dying_five_times_in_a_row_always_returns_the_cell_to_a_fair_checkpoint
 	var deaths := [
 		{"at": "lair_se", "cause": "killed:ambush_hunter", "grace_s": 5.0, "energy": 0.6},
 		{"at": "lair_sw", "cause": "killed:ambush_hunter", "grace_s": 8.0, "energy": 0.8},
-		{"at": "lair_gap", "cause": "killed:ambush_hunter", "grace_s": 10.0, "energy": 1.0},
+		{"at": "lair_s", "cause": "killed:ambush_hunter", "grace_s": 10.0, "energy": 1.0},
 		{"at": "z_n", "cause": "killed:rammer", "grace_s": 10.0, "energy": 1.0},
 		{"at": "starve", "cause": "starved", "grace_s": 10.0, "energy": 1.0},
 	]
@@ -365,10 +365,19 @@ func test_the_killer_ignores_the_cell_for_thirty_seconds_after_the_respawn_and_t
 	var before := _play(sim, bot, DEATH_LIMIT_TICKS, func() -> bool: return sim.dead)
 	check(sim.dead and sim.death.by == hunter.id, "killed by lair_se's hunter")
 	check(before.any(func(e: Dictionary) -> bool: return e.type == "creature_noticed" and e.id == hunter.id), "which had noticed it")
+	# C3 names only the killer: every other brain's ignore entry for the cell (-1 for none) is as it was.
+	var others := {}
+	for c in sim.creatures.creatures:
+		if c.brain != null and c != hunter:
+			others[c.id] = int(c.brain.ignore.get(PLAYER, -1))
+	check(others.size() >= 2, "other creatures in the pool (%d)" % others.size())
 	session.respawn_after_death()
 	var respawn_tick := sim.tick
 	var ignore_until := respawn_tick + sim.species.killer_ignore_ticks
 	check_eq(int(hunter.brain.ignore.get(PLAYER, -1)), ignore_until, "the killer ignores the cell for 30 s")
+	for c in sim.creatures.creatures:
+		if others.has(c.id):
+			check_eq(int(c.brain.ignore.get(PLAYER, -1)), int(others[c.id]), "%s, not the killer, gains no ignore on the cell" % c.id)
 	_play(sim, bot, sim.grace_until - sim.tick)
 	check(sim.debug_teleport(spot, hunter.brain.home_heading), "back in front of the lair when the shelter ends")
 	var noticed := []
@@ -385,7 +394,8 @@ func test_the_killer_ignores_the_cell_for_thirty_seconds_after_the_respawn_and_t
 
 func test_creatures_near_the_checkpoint_are_sent_home_and_forget_the_cell_at_the_respawn() -> void:
 	# Plan test_checkpoints #7 (C2, C3), in the open fixture: two dev creatures whose homes are far
-	# out have come within 12 m of the checkpoint and seen the cell; a third stays beyond 12 m.
+	# out have come within 12 m of the checkpoint and seen the cell; a third stays beyond 12 m, and
+	# a fourth is just inside 12 m when the cell dies (the radius's edge, not only the middle).
 	var catalog := PartCatalog.load_from()
 	var fixture := PoolLayout.load_from(THREATS_FIXTURE)
 	var r := Lineage.found(4646, "test+dev", catalog, "hunter")
@@ -393,9 +403,11 @@ func test_creatures_near_the_checkpoint_are_sent_home_and_forget_the_cell_at_the
 	var sim := PoolSim.create(r.save, catalog, fixture, SpeciesCatalog.load_from(TEST_SPECIES))
 	sim.grace_until = sim.tick
 	var cp: Vector2 = sim.checkpoint().position
-	# [species, home, where it has come to], relative to the checkpoint: two in sight of it, one 14 m off.
+	# [species, home, where it has come to], relative to the checkpoint: two in sight of it, one 14 m
+	# off, and one whose home is 20 m off (moved to 11.5 m below, after the warm-up, so it cannot
+	# drift back toward its home first).
 	var placed := [["ambush_hunter", Vector2(12.0, 0.0), Vector2(5.0, 0.0)], ["rammer", Vector2(-14.0, 0.0), Vector2(-5.0, 1.0)],
-		["ambush_hunter", Vector2(0.0, -20.0), Vector2(0.0, -14.0)]]
+		["ambush_hunter", Vector2(0.0, -20.0), Vector2(0.0, -14.0)], ["ambush_hunter", Vector2(-20.0, 0.0), Vector2(-20.0, 0.0)]]
 	var made: Array[CreatureField.Creature] = []
 	for p in placed:
 		var home: Vector2 = cp + p[1]
@@ -412,13 +424,24 @@ func test_creatures_near_the_checkpoint_are_sent_home_and_forget_the_cell_at_the
 		check(c.motion.position.distance_to(cp) < 12.0, "%s is within 12 m of the checkpoint" % c.id)
 	var far := made[2].motion.position
 	check(far.distance_to(cp) > 12.0, "%s is not" % made[2].id)
+	var edge := made[3]
+	edge.motion.place(cp + Vector2(-11.5, 0.0), 0.0)
+	check(edge.brain.home.distance_to(cp) > 12.0, "%s's home is beyond 12 m" % edge.id)
 	check(sim.debug_hurt_player(sim.state.max_health), "the cell dies")
 	sim.drain_events()
+	# Each brain's ignore entry for the cell (-1 for none) once the death is over (a chase on the
+	# cell ends in a give-up and its own short ignore), for C3 after the respawn.
+	var ignored := {}
+	for c in made:
+		ignored[c.id] = int(c.brain.ignore.get(PLAYER, -1))
 	sim.respawn_player()
 	var respawned := sim.drain_events().filter(func(e: Dictionary) -> bool: return e.type == "respawned")
-	check(respawned.size() == 1 and respawned[0].relocated == [made[0].id, made[1].id],
-		"respawned names the two sent home, by id: %s" % [respawned])
-	for c in made.slice(0, 2):
+	var near: Array[CreatureField.Creature] = [made[0], made[1], edge]
+	var near_ids := near.map(func(c: CreatureField.Creature) -> String: return c.id)
+	near_ids.sort()
+	check(respawned.size() == 1 and respawned[0].relocated == near_ids,
+		"respawned names the three sent home, 11.5 m out included, by id: %s" % [respawned])
+	for c in near:
 		check_eq(c.motion.position, c.brain.home, "%s is at its home" % c.id)
 		check_eq(c.motion.heading, c.brain.home_heading, "facing its home heading")
 		check_eq(c.motion.velocity, Vector2.ZERO, "at rest")
@@ -427,6 +450,9 @@ func test_creatures_near_the_checkpoint_are_sent_home_and_forget_the_cell_at_the
 		check(c.brain.state == CreatureBrain.REST, "and rests (%s)" % c.brain.state)
 	check_eq(made[2].motion.position, far, "the one beyond 12 m stays where it was")
 	check(not made[2].brain.seen.has(PLAYER), "but forgets the cell too")
+	# C3: a dev kill has no killer, so the respawn gives no brain an ignore on the cell.
+	for c in made:
+		check_eq(int(c.brain.ignore.get(PLAYER, -1)), int(ignored[c.id]), "%s's ignore on the cell is as it was" % c.id)
 
 
 func test_a_sheltered_cell_is_never_sensed_or_struck_and_its_own_bite_ends_the_shelter() -> void:

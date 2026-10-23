@@ -6,10 +6,10 @@ extends RefCounted
 ##
 ## With `avoid_threats` (M1 step 3; the smoke phases turn it on) it keeps clear of creatures: it
 ## passes over food within THREAT_FOOD_M of any creature, steers away from creatures within
-## THREAT_AVOID_M, and dodges a tell aimed at the cell with the EvadeBot reaction (sideways, 0.4 s
-## after the tell starts). The pool asks only next_intent(sim), so it cannot hear the sim's events;
-## it watches the creatures' attack phases instead, as a player watches their poses, and hands
-## EvadeBot the tells and their ends it sees.
+## THREAT_AVOID_M, and dodges a tell aimed at the cell with the EvadeBot reaction (out of its line on
+## the side the cell faces, 0.4 s after the tell starts). The pool asks only next_intent(sim), so it
+## cannot hear the sim's events; it watches the creatures' attack phases instead, as a player watches
+## their poses, and hands EvadeBot the tells and their ends it sees.
 ##
 ##     var bot = load("res://game/dev/forage_bot.gd").new()
 ##     sim.step(bot.next_intent(sim))

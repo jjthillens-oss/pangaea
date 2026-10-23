@@ -9,7 +9,7 @@ const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const SEED := 77
 ## Real sites in data order, as populate() numbers them.
-const SITE_ORDER := ["lair_se", "lair_sw", "lair_gap", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
+const SITE_ORDER := ["lair_se", "lair_sw", "lair_s", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
 ## 20.5 m west of lair_se, which the widest view still shows.
 const BESIDE_LAIR_SE := Vector2(5.9, 12.6)
 ## 13.6 m north of lair_se, out of its view but under 20 m.
@@ -298,6 +298,70 @@ func test_only_one_creature_at_a_time_holds_the_token_on_the_player() -> void:
 	check(other_states.has("rest/watch"), "it watched instead (%s)" % [other_states.keys()])
 	check_eq(holders.size(), 2, "the token passed from one to the other once the first gave up (%s)" % [holders])
 	check(field.engaged_on_player.size() <= 1, "and the list ends within the limit")
+
+
+func test_a_hunter_that_lost_sight_of_the_cell_while_another_took_the_token_does_not_chase_it() -> void:
+	# F4 regression, in the running sim: two hungry hunters either side of the cell, which swims east
+	# at 0.6. The west hunter last sees the cell while the token is free, the east one takes the token,
+	# and the west one's notice ends with the cell just out of its sight. It decides on the token as it
+	# is now, not as it was when it last saw the cell: no second creature enters a chase on the cell,
+	# not even for the one think the token's backstop would undo.
+	var fixture := PoolLayout.load_from(THREATS_FIXTURE)
+	var r := Lineage.found(31, "test+dev", parts, "hunter")
+	r.save.player["position"] = PlaneSpace.to_save(fixture.spawn)
+	var sim := PoolSim.create(r.save, parts, fixture, SpeciesCatalog.load_from(TEST_SPECIES))
+	sim.grace_until = sim.tick
+	check(sim.debug_teleport(Vector2(1.0, -16.0), 0.0), "the cell placed between them")
+	for at in [Vector2(-5.0, -16.0), Vector2(5.0, -16.0)]:
+		var h := sim.creatures.spawn_at("ambush_hunter", at, 0.0 if at.x < 0.0 else PI, "", sim.tick, true)
+		h.brain.ignore_all_until = 0
+		h.brain.trace = true   # every state change is an event, so a chase undone in the same tick still shows
+		h.state.energy = h.state.energy_capacity * 0.3   # hungry: each wants to chase
+	sim.drain_events()
+	var most := int(sim.species.fairness.max_engaged_on_player)
+	var bad := ""
+	var noticed := {}
+	var chased := {}
+	for i in 600:
+		var t := sim.tick
+		sim.step(SimIntent.new(Vector2.RIGHT * 0.6))
+		var token := sim.creatures.engaged_on_player
+		for e in sim.drain_events():
+			if e.type == "creature_noticed" and e.target == CreatureField.PLAYER_ID:
+				noticed[e.id] = true
+			if e.type == "creature_state" and str(e.to).begins_with("chase/"):
+				chased[e.id] = true
+				if not token.has(e.id) and bad.is_empty():
+					bad = "tick %d: %s went into %s without the token (%s)" % [t, e.id, e.to, token]
+		for c in sim.creatures.creatures:
+			if CreatureBrain.is_engaged_with(c.brain, CreatureField.PLAYER_ID) and not token.has(c.id) and bad.is_empty():
+				bad = "tick %d: %s is engaged with the cell outside the token (%s)" % [t, c.id, token]
+		if token.size() > most and bad.is_empty():
+			bad = "tick %d: %d creatures hold the token (%s)" % [t, token.size(), token]
+	check(bad.is_empty(), bad)
+	check_eq(noticed.size(), 2, "both hunters noticed the cell (%s)" % [noticed.keys()])
+	check(not chased.is_empty(), "one of them chased it (%s)" % [chased.keys()])
+
+
+func test_the_token_never_grows_past_its_limit_and_a_brain_refused_it_stands_down() -> void:
+	# The backstop behind the refreshed flag: a brain that enters a chase on the player while the
+	# token is full (here forced from outside) is not added to the list; it drops the chase.
+	var fixture := PoolLayout.load_from(THREATS_FIXTURE)
+	var field := _field(SEED, SpeciesCatalog.load_from(TEST_SPECIES), fixture)
+	var holder := field.spawn_at("rammer", Vector2(-6.0, -16.0), 0.0)
+	var late := field.spawn_at("ambush_hunter", Vector2(6.0, -16.0), PI)
+	for c in [holder, late]:
+		c.brain.seen[CreatureField.PLAYER_ID] = {"position": Vector2(0.0, -16.0), "velocity": Vector2.ZERO, "tick": 10,
+			"by": "sight", "species": SpeciesCatalog.PLAYER_SPECIES, "radius": PoolLayout.CELL_RADIUS, "engageable": true}
+		CreatureBrain._notice(c.brain, CreatureField.PLAYER_ID, "sight", 10)
+		CreatureBrain._chase(c.brain, field.self_view_of(c), CreatureBrain.PURSUE, 10, true)
+		field.update_token(c, 10)
+	check_eq(Array(field.engaged_on_player), [holder.id], "the first holds the token and the list stays at its limit")
+	check(CreatureBrain.is_engaged_with(holder.brain, CreatureField.PLAYER_ID), "the holder chases on")
+	check(not CreatureBrain.is_engaged_with(late.brain, CreatureField.PLAYER_ID), "the one refused stood down")
+	check(not field.may_engage_player(late), "and may not engage")
+	field.update_token(holder, 10)
+	check_eq(Array(field.engaged_on_player), [holder.id], "updating the holder again changes nothing")
 
 
 func test_the_same_seed_gives_the_same_field_and_its_snapshot_holds_no_vectors() -> void:

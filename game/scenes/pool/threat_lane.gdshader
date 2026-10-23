@@ -1,16 +1,19 @@
 // The floor lane of a tell (M1 step 3, functional UI drawing): the strip a strike can hit,
 // from CreatureBrain.strike_lane(), lying on the swim plane. The CreatureView scales a unit quad to
 // the lane (x across, -z along the strike) and sets the uniforms each frame.
-// Readability rules (plan sections 14-15): never above MAX_ALPHA, never flashing. At that alpha
-// the dark spike-tip crimson carries the shape on any floor (it darkens the step 2 sage and the lit
-// turquoise alike), and a thin line of the bright threat colour inside the border keeps its hue,
-// which on its own greys out over turquoise. The inside fills from the creature toward the far end
-// as the tell runs, so the fill reaching the end is the moment of the strike, and slow dark
+// Readability rules (plan sections 14-15): the inside never above MAX_ALPHA, so the floor shows
+// through the strip, and nothing flashes. Only the thin outline (EDGE_M plus ACCENT_M, about 0.2 m
+// of a strip 1.5 to 3 m wide) is drawn at LINE_ALPHA: at a quarter alpha no red survives over the
+// lit teal floor, which turned the frame a grey selection box (DECISIONS, 2026-10-22 visual). The
+// dark spike-tip crimson border carries the shape on any floor and the thin line of the bright
+// threat colour inside it carries the danger hue. The inside fills from the creature toward the far
+// end as the tell runs, so the fill reaching the end is the moment of the strike, and slow dark
 // chevrons inside the fill point the way.
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
 
-const float MAX_ALPHA = 0.25;
+const float MAX_ALPHA = 0.25;     // the inside: base, fill and chevrons
+const float LINE_ALPHA = 0.7;     // the outline: the dark border and the bright line inside it
 const float EDGE_M = 0.14;        // width of the dark border, in metres...
 const float ACCENT_M = 0.06;      // ...and of the bright line just inside it
 const float BASE_ALPHA = 0.06;    // the inside before the fill reaches it
@@ -44,7 +47,7 @@ void fragment() {
 	float chev = smoothstep(0.0, 0.08, chevron) * (1.0 - smoothstep(0.18, 0.26, chevron)) * filled;
 	float inside = mix(BASE_ALPHA, FILL_ALPHA, filled) + CHEVRON_ALPHA * chev;
 	vec3 rgb = mix(shade.rgb, color.rgb, accent);
-	float a = max(inside, MAX_ALPHA * max(border, accent));
+	float a = max(min(inside, MAX_ALPHA), LINE_ALPHA * max(border, accent));
 	ALBEDO = rgb;
-	ALPHA = min(a, MAX_ALPHA) * strength;
+	ALPHA = a * strength;
 }

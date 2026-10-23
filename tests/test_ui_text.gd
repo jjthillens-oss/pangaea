@@ -2,11 +2,21 @@ extends TestCase
 ## The words and numbers the menus and HUD show (M1 step 2). Body cards must show exactly the
 ## stats Phenotype.derive gives, the HUD must name the sim's energy, health and points as the
 ## rules count them, controls are named from the key bindings, and the death notice names the
-## points the death rule took, the killer, its tip and whether the death was saved. The running
-## screens are covered by the scene smoke.
+## points the death rule took, the killer, its tip and whether the death was saved; a starving
+## tip names only food the body can eat. The running screens are covered by the scene smoke.
 
 const PERF_TOUR := "res://game/dev/perf_tour.gd"
 const THEME := "res://game/ui/theme/pangaea_theme.tres"
+const BODY_CARD := "res://game/ui/body_card.tscn"
+const HUD_SCENE := "res://game/ui/hud.tscn"
+const NOTICE := "res://game/ui/notice_dialog.tscn"
+## The tallest first-meal line, in lines: the omnivore's and the grazer's since step 2, which the
+## UI smoke and the screenshots lay out.
+const FIRST_MEAL_MAX_LINES := 3
+## The least room the death notice leaves above and below it on the canvas.
+const NOTICE_MARGIN_PX := 60.0
+## Words that name each food, for checking a tip names only food the body can eat.
+const FOOD_WORDS := {"plant": ["plankton"], "meat": ["carrion", "kill"]}
 const PERF_STALL_MS := 100           ## a real stall, far longer than the one-tick delta it comes with
 
 var catalog := PartCatalog.load_from()
@@ -51,6 +61,7 @@ func test_each_body_has_a_name_a_role_and_a_diet_from_its_mouths() -> void:
 	check_eq(BodyText.diet(_phenotype("omnivore")), "Eats both", "omnivore")
 	for body in BodyText.ORDER:
 		check(not BodyText.role(body).is_empty(), "%s has a role line" % body)
+	check(BodyText.role("hunter").ends_with("Hunters must hunt to eat."), "the hunter's card says it must hunt: %s" % BodyText.role("hunter"))
 	check_eq(BodyText.body_name(""), "Evolved cell", "an edited body")
 	check_eq(BodyText.lineage_line("hunter", "3F9A-1C07", 2), "Hunter lineage 3F9A-1C07 · Generation\u00a02",
 		"lineage line, with a no-break space before the generation number")
@@ -120,12 +131,18 @@ func test_controls_are_named_from_the_key_bindings() -> void:
 		check(not line.contains("Physical"), "plain key names in '%s'" % line)
 	check(Hud.first_meal_line(_phenotype("grazer")).contains("filter mouth"), "a grazer is told about its filter mouth")
 	check(Hud.first_meal_line(_phenotype("hunter")).contains("jaw"), "a hunter is told about its jaw")
+	var hunter_meal := Hud.first_meal_line(_phenotype("hunter"))
+	check(hunter_meal.contains("only from kills"), "and that more carrion comes only from kills: %s" % hunter_meal)
+	check(PoolLayout.load_from().carrion.initial.is_empty() or not _says_all_carrion_is_from_kills(hunter_meal),
+		"but not that all of it does, while the world-start pieces lie in the pool: %s" % hunter_meal)
 
 
 func test_the_death_notice_names_the_points_the_death_rule_takes() -> void:
-	check_eq(Main.death_text("starved", Lineage.death_loss(9)),
+	check_eq(Main.death_text("starved", Lineage.death_loss(9), "", {}, 1, _phenotype("grazer")),
 		"The lineage continues from the start of generation 1. You lost a quarter of your unspent adaptation points (−2).\n"
-		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the starving tip follows")
+		+ GameSession.STARVED_TIP, "starved: the loss is already applied, and the body's starving tip follows")
+	check(Main.death_text("starved", 2).ends_with("(−2).\n" + GameSession.STARVED_TIP_ANY),
+		"without a body the fallback tip names no food: %s" % Main.death_text("starved", 2))
 	check_eq(Main.death_title("starved"), "Out of energy", "the title does not repeat the body")
 	check_eq(Main.save_status_text({"ok": false, "error": "Could not save to x: disk full."}), "Could not save to x: disk full.", "errors as given")
 	check(Main.save_status_text({"ok": true, "error": ""}).begins_with("Saved "), "a save names its time")
@@ -148,8 +165,101 @@ func test_a_kill_notice_names_the_killer_the_saved_loss_and_the_species_tip() ->
 		"the loss, the generation and 'Saved.': %s" % lines[0])
 	check(lines[0].contains("You lost") and not text.contains("You lose"), "the loss is told as already taken")
 	check_eq(lines[1], tip, "the species tip on its own line")
-	check(tip.contains("sideways, out of its line"), "the tip names the dodge the tests prove: %s" % tip)
+	for id in species.species:
+		var each := str(species.species[id].death_tip)
+		check(each.contains("out of its line on the side you face"), "the %s tip names the dodge the S5 grid proves (F2): %s" % [id, each])
 	check(Main.death_text("killed", 3, tip, saved, 2).contains("generation 2"), "the generation is the save's")
+
+
+func test_a_starving_tip_names_only_food_the_body_can_eat_and_tells_a_hunter_to_hunt() -> void:
+	for body in BodyText.ORDER:
+		var p := _phenotype(body)
+		var tip := GameSession.starved_tip(p)
+		check_eq(Main.death_text("starved", 0, "", {}, 1, p).get_slice("\n", 1), tip, "%s: the notice's fallback is the body's tip" % body)
+		for diet: String in FOOD_WORDS:
+			for word: String in FOOD_WORDS[diet]:
+				check(p.can_eat(diet) or not tip.to_lower().contains(word),
+					"%s (%s) is not sent to %s: %s" % [body, BodyText.diet(p).to_lower(), word, tip])
+	check_eq(GameSession.starved_tip(_phenotype("grazer")), GameSession.STARVED_TIP, "a grazer is told where plankton regrows")
+	check_eq(GameSession.starved_tip(_phenotype("omnivore")), GameSession.STARVED_TIP, "so is an omnivore, which eats it too")
+	var hunter := GameSession.starved_tip(_phenotype("hunter"))
+	check(hunter.contains("only from kills") and hunter.contains("rammer"), "a hunter is told to hunt, and what: %s" % hunter)
+	check(not _says_all_carrion_is_from_kills(hunter), "but not that all carrion comes from kills, while world-start pieces may lie in the pool: %s" % hunter)
+	check(hunter.contains("keep biting") and hunter.contains("until it dies"), "and that one bite does not kill a rammer (five do, threats_sim #9): %s" % hunter)
+	var mouthless := Phenotype.new()
+	check(not mouthless.can_eat("plant") and not mouthless.can_eat("meat"), "a body with no mouth")
+	check_eq(GameSession.starved_tip(mouthless), GameSession.STARVED_TIP_ANY, "is sent to no food")
+	check_eq(GameSession.starved_tip(null), GameSession.STARVED_TIP_ANY, "nor is an unknown body")
+
+
+## Whether `text` says all carrion comes from kills: "only from kills" with no "more" before it in the
+## same clause. The pool starts with a few pieces (the layout's carrion.initial), which rot only after
+## 120 s, so a hunter would see that claim proved wrong.
+static func _says_all_carrion_is_from_kills(text: String) -> bool:
+	var qualified := RegEx.create_from_string("(?i)\\bmore\\b[^.:;]*only from kills")
+	return text.to_lower().contains("only from kills") and qualified.search(text) == null
+
+
+## The height of `text` in a wrapping Label at `width` with this font and size.
+func _label_height(text: String, font: Font, size: int, width: float, spacing: int) -> float:
+	var n := _wrapped(text, font, size, width).size()
+	return n * font.get_height(size) + (n - 1) * spacing
+
+
+func test_the_body_card_the_first_meal_line_and_the_death_notice_fit_their_panels_in_both_window_sizes() -> void:
+	# The canvas is 1920 x 1080 at every window size (stretch mode canvas_items), so the 1280 x 720
+	# window shows this same layout scaled down: one measurement covers both sizes.
+	check_eq(str(ProjectSettings.get_setting("display/window/stretch/mode")), "canvas_items", "one canvas at every window size")
+	check_eq([int(ProjectSettings.get_setting("display/window/size/viewport_width")), int(ProjectSettings.get_setting("display/window/size/viewport_height"))],
+		[1920, 1080], "the canvas")
+	check_eq([int(ProjectSettings.get_setting("display/window/size/window_width_override")), int(ProjectSettings.get_setting("display/window/size/window_height_override"))],
+		[1280, 720], "the window")
+	var theme: Theme = load(THEME)
+	var font := theme.get_font(&"font", &"Label")
+	var size := theme.get_font_size(&"font_size", &"Label")
+	var spacing := ThemeDB.get_default_theme().get_constant(&"line_spacing", &"Label")
+	check(not theme.has_constant(&"line_spacing", &"Label"), "Labels use Godot's line spacing (%d px)" % spacing)
+	# The body card has a fixed size: a role taller than its label pushes the stats out of the card.
+	var card: Control = (load(BODY_CARD) as PackedScene).instantiate()
+	var margin: MarginContainer = card.get_node("Margin")
+	var role: Label = card.get_node("%Role")
+	var role_w: float = card.custom_minimum_size.x - int(margin.get("theme_override_constants/margin_left")) \
+		- int(margin.get("theme_override_constants/margin_right"))
+	for body in BodyText.ORDER:
+		var h := _label_height(BodyText.role(body), font, size, role_w, spacing)
+		check(h <= role.custom_minimum_size.y, "the %s role is %.0f px tall at %.0f px, within its %.0f px: %s"
+			% [body, h, role_w, role.custom_minimum_size.y, _wrapped(BodyText.role(body), font, size, role_w)])
+	card.free()
+	# The first-meal line in the controls panel (bottom left) is no taller than step 2's longest.
+	var hud: Control = (load(HUD_SCENE) as PackedScene).instantiate()
+	var meal_w: float = (hud.get_node("%FirstMealText") as Label).custom_minimum_size.x
+	hud.free()
+	for body in BodyText.ORDER:
+		var lines := _wrapped(Hud.first_meal_line(_phenotype(body)), font, size, meal_w)
+		check(lines.size() <= FIRST_MEAL_MAX_LINES, "the %s first-meal line takes %d lines at %.0f px (at most %d): %s"
+			% [body, lines.size(), meal_w, FIRST_MEAL_MAX_LINES, lines])
+	# The death notice grows with its text: the longest title, a failed save and each tip must leave
+	# the panel NOTICE_MARGIN_PX clear of the canvas's top and bottom.
+	var notice: Control = (load(NOTICE) as PackedScene).instantiate()
+	var body_w: float = (notice.get_node("%Body") as Label).custom_minimum_size.x
+	var box_gap := int((notice.get_node("Center/Panel/Box") as VBoxContainer).get("theme_override_constants/separation"))
+	notice.free()
+	var header := theme.get_font_size(&"font_size", &"HeaderLabel")
+	var button_h := theme.get_stylebox(&"normal", &"Button").get_minimum_size().y + font.get_height(theme.get_font_size(&"font_size", &"Button"))
+	var frame := theme.get_stylebox(&"panel", &"DialogPanel").get_minimum_size().y + 2 * box_gap + button_h
+	var failed := {"attempted": true, "ok": false, "error": "Could not save to user://saves/slot_1.json: Can't open file."}
+	var tips := [GameSession.STARVED_TIP, GameSession.STARVED_TIP_MEAT, GameSession.STARVED_TIP_ANY]
+	var species := SpeciesCatalog.load_from()
+	var title := "Out of energy"
+	for id in species.species:
+		tips.append(str(species.species[id].death_tip))
+		if str(species.species[id].death_reason).length() > title.length():
+			title = str(species.species[id].death_reason)
+	for tip: String in tips:
+		var text := Main.death_text("killed", 99999, tip, failed, 999)
+		var h := frame + _label_height(title, font, header, body_w, spacing) + _label_height(text, font, size, body_w, spacing)
+		check(h <= 1080.0 - 2.0 * NOTICE_MARGIN_PX, "the notice is %.0f px tall with this tip (%d lines at %.0f px): %s"
+			% [h, _wrapped(text, font, size, body_w).size(), body_w, tip])
 
 
 func test_the_death_notice_says_whether_the_death_was_saved() -> void:
