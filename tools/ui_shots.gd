@@ -42,6 +42,15 @@ func _run() -> void:
 	await _frames(20)
 	await _shot("title_saved")
 
+	main.start_screen.open_picker()
+	await _frames(40)
+	await _shot("picker")
+	main.start_screen.select("hunter")
+	await _frames(40)
+	await _shot("picker_hunter")
+	main.start_screen.show_main()
+	await _frames(20)
+
 	main.open_slots()
 	await _frames(20)
 	await _shot("slots")

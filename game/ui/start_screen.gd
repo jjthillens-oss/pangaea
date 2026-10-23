@@ -1,11 +1,12 @@
 class_name StartScreen
 extends Control
-## The title screen (M1 step 2; the UI pass added the moving backdrop, Save slots, Settings and the
-## controller). Continue (with a card naming the slot, saved body, lineage tag, generation, points
-## and save time over a preview of the saved cell), New lineage (a picker of the three starting
-## bodies with their real stats and a shared preview), Save slots, Settings and Quit. Everything
-## works from the keyboard or a controller and the first button has focus; the hint at the bottom
-## names the inputs of the device in use.
+## The title screen (M1 step 2; the UI pass added Save slots, Settings, the controller and the live
+## world). Behind the menu is a TitleWorld: the deep-blue sea with the saved cell swimming in it,
+## and a nameplate beside it names the slot, body, lineage tag, generation, points and save time.
+## New lineage opens a picker of the three starting bodies with their real stats; the body picked
+## swims in the world. Then Save slots, Settings and Quit. Buttons swell when focused and views
+## slide in (MenuBounce). Everything works from the keyboard or a controller and the first button
+## has focus; the hint at the bottom names the inputs of the device in use.
 ##
 ## It only asks: Main answers new_requested, continue_requested, slots_requested,
 ## settings_requested and quit_requested with the same methods the scene smoke calls. The slot summary comes from GameSession.peek_slot(), which
@@ -22,6 +23,13 @@ const REPLACE_TEXT := "This replaces your current lineage. The previous save is 
 const BACKUP_TEXT := "Your last save could not be read; continuing from the backup."
 const UNREADABLE_TEXT := "Your save could not be read, so Continue is off. Nothing was deleted."
 const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
+## Where the camera slides on each view (TitleWorld.frame): the hero right of the menu, and on the
+## picker up and further right, above its plate and clear of the cards.
+const MAIN_FRAME := Vector2(-1.15, 0.0)
+const PICKER_FRAME := Vector2(-2.1, -0.75)
+const PICKER_ROAM := 0.45
+## The body that swims behind the menu when the slot holds no lineage.
+const IDLE_BODY := "grazer"
 
 ## GameSession.peek_slot() for the slot Main uses.
 var peek := {}
@@ -35,6 +43,20 @@ var _cards := {}       ## body -> BodyCard
 var _genomes := {}     ## body -> Genome of the founded starting body
 var _built := false
 var _hint_generation := -1
+## The genome and phenotype of the saved lineage, or null when the slot holds none.
+var _saved_genome: Genome
+var _saved_phenotype: Phenotype
+
+## The live sea behind the menus.
+var world: TitleWorld
+## The cell swimming in the world (it shows the saved lineage, or the body picked). The names are
+## those of the previews they replace.
+var continue_preview: PlayerCellView:
+	get:
+		return world.hero if world != null else null
+var picker_preview: PlayerCellView:
+	get:
+		return world.hero if world != null else null
 
 @onready var main_view: Control = %MainView
 @onready var picker_view: Control = %PickerView
@@ -47,10 +69,8 @@ var _hint_generation := -1
 @onready var hint: Label = %Hint
 @onready var _card_title: Label = %CardTitle
 @onready var continue_card: Control = %ContinueCard
-@onready var continue_preview: CellPreview = %ContinuePreview
 @onready var start_button: Button = %StartButton
 @onready var back_button: Button = %BackButton
-@onready var picker_preview: CellPreview = %PickerPreview
 @onready var confirm: NoticeDialog = %Confirm
 @onready var _card_name: Label = %CardName
 @onready var _card_tag: Label = %CardTag
@@ -75,6 +95,19 @@ func setup(p_peek: Dictionary, p_catalog: PartCatalog, p_slot: int = 0) -> void:
 
 
 func _ready() -> void:
+	world = TitleWorld.new()
+	world.name = "World"
+	add_child(world)
+	move_child(world, 0)
+	background.visible = false
+	add_child(_make_shade())
+	move_child(get_node("Shade"), 1)
+	for b: Button in [continue_button, new_button, slots_button, settings_button, quit_button]:
+		MenuBounce.pill(b)
+		MenuBounce.attach(b)
+	for b: Button in [back_button, start_button]:
+		MenuBounce.pill(b)
+		MenuBounce.attach(b)
 	continue_button.pressed.connect(func(): continue_requested.emit())
 	new_button.pressed.connect(open_picker)
 	quit_button.pressed.connect(func(): quit_requested.emit())
@@ -94,14 +127,22 @@ func _build() -> void:
 	_built = true
 	_build_cards()
 	_fill_continue_card()
+	var others: Array = []
+	for body in BodyText.ORDER:
+		if body != _hero_body():
+			others.append(body)
+	world.set_companions(others, catalog)
 	show_main()
 	if bool(peek.get("exists", false)) and not bool(peek.get("ok", false)):
 		confirm.open("Your save could not be read", UNREADABLE_TEXT + " The files are still in the save folder.",
 			[["ok", "OK", true]], "ok", "ok", "\n".join(peek.get("errors", PackedStringArray())))
 
 
-## The backdrop's motion follows "Reduce camera motion"; its aspect follows the screen.
+## The motion of the world and the (fallback) backdrop follows "Reduce camera motion"; the
+## backdrop's aspect follows the screen.
 func fit_backdrop() -> void:
+	if world != null:
+		world.motion = 0.15 if SettingsService.shared().reduce_camera_motion() else 1.0
 	var mat := background.material as ShaderMaterial
 	if mat == null:
 		return
@@ -120,6 +161,7 @@ func _process(_delta: float) -> void:
 	if _hint_generation != InputPrompts.generation:
 		_hint_generation = InputPrompts.generation
 		hint.text = hint_text()
+		fit_backdrop()
 
 
 ## Puts focus back on the main view's first live button (after an overlay closes).
@@ -130,32 +172,42 @@ func focus_main() -> void:
 
 ## The title view, with focus on Continue when it is available, else New lineage.
 func show_main() -> void:
+	var was_picking := picker_view.visible
 	picker_view.visible = false
 	main_view.visible = true
+	_show_hero()
+	world.frame = MAIN_FRAME
+	world.roam = 1.0
 	if is_inside_tree():
 		(new_button if continue_button.disabled else continue_button).grab_focus()
+	MenuBounce.arrive(main_view, _main_items(), Vector2(-MenuBounce.SLIDE_PX if was_picking else 0.0, 0.0))
 
 
 ## The body picker, with focus on the selected body's card.
 func open_picker() -> void:
 	main_view.visible = false
 	picker_view.visible = true
+	world.frame = PICKER_FRAME
+	world.roam = PICKER_ROAM
 	select(selected_body)
 	var card: BodyCard = _cards.get(selected_body)
 	if card != null and is_inside_tree():
 		card.grab_focus()
+	MenuBounce.arrive(picker_view, body_cards(), Vector2(MenuBounce.SLIDE_PX, 0.0))
 
 
-## Selects a starting body: its card is marked and the shared preview shows it.
+## Selects a starting body: its card is marked and the body swims in the world.
 func select(body: String) -> void:
 	var card: BodyCard = _cards.get(body)
 	if card == null:
 		return
+	var changed: bool = body != selected_body or world.hero_genome != _genomes[body]
 	selected_body = body
 	card.button_pressed = true
 	_picked_name.text = BodyText.body_name(body)
 	_picked_diet.text = BodyText.diet(card.phenotype)
-	picker_preview.show_genome(_genomes[body], card.phenotype)
+	if changed:
+		world.show_genome(_genomes[body], card.phenotype)
 
 
 ## Start on the picker: asks first when a save would be replaced. Cancel has focus, so a player
@@ -212,6 +264,7 @@ func _build_cards() -> void:
 		card.button_group = _group
 		_cards_box.add_child(card)
 		card.setup(body, Phenotype.derive(genome, catalog))
+		MenuBounce.attach(card, 1.03)
 		card.focus_entered.connect(select.bind(body))
 		card.pressed.connect(_on_card_pressed.bind(body))
 		_cards[body] = card
@@ -222,9 +275,10 @@ func _build_cards() -> void:
 
 func _fill_continue_card() -> void:
 	var ok := bool(peek.get("ok", false))
+	_saved_genome = null
+	_saved_phenotype = null
 	continue_button.disabled = not ok
 	continue_button.focus_mode = Control.FOCUS_ALL if ok else Control.FOCUS_NONE
-	continue_preview.visible = ok
 	for label: Label in [_card_name, _card_tag, _card_progress, _card_saved]:
 		label.visible = ok
 	_card_note.visible = true
@@ -235,7 +289,8 @@ func _fill_continue_card() -> void:
 		_card_tag.text = "Lineage %s" % summary.lineage_tag
 		_card_progress.text = "Generation %d · %s" % [summary.generation, Hud.points_line(summary.adaptation_points)]
 		_card_saved.text = "Saved %s" % local_time_text(summary.saved_at_unix)
-		continue_preview.show_genome(summary.genome, Phenotype.derive(summary.genome, catalog))
+		_saved_genome = summary.genome
+		_saved_phenotype = Phenotype.derive(summary.genome, catalog)
 		_card_note.text = BACKUP_TEXT if peek.get("source", "") == "backup" else ""
 		_card_note.visible = not _card_note.text.is_empty()
 	elif bool(peek.get("exists", false)):
@@ -259,3 +314,49 @@ func _unhandled_input(event: InputEvent) -> void:
 	if picker_view.visible and event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		show_main()
+
+
+## The body behind the title view: the saved lineage's, else IDLE_BODY.
+func _hero_body() -> String:
+	if _saved_genome != null:
+		return Lineage.starting_body_of(_saved_genome, catalog)
+	return IDLE_BODY
+
+
+## The title view's hero: the saved lineage, else a starting body.
+func _show_hero() -> void:
+	if _saved_genome != null:
+		if world.hero_genome != _saved_genome:
+			world.show_genome(_saved_genome, _saved_phenotype)
+	elif _genomes.has(IDLE_BODY) and world.hero_genome != _genomes[IDLE_BODY]:
+		world.show_genome(_genomes[IDLE_BODY], _cards[IDLE_BODY].phenotype)
+
+
+## The title view's parts that arrive one after another.
+func _main_items() -> Array:
+	var items: Array = []
+	for b in main_view.get_node("Left/Buttons").get_children():
+		if b is Control and b.visible:
+			items.append(b)
+	items.append(continue_card)
+	return items
+
+
+## A soft navy wash over the left of the world, so the logo and menu read clearly over the sea.
+func _make_shade() -> TextureRect:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(0.01, 0.04, 0.11, 0.6))
+	gradient.set_color(1, Color(0.01, 0.04, 0.11, 0.0))
+	gradient.set_offset(1, 0.5)
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = 256
+	texture.height = 4
+	var shade := TextureRect.new()
+	shade.name = "Shade"
+	shade.texture = texture
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	return shade
