@@ -26,6 +26,7 @@ extends SceneTree
 ##   --scenes=a,b       only these scenes (default every one, in SCENES order)
 ##   --parity=DIR       another renderer's run of the same scenes: adds the parity readings and gates
 ##   --zoom=M           the camera distance (default the layout's, 14 m)
+##   --world=MODE       pool (the default: every scene below stages in the M1 pool) or endless
 ## Exit code: 0 when every gate passes, 1 when one fails or a scene could not be staged, 2 when the
 ## probe cannot run (headless, no --fixed-fps, or the output folder cannot be made).
 ##
@@ -216,6 +217,9 @@ var out_dir := ""
 var look := "micro"
 var parity_dir := ""
 var zoom := 0.0
+## The world every scene runs in (RunFlags.world): "pool" unless --world says otherwise, so the M1
+## scenes stage in the walled pool they were measured in.
+var world := "pool"
 ## Every sim event of the current run, in order.
 var events: Array[Dictionary] = []
 ## scene -> {"frames": {variant: file}, "readings": {...}, "error": text}
@@ -240,6 +244,8 @@ func _initialize() -> void:
 			parity_dir = arg.trim_prefix("--parity=")
 		elif arg.begins_with("--zoom="):
 			zoom = float(arg.trim_prefix("--zoom="))
+		elif arg.begins_with("--world="):
+			world = arg.trim_prefix("--world=")
 	var problem := _setup_problem(scenes)
 	if problem.is_empty():
 		root.size = SIZE
@@ -301,6 +307,7 @@ func _fresh_run() -> void:
 		main = (load(MAIN_SCENE) as PackedScene).instantiate()
 		root.add_child(main)
 		await process_frame
+		main.flags.world = world
 		main.open_session(SLOT)
 	for path in [SLOT, SLOT + ".bak"]:
 		if FileAccess.file_exists(path):

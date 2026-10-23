@@ -68,9 +68,11 @@ func _ready() -> void:
 		show_start()
 
 
-## Uses another save slot ("" for the default) and shows its start screen if a screen is up.
+## Uses another save slot ("" for the default) and shows its start screen if a screen is up. The
+## world is the world file's (S1), endless unless --world=pool says otherwise.
 func open_session(slot: String) -> void:
-	session = GameSession.new(slot if not slot.is_empty() else GameSession.DEFAULT_SLOT)
+	session = GameSession.new(slot if not slot.is_empty() else GameSession.DEFAULT_SLOT, PoolLayout.DEFAULT_PATH,
+		SpeciesCatalog.DEFAULT_PATH, WorldConfig.DEFAULT_PATH, flags.world if flags != null else "")
 	if screen != null:
 		show_start()
 

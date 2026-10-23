@@ -37,12 +37,12 @@ bounded 900 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 bounded 300 "$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
 rm -rf builds/smoke
 mkdir -p builds/smoke
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --world=pool --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd -- --world=pool 2>&1 | tee builds/smoke/ui.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

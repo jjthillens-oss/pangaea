@@ -4,7 +4,10 @@ extends RefCounted
 ##   --seed=N        world seed for a new lineage (a whole number from 0 to MAX_SEED)
 ##   --slot=PATH     save slot instead of GameSession.DEFAULT_SLOT (a file under user:// or at an
 ##                   absolute path)
-##   --perf-tour     run the dev performance tour (dev builds only)
+##   --world=MODE    "pool" for the walled M1 pool or "endless" for the sea that goes on (S1);
+##                   without it the world file's own mode applies (endless)
+##   --perf-tour     run the dev performance tour (dev builds only): the M1 90 s forage tour
+##   --perf-tour=swim  the S1 swim route instead: 5 min straight out, a far death, the way home
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -14,10 +17,16 @@ const MAX_SEED := 4294967295
 const MAX_SEED_DIGITS := 18
 ## A drive letter, a colon and a separator: an absolute Windows path.
 const DRIVE_PATTERN := "^[A-Za-z]:[/\\\\]"
+## The routes --perf-tour= may name.
+const PERF_ROUTES: PackedStringArray = ["swim"]
 
 var seed_value := -1           ## -1: none given
 var slot := ""                 ## "": the default slot
 var perf_tour := false
+## "", "pool" or "endless": the --world flag, "" when none was given (the world file's mode then).
+var world := ""
+## "" for plain --perf-tour (the M1 tour) or "swim" for --perf-tour=swim; perf_tour is true for both.
+var perf_route := ""
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
 var problems: PackedStringArray = []
@@ -39,8 +48,22 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 				flags.slot = path
 			else:
 				flags.problems.append("--slot needs a file under user:// or at an absolute path, got '%s'." % path)
+		elif arg.begins_with("--world="):
+			var mode := arg.trim_prefix("--world=")
+			if mode in WorldConfig.MODES:
+				flags.world = mode
+			else:
+				flags.problems.append("--world must be pool or endless (got '%s')" % mode)
 		elif arg == "--perf-tour":
 			flags.perf_tour = true
+			flags.perf_route = ""
+		elif arg.begins_with("--perf-tour="):
+			var route := arg.trim_prefix("--perf-tour=")
+			if route in PERF_ROUTES:
+				flags.perf_tour = true
+				flags.perf_route = route
+			else:
+				flags.problems.append("--perf-tour takes no value or =swim (got '%s')" % route)
 		else:
 			flags.other.append(arg)
 	return flags
