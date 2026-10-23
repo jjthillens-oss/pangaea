@@ -75,3 +75,32 @@ func test_calm_agrees_with_the_calm_table_for_every_state_and_phase() -> void:
 			check_eq(WorldStream._calm(c), want, "%s/%s" % [state, phase])
 			calm += 1 if want else 0
 	check_eq(calm, WorldStream.CALM.size(), "every calm pair met")
+
+
+# --- SpeciesCatalog.reach_disc_for (the leash disc without a brain) ---
+
+func test_reach_disc_for_equals_the_brains_own_leash_disc() -> void:
+	var species := SpeciesCatalog.load_from()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7102
+	var checked := 0
+	var behaviors := {}
+	for id in species.species_ids():
+		var cfg := species.brain_config(id)
+		if cfg.is_empty():
+			check_eq(species.reach_disc_for({"species": id, "home": Vector2.ZERO, "heading": 0.0}, {}), {}, "%s: no brain, no disc" % id)
+			continue
+		behaviors[str(cfg.behavior)] = true
+		for i in 30:
+			var s := {"species": id, "home": Vector2(rng.randf_range(-500.0, 500.0), rng.randf_range(-500.0, 500.0)),
+				"heading": rng.randf_range(-PI, PI)}
+			var territory := {}
+			if i % 3 == 1:
+				territory = {"center": Vector2(rng.randf_range(-500.0, 500.0), rng.randf_range(-500.0, 500.0)), "radius": rng.randf_range(2.0, 9.0)}
+			elif i % 3 == 2:
+				territory = species.territory_from(s, {"center": s.home + Vector2(1.5, -0.5), "radius": 4.0})
+			var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
+			check_eq(species.reach_disc_for(s, territory), CreatureBrain.leash_disc(mem), "%s #%d" % [id, i])
+			checked += 1
+	check(behaviors.has(CreatureBrain.TERRITORIAL) and behaviors.has(CreatureBrain.AMBUSH), "both behaviors checked (%s)" % [behaviors.keys()])
+	check(checked >= 60, "%d discs checked" % checked)
