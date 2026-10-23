@@ -18,6 +18,12 @@ const FIXTURE := "res://tests/fixtures/save_v2_endless_5km.json"
 const FIXTURE_X := 5000.123456789012
 const FIXTURE_Y := -3.25
 const FIXTURE_SEED := 4242
+## T4.4's S2 fixture: a v3 save at size 2 (tools/godot/record_save_v3.gd), its values as recorded.
+const S2_FIXTURE := "res://tests/fixtures/save_v3_s2.json"
+const S2_FIXTURE_POSITION := [830.5, -52.375]
+const S2_FIXTURE_CHECKPOINT := [812.25, -40.0625, 1.25, 2.0]
+const S2_FIXTURE_METER := 37.5
+const S2_FIXTURE_PAID := {"food": ["algae_ball"], "landmark": ["landmark_arch"], "place": []}
 ## T1's fixture world: the shipped settings with their content on the minimal fixtures, until T4's land.
 const WORLD := "res://tests/fixtures/world/world_min.json"
 ## G11: Continue lands within a micrometre of the pre-save position, on each axis.
@@ -98,20 +104,50 @@ func test_a_pool_session_loads_the_endless_5km_fixture_at_the_spawn() -> void:
 	check(not session.dirty, "nothing unsaved right after continuing")
 
 
-## A new endless lineage, saved to the slot.
-func _endless(seed_value: int) -> GameSession:
-	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, WORLD)
+## A new endless lineage on `world`, saved to the slot.
+func _endless(seed_value: int, world: String = WORLD) -> GameSession:
+	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, world)
 	var started := session.start_new("omnivore", seed_value)
 	check(started.ok, "an endless lineage starts: %s" % [started.errors])
 	return session
 
 
-## Continues the slot in a new endless session (as a new launch would); null when it fails.
-func _continue() -> GameSession:
-	var again := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, WORLD)
+## Continues the slot in a new endless session on `world` (as a new launch would); null when it fails.
+func _continue(world: String = WORLD) -> GameSession:
+	var again := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, world)
 	var r := again.continue_run()
 	check(r.ok, "continued: %s" % [r.errors])
 	return again if r.ok else null
+
+
+## The fixture world with growth switched on (BP-6: the fixture ships it off) and the build's top
+## size `max_in_build`, written into this test's folder. Returns its path.
+func _growing_world(max_in_build: int = 2) -> String:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WORLD))
+	data.switches = (data.switches as Dictionary).duplicate()
+	data.switches.growth = true
+	data.sizes = {"start": 1, "max_in_build": max_in_build}
+	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
+	var path := SaveFolder.path("world_growth_%d.json" % max_in_build)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data, "\t"))
+	f.close()
+	return path
+
+
+## Copies the S2 fixture (a v3 save at size 2, T4.4) into this test's slot.
+func _s2_fixture_in_slot() -> void:
+	DirAccess.make_dir_recursive_absolute(SaveFolder.dir())
+	var file := FileAccess.open(slot, FileAccess.WRITE)
+	file.store_string(FileAccess.get_file_as_string(S2_FIXTURE))
+	file.close()
+
+
+## The growth state a Continue must bring back (S2G19): the size, the meter, the checkpoint and the
+## paid lists.
+static func _growth_state(sim: PoolSim) -> Dictionary:
+	return {"size": sim.size(), "meter": sim.growth.meter, "checkpoint": Array(sim.world.checkpoint_am),
+		"paid": sim.growth.paid.duplicate(true), "discoveries": sim.growth.discoveries.duplicate(true)}
 
 
 ## Swims straight along `direction` for `ticks`, driven by a SwimBot.
@@ -201,6 +237,141 @@ func test_a_continue_into_a_shell_lands_at_the_nearest_clear_point() -> void:
 	check(moved <= CLEAR_SEARCH_TM, "within %.0f tm: %.3f" % [CLEAR_SEARCH_TM, moved])
 	check(moved >= float(shell.radius) + cell.phenotype.radius - PoolArena.CLEAR_EPSILON,
 		"outside the shell: %.4f from its centre, radius %.3f + body %.3f" % [moved, shell.radius, cell.phenotype.radius])
+
+
+# --- S2: the v3 growth fields through a save and a Continue (S2G19, S2G32, D-74) ---
+
+func test_continue_at_size_2_keeps_the_size_meter_checkpoint_and_paid_lumps() -> void:
+	var world := _growing_world()
+	var session := _endless(4245, world)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.growth != null, "growth runs")
+	check(sim.debug_set_size(2), "the world at size 2 (D-76)")
+	check(sim.debug_fill_meter(0.3), "the meter part full")
+	# A find at size 2, paid and in the ledger, as a first algae ball eaten there would be.
+	var look := str(sim.world.content.config.ladder.food_looks[1].plant)
+	sim.growth._ate(sim, "plant")
+	check(sim.growth.paid.food.has(look), "the size-2 plant look is paid")
+	_swim(sim, 60, Vector2(0.6, -0.8))
+	var before := _growth_state(sim)
+	var at := sim.absolute_position_am()
+	check(session.save_now().ok, "saved")
+	var again := _continue(world)
+	if again == null:
+		return
+	check_eq(again.sim.size(), 2, "at size 2")
+	check_eq(_growth_state(again.sim), before, "the meter, the checkpoint, the ledger and the paid lists are back")
+	var after := again.sim.absolute_position_am()
+	var saved_local := again.sim.world.local_of_abs(at[0], at[1])
+	if again.sim.arena.is_clear(saved_local, again.sim.phenotype.radius):
+		check(absf(after[0] - at[0]) <= MICROMETRE and absf(after[1] - at[1]) <= MICROMETRE,
+			"within a micrometre: saved (%.9f, %.9f), continued (%.9f, %.9f)" % [at[0], at[1], after[0], after[1]])
+	check(not again.dirty, "nothing unsaved right after continuing")
+
+
+func test_a_continue_never_pays_a_lump_twice() -> void:
+	# S2G32: a lump paid at this size is in the ledger, and a Continue brings the paid lists back from
+	# it, so the same find after the Continue adds nothing to the meter.
+	var world := _growing_world()
+	var session := _endless(4246, world)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.debug_set_size(2), "the world at size 2")
+	var look := str(sim.world.content.config.ladder.food_looks[1].plant)
+	sim.growth._ate(sim, "plant")
+	var paid_once := sim.growth.meter
+	check(paid_once > 0.0 and sim.growth.paid.food.has(look), "the first %s paid a lump: %.3f" % [look, paid_once])
+	check(session.save_now().ok, "saved")
+	var again := _continue(world)
+	if again == null:
+		return
+	var back := again.sim
+	check(back.growth.paid.food.has(look), "the paid list is back from the ledger")
+	back.drain_events()
+	back.growth._ate(back, "plant")
+	check(absf(back.growth.meter - paid_once) < 1e-9, "the same find pays nothing more: %.3f" % back.growth.meter)
+	check(back.drain_events().filter(func(e: Dictionary) -> bool: return e.type == "meter_lump").is_empty(), "no meter_lump")
+	check_eq(back.growth.discoveries.filter(func(d: Dictionary) -> bool: return d.id == look).size(), 1, "one ledger line")
+
+
+func test_a_growth_saved_by_its_tick_continues_at_size_2() -> void:
+	# D-75: the scene hands each tick's events to after_events, and the tick that grew is saved at
+	# once; a Continue of that file is at size 2.
+	var world := _growing_world()
+	var session := _endless(4247, world)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.debug_force_growth(), "the next tick grows")
+	var grew := false
+	var saved := {}
+	for i in 10:
+		sim.step(SimIntent.new())
+		var events := sim.drain_events()
+		var r := session.after_events(events)
+		for e in events:
+			if e is Dictionary and e.get("type") == "grew":
+				grew = true
+				saved = r
+		if grew:
+			break
+	check(grew, "the cell grew")
+	check(saved.get("ok", false), "and the tick that grew was saved: %s" % [saved])
+	check_eq(sim.size(), 2, "at size 2")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	check_eq(int(data.growth.size), 2, "the file holds size 2")
+	check_eq(int(data.checkpoint.size), 2, "and the checkpoint at size 2")
+	var at := sim.absolute_position_am()
+	var again := _continue(world)
+	if again == null:
+		return
+	check_eq(again.sim.size(), 2, "continued at size 2")
+	var after := again.sim.absolute_position_am()
+	var dx := after[0] - at[0]
+	var dy := after[1] - at[1]
+	check(dx * dx + dy * dy <= CLEAR_SEARCH_TM * CLEAR_SEARCH_TM, "within %.0f tm of the saved place" % CLEAR_SEARCH_TM)
+
+
+func test_a_size_2_save_comes_back_at_size_1_where_the_build_stops_there() -> void:
+	# D-74: the save's size is clamped to the sizes this build runs: the first alone with growth off
+	# (BP-6), and max_in_build with it on.
+	_s2_fixture_in_slot()
+	var off := _continue()
+	if off != null:
+		check_eq(off.sim.size(), 1, "growth off: size 1")
+		check(off.sim.growth == null, "and no meter")
+		check_eq(int(off.sim.world.checkpoint_am[3]), 1, "the checkpoint at size 1")
+	_s2_fixture_in_slot()
+	var one := _continue(_growing_world(1))
+	if one != null:
+		check_eq(one.sim.size(), 1, "a build that stops at size 1: size 1")
+		check(one.sim.growth != null, "with its meter")
+		check_eq(int(one.sim.world.checkpoint_am[3]), 1, "the checkpoint at size 1")
+
+
+func test_the_s2_fixture_continues_at_size_2_as_recorded() -> void:
+	_s2_fixture_in_slot()
+	var session := _continue(_growing_world())
+	if session == null:
+		return
+	var sim := session.sim
+	check_eq(sim.size(), 2, "at size 2")
+	check(absf(sim.growth.meter - S2_FIXTURE_METER) < 1e-9, "the meter %.3f" % sim.growth.meter)
+	check_eq(Array(sim.world.checkpoint_am), S2_FIXTURE_CHECKPOINT, "the checkpoint")
+	check_eq(sim.growth.paid, S2_FIXTURE_PAID, "the paid lists from the ledger's size-2 finds")
+	check_eq(sim.growth.discoveries.size(), 5, "the ledger's five lines")
+	var at := sim.absolute_position_am()
+	var dx := at[0] - S2_FIXTURE_POSITION[0]
+	var dy := at[1] - S2_FIXTURE_POSITION[1]
+	check(dx * dx + dy * dy <= CLEAR_SEARCH_TM * CLEAR_SEARCH_TM, "within %.0f tm of the saved place: (%.9f, %.9f)"
+		% [CLEAR_SEARCH_TM, at[0], at[1]])
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "in open water")
+	if sim.arena.is_clear(sim.world.local_of_abs(S2_FIXTURE_POSITION[0], S2_FIXTURE_POSITION[1]), sim.phenotype.radius):
+		check(absf(dx) <= MICROMETRE and absf(dy) <= MICROMETRE, "the saved place is clear, so the cell is there: off by (%s, %s)" % [dx, dy])
+	check(not session.dirty, "nothing unsaved right after continuing")
 
 
 func test_slow_ten_save_and_continue_cycles_do_not_drift() -> void:

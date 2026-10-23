@@ -291,9 +291,11 @@ func _death_tip(cause: String, by_species: String) -> String:
 	return ""
 
 
-## Writes the save with position_for_save() (the checkpoint while dead).
+## Writes the save with position_for_save() (the checkpoint while dead) and the v3 growth fields
+## after it (the size, the meter, the world's checkpoint and the ledger; S2G19).
 func _write() -> Dictionary:
 	sim.write_position_to_save()
+	sim.write_growth_to_save()
 	var err := persistence.save_to(slot, sim.save)
 	if err != OK:
 		return {"ok": false, "error": "Could not save to %s: %s." % [slot, error_string(err)]}
@@ -312,7 +314,7 @@ func _mark_saved() -> void:
 
 ## The cell's size: the world's in endless mode, 1 in the pool.
 func _size() -> int:
-	return sim.world.size if sim.is_endless() else 1
+	return sim.size()
 
 
 ## A dead cell is dirty only while its death is not saved; after a saved death the checkpoint is

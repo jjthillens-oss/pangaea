@@ -246,27 +246,83 @@ func test_a_tick_in_which_the_cell_grew_is_saved_at_once() -> void:
 	check_eq(int(data.adaptation_points), session.sim.save.adaptation_points, "the file holds this tick's points")
 
 
-## Sets the endless world's size the way a growth leaves it, for the dirty test: only the number
-## (the frame and the chunks stay), which is all the session reads.
+## Sets the endless world's size the way the dev command does (D-76: the world at size n round the
+## cell, by the teleport path), for the dirty test. The world must run growth (BP-6).
 func _set_size(sim: PoolSim, n: int) -> void:
-	sim.world.size = n
+	check(sim.debug_set_size(n), "the world at size %d" % n)
+
+
+## The size written in the slot's growth block, or 0 without one.
+func _saved_size(session: GameSession) -> int:
+	var data = JSON.parse_string(FileAccess.get_file_as_string(session.slot))
+	return int(data.get("growth", {}).get("size", 0)) if data is Dictionary else 0
 
 
 func test_a_size_other_than_the_saved_one_is_an_unsaved_change() -> void:
-	var session := _endless(35)
+	var session := _endless_growing(35)
 	if session.sim == null:
 		return
 	var sim := session.sim
 	check(not session.dirty, "saved at size 1")
+	check_eq(_saved_size(session), 1, "the file holds size 1")
 	_set_size(sim, 2)
 	check(session.dirty, "a growth is an unsaved change, though the cell has not moved")
 	check(session.save_now().ok, "saved")
 	check(not session.dirty, "saved at size 2")
+	check_eq(_saved_size(session), 2, "the file holds size 2 (S2G19)")
 	_set_size(sim, 1)
 	check(session.dirty, "and so is a size back down")
 	check(session.save_now().ok and not session.dirty, "saved again")
+	check_eq(_saved_size(session), 1, "the file holds size 1 again")
 	var pool := GameSession.new(SaveFolder.path("pool_slot.json"))
 	check(pool.start_new("grazer", 35).ok and not pool.dirty, "the pool is always size 1")
+	check_eq(_saved_size(pool), 1, "and its file says so")
+
+
+func test_a_respawn_with_growth_on_starts_with_the_energy_d35_gives() -> void:
+	# D-35 (Growth.respawn_energy, BP-6): the streak's share of the capacity, but at most the energy
+	# the cell died with plus respawn_cap_over_death, and at size 1 never under respawn_floor_share
+	# of the capacity. With growth off the respawn is S1's: the share alone.
+	var session := _endless_growing(36)
+	if session.sim == null:
+		return
+	var sim := session.sim
+	check(sim.growth != null, "growth runs")
+	check(sim.debug_set_energy(0.0), "no energy")
+	check(_kill(sim), "dead")
+	check(session.respawn_after_death() >= 0 and sim.respawn_pending, "a respawn is pending")
+	sim.drain_events()
+	sim.step(SimIntent.new())
+	check(not sim.dead, "respawned")
+	var energy := _respawned_energy(sim)
+	var cap := sim.state.energy_capacity
+	var cfg: Dictionary = sim.world.content.config.growth
+	var share := RespawnRules.pick(sim.species.respawn_energy_share, sim.death_streak)
+	var expected := clampf(maxf(float(cfg.respawn_floor_share) * cap, minf(share * cap, 0.0 + float(cfg.respawn_cap_over_death))), 0.0, cap)
+	check(absf(energy - expected) < 1e-6, "the energy D-35 gives at size 1: %.3f, expected %.3f (share %.2f of %.1f)"
+		% [energy, expected, share, cap])
+	check(energy > share * cap or absf(float(cfg.respawn_floor_share) * cap - share * cap) < 1e-6,
+		"the size-1 floor lifts a starved cell above the streak's share")
+	var plain := _endless(36, SaveFolder.path("plain_slot.json"))
+	if plain.sim == null:
+		return
+	check(plain.sim.growth == null, "growth off in the fixture world (BP-6)")
+	check(plain.sim.debug_set_energy(0.0) and _kill(plain.sim), "dead")
+	plain.respawn_after_death()
+	plain.sim.drain_events()
+	plain.sim.step(SimIntent.new())
+	var plain_share := RespawnRules.pick(plain.sim.species.respawn_energy_share, plain.sim.death_streak)
+	var plain_energy := _respawned_energy(plain.sim)
+	check(absf(plain_energy - plain_share * plain.sim.state.energy_capacity) < 1e-6,
+		"with growth off the respawn energy is the share alone: %.3f" % plain_energy)
+
+
+## The energy the tick's respawned event reports (the tick's metabolism runs after the respawn).
+static func _respawned_energy(sim: PoolSim) -> float:
+	for e in sim.drain_events():
+		if e is Dictionary and e.get("type") == "respawned":
+			return float(e.energy)
+	return -1.0
 
 
 func test_a_death_is_resolved_once_and_the_respawn_after_it_takes_nothing_more() -> void:
@@ -406,6 +462,22 @@ func _endless(seed_value: int, p_slot: String = "") -> GameSession:
 		SpeciesCatalog.DEFAULT_PATH, _world_file())
 	var started := session.start_new("grazer", seed_value)
 	check(started.ok, "an endless lineage starts: %s" % [started.errors])
+	return session
+
+
+## The fixture world with growth switched on (BP-6: the fixture ships it off), for the S2 cases.
+func _growing_world_file() -> String:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIXTURE_WORLD))
+	var switches: Dictionary = (data.switches as Dictionary).duplicate()
+	switches.growth = true
+	return _world_file("world_growth.json", {"switches": switches})
+
+
+## A new endless lineage on the growing world, saved to the slot.
+func _endless_growing(seed_value: int) -> GameSession:
+	var session := GameSession.new(slot, PoolLayout.DEFAULT_PATH, SpeciesCatalog.DEFAULT_PATH, _growing_world_file())
+	var started := session.start_new("grazer", seed_value)
+	check(started.ok, "an endless lineage starts with growth on: %s" % [started.errors])
 	return session
 
 
