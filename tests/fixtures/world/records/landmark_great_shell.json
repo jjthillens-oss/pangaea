@@ -1,0 +1,7 @@
+{
+	"id": "landmark_great_shell",
+	"status": "PROPOSED",
+	"review_state": "blockout - S1 test fixture",
+	"export_path": "assets/export/landmark_great_shell.glb",
+	"footprint_radius_m": 2.0
+}

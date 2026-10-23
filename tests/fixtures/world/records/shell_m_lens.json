@@ -1,0 +1,7 @@
+{
+	"id": "shell_m_lens",
+	"status": "PROPOSED",
+	"review_state": "blockout - S1 test fixture",
+	"export_path": "assets/export/shell_small_lens.glb",
+	"footprint_radius_m": 0.9
+}
