@@ -9,7 +9,7 @@ const CreatureRig := preload("res://rig/creature_rig.gd")
 const DT := 1.0 / 60.0
 
 const RUNS := [["walk", 10.0], ["trot", 10.0], ["run", 10.0], ["turn_in_place", 6.0], ["reversal", 6.0],
-		["random", 60.0]]
+		["random", 60.0], ["demo", 10.0]]
 
 
 func _init() -> void:

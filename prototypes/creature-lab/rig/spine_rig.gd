@@ -61,10 +61,20 @@ static func build_mesh(arrays: Dictionary, color: Color) -> ArrayMesh:
 	surface[Mesh.ARRAY_BONES] = arrays["bones"]
 	surface[Mesh.ARRAY_WEIGHTS] = arrays["weights"]
 	surface[Mesh.ARRAY_CUSTOM0] = arrays["custom0"]
+	# CUSTOM1.xyz: rest-pose position, so skin patterns stay round and fixed to the body when it bends (art contract §2.2).
+	var rest := PackedFloat32Array()
+	rest.resize(4 * arrays["vertices"].size())
+	for i in arrays["vertices"].size():
+		var v: Vector3 = arrays["vertices"][i]
+		rest[4 * i] = v.x
+		rest[4 * i + 1] = v.y
+		rest[4 * i + 2] = v.z
+	surface[Mesh.ARRAY_CUSTOM1] = rest
 	surface[Mesh.ARRAY_INDEX] = arrays["indices"]
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surface, [], {},
-			Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+			(Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+			| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT))
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.45
@@ -86,3 +96,12 @@ func swim(dt: float) -> void:
 		var tailward := 1.0 if i > root_bone else 0.35
 		var angle := deg_to_rad(swim_amplitude_deg) * tailward * sin(_phase - TAU * along / swim_wavelength)
 		skeleton.set_bone_pose_rotation(i, Quaternion(Vector3.UP, angle))
+
+
+## Length of the body along the spine in metres, end cap to end cap: the `body_length_m` shader uniform.
+func body_length_m() -> float:
+	var n: int = desc.vertebrae.size()
+	var length: float = desc.radius_m(0) + desc.radius_m(n - 1)
+	for i in n - 1:
+		length += desc.position_m(i).distance_to(desc.position_m(i + 1))
+	return length

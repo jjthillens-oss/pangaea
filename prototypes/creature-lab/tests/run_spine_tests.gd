@@ -7,6 +7,7 @@ const BodyCodec := preload("res://domain/body_codec.gd")
 const BodyDescription := preload("res://domain/body_description.gd")
 const SkinCpu := preload("res://skin/skin_cpu.gd")
 const MeshChecks := preload("res://skin/mesh_checks.gd")
+const SpineRig := preload("res://rig/spine_rig.gd")
 
 var failures := 0
 var rules := {}
@@ -26,6 +27,7 @@ func _init() -> void:
 	test_skin_deterministic()
 	test_weights()
 	test_paint_coordinates()
+	test_mesh_rest_positions()
 	test_triangle_budget_large_body()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
@@ -247,6 +249,18 @@ func test_paint_coordinates() -> void:
 	check(c.size() == 4 * v.size() and ring_top < 0.02 and absf(c[4 * right + 1] - 0.25) < 0.02
 			and c[4 * head] < 0.02, "paint coordinates: back 0, right side 0.25, head end 0 (got %.3f, %.3f, %.3f)"
 			% [ring_top, c[4 * right + 1], c[4 * head]])
+
+
+func test_mesh_rest_positions() -> void:
+	var skin := SkinCpu.build(Lab.body("fish"), 48)
+	var arrays := SpineRig.build_mesh(skin, Color.WHITE).surface_get_arrays(0)
+	var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var c1: PackedFloat32Array = arrays[Mesh.ARRAY_CUSTOM1]
+	var c0: PackedFloat32Array = arrays[Mesh.ARRAY_CUSTOM0]
+	var ok := c1.size() == 4 * v.size() and c0.size() == 4 * v.size()
+	for i in v.size():
+		ok = ok and Vector3(c1[4 * i], c1[4 * i + 1], c1[4 * i + 2]).is_equal_approx(v[i]) and c1[4 * i + 3] == 0.0
+	check(ok, "the mesh carries paint coordinates (CUSTOM0) and rest positions (CUSTOM1) for every vertex")
 
 
 func test_triangle_budget_large_body() -> void:

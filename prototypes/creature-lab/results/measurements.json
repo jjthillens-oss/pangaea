@@ -105,6 +105,23 @@
 			"cycles": 123.85143154808573
 		},
 		{
+			"body": "quad_short",
+			"drive": "demo",
+			"seconds": 10.0,
+			"max_slip_ratio": 3.893054781656247e-06,
+			"mean_slip_ratio": 2.588656834578984e-07,
+			"knee_flips": 0,
+			"finite": true,
+			"solved_frames": 600,
+			"max_stance_reach_ratio": 0.9676699638366699,
+			"steps": 79,
+			"early_lifts": 3,
+			"distance_m": 17.42991828322408,
+			"turned_deg": 357.32439701937363,
+			"top_speed_mps": 3.4292856398964497,
+			"cycles": 19.272279237533894
+		},
+		{
 			"body": "quad_long",
 			"drive": "walk",
 			"seconds": 10.0,
@@ -207,6 +224,23 @@
 			"cycles": 85.90194711744121
 		},
 		{
+			"body": "quad_long",
+			"drive": "demo",
+			"seconds": 10.0,
+			"max_slip_ratio": 3.833278242382221e-06,
+			"mean_slip_ratio": 3.871479869658711e-07,
+			"knee_flips": 0,
+			"finite": true,
+			"solved_frames": 600,
+			"max_stance_reach_ratio": 0.9667661786079407,
+			"steps": 57,
+			"early_lifts": 5,
+			"distance_m": 24.710238045454034,
+			"turned_deg": 505.3330390361894,
+			"top_speed_mps": 4.849742261192857,
+			"cycles": 13.714494808910914
+		},
+		{
 			"body": "hexapod",
 			"drive": "walk",
 			"seconds": 10.0,
@@ -307,6 +341,23 @@
 			"turned_deg": 5202.63560172588,
 			"top_speed_mps": 3.4292856398964497,
 			"cycles": 123.44219054411262
+		},
+		{
+			"body": "hexapod",
+			"drive": "demo",
+			"seconds": 10.0,
+			"max_slip_ratio": 2.698056732697296e-06,
+			"mean_slip_ratio": 4.2314732794256044e-07,
+			"knee_flips": 0,
+			"finite": true,
+			"solved_frames": 600,
+			"max_stance_reach_ratio": 0.9700139760971069,
+			"steps": 117,
+			"early_lifts": 9,
+			"distance_m": 17.499848768673797,
+			"turned_deg": 312.0428429115658,
+			"top_speed_mps": 3.4292856398964497,
+			"cycles": 19.284294192560832
 		}
 	],
 	"cost": [
@@ -314,33 +365,33 @@
 			"count": 1,
 			"tiered": false,
 			"frames": 600,
-			"planner_ms": 0.06961666666666667,
-			"sync_ms": 0.02517,
-			"solve_ms": 0.061340000000000006
+			"planner_ms": 0.06862499999999999,
+			"sync_ms": 0.029336666666666667,
+			"solve_ms": 0.06377333333333333
 		},
 		{
 			"count": 10,
 			"tiered": false,
 			"frames": 600,
-			"planner_ms": 0.3347233333333333,
-			"sync_ms": 0.10730666666666666,
-			"solve_ms": 0.28083166666666665
+			"planner_ms": 0.3178033333333333,
+			"sync_ms": 0.10652333333333333,
+			"solve_ms": 0.2732133333333333
 		},
 		{
 			"count": 50,
 			"tiered": false,
 			"frames": 600,
-			"planner_ms": 1.3318616666666665,
-			"sync_ms": 0.533415,
-			"solve_ms": 1.2931783333333333
+			"planner_ms": 1.3669466666666668,
+			"sync_ms": 0.5583816666666667,
+			"solve_ms": 1.299585
 		},
 		{
 			"count": 50,
 			"tiered": true,
 			"frames": 600,
-			"planner_ms": 0.722635,
-			"sync_ms": 0.26632333333333336,
-			"solve_ms": 0.6492083333333333
+			"planner_ms": 0.7121649999999999,
+			"sync_ms": 0.27347333333333335,
+			"solve_ms": 0.64832
 		}
 	]
 }
