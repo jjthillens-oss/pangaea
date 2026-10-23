@@ -11,7 +11,8 @@ var name := ""
 var table: RefCounted
 var hip_height := 0.0
 ## One entry per leg: {side: -1 left / +1 right, k: index front to back on its side, hip: Vector3, upper: float,
-## lower: float, length: float, reach: float, rest: Vector3 (foot rest point on the ground)}.
+## lower: float, length: float, reach: float, rest: Vector3 (foot rest point on the ground), pole: Vector3 (which
+## way the knee points, body-local, in leg lengths from the hip)}.
 var legs: Array = []
 var legs_per_side := 0
 ## Largest hip distance from the body's vertical axis.
@@ -47,6 +48,7 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 			"length": length,
 			"reach": gait_table.reach_margin * length,
 			"rest": Vector3(hip.x + side * gait_table.foot_splay_ratio * length, 0.0, hip.z),
+			"pole": _pole_direction(String(leg.get("knee", "forward")), side),
 		})
 		counts[side] += 1
 		m.hip_radius_max = maxf(m.hip_radius_max, Vector2(hip.x, hip.z).length())
@@ -59,6 +61,17 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 			* gait_table.rel_stride(gait_table.fr_top()))
 	m.angular_accel_max = m.accel_max / m.hip_radius_max
 	return m
+
+
+## "forward" and "back" knees point along the body, a little below the hip; "out" knees point sideways and up, like
+## an insect's.
+static func _pole_direction(knee: String, side: int) -> Vector3:
+	match knee:
+		"back":
+			return Vector3(0.0, -0.25, 1.0)
+		"out":
+			return Vector3(side * 1.0, 0.6, 0.0)
+	return Vector3(0.0, -0.25, -1.0)
 
 
 ## Fastest hip speed over the ground when the body moves forward at `v` and turns at `omega` (about +Y).

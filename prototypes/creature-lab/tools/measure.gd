@@ -23,11 +23,12 @@ func _init() -> void:
 			print("%-10s %-13s slip max %.3f%% mean %.4f%%  knee flips %d  finite %s  reach %.3f  steps %d  early %d"
 					% [body_name, run[0], 100.0 * r["max_slip_ratio"], 100.0 * r["mean_slip_ratio"], r["knee_flips"],
 					r["finite"], r["max_stance_reach_ratio"], r["steps"], r["early_lifts"]])
-	for count in [1, 10, 50]:
-		var c := await _measure_cost(bodies, count)
+	for setup in [[1, false], [10, false], [50, false], [50, true]]:
+		var c := await _measure_cost(bodies, setup[0], setup[1])
 		results["cost"].append(c)
-		print("cost %2d quadrupeds: planner %.3f ms, rig sync %.3f ms, IK solve + callbacks %.3f ms, total %.3f ms/frame"
-				% [count, c["planner_ms"], c["sync_ms"], c["solve_ms"], c["planner_ms"] + c["sync_ms"] + c["solve_ms"]])
+		print("cost %2d quadrupeds%s: planner %.3f ms, rig sync %.3f ms, IK solve + callbacks %.3f ms, total %.3f ms/frame"
+				% [setup[0], " tiered" if setup[1] else "", c["planner_ms"], c["sync_ms"], c["solve_ms"],
+				c["planner_ms"] + c["sync_ms"] + c["solve_ms"]])
 	var f := FileAccess.open("res://results/measurements.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(results, "\t", false, true) + "\n")
 	quit()
@@ -62,7 +63,17 @@ func _measure_run(body_name: String, body: Dictionary, program: String, seconds:
 ## Frame cost with `count` short quadrupeds on random drives (no visuals). The IK solve runs after the process step,
 ## deferred, so its cost is timed from the end of the sync loop to the last rig's skeleton_updated callback (IK solve
 ## plus the rig's measurement callback). Headless frames are capped, so frame time is not work time.
-func _measure_cost(bodies: Dictionary, count: int) -> Dictionary:
+## Distance tiers (PROPOSED): the 10 nearest update every frame, the next 15 every 2nd frame and the rest every 4th,
+## staggered so each frame carries a similar load. A skipped creature keeps its last pose.
+static func tier_stride(index: int) -> int:
+	if index < 10:
+		return 1
+	if index < 25:
+		return 2
+	return 4
+
+
+func _measure_cost(bodies: Dictionary, count: int, tiered := false) -> Dictionary:
 	var rigs := []
 	for n in count:
 		var planner = Lab.planner("quad_short", Vector3((n % 10) * 3.0, 0.0, (n / 10) * 3.0))
@@ -76,26 +87,32 @@ func _measure_cost(bodies: Dictionary, count: int) -> Dictionary:
 	var solve_us := 0
 	await process_frame
 	for f in frames:
+		var due: Array[int] = []
 		var inputs: Array[Vector2] = []
 		for n in count:
-			inputs.append(Drives.input("random", f * DT, n + 1))
+			var stride := tier_stride(n) if tiered else 1
+			if (f + n) % stride == 0:
+				due.append(n)
+				inputs.append(Drives.input("random", f * DT, n + 1))
 		var t0 := Time.get_ticks_usec()
-		for n in count:
-			rigs[n].planner.step(DT, inputs[n].x, inputs[n].y)
+		for k in due.size():
+			var n := due[k]
+			var stride := tier_stride(n) if tiered else 1
+			rigs[n].planner.step(DT * stride, inputs[k].x, inputs[k].y)
 		var t1 := Time.get_ticks_usec()
-		for n in count:
-			rigs[n].sync(DT)
+		for n in due:
+			rigs[n].sync(DT * (tier_stride(n) if tiered else 1))
 		var t2 := Time.get_ticks_usec()
 		sync_us += t2 - t1
 		planner_us += t1 - t0
 		await process_frame
 		var last := t2
-		for r in rigs:
-			last = maxi(last, r.last_solved_usec)
+		for n in due:
+			last = maxi(last, rigs[n].last_solved_usec)
 		solve_us += last - t2
 	for r in rigs:
 		r.queue_free()
 	await process_frame
-	var c := {"count": count, "frames": frames, "planner_ms": planner_us / 1000.0 / frames,
+	var c := {"count": count, "tiered": tiered, "frames": frames, "planner_ms": planner_us / 1000.0 / frames,
 			"sync_ms": sync_us / 1000.0 / frames, "solve_ms": solve_us / 1000.0 / frames}
 	return c

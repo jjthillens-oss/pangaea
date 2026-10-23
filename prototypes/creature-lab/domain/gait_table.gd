@@ -17,6 +17,13 @@ var phase_coupling := 1.0
 var accel_cycles := 1.0
 var settle_threshold_ratio := 0.15
 var settle_idle_time := 0.25
+var bob_ratio := 0.04
+var pitch_gain := 0.6
+var pitch_max_deg := 8.0
+var roll_gain := 0.8
+var roll_max_deg := 10.0
+var sway_ratio := 0.02
+var posture_smoothing := 0.2
 ## Each band: {name: String, fr_max: float, duty: float, pattern: "walk" | "trot"}, sorted by fr_max.
 var bands: Array = []
 
@@ -25,7 +32,8 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	var t = load("res://domain/gait_table.gd").new()
 	for key in ["g_eff", "stance_height_ratio", "reach_margin", "foot_splay_ratio", "stride_coeff", "stride_exp",
 			"min_rel_stride", "swing_lift_ratio", "max_swing_time", "min_swing_time", "band_hysteresis",
-			"phase_coupling", "accel_cycles", "settle_threshold_ratio", "settle_idle_time"]:
+			"phase_coupling", "accel_cycles", "settle_threshold_ratio", "settle_idle_time", "bob_ratio", "pitch_gain",
+			"pitch_max_deg", "roll_gain", "roll_max_deg", "sway_ratio", "posture_smoothing"]:
 		if d.has(key):
 			t.set(key, float(d[key]))
 	for b in d.get("bands", []):

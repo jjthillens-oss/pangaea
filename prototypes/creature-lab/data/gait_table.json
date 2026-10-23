@@ -15,6 +15,13 @@
 	"accel_cycles": 1.0,
 	"settle_threshold_ratio": 0.15,
 	"settle_idle_time": 0.25,
+	"bob_ratio": 0.04,
+	"pitch_gain": 0.6,
+	"pitch_max_deg": 8.0,
+	"roll_gain": 0.8,
+	"roll_max_deg": 10.0,
+	"sway_ratio": 0.02,
+	"posture_smoothing": 0.2,
 	"bands": [
 		{
 			"name": "walk",

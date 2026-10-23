@@ -89,13 +89,12 @@ func setup(gait_planner: RefCounted, body: Dictionary, color: Color, show_visual
 func sync(dt: float) -> void:
 	var basis := Basis(Vector3.UP, planner.yaw)
 	global_transform = Transform3D(basis, planner.position)
-	var forward := basis * Vector3(0.0, 0.0, -1.0)
+	skeleton.set_bone_pose(0, planner.body_pose_local())
 	for i in targets.size():
 		var leg: Dictionary = planner.mech.legs[i]
 		targets[i].global_position = planner.foot[i]
-		var hip: Vector3 = planner.hip_world(i)
-		# Knees bend forward: the pole sits a leg length ahead of the hip, a little below it.
-		poles[i].global_position = hip + forward * leg["length"] - Vector3.UP * 0.25 * leg["length"]
+		# The pole sits about a leg length from the hip in the leg's knee direction (body data "knee").
+		poles[i].global_position = planner.hip_world(i) + basis * ((leg["pole"] as Vector3) * leg["length"])
 		_stance_snapshot[i] = planner.state[i]
 		_target_snapshot[i] = planner.foot[i]
 	skeleton.advance(dt)
