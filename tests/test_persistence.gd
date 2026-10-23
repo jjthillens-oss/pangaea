@@ -101,7 +101,10 @@ func test_a_verified_temp_file_left_by_an_interrupted_move_is_the_save_that_load
 	check_eq(result.errors.size(), 0, "nothing was unreadable")
 	if result.ok:
 		check_eq(result.save.adaptation_points, 15, "the newest points")
-	check(FileAccess.file_exists(slot_path + ".tmp") and not FileAccess.file_exists(slot_path), "loading moved nothing")
+	check(
+		FileAccess.file_exists(slot_path + ".tmp") and not FileAccess.file_exists(slot_path),
+		"loading moved nothing"
+	)
 	# The next save takes the empty place; the recovered state is not lost.
 	result.save.adaptation_points = 20
 	check_eq(service.save_to(slot_path, result.save), OK, "next save writes")
@@ -109,7 +112,9 @@ func test_a_verified_temp_file_left_by_an_interrupted_move_is_the_save_that_load
 	check_eq(service.load_from(slot_path).source, "primary", "primary again")
 	_write_raw(slot_path + ".tmp", "{ half a save")
 	DirAccess.remove_absolute(slot_path)
-	check_eq(service.load_from(slot_path).source, "backup", "a damaged temp file is ignored for the backup")
+	check_eq(
+		service.load_from(slot_path).source, "backup", "a damaged temp file is ignored for the backup"
+	)
 
 
 func test_corrupt_primary_falls_back_to_backup_without_touching_files() -> void:
@@ -121,7 +126,9 @@ func test_corrupt_primary_falls_back_to_backup_without_touching_files() -> void:
 	check(result.ok, "falls back")
 	check_eq(result.source, "backup", "source")
 	check(result.errors.size() > 0, "explains why the primary failed")
-	check_eq(FileAccess.get_file_as_string(slot_path), "{ this is not json", "corrupt original preserved")
+	check_eq(
+		FileAccess.get_file_as_string(slot_path), "{ this is not json", "corrupt original preserved"
+	)
 
 
 func test_saving_over_corrupt_primary_sets_it_aside_and_keeps_backup() -> void:
