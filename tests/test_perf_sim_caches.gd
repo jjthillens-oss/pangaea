@@ -308,6 +308,42 @@ func test_plankton_zone_counts_follow_every_change() -> void:
 		check(field.next_number > 40, "endless %s: items came and went (%d)" % [endless, field.next_number])
 
 
+## A plankton list changed from outside the field (items appended or taken out directly) is taken in
+## again by the next tick before any zone's count is read: the counts, packed copies and id index
+## then follow the list, and the zones grow and shrink to their targets from the true counts.
+func test_plankton_takes_in_a_list_changed_from_outside() -> void:
+	var region := layout.build_region(22)
+	var arena := layout.build_arena()
+	var field := PlanktonField.create(layout.plankton)
+	field.fill(region, arena, 0, 0.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 23
+	var wrong := 0
+	var over := 0
+	for t in range(1, 400):
+		if t % 20 == 0 and field.items.size() > 2:
+			if rng.randf() < 0.5:
+				field.items.remove_at(rng.randi_range(0, field.items.size() - 1))
+			else:
+				var copy: Dictionary = field.items[rng.randi_range(0, field.items.size() - 1)].duplicate()
+				copy.id = "pk_extra_%d" % t
+				field.items.append(copy)
+		region.tick(PoolSim.DT)
+		field.tick(region, arena, t, t * PoolSim.DT)
+		var counts := {}
+		for item in field.items:
+			counts[item.zone] = int(counts.get(item.zone, 0)) + 1
+		for z in region.zones:
+			if field.count_in(z.id) != int(counts.get(z.id, 0)):
+				wrong += 1
+			if int(counts.get(z.id, 0)) > field.target_count(z):
+				over += 1
+		if field._phase.size() != field.items.size() or field._by_id.size() != field.items.size():
+			wrong += 1
+	check_eq(wrong, 0, "ticks where the counts or packed copies differ from the list")
+	check_eq(over, 0, "zones left above their target after a tick")
+
+
 ## perceive_food over the packed positions and radii finds the same food in the same order as over
 ## the dictionaries: random viewers among random items of both kinds, with items on the range edge
 ## (either side by a float32 step), on the field-of-view edge, at equal distances and on the viewer.

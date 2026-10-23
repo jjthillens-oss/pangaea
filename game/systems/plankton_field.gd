@@ -26,7 +26,10 @@ var max_items_per_zone := 12
 var drift_amplitude := 0.35           ## m on each axis
 var drift_period := Vector2(7.0, 13.0)  ## shortest and longest drift period, s
 ## Insertion-ordered: [{"id", "zone", "kind": "plant", "position", "radius", "energy", "points",
-## "anchor", "phase": Vector2, "omega": Vector2, "born_tick"}]
+## "anchor", "phase": Vector2, "omega": Vector2, "born_tick"}]. Read it freely; change it only through
+## this field's functions (they keep the packed copies, the id index and the zone counts below with
+## it). A list changed from outside is taken in again on the next tick, read or find when its size no
+## longer matches; a same-size change goes unseen.
 var items: Array[Dictionary] = []
 var next_number := 1
 ## zone_empty / zone_regrown events since PoolSim last took them: {"type", "zone"}
@@ -100,12 +103,17 @@ func fill_zone(zone: Dictionary, region: EcologyRegion, arena: PoolArena, tick_n
 
 
 func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float) -> void:
+	if _phase.size() != items.size():
+		_repack()   # only if something outside this file changed `items`
+	var active := active_zones
+	var most := max_items_per_zone
+	var unit := unit_energy
 	for zone in region.zones:
 		var id: String = zone.id
-		if endless and not active_zones.has(id):
+		if endless and not active.has(id):
 			continue
 		var have: int = _zone_counts.get(id, 0)   # only this zone's own spawn or removal changes it
-		var want := target_count(zone)
+		var want := mini(most, floori(float(zone.amount) / unit + COUNT_EPSILON))   # target_count written out
 		if have < want and _try_spawn(zone, region, arena, tick_number, now):
 			have += 1
 		elif have > want:
@@ -113,8 +121,6 @@ func tick(region: EcologyRegion, arena: PoolArena, tick_number: int, now: float)
 			have -= 1
 		if have == 0 or _empty_latched.has(id) or _regrowing.has(id):
 			_update_flags(zone, have)   # otherwise it changes nothing
-	if _phase.size() != items.size():
-		_repack()   # only if something outside this file changed `items`
 	var amp := drift_amplitude
 	var i := 0
 	for item in items:
@@ -219,17 +225,21 @@ func _add(zone_id: String, anchor: Vector2, tick_number: int, now: float) -> voi
 	_zone_counts[zone_id] = int(_zone_counts.get(zone_id, 0)) + 1
 
 
-## The packed copies (drift phases and rates, radii) and the id index, from the items.
+## The packed copies (drift phases and rates, radii), the id index and the zone counts, from the
+## items.
 func _repack() -> void:
 	_phase.resize(items.size())
 	_omega.resize(items.size())
 	_radii.resize(items.size())
 	_by_id.clear()
+	_zone_counts.clear()
 	for i in items.size():
-		_phase[i] = items[i].phase
-		_omega[i] = items[i].omega
-		_radii[i] = items[i].radius
-		_by_id[items[i].id] = items[i]
+		var item := items[i]
+		_phase[i] = item.phase
+		_omega[i] = item.omega
+		_radii[i] = item.radius
+		_by_id[item.id] = item
+		_zone_counts[item.zone] = int(_zone_counts.get(item.zone, 0)) + 1
 
 
 func _drifted(item: Dictionary, now: float) -> Vector2:
