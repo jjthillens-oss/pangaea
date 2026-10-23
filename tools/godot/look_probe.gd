@@ -41,6 +41,8 @@ extends SceneTree
 ##   hud        the starving cell (banner and food arrow) with a rammer near and the hurt vignette
 ##              at its peak, AI frozen
 ##   sunlit     the cell in the middle of the z_s plankton zone, in its sunlit patch, AI frozen
+##   shelter    the sheltered cell over the brightest shaft of z_s's patch, its rim at mid pulse,
+##              AI frozen
 ##
 ## Frames, in --out: <scene>.png is what the player sees; <scene>_fluid.png is the same moment with
 ## every body, food item, rock, world label and the 2D layer hidden, so it shows what lies behind
@@ -49,7 +51,9 @@ extends SceneTree
 ## <scene>_marker.png (the "!" popped over the telling creature, the stand-in hidden); hud adds
 ## <scene>_vignette.png (the 3D frame and the vignette alone) and <scene>_world.png (no 2D layer).
 ## sunlit adds <scene>_nopatch.png (the fluid frame with the zone lights hidden) and
-## <scene>_ambush.png (an ambush hunter let in over the patch's brightest point).
+## <scene>_ambush.png (an ambush hunter let in over the patch's brightest point). shelter adds
+## <scene>_bare.png (the same moment with the rim off) and <scene>_unlit.png (the fluid frame with
+## the zone lights hidden).
 ## <scene>_points.png outlines every sampled region in yellow.
 ##
 ## Readings, in look_probe.json under scenes.<scene>.readings: a point is the per-channel median of
@@ -71,7 +75,9 @@ extends SceneTree
 ## corners with the vignette alone), vignette_behind and vignette_dE; sunlit adds patch (the zone's
 ## light: L* of the fluid frame against the same without the zone lights, out from the zone's centre
 ## on the patches' plane) and ambush (that hunter's body against what lies behind it, and the patch
-## point it covers). With --parity every scene adds
+## point it covers); shelter adds shelter (the rim: the cell's outer band, SHELTER_BAND of its radius,
+## against the same pixels unsheltered, and against the fluid just outside it; and the L* the patch
+## adds behind the cell). With --parity every scene adds
 ## parity: the median CIE76 between the two runs over the whole frame, the fluid frame and the cell.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
@@ -79,7 +85,7 @@ const SLOT := "user://look_probe/slot.json"
 const DEFAULT_OUT := "user://look_probe/out"
 const BODY := "grazer"
 const SEED := 4242
-const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit"]
+const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
 const START_FRAMES := 30                 ## frames of a new run before staging (the fade-in is 0.3 s)
 const FIRST_SETTLE := 2                  ## frames drawn before a moment's first capture...
@@ -118,6 +124,13 @@ const SUNLIT_ZONE := "z_s"               ## the sunlit scene's zone: radius 6 m,
 const PATCH_FRACTIONS: Array[float] = [0.0, 0.25, 0.5, 0.75, 0.88, 1.0, 1.15, 1.3]   ## zone radii out...
 const PATCH_DIRECTIONS := 16             ## ...along this many directions, on the patches' plane
 const PATCH_BOX_PX := 9
+## The shelter scene's cell: in front of the brightest shaft of SUNLIT_ZONE's patch (the sunlit
+## scene's patch_point, 1.0 zone radii out at 202.5 degrees), moved 1.75 m toward the camera, which
+## is how far the patch 2.5 m down lies behind the view centre at the camera's 55 degree pitch.
+const SHELTER_SPOT := Vector2(-5.5, 21.45)
+const SHELTER_FRAMES := 30               ## the shelter rim fades in over 0.3 s
+const SHELTER_BAND := Vector2(0.6, 1.3)  ## the rim: the cell's own pixels this far out (radii)...
+const SHELTER_OUTSIDE := Vector2(1.3, 1.6)    ## ...and the fluid just outside the cell
 const BOX_COLOR := Color(1.0, 0.95, 0.0)
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
@@ -126,7 +139,8 @@ const BOX_COLOR := Color(1.0, 0.95, 0.0)
 ##   micro: plan section 6 (PROPOSED), plus the depth glow check of plan section 10, risk 1,
 ##   section 3's 90 degrees of LAB hue between the fluid and the threat pink, read on screen, and
 ##   the sunlit patches' gates (docs/DECISIONS.md, "Microscopic world look"): seen, broken into
-##   shafts, under the tell's lane, and never cutting the cell or an ambush hunter under 15 dL*.
+##   shafts, under the tell's lane, and never cutting the cell or an ambush hunter under 15 dL*; and
+##   plan section 4's shelter rim against the zone light.
 ##   baseline: today's look (m1-threats at ecb1eee) in both renderers, with margins (docs/DECISIONS.md,
 ##   "Microscopic world look"), so the probe itself can be checked on today's build. Its "fluid" is
 ##   the teal floor. It has no skirt or plankton clipping gate: there is no skirt yet (those samples
@@ -158,6 +172,7 @@ const GATES := {
 		{"id": "patch_shafts", "path": "sunlit.patch.ring_min_share", "max": 0.5, "what": "the patch's light is broken into shafts, not an even ring round a target (least lift over the most at its brightest radius)"},
 		{"id": "patch_ambush", "path": "sunlit.ambush.dL", "min": 15.0, "what": "ambush hunter over the brightest point of a sunlit patch (|dL*|)"},
 		{"id": "sunlit_cell", "path": "sunlit.cell_dL", "min": 15.0, "what": "cell against the fluid in the middle of a sunlit patch (|dL*|)"},
+		{"id": "shelter_rim", "path": "shelter.shelter.rim_lift_p90_dL", "min": 5.0, "what": "the shelter rim at mid pulse, over a sunlit patch, lifts the brightest tenth of the cell's edge (dL*)"},
 		{"id": "skirt_edge", "path": "rim_north.skirt.max_step_dL", "max": 6.0, "what": "no hard lower edge on the rim wall (largest dL* step)"},
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 2.0, "parity": true, "what": "renderer parity, fluid (median CIE76)"},
 		{"id": "parity_cell", "path": "lineup.parity.cell_dE", "max": 2.0, "parity": true, "what": "renderer parity, cell (median CIE76)"},
@@ -401,6 +416,8 @@ func _stage(scene: String) -> bool:
 			return await _stage_hud()
 		"sunlit":
 			return await _stage_sunlit()
+		"shelter":
+			return await _stage_shelter()
 	return false
 
 
@@ -488,6 +505,16 @@ func _stage_sunlit() -> bool:
 	return true
 
 
+## The cell sheltered (the sim's grace, as after a start) at SHELTER_SPOT, its rim faded in.
+func _stage_shelter() -> bool:
+	sim.debug_set_ai_frozen(true)
+	if not sim.debug_teleport(SHELTER_SPOT, -PI / 2.0):
+		return false
+	sim.grace_until = sim.tick + 60 * Engine.physics_ticks_per_second
+	await _play(SHELTER_FRAMES)
+	return sim.is_sheltered()
+
+
 ## At least `frames`, and enough for a creature spawned now to finish fading in (the species
 ## data's fade_in_s; one frame is one sim tick at --fixed-fps 60), so it is drawn opaque and whole.
 func _whole_frames(frames: int) -> int:
@@ -505,6 +532,8 @@ func _shoot(scene: String) -> void:
 			await _shoot_hud(scene)
 		"sunlit":
 			await _shoot_sunlit(scene)
+		"shelter":
+			await _shoot_shelter(scene)
 		_:
 			var frames := await _shoot_common(scene)
 			var r: Dictionary = results[scene].readings
@@ -603,6 +632,86 @@ func _shoot_sunlit(scene: String) -> void:
 			nearest = h
 	nearest.patch_point = top
 	results[scene].readings.ambush = nearest
+
+
+## The shelter scene: the cell's rim held at mid pulse (half way between its least and most alpha),
+## then the same moment with the rim off, and the fluid frame with the zone lights hidden.
+func _shoot_shelter(scene: String) -> void:
+	var view := pool.cell_view
+	if not view._sheltered:
+		results[scene].error = "the cell view is not sheltered"
+		return
+	view._shelter = 1.0
+	view._shelter_phase = PI / 2.0
+	view._update_overlay(0.0)
+	var frames := await _shoot_common(scene)
+	var rim: Color = view.overlay_colors().rim
+	view.set_sheltered(false)
+	view._shelter = 0.0
+	view._update_overlay(0.0)
+	var bare := await _capture()
+	_show_gameplay(false)
+	pool.zone_lights.visible = false
+	var unlit := await _capture()
+	pool.zone_lights.visible = true
+	_show_gameplay(true)
+	_save(scene, "bare", bare)
+	_save(scene, "unlit", unlit)
+	var out := _rim_readings(frames[0], bare, frames[1], unlit)
+	out.rim_alpha = snappedf(rim.a, 0.001)
+	results[scene].readings.shelter = out
+	_write_points(scene, frames[0])
+
+
+## The shelter rim: per pixel of the cell's outer band (its own pixels, where the frame differs from
+## the fluid frame, SHELTER_BAND of its radius out on screen), L* with the rim against without it;
+## the band's median against the fluid just outside the cell (SHELTER_OUTSIDE); and the L* the
+## zone lights add to the fluid behind the band.
+## {"pixels", "rim_lift_mean_dL", "rim_lift_p90_dL", "rim", "rim_bare", "outside",
+## "rim_vs_outside_dL", "behind_lift_dL"}.
+func _rim_readings(on: Image, off: Image, fluid: Image, unlit: Image) -> Dictionary:
+	var at := _px(pool.cell_view.global_position)
+	var r := _px_radius(pool.cell_view.global_position, sim.phenotype.radius)
+	var lifts := PackedFloat32Array()
+	var band := PackedColorArray()
+	var band_off := PackedColorArray()
+	var outside := PackedColorArray()
+	var behind_lit := PackedColorArray()
+	var behind_unlit := PackedColorArray()
+	var box := _disc_rect(at, r * SHELTER_OUTSIDE.y).intersection(Rect2i(Vector2i.ZERO, on.get_size()))
+	_boxes.append(box)
+	for y in range(box.position.y, box.end.y):
+		for x in range(box.position.x, box.end.x):
+			var d := Vector2(x, y).distance_to(at) / r
+			var a := on.get_pixel(x, y)
+			var b := off.get_pixel(x, y)
+			var f := fluid.get_pixel(x, y)
+			var body := maxf(absf(b.r - f.r), maxf(absf(b.g - f.g), absf(b.b - f.b))) > MARKER_CHANGE
+			if body and d >= SHELTER_BAND.x and d <= SHELTER_BAND.y:
+				lifts.append(lab(a).x - lab(b).x)
+				band.append(a)
+				band_off.append(b)
+				behind_lit.append(f)
+				behind_unlit.append(unlit.get_pixel(x, y))
+			elif not body and d >= SHELTER_OUTSIDE.x and d <= SHELTER_OUTSIDE.y:
+				outside.append(a)
+	if lifts.is_empty():
+		return {"error": "the cell is not on screen"}
+	var mean := 0.0
+	for l in lifts:
+		mean += l / lifts.size()
+	var sorted := lifts.duplicate()
+	sorted.sort()
+	var rim := median_color(band)
+	var out := {
+		"pixels": lifts.size(),
+		"rim_lift_mean_dL": snappedf(mean, 0.1),
+		"rim_lift_p90_dL": snappedf(sorted[int(sorted.size() * 0.9)], 0.1),
+		"rim": reading(rim), "rim_bare": reading(median_color(band_off)), "outside": reading(median_color(outside)),
+		"behind_lift_dL": snappedf(lab(median_color(behind_lit)).x - lab(median_color(behind_unlit)).x, 0.1),
+	}
+	out.rim_vs_outside_dL = snappedf(absf(out.rim.L - out.outside.L), 0.1)
+	return out
 
 
 ## A tell scene: the frames with and without the lane, over the fluid and over the decor stand-in.
