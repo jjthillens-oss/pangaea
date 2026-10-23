@@ -105,6 +105,12 @@ var _cell_tile := Vector2i.ZERO
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
+## This tick's waking sleepers, from _wakers for step 5 (a sleeper lies still, so the pass would find
+## the same): the view they were measured from, the sleepers of the pass that wake (in creature
+## order) and their wake distances.
+var _waking_view: Variant = null
+var _waking: Array[CreatureField.Creature] = []
+var _waking_d := PackedFloat64Array()
 
 
 static func create(p_content: WorldContent, p_gen: WorldGen) -> WorldStream:
@@ -604,17 +610,37 @@ func _in_view(p: Vector2, r: float, d: float, view_from: Dictionary) -> bool:
 	return false
 
 
-## The sleepers step 5 will wake this tick: inside the wake ring or in view.
+## The sleepers step 5 will wake this tick: inside the wake ring or in view. Those whose site is in the
+## table are returned (their reach chunks load first); those step 5's pass visits are kept for it.
 func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 	var out := []
+	_waking_view = view_from
+	_waking.clear()
+	_waking_d.clear()
 	if sim.creatures == null:
 		return out
+	var wake_r := float(rings.wake)
 	for c in sim.creatures.creatures:
-		if c.asleep and sites.has(c.site_id):
-			var d := _wake_distance(c.motion.position, view_from)
-			if d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
+		if not c.asleep:
+			continue
+		var passed := _in_pass(c)
+		var sited := sites.has(c.site_id)
+		if not passed and not sited:
+			continue
+		var at := c.motion.position
+		var d := _wake_distance(at, view_from)
+		if d < wake_r or _in_view(at, c.phenotype.radius, d, view_from):
+			if sited:
 				out.append(c)
+			if passed:
+				_waking.append(c)
+				_waking_d.append(d)
 	return out
+
+
+## Whether step 5's pass visits `c`: scripted and siteless creatures never sleep (C-6).
+static func _in_pass(c: CreatureField.Creature) -> bool:
+	return not c.scripted and c.brain != null and not c.site_id.is_empty()
 
 
 ## Step 5: first the hold pass (B-6, _hold_pass), then one pass over the site creatures in (slot, or
@@ -623,35 +649,48 @@ func _wakers(sim: PoolSim, view_from: Dictionary) -> Array:
 ## sleeper wakes inside the wake ring or in view. Then over caps.awake the farthest calm creature
 ## between the rings sleeps (none: awake_overflow counts once), and over caps.sleepers the farthest
 ## sleeper is evicted and its site requeued (D-12). Scripted and siteless creatures never sleep (C-6).
+##
+## The sleepers that wake are _wakers' (the same test on the same view, nothing having moved them
+## since), woken after every awake creature, as their key orders them. A sleeper's distance is only
+## needed for an eviction, so it is measured only then.
 func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 	var field := sim.creatures
 	if field == null:
 		return
+	if not is_same(_waking_view, view_from):
+		_wakers(sim, view_from)
+	_waking_view = null
 	_hold_pass(sim, view_from)
 	var buckets: Array = []
-	for i in CreatureField.ASLEEP_KEY + 1:
+	for i in CreatureField.ASLEEP_KEY:
 		buckets.append([])
-	for c in field.creatures:   # sorted (number, id), so each bucket is too
-		if not c.scripted and c.brain != null and not c.site_id.is_empty():
-			buckets[CreatureField.ASLEEP_KEY if c.asleep else c.think_slot].append(c)
+	for c in field.awake():   # sorted (number, id), so each bucket is too
+		if _in_pass(c):
+			buckets[c.think_slot].append(c)
 	var list: Array = []
 	for b in buckets:
 		list.append_array(b)
 	var dist := {}
+	var sleep_r := float(rings.sleep)
 	for c in list:
 		var d := _wake_distance(c.motion.position, view_from)
 		dist[c.id] = d
-		if not c.asleep:
-			if _calm(c) and d > float(rings.sleep) and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
-					and not field.engaged_on_player.has(c.id):
-				field.sleep(c, sim.tick)
-		elif d < float(rings.wake) or _in_view(c.motion.position, c.phenotype.radius, d, view_from):
-			field.wake(c, sim.tick)
+		if _calm(c) and d > sleep_r and not _in_view(c.motion.position, c.phenotype.radius, d, view_from) \
+				and not field.engaged_on_player.has(c.id):
+			field.sleep(c, sim.tick)
+	for i in _waking.size():
+		var c := _waking[i]
+		dist[c.id] = _waking_d[i]
+		field.wake(c, sim.tick)
+		list.append(c)
+	_waking.clear()
 	while field.awake().size() > int(caps.awake):
 		var pick: CreatureField.Creature = null
 		for c in list:
+			if c.asleep:
+				continue
 			var d: float = dist[c.id]
-			if c.asleep or not _calm(c) or field.engaged_on_player.has(c.id) or d < float(rings.wake) or d > float(rings.sleep):
+			if not _calm(c) or field.engaged_on_player.has(c.id) or d < float(rings.wake) or d > sleep_r:
 				continue
 			if pick == null or d > dist[pick.id] or (d == dist[pick.id] and c.id < pick.id):
 				pick = c
@@ -659,15 +698,24 @@ func _sleep_and_wake(sim: PoolSim, view_from: Dictionary) -> void:
 			counters.awake_overflow += 1
 			break
 		field.sleep(pick, sim.tick)
+	if field.creatures.size() - field.awake().size() <= int(caps.sleepers):
+		return
+	# Every sleeper the pass visits (those it put to sleep are among them), with its distance.
+	var asleep: Array[CreatureField.Creature] = []
+	for c in field.creatures:
+		if c.asleep and _in_pass(c):
+			asleep.append(c)
+			if not dist.has(c.id):
+				dist[c.id] = _wake_distance(c.motion.position, view_from)
 	while field.creatures.size() - field.awake().size() > int(caps.sleepers):
 		var e: CreatureField.Creature = null
-		for c in list:
-			if c.asleep and (e == null or dist[c.id] > dist[e.id] or (dist[c.id] == dist[e.id] and c.id < e.id)):
+		for c in asleep:
+			if e == null or dist[c.id] > dist[e.id] or (dist[c.id] == dist[e.id] and c.id < e.id):
 				e = c
 		if e == null:
 			break
 		field.remove(e, "evicted", sim.tick, true)
-		list.erase(e)   # still marked asleep: left in the list it would be picked again forever
+		asleep.erase(e)   # still marked asleep: left in the list it would be picked again forever
 		counters.evictions += 1
 
 
