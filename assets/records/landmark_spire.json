@@ -1,0 +1,64 @@
+{
+  "id": "landmark_spire",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "rough - endless world S1, not visually approved",
+  "purpose": "Endless world S1 rough: A twisted sponge-spicule tower with whorls of hooks and an amber tip. Swapped for the finished piece under the same id.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/landmark_spire.blend",
+  "generator_script": "tools/blender/make_s1_world_kit.py",
+  "export_path": "assets/export/landmark_spire.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 4.64,
+    "y_forward": 4.708,
+    "z_up": 11.35
+  },
+  "triangles": 5084,
+  "triangle_budget": 9000,
+  "textures": [],
+  "materials": [
+    "M_Core",
+    "M_Silica",
+    "M_SilicaFrost"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Landmark"
+  ],
+  "pivot": "centre of the anchor on the swim plane (Godot y = 0)",
+  "anchor_radius_m": 3.0,
+  "swim_band_reach_m": 1.247,
+  "scale_range": [
+    0.9,
+    1.06
+  ],
+  "dressings": [
+    {
+      "id": "plain",
+      "tint": "#FFFFFF",
+      "growth": null,
+      "scale": 1.0
+    },
+    {
+      "id": "frosted",
+      "tint": "#C9D4EE",
+      "growth": null,
+      "scale": 0.92
+    },
+    {
+      "id": "amber_bloom",
+      "tint": "#F2E2C2",
+      "growth": null,
+      "scale": 1.05
+    }
+  ],
+  "top_m": 7.85,
+  "bottom_m": -3.5,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_world_kit.py; no external or generated meshes."
+}

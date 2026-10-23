@@ -1,0 +1,44 @@
+{
+  "id": "shell_small_lens",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "rough - endless world S1, not visually approved",
+  "purpose": "Endless world S1 rough band-0 shell: a small radiolarian lens: a low dome with a scalloped rim. An obstacle the cell slides around.",
+  "category": "shell",
+  "source_blend": "assets/source/blender/shell_small_lens.blend",
+  "generator_script": "tools/blender/make_s1_world_kit.py",
+  "export_path": "assets/export/shell_small_lens.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.236,
+    "y_forward": 1.236,
+    "z_up": 2.61
+  },
+  "triangles": 1280,
+  "triangle_budget": 1300,
+  "textures": [],
+  "materials": [
+    "M_Silica"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Rock"
+  ],
+  "pivot": "centre of the footprint on the swim plane (Godot y = 0)",
+  "footprint_radius_m": 0.6,
+  "footprint_class": "small",
+  "scale_range": [
+    0.92,
+    1.08
+  ],
+  "swim_band_min_radius_m": 0.584,
+  "swim_band_radius_m": 0.618,
+  "top_m": 0.65,
+  "bottom_m": -1.96,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_s1_world_kit.py; no external or generated meshes."
+}
