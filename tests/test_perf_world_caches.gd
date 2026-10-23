@@ -299,7 +299,8 @@ static func _has_tie(w: WorldStream, p: Vector2) -> bool:
 # --- WorldStream's kept counts: niche roles and home chunks of the site table, the zone index ---
 
 ## On the saturated case's dense world (sites load and unload all the way), every 30 ticks the
-## stream's kept counts equal the ones counted afresh from the table and the region.
+## stream's kept counts equal the ones counted afresh from the table and the region, and the zone
+## index, kept through the loads and unloads, equals the region's zones and their absolute centres.
 func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_swim() -> void:
 	var cost: GDScript = load("res://tests/test_endless_cost.gd")
 	var fake: GDScript = load("res://tests/fakes/fake_world_gen.gd")
@@ -315,6 +316,7 @@ func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_sw
 	sim.debug_set_hidden(true)
 	var w := sim.world
 	var unloads := 0
+	var kept := 0
 	var bad := []
 	for t in 1500:
 		SwimBot.overdrive(sim)
@@ -336,15 +338,25 @@ func test_slow_the_kept_site_counts_and_zone_index_match_the_table_on_a_dense_sw
 			bad.append("tick %d: roles %s, kept %s" % [t, roles, w._role_sites])
 		if homes != w._home_sites or w._home_count != w.sites.size():
 			bad.append("tick %d: the home chunks differ" % t)
+		kept += 1 if w._zones_indexed == w._zones_version else 0
 		w._index_zones(sim.region)
 		var ids := PackedStringArray()
 		var centres := PackedVector2Array()
-		for z in sim.region.zones:
+		var radii := PackedFloat64Array()
+		var absolute := PackedFloat64Array()
+		var same := w._zone_refs.size() == sim.region.zones.size()
+		for i in sim.region.zones.size():
+			var z: Dictionary = sim.region.zones[i]
 			ids.append(z.id)
 			centres.append(z.center)
-		if ids != w._zone_ids or centres != w._zone_c:
+			radii.append(float(z.radius))
+			var a: PackedFloat64Array = w._zone_abs[z.id]
+			absolute.append_array(a)
+			same = same and is_same(w._zone_refs[i], z) and w._zone_ax[i] == a[0] and w._zone_ay[i] == a[1]
+		if ids != w._zone_ids or centres != w._zone_c or radii != w._zone_r or not same:
 			bad.append("tick %d: the zone index differs" % t)
 	check(bad.is_empty(), "the kept counts match (%s)" % [bad.slice(0, 3)])
+	check(kept >= 40, "the zone index was kept through loads and unloads, not rebuilt (%d of 50 checks)" % kept)
 	check(unloads >= 10, "chunks unloaded on the way (%d)" % unloads)
 	check(w.sites.size() >= 100, "a dense table (%d sites)" % w.sites.size())
 

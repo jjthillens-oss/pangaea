@@ -526,8 +526,10 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 	for z in ch.zones:
 		sim.plankton.drop_zone(z.id)
 		sim.plankton.active_zones.erase(z.id)
+		var was := sim.region.zone(z.id)
 		sim.region.remove_zone(z.id)
 		_zones_version += 1
+		_unindex_zone(sim.region, was)
 		_zone_abs.erase(z.id)
 		_zone_chunk.erase(z.id)
 		_fill.erase(z.id)
@@ -616,13 +618,16 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
 	(sim.arena as ChunkArena).add_chunk(key, colliders)
 	for z in ch.zones:
-		sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity), float(z.growth_rate))
+		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
+			float(z.growth_rate))
 		var stream := RandomNumberGenerator.new()
 		stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(z.id), _str_plankton]))
 		sim.region.streams[z.id] = stream
 		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
 		_zones_version += 1
+		if fresh:
+			_index_added_zone(sim.region)
 	if sim.creatures != null:
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
@@ -1165,6 +1170,39 @@ func _food_view(sim: PoolSim) -> void:
 		_cell_tile = tile
 		var info := gen.tile_info(WorldConfig.band_of(size), tile.x, tile.y)
 		_emit(sim, {"type": "tile_entered", "tile": tile, "region": str(info.get("region", "")), "rare": str(info.get("rare", ""))})
+
+
+## The zone add_zone just appended, appended to the index too when the index was current before it
+## (so a load does not rebuild the index: the same entries, in the same order as a rebuild's).
+func _index_added_zone(region: EcologyRegion) -> void:
+	if _zones_indexed != _zones_version - 1 or _zone_refs.size() + 1 != region.zones.size():
+		return
+	var z: Dictionary = region.zones.back()
+	var a: Variant = _zone_abs.get(z.id)
+	_zone_ids.append(z.id)
+	_zone_c.append(z.center)
+	_zone_r.append(float(z.radius))
+	_zone_refs.append(z)
+	_zone_ax.append(NAN if a == null else float(a[0]))
+	_zone_ay.append(NAN if a == null else float(a[1]))
+	_zones_indexed = _zones_version
+
+
+## Zone `z`, just removed from the region (which keeps the others in order), taken out of the index
+## too when the index was current before it.
+func _unindex_zone(region: EcologyRegion, z: Dictionary) -> void:
+	if z.is_empty() or _zones_indexed != _zones_version - 1 or _zone_refs.size() - 1 != region.zones.size():
+		return
+	var i := _zone_ids.find(z.id)
+	if i < 0 or not is_same(_zone_refs[i], z):
+		return
+	_zone_ids.remove_at(i)
+	_zone_c.remove_at(i)
+	_zone_r.remove_at(i)
+	_zone_refs.remove_at(i)
+	_zone_ax.remove_at(i)
+	_zone_ay.remove_at(i)
+	_zones_indexed = _zones_version
 
 
 ## Rebuilds the packed zone index when the zones changed since it was built.
