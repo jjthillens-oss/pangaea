@@ -96,6 +96,22 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Quit"
 
+[node name="Preview" type="VBoxContainer" parent="MainView/Left"]
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_constants/separation = 6
+
+[node name="PreviewLabel" type="Label" parent="MainView/Left/Preview"]
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+text = "Preview"
+
+[node name="CreatureButton" type="Button" parent="MainView/Left/Preview"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Creature stage"
+
 [node name="ContinueCard" type="PanelContainer" parent="MainView"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(460, 0)

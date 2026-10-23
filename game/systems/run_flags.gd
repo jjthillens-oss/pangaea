@@ -5,6 +5,8 @@ extends RefCounted
 ##   --slot=PATH     save slot instead of GameSession.DEFAULT_SLOT (a file under user:// or at an
 ##                   absolute path)
 ##   --perf-tour     run the dev performance tour (dev builds only)
+##   --creature      open the creature stage preview instead of the title (its own save file under
+##                   user://creature_stage/; --slot does not apply to it)
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -18,6 +20,7 @@ const DRIVE_PATTERN := "^[A-Za-z]:[/\\\\]"
 var seed_value := -1           ## -1: none given
 var slot := ""                 ## "": the default slot
 var perf_tour := false
+var creature := false
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
 var problems: PackedStringArray = []
@@ -41,6 +44,8 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 				flags.problems.append("--slot needs a file under user:// or at an absolute path, got '%s'." % path)
 		elif arg == "--perf-tour":
 			flags.perf_tour = true
+		elif arg == "--creature":
+			flags.creature = true
 		else:
 			flags.other.append(arg)
 	return flags
