@@ -12,16 +12,22 @@ extends TestCase
 ## next passes) and each MultiMesh's instances. Colour and opacity are read the way the decor
 ## shaders draw them, by convention:
 ##   - a material's colours are its Color uniforms and its texture uniforms, times a float uniform
-##     `brightness` when it has one; a standard material's are its albedo, emission and albedo
-##     texture, and a particle process material's its colour and colour ramps. For hue, a flat
-##     colour and every stop of a gradient or colour ramp count one by one, and an image texture
-##     (a painting) by its alpha-weighted mean;
+##     `brightness` when it has one, and any literal colour its shader writes to ALBEDO or EMISSION
+##     (a vec3 or vec4 of numbers in the assignment, or in a constant or local variable it reads);
+##     a standard material's are its albedo, emission and albedo texture, its albedo times each
+##     vertex colour of the mesh when vertex_color_use_as_albedo is set, and a particle process
+##     material's its colour and colour ramps. For hue, a flat colour, every stop of a gradient or
+##     colour ramp and every vertex colour count one by one, and an image texture (a painting) by
+##     coverage: at most PAINTING_SHARE of its alpha-weighted texels with chroma PAINTING_CHROMA or
+##     more may lie near a reserved hue;
 ##   - its opacity is the product of what it has of: the colour's or texel's alpha, a float uniform
 ##     `opacity` (or `alpha`), and its MultiMesh instances' custom data w (INSTANCE_CUSTOM.w). An
 ##     opaque material's opacity is 1;
 ##   - a shader that places its own instances (wrapping them around the camera, say) names the band
 ##     of world heights it draws them in as a vec2 uniform `height_range`, which then stands for
-##     their heights.
+##     their heights;
+##   - a particle emitter's heights are its emission shape's extents and its visibility_aabb,
+##     whichever reaches further, so its visibility_aabb should hold where its particles go.
 ## The headless runner cannot read a MultiMesh's instance data: its dummy renderer keeps no buffer,
 ## so transforms read as identity and custom data as (0, 0, 0, 1). There an instanced layer needs a
 ## `height_range`, and its custom w counts as up to 1, so its top opacity belongs in `opacity`.
@@ -33,8 +39,11 @@ const POOL_SCENE := "res://game/scenes/pool/pool.tscn"
 const SYSTEMS_DIR := "res://game/systems"
 ## Nothing decorative lies in this band around the swim plane (m)...
 const PLANE_BAND := Vector2(-1.5, 0.5)
-## ...and the foreground above it is sparse and stays low: the plan's foreground band ends 3 m up.
-## The camera sits 8.2 m over the plane at zoom 10, so decor much higher would fill the screen.
+## ...and the foreground above it is sparse, low and small (plan section 7): at most MAX_FOREGROUND
+## items, none above the band's top at 3 m (the camera sits 8.2 m over the plane at zoom 10, so an
+## item there already draws about 1.6 times its size at the plane), and no single mesh above the
+## plane LARGE_M or more across, since one faint sheet over the cell veils the whole middle of the
+## frame however low it hangs.
 const MAX_FOREGROUND := 40
 const FOREGROUND_TOP_M := 3.0
 ## Budgets (the ambience handoff): live particles, large billboards, and transparent billboards
@@ -49,6 +58,10 @@ const STACK_GRID_M := 1.0
 const RESERVED := {"food": Color("#CFE86A"), "threat": Color("#D9466B")}
 const HUE_GAP := 25.0
 const MIN_CHROMA := 5.0
+## A painting may show a reserved hue in a few stray texels, never in a shape: at most this share
+## of its alpha-weighted texels, counting those of at least PAINTING_CHROMA (after brightness).
+const PAINTING_SHARE := 0.02
+const PAINTING_CHROMA := 12.0
 ## Linear luminance caps: times opacity for transparent decor, and alone for anything under the plane.
 const MAX_LUMA_ALPHA := 0.12
 const MAX_LUMA_BELOW := 0.40
@@ -186,22 +199,33 @@ func _uniform_names(m: ShaderMaterial) -> Array[String]:
 	return out
 
 
-## A material's colours (each with its alpha) as the convention above reads them, brightness applied.
-func _colors(m: Material) -> Array[Color]:
+## A material's colours (each with its alpha) as the convention above reads them, brightness applied;
+## `geo` gives the mesh whose vertex colours a standard material may use.
+func _colors(m: Material, geo: GeometryInstance3D = null) -> Array[Color]:
 	var out: Array[Color] = []
-	for color_set in _color_sets(m):
+	for color_set in _color_sets(m, geo):
 		out.append_array(color_set.colors)
 	return out
 
 
 ## A material's colours in sets, brightness applied: {"what", "colors", "painting"}. A flat colour,
-## or a gradient's or colour ramp's stops, is a set with "painting" false; an image texture's texels
-## are one with "painting" true.
-func _color_sets(m: Material) -> Array[Dictionary]:
+## a gradient's or colour ramp's stops, or a mesh's vertex colours, is a set with "painting" false;
+## an image texture's texels are one with "painting" true.
+func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if m is BaseMaterial3D:
 		var b := m as BaseMaterial3D
-		out.append(_flat("albedo", b.albedo_color, 1.0))
+		var vertex: Array[Color] = []
+		if b.vertex_color_use_as_albedo:
+			vertex = _vertex_colors(geo)
+		if vertex.is_empty():
+			out.append(_flat("albedo", b.albedo_color, 1.0))
+		else:
+			# The albedo the engine draws is the albedo colour times each vertex's colour.
+			var colors: Array[Color] = []
+			for c: Color in vertex:
+				colors.append(b.albedo_color * c)
+			out.append({"what": "albedo x vertex colour", "colors": colors, "painting": false})
 		if b.emission_enabled:
 			out.append(_flat("emission", Color(b.emission * b.emission_energy_multiplier, 1.0), 1.0))
 		if b.albedo_texture:
@@ -225,6 +249,71 @@ func _color_sets(m: Material) -> Array[Dictionary]:
 			out.append(_flat(uniform_name, v, brightness))
 		elif v is Texture2D:
 			out.append(_texture_colors(uniform_name, v, brightness))
+	var literal := _literal_colors(sm.shader)
+	if not literal.is_empty():
+		out.append({"what": "literal colour in the shader", "colors": literal, "painting": false})
+	return out
+
+
+## The distinct vertex colours of every mesh `geo` draws (none for a mesh without them).
+func _vertex_colors(geo: GeometryInstance3D) -> Array[Color]:
+	var meshes: Array[Mesh] = []
+	if geo is MeshInstance3D and (geo as MeshInstance3D).mesh:
+		meshes.append((geo as MeshInstance3D).mesh)
+	elif geo is MultiMeshInstance3D and (geo as MultiMeshInstance3D).multimesh and (geo as MultiMeshInstance3D).multimesh.mesh:
+		meshes.append((geo as MultiMeshInstance3D).multimesh.mesh)
+	elif geo is CPUParticles3D and (geo as CPUParticles3D).mesh:
+		meshes.append((geo as CPUParticles3D).mesh)
+	elif geo is GPUParticles3D:
+		for p in (geo as GPUParticles3D).draw_passes:
+			if (geo as GPUParticles3D).get_draw_pass_mesh(p):
+				meshes.append((geo as GPUParticles3D).get_draw_pass_mesh(p))
+	var seen := {}
+	var out: Array[Color] = []
+	for mesh in meshes:
+		for surface in mesh.get_surface_count():
+			var arrays := mesh.surface_get_arrays(surface)
+			if arrays.size() <= Mesh.ARRAY_COLOR or not arrays[Mesh.ARRAY_COLOR] is PackedColorArray:
+				continue
+			for c: Color in arrays[Mesh.ARRAY_COLOR]:
+				var key := c.to_html()
+				if not seen.has(key):
+					seen[key] = true
+					out.append(c)
+	return out
+
+
+## Literal colours a shader writes to ALBEDO or EMISSION: a vec3 or vec4 of numbers in the
+## assignment, or in a constant or local variable it reads. A shader's numbers are linear, so each
+## comes back as the sRGB colour it draws.
+func _literal_colors(shader: Shader) -> Array[Color]:
+	var out: Array[Color] = []
+	if shader == null:
+		return out
+	var code := RegEx.create_from_string("(?s)/\\*.*?\\*/").sub(shader.code, "", true)
+	code = RegEx.create_from_string("//[^\\n]*").sub(code, "", true)
+	var number := "[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?"
+	var literal := RegEx.create_from_string("\\bvec[34]\\s*\\(\\s*(%s(?:\\s*,\\s*%s)*)\\s*\\)" % [number, number])
+	# Names that hold a literal colour: "const vec3 NAME = vec3(...);", "vec3 name = vec3(...);" or
+	# "name = vec3(...);".
+	var named := {}
+	for m in RegEx.create_from_string("(?:\\bconst\\s+)?(?:\\bvec[34]\\s+)?\\b([A-Za-z_]\\w*)\\s*=\\s*([^;]+);").search_all(code):
+		var value := literal.search(m.get_string(2).strip_edges())
+		if value and value.get_string(0) == m.get_string(2).strip_edges():
+			named[m.get_string(1)] = value.get_string(1)
+	for m in RegEx.create_from_string("\\b(?:ALBEDO|EMISSION)\\s*[-+*/]?=\\s*([^;]+);").search_all(code):
+		var rhs := m.get_string(1)
+		var args: Array[String] = []
+		for value in literal.search_all(rhs):
+			args.append(value.get_string(1))
+		for word in RegEx.create_from_string("\\b[A-Za-z_]\\w*\\b").search_all(rhs):
+			if named.has(word.get_string(0)):
+				args.append(named[word.get_string(0)])
+		for text in args:
+			var v := Array(text.split(",")).map(func(x: String) -> float: return float(x.strip_edges()))
+			var c := Color(v[0], v[0], v[0]) if v.size() == 1 else Color(v[0], v[1], v[2], v[3] if v.size() > 3 else 1.0)
+			var shown := Color(c.r, c.g, c.b).linear_to_srgb()
+			out.append(Color(shown.r, shown.g, shown.b, c.a))
 	return out
 
 
@@ -292,8 +381,9 @@ func _luma(c: Color) -> float:
 
 
 ## Heights (y, in the pool's space) a geometry instance takes up: {"low", "high", "points"}. The
-## points are its MultiMesh instances' origins, or its mesh's lowest and highest point; a material's
-## `height_range` gives the band instead ("band" true), with one point per instance at its foot.
+## points are its MultiMesh instances' origins, a particle emitter's lowest and highest reach
+## (_particle_box), or its mesh's lowest and highest point; a material's `height_range` gives the
+## band instead ("band" true), with one point per instance at its foot.
 ## "known" is false for instances this runner cannot read when nothing names their band.
 func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 	var t := _relative(geo, root)
@@ -312,12 +402,46 @@ func _heights(geo: GeometryInstance3D, root: Node) -> Dictionary:
 		for i in mm.instance_count:
 			points.append((t * mm.get_instance_transform(i)).origin.y)
 	elif geo is GPUParticles3D or geo is CPUParticles3D:
-		points.append(t.origin.y)
+		var reach := t * _particle_box(geo)
+		points.append(reach.position.y)
+		points.append(reach.end.y)
 	else:
 		var box := t * geo.get_aabb()
 		points.append(box.position.y)
 		points.append(box.end.y)
 	return {"low": Array(points).min() if not points.is_empty() else 0.0, "high": Array(points).max() if not points.is_empty() else 0.0, "points": points, "known": true, "band": false}
+
+
+## Where a particle emitter's particles can be, in its own space: its emission shape's extents
+## (box, sphere or ring, offset and scaled as the shape is) merged with its visibility_aabb, so a
+## tall emission box or a loose visibility box counts in full. An emitter with neither is a point.
+func _particle_box(geo: GeometryInstance3D) -> AABB:
+	var shape: Variant = null
+	var box := AABB()
+	var bounded := false
+	if geo is GPUParticles3D:
+		box = (geo as GPUParticles3D).visibility_aabb
+		bounded = true
+		shape = (geo as GPUParticles3D).process_material as ParticleProcessMaterial
+	elif geo is CPUParticles3D:
+		shape = geo
+	if shape == null:
+		return box
+	var extent := Vector3.ZERO
+	match int(shape.emission_shape):
+		ParticleProcessMaterial.EMISSION_SHAPE_BOX:
+			extent = shape.emission_box_extents
+		ParticleProcessMaterial.EMISSION_SHAPE_SPHERE, ParticleProcessMaterial.EMISSION_SHAPE_SPHERE_SURFACE:
+			extent = Vector3.ONE * float(shape.emission_sphere_radius)
+		ParticleProcessMaterial.EMISSION_SHAPE_RING:
+			# A ring around its axis: its radius across and half its height along it, either way up.
+			extent = Vector3.ONE * maxf(float(shape.emission_ring_radius), float(shape.emission_ring_height) * 0.5)
+	var offset := Vector3.ZERO
+	if geo is GPUParticles3D:
+		offset = shape.emission_shape_offset
+		extent *= (shape.emission_shape_scale as Vector3).abs()
+	var emitted := AABB(offset - extent, extent * 2.0)
+	return box.merge(emitted) if bounded else emitted
 
 
 ## Every source file of the ambience, by path.
@@ -486,6 +610,25 @@ func test_decor_stays_clear_of_the_swim_plane() -> void:
 	ambience.get_parent().free()
 
 
+func test_foreground_meshes_are_small() -> void:
+	if not ResourceLoader.exists(SCENE):
+		return
+	var ambience := _mounted()
+	if ambience == null:
+		return
+	# One mesh above the plane, not an instanced layer of small items: its footprint across.
+	for geo: GeometryInstance3D in _nodes(ambience, "MeshInstance3D"):
+		var mesh := (geo as MeshInstance3D).mesh
+		var h := _heights(geo, ambience)
+		if mesh == null or h.high < PLANE_BAND.y:
+			continue
+		var box := _relative(geo, ambience) * mesh.get_aabb()
+		var across := maxf(box.size.x, box.size.z)
+		check(across < LARGE_M, "%s is above the swim plane (its top at %.2f m) and %.2f m across: a foreground item stays under %.1f m, since one faint sheet over the cell veils the middle of the frame" \
+			% [geo.name, h.high, across, LARGE_M])
+	ambience.get_parent().free()
+
+
 func test_the_ambience_keeps_to_its_budget() -> void:
 	if not ResourceLoader.exists(SCENE):
 		return
@@ -543,18 +686,29 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 	for geo: GeometryInstance3D in _nodes(ambience, "GeometryInstance3D"):
 		for m in _materials(geo):
 			var named: Array = []
-			for color_set: Dictionary in _color_sets(m):
+			for color_set: Dictionary in _color_sets(m, geo):
 				if not color_set.painting:
-					# A flat colour, and every stop of a ramp however many it has, counts as it is.
+					# A flat colour, every stop of a ramp however many it has, and every vertex colour
+					# counts as it is.
 					for c: Color in color_set.colors:
 						named.append(["%s %s" % [color_set.what, c.to_html(false)], c])
 					continue
-				# A painting counts by its alpha-weighted mean.
-				var sum := Color(0, 0, 0, 0)
+				# A painting counts by coverage: a few stray texels near a reserved hue pass, a shape
+				# in it does not.
+				var total := 0.0
+				var near := {}
 				for c: Color in color_set.colors:
-					sum += Color(c.r * c.a, c.g * c.a, c.b * c.a, c.a)
-				if sum.a > 0.0:
-					named.append(["%s's mean" % color_set.what, Color(sum.r / sum.a, sum.g / sum.a, sum.b / sum.a)])
+					total += c.a
+					var texel := LookProbe.lab(Color(c.r, c.g, c.b))
+					if c.a <= 0.0 or Vector2(texel.y, texel.z).length() < PAINTING_CHROMA:
+						continue
+					for reserved: String in RESERVED:
+						if LookProbe.hue_gap(LookProbe.hue(texel), LookProbe.hue(LookProbe.lab(RESERVED[reserved]))) < HUE_GAP:
+							near[reserved] = float(near.get(reserved, 0.0)) + c.a
+				for reserved: String in near:
+					var share: float = near[reserved] / maxf(total, 1e-6)
+					check(share <= PAINTING_SHARE, "%s %s: %.1f%% of its painting (alpha-weighted, C* %.0f or more) lies within %.0f degrees of the %s hue, at most %.0f%%" \
+						% [geo.name, color_set.what, share * 100.0, PAINTING_CHROMA, HUE_GAP, reserved, PAINTING_SHARE * 100.0])
 			for entry in named:
 				var lab := LookProbe.lab(entry[1])
 				if Vector2(lab.y, lab.z).length() < MIN_CHROMA:
@@ -584,7 +738,7 @@ func test_pale_decor_is_too_faint_to_lift_the_fluid_or_cut_the_lane() -> void:
 			var opacity := _uniform_opacity(m) * instance
 			var top := 0.0
 			var top_lit := 0.0
-			for c in _colors(m):
+			for c in _colors(m, geo):
 				top = maxf(top, _luma(c))
 				top_lit = maxf(top_lit, _luma(c) * (1.0 if opaque else c.a * opacity))
 			if not opaque:
