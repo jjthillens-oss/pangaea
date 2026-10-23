@@ -28,7 +28,7 @@ Every part follows the usual pipeline:
 |---|---|---|
 | Up = the skin normal at the anchor | +Y | +Z |
 | Forward = toward the head, along the spine tangent projected on the skin | −Z | +Y |
-| Right | +X | −X |
+| Right | +X | +X |
 
 - **Pivot.** The pivot is the point where the part meets the skin, on the skin surface. Geometry below the pivot, down to `sink_depth`, is the part's root, so it never shows a gap when the skin bulges.
 - **Scale.** Author at the part's nominal size at scale 1000‰, in metres (1 m = 1 Godot unit). The runtime applies per-mille scale uniformly about the pivot, so nothing may depend on world size.
@@ -97,7 +97,7 @@ There is one `ShaderMaterial` for the generated skin: `assets/export/shaders/cre
 | Channel | Meaning | Range |
 |---|---|---|
 | `CUSTOM0.x` | `spine_u`: position along the spine, 0 at the head, 1 at the tail | 0–1 |
-| `CUSTOM0.y` | `ring_v`: angle around the body, 0 on the back, 0.5 on the belly, wrapping | 0–1 |
+| `CUSTOM0.y` | `ring_v`: angle around the spine in turns: 0 dorsal, 0.25 right (+X), 0.5 belly, 0.75 left; wraps on the dorsal midline | 0–1 |
 | `CUSTOM0.z` | `limb_id`: 0 on the trunk, 1 and up for each limb | integer as float |
 | `CUSTOM0.w` | `limb_t`: distance along the limb, 0 at the attach point, 1 at the tip | 0–1 |
 | `COLOR.r` | `crease`: optional ambient-occlusion hint at blend seams (0 if not provided) | 0–1 |
@@ -144,11 +144,11 @@ Art writes `tools/blender/creature_reference.py`. It rebuilds a `BodyDescription
 - the look review and hero renders;
 - a reference that the Godot output is compared against.
 
-## 4. Open questions for the runtime thread
+## 4. Settled with the runtime thread (2026-10-23)
 
-1. **Skin seams.** Does `ring_v` wrap at the belly or at the back? This doc assumes it wraps at the back (0 = 1), so a seam on the dorsal stripe is the risk. Please confirm, or move the wrap to the belly.
-2. **Cell-stage pivots.** For limb-end parts, is the pivot at the limb tip's skin point, or at the tip joint?
-3. **Handles.** Are handles applied by Godot blend shapes on the part (art's assumption), or baked by the runtime?
+1. **`ring_v` wrap.** It wraps on the dorsal midline. Symmetric patterns use the folded value `f = 2·min(v, 1−v)` (0 on the back, 1 on the belly), or `sin/cos(2πv)`, so the wrap never shows.
+2. **Limb-end pivots.** The pivot is where the limb axis leaves the tip cap, on the skin, with +Y outward along the limb axis. `ground` parts (feet) are the exception: +Y is body up at rest, −Z is body forward, and the sole sits on the pivot.
+3. **Handles.** They are Godot blend shapes. The H1–H4 shape keys export in the GLB and are set per instance. A later bake may flatten them for the far LOD.
 
 ---
 Status: PROPOSED by the art thread, 2026-10-23. Edit freely; the runtime thread's edits win on anything they own.
