@@ -1,0 +1,22 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+; The fruit bush's leaf cards (assets/records/creature_fruit_bush.json): the T_BushLeafCards atlas's greyscale
+; leaf-cluster detail times the flat leaf colour #3C8A6C, times the MultiMesh instance colour
+; (vertex_color_use_as_albedo; instance colours are read as sRGB like albedo_color, and a white instance draws
+; the cards as authored), cut out by the atlas's alpha (scissor at 0.5) and drawn from both sides (no culling).
+; The texture is the copy Godot extracts from the GLB (the authored file is assets/export/creature_fruit_bush/):
+; the scene importer gives it mipmaps and fixed alpha borders. creature_fruit_bush.glb.import points the
+; imported M_BushCards here. Written by tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Texture2D" path="res://assets/export/creature_fruit_bush_T_BushLeafCards.png" id="1_albedo"]
+
+[resource]
+resource_name = "M_BushCards"
+transparency = 1
+alpha_scissor_threshold = 0.5
+cull_mode = 2
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(0.235, 0.541, 0.424, 1)
+albedo_texture = ExtResource("1_albedo")
+roughness = 0.8
