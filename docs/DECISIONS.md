@@ -1068,3 +1068,27 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   ambush hunter entering at size 3, joins the glass reefs and veil gardens; it is a scope addition the
   owner approved here. Its body is a stand-in until art delivers its model, ghost and haze sprite.
 
+### The elder ambush hunter as built (S3G22)
+
+- **Species** `elder_ambush` ("elder ambush hunter"): entry size 3, behaviour ambush, the M1 ambush
+  hunter's numbers (speeds, leash 9 m, lunge, tell 1.2 s, start energy 0.9, hungry below 0.6) with two
+  eye spots added, so its sight is 12 m: it sees across the mound or zone it waits beside. At size 4
+  it is outgrown (q 0.625) and answers to the prey share, as the Lurker and the Deep lurker do one
+  size past their entry. Art's body (`creature_elder_ambush_body`, eye_emission_rest 0.5) and near
+  ghost (`T_Ghost_elder_ambush`) landed the same day; its haze is the ambush hunter's. The ladder
+  strip's caption is "elder hunters" (three words do not fit 68 px at the largest text size).
+- **Where it lies in wait** (all sizes [3], every tile passing rules 6 to 10 at sizes 3 and 4):
+  - glass reefs: `ea` beside the central zone; `eb` by an outer pocket of food, by the Lurker's
+    corner in reefs a, c, d and f and in the east pocket of reefs b and e, which the #32 point runs
+    showed held no threat at all at size 3. The Lurker leaves size 3 in reefs (rule 7's four sites;
+    the outgrown ambush hunter stays as the prey rule 9 needs).
+  - veil gardens: `ea` beside the inner mound; the second veil (`vb`) leaves gardens a to e.
+  - warden flats: `ea` beside the inner mound (unguarded at size 3; the elder Warden takes it at 4);
+    in flats b and e it takes the second Warden's place (rule 7). This goes one tile kind past the
+    card's "reefs and veil gardens": the mounds were where the quiet #32 runs fed.
+  - the cradle: one by each quadrant's inner meadow.
+- **Measured** (#32 at size 3, 3 home seeds and 10 points, 5 minutes each): grazer 1.53 meetings a
+  minute from home and 1.78 from points, omnivore 1.53 and 1.88, a meeting in every run, no deaths.
+  Before the reefs' second hunters one point run (seed 516) met nothing even at 15 m sight, and a
+  hungrier start (0.7) changed nothing; with them, two eye spots are enough.
+
