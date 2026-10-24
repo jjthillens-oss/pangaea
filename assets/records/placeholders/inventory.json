@@ -17,66 +17,6 @@
       ],
       "node": "CreatureEditor/Floor",
       "remove_by": "creature-stage art pass (M2)"
-    },
-    {
-      "id": "creature_field",
-      "asset_id": "creature_field_ground",
-      "kind": "environment",
-      "description": "The creature stage's test field: a flat 160 x 160 m PlaneMesh in a plain green material, until the creature stage art pass brings terrain and ground cover (creature-stage-plan.md section 5).",
-      "types": [
-        "PlaneMesh"
-      ],
-      "files": [
-        "game/scenes/creature/creature_world.gd",
-        "game/scenes/creature/creature_world.tscn"
-      ],
-      "node": "CreatureWorld/Field",
-      "remove_by": "creature stage art pass"
-    },
-    {
-      "id": "creature_nest",
-      "asset_id": "creature_nest_ring",
-      "kind": "environment",
-      "description": "The nest at the field's centre: a flat TorusMesh ring at the nest radius (6 m), the only place the creature can evolve, until the art pass models a nest.",
-      "types": [
-        "TorusMesh"
-      ],
-      "files": [
-        "game/scenes/creature/creature_world.gd",
-        "game/scenes/creature/creature_world.tscn"
-      ],
-      "node": "CreatureWorld/Nest",
-      "remove_by": "creature stage art pass"
-    },
-    {
-      "id": "creature_fruit",
-      "asset_id": "creature_fruit_bush",
-      "kind": "prop",
-      "description": "Fruit bushes: 40 SphereMesh instances in one MultiMesh, red and full when ripe, small and green while regrowing, until the art pass models bushes.",
-      "types": [
-        "SphereMesh"
-      ],
-      "files": [
-        "game/scenes/creature/creature_world.gd",
-        "game/scenes/creature/creature_world.tscn"
-      ],
-      "node": "CreatureWorld/Fruit",
-      "remove_by": "creature stage art pass"
-    },
-    {
-      "id": "creature_meat",
-      "asset_id": "creature_meat_chunk",
-      "kind": "prop",
-      "description": "Meat left where a creature dies: a small BoxMesh in one MultiMesh, until the art pass models a carcass.",
-      "types": [
-        "BoxMesh"
-      ],
-      "files": [
-        "game/scenes/creature/creature_world.gd",
-        "game/scenes/creature/creature_world.tscn"
-      ],
-      "node": "CreatureWorld/Meat",
-      "remove_by": "creature stage art pass"
     }
   ],
   "functional": [

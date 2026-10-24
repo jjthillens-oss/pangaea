@@ -7,10 +7,12 @@ extends Node3D
 ## creature_evolve; the right stick or a middle-drag orbits the camera. set_intent() scripts the drive (smokes and
 ## tests), and while it is set the keyboard and pad are ignored.
 ##
-## Placeholders (assets/records/placeholders/inventory.json): the field plane, the nest ring, the fruit spheres and
-## the meat boxes, until the creature stage art pass. Rival skins are built once at setup on the CPU builder, at
-## their preview grid clamped to RIVAL_SKIN_DIVISIONS_MAX; rivals beyond RIVAL_LOD_M only move their bodies, their
-## legs are not solved. No audio.
+## The dressing is the art team's (docs/art/creature_world_dressing.md): the field ground at the origin (its 172 m
+## grid covers the sim's 160 m field, its relief under 0.12 m while the sim stays flat at y = 0), the nest ring at the
+## nest, and the bushes, fruit and meat as MultiMeshes of the GLBs' meshes with an instance colour each (white draws
+## the asset as baked; a bare bush takes BUSH_BARE_TINT and no Fruit instance). Rival skins are built once at setup
+## on the CPU builder, at their preview grid clamped to RIVAL_SKIN_DIVISIONS_MAX; rivals beyond RIVAL_LOD_M only move
+## their bodies, their legs are not solved. No audio.
 
 signal evolve_requested(points: int)
 signal died(cause: String)
@@ -54,14 +56,17 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 ## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
-## The field's look (PROPOSED): a mid-dark grass under a soft sun, so the fruit (the food cue) and the skins read
-## against it; roughness 1 keeps the plane from catching a sheen.
-const FIELD_COLOR := Color(0.2, 0.3, 0.14)
-const FIELD_ROUGHNESS := 1.0
-const NEST_COLOR := Color(0.7, 0.58, 0.36)
-const FRUIT_RIPE_COLOR := Color(0.9, 0.2, 0.22)
-const FRUIT_BARE_COLOR := Color(0.28, 0.42, 0.2)
-const MEAT_COLOR := Color(0.6, 0.2, 0.18)
+## The world dressing (assets/records/creature_field_ground, creature_nest_ring, creature_fruit_bush,
+## creature_meat_chunk). The bush GLB has two root meshes, Bush and Fruit; the meat GLB one, MeatChunk.
+const FIELD_SCENE := "res://assets/export/creature_field_ground.glb"
+const NEST_SCENE := "res://assets/export/creature_nest_ring.glb"
+const BUSH_SCENE := "res://assets/export/creature_fruit_bush.glb"
+const MEAT_SCENE := "res://assets/export/creature_meat_chunk.glb"
+const BUSH_MESH_NAME := "Bush"
+const FRUIT_MESH_NAME := "Fruit"
+const MEAT_MESH_NAME := "MeatChunk"
+## The instance colour of a bush with no fruit: a pale, desaturated tint over the baked leaf (the spec's value).
+const BUSH_BARE_TINT := Color(0.62, 0.74, 0.58)
 
 var sim: CreatureWorldSim
 var tuning := {}
@@ -83,6 +88,7 @@ var _last_tick_events: Array = []
 var camera: Camera3D
 var hud: Control
 var _rivals_node: Node3D
+var _bush_mm: MultiMeshInstance3D
 var _fruit_mm: MultiMeshInstance3D
 var _meat_mm: MultiMeshInstance3D
 
@@ -212,83 +218,88 @@ func _on_event(e: Dictionary) -> void:
 
 
 func _build_ground() -> void:
-	var field := MeshInstance3D.new()
+	# The field's pivot is at its centre on the ground and the sim's field is centred on the origin; the nest ring's
+	# pivot is at its centre on the ground, so it sits at the nest with no offset.
+	var field: Node3D = load(FIELD_SCENE).instantiate()
 	field.name = "Field"
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(2.0 * sim.half_size, 2.0 * sim.half_size)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = FIELD_COLOR
-	mat.roughness = FIELD_ROUGHNESS
-	plane.material = mat
-	field.mesh = plane
 	add_child(field)
-	var nest := MeshInstance3D.new()
+	var nest: Node3D = load(NEST_SCENE).instantiate()
 	nest.name = "Nest"
-	var ring := TorusMesh.new()
-	ring.inner_radius = sim.nest_radius - 0.5
-	ring.outer_radius = sim.nest_radius
-	ring.rings = 48
-	ring.ring_segments = 8
-	var nest_mat := StandardMaterial3D.new()
-	nest_mat.albedo_color = NEST_COLOR
-	nest_mat.roughness = 0.9
-	ring.material = nest_mat
-	nest.mesh = ring
-	nest.scale = Vector3(1.0, 0.12, 1.0)
 	nest.position = sim.nest
 	add_child(nest)
 
 
 func _build_food() -> void:
-	_fruit_mm = MultiMeshInstance3D.new()
-	_fruit_mm.name = "Fruit"
-	var bush := SphereMesh.new()
-	bush.radius = Sim.FRUIT_RADIUS_M
-	bush.height = 2.0 * Sim.FRUIT_RADIUS_M
-	bush.radial_segments = 12
-	bush.rings = 6
-	var bush_mat := StandardMaterial3D.new()
-	bush_mat.vertex_color_use_as_albedo = true
-	bush_mat.roughness = 0.85
-	bush.material = bush_mat
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = bush
-	mm.instance_count = sim.fruit.size()
-	_fruit_mm.multimesh = mm
+	var count := sim.fruit.size()
+	_bush_mm = _multimesh("Bushes", _mesh_of(BUSH_SCENE, BUSH_MESH_NAME), count)
+	add_child(_bush_mm)
+	_fruit_mm = _multimesh("Fruit", _mesh_of(BUSH_SCENE, FRUIT_MESH_NAME), count)
 	add_child(_fruit_mm)
-	_meat_mm = MultiMeshInstance3D.new()
-	_meat_mm.name = "Meat"
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE * 2.0 * Sim.MEAT_RADIUS_M
-	var meat_mat := StandardMaterial3D.new()
-	meat_mat.albedo_color = MEAT_COLOR
-	meat_mat.roughness = 0.7
-	box.material = meat_mat
-	var mmm := MultiMesh.new()
-	mmm.transform_format = MultiMesh.TRANSFORM_3D
-	mmm.mesh = box
-	mmm.instance_count = MEAT_INSTANCES_MAX
-	mmm.visible_instance_count = 0
-	_meat_mm.multimesh = mmm
+	_meat_mm = _multimesh("Meat", _mesh_of(MEAT_SCENE, MEAT_MESH_NAME), MEAT_INSTANCES_MAX)
 	add_child(_meat_mm)
 	_draw_food()
 
 
+## Bushes draw one instance each, white while ripe and BUSH_BARE_TINT while bare; the Fruit instances are packed at
+## the front of their MultiMesh, one per ripe bush. Each bush turns by a yaw from its index so the clumps differ.
+## The meshes' pivots are on the ground, so everything sits at the sim's y = 0.
 func _draw_food() -> void:
-	var mm := _fruit_mm.multimesh
+	var bushes := _bush_mm.multimesh
+	var fruit := _fruit_mm.multimesh
+	var ripe := 0
 	for i in sim.fruit.size():
 		var f: Dictionary = sim.fruit[i]
-		var s := 1.0 if f["ripe"] else 0.45
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(s, s * 0.8, s)),
-				(f["position"] as Vector3) + Vector3(0.0, 0.4 * s, 0.0)))
-		mm.set_instance_color(i, FRUIT_RIPE_COLOR if f["ripe"] else FRUIT_BARE_COLOR)
+		var xform := Transform3D(Basis(Vector3.UP, _yaw_of(i)), f["position"] as Vector3)
+		bushes.set_instance_transform(i, xform)
+		bushes.set_instance_color(i, Color.WHITE if f["ripe"] else BUSH_BARE_TINT)
+		if f["ripe"]:
+			fruit.set_instance_transform(ripe, xform)
+			fruit.set_instance_color(ripe, Color.WHITE)
+			ripe += 1
+	fruit.visible_instance_count = ripe
 	var meat := _meat_mm.multimesh
 	var n := mini(sim.meat.size(), MEAT_INSTANCES_MAX)
 	meat.visible_instance_count = n
 	for i in n:
-		meat.set_instance_transform(i, Transform3D(Basis(), (sim.meat[i]["position"] as Vector3) + Vector3(0.0, Sim.MEAT_RADIUS_M, 0.0)))
+		var m: Dictionary = sim.meat[i]
+		meat.set_instance_transform(i, Transform3D(Basis(Vector3.UP, _yaw_of(i + 7919)), m["position"] as Vector3))
+		meat.set_instance_color(i, Color.WHITE)
+
+
+## A fixed yaw per instance index, so a bush or chunk keeps its turn from frame to frame.
+static func _yaw_of(i: int) -> float:
+	return fposmod(float(i) * 2.399963, TAU)   # the golden angle: no two neighbours alike
+
+
+## `node_name`'s mesh in the imported scene at `scene_path`, with the surface materials the import mapped onto it
+## (the external .tres files in the .glb.import), so the MultiMesh draws the art's materials; any surface override
+## on the instance is folded in. The instance is freed; the mesh keeps the asset's resources alive.
+static func _mesh_of(scene_path: String, node_name: String) -> Mesh:
+	var scene: Node = (load(scene_path) as PackedScene).instantiate()
+	var instance := scene.find_child(node_name, true, false) as MeshInstance3D
+	assert(instance != null, "%s has no MeshInstance3D named %s" % [scene_path, node_name])
+	var mesh: Mesh = instance.mesh
+	for i in instance.get_surface_override_material_count():
+		var override := instance.get_surface_override_material(i)
+		if override != null:
+			if mesh == instance.mesh:
+				mesh = mesh.duplicate()
+			mesh.surface_set_material(i, override)
+	scene.free()
+	return mesh
+
+
+static func _multimesh(node_name: String, mesh: Mesh, count: int) -> MultiMeshInstance3D:
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = node_name
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = mesh
+	mm.instance_count = count
+	mm.visible_instance_count = 0
+	mmi.multimesh = mm
+	return mmi
 
 
 func _build_player() -> void:
