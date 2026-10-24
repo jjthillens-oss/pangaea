@@ -1026,11 +1026,6 @@ GENESIS Bible is binding; never wait on Joshua; merge when green; never change a
     rules 6 and 12 in most tiles. So the first card ("as tense as size 1" by moving threats) was
     withdrawn, and a second asks between a calmer size 3 (one meeting every 4 minutes, a run may meet
     none; recommended, unblocking S3) and a new size-3 hunter species (scope beyond S3, new art).
-  - T0.5c, on the recommended option while the card waits: #32 at size 3 needs 0.25 meetings a
-    minute per group (`PRESSURE_SIZE_3_MIN_MEETINGS_PER_MIN`) and drops the every-run check; sizes
-    1, 2 and 4 are unchanged. Shipped content reads 0.60 and 0.30 (grazer, home and points) and 0.73
-    and 0.72 (omnivore); with every size-3 Warden and veil removed the grazer reads 0.00 and fails.
-    If the owner picks the size-3 hunter instead, this commit reverts and the bar returns to 1.0.
   - T0.5b. S3G23's medians pool the grazer and the omnivore (12 runs), as S2's first-growth gate
     pools its bodies: second growth 385.6 s, third 944.2 s against 960 (grazer 772, omnivore 1,137).
   - T0.6. S3G21 runs sizes 1 to 4 in one process on the top-4 world. Relative rows on a dev
