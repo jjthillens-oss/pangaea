@@ -639,7 +639,8 @@ func test_a_tick_costs_well_under_a_millisecond() -> void:
 # --- S3: what the stings add to the pool (D-126, D-127; S3G12d) ---
 
 ## S3G12d: the pool writes neither sting-rule tick to its snapshot, even after a strike hit, so the
-## M1 goldens hold; the endless world does.
+## M1 goldens hold; the endless world does. A token closure is written only where a hazard can live
+## (BP3-2): never at the pool's size 1.
 func test_a_pool_snapshot_never_carries_the_sting_rule_ticks() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
 	data.sites = []
@@ -653,7 +654,9 @@ func test_a_pool_snapshot_never_carries_the_sting_rule_ticks() -> void:
 	check(not snap.has("last_strike_hit_tick") and not snap.has("last_sting_tick"), "the pool writes neither")
 	check(not snap.has("token_closed_until"), "nor an unset token closure")
 	sim.creatures.token_closed_until = 161
-	check_eq(sim.snapshot().get("token_closed_until", -1), 161, "a closure is written when set")
+	check(not sim.snapshot().has("token_closed_until"), "nor a set one, with no hazard live")
+	sim.creatures.hazard_live = true
+	check_eq(sim.snapshot().get("token_closed_until", -1), 161, "a closure is written where a hazard lives")
 
 
 ## D-127: use_entry_record is a test seam: no file under game/ calls it.

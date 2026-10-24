@@ -9,6 +9,8 @@ extends TestCase
 
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const AT := Vector2(0.0, -16.0)     ## open water in the threats fixture
+const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
+const B1_WORLD := "res://tests/fixtures/world/world_b1_min.json"   ## sizes to 4 (S3G34b)
 
 var catalog: PartCatalog
 var fixture: PoolLayout
@@ -216,3 +218,111 @@ func test_the_knockback_pushes_the_cell_off_the_threads_sideways() -> void:
 	check(v.normalized().dot(n) > 0.99, "straight off the threads (%s against %s)" % [v.normalized(), n])
 	var from_body := (sim.motion.position - veil.motion.position).normalized()
 	check(v.normalized().dot(from_body) < 0.9, "not along the line from the veil's body")
+
+
+## S3G12e (BP3-4): a token holder that lets go inside its think on tick t leaves the token free when
+## the stings run later that tick, so the veil stings on tick t and the sting records engaged == [].
+## A rammer takes the token over the cell in its territory; the cell then sits in a veil's threads
+## beyond that territory and its leash, and the rammer, put where it sees the cell and made to think,
+## gives the chase up (left_territory). Every sting of the run carries engaged == [] (invariant 15 (c)
+## as BP3-4 restates it; the whole invariant joins this run with T0.2).
+func test_a_sting_on_the_tick_the_holder_gives_up_records_no_holder() -> void:
+	var sim := _sim()
+	var veil := _veil(sim)
+	var away := AT + Vector2(0.0, 16.0)
+	check(sim.debug_teleport(away, 0.0), "the cell away from the veil")
+	sim.motion.velocity = Vector2.ZERO
+	check(sim.debug_spawn_creature("rammer", away + Vector2(2.5, 0.0), PI), "a rammer beside the cell")
+	var rammer: CreatureField.Creature = sim.creatures.creatures.back()
+	rammer.brain.ignore_all_until = 0
+	veil.brain.ignore_all_until = 0
+	sim.debug_set_ai_frozen(false)
+	sim.drain_events()
+	var held := false
+	var run: Array[Dictionary] = []
+	for i in 600:
+		run.append_array(_run(sim, 1, away))
+		if sim.creatures.engaged_on_player.has(rammer.id):
+			held = true
+			break
+	check(held, "the rammer took the token")
+	check_eq(sim.last_strike_hit_tick, -CreatureBrain.NEVER, "and has not hit the cell")
+	if not held:
+		return
+	# The cell overlaps the threads' tail. The rammer stands 3 m out from it, turned so the cell sits
+	# 125 degrees off its heading (inside its 270-degree view) and the veil's body behind it, out of
+	# view and beyond touch: it sees the cell and not the veil, so it gives up and does not flee.
+	var n := _beside(sim, veil, 1.0, -0.05)
+	var b := rammer.brain
+	check(sim.motion.position.distance_to(b.territory_center) > b.territory_r + float(b.cfg.leash_m),
+		"the cell beyond the rammer's territory and leash")
+	var at := sim.motion.position + n * 3.0
+	rammer.motion.position = at
+	rammer.motion.prev_position = at
+	rammer.motion.velocity = Vector2.ZERO
+	rammer.motion.heading = (sim.motion.position - at).angle() - deg_to_rad(125.0)
+	var eye := {"position": at, "heading": rammer.motion.heading}
+	check(absf(CreatureSenses.bearing(eye, veil.motion.position)) > deg_to_rad(140.0), "the veil behind the rammer")
+	check(at.distance_to(veil.motion.position) > rammer.phenotype.radius + veil.phenotype.radius + 1.0,
+		"and beyond its touch")
+	b.wake = true
+	var events := _run(sim, 1)
+	run.append_array(events)
+	var gave_up := events.filter(func(e: Dictionary) -> bool: return e.type == "creature_gave_up" and e.id == rammer.id)
+	var stings := _stings(events)
+	check_eq(gave_up.size(), 1, "the rammer gave up this tick (%s)" % [events.map(func(e: Dictionary) -> String: return e.type)])
+	check_eq(stings.size(), 1, "and the veil stung the same tick")
+	if stings.size() == 1:
+		check_eq(stings[0].engaged, [], "with no holder at the sting")
+	check(sim.creatures.engaged_on_player.is_empty(), "the token is free")
+	check(_stings(run).all(func(e: Dictionary) -> bool: return e.engaged == []), "no sting of the run had a holder")
+
+
+## S3G34b (BP3-2): at a size where no hazard can be live the sting rule's ticks stay out of the
+## snapshot, however many strikes hit the cell (S2's hashes hold); a debug size change is a cut that
+## starts them again; at size 3 a strike hit puts its tick in.
+func test_the_sting_rule_ticks_join_the_snapshot_only_where_a_veil_can_live() -> void:
+	var content := FakeWorldGen.fixture_content(B1_WORLD)
+	var sim := FakeWorldGen.endless_sim(7, catalog, PoolLayout.load_from(), SpeciesCatalog.load_from(), content,
+		PackedFloat64Array(), 4, true)
+	check(sim.debug_set_size(2), "size 2")
+	check(not sim.creatures.hazard_live, "no hazard is live at size 2")
+	check(sim.debug_spawn_threat_ahead("elder_rammer"), "an elder rammer ahead")
+	var hits := _strike_hits(sim, "lurker", 3, 6000)
+	check(hits.size() >= 3, "at least 3 strike hits at size 2 (%d)" % hits.size())
+	check(sim.last_strike_hit_tick != -CreatureBrain.NEVER, "the field holds the last one")
+	for keys in hits:
+		check_eq(keys, [false, false, false], "none of the keys in a size-2 snapshot")
+	sim.creatures.token_closed_until = sim.tick + 50
+	check(not sim.snapshot().has("token_closed_until"), "nor a closed token")
+	check(sim.debug_set_size(3), "size 3")
+	check(sim.creatures.hazard_live, "veils are live at size 3")
+	check_eq([sim.last_strike_hit_tick, sim.last_sting_tick, sim.creatures.token_closed_until], [-CreatureBrain.NEVER,
+		-CreatureBrain.NEVER, 0], "the cut starts the sting rule again")
+	hits = _strike_hits(sim, "warden", 1, 6000)
+	check_eq(hits.size(), 1, "a strike hit at size 3")
+	if hits.size() == 1:
+		check(hits[0][0], "puts last_strike_hit_tick in the snapshot")
+
+
+## Steps `sim` still, the cell kept at full health, a dev `ahead` placed in front of it every 600
+## ticks and every awake creature then made hungry and attentive, until `want` strike hits land on the
+## cell or `most` ticks pass. Per hit: whether the snapshot then
+## has last_strike_hit_tick, last_sting_tick and token_closed_until.
+func _strike_hits(sim: PoolSim, ahead: String, want: int, most: int) -> Array:
+	var out := []
+	for i in most:
+		if i % 600 == 0:
+			sim.debug_spawn_threat_ahead(ahead)
+			for c in sim.creatures.awake():
+				c.brain.ignore_all_until = 0
+				c.state.energy = c.state.energy_capacity * 0.3
+		sim.step(SimIntent.new())
+		sim.state.health = sim.state.max_health
+		for e in sim.drain_events():
+			if e.type == "hit" and e.target == CreatureField.PLAYER_ID and e.kind != "sting":
+				var snap := sim.snapshot()
+				out.append([snap.has("last_strike_hit_tick"), snap.has("last_sting_tick"), snap.has("token_closed_until")])
+		if out.size() >= want:
+			break
+	return out

@@ -111,6 +111,9 @@ var engaged_on_player := PackedStringArray()
 ## No creature takes the token before this tick (S3, D-126): a sting closes it for
 ## PoolSim.STING_STRIKE_GAP_TICKS, so no strike follows a sting at once.
 var token_closed_until := 0
+## Whether a hazard can be live at this size: some species with a hazard block enters at or below it
+## (set_size; BP3-2). The sting rule's fields are snapshotted only then, so sizes 1 and 2 hash as S2.
+var hazard_live := false
 ## creature_spawned / creature_removed and the brains' events (with the creature's id), since the
 ## sim last took them.
 var events: Array[Dictionary] = []
@@ -173,6 +176,10 @@ static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: 
 ## M1 value is S1's, bit for bit. Creatures already in the field keep the body they have.
 func set_size(n: int) -> void:
 	size = n
+	hazard_live = false
+	for id in species.species_ids():
+		if not species.hazard_of(id).is_empty() and species.entry_size(id) <= n:
+			hazard_live = true
 	_records.clear()
 	_phenotypes.clear()
 	_senses.clear()
@@ -968,7 +975,7 @@ func snapshot() -> Dictionary:
 		waiting.append({"site": entry.site, "species": entry.species, "at_tick": entry.at_tick})
 	var out := {"creatures": list, "creature_next": next_number, "creature_rng": rng.state, "spawn_queue": waiting,
 		"engaged_on_player": Array(engaged_on_player)}
-	if token_closed_until != 0:
+	if hazard_live and token_closed_until != 0:
 		out["token_closed_until"] = token_closed_until
 	return out
 
