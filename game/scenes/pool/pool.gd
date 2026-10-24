@@ -72,8 +72,6 @@ const KIN_PULSE_HZ := 0.8
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The idea hints' "near a smaller body": a surface gap of at most this (tm, s2-view 7.5).
 const NEAR_SMALLER_TM := 2.0
-## The regions whose zones get sunlit patches in the sea: the feast region and home (CT-14).
-const PATCH_REGIONS: PackedStringArray = ["sunlit", "home"]
 const FADE_IN_S := 0.3
 ## The shader warm-up under the fade draws on the camera's view axis this deep (m): in the frustum
 ## at every zoom and inside the far plane, so it is really drawn, yet hidden behind the fluid's
@@ -130,6 +128,9 @@ var older_haze: OlderHaze
 var old_band: OldBandLayer
 ## S3G28's test switch: false builds no old band (never in a save).
 var old_band_enabled := true
+## The cradle round home from band 1 and the home beacon (S3, s3-view 6); endless mode only, else null.
+var cradle: CradleView
+var beacon: HomeBeacon
 ## S3's preload (V3-16): the paths still loading on worker threads, the scenes in, whether every one
 ## is in and warmed, and every mesh the warm-ups drew (the start fade's and the late one's).
 var _preload_pending := PackedStringArray()
@@ -320,6 +321,7 @@ func _build() -> void:
 			old_band.attach(sim.world)
 			old_band.focus_am = sim.world.abs_of_local(sim.motion.position)
 			old_band.set_band(WorldConfig.band_of(sim_size()), sim_size())
+		_build_cradle()
 	else:
 		rim_node.visible = true
 		rocks.build_pool(session.layout)
@@ -443,10 +445,31 @@ func shown_size() -> int:
 	return growth_beat.shown_size() if growth_beat != null and growth_beat.running() else sim_size()
 
 
+## The cradle and the home beacon (S3, s3-view 6.1 and 6.5): made once, in WorldSpace, laid out for
+## the size now. The beacon's GLB loads here, under the start fade.
+func _build_cradle() -> void:
+	cradle = CradleView.new()
+	add_child(cradle)
+	var old_pool: Array[Dictionary] = []
+	if sim.world.gen != null:
+		old_pool = sim.world.gen.old_pool_pieces()
+	cradle.setup(session.world.cradle_of(1), old_pool, CradleView.RING_RECORD_RADIUS_BU)
+	cradle.attach(sim.world)
+	world_space.register(cradle)
+	cradle.set_size(sim_size())
+	beacon = HomeBeacon.new()
+	add_child(beacon)
+	world_space.register(beacon)
+	beacon.place(sim.world, sim_size())
+
+
 ## The containers that follow the growth beat's contract (apply_growth, retire_chunk, settle_growth,
 ## beat_frame, end_growth).
 func growth_containers() -> Array:
-	return [rocks, landmarks, zone_lights, feedback, silt_trail, older_haze, old_band]
+	var out: Array = [rocks, landmarks, zone_lights, feedback, silt_trail, older_haze, old_band]
+	if cradle != null:
+		out.append(cradle)
+	return out
 
 
 ## Every depth layer at k of its depth (the growth beat; 1 otherwise), s2-view 4.2: the Backdrop's
@@ -596,7 +619,7 @@ func apply_world_event(e: Dictionary) -> void:
 			landmarks.add_chunk(key, shells.filter(func(s: Dictionary) -> bool: return s.kind == "landmark"),
 				e.get("anchors", []), e.get("places", []))
 			var zones: Array = e.get("zones", [])
-			zone_lights.add_chunk(key, zones.filter(func(z: Dictionary) -> bool: return z.region in PATCH_REGIONS))
+			zone_lights.add_chunk(key, zones)   # ZoneLights picks the patches and blooms (V3-10)
 			feedback.add_zone_labels(key, zones)
 			silt_trail.add_chunk(key, e.get("sites", []))
 			_loaded[key] = true
@@ -715,6 +738,8 @@ func _begin_growth(e: Dictionary) -> void:
 		if GrowthBeat.is_band_up(from, to):
 			old_band.begin_band_up(WorldConfig.band_of(from), GrowthBeat.BEAT_S)
 			old_band.adopt(landmarks.release_band(WorldConfig.band_of(from)))
+		if cradle != null:
+			cradle.set_size(to)   # eased to over the beat, or faded in at a band-up (s3-view 4.2)
 	_bake_fx()
 	creature_layer.apply_growth(center, factor)
 	ghosts.begin_growth(int(e.get("from", 1)), int(e.get("to", 2)))
@@ -782,7 +807,7 @@ func _fade_in() -> void:
 ## first shows at a tell. S2 (V-20): every food look (the algae ball first shows at size 2), the new
 ## bodies, M_Morsel, M_RemnantLimp and the rim hull, the beat's pre-blur veil and glitter, and a ghost.
 func warm_up_meshes() -> Array[Mesh]:
-	var out := [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
+	var out := [plankton_view.food_mesh(), carrion_view.food_mesh(), zone_lights.mesh, zone_lights.bloom_mesh, CreatureView.warm_up_lane_mesh()] as Array[Mesh]
 	for look in FoodView.LOOKS:
 		var mesh := FoodView.look_mesh(look)
 		if not out.has(mesh):
@@ -797,6 +822,7 @@ func warm_up_meshes() -> Array[Mesh]:
 	out.append_array(CreatureLayer.warm_up_meshes())
 	out.append_array(OlderHaze.warm_up_meshes())
 	out.append_array(OldBandLayer.warm_up_meshes())
+	out.append_array(CradleView.warm_up_meshes())
 	return out
 
 
@@ -849,6 +875,9 @@ func _process(delta: float) -> void:
 	if is_endless():
 		old_band.focus_am = _focus_am()
 		old_band.tick(draw_t)
+		if cradle != null:
+			cradle.update_caption(old_band.focus_am, WorldConfig.tm_to_am(sim_size()))
+		zone_lights.update_bloom(sim.tick, fraction)   # V3-11: the drawn tick's bloom phase
 	if world_fx.scale != Vector3.ONE:
 		_bake_fx()   # a meal ghost was in flight at the growth: once it has landed
 	cell_view.show_motion(sim.motion, fraction)
@@ -1041,6 +1070,9 @@ func _route(event: Dictionary) -> void:
 				_refresh_older_haze()
 				old_band.focus_am = _focus_am()
 				old_band.set_band(WorldConfig.band_of(sim_size()), sim_size())
+				if cradle != null:
+					cradle.set_size(sim_size())
+					beacon.place(sim.world, sim_size())
 				if audio.has_method(&"set_size"):
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)

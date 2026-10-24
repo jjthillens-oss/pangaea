@@ -1190,3 +1190,47 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   fades) and `test_warm_up` (the S3 assets are preloaded, their meshes warmed). Mutations caught:
   a cancel that frees the pieces, a profile never reset, a sink offset of 0.3 tm, old-band
   instances shown from frame 0.
+
+## 2026-10-24 · S3 T5.3: the cradle and the home beacon (V3-6 to V3-9; S3G37, S3G32 F part; PROPOSED; IMPLEMENTED)
+
+- **What**: `CradleView` (`game/scenes/pool/cradle_view.gd`, node `Cradle`) and `HomeBeacon`
+  (`home_beacon.gd`), made once in the endless build (never in the M1 pool) and registered in
+  WorldSpace: the cradle a container, the beacon a leaf. From band 1 the cradle draws art's
+  `cradle_ring.glb` (materials dimmed x 0.5 in linear light, top at -2.0 tm), the M1 pool's 18 rocks
+  and 8 ring shells at true size (baked like the old band, sharing its bake cache, tops at -2.5 tm),
+  48 plankton-haze glitter sprites on `glitter_ring.gdshader` at -1.8 tm, and the caption "Your
+  lineage began here" at the ring's north edge, faded from 35 to 40 tm from home.
+- **Ring scale**: art re-exported the ring at the old pool's size (record `radius_bu` 14.0625, the
+  plan's 7.0 was rev 0), so `RING_RECORD_RADIUS_BU` is 14.0625 and the scale is
+  `pool_ring.radius_bu / 14.0625 x bu_to_tm(n)`: 1.0 at size 3, 0.625 at 4. A test pins the constant
+  to the record.
+- **Beat**: a growth re-expresses what the cradle shows; `set_size(to)` lays out the new size and
+  the pieces ease to it over the beat (V3-7). A band-up lays size 3 out at once and fades it in over
+  0.5 to 2.0 s. The beacon follows S2's leaf rule, so its top is -12.71 / 1.6^(n - 1) at every size.
+- **Tests**: `test_world_scene` (ring at the pool radius, record constant, visible from band 1,
+  caption text and range, dish at true size, beacon top per size through real growths, nodes
+  grouped, ring and beacon dimmed) and `test_growth_view` (the band-up fade, the in-band ease).
+  The decor rows (S3G32 F part) live in `test_ambience_contract.gd` as `test_s3_decor_rows`, next to
+  T4's older-haze rows, since they use its readers. With this art an undimmed ring is still under
+  `MAX_LUMA_BELOW` (Silica luma 0.38), so a direct check that every ring and beacon surface is
+  dimmed guards V3-6. Mutations caught: no dimming, beacon scaled by `bu_to_tm`, cradle at band 0,
+  caption always on, dish at am scale, dish and ring tops not pinned, no in-band ease, a fade from 0 s.
+
+## 2026-10-24 · S3 T5.4: zone patches and the bloom tint (V3-10, V3-11; S3G15 view; PROPOSED; IMPLEMENTED)
+
+- **Patches (V3-10)**: `PATCH_REGIONS` moves from the pool to `ZoneLights` and gains
+  `warden_flat`; the pool passes every chunk zone and `ZoneLights.has_patch` picks: a listed region,
+  no region (the M1 pool's zones), or a bloom meadow.
+- **Bloom tint (V3-11)**: a bloom meadow also gets `bloom_<zone id>`, a disc laid as its patch on
+  the shared `bloom_mesh` (`bloom_tint.gdshader`: `T_BloomTint` mask, tint #E8C27A, no fog, under
+  every cue). Its alpha is 0.05 (Forward+) or 0.18 (Compatibility) times a per-instance strength:
+  `bloom_strength` is 1 while the meadow's slot blooms and 0.25 while the other does, eased over 2 s
+  after each switch, at the drawn sim tick (`update_bloom` from the pool's frame), so it switches
+  with `EcologyRegion.bloom_multiplier` and never pops. The shader's alpha uniform is named
+  `opacity`, as the other decor's, so the contract readers find it.
+- **Tests**: `test_growth_view` (the tint follows the regrowth phase over two cycles, never both
+  slots full, eases through each switch; only bloom meadows get a disc, warden flats a patch, glass
+  reefs none, freed with the chunk) and `test_ambience_contract.test_bloom_disc_rows` (under the
+  plane band, no fog, under the lane, 30 degrees clear of food, luminance x alpha 0.10 at the
+  Compatibility alpha). Mutations caught: both slots blooming together, every zone patched,
+  warden flats unlisted, the tick read undrawn, no ease, the spine's #E8D27A, a 0.4 alpha.
