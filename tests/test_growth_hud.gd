@@ -388,7 +388,9 @@ func test_ladder_phrases() -> void:
 	check(not shown.is_empty() and shown.slice(shown.size() - 2).all(func(e: Dictionary) -> bool: return e.role == "ghost"),
 		"the strip ends with the ghosts to come")
 	check_eq(strip.preview_text(), LadderStrip.preview_line(shown, false, 1, ladder), "and shows their preview line")
-	check(strip.preview_text().begins_with(LadderStrip.PREVIEW_PREFIX), "\"%s\"" % strip.preview_text())
+	var preview_prefix := str(TranslationServer.translate(LadderStrip.PREVIEW_PREFIX))
+	check_eq(preview_prefix, "After your next growth:", "English preview heading is unchanged")
+	check(strip.preview_text().begins_with(preview_prefix), "\"%s\"" % strip.preview_text())
 	hud.free()
 	pool.free()
 
