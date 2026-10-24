@@ -21,6 +21,20 @@ const TOOL_BUTTON_FONT_PX := 22
 const ICON_BUTTON_FONT_PX := 15
 const ICON_COLUMNS := 3
 const SWATCH_PX := 40
+## The palette's category tabs, {id, title}, in order (the playthrough notes: parts grouped by kind in a grid on the
+## left). "all" shows every tool.
+const CATEGORIES := [
+	{"id": "all", "title": "All"}, {"id": "mouths", "title": "Mouths"}, {"id": "senses", "title": "Senses"},
+	{"id": "limbs", "title": "Limbs"}, {"id": "weapons", "title": "Weapons"}, {"id": "details", "title": "Details"},
+]
+## Part type -> category id; a type not listed (a part art adds later) goes to "details".
+const PART_CATEGORY := {
+	"beak": "mouths", "mandibles": "mouths", "maw": "mouths", "proboscis": "mouths",
+	"eye": "senses", "compound_eye": "senses", "eye_stalk": "senses", "antenna": "senses", "barbels": "senses",
+	"lure": "senses",
+	"limb": "limbs", "foot": "limbs", "hoof": "limbs", "hand": "limbs", "claw": "limbs", "flipper": "limbs",
+	"horn": "weapons", "tusk": "weapons", "tail_spikes": "weapons", "club_tail": "weapons", "quills": "weapons",
+}
 
 var _tool_buttons := {}   ## tool type -> Button
 var _group := ButtonGroup.new()
@@ -28,6 +42,9 @@ var _swatches: Array[Button] = []
 var _preset_title: Label
 var _preset_menu: OptionButton
 var _preset_sep: HSeparator
+var _category := "all"
+var _category_tabs: GridContainer
+var _category_buttons := {}   ## category id -> Button
 var _random_button: Button
 
 var tools_grid: GridContainer
@@ -89,6 +106,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
 	for type in tools:
 		var price: int = int((costs.get("part", {}) as Dictionary).get(type, costs.get("part_default", 0)))
 		_add_tool(type, String(type).capitalize(), price)
+	_build_category_tabs()
+	set_category(_category)
 	for c in swatch_row.get_children():
 		c.free()
 	_swatches.clear()
@@ -132,8 +151,63 @@ func _add_tool(type: String, label: String, price: int) -> void:
 	_tool_buttons[type] = b
 
 
-## Shows which tool is in use ("" for none) without emitting tool_chosen.
+## The category a tool belongs to: "" (Select) belongs to every one.
+static func category_of(type: String) -> String:
+	return "" if type == "" else String(PART_CATEGORY.get(type, "details"))
+
+
+## Shows only `category`'s tools (and Select); "all" shows every tool.
+func set_category(category: String) -> void:
+	_category = category
+	for t in _tool_buttons:
+		(_tool_buttons[t] as Button).visible = category == "all" or t == "" or category_of(t) == category
+	for id in _category_buttons:
+		(_category_buttons[id] as Button).set_pressed_no_signal(id == category)
+
+
+func category() -> String:
+	return _category
+
+
+## The tab row above the tools, built once; a tab with no tools in this palette is hidden.
+func _build_category_tabs() -> void:
+	if _category_tabs == null:
+		_category_tabs = GridContainer.new()
+		_category_tabs.name = "Categories"
+		_category_tabs.columns = 3
+		_category_tabs.add_theme_constant_override("h_separation", 6)
+		_category_tabs.add_theme_constant_override("v_separation", 6)
+		var group := ButtonGroup.new()
+		for c in CATEGORIES:
+			var b := Button.new()
+			b.text = String(c["title"])
+			b.toggle_mode = true
+			b.button_group = group
+			b.focus_mode = Control.FOCUS_NONE
+			b.theme_type_variation = &"TabButton"
+			b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX + 3)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var id := String(c["id"])
+			b.pressed.connect(func(): set_category(id))
+			_category_tabs.add_child(b)
+			_category_buttons[id] = b
+		var scroll := tools_grid.get_parent()
+		scroll.get_parent().add_child(_category_tabs)
+		scroll.get_parent().move_child(_category_tabs, scroll.get_index())
+	for id in _category_buttons:
+		var used: bool = id == "all"
+		for t in _tool_buttons:
+			used = used or (t != "" and category_of(t) == id)
+		(_category_buttons[id] as Button).visible = used
+	if not (_category_buttons[_category] as Button).visible:
+		_category = "all"
+
+
+## Shows which tool is in use ("" for none) without emitting tool_chosen; a tool outside the shown category switches
+## the palette to that tool's category.
 func set_tool(type: String) -> void:
+	if type != "" and _category != "all" and category_of(type) != _category:
+		set_category(category_of(type))
 	for t in _tool_buttons:
 		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
 	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (
