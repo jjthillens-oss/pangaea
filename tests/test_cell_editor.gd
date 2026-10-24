@@ -102,6 +102,23 @@ func test_an_added_part_shows_its_cost_and_the_numbers_it_changes() -> void:
 	check_eq(editor.session.working.parts.size(), 3, "redo puts it back")
 
 
+func test_the_eats_line_previews_what_the_new_body_can_feed_on() -> void:
+	# Bible section 5: the editor previews feeding with speed, turning, defense and energy.
+	editor.open(save, catalog, _state())
+	var eats := func() -> Array:
+		return editor.stat_lines().filter(func(l: Array) -> bool: return l[0] == "Eats")[0]
+	check_eq(eats.call(), ["Eats", "plants", "plants", null], "a filter mouth eats plants")
+	var jaw: Dictionary = editor.add("mouth_jaw")
+	check(jaw.ok, "a jaw added: %s" % [jaw])
+	check_eq(eats.call(), ["Eats", "plants", "plants and meat", true], "a jaw adds meat")
+	for part in editor.session.working.parts:
+		if part.type == "mouth_filter":
+			editor.selected = part.id
+	check(editor.remove_selected().ok, "the filter taken off")
+	check_eq(eats.call(), ["Eats", "plants", "meat", null], "a trade is neither better nor worse")
+	check_eq(CellEditor.eats_text(PackedStringArray()), "nothing", "no mouth eats nothing")
+
+
 func test_parts_go_where_they_fit_and_move_round_the_rim() -> void:
 	editor.open(save, catalog, _state())
 	check_eq(editor.free_angle("mouth_jaw"), 0.0, "a mouth at the front")

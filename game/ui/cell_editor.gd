@@ -46,6 +46,8 @@ const DISH_PX := 780.0
 ## The body's half length as a share of the rim's radius: the rim's dots ring the body, and a
 ## long upgraded tail still fits on the dish.
 const BODY_ON_RIM := 0.58
+## The foods a mouth's diet means, on the Eats line (Bible section 5 previews feeding).
+const DIET_NAMES := {"plant": "plants", "meat": "meat"}
 const BETTER := Color(0.55, 0.95, 0.6)
 const WORSE := Color(1.0, 0.55, 0.5)
 
@@ -202,7 +204,30 @@ func stat_lines() -> Array:
 		if not is_equal_approx(a, b):
 			better = (b > a) == bool(s[2])
 		out.append([s[0], s[3] % a, s[3] % b, better])
+	out.insert(3, ["Eats", eats_text(before.diets), eats_text(after.diets), _diet_better(before.diets, after.diets)])
 	return out
+
+
+## What a body can eat, for the Eats line: "plants and meat", "nothing" for no mouth.
+static func eats_text(diets: PackedStringArray) -> String:
+	var names := []
+	for diet in ["plant", "meat"]:
+		if diets.has(diet):
+			names.append(DIET_NAMES[diet])
+	for diet in diets:
+		if not DIET_NAMES.has(diet):
+			names.append(diet)
+	return " and ".join(names) if not names.is_empty() else "nothing"
+
+
+## true when the edit only adds foods, false when it only takes some away, null when it is the
+## same or trades one for another.
+static func _diet_better(before: PackedStringArray, after: PackedStringArray) -> Variant:
+	var gained := Array(after).filter(func(d: String) -> bool: return not before.has(d))
+	var lost := Array(before).filter(func(d: String) -> bool: return not after.has(d))
+	if gained.is_empty() == lost.is_empty():
+		return null
+	return lost.is_empty()
 
 
 func _after(result: Dictionary) -> void:
