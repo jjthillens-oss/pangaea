@@ -42,9 +42,11 @@ func test_the_fixture_world_has_the_shipped_settings() -> void:
 	check(str(fixture.content.home).begins_with("res://tests/fixtures/world/"), "fixture paths")
 	check_eq(fixture.switches.keys(), shipped.switches.keys(), "the same switches in the same order")
 	for key in shipped.switches:
-		if key != "growth":
+		if key not in ["growth", "landmark_return"]:
 			check_eq(fixture.switches[key], shipped.switches[key], "switches." + key)
 	check_eq([fixture.switches.growth, shipped.switches.growth], [false, true], "growth off in the fixture, on in the game")
+	check_eq([fixture.switches.landmark_return, shipped.switches.landmark_return], [false, true],
+		"the landmark return off in the size-2 fixture, on in the game (BP3-17)")
 
 
 func test_an_unknown_fixed_rare_kind_is_a_problem() -> void:

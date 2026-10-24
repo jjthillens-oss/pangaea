@@ -30,5 +30,6 @@
                   "home_tiles": [-1, 0], "fixed_rare": {"tile": [2, -1], "kind": "giant_husk"}},
   "content": {"home": "res://tests/fixtures/world/home_min.json", "tiles": {"0": "res://tests/fixtures/world/tiles/b0"},
               "kit": "res://tests/fixtures/world/kit_min.json"},
-  "switches": {"generated_creatures": true, "growth": false, "lumps": true, "habits": true}
+  "switches": {"generated_creatures": true, "growth": false, "lumps": true, "habits": true,
+               "landmark_return": false}
 }

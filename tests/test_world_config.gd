@@ -4,7 +4,10 @@ extends TestCase
 ## missing keys are refused with their JSON path (G24), the --world override, the size ladder's
 ## units, and the cross-file numbers the rings and caps rest on. S2 (docs/s2/s2-sim.md 3.10 and 4.1,
 ## docs/s2/s2-build-plan.md 7.3): the growth, second_size and ladder blocks and the new switches,
-## each of their rules with a failing case (S2G29), and the size ladder's tm_to_am and k.
+## each of their rules with a failing case (S2G29), and the size ladder's tm_to_am and k. S3
+## (docs/s3/s3-interfaces.md 5.1 and 6.1, s3-build-plan.md BP3-17): band 1's tables, arrangement.bands,
+## content.cradle, the new plant looks and the landmark_return switch, each rule with a failing case
+## (S3G8), and a size-2 top that keeps band 1's entries without needing them.
 
 ## Existing paths that stand in for the content in the rule cases, so a case's one problem is its own.
 const PRESENT_CONTENT := {"home": "res://game/data/pool_m1.json", "tiles": {"0": "res://game/data"},
@@ -57,8 +60,8 @@ func test_the_shipped_world_cell_has_no_problems() -> void:
 	check_eq(config.arrangement.fixed_rare.tile, Vector2i(2, -1), "the fixed rare tile")
 	check_eq(config.arrangement.fixed_rare.kind, "giant_husk", "is the giant husk")
 	check_eq(config.content.tiles, {"0": "res://game/data/tiles/b0"}, "band 0 tiles")
-	check_eq(config.switches, {"generated_creatures": true, "growth": true, "lumps": true, "habits": true},
-		"tile creatures, growth, lumps and habits on")
+	check_eq(config.switches, {"generated_creatures": true, "growth": true, "lumps": true, "habits": true,
+		"landmark_return": true}, "tile creatures, growth, lumps, habits and the landmark return on")
 	check_eq(config.max_size_in_build, 2, "S2's top is size 2 (BP-5)")
 
 
@@ -95,7 +98,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		["mode", "lake", "world_cell.mode: 'lake'"],
 		["gen_version", 0, "world_cell.gen_version:"],
 		["sizes.start", 2, "world_cell.sizes.start:"],
-		["sizes.max_in_build", 3, "world_cell.sizes.max_in_build: size 3 is above this build's top (2"],
+		["sizes.max_in_build", 5, "world_cell.sizes.max_in_build: size 5 is above this build's top (4"],
 		["sizes.max_in_build", 11, "world_cell.sizes.max_in_build: must be 1 to 10"],
 		["units.growth_factor", 1.5, "world_cell.units.growth_factor:"],
 		["units.band_factor", 2.5, "world_cell.units.band_factor:"],
@@ -137,6 +140,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		["switches.growth", "yes", "world_cell.switches.growth: must be true or false"],
 		["switches.lumps", 1, "world_cell.switches.lumps: must be true or false"],
 		["switches.habits", null, "world_cell.switches.habits: must be true or false"],
+		["switches.landmark_return", "on", "world_cell.switches.landmark_return: must be true or false"],
 		# Rule 10: the growth block.
 		["growth.trigger", "sometimes", "world_cell.growth.trigger: rule 10: 'sometimes'"],
 		["growth.trigger", 1, "world_cell.growth.trigger: must be text"],
@@ -190,6 +194,89 @@ func test_each_rule_has_a_failing_case() -> void:
 		var problems := _problems_after(c[0], c[1])
 		check(problems.size() == 1 and problems[0].begins_with(c[2]),
 			"%s = %s gives one problem starting '%s': %s" % [c[0], c[1], c[2], problems])
+
+
+## The shipped data reaching size 4: band 1's arrangement entry, cradle, tiles and four food looks,
+## with content paths that exist (S3: s3-interfaces.md 6.1).
+func _band_one() -> Dictionary:
+	var data := _base()
+	data.sizes.max_in_build = 4
+	data.arrangement["bands"] = {"1": {"region_order": ["veil_garden", "warden_flat", "glass_reef"], "fixed_rare_kind": "sunbeam_well"}}
+	data.content.tiles["1"] = "res://game/data/tiles/b1"
+	data.content["cradle"] = {"1": "res://game/data/cradle_b1.json"}
+	data.ladder.food_looks = [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "carrion"},
+		{"plant": "glass_flake", "meat": "carrion"}, {"plant": "bead_cluster", "meat": "carrion"}]
+	return data
+
+
+## S3G8: band 1's rules, each with a failing case; a size-2 top keeps band 1's entries (BP3-17).
+func test_the_band_one_rules_each_have_a_failing_case() -> void:
+	var config := WorldConfig.from_dict(_band_one())
+	check_eq(config.validate(), PackedStringArray(), "a size-4 world with band 1's entries passes")
+	check_eq(config.cradle_paths, {1: "res://game/data/cradle_b1.json"}, "the cradle by band")
+	var top_two := _band_one()
+	top_two.sizes.max_in_build = 2
+	check_eq(WorldConfig.from_dict(top_two).validate(), PackedStringArray(), "a size-2 top keeps band 1's entries (BP3-17)")
+	var cases := [
+		["arrangement.bands", {}, "world_cell.arrangement.bands.1: missing (band 1 is reachable)"],
+		["arrangement.bands.1.region_order", ["veil_garden", "veil_garden", "glass_reef"], "world_cell.arrangement.bands.1.region_order: must be a permutation"],
+		["arrangement.bands.1.region_order", ["drift", "sunlit", "reef"], "world_cell.arrangement.bands.1.region_order: must be a permutation"],
+		["arrangement.bands.1.region_order", "veil_garden", "world_cell.arrangement.bands.1.region_order: must be a list"],
+		["arrangement.bands.1.fixed_rare_kind", "", "world_cell.arrangement.bands.1.fixed_rare_kind: must name a rare kind"],
+		["arrangement.bands.1.colour", "pink", "world_cell.arrangement.bands.1.colour: unknown key"],
+		["arrangement.bands.2", {"region_order": [], "fixed_rare_kind": "x"}, "world_cell.arrangement.bands.2: a band must be 1 to 1"],
+		["arrangement.bands", [], "world_cell.arrangement.bands: must be an object"],
+		["content.cradle", {}, "world_cell.content.cradle.1: missing (band 1 is reachable)"],
+		["content.cradle.1", "res://game/data/no_cradle.json", "world_cell.content.cradle.1: the file"],
+		["content.cradle.2", "res://game/data/cradle_b1.json", "world_cell.content.cradle.2: a band must be 1 to 1"],
+		["content.cradle", "res://game/data/cradle_b1.json", "world_cell.content.cradle: must be an object"],
+		["content.tiles.1", "res://game/data/tiles/b9", "world_cell.content.tiles.1: the directory"],
+		["sizes.max_in_build", 5, "world_cell.sizes.max_in_build: size 5 is above this build's top (4"],
+		["ladder.food_looks", [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "carrion"},
+			{"plant": "glass_flake", "meat": "carrion"}], "world_cell.ladder.food_looks: rule 12: 3 looks for 4 sizes"],
+	]
+	for c in cases:
+		var data := _band_one()
+		_set_at(data, c[0], c[1])
+		var problems := WorldConfig.from_dict(data).validate()
+		check(problems.size() == 1 and problems[0].begins_with(c[2]),
+			"%s = %s gives one problem starting '%s': %s" % [c[0], c[1], c[2], problems])
+	var no_tiles := _band_one()
+	no_tiles.content.tiles.erase("1")
+	check_eq(WorldConfig.from_dict(no_tiles).validate(), PackedStringArray(["world_cell.content.tiles.1: missing (band 1 is reachable)"]),
+		"band 1's tiles are needed at a size-4 top")
+
+
+## D-146: the band-1 test world reaches size 4 with every band-1 entry, and the band-0 test world
+## keeps the landmark return off, so S2's tests at the size-2 top are unchanged (BP3-17).
+func test_the_test_worlds_read_and_pass() -> void:
+	var b1 := WorldConfig.load_from("res://tests/fixtures/world/world_b1_min.json")
+	check_eq(b1.validate(), PackedStringArray(), "world_b1_min.json")
+	check_eq(b1.max_size_in_build, 4, "it reaches size 4")
+	check_eq(b1.content.tiles.keys().size(), 2, "tiles for bands 0 and 1")
+	check_eq(b1.switches.landmark_return, true, "the landmark return on")
+	var b0 := WorldConfig.load_from("res://tests/fixtures/world/world_min.json")
+	check_eq(b0.validate(), PackedStringArray(), "world_min.json")
+	check_eq(b0.switches.landmark_return, false, "the landmark return off in the size-2 test world")
+	check_eq(b0.cradle_paths, {}, "no cradle")
+
+
+func test_the_band_tables_and_arrangement_of() -> void:
+	check_eq(WorldConfig.regions_of(0), PackedStringArray(["drift", "sunlit", "reef"]), "band 0's regions")
+	check_eq(WorldConfig.regions_of(1), PackedStringArray(["veil_garden", "warden_flat", "glass_reef"]), "band 1's")
+	check_eq(WorldConfig.regions_of(2), PackedStringArray(), "no tables past band 1")
+	check_eq(WorldConfig.transit_of(0), "drift", "band 0's transit region")
+	check_eq(WorldConfig.transit_of(1), "", "band 1 has none")
+	var data := _band_one()
+	data.arrangement.bands["1"].region_order = ["glass_reef", "veil_garden", "warden_flat"]
+	var config := WorldConfig.from_dict(data)
+	check(config.arrangement_of(0) == config.arrangement, "band 0 is the file's own arrangement")
+	var one := config.arrangement_of(1)
+	check_eq(one.region_order, PackedStringArray(["glass_reef", "veil_garden", "warden_flat"]), "band 1's order")
+	check_eq(one.fixed_rare, {"tile": Vector2i(2, -1), "kind": "sunbeam_well"}, "band 1's fixed rare kind at band 0's tile")
+	check_eq(one.region_thresholds, config.arrangement.region_thresholds, "the rest is band 0's")
+	check_eq(config.arrangement.region_order, PackedStringArray(["drift", "sunlit", "reef"]), "band 0's order untouched")
+	check_eq(config.arrangement_of(2), {}, "none for a band not in the file")
 
 
 func test_unknown_and_missing_keys_are_refused_with_their_path() -> void:

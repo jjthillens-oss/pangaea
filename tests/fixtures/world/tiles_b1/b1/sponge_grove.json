@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Sponge grove (S3 band 1, rare): a stand of glass sponges at the edge of a Warden's ground, an elder rammer's two posts and an elder Warden's blooming pair (docs/s3: s3-sim 4.3).",
+  "id": "sponge_grove",
+  "band": 1,
+  "region": "rare",
+  "set": null,
+  "rare": "sponge_grove",
+  "landmark_anchor": null,
+  "set_piece": {"asset": "rare_sponge_grove", "center": [-16.0, -16.0], "yaw_deg": 90.0},
+  "shells": [
+    {"id": "s0", "center": [7.4, -24.4], "radius": 1.32, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-13.3, 3.0], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s2", "center": [-23.0, 1.4], "radius": 1.06, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-5.7, -11.1], "radius": 1.32, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [25.3, 11.7], "radius": 0.94, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [4.0, 18.3], "radius": 1.32, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s6", "center": [0.4, 25.5], "radius": 1.14, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s7", "center": [-6.2, 0.2], "radius": 0.66, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s8", "center": [23.7, -10.9], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s9", "center": [22.5, -4.4], "radius": 1.02, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"}
+  ],
+  "zones": [
+    {"id": "ma", "center": [15.17, 15.17], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "mb", "center": [5.83, 5.83], "radius": 5.0, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "ze1", "center": [17.0, -21.0], "radius": 2.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "ze2", "center": [22.5, -21.0], "radius": 2.5, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "zw1", "center": [-13.0, 19.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.05, "at_second_size": "drop"},
+    {"id": "f1", "center": [-23.4, -20.4], "radius": 3.07, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [-25.5, 23.5], "radius": 2.96, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f3", "center": [-4.3, -20.3], "radius": 3.24, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f4", "center": [-25.6, -5.6], "radius": 2.93, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f5", "center": [16.2, 3.2], "radius": 3.72, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f6", "center": [16.9, 25.9], "radius": 3.41, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f7", "center": [17.3, -8.7], "radius": 2.81, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "ew", "species": "elder_warden", "home": [15.17, 15.17], "heading": 0.8247, "territory_zone": "ma", "sizes": [4], "post_b": {"home": [5.83, 5.83], "heading": -1.1262, "territory_zone": "mb"}},
+    {"id": "er", "species": "elder_rammer", "home": [17.0, -21.0], "heading": 2.0832, "territory_zone": "ze1", "sizes": [3, 4], "post_b": {"home": [22.5, -21.0], "heading": 2.1957, "territory_zone": "ze2"}},
+    {"id": "wa", "species": "warden", "home": [-13.0, 19.0], "heading": -1.6551, "territory_zone": "zw1", "sizes": [3]}
+  ]
+}
