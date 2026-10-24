@@ -372,7 +372,7 @@ func step(intent: SimIntent) -> void:
 		_metabolism(moved)
 	if creatures != null:
 		_creature_metabolism(creature_moved)
-	region.tick(DT)
+	region.tick(DT, tick)
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:

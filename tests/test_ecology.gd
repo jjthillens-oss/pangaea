@@ -155,3 +155,62 @@ func test_zone_lookup_by_id_equals_the_linear_scan() -> void:
 			"%s: the same dictionary as the scan finds" % id)
 	region.take("z_n", 10.0)
 	check_near(float(region.zones[1].amount), float(region.zones[1].capacity) - 10.0, 1e-9, "a take through the index changes the listed zone")
+
+
+# --- S3: the bloom (D-104, D-128; S3G15's ecology part) ---
+
+const BLOOM_CYCLE := 5400
+
+
+func test_a_bloom_meadow_regrows_at_one_and_a_half_then_half_by_its_slot() -> void:
+	for slot in [0, 1]:
+		var bloom := {"slot": slot, "offset_ticks": 300, "cycle_ticks": BLOOM_CYCLE}
+		check_eq(EcologyRegion.bloom_multiplier(bloom, 0), 1.5 if slot == 0 else 0.5, "slot %d at tick 0" % slot)
+		check_eq(EcologyRegion.bloom_multiplier(bloom, 2399), 1.5 if slot == 0 else 0.5, "slot %d just before the turn" % slot)
+		check_eq(EcologyRegion.bloom_multiplier(bloom, 2400), 0.5 if slot == 0 else 1.5, "slot %d at the turn" % slot)
+		var sum := 0.0
+		for t in range(-BLOOM_CYCLE, BLOOM_CYCLE):
+			sum += EcologyRegion.bloom_multiplier(bloom, t)
+		check_eq(sum / float(2 * BLOOM_CYCLE), 1.0, "slot %d: the mean over whole cycles is exactly 1" % slot)
+	check_eq(EcologyRegion.bloom_multiplier({}, 77), 1.0, "no bloom is 1")
+	var a := {"slot": 0, "offset_ticks": 41, "cycle_ticks": BLOOM_CYCLE}
+	var b := {"slot": 1, "offset_ticks": 41, "cycle_ticks": BLOOM_CYCLE}
+	var together := 0
+	for t in range(0, 3 * BLOOM_CYCLE, 13):
+		together += 1 if EcologyRegion.bloom_multiplier(a, t) == EcologyRegion.bloom_multiplier(b, t) else 0
+	check_eq(together, 0, "the two slots never bloom together")
+
+
+func test_a_meadows_regrowth_is_scaled_and_a_plain_zones_is_bit_identical() -> void:
+	var bloom := {"slot": 0, "offset_ticks": 0, "cycle_ticks": BLOOM_CYCLE}
+	var region := EcologyRegion.create(5)
+	check(region.add_zone("plain", Vector2.ZERO, 4.0, 40.0, 0.05), "a plain zone")
+	check(region.add_zone("meadow_a", Vector2(10.0, 0.0), 4.0, 40.0, 0.05, bloom), "slot 0's meadow")
+	check(region.add_zone("meadow_b", Vector2(20.0, 0.0), 4.0, 40.0, 0.05, {"slot": 1, "offset_ticks": 0, "cycle_ticks": BLOOM_CYCLE}), "slot 1's")
+	var old := EcologyRegion.create(5)
+	old.add_zone("plain", Vector2.ZERO, 4.0, 40.0, 0.05)
+	check_eq(region.zone("meadow_a").bloom, bloom, "the zone keeps its bloom")
+	check(not region.zone("plain").has("bloom"), "and a plain zone has none")
+	for id in ["plain", "meadow_a", "meadow_b"]:
+		region.take(id, 30.0)
+	old.take("plain", 30.0)
+	var start := 10.0
+	for t in 60:
+		region.tick(PoolSim.DT, t)
+		old.tick(PoolSim.DT)
+	check_eq(region.zone("plain").amount, old.zone("plain").amount, "the plain zone regrows to the bit as before")
+	var grew_a: float = region.zone("meadow_a").amount - start
+	var grew_b: float = region.zone("meadow_b").amount - start
+	check(absf(grew_a / grew_b - 3.0) < 0.05, "the blooming meadow regrows about three times as fast (%.4f vs %.4f; logistic)" % [grew_a, grew_b])
+	check(region.remove_zone("meadow_a"), "a meadow comes out")
+	region.tick(PoolSim.DT, 60)
+	check_eq(region.zones.map(func(z: Dictionary) -> String: return z.id), ["plain", "meadow_b"], "the others in order")
+	var z := {"id": "prepared", "center": Vector2.INF, "radius": 3.0, "capacity": 10.0, "growth_rate": 0.05, "amount": 2.0,
+		"bloom": bloom.duplicate()}
+	check(region.add_zone_prepared(z, Vector2(30.0, 0.0)), "a prepared meadow goes in")
+	region.tick(PoolSim.DT, 0)
+	var expected := 2.0 + (0.05 * 2.0 * (1.0 - 2.0 / 10.0) + 10.0 * EcologyRegion.REGROW_FLOOR * 0.05) * 1.5 * PoolSim.DT
+	check(absf(float(z.amount) - expected) < 1e-12, "and blooms (%.12f vs %.12f)" % [z.amount, expected])
+	region.take_all_zones()
+	region.tick(PoolSim.DT, 0)
+	check_eq(region.zones.size(), 0, "taking every zone out empties the split lists too")
