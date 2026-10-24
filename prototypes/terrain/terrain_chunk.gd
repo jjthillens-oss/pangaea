@@ -83,7 +83,7 @@ static func _value_noise(x: float, z: float, seed: int) -> float:
 
 
 static func _corner(x: int, z: int, seed: int) -> float:
-	# Integer mixing, derived here for this prototype. No library or random stream.
+	# Integer mixing uses a common public-domain hash. No library or random stream.
 	var bits := ((seed & 0x7FFFFFFF) + x * 374761393 + z * 668265263) & 0x7FFFFFFF
 	bits = (bits ^ (bits >> 13)) & 0x7FFFFFFF
 	bits = (bits * 1274126177) & 0x7FFFFFFF

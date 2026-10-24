@@ -19,7 +19,7 @@ The runner generates `(2R+1)^2` chunks, prints milliseconds and min/max height f
 
 All samples are evaluated at integer **world** coordinates `cx * size + local_x`, `cz * size + local_z`. A chunk index never changes the noise seed. Neighbours therefore ask for the same world positions on their shared edge, giving bit-identical float32 values without copying an edge or relying on generation order. The tests check all four directions across a 3×3 block. A cell biome uses the mean of its four corners and moisture at the cell origin. `TerrainMesh.build` builds one indexed triangle surface with up-facing normals and one UV set for later inspection; it is not used by the game.
 
-For seed 1 and radius 2, the 160×160 preview has a low sea basin, shore bands, grass and forest patches, rocky high areas and a small snowy crest. The run counted sea 5,528, shore 5,158, grass 8,356, forest 5,186, rock 1,337 and snow 35 cells. A 32-cell chunk measured about 6–8 ms locally in headless Godot on the owner's Windows PC; the CI acceptance test checks a median under 20 ms. This is generation time, not a rendered frame time.
+For seed 1 and radius 2, the 160×160 preview has a low sea basin, shore bands, grass and forest patches, rocky high areas and a small snowy crest. The run counted sea 5,528, shore 5,158, grass 8,356, forest 5,186, rock 1,337 and snow 35 cells. A 32-cell chunk measured about 6–8 ms on local headless Linux; the CI acceptance test checks a median under 20 ms. This is generation time, not a rendered frame time.
 
 ## Open questions — PROPOSED
 
