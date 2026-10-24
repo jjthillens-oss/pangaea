@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature stage food (PROPOSED): a lumpy blue-green leaf clump with amber fruit; the Fruit mesh is drawn only while ripe. Both materials take a MultiMesh instance colour.",
+  "purpose": "Creature stage food (PROPOSED): a blue-green leafy shrub (a lumpy core under crossed leaf cards cut out by the T_BushLeafCards atlas) with amber fruit; the Fruit mesh is drawn only while ripe. All three materials take a MultiMesh instance colour.",
   "category": "environment",
   "source_blend": "assets/source/blender/creature_fruit_bush.blend",
   "generator_script": "tools/blender/make_creature_world.py",
   "export_path": "assets/export/creature_fruit_bush.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.889,
-    "y_forward": 0.817,
-    "z_up": 0.732
+    "x": 1.063,
+    "y_forward": 1.062,
+    "z_up": 0.785
   },
-  "triangles": 914,
+  "triangles": 1100,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -46,9 +46,20 @@
       ],
       "colorspace": "Non-Color",
       "packing": "tangent-space normal (OpenGL, +Y up)"
+    },
+    {
+      "name": "T_BushLeafCards",
+      "path": "assets/export/creature_fruit_bush/T_BushLeafCards.png",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "RGB greyscale leaf-cluster detail (four variants in a 2 x 2 grid) times M_BushCards' base colour; A the cut-out mask (alpha scissor at 0.5)"
     }
   ],
   "materials": [
+    "M_BushCards",
     "M_BushFruit",
     "M_BushLeaf"
   ],
@@ -61,20 +72,30 @@
   ],
   "kind": "food",
   "pivot": "under the bush on the ground (Godot y = 0)",
-  "instance_tint": "M_BushLeaf.tres and M_BushFruit.tres (mapped in the .glb.import) set vertex_color_use_as_albedo, so a MultiMesh instance colour tints them; white draws them as baked.",
+  "instance_tint": "M_BushLeaf.tres, M_BushCards.tres and M_BushFruit.tres (mapped in the .glb.import) set vertex_color_use_as_albedo, so a MultiMesh instance colour tints the core, the cards and the fruit alike; white draws them as baked.",
   "states": {
-    "ripe": "draw Bush and Fruit",
-    "bare": "draw Bush only"
+    "ripe": "draw Bush (core and cards) and Fruit",
+    "bare": "draw Bush (core and cards) only"
   },
   "fruit_count": 9,
+  "cards": {
+    "pairs": 120,
+    "triangles": 480,
+    "size_m": [
+      0.16,
+      0.22
+    ],
+    "surface": "Bush surface 1, M_BushCards",
+    "atlas": "assets/export/creature_fruit_bush/T_BushLeafCards.png"
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
     "tolerance_m": {
-      "Bush": 0.025,
-      "Fruit": 0.006
+      "Bush": 0.06,
+      "Fruit": 0.005
     },
     "triangles_before": 5840,
-    "triangles_after": 914
+    "triangles_after": 620
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
 }

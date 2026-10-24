@@ -3,6 +3,7 @@
 Status: PROPOSED research. Nothing here is approved design until `docs/DECISIONS.md` records it.
 
 - `community-wants.md` — what Spore fans want in a successor, cited from public sources.
+- `stage-transitions.md` - PROPOSED comparison of six games' handovers and a cell-to-creature carryover recommendation.
 - `open-source-scout.md` — open source we could legally use, with a license log. Adopting any dependency needs owner approval.
 - `innovation-backlog.md` — ideas mapped to Bible milestones.
 - `spore/` — Spore engineering research: legal boundaries, published sources, creature creator analysis, procedural animation spec, gameplay measurements. Observation and published papers only; no Spore files.

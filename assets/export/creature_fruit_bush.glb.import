@@ -41,6 +41,11 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={
 "materials": {
+"M_BushCards": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_BushCards.tres",
+"use_external/path": "res://assets/export/M_BushCards.tres"
+},
 "M_BushFruit": {
 "use_external/enabled": true,
 "use_external/fallback_path": "res://assets/export/M_BushFruit.tres",

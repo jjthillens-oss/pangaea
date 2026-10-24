@@ -1,5 +1,13 @@
 extends TestCase
 
+## The ambush hunter's parts (the hunter body) and the rammer's, as in the step 3 species plan.
+const AMBUSH_PARTS := [["mouth_jaw", 0.0], ["flagellum", 2.8], ["flagellum", -2.8]]
+const RAMMER_PARTS := [["mouth_filter", 0.0], ["spike", 0.3, 0.8], ["spike", -0.3, 0.8], ["spike", 1.9, 0.8],
+	["spike", -1.9, 0.8], ["flagellum", 3.14159]]
+
+
+
+
 var catalog: PartCatalog
 
 
@@ -127,12 +135,6 @@ func _full(p: Phenotype) -> String:
 	d["spike_stacking"] = p.spike_stacking
 	d["move_cost"] = p.move_cost
 	return JSON.stringify(d, "", true, true)
-
-
-## The ambush hunter's parts (the hunter body) and the rammer's, as in the step 3 species plan.
-const AMBUSH_PARTS := [["mouth_jaw", 0.0], ["flagellum", 2.8], ["flagellum", -2.8]]
-const RAMMER_PARTS := [["mouth_filter", 0.0], ["spike", 0.3, 0.8], ["spike", -0.3, 0.8], ["spike", 1.9, 0.8],
-	["spike", -1.9, 0.8], ["flagellum", 3.14159]]
 
 
 func test_size_one_is_exactly_the_unsized_rule_for_every_starting_body_and_single_part() -> void:
