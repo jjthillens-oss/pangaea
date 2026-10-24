@@ -1,6 +1,7 @@
 extends TestCase
 ## S3's creature views (docs/s3/s3-view.md 8; S3G32 F part): the four band-1 bodies, their eyes and
-## their ink at sizes 3 and 4, and the veil's threads (fitted in the sim's capsule, inked, flashed).
+## their ink at sizes 3 and 4, the veil's threads (fitted in the sim's capsule, inked, flashed) and the
+## morsel sites' items (s3-view 9.1: drawn once, by the layer).
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const VIEW_SCENE := preload("res://game/scenes/pool/creature_view.tscn")
@@ -217,6 +218,96 @@ func test_veil_has_no_lane_or_marker() -> void:
 	_run(view, DT)
 	check(not view._marker.visible, "no notice mark")
 	view.free()
+
+
+func test_morsel_site_items_drawn_once() -> void:
+	var pool := _site_pool("omnivore")
+	var sim := pool.sim
+	var a := _site_item(sim, "ambush_hunter", Vector2(3.0, 0.0))
+	var b := _site_item(sim, "rammer", Vector2(-3.0, 1.0))
+	FakeEvents.frame(pool)
+	var ids := pool.creature_layer.morsel_site_ids()
+	check(a.id in ids and b.id in ids and ids.size() == 2, "both items drawn by the layer: %s" % [ids])
+	for species in ["ambush_hunter", "rammer"]:
+		var mmi := pool.creature_layer.get_node_or_null("MorselSites/" + species) as MultiMeshInstance3D
+		check(mmi != null and mmi.multimesh.instance_count == 1, "one %s instance in MorselSites" % species)
+		if mmi != null:
+			check(mmi.multimesh.mesh == pool.creature_layer.morsel_mesh(species), "its baked body")
+			check(mmi.material_override == CreatureLayer.MORSEL_MATERIAL, "in M_Morsel")
+	check(pool.creature_layer.morsel_mesh("rammer").get_surface_count() == 1, "the body and parts in one surface")
+	pool.carrion_view.sync(sim.carrion.items, sim.now())
+	check_eq(pool.carrion_view.shown_count(), _plain_carrion(sim), "the FoodView draws none of them")
+	check(pool.creature_layer.morsel_mesh_for(a.id) == pool.creature_layer.morsel_mesh("ambush_hunter"),
+		"the swallow ghost's mesh is the body")
+	check(pool.creature_layer.morsel_mesh_for("cr_none") == null, "and null for any other item")
+	pool.free()
+
+
+func test_morsel_site_rim_with_a_jaw() -> void:
+	for body in ["omnivore", "grazer"]:
+		var pool := _site_pool(body)
+		_site_item(pool.sim, "rammer", Vector2(3.0, 0.0))
+		FakeEvents.frame(pool)
+		var rim := pool.creature_layer.get_node_or_null("MorselSites/rammer__rim") as MultiMeshInstance3D
+		var drawn := rim != null and rim.multimesh.instance_count == 1
+		check_eq(drawn, pool.sim.phenotype.can_eat("meat"), "%s: a rim only with a jaw for meat" % body)
+		if drawn:
+			check((rim.material_override as ShaderMaterial).shader == CreatureLayer.MORSEL_RIM_SHADER, "the morsel rim")
+		pool.free()
+
+
+func test_morsel_site_leaves_softly() -> void:
+	var pool := _site_pool("omnivore")
+	var sim := pool.sim
+	var layer := pool.creature_layer
+	var rotten := _site_item(sim, "rammer", Vector2(3.0, 0.0))
+	var eaten := _site_item(sim, "rammer", Vector2(-3.0, 0.0))
+	for i in 60:
+		FakeEvents.frame(pool)
+	check_near(layer.morsel_site_transform(rotten.id).basis.x.length(), float(rotten.radius) / sim.species.phenotype("rammer", _catalog).radius, 1e-5,
+		"grown in to its radius over its body's")
+	sim.carrion.expire(str(rotten.id), "rot")
+	FakeEvents.frame(pool)
+	var gone_at := sim.now()
+	while sim.now() - gone_at < 0.45:
+		FakeEvents.frame(pool)
+	check(str(rotten.id) in layer.morsel_site_ids(), "a rotted item is still drawn at 0.45 s")
+	check(layer.morsel_site_transform(rotten.id).basis.x.length() < 0.48 * 0.35, "shrinking")
+	while sim.now() - gone_at < 0.7:
+		FakeEvents.frame(pool)
+	check(not str(rotten.id) in layer.morsel_site_ids(), "and gone at 0.7 s")
+	sim.carrion.expire(str(eaten.id), "eaten")
+	layer.on_event({"type": "ate", "kind": "meat", "food_id": eaten.id, "position": eaten.position})
+	check(not str(eaten.id) in layer.morsel_site_ids(), "an eaten one goes at once")
+	FakeEvents.frame(pool)
+	check(layer.morsel_site_ids().is_empty(), "and stays gone")
+	pool.free()
+
+
+## An endless pool at size 4 with a cell of founder `body` and no creatures in the way.
+func _site_pool(body: String) -> PoolScene:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	pool.sim.creatures.set_size(4)
+	pool.sim.world.size = 4
+	pool.sim.phenotype = _cell(body)
+	return pool
+
+
+## A morsel-site carrion item of `species` at `offset` from the cell, as the stream spawns one.
+func _site_item(sim: PoolSim, species: String, offset: Vector2) -> Dictionary:
+	var item := sim.carrion.spawn(sim.motion.position + offset, CreatureLayer.MORSEL_SOURCE, 10.0, -1, 0.3, 600.0,
+		{"species": species, "site": "m_test_%s" % sim.carrion.next_number})
+	check(not item.is_empty(), "a %s morsel-site item" % species)
+	return item
+
+
+## The carrion items the FoodView should draw: all but morsels (V-24) and morsel sites' (V3-13).
+static func _plain_carrion(sim: PoolSim) -> int:
+	var n := 0
+	for item in sim.carrion.items:
+		if not str(item.get("source", "")) in ["morsel", CreatureLayer.MORSEL_SOURCE]:
+			n += 1
+	return n
 
 
 ## A view of `id` at `q`, outside the tree, built as the layer builds one.

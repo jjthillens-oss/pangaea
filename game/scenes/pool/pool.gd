@@ -860,7 +860,9 @@ func _route(event: Dictionary) -> void:
 			var kind: String = event.kind
 			var view := plankton_view if kind == "plant" else carrion_view
 			cell_view.gulp()
-			cell_view.swallow(PlaneSpace.to_world(event.position), kind, view.food_mesh())
+			# A morsel site's item (S3) is swallowed as the body it was drawn as.
+			var morsel := creature_layer.morsel_mesh_for(str(event.get("food_id", ""))) if kind == "meat" else null
+			cell_view.swallow(PlaneSpace.to_world(event.position), kind, morsel if morsel != null else view.food_mesh())
 			feedback.show_meal(event)
 			audio.play("eat_plant" if kind == "plant" else "eat_meat")
 		"refused":

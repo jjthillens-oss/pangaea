@@ -219,6 +219,31 @@
         "game/ui/test_pool.gd"
       ],
       "node": "CellEditor/TestPool"
+    },
+    {
+      "id": "veil_threads_fit",
+      "kind": "generated",
+      "description": "A stinger veil's threads (S3, s3-view 8.2, V3-12): art's recorded veil_threads rig remapped once into a unit capsule frame (an ArrayMesh of the same strands, x fitted to 0.85 and z along each strand's COLOR red) so it can be fitted inside the sim's thread capsule every frame, and a flat PlaneMesh under it for the capsule's soft outline (capsule_outline.gdshader). The strands are the recorded asset; the outline is gameplay UI on the swim plane, not a model.",
+      "types": [
+        "ArrayMesh",
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/veil_threads_view.gd"
+      ],
+      "node": "Pool/CreatureLayer/<creature>/Threads"
+    },
+    {
+      "id": "morsel_site_bodies",
+      "kind": "generated",
+      "description": "A morsel site's carrion items (S3, s3-view 9.1, V3-13): each species' recorded body and parts, as a creature view builds them at q 1, merged once into one ArrayMesh so every item of the species draws in one MultiMesh in M_Morsel, with an inverted-hull rim from the same mesh. A bake of recorded assets, not a new model.",
+      "types": [
+        "ArrayMesh"
+      ],
+      "files": [
+        "game/scenes/pool/creature_layer.gd"
+      ],
+      "node": "Pool/CreatureLayer/MorselSites"
     }
   ]
 }

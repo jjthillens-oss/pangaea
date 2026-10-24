@@ -35,12 +35,15 @@ const GOLDEN_ANGLE := 2.399963229728653
 const LOOKS := {
 	"plankton": {"scene": "res://assets/export/plankton.glb", "radius": 0.18},
 	"algae_ball": {"scene": "res://assets/export/algae_ball.glb", "radius": 0.18},
+	"glass_flake": {"scene": "res://assets/export/glass_flake.glb", "radius": 0.18},
+	"bead_cluster": {"scene": "res://assets/export/bead_cluster.glb", "radius": 0.18},
 	"carrion": {"scene": "res://assets/export/carrion.glb", "radius": 0.3},
 }
 ## Each kind's look until set_look() picks another.
 const KIND_LOOKS := {"plant": "plankton", "meat": "carrion"}
-## Items from these sources are drawn elsewhere (a morsel by its creature's view, V-24).
-const HIDDEN_SOURCES: PackedStringArray = ["morsel"]
+## Items from these sources are drawn elsewhere: a morsel by its creature's view (V-24), a morsel
+## site's item by the CreatureLayer's MultiMeshes (S3, V3-13).
+const HIDDEN_SOURCES: PackedStringArray = ["morsel", "morsel_site"]
 
 @export_enum("plant", "meat") var kind := "plant"
 ## The food's Blender asset; its first MeshInstance3D gives the mesh.
