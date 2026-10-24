@@ -177,6 +177,13 @@ var _ahead_tick := 0                   ## the first tick the next look may run (
 ## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn.
 var _ahead_sites := {}
 var _prepare_todo: Array = []
+## The rest of what a load makes from a chunk generated ahead, made on a quiet tick before its site
+## records (_prepare_parts), so the load tick does not: the same key -> {"colliders", "streams" (zone
+## id -> its plankton stream), "zone_abs", "zone_local", "event" (the chunk_loaded payload), "frame"
+## (origin and scale they were made in), "mixed" (a site record was made in another frame)}. The
+## colliders, streams and absolute centres are the chunk's alone; the local values and the payload
+## are used only when every part and record was made in the frame in force at the load.
+var _ahead_parts := {}
 ## What the ring's unloads let go, in pieces (each chunk; the creatures that left; its site records
 ## and zones; its colliders), freed RELEASE_PER_TICK pieces a tick, the last first, on the ticks that
 ## generate, load, unload and rebase nothing. Freed on the unload tick, which often loads a chunk too,
@@ -804,17 +811,18 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_loads += 1
 	_site_epoch += 1
 	_quiet = false
-	var colliders: Array[Dictionary] = []
-	for s in ch.shells:
-		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
-	(sim.arena as ChunkArena).add_chunk(key, colliders)
-	for z in ch.zones:
-		var fresh := sim.region.add_zone(z.id, local_of_tm(float(z.x), float(z.y)), float(z.radius), float(z.capacity),
-			float(z.growth_rate))
-		var stream := RandomNumberGenerator.new()
-		stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(z.id), _str_plankton]))
-		sim.region.streams[z.id] = stream
-		_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+	var k3 := Vector3i(key.x, key.y, size)
+	var parts: Dictionary = _ahead_parts.get(k3, {})
+	_ahead_parts.erase(k3)
+	var have_parts := not parts.is_empty()
+	var framed: bool = have_parts and not parts.mixed and parts.frame == _frame()   # its local values hold now
+	(sim.arena as ChunkArena).add_chunk(key, parts.colliders if have_parts else _colliders_of(ch))
+	for zi in ch.zones.size():
+		var z: Dictionary = ch.zones[zi]
+		var fresh: bool = sim.region.add_zone(z.id, parts.zone_local[zi] if framed else local_of_tm(float(z.x), float(z.y)),
+			float(z.radius), float(z.capacity), float(z.growth_rate))
+		sim.region.streams[z.id] = parts.streams[z.id] if have_parts else _zone_stream(z.id)
+		_zone_abs[z.id] = parts.zone_abs[z.id] if have_parts else PackedFloat64Array([float(z.x), float(z.y)])
 		_zone_chunk[z.id] = key
 		_zones_version += 1
 		if fresh:
@@ -827,7 +835,8 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 				_note_home(s.id, key)
 				var rec: Dictionary = made.get(s.id, {})
 				if not rec.is_empty() and is_same(rec.abs, s):
-					_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
+					if not framed:
+						_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
 				else:
 					rec = _site_record(s, key)
 				sites[s.id] = rec
@@ -847,7 +856,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 	_insert_key(key)
 	_chunks[key] = ch
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
-	_emit(sim, _chunk_loaded_event(ch))
+	_emit(sim, parts.event if framed else _chunk_loaded_event(ch))
 	_apply_caps(sim)
 
 
@@ -923,7 +932,7 @@ func _look_ahead(sim: PoolSim) -> bool:
 		_forget_ahead_sites(far)
 	var made := Vector3i(best.x, best.y, size)
 	_ahead[made] = gen.chunk(size, best.x, best.y)
-	_prepare_todo.append([made, 0])
+	_prepare_todo.append([made, -1])   # -1: its parts first (_prepare_parts)
 	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
 	return true
 
@@ -946,19 +955,60 @@ func _prepare_ahead(sim: PoolSim) -> void:
 			_prepare_todo.pop_front()   # gone through, loaded or forgotten
 			continue
 		todo[1] = i + 1
+		if i < 0:
+			_prepare_parts(k, ch)
+			left -= PREPARE_PER_TICK   # the parts are a tick's share
+			continue
 		var s: Dictionary = ch.sites[i]
 		if not (s.sizes as Array).has(k.z):
 			continue
 		if not _ahead_sites.has(k):
 			_ahead_sites[k] = {}
+		var parts: Dictionary = _ahead_parts.get(k, {})
+		if not parts.is_empty() and parts.frame != _frame():
+			parts.mixed = true
 		var rec := _site_record(s, Vector2i(k.x, k.y))
 		_ahead_sites[k][s.id] = rec
 		sim.creatures.prepare_site(rec)
 		left -= 1
 
 
+## A chunk's colliders, its zones' plankton streams and absolute centres, and (in the frame in force)
+## its zones' local centres and its chunk_loaded payload, as _load_chunk would make them.
+func _prepare_parts(k: Vector3i, ch: WorldChunk) -> void:
+	var streams := {}
+	var zone_abs := {}
+	var zone_local: Array[Vector2] = []
+	for z in ch.zones:
+		streams[z.id] = _zone_stream(z.id)
+		zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+		zone_local.append(local_of_tm(float(z.x), float(z.y)))
+	_ahead_parts[k] = {"colliders": _colliders_of(ch), "streams": streams, "zone_abs": zone_abs, "zone_local": zone_local,
+		"event": _chunk_loaded_event(ch), "frame": _frame(), "mixed": false}
+
+
+## The frame local values are made in: the origin (am) and the scale (am a tm).
+func _frame() -> PackedFloat64Array:
+	return PackedFloat64Array([origin_x_am, origin_y_am, _tm_to_am])
+
+
+## A chunk's shells as the arena's colliders (absolute tm).
+static func _colliders_of(ch: WorldChunk) -> Array[Dictionary]:
+	var colliders: Array[Dictionary] = []
+	for s in ch.shells:
+		colliders.append({"id": s.id, "x": float(s.x), "y": float(s.y), "r": float(s.r)})
+	return colliders
+
+
+## A zone's plankton stream, seeded from the world and the zone's id alone.
+func _zone_stream(id: String) -> RandomNumberGenerator:
+	var stream := RandomNumberGenerator.new()
+	stream.seed = WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(id), _str_plankton]))
+	return stream
+
+
 ## Forgets what _prepare_ahead made for the chunk generated ahead at `key` (every one when null): its
-## records here and its sites' creatures in the field.
+## parts and records here and its sites' creatures in the field.
 func _forget_ahead_sites(key: Variant = null) -> void:
 	var field: CreatureField = _field.get_ref() if _field != null else null
 	for k in ([key] if key != null else _ahead_sites.keys()):
@@ -967,7 +1017,10 @@ func _forget_ahead_sites(key: Variant = null) -> void:
 				field.forget_prepared(id)
 		_ahead_sites.erase(k)
 	if key == null:
+		_ahead_parts.clear()
 		_prepare_todo.clear()
+	else:
+		_ahead_parts.erase(key)
 
 
 # --- sleep and wake (step 5) ---
