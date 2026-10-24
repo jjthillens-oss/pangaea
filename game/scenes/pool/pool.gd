@@ -995,9 +995,15 @@ func _draw_kin(fraction: float, draw_t: float) -> void:
 	kin_view.set_growth_pose(1.0 + pulse, Vector2.ZERO, 0.0)
 
 
-## The editor opened by mate_requested has closed: the kin goes.
-func finish_mate() -> void:
-	if sim != null and sim.kin != null:
+## The editor opened by mate_requested has closed: the kin goes. With `born`, the cell has taken
+## its new body (PoolSim.apply_offspring), and the view draws it.
+func finish_mate(born := false) -> void:
+	if sim == null:
+		return
+	if born:
+		cell_view.build(sim.save.genome, sim.phenotype)
+		cell_view.place(sim.motion)
+	if sim.kin != null:
 		sim.kin.finish(sim)
 
 

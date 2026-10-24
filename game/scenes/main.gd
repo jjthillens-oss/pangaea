@@ -59,6 +59,7 @@ var pool: PoolScene
 var creature_stage: CreatureStage
 var hud: Hud
 var pause_menu: PauseMenu
+var cell_editor: CellEditor   ## S4.4: open while the cell chooses its next generation
 var death_notice: NoticeDialog
 ## The result of the last start_new() or continue_run().
 var last_run := {}
@@ -215,6 +216,36 @@ func resume() -> void:
 	pause_menu.close()
 	pool.set_paused(false)
 	get_viewport().gui_release_focus()
+
+
+## S4.4: the cell touched its kin (the pool's mate_requested): the pool pauses under the cell editor.
+func open_cell_editor() -> CellEditor:
+	if pool == null:
+		return null
+	pool.release_input()
+	pool.set_paused(true)
+	cell_editor = CellEditor.new()
+	cell_editor.name = "CellEditor"
+	pool.ui.add_child(cell_editor)
+	cell_editor.open(session.sim.save, session.sim.catalog, session.sim.state)
+	cell_editor.closed.connect(_on_cell_editor_closed, CONNECT_DEFERRED)
+	return cell_editor
+
+
+## The editor closed: with a new generation the cell takes its body and the run is saved; the kin
+## goes either way and play resumes.
+func _on_cell_editor_closed(committed: bool) -> void:
+	if cell_editor != null:
+		cell_editor.queue_free()
+		cell_editor = null
+	if pool == null:
+		return
+	if committed:
+		session.sim.apply_offspring()
+		session.save_now()
+		hud.show_message("Generation %d" % session.sim.save.genome.generation)
+	pool.finish_mate(committed)
+	pool.set_paused(false)
 
 
 ## Death notice: Continue. Puts the cell back at its checkpoint, sheltered (the death was applied
@@ -433,6 +464,7 @@ func _open_pool() -> void:
 	pool.died.connect(_on_died)
 	pool.respawned.connect(_on_respawned)
 	pool.giant_pass_started.connect(_on_giant_pass_started)
+	pool.mate_requested.connect(open_cell_editor)
 	pause_menu.resume_requested.connect(resume)
 	pause_menu.save_requested.connect(save_now)
 	pause_menu.save_and_quit_requested.connect(save_and_quit_to_title, CONNECT_DEFERRED)
@@ -458,6 +490,7 @@ func _clear_screen() -> void:
 	hud = null
 	pause_menu = null
 	death_notice = null
+	cell_editor = null
 
 
 func _set_screen(node: Node) -> void:

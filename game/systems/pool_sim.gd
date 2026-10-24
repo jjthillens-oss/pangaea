@@ -295,6 +295,21 @@ func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
 	world.counters["remnant_overflow"] = 0
 
 
+## S4.4: the save's genome has become the next generation (Lineage.reproduce, from the cell editor):
+## the cell takes the new body where it is, its energy and health keeping their shares of the new
+## capacities. Reports offspring {generation, genome_id}.
+func apply_offspring() -> void:
+	var energy_share := state.energy / state.energy_capacity if state.energy_capacity > 0.0 else 1.0
+	var health_share := state.health / state.max_health if state.max_health > 0.0 else 1.0
+	phenotype = Phenotype.derive(save.genome, catalog)
+	state.energy_capacity = phenotype.energy_capacity
+	state.max_health = phenotype.max_health
+	state.energy = energy_share * state.energy_capacity
+	state.health = health_share * state.max_health
+	actor.phenotype = phenotype
+	_emit({"type": "offspring", "generation": save.genome.generation, "genome_id": save.genome.genome_id})
+
+
 ## True in the endless world (S1), false in the pool.
 func is_endless() -> bool:
 	return world != null

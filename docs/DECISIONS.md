@@ -836,3 +836,24 @@ size physics. Built on the recommended option, "earn levels by doing" (`game/dom
   (`test_kin`). It is not saved. Pool mode and S1's sea (growth off) have none.
 - **Defaults for the owner** (s4-plan's open questions): the kin comes on a call rather than
   always swimming in the sea; it is harmless.
+
+## 2026-10-24 · S4.4 the cell editor: mating builds the next generation (PROPOSED)
+
+- **What.** `CellEditor` (game/ui/cell_editor.gd), a UI over `EditorSession`. The kin's `mate` opens
+  it over the paused sea. Its parts:
+  - a palette of editor parts with their costs;
+  - a rim view where parts are placed, selected and dragged round the cell, with the front at the top;
+  - the 3D `CellPreview`;
+  - a before-and-after table: speed, turning, health, bite, ram, defense, sight, energy use and mass.
+    Energy use and mass are better lower.
+  - Controls: Add, Remove, Bigger and Smaller, Mirror, Undo and Redo (also keys), Back and Mate.
+- **Commit.** Mate calls `Lineage.reproduce` (70 % energy, points paid). `PoolSim.apply_offspring`
+  then re-derives the body where the cell is, keeping its shares of energy and health. The game
+  autosaves, and the HUD says "Generation N". Back closes without a generation, and the kin leaves
+  either way.
+- **Placement.** A mouth goes to the front, propulsion to the back when the back is free, and
+  anything else to the widest gap.
+- **Bible.** Section 5's bounded editor with previews of speed, turning, feeding, defense and energy
+  demand. Section 18: the genome and lineage are saved, not the sea.
+- **Not yet.** The test pool to swim the new body before committing (IB-03), part levels (S4.5) and
+  mass on turning (S4.2, deferred because it re-records every golden).
