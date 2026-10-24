@@ -105,6 +105,13 @@ layout_mode = 2
 theme_type_variation = &"DebugButton"
 text = "Size 2"
 
+[node name="ReadyToMate" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Ready to mate"
+
 [node name="TeleportFar" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
 unique_name_in_owner = true
 visible = false

@@ -639,6 +639,8 @@ func nearest_zone_id() -> String:
 
 # Dev commands (dev tools and tests only). Each reports a "debug" event and returns whether it applied.
 
+const DEBUG_MATE_POINTS := 400   ## debug_ready_to_mate tops the points up to this
+
 func debug_set_energy(value: float) -> bool:
 	if not is_finite(value):
 		return false
@@ -786,6 +788,18 @@ func debug_fill_meter(share := 1.0) -> bool:
 		return false
 	growth.add(self, share * growth.ring(size()) - growth.meter, "debug", "")
 	_emit({"type": "debug", "command": "fill_meter", "share": share})
+	return true
+
+
+## Dev (endless, growth on; S4): full energy and at least DEBUG_MATE_POINTS points, so a kin swims in
+## after Kin.CALL_S and the editor can be tried at once. Emits debug {command: "ready_to_mate"}. False
+## with growth off, while dead or waiting to respawn.
+func debug_ready_to_mate() -> bool:
+	if growth == null or dead or respawn_pending:
+		return false
+	debug_set_energy(state.energy_capacity)
+	save.adaptation_points = maxi(save.adaptation_points, DEBUG_MATE_POINTS)
+	_emit({"type": "debug", "command": "ready_to_mate"})
 	return true
 
 
