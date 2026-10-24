@@ -14,6 +14,10 @@ extends RefCounted
 ## counts against MAX_MORSEL_SITES, not the creature caps). Tile rules 9 to 12 hold at band 1 and
 ## up: prey or morsel at both sizes (9), the morsel cap (10), a Deep lurker's channel (11, D-137)
 ## and room round a hazard's home (12, D-137); D-135 caps a band-1 tile's shells and zones.
+##
+## A tile dict may carry "half_bu" and "frame" (CradleBlock's whole block: 64.0, "block"): the edge
+## tests of rules 2, 3 and 6 then measure from that half-width and name that frame. Every file tile
+## has neither, so its rules are S1's.
 
 const FILE_KEYS: PackedStringArray = ["schema_version", "status", "note", "id", "band", "region", "set", "rare",
 	"landmark_anchor", "set_piece", "shells", "zones", "sites"]
@@ -315,8 +319,14 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 		if covered.size() < MIN_THREAT_BEHAVIORS:
 			errors.append("tiles b%d: rule 7: the live threats at size %d are %s; they need %d behaviours"
 				% [band, size, covered, MIN_THREAT_BEHAVIORS])
-	# Rule 8: each live species' strike lane fits the smallest live territory of the tiles, at the size
-	# (the q-scaled lane and leash, the territory in tm, D-70).
+	check_strike_room("tiles", species, radii, smallest, part_catalog, size, errors)
+	return errors
+
+
+## Rule 8: each live species' strike lane fits the smallest live territory (`smallest`, bu, by species,
+## as _check_content gathers it), at the size (the q-scaled lane and leash, the territory in tm, D-70).
+static func check_strike_room(w: String, species: SpeciesCatalog, radii: Dictionary, smallest: Dictionary,
+		part_catalog: PartCatalog, size: int, errors: PackedStringArray) -> void:
 	for id in species.species_ids():
 		if not radii.has(id):
 			continue
@@ -324,8 +334,7 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 				else CreatureBrain.DEFAULT_TERRITORY_M * species.q_of(id, size)
 		var text := species.strike_room_problem(id, territory, "species '%s'" % id, part_catalog, size)
 		if not text.is_empty():
-			errors.append("tiles: rule 8: %s" % text)
-	return errors
+			errors.append("%s: rule 8: %s" % [w, text])
 
 
 ## The species live at `size` (SpeciesCatalog.live_at), each with its body radius there in the bu of
@@ -385,6 +394,7 @@ func _check_counts(band: int, errors: PackedStringArray) -> void:
 ## Rule 2: shell radii and kit fit, edges, overlaps, tunnelling at the second size, yaw ranges.
 static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dictionary], errors: PackedStringArray) -> void:
 	var w: String = t.where
+	var half := _half(t)
 	var for_tunnel: Array[Dictionary] = []
 	for s in t.shells:
 		var r := float(s.radius)
@@ -395,8 +405,8 @@ static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dic
 		elif kit.fitting(r, t.band).size() < PlacementKit.MIN_PICKABLE_PER_CLASS:
 			errors.append("%s: rule 2: shell '%s' radius %s fits %s; it needs %d kit shells"
 				% [w, s.id, r, kit.fitting(r, t.band), PlacementKit.MIN_PICKABLE_PER_CLASS])
-		if absf(c[0]) + r > SHELL_EDGE_BU or absf(c[1]) + r > SHELL_EDGE_BU:
-			errors.append("%s: rule 2: shell '%s' at %s comes within %s bu of the tile's edge" % [w, s.id, c, HALF_TILE_BU - SHELL_EDGE_BU])
+		if absf(c[0]) + r > half - (HALF_TILE_BU - SHELL_EDGE_BU) or absf(c[1]) + r > half - (HALF_TILE_BU - SHELL_EDGE_BU):
+			errors.append("%s: rule 2: shell '%s' at %s comes within %s bu of the %s's edge" % [w, s.id, c, HALF_TILE_BU - SHELL_EDGE_BU, _frame(t)])
 		var yaw: PackedFloat64Array = s.yaw_deg
 		if not (yaw.size() == 2 and 0.0 <= yaw[0] and yaw[0] <= yaw[1] and yaw[1] <= 360.0):
 			errors.append("%s: rule 2: shell '%s' yaw_deg %s needs 0 <= lo <= hi <= 360" % [w, s.id, yaw])
@@ -421,6 +431,7 @@ static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dic
 ## collider or its set piece's colliders; PoolLayout.zone_problems, B-3), and static #33.
 static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: PackedStringArray) -> void:
 	var w: String = t.where
+	var half := _half(t)
 	for z in t.zones:
 		var c: PackedFloat64Array = z.center
 		var r := float(z.radius)
@@ -428,8 +439,8 @@ static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: Pa
 			errors.append("%s: rule 3: zone '%s' needs %s <= radius <= %s and a positive capacity and growth rate"
 				% [w, z.id, MIN_ZONE_R, MAX_ZONE_R])
 			continue
-		if absf(c[0]) + r > ZONE_EDGE_BU or absf(c[1]) + r > ZONE_EDGE_BU:
-			errors.append("%s: rule 3: zone '%s' at %s comes within %s bu of the tile's edge" % [w, z.id, c, HALF_TILE_BU - ZONE_EDGE_BU])
+		if absf(c[0]) + r > half - (HALF_TILE_BU - ZONE_EDGE_BU) or absf(c[1]) + r > half - (HALF_TILE_BU - ZONE_EDGE_BU):
+			errors.append("%s: rule 3: zone '%s' at %s comes within %s bu of the %s's edge" % [w, z.id, c, HALF_TILE_BU - ZONE_EDGE_BU, _frame(t)])
 		if not ZONE_SECOND_SIZE.has(z.at_second_size):
 			errors.append("%s: rule 3: zone '%s' at_second_size '%s' is not one of %s" % [w, z.id, z.at_second_size, ", ".join(ZONE_SECOND_SIZE)])
 		var yield_rate := float(z.growth_rate) * float(z.capacity) * (YIELD_SHARE + EcologyRegion.REGROW_FLOOR)
@@ -532,8 +543,8 @@ static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictiona
 		if morsel:
 			# A morsel site is food (D-97): a clear home inside the tile at the morsel's radius, and the gap.
 			r = minf(species.radius_at(site.species, size), morsel_max_r_tm) / s
-			if absf(home.x) + r > HALF_TILE_BU or absf(home.y) + r > HALF_TILE_BU:
-				errors.append("%s home %s is not inside the tile" % [where, site.home])
+			if absf(home.x) + r > _half(t) or absf(home.y) + r > _half(t):
+				errors.append("%s home %s is not inside the %s" % [where, site.home, _frame(t)])
 		if not arena.is_clear(home, r):
 			errors.append("%s home %s is not clear" % [where, site.home])
 		var min_gap := float(species.spawning.min_gap_m) / s
@@ -649,8 +660,8 @@ static func _check_disc(t: Dictionary, label: String, where: String, disc: Dicti
 	var reach := float(disc.radius)
 	var margin := float(fair.leash_band_margin_m) / s
 	var inset := reach + r + margin
-	if absf(c.x) + inset > HALF_TILE_BU or absf(c.y) + inset > HALF_TILE_BU:
-		errors.append("%s reach disc at %s, r %.2f, comes within %.2f bu of the tile's edge" % [where, c, reach, r + margin])
+	if absf(c.x) + inset > _half(t) or absf(c.y) + inset > _half(t):
+		errors.append("%s reach disc at %s, r %.2f, comes within %.2f bu of the %s's edge" % [where, c, reach, r + margin, _frame(t)])
 	for home: PackedFloat64Array in homes:
 		if _vec(home).distance_to(c) + r > reach:
 			errors.append("%s home %s is not inside its reach disc at %s, r %.2f" % [where, home, c, reach])
@@ -855,6 +866,15 @@ static func read_site(w: String, d: Dictionary, problems: PackedStringArray) -> 
 static func _pair(w: String, d: Dictionary, key: String, problems: PackedStringArray) -> PackedFloat64Array:
 	var p := WorldConfig.pair_at(w, d, key, problems)
 	return p if p.size() == 2 else PackedFloat64Array([0.0, 0.0])
+
+
+## The half-width the edge tests measure from, and the frame's name in their messages (see the top).
+static func _half(t: Dictionary) -> float:
+	return float(t.get("half_bu", HALF_TILE_BU))
+
+
+static func _frame(t: Dictionary) -> String:
+	return str(t.get("frame", "tile"))
 
 
 static func _vec(p: PackedFloat64Array) -> Vector2:

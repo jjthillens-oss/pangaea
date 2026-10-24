@@ -90,6 +90,8 @@ static func from_dict(data: Variant, layout: PoolLayout, species: SpeciesCatalog
 		return home
 	WorldConfig.header_check(w, data, problems)
 	home.band = int(WorldConfig.number_at(w, data, "band", problems, true))
+	if data.has("band") and home.band != 0:
+		problems.append("%s.band: the home block is band 0's; band 1 and up have a cradle (D-94)" % w)
 	home.seam_inner_r = WorldConfig.number_at(w, data, "seam_inner_r", problems)
 	var listed := WorldConfig.list_at(w, data, "m1_second_size_sites", problems)
 	for i in listed.size():
