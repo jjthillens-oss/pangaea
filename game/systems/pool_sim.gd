@@ -423,7 +423,8 @@ func step(intent: SimIntent) -> void:
 ##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
 ##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)
 ##   zone_empty {zone}; zone_regrown {zone}
-##   carrion_spawned {source, food_id, position}; carrion_expired {food_id, position}
+##   carrion_spawned {source, food_id, position, and S3's species and site for a morsel site's item};
+##   carrion_expired {food_id, position, and a reason when not rot: growth (S2), unloaded (S3)}
 ##   debug {command, ...}
 ## With creatures (M1 step 3), from the field and the brains (each with the creature's id):
 ##   creature_spawned {id, species, site, position, heading, debug}
@@ -454,8 +455,13 @@ func snapshot() -> Dictionary:
 		plants.append({"id": item.id, "zone": item.zone, "position": _pair(item.position), "anchor": _pair(item.anchor)})
 	var meats := []
 	for item in carrion.items:
-		meats.append({"id": item.id, "position": _pair(item.position), "age": item.age, "energy": item.energy,
-			"source": item.source})
+		var meat := {"id": item.id, "position": _pair(item.position), "age": item.age, "energy": item.energy,
+			"source": item.source}
+		if item.has("species"):
+			meat["species"] = item.species
+		if item.has("site"):
+			meat["site"] = item.site
+		meats.append(meat)
 	var out := {
 		"tick": tick,
 		"alive_ticks": _alive_ticks,
