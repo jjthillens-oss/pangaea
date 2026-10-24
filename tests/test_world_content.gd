@@ -25,7 +25,7 @@ func test_the_fixture_content_has_no_problems() -> void:
 	check_eq(content.kit.assets.size(), 20, "the fixture kit")
 	check_eq(content.tiles.tiles.size(), 20, "the fixture tiles")
 	check_eq(content.home.zones.filter(func(z: Dictionary) -> bool: return not z.m1).size(), 20, "the fixture ring's zones")
-	check_eq(content.tiles.rare_kinds(0), TileCatalog.BAND0_RARE_KINDS, "both rare kinds")
+	check_eq(content.tiles.rare_kinds(0), PackedStringArray(TileCatalog.RARE_KINDS_BY_BAND[0]), "both rare kinds")
 
 
 ## The endless gates run on the fixture world until the real tiles land, so its settings must be the

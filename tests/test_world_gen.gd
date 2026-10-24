@@ -629,7 +629,7 @@ func test_places_carry_the_yaw_and_mirror_their_colliders_were_placed_with() -> 
 	var gen := _gen(401)
 	var content := _content()
 	var checked := 0
-	for kind in TileCatalog.BAND0_RARE_KINDS:
+	for kind in PackedStringArray(TileCatalog.RARE_KINDS_BY_BAND[0]):
 		var t: Dictionary = content.tiles.rare_tile(0, kind)
 		var record: Dictionary = content.kit.assets[t.set_piece.asset]
 		for o in 8:

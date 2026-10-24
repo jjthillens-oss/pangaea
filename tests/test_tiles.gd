@@ -620,3 +620,62 @@ func test_soak_no_disc_of_any_arrangement_wakes_more_than_10_sites() -> void:
 		check(worst <= SAMPLE_MAX_SITES, "size %d: at most %d live reach discs meet any %.0f tm disc (%d, %s)" % [size, SAMPLE_MAX_SITES, SAMPLE_RADIUS_TM, worst, worst_at])
 		check(worst > 0, "size %d: the sample met live sites" % size)
 		print("test-tiles: size %d: site sample worst %d (%s) over %d x %d" % [size, worst, worst_at, SAMPLE_ARRANGEMENTS, SAMPLE_DISCS])
+
+
+## S3G5c (BP3-8): every band-1 landmark anchor, in all 8 orientations, at sizes 3 and 4, has a clear
+## point for the cell within LANDMARK_SPIRAL_RINGS rings of the spiral on its own tile's colliders
+## (sink shells gone at 4). A neighbour cannot matter: an anchor sits at least 7 bu inside its tile
+## (rule 4) and a neighbour's colliders keep 4 bu from the edge (rules 2 and 5), 11 bu in all, past
+## the 7.2 bu the spiral and the cell reach at size 4. The control grows the landmark collider to 5 bu.
+const B1_DIR := "res://tests/fixtures/world/tiles_b1/b1"
+const LANDMARK_SPIRAL_RINGS := 8
+const GROWN_LANDMARK_BU := 5.0
+
+
+func _b1_tiles() -> TileCatalog:
+	var cat := TileCatalog.new()
+	var files := {}
+	for name in DirAccess.get_files_at(B1_DIR):
+		if name.get_extension() == "json":
+			files[name.get_basename()] = JSON.parse_string(FileAccess.get_file_as_string(B1_DIR.path_join(name)))
+	for id in WorldConfig._sorted(files.keys()):
+		cat.add_tile(files[id], 1, id)
+	return cat
+
+
+## The (tile@orientation, size) cases whose anchor has no clear point within the rings, and how many
+## cases there were.
+func _anchors_without_room(cat: TileCatalog, p_kit: PlacementKit) -> Dictionary:
+	var blocked := PackedStringArray()
+	var cases := 0
+	for id in WorldConfig._sorted(cat.tiles.keys()):
+		var t: Dictionary = cat.tiles[id]
+		if t.landmark_anchor.size() != 2:
+			continue
+		for o in WorldChecks.ALL_ORIENTATIONS:
+			var ot := WorldChecks.oriented_tile(t, o)
+			for size in [3, 4]:
+				var s := WorldConfig.bu_to_tm(size)
+				var arena := PoolArena.create(1000.0, 1000.0, 1000.0)
+				for c in TileCatalog.colliders_at(ot, TileCatalog.colliders_of(ot, p_kit), size):
+					arena.add_rock(c.id, c.center * s, float(c.radius) * s)
+				var anchor := Vector2(ot.landmark_anchor[0], ot.landmark_anchor[1]) * s
+				cases += 1
+				if not PoolSim.clear_point_on(arena, anchor, Relationships.PLAYER_RADIUS, LANDMARK_SPIRAL_RINGS).is_finite():
+					blocked.append("%s at %d" % [ot.where, size])
+	return {"blocked": blocked, "cases": cases}
+
+
+func test_every_band_1_anchor_has_a_clear_point_within_8_rings() -> void:
+	var cat := _b1_tiles()
+	check_eq(cat.load_problems, PackedStringArray(), "the band-1 fixture tiles load")
+	var got := _anchors_without_room(cat, PlacementKit.load_from())
+	check(got.cases > 0, "some anchors were tried (%d)" % got.cases)
+	check_eq(got.blocked, PackedStringArray(), "every anchor has a clear point within %d rings" % LANDMARK_SPIRAL_RINGS)
+	var grown := PlacementKit.load_from()
+	grown.collide_radius_bu = GROWN_LANDMARK_BU
+	var control := _anchors_without_room(cat, grown)
+	# At 3 it reaches past the spiral and the cell (5.5 tm against 4); at 4 it is 3.125 tm and the
+	# eighth ring clears it, so the control blocks every case at size 3.
+	var at_3 := Array(control.blocked).filter(func(b: String) -> bool: return b.ends_with(" at 3"))
+	check_eq(at_3.size(), control.cases / 2, "control: a %.0f bu landmark blocks every anchor at size 3 (%d)" % [GROWN_LANDMARK_BU, at_3.size()])

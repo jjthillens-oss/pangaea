@@ -22,8 +22,8 @@
   ],
   "sites": [
     {"id": "v1", "species": "veil", "home": [-14.0, 10.0], "heading": 0.0, "territory_zone": "", "sizes": [3, 4]},
-    {"id": "r1", "species": "rammer", "home": [2.0, -18.0], "heading": 2.2, "territory_zone": "z3", "sizes": [3, 4]},
-    {"id": "r2", "species": "rammer", "home": [-22.0, 14.0], "heading": 0.4, "territory_zone": "z4", "sizes": [3, 4]},
+    {"id": "ra", "species": "rammer", "home": [2.0, -18.0], "heading": 2.2, "territory_zone": "z3", "sizes": [3, 4]},
+    {"id": "rb", "species": "rammer", "home": [-22.0, 14.0], "heading": 0.4, "territory_zone": "z4", "sizes": [3, 4]},
     {"id": "ew", "species": "elder_warden", "home": [-8.0, -6.0], "heading": 0.0, "territory_zone": "ma", "sizes": [4],
      "post_b": {"home": [7.0, -6.0], "heading": 3.1416, "territory_zone": "mb"}}
   ]
