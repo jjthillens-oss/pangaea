@@ -1,5 +1,6 @@
 """The creature stage's world dressing (PROPOSED): the field ground, the nest ring, the fruit bush and the meat
-chunk that replace the placeholders in game/scenes/creature/creature_world.gd (creature-stage-plan.md section 5).
+chunk that replace the placeholders in game/scenes/creature/creature_world.gd (creature-stage-plan.md section 5),
+and the creature editor's floor pad that replaces the editor scene's cylinder.
 
 Contract from the Creature stage thread: 1 m = 1 unit, the pivot on the ground (Blender z = 0, Godot y = 0),
 Blender +Y forward (Godot -Z). The field is flat and walkable (relief under 0.12 m inside the walls at +-80 m,
@@ -14,6 +15,9 @@ per instance, so their materials take an instance tint (vertex_color_use_as_albe
 - creature_fruit_bush: two root meshes, Bush (the leafy clump) and Fruit (ten amber fruit on it), so the stage can
   draw the fruit only while the bush is ripe.
 - creature_meat_chunk: a torn haunch with a bone end, lying on the ground.
+- creature_editor_room: the creature editor's floor, a unit-radius pedestal pad (the pivot at the centre of its
+  top face) with a raised steel-blue rim, a rounded edge and faintly lit concentric grooves. The editor places it
+  at y = -0.01 and scales it (s, 1, s) to the body, so the rings are geometry that scales with the pad.
 
 Colours keep 25 degrees of LAB hue from the food green (114) and the threat pink (11), as every asset does; the turf
 is blue-green rather than grass green for that reason, and it keeps the deep-blue world's family.
@@ -57,6 +61,18 @@ NEST_R = 6.0
 FRUIT_COUNT = 9
 NEST_TOL = 0.012         # the nest's decimation tolerance: 1.2 cm on a 13 m ring
 GROUND_TOL = 0.004       # collapse decimation may move a flattened underside this far (as cp._check_pivot allows)
+PAD_R = 1.0              # the editor pad: unit radius, the scene scales it (s, 1, s) to the body
+PAD_T = 0.035            # thickness under the top face (the scene never scales y, so this stays 3.5 cm)
+PAD_RIM_H = 0.012        # the rim stands this far above the top face
+PAD_RIM_IN = 0.86        # the rim's foot groove; its outer wall is the rim's shoulder, up to the rim top at 0.90
+PAD_RIM_TOP = 0.90
+PAD_EDGE_R = 0.035       # the quarter-round edge, from the rim top at r 0.965 down to the widest ring at r 1.0
+PAD_GROOVES_R = (0.33, 0.60)   # the free grooves on the top face; the third groove is the rim's foot
+PAD_GROOVE_W = 0.014
+PAD_GROOVE_D = 0.006
+PAD_SEGMENTS = 48        # 12 profile rings and two poles at 48 segments (7.5 degrees): 1152 triangles, under the 1200 budget
+PAD_TOL = 0.0005         # the pad is authored at its budget, so decimation may only drop what does not move the surface
+PAD_GLOW = 0.15          # the grooves' emission strength: a faint line, no brighter than the lit face, not a neon tube
 
 
 def _lin(hex_color):
@@ -182,9 +198,10 @@ def build_field_ground():
             "textures": build_field_tiles(), "revision": 1}
 
 
-def _bake_mixed(objs_tol, texture, tints, size=512):
+def _bake_mixed(objs_tol, texture, tints, size=512, normal=False):
     """cp._bake with a tolerance per object: (obj, tolerance_m) pairs, so small pieces keep their shape while a
-    big soft one reduces hard."""
+    big soft one reduces hard. bake_set bakes a normal map only when some piece was reduced; `normal` asks for
+    one anyway, for a mesh authored at its budget whose detail lives in the shader's bump."""
     before = after = 0
     highs = {}
     for obj, tol in objs_tol:
@@ -196,7 +213,7 @@ def _bake_mixed(objs_tol, texture, tints, size=512):
         highs[obj.name] = high
     objs = [o for o, _ in objs_tol]
     sf.unwrap(objs)
-    textures = sf.bake_set(objs, texture, size, highs=highs, tints=tints)
+    textures = sf.bake_set(objs, texture, size, normal=normal, highs=highs, tints=tints)
     sf.drop_highs(highs.values())
     return {"textures": textures,
             "reduction": {"method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
@@ -389,6 +406,102 @@ def build_meat_chunk():
             "revision": 1, **baked}
 
 
+# --- The creature editor's floor pad -----------------------------------------------------------------------
+
+def _sharpen_rings(obj, rings):
+    """Marks the edges round each profile ring in `rings` ((z, r) pairs) sharp, so smooth shading keeps the
+    grooves and the rim's foot crisp while the rounded edge, whose segments meet at up to 45 degrees, stays
+    round (Blender splits normals at sharp edges, and the glTF export keeps the split)."""
+    import bmesh
+    keys = {(round(z, 4), round(r, 4)) for z, r in rings}
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+
+    def key(v):
+        return round(v.co.z, 4), round(math.hypot(v.co.x, v.co.y), 4)
+
+    for e in bm.edges:
+        a, b = key(e.verts[0]), key(e.verts[1])
+        if a == b and a in keys:
+            e.smooth = False
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
+def _pad_profile():
+    """The pad's profile as (z, r) from the centre of the top face out and round to the centre of the bottom:
+    two V grooves on the face, the rim's foot groove (its outer wall is the rim's shoulder), the rim's flat top,
+    a quarter-round edge down to the widest ring at r = 1, and the underside, rising 12 mm from the centre to the
+    edge (the camera never sees it). Returns the profile, the material of each profile segment (0 pad, 1 rim,
+    2 groove) and the rings to keep sharp."""
+    profile, mats, sharp = [(0.0, 0.0)], [], []
+    for g in PAD_GROOVES_R:
+        groove = [(0.0, g - PAD_GROOVE_W / 2), (-PAD_GROOVE_D, g), (0.0, g + PAD_GROOVE_W / 2)]
+        profile += groove
+        sharp += groove
+        mats += [0, 2, 2]
+    foot = [(0.0, PAD_RIM_IN - PAD_GROOVE_W / 2), (-PAD_GROOVE_D, PAD_RIM_IN)]
+    profile += foot + [(PAD_RIM_H, PAD_RIM_TOP)]
+    sharp += foot
+    mats += [0, 2, 1]
+    arc_r, arc_z = PAD_R - PAD_EDGE_R, PAD_RIM_H - PAD_EDGE_R
+    for deg in (90, 45, 0):
+        profile.append((arc_z + PAD_EDGE_R * math.sin(math.radians(deg)), arc_r + PAD_EDGE_R * math.cos(math.radians(deg))))
+        mats.append(1)
+    sharp.append(profile[-1])
+    profile.append((-PAD_T, 0.0))
+    mats.append(0)
+    return profile, mats, sharp
+
+
+def build_editor_room():
+    """The creature editor's floor: a unit-radius pedestal pad, 3.5 cm thick, dark blue with a raised steel-blue
+    rim, a rounded edge and three faintly lit concentric grooves (two on the face and one at the rim's foot).
+    The pivot is the centre of the top face, so the editor's y = -0.01 placement and its (s, 1, s) scaling keep
+    working: the rings are geometry, so they scale with the pad in plan while the thickness stays."""
+    profile, seg_mats, sharp = _pad_profile()
+    rv, rf, bands = bc.revolve(profile, PAD_SEGMENTS)
+    verts = cp._up(rv)
+    face_mats = [seg_mats[b] for b in bands]
+    pad = sf.Shader("M_EditorPadProc")
+    radial = pad.vmath("LENGTH", pad.vmath("MULTIPLY", pad.pos, (1.0, 1.0, 0.0)))        # radius in the face plane
+    spin = pad.noise(1.0, 2.0, vector=pad.vmath("MULTIPLY", radial, (70.0, 70.0, 70.0)))   # concentric brushed streaks, about 1.5 cm
+    grain = pad.noise(40.0, 2.0)
+    pad.bump(pad.math("ADD", pad.math("MULTIPLY", spin, 0.7), pad.math("MULTIPLY", grain, 0.3)), 0.2, 0.0012)
+    pad_fac = pad.math("ADD", pad.math("MULTIPLY", pad.remap(spin, 0.3, 0.7), 0.65), pad.math("MULTIPLY", grain, 0.35), clamp=True)
+    rim = sf.Shader("M_EditorRimProc")
+    rim_r = rim.vmath("LENGTH", rim.vmath("MULTIPLY", rim.pos, (1.0, 1.0, 0.0)))
+    brush = rim.noise(1.0, 2.0, vector=rim.vmath("MULTIPLY", rim_r, (150.0, 150.0, 150.0)))
+    rim.bump(brush, 0.3, 0.0008)
+    groove = sf.Shader("M_EditorGrooveProc")
+    dust = groove.noise(60.0, 2.0)
+    mats = [pad.out(cp._grey(pad, pad_fac, 0.8), pad.remap(grain, 0.0, 1.0, 0.47, 0.56)),
+            rim.out(cp._grey(rim, rim.remap(brush, 0.3, 0.7), 0.78), rim.remap(brush, 0.0, 1.0, 0.4, 0.5)),
+            groove.out(cp._grey(groove, groove.remap(dust, 0.3, 0.7), 0.9), 0.55)]
+    obj = bc.mesh_object("CreatureEditorRoom", verts, rf, mats, face_mats)
+    _sharpen_rings(obj, sharp)
+    mats[0].name, mats[1].name, mats[2].name = "M_EditorPad", "M_EditorRim", "M_EditorGroove"
+    baked = _bake_mixed([(obj, PAD_TOL)], "CreatureEditorRoom",
+                        {"M_EditorPad": sf.tint(_lin("#14305C")), "M_EditorRim": sf.tint(_lin("#5A7FA8")),
+                         "M_EditorGroove": sf.tint(_lin("#0E2246"), emission=_lin("#5FB3FF"), emission_strength=PAD_GLOW)},
+                        size=1024, normal=True)
+    pts = bc.world_vertices()
+    mp._check(abs(max(math.hypot(p.x, p.y) for p in pts) - PAD_R) < 1e-4, "room: the pad's radius is 1.0")
+    mp._check(abs(min(p.z for p in pts) + PAD_T) < 1e-4, "room: the pad is 3.5 cm thick under the face's centre")
+    mp._check(abs(max(p.z for p in pts) - PAD_RIM_H) < 1e-4, "room: the rim stands 12 mm above the face")
+    # Decimation folds the coplanar pole fans into the first ring, so the face is read at the first groove's inner edge.
+    face = [p.z for p in pts if math.hypot(p.x, p.y) <= PAD_GROOVES_R[0] - PAD_GROOVE_W / 2 + 1e-4 and p.z > -PAD_T / 2]
+    mp._check(len(face) >= PAD_SEGMENTS and max(abs(z) for z in face) < 1e-4, "room: the top face is at z = 0, the pivot")
+    return {"purpose": "Creature editor floor (PROPOSED): a unit-radius pedestal pad for the Spore-style editor room, dark blue with a raised steel-blue rim, a rounded edge and three faintly lit concentric grooves; replaces the creature_editor_floor placeholder cylinder.",
+            "category": "environment", "kind": "editor_floor",
+            "pivot": "the centre of the top face (Blender z = 0, Godot y = 0); the rim stands 12 mm above it and the underside's centre 35 mm below",
+            "usage": "Place it where the cylinder was, at y = -0.01 (the face 1 cm under the feet, the rim's top 2 mm over them; y = 0 stands the body on the face), and scale it Vector3(s, 1, s), s = max(1.2, 1.4 x the body's longest axis): the rim and grooves are concentric geometry, so they scale with the pad in plan while the thickness stays 35 mm. Move it with the camera focus as the body walks; the camera never looks under it.",
+            "pad_m": {"radius": PAD_R, "thickness": PAD_T, "rim_height": PAD_RIM_H, "rim_top_r": [PAD_RIM_TOP, PAD_R - PAD_EDGE_R],
+                      "edge_radius": PAD_EDGE_R, "grooves_r": [*PAD_GROOVES_R, PAD_RIM_IN], "groove_width": PAD_GROOVE_W, "groove_depth": PAD_GROOVE_D,
+                      "segments": PAD_SEGMENTS},
+            "emission": f"M_EditorGroove emits a flat #5FB3FF at strength {PAD_GLOW}, a faint line under the editor's glow", "revision": 1, **baked}
+
+
 # --- Engine materials (--import, after Godot has imported the GLBs) -----------------------------------------
 
 FIELD_TRES = """[gd_resource type="ShaderMaterial" load_steps=7 format=3]
@@ -497,6 +610,7 @@ ASSETS = {
     "creature_nest_ring": (build_nest_ring, 4000),
     "creature_fruit_bush": (build_fruit_bush, 1200),
     "creature_meat_chunk": (build_meat_chunk, 1200),
+    "creature_editor_room": (build_editor_room, 1200),
 }
 
 
