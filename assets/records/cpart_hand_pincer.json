@@ -1,0 +1,101 @@
+{
+  "id": "cpart_hand_pincer",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature hand part (PROPOSED): a crab's pincer, a pitted shell palm with a fixed and a hinged finger, knobbly teeth and dark tips; opens on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_hand_pincer.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_hand_pincer.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.065,
+    "y_forward": 0.09,
+    "z_up": 0.175
+  },
+  "triangles": 602,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartHandPincer_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartHandPincer_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartHandPincer_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_HandPincerShell"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "HandPincer"
+  ],
+  "part_type": "hand_pincer",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "hand_pincer",
+    "footprint_radius_m": 0.043,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 40,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "hand",
+    "capabilities": [
+      "grasper"
+    ],
+    "handles": [
+      {
+        "key": "H1_Open",
+        "meaning": "the hinged finger swings 32 degrees open",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Size",
+        "meaning": "the shell palm 25% stouter",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_HandPincerShell": 0.35
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 668,
+    "triangles_after": 602
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

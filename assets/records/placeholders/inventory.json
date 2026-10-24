@@ -220,6 +220,19 @@
       "node": "CreatureEditor/HandleRoot"
     },
     {
+      "id": "creature_mating_heart",
+      "kind": "ui",
+      "description": "The mating beat's heart marker: two unshaded pink CylinderMesh discs over a rotated BoxMesh, floating over the player and its mate while the mate walks up and facing the camera. A short-lived status sign drawn in the 3D view, like a speech bubble, not a model.",
+      "types": [
+        "CylinderMesh",
+        "BoxMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd"
+      ],
+      "node": "CreatureWorld/Heart"
+    },
+    {
       "id": "editor_test_dish",
       "kind": "ui",
       "description": "The cell editor's test drive dish (TestPool): a flat CylinderMesh floor and TorusMesh rings for the wall and the floor's distance marks, in their own little world behind the editor. Editing UI for feeling a body's speed, not a model of the sea.",

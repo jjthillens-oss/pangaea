@@ -251,7 +251,8 @@ func _build() -> void:
 	_check(world.sim.at_nest(), "back at the nest after %.1f s" % (home * CreatureWorldSim.DT))
 	var points_at_nest: int = world.sim.points
 	world.set_intent(Vector2.ZERO, false, true)
-	await _frames(SETTLE_FRAMES)
+	# The mating beat (CreatureWorld.MATE_BEAT_S) plays before the editor opens.
+	await _frames(SETTLE_FRAMES + int(ceil(world.mate_beat_s / CreatureWorldSim.DT)) + 10)
 	_check(stage.mode() == "editor" and stage.world == null, "evolve leaves the world")
 	var editor2 := stage.editor_scene()
 	_check(editor2 != null and editor2.points() == points_at_nest, "the editor is back with the points (%d)" % points_at_nest)

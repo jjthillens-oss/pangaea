@@ -129,7 +129,7 @@ func refresh() -> void:
 
 func _refresh_hints() -> void:
 	_prompts_generation = InputPrompts.generation
-	var pairs := [[&"creature_bite", "Bite"], [&"creature_evolve", "Evolve at the nest"], [&"ui_cancel", "Back to the editor"]]
+	var pairs := [[&"creature_bite", "Bite"], [&"creature_social", "Sing"], [&"creature_evolve", "Evolve at the nest"], [&"ui_cancel", "Back to the editor"]]
 	if world != null and world.sim != null and not bool(world.sim.player()["has_mouth"]):
 		pairs.remove_at(0)   # nothing to bite with
 	var line := InputPrompts.hint_line(pairs)
