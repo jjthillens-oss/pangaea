@@ -26,6 +26,10 @@ const BODY_SCENES := {
 	"creature_rammer_body": preload("res://assets/export/creature_rammer_body.glb"),
 	"creature_lurker_body": preload("res://assets/export/creature_lurker_body.glb"),
 	"creature_elder_rammer_body": preload("res://assets/export/creature_elder_rammer_body.glb"),
+	"creature_veil_body": preload("res://assets/export/creature_veil_body.glb"),
+	"creature_warden_body": preload("res://assets/export/creature_warden_body.glb"),
+	"creature_deep_lurker_body": preload("res://assets/export/creature_deep_lurker_body.glb"),
+	"creature_elder_warden_body": preload("res://assets/export/creature_elder_warden_body.glb"),
 }
 ## Pose nodes, as their records name them (assets/records/creature_*_body.json and part_mouth_jaw.json).
 const EYE_PATHS: Array[NodePath] = [^"Body/Eye_L", ^"Body/Eye_R"]
@@ -35,6 +39,9 @@ const MANDIBLE_PATHS: Array[NodePath] = [^"JawBase/Mandible_L", ^"JawBase/Mandib
 ## The emission strength M_AmbushEye was authored at (its record's eye_emission_rest): the glTF
 ## export folds it into the colour, so a strength g is an energy multiplier of g / this.
 const EYE_EMISSION_REST := 0.4
+## S3 (V3-20): the bodies whose eyes were authored at another strength (their records'
+## eye_emission_rest); 0 leaves the eyes undriven (the veil's are not emissive).
+const EYE_EMISSION_REST_BY_BODY := {"creature_veil_body": 0.0, "creature_deep_lurker_body": 0.7}
 
 ## Pose amplitudes (plan section 14). PROPOSED and view-only: no sim timing depends on them.
 const COIL_LENGTH := 0.82        ## ambush tell: the body squashes along its length...
@@ -135,6 +142,7 @@ var _label := ""
 var _blend_from := {}
 var _blend_t := BLEND_S
 var _eye_material: StandardMaterial3D
+var _eye_rest := EYE_EMISSION_REST
 var _mandibles: Array[Node3D] = []
 var _spikes: Array[Node3D] = []
 var _spike_rest: Array[Transform3D] = []
@@ -303,7 +311,9 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	if old != null:
 		model.remove_child(old)
 		old.free()
-	var packed: PackedScene = BODY_SCENES.get(str(data.get("body_asset", "")))
+	var body_asset := str(data.get("body_asset", ""))
+	_eye_rest = float(EYE_EMISSION_REST_BY_BODY.get(body_asset, EYE_EMISSION_REST))
+	var packed: PackedScene = BODY_SCENES.get(body_asset)
 	if packed != null:
 		var body: Node3D = packed.instantiate()
 		body.name = "Body"
@@ -787,8 +797,8 @@ func _apply_pose(p: Dictionary) -> void:
 		_hood.scale = Vector3(1.0, 1.0 + HOOD_RAISE * float(p.get("hood", 0.0)), 1.0)
 	if _brow != null:
 		_brow.position = _brow_rest + Vector3.DOWN * BROW_DROP_M * float(p.get("brow", 0.0))
-	if _eye_material != null:
-		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / EYE_EMISSION_REST
+	if _eye_material != null and _eye_rest > 0.0:
+		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / _eye_rest
 	var flash := PlayerCellView.hit_flash(_hurt_t, HURT_S, SettingsService.shared().reduce_flashing())
 	_hurt_overlay.albedo_color = Color(HURT_COLOR, HURT_COLOR.a * flash)
 	_body_hurt.albedo_color = _hurt_overlay.albedo_color
