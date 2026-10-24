@@ -28,6 +28,13 @@
 #             plankton look and the slot's autosave on the growth are checked, then it saves
 #   grow_continue: a new process continues that slot at size 2, at the same place and checkpoint,
 #             with the same look, badge, near ghosts and camera
+#   creature_build: the creature stage (--creature) on its own store under user://smoke/: the editor
+#             grows a pair of neck limbs, adds a maw, eyes and feet, picks a swatch and Done enters
+#             the world (the body, colour, points and title); the player eats the nearest fruit, bites
+#             a rival, walks back to the nest and evolves (the editor again, generation 2); Escape in
+#             the world (the editor), Escape in the editor (the title), then Quit
+#   creature_reload: a new process opens the stage from that store and finds the same body SHA-256,
+#             points and generation
 #   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
 #             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
 #             run; its own settings file and slots under user://smoke/menus
@@ -67,6 +74,8 @@ bounded 120 "$GODOT" --headless --fixed-fps 30 --resolution 1280x720 --path . --
 bounded 120 "$GODOT" --headless --fixed-fps 144 --resolution 1920x1080 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps144.json --compare=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps144.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow --world=endless --slot=user://smoke/grow.json --seed=4246 2>&1 | tee builds/smoke/grow.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json 2>&1 | tee builds/smoke/grow_continue.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --creature-store=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --creature-store=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

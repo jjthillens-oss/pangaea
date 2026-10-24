@@ -42,6 +42,8 @@ const KEY_ACTIONS := {
 	"move_right": [KEY_D, KEY_RIGHT],
 	"pause": [KEY_ESCAPE, KEY_P],
 	"grow": [KEY_G],
+	"creature_bite": [KEY_F],
+	"creature_evolve": [KEY_E],
 	"toggle_fullscreen": [KEY_F11],
 	"toggle_debug": [KEY_F3],
 	"dev_fill": [KEY_F5],
@@ -59,7 +61,8 @@ const MOUSE_ACTIONS := {
 	"zoom_out": MOUSE_BUTTON_WHEEL_DOWN,
 }
 ## Controller defaults (UI pass), as InputCodes: the left stick and the d-pad swim, the shoulders
-## zoom, Menu pauses and Y grows. Every other action has no controller input.
+## zoom, Menu pauses and Y grows; in the creature stage X bites and Y evolves (at the nest).
+## Every other action has no controller input.
 const PAD_ACTIONS := {
 	"move_up": ["axis:1:-1", "pad:11"],
 	"move_down": ["axis:1:1", "pad:12"],
@@ -69,6 +72,8 @@ const PAD_ACTIONS := {
 	"zoom_out": ["pad:9"],
 	"pause": ["pad:6"],
 	"grow": ["pad:3"],
+	"creature_bite": ["pad:2"],
+	"creature_evolve": ["pad:3"],
 }
 
 

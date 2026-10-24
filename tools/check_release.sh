@@ -5,7 +5,8 @@
 # parse, so the logs are what count).
 #   launch: the pack's main scene runs 120 frames (start screen, nothing saved)
 #   probe:  tools/release_probe.gd checks the start screen is up, Main has no dev layer,
-#           --perf-tour is ignored and the pack holds nothing from game/dev or tests
+#           --perf-tour is ignored, the creature stage opens with its part tools, saves and
+#           enters the world, and the pack holds nothing from game/dev or tests
 #   content: tools/release_content_probe.gd checks the pack holds the endless sea's content (S1,
 #           build plan B-19): exactly the 20 band-0 tile files, the home block and the placement
 #           kit, content that loads with no problems, and every kit GLB loading
@@ -43,7 +44,7 @@ trap 'rm -rf "$RUN_DIR"' EXIT
 echo "Starting the release pack $PACK"
 status=0
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --quit-after 120 -- --slot=user://smoke/release.json) 2>&1 | tee "$LOGS/launch.log" || status=1
-(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
+(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --creature-store=user://smoke/creature_release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --main-pack "$PACK" --script "$CONTENT_PROBE") 2>&1 | tee "$LOGS/content.log" || status=1
 if grep -E "SCRIPT ERROR|^ERROR:" "$LOGS"/*.log; then
   echo "Engine or script errors while exporting or starting the release pack ($LOGS/)."

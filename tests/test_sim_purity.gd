@@ -34,9 +34,10 @@ const BANNED := {
 	"a Node base": "extends\\s+Node",
 }
 const FILES_PATTERN := "\\b(FileAccess|DirAccess)\\b"
-## Creature perception and decisions (M1 step 3) work only from the percepts they are given: they
-## never name the player or reach for the sim's tables.
-const PERCEPTION_FILES: PackedStringArray = ["res://game/domain/creature_senses.gd", "res://game/domain/creature_brain.gd"]
+## Creature perception and decisions (M1 step 3, and the creature stage's rival brain) work only from
+## the percepts they are given: they never name the player or reach for the sim's tables.
+const PERCEPTION_FILES: PackedStringArray = ["res://game/domain/creature_senses.gd", "res://game/domain/creature_brain.gd",
+	"res://game/domain/creature/creature_rival_brain.gd"]
 const PERCEPTION_BANNED := {
 	"the player's id": "[\"']player[\"']",
 	"the sim": "\\b(PoolSim|CreatureField|roster)\\b|\\bsim\\.",
@@ -45,9 +46,7 @@ const PERCEPTION_BANNED := {
 
 func _scanned() -> PackedStringArray:
 	var out := PackedStringArray()
-	for f in DirAccess.get_files_at(DOMAIN_DIR):
-		if f.ends_with(".gd"):
-			out.append(DOMAIN_DIR + "/" + f)
+	_collect(DOMAIN_DIR, out)
 	out.append_array(SIM_FILES)
 	_gd_files_under(WORLD_DIR, out)
 	return out
@@ -62,6 +61,15 @@ static func _gd_files_under(dir: String, out: PackedStringArray) -> void:
 			out.append(dir.path_join(f))
 	for sub in DirAccess.get_directories_at(dir):
 		_gd_files_under(dir.path_join(sub), out)
+
+
+## Every .gd file under `dir`, subfolders included (game/domain/creature/ holds the creature stage's rules).
+func _collect(dir: String, out: PackedStringArray) -> void:
+	for f in DirAccess.get_files_at(dir):
+		if f.ends_with(".gd"):
+			out.append(dir + "/" + f)
+	for sub in DirAccess.get_directories_at(dir):
+		_collect(dir + "/" + sub, out)
 
 
 ## The source with comments and string contents removed, so prose cannot trip the scan.
@@ -112,6 +120,7 @@ func _matches(code: String, pattern: String) -> bool:
 func test_rules_and_sim_use_no_clock_input_files_tree_or_global_random() -> void:
 	var files := _scanned()
 	check(files.size() >= 15, "scanned the domain and the sim (%d files)" % files.size())
+	check(files.has(DOMAIN_DIR + "/creature/body_field.gd"), "the scan reaches game/domain/creature/")
 	for path in files:
 		var code := _code_only(FileAccess.get_file_as_string(path))
 		check(not code.is_empty(), "%s readable" % path)

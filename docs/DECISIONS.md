@@ -657,3 +657,47 @@ The B-7 soak gate times every tick of a dense 600-tick swim, 3 runs, and holds e
 Measured here, each load tick at its fastest of 7, in µs: before, ticks 188, 244, 508 and 564 read 1,119 to 1,347, 1,583 to 1,642, 1,293 to 1,361 and 1,992 to 2,013, with a plain median tick of 738 to 756. After, the ten load ticks read 1,008 to 1,188 and the plain median 749. The gate's own reading here is a median tick of 10.76 to 10.90 yardsticks (limit 10, and CI reads about 8.8) with load ticks of 9.3 to 17.1 (limit 16). **Then the load's own parts (exact).** A chunk's colliders, its zones' plankton streams and absolute centres, its zones' local centres and its `chunk_loaded` payload are made from the generated chunk alone, so a quiet tick now makes them (`_prepare_parts`, a whole tick's `PREPARE_PER_TICK` share, before the chunk's site records), and the load takes them. The local values and the payload are used only when every part and site record was made in the frame in force at the load (`_frame()`, the origin and scale; a record made in another frame marks the chunk mixed); a site record made in that frame is not derived again. Otherwise the load makes them as before. The identity harness's hashes and the dense end hash (2949906145) are unchanged. Load ticks here, fastest of 7: **793 to 985 µs** (from 1,008 to 1,188), plain median 694 µs. The gate here read load ticks of 10.6 to 16.65 yardsticks, 1 or 2 of 10 just over 16, with a median tick of 10.7 to 11.2; CI reads its own.
 
 **On `e2`:** the s1 merge (`e30719f`) brings these in. Two of them change the endless results (a tick unloads or loads, never both; a tick that loads a chunk takes no spawns), so `tests/fixtures/endless_s1_hashes.json` is re-recorded at base commit `3724eeb`, as its own commit. With growth off, s1's identity harness computes the same nine hashes on the merge as on s1.
+
+## 2026-10-24 · Continue rebuilds the world from its seed (CONFIRMED)
+
+Godfrey's test review round 3 (issue #77, PR #95) asked for a test that a save → load → continue run matches an
+uninterrupted run tick for tick. That cannot hold under D6 and D16 above: Continue restores the cell, its body, lineage,
+adaptation points and checkpoint, and repopulates plankton, creatures and shelter from the world seed. Asked whether to
+keep that contract or change the save schema to restore the exact moment, Joshua chose **keep** (2026-10-24 00:07 UTC).
+The seeded-restart contract stays; exact restores are a separate, later decision if a stage needs them.
+
+## 2026-10-23 · Creature stage preview (PROPOSED)
+
+The first playable slice of the creature stage (`docs/milestones/creature-stage-plan.md`), built under the owner's
+standing rules; the generated-skin direction of 2026-10-23 is CONFIRMED, everything below is PROPOSED until the owner
+says otherwise. It opens from the title's "Creature stage" button (marked Preview, below the main menu) or with
+`--creature` after `--` (`--creature-store=PATH` names its save file in place of the slot's; the smoke uses it), and
+the stage's own Escape leaves it for the title.
+
+- **Saves (plan section 3).** The lineage save schema stays v2. The stage keeps its own file,
+  `user://creature_stage/slot_<n>.json` (`CreatureStore`, schema 1: `version`, `name`, `body` as the codec's
+  dictionary, `points`, `world_seed`, `generation`, `history`), with n the settings' slot number (1 when the slot in
+  use is a `--slot` file that is none of the numbered ones). `--slot=PATH` does not apply to the stage: it names the
+  lineage file only. Writes are atomic (`.tmp` then rename); a load validates the version, the keys and their types,
+  and the body against the body rules and part rules, refuses with reasons and leaves the file as it is, and the
+  stage then starts fresh with the reasons in `load_problems`; the save before is kept as `.bak` and read when the
+  file is bad. The stage saves on Done, Back, Evolve, a death and a quit from the window (with the points the world's
+  sim holds). IMPLEMENTED (`CreatureStore`, `CreatureStage`); the editor and world scenes are merged, and the
+  "Creature stage scenes missing" notice stays as a guard for a build without them.
+- **The editor (plan section 4).** PROPOSED. A Spore-style room over the ported editor core: handles to drag, a
+  tool per part type in the art records (read from `game/data/creature/part_rules.json`, compiled from the records
+  by `tools/make_part_rules.py` since the records folder is not exported), a limb tool, undo and redo, mirror,
+  insert and delete, eight skin swatches carried in the body's `skin_color` key, a test drive on the gait planner,
+  and a method twin for every input path so the smoke drives it. Escape is progressive (tool, then an unsaved-edits
+  prompt, then the title); Done on a legless body asks once.
+- **The world (plan section 5).** `CreatureWorldSim` runs at 60 ticks a second from the world seed like `PoolSim`
+  (whole-tick durations, sorts tied by id, every draw from a seeded stream, plain-data snapshots). A flat 160 m test
+  field with a nest at the centre, fruit bushes that regrow and meat from kills, six rivals built from the starter
+  bodies whose brains get percepts only (wander, graze, flee a bigger creature, hunt a smaller one when hungry).
+  Anatomy sets play (`CreatureStats`): leg length gives speed and cadence through the gait planner, mouth parts bite
+  power, eye parts sight, body volume health; a body with no mouth eats fruit by touch at half the points. Death sends
+  the creature back to the nest at full health with a 20% points loss. Camera-relative movement, bite on F / pad X,
+  evolve at the nest on E / pad Y. The numbers live in `game/data/creature/creature_stage.json` (PROPOSED).
+- **Open owner decision: save schema v3.** Folding the creature body, points and generation into the lineage save
+  (one file per slot, with a migration from v2) is save schema v3 and needs the owner's approval. Until then the
+  stage's file stays separate and the lab's `user://creatures/*.json` files remain importable as the same codec text.

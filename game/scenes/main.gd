@@ -26,6 +26,11 @@ extends Node
 ## settings and follows their changes itself (V-15, V-16). Main keeps the player memory
 ## (UserSettings: hints followed, giant passes seen) on user://player_memory.cfg, apart from both
 ## the settings and the saves (C-V1); a run with --slot keeps its own beside that save.
+##
+## Creature stage preview (creature-stage plan, PROPOSED): open_creature_stage() puts the CreatureStage
+## in place of the screen; the title's "Creature stage" button and --creature open it. It keeps its
+## own save file (CreatureStore.default_path of the settings' slot number, or --creature-store's
+## file; --slot does not apply) and comes back to the title through exit_requested.
 
 signal screen_changed(screen: Node)
 
@@ -34,6 +39,7 @@ const POOL_SCENE := preload("res://game/scenes/pool/pool.tscn")
 const HUD_SCENE := preload("res://game/ui/hud.tscn")
 const PAUSE_MENU_SCENE := preload("res://game/ui/pause_menu.tscn")
 const NOTICE_SCENE := preload("res://game/ui/notice_dialog.tscn")
+const CREATURE_STAGE_SCENE := preload("res://game/scenes/creature/creature_stage.tscn")
 ## Debug builds only. Loaded by path, never preloaded, so the release export can leave game/dev out.
 const DEV_PANEL_PATH := "res://game/dev/debug_panel.tscn"
 const DEV_GIZMOS_PATH := "res://game/dev/dev_gizmos.gd"
@@ -46,10 +52,11 @@ var flags: RunFlags
 var session: GameSession
 ## Swims for the player in the next run when set (anything with next_intent(sim) -> SimIntent).
 var intent_provider: Object
-## The screen shown now: start_screen or pool.
+## The screen shown now: start_screen, pool or creature_stage.
 var screen: Node
 var start_screen: StartScreen
 var pool: PoolScene
+var creature_stage: CreatureStage
 var hud: Hud
 var pause_menu: PauseMenu
 var death_notice: NoticeDialog
@@ -94,6 +101,8 @@ func _ready() -> void:
 	_add_dev_layer()
 	if flags.perf_tour:
 		_start_perf_tour()
+	if flags.creature:
+		open_creature_stage()
 	if screen == null:
 		show_start()
 
@@ -134,7 +143,34 @@ func show_start() -> void:
 	start_screen.quit_requested.connect(quit_to_desktop, CONNECT_DEFERRED)
 	start_screen.settings_requested.connect(open_settings, CONNECT_DEFERRED)
 	start_screen.slots_requested.connect(open_slots, CONNECT_DEFERRED)
+	start_screen.creature_requested.connect(open_creature_stage, CONNECT_DEFERRED)
 	_set_screen(start_screen)
+
+
+## Opens the creature stage preview as the screen, on its own save file for the current slot number
+## (creature_store_path()); a --seed names the seed of a fresh stage state. Its exit comes back to
+## the title.
+func open_creature_stage() -> CreatureStage:
+	_clear_screen()
+	creature_stage = CREATURE_STAGE_SCENE.instantiate()
+	add_child(creature_stage)
+	creature_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	var seed_value := flags.seed_value if flags.seed_value >= 0 else randi_range(0, RunFlags.MAX_SEED)
+	creature_stage.setup(creature_store_path(), seed_value)
+	_set_screen(creature_stage)
+	return creature_stage
+
+
+## The creature stage's store file: --creature-store when given (the creature smoke's), else
+## user://creature_stage/slot_<n>.json, n the settings' slot number (1 when the slot in use is a
+## --slot file that is none of the numbered ones).
+func creature_store_path() -> String:
+	if flags != null and not flags.creature_store.is_empty():
+		return flags.creature_store
+	var n := SaveSlots.number_of(session.slot) if session != null else 0
+	if n == 0 and settings != null:
+		n = SaveSlots.number_of(settings.current_slot_path())
+	return CreatureStore.default_path(maxi(n, 1))
 
 
 ## Founds a lineage with a starting body and opens the pool. A seed below 0 uses --seed, else a
@@ -214,6 +250,8 @@ func quit_to_desktop() -> void:
 ## too): "Save first?", or a warning when the cell's death could not be saved (see quit_prompt).
 ## A saved death is not unsaved progress, so quitting at its notice asks nothing.
 func request_quit() -> void:
+	if creature_stage != null:
+		creature_stage.save_now()
 	if pool == null or not session.dirty:
 		_quit()
 		return
@@ -428,6 +466,7 @@ func _clear_screen() -> void:
 	settings_menu = null
 	slot_picker = null
 	pool = null
+	creature_stage = null
 	hud = null
 	pause_menu = null
 	death_notice = null

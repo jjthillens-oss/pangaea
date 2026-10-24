@@ -1,0 +1,170 @@
+class_name CreatureEditorHud
+extends Control
+## The creature editor's panels (creature stage plan section 4, PROPOSED): the part palette on the left (one tool
+## per part type in the art records with its cost, the limb tool, and a "no tool" state), the points and the stats
+## on the right with the Undo / Redo / Delete / Insert / Mirror buttons, the Test drive toggle and Done and Back,
+## eight skin colour swatches, a refusal line at the bottom and a hint line naming the keys. It only presents:
+## every button emits a signal and CreatureEditor calls the same method the key would. The space between the
+## panels lets the mouse through to the 3D view.
+
+signal tool_chosen(type: String)
+## "undo", "redo", "delete", "insert", "mirror", "done" or "back".
+signal action(name: String)
+signal test_drive_toggled(on: bool)
+signal color_chosen(color: Color)
+
+const TOOL_BUTTON_FONT_PX := 22
+const SWATCH_PX := 40
+
+var _tool_buttons := {}   ## tool type -> Button
+var _group := ButtonGroup.new()
+var _swatches: Array[Button] = []
+
+var tools_grid: GridContainer
+var swatch_row: HBoxContainer
+var points_text: Label
+var cost_text: Label
+var stats_text: Label
+var refusal_panel: PanelContainer
+var refusal_text: Label
+var hint_text: Label
+var title_text: Label
+var test_drive_button: Button
+var undo_button: Button
+var redo_button: Button
+var _wired := false
+
+
+func _ready() -> void:
+	wire()
+
+
+## Finds the nodes and connects the buttons, once: from _ready(), or from the editor when the scene is driven before
+## the tree is live (the test runner), where @onready has not run.
+func wire() -> void:
+	if _wired:
+		return
+	_wired = true
+	tools_grid = %Tools
+	swatch_row = %Swatches
+	points_text = %PointsText
+	cost_text = %CostText
+	stats_text = %StatsText
+	refusal_panel = %Refusal
+	refusal_text = %RefusalText
+	hint_text = %HintText
+	title_text = %TitleText
+	test_drive_button = %TestDrive
+	undo_button = %Undo
+	redo_button = %Redo
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_group.allow_unpress = true
+	refusal_panel.visible = false
+	for name in ["Undo", "Redo", "Delete", "Insert", "Mirror", "Done", "Back"]:
+		var b: Button = get_node("%" + name)
+		b.focus_mode = Control.FOCUS_NONE
+		b.pressed.connect(func(): action.emit(name.to_lower()))
+	test_drive_button.focus_mode = Control.FOCUS_NONE
+	test_drive_button.toggled.connect(func(on: bool): test_drive_toggled.emit(on))
+
+
+## Builds the palette: `tools` are the part types in order, `costs` the editor costs (CreatureData.editor_costs()),
+## `colors` the skin swatches.
+func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
+	for c in tools_grid.get_children():
+		c.free()
+	_tool_buttons.clear()
+	_add_tool("", "Select", 0)
+	_add_tool("limb", "Limb", 2 * 3 * int(costs.get("limb_joint", 0)))
+	for type in tools:
+		var price: int = int((costs.get("part", {}) as Dictionary).get(type, costs.get("part_default", 0)))
+		_add_tool(type, String(type).capitalize(), price)
+	for c in swatch_row.get_children():
+		c.free()
+	_swatches.clear()
+	for color in colors:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(SWATCH_PX, SWATCH_PX)
+		b.focus_mode = Control.FOCUS_NONE
+		b.toggle_mode = true
+		b.tooltip_text = color.to_html(false)
+		var style := StyleBoxFlat.new()
+		style.bg_color = color
+		style.set_corner_radius_all(8)
+		style.set_border_width_all(2)
+		style.border_color = Color(0.3, 0.5, 0.82, 1)
+		var chosen := style.duplicate() as StyleBoxFlat
+		chosen.border_color = Color(1, 0.88, 0.6, 1)
+		chosen.set_border_width_all(4)
+		b.add_theme_stylebox_override("normal", style)
+		b.add_theme_stylebox_override("hover", style)
+		b.add_theme_stylebox_override("pressed", chosen)
+		b.add_theme_stylebox_override("hover_pressed", chosen)
+		b.pressed.connect(func(): color_chosen.emit(color))
+		swatch_row.add_child(b)
+		_swatches.append(b)
+
+
+func _add_tool(type: String, label: String, price: int) -> void:
+	var b := Button.new()
+	b.text = label if price <= 0 else "%s  %d" % [label, price]
+	b.toggle_mode = true
+	b.button_group = _group
+	b.focus_mode = Control.FOCUS_NONE
+	b.theme_type_variation = &"TabButton"
+	b.add_theme_font_size_override("font_size", TOOL_BUTTON_FONT_PX)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.pressed.connect(func(): tool_chosen.emit(type))
+	tools_grid.add_child(b)
+	_tool_buttons[type] = b
+
+
+## Shows which tool is in use ("" for none) without emitting tool_chosen.
+func set_tool(type: String) -> void:
+	for t in _tool_buttons:
+		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
+	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (
+			"limb" if type == "limb" else String(type).capitalize().to_lower())
+
+
+func set_color(color: Color) -> void:
+	for b in _swatches:
+		b.set_pressed_no_signal(b.tooltip_text == color.to_html(false))
+
+
+func set_points(points: int, cost: int, affordable: bool) -> void:
+	points_text.text = "Points  %d" % points
+	if cost == 0:
+		cost_text.text = "No changes to pay for"
+		cost_text.theme_type_variation = &"SmallLabel"
+	elif affordable:
+		cost_text.text = "Cost %d   →   %d left" % [cost, points - cost] if cost > 0 else "Refund %d   →   %d left" % [-cost, points - cost]
+		cost_text.theme_type_variation = &"AccentLabel"
+	else:
+		cost_text.text = "Cost %d: %d more than you have" % [cost, cost - points]
+		cost_text.theme_type_variation = &"WarnLabel"
+
+
+func set_stats(lines: PackedStringArray) -> void:
+	stats_text.text = "\n".join(lines)
+
+
+func set_undo_redo(can_undo: bool, can_redo: bool) -> void:
+	undo_button.disabled = not can_undo
+	redo_button.disabled = not can_redo
+
+
+## The refusal line: shown while `text` is not empty.
+func set_refusal(text: String) -> void:
+	refusal_panel.visible = text != ""
+	refusal_text.text = text
+
+
+func set_test_drive(on: bool) -> void:
+	test_drive_button.set_pressed_no_signal(on)
+	test_drive_button.text = "Stop test drive" if on else "Test drive"
+
+
+func set_hint(text: String) -> void:
+	hint_text.text = text

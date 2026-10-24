@@ -2,7 +2,23 @@
   "schema_version": 1,
   "status": "PROPOSED",
   "note": "Everything in game/ that is drawn or played without a recorded asset. Placeholders stand in for production assets and name the milestone that removes them. Functional entries are particles, UI and debug drawing, which Bible 15 does not count as placeholders. tests/test_placeholders.gd fails when a primitive, code-built, saved or referenced mesh in game/**/*.gd, .tscn or .tres, or a binary resource or model file anywhere in game/, is not listed here by type and file, and when a placeholder's asset_id has a record in assets/records.",
-  "placeholders": [],
+  "placeholders": [
+    {
+      "id": "creature_editor_floor",
+      "kind": "environment",
+      "asset_id": "creature_editor_room",
+      "description": "The creature editor's ground disc: a flat CylinderMesh under the creature, dark blue with a soft pool of light at its centre and an edge that feathers out (editor_floor.gdshader), scaled to the body, so the Spore-style room has a floor until the creature-stage art pass gives the editor a modelled room.",
+      "types": [
+        "CylinderMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_editor.tscn",
+        "game/scenes/creature/editor_floor.gdshader"
+      ],
+      "node": "CreatureEditor/Floor",
+      "remove_by": "creature-stage art pass (M2)"
+    }
+  ],
   "functional": [
     {
       "id": "eat_fx_quads",
@@ -181,6 +197,31 @@
         "game/scenes/pool/growth_beat.gd"
       ],
       "node": "Pool/BeatFx"
+    },
+    {
+      "id": "creature_skin",
+      "kind": "generated",
+      "description": "The creature stage's generated skin: a Surface Nets ArrayMesh built at runtime from the body description's capsule field (game/systems/creature/skin_cpu.gd or skin_gpu.gd), skinned to the generated Skeleton3D with CUSTOM0 paint coordinates and CUSTOM1 rest positions, drawn with the art team's creature_skin.gdshader. Spore-style full-body building (docs/DECISIONS.md, 2026-10-23): the player's anatomy is the model, so there is no Blender source for it. The art parts on it are the recorded cpart_* assets.",
+      "types": [
+        "ArrayMesh"
+      ],
+      "files": [
+        "game/scenes/creature/spine_rig.gd"
+      ],
+      "node": "CreatureStage/<creature>/Body/Skeleton/Skin"
+    },
+    {
+      "id": "creature_editor_handles",
+      "kind": "ui",
+      "description": "The creature editor's handles and gizmos: unshaded SphereMesh instances on every vertebra, joint and part of the working body (orange, blue, green; the selection brighter and larger) and the selected part's turn ring drawn as an ImmediateMesh line strip. Editing UI drawn in the 3D view, not a model.",
+      "types": [
+        "SphereMesh",
+        "ImmediateMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_editor.gd"
+      ],
+      "node": "CreatureEditor/HandleRoot"
     }
   ]
 }
