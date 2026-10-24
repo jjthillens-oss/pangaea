@@ -66,6 +66,28 @@ func _init() -> void:
 		mood_traits["mood"] = mood
 		var result: Dictionary = Generator.render(mood_traits, 3)
 		_check(not result.has("error") and result["wav"].size() >= 44 + int(0.2 * Generator.RATE) * 2, "mood %s renders within duration" % mood)
+	var matrix_safe := true
+	for mass in [10.0, 80.0, 400.0]:
+		for mouth in Generator.MOUTHS:
+			for mood in Generator.MOODS:
+				var cell := traits.duplicate()
+				cell["mass_kg"] = mass
+				cell["mouth"] = mouth
+				cell["mood"] = mood
+				var result: Dictionary = Generator.render(cell, 1)
+				if result.has("error"):
+					matrix_safe = false
+					continue
+				var matrix_sum := 0.0
+				var matrix_peak := 0.0
+				for sample in result["samples"]:
+					matrix_safe = matrix_safe and is_finite(sample)
+					matrix_sum += sample
+					matrix_peak = maxf(matrix_peak, absf(sample))
+				matrix_safe = matrix_safe and matrix_peak <= Generator.CEILING + 0.00001
+				matrix_safe = matrix_safe and absf(matrix_sum / result["samples"].size()) < 0.001
+				matrix_safe = matrix_safe and result["samples"].size() <= int(1.5 * Generator.RATE)
+	_check(matrix_safe, "all 60 matrix voices finite, peak/DC/duration safe")
 	print("FAILURES: %d" % failures)
 	quit(1 if failures else 0)
 
