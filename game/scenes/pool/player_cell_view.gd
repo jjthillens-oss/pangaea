@@ -12,7 +12,8 @@ extends Node3D
 ## Growth (S2, s2-view 4.3): set_growth_pose is the growth beat's swell (a factor on Pivot), the
 ## offset from the sim's position the cell is drawn at while it eases to where the tick settled it,
 ## and the Body's Stretch blend shape; set_ripeness is its Ripeness shape (the meter's share). A body
-## without a shape ignores it.
+## without a shape ignores it, and so does a cell drawn on Windows' software Direct3D 12 adapter
+## (shapes_safe).
 
 const PART_SCENES := {
 	"mouth_filter": preload("res://assets/export/part_mouth_filter.glb"),
@@ -83,6 +84,9 @@ var _shelter_phase := 0.0
 var _overlay := ShaderMaterial.new()
 var _overlay_on := false
 var _warm_overlay := 0   ## frames left to draw the overlay unseen, so its shader is ready before play
+
+## 1 while blend shapes may move on this renderer, 0 when not, -1 until it is read (shapes_safe).
+static var _shapes_ok := -1
 
 var _growth_swell := 1.0
 var _growth_offset := Vector2.ZERO
@@ -184,7 +188,21 @@ func growth_pose() -> Dictionary:
 	return {"swell": _growth_swell, "offset": _growth_offset, "stretch": _stretch, "ripeness": _ripeness}
 
 
+## Whether the Body's blend shapes may move on this adapter and rendering method. On Windows'
+## software Direct3D 12 adapter (WARP, "Microsoft Basic Render Driver", what a PC without a
+## working GPU driver and CI's Windows runner get) the frame a shape first moves in never ends
+## (windows-launch on e2, 2026-10-24), so there the cell keeps its rest shape. The shapes only
+## swell and stretch it a little, so nothing reads wrong. Compatibility is fine.
+static func shapes_safe(adapter: String, method: String) -> bool:
+	return method == "gl_compatibility" or not adapter.contains("Basic Render Driver")
+
+
 func _set_shape(shape: StringName, weight: float) -> void:
+	if _shapes_ok < 0:
+		_shapes_ok = int(shapes_safe(RenderingServer.get_video_adapter_name(),
+				RenderingServer.get_current_rendering_method()))
+	if _shapes_ok == 0:
+		return
 	var body := get_node_or_null(^"%Model/Body") as MeshInstance3D
 	if body == null:
 		var model := get_node_or_null(^"%Model")
