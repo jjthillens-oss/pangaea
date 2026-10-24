@@ -108,7 +108,7 @@ func test_refused_ops_change_nothing() -> void:
 		"unknown part": func(s): return s.add_part("tentacle", {}),
 		"eye on a leg": func(s): return s.add_part("eye", {"host": "l_1", "u": 500, "ring": 250}),
 		"eye turned past its limit": func(s): return s.orient_part("p_1", {"turn": 90}),
-		"part at 3x": func(s): return s.scale_part("p_1", 3000),
+		"part at 5x": func(s): return s.scale_part("p_1", 5000),
 		"beak moved off the middle": func(s): return s.move_part("p_2", {"ring": 250}),
 		"part host set through orient": func(s): return s.orient_part("p_1", {"host": "l_1"}),
 	}

@@ -9,16 +9,18 @@ extends Node3D
 ##
 ## Mouse: left-drag a handle (orange vertebra, blue joint, green part; a selected part shows a yellow turn ring whose
 ## handle turns it); with a tool chosen, left-click the skin to add a part or grow a limb. Wheel over the selected
-## vertebra or joint thickens or thins it, elsewhere zooms. Middle-drag or the right stick orbits. Keys: 1-9, Tab,
+## vertebra or joint thickens or thins it, over the selected part grows or shrinks it, elsewhere zooms. Right-drag,
+## middle-drag or the right stick orbits (owner playtest, 2026-10-24). Keys: 1-9, Tab,
 ## [ and ] pick a part tool, L the limb tool, 0 no tool, Q/E turn and R/F tilt the selected part, Delete removes the
-## selection, Insert adds a vertebra or joint after it, M toggles its mirror, Ctrl+Z / Ctrl+Y undo and redo, T
+## selection, Insert adds a vertebra or joint after it, M toggles its mirror, + and - grow and shrink it (a part's
+## scale, a vertebra's or joint's thickness), Ctrl+Z / Ctrl+Y undo and redo, T
 ## toggles the test drive, Enter is Done. Escape (and the HUD's Back, and the pad's B through CreatureStage) is
 ## progressive: it clears the tool and the selection first; with edits since the last Done it asks once (UNSAVED_TEXT,
-## for REFUSAL_S) and leaves on the next press; otherwise it leaves. The right mouse button and Space stay unused
-## (tests/test_project_settings.gd).
+## for REFUSAL_S) and leaves on the next press; otherwise it leaves. Space stays unused; the right mouse button
+## only orbits here (no input action uses it, tests/test_project_settings.gd).
 ##
 ## Every input path has a method twin (choose_tool, click_skin, drag, select, undo, redo, remove_selected,
-## insert_after_selected, mirror_selected, thicken, test_drive, finish, back), so the smoke and the scene tests drive
+## insert_after_selected, mirror_selected, thicken, resize_selected, orbit, zoom, test_drive, finish, back), so the smoke and the scene tests drive
 ## it without input events. The UI buttons call the same methods. `refusal_text` holds the last refused op's reason
 ## for REFUSAL_S seconds.
 ##
@@ -55,6 +57,15 @@ const ORBIT_MOUSE_RATE := 0.008
 const ORBIT_STICK_RATE := 2.2
 const STICK_DEADZONE := 0.2
 const ZOOM_STEP := 1.1
+## One + / - or wheel step on a part's scale (10%), clamped to the body rules' part scale range.
+const PART_SCALE_STEP := 1.1
+## The camera's distance range, as multiples of the body's framing distance: close enough to inspect a part, far
+## enough to see a big creature whole.
+## New parts are sized to the body (Picking.fit_scale): at scale 1000 on a body this one's size, larger on a bigger
+## body, so a giant's feet are not a mouse's.
+const REFERENCE_BODY := "s1_quadruped"
+const ZOOM_MIN := 0.25
+const ZOOM_MAX := 4.0
 ## The camera's pitch range (rad): never under the floor disc, even zoomed far out.
 const PITCH_MIN := 0.05
 const PITCH_MAX := 1.4
@@ -69,8 +80,8 @@ const SKIN_COLORS: Array[Color] = [Color("#5ca8dc"), Color("#4fc08a"), Color("#d
 		Color("#a86fd6"), Color("#e6e1c8"), Color("#5f6b7a"), Color("#2e4a6b")]
 ## The test drive's looping program: [until_s, throttle, turn] (a walk, a trot, a run and a turn, then again).
 const DRIVE_PROGRAM := [[2.5, 0.3, 0.0], [5.0, 0.6, 0.0], [7.0, 1.0, 0.0], [8.5, 0.6, 0.7], [10.0, 0.0, 0.0]]
-const HINT := "Drag a handle   ·   click the skin with a tool   ·   wheel over the selection thickens, elsewhere zooms   ·   middle-drag or right stick orbits\n" \
-		+ "1-9 / Tab tools   ·   L limb   ·   0 none   ·   Q E R F turn and tilt   ·   Del   ·   Ins   ·   M mirror   ·   Ctrl+Z / Ctrl+Y   ·   T test drive   ·   Enter done   ·   Esc clears the tool, again leaves"
+const HINT := "Drag a handle   ·   click the skin with a tool   ·   right-drag turns the view   ·   wheel zooms, or over the selection resizes it\n" \
+		+ "1-9 / Tab tools   ·   L limb   ·   0 none   ·   + - resize   ·   Q E R F turn and tilt   ·   Del   ·   Ins   ·   M mirror   ·   Ctrl+Z / Ctrl+Y   ·   T test drive   ·   Enter done   ·   Esc clears the tool, again leaves"
 
 signal done_requested(body_dict: Dictionary, points_left: int)
 signal back_requested
@@ -105,6 +116,14 @@ var _refusal_t := 0.0
 var _worker: RefCounted
 var _orbit := Vector2(2.05, 0.3)
 var _distance := 2.6
+## The distance the body was framed at (frame_body), the zoom range's yardstick; 0 before the first framing.
+var _frame_distance := 0.0
+## The longest side of REFERENCE_BODY's bounds (m), measured once.
+var _reference_size_m := 0.0
+## Whether the "Start from" presets are offered (offer_presets), and the preset the design started from since the
+## last Done ("" for none; Back asks before leaving it).
+var presets_offered := false
+var preset := ""
 var _orbiting := false
 var _focus := Vector3.ZERO
 var _rig_offset := Vector3.ZERO
@@ -146,6 +165,7 @@ func _wire() -> void:
 	hud.action.connect(_on_hud_action)
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
+	hud.preset_chosen.connect(start_from_preset)
 	hud.set_hint(HINT)
 	if ResourceLoader.exists(STATS_PATH):
 		_stats_script = load(STATS_PATH)
@@ -164,11 +184,14 @@ func setup(body: RefCounted, points: int) -> void:
 	tools = part_rules.keys()
 	tools.sort()
 	session = Session.new(body, rules, part_rules, costs, points)
+	if _reference_size_m <= 0.0:
+		_reference_size_m = (CreatureData.body(REFERENCE_BODY).bounds_m() as AABB).get_longest_axis_size()
 	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
 	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
 	skin_pattern = Look.pattern_of(body.extra)
 	selected = {}
 	tool = ""
+	preset = ""
 	if _worker == null:
 		_worker = SkinWorker.new(rules, divisions)
 		if threaded:
@@ -198,6 +221,7 @@ func _frame_body() -> void:
 	_rig_offset = Vector3(0.0, -box.position.y + 0.01, 0.0)
 	_focus = box.get_center() + _rig_offset
 	_distance = 2.2 * box.get_longest_axis_size()
+	_frame_distance = _distance
 	var disc := maxf(1.2, 1.4 * box.get_longest_axis_size())
 	floor_disc.scale = Vector3(disc, 1.0, disc)
 	_update_camera()
@@ -349,14 +373,14 @@ func _unhandled_input(event: InputEvent) -> void:
 					press(mb.position)
 				else:
 					release()
-				get_viewport().set_input_as_handled()
-			MOUSE_BUTTON_MIDDLE:
+				_mark_handled()
+			MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
 				_orbiting = mb.pressed
-				get_viewport().set_input_as_handled()
+				_mark_handled()
 			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
 				if mb.pressed:
 					wheel(1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1, mb.position)
-					get_viewport().set_input_as_handled()
+					_mark_handled()
 	elif event is InputEventMouseMotion:
 		var mm := event as InputEventMouseMotion
 		if _orbiting:
@@ -365,7 +389,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			drag_to(mm.position)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if _key(event as InputEventKey):
-			get_viewport().set_input_as_handled()
+			_mark_handled()
+
+
+## Marks the event handled when the editor is in a live viewport (tests also feed _unhandled_input directly).
+func _mark_handled() -> void:
+	var viewport := get_viewport()
+	if viewport != null:
+		viewport.set_input_as_handled()
 
 
 ## The keys, as the lab bound them. Returns true when the key did something.
@@ -394,6 +425,10 @@ func _key(k: InputEventKey) -> bool:
 		insert_after_selected()
 	elif k.keycode == KEY_M:
 		mirror_selected()
+	elif k.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
+		resize_selected(1)
+	elif k.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
+		resize_selected(-1)
 	elif k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER:
 		finish()
 	elif k.keycode == KEY_ESCAPE:
@@ -582,6 +617,7 @@ func finish() -> Dictionary:
 	session = Session.new(body, rules, part_rules, costs, c["points_left"])
 	selected = {}
 	_mark_dirty()
+	preset = ""
 	done_requested.emit(dict, c["points_left"])
 	return {"ok": true, "reason": "", "points_left": c["points_left"]}
 
@@ -595,11 +631,49 @@ func back() -> String:
 		selected = {}
 		_mark_dirty()
 		return "cleared"
-	if not session._undo.is_empty() and refusal_text != UNSAVED_TEXT:
+	if (not session._undo.is_empty() or preset != "") and refusal_text != UNSAVED_TEXT:
 		_refuse(UNSAVED_TEXT)
 		return "asked"
 	back_requested.emit()
 	return "left"
+
+
+## Offers the preset creatures (CreatureStage does for a creature's first design, generation 1): the palette shows a
+## "Start from" row and start_from_preset() is allowed.
+func offer_presets(on: bool) -> void:
+	presets_offered = on
+	if on and hud.preset_count() == 0:
+		var entries := []
+		for n in CreatureData.preset_names():
+			var p := CreatureData.preset(n)
+			entries.append({"name": n, "title": String(p["title"]), "blurb": String(p["blurb"])})
+		hud.setup_presets(entries)
+	hud.show_presets(on)
+
+
+## Starts the design over from a preset creature (owner playtest, 2026-10-24): its body and skin colour replace the
+## working body at no cost, the points stay as they were, and undo starts afresh. Only while presets are offered.
+func start_from_preset(preset_name: String) -> Dictionary:
+	if not presets_offered:
+		return _refuse("presets are for a new creature's first design")
+	if not CreatureData.preset_names().has(preset_name):
+		return _refuse("no preset %s" % preset_name)
+	if walker != null:
+		test_drive(false)
+	var body: RefCounted = CreatureData.preset_body(preset_name)
+	session = Session.new(body, rules, part_rules, costs, session.available_points)
+	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
+	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
+	skin_pattern = Look.pattern_of(body.extra)
+	_store_look(session.working.extra)
+	hud.set_color(skin_color)
+	preset = preset_name
+	selected = {}
+	choose_tool("")
+	_frame_body()
+	_mark_dirty()
+	_rebuild()
+	return {"ok": true, "reason": ""}
 
 
 ## The skin colour, from a swatch; the working body carries it as "skin_color".
@@ -652,6 +726,7 @@ func press(at: Vector2) -> Dictionary:
 			Picking.anchor_at(session.working, hit["field"], hit["point"]))
 	if a.has("reason"):
 		return _refuse(a["reason"])
+	a["scale"] = Picking.fit_scale(session.working, _reference_size_m, rules)
 	var r: Dictionary = session.add_part(tool, a)
 	if r["ok"]:
 		selected = {"kind": "part", "id": r["part_id"], "twin": false}
@@ -727,16 +802,44 @@ func release() -> void:
 	_mark_dirty()
 
 
-## The wheel at a screen position: over the selected vertebra's or joint's handle it thickens or thins (a paid,
-## undoable edit); anywhere else it zooms. Without a position it zooms; thicken() is the edit's method twin.
+## The wheel at a screen position: over the selection's handle it resizes it (resize_selected: a vertebra or joint
+## thickens or thins, a part grows or shrinks; a paid, undoable edit); anywhere else it zooms. Without a position it
+## zooms.
 func wheel(direction: int, at := Vector2(-INF, -INF)) -> void:
 	var under := _handle_at(at) if at.is_finite() else {}
-	var over_selection: bool = not under.is_empty() and under["kind"] in ["vertebra", "joint"] and _same(under, selected)
+	var over_selection: bool = not under.is_empty() and _same(under, selected)
 	if not over_selection:
-		_distance *= 1.0 / ZOOM_STEP if direction > 0 else ZOOM_STEP
-		_update_camera()
+		zoom(direction)
 		return
-	thicken(direction)
+	resize_selected(direction)
+
+
+## Zooms in (direction > 0) or out one step, within ZOOM_MIN..ZOOM_MAX of the body's framing distance.
+func zoom(direction: int) -> void:
+	_distance *= 1.0 / ZOOM_STEP if direction > 0 else ZOOM_STEP
+	if _frame_distance > 0.0:
+		_distance = clampf(_distance, _frame_distance * ZOOM_MIN, _frame_distance * ZOOM_MAX)
+	_update_camera()
+
+
+## Grows (delta > 0) or shrinks the selection one step: a part's scale by PART_SCALE_STEP within the body rules'
+## range (so feet and hooves can follow a big body), a vertebra's or joint's thickness as thicken() does.
+func resize_selected(delta: int) -> Dictionary:
+	if selected.is_empty():
+		return _refuse("select something to resize")
+	if not selected["kind"] in ["part", "turn"]:
+		return thicken(delta)
+	var desc = session.working
+	var found: Array = desc.parts.filter(func(x): return x["id"] == selected["id"])
+	if found.is_empty():
+		return _refuse("no part %s" % selected["id"])
+	var now := int(found[0]["scale"])
+	var lo := int(session.rules.get("part_scale_min", 0))
+	var hi := int(session.rules.get("part_scale_max", 1000000))
+	var want := clampi(int(round(now * pow(PART_SCALE_STEP, delta))), lo, hi)
+	if want == now:
+		return _refuse("the part is already as %s as it goes" % ("big" if delta > 0 else "small"))
+	return _result(session.scale_part(selected["id"], want))
 
 
 ## Orbits the camera by (yaw, pitch) radians.

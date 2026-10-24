@@ -12,6 +12,7 @@ signal tool_chosen(type: String)
 signal action(name: String)
 signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
+signal preset_chosen(preset_name: String)
 
 const TOOL_BUTTON_FONT_PX := 22
 const SWATCH_PX := 40
@@ -19,6 +20,9 @@ const SWATCH_PX := 40
 var _tool_buttons := {}   ## tool type -> Button
 var _group := ButtonGroup.new()
 var _swatches: Array[Button] = []
+var _preset_title: Label
+var _preset_grid: GridContainer
+var _preset_sep: HSeparator
 
 var tools_grid: GridContainer
 var swatch_row: HBoxContainer
@@ -168,3 +172,47 @@ func set_test_drive(on: bool) -> void:
 
 func set_hint(text: String) -> void:
 	hint_text.text = text
+
+
+## The "Start from" row at the top of the palette: one button per preset creature ({name, title, blurb}; the blurb
+## is its tooltip), built once. Hidden until show_presets(true).
+func setup_presets(entries: Array) -> void:
+	var box: VBoxContainer = tools_grid.get_parent().get_parent()
+	if _preset_grid == null:
+		_preset_title = Label.new()
+		_preset_title.name = "PresetsTitle"
+		_preset_title.text = "Start from"
+		_preset_title.theme_type_variation = (box.get_node("PartsTitle") as Label).theme_type_variation
+		_preset_grid = GridContainer.new()
+		_preset_grid.name = "Presets"
+		_preset_grid.columns = tools_grid.columns
+		_preset_sep = HSeparator.new()
+		_preset_sep.name = "PresetsSep"
+		box.add_child(_preset_title)
+		box.add_child(_preset_grid)
+		box.add_child(_preset_sep)
+		box.move_child(_preset_title, 0)
+		box.move_child(_preset_grid, 1)
+		box.move_child(_preset_sep, 2)
+	for c in _preset_grid.get_children():
+		c.queue_free()
+	for e in entries:
+		var b := Button.new()
+		b.text = String(e["title"])
+		b.tooltip_text = String(e["blurb"])
+		b.focus_mode = Control.FOCUS_NONE
+		b.theme_type_variation = &"TabButton"
+		var preset_name := String(e["name"])
+		b.pressed.connect(func(): preset_chosen.emit(preset_name))
+		_preset_grid.add_child(b)
+	show_presets(false)
+
+
+func preset_count() -> int:
+	return 0 if _preset_grid == null else _preset_grid.get_child_count()
+
+
+func show_presets(on: bool) -> void:
+	for n in [_preset_title, _preset_grid, _preset_sep]:
+		if n != null:
+			n.visible = on

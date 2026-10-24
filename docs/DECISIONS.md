@@ -749,3 +749,23 @@ preview builds may have written v3 files. When `e2` merged main, S2's fields bec
 to one that lacks `growth` (the creature preview's), so either loads and Continues. v2 files go 2 to 3 to 4. BP-18's
 freeze now names v4 (a later need is v5). The S2 fixture (`save_v3_s2.json`) stays a v3 file and is pinned to load
 through the step unchanged but for the empty creature; the creature fixture is pinned to gain only S2's defaults.
+
+## 2026-10-24 · Creature editor after the owner's playtest (PROPOSED; IMPLEMENTED)
+Joshua played the creature stage (2026-10-24 02:39 UTC) and asked for easier editing, scalable parts and preset
+creatures that also live in the world. Built:
+
+- **Camera.** Right-drag orbits the creature, as middle-drag and the right stick already did; the wheel zooms between
+  a quarter and four times the body's framing distance. The right mouse button is still bound to no input action.
+- **Part size.** `+` / `-` and the wheel over a selected part grow or shrink it by 10% a step; a vertebra or joint
+  thickens as before. The body rules' part scale range widens from 0.5x..2x to 0.25x..4x. A new part is sized to the
+  body: scale 1000 on a body the size of the starter quadruped, in proportion on a bigger or smaller one
+  (`EditorPicking.fit_scale`).
+- **Presets.** Ten preset creatures, `game/data/creature/presets.json` from `tools/make_creature_presets.py`: raptor,
+  dragon, monkey, beetle, longneck, tortoise, boar, stalker, hopper and strider. Each passes the body and part rules,
+  builds a closed skin within the gameplay budget and walks on two or more legs (`tests/test_creature_presets.gd`).
+  The editor offers them under "Start from" on a creature's first design (generation 1, no history); picking one is
+  free and keeps the points. Back asks before leaving an uncommitted preset.
+- **World.** The rivals' species are the presets (they were the test starter bodies), each in its preset's colour,
+  still dressed with the world's random extra parts.
+- **Palette.** The parts list scrolls inside a palette panel that fits the screen. A visual palette with part
+  pictures is the next step.

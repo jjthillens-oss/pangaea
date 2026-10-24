@@ -174,6 +174,17 @@ static func anchor_for_part(desc: RefCounted, rule: Dictionary, picked: Dictiona
 	return a
 
 
+## The scale (per mille) a new part gets on `desc`: in proportion to the body's size (the longest side of its
+## bounds) against `reference_size_m`, the size at which parts were authored at 1000, rounded to 50 and kept in the
+## body rules' part scale range. A big creature's new feet are big; the player can still resize them.
+static func fit_scale(desc: RefCounted, reference_size_m: float, rules: Dictionary) -> int:
+	if reference_size_m <= 0.0:
+		return 1000
+	var ratio: float = (desc.bounds_m() as AABB).get_longest_axis_size() / reference_size_m
+	var s := int(round(ratio * 20.0)) * 50
+	return clampi(s, int(rules.get("part_scale_min", 1000)), int(rules.get("part_scale_max", 1000)))
+
+
 ## A new limb grown from skin point `p` with outward normal `normal` (PROPOSED defaults): three joints on the vertebra
 ## nearest the click, 2.5 vertebra radii long and tapering. Joint 0 sits inside the vertebra's sphere, so it touches
 ## it. A press on the top of the back points up and out along the normal and a press past either end of the spine

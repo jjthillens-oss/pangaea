@@ -112,8 +112,10 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	var skin_ms := 0
 	for r in sim.rivals:
 		var s := Time.get_ticks_msec()
-		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, PALETTE[rival_rigs.size() % PALETTE.size()],
-				Look.rival_pattern(rival_rigs.size() + 1))
+		# A species wears its preset's colour; a body without one takes the palette's next.
+		var rival_color: Color = skin_color_of(r["body"]) if (r["body"].extra as Dictionary).has(SKIN_COLOR_KEY) \
+				else PALETTE[rival_rigs.size() % PALETTE.size()]
+		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color, Look.rival_pattern(rival_rigs.size() + 1))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
