@@ -144,6 +144,20 @@ const IDENTITY_RUNS: Array[Dictionary] = [
 	{"name": "swim_racer", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven"},
 	{"name": "circle_hunter", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle"}]
 const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
+## S3's identity (S3 build plan BP3-2 and 7.5): S2's endless world, growth on as S2 ships it, each
+## run of IDENTITY_RUNS started at size 1 and again at size 2 (debug_set_size at tick 0). T0.1
+## recorded IDENTITY_S2_PATH on e3-base with record_endless_hashes.gd --set=s2, and
+## tests/test_hash_identity.gd runs them again on e3 (S3G34). Each override applies only where its key
+## exists, so the same runs replay on e3-base and on e3 (landmark_return arrives with T3.1).
+const IDENTITY_S2_PATH := "res://tests/fixtures/endless_s2_hashes.json"
+const IDENTITY_S2_OVERRIDES := {"sizes.max_in_build": 2, "switches.landmark_return": false}
+const IDENTITY_S2_RUNS: Array[Dictionary] = [
+	{"name": "swim_hunter_s1", "body": "hunter", "seed": SWIM_SEED, "driver": "swim", "start_size": 1},
+	{"name": "swim_hunter_s2", "body": "hunter", "seed": SWIM_SEED, "driver": "swim", "start_size": 2},
+	{"name": "swim_racer_s1", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven", "start_size": 1},
+	{"name": "swim_racer_s2", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven", "start_size": 2},
+	{"name": "circle_hunter_s1", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle", "start_size": 1},
+	{"name": "circle_hunter_s2", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle", "start_size": 2}]
 
 ## S2's growth gates (test_threat_fuzz's size-2 runner, test_endless_fuzz's growth fuzz,
 ## test_growth_gates, test_endless_cost's size-2 cases) wait on the S2 seams they read (S2 build plan
@@ -397,9 +411,12 @@ static func circle_intent(sim: Variant, corner: PackedFloat64Array) -> SimIntent
 ## One endless identity run (S2 build plan 7.5) from make_sim, driven as the S1 gates drive theirs:
 ## "swim" and "swim_overdriven" as the straight swims (east, hidden, keep_fed or overdriven), "circle"
 ## as the corner circle. Returns {"<ticks>": "<state_hash() in decimal>"} after exactly each step
-## count in `at` (ascending), or {} when a circle finds no clear corner.
-static func identity_run(run: Dictionary, at: Array[int]) -> Dictionary:
-	var sim: Variant = make_sim(str(run.body), int(run.seed))
+## count in `at` (ascending), or {} when a circle finds no clear corner. With `growth` (S3's runs,
+## BP3-2) the sim grows as S2 ships and starts at the run's "start_size" (debug_set_size at tick 0).
+static func identity_run(run: Dictionary, at: Array[int], growth := false) -> Dictionary:
+	var sim: Variant = make_sim(str(run.body), int(run.seed), growth)
+	if int(run.get("start_size", 1)) != 1:
+		sim.debug_set_size(int(run.start_size))
 	sim.debug_set_hidden(true)
 	var driver := str(run.driver)
 	assert(driver in IDENTITY_DRIVERS, "unknown identity driver %s" % driver)
@@ -417,6 +434,28 @@ static func identity_run(run: Dictionary, at: Array[int]) -> Dictionary:
 			tick(sim, circle_intent(sim, corner) if driver == "circle" else bot.next_intent(sim))
 			steps += 1
 		out[str(n)] = str(sim.state_hash())
+	return out
+
+
+## S3G34's run (BP3-2): identity_run with growth on under IDENTITY_S2_OVERRIDES, each applied to the
+## shared content's config only where its key exists and put back after the run.
+static func identity_run_s2(run: Dictionary, at: Array[int]) -> Dictionary:
+	var config: Variant = data().content.config
+	var saved := {}
+	for key: String in IDENTITY_S2_OVERRIDES:
+		var value: Variant = IDENTITY_S2_OVERRIDES[key]
+		if key == "sizes.max_in_build":
+			saved[key] = config.max_size_in_build
+			config.max_size_in_build = int(value)
+		elif key.begins_with("switches.") and key.trim_prefix("switches.") in WorldConfig.SWITCH_KEYS:
+			saved[key] = config.switches.get(key.trim_prefix("switches."))
+			config.switches[key.trim_prefix("switches.")] = value
+	var out := identity_run(run, at, true)
+	for key: String in saved:
+		if key == "sizes.max_in_build":
+			config.max_size_in_build = int(saved[key])
+		else:
+			config.switches[key.trim_prefix("switches.")] = saved[key]
 	return out
 
 
@@ -673,6 +712,36 @@ func test_the_endless_identity_file_holds_every_run_at_every_tick() -> void:
 	check_eq(runs.size(), IDENTITY_RUNS.size(), "one record per run")
 	for i in mini(runs.size(), IDENTITY_RUNS.size()):
 		var want: Dictionary = IDENTITY_RUNS[i]
+		var got: Dictionary = runs[i]
+		for key in want:
+			var g: Variant = got.get(key)   # JSON numbers read back as floats
+			var same: bool = typeof(g) == TYPE_FLOAT and float(g) == float(want[key]) if want[key] is int else str(g) == str(want[key])
+			check(same, "run %d %s: %s (want %s)" % [i, key, g, want[key]])
+		var hashes: Dictionary = got.get("hashes", {})
+		check_eq(hashes.size(), IDENTITY_TICKS.size(), "%s: a hash per tick count" % want.name)
+		for n in IDENTITY_TICKS:
+			var h := str(hashes.get(str(n), ""))
+			check(h.is_valid_int() and int(h) >= 0, "%s tick %d: a decimal hash (%s)" % [want.name, n, h])
+
+
+## S3's identity file (S3 build plan 7.5) holds every run of IDENTITY_S2_RUNS, as named there, with a
+## decimal hash at every tick count of IDENTITY_TICKS, recorded on the real content under
+## IDENTITY_S2_OVERRIDES at a named commit (e3-base).
+func test_the_s2_identity_file_holds_every_run_at_every_tick() -> void:
+	var file := identity_file(IDENTITY_S2_PATH)
+	check(not file.is_empty(), "%s is there and is a JSON object" % IDENTITY_S2_PATH)
+	check_eq(str(file.get("content", "")), REAL_WORLD, "recorded on the real content")
+	var overrides: Dictionary = file.get("overrides", {})
+	check_eq(overrides.size(), IDENTITY_S2_OVERRIDES.size(), "recorded under the overrides (%s)" % overrides)
+	for key in IDENTITY_S2_OVERRIDES:
+		var want: Variant = IDENTITY_S2_OVERRIDES[key]
+		var g: Variant = overrides.get(key)   # JSON numbers read back as floats
+		check(float(g) == float(want) if want is int and g is float else g == want, "override %s: %s (want %s)" % [key, g, want])
+	check(str(file.get("base_commit", "")).length() == 40, "the base commit is a full sha (%s)" % file.get("base_commit"))
+	var runs: Array = file.get("runs", [])
+	check_eq(runs.size(), IDENTITY_S2_RUNS.size(), "one record per run")
+	for i in mini(runs.size(), IDENTITY_S2_RUNS.size()):
+		var want: Dictionary = IDENTITY_S2_RUNS[i]
 		var got: Dictionary = runs[i]
 		for key in want:
 			var g: Variant = got.get(key)   # JSON numbers read back as floats
