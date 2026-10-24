@@ -679,3 +679,108 @@ func test_every_band_1_anchor_has_a_clear_point_within_8_rings() -> void:
 	# eighth ring clears it, so the control blocks every case at size 3.
 	var at_3 := Array(control.blocked).filter(func(b: String) -> bool: return b.ends_with(" at 3"))
 	check_eq(at_3.size(), control.cases / 2, "control: a %.0f bu landmark blocks every anchor at size 3 (%d)" % [GROWN_LANDMARK_BU, at_3.size()])
+
+
+## T3.7: the shipped band-1 tiles (18 ordinary and 4 rare) read at the size-4 top pass every rule at
+## sizes 3 and 4, and every anchor of theirs keeps S3G5c's clear point in all 8 orientations. The
+## soak test below runs rules 2 to 8 in every orientation, as band 0's does.
+const B1_SHIPPED := "res://game/data/tiles/b1"
+var content_4: WorldContent
+
+
+func _content_4() -> WorldContent:
+	if content_4 == null:
+		content_4 = WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), species)
+	return content_4
+
+
+func test_the_shipped_band_1_tiles_validate_and_keep_room_at_their_anchors() -> void:
+	var c := _content_4()
+	var b1 := TileCatalog.load_from({1: B1_SHIPPED})
+	check_eq(b1.load_problems, PackedStringArray(), "the band-1 tiles read")
+	check_eq(b1.tiles.size(), 22, "18 ordinary tiles and 4 rare ones")
+	for size in [3, 4]:
+		check_eq(c.tiles.validate(species, c.kit, parts, size), PackedStringArray(), "size %d: every rule" % size)
+	# A zone that lives at 4 holds an item there (a thinned 8 or 12 would hold none, floor(4.8 / 8) = 0).
+	var blocks: Array = b1.tiles.values()
+	blocks.append(c.cradle_of(1)._block())
+	for t in blocks:
+		for z in WorldChecks.zones_at(t.zones, 1, 4, c):
+			check(_items(z) >= 1, "%s zone '%s' holds an item at size 4 (capacity %s, %s)" % [t.where, z.id, z.capacity, z.at_second_size])
+	var got := _anchors_without_room(b1, c.kit)
+	check(got.cases > 0, "some anchors were tried (%d)" % got.cases)
+	check_eq(got.blocked, PackedStringArray(), "every shipped anchor has a clear point within %d rings" % LANDMARK_SPIRAL_RINGS)
+
+
+func test_soak_every_band_1_tile_keeps_every_rule_at_all_8_orientations() -> void:
+	for size in [3, 4]:
+		check_eq(WorldChecks.orientation_problems(_content_4(), species, parts, size), PackedStringArray(),
+			"size %d: every band-1 tile at every orientation" % size)
+
+
+## Plan A.2's food bound for band 1 at sizes 3 and 4, its tiles and the cradle. Band 1 is leaner
+## than band 0 (54 and 62 measured against band 0's floor of 60), so its own floor shows the bound
+## saw the tiles.
+const B1_FOOD_FLOOR := 40
+
+
+func test_the_band_1_coarse_food_bound_stays_under_the_cap() -> void:
+	var c := _content_4()
+	var cap := int(c.config.caps.food_items)
+	for size in [3, 4]:
+		var bound := WorldChecks.food_bound(c, FOOD_COARSE_TM, size)
+		check(int(bound.worst) <= cap, "size %d: at most %d items within the food ring of any point (%d at %s)" % [size, cap, int(bound.worst), bound.get("at")])
+		check(int(bound.worst) >= B1_FOOD_FLOOR, "size %d: the bound saw the tiles (%d >= %d)" % [size, int(bound.worst), B1_FOOD_FLOOR])
+		print("test-tiles: band 1, size %d: coarse food bound %d at %s (cap %d)" % [size, int(bound.worst), bound.get("at"), cap])
+
+
+## S3G38 (F9) at sizes 3 and 4: G5 for band 1. From every open point of each band-1 tile the sea
+## outside reaches, a starving cell reaches one of the tile's own zones within the budget, with and
+## without its landmark's collider (a rare tile: with its set piece), and every live site home lies
+## in that sea; then the same over the whole cradle block, whose centre is food only (D-95).
+func test_slow_every_band_1_tile_and_the_cradle_reach_food_within_the_starving_budget() -> void:
+	var budget := _budget()
+	var c := _content_4()
+	var block := c.cradle_of(1)._block()
+	for size in [3, 4]:
+		var rows := PackedStringArray()
+		for id in WorldConfig._sorted(c.tiles.tiles.keys()):
+			var t: Dictionary = c.tiles.tiles[id]
+			if int(t.band) != 1:
+				continue
+			var worst := 0.0
+			for with_anchor in ([true, false] if t.landmark_anchor.size() == 2 else [true]):
+				var p := _placed(t, 0, with_anchor, size)
+				var arena := ChunkArena.from_shells(p.colliders)
+				check_eq(WorldChecks.reach_problems(arena, p.zones, _tile_bounds(size), budget, p.homes), PackedStringArray(),
+					"size %d: %s %s its anchor" % [size, t.where, "with" if with_anchor else "without"])
+				worst = maxf(worst, float(_worst_reach(arena, p.zones, _tile_bounds(size)).worst))
+			rows.append("%s %.1f" % [t.id, worst])
+		var s := WorldConfig.bu_to_tm(size)
+		var bounds := Rect2(Vector2.ONE * -CradleBlock.HALF_BU * s, Vector2.ONE * 2.0 * CradleBlock.HALF_BU * s)
+		var p := _placed(block, 0, true, size)
+		var arena := ChunkArena.from_shells(p.colliders)
+		check_eq(WorldChecks.reach_problems(arena, p.zones, bounds, budget, p.homes), PackedStringArray(), "size %d: the cradle" % size)
+		rows.append("cradle %.1f" % float(_worst_reach(arena, p.zones, bounds).worst))
+		print("test-tiles: size %d: band-1 reach worst per tile (budget %.2f): %s" % [size, budget, ", ".join(rows)])
+
+
+## S3G2 at identity: band 1's seams at sizes 3 and 4, every ordered pair of band-1 tiles (rare ones
+## included) east, north and on the diagonal, and the cradle's outer edges against every band-1 tile;
+## every orientation is test_seams' soak. The control puts a cradle shell on the leash circle of the
+## first band-1 site as its tile lies east of the cradle (slot (1, 0)): the cradle's side of the seam
+## must report it. (A shell at the cradle's own edge is CradleBlock's rule 2, test_cradle_block.)
+func test_slow_band_1_seams_hold_and_the_cradle_edges_meet_every_tile() -> void:
+	for size in [3, 4]:
+		var problems := WorldChecks.seam_problems(_content_4(), species, parts, size, IDENTITY)
+		check(problems.is_empty(), "size %d: band 1's seams at identity (%d: %s)" % [size, problems.size(), problems.slice(0, 5)])
+	var moved := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), species)
+	var frame: Dictionary = WorldChecks._tile_frames(moved, species, parts, 3, IDENTITY).filter(
+		func(f: Dictionary) -> bool: return not f.sites.is_empty())[0]
+	var disc: Dictionary = frame.sites[0].disc
+	var at: Vector2 = (disc.center - Vector2(disc.radius, 0.0)) / WorldConfig.bu_to_tm(3) + Vector2(3.0, 1.0) * TileCatalog.HALF_TILE_BU
+	moved.cradle_of(1).shells.append({"id": "cx", "center": PackedFloat64Array([at.x, at.y]), "radius": CONTROL_R,
+		"yaw_deg": PackedFloat64Array([0.0, 360.0]), "at_second_size": "keep"})
+	var found := WorldChecks.home_seam_problems(moved, species, parts, 3, IDENTITY)
+	print("test-tiles: control: a cradle shell on %s of %s: %s" % [frame.sites[0].where, frame.where, found.slice(0, 1)])
+	check(Array(found).any(func(p: String) -> bool: return p.contains("cradle_b1:cx")), "control: the cradle's shell is seen across the seam")

@@ -292,18 +292,22 @@ static func yaw_point(x: float, y: float, yaw_deg: float) -> PackedFloat64Array:
 ## size's: the species live there (SpeciesCatalog.live_at) with radii at_size(id, size).phenotype
 ## .radius / bu_to_tm(size) bu, the colliders there (colliders_at), reach discs with k (D-39, D-69)
 ## and every fairness length in bu (its tm / bu_to_tm(size)). At a band's first size every value is
-## S1's, bit for bit. A rule broken at a band's second size says so ("rule 6 at size 2").
+## S1's, bit for bit. A rule broken at a band's second size says so ("rule 6 at size 2"). Only the
+## tiles of the size's band are checked (S3: band 0's at sizes 1 and 2, band 1's at 3 and 4).
 func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCatalog, size: int = 1) -> PackedStringArray:
 	var errors := PackedStringArray(load_problems)
 	if not errors.is_empty():
 		return errors
 	var radii := radii_at(species, part_catalog, size)
-	for band in bands:
-		_check_counts(band, errors)
+	var band_here := WorldConfig.band_of(size)
+	if bands.has(band_here):
+		_check_counts(band_here, errors)
 	var behaviors := {}
 	var smallest := {}
 	for id in WorldConfig._sorted(tiles.keys()):
 		var t: Dictionary = tiles[id]
+		if int(t.band) != band_here:
+			continue
 		var colliders := colliders_of(t, kit)
 		var there := colliders_at(t, colliders, size)
 		_check_shells(t, kit, colliders, errors)
@@ -314,11 +318,11 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 			_check_anchor(t, kit, species, radii, there, size, errors)
 		_check_sites(t, species, radii, kit, there, part_catalog, size, errors, morsel_max_radius_tm)
 		_check_content(t, species, size, behaviors, smallest, errors)
-	for band in bands:
-		var covered: Array = WorldConfig._sorted(behaviors.get(band, {}).keys())
+	if bands.has(band_here):
+		var covered: Array = WorldConfig._sorted(behaviors.get(band_here, {}).keys())
 		if covered.size() < MIN_THREAT_BEHAVIORS:
 			errors.append("tiles b%d: rule 7: the live threats at size %d are %s; they need %d behaviours"
-				% [band, size, covered, MIN_THREAT_BEHAVIORS])
+				% [band_here, size, covered, MIN_THREAT_BEHAVIORS])
 	check_strike_room("tiles", species, radii, smallest, part_catalog, size, errors)
 	return errors
 

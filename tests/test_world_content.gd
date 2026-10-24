@@ -3,6 +3,7 @@ extends TestCase
 ## the fixture world loads its kit, tiles and home ring and has no problems; each check across files
 ## refuses the mistake it is for with one problem; the checks stay cheap (G24).
 
+const WorldChecks := preload("res://tests/world_checks.gd")
 const WORLD := "res://tests/fixtures/world/world_min.json"
 const MAX_PROBLEMS_MS := 50.0
 
@@ -47,6 +48,48 @@ func test_the_fixture_world_has_the_shipped_settings() -> void:
 	check_eq([fixture.switches.growth, shipped.switches.growth], [false, true], "growth off in the fixture, on in the game")
 	check_eq([fixture.switches.landmark_return, shipped.switches.landmark_return], [false, true],
 		"the landmark return off in the size-2 fixture, on in the game (BP3-17)")
+
+
+## BP3-17: a build whose top is size 2 loads band 0 only, though world_cell.json names band 1's tiles
+## and cradle (S3 ships them before the growth tick crosses a band).
+func test_a_size_2_world_loads_band_0_only() -> void:
+	var shipped := WorldContent.load_from(WorldConfig.DEFAULT_PATH, PoolLayout.load_from(), species)
+	check_eq(shipped.config.max_size_in_build, 2, "the shipped top is still size 2")
+	check_eq(shipped.tiles.bands, [0] as Array[int], "band 0's tiles only")
+	check_eq(shipped.cradles, {}, "no cradle")
+	check_eq(shipped.problems(parts, species), PackedStringArray(), "the shipped content has no problems")
+
+
+## T3.7 at the size-4 top (I-3's flip): bands 0 and 1 load with band 1's cradle, and the content has
+## no problems at sizes 1 to 4 (every size, the cradle, band 1's fixed rare kind, the B-6 bound).
+## D-108: a band's place kinds are its rare kinds and landmark models, 2 + 6 in band 0, 4 + 6 in 1.
+func test_the_size_4_world_has_no_problems_and_its_place_kinds() -> void:
+	var content := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), species)
+	check_eq(content.tiles.bands, [0, 1] as Array[int], "bands 0 and 1")
+	check_eq(content.cradles.keys(), [1], "band 1's cradle")
+	check_eq(content.problems(parts, species), PackedStringArray(), "no problems at sizes 1 to 4")
+	check_eq(content.place_kinds(0).size(), 8, "band 0: 2 rare kinds and 6 landmark models (%s)" % [content.place_kinds(0)])
+	check_eq(content.place_kinds(1).size(), 10, "band 1: 4 rare kinds and 6 landmark models (%s)" % [content.place_kinds(1)])
+	for band in [0, 1]:
+		var kinds := Array(content.place_kinds(band))
+		var sorted := kinds.duplicate()
+		sorted.sort()
+		check_eq(kinds, sorted, "band %d sorted" % band)
+		for kind in content.tiles.rare_kinds(band):
+			check(kinds.has(kind), "band %d holds rare kind %s" % [band, kind])
+	check(not Array(content.place_kinds(1)).has("giant_husk"), "no band-0 kind in band 1")
+
+
+## S3G42c (BP3-8): landmark_find_tm + 4 + D(max_in_build) < rings_tm.load, D = respawn_clear_m + the
+## cell's radius + 2 x reach_max_threat. At size 4 that is 6 + 4 + 39.1, under 56 and over 48.
+func test_the_landmark_pass_stays_inside_the_load_ring() -> void:
+	var content := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), species)
+	content.config.rings.load = 48.0
+	var problems := content.problems(parts, species)
+	check_has_error(problems, "world_cell.rings_tm.load: landmark_find_tm + 4 + D at size 4 (6.00 + 4 + 39.11) must be below it (48.00)")
+	content.config.switches.landmark_return = false
+	check(not Array(content.problems(parts, species)).any(func(p: String) -> bool: return p.contains("landmark_find_tm")),
+		"no landmark pass, no bound")
 
 
 func test_an_unknown_fixed_rare_kind_is_a_problem() -> void:

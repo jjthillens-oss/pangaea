@@ -83,6 +83,8 @@ MIN_SHELL_R, MAX_SHELL_R = 0.6, 1.5
 MIN_ZONE_R, MAX_ZONE_R = 2.0, 8.0
 SHELL_SECOND = ("keep", "sink")
 ZONE_SECOND = ("keep", "thin", "drop")
+UNIT_ENERGY = 8.0                 # pool_m1.json plankton.unit_energy: one food item
+THIN_SHARE = 0.4                  # world_cell.json second_size.zone_thin_share
 MAX_ZONE_YIELD = 1.152            # static #33: growth x capacity x (0.25 + 0.05)
 YIELD_SHARE, REGROW_FLOOR = 0.25, 0.05
 ZONE_CLEAR = 0.7                  # PoolLayout.ZONE_CLEAR_MARGIN (bu)
@@ -491,6 +493,8 @@ def check_shells_zones(where, block, half, out, edge_ok=None):
             continue
         if not edge_ok(z["center"], r, half - 1.0):
             out.add(w, "rule 3", f"at {z['center']} comes within 1 bu of the edge")
+        if z["at_second_size"] == "thin" and z["capacity"] * THIN_SHARE < UNIT_ENERGY:
+            out.add(w, "rule 3", f"thins to {z['capacity'] * THIN_SHARE:.1f} at size {SECOND}, under one item ({UNIT_ENERGY}); keep it")
         y = z["growth_rate"] * z["capacity"] * (YIELD_SHARE + REGROW_FLOOR)
         if y > MAX_ZONE_YIELD + 1e-12:
             out.add(w, "rule 3", f"yields {y:.3f} a second; static #33 allows {MAX_ZONE_YIELD}")

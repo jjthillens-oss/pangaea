@@ -59,7 +59,10 @@ func test_the_shipped_world_cell_has_no_problems() -> void:
 	check_eq(config.caps.chunks, 36, "chunk cap")
 	check_eq(config.arrangement.fixed_rare.tile, Vector2i(2, -1), "the fixed rare tile")
 	check_eq(config.arrangement.fixed_rare.kind, "giant_husk", "is the giant husk")
-	check_eq(config.content.tiles, {"0": "res://game/data/tiles/b0"}, "band 0 tiles")
+	check_eq(config.content.tiles, {"0": "res://game/data/tiles/b0", "1": "res://game/data/tiles/b1"}, "band 0 and band 1 tiles (S3 6.1)")
+	check_eq(config.cradle_paths, {1: "res://game/data/cradle_b1.json"}, "band 1's cradle")
+	check_eq([config.arrangement_of(1).region_order, config.arrangement_of(1).fixed_rare.kind],
+		[PackedStringArray(["veil_garden", "warden_flat", "glass_reef"]), "sunbeam_well"], "band 1's arrangement")
 	check_eq(config.switches, {"generated_creatures": true, "growth": true, "lumps": true, "habits": true,
 		"landmark_return": true}, "tile creatures, growth, lumps, habits and the landmark return on")
 	check_eq(config.max_size_in_build, 2, "S2's top is size 2 (BP-5)")
@@ -87,8 +90,9 @@ func test_the_shipped_growth_ladder_and_second_size() -> void:
 	check_eq(config.second_size, {"zone_thin_share": 0.4}, "a thin zone keeps 0.4 of its capacity (D-60)")
 	check_eq(config.ladder.labels.size(), WorldConfig.MAX_SIZE, "a label per size")
 	check_eq([config.ladder.labels[0], config.ladder.labels[1]], ["about 20 µm", "about 32 µm"], "sizes 1 and 2")
-	check_eq(config.ladder.food_looks, [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "carrion"}],
-		"plankton at size 1, the algae ball at size 2")
+	check_eq(config.ladder.food_looks, [{"plant": "plankton", "meat": "carrion"}, {"plant": "algae_ball", "meat": "carrion"},
+		{"plant": "glass_flake", "meat": "carrion"}, {"plant": "bead_cluster", "meat": "carrion"}],
+		"plankton at size 1, the algae ball at 2, the glass flake at 3 and the bead cluster at 4 (S3 6.1)")
 
 
 func test_each_rule_has_a_failing_case() -> void:
@@ -258,7 +262,7 @@ func test_the_test_worlds_read_and_pass() -> void:
 	var b0 := WorldConfig.load_from("res://tests/fixtures/world/world_min.json")
 	check_eq(b0.validate(), PackedStringArray(), "world_min.json")
 	check_eq(b0.switches.landmark_return, false, "the landmark return off in the size-2 test world")
-	check_eq(b0.cradle_paths, {}, "no cradle")
+	check_eq(b0.cradle_paths, {1: "res://game/data/cradle_b1.json"}, "it names the shipped cradle, as world_cell does, unloaded at size 2")
 
 
 func test_the_band_tables_and_arrangement_of() -> void:
