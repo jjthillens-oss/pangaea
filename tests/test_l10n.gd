@@ -15,3 +15,14 @@ func test_pause_title_resolves_to_english_in_scene_tree() -> void:
 	check_eq(resume.tr(resume.text), "Resume", "button must not display a raw key")
 	menu.free()
 	TranslationServer.set_locale(previous)
+
+
+func test_dynamic_messages_resolve_through_the_catalog() -> void:
+	var previous := TranslationServer.get_locale()
+	TranslationServer.set_locale("en")
+	check_eq(KeyLabel.mouse_button_name(MOUSE_BUTTON_LEFT), "Left mouse", "input label resolves")
+	check_eq(str(Main.quit_prompt(false, false).title), "Save first?", "dialog title resolves")
+	var arrow := StarvingArrow.new()
+	check_eq(arrow.label_text(), "Food 0 m", "drawn distance resolves")
+	arrow.free()
+	TranslationServer.set_locale(previous)
