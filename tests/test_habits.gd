@@ -7,7 +7,7 @@ extends TestCase
 
 const DT := 1.0 / 60.0
 ## Every state and phase the brain has, so the CALM table is checked against all their pairs.
-const STATES := ["rest", "wander", "forage", "notice", "chase", "attack", "flee"]
+const STATES := ["rest", "wander", "forage", "notice", "chase", "attack", "flee", "drift"]
 const PHASES := ["", "lurk", "watch", "patrol", "return", "seek", "eat", "wait", "pursue", "aim", "tell", "strike",
 	"glide", "recover"]
 ## Lurker posts 8 m apart; elder rammer zones (own radius 3 m) 10 m apart, as the tiles space them.
@@ -168,8 +168,8 @@ func _tick(c: Critter, tick: int) -> bool:
 # --- CALM ---
 
 func test_calm_is_s1s_set_and_is_calm_answers_it_for_every_state_and_phase() -> void:
-	check_eq(CreatureBrain.CALM.keys(), ["rest/lurk", "rest/", "wander/patrol", "forage/seek", "forage/eat"],
-		"CALM is S1 3.11's set (D-62)")
+	check_eq(CreatureBrain.CALM.keys(), ["rest/lurk", "rest/", "wander/patrol", "forage/seek", "forage/eat", "drift/"],
+		"CALM is S1 3.11's set (D-62) and a hazard's drift (S3, D-120)")
 	var mem := _lurker().mem
 	var calm := 0
 	for state in STATES:
@@ -179,7 +179,7 @@ func test_calm_is_s1s_set_and_is_calm_answers_it_for_every_state_and_phase() -> 
 			var want := CreatureBrain.CALM.has("%s/%s" % [state, phase])
 			check_eq(CreatureBrain.is_calm(mem), want, "is_calm(%s/%s)" % [state, phase])
 			calm += 1 if want else 0
-	check_eq(calm, 5, "every CALM label is a state/phase the brain has")
+	check_eq(calm, 6, "every CALM label is a state/phase the brain has")
 
 
 # --- posts and the union disc ---

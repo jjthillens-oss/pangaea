@@ -75,7 +75,7 @@ func test_corners_tell_apart_cameras_that_differ_in_one_input() -> void:
 
 func test_calm_agrees_with_the_calm_table_for_every_state_and_phase() -> void:
 	var states: Array[String] = [CreatureBrain.REST, CreatureBrain.WANDER, CreatureBrain.FORAGE, CreatureBrain.NOTICE,
-		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE, ""]
+		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE, CreatureBrain.DRIFT, ""]
 	var phases: Array[String] = ["", CreatureBrain.LURK, CreatureBrain.WATCH, CreatureBrain.PATROL, CreatureBrain.RETURN_HOME,
 		CreatureBrain.SEEK, CreatureBrain.EAT, CreatureBrain.WAIT, CreatureBrain.PURSUE, CreatureBrain.AIM, CreatureBrain.TELL,
 		CreatureBrain.STRIKE, CreatureBrain.GLIDE, CreatureBrain.RECOVER]
