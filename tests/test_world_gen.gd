@@ -757,36 +757,80 @@ func test_slow_size_two_chunks_cost_at_most_300_us_median_and_600_us_max() -> vo
 	check(cost.max <= 600.0 and cost.top <= 7.0, "max %.0f us, %.2f yardsticks" % [cost.max, cost.top])
 
 
+## S3G20 (BP3-6): band 1's chunks on the shipped content at the size-4 top, measured in the same run
+## as band 0's, the four sizes interleaved chunk by chunk so a slower stretch of the machine falls on
+## all of them alike. The absolute rows are G17's at size 3 and S2G37's at size 4; they block, since
+## both were green on e3-base (main's CI). The relative rows always block: size 3 against size 1 and
+## size 4 against size 2, median and p90 at most 1.10 x, max at most 1.25 x (a single chunk, about
+## +-9% between runs).
+func test_slow_band_1_chunks_cost_as_band_0s() -> void:
+	var catalog := SpeciesCatalog.load_from()
+	var top := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), catalog)
+	var cost := _cold_chunk_costs_at([1, 3, 2, 4], func() -> WorldGen: return WorldGen.create(top, catalog, 4242))
+	var limits := {3: [150.0, 1.5, 300.0, 3.0], 4: [300.0, 3.5, 600.0, 7.0]}
+	for n in [3, 4]:
+		var c: Dictionary = cost[n]
+		var l: Array = limits[n]
+		check(c.median <= l[0] and c.median_ratio <= l[1], "size %d: median %.0f us, %.2f yardsticks" % [n, c.median, c.median_ratio])
+		check(c.max <= l[2] and c.top <= l[3], "size %d: max %.0f us, %.2f yardsticks" % [n, c.max, c.top])
+		var base: Dictionary = cost[n - 2]
+		for row in [["median", 1.10], ["p90", 1.10], ["max", 1.25]]:
+			var ratio := float(c[row[0]]) / maxf(1.0, float(base[row[0]]))
+			check(ratio <= row[1], "size %d against %d: %s %.0f us / %.0f us = %.2f x (at most %.2f)"
+				% [n, n - 2, row[0], c[row[0]], base[row[0]], ratio, row[1]])
+
+
 ## G17's measure at size n: 500 chunks in spiral order, each its fastest of 3 runs on a new generator
-## and its fastest ratio to the yardstick timed after it. {median, median_ratio, max, top}.
+## (the fixture world's) and its fastest ratio to the yardstick timed after it.
+## {median, p90, median_ratio, max, top}.
 func _cold_chunk_costs(n: int) -> Dictionary:
+	return _cold_chunk_costs_at([n], func() -> WorldGen: return _gen(4242))[n]
+
+
+## G17's measure at each of `sizes` in one pass: each run makes a new generator per size (`make`)
+## and times each chunk at every size in turn before the next chunk. size -> {median, p90,
+## median_ratio, max, top}.
+func _cold_chunk_costs_at(sizes: Array, make: Callable) -> Dictionary:
 	var keys := _spiral(500)
-	var best: Array[float] = []
-	var ratio: Array[float] = []
-	best.resize(keys.size())
-	best.fill(INF)
-	ratio.resize(keys.size())
-	ratio.fill(INF)
+	var best := {}
+	var ratio := {}
+	for n in sizes:
+		var b: Array[float] = []
+		b.resize(keys.size())
+		b.fill(INF)
+		best[n] = b
+		var r: Array[float] = []
+		r.resize(keys.size())
+		r.fill(INF)
+		ratio[n] = r
 	for run in 3:
-		var gen := _gen(4242)
+		var gens := {}
+		for n in sizes:
+			gens[n] = make.call()
 		for i in keys.size():
-			var t0 := Time.get_ticks_usec()
-			gen.chunk(n, keys[i].x, keys[i].y)
-			var us := float(Time.get_ticks_usec() - t0)
-			best[i] = minf(best[i], us)
-			ratio[i] = minf(ratio[i], us / maxf(1.0, Yardstick.time_once()))
-	var worst := 0
-	for i in keys.size():
-		if best[i] > best[worst]:
-			worst = i
-	var median := Yardstick.median(best)
-	var median_ratio := Yardstick.median(ratio)
-	var top := 0.0
-	for r in ratio:
-		top = maxf(top, r)
-	print("test-world-gen: size %d cold chunks median %.0f us (%.2f yardsticks), max %.0f us at %s (%.2f yardsticks max)"
-		% [n, median, median_ratio, best[worst], keys[worst], top])
-	return {"median": median, "median_ratio": median_ratio, "max": best[worst], "top": top}
+			for n in sizes:
+				var t0 := Time.get_ticks_usec()
+				(gens[n] as WorldGen).chunk(n, keys[i].x, keys[i].y)
+				var us := float(Time.get_ticks_usec() - t0)
+				best[n][i] = minf(best[n][i], us)
+				ratio[n][i] = minf(ratio[n][i], us / maxf(1.0, Yardstick.time_once()))
+	var out := {}
+	for n in sizes:
+		var b: Array[float] = best[n]
+		var worst := 0
+		for i in keys.size():
+			if b[i] > b[worst]:
+				worst = i
+		var sorted := b.duplicate()
+		sorted.sort()
+		var p90: float = sorted[int(0.9 * (sorted.size() - 1))]
+		var top := 0.0
+		for r in ratio[n]:
+			top = maxf(top, r)
+		out[n] = {"median": Yardstick.median(b), "p90": p90, "median_ratio": Yardstick.median(ratio[n]), "max": b[worst], "top": top}
+		print("test-world-gen: size %d cold chunks median %.0f us (%.2f yardsticks), p90 %.0f us, max %.0f us at %s (%.2f yardsticks max)"
+			% [n, out[n].median, out[n].median_ratio, p90, b[worst], keys[worst], top])
+	return out
 
 
 # --- size 2 (S2 T3.3; docs/s2/s2-sim.md 3.10, build plan BP-7, BP-16) ---
