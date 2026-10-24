@@ -1197,7 +1197,8 @@ func _wedged(p: Vector2, was: Vector2, r: float) -> bool:
 ## Tick step 5: one separation pass over every overlapping pair (the cell first, then creatures in
 ## number order), each pushed body settled against rocks and the wall, then every creature clamped
 ## to its leash disc (last, so the leash holds at the end of every tick), then a strike that runs
-## into a rock ahead is blocked.
+## into a rock ahead is blocked. From size 2 a clamp that leaves a body inside a rock is taken back
+## as move_body's move is: a flee along a leash edge that crosses a rock slid into it, 11 mm at size 2.
 func _contacts() -> void:
 	var motions: Array[Locomotion.MotionState] = []
 	var radii := PackedFloat64Array()
@@ -1237,15 +1238,20 @@ func _contacts() -> void:
 			arena.settle(motions[i], radii[i])
 			if not held.is_empty() and _wedged(motions[i].position, held[i], radii[i]):
 				motions[i].position = held[i]
+	var take_back := world != null and world.size >= 2
 	for c in creatures.awake():
 		var mem := c.brain
 		if mem == null:
 			continue
 		# CreatureBrain.leash_disc written out, without its dictionary.
+		var clamped: bool
 		if mem.behavior == CreatureBrain.TERRITORIAL:
-			PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
+			clamped = PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
 		else:
-			PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
+			clamped = PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
+		if clamped and take_back and _wedged(c.motion.position, c.motion.prev_position, c.phenotype.radius):
+			c.motion.position = c.motion.prev_position   # where the tick began: inside the leash and clear
+			c.motion.velocity = Vector2.ZERO
 		if mem.state == CreatureBrain.ATTACK and CreatureBrain.is_striking(mem):   # a strike is an attack phase
 			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
 				CreatureBrain.BLOCKED_BEARING)

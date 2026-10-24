@@ -54,8 +54,11 @@ extends RefCounted
 ##  5  a hazard's sting is no strike: invariant 15 judges it.
 ##  7  a hazard form: a hazard settled in DRIFT lies within 1.0 x q tm of its drift goal. It settles
 ##     DRIFT_SETTLE_TICKS after it entered DRIFT, plus the ticks it needs to close the gap it entered
-##     with (past 1.0 x q) at rule 14 (f)'s margin: a site's spawn at home, a flee's end and a wake
-##     each leave it off its path, and it gains on the goal by no more than that margin.
+##     with (past 1.0 x q) at rule 14 (f)'s margin: a site's spawn at home, a flee's end, a wake and a
+##     respawn's move home each leave it off its path, and it gains on the goal by no more than that
+##     margin. The gap counts the ground the goal gains while the hazard turns and gets up to speed
+##     (a sleeper wakes at rest, its goal moving on). A respawn that moves it home is a new entry, and
+##     so is the end of a touch: a body in its way (the cell's or a creature's) holds it off its path.
 ## 12  a morsel site's carrion_spawned is an M1-step event (at least spawn_safe_m from the cell and out
 ##     of view, from the checkpoint too while dead); a carrion_expired "unloaded" off a growth tick is
 ##     a block-step event (out of view); after every step morsel_claims() is the number of morsel-site
@@ -119,7 +122,6 @@ var layout: PoolLayout
 var _quad := PackedVector2Array()   ## the widest view's footprint round (0, 0)
 var _margin := 0.0                  ## look-ahead plus the spawn gap
 var _safe := 0.0
-var _endless := false                ## the sim checked last has a world (invariant 7's restated measure)
 var _sting_cap := 0                  ## invariant 15 (a): stings allowed in a window (0: no hazard species)
 var _sting_damage_limit := -1.0      ## invariant 15 (a): max_single_hit_share x the smallest starting health
 
@@ -208,7 +210,6 @@ func before(sim: PoolSim) -> Dictionary:
 ## Checks the tick that `events` came from (`t` its number, `where` names it in a failure) against
 ## `was`, what `before` returned before it: invariants 1 to 11, then in the endless world 12, 13, 16.
 func after(sim: PoolSim, events: Array[Dictionary], t: int, where: String, was: Dictionary) -> void:
-	_endless = sim.world != null
 	if sim.world != null:
 		_follow_rebases(events, was)
 	for e in events:
@@ -216,6 +217,9 @@ func after(sim: PoolSim, events: Array[Dictionary], t: int, where: String, was: 
 			k.landmark_checkpoint = str(e.get("reason", "")) == "landmark"
 		elif e.type == "grew":
 			k.landmark_checkpoint = false
+		elif e.type == "respawned":
+			for id in e.get("relocated", []):   # moved home: invariant 7's hazard form starts afresh
+				k.drift_since.erase(str(id))
 	if sim.creatures != null:
 		take_events(sim, events, t, where)
 		check_15(sim, events, t, where)
@@ -451,7 +455,7 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 ## of CreatureBrain.drift_goal at the tick. k.drift_since holds each drifting hazard's [entry tick,
 ## settle ticks]; the settle ticks are fixed at entry from the gap it entered with.
 func _check_drift(sim: PoolSim, c: CreatureField.Creature, t: int, where: String, k: Dictionary) -> void:
-	if c.asleep or c.brain.state != CreatureBrain.DRIFT:
+	if c.asleep or c.brain.state != CreatureBrain.DRIFT or _in_its_way(sim, c):
 		k.drift_since.erase(c.id)
 		return
 	var q := sim.species.q_of(c.species_id, sim.size())
@@ -467,20 +471,40 @@ func _check_drift(sim: PoolSim, c: CreatureField.Creature, t: int, where: String
 			c.species_id, t - int(since[0]), off, q])
 
 
+## True when a body touches hazard `c` (within PoolArena.CONTACT_SLACK): the cell or a creature in its
+## way holds it off its path, so invariant 7's hazard form starts afresh once they part. S3G13's cell,
+## tethered to a veil at size 4, sat on its path for 40 ticks and slid it 0.635 tm off (seed 402).
+static func _in_its_way(sim: PoolSim, c: CreatureField.Creature) -> bool:
+	var reach := c.phenotype.radius + PoolArena.CONTACT_SLACK
+	if not sim.dead and c.motion.position.distance_to(sim.motion.position) <= reach + sim.phenotype.radius:
+		return true
+	for o: CreatureField.Creature in sim.creatures.awake():
+		if o != c and c.motion.position.distance_to(o.motion.position) <= reach + o.phenotype.radius:
+			return true
+	return false
+
+
 ## The ticks a hazard entering DRIFT `gap` tm past invariant 7's bound has before the bound holds:
 ## DRIFT_SETTLE_TICKS plus the gap at rule 14 (f)'s margin, its wander speed less its drift goal's
-## top speed (2π r √(1/P0² + 1/P1²), the periods in seconds).
+## top speed (2π r √(1/P0² + 1/P1²), the periods in seconds). The gap first grows by what the goal
+## covers at that top speed while the hazard gets going: a half turn at its turn rate, and the
+## speed it lacks at its acceleration (Locomotion.steer). A veil woken 0.98 tm off at size 3 starts
+## from rest, so its goal pulls 1.33 tm ahead before it gains.
 static func _drift_settle_ticks(c: CreatureField.Creature, gap: float) -> int:
-	if gap <= 0.0:
-		return DRIFT_SETTLE_TICKS
 	var cfg: Dictionary = c.brain.cfg
 	var hz := float(CreatureBrain.TICKS_PER_SECOND)
 	var periods: Array = cfg.drift.period_ticks
 	var goal_speed := TAU * float(cfg.drift.radius_m) * sqrt(pow(hz / float(periods[0]), 2.0) + pow(hz / float(periods[1]), 2.0))
-	var margin := float(cfg.speeds.wander) * c.phenotype.speed - goal_speed
+	var top := float(cfg.speeds.wander) * c.phenotype.speed
+	var margin := top - goal_speed
 	if margin <= 0.0:
 		return 1 << 30   # rule 14 (f) refuses such a species; never held
-	return DRIFT_SETTLE_TICKS + ceili(gap / margin * hz)
+	var p := c.phenotype
+	var get_up := PI / maxf(p.turn_rate, 1e-3) + maxf(0.0, top - c.motion.velocity.length()) / maxf(p.acceleration, 1e-3)
+	var behind := gap + goal_speed * get_up
+	if behind <= 0.0:
+		return DRIFT_SETTLE_TICKS
+	return DRIFT_SETTLE_TICKS + ceili(behind / margin * hz)
 
 
 ## Invariant 15 on the tick's events (`t` the tick, `where` names it in a failure): the stings on the
@@ -579,15 +603,16 @@ func _check_stall(c: CreatureField.Creature, t: int, where: String, label: Strin
 		return
 	var from: Vector2 = ring[(t - STALL_TICKS) % ring.size()]
 	if from.distance_to(c.motion.position) < STALL_MIN_M:
-		if _endless and _went_away(ring, from):
+		if _went_away(ring, from):
 			return
 		_fail(7, "%s: %s in %s for %d ticks moved %.3f m in the last %d" % [where, c.id, label, t - since,
 			from.distance_to(c.motion.position), STALL_TICKS])
 
 
-## Invariant 7 restated for the endless world: a creature that got STALL_MIN_M from where it was
-## STALL_TICKS ago and came back moved (a rammer backing off for its run-up, then charging); one
-## that never got that far is stuck. The pool keeps M1's measure, from end to end.
+## Invariant 7 restated (S1 for the endless world, S3 for the pool too): a creature that got
+## STALL_MIN_M from where it was STALL_TICKS ago and came back moved (a rammer backing off for its
+## run-up, then charging; a chaser overshooting the cell and turning back, as D-117 (a)'s pool runs
+## show at seed 403); one that never got that far is stuck.
 static func _went_away(ring: Array, from: Vector2) -> bool:
 	for p in ring:
 		if p != null and from.distance_to(p) >= STALL_MIN_M:

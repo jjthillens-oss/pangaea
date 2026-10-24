@@ -140,7 +140,7 @@ const BASE_GREEN := {
 ## S3_ADDITIONS_LIMIT_YARDSTICKS median. S3G19, slow: the growth ticks 2 to 3 and 3 to 4, warm, at
 ## most GROWTH_TICK_LIMIT_YARDSTICKS, as S2G18.
 const S3_HELD_AGAINST := {3: 1, 4: 2}
-const S3_RELATIVE := {3: 1.15, 4: 1.10}
+const S3_RELATIVE := {3: 1.20, 4: 1.10}   # size 3 at 1.20: Joshua's answer, 2026-10-24 (DECISIONS)
 const S3_ADDITIONS_LIMIT_YARDSTICKS := 0.4
 const S3_ADDITIONS_TICKS := 600
 const S3_GROWTH_FROM: Array[int] = [2, 3]

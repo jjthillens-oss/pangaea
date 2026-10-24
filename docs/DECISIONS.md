@@ -1348,7 +1348,32 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   where size 1 keeps 4 (the elder ambush hunter Joshua chose, and the veils). A drifting veil now
   steers from its own values (`CreatureBrain.seek_from`, as a forager's seek does) instead of
   building a self view every tick; size 3 and 4 swims hash the same at every 1,000 ticks. The 1.15
-  limit is the owner's and stands until he answers the card.
+  limit is the owner's and stands until he answers the card. **Answered 2026-10-24 22:31 UTC:**
+  Joshua raised the size-3 row to 1.20 x size 1 (`S3_RELATIVE[3]`); size 4's 1.10 x size 2 and every
+  absolute row stand.
+- **S3's soak tier on its first CI run (PR #164, soak-b)**: T0.3 ran only the one-seed slow cases, so
+  `test_threat_fuzz`'s two four-seed soaks first ran on CI, and failed on the checks, not the game.
+  (1) Invariant 7's hazard form held a veil to its path too soon twice. A sleeper woken 0.98 tm off
+  at size 3 starts from rest while its goal moves on, so the gap grew to 1.33 tm before it gained,
+  and it was 1.038 tm off at 120 ticks; `_drift_settle_ticks` now adds the ground the goal covers
+  while the hazard makes a half turn and gets up to speed. And a respawn that moves a veil home
+  (`_clear_checkpoint`, the event's `relocated`) is a new entry, as a site's spawn at home is.
+  (2) In D-117 (a)'s pool runs a rammer chasing the cell overshot, turned back and was 0.240 m
+  from where it was 150 ticks before: S1's restated stall measure (got 0.25 m away and came back)
+  now holds in the pool too. (3) S3G13's pair runs met each pair on 71 to 217 ticks against 600:
+  the evader foraged away, the kiter circled other creatures and starved every 25 s or so, and each
+  respawn was back at home. The runner now tethers the cell within 0.6 of the pair's sight
+  (`_tether`), which also brings it to the size-4 veil's threads under the evader (0 contact ticks
+  on two seeds before). Unit cases in `test_fuzz_invariants` catch the respawn entry and the get-up
+  time each taken out.
+  With the pairs met for real, two more showed locally. (4) A size-2 rammer fleeing the cell along
+  its leash edge, where the edge crosses a rock, was clamped into the rock 11 mm (invariant 1
+  forgives 1 mm): the clamp runs after the settle. From size 2 `PoolSim._contacts` now takes such a
+  clamp back as `move_body` takes back a wedged move (the body stays where the tick began and
+  stops); the pool and size 1 are unchanged, and S1's and S2's hashes hold to 18,000 ticks. (5) At
+  size 4 the tethered cell sat in a veil's path for 40 ticks and slid it 0.635 tm off (bound
+  0.625): a body touching a hazard (`_in_its_way`) now holds invariant 7's hazard form off, and
+  parting is a new entry. Unit cases catch each taken out.
 
 ## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
 

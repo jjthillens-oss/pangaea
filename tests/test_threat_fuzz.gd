@@ -401,6 +401,8 @@ const S3_PAIRS := {2: ["ambush_hunter", "rammer"], 3: ["ambush_hunter", "rammer"
 ## cell in its creature's senses this often over its eight runs.
 const MIN_CAPSULE_CONTACT_TICKS := 60
 const S3_MIN_SENSED := 600
+## S3G13: the cell keeps within this share of its pair's sight (at its size) of a creature of it (_tether).
+const PAIR_TETHER_SIGHT_SHARE := 0.6
 const SUNBEAM_WELL := "sunbeam_well"   ## D-117 (b): the band-1 rare place a veil and a Warden share
 const WELL_SEARCH_CHUNKS := 12          ## how far round home (chunks) the runner looks for it
 const WELL_LOAD_TICKS := 30             ## steps at the well before its sites are read
@@ -449,10 +451,11 @@ func _s3_bot(bot_name: String, seed_value: int, threads: bool, strikers := false
 
 ## One S3 run of S3_TICKS on `sim` (already set up), checked every tick by `fz` and invariant 14
 ## (by the field's records with `records`, as the pool's entry-record veil needs). With `stay` (abs
-## am) each respawn is followed by a dev teleport back there, checked as its own step. Returns
-## {"broken", "contact", "stings", "strike_hits", "strikes", "deaths", "counts"}; adds to `pairs` (_tally).
+## am) each respawn is followed by a dev teleport back there, checked as its own step. With `tether`
+## (a species) the cell keeps near the nearest living creature of it (_tether). Returns {"broken",
+## "contact", "stings", "strike_hits", "strikes", "deaths", "counts"}; adds to `pairs` (_tally).
 func _s3_run(fz: Variant, sim: PoolSim, b: Dictionary, where: String, pairs: Dictionary, records := false,
-		stay := PackedFloat64Array()) -> Dictionary:
+		stay := PackedFloat64Array(), tether := "") -> Dictionary:
 	fz.start_run()
 	var out := {"broken": PackedStringArray(), "contact": 0, "stings": 0, "strike_hits": 0, "strikes": 0, "deaths": 0,
 		"counts": {}}
@@ -471,6 +474,8 @@ func _s3_run(fz: Variant, sim: PoolSim, b: Dictionary, where: String, pairs: Dic
 		var was: Dictionary = fz.before(sim)
 		var known := _species_of(sim)
 		var intent: SimIntent = b.bot.next_intent(sim, events) if b.events else b.bot.next_intent(sim)
+		if not tether.is_empty():
+			_tether(sim, intent, tether)
 		sim.step(intent)
 		events = sim.drain_events()
 		var at := "%s tick %d" % [where, t]
@@ -491,10 +496,34 @@ func _s3_run(fz: Variant, sim: PoolSim, b: Dictionary, where: String, pairs: Dic
 	return out
 
 
+## S3G13's tether: while the cell lives and is farther from the nearest living creature of `sp` than
+## PAIR_TETHER_SIGHT_SHARE of that species' sight, the bot's move becomes full throttle toward it
+## (routed round rocks), so the pair keeps the cell in its senses. Alone the bots part from it: the
+## evader forages away, the kiter circles whatever is nearest and starves every 25 s or so at sizes 2
+## to 4, and each respawn is back at home. The bot is still asked every tick, so its own bookkeeping
+## runs on. Tethered, either bot starves now and then; that is part of the run.
+static func _tether(sim: PoolSim, intent: SimIntent, sp: String) -> void:
+	if sim.dead:
+		return
+	var at := Vector2.INF
+	var best := INF
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.species_id != sp or not c.state.is_alive():
+			continue
+		var d := sim.motion.position.distance_to(c.motion.position)
+		if d < best:
+			best = d
+			at = c.motion.position
+	if at.is_finite() and best > PAIR_TETHER_SIGHT_SHARE * float(sim.creatures.record_of(sp).sight):
+		var way := sim.arena.route_point(sim.motion.position, at, sim.phenotype.radius)
+		intent.move = (way - sim.motion.position).normalized()
+
+
 ## S3G13 (D-141, X3-16): at sizes 2 to 4 no creature below the cell's size engages it, for each q < 1
 ## pair (set_size, then the species spawned 6 tm from the cell) under the kiter and the evader on
 ## four seeds of 5 minutes, every invariant on every tick; a veil at 4 never stings though the cell
-## swims through its threads at least MIN_CAPSULE_CONTACT_TICKS each run.
+## swims through its threads at least MIN_CAPSULE_CONTACT_TICKS each run. The cell is tethered to
+## the pair's species (_tether): untethered, the first CI run met each pair on 71 to 217 ticks.
 func test_soak_at_sizes_two_to_four_no_creature_below_the_cell_engages_it() -> void:
 	var fz := FuzzInvariants.new(species, layout)
 	var broken := PackedStringArray()
@@ -512,7 +541,8 @@ func test_soak_at_sizes_two_to_four_no_creature_below_the_cell_engages_it() -> v
 					check(sim.debug_spawn_creature(sp, sim.motion.position + Vector2(6.0, 0.0), PI), "%s spawned" % sp)
 					sim.drain_events()
 					var where := "%s at %d, %s seed %d" % [sp, size, bot_name, seed_value]
-					var run := _s3_run(fz, sim, _s3_bot(bot_name, seed_value, hazard), where, pairs)
+					var run := _s3_run(fz, sim, _s3_bot(bot_name, seed_value, hazard), where, pairs, false,
+						PackedFloat64Array(), sp)
 					broken.append_array(run.broken)
 					print("test-threat-fuzz: S3G13 %s: %d deaths, %d stings, %d capsule-contact ticks" % [where, run.deaths,
 						run.stings, run.contact])

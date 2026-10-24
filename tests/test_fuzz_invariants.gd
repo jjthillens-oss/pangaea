@@ -626,6 +626,98 @@ func test_a_drifting_hazard_keeps_to_its_path_and_one_pushed_off_fails_7() -> vo
 	check(fuzz.bad.has(7) and str(fuzz.bad[7].first).contains("drift goal"), "pushed 5 tm off fails 7: %s" % fuzz.report())
 
 
+## Invariant 7's hazard form, two entries the first CI soak met (PR #164): a veil at rest just inside
+## the bound (a sleeper woken 0.98 tm off at size 3) is given the ground its goal gains while it gets
+## up, and a veil a respawn moves home (the "respawned" event's relocated) starts a new entry, so it
+## is not failed off its path for the move.
+func test_a_veil_at_rest_gets_up_first_and_one_the_respawn_moves_home_starts_afresh_7() -> void:
+	var sim := _b1(3)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	check_eq(c.motion.velocity, Vector2.ZERO, "at rest")
+	var inside := FuzzInvariants._drift_settle_ticks(c, -0.02)
+	check(inside > FuzzInvariants.DRIFT_SETTLE_TICKS, "at rest 0.02 tm inside: %d settle ticks" % inside)
+	check_eq(FuzzInvariants._drift_settle_ticks(c, -5.0), FuzzInvariants.DRIFT_SETTLE_TICKS, "far inside")
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 3)
+	for t in FuzzInvariants._drift_settle_ticks(c, gap) + 60:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	var was := fuzz.before(sim)
+	var t := sim.tick
+	sim.step(SimIntent.new())
+	c.motion.place(c.motion.position + Vector2(5.0, 0.0), c.motion.heading)   # as _clear_checkpoint moves it home
+	var events := sim.drain_events()
+	events.append({"type": "respawned", "relocated": [c.id]})
+	fuzz.after(sim, events, t, "moved home", was)
+	check(not fuzz.bad.has(7), "moved home by a respawn: a new entry: %s" % fuzz.report())
+
+
+## Invariant 7's hazard form and a body in the way: a veil the cell touches 2 tm off its path is not
+## held to the bound, and once they part it is a new entry with its settle ticks to come back.
+func test_a_hazard_a_body_holds_off_its_path_starts_afresh_when_they_part_7() -> void:
+	var sim := _b1(4)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 4)
+	for t in FuzzInvariants._drift_settle_ticks(c, gap) + 60:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	var touch := c.phenotype.radius + sim.phenotype.radius
+	for parted in [false, true]:
+		var was := fuzz.before(sim)
+		var t := sim.tick
+		sim.step(SimIntent.new())
+		var goal := CreatureBrain.drift_goal(c.brain, t)
+		c.motion.place(goal + Vector2(0.0, 2.0), c.motion.heading)   # 2 tm off, as the cell's body slid it
+		sim.motion.place(c.motion.position + Vector2(0.0, touch + (3.0 if parted else 0.0)), 0.0)
+		fuzz.after(sim, sim.drain_events(), t, "parted" if parted else "touching", was)
+		check(not fuzz.bad.has(7), "%s: %s" % ["parted: a new entry" if parted else "touching", fuzz.report()])
+
+
+## Invariant 1 at a leash edge (PoolSim._contacts): from size 2 a clamp to the leash that lands in a
+## rock is taken back, so the body stays where the tick began; at size 1 the clamp alone, bit for bit.
+func test_a_clamp_to_the_leash_into_a_rock_is_taken_back_from_size_2_1() -> void:
+	for size in [1, 2]:
+		var sim := _b1(size)
+		sim.debug_set_ai_frozen(true)
+		check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(6.0, 0.0), PI), "a rammer")
+		var c: CreatureField.Creature = sim.creatures.creatures.back()
+		sim.drain_events()
+		var mem := c.brain
+		var r := c.phenotype.radius
+		var territorial := mem.behavior == CreatureBrain.TERRITORIAL
+		var lr := (mem.territory_r if territorial else 0.0) + float(mem.cfg.leash_m)
+		var found := false
+		for rock in sim.arena.rocks:
+			if rock.center.distance_to(sim.motion.position) < 2.0 * lr + 4.0:
+				continue   # clear of the cell, so no separation push
+			for i in 16:
+				var n := Vector2.from_angle(TAU * i / 16.0)
+				var center: Vector2 = rock.center - n * lr   # the leash edge runs through the rock's center
+				if not sim.arena.is_clear(center, r):
+					continue
+				if territorial:
+					mem.territory_center = center
+				else:
+					mem.home = center
+				c.motion.place(center + n * (lr + 1.0), 0.0)   # past the leash, toward the rock
+				c.motion.prev_position = center
+				sim._contacts()
+				if size == 1:
+					check(not sim.arena.is_clear(c.motion.position, r), "size 1: clamped into the rock")
+				else:
+					check_eq(c.motion.position, center, "size 2: taken back to where the tick began")
+					check_eq(c.motion.velocity, Vector2.ZERO, "and stopped")
+				found = true
+				break
+			if found:
+				break
+		check(found, "size %d: a rock with a clear point a leash away" % size)
+
 
 ## Invariant 4's lane origin: a strike 0.7 tm from the origin its tell's lane showed fails, unless the
 ## cell touched the creature in its tell (the cell leaning on it pushed it there, and is in its reach).
