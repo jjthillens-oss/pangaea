@@ -1,9 +1,10 @@
 class_name CellEditor
 extends Control
 ## S4.4, the cell editor (docs/s4/s4-plan.md; Bible sections 5 and 24): opened by a mate (the pool's
-## mate_requested), a bounded editor over EditorSession for the next generation. The palette adds a
-## part where it fits; the rim picks a part and drags it round the body; the selected part can be
-## mirrored, resized, upgraded (S4.5 part levels) or removed; undo and redo step through the edits. The 3D preview draws the
+## mate_requested), a bounded editor over EditorSession for the next generation. The palette, its
+## tiles grouped by category with each part's model as the icon, adds a part where it fits; the rim
+## picks a part and drags it round the body; the selected part can be mirrored, resized, upgraded
+## (S4.5 part levels) or removed; undo and redo step through the edits. The 3D preview draws the
 ## working body as the pool will, and the stat lines show each number before and after. Mate commits
 ## through Lineage.reproduce (the save's genome becomes the child, its points pay the cost); Back
 ## leaves the body as it was. Either way `closed` reports whether a new generation was born.
@@ -31,6 +32,13 @@ const PART_ROLES := {
 	"cilia": "turns and starts faster", "spike": "rams harder", "eye_spot": "sees farther",
 	"shell_plate": "tougher", "toxin_gland": "poisons",
 }
+## The palette's groups, in order: [catalog category, heading].
+const CATEGORIES := [["mouth", "Mouths"], ["propulsion", "Movement"], ["defense", "Defense"], ["sense", "Senses"]]
+## A tile's short name where the group heading already says the rest.
+const TILE_NAMES := {"mouth_filter": "Filter", "mouth_jaw": "Jaw"}
+const PALETTE_PX := 300.0
+const TILE_PX := 92.0
+const TILE_COLUMNS := 3
 const SCALE_STEP := 0.25
 ## The round stage in the middle: the body seen from above with the rim over it.
 const DISH_PX := 780.0
@@ -56,6 +64,7 @@ var _redo: Button
 var _upgrade: Button
 var _selected_label: Label
 var _part_buttons: Array[Button] = []
+var _part_info: Label
 
 
 func _init() -> void:
@@ -293,25 +302,29 @@ func _build() -> void:
 	column.add_child(row)
 
 	var palette := VBoxContainer.new()
-	palette.custom_minimum_size = Vector2(260, 0)
+	palette.custom_minimum_size = Vector2(PALETTE_PX, 0)
+	palette.add_theme_constant_override(&"separation", 6)
 	row.add_child(palette)
 	var palette_title := Label.new()
 	palette_title.text = "Add a part"
+	palette_title.add_theme_font_size_override(&"font_size", 20)
 	palette.add_child(palette_title)
 	_part_buttons.clear()
 	var catalog := PartCatalog.load_from()
-	var ids: Array = catalog.parts.keys()
-	ids.sort()
-	for type_id: String in ids:
-		if not catalog.in_editor(type_id):
-			continue
-		var b := Button.new()
-		b.name = "Add_" + type_id
-		b.text = "%s · %d\n%s" % [type_id.capitalize(), catalog.cost_of(type_id), PART_ROLES.get(type_id, "")]
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.pressed.connect(add.bind(type_id))
-		palette.add_child(b)
-		_part_buttons.append(b)
+	for group: Array in palette_groups(catalog):
+		var heading := Label.new()
+		heading.text = group[0]
+		heading.modulate = Color(1, 1, 1, 0.6)
+		palette.add_child(heading)
+		var grid := GridContainer.new()
+		grid.columns = TILE_COLUMNS
+		palette.add_child(grid)
+		for type_id: String in group[1]:
+			grid.add_child(_part_tile(type_id, catalog))
+	_part_info = Label.new()
+	_part_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_part_info.custom_minimum_size = Vector2(PALETTE_PX, 48)
+	palette.add_child(_part_info)
 
 	var middle := VBoxContainer.new()
 	middle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -380,6 +393,45 @@ func _build() -> void:
 	_redo = _button(bottom, "Redo", redo)
 	_button(bottom, "Back", cancel)
 	_mate = _button(bottom, "Mate", commit)
+
+
+## The palette's groups, Spore's way: [heading, [part type ids]] by category in CATEGORIES order,
+## each group's parts by cost then name. Only parts the editor offers.
+static func palette_groups(catalog: PartCatalog) -> Array:
+	var out := []
+	for spec: Array in CATEGORIES:
+		var ids: Array = catalog.parts.keys().filter(
+			func(t: String) -> bool: return catalog.in_editor(t) and catalog.category_of(t) == spec[0])
+		ids.sort_custom(func(a: String, b: String) -> bool:
+			return [catalog.cost_of(a), a] < [catalog.cost_of(b), b])
+		if not ids.is_empty():
+			out.append([spec[1], ids])
+	return out
+
+
+## One palette tile: the part's icon over its name and cost. Hovering or focusing it names what
+## the part does under the grid.
+func _part_tile(type_id: String, catalog: PartCatalog) -> Button:
+	var icon := PartIcon.new(type_id)
+	add_child(icon)   # a viewport draws only in the tree; it is not a Control, so it takes no room
+	var b := Button.new()
+	b.name = "Add_" + type_id
+	b.text = "%s\n%d" % [TILE_NAMES.get(type_id, type_id.capitalize()), catalog.cost_of(type_id)]
+	b.icon = icon.get_texture()
+	b.expand_icon = true
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.custom_minimum_size = Vector2(TILE_PX, TILE_PX + 40)
+	b.clip_text = true   # every tile the same width, however long the name
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.add_theme_font_size_override(&"font_size", 15)
+	b.tooltip_text = PART_ROLES.get(type_id, "")
+	b.pressed.connect(add.bind(type_id))
+	var info := "%s · %d points: %s" % [type_id.capitalize(), catalog.cost_of(type_id), PART_ROLES.get(type_id, "")]
+	b.mouse_entered.connect(func() -> void: _part_info.text = info)
+	b.focus_entered.connect(func() -> void: _part_info.text = info)
+	_part_buttons.append(b)
+	return b
 
 
 func _button(parent: Control, label: String, action: Callable) -> Button:
