@@ -18,9 +18,8 @@ extends Node3D
 ## from `<asset>__fresh` and come in from the veil over PREBLUR_S; once the tick has settled, the
 ## leftovers sink SINK_TM and fade over RETIRE_S. end_growth frees the leftovers and merges the fresh.
 ##
-## In the sea the kit's shell pieces start loading on worker threads at setup (request_pieces), so a
-## shell first seen at a growth does not load its GLB in the growth's frame (S2G26). Each GLB loads
-## once a run.
+## In the sea the kit's shell pieces load at setup (load_pieces), so a shell first seen at a growth
+## does not load its GLB in the growth's frame (S2G26). Each GLB loads once a run.
 
 ## The kit's own glb pattern (spine 4.4): the layer needs no kit, so pool mode needs no world content.
 const ASSET_PATH := "res://assets/export/%s.glb"
@@ -31,8 +30,6 @@ const PLAIN_TINTS: PackedStringArray = ["", "#FFFFFF"]
 
 ## GLB path -> PackedScene, kept for the run once loaded.
 static var _scenes := {}
-## GLB paths being loaded on worker threads (request_pieces), not taken yet.
-static var _loading := {}
 
 ## asset -> {mesh: Mesh, offset: Transform3D (the mesh node under the GLB root), override: Material,
 ## tinted: bool}; null for an asset that has no GLB.
@@ -49,36 +46,23 @@ var _settled_t := -1.0
 var _beat_t := 0.0
 
 
-## Starts loading every shell piece of `kit` not loaded yet on a worker thread: loading one on the
-## main thread took 13 to 19 ms, and a growth draws shells the cell has not seen.
-static func request_pieces(kit: PlacementKit) -> void:
+## Loads every shell piece of `kit` not loaded yet, as the sea is set up: loading one in a growth's
+## frame took 13 to 19 ms, and a growth draws shells the cell has not seen. They are loaded on the
+## main thread, not on worker threads: on Windows' software renderer (WARP) the engine stalled for
+## minutes as worker-thread loads finished (the CI launch check), so the run's start takes them.
+static func load_pieces(kit: PlacementKit) -> void:
 	if kit == null:
 		return
 	for id: String in kit.assets:
 		var path := ASSET_PATH % id
-		if str(kit.assets[id].get("kind", "")) != "shell" or _scenes.has(path) or _loading.has(path) or not ResourceLoader.exists(path):
-			continue
-		if ResourceLoader.load_threaded_request(path) == OK:
-			_loading[path] = true
-
-
-func _notification(what: int) -> void:
-	# A load still pending when the run ends would leak: take them all as a field goes (they are
-	# kept for the run either way).
-	if what == NOTIFICATION_PREDELETE:
-		for path: String in _loading.keys():
+		if str(kit.assets[id].get("kind", "")) == "shell" and ResourceLoader.exists(path):
 			_scene(path)
 
 
-## The piece at `path`: kept from an earlier use, taken from its worker-thread load (waiting for it if
-## it is not done), or loaded now.
+## The piece at `path`: kept from an earlier use, or loaded now.
 static func _scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
-		if _loading.has(path):
-			_loading.erase(path)
-			_scenes[path] = ResourceLoader.load_threaded_get(path) as PackedScene
-		else:
-			_scenes[path] = load(path) as PackedScene
+		_scenes[path] = load(path) as PackedScene
 	return _scenes[path]
 
 

@@ -43,8 +43,6 @@ var species: SpeciesCatalog
 var size := 1
 
 static var _mouth_scene: PackedScene
-## Whether the mouth's GLB is loading on a worker thread (request_mouth) and not taken yet.
-static var _mouth_loading := false
 
 var _ribbons: Array[Dictionary] = []    ## {node, born_s, fade_s}, oldest first
 var _mouths := {}                       ## chunk key -> Array[Node3D]
@@ -61,23 +59,12 @@ var _beat_t := 0.0
 var _depth_k := 1.0
 
 
-## Starts loading the lair mouth on a worker thread, once a run: the first mouths come with a growth,
-## and loading the GLB in the growth's frame took about 6 ms (S2G26).
-static func request_mouth() -> void:
-	if _mouth_scene != null or _mouth_loading or not ResourceLoader.exists(MOUTH_GLB):
-		return
-	_mouth_loading = ResourceLoader.load_threaded_request(MOUTH_GLB) == OK
-
-
-func _notification(what: int) -> void:
-	# A load still pending when the run ends would leak: take it as a trail goes.
-	if what == NOTIFICATION_PREDELETE and _mouth_loading:
-		_take_mouth()
-
-
-static func _take_mouth() -> void:
-	_mouth_loading = false
-	_mouth_scene = ResourceLoader.load_threaded_get(MOUTH_GLB) as PackedScene
+## Loads the lair mouth once a run, as the sea is set up: the first mouths come with a growth, and
+## loading the GLB in the growth's frame took about 6 ms (S2G26). On the main thread, as
+## RockField.load_pieces says why.
+static func load_mouth() -> void:
+	if _mouth_scene == null and ResourceLoader.exists(MOUTH_GLB):
+		_mouth_scene = load(MOUTH_GLB) as PackedScene
 
 
 ## Starts empty on `p_species` at `p_size`.
@@ -221,10 +208,8 @@ func _mouth_pose(post: Dictionary) -> Transform3D:
 
 
 func _make(key: Vector2i, mouth_name: String, post: Dictionary) -> Node3D:
-	if _mouth_scene == null and _mouth_loading:
-		_take_mouth()
 	if _mouth_scene == null:
-		_mouth_scene = load(MOUTH_GLB) as PackedScene if ResourceLoader.exists(MOUTH_GLB) else null
+		load_mouth()
 	if _mouth_scene == null:
 		push_error("The lair mouth has no piece at %s." % MOUTH_GLB)
 		return null

@@ -384,11 +384,8 @@ func test_chunk_events_add_and_remove_shell_instances() -> void:
 	pool.free()
 
 
-func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
-	# From a clean slate: the pieces earlier tests loaded are dropped (a pending load taken first).
-	for path in LandmarkLayer._loading.keys():
-		LandmarkLayer._scene(path)
-	LandmarkLayer._scenes.clear()
+func test_the_kits_landmark_pieces_load_at_setup() -> void:
+	LandmarkLayer._scenes.clear()   # from a clean slate: the pieces earlier tests loaded are dropped
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var kit: PlacementKit = pool.session.world.kit
 	var paths := {}
@@ -397,35 +394,24 @@ func test_the_kits_landmark_pieces_load_on_worker_threads_from_setup() -> void:
 			paths[str(kit.assets[id].glb)] = true
 	check(paths.size() >= 5, "the kit has landmark and rare pieces (%d)" % paths.size())
 	for path in paths:
-		check(LandmarkLayer._loading.has(path), "setup starts loading %s" % path.get_file())
-	var loaded := func() -> bool: return paths.keys().all(func(path: String) -> bool: return LandmarkLayer.is_loaded(path))
-	var waited := 0
-	while waited < 10000 and not loaded.call():
-		OS.delay_msec(10)
-		waited += 10
-	check(loaded.call(), "every piece is loaded with no chunk asking for one (%d ms)" % waited)
+		check(LandmarkLayer._scenes.get(path) is PackedScene, "setup loads %s, with no chunk asking for it" % path.get_file())
+	var kept: Dictionary = LandmarkLayer._scenes.duplicate()
 	pool.landmarks.setup(kit)
-	check_eq(LandmarkLayer._loading.size(), paths.size(), "a second setup (a new session) starts no load again")
+	check(paths.keys().all(func(path: String) -> bool: return LandmarkLayer._scenes[path] == kept[path]),
+		"a second setup (a new session) loads nothing again")
 	pool.apply_world_event(_rare_chunk(Vector2i(53, 53)))
-	check(pool.landmarks.pieces().size() >= 2, "a chunk takes its landmark and its set piece")
-	check(LandmarkLayer._scenes.size() >= 2 and LandmarkLayer._loading.size() == paths.size() - LandmarkLayer._scenes.size(),
-		"from the loads already done (%d taken)" % LandmarkLayer._scenes.size())
+	check(pool.landmarks.pieces().size() >= 2, "a chunk takes its landmark and its set piece from the loaded pieces")
 	pool.free()
-	check(LandmarkLayer._loading.is_empty(), "the layer takes every load still pending as it goes, so none leaks at exit")
 	for path in paths:
 		check_eq(ResourceLoader.load_threaded_get_status(path), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
-			"and no request for %s is left with the loader (each was made once and taken once)" % path.get_file())
+			"no worker-thread load of %s is made (they stalled the engine on WARP)" % path.get_file())
 
 
-## S2G26: a growth draws shells and lair mouths the cell has not seen yet, so their GLBs start loading
-## on worker threads when the sea is set up, and none loads in the growth's frame.
-func test_the_kits_shell_pieces_and_the_lair_mouth_load_on_worker_threads_from_setup() -> void:
-	# From a clean slate: pending loads taken first, and the pieces earlier tests loaded dropped.
-	for path: String in RockField._loading.keys():
-		RockField._scene(path)
-	RockField._scenes.clear()
-	if SiltTrail._mouth_loading:
-		SiltTrail._take_mouth()
+## S2G26: a growth draws shells and lair mouths the cell has not seen yet, so their GLBs load when the
+## sea is set up, and none loads in the growth's frame. They load on the main thread: worker-thread
+## loads stalled the engine on Windows' software renderer as they finished.
+func test_the_kits_shell_pieces_and_the_lair_mouth_load_at_setup() -> void:
+	RockField._scenes.clear()   # from a clean slate: the pieces earlier tests loaded are dropped
 	SiltTrail._mouth_scene = null
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	var kit: PlacementKit = pool.session.world.kit
@@ -434,51 +420,31 @@ func test_the_kits_shell_pieces_and_the_lair_mouth_load_on_worker_threads_from_s
 		if str(kit.assets[id].kind) == "shell":
 			shells.append(id)
 	check(shells.size() >= 5, "the kit has shell pieces (%d)" % shells.size())
-	var pending := PackedStringArray()
 	for id in shells:
-		var path := RockField.ASSET_PATH % id
-		check(RockField._loading.has(path) or pool.rocks._pieces.has(id),
-			"setup starts loading %s (or a chunk in view has taken it)" % id)
-		if RockField._loading.has(path):
-			pending.append(id)
-	check(not pending.is_empty(), "some shells are not in view at the start, and they load ahead (%s)" % [pending])
-	check(SiltTrail._mouth_loading, "the lair mouth starts loading too, though no Lurker lives at size 1")
+		check(RockField._scenes.get(RockField.ASSET_PATH % id) is PackedScene, "setup loads %s, in view or not" % id)
+	check(SiltTrail._mouth_scene != null, "and the lair mouth, though no Lurker lives at size 1")
+	var kept: Dictionary = RockField._scenes.duplicate()
+	var mouth := SiltTrail._mouth_scene
 	var shells_in := []
-	for i in pending.size():
-		shells_in.append({"id": "pending_%d" % i, "position": Vector2(3.0 * i, 0.0), "radius": 1.0, "kind": "shell",
-			"asset": pending[i], "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	for i in shells.size():
+		shells_in.append({"id": "shell_%d" % i, "position": Vector2(3.0 * i, 0.0), "radius": 1.0, "kind": "shell",
+			"asset": shells[i], "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
 	pool.rocks.add_chunk(Vector2i(77, 77), shells_in)
-	for id in pending:
-		check(not RockField._loading.has(RockField.ASSET_PATH % id) and pool.rocks.multimesh_of(id) != null,
-			"a chunk draws %s from its load" % id)
+	for id in shells:
+		check(pool.rocks.multimesh_of(id) != null, "a chunk draws %s" % id)
 	pool.silt_trail.resize(2)
 	pool.silt_trail.add_chunk(Vector2i(78, 78), FakeGrowthEvents.lair_sites(Vector2.ZERO, 1.0))
-	check(not pool.silt_trail.mouths().is_empty() and not SiltTrail._mouth_loading, "and the first mouths from the mouth's")
-	check(SiltTrail._mouth_scene != null, "which is kept for the run")
-	var kept := RockField._scenes.size()
-	RockField.request_pieces(kit)
-	check_eq(RockField._scenes.size() + RockField._loading.size(), shells.size(),
-		"a second request starts no load for a piece already loaded or loading")
-	# A piece and the mouth dropped and asked for again, so loads are pending as the sea goes.
-	RockField._scenes.erase(RockField.ASSET_PATH % shells[0])
-	RockField.request_pieces(kit)
-	SiltTrail._mouth_scene = null
-	SiltTrail.request_mouth()
-	check(SiltTrail._mouth_loading, "(a new request for the mouth)")
-	var pending_at_exit := RockField._loading.size()
-	check_eq(pending_at_exit, 1, "(a new request for %s)" % shells[0])
+	check(not pool.silt_trail.mouths().is_empty(), "and the first mouths")
+	check(RockField._scenes == kept and SiltTrail._mouth_scene == mouth, "from the pieces setup loaded, with no load of their own")
 	pool.free()
-	check(RockField._loading.is_empty() and not SiltTrail._mouth_loading,
-		"the field and the trail take every load still pending as they go (%d), so none leaks at exit" % pending_at_exit)
-	check_eq(RockField._scenes.size(), shells.size(), "and every shell piece is kept for the run (%d loaded before)" % kept)
 	var again := FakeEvents.open_pool(FakeEvents.endless_session())
-	check(RockField._loading.is_empty() and not SiltTrail._mouth_loading, "so a new sea's setup loads nothing again")
+	check(RockField._scenes == kept and SiltTrail._mouth_scene == mouth, "and a new sea's setup loads nothing again")
 	again.free()
 	for id in shells:
 		check_eq(ResourceLoader.load_threaded_get_status(RockField.ASSET_PATH % id), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
-			"no request for %s is left with the loader" % id)
+			"no worker-thread load of %s is made" % id)
 	check_eq(ResourceLoader.load_threaded_get_status(SiltTrail.MOUTH_GLB), ResourceLoader.THREAD_LOAD_INVALID_RESOURCE,
-		"nor for the mouth")
+		"nor of the mouth")
 
 
 func test_a_landmark_shows_its_model_yaw_scale_tint_and_growth() -> void:

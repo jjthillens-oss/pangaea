@@ -27,6 +27,9 @@
 #             route tick 300"). On e2 2f45a1e it said "in the process step at route tick 15", and
 #             the same with the cell's blend shapes held still (2e11d8c, reverted), so the watch now
 #             names the tour's own steps, the other nodes' process steps and the engine after them.
+#             On 37292fc it said "in the engine after the process step at route tick 15" on two
+#             hosts and passed on a third: the stall came as the sea's worker-thread GLB loads
+#             finished, so the sea now loads those pieces on the main thread at setup.
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own

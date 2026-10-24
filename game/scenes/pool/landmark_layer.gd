@@ -28,8 +28,6 @@ var kit: PlacementKit
 
 ## GLB path -> PackedScene, or null when there is no GLB; kept for the run.
 static var _scenes := {}
-## GLB paths being loaded on worker threads (ResourceLoader.load_threaded_request), not taken yet.
-static var _loading := {}
 
 var _materials := {}      ## "asset|tint|surface" -> the tinted copy of that surface's material
 var _by_key := {}         ## chunk key -> Array[Node3D]
@@ -49,33 +47,18 @@ var _beat_t := 0.0
 func setup(p_kit: PlacementKit) -> void:
 	clear()
 	kit = p_kit
-	request_pieces(kit)
+	load_pieces(kit)
 
 
-## Starts loading the kit's landmark and rare pieces on worker threads, each GLB once a run.
-static func request_pieces(p_kit: PlacementKit) -> void:
+## Loads the kit's landmark and rare pieces not loaded yet, each GLB once a run, on the main thread
+## as the sea is set up (worker-thread loads stalled the engine on WARP; RockField.load_pieces).
+static func load_pieces(p_kit: PlacementKit) -> void:
 	if p_kit == null:
 		return
 	for id in p_kit.assets:
 		var asset: Dictionary = p_kit.assets[id]
-		var path := str(asset.get("glb", ""))
-		if not str(asset.get("kind", "")) in ["landmark", "rare"] or _scenes.has(path) or _loading.has(path):
-			continue
-		if ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path) == OK:
-			_loading[path] = true
-
-
-## Whether `path`'s piece is loaded (for checks; false while it still loads on a worker thread).
-static func is_loaded(path: String) -> bool:
-	return _scenes.has(path) or (_loading.has(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_LOADED)
-
-
-func _notification(what: int) -> void:
-	# A load still pending when the run ends would leak: take them all as the layer goes (they are
-	# kept for the run either way).
-	if what == NOTIFICATION_PREDELETE:
-		for path in _loading.keys():
-			_scene(path)
+		if str(asset.get("kind", "")) in ["landmark", "rare"]:
+			_scene(str(asset.get("glb", "")))
 
 
 ## Frees every piece.
@@ -341,15 +324,10 @@ func _instance(asset: String) -> Node3D:
 	return scene.instantiate() as Node3D
 
 
-## The piece at `path`: taken from its worker-thread load (waiting for it if it is not done), or
-## loaded now if none was started; null when there is no GLB.
+## The piece at `path`: kept from an earlier use, or loaded now; null when there is no GLB.
 static func _scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
-		if _loading.has(path):
-			_loading.erase(path)
-			_scenes[path] = ResourceLoader.load_threaded_get(path) as PackedScene
-		else:
-			_scenes[path] = load(path) as PackedScene if ResourceLoader.exists(path) else null
+		_scenes[path] = load(path) as PackedScene if ResourceLoader.exists(path) else null
 	return _scenes[path]
 
 

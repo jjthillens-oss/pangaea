@@ -756,3 +756,19 @@ creatures that also live in the world. Built:
   still dressed with the world's random extra parts.
 - **Palette.** The parts list scrolls inside a palette panel that fits the screen. A visual palette with part
   pictures is the next step.
+
+## 2026-10-24 · The sea's pieces load on the main thread at setup, not on worker threads (PROPOSED)
+
+- **Why.** The Windows launch check's grow run (D3D12 on WARP, the CI runner's software renderer)
+  stalled for its whole 300 s on two runner hosts out of three. The perf tour's watch thread placed
+  the stall in the engine between the nodes' process steps and the draw, at route tick 15, about
+  when the sea's worker-thread GLB loads (`ResourceLoader.load_threaded_request`: landmark and rare
+  pieces since S1, shell pieces and the lair mouth since S2G26) finish. Every other renderer and
+  run passed, and main, with no such loads, passes on the same runners.
+- **What.** `LandmarkLayer.load_pieces`, `RockField.load_pieces` and `SiltTrail.load_mouth` load
+  those 17 GLBs on the main thread when the sea is set up (the start of a run or a Continue), each
+  once a run and kept. No growth or chunk frame loads a GLB, so S2G26 and G18 hold as before; the
+  cost moves to the run's start: about 0.9 s headless on the Linux container (9 to 150 ms a piece).
+- **Revisit.** A loading screen or a spread-out load at the start, if 0.9 s shows on the owner's
+  PC. Worker-thread loads come back only with a Windows WARP run that passes several times.
+
