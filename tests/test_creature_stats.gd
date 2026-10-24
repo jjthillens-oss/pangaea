@@ -63,6 +63,24 @@ func test_sight_comes_from_eyes_with_a_base_and_a_cap() -> void:
 	check(is_equal_approx(stats_of(bare)["sight_m"], 24.0), "sight is capped at max_m")
 
 
+func test_every_mouth_and_eye_role_part_counts() -> void:
+	var mouths := CreatureStats.types_with_role(part_rules, "mouth")
+	var eyes := CreatureStats.types_with_role(part_rules, "eye")
+	for t in ["maw", "mandibles", "beak", "jaw", "bill", "proboscis"]:
+		check(mouths.has(t), "%s has the mouth role" % t)
+	for t in ["eye", "compound_eye", "eye_stalk", "eye_slit", "eye_round", "eye_cluster"]:
+		check(eyes.has(t), "%s has the eye role" % t)
+	for t in mouths:
+		var bare = Fixtures.body("bean")
+		bare.add_part(t, {"host": "spine", "u": 0, "ring": 500, "scale": 1000})
+		var s := stats_of(bare)
+		check(s["has_mouth"] and s["bite_power"] > 0.0, "a %s bites" % t)
+	for t in eyes:
+		var bare = Fixtures.body("bean")
+		bare.add_part(t, {"host": "spine", "u": 100, "ring": 200})
+		check(stats_of(bare)["eyes"] == 1, "a %s sees" % t)
+
+
 func test_mass_and_health_come_from_volume() -> void:
 	var small = Fixtures.body("bean")
 	var big = Fixtures.body("bean")

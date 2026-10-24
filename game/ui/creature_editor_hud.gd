@@ -27,16 +27,18 @@ const CATEGORIES := [
 	{"id": "all", "title": "All"}, {"id": "mouths", "title": "Mouths"}, {"id": "senses", "title": "Senses"},
 	{"id": "limbs", "title": "Limbs"}, {"id": "weapons", "title": "Weapons"}, {"id": "details", "title": "Details"},
 ]
-## Part type -> category id; a type not listed (a part art adds later) goes to "details".
+## Part role (part_rules "role", from each cpart_ record) -> category id. A detail part goes by PART_CATEGORY.
+const ROLE_CATEGORY := {
+	"mouth": "mouths", "eye": "senses", "hand": "limbs", "foot": "limbs", "weapon": "weapons",
+}
+## Part type -> category id for the tools a role does not place: the limb tool and the detail parts that sense.
+## Anything else (a detail, or a part without a role) goes to "details".
 const PART_CATEGORY := {
-	"beak": "mouths", "mandibles": "mouths", "maw": "mouths", "proboscis": "mouths",
-	"eye": "senses", "compound_eye": "senses", "eye_stalk": "senses", "antenna": "senses", "barbels": "senses",
-	"lure": "senses",
-	"limb": "limbs", "foot": "limbs", "hoof": "limbs", "hand": "limbs", "claw": "limbs", "flipper": "limbs",
-	"horn": "weapons", "tusk": "weapons", "tail_spikes": "weapons", "club_tail": "weapons", "quills": "weapons",
+	"limb": "limbs", "antenna": "senses", "barbels": "senses", "lure": "senses",
 }
 
 var _tool_buttons := {}   ## tool type -> Button
+var _roles := {}   ## part type -> part role
 var _group := ButtonGroup.new()
 var _swatches: Array[Button] = []
 var _preset_title: Label
@@ -96,8 +98,9 @@ func wire() -> void:
 
 
 ## Builds the palette: `tools` are the part types in order, `costs` the editor costs (CreatureData.editor_costs()),
-## `colors` the skin swatches.
-func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
+## `colors` the skin swatches, `roles` part type -> part role (for the category tabs).
+func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {}) -> void:
+	_roles = roles
 	for c in tools_grid.get_children():
 		c.free()
 	_tool_buttons.clear()
@@ -151,16 +154,22 @@ func _add_tool(type: String, label: String, price: int) -> void:
 	_tool_buttons[type] = b
 
 
-## The category a tool belongs to: "" (Select) belongs to every one.
-static func category_of(type: String) -> String:
-	return "" if type == "" else String(PART_CATEGORY.get(type, "details"))
+## The category a tool belongs to, from its part `role` or else PART_CATEGORY: "" (Select) belongs to every one.
+static func category_of(type: String, role: String = "") -> String:
+	if type == "":
+		return ""
+	return String(ROLE_CATEGORY.get(role, PART_CATEGORY.get(type, "details")))
+
+
+func _category_for(type: String) -> String:
+	return category_of(type, String(_roles.get(type, "")))
 
 
 ## Shows only `category`'s tools (and Select); "all" shows every tool.
 func set_category(category: String) -> void:
 	_category = category
 	for t in _tool_buttons:
-		(_tool_buttons[t] as Button).visible = category == "all" or t == "" or category_of(t) == category
+		(_tool_buttons[t] as Button).visible = category == "all" or t == "" or _category_for(t) == category
 	for id in _category_buttons:
 		(_category_buttons[id] as Button).set_pressed_no_signal(id == category)
 
@@ -197,7 +206,7 @@ func _build_category_tabs() -> void:
 	for id in _category_buttons:
 		var used: bool = id == "all"
 		for t in _tool_buttons:
-			used = used or (t != "" and category_of(t) == id)
+			used = used or (t != "" and _category_for(t) == id)
 		(_category_buttons[id] as Button).visible = used
 	if not (_category_buttons[_category] as Button).visible:
 		_category = "all"
@@ -206,8 +215,8 @@ func _build_category_tabs() -> void:
 ## Shows which tool is in use ("" for none) without emitting tool_chosen; a tool outside the shown category switches
 ## the palette to that tool's category.
 func set_tool(type: String) -> void:
-	if type != "" and _category != "all" and category_of(type) != _category:
-		set_category(category_of(type))
+	if type != "" and _category != "all" and _category_for(type) != _category:
+		set_category(_category_for(type))
 	for t in _tool_buttons:
 		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
 	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (

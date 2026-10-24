@@ -20,7 +20,11 @@ func after_each() -> void:
 
 
 func palette(tools: Array = ["eye", "horn", "maw"]) -> void:
-	hud.setup(tools, CreatureData.editor_costs(), [Color.RED, Color.GREEN])
+	var roles := {}
+	var rules := CreatureData.part_rules()
+	for type in rules:
+		roles[type] = String(rules[type].get("role", ""))
+	hud.setup(tools, CreatureData.editor_costs(), [Color.RED, Color.GREEN], roles)
 
 
 func test_the_palette_has_select_limb_and_a_priced_button_per_tool() -> void:
@@ -108,6 +112,8 @@ func test_category_tabs_filter_the_palette_and_follow_the_tool() -> void:
 	hud.set_tool("horn")
 	check_eq(hud.category(), "weapons", "picking a horn by key shows the weapons")
 	check_eq(CreatureEditorHud.category_of("some_new_part"), "details", "a new art part lands in details")
+	check_eq(CreatureEditorHud.category_of("some_new_eye", "eye"), "senses", "a new part goes by its role")
+	check_eq(CreatureEditorHud.category_of("antenna", "detail"), "senses", "a feeler is a sense")
 	var tabs := hud.find_child("Categories", true, false)
 	check(tabs != null, "the tab row is in the palette")
 	if tabs != null:
