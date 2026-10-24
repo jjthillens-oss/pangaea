@@ -98,34 +98,9 @@ For a future field, start from **v4**. A v5 requires owner approval under the �
 
 ## Historical reference: v2 (2026-10-22)
 
-The following records the earlier `f544488` v2 format for migration and review. Its citations refer to **that historical commit**, not to current v4 line numbers. Its 15-key example is migration input and is not the current writer output.
-### JSON schema, version 2
+At commit `f544488`, v2 added `adaptation_points: 0` to v1. Its writer had 15 required top-level keys: `schema_version`, `build_id`, `world_seed`, `lineage_id`, `era`, `genome`, `adaptation_points`, `lineage_history`, `discoveries`, `relationships`, `settlements`, `world_changes`, `player`, `pending_transactions` and `saved_at_unix`. `player` then held only `position`. That format is retained as migration input, not relabelled as current v4 (`game/systems/save_migrations.gd:16-28`, `tests/fixtures/save_v2_step2.json:1`, `game/domain/save_game.gd:40-48`).
 
-At `f544488`, the writer emitted the 15 keys below. The loader expects each typed key: missing or wrong-typed values add a load problem and fail validation rather than silently defaulting (`game/domain/save_game.gd:69-109`, `game/domain/json_values.gd:3-42`, `tests/test_game_session.gd:8-11`). JSON whole numbers may parse as floats, but only finite integral values are accepted (`game/domain/json_values.gd:9-17`).
-
-| Key | JSON type and meaning | Validation or unit |
-| --- | --- | --- |
-| `schema_version` | Whole number, at that revision `2` | Migrated/refused before decoding; newer versions are refused (`game/domain/save_game.gd:7,71`, `game/systems/persistence_service.gd:120-137`). |
-| `build_id` | String identifying build | Typed, with no further content check (`game/domain/save_game.gd:13,72,94`, `game/domain/json_values.gd:20-25`). |
-| `world_seed` | Whole-number world seed | 0 through 2^53 inclusive so JSON preserves it exactly (`game/domain/save_game.gd:8-9,51-54,73`, `tests/test_persistence.gd:280-290`). |
-| `lineage_id` | String `lineage_` plus 16 hex digits | Must pass stable-id check (`game/domain/save_game.gd:15,45-46,74`, `game/domain/stable_id.gd:12-16`). |
-| `era` | String era identifier | One of the seven strings in `SaveGame.ERAS` (`game/domain/save_game.gd:10-11,47-48,75`). |
-| `genome` | Object described below | Required and validated against the part catalog; its lineage must match (`game/domain/save_game.gd:55-60,76,98-99`). |
-| `adaptation_points` | Whole number of unspent points | Non-negative; added in v2 (`game/domain/save_game.gd:18-19,49-50,77`, `game/systems/save_migrations.gd:13-17`). |
-| `lineage_history` | Ordered array of event objects | Nonempty; founding event contains `generation`, `genome_id`, `event`. Later birth/death events may carry more keys (`game/domain/save_game.gd:20-21,39,61-62,78`, `game/domain/lineage.gd:87-91,119-126`). |
-| `discoveries` | Array | Type checked; element schema is not checked here (`game/domain/save_game.gd:22,79,102`, `game/domain/json_values.gd:28-34`). |
-| `relationships` | Array | Type checked; element schema is not checked here (`game/domain/save_game.gd:23,80,103`, `game/domain/json_values.gd:28-34`). |
-| `settlements` | Array | Type checked; element schema is not checked here (`game/domain/save_game.gd:24,81,104`, `game/domain/json_values.gd:28-34`). |
-| `world_changes` | Array | Type checked; element schema is not checked here (`game/domain/save_game.gd:25,82,105`, `game/domain/json_values.gd:28-34`). |
-| `player` | Object with `position` array | Exactly three entries are required; normal writer uses world `[x, y, z]` metres with swim `y=0`, mapping plane `[x, y]` to world `[x, 0, z]` (`game/domain/save_game.gd:26,63-66,83,106`, `game/domain/plane_space.gd:3-6,28-43`). |
-| `pending_transactions` | Array | Type checked; element schema is not checked here (`game/domain/save_game.gd:27,84,107`, `game/domain/json_values.gd:28-34`). |
-| `saved_at_unix` | Whole-number Unix timestamp in seconds | Set from system time on write; no range check on load (`game/domain/save_game.gd:28,85,108`, `game/systems/persistence_service.gd:33`). |
-
-The nested `genome` writer emits `schema_version: 1`, `genome_id`, `lineage_id`, `parent_genome_id` (strings), `generation` (whole number at least 1), `appearance` (object), `parts` (array) and `next_part_number` (whole number used for new part IDs). IDs use 16 hex digits; parts have string `id`/`type`, angle in radians from ΓêÆ╧Ç to ╧Ç, and catalog-bounded scale. The catalog currently limits parts to eight, requires a mouth, and sets scale to 0.5ΓÇô2.0 (`game/domain/genome.gd:6-15,50-103`, `game/domain/stable_id.gd:12-16`, `game/data/part_catalog.json:5-11`). `next_part_number` may be reconstructed from part IDs when absent or nonpositive; other missing/wrong-typed nested fields are recorded as problems (`game/domain/genome.gd:107-132`).
-
-### Complete minimal v2 example
-
-This example has the required mouth and propulsion parts, a founding lineage event and every top-level key. It uses the valid IDs and parts from the v1 migration fixture, with v2's adaptation points added (`tests/fixtures/save_v1.json:1-28`, `game/systems/save_migrations.gd:13-17`, `game/data/part_catalog.json:5-11`).
+### Complete minimal v2 example (historical migration input)
 
 ```json
 {
