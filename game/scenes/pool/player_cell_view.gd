@@ -23,6 +23,8 @@ const PART_SCENES := {
 	"eye_spot": preload("res://assets/export/part_eye_spot.glb"),
 	"spike": preload("res://assets/export/part_spike.glb"),
 	"shell_plate": preload("res://assets/export/part_shell_plate.glb"),
+	"cilia": preload("res://assets/export/part_cilia.glb"),
+	"toxin_gland": preload("res://assets/export/part_toxin_gland.glb"),
 }
 ## Baked parts of the sample cell that the genome's parts replace (GLB contract names that
 ## test_assets checks). Its eyes and pupils stay.
@@ -101,8 +103,8 @@ var _fx_root: Node3D
 
 
 ## Builds the parts of a genome. Each part becomes a child of Parts with metadata "part_id",
-## "part_type", "part_angle" and "part_scale". A type with no model yet (cilia come in step 4) gets
-## an empty marker, so the children still match the genome one to one.
+## "part_type", "part_angle" and "part_scale". A type with no model gets an
+## empty marker, so the children still match the genome one to one.
 func build(genome: Genome, phenotype: Phenotype) -> void:
 	_top_speed = maxf(phenotype.speed, 0.01)
 	_turn_rate = maxf(phenotype.turn_rate, 0.01)

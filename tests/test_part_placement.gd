@@ -204,13 +204,23 @@ func test_a_part_without_a_model_still_gets_a_node() -> void:
 	var view := (load(CELL_VIEW) as PackedScene).instantiate() as PlayerCellView
 	var catalog := PartCatalog.load_from()
 	var genome := _genome("grazer")
-	genome.add_part("cilia", -1.0)   # spikes got their model in M1 step 3; cilia come in step 4
-	view.build(genome, Phenotype.derive(genome, catalog))
+	var phenotype := Phenotype.derive(genome, catalog)
+	genome.add_part("cilia", -1.0)
+	genome.add_part("no_model_yet", 1.0)   # a part art has not drawn yet
+	view.build(genome, phenotype)
 	var nodes := view.part_nodes()
-	check_eq(nodes.size(), 4, "every part has a node")
-	check_eq(nodes[3].get_meta("part_type"), "cilia", "the cilia marker")
-	check_eq(nodes[3].get_child_count(), 0, "no model until step 4")
+	check_eq(nodes.size(), 5, "every part has a node")
+	check_eq(nodes[3].get_meta("part_type"), "cilia", "the cilia")
+	check_eq(nodes[3].get_child_count(), 1, "with their model")
+	check_eq(nodes[4].get_meta("part_type"), "no_model_yet", "the marker")
+	check_eq(nodes[4].get_child_count(), 0, "with nothing drawn")
 	view.free()
+
+
+func test_every_part_the_catalog_lists_has_a_model() -> void:
+	var catalog := PartCatalog.load_from()
+	for type_id: String in catalog.parts:
+		check(PlayerCellView.PART_SCENES.has(type_id), "%s is drawn on the body" % type_id)
 
 
 func test_the_view_draws_the_sim_position_and_heading() -> void:
