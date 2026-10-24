@@ -11,6 +11,8 @@ func _init() -> void:
 		_check(result["ok"], fixture + " loads")
 		if result["ok"]:
 			_check(TreeModel.ascii(TreeModel.timeline(result["save"])) == TreeModel.ascii(TreeModel.timeline(result["save"])), fixture + " deterministic ASCII")
+			if fixture == "save_v1.json":
+				_check(result["save"]["schema_version"] == 2 and result["save"]["adaptation_points"] == 0, "v1 migrated in memory")
 	var three: Dictionary = TreeModel.load_save("res://fixtures/three_generations_v2.json")
 	if three["ok"]:
 		var tree: Dictionary = TreeModel.timeline(three["save"])
