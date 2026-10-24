@@ -1,8 +1,9 @@
 extends Node
 ## Debug builds only (M1 step 2): F3 shows or hides the debug panel; F5 fills energy, F6 drains
 ## it, F7 empties the nearest plankton zone and F8 drops carrion 4 m ahead. M1 step 3 adds F9, a
-## threat 6 m ahead (the species alternate), and F10, which kills the nearest creature. Each command
-## goes through the debug panel's run(), so keys and buttons do the same thing. Main loads it by path.
+## threat 6 m ahead (the species alternate), and F10, which kills the nearest creature. S2 adds F4,
+## which fills the growth ring, and F2, which grows on the next tick (D-56). Each command goes through
+## the debug panel's run(), so keys and buttons do the same thing. Main loads it by path.
 
 const COMMANDS := {
 	&"dev_fill": "fill",
@@ -11,6 +12,8 @@ const COMMANDS := {
 	&"dev_spawn_carrion": "spawn_carrion",
 	&"dev_spawn_threat": "spawn_threat",
 	&"dev_kill_nearest": "kill_nearest",
+	&"dev_fill_meter": "fill_meter",
+	&"dev_force_growth": "force_growth",
 }
 
 var main: Node

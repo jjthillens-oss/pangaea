@@ -13,8 +13,9 @@ func before_each() -> void:
 	tail_id = genome.add_part("flagellum", PI)
 
 
-func _session(points: int = 30) -> EditorSession:
-	return EditorSession.new(genome, catalog, points)
+## Points enough for two flagella by default; the costs are the catalog's (S4.1 tunes them in data).
+func _session(points: int = -1) -> EditorSession:
+	return EditorSession.new(genome, catalog, points if points >= 0 else 2 * catalog.cost_of("flagellum"))
 
 
 func _snapshot(g: Genome) -> String:
@@ -71,11 +72,13 @@ func test_mirror_adds_a_copy_on_the_other_side() -> void:
 func test_cost_charges_additions_and_refunds_removals() -> void:
 	var s := _session()
 	s.add_part("flagellum", 2.6)
-	check_eq(s.cost(), 15, "a flagellum costs 15")
+	var flagellum := catalog.cost_of("flagellum")
+	check(flagellum > 0, "a flagellum has a cost (%d)" % flagellum)
+	check_eq(s.cost(), flagellum, "a flagellum costs its catalog cost")
 	s.remove_part(tail_id)
 	check_eq(s.cost(), 0, "removing the old one refunds it")
 	s.remove_part(s.working.parts[-1].id)
-	check_eq(s.cost(), -15, "a net removal is a refund")
+	check_eq(s.cost(), -flagellum, "a net removal is a refund")
 
 
 func test_refused_edits_change_nothing() -> void:
@@ -107,7 +110,7 @@ func test_preview_matches_commit_without_committing() -> void:
 	var s := _session()
 	s.add_part("flagellum", 2.6)
 	var p := s.preview()
-	check_eq(p.cost, 15, "cost")
+	check_eq(p.cost, catalog.cost_of("flagellum"), "cost")
 	check(p.affordable, "affordable")
 	check(p.errors.is_empty(), "valid")
 	check(p.phenotype.speed > p.current.speed, "preview shows the faster body")
@@ -117,7 +120,7 @@ func test_preview_matches_commit_without_committing() -> void:
 
 
 func test_commit_makes_the_next_generation() -> void:
-	var s := _session(30)
+	var s := _session(30 + catalog.cost_of("eye_spot"))
 	s.add_part("eye_spot", 0.6)
 	var result := s.commit()
 	check(result.ok, "ok")
@@ -126,7 +129,7 @@ func test_commit_makes_the_next_generation() -> void:
 	check_eq(child.parent_genome_id, genome.genome_id, "parent")
 	check_eq(child.lineage_id, genome.lineage_id, "same lineage")
 	check_eq(child.generation, genome.generation + 1, "generation")
-	check_eq(result.points_left, 20, "points spent")
+	check_eq(result.points_left, 30, "points spent")
 	check_eq(genome.parts.size(), 2, "parent untouched")
 
 
@@ -136,10 +139,10 @@ func test_failed_commit_keeps_the_original_and_points() -> void:
 	s.add_part("flagellum", 2.6)
 	var broke := s.commit()
 	check(not broke.ok, "too expensive")
-	check_has_error(broke.errors, "Needs 15 adaptation points, you have 10")
+	check_has_error(broke.errors, "Needs %d adaptation points, you have 10" % catalog.cost_of("flagellum"))
 	check_eq(broke.points_left, 10, "points kept")
 	check(broke.genome == null, "no offspring")
-	var s2 := _session(30)
+	var s2 := _session()
 	s2.remove_part(mouth_id)
 	var invalid := s2.commit()
 	check(not invalid.ok, "no mouth")
@@ -157,7 +160,7 @@ func test_exactly_six_parts_are_in_the_editor() -> void:
 
 
 func test_exactly_enough_points_is_enough() -> void:
-	var s := _session(15)
+	var s := _session(catalog.cost_of("flagellum"))
 	s.add_part("flagellum", 2.6)
 	check(s.preview().affordable, "affordable at exactly the cost")
 	var result := s.commit()

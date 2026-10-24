@@ -77,6 +77,55 @@ layout_mode = 2
 theme_type_variation = &"DebugButton"
 text = "Teleport to spawn"
 
+[node name="FillMeter" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Fill meter (F4)"
+
+[node name="ForceGrowth" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Force growth (F2)"
+
+[node name="Size1" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Size 1"
+
+[node name="Size2" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Size 2"
+
+[node name="TeleportFar" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Teleport 100 km east"
+
+[node name="Rebase" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Rebase now"
+
+[node name="Chunks" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Chunk gizmo"
+
 [node name="Gizmos" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
 unique_name_in_owner = true
 layout_mode = 2

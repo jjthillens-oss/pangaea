@@ -1329,3 +1329,428 @@ func test_forgetting_a_body_drops_it_and_a_forced_return_rests_the_creature_at_h
 		u += 1
 		_tick(mid, u, [])
 	check(mid.of("creature_strike").is_empty(), "and no strike follows")
+
+
+# --- S2: the cfg's own lengths, the relationship switches and scale_cfg (plan B.6) ---
+
+## creatures_m1.json's relationships block with every rule on (spine 4.2).
+const RELATIONSHIPS_ON := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
+const LADDER_QS := [0.625, 0.390625]
+
+
+## Every leaf of a cfg as [path, value] ("attack.reach"); dictionaries are walked into, lists are leaves.
+static func leaves(d: Dictionary, prefix := "") -> Array:
+	var out := []
+	for key in d:
+		var path := prefix + str(key)
+		if d[key] is Dictionary:
+			out.append_array(leaves(d[key], path + "."))
+		else:
+			out.append([path, d[key]])
+	return out
+
+
+static func _at(d: Dictionary, path: String) -> Variant:
+	var v: Variant = d
+	for part in path.split("."):
+		v = v[part]
+	return v
+
+
+func _rules_only(rule: String) -> Dictionary:
+	var rel: Dictionary = RELATIONSHIPS_ON.duplicate(true)
+	for r in rel.rules:
+		rel.rules[r] = r == rule
+	return rel
+
+
+func test_the_config_copies_todays_lengths_into_cfg_and_keeps_m1s_shares_with_no_relationships() -> void:
+	var want := {"arrive_home_m": 0.3, "home_slack_m": 1.0, "arrive_goal_m": 0.5, "face_at_standoff_m": 0.25,
+		"leash_give_up_m": 0.25, "forage_patrol_m": 6.0, "patrol_inset_m": 1.0, "default_territory_m": 6.0,
+		"flee_lookahead_m": 4.0, "flee_edge_m": 1.0, "approach_wait_mps": 0.2, "feed_reach": 0.25, "route_margin": 0.6,
+		"route_clearance": 0.1, "post_hysteresis_m": 2.0, "share_tolerance": 1e-6}
+	for cfg in [ambush_cfg, rammer_cfg]:
+		for key in want:
+			check_eq(cfg[key], want[key], "%s %s" % [cfg.species_id, key])
+		check(is_inf(cfg.intruder_max_radius_share) and is_inf(cfg.fear_radius_share), cfg.species_id + ": rules 2 and 3 off")
+		check_eq(cfg.engage_rule, false, cfg.species_id + ": rule 4 off")
+		check_eq([cfg.post_switch, cfg.post_rest_ticks], ["", 0], cfg.species_id + ": no habit")
+	check_eq(ambush_cfg.prey_max_radius_share, 1.6, "the ambush hunter's own share")
+	check_eq(rammer_cfg.prey_max_radius_share, InteractionResolver.BITE_SIZE_LIMIT, "the default share")
+	check_eq(ambush_cfg.attack.reach, InteractionResolver.BITE_REACH, "a bite reaches as the resolver's")
+	check_eq(rammer_cfg.attack.reach, InteractionResolver.RAM_REACH, "a ram too")
+
+
+func test_the_relationships_block_sets_each_rule_behind_its_own_switch() -> void:
+	var on := CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, RELATIONSHIPS_ON)
+	check_eq(on.prey_max_radius_share, 1.0, "rule 1: the block's prey share")
+	check_eq(on.intruder_max_radius_share, 1.2, "rule 2")
+	check_eq(on.fear_radius_share, 1.25, "rule 3")
+	check_eq(on.engage_rule, true, "rule 4")
+	for rule in ["prey_share", "intruder_share", "fear", "no_engage_above"]:
+		var cfg := CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, _rules_only(rule))
+		check_eq(cfg.prey_max_radius_share, 1.0 if rule == "prey_share" else 1.6, rule + " alone: the prey share")
+		check_eq(is_inf(cfg.intruder_max_radius_share), rule != "intruder_share", rule + " alone: the intruder share")
+		check_eq(is_inf(cfg.fear_radius_share), rule != "fear", rule + " alone: the fear share")
+		check_eq(cfg.engage_rule, rule == "no_engage_above", rule + " alone: the engage rule")
+	check_eq(CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, _rules_only("")), ambush_cfg,
+		"a block with every rule off gives M1's cfg")
+	var loose: Dictionary = RELATIONSHIPS_ON.duplicate(true)
+	loose.tolerance = 1e-4
+	check_eq(CreatureBrain.config("rammer", RAMMER_BLOCK, AI, loose).share_tolerance, 1e-4, "the block's tolerance")
+	var lurker: Dictionary = AMBUSH_BLOCK.duplicate(true)
+	lurker["habit"] = {"post_switch": "out_of_sight", "post_rest_s": 8.0, "trail_s": 20.0}
+	var elder: Dictionary = RAMMER_BLOCK.duplicate(true)
+	elder["habit"] = {"post_switch": "nearer_cell", "post_hysteresis_m": 3.0}
+	var l := CreatureBrain.config("lurker", lurker, AI)
+	var e := CreatureBrain.config("elder_rammer", elder, AI)
+	check_eq([l.post_switch, l.post_rest_ticks, l.post_hysteresis_m], ["out_of_sight", 480, 2.0], "a lurker's habit")
+	check_eq([e.post_switch, e.post_rest_ticks, e.post_hysteresis_m], ["nearer_cell", 0, 3.0], "an elder rammer's")
+
+
+func test_scale_cfg_at_q_one_is_an_equal_copy() -> void:
+	for cfg in [ambush_cfg, rammer_cfg, CreatureBrain.config("ambush_hunter", AMBUSH_BLOCK, AI, RELATIONSHIPS_ON)]:
+		var same := CreatureBrain.scale_cfg(cfg, 1.0)
+		check_eq(same, cfg, cfg.species_id + ": equal")
+		same.attack.reach = 9.0
+		same.speeds.flee = 9.0
+		same.leash_m = 99.0
+		check(cfg.attack.reach != 9.0 and cfg.speeds.flee != 9.0 and cfg.leash_m != 99.0, cfg.species_id + ": a deep copy")
+
+
+func test_scale_cfg_scales_every_length_and_speed_by_q_and_keeps_the_rest() -> void:
+	var cfgs := {"ambush": ambush_cfg, "rammer": rammer_cfg,
+		"rules on": CreatureBrain.config("rammer", RAMMER_BLOCK, AI, RELATIONSHIPS_ON)}
+	var scaled_keys := 0
+	for q in LADDER_QS:
+		for name in cfgs:
+			var cfg: Dictionary = cfgs[name]
+			var s := CreatureBrain.scale_cfg(cfg, q)
+			for leaf in leaves(cfg):
+				var path: String = leaf[0]
+				var kind := CreatureBrain.key_kind(path)
+				if path == "attack.travel":
+					continue
+				if kind == "length" or kind == "speed":
+					check_eq(_at(s, path), float(leaf[1]) * q, "%s q %.6f: %s x q" % [name, q, path])
+					scaled_keys += 1
+				else:
+					check_eq(_at(s, path), leaf[1], "%s q %.6f: %s kept" % [name, q, path])
+			var a: Dictionary = s.attack
+			var flight := Locomotion.strike_travel(float(a.burst_speed), int(a.burst_ticks), float(a.glide_drag),
+				int(a.glide_ticks), CreatureBrain.DT)
+			check_eq(a.travel, flight, "%s q %.6f: the travel is the scaled burst's own (D-26)" % [name, q])
+			check(a.travel != float(cfg.attack.travel) * q, "%s q %.6f: which is not travel x q" % [name, q])
+	check(scaled_keys >= 3 * 2 * 25, "the lengths and speeds were scaled (%d)" % scaled_keys)
+	var small := CreatureBrain.scale_cfg(rammer_cfg, 0.625)
+	check(is_inf(small.forage_radius_m), "INF stays INF")
+	check_eq(CreatureBrain.scale_cfg(cfgs["rules on"], 0.625).fear_radius_share, 1.25, "a share is kept")
+	check_eq([small.leash_m, small.attack.reach, small.feed_reach, small.attack.burst_speed], [1.875, 0.21875, 0.15625, 2.5],
+		"the rammer's leash, ram reach, feed reach and burst at q 0.625")
+	check_eq([small.speeds.flee, small.attack.burst_ticks, small.attack.aim, small.hungry_below],
+		[rammer_cfg.speeds.flee, rammer_cfg.attack.burst_ticks, rammer_cfg.attack.aim, rammer_cfg.hungry_below],
+		"its speed shares, ticks, aim and hunger share kept")
+
+
+func test_a_scaled_cfgs_strike_lane_is_the_strike_it_runs() -> void:
+	for q in LADDER_QS:
+		for kind in ["ambush", "rammer"]:
+			var a: Dictionary = CreatureBrain.scale_cfg(ambush_cfg if kind == "ambush" else rammer_cfg, q).attack
+			var body := (ambush_body if kind == "ambush" else rammer_body).scaled(q)
+			var lane := CreatureBrain.strike_lane(a, body.radius, 0.5, Vector2.ZERO, 0.0)
+			var where := "%s at q %.6f" % [kind, q]
+			check_eq(lane.travel, a.travel, where + ": the lane runs the cfg's travel")
+			check_eq(lane.half_width, body.radius + float(a.reach) + 0.5, where + ": as wide as its scaled radius and reach")
+			var m := Locomotion.MotionState.new(Vector2.ZERO, 0.0)
+			for i in int(a.burst_ticks):
+				Locomotion.burst(m, 0.0, float(a.burst_speed))
+				m.position += m.velocity * DT
+			for i in int(a.glide_ticks):
+				Locomotion.glide(m, float(a.glide_drag), DT)
+				m.position += m.velocity * DT
+			check_near(float(lane.travel), m.position.x, 0.01 * q, where + ": the travel is the scaled strike's flight")
+
+
+# --- S2: relationship rules 1 to 4 in the brain (plan B.6; D-63) ---
+
+## A settled ambush hunter or rammer as above, its cfg built with the relationships block `rel`.
+func _with_rules(kind: String, rel: Dictionary, settled := true) -> Critter:
+	var c := (_ambush(Vector2.ZERO, 0.0, settled) if kind == "ambush" else _rammer())
+	c.mem.cfg = CreatureBrain.config(c.mem.cfg.species_id, AMBUSH_BLOCK if kind == "ambush" else RAMMER_BLOCK, AI, rel)
+	return c
+
+
+## `ticks` ticks from 0 with the same still percepts (built at `places`: [id, position, extra]),
+## the body held still; returns the critter.
+func _watch(c: Critter, ticks: int, places: Array) -> Critter:
+	for t in ticks:
+		var percepts := []
+		for place in places:
+			percepts.append(_percept(c, place[0], place[1], place[2]))
+		_tick(c, t, percepts, false)
+	return c
+
+
+func test_rule_1_an_ambush_brain_picks_prey_up_to_its_prey_share_with_the_tolerance() -> void:
+	var ahead := Vector2(2.0, 0.0)
+	# The hunter's radius is 0.75: with the rule on (share 1.0) prey ends at 0.75; off, M1's 1.6 (1.2).
+	for case in [[RELATIONSHIPS_ON, 0.75, true], [RELATIONSHIPS_ON, 0.75 + 0.5e-6, true], [RELATIONSHIPS_ON, 0.75 + 2e-6, false],
+			[RELATIONSHIPS_ON, 0.76, false], [_rules_only(""), 0.76, true], [_rules_only(""), 1.2, true],
+			[_rules_only(""), 1.21, false], [_rules_only("prey_share"), 0.76, false], [{}, 0.76, true]]:
+		var c := _watch(_with_rules("ambush", case[0]), 7, [["b", ahead, {"species": "rammer", "radius": case[1]}]])
+		var rules: String = "every rule" if case[0] == RELATIONSHIPS_ON else str(case[0].get("rules", "no block"))
+		check_eq(c.mem.state == "notice", case[2], "%s, radius %.7f: %s" % [rules, case[1], c.label()])
+		check(c.of("creature_fled").is_empty(), "%s, radius %.7f: no fear in this range" % [rules, case[1]])
+
+
+func test_rule_2_a_rammer_charges_intruders_up_to_its_intruder_share_and_still_charges_ambush_hunters() -> void:
+	var inside := Vector2(0.0, 3.0)
+	# The rammer's radius is 0.625: with the rule on (share 1.2) intruders end at 0.75, an ambush
+	# hunter exactly (0.625 x 1.2 == 0.75, and the tolerance holds it either way); off, no upper bound.
+	for case in [[RELATIONSHIPS_ON, 0.75, true], [RELATIONSHIPS_ON, 0.75 + 0.5e-6, true], [RELATIONSHIPS_ON, 0.75 + 2e-6, false],
+			[RELATIONSHIPS_ON, 0.3, true], [RELATIONSHIPS_ON, 0.29, false], [_rules_only(""), 0.76, true],
+			[_rules_only("intruder_share"), 0.76, false], [_rules_only(""), 0.29, false]]:
+		var c := _watch(_with_rules("rammer", case[0]), 12, [["b", inside, {"species": "ambush_hunter", "radius": case[1]}]])
+		var rules: String = "every rule" if case[0] == RELATIONSHIPS_ON else str(case[0].rules)
+		check_eq(c.mem.state == "notice", case[2], "%s, radius %.7f: %s" % [rules, case[1], c.label()])
+	var off := _watch(_rammer(), 12, [["b", inside, {"species": "ambush_hunter", "radius": 5.0}]])
+	check_eq(off.label(), "notice", "M1's rammer charges a body of any size")
+
+
+func test_rule_3_a_creature_flees_the_nearest_body_it_fears_on_sight_and_only_with_the_rule_on() -> void:
+	var near := Vector2(0.0, 1.0)
+	var far := Vector2(3.0, 1.0)
+	# The rammer (0.625, share 1.25) fears from 0.78125; it is not an intruder there (above 0.75).
+	for case in [[RELATIONSHIPS_ON, 0.78125, "flee"], [RELATIONSHIPS_ON, 0.78125 - 0.5e-6, "flee"],
+			[RELATIONSHIPS_ON, 0.78125 - 2e-6, "rest"], [RELATIONSHIPS_ON, 50.0, "flee"],
+			[_rules_only("fear"), 0.78125, "flee"], [_rules_only(""), 0.78125, "notice"], [{}, 50.0, "notice"]]:
+		var c := _watch(_with_rules("rammer", case[0]), 7, [["big", near, {"species": "lurker", "radius": case[1]}]])
+		var where := "%s, radius %.7f" % ["every rule" if case[0] == RELATIONSHIPS_ON else str(case[0].get("rules", "no block")), case[1]]
+		check_eq(c.mem.state, case[2], where)
+		check_eq(c.of("creature_fled").size(), 1 if case[2] == "flee" else 0, where + ": fled once or not at all")
+		check_eq(c.mem.fear_of, "big" if case[2] == "flee" else "", where + ": fear_of")
+	var c := _watch(_with_rules("rammer", RELATIONSHIPS_ON), 7, [["big_a", near, {"species": "lurker", "radius": 0.8}],
+		["big_b", far, {"species": "lurker", "radius": 2.0}]])
+	var fled := c.of("creature_fled")
+	check(fled.size() == 1 and fled[0].from == "big_a" and int(fled[0].tick) == 5, "it flees the nearer one at its first think: %s" % [fled])
+	check_eq(c.mem.fear_of, "big_a", "and remembers which")
+	check_eq(c.mem.flee_from, near, "it flees from where it saw it")
+	check_eq(c.mem.target, "", "with no target")
+	var d := CreatureBrain.drive(c.mem, c.view(), 7, null)
+	check(Vector2(d.move).dot(Vector2(c.m.position - near).normalized()) > 0.99, "and swims straight away from it: %s" % d.move)
+	check_eq(float(d.speed_mul), float(c.mem.cfg.speeds.flee), "at its flee speed")
+	# Fear ignores the settle window (Q-S7): a fresh spawn flees at once.
+	var fresh := _watch(_with_rules("ambush", RELATIONSHIPS_ON, false), 7, [["big", Vector2(2.0, 0.0), {"species": "lurker", "radius": 0.9375}]])
+	check(fresh.mem.ignore_all_until > 7, "still settling")
+	check_eq(fresh.label(), "flee", "an ambush hunter (0.75, fears from 0.9375) flees while it settles")
+
+
+func test_rule_3_a_feared_body_in_view_keeps_the_flee_going_and_its_end_clears_fear_of() -> void:
+	var c := _with_rules("rammer", RELATIONSHIPS_ON)
+	var big := ["big", Vector2(0.0, 1.0), {"species": "lurker", "radius": 0.8}]
+	_watch(c, 100, [big])
+	# Thinks fall on ticks 5, 11, ... 95 (number 1, every 6 ticks): the last sighting is at 95.
+	check_eq(c.mem.state_tick, 95, "every sighting restarts the flee")
+	check_eq(c.of("creature_fled").size(), 1, "one creature_fled for the whole flee")
+	var labels := {}
+	for t in range(100, 420):
+		_tick(c, t, [], false)
+		labels[t] = c.label()
+	check_eq(labels[394], "flee", "still fleeing 300 ticks after the last sighting less one")
+	check_eq(labels[395], "wander/return", "then home, exactly the flee time after it")
+	check_eq(c.mem.fear_of, "", "fear_of is cleared when the flee ends")
+	check(not c.mem.flee_from.is_finite(), "and so is flee_from")
+	check(not c.mem.to_dict().has("fear_of"), "so the memory dict is M1's again")
+
+
+func test_rule_3_the_flee_steers_from_the_feared_body_before_the_attacker_and_a_hurt_restarts_it() -> void:
+	var c := _with_rules("rammer", RELATIONSHIPS_ON)
+	c.health_share = 0.3
+	CreatureBrain.on_hurt(c.mem, {"id": "a", "species": "lineage", "position": Vector2(-1.2, -2.0), "radius": 0.5}, 0)
+	_tick(c, 1, [], false)
+	check_eq(c.label(), "flee", "hurt below its flee share, it flees the attacker")
+	check_eq(c.mem.flee_from, Vector2(-1.2, -2.0), "from where it was hurt")
+	var big_at := Vector2(2.0, -2.0)
+	for t in range(2, 12):
+		_tick(c, t, [_percept(c, "big", big_at, {"species": "lurker", "radius": 0.8})], false)
+	check_eq(c.mem.fear_of, "big", "a feared body seen while fleeing becomes what it flees")
+	check_eq(c.mem.flee_from, big_at, "the flee handler steers from it, not from the attacker")
+	check_eq(c.mem.state_tick, 11, "the flee time restarted at the sighting")
+	check_eq(c.of("creature_fled").size(), 1, "no second creature_fled: it was already fleeing")
+	CreatureBrain.on_hurt(c.mem, {"id": "a", "species": "lineage", "position": Vector2(-1.0, -2.0), "radius": 0.5}, 20)
+	for t in range(21, 30):
+		_tick(c, t, [], false)
+	check_eq(c.mem.state_tick, 21, "a hurt restarts it as in M1")
+	check_eq(c.mem.flee_from, big_at, "and the remembered feared body still comes first")
+
+
+func test_rule_3_interrupts_a_tell_but_never_a_strike_and_the_strike_ends_in_the_flee() -> void:
+	var big := {"species": "lurker", "radius": 1.0}
+	var c := _with_rules("ambush", RELATIONSHIPS_ON)
+	c.energy_share = 0.5
+	var t := 0
+	while t < 300 and c.of("creature_tell").is_empty():
+		_tick(c, t, [_percept(c, "a", Vector2(2.75, 0.0))])
+		t += 1
+	check_eq(c.label(), "attack/tell", "telling at its prey")
+	for i in 6:
+		_tick(c, t + i, [_percept(c, "a", Vector2(2.75, 0.0)), _percept(c, "big", Vector2(-6.0, 0.0), big)])
+	var recovered := c.of("creature_recovered")
+	check(recovered.size() == 1 and recovered[0].outcome == "interrupted", "the tell is interrupted: %s" % [recovered])
+	check_eq(c.label(), "flee", "and it flees")
+	check_eq(c.mem.target, "", "dropping its prey")
+	check(c.of("creature_strike").is_empty(), "no strike")
+	var s := _with_rules("ambush", RELATIONSHIPS_ON)
+	s.energy_share = 0.5
+	var u := 0
+	while u < 300 and s.of("creature_strike").is_empty():
+		_tick(s, u, [_percept(s, "a", Vector2(2.75, 0.0))])
+		u += 1
+	var modes := []
+	for i in 40:
+		modes.append(_tick(s, u + i, [_percept(s, "big", Vector2(-6.0, 0.0), big)]).mode)
+	check_eq(modes.slice(0, 35), modes.slice(0, 20).map(func(_m): return "burst") + modes.slice(20, 35).map(func(_m): return "glide"),
+		"the strike runs its course")
+	check_eq(s.label(), "flee", "then it flees")
+	check_eq(s.of("creature_fled").size(), 1, "once")
+
+
+func test_rule_4_a_hurt_from_a_body_above_the_engage_share_is_fled_not_answered() -> void:
+	# [kind, relationships, attacker radius, what it does on the next think]
+	for case in [["rammer", RELATIONSHIPS_ON, 0.75, "notice"], ["rammer", RELATIONSHIPS_ON, 0.75 + 0.5e-6, "notice"],
+			["rammer", RELATIONSHIPS_ON, 0.75 + 2e-6, "flee"],
+			["rammer", RELATIONSHIPS_ON, 0.76, "flee"], ["rammer", _rules_only(""), 0.76, "notice"],
+			["rammer", _rules_only("no_engage_above"), 5.0, "notice"],
+			["ambush", RELATIONSHIPS_ON, 0.75, "notice"], ["ambush", RELATIONSHIPS_ON, 0.76, "flee"],
+			["ambush", _rules_only("no_engage_above"), 1.2, "notice"], ["ambush", _rules_only("no_engage_above"), 1.21, "flee"],
+			["ambush", {}, 1.21, "notice"]]:
+		var c := _with_rules(case[0], case[1])
+		var at := c.m.position + Vector2(-1.0, 0.0)
+		CreatureBrain.on_hurt(c.mem, {"id": "a", "species": "lurker", "position": at, "radius": case[2]}, 0)
+		_tick(c, 1, [], false)
+		var where := "%s, %s, attacker %.7f" % [case[0], "every rule" if case[1] == RELATIONSHIPS_ON else str(case[1].get("rules", "no block")), case[2]]
+		check_eq(c.mem.state, case[3], where)
+		if case[3] == "flee":
+			var fled := c.of("creature_fled")
+			check(fled.size() == 1 and fled[0].from == "a", where + ": creature_fled from the attacker")
+			check_eq(c.mem.flee_from, at, where + ": from where it was hurt")
+			check_eq(c.mem.fear_of, "", where + ": a hurt is no fear")
+	# Engaged, M1 keeps its target when hurt by another; rule 4 flees the body above its share.
+	for rel in [RELATIONSHIPS_ON, _rules_only("")]:
+		var r := _watch(_with_rules("rammer", rel), 60, [["b", Vector2(0.0, 6.0), {}]])
+		check_eq(r.label(), "chase/pursue", "chasing an intruder")
+		CreatureBrain.on_hurt(r.mem, {"id": "a", "species": "lurker", "position": Vector2(-1.0, -2.0), "radius": 0.76}, 60)
+		_tick(r, 61, [_percept(r, "b", Vector2(0.0, 6.0))], false)
+		if rel == RELATIONSHIPS_ON:
+			check_eq(r.label(), "flee", "with rule 4 it flees")
+		else:
+			check(r.mem.state == "chase" and r.mem.target == "b", "without it, it keeps its target: %s" % r.label())
+
+
+func test_the_memory_dict_holds_fear_of_only_when_it_is_set() -> void:
+	var c := _ambush()
+	var plain := c.mem.to_dict()
+	check(not plain.has("fear_of"), "left out at its default")
+	c.mem.fear_of = "big"
+	var feared := c.mem.to_dict()
+	check_eq(feared.get("fear_of", ""), "big", "written when set")
+	feared.erase("fear_of")
+	check_eq(feared, plain, "and nothing else changes")
+	CreatureBrain.forget(c.mem, "big", 0, 0)
+	check_eq(c.mem.fear_of, "", "forgetting the body clears it")
+	c.mem.fear_of = "big"
+	CreatureBrain.on_target_gone(c.mem, "other", 0)
+	check_eq(c.mem.fear_of, "big", "another body going away does not")
+	CreatureBrain.on_target_gone(c.mem, "big", 0)
+	check_eq(c.mem.fear_of, "", "the body going away does")
+	c.mem.fear_of = "big"
+	CreatureBrain.force_return(c.mem, "player", 0, 0)
+	check_eq(c.mem.fear_of, "", "a forced return clears it")
+
+
+func test_with_every_rule_on_m1_bodies_decide_as_with_every_rule_off() -> void:
+	# Every M1 pair lies inside the shares (plan B.6): the same scripted encounters, the same memory.
+	var bodies := [["cell", 0.5, "lineage"], ["hunter", 0.75, "ambush_hunter"], ["rammer", 0.625, "rammer"]]
+	for kind in ["ambush", "rammer"]:
+		for hungry in [false, true]:
+			var runs := []
+			for rel in [{}, RELATIONSHIPS_ON]:
+				var c := _with_rules(kind, rel)
+				c.energy_share = 0.5 if hungry else 0.9
+				var rng := RandomNumberGenerator.new()
+				rng.seed = 5150
+				for t in 900:
+					var percepts := []
+					for b in bodies:
+						if b[2] == c.mem.cfg.species_id:
+							continue
+						var at := Vector2(rng.randf_range(-6.0, 6.0), rng.randf_range(-6.0, 6.0))
+						percepts.append(_percept(c, b[0], at, {"radius": b[1], "species": b[2]}))
+					percepts.sort_custom(func(x, y): return x.distance < y.distance)
+					if t % 97 == 40:
+						var p: Dictionary = percepts[rng.randi_range(0, percepts.size() - 1)]
+						CreatureBrain.on_hurt(c.mem, p, t)
+					_tick(c, t, percepts)
+				runs.append({"memory": c.mem.to_dict(), "events": c.events})
+			var where := "%s, %s" % [kind, "hungry" if hungry else "sated"]
+			check_eq(runs[1].memory, runs[0].memory, where + ": the same memory after 900 ticks")
+			check_eq(runs[1].events, runs[0].events, where + ": the same events")
+			check(runs[0].events.size() > 5, where + ": and something happened (%d events)" % runs[0].events.size())
+
+
+func test_a_scaled_brain_feeds_and_strikes_exactly_as_far_as_the_resolver_lets_its_scaled_body() -> void:
+	# The brain's reaches are cfg lengths (scale_cfg x q); the resolver's are its constants x the
+	# actor's reach_scale (q). Each pair must agree, or a small creature would stop short or eat air.
+	for q in [1.0] + LADDER_QS:
+		var cfg := CreatureBrain.scale_cfg(rammer_cfg, q)
+		var body := rammer_body.scaled(q)
+		var mem := CreatureBrain.create("territorial", cfg, Vector2.ZERO, 0.0, {"center": Vector2.ZERO, "radius": ZONE_R}, 1, 0)
+		var me := {"position": Vector2.ZERO, "radius": body.radius}
+		var actor := InteractionResolver.Actor.new("c_1", Vector2.ZERO, 0.0, body)
+		actor.reach_scale = q
+		var touched := 0
+		var refused := 0
+		for i in 80:
+			var x := body.radius + 0.1 + i * 0.005
+			var food := {"id": "pk", "kind": "plant", "position": Vector2(x, 0.0), "radius": 0.1, "energy": 1.0}
+			var touching := CreatureBrain._touching(mem, me, food)
+			var fed := InteractionResolver.feed(actor, food, float(i))
+			check_eq(touching, fed.allowed, "q %.6f, food at %.3f: the brain touches it as the resolver feeds (%s)" % [q, x, fed.reason])
+			touched += 1 if touching else 0
+			refused += 0 if touching else 1
+		check(touched > 0 and refused > 0, "q %.6f: the sweep crosses the reach" % q)
+		for kind in ["bite", "ram"]:
+			var c: Dictionary = (ambush_cfg if kind == "bite" else rammer_cfg)
+			var a: Dictionary = CreatureBrain.scale_cfg(c, q).attack
+			var striker := (ambush_body if kind == "bite" else rammer_body).scaled(q)
+			var prey := Phenotype.new()
+			prey.radius = 0.3 * q
+			var lane := CreatureBrain.strike_lane(a, striker.radius, prey.radius, Vector2.ZERO, 0.0)
+			var hitter := InteractionResolver.Actor.new("c_1", Vector2.ZERO, 0.0, striker)
+			hitter.reach_scale = q
+			for edge in [-1e-4, 1e-4]:
+				var target := InteractionResolver.Actor.new("t", Vector2(float(lane.half_width) + edge, 0.0), 0.0, prey)
+				var r := InteractionResolver.bite(hitter, target, 0.0) if kind == "bite" else InteractionResolver.ram(hitter, target, 1.0, 0.0)
+				check_eq(r.reason != "out of reach", edge < 0.0, "q %.6f, %s %+.4f m from the lane's edge: %s" % [q, kind, edge, r.reason])
+
+
+## D-82: the smallest disc holding two discs. One that holds the other is the answer; otherwise the
+## disc spanning both along the line through their centres, which touches each from inside.
+func test_union_disc_is_the_smallest_disc_holding_both() -> void:
+	var big := {"center": Vector2(0.0, 0.0), "radius": 5.0}
+	var small := {"center": Vector2(1.0, 0.0), "radius": 2.0}
+	check_eq(CreatureBrain.union_disc(big, small), big, "the larger holds the smaller")
+	check_eq(CreatureBrain.union_disc(small, big), big, "either way round")
+	check_eq(CreatureBrain.union_disc(big, big.duplicate()), big, "equal discs: one of them")
+	var a := {"center": Vector2(0.0, 0.0), "radius": 1.0}
+	var b := {"center": Vector2(10.0, 0.0), "radius": 3.0}
+	check_eq(CreatureBrain.union_disc(a, b), {"center": Vector2(6.0, 0.0), "radius": 7.0}, "apart: (10 + 1 + 3) / 2 = 7, from 6")
+	var c := {"center": Vector2(0.0, 0.0), "radius": 4.0}
+	var d := {"center": Vector2(3.0, 4.0), "radius": 2.0}
+	var u := CreatureBrain.union_disc(c, d)
+	check_near(float(u.radius), 5.5, 1e-9, "overlapping: (5 + 4 + 2) / 2")
+	check(Vector2(u.center).is_equal_approx(Vector2(0.9, 1.2)), "its centre 1.5 along the line: %s" % [u.center])
+	for disc in [c, d]:
+		check_near(Vector2(disc.center).distance_to(u.center) + float(disc.radius), float(u.radius), 1e-5, "it touches each from inside")

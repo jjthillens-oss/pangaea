@@ -511,12 +511,13 @@ func _check_creatures(pool: PoolScene) -> void:
 	_check(sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading), "the cell goes back to the spawn, facing open water")
 	var ahead := sim.layout.spawn + Vector2.from_angle(sim.layout.spawn_heading) * PoolSim.DEBUG_THREAT_AHEAD_M
 	var placed := PackedStringArray()
-	for i in sim.species.species_ids().size():
+	var live: PackedStringArray = panel.call("threat_species", sim)
+	for i in live.size():
 		await _press(&"dev_spawn_threat")
 		var c: CreatureField.Creature = sim.creatures.creatures.back()
 		if sim.creatures.creatures.size() == count + i + 1 and c.debug and c.motion.position.distance_to(ahead) <= 1.0:
 			placed.append(c.species_id)
-	_check(placed == sim.species.species_ids(), "F9 places a threat 6 m ahead, the next species each time (%s)" % placed)
+	_check(not live.is_empty() and placed == live, "F9 places a threat 6 m ahead, the next species living at the cell's size each time (%s of %s)" % [placed, live])
 	for i in placed.size():
 		await _press(&"dev_kill_nearest")
 	_check(sim.creatures.creatures.size() == count and sim.creatures.creatures.all(func(c: CreatureField.Creature) -> bool: return not c.debug),

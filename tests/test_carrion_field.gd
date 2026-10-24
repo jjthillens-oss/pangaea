@@ -149,3 +149,63 @@ func _data_with_supply(enabled: bool) -> Dictionary:
 ## The real carrion data with the interim supply switched back on.
 func _supply_on() -> Dictionary:
 	return _data_with_supply(true)
+
+
+# --- the endless world's carrion ring (S1 T2.3) ---
+
+func test_drop_beyond_removes_only_far_items_without_events() -> void:
+	var field := CarrionField.create(_data_with_supply(false), 38)
+	var near := field.spawn(Vector2(3.0, 4.0), "test")        # 5 m
+	var edge := field.spawn(Vector2(0.0, -52.0), "test")      # exactly at the ring
+	var far := field.spawn(Vector2(52.01, 0.0), "test")
+	var farther := field.spawn(Vector2(-80.0, 30.0), "test")
+	field.events.clear()
+	check_eq(field.drop_beyond(Vector2.ZERO, 52.0), 2, "two dropped")
+	var ids := []
+	for item in field.items:
+		ids.append(item.id)
+	check_eq(ids, [near.id, edge.id], "the near ones stay, in order")
+	check(field.events.is_empty(), "no events")
+	check(not ids.has(far.id) and not ids.has(farther.id), "the far ones are gone")
+	check_eq(field.drop_beyond(Vector2.ZERO, 52.0), 0, "nothing more to drop")
+
+
+func test_drop_all_empties_the_field_without_events() -> void:
+	var field := CarrionField.create(_data_with_supply(false), 39)
+	for i in 4:
+		field.spawn(Vector2(i, 0.0), "test")
+	field.events.clear()
+	var next := field.next_number
+	check_eq(field.drop_all(), 4, "four dropped")
+	check(field.items.is_empty(), "empty")
+	check(field.events.is_empty(), "no events")
+	check_eq(field.next_number, next, "ids keep counting (never reused)")
+
+
+# --- S2 (T2.2): per-item radius and lifetime, find ---
+
+func test_an_item_may_have_its_own_radius_and_lifetime() -> void:
+	var field := CarrionField.create(layout.carrion, 1)
+	var plain := field.spawn(Vector2(1.0, 2.0), "kill")
+	check_eq(plain.radius, field.item_radius, "the field's radius by default")
+	check_eq(plain.lifetime, field.lifetime, "the field's lifetime by default")
+	var morsel := field.spawn(Vector2(3.0, 2.0), "morsel", 18.75, -1, 0.1875, 45.0)
+	check_eq(morsel.radius, 0.1875, "its own radius")
+	check_eq(morsel.lifetime, 45.0, "its own lifetime")
+	check_eq(morsel.points, floori(18.75 / field.energy * field.points + 1e-6), "points by the spawn rule")
+	_run(field, 45.0 - DT)
+	check(not field.find(morsel.id).is_empty(), "alive just before its own lifetime")
+	_run(field, 2.0 * DT)
+	check(field.find(morsel.id).is_empty(), "gone at its own lifetime")
+	check(not field.find(plain.id).is_empty(), "the plain item keeps the field's")
+
+
+func test_find_gives_the_item_or_nothing() -> void:
+	var field := CarrionField.create(layout.carrion, 1)
+	var a := field.spawn(Vector2(1.0, 2.0), "kill")
+	var b := field.spawn(Vector2(4.0, 2.0), "kill", 12.0)
+	check(is_same(field.find(b.id), b), "the item itself")
+	check(is_same(field.find(a.id), a), "the first too")
+	check_eq(field.find("cr_999"), {}, "{} for an unknown id")
+	field.consume(a.id)
+	check_eq(field.find(a.id), {}, "{} once eaten")

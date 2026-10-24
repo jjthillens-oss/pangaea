@@ -1,0 +1,7 @@
+{
+	"id": "shell_l_wide",
+	"status": "PROPOSED",
+	"review_state": "blockout - S1 test fixture",
+	"export_path": "assets/export/shell_bell.glb",
+	"footprint_radius_m": 1.2
+}
