@@ -1,0 +1,124 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://game/ui/creature_world_hud.gd" id="1_hud"]
+[ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+
+[node name="CreatureWorldHud" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_hud")
+
+[node name="Frame" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 24
+
+[node name="Status" type="PanelContainer" parent="Frame"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 0
+theme_type_variation = &"HudPanel"
+
+[node name="Box" type="VBoxContainer" parent="Frame/Status"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="NameText" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+text = "Newcomer · Generation 1"
+
+[node name="HealthText" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Health 30 / 30"
+
+[node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_type_variation = &"HealthBar"
+max_value = 30.0
+value = 30.0
+show_percentage = false
+
+[node name="Right" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 0
+theme_override_constants/separation = 8
+
+[node name="PointsPanel" type="PanelContainer" parent="Frame/Right"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_type_variation = &"HudPanel"
+
+[node name="PointsRow" type="HBoxContainer" parent="Frame/Right/PointsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PointsText" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Points 150"
+
+[node name="PointsFlash" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"AccentLabel"
+text = "+5"
+
+[node name="Center" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 0
+theme_override_constants/separation = 8
+
+[node name="NoticePanel" type="PanelContainer" parent="Frame/Center"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"BannerPanel"
+
+[node name="NoticeText" type="Label" parent="Frame/Center/NoticePanel"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"WarnLabel"
+text = "Return to the nest to evolve"
+horizontal_alignment = 1
+
+[node name="Bottom" type="VBoxContainer" parent="Frame"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+theme_override_constants/separation = 6
+
+[node name="HintPanel" type="PanelContainer" parent="Frame/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+theme_type_variation = &"ToastPanel"
+
+[node name="HintText" type="Label" parent="Frame/Bottom/HintPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"SmallLabel"
+text = "W  Move   ·   F  Bite   ·   E  Evolve at the nest"
+horizontal_alignment = 1

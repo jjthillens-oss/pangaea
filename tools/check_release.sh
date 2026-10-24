@@ -5,7 +5,8 @@
 # parse, so the logs are what count).
 #   launch: the pack's main scene runs 120 frames (start screen, nothing saved)
 #   probe:  tools/release_probe.gd checks the start screen is up, Main has no dev layer,
-#           --perf-tour is ignored and the pack holds nothing from game/dev or tests
+#           --perf-tour is ignored, the creature stage opens with its part tools, saves and
+#           enters the world, and the pack holds nothing from game/dev or tests
 # With no pack given it exports the release preset's pack to builds/release/Pangaea.pck (a pack
 # export needs no export templates). CI passes builds/windows/Pangaea.exe after the export, so the
 # exe it uploads is the one checked. Both runs start in an empty folder, so a res:// path missing
@@ -39,7 +40,7 @@ trap 'rm -rf "$RUN_DIR"' EXIT
 echo "Starting the release pack $PACK"
 status=0
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --quit-after 120 -- --slot=user://smoke/release.json) 2>&1 | tee "$LOGS/launch.log" || status=1
-(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
+(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --creature-store=user://smoke/creature_release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
 if grep -E "SCRIPT ERROR|^ERROR:" "$LOGS"/*.log; then
   echo "Engine or script errors while exporting or starting the release pack ($LOGS/)."
   status=1

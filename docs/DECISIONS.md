@@ -439,3 +439,47 @@ M1 step 5's "real audio", built by the sound and music thread while engineering 
 - **Soundtrack** (`game/scenes/audio/soundtrack.gd`, in `main.tscn`, so the music carries from the title into the pool). Joshua heard the first, synthesized score and asked for "beautiful instrumentals" like Spore's (2026-10-23 08:09), so the music is now composed CC0 tracks by human composers from OpenGameArt, all uploaded before 2024 (so no AI-generated music to disclose), each logged in its record: title *Magic Space* (codemanu), looped; a shuffled calm playlist of *Another August* and *Aquaria* (The Cynic Project), *Drifting* (some-weirdo) and *Nautilus* (poinl), with 4 to 9 s of rest between tracks; danger *Frenzied Swimming* (ShoninyasTube), looped, faded in within about half a second when a creature notices, tells at, strikes at or hits the cell and held 6 s, with the calm track kept quietly underneath so it resumes where it was. Starving (calm −4 dB, low-pass 1.1 kHz), dead (−8 dB, 550 Hz) and the pause menu (1.8 kHz) muffle it. Nothing in it is a fixed motif yet: Bible 20's "music grows with scale and keeps its motifs" waits for a composed theme. A sampler of all 11 candidates is in the project files (`pangaea/audio/music_candidates_sampler.mp3`); swapping a track is one line in `soundtrack.gd` plus its record. `CellAudio.set_size` is kept for per-size playlists.
 - **UiSounds** (`main.tscn`) hooks every button and slider that enters the tree: hover (mouse, or focus moved by keyboard or gamepad), press, and back for Back, Cancel, Resume, Close and Quit. A control can opt out with the meta `silent_ui` or pick its sound with `ui_sound`.
 - **Placeholders.** `placeholder_audio.gd` and its 14 inventory entries are gone; `tests/test_placeholders.gd` now checks no audio placeholder comes back. `tests/test_audio.gd` checks records against files, the cue table against the synth, loop modes, lengths and loop seams, peaks (none above −0.9 dBFS, none near silent), repeatable renders, the bus layout, the moods and the UI sound rules.
+
+## 2026-10-24 · Continue rebuilds the world from its seed (CONFIRMED)
+
+Godfrey's test review round 3 (issue #77, PR #95) asked for a test that a save → load → continue run matches an
+uninterrupted run tick for tick. That cannot hold under D6 and D16 above: Continue restores the cell, its body, lineage,
+adaptation points and checkpoint, and repopulates plankton, creatures and shelter from the world seed. Asked whether to
+keep that contract or change the save schema to restore the exact moment, Joshua chose **keep** (2026-10-24 00:07 UTC).
+The seeded-restart contract stays; exact restores are a separate, later decision if a stage needs them.
+
+## 2026-10-23 · Creature stage preview (PROPOSED)
+
+The first playable slice of the creature stage (`docs/milestones/creature-stage-plan.md`), built under the owner's
+standing rules; the generated-skin direction of 2026-10-23 is CONFIRMED, everything below is PROPOSED until the owner
+says otherwise. It opens from the title's "Creature stage" button (marked Preview, below the main menu) or with
+`--creature` after `--` (`--creature-store=PATH` names its save file in place of the slot's; the smoke uses it), and
+the stage's own Escape leaves it for the title.
+
+- **Saves (plan section 3).** The lineage save schema stays v2. The stage keeps its own file,
+  `user://creature_stage/slot_<n>.json` (`CreatureStore`, schema 1: `version`, `name`, `body` as the codec's
+  dictionary, `points`, `world_seed`, `generation`, `history`), with n the settings' slot number (1 when the slot in
+  use is a `--slot` file that is none of the numbered ones). `--slot=PATH` does not apply to the stage: it names the
+  lineage file only. Writes are atomic (`.tmp` then rename); a load validates the version, the keys and their types,
+  and the body against the body rules and part rules, refuses with reasons and leaves the file as it is, and the
+  stage then starts fresh with the reasons in `load_problems`; the save before is kept as `.bak` and read when the
+  file is bad. The stage saves on Done, Back, Evolve, a death and a quit from the window (with the points the world's
+  sim holds). IMPLEMENTED (`CreatureStore`, `CreatureStage`); the editor and world scenes are merged, and the
+  "Creature stage scenes missing" notice stays as a guard for a build without them.
+- **The editor (plan section 4).** PROPOSED. A Spore-style room over the ported editor core: handles to drag, a
+  tool per part type in the art records (read from `game/data/creature/part_rules.json`, compiled from the records
+  by `tools/make_part_rules.py` since the records folder is not exported), a limb tool, undo and redo, mirror,
+  insert and delete, eight skin swatches carried in the body's `skin_color` key, a test drive on the gait planner,
+  and a method twin for every input path so the smoke drives it. Escape is progressive (tool, then an unsaved-edits
+  prompt, then the title); Done on a legless body asks once.
+- **The world (plan section 5).** `CreatureWorldSim` runs at 60 ticks a second from the world seed like `PoolSim`
+  (whole-tick durations, sorts tied by id, every draw from a seeded stream, plain-data snapshots). A flat 160 m test
+  field with a nest at the centre, fruit bushes that regrow and meat from kills, six rivals built from the starter
+  bodies whose brains get percepts only (wander, graze, flee a bigger creature, hunt a smaller one when hungry).
+  Anatomy sets play (`CreatureStats`): leg length gives speed and cadence through the gait planner, mouth parts bite
+  power, eye parts sight, body volume health; a body with no mouth eats fruit by touch at half the points. Death sends
+  the creature back to the nest at full health with a 20% points loss. Camera-relative movement, bite on F / pad X,
+  evolve at the nest on E / pad Y. The numbers live in `game/data/creature/creature_stage.json` (PROPOSED).
+- **Open owner decision: save schema v3.** Folding the creature body, points and generation into the lineage save
+  (one file per slot, with a migration from v2) is save schema v3 and needs the owner's approval. Until then the
+  stage's file stays separate and the lab's `user://creatures/*.json` files remain importable as the same codec text.
