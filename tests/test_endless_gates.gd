@@ -111,6 +111,11 @@ const PRESSURE_POINTS_SEED := 3202
 const PRESSURE_POINT_RUN_SEED := 511   ## point i runs with seed 511 + i
 const PRESSURE_MIN_MEETINGS_PER_MIN := 1.0
 const PRESSURE_MAX_DEATHS_PER_5_MIN := 0.5
+## Size 3's own bar (owner card 2026-10-24, "Calmer size 3 for now"): only Wardens and veils live
+## there at q 1, and veil gardens and glass reefs hold veils alone, so a forager meets about one
+## threat every 2 to 3 minutes. Each group needs one meeting every 4 minutes, and a run may meet
+## none. Sizes 1, 2 and 4 keep M1's bar and a meeting in every run.
+const PRESSURE_SIZE_3_MIN_MEETINGS_PER_MIN := 0.25
 ## #33 (M1's constants): z_center and z_s, plus CAMP_TILE_ZONES zones found from probe points.
 const CAMP_SEED := 331
 const CAMP_HOME_ZONES: PackedStringArray = ["z_center", "z_s"]
@@ -899,7 +904,7 @@ func test_soak_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() ->
 
 
 ## S3G22: #32 at sizes 3 and 4 (D-115), on make_sim_at's world, from home and from the same 10
-## points scaled to each size's tm, with M1's thresholds.
+## points scaled to each size's tm: M1's thresholds at size 4, size 3's own bar at 3.
 func test_soak_at_sizes_three_and_four_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() -> void:
 	if _waits("#32 at sizes 3 and 4"):
 		return
@@ -939,9 +944,11 @@ func _pressure_gate(size: int) -> void:
 			var group_minutes := starts.size() * PRESSURE_TICKS / 3600.0
 			minutes += group_minutes
 			var where := "size %d: %s from %s" % [size, body, "home" if from_home else "points"]
-			check(meetings / group_minutes >= PRESSURE_MIN_MEETINGS_PER_MIN, "%s: %.2f meetings a minute (need %.1f)" % [
-				where, meetings / group_minutes, PRESSURE_MIN_MEETINGS_PER_MIN])
-			check_eq(met_in, starts.size(), "%s: met a threat in every run" % where)
+			var bar := PRESSURE_SIZE_3_MIN_MEETINGS_PER_MIN if size == 3 else PRESSURE_MIN_MEETINGS_PER_MIN
+			check(meetings / group_minutes >= bar, "%s: %.2f meetings a minute (need %.2f)" % [
+				where, meetings / group_minutes, bar])
+			if size != 3:
+				check_eq(met_in, starts.size(), "%s: met a threat in every run" % where)
 	var rate := deaths / minutes * 5.0
 	print("test-endless-gates: #32 at size %d: %d deaths in %.0f minutes, %.2f per 5 minutes; %d starved" % [size, deaths, minutes, rate, starved])
 	check(rate <= PRESSURE_MAX_DEATHS_PER_5_MIN, "size %d: %.2f deaths per 5 minutes (at most %.1f)" % [size, rate, PRESSURE_MAX_DEATHS_PER_5_MIN])
