@@ -17,13 +17,19 @@ extends RefCounted
 ## the fairness contract unnoticed (docs/milestones/m1-step3-plan.md, section 5):
 ##   1 genome, 2 weapon, 3 speed, 4 readability, 5 forgiving, 6 strike window, 7 sites,
 ##   8 checkpoint safety, 9 leash band, 10 pinch, 11 new-game fill, 12 fairness arrays, 13 unknown key,
-##   15 outgrown (S2; 14 is kept for S3's veil).
+##   14 hazard (S3), 15 outgrown (S2).
 ##
 ## S2 (the growth ladder, plan B.6 and B.7): a species may name its entry_size, the cell's size at
 ## which it is drawn as a threat (1 when left out), and a habit (two posts, B.7); the top-level
 ## "relationships" block holds the relationship rules' shares and switches (D-18), which _prepare
 ## passes into every brain config. at_size(id, n) is the species' record at the cell's size n: its
 ## phenotype and cfg scaled by q = 1.6^(c - n) (Phenotype.scaled, CreatureBrain.scale_cfg), memoised.
+##
+## S3 (s3-sim 3.2): a third behavior, "hazard" (the stinger veil): it drifts round its home on a
+## slow figure (hazard.drift) and trails stinging threads (hazard.threads). It has no attack, no
+## forage or territory keys and no metabolism; rule 14 keeps it slow, its sting under the two-hit
+## rule and its threads inside its reach disc. radius_at(id, n) gives a species' body radius at the
+## cell's size without a part catalog (D-139), for the world's tile and site checks.
 
 const DEFAULT_PATH := "res://game/data/creatures_m1.json"
 const SCHEMA_VERSION := 1
@@ -43,15 +49,25 @@ const WORST_CLOSING_SHARE := 2.0
 const ARC_NUDGE := 1e-4
 const RULE_NAMES := {1: "genome", 2: "weapon", 3: "speed", 4: "readability", 5: "forgiving", 6: "strike window",
 	7: "sites", 8: "checkpoint safety", 9: "leash band", 10: "pinch", 11: "new-game fill", 12: "fairness arrays",
-	13: "unknown key", 15: "outgrown"}
-const BEHAVIORS: PackedStringArray = ["ambush", "territorial"]
+	13: "unknown key", 14: "hazard", 15: "outgrown"}
+const BEHAVIORS: PackedStringArray = ["ambush", "territorial", "hazard"]
 ## The sizes of the growth ladder (plan B.1): entry_size lies in 1..MAX_ENTRY_SIZE.
 const MAX_ENTRY_SIZE := 10
 ## The largest relationships.tolerance accepted: it absorbs float rounding, not real size differences.
 const MAX_SHARE_TOLERANCE := 1e-3
 ## A habit's post switch (B.7, D-23): the ambush brain moves when the cell is out of its sight, the
 ## territorial one when the cell is nearer the other post's zone.
-const POST_SWITCHES := {"out_of_sight": "ambush", "nearer_cell": "territorial"}
+## S3's "bloom" (D-128): an elder Warden moves to the meadow that is not in bloom.
+const POST_SWITCHES := {"out_of_sight": "ambush", "nearer_cell": "territorial", "bloom": "territorial"}
+## Rule 14 (a): a hazard's every speed share of its top speed is at most this share of the slowest
+## fed starting body's top speed.
+const HAZARD_MAX_SPEED_SHARE := 0.5
+## Rule 14 (c): how many threads a hazard trails.
+const HAZARD_THREADS := [3, 5]
+## Rule 14 (b): a sting's damage counts this many seconds of stings in a row (floor(2 / cooldown) + 1).
+const HAZARD_STING_WINDOW_S := 2.0
+## Rule 14 (d) (D-121): the leash lies this far beyond the drift path's corner (radius x sqrt(2)).
+const HAZARD_LEASH_SLACK_M := [0.5, 1.0]
 
 # Every key each block may hold, and its kind. A kind ending in "?" may be left out.
 const TOP_KEYS := {"schema_version": "whole", "status": "text", "note": "text?", "ai": "object", "combat": "object",
@@ -70,16 +86,26 @@ const SPAWNING_KEYS := {"retry_s": "number", "min_gap_m": "number", "fade_in_s":
 const SPECIES_KEYS := {"name": "text", "death_reason": "text", "death_tip": "text", "behavior": "text",
 	"body_asset": "text", "body_size": "number", "parts": "list", "niche": "object", "metabolism_share": "number",
 	"start_energy_share": "number", "hungry_below": "number", "full_above": "number", "senses": "object",
-	"speeds": "object", "prey_max_radius_share": "number?", "intruder_min_radius": "number?", "notice_s": "number",
-	"give_up_s": "number", "leash_m": "number", "forage_radius_m": "number?", "forage_timeout_s": "number?",
+	"speeds": "object", "prey_max_radius_share": "number?", "intruder_min_radius": "number?", "notice_s": "number?",
+	"give_up_s": "number?", "leash_m": "number", "forage_radius_m": "number?", "forage_timeout_s": "number?",
 	"forage_retry_s": "number?", "refractory_s": "number", "nav_timeout_s": "number", "territory_margin_m": "number?",
-	"territory_exit_m": "number?", "rest_s": "pair?", "attack": "object", "flee": "object", "carcass": "object",
-	"entry_size": "whole?", "habit": "object?"}
+	"territory_exit_m": "number?", "rest_s": "pair?", "attack": "object?", "flee": "object", "carcass": "object",
+	"entry_size": "whole?", "habit": "object?", "hazard": "object?"}
 ## The optional species keys each behavior needs.
 const BEHAVIOR_KEYS := {
-	"ambush": ["prey_max_radius_share", "forage_radius_m", "forage_timeout_s", "forage_retry_s"],
-	"territorial": ["intruder_min_radius", "territory_margin_m", "territory_exit_m", "rest_s"],
+	"ambush": ["prey_max_radius_share", "forage_radius_m", "forage_timeout_s", "forage_retry_s", "attack", "notice_s",
+		"give_up_s"],
+	"territorial": ["intruder_min_radius", "territory_margin_m", "territory_exit_m", "rest_s", "attack", "notice_s",
+		"give_up_s"],
+	"hazard": ["hazard"],
 }
+## The species keys a hazard may not have: it never attacks, forages or guards (S3G9b).
+const HAZARD_REFUSED: PackedStringArray = ["attack", "prey_max_radius_share", "intruder_min_radius", "forage_radius_m",
+	"forage_timeout_s", "forage_retry_s", "territory_margin_m", "territory_exit_m", "rest_s"]
+const HAZARD_KEYS := {"drift": "object", "threads": "object"}
+const DRIFT_KEYS := {"radius_m": "number", "period_s": "pair"}
+const THREAD_KEYS := {"count": "whole", "length_m": "number", "radius_m": "number", "damage": "number",
+	"cooldown_s": "number", "knockback": "number"}
 const ATTACK_KEYS := {"kind": "text", "tell": "text", "start_min_m": "number", "start_max_m": "number",
 	"standoff_m": "number", "aim_deg": "number", "lead_s": "number", "lead_cap_m": "number", "tell_s": "number",
 	"burst_speed": "number", "burst_s": "number", "glide_s": "number", "glide_drag": "number", "recover_s": "number",
@@ -90,7 +116,10 @@ const SPEEDS_KEYS := {"wander": "number", "forage": "number", "pursue": "number"
 const FLEE_KEYS := {"below_health_share": "number", "for_s": "number"}
 const CARCASS_KEYS := {"chunks": "whole", "energy": "number", "on_starve": "flag"}
 const PART_KEYS := {"type": "text", "angle": "number", "scale": "number?"}
-const HABIT_KEYS := {"post_switch": "text", "post_rest_s": "number?", "post_hysteresis_m": "number?", "trail_s": "number?"}
+## S3: "channel" (a Deep lurker lies in reef channels, tile rule 11) and "bloom_cycle_s" (the bloom
+## switch's cycle); a habit with only "channel" has one post.
+const HABIT_KEYS := {"post_switch": "text?", "post_rest_s": "number?", "post_hysteresis_m": "number?", "trail_s": "number?",
+	"channel": "flag?", "bloom_cycle_s": "number?"}
 const RELATIONSHIP_KEYS := {"rules": "object", "prey_share": "number", "intruder_max_radius_share": "number",
 	"fear_radius_share": "number", "tolerance": "number"}
 ## One switch per relationship rule (Relationships), every one required.
@@ -131,6 +160,8 @@ var killer_ignore_ticks := 0
 var start_grace_ticks := 0
 var spawn_retry_ticks := 0
 var fade_in_ticks := 0
+## The longest sting cooldown among the hazard species, in ticks (0 when there is none).
+var _hazard_cooldown_ticks := 0
 ## at_size's records, by "<id>/<n>", and the one part catalog they are built with (the first given).
 var _records := {}
 var _part_catalog: PartCatalog = null
@@ -299,6 +330,27 @@ func habit_of(species_id: String) -> Dictionary:
 	return species.get(species_id, {}).get("habit", {})
 
 
+## The species' data "hazard" block ({"drift", "threads"} as written), or {} for any other species.
+func hazard_of(species_id: String) -> Dictionary:
+	return species.get(species_id, {}).get("hazard", {})
+
+
+## The longest sting cooldown of any hazard species, in ticks; 0 when the data has no hazard.
+func hazard_cooldown_ticks() -> int:
+	return _hazard_cooldown_ticks
+
+
+## The species' body radius at the cell's size n, without a part catalog (D-139): the player's
+## radius times its clamped body_size, times q. Bit-equal to at_size(id, n).phenotype.radius (S3G9c).
+## 0.0 with an error for n below its entry size.
+func radius_at(species_id: String, n: int) -> float:
+	if n < entry_size(species_id):
+		push_error("SpeciesCatalog.radius_at: '%s' has no radius at size %d (entry size %d)." % [species_id, n, entry_size(species_id)])
+		return 0.0
+	var size := clampf(float(species.get(species_id, {}).get("body_size", 1.0)), MIN_BODY_SIZE, MAX_BODY_SIZE)
+	return Relationships.PLAYER_RADIUS * size * Relationships.q_of(entry_size(species_id), n)
+
+
 ## The species' record at the cell's size n, for n at least its entry size (plan B.6, s2-sim 3.2):
 ## {"q", "rel", "ladder_role", "phenotype" (phenotype(id).scaled(q)), "cfg" (scale_cfg of its brain
 ## config), "sight" (the scaled phenotype's), "fov" (radians), "near_m" (senses.near_m x q),
@@ -389,6 +441,10 @@ func reach_disc_for(s: Dictionary, territory: Dictionary, k := 1.0) -> Dictionar
 		var center: Vector2 = territory.get("center", home)
 		var territory_r := float(territory.get("radius", float(cfg.default_territory_m) * k)) + float(cfg.territory_margin_m) * k
 		return {"center": center, "radius": territory_r + float(cfg.leash_m) * k}
+	if cfg.has("threads"):
+		# A hazard's threads trail past its body (D-121): the leash, then a thread's length and radius.
+		return {"center": home, "radius": float(cfg.leash_m) * k + float(cfg.threads.length_m) * k
+			+ float(cfg.threads.radius_m) * k}
 	return {"center": home, "radius": float(cfg.leash_m) * k}
 
 
@@ -418,7 +474,7 @@ func two_post_disc_for(s: Dictionary, territory_a: Dictionary, post_b: Dictionar
 func strike_room_problem(species_id: String, smallest_territory: float, where: String, part_catalog: PartCatalog,
 		n := 0) -> String:
 	var block: Dictionary = species.get(species_id, {})
-	if block.is_empty() or brain_config(species_id).is_empty():
+	if block.is_empty() or brain_config(species_id).is_empty() or not block.has("attack"):
 		return ""
 	var cfg := brain_config(species_id)
 	var radius := phenotype(species_id, part_catalog).radius if n == 0 else 0.0
@@ -488,7 +544,8 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 		errors: PackedStringArray) -> void:
 	var block: Dictionary = species[id]
 	var where := "species '%s'" % id
-	var attack: Dictionary = block.attack
+	var attack: Dictionary = block.get("attack", {})
+	var hazard := str(block.behavior) == "hazard"
 	var p := phenotype(id, part_catalog)
 
 	# Rule 1: the genome's parts against the part catalog, and the body size.
@@ -523,25 +580,28 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 
 	# Rule 2: the behavior and the weapon it attacks with.
 	var behavior := str(block.behavior)
-	var kind := str(attack.kind)
+	var kind := str(attack.get("kind", ""))
 	if behavior == "ambush":
 		if not _has_jaw(p) or kind != "bite":
 			_rule(errors, 2, "%s is an ambush species: it needs a jaw and attack kind 'bite' (kind '%s')." % [where, kind])
 	elif behavior == "territorial":
 		if p.spikes.is_empty() or kind != "ram":
 			_rule(errors, 2, "%s is a territorial species: it needs a spike and attack kind 'ram' (kind '%s')." % [where, kind])
+	elif behavior == "hazard":
+		pass   # its weapon is its threads (rule 14)
 	else:
 		_rule(errors, 2, "%s behavior '%s' is not one of %s." % [where, behavior, BEHAVIORS])
-	if str(attack.tell).is_empty():
+	if (behavior == "ambush" or behavior == "territorial") and str(attack.tell).is_empty():
 		_rule(errors, 2, "%s attack names no tell." % where)
 
 	# Rule 3: strike speed and the escape rule (F3).
-	var burst := float(attack.burst_speed)
-	if not (burst > 0.0 and burst <= PoolLayout.MAX_SPEED):
-		_rule(errors, 3, "%s burst_speed %.2f m/s is not above 0 and at most %.1f m/s (the tunnelling bound)."
-			% [where, burst, PoolLayout.MAX_SPEED])
-	if float(attack.glide_drag) < 0.0:
-		_rule(errors, 3, "%s glide_drag must not be negative." % where)
+	if not attack.is_empty():
+		var burst := float(attack.burst_speed)
+		if not (burst > 0.0 and burst <= PoolLayout.MAX_SPEED):
+			_rule(errors, 3, "%s burst_speed %.2f m/s is not above 0 and at most %.1f m/s (the tunnelling bound)."
+				% [where, burst, PoolLayout.MAX_SPEED])
+		if float(attack.glide_drag) < 0.0:
+			_rule(errors, 3, "%s glide_drag must not be negative." % where)
 	for key in SPEEDS_KEYS:
 		var share := float(block.speeds[key])
 		if not (share > 0.0 and share <= 1.0):
@@ -552,31 +612,7 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 		_rule(errors, 3, "%s pursues at %.3f m/s, above %.3f m/s (%.2f x the slowest fed starting body, %s at %.3f m/s)."
 			% [where, pursue, bound, float(fairness.max_pursue_share_of_slowest_fed), starting.slowest_body, starting.slowest_fed])
 
-	# Rule 4: readable timings, and every duration at least one tick.
-	if float(attack.tell_s) < float(fairness.min_tell_s):
-		_rule(errors, 4, "%s tell_s %.2f s is below the %.2f s floor." % [where, float(attack.tell_s), float(fairness.min_tell_s)])
-	if float(block.notice_s) < float(fairness.min_notice_s):
-		_rule(errors, 4, "%s notice_s %.2f s is below the %.2f s floor." % [where, float(block.notice_s), float(fairness.min_notice_s)])
-	for key in ["recover_s", "blocked_recover_s"]:
-		if float(attack[key]) < float(fairness.min_recover_s):
-			_rule(errors, 4, "%s %s %.2f s is below the %.2f s floor." % [where, key, float(attack[key]), float(fairness.min_recover_s)])
-	var durations := {"notice_s": block.notice_s, "give_up_s": block.give_up_s, "refractory_s": block.refractory_s,
-		"nav_timeout_s": block.nav_timeout_s, "senses.memory_s": block.senses.memory_s, "flee.for_s": block.flee.for_s,
-		"niche.respawn_s": block.niche.respawn_s}
-	for key in ["tell_s", "burst_s", "glide_s", "recover_s", "blocked_recover_s"]:
-		durations["attack." + key] = attack[key]
-	for key in ["forage_timeout_s", "forage_retry_s"]:
-		if block.has(key):
-			durations[key] = block[key]
-	if block.has("rest_s"):
-		durations["rest_s[0]"] = block.rest_s[0]
-		durations["rest_s[1]"] = block.rest_s[1]
-		if float(block.rest_s[0]) > float(block.rest_s[1]):
-			_rule(errors, 4, "%s rest_s must be [shortest, longest]." % where)
-	_check_durations(where, durations, errors)
-	var jitter := float(block.niche.respawn_jitter_s)
-	if not (jitter >= 0.0 and jitter < float(block.niche.respawn_s)):
-		_rule(errors, 4, "%s niche.respawn_jitter_s %.1f s must be at least 0 and below respawn_s." % [where, jitter])
+	_check_readable(id, attack, errors)
 
 	# Rule 5: the two-hit rule. No single hit takes max_single_hit_share of the smallest starting body.
 	var worst := _worst_hit(p)
@@ -585,18 +621,10 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 		_rule(errors, 5, "%s can deal %.2f in one hit, not below %.2f (%.2f x %.1f health)."
 			% [where, worst, limit, float(fairness.max_single_hit_share), float(starting.smallest_health)])
 
-	# Rule 6: the strike window, and a strike lane that fits inside what the creature may reach.
-	var lo := float(attack.start_min_m)
-	var hi := float(attack.start_max_m)
-	var standoff := float(attack.standoff_m)
-	if not (lo > 0.0 and lo <= standoff and standoff <= hi):
-		_rule(errors, 6, "%s needs 0 < start_min_m <= standoff_m <= start_max_m (%.2f, %.2f, %.2f)." % [where, lo, standoff, hi])
-	var aim := float(attack.aim_deg)
-	if not (aim > 0.0 and aim < 180.0) or float(attack.lead_s) < 0.0 or float(attack.lead_cap_m) < 0.0:
-		_rule(errors, 6, "%s needs 0 < aim_deg < 180 and lead_s, lead_cap_m >= 0." % where)
-	var room_problem := strike_room_problem(id, _smallest_territory(id, layout), where, part_catalog)
-	if not room_problem.is_empty():
-		_rule(errors, 6, room_problem)
+	if not hazard:
+		_check_strike_window(id, attack, layout, part_catalog, errors)
+	else:
+		_check_hazard(id, p, starting, errors)
 
 	# Plain ranges; no fairness rule hangs on them, but the brain and the sim assume them.
 	if float(block.leash_m) <= 0.0:
@@ -605,7 +633,8 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 	var full := float(block.full_above)
 	if not (hungry >= 0.0 and hungry < full and full <= 1.0):
 		errors.append("%s: needs 0 <= hungry_below < full_above <= 1." % where)
-	for key in ["metabolism_share", "start_energy_share"]:
+	# A hazard burns no energy (rule 14 (e)); every other species a share in (0, 1].
+	for key in ["start_energy_share"] if hazard else ["metabolism_share", "start_energy_share"]:
 		if not (float(block[key]) > 0.0 and float(block[key]) <= 1.0):
 			errors.append("%s: %s must be a share in (0, 1]." % [where, key])
 	var fov := float(block.senses.fov_deg)
@@ -623,6 +652,109 @@ func _check_species(id: String, layout: PoolLayout, part_catalog: PartCatalog, s
 	_check_ladder(id, p, errors)
 
 
+## Rule 4: readable timings, and every duration at least one tick. A hazard has no tell, notice or
+## strike to read (s3-sim 3.2), so only its other durations are checked.
+func _check_readable(id: String, attack: Dictionary, errors: PackedStringArray) -> void:
+	var block: Dictionary = species[id]
+	var where := "species '%s'" % id
+	var durations := {"refractory_s": block.refractory_s, "nav_timeout_s": block.nav_timeout_s,
+		"senses.memory_s": block.senses.memory_s, "flee.for_s": block.flee.for_s, "niche.respawn_s": block.niche.respawn_s}
+	var jitter := float(block.niche.respawn_jitter_s)
+	if not (jitter >= 0.0 and jitter < float(block.niche.respawn_s)):
+		_rule(errors, 4, "%s niche.respawn_jitter_s %.1f s must be at least 0 and below respawn_s." % [where, jitter])
+	if str(block.behavior) == "hazard":
+		_check_durations(where, durations, errors)
+		return
+	if float(attack.tell_s) < float(fairness.min_tell_s):
+		_rule(errors, 4, "%s tell_s %.2f s is below the %.2f s floor." % [where, float(attack.tell_s), float(fairness.min_tell_s)])
+	if float(block.notice_s) < float(fairness.min_notice_s):
+		_rule(errors, 4, "%s notice_s %.2f s is below the %.2f s floor." % [where, float(block.notice_s), float(fairness.min_notice_s)])
+	for key in ["recover_s", "blocked_recover_s"]:
+		if float(attack[key]) < float(fairness.min_recover_s):
+			_rule(errors, 4, "%s %s %.2f s is below the %.2f s floor." % [where, key, float(attack[key]), float(fairness.min_recover_s)])
+	durations["notice_s"] = block.notice_s
+	durations["give_up_s"] = block.give_up_s
+	for key in ["tell_s", "burst_s", "glide_s", "recover_s", "blocked_recover_s"]:
+		durations["attack." + key] = attack[key]
+	for key in ["forage_timeout_s", "forage_retry_s"]:
+		if block.has(key):
+			durations[key] = block[key]
+	if block.has("rest_s"):
+		durations["rest_s[0]"] = block.rest_s[0]
+		durations["rest_s[1]"] = block.rest_s[1]
+		if float(block.rest_s[0]) > float(block.rest_s[1]):
+			_rule(errors, 4, "%s rest_s must be [shortest, longest]." % where)
+	_check_durations(where, durations, errors)
+
+
+## Rule 6: the strike window, and a strike lane that fits inside what the creature may reach.
+func _check_strike_window(id: String, attack: Dictionary, layout: PoolLayout, part_catalog: PartCatalog,
+		errors: PackedStringArray) -> void:
+	var where := "species '%s'" % id
+	var lo := float(attack.start_min_m)
+	var hi := float(attack.start_max_m)
+	var standoff := float(attack.standoff_m)
+	if not (lo > 0.0 and lo <= standoff and standoff <= hi):
+		_rule(errors, 6, "%s needs 0 < start_min_m <= standoff_m <= start_max_m (%.2f, %.2f, %.2f)." % [where, lo, standoff, hi])
+	var aim := float(attack.aim_deg)
+	if not (aim > 0.0 and aim < 180.0) or float(attack.lead_s) < 0.0 or float(attack.lead_cap_m) < 0.0:
+		_rule(errors, 6, "%s needs 0 < aim_deg < 180 and lead_s, lead_cap_m >= 0." % where)
+	var room_problem := strike_room_problem(id, _smallest_territory(id, layout), where, part_catalog)
+	if not room_problem.is_empty():
+		_rule(errors, 6, room_problem)
+
+
+## Rule 14 (D-121, D-122): a hazard is slow (a), its stings stay under the two-hit rule (b), it
+## trails 3 to 5 threads (c), its leash just holds its drift path (d), it burns no energy (e), and
+## its drift is slower than its wander speed (f). `p` is its own body (q = 1).
+func _check_hazard(id: String, p: Phenotype, starting: Dictionary, errors: PackedStringArray) -> void:
+	var block: Dictionary = species[id]
+	var where := "species '%s'" % id
+	var drift: Dictionary = block.hazard.drift
+	var threads: Dictionary = block.hazard.threads
+	var bound := HAZARD_MAX_SPEED_SHARE * float(starting.slowest_fed)
+	for key in SPEEDS_KEYS:
+		var speed := float(block.speeds[key]) * p.speed
+		if speed > bound:
+			_rule(errors, 14, "%s speeds.%s gives %.4f m/s, above %.4f m/s (%.2f x the slowest fed starting body)."
+				% [where, key, speed, bound, HAZARD_MAX_SPEED_SHARE])
+	for key in ["length_m", "radius_m", "damage", "cooldown_s", "knockback"]:
+		if not float(threads[key]) > 0.0:
+			_rule(errors, 14, "%s hazard.threads.%s must be above 0." % [where, key])
+	var drift_r := float(drift.radius_m)
+	if not drift_r > 0.0:
+		_rule(errors, 14, "%s hazard.drift.radius_m must be above 0." % where)
+	var cooldown := float(threads.cooldown_s)
+	if cooldown > 0.0:
+		var stings := floorf(HAZARD_STING_WINDOW_S / cooldown) + 1.0
+		var limit := float(fairness.max_single_hit_share) * float(starting.smallest_health)
+		if not float(threads.damage) * stings < limit:
+			_rule(errors, 14, "%s stings %.2f x %d in %.1f s, not below %.2f (the two-hit rule)."
+				% [where, float(threads.damage), int(stings), HAZARD_STING_WINDOW_S, limit])
+	var count := int(threads.count)
+	if count < int(HAZARD_THREADS[0]) or count > int(HAZARD_THREADS[1]):
+		_rule(errors, 14, "%s hazard.threads.count %d is outside %d..%d." % [where, count, HAZARD_THREADS[0], HAZARD_THREADS[1]])
+	var corner := drift_r * sqrt(2.0)
+	var leash := float(block.leash_m)
+	var lo := corner + float(HAZARD_LEASH_SLACK_M[0])
+	var hi := corner + float(HAZARD_LEASH_SLACK_M[1])
+	if leash < lo or leash > hi:
+		_rule(errors, 14, "%s leash_m %.3f is outside %.3f..%.3f (the drift corner %.3f m plus %.1f to %.1f)."
+			% [where, leash, lo, hi, corner, HAZARD_LEASH_SLACK_M[0], HAZARD_LEASH_SLACK_M[1]])
+	if float(block.metabolism_share) != 0.0:
+		_rule(errors, 14, "%s metabolism_share must be 0 for a hazard (it is %s)." % [where, block.metabolism_share])
+	var periods: Array = drift.period_s
+	var p0 := float(periods[0])
+	var p1 := float(periods[1])
+	if not (p0 > 0.0 and p1 > 0.0):
+		_rule(errors, 14, "%s hazard.drift.period_s must both be above 0." % where)
+	else:
+		var drift_speed := TAU * drift_r * sqrt(1.0 / (p0 * p0) + 1.0 / (p1 * p1))
+		var wander := float(block.speeds.wander) * p.speed
+		if drift_speed > wander:
+			_rule(errors, 14, "%s drifts at up to %.4f m/s, faster than its wander speed %.4f m/s." % [where, drift_speed, wander])
+
+
 ## S2's species keys: the entry size, the habit, and rule 15. `p` is the species' own body (q = 1).
 func _check_ladder(id: String, p: Phenotype, errors: PackedStringArray) -> void:
 	var block: Dictionary = species[id]
@@ -632,8 +764,12 @@ func _check_ladder(id: String, p: Phenotype, errors: PackedStringArray) -> void:
 		errors.append("%s: entry_size %d is outside 1..%d." % [where, c, MAX_ENTRY_SIZE])
 	if block.has("habit"):
 		var habit: Dictionary = block.habit
-		var switch := str(habit.post_switch)
-		if not POST_SWITCHES.has(switch):
+		var switch := str(habit.get("post_switch", ""))
+		if switch.is_empty():
+			# A one-post habit holds only "channel" (S3); any other habit moves between two posts.
+			if habit.keys().any(func(key: Variant) -> bool: return key != "channel"):
+				errors.append("%s habit: 'post_switch' is missing." % where)
+		elif not POST_SWITCHES.has(switch):
 			errors.append("%s: habit.post_switch '%s' is not one of %s." % [where, switch, POST_SWITCHES.keys()])
 		elif POST_SWITCHES[switch] != str(block.behavior):
 			errors.append("%s: habit.post_switch '%s' needs behavior '%s'." % [where, switch, POST_SWITCHES[switch]])
@@ -641,6 +777,14 @@ func _check_ladder(id: String, p: Phenotype, errors: PackedStringArray) -> void:
 			errors.append("%s: habit 'out_of_sight' needs post_rest_s above 0." % where)
 		elif switch == "nearer_cell" and not float(habit.get("post_hysteresis_m", 0.0)) > 0.0:
 			errors.append("%s: habit 'nearer_cell' needs post_hysteresis_m above 0." % where)
+		elif switch == "bloom":
+			var cycle := float(habit.get("bloom_cycle_s", 0.0))
+			if not cycle > 0.0 or CreatureBrain.ticks(cycle) % 2 != 0:
+				errors.append("%s: habit 'bloom' needs bloom_cycle_s above 0, an even number of ticks." % where)
+		if habit.has("bloom_cycle_s") and switch != "bloom":
+			errors.append("%s: habit.bloom_cycle_s needs post_switch 'bloom'." % where)
+		if habit.has("channel") and str(block.behavior) != "ambush":
+			errors.append("%s: habit.channel needs behavior 'ambush'." % where)
 		if habit.has("post_rest_s"):
 			_check_durations(where, {"habit.post_rest_s": habit.post_rest_s}, errors)
 		if habit.has("trail_s") and not float(habit.trail_s) > 0.0:
@@ -651,6 +795,12 @@ func _check_ladder(id: String, p: Phenotype, errors: PackedStringArray) -> void:
 	# of the relationships block: an ambush brain's prey share, a territorial one's intruder share.
 	if relationships.is_empty():
 		_rule(errors, 15, "%s has entry_size %d, which needs the relationships block." % [where, c])
+		return
+	if str(block.behavior) == "hazard":
+		# A hazard's threads do nothing once the cell has outgrown it (Relationships rule 5).
+		var sting := Relationships.thread_damage(float(block.hazard.threads.damage), Relationships.SHRINK_FACTOR)
+		if sting != 0.0:
+			_rule(errors, 15, "%s one size past its entry still stings for %.2f." % [where, sting])
 		return
 	var share_key := "prey_share" if str(block.behavior) == "ambush" else "intruder_max_radius_share"
 	var reach := p.radius * Relationships.SHRINK_FACTOR * float(relationships[share_key])
@@ -851,6 +1001,8 @@ static func _rule(errors: PackedStringArray, number: int, text: String) -> void:
 func _prepare() -> void:
 	for id in species_ids():
 		configs[id] = CreatureBrain.config(id, species[id], ai, relationships)
+		if configs[id].has("threads"):
+			_hazard_cooldown_ticks = maxi(_hazard_cooldown_ticks, int(configs[id].threads.cooldown_ticks))
 	for s in fairness.grace_s:
 		grace_ticks.append(CreatureBrain.ticks(s))
 	for share in fairness.respawn_energy_share:
@@ -870,10 +1022,25 @@ static func _check_species_block(block: Dictionary, where: String, problems: Arr
 		for key in BEHAVIOR_KEYS[behavior]:
 			if not block.has(key):
 				problems.append("%s: '%s' is missing (a %s species needs it)." % [where, key, behavior])
+	if behavior is String and behavior == "hazard":
+		for key in HAZARD_REFUSED:
+			if block.has(key):
+				problems.append("%s: a hazard species has no '%s'." % [where, key])
 	if problems.size() > before:
 		return
 	for key in SUB_BLOCKS:
-		_check_block(block[key], SUB_BLOCKS[key], "%s %s" % [where, key], problems)
+		if block.has(key):
+			_check_block(block[key], SUB_BLOCKS[key], "%s %s" % [where, key], problems)
+	if block.has("hazard"):
+		if behavior != "hazard":
+			problems.append("%s: only a hazard species has a 'hazard' block." % where)
+		else:
+			var hazard: Dictionary = block.hazard
+			var at := problems.size()
+			_check_block(hazard, HAZARD_KEYS, "%s hazard" % where, problems)
+			if problems.size() == at:
+				_check_block(hazard.drift, DRIFT_KEYS, "%s hazard drift" % where, problems)
+				_check_block(hazard.threads, THREAD_KEYS, "%s hazard threads" % where, problems)
 	if block.has("habit"):
 		_check_block(block.habit, HABIT_KEYS, "%s habit" % where, problems)
 	for part in block.parts:

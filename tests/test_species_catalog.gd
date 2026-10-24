@@ -762,3 +762,153 @@ func test_a_shell_near_the_union_circle_or_pinching_inside_the_union_is_caught_t
 			errors = _two_post_errors(cat, site, pinch, INF)
 			check_eq(errors.size(), 2, "%s: the pinch, both ways: %s" % [site.id, errors])
 			check_has_error(errors, "Rule 10 (pinch): site '%s' the union: p1 leaves 1.00 m to p2" % site.id)
+
+
+# --- S3: the hazard behavior (s3-sim 3.2; S3G9, S3G9b, S3G9c, S3G9d) ---
+
+const HAZARD_SPECIES := "res://tests/fixtures/creatures_hazard_test.json"
+
+
+## Errors from validate() after `change` edits a fresh copy of the hazard fixture.
+func _hazard_errors_after(change: Callable) -> PackedStringArray:
+	var data := _data(HAZARD_SPECIES)
+	change.call(data.species.hazard_test)
+	return SpeciesCatalog.from_dict(data).validate(layout, parts)
+
+
+func test_the_hazard_fixture_is_valid_and_reads_its_drift_and_threads() -> void:
+	var cat := SpeciesCatalog.load_from(HAZARD_SPECIES)
+	var errors := cat.validate(layout, parts)
+	check(errors.is_empty(), "no errors: %s" % [errors])
+	check_eq(cat.behavior_of("hazard_test"), "hazard", "a hazard")
+	check_eq(float(cat.hazard_of("hazard_test").threads.damage), 5.0, "hazard_of is the data block")
+	check_eq(cat.hazard_of("rammer"), {}, "no hazard block for a rammer")
+	check_eq(cat.hazard_cooldown_ticks(), 75, "1.25 s of cooldown")
+	check_eq(SpeciesCatalog.load_from().hazard_cooldown_ticks(), 0, "none without a hazard")
+	var cfg := cat.brain_config("hazard_test")
+	check_eq(cfg.drift, {"radius_m": 3.0, "period_ticks": [2220, 3180]}, "the drift in ticks (D-124)")
+	check_eq(cfg.threads, {"count": 4, "length_m": 2.4, "radius_m": 0.35, "damage": 5.0, "cooldown_ticks": 75,
+		"knockback": 1.5}, "the threads in ticks")
+	check(not cat.brain_config("rammer").has("drift") and not cat.brain_config("rammer").has("threads"),
+		"other species carry no hazard keys")
+	var half: Dictionary = CreatureBrain.scale_cfg(cfg, 0.625)
+	check_eq(float(half.threads.length_m), 2.4 * 0.625, "thread lengths scale")
+	check_eq(float(half.threads.damage), 5.0, "damage is kept")
+	check_eq(half.drift.period_ticks, [2220, 3180], "periods are kept")
+
+
+func test_each_rule_14_clause_catches_its_mistake_alone() -> void:
+	var cases := [
+		["(a) a fast flee", func(b: Dictionary) -> void: b.speeds.flee = 0.6, "speeds.flee gives"],
+		["(b) a sting at the two-hit limit", func(b: Dictionary) -> void: b.hazard.threads.damage = 7.5, "stings 7.50 x 2"],
+		["(c) six threads", func(b: Dictionary) -> void: b.hazard.threads.count = 6, "count 6 is outside 3..5"],
+		["(d) the spine's leash 7.0", func(b: Dictionary) -> void: b.leash_m = 7.0, "leash_m 7.000 is outside 4.743..5.243"],
+		["(d) a leash inside the corner", func(b: Dictionary) -> void: b.leash_m = 4.7, "leash_m 4.700 is outside"],
+		["(e) a metabolism", func(b: Dictionary) -> void: b.metabolism_share = 0.1, "metabolism_share must be 0"],
+		["(f) a fast drift", func(b: Dictionary) -> void: b.hazard.drift.period_s = [20.0, 20.0], "drifts at up to 1.3329"],
+		["a zero thread length", func(b: Dictionary) -> void: b.hazard.threads.length_m = 0.0, "threads.length_m must be above 0"],
+		["a zero drift radius", func(b: Dictionary) -> void: b.hazard.drift.radius_m = 0.0, "drift.radius_m must be above 0"],
+	]
+	for c in cases:
+		var errors := _hazard_errors_after(c[1])
+		check_only_rule(errors, 14, c[2])
+
+
+func test_the_hazard_schema_refuses_what_a_hazard_has_not() -> void:
+	var refused := {"attack": SpeciesCatalog.load_from().species.ambush_hunter.attack, "prey_max_radius_share": 1.6,
+		"intruder_min_radius": 0.3, "forage_radius_m": 18.0, "forage_timeout_s": 30.0, "forage_retry_s": 20.0,
+		"territory_margin_m": 2.0, "territory_exit_m": 1.0, "rest_s": [4.0, 8.0]}
+	for key in refused:
+		var data := _data(HAZARD_SPECIES)
+		data.species.hazard_test[key] = refused[key]
+		var cat := SpeciesCatalog.from_dict(data)
+		check_has_error(PackedStringArray(cat.load_problems), "species 'hazard_test': a hazard species has no '%s'." % key)
+	var data := _data(HAZARD_SPECIES)
+	data.species.hazard_test.erase("hazard")
+	check_has_error(PackedStringArray(SpeciesCatalog.from_dict(data).load_problems),
+		"species 'hazard_test': 'hazard' is missing (a hazard species needs it).")
+	data = _data(HAZARD_SPECIES)
+	data.species.hazard_test.hazard.threads.erase("cooldown_s")
+	check_has_error(PackedStringArray(SpeciesCatalog.from_dict(data).load_problems),
+		"species 'hazard_test' hazard threads: 'cooldown_s' is missing.")
+	data = _data(HAZARD_SPECIES)
+	data.species.hazard_test.hazard.drift["speed"] = 1.0
+	check_has_error(PackedStringArray(SpeciesCatalog.from_dict(data).load_problems),
+		"species 'hazard_test' hazard drift has an unknown key 'speed'")
+	# The other behaviors still need their attack, notice and give-up, and no hazard block.
+	for key in ["attack", "notice_s", "give_up_s"]:
+		data = _data()
+		data.species.rammer.erase(key)
+		check_has_error(PackedStringArray(SpeciesCatalog.from_dict(data).load_problems),
+			"species 'rammer': '%s' is missing (a territorial species needs it)." % key)
+	data = _data(HAZARD_SPECIES)
+	data.species.ambush_hunter["hazard"] = data.species.hazard_test.hazard
+	check_has_error(PackedStringArray(SpeciesCatalog.from_dict(data).load_problems),
+		"species 'ambush_hunter': only a hazard species has a 'hazard' block.")
+	# metabolism_share 0 is a hazard's only.
+	var errors := _errors_after(func(d: Dictionary) -> void: d.species.lurker.metabolism_share = 0.0)
+	check_eq(errors.size(), 1, "one problem: %s" % [errors])
+	check_has_error(errors, "species 'lurker': metabolism_share must be a share in (0, 1].")
+
+
+func test_radius_at_is_at_sizes_radius_bit_for_bit() -> void:
+	var n_checked := 0
+	for path in [SpeciesCatalog.DEFAULT_PATH, HAZARD_SPECIES]:
+		var cat := SpeciesCatalog.load_from(path)
+		for id in cat.species_ids():
+			for n in range(cat.entry_size(id), 5):
+				var record := cat.at_size(id, n, parts)
+				check(cat.radius_at(id, n) == (record.phenotype as Phenotype).radius,
+					"%s at %d: %.15f == %.15f" % [id, n, cat.radius_at(id, n), (record.phenotype as Phenotype).radius])
+				n_checked += 1
+	check(n_checked >= 20, "every species at every size to 4 (%d)" % n_checked)
+	var veil := SpeciesCatalog.load_from(HAZARD_SPECIES)
+	check_eq(veil.radius_at("hazard_test", 1), 0.8, "0.5 x 1.6")
+	check_eq(veil.radius_at("hazard_test", 4), 0.8 * 0.625 * 0.625 * 0.625, "q = 0.625^3")
+
+
+func test_a_hazards_reach_disc_is_its_leash_plus_a_thread() -> void:
+	var cat := SpeciesCatalog.load_from(HAZARD_SPECIES)
+	var s := {"id": "v", "species": "hazard_test", "home": Vector2(3.0, -2.0), "heading": 0.0}
+	var disc := cat.reach_disc_for(s, {})
+	check_eq(disc.center, Vector2(3.0, -2.0), "round its home")
+	check_eq(float(disc.radius), 4.75 + 2.4 + 0.35, "leash + length + thread radius = 7.5 (D-121)")
+	var k := 1.6
+	check_eq(float(cat.reach_disc_for(s, {}, k).radius), 4.75 * k + 2.4 * k + 0.35 * k, "each length times k")
+	var ambush := cat.reach_disc_for({"id": "a", "species": "ambush_hunter", "home": Vector2.ZERO, "heading": 0.0}, {})
+	check_eq(float(ambush.radius), 9.0, "an ambush hunter's is its leash alone")
+	check_eq(cat.strike_room_problem("hazard_test", 6.0, "x", parts), "", "a hazard has no strike lane")
+
+
+func test_rule_15_outgrows_a_hazard_by_its_threads() -> void:
+	var errors := _hazard_errors_after(func(b: Dictionary) -> void: b.entry_size = 3)
+	check(errors.is_empty(), "a size-3 hazard stings nothing one size past it: %s" % [errors])
+	var data := _data(HAZARD_SPECIES)
+	data.species.hazard_test.entry_size = 3
+	data.erase("relationships")
+	for id in ["lurker", "elder_rammer"]:
+		data.species.erase(id)
+	data.sites = data.sites.filter(func(s: Dictionary) -> bool: return s.species != "lurker" and s.species != "elder_rammer")
+	errors = SpeciesCatalog.from_dict(data).validate(layout, parts)
+	check_only_rule(errors, 15, "species 'hazard_test' has entry_size 3, which needs the relationships block.")
+
+
+func test_the_s3_habit_keys() -> void:
+	var errors := _errors_after(func(d: Dictionary) -> void: d.species.ambush_hunter["habit"] = {"channel": true})
+	check(errors.is_empty(), "an ambush channel habit: %s" % [errors])
+	errors = _errors_after(func(d: Dictionary) -> void: d.species.rammer["habit"] = {"channel": true})
+	check_eq(Array(errors), ["species 'rammer': habit.channel needs behavior 'ambush'."], "channel on a rammer")
+	errors = _errors_after(func(d: Dictionary) -> void:
+		d.species.elder_rammer.habit = {"post_switch": "bloom", "bloom_cycle_s": 90.0})
+	check(errors.is_empty(), "a bloom habit: %s" % [errors])
+	errors = _errors_after(func(d: Dictionary) -> void:
+		d.species.elder_rammer.habit = {"post_switch": "bloom", "bloom_cycle_s": 90.01})
+	check_eq(Array(errors), ["species 'elder_rammer': habit 'bloom' needs bloom_cycle_s above 0, an even number of ticks."],
+		"5,401 ticks is odd")
+	errors = _errors_after(func(d: Dictionary) -> void: d.species.elder_rammer.habit = {"post_switch": "bloom"})
+	check_has_error(errors, "habit 'bloom' needs bloom_cycle_s above 0")
+	errors = _errors_after(func(d: Dictionary) -> void: d.species.lurker.habit["bloom_cycle_s"] = 90.0)
+	check_eq(Array(errors), ["species 'lurker': habit.bloom_cycle_s needs post_switch 'bloom'."], "a cycle with no bloom")
+	errors = _errors_after(func(d: Dictionary) -> void:
+		d.species.lurker.habit = {"post_switch": "bloom", "bloom_cycle_s": 90.0})
+	check_eq(Array(errors), ["species 'lurker': habit.post_switch 'bloom' needs behavior 'territorial'."], "bloom on an ambush")

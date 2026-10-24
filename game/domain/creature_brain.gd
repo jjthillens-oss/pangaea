@@ -142,7 +142,7 @@ const WORLD_LENGTHS := {"feed_reach": 0.25, "bite_reach": 0.3, "ram_reach": 0.35
 	"route_clearance": 0.1}
 ## What each cfg key measures (D-25), by its path in config()'s dictionary ("attack.burst_speed"):
 ## "length" and "speed" are multiplied by q at another size (scale_cfg); "time", "rate", "share",
-## "count", "angle", "text" and "flag" are kept. The list is closed: key_kind() of a key missing here
+## "count", "angle", "text", "flag" and "damage" are kept. The list is closed: key_kind() of a key missing here
 ## is "", which the classification walk in tests/test_brain_sources.gd refuses.
 const KEY_KINDS := {
 	"species_id": "text", "behavior": "text", "post_switch": "text", "engage_rule": "flag",
@@ -167,6 +167,10 @@ const KEY_KINDS := {
 	"attack.start_min_m": "length", "attack.start_max_m": "length", "attack.standoff_m": "length",
 	"attack.lead_cap_m": "length", "attack.reach": "length", "attack.travel": "length",
 	"attack.burst_speed": "speed", "attack.knockback": "speed",
+	# A hazard's drift and threads (S3, D-124): its cfg paths, in ticks where the data has seconds.
+	"drift.radius_m": "length", "drift.period_ticks": "time", "threads.count": "count",
+	"threads.length_m": "length", "threads.radius_m": "length", "threads.damage": "damage",
+	"threads.cooldown_ticks": "time", "threads.knockback": "speed",
 }
 ## Random goal tries (each must be clear of rocks) before falling back to home.
 const GOAL_TRIES := 12
@@ -320,7 +324,7 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary, rela
 	var prey_share := float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT))
 	if rules.get("prey_share", false):
 		prey_share = float(relationships.prey_share)
-	return {
+	var out := {
 		"species_id": species_id, "behavior": str(species.get("behavior", "")),
 		"think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("think_hz", 10.0)))),
 		"engaged_think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("engaged_think_hz", 20.0)))),
@@ -361,6 +365,16 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary, rela
 		"post_hysteresis_m": float(habit.get("post_hysteresis_m", POST_HYSTERESIS_M)),
 		"attack": a,
 	}
+	if species.has("hazard"):
+		# S3 (D-124): a hazard's drift path and threads; no other species carries these keys.
+		var drift: Dictionary = species.hazard.drift
+		var threads: Dictionary = species.hazard.threads
+		out["drift"] = {"radius_m": float(drift.radius_m),
+			"period_ticks": [ticks(drift.period_s[0]), ticks(drift.period_s[1])]}
+		out["threads"] = {"count": int(threads.count), "length_m": float(threads.length_m),
+			"radius_m": float(threads.radius_m), "damage": float(threads.damage),
+			"cooldown_ticks": ticks(threads.cooldown_s), "knockback": float(threads.knockback)}
+	return out
 
 
 ## The cfg of a creature drawn at q times its entry-size self (S2, plan B.6): every "length" and
