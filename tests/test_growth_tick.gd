@@ -7,6 +7,7 @@ extends TestCase
 ## a direct arrival meets (S2G12, BP-8); the tick's events come in order with their frames (S2G33);
 ## and every conversion is exact (S2G34).
 
+const WorldChecks := preload("res://tests/world_checks.gd")
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
@@ -1201,6 +1202,7 @@ const GROWTH_ORDER := ["growth_began", "creature_converted", "carrion_spawned", 
 	"carrion_expired{growth}", "chunk_unloaded{growth}", "chunk_loaded", "grew"]
 
 var _shipped: SpeciesCatalog
+var _cell4: WorldContent
 
 
 ## An endless sim on the fake generator and the band-1 fixture world (sizes to 4) with the shipped
@@ -1330,19 +1332,41 @@ static func _stream_state(sim: PoolSim, keys: Array[Vector2i]) -> Dictionary:
 	return out
 
 
+## The shipped world at its size-4 top (I-3's flip: WorldChecks.shipped_world_at(4)) on the real
+## WorldGen with growth on, for a new omnivore lineage of `seed_value` at `size` round absolute `at`
+## (the home spawn if empty), its events drained: S3G39b's S tier (T2.8).
+func _cell_sim(seed_value: int, size: int, at := PackedFloat64Array()) -> PoolSim:
+	if _shipped == null:
+		_shipped = SpeciesCatalog.load_from()
+	if _cell4 == null:
+		_cell4 = WorldContent.load_from(WorldChecks.shipped_world_at(4), layout, _shipped)
+		_cell4.config.switches["growth"] = true
+	var r := Lineage.found(seed_value, "test+dev", catalog, "omnivore")
+	var place: PackedFloat64Array = at if not at.is_empty() else _cell4.home.spawn
+	r.save.player["position"] = PlaneSpace.to_save_abs(place[0], place[1])
+	var sim := PoolSim.create(r.save, catalog, layout, _shipped, _cell4)
+	if size != 1:
+		check(sim.debug_set_size(size), "seed %d: size %d" % [seed_value, size])
+	sim.drain_events()
+	return sim
+
+
 ## S3G39b (1): a growth to `to` (3 or 4) after a swim meets the stream state a debug_set_size(to)
-## arrival at the same point meets.
-func _check_band_growth_equals_arrival(seed_value: int, to: int) -> void:
-	var grown := _b1_sim(seed_value, to - 1)
+## arrival at the same point meets; on the band-1 fixture world (a site per 2 x 2 chunks), or on the
+## shipped one (`on_cell`).
+func _check_band_growth_equals_arrival(seed_value: int, to: int, on_cell := false) -> void:
+	var grown := _cell_sim(seed_value, to - 1) if on_cell else _b1_sim(seed_value, to - 1, PackedFloat64Array(), 2)
 	var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0)
 	for t in SWIM_TICKS:
 		grown.step(SimIntent.new(dir * 0.6))
 	grown.drain_events()
 	var a := grown.world.abs_of_local(grown.motion.position)
 	grown.world.grow(grown)
-	var direct := _b1_sim(seed_value, 1, a)
+	var direct := _cell_sim(seed_value, 1, a) if on_cell else _b1_sim(seed_value, 1, a, 2)
 	check(direct.debug_set_size(to), "seed %d: debug_set_size(%d)" % [seed_value, to])
 	var keys := grown.world.loaded_keys()
+	check(grown.size() == to and not keys.is_empty() and not grown.world.sites.is_empty(),
+		"seed %d: grown to %d with %d chunks and %d sites held" % [seed_value, to, keys.size(), grown.world.sites.size()])
 	check_eq(direct.world.loaded_keys(), keys, "seed %d at %d: the same chunks held" % [seed_value, to])
 	var want := _stream_state(grown, keys)
 	check_eq(_stream_state(direct, keys), want, "seed %d at %d: the same stream state" % [seed_value, to])
@@ -1354,6 +1378,13 @@ func test_a_band_up_growth_meets_the_stream_a_direct_arrival_meets() -> void:
 	for seed_value: int in SEEDS:
 		_check_band_growth_equals_arrival(seed_value, 3)
 		_check_band_growth_equals_arrival(seed_value, 4)
+
+
+## S3G39b's S tier (T2.8): the same on the shipped world at its size-4 top, SLOW_SEEDS seeds.
+func test_slow_a_band_up_growth_meets_the_stream_a_direct_arrival_meets_on_the_shipped_world_on_50_seeds() -> void:
+	for i in SLOW_SEEDS:
+		_check_band_growth_equals_arrival(4000 + 97 * i, 3, true)
+		_check_band_growth_equals_arrival(4000 + 97 * i, 4, true)
 
 
 ## S3G39b (1): two swims at `size` to the point a growth to `size` made meet its stream state once

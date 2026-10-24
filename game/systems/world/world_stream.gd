@@ -2119,7 +2119,7 @@ static func _site_record_abs(s: Dictionary, key: Vector2i) -> Dictionary:
 		"abs_tm": PackedFloat64Array([float(s.x), float(s.y), NAN if t.is_empty() else float(t.x),
 			NAN if t.is_empty() else float(t.y), float(r.x), float(r.y)]),
 		"territory": {} if t.is_empty() else {"center": Vector2.ZERO, "radius": float(t.radius)},
-		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}}
+		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}, "bloom": s.get("bloom", {})}   # D-128: to the brain
 	if s.has("posts"):
 		var posts := []
 		var abs_posts := PackedFloat64Array()
@@ -2236,7 +2236,10 @@ func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
 	for z in ch.zones:
 		if placed:
 			at = Vector2((float(z.x) * k - ox) / k, (float(z.y) * k - oy) / k)
-		zones.append({"id": z.id, "center": at, "radius": float(z.radius), "region": z.region})
+		var zone := {"id": z.id, "center": at, "radius": float(z.radius), "region": z.region}
+		if z.has("bloom"):
+			zone["bloom"] = (z.bloom as Dictionary).duplicate()   # D-128: {slot, offset_ticks, cycle_ticks}
+		zones.append(zone)
 	var anchors := []
 	for a in ch.anchors:
 		if placed:
