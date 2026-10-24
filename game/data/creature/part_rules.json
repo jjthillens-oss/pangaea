@@ -14,6 +14,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -39,6 +40,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -65,6 +67,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -83,6 +86,32 @@
 				}
 			]
 		},
+		"bill": {
+			"type": "bill",
+			"footprint_radius_m": 0.032,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the halves parted 16 degrees each about the gape",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Width",
+					"meaning": "the bill 30% broader past its root",
+					"default_permille": 0
+				}
+			]
+		},
 		"claw": {
 			"type": "claw",
 			"footprint_radius_m": 0.027,
@@ -96,6 +125,7 @@
 				"limb_end",
 				"limb"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -121,6 +151,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -148,6 +179,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Bulge",
@@ -174,6 +206,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Raise",
@@ -200,6 +233,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Blink",
@@ -214,6 +248,90 @@
 			],
 			"handles_note": "H1 is on Lid, H2 on Eye; both are 0 to 1000 per mille."
 		},
+		"eye_cluster": {
+			"type": "eye_cluster",
+			"footprint_radius_m": 0.051,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Bulge",
+					"meaning": "the eyes stand 6 mm prouder of the pad",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "the eyes 25% further apart across, 15% along",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both handles are on Eyes; the pad stays put."
+		},
+		"eye_round": {
+			"type": "eye_round",
+			"footprint_radius_m": 0.081,
+			"sink_depth_m": 0.035,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the lid rolls over the ball to a slit",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeRound; both are 0 to 1000 per mille."
+		},
+		"eye_slit": {
+			"type": "eye_slit",
+			"footprint_radius_m": 0.056,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the scaly lids close over the ball to a slit",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeSlit; both are 0 to 1000 per mille."
+		},
 		"eye_stalk": {
 			"type": "eye_stalk",
 			"footprint_radius_m": 0.022,
@@ -227,6 +345,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -254,6 +373,7 @@
 				"spine",
 				"limb"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Height",
@@ -284,6 +404,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -310,6 +431,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Spread",
@@ -336,6 +458,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Fold",
@@ -363,6 +486,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Spread",
@@ -390,6 +514,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "hand",
 			"handles": [
 				{
 					"key": "H1_Grip",
@@ -418,6 +543,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Wide",
@@ -445,6 +571,7 @@
 				"spine",
 				"part"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -457,6 +584,33 @@
 					"default_permille": 0
 				}
 			]
+		},
+		"jaw": {
+			"type": "jaw",
+			"footprint_radius_m": 0.049,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower jaw drops 26 degrees about the hinge, the upper lifts 6",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "both jaws 35% longer",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both handles are on Jaw and Teeth (the teeth ride their jaw)."
 		},
 		"lure": {
 			"type": "lure",
@@ -471,6 +625,7 @@
 				"spine",
 				"part"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -497,6 +652,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Open",
@@ -522,6 +678,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Gape",
@@ -548,6 +705,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -574,6 +732,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Raise",
@@ -600,6 +759,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Span",
@@ -626,6 +786,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -653,6 +814,7 @@
 				"spine",
 				"part"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -679,6 +841,7 @@
 				"spine",
 				"limb"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Fold",

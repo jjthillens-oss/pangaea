@@ -73,6 +73,7 @@
       "spine",
       "limb"
     ],
+    "role": "detail",
     "handles": [
       {
         "key": "H1_Fold",

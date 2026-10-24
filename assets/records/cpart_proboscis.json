@@ -73,6 +73,7 @@
     "hosts": [
       "spine"
     ],
+    "role": "mouth",
     "handles": [
       {
         "key": "H1_Length",
