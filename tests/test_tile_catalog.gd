@@ -467,6 +467,7 @@ func test_rule_6_refuses_a_size_where_the_species_is_haze() -> void:
 		d.species.speck.body_size = 1.0)
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(DIR.path_join("drift_a.json")))
 	data.band = 1
+	data.region = "veil_garden"   # a band-1 region (S3: band 1 has its own)
 	data.sites = [{"id": "s", "species": "speck", "home": [6.0, 9.0], "heading": 0.0, "territory_zone": "a", "sizes": [3, 4]}]
 	var cat := TileCatalog.new()
 	cat.add_tile(data, 1, "drift_a")
@@ -493,3 +494,184 @@ func test_post_b_keys_are_read_and_checked() -> void:
 	check_eq(cat.load_problems, PackedStringArray(["b0/reef_posts.sites[0].post_b: must be an object",
 		"b0/reef_posts.sites[1].post_b.speed: unknown key", "b0/reef_posts.sites[1].post_b.heading: missing"]), "by their paths")
 
+
+
+# --- S3: band 1 (spine 5.3, s3-sim 3.11; T3.3) ---
+
+const B1_DIR := "res://tests/fixtures/world/tiles_b1/b1"
+const B1_SCHEMA_EXAMPLE := "res://tests/fixtures/world/b1_schema_example.json"
+const BAND0_LIVE := "res://tests/fixtures/world/band0_live_sets.json"
+
+
+## The band-1 fixture tiles (world_b1_min.json's) with `change` applied to their data by file id,
+## validated at `size` with the shipped species and kit.
+func _b1_problems(change: Callable, size: int) -> PackedStringArray:
+	var files := {}
+	for name in DirAccess.get_files_at(B1_DIR):
+		if name.get_extension() == "json":
+			files[name.get_basename()] = JSON.parse_string(FileAccess.get_file_as_string(B1_DIR.path_join(name)))
+	change.call(files)
+	var cat := TileCatalog.new()
+	for id in WorldConfig._sorted(files.keys()):
+		cat.add_tile(files[id], 1, id)
+	return cat.validate(SpeciesCatalog.load_from(), PlacementKit.load_from(), parts, size)
+
+
+func _site_of(tile: Dictionary, id: String) -> Dictionary:
+	for s in tile.sites:
+		if s.id == id:
+			return s
+	return {}
+
+
+## S3G1 (the fixture part): the band-1 fixture tiles pass rules 1 to 12 at both sizes.
+func test_the_band_1_fixture_tiles_pass_at_sizes_3_and_4() -> void:
+	var noop := func(_f: Dictionary) -> void: pass
+	check_eq(_b1_problems(noop, 3), PackedStringArray(), "size 3")
+	check_eq(_b1_problems(noop, 4), PackedStringArray(), "size 4")
+
+
+## BP3-10: the schema example reads with no reading problems (the content rules are the real tiles').
+func test_the_band_1_schema_example_reads() -> void:
+	var cat := TileCatalog.new()
+	cat.add_tile(JSON.parse_string(FileAccess.get_file_as_string(B1_SCHEMA_EXAMPLE)), 1, "veil_garden_a")
+	check_eq(cat.load_problems, PackedStringArray(), "no load problems")
+	check_eq(cat.tile("veil_garden_a").region, "veil_garden", "a band-1 region")
+	var wrong := TileCatalog.new()
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(B1_SCHEMA_EXAMPLE))
+	data.region = "sunlit"
+	wrong.add_tile(data, 1, "veil_garden_a")
+	check_has_error(wrong.load_problems, "b1/veil_garden_a.region: 'sunlit' is not one of veil_garden, warden_flat, glass_reef, rare")
+
+
+## D-97: a site's role at each size of band 1.
+func test_site_roles_follow_the_ladder() -> void:
+	var sp := SpeciesCatalog.load_from()
+	var roles := {}
+	for id in ["veil", "warden", "deep_lurker", "elder_warden", "ambush_hunter", "rammer", "lurker", "elder_rammer"]:
+		var site := {"species": id, "sizes": [3, 4]}
+		roles[id] = [TileCatalog.site_role(sp, site, 3), TileCatalog.site_role(sp, site, 4)]
+	check_eq(roles.veil, ["threat", "rival"], "the veil")
+	check_eq(roles.warden, ["threat", "rival"], "the Warden")
+	check_eq(roles.deep_lurker, ["", "threat"], "the Deep lurker is a ghost at 3")
+	check_eq(roles.elder_warden, ["", "threat"], "the elder Warden")
+	check_eq(roles.ambush_hunter, ["prey", "morsel"], "an ambush hunter")
+	check_eq(roles.rammer, ["prey", "morsel"], "a rammer")
+	check_eq(roles.lurker, ["rival", "prey"], "a Lurker")
+	check_eq(TileCatalog.site_role(sp, {"species": "veil", "sizes": [3]}, 4), "", "not one of its sizes")
+	check_eq(TileCatalog.site_role(sp, {"species": "kraken", "sizes": [3]}, 3), "", "an unknown species")
+
+
+## BP3-18: site_role gives every band-0 tile and the home block the live sets S2's rule gave.
+func test_band_0_live_sets_are_s2s() -> void:
+	var expected: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(BAND0_LIVE))
+	var sp := SpeciesCatalog.load_from()
+	var tiles := TileCatalog.load_from({"0": "res://game/data/tiles/b0"})
+	var home := HomeBlock.load_from("res://game/data/home_b0.json", PoolLayout.load_from(), sp)
+	var groups := {"home": home.sites}
+	for id in tiles.tiles:
+		groups[id] = tiles.tiles[id].sites
+	check_eq(groups.size(), expected.tiles.size() + 1, "every tile and the home block")
+	for key in groups:
+		var want: Dictionary = expected.home if key == "home" else expected.tiles[key]
+		for n in [1, 2]:
+			var live := []
+			for s in groups[key]:
+				if TileCatalog.site_role(sp, s, n) != "":
+					live.append(str(s.id))
+			check_eq(live, want[str(n)], "%s at size %d" % [key, n])
+
+
+## S3G4, rule 9: the veil gardens' rammers are their morsels at size 4.
+func test_rule_9_needs_prey_or_a_morsel_at_both_sizes() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		for s in f.veil_garden_a.sites:
+			if s.species == "rammer":
+				s.sizes = [3], 4)
+	check_has_error(problems, "b1/veil_garden_a: rule 9: a tile needs a prey or morsel site at both sizes (at 3: true, at 4: false)")
+
+
+## Rule 10: at most 3 morsel sites a size.
+func test_rule_10_caps_morsel_sites() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		for k in 2:
+			f.veil_garden_a.sites.append({"id": "m%d" % k, "species": "ambush_hunter", "home": [-6.0 + 8.0 * k, -26.0],
+				"heading": 0.0, "territory_zone": "", "sizes": [4]}), 4)
+	check_has_error(problems, "b1/veil_garden_a: rule 10: 0 and 4 morsel sites at sizes 3 and 4; at most 3")
+
+
+## S3G6: a third creature site live at size 4.
+func test_a_third_size_4_creature_site_is_refused() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		f.veil_garden_a.sites.append({"id": "vc", "species": "veil", "home": [-8.0, -2.0], "heading": 0.0,
+			"territory_zone": "", "sizes": [4]}), 4)
+	check_has_error(problems, "b1/veil_garden_a: rule 7: 4 sites are live at size 3 and 3 at size 4; at most 4 and 2")
+
+
+## S3G6b (D-135): at most 6 zones live at size 4.
+func test_seven_zones_at_size_4_are_refused() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		for z in f.veil_garden_a.zones:
+			if z.id == "f2" or z.id == "f3":
+				z.at_second_size = "keep", 4)
+	check_has_error(problems, "b1/veil_garden_a: D-135: 13 shells, 12 zones and 7 live at size 4; at most 18, 12 and 6")
+
+
+## S3G7: every ordinary band-1 tile has a live threat at both sizes (band 1 has no transit region).
+func test_a_glass_reef_with_no_deep_lurker_has_no_threat_at_size_4() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		f.glass_reef_a.sites = f.glass_reef_a.sites.filter(func(s: Dictionary) -> bool: return s.species != "deep_lurker"), 4)
+	check_has_error(problems, "b1/glass_reef_a: rule 7: a glass_reef tile needs a live threat site at size 4")
+
+
+## S3G7b, rule 12: a shell 4 bu from a veil's home (it needs 5.55: its 4.75 leash and its body).
+func test_rule_12_keeps_shells_off_a_veils_drift() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		f.veil_garden_a.shells.append({"id": "sx", "center": [23.0, -10.0], "radius": 1.0, "yaw_deg": [0.0, 360.0],
+			"at_second_size": "keep"}), 3)
+	check_has_error(problems, "b1/veil_garden_a: rule 12: site 'va': 'sx' lies 4.00 bu from the hazard's home; it needs 5.55")
+
+
+## S3G16, rule 11: the Deep lurker's channel is clear and flanked; one flank shell gone, or a shell
+## in the lane, breaks it.
+func test_rule_11_keeps_a_channel_clear_and_flanked() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		f.glass_reef_a.shells = f.glass_reef_a.shells.filter(func(s: Dictionary) -> bool: return s.id != "s0"), 4)
+	var mine := Array(problems).filter(func(p: String) -> bool: return p.contains("rule 11 at size 4"))
+	check_eq(mine.size(), 1, "one problem: %s" % [problems])
+	check_has_error(PackedStringArray(mine), "b1/glass_reef_a: rule 11 at size 4: site 'dl': 5 of its channel's 33 stations are flanked")
+	problems = _b1_problems(func(f: Dictionary) -> void:
+		for s in f.glass_reef_a.shells:
+			if s.id == "s4":
+				s.center = [10.5, -4.0], 4)
+	check_has_error(problems, "b1/glass_reef_a: rule 11 at size 4: site 'dl': 's4' lies")
+
+
+## S3G5b (D-134): the anchor rule in tm. At size 4 a bu is 0.625 tm, so a Deep lurker that can
+## reach 9 tm (14.4 bu) from the anchor's clear ring is refused, though 14.4 bu is more than S1's 13.
+func test_the_anchor_rule_is_in_tm_at_size_4() -> void:
+	var sp := SpeciesCatalog.load_from()
+	var real_kit := PlacementKit.load_from()
+	var s := WorldConfig.bu_to_tm(4)
+	var home := Vector2(10.0, -10.0)
+	var reach := float(sp.reach_disc_for({"species": "deep_lurker", "home": home, "heading": 0.0}, {},
+		WorldConfig.k_of(4, 4)).radius)
+	var r := sp.radius_at("deep_lurker", 4) / s
+	var d := 9.0 / s + reach + r + real_kit.collide_radius_bu + PoolLayout.CELL_RADIUS / s + TileCatalog.ANCHOR_GAP_BU
+	var anchor := home + Vector2(-1.0, 1.0).normalized() * d
+	var problems := _b1_problems(func(f: Dictionary) -> void: f.glass_reef_a.landmark_anchor = [anchor.x, anchor.y], 4)
+	check_has_error(problems, "b1/glass_reef_a: rule 6 at size 4: site 'dl' can reach 14.40 bu from the landmark anchor; it must stay 20.8 away")
+
+
+## D-147: an elder Warden's meadows are 13 to 16.5 bu apart, 5 to 6 bu round, and do not overlap.
+func test_an_elder_wardens_meadows_keep_apart() -> void:
+	var problems := _b1_problems(func(f: Dictionary) -> void:
+		var ew := _site_of(f.veil_garden_a, "ew")
+		ew.post_b.home = [8.0, 8.0]
+		for z in f.veil_garden_a.zones:
+			if z.id == "mb":
+				z.center = [8.0, 8.0]
+				z.radius = 6.5, 4)
+	check_has_error(problems, "b1/veil_garden_a: rule 6: site 'ew': its posts are 10.00 bu apart; a 'bloom' habit keeps them 13.00 to 16.50 bu")
+	check_has_error(problems, "meadow 'mb' has radius 6.50 bu; a bloom habit's meadows are 5.0 to 6.0")
+	check_has_error(problems, "its meadows 'ma' and 'mb' overlap by 1.50 bu")

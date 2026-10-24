@@ -119,7 +119,7 @@ func _make(key: Vector2i, entry: Dictionary) -> Node3D:
 		_dress(piece, model, dressing_of(model, str(a.dressing)))
 	else:
 		var p: Dictionary = entry.place
-		piece = _instance(kit.rare_asset(0, str(p.kind)) if kit != null else "")
+		piece = _instance(kit.rare_asset(band_of_rare(str(p.kind)), str(p.kind)) if kit != null else "")
 		if piece == null:
 			return null
 		piece.name = str(p.id)
@@ -140,7 +140,45 @@ func _pose(entry: Dictionary) -> Transform3D:
 		var basis := Basis(Vector3.UP, deg_to_rad(float(shell.get("yaw_deg", 0.0)))) * Basis.from_scale(Vector3.ONE * float(shell.get("scale", 1.0)))
 		return Transform3D(basis, WorldSpace.to_frame(self, at))
 	var p: Dictionary = entry.place
-	return Transform3D(place_basis(float(p.get("yaw_deg", 0.0)), bool(p.get("mirror", false))), WorldSpace.to_frame(self, p.position))
+	var basis := place_basis(float(p.get("yaw_deg", 0.0)), bool(p.get("mirror", false))) * Basis.from_scale(Vector3.ONE * float(p.get("scale", 1.0)))
+	return Transform3D(basis, WorldSpace.to_frame(self, p.position))
+
+
+## The band whose rare kinds hold `kind` (TileCatalog.RARE_KINDS_BY_BAND, disjoint), or -1 (S3,
+## s3-view 7.2).
+static func band_of_rare(kind: String) -> int:
+	for band: int in TileCatalog.RARE_KINDS_BY_BAND:
+		if (TileCatalog.RARE_KINDS_BY_BAND[band] as Array).has(kind):
+			return band
+	return -1
+
+
+## A band-up's hand-off (S3, V3-2): every piece of band `b` (anchor ids "a_<b>_", place ids "p_<b>_")
+## taken out, unregistered here, with its transform set to its global one, for OldBandLayer.adopt.
+## Its growth nodes and dressing stay as they were.
+func release_band(b: int) -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	var prefixes := ["a_%d_" % b, "p_%d_" % b]
+	var mine := func(piece: Node3D) -> bool:
+		return str(piece.name).begins_with(prefixes[0]) or str(piece.name).begins_with(prefixes[1])
+	for key in _by_key.keys():
+		var list: Array[Node3D] = _by_key[key]
+		for piece: Node3D in list.filter(mine):
+			list.erase(piece)
+			out.append(piece)
+		if list.is_empty():
+			_by_key.erase(key)
+	for id in _retiring.keys():
+		if mine.call(_retiring[id].piece):
+			out.append(_retiring[id].piece)
+			_retiring.erase(id)
+	for piece in out:
+		_order.erase(piece)
+		_fresh.erase(piece)
+		var xf := OldBandLayer.global_of(piece)
+		remove_child(piece)
+		piece.transform = xf
+	return out
 
 
 ## Frees the chunk's pieces; an unknown key changes nothing.

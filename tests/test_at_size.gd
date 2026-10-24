@@ -59,7 +59,7 @@ func _check_record(cat: SpeciesCatalog, id: String, n: int, where: String) -> vo
 
 func test_every_record_from_the_entry_size_up_the_ladder_is_the_entry_self_drawn_at_q_exactly() -> void:
 	var ids := species.species_ids()
-	check_eq(ids.size(), 4, "the M1 pair and the two size-2 species")
+	check_eq(ids.size(), 9, "the M1 pair, the two size-2 species and S3's five (three at 3, two at 4)")
 	var records := 0
 	# Asked up the ladder and, in a second catalog, down it: a record never depends on which sizes
 	# came first (each is drawn from the entry self, not from the size below).
@@ -73,7 +73,7 @@ func test_every_record_from_the_entry_size_up_the_ladder_is_the_entry_self_drawn
 			for n in sizes:
 				_check_record(cat, id, n, "%s at size %d%s" % [id, n, " (asked downwards)" if down else ""])
 				records += 1
-	check_eq(records, 2 * (2 * TOP + 2 * (TOP - 1)), "every (species, n >= c) both ways")
+	check_eq(records, 2 * (2 * TOP + 2 * (TOP - 1) + 3 * (TOP - 2) + 2 * (TOP - 3)), "every (species, n >= c) both ways")
 
 
 func test_the_ladder_q_runs_from_one_at_the_entry_size() -> void:
@@ -144,6 +144,8 @@ func test_every_strike_a_scaled_creature_starts_ends_inside_its_leash_at_every_l
 	var checked := 0
 	for id in species.species_ids():
 		var block: Dictionary = species.species[id]
+		if str(block.behavior) == "hazard":
+			continue   # a hazard never strikes (its threads are rule 14's)
 		var territorial := str(block.behavior) == "territorial"
 		for n in range(species.entry_size(id), TOP + 1):
 			if not species.live_at(id, n, parts):
@@ -184,7 +186,7 @@ func test_every_strike_a_scaled_creature_starts_ends_inside_its_leash_at_every_l
 			if not territorial:
 				check(held > 0, "%s: and some were held at the leash (%d)" % [where, held])
 			checked += 1
-	check_eq(checked, 16, "four live sizes of each of the four species")
+	check_eq(checked, 32, "four live sizes of each of the eight species that strike")
 
 
 ## The first creature_tell of a hungry, settled creature built from `rec` (home at the origin), held

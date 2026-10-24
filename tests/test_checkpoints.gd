@@ -21,6 +21,18 @@ const DEATH_LIMIT_TICKS := 80 * 60
 ## Open water 4 m south of the spawn, away from every food item and creature: a cell starves here.
 const STARVE_SPOT := Vector2(0.0, 13.0)
 const STARTING_POINTS := 40
+## S3G26 (S3 T0.7; D-107, D-132, BP3-8): the checkpoint rules at landmark checkpoints at size 4.
+const Gates := preload("res://tests/test_endless_gates.gd")
+const LANDMARK_CHECKPOINTS := 50
+const LANDMARK_SEED := 2626
+const LANDMARK_CHUNKS := 16            ## the anchors of the chunks this far round home, nearest first
+const LANDMARK_NEAR_TM := 3.0          ## the cell by an anchor (landmark_find_tm is 6)
+const LANDMARK_WAIT_TICKS := 240       ## a calm, still cell by an anchor: moved or refused by then
+const LANDMARK_BLOCKED_AFTER := 5      ## the anchor tried after this many moves gets a blocker
+const LANDMARK_CROWD_TM := 8.0         ## C2: a creature put this far from the checkpoint while dead
+const LANDMARK_EDGE_EVERY := 10        ## C1's fallback: every 10th checkpoint is blocked at the respawn
+const LANDMARK_SETTLE_TICKS := 30      ## creatures act before the death
+const NOTICE_TICKS := 120
 
 var slot := ""
 var _swept := false
@@ -552,3 +564,267 @@ func test_a_step_2_save_continues_sheltered_with_creatures_and_is_not_rewritten(
 	check(sim.creatures.creatures.size() > 0, "creatures are present (%d)" % sim.creatures.creatures.size())
 	check(sim.is_sheltered() and sim.grace_until - sim.tick == 300, "the cell starts sheltered for 5 s")
 	check(not session.dirty, "nothing unsaved")
+
+
+## S3G26 (S3 T0.7; D-107, D-132, BP3-8; endless-cell-plan F7): the 10 tests' checkpoint rules at
+## LANDMARK_CHECKPOINTS landmark checkpoints at size 4, on the shipped world with its top at 4. The
+## cell is put by each anchor round home in turn (nearest first, the creatures still) until the
+## landmark pass moves the checkpoint there; it then dies with the creatures acting. Each checkpoint:
+## a clear point within the bounded spiral of its anchor at size 4 (#9's rule); the respawn there,
+## facing its heading, with full health, no cooldowns, its streak's shelter and energy, sheltered and
+## concealed (#1, #5); an awake creature put LANDMARK_CROWD_TM from it while the cell was dead is sent
+## home, and no q == 1 creature is within respawn_clear_m (#7; a landmark checkpoint counts only q 1,
+## as fuzz invariant 3); every brain forgets the cell, the token is free and, a dev kill having no
+## killer, no brain gains an ignore (#6, #7); through the shelter nothing notices, strikes or stings
+## the cell, and the shelter ends on its last tick (#1, #8); every LANDMARK_EDGE_EVERY-th checkpoint
+## gets a collider whose edge is 0.2 tm off it at the respawn, and the cell comes back clear within
+## two rings of it (#10). One anchor, tried after LANDMARK_BLOCKED_AFTER moves, sits under a collider
+## of ChunkArena.MAX_COLLIDER_R (the spiral's reach): it is refused ("no_clear_point") and the
+## checkpoint stays (BP3-8; the mutation is the unbounded spiral). The save-side tests (#2 to #4, #8's
+## step-2 file) do not depend on where the checkpoint is: S3G33 continues a size-4 save.
+func test_soak_at_fifty_landmark_checkpoints_at_size_4_every_respawn_is_fair() -> void:
+	var sim: PoolSim = Gates.make_sim_at("omnivore", LANDMARK_SEED, 4)
+	check(sim != null, "the size-4 sim")
+	if sim == null:
+		return
+	var w := sim.world
+	check_eq([sim.size(), w.max_size], [4, 4], "at size 4, the top")
+	check(bool(w.content.config.switches.get("landmark_return", false)), "the landmark return is on")
+	var reach := float(w.content.config.growth.discovery.landmark_find_tm)
+	var spiral := WorldStream.LANDMARK_SPIRAL_RINGS * PoolSim.CLEAR_SPIRAL_STEP_M
+	var clear_m := float(sim.species.fairness.respawn_clear_m)
+	var anchors := _landmark_anchors(sim)
+	var refused := {}
+	var moved := 0
+	var blocked := ""
+	var crowded := 0
+	var edged := 0
+	var streak := sim.death_streak
+	for a in anchors:
+		if moved >= LANDMARK_CHECKPOINTS:
+			break
+		var block := blocked.is_empty() and moved == LANDMARK_BLOCKED_AFTER
+		var at := "anchor %s" % a.id
+		var before := w.checkpoint_am.duplicate()
+		var got := _to_landmark(sim, a, block)
+		if block:
+			blocked = str(a.id)
+			check_eq(got.reason, "no_clear_point", "%s under a collider of %.0f tm: refused (%s)" % [at, ChunkArena.MAX_COLLIDER_R, got])
+			check_eq(w.checkpoint_am, before, "%s: the checkpoint stays" % at)
+			_unblock(sim, got.get("key", Vector2i.ZERO), got.get("kept", []))
+			continue
+		if not got.moved:
+			refused[got.reason] = int(refused.get(got.reason, 0)) + 1
+			continue
+		moved += 1
+		at = "checkpoint %d (%s)" % [moved, a.id]
+		var cp := w.checkpoint_local()
+		var heading := float(w.checkpoint_am[2])
+		check_eq(int(w.checkpoint_am[3]), 4, "%s: at size 4" % at)
+		check(sim.arena.is_clear(cp, sim.phenotype.radius), "%s: a clear point" % at)
+		var off := cp.distance_to(w.local_of_tm(float(a.x), float(a.y)))
+		check(off <= spiral + 1e-4, "%s: within the spiral of its anchor (%.2f tm)" % [at, off])
+		# The death, with the creatures acting.
+		sim.debug_set_ai_frozen(false)
+		_hold(sim, LANDMARK_SETTLE_TICKS)
+		if sim.dead:
+			check(false, "%s: the cell died before the test killed it (%s)" % [at, sim.death])
+			return
+		var alive := sim._alive_ticks
+		check(sim.debug_hurt_player(1.0e9) and sim.dead, "%s: the cell dies" % at)
+		var ignored := {}
+		for c in sim.creatures.creatures:
+			if c.brain != null:
+				ignored[c.id] = int(c.brain.ignore.get(PLAYER, -1))
+		_hold(sim, NOTICE_TICKS)
+		var crowd := _crowd_the_checkpoint(sim, cp)
+		var edge := {}
+		if moved % LANDMARK_EDGE_EVERY == 0:
+			edge = _edge_the_checkpoint(sim, cp, w.local_of_tm(float(a.x), float(a.y)))
+			check(not edge.is_empty() and not sim.arena.is_clear(cp, sim.phenotype.radius), "%s: blocked for the respawn" % at)
+		var next_streak := streak + 1 if alive < sim.species.streak_window_ticks else 1
+		var energy := sim.growth.respawn_energy(sim.state.energy_capacity,
+			RespawnRules.pick(sim.species.respawn_energy_share, next_streak), 4)
+		sim.respawn_player()
+		var t := sim.tick
+		var events := _hold(sim, 1)
+		var respawned := events.filter(func(e: Dictionary) -> bool: return e.type == "respawned")
+		check_eq(respawned.size(), 1, "%s: one respawned" % at)
+		if respawned.size() != 1:
+			return
+		var r: Dictionary = respawned[0]
+		streak = sim.death_streak
+		check_eq(int(r.streak), next_streak, "%s: the streak after a life of %.1f s" % [at, alive * PoolSim.DT])
+		check_eq(r.get("teleport"), false, "%s: back without a teleport" % at)
+		var grace := roundi(float(r.grace_s) * CreatureBrain.TICKS_PER_SECOND)
+		check_eq(grace, int(RespawnRules.pick(sim.species.grace_ticks, streak)), "%s: the streak's shelter" % at)
+		check_eq(sim.grace_until, t + grace, "%s: sheltered from the respawn" % at)
+		check_eq(sim.state.health, sim.state.max_health, "%s: full health" % at)
+		check_near(float(r.energy), energy, 1e-9, "%s: the streak's energy, capped over the death's (D-35)" % at)
+		check(sim.state.energy > 0.0 and sim.state.energy <= float(r.energy), "%s: and the cell has it, less a tick" % at)
+		check(sim.actor.cooldowns.is_empty(), "%s: no cooldowns" % at)
+		check(sim.is_sheltered() and sim.is_concealed(), "%s: sheltered and concealed" % at)
+		if edge.is_empty():
+			check(sim.motion.position.distance_to(cp) < 0.01, "%s: at the checkpoint (%.3f tm off)" % [at, sim.motion.position.distance_to(cp)])
+			check_eq(sim.motion.heading, heading, "%s: facing its heading" % at)
+		else:
+			edged += 1
+			var d := sim.motion.position.distance_to(cp)
+			check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "%s: back clear of the collider" % at)
+			check(d > 0.0 and d <= PoolSim.CLEAR_SPIRAL_STEP_M * 2.0 + 1e-4, "%s: within two rings of it (%.2f tm)" % [at, d])
+			_unblock(sim, edge.key, edge.kept)
+		if not crowd.is_empty():
+			crowded += 1
+			check(Array(r.relocated).has(crowd.id), "%s: %s, %.0f tm off, sent home (%s)" % [at, crowd.id, LANDMARK_CROWD_TM, r.relocated])
+		for c in sim.creatures.creatures:
+			if c.debug or sim.species.q_of(c.species_id, 4) != 1.0:
+				continue
+			var gap := c.motion.position.distance_to(sim.motion.position) - c.phenotype.radius
+			check(gap >= clear_m, "%s: %s (q 1) is %.2f tm off (at least %.0f)" % [at, c.id, gap, clear_m])
+		for c in sim.creatures.creatures:
+			if c.brain == null:
+				continue
+			check(not c.brain.seen.has(PLAYER) and c.brain.target != PLAYER, "%s: %s forgot the cell" % [at, c.id])
+			if ignored.has(c.id):
+				check_eq(int(c.brain.ignore.get(PLAYER, -1)), int(ignored[c.id]), "%s: %s gains no ignore" % [at, c.id])
+		check(sim.creatures.engaged_on_player.is_empty(), "%s: the token is free" % at)
+		var until := sim.grace_until
+		var during := _hold(sim, until - sim.tick + 1)
+		var threats := during.filter(func(e: Dictionary) -> bool:
+			return int(e.tick) < until and ((e.type == "hit" and e.target == PLAYER)
+				or (e.type == "creature_noticed" and e.target == PLAYER)))
+		check(threats.is_empty(), "%s: nothing notices, strikes or stings the sheltered cell: %s" % [at, threats])
+		var ended := during.filter(func(e: Dictionary) -> bool: return e.type == "grace_ended")
+		check(ended.size() == 1 and ended[0].reason == "timeout" and int(ended[0].tick) == until - 1,
+			"%s: the shelter ended on its last tick (%s)" % [at, ended])
+		if sim.dead:
+			check(false, "%s: the cell died in the shelter (%s)" % [at, sim.death])
+			return
+	print("test-checkpoints: S3G26 %d landmark checkpoints of %d anchors at size 4; refused %s; blocked %s; %d crowded, %d edged; streak %d" % [
+		moved, anchors.size(), refused, blocked, crowded, edged, streak])
+	check_eq(moved, LANDMARK_CHECKPOINTS, "%d landmark checkpoints" % LANDMARK_CHECKPOINTS)
+	check(not blocked.is_empty(), "a blocked anchor was tried")
+	check(crowded >= LANDMARK_CHECKPOINTS / 2, "a creature crowded at least half the checkpoints (%d)" % crowded)
+	check_eq(edged, LANDMARK_CHECKPOINTS / LANDMARK_EDGE_EVERY, "the edge cases")
+
+
+## The anchors of the chunks within LANDMARK_CHUNKS of home at size 4, nearest home first.
+func _landmark_anchors(sim: PoolSim) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for cy in range(-LANDMARK_CHUNKS, LANDMARK_CHUNKS + 1):
+		for cx in range(-LANDMARK_CHUNKS, LANDMARK_CHUNKS + 1):
+			for a in sim.world.gen.chunk(4, cx, cy).anchors:
+				out.append(a)
+	out.sort_custom(func(p: Dictionary, q: Dictionary) -> bool:
+		var dp := Vector2(p.x, p.y).length()
+		var dq := Vector2(q.x, q.y).length()
+		return dp < dq or (dp == dq and str(p.id) < str(q.id)))
+	return out
+
+
+## Puts the cell, fed and still, by anchor `a` with every brain frozen and holds it there until the
+## landmark pass moves the checkpoint to `a` or LANDMARK_WAIT_TICKS pass. `block` covers the anchor
+## first with a collider of ChunkArena.MAX_COLLIDER_R (the cell just outside it, within reach).
+## {moved, reason (the candidate's refusal), key and kept (the blocked chunk and its colliders)}.
+func _to_landmark(sim: PoolSim, a: Dictionary, block: bool) -> Dictionary:
+	var w := sim.world
+	var k := WorldConfig.tm_to_am(4)
+	var near := LANDMARK_NEAR_TM if not block else ChunkArena.MAX_COLLIDER_R + sim.phenotype.radius + 0.5
+	var p := Vector2(float(a.x), float(a.y)) + Vector2(near, 0.0)
+	sim.debug_set_ai_frozen(true)
+	sim.debug_teleport_abs(p.x * k, p.y * k, PI)
+	sim.debug_set_energy(sim.state.energy_capacity)
+	var out := {"moved": false, "reason": ""}
+	if block:
+		var key := w.chunk_of_local(w.local_of_tm(float(a.x), float(a.y)))
+		out["key"] = key
+		out["kept"] = _block(sim, key, Vector2(float(a.x), float(a.y)), ChunkArena.MAX_COLLIDER_R)
+		w._landmark_points.erase(a.id)
+	for i in LANDMARK_WAIT_TICKS:
+		for e in _hold(sim, 1):
+			if e.type == "checkpoint_moved" and e.reason == "landmark":
+				out.moved = str(e.anchor) == str(a.id)
+				out.reason = "" if out.moved else "another anchor (%s)" % e.anchor
+				return out
+		if i >= LANDMARK_SETTLE_TICKS and not block and w.landmark_candidate(sim, a).reason in ["reach", "no_clear_point"]:
+			break   # a lasting refusal: the next anchor
+	var cand := w.landmark_candidate(sim, a)
+	out.reason = cand.reason if not cand.ok else "out of reach"
+	return out
+
+
+## Adds a collider of radius `r` at `center` (abs tm) to loaded chunk `key`; its colliders before.
+func _block(sim: PoolSim, key: Vector2i, center: Vector2, r: float) -> Array:
+	var arena := sim.arena as ChunkArena
+	check(arena.has_chunk(key), "chunk %s is loaded" % key)
+	var kept: Array = arena._chunk_colliders.get(key, []).duplicate(true)
+	var more: Array[Dictionary] = []
+	for c in kept:
+		more.append(c)
+	more.append({"id": "s3g26_block", "x": center.x, "y": center.y, "r": r})
+	arena.remove_chunk(key)
+	arena.add_chunk(key, more)
+	return kept
+
+
+## Puts chunk `key`'s colliders back as `kept`.
+func _unblock(sim: PoolSim, key: Vector2i, kept: Array) -> void:
+	var arena := sim.arena as ChunkArena
+	if not arena.has_chunk(key):
+		return
+	var back: Array[Dictionary] = []
+	for c in kept:
+		back.append(c)
+	arena.remove_chunk(key)
+	arena.add_chunk(key, back)
+
+
+## #10's case: a collider of 2 tm whose edge is 0.2 tm off the checkpoint, on the side of its anchor
+## `anchor_at` (the landmark's collider is there already, so the open water stays open).
+func _edge_the_checkpoint(sim: PoolSim, cp: Vector2, anchor_at: Vector2) -> Dictionary:
+	var w := sim.world
+	var r := 2.0
+	var toward := (anchor_at - cp).normalized()
+	for dir: Vector2 in [toward, toward.orthogonal(), -toward.orthogonal()]:
+		var at := cp + dir * (r + 0.2)
+		var a := w.abs_of_local(at)
+		var k := WorldConfig.tm_to_am(4)
+		var key := w.chunk_of_local(at)
+		if not (sim.arena as ChunkArena).has_chunk(key):
+			continue
+		return {"key": key, "kept": _block(sim, key, Vector2(a[0] / k, a[1] / k), r)}
+	return {}
+
+
+## #7's case: the nearest awake creature with a brain (not a veil) put LANDMARK_CROWD_TM from the
+## checkpoint at a clear point, while the cell is dead. {id} or {} for none.
+func _crowd_the_checkpoint(sim: PoolSim, cp: Vector2) -> Dictionary:
+	var best: CreatureField.Creature = null
+	for c in sim.creatures.creatures:
+		if c.asleep or c.debug or c.brain == null or c.brain.behavior == CreatureBrain.HAZARD:
+			continue
+		if best == null or c.motion.position.distance_to(cp) < best.motion.position.distance_to(cp):
+			best = c
+	if best == null:
+		return {}
+	for i in 8:
+		var at := cp + Vector2.from_angle(TAU * i / 8.0) * LANDMARK_CROWD_TM
+		if sim.arena.is_clear(at, best.phenotype.radius):
+			best.motion.place(at, best.motion.heading)
+			best.actor.position = at
+			return {"id": best.id}
+	return {}
+
+
+## Steps the still cell `ticks` times; the events, each stamped with its tick.
+func _hold(sim: PoolSim, ticks: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for i in ticks:
+		var t := sim.tick
+		sim.step(SimIntent.new())
+		if not sim.dead and not sim.respawn_pending:
+			sim.motion.velocity = Vector2.ZERO
+		for e in sim.drain_events():
+			e["tick"] = t
+			out.append(e)
+	return out

@@ -79,6 +79,7 @@ var _saved_history_size := 0
 var _saved_abs := PackedFloat64Array([0.0, 0.0])
 ## The cell's size at the last save or load (S2): a growth or a size change since is unsaved.
 var _saved_size := 1
+var _saved_checkpoint := PackedFloat64Array()   ## endless: the world's checkpoint at the last save
 ## Whether the death handed to the pending respawn was saved: respawn_after_death clears `death`
 ## before the sim's next step performs the respawn, and the dirty test reads this meanwhile.
 var _respawn_death_saved := false
@@ -203,12 +204,12 @@ func save_now() -> Dictionary:
 	return last_save
 
 
-## Call with each tick's drained events (PoolSim.drain_events): a tick whose events hold "grew" is
-## saved at once, so the growth survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s
-## result when it saved, else {}.
+## Call with each tick's drained events (PoolSim.drain_events): a tick whose events hold "grew", or a
+## landmark's "checkpoint_moved" (S3, D-132), is saved at once, so the growth or the new return point
+## survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s result when it saved, else {}.
 func after_events(events: Array) -> Dictionary:
 	for event in events:
-		if event is Dictionary and event.get("type") == "grew":
+		if event is Dictionary and (event.get("type") == "grew" or event.get("type") == "checkpoint_moved"):
 			return save_now()
 	return {}
 
@@ -310,6 +311,7 @@ func _mark_saved() -> void:
 	_saved_size = _size()
 	if sim.is_endless():
 		_saved_abs = sim.absolute_position_am()
+		_saved_checkpoint = sim.world.checkpoint_am.duplicate()
 
 
 ## The cell's size: the world's in endless mode, 1 in the pool.
@@ -334,6 +336,8 @@ func _is_dirty() -> bool:
 	if _size() != _saved_size:
 		return true
 	if sim.is_endless():
+		if sim.world.checkpoint_am != _saved_checkpoint:
+			return true   # a landmark moved the return point (S3G24c)
 		var a := sim.absolute_position_am()
 		var dx := a[0] - _saved_abs[0]
 		var dy := a[1] - _saved_abs[1]

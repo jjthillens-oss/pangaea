@@ -12,9 +12,11 @@ const Runner := preload("res://tests/run_tests.gd")
 const FAST_SEED := 401
 const SLOW_SEEDS: Array[int] = [402, 4242, 77]
 const SHORT_TICKS: Array[int] = [600, 3600]
-## CI's soak jobs (build plan B-14): soak-a runs these files, soak-b skips them.
-const SOAK_JOBS := {"soak-a": "--only", "soak-b": "--skip"}
+## CI's soak jobs (build plan B-14): soak-a runs SOAK_A_FILES, soak-c SOAK_C_FILES (S3, PR #164: S3G13
+## alone outgrew soak-b's hour), and soak-b skips both.
+const SOAK_JOBS := {"soak-a": "--only", "soak-b": "--skip", "soak-c": "--only"}
 const SOAK_A_FILES := "test_endless_gates,test_endless_cost"
+const SOAK_C_FILES := "test_threat_fuzz"
 
 
 func _check_scenarios(seeds: Array[int], ticks: Array[int]) -> void:
@@ -91,7 +93,7 @@ func test_soak_the_pool_scenarios_match_the_goldens_at_18000_ticks() -> void:
 
 ## The soak tier the 18,000-tick goldens run in (S1 spine 3.1): never in a default run, only with
 ## --soak; tools/check_soak.sh passes --soak, and CI runs it in two parallel jobs (build plan B-14).
-func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it_in_two_jobs() -> void:
+func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it_in_three_jobs() -> void:
 	var plain := Runner._flags(PackedStringArray([]))
 	var soak := Runner._flags(PackedStringArray(["--soak", "--only=test_m1_goldens"]))
 	var quick := Runner._flags(PackedStringArray(["--skip-slow"]))
@@ -111,7 +113,7 @@ func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it_in_two_jobs() -> void
 	check(script.contains("bounded 600 \"$GODOT\" --headless --path . --import"), "after an import")
 	check(script.contains("if [ $# -gt 0 ] && [ \"${1#--}\" = \"$1\" ]; then"), "a first argument that is a flag is not taken for the Godot path")
 	var ci := FileAccess.get_file_as_string("res://.github/workflows/ci.yml")
-	check(_ci_job(ci, "soak").is_empty(), "the one soak job is split in two")
+	check(_ci_job(ci, "soak").is_empty(), "the one soak job is split")
 	var lists := {}
 	for job in SOAK_JOBS:
 		var body := _ci_job(ci, job)
@@ -125,12 +127,13 @@ func test_the_soak_tier_runs_only_with_soak_and_ci_runs_it_in_two_jobs() -> void
 			var line := body.substr(at).get_slice("\n", 0)
 			lists[job] = line.trim_prefix("run: tools/check_soak.sh %s=" % flag).strip_edges()
 	check_eq(str(lists.get("soak-a", "")), SOAK_A_FILES, "soak-a runs the endless gates and cost cases (B-14)")
-	check_eq(str(lists.get("soak-b", "")), SOAK_A_FILES, "soak-b skips exactly the files soak-a runs")
+	check_eq(str(lists.get("soak-c", "")), SOAK_C_FILES, "soak-c runs the threat fuzz soaks")
+	check_eq(str(lists.get("soak-b", "")), SOAK_A_FILES + "," + SOAK_C_FILES, "soak-b skips exactly the files soak-a and soak-c run")
 	check(not FileAccess.get_file_as_string("res://tools/check.sh").contains("--soak"), "check.sh leaves the soak tier to its jobs")
 
 
 ## --skip=a,b (B-14) leaves those files out; a name in --only or --skip that matches no file fails the
-## run; and soak-a's and soak-b's flags take every test file exactly once between them.
+## run; and the three soak jobs' flags take every test file exactly once between them.
 func test_skip_leaves_out_its_files_and_the_soak_jobs_split_every_file_once() -> void:
 	var skip := Runner._flags(PackedStringArray(["--skip=test_a, test_b.gd", "--skip-slow"]))
 	check_eq(skip.skip, PackedStringArray(["test_a", "test_b"]), "--skip parses, with or without .gd")
@@ -148,15 +151,18 @@ func test_skip_leaves_out_its_files_and_the_soak_jobs_split_every_file_once() ->
 	var typo := Runner._flags(PackedStringArray(["--only=test_x"]))
 	check_eq(Runner.flag_problems(files, typo), PackedStringArray(["--only: there is no tests/test_x.gd"]), "so does a misspelt --only name")
 	var a := Runner._flags(PackedStringArray(["--soak", "--only=" + SOAK_A_FILES]))
-	var b := Runner._flags(PackedStringArray(["--soak", "--skip=" + SOAK_A_FILES]))
+	var b := Runner._flags(PackedStringArray(["--soak", "--skip=" + SOAK_A_FILES + "," + SOAK_C_FILES]))
+	var c := Runner._flags(PackedStringArray(["--soak", "--only=" + SOAK_C_FILES]))
 	var all := DirAccess.get_files_at("res://tests")
 	check_eq(Runner.flag_problems(all, a), PackedStringArray(), "every file soak-a names exists")
+	check_eq(Runner.flag_problems(all, c), PackedStringArray(), "every file soak-c names exists")
 	var counted := 0
 	for file in all:
 		if file.begins_with("test_") and file.ends_with(".gd") and file != "test_case.gd":
 			counted += 1
 			var name := file.get_basename()
-			check(Runner.file_selected(name, a) != Runner.file_selected(name, b), "%s runs in exactly one soak job" % name)
+			var jobs := [a, b, c].filter(func(f: Dictionary) -> bool: return Runner.file_selected(name, f)).size()
+			check_eq(jobs, 1, "%s runs in exactly one soak job" % name)
 	check(counted > 10, "the split was checked over the test files (%d)" % counted)
 
 

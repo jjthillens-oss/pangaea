@@ -56,6 +56,9 @@ var _pending: Array[Dictionary] = []
 var _beat := false
 var _settled_t := -1.0
 var _beat_t := 0.0
+## The leftovers' sink (tm) and fade (s) this growth (set_retire_profile; S2's unless a band-up).
+var _sink_tm := GrowthBeat.SINK_TM
+var _retire_s := GrowthBeat.RETIRE_S
 var _depth_k := 1.0
 
 
@@ -276,6 +279,12 @@ func settle_growth() -> void:
 		_settled_t = _beat_t
 
 
+## The leftovers' sink and fade for the growth that begins (GrowthBeat.begin, V3-1).
+func set_retire_profile(sink_tm: float, retire_s: float) -> void:
+	_sink_tm = sink_tm
+	_retire_s = retire_s
+
+
 ## Each beat frame: the waiting mouths are made once the tick settles and come in from the veil;
 ## the leftovers sink and fade.
 func beat_frame(t: float, _k: float) -> void:
@@ -288,10 +297,10 @@ func beat_frame(t: float, _k: float) -> void:
 				if piece != null:
 					_fresh[piece] = t
 					_veil_piece(piece, 1.0)
-		var s := GrowthBeat.retire_share(t, _settled_t)
+		var s := GrowthBeat.retire_share(t, _settled_t, _retire_s)
 		for mouth_name in _retiring:
 			var r: Dictionary = _retiring[mouth_name]
-			(r.piece as Node3D).position.y = float(r.y) - GrowthBeat.SINK_TM * s
+			(r.piece as Node3D).position.y = float(r.y) - _sink_tm * s
 			_veil_piece(r.piece, s)
 	for piece: Node3D in _fresh.keys():
 		var p := GrowthBeat.fresh_share(t - float(_fresh[piece]))

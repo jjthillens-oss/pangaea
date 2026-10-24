@@ -4,7 +4,9 @@ extends TestCase
 ## determinism: two runs of a straight swim hash the same (G13), and every key of the world's
 ## snapshot is in the hash (T2.9b). With growth (S2 T2.7, S2G21): every key the growth adds to the
 ## world block (the meter's, the remnants', the carrion's own radii and lifetimes) is in the hash,
-## the prefetch is not, and two runs through a growth hash the same.
+## the prefetch is not, and two runs through a growth hash the same. S3 (T2.8, BP3-12): two runs
+## through 2 to 3 and 3 to 4 hash the same, and every S3 snapshot key is absent at its default and in
+## the hash.
 
 const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
@@ -41,6 +43,23 @@ const GROWN_AFTER_TICKS := 30           ## and after it
 const GROWTH_RUN_TICKS := 720           ## each of the two runs through a growth (it grows near tick 430)
 const GROWTH_HASH_EVERY := 60
 const PREFETCH_WAIT_TICKS := 60    ## BP-4: the prefetch holds a chunk within this many ticks of the fill
+const B1_WORLD := "res://tests/fixtures/world/world_b1_min.json"
+## BP3-12 (1): the ticks after each band-1 growth at which the two runs' hashes are read.
+const BAND_HASH_AT := [600, 1800, 3600]
+## s3-sim 3.14 (as BP3-2 amends it), the sim snapshot's S3 keys, each with its perturbation's name.
+## The chunk rows (morsel_sites, zone and site bloom in WorldChunk.to_dict) are T3's digest.
+const S3_KEYS := {
+	"last_strike_hit_tick": "a strike hit 3 ticks ago",
+	"last_sting_tick": "a sting 3 ticks ago",
+	"token_closed_until": "the token closed for 40 ticks",
+	"morsel_sites": "a morsel-site entry",
+	"landmark_anchor": "a landmark anchor",
+	"carrion species": "a carrion item's species",
+	"carrion site": "a carrion item's site",
+	"brain drift_phase": "a hazard's drift phase",
+	"brain drift_period": "a hazard's drift period",
+	"brain bloom_offset": "a brain's bloom schedule",
+}
 
 var catalog: PartCatalog
 var layout: PoolLayout
@@ -492,3 +511,138 @@ static func _sorted_keys(d: Dictionary) -> Array:
 
 func _count(events: Array[Dictionary], type: String) -> int:
 	return events.filter(func(e: Dictionary) -> bool: return e.type == type).size()
+
+
+# --- S3 (T2.8, BP3-12) ---
+
+## The band-1 fixture world (sizes to 4) on the fake generator with growth on, at `size`, a site per
+## 2 x 2 chunks, after 60 still ticks with a carrion item, a veil (a hazard) and a rammer beside the
+## cell; its events drained.
+func _b1(size: int) -> PoolSim:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, FakeWorldGen.fixture_content(B1_WORLD),
+		PackedFloat64Array(), 2, true)
+	check(sim.debug_set_size(size), "size %d" % size)
+	var at := sim.motion.position
+	sim.carrion.spawn(at + Vector2(2.0, -3.0), "test", 5.0)
+	check(sim.debug_spawn_creature("veil", at + Vector2(9.0, 0.0), PI), "a veil")
+	check(sim.debug_spawn_creature("rammer", at + Vector2(-9.0, 3.0), 0.0), "a rammer")
+	for t in 60:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	return sim
+
+
+## BP3-12 (2, 3): at size 3 (a hazard live, no morsel site), each S3 key of 3.14 is absent from the
+## snapshot at its default; set, it changes state_hash(), and undone the hash is the base's again.
+func test_every_s3_key_is_absent_at_its_default_and_changes_the_state_hash() -> void:
+	var sim := _b1(3)
+	var h0 := sim.state_hash()
+	check_eq(_b1(3).state_hash(), h0, "the same build hashes the same")
+	check(sim.creatures.hazard_live, "a hazard is live at 3")
+	var snap := sim.snapshot()
+	for key in ["last_strike_hit_tick", "last_sting_tick", "token_closed_until"]:
+		check(not snap.has(key), "no %s at its default" % key)
+	for key in ["morsel_sites", "landmark_anchor"]:
+		check(not (snap.world as Dictionary).has(key), "no world %s at its default" % key)
+	check(not snap.carrion.is_empty(), "a carrion item")
+	for item: Dictionary in snap.carrion:
+		check(not item.has("species") and not item.has("site"), "a plain item has no species or site")
+	var hazard: CreatureField.Creature = null
+	var plain: CreatureField.Creature = null
+	for c in sim.creatures.creatures:
+		if c.brain.behavior == CreatureBrain.HAZARD:
+			hazard = c if hazard == null else hazard
+		elif plain == null:
+			plain = c
+	check(hazard != null and plain != null, "a hazard and a creature that is not one")
+	if hazard == null or plain == null:
+		return
+	for c in sim.creatures.creatures:
+		var b: Dictionary = c.brain.to_dict()
+		check_eq(b.has("drift_phase") and b.has("drift_period"), c.brain.behavior == CreatureBrain.HAZARD,
+			"%s: drift keys only on a hazard" % c.id)
+		check(not b.has("bloom_offset") and not b.has("bloom_cycle"), "%s: no bloom keys without a schedule" % c.id)
+	for what: String in S3_KEYS:
+		var undo := _perturb_s3(sim, what, hazard, plain)
+		check(sim.state_hash() != h0, "%s (%s) changes the hash" % [what, S3_KEYS[what]])
+		undo.call()
+		check_eq(sim.state_hash(), h0, "and undoing %s restores it" % what)
+
+
+func _perturb_s3(sim: PoolSim, what: String, hazard: CreatureField.Creature, plain: CreatureField.Creature) -> Callable:
+	var w := sim.world
+	var item: Dictionary = sim.carrion.items[0]
+	match what:
+		"last_strike_hit_tick":
+			sim.last_strike_hit_tick = sim.tick - 3
+			return func() -> void: sim.last_strike_hit_tick = -CreatureBrain.NEVER
+		"last_sting_tick":
+			sim.last_sting_tick = sim.tick - 3
+			return func() -> void: sim.last_sting_tick = -CreatureBrain.NEVER
+		"token_closed_until":
+			sim.creatures.token_closed_until = sim.tick + 40
+			return func() -> void: sim.creatures.token_closed_until = 0
+		"morsel_sites":
+			w.adopt_morsel("m_test", "")
+			return func() -> void: w._drop_entry("m_test")
+		"landmark_anchor":
+			w.landmark_anchor = "a_test"
+			return func() -> void: w.landmark_anchor = ""
+		"carrion species":
+			item["species"] = "rammer"
+			return func() -> void: item.erase("species")
+		"carrion site":
+			item["site"] = "m_test"
+			return func() -> void: item.erase("site")
+		"brain drift_phase":
+			var v: Vector2i = hazard.brain.drift_phase
+			hazard.brain.drift_phase = v + Vector2i(1, 0)
+			return func() -> void: hazard.brain.drift_phase = v
+		"brain drift_period":
+			var v: Vector2i = hazard.brain.drift_period
+			hazard.brain.drift_period = v + Vector2i(0, 1)
+			return func() -> void: hazard.brain.drift_period = v
+		"brain bloom_offset":
+			CreatureBrain.set_bloom(plain.brain, 17, 5400)
+			return func() -> void: CreatureBrain.set_bloom(plain.brain, 0, 0)
+	check(false, "no perturbation for %s" % what)
+	return func() -> void: pass
+
+
+## BP3-12 (1): two runs from one seed on the band-1 fixture world, each swimming east from size 2,
+## grown to 3 and then to 4 by the dev command, hash the same BAND_HASH_AT ticks after each growth
+## (by state_hash() and the snapshot's sha256) and grow on the same ticks.
+func test_slow_two_runs_through_both_band_one_growths_give_the_same_hash() -> void:
+	var runs: Array[Dictionary] = []
+	for i in 2:
+		var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, FakeWorldGen.fixture_content(B1_WORLD),
+			PackedFloat64Array(), 4, true)
+		check(sim.debug_set_size(2), "size 2")
+		var bot = SwimBot.new(Vector2.RIGHT)
+		var run := {"hashes": [], "shas": [], "grew_at": []}
+		var since := -1
+		var t := 0
+		while t < 2 * (BAND_HASH_AT[-1] + 200):
+			if since < 0 and sim.size() < 4 and (run.grew_at.size() == 0 or t - int(run.grew_at[-1]) > BAND_HASH_AT[-1]):
+				check(sim.debug_force_growth(), "run %d: the forced growth to %d" % [i, sim.size() + 1])
+				since = 0
+			sim.step(bot.next_intent(sim))
+			for e in sim.drain_events():
+				if e.type == "grew":
+					run.grew_at.append(t)
+			if run.grew_at.size() > 0 and t - int(run.grew_at[-1]) + 1 in BAND_HASH_AT:
+				run.hashes.append(sim.state_hash())
+				run.shas.append(JSON.stringify(sim.snapshot(), "", true, true).sha256_text())
+			if since >= 0 and run.grew_at.size() > 0 and int(run.grew_at[-1]) >= t - 1:
+				since = -1
+			t += 1
+			if run.grew_at.size() == 2 and t - int(run.grew_at[-1]) > BAND_HASH_AT[-1]:
+				break
+		run["size"] = sim.size()
+		runs.append(run)
+	print("test-endless-sim: two runs through 2 to 3 to 4: grew at %s, size %d; last hash %d" % [runs[0].grew_at,
+		runs[0].size, runs[0].hashes[-1] if not runs[0].hashes.is_empty() else 0])
+	check_eq([runs[0].size, runs[0].grew_at.size(), runs[0].hashes.size()], [4, 2, 6], "both growths, three hashes after each")
+	check_eq(runs[1].grew_at, runs[0].grew_at, "on the same ticks")
+	check_eq(runs[1].hashes, runs[0].hashes, "the same state_hash() %s ticks after each growth" % [BAND_HASH_AT])
+	check_eq(runs[1].shas, runs[0].shas, "and the same snapshot sha256")

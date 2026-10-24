@@ -107,11 +107,12 @@ jobs:
           path: builds/windows-launch/
           retention-days: 14
 
-  # The soak tier (tools/check_soak.sh: test_soak_*, the long S1 gates) in two jobs, in parallel
+  # The soak tier (tools/check_soak.sh: test_soak_*, the long S1 gates) in three jobs, in parallel
   # with test-and-export and with each other (S1 build plan B-14): soak-a runs the endless gates and
-  # cost cases, soak-b every other soak file, so a new one lands there without a list edit. Each
-  # Godot soak run stops itself after 60 minutes (tools/bounded.sh) and fails with its output so
-  # far; the job timeout is the backstop. S1 sign-off needs both green.
+  # cost cases, soak-c the threat fuzz soaks (S3G13 and D-117's four-seed runs), soak-b every other
+  # soak file, so a new one lands there without a list edit. Each Godot soak run stops itself after
+  # 60 minutes (tools/bounded.sh) and fails with its output so far; the job timeout is the
+  # backstop. Sign-off needs all three green.
   soak-a:
     runs-on: ubuntu-24.04
     timeout-minutes: 75
@@ -152,4 +153,25 @@ jobs:
         run: tools/setup_toolchain.sh
 
       - name: Import and run every other soak test
-        run: tools/check_soak.sh --skip=test_endless_gates,test_endless_cost
+        run: tools/check_soak.sh --skip=test_endless_gates,test_endless_cost,test_threat_fuzz
+
+  soak-c:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pinned toolchain
+        run: grep -E "^[A-Z_]+=" tools/toolchain.env >> "$GITHUB_ENV"
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: .toolchain
+          key: godot-${{ env.GODOT_RELEASE }}-linux
+
+      - name: Install Godot
+        run: tools/setup_toolchain.sh
+
+      - name: Import and run the threat fuzz soaks
+        run: tools/check_soak.sh --only=test_threat_fuzz

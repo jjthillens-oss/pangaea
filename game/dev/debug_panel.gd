@@ -43,9 +43,10 @@ const TELEPORT_HEADING := -1.5708
 const REBASE_BY := Vector2i(1, 0)   ## the Rebase button's dev rebase, in chunks
 const ZONE_ROWS := 8                ## the endless sea's ecology rows: the loaded zones nearest the cell
 ## The buttons that show only in the endless sea.
-const WORLD_BUTTONS: PackedStringArray = ["teleport_far", "rebase", "chunks"]
+const WORLD_BUTTONS: PackedStringArray = ["teleport_far", "rebase", "chunks", "go_to_cradle"]
 ## The buttons that show only where the sea grows (sim.growth set).
-const GROWTH_BUTTONS: PackedStringArray = ["fill_meter", "force_growth", "size_1", "size_2", "ready_to_mate"]
+const GROWTH_BUTTONS: PackedStringArray = ["fill_meter", "force_growth", "size_1", "size_2", "size_3", "size_4",
+	"ready_to_mate"]
 const VSYNC_NAMES := {
 	DisplayServer.VSYNC_DISABLED: "off", DisplayServer.VSYNC_ENABLED: "on",
 	DisplayServer.VSYNC_ADAPTIVE: "adaptive", DisplayServer.VSYNC_MAILBOX: "mailbox",
@@ -87,7 +88,7 @@ var _refusal := ""                   ## why the last size command was refused ("
 	"spawn_threat": %SpawnThreat, "kill_nearest": %KillNearest, "freeze_ai": %FreezeAI,
 	"hide_from_ai": %HideFromAI, "hurt_self": %HurtSelf, "teleport_far": %TeleportFar, "rebase": %Rebase,
 	"chunks": %Chunks, "fill_meter": %FillMeter, "force_growth": %ForceGrowth, "size_1": %Size1,
-	"size_2": %Size2, "ready_to_mate": %ReadyToMate,
+	"size_2": %Size2, "size_3": %Size3, "size_4": %Size4, "go_to_cradle": %GoToCradle, "ready_to_mate": %ReadyToMate,
 }
 
 
@@ -116,9 +117,10 @@ func toggle() -> void:
 ## DEBUG_THREAT_AHEAD_M ahead, facing the cell; each one that lands is the next species in id
 ## order among those living at the cell's size, threat_species()), kill_nearest, freeze_ai and
 ## hide_from_ai (toggles) or hurt_self (HURT_SELF_HP); in the endless sea also teleport_far (to
-## FAR_AM), rebase (REBASE_BY chunks now) and chunks (the chunk gizmo, on or off); where the sea
-## grows also fill_meter (the ring full), force_growth (grow on the next tick), size_1 or size_2
-## (refused above the build's top) and ready_to_mate (full energy and points, so a kin comes; S4).
+## FAR_AM), rebase (REBASE_BY chunks now), chunks (the chunk gizmo, on or off) and go_to_cradle (the
+## band's cradle view point, from band 1; S3, D-118); where the sea grows also fill_meter (the ring
+## full), force_growth (grow on the next tick), size_1 to size_4 (refused above the build's top) and
+## ready_to_mate (full energy and points, so a kin comes; S4).
 ## Returns whether it applied.
 func run(command: String) -> bool:
 	var sim := _current_sim()
@@ -174,8 +176,10 @@ func run(command: String) -> bool:
 			applied = sim != null and sim.debug_fill_meter(1.0)
 		"force_growth":
 			applied = sim != null and sim.debug_force_growth()
-		"size_1", "size_2":
+		"size_1", "size_2", "size_3", "size_4":
 			applied = sim != null and _set_size(sim, int(command.right(1)))
+		"go_to_cradle":
+			applied = sim != null and _go_to_cradle(sim)
 		"ready_to_mate":
 			applied = sim != null and sim.debug_ready_to_mate()
 	refresh()
@@ -507,6 +511,31 @@ func _update_world_buttons(sim: PoolSim) -> void:
 	for command in WORLD_BUTTONS:
 		(_buttons[command] as Button).visible = endless
 	(_buttons.teleport as Button).text = "Teleport home" if endless else "Teleport to spawn"
+	var cradle := endless and WorldConfig.band_of(sim.size()) >= 1
+	(_buttons.go_to_cradle as Button).disabled = not cradle
+	(_buttons.go_to_cradle as Button).text = "Go to cradle" if cradle else "Go to cradle (size 3+)"
+
+
+## The cell at its band's cradle view point (S3, D-118): the cradle's view_point_bu times the band
+## factor to the band, in absolute am (band 1: (0, 46.08)), facing north. Refused, with the reason
+## kept for the refusal line, outside the endless sea and at band 0, which has no cradle.
+func _go_to_cradle(sim: PoolSim) -> bool:
+	var b := WorldConfig.band_of(sim.size()) if sim.is_endless() else 0
+	var cradle := sim.world.content.cradle_of(b) if b >= 1 else null
+	if cradle == null:
+		_refusal = "Go to cradle: no cradle below size 3"
+		return false
+	var at := cradle_point_am(cradle, b, sim.world.content.config.band_factor)
+	if not sim.debug_teleport_abs(at.x, at.y, TELEPORT_HEADING):
+		_refusal = "Go to cradle: not now (dead or waiting to respawn)"
+		return false
+	_refusal = ""
+	return true
+
+
+## Band `b`'s cradle view point in absolute am: view_point_bu times `band_factor` to the band.
+static func cradle_point_am(cradle: CradleBlock, b: int, band_factor: float) -> Vector2:
+	return cradle.view_point_bu * pow(band_factor, b)
 
 
 ## The growth buttons show only where the sea grows.
@@ -620,7 +649,25 @@ static func creature_lines(sim: PoolSim, c: CreatureField.Creature) -> PackedStr
 		if int(mem.ignore[id]) > sim.tick:
 			ignores.append("%s %.1f s" % [id, _seconds(int(mem.ignore[id]) - sim.tick)])
 	body += "  home %.1f m  ignore: %s" % [c.motion.position.distance_to(mem.home), ", ".join(ignores) if not ignores.is_empty() else "-"]
-	return PackedStringArray([head, body])
+	var out := PackedStringArray([head, body])
+	var habit := habit_line(sim, mem)
+	if habit != "":
+		out.append(habit)
+	return out
+
+
+## S3's third line (s3-view 12): a hazard's place on its two drift sines now and its drift goal, or
+## a bloom brain's blooming slot, the post it guards and the time to the next switch; "" otherwise.
+static func habit_line(sim: PoolSim, mem: CreatureBrain.Memory) -> String:
+	if mem.behavior == CreatureBrain.HAZARD:
+		var goal := CreatureBrain.drift_goal(mem, sim.tick)
+		return "    drift %d/%d, %d/%d ticks · goal (%.1f, %.1f)" % [posmod(sim.tick + mem.drift_phase.x, mem.drift_period.x),
+			mem.drift_period.x, posmod(sim.tick + mem.drift_phase.y, mem.drift_period.y), mem.drift_period.y, goal.x, goal.y]
+	if mem.bloom_cycle > 0:
+		var half := mem.bloom_cycle / 2
+		return "    bloom slot %d blooming · post %s · switch in %.0f s" % [CreatureBrain.bloom_post(mem, sim.tick), str(mem.post),
+			_seconds(half - posmod(sim.tick + mem.bloom_offset, half))]
+	return ""
 
 
 ## Each niche's count over its cap (roles in name order), the respawn queue (soonest first, ties by

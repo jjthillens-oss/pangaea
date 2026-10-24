@@ -69,6 +69,8 @@ var closing: Array = []
 var paid := {"place": [], "landmark": [], "food": []}
 ## [{type, id, size}] this lineage, in find order.
 var discoveries: Array = []
+## D-133: band -> the kinds of place it holds (WorldContent.place_kinds), sorted, for "places found".
+var place_kinds_by_band := {}
 var energy_at_death := -1.0
 ## The prefetch of the next size's chunks (BP-4): it runs while meter >= prefetch_share x ring, at
 ## most prefetch_per_tick chunks a tick.
@@ -100,6 +102,17 @@ func ring(n: int) -> float:
 func is_full(n: int) -> bool:
 	var r := ring(n)
 	return r > 0.0 and meter >= r - FULL_EPSILON
+
+
+## D-133: places found at size n, Vector2i(k, N): N the kinds of place n's band holds, k the distinct
+## ones among this lineage's place and landmark discoveries at n.
+func places_found(n: int) -> Vector2i:
+	var kinds: PackedStringArray = place_kinds_by_band.get(WorldConfig.band_of(n), PackedStringArray())
+	var found := {}
+	for d: Dictionary in discoveries:
+		if int(d.size) == n and (d.type == "place" or d.type == "landmark") and kinds.has(str(d.id)):
+			found[str(d.id)] = true
+	return Vector2i(found.size(), kinds.size())
 
 
 static func at_top(n: int, max_in_build: int) -> bool:
@@ -208,6 +221,11 @@ func _window(sim: PoolSim, n: int) -> void:
 ##   four rings round the cell (WorldStream.next_size_clear_point is INF, BP-4).
 ## Pure: it reads the sim and this meter's history, at any size. The wedge is tested last, so the point
 ## is computed only on ticks that are otherwise calm.
+## Whether nothing blocks growth now (X3-11): the landmark pass asks it without the wedge.
+func is_calm(sim: PoolSim, include_wedge := true) -> bool:
+	return blocker_of(sim, include_wedge) == ""
+
+
 func blocker_of(sim: PoolSim, with_wedge := true) -> String:
 	if _hunted(sim):
 		return "hunted"
@@ -242,6 +260,8 @@ func _hint_ticks() -> int:
 
 
 func _hunted(sim: PoolSim) -> bool:
+	if sim.tick - sim.last_sting_tick < int(cfg.quiet_ticks):
+		return true   # D-140: a sting is being hunted
 	if sim.creatures == null:
 		return false
 	if not sim.creatures.engaged_on_player.is_empty():

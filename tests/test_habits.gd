@@ -7,7 +7,7 @@ extends TestCase
 
 const DT := 1.0 / 60.0
 ## Every state and phase the brain has, so the CALM table is checked against all their pairs.
-const STATES := ["rest", "wander", "forage", "notice", "chase", "attack", "flee"]
+const STATES := ["rest", "wander", "forage", "notice", "chase", "attack", "flee", "drift"]
 const PHASES := ["", "lurk", "watch", "patrol", "return", "seek", "eat", "wait", "pursue", "aim", "tell", "strike",
 	"glide", "recover"]
 ## Lurker posts 8 m apart; elder rammer zones (own radius 3 m) 10 m apart, as the tiles space them.
@@ -168,8 +168,8 @@ func _tick(c: Critter, tick: int) -> bool:
 # --- CALM ---
 
 func test_calm_is_s1s_set_and_is_calm_answers_it_for_every_state_and_phase() -> void:
-	check_eq(CreatureBrain.CALM.keys(), ["rest/lurk", "rest/", "wander/patrol", "forage/seek", "forage/eat"],
-		"CALM is S1 3.11's set (D-62)")
+	check_eq(CreatureBrain.CALM.keys(), ["rest/lurk", "rest/", "wander/patrol", "forage/seek", "forage/eat", "drift/"],
+		"CALM is S1 3.11's set (D-62) and a hazard's drift (S3, D-120)")
 	var mem := _lurker().mem
 	var calm := 0
 	for state in STATES:
@@ -179,7 +179,7 @@ func test_calm_is_s1s_set_and_is_calm_answers_it_for_every_state_and_phase() -> 
 			var want := CreatureBrain.CALM.has("%s/%s" % [state, phase])
 			check_eq(CreatureBrain.is_calm(mem), want, "is_calm(%s/%s)" % [state, phase])
 			calm += 1 if want else 0
-	check_eq(calm, 5, "every CALM label is a state/phase the brain has")
+	check_eq(calm, 6, "every CALM label is a state/phase the brain has")
 
 
 # --- posts and the union disc ---
@@ -441,3 +441,77 @@ func test_the_posts_fixture_puts_no_shell_within_any_post_path_capsule() -> void
 		check_eq(capsule_hits(site, radius, record.q, touching), ["touching"], "%s: so is one touching the capsule" % site.id)
 		var clear: Array[Dictionary] = [{"id": "clear", "center": mid + side * (reach + 0.5 + 1e-3), "radius": 0.5}]
 		check_eq(capsule_hits(site, radius, record.q, clear), [], "%s: and not one just clear of it" % site.id)
+
+
+# --- S3: the elder Warden's bloom (D-104, D-128; S3G15's brain part) ---
+
+const BLOOM_CYCLE := 5400   ## ticks(habit.bloom_cycle_s 90)
+
+
+## A settled elder Warden resting at zone A's home, posts A and B, its bloom from `offset`.
+func _warden(offset := 0, tick := 0) -> Critter:
+	var c := _elder(tick, species.brain_config("elder_warden"))
+	CreatureBrain.set_bloom(c.mem, offset, BLOOM_CYCLE)
+	c.p = species.phenotype("elder_warden", parts)
+	return c
+
+
+func test_bloom_post_is_slot_0_then_slot_1_each_half_cycle() -> void:
+	check_eq(int(species.brain_config("elder_warden").post_rest_ticks), 0, "no dwell for the bloom")
+	var c := _warden()
+	check_eq(str(c.mem.cfg.post_switch), "bloom", "the elder Warden's habit")
+	var got := [0, 2699, 2700, 5399, 5400, 8100].map(func(t: int) -> int: return CreatureBrain.bloom_post(c.mem, t))
+	check_eq(got, [0, 0, 1, 1, 0, 1], "half a cycle each, from the offset")
+	CreatureBrain.set_bloom(c.mem, 100, BLOOM_CYCLE)
+	check_eq([CreatureBrain.bloom_post(c.mem, 2599), CreatureBrain.bloom_post(c.mem, 2600)], [0, 1], "the offset shifts it")
+	check_eq(CreatureBrain.bloom_post(_elder().mem, 2700), 0, "no schedule is slot 0")
+	var calm := 0
+	for t in range(-BLOOM_CYCLE, 3 * BLOOM_CYCLE, 7):
+		calm += CreatureBrain.bloom_post(c.mem, t)
+	check(absf(float(calm) / float(4 * BLOOM_CYCLE / 7) - 0.5) < 0.01, "each slot half the time")
+
+
+func test_the_elder_warden_goes_to_the_blooming_meadow_and_back() -> void:
+	var c := _warden()
+	_think(c, 600)
+	check(c.moves().is_empty(), "slot 0 blooms: it stays at post A")
+	_think(c, 2700)
+	check_eq(c.moves().size(), 1, "slot 1 blooms: it moves")
+	check_eq(c.mem.post, 1, "to post B")
+	check_eq(c.label(), "wander/return", "by S2's return path")
+	check_eq(c.moves()[0].to, ZONE_B + Vector2(0.0, 1.0), "post B's home")
+	c.mem.state = "rest"
+	c.mem.phase = ""
+	_think(c, 4000)
+	check_eq(c.moves().size(), 1, "it stays while B blooms")
+	_think(c, 5400)
+	check_eq(c.moves().size(), 2, "and goes back when A blooms again")
+	check_eq(c.mem.post, 0, "to post A")
+
+
+## The guards (S2's): only from a CALM state with no target, so never with the token held (chase or
+## attack on the cell) and never in notice.
+func test_the_bloom_move_keeps_s2s_guards() -> void:
+	for state in STATES:
+		for phase in PHASES:
+			for target in ["", "player"]:
+				var c := _warden()
+				c.mem.state = state
+				c.mem.phase = phase
+				c.mem.target = target
+				_think(c, 2700)
+				var allowed: bool = CreatureBrain.CALM.has("%s/%s" % [state, phase]) and str(target).is_empty()
+				var label := "%s/%s target '%s'" % [state, phase, target]
+				check_eq(c.moves().size(), 1 if allowed else 0, label + ": moves only when allowed")
+	var held := _warden()
+	held.mem.state = "chase"
+	held.mem.phase = "pursue"
+	held.mem.target = "player"
+	check(CreatureBrain.is_engaged_with(held.mem, "player"), "holding the token")
+	_think(held, 2700)
+	check(held.moves().is_empty(), "no move while it holds the token")
+	var noticing := _warden()
+	noticing.mem.state = "notice"
+	noticing.mem.target = "player"
+	_think(noticing, 2700)
+	check(noticing.moves().is_empty(), "nor in notice")

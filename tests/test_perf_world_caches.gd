@@ -75,7 +75,7 @@ func test_corners_tell_apart_cameras_that_differ_in_one_input() -> void:
 
 func test_calm_agrees_with_the_calm_table_for_every_state_and_phase() -> void:
 	var states: Array[String] = [CreatureBrain.REST, CreatureBrain.WANDER, CreatureBrain.FORAGE, CreatureBrain.NOTICE,
-		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE, ""]
+		CreatureBrain.CHASE, CreatureBrain.ATTACK, CreatureBrain.FLEE, CreatureBrain.DRIFT, ""]
 	var phases: Array[String] = ["", CreatureBrain.LURK, CreatureBrain.WATCH, CreatureBrain.PATROL, CreatureBrain.RETURN_HOME,
 		CreatureBrain.SEEK, CreatureBrain.EAT, CreatureBrain.WAIT, CreatureBrain.PURSUE, CreatureBrain.AIM, CreatureBrain.TELL,
 		CreatureBrain.STRIKE, CreatureBrain.GLIDE, CreatureBrain.RECOVER]
@@ -115,7 +115,11 @@ func test_reach_disc_for_equals_the_brains_own_leash_disc() -> void:
 			elif i % 3 == 2:
 				territory = species.territory_from(s, {"center": s.home + Vector2(1.5, -0.5), "radius": 4.0})
 			var mem := CreatureBrain.create(cfg.behavior, cfg, s.home, float(s.heading), territory, 0, 0)
-			check_eq(species.reach_disc_for(s, territory), CreatureBrain.leash_disc(mem), "%s #%d" % [id, i])
+			var expected := CreatureBrain.leash_disc(mem)
+			if cfg.has("threads"):
+				# A hazard's threads trail past the body the leash holds (S3, D-121).
+				expected.radius = float(cfg.leash_m) + float(cfg.threads.length_m) + float(cfg.threads.radius_m)
+			check_eq(species.reach_disc_for(s, territory), expected, "%s #%d" % [id, i])
 			checked += 1
 	check(behaviors.has(CreatureBrain.TERRITORIAL) and behaviors.has(CreatureBrain.AMBUSH), "both behaviors checked (%s)" % [behaviors.keys()])
 	check(checked >= 60, "%d discs checked" % checked)

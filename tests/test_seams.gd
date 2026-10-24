@@ -74,6 +74,19 @@ func test_soak_the_home_block_edges_meet_every_tile_and_orientation() -> void:
 		check(problems.is_empty(), "size %d: %d home edge problems:%s" % [size, problems.size(), _head(problems)])
 
 
+## S3G2 over every orientation: band 1 on the shipped content at the size-4 top (sizes 3 and 4), its
+## tile pairs and the cradle's outer edges, as the two tests above do for band 0.
+func test_soak_band_1_seams_and_the_cradle_edges_hold_at_every_orientation() -> void:
+	_content()
+	var top := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), _species_cache)
+	for size in [3, 4]:
+		var t0 := Time.get_ticks_msec()
+		var problems := WorldChecks.seam_problems(top, _species_cache, _parts_cache, size)
+		print("test-seams: band 1, size %d: tile pairs and the cradle's edges at 8 orientations, %d problems, %d ms"
+			% [size, problems.size(), Time.get_ticks_msec() - t0])
+		check(problems.is_empty(), "size %d: %d band-1 seam problems:%s" % [size, problems.size(), _head(problems)])
+
+
 ## The route of PURITY_CHUNKS chunk keys for a seed: a random walk, a straight run far out, and
 ## jumps anywhere within a million chunks of the origin, in that order.
 static func _route(seed_value: int) -> Array[Vector2i]:
