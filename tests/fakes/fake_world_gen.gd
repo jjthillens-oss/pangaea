@@ -10,6 +10,8 @@ extends WorldGen
 ##     REACH_R centred REACH_SHIFT east of it (so it reaches into the chunk to the east: its chunks
 ##     are both), live at size 1; and beside it a second rammer site of the same shape,
 ##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
+## At size 4 (S3, D-145) each site chunk also holds a morsel site "m_f_<cx>_<cy>" (a rammer, radius
+## MORSEL_R, energy MORSEL_ENERGY) at the t_f_ site's home.
 ## At size 2 (S2) every chunk is the same pattern in size-2 tm, and each site chunk also holds two
 ## two-post sites live only at size 2 (S2 spine 3.17): a Lurker, "l_f_<cx>_<cy>", with posts LURKER_GAP
 ## apart and no territory, and an elder rammer, "e_f_<cx>_<cy>", whose first post guards the chunk's
@@ -48,6 +50,9 @@ const ZONE_CLEAR_MARGIN := 0.7
 ## centre and north of it, and the elder rammer's second zone disc.
 const LURKER_GAP := 5.0
 const ELDER_ZONE_R := 3.0
+## The size-4 morsel site's item: the rammer's radius at 4 (0.625 x 1.6^-3) and its energy (D-145).
+const MORSEL_R := 0.15259
+const MORSEL_ENERGY := 7.3242
 ## ladder_species' minnow body size.
 const MINNOW_BODY := 0.5
 
@@ -136,6 +141,9 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 		c.sites.append({"id": "u_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx - ZONE_R + 2.0, "y": zy,
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
 			"reach": reach.duplicate(), "chunks": reach_chunks.duplicate(), "sizes": [2] as Array[int], "tile": tile})
+		if n == 4:
+			c.morsel_sites.append({"id": "m_f_%d_%d" % [cx, cy], "key": "fake/m_f_%d_%d" % [cx, cy], "species": SITE_SPECIES,
+				"x": zx + ZONE_R - 2.0, "y": zy, "tile": tile, "radius": MORSEL_R, "energy": MORSEL_ENERGY})
 		if n == 2:
 			c.sites.append(_two_post("l_f_%d_%d" % [cx, cy], "lurker", [
 				{"x": zx - 6.0, "y": zy - 8.0, "heading": SITE_HEADING, "territory": {}},
