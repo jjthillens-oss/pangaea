@@ -1334,6 +1334,21 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   (`growth_pass`: every growth window ≤ 50 ms; `draw_pass`: max draw calls ≤
   `S3G36_MAX_DRAW_CALLS` 104) and the printed line appends " · S3G36 pass" or " · S3G36 FAIL: …".
   `test_debug_panel` checks both routes' ticks and the verdict text.
+- **On CI with the top at 4 (PR #164)**: `test_world_layout_gates`' live-site swim still claimed the
+  size-2 threats are met at size 2 only; at 3 and 4 the Lurker and the elder rammer live on, so it
+  now checks that every species met lives at its size (`SpeciesCatalog.live_at`) and that the
+  size-2 threats start at 2. S3G20 read band 1's chunks at 1.24 x band 0's (limit 1.20): band 1 has
+  85% more creature sites a chunk (496 against 268 over the gate's 500 chunks), and per-site work is
+  the gap. `WorldGen` now reads the disc memo before working out k, the role and turned memos no
+  longer build a default dictionary or array on every call, and shell, zone and site ids join a
+  per-tile prefix instead of formatting; the chunks and their digests are unchanged. Locally the
+  median ratio moved from 1.19 to 1.20 to 1.15 to 1.17 (the limit stands).
+  S3G21's size-3 relative row then read 5.04 yd against 1.15 x size 1's 4.37 = 5.03 (absolute 5.04
+  of 8.0; size 2 reads 5.06, so size 3 costs what size 2 does). Size 3 keeps about 6 creatures awake
+  where size 1 keeps 4 (the elder ambush hunter Joshua chose, and the veils). A drifting veil now
+  steers from its own values (`CreatureBrain.seek_from`, as a forager's seek does) instead of
+  building a self view every tick; size 3 and 4 swims hash the same at every 1,000 ticks. The 1.15
+  limit is the owner's and stands until he answers the card.
 
 ## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
 
