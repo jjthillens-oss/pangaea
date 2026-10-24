@@ -74,8 +74,8 @@ bounded 120 "$GODOT" --headless --fixed-fps 30 --resolution 1280x720 --path . --
 bounded 120 "$GODOT" --headless --fixed-fps 144 --resolution 1920x1080 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps144.json --compare=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps144.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow --world=endless --slot=user://smoke/grow.json --seed=4246 2>&1 | tee builds/smoke/grow.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json 2>&1 | tee builds/smoke/grow_continue.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --creature-store=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --creature-store=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

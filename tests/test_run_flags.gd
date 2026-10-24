@@ -16,7 +16,6 @@ func test_no_flags_mean_defaults() -> void:
 	check_eq(flags.slot, "", "default slot")
 	check(not flags.perf_tour, "no tour")
 	check(not flags.creature, "the title, not the creature stage")
-	check_eq(flags.creature_store, "", "the creature stage's own slot file")
 
 
 func test_creature_opens_the_creature_stage_preview() -> void:
@@ -25,13 +24,11 @@ func test_creature_opens_the_creature_stage_preview() -> void:
 	check(flags.other.is_empty() and flags.problems.is_empty(), "nothing left over: %s %s" % [flags.other, flags.problems])
 
 
-func test_creature_store_names_the_stages_save_file() -> void:
+func test_creature_store_is_gone_with_save_v3() -> void:
+	# The creature lives in the lineage save (schema v3), so the old flag is just an unknown argument.
 	var flags := RunFlags.from_args(PackedStringArray(["--creature", "--creature-store=user://smoke/creature.json"]))
-	check_eq(flags.creature_store, "user://smoke/creature.json", "the store file")
-	check(flags.problems.is_empty(), "no problems: %s" % [flags.problems])
-	var refused := RunFlags.from_args(PackedStringArray(["--creature-store=res://game/data/x.json", "--creature-store="]))
-	check_eq(refused.creature_store, "", "a file inside the game files or none is refused")
-	check_eq(refused.problems.size(), 2, "each one explained: %s" % [refused.problems])
+	check(flags.creature, "creature stage asked for")
+	check_eq(flags.other, PackedStringArray(["--creature-store=user://smoke/creature.json"]), "kept for other tools")
 
 
 func test_unusable_flags_are_reported_and_ignored() -> void:

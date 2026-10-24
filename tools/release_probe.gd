@@ -5,8 +5,8 @@ extends SceneTree
 ## layer, that --perf-tour (passed by check_release.sh) is ignored, that the creature stage opens
 ## with its part tools (the compiled part rules must be in the pack), saves and enters the world, and that
 ## the pack holds nothing from game/dev or tests. It prints one PASS or FAIL line per check; exit
-## code 0 when all pass. check_release.sh passes --creature-store so the stage's save stays under
-## user://smoke/.
+## code 0 when all pass. check_release.sh passes --slot so the stage's save (the lineage slot) stays
+## under user://smoke/.
 ##
 ## It lives in tools/ (ignored by Godot), so it is never imported or exported, and reads Main
 ## only through get(), so it still reports if main.gd fails to parse.

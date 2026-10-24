@@ -51,25 +51,26 @@ the sim's points, moved the part rules into `game/data/creature/part_rules.json`
 | --- | --- |
 | `game/domain/creature/` | Ported pure rules: `body_description.gd`, `body_codec.gd`, `body_field.gd`, `anchor_resolver.gd`, `creature_editor_session.gd`, `editor_picking.gd`, `body_mechanics.gd`, `gait_table.gd`, `gait_planner.gd`, `gait_body.gd`, plus new `creature_stats.gd` (anatomy to play numbers) and `creature_world_rules.gd` (the world's pure rules) |
 | `game/data/creature/` | `body_rules.json`, `editor_costs.json`, `gait_table.json`, `starter_bodies.json` (the lab's Stage 1 bodies), `creature_stage.json` (world tuning, PROPOSED) |
-| `game/systems/creature/` | `skin_grid.gd`, `skin_cpu.gd`, `skin_gpu.gd`, `surface_nets.glsl` (the skin builders; the GPU one owns its own `RenderingDevice`), `creature_data.gd` (loads the data files and the part rules from the records), `creature_store.gd` (the stage's own save file), `creature_world_sim.gd` (the deterministic world simulation) |
+| `game/systems/creature/` | `skin_grid.gd`, `skin_cpu.gd`, `skin_gpu.gd`, `surface_nets.glsl` (the skin builders; the GPU one owns its own `RenderingDevice`), `creature_data.gd` (loads the data files and the part rules from the records), `creature_rules.gd` (the creature's starter, start points and body checks for the lineage save), `creature_world_sim.gd` (the deterministic world simulation) |
 | `game/scenes/creature/` | `spine_rig.gd`, `walker_rig.gd`, `part_library.gd` (ported; parts loaded from `res://assets/export`), `creature_editor.tscn/.gd`, `creature_world.tscn/.gd`, `creature_stage.tscn/.gd` (the stage root Main hosts) |
 | `game/ui/creature_*` | The editor's palette, points bar and buttons; the world HUD (health, points, hint) |
 | `tests/test_creature_*.gd`, `tests/smoke/creature_smoke.gd` | Ported lab tests in the main runner, the new rules' tests, and a scripted play-through smoke |
 
 Main gets `open_creature_stage()`; the title screen gets a "Creature stage" button (marked as a preview); `--creature`
-after `--` launches straight into it, and `--creature-store=PATH` names the stage's save file in place of its slot
-file (the smoke's two processes share `user://smoke/creature.json` this way and clean it up; the smoke stops before
-playing if the path is anywhere else). `--slot` does not apply to the stage. Both are small edits to files other
+after `--` launches straight into it on the session's lineage slot, so `--slot=PATH` applies (the smoke's two
+processes share `user://smoke/creature.json` this way and clean it up; the smoke stops before playing if the path is
+anywhere else). Both are small edits to files other
 departments own (`main.gd`, `start_screen.gd`, `run_flags.gd`); keep them to the hook and the button.
 
-## 3. Saves (owner decision pending)
+## 3. Saves (save schema v3, IMPLEMENTED)
 
-The lineage save schema stays v2. The creature stage keeps its own file, `user://creature_stage/slot_<n>.json`
-(`CreatureStore`, schema 1: `version`, `name`, `body` (the codec's dictionary), `points`, `world_seed`, `generation`,
-`history`). Loading validates the body with the body rules and refuses a broken file with a reason, like
-`PersistenceService`. Folding the body into the lineage save is save schema v3 and needs the owner's approval; it is
-listed in `docs/DECISIONS.md` as an open owner decision. The lab's `user://creatures/*.json` files are the same codec
-text, so `--load=PATH` style imports are cheap later.
+Owner direction of 2026-10-24 ("follow the Bible", section 18) folds the creature into the lineage save:
+`SaveGame.creature` holds `{"name", "body" (the codec's dictionary), "generation", "history"}` and its points are the
+save's `adaptation_points`. The migration from v2 adds an empty creature; the body is validated against the body
+rules and part rules (`CreatureRules`) and a broken one fails the load with reasons, the `.bak` loading instead. The
+stage reads and writes the session's slot through `PersistenceService`, founds a lineage when the slot is empty, and
+never writes over a slot that will not load. The first version's separate file (`CreatureStore`) is gone. Details in
+`docs/DECISIONS.md`, 2026-10-24 · Save schema v3.
 
 ## 4. The editor (scene over the ported core)
 
@@ -85,8 +86,8 @@ text, so `--load=PATH` style imports are cheap later.
 - "Test drive" walks the working body on the gait planner's legs in place of the editor view; a body with no legs
   says so (slither comes with Godfrey's #70).
 - Skin colour: eight swatches (`SKIN_COLORS`, `set_skin_color`); the choice rides in the body dictionary's extra
-  `skin_color` key, so the world and the store carry it without a schema change. Paint beyond a flat colour stays out.
-- "Done" commits (validates, charges the points, writes the store) and enters the world; a body with no legs is
+  `skin_color` key, so the world and the save carry it without a schema change. Paint beyond a flat colour stays out.
+- "Done" commits (validates, charges the points, writes the lineage save) and enters the world; a body with no legs is
   asked about once first. Escape and "Back" are progressive: the tool and the selection clear first, unsaved edits
   are asked about once, then it leaves to the title.
 - Mouse-first: the pad orbits (right stick) and leaves (B); the tools, Done, Undo and the test drive are mouse and
@@ -117,11 +118,11 @@ only presents it.
 
 1. `tests/run_tests.gd` green with the ported lab tests (body, codec, field, skin closed on every starter body at
    the gameplay grid, anchor round trip, editor session ops and refusals, picking, gait planner) and the new ones
-   (stats, world rules, world sim determinism: same seed and intents, same SHA-256 of the snapshot stream; store round
+   (stats, world rules, world sim determinism: same seed and intents, same SHA-256 of the snapshot stream; lineage save round
    trip; purity).
 2. `tests/smoke/creature_smoke.gd` in `tools/check.sh`: launch into the stage, build a body through the method
    twins (grow a limb pair, add a maw, two eyes and feet), commit, enter the world, walk, eat fruit, bite a rival,
-   evolve back to the editor with more points, save; then a second phase in a new process loads the store and finds
+   evolve back to the editor with more points, save; then a second phase in a new process loads the lineage save and finds
    the same body and points.
 3. No engine or script errors in any smoke log; the release pack starts (`tools/check_release.sh`).
 4. `tests/test_placeholders.gd`: every mesh the stage builds in code is listed in

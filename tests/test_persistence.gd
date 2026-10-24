@@ -205,7 +205,7 @@ func test_invalid_save_is_not_written_and_existing_file_survives() -> void:
 	check_eq(FileAccess.get_file_as_string(slot_path), before, "previous save intact")
 
 
-func test_m0_save_migrates_through_v2_to_v3_with_no_adaptation_points() -> void:
+func test_m0_save_migrates_to_the_current_schema_with_no_adaptation_points() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v1.json")
 	check(not text.is_empty(), "fixture readable")
 	_write_raw(slot_path, text)
@@ -220,7 +220,9 @@ func test_m0_save_migrates_through_v2_to_v3_with_no_adaptation_points() -> void:
 	check_eq(loaded.growth, {"size": 1, "meter": 0.0}, "size 1, empty meter")
 	check_eq(FileAccess.get_file_as_string(slot_path), text, "file not rewritten on load")
 	check_eq(service.save_to(slot_path, loaded), OK, "re-saves")
-	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(slot_path))["schema_version"]), 3, "written as v3")
+	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(slot_path))["schema_version"]), SaveGame.SCHEMA_VERSION,
+			"written at the current schema")
+	check(service.load_from(slot_path).save.creature.is_empty(), "with no creature yet")
 
 
 func test_negative_adaptation_points_are_refused() -> void:
@@ -415,13 +417,15 @@ func test_a_pool_save_written_with_full_precision_loads_the_same_as_before() -> 
 				"%s: the same genome as the old writer's file" % body)
 
 
-# Save v3 (S2, build plan 7.1; S2G19, S2G29). v3 is frozen once S2 ships (BP-18), so every field,
-# the exact v2 -> v3 step and every refusal are pinned here: changing any of them fails a test.
+# Save v4 (S2, build plan 7.1; S2G19, S2G29). S2 was built as v3 until the creature stage took v3
+# on main (2026-10-24), so S2's fields are v4, with the creature. v4 is frozen once S2 ships (BP-18),
+# so every field, the exact steps to v4 and every refusal are pinned here: changing any of them
+# fails a test.
 
 const SessionTests := preload("res://tests/test_game_session.gd")
 ## A slot the step 2 build wrote (v2; test_checkpoints continues it).
 const STEP2_SAVE := "res://tests/fixtures/save_v2_step2.json"
-## Values a v3 save must refuse: [field path, value, the field the refusal names].
+## Values a v4 save must refuse: [field path, value, the field the refusal names].
 const BAD_V3 := [
 	["growth.size", 0, "growth.size"], ["growth.size", 11, "growth.size"], ["growth.size", 1.5, "growth.size"],
 	["growth.size", "2", "growth.size"], ["growth.meter", -0.5, "growth.meter"],
@@ -439,7 +443,7 @@ const BAD_V3 := [
 	["discoveries.2.id", 7, "discoveries[2].id"], ["discoveries.1.size", 0, "discoveries[1].size"],
 	["discoveries.1.size", 11, "discoveries[1].size"], ["discoveries.1.size", 1.5, "discoveries[1].size"],
 ]
-## Values at the edges that a v3 save holds.
+## Values at the edges that a v4 save holds.
 const GOOD_V3 := [
 	["growth.size", 1], ["growth.size", 10], ["growth.meter", 0.0], ["checkpoint.size", 10],
 	["checkpoint.heading", -3.14159], ["gen_version", 3], ["spawn", null], ["player.energy", 0.0],
@@ -450,7 +454,7 @@ const FINITE_V3 := ["growth.meter", "checkpoint.x_am", "checkpoint.y_am", "check
 	"spawn.y_am", "spawn.heading", "player.energy", "player.health"]
 
 
-## A valid v3 save with every v3 field away from its default (build plan 7.1's values).
+## A valid v4 save with every S2 field away from its default (build plan 7.1's values).
 func _v3_save() -> SaveGame:
 	var save := _new_save()
 	save.growth = {"size": 2, "meter": 37.5}
@@ -497,30 +501,32 @@ static func _field_name(path: String) -> String:
 	return out
 
 
-func test_v3_is_the_current_schema_and_a_new_run_holds_its_defaults() -> void:
-	check_eq(SaveGame.SCHEMA_VERSION, 3, "v3")
-	check_eq(PersistenceService.CURRENT_VERSION, 3, "the service reads up to v3, so a v4 file is refused")
+func test_v4_is_the_current_schema_and_a_new_run_holds_its_defaults() -> void:
+	check_eq(SaveGame.SCHEMA_VERSION, 4, "v4")
+	check_eq(PersistenceService.CURRENT_VERSION, 4, "the service reads up to v4, so a v5 file is refused")
 	var steps := SaveMigrations.all().keys()
 	steps.sort()
-	check_eq(steps, [1, 2], "one step from v1 and one from v2")
+	check_eq(steps, [1, 2, 3], "one step each from v1, v2 and v3")
 	var data := SaveGame.new_run(7, "test+dev").to_dict()
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v3 keys")
+	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v4 keys")
+	check_eq(data.creature, {}, "no creature before the creature stage")
 	check_eq(data.growth, {"size": 1, "meter": 0.0}, "a new lineage starts at size 1 with an empty meter")
 	check_eq(data.checkpoint, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, "at the home spawn's checkpoint")
 	check_eq(data.spawn, null, "no spawn of its own: the checkpoint")
 	check_eq(data.gen_version, 1, "the first generator")
 	check_eq(data.player, {"position": [0.0, 0.0, 0.0], "energy": null, "health": null}, "fresh energy and health")
-	check(_new_save().validate(catalog).is_empty(), "a new run is a valid v3 save: %s" % [_new_save().validate(catalog)])
+	check(_new_save().validate(catalog).is_empty(), "a new run is a valid v4 save: %s" % [_new_save().validate(catalog)])
 
 
-func test_a_step_2_save_migrates_to_v3_exactly() -> void:
+func test_a_step_2_save_migrates_to_v4_exactly() -> void:
 	var text := FileAccess.get_file_as_string(STEP2_SAVE)
 	var v2: Dictionary = JSON.parse_string(text)
 	check_eq(int(v2.schema_version), 2, "the fixture is a v2 save")
 	var expected := v2.duplicate(true)
-	expected["schema_version"] = 3
+	expected["schema_version"] = 4
+	expected["creature"] = {}
 	expected["growth"] = {"size": 1, "meter": 0.0}
 	expected["checkpoint"] = {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}
 	expected["spawn"] = null
@@ -529,7 +535,7 @@ func test_a_step_2_save_migrates_to_v3_exactly() -> void:
 	var migrated := service.migrate(v2)
 	check(migrated.ok, "migrates: %s" % migrated.error)
 	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true),
-		"v2 -> v3 adds the growth, checkpoint, spawn, gen_version, energy and health, and changes nothing else")
+		"v2 -> v4 adds the creature, growth, checkpoint, spawn, gen_version, energy and health, and nothing else")
 	check_eq(JSON.stringify(v2), JSON.stringify(JSON.parse_string(text)), "the v2 data it was given is untouched")
 
 	_write_raw(slot_path, text)
@@ -550,11 +556,11 @@ func test_a_step_2_save_migrates_to_v3_exactly() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot_path))
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "written with exactly the v3 keys")
-	check_eq(int(data.schema_version), 3, "written as v3")
+	check_eq(keys, SessionTests.SAVE_KEYS, "written with exactly the v4 keys")
+	check_eq(int(data.schema_version), 4, "written as v4")
 
 
-func test_every_v3_field_round_trips() -> void:
+func test_every_v4_field_round_trips() -> void:
 	var save := _v3_save()
 	check(save.validate(catalog).is_empty(), "valid: %s" % [save.validate(catalog)])
 	check_eq(service.save_to(slot_path, save), OK, "saved")
@@ -569,10 +575,10 @@ func test_every_v3_field_round_trips() -> void:
 		"sizes come back as whole numbers, as a running save holds them")
 
 
-func test_every_v3_field_is_checked() -> void:
+func test_every_v4_field_is_checked() -> void:
 	var good := _v3_save().to_dict()
 	var loaded := _load_data(good)
-	check(loaded.ok, "the valid v3 save loads: %s" % [loaded.errors])
+	check(loaded.ok, "the valid v4 save loads: %s" % [loaded.errors])
 	for case in BAD_V3:
 		var result := _load_data(_with(good, case[0], case[1]))
 		check(not result.ok, "%s = %s is refused" % [case[0], JSON.stringify(case[1])])
@@ -585,7 +591,7 @@ func test_every_v3_field_is_checked() -> void:
 			check_has_error(SaveGame.from_dict(_with(good, path, value)).validate(catalog), "'%s'" % path)
 
 
-func test_a_missing_v3_field_is_a_load_problem() -> void:
+func test_a_missing_v4_field_is_a_load_problem() -> void:
 	var good := _v3_save().to_dict()
 	for key in SessionTests.SAVE_KEYS:
 		var result := _load_data(_with(good, key, null, true))
@@ -608,11 +614,13 @@ func test_an_unknown_field_is_refused() -> void:
 			"discoveries.0.generation"]:
 		var result := _load_data(_with(good, path, 1))
 		check(not result.ok, "a save with '%s' is refused" % path)
-		check_has_error(result.errors, "'%s' is not part of a v3 save" % _field_name(path))
+		check_has_error(result.errors, "'%s' is not part of a v4 save" % _field_name(path))
 
 
-# The S2-written fixture (T4.4; build plan 7.1 and BP-18; S2G19): a size-2 save as an S2 build
-# writes it, recorded once by tools/godot/record_save_v3.gd. test_endless_save continues it.
+# The S2-written fixture (T4.4; build plan 7.1 and BP-18; S2G19): a size-2 save as the S2 preview
+# build wrote it (v3, before the creature took v3 on main), recorded once by
+# tools/godot/record_save_v3.gd. It loads through v3 -> v4, which adds only the empty creature.
+# test_endless_save continues it.
 
 const SaveRecorder := preload("res://tools/godot/record_save_v3.gd")
 const S2_SAVE := "res://tests/fixtures/save_v3_s2.json"
@@ -624,10 +632,12 @@ func test_the_s2_fixture_is_a_v3_save_at_size_2_holding_the_recorders_values() -
 	check(data is Dictionary, "the fixture is a JSON object")
 	if not data is Dictionary:
 		return
-	check_eq(int(data.schema_version), 3, "written as v3, so it loads with no migration")
+	check_eq(int(data.schema_version), 3, "written as v3 by the S2 preview build")
 	var keys: Array = data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v3 keys")
+	var v3_keys := SessionTests.SAVE_KEYS.duplicate()
+	v3_keys.erase("creature")
+	check_eq(keys, v3_keys, "exactly the v4 keys but the creature")
 	_write_raw(slot_path, text)
 	var result := service.load_from(slot_path)
 	check(result.ok and result.errors.is_empty(), "it loads: %s" % [result.errors])
@@ -646,12 +656,17 @@ func test_the_s2_fixture_is_a_v3_save_at_size_2_holding_the_recorders_values() -
 	check_eq(save.gen_version, 1, "the first generator")
 	check_eq(save.world_seed, SaveRecorder.SEED, "the seed")
 	check_eq(save.adaptation_points, SaveRecorder.POINTS, "the points")
+	check_eq(save.creature, {}, "no creature: v3 -> v4 adds an empty one")
 	check_eq(Lineage.starting_body_of(save.genome, catalog), SaveRecorder.BODY, "the body")
 	check_eq(FileAccess.get_file_as_string(slot_path), text, "the load rewrote nothing")
-	# Written again from what it loads, it holds the same data (whole numbers in lineage_history
-	# come back as floats through JSON, so both sides are compared as parsed).
+	# Written again from what it loads, it holds the same data at v4 with the empty creature (whole
+	# numbers in lineage_history come back as floats through JSON, so both sides are compared as
+	# parsed).
 	var again = JSON.parse_string(JSON.stringify(save.to_dict(), "\t", true, true))
-	check_eq(JSON.stringify(again, "", true, true), JSON.stringify(data, "", true, true), "the same data written back")
+	var expected: Dictionary = data.duplicate(true)
+	expected["schema_version"] = 4.0
+	expected["creature"] = {}
+	check_eq(JSON.stringify(again, "", true, true), JSON.stringify(expected, "", true, true), "the same data written back")
 
 
 func test_the_recorder_composes_a_valid_save_with_its_values() -> void:
@@ -659,9 +674,106 @@ func test_the_recorder_composes_a_valid_save_with_its_values() -> void:
 	check(save != null, "composed")
 	if save == null:
 		return
-	check(save.validate(catalog).is_empty(), "a valid v3 save: %s" % [save.validate(catalog)])
+	check(save.validate(catalog).is_empty(), "a valid v4 save: %s" % [save.validate(catalog)])
 	check_eq(save.growth, SaveRecorder.GROWTH, "growth")
 	check_eq(save.checkpoint, SaveRecorder.CHECKPOINT, "checkpoint")
 	check_eq(save.discoveries, SaveRecorder.DISCOVERIES, "discoveries")
 	check_eq(int(save.growth.size), int(save.checkpoint.size), "the cell is at its checkpoint's size")
 	check_eq(service.save_to(slot_path, save), OK, "the writer takes it")
+
+
+## Save schema v3 (Bible section 18): the creature stage's creature lives in the lineage save.
+const V3_FIXTURE := "res://tests/fixtures/save_v3_creature.json"
+
+
+func test_a_v2_save_migrates_with_no_creature() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v2_step2.json")
+	_write_raw(slot_path, text)
+	var result := service.load_from(slot_path)
+	check(result.ok, "v2 loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check(loaded.creature.is_empty(), "with no creature")
+	check_eq(loaded.adaptation_points, 16, "the points kept")
+	check_eq(loaded.genome.parts.size(), 3, "the body kept")
+	check_eq(FileAccess.get_file_as_string(slot_path), text, "file not rewritten on load")
+	check_eq(service.save_to(slot_path, loaded), OK, "re-saves")
+	var written: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot_path))
+	check_eq(int(written["schema_version"]), SaveGame.SCHEMA_VERSION, "written at the current schema")
+	check_eq(written["creature"], {}, "with an empty creature")
+
+
+func test_the_v3_fixture_loads_and_round_trips_the_creature() -> void:
+	var text := FileAccess.get_file_as_string(V3_FIXTURE)
+	check(not text.is_empty(), "fixture readable")
+	_write_raw(slot_path, text)
+	var result := service.load_from(slot_path)
+	check(result.ok, "v3 loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check_eq(loaded.creature["name"], "Fixture", "the name")
+	check_eq(loaded.creature["generation"], 3, "the generation, an int")
+	check(loaded.creature["generation"] is int, "not a float")
+	check_eq((loaded.creature["history"] as Array).size(), 2, "the history")
+	check_eq(loaded.adaptation_points, 42, "the points")
+	var body_before := JSON.stringify(JSON.parse_string(text)["creature"]["body"], "", true)
+	check_eq(service.save_to(slot_path, loaded), OK, "re-saves")
+	var again: SaveGame = service.load_from(slot_path).save
+	check_eq(JSON.stringify(again.creature["body"], "", true), body_before, "the body survives a round trip unchanged")
+	check_eq(again.creature["history"], loaded.creature["history"], "and the history")
+
+
+## The creature stage's v3 has no cell size: v3 -> v4 gives it S2's defaults (size 1, empty meter,
+## the home checkpoint, no spawn, the first generator, fresh energy and health) and nothing else.
+func test_the_creature_v3_fixture_migrates_to_v4_exactly() -> void:
+	var text := FileAccess.get_file_as_string(V3_FIXTURE)
+	var v3: Dictionary = JSON.parse_string(text)
+	check_eq(int(v3.schema_version), 3, "the fixture is a v3 save")
+	var expected := v3.duplicate(true)
+	expected["schema_version"] = 4
+	expected["growth"] = {"size": 1, "meter": 0.0}
+	expected["checkpoint"] = {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}
+	expected["spawn"] = null
+	expected["gen_version"] = 1
+	expected["player"]["energy"] = null
+	expected["player"]["health"] = null
+	var migrated := service.migrate(v3)
+	check(migrated.ok, "migrates: %s" % migrated.error)
+	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true),
+		"v3 -> v4 adds S2's fields with their defaults and changes nothing else")
+	check_eq(JSON.stringify(v3), JSON.stringify(JSON.parse_string(text)), "the v3 data it was given is untouched")
+
+
+func test_a_creature_with_a_bad_body_is_refused_and_the_backup_loads() -> void:
+	_write_raw(slot_path + PersistenceService.BACKUP_SUFFIX, FileAccess.get_file_as_string(V3_FIXTURE))
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(V3_FIXTURE))
+	(data["creature"]["body"] as Dictionary).erase("vertebrae")
+	_write_raw(slot_path, JSON.stringify(data))
+	var primary := service._read_current_version(slot_path)
+	check(not primary.ok, "the primary is refused")
+	var result := service.load_from(slot_path)
+	check(result.ok, "the backup loads: %s" % [result.errors])
+	if result.ok:
+		check_eq(result.save.creature["name"], "Fixture", "with its creature")
+
+
+func test_a_creature_with_wrong_types_is_refused() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(V3_FIXTURE))
+	data["creature"]["generation"] = 0
+	data["creature"]["name"] = "  "
+	_write_raw(slot_path, JSON.stringify(data))
+	var result := service.load_from(slot_path)
+	check(not result.ok, "refused")
+	check(result.errors.size() >= 1, "with reasons: %s" % [result.errors])
+
+
+func test_a_creature_with_a_bad_body_is_not_written() -> void:
+	var save := _new_save()
+	save.creature = CreatureRules.new_creature()
+	check_eq(service.save_to(slot_path, save), OK, "a good creature saves")
+	var before := FileAccess.get_file_as_string(slot_path)
+	(save.creature["body"] as Dictionary).erase("vertebrae")
+	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "a bad body is refused")
+	check_eq(FileAccess.get_file_as_string(slot_path), before, "previous save intact")

@@ -1,7 +1,7 @@
 [gd_resource type="ShaderMaterial" load_steps=7 format=3]
 
 ; The creature stage field's material (assets/records/creature_field_ground.json): assets/export/shaders/creature_field.gdshader
-; blends the seamless turf and earth tiles in world space (one tile per 2 m) by a 37 m patch mask, with a bare
+; blends the seamless turf and earth tiles in world space (one tile per 2.5 m, at two scales against repetition) by a 37 m patch mask, with a bare
 ; clearing round the nest. creature_field_ground.glb.import points the imported M_CreatureField here. Written by
 ; tools/blender/make_creature_world.py --import.
 
@@ -20,6 +20,8 @@ shader_parameter/turf_normal = ExtResource("3_turf_normal")
 shader_parameter/earth_albedo = ExtResource("4_earth_albedo")
 shader_parameter/earth_normal = ExtResource("5_earth_normal")
 shader_parameter/patch_mask = ExtResource("6_patch")
-shader_parameter/tile_m = 2.0
+shader_parameter/tile_m = 2.5
 shader_parameter/patch_m = 37.0
 shader_parameter/clearing_r = 7.5
+shader_parameter/patch_low = 0.56
+shader_parameter/patch_high = 0.7

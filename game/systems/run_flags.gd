@@ -10,10 +10,8 @@ extends RefCounted
 ##   --perf-tour=swim  the S1 swim route instead: 5 min straight out, a far death, the way home
 ##                   (with S2's growths on the way out)
 ##   --perf-tour=grow  the S2 grow route instead: 40 s still, two growths and a step back to size 1
-##   --creature      open the creature stage preview instead of the title (its own save file under
-##                   user://creature_stage/; --slot does not apply to it)
-##   --creature-store=PATH  the creature stage's save file instead of its slot file (the creature
-##                   smoke's, under user://smoke/); a file under user:// or at an absolute path
+##   --creature      open the creature stage preview instead of the title (on the lineage slot,
+##                   --slot's too)
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -35,7 +33,6 @@ var world := ""
 ## perf_tour is true for all.
 var perf_route := ""
 var creature := false
-var creature_store := ""       ## "": the slot's file under user://creature_stage/
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
 var problems: PackedStringArray = []
@@ -75,12 +72,6 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 				flags.problems.append("--perf-tour takes no value, =swim or =grow (got '%s')" % route)
 		elif arg == "--creature":
 			flags.creature = true
-		elif arg.begins_with("--creature-store="):
-			var path := arg.trim_prefix("--creature-store=")
-			if _is_file_slot(path):
-				flags.creature_store = path
-			else:
-				flags.problems.append("--creature-store needs a file under user:// or at an absolute path, got '%s'." % path)
 		else:
 			flags.other.append(arg)
 	return flags

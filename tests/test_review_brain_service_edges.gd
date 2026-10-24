@@ -68,11 +68,21 @@ func test_brain_wake_overrides_staggered_schedule() -> void:
 	check(CreatureBrain.think_due(mem, 0, 1), "hurt wake runs immediately")
 
 
+## v1 to v2 (M1), v2 to v3 (the creature in the lineage save, approved 2026-10-24, docs/DECISIONS.md)
+## and v3 to v4 (S2, the growth fields).
 func test_migration_registry_contains_only_the_approved_steps() -> void:
 	var steps := SaveMigrations.all()
-	check_eq(steps.size(), 2, "two approved upgrades: v1 to v2 (M1) and v2 to v3 (S2, the growth fields)")
-	check(steps.has(1), "v1 upgrade registered")
-	check(steps.has(2), "v2 upgrade registered")
+	check_eq(steps.size(), 3, "three approved upgrades")
+	check(steps.has(1) and steps.has(2) and steps.has(3), "v1, v2 and v3 upgrades registered")
+
+
+func test_v2_to_v3_adds_an_empty_creature_and_keeps_the_rest() -> void:
+	var old := {"schema_version": 2, "world_seed": 42, "adaptation_points": 9}
+	var migrated := SaveMigrations.v2_to_v3(old)
+	check_eq(migrated.schema_version, 3, "schema advanced")
+	check_eq(migrated.creature, {}, "no creature yet")
+	check_eq(migrated.adaptation_points, 9, "points retained")
+	check_eq(migrated.world_seed, 42, "seed retained")
 
 
 func test_migration_keeps_unrelated_old_fields() -> void:

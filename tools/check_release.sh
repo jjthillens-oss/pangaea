@@ -44,7 +44,7 @@ trap 'rm -rf "$RUN_DIR"' EXIT
 echo "Starting the release pack $PACK"
 status=0
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --quit-after 120 -- --slot=user://smoke/release.json) 2>&1 | tee "$LOGS/launch.log" || status=1
-(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --creature-store=user://smoke/creature_release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
+(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --main-pack "$PACK" --script "$CONTENT_PROBE") 2>&1 | tee "$LOGS/content.log" || status=1
 if grep -E "SCRIPT ERROR|^ERROR:" "$LOGS"/*.log; then
   echo "Engine or script errors while exporting or starting the release pack ($LOGS/)."

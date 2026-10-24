@@ -5,8 +5,9 @@ extends SceneTree
 ## (docs/TOOLCHAIN.md):
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1920x1080 --script res://tools/godot/world_dressing_shot.gd -- --out=DIR
-## Writes nest.png (from inside the nest), bushes.png (a bush, a bare bush and meat up close) and field.png
-## (high over the clearing, where the turf gives way to earth). --probe adds a colour-path check frame and
+## Writes nest.png (from inside the nest), bushes.png (a bush, a bare bush and meat up close), bush_ripe.png and
+## bush_bare.png (one bush each at 2.6 m), bush_pair.png (the same two at about 6.5 m) and field.png (high over
+## the clearing, where the turf gives way to earth). --probe adds a colour-path check frame and
 ## --no-shadow turns the sun's shadow off (Compatibility overexposes a shadowed sun; Forward+ does not).
 
 const FIELD := "res://assets/export/creature_field_ground.glb"
@@ -78,6 +79,21 @@ func _run() -> void:
 	camera.look_at(Vector3(12.0, 0.35, -11.0))
 	await _frames(10)
 	await _shot("bushes")
+
+	# One ripe bush (instance 12) and one bare bush (instance 11) at 2.6 m, where the leaf cards must read.
+	camera.position = Vector3(9.49, 1.0, -4.64)
+	camera.look_at(Vector3(11.49, 0.35, -6.24))
+	await _frames(10)
+	await _shot("bush_ripe")
+	camera.position = Vector3(6.76, 1.0, -10.56)
+	camera.look_at(Vector3(8.76, 0.35, -12.16))
+	await _frames(10)
+	await _shot("bush_bare")
+	# The same two at about 6.5 m, with the meat between them.
+	camera.position = Vector3(4.9, 1.3, -7.0)
+	camera.look_at(Vector3(10.1, 0.35, -9.2))
+	await _frames(10)
+	await _shot("bush_pair")
 
 	# High over the clearing: the nest, the bare clearing and the turf patches.
 	camera.position = Vector3(-18.0, 16.0, 26.0)
