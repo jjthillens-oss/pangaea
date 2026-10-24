@@ -154,7 +154,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds thirty-one parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds thirty-seven parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -189,6 +189,12 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_eye_cluster` | eye_cluster, `forward_cone` | 1004 | H1_Bulge, H2_Spread (on `Eyes`) | Four glossy black eyes, two big and two small, in a low fleshy pad |
 | `cpart_jaw` | jaw, `forward_cone`, centreline required | 492 | H1_Open, H2_Length (on `Jaw` and `Teeth`) | Long toothy snout: scaly upper (+Y) and lower jaws with rows of pointed teeth and pink gums, on a collar |
 | `cpart_bill` | bill, `forward_cone`, centreline required | 912 | H1_Open, H2_Width | Broad flat spoon-tipped bill with nostril dents, a closing seam and a dark nail, on a fleshy gape |
+| `cpart_foot_webbed` | foot_webbed, `ground`, limb_end | 629 | H1_Spread, H2_Long (on `FootWebbed`, `Web` and `Nails`) | Three long slender toes fanned wide with a thin scalloped web between them and small claws; the sole on the pivot, the ankle top at z 0.09 |
+| `cpart_foot_paw` | foot_paw, `ground`, limb_end | 760 | H1_Spread, H2_Long (on `FootPaw` and `Claws`) | Round padded paw, four plump toes in an arc toward the head with short dark claws; the ankle top at z 0.095 |
+| `cpart_foot_talon` | foot_talon, `ground`, limb_end | 580 | H1_Spread, H2_Long (on `FootTalon` and `Talons`) | A bird's scaly foot: a thin shank, three knuckled toes forward and one back, each with a hooked talon; the shank top at z 0.1 |
+| `cpart_hand_paw` | hand_paw, `normal`, limb_end, grasper | 998 | H1_Grip, H2_Spread (on `HandPaw` and `Nails`) | Soft mitten paw: four short fat fingers side by side and a stubby thumb, with small nails |
+| `cpart_hand_pincer` | hand_pincer, `normal`, limb_end, grasper | 602 | H1_Open, H2_Size | Crab pincer: a pitted shell palm, a fixed finger on -Y and a hinged one on +Y with knobbly teeth and dark tips; symmetric across x, so not chiral |
+| `cpart_hand_tentacle` | hand_tentacle, `normal`, limb_end, grasper | 622 | H1_Curl, H2_Spread | Three tentacle fingers reaching out and curling back in to cup a grip, with sucker rows, from a fleshy palm |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 

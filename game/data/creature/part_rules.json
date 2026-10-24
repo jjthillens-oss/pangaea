@@ -446,6 +446,87 @@
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
 		},
+		"foot_paw": {
+			"type": "foot_paw",
+			"footprint_radius_m": 0.073,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 10 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 25% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+		},
+		"foot_talon": {
+			"type": "foot_talon",
+			"footprint_radius_m": 0.134,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 12 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 25% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the toes sit on the pivot; the shank top (z 0.1 m) meets the limb tip."
+		},
+		"foot_webbed": {
+			"type": "foot_webbed",
+			"footprint_radius_m": 0.134,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 12 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 30% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+		},
 		"frill": {
 			"type": "frill",
 			"footprint_radius_m": 0.058,
@@ -529,6 +610,93 @@
 			],
 			"capabilities": [
 				"grasper"
+			]
+		},
+		"hand_paw": {
+			"type": "hand_paw",
+			"footprint_radius_m": 0.038,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Grip",
+					"meaning": "fingers curl 75 degrees in, the thumb folds across",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "fingers fan 50% wider at the tips",
+					"default_permille": 0
+				}
+			]
+		},
+		"hand_pincer": {
+			"type": "hand_pincer",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the hinged finger swings 32 degrees open",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Size",
+					"meaning": "the shell palm 25% stouter",
+					"default_permille": 0
+				}
+			]
+		},
+		"hand_tentacle": {
+			"type": "hand_tentacle",
+			"footprint_radius_m": 0.035,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the tips curl in toward the axis",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "the fingers fan 50% wider",
+					"default_permille": 0
+				}
 			]
 		},
 		"hoof": {
