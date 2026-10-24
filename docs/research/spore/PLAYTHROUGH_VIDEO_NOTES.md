@@ -118,3 +118,16 @@ cell stage is already longer than Spore's, which fits Joshua's "faster progressi
   as in the video.
 - **No copying.** Layout ideas (left icon panel, plinth) are generic editor patterns; Pangaea's art, icons,
   names and UI styling stay original.
+
+## Owner direction (CONFIRMED, Joshua 2026-10-24)
+
+"We are making Spore but better." Keep Spore's nostalgic gameplay pillars and styles, rebuilt better, and add all of
+the Bible's new ideas on top:
+
+- breeding/mating that opens the editor, every stage that has a body;
+- the creature editor (icon palette, plinth, test drive);
+- dancing/social befriending as the friend path;
+- the friend-or-foe stance before an interaction;
+- distinct stages with a scale and camera jump between them (seven eras per the Bible).
+
+Mechanics are kept; Spore's art, code, names and UI styling are not copied.
