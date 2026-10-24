@@ -38,8 +38,8 @@ func _ready() -> void:
 ## The controls as a controller plays them, from its bindings (UI pass).
 static func pad_controls_lines() -> PackedStringArray:
 	var out := PackedStringArray()
-	for row in [["Swim", [&"move_up", &"move_down", &"move_left", &"move_right"]], ["Zoom in", [&"zoom_in"]],
-			["Zoom out", [&"zoom_out"]], ["Grow", [&"grow"]], ["Pause", [&"pause"]]]:
+	for row in [[TranslationServer.translate("UI_SWIM_6CAE1A"), [&"move_up", &"move_down", &"move_left", &"move_right"]], [TranslationServer.translate("UI_ZOOM_IN_4FC05F"), [&"zoom_in"]],
+			[TranslationServer.translate("UI_ZOOM_OUT_A4AE4B"), [&"zoom_out"]], [TranslationServer.translate("UI_GROW_7E2299"), [&"grow"]], [TranslationServer.translate("UI_PAUSE_781961"), [&"pause"]]]:
 		var names := PackedStringArray()
 		for action: StringName in row[1]:
 			for n in InputPrompts.names_for(action, "pad"):
@@ -54,7 +54,7 @@ static func pad_controls_lines() -> PackedStringArray:
 ## Shows the menu. reason: "key" or "focus" (the window lost focus). footer: "Seed N · build X".
 func open(reason: String, footer: String, can_save: bool) -> void:
 	_reason.visible = reason == "focus"
-	_reason.text = "Paused because the window lost focus."
+	_reason.text = tr("UI_PAUSED_BECAUSE_THE_WINDOW_LOST_FOCUS_9A86AA")
 	_status.text = ""
 	_status.visible = false
 	save_button.disabled = not can_save

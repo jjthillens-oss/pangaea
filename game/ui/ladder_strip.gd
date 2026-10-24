@@ -13,8 +13,8 @@ extends VBoxContainer
 ##             same at n + 1
 ##   icon      its haze sprite (ghost_ladder.json haze), tinted: threat ink, prey or morsel the rim's
 ##             green when the cell can eat meat, else neutral; a ghost shows its ghost sprite faint
-##   preview   "After your next growth: " and the first MAX_PHRASES phrases by PHRASE_ORDER, then
-##             entry order; at the top "Coming in a later build: " and the ladder's preview
+##   preview   "UI_AFTER_YOUR_NEXT_GROWTH_904015" and the first MAX_PHRASES phrases by PHRASE_ORDER, then
+##             entry order; at the top "UI_COMING_IN_A_LATER_BUILD_10974C" and the ladder's preview
 ##
 ## Refreshed every REFRESH_S and at the growth beat's chord (the HUD calls refresh()). Each icon sits
 ## in a SLOT_W column with its caption wrapped under it, and the line wraps in the icons' width, so
@@ -40,10 +40,10 @@ const RIM := CreatureView.RIM_COLOR
 const NEUTRAL := CreatureView.NEUTRAL_CREST
 ## The phrases' order in the preview line (keys of phrase_key); ties keep entry order.
 const PHRASE_ORDER: PackedStringArray = ["flee", "appear", "ignore", "morsels", "haze"]
-const PHRASES := {"flee": "%s flee from you", "appear": "%s appear", "ignore": "%s ignore you",
-	"morsels": "%s become morsels", "haze": "%s fade to haze"}
-const PREVIEW_PREFIX := "After your next growth: "
-const TOP_PREFIX := "Coming in a later build: "
+const PHRASES := {"flee": "UI_S_FLEE_FROM_YOU_DD999A", "appear": "UI_S_APPEAR_BB549D", "ignore": "UI_S_IGNORE_YOU_9738D8",
+	"morsels": "UI_S_BECOME_MORSELS_CB975E", "haze": "UI_S_FADE_TO_HAZE_194027"}
+const PREVIEW_PREFIX := "UI_AFTER_YOUR_NEXT_GROWTH_904015"
+const TOP_PREFIX := "UI_COMING_IN_A_LATER_BUILD_10974C"
 
 var pool: PoolScene
 
@@ -213,7 +213,7 @@ static func phrase_key(from: String, to: String) -> String:
 ## The phrase for `plural` going from `from` to `to` ("rammers flee from you"), "" for none.
 static func phrase(plural: String, from: String, to: String) -> String:
 	var key := phrase_key(from, to)
-	return PHRASES[key] % plural if key != "" else ""
+	return TranslationServer.translate(PHRASES[key]) % plural if key != "" else ""
 
 
 ## The preview line: at the build's top the ladder's preview for size n; else the first MAX_PHRASES
@@ -221,18 +221,18 @@ static func phrase(plural: String, from: String, to: String) -> String:
 static func preview_line(entries: Array[Dictionary], at_top: bool, n: int, ladder: Dictionary) -> String:
 	if at_top:
 		var preview := str(ladder.get("preview_at_top", {}).get(str(n), ""))
-		return TOP_PREFIX + preview if preview != "" else ""
+		return TranslationServer.translate(TOP_PREFIX) + " " + preview if preview != "" else ""
 	var keyed := []
 	for i in entries.size():
 		var e := entries[i]
 		var key := phrase_key(str(e.role), str(e.next_role))
 		if key != "":
-			keyed.append([PHRASE_ORDER.find(key), i, PHRASES[key] % str(e.plural)])
+			keyed.append([PHRASE_ORDER.find(key), i, TranslationServer.translate(PHRASES[key]) % str(e.plural)])
 	keyed.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
 	var phrases := PackedStringArray()
 	for k in keyed.slice(0, MAX_PHRASES):
 		phrases.append(k[2])
-	return PREVIEW_PREFIX + "; ".join(phrases) if not phrases.is_empty() else ""
+	return TranslationServer.translate(PREVIEW_PREFIX) + " " + "; ".join(phrases) if not phrases.is_empty() else ""
 
 
 ## The entries drawn now (for checks).

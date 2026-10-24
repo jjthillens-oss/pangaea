@@ -47,7 +47,7 @@ const HIT_LABELS := 4
 const HIT_RISE_M := 0.8
 const HIT_LIFE_S := 0.9
 const HIT_START_Y := 0.9
-const DODGED_TEXT := "Dodged!"
+const DODGED_TEXT := "UI_DODGED_2567D5"
 const DODGED_RISE_M := 0.7
 const DODGED_LIFE_S := 0.8
 const DODGED_START_Y := 1.1
@@ -142,7 +142,7 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	_next_hit = 0
 	_dodged = _make_label(DODGED_COLOR)
 	_dodged.name = "Dodged"
-	_dodged.text = DODGED_TEXT
+	_dodged.text = tr(DODGED_TEXT)
 	_dodged_age = DODGED_LIFE_S
 	for z in zones:
 		var label := _make_label(ZONE_COLOR)
@@ -386,7 +386,7 @@ static func _rise(age: float) -> float:
 
 ## "+8 energy · +1", or "+8 energy" when the meal earned no points.
 static func meal_text(event: Dictionary) -> String:
-	var text := "+%d energy" % roundi(float(event.get("absorbed", 0.0)))
+	var text := TranslationServer.translate("UI_D_ENERGY_2BBAA9") % roundi(float(event.get("absorbed", 0.0)))
 	var points := int(event.get("points", 0))
 	if points > 0:
 		text += " · +%d" % points
@@ -472,7 +472,7 @@ func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float, 
 				continue
 			label.visible = plankton.is_regrowing(z.id)
 			if label.visible:
-				label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
+				label.text = tr("UI_REGROWING_D_7C1486") % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
 	_keep_zone_labels_off(cell_at, cell_radius, delta)
 
 

@@ -62,7 +62,7 @@ func bind(p_world: Node3D) -> void:
 
 func set_title(creature_name: String, generation: int) -> void:
 	_resolve()
-	_name_text.text = "%s · Generation %d" % [creature_name, generation]
+	_name_text.text = tr("UI_S_GENERATION_D_218479") % [creature_name, generation]
 
 
 ## A notice for NOTICE_S seconds; with `sticky` it stays until clear_notice().
@@ -123,20 +123,20 @@ func refresh() -> void:
 	if world == null or world.sim == null:
 		return
 	var p: Dictionary = world.sim.player()
-	_health_text.text = "Health %d / %d" % [int(ceil(float(p["health"]))), int(ceil(float(p["max_health"])))]
-	_points_text.text = "Points %d" % int(world.sim.points)
+	_health_text.text = tr("UI_HEALTH_D_D_FCA86D") % [int(ceil(float(p["health"]))), int(ceil(float(p["max_health"])))]
+	_points_text.text = tr("UI_POINTS_D_E4F467") % int(world.sim.points)
 
 
 func _refresh_hints() -> void:
 	_prompts_generation = InputPrompts.generation
-	var pairs := [[&"creature_bite", "Bite"], [&"creature_social", "Sing"], [&"creature_evolve", "Evolve at the nest"], [&"ui_cancel", "Back to the editor"]]
+	var pairs := [[&"creature_bite", tr("UI_BITE_2A0BBD")], [&"creature_social", tr("UI_SING_AD6C57")], [&"creature_evolve", tr("UI_EVOLVE_AT_THE_NEST_38F20E")], [&"ui_cancel", tr("UI_BACK_TO_THE_EDITOR_BAB40D")]]
 	if world != null and world.sim != null and not bool(world.sim.player()["has_mouth"]):
 		pairs.remove_at(0)   # nothing to bite with
 	var line := InputPrompts.hint_line(pairs)
 	var move := move_name()
 	if not move.is_empty():
-		line = "%s  Move" % move + ("   ·   " + line if not line.is_empty() else "")
-	var orbit := "Right stick  Orbit" if InputPrompts.device == "pad" else "Middle drag  Orbit"
+		line = tr("UI_S_MOVE_83EF03") % move + ("   ·   " + line if not line.is_empty() else "")
+	var orbit: String = tr("UI_RIGHT_STICK_ORBIT_5A4943") if InputPrompts.device == "pad" else tr("UI_MIDDLE_DRAG_ORBIT_3A9427")
 	_hint_text.text = line + "   ·   " + orbit if not line.is_empty() else orbit
 
 

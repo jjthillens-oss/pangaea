@@ -84,7 +84,7 @@ static func font_size() -> int:
 
 
 func label_text() -> String:
-	return "Food %d m" % roundi(distance_m)
+	return tr("UI_FOOD_D_M_50EC97") % roundi(distance_m)
 
 
 ## The distance label's box on screen. It sits behind the arrow along its axis, clear of the

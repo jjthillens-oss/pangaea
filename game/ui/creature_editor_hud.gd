@@ -24,8 +24,8 @@ const SWATCH_PX := 40
 ## The palette's category tabs, {id, title}, in order (the playthrough notes: parts grouped by kind in a grid on the
 ## left). "all" shows every tool.
 const CATEGORIES := [
-	{"id": "all", "title": "All"}, {"id": "mouths", "title": "Mouths"}, {"id": "senses", "title": "Senses"},
-	{"id": "limbs", "title": "Limbs"}, {"id": "weapons", "title": "Weapons"}, {"id": "details", "title": "Details"},
+	{"id": "all", "title": "UI_ALL_6A7208"}, {"id": "mouths", "title": "UI_MOUTHS_8DDD5F"}, {"id": "senses", "title": "UI_SENSES_F01EAF"},
+	{"id": "limbs", "title": "UI_LIMBS_E1162D"}, {"id": "weapons", "title": "UI_WEAPONS_F32D06"}, {"id": "details", "title": "UI_DETAILS_DC3DEC"},
 ]
 ## Part role (part_rules "role", from each cpart_ record) -> category id. A detail part goes by PART_CATEGORY.
 const ROLE_CATEGORY := {
@@ -104,8 +104,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {
 	for c in tools_grid.get_children():
 		c.free()
 	_tool_buttons.clear()
-	_add_tool("", "Select", 0)
-	_add_tool("limb", "Limb", 2 * 3 * int(costs.get("limb_joint", 0)))
+	_add_tool("", tr("UI_SELECT_859822"), 0)
+	_add_tool("limb", tr("UI_LIMB_B6F6F5"), 2 * 3 * int(costs.get("limb_joint", 0)))
 	for type in tools:
 		var price: int = int((costs.get("part", {}) as Dictionary).get(type, costs.get("part_default", 0)))
 		_add_tool(type, String(type).capitalize(), price)
@@ -189,7 +189,7 @@ func _build_category_tabs() -> void:
 		var group := ButtonGroup.new()
 		for c in CATEGORIES:
 			var b := Button.new()
-			b.text = String(c["title"])
+			b.text = tr(String(c["title"]))
 			b.toggle_mode = true
 			b.button_group = group
 			b.focus_mode = Control.FOCUS_NONE
@@ -219,7 +219,7 @@ func set_tool(type: String) -> void:
 		set_category(_category_for(type))
 	for t in _tool_buttons:
 		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
-	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (
+	title_text.text = tr("UI_CREATURE_EDITOR_3730E3") if type == "" else tr("UI_CREATURE_EDITOR_S_TOOL_58479B") % (
 			"limb" if type == "limb" else String(type).capitalize().to_lower())
 
 
@@ -229,15 +229,15 @@ func set_color(color: Color) -> void:
 
 
 func set_points(points: int, cost: int, affordable: bool) -> void:
-	points_text.text = "Points  %d" % points
+	points_text.text = tr("UI_POINTS_D_CDF65F") % points
 	if cost == 0:
-		cost_text.text = "No changes to pay for"
+		cost_text.text = tr("UI_NO_CHANGES_TO_PAY_FOR_922CC1")
 		cost_text.theme_type_variation = &"SmallLabel"
 	elif affordable:
-		cost_text.text = "Cost %d   →   %d left" % [cost, points - cost] if cost > 0 else "Refund %d   →   %d left" % [-cost, points - cost]
+		cost_text.text = tr("UI_COST_D_D_LEFT_822EAC") % [cost, points - cost] if cost > 0 else tr("UI_REFUND_D_D_LEFT_167E68") % [-cost, points - cost]
 		cost_text.theme_type_variation = &"AccentLabel"
 	else:
-		cost_text.text = "Cost %d: %d more than you have" % [cost, cost - points]
+		cost_text.text = tr("UI_COST_D_D_MORE_THAN_YOU_HAVE_8D21AE") % [cost, cost - points]
 		cost_text.theme_type_variation = &"WarnLabel"
 
 
@@ -258,7 +258,7 @@ func set_refusal(text: String) -> void:
 
 func set_test_drive(on: bool) -> void:
 	test_drive_button.set_pressed_no_signal(on)
-	test_drive_button.text = "Stop test drive" if on else "Test drive"
+	test_drive_button.text = tr("UI_STOP_TEST_DRIVE_EA48B7") if on else tr("UI_TEST_DRIVE_F11B82")
 
 
 func set_hint(text: String) -> void:
@@ -272,7 +272,7 @@ func setup_presets(entries: Array) -> void:
 	if _preset_menu == null:
 		_preset_title = Label.new()
 		_preset_title.name = "PresetsTitle"
-		_preset_title.text = "Start from a preset"
+		_preset_title.text = tr("UI_START_FROM_A_PRESET_E95F0D")
 		_preset_title.theme_type_variation = &"SmallLabel"
 		_preset_menu = OptionButton.new()
 		_preset_menu.name = "Presets"
@@ -282,9 +282,9 @@ func setup_presets(entries: Array) -> void:
 				preset_chosen.emit(String(_preset_menu.get_item_metadata(index))))
 		_random_button = Button.new()
 		_random_button.name = "Random"
-		_random_button.text = "Random creature"
+		_random_button.text = tr("UI_RANDOM_CREATURE_A0E42C")
 		_random_button.focus_mode = Control.FOCUS_NONE
-		_random_button.tooltip_text = "A surprise creature to start from"
+		_random_button.tooltip_text = tr("UI_A_SURPRISE_CREATURE_TO_START_FROM_31DA71")
 		_random_button.pressed.connect(func(): random_requested.emit())
 		_preset_sep = HSeparator.new()
 		_preset_sep.name = "PresetsSep"
@@ -297,7 +297,7 @@ func setup_presets(entries: Array) -> void:
 		box.move_child(_random_button, 2)
 		box.move_child(_preset_sep, 3)
 	_preset_menu.clear()
-	_preset_menu.add_item("Choose a creature...")
+	_preset_menu.add_item(tr("UI_CHOOSE_A_CREATURE_026A28"))
 	for e in entries:
 		_preset_menu.add_item(String(e["title"]))
 		var index := _preset_menu.item_count - 1
@@ -342,7 +342,7 @@ func set_tool_icon(type: String, texture: Texture2D) -> void:
 	b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX)
 	b.text = "%s %d" % [String(b.get_meta("label")), int(b.get_meta("price"))]
 	b.clip_text = true
-	b.tooltip_text = "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	b.tooltip_text = tr("UI_S_D_POINTS_46A3E4") % [String(b.get_meta("label")), int(b.get_meta("price"))]
 	tools_grid.columns = ICON_COLUMNS
 
 

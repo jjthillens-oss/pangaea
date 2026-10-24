@@ -94,7 +94,7 @@ func test_rebinding_waits_for_an_input_of_the_right_device() -> void:
 	menu.open(_service)
 	menu.show_tab(2)
 	menu.begin_capture("grow", "keys")
-	check_eq(menu.binding_text("grow", "keys"), SettingsMenu.WAIT_TEXT, "the button says it is waiting")
+	check_eq(menu.binding_text("grow", "keys"), str(TranslationServer.translate(SettingsMenu.WAIT_TEXT)), "the button says it is waiting")
 	var pad := InputEventJoypadButton.new()
 	pad.button_index = JOY_BUTTON_X
 	pad.pressed = true

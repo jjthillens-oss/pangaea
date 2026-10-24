@@ -104,7 +104,7 @@ const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
 ## The body blockouts that first show at size 2 (the start fade warms them up).
 const GROWTH_BODIES: PackedStringArray = ["creature_lurker_body", "creature_elder_rammer_body"]
 ## "Now food" over a body the cell can now eat, just after a growth.
-const NOW_FOOD_TEXT := "Now food"
+const NOW_FOOD_TEXT := "UI_NOW_FOOD_668FB9"
 const NOW_FOOD_FONT := 56
 const NOW_FOOD_PIXEL := 0.005
 const NOW_FOOD_OUTLINE := 12
@@ -510,7 +510,7 @@ func show_now_food(seconds: float) -> void:
 	if _now_food == null:
 		_now_food = Label3D.new()
 		_now_food.name = "NowFood"
-		_now_food.text = NOW_FOOD_TEXT
+		_now_food.text = tr(NOW_FOOD_TEXT)
 		_now_food.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_now_food.font_size = NOW_FOOD_FONT
 		_now_food.pixel_size = NOW_FOOD_PIXEL

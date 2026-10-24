@@ -197,11 +197,11 @@ static func column_scale(top_m: float) -> float:
 ## decimal).
 static func distance_text(d_tm: float) -> String:
 	if roundi(d_tm) < 1000:
-		return "%d m" % roundi(d_tm)
+		return TranslationServer.translate("UI_D_M_01BA69") % roundi(d_tm)
 	var tenths := roundi(d_tm / 100.0)
 	if tenths < 1000:
-		return "%.1f km" % (tenths / 10.0)
-	return "%d km" % roundi(d_tm / 1000.0)
+		return TranslationServer.translate("UI_1F_KM_4618B7") % (tenths / 10.0)
+	return TranslationServer.translate("UI_D_KM_94F96B") % roundi(d_tm / 1000.0)
 
 
 func _instance(kit: PlacementKit, id: String) -> Node3D:

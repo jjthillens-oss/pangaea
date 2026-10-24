@@ -42,13 +42,13 @@ static func key_name(event: InputEventKey) -> String:
 static func mouse_button_name(button: MouseButton) -> String:
 	match button:
 		MOUSE_BUTTON_LEFT:
-			return "Left mouse"
+			return TranslationServer.translate("UI_LEFT_MOUSE_E06E43")
 		MOUSE_BUTTON_RIGHT:
-			return "Right mouse"
+			return TranslationServer.translate("UI_RIGHT_MOUSE_678BEB")
 		MOUSE_BUTTON_MIDDLE:
-			return "Middle mouse"
+			return TranslationServer.translate("UI_MIDDLE_MOUSE_AA0743")
 		MOUSE_BUTTON_WHEEL_UP:
-			return "Wheel up"
+			return TranslationServer.translate("UI_WHEEL_UP_20F39B")
 		MOUSE_BUTTON_WHEEL_DOWN:
-			return "Wheel down"
-	return "Mouse button %d" % button
+			return TranslationServer.translate("UI_WHEEL_DOWN_F5596C")
+	return TranslationServer.translate("UI_MOUSE_BUTTON_D_370C55") % button

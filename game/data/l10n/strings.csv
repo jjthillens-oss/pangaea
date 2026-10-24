@@ -9,7 +9,7 @@ UI_2F_ENERGY_S_8EA4A4,%.2f energy/s
 UI_3D_RESOLUTION_862A40,3D resolution
 UI_ACCESSIBILITY_D66004,Accessibility
 UI_ACTION_97C89A,Action
-UI_AFTER_YOUR_NEXT_GROWTH_904015,After your next growth: 
+UI_AFTER_YOUR_NEXT_GROWTH_904015,After your next growth:
 UI_ALL_6A7208,All
 UI_AMBIENCE_E0FFE6,Ambience
 UI_ANTI_ALIASING_55A0B8,Anti-aliasing
@@ -21,6 +21,7 @@ UI_A_FILTER_MOUTH_AND_A_JAW_SO_IT_CAN_EAT_ANYTHING__496362,"A filter mouth and a
 UI_A_STEADY_DRIFTER_WITH_AN_EYE_SPOT_AND_A_FILTER_M_1326BD,A steady drifter with an eye spot and a filter mouth.
 UI_A_SURPRISE_CREATURE_TO_START_FROM_31DA71,A surprise creature to start from
 UI_BACK_AT_THE_GENERATION_START_CFBE1A,Back at the generation start.
+UI_BACK_AT_THE_GENERATION_START_SHELTERED_FOR_D_S_E32E57,Back at the generation start · sheltered for %d s.
 UI_BACK_B52B36,Back
 UI_BACK_TO_THE_EDITOR_BAB40D,Back to the editor
 UI_BITE_2A0BBD,Bite
@@ -29,7 +30,7 @@ UI_BUILD_S_6F2D9E,Build %s
 UI_CANCEL_77DFD2,Cancel
 UI_CARRION_6EC07A,carrion
 UI_CHOOSE_A_CREATURE_026A28,Choose a creature...
-UI_COMING_IN_A_LATER_BUILD_10974C,Coming in a later build: 
+UI_COMING_IN_A_LATER_BUILD_10974C,Coming in a later build:
 UI_CONTINUE_2E0262,Continue
 UI_CONTROLLER_A36A5F,Controller
 UI_CONTROLS_BEE75C,Controls
@@ -156,7 +157,6 @@ UI_POINTS_150_D8C343,Points 150
 UI_POINTS_D_CDF65F,Points  %d
 UI_POINTS_D_E4F467,Points %d
 UI_POINT_A_SPIKE_AT_IT_766DBA,Point a spike at it
-UI_PRESS_AN_INPUT_A2C08C,Press an input.
 UI_PRESS_AN_INPUT_F01722,Press an input…
 UI_PRESS_AN_INPUT_TO_CHANGE_IT_THEN_PRESS_THE_NEW_K_0961E3,"Press an input to change it, then press the new key, click or button. Esc cancels."
 UI_PREVIEW_F1FBB2,Preview
@@ -185,6 +185,7 @@ UI_SAVE_EFC007,Save
 UI_SAVE_FIRST_196213,Save first?
 UI_SAVE_SLOTS_99D783,Save slots
 UI_SAVING_IS_OFF_UNTIL_YOU_CONTINUE_AFTER_YOUR_CELL_S_D_6853A5, Saving is off until you continue after your cell's death.
+UI_SEED_D_BUILD_S_6E834B,Seed %d · build %s
 UI_SELECTED_9A976F,Selected
 UI_SELECT_859822,Select
 UI_SENSES_F01EAF,Senses
@@ -237,7 +238,7 @@ UI_THEY_FLEE_FROM_YOU_NOW_F06762,They flee from you now
 UI_THEY_RE_SMALLER_THAN_YOU_NOW_F1290C,They're smaller than you now
 UI_THE_FILES_ARE_STILL_IN_THE_SAVE_FOLDER_9BB6D6, The files are still in the save folder.
 UI_THE_GIANT_HUSK_24B655,The giant husk
-UI_THE_LINEAGE_CONTINUES_FROM_THE_START_OF_GENERATION_D_64718B,The lineage continues from the start of generation %d. 
+UI_THE_LINEAGE_CONTINUES_FROM_THE_START_OF_GENERATION_D_64718B,The lineage continues from the start of generation %d.
 UI_THE_SEA_GOES_ON_786B11,The sea goes on
 UI_THE_SHELL_CATHEDRAL_148F43,The shell cathedral
 UI_THIS_BODY_HAS_NO_MOUTH_THAT_CAN_EAT_89990D,This body has no mouth that can eat.

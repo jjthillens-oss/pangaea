@@ -37,8 +37,8 @@ extends Control
 ## panel has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
 ## messages never run under the side panels, whatever the body, lineage or message.
 
-const KIN_TOAST := "A cell like you is here. Swim into it to mate."
-const MATE_TOAST := "You mated."
+const KIN_TOAST := "UI_A_CELL_LIKE_YOU_IS_HERE_SWIM_INTO_IT_TO_MATE_746BE2"
+const MATE_TOAST := "UI_YOU_MATED_2E82A7"
 const LABEL_REFRESH_S := 0.1
 const HUNGRY_SHARE := 0.25          ## below this share of capacity the chip says "Hungry"
 const FLASH_S := 1.4
@@ -57,7 +57,7 @@ const BANNER_PULSE_HZ := 1.0
 ## the words never fade.
 const BANNER_PULSE_GLOW := Color(1.45, 1.25, 1.15)
 const BANNER_PULSE_GROW := 0.18
-const STARVING_TEXT := "Starving: you are slow and losing health.\nFind food."
+const STARVING_TEXT := "UI_STARVING_YOU_ARE_SLOW_AND_LOSING_HEALTH_NFIND_FO_20834E"
 ## The widest the starving banner and a message may be, panel included: centered, this leaves a
 ## gap to the status panel (x 32..512 at the 1920 x 1080 base) and the points panel.
 const CENTER_MAX_W := 840.0
@@ -77,8 +77,8 @@ const ARROW_KEYS := {&"move_up": KEY_UP, &"move_left": KEY_LEFT, &"move_down": K
 ## A region's (or rare tile's) toast shows again only after this long, so a swim along a boundary
 ## does not repeat it (C-15). The window is per region.
 const REGION_TOAST_REPEAT_S := 30.0
-const REGION_NAMES := {"home": "Home waters", "sunlit": "Sunlit shallows", "reef": "Shell reef",
-		"drift": "Open drift", "giant_husk": "The giant husk", "shell_cathedral": "The shell cathedral"}
+const REGION_NAMES := {"home": "UI_HOME_WATERS_12671C", "sunlit": "UI_SUNLIT_SHALLOWS_06ECD4", "reef": "UI_SHELL_REEF_75933F",
+		"drift": "UI_OPEN_DRIFT_7B8349", "giant_husk": "UI_THE_GIANT_HUSK_24B655", "shell_cathedral": "UI_THE_SHELL_CATHEDRAL_148F43"}
 ## The idea hints read the pool's context this often (s2-view 7.5).
 const IDEA_CONTEXT_S := 0.25
 ## The grow warning sound plays when the ring starts growing, at most once per this long (sim s).
@@ -151,7 +151,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for node in find_children("*", "Control", true, false):
 		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
-	banner_text.text = STARVING_TEXT
+	banner_text.text = tr(STARVING_TEXT)
 	_fit_center(banner_text, starving_banner)
 	_warning_icon.pivot_offset = _warning_icon.custom_minimum_size * 0.5
 	starving_banner.visible = false
@@ -288,11 +288,11 @@ func toast_texts() -> PackedStringArray:
 
 ## "Energy 62 / 100". Only a starving cell shows 0.
 static func energy_line(state: ActorState) -> String:
-	return "Energy %d / %d" % [_shown(state.energy), roundi(state.energy_capacity)]
+	return TranslationServer.translate("UI_ENERGY_D_D_101341") % [_shown(state.energy), roundi(state.energy_capacity)]
 
 
 static func health_line(state: ActorState) -> String:
-	return "Health %d / %d" % [_shown(state.health), roundi(state.max_health)]
+	return TranslationServer.translate("UI_HEALTH_D_D_FCA86D") % [_shown(state.health), roundi(state.max_health)]
 
 
 ## The health bar shows whenever health is below full, so every hit shows, or while starving.
@@ -311,39 +311,39 @@ static func vignette_strength(age_s: float) -> float:
 ## "Fed", "Hungry" (below a quarter of capacity) or "Starving".
 static func state_name(state: ActorState) -> String:
 	if state.is_starving():
-		return "Starving"
+		return TranslationServer.translate("UI_STARVING_D50F6A")
 	if state.energy < state.energy_capacity * HUNGRY_SHARE:
-		return "Hungry"
-	return "Fed"
+		return TranslationServer.translate("UI_HUNGRY_229099")
+	return TranslationServer.translate("UI_FED_6FF2BC")
 
 
 static func points_line(points: int) -> String:
-	return "%d adaptation point%s" % [points, "" if points == 1 else "s"]
+	return TranslationServer.translate("UI_D_ADAPTATION_POINT_S_F7E4B7") % [points, "" if points == 1 else "s"]
 
 
 ## "+8 energy · +1 point" for an "ate" event.
 static func meal_toast(event: Dictionary) -> String:
-	var text := "+%d energy" % roundi(float(event.get("absorbed", 0.0)))
+	var text := TranslationServer.translate("UI_D_ENERGY_2BBAA9") % roundi(float(event.get("absorbed", 0.0)))
 	var points := int(event.get("points", 0))
 	if points > 0:
-		text += " · +%d point%s" % [points, "" if points == 1 else "s"]
+		text += TranslationServer.translate("UI_D_POINT_S_E7655C") % [points, "" if points == 1 else "s"]
 	return text
 
 
 ## "+1 point · survived 30 s" for an "earned" survival event.
 static func survival_toast(points: int, alive_s: float) -> String:
-	return "+%d point%s · survived %d s" % [points, "" if points == 1 else "s", roundi(alive_s)]
+	return TranslationServer.translate("UI_D_POINT_S_SURVIVED_D_S_F0BC60") % [points, "" if points == 1 else "s", roundi(alive_s)]
 
 
 ## "+10 points · new place" for an "earned" event a find paid (`reason` "place" or "landmark").
 static func find_toast(points: int, reason: String) -> String:
-	return "+%d point%s · new %s" % [points, "" if points == 1 else "s", reason]
+	return TranslationServer.translate("UI_D_POINT_S_NEW_S_7D5E84") % [points, "" if points == 1 else "s", reason]
 
 
 ## The toast for entering a tile: its rare kind's name when `rare` is not "", else its region's;
 ## "" for a name the HUD does not know.
 static func region_toast(region: String, rare: String) -> String:
-	return str(REGION_NAMES.get(rare if rare != "" else region, ""))
+	return TranslationServer.translate(str(REGION_NAMES.get(rare if rare != "" else region, "")))
 
 
 ## The tile the endless cell is in now: WorldGen.tile_info's {id, region, rare, ...}.
@@ -355,7 +355,7 @@ static func start_tile_info(sim: PoolSim) -> Dictionary:
 
 ## "Sheltered 5": the shelter chip's words, in whole seconds of shelter left.
 static func grace_text(seconds: int) -> String:
-	return "Sheltered %d" % seconds
+	return TranslationServer.translate("UI_SHELTERED_D_AA0AFE") % seconds
 
 
 ## Whole seconds of shelter the living cell has left, rounded up; 0 when it is not sheltered (or
@@ -368,8 +368,8 @@ static func shelter_seconds(sim: PoolSim) -> int:
 
 ## What Continue restores: energy and health restart (they are not saved).
 static func rested_line(state: ActorState) -> String:
-	var health := "full" if state.health >= state.max_health else "%d%%" % roundi(100.0 * state.health / state.max_health)
-	return "Your cell rested: Energy %d%%, Health %s" % [roundi(100.0 * state.energy / state.energy_capacity), health]
+	var health: String = TranslationServer.translate("UI_FULL_52E6D8") if state.health >= state.max_health else "%d%%" % roundi(100.0 * state.health / state.max_health)
+	return TranslationServer.translate("UI_YOUR_CELL_RESTED_ENERGY_D_HEALTH_S_9BEBEE") % [roundi(100.0 * state.energy / state.energy_capacity), health]
 
 
 ## The first meal: the controls go once they have been readable for CONTROLS_MIN_S.
@@ -391,11 +391,11 @@ static func controls_lines() -> PackedStringArray:
 				has_arrow = true
 		arrows = arrows and has_arrow
 	return PackedStringArray([
-		"Swim: %s%s" % [" ".join(keys), " or arrow keys" if arrows else ""],
-		"Swim to the cursor: hold %s" % " or ".join(KeyLabel.all_for_action(&"swim_to_cursor")),
-		"Zoom: %s / %s" % [" or ".join(KeyLabel.all_for_action(&"zoom_in")), " or ".join(KeyLabel.all_for_action(&"zoom_out"))],
-		"Pause: %s" % " or ".join(KeyLabel.all_for_action(&"pause")),
-		"Full screen: %s" % " or ".join(KeyLabel.all_for_action(&"toggle_fullscreen")),
+		TranslationServer.translate("UI_SWIM_S_S_431AE7") % [" ".join(keys), TranslationServer.translate("UI_OR_ARROW_KEYS_4B9B97") if arrows else ""],
+		TranslationServer.translate("UI_SWIM_TO_THE_CURSOR_HOLD_S_906812") % " or ".join(KeyLabel.all_for_action(&"swim_to_cursor")),
+		TranslationServer.translate("UI_ZOOM_S_S_ADD274") % [" or ".join(KeyLabel.all_for_action(&"zoom_in")), " or ".join(KeyLabel.all_for_action(&"zoom_out"))],
+		TranslationServer.translate("UI_PAUSE_S_D20337") % " or ".join(KeyLabel.all_for_action(&"pause")),
+		TranslationServer.translate("UI_FULL_SCREEN_S_761276") % " or ".join(KeyLabel.all_for_action(&"toggle_fullscreen")),
 	])
 
 
@@ -406,12 +406,12 @@ static func first_meal_line(p: Phenotype) -> String:
 	var plants := p.can_eat("plant")
 	var meat := p.can_eat("meat")
 	if plants and meat:
-		return "Eat by touching food with a mouth: drifting plankton with your filter mouth, still carrion with your jaw."
+		return TranslationServer.translate("UI_EAT_BY_TOUCHING_FOOD_WITH_A_MOUTH_DRIFTING_PLANK_62FA18")
 	if plants:
-		return "Eat by touching drifting plankton (small green blobs) with your filter mouth."
+		return TranslationServer.translate("UI_EAT_BY_TOUCHING_DRIFTING_PLANKTON_SMALL_GREEN_BL_F25804")
 	if meat:
-		return "Eat by touching carrion (still brown chunks) with your jaw; more comes only from kills."
-	return "This body has no mouth that can eat."
+		return TranslationServer.translate("UI_EAT_BY_TOUCHING_CARRION_STILL_BROWN_CHUNKS_WITH__25D67E")
+	return TranslationServer.translate("UI_THIS_BODY_HAS_NO_MOUTH_THAT_CAN_EAT_89990D")
 
 
 ## The width a wrapping label needs for `text`: its own width when that is at most `max_w`, else
@@ -577,9 +577,9 @@ func _on_sim_event(event: Dictionary) -> void:
 					_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
 			_flash(int(event.points))
 		"kin_arrived":
-			_add_toast(KIN_TOAST)
+			_add_toast(tr(KIN_TOAST))
 		"mate":
-			_add_toast(MATE_TOAST)
+			_add_toast(tr(MATE_TOAST))
 		"ring_paid":
 			_add_toast(GrowthHud.ring_paid_text(int(event.points)))
 			meter_ring.sweep()
@@ -689,8 +689,8 @@ func _set_text(label: Label, text: String) -> void:
 class WorldOverlay extends Control:
 	const PIP_RADIUS_PX := 10.0
 	const PIP_OUTLINE_PX := 3.0
-	const PIP_TEXT := "Generation start"
-	const ARROW_TEXT := "Where you began · %s"
+	const PIP_TEXT := "UI_GENERATION_START_A4A5C9"
+	const ARROW_TEXT := "UI_WHERE_YOU_BEGAN_S_ABD536"
 	const FONT_SIZE := 18
 	const TEXT_GAP_PX := 8.0
 	const TEXT_PAD_PX := 8.0              ## text stays this far inside the screen
@@ -745,7 +745,7 @@ class WorldOverlay extends Control:
 			if not tip.behind and (tip.at as Vector2).is_finite():
 				var side := ((tip.at as Vector2) - (back.at as Vector2)).normalized()
 				label = {"at": tip.at, "side": side if side.is_finite() and side != Vector2.ZERO else Vector2.RIGHT,
-					"text": ARROW_TEXT % WorldMarkers.distance_text(markers.arrow_state().distance_am)}
+					"text": tr(ARROW_TEXT) % WorldMarkers.distance_text(markers.arrow_state().distance_am)}
 		queue_redraw()
 
 	## The pip at `at` on the edge band of `rect` with its words; where either would come within
@@ -769,7 +769,7 @@ class WorldOverlay extends Control:
 	## The pip at `at` and its words, which sit on its inner side, toward the screen centre.
 	func _pip_at(font: Font, rect: Rect2, at: Vector2) -> Dictionary:
 		var inward := (rect.get_center() - at).normalized()
-		return {"at": at, "text": _text_rect(font, rect, at + inward * (PIP_RADIUS_PX + TEXT_GAP_PX), PIP_TEXT, inward)}
+		return {"at": at, "text": _text_rect(font, rect, at + inward * (PIP_RADIUS_PX + TEXT_GAP_PX), tr(PIP_TEXT), inward)}
 
 	static func _clear(placed: Dictionary, avoid: Array) -> bool:
 		var reach := PIP_RADIUS_PX + PIP_OUTLINE_PX
@@ -815,7 +815,7 @@ class WorldOverlay extends Control:
 			var at: Vector2 = pip.at
 			draw_circle(at, PIP_RADIUS_PX + PIP_OUTLINE_PX, OUTLINE)
 			draw_circle(at, PIP_RADIUS_PX, WorldMarkers.MARKER_COLOR)
-			_text(font, (pip.text as Rect2).position, PIP_TEXT)
+			_text(font, (pip.text as Rect2).position, tr(PIP_TEXT))
 		if not label.is_empty():
 			_text(font, _text_rect(font, rect, label.at, label.text, label.side).position, label.text)
 
