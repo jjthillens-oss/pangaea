@@ -4,6 +4,14 @@ extends RefCounted
 ## Speed and cadence come from the gait planner's leg length (domain/creature/body_mechanics.gd, the Froude table);
 ## bite power from the mouth parts (maw, mandibles, beak) and their scale; sight from the eye parts; health from the
 ## body's volume. Tuning numbers come from data/creature/creature_stage.json. Pure rules: no scene or file access.
+##
+## Size follows physics (owner direction, 2026-10-24: a bigger creature is slower, size and parts set strength):
+## - Speed: the gait's top speed grows with leg length (Froude), but a heavy body cannot reach it: above
+##   tuning size.ref_kg the top speed is scaled by (1 - e^-x) / (1 - e^-1), x = (mass / ref_kg)^-size.power, the
+##   saturation term of the allometric speed law (Hirt et al. 2017: big animals run out of time to accelerate). So
+##   the speed curve rises with size, peaks near ref_kg and falls for giants. speed_factor is that multiplier.
+## - Strength: muscle force grows with its cross-section, mass^(2/3): bite power is scaled by
+##   (mass / strength.ref_kg)^strength.mass_power. strength_factor is that multiplier.
 
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
@@ -17,12 +25,16 @@ const REACH_PER_MOUTH_SCALE_M := 0.25
 const TOUCH_REACH_M := 0.15
 
 
-## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, has_mouth, has_legs,
+## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
+## strength_factor, has_mouth, has_legs,
 ## leg_length_m, mouths, eyes, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
-## allows (the run band's Froude number on the shortest leg); the walk is 0.3 of it, as the lab's drives.
+## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
+## drives.
 ## `part_rules` is only consulted for which types exist; a part of an unknown type counts for nothing.
 static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted, tuning: Dictionary) -> Dictionary:
 	var mass := mass_kg(body, float(tuning["mass"]["kg_per_m3"]))
+	var speed_k := speed_factor(mass, tuning)
+	var strength_k := strength_factor(mass, tuning)
 	var mouths := count_parts(body, MOUTH_TYPES, part_rules)
 	var eyes := count_parts(body, EYE_TYPES, part_rules)
 	var bite: Dictionary = tuning["bite"]
@@ -35,6 +47,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 				var s := float(p["scale"]) / 1000.0
 				bite_power += float(bite["per_mouth"]) * pow(s, float(bite["scale_power"]))
 				mouth_scale = maxf(mouth_scale, s)
+		bite_power *= strength_k
 	var head_radius: float = body.radius_m(0)
 	var reach := head_radius + (REACH_PER_MOUTH_SCALE_M * mouth_scale if mouths > 0 else TOUCH_REACH_M)
 	var sight: Dictionary = tuning["sight"]
@@ -46,7 +59,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 	var leg_length := 0.0
 	if has_legs:
 		var mech = BodyMechanics.create("stats", gait["body"], gait_table)
-		speed = mech.v_top
+		speed = mech.v_top * speed_k
 		leg_length = mech.hip_height / gait_table.stance_height_ratio
 		var period: float = gait_table.rel_stride(gait_table.fr_top()) * mech.hip_height / mech.v_top
 		cadence = 1.0 / period if period > 0.0 else 0.0
@@ -59,6 +72,8 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"sight_m": sight_m,
 		"speed_mps": speed,
 		"cadence_hz": cadence,
+		"speed_factor": speed_k,
+		"strength_factor": strength_k,
 		"has_mouth": mouths > 0,
 		"has_legs": has_legs,
 		"leg_length_m": leg_length,
@@ -67,6 +82,25 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"body_length_m": box.size.z,
 		"body_radius_m": body.max_radius_m(),
 	}
+
+
+## The top-speed multiplier for a body of `mass` kg: 1 up to size.ref_kg, then falling (see the header). Without a
+## "size" tuning block, 1.
+static func speed_factor(mass: float, tuning: Dictionary) -> float:
+	var size: Dictionary = tuning.get("size", {})
+	if size.is_empty() or mass <= float(size["ref_kg"]):
+		return 1.0
+	var x := pow(mass / float(size["ref_kg"]), -float(size["power"]))
+	return (1.0 - exp(-x)) / (1.0 - exp(-1.0))
+
+
+## The bite multiplier for a body of `mass` kg: (mass / strength.ref_kg)^strength.mass_power, kept within
+## strength.min..strength.max. Without a "strength" tuning block, 1.
+static func strength_factor(mass: float, tuning: Dictionary) -> float:
+	var st: Dictionary = tuning.get("strength", {})
+	if st.is_empty() or mass <= 0.0:
+		return 1.0
+	return clampf(pow(mass / float(st["ref_kg"]), float(st["mass_power"])), float(st["min"]), float(st["max"]))
 
 
 ## Mass from the capsule volumes of the body field (each capsule as a cone frustum), at `kg_per_m3`.
