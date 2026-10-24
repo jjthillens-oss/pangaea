@@ -73,7 +73,7 @@ func test_the_shipped_growth_ladder_and_second_size() -> void:
 	var config := WorldConfig.load_from()
 	var g := config.growth
 	check_eq(g.trigger, "auto", "the sim's default trigger (BP-3: the player's comes through the intent)")
-	check_eq(g.rings, PackedFloat64Array([90, 120, 150, 170, 180, 190, 200, 205, 210]), "a ring per size 1 to 9")
+	check_eq(g.rings, PackedFloat64Array([90, 120, 120, 170, 180, 190, 200, 205, 210]), "a ring per size 1 to 9")
 	check_eq([g.drain_floor_share, g.drain_ring_seconds], [0.8, 190.0], "the drain (190 s a ring: S2G16's first-growth floor, DECISIONS)")
 	check_eq([g.calm_ticks, g.quiet_ticks, g.chase_window_ticks], [90, 120, 60], "the calm window, as ticks")
 	check(g.calm_ticks is int and g.beat_loads_per_tick is int and g.prefetch_per_tick is int and g.remnants.cap is int

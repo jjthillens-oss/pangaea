@@ -46,6 +46,6 @@
     {"id": "ah", "species": "ambush_hunter", "home": [16.0, -20.0], "heading": -3.0296, "territory_zone": "", "sizes": [3, 4]},
     {"id": "va", "species": "veil", "home": [-3.0, 21.0], "heading": -0.5308, "territory_zone": "", "sizes": [3]},
     {"id": "eb", "species": "elder_ambush", "home": [-21.5, 18.33], "heading": -0.706, "territory_zone": "", "sizes": [3]},
-    {"id": "ea", "species": "elder_ambush", "home": [-9.58, -1.31], "heading": 1.8326, "territory_zone": "", "sizes": [3]}
+    {"id": "ea", "species": "elder_ambush", "home": [-3.76, 5.94], "heading": -2.8798, "territory_zone": "", "sizes": [3]}
   ]
 }

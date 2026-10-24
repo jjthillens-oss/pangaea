@@ -45,7 +45,7 @@
     {"id": "lu", "species": "lurker", "home": [-16.0, 17.0], "heading": 1.6338, "territory_zone": "", "sizes": [4], "post_b": {"home": [-12.5, 17.0], "heading": -1.4011}},
     {"id": "ah", "species": "ambush_hunter", "home": [18.0, -18.0], "heading": 0.1182, "territory_zone": "", "sizes": [3, 4]},
     {"id": "va", "species": "veil", "home": [-21.0, 3.0], "heading": 1.3286, "territory_zone": "", "sizes": [3]},
-    {"id": "ea", "species": "elder_ambush", "home": [-4.83, 6.17], "heading": 0.7854, "territory_zone": "", "sizes": [3]},
+    {"id": "ea", "species": "elder_ambush", "home": [3.8, 7.45], "heading": 2.8798, "territory_zone": "", "sizes": [3]},
     {"id": "eb", "species": "elder_ambush", "home": [13.0, 16.25], "heading": 0.2092, "territory_zone": "", "sizes": [3]}
   ]
 }

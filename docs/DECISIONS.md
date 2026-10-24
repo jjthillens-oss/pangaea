@@ -1078,17 +1078,28 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   ghost (`T_Ghost_elder_ambush`) landed the same day; its haze is the ambush hunter's. The ladder
   strip's caption is "elder hunters" (three words do not fit 68 px at the largest text size).
 - **Where it lies in wait** (all sizes [3], every tile passing rules 6 to 10 at sizes 3 and 4):
-  - glass reefs: `ea` beside the central zone; `eb` by an outer pocket of food, by the Lurker's
+  - glass reefs: `ea` 3 to 4.5 m off the central zone; `eb` by an outer pocket of food, by the Lurker's
     corner in reefs a, c, d and f and in the east pocket of reefs b and e, which the #32 point runs
     showed held no threat at all at size 3. The Lurker leaves size 3 in reefs (rule 7's four sites;
     the outgrown ambush hunter stays as the prey rule 9 needs).
-  - veil gardens: `ea` beside the inner mound; the second veil (`vb`) leaves gardens a to e.
-  - warden flats: `ea` beside the inner mound (unguarded at size 3; the elder Warden takes it at 4);
+  - veil gardens: `ea` 3 to 4.5 m off the inner mound; the second veil (`vb`) leaves gardens a to e.
+  - warden flats: `ea` 3 to 4.5 m off the inner mound (unguarded at size 3; the elder Warden takes it at 4);
     in flats b and e it takes the second Warden's place (rule 7). This goes one tile kind past the
     card's "reefs and veil gardens": the mounds were where the quiet #32 runs fed.
   - the cradle: one by each quadrant's inner meadow.
+  Every `ea` keeps at least 2.9 m outside every zone. Placed right beside them first, the hunters
+  pushed the wary forager off the richest food at size 3 (it skips food within 8 m of a creature),
+  and the pacing gate's third growth went from 944 s to 1109 s.
 - **Measured** (#32 at size 3, 3 home seeds and 10 points, 5 minutes each): grazer 1.53 meetings a
-  minute from home and 1.78 from points, omnivore 1.53 and 1.88, a meeting in every run, no deaths.
+  minute from home and 1.84 from points, omnivore 1.40 and 1.88, a meeting in every run, no deaths.
   Before the reefs' second hunters one point run (seed 516) met nothing even at 15 m sight, and a
   hungrier start (0.7) changed nothing; with them, two eye spots are enough.
+- **The size-3 growth ring is 120, down from 150 (S3G23; Joshua, 02:42: faster progression)**. With the
+  hunters off the zones the pacing gate still read 1096 s. The slow runs are not held by a blocker:
+  they roam far from home, where size-3 food is thin, so energy sits under the drain floor (80%) and
+  the meter barely moves. A smaller ring is the one lever that touches size 3 alone (the drain floor
+  would move the first growth under its 3-minute floor). Measured over the gate's 12 runs: ring 130,
+  1017 s; ring 120, 932 s (grazer 753 s, omnivore 1092 s). Rings now read 90, 120, 120, 170. Open:
+  two of the six wary omnivore runs (seeds 622 and 624) never reach size 4 in 22 minutes, with about
+  230 meals each; the size-3 food economy for an omnivore is a balance item for the next pass.
 
