@@ -117,10 +117,24 @@ def _grey(sh, fac, lo):
     return mp._grey(sh, fac, lo)
 
 
+# What each part is for, so the editor can group its palette and the stats can count eyes and mouths without a
+# list of types (PROPOSED; contract section 1.3): eye, mouth, hand (graspers), foot, weapon or detail.
+ROLE = {
+    "eye": "eye", "eye_stalk": "eye", "compound_eye": "eye", "eye_slit": "eye", "eye_round": "eye", "eye_cluster": "eye",
+    "beak": "mouth", "mandibles": "mouth", "maw": "mouth", "proboscis": "mouth", "jaw": "mouth", "bill": "mouth",
+    "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand",
+    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot",
+    "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
+    "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
+    "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
+    "gill_fan": "detail", "lure": "detail", "barbels": "detail",
+}
+
+
 def _rules(part_type, footprint, sink, orientation, hosts, turn, tilt, centerline="allowed", chiral=False):
     return {"type": part_type, "footprint_radius_m": footprint, "sink_depth_m": sink, "chiral": chiral,
             "orientation": orientation, "turn_limit_deg": turn, "tilt_limit_deg": tilt,
-            "centerline": centerline, "hosts": hosts}
+            "centerline": centerline, "hosts": hosts, "role": ROLE[part_type]}
 
 
 def _check_pivot(name, sink, ground=False):

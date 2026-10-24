@@ -73,6 +73,7 @@
       "limb_end",
       "limb"
     ],
+    "role": "weapon",
     "handles": [
       {
         "key": "H1_Length",

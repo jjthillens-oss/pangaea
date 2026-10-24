@@ -14,6 +14,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -39,6 +40,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -65,6 +67,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -96,6 +99,7 @@
 				"limb_end",
 				"limb"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -121,6 +125,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -148,6 +153,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Bulge",
@@ -174,6 +180,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Raise",
@@ -200,6 +207,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Blink",
@@ -227,6 +235,7 @@
 				"spine",
 				"part"
 			],
+			"role": "eye",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -254,6 +263,7 @@
 				"spine",
 				"limb"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Height",
@@ -284,6 +294,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -310,6 +321,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Spread",
@@ -336,6 +348,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Fold",
@@ -363,6 +376,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Spread",
@@ -390,6 +404,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "hand",
 			"handles": [
 				{
 					"key": "H1_Grip",
@@ -418,6 +433,7 @@
 			"hosts": [
 				"limb_end"
 			],
+			"role": "foot",
 			"handles": [
 				{
 					"key": "H1_Wide",
@@ -445,6 +461,7 @@
 				"spine",
 				"part"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -471,6 +488,7 @@
 				"spine",
 				"part"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -497,6 +515,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Open",
@@ -522,6 +541,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Gape",
@@ -548,6 +568,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "mouth",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -574,6 +595,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Raise",
@@ -600,6 +622,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Span",
@@ -626,6 +649,7 @@
 			"hosts": [
 				"spine"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -653,6 +677,7 @@
 				"spine",
 				"part"
 			],
+			"role": "weapon",
 			"handles": [
 				{
 					"key": "H1_Length",
@@ -679,6 +704,7 @@
 				"spine",
 				"limb"
 			],
+			"role": "detail",
 			"handles": [
 				{
 					"key": "H1_Fold",

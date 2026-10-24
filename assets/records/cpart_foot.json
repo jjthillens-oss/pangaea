@@ -75,6 +75,7 @@
     "hosts": [
       "limb_end"
     ],
+    "role": "foot",
     "handles": [
       {
         "key": "H1_Spread",

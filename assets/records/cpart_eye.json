@@ -74,6 +74,7 @@
       "spine",
       "part"
     ],
+    "role": "eye",
     "handles": [
       {
         "key": "H1_Blink",
