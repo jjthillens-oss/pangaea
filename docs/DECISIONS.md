@@ -1050,3 +1050,26 @@ GENESIS Bible is binding; never wait on Joshua; merge when green; never change a
   60-minute bound, so the split stays as it is; the PR's first CI run gives the real figures.
   The same run's reds: S3G22's #32 at size 3 (below), and the cost rows that fail here at size 1 too
   (saturated, the racer, S3G21's absolute rows), which CI reads (BP3-7).
+
+## 2026-10-24 · S3: the owner's calls on cost limits and size-3 danger
+
+Joshua answered four cards at 16:47 to 16:48 UTC.
+
+- **soak-a's two cost limits: raised to 11 and 2.5 yardsticks** (card "Raise soak-a's two cost limits
+  to cover the spread between CI runners?", option "Raise to 11 and 2.5"). `DENSE_LIMIT_YARDSTICKS`
+  10 → 11 (B-7's saturated case, the median run's median tick) and `REBASE_LIMIT_YARDSTICKS` 2.0 → 2.5
+  (a rebase tick's median excess). The cases are renamed to the new numbers
+  (`test_soak_a_saturated_world_costs_at_most_11_yardsticks_a_tick`,
+  `test_slow_a_rebase_tick_costs_at_most_2_5_yardsticks_more`). Reason: the same tree read on either
+  side of the old limits on different CI runners. Every other cost limit is unchanged.
+- **S3G20: band 1's chunks may cost 1.20 × band 0's** (card "Accept band 1's world-loading cost being
+  15 to 20% above band 0's?", option "Accept 1.20x for band 1"). The relative rows of
+  `test_slow_band_1_chunks_cost_as_band_0s` become median and p90 at most 1.20 × and max at most
+  1.35 × (1.10 and 1.25 before). The absolute rows (G17's at size 3, S2G37's at size 4) are unchanged.
+- **Size 3 is as tense as size 1, with a new size-3 hunter** (cards "How dangerous should size 3
+  feel?", option "As tense as size 1", and "Size 3 can't match size 1's danger by moving creatures.
+  Which way?", option "Add a new size-3 hunter"). T0.5c (the calmer size-3 bar) is reverted: #32 at
+  size 3 needs M1's 1.0 meetings a minute and a meeting in every run again. A new species, an elder
+  ambush hunter entering at size 3, joins the glass reefs and veil gardens; it is a scope addition the
+  owner approved here. Its body is a stand-in until art delivers its model, ghost and haze sprite.
+

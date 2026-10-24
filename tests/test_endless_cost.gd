@@ -26,7 +26,7 @@ extends TestCase
 ##    the real content 6 or 7 after 1,200 ticks). On the fixture world there may be too few to time,
 ##    and the gate then waits for the real content.
 ##  - Rebase: 20 ticks with debug_rebase of 3 chunks against the plain tick just before each; the
-##    median excess is at most 2 yardsticks. The 3 runs time the same rebases (their end hashes are
+##    median excess is at most 2.5 yardsticks (the owner's 2026-10-24 limit). The 3 runs time the same rebases (their end hashes are
 ##    equal), and each tick, the rebase tick and the plain one, counts at its fastest of the 3, as
 ##    P99.9's do, so one burst of load on either tick does not move the excess; the median run's own
 ##    median is printed beside it. The rebase goes against the cell's side of the origin, so the
@@ -35,7 +35,7 @@ extends TestCase
 ##    swims overdriven east for 1,200 ticks and then 600 timed ticks, 3 runs, with the awake cap
 ##    (12, at least 6 in view), the sleeper cap (30) and the food cap (120, less one zone's worth
 ##    being eaten) full. The slow case checks that and prints the rows; the soak case holds B-7's
-##    limits, the median run's median tick at most 10 yardsticks and every tick that loads a chunk at
+##    limits, the median run's median tick at most 11 yardsticks (the owner's 2026-10-24 limit) and every tick that loads a chunk at
 ##    most 16 at its fastest of 3. The saturated case needs no invariant, so it waits on
 ##    Gates.missing(Gates.WORLD) and FakeWorldGen only.
 ## While the endless world has not landed each prints what it waits on (Gates.missing()).
@@ -84,7 +84,7 @@ const SLEEPER_LIMIT_US := 2.0
 const REBASES := 20
 const REBASE_GAP_TICKS := 30
 const REBASE_CHUNKS := 3
-const REBASE_LIMIT_YARDSTICKS := 2.0
+const REBASE_LIMIT_YARDSTICKS := 2.5   ## the owner's 2026-10-24 pick (2.0 before): CI runners spread
 ## The saturated case (B-7): a dense FakeWorldGen world (DenseGen), RACER overdriven east along the
 ## lane y = DENSE_LANE_Y from x = 0 for DENSE_WARM_TICKS, then DENSE_TICKS timed ticks, 3 runs.
 const FAKE_GEN := "res://tests/fakes/fake_world_gen.gd"   ## T2's permanent test generator
@@ -93,7 +93,7 @@ const DENSE_LANE_Y := 16.0             ## tm: between the zone rows at 8 and 24 
 const DENSE_WARM_TICKS := 1200         ## 120 tm: the cell is among creatures that spawned out of its view
 const DENSE_TICKS := 600
 const DENSE_MIN_IN_VIEW := 6           ## at least half the awake cap in the cell's view
-const DENSE_LIMIT_YARDSTICKS := 10.0   ## the median run's median tick
+const DENSE_LIMIT_YARDSTICKS := 11.0   ## the median run's median tick (owner, 2026-10-24; 10 before)
 const DENSE_LOAD_LIMIT_YARDSTICKS := 16.0   ## every tick that loads a chunk, at its fastest of 3
 
 ## S2 (T0.6).
@@ -317,7 +317,7 @@ func test_slow_a_sleeper_costs_at_most_2_us() -> void:
 	_check_sleeper_cost(true)
 
 
-func test_slow_a_rebase_tick_costs_at_most_2_yardsticks_more() -> void:
+func test_slow_a_rebase_tick_costs_at_most_2_5_yardsticks_more() -> void:
 	if _waits("rebase"):
 		return
 	_check_rebase_cost(true)
@@ -355,10 +355,10 @@ func test_slow_a_saturated_world_fills_its_caps_and_prints_its_cost() -> void:
 	check(not loads.is_empty(), "chunks loaded during the timing")
 
 
-## B-7's gate on the saturated case: the median run's median tick at most 10 yardsticks and every
+## B-7's gate on the saturated case: the median run's median tick at most 11 yardsticks and every
 ## tick that loads a chunk at most 16 at its fastest of 3. If it fails, T1 lowers caps.awake to 10
 ## and nothing else changes first.
-func test_soak_a_saturated_world_costs_at_most_10_yardsticks_a_tick() -> void:
+func test_soak_a_saturated_world_costs_at_most_11_yardsticks_a_tick() -> void:
 	if _dense_waits("B-7's saturated gate"):
 		return
 	var runs := _dense_runs()

@@ -761,8 +761,9 @@ func test_slow_size_two_chunks_cost_at_most_300_us_median_and_600_us_max() -> vo
 ## as band 0's, the four sizes interleaved chunk by chunk so a slower stretch of the machine falls on
 ## all of them alike. The absolute rows are G17's at size 3 and S2G37's at size 4; they block, since
 ## both were green on e3-base (main's CI). The relative rows always block: size 3 against size 1 and
-## size 4 against size 2, median and p90 at most 1.10 x, max at most 1.25 x (a single chunk, about
-## +-9% between runs).
+## size 4 against size 2, median and p90 at most 1.20 x, max at most 1.35 x (a single chunk, about
+## +-9% between runs). The owner accepted band 1 at 1.20 x on 2026-10-24 (1.10 and 1.25 before):
+## band 1's tiles hold more pieces and sites than band 0's.
 func test_slow_band_1_chunks_cost_as_band_0s() -> void:
 	var catalog := SpeciesCatalog.load_from()
 	var top := WorldContent.load_from(WorldChecks.shipped_world_at(4), PoolLayout.load_from(), catalog)
@@ -774,7 +775,7 @@ func test_slow_band_1_chunks_cost_as_band_0s() -> void:
 		check(c.median <= l[0] and c.median_ratio <= l[1], "size %d: median %.0f us, %.2f yardsticks" % [n, c.median, c.median_ratio])
 		check(c.max <= l[2] and c.top <= l[3], "size %d: max %.0f us, %.2f yardsticks" % [n, c.max, c.top])
 		var base: Dictionary = cost[n - 2]
-		for row in [["median", 1.10], ["p90", 1.10], ["max", 1.25]]:
+		for row in [["median", 1.20], ["p90", 1.20], ["max", 1.35]]:
 			var ratio := float(c[row[0]]) / maxf(1.0, float(base[row[0]]))
 			check(ratio <= row[1], "size %d against %d: %s %.0f us / %.0f us = %.2f x (at most %.2f)"
 				% [n, n - 2, row[0], c[row[0]], base[row[0]], ratio, row[1]])
