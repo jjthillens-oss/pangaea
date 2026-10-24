@@ -20,6 +20,7 @@ const STATIC := {
 	"content": "absolute world data",
 	"gen": "absolute world data",
 	"_chunks": "WorldChunks: absolute float64 data",
+	"_ahead_parts": "what a quiet tick made for a chunk generated ahead: its local values are in the frame stored with them and are read only while that frame is in force (WorldStream._load_chunk), so a rebase leaves them",
 	"_phenotypes": "creature data",
 	"_senses": "creature data",
 	"cfg": "brain tuning data",

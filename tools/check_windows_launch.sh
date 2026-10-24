@@ -15,6 +15,11 @@
 #             40 s with two growths, the second with reduce motion. Its frame times mean nothing
 #             here either (S2G26 is a run on Joshua's machine); what counts is that the growth
 #             renders on Windows, the tour finishes and nothing errors.
+#             It runs at 640 x 360. At 1280 x 720 it did not finish in 300 s on the runner's
+#             software adapter (e2 at eb93634 and dd137d7): the route is 2,400 sim ticks, and the
+#             engine steps at most 8 a frame, so a slow enough frame holds the route back. Each
+#             route prints its progress every 10 s ("Perf tour (grow): 20 s, route tick 1180,
+#             9.3 FPS"), so a run stopped at the limit shows how far it got.
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
@@ -68,7 +73,7 @@ run() {
 
 run launch "$BUILD/Pangaea.exe" --headless --fixed-fps 60 --quit-after 120 -- --slot=user://smoke/windows_launch.json
 run rendered "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour
-run grow "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour=grow --slot=user://smoke/windows_grow.json
+run grow "$BUILD/Pangaea-dev.exe" --resolution 640x360 -- --perf-tour=grow --slot=user://smoke/windows_grow.json
 
 for name in rendered grow; do
   if ! grep -q "^Perf tour: .* FPS average" "$LOGS/$name.log"; then

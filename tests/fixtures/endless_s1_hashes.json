@@ -1,5 +1,5 @@
 {
-	"base_commit": "3724eeb",
+	"base_commit": "3724eeb9d5437fe2a0c8267c7d0c240006cc624f",
 	"content": "res://game/data/world_cell.json",
 	"growth": false,
 	"runs": [

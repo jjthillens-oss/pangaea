@@ -42,6 +42,9 @@ const BOT_PATH := "res://game/dev/forage_bot.gd"
 const SWIM_OUT_TICKS := 18000      ## 5 min east
 const SWIM_BACK_TICKS := 1200      ## 20 s north after the far respawn
 const REFILL_TICKS := 1800         ## the energy is refilled this often
+## A route prints where it is this often (wall clock), so a run stopped from outside (CI's limit on a
+## software renderer) shows how far it got and at what frame rate.
+const PROGRESS_EVERY_S := 10.0
 const LONG_FRAME_MS := 50.0
 const TAG_WINDOW_S := 0.25         ## a long frame is tagged with the events this near it, either side
 const SWIM_BOT_PATH := "res://game/dev/swim_bot.gd"
@@ -205,6 +208,7 @@ var _measured_ms := 0.0
 # The route's state (null and empty on the M1 tour): a SwimRoute or a GrowRoute.
 var _route: RefCounted
 var _route_name := ""
+var _next_progress_s := PROGRESS_EVERY_S
 var _growths: Array[Dictionary] = []     ## {tick, t_s, reduce_motion} of each growth_began
 var _frames: Array[Dictionary] = []      ## {t_s, ms, tick} of each measured frame
 var _events: Array[Dictionary] = []      ## {t_s, text} of each sim event
@@ -426,8 +430,16 @@ func _process(_delta: float) -> void:
 	if frame_ms.size() > measured:
 		_frames.append({"t_s": _clock_s(now), "ms": frame_ms[frame_ms.size() - 1], "tick": main.pool.sim.tick})
 		_sample_world()
+	if _clock_s(now) >= _next_progress_s:
+		_next_progress_s += PROGRESS_EVERY_S
+		print(progress_line(_route_name, _clock_s(now), main.pool.sim.tick - int(_route.start_tick), frame_ms.size()))
 	if _route.done:
 		_finish()
+
+
+## A route's progress line: "Perf tour (grow): 20 s, route tick 1180, 9.5 FPS".
+static func progress_line(route: String, clock_s: float, route_ticks: int, frames: int) -> String:
+	return "Perf tour (%s): %d s, route tick %d, %.1f FPS" % [route, int(clock_s), route_ticks, frames / maxf(clock_s, 0.001)]
 
 
 ## Seconds on the tour's clock: from the end of the warm-up.
