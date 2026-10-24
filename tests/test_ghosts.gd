@@ -716,3 +716,117 @@ func test_pool_mode_has_ghosts_at_size_1() -> void:
 	FakeEvents.frame(bare)
 	check(bare.ghosts.billboards().is_empty(), "a broken ladder draws no ghosts")
 	bare.free()
+
+
+## S3 (V3-14; s3-view 9.3): the haze of older sizes keeps to its count over the focus chunk and the
+## eight round it, and its jittered grid never puts two items in one 1 m cell (the contract's
+## MAX_STACKED is 3). A move inside the focus chunk rebuilds nothing; one into the next chunk does,
+## and the same sea gives the same places.
+func test_older_haze_count_and_stack() -> void:
+	var made := _older_haze(3)
+	var haze: OlderHaze = made.haze
+	var world: WorldStream = made.world
+	check(haze.instance_count() == 9 * OlderHaze.PER_CHUNK and haze.instance_count() <= OlderHaze.MAX,
+		"%d items, 24 per chunk over 3 x 3 chunks, at most %d" % [haze.instance_count(), OlderHaze.MAX])
+	var cells := {}
+	var most := 0
+	for t: Transform3D in haze.items().transforms:
+		var key := Vector2i(floori(t.origin.x / Contract.STACK_GRID_M), floori(t.origin.z / Contract.STACK_GRID_M))
+		cells[key] = int(cells.get(key, 0)) + 1
+		most = maxi(most, cells[key])
+	check(most <= 1, "at most one item per %.0f m cell (%d)" % [Contract.STACK_GRID_M, most])
+	var key := OlderHaze.focus_chunk(world, made.focus)
+	var drawn := haze.items()
+	haze.refresh(world, _chunk_point(world, key, Vector2(0.9, 0.1)))
+	check(haze.items() == drawn, "a move inside the focus chunk rebuilds nothing")
+	haze.refresh(world, _chunk_point(world, key + Vector2i(1, 0), Vector2(0.5, 0.5)))
+	check(haze.items() != drawn and haze.instance_count() == 9 * OlderHaze.PER_CHUNK, "the next chunk over rebuilds the set")
+	var again := _older_haze(3)
+	again.haze.refresh(world, _chunk_point(world, key + Vector2i(1, 0), Vector2(0.2, 0.7)))
+	check(again.haze.items().transforms == haze.items().transforms, "the same sea gives the same places")
+	again.haze.free()
+	haze.free()
+
+
+## S3 (s3-view 9.3): hidden at sizes 1 and 2; at 3 the algae ball's haze, at 4 the glass flake's,
+## each quad the older food's drawn diameter over its sprite's span.
+func test_older_haze_sizes() -> void:
+	for n in [1, 2]:
+		var made := _older_haze(n)
+		check(not made.haze.visible and made.haze.instance_count() == 0, "hidden at size %d" % n)
+		made.haze.free()
+	var expect := {3: ["algae_ball", "T_Haze_algae_ball.png", 0.51], 4: ["glass_flake", "T_Haze_glass_flake.png", 0.27]}
+	for n: int in expect:
+		var made := _older_haze(n)
+		var haze: OlderHaze = made.haze
+		var image: Texture2D = haze.material().get_shader_parameter("image")
+		check(haze.visible and haze.look() == expect[n][0] and image != null and image.resource_path.get_file() == expect[n][1],
+			"size %d draws %s (%s)" % [n, expect[n][1], haze.look()])
+		var side := haze.items().transforms[0].basis.get_scale().x
+		check(absf(side - float(expect[n][2])) < 0.01, "size %d: a quad %.3f tm across, about %.2f" % [n, side, expect[n][2]])
+		haze.free()
+
+
+## S3 (s3-view 9.3, the container contract): a growth re-expresses the drawn set in place; the new
+## size's set comes at end_growth and fades in over FADE_S; a growth to 3 fades its first set in
+## from FIRST_FADE_FROM_S of the beat; the pool draws the haze as a registered growth container.
+func test_older_haze_through_a_growth() -> void:
+	var made := _older_haze(3)
+	var haze: OlderHaze = made.haze
+	var before: Array[Vector3] = []
+	for t: Transform3D in haze.items().transforms:
+		before.append((haze.items().transform * t).origin)
+	var center := Vector2(10.0, -6.0)
+	haze.begin_growth(4)
+	haze.apply_growth(center, 1.6)
+	var moved := 0
+	for i in before.size():
+		var now := (haze.items().transform * haze.items().transforms[i]).origin
+		if now.distance_to(WorldSpace.reexpress_point(before[i], center, 1.6)) > 1e-4:
+			moved += 1
+	check(moved == 0 and haze.position.is_zero_approx(), "every item re-expressed in place (%d off)" % moved)
+	haze.beat_frame(3.0, 1.0)
+	check_eq(haze.look(), "algae_ball", "a growth to 4 keeps the old set through the beat")
+	haze.end_growth()
+	check(haze.look() == "glass_flake" and haze.instance_count() > 0 and is_zero_approx(haze.opacity()),
+		"end_growth draws size 4's set, from clear (%.3f)" % haze.opacity())
+	haze.step(10.0)
+	haze.step(10.5)
+	check(is_equal_approx(haze.opacity(), OlderHaze.OPACITY * 0.5), "half way in after half of FADE_S (%.3f)" % haze.opacity())
+	haze.step(11.5)
+	check(is_equal_approx(haze.opacity(), OlderHaze.OPACITY), "in by FADE_S (%.3f)" % haze.opacity())
+	haze.free()
+	var low := _older_haze(2)
+	var first: OlderHaze = low.haze
+	first.begin_growth(3)
+	first.apply_growth(Vector2.ZERO, 1.6)
+	first.beat_frame(OlderHaze.FIRST_FADE_FROM_S - 0.1, 1.0)
+	check(not first.visible and first.instance_count() == 0, "a growth to 3: nothing before %.1f s" % OlderHaze.FIRST_FADE_FROM_S)
+	first.beat_frame(OlderHaze.FIRST_FADE_FROM_S, 1.0)
+	check(first.visible and first.look() == "algae_ball" and first.instance_count() > 0 and is_zero_approx(first.opacity()),
+		"a growth to 3: the first set comes at %.1f s, from clear" % OlderHaze.FIRST_FADE_FROM_S)
+	var drawn := first.items()
+	first.end_growth()
+	check(first.items() == drawn and is_zero_approx(first.opacity()), "and end_growth keeps it, its fade running on")
+	first.free()
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	check(pool.older_haze != null and pool.world_space.registered().has(pool.older_haze) and pool.growth_containers().has(pool.older_haze),
+		"the pool's OlderHaze is a registered growth container")
+	check(not pool.older_haze.visible, "and hidden at size 1")
+	pool.free()
+
+
+## An OlderHaze on the shipped ladder and food looks at size `n`, refreshed round the cell of an
+## endless fixture world: {haze, world, focus}. Free the haze.
+func _older_haze(n: int) -> Dictionary:
+	var session := FakeEvents.endless_session()
+	var haze := OlderHaze.new()
+	haze.setup(_ladder(), WorldConfig.load_from().ladder.food_looks, SEED)
+	haze.set_size(n)
+	haze.refresh(session.sim.world, session.sim.motion.position)
+	return {"haze": haze, "world": session.sim.world, "focus": session.sim.motion.position, "session": session}
+
+
+## The local point at share `u` across chunk `key` (OlderHaze's 32 tm chunks at the stream's size).
+static func _chunk_point(world: WorldStream, key: Vector2i, u: Vector2) -> Vector2:
+	return world.local_of_tm((key.x + u.x) * OlderHaze.CHUNK_TM, (key.y + u.y) * OlderHaze.CHUNK_TM)

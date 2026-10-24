@@ -108,11 +108,11 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	var names := []
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
-	check_eq(names.slice(0, 7), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx", "SiltTrail"],
-		"the containers register in their fixed order (the silt trail is S2's)")
-	check_eq(names.size(), 7 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
+	check_eq(names.slice(0, 8), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx", "SiltTrail", "OlderHaze"],
+		"the containers register in their fixed order (the silt trail is S2's, the older haze S3's)")
+	check_eq(names.size(), 8 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
 		"then the positional players, the growth beat's effects, then each creature's lane")
-	check_eq(names[7 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
+	check_eq(names[8 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
 	var dissolve := pool.ui.get_node_or_null(^"BeatDissolve") as TextureRect
 	check(dissolve != null and not dissolve.visible, "the reduce-motion dissolve waits, hidden, over the UI (S2)")
 	check(not pool.growth_beat.running() and pool.depth_k() == 1.0, "the growth beat is idle after the build")

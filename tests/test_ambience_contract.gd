@@ -15,7 +15,9 @@ extends TestCase
 ## convention:
 ##   - a material's colours are its Color uniforms and its texture uniforms (as the material sets
 ##     them, else as the shader's code declares them), times a float uniform `brightness` when it
-##     has one, and any literal colour its shader writes to ALBEDO or EMISSION
+##     has one, its textures also times a Color uniform `tint` when it has one (S3: the shader draws
+##     texture x tint, as a standard material draws its albedo texture times its albedo), and any
+##     literal colour its shader writes to ALBEDO or EMISSION
 ##     (a vec3 or vec4 of numbers in the assignment, or in a constant or local variable it reads);
 ##     a standard material's are its albedo, emission and albedo texture (times the albedo, as it
 ##     draws), its albedo times each vertex colour of the mesh when vertex_color_use_as_albedo is
@@ -344,12 +346,13 @@ func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionar
 	var sm := m as ShaderMaterial
 	var names := _uniform_names(sm)
 	var brightness := float(_param(sm, "brightness")) if names.has("brightness") else 1.0
+	var tint: Variant = _param(sm, "tint") if names.has("tint") else null
 	for uniform_name in names:
 		var v: Variant = _param(sm, uniform_name)
 		if v is Color:
 			out.append(_flat(uniform_name, v, brightness))
 		elif v is Texture2D:
-			out.append(_texture_colors(uniform_name, v, brightness))
+			out.append(_texture_colors(uniform_name, v, brightness, tint if tint is Color else Color.WHITE))
 	var literal := _literal_colors(sm.shader)
 	if not literal.is_empty():
 		out.append({"what": "literal colour in the shader", "colors": literal, "painting": false})
@@ -1036,6 +1039,39 @@ func test_veil_thread_colours_are_the_threat_ink_or_clear_of_both() -> void:
 		check(m.get_shader_parameter("ink_color") == ink and m.get_shader_parameter("neutral_color") == colors.neutral,
 			"%s draws art's two thread colours" % m.shader.resource_path.get_file())
 	threads.free()
+
+
+## S3's haze of older sizes (s3-view 9.3, V3-14; S3G32 F part) keeps the decor rules at sizes 3 and 4:
+## its band, which its material names, lies within (-3.4, -2.6) under the plane band and holds every
+## item; it casts no shadow, draws under the lane, fades with the fog, keeps clear of the food and
+## threat hues and is too faint to lift the fluid.
+func test_older_haze_rows() -> void:
+	var session := FakeEvents.endless_session()
+	for n in [3, 4]:
+		var haze := OlderHaze.new()
+		haze.setup(GhostLayer.shipped().data, WorldConfig.load_from().ladder.food_looks, 7)
+		haze.set_size(n)
+		haze.refresh(session.sim.world, session.sim.motion.position)
+		var geo := haze.items()
+		check(geo != null and geo.multimesh.instance_count > 0, "size %d: the haze draws" % n)
+		if geo == null:
+			haze.free()
+			continue
+		var h := _heights(geo, haze)
+		check(h.band and h.low >= OlderHaze.HEIGHT_RANGE.x - 1e-4 and h.high <= OlderHaze.HEIGHT_RANGE.y + 1e-4 and h.high < PLANE_BAND.x,
+			"size %d: its band (%.2f, %.2f) within (%.1f, %.1f), under %.1f" % [n, h.low, h.high, OlderHaze.HEIGHT_RANGE.x, OlderHaze.HEIGHT_RANGE.y, PLANE_BAND.x])
+		var outside := 0
+		for t: Transform3D in geo.transforms:
+			if t.origin.y < OlderHaze.HEIGHT_RANGE.x - 1e-4 or t.origin.y > OlderHaze.HEIGHT_RANGE.y + 1e-4:
+				outside += 1
+		check(outside == 0, "size %d: every item within its band (%d outside)" % [n, outside])
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "size %d: no shadow" % n)
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "size %d: draws under the lane" % n)
+			check(_blend_and_fog(m).fog, "size %d: keeps the engine's fog" % n)
+		_check_hues([geo])
+		_check_pale([geo], haze)
+		haze.free()
 
 
 ## Every colour `geos` draw keeps HUE_GAP from the reserved hues: flat colours one by one, a painting

@@ -183,6 +183,18 @@
       "node": "Pool/BeatFx"
     },
     {
+      "id": "older_haze_quads",
+      "kind": "particles",
+      "description": "The haze of older sizes (S3, V3-14): one shared unit QuadMesh drawn as still instances far under the swim plane, carrying the size before's recorded food haze sprite (T_Haze_algae_ball at 3, T_Haze_glass_flake at 4) through the older haze shader, and a quad warmed up once at the start fade. Particles, not a model.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/older_haze.gd"
+      ],
+      "node": "Pool/OlderHaze"
+    },
+    {
       "id": "creature_skin",
       "kind": "generated",
       "description": "The creature stage's generated skin: a Surface Nets ArrayMesh built at runtime from the body description's capsule field (game/systems/creature/skin_cpu.gd or skin_gpu.gd), skinned to the generated Skeleton3D with CUSTOM0 paint coordinates and CUSTOM1 rest positions, drawn with the art team's creature_skin.gdshader. Spore-style full-body building (docs/DECISIONS.md, 2026-10-23): the player's anatomy is the model, so there is no Blender source for it. The art parts on it are the recorded cpart_* assets.",
