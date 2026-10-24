@@ -1162,3 +1162,31 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   bakes one model a frame until all are baked. The band-up fade and hand-off are T5.2's.
 - **Refresh cost**: the pieces of a cell or block are pure, so the layer keeps them (at most 4096)
   between refreshes. Median 0.35 ms headless over 100 refreshes moving 2.2 tm each (gate 1.0 ms).
+
+## 2026-10-24 · S3 T5.2: the band-up beat (V3-1, V3-2, V3-16; S3G30, S3G36 F part; PROPOSED; IMPLEMENTED)
+
+- **Profile (V3-1)**: `GrowthBeat.begin` calls `set_retire_profile` on every growth container that
+  has it: `BAND_UP_SINK_TM` 3.0 and `BAND_UP_RETIRE_S` 2.0 on a band-up (`is_band_up(from, to)`:
+  `band_of` differs), the S2 values otherwise, so the next in-band growth is back to S2's beat.
+  RockField and SiltTrail sink their retiring chunks by the profile; ZoneLights sinks its retiring
+  discs only on a band-up (its S2 beat fades them in place, which stays).
+- **Hand-off (V3-2)**: after `apply_growth`, `LandmarkLayer.release_band(b)` detaches every
+  `a_<b>_` and `p_<b>_` piece with its global transform, and `OldBandLayer.adopt` puts them under
+  `Handoff`. Each sinks from its y to its old-band y (the drawn instance with the same id, or the
+  piece's own AABB) by `ease_in_out_cubic` over `HANDOFF_SINK_S` 1.4 s, then cross-fades with the
+  old band's MultiMeshes over 1.4 to 2.0 s; `end_growth` frees it. A cancelled beat fades the handed
+  pieces out over `GrowthBeat.MIN_FADE_S` and shows the old band at once. No piece pops.
+- **Two fixes in LandmarkLayer found by the hand-off**: a rare piece looks its asset up in its own
+  band (`band_of_rare`, from `TileCatalog.RARE_KINDS_BY_BAND`), not the drawn band; and a place's
+  `scale` reaches its pose (it was dropped, so a scaled landmark drew at 1).
+- **Preload (V3-16)**: the endless `_build` requests a threaded load of `s3_preload_paths()` (every
+  kit shell, landmark and rare of the bands this build reaches, the cradle ring, the home beacon);
+  `_process` polls, and when all are in `_warm_up_late` draws each scene's meshes once at the hidden
+  warm-up point. **Changed from the plan**: `use_sub_threads` is false. With sub-threads a GLB's
+  loads outlive the pool and Godot 4.7.2 aborts at exit (seen in `test_warm_up`); one thread per
+  scene still keeps the loads off the main thread. A pool freed mid-preload collects its requests
+  first.
+- **Tests**: `test_growth_view` (no pop at a band-up, the profile resets, a cancelled band-up still
+  fades) and `test_warm_up` (the S3 assets are preloaded, their meshes warmed). Mutations caught:
+  a cancel that frees the pieces, a profile never reset, a sink offset of 0.3 tm, old-band
+  instances shown from frame 0.

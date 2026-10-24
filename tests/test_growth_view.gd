@@ -979,6 +979,153 @@ func test_a_respawn_ends_the_beat_at_once() -> void:
 	pool.free()
 
 
+# --- S3: the band-up beat (S3G30; s3-view 4.2 to 4.4) ---
+
+func test_band_up_has_no_pop() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var r := _band_up(pool)
+	var began: Dictionary = r.began
+	check(not began.is_empty() and began.from == 2 and began.to == 3, "the forced growth is a band-up (2 to 3)")
+	if began.is_empty():
+		pool.free()
+		return
+	var before: Dictionary = r.before
+	check(not before.is_empty(), "band-0 landmarks are drawn at size 2 (%d)" % before.size())
+	var handed := pool.old_band.handed()
+	var names := handed.map(func(p: Node3D) -> String: return str(p.name))
+	names.sort()
+	var want := before.keys()
+	want.sort()
+	check_eq(names, want, "frame 0: every band-0 landmark and place is handed to the old band (V3-2)")
+	check(pool.landmarks.pieces().all(func(p: Node3D) -> bool: return not str(p.name).begins_with("a_0_") and not str(p.name).begins_with("p_0_")),
+		"and none is left with the landmark layer")
+	var f := float(began.factor)
+	for piece in handed:
+		var a: Transform3D = before[str(piece.name)]
+		var b := OldBandLayer.global_of(piece)
+		var expected := Transform3D(a.basis.scaled(Vector3.ONE / f), WorldSpace.reexpress_point(a.origin, began.center_old, f))
+		check(b.origin.distance_to(expected.origin) <= 1e-5 and (b.basis.x - expected.basis.x).length() <= 1e-5,
+			"frame 0: %s where frame A drew it, re-expressed (%s, %s)" % [piece.name, b.origin, expected.origin])
+	check_eq(pool.old_band.mmi_transparency(), 1.0, "frame 0: the old band's instances not yet shown")
+	check(pool.old_band.draw_calls() > 0, "and placed")
+	var retiring := _rock_lists(pool, "__retiring")
+	var fresh := _rock_lists(pool, "__fresh")
+	check(not retiring.is_empty() and retiring.all(func(m: MultiMeshInstance3D) -> bool: return m.transparency < 1e-6), "frame 0: the band-0 shells drawn whole")
+	check(not fresh.is_empty() and fresh.all(func(m: MultiMeshInstance3D) -> bool: return is_equal_approx(m.transparency, 1.0)), "frame 0: the band-1 shells not yet in")
+	var discs: Array = pool.zone_lights.retiring().values()
+	var targets := {}
+	for inst in pool.old_band.instances():
+		targets[inst.id] = inst.transform
+	var seen := {"0.45": false, "1.0": false, "1.4": false, "2.0": false}
+	while pool.growth_beat.running() and pool.growth_beat.t() < 2.1:
+		Frames.frame(pool)
+		var t := pool.growth_beat.t()
+		if t <= HANDOFF_END and t >= 0.0:
+			check(pool.old_band.mmi_transparency() >= 1.0 - 1e-6, "%.2f s: the old band's instances still hidden" % t)
+		if not seen["0.45"] and t >= 0.45:
+			seen["0.45"] = true
+			check(retiring.all(func(m: MultiMeshInstance3D) -> bool: return is_instance_valid(m) and m.transparency < 1.0), "0.45 s: the band-0 shells still drawn")
+			check(discs.all(func(d: MeshInstance3D) -> bool: return is_instance_valid(d) and d.transparency < 1.0), "0.45 s: the band-0 patches still drawn")
+			check(handed.all(func(p: Node3D) -> bool: return is_instance_valid(p) and _piece_transparency(p) < 1.0), "0.45 s: the handed pieces still drawn")
+		if not seen["1.0"] and t >= 1.0:
+			seen["1.0"] = true
+			check(fresh.all(func(m: MultiMeshInstance3D) -> bool: return not is_instance_valid(m) or m.transparency < 1.0), "1.0 s: the band-1 shells coming in")
+		if not seen["1.4"] and t >= HANDOFF_END and t < OldBandLayer.FADE.y:
+			seen["1.4"] = true
+			for piece in handed:
+				if targets.has(str(piece.name)):
+					var to: Transform3D = targets[str(piece.name)]
+					check(absf(piece.position.y - to.origin.y) <= 1e-4 and Vector2(piece.position.x - to.origin.x, piece.position.z - to.origin.z).length() <= 1e-3,
+						"%.2f s: %s has sunk onto its instance (%s, %s)" % [t, piece.name, piece.position, to.origin])
+					check((piece.transform.basis.get_scale() - to.basis.get_scale()).length() <= 1e-5, "%s at its instance's scale" % piece.name)
+		if not seen["2.0"] and t >= OldBandLayer.FADE.y:
+			seen["2.0"] = true
+			check_eq(pool.old_band.mmi_transparency(), 0.0, "2.0 s: the old band's instances shown")
+	check(seen.values().all(func(v: bool) -> bool: return v), "the beat ran past every check (%s)" % seen)
+	check(pool.old_band.handed().is_empty() and handed.all(func(p: Node3D) -> bool: return not is_instance_valid(p) or p.is_queued_for_deletion()),
+		"2.1 s: the handed pieces are gone")
+	check(_rock_lists(pool, "__retiring").is_empty() and pool.zone_lights.retiring().is_empty(), "2.1 s: the band-0 shells and patches are gone")
+	pool.free()
+
+
+func test_band_up_profile_resets() -> void:
+	var pool := _growth_pool()
+	var c := pool.sim.motion.position
+	pool._route(FakeGrowthEvents.began(c, 2, 3))
+	for container: Node in [pool.rocks, pool.silt_trail]:
+		check_eq([container.get(&"_sink_tm"), container.get(&"_retire_s")], [GrowthBeat.BAND_UP_SINK_TM, GrowthBeat.BAND_UP_RETIRE_S],
+			"%s: a band-up's leftovers sink 3 tm over 2 s (V3-1)" % container.name)
+	check_eq([pool.zone_lights.get(&"_sink_tm"), pool.zone_lights.get(&"_retire_s")], [GrowthBeat.BAND_UP_SINK_TM, GrowthBeat.BAND_UP_RETIRE_S],
+		"ZoneLights: and its patches sink with them")
+	pool._route({"type": "respawned", "grace_s": 0.0, "teleport": false})
+	pool._route(FakeGrowthEvents.began(c, 3, 4))
+	for container: Node in [pool.rocks, pool.silt_trail]:
+		check_eq([container.get(&"_sink_tm"), container.get(&"_retire_s")], [GrowthBeat.SINK_TM, GrowthBeat.RETIRE_S],
+			"%s: an in-band growth after it is S2's 1.5 tm over 1.2 s" % container.name)
+	check_eq([pool.zone_lights.get(&"_sink_tm"), pool.zone_lights.get(&"_retire_s")], [0.0, GrowthBeat.RETIRE_S],
+		"ZoneLights: S2's patches fade without sinking")
+	pool.free()
+
+
+func test_band_up_cancel_still_fades() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	_band_up(pool)
+	var handed := pool.old_band.handed()
+	check(not handed.is_empty(), "pieces are handed at the band-up")
+	while pool.growth_beat.running() and pool.growth_beat.t() < 0.5:
+		Frames.frame(pool)
+	pool._route({"type": "respawned", "grace_s": 0.0, "teleport": false})
+	check(not pool.growth_beat.running(), "a respawn at 0.5 s ends the beat")
+	check_eq(pool.old_band.mmi_transparency(), 0.0, "the old band's instances show at once")
+	var t0 := pool.sim.now()
+	while pool.sim.now() - t0 < 0.45:
+		Frames.frame(pool)
+	check(handed.all(func(p: Node3D) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion() and _piece_transparency(p) < 1.0),
+		"0.45 s after the cancel the handed pieces are still drawn, fading")
+	while pool.sim.now() - t0 < GrowthBeat.MIN_FADE_S + 0.1:
+		Frames.frame(pool)
+	check(pool.old_band.handed().is_empty(), "and gone after MIN_FADE_S")
+	pool.free()
+
+
+## The hand-off's sink ends here (OldBandLayer.HANDOFF_SINK_S).
+const HANDOFF_END := OldBandLayer.HANDOFF_SINK_S
+
+
+## Size 2 on the shipped world, then a forced growth to 3 on the real tick, up to its frame 0.
+## Returns {began: the growth_began event, before: {band-0 landmark id: its transform in the pool's
+## space at frame A}}.
+func _band_up(pool: PoolScene) -> Dictionary:
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(2), "the dev's size 2")
+	for i in 3:
+		Frames.frame(pool)
+	var before := {}
+	for piece in pool.landmarks.pieces():
+		var id := str(piece.name)
+		if id.begins_with("a_0_") or id.begins_with("p_0_"):
+			before[id] = OldBandLayer.global_of(piece)
+	var began := []
+	var catch := func(e: Dictionary) -> void:
+		if e.get("type") == "growth_began":
+			began.append(e)
+	pool.sim_event.connect(catch)
+	check(sim.debug_force_growth(), "a forced growth")
+	Frames.frame(pool)
+	pool.sim_event.disconnect(catch)
+	return {"began": began[0] if not began.is_empty() else {}, "before": before}
+
+
+## The rock field's MultiMeshes whose names end `suffix` ("__retiring", "__fresh").
+static func _rock_lists(pool: PoolScene, suffix: String) -> Array[MultiMeshInstance3D]:
+	var out: Array[MultiMeshInstance3D] = []
+	for child in pool.rocks.get_children():
+		if child is MultiMeshInstance3D and str(child.name).ends_with(suffix) and not child.is_queued_for_deletion():
+			out.append(child)
+	return out
+
+
 # --- helpers ---
 
 ## An endless pool with a still cell, quiet cues, a rammer beside the cell and a chunk (900, 900) in

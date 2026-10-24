@@ -18,7 +18,14 @@ extends Node3D
 ##
 ## A growth keeps the container contract (s2-view 4.5): apply_growth re-expresses every instance in
 ## place; a set_band during the beat sets new targets, and beat_frame eases each instance's y from
-## where it was to its target over the beat (V3-7); end_growth snaps and refreshes. WorldSpace shifts
+## where it was to its target over the beat (V3-7); end_growth snaps and refreshes.
+##
+## A band-up (V3-2, s3-view 4.2): the new band's instances start hidden (begin_band_up), and the
+## landmark layer's pieces of the band left behind come here under Handoff at frame 0 with their
+## transforms (adopt). Each sinks to its instance's y (or, with none, to its own sunk depth) by
+## ease-in-out over [0, HANDOFF_SINK_S], then fades out over FADE while the instances fade in at the
+## same transforms; end_growth frees them. A cancelled beat leaves them where they are and fades them
+## over GrowthBeat.MIN_FADE_S on tick's clock, the instances shown at once. WorldSpace shifts
 ## this node across a rebase, so instances are placed in its frame. The MultiMesh draws no
 ## per-instance mirror, so the baked materials draw both sides (the mirrored rare pieces).
 
@@ -49,6 +56,10 @@ var _from := {}                      ## id -> the y an instance eases from durin
 var _beat := false
 var _last_refresh_t := -INF
 var _handoff: Node3D
+var _handed: Array[Dictionary] = []  ## a band-up's hand-off: {piece, y0, y1}
+var _fading: Array[Dictionary] = []  ## a cancelled hand-off: {piece, a0}, fading on tick's clock
+var _fade_t0 := -1.0
+var _mmi_transparency := 0.0         ## every MultiMesh's transparency (1 while a band-up hides them)
 var _models := {}                    ## band -> models(band)
 var _pieces := {}                    ## Vector3i(band, x, y) -> landmark_piece, Vector3i(-1 - band, x, y) -> rare_piece
 var _tints := {}                     ## "model|dressing" -> the instance colour
@@ -224,15 +235,83 @@ func bake_next() -> bool:
 	return false
 
 
-## Each frame (the pool's _process): one model baked while any is not, and a refresh every
-## REFRESH_S outside a growth beat.
+## Each frame (the pool's _process): one model baked while any is not, a cancelled hand-off's fade,
+## and a refresh every REFRESH_S outside a growth beat.
 func tick(draw_time_s: float) -> void:
 	bake_next()
+	if not _fading.is_empty():
+		if _fade_t0 < 0.0:
+			_fade_t0 = draw_time_s
+		var u := clampf((draw_time_s - _fade_t0) / GrowthBeat.MIN_FADE_S, 0.0, 1.0)
+		for f in _fading:
+			_veil(f.piece, lerpf(float(f.a0), 1.0, u))
+		if u >= 1.0:
+			for f in _fading:
+				_free(f.piece)
+			_fading.clear()
+			_fade_t0 = -1.0
 	if _beat or band < 1:
 		return
 	if draw_time_s - _last_refresh_t >= REFRESH_S or draw_time_s < _last_refresh_t:
 		_last_refresh_t = draw_time_s
 		refresh(view_rect(focus_am, size))
+
+
+## A band-up opens (after set_band, before adopt): the new band's instances start hidden and fade in
+## over FADE as the hand-off fades out.
+func begin_band_up(_old_band: int, _beat_s: float) -> void:
+	_set_mmi_transparency(1.0)
+
+
+## A band-up's frame 0 (V3-2): `pieces` (LandmarkLayer.release_band, each transform its global one)
+## go under Handoff where they are drawn, each to sink to its instance's y, or with no instance (out of
+## the refresh rect) to its own sunk depth.
+func adopt(pieces: Array[Node3D]) -> void:
+	var targets := {}
+	for model in _drawn:
+		for inst: Dictionary in _drawn[model]:
+			targets[inst.id] = inst.transform
+	var frame := global_of(_handoff).affine_inverse()
+	for piece in pieces:
+		var xf := piece.transform
+		_handoff.add_child(piece)
+		piece.transform = frame * xf
+		_veil(piece, 0.0)
+		var y1: float
+		if targets.has(str(piece.name)):
+			y1 = (targets[str(piece.name)] as Transform3D).origin.y
+		else:
+			var aabb := _aabb_of(piece)
+			var s := piece.transform.basis.get_scale().abs().y
+			y1 = top_target_tm(aabb.size.y * s) - aabb.end.y * s
+		_handed.append({"piece": piece, "y0": piece.position.y, "y1": y1})
+
+
+## The hand-off pieces drawn now (tests).
+func handed() -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	for h in _handed:
+		out.append(h.piece)
+	for f in _fading:
+		out.append(f.piece)
+	return out
+
+
+## The MultiMeshes' transparency now (tests).
+func mmi_transparency() -> float:
+	return _mmi_transparency
+
+
+## `node`'s global transform; outside the tree, its parents' transforms composed.
+static func global_of(node: Node3D) -> Transform3D:
+	if node.is_inside_tree():
+		return node.global_transform
+	var xf := node.transform
+	var p := node.get_parent()
+	while p is Node3D:
+		xf = (p as Node3D).transform * xf
+		p = p.get_parent()
+	return xf
 
 
 ## A piece's top depth for a drawn height `h_tm` (V3-5): -2 for pieces up to 1 tm, down to -3 from
@@ -357,6 +436,9 @@ func renormalize() -> void:
 		_from[id] += position.y
 	for piece in _handoff.get_children():
 		(piece as Node3D).position += position
+	for h in _handed:
+		h.y0 = float(h.y0) + position.y
+		h.y1 = float(h.y1) + position.y
 	position = Vector3.ZERO
 
 
@@ -383,8 +465,16 @@ func settle_growth() -> void:
 	pass
 
 
-## Each beat frame: every instance that was drawn before the growth eases its y to its target.
+## Each beat frame: the hand-off sinks, then fades out as the instances fade in; every instance that
+## was drawn before the growth eases its y to its target.
 func beat_frame(t: float, _k: float) -> void:
+	if not _handed.is_empty():
+		var sink := GrowthBeat.ease_in_out_cubic(clampf(t / HANDOFF_SINK_S, 0.0, 1.0))
+		var u := clampf((t - FADE.x) / (FADE.y - FADE.x), 0.0, 1.0)
+		for h in _handed:
+			(h.piece as Node3D).position.y = lerpf(float(h.y0), float(h.y1), sink)
+			_veil(h.piece, u)
+		_set_mmi_transparency(1.0 - u)
 	if _from.is_empty():
 		return
 	var u := GrowthBeat.ease_in_out_cubic(clampf(t / GrowthBeat.BEAT_S, 0.0, 1.0))
@@ -398,8 +488,21 @@ func beat_frame(t: float, _k: float) -> void:
 				mm.set_instance_transform(i, Transform3D(t0.basis, Vector3(t0.origin.x, lerpf(float(_from[inst.id]), t0.origin.y, u), t0.origin.z)))
 
 
-## The beat is over: every instance at its target and the set refreshed.
+## A cancelled beat (GrowthBeat.cancel, before its last frame): the hand-off stays where it is and
+## fades over MIN_FADE_S from the next tick; the instances show at once.
+func cancel_growth() -> void:
+	for h in _handed:
+		_fading.append({"piece": h.piece, "a0": _transparency_of(h.piece)})
+	_handed.clear()
+	_set_mmi_transparency(0.0)
+
+
+## The beat is over: the hand-off freed, every instance shown at its target and the set refreshed.
 func end_growth() -> void:
+	for h in _handed:
+		_free(h.piece)
+	_handed.clear()
+	_set_mmi_transparency(0.0)
 	if not _beat:
 		return
 	_beat = false
@@ -478,6 +581,7 @@ func _rewrite(model: String) -> void:
 		mm.use_colors = true
 		mm.mesh = _mesh_of(model)
 		mmi.multimesh = mm
+		mmi.transparency = _mmi_transparency
 		add_child(mmi)
 		_mmis[model] = mmi
 	var mmi: MultiMeshInstance3D = _mmis[model]
@@ -493,6 +597,47 @@ func _rewrite(model: String) -> void:
 	mmi.visible = not list.is_empty()
 
 
+func _set_mmi_transparency(a: float) -> void:
+	_mmi_transparency = a
+	for model in _mmis:
+		(_mmis[model] as GeometryInstance3D).transparency = a
+
+
+## A hand-off piece behind the veil by `amount` (0 drawn, 1 gone): every mesh's transparency.
+static func _veil(piece: Node3D, amount: float) -> void:
+	for n: Node in piece.find_children("*", "GeometryInstance3D", true, false):
+		var g := n as GeometryInstance3D
+		g.transparency = amount
+		g.material_overlay = null
+
+
+static func _transparency_of(piece: Node3D) -> float:
+	for n: Node in piece.find_children("*", "GeometryInstance3D", true, false):
+		return (n as GeometryInstance3D).transparency
+	return 0.0
+
+
+func _free(piece: Node3D) -> void:
+	if is_instance_valid(piece):
+		if piece.get_parent() != null:
+			piece.get_parent().remove_child(piece)
+		piece.queue_free()
+
+
+## The box of `piece`'s own meshes (no Growth_ nodes) in its root's frame.
+static func _aabb_of(piece: Node3D) -> AABB:
+	var box := AABB()
+	var first := true
+	for n: Node in piece.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if str(mi.name).begins_with(LandmarkLayer.GROWTH_PREFIX) or mi.mesh == null:
+			continue
+		var b := _under(piece, mi) * mi.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+	return box
+
+
 func _clear_drawn() -> void:
 	for model in _mmis:
 		_drawn[model] = []
@@ -505,8 +650,12 @@ func _clear_drawn() -> void:
 ## `model`'s baked mesh, baked now when it is not yet (null without a GLB).
 func _mesh_of(model: String) -> ArrayMesh:
 	var path := _path_of(model)
-	if path.is_empty():
-		return null
+	return null if path.is_empty() else baked(path)
+
+
+## The GLB at `path` baked (bake_mesh), once a run; null without a scene there. CradleView's dish
+## shares the cache.
+static func baked(path: String) -> ArrayMesh:
 	if not _baked.has(path):
 		var scene := LandmarkLayer._scene(path)
 		_baked[path] = bake_mesh(scene) if scene != null else null

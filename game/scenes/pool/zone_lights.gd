@@ -54,6 +54,10 @@ var _beat := false
 var _settled_t := -1.0
 var _beat_t := 0.0
 var _depth_k := 1.0
+## The leftovers' sink (tm) and fade (s) this growth: S2's lights fade without sinking; a band-up's
+## sink with the rest (set_retire_profile, s3-view 4.3).
+var _sink_tm := 0.0
+var _retire_s := GrowthBeat.RETIRE_S
 
 
 func _init() -> void:
@@ -172,12 +176,22 @@ func settle_growth() -> void:
 		_settled_t = _beat_t
 
 
-## Each beat frame: the fresh discs come in, the leftovers fade (no sink: they are light).
+## The leftovers' fade for the growth that begins (GrowthBeat.begin, V3-1), and their sink when it
+## is a band-up's (S2's profile keeps lights from sinking).
+func set_retire_profile(sink_tm: float, retire_s: float) -> void:
+	_sink_tm = 0.0 if sink_tm == GrowthBeat.SINK_TM and retire_s == GrowthBeat.RETIRE_S else sink_tm
+	_retire_s = retire_s
+
+
+## Each beat frame: the fresh discs come in, the leftovers fade (and sink at a band-up, from DEPTH_M
+## x k, which set_depth_k has just set).
 func beat_frame(t: float, _k: float) -> void:
 	_beat_t = t
-	var s := GrowthBeat.retire_share(t, _settled_t) if _beat else 1.0
+	var s := GrowthBeat.retire_share(t, _settled_t, _retire_s) if _beat else 1.0
 	for id in _retiring:
 		(_retiring[id] as GeometryInstance3D).transparency = s
+		if _sink_tm > 0.0:
+			(_retiring[id] as Node3D).position.y = DEPTH_M * _depth_k - _sink_tm * s
 	for disc: MeshInstance3D in _fresh.keys():
 		var p := GrowthBeat.fresh_share(t - float(_fresh[disc]))
 		disc.transparency = 1.0 - p

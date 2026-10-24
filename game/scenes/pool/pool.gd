@@ -63,6 +63,8 @@ signal giant_pass_started
 ## S4.3: the cell touched its kin at a calm moment (the sim's mate event). Whoever opens the editor
 ## calls finish_mate() when it closes; with no one connected the mate finishes at once.
 signal mate_requested
+## S3 (V3-16): every scene a band-up may draw is loaded and its meshes warmed.
+signal preload_finished
 
 const KIN_VIEW_SCENE := "res://game/scenes/pool/player_cell_view.tscn"
 const KIN_PULSE := 0.05      ## the kin's swell while the cell could mate with it
@@ -85,6 +87,9 @@ const GROWING_PULSE_HZ := 1.2
 ## when the scene exists. It reads get_parent().camera and get_parent().cell_view and writes
 ## nothing back; tests/test_ambience_contract.gd holds it to the rest of the contract.
 const AMBIENCE_SCENE := "res://game/scenes/pool/ambience/ambience.tscn"
+## S3: the cradle's ring and the home beacon (D-95, D-112), preloaded with the kit (V3-16).
+const CRADLE_RING_PATH := "res://assets/export/cradle_ring.glb"
+const HOME_BEACON_PATH := "res://assets/export/home_beacon.glb"
 
 ## Pause when the window loses focus (Bible 19). Off for tools that render without focus.
 @export var pause_on_focus_loss := true
@@ -125,6 +130,12 @@ var older_haze: OlderHaze
 var old_band: OldBandLayer
 ## S3G28's test switch: false builds no old band (never in a save).
 var old_band_enabled := true
+## S3's preload (V3-16): the paths still loading on worker threads, the scenes in, whether every one
+## is in and warmed, and every mesh the warm-ups drew (the start fade's and the late one's).
+var _preload_pending := PackedStringArray()
+var _preloaded := {}
+var _preload_done := false
+var _warmed: Array[Mesh] = []
 ## What this computer remembers about its player (main's), read for the giants' first pass; none
 ## outside main, and then every lineage gets its pass.
 var player_memory: UserSettings
@@ -303,6 +314,7 @@ func _build() -> void:
 		for key in sim.world.loaded_keys():
 			apply_world_event(WorldSpace.chunk_loaded_event(sim.world, sim.world.chunk(key)))
 		older_haze.refresh(sim.world, sim.motion.position)
+		_start_preload(s3_preload_paths())   # V3-16
 		if old_band_enabled:
 			old_band.setup(session.world, sim.species, sim.world.world_seed, session.world.kit)
 			old_band.attach(sim.world)
@@ -694,9 +706,15 @@ func _begin_growth(e: Dictionary) -> void:
 	older_haze.begin_growth(int(e.get("to", 2)))
 	world_space.apply_growth(center, factor)
 	if is_endless():
-		# S3 (s3-view 4.1): the old band's new targets, eased to over the beat (V3-7).
+		# S3 (s3-view 4.1): the old band's new targets, eased to over the beat (V3-7); at a band-up its
+		# instances start hidden and the landmarks of the band left behind are handed to it (V3-2).
+		var from := int(e.get("from", 1))
+		var to := int(e.get("to", sim_size()))
 		old_band.focus_am = _focus_am()
-		old_band.set_band(WorldConfig.band_of(int(e.get("to", sim_size()))), int(e.get("to", sim_size())))
+		old_band.set_band(WorldConfig.band_of(to), to)
+		if GrowthBeat.is_band_up(from, to):
+			old_band.begin_band_up(WorldConfig.band_of(from), GrowthBeat.BEAT_S)
+			old_band.adopt(landmarks.release_band(WorldConfig.band_of(from)))
 	_bake_fx()
 	creature_layer.apply_growth(center, factor)
 	ghosts.begin_growth(int(e.get("from", 1)), int(e.get("to", 2)))
@@ -751,7 +769,9 @@ func _fade_in() -> void:
 	_fade.modulate.a = 1.0
 	# A pool built outside the tree (the scene tests) sits at the origin: the camera's own transform.
 	var hidden := warm_up_point(camera.global_transform if camera.is_inside_tree() else camera.transform)
-	cell_view.warm_up(warm_up_meshes(), hidden)
+	var meshes := warm_up_meshes()
+	_warmed.append_array(meshes)
+	cell_view.warm_up(meshes, hidden)
 	var tween := _fade.create_tween()
 	tween.tween_property(_fade, "modulate:a", 0.0, FADE_IN_S)
 	tween.tween_callback(_fade.hide)
@@ -818,6 +838,7 @@ func _process(delta: float) -> void:
 	var fraction := 1.0 if paused else Engine.get_physics_interpolation_fraction()
 	# The growth beat's clock is the drawn moment's sim time (V-1): it stops while paused.
 	var draw_t := _draw_time(fraction)
+	_poll_preload()
 	growth_beat.advance(draw_t)
 	cell_view.set_growth_pose(growth_beat.swell(), growth_beat.cell_offset(), _stretch_now(draw_t))
 	cell_view.set_ripeness(GrowthHud.share_of(growth(), sim_size()) if growth() != null else 0.0)
@@ -879,6 +900,8 @@ func _add_growth_intent(intent: SimIntent) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and pause_on_focus_loss:
 		request_pause("focus")
+	elif what == NOTIFICATION_PREDELETE:
+		_drain_preload()
 
 
 ## Each tell's length in seconds by tell kind, {"lunge": 1.2, "puff": 1.2}, from the species data,
@@ -1022,6 +1045,111 @@ func _route(event: Dictionary) -> void:
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)
 	sim_event.emit(event)
+
+
+## S3 (V3-16, s3-view 13): the scenes a band-up may draw, sorted: every kit shell, landmark and rare
+## GLB of the bands this build reaches, the cradle ring and the home beacon. None in the pool.
+func s3_preload_paths() -> PackedStringArray:
+	var out := PackedStringArray()
+	if not is_endless() or session.world.kit == null:
+		return out
+	var kit := session.world.kit
+	var top := WorldConfig.band_of(max_size())
+	for id: String in kit.assets:
+		var a: Dictionary = kit.assets[id]
+		var path := str(a.get("glb", ""))
+		if str(a.get("kind", "")) in ["shell", "landmark", "rare"] and int(a.get("band", -1)) >= 0 and int(a.get("band", -1)) <= top \
+				and not path.is_empty() and ResourceLoader.exists(path):
+			out.append(path)
+	for path in [CRADLE_RING_PATH, HOME_BEACON_PATH]:
+		if ResourceLoader.exists(path):
+			out.append(path)
+	out.sort()
+	return out
+
+
+## Starts loading `paths` on a worker thread (load() elsewhere then hits the cache). One thread per
+## scene, no sub-threads: with sub-threads a GLB's loads outlive the pool and Godot 4.7 aborts at exit.
+func _start_preload(paths: PackedStringArray) -> void:
+	_preload_pending = PackedStringArray()
+	_preloaded.clear()
+	_preload_done = paths.is_empty()
+	for path in paths:
+		if ResourceLoader.load_threaded_request(path, "", false) == OK:
+			_preload_pending.append(path)
+		else:
+			_preloaded[path] = load(path)
+	if not _preload_done and _preload_pending.is_empty():
+		_finish_preload()
+
+
+## Each frame until the preload is done: the scenes that have landed are kept; when every one is in,
+## the late warm-up.
+func _poll_preload() -> void:
+	if _preload_done:
+		return
+	for path in _preload_pending.duplicate():
+		var status := ResourceLoader.load_threaded_get_status(path)
+		if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			continue
+		_preload_pending.remove_at(_preload_pending.find(path))
+		if status == ResourceLoader.THREAD_LOAD_LOADED:
+			_preloaded[path] = ResourceLoader.load_threaded_get(path)
+		else:
+			push_warning("The preload of %s failed; it loads when first drawn." % path)
+	if _preload_pending.is_empty():
+		_finish_preload()
+
+
+## Test hook: the preload finished now, every scene loaded on this thread.
+func preload_now() -> void:
+	if _preload_done:
+		return
+	for path in _preload_pending:
+		_preloaded[path] = ResourceLoader.load_threaded_get(path)
+	_preload_pending = PackedStringArray()
+	_finish_preload()
+
+
+func preload_done() -> bool:
+	return _preload_done
+
+
+## A pool freed mid-preload collects its threaded loads first, so no worker holds a request nobody
+## takes (the loader would keep it past the pool and abort at exit).
+func _drain_preload() -> void:
+	for path in _preload_pending:
+		ResourceLoader.load_threaded_get(path)
+	_preload_pending = PackedStringArray()
+
+
+## Every mesh the warm-ups drew so far (tests).
+func warmed_meshes() -> Array[Mesh]:
+	return _warmed
+
+
+func _finish_preload() -> void:
+	_preload_done = true
+	_warm_up_late()
+	preload_finished.emit()
+
+
+## The late warm-up: every mesh of the preloaded scenes drawn once out of sight, as the start fade
+## draws its own, so a band-up's first frame compiles nothing.
+func _warm_up_late() -> void:
+	var meshes: Array[Mesh] = []
+	for path in _preloaded:
+		var scene := _preloaded[path] as PackedScene
+		if scene == null:
+			continue
+		var root := scene.instantiate()
+		for n: Node in root.find_children("*", "MeshInstance3D", true, false):
+			var mesh := (n as MeshInstance3D).mesh
+			if mesh != null and not meshes.has(mesh):
+				meshes.append(mesh)
+		root.free()
+	_warmed.append_array(meshes)
+	cell_view.warm_up(meshes, warm_up_point(camera.global_transform if camera.is_inside_tree() else camera.transform))
 
 
 ## The ghosts and art's ambience (when it can) read the scale view each frame (s2-view 4.2, 6, 11.2).
