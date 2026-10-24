@@ -519,3 +519,14 @@ creatures that also live in the world. Built:
   still dressed with the world's random extra parts.
 - **Palette.** The parts list scrolls inside a palette panel that fits the screen. A visual palette with part
   pictures is the next step.
+
+## 2026-10-24 · Creature size follows physics (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 02:42 UTC): "a bigger creature is obviously going to be slower than a small creature. Same thing
+with strength", with a level-up system for stats to come on top. `CreatureStats` now scales two numbers by mass:
+
+- **Top speed.** The legs' Froude top speed still grows with leg length. Above `size.ref_kg` (120 kg) it is
+  multiplied by (1 - e^-x) / (1 - e^-1), x = (mass / ref_kg)^-0.6: the saturation term of the allometric speed law
+  (Hirt et al. 2017, big animals run out of time to accelerate). So 300 kg runs at 0.69 of its legs' speed and
+  1.2 t at 0.35. The world sim scales the throttle by the same factor, so play matches the editor's number.
+- **Strength.** Bite power is multiplied by (mass / 60 kg)^(2/3), muscle cross-section, kept within 0.25x..6x.
+- **Not yet.** The incremental level-up system is still to be designed and built.
