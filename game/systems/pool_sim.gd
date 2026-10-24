@@ -120,6 +120,8 @@ var grace_until := -1
 var death_streak := 0
 ## The endless world's growth meter (S2); null in the pool and with growth switched off (D-46).
 var growth: Growth = null
+## S4.3: the cell's kin, which swims in when the cell is ready to mate (with growth only).
+var kin: Kin = null
 ## The remnants a growth left (S2, D-57); null wherever growth is.
 var remnants: RemnantField = null
 ## This tick's intent for Growth (D-58): a Grow press, and the trigger setting ("" for no change).
@@ -288,6 +290,7 @@ func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
 		return
 	growth = Growth.create(cfg, str(cfg.trigger))
 	remnants = RemnantField.create(cfg)
+	kin = Kin.new()
 	world.max_size = max_in_build
 	world.counters["remnant_overflow"] = 0
 
@@ -384,6 +387,8 @@ func step(intent: SimIntent) -> void:
 	if growth != null:
 		_take_field_events()
 		growth.observe(self, _events.slice(mark))
+	if kin != null:
+		kin.tick(self)
 	tick += 1
 
 
@@ -391,6 +396,7 @@ func step(intent: SimIntent) -> void:
 ##   ate {kind, food_id, zone, supplied, absorbed, points, position}
 ##   refused {kind, food_id, reason, touching, contact_s}
 ##   earned {points, reason}; starving_started; starving_ended
+##   kin_arrived {position, heading}; kin_left {reason}; mate {position} (S4.3, with growth: Kin)
 ##   respawned {grace_s, energy, relocated (creature ids sent home), streak}
 ##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
 ##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)

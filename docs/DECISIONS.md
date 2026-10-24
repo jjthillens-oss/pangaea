@@ -820,3 +820,20 @@ the levels:
 - **Gate.** `tests/test_pacing_gates.gd` (soak): the grazer and the hunter can afford the cheapest
   part by 3 minutes, and earn a part of the mean editor cost every 1.5 to 4.5 minutes.
 - **Revisit.** After the owner plays S4's mating: the costs and the find points are data.
+
+## 2026-10-24 · S4.3 kin and mating: a cell like yours swims in when you can mate (PROPOSED)
+
+- **What.** `Kin` (game/systems/world/kin.gd), with growth on: once the cell has 70 % of its energy
+  (Lineage.REPRODUCE_ENERGY_SHARE) and the points for the cheapest editor part for 3 s, a cell drawn
+  from its own genome swims in from 12 radii away and keeps 2.6 radii beside it, pulsing softly.
+  Swimming into it at a calm moment (Growth's blockers: not hunted, no fight in the quiet ticks; a
+  recent meal is fine) reports `mate` once; the pool scene emits `mate_requested` and, once the editor
+  (S4.4) closes, `finish_mate()` sends the kin away. Not ready for 20 s, 40 radii away, a death, a
+  respawn or a growth also send it away. The HUD says "A cell like you is here. Swim into it to mate."
+- **Bible.** Section 5's "reproduction opens a bounded editor at a safe opportunity" and section 24's
+  one reproduction interaction: the touch is the interaction and the calm moment the safe opportunity.
+- **No change to the sea.** The kin is no creature: no brain sees it, it never fights, eats or
+  blocks, and it takes nothing from any random stream, so a run with it hashes as one without
+  (`test_kin`). It is not saved. Pool mode and S1's sea (growth off) have none.
+- **Defaults for the owner** (s4-plan's open questions): the kin comes on a call rather than
+  always swimming in the sea; it is harmless.
