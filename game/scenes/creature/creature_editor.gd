@@ -117,7 +117,7 @@ var _stage_tuning := {}
 var camera: Camera3D
 var handle_root: Node3D
 var rig_root: Node3D
-var floor_disc: MeshInstance3D
+var floor_disc: Node3D          # the floor pad (assets/export/creature_editor_room.glb), unit radius, scaled to the body
 var hud: CreatureEditorHud
 
 
