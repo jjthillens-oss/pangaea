@@ -17,6 +17,13 @@
 #             the window's close button at the death notice quits with no dialog
 #   after_death:  a new process continues that slot: the points the death left, the cell at its
 #             checkpoint and sheltered, the death last in its history
+#   creature_build: the creature stage (--creature) on its own store under user://smoke/: the editor
+#             grows a pair of neck limbs, adds a maw, eyes and feet, picks a swatch and Done enters
+#             the world (the body, colour, points and title); the player eats the nearest fruit, bites
+#             a rival, walks back to the nest and evolves (the editor again, generation 2); Escape in
+#             the world (the editor), Escape in the editor (the title), then Quit
+#   creature_reload: a new process opens the stage from that store and finds the same body SHA-256,
+#             points and generation
 #   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
 #             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
 #             run; its own settings file and slots under user://smoke/menus
@@ -46,6 +53,8 @@ bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --creature-store=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --creature-store=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

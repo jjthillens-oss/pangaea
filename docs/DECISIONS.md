@@ -447,3 +447,39 @@ uninterrupted run tick for tick. That cannot hold under D6 and D16 above: Contin
 adaptation points and checkpoint, and repopulates plankton, creatures and shelter from the world seed. Asked whether to
 keep that contract or change the save schema to restore the exact moment, Joshua chose **keep** (2026-10-24 00:07 UTC).
 The seeded-restart contract stays; exact restores are a separate, later decision if a stage needs them.
+
+## 2026-10-23 · Creature stage preview (PROPOSED)
+
+The first playable slice of the creature stage (`docs/milestones/creature-stage-plan.md`), built under the owner's
+standing rules; the generated-skin direction of 2026-10-23 is CONFIRMED, everything below is PROPOSED until the owner
+says otherwise. It opens from the title's "Creature stage" button (marked Preview, below the main menu) or with
+`--creature` after `--` (`--creature-store=PATH` names its save file in place of the slot's; the smoke uses it), and
+the stage's own Escape leaves it for the title.
+
+- **Saves (plan section 3).** The lineage save schema stays v2. The stage keeps its own file,
+  `user://creature_stage/slot_<n>.json` (`CreatureStore`, schema 1: `version`, `name`, `body` as the codec's
+  dictionary, `points`, `world_seed`, `generation`, `history`), with n the settings' slot number (1 when the slot in
+  use is a `--slot` file that is none of the numbered ones). `--slot=PATH` does not apply to the stage: it names the
+  lineage file only. Writes are atomic (`.tmp` then rename); a load validates the version, the keys and their types,
+  and the body against the body rules and part rules, refuses with reasons and leaves the file as it is, and the
+  stage then starts fresh with the reasons in `load_problems`; the save before is kept as `.bak` and read when the
+  file is bad. The stage saves on Done, Back, Evolve, a death and a quit from the window (with the points the world's
+  sim holds). IMPLEMENTED (`CreatureStore`, `CreatureStage`); the editor and world scenes are merged, and the
+  "Creature stage scenes missing" notice stays as a guard for a build without them.
+- **The editor (plan section 4).** PROPOSED. A Spore-style room over the ported editor core: handles to drag, a
+  tool per part type in the art records (read from `game/data/creature/part_rules.json`, compiled from the records
+  by `tools/make_part_rules.py` since the records folder is not exported), a limb tool, undo and redo, mirror,
+  insert and delete, eight skin swatches carried in the body's `skin_color` key, a test drive on the gait planner,
+  and a method twin for every input path so the smoke drives it. Escape is progressive (tool, then an unsaved-edits
+  prompt, then the title); Done on a legless body asks once.
+- **The world (plan section 5).** `CreatureWorldSim` runs at 60 ticks a second from the world seed like `PoolSim`
+  (whole-tick durations, sorts tied by id, every draw from a seeded stream, plain-data snapshots). A flat 160 m test
+  field with a nest at the centre, fruit bushes that regrow and meat from kills, six rivals built from the starter
+  bodies whose brains get percepts only (wander, graze, flee a bigger creature, hunt a smaller one when hungry).
+  Anatomy sets play (`CreatureStats`): leg length gives speed and cadence through the gait planner, mouth parts bite
+  power, eye parts sight, body volume health; a body with no mouth eats fruit by touch at half the points. Death sends
+  the creature back to the nest at full health with a 20% points loss. Camera-relative movement, bite on F / pad X,
+  evolve at the nest on E / pad Y. The numbers live in `game/data/creature/creature_stage.json` (PROPOSED).
+- **Open owner decision: save schema v3.** Folding the creature body, points and generation into the lineage save
+  (one file per slot, with a migration from v2) is save schema v3 and needs the owner's approval. Until then the
+  stage's file stays separate and the lab's `user://creatures/*.json` files remain importable as the same codec text.
