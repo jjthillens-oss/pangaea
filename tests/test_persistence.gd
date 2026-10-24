@@ -75,7 +75,7 @@ func test_renaming_a_save_file_keeps_stable_identity_and_history() -> void:
 	# Bible §18 requires IDs to survive a renamed file. Exercise the actual file move, load and
 	# subsequent write rather than merely comparing two in-memory SaveGame dictionaries.
 	var save := _new_save()
-	save.lineage_history.append({"generation": 2, "genome_id": save.genome.genome_id, "event": "met_rival"})
+	save.lineage_history.append({"generation": 1, "genome_id": save.genome.genome_id, "event": "died"})
 	check_eq(service.save_to(slot_path, save), OK, "original save writes")
 	var moved_path := save_dir + "/renamed.json"
 	check_eq(DirAccess.rename_absolute(slot_path, moved_path), OK, "save file renames")
@@ -89,7 +89,7 @@ func test_renaming_a_save_file_keeps_stable_identity_and_history() -> void:
 	check_eq(restored.genome.genome_id, save.genome.genome_id, "genome id is independent of filename")
 	check_eq(restored.genome.lineage_id, save.lineage_id, "genome still belongs to lineage")
 	check_eq(restored.lineage_history.size(), 2, "history entries survive filename change")
-	check_eq(restored.lineage_history[1]["event"], "met_rival", "later history stays intact")
+	check_eq(restored.lineage_history[1]["event"], "died", "later history stays intact")
 	check_eq(service.save_to(moved_path, restored), OK, "renamed slot can be saved again")
 	var written := service.load_from(moved_path)
 	check(written.ok, "renamed and rewritten slot loads")
