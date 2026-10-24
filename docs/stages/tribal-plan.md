@@ -23,7 +23,7 @@ The player can directly control their creature to explore, feed, observe and neg
 
 ## Neighbor and conflict
 
-The rival tribe has needs, a territory and a record of encounters. Approach can lead to exchange, assistance, warning, retreat or conflict, with exact offers and consequences shown before commitment. The same interface must not label every dispute as permanent evil. Repeated actions may shape culture, but one collision cannot lock the entire future. Combat uses readable intent and disengagement rules; peaceful play remains a supported way to secure food or access. A shortage can be solved by adjusting jobs, choosing a new site or making a bounded exchange, rather than by compulsory raiding.
+The rival tribe has needs, a territory and a record of encounters. A **befriend** path builds trust through repeated help, shared access or fair exchange; a **raid** path takes a contested resource through planned group action, with injury, retaliation and replenishment costs made clear before commitment. Approach can also lead to warning or retreat. The same interface must not label every dispute as permanent evil. Repeated actions may shape culture, but one collision cannot lock the entire future. Combat uses readable intent and disengagement rules; peaceful play remains a supported way to secure food or access. A shortage can be solved by adjusting jobs, choosing a new site or making a bounded exchange, rather than by compulsory raiding.
 
 ## Continuity and exit
 
