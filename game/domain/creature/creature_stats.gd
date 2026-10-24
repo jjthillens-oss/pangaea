@@ -20,6 +20,10 @@ const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 ## The part_rules "role" (from each cpart_ record) that makes a part a mouth or an eye.
 const MOUTH_ROLE := "mouth"
 const EYE_ROLE := "eye"
+## Weapon-role parts (claws, horns, spikes, tusks) add to the attack (PROPOSED): tuning weapon.per_part per part at
+## scale 1, scale^weapon.scale_power, the largest weapon.cap of them counting. A creature attacks with its mouth, so
+## a mouthless body gains nothing from them.
+const WEAPON_ROLE := "weapon"
 ## Display organs (Bible section 12, communication organs: signal modality and range): the detail-role parts a
 ## creature shows off with when it sings and dances to befriend another (PROPOSED).
 const DISPLAY_ROLE := "detail"
@@ -31,7 +35,7 @@ const TOUCH_REACH_M := 0.15
 
 ## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
 ## strength_factor, charm, has_mouth, has_legs,
-## leg_length_m, mouths, eyes, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
+## leg_length_m, mouths, eyes, weapons, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
 ## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
 ## drives.
 ## `part_rules` is consulted for which types exist and their role; a part of an unknown type counts for nothing.
@@ -52,6 +56,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 				var s := float(p["scale"]) / 1000.0
 				bite_power += float(bite["per_mouth"]) * pow(s, float(bite["scale_power"]))
 				mouth_scale = maxf(mouth_scale, s)
+		bite_power += weapon_power(body, part_rules, tuning)
 		bite_power *= strength_k
 	var head_radius: float = body.radius_m(0)
 	var reach := head_radius + (REACH_PER_MOUTH_SCALE_M * mouth_scale if mouths > 0 else TOUCH_REACH_M)
@@ -91,6 +96,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"leg_length_m": leg_length,
 		"mouths": mouths,
 		"eyes": eyes,
+		"weapons": count_parts(body, types_with_role(part_rules, WEAPON_ROLE), part_rules),
 		"body_length_m": box.size.z,
 		"body_radius_m": body.max_radius_m(),
 	}
@@ -125,6 +131,27 @@ static func mass_kg(body: RefCounted, kg_per_m3: float) -> float:
 		var rb: float = field.rb[k]
 		volume += PI / 3.0 * h * (ra * ra + ra * rb + rb * rb)
 	return volume * kg_per_m3
+
+
+## The attack the weapon-role parts add before strength (see WEAPON_ROLE). Without a "weapon" tuning block, 0.
+static func weapon_power(body: RefCounted, part_rules: Dictionary, tuning: Dictionary) -> float:
+	var w: Dictionary = tuning.get("weapon", {})
+	if w.is_empty():
+		return 0.0
+	var types := types_with_role(part_rules, WEAPON_ROLE)
+	var gains: Array[float] = []
+	for p in body.parts:
+		if types.has(p["type"]):
+			var g := float(w["per_part"]) * pow(float(p["scale"]) / 1000.0, float(w["scale_power"]))
+			gains.append(g)
+			if p["mirror"]:
+				gains.append(g)
+	gains.sort()
+	gains.reverse()
+	var total := 0.0
+	for i in mini(gains.size(), int(w["cap"])):
+		total += gains[i]
+	return total
 
 
 ## The part types whose rules carry `role`, sorted.
