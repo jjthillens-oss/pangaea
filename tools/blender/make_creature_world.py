@@ -8,7 +8,7 @@ bush is about 0.5 m across and the meat chunk 0.3 m; fruit and meat draw as Mult
 per instance, so their materials take an instance tint (vertex_color_use_as_albedo in the external .tres).
 
 - creature_field_ground: a 172 x 172 m grid with gentle relief and a berm. Drawn with the external
-  M_CreatureField.tres (assets/export/shaders/creature_field.gdshader): two seamless 2 m tiles (blue-green turf
+  M_CreatureField.tres (assets/export/shaders/creature_field.gdshader): two seamless 2 m tiles (sage turf
   and bare earth) blended by a 37 m patch mask and a bare clearing round the nest.
 - creature_nest_ring: a mound of packed earth and straw with twigs across it, revolved round the origin.
 - creature_fruit_bush: two root meshes, Bush (the leafy clump) and Fruit (ten amber fruit on it), so the stage can
@@ -51,7 +51,7 @@ WALL_M = 80.0
 RELIEF_M = 0.12
 BERM_M = 2.5
 TILE_DIR = os.path.join(bc.ROOT, "assets", "export", "creature_field")
-TILE_M = 2.0
+TILE_M = 2.5
 PATCH_M = 37.0
 NEST_R = 6.0
 FRUIT_COUNT = 9
@@ -91,8 +91,10 @@ def _lerp_rgb(a, b, t):
 
 
 def turf_tile(rng):
-    """Blue-green turf: soft tuft crowns of mixed sizes (wrapped Voronoi domes, each its own shade) over a
-    mottled ground, with fine blade streaks that gather on the crowns. Lighter on the crowns, darker between."""
+    """Sage turf: soft tuft crowns of mixed sizes (wrapped Voronoi domes, each its own shade) over a mottled
+    ground, with fine blade streaks that gather on the crowns. Lighter on the crowns, darker between. The colour
+    is a muted sage (CIELAB hue 150 to 155, chroma about 22), the dry variation and the sheen come from the field
+    shader, so the field reads as meadow rather than water."""
     cells = 110
     d1, _, idx = mm._voronoi(rng, cells)
     shade = rng.uniform(0.0, 1.0, cells)[idx]                  # per-tuft, seamless because the cells wrap
@@ -100,21 +102,23 @@ def turf_tile(rng):
     crown = np.clip(1.0 - (d1 / radius) ** 2, 0.0, 1.0)
     crown = crown * crown * (3.0 - 2.0 * crown)
     ground = mm._norm(mm._periodic_noise(rng, [3, 6, 12], [1.0, 0.6, 0.35]))
-    blades = mm._norm(mm._periodic_noise(rng, [36, 64, 90], [0.5, 0.35, 0.25]))
+    blades = mm._norm(mm._periodic_noise(rng, [36, 64, 90, 128], [0.5, 0.35, 0.25, 0.2]))
     h = 0.5 * crown + 0.3 * ground + 0.2 * blades * (0.5 + 0.5 * crown)
-    light = np.clip(0.4 * crown * (0.7 + 0.3 * shade) + 0.33 * ground + 0.27 * blades, 0.0, 1.0)
-    rgb = _lerp_rgb(_srgb("#2A5A4F"), _srgb("#5A9B80"), light)
-    rgb = rgb * (1.0 + 0.18 * (shade - 0.5) * crown)[..., None]
+    light = np.clip(0.38 * crown * (0.7 + 0.3 * shade) + 0.3 * ground + 0.32 * blades, 0.0, 1.0)
+    rgb = _lerp_rgb(_srgb("#355C45"), _srgb("#6F9A7A"), light)
+    rgb = rgb * (1.0 + 0.16 * (shade - 0.5) * crown)[..., None]
     return h, rgb, 1.1
 
 
 def earth_tile(rng):
-    """Bare earth: rounded pebbles of mixed sizes (wrapped Voronoi domes) half sunk in dust and grit."""
-    cells = 160
+    """Bare earth: scattered rounded pebbles of mixed sizes (wrapped Voronoi domes in about half the cells) half
+    sunk in dust and grit, so the ground reads as trodden earth rather than a pebble bed up close."""
+    cells = 90
     d1, _, idx = mm._voronoi(rng, cells)
+    present = (rng.uniform(0.0, 1.0, cells) < 0.55).astype(np.float64)[idx]
     sizes = rng.uniform(0.3, 1.0, cells)[idx]
-    dome = np.sqrt(np.clip(1.0 - (d1 / (0.034 * sizes)) ** 2, 0.0, 1.0))
-    grit = mm._norm(mm._periodic_noise(rng, [48, 80], [0.6, 0.4]))
+    dome = np.sqrt(np.clip(1.0 - (d1 / (0.03 * sizes)) ** 2, 0.0, 1.0)) * present
+    grit = mm._norm(mm._periodic_noise(rng, [48, 80, 120], [0.6, 0.4, 0.3]))
     dust = mm._norm(mm._periodic_noise(rng, [3, 6, 12, 24], [1.0, 0.55, 0.3, 0.15]))
     h = 0.5 * dome * sizes + 0.3 * dust + 0.2 * grit
     light = np.clip(0.55 * dust + 0.1 * dome + 0.35 * grit, 0.0, 1.0)
@@ -157,7 +161,7 @@ def _relief(x, y):
 
 def build_field_ground():
     """A square of ground 172 m across: gentle relief inside the walls at +-80 m and a berm past them, so the
-    edge reads as a bank rather than a cliff. UV = metres / 2, one turf tile per 2 m. Drawn with the external
+    edge reads as a bank rather than a cliff. UV = metres / TILE_M, one turf tile per 2.5 m. Drawn with the external
     M_CreatureField.tres (mapped in its .glb.import), which blends the turf and earth tiles in world space."""
     n = int(round(2 * FIELD_HALF / FIELD_STEP)) + 1
     verts, faces = [], []
@@ -213,21 +217,21 @@ def _nest_rise(a):
 
 def _nest_crown(r):
     """The mound's height at radius r before the rise, a parabola over the crown at 5.8 m."""
-    return max(0.0, 0.5 - 1.6 * (r - 5.8) ** 2) if 5.2 < r < 6.55 else 0.0
+    return max(0.0, 0.44 - 1.6 * (r - 5.85) ** 2) if 5.35 < r < 6.45 else 0.0
 
 
 def build_nest_ring():
-    """A mound of packed earth and straw round the nest, outer radius about 6.5 m, inner 5.2 m, up to half a
-    metre high and heaped unevenly, with twigs and a few stones lying across it. The inside stays clear and
+    """A mound of packed earth and straw round the nest, outer radius about 6.45 m, inner 5.35 m, up to 0.44 m
+    high and heaped unevenly, with twigs and a few stones lying across it. The inside stays clear and
     flat; the creature stands there."""
-    profile = [(0.0, 5.2), (0.12, 5.35), (0.28, 5.5), (0.42, 5.65), (0.5, 5.8), (0.46, 5.95), (0.34, 6.1), (0.18, 6.25), (0.06, 6.4), (0.0, 6.55)]
+    profile = [(0.0, 5.35), (0.1, 5.47), (0.24, 5.6), (0.36, 5.72), (0.44, 5.85), (0.4, 5.98), (0.3, 6.1), (0.16, 6.22), (0.05, 6.33), (0.0, 6.45)]
     rv, rf, _ = bc.revolve(profile, 112)
     verts = []
     for x, y, z in cp._up(rv):
         r = math.hypot(x, y)
         a = math.atan2(y, x)
         z *= _nest_rise(a)
-        k = min(1.0, (r - 5.2) / 0.3, (6.55 - r) / 0.3) if r > 5.2 else 0.0          # the feet stay on the ground
+        k = min(1.0, (r - 5.35) / 0.3, (6.45 - r) / 0.3) if r > 5.35 else 0.0        # the feet stay on the ground
         bump = noise.noise(Vector((x / 0.9, y / 0.9, 1.5))) * 0.07 * k + noise.noise(Vector((a * 4.0, z * 3.0, 4.0))) * 0.03 * k
         verts.append((x + x / r * bump * 0.5, y + y / r * bump * 0.5, max(0.0, z + bump)))
     fcs = list(rf)
@@ -235,7 +239,7 @@ def build_nest_ring():
     rng = random.Random(7)
     for _ in range(30):
         a = rng.uniform(0.0, math.tau)
-        r = rng.uniform(5.45, 6.25)
+        r = rng.uniform(5.55, 6.2)
         c = Vector((r * math.cos(a), r * math.sin(a), 0.0))
         d = Vector((-math.sin(a), math.cos(a), 0.0)).normalized()
         d = (d * math.cos(rng.uniform(-0.6, 0.6)) + Vector((math.cos(a), math.sin(a), 0.0)) * math.sin(rng.uniform(-0.6, 0.6))).normalized()
@@ -243,6 +247,8 @@ def build_nest_ring():
         path = []
         for t in (-0.5, -0.25, 0.0, 0.25, 0.5):
             p = c + d * (length * t)
+            if p.length < 5.45:                                                    # never pokes into the clear floor
+                p = p.normalized() * 5.45
             h = _nest_crown(p.length) * _nest_rise(math.atan2(p.y, p.x))          # lies on the mound's crown
             path.append(Vector((p.x, p.y, max(0.02, h) + 0.02 + 0.02 * math.sin(t * 5.0))))
         v, f, _ = cp._tube(path, lambda i, ang, s=rng.uniform(0.02, 0.04): s * (1.0 + 0.15 * math.cos(3 * ang)) if i < 4 else s * 0.7, 6)
@@ -251,9 +257,9 @@ def build_nest_ring():
     unit, ufaces = bc.icosphere(2)
     for _ in range(14):
         a = rng.uniform(0.0, math.tau)
-        r = rng.uniform(5.5, 6.2)
-        c = Vector((r * math.cos(a), r * math.sin(a), 0.0))
         size = rng.uniform(0.1, 0.22)
+        r = max(rng.uniform(5.6, 6.15), 5.4 + size * 1.3)                          # stays off the clear floor
+        c = Vector((r * math.cos(a), r * math.sin(a), 0.0))
         h = _nest_crown(r) * _nest_rise(a)
         stretch = Vector((rng.uniform(0.8, 1.3), rng.uniform(0.8, 1.3), 0.6))
         bc.append(verts, fcs, [tuple(c + Vector((0.0, 0.0, h + size * 0.25)) + Vector(co).normalized() * size * stretch) for co in unit], ufaces)
@@ -277,10 +283,10 @@ def build_nest_ring():
                                                  "M_NestStone": sf.tint(_lin("#8A8178"))}, size=1024, tolerance=NEST_TOL)
     pts = bc.world_vertices()
     mp._check(min(p.z for p in pts) >= -NEST_TOL, "nest: sits on the ground (within its decimation tolerance)")
-    mp._check(min(math.hypot(p.x, p.y) for p in pts) >= 5.1, "nest: the inside stays clear")
+    mp._check(min(math.hypot(p.x, p.y) for p in pts) >= 5.3, "nest: the inside stays clear")
     return {"purpose": "Creature stage nest (PROPOSED): a ring mound of packed earth and straw, heaped unevenly, with twigs and stones across it, round a clear flat floor where the creature stands.",
             "category": "environment", "kind": "nest", "pivot": "the nest's centre on the ground (Godot y = 0)",
-            "ring_m": {"inner": 5.2, "crown": 5.8, "outer": 6.55, "height": 0.5}, "revision": 1, **baked}
+            "ring_m": {"inner": 5.35, "crown": 5.85, "outer": 6.45, "height": 0.44}, "revision": 1, **baked}
 
 
 # --- The fruit bush ----------------------------------------------------------------------------------------
@@ -394,7 +400,7 @@ def build_meat_chunk():
 FIELD_TRES = """[gd_resource type="ShaderMaterial" load_steps=7 format=3]
 
 ; The creature stage field's material (assets/records/creature_field_ground.json): assets/export/shaders/creature_field.gdshader
-; blends the seamless turf and earth tiles in world space (one tile per 2 m) by a 37 m patch mask, with a bare
+; blends the seamless turf and earth tiles in world space (one tile per 2.5 m, at two scales against repetition) by a 37 m patch mask, with a bare
 ; clearing round the nest. creature_field_ground.glb.import points the imported M_CreatureField here. Written by
 ; tools/blender/make_creature_world.py --import.
 
@@ -416,6 +422,8 @@ shader_parameter/patch_mask = ExtResource("6_patch")
 shader_parameter/tile_m = {tile}
 shader_parameter/patch_m = {patch}
 shader_parameter/clearing_r = {clearing}
+shader_parameter/patch_low = 0.56
+shader_parameter/patch_high = 0.7
 """
 
 TINT_TRES = """[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
