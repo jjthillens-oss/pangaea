@@ -952,64 +952,69 @@ func _check_13(sim: PoolSim, where: String) -> void:
 	_far(far, sim.actor.position, "cell actor")
 	if sim.creatures != null:
 		for c in sim.creatures.creatures:
-			_far(far, c.motion.position, "%s position" % c.id)
-			_far(far, c.motion.prev_position, "%s prev_position" % c.id)
-			_far(far, c.actor.position, "%s actor" % c.id)
+			_far(far, c.motion.position, "%s position", c.id)
+			_far(far, c.motion.prev_position, "%s prev_position", c.id)
+			_far(far, c.actor.position, "%s actor", c.id)
 			var b := c.brain
 			if b == null:
 				continue
 			for id in b.seen:
-				_far(far, b.seen[id].position, "%s seen %s" % [c.id, id])
+				_far(far, b.seen[id].position, "%s seen %s", [c.id, id])
 			if not b.lane.is_empty():
-				_far(far, b.lane.origin, "%s lane origin" % c.id)
-			_far(far, b.goal, "%s goal" % c.id)
+				_far(far, b.lane.origin, "%s lane origin", c.id)
+			_far(far, b.goal, "%s goal", c.id)
 			if not b.progress.is_empty():
-				_far(far, b.progress.position, "%s progress" % c.id)
-			_far(far, b.flee_from, "%s flee_from" % c.id)
-			_far(far, b.home, "%s home" % c.id)
-			_far(far, b.territory_center, "%s territory_center" % c.id)
+				_far(far, b.progress.position, "%s progress", c.id)
+			_far(far, b.flee_from, "%s flee_from", c.id)
+			_far(far, b.home, "%s home", c.id)
+			_far(far, b.territory_center, "%s territory_center", c.id)
 	for item in sim.plankton.items:
-		_far(far, item.position, "plankton %s" % item.id)
-		_far(far, item.anchor, "plankton %s anchor" % item.id)
+		_far(far, item.position, "plankton %s", item.id)
+		_far(far, item.anchor, "plankton %s anchor", item.id)
 	for item in sim.carrion.items:
-		_far(far, item.position, "carrion %s" % item.id)
+		_far(far, item.position, "carrion %s", item.id)
 	for z in sim.region.zones:
-		_far(far, z.center, "zone %s" % z.id)
+		_far(far, z.center, "zone %s", z.id)
 	if sim.creatures != null:
 		for c in sim.creatures.creatures:   # S2: a two-post brain's posts and union leash (D-83)
 			var b := c.brain
 			if b == null or b.posts.is_empty():
 				continue
 			for i in b.posts.size():
-				_far(far, b.posts[i].home, "%s post %d home" % [c.id, i])
+				_far(far, b.posts[i].home, "%s post %d home", [c.id, i])
 				if not b.posts[i].territory.is_empty():
-					_far(far, b.posts[i].territory.center, "%s post %d territory" % [c.id, i])
-			_far(far, b.leash_center, "%s leash_center" % c.id)
+					_far(far, b.posts[i].territory.center, "%s post %d territory", [c.id, i])
+			_far(far, b.leash_center, "%s leash_center", c.id)
 	if sim.remnants != null:
 		for r in sim.remnants.items:
-			_far(far, r.motion.position, "remnant %s position" % r.id)
-			_far(far, r.motion.prev_position, "remnant %s prev_position" % r.id)
-			_far(far, r.actor.position, "remnant %s actor" % r.id)
+			_far(far, r.motion.position, "remnant %s position", r.id)
+			_far(far, r.motion.prev_position, "remnant %s prev_position", r.id)
+			_far(far, r.actor.position, "remnant %s actor", r.id)
 	for id in sim.world.sites:
 		var s: Dictionary = sim.world.sites[id]
-		_far(far, s.home, "site %s home" % id)
+		_far(far, s.home, "site %s home", id)
 		if not s.territory.is_empty():
-			_far(far, s.territory.center, "site %s territory" % id)
-		_far(far, s.reach.center, "site %s reach" % id)
+			_far(far, s.territory.center, "site %s territory", id)
+		_far(far, s.reach.center, "site %s reach", id)
 		if s.has("posts"):
 			for i in s.posts.size():
-				_far(far, s.posts[i].home, "site %s post %d home" % [id, i])
+				_far(far, s.posts[i].home, "site %s post %d home", [id, i])
 	if sim.arena is ChunkArena:
+		var top := Vector2.ZERO   # the farthest collider, then one _far for them all
 		for p in (sim.arena as ChunkArena)._centers:
-			_far(far, p, "a collider")
+			if p.is_finite() and p.length_squared() > top.length_squared():
+				top = p
+		_far(far, top, "a collider")
 	if float(far.length) >= LOCAL_BOUND:
 		_fail(13, "%s: %s at %.1f tm" % [where, far.what, far.length])
 
 
-func _far(far: Dictionary, p: Vector2, what: String) -> void:
+## `what` names the point, formatted with `args` (when given) only for a new farthest: the check runs
+## on every point the sim stores, every tick, so it builds no label it does not keep.
+func _far(far: Dictionary, p: Vector2, what: String, args: Variant = null) -> void:
 	if p.is_finite() and p.length() > float(far.length):
 		far.length = p.length()
-		far.what = what
+		far.what = what if args == null else what % args
 
 
 # --- 16 ---

@@ -1374,6 +1374,14 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   size 4 the tethered cell sat in a veil's path for 40 ticks and slid it 0.635 tm off (bound
   0.625): a body touching a hazard (`_in_its_way`) now holds invariant 7's hazard form off, and
   parting is a new entry. Unit cases catch each taken out.
+- **A third soak job, `soak-c` (PR #164)**: on `b97dac7` soak-b's one Godot run took 55 of its 60
+  minutes, 27 of them S3G13 with the pairs barely met; on `87040a9` it ran out of the hour inside
+  S3G13. Met for real, S3G13's 80 runs of 5 minutes take about 23 s each in the 4-CPU container. B-14's
+  remedy for an hour-long job, a nightly workflow, would take S3G13 off the pull request (and the
+  nightly workflows wait on Joshua), so `test_threat_fuzz` gets its own parallel job, `soak-c`, and
+  soak-b skips it; `test_m1_goldens` checks the three jobs take every file once. Invariant 13's
+  check, 21% of a run, now formats a point's label only for a new farthest point and scans the
+  colliders in one loop (the same farthest point and label); a run went from 28 to 23 s.
 
 ## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
 

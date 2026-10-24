@@ -307,6 +307,15 @@ func test_a_remnant_or_a_post_at_300_tm_fails_13() -> void:
 		f.after(sim, [] as Array[Dictionary], sim.tick, what, f.before(sim))
 		check(f.bad.has(13) and str(f.bad[13].first).contains(what), "%s at 300 tm fails 13: %s" % [what, f.report()])
 		_restore_13(sim, rem, site, post_brain, keep)
+	var arena := sim.arena as ChunkArena   # the colliders, scanned in one loop
+	check(arena != null and not arena._centers.is_empty(), "loaded colliders")
+	if arena != null and not arena._centers.is_empty():
+		var at := arena._centers[arena._centers.size() / 2]
+		arena._centers[arena._centers.size() / 2] = far
+		var fc := FuzzInvariants.new(sim.species, layout)
+		fc.after(sim, [] as Array[Dictionary], sim.tick, "a collider", fc.before(sim))
+		check(fc.bad.has(13) and str(fc.bad[13].first).contains("a collider at 300.0 tm"), "a collider at 300 tm fails 13: %s" % fc.report())
+		arena._centers[arena._centers.size() / 2] = at
 
 
 # --- helpers ---
