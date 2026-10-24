@@ -53,12 +53,12 @@ theme_override_constants/separation = 20
 [node name="Title" type="Label" parent="MainView/Left"]
 layout_mode = 2
 theme_type_variation = &"TitleLabel"
-text = "Pangaea"
+text = "UI_PANGAEA_1D39D2"
 
 [node name="Tagline" type="Label" parent="MainView/Left"]
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
-text = "Life starts small."
+text = "UI_LIFE_STARTS_SMALL_A4B412"
 
 [node name="Gap" type="Control" parent="MainView/Left"]
 custom_minimum_size = Vector2(0, 40)
@@ -74,27 +74,27 @@ theme_override_constants/separation = 18
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
-text = "Continue"
+text = "UI_CONTINUE_2E0262"
 
 [node name="NewButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "New lineage"
+text = "UI_NEW_LINEAGE_B5810D"
 
 [node name="SlotsButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Save slots"
+text = "UI_SAVE_SLOTS_99D783"
 
 [node name="SettingsButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Settings"
+text = "UI_SETTINGS_C7F73B"
 
 [node name="QuitButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Quit"
+text = "UI_QUIT_1A2285"
 
 [node name="Preview" type="VBoxContainer" parent="MainView/Left"]
 custom_minimum_size = Vector2(460, 0)
@@ -106,12 +106,12 @@ theme_override_constants/separation = 6
 layout_mode = 2
 theme_type_variation = &"AccentLabel"
 theme_override_font_sizes/font_size = 20
-text = "Preview"
+text = "UI_PREVIEW_F1FBB2"
 
 [node name="CreatureButton" type="Button" parent="MainView/Left/Preview"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Creature stage"
+text = "UI_CREATURE_STAGE_0AA52E"
 
 [node name="ContinueCard" type="PanelContainer" parent="MainView"]
 unique_name_in_owner = true
@@ -129,7 +129,7 @@ theme_override_constants/separation = 6
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"AccentLabel"
-text = "Your lineage"
+text = "UI_YOUR_LINEAGE_E307EE"
 
 [node name="CardName" type="Label" parent="MainView/ContinueCard/Box"]
 unique_name_in_owner = true
@@ -179,7 +179,7 @@ theme_override_constants/separation = 28
 [node name="Header" type="Label" parent="PickerView/Box"]
 layout_mode = 2
 theme_type_variation = &"HeaderLabel"
-text = "New lineage: choose a starting body"
+text = "UI_NEW_LINEAGE_CHOOSE_A_STARTING_BODY_0BE092"
 
 [node name="Spacer" type="Control" parent="PickerView/Box"]
 layout_mode = 2
@@ -199,14 +199,14 @@ theme_override_constants/separation = 24
 unique_name_in_owner = true
 custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
-text = "Back"
+text = "UI_BACK_B52B36"
 
 [node name="StartButton" type="Button" parent="PickerView/Box/Buttons"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
-text = "Start"
+text = "UI_START_952F37"
 
 [node name="PickedPlate" type="PanelContainer" parent="PickerView"]
 custom_minimum_size = Vector2(380, 0)

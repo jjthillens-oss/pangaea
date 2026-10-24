@@ -36,7 +36,7 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 24
-text = "Creature editor"
+text = "UI_CREATURE_EDITOR_3730E3"
 horizontal_alignment = 1
 
 [node name="Palette" type="PanelContainer" parent="."]
@@ -58,12 +58,12 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
 theme_override_font_sizes/font_size = 28
-text = "Parts"
+text = "UI_PARTS_E37428"
 
 [node name="PartsNote" type="Label" parent="Palette/Box"]
 layout_mode = 2
 theme_type_variation = &"CaptionLabel"
-text = "Pick a part, then click the creature"
+text = "UI_PICK_A_PART_THEN_CLICK_THE_CREATURE_48BE04"
 
 [node name="ToolsScroll" type="ScrollContainer" parent="Palette/Box"]
 layout_mode = 2
@@ -84,7 +84,7 @@ layout_mode = 2
 [node name="ColorTitle" type="Label" parent="Palette/Box"]
 layout_mode = 2
 theme_type_variation = &"CaptionLabel"
-text = "SKIN COLOUR"
+text = "UI_SKIN_COLOUR_8EF3E3"
 
 [node name="Swatches" type="HBoxContainer" parent="Palette/Box"]
 unique_name_in_owner = true
@@ -111,13 +111,13 @@ theme_override_constants/separation = 10
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
-text = "Points  0"
+text = "UI_POINTS_0_B23DF7"
 
 [node name="CostText" type="Label" parent="Stats/Box"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
-text = "No changes to pay for"
+text = "UI_NO_CHANGES_TO_PAY_FOR_922CC1"
 autowrap_mode = 3
 
 [node name="Sep1" type="HSeparator" parent="Stats/Box"]
@@ -137,13 +137,13 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
-text = "Done"
+text = "UI_DONE_E9B450"
 
 [node name="Back" type="Button" parent="Stats/Box"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"DockButton"
-text = "Back"
+text = "UI_BACK_B52B36"
 
 [node name="Bottom" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -197,35 +197,35 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
-text = "Undo"
+text = "UI_UNDO_39FC72"
 
 [node name="Redo" type="Button" parent="Bottom/DockCenter/Dock/Actions"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
-text = "Redo"
+text = "UI_REDO_471B94"
 
 [node name="Delete" type="Button" parent="Bottom/DockCenter/Dock/Actions"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
-text = "Delete"
+text = "UI_DELETE_F6FDBE"
 
 [node name="Insert" type="Button" parent="Bottom/DockCenter/Dock/Actions"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
-text = "Insert"
+text = "UI_INSERT_95802D"
 
 [node name="Mirror" type="Button" parent="Bottom/DockCenter/Dock/Actions"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
-text = "Mirror"
+text = "UI_MIRROR_74ADC5"
 
 [node name="TestDrive" type="Button" parent="Bottom/DockCenter/Dock/Actions"]
 unique_name_in_owner = true
@@ -233,7 +233,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"DockButton"
 toggle_mode = true
-text = "Test drive"
+text = "UI_TEST_DRIVE_F11B82"
 
 [node name="HintPanel" type="PanelContainer" parent="Bottom"]
 layout_mode = 2
