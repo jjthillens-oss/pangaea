@@ -339,3 +339,16 @@ func test_a_first_design_can_start_from_a_preset_at_no_cost() -> void:
 	check(done["ok"], "Done commits it: %s" % done.get("reason", ""))
 	editor.offer_presets(false)
 	check(not editor.start_from_preset("dragon")["ok"], "refused once presets are withdrawn")
+
+
+## Owner playtest, 2026-10-24: the palette shows the parts as pictures. Headless runs render none, so the HUD's seam
+## is driven with a stand-in picture.
+func test_a_part_picture_turns_its_tool_into_a_picture_button() -> void:
+	open()
+	var tex := ImageTexture.create_from_image(Image.create(8, 8, false, Image.FORMAT_RGBA8))
+	editor.hud.set_tool_icon("eye", tex)
+	check(editor.hud.tool_icon("eye") == tex, "the eye tool shows its picture")
+	check_eq(editor.hud.tools_grid.columns, editor.hud.ICON_COLUMNS, "the palette goes to picture columns")
+	check(editor.hud.tool_icon("maw") == null, "a part without a picture keeps its text")
+	editor.hud.set_tool_icon("tentacle", tex)
+	check(editor.hud.tool_icon("tentacle") == null, "an unknown part is ignored")

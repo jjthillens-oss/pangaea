@@ -42,6 +42,7 @@ const GaitBody := preload("res://game/domain/creature/gait_body.gd")
 const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 const SkinWorker := preload("res://game/scenes/creature/creature_editor_skin_worker.gd")
+const PartIcons := preload("res://game/scenes/creature/part_icons.gd")
 ## The STATS track's anatomy-to-play numbers (CreatureStats, pure); shown when its file is present.
 const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
 const STAGE_TUNING_PATH := "res://game/data/creature/creature_stage.json"
@@ -123,6 +124,8 @@ var _reference_size_m := 0.0
 ## Whether the "Start from" presets are offered (offer_presets), and the preset the design started from since the
 ## last Done ("" for none; Back asks before leaving it).
 var presets_offered := false
+## The palette's part pictures (part_icons.gd), rendered after setup.
+var _icons: Node
 var preset := ""
 var _orbiting := false
 var _focus := Vector3.ZERO
@@ -197,6 +200,12 @@ func setup(body: RefCounted, points: int) -> void:
 		if threaded:
 			_worker.start()
 	hud.setup(tools, costs, SKIN_COLORS)
+	if _icons == null:
+		_icons = PartIcons.new()
+		_icons.name = "PartIcons"
+		add_child(_icons)
+		_icons.icon_ready.connect(hud.set_tool_icon)
+	_icons.render(tools)
 	hud.set_tool(tool)
 	hud.set_color(skin_color)
 	_frame_body()
@@ -668,6 +677,7 @@ func start_from_preset(preset_name: String) -> Dictionary:
 	_store_look(session.working.extra)
 	hud.set_color(skin_color)
 	preset = preset_name
+	hud.set_preset(preset_name)
 	selected = {}
 	choose_tool("")
 	_frame_body()

@@ -757,6 +757,36 @@ creatures that also live in the world. Built:
 - **Palette.** The parts list scrolls inside a palette panel that fits the screen. A visual palette with part
   pictures is the next step.
 
+## 2026-10-24 · Creature editor parts palette with pictures (PROPOSED; IMPLEMENTED)
+Joshua's playtest: "you can't tell, it just lists the items". The palette now shows each part tool as a picture of
+the art team's mesh, three to a row, with its name and price (the full price is in the tooltip). The pictures are
+rendered at runtime (`game/scenes/creature/part_icons.gd`: one small SubViewport, each part framed from a
+three-quarter view), so nothing is stored and new art shows on the next launch; headless runs render none and keep
+the text. The presets moved into a "Start from a preset" drop-down so the palette fits a 900-row screen.
+## 2026-10-24 · Creature size follows physics (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 02:42 UTC): "a bigger creature is obviously going to be slower than a small creature. Same thing
+with strength", with a level-up system for stats to come on top. `CreatureStats` now scales two numbers by mass:
+
+- **Top speed.** The legs' Froude top speed still grows with leg length. Above `size.ref_kg` (120 kg) it is
+  multiplied by (1 - e^-x) / (1 - e^-1), x = (mass / ref_kg)^-0.6: the saturation term of the allometric speed law
+  (Hirt et al. 2017, big animals run out of time to accelerate). So 300 kg runs at 0.69 of its legs' speed and
+  1.2 t at 0.35. The world sim scales the throttle by the same factor, so play matches the editor's number.
+- **Strength.** Bite power is multiplied by (mass / 60 kg)^(2/3), muscle cross-section, kept within 0.25x..6x.
+- **Not yet.** The incremental level-up system is still to be designed and built.
+
+## 2026-10-24 · Creature levels earned by doing (CONFIRMED direction; design PROPOSED until the owner picks; IMPLEMENTED)
+Joshua (2026-10-24 02:42 UTC): "you can level up your strengths ... an incremental system for that", on top of the
+size physics. Built on the recommended option, "earn levels by doing" (`game/domain/creature/creature_levels.gd`):
+
+- **Four stats.** Speed (xp per 10 m walked), strength (3 xp per landed bite), toughness (2 xp per hit taken) and
+  senses (2 xp the first time each rival is seen in a life).
+- **Curve.** Level n needs 10 * n * (n + 1) / 2 xp in that stat; the cap is level 10. Each level adds 5% to the
+  stat's numbers (speed and speed factor, bite power, max health, sight within its cap), on top of the physics.
+- **Save.** The lineage save's `creature` record gains an optional `xp` dictionary (stat -> whole xp), checked by
+  `SaveGame.validate_creature`. Old saves load with no xp. A level-up shows a notice in the world.
+- **Pending.** Joshua's pick on the decision card may change the earning rules; the numbers live in
+  `game/data/creature/creature_stage.json` "levels".
+
 ## 2026-10-24 · The sea's pieces load on the main thread at setup, not on worker threads (PROPOSED)
 
 - **Why.** The Windows launch check's grow run (D3D12 on WARP, the CI runner's software renderer)

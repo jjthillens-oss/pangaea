@@ -79,6 +79,12 @@ var _next_meat := 1
 var _evolve_held := false
 var _bite_held := false
 var _last_notice := ""
+## The player's stat experience, {stat: xp} (CreatureLevels; the stage loads and saves it with the creature).
+var xp := {}
+## Metres walked since the last speed experience point.
+var _run_m := 0.0
+## Rivals the player has spotted this life of theirs (id -> true), each worth senses experience once.
+var _spotted := {}
 
 
 ## `data` is load_data(): the body rules, the part rules, the editor costs, the gait table and the starter bodies.
@@ -135,7 +141,7 @@ static func load_tuning() -> Dictionary:
 
 func _make_creature(id: String, body: RefCounted, at: Vector3, yaw: float) -> Dictionary:
 	var stats: Dictionary = CreatureStats.of(body, data["part_rules"], data["gait_table"], tuning)
-	var c := {"id": id, "body": body, "stats": stats, "planner": null, "mech": null, "gait": GaitBody.from_description(body),
+	var c := {"id": id, "body": body, "stats": stats, "base_stats": stats, "planner": null, "mech": null, "gait": GaitBody.from_description(body),
 			"position": at, "yaw": yaw, "health": float(stats["max_health"]), "cooldown": 0, "alive": true,
 			"respawn_at": 0, "fullness": 1.0, "memory": {}, "mode": "", "starter": ""}
 	if stats["has_legs"]:
@@ -157,6 +163,13 @@ func tick(intent: Dictionary) -> Array:
 	if move.length() > 1.0:
 		move = move.normalized()
 	_drive(me, Rules.steer(me["yaw"], move, move.length()))
+	if me["alive"]:
+		_run_m += _ground_distance(noted[PLAYER_ID]["position"], me["position"])
+		var per := float(tuning.get("levels", {}).get("run_m_per_xp", 0.0))
+		if per > 0.0 and _run_m >= per:
+			var gained := int(floor(_run_m / per))
+			_run_m -= gained * per
+			_gain("speed", gained, events)
 	# 3. Rivals.
 	for r in rivals:
 		if not r["alive"]:
@@ -185,6 +198,14 @@ func tick(intent: Dictionary) -> Array:
 	for r in rivals:
 		if r["alive"]:
 			r["fullness"] = maxf(0.0, r["fullness"] - DT / RIVAL_EMPTY_S)
+	# Senses: a living rival inside the player's sight for the first time this life.
+	var levels: Dictionary = tuning.get("levels", {})
+	if not levels.is_empty():
+		for r in rivals:
+			if r["alive"] and not _spotted.has(r["id"]) \
+					and _ground_distance(me["position"], r["position"]) <= float(me["stats"]["sight_m"]):
+				_spotted[r["id"]] = true
+				_gain("senses", int(levels["spot_xp"]), events)
 	# 6. Eating.
 	for c in bodies:
 		_eat(c, events)
@@ -211,6 +232,7 @@ func tick(intent: Dictionary) -> Array:
 	for r in rivals:
 		if r["alive"] and r["health"] <= 0.0:
 			r["alive"] = false
+			_spotted.erase(r["id"])
 			r["respawn_at"] = tick_count + int(ticks["rival_respawn"])
 			_drop_meat(r["position"])
 			events.append({"kind": "died", "who": r["id"], "cause": "killed by %s" % _killer_name(r.get("last_hit_by", "")),
@@ -249,7 +271,8 @@ func _drive(c: Dictionary, command: Vector2) -> void:
 	var planner = c["planner"]
 	if planner == null:
 		return
-	planner.step(DT, command.x, command.y)
+	# A heavy body cannot reach its legs' top speed (CreatureStats.speed_factor): the throttle is scaled down.
+	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y)
 	_place(c, Rules.clamp_to_field(planner.position, half_size, float(c["stats"]["body_radius_m"])))
 	c["yaw"] = planner.yaw
 
@@ -362,6 +385,46 @@ func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 	target["last_hit_by"] = biter["id"]
 	events.append({"kind": "bit", "by": biter["id"], "target": target["id"], "damage": damage})
 	events.append({"kind": "hit", "target": target["id"], "by": biter["id"], "damage": damage})
+	var levels: Dictionary = tuning.get("levels", {})
+	if not levels.is_empty():
+		if biter["id"] == PLAYER_ID:
+			_gain("strength", int(levels["bite_xp"]), events)
+		elif target["id"] == PLAYER_ID:
+			_gain("toughness", int(levels["hit_xp"]), events)
+
+
+## Sets the player's experience (from the save) and the stats its levels give.
+func set_xp(p_xp: Dictionary) -> void:
+	xp = {}
+	for s in CreatureLevels.STATS:
+		if p_xp.has(s):
+			xp[s] = int(p_xp[s])
+	_apply_levels()
+	me["health"] = float(me["stats"]["max_health"])
+
+
+## The player's levels, {stat: level}.
+func levels() -> Dictionary:
+	return CreatureLevels.levels_of(xp, tuning.get("levels", {})) if tuning.has("levels") else {}
+
+
+## Adds `amount` experience to the player's `stat`; a new level is a "level_up" event and new stats (the health keeps
+## its share of the maximum).
+func _gain(stat: String, amount: int, events: Array) -> void:
+	if amount <= 0 or not tuning.has("levels"):
+		return
+	var before := CreatureLevels.level_of(int(xp.get(stat, 0)), tuning["levels"])
+	xp[stat] = int(xp.get(stat, 0)) + amount
+	var after := CreatureLevels.level_of(int(xp[stat]), tuning["levels"])
+	if after > before:
+		var share := float(me["health"]) / maxf(float(me["stats"]["max_health"]), 1e-6)
+		_apply_levels()
+		me["health"] = share * float(me["stats"]["max_health"])
+		events.append({"kind": "level_up", "stat": stat, "level": after})
+
+
+func _apply_levels() -> void:
+	me["stats"] = CreatureLevels.apply(me["base_stats"], xp, tuning)
 
 
 func _drop_meat(at: Vector3) -> void:
@@ -404,7 +467,7 @@ static func _ground_dir(a: Vector3, b: Vector3) -> Vector2:
 func player() -> Dictionary:
 	var s: Dictionary = me["stats"]
 	return {"position": me["position"], "yaw": me["yaw"], "health": me["health"],
-			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "has_legs": s["has_legs"],
+			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "speed_factor": float(s["speed_factor"]), "has_legs": s["has_legs"],
 			"has_mouth": s["has_mouth"], "bite_power": float(s["bite_power"]), "bite_reach_m": float(s["bite_reach_m"]),
 			"sight_m": float(s["sight_m"]), "mass_kg": float(s["mass_kg"]), "cooldown": me["cooldown"],
 			"body_length_m": float(s["body_length_m"]), "at_nest": at_nest()}

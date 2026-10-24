@@ -47,6 +47,7 @@ class StubWorld extends Node:
 
 class StubSim extends RefCounted:
 	var points := 0
+	var xp := {}
 
 var path := ""
 var exits := 0
@@ -245,3 +246,18 @@ func test_missing_scenes_show_a_notice_and_still_exit() -> void:
 	check(_loaded().ok, "the commit was saved first")
 	no_world.back()
 	check_eq(exits, 2, "back() leaves too")
+
+
+## Stat experience earned by doing (CreatureLevels) rides in the lineage save's creature.
+func test_the_experience_the_world_earned_is_saved_and_comes_back() -> void:
+	var stage := _stage()
+	(stage.editor as StubEditor).done_requested.emit(CreatureData.body("s1_quadruped").to_dict(), 100)
+	var sim := StubSim.new()
+	sim.points = 100
+	sim.xp = {"speed": 14, "strength": 3}
+	(stage.world as StubWorld).sim = sim
+	check_eq(stage.save_now(), OK, "saved from the world")
+	var save: SaveGame = _loaded().save
+	check_eq(save.creature["xp"], {"speed": 14, "strength": 3}, "the experience is in the save")
+	var again := _stage()
+	check_eq(again.state["xp"], {"speed": 14, "strength": 3}, "and loads back into the stage")
