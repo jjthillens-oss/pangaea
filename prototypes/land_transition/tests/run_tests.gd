@@ -1,12 +1,14 @@
 extends SceneTree
 
 const TransitionModel = preload("res://transition_model.gd")
+const ShoreView = preload("res://shore.gd")
 var failures := 0
 
 func _initialize() -> void:
 	test_shore_gate()
 	test_stamina_and_rest()
 	test_editor_and_lineage()
+	test_editor_input_handoff()
 	print("land_transition: %d failures" % failures)
 	quit(1 if failures else 0)
 
@@ -56,3 +58,23 @@ func test_editor_and_lineage() -> void:
 		"identity and feeding ancestry persist"
 	)
 	check(not m.editor_open, "editor closes after commit")
+
+func test_editor_input_handoff() -> void:
+	var view := ShoreView.new()
+	root.add_child(view)
+	view.model.x = TransitionModel.EDITOR_X
+	view.model.support = 0.8
+	view._unhandled_key_input(_press(KEY_ENTER))
+	check(view.model.editor_open, "Enter opens the visible editor state")
+	view._unhandled_key_input(_press(KEY_1))
+	check(is_equal_approx(view.selected_support, 0.6), "first choice updates the editor preview")
+	view._unhandled_key_input(_press(KEY_ENTER))
+	check(view.model.stage == "terrestrial", "committing the selected support changes era")
+	check(is_equal_approx(view.model.support, 0.6), "committed support is the selected option")
+	view.queue_free()
+
+func _press(keycode: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.pressed = true
+	return event
