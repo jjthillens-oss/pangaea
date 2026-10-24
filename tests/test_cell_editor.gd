@@ -118,3 +118,18 @@ func test_mate_is_refused_without_the_points_or_the_energy() -> void:
 	result = editor.commit()
 	check(not result.ok and closes.is_empty(), "a hungry cell cannot mate (%s)" % [result.errors])
 	check_eq(save.genome.generation, 1, "nothing born")
+
+
+func test_the_editor_covers_and_dims_the_whole_screen_over_the_game() -> void:
+	# Anchored before it enters the pool's UI layer: anchoring a control inside the tree keeps the
+	# offsets of its zero size, and the editor then drew at its smallest over the HUD, undimmed. (The
+	# runner's root is not in a live tree, so this checks the anchors rather than the drawn rect.)
+	var fresh := CellEditor.new()
+	check_eq([fresh.anchor_left, fresh.anchor_top, fresh.anchor_right, fresh.anchor_bottom], [0.0, 0.0, 1.0, 1.0],
+		"the editor is anchored to the whole screen")
+	check_eq([fresh.offset_left, fresh.offset_top, fresh.offset_right, fresh.offset_bottom], [0.0, 0.0, 0.0, 0.0],
+		"edge to edge")
+	var dim := fresh.get_child(0) as ColorRect
+	check(dim != null and dim.anchor_right == 1.0 and dim.anchor_bottom == 1.0 and dim.offset_right == 0.0,
+		"and its dim covers all of it")
+	fresh.free()
