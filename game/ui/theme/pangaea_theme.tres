@@ -470,6 +470,82 @@ corner_radius_bottom_left = 28
 shadow_color = Color(0.36, 0.66, 1, 0.12)
 shadow_size = 18
 
+[sub_resource type="StyleBoxFlat" id="Panel_glass"]
+content_margin_left = 22.0
+content_margin_top = 18.0
+content_margin_right = 22.0
+content_margin_bottom = 18.0
+bg_color = Color(0.03, 0.085, 0.18, 0.72)
+border_width_top = 1
+border_color = Color(0.62, 0.8, 1, 0.38)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+shadow_color = Color(0, 0.02, 0.08, 0.45)
+shadow_size = 18
+shadow_offset = Vector2(0, 6)
+
+[sub_resource type="StyleBoxFlat" id="Panel_pill"]
+content_margin_left = 28.0
+content_margin_top = 8.0
+content_margin_right = 28.0
+content_margin_bottom = 8.0
+bg_color = Color(0.03, 0.085, 0.18, 0.62)
+border_width_top = 1
+border_color = Color(0.62, 0.8, 1, 0.34)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+shadow_color = Color(0, 0.02, 0.08, 0.35)
+shadow_size = 12
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="Dock_normal"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+bg_color = Color(0.1, 0.19, 0.33, 0.85)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+
+[sub_resource type="StyleBoxFlat" id="Dock_hover"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+bg_color = Color(0.2, 0.36, 0.58, 0.95)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+
+[sub_resource type="StyleBoxFlat" id="Dock_pressed"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+bg_color = Color(0.36, 0.78, 0.95, 0.95)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+
+[sub_resource type="StyleBoxFlat" id="Dock_disabled"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+bg_color = Color(0.08, 0.13, 0.22, 0.5)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+
 [resource]
 default_font_size = 26
 Label/colors/font_color = Color(0.924, 0.941, 0.97, 1)
@@ -581,3 +657,19 @@ HSlider/styles/focus = SubResource("Focus_ring")
 CheckButton/colors/font_color = Color(0.924, 0.941, 0.97, 1)
 CheckButton/colors/font_focus_color = Color(1, 1, 1, 1)
 CheckButton/colors/font_pressed_color = Color(1, 0.88, 0.6, 1)
+GlassPanel/base_type = &"PanelContainer"
+GlassPanel/styles/panel = SubResource("Panel_glass")
+PillPanel/base_type = &"PanelContainer"
+PillPanel/styles/panel = SubResource("Panel_pill")
+DockButton/base_type = &"Button"
+DockButton/font_sizes/font_size = 21
+DockButton/colors/font_pressed_color = Color(0.01, 0.06, 0.12, 1)
+DockButton/colors/font_hover_pressed_color = Color(0.01, 0.06, 0.12, 1)
+DockButton/styles/normal = SubResource("Dock_normal")
+DockButton/styles/hover = SubResource("Dock_hover")
+DockButton/styles/pressed = SubResource("Dock_pressed")
+DockButton/styles/hover_pressed = SubResource("Dock_pressed")
+DockButton/styles/disabled = SubResource("Dock_disabled")
+CaptionLabel/base_type = &"Label"
+CaptionLabel/colors/font_color = Color(0.56, 0.74, 0.95, 1)
+CaptionLabel/font_sizes/font_size = 17
