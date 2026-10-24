@@ -1302,3 +1302,32 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   (`growth_pass`: every growth window ≤ 50 ms; `draw_pass`: max draw calls ≤
   `S3G36_MAX_DRAW_CALLS` 104) and the printed line appends " · S3G36 pass" or " · S3G36 FAIL: …".
   `test_debug_panel` checks both routes' ticks and the verdict text.
+
+## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
+
+- **Scenes**: `lineup_s3`, `lineup_s4` and `hatch_band_up` join `ENDLESS_SCENES` and
+  `GROWTH_SCENES` (an omnivore, the AI frozen). The lineups stand at the band's cradle view point
+  (`cradle_view_point_tm`: (0, 18) tm at 3, (0, 11.25) at 4), with the spec's bodies, morsel items
+  and ghosts; they play `CARRION_SETTLE_FRAMES` (45), not `START_FRAMES` (30), so the morsel items
+  have grown in (0.6 s). `hatch_band_up` is size 2 at (0, 28.8) tm and shoots as `hatch`, adding
+  the old band's draw calls at 2.0 s.
+- **Readings**: the veil's threads (frames with and without `Threads`: ink, width, median CIE76,
+  neutral gap) and, at 4, each morsel item's rim (frames with and without the `__rim` MultiMeshes)
+  and the strip's preview. A near ghost's `cell_multiple` is now its larger side over the cell
+  (`test_ghosts`' measure): the lancer is tall and thin, 0.65 across and 1.65 high. S1's and S2's
+  ghosts read as before (their width is the larger side).
+- **The veil's threads ink (S3G32 M)**: the spec's outline (a 0.06 tm line, alpha 0.85 at its very
+  middle) read 0.5% of the threads' pixels within 15 degrees of the threat pink, because the line
+  blends with the navy at every pixel. The inked outline is now solid over its inner half and 0.08 tm
+  wide (`capsule_outline.gdshader` `smoothstep(0.5 w, w, ...)`, `OUTLINE_ALPHA` (0.6, 1.0),
+  `OUTLINE_W_TM` 0.08): 36.7% at size 3, and the neutral outline at 4 stays 96 degrees off the pink.
+- **Gates**: 21 rows, all pass in Compatibility (50 of 50 with S1's and S2's), each with its reading
+  in its `what`. S1's and S2's growth scenes read as at S2. The endless set (16 of 16) moved a little
+  (reef food gap 140.0, reef contrast 6.4, shed husk 164.4 and 92.3) and the arrow home's centre
+  reads L* 90.6 against 99.8 (bound 75); each `what` records it.
+- **Found, not fixed (look review)**: the near ghosts and giants draw no pixel above the probe's
+  change threshold at sizes 3 and 4 (largest change 6 of 255), as S2's faint-ghost item; and the
+  Compatibility renderer draws a band's fresh pieces and the cradle at frame 0 of the band-up
+  (P99 47.7), although their `GeometryInstance3D.transparency` is 1 at that draw (read at
+  `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
+  landmark at the screen's edge).

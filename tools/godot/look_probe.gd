@@ -150,8 +150,35 @@ extends SceneTree
 ## tick_p99_dE (the ordinary tick before A, against A: what any tick changes by itself),
 ## bare_median_dE and bare_p99_dE (the same pair paused with the ambience hidden), size_after and
 ## plankton_on_screen.
+##
+## S3's growth scenes (docs/s3/s3-view.md 15, gate set growth; also in ENDLESS_SCENES). Each starts
+## a GROWTH_BODY lineage, freezes the AI and is staged at its band's cradle view point:
+##   lineup_s3      debug_set_size(3), then S3_LINEUP[3] round the cell (an offset refused moves
+##                  S3_SHIFT_TM east, up to S3_SHIFT_TRIES times; the used ones are staged.offsets),
+##                  each facing the cell but the veil (west, so its threads trail east on screen),
+##                  the near ghosts LINEUP_NEAR[3] at S3_NEAR_SPOTS and the giants at
+##                  LINEUP_FAR_SPOTS
+##   lineup_s4      the same at size 4 with S3_LINEUP[4], LINEUP_NEAR[4], and two morsel-site items
+##                  (S3_MORSELS) beside the cell
+##   hatch_band_up  size 2 at the cradle's view point (HATCH_BAND_UP_AT_TM, else
+##                  HATCH_BAND_UP_FALLBACK_TM), the ring filled; then hatch's frames over the band-up
+## Their frames: the lineups add the S2 lineups' frames and <scene>_nothreads.png (the veil's threads
+## hidden); lineup_s4 adds <scene>_nomorselrim.png (the morsel items' rims hidden). hatch_band_up
+## saves hatch's frames.
+## Their readings: the S2 lineups' readings, and veil: ink (1 when at least INK_SHARE of the pixels
+## the threads change by more than THREAD_CHANGE_DE CIE76 lie within INK_HUE_DEG of the threat hue
+## with C* at least INK_MIN_C), ink_share, pixels, width_px (the capsule's diameter on screen at its
+## middle), thread_dE (the median CIE76 of those pixels with and without the threads) and
+## neutral_gap (their mean LAB hue distance from the threat hue over the pixels of C* at least
+## THREAD_NEUTRAL_MIN_C; 180 when none has that chroma). lineup_s4 adds rim.morsel_<species> (1 when
+## at least RIM_PIXELS of the pixels a morsel item's rim changes lie within RIM_HUE_DEG of the food
+## hue) with rim_detail, preview (the ladder strip's preview line) and preview_ok (1 when it is
+## S4_PREVIEW). hatch_band_up adds hatch's readings and old_band_draw_calls and old_band_instances
+## (the old band layer at the beat's 2.0 s).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
+## The dev panel's script (no class name), for its cradle view point.
+const DEBUG_PANEL := preload("res://game/dev/debug_panel.gd")
 const SLOT := "user://look_probe/slot.json"
 const DEFAULT_OUT := "user://look_probe/out"
 const BODY := "grazer"
@@ -160,12 +187,13 @@ const SEED := 4242
 const POOL_SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
 ## The endless sea's scenes (docs/s1/s1-content.md section 10), every one with --world=endless.
 const ENDLESS_SCENES: Array[String] = ["reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair",
-	"lineup_s1", "lineup_s2", "hatch"]
-## S2's growth scenes (gate set growth), staged with GROWTH_BODY.
-const GROWTH_SCENES: Array[String] = ["lineup_s1", "lineup_s2", "hatch"]
+	"lineup_s1", "lineup_s2", "hatch", "lineup_s3", "lineup_s4", "hatch_band_up"]
+## S2's and S3's growth scenes (gate set growth), staged with GROWTH_BODY.
+const GROWTH_SCENES: Array[String] = ["lineup_s1", "lineup_s2", "hatch", "lineup_s3", "lineup_s4", "hatch_band_up"]
 ## Every scene the probe can stage: POOL_SCENES, then ENDLESS_SCENES.
 const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter",
-	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair", "lineup_s1", "lineup_s2", "hatch"]
+	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair", "lineup_s1", "lineup_s2", "hatch", "lineup_s3",
+	"lineup_s4", "hatch_band_up"]
 ## The world each gate set measures.
 const LOOK_WORLDS := {"micro": "pool", "baseline": "pool", "endless": "endless", "growth": "endless"}
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
@@ -241,7 +269,8 @@ const LINEUP_BODIES := {
 		["elder_rammer", Vector2(2.6, 3.6)]],
 }
 ## The near ghosts staged by size, at LINEUP_NEAR_SPOTS in order (tm from the focus, north is -y).
-const LINEUP_NEAR := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
+const LINEUP_NEAR := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"],
+	3: ["deep_lurker", "elder_warden", "engulfer"], 4: ["engulfer", "lancer"]}
 const LINEUP_NEAR_SPOTS: Array[Vector2] = [Vector2(-6.0, -8.0), Vector2(6.0, -8.0), Vector2(-8.0, -16.0), Vector2(8.0, -16.0)]
 ## The giants staged at these offsets from the focus, at the far band's middle depth.
 const LINEUP_FAR_SPOTS: Array[Vector2] = [Vector2(-20.0, -30.0), Vector2(0.0, -40.0), Vector2(20.0, -30.0)]
@@ -254,6 +283,31 @@ const RIM_HUE_DEG := 15.0                ## ...lie within this of the food hue (
 const RIM_BOX_PX := 6                    ## a body's screen box grown this much for its rim
 const HATCH_RAMMERS: Array[Vector2] = [Vector2(-4.0, -2.5), Vector2(4.0, -2.5)]
 const HATCH_RING_FRAMES := 3             ## frames drawn with the ring full before frame A
+# S3's growth scenes (s3-view 15).
+## S3's lineup bodies by size: [species, offset from the cell (tm), heading], the heading NAN for
+## facing the cell. The veil faces west, so its threads trail east across the screen.
+const S3_LINEUP := {
+	3: [["veil", Vector2(0.0, -6.5), PI], ["warden", Vector2(-4.5, -3.0), NAN], ["lurker", Vector2(4.5, -2.0), NAN],
+		["elder_rammer", Vector2(-4.0, 2.5), NAN], ["ambush_hunter", Vector2(2.0, 2.6), NAN], ["rammer", Vector2(-1.5, 2.6), NAN]],
+	4: [["deep_lurker", Vector2(-4.5, -3.0), NAN], ["elder_warden", Vector2(4.5, -3.0), NAN], ["veil", Vector2(0.0, -6.5), PI],
+		["warden", Vector2(-4.0, 2.5), NAN], ["lurker", Vector2(4.0, 2.5), NAN], ["elder_rammer", Vector2(0.0, 3.2), NAN]],
+}
+const S3_SHIFT_TM := 1.0                 ## an offset with no room moves this far east...
+const S3_SHIFT_TRIES := 3                ## ...this many times at most
+## S3's near ghosts stand here (tm from the focus), LINEUP_NEAR[size] in order.
+const S3_NEAR_SPOTS: Array[Vector2] = [Vector2(-6.0, -8.0), Vector2(6.0, -8.0), Vector2(0.0, -14.0)]
+## lineup_s4's morsel-site items: [species, offset from the cell (tm), energy, radius (tm), site],
+## a size-4 morsel of each (24 energy times the species' meat share over the 0.5 base, D-130).
+const S3_MORSELS := [["ambush_hunter", Vector2(-2.0, -1.2), 24.0 * 0.3662 / 0.5, 0.1831, "probe_a"],
+	["rammer", Vector2(2.0, -1.2), 24.0 * 0.3052 / 0.5, 0.1526, "probe_b"]]
+const S3_MORSEL_LIFETIME_S := 120.0
+const THREAD_CHANGE_DE := 4.0            ## the threads draw a pixel they change by more than this CIE76
+const THREAD_NEUTRAL_MIN_C := 12.0       ## the neutral gap reads thread pixels with this much chroma
+const S4_PREVIEW := "Coming in a later build: the engulfer"
+## hatch_band_up's spot (absolute tm at size 2): the cradle's view point, (0, 46.08) am; the second
+## if the first is refused.
+const HATCH_BAND_UP_AT_TM := Vector2(0.0, 28.8)
+const HATCH_BAND_UP_FALLBACK_TM := Vector2(0.0, 25.0)
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
@@ -332,9 +386,9 @@ const GATES := {
 	# and fluid-tinted on their sides, so the median of a silhouette can match the fluid's while its
 	# parts stand well apart (the shed husk: 0.8 | 1.1 between the medians, 5.5 | 5.8 per pixel).
 	"endless": [
-		{"id": "reef_food_gap", "path": "reef.shells.food_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the food colour (degrees, the least on screen; 137.8 | 137.8)"},
+		{"id": "reef_food_gap", "path": "reef.shells.food_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the food colour (degrees, the least on screen; 137.8 | 137.8; 140.0 in Compatibility at S3's T5.7)"},
 		{"id": "reef_threat_gap", "path": "reef.shells.threat_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the threat colour (degrees, the least on screen; 89.8 | 89.8)"},
-		{"id": "reef_contrast", "path": "reef.shells.fluid_dL_px_min", "min": 5.0, "what": "reef shells against the fluid behind them (|dL*| per pixel, the least on screen; 6.3 | 6.3, a diatom disc seen side-on; PROPOSED 8)"},
+		{"id": "reef_contrast", "path": "reef.shells.fluid_dL_px_min", "min": 5.0, "what": "reef shells against the fluid behind them (|dL*| per pixel, the least on screen; 6.3 | 6.3, a diatom disc seen side-on; 6.4 in Compatibility at S3's T5.7; PROPOSED 8)"},
 		{"id": "landmark_contrast", "path": "landmark.fluid_dL_px", "min": 7.5, "what": "the nearest landmark against the fluid (|dL*| per pixel; 9.6 | 9.8; PROPOSED 10)"},
 		{"id": "landmark_food_gap", "path": "landmark.food_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the food colour (degrees; 171.2 | 171.2)"},
 		{"id": "landmark_threat_gap", "path": "landmark.threat_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the threat colour (degrees; 85.5 | 85.5)"},
@@ -342,9 +396,9 @@ const GATES := {
 		{"id": "husk_food_gap", "path": "husk.food_gap", "min": 20.0, "what": "the giant husk never reads as food: LAB hue away from the food colour (degrees; 165.8 | 165.8)"},
 		{"id": "husk_threat_gap", "path": "husk.threat_gap", "min": 20.0, "what": "the giant husk, LAB hue away from the threat colour (degrees; 90.9 | 90.9)"},
 		{"id": "shed_husk_contrast", "path": "shed_husk.fluid_dL_px", "min": 4.5, "what": "the shed husk landmark against the fluid (|dL*| per pixel; 5.5 | 5.8; PROPOSED 10)"},
-		{"id": "shed_husk_food_gap", "path": "shed_husk.food_gap", "min": 20.0, "what": "the shed husk never reads as food: LAB hue away from the food colour (degrees; 165.0 | 165.0)"},
-		{"id": "shed_husk_threat_gap", "path": "shed_husk.threat_gap", "min": 20.0, "what": "the shed husk, LAB hue away from the threat colour (degrees; 91.7 | 91.7)"},
-		{"id": "arrow_value", "path": "markers.arrow_L", "min": 75.0, "what": "the arrow home's centre (L*; 99.8 | 99.8)"},
+		{"id": "shed_husk_food_gap", "path": "shed_husk.food_gap", "min": 20.0, "what": "the shed husk never reads as food: LAB hue away from the food colour (degrees; 165.0 | 165.0; 164.4 in Compatibility at S3's T5.7)"},
+		{"id": "shed_husk_threat_gap", "path": "shed_husk.threat_gap", "min": 20.0, "what": "the shed husk, LAB hue away from the threat colour (degrees; 91.7 | 91.7; 92.3 in Compatibility at S3's T5.7)"},
+		{"id": "arrow_value", "path": "markers.arrow_L", "min": 75.0, "what": "the arrow home's centre (L*; 99.8 | 99.8; 90.6 in Compatibility at S3's T5.7)"},
 		{"id": "column_pip", "path": "markers.pip_present", "min": 1.0, "max": 1.0, "what": "the column's pip shows while the column is off screen (1 | 1)"},
 		{"id": "rebase_median", "path": "rebase_pair.median_dE", "max": 1.0, "what": "a rebase never shows: frame B against frame A (median CIE76; 0.0 | 0.0)"},
 		{"id": "rebase_p99", "path": "rebase_pair.p99_dE", "max": 5.0, "what": "a rebase never shows: frame B against frame A (99th percentile CIE76; 0.0 | 0.0)"},
@@ -381,6 +435,29 @@ const GATES := {
 		{"id": "s2_rim_rammer", "path": "lineup_s2.rim.rammer", "min": 1.0, "max": 1.0, "what": "size 2: the rammer, food now, shows the green rim (1: 911 food-hue rim pixels)"},
 		{"id": "s2_rim_ambush", "path": "lineup_s2.rim.ambush_hunter", "min": 0.0, "max": 0.0, "what": "size 2: the ambush hunter, a rival and not food, shows no rim (0: no rim pixels)"},
 		{"id": "hatch_median", "path": "hatch.median_dE", "max": 2.0, "what": "the growth's frame 0 against frame A, no 2D layer (median CIE76; 0.0; p99 12.8, all of it the ambience's drift, whose x and z wrap in world space; 0.1 with it hidden)"},
+		# S3's growth (s3-view 15; S3G31, S3G32 M), PROPOSED there; the readings measured at T5.7
+		# (seed 4242, omnivore, 1920x1080, zoom 14, Compatibility on llvmpipe) follow each one.
+		{"id": "s3_veil_ink", "path": "lineup_s3.veil.ink", "min": 1.0, "what": "size 3: the veil's threads carry the threat ink (1: 36.7% of the 4,919 pixels the threads change)"},
+		{"id": "s3_veil_width", "path": "lineup_s3.veil.width_px", "min": 24.0, "what": "size 3: the threads' capsule across, readable at zoom 14 (px; 51.5)"},
+		{"id": "s3_veil_contrast", "path": "lineup_s3.veil.thread_dE", "min": 15.0, "what": "size 3: the threads against the moment without them (median CIE76; 31.6)"},
+		{"id": "s3_warden_ink", "path": "lineup_s3.ink.warden", "min": 1.0, "what": "size 3: the warden shows the threat colour (1: 49% of its ink surfaces' pixels)"},
+		{"id": "s3_rim_rammer", "path": "lineup_s3.rim.rammer", "min": 1.0, "what": "size 3: the rammer, food, shows the green rim (1: 856 food-hue rim pixels)"},
+		{"id": "s3_rim_ambush", "path": "lineup_s3.rim.ambush_hunter", "min": 1.0, "what": "size 3: the ambush hunter, food now, shows the green rim (1: 1,123)"},
+		{"id": "s3_rim_lurker", "path": "lineup_s3.rim.lurker", "max": 0.0, "what": "size 3: the Lurker, a rival, shows no rim (0: no rim pixels)"},
+		{"id": "s3_near_deep_lurker", "path": "lineup_s3.near.deep_lurker.cell_multiple", "min": 1.4, "what": "size 3: the deep Lurker's near ghost against the cell (1.45)"},
+		{"id": "s3_near_elder_warden", "path": "lineup_s3.near.elder_warden.cell_multiple", "min": 1.4, "what": "size 3: the elder warden's near ghost against the cell (1.45)"},
+		{"id": "s3_near_engulfer", "path": "lineup_s3.near.engulfer.cell_multiple", "min": 1.4, "what": "size 3: the engulfer's near ghost against the cell (1.82)"},
+		{"id": "s4_veil_ink", "path": "lineup_s4.veil.ink", "max": 0.0, "what": "size 4: the outgrown veil's threads carry no threat ink (0: 0%)"},
+		{"id": "s4_veil_neutral", "path": "lineup_s4.veil.neutral_gap", "min": 25.0, "what": "size 4: the threads' hue away from the threat pink (degrees; 96.2)"},
+		{"id": "s4_ink_deep_lurker", "path": "lineup_s4.ink.deep_lurker", "min": 1.0, "what": "size 4: the deep Lurker shows the threat colour (1: 39% of its \"!\")"},
+		{"id": "s4_ink_elder_warden", "path": "lineup_s4.ink.elder_warden", "min": 1.0, "what": "size 4: the elder warden shows the threat colour (1: 50%)"},
+		{"id": "s4_rim_morsel_ambush", "path": "lineup_s4.rim.morsel_ambush_hunter", "min": 1.0, "what": "size 4: the ambush hunter's morsel shows the green rim (1: 1,226 food-hue rim pixels)"},
+		{"id": "s4_rim_morsel_rammer", "path": "lineup_s4.rim.morsel_rammer", "min": 1.0, "what": "size 4: the rammer's morsel shows the green rim (1: 903)"},
+		{"id": "s4_near_engulfer", "path": "lineup_s4.near.engulfer.cell_multiple", "min": 1.4, "what": "size 4: the engulfer's near ghost against the cell (1.45)"},
+		{"id": "s4_near_lancer", "path": "lineup_s4.near.lancer.cell_multiple", "min": 1.4, "what": "size 4: the lancer's near ghost against the cell (1.65, its height: a lancer is tall and thin)"},
+		{"id": "s4_preview", "path": "lineup_s4.preview_ok", "min": 1.0, "what": "size 4: the strip reads \"Coming in a later build: the engulfer\" (1)"},
+		{"id": "hatch_band_up_median", "path": "hatch_band_up.median_dE", "max": 2.0, "what": "the band-up's frame 0 against frame A, no 2D layer (median CIE76; 0.0; P99 47.7 here, where Compatibility draws the band's fresh pieces through their transparency, and 23.2 in Forward+)"},
+		{"id": "hatch_band_up_old_band", "path": "hatch_band_up.old_band_draw_calls", "max": 8.0, "what": "the old band's draw calls at the band-up beat's 2.0 s (8, 39 instances)"},
 	],
 }
 
@@ -654,6 +731,12 @@ func _stage(scene: String) -> bool:
 			return await _stage_growth_lineup(2)
 		"hatch":
 			return await _stage_hatch()
+		"lineup_s3":
+			return await _stage_s3_lineup(3)
+		"lineup_s4":
+			return await _stage_s3_lineup(4)
+		"hatch_band_up":
+			return await _stage_hatch_band_up()
 	return false
 
 
@@ -935,6 +1018,83 @@ func _stage_hatch() -> bool:
 	return true
 
 
+# --- S3's growth scenes: staging ----------------------------------------------------------------
+
+## S3's lineup at `size` (3 or 4): the AI frozen, the size set, the cell at its band's cradle view
+## point facing north, S3_LINEUP[size] round it, at size 4 the morsel items, the near ghosts at
+## S3_NEAR_SPOTS and the giants at LINEUP_FAR_SPOTS, at GROWTH_ZOOM (or --zoom). False where the
+## sea does not grow, when the size or the spot is refused, or a body has no room after its tries.
+func _stage_s3_lineup(size: int) -> bool:
+	if sim.world == null or sim.growth == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	if sim.size() != size and not sim.debug_set_size(size):
+		return false
+	await _play(START_FRAMES)
+	var vp_tm := cradle_view_point_tm(sim, size)
+	if not vp_tm.is_finite():
+		return false
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	if not await _stage_at(vp_tm, -PI / 2.0):
+		return false
+	var c := sim.motion.position
+	var used := {}
+	for entry: Array in S3_LINEUP[size]:
+		var species: String = entry[0]
+		var offset: Vector2 = entry[1]
+		var placed := false
+		for i in S3_SHIFT_TRIES + 1:
+			var p := c + offset
+			var heading := float(entry[2]) if not is_nan(float(entry[2])) else (c - p).angle()
+			if sim.debug_spawn_creature(species, p, heading):
+				placed = true
+				break
+			offset.x += S3_SHIFT_TM
+		if not placed:
+			printerr("Look probe: no room for the %s near %s" % [species, c + (entry[1] as Vector2)])
+			return false
+		_lineup_ids[species] = sim.creatures.creatures.back().id
+		used[species] = [offset.x, offset.y]
+	if size == 4:
+		for m: Array in S3_MORSELS:
+			var item := sim.carrion.spawn(c + (m[1] as Vector2), CreatureLayer.MORSEL_SOURCE, float(m[2]), 0, float(m[3]),
+				S3_MORSEL_LIFETIME_S, {"species": m[0], "site": m[4]})
+			if item.is_empty():
+				printerr("Look probe: the %s morsel was refused" % m[0])
+				return false
+	var near := []
+	for i in LINEUP_NEAR[size].size():
+		near.append({"species": LINEUP_NEAR[size][i], "offset": S3_NEAR_SPOTS[i]})
+	pool.ghosts.stage(near, LINEUP_FAR_SPOTS.map(func(o: Vector2) -> Dictionary: return {"offset": o}))
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_tm": [vp_tm.x, vp_tm.y], "at_am": Array(sim.absolute_position_am()),
+		"bodies": _lineup_ids.duplicate(), "offsets": used}
+	return true
+
+
+## The band-up hatch: size 2 at the cradle's view point (or the fallback spot), the AI frozen, the
+## ring filled and drawn full. The growth itself is shot as hatch's.
+func _stage_hatch_band_up() -> bool:
+	if sim.world == null or sim.growth == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	if sim.size() != 2 and not sim.debug_set_size(2):
+		return false
+	await _play(START_FRAMES)
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	var at := HATCH_BAND_UP_AT_TM
+	if not await _stage_at(at, -PI / 2.0):
+		at = HATCH_BAND_UP_FALLBACK_TM
+		if not await _stage_at(at, -PI / 2.0):
+			return false
+	if not sim.debug_fill_meter(1.0):
+		return false
+	await _play(HATCH_RING_FRAMES)
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_tm": [at.x, at.y], "at_am": Array(sim.absolute_position_am()),
+		"meter": sim.growth.meter}
+	return true
+
+
 # --- Scenes: frames and readings ----------------------------------------------------------------
 
 ## Captures the frozen moment's frames and takes its readings.
@@ -956,9 +1116,9 @@ func _shoot(scene: String) -> void:
 			await _shoot_markers(scene)
 		"rebase_pair":
 			await _shoot_rebase(scene)
-		"lineup_s1", "lineup_s2":
+		"lineup_s1", "lineup_s2", "lineup_s3", "lineup_s4":
 			await _shoot_growth_lineup(scene)
-		"hatch":
+		"hatch", "hatch_band_up":
 			await _shoot_hatch(scene)
 		_:
 			var frames := await _shoot_common(scene)
@@ -1347,7 +1507,7 @@ func _shoot_growth_lineup(scene: String) -> void:
 		var drawn := _drawn(full, bare, fluid, body.box)
 		_boxes.append(body.box)
 		var one := {"node": str(node.name), "width_px": snappedf(body.width, 0.1), "height_px": snappedf(body.height, 0.1),
-			"cell_multiple": snappedf(body.width / cell_px, 0.01), "cell_radius_multiple": snappedf(body.height / (cell_px * 0.5), 0.01),
+			"cell_multiple": snappedf(maxf(body.width, body.height) / cell_px, 0.01), "cell_radius_multiple": snappedf(body.height / (cell_px * 0.5), 0.01),
 			"screen_share": snappedf(body.height / float(full.get_height()), 0.0001), "pixels": (drawn.on as PackedColorArray).size(),
 			"drawn_share": snappedf((drawn.on as PackedColorArray).size() / float(maxi(int(drawn.of), 1)), 0.001),
 			"box": [body.box.position.x, body.box.position.y, body.box.size.x, body.box.size.y],
@@ -1416,7 +1576,85 @@ func _shoot_growth_lineup(scene: String) -> void:
 		r.ink[species] = 1 if pixels.size() > 0 and share.share >= INK_SHARE else 0
 		r.ink_detail[species] = {"source": source, "pixels": pixels.size(), "share": share.share, "view_ink": v.ink,
 			"median": reading(median_color(pixels))}
+	if scene == "lineup_s3" or scene == "lineup_s4":
+		await _shoot_s3_extras(scene)
 	_write_points(scene, full)
+
+
+## S3's lineups: the veil's threads, and at size 4 the morsel items' rims and the strip's preview.
+func _shoot_s3_extras(scene: String) -> void:
+	var r: Dictionary = results[scene].readings
+	var veil := pool.creature_layer.view_of(str(_lineup_ids.get("veil", "")))
+	if veil != null and veil.threads != null:
+		r.veil = await _thread_readings(scene, veil.threads)
+	if scene != "lineup_s4":
+		return
+	var sites := pool.creature_layer.get_node_or_null(^"MorselSites")
+	var rims: Array[Node3D] = []
+	if sites != null:
+		for child: Node3D in sites.get_children():
+			if str(child.name).ends_with("__rim"):
+				rims.append(child)
+	var rimmed := await _capture()
+	for node in rims:
+		node.visible = false
+	var bare := await _capture()
+	for node in rims:
+		node.visible = true
+	_save(scene, "nomorselrim", bare)
+	for id in pool.creature_layer.morsel_site_ids():
+		var species := ""
+		for one in sim.carrion.items:
+			if str(one.id) == id:
+				species = str(one.get("species", ""))
+		if species.is_empty():
+			continue
+		var xf := pool.creature_layer.morsel_site_transform(id)
+		var box := _project_box(pool.creature_layer.global_transform * xf * pool.creature_layer.morsel_mesh(species).get_aabb()).grow(RIM_BOX_PX)
+		_boxes.append(box)
+		var pixels := _changed(rimmed, bare, box, rimmed)
+		var green := hue_share(pixels, FOOD_HEX, RIM_HUE_DEG, ACHROMATIC_C)
+		r.rim["morsel_" + species] = 1 if int(green.count) >= RIM_PIXELS else 0
+		r.rim_detail["morsel_" + species] = {"pixels": pixels.size(), "food_hue_pixels": green.count}
+	r.preview = main.hud.ladder_strip.preview_text()
+	r.preview_ok = 1 if r.preview == S4_PREVIEW else 0
+
+
+## A veil's threads: the moment with them and without them, compared in the capsule's screen box.
+func _thread_readings(scene: String, threads: VeilThreadsView) -> Dictionary:
+	var cap := threads.capsule()
+	if cap.is_empty():
+		return {}
+	var a := threads.to_global(cap.a)
+	var b := threads.to_global(cap.b)
+	var radius := float(cap.r)
+	var box := _project_box(AABB(a, Vector3.ZERO).expand(b).grow(radius))
+	_boxes.append(box)
+	var shown := await _capture()
+	threads.visible = false
+	var hidden := await _capture()
+	threads.visible = true
+	_save(scene, "nothreads", hidden)
+	var on := PackedColorArray()
+	var d := PackedFloat32Array()
+	var area := box.intersection(Rect2i(Vector2i.ZERO, shown.get_size()))
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var e := delta_e(shown.get_pixel(x, y), hidden.get_pixel(x, y))
+			if e > THREAD_CHANGE_DE:
+				on.append(shown.get_pixel(x, y))
+				d.append(e)
+	var out := {"pixels": on.size(), "width_px": snappedf(2.0 * _px_radius((a + b) * 0.5, radius), 0.1),
+		"view_ink": threads.ink, "box": [box.position.x, box.position.y, box.size.x, box.size.y]}
+	var ink := hue_share(on, THREAT_HEX, INK_HUE_DEG, INK_MIN_C)
+	out.ink = 1 if on.size() > 0 and ink.share >= INK_SHARE else 0
+	out.ink_share = ink.share
+	out.median = reading(median_color(on))
+	out.neutral_gap = neutral_gap(on, THREAT_HEX, THREAD_NEUTRAL_MIN_C)
+	if not d.is_empty():
+		d.sort()
+		out.thread_dE = snappedf(d[d.size() / 2], 0.1)
+	return out
 
 
 ## The hatch: frame A (one ordinary tick after the ring was drawn full) and frame 0 (the growth's
@@ -1484,6 +1722,9 @@ func _shoot_hatch(scene: String) -> void:
 			guard += 1
 		_save(scene, "beat%ds" % int(at_s), await _capture())
 		r["beat_t_%ds" % int(at_s)] = snappedf(pool.growth_beat.t(), 0.001)
+	if scene == "hatch_band_up" and pool.old_band != null:
+		r.old_band_draw_calls = pool.old_band.draw_calls()
+		r.old_band_instances = pool.old_band.instances().size()
 	_run_ticks(false)
 
 
@@ -2231,6 +2472,30 @@ static func hue_share(colors: PackedColorArray, hex: String, deg: float, min_c: 
 		if Vector2(v.y, v.z).length() >= min_c and hue_gap(hue(v), target) <= deg:
 			count += 1
 	return {"count": count, "of": colors.size(), "share": snappedf(count / float(colors.size()), 0.001) if not colors.is_empty() else 0.0}
+
+
+## The mean LAB hue distance (degrees) of `colors` from `hex`'s hue over those with C* at least
+## `min_c`, to 0.1; 180 when none has that chroma (no hue to confuse with it).
+static func neutral_gap(colors: PackedColorArray, hex: String, min_c: float) -> float:
+	var target := hue(lab(Color(hex)))
+	var total := 0.0
+	var count := 0
+	for c in colors:
+		var v := lab(c)
+		if Vector2(v.y, v.z).length() >= min_c:
+			total += hue_gap(hue(v), target)
+			count += 1
+	return 180.0 if count == 0 else snappedf(total / count, 0.1)
+
+
+## The cradle view point of `size`'s band in absolute tm at that size (the dev panel's cradle_point_am
+## over tm_to_am), or Vector2.INF where the band has no cradle.
+static func cradle_view_point_tm(p_sim: PoolSim, size: int) -> Vector2:
+	var b := WorldConfig.band_of(size)
+	var cradle := p_sim.world.content.cradle_of(b) if b >= 1 else null
+	if cradle == null:
+		return Vector2.INF
+	return DEBUG_PANEL.cradle_point_am(cradle, b, p_sim.world.content.config.band_factor) / WorldConfig.tm_to_am(size)
 
 
 ## The scenes --world=`world_name` stages by default: POOL_SCENES or ENDLESS_SCENES ([] for neither).

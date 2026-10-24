@@ -23,7 +23,7 @@ void vertex() {
 void fragment() {
 	float t = clamp(plane.y / max(length_tm, 1e-4), 0.0, 1.0);
 	float d = length(plane - vec2(0.0, t * length_tm));
-	float line = 1.0 - smoothstep(0.0, outline_w, abs(d - radius_tm));
+	float line = 1.0 - smoothstep(0.5 * outline_w, outline_w, abs(d - radius_tm));
 	float fill = 1.0 - smoothstep(radius_tm - 0.03, radius_tm, d);
 	ALBEDO = mix(neutral_color.rgb, ink_color.rgb, ink);
 	ALPHA = clamp(outline_alpha * line + fill_alpha * fill, 0.0, 1.0);
