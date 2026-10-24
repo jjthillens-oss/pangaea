@@ -201,7 +201,38 @@ def strider():
     return b
 
 
-PRESETS = [raptor, dragon, monkey, beetle, longneck, tortoise, boar, stalker, hopper, strider]
+def prowler():
+    b = Body("prowler", "Prowler", "A lithe four-legged hunter with a frilled mane and a long, low stride.", 1500,
+             "#c8873a")
+    b.spine((260, -560, 85), (255, -460, 90), (235, -370, 75), (215, -270, 115), (205, -140, 120), (200, -10, 110),
+            (205, 120, 105), (215, 240, 65), (235, 360, 46), (265, 480, 36), (295, 580, 30))
+    b.limb(4, (95, 160, -270, 68), (125, 20, -255, 58), (115, -150, -280, 48), (115, -190, -305, 44),
+           end="foot", end_scale=1100)
+    b.limb(7, (100, 160, 120, 75), (130, 20, 165, 62), (120, -150, 120, 48), (120, -190, 110, 44), end="foot",
+           end_scale=1100)
+    b.part("maw", u=0, ring=500, elev=25, scale=1100)
+    b.part("eye", u=60, ring=160, scale=800, mirror=True)
+    b.part("frill", u=190, ring=0, scale=2000)
+    return b
+
+
+def angler():
+    b = Body("angler", "Angler", "A round ambusher on stumpy legs: a glowing lure, a huge mouth and finned back.", 900,
+             "#3f6f8f")
+    b.spine((150, -420, 120), (170, -300, 170), (180, -150, 200), (170, 10, 190), (150, 160, 150), (130, 290, 90),
+            (120, 390, 50))
+    b.limb(3, (140, 30, -150, 60), (230, -60, -170, 50), (230, -170, -190, 44), end="foot", end_scale=900)
+    b.limb(5, (140, 30, 160, 60), (230, -60, 180, 50), (230, -170, 200, 44), end="foot", end_scale=900)
+    b.part("maw", u=0, ring=500, elev=5, scale=1700)
+    b.part("eye", u=80, ring=140, scale=900, mirror=True)
+    b.part("lure", u=60, ring=0, scale=1400)
+    b.part("fin", u=450, ring=0, scale=1300)
+    b.part("gill_fan", u=170, ring=250, scale=900, mirror=True)
+    b.part("tail_fluke", u=1000, ring=0, scale=1100)
+    return b
+
+
+PRESETS = [raptor, dragon, monkey, beetle, longneck, tortoise, boar, stalker, hopper, strider, prowler, angler]
 
 
 def build():

@@ -11,7 +11,9 @@
 		"boar",
 		"stalker",
 		"hopper",
-		"strider"
+		"strider",
+		"prowler",
+		"angler"
 	],
 	"presets": {
 		"raptor": {
@@ -2682,6 +2684,563 @@
 					"v": 9
 				},
 				"skin_color": "#e6e1c8"
+			}
+		},
+		"prowler": {
+			"title": "Prowler",
+			"blurb": "A lithe four-legged hunter with a frilled mane and a long, low stride.",
+			"body": {
+				"body_version": 3,
+				"plan": "spine",
+				"reference_length_mm": 1500,
+				"generator": "skin-1",
+				"vertebrae": [
+					{
+						"id": "v_1",
+						"p": [
+							0,
+							260,
+							-560
+						],
+						"r": 85
+					},
+					{
+						"id": "v_2",
+						"p": [
+							0,
+							255,
+							-460
+						],
+						"r": 90
+					},
+					{
+						"id": "v_3",
+						"p": [
+							0,
+							235,
+							-370
+						],
+						"r": 75
+					},
+					{
+						"id": "v_4",
+						"p": [
+							0,
+							215,
+							-270
+						],
+						"r": 115
+					},
+					{
+						"id": "v_5",
+						"p": [
+							0,
+							205,
+							-140
+						],
+						"r": 120
+					},
+					{
+						"id": "v_6",
+						"p": [
+							0,
+							200,
+							-10
+						],
+						"r": 110
+					},
+					{
+						"id": "v_7",
+						"p": [
+							0,
+							205,
+							120
+						],
+						"r": 105
+					},
+					{
+						"id": "v_8",
+						"p": [
+							0,
+							215,
+							240
+						],
+						"r": 65
+					},
+					{
+						"id": "v_9",
+						"p": [
+							0,
+							235,
+							360
+						],
+						"r": 46
+					},
+					{
+						"id": "v_10",
+						"p": [
+							0,
+							265,
+							480
+						],
+						"r": 36
+					},
+					{
+						"id": "v_11",
+						"p": [
+							0,
+							295,
+							580
+						],
+						"r": 30
+					}
+				],
+				"limbs": [
+					{
+						"id": "l_1",
+						"attach": "v_4",
+						"mirror": true,
+						"joints": [
+							{
+								"id": "j_1",
+								"p": [
+									95,
+									160,
+									-270
+								],
+								"r": 68
+							},
+							{
+								"id": "j_2",
+								"p": [
+									125,
+									20,
+									-255
+								],
+								"r": 58
+							},
+							{
+								"id": "j_3",
+								"p": [
+									115,
+									-150,
+									-280
+								],
+								"r": 48
+							},
+							{
+								"id": "j_4",
+								"p": [
+									115,
+									-190,
+									-305
+								],
+								"r": 44
+							}
+						]
+					},
+					{
+						"id": "l_2",
+						"attach": "v_7",
+						"mirror": true,
+						"joints": [
+							{
+								"id": "j_5",
+								"p": [
+									100,
+									160,
+									120
+								],
+								"r": 75
+							},
+							{
+								"id": "j_6",
+								"p": [
+									130,
+									20,
+									165
+								],
+								"r": 62
+							},
+							{
+								"id": "j_7",
+								"p": [
+									120,
+									-150,
+									120
+								],
+								"r": 48
+							},
+							{
+								"id": "j_8",
+								"p": [
+									120,
+									-190,
+									110
+								],
+								"r": 44
+							}
+						]
+					}
+				],
+				"parts": [
+					{
+						"id": "p_1",
+						"type": "foot",
+						"host": "l_1:end",
+						"u": 500,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1100,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_2",
+						"type": "foot",
+						"host": "l_2:end",
+						"u": 500,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1100,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_3",
+						"type": "maw",
+						"host": "spine",
+						"u": 0,
+						"ring": 500,
+						"elev": 25,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1100,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_4",
+						"type": "eye",
+						"host": "spine",
+						"u": 60,
+						"ring": 160,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 800,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_5",
+						"type": "frill",
+						"host": "spine",
+						"u": 190,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 2000,
+						"handles": [],
+						"mirror": false
+					}
+				],
+				"next": {
+					"j": 9,
+					"l": 3,
+					"p": 6,
+					"v": 12
+				},
+				"skin_color": "#c8873a"
+			}
+		},
+		"angler": {
+			"title": "Angler",
+			"blurb": "A round ambusher on stumpy legs: a glowing lure, a huge mouth and finned back.",
+			"body": {
+				"body_version": 3,
+				"plan": "spine",
+				"reference_length_mm": 900,
+				"generator": "skin-1",
+				"vertebrae": [
+					{
+						"id": "v_1",
+						"p": [
+							0,
+							150,
+							-420
+						],
+						"r": 120
+					},
+					{
+						"id": "v_2",
+						"p": [
+							0,
+							170,
+							-300
+						],
+						"r": 170
+					},
+					{
+						"id": "v_3",
+						"p": [
+							0,
+							180,
+							-150
+						],
+						"r": 200
+					},
+					{
+						"id": "v_4",
+						"p": [
+							0,
+							170,
+							10
+						],
+						"r": 190
+					},
+					{
+						"id": "v_5",
+						"p": [
+							0,
+							150,
+							160
+						],
+						"r": 150
+					},
+					{
+						"id": "v_6",
+						"p": [
+							0,
+							130,
+							290
+						],
+						"r": 90
+					},
+					{
+						"id": "v_7",
+						"p": [
+							0,
+							120,
+							390
+						],
+						"r": 50
+					}
+				],
+				"limbs": [
+					{
+						"id": "l_1",
+						"attach": "v_3",
+						"mirror": true,
+						"joints": [
+							{
+								"id": "j_1",
+								"p": [
+									140,
+									30,
+									-150
+								],
+								"r": 60
+							},
+							{
+								"id": "j_2",
+								"p": [
+									230,
+									-60,
+									-170
+								],
+								"r": 50
+							},
+							{
+								"id": "j_3",
+								"p": [
+									230,
+									-170,
+									-190
+								],
+								"r": 44
+							}
+						]
+					},
+					{
+						"id": "l_2",
+						"attach": "v_5",
+						"mirror": true,
+						"joints": [
+							{
+								"id": "j_4",
+								"p": [
+									140,
+									30,
+									160
+								],
+								"r": 60
+							},
+							{
+								"id": "j_5",
+								"p": [
+									230,
+									-60,
+									180
+								],
+								"r": 50
+							},
+							{
+								"id": "j_6",
+								"p": [
+									230,
+									-170,
+									200
+								],
+								"r": 44
+							}
+						]
+					}
+				],
+				"parts": [
+					{
+						"id": "p_1",
+						"type": "foot",
+						"host": "l_1:end",
+						"u": 500,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 900,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_2",
+						"type": "foot",
+						"host": "l_2:end",
+						"u": 500,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 900,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_3",
+						"type": "maw",
+						"host": "spine",
+						"u": 0,
+						"ring": 500,
+						"elev": 5,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1700,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_4",
+						"type": "eye",
+						"host": "spine",
+						"u": 80,
+						"ring": 140,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 900,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_5",
+						"type": "lure",
+						"host": "spine",
+						"u": 60,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1400,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_6",
+						"type": "fin",
+						"host": "spine",
+						"u": 450,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1300,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_7",
+						"type": "gill_fan",
+						"host": "spine",
+						"u": 170,
+						"ring": 250,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 900,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_8",
+						"type": "tail_fluke",
+						"host": "spine",
+						"u": 1000,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1100,
+						"handles": [],
+						"mirror": false
+					}
+				],
+				"next": {
+					"j": 7,
+					"l": 3,
+					"p": 9,
+					"v": 8
+				},
+				"skin_color": "#3f6f8f"
 			}
 		}
 	}

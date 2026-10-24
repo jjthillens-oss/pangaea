@@ -550,3 +550,13 @@ the levels:
 - **Stats.** They come from the body and its physics only; the points buy body changes in the editor.
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
+
+## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
+Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
+- **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
+  bring the count to 12.
+- **Random creature.** The button sits beside the preset menu, for a first design only. It picks a preset and
+  dresses it with extra parts the same way the world's rivals are made, so every result passes the rules. It then
+  picks a random swatch colour and coat. Like a preset, it costs nothing.
+More variants of each part type (eyes, feet, hands...) need new Blender meshes from the art team; the palette and
+its tabs pick them up from the records.
