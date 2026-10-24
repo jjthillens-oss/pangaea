@@ -658,6 +658,15 @@ Measured here, each load tick at its fastest of 7, in µs: before, ticks 188, 24
 
 **On `e2`:** the s1 merge (`e30719f`) brings these in. Two of them change the endless results (a tick unloads or loads, never both; a tick that loads a chunk takes no spawns), so `tests/fixtures/endless_s1_hashes.json` is re-recorded at base commit `3724eeb`, as its own commit. With growth off, s1's identity harness computes the same nine hashes on the merge as on s1.
 
+## 2026-10-24 · #29E, the 30 s after a growth: exact cuts (PROPOSED)
+CI read #29E (each 5 s window of the 30 s after a growth, 12 remnants and 10 awake, at its fastest of 3 runs; limit 14 yardsticks, unchanged) at 14.51 and 14.07 in windows 1 and 2 on `9386c27`, the head that brought B-7 into `e2`. It passed on `dd137d7` before it. Counted with callgrind on the gate's own scene (deterministic, so the counts do not move run to run), B-7 adds 0.3 % of the scene's instructions a tick, and the heap settle alone 0.17 %: the gate sat on its edge, and the runner decided which side. This container reads 15 to 17 in those windows both before and after B-7. So the answer is less work a tick, not a different B-7.
+
+- **The closing history (exact).** `Growth._note_closing` tests the cell's bite reach once a tick (`_bite_reach`) instead of in `_can_hurt` for every body, and keeps each tick's distances in the field's order: only `_closing_in` reads them, which asks whether any id closed, and `snapshot` already sorts the ids. The per-tick key sort and the second dictionary are gone.
+- **Discovery (exact).** WorldGen puts every place and anchor inside its chunk's square (`WorldGen._in`), so `Growth._discover` passes over a chunk of the 3 x 3 whose square lies beyond the larger find radius plus `DISCOVER_SLACK_TM` (0.5 tm, far more than the local values' float32 rounding).
+- **The remnants' views (exact).** `RemnantField.tick` made the camera's view of the cell once per remnant, and `may_leave` the zoom-max view of each place once per remnant: both are made once a tick now (`ViewFootprint.quad_contains`, `RemnantField.leave_views`), with the same corners.
+
+The scene's end hash after the 1,800 timed ticks is the same before and after (1846101512), and so are the growth, remnant and endless tests.
+
 ## 2026-10-24 · Continue rebuilds the world from its seed (CONFIRMED)
 
 Godfrey's test review round 3 (issue #77, PR #95) asked for a test that a save → load → continue run matches an

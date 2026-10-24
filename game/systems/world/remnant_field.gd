@@ -77,6 +77,7 @@ func tick(sim: PoolSim) -> void:
 	var cell := sim.motion.position
 	var cam: Dictionary = sim.layout.camera
 	var aspect := float(sim.species.fairness.spawn_view_aspect)
+	var view := ViewFootprint.corners(cell, cam, float(cam.distance), aspect)   # one view for them all
 	for r in items:
 		var m := r.motion
 		var away := m.position - cell
@@ -84,11 +85,12 @@ func tick(sim: PoolSim) -> void:
 		Locomotion.steer(m, dir, r.phenotype, r.flee_speed / r.phenotype.speed, PoolSim.DT)
 		sim.move_body(m, r.phenotype.radius)
 		r.leaving = sim.tick - r.born_tick >= life_ticks \
-			or not ViewFootprint.contains(cell, m.position, cam, float(cam.distance), aspect, r.phenotype.radius)
+			or not ViewFootprint.quad_contains(view, m.position, r.phenotype.radius)
 	var places := sim._player_places()
+	var quads := leave_views(sim, places)
 	var gone: Array[Remnant] = []
 	for r in items:
-		if may_leave(sim, r, places):
+		if may_leave(sim, r, places, quads):
 			gone.append(r)
 	for r in gone:
 		remove(r, "remnant_left", sim.tick)
@@ -97,17 +99,30 @@ func tick(sim: PoolSim) -> void:
 ## D-84: from every place, `r` is at least spawn_safe_m away and outside the zoom-max view footprint
 ## grown by the look-ahead, the spawn view margin and its radius (the spawn rule's test, so a remnant
 ## never leaves where a creature could not appear).
-static func may_leave(sim: PoolSim, r: Remnant, places: Array[Vector2]) -> bool:
+## `quads`, when given, is leave_views(sim, places): the views made once for every remnant of a tick.
+static func may_leave(sim: PoolSim, r: Remnant, places: Array[Vector2], quads: Array = []) -> bool:
 	var fairness := sim.species.fairness
 	var cam: Dictionary = sim.layout.camera
 	var at := r.motion.position
 	var margin := float(cam.look_ahead_max) + float(fairness.spawn_view_margin_m) + r.phenotype.radius
-	for place in places:
-		if at.distance_to(place) < float(fairness.spawn_safe_m):
+	if quads.is_empty():
+		quads = leave_views(sim, places)
+	for i in places.size():
+		if at.distance_to(places[i]) < float(fairness.spawn_safe_m):
 			return false
-		if ViewFootprint.contains(place, at, cam, float(cam.zoom_max), float(fairness.spawn_view_aspect), margin):
+		if ViewFootprint.quad_contains(quads[i], at, margin):
 			return false
 	return true
+
+
+## may_leave's zoom-max view from each place (ViewFootprint.corners), in the places' order.
+static func leave_views(sim: PoolSim, places: Array[Vector2]) -> Array:
+	var cam: Dictionary = sim.layout.camera
+	var aspect := float(sim.species.fairness.spawn_view_aspect)
+	var out := []
+	for place in places:
+		out.append(ViewFootprint.corners(place, cam, float(cam.zoom_max), aspect))
+	return out
 
 
 func find(id: String) -> Remnant:

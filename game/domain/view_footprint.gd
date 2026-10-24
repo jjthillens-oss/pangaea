@@ -63,10 +63,13 @@ static func _shape(pitch_deg: float, fov_deg: float, distance: float, aspect: fl
 ## True when `p` lies in the camera's view of the plane, or within `margin` of it. A view with no
 ## far end contains everything, so a caller keeping things out of sight stays safe.
 static func contains(look_target: Vector2, p: Vector2, camera: Dictionary, distance: float, aspect: float, margin: float = 0.0) -> bool:
-	var quad := corners(look_target, camera, distance, aspect)
-	if quad.is_empty():
-		return true
-	return distance_outside(quad, p) <= margin
+	return quad_contains(corners(look_target, camera, distance, aspect), p, margin)
+
+
+## contains() on corners() already made: a caller testing many points against one view makes the
+## corners once.
+static func quad_contains(quad: PackedVector2Array, p: Vector2, margin: float = 0.0) -> bool:
+	return quad.is_empty() or distance_outside(quad, p) <= margin
 
 
 ## How far `p` lies outside the convex polygon `quad` (clockwise on screen, as corners() gives it):

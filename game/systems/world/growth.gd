@@ -34,6 +34,8 @@ const NEVER := CreatureBrain.NEVER
 const FULL_EPSILON := 1e-9
 ## The sizes the ring table covers: rings[n - 1] is the ring at size n; past it there is no next size.
 const LAST_RING_SIZE := 9
+## _discover's margin past the larger find radius when it passes over a chunk by its square (tm).
+const DISCOVER_SLACK_TM := 0.5
 ## The HUD lines (spine 3.15): hint() returns one of these or "". BP-19: the HUD shows the bound key in
 ## place of the "(G)".
 const HINT_GROWING := "Growing…"
@@ -260,35 +262,37 @@ func _hunted(sim: PoolSim) -> bool:
 
 
 ## Step 5: this tick's distances to every fleeing creature and every remnant (they always flee) within
-## chase_track_tm that the cell could hurt (its jaw can bite it, or one of its spikes faces it), ids
-## sorted; entries older than chase_window_ticks drop off the front.
+## chase_track_tm that the cell could hurt (its jaw can bite it, or one of its spikes faces it), in
+## the field's order (only _closing_in reads them, and snapshot sorts the ids); entries older than
+## chase_window_ticks drop off the front.
 func _note_closing(sim: PoolSim) -> void:
 	var d := {}
+	var at := sim.motion.position
+	var track := float(cfg.chase_track_tm)
+	var bite_r := _bite_reach(sim)
 	if sim.creatures != null:
-		var at := sim.motion.position
-		var track := float(cfg.chase_track_tm)
 		for c in sim.creatures.awake():
 			if c.brain == null or c.brain.state != CreatureBrain.FLEE:
 				continue
 			var dist := at.distance_to(c.motion.position)
-			if dist <= track and _can_hurt(sim, c.motion.position, c.phenotype.radius):
+			if dist <= track and (c.phenotype.radius <= bite_r or _can_hurt(sim, c.motion.position, c.phenotype.radius)):
 				d[c.id] = dist
 	if sim.remnants != null:
-		var at := sim.motion.position
-		var track := float(cfg.chase_track_tm)
 		for r in sim.remnants.items:
 			var dist := at.distance_to(r.motion.position)
-			if dist <= track and _can_hurt(sim, r.motion.position, r.phenotype.radius):
+			if dist <= track and (r.phenotype.radius <= bite_r or _can_hurt(sim, r.motion.position, r.phenotype.radius)):
 				d[r.id] = dist
-	var ids := d.keys()
-	ids.sort()
-	var sorted := {}
-	for id in ids:
-		sorted[id] = d[id]
-	closing.append([sim.tick, sorted])
+	closing.append([sim.tick, d])
 	var oldest := sim.tick - int(cfg.chase_window_ticks)
 	while not closing.is_empty() and int(closing[0][0]) < oldest:
 		closing.pop_front()
+
+
+## The largest radius the cell's jaw can bite, or -1 without a bite: _can_hurt's first test, hoisted
+## out of _note_closing's loops (a body at or under it can be hurt; _can_hurt decides the rest).
+static func _bite_reach(sim: PoolSim) -> float:
+	var p := sim.phenotype
+	return p.radius * InteractionResolver.BITE_SIZE_LIMIT if p.bite_damage > 0.0 else -1.0
 
 
 ## The cell's jaw can bite a body of radius `r`, or one of its spikes faces `pos`.
@@ -406,9 +410,23 @@ func _discover(sim: PoolSim, n: int) -> void:
 	var c := w.chunk_of_local(at)
 	var place_r := float(cfg.discovery.place_find_tm)
 	var mark_r := float(cfg.discovery.landmark_find_tm)
+	# WorldGen puts every place and anchor inside its chunk's square (WorldGen._in), so a chunk whose
+	# square lies beyond the larger radius (and DISCOVER_SLACK_TM, far more than the local values'
+	# rounding) holds nothing to find: it is passed over, and what is found is the same.
+	var side := w.chunk_tm
+	var corner := w.local_of_tm(c.x * side, c.y * side)   # the cell's chunk's square, local
+	var fx := at.x - corner.x
+	var fy := at.y - corner.y
+	var reach := maxf(place_r, mark_r) + DISCOVER_SLACK_TM
 	var found := []   # [id, type, kind]
 	for dy in range(-1, 2):
+		var gy := maxf(maxf(dy * side - fy, fy - (dy + 1) * side), 0.0)
+		if gy > reach:
+			continue
 		for dx in range(-1, 2):
+			var gx := maxf(maxf(dx * side - fx, fx - (dx + 1) * side), 0.0)
+			if gx * gx + gy * gy > reach * reach:
+				continue
 			var ch := w.chunk(Vector2i(c.x + dx, c.y + dy))
 			if ch == null:
 				continue
