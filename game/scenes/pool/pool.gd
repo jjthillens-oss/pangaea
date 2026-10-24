@@ -370,7 +370,7 @@ func _configure_ghosts() -> void:
 ## the cell has a jaw or eats only meat, starves, how full its ring is, whether it is in the home
 ## tile (the sea only) and how long it has lived; whether a rimmed body is in view, whether a smaller
 ## creature or remnant lies within NEAR_SMALLER_TM of its surface, and the sim time since this
-## session's last growth began (-1 before one).
+## session's last growth began (-1 before one); whether a veil whose threads can sting is in view (S3).
 func hint_context() -> Dictionary:
 	var p := sim.phenotype
 	var n := sim_size()
@@ -378,7 +378,8 @@ func hint_context() -> Dictionary:
 		"starving": sim.state.is_starving(), "meter_share": GrowthHud.share_of(growth(), n),
 		"in_home_tile": is_endless() and _tile_region() == "home", "alive_s": sim.alive_s,
 		"rimmed_in_view": camera != null and not creature_layer.rimmed_in_view(camera, view_size(), 1).is_empty(),
-		"near_smaller": _near_smaller(), "beat_t": sim.now() - _grew_at if _grew_at > -INF else -1.0}
+		"near_smaller": _near_smaller(), "beat_t": sim.now() - _grew_at if _grew_at > -INF else -1.0,
+		"veil_in_view": camera != null and creature_layer.inked_veils_in_view(camera, view_size()) > 0}
 
 
 ## What the idea hints need to know about a sim event: {smaller, rimmed} for the body a "hit" struck

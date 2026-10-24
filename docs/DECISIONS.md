@@ -1234,3 +1234,31 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   plane band, no fog, under the lane, 30 degrees clear of food, luminance x alpha 0.10 at the
   Compatibility alpha). Mutations caught: both slots blooming together, every zone patched,
   warden flats unlisted, the tick read undrawn, no ease, the spine's #E8D27A, a 0.4 alpha.
+
+## 2026-10-24 · S3 T5.5: the HUD for sizes 3 and 4 (V3-15, V3-17 to V3-19; S3G27 HUD, S3G41; PROPOSED; IMPLEMENTED)
+
+- **Names (D-116)**: `REGION_NAMES` gains band 1's regions and rare places verbatim. Home from band
+  1 is the cradle: `region_toast(region, rare, band)` gives "Your lineage began here", shown once
+  per `bind` (the 30 s rule still applies to every other name). The band is read from
+  `pool.sim_size()` in `_on_region`, so the start tile at bind takes it too.
+- **Toasts wait for the chord (V3-15, C3V-21)**: a `tile_entered` during a growth beat before
+  `CHORD_S` is held (the last one wins) and shown from `on_growth_chord`.
+- **Places line (V3-17, C3V-1)**: `%PlacesLine` after `%GrowthLine`, from
+  `growth.places_found(pool.shown_size())` at every endless size, hidden in the M1 pool;
+  `GrowthHud.places_text` is static and `Hud.set_places` owns the label.
+- **Hazard phrase (V3-18)**: "stop" ("stinger veils stop stinging") sits after "ignore" in
+  `PHRASE_ORDER`; ladder entries carry `behavior` from the species catalog.
+- **Veil hint (V3-19)**: kept, not cut (it is first on the cut list, but S3 is not running long).
+  `IdeaHints` id `veil_threads`, "Threads sting: swim around them", wanted while
+  `hint_context().veil_in_view` (`inked_veils_in_view > 0`); followed `VEIL_FOLLOW_S` 10 s after it
+  showed when a veil was in view since and no sting hit the cell. The sting comes from the `hit`
+  event (kind "sting", target the cell) that `IdeaHints.on_event` already gets, so the context
+  carries no `last_sting_s` (the spec's route); the behaviour is the same.
+- **Tests**: `test_growth_hud` (`test_places_text`, `test_hazard_phrase`, `test_preview_at_four`,
+  `test_veil_hint`, the context's keys) and `test_world_hud` (`test_band_one_names`,
+  `test_cradle_toast_once`, `test_toast_waits_for_the_chord`). Mutations caught: the cradle on the
+  30 s rule, no reset at bind, a toast at frame 0, a held toast never shown, home as the cradle at
+  band 0, a misnamed region, "stop" missing from or out of `PHRASE_ORDER`, "ignore you" for the
+  veil, entries without `behavior`, the line at the new size during the beat, the line in the M1
+  pool, the veil hint repeating after a pass, a sting or a bite ignored or counted, no veil in view
+  required, a 5 s follow, a context that never sees the veil.
