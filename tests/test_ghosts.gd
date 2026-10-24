@@ -17,11 +17,16 @@ const SETTINGS_PATH := "user://test_ghosts/settings.cfg"
 const SEED := 7
 ## Lineages for test_rise: the ghosts hash from the lineage id, so each gives other slots and riser.
 const RISE_LINEAGES: PackedStringArray = ["lineage_7a1c0e5d93b2f468", "lineage_e0ba3bffbce8bd8d"]
-const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
-## s2-view 0.9's table: (species, size) -> [depth, base draw scale].
+const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"],
+	3: ["deep_lurker", "elder_warden", "engulfer"], 4: ["engulfer", "lancer"]}
+## s2-view 0.9's table and s3-view 0.6's (sizes 3 and 4): (species, size) -> [depth, base draw scale].
 const DEPTHS := {["lurker", 1]: [-11.2, 1.0], ["elder_rammer", 1]: [-8.0, 1.065], ["veil", 1]: [-14.0, 1.0],
 	["warden", 1]: [-14.0, 1.0], ["veil", 2]: [-13.1, 1.0], ["warden", 2]: [-8.0, 1.023],
-	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0]}
+	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0],
+	["deep_lurker", 3]: [-12.3, 1.0], ["elder_warden", 3]: [-8.0, 1.023], ["engulfer", 3]: [-14.0, 1.0],
+	["engulfer", 4]: [-14.0, 1.0], ["lancer", 4]: [-14.0, 1.0]}
+## The ladder's ghost-only species: past the build's top and not in creatures_m1.json (s3-view 3).
+const GHOST_ONLY := ["engulfer", "lancer"]
 const RESERVED := {"food": Color("#CFE86A"), "threat": Color("#D9466B")}
 
 
@@ -139,18 +144,67 @@ func test_ladder_loads_and_refuses_bad_data() -> void:
 
 
 func test_ladder_matches_the_species_catalog() -> void:
-	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://game/data/creatures_m1.json")).species
+	var catalog: Dictionary = _catalog_species()
 	var ladder := _ladder()
-	var both := 0
-	for id: String in ladder.species:
-		if not catalog.has(id):
-			continue
-		both += 1
-		check_eq(int(ladder.species[id].entry_size), int(catalog[id].get("entry_size", 1)), "%s enters at the catalog's size" % id)
-		check_near(float(ladder.species[id].radius_tm), float(catalog[id].body_size) * 0.5, 1e-9, "%s's radius is half its body size" % id)
-	check(both >= 2, "the Lurker and the elder rammer are in both (%d)" % both)
+	var checked := _cross_check(ladder, catalog, 4)
+	check_eq(checked.problems, PackedStringArray(), "the ladder agrees with creatures_m1.json up to size 4")
+	check(checked.checked.size() >= 6, "the S2 and S3 species are in both (%s)" % [checked.checked])
 	for id: String in ladder.names:
 		check(catalog.has(id), "%s, named for its haze, is a species" % id)
+
+
+func test_ladder_loads_s3_rows() -> void:
+	var shipped := GhostLayer.load_ladder()
+	check_eq(shipped.problems, PackedStringArray(), "the shipped ladder loads with no problems")
+	var data: Dictionary = shipped.data
+	for id in GHOST_ONLY:
+		check(data.species.has(id), "%s is on the ladder" % id)
+	check_eq(int(data.species.engulfer.entry_size), 5, "the engulfer enters at 5")
+	check_eq(int(data.species.lancer.entry_size), 6, "the lancer at 6")
+	check_eq(str(data.preview_at_top.get("4", "")), "the engulfer", "the preview at the top of the build")
+	for look in ["glass_flake", "bead_cluster"]:
+		check(data.food_haze.has(look), "%s has a haze" % look)
+	check(not GhostLayer.haze_paths(data).has("engulfer"), "a ghost-only species has no haze path")
+	var bad := data.duplicate(true)
+	bad.species.veil.haze = ""
+	check(GhostLayer.check_ladder(bad).is_empty(), "an empty haze is a ghost-only row's, and loads")
+
+
+func test_ladder_cross_check_skips_ghost_only() -> void:
+	var catalog: Dictionary = _catalog_species()
+	var ladder := _ladder().duplicate(true)
+	var checked := _cross_check(ladder, catalog, 4)
+	for id in GHOST_ONLY:
+		check(id in checked.skipped and not id in checked.checked, "%s is skipped (entry past 4, not in the catalog)" % id)
+	ladder.species["phantom"] = {"entry_size": 4, "radius_tm": 0.5, "texture": ladder.species.veil.texture,
+		"body_rect": ladder.species.veil.body_rect, "plural": "phantoms", "haze": ""}
+	var problems: PackedStringArray = _cross_check(ladder, catalog, 4).problems
+	check(problems.size() == 1 and "phantom" in problems[0], "a ghost-only row inside the build fails: %s" % [problems])
+
+
+## The S3 cross-check (s3-view 3): every ladder species is in creatures_m1.json at the same entry
+## size and half its body size, except one past `max_in_build` that the catalog does not name.
+## Returns {problems, checked, skipped}.
+static func _cross_check(ladder: Dictionary, catalog: Dictionary, max_in_build: int) -> Dictionary:
+	var out := {"problems": PackedStringArray(), "checked": [], "skipped": []}
+	for id: String in ladder.species:
+		var entry := int(ladder.species[id].entry_size)
+		if not catalog.has(id):
+			if entry > max_in_build:
+				out.skipped.append(id)
+			else:
+				out.problems.append("%s enters at %d, inside the build, but creatures_m1.json has no such species" % [id, entry])
+			continue
+		out.checked.append(id)
+		if entry != int(catalog[id].get("entry_size", 1)):
+			out.problems.append("%s enters at %d, the catalog at %d" % [id, entry, int(catalog[id].get("entry_size", 1))])
+		if absf(float(ladder.species[id].radius_tm) - float(catalog[id].body_size) * 0.5) > 1e-9:
+			out.problems.append("%s's radius %.3f is not half its body size" % [id, float(ladder.species[id].radius_tm)])
+	return out
+
+
+static func _catalog_species() -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://game/data/creatures_m1.json")).species
 
 
 func test_body_rects_match_the_pngs() -> void:
@@ -216,7 +270,7 @@ func test_near_depths_reach_the_design_multiple() -> void:
 	var near: Dictionary = ladder.near
 	var rig := _rig(1)
 	var layer: GhostLayer = rig.get_node("Ghosts")
-	for n in [1, 2]:
+	for n in [1, 2, 3, 4]:
 		check_eq(Array(layer.near_species(n)), NEAR_AHEAD[n], "the near ghosts at size %d, in ladder order" % n)
 		for id in NEAR_AHEAD[n]:
 			var depth := GhostLayer.near_depth(ladder, id, n)
@@ -233,8 +287,9 @@ func test_near_depths_reach_the_design_multiple() -> void:
 
 
 ## V-11: twelve spots (rings of 6, 14 and 22 tm at four bearings north of the focus) with each ahead
-## species, at zoom 10, 14 and 20 and sizes 1 and 2: every ghost centred on screen draws its body at
-## least min_cell_multiple times the cell across.
+## species, at zoom 10, 14 and 20 and sizes 1 to 4: every ghost centred on screen draws its body at
+## least min_cell_multiple times the cell along its longer side on screen (across, or from north to
+## south for a long body such as the lancer).
 func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 	var least := float(_ladder().near.min_cell_multiple)
 	var spots: Array[Vector2] = []
@@ -244,7 +299,7 @@ func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 	var seen := 0
 	var worst := INF
 	var worst_what := ""
-	for n in [1, 2]:
+	for n in [1, 2, 3, 4]:
 		for zoom in [10.0, 14.0, 20.0]:
 			var rig := _rig(n, zoom)
 			var layer: GhostLayer = rig.get_node("Ghosts")
@@ -262,7 +317,7 @@ func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 					if not _on_screen(body.centre):
 						continue
 					seen += 1
-					var multiple: float = body.width / cell
+					var multiple: float = maxf(body.width, body.height) / cell
 					if multiple < worst:
 						worst = multiple
 						worst_what = "%s at %s, size %d, zoom %.0f" % [layer.species_of(node), node.position, n, zoom]
@@ -661,3 +716,117 @@ func test_pool_mode_has_ghosts_at_size_1() -> void:
 	FakeEvents.frame(bare)
 	check(bare.ghosts.billboards().is_empty(), "a broken ladder draws no ghosts")
 	bare.free()
+
+
+## S3 (V3-14; s3-view 9.3): the haze of older sizes keeps to its count over the focus chunk and the
+## eight round it, and its jittered grid never puts two items in one 1 m cell (the contract's
+## MAX_STACKED is 3). A move inside the focus chunk rebuilds nothing; one into the next chunk does,
+## and the same sea gives the same places.
+func test_older_haze_count_and_stack() -> void:
+	var made := _older_haze(3)
+	var haze: OlderHaze = made.haze
+	var world: WorldStream = made.world
+	check(haze.instance_count() == 9 * OlderHaze.PER_CHUNK and haze.instance_count() <= OlderHaze.MAX,
+		"%d items, 24 per chunk over 3 x 3 chunks, at most %d" % [haze.instance_count(), OlderHaze.MAX])
+	var cells := {}
+	var most := 0
+	for t: Transform3D in haze.items().transforms:
+		var key := Vector2i(floori(t.origin.x / Contract.STACK_GRID_M), floori(t.origin.z / Contract.STACK_GRID_M))
+		cells[key] = int(cells.get(key, 0)) + 1
+		most = maxi(most, cells[key])
+	check(most <= 1, "at most one item per %.0f m cell (%d)" % [Contract.STACK_GRID_M, most])
+	var key := OlderHaze.focus_chunk(world, made.focus)
+	var drawn := haze.items()
+	haze.refresh(world, _chunk_point(world, key, Vector2(0.9, 0.1)))
+	check(haze.items() == drawn, "a move inside the focus chunk rebuilds nothing")
+	haze.refresh(world, _chunk_point(world, key + Vector2i(1, 0), Vector2(0.5, 0.5)))
+	check(haze.items() != drawn and haze.instance_count() == 9 * OlderHaze.PER_CHUNK, "the next chunk over rebuilds the set")
+	var again := _older_haze(3)
+	again.haze.refresh(world, _chunk_point(world, key + Vector2i(1, 0), Vector2(0.2, 0.7)))
+	check(again.haze.items().transforms == haze.items().transforms, "the same sea gives the same places")
+	again.haze.free()
+	haze.free()
+
+
+## S3 (s3-view 9.3): hidden at sizes 1 and 2; at 3 the algae ball's haze, at 4 the glass flake's,
+## each quad the older food's drawn diameter over its sprite's span.
+func test_older_haze_sizes() -> void:
+	for n in [1, 2]:
+		var made := _older_haze(n)
+		check(not made.haze.visible and made.haze.instance_count() == 0, "hidden at size %d" % n)
+		made.haze.free()
+	var expect := {3: ["algae_ball", "T_Haze_algae_ball.png", 0.51], 4: ["glass_flake", "T_Haze_glass_flake.png", 0.27]}
+	for n: int in expect:
+		var made := _older_haze(n)
+		var haze: OlderHaze = made.haze
+		var image: Texture2D = haze.material().get_shader_parameter("image")
+		check(haze.visible and haze.look() == expect[n][0] and image != null and image.resource_path.get_file() == expect[n][1],
+			"size %d draws %s (%s)" % [n, expect[n][1], haze.look()])
+		var side := haze.items().transforms[0].basis.get_scale().x
+		check(absf(side - float(expect[n][2])) < 0.01, "size %d: a quad %.3f tm across, about %.2f" % [n, side, expect[n][2]])
+		haze.free()
+
+
+## S3 (s3-view 9.3, the container contract): a growth re-expresses the drawn set in place; the new
+## size's set comes at end_growth and fades in over FADE_S; a growth to 3 fades its first set in
+## from FIRST_FADE_FROM_S of the beat; the pool draws the haze as a registered growth container.
+func test_older_haze_through_a_growth() -> void:
+	var made := _older_haze(3)
+	var haze: OlderHaze = made.haze
+	var before: Array[Vector3] = []
+	for t: Transform3D in haze.items().transforms:
+		before.append((haze.items().transform * t).origin)
+	var center := Vector2(10.0, -6.0)
+	haze.begin_growth(4)
+	haze.apply_growth(center, 1.6)
+	var moved := 0
+	for i in before.size():
+		var now := (haze.items().transform * haze.items().transforms[i]).origin
+		if now.distance_to(WorldSpace.reexpress_point(before[i], center, 1.6)) > 1e-4:
+			moved += 1
+	check(moved == 0 and haze.position.is_zero_approx(), "every item re-expressed in place (%d off)" % moved)
+	haze.beat_frame(3.0, 1.0)
+	check_eq(haze.look(), "algae_ball", "a growth to 4 keeps the old set through the beat")
+	haze.end_growth()
+	check(haze.look() == "glass_flake" and haze.instance_count() > 0 and is_zero_approx(haze.opacity()),
+		"end_growth draws size 4's set, from clear (%.3f)" % haze.opacity())
+	haze.step(10.0)
+	haze.step(10.5)
+	check(is_equal_approx(haze.opacity(), OlderHaze.OPACITY * 0.5), "half way in after half of FADE_S (%.3f)" % haze.opacity())
+	haze.step(11.5)
+	check(is_equal_approx(haze.opacity(), OlderHaze.OPACITY), "in by FADE_S (%.3f)" % haze.opacity())
+	haze.free()
+	var low := _older_haze(2)
+	var first: OlderHaze = low.haze
+	first.begin_growth(3)
+	first.apply_growth(Vector2.ZERO, 1.6)
+	first.beat_frame(OlderHaze.FIRST_FADE_FROM_S - 0.1, 1.0)
+	check(not first.visible and first.instance_count() == 0, "a growth to 3: nothing before %.1f s" % OlderHaze.FIRST_FADE_FROM_S)
+	first.beat_frame(OlderHaze.FIRST_FADE_FROM_S, 1.0)
+	check(first.visible and first.look() == "algae_ball" and first.instance_count() > 0 and is_zero_approx(first.opacity()),
+		"a growth to 3: the first set comes at %.1f s, from clear" % OlderHaze.FIRST_FADE_FROM_S)
+	var drawn := first.items()
+	first.end_growth()
+	check(first.items() == drawn and is_zero_approx(first.opacity()), "and end_growth keeps it, its fade running on")
+	first.free()
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	check(pool.older_haze != null and pool.world_space.registered().has(pool.older_haze) and pool.growth_containers().has(pool.older_haze),
+		"the pool's OlderHaze is a registered growth container")
+	check(not pool.older_haze.visible, "and hidden at size 1")
+	pool.free()
+
+
+## An OlderHaze on the shipped ladder and food looks at size `n`, refreshed round the cell of an
+## endless fixture world: {haze, world, focus}. Free the haze.
+func _older_haze(n: int) -> Dictionary:
+	var session := FakeEvents.endless_session()
+	var haze := OlderHaze.new()
+	haze.setup(_ladder(), WorldConfig.load_from().ladder.food_looks, SEED)
+	haze.set_size(n)
+	haze.refresh(session.sim.world, session.sim.motion.position)
+	return {"haze": haze, "world": session.sim.world, "focus": session.sim.motion.position, "session": session}
+
+
+## The local point at share `u` across chunk `key` (OlderHaze's 32 tm chunks at the stream's size).
+static func _chunk_point(world: WorldStream, key: Vector2i, u: Vector2) -> Vector2:
+	return world.local_of_tm((key.x + u.x) * OlderHaze.CHUNK_TM, (key.y + u.y) * OlderHaze.CHUNK_TM)

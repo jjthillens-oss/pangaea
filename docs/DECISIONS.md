@@ -1068,3 +1068,38 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   ambush hunter entering at size 3, joins the glass reefs and veil gardens; it is a scope addition the
   owner approved here. Its body is a stand-in until art delivers its model, ghost and haze sprite.
 
+## 2026-10-24 · S3 T4.4: the ghost ladder reaches sizes 5 and 6 (PROPOSED; IMPLEMENTED)
+
+- **Rows**: the engulfer (entry 5, 0.85 tm) and the lancer (entry 6, 0.70 tm) join `ghost_ladder.json`
+  with art's measured body rects and no haze yet (an empty haze is skipped by the file checks and
+  by `haze_paths`); the band-1 foods' hazes (glass flake, bead cluster) join `food_haze`, and the
+  top-of-ladder preview at 4 names the engulfer.
+- **A long body is sized by its length on screen (V-11)**: near quads lie flat with the texture's
+  top to the north, so a body long from north to south shows that length foreshortened by the view
+  (`GhostLayer._foreshortening`, measured through the camera at the ghost). `_rule_side` divides by
+  the larger of the rect's width and its height times that factor. Every ghost with a rect wider
+  than tall is unchanged; the lancer now draws at least 1.4 cells along its length at sizes 1 to 4
+  and zooms 10, 14 and 20 (it drew 0.98 before). `test_near_ghosts_draw_at_least_1_4_cells` measures
+  each ghost's longer side on screen.
+
+## 2026-10-24 · S3 T4.5: the haze of older sizes (V3-14; PROPOSED; IMPLEMENTED)
+
+- **What**: `OlderHaze` (`game/scenes/pool/older_haze.gd`, `older_haze.gdshader`) as s3-view 9.3
+  writes it: from size 3 one MultiMesh of the size before's plant-food haze (the algae ball at 3,
+  the glass flake at 4), 24 per 32 tm chunk on a jittered 5 x 5 grid over the focus chunk and the
+  eight round it (216), 2.6 to 3.4 tm under the plane, tinted #B8C4D6 at brightness 0.7 and opacity
+  0.25, in the fog. Places come from `WorldHash.hash_ints(seed, size, cx, cy, i)` split three ways
+  with `mix32`, since `mix32` takes two words. It rebuilds only when the cell's chunk changes.
+- **Growth**: a registered growth container. It re-expresses in place, keeps the old set through
+  the beat, and at `end_growth` draws the new size's set, fading in over 1.0 s. A growth to 3 brings
+  its first set in at 2.0 s of the beat. The pool tells it the new size (`begin_growth`) before
+  `apply_growth`. The fade runs on the drawn sim time, so it stops while paused.
+- **Contract reading (test_ambience_contract)**: the contract read a shader material's textures and
+  colour uniforms separately, each times `brightness`. The haze sprite's white core read 0.45 luma,
+  over the 0.40 limit under the plane, though the shader draws texture x tint (0.25). A texture is
+  now read times the material's `tint` uniform when it has one, as a standard material's albedo
+  texture is read times its albedo. No other contract material has a `tint` uniform beside a
+  texture, so no other reading changes. The tint still counts as a flat colour too, so a tint in the
+  food hue still fails.
+- **Note**: T4.4's commit cited V3-14 for the ghost rows; those rows are V3-13's ladder work, and
+  V3-14 is this haze.

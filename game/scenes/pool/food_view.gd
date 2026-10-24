@@ -35,12 +35,15 @@ const GOLDEN_ANGLE := 2.399963229728653
 const LOOKS := {
 	"plankton": {"scene": "res://assets/export/plankton.glb", "radius": 0.18},
 	"algae_ball": {"scene": "res://assets/export/algae_ball.glb", "radius": 0.18},
+	"glass_flake": {"scene": "res://assets/export/glass_flake.glb", "radius": 0.18},
+	"bead_cluster": {"scene": "res://assets/export/bead_cluster.glb", "radius": 0.18},
 	"carrion": {"scene": "res://assets/export/carrion.glb", "radius": 0.3},
 }
 ## Each kind's look until set_look() picks another.
 const KIND_LOOKS := {"plant": "plankton", "meat": "carrion"}
-## Items from these sources are drawn elsewhere (a morsel by its creature's view, V-24).
-const HIDDEN_SOURCES: PackedStringArray = ["morsel"]
+## Items from these sources are drawn elsewhere: a morsel by its creature's view (V-24), a morsel
+## site's item by the CreatureLayer's MultiMeshes (S3, V3-13).
+const HIDDEN_SOURCES: PackedStringArray = ["morsel", "morsel_site"]
 
 @export_enum("plant", "meat") var kind := "plant"
 ## The food's Blender asset; its first MeshInstance3D gives the mesh.
@@ -85,6 +88,21 @@ func food_mesh() -> Mesh:
 
 
 ## The mesh of look `name` (a LOOKS key), loaded once; null for an unknown look.
+## The looks that first show at sizes 3 and 4 (S3, s3-view 9.2).
+const S3_LOOKS: PackedStringArray = ["glass_flake", "bead_cluster"]
+
+
+## What the start fade draws once so the band-1 foods show without a first-use compile (S3 T4.6,
+## s3-view 13): the glass flake's and bead cluster's meshes.
+static func warm_up_meshes() -> Array[Mesh]:
+	var out: Array[Mesh] = []
+	for look in S3_LOOKS:
+		var mesh := look_mesh(look)
+		if mesh != null:
+			out.append(mesh)
+	return out
+
+
 static func look_mesh(name: String) -> Mesh:
 	if not LOOKS.has(name):
 		return null
