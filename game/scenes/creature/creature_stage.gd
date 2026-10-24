@@ -85,8 +85,7 @@ func setup(p_slot_path: String, world_seed: int) -> void:
 		save.creature = CreatureRules.new_creature()
 	state = {"name": String(save.creature["name"]), "body": (save.creature["body"] as Dictionary).duplicate(true),
 			"points": save.adaptation_points, "world_seed": save.world_seed,
-			"generation": int(save.creature["generation"]), "history": (save.creature["history"] as Array).duplicate(true),
-			"xp": (save.creature.get("xp", {}) as Dictionary).duplicate()}
+			"generation": int(save.creature["generation"]), "history": (save.creature["history"] as Array).duplicate(true)}
 	open_editor()
 
 
@@ -143,9 +142,6 @@ func enter_world() -> void:
 	_add_screen(world)
 	if world.has_method("setup"):
 		world.call("setup", state["body"], int(state["world_seed"]), int(state["points"]))
-	var world_sim = world.get("sim")
-	if world_sim != null and world_sim.has_method("set_xp"):
-		world_sim.call("set_xp", state.get("xp", {}))
 	var hud = world.get("hud")
 	if hud != null and hud.has_method("set_title"):
 		hud.call("set_title", String(state["name"]), int(state["generation"]))
@@ -161,22 +157,17 @@ func save_now() -> Error:
 	sync_from_world()
 	save.adaptation_points = int(state["points"])
 	save.creature = {"name": String(state["name"]), "body": (state["body"] as Dictionary).duplicate(true),
-			"generation": int(state["generation"]), "history": (state["history"] as Array).duplicate(true),
-			"xp": (state.get("xp", {}) as Dictionary).duplicate()}
+			"generation": int(state["generation"]), "history": (state["history"] as Array).duplicate(true)}
 	last_save = persistence.save_to(slot_path, save)
 	if last_save != OK:
 		push_warning("Creature stage: could not save to %s (%s)." % [slot_path, error_string(last_save)])
 	return last_save
 
 
-## Copies the world's live points and the experience its sim earned into the state while the world is up; nothing
-## otherwise.
+## Copies the world's live points into the state while the world is up; nothing otherwise.
 func sync_from_world() -> void:
 	if _mode == "world" and world != null:
 		_take_points(_world_points())
-		var world_sim = world.get("sim")
-		if world_sim != null and world_sim.get("xp") is Dictionary:
-			state["xp"] = (world_sim.get("xp") as Dictionary).duplicate()
 
 
 ## Leaves the stage: saves, then asks Main for the title.
