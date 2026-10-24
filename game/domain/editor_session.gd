@@ -4,8 +4,9 @@ extends RefCounted
 ## redo; preview() shows the stats and cost the commit would produce; commit() validates, derives,
 ## checks the cost and only then returns the new genome. A refused edit or commit changes nothing.
 ##
-## Cost = cost of parts added this session - refund_rate x cost of parts removed. It can be
-## negative (a refund). Moving, scaling or recoloring parts is free.
+## Cost = what was added this session - refund_rate x what was removed, where a part's worth is its
+## cost plus its upgrades (PartCatalog.value_of): a new part, an upgrade to a kept part, a removed
+## part. It can be negative (a refund). Moving, scaling or recoloring parts is free.
 
 var catalog: PartCatalog
 var original: Genome
@@ -48,7 +49,7 @@ func _find(part_id: String) -> Dictionary:
 	return {}
 
 
-func add_part(type_id: String, angle: float, scale: float = 1.0) -> Dictionary:
+func add_part(type_id: String, angle: float, scale: float = 1.0, level: int = 1) -> Dictionary:
 	if not catalog.in_editor(type_id):
 		return _no("%s is not available yet" % type_id)
 	if working.count_of(type_id) >= catalog.max_count_of(type_id):
@@ -59,8 +60,10 @@ func add_part(type_id: String, angle: float, scale: float = 1.0) -> Dictionary:
 		return _no("size out of range")
 	if not is_finite(angle):
 		return _no("bad position")
+	if level < 1 or level > catalog.max_level or (level > 1 and not catalog.can_level(type_id)):
+		return _no("no such level")
 	_checkpoint()
-	var part_id := working.add_part(type_id, wrapf(angle, -PI, PI), scale)
+	var part_id := working.add_part(type_id, wrapf(angle, -PI, PI), scale, level)
 	return _ok({"part_id": part_id})
 
 
@@ -100,7 +103,22 @@ func mirror_part(part_id: String) -> Dictionary:
 		return _no("no such part")
 	if absf(sin(float(part.angle))) < 0.05:
 		return _no("part sits on the center line")
-	return add_part(part.type, -float(part.angle), float(part.scale))
+	return add_part(part.type, -float(part.angle), float(part.scale), Genome.level_of(part))
+
+
+## Raises a part one level (S4.5): stronger, a little heavier and dearer to run.
+func upgrade_part(part_id: String) -> Dictionary:
+	var part := _find(part_id)
+	if part.is_empty():
+		return _no("no such part")
+	if not catalog.can_level(part.type):
+		return _no("this part does not level up")
+	var level := Genome.level_of(part)
+	if level >= catalog.max_level:
+		return _no("already at level %d" % level)
+	_checkpoint()
+	part["level"] = level + 1
+	return _ok({"cost": catalog.upgrade_cost(part.type, level)})
 
 
 func set_appearance(key: String, value: Variant) -> Dictionary:
@@ -134,21 +152,28 @@ func can_redo() -> bool:
 
 
 func cost() -> int:
-	var before := {}
-	for part in original.parts:
-		before[part.id] = part.type
-	var after := {}
-	for part in working.parts:
-		after[part.id] = part.type
+	var before := _values(original)
+	var after := _values(working)
 	var added := 0
 	var removed := 0
 	for id in after:
-		if not before.has(id):
-			added += catalog.cost_of(after[id])
+		var change: int = after[id] - before.get(id, 0)
+		if change > 0:
+			added += change
+		else:
+			removed -= change
 	for id in before:
 		if not after.has(id):
-			removed += catalog.cost_of(before[id])
+			removed += before[id]
 	return added - floori(removed * catalog.refund_rate)
+
+
+## part id -> what the part has cost (its type's cost and its upgrades).
+func _values(genome: Genome) -> Dictionary:
+	var out := {}
+	for part in genome.parts:
+		out[part.id] = catalog.value_of(part.type, Genome.level_of(part))
+	return out
 
 
 ## What committing now would produce, without committing.

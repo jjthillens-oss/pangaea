@@ -45,7 +45,7 @@ const ZONE_ROWS := 8                ## the endless sea's ecology rows: the loade
 ## The buttons that show only in the endless sea.
 const WORLD_BUTTONS: PackedStringArray = ["teleport_far", "rebase", "chunks"]
 ## The buttons that show only where the sea grows (sim.growth set).
-const GROWTH_BUTTONS: PackedStringArray = ["fill_meter", "force_growth", "size_1", "size_2"]
+const GROWTH_BUTTONS: PackedStringArray = ["fill_meter", "force_growth", "size_1", "size_2", "ready_to_mate"]
 const VSYNC_NAMES := {
 	DisplayServer.VSYNC_DISABLED: "off", DisplayServer.VSYNC_ENABLED: "on",
 	DisplayServer.VSYNC_ADAPTIVE: "adaptive", DisplayServer.VSYNC_MAILBOX: "mailbox",
@@ -87,7 +87,7 @@ var _refusal := ""                   ## why the last size command was refused ("
 	"spawn_threat": %SpawnThreat, "kill_nearest": %KillNearest, "freeze_ai": %FreezeAI,
 	"hide_from_ai": %HideFromAI, "hurt_self": %HurtSelf, "teleport_far": %TeleportFar, "rebase": %Rebase,
 	"chunks": %Chunks, "fill_meter": %FillMeter, "force_growth": %ForceGrowth, "size_1": %Size1,
-	"size_2": %Size2,
+	"size_2": %Size2, "ready_to_mate": %ReadyToMate,
 }
 
 
@@ -117,8 +117,9 @@ func toggle() -> void:
 ## order among those living at the cell's size, threat_species()), kill_nearest, freeze_ai and
 ## hide_from_ai (toggles) or hurt_self (HURT_SELF_HP); in the endless sea also teleport_far (to
 ## FAR_AM), rebase (REBASE_BY chunks now) and chunks (the chunk gizmo, on or off); where the sea
-## grows also fill_meter (the ring full), force_growth (grow on the next tick) and size_1 or size_2
-## (refused above the build's top). Returns whether it applied.
+## grows also fill_meter (the ring full), force_growth (grow on the next tick), size_1 or size_2
+## (refused above the build's top) and ready_to_mate (full energy and points, so a kin comes; S4).
+## Returns whether it applied.
 func run(command: String) -> bool:
 	var sim := _current_sim()
 	var applied := false
@@ -175,6 +176,8 @@ func run(command: String) -> bool:
 			applied = sim != null and sim.debug_force_growth()
 		"size_1", "size_2":
 			applied = sim != null and _set_size(sim, int(command.right(1)))
+		"ready_to_mate":
+			applied = sim != null and sim.debug_ready_to_mate()
 	refresh()
 	return applied
 

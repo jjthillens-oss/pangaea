@@ -10,6 +10,13 @@
   "required_categories": ["mouth"],
   "refund_rate": 1.0,
   "diminishing_factor": 0.6,
+  "part_levels": {
+    "note": "S4.5 (PROPOSED): a part can be upgraded to level 3. Index 0 is level 1. A level multiplies the part's benefits by effect_share and its mass and upkeep by cost_share; going up from level L costs upgrade_cost_share[L] x the part's cost. Parts with no benefit (a filter mouth) do not level.",
+    "max": 3,
+    "effect_share": [1.0, 1.4, 1.75],
+    "cost_share": [1.0, 1.2, 1.4],
+    "upgrade_cost_share": [0.0, 1.0, 1.5]
+  },
   "base_body": {
     "speed": 2.0,
     "acceleration": 3.0,
@@ -47,7 +54,7 @@
       "effects": {"ram_damage": 6.0, "upkeep": 0.05, "mass": 0.15}, "arc_deg": 40},
     "eye_spot": {"category": "sense", "max_count": 3, "cost": 40, "editor": true,
       "effects": {"sight": 3.0, "upkeep": 0.1, "mass": 0.02}},
-    "shell_plate": {"category": "defense", "max_count": 3, "cost": 80, "editor": false,
+    "shell_plate": {"category": "defense", "max_count": 3, "cost": 80, "editor": true,
       "effects": {"defense": 0.2, "max_health": 10.0, "upkeep": 0.1, "mass": 0.3}},
     "toxin_gland": {"category": "defense", "max_count": 2, "cost": 100, "editor": false,
       "effects": {"upkeep": 0.2, "mass": 0.1}}
