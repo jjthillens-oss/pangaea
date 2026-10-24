@@ -1,8 +1,8 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://game/scenes/creature/creature_editor.gd" id="1_editor"]
 [ext_resource type="PackedScene" path="res://game/ui/creature_editor_hud.tscn" id="2_hud"]
-[ext_resource type="Shader" path="res://game/scenes/creature/editor_floor.gdshader" id="3_floor"]
+[ext_resource type="PackedScene" path="res://assets/export/creature_editor_room.glb" id="3_floor"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_room"]
 sky_top_color = Color(0.035, 0.08, 0.19, 1)
@@ -25,17 +25,6 @@ tonemap_mode = 2
 glow_enabled = true
 glow_intensity = 0.25
 glow_bloom = 0.05
-
-[sub_resource type="ShaderMaterial" id="Mat_floor"]
-shader = ExtResource("3_floor")
-
-[sub_resource type="CylinderMesh" id="Floor_disc"]
-material = SubResource("Mat_floor")
-top_radius = 1.0
-bottom_radius = 1.0
-height = 0.02
-radial_segments = 48
-rings = 1
 
 [node name="CreatureEditor" type="Node3D"]
 script = ExtResource("1_editor")
@@ -60,10 +49,8 @@ light_color = Color(0.55, 0.8, 1, 1)
 light_energy = 1.2
 omni_range = 8.0
 
-[node name="Floor" type="MeshInstance3D" parent="."]
+[node name="Floor" parent="." instance=ExtResource("3_floor")]
 transform = Transform3D(2.5, 0, 0, 0, 1, 0, 0, 0, 2.5, 0, -0.01, 0)
-cast_shadow = 0
-mesh = SubResource("Floor_disc")
 
 [node name="UnderLight" type="OmniLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.35, 0)
