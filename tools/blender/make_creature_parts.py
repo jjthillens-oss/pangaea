@@ -95,18 +95,21 @@ def _shape_keys(obj, handles):
     return out
 
 
-def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE):
+def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=()):
+    """`keep` names objects authored at their final density, which decimation would spoil (an iris edge that is
+    a material boundary): they get a tolerance so small nothing collapses."""
     before = after = 0
     highs = {}
     for obj in objs:
-        b, a, high = sf.reduce(obj, tolerance)
+        b, a, high = sf.reduce(obj, 1e-7 if obj.name in keep else tolerance)
         before, after = before + b, after + a
         if a == b:
             sf.drop_highs([high])
             high = None
         highs[obj.name] = high
     sf.unwrap(objs)
-    textures = sf.bake_set(objs, texture, size, highs=highs, tints=tints)
+    # bake_set bakes a normal map only when some piece was reduced; a kept piece's bump still needs one.
+    textures = sf.bake_set(objs, texture, size, normal=bool(keep), highs=highs, tints=tints)
     sf.drop_highs(highs.values())
     return {"textures": textures,
             "reduction": {"method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
@@ -2111,6 +2114,408 @@ def build_barbels():
             "part_rules": rules, "paint_mix": {"M_BarbelPad": 0.9, "M_Barbel": 0.7}, "revision": 1, **baked}
 
 
+# --- Set 7: more eyes and mouths ------------------------------------------------------------------------
+
+def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28):
+    """An eyeball revolved round +Z with a ring of its own exactly at the iris edge, so the iris is a second
+    material on the same mesh with a true circular edge (a separate iris shell made the bake ray-cast hit the
+    ball underneath). Faces inside `iris_half` (radians from +Z) take `iris`, the rest `sclera`."""
+    thetas = sorted(set([iris_half * k / 4 for k in range(5)] + [iris_half + (math.pi - iris_half) * k / 6 for k in range(7)]))
+    prof = [(radius * math.cos(t), radius * math.sin(t) if 0.0 < t < math.pi - 1e-9 else 0.0) for t in thetas]
+    rv, rf, bands = bc.revolve(prof, segs)
+    verts = [tuple(centre + Vector(v)) for v in _up(rv)]
+    face_mats = [1 if b < 4 else 0 for b in bands]
+    obj = bc.mesh_object(name, verts, rf, [sclera, iris], face_mats)
+    return obj
+
+
+def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0):
+    """Greyscale iris detail for a cap: radial fibres, a dark limbal ring at the edge and a dark pupil, round
+    (`pupil` its half-angle in radians) or, with `slit` > 0, a slit that narrow (in the ball's unit units) across y."""
+    sh = sf.Shader(name)
+    n = sh.vmath("NORMALIZE", sh.vmath("SUBTRACT", sh.pos, tuple(centre)))
+    facing = sh.vmath("DOT_PRODUCT", n, tuple(axis.normalized()))
+    edge = math.cos(half_angle)
+    limbal = sh.remap(facing, edge + 0.01, edge + 0.08)                     # 0 at the rim, 1 inside
+    fibres = sh.noise(140.0, 2.0, vector=mp._stretched(sh, (9.0, 9.0, 0.4)))
+    flecks = sh.remap(sh.voronoi(220.0, 0.9), 0.0, 0.15)
+    detail = sh.math("ADD", sh.remap(fibres, 0.3, 0.7, 0.55, 0.95), sh.math("MULTIPLY", flecks, -0.1))
+    base = sh.mix(limbal, (0.22, 0.22, 0.22, 1.0), sh.mix(detail, (0.5, 0.5, 0.5, 1.0), (0.95, 0.95, 0.95, 1.0)))
+    if slit > 0.0:
+        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, (0.0, 1.0, 0.0)))
+        hole = sh.math("MULTIPLY", sh.remap(across, slit + 0.015, slit), sh.remap(facing, math.cos(pupil) - 0.02, math.cos(pupil)))
+    else:
+        hole = sh.remap(facing, math.cos(pupil) - 0.004, math.cos(pupil) + 0.004)
+    base = sh.mix(hole, base, (0.03, 0.03, 0.03, 1.0))
+    sh.bump(sh.math("MULTIPLY", fibres, limbal), 0.08, 0.0004)
+    return sh.out(base, 0.06)
+
+
+def _sclera_material(name):
+    sh = sf.Shader(name)
+    veins = sh.remap(sh.noise(70.0, 4.0, vector=mp._stretched(sh, (1.0, 1.0, 3.0))), 0.62, 0.7)
+    sh.bump(veins, 0.03, 0.0002)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 0.95, sh.math("MULTIPLY", veins, 0.12)), 0.8), 0.08)
+
+
+def _lid_material(name, scales=False):
+    sh = sf.Shader(name)
+    if scales:
+        cells = sh.voronoi(330.0, 0.5, feature="DISTANCE_TO_EDGE")
+        groove = sh.remap(cells, 0.0, 0.08)
+        sh.bump(groove, 0.4, 0.0008)
+        return sh.out(_grey(sh, sh.math("ADD", 0.62, sh.math("MULTIPLY", groove, 0.33)), 0.6), 0.5)
+    pores = sh.remap(sh.voronoi(260.0, 0.6), 0.2, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pores), 0.25, 0.0008)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", pores, 0.3)), 0.8), 0.55)
+
+
+def _lid_ring(radius, sink, top, segs=40):
+    """The rolled fleshy lid round an eyeball of `radius`, from `sink` under the skin to `top` over it (cpart_eye's)."""
+    prof = []
+    steps = 16
+    for i in range(steps + 1):
+        a = math.pi * i / steps
+        r = radius * 1.02 + 0.012 * (radius / EYE_R) * math.sin(a) + 0.006 * (radius / EYE_R)
+        y = -(sink - 0.0012) + (top + sink - 0.0012) * (1 - math.cos(a)) / 2       # 1.2 mm of room for the decimation
+        prof.append((y, r - 0.01 * (radius / EYE_R) * (i / steps) ** 2))
+    lv, lf, _ = bc.revolve(prof, segs)
+    return _up(lv), lf
+
+
+def _blink_fn(radius, top):
+    def blink(co):
+        if co.z > 0.0:
+            r = math.hypot(co.x, co.y)
+            k = min(1.0, max(0.0, co.z / top))
+            scale = max(0.05, 1.0 - 0.95 * k)
+            return Vector((co.x * scale if r > 0 else co.x, co.y * scale if r > 0 else co.y, co.z + radius * 1.05 * k))
+        return co
+    return blink
+
+
+SLIT_R = 0.04
+SLIT_SINK = 0.03
+
+
+def build_eye_slit():
+    """A reptile's eye: a gold ball with a vertical slit pupil (narrow across +Y, so it stands upright on a
+    side-set eye) in an almond opening of scaly lids that close in from +-X. H1_Blink shuts the lids,
+    H2_Bulge pushes the ball out."""
+    centre = Vector((0.0, 0.0, SLIT_R * 0.4))
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = _sclera_material("M_EyeSlitBallProc")
+    iris_mat = _iris_material("M_EyeSlitIrisProc", centre, axis, math.radians(62.0), math.radians(52.0), slit=0.075)
+    ball = _eye_ball("EyeSlit", centre, SLIT_R, math.radians(62.0), sclera, iris_mat)
+    sclera.name, iris_mat.name = "M_EyeSlitBall", "M_EyeSlitIris"
+    top = SLIT_R * 0.55
+    lv, lf = _lid_ring(SLIT_R, SLIT_SINK, top)
+    almond = []
+    for p in lv:
+        p = Vector(p)
+        d = p - centre
+        r = math.hypot(p.x, p.y)
+        k = min(1.0, max(0.0, p.z / top)) ** 1.5
+        f = (p.x / r) ** 2 if r > 1e-6 else 0.0             # 1 at +-X (the lids), 0 at +-Y (the corners)
+        turn = d.cross(axis)
+        if turn.length > 1e-6 and k > 0.0:
+            d = Matrix.Rotation(math.radians(13.0) * f * k, 3, turn.normalized()) @ d
+        almond.append(tuple(centre + d))
+    lid_mat = _lid_material("M_EyeSlitLidProc", scales=True)
+    lid = bc.mesh_object("Lid", almond, lf, [lid_mat], parent=ball, fix_normals=False)
+    lid_mat.name = "M_EyeSlitLid"
+    baked = _bake([ball, lid], "PartEyeSlit", keep=("EyeSlit",), tints={"M_EyeSlitBall": sf.tint(_lin("#E2CDA0")), "M_EyeSlitIris": sf.tint(_lin("#D8923A")),
+                                                      "M_EyeSlitLid": sf.tint(_lin("#7E8A5C"))}, size=256)
+    pts = _check_pivot("eye_slit", SLIT_SINK)
+    foot = _footprint(pts, z_max=0.02)
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.25 * SLIT_R * max(0.0, co.z) / (SLIT_R * 1.3)))
+
+    handles = _shape_keys(lid, [("H1_Blink", _blink_fn(SLIT_R, top), "the scaly lids close over the ball to a slit")])
+    handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
+    rules = _rules("eye_slit", round(foot + 0.001, 3), SLIT_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on Lid, H2 on EyeSlit; both are 0 to 1000 per mille."
+    return {"purpose": "Creature eye part (PROPOSED): a reptile's gold eye with a slit pupil in an almond of scaly lids; blinks on a shape key.",
+            "category": "part", "part_type": "eye_slit", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EyeSlitBall": 0.0, "M_EyeSlitIris": 0.0, "M_EyeSlitLid": 0.9}, "revision": 1, **baked}
+
+
+ROUND_R = 0.058
+ROUND_SINK = 0.035
+
+
+def build_eye_round():
+    """A big round eye: a white ball standing well proud of the skin, a wide blue iris and a large round pupil,
+    in a thin rolled lid. H1_Blink shuts the lid, H2_Bulge pushes the ball out."""
+    centre = Vector((0.0, 0.0, ROUND_R * 0.45))
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = _sclera_material("M_EyeRoundBallProc")
+    iris_mat = _iris_material("M_EyeRoundIrisProc", centre, axis, math.radians(42.0), math.radians(21.0))
+    ball = _eye_ball("EyeRound", centre, ROUND_R, math.radians(42.0), sclera, iris_mat)
+    sclera.name, iris_mat.name = "M_EyeRoundBall", "M_EyeRoundIris"
+    top = ROUND_R * 0.5
+    lv, lf = _lid_ring(ROUND_R, ROUND_SINK, top)
+    lid_mat = _lid_material("M_EyeRoundLidProc")
+    lid = bc.mesh_object("Lid", lv, lf, [lid_mat], parent=ball, fix_normals=False)
+    lid_mat.name = "M_EyeRoundLid"
+    baked = _bake([ball, lid], "PartEyeRound", keep=("EyeRound",), tints={"M_EyeRoundBall": sf.tint(_lin("#EEEAE2")), "M_EyeRoundIris": sf.tint(_lin("#4F72C8")),
+                                                        "M_EyeRoundLid": sf.tint(_lin("#B88E7E"))}, size=256)
+    pts = _check_pivot("eye_round", ROUND_SINK)
+    foot = _footprint(pts, z_max=0.02)
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.25 * ROUND_R * max(0.0, co.z) / (ROUND_R * 1.45)))
+
+    handles = _shape_keys(lid, [("H1_Blink", _blink_fn(ROUND_R, top), "the lid rolls over the ball to a slit")])
+    handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
+    rules = _rules("eye_round", round(foot + 0.001, 3), ROUND_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on Lid, H2 on EyeRound; both are 0 to 1000 per mille."
+    return {"purpose": "Creature eye part (PROPOSED): a big round eye, white with a wide blue iris and a large pupil, in a thin rolled lid; blinks on a shape key.",
+            "category": "part", "part_type": "eye_round", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EyeRoundBall": 0.0, "M_EyeRoundIris": 0.0, "M_EyeRoundLid": 0.9}, "revision": 1, **baked}
+
+
+CLUSTER_SINK = 0.015
+CLUSTER_EYES = ((0.017, 0.012, 0.016), (-0.017, 0.012, 0.016), (0.03, -0.014, 0.01), (-0.03, -0.014, 0.01))   # x, y, radius
+
+
+def build_eye_cluster():
+    """Four glossy black eyes, two big ones toward the head and two small ones behind, set in a low fleshy pad,
+    like a spider's. H1_Bulge raises the eyes, H2_Spread moves them apart."""
+    unit, faces = bc.icosphere(3)
+    pad_v = []
+    for co in unit:
+        n = Vector(co).normalized()
+        pad_v.append((n.x * 0.05, n.y * 0.042, max(-CLUSTER_SINK, n.z * 0.016)))
+    pad_mat = _lid_material("M_EyeClusterPadProc")
+    pad = bc.mesh_object("EyeCluster", pad_v, faces, [pad_mat])
+    pad_mat.name = "M_EyeClusterPad"
+    unit2, faces2 = bc.icosphere(3)
+    ev, ef, centres = [], [], []
+    for x, y, r in CLUSTER_EYES:
+        c = Vector((x, y, 0.012 + r * 0.25))
+        centres.append(c)
+        bc.append(ev, ef, [tuple(c + Vector(co).normalized() * r) for co in unit2], faces2)
+    sh = sf.Shader("M_EyeClusterLensProc")
+    glint = sh.remap(sh.noise(40.0, 2.0), 0.45, 0.6)
+    sh.bump(glint, 0.02, 0.0002)
+    lens = sh.out(_grey(sh, sh.math("ADD", 0.7, sh.math("MULTIPLY", glint, 0.25)), 0.6), 0.05)
+    eyes = bc.mesh_object("Eyes", ev, ef, [lens], parent=pad)
+    lens.name = "M_EyeClusterLens"
+    baked = _bake([pad, eyes], "PartEyeCluster", {"M_EyeClusterPad": sf.tint(_lin("#A88478")), "M_EyeClusterLens": sf.tint(_lin("#2A2436"))},
+                  size=256, tolerance=0.0004)      # the small lenses stay round
+    pts = _check_pivot("eye_cluster", CLUSTER_SINK)
+    foot = _footprint(pts)
+
+    def nearest(co):
+        return min(centres, key=lambda c: (c - co).length)
+
+    def bulge(co):
+        c = nearest(co)
+        return co + Vector((0.0, 0.0, 0.006))
+
+    def spread(co):
+        c = nearest(co)
+        return co + Vector((c.x * 0.25, c.y * 0.15, 0.0))
+
+    handles = _shape_keys(eyes, [("H1_Bulge", bulge, "the eyes stand 6 mm prouder of the pad"),
+                                 ("H2_Spread", spread, "the eyes 25% further apart across, 15% along")])
+    rules = _rules("eye_cluster", round(foot + 0.001, 3), CLUSTER_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "Both handles are on Eyes; the pad stays put."
+    return {"purpose": "Creature eye part (PROPOSED): four glossy black eyes, two big and two small, in a low fleshy pad.",
+            "category": "part", "part_type": "eye_cluster", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EyeClusterPad": 0.9, "M_EyeClusterLens": 0.0}, "revision": 1, **baked}
+
+
+JAW_LEN = 0.15
+JAW_SINK = 0.025
+JAW_W = 0.034           # half-width across x at the root
+JAW_H = 0.012           # each jaw's half-depth along y
+JAW_GAP = 0.004         # between the closed jaws
+JAW_TEETH = 7           # per side of each jaw
+
+
+def build_jaw():
+    """A long toothy snout: an upper jaw (+Y) and a lower jaw (-Y) running out along +Z from a fleshy collar,
+    rows of pointed teeth along their edges and pink gums between. H1_Open drops the lower jaw, H2_Length
+    lengthens both."""
+    steps, sides = 14, 24
+    verts, fcs, mats_ix = [], [], []
+    hinge_z = 0.008
+    for sign in (1.0, -1.0):
+        path = [Vector((0.0, sign * (JAW_GAP / 2 + JAW_H) * (1.0 - 0.35 * t), hinge_z + (JAW_LEN - hinge_z) * t)) for t in (i / steps for i in range(steps + 1))]
+
+        def radius_at(i, a, sign=sign):
+            if i == steps:
+                return 0.0
+            t = i / steps
+            w = JAW_W * (1.0 - 0.55 * t ** 1.4) * (1.0 if t < 0.9 else math.sqrt(max(0.0, 1.0 - ((t - 0.9) / 0.1) ** 2)))
+            h = JAW_H * (1.0 - 0.4 * t) * (1.0 if t < 0.86 else math.sqrt(max(0.05, 1.0 - ((t - 0.86) / 0.14) ** 2)))
+            # _tube's ring runs cos(a) along y and sin(a) along x (its frame for a path up +Z); the side facing the
+            # other jaw is flattened so the closed jaws meet flat.
+            cy, sx = math.cos(a), math.sin(a)
+            hy = h * (0.55 if cy * sign < 0 else 1.0)
+            return 1.0 / math.sqrt((cy / hy) ** 2 + (sx / w) ** 2)
+
+        v, f, _ = _tube(path, radius_at, sides)
+        base = len(verts)
+        bc.append(verts, fcs, v, f)
+        for face in f:
+            ys = sum(v[k][1] for k in face) / len(face)
+            cy = sum(path[min(steps, max(0, int(round((v[k][2] - hinge_z) / (JAW_LEN - hinge_z) * steps))))].y for k in face) / len(face)
+            mats_ix.append(1 if (ys - cy) * sign < -0.004 else 0)
+    cv, cf = mp._sweep([Vector((0.0, 0.0, z)) for z in (0.02, 0.006, -0.01, -JAW_SINK)], lambda i, a: (JAW_W * 1.05) * (1.0 + 0.12 * i) * math.sqrt((0.8 * math.cos(a)) ** 2 + math.sin(a) ** 2), 24)
+    bc.append(verts, fcs, cv, cf)
+    mats_ix.extend([0] * len(cf))
+    skin = sf.Shader("M_JawSkinProc")
+    scales = skin.remap(skin.voronoi(260.0, 0.6, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)
+    skin.bump(scales, 0.35, 0.0008)
+    gum = sf.Shader("M_JawGumProc")
+    wr = gum.noise(160.0, 3.0)
+    gum.bump(wr, 0.3, 0.0008)
+    mats = [skin.out(_grey(skin, skin.math("ADD", 0.66, skin.math("MULTIPLY", scales, 0.3)), 0.6), 0.55),
+            gum.out(_grey(gum, gum.remap(wr, 0.3, 0.7), 0.75), 0.35)]
+    jaw = bc.mesh_object("Jaw", verts, fcs, mats, mats_ix)
+    mats[0].name, mats[1].name = "M_JawSkin", "M_JawGum"
+    tverts, tfaces, roots = [], [], []
+    for sign in (1.0, -1.0):
+        for side in (1.0, -1.0):
+            for n in range(JAW_TEETH):
+                t = 0.12 + 0.78 * n / (JAW_TEETH - 1)
+                w = JAW_W * (1.0 - 0.55 * t ** 1.4) * 0.82
+                z = hinge_z + (JAW_LEN - hinge_z) * t
+                yc = sign * (JAW_GAP / 2 + JAW_H * (1.0 - 0.35 * t) * 0.45)
+                root = Vector((side * w, yc, z))
+                length = (0.012 if n % 3 == 1 else 0.008) * (1.0 - 0.3 * t)
+                d = Vector((-side * 0.15, -sign, 0.1)).normalized()
+                path = [root + d * (length * k) for k in (0.0, 0.5, 1.0)]
+                v, f, _ = _tube(path, lambda i, a, L=length: 0.0 if i == 2 else 0.0032 * (1.0 - i / 2) ** 0.7 * (1.3 if L > 0.01 else 1.0), 6)
+                bc.append(tverts, tfaces, v, f)
+                roots.append(root)
+    tooth_sh = sf.Shader("M_JawToothProc")
+    streak = tooth_sh.noise(120.0, 3.0, vector=mp._stretched(tooth_sh, (4.0, 4.0, 0.4)))
+    tooth_sh.bump(streak, 0.15, 0.0005)
+    tooth_mat = tooth_sh.out(_grey(tooth_sh, tooth_sh.remap(streak, 0.2, 0.8, 0.8, 1.0), 0.8), 0.2)
+    teeth = bc.mesh_object("Teeth", tverts, tfaces, [tooth_mat], parent=jaw)
+    tooth_mat.name = "M_JawTooth"
+    baked = _bake([jaw, teeth], "PartJaw", {"M_JawSkin": sf.tint(_lin("#8C8A62")), "M_JawGum": sf.tint(_lin("#B86A70")),
+                                           "M_JawTooth": sf.tint(_lin("#EDE3C8"))})
+    pts = _check_pivot("jaw", JAW_SINK)
+    foot = _footprint(pts)
+
+    def upper(co, tooth=False):
+        if tooth:
+            return min(roots, key=lambda r: (r - co).length).y > 0
+        return co.y > 0
+
+    def open_fn(tooth):
+        def open_(co):
+            if co.z <= hinge_z:
+                return co
+            a = math.radians(-6.0) if upper(co, tooth) else math.radians(26.0)
+            rel = Vector((0.0, co.y, co.z - hinge_z))
+            rot = Matrix.Rotation(-a, 3, "X") @ rel
+            return Vector((co.x, rot.y, rot.z + hinge_z))
+        return open_
+
+    def length(co):
+        if co.z > 0.02:
+            co.z = 0.02 + (co.z - 0.02) * 1.35
+        return co
+
+    handles = _shape_keys(jaw, [("H1_Open", open_fn(False), "the lower jaw drops 26 degrees about the hinge, the upper lifts 6"),
+                                ("H2_Length", length, "both jaws 35% longer")])
+    _shape_keys(teeth, [("H1_Open", open_fn(True), ""), ("H2_Length", length, "")])
+    rules = _rules("jaw", round(foot + 0.001, 3), JAW_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules["handles"] = handles
+    rules["handles_note"] = "Both handles are on Jaw and Teeth (the teeth ride their jaw)."
+    return {"purpose": "Creature mouth part (PROPOSED): a long toothy snout, scaly upper and lower jaws with rows of pointed teeth and pink gums, opening on a shape key.",
+            "category": "part", "part_type": "jaw", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_JawSkin": 0.85, "M_JawGum": 0.0, "M_JawTooth": 0.0}, "revision": 1, **baked}
+
+
+BILL_LEN = 0.14
+BILL_SINK = 0.02
+BILL_W = 0.036          # half-width across x where the bill is broadest
+BILL_H = 0.014          # half-depth along y at the root
+
+
+def build_bill():
+    """A broad flat bill like a platypus's or a duck's: wide across x, thin along y, a rounded spoon tip, two
+    nostril dents near the root and a seam where the halves meet, on a fleshy gape. H1_Open parts the halves,
+    H2_Width broadens the bill."""
+    # Authored at its budget and kept whole, so the gape's edge stays a clean ring; the rings crowd toward the
+    # rounded tip. Ring 3 (t 0.1875) is z 0.01, where the gape meets the bill.
+    ts = [k / 16 for k in range(13)] + [0.8, 0.85, 0.89, 0.93, 0.96, 0.985, 1.0]
+    steps, sides = len(ts) - 1, 24
+    path, half_w, half_h = [], [], []
+    for t in ts:
+        path.append(Vector((0.0, -0.008 * t ** 3, -BILL_SINK + (BILL_LEN + BILL_SINK) * t)))
+        w = BILL_W * (0.7 + 0.42 * math.sin(min(1.0, t / 0.78) * math.pi / 2))
+        if t > 0.82:
+            w *= math.sqrt(max(0.0, 1.0 - ((t - 0.82) / 0.18) ** 2))
+        half_w.append(w)
+        half_h.append(BILL_H * (1.15 if t < 0.12 else (1.0 - 0.6 * t)) * (1.0 if t <= 0.82 else math.sqrt(max(0.0, 1.0 - ((t - 0.82) / 0.18) ** 2))))
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        c, s_ = math.cos(a), math.sin(a)
+        # a superellipse: flat top and bottom, rounded edges
+        e = 2.5
+        rx, ry = half_w[i], half_h[i]
+        denom = (abs(s_) / rx) ** e + (abs(c) / ry) ** e      # the sweep's ring: cos(a) along y, sin(a) along x
+        return denom ** (-1.0 / e)
+
+    verts, faces = mp._sweep(path, radius_at, sides)
+    face_materials = [0 if sum(verts[k][2] for k in f) / len(f) < 0.0095 else 1 for f in faces]
+    gape = sf.Shader("M_BillGapeProc")
+    wr = gape.noise(140.0, 3.0)
+    gape.bump(wr, 0.3, 0.001)
+    horn = sf.Shader("M_BillProc")
+    seam = horn.remap(horn.math("ABSOLUTE", horn.axis("Y")), 0.0025, 0.0)
+    nostrils = horn.math("MULTIPLY", horn.remap(horn.vmath("LENGTH", horn.vmath("SUBTRACT", horn.vmath("MULTIPLY", horn.vmath("ABSOLUTE", horn.pos), (1.0, 0.0, 1.0)), (0.011, 0.0, 0.045))), 0.0045, 0.0025),
+                         horn.remap(horn.axis("Y"), 0.0, 0.004))          # on the upper half only
+    nail = horn.remap(horn.axis("Z"), 0.118, 0.13)                   # a darker horny nail at the tip
+    pits = horn.remap(horn.voronoi(240.0, 0.8), 0.15, 0.0)
+    h = horn.math("SUBTRACT", horn.math("MULTIPLY", pits, 0.25), horn.math("ADD", seam, horn.math("MULTIPLY", nostrils, 0.8)))
+    horn.bump(h, 0.35, 0.0012)
+    mats = [gape.out(_grey(gape, gape.remap(wr, 0.3, 0.7), 0.8), 0.6),
+            horn.out(_grey(horn, horn.math("SUBTRACT", 0.85, horn.math("ADD", horn.math("ADD", horn.math("MULTIPLY", seam, 0.4), horn.math("MULTIPLY", nostrils, 0.5)),
+                                                                         horn.math("MULTIPLY", nail, 0.35))), 0.4), 0.45)]
+    bill = bc.mesh_object("Bill", verts, faces, mats, face_materials)
+    mats[0].name, mats[1].name = "M_BillGape", "M_Bill"
+    baked = _bake([bill], "PartBill", keep=("Bill",), tints={"M_BillGape": sf.tint(_lin("#C98A7A")), "M_Bill": sf.tint(_lin("#D9A14A"))})
+    pts = _check_pivot("bill", BILL_SINK)
+    foot = _footprint(pts)
+
+    def open_(co):
+        if co.z <= 0.006:
+            return co
+        t = min(1.0, max(0.0, (co.z + BILL_SINK) / (BILL_LEN + BILL_SINK)))
+        a = math.radians(16.0) * (1 if co.y >= -0.008 * t ** 3 else -1)          # above or below the bill's centreline
+        rel = Vector((0.0, co.y, co.z - 0.006))
+        rot = Matrix.Rotation(a, 3, "X") @ rel
+        return Vector((co.x, rot.y, rot.z + 0.006))
+
+    def width(co):
+        if co.z > 0.012:
+            co.x *= 1.0 + 0.3 * min(1.0, (co.z - 0.012) / 0.04)
+        return co
+
+    handles = _shape_keys(bill, [("H1_Open", open_, "the halves parted 16 degrees each about the gape"),
+                                 ("H2_Width", width, "the bill 30% broader past its root")])
+    rules = _rules("bill", round(foot + 0.001, 3), BILL_SINK, "forward_cone", ["spine"], 40, 30, centerline="required")
+    rules["handles"] = handles
+    return {"purpose": "Creature mouth part (PROPOSED): a broad flat spoon-tipped bill with nostril dents and a closing seam, on a fleshy gape; opens on a shape key.",
+            "category": "part", "part_type": "bill", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_BillGape": 0.8, "M_Bill": 0.1}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -2139,6 +2544,11 @@ ASSETS = {
     "cpart_club_tail": (build_club_tail, 1200),
     "cpart_lure": (build_lure, 1200),
     "cpart_barbels": (build_barbels, 1200),
+    "cpart_eye_slit": (build_eye_slit, 1200),
+    "cpart_eye_round": (build_eye_round, 1200),
+    "cpart_eye_cluster": (build_eye_cluster, 1200),
+    "cpart_jaw": (build_jaw, 1200),
+    "cpart_bill": (build_bill, 1200),
 }
 
 
