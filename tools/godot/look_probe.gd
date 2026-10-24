@@ -437,9 +437,9 @@ const GATES := {
 		{"id": "hatch_median", "path": "hatch.median_dE", "max": 2.0, "what": "the growth's frame 0 against frame A, no 2D layer (median CIE76; 0.0; p99 12.8, all of it the ambience's drift, whose x and z wrap in world space; 0.1 with it hidden)"},
 		# S3's growth (s3-view 15; S3G31, S3G32 M), PROPOSED there; the readings measured at T5.7
 		# (seed 4242, omnivore, 1920x1080, zoom 14, Compatibility on llvmpipe) follow each one.
-		{"id": "s3_veil_ink", "path": "lineup_s3.veil.ink", "min": 1.0, "what": "size 3: the veil's threads carry the threat ink (1: 36.7% of the 4,919 pixels the threads change)"},
-		{"id": "s3_veil_width", "path": "lineup_s3.veil.width_px", "min": 24.0, "what": "size 3: the threads' capsule across, readable at zoom 14 (px; 51.5)"},
-		{"id": "s3_veil_contrast", "path": "lineup_s3.veil.thread_dE", "min": 15.0, "what": "size 3: the threads against the moment without them (median CIE76; 31.6)"},
+		{"id": "s3_veil_ink", "path": "lineup_s3.veil.ink", "min": 1.0, "what": "size 3: the veil's threads carry the threat ink (1: 46.2% of the 3,905 pixels the threads change; Forward+ 45.3% of 4,465)"},
+		{"id": "s3_veil_width", "path": "lineup_s3.veil.width_px", "min": 24.0, "what": "size 3: the threads' capsule across, readable at zoom 14 (px; 51.5 in both renderers)"},
+		{"id": "s3_veil_contrast", "path": "lineup_s3.veil.thread_dE", "min": 15.0, "what": "size 3: the threads against the moment without them (median CIE76; 48.9, Forward+ 68.1)"},
 		{"id": "s3_warden_ink", "path": "lineup_s3.ink.warden", "min": 1.0, "what": "size 3: the warden shows the threat colour (1: 49% of its ink surfaces' pixels)"},
 		{"id": "s3_rim_rammer", "path": "lineup_s3.rim.rammer", "min": 1.0, "what": "size 3: the rammer, food, shows the green rim (1: 856 food-hue rim pixels)"},
 		{"id": "s3_rim_ambush", "path": "lineup_s3.rim.ambush_hunter", "min": 1.0, "what": "size 3: the ambush hunter, food now, shows the green rim (1: 1,123)"},
@@ -448,7 +448,7 @@ const GATES := {
 		{"id": "s3_near_elder_warden", "path": "lineup_s3.near.elder_warden.cell_multiple", "min": 1.4, "what": "size 3: the elder warden's near ghost against the cell (1.45)"},
 		{"id": "s3_near_engulfer", "path": "lineup_s3.near.engulfer.cell_multiple", "min": 1.4, "what": "size 3: the engulfer's near ghost against the cell (1.82)"},
 		{"id": "s4_veil_ink", "path": "lineup_s4.veil.ink", "max": 0.0, "what": "size 4: the outgrown veil's threads carry no threat ink (0: 0%)"},
-		{"id": "s4_veil_neutral", "path": "lineup_s4.veil.neutral_gap", "min": 25.0, "what": "size 4: the threads' hue away from the threat pink (degrees; 96.2)"},
+		{"id": "s4_veil_neutral", "path": "lineup_s4.veil.neutral_gap", "min": 25.0, "what": "size 4: the threads' hue away from the threat pink (degrees; 95.1, Forward+ 78.8)"},
 		{"id": "s4_ink_deep_lurker", "path": "lineup_s4.ink.deep_lurker", "min": 1.0, "what": "size 4: the deep Lurker shows the threat colour (1: 39% of its \"!\")"},
 		{"id": "s4_ink_elder_warden", "path": "lineup_s4.ink.elder_warden", "min": 1.0, "what": "size 4: the elder warden shows the threat colour (1: 50%)"},
 		{"id": "s4_rim_morsel_ambush", "path": "lineup_s4.rim.morsel_ambush_hunter", "min": 1.0, "what": "size 4: the ambush hunter's morsel shows the green rim (1: 1,226 food-hue rim pixels)"},

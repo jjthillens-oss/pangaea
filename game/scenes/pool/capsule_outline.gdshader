@@ -1,5 +1,7 @@
 // The soft outline of a veil's thread capsule (S3, docs/s3/s3-view.md 8.2): a thin line on the
 // capsule's edge and a faint fill inside, so the whole stinging area reads, not just the threads.
+// The fill is fill_alpha at the rim and fades to nothing on the axis ((d / r)^3): a flat fill
+// blends to a purple wash over the deep blue in Forward+ that outweighs the pink line.
 // The quad lies on the swim plane in the capsule's frame (the segment runs from (0, 0) to (0, L)
 // in x and z), unscaled, so distances are in tm.
 shader_type spatial;
@@ -24,7 +26,7 @@ void fragment() {
 	float t = clamp(plane.y / max(length_tm, 1e-4), 0.0, 1.0);
 	float d = length(plane - vec2(0.0, t * length_tm));
 	float line = 1.0 - smoothstep(0.5 * outline_w, outline_w, abs(d - radius_tm));
-	float fill = 1.0 - smoothstep(radius_tm - 0.03, radius_tm, d);
+	float fill = (1.0 - smoothstep(radius_tm - 0.03, radius_tm, d)) * pow(clamp(d / max(radius_tm, 1e-4), 0.0, 1.0), 3.0);
 	ALBEDO = mix(neutral_color.rgb, ink_color.rgb, ink);
 	ALPHA = clamp(outline_alpha * line + fill_alpha * fill, 0.0, 1.0);
 }

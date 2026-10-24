@@ -1320,7 +1320,12 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   middle) read 0.5% of the threads' pixels within 15 degrees of the threat pink, because the line
   blends with the navy at every pixel. The inked outline is now solid over its inner half and 0.08 tm
   wide (`capsule_outline.gdshader` `smoothstep(0.5 w, w, ...)`, `OUTLINE_ALPHA` (0.6, 1.0),
-  `OUTLINE_W_TM` 0.08): 36.7% at size 3, and the neutral outline at 4 stays 96 degrees off the pink.
+  `OUTLINE_W_TM` 0.08). In Forward+, the game's renderer, the spec's flat fill (alpha 0.10) then
+  blended to a purple wash (CIE76 about 20, hue about 300 degrees) over more than half the capsule
+  and the share fell to 26.7%. The fill is now 0.10 at the rim and fades to nothing on the axis
+  (`(d / r)^3`), so the whole stinging area still reads from its edge: 46.2% at size 3 in
+  Compatibility and 45.3% in Forward+, and the neutral outline at 4 stays 95 and 79 degrees off the
+  pink.
 - **Gates**: 21 rows, all pass in Compatibility (50 of 50 with S1's and S2's), each with its reading
   in its `what`. S1's and S2's growth scenes read as at S2. The endless set (16 of 16) moved a little
   (reef food gap 140.0, reef contrast 6.4, shed husk 164.4 and 92.3) and the arrow home's centre
