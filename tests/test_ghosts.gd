@@ -17,11 +17,13 @@ const SETTINGS_PATH := "user://test_ghosts/settings.cfg"
 const SEED := 7
 ## Lineages for test_rise: the ghosts hash from the lineage id, so each gives other slots and riser.
 const RISE_LINEAGES: PackedStringArray = ["lineage_7a1c0e5d93b2f468", "lineage_e0ba3bffbce8bd8d"]
-const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
+const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden", "elder_ambush"],
+	2: ["veil", "warden", "elder_ambush", "deep_lurker", "elder_warden"]}
 ## s2-view 0.9's table: (species, size) -> [depth, base draw scale].
 const DEPTHS := {["lurker", 1]: [-11.2, 1.0], ["elder_rammer", 1]: [-8.0, 1.065], ["veil", 1]: [-14.0, 1.0],
 	["warden", 1]: [-14.0, 1.0], ["veil", 2]: [-13.1, 1.0], ["warden", 2]: [-8.0, 1.023],
-	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0]}
+	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0],
+	["elder_ambush", 1]: [-14.0, 1.0], ["elder_ambush", 2]: [-11.2, 1.0]}  # S3's size-3 hunter (owner's card)
 const RESERVED := {"food": Color("#CFE86A"), "threat": Color("#D9466B")}
 
 
@@ -449,7 +451,7 @@ func test_growth_re_expresses_ghosts() -> void:
 
 
 ## A growth to 2 hands the species live from 2 to the rise (V-13): at the layer's time 12 s Near0
-## shows the Lurker, Near1 and Near4 the elder rammer. The first ghost of each such species waits at
+## and Near4 show the Lurker, Near1 the elder rammer. The first ghost of each such species waits at
 ## its opacity for the rise, the other fades from 0.3 s and is gone by 1.3 s; the riser is the
 ## waiting Lurker itself, and the elder rammer that waited fades once the rise has begun.
 func test_a_growth_hands_the_live_species_to_the_rise() -> void:
@@ -461,7 +463,7 @@ func test_a_growth_hands_the_live_species_to_the_rise() -> void:
 	var shown := {}
 	for node in layer.billboards():
 		shown[str(node.name)] = layer.species_of(node)
-	check_eq([shown.get("Near0"), shown.get("Near1"), shown.get("Near4")], ["lurker", "elder_rammer", "elder_rammer"], "the slots at 12 s")
+	check_eq([shown.get("Near0"), shown.get("Near1"), shown.get("Near4")], ["lurker", "elder_rammer", "lurker"], "the slots at 12 s")
 	var opacity := func(name: String) -> float:
 		var node: MeshInstance3D = layer.get_node(name)
 		return float((node.material_override as ShaderMaterial).get_shader_parameter("opacity")) if node.visible else 0.0
@@ -474,13 +476,13 @@ func test_a_growth_hands_the_live_species_to_the_rise() -> void:
 		t += 1.0 / 60.0
 	check_near(opacity.call("Near0"), waiting_a[0], 1e-6, "the Lurker waits at its opacity")
 	check_near(opacity.call("Near1"), waiting_a[1], 1e-6, "and so does the first elder rammer")
-	check(opacity.call("Near4") < 0.4 * float(_ladder().near.opacity[1]), "the second elder rammer fades from 0.3 s")
+	check(opacity.call("Near4") < 0.4 * float(_ladder().near.opacity[1]), "the second Lurker fades from 0.3 s")
 	layer.rise("lurker", Vector2(camera.focus.x, camera.focus.z - 30.0))
 	check(layer.riser() == layer.get_node("Near0"), "the waiting Lurker is the riser")
 	while t < 2.2:
 		layer.apply_scale_view(_view(camera, 2, 12.0 + t, GrowthBeat.dolly_k(t)))
 		if t >= 1.35:
-			check(not (layer.get_node("Near4") as Node3D).visible, "the second elder rammer is gone by 1.3 s")
+			check(not (layer.get_node("Near4") as Node3D).visible, "the second Lurker is gone by 1.3 s")
 		t += 1.0 / 60.0
 	check(not (layer.get_node("Near1") as Node3D).visible, "the elder rammer that waited fades once the rise begins")
 	check(layer.riser() != null and layer.riser().visible, "while the riser still shows")

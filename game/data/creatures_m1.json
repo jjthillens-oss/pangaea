@@ -209,7 +209,7 @@
       "death_reason": "Caught by an elder ambush hunter",
       "death_tip": "Elder ambush hunters lie in wait beside the richest food in reefs and veil gardens. When one coils, swim out of its line on the side you face.",
       "entry_size": 3,
-      "behavior": "ambush", "body_asset": "creature_ambush_body", "body_size": 1.5,
+      "behavior": "ambush", "body_asset": "creature_elder_ambush_body", "body_size": 1.5,
       "parts": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "eye_spot", "angle": 0.6}, {"type": "eye_spot", "angle": -0.6}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
       "niche": {"role": "elder_ambush", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
       "metabolism_share": 0.1, "start_energy_share": 0.9, "hungry_below": 0.6, "full_above": 0.85,
