@@ -352,3 +352,34 @@ func test_a_part_picture_turns_its_tool_into_a_picture_button() -> void:
 	check(editor.hud.tool_icon("maw") == null, "a part without a picture keeps its text")
 	editor.hud.set_tool_icon("tentacle", tex)
 	check(editor.hud.tool_icon("tentacle") == null, "an unknown part is ignored")
+
+
+## Owner ask, 2026-10-24: a Random button for a surprise first design.
+func test_a_first_design_can_start_from_a_random_creature() -> void:
+	open()
+	check(not editor.start_random(5)["ok"], "refused while presets are not offered")
+	editor.offer_presets(true)
+	var bases := {}
+	for s in 6:
+		var r: Dictionary = editor.start_random(s)
+		check(r["ok"], "seed %d starts: %s" % [s, r.get("reason", "")])
+		check(CreatureData.preset_names().has(r["base"]), "from a preset (%s)" % r["base"])
+		check_eq(editor.points(), POINTS, "the points are untouched")
+		check_eq(int(editor.session.preview()["cost"]), 0, "it costs nothing")
+		bases[r["base"]] = true
+	check(bases.size() >= 2, "different seeds give different creatures (%d bases)" % bases.size())
+	var a := JSON.stringify(_random_body(11))
+	check_eq(JSON.stringify(_random_body(11)), a, "the same seed gives the same creature")
+	var pressed := [0]
+	editor.hud.random_requested.connect(func(): pressed[0] += 1)
+	(editor.hud.find_child("Random", true, false) as Button).pressed.emit()
+	check_eq(pressed[0], 1, "the Random button asks for one")
+	var done := editor.finish()
+	check(done["ok"], "Done commits it: %s" % done.get("reason", ""))
+
+
+func _random_body(seed_value: int) -> Dictionary:
+	editor.start_random(seed_value)
+	var out: Dictionary = editor.working_body().to_dict()
+	out["color"] = editor.skin_color.to_html(false)
+	return out

@@ -30,6 +30,7 @@ func test_reproduce_records_the_new_generation() -> void:
 	var parent_id := save.genome.genome_id
 	var lineage_id := save.lineage_id
 	var history_before := save.lineage_history.size()
+	save.adaptation_points = 30 + catalog.cost_of("eye_spot")
 	var session := EditorSession.new(save.genome, catalog, save.adaptation_points)
 	session.add_part("eye_spot", 0.7)
 	var r := Lineage.reproduce(save, session, _state(80.0))

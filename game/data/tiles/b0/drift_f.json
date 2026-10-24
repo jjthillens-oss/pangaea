@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Open drift, the transit: a loose shell cluster, no sites, small zones of 1 or 2 items each (docs/s1/s1-content.md 3.2 and 3.4).",
+  "id": "drift_f",
+  "band": 0,
+  "region": "drift",
+  "set": 1,
+  "rare": "",
+  "landmark_anchor": [4.0, -20.0],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [-11.0, 10.4], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-9.3, 20.1], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [-6.1, 7.8], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-14.4, 14.7], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [2.7, 14.5], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "f0", "center": [-21.0, -24.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f1", "center": [21.0, -24.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f2", "center": [-3.1, -23.05], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f3", "center": [-23.0, 0.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f4", "center": [1.0, 0.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f5", "center": [25.0, 2.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f6", "center": [-21.0, 21.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f7", "center": [19.0, 24.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f8", "center": [2.0, 26.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"}
+  ],
+  "sites": []
+}

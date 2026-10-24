@@ -17,10 +17,12 @@ extends RefCounted
 ##     senses; the token decides whether the player is engageable to it), drive, and set its
 ##     velocity by the drive (steer, tell, burst or glide). A frozen creature (dev) coasts;
 ##  3. the player steers;
-##  4. the player moves, then each creature;
+##  4. the player moves, then each creature (move_body: from size 2 a move left inside a rock is
+##     taken back);
 ##  5. contacts: overlapping bodies are pushed apart once (positions only, by inverse mass), each
-##     pushed body settles against rocks and the wall, every creature is clamped to its leash disc
-##     last, and a striking creature touching a rock ahead is blocked;
+##     pushed body settles against rocks and the wall (from size 2, a push left inside a rock is taken
+##     back), every creature is clamped to its leash disc last, and a striking creature touching a
+##     rock ahead is blocked;
 ##  6. metabolism: the player as in step 2, creatures at their species' metabolism share (a
 ##     starved creature dies and leaves no carcass);
 ##  7. ecology, then the creature field's respawn queue and stuck removals;
@@ -33,6 +35,20 @@ extends RefCounted
 ## 11. dodges: a strike on the cell that ended this tick without a hit (missed or blocked);
 ## 12. shelter: when its last tick passes, grace_ended {reason: "timeout"}.
 ## Creatures are not saved; every timer is a whole tick and every RNG is seeded from the world seed.
+##
+## The endless world (S1): create(..., p_world) with world content builds the sea that goes on
+## instead of the walled pool. `world` (a WorldStream) streams generated chunks in and out round the
+## cell, moves the floating origin and decides which creatures sleep; its block runs first in every
+## tick (WorldStream.step), and every creature loop of the tick runs over the awake creatures only.
+## Positions stay local (tm, float32) to the origin; absolute_position_am() is the float64 place.
+## Pool mode (p_world null) never builds any of it, so its ticks and hashes are exactly M1's.
+##
+## Growth (S2): with the world file's growth switch on, `growth` (a Growth) holds the meter round the
+## cell. step() keeps the intent's grow press and trigger for it, and at the end of the tick, after
+## every field event is taken, Growth.observe reads the tick's events (D-58). Off (or in the pool)
+## `growth` is null and the tick is exactly S1's (D-46). `remnants` (a RemnantField) holds the
+## creatures a growth left behind: they move after the creatures, and contacts, the cell's attacks and
+## deaths take them with the awake creatures through _combat_bodies() (D-57); they never attack.
 ##
 ## Checkpoints (plan section 13): a death returns the cell to checkpoint(), the generation start.
 ## With creatures, respawn_player() follows rules C1-C5: the cell at the checkpoint (or the nearest
@@ -88,6 +104,10 @@ var dead := false
 var death := {}
 var species: SpeciesCatalog            ## null: the step 2 pool, with no creatures
 var creatures: CreatureField           ## null without species
+## The endless world's streaming; null in the pool (exactly M1).
+var world: WorldStream = null
+## Endless mode: a respawn was asked for (respawn_player); the next step's streaming block performs it.
+var respawn_pending := false
 ## Dev switches (debug_set_ai_frozen, debug_set_hidden); part of the state, so they are hashed.
 var dev_ai_frozen := false
 var dev_hidden := false
@@ -98,6 +118,15 @@ var grace_until := -1
 ## Deaths in a row, each within streak_window_s of the last respawn (RespawnRules.streak_after); it
 ## picks the shelter and the energy of the next respawn. 0 before the first death; not saved (D16).
 var death_streak := 0
+## The endless world's growth meter (S2); null in the pool and with growth switched off (D-46).
+var growth: Growth = null
+## S4.3: the cell's kin, which swims in when the cell is ready to mate (with growth only).
+var kin: Kin = null
+## The remnants a growth left (S2, D-57); null wherever growth is.
+var remnants: RemnantField = null
+## This tick's intent for Growth (D-58): a Grow press, and the trigger setting ("" for no change).
+var intent_grow := false
+var intent_trigger := ""
 var stats := {"plankton_eaten": 0, "carrion_eaten": 0, "plant_taken": 0.0, "energy_supplied": 0.0,
 	"energy_absorbed": 0.0, "points_food": 0, "points_survival": 0, "distance_m": 0.0,
 	"kills": 0, "hits_dealt": 0, "hits_taken": 0, "damage_dealt": 0.0, "damage_taken": 0.0, "dodges": 0,
@@ -123,7 +152,12 @@ var _dodges: Array[Dictionary] = []
 ## Builds the pool for a save. The save's position is used when it is a clear place inside the
 ## soft wall; otherwise the cell starts at the layout spawn. With `p_species` the pool has creatures:
 ## every site that passes the spawn check from the cell's place is filled, the others wait.
-static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout, p_species: SpeciesCatalog = null) -> PoolSim:
+## With `p_world` it builds the endless world instead (S1; _create_endless).
+static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout, p_species: SpeciesCatalog = null,
+		p_world: WorldContent = null) -> PoolSim:
+	if p_world != null:
+		return _create_endless(p_save, p_catalog, p_layout, p_species, p_world,
+			WorldGen.create(p_world, p_species, p_save.world_seed))
 	var sim := PoolSim.new()
 	sim.save = p_save
 	sim.catalog = p_catalog
@@ -165,19 +199,163 @@ static func create(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayou
 	return sim
 
 
+## The endless world for a save, generated by `p_gen` (WorldGen.create; tests pass a fake). The
+## origin is the save's absolute place exactly (PlaneSpace.from_save_abs; the home spawn for a save
+## without one) and the cell starts at the first clear point near it (C1), facing the spawn heading
+## at the spawn, else the nearest zone (as M1 does). The view set is loaded at once, the home
+## block's starting carrion within the food ring is placed, every food zone is filled at once, the
+## loaded sites that pass their spawn checks get their creatures (as M1's populate), and the cell
+## starts sheltered. The layout gives the camera, the food and carrion tuning; its walls, zones and
+## rocks are not used (the home block holds the M1 pool's). S2 (D-74): the world is at the save's
+## size (clamped to the sizes the build runs), the checkpoint is the save's, and growth restores the
+## meter and the ledger.
+static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: PoolLayout, p_species: SpeciesCatalog,
+		p_world: WorldContent, p_gen: WorldGen) -> PoolSim:
+	var sim := PoolSim.new()
+	sim.save = p_save
+	sim.catalog = p_catalog
+	sim.layout = p_layout
+	sim.phenotype = Phenotype.derive(p_save.genome, p_catalog)
+	sim.state = ActorState.fresh(sim.phenotype)
+	sim.arena = ChunkArena.create_endless(p_world.config.chunk_tm)
+	# Its rng is never drawn in endless mode: every zone draws its own stream.
+	sim.region = EcologyRegion.create(p_save.world_seed * SEED_STRIDE + REGION_SEED_OFFSET)
+	var world := WorldStream.create(p_world, p_gen)
+	# S2 (D-74): a v3 save's size, clamped to the sizes this build runs (the first alone with growth
+	# off: BP-6), and its checkpoint at that size.
+	var config := p_world.config
+	var top := config.max_size_in_build if not Growth.config_of(config).is_empty() else config.size_start
+	var n := clampi(int(p_save.growth.get("size", config.size_start)), config.size_start, maxi(top, config.size_start))
+	if n != world.size:
+		world.set_size(n)
+	var cp: Dictionary = p_save.checkpoint
+	world.checkpoint_am = PackedFloat64Array([float(cp.x_am), float(cp.y_am), float(cp.heading), float(n)])
+	world.camera = p_layout.camera
+	if p_species != null:
+		world.view_aspect = float(p_species.fairness.spawn_view_aspect)
+		world.view_margin = float(p_layout.camera.look_ahead_max) + float(p_species.fairness.spawn_view_margin_m)
+	sim.world = world
+	# The save's absolute place becomes the origin exactly; a new game's is the home spawn.
+	var at := PlaneSpace.from_save_abs(p_save.player.get("position"))
+	if at.is_empty():
+		at = p_world.home.spawn
+	world.set_origin_abs(sim, at[0], at[1])
+	sim.plankton = PlanktonField.create(p_layout.plankton)
+	sim.plankton.endless = true
+	sim.plankton.max_items_per_zone = int(world.caps.food_per_zone)
+	sim.carrion = CarrionField.create(p_layout.carrion, p_save.world_seed * SEED_STRIDE + CARRION_SEED_OFFSET)
+	sim.carrion.initial = []
+	if p_species != null:
+		sim.species = p_species
+		sim.creatures = CreatureField.create_endless(p_species, p_catalog, p_layout, sim.region, world,
+			p_save.world_seed * SEED_STRIDE + ENCOUNTER_SEED_OFFSET)
+		if n != sim.creatures.size:
+			sim.creatures.set_size(n)
+	world.load_view_set_now(sim, Vector2.ZERO)
+	var place := sim._clear_point_near(Vector2.ZERO, sim.phenotype.radius)
+	# A restored place inside a collider moves the cell off the origin: its own view set loads too (B-8).
+	world.load_view_set_now(sim, place)
+	var at_spawn := at[0] == p_world.home.spawn[0] and at[1] == p_world.home.spawn[1]
+	var heading := p_world.home.spawn_heading if at_spawn else sim._nearest_zone_direction(place).angle()
+	sim.motion = Locomotion.MotionState.new(place, heading)
+	sim.actor = InteractionResolver.Actor.new("player", place, heading, sim.phenotype)
+	world.start(sim)
+	sim._start_growth(Growth.config_of(p_world.config), p_world.config.max_size_in_build)
+	if sim.growth != null:
+		sim.growth.restore(p_save, n)   # the meter and the ledger (D-74)
+	# The home block's starting carrion that lies within the food ring (absolute pairs).
+	for p: Array in p_world.home.carrion_initial:
+		var local := world.local_of_abs(float(p[0]), float(p[1]))
+		if local.distance_to(place) <= float(world.rings.food) and sim.arena.is_clear(local, sim.carrion.item_radius):
+			sim.carrion.spawn(local, "initial")
+	world.fill_all_food_now(sim)
+	if sim.creatures != null:
+		# M1's populate: every site queued by the view set's load that passes its checks spawns now.
+		sim.creatures.tick_spawns_at(sim.arena, sim._player_places(), 0)
+		sim.grace_until = p_species.start_grace_ticks
+	# The starting world is not news (its chunk_loaded events are: the scene builds from them).
+	sim.plankton.events.clear()
+	sim.carrion.events.clear()
+	if sim.creatures != null:
+		sim.creatures.take_events()
+	sim._was_starving = sim.state.is_starving()
+	return sim
+
+
+## Growth for the endless world (S2) from the world file's growth block; nothing for an empty one
+## (growth off). The world's top size is the build's (max_in_build), and only then do the growth keys
+## join the snapshot (BP-20).
+func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
+	if world == null or cfg.is_empty():
+		return
+	growth = Growth.create(cfg, str(cfg.trigger))
+	remnants = RemnantField.create(cfg)
+	kin = Kin.new()
+	world.max_size = max_in_build
+	world.counters["remnant_overflow"] = 0
+
+
+## S4.4: the save's genome has become the next generation (Lineage.reproduce, from the cell editor):
+## the cell takes the new body where it is, its energy and health keeping their shares of the new
+## capacities. Reports offspring {generation, genome_id}.
+func apply_offspring() -> void:
+	var energy_share := state.energy / state.energy_capacity if state.energy_capacity > 0.0 else 1.0
+	var health_share := state.health / state.max_health if state.max_health > 0.0 else 1.0
+	phenotype = Phenotype.derive(save.genome, catalog)
+	state.energy_capacity = phenotype.energy_capacity
+	state.max_health = phenotype.max_health
+	state.energy = energy_share * state.energy_capacity
+	state.health = health_share * state.max_health
+	actor.phenotype = phenotype
+	_emit({"type": "offspring", "generation": save.genome.generation, "genome_id": save.genome.genome_id})
+
+
+## True in the endless world (S1), false in the pool.
+func is_endless() -> bool:
+	return world != null
+
+
+## The cell's size on the ladder: the world's, or 1 in the pool.
+func size() -> int:
+	return world.size if world != null else 1
+
+
+## Energy to capacity (the build top's payout, D-32; the growth tick, B.4 step 7).
+func refill_energy() -> void:
+	state.energy = state.energy_capacity
+	_update_starving()
+
+
+## The cell's absolute place in am, float64: the checkpoint's exactly while dead or waiting for its
+## respawn (it may be kilometres from the origin), else the origin plus the local position. In the
+## pool, position_for_save().
+func absolute_position_am() -> PackedFloat64Array:
+	if world == null:
+		var p := position_for_save()
+		return PackedFloat64Array([p.x, p.y])
+	if dead or respawn_pending:
+		return PackedFloat64Array([world.checkpoint_am[0], world.checkpoint_am[1]])
+	return world.abs_of_local(motion.position)
+
+
 ## Sim time in seconds: the only clock (cooldowns, carrion age, drift).
 func now() -> float:
 	return tick * DT
 
 
 func step(intent: SimIntent) -> void:
+	intent_grow = intent != null and intent.grow
+	intent_trigger = intent.trigger if intent != null else ""
+	var mark := _events.size()   # this tick's events start here (Growth.observe reads them)
+	if world != null:
+		world.step(self)   # the streaming block (S1 spine 3.11): first, reading sim state only
 	if creatures != null:
-		_creatures_act(creatures.bodies(player_body()))
+		_creatures_act(creatures.body_snapshot(player_body()))
 	var moved := 0.0
 	if not dead:
 		var move := intent.move if intent != null and intent.move.is_finite() else Vector2.ZERO
 		Locomotion.steer(motion, move, phenotype, state.speed_multiplier(), DT)
-		moved = arena.move(motion, phenotype.radius, DT)
+		moved = move_body(motion, phenotype.radius)
 		stats.distance_m += moved
 	else:
 		motion.prev_position = motion.position
@@ -186,6 +364,8 @@ func step(intent: SimIntent) -> void:
 	var swim := {}
 	if creatures != null:
 		creature_moved = _move_creatures()
+		if remnants != null:
+			remnants.tick(self)
 		swim = _swim_velocities()
 		_contacts()
 	if not dead:
@@ -196,8 +376,16 @@ func step(intent: SimIntent) -> void:
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
-		creatures.tick_spawns(arena, _player_place(), tick)
-		creatures.remove_stuck(_player_place(), tick)
+		# S2: the growth tick tries no site (every site of its view set is due at once); the beat's ticks
+		# try a few each. A tick whose streaming step loaded a chunk makes no spawn tries: the due sites
+		# (the new chunk's among them) wait for the next tick, so no tick pays for a load and the spawns
+		# (B-7).
+		if world == null or not world.loaded_now():
+			var tries := -1
+			if growth != null and world != null and tick < growth.beat_until:
+				tries = 0 if world.grew_tick == tick else CreatureField.BEAT_TRIES_PER_TICK
+			creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK, tries)
+		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()
 	if creatures != null:
@@ -211,6 +399,11 @@ func step(intent: SimIntent) -> void:
 		_emit_dodges()
 		if not dead and grace_until == tick + 1:
 			_emit({"type": "grace_ended", "reason": "timeout"})   # this was the shelter's last tick
+	if growth != null:
+		_take_field_events()
+		growth.observe(self, _events.slice(mark))
+	if kin != null:
+		kin.tick(self)
 	tick += 1
 
 
@@ -218,6 +411,7 @@ func step(intent: SimIntent) -> void:
 ##   ate {kind, food_id, zone, supplied, absorbed, points, position}
 ##   refused {kind, food_id, reason, touching, contact_s}
 ##   earned {points, reason}; starving_started; starving_ended
+##   kin_arrived {position, heading}; kin_left {reason}; mate {position} (S4.3, with growth: Kin)
 ##   respawned {grace_s, energy, relocated (creature ids sent home), streak}
 ##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
 ##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)
@@ -285,6 +479,8 @@ func snapshot() -> Dictionary:
 		out["niches"] = region.niches.duplicate(true)
 		out["grace_until"] = grace_until
 		out["death_streak"] = death_streak
+	if world != null:
+		out["world"] = world.snapshot(self)
 	return out
 
 
@@ -315,7 +511,19 @@ func nearest_edible() -> Dictionary:
 ## capacity (C4); every creature within respawn_clear_m of the cell is sent home and every brain
 ## forgets the cell, the one that killed it ignoring it for killer_ignore_s (C2, C3); and the
 ## streak's shelter starts (C5). Emits respawned {grace_s, energy, relocated, streak}.
+##
+## Endless: only sets respawn_pending; the next step's streaming block performs the respawn first
+## (spine 3.11 step 0), near the body or by a teleport home, through _respawn_now.
 func respawn_player() -> void:
+	if world != null:
+		respawn_pending = true
+		return
+	_respawn_now()
+
+
+## respawn_player's work. Endless: `teleport` tells whether step 0 moved the world to the checkpoint,
+## and the respawned event says so.
+func _respawn_now(teleport := false) -> void:
 	var killer := str(death.get("by", ""))
 	var cp := checkpoint()
 	motion.place(_clear_point_near(cp.position, phenotype.radius), cp.heading)
@@ -326,7 +534,11 @@ func respawn_player() -> void:
 	var grace := 0
 	if creatures != null:
 		death_streak = RespawnRules.streak_after(death_streak, _alive_ticks, species.streak_window_ticks)
-		state.energy = state.energy_capacity * RespawnRules.pick(species.respawn_energy_share, death_streak)
+		var share := RespawnRules.pick(species.respawn_energy_share, death_streak)
+		if growth != null:
+			state.energy = growth.respawn_energy(state.energy_capacity, share, size())   # D-73, D-35
+		else:
+			state.energy = state.energy_capacity * share
 		grace = int(RespawnRules.pick(species.grace_ticks, death_streak))
 		grace_until = tick + grace
 		relocated = _clear_checkpoint(motion.position, killer)
@@ -338,18 +550,48 @@ func respawn_player() -> void:
 	_contact.clear()
 	_last_refusal.clear()
 	_last_attack_refusal.clear()
-	_emit({"type": "respawned", "grace_s": float(grace) / CreatureBrain.TICKS_PER_SECOND, "energy": state.energy,
-		"relocated": Array(relocated), "streak": death_streak})
+	var respawned := {"type": "respawned", "grace_s": float(grace) / CreatureBrain.TICKS_PER_SECOND, "energy": state.energy,
+		"relocated": Array(relocated), "streak": death_streak}
+	if world != null:
+		respawned["teleport"] = teleport
+	_emit(respawned)
 
 
 ## Writes position_for_save() into the save (the checkpoint while the cell is dead, never its body).
+## Endless: the absolute place in am, float64, through PlaneSpace.to_save_abs (the checkpoint's
+## exactly while dead or waiting for the respawn).
 func write_position_to_save() -> void:
+	if world != null:
+		var a := absolute_position_am()
+		save.player["position"] = PlaneSpace.to_save_abs(a[0], a[1])
+		return
 	save.player["position"] = PlaneSpace.to_save(position_for_save())
+
+
+## The save's v3 growth fields (S2, spine 4.6; GameSession writes them after the position): the size
+## and the meter (0 with growth off), the world's checkpoint (absolute am, heading, size; the pool
+## keeps the v3 default), the ledger when growth is on, and the generator version (the pool: 1).
+func write_growth_to_save() -> void:
+	save.growth = {"size": size(), "meter": growth.meter if growth != null else 0.0}
+	if world != null:
+		var cp := world.checkpoint_am
+		save.checkpoint = {"x_am": cp[0], "y_am": cp[1], "heading": cp[2], "size": int(cp[3])}
+		save.gen_version = world.gen_version
+	else:
+		save.checkpoint = SaveGame.new().checkpoint   # the v3 default
+		save.gen_version = 1
+	if growth != null:
+		save.discoveries = growth.discoveries.duplicate(true)
 
 
 ## Where the lineage returns after a death: the generation start, which in M1 is the layout spawn
 ## (derived, never saved; step 4 makes it the generation's spawning spot). {"position", "heading"}.
+## Endless: the world's absolute checkpoint (the home spawn in S1) in the current frame, plus its
+## absolute "x_am", "y_am" and "size".
 func checkpoint() -> Dictionary:
+	if world != null:
+		var cp := world.checkpoint_am
+		return {"position": world.local_of_abs(cp[0], cp[1]), "heading": cp[2], "x_am": cp[0], "y_am": cp[1], "size": int(cp[3])}
 	return {"position": layout.spawn, "heading": layout.spawn_heading}
 
 
@@ -397,6 +639,8 @@ func nearest_zone_id() -> String:
 
 # Dev commands (dev tools and tests only). Each reports a "debug" event and returns whether it applied.
 
+const DEBUG_MATE_POINTS := 400   ## debug_ready_to_mate tops the points up to this
+
 func debug_set_energy(value: float) -> bool:
 	if not is_finite(value):
 		return false
@@ -425,11 +669,13 @@ func debug_spawn_carrion_ahead() -> bool:
 	return true
 
 
-## Places a dev creature (debug: outside the niche count, never respawned) at a clear point.
+## Places a dev creature (debug: outside the niche count, never respawned) at a clear point, with its
+## body at the cell's size (D-79): false for a species with no record at this size.
 func debug_spawn_creature(species_id: String, p: Vector2, heading: float) -> bool:
 	if creatures == null or not species.has_species(species_id) or not is_finite(heading):
 		return false
-	if not arena.is_clear(p, species.phenotype(species_id, catalog).radius):
+	var rec := creatures.record_of(species_id)
+	if rec.is_empty() or not arena.is_clear(p, rec.phenotype.radius):
 		return false
 	var c := creatures.spawn_at(species_id, p, heading, "", tick, true)
 	if c == null:
@@ -499,6 +745,89 @@ func debug_hurt_player(amount: float) -> bool:
 
 
 ## Moves the cell to a clear point at rest; keeps the heading unless one is given.
+## Dev (endless): moves the cell to an absolute place (am) at once, as a teleport respawn does: the
+## old ground unloads, the origin moves there, the new view set loads with its food, and the cell
+## takes the clear point nearest it. False in the pool or for a place that is not finite.
+func debug_teleport_abs(x_am: float, y_am: float, heading: float = NAN) -> bool:
+	if world == null or not is_finite(x_am) or not is_finite(y_am):
+		return false
+	world.teleport(self, x_am, y_am)
+	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), heading if is_finite(heading) else motion.heading)
+	_sync_actor()
+	_contact.clear()
+	world.fill_all_food_now(self)
+	_emit({"type": "debug", "command": "teleport_abs", "x_am": x_am, "y_am": y_am})
+	return true
+
+
+## Dev (endless, D-76): the world at size `n` (1 to the build top) round the living cell's absolute
+## place now, by the teleport path (WorldStream.set_size_teleport): the remnants leave, the view set
+## loads at size n with its food, the cell takes the clear point nearest its place, and the meter
+## starts again at size n (its paid lists from the ledger). Emits debug {command: "set_size", size}
+## (C-V9). False in the pool, while dead or waiting to respawn, or for a size outside the ladder.
+func debug_set_size(n: int) -> bool:
+	if world == null or dead or respawn_pending or n < 1 or n > world.max_size:
+		return false
+	world.set_size_teleport(self, n)
+	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), motion.heading)
+	_sync_actor()
+	_contact.clear()
+	if growth != null:
+		growth.reset_for_size(n)
+	world.fill_all_food_now(self)
+	_emit({"type": "debug", "command": "set_size", "size": n})
+	return true
+
+
+## Dev (endless, growth on): the meter to `share` (0 to 1) of the ring now, through Growth.add (so a
+## full ring is full as eating makes it, and pays out at the build top). Emits debug {command:
+## "fill_meter", share}. False with growth off, while dead or waiting to respawn, or for a share
+## outside 0 to 1.
+func debug_fill_meter(share := 1.0) -> bool:
+	if growth == null or dead or respawn_pending or not (share >= 0.0 and share <= 1.0):
+		return false
+	growth.add(self, share * growth.ring(size()) - growth.meter, "debug", "")
+	_emit({"type": "debug", "command": "fill_meter", "share": share})
+	return true
+
+
+## Dev (endless, growth on; S4): full energy and at least DEBUG_MATE_POINTS points, so a kin swims in
+## after Kin.CALL_S and the editor can be tried at once. Emits debug {command: "ready_to_mate"}. False
+## with growth off, while dead or waiting to respawn.
+func debug_ready_to_mate() -> bool:
+	if growth == null or dead or respawn_pending:
+		return false
+	debug_set_energy(state.energy_capacity)
+	save.adaptation_points = maxi(save.adaptation_points, DEBUG_MATE_POINTS)
+	_emit({"type": "debug", "command": "ready_to_mate"})
+	return true
+
+
+## Dev (endless, growth on): the next tick grows, calm or not: the ring full and due. The growth tick
+## asserts its settle against the next size's point only when that point is finite, so a wedged cell
+## grows too, onto the nearest clear point (BP-4). Emits debug {command: "force_growth"}. False with
+## growth off, at the build top, while dead or waiting to respawn.
+func debug_force_growth() -> bool:
+	if growth == null or dead or respawn_pending or Growth.at_top(size(), world.max_size):
+		return false
+	growth.meter = growth.ring(size())
+	if growth.full_since < 0:
+		growth.full_since = tick
+	growth.due = true
+	_emit({"type": "debug", "command": "force_growth"})
+	return true
+
+
+## Dev (endless): moves the floating origin by whole chunks now, as the streaming block does when the
+## cell swims far from it. False in the pool.
+func debug_rebase(by_chunks: Vector2i) -> bool:
+	if world == null:
+		return false
+	world.rebase(self, Vector2(by_chunks) * world.rebase_step_tm)
+	_emit({"type": "debug", "command": "rebase", "by": [by_chunks.x, by_chunks.y]})
+	return true
+
+
 func debug_teleport(p: Vector2, heading: float = NAN) -> bool:
 	if not arena.is_clear(p, phenotype.radius):
 		return false
@@ -530,6 +859,8 @@ func _player_dies(cause: String, by: String, by_species: String, reason: String)
 	dead = true
 	motion.velocity = Vector2.ZERO
 	death = {"cause": cause, "by": by, "by_species": by_species, "reason": reason}
+	if growth != null:
+		growth.on_death(self)
 	_emit({"type": "died", "cause": cause, "by": by, "by_species": by_species, "reason": reason, "position": motion.position})
 	if creatures != null:
 		_forget_player_everywhere()   # a dead body is gone to every brain (target_gone); the token is freed
@@ -666,6 +997,9 @@ func _take_field_events() -> void:
 				var c := creatures.find(e.id)
 				_dodges.append({"id": e.id, "species": c.species_id if c != null else ""})
 		_events.append_array(taken)
+	if remnants != null and not remnants.events.is_empty():
+		_events.append_array(remnants.events)
+		remnants.events.clear()
 
 
 ## Where the field measures spawn safety from: the cell, or its checkpoint while it is dead.
@@ -673,25 +1007,46 @@ func _player_place() -> Vector2:
 	return position_for_save()
 
 
+## Every place the field measures spawn safety and stuck removals from (CreatureField's *_at):
+## in the pool, _player_place() alone. In the endless world the body, and while dead the checkpoint
+## too (the cell will come back there, and the body is still in view until it does).
+func _player_places() -> Array[Vector2]:
+	if world == null:
+		return [_player_place()]
+	if dead:
+		return [motion.position, checkpoint().position]
+	return [motion.position]
+
+
 ## Rule C1: `p` when a body of radius `r` fits there, else the first clear point on rings
 ## CLEAR_SPIRAL_STEP_M apart going out from it (each ring in angle order from +x), else `p`.
 func _clear_point_near(p: Vector2, r: float) -> Vector2:
-	if arena.is_clear(p, r):
+	return clear_point_on(arena, p, r)
+
+
+## The one spiral (rule C1; S2 BP-4) on any arena: `p` when a body of radius `r` fits there, else the
+## first clear point on rings CLEAR_SPIRAL_STEP_M apart going out from it, each ring in angle order
+## from +x. With max_rings < 0 it goes out CLEAR_SPIRAL_RINGS rings and gives `p` when none is clear;
+## with max_rings >= 0 it stops after that many rings and gives Vector2.INF when none is clear (the
+## next size's wedge test). Equal colliders and an equal origin give bit-equal points.
+static func clear_point_on(on: PoolArena, p: Vector2, r: float, max_rings := -1) -> Vector2:
+	if on.is_clear(p, r):
 		return p
-	for ring in range(1, CLEAR_SPIRAL_RINGS + 1):
+	for ring in range(1, (CLEAR_SPIRAL_RINGS if max_rings < 0 else max_rings) + 1):
 		var d := ring * CLEAR_SPIRAL_STEP_M
 		var n := ceili(TAU * d / CLEAR_SPIRAL_STEP_M)
 		for k in n:
 			var q := p + Vector2.from_angle(k * TAU / n) * d
-			if arena.is_clear(q, r):
+			if on.is_clear(q, r):
 				return q
-	return p
+	return p if max_rings < 0 else Vector2.INF
 
 
 ## Rules C2 and C3 at a respawn at `at`: every creature within respawn_clear_m goes back to its
 ## home and heading now, and every brain forgets the cell, `killer` ignoring it for killer_ignore_s;
 ## the token is freed. Returns the ids sent home, sorted. A scripted body has no home and stays.
 func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
+	creatures.note_every_brain_told()
 	var minded: Array[Dictionary] = []
 	for c in creatures.creatures:
 		if c.brain != null:
@@ -718,11 +1073,14 @@ func _clear_checkpoint(at: Vector2, killer: String) -> PackedStringArray:
 ## Tick steps 1-2: each creature in number order thinks when due (on `snapshot`, the bodies as
 ## they were at the start of the tick), drives, and sets its velocity. Scripted bodies swim by
 ## their script; frozen creatures coast.
-func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
+func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 	var food: Array = []
+	var food_at := PackedVector2Array()    # the food's positions and radii, packed for the senses
+	var food_r := PackedFloat64Array()
 	var food_listed := false
-	for c in creatures.creatures:
-		var speed_mul := c.state.speed_multiplier()
+	var endless := creatures.endless
+	for c in creatures.awake():
+		var speed_mul := ActorState.STARVING_SPEED if c.state.energy <= 0.0 else 1.0   # speed_multiplier()
 		if c.scripted:
 			Locomotion.steer(c.motion, c.script_move, c.phenotype, speed_mul, DT)
 			continue
@@ -730,23 +1088,77 @@ func _creatures_act(snapshot_bodies: Array[Dictionary]) -> void:
 			c.drive = CreatureField.idle_drive(c.motion.heading)
 			Locomotion.steer(c.motion, Vector2.ZERO, c.phenotype, speed_mul, DT)
 			continue
-		var self_view := creatures.self_view_of(c)
-		if creatures.think_due(c, tick):
-			if c.brain.state == CreatureBrain.FORAGE and not food_listed:
-				food = plankton.items + carrion.items
+		var brain := c.brain
+		var self_view := {}   # built when a think or drive needs it (the body does not move before both)
+		# creatures.think_due(c, tick) written out (a creature here always has a brain).
+		if CreatureBrain.think_due(brain, c.think_slot if endless else c.number, tick):
+			self_view = creatures.self_view_of(c)
+			if brain.state == CreatureBrain.FORAGE and not food_listed:
+				# The two lists joined (a new array), or the plankton list itself when there is no
+				# carrion: the senses only read it.
+				food = plankton.items + carrion.items if not carrion.items.is_empty() else plankton.items
+				food_at.resize(food.size())
+				for i in food.size():
+					food_at[i] = food[i].position
+				food_r = plankton.packed_radii()   # the plankton's own copy, then the carrion's
+				for item in carrion.items:
+					food_r.append(item.radius)
 				food_listed = true
-			creatures.think(c, snapshot_bodies, food, arena, tick, self_view)
-		var d := creatures.drive(c, arena, tick, self_view)
-		CreatureBrain.move_body(c.brain, c.motion, d, c.phenotype, speed_mul, DT)
+			creatures.think(c, snapshot_bodies, food, arena, tick, self_view, food_at, food_r)
+		# creatures.drive(c, ...) written out, then move_body's steer, the usual drive, without the call.
+		# A forager seeking its goal (the usual drive) seeks from the body's own values, without a view.
+		# In the endless world every seek routes past the colliders kept for the creature
+		# (route_point_kept, the same point as route_point).
+		var d: Dictionary
+		if c.route_keep == null and endless and arena is ChunkArena:
+			c.route_keep = ChunkArena.RouteKeep.new()
+		if brain.state == CreatureBrain.FORAGE and brain.phase != CreatureBrain.EAT and brain.goal.is_finite():
+			var p := c.phenotype
+			d = CreatureBrain.seek_from(brain, c.motion.position, p.radius, p.speed, p.acceleration, brain.goal,
+				float(brain.cfg.speeds.forage), arena, true, c.route_keep)
+		elif brain.state == CreatureBrain.REST and not (brain.phase == CreatureBrain.WATCH and brain.seen.has(brain.target)):
+			d = CreatureBrain.drive(brain, {}, tick, arena, c.route_keep)   # a rest reads its view only to watch
+		else:
+			if self_view.is_empty():
+				self_view = creatures.self_view_of(c)
+			d = CreatureBrain.drive(brain, self_view, tick, arena, c.route_keep)   # its seeks keep their routes too
+		c.drive = d
+		if d.mode == CreatureBrain.MODE_STEER:
+			Locomotion.steer(c.motion, d.move, c.phenotype, float(d.speed_mul) * speed_mul, DT)
+		else:
+			CreatureBrain.move_body(brain, c.motion, d, c.phenotype, speed_mul, DT)
 	_take_field_events()
 
 
 ## Tick step 4 for creatures: each moves by its velocity. Returns the distances, in creature order.
 func _move_creatures() -> Array[float]:
 	var out: Array[float] = []
-	for c in creatures.creatures:
-		out.append(arena.move(c.motion, c.phenotype.radius, DT))
+	for c in creatures.awake():
+		out.append(move_body(c.motion, c.phenotype.radius))
 	return out
+
+
+## Tick step 4's move of one body (the cell, a creature, a remnant): PoolArena.move, and from size 2 a
+## move that the arena's settle leaves inside a rock is taken back, so the body stays where it was and
+## stops. The tiles keep every crack a cell wide at size 1 (#32), but a 1.5 tm crack there is 0.94 tm
+## at size 2, and the settle's two passes, pushed from one shell into the other, end inside one: in
+## the growth fuzz up to 33 mm into a reef shell (FuzzInvariants' invariant 1 forgives 1 mm). In the
+## pool and at size 1 this is PoolArena.move alone, to the bit. Returns the distance moved.
+func move_body(m: Locomotion.MotionState, r: float) -> float:
+	if world == null or world.size < 2:
+		return arena.move(m, r, DT)
+	var aim := m.position + m.velocity * DT   # where the move lands unless the settle pushes it
+	var moved := arena.move(m, r, DT)
+	if m.position != aim and _wedged(m.position, m.prev_position, r):
+		m.position = m.prev_position
+		m.velocity = Vector2.ZERO
+		return 0.0
+	return moved
+
+
+## True when a body of radius `r` at `p` is inside a rock and at `was` it was not (move_body).
+func _wedged(p: Vector2, was: Vector2, r: float) -> bool:
+	return not arena.is_clear(p, r) and arena.is_clear(was, r)
 
 
 ## Tick step 5: one separation pass over every overlapping pair (the cell first, then creatures in
@@ -761,7 +1173,7 @@ func _contacts() -> void:
 		motions.append(motion)
 		radii.append(phenotype.radius)
 		masses.append(phenotype.mass)
-	for c in creatures.creatures:
+	for c in _combat_bodies():
 		motions.append(c.motion)
 		radii.append(c.phenotype.radius)
 		masses.append(c.phenotype.mass)
@@ -770,6 +1182,8 @@ func _contacts() -> void:
 	var at := PackedVector2Array()
 	for m in motions:
 		at.append(m.position)
+	# From size 2 a push the settle leaves inside a rock is taken back, as in move_body.
+	var held := at.duplicate() if world != null and world.size >= 2 else PackedVector2Array()
 	var pushed := PackedByteArray()
 	pushed.resize(n)
 	for i in n:
@@ -788,16 +1202,22 @@ func _contacts() -> void:
 	for i in n:
 		if pushed[i] == 1:
 			arena.settle(motions[i], radii[i])
-	for c in creatures.creatures:
-		if c.brain == null:
+			if not held.is_empty() and _wedged(motions[i].position, held[i], radii[i]):
+				motions[i].position = held[i]
+	for c in creatures.awake():
+		var mem := c.brain
+		if mem == null:
 			continue
-		var disc := CreatureBrain.leash_disc(c.brain)
-		PoolArena.clamp_to_disc(c.motion, disc.center, disc.radius)
-		if CreatureBrain.is_striking(c.brain):
+		# CreatureBrain.leash_disc written out, without its dictionary.
+		if mem.behavior == CreatureBrain.TERRITORIAL:
+			PoolArena.clamp_to_disc(c.motion, mem.territory_center, mem.territory_r + float(mem.cfg.leash_m))
+		else:
+			PoolArena.clamp_to_disc(c.motion, mem.home, float(mem.cfg.leash_m))
+		if mem.state == CreatureBrain.ATTACK and CreatureBrain.is_striking(mem):   # a strike is an attack phase
 			var rock := arena.rock_contact(c.motion.position, c.phenotype.radius, PoolArena.CONTACT_SLACK, c.motion.heading,
 				CreatureBrain.BLOCKED_BEARING)
 			if not rock.is_empty():
-				CreatureBrain.on_blocked(c.brain, tick)
+				CreatureBrain.on_blocked(mem, tick)
 	_take_field_events()
 
 
@@ -805,12 +1225,14 @@ func _contacts() -> void:
 ## starving and regrowth together); a scripted body uses the cell's own rates. `moved` is in
 ## creature order. A creature that starves dies.
 func _creature_metabolism(moved: Array[float]) -> void:
-	var list := creatures.creatures.duplicate()
+	var list := creatures.awake().duplicate()
+	var blocks := species.species
 	for i in list.size():
 		var c: CreatureField.Creature = list[i]
-		var share := 1.0 if c.scripted else float(species.species[c.species_id].metabolism_share)
-		c.state.tick(c.phenotype, DT * share, moved[i] * share)
-		if not c.state.is_alive():
+		var share := 1.0 if c.scripted else float(blocks[c.species_id].metabolism_share)
+		var st := c.state
+		st.tick(c.phenotype, DT * share, moved[i] * share)
+		if not st.is_alive():
 			_creature_dies(c, "starved", "")
 
 
@@ -832,15 +1254,17 @@ func _creature_dies(c: CreatureField.Creature, cause: String, by: String) -> voi
 
 
 func _sync_creatures() -> void:
-	for c in creatures.creatures:
-		c.actor.position = c.motion.position
-		c.actor.heading = c.motion.heading
+	for c in _combat_bodies():
+		var m := c.motion
+		var a := c.actor
+		a.position = m.position
+		a.heading = m.heading
 
 
 ## Tick step 9 for creatures: each one whose drive names a food item eats it through the resolver,
 ## after the cell has fed. No points: those are the lineage's alone.
 func _creatures_feed() -> void:
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		var food_id := str(c.drive.get("feed", ""))
 		if food_id.is_empty():
 			continue
@@ -864,7 +1288,7 @@ func _swim_velocities() -> Dictionary:
 	var out := {}
 	if not dead:
 		out[CreatureField.PLAYER_ID] = motion.velocity
-	for c in creatures.creatures:
+	for c in _combat_bodies():
 		out[c.id] = c.motion.velocity
 	return out
 
@@ -875,12 +1299,13 @@ func _swim_velocities() -> Dictionary:
 func _combat(swim: Dictionary) -> void:
 	_killer = ""
 	var striking: Array[CreatureField.Creature] = []
-	for c in creatures.creatures:
-		if c.brain == null or not c.state.is_alive():
+	for c in creatures.awake():
+		var b := c.brain
+		if b == null or not c.state.is_alive():
 			continue
-		if c.brain.phase == CreatureBrain.STRIKE and c.brain.phase_tick == tick:
+		if b.phase == CreatureBrain.STRIKE and b.phase_tick == tick:
 			c.strike_hit = false   # a new strike
-		if CreatureBrain.is_striking(c.brain) and bool(c.drive.get("strike", false)) and not c.strike_hit:
+		if CreatureBrain.is_striking(b) and bool(c.drive.get("strike", false)) and not c.strike_hit:
 			striking.append(c)
 	if not dead:
 		_player_attacks(swim)
@@ -895,11 +1320,13 @@ func _combat(swim: Dictionary) -> void:
 ## its reason is quiet. A landed hit ends the cell's shelter (grace_ended {reason: "attacked"}).
 func _player_attacks(swim: Dictionary) -> void:
 	var near: Array[Dictionary] = []
-	for c in creatures.creatures:
+	var at := motion.position
+	var own_r := phenotype.radius
+	for c in _combat_bodies():
 		if not c.state.is_alive():
 			continue
-		var d := motion.position.distance_to(c.motion.position)
-		if d <= phenotype.radius + c.phenotype.radius + InteractionResolver.RAM_REACH:
+		var d := at.distance_to(c.motion.position)
+		if d <= own_r + c.phenotype.radius + InteractionResolver.RAM_REACH:
 			near.append({"d": d, "c": c})
 	if near.is_empty():
 		return
@@ -1019,11 +1446,44 @@ func _deaths() -> void:
 		var sp := by.species_id if by != null else ""
 		_player_dies("killed", _killer, sp, str(species.species[sp].death_reason) if species.has_species(sp) else "")
 	var fallen: Array[CreatureField.Creature] = []
-	for c in creatures.creatures:
+	for c in creatures.awake():
 		if not c.state.is_alive():
 			fallen.append(c)
 	for c in fallen:
 		_creature_dies(c, "killed", c.last_hit_by)
+	if remnants != null and not remnants.items.is_empty():
+		var gone: Array[RemnantField.Remnant] = []
+		for r in remnants.items:
+			if not r.state.is_alive():
+				gone.append(r)
+		for r in gone:
+			_remnant_dies(r, r.last_hit_by)
+
+
+## The bodies combat and contacts take (D-57): the awake creatures (that very list while there are
+## no remnants, so a tick without growth is S1's), then the remnants.
+func _combat_bodies() -> Array[CreatureField.Creature]:
+	if remnants == null or remnants.items.is_empty():
+		return creatures.awake()
+	var out: Array[CreatureField.Creature] = creatures.awake().duplicate()
+	out.append_array(remnants.items)
+	return out
+
+
+## A remnant dies (killed; it never starves): one carrion item at its body, radius min(its radius,
+## MAX_FOOD_RADIUS) and the field's carcass energy scaled by its radius over the cell's, then
+## creature_died as a creature's, and it leaves the remnants ("killed").
+func _remnant_dies(r: RemnantField.Remnant, by: String) -> void:
+	_take_field_events()
+	var item := carrion.spawn(r.motion.position, CreatureField.CARCASS_SOURCE,
+		carrion.energy * r.phenotype.radius / Relationships.PLAYER_RADIUS, -1, minf(r.phenotype.radius, MAX_FOOD_RADIUS))
+	stats.creature_deaths += 1
+	if by == CreatureField.PLAYER_ID:
+		stats.kills += 1
+	_emit({"type": "creature_died", "id": r.id, "species": r.species_id, "cause": "killed", "by": by,
+		"position": r.motion.position, "carcass": [item.id] if not item.is_empty() else []})
+	remnants.remove(r, "killed", tick)
+	_take_field_events()
 
 
 ## Step 11: every strike on the living cell that ended this tick without a hit. A strike that
@@ -1056,15 +1516,18 @@ func _log_attack(target_id: String, kind: String, allowed: bool, reason: String)
 
 
 func _food_item(id: String) -> Dictionary:
-	for list in [plankton.items, carrion.items]:
-		for item in list:
-			if item.id == id:
-				return item
+	var plant := plankton.find(id)   # by its id index: the first match of a scan (ids are unique)
+	if not plant.is_empty():
+		return plant
+	for item in carrion.items:
+		if item.id == id:
+			return item
 	return {}
 
 
 ## Every brain forgets the cell, as if it had left the world (target_gone), and the token is freed.
 func _forget_player_everywhere() -> void:
+	creatures.note_every_brain_told()
 	for c in creatures.creatures:
 		if c.brain != null:
 			CreatureBrain.on_target_gone(c.brain, CreatureField.PLAYER_ID, tick)

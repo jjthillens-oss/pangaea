@@ -22,6 +22,11 @@ extends Node
 ## title, whose choose_slot(n) and delete_slot(n) do the work. Every input event tells
 ## InputPrompts which device is in use, so hints name the controller's buttons or the keys.
 ##
+## Growth (S2): the pool reads the growth trigger and reduce camera motion from the same shared
+## settings and follows their changes itself (V-15, V-16). Main keeps the player memory
+## (UserSettings: hints followed, giant passes seen) on user://player_memory.cfg, apart from both
+## the settings and the saves (C-V1); a run with --slot keeps its own beside that save.
+##
 ## Creature stage preview (creature-stage plan, PROPOSED): open_creature_stage() puts the CreatureStage
 ## in place of the screen; the title's "Creature stage" button and --creature open it. It reads and
 ## writes the session's lineage slot (save schema v3 keeps the creature there; --slot applies) and
@@ -54,6 +59,7 @@ var pool: PoolScene
 var creature_stage: CreatureStage
 var hud: Hud
 var pause_menu: PauseMenu
+var cell_editor: CellEditor   ## S4.4: open while the cell chooses its next generation
 var death_notice: NoticeDialog
 ## The result of the last start_new() or continue_run().
 var last_run := {}
@@ -62,6 +68,10 @@ var dev_layer: Node
 var debug_panel: Node
 ## The player's settings (SettingsService.shared()).
 var settings: SettingsService
+## What this computer remembers about its player (S2): loaded at launch from player_memory_path().
+var player_memory: UserSettings
+## False while a tool must leave the player memory as it is (the perf tour always does).
+var memory_writable := true
 ## The settings screen or the save slots screen while one is open, else null.
 var settings_menu: SettingsMenu
 var slot_picker: SlotPicker
@@ -86,6 +96,7 @@ func _ready() -> void:
 		push_warning(problem)
 	settings.apply_all()
 	settings.changed.connect(_on_setting_changed)
+	player_memory = UserSettings.load_from(player_memory_path())
 	open_session(flags.slot if not flags.slot.is_empty() else settings.current_slot_path())
 	quit_dialog.chosen.connect(_on_quit_choice)
 	_add_dev_layer()
@@ -97,9 +108,27 @@ func _ready() -> void:
 		show_start()
 
 
-## Uses another save slot ("" for the default) and shows its start screen if a screen is up.
+## The player memory's file: UserSettings.PATH, or player_memory.cfg beside the --slot save, so the
+## smokes and tours, which name their own slot, never touch the player's.
+func player_memory_path() -> String:
+	if flags == null or flags.slot.is_empty():
+		return UserSettings.PATH
+	return flags.slot.get_base_dir().path_join("player_memory.cfg")
+
+
+## Writes the player memory: ERR_SKIP, with nothing written, during the perf tour or while
+## memory_writable is false.
+func save_player_memory() -> Error:
+	if player_memory == null or not memory_writable or (flags != null and flags.perf_tour):
+		return ERR_SKIP
+	return player_memory.save_to(player_memory_path())
+
+
+## Uses another save slot ("" for the default) and shows its start screen if a screen is up. The
+## world is the world file's (S1), endless unless --world=pool says otherwise.
 func open_session(slot: String) -> void:
-	session = GameSession.new(slot if not slot.is_empty() else GameSession.DEFAULT_SLOT)
+	session = GameSession.new(slot if not slot.is_empty() else GameSession.DEFAULT_SLOT, PoolLayout.DEFAULT_PATH,
+		SpeciesCatalog.DEFAULT_PATH, WorldConfig.DEFAULT_PATH, flags.world if flags != null else "")
 	if screen != null:
 		show_start()
 
@@ -189,16 +218,48 @@ func resume() -> void:
 	get_viewport().gui_release_focus()
 
 
+## S4.4: the cell touched its kin (the pool's mate_requested): the pool pauses under the cell editor.
+func open_cell_editor() -> CellEditor:
+	if pool == null:
+		return null
+	pool.release_input()
+	pool.set_paused(true)
+	hud.visible = false   # the editor is its own screen; the swim's panels would show through its dim
+	cell_editor = CellEditor.new()
+	cell_editor.name = "CellEditor"
+	pool.ui.add_child(cell_editor)
+	cell_editor.open(session.sim.save, session.sim.catalog, session.sim.state)
+	cell_editor.closed.connect(_on_cell_editor_closed, CONNECT_DEFERRED)
+	return cell_editor
+
+
+## The editor closed: with a new generation the cell takes its body and the run is saved; the kin
+## goes either way and play resumes.
+func _on_cell_editor_closed(committed: bool) -> void:
+	if cell_editor != null:
+		cell_editor.queue_free()
+		cell_editor = null
+	if pool == null:
+		return
+	hud.visible = true
+	if committed:
+		session.sim.apply_offspring()
+		session.save_now()
+		hud.show_message("Generation %d" % session.sim.save.genome.generation)
+	pool.finish_mate(committed)
+	pool.set_paused(false)
+
+
 ## Death notice: Continue. Puts the cell back at its checkpoint, sheltered (the death was applied
-## when it happened). Returns the points the death took.
+## when it happened). Returns the points the death took. The respawn message shows when the pool
+## reports the respawn (_on_respawned): at once in the pool, and in the endless world at the sim's
+## next step, which performs it (S1).
 func continue_after_death() -> int:
 	if pool == null or not session.sim.dead:
 		return 0
 	death_notice.close()
 	pool.set_paused(false)
-	var lost := session.respawn_after_death()
-	hud.show_message(respawn_text(Hud.shelter_seconds(session.sim)))
-	return lost
+	return session.respawn_after_death()
 
 
 ## Pause menu and start screen: Quit. Asks "Save first?" when there is unsaved progress.
@@ -387,12 +448,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _open_pool() -> void:
 	_clear_screen()
 	pool = POOL_SCENE.instantiate()
+	pool.player_memory = player_memory
 	add_child(pool)
 	pool.setup(session, intent_provider)
 	var ui := pool.ui
 	hud = HUD_SCENE.instantiate()
 	ui.add_child(hud)
 	ui.move_child(hud, 0)   # under the target ring and the starving arrow
+	hud.bind_memory(player_memory, save_player_memory)
 	hud.bind(pool)
 	pause_menu = PAUSE_MENU_SCENE.instantiate()
 	ui.add_child(pause_menu)
@@ -401,6 +464,9 @@ func _open_pool() -> void:
 	ui.add_child(death_notice)
 	pool.pause_requested.connect(_on_pause_requested)
 	pool.died.connect(_on_died)
+	pool.respawned.connect(_on_respawned)
+	pool.giant_pass_started.connect(_on_giant_pass_started)
+	pool.mate_requested.connect(open_cell_editor)
 	pause_menu.resume_requested.connect(resume)
 	pause_menu.save_requested.connect(save_now)
 	pause_menu.save_and_quit_requested.connect(save_and_quit_to_title, CONNECT_DEFERRED)
@@ -426,6 +492,7 @@ func _clear_screen() -> void:
 	hud = null
 	pause_menu = null
 	death_notice = null
+	cell_editor = null
 
 
 func _set_screen(node: Node) -> void:
@@ -451,6 +518,22 @@ func _on_died(cause: String, reason: String = "") -> void:
 	death_notice.open(death_title(cause, reason),
 		death_text(cause, lost, tip, saved, session.sim.save.genome.generation, session.sim.phenotype),
 		[["continue", "Continue", true]], "continue")
+
+
+## The pool reported the respawn: "Back at the generation start · sheltered for 5 s.", in the frame
+## the cell shows there.
+func _on_respawned(grace_s: float, _teleport: bool) -> void:
+	hud.show_message(respawn_text(ceili(grace_s)))
+
+
+## The giants' first pass for this lineage has started (D-42): this computer remembers it at once, so
+## a quit during the pass does not bring it back.
+func _on_giant_pass_started() -> void:
+	var lineage := session.sim.save.lineage_id if session != null and session.sim != null else ""
+	if player_memory == null or lineage.is_empty() or player_memory.giant_pass_lineages.has(lineage):
+		return
+	player_memory.giant_pass_lineages.append(lineage)
+	save_player_memory()
 
 
 ## The settings the running pool reads: pausing on focus loss, and the zoom speed and direction

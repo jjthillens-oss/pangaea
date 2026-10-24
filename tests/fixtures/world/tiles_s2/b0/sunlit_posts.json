@@ -1,0 +1,117 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "S2 T3.2 test fixture: two-post sites at size 2 (a Lurker, an elder rammer) for TileCatalog's rules; not game content.",
+	"id": "sunlit_posts",
+	"band": 0,
+	"region": "sunlit",
+	"set": 0,
+	"rare": "",
+	"landmark_anchor": [
+		-24.0,
+		24.0
+	],
+	"set_piece": null,
+	"shells": [
+		{
+			"id": "a",
+			"center": [
+				20.0,
+				8.0
+			],
+			"radius": 1.2,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				-14.0,
+				-20.0
+			],
+			"radius": 1.0,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "sink"
+		},
+		{
+			"id": "c",
+			"center": [
+				-20.0,
+				2.0
+			],
+			"radius": 0.9,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		}
+	],
+	"zones": [
+		{
+			"id": "a",
+			"center": [
+				4.0,
+				-4.0
+			],
+			"radius": 3.0,
+			"capacity": 30.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				10.0,
+				-10.0
+			],
+			"radius": 3.0,
+			"capacity": 30.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		}
+	],
+	"sites": [
+		{
+			"id": "a",
+			"species": "rammer",
+			"home": [
+				4.0,
+				-3.0
+			],
+			"heading": -1.5708,
+			"sizes": [
+				1,
+				2
+			],
+			"territory_zone": "a"
+		},
+		{
+			"id": "er",
+			"species": "elder_rammer",
+			"home": [
+				0.0,
+				0.0
+			],
+			"heading": 3.1,
+			"sizes": [
+				2
+			],
+			"territory_zone": "a",
+			"post_b": {
+				"home": [
+					11.0,
+					-11.0
+				],
+				"heading": 1.2,
+				"territory_zone": "b"
+			}
+		}
+	]
+}
