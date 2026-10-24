@@ -1018,6 +1018,26 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 	ambience.get_parent().free()
 
 
+## S3's veil threads (s3-view 8.2; S3G32 F part): inked, they are exactly the threat colour, since they
+## are what stings; neutral, once the cell has outgrown them, they keep HUE_GAP from food and threat.
+func test_veil_thread_colours_are_the_threat_ink_or_clear_of_both() -> void:
+	var colors := VeilThreadsView.ink_colors()
+	var ink: Color = colors.ink
+	check_eq(ink.to_html(false), RESERVED.threat.to_html(false), "inked threads are the threat colour")
+	var neutral := LookProbe.lab(colors.neutral)
+	var chroma := Vector2(neutral.y, neutral.z).length()
+	if chroma >= MIN_CHROMA:
+		for reserved: String in RESERVED:
+			var gap := LookProbe.hue_gap(LookProbe.hue(neutral), LookProbe.hue(LookProbe.lab(RESERVED[reserved])))
+			check(gap >= HUE_GAP, "neutral threads %s are %.0f degrees of LAB hue from the %s colour, at least %.0f" % [
+				(colors.neutral as Color).to_html(false), gap, reserved, HUE_GAP])
+	var threads := VeilThreadsView.new()
+	for m: ShaderMaterial in [threads.rig_material(), threads.outline_material()]:
+		check(m.get_shader_parameter("ink_color") == ink and m.get_shader_parameter("neutral_color") == colors.neutral,
+			"%s draws art's two thread colours" % m.shader.resource_path.get_file())
+	threads.free()
+
+
 ## Every colour `geos` draw keeps HUE_GAP from the reserved hues: flat colours one by one, a painting
 ## by coverage.
 func _check_hues(geos: Array) -> void:

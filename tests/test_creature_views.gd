@@ -1,6 +1,6 @@
 extends TestCase
 ## S3's creature views (docs/s3/s3-view.md 8; S3G32 F part): the four band-1 bodies, their eyes and
-## their ink at sizes 3 and 4.
+## their ink at sizes 3 and 4, and the veil's threads (fitted in the sim's capsule, inked, flashed).
 
 const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const VIEW_SCENE := preload("res://game/scenes/pool/creature_view.tscn")
@@ -103,6 +103,122 @@ func test_ink_at_sizes_3_and_4() -> void:
 			view.free()
 
 
+func test_threads_fit_the_capsule() -> void:
+	var vertices: PackedVector3Array = VeilThreadsView.unit_mesh().surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	check(vertices.size() > 0, "the rig's vertices")
+	var widest := 0.0
+	var swayed := 0.0
+	var z_span := Vector2(INF, -INF)
+	for v in vertices:
+		widest = maxf(widest, absf(v.x))
+		# The shader sways x by up to SWAY times COLOR.r, which the remap made z.
+		swayed = maxf(swayed, absf(v.x) + VeilThreadsView.SWAY * v.z)
+		z_span = Vector2(minf(z_span.x, v.z), maxf(z_span.y, v.z))
+	check(widest <= VeilThreadsView.FIT + 1e-6, "|x| %.4f <= FIT" % widest)
+	check(z_span.x >= -1e-6 and z_span.y <= 1.0 + 1e-6, "z in [0, 1]: [%.4f, %.4f]" % [z_span.x, z_span.y])
+	check(swayed <= 1.0 + 1e-6, "with the full sway |x| %.4f <= 1" % swayed)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 32
+	var threads := VeilThreadsView.new()
+	var worst := -INF
+	for i in 50:
+		var a := Vector3(rng.randf_range(-3.0, 3.0), VeilThreadsView.THREAD_Y, rng.randf_range(-3.0, 3.0))
+		var along := Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(0.2, 3.0)
+		var b := a + Vector3(along.x, 0.0, along.y)
+		var r := rng.randf_range(0.05, 1.2)
+		threads.set_capsule(a, b, r)
+		var rig := (threads.get_node(^"Rig") as Node3D).transform
+		for v in vertices:
+			for sway in [-VeilThreadsView.SWAY, VeilThreadsView.SWAY]:
+				var w := rig * Vector3(v.x + sway * v.z, 0.0, v.z)
+				var d := Geometry3D.get_closest_point_to_segment(w, a, b).distance_to(w)
+				worst = maxf(worst, d - r)
+	check(worst <= 1e-4, "every swayed vertex of 50 capsules inside its radius (worst %.5f over)" % worst)
+	threads.free()
+
+
+func test_thread_ink_and_neutral() -> void:
+	var colors := VeilThreadsView.ink_colors()
+	var ink_albedo := (load(VeilThreadsView.INK_MATERIAL) as StandardMaterial3D).albedo_color
+	var neutral_albedo := (load(VeilThreadsView.NEUTRAL_MATERIAL) as StandardMaterial3D).albedo_color
+	check(colors.ink == ink_albedo and colors.neutral == neutral_albedo, "the colours are art's two materials")
+	var threads := VeilThreadsView.new()
+	threads.set_ink(true)
+	check(_thread_color(threads.rig_material()).is_equal_approx(ink_albedo), "inked threads: M_VeilThreadInk")
+	check(_thread_color(threads.outline_material()).is_equal_approx(ink_albedo), "and the outline")
+	threads.set_ink(false, VeilThreadsView.INK_FADE_S)
+	threads.step(0.5)
+	check(not _thread_color(threads.rig_material()).is_equal_approx(neutral_albedo), "half way: still fading")
+	threads.step(0.5)
+	check(_thread_color(threads.rig_material()).is_equal_approx(neutral_albedo), "after 1 s: M_VeilThreadNeutral")
+	check(_thread_color(threads.outline_material()).is_equal_approx(neutral_albedo), "and the outline")
+	check(threads.shown_color().is_equal_approx(neutral_albedo), "shown_color agrees")
+	threads.free()
+	# S3G32 (spine): a veil's threads ink at its entry size, q = 1, and never below it.
+	var cell := _cell("omnivore")
+	for n: int in [3, 4]:
+		var q := _species.q_of("veil", n)
+		var view := _view("veil", q)
+		check(view.threads != null, "a veil has threads")
+		var r := CreatureLayer.relation_of(_species, "veil", q, view.radius, n, cell)
+		view.set_relation(r.can_attack, r.rimmed, 1.0)
+		_run(view, 1.05)
+		var stings := n == 3
+		check_eq(q == 1.0, stings, "the veil is at its entry size only at 3 (q %.3f at %d)" % [q, n])
+		check_near(view.threads.ink, 1.0 if stings else 0.0, 1e-9, "threads at size %d after the fade" % n)
+		check(view.rim == 0.0, "no rim on a veil at size %d" % n)
+		view.free()
+	var warden := _view("warden", 1.0)
+	check(warden.threads == null, "only hazards have threads")
+	warden.free()
+
+
+func test_sting_flashes_threads() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var sim := pool.sim
+	var layer := pool.creature_layer
+	sim.creatures.set_size(3)
+	sim.world.size = 3
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(5.0, 0.0), PI), "a veil at size 3")
+	layer.sync(1.0)
+	var veil: CreatureView = null
+	for view in layer.views():
+		if view.species_id == "veil":
+			veil = view
+	check(veil != null and veil.threads != null, "drawn with threads")
+	if veil == null or veil.threads == null:
+		pool.free()
+		return
+	var cap := veil.threads.capsule()
+	var cfg: Dictionary = sim.creatures.find(veil.creature_id).brain.cfg.threads
+	check(not cap.is_empty(), "show_brain set the capsule")
+	if not cap.is_empty():
+		check_near((cap.b - cap.a).length(), float(cfg.length_m), 1e-5, "its length is the sim's")
+		check_near(float(cap.r), float(cfg.radius_m), 1e-9, "its radius is the sim's")
+		check_near(Vector2(cap.a.x, cap.a.z).length(), veil.radius, 1e-5, "it starts at the body's rim")
+		check_near(float(cap.a.y), VeilThreadsView.THREAD_Y, 1e-9, "on the thread plane")
+	layer.on_event({"type": "hit", "attacker": veil.creature_id, "target": CreatureField.PLAYER_ID, "kind": "bite"})
+	check_eq(veil.threads.flash_share, 0.0, "a hit of another kind does not flash the threads")
+	layer.on_event({"type": "hit", "attacker": veil.creature_id, "target": CreatureField.PLAYER_ID, "kind": "sting"})
+	check_eq(veil.threads.flash_share, 1.0, "a sting flashes them at once")
+	check_near(float(veil.threads.rig_material().get_shader_parameter("flash")), 1.0, 1e-9, "in the shader")
+	_run(veil, VeilThreadsView.FLASH_S * 0.5)
+	check(veil.threads.flash_share > 0.0 and veil.threads.flash_share < 1.0, "fading")
+	_run(veil, VeilThreadsView.FLASH_S * 0.5 + DT)
+	check_eq(veil.threads.flash_share, 0.0, "and gone after %.2f s" % VeilThreadsView.FLASH_S)
+	pool.free()
+
+
+func test_veil_has_no_lane_or_marker() -> void:
+	var view := _view("veil", 1.0)
+	view.show_lane({"origin": Vector2.ZERO, "heading": 0.0, "length": 3.0, "half_width": 0.5})
+	check(not view._lane_on and not view._lane.visible, "no strike lane")
+	view.show_marker()
+	_run(view, DT)
+	check(not view._marker.visible, "no notice mark")
+	view.free()
+
+
 ## A view of `id` at `q`, outside the tree, built as the layer builds one.
 func _view(id: String, q: float) -> CreatureView:
 	var view: CreatureView = VIEW_SCENE.instantiate()
@@ -120,6 +236,12 @@ func _run(view: CreatureView, seconds: float) -> void:
 func _cell(body: String) -> Phenotype:
 	var founded := Lineage.found(7, "test", _catalog, body)
 	return Phenotype.derive(founded.save.genome, _catalog)
+
+
+## The colour a thread material shows: mix(neutral, ink, ink), as its shader does.
+static func _thread_color(material: ShaderMaterial) -> Color:
+	var neutral: Color = material.get_shader_parameter("neutral_color")
+	return neutral.lerp(material.get_shader_parameter("ink_color"), float(material.get_shader_parameter("ink")))
 
 
 ## The view's own M_Threat material, or null.

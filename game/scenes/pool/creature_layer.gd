@@ -259,6 +259,10 @@ func on_event(event: Dictionary) -> void:
 			var target: CreatureView = _views.get(target_id, _remnant_views.get(target_id))
 			if target != null:
 				target.hurt()
+			if str(event.get("kind", "")) == "sting":
+				var veil := view_of(str(event.get("attacker", "")))
+				if veil != null and veil.threads != null:
+					veil.threads.flash()
 
 
 ## Draws every live creature `fraction` of the way from the sim's previous tick to its current one

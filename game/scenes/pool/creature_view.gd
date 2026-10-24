@@ -135,9 +135,12 @@ var morsel_id := ""
 ## The pose drawn last (pose() keys), for tests and blends.
 var shown_pose := {}
 var dying := false
+## A stinger veil's threads (S3 8.2): null unless the species is a hazard.
+var threads: VeilThreadsView
 
 var _top_speed := 1.0
 var _speed := 0.0
+var _drawn_heading := 0.0
 var _label := ""
 var _blend_from := {}
 var _blend_t := BLEND_S
@@ -371,6 +374,15 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	_label = ""
 	_build_ink()
 	_build_rim()
+	if threads != null:
+		remove_child(threads)
+		threads.free()
+		threads = null
+	if behavior == CreatureBrain.HAZARD:
+		# A child of the root, which only translates (the Pivot turns), so its frame is world-aligned.
+		threads = VeilThreadsView.new()
+		add_child(threads)
+		threads.set_ink(true)
 	ink = 1.0
 	_ink_target = 1.0
 	rim = 0.0
@@ -463,6 +475,8 @@ func set_relation(can_attack: bool, rimmed: bool, fade_s: float) -> void:
 		rim = _rim_target
 	_apply_ink()
 	_apply_rim()
+	if threads != null:
+		threads.set_ink(_ink_target > 0.0, fade_s)
 
 
 ## The rim the next relation fades to (1 when the cell can eat it).
@@ -551,7 +565,8 @@ func rim_grow_world() -> float:
 ## Moves the view to the sim's motion, `fraction` of the way from the previous tick to this one.
 func show_motion(motion: Locomotion.MotionState, fraction: float) -> void:
 	position = PlaneSpace.to_world(motion.prev_position.lerp(motion.position, fraction))
-	_pivot.rotation.y = PlaneSpace.yaw_for_heading(lerp_angle(motion.prev_heading, motion.heading, fraction))
+	_drawn_heading = lerp_angle(motion.prev_heading, motion.heading, fraction)
+	_pivot.rotation.y = PlaneSpace.yaw_for_heading(_drawn_heading)
 	_speed = motion.position.distance_to(motion.prev_position) / PoolSim.DT
 	_sim_at = PlaneSpace.to_world(motion.position)
 
@@ -583,10 +598,19 @@ func show_brain(mem: CreatureBrain.Memory, tick: int, fraction: float) -> void:
 		_lane_material.set_shader_parameter("fill", progress)
 	elif label == "attack/strike" or label == "attack/glide":
 		_lane_material.set_shader_parameter("fill", 1.0)
+	if threads != null:
+		# The sim's thread capsule at the drawn position and heading, so what shows is what stings.
+		var p := PlaneSpace.to_plane(position)
+		var cap := CreatureBrain.thread_capsule(mem, p, _drawn_heading, radius)
+		if not cap.is_empty():
+			threads.set_capsule(Vector3(cap.a.x - p.x, VeilThreadsView.THREAD_Y, cap.a.y - p.y),
+				Vector3(cap.b.x - p.x, VeilThreadsView.THREAD_Y, cap.b.y - p.y), float(cap.r))
 
 
-## Shows the strike lane of a tell on the player (a creature_tell event's "lane").
+## Shows the strike lane of a tell on the player (a creature_tell event's "lane"). A veil never tells.
 func show_lane(lane: Dictionary) -> void:
+	if threads != null:
+		return
 	var length := float(lane.length)
 	var width := 2.0 * float(lane.half_width)
 	var heading := float(lane.heading)
@@ -674,8 +698,10 @@ func lane_visible() -> bool:
 	return _lane.visible and float(_lane_material.get_shader_parameter("strength")) > 0.0
 
 
-## The "!" over a creature that noticed the player.
+## The "!" over a creature that noticed the player. A veil notices nothing.
 func show_marker() -> void:
+	if threads != null:
+		return
 	_marker_t = 0.0
 	_apply_marker()
 
@@ -747,6 +773,8 @@ func _process(delta: float) -> void:
 		if _die_t >= DIE_S:
 			queue_free()
 	_step_relation(delta)
+	if threads != null:
+		threads.step(delta)
 	if _now_t >= 0.0:
 		_now_t += delta
 		if _now_t >= _now_s:
