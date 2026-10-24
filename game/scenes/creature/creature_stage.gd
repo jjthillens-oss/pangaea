@@ -124,6 +124,9 @@ func open_editor() -> void:
 	_add_screen(editor)
 	if editor.has_method("setup"):
 		editor.call("setup", BodyCodec.from_dict(state["body"]), int(state["points"]))
+	# A creature's first design may start from a preset creature (owner playtest, 2026-10-24).
+	if editor.has_method("offer_presets"):
+		editor.call("offer_presets", int(state["generation"]) == 1 and (state["history"] as Array).is_empty())
 	_connect(editor, "done_requested", _on_editor_done)
 	_connect(editor, "back_requested", _on_editor_back)
 

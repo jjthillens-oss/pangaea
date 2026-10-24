@@ -317,3 +317,25 @@ func test_new_parts_are_sized_to_the_body() -> void:
 	check_eq(Picking.fit_scale(desc, size / 2.0, rules), 2000, "on a body twice the size, twice as big")
 	check_eq(Picking.fit_scale(desc, size * 100.0, rules), int(rules["part_scale_min"]), "never under the rules' smallest")
 	check_eq(Picking.fit_scale(desc, size / 100.0, rules), int(rules["part_scale_max"]), "never over the largest")
+
+
+func test_a_first_design_can_start_from_a_preset_at_no_cost() -> void:
+	open()
+	check(not editor.start_from_preset("raptor")["ok"], "refused while presets are not offered")
+	editor.offer_presets(true)
+	var names := CreatureData.preset_names()
+	check_eq(editor.hud.preset_count(), names.size(), "a button per preset")
+	var r: Dictionary = editor.start_from_preset("raptor")
+	check(r["ok"], "starts from the raptor: %s" % r.get("reason", ""))
+	var want: Dictionary = CreatureData.preset("raptor")["body"]
+	var got: Dictionary = editor.working_body().to_dict()
+	for key in ["vertebrae", "limbs", "parts", "reference_length_mm"]:
+		check_eq(JSON.stringify(got[key]), JSON.stringify(BodyCodec.from_dict(want).to_dict()[key]), "the raptor's %s" % key)
+	check_eq(editor.skin_color.to_html(false), Color(want["skin_color"]).to_html(false), "and its colour")
+	check_eq(editor.points(), POINTS, "the points are untouched")
+	check_eq(int(editor.session.preview()["cost"]), 0, "it costs nothing")
+	check_eq(editor.back(), "asked", "Back asks before leaving the preset")
+	var done := editor.finish()
+	check(done["ok"], "Done commits it: %s" % done.get("reason", ""))
+	editor.offer_presets(false)
+	check(not editor.start_from_preset("dragon")["ok"], "refused once presets are withdrawn")

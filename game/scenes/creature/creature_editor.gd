@@ -120,6 +120,10 @@ var _distance := 2.6
 var _frame_distance := 0.0
 ## The longest side of REFERENCE_BODY's bounds (m), measured once.
 var _reference_size_m := 0.0
+## Whether the "Start from" presets are offered (offer_presets), and the preset the design started from since the
+## last Done ("" for none; Back asks before leaving it).
+var presets_offered := false
+var preset := ""
 var _orbiting := false
 var _focus := Vector3.ZERO
 var _rig_offset := Vector3.ZERO
@@ -161,6 +165,7 @@ func _wire() -> void:
 	hud.action.connect(_on_hud_action)
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
+	hud.preset_chosen.connect(start_from_preset)
 	hud.set_hint(HINT)
 	if ResourceLoader.exists(STATS_PATH):
 		_stats_script = load(STATS_PATH)
@@ -186,6 +191,7 @@ func setup(body: RefCounted, points: int) -> void:
 	skin_pattern = Look.pattern_of(body.extra)
 	selected = {}
 	tool = ""
+	preset = ""
 	if _worker == null:
 		_worker = SkinWorker.new(rules, divisions)
 		if threaded:
@@ -611,6 +617,7 @@ func finish() -> Dictionary:
 	session = Session.new(body, rules, part_rules, costs, c["points_left"])
 	selected = {}
 	_mark_dirty()
+	preset = ""
 	done_requested.emit(dict, c["points_left"])
 	return {"ok": true, "reason": "", "points_left": c["points_left"]}
 
@@ -624,11 +631,49 @@ func back() -> String:
 		selected = {}
 		_mark_dirty()
 		return "cleared"
-	if not session._undo.is_empty() and refusal_text != UNSAVED_TEXT:
+	if (not session._undo.is_empty() or preset != "") and refusal_text != UNSAVED_TEXT:
 		_refuse(UNSAVED_TEXT)
 		return "asked"
 	back_requested.emit()
 	return "left"
+
+
+## Offers the preset creatures (CreatureStage does for a creature's first design, generation 1): the palette shows a
+## "Start from" row and start_from_preset() is allowed.
+func offer_presets(on: bool) -> void:
+	presets_offered = on
+	if on and hud.preset_count() == 0:
+		var entries := []
+		for n in CreatureData.preset_names():
+			var p := CreatureData.preset(n)
+			entries.append({"name": n, "title": String(p["title"]), "blurb": String(p["blurb"])})
+		hud.setup_presets(entries)
+	hud.show_presets(on)
+
+
+## Starts the design over from a preset creature (owner playtest, 2026-10-24): its body and skin colour replace the
+## working body at no cost, the points stay as they were, and undo starts afresh. Only while presets are offered.
+func start_from_preset(preset_name: String) -> Dictionary:
+	if not presets_offered:
+		return _refuse("presets are for a new creature's first design")
+	if not CreatureData.preset_names().has(preset_name):
+		return _refuse("no preset %s" % preset_name)
+	if walker != null:
+		test_drive(false)
+	var body: RefCounted = CreatureData.preset_body(preset_name)
+	session = Session.new(body, rules, part_rules, costs, session.available_points)
+	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
+	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
+	skin_pattern = Look.pattern_of(body.extra)
+	_store_look(session.working.extra)
+	hud.set_color(skin_color)
+	preset = preset_name
+	selected = {}
+	choose_tool("")
+	_frame_body()
+	_mark_dirty()
+	_rebuild()
+	return {"ok": true, "reason": ""}
 
 
 ## The skin colour, from a swatch; the working body carries it as "skin_color".
