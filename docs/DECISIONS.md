@@ -877,3 +877,16 @@ size physics. Built on the recommended option, "earn levels by doing" (`game/dom
 - **Shell plate.** The shell plate enters the editor, as s4-plan proposed (band 1, art PR #42's
   model). It gives defense and health and is the heaviest part. The editor list test now pins seven
   parts.
+
+## 2026-10-24 · S4.6 acceptance for the mating loop (PROPOSED)
+
+- `tests/test_s4_acceptance.gd` runs the shipped endless sea and checks:
+  - a grazer is readied, meets its kin, swims into it, and is born twice: first with a second tail,
+    then with that tail at level 2;
+  - an edit it cannot pay for is refused and changes nothing;
+  - save and Continue bring back the same genome, points and two births;
+  - two deaths keep the body and each takes a quarter of the points.
+- **Open (rule 3 against edited bodies).** The pursue bound is checked against the slowest *starting*
+  body. A heavy edited body (shells, spikes, no tail) can be slower than a hunter's chase. That is
+  the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
+  editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
