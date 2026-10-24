@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="544" viewBox="0 0 720 544">
+<rect width="720" height="544" fill="#101b2a"/>
+<text x="24" y="30" fill="#eff6ff" font-size="18">Lineage lineage_3f9a1c07b2e84d65</text>
+<rect x="8" y="47" width="704" height="56" fill="#18334a"/>
+<text x="24" y="64" fill="#b5d9e8" font-size="12">Generation 1</text>
+<g class="event-node" data-index="0" data-generation="1">
+<circle cx="105" cy="72" r="8" fill="#8ad3cd"/>
+<text x="130" y="77" fill="#ffffff" font-size="15">founded </text>
+</g>
+<path d="M 105 72 L 105 130" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="1" data-generation="1">
+<circle cx="105" cy="130" r="8" fill="#8ad3cd"/>
+<text x="130" y="135" fill="#ffffff" font-size="15">adapted eye_spot</text>
+</g>
+<path d="M 105 130 L 105 188" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="2" data-generation="1">
+<circle cx="105" cy="188" r="8" fill="#8ad3cd"/>
+<text x="130" y="193" fill="#ffffff" font-size="15">died starved</text>
+</g>
+<rect x="8" y="221" width="704" height="56" fill="#18334a"/>
+<text x="24" y="238" fill="#b5d9e8" font-size="12">Generation 2</text>
+<path d="M 105 188 L 105 246" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="3" data-generation="2">
+<circle cx="105" cy="246" r="8" fill="#8ad3cd"/>
+<text x="130" y="251" fill="#ffffff" font-size="15">respawned </text>
+</g>
+<path d="M 105 246 L 105 304" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="4" data-generation="2">
+<circle cx="105" cy="304" r="8" fill="#8ad3cd"/>
+<text x="130" y="309" fill="#ffffff" font-size="15">checkpoint </text>
+</g>
+<path d="M 105 304 L 105 362" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="5" data-generation="2">
+<circle cx="105" cy="362" r="8" fill="#8ad3cd"/>
+<text x="130" y="367" fill="#ffffff" font-size="15">died killed:ambush_hunter</text>
+</g>
+<rect x="8" y="395" width="704" height="56" fill="#18334a"/>
+<text x="24" y="412" fill="#b5d9e8" font-size="12">Generation 3</text>
+<path d="M 105 362 L 105 420" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="6" data-generation="3">
+<circle cx="105" cy="420" r="8" fill="#8ad3cd"/>
+<text x="130" y="425" fill="#ffffff" font-size="15">born </text>
+</g>
+<path d="M 105 420 L 105 478" stroke="#8ad3cd" stroke-width="3"/>
+<g class="event-node" data-index="7" data-generation="3">
+<circle cx="105" cy="478" r="8" fill="#8ad3cd"/>
+<text x="130" y="483" fill="#ffffff" font-size="15">part_added spike</text>
+</g>
+<g class="body-silhouette" data-generation="1">
+<circle cx="600" cy="72" r="12" fill="#6a9d9a"/>
+<rect x="619" y="70" width="12" height="4" rx="2" fill="#bed8bd" data-part="mouth_jaw"/>
+<rect x="627" y="70" width="12" height="4" rx="2" fill="#bed8bd" data-part="flagellum"/>
+</g>
+<g class="body-silhouette" data-generation="2">
+<circle cx="600" cy="246" r="12" fill="#6a9d9a"/>
+<rect x="619" y="244" width="12" height="4" rx="2" fill="#bed8bd" data-part="mouth_jaw"/>
+<rect x="627" y="244" width="12" height="4" rx="2" fill="#bed8bd" data-part="flagellum"/>
+</g>
+<g class="body-silhouette" data-generation="3">
+<circle cx="600" cy="420" r="12" fill="#6a9d9a"/>
+<rect x="619" y="418" width="12" height="4" rx="2" fill="#bed8bd" data-part="mouth_jaw"/>
+<rect x="627" y="418" width="12" height="4" rx="2" fill="#bed8bd" data-part="flagellum"/>
+</g>
+</svg>
