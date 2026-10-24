@@ -78,8 +78,8 @@
   "top_m": 0.52,
   "bottom_m": -2.14,
   "scale_range": [
-    0.9,
-    1.1
+    0.88,
+    1.12
   ],
   "provenance": "Original geometry from tools/blender/make_s3_kit.py (band-0 kit helpers in make_s1_kit.py), surfaced by make_s1_production.finish(): procedural shaders baked to textures. No outside sources."
 }
