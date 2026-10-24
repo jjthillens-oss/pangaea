@@ -53,8 +53,8 @@ bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --creature-store=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --creature-store=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1
