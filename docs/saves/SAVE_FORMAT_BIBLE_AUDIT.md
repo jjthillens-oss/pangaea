@@ -2,6 +2,10 @@
 
 Status: **PROPOSED documentation audit**, based on `origin/main` commit `9131c575d29185e4182b49db148d372e3c4268a7` (2026-10-24). This does not approve a schema change. Compare the binding [GENESIS Bible §18](../bible/GENESIS_Master_Developer_Bible_v0.1.pdf) with the existing [SAVE_FORMAT.md](SAVE_FORMAT.md), current `SaveGame`, migrations, persistence service and decisions. The [playthrough notes](../research/spore/PLAYTHROUGH_VIDEO_NOTES.md) were read for cross-stage continuity context; they are observational, not save-format authority.
 
+## Resolution (IMPLEMENTED reference update)
+
+The v4 reference update in `SAVE_FORMAT.md` now records all 20 required keys, nested validation rules, both v3 preview migration paths, a loader-checked v4 example and the confirmed seeded-restart limit. The drift described below is retained as the historical audit finding; remaining proposed design gaps are listed at the end of the refreshed reference.
+
 ## Immediate documentation drift
 
 `SAVE_FORMAT.md` labels itself **IMPLEMENTED at `f544488`**, calls the on-disk schema **v2 with 15 keys**, and says the only migration is **v1 → v2**. That accurately records an older revision, but is no longer a current reference. `game/domain/save_game.gd` now declares `SCHEMA_VERSION := 4` and 20 required top-level keys; `game/systems/save_migrations.gd` registers 1 → 2, 2 → 3 and 3 → 4. The present v4 writer adds `creature`, `growth`, `checkpoint`, `spawn` and `gen_version`; `player` also carries `energy` and `health`. The document's minimal v2 JSON is valid only as migration input, not as a current writer example. These facts should be added to a **versioned** reference update, retaining the v2 section as history rather than silently relabeling it v4.
