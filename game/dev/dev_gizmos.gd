@@ -23,6 +23,9 @@ extends Node3D
 ## S2 (docs/s2/s2-view.md 9) adds, to the AI layer, a cross at each post of a creature with two
 ## posts (B.7; the leash disc drawn is already their union, D-82) and, for each remnant, a grey
 ## cross and a line along the way it flees, straight away from the cell (growth_layer()).
+##
+## S3 (docs/s3/s3-view.md 12) adds, to the AI layer, a hazard's thread capsule and, dashed, its drift
+## path, and the lane a channel lurker strikes down from its lair (habit_layer()).
 
 const LIFT_M := 0.06
 const SEGMENTS := 48
@@ -65,6 +68,11 @@ const POST_MARK_M := 0.3            ## half a post's cross, as the lair's
 const REMNANT_COLOR := Color(0.6, 0.6, 0.6)
 const REMNANT_MARK_M := 0.4
 const REMNANT_FLEE_M := 1.5         ## the flee line's length
+const CAPSULE_COLOR := Color(1.0, 0.45, 0.6)
+const DRIFT_COLOR := Color(0.8, 0.7, 1.0)
+const CHANNEL_COLOR := Color(0.55, 0.85, 1.0)
+const DRIFT_POINTS := 48            ## points along a drift path, over its longer period
+const CHANNEL_PREY_RADIUS := 0.5    ## the prey radius the channel lane is drawn for
 
 var main: Node
 ## The endless sea's chunk layer (the debug panel's Chunk gizmo button).
@@ -158,7 +166,15 @@ func _draw_ai(sim: PoolSim) -> void:
 			else:
 				_line(at, seen.position, TARGET_COLOR)
 		if not mem.lane.is_empty():
-			_lane(mem.lane)
+			_lane(mem.lane, LANE_COLOR)
+	var habits := habit_layer(sim)
+	for capsule: Dictionary in habits.capsules:
+		_capsule(capsule.a, capsule.b, float(capsule.r), CAPSULE_COLOR)
+	for path: PackedVector2Array in habits.drift_paths:
+		for i in range(0, path.size(), 2):
+			_line(path[i], path[(i + 1) % path.size()], DRIFT_COLOR)
+	for lane: Dictionary in habits.channels:
+		_lane(lane, CHANNEL_COLOR)
 	var layer := growth_layer(sim)
 	for at: Vector2 in layer.posts:
 		_cross(at, POST_MARK_M, LEASH_COLOR)
@@ -182,6 +198,31 @@ static func growth_layer(sim: PoolSim) -> Dictionary:
 			var away := r.motion.position - sim.motion.position
 			var flee := away.normalized() if away.length() > 1e-6 else Vector2.from_angle(r.motion.heading)
 			out.remnants.append({"at": r.motion.position, "flee": flee})
+	return out
+
+
+## What S3's habit marks draw, in sim-local coordinates, for the awake creatures in creature order:
+## {"capsules" (each hazard's CreatureBrain.thread_capsule {a, b, r}), "drift_paths" (each hazard's
+## DRIFT_POINTS points of drift_goal over its longer period, a closed loop), "channels" (each channel
+## lurker's strike lane from its lair along its home heading)}.
+static func habit_layer(sim: PoolSim) -> Dictionary:
+	var out := {"capsules": [], "drift_paths": [], "channels": []}
+	if sim.creatures == null:
+		return out
+	for c in sim.creatures.awake():
+		var mem := c.brain
+		if mem == null:
+			continue
+		if mem.behavior == CreatureBrain.HAZARD:
+			out.capsules.append(CreatureBrain.thread_capsule(mem, c.motion.position, c.motion.heading, c.phenotype.radius))
+			var period := maxi(mem.drift_period.x, mem.drift_period.y)
+			var path := PackedVector2Array()
+			for i in DRIFT_POINTS:
+				path.append(CreatureBrain.drift_goal(mem, roundi(float(i) * period / DRIFT_POINTS)))
+			out.drift_paths.append(path)
+		if bool(sim.species.habit_of(c.species_id).get("channel", false)):
+			out.channels.append(CreatureBrain.strike_lane(mem.cfg.attack, c.phenotype.radius, CHANNEL_PREY_RADIUS, mem.home,
+				mem.home_heading))
 	return out
 
 
@@ -261,16 +302,26 @@ func _line(a: Vector2, b: Vector2, color: Color, lift := LIFT_M) -> void:
 
 ## A strike lane's rectangle (CreatureBrain.strike_lane): from its origin forward to its length,
 ## its half-width either side.
-func _lane(lane: Dictionary) -> void:
+func _lane(lane: Dictionary, color: Color) -> void:
 	var forward := Vector2.from_angle(float(lane.heading))
 	var side := forward.orthogonal() * float(lane.half_width)
 	var a: Vector2 = lane.origin + side
 	var b: Vector2 = lane.origin - side
 	var far := forward * float(lane.length)
-	_line(a, b, LANE_COLOR)
-	_line(a, a + far, LANE_COLOR)
-	_line(b, b + far, LANE_COLOR)
-	_line(a + far, b + far, LANE_COLOR)
+	_line(a, b, color)
+	_line(a, a + far, color)
+	_line(b, b + far, color)
+	_line(a + far, b + far, color)
+
+
+## A capsule from `a` to `b` of radius `r`: its two sides and a half circle round each end.
+func _capsule(a: Vector2, b: Vector2, r: float, color: Color) -> void:
+	var d := (b - a).normalized() if a.distance_to(b) > 1e-6 else Vector2.RIGHT
+	var n := d.orthogonal() * r
+	_line(a + n, b + n, color)
+	_line(a - n, b - n, color)
+	_arc(b, r, d.angle() - PI / 2.0, d.angle() + PI / 2.0, color)
+	_arc(a, r, d.angle() + PI / 2.0, d.angle() + 3.0 * PI / 2.0, color)
 
 
 func _dashed(a: Vector2, b: Vector2, color: Color) -> void:

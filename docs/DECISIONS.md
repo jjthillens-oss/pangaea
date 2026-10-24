@@ -1262,3 +1262,22 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   veil, entries without `behavior`, the line at the new size during the beat, the line in the M1
   pool, the veil hint repeating after a pass, a sting or a bite ignored or counted, no veil in view
   required, a 5 s follow, a context that never sees the veil.
+
+## 2026-10-24 · S3 T5.6: dev tools for sizes 3 and 4 (s3-view 12, D-118; PROPOSED; IMPLEMENTED)
+
+- **Buttons**: `%Size3` and `%Size4` join `GROWTH_BUTTONS` beside Size 1 and 2 (the spec put them
+  in `WORLD_BUTTONS`; they show where the sea grows, as S2's size buttons do, and a button in both
+  lists would have its visibility set twice). `%GoToCradle` is a world button: from band 1 it
+  teleports to the band's cradle `view_point_bu` times `band_factor` to the band (band 1:
+  (0, 46.08) am, `DebugPanel.cradle_point_am`), facing north; at band 0 it is disabled, reads "Go
+  to cradle (size 3+)" and a run is refused with a reason on the refusal line.
+- **Creature lines**: a hazard gets a third line with where it is on each drift sine now
+  (`posmod(tick + phase, period)`, more use to a dev than the fixed phase) and its drift goal; a
+  bloom brain its blooming slot, the post it guards and the seconds to the next switch.
+- **Gizmos**: `DevGizmos.habit_layer` gives each hazard's thread capsule (drawn as two sides and two
+  half circles) and its drift path (48 points of `drift_goal` over the longer period, every other
+  segment drawn), and each channel lurker's strike lane from its lair (`_lane` takes a colour).
+- **Tests**: `test_debug_panel` (`test_size_3_and_4_and_go_to_cradle`,
+  `test_hazard_and_bloom_lines_and_marks`). Mutations caught: band 0's factor (18 am), the button
+  never disabled, a cradle at band 0, Size 4 unrouted, the fixed drift phase, the time since the
+  switch, the drift path over the x period, a 1.0 prey radius, a lane for every creature.

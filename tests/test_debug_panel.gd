@@ -714,3 +714,110 @@ func test_the_tours_judge_the_frames_round_each_growth() -> void:
 	check(ok.growth_pass and ok.growth_failed.is_empty(), "50 ms passes (%s)" % [ok])
 	check_eq(PerfTour.growth_verdict(ok), " · S2G26 pass", "and the line says so")
 	check_eq(PerfTour.growth_gate([]), {"growth_pass": false, "growth_failed": ["no growth"]}, "a tour with no growth fails")
+
+
+## S3 (s3-view 12): Size 3 and 4 apply and are refused above the build's top; Go to cradle takes the
+## cell to the band's cradle view point from band 1 and is refused, and disabled, at band 0.
+func test_size_3_and_4_and_go_to_cradle() -> void:
+	var panel := _panel(FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4)))
+	var pool: PoolScene = panel.main.pool
+	var sim := pool.sim
+	_frames(pool, 2)
+	panel.refresh()
+	var cradle: Button = panel._buttons.go_to_cradle
+	check(panel._buttons.size_3.visible and panel._buttons.size_4.visible and cradle.visible, "shown in the growing sea")
+	check(panel._buttons.size_3.text == "Size 3" and panel._buttons.size_4.text == "Size 4", "named")
+	check(cradle.disabled and cradle.text == "Go to cradle (size 3+)", "disabled at band 0 (%s)" % cradle.text)
+	check(not panel.run("go_to_cradle"), "refused at band 0")
+	check_eq(panel.fields.refusal, "Go to cradle: no cradle below size 3", "and says why")
+	sim.world.max_size = 3
+	check(not panel.run("size_4") and sim.size() == 1, "size 4 above a top of 3 is refused")
+	check_eq(panel.fields.refusal, "Size 4: above this build's top (size 3)", "the refusal names the top")
+	sim.world.max_size = 4
+	check(panel.run("size_3") and sim.size() == 3, "size 3")
+	_frames(pool, 2)
+	panel.refresh()
+	check(not cradle.disabled and cradle.text == "Go to cradle", "enabled at band 1 (%s)" % cradle.text)
+	for n in [3, 4]:
+		if n == 4:
+			check(panel.run("size_4") and sim.size() == 4, "size 4")
+			_frames(pool, 2)
+		check(sim.debug_teleport_abs(3000.0, -500.0, 0.0), "the cell far from home")
+		_frames(pool, 2)
+		check(panel.run("go_to_cradle"), "size %d: Go to cradle applies" % n)
+		var at := sim.absolute_position_am()
+		check(Vector2(at[0], at[1]).distance_to(Vector2(0.0, 46.08)) <= 2.0, "size %d: band 1's view point (0, 46.08) am (%s)" % [n, at])
+		check(is_equal_approx(sim.motion.heading, DebugPanel.TELEPORT_HEADING), "size %d: facing north" % n)
+	# The gizmo draws the habit marks: more lines with a veil and a channel lurker awake.
+	var gizmos: Node3D = panel.main.dev_layer.get_node("DevGizmos")
+	gizmos.main = panel.main
+	gizmos.visible = true
+	sim.debug_set_ai_frozen(true)
+	var drawn := func() -> int:
+		gizmos._process(0.0)
+		var mesh: ImmediateMesh = gizmos._mesh
+		return (mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() if mesh.get_surface_count() > 0 else 0
+	var before: int = drawn.call()
+	var turn := 0
+	for id: String in ["veil", "deep_lurker"]:
+		var placed := false
+		while not placed and turn < 24:
+			placed = sim.debug_spawn_creature(id, sim.motion.position + Vector2(12.0, 0.0).rotated(turn * TAU / 24.0), 0.0)
+			turn += 1
+	var layer := DevGizmos.habit_layer(sim)
+	check(layer.capsules.size() == 1 and layer.channels.size() == 1, "a veil and a channel lurker awake")
+	check(drawn.call() > before, "the gizmo draws their marks (%d lines' vertices, %d before)" % [drawn.call(), before])
+	_free_panel(panel)
+
+
+## S3 (s3-view 12): a hazard's third line gives its place on its drift sines and its goal, a bloom
+## brain's its blooming slot, its post and the time to the switch; the gizmo draws each hazard's
+## capsule and drift path and each channel lurker's lane.
+func test_hazard_and_bloom_lines_and_marks() -> void:
+	var sim := FakeEvents.shipped_session_at_top(4).sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(4), "size 4")
+	var p := sim.motion.position
+	var turn := 0
+	for id: String in ["veil", "deep_lurker", "elder_ambush"]:
+		var placed := false
+		while not placed and turn < 24:
+			placed = sim.debug_spawn_creature(id, p + Vector2(12.0, 0.0).rotated(turn * TAU / 24.0), 0.0)
+			turn += 1
+		check(placed, "a %s at a clear point" % id)
+	var by := {}
+	for c in sim.creatures.awake():
+		if c.debug:
+			by[c.species_id] = c
+	check(by.has("veil") and by.has("deep_lurker") and by.has("elder_ambush"), "all three awake (%s)" % [by.keys()])
+	if by.size() < 3:
+		return
+	var veil: CreatureField.Creature = by.veil
+	veil.brain.drift_phase = Vector2i(10, 20)
+	veil.brain.drift_period = Vector2i(600, 900)
+	sim.tick = 1234
+	var goal := CreatureBrain.drift_goal(veil.brain, 1234)
+	var lines := DebugPanel.creature_lines(sim, veil)
+	check_eq(lines.size(), 3, "a hazard has a third line")
+	check_eq(lines[lines.size() - 1], "    drift 44/600, 354/900 ticks · goal (%.1f, %.1f)" % [goal.x, goal.y], "where it is on each sine")
+	var warden: CreatureField.Creature = by.elder_ambush
+	check_eq(DebugPanel.creature_lines(sim, warden).size(), 2, "no habit, no third line")
+	CreatureBrain.set_bloom(warden.brain, 100, 5400)
+	var tps := float(CreatureBrain.TICKS_PER_SECOND)
+	check_eq(DebugPanel.creature_lines(sim, warden)[2], "    bloom slot 0 blooming · post %d · switch in %.0f s" % [warden.brain.post, 1366 / tps],
+		"slot 0 in the first half, 1366 ticks to the switch")
+	sim.tick = 4000
+	check_eq(DebugPanel.creature_lines(sim, warden)[2], "    bloom slot 1 blooming · post %d · switch in %.0f s" % [warden.brain.post, 1300 / tps],
+		"slot 1 in the second")
+	var layer := DevGizmos.habit_layer(sim)
+	check_eq(layer.capsules, [CreatureBrain.thread_capsule(veil.brain, veil.motion.position, veil.motion.heading, veil.phenotype.radius)],
+		"the veil's capsule, and only it")
+	check_eq(layer.drift_paths.size(), 1, "one drift path")
+	if layer.drift_paths.size() == 1:
+		var path: PackedVector2Array = layer.drift_paths[0]
+		check_eq(path.size(), DevGizmos.DRIFT_POINTS, "48 points")
+		check(path[0] == CreatureBrain.drift_goal(veil.brain, 0) and path[12] == CreatureBrain.drift_goal(veil.brain, 225),
+			"along drift_goal over the longer period")
+	var lurker: CreatureField.Creature = by.deep_lurker
+	check_eq(layer.channels, [CreatureBrain.strike_lane(lurker.brain.cfg.attack, lurker.phenotype.radius, 0.5, lurker.brain.home,
+		lurker.brain.home_heading)], "the channel lurker's lane from its lair, and only it")
