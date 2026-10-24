@@ -192,3 +192,23 @@ func test_the_body_is_seen_from_above_under_the_rim_each_dot_on_its_part() -> vo
 	var front := inverse * PartPlacement.surface_point(0.0)
 	check_near(absf(front.y) / camera.size * rim.size.y, CellEditor.BODY_ON_RIM * rim.radius(), 0.5,
 		"the body's front at %.1f of the rim" % CellEditor.BODY_ON_RIM)
+
+
+func test_test_drive_swims_the_working_body_and_comes_back_unchanged() -> void:
+	editor.open(save, catalog, _state())
+	editor.add("spike")
+	var parts_before := editor.session.working.parts.duplicate(true)
+	var saved_before := save.genome.parts.duplicate(true)
+	_button("TestDrive").pressed.emit()
+	var pool := editor.find_children("*", "TestPool", false, false)[0] as TestPool
+	check(pool.visible, "the test dish is shown")
+	var view := pool.find_child("PlayerCell", true, false) as PlayerCellView
+	check_eq(view.part_nodes().size(), parts_before.size(), "with the working body")
+	for i in 30:
+		pool.step(Vector2.RIGHT, PoolSim.DT)
+	check(pool.motion.position.x > 0.0, "and it swims")
+	_button("BackToEditor").pressed.emit()
+	check(not pool.visible, "back to the editor")
+	check_eq(editor.session.working.parts, parts_before, "the edit is kept")
+	check_eq(save.genome.parts, saved_before, "nothing saved")
+	check(closes.is_empty(), "the editor is still open")
