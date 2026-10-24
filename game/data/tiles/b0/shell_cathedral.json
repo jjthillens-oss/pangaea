@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "The shell cathedral, a rare place: eight glass drums round a nave. The drums stand 0.8 bu apart, too close for a cell, so the nave is sealed and holds nothing (docs/s1/s1-build-plan.md B-28 and B-29). A rammer pair guards the zone at its south porch (docs/s1/s1-content.md 3.2, re-authored for the kit's piece).",
+  "id": "shell_cathedral",
+  "band": 0,
+  "region": "rare",
+  "set": null,
+  "rare": "shell_cathedral",
+  "landmark_anchor": null,
+  "set_piece": {"asset": "rare_shell_cathedral", "center": [0.0, 0.0], "yaw_deg": 0.0},
+  "shells": [
+    {"id": "s0", "center": [-26.0, 24.0], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [25.2, -16.2], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [26.7, -25.2], "radius": 1.05, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-19.3, 26.0], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "ra", "center": [0.0, 16.0], "radius": 4.0, "capacity": 48.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f0", "center": [-22.0, -27.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f1", "center": [4.0, -20.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f2", "center": [20.0, -20.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f3", "center": [-24.0, -7.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f4", "center": [-9.0, -7.0], "radius": 4.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "f5", "center": [22.0, 0.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f6", "center": [-24.0, 17.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f7", "center": [-12.0, 21.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"},
+    {"id": "f8", "center": [21.0, 22.0], "radius": 3.5, "capacity": 8.0, "growth_rate": 0.12, "at_second_size": "keep"}
+  ],
+  "sites": [
+    {"id": "ma", "species": "rammer", "home": [-1.5, 16.0], "heading": 0.0, "territory_zone": "ra", "sizes": [1]},
+    {"id": "mb", "species": "rammer", "home": [1.5, 16.0], "heading": 3.1416, "territory_zone": "ra", "sizes": [1]},
+    {"id": "lk", "species": "lurker", "home": [-16.0, -16.0], "heading": 0.7854, "territory_zone": "", "sizes": [2]}
+  ]
+}

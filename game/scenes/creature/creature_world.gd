@@ -32,6 +32,13 @@ const RIVAL_SKIN_DIVISIONS_MAX := 32
 const RIVAL_LOD_M := 40.0
 const MEAT_INSTANCES_MAX := 64
 const NO_LEGS_NOTICE := "This creature needs legs to walk"
+## Mating at the nest (owner direction 2026-10-24: Spore's mating call opens the editor): evolving calls a mate of
+## the player's own kind, which walks up beside it; a heart rises, then the editor opens. The world holds still
+## for the beat. Seconds; mate_beat_s 0 skips the beat (tests that only check the hand-off).
+const MATE_BEAT_S := 2.5
+## The share of the beat the mate spends walking up; the rest is the heart.
+const MATE_WALK_SHARE := 0.6
+const MATE_NOTICE := "A mate answers your call"
 const DEATH_NOTICE := "You were %s. Back at the nest; %d points lost."
 ## Camera (PROPOSED): behind and above, the distance from the body length (Spore-close: the creature fills a good
 ## part of the frame), orbit by the right stick or a middle-drag. The eye never goes under the field: it is held at
@@ -56,6 +63,11 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 ## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
+## The friend path's notices (sing and dance, CreatureWorldSim._sing).
+const CHARMED_NOTICE := "You sing to %s: %d / %d"
+const BEFRIENDED_NOTICE := "%s joins your pack"
+const SNUBBED_NOTICE := "It won't listen: you bit it"
+const ALLY_LOST_NOTICE := "You bit an ally. It leaves your pack"
 ## The world dressing (assets/records/creature_field_ground, creature_nest_ring, creature_fruit_bush,
 ## creature_meat_chunk). The bush GLB has two root meshes, Bush and Fruit; the meat GLB one, MeatChunk.
 const FIELD_SCENE := "res://assets/export/creature_field_ground.glb"
@@ -74,6 +86,14 @@ var data := {}
 var player_rig: Node3D
 var rival_rigs := {}
 var notice := ""
+var mate_beat_s := MATE_BEAT_S
+## The mate's body and the heart during the beat; null otherwise.
+var mate: Node3D
+var _heart: Node3D
+var _mate_t := -1.0
+var _mate_points := 0
+var _mate_from := Vector3.ZERO
+var _mate_to := Vector3.ZERO
 ## Setup timings in ms: {player_skin, rival_skins, rigs, total}.
 var setup_ms := {}
 var camera_yaw := 0.0
@@ -112,8 +132,10 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	var skin_ms := 0
 	for r in sim.rivals:
 		var s := Time.get_ticks_msec()
-		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, PALETTE[rival_rigs.size() % PALETTE.size()],
-				Look.rival_pattern(rival_rigs.size() + 1))
+		# A species wears its preset's colour; a body without one takes the palette's next.
+		var rival_color: Color = skin_color_of(r["body"]) if (r["body"].extra as Dictionary).has(SKIN_COLOR_KEY) \
+				else PALETTE[rival_rigs.size() % PALETTE.size()]
+		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color, Look.rival_pattern(rival_rigs.size() + 1))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
@@ -155,8 +177,8 @@ func last_events() -> Array:
 
 
 func _physics_process(_delta: float) -> void:
-	if sim == null:
-		return
+	if sim == null or _mate_t >= 0.0:
+		return   # the world holds still while a mate answers
 	var intent := _intent.duplicate() if _scripted else _read_input()
 	intent["move"] = _camera_relative_to_world(intent["move"])
 	_last_tick_events = sim.tick(intent)
@@ -167,6 +189,8 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	if sim == null:
 		return
+	if _mate_t >= 0.0:
+		_mating(delta)
 	_sync_rigs(delta)
 	_orbit(delta)
 	_follow_camera(delta)
@@ -184,7 +208,8 @@ func _input(event: InputEvent) -> void:
 
 func _read_input() -> Dictionary:
 	var keys := Input.get_vector(&"move_left", &"move_right", &"move_down", &"move_up")
-	return {"move": keys, "bite": Input.is_action_pressed(&"creature_bite"), "evolve": Input.is_action_pressed(&"creature_evolve")}
+	return {"move": keys, "bite": Input.is_action_pressed(&"creature_bite"), "evolve": Input.is_action_pressed(&"creature_evolve"),
+			"social": Input.is_action_pressed(&"creature_social")}
 
 
 ## A camera-relative move (x right, y forward) as the sim's ground direction (x along +X, y along +Z).
@@ -211,10 +236,25 @@ func _on_event(e: Dictionary) -> void:
 				_focus = _focus_point()
 				died.emit(String(e["cause"]))
 		"evolve":
-			evolve_requested.emit(int(e["points"]))
+			_call_mate(int(e["points"]))
 		"refused":
 			notice = String(e["reason"])
 			hud.show_notice(notice)
+		"charmed":
+			notice = CHARMED_NOTICE % [String(e["name"]), int(e["friendship"]), int(e["needed"])]
+			hud.show_notice(notice)
+		"befriended":
+			notice = BEFRIENDED_NOTICE % String(e["name"]).capitalize()
+			hud.show_notice(notice)
+		"snubbed":
+			notice = SNUBBED_NOTICE
+			hud.show_notice(notice)
+		"ally_lost":
+			notice = ALLY_LOST_NOTICE
+			hud.show_notice(notice)
+		"earned":
+			hud.flash_points(int(e["points"]))
+			hud.refresh()
 
 
 func _build_ground() -> void:
@@ -403,6 +443,93 @@ func _place_camera() -> void:
 	var eye := _focus + offset
 	eye.y = maxf(eye.y, CAMERA_GROUND_CLEARANCE_M)
 	camera.look_at_from_position(eye, _focus, Vector3.UP)
+
+
+## Starts the mating beat: a twin of the player's body (the same species, so the same skin) appears beside the nest
+## and walks up to stand beside the player; evolve_requested follows when the beat ends. With mate_beat_s 0, or
+## without a player body to copy, the editor opens at once.
+func _call_mate(points: int) -> void:
+	var body: Node3D = player_rig.get("body") if player_rig != null else null
+	if mate_beat_s <= 0.0 or body == null:
+		evolve_requested.emit(points)
+		return
+	_mate_points = points
+	_mate_t = 0.0
+	mate = body.duplicate()
+	mate.name = "Mate"
+	mate.top_level = true
+	add_child(mate)
+	var p: Dictionary = sim.player()
+	var length := float(p.get("body_length_m", 1.0))
+	var side := Vector3(cos(float(p["yaw"])), 0.0, -sin(float(p["yaw"])))
+	_mate_to = (p["position"] as Vector3) + side * maxf(1.2 * length, 1.0)
+	_mate_from = (p["position"] as Vector3) + side * maxf(5.0 * length, 4.0)
+	_heart = _make_heart()
+	_heart.visible = false
+	add_child(_heart)
+	notice = MATE_NOTICE
+	hud.show_notice(notice)
+	_mating(0.0)
+
+
+func _mating(delta: float) -> void:
+	_mate_t += delta
+	var k := clampf(_mate_t / (mate_beat_s * MATE_WALK_SHARE), 0.0, 1.0)
+	var at := _mate_from.lerp(_mate_to, k * k * (3.0 - 2.0 * k))
+	var player_body: Node3D = player_rig.get("body")
+	var pose: Transform3D = player_body.global_transform if player_body.is_inside_tree() else player_body.transform
+	var p: Vector3 = sim.player()["position"]
+	# The mate stands as the player does, moved beside it and turned to face it.
+	var facing := Basis(Vector3.UP, atan2(p.x - at.x, p.z - at.z) - float(sim.player()["yaw"]) + PI)
+	mate.transform = Transform3D(facing * pose.basis, at + facing * (pose.origin - p))
+	if k >= 1.0:
+		_heart.visible = true
+		var h := (_mate_t - mate_beat_s * MATE_WALK_SHARE) / maxf(mate_beat_s * (1.0 - MATE_WALK_SHARE), 1e-3)
+		var body = sim.body_of(Sim.PLAYER_ID)
+		var height: float = body.bounds_m().size.y if body else 1.0
+		var size := maxf(_body_length(body), 1.0)
+		# Just over the pair's heads, rising a little and pulsing.
+		_heart.position = (p + _mate_to) * 0.5 + Vector3(0.0, height + (0.2 + 0.3 * h) * size, 0.0)
+		_heart.scale = Vector3.ONE * size * 0.7 * (0.6 + 0.4 * sin(minf(h, 1.0) * PI))
+		if camera != null and _heart.position.distance_to(camera.position) > 0.01:
+			_heart.look_at(camera.position, Vector3.UP, true)
+	if _mate_t >= mate_beat_s:
+		_mate_t = -1.0
+		mate.queue_free()
+		_heart.queue_free()
+		mate = null
+		_heart = null
+		evolve_requested.emit(_mate_points)
+
+
+## A flat heart (two discs over a turned square) in an unshaded pink, about 0.5 m across, facing +Z.
+static func _make_heart() -> Node3D:
+	var heart := Node3D.new()
+	heart.name = "Heart"
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.42, 0.62)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for x in [-0.11, 0.11]:
+		var disc := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.15
+		cyl.bottom_radius = 0.15
+		cyl.height = 0.02
+		disc.mesh = cyl
+		disc.material_override = mat
+		disc.rotation = Vector3(PI / 2.0, 0.0, 0.0)
+		disc.position = Vector3(x, 0.08, 0.0)
+		heart.add_child(disc)
+	var tip := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(0.3, 0.3, 0.02)
+	tip.mesh = box
+	tip.material_override = mat
+	tip.rotation = Vector3(0.0, 0.0, PI / 4.0)
+	tip.position = Vector3(0.0, -0.06, 0.0)
+	heart.add_child(tip)
+	return heart
 
 
 ## The skin colour the body carries ("skin_color", "rrggbb" or "#rrggbb" from the editor's swatch), else

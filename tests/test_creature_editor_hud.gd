@@ -20,7 +20,11 @@ func after_each() -> void:
 
 
 func palette(tools: Array = ["eye", "horn", "maw"]) -> void:
-	hud.setup(tools, CreatureData.editor_costs(), [Color.RED, Color.GREEN])
+	var roles := {}
+	var rules := CreatureData.part_rules()
+	for type in rules:
+		roles[type] = String(rules[type].get("role", ""))
+	hud.setup(tools, CreatureData.editor_costs(), [Color.RED, Color.GREEN], roles)
 
 
 func test_the_palette_has_select_limb_and_a_priced_button_per_tool() -> void:
@@ -89,3 +93,29 @@ func test_points_refusal_and_test_drive_lines() -> void:
 	check(not hud.test_drive_button.button_pressed and hud.test_drive_button.text == "Test drive", "editing")
 	hud.set_undo_redo(false, true)
 	check(hud.undo_button.disabled and not hud.redo_button.disabled, "undo off, redo on")
+
+
+func test_category_tabs_filter_the_palette_and_follow_the_tool() -> void:
+	palette(["eye", "horn", "maw", "foot"])
+	var shown := func() -> PackedStringArray:
+		var out := PackedStringArray()
+		for b in hud.tools_grid.get_children():
+			if (b as Button).visible:
+				out.append(String(b.get_meta("label")))
+		return out
+	check_eq(hud.category(), "all", "every tool to start")
+	check_eq(shown.call().size(), 6, "Select, Limb and four parts")
+	hud.set_category("mouths")
+	check_eq(shown.call(), PackedStringArray(["Select", "Maw"]), "mouths: Select and the maw")
+	hud.set_category("limbs")
+	check_eq(shown.call(), PackedStringArray(["Select", "Limb", "Foot"]), "limbs: the limb tool and feet")
+	hud.set_tool("horn")
+	check_eq(hud.category(), "weapons", "picking a horn by key shows the weapons")
+	check_eq(CreatureEditorHud.category_of("some_new_part"), "details", "a new art part lands in details")
+	check_eq(CreatureEditorHud.category_of("some_new_eye", "eye"), "senses", "a new part goes by its role")
+	check_eq(CreatureEditorHud.category_of("antenna", "detail"), "senses", "a feeler is a sense")
+	var tabs := hud.find_child("Categories", true, false)
+	check(tabs != null, "the tab row is in the palette")
+	if tabs != null:
+		var details: Button = tabs.get_child(5)
+		check(not details.visible, "no details parts here, so no Details tab")

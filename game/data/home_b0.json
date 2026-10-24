@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "S1 home block, band 0: the M1 pool unwalled (base files) plus the seam ring. 20 zones and 8 shells; reach over [-64, 64)^2 measures 14.7 tm (docs/s1/s1-content.md section 3.6). At size 2 (S2, D-37): the M1 lair_s, terr_nw and terr_ne stay, the M1 zones thin, and the ring holds a two-post Lurker (rl) and an elder rammer guarding ene (re), five live sites.",
+  "band": 0,
+  "base_layout": "res://game/data/pool_m1.json",
+  "base_sites": "res://game/data/creatures_m1.json",
+  "seam_inner_r": 36.0,
+  "m1_second_size_sites": ["lair_s", "terr_nw", "terr_ne"],
+  "m1_zones_at_second_size": "thin",
+  "shells": [
+    {"id": "sa", "center": [42.5, 17.6], "radius": 1.4, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sb", "center": [29.9, 35.0], "radius": 1.1, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sc", "center": [-13.1, 44.1], "radius": 0.95, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sd", "center": [-42.5, 17.6], "radius": 1.25, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "se", "center": [-42.5, -17.6], "radius": 0.8, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sf", "center": [-13.1, -44.1], "radius": 1.35, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sg", "center": [17.6, -42.5], "radius": 1.0, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "sh", "center": [42.5, -17.6], "radius": 1.2, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "e", "center": [56.0, 1.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ese", "center": [53.0, 27.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "se", "center": [50.0, 56.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "sse", "center": [31.0, 50.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ise", "center": [21.0, 39.4], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "s", "center": [12.0, 50.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ssw", "center": [-18.0, 55.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "isw", "center": [-20.0, 39.4], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "sw", "center": [-52.0, 53.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "wsw", "center": [-53.0, 27.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "w", "center": [-52.0, -4.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "wnw", "center": [-53.0, -29.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "nw", "center": [-50.0, -56.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "inw", "center": [-22.0, -37.4], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "nnw", "center": [-26.0, -54.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "n", "center": [-2.0, -51.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "nne", "center": [23.0, -53.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ine", "center": [28.0, -30.4], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ne", "center": [52.0, -49.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"},
+    {"id": "ene", "center": [47.0, -27.0], "radius": 6.0, "capacity": 16.0, "growth_rate": 0.08, "at_second_size": "keep"}
+  ],
+  "sites": [
+    {"id": "rl", "species": "lurker", "home": [-36.0, -42.0], "heading": 0.8622, "territory_zone": "", "sizes": [2], "post_b": {"home": [-44.0, -42.0], "heading": 0.7621}},
+    {"id": "re", "species": "elder_rammer", "home": [47.0, -27.0], "heading": 2.6202, "territory_zone": "ene", "sizes": [2]}
+  ]
+}

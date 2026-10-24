@@ -52,9 +52,11 @@ func place_initial(arena: PoolArena) -> void:
 
 
 ## Adds a carrion item. Energy defaults to the data's value; points default to the data's rate
-## (points per energy), so a smaller carcass is worth fewer points. Returns the item, or {} when
-## the position or energy is not usable.
-func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: int = -1) -> Dictionary:
+## (points per energy), so a smaller carcass is worth fewer points. Radius and lifetime default to
+## the field's (S2: a remnant's carcass and a morsel have their own, D-50, D-66). Returns the item,
+## or {} when the position or energy is not usable.
+func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: int = -1, p_radius: float = NAN,
+		p_lifetime: float = NAN) -> Dictionary:
 	var e := energy if is_nan(p_energy) else p_energy
 	if not position.is_finite() or not is_finite(e) or e <= 0.0:
 		return {}
@@ -63,11 +65,11 @@ func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: i
 		"id": "cr_%d" % next_number,
 		"kind": "meat",
 		"position": position,
-		"radius": item_radius,
+		"radius": p_radius if is_finite(p_radius) else item_radius,
 		"energy": e,
 		"points": pts,
 		"age": 0.0,
-		"lifetime": lifetime,
+		"lifetime": p_lifetime if is_finite(p_lifetime) else lifetime,
 		"source": source,
 	}
 	next_number += 1
@@ -104,12 +106,45 @@ func items_near(p: Vector2, reach: float) -> Array[Dictionary]:
 	return out
 
 
+## The item with this id, or {} when there is none (the scene reads a morsel's item by its id, BP-7).
+func find(id: String) -> Dictionary:
+	for item in items:
+		if item.id == id:
+			return item
+	return {}
+
+
 func consume(id: String) -> bool:
 	for i in items.size():
 		if items[i].id == id:
 			items.remove_at(i)
 			return true
 	return false
+
+
+## Endless mode: drops every item farther than `r` from `p`, for good and without events (it is
+## out of view: WorldStream's food ring lies beyond the camera's reach). Returns how many went.
+func drop_beyond(p: Vector2, r: float) -> int:
+	var before := items.size()
+	var r_sq := r * r
+	# Asked every endless tick: the list is filtered (a new one) only when an item lies beyond.
+	var any := false
+	for item in items:
+		if p.distance_squared_to(item.position) > r_sq:
+			any = true
+			break
+	if not any:
+		return 0
+	items = items.filter(func(item: Dictionary) -> bool: return p.distance_squared_to(item.position) <= r_sq)
+	return before - items.size()
+
+
+## Endless mode: drops every item without events (a far respawn, behind the camera cut). Returns
+## how many went.
+func drop_all() -> int:
+	var before := items.size()
+	items.clear()
+	return before
 
 
 func _next_interval() -> float:

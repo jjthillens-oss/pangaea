@@ -1,0 +1,198 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "T1 test fixture: the smallest tile set the rules accept; not game content.",
+	"id": "reef_c",
+	"band": 0,
+	"region": "reef",
+	"set": 0,
+	"rare": "",
+	"landmark_anchor": [
+		25.0,
+		0.0
+	],
+	"set_piece": null,
+	"shells": [
+		{
+			"id": "a",
+			"center": [
+				8.0,
+				-16.0
+			],
+			"radius": 1.25,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				16.0,
+				-22.0
+			],
+			"radius": 0.75,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "sink"
+		},
+		{
+			"id": "c",
+			"center": [
+				25.0,
+				-10.0
+			],
+			"radius": 1.05,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "d",
+			"center": [
+				8.0,
+				16.0
+			],
+			"radius": 1.35,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "e",
+			"center": [
+				18.0,
+				22.0
+			],
+			"radius": 0.75,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "f",
+			"center": [
+				25.0,
+				10.0
+			],
+			"radius": 1.05,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "g",
+			"center": [
+				-25.0,
+				-25.0
+			],
+			"radius": 0.95,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "h",
+			"center": [
+				-25.0,
+				25.0
+			],
+			"radius": 1.3,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "i",
+			"center": [
+				13.0,
+				-4.0
+			],
+			"radius": 0.85,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "j",
+			"center": [
+				2.0,
+				4.0
+			],
+			"radius": 0.65,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		}
+	],
+	"zones": [
+		{
+			"id": "a",
+			"center": [
+				-12.0,
+				12.0
+			],
+			"radius": 4.0,
+			"capacity": 40.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				-4.0,
+				-14.0
+			],
+			"radius": 3.0,
+			"capacity": 30.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		}
+	],
+	"sites": [
+		{
+			"id": "a",
+			"species": "rammer",
+			"home": [
+				-13.0,
+				12.0
+			],
+			"heading": -0.0,
+			"sizes": [
+				1
+			],
+			"territory_zone": "a"
+		},
+		{
+			"id": "lk",
+			"species": "lurker",
+			"home": [
+				-14.0,
+				8.0
+			],
+			"heading": -0.5191,
+			"sizes": [
+				2
+			]
+		}
+	]
+}

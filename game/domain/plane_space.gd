@@ -42,6 +42,24 @@ static func from_save(a: Array) -> Vector2:
 	return Vector2(float(a[0]), float(a[2]))
 
 
+## The endless save's three-number position: absolute am at the current size, float64, y = SWIM_Y.
+## Never routed through a Vector2, which is float32 and would cost 3.9 mm at 100 km. Pool saves
+## keep to_save and from_save, with their float32 meaning.
+static func to_save_abs(x_am: float, y_am: float) -> Array:
+	return [x_am, SWIM_Y, y_am]
+
+
+## [x, z] as float64, exactly as given; empty unless `a` is an Array of three finite numbers.
+## JSON gives every number as a float; an int (a hand-written file, a test) is taken as its value.
+static func from_save_abs(a: Variant) -> PackedFloat64Array:
+	if not (a is Array) or a.size() != 3:
+		return PackedFloat64Array()
+	for value in a:
+		if not (value is float or value is int) or not is_finite(float(value)):
+			return PackedFloat64Array()
+	return PackedFloat64Array([float(a[0]), float(a[2])])
+
+
 ## Where a ray meets the swim plane, as a plane point, or null when it runs parallel to the plane
 ## or points away from it.
 static func ray_to_plane(origin: Vector3, dir: Vector3, y: float = SWIM_Y) -> Variant:

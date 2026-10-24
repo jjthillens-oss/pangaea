@@ -12,13 +12,42 @@ signal tool_chosen(type: String)
 signal action(name: String)
 signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
+signal preset_chosen(preset_name: String)
+## The "Random creature" button beside the presets.
+signal random_requested
 
 const TOOL_BUTTON_FONT_PX := 22
+## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
+const ICON_BUTTON_FONT_PX := 15
+const ICON_COLUMNS := 3
 const SWATCH_PX := 40
+## The palette's category tabs, {id, title}, in order (the playthrough notes: parts grouped by kind in a grid on the
+## left). "all" shows every tool.
+const CATEGORIES := [
+	{"id": "all", "title": "All"}, {"id": "mouths", "title": "Mouths"}, {"id": "senses", "title": "Senses"},
+	{"id": "limbs", "title": "Limbs"}, {"id": "weapons", "title": "Weapons"}, {"id": "details", "title": "Details"},
+]
+## Part role (part_rules "role", from each cpart_ record) -> category id. A detail part goes by PART_CATEGORY.
+const ROLE_CATEGORY := {
+	"mouth": "mouths", "eye": "senses", "hand": "limbs", "foot": "limbs", "weapon": "weapons",
+}
+## Part type -> category id for the tools a role does not place: the limb tool and the detail parts that sense.
+## Anything else (a detail, or a part without a role) goes to "details".
+const PART_CATEGORY := {
+	"limb": "limbs", "antenna": "senses", "barbels": "senses", "lure": "senses",
+}
 
 var _tool_buttons := {}   ## tool type -> Button
+var _roles := {}   ## part type -> part role
 var _group := ButtonGroup.new()
 var _swatches: Array[Button] = []
+var _preset_title: Label
+var _preset_menu: OptionButton
+var _preset_sep: HSeparator
+var _category := "all"
+var _category_tabs: GridContainer
+var _category_buttons := {}   ## category id -> Button
+var _random_button: Button
 
 var tools_grid: GridContainer
 var swatch_row: HBoxContainer
@@ -69,8 +98,9 @@ func wire() -> void:
 
 
 ## Builds the palette: `tools` are the part types in order, `costs` the editor costs (CreatureData.editor_costs()),
-## `colors` the skin swatches.
-func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
+## `colors` the skin swatches, `roles` part type -> part role (for the category tabs).
+func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {}) -> void:
+	_roles = roles
 	for c in tools_grid.get_children():
 		c.free()
 	_tool_buttons.clear()
@@ -79,6 +109,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
 	for type in tools:
 		var price: int = int((costs.get("part", {}) as Dictionary).get(type, costs.get("part_default", 0)))
 		_add_tool(type, String(type).capitalize(), price)
+	_build_category_tabs()
+	set_category(_category)
 	for c in swatch_row.get_children():
 		c.free()
 	_swatches.clear()
@@ -108,6 +140,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
 func _add_tool(type: String, label: String, price: int) -> void:
 	var b := Button.new()
 	b.text = label if price <= 0 else "%s  %d" % [label, price]
+	b.set_meta("label", label)
+	b.set_meta("price", price)
 	b.toggle_mode = true
 	b.button_group = _group
 	b.focus_mode = Control.FOCUS_NONE
@@ -120,8 +154,69 @@ func _add_tool(type: String, label: String, price: int) -> void:
 	_tool_buttons[type] = b
 
 
-## Shows which tool is in use ("" for none) without emitting tool_chosen.
+## The category a tool belongs to, from its part `role` or else PART_CATEGORY: "" (Select) belongs to every one.
+static func category_of(type: String, role: String = "") -> String:
+	if type == "":
+		return ""
+	return String(ROLE_CATEGORY.get(role, PART_CATEGORY.get(type, "details")))
+
+
+func _category_for(type: String) -> String:
+	return category_of(type, String(_roles.get(type, "")))
+
+
+## Shows only `category`'s tools (and Select); "all" shows every tool.
+func set_category(category: String) -> void:
+	_category = category
+	for t in _tool_buttons:
+		(_tool_buttons[t] as Button).visible = category == "all" or t == "" or _category_for(t) == category
+	for id in _category_buttons:
+		(_category_buttons[id] as Button).set_pressed_no_signal(id == category)
+
+
+func category() -> String:
+	return _category
+
+
+## The tab row above the tools, built once; a tab with no tools in this palette is hidden.
+func _build_category_tabs() -> void:
+	if _category_tabs == null:
+		_category_tabs = GridContainer.new()
+		_category_tabs.name = "Categories"
+		_category_tabs.columns = 3
+		_category_tabs.add_theme_constant_override("h_separation", 6)
+		_category_tabs.add_theme_constant_override("v_separation", 6)
+		var group := ButtonGroup.new()
+		for c in CATEGORIES:
+			var b := Button.new()
+			b.text = String(c["title"])
+			b.toggle_mode = true
+			b.button_group = group
+			b.focus_mode = Control.FOCUS_NONE
+			b.theme_type_variation = &"TabButton"
+			b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX + 3)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var id := String(c["id"])
+			b.pressed.connect(func(): set_category(id))
+			_category_tabs.add_child(b)
+			_category_buttons[id] = b
+		var scroll := tools_grid.get_parent()
+		scroll.get_parent().add_child(_category_tabs)
+		scroll.get_parent().move_child(_category_tabs, scroll.get_index())
+	for id in _category_buttons:
+		var used: bool = id == "all"
+		for t in _tool_buttons:
+			used = used or (t != "" and _category_for(t) == id)
+		(_category_buttons[id] as Button).visible = used
+	if not (_category_buttons[_category] as Button).visible:
+		_category = "all"
+
+
+## Shows which tool is in use ("" for none) without emitting tool_chosen; a tool outside the shown category switches
+## the palette to that tool's category.
 func set_tool(type: String) -> void:
+	if type != "" and _category != "all" and _category_for(type) != _category:
+		set_category(_category_for(type))
 	for t in _tool_buttons:
 		(_tool_buttons[t] as Button).set_pressed_no_signal(t == type)
 	title_text.text = "Creature editor" if type == "" else "Creature editor   ·   %s tool" % (
@@ -168,3 +263,89 @@ func set_test_drive(on: bool) -> void:
 
 func set_hint(text: String) -> void:
 	hint_text.text = text
+
+
+## The "Start from" menu at the top of the palette: a drop-down with one entry per preset creature ({name, title,
+## blurb}; the blurb is the entry's tooltip), built once. Hidden until show_presets(true).
+func setup_presets(entries: Array) -> void:
+	var box: VBoxContainer = tools_grid.get_parent().get_parent()
+	if _preset_menu == null:
+		_preset_title = Label.new()
+		_preset_title.name = "PresetsTitle"
+		_preset_title.text = "Start from a preset"
+		_preset_title.theme_type_variation = &"SmallLabel"
+		_preset_menu = OptionButton.new()
+		_preset_menu.name = "Presets"
+		_preset_menu.focus_mode = Control.FOCUS_NONE
+		_preset_menu.item_selected.connect(func(index: int):
+			if index > 0:
+				preset_chosen.emit(String(_preset_menu.get_item_metadata(index))))
+		_random_button = Button.new()
+		_random_button.name = "Random"
+		_random_button.text = "Random creature"
+		_random_button.focus_mode = Control.FOCUS_NONE
+		_random_button.tooltip_text = "A surprise creature to start from"
+		_random_button.pressed.connect(func(): random_requested.emit())
+		_preset_sep = HSeparator.new()
+		_preset_sep.name = "PresetsSep"
+		box.add_child(_preset_title)
+		box.add_child(_preset_menu)
+		box.add_child(_random_button)
+		box.add_child(_preset_sep)
+		box.move_child(_preset_title, 0)
+		box.move_child(_preset_menu, 1)
+		box.move_child(_random_button, 2)
+		box.move_child(_preset_sep, 3)
+	_preset_menu.clear()
+	_preset_menu.add_item("Choose a creature...")
+	for e in entries:
+		_preset_menu.add_item(String(e["title"]))
+		var index := _preset_menu.item_count - 1
+		_preset_menu.set_item_metadata(index, String(e["name"]))
+		_preset_menu.set_item_tooltip(index, String(e["blurb"]))
+	_preset_menu.select(0)
+	show_presets(false)
+
+
+## Shows `preset_name` as the menu's choice without emitting preset_chosen.
+func set_preset(preset_name: String) -> void:
+	if _preset_menu == null:
+		return
+	for index in _preset_menu.item_count:
+		if _preset_menu.get_item_metadata(index) == preset_name:
+			_preset_menu.select(index)
+			return
+	_preset_menu.select(0)
+
+
+func preset_count() -> int:
+	return 0 if _preset_menu == null else _preset_menu.item_count - 1
+
+
+func show_presets(on: bool) -> void:
+	for n in [_preset_title, _preset_menu, _random_button, _preset_sep]:
+		if n != null:
+			n.visible = on
+
+
+
+## Gives a part tool its picture (PartIcons): the picture on top, the name and price under it, and the palette goes
+## to ICON_COLUMNS columns. Select and Limb keep their text.
+func set_tool_icon(type: String, texture: Texture2D) -> void:
+	var b: Button = _tool_buttons.get(type)
+	if b == null:
+		return
+	b.icon = texture
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX)
+	b.text = "%s %d" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	b.clip_text = true
+	b.tooltip_text = "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	tools_grid.columns = ICON_COLUMNS
+
+
+func tool_icon(type: String) -> Texture2D:
+	var b: Button = _tool_buttons.get(type)
+	return b.icon if b != null else null

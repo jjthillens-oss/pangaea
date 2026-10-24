@@ -211,3 +211,63 @@ func test_today_s_look_passes_its_baseline_gates_in_both_renderers_and_fails_the
 		check(not failed.has("cell_hue") and not failed.has("carrion_hue") and not failed.has("fluid_threat_gap"),
 			"%s keeps the coral cell, the carrion hue and the teal's distance from the threat pink" % renderer)
 	check_eq(LookProbe.GATES.baseline.size(), 18, "every baseline gate has a reading here")
+
+
+## S2's growth set (s2-view 12.3): every reading the spec names, with its bound, on the S2 scenes
+## the probe stages with the omnivore.
+func test_the_growth_gates_are_s2_view_12_3() -> void:
+	var by_path := {}
+	for gate: Dictionary in LookProbe.GATES.growth:
+		by_path[gate.path] = gate
+	var want := {
+		"hatch.median_dE": [null, 2.0],
+		"lineup_s1.ink.ambush_hunter": [1.0, 1.0], "lineup_s1.ink.rammer": [1.0, 1.0],
+		"lineup_s2.ink.rammer": [0.0, 0.0], "lineup_s2.ink.ambush_hunter": [0.0, 0.0],
+		"lineup_s2.ink.lurker": [1.0, 1.0], "lineup_s2.ink.elder_rammer": [1.0, 1.0],
+		"lineup_s2.rim.rammer": [1.0, 1.0], "lineup_s2.rim.ambush_hunter": [0.0, 0.0],
+	}
+	for n in [1, 2]:
+		for species: String in LookProbe.LINEUP_NEAR[n]:
+			want["lineup_s%d.near.%s.cell_multiple" % [n, species]] = [1.4, null]
+		for i in LookProbe.LINEUP_FAR_SPOTS.size():
+			want["lineup_s%d.far.%d.cell_radius_multiple" % [n, i]] = [5.0, null]
+			want["lineup_s%d.far.%d.screen_share" % [n, i]] = [null, 0.3333]
+	check_eq(by_path.size(), want.size(), "one gate per reading (%d)" % want.size())
+	for path: String in want:
+		check(by_path.has(path), "the growth set reads %s" % path)
+		if by_path.has(path):
+			check_eq(by_path[path].get("min"), want[path][0], "%s min" % path)
+			check_eq(by_path[path].get("max"), want[path][1], "%s max" % path)
+	check_eq(LookProbe.LOOK_WORLDS.growth, "endless", "measured in the endless sea")
+	check_eq(str(LookProbe.GROWTH_SCENES), str(["lineup_s1", "lineup_s2", "hatch"]), "its scenes")
+	for scene in LookProbe.GROWTH_SCENES:
+		check(LookProbe.ENDLESS_SCENES.has(scene), "%s is an endless scene" % scene)
+		check_eq(LookProbe.body_for(scene), "omnivore", "%s starts an omnivore, so the rim shows" % scene)
+	check_eq(LookProbe.body_for("lineup"), LookProbe.BODY, "the other scenes keep the grazer")
+	check_eq(str(LookProbe.LINEUP_NEAR[1]), str(["lurker", "elder_rammer", "veil", "warden"]), "size 1's near ghosts")
+	check_eq(str(LookProbe.LINEUP_NEAR[2]), str(["veil", "warden", "deep_lurker", "elder_warden"]), "size 2's")
+
+
+## Ink and rim are read as the share (or count) of pixels near a hue with enough chroma.
+func test_a_hue_share_counts_the_pixels_near_a_hue_with_enough_chroma() -> void:
+	var pink := Color(THREAT_HEX)
+	var grey := Color(0.6, 0.6, 0.62)
+	var colors := PackedColorArray([pink, pink, Color(FOOD_HEX), grey])
+	var share := LookProbe.hue_share(colors, THREAT_HEX, 15.0, 30.0)
+	check_eq(share, {"count": 2, "of": 4, "share": 0.5}, "two of four are the threat pink")
+	check_eq(LookProbe.hue_share(colors, FOOD_HEX, 15.0, 5.0).count, 1, "one is the food green")
+	check_eq(LookProbe.hue_share(PackedColorArray([pink.lerp(grey, 0.85)]), THREAT_HEX, 15.0, 30.0).count, 0,
+		"a pink washed nearly grey is not ink")
+	# A pink washed with a neutral grey keeps its hue within the window and loses the chroma: only the
+	# chroma floor turns it away.
+	var washed := pink.lerp(Color(0.6, 0.6, 0.6), 0.6)
+	var w := LookProbe.lab(washed)
+	check(LookProbe.hue_gap(LookProbe.hue(w), LookProbe.hue(LookProbe.lab(pink))) < 15.0, "the washed pink keeps its hue")
+	check(Vector2(w.y, w.z).length() < 30.0, "but has under 30 of chroma")
+	check_eq(LookProbe.hue_share(PackedColorArray([washed]), THREAT_HEX, 15.0, 0.0).count, 1, "with no chroma floor it counts")
+	check_eq(LookProbe.hue_share(PackedColorArray([washed]), THREAT_HEX, 15.0, 30.0).count, 0, "with the floor it does not")
+	check_eq(LookProbe.hue_share(PackedColorArray(), THREAT_HEX, 15.0, 30.0), {"count": 0, "of": 0, "share": 0.0}, "no pixels")
+	var turned := LookProbe.lab(pink)
+	check(LookProbe.hue_gap(LookProbe.hue(turned), LookProbe.hue(LookProbe.lab(Color("#D96B46")))) > 15.0,
+		"an orange of the same value is outside 15 degrees")
+	check_eq(LookProbe.hue_share(PackedColorArray([Color("#D96B46")]), THREAT_HEX, 15.0, 30.0).count, 0, "so it is not ink")

@@ -1,0 +1,109 @@
+{
+	"adaptation_points": 0,
+	"build_id": "lineage-fixture",
+	"discoveries": [],
+	"era": "microscopic",
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 3,
+		"genome_id": "genome_8d21e6a4f03b9c57",
+		"lineage_id": "lineage_3f9a1c07b2e84d65",
+		"next_part_number": 3,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.0,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_000",
+			"index": 0
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_001",
+			"index": 1,
+			"part_type": "eye_spot"
+		},
+		{
+			"cause": "starved",
+			"event": "died",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_002",
+			"index": 2
+		},
+		{
+			"event": "respawned",
+			"generation": 2,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_003",
+			"index": 3
+		},
+		{
+			"event": "checkpoint",
+			"generation": 2,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_004",
+			"index": 4
+		},
+		{
+			"cause": "killed:ambush_hunter",
+			"event": "died",
+			"generation": 2,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_005",
+			"index": 5
+		},
+		{
+			"event": "born",
+			"generation": 3,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_006",
+			"index": 6
+		},
+		{
+			"event": "part_added",
+			"generation": 3,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_007",
+			"index": 7,
+			"part_type": "spike"
+		}
+	],
+	"lineage_id": "lineage_3f9a1c07b2e84d65",
+	"pending_transactions": [],
+	"player": {
+		"position": [
+			0.0,
+			0.0,
+			0.0
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 0,
+	"schema_version": 2,
+	"settlements": [],
+	"world_changes": [],
+	"world_seed": 2026
+}

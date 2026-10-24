@@ -2,7 +2,9 @@
 
 An original seven-era evolution game in Godot 4 with Blender-authored art. The design authority is
 `docs/bible/GENESIS_Master_Developer_Bible_v0.1.pdf`. Read it before starting a task, along with
-`docs/DECISIONS.md` and the tests your change touches.
+`docs/DECISIONS.md`, `docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md` (the per-stage plan: keep Spore's
+fundamentals, such as breeding into the editor, the creature editor, dancing, friend or foe and the stages, rebuilt
+better with the Bible's ideas on top) and the tests your change touches.
 
 ## Rules that are easy to miss
 
@@ -26,6 +28,7 @@ An original seven-era evolution game in Godot 4 with Blender-authored art. The d
 tools/setup_toolchain.sh --templates   # pinned Godot + Windows export templates into .toolchain/
 tools/check.sh                         # import, tests, M0 boot check, launch run, play, UI and death smokes, error-log gate, release pack
 tools/export_windows.sh                # builds/windows/Pangaea.exe (release) and Pangaea-dev.exe (dev tools)
+python tools/check_docs.py --report     # report path-shaped Markdown references that do not exist
 python tools/blender/make_sample_cell.py   # with `pip install bpy==5.2.2` (Python 3.13), or blender --background --python
 python tools/blender/make_m1_blockouts.py [--only id[,id...]]   # the M1 blockouts, the same way
 python tools/blender/make_m1_threats.py [--only id[,id...]]   # the step 3 threat bodies and the spike part, the same way; then --import

@@ -16,7 +16,7 @@
         "game/scenes/pool/player_cell_view.gd",
         "game/scenes/pool/feedback_fx.gd"
       ],
-      "node": "PlayerCell/EatFx"
+      "node": "Pool/WorldFx/EatFx"
     },
     {
       "id": "feedback_labels",
@@ -33,7 +33,7 @@
     {
       "id": "dev_gizmos",
       "kind": "debug",
-      "description": "Debug builds only: zone rings, resolver mouth arcs and the reach circle drawn as lines.",
+      "description": "Debug builds only: zone rings, resolver mouth arcs and the reach circle drawn as lines; in the endless sea also the chunk layer (loaded and view-set chunk squares, tile edges, the stream's rings, site reach discs and sleeper crosses).",
       "types": [
         "ImmediateMesh"
       ],
@@ -123,7 +123,7 @@
     {
       "id": "zone_lights",
       "kind": "light",
-      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone, carrying zone_light.gdshader's soft shafts of cream light, blended round the zone's edge (micro-world plan C7). Light with no shape of its own, not a model.",
+      "description": "The sunlit patches: one unit PlaneMesh, scaled to a disc 2.6 zone radii across under each plankton zone (in the endless sea, each zone of a sunlit or home tile, added and removed with its chunk), carrying zone_light.gdshader's soft shafts of cream light, blended round the zone's edge (micro-world plan C7). Light with no shape of its own, not a model.",
       "types": [
         "PlaneMesh"
       ],
@@ -158,6 +158,31 @@
       "node": "StartScreen/World/Backdrop"
     },
     {
+      "id": "ghost_quads",
+      "kind": "ui",
+      "description": "The ghosts of the sizes ahead (S2 ghost ladder): one shared unit QuadMesh, flat (PlaneMesh.FACE_Y), each ghost an instance scaled to its size and carrying a recorded T_Ghost_* texture through the ghost shader. Gameplay UI drawn on the swim plane, not a model.",
+      "types": [
+        "QuadMesh",
+        "PlaneMesh"
+      ],
+      "files": [
+        "game/scenes/pool/ghost_layer.gd"
+      ],
+      "node": "Pool/Ghosts"
+    },
+    {
+      "id": "glitter_quads",
+      "kind": "particles",
+      "description": "The growth beat's glitter (S2): one shared unit QuadMesh drawn as still instances carrying the food looks' recorded haze sprites, and the same quad warmed up once at the start fade so the beat's shaders are ready. Particles, not a model.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/growth_beat.gd"
+      ],
+      "node": "Pool/BeatFx"
+    },
+    {
       "id": "creature_skin",
       "kind": "generated",
       "description": "The creature stage's generated skin: a Surface Nets ArrayMesh built at runtime from the body description's capsule field (game/systems/creature/skin_cpu.gd or skin_gpu.gd), skinned to the generated Skeleton3D with CUSTOM0 paint coordinates and CUSTOM1 rest positions, drawn with the art team's creature_skin.gdshader. Spore-style full-body building (docs/DECISIONS.md, 2026-10-23): the player's anatomy is the model, so there is no Blender source for it. The art parts on it are the recorded cpart_* assets.",
@@ -181,6 +206,32 @@
         "game/scenes/creature/creature_editor.gd"
       ],
       "node": "CreatureEditor/HandleRoot"
+    },
+    {
+      "id": "creature_mating_heart",
+      "kind": "ui",
+      "description": "The mating beat's heart marker: two unshaded pink CylinderMesh discs over a rotated BoxMesh, floating over the player and its mate while the mate walks up and facing the camera. A short-lived status sign drawn in the 3D view, like a speech bubble, not a model.",
+      "types": [
+        "CylinderMesh",
+        "BoxMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd"
+      ],
+      "node": "CreatureWorld/Heart"
+    },
+    {
+      "id": "editor_test_dish",
+      "kind": "ui",
+      "description": "The cell editor's test drive dish (TestPool): a flat CylinderMesh floor and TorusMesh rings for the wall and the floor's distance marks, in their own little world behind the editor. Editing UI for feeling a body's speed, not a model of the sea.",
+      "types": [
+        "CylinderMesh",
+        "TorusMesh"
+      ],
+      "files": [
+        "game/ui/test_pool.gd"
+      ],
+      "node": "CellEditor/TestPool"
     }
   ]
 }

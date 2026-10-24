@@ -1,0 +1,6 @@
+; Isolated, headless PROPOSED prototype. The game does not load this project.
+config_version=5
+
+[application]
+config/name="Lineage Tree Prototype"
+config/features=PackedStringArray("4.7")

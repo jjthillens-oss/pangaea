@@ -14,6 +14,22 @@ extends Node3D
 ## they would touch), and one that shows above it is pushed up a line clear of it (see _stack).
 ## Every frame, labels that have come closer than a line on screen, as the camera moves, are moved
 ## apart again (see _keep_apart). Labels only ever move up, so they never cross.
+##
+## A zone's "Regrowing" label stands over the zone's centre but keeps off the cell on screen (S1
+## review): while the cell would touch it, it rises just clear of the cell's top, at once, and settles
+## back smoothly once the cell has gone; when it would have to rise more than ZONE_LIFT_MAX_M (the
+## cell is on it from above) it hides at once instead and fades back in when the cell is clear, so
+## it never slides across the cell.
+##
+## The pool's WorldSpace shifts this node across a rebase (S1), so every label rides it: each event
+## point is turned into this node's frame (WorldSpace.frame_of) as it arrives, and _meal_at holds
+## frame points. renormalize() brings the node back to the origin when it has drifted far.
+##
+## A growth (S2, s2-view 4.5, the growth-container contract): apply_growth re-expresses every label
+## and _meal_at in place; set_depth_k keeps the zone labels at their old height and size on screen
+## through the beat. The labels of the tick's unloaded chunks retire, kept by zone id and adopted back
+## when the tick loads the same zone again; after the settle the leftovers fade over RETIRE_LABEL_S
+## and end_growth frees them.
 
 const MEAL_LABELS := 6
 const MEAL_RISE_M := 0.9
@@ -37,6 +53,14 @@ const DODGED_LIFE_S := 0.8
 const DODGED_START_Y := 1.1
 const ZONE_LABEL_Y := 1.2
 const ZONE_REFRESH_S := 0.25
+## A zone label keeps this many cell radii clear of the cell's centre (its mouth and eyes, as the
+## food arrow's label, StarvingArrow.CELL_CLEAR) plus ZONE_GAP_M round its own text.
+const ZONE_CELL_CLEAR := 1.35
+const ZONE_GAP_M := 0.08
+## The most a zone label rises to clear the cell; past it, it hides until the cell is clear.
+const ZONE_LIFT_MAX_M := 1.2
+const ZONE_FADE_IN_S := 0.25
+const ZONE_SETTLE_RATE := 8.0     ## how fast a lifted zone label settles back (1/s, exponential)
 const FONT_SIZE := 64
 const PIXEL_SIZE := 0.005
 const OUTLINE_SIZE := 14
@@ -46,10 +70,12 @@ const HIT_TAKEN_COLOR := Color(1.0, 0.55, 0.62)    ## a light threat pink (#D946
 const HIT_DEALT_COLOR := Color(0.957, 0.918, 0.824)   ## cream highlight #F4EAD2
 const DODGED_COLOR := Color(0.62, 0.98, 1.0)
 const OUTLINE_COLOR := Color(UiPalette.KEYLINE, 0.9)
+## A retired zone label fades this long from the settle.
+const RETIRE_LABEL_S := 0.6
 
 var _meal_labels: Array[Label3D] = []
 var _meal_ages := PackedFloat32Array()
-var _meal_at := PackedVector2Array()        ## plane position of each label's last meal
+var _meal_at := PackedVector2Array()        ## plane position of each label's last meal, in this node's frame
 var _meal_energy := PackedFloat32Array()    ## energy and points each label shows
 var _meal_points := PackedInt32Array()
 var _meal_lift := PackedFloat32Array()      ## how far each label sits above MEAL_START_Y (stacking)
@@ -61,8 +87,18 @@ var _next_hit := 0
 var _dodged: Label3D
 var _dodged_age := DODGED_LIFE_S
 var _zone_labels := {}   ## zone id -> Label3D
+var _zone_label_keys := {}   ## chunk key -> the zone ids whose labels it added (endless sea)
+var _zone_lift := {}   ## zone id -> how far its shown label sits above ZONE_LABEL_Y now
+var _zone_alpha := {}  ## zone id -> its shown label's alpha now
 var _zone_refresh := 0.0
 var _camera: PoolCamera
+## A growth: retiring zone labels by zone id, whether a beat is open, the beat time of the settle
+## (-1 before), the beat time now, and the depth factor of the zone labels.
+var _retiring := {}
+var _beat := false
+var _settled_t := -1.0
+var _beat_t := 0.0
+var _depth_k := 1.0
 
 
 ## zones: PoolLayout.zones. camera: the pool camera, whose pitch sets the labels' screen order.
@@ -74,6 +110,12 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 		child.queue_free()
 	_meal_labels.clear()
 	_zone_labels.clear()
+	_zone_label_keys.clear()
+	_zone_lift.clear()
+	_zone_alpha.clear()
+	_retiring.clear()
+	_beat = false
+	_settled_t = -1.0
 	for i in MEAL_LABELS:
 		var label := _make_label(MEAL_COLOR)
 		label.name = "Meal%d" % i
@@ -105,8 +147,114 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 	for z in zones:
 		var label := _make_label(ZONE_COLOR)
 		label.name = "Regrowing_%s" % z.id
-		label.position = PlaneSpace.to_world(z.center, ZONE_LABEL_Y)
+		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y)
 		_zone_labels[z.id] = label
+
+
+## A "Regrowing" label over each of a loaded chunk's zones ({id, center}), in this node's frame.
+## During a growth beat a label retired with the same zone id is adopted back.
+func add_zone_labels(key: Variant, zones: Array) -> void:
+	var ids := PackedStringArray()
+	for z in zones:
+		if _zone_labels.has(z.id):
+			continue
+		var label: Label3D = _retiring.get(z.id) if _beat else null
+		if label != null:
+			_retiring.erase(z.id)
+			label.modulate.a = 1.0
+			label.outline_modulate.a = OUTLINE_COLOR.a
+		else:
+			label = _make_label(ZONE_COLOR)
+			label.name = "Regrowing_%s" % z.id
+		label.position = WorldSpace.to_frame(self, z.center, ZONE_LABEL_Y * _depth_k)
+		label.scale = Vector3.ONE * _depth_k
+		_zone_labels[z.id] = label
+		ids.append(z.id)
+	_zone_label_keys[key] = ids
+
+
+## Frees the labels a chunk added; an unknown key changes nothing.
+func remove_zone_labels(key: Variant) -> void:
+	for id in _zone_label_keys.get(key, PackedStringArray()):
+		var label: Label3D = _zone_labels.get(id)
+		if label != null:
+			remove_child(label)
+			label.queue_free()
+		_zone_labels.erase(id)
+		_zone_lift.erase(id)
+		_zone_alpha.erase(id)
+	_zone_label_keys.erase(key)
+
+
+## A growth (the container contract): every label and meal point re-expressed in place round
+## `center_old` by 1 / `factor`, this node back at the origin; a beat opens.
+func apply_growth(center_old: Vector2, factor: float) -> void:
+	var shift := position
+	position = Vector3.ZERO
+	for child in get_children():
+		if child is Node3D:
+			child.position = WorldSpace.reexpress_point(child.position + shift, center_old, factor)
+	for i in _meal_at.size():
+		var p := WorldSpace.reexpress_point(PlaneSpace.to_world(_meal_at[i] + Vector2(shift.x, shift.z)), center_old, factor)
+		_meal_at[i] = Vector2(p.x, p.z)
+	_beat = true
+	_settled_t = -1.0
+	_beat_t = 0.0
+
+
+## The zone labels at ZONE_LABEL_Y x k and scale k (1 when no beat runs).
+func set_depth_k(k: float) -> void:
+	_depth_k = k
+	for id in _zone_labels:
+		(_zone_labels[id] as Label3D).scale = Vector3.ONE * k
+	for id in _retiring:
+		(_retiring[id] as Label3D).scale = Vector3.ONE * k
+
+
+## chunk_unloaded {reason: "growth"}: the chunk's zone labels keep drawing, retiring, by zone id.
+func retire_chunk(key: Variant) -> void:
+	for id in _zone_label_keys.get(key, PackedStringArray()):
+		var label: Label3D = _zone_labels.get(id)
+		if label != null:
+			_retiring[id] = label
+		_zone_labels.erase(id)
+		_zone_lift.erase(id)
+		_zone_alpha.erase(id)
+	_zone_label_keys.erase(key)
+
+
+func settle_growth() -> void:
+	if _beat:
+		_settled_t = _beat_t
+
+
+## Each beat frame: the retired labels fade from the settle.
+func beat_frame(t: float, _k: float) -> void:
+	_beat_t = t
+	if not _beat or _settled_t < 0.0:
+		return
+	var a := 1.0 - clampf((t - _settled_t) / RETIRE_LABEL_S, 0.0, 1.0)
+	for id in _retiring:
+		var label: Label3D = _retiring[id]
+		label.modulate.a = minf(label.modulate.a, a)
+		label.outline_modulate.a = OUTLINE_COLOR.a * label.modulate.a
+
+
+func end_growth() -> void:
+	if not _beat:
+		return
+	for id in _retiring:
+		var label: Label3D = _retiring[id]
+		remove_child(label)
+		label.queue_free()
+	_retiring.clear()
+	_beat = false
+	_settled_t = -1.0
+
+
+## The retiring zone labels by zone id (tests).
+func retiring() -> Dictionary:
+	return _retiring.duplicate()
 
 
 ## A meal label for an "ate" event: energy absorbed and points earned. It adds to the last label
@@ -114,7 +262,7 @@ func setup(zones: Array[Dictionary], camera: PoolCamera) -> void:
 func show_meal(event: Dictionary) -> void:
 	if _meal_labels.is_empty():
 		return
-	var at: Vector2 = event.position
+	var at: Vector2 = event.position + WorldSpace.frame_of(self)
 	var i := posmod(_next_meal - 1, _meal_labels.size())
 	if _meal_labels[i].visible and _meal_ages[i] < MEAL_MERGE_S and _meal_at[i].distance_to(at) <= MEAL_MERGE_M:
 		_meal_energy[i] += float(event.get("absorbed", 0.0))
@@ -185,12 +333,12 @@ func _by_height(eye: Transform3D, skip: int) -> Array[int]:
 	return order
 
 
-## The pool camera in this node's space. Outside the tree (tests) it is the camera's own transform:
-## both nodes are children of the pool.
+## The pool camera in this node's space. Outside the tree (tests) both nodes are children of the
+## pool, so it is the camera's transform seen from this node's.
 func _eye() -> Transform3D:
 	if is_inside_tree() and _camera.is_inside_tree():
 		return global_transform.affine_inverse() * _camera.global_transform
-	return _camera.transform
+	return transform.affine_inverse() * _camera.transform
 
 
 ## Where label i's anchor is, at its stacked height, with or without what it has risen so far.
@@ -204,6 +352,14 @@ static func _seen(eye: Transform3D, p: Vector3) -> Vector2:
 	var d := p - eye.origin
 	var depth := -d.dot(eye.basis.z)
 	return Vector2(d.dot(eye.basis.y) / depth, depth)
+
+
+## Where point p shows through the camera `eye`: x is how far right and y how high on screen, as
+## tangents of its angles off the view axis, and z its depth along that axis.
+static func _seen_xy(eye: Transform3D, p: Vector3) -> Vector3:
+	var d := p - eye.origin
+	var depth := -d.dot(eye.basis.z)
+	return Vector3(d.dot(eye.basis.x) / depth, d.dot(eye.basis.y) / depth, depth)
 
 
 ## How far point p must move up (world height) to show at height `up` (as _seen's x).
@@ -251,7 +407,7 @@ func show_hit(event: Dictionary) -> void:
 	label.modulate = color
 	label.outline_modulate.a = OUTLINE_COLOR.a
 	var at: Variant = event.get("position")
-	label.position = PlaneSpace.to_world(at if at is Vector2 else Vector2.ZERO, HIT_START_Y)
+	label.position = WorldSpace.to_frame(self, at if at is Vector2 else Vector2.ZERO, HIT_START_Y)
 	label.visible = true
 	_hit_ages[i] = 0.0
 
@@ -270,7 +426,7 @@ func show_dodged(at: Vector2) -> void:
 	if _dodged == null:
 		return
 	_dodged_age = 0.0
-	_dodged.position = PlaneSpace.to_world(at, DODGED_START_Y)
+	_dodged.position = WorldSpace.to_frame(self, at, DODGED_START_Y)
 	_dodged.modulate.a = 1.0
 	_dodged.outline_modulate.a = OUTLINE_COLOR.a
 	_dodged.visible = true
@@ -290,19 +446,80 @@ func dodged_label() -> Label3D:
 	return _dodged
 
 
-## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again.
-func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float) -> void:
+## Moves every label by this node's position and the node back to the origin (S1): nothing moves
+## on screen, and the labels' coordinates stay small however far the cell swims.
+func renormalize() -> void:
+	var shift := position
+	for child in get_children():
+		if child is Node3D:
+			child.position += shift
+	for i in _meal_at.size():
+		_meal_at[i] += Vector2(shift.x, shift.z)
+	position = Vector3.ZERO
+
+
+## Shows "Regrowing" with the zone's stock over each zone that was emptied and is not full again
+## (refreshed every ZONE_REFRESH_S), and keeps those labels off the cell drawn at `cell_at` (the
+## pool's plane) with radius `cell_radius` every frame; without a cell they stand where they are.
+func update_zones(region: EcologyRegion, plankton: PlanktonField, delta: float, cell_at := Vector2.INF,
+		cell_radius := 0.0) -> void:
 	_zone_refresh -= delta
-	if _zone_refresh > 0.0:
-		return
-	_zone_refresh = ZONE_REFRESH_S
-	for z in region.zones:
-		var label: Label3D = _zone_labels.get(z.id)
-		if label == null:
+	if _zone_refresh <= 0.0:
+		_zone_refresh = ZONE_REFRESH_S
+		for z in region.zones:
+			var label: Label3D = _zone_labels.get(z.id)
+			if label == null:
+				continue
+			label.visible = plankton.is_regrowing(z.id)
+			if label.visible:
+				label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
+	_keep_zone_labels_off(cell_at, cell_radius, delta)
+
+
+## Places every shown zone label for this frame: lifted at once to clear the cell, settling back
+## smoothly, or hidden at once when it would rise past ZONE_LIFT_MAX_M and faded back in after.
+func _keep_zone_labels_off(cell_at: Vector2, cell_radius: float, delta: float) -> void:
+	var eye := _eye() if _camera != null else Transform3D.IDENTITY
+	var cell := WorldSpace.to_frame(self, cell_at) if cell_at.is_finite() else Vector3.INF
+	for id in _zone_labels:
+		var label: Label3D = _zone_labels[id]
+		if not label.visible:
+			_zone_lift.erase(id)
+			_zone_alpha.erase(id)
 			continue
-		label.visible = plankton.is_regrowing(z.id)
-		if label.visible:
-			label.text = "Regrowing %d%%" % floori(100.0 * z.amount / maxf(z.capacity, 1e-6))
+		var want := zone_label_lift(eye, label, cell, cell_radius) if _camera != null and cell.is_finite() else 0.0
+		var alpha: float = _zone_alpha.get(id, 0.0)
+		var lift: float = _zone_lift.get(id, want)
+		if want > ZONE_LIFT_MAX_M:
+			alpha = 0.0
+		elif alpha <= 0.0:
+			lift = want
+			alpha = minf(delta / ZONE_FADE_IN_S, 1.0) if _zone_alpha.has(id) else 1.0
+		else:
+			lift = maxf(want, lerpf(lift, want, minf(delta * ZONE_SETTLE_RATE, 1.0)))
+			alpha = minf(alpha + delta / ZONE_FADE_IN_S, 1.0)
+		_zone_lift[id] = lift
+		_zone_alpha[id] = alpha
+		label.position.y = (ZONE_LABEL_Y + lift) * _depth_k
+		label.modulate.a = alpha
+		label.outline_modulate.a = OUTLINE_COLOR.a * alpha
+
+
+## How far zone label `label` must rise above ZONE_LABEL_Y to show clear of a cell of radius
+## `radius` at `cell` (this node's frame, on the swim plane), seen through `eye` (the camera in
+## this node's space): 0 when, standing at ZONE_LABEL_Y, it already shows beside, above or below it.
+func zone_label_lift(eye: Transform3D, label: Label3D, cell: Vector3, radius: float) -> float:
+	var base := Vector3(label.position.x, ZONE_LABEL_Y, label.position.z)
+	var font: Font = label.font if label.font != null else ThemeDB.fallback_font
+	var text := Vector2(font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.font_size).x,
+		font.get_height(label.font_size)) * label.pixel_size
+	var at := _seen_xy(eye, base)
+	var c := _seen_xy(eye, cell)
+	var reach := radius * ZONE_CELL_CLEAR / c.z
+	var half := (text * 0.5 + Vector2.ONE * ZONE_GAP_M) / at.z
+	if absf(at.x - c.x) >= half.x + reach or at.y - half.y >= c.y + reach or at.y + half.y <= c.y - reach:
+		return 0.0
+	return maxf(0.0, _raise_to(eye, base, c.y + reach + half.y))
 
 
 ## The meal labels on screen now, oldest first (for checks).

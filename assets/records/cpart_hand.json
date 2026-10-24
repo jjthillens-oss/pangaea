@@ -71,6 +71,7 @@
     "hosts": [
       "limb_end"
     ],
+    "role": "hand",
     "handles": [
       {
         "key": "H1_Grip",

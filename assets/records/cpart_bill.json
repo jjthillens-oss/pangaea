@@ -1,0 +1,100 @@
+{
+  "id": "cpart_bill",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a broad flat spoon-tipped bill with nostril dents and a closing seam, on a fleshy gape; opens on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_bill.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_bill.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.081,
+    "y_forward": 0.032,
+    "z_up": 0.16
+  },
+  "triangles": 912,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartBill_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartBill_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartBill_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_Bill",
+    "M_BillGape"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Bill"
+  ],
+  "part_type": "bill",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "bill",
+    "footprint_radius_m": 0.032,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Open",
+        "meaning": "the halves parted 16 degrees each about the gape",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Width",
+        "meaning": "the bill 30% broader past its root",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_BillGape": 0.8,
+    "M_Bill": 0.1
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 912,
+    "triangles_after": 912
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

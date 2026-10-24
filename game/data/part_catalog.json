@@ -10,6 +10,13 @@
   "required_categories": ["mouth"],
   "refund_rate": 1.0,
   "diminishing_factor": 0.6,
+  "part_levels": {
+    "note": "S4.5 (PROPOSED): a part can be upgraded to level 3. Index 0 is level 1. A level multiplies the part's benefits by effect_share and its mass and upkeep by cost_share; going up from level L costs upgrade_cost_share[L] x the part's cost. Parts with no benefit (a filter mouth) do not level.",
+    "max": 3,
+    "effect_share": [1.0, 1.4, 1.75],
+    "cost_share": [1.0, 1.2, 1.4],
+    "upgrade_cost_share": [0.0, 1.0, 1.5]
+  },
   "base_body": {
     "speed": 2.0,
     "acceleration": 3.0,
@@ -35,21 +42,21 @@
     "omnivore": [{"type": "mouth_filter", "angle": 0.35}, {"type": "mouth_jaw", "angle": -0.35}, {"type": "flagellum", "angle": 3.14159}]
   },
   "parts": {
-    "mouth_filter": {"category": "mouth", "max_count": 1, "cost": 10, "editor": true,
+    "mouth_filter": {"category": "mouth", "max_count": 1, "cost": 40, "editor": true,
       "effects": {"upkeep": 0.05, "mass": 0.05}, "diet": "plant", "arc_deg": 70},
-    "mouth_jaw": {"category": "mouth", "max_count": 1, "cost": 15, "editor": true,
+    "mouth_jaw": {"category": "mouth", "max_count": 1, "cost": 60, "editor": true,
       "effects": {"upkeep": 0.15, "mass": 0.1, "bite_damage": 8.0}, "diet": "meat", "arc_deg": 60},
-    "flagellum": {"category": "propulsion", "max_count": 3, "cost": 15, "editor": true,
+    "flagellum": {"category": "propulsion", "max_count": 3, "cost": 60, "editor": true,
       "effects": {"speed": 1.4, "acceleration": 0.6, "upkeep": 0.25, "mass": 0.1}},
-    "cilia": {"category": "propulsion", "max_count": 3, "cost": 10, "editor": true,
+    "cilia": {"category": "propulsion", "max_count": 3, "cost": 40, "editor": true,
       "effects": {"turn_rate": 1.5, "acceleration": 1.5, "upkeep": 0.15, "mass": 0.05}},
-    "spike": {"category": "defense", "max_count": 4, "cost": 15, "editor": true,
+    "spike": {"category": "defense", "max_count": 4, "cost": 60, "editor": true,
       "effects": {"ram_damage": 6.0, "upkeep": 0.05, "mass": 0.15}, "arc_deg": 40},
-    "eye_spot": {"category": "sense", "max_count": 3, "cost": 10, "editor": true,
+    "eye_spot": {"category": "sense", "max_count": 3, "cost": 40, "editor": true,
       "effects": {"sight": 3.0, "upkeep": 0.1, "mass": 0.02}},
-    "shell_plate": {"category": "defense", "max_count": 3, "cost": 20, "editor": false,
+    "shell_plate": {"category": "defense", "max_count": 3, "cost": 80, "editor": true,
       "effects": {"defense": 0.2, "max_health": 10.0, "upkeep": 0.1, "mass": 0.3}},
-    "toxin_gland": {"category": "defense", "max_count": 2, "cost": 25, "editor": false,
+    "toxin_gland": {"category": "defense", "max_count": 2, "cost": 100, "editor": false,
       "effects": {"upkeep": 0.2, "mass": 0.1}}
   }
 }

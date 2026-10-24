@@ -19,14 +19,30 @@ extends RefCounted
 ## gives up (lost, timer, leash, left_territory, unreachable, target_gone) and every navigation goal
 ## has a progress check and a timeout. All timers are integer ticks.
 ##
+## S2's relationship rules (Relationships) each sit behind a cfg switch (config()): rule 1 bounds the
+## prey an ambush brain picks, rule 2 the intruders a territorial one charges, rule 3 makes it flee a
+## body it fears on sight (D-63), and rule 4 makes it flee a hurt from a body above its engage share
+## instead of answering it. With every switch off the brain is M1's.
+##
+## S2's habits (B.7, D-23): a brain given two posts (set_posts) guards one at a time and moves to the
+## other only from a CALM state with no target, by the M1 return path: the Lurker when it has rested
+## its dwell with the cell out of sight (out_of_sight), the elder rammer when the cell is nearer the
+## other post's zone by the hysteresis (nearer_cell). Its leash disc is then the union of the two
+## posts' discs (D-82). A brain with no posts never reads the habit.
+##
 ## The sim's side of the contract (CreatureField and PoolSim):
 ## - self_view: {"id", "species", "position", "heading", "velocity", "speed_now", "radius", "speed",
 ##   "acceleration", "health_share", "energy_share"}; speed and acceleration are the phenotype's.
+##   S2 adds "cell" (the cell's position wherever it is, Vector2.INF when it is dead or concealed) and
+##   "cell_seen" (the percepts include it), D-59; only habits read them, and a view without them is a
+##   cell neither placed nor seen.
 ## - Each tick: think() when think_due(), then drive(), then move_body() and PoolArena.move(), then
 ##   PoolArena.clamp_to_disc() to leash_disc(). Drain `events` and add the creature's id.
 ## - Hooks: on_hurt() for every landed hit on it; on_strike_landed() and on_blocked() during a strike;
 ##   on_target_gone() when a body it may remember dies, is removed or is concealed; forget() and
-##   force_return() at the player's respawn.
+##   force_return() at the player's respawn; set_posts() after create() for a two-post site.
+## - A rebase shifts the memory's positions; RebaseShift.posts() shifts a two-post brain's posts and
+##   its union disc's centre (D-83).
 ## - The token: before a think, set "engageable" on the player's percept and on its entry in `seen`
 ##   (decisions read the remembered entry, which may be older than the token's last change); after a
 ##   think or a hook, read is_engaged_with().
@@ -68,6 +84,23 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
+# habit.post_switch values (D-23).
+const OUT_OF_SIGHT := "out_of_sight"
+const NEARER_CELL := "nearer_cell"
+
+## The calm (state/phase) labels (S1 3.11, D-62): resting, patrolling and foraging, never watching,
+## noticing, chasing, attacking, fleeing or going home. A post move starts only from one of these, and
+## WorldStream sleeps only creatures in one. is_calm() tests it without building the key.
+const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+
+## How many events brains have emitted so far, every brain of every sim together: a creature field
+## that took every event and finds this unchanged knows no brain holds a new one.
+static var emitted := 0
+
+# The brain's lengths and its one speed below are the defaults config() copies into cfg; the brain
+# reads them from cfg only, so scale_cfg() can scale them for a creature drawn below its entry size
+# (S2, plan B.6). tests/test_brain_sources.gd holds this file to that.
+
 ## m: home is reached within this (the plan's arrival distance).
 const ARRIVE_HOME_M := 0.3
 ## m: a resting creature pushed farther than this from home (by a body or a rock) swims back.
@@ -98,6 +131,43 @@ const CANCEL_RECOVER_TICKS := 24
 const FLEE_LOOKAHEAD_M := 4.0
 ## m: this close to the leash circle, fleeing slides along it instead of pushing out.
 const FLEE_EDGE_M := 1.0
+## m: an elder rammer moves to its other post only when the cell is this much nearer that post's zone
+## (D-23; a species' habit.post_hysteresis_m overrides it).
+const POST_HYSTERESIS_M := 2.0
+## m: the lengths cfg takes from other classes (D-55): InteractionResolver's feed, bite and ram
+## reaches and PoolArena's routing clearance and margin. They are copied here, never named, so a
+## creature's own copies scale with the rest of its cfg; tests/test_brain_sources.gd checks they
+## still equal the originals.
+const WORLD_LENGTHS := {"feed_reach": 0.25, "bite_reach": 0.3, "ram_reach": 0.35, "route_margin": 0.6,
+	"route_clearance": 0.1}
+## What each cfg key measures (D-25), by its path in config()'s dictionary ("attack.burst_speed"):
+## "length" and "speed" are multiplied by q at another size (scale_cfg); "time", "rate", "share",
+## "count", "angle", "text" and "flag" are kept. The list is closed: key_kind() of a key missing here
+## is "", which the classification walk in tests/test_brain_sources.gd refuses.
+const KEY_KINDS := {
+	"species_id": "text", "behavior": "text", "post_switch": "text", "engage_rule": "flag",
+	"think_ticks": "time", "engaged_think_ticks": "time", "dead_reckon_ticks": "time", "unreachable_ticks": "time",
+	"settle_ticks": "time", "memory_ticks": "time", "notice_ticks": "time", "give_up_ticks": "time",
+	"forage_timeout_ticks": "time", "forage_retry_ticks": "time", "refractory_ticks": "time",
+	"nav_timeout_ticks": "time", "rest_ticks": "time", "flee_ticks": "time", "post_rest_ticks": "time",
+	"return_fail_limit": "count",
+	"hungry_below": "share", "full_above": "share", "flee_below": "share", "prey_max_radius_share": "share",
+	"intruder_max_radius_share": "share", "fear_radius_share": "share", "share_tolerance": "share",
+	"speeds.wander": "share", "speeds.forage": "share", "speeds.pursue": "share", "speeds.flee": "share",
+	"unreachable_min_m": "length", "intruder_min_radius": "length", "leash_m": "length", "forage_radius_m": "length",
+	"territory_margin_m": "length", "territory_exit_m": "length",
+	"arrive_home_m": "length", "home_slack_m": "length", "arrive_goal_m": "length", "face_at_standoff_m": "length",
+	"leash_give_up_m": "length", "forage_patrol_m": "length", "patrol_inset_m": "length",
+	"default_territory_m": "length", "flee_lookahead_m": "length", "flee_edge_m": "length",
+	"feed_reach": "length", "route_margin": "length", "route_clearance": "length", "post_hysteresis_m": "length",
+	"tell_start_max_speed": "speed", "approach_wait_mps": "speed",
+	"attack.kind": "text", "attack.tell": "text", "attack.aim": "angle", "attack.lead_s": "time",
+	"attack.tell_ticks": "time", "attack.burst_ticks": "time", "attack.glide_ticks": "time",
+	"attack.recover_ticks": "time", "attack.blocked_recover_ticks": "time", "attack.glide_drag": "rate",
+	"attack.start_min_m": "length", "attack.start_max_m": "length", "attack.standoff_m": "length",
+	"attack.lead_cap_m": "length", "attack.reach": "length", "attack.travel": "length",
+	"attack.burst_speed": "speed", "attack.knockback": "speed",
+}
 ## Random goal tries (each must be clear of rocks) before falling back to home.
 const GOAL_TRIES := 12
 ## rad: a striking creature is blocked by a rock it touches within this of its heading (60 degrees).
@@ -130,6 +200,7 @@ class Memory:
 	var attacker := ""               ## the last body that hurt it
 	var pain := false                ## a hurt not yet answered by think()
 	var flee_from := Vector2.INF
+	var fear_of := ""                ## the body it flees on sight (rule 3, D-63); "" when none
 	var rest_until := 0
 	var forage_after := 0
 	var outcome := ""                ## hit | missed | blocked | interrupted | cancelled
@@ -141,6 +212,13 @@ class Memory:
 	var home_heading := 0.0
 	var territory_center := Vector2.INF
 	var territory_r := 0.0
+	## Two posts (set_posts): [{"home", "heading", "territory": {} or {"center", "radius"}}] x 2, the
+	## zone's own radius as in create(); `post` is the one it guards now, taken at `post_since`.
+	var posts: Array = []
+	var post := 0
+	var post_since := 0
+	var leash_center := Vector2.INF  ## the union of the two posts' leash discs (D-82), when posts are set
+	var leash_r := 0.0
 	var wake := false                ## think on the next tick whatever the schedule
 	var trace := false               ## emit creature_state on every state change (debug)
 	var rng := RandomNumberGenerator.new()
@@ -148,6 +226,8 @@ class Memory:
 
 	## The whole memory for snapshots and hashing: vectors as [x, y], no NaN or infinity (null
 	## instead), dictionaries in id order, and the RNG's seed and state. cfg and events are left out.
+	## S2's fields are written only when they differ from their defaults, so a pool snapshot, where
+	## they never do, is M1's.
 	func to_dict() -> Dictionary:
 		var seen_out := {}
 		for id in CreatureBrain._sorted_keys(seen):
@@ -167,7 +247,7 @@ class Memory:
 		var progress_out := {}
 		if not progress.is_empty():
 			progress_out = {"position": CreatureBrain._pair(progress.position), "tick": progress.tick}
-		return {
+		var out := {
 			"behavior": behavior, "state": state, "phase": phase, "state_tick": state_tick, "phase_tick": phase_tick,
 			"target": target, "seen": seen_out, "engaged_tick": engaged_tick, "landed_on": landed_out,
 			"lock_heading": lock_heading if is_finite(lock_heading) else null, "lane": lane_out,
@@ -180,6 +260,24 @@ class Memory:
 			"territory_center": CreatureBrain._pair(territory_center) if territory_center.is_finite() else null,
 			"territory_r": territory_r, "wake": wake, "rng_seed": rng.seed, "rng_state": rng.state,
 		}
+		if not fear_of.is_empty():
+			out["fear_of"] = fear_of
+		if not posts.is_empty():
+			var posts_out: Array = []
+			for p in posts:
+				var t: Dictionary = p.territory
+				posts_out.append({"home": CreatureBrain._pair(p.home), "heading": p.heading,
+					"territory": {} if t.is_empty() else {"center": CreatureBrain._pair(t.center), "radius": t.radius}})
+			out["posts"] = posts_out
+		if post != 0:
+			out["post"] = post
+		if post_since != 0:
+			out["post_since"] = post_since
+		if leash_center.is_finite():
+			out["leash_center"] = CreatureBrain._pair(leash_center)
+		if leash_r != 0.0:
+			out["leash_r"] = leash_r
+		return out
 
 
 ## Seconds to ticks, once, at load: roundi(s x 60), so 1.2 s is 72 and 0.35 s is 21.
@@ -190,10 +288,19 @@ static func ticks(seconds: Variant) -> int:
 ## A brain's cfg from a species block and the shared "ai" block of creatures_m1.json: every duration
 ## in ticks, angles in radians, and the strike's travel and reach worked out. SpeciesCatalog builds
 ## it once at load (and validates the data); tests build it from inline blocks.
-static func config(species_id: String, species: Dictionary, ai: Dictionary) -> Dictionary:
+##
+## S2 adds the brain's own lengths (the constants above, WORLD_LENGTHS and the species' habit), and
+## the relationship rules from creatures_m1.json's "relationships" block (D-18), each behind its
+## switch in relationships.rules: prey_share sets prey_max_radius_share to the block's (rule 1);
+## intruder_share sets intruder_max_radius_share (rule 2; INF when off); fear sets fear_radius_share
+## (rule 3; INF when off); no_engage_above sets engage_rule (rule 4). An absent block is every rule
+## off, so the cfg decides exactly as M1's did.
+static func config(species_id: String, species: Dictionary, ai: Dictionary, relationships := {}) -> Dictionary:
 	var attack: Dictionary = species.get("attack", {})
 	var senses: Dictionary = species.get("senses", {})
 	var flee: Dictionary = species.get("flee", {})
+	var habit: Dictionary = species.get("habit", {})
+	var rules: Dictionary = relationships.get("rules", {})
 	var kind := str(attack.get("kind", ""))
 	var a := {
 		"kind": kind, "tell": str(attack.get("tell", "")),
@@ -205,11 +312,14 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"glide_drag": float(attack.get("glide_drag", 0.0)), "recover_ticks": ticks(attack.get("recover_s", 0.0)),
 		"blocked_recover_ticks": ticks(attack.get("blocked_recover_s", 0.0)),
 		"knockback": float(attack.get("knockback", 0.0)),
-		"reach": InteractionResolver.BITE_REACH if kind == "bite" else InteractionResolver.RAM_REACH,
+		"reach": float(WORLD_LENGTHS.bite_reach) if kind == "bite" else float(WORLD_LENGTHS.ram_reach),
 	}
 	a["travel"] = Locomotion.strike_travel(a.burst_speed, a.burst_ticks, a.glide_drag, a.glide_ticks, DT)
 	var rest: Array = species.get("rest_s", [0.0, 0.0])
 	var speeds: Dictionary = species.get("speeds", {})
+	var prey_share := float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT))
+	if rules.get("prey_share", false):
+		prey_share = float(relationships.prey_share)
 	return {
 		"species_id": species_id, "behavior": str(species.get("behavior", "")),
 		"think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("think_hz", 10.0)))),
@@ -224,7 +334,11 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"memory_ticks": ticks(senses.get("memory_s", 2.0)),
 		"speeds": {"wander": float(speeds.get("wander", 0.5)), "forage": float(speeds.get("forage", 0.5)),
 			"pursue": float(speeds.get("pursue", 1.0)), "flee": float(speeds.get("flee", 1.0))},
-		"prey_max_radius_share": float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT)),
+		"prey_max_radius_share": prey_share,
+		"intruder_max_radius_share": float(relationships.intruder_max_radius_share) if rules.get("intruder_share", false) else INF,
+		"fear_radius_share": float(relationships.fear_radius_share) if rules.get("fear", false) else INF,
+		"engage_rule": bool(rules.get("no_engage_above", false)),
+		"share_tolerance": float(relationships.get("tolerance", Relationships.TOLERANCE)),
 		"intruder_min_radius": float(species.get("intruder_min_radius", 0.0)),
 		"notice_ticks": ticks(species.get("notice_s", 0.5)), "give_up_ticks": ticks(species.get("give_up_s", 5.0)),
 		"leash_m": float(species.get("leash_m", 0.0)),
@@ -237,8 +351,49 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 		"territory_exit_m": float(species.get("territory_exit_m", 0.0)),
 		"rest_ticks": [ticks(rest[0]), ticks(rest[1])] if rest.size() == 2 else [0, 0],
 		"flee_below": float(flee.get("below_health_share", 0.0)), "flee_ticks": ticks(flee.get("for_s", 0.0)),
+		"arrive_home_m": ARRIVE_HOME_M, "home_slack_m": HOME_SLACK_M, "arrive_goal_m": ARRIVE_GOAL_M,
+		"face_at_standoff_m": FACE_AT_STANDOFF_M, "leash_give_up_m": LEASH_GIVE_UP_M, "forage_patrol_m": FORAGE_PATROL_M,
+		"patrol_inset_m": PATROL_INSET_M, "default_territory_m": DEFAULT_TERRITORY_M,
+		"flee_lookahead_m": FLEE_LOOKAHEAD_M, "flee_edge_m": FLEE_EDGE_M, "approach_wait_mps": APPROACH_WAIT_MPS,
+		"feed_reach": float(WORLD_LENGTHS.feed_reach), "route_margin": float(WORLD_LENGTHS.route_margin),
+		"route_clearance": float(WORLD_LENGTHS.route_clearance),
+		"post_switch": str(habit.get("post_switch", "")), "post_rest_ticks": ticks(habit.get("post_rest_s", 0.0)),
+		"post_hysteresis_m": float(habit.get("post_hysteresis_m", POST_HYSTERESIS_M)),
 		"attack": a,
 	}
+
+
+## The cfg of a creature drawn at q times its entry-size self (S2, plan B.6): every "length" and
+## "speed" key (key_kind) multiplied by q, the rest kept, and the strike's travel worked out again
+## from the scaled burst speed (D-26: travel x q is not bit-equal to the strike's own flight). INF
+## stays INF. q == 1.0 returns a deep copy, equal to cfg.
+static func scale_cfg(cfg: Dictionary, q: float) -> Dictionary:
+	var out := cfg.duplicate(true)
+	if q == 1.0:
+		return out
+	_scale_lengths(out, "", q)
+	var a: Dictionary = out.get("attack", {})
+	if a.has("travel"):
+		a["travel"] = Locomotion.strike_travel(float(a.burst_speed), int(a.burst_ticks), float(a.glide_drag),
+			int(a.glide_ticks), DT)
+	return out
+
+
+## What a cfg key measures (KEY_KINDS), by its path: "attack.burst_speed" is "speed". "" for a key
+## the list does not know.
+static func key_kind(path: String) -> String:
+	return str(KEY_KINDS.get(path, ""))
+
+
+static func _scale_lengths(d: Dictionary, prefix: String, q: float) -> void:
+	for key in d.keys():
+		var path := prefix + str(key)
+		if d[key] is Dictionary:
+			_scale_lengths(d[key], path + ".", q)
+			continue
+		var kind := key_kind(path)
+		if kind == "length" or kind == "speed":
+			d[key] = float(d[key]) * q
 
 
 ## A new brain, resting at home and settling (it notices nothing for cfg.settle_ticks).
@@ -246,6 +401,15 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary) -> D
 ## cfg.territory_margin_m. Ambush brains pass {}.
 static func create(behavior: String, cfg: Dictionary, home: Vector2, home_heading: float, territory: Dictionary,
 		seed_value: int, tick: int) -> Memory:
+	var mem := made(behavior, cfg, home, home_heading, territory, seed_value)
+	start(mem, tick)
+	return mem
+
+
+## create's part that does not depend on the tick: the memory with its home, territory and seeded RNG,
+## not yet started. The endless world makes a site's next brain ahead of its spawn this way.
+static func made(behavior: String, cfg: Dictionary, home: Vector2, home_heading: float, territory: Dictionary,
+		seed_value: int) -> Memory:
 	var mem := Memory.new()
 	mem.behavior = behavior
 	mem.cfg = cfg
@@ -254,22 +418,74 @@ static func create(behavior: String, cfg: Dictionary, home: Vector2, home_headin
 	mem.rng.seed = seed_value
 	if behavior == TERRITORIAL:
 		mem.territory_center = territory.get("center", home)
-		mem.territory_r = float(territory.get("radius", DEFAULT_TERRITORY_M)) + float(cfg.territory_margin_m)
-	mem.ignore_all_until = tick + int(cfg.settle_ticks)
-	mem.state_tick = tick
-	if behavior == AMBUSH:
-		_enter(mem, REST, LURK, tick)
-	else:
-		_rest(mem, tick)
+		mem.territory_r = float(territory.get("radius", cfg.default_territory_m)) + float(cfg.territory_margin_m)
 	return mem
 
 
+## The rest of create, once, at the spawn tick: settling until cfg.settle_ticks from now, at rest.
+static func start(mem: Memory, tick: int) -> void:
+	mem.ignore_all_until = tick + int(mem.cfg.settle_ticks)
+	mem.state_tick = tick
+	if mem.behavior == AMBUSH:
+		_enter(mem, REST, LURK, tick)
+	else:
+		_rest(mem, tick)
+
+
+## Gives a brain two posts (B.7), each {"home": Vector2, "heading": float, "territory": {} or
+## {"center", "radius"}} (the zone's own circle, as create() takes it; a territorial post without one
+## guards cfg.default_territory_m round its home). The brain keeps its own deep copy, takes post 0 (its
+## home, heading and territory) with post_since its state tick, and caches the union of the two posts'
+## leash discs (D-82), which leash_disc() returns from now on.
+static func set_posts(mem: Memory, posts: Array) -> void:
+	if posts.size() != 2:
+		push_error("CreatureBrain.set_posts takes two posts, not %d." % posts.size())
+		return
+	mem.posts = posts.duplicate(true)
+	_take_post(mem, 0)
+	mem.post_since = mem.state_tick
+	var disc := union_disc(_post_disc(mem, mem.posts[0]), _post_disc(mem, mem.posts[1]))
+	mem.leash_center = disc.center
+	mem.leash_r = float(disc.radius)
+
+
 ## The disc the sim clamps the body to after every move: (home, leash) for an ambush brain,
-## (territory center, territory radius + leash) for a territorial one. {"center", "radius"}.
+## (territory center, territory radius + leash) for a territorial one, and the union of its two posts'
+## discs for a brain with posts. {"center", "radius"}.
 static func leash_disc(mem: Memory) -> Dictionary:
+	if not mem.posts.is_empty():
+		return {"center": mem.leash_center, "radius": mem.leash_r}
 	if mem.behavior == TERRITORIAL:
 		return {"center": mem.territory_center, "radius": mem.territory_r + float(mem.cfg.leash_m)}
 	return {"center": mem.home, "radius": float(mem.cfg.leash_m)}
+
+
+## Whether the brain's (state, phase) is in CALM (D-62), without building the key: a pass of the
+## stream asks it of every awake creature. tests/test_habits.gd holds it to CALM.
+static func is_calm(mem: Memory) -> bool:
+	var state := mem.state
+	if state == FORAGE:
+		return mem.phase == SEEK or mem.phase == EAT
+	if state == REST:
+		return mem.phase == LURK or mem.phase == ""
+	return state == WANDER and mem.phase == PATROL
+
+
+## The smallest disc holding two discs {"center", "radius"} (D-82): the larger one when it holds the
+## other (a tie keeps `a`), else the disc spanning both along the line through their centres. The
+## brain's two-post leash, the species catalog and the world generator all use it.
+static func union_disc(a: Dictionary, b: Dictionary) -> Dictionary:
+	var c1: Vector2 = a.center
+	var c2: Vector2 = b.center
+	var r1 := float(a.radius)
+	var r2 := float(b.radius)
+	var d := c1.distance_to(c2)
+	if d + r2 <= r1:
+		return {"center": c1, "radius": r1}
+	if d + r1 <= r2:
+		return {"center": c2, "radius": r2}
+	var r := (d + r1 + r2) / 2.0
+	return {"center": c1 + (c2 - c1) / d * (r - r1), "radius": r}
 
 
 ## True when the brain is in chase or attack with this body as its target (the token counts these).
@@ -287,8 +503,9 @@ static func is_striking(mem: Memory) -> bool:
 static func think_due(mem: Memory, number: int, tick: int) -> bool:
 	if mem.wake:
 		return true
-	var engaged := mem.state == CHASE or mem.state == ATTACK
-	var period: int = mem.cfg.engaged_think_ticks if engaged else mem.cfg.think_ticks
+	var state := mem.state
+	var cfg := mem.cfg
+	var period: int = cfg.engaged_think_ticks if state == CHASE or state == ATTACK else cfg.think_ticks
 	if posmod(tick + number, maxi(period, 1)) == 0:
 		return true
 	return tick >= next_deadline(mem)
@@ -296,37 +513,44 @@ static func think_due(mem: Memory, number: int, tick: int) -> bool:
 
 ## The first tick at which a timed decision falls due: a notice or recover ending, the target's
 ## memory running out, the give-up timer, the unreachable window, a flee or rest ending, or a
-## navigation timeout. NEVER when nothing is pending.
+## navigation timeout. NEVER when nothing is pending. (Wandering and foraging, the usual states, come
+## first; the cases are distinct, so their order changes nothing else.)
 static func next_deadline(mem: Memory) -> int:
 	var due := NEVER
+	var phase := mem.phase
+	var cfg := mem.cfg
 	match mem.state:
+		WANDER, FORAGE:
+			if phase == RETURN_HOME:
+				due = mem.phase_tick + int(cfg.nav_timeout_ticks)
+			elif phase != EAT and mem.goal.is_finite():
+				due = mem.goal_tick + int(cfg.nav_timeout_ticks)
+			if phase == SEEK:
+				var timeout := int(cfg.forage_timeout_ticks)
+				if timeout > 0:
+					due = mini(due, mem.phase_tick + timeout)
+			if phase != EAT:
+				var progress := mem.progress
+				if not progress.is_empty():
+					due = mini(due, int(progress.tick) + int(cfg.unreachable_ticks))
+		REST:
+			if phase == WATCH and mem.seen.has(mem.target):
+				due = int(mem.seen[mem.target].tick) + int(cfg.memory_ticks)
+			elif mem.behavior == TERRITORIAL:
+				due = mem.rest_until
 		NOTICE:
-			if mem.phase != WAIT:
-				due = mem.phase_tick + int(mem.cfg.notice_ticks)
+			if phase != WAIT:
+				due = mem.phase_tick + int(cfg.notice_ticks)
 			due = mini(due, _give_up_deadline(mem))
 		CHASE:
 			due = _give_up_deadline(mem)
-			if mem.phase == PURSUE and not mem.progress.is_empty():
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			if phase == PURSUE and not mem.progress.is_empty():
+				due = mini(due, int(mem.progress.tick) + int(cfg.unreachable_ticks))
 		ATTACK:
-			if mem.phase == RECOVER:
+			if phase == RECOVER:
 				due = mem.phase_tick + mem.recover_ticks
 		FLEE:
-			due = mem.state_tick + int(mem.cfg.flee_ticks)
-		REST:
-			if mem.phase == WATCH and mem.seen.has(mem.target):
-				due = int(mem.seen[mem.target].tick) + int(mem.cfg.memory_ticks)
-			elif mem.behavior == TERRITORIAL:
-				due = mem.rest_until
-		WANDER, FORAGE:
-			if mem.phase == RETURN_HOME:
-				due = mem.phase_tick + int(mem.cfg.nav_timeout_ticks)
-			elif mem.goal.is_finite() and mem.phase != EAT:
-				due = mem.goal_tick + int(mem.cfg.nav_timeout_ticks)
-			if mem.phase == SEEK and int(mem.cfg.forage_timeout_ticks) > 0:
-				due = mini(due, mem.phase_tick + int(mem.cfg.forage_timeout_ticks))
-			if not mem.progress.is_empty() and mem.phase != EAT:
-				due = mini(due, int(mem.progress.tick) + int(mem.cfg.unreachable_ticks))
+			due = mem.state_tick + int(cfg.flee_ticks)
 	return due
 
 
@@ -341,6 +565,10 @@ static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Arr
 		mem.pain = false
 		if _answer_pain(mem, self_view, tick):
 			return
+	if _answer_fear(mem, self_view, percepts, tick):
+		return
+	if mem.posts.size() == 2 and mem.target.is_empty() and is_calm(mem) and _post_switch(mem, self_view, tick):
+		return
 	match mem.state:
 		REST:
 			if mem.phase == WATCH:
@@ -365,7 +593,7 @@ static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Arr
 ## from memory alone: {"mode": steer|turn|tell|burst|glide, "move": Vector2 (|move| <= 1),
 ## "speed_mul" (share of top speed, <= 1), "face" (heading to turn toward in turn/tell/burst/glide,
 ## else 0), "strike": bool, "target": String, "feed": food id or ""}.
-static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolArena) -> Dictionary:
+static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	if mem.state == ATTACK:
 		_advance_attack(mem, self_view, tick)
 	var speeds: Dictionary = mem.cfg.speeds
@@ -378,9 +606,9 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 			return _coast(mem, speeds.wander)
 		WANDER:
 			if mem.phase == RETURN_HOME:
-				return _seek(mem, self_view, mem.home, speeds.wander, arena, true)
+				return _seek(mem, self_view, mem.home, speeds.wander, arena, true, keep)
 			if mem.goal.is_finite():
-				return _seek(mem, self_view, mem.goal, speeds.wander, arena, true)
+				return _seek(mem, self_view, mem.goal, speeds.wander, arena, true, keep)
 			return _coast(mem, speeds.wander)
 		FORAGE:
 			if mem.phase == EAT and mem.goal.is_finite():
@@ -388,18 +616,18 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 				out.feed = mem.food_id
 				return out
 			if mem.goal.is_finite():
-				return _seek(mem, self_view, mem.goal, speeds.forage, arena, true)
+				return _seek(mem, self_view, mem.goal, speeds.forage, arena, true, keep)
 			return _coast(mem, speeds.forage)
 		NOTICE:
 			if mem.seen.has(mem.target):
 				return _turn(mem, _face(self_view, _reckon(mem, mem.target, tick)), speeds.wander)
 			return _coast(mem, speeds.wander)
 		CHASE:
-			return _drive_chase(mem, self_view, tick, arena)
+			return _drive_chase(mem, self_view, tick, arena, keep)
 		ATTACK:
 			return _drive_attack(mem, self_view)
 		FLEE:
-			return _drive_flee(mem, self_view, arena)
+			return _drive_flee(mem, self_view, arena, keep)
 	return _coast(mem, speeds.wander)
 
 
@@ -409,8 +637,12 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 ## multiplier (ActorState.speed_multiplier()); a strike ignores it. The caller then moves the body
 ## (PoolArena.move) and clamps it to leash_disc().
 static func move_body(mem: Memory, m: Locomotion.MotionState, d: Dictionary, p: Phenotype, speed_mul: float, dt: float) -> void:
+	var mode := str(d.mode)
+	if mode == MODE_STEER:   # the usual one, ahead of the match (whose default it is)
+		Locomotion.steer(m, d.move, p, float(d.speed_mul) * speed_mul, dt)
+		return
 	var attack: Dictionary = mem.cfg.attack
-	match str(d.mode):
+	match mode:
 		MODE_BURST:
 			Locomotion.burst(m, float(d.face), float(attack.burst_speed))
 		MODE_GLIDE:
@@ -422,16 +654,15 @@ static func move_body(mem: Memory, m: Locomotion.MotionState, d: Dictionary, p: 
 			Locomotion.steer(m, d.move, p, float(d.speed_mul) * speed_mul, dt)
 
 
-## The danger lane of a strike from `origin` along `heading`: the body travels `travel` (the per-tick
-## burst and glide, Locomotion.strike_travel) and can hit a prey of radius `prey_radius` within its
-## own radius plus the weapon's reach. {"origin", "heading", "travel", "length" (travel + radius +
-## reach + prey radius), "half_width" (radius + reach + prey radius)}. The brain's leash check, the
-## view's floor lane, the gizmos and the tests all use this.
+## The danger lane of a strike from `origin` along `heading`: the body travels attack.travel (the
+## per-tick burst and glide, Locomotion.strike_travel, as config() or scale_cfg() worked it out) and
+## can hit a prey of radius `prey_radius` within its own radius plus attack.reach, the weapon's.
+## {"origin", "heading", "travel", "length" (travel + radius + reach + prey radius), "half_width"
+## (radius + reach + prey radius)}. The brain's leash check, the view's floor lane, the gizmos and the
+## tests all use this, so at any size the lane is the strike the cfg will run.
 static func strike_lane(attack: Dictionary, own_radius: float, prey_radius: float, origin: Vector2, heading: float) -> Dictionary:
-	var travel := Locomotion.strike_travel(float(attack.burst_speed), int(attack.burst_ticks), float(attack.glide_drag),
-		int(attack.glide_ticks), DT)
-	var reach := InteractionResolver.BITE_REACH if str(attack.kind) == "bite" else InteractionResolver.RAM_REACH
-	var half := own_radius + reach + prey_radius
+	var travel := float(attack.travel)
+	var half := own_radius + float(attack.reach) + prey_radius
 	return {"origin": origin, "heading": heading, "travel": travel, "length": travel + half, "half_width": half}
 
 
@@ -496,6 +727,8 @@ static func on_target_gone(mem: Memory, id: String, tick: int) -> void:
 	if mem.attacker == id:
 		mem.attacker = ""
 		mem.pain = false
+	if mem.fear_of == id:
+		mem.fear_of = ""
 	if id.is_empty() or mem.target != id:
 		return
 	match mem.state:
@@ -516,6 +749,8 @@ static func forget(mem: Memory, id: String, ignore_until: int, tick: int) -> voi
 	if mem.attacker == id:
 		mem.attacker = ""
 		mem.pain = false
+	if mem.fear_of == id:
+		mem.fear_of = ""
 	if ignore_until > tick:
 		mem.ignore[id] = ignore_until
 	if id.is_empty() or mem.target != id:
@@ -537,6 +772,7 @@ static func force_return(mem: Memory, forget_id: String, ignore_until: int, tick
 	_drop_target(mem)
 	forget(mem, forget_id, ignore_until, tick)
 	mem.attacker = ""
+	mem.fear_of = ""
 	mem.pain = false
 	mem.goal = Vector2.INF
 	mem.food_id = ""
@@ -551,7 +787,7 @@ static func force_return(mem: Memory, forget_id: String, ignore_until: int, tick
 # --- think, per state ---
 
 static func _think_rest(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> void:
-	if mem.behavior == AMBUSH and Vector2(me.position).distance_to(mem.home) > HOME_SLACK_M:
+	if mem.behavior == AMBUSH and Vector2(me.position).distance_to(mem.home) > float(mem.cfg.home_slack_m):
 		_enter(mem, WANDER, RETURN_HOME, tick, me.position)
 		return
 	var found := _pick_new_target(mem, me, percepts, tick)
@@ -570,7 +806,7 @@ static func _think_watch(mem: Memory, me: Dictionary, tick: int) -> void:
 		mem.target = ""
 		_enter(mem, REST, LURK, tick)
 		return
-	if Vector2(me.position).distance_to(mem.home) > HOME_SLACK_M:
+	if Vector2(me.position).distance_to(mem.home) > float(mem.cfg.home_slack_m):
 		mem.target = ""
 		_enter(mem, WANDER, RETURN_HOME, tick, me.position)
 		return
@@ -595,7 +831,7 @@ static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: in
 		return
 	var at: Vector2 = me.position
 	if mem.phase == RETURN_HOME:
-		if at.distance_to(mem.home) <= ARRIVE_HOME_M:
+		if at.distance_to(mem.home) <= float(mem.cfg.arrive_home_m):
 			mem.return_fails = 0
 			mem.stuck = false
 			if mem.behavior == AMBUSH:
@@ -613,9 +849,9 @@ static func _think_wander(mem: Memory, me: Dictionary, percepts: Array, tick: in
 		return
 	# Patrol (territorial): a random clear point in the territory, then a rest.
 	if not mem.goal.is_finite() or tick - mem.goal_tick >= int(mem.cfg.nav_timeout_ticks):
-		_set_goal(mem, _random_point(mem, me, mem.territory_center, maxf(0.0, mem.territory_r - PATROL_INSET_M), arena), tick, at)
+		_set_goal(mem, _random_point(mem, me, mem.territory_center, maxf(0.0, mem.territory_r - float(mem.cfg.patrol_inset_m)), arena), tick, at)
 		return
-	if at.distance_to(mem.goal) <= ARRIVE_GOAL_M:
+	if at.distance_to(mem.goal) <= float(mem.cfg.arrive_goal_m):
 		_rest(mem, tick)
 		return
 	_check_progress(mem, me, tick)
@@ -640,7 +876,7 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 		for f in food:
 			if f.id == mem.food_id:
 				still = f
-		if still.is_empty() or not _touching(me, still):
+		if still.is_empty() or not _touching(mem, me, still):
 			_start_forage(mem, me, tick)
 		else:
 			mem.goal = still.position
@@ -663,7 +899,7 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 			_set_goal(mem, meal.position, tick, at)
 			mem.route_side = side
 		mem.goal = meal.position
-		if _touching(me, meal):
+		if _touching(mem, me, meal):
 			_enter(mem, FORAGE, EAT, tick)
 			return
 		_check_progress(mem, me, tick)
@@ -673,9 +909,9 @@ static func _think_forage(mem: Memory, me: Dictionary, percepts: Array, food: Ar
 		mem.food_id = ""
 		mem.goal = Vector2.INF
 	var stale := tick - mem.goal_tick >= int(mem.cfg.nav_timeout_ticks)
-	if not mem.goal.is_finite() or at.distance_to(mem.goal) <= ARRIVE_GOAL_M or stale:
+	if not mem.goal.is_finite() or at.distance_to(mem.goal) <= float(mem.cfg.arrive_goal_m) or stale:
 		var center := mem.home if mem.behavior == AMBUSH else mem.territory_center
-		var r := FORAGE_PATROL_M if mem.behavior == AMBUSH else maxf(0.0, mem.territory_r - PATROL_INSET_M)
+		var r := float(mem.cfg.forage_patrol_m) if mem.behavior == AMBUSH else maxf(0.0, mem.territory_r - float(mem.cfg.patrol_inset_m))
 		_set_goal(mem, _random_point(mem, me, center, r, arena), tick, at)
 		return
 	_check_progress(mem, me, tick)
@@ -729,7 +965,7 @@ static func _think_chase(mem: Memory, me: Dictionary, tick: int) -> void:
 		return
 	if mem.behavior == AMBUSH and not _wants_chase(mem, me):
 		# A sated hunter that struck from watching goes back to watching, or home.
-		if Vector2(me.position).distance_to(mem.home) <= HOME_SLACK_M:
+		if Vector2(me.position).distance_to(mem.home) <= float(mem.cfg.home_slack_m):
 			_enter(mem, REST, WATCH, tick)
 		else:
 			_drop_target(mem)
@@ -764,21 +1000,28 @@ static func _think_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 		_after_engagement(mem, tick)
 
 
+## Flees the body it fears while it still senses it (D-63), else what hurt it, until the flee time
+## (restarted by every hurt and every sight of a feared body) runs out; then it swims home.
 static func _think_flee(mem: Memory, tick: int) -> void:
-	if mem.seen.has(mem.attacker):
-		mem.flee_from = _reckon(mem, mem.attacker, tick)
+	var from := mem.fear_of if mem.seen.has(mem.fear_of) else mem.attacker
+	if mem.seen.has(from):
+		mem.flee_from = _reckon(mem, from, tick)
 	if tick - mem.state_tick >= int(mem.cfg.flee_ticks):
 		mem.flee_from = Vector2.INF
+		mem.fear_of = ""
 		_enter(mem, WANDER, RETURN_HOME, tick)
 
 
-## Answers a hurt (pain), never during a strike: below the flee share it flees (a tell is
-## interrupted), a fleeing creature flees again, and an idle one, or one noticing something else,
-## notices the attacker. An engaged creature keeps its target. Returns true when it changed state.
+## Answers a hurt (pain), never during a strike: below the flee share, or hurt by a body above its
+## engage share (rule 4), it flees (a tell is interrupted), a fleeing creature flees again, and an
+## idle one, or one noticing something else, notices the attacker. An engaged creature keeps its
+## target. Returns true when it changed state.
 static func _answer_pain(mem: Memory, me: Dictionary, tick: int) -> bool:
 	if not mem.seen.has(mem.attacker):
 		return false
-	if float(me.health_share) < float(mem.cfg.flee_below) or mem.state == FLEE:
+	var above := bool(mem.cfg.engage_rule) and Relationships.above_engage(_engage_share(mem), float(me.radius),
+		float(mem.seen[mem.attacker].radius), float(mem.cfg.share_tolerance))
+	if above or float(me.health_share) < float(mem.cfg.flee_below) or mem.state == FLEE:
 		if mem.state == ATTACK and mem.phase == TELL:
 			_emit(mem, {"type": "creature_recovered", "target": mem.target, "outcome": "interrupted"})
 		_drop_target(mem)
@@ -792,6 +1035,95 @@ static func _answer_pain(mem: Memory, me: Dictionary, tick: int) -> bool:
 		_notice(mem, mem.attacker, "pain", tick)
 		return true
 	return false
+
+
+## Rule 3 (D-63): it flees the nearest body it fears among its percepts (they come nearest first,
+## ties by id), whatever its state but a strike (which completes first) and even while settling; a
+## tell is interrupted. A fleeing creature that sees a feared body flees it, its flee time
+## restarting, and the flee handler steers. Returns true when it changed state.
+static func _answer_fear(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> bool:
+	var share := float(mem.cfg.fear_radius_share)
+	if is_inf(share) or is_striking(mem):
+		return false
+	var feared := {}
+	for p in percepts:
+		if Relationships.fears(share, float(me.radius), float(p.radius), float(mem.cfg.share_tolerance)):
+			feared = p
+			break
+	if feared.is_empty():
+		return false
+	if mem.state == FLEE:
+		mem.fear_of = feared.id
+		mem.state_tick = tick
+		return false
+	if mem.state == ATTACK and mem.phase == TELL:
+		_emit(mem, {"type": "creature_recovered", "target": mem.target, "outcome": "interrupted"})
+	_drop_target(mem)
+	mem.fear_of = feared.id
+	mem.flee_from = _reckon(mem, feared.id, tick)
+	_enter(mem, FLEE, "", tick)
+	mem.state_tick = tick
+	_emit(mem, {"type": "creature_fled", "from": feared.id})
+	return true
+
+
+## A habit's post move (D-23), from a CALM state with no target (think checks both): out_of_sight
+## when it has rested post_rest_ticks, at this post at least as long, and the cell is not among its
+## percepts; nearer_cell when the cell (wherever it is, D-59) is nearer the other post's zone centre
+## than this one's by more than post_hysteresis_m. It takes the other post and swims there by the M1
+## return path at wander speed, emitting creature_post_move {post, from, to}. Returns true when it moved.
+static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
+	var cfg := mem.cfg
+	match str(cfg.post_switch):
+		OUT_OF_SIGHT:
+			var dwell := int(cfg.post_rest_ticks)
+			if mem.state != REST or tick - mem.state_tick < dwell or tick - mem.post_since < dwell:
+				return false
+			if bool(me.get("cell_seen", false)):
+				return false
+		NEARER_CELL:
+			var cell: Vector2 = me.get("cell", Vector2.INF)
+			var here: Dictionary = mem.posts[mem.post].territory
+			var there: Dictionary = mem.posts[1 - mem.post].territory
+			if not cell.is_finite() or here.is_empty() or there.is_empty():
+				return false
+			if not (cell.distance_to(there.center) < cell.distance_to(here.center) - float(cfg.post_hysteresis_m)):
+				return false
+		_:
+			return false
+	var from := mem.home
+	_take_post(mem, 1 - mem.post)
+	mem.post_since = tick
+	_emit(mem, {"type": "creature_post_move", "post": mem.post, "from": from, "to": mem.home})
+	_enter(mem, WANDER, RETURN_HOME, tick, me.position)
+	return true
+
+
+## Takes post `i`: its home and heading, and for a territorial brain its territory (create()'s rule).
+static func _take_post(mem: Memory, i: int) -> void:
+	var p: Dictionary = mem.posts[i]
+	mem.post = i
+	mem.home = p.home
+	mem.home_heading = float(p.heading)
+	if mem.behavior == TERRITORIAL:
+		var t: Dictionary = p.territory
+		mem.territory_center = t.get("center", p.home)
+		mem.territory_r = float(t.get("radius", mem.cfg.default_territory_m)) + float(mem.cfg.territory_margin_m)
+
+
+## One post's leash disc, as leash_disc() would give for a brain with that post alone.
+static func _post_disc(mem: Memory, p: Dictionary) -> Dictionary:
+	if mem.behavior == TERRITORIAL:
+		var t: Dictionary = p.territory
+		var r := float(t.get("radius", mem.cfg.default_territory_m)) + float(mem.cfg.territory_margin_m)
+		return {"center": t.get("center", p.home), "radius": r + float(mem.cfg.leash_m)}
+	return {"center": p.home, "radius": float(mem.cfg.leash_m)}
+
+
+## The share above which a hurt is fled, not answered (rule 4): the prey share for an ambush brain,
+## the intruder share for a territorial one. INF (rule 2 off) puts nothing above it.
+static func _engage_share(mem: Memory) -> float:
+	return float(mem.cfg.prey_max_radius_share) if mem.behavior == AMBUSH else float(mem.cfg.intruder_max_radius_share)
 
 
 # --- drive helpers ---
@@ -808,7 +1140,7 @@ static func _advance_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 		_recover(mem, "missed", tick)
 
 
-static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolArena) -> Dictionary:
+static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var share: float = mem.cfg.speeds.pursue
 	if not mem.seen.has(mem.target):
 		return _coast(mem, share)
@@ -827,9 +1159,9 @@ static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolAren
 	var reach: Vector2 = standoff - disc.center
 	if reach.length() > float(disc.radius):
 		standoff = disc.center + reach / reach.length() * float(disc.radius)
-	if at.distance_to(standoff) <= FACE_AT_STANDOFF_M:
+	if at.distance_to(standoff) <= float(mem.cfg.face_at_standoff_m):
 		return _turn(mem, _face(me, target_at), share)
-	return _seek(mem, me, standoff, share, arena, true)
+	return _seek(mem, me, standoff, share, arena, true, keep)
 
 
 static func _drive_attack(mem: Memory, me: Dictionary) -> Dictionary:
@@ -846,7 +1178,7 @@ static func _drive_attack(mem: Memory, me: Dictionary) -> Dictionary:
 	return out
 
 
-static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictionary:
+static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var at: Vector2 = me.position
 	var from := mem.flee_from if mem.flee_from.is_finite() else at - Vector2.from_angle(float(me.heading))
 	var away := at - from
@@ -854,33 +1186,48 @@ static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictio
 	# Near the leash circle, slide along it: drop the outward part of the way out.
 	var disc := leash_disc(mem)
 	var off: Vector2 = at - disc.center
-	if off.length() > float(disc.radius) - FLEE_EDGE_M and off.length() > 1e-6:
+	if off.length() > float(disc.radius) - float(mem.cfg.flee_edge_m) and off.length() > 1e-6:
 		var n := off / off.length()
 		var outward := away.dot(n)
 		if outward > 0.0:
 			away -= n * outward
 			away = away / away.length() if away.length() > 1e-3 else n.orthogonal()
-	return _seek(mem, me, at + away * FLEE_LOOKAHEAD_M, float(mem.cfg.speeds.flee), arena, false)
+	return _seek(mem, me, at + away * float(mem.cfg.flee_lookahead_m), float(mem.cfg.speeds.flee), arena, false, keep)
 
 
 ## Steers toward `goal` (round the first rock in the way), slowing on arrival when `arrive` is set
-## so the body stops there without overshooting.
-static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool) -> Dictionary:
-	var at: Vector2 = me.position
+## so the body stops there without overshooting. With `keep`, the route is route_point_kept's: the
+## same point.
+static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool,
+		keep: ChunkArena.RouteKeep = null) -> Dictionary:
+	return seek_from(mem, me.position, float(me.radius), float(me.speed), float(me.acceleration), goal, share, arena, arrive,
+		keep)
+
+
+## _seek from the body's own position, radius, top speed and acceleration (the self view's values)
+## instead of a self view: PoolSim's usual drive, a forager's seek, builds none. With `keep` (the
+## creature's own, on a ChunkArena), the route comes from ChunkArena.route_point_kept: the same point.
+static func seek_from(mem: Memory, at: Vector2, radius: float, speed: float, acceleration: float, goal: Vector2,
+		share: float, arena: PoolArena, arrive: bool, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var way := goal
-	if arena != null:
-		way = arena.route_point(at, goal, float(me.radius), PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, mem.route_side)
+	if keep != null:
+		way = (arena as ChunkArena).route_point_kept(at, goal, radius, float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
+			mem.route_side, keep)
+	elif arena != null:
+		way = arena.route_point(at, goal, radius, float(mem.cfg.route_clearance), float(mem.cfg.route_margin),
+			mem.route_side)
 	var to := way - at
-	if to.length() < 1e-6:
+	var length := to.length()
+	if length < 1e-6:
 		return _coast(mem, share)
 	var throttle := 1.0
 	if arrive:
-		var top := maxf(float(me.speed) * share, 1e-3)
-		var brake := float(me.acceleration) * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
+		var top := maxf(speed * share, 1e-3)
+		var brake := acceleration * Locomotion.BRAKE_FACTOR * ARRIVE_BRAKE_SHARE
 		throttle = clampf(sqrt(2.0 * brake * at.distance_to(goal)) / top, 0.0, 1.0)
-	var out := _coast(mem, share)
-	out.move = to / to.length() * throttle
-	return out
+	# _coast's dictionary with the move in it, built once (its keys in its order).
+	return {"mode": MODE_STEER, "move": to / length * throttle, "speed_mul": share, "face": 0.0, "strike": false,
+		"target": mem.target, "feed": ""}
 
 
 static func _coast(mem: Memory, share: float) -> Dictionary:
@@ -898,20 +1245,24 @@ static func _turn(mem: Memory, face: float, share: float) -> Dictionary:
 # --- decisions ---
 
 ## The first percept (nearest first) worth noticing now, or {}: prey for an ambush brain (another
-## species it could bite), an intruder for a territorial one (another species of at least
-## intruder_min_radius inside the territory). Nothing while settling, while hurt below the flee share,
-## or for an ignored id.
+## species of at most its radius x prey share, rule 1), an intruder for a territorial one (another
+## species from intruder_min_radius up to its radius x intruder share, rule 2, inside the territory).
+## Nothing while settling, while hurt below the flee share, or for an ignored id. The shares are the
+## engage shares of rule 4, so it never picks a body whose hurt it would flee.
 static func _pick_new_target(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> Dictionary:
 	if tick < mem.ignore_all_until or not _can_engage(mem, me):
 		return {}
+	var own := float(me.radius)
+	var tol := float(mem.cfg.share_tolerance)
 	for p in percepts:
 		if p.species == mem.cfg.species_id or mem.ignore.has(p.id):
 			continue
 		var r: float = p.radius
 		if mem.behavior == AMBUSH:
-			if r <= float(me.radius) * float(mem.cfg.prey_max_radius_share):
+			if Relationships.can_prey(float(mem.cfg.prey_max_radius_share), own, r, tol):
 				return p
-		elif r >= float(mem.cfg.intruder_min_radius) and Vector2(p.position).distance_to(mem.territory_center) <= mem.territory_r:
+		elif Relationships.is_intruder(float(mem.cfg.intruder_min_radius), float(mem.cfg.intruder_max_radius_share), own, r, tol) \
+				and Vector2(p.position).distance_to(mem.territory_center) <= mem.territory_r:
 			return p
 	return {}
 
@@ -921,7 +1272,7 @@ static func _pick_food(mem: Memory, me: Dictionary, food: Array) -> Dictionary:
 	for f in food:
 		var at: Vector2 = f.position
 		# Food it cannot reach from inside its leash is no meal.
-		if at.distance_to(disc.center) > float(disc.radius) + float(me.radius) + float(f.radius) + InteractionResolver.FEED_REACH:
+		if at.distance_to(disc.center) > float(disc.radius) + float(me.radius) + float(f.radius) + float(mem.cfg.feed_reach):
 			continue
 		if mem.behavior == AMBUSH and at.distance_to(mem.home) > float(mem.cfg.forage_radius_m):
 			continue
@@ -945,7 +1296,7 @@ static func _give_up_reason(mem: Memory, me: Dictionary, tick: int) -> String:
 	var target_at := _reckon(mem, mem.target, tick)
 	if mem.behavior == AMBUSH:
 		var own := Vector2(me.position).distance_to(mem.home)
-		if own >= float(mem.cfg.leash_m) - LEASH_GIVE_UP_M and target_at.distance_to(mem.home) > own:
+		if own >= float(mem.cfg.leash_m) - float(mem.cfg.leash_give_up_m) and target_at.distance_to(mem.home) > own:
 			return "leash"
 	elif target_at.distance_to(mem.territory_center) > mem.territory_r + float(mem.cfg.leash_m):
 		return "left_territory"
@@ -991,14 +1342,14 @@ static func _in_window(mem: Memory, me: Dictionary, tick: int) -> bool:
 	return d >= float(mem.cfg.attack.start_min_m) and d <= float(mem.cfg.attack.start_max_m)
 
 
-## The target is beyond the window and closing on it at APPROACH_WAIT_MPS or more: aim and let it come.
+## The target is beyond the window and closing on it at cfg.approach_wait_mps or more: aim and let it come.
 static func _approaching(mem: Memory, me: Dictionary, tick: int) -> bool:
 	if not mem.seen.has(mem.target):
 		return false
 	var to_me: Vector2 = Vector2(me.position) - _reckon(mem, mem.target, tick)
 	if to_me.length() <= float(mem.cfg.attack.start_max_m):
 		return false
-	return Vector2(mem.seen[mem.target].velocity).dot(to_me / to_me.length()) >= APPROACH_WAIT_MPS
+	return Vector2(mem.seen[mem.target].velocity).dot(to_me / to_me.length()) >= float(mem.cfg.approach_wait_mps)
 
 
 static func _aimed(mem: Memory, me: Dictionary, tick: int) -> bool:
@@ -1035,22 +1386,35 @@ static func _fresh(mem: Memory, id: String, tick: int) -> bool:
 	return mem.seen.has(id) and int(mem.seen[id].tick) == tick
 
 
-static func _touching(me: Dictionary, food: Dictionary) -> bool:
-	var reach := float(me.radius) + float(food.radius) + InteractionResolver.FEED_REACH
+static func _touching(mem: Memory, me: Dictionary, food: Dictionary) -> bool:
+	var reach := float(me.radius) + float(food.radius) + float(mem.cfg.feed_reach)
 	return Vector2(me.position).distance_to(food.position) <= reach
 
 
 # --- memory and transitions ---
 
-## Remembers every percept, then drops memories cfg.memory_ticks old and expired ignores.
+## Remembers every percept, then drops memories cfg.memory_ticks old and expired ignores. A body
+## already remembered has its entry's values replaced in place (the same keys in the same order, and
+## no entry is shared: a rebase moves each in place too).
 static func _remember(mem: Memory, percepts: Array, tick: int) -> void:
+	var seen := mem.seen
 	for p in percepts:
-		mem.seen[p.id] = {"position": p.position, "velocity": p.velocity, "tick": tick, "by": p.by, "species": p.species,
-			"radius": p.radius, "engageable": p.engageable}
+		var e: Variant = seen.get(p.id)
+		if e == null:
+			seen[p.id] = {"position": p.position, "velocity": p.velocity, "tick": tick, "by": p.by, "species": p.species,
+				"radius": p.radius, "engageable": p.engageable}
+		else:
+			e.position = p.position
+			e.velocity = p.velocity
+			e.tick = tick
+			e.by = p.by
+			e.species = p.species
+			e.radius = p.radius
+			e.engageable = p.engageable
 	var memory: int = mem.cfg.memory_ticks
-	for id in mem.seen.keys():
-		if tick - int(mem.seen[id].tick) >= memory:
-			mem.seen.erase(id)
+	for id in seen.keys():
+		if tick - int(seen[id].tick) >= memory:
+			seen.erase(id)
 	for id in mem.ignore.keys():
 		if int(mem.ignore[id]) <= tick:
 			mem.ignore.erase(id)
@@ -1198,6 +1562,7 @@ static func _label(state: String, phase: String) -> String:
 
 static func _emit(mem: Memory, event: Dictionary) -> void:
 	mem.events.append(event)
+	emitted += 1
 
 
 static func _pair(v: Vector2) -> Array:

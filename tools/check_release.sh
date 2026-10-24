@@ -7,6 +7,9 @@
 #   probe:  tools/release_probe.gd checks the start screen is up, Main has no dev layer,
 #           --perf-tour is ignored, the creature stage opens with its part tools, saves and
 #           enters the world, and the pack holds nothing from game/dev or tests
+#   content: tools/release_content_probe.gd checks the pack holds the endless sea's content (S1,
+#           build plan B-19): exactly the 20 band-0 tile files, the home block and the placement
+#           kit, content that loads with no problems, and every kit GLB loading
 # With no pack given it exports the release preset's pack to builds/release/Pangaea.pck (a pack
 # export needs no export templates). CI passes builds/windows/Pangaea.exe after the export, so the
 # exe it uploads is the one checked. Both runs start in an empty folder, so a res:// path missing
@@ -23,6 +26,7 @@ source tools/bounded.sh
 case "$GODOT" in */*) GODOT="$(realpath "$GODOT")" ;; esac
 LOGS="$PWD/builds/release"
 PROBE="$PWD/tools/release_probe.gd"
+CONTENT_PROBE="$PWD/tools/release_content_probe.gd"
 mkdir -p "$LOGS"
 rm -f "$LOGS"/*.log
 PACK="${2:-}"
@@ -40,7 +44,8 @@ trap 'rm -rf "$RUN_DIR"' EXIT
 echo "Starting the release pack $PACK"
 status=0
 (cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --quit-after 120 -- --slot=user://smoke/release.json) 2>&1 | tee "$LOGS/launch.log" || status=1
-(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --creature-store=user://smoke/creature_release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
+(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --fixed-fps 60 --main-pack "$PACK" --script "$PROBE" -- --slot=user://smoke/release.json --perf-tour) 2>&1 | tee "$LOGS/probe.log" || status=1
+(cd "$RUN_DIR" && bounded 300 "$GODOT" --headless --main-pack "$PACK" --script "$CONTENT_PROBE") 2>&1 | tee "$LOGS/content.log" || status=1
 if grep -E "SCRIPT ERROR|^ERROR:" "$LOGS"/*.log; then
   echo "Engine or script errors while exporting or starting the release pack ($LOGS/)."
   status=1

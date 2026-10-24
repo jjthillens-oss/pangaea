@@ -1,0 +1,7 @@
+{
+	"id": "landmark_ring",
+	"status": "PROPOSED",
+	"review_state": "blockout - S1 test fixture",
+	"export_path": "assets/export/landmark_ring.glb",
+	"footprint_radius_m": 2.0
+}

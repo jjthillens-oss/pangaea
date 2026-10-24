@@ -13,6 +13,9 @@ const RIM_SCENE := "res://assets/export/pool_rim.glb"
 const RIM_RECORD := "res://assets/records/pool_rim.json"
 const LookProbe := preload("res://tools/godot/look_probe.gd")
 const ViewReach := preload("res://tests/view_reach.gd")
+const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
+## The widest window the Backdrop is checked against (S1: s1-content.md 6.7), wider than 21:9.
+const WIDEST_ASPECT := 2.4
 ## Height fog at these depths under the swim plane (m) lies in these ranges: none at the plane,
 ## about half at 10 m, nearly all at 30 m and at the Backdrop (PROPOSED, plan section 3).
 const FOG_AT_DEPTH := {0.0: Vector2(0.0, 0.0), 10.0: Vector2(0.45, 0.65), 30.0: Vector2(0.9, 1.0), 40.0: Vector2(0.95, 1.0)}
@@ -149,14 +152,13 @@ func test_the_backdrop_covers_every_view_inside_the_far_plane() -> void:
 	var plane := backdrop.mesh as PlaneMesh
 	check(plane != null, "the Backdrop is a plane")
 	var half := minf(plane.size.x, plane.size.y) / 2.0 if plane else 0.0
-	# The farthest the camera's focus gets from the centre: the cell's centre at the hard limit plus
-	# the whole look-ahead pointing outward.
-	var layout := PoolLayout.load_from()
-	var camera := layout.camera
-	var focus_r := layout.hard_radius - PartCatalog.load_from().base("radius", 0.5) + float(camera.look_ahead_max)
-	for aspect in [ViewReach.SCREEN_ASPECT, ViewReach.WIDE_ASPECT]:
+	# The Backdrop sits under the camera's focus wherever it is (S1: the pool's _follow_camera, so it
+	# covers the endless sea too), so the view is measured from the focus: the top corners at the
+	# widest zoom, on the widest window, land within the plane's half-size.
+	var camera := PoolLayout.load_from().camera
+	for aspect in [ViewReach.SCREEN_ASPECT, ViewReach.WIDE_ASPECT, WIDEST_ASPECT]:
 		var reach := ViewReach.corner_reach(camera, float(camera.zoom_max), y, aspect)
-		check(half >= focus_r + reach, "at the widest zoom from the wall (aspect %.2f) the view reaches r %.1f at y %.0f; the Backdrop covers r %.1f" % [aspect, focus_r + reach, y, half])
+		check(half >= reach, "at the widest zoom (aspect %.2f) the view reaches r %.1f from the focus at y %.0f; the Backdrop covers r %.1f" % [aspect, reach, y, half])
 		var slant := ViewReach.corner_slant(camera, float(camera.zoom_max), y, aspect)
 		check(slant < camera_node.far, "and its farthest point (%.1f m away) is inside the camera's far plane at %.0f m" % [slant, camera_node.far])
 	check(PoolCamera.FAR_M == camera_node.far, "the pool camera keeps the scene's far plane")
@@ -169,6 +171,23 @@ func test_the_backdrop_covers_every_view_inside_the_far_plane() -> void:
 	for flag in modes:
 		check(not flag.begins_with("blend_") or flag == "blend_mix", "and is opaque, not %s" % flag)
 	check(not code.is_empty() and not code.contains("ALPHA"), "it writes no ALPHA, so it stays opaque")
+	pool.free()
+
+
+func test_the_backdrop_centres_on_the_focus() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session(), FakeEvents.Straight.new(Vector2(1.0, -1.0).normalized()))
+	for i in 90:
+		FakeEvents.frame(pool)
+	var focus := pool.camera.focus
+	check(Vector2(focus.x, focus.z).distance_to(pool.session.layout.spawn) > 1.0,
+		"the camera has followed the cell away from the spawn (focus %s)" % focus)
+	check(is_equal_approx(pool.backdrop.position.x, focus.x) and is_equal_approx(pool.backdrop.position.z, focus.z),
+		"the Backdrop's x and z are the focus's: %s, %s" % [pool.backdrop.position, focus])
+	# Far out in the endless sea, after a teleport's snap.
+	pool.camera.snap_to(Vector3(5000.0, 0.0, -3000.0))
+	pool._process(FakeEvents.DT)
+	check(is_equal_approx(pool.backdrop.position.x, pool.camera.focus.x) and is_equal_approx(pool.backdrop.position.z, pool.camera.focus.z),
+		"and it follows the focus to %s: %s" % [pool.camera.focus, pool.backdrop.position])
 	pool.free()
 
 

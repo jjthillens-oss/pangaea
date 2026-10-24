@@ -4,19 +4,19 @@ extends SceneTree
 ## the editor's and the world's method twins, as a player would use the mouse, the keys and the pad, and prints one
 ## PASS or FAIL line per check and a TIME line per step. Exit code 0 when every check passes, 1 otherwise.
 ##
-##   -- --phase=build --creature --creature-store=user://smoke/creature.json --seed=4242
+##   -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242
 ##       Main opens the stage into the editor on the starter quadruped. The limb tool grows a pair of limbs at the
 ##       neck, then a maw, two eyes and two feet go on (aimed with screen_of / handle_screen), the points fall, a
 ##       swatch is chosen, and Done enters the world with that body, colour and title. A scripted drive walks to
 ##       the nearest ripe fruit (an "ate" event, the points up), bites the nearest rival when one is in reach (or
 ##       notes that none came within 20 s), walks back to the nest and evolves: the editor again, with the points.
 ##       Done once more, Escape in the world (back to the editor, the points kept), Escape in the editor (the
-##       title), then Quit. creature_expect.json records what the store must hold.
-##   -- --phase=reload --creature --creature-store=user://smoke/creature.json
-##       A new process opens the stage from that store and finds the same body SHA-256, points and generation.
+##       title), then Quit. creature_expect.json records what the lineage save must hold.
+##   -- --phase=reload --creature --slot=user://smoke/creature.json
+##       A new process opens the stage from that lineage save and finds the same body SHA-256, points and generation.
 ##
-## The store stays under user://smoke/ (the build phase clears it with its .tmp and .bak first): the smoke stops before
-## playing if --creature-store points anywhere else.
+## The stage writes into the session's lineage slot (save schema v3). The slot stays under user://smoke/ (the build
+## phase clears it with its .tmp and .bak first): the smoke stops before playing if --slot points anywhere else.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -104,22 +104,22 @@ func _build() -> void:
 	await _open_main()
 	if not _store_is_safe():
 		return
-	_remove(main.creature_store_path())
-	_remove(main.creature_store_path() + CreatureStore.TEMP_SUFFIX)
-	_remove(main.creature_store_path() + CreatureStore.BACKUP_SUFFIX)   # a load falls back to the .bak
-	# Opened before the store was cleared: open it again on the empty store.
+	_remove(_slot())
+	_remove(_slot() + PersistenceService.TEMP_SUFFIX)
+	_remove(_slot() + PersistenceService.BACKUP_SUFFIX)   # a load falls back to the .bak
+	# Opened before the slot was cleared: open it again on the empty slot.
 	var stage := main.open_creature_stage()
 	await _frames(SETTLE_FRAMES)
 	_check(stage != null and main.screen == stage and main.creature_stage == stage, "--creature opens the creature stage as the screen")
-	_check(stage.mode() == "editor" and stage.load_problems.is_empty(), "the stage opens in the editor on a fresh store %s" % [stage.load_problems])
+	_check(stage.mode() == "editor" and stage.load_problems.is_empty(), "the stage opens in the editor on a fresh slot %s" % [stage.load_problems])
 	var editor := stage.editor_scene()
 	_check(editor != null, "the editor scene is up")
 	if editor == null:
 		return
 	_check(_text_without_colour(editor.working_body()) == BodyCodec.encode(CreatureData.body(STARTER)), "on the starter quadruped")
-	_check(editor.points() == CreatureStore.start_points(), "with the start points (%d)" % editor.points())
+	_check(editor.points() == CreatureRules.start_points(), "with the start points (%d)" % editor.points())
 	_check(int(stage.state["world_seed"]) == main.flags.seed_value, "the stage uses the --seed world seed (%d)" % int(stage.state["world_seed"]))
-	_check(not FileAccess.file_exists(stage.store_path), "nothing is written until something happens")
+	_check(not FileAccess.file_exists(stage.slot_path), "nothing is written until something happens")
 	_end()
 
 	_begin("editor edits")
@@ -213,7 +213,7 @@ func _build() -> void:
 		return
 	_check(world.sim.points == points_before - cost, "the world starts with the points left (%d)" % world.sim.points)
 	_check(BodyCodec.encode(world.sim.body_of("player")) == body_text, "on the committed body")
-	_check(stage.last_save == OK and FileAccess.file_exists(stage.store_path), "Done saved the store")
+	_check(stage.last_save == OK and FileAccess.file_exists(stage.slot_path), "Done saved the lineage slot")
 	_check(world.player_rig is WalkerRig and world.sim.player()["has_legs"], "the player walks on a walker rig")
 	var mat := world.player_rig.body.mesh_instance.material_override as ShaderMaterial
 	_check(mat != null and (mat.get_shader_parameter("color_base") as Color).is_equal_approx(swatch), "the player's skin is the swatch's colour")
@@ -251,14 +251,16 @@ func _build() -> void:
 	_check(world.sim.at_nest(), "back at the nest after %.1f s" % (home * CreatureWorldSim.DT))
 	var points_at_nest: int = world.sim.points
 	world.set_intent(Vector2.ZERO, false, true)
-	await _frames(SETTLE_FRAMES)
+	# The mating beat (CreatureWorld.MATE_BEAT_S) plays before the editor opens.
+	await _frames(SETTLE_FRAMES + int(ceil(world.mate_beat_s / CreatureWorldSim.DT)) + 10)
 	_check(stage.mode() == "editor" and stage.world == null, "evolve leaves the world")
 	var editor2 := stage.editor_scene()
 	_check(editor2 != null and editor2.points() == points_at_nest, "the editor is back with the points (%d)" % points_at_nest)
 	_check(int(stage.state["generation"]) == 2 and (stage.state["history"] as Array).size() == 1, "generation 2, generation 1 in the history")
-	_check(stage.save_now() == OK, "save_now writes the store")
-	var stored := CreatureStore.new().load_from(stage.store_path)
-	_check(stored.ok and int(stored.state["points"]) == points_at_nest and int(stored.state["generation"]) == 2, "the store holds them %s" % [stored.errors])
+	_check(stage.save_now() == OK, "save_now writes the lineage slot")
+	var stored := _read_slot()
+	_check(stored.ok and stored.save.adaptation_points == points_at_nest and int(stored.save.creature["generation"]) == 2,
+			"the lineage save holds them %s" % [stored.errors])
 	_end()
 
 	_begin("escape precedence")
@@ -277,11 +279,13 @@ func _build() -> void:
 	await _key(KEY_ESCAPE)
 	await _frames(SETTLE_FRAMES)
 	_check(main.creature_stage == null and main.start_screen != null and main.screen == main.start_screen, "Escape in the editor leaves the stage for the title")
-	var left := CreatureStore.new().load_from(main.creature_store_path())
-	_check(left.ok and int(left.state["generation"]) == 2 and int(left.state["points"]) == points_at_nest, "leaving saved the store %s" % [left.errors])
+	var left := _read_slot()
+	_check(left.ok and int(left.save.creature["generation"]) == 2 and left.save.adaptation_points == points_at_nest,
+			"leaving saved the lineage save %s" % [left.errors])
 	if left.ok:
-		var expect := {"body_sha256": BodyCodec.hash_text(BodyCodec.from_dict(left.state["body"])), "points": int(left.state["points"]),
-				"generation": int(left.state["generation"]), "history": (left.state["history"] as Array).size()}
+		var creature: Dictionary = left.save.creature
+		var expect := {"body_sha256": BodyCodec.hash_text(BodyCodec.from_dict(creature["body"])), "points": left.save.adaptation_points,
+				"generation": int(creature["generation"]), "history": (creature["history"] as Array).size()}
 		var file := FileAccess.open(EXPECT_PATH, FileAccess.WRITE)
 		file.store_string(JSON.stringify(expect, "\t"))
 		file.close()
@@ -310,7 +314,7 @@ func _reload() -> void:
 	_check(stage != null and main.screen == stage and stage.mode() == "editor", "the stage opens in the editor")
 	if stage == null:
 		return
-	_check(stage.load_problems.is_empty(), "the store loaded %s" % [stage.load_problems])
+	_check(stage.load_problems.is_empty(), "the lineage save loaded %s" % [stage.load_problems])
 	_check(BodyCodec.hash_text(BodyCodec.from_dict(stage.state["body"])) == String(expect["body_sha256"]), "the same body SHA-256")
 	_check(int(stage.state["points"]) == int(expect["points"]), "the same points (%d)" % int(stage.state["points"]))
 	_check(int(stage.state["generation"]) == int(expect["generation"]) and (stage.state["history"] as Array).size() == int(expect["history"]),
@@ -477,11 +481,21 @@ func _open_main() -> void:
 	await _frames(2)
 
 
-## Refuses to play unless the stage's store is under user://smoke/.
+## The session's lineage slot, which the stage reads and writes.
+func _slot() -> String:
+	return main.session.slot
+
+
+## The lineage save in the slot, read the way Continue reads it.
+func _read_slot() -> Dictionary:
+	return PersistenceService.new(PartCatalog.load_from()).load_from(_slot())
+
+
+## Refuses to play unless the lineage slot is under user://smoke/.
 func _store_is_safe() -> bool:
-	var path := main.creature_store_path()
+	var path := _slot()
 	var safe := path.begins_with(SMOKE_DIR + "/")
-	_check(safe, "the smoke plays on a store under %s/ (%s)" % [SMOKE_DIR, path])
+	_check(safe, "the smoke plays on a slot under %s/ (%s)" % [SMOKE_DIR, path])
 	return safe
 
 

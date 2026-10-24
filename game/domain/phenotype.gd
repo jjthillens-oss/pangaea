@@ -6,7 +6,9 @@ extends RefCounted
 ## Rules: each part type adds its effects; every further copy adds diminishing_factor times the
 ## previous copy's share (copies are ranked largest first, so part order never matters); upkeep
 ## and mass are paid in full for every copy; mass slows speed and acceleration; stats are capped.
-## Directional parts keep their angle so interactions can check facing.
+## Directional parts keep their angle so interactions can check facing. A part's level (S4.5) scales
+## its benefits by PartCatalog.effect_share and its mass and upkeep by cost_share; level 1 is 1.0 for
+## both, so a genome without levels derives exactly as before.
 ##
 ## Body size (M1 step 3, PROPOSED) builds the same parts at a larger or smaller size s: every
 ## part's benefit and cost, each spike's damage, and the base mass, upkeep, health and radius are
@@ -48,19 +50,21 @@ static func derive(genome: Genome, catalog: PartCatalog, body_size: float = 1.0)
 	for part in _ranked_parts(genome, catalog):
 		var type_id: String = part["type"]
 		var scale := float(part.get("scale", 1.0))
-		var share := pow(catalog.diminishing_factor, int(part["rank"])) * scale
+		var level := Genome.level_of(part)
+		var share := pow(catalog.diminishing_factor, int(part["rank"])) * scale * catalog.effect_share(level)
+		var paid := scale * catalog.cost_share(level)
 		var def: Dictionary = catalog.parts[type_id]
 		for stat in def["effects"]:
 			# Costs (upkeep, mass) are paid in full for every copy; only benefits diminish.
 			var full_cost: bool = stat == "upkeep" or stat == "mass"
-			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (scale if full_cost else share) * s
+			sums[stat] = sums.get(stat, 0.0) + def["effects"][stat] * (paid if full_cost else share) * s
 		var arc := deg_to_rad(def["arc_deg"])
 		if def["category"] == "mouth":
 			p.mouths.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "diet": def["diet"]})
 			if not p.diets.has(def["diet"]):
 				p.diets.append(def["diet"])
 		elif type_id == "spike":
-			var damage: float = def["effects"].get("ram_damage", 0.0) * scale * s
+			var damage: float = def["effects"].get("ram_damage", 0.0) * scale * catalog.effect_share(level) * s
 			p.spikes.append({"type": type_id, "angle": float(part["angle"]), "arc": arc, "damage": damage})
 
 	p.mass = catalog.base("mass", 1.0) * s + sums.get("mass", 0.0)
@@ -80,8 +84,40 @@ static func derive(genome: Genome, catalog: PartCatalog, body_size: float = 1.0)
 	return p
 
 
-## Known parts, each with "rank": its position among parts of the same type, largest first.
-## Ranking by size (then id) keeps the stats independent of the order parts were added in.
+## This body at another size of the growth ladder (S2, plan B.6; PROPOSED): a copy with radius,
+## speed, acceleration, sight, max_health, energy_capacity, upkeep, move_cost, mass, bite_damage,
+## ram_damage and each spike's damage multiplied by q, the linear law (there is no area law). Turn
+## rate, defense, spike stacking, diets, mouths and the spikes' angles and arcs are copied as they
+## are. A smaller creature is scaled, never re-derived: derive() at a smaller body_size would make
+## it faster. q == 1.0 gives a copy equal to this one field for field (x * 1.0 == x in IEEE).
+func scaled(q: float) -> Phenotype:
+	var p := Phenotype.new()
+	p.speed = speed * q
+	p.acceleration = acceleration * q
+	p.turn_rate = turn_rate
+	p.max_health = max_health * q
+	p.energy_capacity = energy_capacity * q
+	p.upkeep = upkeep * q
+	p.move_cost = move_cost * q
+	p.sight = sight * q
+	p.mass = mass * q
+	p.radius = radius * q
+	p.defense = defense
+	p.bite_damage = bite_damage * q
+	p.ram_damage = ram_damage * q
+	p.spike_stacking = spike_stacking
+	p.diets = diets.duplicate()
+	for mouth in mouths:
+		p.mouths.append(mouth.duplicate())
+	for spike in spikes:
+		var copy: Dictionary = spike.duplicate()
+		copy["damage"] = float(spike.damage) * q
+		p.spikes.append(copy)
+	return p
+
+
+## Known parts, each with "rank": its position among parts of the same type, strongest first (size
+## times its level's effect share, then id), so the stats do not depend on the order parts were added.
 static func _ranked_parts(genome: Genome, catalog: PartCatalog) -> Array[Dictionary]:
 	var by_type := {}
 	for part in genome.parts:
@@ -91,8 +127,8 @@ static func _ranked_parts(genome: Genome, catalog: PartCatalog) -> Array[Diction
 	for type_id in by_type:
 		var group: Array = by_type[type_id]
 		group.sort_custom(func(a, b):
-			var sa := float(a.get("scale", 1.0))
-			var sb := float(b.get("scale", 1.0))
+			var sa := float(a.get("scale", 1.0)) * catalog.effect_share(Genome.level_of(a))
+			var sb := float(b.get("scale", 1.0)) * catalog.effect_share(Genome.level_of(b))
 			return sa > sb if sa != sb else str(a.get("id", "")) < str(b.get("id", "")))
 		for i in group.size():
 			var entry: Dictionary = group[i].duplicate()
