@@ -43,6 +43,7 @@ const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 const SkinWorker := preload("res://game/scenes/creature/creature_editor_skin_worker.gd")
 const PartIcons := preload("res://game/scenes/creature/part_icons.gd")
+const WorldRules := preload("res://game/domain/creature/creature_world_rules.gd")
 ## The STATS track's anatomy-to-play numbers (CreatureStats, pure); shown when its file is present.
 const STATS_PATH := "res://game/domain/creature/creature_stats.gd"
 const STAGE_TUNING_PATH := "res://game/data/creature/creature_stage.json"
@@ -169,6 +170,7 @@ func _wire() -> void:
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
 	hud.preset_chosen.connect(start_from_preset)
+	hud.random_requested.connect(func(): start_random())
 	hud.set_hint(HINT)
 	if ResourceLoader.exists(STATS_PATH):
 		_stats_script = load(STATS_PATH)
@@ -667,23 +669,51 @@ func start_from_preset(preset_name: String) -> Dictionary:
 		return _refuse("presets are for a new creature's first design")
 	if not CreatureData.preset_names().has(preset_name):
 		return _refuse("no preset %s" % preset_name)
-	if walker != null:
-		test_drive(false)
 	var body: RefCounted = CreatureData.preset_body(preset_name)
-	session = Session.new(body, rules, part_rules, costs, session.available_points)
 	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
-	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
-	skin_pattern = Look.pattern_of(body.extra)
-	_store_look(session.working.extra)
-	hud.set_color(skin_color)
+	_start_from(body, Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0], Look.pattern_of(body.extra))
 	preset = preset_name
 	hud.set_preset(preset_name)
+	return {"ok": true, "reason": ""}
+
+
+## A random first design (owner ask, 2026-10-24: "a random button that will generate a random type of creature"):
+## a preset drawn from `seed_value` (the clock when negative), dressed with extra parts the way the world's rivals
+## are (CreatureWorldRules.draw_rival_body, so every result passes the rules), in a random swatch colour and coat.
+## Like the presets, only on a new creature's first design. Returns {ok, reason, base}.
+func start_random(seed_value: int = -1) -> Dictionary:
+	if not presets_offered:
+		return _refuse("a random creature is for a new creature's first design")
+	var names: Array = CreatureData.preset_names()
+	if names.is_empty():
+		return _refuse("no presets to start from")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value if seed_value >= 0 else Time.get_ticks_usec()
+	var base := String(names[rng.randi_range(0, names.size() - 1)])
+	var body: RefCounted = WorldRules.draw_rival_body(CreatureData.preset_body(base), rng, rules, part_rules, costs)
+	var pattern := {}
+	for key in Look.PATTERN_KEYS:
+		pattern[key] = rng.randi_range(int(Look.PATTERN_RANGE[key][0]), int(Look.PATTERN_RANGE[key][1]))
+	_start_from(body, SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)], pattern)
+	preset = base
+	hud.set_preset("")
+	return {"ok": true, "reason": "", "base": base}
+
+
+## Starts a fresh session on `body` (keeping the points), in `color` and `pattern`.
+func _start_from(body: RefCounted, color: Color, pattern: Dictionary) -> void:
+	if walker != null:
+		test_drive(false)
+	session = Session.new(body, rules, part_rules, costs, session.available_points)
+	skin_color = color
+	skin_pattern = pattern
+	_store_look(session.working.extra)
+	hud.set_color(skin_color)
 	selected = {}
 	choose_tool("")
 	_frame_body()
 	_mark_dirty()
 	_rebuild()
-	return {"ok": true, "reason": ""}
 
 
 ## The skin colour, from a swatch; the working body carries it as "skin_color".

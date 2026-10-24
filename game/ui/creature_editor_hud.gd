@@ -13,6 +13,8 @@ signal action(name: String)
 signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
 signal preset_chosen(preset_name: String)
+## The "Random creature" button beside the presets.
+signal random_requested
 
 const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
@@ -26,6 +28,7 @@ var _swatches: Array[Button] = []
 var _preset_title: Label
 var _preset_menu: OptionButton
 var _preset_sep: HSeparator
+var _random_button: Button
 
 var tools_grid: GridContainer
 var swatch_row: HBoxContainer
@@ -194,14 +197,22 @@ func setup_presets(entries: Array) -> void:
 		_preset_menu.item_selected.connect(func(index: int):
 			if index > 0:
 				preset_chosen.emit(String(_preset_menu.get_item_metadata(index))))
+		_random_button = Button.new()
+		_random_button.name = "Random"
+		_random_button.text = "Random creature"
+		_random_button.focus_mode = Control.FOCUS_NONE
+		_random_button.tooltip_text = "A surprise creature to start from"
+		_random_button.pressed.connect(func(): random_requested.emit())
 		_preset_sep = HSeparator.new()
 		_preset_sep.name = "PresetsSep"
 		box.add_child(_preset_title)
 		box.add_child(_preset_menu)
+		box.add_child(_random_button)
 		box.add_child(_preset_sep)
 		box.move_child(_preset_title, 0)
 		box.move_child(_preset_menu, 1)
-		box.move_child(_preset_sep, 2)
+		box.move_child(_random_button, 2)
+		box.move_child(_preset_sep, 3)
 	_preset_menu.clear()
 	_preset_menu.add_item("Choose a creature...")
 	for e in entries:
@@ -229,7 +240,7 @@ func preset_count() -> int:
 
 
 func show_presets(on: bool) -> void:
-	for n in [_preset_title, _preset_menu, _preset_sep]:
+	for n in [_preset_title, _preset_menu, _random_button, _preset_sep]:
 		if n != null:
 			n.visible = on
 

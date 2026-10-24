@@ -14,6 +14,20 @@ extends CanvasLayer
 ## renderer's timing of the root viewport (RenderingServer.viewport_set_measure_render_time), and
 ## it stays on. A renderer that times nothing (headless) shows "n/a".
 ##
+## The endless sea (S1, docs/s1/s1-content.md 6.14) adds the world line to the sim section
+## (world_line(): the origin, the tile and its region, chunks, awake and asleep creatures and food
+## against their caps, and the stream's backstop counters) and three buttons that show only there:
+## a teleport 100 km east, a rebase now and the chunk gizmo. Teleport goes home there, to the
+## generation start's absolute place, since the layout's spawn is a pool point that a rebase moves.
+## The ecology rows list the ZONE_ROWS loaded zones nearest the cell, checked at 2 Hz, and the AI
+## section lists the awake creatures and counts the sleepers.
+##
+## S2 (docs/s2/s2-view.md 9, D-56) adds the growth line to the sim section (growth_line(): the
+## size, the meter against the ring, the calm window, what blocks a growth, the trigger and the
+## remnants, or "Growth: off") and four buttons that show only where the sea grows: fill the ring
+## (F4), grow on the next tick (F2), and size 1 or 2 by the teleport path. A size above the build's
+## top, or one the sim refuses, leaves a refusal line under it.
+##
 ## Main loads it by path from its guarded dev loader (no class_name, so nothing outside game/dev
 ## can depend on it). `fields` keeps the latest shown values by name, for checks.
 
@@ -21,6 +35,17 @@ const REFRESH_S := 0.25
 const FRAME_WINDOW := 60            ## frames the longest-frame and GPU figures look back over
 ## Health the Hurt button takes from the cell (plan section 16).
 const HURT_SELF_HP := 10.0
+## The endless sea's teleports (absolute am) and their heading: home is the generation start (build
+## plan 17.12), far is 100 km east of it.
+const HOME_AM := Vector2(0.0, 9.0)
+const FAR_AM := Vector2(100000.0, 9.0)
+const TELEPORT_HEADING := -1.5708
+const REBASE_BY := Vector2i(1, 0)   ## the Rebase button's dev rebase, in chunks
+const ZONE_ROWS := 8                ## the endless sea's ecology rows: the loaded zones nearest the cell
+## The buttons that show only in the endless sea.
+const WORLD_BUTTONS: PackedStringArray = ["teleport_far", "rebase", "chunks"]
+## The buttons that show only where the sea grows (sim.growth set).
+const GROWTH_BUTTONS: PackedStringArray = ["fill_meter", "force_growth", "size_1", "size_2", "ready_to_mate"]
 const VSYNC_NAMES := {
 	DisplayServer.VSYNC_DISABLED: "off", DisplayServer.VSYNC_ENABLED: "on",
 	DisplayServer.VSYNC_ADAPTIVE: "adaptive", DisplayServer.VSYNC_MAILBOX: "mailbox",
@@ -42,7 +67,10 @@ var _last_frame_usec := -1
 var _gpu_ms := PackedFloat32Array()
 var _zone_rows := {}                 ## zone id -> {"bar": ProgressBar, "text": Label}
 var _zones_sim: PoolSim              ## the sim the zone rows were built for
+var _zone_ids := PackedStringArray() ## the zones the rows show, in order (zone_row_ids)
+var _zone_check := false             ## the endless rows are checked every other refresh (2 Hz)
 var _threat_turn := 0                ## which species the next spawn_threat places
+var _refusal := ""                   ## why the last size command was refused ("" for none)
 
 @onready var _identity: Label = %Identity
 @onready var _sim: Label = %Sim
@@ -57,7 +85,9 @@ var _threat_turn := 0                ## which species the next spawn_threat plac
 	"fill": %Fill, "drain": %Drain, "empty_zone": %EmptyZone, "spawn_carrion": %SpawnCarrion,
 	"teleport": %Teleport, "gizmos": %Gizmos, "vsync": %VSync, "copy": %Copy,
 	"spawn_threat": %SpawnThreat, "kill_nearest": %KillNearest, "freeze_ai": %FreezeAI,
-	"hide_from_ai": %HideFromAI, "hurt_self": %HurtSelf,
+	"hide_from_ai": %HideFromAI, "hurt_self": %HurtSelf, "teleport_far": %TeleportFar, "rebase": %Rebase,
+	"chunks": %Chunks, "fill_meter": %FillMeter, "force_growth": %ForceGrowth, "size_1": %Size1,
+	"size_2": %Size2, "ready_to_mate": %ReadyToMate,
 }
 
 
@@ -82,9 +112,14 @@ func toggle() -> void:
 
 
 ## Runs a dev command by name: fill, drain, empty_zone, spawn_carrion, teleport (to the layout
-## spawn), gizmos, vsync, copy, spawn_threat (a creature DEBUG_THREAT_AHEAD_M ahead, facing the
-## cell; each one that lands is the next species in id order), kill_nearest, freeze_ai and
-## hide_from_ai (toggles) or hurt_self (HURT_SELF_HP). Returns whether it applied.
+## spawn; in the endless sea home, to HOME_AM), gizmos, vsync, copy, spawn_threat (a creature
+## DEBUG_THREAT_AHEAD_M ahead, facing the cell; each one that lands is the next species in id
+## order among those living at the cell's size, threat_species()), kill_nearest, freeze_ai and
+## hide_from_ai (toggles) or hurt_self (HURT_SELF_HP); in the endless sea also teleport_far (to
+## FAR_AM), rebase (REBASE_BY chunks now) and chunks (the chunk gizmo, on or off); where the sea
+## grows also fill_meter (the ring full), force_growth (grow on the next tick), size_1 or size_2
+## (refused above the build's top) and ready_to_mate (full energy and points, so a kin comes; S4).
+## Returns whether it applied.
 func run(command: String) -> bool:
 	var sim := _current_sim()
 	var applied := false
@@ -98,7 +133,21 @@ func run(command: String) -> bool:
 		"spawn_carrion":
 			applied = sim != null and sim.debug_spawn_carrion_ahead()
 		"teleport":
-			applied = sim != null and sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading)
+			if sim != null and sim.is_endless():
+				applied = sim.debug_teleport_abs(HOME_AM.x, HOME_AM.y, TELEPORT_HEADING)
+			else:
+				applied = sim != null and sim.debug_teleport(sim.layout.spawn, sim.layout.spawn_heading)
+		"teleport_far":
+			applied = sim != null and sim.debug_teleport_abs(FAR_AM.x, FAR_AM.y, TELEPORT_HEADING)
+		"rebase":
+			applied = sim != null and sim.debug_rebase(REBASE_BY)
+		"chunks":
+			var gizmos: Node3D = main.dev_layer.get_node_or_null("DevGizmos") if main != null else null
+			if gizmos != null:
+				gizmos.show_chunks = not gizmos.show_chunks
+				if gizmos.show_chunks:
+					gizmos.visible = true
+				applied = true
 		"gizmos":
 			var gizmos: Node3D = main.dev_layer.get_node_or_null("DevGizmos")
 			if gizmos != null:
@@ -121,6 +170,14 @@ func run(command: String) -> bool:
 			applied = sim != null and sim.debug_set_hidden(not sim.dev_hidden)
 		"hurt_self":
 			applied = sim != null and sim.debug_hurt_player(HURT_SELF_HP)
+		"fill_meter":
+			applied = sim != null and sim.debug_fill_meter(1.0)
+		"force_growth":
+			applied = sim != null and sim.debug_force_growth()
+		"size_1", "size_2":
+			applied = sim != null and _set_size(sim, int(command.right(1)))
+		"ready_to_mate":
+			applied = sim != null and sim.debug_ready_to_mate()
 	refresh()
 	return applied
 
@@ -142,6 +199,8 @@ func refresh() -> void:
 		_ai.text = "No run."
 		_build_zone_rows(null)
 		_update_toggles(null)
+		_update_world_buttons(null)
+		_update_growth_buttons(null)
 		return
 	_sim.text = "\n".join(_sim_lines(sim))
 	_actor.text = "\n".join(_actor_lines(sim))
@@ -150,6 +209,8 @@ func refresh() -> void:
 	_update_ecology(sim)
 	_update_ai(sim)
 	_update_toggles(sim)
+	_update_world_buttons(sim)
+	_update_growth_buttons(sim)
 
 
 func _process(delta: float) -> void:
@@ -216,10 +277,50 @@ func _sim_lines(sim: PoolSim) -> PackedStringArray:
 	var cost: Dictionary = main.pool.step_cost_usec()
 	fields.tick = sim.tick
 	fields.step_cost_avg_us = cost.avg
-	return PackedStringArray([
+	var lines := PackedStringArray([
 		"Tick %d · sim time %.2f s%s" % [sim.tick, sim.now(), " · paused" if main.pool.paused else ""],
 		"Step cost %.0f µs average, %d µs max (last %d ticks)" % [cost.avg, cost.max, PoolScene.STEP_COST_WINDOW],
 	])
+	if sim.is_endless():
+		fields.world_line = world_line(sim)
+		lines.append(fields.world_line)
+	fields.growth_line = growth_line(sim)
+	lines.append(fields.growth_line)
+	fields.refusal = _refusal
+	if not _refusal.is_empty():
+		lines.append("Refused: " + _refusal)
+	return lines
+
+
+## The growth line: the size, the meter over the ring, the calm window, what blocks a growth (none,
+## or the blocker's name), the trigger (armed when a press waits) and the remnants; "Growth: off"
+## where the sea does not grow (pool mode, or the endless sea with growth off).
+static func growth_line(sim: PoolSim) -> String:
+	var g := sim.growth
+	if g == null:
+		return "Growth: off"
+	var n := sim.size()
+	var remnants := sim.remnants.items.size() if sim.remnants != null else 0
+	return "Growth: size %d · meter %.1f/%.0f · calm %d/%d · blocker %s · trigger %s%s · remnants %d" % [
+		n, g.meter, g.ring(n), g.calm_ticks, int(g.cfg.calm_ticks), g.blocker if not g.blocker.is_empty() else "none",
+		g.trigger, " (armed)" if g.armed else "", remnants]
+
+
+## The endless sea's line: the origin (km), the tile under the cell and its region (or rare kind),
+## the loaded chunks, awake and asleep creatures and food items against their caps, then the
+## stream's backstop counters (spine 3.10).
+static func world_line(sim: PoolSim) -> String:
+	var w := sim.world
+	var tile := w.tile_of_local(sim.motion.position)
+	var info := w.gen.tile_info(WorldConfig.band_of(w.size), tile.x, tile.y)
+	var region := str(info.rare) if not str(info.rare).is_empty() else str(info.region)
+	var awake := sim.creatures.awake().size() if sim.creatures != null else 0
+	return ("origin %.1f, %.1f km · tile %d,%d %s · chunks %d/%d · awake %d/%d · asleep %d/%d · food %d/%d"
+		+ " · overflow %d · waits %d · trimmed %d · evicted %d") % [
+		w.origin_x_am / 1000.0, w.origin_y_am / 1000.0, tile.x, tile.y, region,
+		w.loaded_keys().size(), int(w.caps.chunks), awake, int(w.caps.awake), w.sleeping_ids().size(), int(w.caps.sleepers),
+		sim.plankton.items.size(), int(w.caps.food_items), int(w.counters.awake_overflow), int(w.counters.chunk_waits),
+		int(w.counters.food_trimmed), int(w.counters.evictions)]
 
 
 func _render_lines() -> PackedStringArray:
@@ -307,7 +408,9 @@ func _feeding_lines(sim: PoolSim) -> PackedStringArray:
 
 
 func _update_ecology(sim: PoolSim) -> void:
-	_build_zone_rows(sim)
+	_zone_check = not _zone_check
+	if sim != _zones_sim or not sim.is_endless() or _zone_check:
+		_build_zone_rows(sim)
 	for z in sim.region.zones:
 		var row: Dictionary = _zone_rows.get(z.id, {})
 		if row.is_empty():
@@ -325,17 +428,22 @@ func _update_ecology(sim: PoolSim) -> void:
 	_carrion.text = "Carrion %d live (at most %d) · %s" % [sim.carrion.items.size(), int(supply.get("max_live", 0)), arrival]
 
 
+## Builds a row per zone_row_ids(sim) zone, for a new sim or when that set of zones changed.
 func _build_zone_rows(sim: PoolSim) -> void:
-	if sim == _zones_sim:
+	var ids := zone_row_ids(sim) if sim != null else PackedStringArray()
+	if sim == _zones_sim and _same_ids(ids, _zone_ids):
 		return
 	_zones_sim = sim
+	_zone_ids = ids
+	fields.zone_rows = Array(ids)
 	for child in _zones.get_children():
 		_zones.remove_child(child)
 		child.queue_free()
 	_zone_rows.clear()
 	if sim == null:
 		return
-	for z in sim.region.zones:
+	for id in ids:
+		var z := sim.region.zone(id)
 		var name_label := Label.new()
 		name_label.text = z.id
 		name_label.theme_type_variation = &"DebugLabel"
@@ -353,16 +461,76 @@ func _build_zone_rows(sim: PoolSim) -> void:
 		_zone_rows[z.id] = {"bar": bar, "text": text}
 
 
+## The zones the ecology rows show: every zone of the pool, in order; in the endless sea the
+## ZONE_ROWS loaded zones nearest the cell, nearest first (ties by id).
+static func zone_row_ids(sim: PoolSim) -> PackedStringArray:
+	var out := PackedStringArray()
+	var zones: Array = sim.region.zones.duplicate()
+	if sim.is_endless():
+		var p := sim.motion.position
+		zones.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			var da := p.distance_to(a.center)
+			var db := p.distance_to(b.center)
+			return da < db or (da == db and str(a.id) < str(b.id)))
+		zones = zones.slice(0, ZONE_ROWS)
+	for z: Dictionary in zones:
+		out.append(z.id)
+	return out
+
+
+## Whether two id lists hold the same ids, in any order.
+static func _same_ids(a: PackedStringArray, b: PackedStringArray) -> bool:
+	if a.size() != b.size():
+		return false
+	var sa := a.duplicate()
+	var sb := b.duplicate()
+	sa.sort()
+	sb.sort()
+	return sa == sb
+
+
 func _update_ai(sim: PoolSim) -> void:
 	var lines := ai_lines(sim)
 	_ai.text = "\n".join(lines)
 	var ids := []
 	if sim.creatures != null:
-		for c in sim.creatures.creatures:
+		for c in sim.creatures.awake():
 			ids.append(c.id)
 	fields.ai_creatures = ids
 	fields.ai_summary = summary_line(sim) if sim.creatures != null else ""
 	fields.ai_player = player_line(sim)
+
+
+## The endless sea's buttons show only there, and Teleport says where it goes.
+func _update_world_buttons(sim: PoolSim) -> void:
+	var endless := sim != null and sim.is_endless()
+	for command in WORLD_BUTTONS:
+		(_buttons[command] as Button).visible = endless
+	(_buttons.teleport as Button).text = "Teleport home" if endless else "Teleport to spawn"
+
+
+## The growth buttons show only where the sea grows.
+func _update_growth_buttons(sim: PoolSim) -> void:
+	var grows := sim != null and sim.growth != null
+	for command in GROWTH_BUTTONS:
+		(_buttons[command] as Button).visible = grows
+
+
+## The sea at size `n` now (PoolSim.debug_set_size). Refused, with the reason kept for the refusal
+## line, where the sea does not grow, above the build's top, or when the sim says no (dead or
+## waiting to respawn).
+func _set_size(sim: PoolSim, n: int) -> bool:
+	if sim.growth == null or sim.world == null:
+		_refusal = "Size %d: the sea does not grow here" % n
+		return false
+	if n > sim.world.max_size:
+		_refusal = "Size %d: above this build's top (size %d)" % [n, sim.world.max_size]
+		return false
+	if not sim.debug_set_size(n):
+		_refusal = "Size %d: not now (dead or waiting to respawn)" % n
+		return false
+	_refusal = ""
+	return true
 
 
 ## The toggle buttons name the switch's state.
@@ -377,7 +545,7 @@ func _update_toggles(sim: PoolSim) -> void:
 func _spawn_threat(sim: PoolSim) -> bool:
 	if sim.species == null or sim.creatures == null:
 		return false
-	var ids := sim.species.species_ids()
+	var ids := threat_species(sim)
 	if ids.is_empty():
 		return false
 	var species_id := ids[_threat_turn % ids.size()]
@@ -388,14 +556,27 @@ func _spawn_threat(sim: PoolSim) -> bool:
 	return true
 
 
+## The species F9 takes turns through, in id order: those living at the cell's size (S2: the
+## ladder's larger species come in at their entry size, and the smallest leave as haze).
+static func threat_species(sim: PoolSim) -> PackedStringArray:
+	var out := PackedStringArray()
+	for id in sim.species.species_ids():
+		if sim.species.live_at(id, sim.size()):
+			out.append(id)
+	return out
+
+
 ## The AI section: two lines per creature in number order (creature_lines), then the niche, queue
-## and token line, then the cell's line. A pool without creatures says so.
+## and token line, then the cell's line. A pool without creatures says so. In the endless sea only
+## the awake creatures get lines, and "asleep: n" counts the sleepers after them.
 static func ai_lines(sim: PoolSim) -> PackedStringArray:
 	if sim.creatures == null:
 		return PackedStringArray(["No creatures in this pool.", player_line(sim)])
 	var lines := PackedStringArray()
-	for c in sim.creatures.creatures:
+	for c in sim.creatures.awake():
 		lines.append_array(creature_lines(sim, c))
+	if sim.is_endless():
+		lines.append("asleep: %d" % sim.world.sleeping_ids().size())
 	lines.append(summary_line(sim))
 	lines.append(player_line(sim))
 	return lines

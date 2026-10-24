@@ -15,6 +15,7 @@ const SWAY_RAD := 0.75
 const SWAY_HZ := 0.07
 
 var _t := 0.0
+var _still := false
 
 @onready var _camera: Camera3D = %Camera
 @onready var _turntable: Node3D = %Turntable
@@ -22,9 +23,24 @@ var _t := 0.0
 
 
 func _ready() -> void:
+	if _still:
+		return   # view_from_above has posed it
 	_camera.transform = Transform3D(Basis.looking_at(CAMERA_TARGET - CAMERA_POSITION, Vector3.UP), CAMERA_POSITION)
 	_cell.position = Vector3(0.0, 0.0, -CENTER_OFFSET_M)
 	_turntable.rotation.y = FACING_YAW
+
+
+## The cell editor's view (S4.4): straight down on a still body, front up and its right to the
+## right, orthographic and `height_m` metres tall, so a rim drawn over the view lines up with the
+## parts. Works before the preview enters the tree.
+func view_from_above(height_m: float) -> void:
+	_still = true
+	var camera := get_node("%Camera") as Camera3D
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = height_m
+	camera.transform = Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD), Vector3(0.0, 3.0, 0.0))
+	(get_node("%Turntable") as Node3D).rotation.y = 0.0
+	(get_node("%Cell") as Node3D).position = Vector3.ZERO
 
 
 ## Shows a genome's body and parts.
@@ -39,6 +55,6 @@ func part_nodes() -> Array[Node]:
 
 
 func _process(delta: float) -> void:
-	if is_visible_in_tree():
+	if is_visible_in_tree() and not _still:
 		_t += delta
 		_turntable.rotation.y = FACING_YAW + SWAY_RAD * sin(_t * TAU * SWAY_HZ)

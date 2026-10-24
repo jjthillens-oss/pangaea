@@ -2,7 +2,9 @@
 
 An original seven-era evolution game in Godot 4 with Blender-authored art. The design authority is
 `docs/bible/GENESIS_Master_Developer_Bible_v0.1.pdf`. Read it before starting a task, along with
-`docs/DECISIONS.md` and the tests your change touches.
+`docs/DECISIONS.md`, `docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md` (the per-stage plan: keep Spore's
+fundamentals, such as breeding into the editor, the creature editor, dancing, friend or foe and the stages, rebuilt
+better with the Bible's ideas on top) and the tests your change touches.
 
 ## Rules that are easy to miss
 

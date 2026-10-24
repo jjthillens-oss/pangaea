@@ -10,9 +10,19 @@ extends RefCounted
 ## it closes in, at full throttle, on the creature once that one is committed to a strike (burst,
 ## glide and recover), so the cell's jaw (contact combat, OD3) wounds creatures until they flee.
 ##
+## In the endless world (S1) it circles awake creatures only: one that falls asleep is passed over.
+## With `bite_visits` (S2's size-2 runner, test_threat_fuzz) it also swims jaw first into every
+## creature it visits, once arrived, until a bite of the cell's lands (sim.stats.hits_dealt grows),
+## and circles it after that: at size 2 nothing strikes at the cell, so this is how a creature at
+## q < 1 gets hurt by it and the relationship rule against answering a larger body is asked. It draws
+## nothing more from its RNG, so a run without it is unchanged.
+##
 ## Unlike EvadeBot it reads the sim's creatures (bodies and brains), as a test would. Like player
 ## input it only returns a SimIntent and never changes the sim. Its choices come from its own seeded
 ## RNG, so a run repeats exactly.
+##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full.
 ##
 ##     var bot = load("res://game/dev/kiter_bot.gd").new(seed_value)
 ##     sim.step(bot.next_intent(sim))
@@ -36,7 +46,11 @@ const THROTTLE_RANGE := [0.35, 0.9]
 ## strike has no lead to miss by and lands (moving prey is safe by design).
 const HOLD_SHARE := 0.5
 
+const EvadeBot := preload("res://game/dev/evade_bot.gd")
+
 var bite_dazed := true
+var bite_visits := false
+var keys := EvadeBot.GrowthKeys.new()
 var visits := 0                   ## creatures it has circled (tests guard that it got round)
 var _rng := RandomNumberGenerator.new()
 var _target := ""
@@ -46,6 +60,8 @@ var _dir := 1.0                   ## +1 or -1: which way round
 var _phase := 0                   ## offset into the orbit period
 var _throttle := 0.7
 var _hold := false                ## this visit it stops dead while aimed at
+var _bitten := false              ## with bite_visits: this visit's bite has landed
+var _hits_dealt := -1             ## sim.stats.hits_dealt when it last looked; -1 before it first did
 var _recent: Array[String] = []
 
 
@@ -59,11 +75,15 @@ func target_id() -> String:
 
 
 func next_intent(sim: PoolSim) -> SimIntent:
+	return keys.apply(sim, _kite(sim))
+
+
+func _kite(sim: PoolSim) -> SimIntent:
 	if sim.dead or sim.creatures == null:
 		_target = ""
 		return SimIntent.new()
 	var c := sim.creatures.find(_target)
-	if c == null or (_arrived and _dwell_left <= 0):
+	if c == null or c.get("asleep") == true or (_arrived and _dwell_left <= 0):
 		c = _choose(sim)
 	if c == null:
 		return SimIntent.new()
@@ -77,9 +97,13 @@ func next_intent(sim: PoolSim) -> SimIntent:
 		_dwell_left -= 1
 	if _hold and _aiming_at_cell(c):
 		return SimIntent.new()
+	var dealt := int(sim.stats.hits_dealt)
+	if _hits_dealt >= 0 and dealt > _hits_dealt and _arrived:
+		_bitten = true
+	_hits_dealt = dealt
 	var radial := off / d if d > 1e-6 else Vector2.from_angle(sim.motion.heading + PI)
 	var want: Vector2
-	var closing := bite_dazed and _committed(c)
+	var closing := (bite_dazed and _committed(c)) or (bite_visits and _arrived and not _bitten)
 	if closing:
 		want = -radial   # straight at it, jaw first, while it cannot turn
 	else:
@@ -105,7 +129,7 @@ func _choose(sim: PoolSim) -> CreatureField.Creature:
 	var best_d := INF
 	var fallback: CreatureField.Creature = null
 	var fallback_d := INF
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		if c.brain == null:
 			continue
 		var d := sim.motion.position.distance_to(c.motion.position)
@@ -121,6 +145,7 @@ func _choose(sim: PoolSim) -> CreatureField.Creature:
 		best = fallback
 	_target = best.id if best != null else ""
 	_arrived = false
+	_bitten = false
 	_dwell_left = _rng.randi_range(DWELL_TICKS[0], DWELL_TICKS[1])
 	_dir = 1.0 if _rng.randi_range(0, 1) == 1 else -1.0
 	_phase = _rng.randi_range(0, ORBIT_PERIOD_TICKS - 1)
@@ -143,3 +168,11 @@ static func _committed(c: CreatureField.Creature) -> bool:
 	if c.brain == null or c.brain.state != CreatureBrain.ATTACK:
 		return false
 	return c.brain.phase == CreatureBrain.STRIKE or c.brain.phase == CreatureBrain.GLIDE or c.brain.phase == CreatureBrain.RECOVER
+
+
+## The creatures that act this tick: all of them in the pool, the awake ones in the endless world
+## (CreatureField.awake(), S1 spine 3.10, which is the creature list itself in the pool). Read by
+## name, so the bot also loads before the endless world.
+static func _active(sim: PoolSim) -> Array:
+	var field: Object = sim.creatures
+	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
