@@ -75,6 +75,8 @@ func setup(p_slot_path: String, world_seed: int) -> void:
 		var founded := Lineage.found(world_seed, BuildInfo.build_id(), persistence.catalog, _starting_cell(persistence.catalog))
 		if not founded.ok:
 			load_problems = founded.errors
+			for problem in load_problems:
+				push_warning("Creature stage: could not found a lineage: %s" % problem)
 			_show_problems()
 			return
 		save = founded.save

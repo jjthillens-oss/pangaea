@@ -127,7 +127,7 @@ func open_creature_stage() -> CreatureStage:
 	creature_stage = CREATURE_STAGE_SCENE.instantiate()
 	add_child(creature_stage)
 	creature_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
-	var seed_value := flags.seed_value if flags.seed_value >= 0 else randi_range(0, RunFlags.MAX_SEED)
+	var seed_value := flags.seed_value if flags.seed_value >= 0 else randi()
 	creature_stage.setup(session.slot, seed_value)
 	_set_screen(creature_stage)
 	return creature_stage
