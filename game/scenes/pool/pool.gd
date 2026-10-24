@@ -60,7 +60,13 @@ signal respawned(grace_s: float, teleport: bool)
 signal growth_chord(size: int)
 ## The giants' first pass for this lineage has started (D-42): main records it in the player memory.
 signal giant_pass_started
+## S4.3: the cell touched its kin at a calm moment (the sim's mate event). Whoever opens the editor
+## calls finish_mate() when it closes; with no one connected the mate finishes at once.
+signal mate_requested
 
+const KIN_VIEW_SCENE := "res://game/scenes/pool/player_cell_view.tscn"
+const KIN_PULSE := 0.05      ## the kin's swell while the cell could mate with it
+const KIN_PULSE_HZ := 0.8
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The idea hints' "near a smaller body": a surface gap of at most this (tm, s2-view 7.5).
 const NEAR_SMALLER_TM := 2.0
@@ -144,6 +150,8 @@ var _region_name := ""
 @onready var plankton_view: FoodView = %Plankton
 @onready var carrion_view: FoodView = %Carrion
 @onready var cell_view: PlayerCellView = %PlayerCell
+## S4.3: the kin's view while a kin is in the sea (_show_kin), else null.
+var kin_view: PlayerCellView = null
 @onready var creature_layer: CreatureLayer = %Creatures
 @onready var feedback: FeedbackFx = %Feedback
 @onready var camera: PoolCamera = %Camera
@@ -287,6 +295,7 @@ func _build() -> void:
 		silt_trail.setup(sim.species, sim_size())
 		zone_lights.build(session.layout.zones)
 		feedback.setup(session.layout.zones, camera)
+	_hide_kin()
 	cell_view.build(sim.save.genome, sim.phenotype)
 	cell_view.place(sim.motion)
 	cell_view.set_dead(sim.dead)
@@ -766,6 +775,7 @@ func _process(delta: float) -> void:
 		_bake_fx()   # a meal ghost was in flight at the growth: once it has landed
 	cell_view.show_motion(sim.motion, fraction)
 	cell_view.set_sheltered(sim.is_sheltered())
+	_draw_kin(fraction, draw_t)
 	creature_layer.sync(fraction)
 	camera.follow(cell_view.position, Vector2.ZERO if paused else sim.display_velocity(), delta)
 	_follow_camera()
@@ -902,6 +912,16 @@ func _route(event: Dictionary) -> void:
 				silt_trail.add_ribbon(event, mover.species_id, sim.now())
 		"chunk_loaded", "chunk_unloaded", "rebased":
 			apply_world_event(event)
+		"kin_arrived":
+			_show_kin()
+		"kin_left":
+			_hide_kin()
+		"mate":
+			audio.play("growth_ring")
+			if mate_requested.get_connections().is_empty():
+				finish_mate()
+			else:
+				mate_requested.emit()
 		"growth_began":
 			_begin_growth(event)
 		"grew":
@@ -944,6 +964,47 @@ func _apply_scale_view() -> void:
 	var ambience := get_node_or_null(^"Ambience")
 	if ambience != null and ambience.has_method(&"apply_scale_view"):
 		ambience.call(&"apply_scale_view", view)
+
+
+## S4.3: the kin is drawn as a second cell from the cell's own genome, pulsing softly while the cell
+## could mate with it. It is world_rebuilt like the cell: placed from the sim every frame.
+func _show_kin() -> void:
+	_hide_kin()
+	kin_view = (load(KIN_VIEW_SCENE) as PackedScene).instantiate() as PlayerCellView
+	kin_view.name = "Kin"
+	add_child(kin_view)
+	kin_view.add_to_group(&"world_rebuilt")
+	kin_view.build(sim.save.genome, sim.phenotype)
+	kin_view.place(sim.kin.motion)
+
+
+func _hide_kin() -> void:
+	if kin_view != null:
+		kin_view.queue_free()
+		kin_view = null
+
+
+func _draw_kin(fraction: float, draw_t: float) -> void:
+	if kin_view == null:
+		return
+	if sim.kin == null or not sim.kin.present:
+		_hide_kin()
+		return
+	kin_view.show_motion(sim.kin.motion, fraction)
+	var pulse := KIN_PULSE * sin(TAU * KIN_PULSE_HZ * draw_t) if Kin.is_ready(sim) and not sim.kin.waiting else 0.0
+	kin_view.set_growth_pose(1.0 + pulse, Vector2.ZERO, 0.0)
+
+
+## The editor opened by mate_requested has closed: the kin goes. With `born`, the cell has taken
+## its new body (PoolSim.apply_offspring), and the view draws it.
+func finish_mate(born := false) -> void:
+	if sim == null:
+		return
+	if born:
+		cell_view.build(sim.save.genome, sim.phenotype)
+		cell_view.place(sim.motion)
+	if sim.kin != null:
+		sim.kin.finish(sim)
 
 
 func _world(p: Variant) -> Vector3:

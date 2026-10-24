@@ -788,6 +788,22 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature stage friend path: sing to befriend, allies follow (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, including "dancing, friend/foe", built better with the Bible's ideas.
+The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R, pad B) is the friend path:
+- **Songs.** Each song, facing a creature up close, adds the singer's charm to its friendship. Charm is base 1, plus
+  0.5 for each display organ (crest, frill, lure, antenna, gill fan, wing, fin), counting at most four of them
+  (Bible §12: communication organs give signal, with diminishing returns).
+- **Allies.** A creature at friendship 5 joins the pack, which is worth 10 adaptation points. Allies follow the
+  player and attack whatever it is fighting. The player and its allies never bite each other.
+- **Anger.** A creature the player bites stops listening for the rest of its life. Biting an ally drives it out of
+  the pack.
+- **Not saved.** Respawned creatures are new individuals. Allies last only for the visit and are not saved yet
+  (Bible §18 relationships come with species memory later).
+
+Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
+avoids a universal rhythm minigame unless approved.
+
 ## 2026-10-24 · The sea's pieces load on the main thread at setup, not on worker threads (PROPOSED)
 
 - **Why.** The Windows launch check's grow run (D3D12 on WARP, the CI runner's software renderer)
@@ -802,7 +818,6 @@ the levels:
   cost moves to the run's start: about 0.9 s headless on the Linux container (9 to 150 ms a piece).
 - **Revisit.** A loading screen or a spread-out load at the start, if 0.9 s shows on the owner's
   PC. Worker-thread loads come back only with a Windows WARP run that passes several times.
-
 
 ## 2026-10-24 · S4.1 pacing: parts cost four times as much, and finds pay points (PROPOSED)
 
@@ -821,18 +836,74 @@ the levels:
   part by 3 minutes, and earn a part of the mean editor cost every 1.5 to 4.5 minutes.
 - **Revisit.** After the owner plays S4's mating: the costs and the find points are data.
 
-## 2026-10-24 · Creature stage friend path: sing to befriend, allies follow (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
-Joshua (07:39): keep Spore's fundamentals, including "dancing, friend/foe", built better with the Bible's ideas.
-The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R, pad B) is the friend path:
-- **Songs.** Each song, facing a creature up close, adds the singer's charm to its friendship. Charm is base 1, plus
-  0.5 for each display organ (crest, frill, lure, antenna, gill fan, wing, fin), counting at most four of them
-  (Bible §12: communication organs give signal, with diminishing returns).
-- **Allies.** A creature at friendship 5 joins the pack, which is worth 10 adaptation points. Allies follow the
-  player and attack whatever it is fighting. The player and its allies never bite each other.
-- **Anger.** A creature the player bites stops listening for the rest of its life. Biting an ally drives it out of
-  the pack.
-- **Not saved.** Respawned creatures are new individuals. Allies last only for the visit and are not saved yet
-  (Bible §18 relationships come with species memory later).
+## 2026-10-24 · S4.3 kin and mating: a cell like yours swims in when you can mate (PROPOSED)
 
-Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
-avoids a universal rhythm minigame unless approved.
+- **What.** `Kin` (game/systems/world/kin.gd), with growth on: once the cell has 70 % of its energy
+  (Lineage.REPRODUCE_ENERGY_SHARE) and the points for the cheapest editor part for 3 s, a cell drawn
+  from its own genome swims in from 12 radii away and keeps 2.6 radii beside it, pulsing softly.
+  Swimming into it at a calm moment (Growth's blockers: not hunted, no fight in the quiet ticks; a
+  recent meal is fine) reports `mate` once; the pool scene emits `mate_requested` and, once the editor
+  (S4.4) closes, `finish_mate()` sends the kin away. Not ready for 20 s, 40 radii away, a death, a
+  respawn or a growth also send it away. The HUD says "A cell like you is here. Swim into it to mate."
+- **Bible.** Section 5's "reproduction opens a bounded editor at a safe opportunity" and section 24's
+  one reproduction interaction: the touch is the interaction and the calm moment the safe opportunity.
+- **No change to the sea.** The kin is no creature: no brain sees it, it never fights, eats or
+  blocks, and it takes nothing from any random stream, so a run with it hashes as one without
+  (`test_kin`). It is not saved. Pool mode and S1's sea (growth off) have none.
+- **Defaults for the owner** (s4-plan's open questions): the kin comes on a call rather than
+  always swimming in the sea; it is harmless.
+
+## 2026-10-24 · S4.4 the cell editor: mating builds the next generation (PROPOSED)
+
+- **What.** `CellEditor` (game/ui/cell_editor.gd), a UI over `EditorSession`. The kin's `mate` opens
+  it over the paused sea. Its parts:
+  - a palette of editor parts with their costs;
+  - a rim view where parts are placed, selected and dragged round the cell, with the front at the top;
+  - the 3D `CellPreview`;
+  - a before-and-after table: speed, turning, health, bite, ram, defense, sight, energy use and mass.
+    Energy use and mass are better lower.
+  - Controls: Add, Remove, Bigger and Smaller, Mirror, Undo and Redo (also keys), Back and Mate.
+- **Commit.** Mate calls `Lineage.reproduce` (70 % energy, points paid). `PoolSim.apply_offspring`
+  then re-derives the body where the cell is, keeping its shares of energy and health. The game
+  autosaves, and the HUD says "Generation N". Back closes without a generation, and the kin leaves
+  either way.
+- **Placement.** A mouth goes to the front, propulsion to the back when the back is free, and
+  anything else to the widest gap.
+- **Bible.** Section 5's bounded editor with previews of speed, turning, feeding, defense and energy
+  demand. Section 18: the genome and lineage are saved, not the sea.
+- **Not yet.** The test pool to swim the new body before committing (IB-03), part levels (S4.5) and
+  mass on turning (S4.2, deferred because it re-records every golden).
+
+## 2026-10-24 · S4.5 part levels: upgrade a part in the editor (PROPOSED)
+
+- **What.** Joshua's "level up your strengths... an incremental system" (2026-10-24 02:42), as part
+  levels:
+  - The editor's Upgrade raises the selected part from level 1 to at most 3. Each level multiplies
+    the part's benefits by 1.4 then 1.75, and its mass and upkeep by 1.2 then 1.4. So a level 3 tail
+    is fast but heavy and dear to run, and mass still slows the whole body.
+  - Level 2 costs the part's price again, and level 3 costs 1.5 times it. Selling an upgraded part
+    refunds the part and its upgrades.
+  - A filter mouth has no benefit to raise, so it does not level.
+  - All numbers are in `part_catalog.json` (`part_levels`).
+- **Saved on the genome.** A part's `level` is saved only above 1. Saves made before levels load as
+  level 1 and derive, cost and serialise exactly as before. Level 1 shares are 1.0, so every golden
+  is unchanged.
+- **The look.** An upgraded part is drawn 15 % larger for each level, and the rim view puts a pip
+  outside it for each level.
+- **Shell plate.** The shell plate enters the editor, as s4-plan proposed (band 1, art PR #42's
+  model). It gives defense and health and is the heaviest part. The editor list test now pins seven
+  parts.
+
+## 2026-10-24 · S4.6 acceptance for the mating loop (PROPOSED)
+
+- `tests/test_s4_acceptance.gd` runs the shipped endless sea and checks:
+  - a grazer is readied, meets its kin, swims into it, and is born twice: first with a second tail,
+    then with that tail at level 2;
+  - an edit it cannot pay for is refused and changes nothing;
+  - save and Continue bring back the same genome, points and two births;
+  - two deaths keep the body and each takes a quarter of the points.
+- **Open (rule 3 against edited bodies).** The pursue bound is checked against the slowest *starting*
+  body. A heavy edited body (shells, spikes, no tail) can be slower than a hunter's chase. That is
+  the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
+  editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
+
