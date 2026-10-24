@@ -230,6 +230,8 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 	var cx := TileCatalog.HALF_TILE_BU * (2 * tx + 1)
 	var cy := TileCatalog.HALF_TILE_BU * (2 * ty + 1)
 	var prefix := "%d_%d_%d" % [b, tx, ty]
+	# Each object's id is its kind's prefix and its own id ("s_<prefix>_<id>"), joined once per object.
+	var shell_prefix := "s_" + prefix + "_"
 	# At a band's first size a chunk is one quarter of the tile: only the objects that may lie in it
 	# are tried (D-96).
 	var quarter := -1
@@ -254,7 +256,7 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 			continue
 		if shell_key < 0:
 			shell_key = _key(b, tx, ty, STR_SHELL)
-		_append_shell(out, "s_%s_%s" % [prefix, sh.id], x, y, float(sh.radius), s, WorldHash.mix32(shell_key, e.k), b,
+		_append_shell(out, shell_prefix + sh.id, x, y, float(sh.radius), s, WorldHash.mix32(shell_key, e.k), b,
 			sh.yaw_deg, o)
 	# The landmark, when this tile is its cell's pick.
 	for e in f.anchor:
@@ -284,18 +286,20 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 				"mirror": (o >> 2) & 1 == 1})
 	var blooms := {}
 	var bloom_tried := false
+	var zone_prefix := "z_" + prefix + "_"
+	var site_prefix := "t_" + prefix + "_"
 	for e in (f.zones if qi < 0 else f.zones_q[qi]):
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
 		var z: Dictionary = t.zones[e.k]
 		if floori(x / c) == kx and floori(y / c) == ky and not (second and z.at_second_size == "drop"):
-			var zone := {"id": "z_%s_%s" % [prefix, z.id], "x": x, "y": y, "radius": float(z.radius) * s,
+			var zone := {"id": zone_prefix + z.id, "x": x, "y": y, "radius": float(z.radius) * s,
 				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate), "tile": tile, "region": info.region}
 			if not bloom_tried:
 				bloom_tried = true
 				blooms = _blooms("%d/%s/%d" % [b, t.id, n], t.sites, n)
 			if blooms.has(z.id):
-				_mark_bloom(zone, blooms, z.id, "t_%s_" % prefix)
+				_mark_bloom(zone, blooms, z.id, site_prefix)
 			out.zones.append(zone)
 	if not bool(content.config.switches.get("generated_creatures", true)):
 		return
@@ -311,8 +315,10 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 		if role == MORSEL:
 			out.morsel_sites.append(_morsel_site("m_%s_%s" % [prefix, site.id], "%s/%s" % [t.id, site.id], site.species, x, y, n, tile))
 			continue
-		var discs := _site_discs(e.disc_key, site, e.zone, _k(site.species, n), e.zone_b)
-		var placed := _placed_site("t_%s_%s" % [prefix, site.id], site, discs, x, y, cx, cy, o, s, tile)
+		var discs: Variant = _disc_memo.get(e.disc_key)   # no default: a {} would be built per site
+		if discs == null:
+			discs = _site_discs(e.disc_key, site, e.zone, _k(site.species, n), e.zone_b)
+		var placed := _placed_site(site_prefix + site.id, site, discs, x, y, cx, cy, o, s, tile)
 		_mark_site_bloom(placed)
 		out.sites.append(placed)
 
@@ -549,7 +555,10 @@ func _cradle_index(b: int, s := 1.0) -> Dictionary:
 func _role(species_id: String, n: int) -> String:
 	if species == null:
 		return "threat"
-	var at_n: Dictionary = _role_memo.get_or_add(n, {})
+	var at_n: Variant = _role_memo.get(n)
+	if at_n == null:
+		at_n = {}
+		_role_memo[n] = at_n
 	if not at_n.has(species_id):
 		var role := ""
 		if species.species.has(species_id) and n >= species.entry_size(species_id):
@@ -713,7 +722,10 @@ func _capacity(z: Dictionary, second: bool) -> float:
 func _placed_site(id: String, site: Dictionary, discs: Dictionary, x: float, y: float, cx: float, cy: float, o: int,
 		s: float, tile: Vector2i) -> Dictionary:
 	# The discs and headings turned to orientation o, kept with the site's discs (a chunk only places them).
-	var turned: Array = discs.get_or_add("turned", [null, null, null, null, null, null, null, null])
+	var turned: Variant = discs.get("turned")
+	if turned == null:
+		turned = [null, null, null, null, null, null, null, null]
+		discs["turned"] = turned
 	if turned[o] == null:
 		turned[o] = _turned_site(site, discs, o)
 	var d: Dictionary = turned[o]
