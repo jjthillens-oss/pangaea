@@ -11,14 +11,20 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_1:
 			notice = "Scout reserves food site" if model.assign("scout", "food") else "Food site unavailable"
 		KEY_2:
-			notice = "Forager reserves material site" if model.assign("forager", "material") else "Material site unavailable"
+			notice = (
+				"Forager reserves material site" if model.assign("forager", "material")
+				else "Material site unavailable"
+			)
 		KEY_G:
 			var success := model.gather("scout") or model.gather("forager")
 			notice = "Gather completed" if success else "Assign a reachable site first"
 		KEY_B:
 			notice = "Shelter built" if model.build_shelter() else "Shelter needs two materials"
 		KEY_T:
-			notice = "Neighbor traded one food for one material" if model.trade_food() else "Trade needs material and rival food"
+			notice = (
+				"Neighbor traded one food for one material" if model.trade_food()
+				else "Trade needs material and rival food"
+			)
 		KEY_W:
 			model.warn_neighbor()
 			notice = "Neighbor warned; relationship worsened"
@@ -39,9 +45,18 @@ func _draw() -> void:
 	draw_circle(Vector2(460, 270), 33, Color("84b266"))
 	draw_circle(Vector2(465, 450), 33, Color("b6aa78"))
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(24, 50), "PROPOSED tribal village · %s" % model.lineage_id, HORIZONTAL_ALIGNMENT_LEFT, -1, 25)
+	draw_string(
+		font, Vector2(24, 50), "PROPOSED tribal village · %s" % model.lineage_id,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 25
+	)
 	draw_string(font, Vector2(24, 86), notice, HORIZONTAL_ALIGNMENT_LEFT, -1, 19)
-	draw_string(font, Vector2(24, 120), "1/2 assign · G gather · B build · T trade · W warn · C cancel · R regrow", HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
-	draw_string(font, Vector2(130, 510), "Village: food %d, material %d" % [model.food, model.materials], HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
-	draw_string(font, Vector2(625, 510), "Rival: food %d, relation %d" % [model.rival_food, model.rival_relation], HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
-	draw_string(font, Vector2(340, 560), "Sites: food %d, material %d · Reservations: %s" % [model.food_site, model.material_site, str(model.reserved_sites)], HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
+	var controls := "1/2 assign · G gather · B build · T trade · W warn · C cancel · R regrow"
+	draw_string(font, Vector2(24, 120), controls, HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
+	var village_text := "Village: food %d, material %d" % [model.food, model.materials]
+	var rival_text := "Rival: food %d, relation %d" % [model.rival_food, model.rival_relation]
+	var sites_text := "Sites: food %d, material %d · Reservations: %s" % [
+		model.food_site, model.material_site, str(model.reserved_sites)
+	]
+	draw_string(font, Vector2(130, 510), village_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
+	draw_string(font, Vector2(625, 510), rival_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
+	draw_string(font, Vector2(340, 560), sites_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)

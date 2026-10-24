@@ -52,4 +52,7 @@ func test_neighbor_and_identity() -> void:
 	check(m.rival_relation == 1, "trade affects neighbor relationship")
 	m.warn_neighbor()
 	check(m.rival_relation == 0, "warning changes relation without permanent lock")
-	check(m.rival_id == "reed-neighbors" and m.lineage_id == "shore-lineage", "rival and founding lineage stay identifiable")
+	check(
+		m.rival_id == "reed-neighbors" and m.lineage_id == "shore-lineage",
+		"rival and founding lineage stay identifiable"
+	)
