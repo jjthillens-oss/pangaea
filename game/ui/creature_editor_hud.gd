@@ -15,13 +15,16 @@ signal color_chosen(color: Color)
 signal preset_chosen(preset_name: String)
 
 const TOOL_BUTTON_FONT_PX := 22
+## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
+const ICON_BUTTON_FONT_PX := 15
+const ICON_COLUMNS := 3
 const SWATCH_PX := 40
 
 var _tool_buttons := {}   ## tool type -> Button
 var _group := ButtonGroup.new()
 var _swatches: Array[Button] = []
 var _preset_title: Label
-var _preset_grid: GridContainer
+var _preset_menu: OptionButton
 var _preset_sep: HSeparator
 
 var tools_grid: GridContainer
@@ -112,6 +115,8 @@ func setup(tools: Array, costs: Dictionary, colors: Array) -> void:
 func _add_tool(type: String, label: String, price: int) -> void:
 	var b := Button.new()
 	b.text = label if price <= 0 else "%s  %d" % [label, price]
+	b.set_meta("label", label)
+	b.set_meta("price", price)
 	b.toggle_mode = true
 	b.button_group = _group
 	b.focus_mode = Control.FOCUS_NONE
@@ -174,45 +179,79 @@ func set_hint(text: String) -> void:
 	hint_text.text = text
 
 
-## The "Start from" row at the top of the palette: one button per preset creature ({name, title, blurb}; the blurb
-## is its tooltip), built once. Hidden until show_presets(true).
+## The "Start from" menu at the top of the palette: a drop-down with one entry per preset creature ({name, title,
+## blurb}; the blurb is the entry's tooltip), built once. Hidden until show_presets(true).
 func setup_presets(entries: Array) -> void:
 	var box: VBoxContainer = tools_grid.get_parent().get_parent()
-	if _preset_grid == null:
+	if _preset_menu == null:
 		_preset_title = Label.new()
 		_preset_title.name = "PresetsTitle"
-		_preset_title.text = "Start from"
-		_preset_title.theme_type_variation = (box.get_node("PartsTitle") as Label).theme_type_variation
-		_preset_grid = GridContainer.new()
-		_preset_grid.name = "Presets"
-		_preset_grid.columns = tools_grid.columns
+		_preset_title.text = "Start from a preset"
+		_preset_title.theme_type_variation = &"SmallLabel"
+		_preset_menu = OptionButton.new()
+		_preset_menu.name = "Presets"
+		_preset_menu.focus_mode = Control.FOCUS_NONE
+		_preset_menu.item_selected.connect(func(index: int):
+			if index > 0:
+				preset_chosen.emit(String(_preset_menu.get_item_metadata(index))))
 		_preset_sep = HSeparator.new()
 		_preset_sep.name = "PresetsSep"
 		box.add_child(_preset_title)
-		box.add_child(_preset_grid)
+		box.add_child(_preset_menu)
 		box.add_child(_preset_sep)
 		box.move_child(_preset_title, 0)
-		box.move_child(_preset_grid, 1)
+		box.move_child(_preset_menu, 1)
 		box.move_child(_preset_sep, 2)
-	for c in _preset_grid.get_children():
-		c.queue_free()
+	_preset_menu.clear()
+	_preset_menu.add_item("Choose a creature...")
 	for e in entries:
-		var b := Button.new()
-		b.text = String(e["title"])
-		b.tooltip_text = String(e["blurb"])
-		b.focus_mode = Control.FOCUS_NONE
-		b.theme_type_variation = &"TabButton"
-		var preset_name := String(e["name"])
-		b.pressed.connect(func(): preset_chosen.emit(preset_name))
-		_preset_grid.add_child(b)
+		_preset_menu.add_item(String(e["title"]))
+		var index := _preset_menu.item_count - 1
+		_preset_menu.set_item_metadata(index, String(e["name"]))
+		_preset_menu.set_item_tooltip(index, String(e["blurb"]))
+	_preset_menu.select(0)
 	show_presets(false)
 
 
+## Shows `preset_name` as the menu's choice without emitting preset_chosen.
+func set_preset(preset_name: String) -> void:
+	if _preset_menu == null:
+		return
+	for index in _preset_menu.item_count:
+		if _preset_menu.get_item_metadata(index) == preset_name:
+			_preset_menu.select(index)
+			return
+	_preset_menu.select(0)
+
+
 func preset_count() -> int:
-	return 0 if _preset_grid == null else _preset_grid.get_child_count()
+	return 0 if _preset_menu == null else _preset_menu.item_count - 1
 
 
 func show_presets(on: bool) -> void:
-	for n in [_preset_title, _preset_grid, _preset_sep]:
+	for n in [_preset_title, _preset_menu, _preset_sep]:
 		if n != null:
 			n.visible = on
+
+
+
+## Gives a part tool its picture (PartIcons): the picture on top, the name and price under it, and the palette goes
+## to ICON_COLUMNS columns. Select and Limb keep their text.
+func set_tool_icon(type: String, texture: Texture2D) -> void:
+	var b: Button = _tool_buttons.get(type)
+	if b == null:
+		return
+	b.icon = texture
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX)
+	b.text = "%s %d" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	b.clip_text = true
+	b.tooltip_text = "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	tools_grid.columns = ICON_COLUMNS
+
+
+func tool_icon(type: String) -> Texture2D:
+	var b: Button = _tool_buttons.get(type)
+	return b.icon if b != null else null

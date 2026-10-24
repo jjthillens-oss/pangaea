@@ -519,3 +519,10 @@ creatures that also live in the world. Built:
   still dressed with the world's random extra parts.
 - **Palette.** The parts list scrolls inside a palette panel that fits the screen. A visual palette with part
   pictures is the next step.
+
+## 2026-10-24 · Creature editor parts palette with pictures (PROPOSED; IMPLEMENTED)
+Joshua's playtest: "you can't tell, it just lists the items". The palette now shows each part tool as a picture of
+the art team's mesh, three to a row, with its name and price (the full price is in the tooltip). The pictures are
+rendered at runtime (`game/scenes/creature/part_icons.gd`: one small SubViewport, each part framed from a
+three-quarter view), so nothing is stored and new art shows on the next launch; headless runs render none and keep
+the text. The presets moved into a "Start from a preset" drop-down so the palette fits a 900-row screen.
