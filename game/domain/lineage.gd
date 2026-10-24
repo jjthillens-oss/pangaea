@@ -67,6 +67,11 @@ static func can_reproduce(state: ActorState) -> Dictionary:
 	return {"ok": true, "reason": ""}
 
 
+## can_reproduce(state).ok, building nothing (Kin asks every tick).
+static func may_reproduce(state: ActorState) -> bool:
+	return state.is_alive() and state.energy >= state.energy_capacity * REPRODUCE_ENERGY_SHARE
+
+
 ## Commits the session into the save as the next generation. Returns {"ok", "errors"}.
 ## Refused, with nothing in the save changed, when the actor cannot reproduce, the session is for
 ## another genome, or the session's points no longer match the save (for example after a death).

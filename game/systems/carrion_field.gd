@@ -127,6 +127,14 @@ func consume(id: String) -> bool:
 func drop_beyond(p: Vector2, r: float) -> int:
 	var before := items.size()
 	var r_sq := r * r
+	# Asked every endless tick: the list is filtered (a new one) only when an item lies beyond.
+	var any := false
+	for item in items:
+		if p.distance_squared_to(item.position) > r_sq:
+			any = true
+			break
+	if not any:
+		return 0
 	items = items.filter(func(item: Dictionary) -> bool: return p.distance_squared_to(item.position) <= r_sq)
 	return before - items.size()
 
