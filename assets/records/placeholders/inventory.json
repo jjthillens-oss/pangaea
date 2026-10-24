@@ -206,6 +206,19 @@
         "game/scenes/creature/creature_editor.gd"
       ],
       "node": "CreatureEditor/HandleRoot"
+    },
+    {
+      "id": "creature_mating_heart",
+      "kind": "ui",
+      "description": "The mating beat's heart marker: two unshaded pink CylinderMesh discs over a rotated BoxMesh, floating over the player and its mate while the mate walks up and facing the camera. A short-lived status sign drawn in the 3D view, like a speech bubble, not a model.",
+      "types": [
+        "CylinderMesh",
+        "BoxMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd"
+      ],
+      "node": "CreatureWorld/Heart"
     }
   ]
 }
