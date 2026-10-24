@@ -119,6 +119,23 @@ func test_the_eats_line_previews_what_the_new_body_can_feed_on() -> void:
 	check_eq(CellEditor.eats_text(PackedStringArray()), "nothing", "no mouth eats nothing")
 
 
+func test_a_body_a_hunter_can_catch_is_allowed_with_a_warning() -> void:
+	# Rule 3 holds for the starting bodies only; a heavy edit may be slower than a chase. The editor
+	# allows the trade (Joshua's size and strength tradeoffs) and says so.
+	var speed := Phenotype.derive(save.genome, catalog).speed
+	editor.open(save, catalog, _state(), {"speed": speed - 0.05, "name": "ambush hunter"})
+	var warning := editor.find_child("ChaseWarning", true, false) as Label
+	check_eq(warning.text, "", "the body as it is outswims the chase (%.2f)" % speed)
+	check(editor.add("spike").ok, "a spike added")
+	check(editor.session.preview().phenotype.speed < speed - 0.05, "and it is slower now")
+	check(warning.text.begins_with("The ambush hunter can catch this body"), "warned: %s" % warning.text)
+	check(not editor.find_child("Mate", true, false).disabled, "but Mate is still allowed")
+	editor.undo()
+	check_eq(warning.text, "", "undone, the warning goes")
+	editor.chase = {}
+	check_eq(editor.chase_warning(0.1), "", "nothing chasing here, no warning")
+
+
 func test_parts_go_where_they_fit_and_move_round_the_rim() -> void:
 	editor.open(save, catalog, _state())
 	check_eq(editor.free_angle("mouth_jaw"), 0.0, "a mouth at the front")

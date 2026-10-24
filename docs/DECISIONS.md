@@ -906,5 +906,6 @@ its tabs pick them up from the records.
   - two deaths keep the body and each takes a quarter of the points.
 - **Open (rule 3 against edited bodies).** The pursue bound is checked against the slowest *starting*
   body. A heavy edited body (shells, spikes, no tail) can be slower than a hunter's chase. That is
-  the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
-  editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
+  the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
+  warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
+  is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.
