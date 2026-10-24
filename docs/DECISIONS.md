@@ -1050,3 +1050,17 @@ GENESIS Bible is binding; never wait on Joshua; merge when green; never change a
   60-minute bound, so the split stays as it is; the PR's first CI run gives the real figures.
   The same run's reds: S3G22's #32 at size 3 (below), and the cost rows that fail here at size 1 too
   (saturated, the racer, S3G21's absolute rows), which CI reads (BP3-7).
+
+## 2026-10-24 · S3 T4.4: the ghost ladder reaches sizes 5 and 6 (PROPOSED; IMPLEMENTED)
+
+- **Rows**: the engulfer (entry 5, 0.85 tm) and the lancer (entry 6, 0.70 tm) join `ghost_ladder.json`
+  with art's measured body rects and no haze yet (an empty haze is skipped by the file checks and
+  by `haze_paths`); the band-1 foods' hazes (glass flake, bead cluster) join `food_haze`, and the
+  top-of-ladder preview at 4 names the engulfer.
+- **A long body is sized by its length on screen (V-11)**: near quads lie flat with the texture's
+  top to the north, so a body long from north to south shows that length foreshortened by the view
+  (`GhostLayer._foreshortening`, measured through the camera at the ghost). `_rule_side` divides by
+  the larger of the rect's width and its height times that factor. Every ghost with a rect wider
+  than tall is unchanged; the lancer now draws at least 1.4 cells along its length at sizes 1 to 4
+  and zooms 10, 14 and 20 (it drew 0.98 before). `test_near_ghosts_draw_at_least_1_4_cells` measures
+  each ghost's longer side on screen.

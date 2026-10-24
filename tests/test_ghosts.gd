@@ -17,11 +17,16 @@ const SETTINGS_PATH := "user://test_ghosts/settings.cfg"
 const SEED := 7
 ## Lineages for test_rise: the ghosts hash from the lineage id, so each gives other slots and riser.
 const RISE_LINEAGES: PackedStringArray = ["lineage_7a1c0e5d93b2f468", "lineage_e0ba3bffbce8bd8d"]
-const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
-## s2-view 0.9's table: (species, size) -> [depth, base draw scale].
+const NEAR_AHEAD := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"],
+	3: ["deep_lurker", "elder_warden", "engulfer"], 4: ["engulfer", "lancer"]}
+## s2-view 0.9's table and s3-view 0.6's (sizes 3 and 4): (species, size) -> [depth, base draw scale].
 const DEPTHS := {["lurker", 1]: [-11.2, 1.0], ["elder_rammer", 1]: [-8.0, 1.065], ["veil", 1]: [-14.0, 1.0],
 	["warden", 1]: [-14.0, 1.0], ["veil", 2]: [-13.1, 1.0], ["warden", 2]: [-8.0, 1.023],
-	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0]}
+	["deep_lurker", 2]: [-14.0, 1.0], ["elder_warden", 2]: [-14.0, 1.0],
+	["deep_lurker", 3]: [-12.3, 1.0], ["elder_warden", 3]: [-8.0, 1.023], ["engulfer", 3]: [-14.0, 1.0],
+	["engulfer", 4]: [-14.0, 1.0], ["lancer", 4]: [-14.0, 1.0]}
+## The ladder's ghost-only species: past the build's top and not in creatures_m1.json (s3-view 3).
+const GHOST_ONLY := ["engulfer", "lancer"]
 const RESERVED := {"food": Color("#CFE86A"), "threat": Color("#D9466B")}
 
 
@@ -139,18 +144,67 @@ func test_ladder_loads_and_refuses_bad_data() -> void:
 
 
 func test_ladder_matches_the_species_catalog() -> void:
-	var catalog: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://game/data/creatures_m1.json")).species
+	var catalog: Dictionary = _catalog_species()
 	var ladder := _ladder()
-	var both := 0
-	for id: String in ladder.species:
-		if not catalog.has(id):
-			continue
-		both += 1
-		check_eq(int(ladder.species[id].entry_size), int(catalog[id].get("entry_size", 1)), "%s enters at the catalog's size" % id)
-		check_near(float(ladder.species[id].radius_tm), float(catalog[id].body_size) * 0.5, 1e-9, "%s's radius is half its body size" % id)
-	check(both >= 2, "the Lurker and the elder rammer are in both (%d)" % both)
+	var checked := _cross_check(ladder, catalog, 4)
+	check_eq(checked.problems, PackedStringArray(), "the ladder agrees with creatures_m1.json up to size 4")
+	check(checked.checked.size() >= 6, "the S2 and S3 species are in both (%s)" % [checked.checked])
 	for id: String in ladder.names:
 		check(catalog.has(id), "%s, named for its haze, is a species" % id)
+
+
+func test_ladder_loads_s3_rows() -> void:
+	var shipped := GhostLayer.load_ladder()
+	check_eq(shipped.problems, PackedStringArray(), "the shipped ladder loads with no problems")
+	var data: Dictionary = shipped.data
+	for id in GHOST_ONLY:
+		check(data.species.has(id), "%s is on the ladder" % id)
+	check_eq(int(data.species.engulfer.entry_size), 5, "the engulfer enters at 5")
+	check_eq(int(data.species.lancer.entry_size), 6, "the lancer at 6")
+	check_eq(str(data.preview_at_top.get("4", "")), "the engulfer", "the preview at the top of the build")
+	for look in ["glass_flake", "bead_cluster"]:
+		check(data.food_haze.has(look), "%s has a haze" % look)
+	check(not GhostLayer.haze_paths(data).has("engulfer"), "a ghost-only species has no haze path")
+	var bad := data.duplicate(true)
+	bad.species.veil.haze = ""
+	check(GhostLayer.check_ladder(bad).is_empty(), "an empty haze is a ghost-only row's, and loads")
+
+
+func test_ladder_cross_check_skips_ghost_only() -> void:
+	var catalog: Dictionary = _catalog_species()
+	var ladder := _ladder().duplicate(true)
+	var checked := _cross_check(ladder, catalog, 4)
+	for id in GHOST_ONLY:
+		check(id in checked.skipped and not id in checked.checked, "%s is skipped (entry past 4, not in the catalog)" % id)
+	ladder.species["phantom"] = {"entry_size": 4, "radius_tm": 0.5, "texture": ladder.species.veil.texture,
+		"body_rect": ladder.species.veil.body_rect, "plural": "phantoms", "haze": ""}
+	var problems: PackedStringArray = _cross_check(ladder, catalog, 4).problems
+	check(problems.size() == 1 and "phantom" in problems[0], "a ghost-only row inside the build fails: %s" % [problems])
+
+
+## The S3 cross-check (s3-view 3): every ladder species is in creatures_m1.json at the same entry
+## size and half its body size, except one past `max_in_build` that the catalog does not name.
+## Returns {problems, checked, skipped}.
+static func _cross_check(ladder: Dictionary, catalog: Dictionary, max_in_build: int) -> Dictionary:
+	var out := {"problems": PackedStringArray(), "checked": [], "skipped": []}
+	for id: String in ladder.species:
+		var entry := int(ladder.species[id].entry_size)
+		if not catalog.has(id):
+			if entry > max_in_build:
+				out.skipped.append(id)
+			else:
+				out.problems.append("%s enters at %d, inside the build, but creatures_m1.json has no such species" % [id, entry])
+			continue
+		out.checked.append(id)
+		if entry != int(catalog[id].get("entry_size", 1)):
+			out.problems.append("%s enters at %d, the catalog at %d" % [id, entry, int(catalog[id].get("entry_size", 1))])
+		if absf(float(ladder.species[id].radius_tm) - float(catalog[id].body_size) * 0.5) > 1e-9:
+			out.problems.append("%s's radius %.3f is not half its body size" % [id, float(ladder.species[id].radius_tm)])
+	return out
+
+
+static func _catalog_species() -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://game/data/creatures_m1.json")).species
 
 
 func test_body_rects_match_the_pngs() -> void:
@@ -216,7 +270,7 @@ func test_near_depths_reach_the_design_multiple() -> void:
 	var near: Dictionary = ladder.near
 	var rig := _rig(1)
 	var layer: GhostLayer = rig.get_node("Ghosts")
-	for n in [1, 2]:
+	for n in [1, 2, 3, 4]:
 		check_eq(Array(layer.near_species(n)), NEAR_AHEAD[n], "the near ghosts at size %d, in ladder order" % n)
 		for id in NEAR_AHEAD[n]:
 			var depth := GhostLayer.near_depth(ladder, id, n)
@@ -233,8 +287,9 @@ func test_near_depths_reach_the_design_multiple() -> void:
 
 
 ## V-11: twelve spots (rings of 6, 14 and 22 tm at four bearings north of the focus) with each ahead
-## species, at zoom 10, 14 and 20 and sizes 1 and 2: every ghost centred on screen draws its body at
-## least min_cell_multiple times the cell across.
+## species, at zoom 10, 14 and 20 and sizes 1 to 4: every ghost centred on screen draws its body at
+## least min_cell_multiple times the cell along its longer side on screen (across, or from north to
+## south for a long body such as the lancer).
 func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 	var least := float(_ladder().near.min_cell_multiple)
 	var spots: Array[Vector2] = []
@@ -244,7 +299,7 @@ func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 	var seen := 0
 	var worst := INF
 	var worst_what := ""
-	for n in [1, 2]:
+	for n in [1, 2, 3, 4]:
 		for zoom in [10.0, 14.0, 20.0]:
 			var rig := _rig(n, zoom)
 			var layer: GhostLayer = rig.get_node("Ghosts")
@@ -262,7 +317,7 @@ func test_near_ghosts_draw_at_least_1_4_cells() -> void:
 					if not _on_screen(body.centre):
 						continue
 					seen += 1
-					var multiple: float = body.width / cell
+					var multiple: float = maxf(body.width, body.height) / cell
 					if multiple < worst:
 						worst = multiple
 						worst_what = "%s at %s, size %d, zoom %.0f" % [layer.species_of(node), node.position, n, zoom]

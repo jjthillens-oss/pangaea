@@ -266,7 +266,10 @@ static func _check_species(where: String, entry: Variant, problems: PackedString
 	if entry.has("body_rect"):
 		_check_rect(where + ".body_rect", entry.body_rect, problems)
 	WorldConfig.text_at(where, entry, "plural", problems)
-	_check_file(where, entry, "haze", problems)
+	# A ghost-only species (S3: the engulfer and lancer, past the build's top) never turns to haze,
+	# so it may have none ("").
+	if not (entry.get("haze") is String and str(entry.haze).is_empty()):
+		_check_file(where, entry, "haze", problems)
 
 
 ## A body rect [u0, v0, u1, v1]: the alpha >= 0.1 box of its texture, 0 <= u0 < u1 <= 1 and the same
@@ -313,7 +316,8 @@ static func haze_paths(ladder: Dictionary) -> Dictionary:
 		out[look] = ladder.food_haze[look]
 	for group in ["species", "names"]:
 		for id: String in ladder.get(group, {}):
-			out[id] = ladder[group][id].haze
+			if not str(ladder[group][id].haze).is_empty():
+				out[id] = ladder[group][id].haze
 	return out
 
 
@@ -802,26 +806,45 @@ func _near_depth_now(species_id: String, k: float) -> float:
 
 ## A near ghost's quad side at `p` now (V-11): its true diameter times a draw scale that keeps it at
 ## least design_multiple times the cell for its view depth and the cell's, at least its base and at
-## most max_draw_scale, over its body's span; blended across a growth as its depth is.
+## most max_draw_scale, over its body's span as the screen shows it; blended across a growth as its
+## depth is.
 func _near_side(species_id: String, p: Vector3, k: float) -> float:
 	var z_g := _view_depth(p)
 	var z_c := camera.shown_distance()
-	var side := _rule_side(species_id, _size, z_g, z_c)
+	var f := _foreshortening(p)
+	var side := _rule_side(species_id, _size, z_g, z_c, f)
 	if not _growth.is_empty():
-		var old := _rule_side(species_id, int(_growth.from), z_g, z_c) * float(_growth.k_from)
+		var old := _rule_side(species_id, int(_growth.from), z_g, z_c, f) * float(_growth.k_from)
 		side = lerpf(old, side, _growth_u(k))
 	return side
 
 
-func _rule_side(species_id: String, n: int, z_g: float, z_c: float) -> float:
+## `f` is _foreshortening at the ghost: the quad lies flat with its texture's top to the north, so a
+## body long from north to south (the lancer) shows that length times f, and its span is the larger
+## of its width and that.
+func _rule_side(species_id: String, n: int, z_g: float, z_c: float, f: float) -> float:
 	var near: Dictionary = _ladder.near
 	var r := true_radius(_ladder, species_id, n)
 	var rel := r / CELL_RADIUS_TM
 	var want := float(near.design_multiple) * z_g / (rel * maxf(z_c, 1e-3))
 	var scale := minf(maxf(want, near_base_scale(_ladder, species_id, n)), float(near.max_draw_scale))
 	var rect: Array = _ladder.species[species_id].body_rect
-	var span := maxf(float(rect[2]) - float(rect[0]), float(rect[3]) - float(rect[1]))
+	var span := maxf(float(rect[2]) - float(rect[0]), (float(rect[3]) - float(rect[1])) * f)
 	return 2.0 * r * scale / span
+
+
+## How long a north-south step on the plane at `p` shows on screen against an east-west one of the
+## same length (both through the camera, in pixels): at most 1, less the flatter the view. 1 when
+## either step is behind the camera.
+func _foreshortening(p: Vector3) -> float:
+	var ends: Array[Vector2] = []
+	for step in [Vector3(-0.5, 0.0, 0.0), Vector3(0.5, 0.0, 0.0), Vector3(0.0, 0.0, -0.5), Vector3(0.0, 0.0, 0.5)]:
+		var c := _clip(p + step)
+		if c.w <= 1e-6:
+			return 1.0
+		ends.append(Vector2(c.x / c.w * _aspect(), c.y / c.w))
+	var across := ends[0].distance_to(ends[1])
+	return clampf(ends[2].distance_to(ends[3]) / across, 0.0, 1.0) if across > 1e-9 else 1.0
 
 
 ## A far giant's quad side at `p`: stepped each frame toward the side whose body takes screen_share of
