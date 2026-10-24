@@ -24,7 +24,19 @@ var roll_gain := 0.8
 var roll_max_deg := 10.0
 var sway_ratio := 0.02
 var posture_smoothing := 0.2
-## Each band: {name: String, fr_max: float, duty: float, pattern: "walk" | "trot"}, sorted by fr_max.
+## No leg stands its hip higher than this share of its length, even when the standing tilt is at its cap.
+var stance_height_max_ratio := 0.82
+## Bound (owner direction 2026-10-24: walking follows leg sizes, frogs hop): a four-legged body whose hind legs are at
+## least bound_hind_ratio times as long as its front legs uses a band's `long_hind_pattern` instead of its pattern.
+## In a bound each pair stands together and the hind pair's stance follows the front pair's by bound_pair_lag of a
+## cycle, so the front lands first and the long hind legs push off last into the flight; the body dips once per cycle
+## (bound_bob_ratio of hip height) and pitches nose down on landing, nose up in flight (bound_pitch_deg).
+var bound_hind_ratio := 1.5
+var bound_pair_lag := 0.2
+var bound_bob_ratio := 0.12
+var bound_pitch_deg := 7.0
+## Each band: {name: String, fr_max: float, duty: float, pattern: "walk" | "trot", long_hind_pattern: "" | "bound"},
+## sorted by fr_max.
 var bands: Array = []
 
 
@@ -33,12 +45,13 @@ static func from_dict(d: Dictionary) -> RefCounted:
 	for key in ["g_eff", "stance_height_ratio", "reach_margin", "foot_splay_ratio", "stride_coeff", "stride_exp",
 			"min_rel_stride", "swing_lift_ratio", "max_swing_time", "min_swing_time", "band_hysteresis",
 			"phase_coupling", "accel_cycles", "settle_threshold_ratio", "settle_idle_time", "bob_ratio", "pitch_gain",
-			"pitch_max_deg", "roll_gain", "roll_max_deg", "sway_ratio", "posture_smoothing"]:
+			"pitch_max_deg", "roll_gain", "roll_max_deg", "sway_ratio", "posture_smoothing", "stance_height_max_ratio",
+			"bound_hind_ratio", "bound_pair_lag", "bound_bob_ratio", "bound_pitch_deg"]:
 		if d.has(key):
 			t.set(key, float(d[key]))
 	for b in d.get("bands", []):
 		t.bands.append({"name": String(b["name"]), "fr_max": float(b["fr_max"]), "duty": float(b["duty"]),
-				"pattern": String(b["pattern"])})
+				"pattern": String(b["pattern"]), "long_hind_pattern": String(b.get("long_hind_pattern", ""))})
 	assert(not t.bands.is_empty(), "gait table needs at least one band")
 	return t
 

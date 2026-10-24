@@ -71,7 +71,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		var mech = BodyMechanics.create("stats", gait["body"], gait_table)
 		speed = mech.v_top * speed_k
 		leg_length = mech.hip_height / gait_table.stance_height_ratio
-		var period: float = gait_table.rel_stride(gait_table.fr_top()) * mech.hip_height / mech.v_top
+		var period: float = gait_table.rel_stride(gait_table.fr_top()) * mech.gait_height / mech.v_top
 		cadence = 1.0 / period if period > 0.0 else 0.0
 	var box: AABB = body.bounds_m()
 	var charm := 1.0
