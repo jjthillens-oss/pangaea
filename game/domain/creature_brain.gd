@@ -1393,15 +1393,28 @@ static func _touching(mem: Memory, me: Dictionary, food: Dictionary) -> bool:
 
 # --- memory and transitions ---
 
-## Remembers every percept, then drops memories cfg.memory_ticks old and expired ignores.
+## Remembers every percept, then drops memories cfg.memory_ticks old and expired ignores. A body
+## already remembered has its entry's values replaced in place (the same keys in the same order, and
+## no entry is shared: a rebase moves each in place too).
 static func _remember(mem: Memory, percepts: Array, tick: int) -> void:
+	var seen := mem.seen
 	for p in percepts:
-		mem.seen[p.id] = {"position": p.position, "velocity": p.velocity, "tick": tick, "by": p.by, "species": p.species,
-			"radius": p.radius, "engageable": p.engageable}
+		var e: Variant = seen.get(p.id)
+		if e == null:
+			seen[p.id] = {"position": p.position, "velocity": p.velocity, "tick": tick, "by": p.by, "species": p.species,
+				"radius": p.radius, "engageable": p.engageable}
+		else:
+			e.position = p.position
+			e.velocity = p.velocity
+			e.tick = tick
+			e.by = p.by
+			e.species = p.species
+			e.radius = p.radius
+			e.engageable = p.engageable
 	var memory: int = mem.cfg.memory_ticks
-	for id in mem.seen.keys():
-		if tick - int(mem.seen[id].tick) >= memory:
-			mem.seen.erase(id)
+	for id in seen.keys():
+		if tick - int(seen[id].tick) >= memory:
+			seen.erase(id)
 	for id in mem.ignore.keys():
 		if int(mem.ignore[id]) <= tick:
 			mem.ignore.erase(id)
