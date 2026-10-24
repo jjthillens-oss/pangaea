@@ -95,4 +95,3 @@ func test_contest_cost_and_failed_actions() -> void:
 	check(m.snapshot() == before, "failed contest changes nothing")
 	check(not m.interact("missing", "share").ok, "unknown individual is refused")
 	check(not m.interact("bren", "unknown").ok, "unknown intention is refused")
-

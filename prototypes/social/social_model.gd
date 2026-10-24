@@ -177,4 +177,3 @@ func snapshot() -> String:
 		"contests": contests,
 		"people": entries
 	})
-

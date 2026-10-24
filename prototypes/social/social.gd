@@ -61,4 +61,3 @@ func _draw() -> void:
 		draw_string(font, Vector2(x - 100, 470), "danger %d | trust %d" % [p.danger_need, model.trust(id)], HORIZONTAL_ALIGNMENT_LEFT, -1, 15)
 	draw_string(font, Vector2(30, 550), "Food %d | Stamina %d | Route food %d | Insight %d" % [model.player_food, model.player_stamina, model.route_food, model.insight], HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
 	draw_string(font, Vector2(30, 580), "Shared routes %d | Contests %d | Best partner %s" % [model.shared_routes, model.contests, model.best_partner()], HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
-
