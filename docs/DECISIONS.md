@@ -857,3 +857,23 @@ size physics. Built on the recommended option, "earn levels by doing" (`game/dom
   demand. Section 18: the genome and lineage are saved, not the sea.
 - **Not yet.** The test pool to swim the new body before committing (IB-03), part levels (S4.5) and
   mass on turning (S4.2, deferred because it re-records every golden).
+
+## 2026-10-24 · S4.5 part levels: upgrade a part in the editor (PROPOSED)
+
+- **What.** Joshua's "level up your strengths... an incremental system" (2026-10-24 02:42), as part
+  levels:
+  - The editor's Upgrade raises the selected part from level 1 to at most 3. Each level multiplies
+    the part's benefits by 1.4 then 1.75, and its mass and upkeep by 1.2 then 1.4. So a level 3 tail
+    is fast but heavy and dear to run, and mass still slows the whole body.
+  - Level 2 costs the part's price again, and level 3 costs 1.5 times it. Selling an upgraded part
+    refunds the part and its upgrades.
+  - A filter mouth has no benefit to raise, so it does not level.
+  - All numbers are in `part_catalog.json` (`part_levels`).
+- **Saved on the genome.** A part's `level` is saved only above 1. Saves made before levels load as
+  level 1 and derive, cost and serialise exactly as before. Level 1 shares are 1.0, so every golden
+  is unchanged.
+- **The look.** An upgraded part is drawn 15 % larger for each level, and the rim view puts a pip
+  outside it for each level.
+- **Shell plate.** The shell plate enters the editor, as s4-plan proposed (band 1, art PR #42's
+  model). It gives defense and health and is the heaviest part. The editor list test now pins seven
+  parts.

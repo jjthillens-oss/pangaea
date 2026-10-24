@@ -10,7 +10,9 @@ var lineage_id: String = ""
 var parent_genome_id: String = ""
 var generation: int = 1
 var appearance: Dictionary = {"hue": 0.45, "pattern": "plain"}
-## Each part: {"id": String, "type": String, "angle": float (radians, 0 = front), "scale": float}
+## Each part: {"id": String, "type": String, "angle": float (radians, 0 = front), "scale": float}, plus
+## "level": int 2..PartCatalog.max_level once upgraded (S4.5). A part without "level" is level 1, so
+## genomes saved before levels load unchanged and level-1 parts are stored exactly as before.
 var parts: Array[Dictionary] = []
 var next_part_number: int = 1
 ## Type problems found by from_dict (not saved). validate() reports them.
@@ -24,11 +26,19 @@ static func create(p_lineage_id: String) -> Genome:
 	return genome
 
 
-func add_part(type_id: String, angle: float, scale: float = 1.0) -> String:
+func add_part(type_id: String, angle: float, scale: float = 1.0, level: int = 1) -> String:
 	var part_id := "part_%d" % next_part_number
 	next_part_number += 1
 	parts.append({"id": part_id, "type": type_id, "angle": angle, "scale": scale})
+	if level > 1:
+		parts[-1]["level"] = level
 	return part_id
+
+
+## A part's level: 1 when it has none (or it is not a whole number; validate() reports that).
+static func level_of(part: Dictionary) -> int:
+	var level = part.get("level", 1)
+	return int(level) if (level is int or level is float) and is_finite(level) else 1
 
 
 func remove_part(part_id: String) -> bool:
@@ -82,6 +92,11 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 		var scale = part.get("scale")
 		if not (scale is float or scale is int) or not is_finite(scale) or scale < catalog.min_scale or scale > catalog.max_scale:
 			errors.append("Part '%s' has a scale outside %.2f..%.2f." % [part_id, catalog.min_scale, catalog.max_scale])
+		if part.has("level"):
+			var level = part.get("level")
+			var whole: bool = (level is int or level is float) and is_finite(level) and level == floorf(level)
+			if not whole or level < 1 or level > catalog.max_level or (level > 1 and not catalog.can_level(type_id)):
+				errors.append("Part '%s' has a level outside what its type allows." % part_id)
 	for type_id in counts:
 		if counts[type_id] > catalog.max_count_of(type_id):
 			errors.append("Too many '%s': %d, the limit is %d." % [type_id, counts[type_id], catalog.max_count_of(type_id)])

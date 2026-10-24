@@ -14,6 +14,12 @@ var required_categories: PackedStringArray = []
 var refund_rate: float = 1.0
 ## Each further copy of a part adds this share of the previous copy's effect.
 var diminishing_factor: float = 1.0
+## Part levels (S4.5, PROPOSED): 1..max_level. Index 0 is level 1, which is always the part as
+## catalogued (shares 1.0, no upgrade cost), so a catalog without "part_levels" has level 1 only.
+var max_level: int = 1
+var level_effect_share := PackedFloat64Array([1.0])
+var level_cost_share := PackedFloat64Array([1.0])
+var level_upgrade_cost_share := PackedFloat64Array([0.0])
 var base_body: Dictionary = {}
 var caps: Dictionary = {}
 ## name -> [{"type", "angle", "scale"}]: the bodies a new lineage can start with.
@@ -42,6 +48,12 @@ static func from_dict(data: Variant) -> PartCatalog:
 	catalog.required_categories = PackedStringArray(data.get("required_categories", []))
 	catalog.refund_rate = float(data.get("refund_rate", 1.0))
 	catalog.diminishing_factor = float(data.get("diminishing_factor", 1.0))
+	var levels: Dictionary = data.get("part_levels", {})
+	if not levels.is_empty():
+		catalog.max_level = int(levels.get("max", 1))
+		catalog.level_effect_share = PackedFloat64Array(levels.get("effect_share", [1.0]))
+		catalog.level_cost_share = PackedFloat64Array(levels.get("cost_share", [1.0]))
+		catalog.level_upgrade_cost_share = PackedFloat64Array(levels.get("upgrade_cost_share", [0.0]))
 	catalog.base_body = Dictionary(data.get("base_body", {})).duplicate()
 	catalog.caps = Dictionary(data.get("caps", {})).duplicate()
 	var raw_bodies: Dictionary = data.get("starting_bodies", {})
@@ -91,3 +103,41 @@ func in_editor(type_id: String) -> bool:
 
 func base(stat: String, fallback: float = 0.0) -> float:
 	return float(base_body.get(stat, fallback))
+
+
+## Whether `type_id` can be upgraded at all: the catalog has levels and the part has a benefit
+## (an effect other than mass and upkeep), so a level would change something.
+func can_level(type_id: String) -> bool:
+	if max_level <= 1 or not parts.has(type_id):
+		return false
+	for stat in parts[type_id]["effects"]:
+		if stat != "mass" and stat != "upkeep":
+			return true
+	return false
+
+
+## The share of a part's benefits at `level` (clamped to 1..max_level).
+func effect_share(level: int) -> float:
+	return level_effect_share[_level_index(level, level_effect_share)]
+
+
+## The share of a part's mass and upkeep at `level`.
+func cost_share(level: int) -> float:
+	return level_cost_share[_level_index(level, level_cost_share)]
+
+
+## Points to raise a `type_id` part from `from_level` to the next level.
+func upgrade_cost(type_id: String, from_level: int) -> int:
+	return roundi(cost_of(type_id) * level_upgrade_cost_share[_level_index(from_level + 1, level_upgrade_cost_share)])
+
+
+## Everything a `type_id` part at `level` has cost: the part and each upgrade.
+func value_of(type_id: String, level: int) -> int:
+	var total := cost_of(type_id)
+	for l in range(1, clampi(level, 1, max_level)):
+		total += upgrade_cost(type_id, l)
+	return total
+
+
+func _level_index(level: int, shares: PackedFloat64Array) -> int:
+	return clampi(level, 1, mini(max_level, shares.size())) - 1

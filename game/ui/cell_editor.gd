@@ -3,7 +3,7 @@ extends Control
 ## S4.4, the cell editor (docs/s4/s4-plan.md; Bible sections 5 and 24): opened by a mate (the pool's
 ## mate_requested), a bounded editor over EditorSession for the next generation. The palette adds a
 ## part where it fits; the rim picks a part and drags it round the body; the selected part can be
-## mirrored, resized or removed; undo and redo step through the edits. The 3D preview draws the
+## mirrored, resized, upgraded (S4.5 part levels) or removed; undo and redo step through the edits. The 3D preview draws the
 ## working body as the pool will, and the stat lines show each number before and after. Mate commits
 ## through Lineage.reproduce (the save's genome becomes the child, its points pay the cost); Back
 ## leaves the body as it was. Either way `closed` reports whether a new generation was born.
@@ -48,6 +48,8 @@ var _status: Label
 var _mate: Button
 var _undo: Button
 var _redo: Button
+var _upgrade: Button
+var _selected_label: Label
 var _part_buttons: Array[Button] = []
 
 
@@ -103,6 +105,13 @@ func resize_selected(step: float) -> Dictionary:
 	if part.is_empty():
 		return {"ok": false, "reason": "no part selected"}
 	var result := session.scale_part(selected, float(part.scale) + step)
+	_after(result)
+	return result
+
+
+## Raises the selected part a level (S4.5): stronger, a little heavier and dearer to run.
+func upgrade_selected() -> Dictionary:
+	var result := session.upgrade_part(selected)
 	_after(result)
 	return result
 
@@ -214,6 +223,7 @@ func _refresh() -> void:
 	_mate.tooltip_text = "" if not _mate.disabled else ("Not enough points" if errors.is_empty() else errors[0])
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
+	_show_selected()
 	for child in _stats.get_children():
 		_stats.remove_child(child)
 		child.queue_free()
@@ -226,6 +236,30 @@ func _refresh() -> void:
 		if line[3] != null:
 			value.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
 		_stats.add_child(value)
+
+
+## Names the selected part and its level, and prices its next level on the Upgrade button.
+func _show_selected() -> void:
+	var part := _part(selected)
+	var catalog := session.catalog
+	if part.is_empty():
+		_selected_label.text = "Pick a part on the rim"
+		_upgrade.text = "Upgrade"
+		_upgrade.disabled = true
+		return
+	var type_id := str(part.type)
+	var level := Genome.level_of(part)
+	_selected_label.text = "%s, level %d" % [type_id.capitalize(), level] if catalog.can_level(type_id) \
+		else type_id.capitalize()
+	if not catalog.can_level(type_id):
+		_upgrade.text = "Upgrade"
+		_upgrade.disabled = true
+	elif level >= catalog.max_level:
+		_upgrade.text = "Top level"
+		_upgrade.disabled = true
+	else:
+		_upgrade.text = "Upgrade · %d" % catalog.upgrade_cost(type_id, level)
+		_upgrade.disabled = false
 
 
 func _build() -> void:
@@ -287,16 +321,21 @@ func _build() -> void:
 	_rim.editor = self
 	_rim.custom_minimum_size = Vector2(300, 300)
 	views.add_child(_rim)
+	_selected_label = Label.new()
+	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	middle.add_child(_selected_label)
 	var tools := HBoxContainer.new()
 	tools.alignment = BoxContainer.ALIGNMENT_CENTER
 	middle.add_child(tools)
 	for spec in [["Mirror", mirror_selected], ["Smaller", resize_selected.bind(-SCALE_STEP)],
-			["Bigger", resize_selected.bind(SCALE_STEP)], ["Remove", remove_selected]]:
+			["Bigger", resize_selected.bind(SCALE_STEP)], ["Upgrade", upgrade_selected], ["Remove", remove_selected]]:
 		var b := Button.new()
 		b.name = spec[0]
 		b.text = spec[0]
 		b.pressed.connect(spec[1])
 		tools.add_child(b)
+		if spec[0] == "Upgrade":
+			_upgrade = b
 	_status = Label.new()
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.add_theme_color_override(&"font_color", WORSE)
@@ -384,6 +423,10 @@ class RimView:
 			draw_circle(q, r, _color(editor.session.catalog.category_of(str(p.type))))
 			if str(p.id) == editor.selected:
 				draw_arc(q, r + 4.0, 0.0, TAU, 24, Color.WHITE, 2.0, true)
+			# One small pip outside the dot for each level above the first.
+			var out := (q - center()).normalized()
+			for i in Genome.level_of(p) - 1:
+				draw_circle(q + out * (r + 9.0 + 7.0 * i), 2.5, Color.WHITE)
 
 	func _color(category: String) -> Color:
 		match category:
