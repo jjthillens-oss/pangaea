@@ -788,6 +788,14 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature legs of different lengths tilt the body (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for walking that follows leg sizes. Every leg now stands at the gait table's
+  stance_height_ratio of its own length, instead of every hip standing at the shortest leg's height.
+- A least-squares line through those heights along the body sets the hip height and a standing tilt, capped at
+  30 degrees. An ape on long arms knuckle-walks front-up, and a body on long hind legs stands front-down.
+- Even legs stand level as before.
+
 ## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
 
 - Weapon-role parts (claws, horns, spikes, tusks, tail spikes, club tails, quills) add 2 attack each at scale 1
