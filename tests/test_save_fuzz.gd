@@ -117,3 +117,22 @@ func test_nested_wrong_types_are_refused_without_crashing_or_rewriting() -> void
 		else:
 			data[keys[0]][keys[1]] = cases[i].value
 		_assert_rejected_unchanged(JSON.stringify(data), "nested wrong type %d" % i)
+
+
+func test_slot_summary_reports_corrupt_primary_and_uses_backup_without_writing() -> void:
+	var original_folder := SaveSlots.folder
+	SaveSlots.folder = folder
+	var slot := SaveSlots.path(1)
+	var save := SaveGame.from_dict(_valid_data())
+	check_eq(service.save_to(slot, save), OK, "slot writes")
+	check_eq(service.save_to(slot, save), OK, "backup writes")
+	var corrupt := "{not a save"
+	var file := FileAccess.open(slot, FileAccess.WRITE)
+	file.store_string(corrupt)
+	file.close()
+	var peek := SaveSlots.peek(1)
+	check(peek.ok, "slot shows valid backup")
+	check_eq(peek.source, "backup", "slot indicates recovery source")
+	check(not peek.errors.is_empty(), "slot reports corrupt primary")
+	check_eq(FileAccess.get_file_as_string(slot), corrupt, "peek preserves corrupt original")
+	SaveSlots.folder = original_folder

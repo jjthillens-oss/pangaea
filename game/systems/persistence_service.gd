@@ -149,8 +149,10 @@ func _read_current_version(path: String) -> Dictionary:
 ## Returns {"ok": bool, "data": Dictionary, "error": String}. Works on a copy; the input is untouched.
 func migrate(data: Dictionary) -> Dictionary:
 	var version = data.get("schema_version")
-	if not (version is int or version is float) or not is_finite(float(version)) or version != floorf(float(version)):
+	if version == null:
 		return {"ok": false, "data": {}, "error": "missing schema version."}
+	if not (version is int or version is float) or not is_finite(float(version)) or version != floorf(float(version)):
+		return {"ok": false, "data": {}, "error": "schema version must be a whole number."}
 	var current: Dictionary = data.duplicate(true)
 	var v := int(version)
 	if v > CURRENT_VERSION:
