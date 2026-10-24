@@ -12,7 +12,8 @@ const HABITAT_WORDS := {"sea": ["Tide", "Reef", "Current"], "shore": ["Dune", "E
 const DIET_WORDS := {"herbivore": ["Forager", "Grazer", "Browser"], "carnivore": ["Hunter", "Prowler", "Stalker"], "omnivore": ["Seeker", "Wanderer", "Gatherer"]}
 const SIZE_WORDS := {"small": ["Little", "Fine", "Pip"], "medium": ["Broad", "Mottled", "Soft"], "large": ["Great", "Heavy", "Tall"]}
 const LIMB_WORDS := {0: ["Drifter", "Ribbon"], 1: ["Skipper", "Hopper"], 2: ["Strider", "Darter"], 3: ["Pacer", "Creeper"], 4: ["Walker", "Climber"], 5: ["Crawler", "Scrambler"], 6: ["Scuttler", "Rambler"]}
-const BLOCKED := ["fuck", "shit", "cunt", "bitch", "piss", "dick", "cock", "twat", "wank", "nigger", "faggot", "vagina", "penis"]
+## Only substrings reachable from the syllable grammar belong here.
+const BLOCKED := ["shit", "piss", "twat", "wank", "penis", "vagina", "tit", "ass", "arse", "anal", "slut", "damn", "nazi", "rape", "hell"]
 const DEFAULT_TRAITS := {"diet": "herbivore", "habitat": "sea", "size": "medium", "limbs": 2}
 
 static func valid_traits(traits: Dictionary) -> bool:
@@ -25,6 +26,13 @@ static func generate_many(seed_value: int, traits: Dictionary, count: int, gener
 		return []
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
+	# A fixed trait-dependent stream offset changes the whole sound sequence, not
+	# merely the first onset. These are draws from this same seeded RNG.
+	var offset: int = ["sea", "shore", "land"].find(traits["habitat"]) * 3 \
+		+ ["herbivore", "carnivore", "omnivore"].find(traits["diet"]) * 5 \
+		+ ["small", "medium", "large"].find(traits["size"]) * 7 + int(traits["limbs"]) * 11
+	for _skip in offset:
+		rng.randi()
 	var result: Array[Dictionary] = []
 	for _index in count:
 		var genus := ""

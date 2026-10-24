@@ -13,10 +13,10 @@ The four traits are `diet` (`herbivore`, `carnivore`, `omnivore`), `habitat` (`s
 
 ## Rules and tables
 
-- One `RandomNumberGenerator` is created per `generate_many` call and its 64-bit state is seeded directly with `seed_value`. The seed is not mixed with clock time, a chunk index or a hash. Generation consumes draws in this order for each name: genus syllables, epithet syllables and ending, then four common-name words. A blocked scientific name redraws its two pieces from that same stream. A bounded 64-attempt fallback is a fixed safe name. No other code draws randomness.
+- One `RandomNumberGenerator` is created per `generate_many` call and its 64-bit state is seeded directly with `seed_value`. The seed is not mixed with clock time, a chunk index or a hash. Habitat index × 3, diet index × 5, size index × 7 and limb count × 11 determine a fixed number of initial draws from that same stream, so traits change the whole sound sequence. Generation then consumes draws in this order for each name: genus syllables, epithet syllables and ending, then four common-name words. A blocked scientific name redraws its two pieces from the same stream. A bounded 64-attempt fallback is a fixed safe name. No other code draws randomness.
 - Genus and epithet each use two or three syllables. Every syllable has one onset and one vowel nucleus (`a e i o u ae ia ou`), followed by zero or one coda (`l m n r s t`). The first onset is biased by habitat: softer `l m n r s v w` at sea, `b d l m p r t` at shore, and harder `d g k p r t z` on land. Following onsets come from the shared original table in `name_generator.gd`. At most a coda and the next onset meet, so there are never three consonants in sequence.
 - The epithet ending depends on diet: herbivore `a/ena/ora`, carnivore `ax/ira/or`, omnivore `on/ula/ari`. The common name draws one word from each of size, habitat, diet and limb-count tables. Thus a sea hunter and a land grazer differ visibly and in the opening sound pool. These are sound cues, not a taxonomy.
-- The concatenated scientific name is checked case-insensitively against the local profanity block list, including substrings. The common-word tables contain no blocked terms. A lineage is `<Genus> <epithet>`; a short label is `<Genus> <Roman generation>` for generations 1–3999.
+- The concatenated scientific name is checked case-insensitively against a local block list of reachable substrings, including `tit`, `ass`, `arse`, `anal`, `slut`, `damn`, `nazi`, `rape` and `hell`. Terms impossible under these sound tables are omitted. The common-word tables contain no blocked terms. A lineage is `<Genus> <epithet>`; a short label is `<Genus> <Roman generation>` for generations 1–3999.
 
 ## Seed 1 samples
 
@@ -25,74 +25,74 @@ The following are the first 20 results in each habitat with default herbivore, m
 ### Sea
 
 ```text
-Laemdepon | Soft Current Grazer Strider | Laemdepon wilvaeriaa | Laemdepon I
-Riapimron | Soft Current Browser Strider | Riapimron sugaena | Riapimron I
-Saepomdou | Mottled Current Grazer Strider | Saepomdou riltoora | Saepomdou I
-Niatolko | Broad Reef Browser Strider | Niatolko masdortesena | Niatolko I
-Lipaet | Broad Current Grazer Darter | Lipaet wiangiambuora | Lipaet I
-Laefol | Mottled Current Grazer Darter | Laefol niamaesloumora | Laefol I
-Nambetpel | Mottled Tide Browser Strider | Nambetpel nandomsoa | Nambetpel I
-Rasdu | Soft Reef Browser Strider | Rasdu siazimtoora | Rasdu I
-Votfa | Soft Reef Forager Strider | Votfa sishaveena | Votfa I
-Naeretnael | Broad Current Browser Strider | Naeretnael relvoutmerora | Naeretnael I
-Raerutmo | Broad Current Browser Darter | Raerutmo riaskodiaora | Raerutmo I
-Vitwarmou | Soft Tide Grazer Darter | Vitwarmou limliarora | Vitwarmou I
-Maesbam | Soft Tide Browser Darter | Maesbam miatdasena | Maesbam I
-Limpulam | Mottled Current Browser Strider | Limpulam naetdarpota | Limpulam I
-Larrian | Soft Current Forager Darter | Larrian wountima | Larrian I
-Wakusiat | Mottled Tide Forager Strider | Wakusiat nesotnoma | Wakusiat I
-Riafan | Soft Tide Browser Strider | Riafan vaemfula | Riafan I
-Nirbal | Broad Current Grazer Darter | Nirbal somgouora | Nirbal I
-Naekae | Broad Tide Browser Strider | Naekae voswimhouena | Naekae I
-Rialhoutvo | Mottled Tide Grazer Darter | Rialhoutvo viarhaa | Rialhoutvo I
+Maennal | Broad Tide Browser Darter | Maennal monoraelora | Maennal I
+Limkus | Soft Tide Grazer Darter | Limkus rotzeora | Limkus I
+Retmelsat | Mottled Reef Forager Darter | Retmelsat suvomora | Retmelsat I
+Wustaen | Mottled Tide Grazer Strider | Wustaen voumembulena | Wustaen I
+Lourfem | Soft Tide Browser Darter | Lourfem winkonkaora | Lourfem I
+Naedillou | Soft Reef Browser Darter | Naedillou woumiaena | Naedillou I
+Vobatse | Broad Reef Forager Darter | Vobatse visessolena | Vobatse I
+Naedet | Soft Current Grazer Darter | Naedet vianoutena | Naedet I
+Mialtial | Broad Tide Browser Darter | Mialtial vakulena | Mialtial I
+Lonmaelsias | Mottled Reef Forager Darter | Lonmaelsias wetnaelena | Lonmaelsias I
+Woustilou | Mottled Reef Grazer Darter | Woustilou raerutmoena | Woustilou I
+Lemfihi | Mottled Tide Grazer Strider | Lemfihi vitwarmoua | Lemfihi I
+Riados | Soft Reef Browser Darter | Riados maesbamena | Riados I
+Lianlis | Soft Current Browser Darter | Lianlis limpulamora | Lianlis I
+Nenku | Soft Reef Browser Strider | Nenku siltarriana | Nenku I
+Mebet | Broad Tide Browser Darter | Mebet wakusiata | Mebet I
+Wamhomaem | Soft Reef Grazer Strider | Wamhomaem riafanena | Wamhomaem I
+Nouri | Broad Tide Grazer Darter | Nouri nirbala | Nouri I
+Nulourful | Broad Tide Grazer Strider | Nulourful saemesena | Nulourful I
+Wuldelpiam | Broad Current Forager Strider | Wuldelpiam noutvoa | Wuldelpiam I
 ```
 
 ### Shore
 
 ```text
-Baemdepon | Soft Foam Grazer Strider | Baemdepon tilvaeriaa | Baemdepon I
-Miapimron | Soft Foam Browser Strider | Miapimron pugaena | Miapimron I
-Paepomdou | Mottled Foam Grazer Strider | Paepomdou miltoora | Paepomdou I
-Liatolko | Broad Estuary Browser Strider | Liatolko dasdortesena | Liatolko I
-Bipaet | Broad Foam Grazer Darter | Bipaet tiangiambuora | Bipaet I
-Baefol | Mottled Foam Grazer Darter | Baefol liamaesloumora | Baefol I
-Lambetpel | Mottled Dune Browser Strider | Lambetpel landomsoa | Lambetpel I
-Masdu | Soft Estuary Browser Strider | Masdu piazimtoora | Masdu I
-Rotfa | Soft Estuary Forager Strider | Rotfa pishaveena | Rotfa I
-Laeretnael | Broad Foam Browser Strider | Laeretnael melvoutmerora | Laeretnael I
-Maerutmo | Broad Foam Browser Darter | Maerutmo miaskodiaora | Maerutmo I
-Ritwarmou | Soft Dune Grazer Darter | Ritwarmou bimliarora | Ritwarmou I
-Daesbam | Soft Dune Browser Darter | Daesbam diatdasena | Daesbam I
-Bimpulam | Mottled Foam Browser Strider | Bimpulam laetdarpota | Bimpulam I
-Barrian | Soft Foam Forager Darter | Barrian tountima | Barrian I
-Takusiat | Mottled Dune Forager Strider | Takusiat lesotnoma | Takusiat I
-Miafan | Soft Dune Browser Strider | Miafan raemfula | Miafan I
-Lirbal | Broad Foam Grazer Darter | Lirbal pomgouora | Lirbal I
-Laekae | Broad Dune Browser Strider | Laekae roswimhouena | Laekae I
-Mialhoutvo | Mottled Dune Grazer Darter | Mialhoutvo riarhaa | Mialhoutvo I
+Palpia | Soft Dune Grazer Strider | Palpia roraelpirora | Palpia I
+Pushanou | Broad Dune Browser Strider | Pushanou louvaemretena | Pushanou I
+Lilsaet | Mottled Estuary Forager Darter | Lilsaet bopaesora | Lilsaet I
+Moubousgar | Mottled Estuary Browser Darter | Moubousgar mepiashourora | Moubousgar I
+Daerlaem | Soft Foam Grazer Strider | Daerlaem rialdoena | Daerlaem I
+Rouwekous | Mottled Foam Browser Darter | Rouwekous bagaemdoena | Rouwekous I
+Taenbogos | Mottled Foam Browser Darter | Taenbogos pavortaeena | Taenbogos I
+Paran | Broad Dune Forager Darter | Paran laefialtialora | Paran I
+Manael | Broad Estuary Browser Strider | Manael bonmaelsiasa | Manael I
+Bemdemma | Soft Estuary Browser Darter | Bemdemma riloukota | Bemdemma I
+Raeslialsiar | Mottled Dune Browser Strider | Raeslialsiar dihia | Raeslialsiar I
+Roumfus | Mottled Estuary Forager Strider | Roumfus diamziaa | Roumfus I
+Darwilom | Broad Foam Grazer Darter | Darwilom bianlisa | Darwilom I
+Diarzae | Soft Estuary Forager Strider | Diarzae pehenkuora | Diarzae I
+Maelhiawou | Broad Dune Grazer Strider | Maelhiawou taemsinsuena | Maelhiawou I
+Bialberaem | Soft Foam Grazer Strider | Bialberaem morpita | Bialberaem I
+Tovom | Soft Dune Grazer Strider | Tovom mothiapia | Tovom I
+Roswimhou | Broad Dune Forager Darter | Roswimhou rentemena | Roswimhou I
+Popiarha | Broad Estuary Forager Darter | Popiarha laevoumuena | Popiarha I
+Latkostian | Soft Estuary Grazer Darter | Latkostian medaa | Latkostian I
 ```
 
 ### Land
 
 ```text
-Daemdepon | Soft Grove Grazer Strider | Daemdepon zilvaeriaa | Daemdepon I
-Piapimron | Soft Grove Browser Strider | Piapimron rugaena | Piapimron I
-Raepomdou | Mottled Grove Grazer Strider | Raepomdou piltoora | Raepomdou I
-Kiatolko | Broad Ridge Browser Strider | Kiatolko gasdortesena | Kiatolko I
-Dipaet | Broad Grove Grazer Darter | Dipaet ziangiambuora | Dipaet I
-Daefol | Mottled Grove Grazer Darter | Daefol kiamaesloumora | Daefol I
-Kambetpel | Mottled Meadow Browser Strider | Kambetpel kandomsoa | Kambetpel I
-Pasdu | Soft Ridge Browser Strider | Pasdu riazimtoora | Pasdu I
-Totfa | Soft Ridge Forager Strider | Totfa rishaveena | Totfa I
-Kaeretnael | Broad Grove Browser Strider | Kaeretnael pelvoutmerora | Kaeretnael I
-Paerutmo | Broad Grove Browser Darter | Paerutmo piaskodiaora | Paerutmo I
-Titwarmou | Soft Meadow Grazer Darter | Titwarmou dimliarora | Titwarmou I
-Gaesbam | Soft Meadow Browser Darter | Gaesbam giatdasena | Gaesbam I
-Dimpulam | Mottled Grove Browser Strider | Dimpulam kaetdarpota | Dimpulam I
-Darrian | Soft Grove Forager Darter | Darrian zountima | Darrian I
-Zakusiat | Mottled Meadow Forager Strider | Zakusiat kesotnoma | Zakusiat I
-Piafan | Soft Meadow Browser Strider | Piafan taemfula | Piafan I
-Kirbal | Broad Grove Grazer Darter | Kirbal romgouora | Kirbal I
-Kaekae | Broad Meadow Browser Strider | Kaekae toswimhouena | Kaekae I
-Pialhoutvo | Mottled Meadow Grazer Darter | Pialhoutvo tiarhaa | Pialhoutvo I
+Piavagin | Broad Ridge Browser Strider | Piavagin girderena | Piavagin I
+Ganou | Broad Meadow Browser Strider | Ganou kouvaemretena | Ganou I
+Kilsaet | Mottled Ridge Forager Darter | Kilsaet dopaesora | Kilsaet I
+Poubousgar | Mottled Ridge Browser Darter | Poubousgar pepiashourora | Poubousgar I
+Gaerlaem | Soft Grove Grazer Strider | Gaerlaem tialdoena | Gaerlaem I
+Touwekous | Mottled Grove Browser Darter | Touwekous dagaemdoena | Touwekous I
+Zaenbogos | Mottled Grove Browser Darter | Zaenbogos ravortaeena | Zaenbogos I
+Raran | Broad Meadow Forager Darter | Raran kaefialtialora | Raran I
+Panael | Broad Ridge Browser Strider | Panael donmaelsiasa | Panael I
+Demdemma | Soft Ridge Browser Darter | Demdemma tiloukota | Demdemma I
+Taeslialsiar | Mottled Meadow Browser Strider | Taeslialsiar gihia | Taeslialsiar I
+Toumfus | Mottled Ridge Forager Strider | Toumfus giamziaa | Toumfus I
+Garwilom | Broad Grove Grazer Darter | Garwilom dianlisa | Garwilom I
+Giarzae | Soft Ridge Forager Strider | Giarzae rehenkuora | Giarzae I
+Zitbi | Mottled Meadow Grazer Darter | Zitbi gufebetora | Zitbi I
+Korzour | Broad Ridge Browser Darter | Korzour torramhoa | Korzour I
+Rildi | Soft Ridge Forager Strider | Rildi gisouriora | Rildi I
+Rugut | Broad Ridge Forager Darter | Rugut kulourfulora | Rugut I
+Zelfusmam | Mottled Grove Browser Strider | Zelfusmam zelpiamwulora | Zelfusmam I
+Koulnelkae | Mottled Grove Forager Darter | Koulnelkae dihafarora | Koulnelkae I
 ```

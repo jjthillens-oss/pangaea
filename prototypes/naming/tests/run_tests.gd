@@ -8,7 +8,7 @@ func _init() -> void:
 	_check(Names.valid_traits(base), "default traits valid")
 	_check(not Names.valid_traits({"diet": "none", "habitat": "sea", "size": "small", "limbs": 2}), "bad diet rejected")
 	_check(not Names.valid_traits({"diet": "herbivore", "habitat": "sea", "size": "small", "limbs": 7}), "bad limb count rejected")
-	_check(Names.is_blocked("XoShItari") and Names.is_blocked("riavagina"), "case-insensitive embedded block list")
+	_check(Names.is_blocked("XoShItari") and Names.is_blocked("riavagina") and Names.is_blocked("Titwarmou"), "case-insensitive embedded reachable block list")
 	for vowel in Names.VOWELS:
 		_check(_has_vowel(vowel), "every syllable nucleus has a vowel")
 	var first := JSON.stringify(Names.generate_many(12, base, 100))
@@ -20,7 +20,7 @@ func _init() -> void:
 		unique[row.lineage] = true
 		_check_word(row.genus, "genus")
 		_check_word(row.lineage.replace(" ", ""), "lineage")
-		_check(not Names.is_blocked(row.genus + row.common + row.lineage), "block list")
+		_check(_name_is_clean(row), "block list")
 	_check(unique.size() >= 980, "at most 2 percent duplicate lineages (got %d)" % (1000 - unique.size()))
 	print("UNIQUE LINEAGES: %d/1000" % unique.size())
 	var sample: Dictionary = thousand[0]
@@ -35,15 +35,41 @@ func _init() -> void:
 			var output := Names.generate_many(5, traits, 100)
 			_check(output.size() == 100, "count %s %s" % [habitat, diet])
 			for row in output:
-				_check(not Names.is_blocked(row.genus + row.common + row.lineage), "block %s %s" % [habitat, diet])
+				_check(_name_is_clean(row), "block %s %s" % [habitat, diet])
+	# Review gate: scan thousands per habitat, then 50,000 land names across
+	# seeds 1..5. Check each whole lineage with spaces removed so a term cannot
+	# hide at the genus/epithet boundary.
+	var blocked_found := 0
+	for habitat in ["sea", "shore", "land"]:
+		var traits := base.duplicate()
+		traits.habitat = habitat
+		for row in Names.generate_many(87, traits, 3000):
+			if Names.is_blocked(row.genus) or Names.is_blocked(row.lineage.replace(" ", "")):
+				blocked_found += 1
+	_check(blocked_found == 0, "9,000 names across habitats contain no blocked substrings")
+	for seed_value in range(1, 6):
+		var traits := base.duplicate()
+		traits.habitat = "land"
+		for row in Names.generate_many(seed_value, traits, 10000):
+			if Names.is_blocked(row.genus) or Names.is_blocked(row.lineage.replace(" ", "")):
+				blocked_found += 1
+	_check(blocked_found == 0, "50,000 land names across seeds 1..5 contain no blocked substrings")
+	print("BLOCKED SUBSTRINGS: %d/59000" % blocked_found)
 	var sea := base.duplicate()
 	sea.habitat = "sea"
 	var land := base.duplicate()
 	land.habitat = "land"
 	var hunter := base.duplicate()
 	hunter.diet = "carnivore"
+	var large := base.duplicate()
+	large.size = "large"
+	var limbless := base.duplicate()
+	limbless.limbs = 0
 	_check(Names.generate_many(1, sea, 1)[0].common != Names.generate_many(1, land, 1)[0].common, "habitat changes common name")
 	_check(Names.generate_many(1, sea, 1)[0].common != Names.generate_many(1, hunter, 1)[0].common, "diet changes common name")
+	_check(Names.generate_many(1, sea, 1)[0].common != Names.generate_many(1, large, 1)[0].common, "size changes common name")
+	_check(Names.generate_many(1, sea, 1)[0].common != Names.generate_many(1, limbless, 1)[0].common, "limbs change common name")
+	_check(Names.generate_many(1, sea, 1)[0].genus != Names.generate_many(1, land, 1)[0].genus, "habitat changes more than the first genus letter")
 	print("FAILURES: %d" % failures)
 	quit(0 if failures == 0 else 1)
 
@@ -63,6 +89,14 @@ func _has_vowel(text: String) -> bool:
 		if "aeiou".contains(letter):
 			return true
 	return false
+
+func _name_is_clean(row: Dictionary) -> bool:
+	if Names.is_blocked(row.genus) or Names.is_blocked(row.lineage.replace(" ", "")):
+		return false
+	for word in row.common.split(" "):
+		if Names.is_blocked(word):
+			return false
+	return true
 
 func _check(condition: bool, message: String) -> void:
 	if not condition:
