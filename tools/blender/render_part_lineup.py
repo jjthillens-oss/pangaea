@@ -24,7 +24,8 @@ EXPORT = os.path.join(ld.ROOT, "assets", "export")
 ROWS = [
     ["cpart_beak", "cpart_mandibles", "cpart_maw", "cpart_proboscis", "cpart_jaw", "cpart_bill", "cpart_barbels", "cpart_tusk"],
     ["cpart_eye", "cpart_eye_slit", "cpart_eye_round", "cpart_eye_cluster", "cpart_eye_stalk", "cpart_compound_eye", "cpart_antenna", "cpart_lure", "cpart_gill_fan"],
-    ["cpart_foot", "cpart_hoof", "cpart_hand", "cpart_claw", "cpart_flipper", "cpart_horn"],
+    ["cpart_foot", "cpart_foot_webbed", "cpart_foot_paw", "cpart_foot_talon", "cpart_hoof", "cpart_flipper"],
+    ["cpart_hand", "cpart_hand_paw", "cpart_hand_pincer", "cpart_hand_tentacle", "cpart_claw", "cpart_horn"],
     ["cpart_fin", "cpart_crest", "cpart_frill", "cpart_wing", "cpart_tail_fluke", "cpart_tail_spikes", "cpart_club_tail", "cpart_quills"],
 ]
 SPACING_X = 0.42
