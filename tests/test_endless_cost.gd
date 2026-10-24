@@ -63,6 +63,7 @@ const Gates := preload("res://tests/test_endless_gates.gd")
 const SwimBot := preload("res://game/dev/swim_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const Yardstick := preload("res://tests/cost_yardstick.gd")
+const WorldChecks := preload("res://tests/world_checks.gd")
 
 const COST_SEED := 2801
 const RUNS := 3
@@ -128,8 +129,25 @@ const BASE_GREEN := {
 	2: {"median_28e": true},
 }
 
+## S3 (T0.6; D-115, BP3-7). S3G21, soak: the overdriven swim (#28E, P99.9, rebase) and the saturated
+## case at sizes 1 to 4, in one process on the top-4 world (Gates.make_sim_at; DenseGen on the same
+## config). Relative rows, blocking: size 3's median tick at most S3_RELATIVE[3] x size 1's, size 4's
+## at most S3_RELATIVE[4] x size 2's (the same geometry), for the swim and the saturated case. The
+## absolute rows block at size 3 where BASE_GREEN has size 1's row green and at size 4 where it has
+## size 2's; the others print. S3G21b, slow: S3's own additions at size 4 (the sting test, the bloom
+## meadows' share of EcologyRegion.tick over S2's plain loop, the landmark pass and the morsel pass
+## over MORSEL_PASS_TICKS), timed on the size-4 swim after each tick, at most
+## S3_ADDITIONS_LIMIT_YARDSTICKS median. S3G19, slow: the growth ticks 2 to 3 and 3 to 4, warm, at
+## most GROWTH_TICK_LIMIT_YARDSTICKS, as S2G18.
+const S3_HELD_AGAINST := {3: 1, 4: 2}
+const S3_RELATIVE := {3: 1.15, 4: 1.10}
+const S3_ADDITIONS_LIMIT_YARDSTICKS := 0.4
+const S3_ADDITIONS_TICKS := 600
+const S3_GROWTH_FROM: Array[int] = [2, 3]
+
 static var _runs := {}                ## "overdriven/size" or "racer/size" -> the timed swim runs
 static var _dense: Array[Dictionary] = []   ## the saturated case's 3 runs
+static var _dense_at := {}            ## S3G21: size -> the saturated case's 3 runs at that size
 
 
 func _waits(gate: String) -> bool:
@@ -148,10 +166,15 @@ static func _mode(overdriven: bool, size := 1) -> String:
 ## A racer at home, hidden, about to swim east, with growth on and its ring full (BP-6, S2G38): its
 ## bot (_swim_bot) plays in press mode and never presses. At another size it gets there first by
 ## debug_set_size (D-76); at the build's top size there is no ring to fill (a full ring pays out).
-static func _swimmer(size := 1) -> Variant:
-	var sim: Variant = Gates.make_sim(Gates.RACER, COST_SEED, true)
-	if size != 1:
-		sim.debug_set_size(size)
+## With `top4`, on Gates.make_sim_at's world (S3G21).
+static func _swimmer(size := 1, top4 := false) -> Variant:
+	var sim: Variant
+	if top4:
+		sim = Gates.make_sim_at(Gates.RACER, COST_SEED, size)
+	else:
+		sim = Gates.make_sim(Gates.RACER, COST_SEED, true)
+		if size != 1:
+			sim.debug_set_size(size)
 	sim.debug_set_hidden(true)
 	if not Growth.at_top(sim.size(), sim.world.max_size):
 		fill_ring(sim)
@@ -208,13 +231,13 @@ static func _timed_step(sim: Variant, intent: SimIntent, rebase_by := Vector2i.Z
 
 ## The three timed runs of the straight swim (shared by #28E and P99.9): per run, every tick's us
 ## and yardsticks, the end hash and the counters.
-func _swim_runs(overdriven: bool, size := 1) -> Array[Dictionary]:
-	var key := _mode(overdriven, size)
+func _swim_runs(overdriven: bool, size := 1, top4 := false) -> Array[Dictionary]:
+	var key := _mode(overdriven, size) + (" (top 4)" if top4 else "")
 	if _runs.has(key):
 		return _runs[key]
 	var out: Array[Dictionary] = []
 	for run in RUNS:
-		var sim: Variant = _swimmer(size)
+		var sim: Variant = _swimmer(size, top4)
 		var bot = _swim_bot()
 		var start: PackedFloat64Array = sim.absolute_position_am()
 		for i in WARM_TICKS:
@@ -365,8 +388,15 @@ func _dense_waits(gate: String) -> bool:
 	return true
 
 
-## The 3 runs of the saturated case, run once per process.
-func _dense_runs() -> Array[Dictionary]:
+## The 3 runs of the saturated case, run once per process (per size for S3G21).
+func _dense_runs(size := 1) -> Array[Dictionary]:
+	if size != 1:
+		if not _dense_at.has(size):
+			var out: Array[Dictionary] = []
+			for run in RUNS:
+				out.append(_dense_run(size))
+			_dense_at[size] = out
+		return _dense_at[size]
 	if _dense.is_empty():
 		for run in RUNS:
 			_dense.append(_dense_run())
@@ -384,22 +414,31 @@ static func _dense_load_ticks(runs: Array[Dictionary]) -> Array[float]:
 
 ## One run of the saturated case: RACER overdriven east from (0, DENSE_LANE_Y) on DenseGen, hidden,
 ## DENSE_WARM_TICKS untimed, then DENSE_TICKS timed. Returns each tick's us and yardsticks, the timed
-## ticks that loaded a chunk (indices), the end hash and the median count of each capped thing.
-func _dense_run() -> Dictionary:
+## ticks that loaded a chunk (indices), the end hash and the median count of each capped thing. At
+## `size` above 1 (S3G21) the config is the shipped one with its top at 4, growth on, the cell set to
+## the size and put back on the lane in that size's tm, its bot a press player who never presses.
+func _dense_run(size := 1) -> Dictionary:
 	var catalog := PartCatalog.load_from()
 	var layout := PoolLayout.load_from()
 	var species := SpeciesCatalog.load_from()
 	var Fake: GDScript = load(FAKE_GEN)
-	var content: Variant = Fake.call("fixture_content")
+	var content: Variant = Fake.call("fixture_content") if size == 1 else Fake.call("fixture_content", WorldChecks.shipped_world_at(4))
+	if size != 1:
+		content.config.switches["growth"] = true
 	var r := Lineage.found(DENSE_SEED, Gates.BUILD_ID, catalog, "hunter")
 	Gates.make_racer(r.save.genome, catalog)
 	r.save.player["position"] = PlaneSpace.to_save_abs(0.0, DENSE_LANE_Y)
 	var sim: Variant = (load(Gates.POOL_SIM_PATH) as GDScript).callv("_create_endless",
 		[r.save, catalog, layout, species, content, DenseGen.new(content, species, DENSE_SEED)])
+	var bot = SwimBot.new(Vector2.RIGHT)
+	if size != 1:
+		check(sim.debug_set_size(size), "the saturated case at size %d" % size)
+		sim.debug_teleport_abs(0.0, DENSE_LANE_Y * WorldConfig.tm_to_am(size))
+		bot.keys.trigger = "press"
+		bot.keys.press = false
 	sim.debug_set_hidden(true)
 	sim.drain_events()
 	var caps: Dictionary = sim.world.caps
-	var bot = SwimBot.new(Vector2.RIGHT)
 	for i in DENSE_WARM_TICKS:
 		_swim_step(sim, bot, true)
 	var us: Array[float] = []
@@ -424,7 +463,7 @@ func _dense_run() -> Dictionary:
 		"awake": int(Yardstick.median(counts.awake)), "in_view": int(Yardstick.median(counts.in_view)),
 		"asleep": int(Yardstick.median(counts.asleep)), "food": int(Yardstick.median(counts.food)),
 		"chunks": sim.world.loaded_keys().size(), "sites": sim.world.sites.size(), "awake_overflow": int(c.awake_overflow), "evictions": int(c.evictions),
-		"food_trimmed": int(c.food_trimmed)}
+		"food_trimmed": int(c.food_trimmed), "size": int(sim.size())}
 
 
 ## The awake creatures in the cell's widest view, as the stream keeps them awake: within its view
@@ -606,8 +645,8 @@ func _check_rebase_cost(overdriven: bool) -> void:
 ## the plain tick held no rebase and the other exactly one. Returns each kept try's yardsticks (the
 ## plain tick "before", the rebase tick "at"), the kept tries' numbers, the tries, the run's end
 ## (_end_of) and the end hash.
-static func _rebase_run(overdriven: bool) -> Dictionary:
-	var sim: Variant = _swimmer()
+static func _rebase_run(overdriven: bool, size := 1, top4 := false) -> Dictionary:
+	var sim: Variant = _swimmer(size, top4)
 	var bot = _swim_bot()
 	for i in WARM_TICKS:
 		_swim_step(sim, bot, overdriven)
@@ -847,12 +886,13 @@ func test_slow_the_growth_tick_loads_the_chunks_the_prefetch_holds() -> void:
 ## One seed's growth tick at its fastest of RUNS runs: {"ratio", "us", "grew", "prefetched"}. Every
 ## run is the same: a hidden cell at home in press mode with no press, still; warm: the ring filled
 ## and PREFETCH_WARM_TICKS ticks; then debug_force_growth, and the tick that grows is timed.
-## `prefetched` is how many next-size chunks the stream held when the growth was forced.
-func _growth_tick(seed_value: int, warm: bool) -> Dictionary:
+## `prefetched` is how many next-size chunks the stream held when the growth was forced. From a
+## size above 1 (S3G19) the sim is Gates.make_sim_at's at that size.
+func _growth_tick(seed_value: int, warm: bool, from_size := 1) -> Dictionary:
 	var out := {"ratio": INF, "us": INF, "grew": true, "prefetched": 0}
 	var grown_hash := 0
 	for run in RUNS:
-		var sim: Variant = Gates.make_sim("omnivore", seed_value, true)
+		var sim: Variant = Gates.make_sim("omnivore", seed_value, true) if from_size == 1 else Gates.make_sim_at("omnivore", seed_value, from_size)
 		sim.debug_set_hidden(true)
 		var bot: Variant = _still_keys()
 		sim.step(_still(bot, sim))
@@ -881,6 +921,177 @@ func _growth_tick(seed_value: int, warm: bool) -> Dictionary:
 		else:
 			check_eq(sim.state_hash(), grown_hash, "seed %d: run %d grew the same as run 0" % [seed_value, run])
 	return out
+
+
+## S3G21 (D-115, BP3-7): see S3_RELATIVE. Every row is printed; the relative rows block, and each
+## absolute row blocks only where BASE_GREEN says it was green on e3-base at the size it is held
+## against. Measured 2026-10-24 in one run on a dev container: #28E 6.25, 7.06, 7.13, 7.43 yd at sizes
+## 1 to 4 and saturated 12.70, 13.14, 12.97, 11.99, so the relative rows hold (7.13 against 7.19 is
+## the tight one); that container also put size 1's own P99.9, rebase and saturated rows over their
+## limits (17.1, +2.25, 13.4 in their own tests), so the absolute rows are read on CI.
+func test_soak_the_tick_at_sizes_3_and_4_holds_the_relative_rows() -> void:
+	if _waits("S3G21") or _dense_waits("S3G21's saturated rows"):
+		return
+	var rows := {}
+	for n in [1, 2, 3, 4]:
+		rows[n] = _s3_rows(n)
+		print("test-endless-cost: S3G21 size %d: #28E %.2f yd, P99.9 %.2f, rebase +%.2f, saturated %.2f" % [
+			n, rows[n].median_28e, rows[n].p999, rows[n].rebase, rows[n].saturated])
+	var limits := {"median_28e": LIMIT_YARDSTICKS, "p999": P999_YARDSTICKS, "rebase": REBASE_LIMIT_YARDSTICKS,
+		"saturated": DENSE_LIMIT_YARDSTICKS}
+	for n in [3, 4]:
+		var base: int = S3_HELD_AGAINST[n]
+		var factor: float = S3_RELATIVE[n]
+		for key in ["median_28e", "saturated"]:
+			var bound: float = rows[base][key] * factor
+			print("test-endless-cost: S3G21 relative: size %d %s %.2f yd against %.2f x size %d's %.2f = %.2f" % [
+				n, key, rows[n][key], factor, base, rows[base][key], bound])
+			check(rows[n][key] <= bound, "size %d: %s %.2f yd at most %.2f x size %d's (%.2f)" % [
+				n, key, rows[n][key], factor, base, bound])
+		for key in limits:
+			var blocks := bool((BASE_GREEN.get(base, {}) as Dictionary).get(key, false))
+			var within: bool = rows[n][key] <= limits[key]
+			print("test-endless-cost: S3G21 absolute: size %d %s %.2f yd, limit %.1f: %s (%s)" % [n, key, rows[n][key],
+				limits[key], "within" if within else "OVER", "blocks" if blocks else "reports"])
+			if blocks:
+				check(within, "size %d: %s %.2f yd (limit %.1f)" % [n, key, rows[n][key], limits[key]])
+
+
+## One size's S3G21 rows in yardsticks: the swim's median run median tick and P99.9 at each tick's
+## fastest, the rebase excess at its fastest, and the saturated case's median run median tick.
+func _s3_rows(n: int) -> Dictionary:
+	var runs := _swim_runs(true, n, true)
+	for r in runs:
+		check_eq(r.hash, runs[0].hash, "size %d: every swim run timed the same ticks" % n)
+		check_eq(int(r.end.size), n, "size %d: the swim ended at that size" % n)
+	var rebases: Array[Dictionary] = []
+	for i in RUNS:
+		rebases.append(_rebase_run(true, n, true))
+	var kept := true
+	for r in rebases:
+		kept = kept and r.kept == rebases[0].kept
+	check(kept and not (rebases[0].kept as Array).is_empty(), "size %d: every rebase run kept the same tries" % n)
+	var dense := _dense_runs(n)
+	check_eq(int(dense[0].size), n, "the saturated case ran at size %d" % n)
+	return {"median_28e": _median_run(runs), "p999": _percentile(_fastest_per_tick(runs), P999),
+		"rebase": Yardstick.median(_fastest_excess(rebases)) if kept and not (rebases[0].kept as Array).is_empty() else INF,
+		"saturated": _median_run(dense)}
+
+
+## The median of the runs' median ticks, in yardsticks.
+static func _median_run(runs: Array[Dictionary]) -> float:
+	var medians: Array[float] = []
+	for r in runs:
+		medians.append(Yardstick.median(r.ratios))
+	return Yardstick.median(medians)
+
+
+## S3G21b: S3's additions at size 4, timed on the top-4 world's size-4 swim after each of
+## S3_ADDITIONS_TICKS ticks (WARM_TICKS untimed first), each against that tick's yardstick: the sting
+## test with the cell shown and its gates open, EcologyRegion.tick at dt 0 (no amount moves) less
+## S2's plain loop over the same zones, the landmark pass, and the morsel pass on its own ticks spread
+## over MORSEL_PASS_TICKS. The median tick's sum is at most S3_ADDITIONS_LIMIT_YARDSTICKS. Measured
+## 2026-10-24: 0.25 to 0.29 (sting 0.08, bloom 0.05, landmark 0.10, morsel 0.03); the route wakes no
+## veil, so the sting row is its gates and awake scan. Mutation (s3-sim): one loop over every zone
+## with a per-zone has("bloom") and no sting prefilter gives 0.42 to 0.45.
+func test_slow_s3s_own_additions_cost_at_most_0_4_yardsticks_a_tick_at_size_4() -> void:
+	if _waits("S3G21b"):
+		return
+	var sim: Variant = _swimmer(4, true)
+	check_eq(int(sim.size()), 4, "the swim is at size 4")
+	var bot = _swim_bot()
+	for i in WARM_TICKS:
+		_swim_step(sim, bot, true)
+	var passes: Array[float] = []
+	var per_tick: Array[Dictionary] = []
+	var counts := {"hazards": 0, "blooms": 0, "zones": 0, "morsel_sites": 0}
+	for i in S3_ADDITIONS_TICKS:
+		Gates.drive(sim, true)
+		var t := _timed_step(sim, bot.next_intent(sim))
+		var yard: float = maxf(float(t.yard_us), 1.0)
+		sim.dev_hidden = false
+		var gap: int = sim.last_sting_tick
+		sim.last_sting_tick = -CreatureBrain.NEVER
+		var t0 := Time.get_ticks_usec()
+		sim._hazard_stings()
+		var sting := float(Time.get_ticks_usec() - t0)
+		if sim.last_sting_tick == -CreatureBrain.NEVER:
+			sim.last_sting_tick = gap
+		sim.dev_hidden = true
+		t0 = Time.get_ticks_usec()
+		sim.region.tick(0.0, sim.tick)
+		var region := float(Time.get_ticks_usec() - t0)
+		var plain := _plain_region_us(sim.region.zones)
+		t0 = Time.get_ticks_usec()
+		sim.world._landmark_pass(sim)
+		var landmark := float(Time.get_ticks_usec() - t0)
+		if posmod(sim.tick, WorldStream.MORSEL_PASS_TICKS) == 0 and not sim.world.morsel_sites.is_empty():
+			t0 = Time.get_ticks_usec()
+			sim.world._morsel_pass(sim)
+			passes.append(float(Time.get_ticks_usec() - t0) / yard)
+		per_tick.append({"sting": sting / yard, "bloom": maxf(region - plain, 0.0) / yard, "landmark": landmark / yard})
+		counts.hazards = maxi(counts.hazards, _hazards_awake(sim))
+		counts.blooms = maxi(counts.blooms, sim.region._bloom.size())
+		counts.zones = maxi(counts.zones, sim.region.zones.size())
+		counts.morsel_sites = maxi(counts.morsel_sites, sim.world.morsel_sites.size())
+	var morsel := (Yardstick.median(passes) if not passes.is_empty() else 0.0) / WorldStream.MORSEL_PASS_TICKS
+	var sums: Array[float] = []
+	var parts := {"sting": [] as Array[float], "bloom": [] as Array[float], "landmark": [] as Array[float]}
+	for p in per_tick:
+		sums.append(float(p.sting) + float(p.bloom) + float(p.landmark) + morsel)
+		for key in parts:
+			parts[key].append(float(p[key]))
+	var m := Yardstick.median(sums)
+	print("test-endless-cost: S3G21b at size 4: the additions %.3f yd median a tick (sting %.3f, bloom %.3f, landmark %.3f, morsel pass %.3f on its tick, %.3f spread over %d); at most %d hazards awake, %d bloom zones of %d, %d morsel sites, %d passes" % [
+		m, Yardstick.median(parts.sting), Yardstick.median(parts.bloom), Yardstick.median(parts.landmark),
+		morsel * WorldStream.MORSEL_PASS_TICKS, morsel, WorldStream.MORSEL_PASS_TICKS, counts.hazards, counts.blooms,
+		counts.zones, counts.morsel_sites, passes.size()])
+	check(counts.blooms > 0, "bloom zones were loaded (%d)" % counts.blooms)
+	check(not passes.is_empty(), "the morsel pass ran (%d morsel sites)" % counts.morsel_sites)
+	check(m <= S3_ADDITIONS_LIMIT_YARDSTICKS, "S3's additions cost %.3f yardsticks a tick (limit %.1f)" % [
+		m, S3_ADDITIONS_LIMIT_YARDSTICKS])
+
+
+## S2's plain regrowth loop (EcologyRegion.tick before S3, the full-zone skip kept) over `zones` at dt
+## 0, which writes every amount back unchanged: its time in us.
+static func _plain_region_us(zones: Array) -> float:
+	var t0 := Time.get_ticks_usec()
+	for z in zones:
+		var cap: float = z.capacity
+		var amount: float = z.amount
+		if amount == cap:
+			continue
+		var rate: float = z.growth_rate
+		var logistic: float = rate * amount * (1.0 - amount / cap)
+		z.amount = minf(cap, amount + (logistic + cap * EcologyRegion.REGROW_FLOOR * rate) * 0.0)
+	return float(Time.get_ticks_usec() - t0)
+
+
+static func _hazards_awake(sim: Variant) -> int:
+	var n := 0
+	for c in sim.creatures.awake():
+		n += 1 if c.brain != null and c.brain.behavior == CreatureBrain.HAZARD else 0
+	return n
+
+
+## S3G19: the growth ticks 2 to 3 and 3 to 4, warm (the ring filled and PREFETCH_WARM_TICKS ticks),
+## at their fastest of RUNS at most GROWTH_TICK_LIMIT_YARDSTICKS per seed, as S2G18; cold printed.
+func test_slow_the_growth_ticks_2_to_3_and_3_to_4_cost_at_most_40_yardsticks() -> void:
+	if _waits("S3G19"):
+		return
+	for from in S3_GROWTH_FROM:
+		var rows: Array[String] = []
+		for seed_value in GROWTH_TICK_SEEDS:
+			var warm := _growth_tick(seed_value, true, from)
+			var cold := _growth_tick(seed_value, false, from)
+			rows.append("seed %d: warm %.2f yardsticks (%.0f us), cold %.2f (%.0f us)" % [seed_value, warm.ratio, warm.us, cold.ratio, cold.us])
+			check(bool(warm.grew) and bool(cold.grew), "%d to %d seed %d: the forced growth grew within %d ticks" % [
+				from, from + 1, seed_value, GROWTH_WAIT_TICKS])
+			check(int(warm.prefetched) > 0, "%d to %d seed %d: the warm runs grew with the next size's chunks prefetched (%d)" % [
+				from, from + 1, seed_value, warm.prefetched])
+			check(float(warm.ratio) <= GROWTH_TICK_LIMIT_YARDSTICKS, "%d to %d seed %d: the growth tick costs %.2f yardsticks at its fastest (limit %.0f)" % [
+				from, from + 1, seed_value, warm.ratio, GROWTH_TICK_LIMIT_YARDSTICKS])
+		print("test-endless-cost: S3G19 the growth tick %d to %d at its fastest of %d runs: %s" % [from, from + 1, RUNS, "; ".join(rows)])
 
 
 ## The next size's chunks the stream holds (WorldStream._next_chunks, BP-4), or 0 before it lands.
@@ -1005,5 +1216,5 @@ class DenseGen extends "res://tests/fakes/fake_world_gen.gd":
 				c.sites.append({"id": "d_%d_%d_%d_%d" % [cx, cy, q, k], "species": SITE_SPECIES, "x": zc.x + home.x,
 					"y": zc.y + home.y, "heading": a + PI, "territory": {"x": zc.x, "y": zc.y, "radius": ZONE_R},
 					"reach": {"x": rx, "y": ry, "radius": float(reach.radius)}, "chunks": disc_chunks(rx, ry, float(reach.radius), 32.0),
-					"sizes": [1] as Array[int], "tile": tile})
+					"sizes": [n] as Array[int], "tile": tile})
 		return c

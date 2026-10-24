@@ -132,6 +132,11 @@ var _landmark_points := {}
 const LANDMARK_SPIRAL_RINGS := 8       ## BP3-8: the return point's spiral stops 4 tm out
 var _landmark_spirals := 0             ## spirals run (tests: one per anchor per size, S3G24b)
 var _landmark_d := -1.0                ## BP3-8's D at this size (tm), measured once a size
+## The landmark pass's anchors of the 3 x 3 loaded chunks round _landmark_near_at, in its scan order;
+## a chunk loading or unloading clears it (S3G21b: the pass then costs no chunk lookups a tick).
+var _landmark_near: Array[Dictionary] = []
+var _landmark_near_at := NO_CHUNK
+const NO_CHUNK := Vector2i(-2147483648, -2147483648)
 ## The world file's rings (tm) and caps, read once.
 var rings := {}
 var caps := {}
@@ -897,6 +902,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", whole := false) ->
 		_let_go.append(colliders)
 	_chunks.erase(key)
 	_keys.erase(key)
+	_landmark_near_at = NO_CHUNK
 	_load_bound = PackedFloat64Array()   # a missing chunk now
 	var event := {"type": "chunk_unloaded", "key": key}
 	if not reason.is_empty():
@@ -981,6 +987,7 @@ func _unload_all(sim: PoolSim) -> void:
 	_home_count = 0
 	_chunks = {}
 	_keys = keys_fresh
+	_landmark_near_at = NO_CHUNK
 	_load_bound = PackedFloat64Array()
 
 
@@ -1202,6 +1209,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
 	_chunks[key] = ch
+	_landmark_near_at = NO_CHUNK
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
 	if not made.is_empty():
 		_emit(sim, _placed_event(made, ch))
@@ -2389,18 +2397,21 @@ func _landmark_pass(sim: PoolSim) -> void:
 	var best_d := INF
 	var reach := float(content.config.growth.discovery.landmark_find_tm)
 	var at := chunk_of_local(sim.motion.position)
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			var ch: WorldChunk = _chunks.get(Vector2i(at.x + dx, at.y + dy))
-			if ch == null:
-				continue
-			for a in ch.anchors:
-				if str(a.id) == landmark_anchor:
-					continue
-				var d := sim.motion.position.distance_to(local_of_tm(float(a.x), float(a.y)))
-				if d <= reach and (d < best_d or (d == best_d and str(a.id) < str(best.id))):
-					best = a
-					best_d = d
+	if at != _landmark_near_at:
+		_landmark_near_at = at
+		_landmark_near.clear()
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var ch: WorldChunk = _chunks.get(Vector2i(at.x + dx, at.y + dy))
+				if ch != null:
+					_landmark_near.append_array(ch.anchors)
+	for a in _landmark_near:
+		if str(a.id) == landmark_anchor:
+			continue
+		var d := sim.motion.position.distance_to(local_of_tm(float(a.x), float(a.y)))
+		if d <= reach and (d < best_d or (d == best_d and str(a.id) < str(best.id))):
+			best = a
+			best_d = d
 	if best.is_empty():
 		return
 	var r := landmark_candidate(sim, best)

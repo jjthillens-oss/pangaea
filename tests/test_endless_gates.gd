@@ -343,17 +343,19 @@ static func make_sim(body: String, seed_value: int, growth := false) -> Variant:
 	return sim
 
 
-## make_sim's sim at `size` (S3G22, S3G38): a new `body` lineage at home on the shipped world with
-## its top at 4 (WorldChecks.shipped_world_at; the real world once I-3 has made 4 its top), growth on,
-## set to `size` by debug_set_size. The content is shared by every such sim. Null when the size
-## cannot be set.
+## make_sim's sim at `size` (S3G21, S3G22, S3G38): a new `body` lineage (or RACER) at home on the
+## shipped world with its top at 4 (WorldChecks.shipped_world_at; the real world once I-3 has made 4
+## its top), growth on, set to `size` by debug_set_size. The content is shared by every such sim.
+## Null when the size cannot be set.
 static func make_sim_at(body: String, seed_value: int, size: int) -> Variant:
 	var d := data()
 	if not _data.has("top4"):
 		var content_class := load(str(_global_classes().WorldContent)) as GDScript
 		_data.top4 = content_class.call("load_from", WorldChecks.shipped_world_at(4), d.layout, d.species)
 	d.top4.config.switches["growth"] = true
-	var r := Lineage.found(seed_value, BUILD_ID, d.catalog, body)
+	var r := Lineage.found(seed_value, BUILD_ID, d.catalog, "hunter" if body == RACER else body)
+	if body == RACER:
+		make_racer(r.save.genome, d.catalog)
 	r.save.player["position"] = PlaneSpace.to_save(HOME)
 	var sim: Variant = (load(POOL_SIM_PATH) as GDScript).callv("create", [r.save, d.catalog, d.layout, d.species, d.top4])
 	if size > 1 and not sim.debug_set_size(size):
