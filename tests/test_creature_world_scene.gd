@@ -23,6 +23,7 @@ func before_each() -> void:
 
 func make(body_name := "s1_quadruped", seed_value := 5) -> CreatureWorld:
 	var world: CreatureWorld = load(WORLD_SCENE).instantiate()
+	world.mate_beat_s = 0.0   # the mating beat has its own test
 	(Engine.get_main_loop() as SceneTree).root.add_child(world)
 	world.setup(Fixtures.body(body_name).to_dict(), seed_value, 150)
 	world.evolve_requested.connect(func(p): _evolved.append(p))
@@ -167,3 +168,27 @@ func test_in_the_tree_the_walker_rig_solves_finite_legs() -> void:
 	check(float(r["max_stance_slip_ratio"]) < 0.05, "stance feet stay within 5%% of a leg length of their targets (%.4f)" % float(r["max_stance_slip_ratio"]))
 	check(bool(r["bones_finite"]), "every bone is finite")
 	check(int(r["rivals_drawn"]) == 6, "six rivals drawn (%d)" % int(r["rivals_drawn"]))
+
+
+## Owner direction 2026-10-24: Spore's mating call. Evolving at the nest calls a mate that walks up beside the
+## player; the world holds still, and the editor opens when the beat ends.
+func test_evolving_calls_a_mate_then_opens_the_editor() -> void:
+	var world := make()
+	world.mate_beat_s = 1.0
+	world.set_intent(Vector2.ZERO, false, true)
+	frames(world, 2)
+	check_eq(_evolved.size(), 0, "not yet: a mate is on its way")
+	check(world.mate != null and world.mate.visible, "the mate is in the world")
+	check_eq(world.hud.notice_text(), world.MATE_NOTICE, "the notice says so")
+	var tick: int = world.sim.tick_count
+	var start: Vector3 = world.mate.transform.origin
+	frames(world, 30)
+	check_eq(world.sim.tick_count, tick, "the world holds still during the beat")
+	var me: Vector3 = world.sim.player()["position"]
+	check(world.mate.transform.origin.distance_to(me) < start.distance_to(me), "the mate walks up to the player")
+	frames(world, 40)
+	check_eq(_evolved.size(), 1, "then the editor opens")
+	if _evolved.size() == 1:
+		check_eq(_evolved[0], 150, "with the points")
+	check(world.mate == null, "and the mate is gone")
+	world.free()
