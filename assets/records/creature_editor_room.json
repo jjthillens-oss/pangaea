@@ -1,0 +1,93 @@
+{
+  "id": "creature_editor_room",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature editor floor (PROPOSED): a unit-radius pedestal pad for the Spore-style editor room, dark blue with a raised steel-blue rim, a rounded edge and three faintly lit concentric grooves; replaces the creature_editor_floor placeholder cylinder.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_editor_room.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_editor_room.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 2.0,
+    "y_forward": 2.0,
+    "z_up": 0.047
+  },
+  "triangles": 1152,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_CreatureEditorRoom_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_CreatureEditorRoom_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureEditorRoom_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EditorGroove",
+    "M_EditorPad",
+    "M_EditorRim"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "CreatureEditorRoom"
+  ],
+  "kind": "editor_floor",
+  "pivot": "the centre of the top face (Blender z = 0, Godot y = 0); the rim stands 12 mm above it and the underside's centre 35 mm below",
+  "usage": "Place it where the cylinder was, at y = -0.01 (the face 1 cm under the feet, the rim's top 2 mm over them; y = 0 stands the body on the face), and scale it Vector3(s, 1, s), s = max(1.2, 1.4 x the body's longest axis): the rim and grooves are concentric geometry, so they scale with the pad in plan while the thickness stays 35 mm. Move it with the camera focus as the body walks; the camera never looks under it.",
+  "pad_m": {
+    "radius": 1.0,
+    "thickness": 0.035,
+    "rim_height": 0.012,
+    "rim_top_r": [
+      0.9,
+      0.965
+    ],
+    "edge_radius": 0.035,
+    "grooves_r": [
+      0.33,
+      0.6,
+      0.86
+    ],
+    "groove_width": 0.014,
+    "groove_depth": 0.006,
+    "segments": 48
+  },
+  "emission": "M_EditorGroove emits a flat #5FB3FF at strength 0.15, a faint line under the editor's glow",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
+    "tolerance_m": {
+      "CreatureEditorRoom": 0.0005
+    },
+    "triangles_before": 1152,
+    "triangles_after": 1152
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
+}

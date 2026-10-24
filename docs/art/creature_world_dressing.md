@@ -8,12 +8,14 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 | --- | --- | --- | --- | --- |
 | `creature_field_ground` | the field plane | 12 800 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | 172 x 172 m grid, relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them; the centre is flat for 7.5 m round the nest |
 | `creature_nest_ring` | the nest torus | 3 055 (4 000) | `M_NestEarth`, `M_NestTwig`, `M_NestStone` (baked) | mound of earth and straw, inner 5.2 m, crown 5.8 m, outer 6.55 m, up to 0.5 m high; the inside is clear and flat |
-| `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.08 x 1.05 x 0.79 m, every vertex within 0.56 m of the pivot |
+| `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.08 x 1.05 x 0.79 m, every vertex within 0.56 m of the pivot horizontally (the top card tips are 0.81 m from it) |
 | `creature_meat_chunk` | the meat box | 604 (1 200) | `M_MeatFlesh` (external, instance tint), `M_MeatBone` (baked) | a torn haunch with a bone end, 0.58 m long, lying on the ground |
+| `creature_editor_room` | the editor's floor cylinder (`creature_editor_floor`) | 1 152 (1 200) | `M_EditorPad`, `M_EditorRim`, `M_EditorGroove` (baked; the grooves emit a faint flat #5FB3FF at 0.15) | a unit-radius pedestal pad, 3.5 cm thick under the face: dark blue face (#14305C, roughness about 0.5, concentric brushing), a steel-blue rim (#5A7FA8) 12 mm high with a quarter-round edge, V grooves at r 0.33 and 0.60 and at the rim's foot (0.86), revolved at 48 segments. The pivot is the centre of the top face, so the editor's y = -0.01 placement and (s, 1, s) scaling keep working; the rings are geometry and scale with the pad |
 
-Every asset keeps the stage's contract: 1 m = 1 unit, the pivot on the ground (Godot y = 0), Blender +Y forward
-(Godot -Z), no node names read by game code. Sources are in `assets/source/blender/`, exports in `assets/export/`,
-records in `assets/records/`, all written by `tools/blender/make_creature_world.py`.
+Every asset keeps the stage's contract: 1 m = 1 unit, the pivot on the ground (Godot y = 0; the editor pad's is the
+centre of its top face), Blender +Y forward (Godot -Z), no node names read by game code. Sources are in
+`assets/source/blender/`, exports in `assets/export/`, records in `assets/records/`, all written by
+`tools/blender/make_creature_world.py`.
 
 ## The field material
 
@@ -37,7 +39,7 @@ authored) greyscale detail textures, the asset's flat colour, and `vertex_color_
 the asset as baked, a pale desaturated tint such as (0.62, 0.74, 0.58) reads as a bare bush. One instance colour
 tints the bush's core, its leaf cards and its fruit alike: the cards carry the leaf colour `#3C8A6C`, the core the
 same hue darkened to `#245442` (LAB L 32 against 52), so a gap between cards reads as shade inside the shrub. The
-bone (`M_MeatBone`) and the nest keep their baked materials.
+bone (`M_MeatBone`), the nest and the editor pad keep their baked materials.
 
 ## The bush's leaf cards
 
@@ -76,14 +78,15 @@ python tools/blender/make_creature_world.py [--only id[,id...]]   # bpy 5.2.2 ve
 godot --headless --path . --import                                # writes the .import files and extracts the textures
 python tools/blender/make_creature_world.py --import              # the .tres files, the .glb.import mappings, normal-map flags
 godot --headless --path . --import                                # picks the mappings up
-python tools/blender/render_production.py creature_nest_ring creature_fruit_bush creature_meat_chunk   # review sheets
+python tools/blender/render_production.py creature_nest_ring creature_fruit_bush creature_meat_chunk creature_editor_room   # review sheets
 ```
 
-In-engine screenshots: `tools/godot/world_dressing_shot.gd` under Xvfb (recipe in its header). The Compatibility
-renderer overexposes a shadowed sun (docs/TOOLCHAIN.md), so judge colour on Forward+ (lavapipe) or with
-`--no-shadow`.
+In-engine screenshots: `tools/godot/world_dressing_shot.gd` under Xvfb (recipe in its header), and
+`tools/godot/editor_room_shot.gd` for the editor pad in the editor scene's own sky and lights, from the editor camera's
+pose. The Compatibility renderer overexposes a shadowed sun (docs/TOOLCHAIN.md), so judge colour on Forward+
+(lavapipe) or with `--no-shadow`.
 
 ## Next
 
 Straw tufts and a worn path for the nest, two or three bush and meat variants (a second leaf atlas or card
-layout would do for the bush), and `creature_editor_room` for the editor floor.
+layout would do for the bush), and walls or a backdrop for the editor room beyond its pad.
