@@ -537,15 +537,16 @@ with strength", with a level-up system for stats to come on top. `CreatureStats`
 - **Strength.** Bite power is multiplied by (mass / 60 kg)^(2/3), muscle cross-section, kept within 0.25x..6x.
 - **Not yet.** The incremental level-up system is still to be designed and built.
 
-## 2026-10-24 · Creature levels earned by doing (CONFIRMED direction; design PROPOSED until the owner picks; IMPLEMENTED)
-Joshua (2026-10-24 02:42 UTC): "you can level up your strengths ... an incremental system for that", on top of the
-size physics. Built on the recommended option, "earn levels by doing" (`game/domain/creature/creature_levels.gd`):
+## 2026-10-24 · Creature progress: doing earns adaptation points (CONFIRMED by the owner; numbers PROPOSED; IMPLEMENTED)
+Joshua (02:42 UTC) asked for an incremental level-up system on top of the size physics. PR #128 first built flat
+stat levels (+5% a level, saved as creature `xp`). Asked what the Bible recommends (06:46), the answer was that it has
+no level system: stats derive from anatomy with costs and caps (section 12), and progress runs through energy,
+adaptation potential and knowledge (section 3). Joshua picked "Doing earns adaptation points" (06:47), which replaces
+the levels:
 
-- **Four stats.** Speed (xp per 10 m walked), strength (3 xp per landed bite), toughness (2 xp per hit taken) and
-  senses (2 xp the first time each rival is seen in a life).
-- **Curve.** Level n needs 10 * n * (n + 1) / 2 xp in that stat; the cap is level 10. Each level adds 5% to the
-  stat's numbers (speed and speed factor, bite power, max health, sight within its cap), on top of the physics.
-- **Save.** The lineage save's `creature` record gains an optional `xp` dictionary (stat -> whole xp), checked by
-  `SaveGame.validate_creature`. Old saves load with no xp. A level-up shows a notice in the world.
-- **Pending.** Joshua's pick on the decision card may change the earning rules; the numbers live in
-  `game/data/creature/creature_stage.json` "levels".
+- **Deeds.** Walking (1 point per 25 m), landed bites (2), hits survived (1) and each rival first spotted in a life
+  (2) add adaptation points, the same purse eating fills; the world sim reports each as an "earned" event and the
+  HUD flashes it. Numbers: `game/data/creature/creature_stage.json` "deeds".
+- **Stats.** They come from the body and its physics only; the points buy body changes in the editor.
+- **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
+  are removed; a save written with `xp` still loads, and the key is dropped on the next save.

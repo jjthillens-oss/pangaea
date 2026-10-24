@@ -101,9 +101,6 @@ static func validate_creature(data: Dictionary, body_rules: Callable = Callable(
 	if body_rules.is_valid():
 		for problem in body_rules.call(body):
 			errors.append("Creature body: %s" % problem)
-	# Optional: the stat experience earned by doing (CreatureLevels), {stat: xp}.
-	if data.has("xp"):
-		errors.append_array(CreatureLevels.problems(data["xp"]))
 	return errors
 
 
@@ -145,11 +142,6 @@ static func from_dict(data: Dictionary) -> SaveGame:
 	var generation = save.creature.get("generation")
 	if generation is float and is_finite(generation) and generation == floorf(generation):
 		save.creature["generation"] = int(generation)
-	var xp = save.creature.get("xp")
-	if xp is Dictionary:
-		for k in xp:
-			if xp[k] is float and is_finite(xp[k]) and xp[k] == floorf(xp[k]):
-				xp[k] = int(xp[k])
 	save.lineage_history = JsonValues.array(data, "lineage_history", problems)
 	save.discoveries = JsonValues.array(data, "discoveries", problems)
 	save.relationships = JsonValues.array(data, "relationships", problems)

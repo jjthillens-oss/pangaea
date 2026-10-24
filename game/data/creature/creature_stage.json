@@ -14,6 +14,6 @@
 	"mass": {"kg_per_m3": 900},
 	"size": {"ref_kg": 120, "power": 0.6, "_note": "above ref_kg the top speed falls: 0.69x at 300 kg, 0.35x at 1.2 t"},
 	"strength": {"ref_kg": 60, "mass_power": 0.667, "min": 0.25, "max": 6.0, "_note": "bite x (mass / ref_kg)^(2/3)"},
-	"levels": {"per_level": 0.05, "max_level": 10, "xp_base": 10, "run_m_per_xp": 10, "bite_xp": 3, "hit_xp": 2, "spot_xp": 2,
-		"_note": "level n needs xp_base*n*(n+1)/2: 10, 30, 60 ... 550 xp; 1.5x at level 10"}
+	"deeds": {"walk_m_per_point": 25, "bite_points": 2, "hit_points": 1, "spot_points": 2,
+		"_note": "adaptation points earned by doing, on top of eating; spent in the editor (Bible section 3)"}
 }
