@@ -206,6 +206,19 @@
         "game/scenes/creature/creature_editor.gd"
       ],
       "node": "CreatureEditor/HandleRoot"
+    },
+    {
+      "id": "editor_test_dish",
+      "kind": "ui",
+      "description": "The cell editor's test drive dish (TestPool): a flat CylinderMesh floor and TorusMesh rings for the wall and the floor's distance marks, in their own little world behind the editor. Editing UI for feeling a body's speed, not a model of the sea.",
+      "types": [
+        "CylinderMesh",
+        "TorusMesh"
+      ],
+      "files": [
+        "game/ui/test_pool.gd"
+      ],
+      "node": "CellEditor/TestPool"
     }
   ]
 }
