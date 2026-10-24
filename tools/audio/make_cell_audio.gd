@@ -27,6 +27,44 @@ const RMS_DB := {
 	"amb_bed": -25.0, "amb_sunlit": -31.0, "amb_reef": -30.0, "amb_drift": -31.0, "amb_swim": -24.0,
 }
 
+const BUS_LAYOUT := "res://default_bus_layout.tres"
+
+
+const SFX_INFO := {
+	"eat_plant": ["The cell eats plankton: a soft suck, a rising pop and a glassy sparkle.", "Eat burst and the meal toast"],
+	"eat_meat": ["The cell eats carrion: two wet chomps.", "Eat burst and the meal toast"],
+	"refuse": ["Food the cell cannot eat: a muffled glass bonk falling a third.", "Refusal hint text and head shake"],
+	"starve_pulse": ["A weak heartbeat at most once a second while starving.", "Starving banner, grey cell and food arrow"],
+	"notice": ["A creature notices the cell: a startled chirp and a ping. Positional.", "The creature's eye glow and \"!\" marker"],
+	"tell_lunge": ["The ambush hunter's lunge tell: a rising growl as long as the tell, loudest at the strike. Positional.", "Coil pose and the strike lane on the floor"],
+	"tell_puff": ["The rammer's puff tell: water rushing in, a rubbery creak and spike clicks, as long as the tell. Positional.", "Puff pose, raised crest and the strike lane"],
+	"tell_cancel": ["A creature gives up its tell: air let out. Positional.", "The creature deflates and the lane clears"],
+	"strike": ["The lunge or charge itself: a whoosh of water. Positional.", "The strike stretch along the lane"],
+	"bite": ["A creature bites another: a snap and a wet tear. Positional.", "Hit number on the target"],
+	"ram": ["A creature rams another: a deep jelly thud. Positional.", "Hit number on the target"],
+	"hurt": ["The cell is hit: a thump, a sting and a hurt squeak.", "Hurt flash, flinch, vignette and hit number"],
+	"dodged": ["A strike on the cell missed: a swish and a rising sparkle.", "\"Dodged!\" text"],
+	"creature_die": ["A creature dies: a membrane pop and a sinking fizz. Positional.", "The body turns to carrion"],
+	"player_die": ["The cell dies: the heartbeat stops, a falling dissolve and a soft minor chord.", "The death notice"],
+	"respawn": ["The lineage continues: rising glass notes and bubbles.", "The cell reappears at its checkpoint"],
+	"region_enter": ["Endless world: the cell swims into a new region (a quiet sting).", "The region toast"],
+	"region_rare": ["Endless world: a rare giant set piece is near (a swell and a shimmer).", "The set piece in view"],
+	"grow_warn": ["Endless world: growth starts in 1.5 s (a rising shimmer).", "\"Growing…\" toast"],
+	"grow": ["Endless world: the cell grows a size (a swell into a bright chord).", "The growth beat and size toast"],
+	"growth_ring": ["Endless world: a growth-ring lump is eaten (a bubbly chime).", "The growth meter jump"],
+	"now_food": ["Endless world: a former threat is now small enough to eat.", "\"Now food\" toast"],
+}
+
+
+const AMB_INFO := {
+	"amb_bed": ["The deep fluid: slow swells of dark noise and a faint pressure tone, under every region.", 40.0],
+	"amb_sunlit": ["Sunlit water (the home pool and sunlit regions): many tiny bubbles, rising streams and a bright fizz.", 31.0],
+	"amb_reef": ["Shell reefs: crackles and clicks of busy microbes, small knocks and far chirps.", 29.0],
+	"amb_drift": ["Open drift: sparse large bubbles and the slow moans of far giants.", 37.0],
+	"amb_swim": ["The cell's own swimming: a flagellum whir and a bubble trail, faded in with speed.", 4.0],
+}
+
+
 var _only := PackedStringArray()
 var _written := 0
 
@@ -55,9 +93,6 @@ func _wanted(id: String, group: String) -> bool:
 ## The mixer, saved as res://default_bus_layout.tres: Music, SFX and Ambience send to Master. The
 ## settings menu sets their volumes by name. Music has a low-pass the soundtrack closes for moods
 ## and a wide hall; SFX a small wet room; Master a limiter so a pile-up never clips.
-const BUS_LAYOUT := "res://default_bus_layout.tres"
-
-
 func _make_buses() -> void:
 	while AudioServer.bus_count > 1:
 		AudioServer.remove_bus(AudioServer.bus_count - 1)
@@ -102,32 +137,6 @@ func _make_buses() -> void:
 
 ## What each effect is for and what the player sees with it (Bible 20: every critical cue has a
 ## visual equivalent).
-const SFX_INFO := {
-	"eat_plant": ["The cell eats plankton: a soft suck, a rising pop and a glassy sparkle.", "Eat burst and the meal toast"],
-	"eat_meat": ["The cell eats carrion: two wet chomps.", "Eat burst and the meal toast"],
-	"refuse": ["Food the cell cannot eat: a muffled glass bonk falling a third.", "Refusal hint text and head shake"],
-	"starve_pulse": ["A weak heartbeat at most once a second while starving.", "Starving banner, grey cell and food arrow"],
-	"notice": ["A creature notices the cell: a startled chirp and a ping. Positional.", "The creature's eye glow and \"!\" marker"],
-	"tell_lunge": ["The ambush hunter's lunge tell: a rising growl as long as the tell, loudest at the strike. Positional.", "Coil pose and the strike lane on the floor"],
-	"tell_puff": ["The rammer's puff tell: water rushing in, a rubbery creak and spike clicks, as long as the tell. Positional.", "Puff pose, raised crest and the strike lane"],
-	"tell_cancel": ["A creature gives up its tell: air let out. Positional.", "The creature deflates and the lane clears"],
-	"strike": ["The lunge or charge itself: a whoosh of water. Positional.", "The strike stretch along the lane"],
-	"bite": ["A creature bites another: a snap and a wet tear. Positional.", "Hit number on the target"],
-	"ram": ["A creature rams another: a deep jelly thud. Positional.", "Hit number on the target"],
-	"hurt": ["The cell is hit: a thump, a sting and a hurt squeak.", "Hurt flash, flinch, vignette and hit number"],
-	"dodged": ["A strike on the cell missed: a swish and a rising sparkle.", "\"Dodged!\" text"],
-	"creature_die": ["A creature dies: a membrane pop and a sinking fizz. Positional.", "The body turns to carrion"],
-	"player_die": ["The cell dies: the heartbeat stops, a falling dissolve and a soft minor chord.", "The death notice"],
-	"respawn": ["The lineage continues: rising glass notes and bubbles.", "The cell reappears at its checkpoint"],
-	"region_enter": ["Endless world: the cell swims into a new region (a quiet sting).", "The region toast"],
-	"region_rare": ["Endless world: a rare giant set piece is near (a swell and a shimmer).", "The set piece in view"],
-	"grow_warn": ["Endless world: growth starts in 1.5 s (a rising shimmer).", "\"Growing…\" toast"],
-	"grow": ["Endless world: the cell grows a size (a swell into a bright chord).", "The growth beat and size toast"],
-	"growth_ring": ["Endless world: a growth-ring lump is eaten (a bubbly chime).", "The growth meter jump"],
-	"now_food": ["Endless world: a former threat is now small enough to eat.", "\"Now food\" toast"],
-}
-
-
 func _make_sfx() -> void:
 	for id: String in AudioSynth.SFX_VARIANTS:
 		for v in int(AudioSynth.SFX_VARIANTS[id]):
@@ -147,15 +156,6 @@ func _make_sfx() -> void:
 
 
 # --- Ambience --------------------------------------------------------------------------------
-
-const AMB_INFO := {
-	"amb_bed": ["The deep fluid: slow swells of dark noise and a faint pressure tone, under every region.", 40.0],
-	"amb_sunlit": ["Sunlit water (the home pool and sunlit regions): many tiny bubbles, rising streams and a bright fizz.", 31.0],
-	"amb_reef": ["Shell reefs: crackles and clicks of busy microbes, small knocks and far chirps.", 29.0],
-	"amb_drift": ["Open drift: sparse large bubbles and the slow moans of far giants.", 37.0],
-	"amb_swim": ["The cell's own swimming: a flagellum whir and a bubble trail, faded in with speed.", 4.0],
-}
-
 
 func _make_ambience() -> void:
 	for id: String in AMB_INFO:
