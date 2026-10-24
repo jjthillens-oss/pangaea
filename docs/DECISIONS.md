@@ -788,6 +788,13 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature editor palette grouped by kind (PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, built better with the Bible's ideas; the playthrough notes
+(docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md) show the editor's part grid grouped by kind on the left with the
+creature on a plinth on the right. The palette gains tabs (All, Mouths, Senses, Limbs, Weapons, Details) above the
+part pictures; picking a tool by key switches to its tab, and a part type art adds later lands in Details until it
+is listed in `CreatureEditorHud.PART_CATEGORY`. Layout and styling stay Pangaea's own.
+
 ## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
 Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
 - **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
