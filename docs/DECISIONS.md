@@ -925,3 +925,20 @@ its tabs pick them up from the records.
   - The size-1 #28E median is far under 7.6 yardsticks, so section 8's size-3 lever is not needed.
   - The saturated row sits at 9.75 of 10. A size-3 saturated case that blocks on it has little room;
     the relative row (size 3 at most 1.15 x size 1) is the one to watch.
+
+## 2026-10-24 · S3 T1: the hazard rules and the four new species (PROPOSED)
+
+- **The species catalog** (s3-sim 3.2) gains the hazard behavior and its rule 14 (D-121, D-122),
+  `radius_at` (D-139) and a hazard's reach disc of leash plus a thread (D-121). The brain's cfg
+  carries a hazard's drift and threads in ticks (D-124), built in T1.1 because the catalog reads the
+  sting cooldown from it.
+- **`creatures_m1.json`** gains the stinger veil and the Warden (entry size 3) and the Deep lurker and
+  elder Warden (entry size 4), as s3-sim 4.2 gives them, none with a pool site, so the M1 and S2
+  hash files replay unchanged. Two changes from 4.2:
+  - The elder Warden keeps the elder rammer's 16 s `nav_timeout_s`, not the rammer's 8 s. D-147's
+    12.8 s move between meadows is 0.8 x 16 s; with 8 s the post-travel rule refuses every meadow
+    pair D-147 allows.
+  - The Warden, Deep lurker and elder Warden tips keep 4.2's advice and add the M1 strike's dodge
+    ("swim out of its line on the side you face"), which F2 requires of every species that strikes.
+    The veil never strikes, so its tip names its threads instead.
+- A hazard's threat-arrow glyph is "warning". The veil never engages, so it never shows.

@@ -57,7 +57,8 @@ func test_the_real_species_data_is_valid() -> void:
 	var cat := SpeciesCatalog.load_from()
 	var errors := cat.validate(layout, parts)
 	check(errors.is_empty(), "no errors: %s" % [errors])
-	check_eq(Array(cat.species_ids()), ["ambush_hunter", "elder_rammer", "lurker", "rammer"], "four species, sorted")
+	check_eq(Array(cat.species_ids()), ["ambush_hunter", "deep_lurker", "elder_rammer", "elder_warden", "lurker", "rammer",
+		"veil", "warden"], "eight species, sorted")
 	check_eq(cat.sites.size(), 7, "seven sites")
 	check_eq(cat.sites_of("ambush_hunter").size(), 3, "three lairs")
 	check_eq(cat.sites_of("rammer").size(), 4, "four territories")
@@ -645,8 +646,8 @@ func test_rule_15_a_species_one_size_past_its_entry_cannot_attack_the_cell() -> 
 		"species 'elder_rammer'")
 	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.erase("relationships")), 15, "needs the relationships block")
 	# A size-1 species is never outgrown in this sense: the M1 ones pass with any shares.
-	check(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.prey_share = 1.9), 15).size() == 1,
-		"only the Lurker answers to the prey share")
+	check(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.prey_share = 1.9), 15).size() == 2,
+		"only the Lurker and the Deep lurker answer to the prey share")
 
 
 ## S2G29: every new block refuses unknown and missing keys and wrong kinds, and its values.
@@ -784,7 +785,7 @@ func test_the_hazard_fixture_is_valid_and_reads_its_drift_and_threads() -> void:
 	check_eq(float(cat.hazard_of("hazard_test").threads.damage), 5.0, "hazard_of is the data block")
 	check_eq(cat.hazard_of("rammer"), {}, "no hazard block for a rammer")
 	check_eq(cat.hazard_cooldown_ticks(), 75, "1.25 s of cooldown")
-	check_eq(SpeciesCatalog.load_from().hazard_cooldown_ticks(), 0, "none without a hazard")
+	check_eq(SpeciesCatalog.load_from(TEST_SPECIES).hazard_cooldown_ticks(), 0, "none without a hazard")
 	var cfg := cat.brain_config("hazard_test")
 	check_eq(cfg.drift, {"radius_m": 3.0, "period_ticks": [2220, 3180]}, "the drift in ticks (D-124)")
 	check_eq(cfg.threads, {"count": 4, "length_m": 2.4, "radius_m": 0.35, "damage": 5.0, "cooldown_ticks": 75,
@@ -912,3 +913,24 @@ func test_the_s3_habit_keys() -> void:
 	errors = _errors_after(func(d: Dictionary) -> void:
 		d.species.lurker.habit = {"post_switch": "bloom", "bloom_cycle_s": 90.0})
 	check_eq(Array(errors), ["species 'lurker': habit.post_switch 'bloom' needs behavior 'territorial'."], "bloom on an ambush")
+
+
+## S3G9 (T1.3): the four S3 species (s3-sim 4.2) read as the table computes them, at q = 1.
+func test_the_s3_species_numbers() -> void:
+	var cat := SpeciesCatalog.load_from()
+	check_eq([cat.entry_size("veil"), cat.entry_size("warden"), cat.entry_size("deep_lurker"), cat.entry_size("elder_warden")],
+		[3, 3, 4, 4], "entry sizes")
+	var pursue := {}
+	for id in ["veil", "warden", "deep_lurker", "elder_warden"]:
+		pursue[id] = float(cat.species[id].speeds.pursue) * cat.phenotype(id, parts).speed
+	check_near(pursue.veil, 0.8054, 1e-4, "veil pursue")
+	check_near(pursue.warden, 1.8027, 1e-4, "Warden pursue")
+	check_near(pursue.deep_lurker, 2.3029, 1e-4, "Deep lurker pursue")
+	var veil := cat.reach_disc_for({"species": "veil", "home": Vector2.ZERO, "heading": 0.0}, {})
+	check_eq(float(veil.radius), 7.5, "the veil's reach disc (D-121)")
+	check_eq(cat.habit_of("deep_lurker"), {"channel": true}, "channel lairs")
+	check_eq(float(cat.species.deep_lurker.senses.fov_deg), 90.0, "narrow sight")
+	check_eq(cat.brain_config("elder_warden").post_switch, "bloom", "the bloom switch")
+	check_eq(cat.hazard_cooldown_ticks(), 75, "the veil's sting cooldown")
+	for id in ["veil", "warden", "deep_lurker", "elder_warden"]:
+		check(cat.sites_of(id).is_empty() and int(cat.niche_of(id).cap) == 0, "%s has no pool site (S3G35)" % id)
