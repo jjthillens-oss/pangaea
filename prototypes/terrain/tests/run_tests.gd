@@ -10,6 +10,7 @@ func _init() -> void:
 	var first: Dictionary = TerrainChunk.generate(1, 0, 0)
 	var second: Dictionary = TerrainChunk.generate(1, 0, 0)
 	check(first["heights"].to_byte_array() == second["heights"].to_byte_array()
+		and first["thermal_heights"].to_byte_array() == second["thermal_heights"].to_byte_array()
 		and first["biomes"] == second["biomes"] and first["rivers"] == second["rivers"]
 		and first["river_flow"] == second["river_flow"], "same seed gives byte-identical arrays")
 	var changed: Dictionary = TerrainChunk.generate(2, 0, 0)
@@ -27,6 +28,30 @@ func _init() -> void:
 		high = maxf(high, height)
 	range_match = low == first["min_height"] and high == first["max_height"]
 	check(bounds and range_match, "finite height bounds and reported extrema")
+	var original_roughness := 0.0
+	var final_roughness := 0.0
+	var raised_sites := 0
+	var lowered_sites := 0
+	for z in range(32):
+		for x in range(32):
+			var base: float = TerrainChunk._fractal(float(x) / 42.0, float(z) / 42.0,
+				1 ^ TerrainChunk.HEIGHT_SEED, 4) * 10.0
+			var base_right: float = TerrainChunk._fractal(float(x + 1) / 42.0, float(z) / 42.0,
+				1 ^ TerrainChunk.HEIGHT_SEED, 4) * 10.0
+			var base_down: float = TerrainChunk._fractal(float(x) / 42.0, float(z + 1) / 42.0,
+				1 ^ TerrainChunk.HEIGHT_SEED, 4) * 10.0
+			var i := z * 33 + x
+			original_roughness += absf(base - base_right) + absf(base - base_down)
+			final_roughness += absf(first["thermal_heights"][i] - first["thermal_heights"][i + 1])
+			final_roughness += absf(first["thermal_heights"][i] - first["thermal_heights"][i + 33])
+			if first["thermal_heights"][i] > base + 0.001:
+				raised_sites += 1
+			elif first["thermal_heights"][i] < base - 0.001:
+				lowered_sites += 1
+	print("thermal sites raised/lowered: %d/%d, roughness: %.3f -> %.3f" % [
+		raised_sites, lowered_sites, original_roughness, final_roughness])
+	check(raised_sites > 0 and lowered_sites > 0 and final_roughness < original_roughness,
+		"thermal pass deposits and softens slopes")
 	var chunks := {}
 	for cz in range(-1, 2):
 		for cx in range(-1, 2):

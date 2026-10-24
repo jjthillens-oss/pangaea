@@ -76,9 +76,11 @@ static func generate(world_seed: int, cx: int, cz: int, size: int = 32) -> Dicti
 					break
 				accumulation[cursor] += 1
 	var heights := PackedFloat32Array()
+	var thermal_heights := PackedFloat32Array()
 	var rivers := PackedByteArray()
 	var river_flow := PackedInt32Array()
 	heights.resize(stride * stride)
+	thermal_heights.resize(stride * stride)
 	rivers.resize(stride * stride)
 	river_flow.resize(stride * stride)
 	var lowest := INF
@@ -87,6 +89,7 @@ static func generate(world_seed: int, cx: int, cz: int, size: int = 32) -> Dicti
 		for x in range(stride):
 			var i := (z + pad) * span + x + pad
 			var output := z * stride + x
+			thermal_heights[output] = eroded[i]
 			rivers[output] = int(eroded[i] > -2.5 and accumulation[i] >= FLOW_THRESHOLD)
 			heights[output] = _carved_height(i, eroded, accumulation)
 			river_flow[output] = -1
@@ -115,7 +118,8 @@ static func generate(world_seed: int, cx: int, cz: int, size: int = 32) -> Dicti
 			var moisture := _fractal(float(cx * size + x) / 37.0, float(cz * size + z) / 37.0, world_seed ^ MOISTURE_SEED, 3)
 			biomes[z * size + x] = _biome(elevation, moisture)
 	return {
-		"cx": cx, "cz": cz, "size": size, "heights": heights, "biomes": biomes,
+		"cx": cx, "cz": cz, "size": size, "heights": heights,
+		"thermal_heights": thermal_heights, "biomes": biomes,
 		"rivers": rivers, "river_flow": river_flow,
 		"min_height": lowest, "max_height": highest,
 	}
