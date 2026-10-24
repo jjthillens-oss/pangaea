@@ -31,7 +31,8 @@ extends RefCounted
 ## other only from a CALM state with no target, by the M1 return path: the Lurker when it has rested
 ## its dwell with the cell out of sight (out_of_sight), the elder rammer when the cell is nearer the
 ## other post's zone by the hysteresis (nearer_cell). Its leash disc is then the union of the two
-## posts' discs (D-82). A brain with no posts never reads the habit.
+## posts' discs (D-82). A brain with no posts never reads the habit. S3's elder Warden (bloom, D-128)
+## moves to whichever post's meadow is blooming (bloom_post), under the same guards.
 ##
 ## The sim's side of the contract (CreatureField and PoolSim):
 ## - self_view: {"id", "species", "position", "heading", "velocity", "speed_now", "radius", "speed",
@@ -89,9 +90,10 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
-# habit.post_switch values (D-23).
+# habit.post_switch values (D-23; bloom S3, D-128).
 const OUT_OF_SIGHT := "out_of_sight"
 const NEARER_CELL := "nearer_cell"
+const BLOOM := "bloom"
 
 ## The calm (state/phase) labels (S1 3.11, D-62): resting, patrolling and foraging, never watching,
 ## noticing, chasing, attacking, fleeing or going home. A post move starts only from one of these, and
@@ -514,6 +516,21 @@ static func set_drift(mem: Memory, h: int) -> void:
 	var span: Array = mem.cfg.drift.period_ticks
 	mem.drift_period = Vector2i(maxi(int(span[0]), 1), maxi(int(span[1]), 1))
 	mem.drift_phase = Vector2i(posmod(h, mem.drift_period.x), posmod(WorldHash.mix32(h, 1), mem.drift_period.y))
+
+
+## The bloom habit's schedule (D-128), right after set_posts(): the placed site's bloom offset and
+## cycle in ticks, which its two meadows share, so the brain and both meadows agree.
+static func set_bloom(mem: Memory, offset_ticks: int, cycle_ticks: int) -> void:
+	mem.bloom_offset = offset_ticks
+	mem.bloom_cycle = cycle_ticks
+
+
+## The post whose meadow blooms at `tick` (D-128): slot 0 for the first half of each cycle, slot 1
+## for the second; 0 with no schedule. The cycle is even (5,400 ticks), so the halves are exact.
+static func bloom_post(mem: Memory, tick: int) -> int:
+	if mem.bloom_cycle <= 0:
+		return 0
+	return posmod(floori(float(tick + mem.bloom_offset) / float(mem.bloom_cycle / 2)), 2)
 
 
 ## The disc the sim clamps the body to after every move: (home, leash) for an ambush brain,
@@ -1168,7 +1185,8 @@ static func _answer_fear(mem: Memory, me: Dictionary, percepts: Array, tick: int
 ## A habit's post move (D-23), from a CALM state with no target (think checks both): out_of_sight
 ## when it has rested post_rest_ticks, at this post at least as long, and the cell is not among its
 ## percepts; nearer_cell when the cell (wherever it is, D-59) is nearer the other post's zone centre
-## than this one's by more than post_hysteresis_m. It takes the other post and swims there by the M1
+## than this one's by more than post_hysteresis_m; bloom when the other post's meadow is the one
+## blooming (bloom_post, D-128). It takes the other post and swims there by the M1
 ## return path at wander speed, emitting creature_post_move {post, from, to}. Returns true when it moved.
 static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
 	var cfg := mem.cfg
@@ -1186,6 +1204,9 @@ static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
 			if not cell.is_finite() or here.is_empty() or there.is_empty():
 				return false
 			if not (cell.distance_to(there.center) < cell.distance_to(here.center) - float(cfg.post_hysteresis_m)):
+				return false
+		BLOOM:
+			if bloom_post(mem, tick) == mem.post:
 				return false
 		_:
 			return false

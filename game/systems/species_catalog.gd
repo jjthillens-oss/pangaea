@@ -57,7 +57,7 @@ const MAX_ENTRY_SIZE := 10
 const MAX_SHARE_TOLERANCE := 1e-3
 ## A habit's post switch (B.7, D-23): the ambush brain moves when the cell is out of its sight, the
 ## territorial one when the cell is nearer the other post's zone.
-## S3's "bloom" (D-128): an elder Warden moves to the meadow that is not in bloom.
+## S3's "bloom" (D-128): an elder Warden moves to the meadow in bloom (CreatureBrain.bloom_post).
 const POST_SWITCHES := {"out_of_sight": "ambush", "nearer_cell": "territorial", "bloom": "territorial"}
 ## Rule 14 (a): a hazard's every speed share of its top speed is at most this share of the slowest
 ## fed starting body's top speed.
