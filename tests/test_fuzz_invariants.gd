@@ -1,7 +1,9 @@
 extends TestCase
 ## FuzzInvariants through growth (S2 T2.6b, build plan BP-2, gate S2G39), on FakeWorldGen at sizes 1
 ## and 2: a forced growth and a dev size change and back run clean tick by tick, and hand-built events
-## that break invariants 12 and 13 the way only a growing world can are caught.
+## that break invariants 12 and 13 the way only a growing world can are caught. S3 (T0.2, D-141):
+## hand-built stings and strike hits that break invariant 15, morsel items that break 12 (S3G17c,
+## S3G17d), a creature at a landmark checkpoint (3) and a hazard off its drift path (7).
 ##
 ## The forced growth comes far from the world's origin (so the size-2 view set holds zones the size-1
 ## one did not), with the cell far from the frame's origin (a dev rebase the tick before) and a
@@ -442,3 +444,180 @@ func _restore_13(sim: PoolSim, rem: RemnantField.Remnant, site: String, c: Creat
 	if c != null:
 		c.brain.posts[1].home = keep[4]
 		c.brain.leash_center = keep[5]
+
+
+# --- S3 (T0.2): invariant 15, 12's morsel clauses, 3 at a landmark checkpoint, 7's hazard form ---
+
+const B1_WORLD := "res://tests/fixtures/world/world_b1_min.json"
+
+var _shipped: SpeciesCatalog
+
+
+## The band-1 fixture world (sizes to 4) on the fake generator, the shipped species, growth on, a
+## site per 2 x 2 chunks, at `size`; its events drained.
+func _b1(size: int) -> PoolSim:
+	if _shipped == null:
+		_shipped = SpeciesCatalog.load_from()
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, _shipped, FakeWorldGen.fixture_content(B1_WORLD),
+		PackedFloat64Array(), 2, true)
+	check(sim.debug_set_size(size), "size %d" % size)
+	sim.drain_events()
+	return sim
+
+
+static func _sting(engaged := [], damage := 5.0) -> Dictionary:
+	return {"type": "hit", "attacker": "c_veil", "target": CreatureField.PLAYER_ID, "kind": "sting", "damage": damage,
+		"engaged": engaged}
+
+
+static func _strike_hit() -> Dictionary:
+	return {"type": "hit", "attacker": "c_ram", "target": CreatureField.PLAYER_ID, "kind": "ram", "damage": 5.0}
+
+
+## Invariant 15 over `ticks` (tick -> the events of that tick, in tick order) on a new checker: whether
+## it broke, and the report.
+func _fifteen(sim: PoolSim, ticks: Dictionary) -> Array:
+	var fz := FuzzInvariants.new(sim.species, layout)
+	var order := ticks.keys()
+	order.sort()
+	for t: int in order:
+		var events: Array[Dictionary] = []
+		events.assign(ticks[t])
+		fz.check_15(sim, events, t, "tick %d" % t)
+	return [fz.bad.has(15), fz.report()]
+
+
+## S3G14b (BP3-4): (c) reads the sting's own `engaged`, the token holders when it landed. With "c7"
+## on the token before the step, a sting with engaged [] passes and the same sting with ["c7"] fails.
+func test_invariant_15_c_reads_the_stings_engaged() -> void:
+	var sim := _b1(3)
+	sim.creatures.engaged_on_player = PackedStringArray(["c7"])
+	check_eq(_fifteen(sim, {100: [_sting([])]})[0], false, "engaged [] passes")
+	var got := _fifteen(sim, {100: [_sting(["c7"])]})
+	check(got[0] and str(got[1]).contains("(c)"), "engaged [c7] fails (c): %s" % got[1])
+	sim.creatures.engaged_on_player = PackedStringArray()
+
+
+## D-141 (a): with the veil's 1.25 s cooldown at most 2 stings land in any 120 ticks; stings a cooldown
+## apart pass, a scripted train of 3 in a window fails, and so does a sting at the damage limit.
+func test_invariant_15_a_a_sting_train_or_a_heavy_sting_fails() -> void:
+	var sim := _b1(3)
+	var cd := CreatureBrain.ticks(float(_shipped.species.veil.hazard.threads.cooldown_s))
+	var fz := FuzzInvariants.new(sim.species, layout)
+	check_eq([cd, fz._sting_cap], [75, 2], "a 75-tick cooldown: 2 in a window")
+	check_eq(_fifteen(sim, {0: [_sting()], cd: [_sting()], 2 * cd: [_sting()], 3 * cd: [_sting()]})[0], false,
+		"a sting each cooldown passes")
+	var got := _fifteen(sim, {0: [_sting()], 40: [_sting()], 80: [_sting()]})
+	check(got[0] and str(got[1]).contains("3 stings"), "three in 81 ticks fail (a): %s" % got[1])
+	var limit := fz._damage_limit(sim)
+	check(limit > 5.0, "the veil's 5 is under the limit (%.2f)" % limit)
+	got = _fifteen(sim, {0: [_sting([], limit)]})
+	check(got[0] and str(got[1]).contains("dealt"), "a sting at the limit fails (a): %s" % got[1])
+
+
+## D-141 (b): a sting 100 ticks after a strike hit fails, and a strike hit 100 ticks after a sting;
+## 120 ticks apart passes. A debug set_size clears the windows (BP3-20); a respawn does not.
+func test_invariant_15_b_a_sting_near_a_strike_hit_fails() -> void:
+	var sim := _b1(3)
+	var got := _fifteen(sim, {0: [_strike_hit()], 100: [_sting()]})
+	check(got[0] and str(got[1]).contains("after a strike hit"), "a sting 100 ticks after a strike hit fails: %s" % got[1])
+	got = _fifteen(sim, {0: [_sting()], 100: [_strike_hit()]})
+	check(got[0] and str(got[1]).contains("after a sting"), "a strike hit 100 ticks after a sting fails: %s" % got[1])
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 120: [_sting()]})[0], false, "120 ticks apart passes")
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 100: [{"type": "debug", "command": "set_size", "to": 3}, _sting()]})[0],
+		false, "a set_size cut between them passes")
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 100: [{"type": "respawned"}, _sting()]})[0], true, "a respawn is no cut")
+
+
+## S3G17c: at size 4 a morsel site's item spawning in view or within spawn_safe_m of the cell fails 12,
+## one out of view passes, and so does any other carrion in view (a kill's); an item expiring
+## "unloaded" in view fails 12 too.
+func test_a_morsel_item_appearing_or_unloading_in_view_fails_12() -> void:
+	var sim := _b1(4)
+	sim.step(SimIntent.new())
+	sim.drain_events()
+	var near := sim.motion.position + Vector2(5.0, 0.0)
+	var far := sim.motion.position + Vector2(200.0, 0.0)
+	var cases := {   # name -> [the event, fails 12]
+		"a morsel in view": [{"type": "carrion_spawned", "source": "morsel_site", "food_id": "c_hand", "position": near}, true],
+		"a morsel out of view": [{"type": "carrion_spawned", "source": "morsel_site", "food_id": "c_hand", "position": far}, false],
+		"a kill's carrion in view": [{"type": "carrion_spawned", "source": "creature_death", "food_id": "c_hand", "position": near}, false],
+		"unloaded in view": [{"type": "carrion_expired", "food_id": "c_hand", "position": near, "reason": "unloaded"}, true],
+		"unloaded out of view": [{"type": "carrion_expired", "food_id": "c_hand", "position": far, "reason": "unloaded"}, false],
+	}
+	for name: String in cases:
+		var c: Array = cases[name]
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var was := fuzz.before(sim)
+		var events: Array[Dictionary] = [c[0]]
+		fuzz.after(sim, events, sim.tick, name, was)
+		check_eq(fuzz.bad.has(12), c[1], "%s: %s" % [name, fuzz.report()])
+		if c[1] and fuzz.bad.has(12):
+			check(str(fuzz.bad[12].first).contains("c_hand"), "the failure names it: %s" % fuzz.bad[12].first)
+
+
+## S3G17d: after every step morsel_claims() equals the morsel-site entries holding an item: a size-4
+## run with its morsel sites loaded is clean, and a claim count off by one fails 12.
+func test_a_morsel_claim_count_that_drifts_fails_12() -> void:
+	var sim := _b1(4)
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	for t in WorldStream.MORSEL_PASS_TICKS * 2:
+		_step(sim, fuzz, "size 4 tick %d" % t)
+	check(not sim.world._morsel_loaded.is_empty(), "morsel sites loaded (%d)" % sim.world._morsel_loaded.size())
+	check_eq(fuzz.report(), "", "clean")
+	sim.world._claims += 1
+	var was := fuzz.before(sim)
+	fuzz.after(sim, [] as Array[Dictionary], sim.tick, "drifted", was)
+	check(fuzz.bad.has(12) and str(fuzz.bad[12].first).contains("S3G17d"), "a drifted count fails 12: %s" % fuzz.report())
+	sim.world._claims -= 1
+
+
+## D-141's invariant 3: a rammer (q < 1 at 4) within respawn_clear_m of the checkpoint fails 3, unless
+## the run's last checkpoint change was a landmark's; a growth ends that.
+func test_at_a_landmark_checkpoint_invariant_3_counts_only_q_one() -> void:
+	var sim := _b1(4)
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.checkpoint().position + Vector2(2.0, 0.0), 0.0), "a rammer by the checkpoint")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	c.debug = false   # a data creature (invariant 3 skips dev spawns)
+	sim.drain_events()
+	check(sim.species.q_of("rammer", 4) < 1.0, "the rammer is below the cell at 4")
+	var cases := [   # [name, events, fails 3]
+		["no landmark", [], true],
+		["a landmark checkpoint", [{"type": "checkpoint_moved", "reason": "landmark", "anchor": "a_f_lm"}], false],
+	]
+	for case: Array in cases:
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var was := fuzz.before(sim)
+		var events: Array[Dictionary] = []
+		events.assign(case[1])
+		fuzz.after(sim, events, sim.tick, case[0], was)
+		check_eq(fuzz.bad.has(3), case[2], "%s: %s" % [case[0], fuzz.report()])
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var events: Array[Dictionary] = [{"type": "checkpoint_moved", "reason": "landmark", "anchor": "a_f_lm"}]
+	fuzz.after(sim, events, sim.tick, "landmark", fuzz.before(sim))
+	fuzz.after(sim, _growth_events(sim, []), sim.tick, "then a growth", fuzz.before(sim))
+	check(fuzz.bad.has(3), "a growth ends the landmark form: %s" % fuzz.report())
+	c.debug = true
+
+
+## D-141's invariant 7 hazard form: a veil left to drift stays within 1.0 x q tm of its drift goal
+## once it has drifted DRIFT_SETTLE_TICKS (checked on every tick after), and one pushed 5 tm off fails.
+func test_a_drifting_hazard_keeps_to_its_path_and_one_pushed_off_fails_7() -> void:
+	var sim := _b1(3)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	for t in FuzzInvariants.DRIFT_SETTLE_TICKS + 120:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(int(fuzz.counts.drift_checks) >= 60, "drift checked on %d ticks" % fuzz.counts.drift_checks)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	check_eq(c.brain.state, CreatureBrain.DRIFT, "still drifting")
+	var was := fuzz.before(sim)
+	var t := sim.tick
+	sim.step(SimIntent.new())
+	c.motion.position += Vector2(5.0, 0.0)
+	fuzz.after(sim, sim.drain_events(), t, "pushed", was)
+	check(fuzz.bad.has(7) and str(fuzz.bad[7].first).contains("drift goal"), "pushed 5 tm off fails 7: %s" % fuzz.report())
+
