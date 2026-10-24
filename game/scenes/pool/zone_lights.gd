@@ -20,6 +20,12 @@ extends Node3D
 ## (anchor, laid_span): the shader lays the shafts in that frame, so neither a rebase nor a growth
 ## slides them across the disc (the hatch probe showed the growth's frame 0 shifting them, and a
 ## rebase did too); as laid they fall exactly where the world-space shafts did.
+##
+## S3 (s3-view 7.3, 7.4; V3-10, V3-11): the endless sea passes every zone. A zone gets a patch when
+## its region is in PATCH_REGIONS (a zone with no region, the M1 pool's, counts as listed) or it is a
+## bloom meadow; a bloom meadow also gets a bloom disc, "bloom_<zone id>", a warm tint whose strength
+## follows the meadow's bloom phase at the drawn sim tick (update_bloom), the same phase that sets
+## its regrowth (EcologyRegion.bloom_multiplier).
 
 const SHADER := preload("res://game/scenes/pool/zone_light.gdshader")
 ## The disc spans this many zone radii across; the shader's light reaches 1.3 zone radii out, so
@@ -41,9 +47,25 @@ const TINT := Color(0.957, 0.918, 0.824)
 const SUN_WAY := Vector2(0.7071068, 0.7071068)
 ## Under every other world transparent; the strike lane draws at CreatureView.LANE_PRIORITY (8).
 const RENDER_PRIORITY := -2
+## The regions whose zones get a patch (band 0's sunlit and home, band 1's warden flats); region ids
+## are disjoint between bands, so one list serves both.
+const PATCH_REGIONS: PackedStringArray = ["sunlit", "home", "warden_flat"]
+## The bloom tint (C3V-4): warm, well clear of food's glow.
+const BLOOM_TINT := Color("#E8C27A")
+const BLOOM_TEXTURE := "res://assets/export/ambience/T_BloomTint.png"
+const BLOOM_SHADER := preload("res://game/scenes/pool/bloom_tint.gdshader")
+## The tint's alpha at full strength, by renderer (as STRENGTH: Compatibility blends after the tonemap).
+const BLOOM_ALPHA := 0.05
+const BLOOM_ALPHA_COMPATIBILITY := 0.18
+## The strength while the other slot blooms, and the ease between (s) after each switch.
+const BLOOM_LOW := 0.25
+const BLOOM_EASE_S := 2.0
+const BLOOM_PREFIX := "bloom_"
 
 ## One unit disc for every zone, scaled to each. The start fade's warm-up draws it too (pool.gd).
 var mesh: PlaneMesh
+## The bloom discs' unit disc and material (warmed up with the rest).
+var bloom_mesh: PlaneMesh
 
 var _discs := {}   ## key -> Array[MeshInstance3D]: the pool's under POOL_KEY, the endless sea's by chunk
 ## A growth: retiring discs by zone id, fresh discs (disc -> the beat time it came), whether a beat is
@@ -54,6 +76,11 @@ var _beat := false
 var _settled_t := -1.0
 var _beat_t := 0.0
 var _depth_k := 1.0
+## The leftovers' sink (tm) and fade (s) this growth: S2's lights fade without sinking; a band-up's
+## sink with the rest (set_retire_profile, s3-view 4.3).
+var _sink_tm := 0.0
+var _retire_s := GrowthBeat.RETIRE_S
+var _blooms := {}   ## bloom disc -> its meadow's bloom {slot, offset_ticks, cycle_ticks}
 
 
 func _init() -> void:
@@ -67,11 +94,54 @@ func _init() -> void:
 	mesh = PlaneMesh.new()
 	mesh.size = Vector2.ONE
 	mesh.material = material
+	var bloom := ShaderMaterial.new()
+	bloom.shader = BLOOM_SHADER
+	bloom.render_priority = RENDER_PRIORITY
+	bloom.set_shader_parameter("mask", load(BLOOM_TEXTURE) as Texture2D)
+	bloom.set_shader_parameter("tint", BLOOM_TINT)
+	bloom.set_shader_parameter("opacity", bloom_alpha_for(RenderingServer.get_current_rendering_method()))
+	bloom_mesh = PlaneMesh.new()
+	bloom_mesh.size = Vector2.ONE
+	bloom_mesh.material = bloom
 
 
 ## The patches' alpha for a renderer, by its RenderingServer.get_current_rendering_method() name.
 static func strength_for(method: String) -> float:
 	return STRENGTH_COMPATIBILITY if method == PoolLook.COMPATIBILITY_METHOD else STRENGTH
+
+
+## The bloom tint's full alpha for a renderer.
+static func bloom_alpha_for(method: String) -> float:
+	return BLOOM_ALPHA_COMPATIBILITY if method == PoolLook.COMPATIBILITY_METHOD else BLOOM_ALPHA
+
+
+## Whether `zone` gets a patch: its region listed (no region counts as listed) or a bloom meadow.
+static func has_patch(zone: Dictionary) -> bool:
+	return not zone.has("region") or str(zone.region) in PATCH_REGIONS or is_bloom(zone)
+
+
+static func is_bloom(zone: Dictionary) -> bool:
+	return not (zone.get("bloom", {}) as Dictionary).is_empty()
+
+
+## A bloom disc's strength at the drawn tick `tick_f` (V3-11): 1 while the meadow's slot blooms and
+## BLOOM_LOW while the other does, eased over BLOOM_EASE_S after each switch. The switch is
+## EcologyRegion.bloom_multiplier's.
+static func bloom_strength(bloom: Dictionary, tick_f: float) -> float:
+	var half := float(int(bloom.cycle_ticks) / 2)
+	var u := (tick_f + float(bloom.offset_ticks)) / half
+	var blooming := posmod(floori(u), 2) == int(bloom.slot)
+	var since_s := (u - floorf(u)) * half / float(CreatureBrain.TICKS_PER_SECOND)
+	var e := smoothstep(0.0, BLOOM_EASE_S, since_s)
+	return lerpf(BLOOM_LOW, 1.0, e) if blooming else lerpf(1.0, BLOOM_LOW, e)
+
+
+## Every bloom disc at its meadow's strength for the drawn moment: tick `tick` less one plus
+## `fraction` of a tick (as CreatureView.phase_progress).
+func update_bloom(tick: int, fraction: float) -> void:
+	var tick_f := float(tick - 1) + fraction
+	for disc: MeshInstance3D in _blooms:
+		disc.set_instance_shader_parameter(&"strength", bloom_strength(_blooms[disc], tick_f))
 
 
 ## Lays one disc under each of `zones` (PoolLayout.zones), replacing any from before.
@@ -82,49 +152,63 @@ func build(zones: Array[Dictionary]) -> void:
 	_discs.clear()
 	_retiring.clear()
 	_fresh.clear()
+	_blooms.clear()
 	_beat = false
 	_settled_t = -1.0
 	add_chunk(RockField.POOL_KEY, zones)
 
 
 ## Lays one disc under each of `zones` ({id, center, radius}: layout zones or chunk_loaded zones)
-## under `key`. In the endless sea the pool passes only the zones of sunlit and home tiles.
+## that has a patch (has_patch), and a bloom disc under each bloom meadow, under `key`.
 ## During a growth beat a disc retired with the same zone id is adopted back, and a new one fades in.
 func add_chunk(key: Variant, zones: Array) -> void:
 	var discs: Array = _discs.get(key, [])
-	for zone in zones:
-		var id := String(zone.id)
-		var disc: MeshInstance3D = _retiring.get(id) if _beat else null
-		if disc != null:
-			_retiring.erase(id)
-			disc.transparency = 0.0
-		else:
-			disc = MeshInstance3D.new()
-			disc.name = id
-			disc.mesh = mesh
-			disc.material_override = mesh.material.duplicate()
-			disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(disc)
-			if _beat and _settled_t < 0.0:
-				_fresh[disc] = _beat_t
-				disc.transparency = 1.0
-		var span := float(zone.radius) * SPAN_PER_ZONE_RADIUS
-		var adopted := disc.has_meta(&"laid")
-		disc.position = WorldSpace.to_frame(self, zone.center, DEPTH_M * _depth_k)
-		disc.scale = Vector3(span, 1.0, span)
-		if not adopted:
+	for zone: Dictionary in zones:
+		if not has_patch(zone):
+			continue
+		discs.append(_lay(String(zone.id), zone, mesh))
+		if is_bloom(zone):
+			var bloom := _lay(BLOOM_PREFIX + String(zone.id), zone, bloom_mesh)
+			_blooms[bloom] = (zone.bloom as Dictionary).duplicate()
+			discs.append(bloom)
+	_discs[key] = discs
+
+
+## The disc named `id` for `zone` on `unit`: adopted back from the retiring ones during a beat, or new.
+func _lay(id: String, zone: Dictionary, unit: PlaneMesh) -> MeshInstance3D:
+	var disc: MeshInstance3D = _retiring.get(id) if _beat else null
+	if disc != null:
+		_retiring.erase(id)
+		disc.transparency = 0.0
+	else:
+		disc = MeshInstance3D.new()
+		disc.name = id
+		disc.mesh = unit
+		# A patch wears its own material (where it was laid); the bloom discs share theirs.
+		disc.material_override = unit.material.duplicate() if unit == mesh else unit.material
+		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(disc)
+		if _beat and _settled_t < 0.0:
+			_fresh[disc] = _beat_t
+			disc.transparency = 1.0
+	var span := float(zone.radius) * SPAN_PER_ZONE_RADIUS
+	var adopted := disc.has_meta(&"laid")
+	disc.position = WorldSpace.to_frame(self, zone.center, DEPTH_M * _depth_k)
+	disc.scale = Vector3(span, 1.0, span)
+	if not adopted:
+		if unit == mesh:
 			var laid := position + disc.position
 			(disc.material_override as ShaderMaterial).set_shader_parameter("anchor", Vector2(laid.x, laid.z))
 			(disc.material_override as ShaderMaterial).set_shader_parameter("laid_span", span)
-			disc.set_meta(&"laid", true)
-		discs.append(disc)
-	_discs[key] = discs
+		disc.set_meta(&"laid", true)
+	return disc
 
 
 ## Frees the discs laid under `key`; an unknown key changes nothing.
 func remove_chunk(key: Variant) -> void:
 	for disc: MeshInstance3D in _discs.get(key, []):
 		_fresh.erase(disc)
+		_blooms.erase(disc)
 		remove_child(disc)
 		disc.queue_free()
 	_discs.erase(key)
@@ -172,12 +256,22 @@ func settle_growth() -> void:
 		_settled_t = _beat_t
 
 
-## Each beat frame: the fresh discs come in, the leftovers fade (no sink: they are light).
+## The leftovers' fade for the growth that begins (GrowthBeat.begin, V3-1), and their sink when it
+## is a band-up's (S2's profile keeps lights from sinking).
+func set_retire_profile(sink_tm: float, retire_s: float) -> void:
+	_sink_tm = 0.0 if sink_tm == GrowthBeat.SINK_TM and retire_s == GrowthBeat.RETIRE_S else sink_tm
+	_retire_s = retire_s
+
+
+## Each beat frame: the fresh discs come in, the leftovers fade (and sink at a band-up, from DEPTH_M
+## x k, which set_depth_k has just set).
 func beat_frame(t: float, _k: float) -> void:
 	_beat_t = t
-	var s := GrowthBeat.retire_share(t, _settled_t) if _beat else 1.0
+	var s := GrowthBeat.retire_share(t, _settled_t, _retire_s) if _beat else 1.0
 	for id in _retiring:
 		(_retiring[id] as GeometryInstance3D).transparency = s
+		if _sink_tm > 0.0:
+			(_retiring[id] as Node3D).position.y = DEPTH_M * _depth_k - _sink_tm * s
 	for disc: MeshInstance3D in _fresh.keys():
 		var p := GrowthBeat.fresh_share(t - float(_fresh[disc]))
 		disc.transparency = 1.0 - p
@@ -190,6 +284,7 @@ func end_growth() -> void:
 		return
 	for id in _retiring:
 		var disc: Node = _retiring[id]
+		_blooms.erase(disc)
 		remove_child(disc)
 		disc.queue_free()
 	_retiring.clear()
@@ -205,3 +300,11 @@ func retiring() -> Dictionary:
 ## The disc of zone `id` drawn now, live or retiring, or null (tests).
 func disc_of(id: String) -> MeshInstance3D:
 	return get_node_or_null(NodePath(id)) as MeshInstance3D
+
+
+## The bloom discs drawn now, live or retiring (tests).
+func bloom_discs() -> Array[MeshInstance3D]:
+	var out: Array[MeshInstance3D] = []
+	for disc: MeshInstance3D in _blooms:
+		out.append(disc)
+	return out

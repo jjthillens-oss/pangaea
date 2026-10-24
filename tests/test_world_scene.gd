@@ -108,11 +108,11 @@ func test_every_node3d_is_covered_in_pool_mode() -> void:
 	var names := []
 	for node in registered:
 		names.append(str(pool.get_path_to(node)))
-	check_eq(names.slice(0, 8), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx", "SiltTrail", "OlderHaze"],
-		"the containers register in their fixed order (the silt trail is S2's, the older haze S3's)")
-	check_eq(names.size(), 8 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
+	check_eq(names.slice(0, 9), ["Rim", "ZoneLights", "Rocks", "Landmarks", "Feedback", "WorldFx", "SiltTrail", "OlderHaze", "OldBand"],
+		"the containers register in their fixed order (the silt trail is S2's, the older haze and the old band S3's)")
+	check_eq(names.size(), 9 + CellAudio.POSITIONAL_PLAYERS + 1 + pool.creature_layer.views().size(),
 		"then the positional players, the growth beat's effects, then each creature's lane")
-	check_eq(names[8 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
+	check_eq(names[9 + CellAudio.POSITIONAL_PLAYERS], "BeatFx", "the growth beat's effects ride a rebase and a growth (S2)")
 	var dissolve := pool.ui.get_node_or_null(^"BeatDissolve") as TextureRect
 	check(dissolve != null and not dissolve.visible, "the reduce-motion dissolve waits, hidden, over the UI (S2)")
 	check(not pool.growth_beat.running() and pool.depth_k() == 1.0, "the growth beat is idle after the build")
@@ -816,3 +816,150 @@ func _silt_trail(size: int) -> SiltTrail:
 	var trail := SiltTrail.new()
 	trail.setup(_species, size)
 	return trail
+
+
+# --- S3: the cradle and the home beacon (s3-view 6.6; S3G37) ---
+
+## The shipped world (build top 4) in a pool at size `n` by the dev's size command, a frame drawn.
+static func _s3_pool(n: int) -> PoolScene:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	if n != 1:
+		pool.sim.debug_set_size(n)
+	FakeEvents.frame(pool)
+	return pool
+
+
+## Every surface `root` draws has its own material, the model's albedo dimmed by `dim` in linear light.
+func _check_dimmed(root: Node, dim: float, what: String) -> void:
+	var surfaces := 0
+	for n: Node in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			var own := mi.get_surface_override_material(i) as BaseMaterial3D
+			var model := mi.mesh.surface_get_material(i) as BaseMaterial3D
+			check(own != null and own != model, "%s surface %d: its own material" % [what, i])
+			if own == null or model == null:
+				continue
+			surfaces += 1
+			var want := model.albedo_color.srgb_to_linear() * dim
+			var got := own.albedo_color.srgb_to_linear()
+			check(absf(got.r - want.r) + absf(got.g - want.g) + absf(got.b - want.b) < 3e-3,
+				"%s %s: albedo %s dimmed x %.1f from %s" % [what, model.resource_name, own.albedo_color.to_html(false), dim, model.albedo_color.to_html(false)])
+	check(surfaces > 0, "%s draws" % what)
+
+
+## A node's merged mesh box in the pool's space.
+static func _pool_box(node: Node3D, pool: Node) -> AABB:
+	var t := Transform3D.IDENTITY
+	var n: Node = node
+	while n != pool and n is Node3D:
+		t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t * CradleView.aabb_under(node)
+
+
+func test_cradle_ring_at_pool_radius() -> void:
+	for n in [3, 4]:
+		var pool := _s3_pool(n)
+		var cradle := pool.cradle
+		var radius := float(cradle.cradle.pool_ring.radius_bu)
+		check_near(cradle.ring_scale() * CradleView.RING_RECORD_RADIUS_BU, radius * WorldConfig.bu_to_tm(n), 1e-6,
+			"size %d: the ring's scale x its record radius is the old pool's radius, %.4f bu x %.3f" % [n, radius, WorldConfig.bu_to_tm(n)])
+		var box := _pool_box(cradle.ring(), pool)
+		check_near(box.end.y, CradleView.RING_TOP_TM, 1e-4, "size %d: its top" % n)
+		check(box.position.y < box.end.y, "size %d: its base below its top" % n)
+		var home := PlaneSpace.to_world(pool.sim.world.local_of_abs(0.0, 0.0), 0.0)
+		check(Vector2(box.get_center().x - home.x, box.get_center().z - home.z).length() < 0.05, "size %d: round home" % n)
+		_check_dimmed(cradle.ring(), CradleView.DIM, "the ring")
+		pool.free()
+
+
+func test_ring_record_radius_matches_the_record() -> void:
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/records/cradle_ring.json"))
+	check_eq(CradleView.RING_RECORD_RADIUS_BU, float(record.radius_bu), "RING_RECORD_RADIUS_BU is the record's radius_bu")
+
+
+func test_cradle_visible_at_band_one_only() -> void:
+	var pool := _s3_pool(1)
+	check(pool.cradle != null and pool.beacon != null, "the endless pool makes the cradle and the beacon")
+	for n in [1, 2, 3, 4]:
+		pool.cradle.set_size(n)
+		check_eq(pool.cradle.visible, n >= 3, "size %d: the cradle %s" % [n, "shows" if n >= 3 else "is hidden"])
+	pool.free()
+	var m1 := FakeEvents.open_pool(FakeEvents.pool_session())
+	check(m1.cradle == null and m1.beacon == null, "the M1 pool makes neither")
+	m1.free()
+
+
+func test_caption_text_and_range() -> void:
+	var pool := _s3_pool(3)
+	var cradle := pool.cradle
+	var caption := cradle.caption()
+	check_eq(caption.text, "Your lineage began here", "the caption")
+	var tm_to_am := WorldConfig.tm_to_am(3)
+	for row in [[30.0, 1.0], [37.5, 0.5], [40.0, 0.0], [60.0, 0.0]]:
+		cradle.update_caption(PackedFloat64Array([0.0, float(row[0]) * tm_to_am]), tm_to_am)
+		check_near(caption.modulate.a, float(row[1]), 1e-6, "alpha at %.1f tm from home" % row[0])
+		check_eq(caption.visible, float(row[1]) > 0.0, "shown at %.1f tm: %s" % [row[0], float(row[1]) > 0.0])
+	check(caption.render_priority < CreatureView.LANE_PRIORITY, "it draws under the strike lane")
+	var g := float(cradle.cradle.pool_ring.glitter_radius_bu)
+	var home := pool.sim.world.local_of_abs(0.0, 0.0)
+	var at := cradle.transform * caption.position
+	check(Vector3(at.x, at.y, at.z).distance_to(PlaneSpace.to_world(home + Vector2(0.0, -(g + CradleView.CAPTION_GAP_BU)), CradleView.CAPTION_Y_TM)) < 1e-3,
+		"at the ring's north edge, %.1f tm up" % CradleView.CAPTION_Y_TM)
+	pool.free()
+
+
+func test_dish_is_the_old_pool_at_true_size() -> void:
+	var pool := _s3_pool(3)
+	var cradle := pool.cradle
+	var pieces := pool.sim.world.gen.old_pool_pieces()
+	var drawn := cradle.dish_instances()
+	check_eq(pieces.size(), 26, "the old pool: 18 rocks and 8 ring shells")
+	check_eq(drawn.size(), pieces.size(), "every piece drawn")
+	check(cradle.outside_pieces().is_empty(), "every piece inside the seam ring")
+	check(cradle.dish().size() <= 11, "at most 3 rock and 8 shell MultiMeshes (%d)" % cradle.dish().size())
+	var to_tm := 1.0 / WorldConfig.tm_to_am(3)
+	for d: Dictionary in drawn:
+		var p: Dictionary = d.piece
+		var t: Transform3D = cradle.transform * (d.transform as Transform3D)
+		var want := PlaneSpace.to_world(pool.sim.world.local_of_abs(float(p.x_bu), float(p.y_bu)), 0.0)
+		check(Vector2(t.origin.x - want.x, t.origin.z - want.z).length() < 1e-4, "%s at its absolute place" % d.id)
+		check_near(t.basis.get_scale().x, float(p.scale) * to_tm, 1e-5, "%s at its true size" % d.id)
+		var mesh := (cradle.dish()[d.asset] as MultiMeshInstance3D).multimesh.mesh
+		check_near(t.origin.y + mesh.get_aabb().end.y * t.basis.get_scale().y, CradleView.DISH_TOP_TM, 1e-4, "%s: its top" % d.id)
+	pool.free()
+
+
+func test_beacon_top_per_size() -> void:
+	var pool := _s3_pool(1)
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	var top1 := _pool_box(pool.beacon, pool).end.y
+	check_near(top1, HomeBeacon.TOP_BU, 0.005, "size 1: the beacon's top is the record's")
+	_check_dimmed(pool.beacon, HomeBeacon.DIM, "the beacon")
+	for n in [2, 3, 4]:
+		check(sim.debug_force_growth(), "a growth to %d" % n)
+		FakeEvents.frame(pool)
+		check_eq(pool.sim_size(), n, "size %d" % n)
+		check_near(_pool_box(pool.beacon, pool).end.y, top1 / WorldConfig.tm_to_am(n), 1e-3, "size %d: top / 1.6^%d" % [n, n - 1])
+		var home := PlaneSpace.to_world(sim.world.local_of_abs(0.0, 0.0), 0.0)
+		check(Vector2(pool.beacon.position.x - home.x, pool.beacon.position.z - home.z).length() < 1e-3, "size %d: under home" % n)
+	pool.free()
+	for n in [3, 4]:
+		var dev := _s3_pool(n)
+		check_near(_pool_box(dev.beacon, dev).end.y, HomeBeacon.top_tm(n), 0.005, "the dev's size %d: placed at its top" % n)
+		dev.free()
+
+
+func test_new_nodes_are_grouped() -> void:
+	# At the build's size: a dev size leaves the replaced creature views queued for deletion, which
+	# outside a tree keeps their lanes registered (in a game the tree unregisters them at once).
+	var pool := _s3_pool(1)
+	var registered := pool.world_space.registered()
+	for node: Node3D in [pool.old_band, pool.cradle, pool.older_haze]:
+		check(registered.has(node) and node.has_method(&"apply_growth"), "%s: a registered container" % node.name)
+		check(pool.growth_containers().has(node), "%s: a growth container" % node.name)
+	check(registered.has(pool.beacon) and not pool.beacon.has_method(&"apply_growth"), "the beacon: a registered leaf")
+	_check_covered(pool, "with the cradle and the beacon")
+	pool.free()

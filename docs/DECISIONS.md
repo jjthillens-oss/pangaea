@@ -1170,3 +1170,201 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   food hue still fails.
 - **Note**: T4.4's commit cited V3-14 for the ghost rows; those rows are V3-13's ladder work, and
   V3-14 is this haze.
+
+## 2026-10-24 · S3 T5.1: the old band below (V3-3 to V3-5, V3-21; S3G28, S3G29; PROPOSED; IMPLEMENTED)
+
+- **What**: `OldBandLayer` (`game/scenes/pool/old_band_layer.gd`, node `OldBand`) as s3-view
+  section 5 writes it. From band 1 it draws the band before's landmarks and rare set pieces sunk
+  under the plane at their true size: absolute am = (x_bu, y_bu) x 2.56^b, scale = piece scale x
+  2.56^b / 1.6^(n - 1), top at `top_target_tm(h)` (-2 tm for pieces up to 1 tm tall, -3 from 3 tm).
+  It builds its own `WorldGen` from the same content and seed, and no sim file names it (S3G28: the
+  sim's hashes and the save are the same with it on and off).
+- **Bake**: each band-0 model (6 landmarks, 2 rare kinds) is baked once a run into one surface with
+  vertex colours = the old colour of each surface's albedo (desaturated 0.65 in linear light, luma
+  capped at 0.30), one material per model with the model's detail texture. Measured: every colour
+  at luma 0.27 to 0.30, chroma at most 12, at least 33 degrees of LAB hue from food and 63 from
+  threat. The mesh stores 8 bits a channel, so colours are rounded down to keep the cap.
+- **Two sides**: a MultiMesh has no per-instance mirror flag, so a mirrored rare piece would draw
+  inside out. The baked materials draw both sides; the pieces are opaque and closed, so the cost is
+  small.
+- **Pool wiring**: registered container and growth container (`old_band_enabled` false skips
+  setup); `set_band` at the build, at `debug set_size`, and in `_begin_growth` after
+  `apply_growth` (the in-band 3 to 4 growth eases each instance's y to its new target over the beat,
+  V3-7); `refresh` on respawn and teleport; `tick` each frame refreshes every 0.5 s outside a beat and
+  bakes one model a frame until all are baked. The band-up fade and hand-off are T5.2's.
+- **Refresh cost**: the pieces of a cell or block are pure, so the layer keeps them (at most 4096)
+  between refreshes. Median 0.35 ms headless over 100 refreshes moving 2.2 tm each (gate 1.0 ms).
+
+## 2026-10-24 · S3 T5.2: the band-up beat (V3-1, V3-2, V3-16; S3G30, S3G36 F part; PROPOSED; IMPLEMENTED)
+
+- **Profile (V3-1)**: `GrowthBeat.begin` calls `set_retire_profile` on every growth container that
+  has it: `BAND_UP_SINK_TM` 3.0 and `BAND_UP_RETIRE_S` 2.0 on a band-up (`is_band_up(from, to)`:
+  `band_of` differs), the S2 values otherwise, so the next in-band growth is back to S2's beat.
+  RockField and SiltTrail sink their retiring chunks by the profile; ZoneLights sinks its retiring
+  discs only on a band-up (its S2 beat fades them in place, which stays).
+- **Hand-off (V3-2)**: after `apply_growth`, `LandmarkLayer.release_band(b)` detaches every
+  `a_<b>_` and `p_<b>_` piece with its global transform, and `OldBandLayer.adopt` puts them under
+  `Handoff`. Each sinks from its y to its old-band y (the drawn instance with the same id, or the
+  piece's own AABB) by `ease_in_out_cubic` over `HANDOFF_SINK_S` 1.4 s, then cross-fades with the
+  old band's MultiMeshes over 1.4 to 2.0 s; `end_growth` frees it. A cancelled beat fades the handed
+  pieces out over `GrowthBeat.MIN_FADE_S` and shows the old band at once. No piece pops.
+- **Two fixes in LandmarkLayer found by the hand-off**: a rare piece looks its asset up in its own
+  band (`band_of_rare`, from `TileCatalog.RARE_KINDS_BY_BAND`), not the drawn band; and a place's
+  `scale` reaches its pose (it was dropped, so a scaled landmark drew at 1).
+- **Preload (V3-16)**: the endless `_build` requests a threaded load of `s3_preload_paths()` (every
+  kit shell, landmark and rare of the bands this build reaches, the cradle ring, the home beacon);
+  `_process` polls, and when all are in `_warm_up_late` draws each scene's meshes once at the hidden
+  warm-up point. **Changed from the plan**: `use_sub_threads` is false. With sub-threads a GLB's
+  loads outlive the pool and Godot 4.7.2 aborts at exit (seen in `test_warm_up`); one thread per
+  scene still keeps the loads off the main thread. A pool freed mid-preload collects its requests
+  first.
+- **Tests**: `test_growth_view` (no pop at a band-up, the profile resets, a cancelled band-up still
+  fades) and `test_warm_up` (the S3 assets are preloaded, their meshes warmed). Mutations caught:
+  a cancel that frees the pieces, a profile never reset, a sink offset of 0.3 tm, old-band
+  instances shown from frame 0.
+
+## 2026-10-24 · S3 T5.3: the cradle and the home beacon (V3-6 to V3-9; S3G37, S3G32 F part; PROPOSED; IMPLEMENTED)
+
+- **What**: `CradleView` (`game/scenes/pool/cradle_view.gd`, node `Cradle`) and `HomeBeacon`
+  (`home_beacon.gd`), made once in the endless build (never in the M1 pool) and registered in
+  WorldSpace: the cradle a container, the beacon a leaf. From band 1 the cradle draws art's
+  `cradle_ring.glb` (materials dimmed x 0.5 in linear light, top at -2.0 tm), the M1 pool's 18 rocks
+  and 8 ring shells at true size (baked like the old band, sharing its bake cache, tops at -2.5 tm),
+  48 plankton-haze glitter sprites on `glitter_ring.gdshader` at -1.8 tm, and the caption "Your
+  lineage began here" at the ring's north edge, faded from 35 to 40 tm from home.
+- **Ring scale**: art re-exported the ring at the old pool's size (record `radius_bu` 14.0625, the
+  plan's 7.0 was rev 0), so `RING_RECORD_RADIUS_BU` is 14.0625 and the scale is
+  `pool_ring.radius_bu / 14.0625 x bu_to_tm(n)`: 1.0 at size 3, 0.625 at 4. A test pins the constant
+  to the record.
+- **Beat**: a growth re-expresses what the cradle shows; `set_size(to)` lays out the new size and
+  the pieces ease to it over the beat (V3-7). A band-up lays size 3 out at once and fades it in over
+  0.5 to 2.0 s. The beacon follows S2's leaf rule, so its top is -12.71 / 1.6^(n - 1) at every size.
+- **Tests**: `test_world_scene` (ring at the pool radius, record constant, visible from band 1,
+  caption text and range, dish at true size, beacon top per size through real growths, nodes
+  grouped, ring and beacon dimmed) and `test_growth_view` (the band-up fade, the in-band ease).
+  The decor rows (S3G32 F part) live in `test_ambience_contract.gd` as `test_s3_decor_rows`, next to
+  T4's older-haze rows, since they use its readers. With this art an undimmed ring is still under
+  `MAX_LUMA_BELOW` (Silica luma 0.38), so a direct check that every ring and beacon surface is
+  dimmed guards V3-6. Mutations caught: no dimming, beacon scaled by `bu_to_tm`, cradle at band 0,
+  caption always on, dish at am scale, dish and ring tops not pinned, no in-band ease, a fade from 0 s.
+
+## 2026-10-24 · S3 T5.4: zone patches and the bloom tint (V3-10, V3-11; S3G15 view; PROPOSED; IMPLEMENTED)
+
+- **Patches (V3-10)**: `PATCH_REGIONS` moves from the pool to `ZoneLights` and gains
+  `warden_flat`; the pool passes every chunk zone and `ZoneLights.has_patch` picks: a listed region,
+  no region (the M1 pool's zones), or a bloom meadow.
+- **Bloom tint (V3-11)**: a bloom meadow also gets `bloom_<zone id>`, a disc laid as its patch on
+  the shared `bloom_mesh` (`bloom_tint.gdshader`: `T_BloomTint` mask, tint #E8C27A, no fog, under
+  every cue). Its alpha is 0.05 (Forward+) or 0.18 (Compatibility) times a per-instance strength:
+  `bloom_strength` is 1 while the meadow's slot blooms and 0.25 while the other does, eased over 2 s
+  after each switch, at the drawn sim tick (`update_bloom` from the pool's frame), so it switches
+  with `EcologyRegion.bloom_multiplier` and never pops. The shader's alpha uniform is named
+  `opacity`, as the other decor's, so the contract readers find it.
+- **Tests**: `test_growth_view` (the tint follows the regrowth phase over two cycles, never both
+  slots full, eases through each switch; only bloom meadows get a disc, warden flats a patch, glass
+  reefs none, freed with the chunk) and `test_ambience_contract.test_bloom_disc_rows` (under the
+  plane band, no fog, under the lane, 30 degrees clear of food, luminance x alpha 0.10 at the
+  Compatibility alpha). Mutations caught: both slots blooming together, every zone patched,
+  warden flats unlisted, the tick read undrawn, no ease, the spine's #E8D27A, a 0.4 alpha.
+
+## 2026-10-24 · S3 T5.5: the HUD for sizes 3 and 4 (V3-15, V3-17 to V3-19; S3G27 HUD, S3G41; PROPOSED; IMPLEMENTED)
+
+- **Names (D-116)**: `REGION_NAMES` gains band 1's regions and rare places verbatim. Home from band
+  1 is the cradle: `region_toast(region, rare, band)` gives "Your lineage began here", shown once
+  per `bind` (the 30 s rule still applies to every other name). The band is read from
+  `pool.sim_size()` in `_on_region`, so the start tile at bind takes it too.
+- **Toasts wait for the chord (V3-15, C3V-21)**: a `tile_entered` during a growth beat before
+  `CHORD_S` is held (the last one wins) and shown from `on_growth_chord`.
+- **Places line (V3-17, C3V-1)**: `%PlacesLine` after `%GrowthLine`, from
+  `growth.places_found(pool.shown_size())` at every endless size, hidden in the M1 pool;
+  `GrowthHud.places_text` is static and `Hud.set_places` owns the label.
+- **Hazard phrase (V3-18)**: "stop" ("stinger veils stop stinging") sits after "ignore" in
+  `PHRASE_ORDER`; ladder entries carry `behavior` from the species catalog.
+- **Veil hint (V3-19)**: kept, not cut (it is first on the cut list, but S3 is not running long).
+  `IdeaHints` id `veil_threads`, "Threads sting: swim around them", wanted while
+  `hint_context().veil_in_view` (`inked_veils_in_view > 0`); followed `VEIL_FOLLOW_S` 10 s after it
+  showed when a veil was in view since and no sting hit the cell. The sting comes from the `hit`
+  event (kind "sting", target the cell) that `IdeaHints.on_event` already gets, so the context
+  carries no `last_sting_s` (the spec's route); the behaviour is the same.
+- **Tests**: `test_growth_hud` (`test_places_text`, `test_hazard_phrase`, `test_preview_at_four`,
+  `test_veil_hint`, the context's keys) and `test_world_hud` (`test_band_one_names`,
+  `test_cradle_toast_once`, `test_toast_waits_for_the_chord`). Mutations caught: the cradle on the
+  30 s rule, no reset at bind, a toast at frame 0, a held toast never shown, home as the cradle at
+  band 0, a misnamed region, "stop" missing from or out of `PHRASE_ORDER`, "ignore you" for the
+  veil, entries without `behavior`, the line at the new size during the beat, the line in the M1
+  pool, the veil hint repeating after a pass, a sting or a bite ignored or counted, no veil in view
+  required, a 5 s follow, a context that never sees the veil.
+
+## 2026-10-24 · S3 T5.6: dev tools for sizes 3 and 4 (s3-view 12, D-118; PROPOSED; IMPLEMENTED)
+
+- **Buttons**: `%Size3` and `%Size4` join `GROWTH_BUTTONS` beside Size 1 and 2 (the spec put them
+  in `WORLD_BUTTONS`; they show where the sea grows, as S2's size buttons do, and a button in both
+  lists would have its visibility set twice). `%GoToCradle` is a world button: from band 1 it
+  teleports to the band's cradle `view_point_bu` times `band_factor` to the band (band 1:
+  (0, 46.08) am, `DebugPanel.cradle_point_am`), facing north; at band 0 it is disabled, reads "Go
+  to cradle (size 3+)" and a run is refused with a reason on the refusal line.
+- **Creature lines**: a hazard gets a third line with where it is on each drift sine now
+  (`posmod(tick + phase, period)`, more use to a dev than the fixed phase) and its drift goal; a
+  bloom brain its blooming slot, the post it guards and the seconds to the next switch.
+- **Gizmos**: `DevGizmos.habit_layer` gives each hazard's thread capsule (drawn as two sides and two
+  half circles) and its drift path (48 points of `drift_goal` over the longer period, every other
+  segment drawn), and each channel lurker's strike lane from its lair (`_lane` takes a colour).
+- **Tests**: `test_debug_panel` (`test_size_3_and_4_and_go_to_cradle`,
+  `test_hazard_and_bloom_lines_and_marks`). Mutations caught: band 0's factor (18 am), the button
+  never disabled, a cradle at band 0, Size 4 unrouted, the fixed drift phase, the time since the
+  switch, the drift path over the x period, a 1.0 prey radius, a lane for every creature.
+
+## 2026-10-24 · S3 T5.7: build top 4, band-up smoke and perf tour (D-89, C3V-16, C3V-21; S3G36, S3G43; PROPOSED; IMPLEMENTED)
+
+- **Build top 4 (D-89)**: `world_cell.json` `sizes.max_in_build` is 4, so the shipped endless world
+  grows to size 4. Tests written for S2's top-2 world pin it where the test is about S2 (the
+  config fixture's `_base()`, the place and dev-meter tests in `test_growth`, `test_tiles`, the
+  band-0 content tests via `WorldChecks.shipped_world_at(2)`), and the rest read the top from
+  `world.max_size` instead of a literal 2 or 3.
+- **Band-up names its tile (C3V-21)**: C3V-21 assumed a band-up fires `tile_entered`. It does not
+  at home: the cell keeps tile (0, 0) across the band-up, so no toast came and the cradle toast in
+  the smoke never showed. `Hud.on_growth_chord` now names the tile the cell is on when the chord
+  lands on a band-up and no toast is held (`test_band_up_names_the_tile_at_the_chord`).
+- **Endless smoke (S3G43)**: `band_up` and `band_up_continue` as s3-view 16.2 (23 and 11 checks).
+  The two `check.sh` lines go after S2's `grow` lines (C3V-16, bound 120 s each; the phases ran in
+  about 20 s together here).
+- **Perf tour (S3G36)**: the swim route takes the S3 steps at 9,000, 9,600 (go to cradle), 10,800
+  and 16,500 (band-up under reduce motion); the grow route runs 3,600 ticks with three growths, a
+  set size 2 and the reduce-motion band-up. `PerfTour.s3_gate` reports `report.gate.s3`
+  (`growth_pass`: every growth window ≤ 50 ms; `draw_pass`: max draw calls ≤
+  `S3G36_MAX_DRAW_CALLS` 104) and the printed line appends " · S3G36 pass" or " · S3G36 FAIL: …".
+  `test_debug_panel` checks both routes' ticks and the verdict text.
+
+## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
+
+- **Scenes**: `lineup_s3`, `lineup_s4` and `hatch_band_up` join `ENDLESS_SCENES` and
+  `GROWTH_SCENES` (an omnivore, the AI frozen). The lineups stand at the band's cradle view point
+  (`cradle_view_point_tm`: (0, 18) tm at 3, (0, 11.25) at 4), with the spec's bodies, morsel items
+  and ghosts; they play `CARRION_SETTLE_FRAMES` (45), not `START_FRAMES` (30), so the morsel items
+  have grown in (0.6 s). `hatch_band_up` is size 2 at (0, 28.8) tm and shoots as `hatch`, adding
+  the old band's draw calls at 2.0 s.
+- **Readings**: the veil's threads (frames with and without `Threads`: ink, width, median CIE76,
+  neutral gap) and, at 4, each morsel item's rim (frames with and without the `__rim` MultiMeshes)
+  and the strip's preview. A near ghost's `cell_multiple` is now its larger side over the cell
+  (`test_ghosts`' measure): the lancer is tall and thin, 0.65 across and 1.65 high. S1's and S2's
+  ghosts read as before (their width is the larger side).
+- **The veil's threads ink (S3G32 M)**: the spec's outline (a 0.06 tm line, alpha 0.85 at its very
+  middle) read 0.5% of the threads' pixels within 15 degrees of the threat pink, because the line
+  blends with the navy at every pixel. The inked outline is now solid over its inner half and 0.08 tm
+  wide (`capsule_outline.gdshader` `smoothstep(0.5 w, w, ...)`, `OUTLINE_ALPHA` (0.6, 1.0),
+  `OUTLINE_W_TM` 0.08). In Forward+, the game's renderer, the spec's flat fill (alpha 0.10) then
+  blended to a purple wash (CIE76 about 20, hue about 300 degrees) over more than half the capsule
+  and the share fell to 26.7%. The fill is now 0.10 at the rim and fades to nothing on the axis
+  (`(d / r)^3`), so the whole stinging area still reads from its edge: 46.2% at size 3 in
+  Compatibility and 45.3% in Forward+, and the neutral outline at 4 stays 95 and 79 degrees off the
+  pink.
+- **Gates**: 21 rows, all pass in Compatibility (50 of 50 with S1's and S2's), each with its reading
+  in its `what`. S1's and S2's growth scenes read as at S2. The endless set (16 of 16) moved a little
+  (reef food gap 140.0, reef contrast 6.4, shed husk 164.4 and 92.3) and the arrow home's centre
+  reads L* 90.6 against 99.8 (bound 75); each `what` records it.
+- **Found, not fixed (look review)**: the near ghosts and giants draw no pixel above the probe's
+  change threshold at sizes 3 and 4 (largest change 6 of 255), as S2's faint-ghost item; and the
+  Compatibility renderer draws a band's fresh pieces and the cradle at frame 0 of the band-up
+  (P99 47.7), although their `GeometryInstance3D.transparency` is 1 at that draw (read at
+  `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
+  landmark at the screen's edge).

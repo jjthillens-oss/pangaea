@@ -147,12 +147,17 @@ func test_thread_ink_and_neutral() -> void:
 	threads.set_ink(true)
 	check(_thread_color(threads.rig_material()).is_equal_approx(ink_albedo), "inked threads: M_VeilThreadInk")
 	check(_thread_color(threads.outline_material()).is_equal_approx(ink_albedo), "and the outline")
+	# T5.7's look probe: the inked outline is solid and 0.08 tm wide, so the stinging area reads in
+	# the threat pink (lineup_s3.veil.ink); the neutral one stays at 0.6.
+	check_eq(threads.outline_material().get_shader_parameter("outline_alpha"), 1.0, "the inked outline is solid")
+	check_eq(threads.outline_material().get_shader_parameter("outline_w"), 0.08, "0.08 tm wide")
 	threads.set_ink(false, VeilThreadsView.INK_FADE_S)
 	threads.step(0.5)
 	check(not _thread_color(threads.rig_material()).is_equal_approx(neutral_albedo), "half way: still fading")
 	threads.step(0.5)
 	check(_thread_color(threads.rig_material()).is_equal_approx(neutral_albedo), "after 1 s: M_VeilThreadNeutral")
 	check(_thread_color(threads.outline_material()).is_equal_approx(neutral_albedo), "and the outline")
+	check_near(float(threads.outline_material().get_shader_parameter("outline_alpha")), 0.6, 1e-6, "the neutral outline at 0.6")
 	check(threads.shown_color().is_equal_approx(neutral_albedo), "shown_color agrees")
 	threads.free()
 	# S3G32 (spine): a veil's threads ink at its entry size, q = 1, and never below it.

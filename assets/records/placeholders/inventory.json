@@ -195,6 +195,31 @@
       "node": "Pool/OlderHaze"
     },
     {
+      "id": "old_band_bakes",
+      "kind": "generated",
+      "description": "The old band below (S3, V3-3): each recorded band-0 landmark and rare GLB baked at runtime into one ArrayMesh surface (its root mesh's surfaces, no Growth_ nodes, vertex colours the old colour of each surface's albedo) drawn as a MultiMesh under the swim plane, and a QuadMesh probe warmed up once at the start fade. The models are the recorded kit pieces; nothing new is modelled.",
+      "types": [
+        "ArrayMesh",
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/old_band_layer.gd"
+      ],
+      "node": "Pool/OldBand"
+    },
+    {
+      "id": "cradle_glitter",
+      "kind": "generated",
+      "description": "The cradle's glitter ring and dish (S3, s3-view 6.2 and 6.3): 48 billboards of art's T_Haze_plankton sprite on the shared unit QuadMesh round the old pool, and the M1 pool's rocks and ring shells baked like the old band (OldBandLayer.baked) into MultiMeshes, plus a QuadMesh probe warmed up once at the start fade. The sprite and the models are recorded art; nothing new is modelled.",
+      "types": [
+        "QuadMesh"
+      ],
+      "files": [
+        "game/scenes/pool/cradle_view.gd"
+      ],
+      "node": "Pool/Cradle"
+    },
+    {
       "id": "creature_skin",
       "kind": "generated",
       "description": "The creature stage's generated skin: a Surface Nets ArrayMesh built at runtime from the body description's capsule field (game/systems/creature/skin_cpu.gd or skin_gpu.gd), skinned to the generated Skeleton3D with CUSTOM0 paint coordinates and CUSTOM1 rest positions, drawn with the art team's creature_skin.gdshader. Spore-style full-body building (docs/DECISIONS.md, 2026-10-23): the player's anatomy is the model, so there is no Blender source for it. The art parts on it are the recorded cpart_* assets.",

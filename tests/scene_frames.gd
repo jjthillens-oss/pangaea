@@ -25,7 +25,7 @@ static func frame(pool: PoolScene, tick := true) -> void:
 	pool.feedback._process(DT)
 	pool.cell_view._process(DT)
 	for view in pool.creature_layer.get_children():
-		if not view.is_queued_for_deletion():
+		if view is CreatureView and not view.is_queued_for_deletion():
 			view._process(DT)
 
 

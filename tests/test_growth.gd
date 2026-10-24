@@ -55,7 +55,7 @@ func test_growth_exists_only_in_the_endless_world_with_its_switch_on() -> void:
 	check_eq(pool.size(), 1, "the pool is size 1")
 	check(not pool.snapshot().has("world"), "the pool snapshot is M1's")
 	var on := _growth_sim()
-	check_eq(on.world.max_size, 2, "the build top from the world file")
+	check_eq(on.world.max_size, 4, "the build top from the world file (S3, D-89)")
 	var on_world: Dictionary = on.snapshot().world
 	for key in ["growth", "carrion_radius", "carrion_lifetime"]:
 		check(on_world.has(key), "growth on: world.%s" % key)
@@ -715,6 +715,7 @@ func test_a_kill_pays_threat_kill_at_q_one_and_a_carcass_share_otherwise() -> vo
 ## its adaptation points at every size (S4.1: place 10, landmark 20), as earned {points, reason, id}.
 func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void:
 	var sim := _growth_sim()
+	sim.world.max_size = 2   # S2's top, so size 2 is the top where the landmark pays
 	var g := sim.growth
 	var key := FakeWorldGen.PLACE_CHUNK
 	var c := Vector2(32.0 * key.x + 16.0, 32.0 * key.y + 16.0)
@@ -833,6 +834,7 @@ func test_a_respawn_takes_its_energy_from_respawn_energy() -> void:
 ## next tick grow even while hunted or wedged; both refuse with growth off, dead, or (force) at the top.
 func test_the_dev_meter_commands_fill_and_force() -> void:
 	var sim := _growth_sim()
+	sim.world.max_size = 2   # S2's top, so the force is refused at size 2
 	var g := sim.growth
 	check(sim.debug_fill_meter(0.5), "half")
 	var events := sim.drain_events()
@@ -910,8 +912,8 @@ func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_r
 	# out on the first tick); with growth off, size 1 and no meter.
 	sim.save.growth = {"size": 5, "meter": 999.0}
 	var clamped := _continue(sim.save)
-	check_eq([clamped.size(), clamped.growth.meter, clamped.growth.full_since, int(clamped.world.checkpoint_am[3])], [2, 120.0, 0, 2],
-		"size 5 is 2 here; the meter the ring")
+	check_eq([clamped.size(), clamped.growth.meter, clamped.growth.full_since, int(clamped.world.checkpoint_am[3])], [4, 170.0, 0, 4],
+		"size 5 is 4 here (D-89); the meter the ring")
 	check_eq(_of(_tick(clamped), "ring_paid").size(), 1, "full at the top: it pays out")
 	check_eq(clamped.growth.meter, 0.0, "and starts again")
 	var s1 := _continue(sim.save, false)

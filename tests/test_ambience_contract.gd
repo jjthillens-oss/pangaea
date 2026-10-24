@@ -1074,6 +1074,62 @@ func test_older_haze_rows() -> void:
 		haze.free()
 
 
+## S3's cradle and beacon (s3-view 6.6; S3G32 F part) keep the decor rules at size 3: the beacon, the
+## ring, the dish and the glitter lie under the plane band, cast no shadow, draw under the lane, keep
+## clear of the food and threat hues, and keep under MAX_LUMA_BELOW, the see-through glitter faint.
+## The old band's MultiMeshes carry instance colours this runner cannot read: test_old_band checks
+## their colours and depths from the layer's own records (S3G29).
+func test_s3_decor_rows() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	pool.sim.debug_set_size(3)
+	FakeEvents.frame(pool)
+	var cradle := pool.cradle
+	var geos: Array = []
+	for root: Node in [pool.beacon, cradle.ring()]:
+		geos.append_array(root.find_children("*", "GeometryInstance3D", true, false))
+	geos.append_array(cradle.dish().values())
+	geos.append(cradle.glitter())
+	check(geos.size() >= 4, "the beacon, the ring, the dish and the glitter draw (%d)" % geos.size())
+	for geo: GeometryInstance3D in geos:
+		var h := _heights(geo, pool)
+		if h.known:
+			check(h.high <= PLANE_BAND.x + 1e-4, "%s: its top %.2f under the plane band (%.1f)" % [geo.name, h.high, PLANE_BAND.x])
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: no shadow" % geo.name)
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "%s: draws under the lane" % geo.name)
+	for t: Transform3D in cradle.glitter_transforms():
+		check_near(t.origin.y, CradleView.GLITTER_Y_TM, 1e-5, "a glitter sprite at its depth")
+		check(t.basis.get_scale().x < LARGE_M, "a glitter sprite is small")
+	_check_hues(geos)
+	_check_pale(geos, pool)
+	pool.free()
+
+
+## S3's bloom tint (s3-view 7.4, V3-11; S3G32 F part): the disc lies under the plane band, casts no
+## shadow, takes no fog, draws under the lane, keeps clear of the food and threat hues, and at the
+## larger renderer alpha (Compatibility's) stays faint: luminance x alpha at most MAX_LUMA_ALPHA.
+func test_bloom_disc_rows() -> void:
+	var lights := ZoneLights.new()
+	lights.add_chunk(Vector2i.ZERO, [{"id": "z", "region": "veil_garden", "center": Vector2.ZERO, "radius": 6.0,
+		"bloom": {"slot": 0, "offset_ticks": 0, "cycle_ticks": 5400}}])
+	var discs := lights.bloom_discs()
+	check_eq(discs.size(), 1, "a bloom meadow draws a bloom disc")
+	for geo: GeometryInstance3D in discs:
+		var h := _heights(geo, lights)
+		check(h.known and h.high <= PLANE_BAND.x + 1e-4, "its top %.2f under the plane band" % h.high)
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "no shadow")
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "draws under the lane")
+			check(not _blend_and_fog(m).fog, "takes no fog, as the sunlit patches")
+			var top := 0.0
+			for c in _colors(m, geo):
+				top = maxf(top, _luma(c) * c.a)
+			var alpha := maxf(ZoneLights.BLOOM_ALPHA, ZoneLights.BLOOM_ALPHA_COMPATIBILITY)
+			check(top * alpha <= MAX_LUMA_ALPHA + 1e-4, "luminance x alpha %.3f at most %.2f" % [top * alpha, MAX_LUMA_ALPHA])
+		_check_hues([geo])
+	lights.free()
+
+
 ## Every colour `geos` draw keeps HUE_GAP from the reserved hues: flat colours one by one, a painting
 ## by coverage.
 func _check_hues(geos: Array) -> void:

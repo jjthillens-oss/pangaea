@@ -37,8 +37,10 @@ func test_the_fixture_world_has_the_shipped_settings() -> void:
 	var shipped: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
 	check_eq(fixture.keys(), shipped.keys(), "the same keys in the same order")
 	for key in shipped:
-		if key not in ["note", "content", "switches"]:
+		if key not in ["note", "content", "switches", "sizes"]:
 			check_eq(fixture[key], shipped[key], key)
+	check_eq([fixture.sizes.start, fixture.sizes.max_in_build, shipped.sizes.max_in_build], [1.0, 2.0, 4.0],
+		"the fixture stays at S2's top (BP3-17); the game reaches size 4 (D-89)")
 	check_eq(fixture.content.keys(), shipped.content.keys(), "the same content keys")
 	check(str(fixture.content.home).begins_with("res://tests/fixtures/world/"), "fixture paths")
 	check_eq(fixture.switches.keys(), shipped.switches.keys(), "the same switches in the same order")
@@ -51,10 +53,10 @@ func test_the_fixture_world_has_the_shipped_settings() -> void:
 
 
 ## BP3-17: a build whose top is size 2 loads band 0 only, though world_cell.json names band 1's tiles
-## and cradle (S3 ships them before the growth tick crosses a band).
+## and cradle (the shipped world reaches size 4 from S3, D-89; this is it at a size-2 top).
 func test_a_size_2_world_loads_band_0_only() -> void:
-	var shipped := WorldContent.load_from(WorldConfig.DEFAULT_PATH, PoolLayout.load_from(), species)
-	check_eq(shipped.config.max_size_in_build, 2, "the shipped top is still size 2")
+	var shipped := WorldContent.load_from(WorldChecks.shipped_world_at(2), PoolLayout.load_from(), species)
+	check_eq(shipped.config.max_size_in_build, 2, "the top is size 2")
 	check_eq(shipped.tiles.bands, [0] as Array[int], "band 0's tiles only")
 	check_eq(shipped.cradles, {}, "no cradle")
 	check_eq(shipped.problems(parts, species), PackedStringArray(), "the shipped content has no problems")

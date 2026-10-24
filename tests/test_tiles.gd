@@ -91,7 +91,9 @@ func before_each() -> void:
 		return
 	species = SpeciesCatalog.load_from()
 	parts = PartCatalog.load_from()
-	content = WorldContent.load_from(WorldConfig.DEFAULT_PATH, PoolLayout.load_from(), species)
+	# Band 0's tiles at S2's top: from S3 the shipped world reaches band 1 (D-89), whose tiles are
+	# checked below at the size-4 top (_content_4).
+	content = WorldContent.load_from(WorldChecks.shipped_world_at(2), PoolLayout.load_from(), species)
 	kit = content.kit
 	tiles = content.tiles
 	for id in species.species_ids():

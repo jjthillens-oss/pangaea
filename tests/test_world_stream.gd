@@ -1296,7 +1296,7 @@ func test_debug_set_size_takes_the_world_to_a_size_by_the_teleport_path() -> voi
 		check_eq(sim.world.chunk(key).size, 2, "chunk %s at size 2" % key)
 	check_eq(sim.growth.meter, 0.0, "the meter starts again")
 	check_eq(events.back(), {"type": "debug", "command": "set_size", "size": 2}, "the debug event last")
-	check(not sim.debug_set_size(3), "no size above the build top")
+	check(not sim.debug_set_size(sim.world.max_size + 1), "no size above the build top")
 	check(not sim.debug_set_size(0), "no size 0")
 	check(sim.debug_set_size(1), "back to size 1")
 	check_eq([sim.size(), sim.creatures.size, int(sim.world.checkpoint_am[3])], [1, 1, 1], "size 1 again")
