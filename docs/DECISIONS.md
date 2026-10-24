@@ -453,19 +453,12 @@ The seeded-restart contract stays; exact restores are a separate, later decision
 The first playable slice of the creature stage (`docs/milestones/creature-stage-plan.md`), built under the owner's
 standing rules; the generated-skin direction of 2026-10-23 is CONFIRMED, everything below is PROPOSED until the owner
 says otherwise. It opens from the title's "Creature stage" button (marked Preview, below the main menu) or with
-`--creature` after `--` (`--creature-store=PATH` names its save file in place of the slot's; the smoke uses it), and
+`--creature` after `--` (it uses the session's lineage slot, so `--slot=PATH` applies; the smoke uses it), and
 the stage's own Escape leaves it for the title.
 
-- **Saves (plan section 3).** The lineage save schema stays v2. The stage keeps its own file,
-  `user://creature_stage/slot_<n>.json` (`CreatureStore`, schema 1: `version`, `name`, `body` as the codec's
-  dictionary, `points`, `world_seed`, `generation`, `history`), with n the settings' slot number (1 when the slot in
-  use is a `--slot` file that is none of the numbered ones). `--slot=PATH` does not apply to the stage: it names the
-  lineage file only. Writes are atomic (`.tmp` then rename); a load validates the version, the keys and their types,
-  and the body against the body rules and part rules, refuses with reasons and leaves the file as it is, and the
-  stage then starts fresh with the reasons in `load_problems`; the save before is kept as `.bak` and read when the
-  file is bad. The stage saves on Done, Back, Evolve, a death and a quit from the window (with the points the world's
-  sim holds). IMPLEMENTED (`CreatureStore`, `CreatureStage`); the editor and world scenes are merged, and the
-  "Creature stage scenes missing" notice stays as a guard for a build without them.
+- **Saves (plan section 3).** Superseded on 2026-10-24 by save schema v3 (the entry below): the creature lives in
+  the lineage save. The first version kept its own file, `user://creature_stage/slot_<n>.json` (`CreatureStore`),
+  which is removed; nothing shipped wrote one outside the preview build.
 - **The editor (plan section 4).** PROPOSED. A Spore-style room over the ported editor core: handles to drag, a
   tool per part type in the art records (read from `game/data/creature/part_rules.json`, compiled from the records
   by `tools/make_part_rules.py` since the records folder is not exported), a limb tool, undo and redo, mirror,
@@ -480,6 +473,29 @@ the stage's own Escape leaves it for the title.
   power, eye parts sight, body volume health; a body with no mouth eats fruit by touch at half the points. Death sends
   the creature back to the nest at full health with a 20% points loss. Camera-relative movement, bite on F / pad X,
   evolve at the nest on E / pad Y. The numbers live in `game/data/creature/creature_stage.json` (PROPOSED).
-- **Open owner decision: save schema v3.** Folding the creature body, points and generation into the lineage save
-  (one file per slot, with a migration from v2) is save schema v3 and needs the owner's approval. Until then the
-  stage's file stays separate and the lab's `user://creatures/*.json` files remain importable as the same codec text.
+- **Save schema v3.** Approved by owner direction on 2026-10-24 and built; see the entry below. The lab's
+  `user://creatures/*.json` files remain importable as the same codec text.
+
+## 2026-10-24 · Save schema v3: the creature in the lineage save (CONFIRMED direction; IMPLEMENTED)
+Joshua (2026-10-24 00:09 UTC): "Then follow the Bible. That is your gospel." Bible section 18 asks for one save per
+lineage with its genome and history, versioned migrations with fixtures, a last-known-good backup, and loads that
+never silently drop body parts or lineage history. The creature stage's separate file did not meet that, so:
+
+- **Schema.** `SaveGame.SCHEMA_VERSION` is 3. A new top-level field, `creature`, is `{}` until the lineage enters the
+  creature stage, then `{"name", "body", "generation", "history"}`: `body` is the body codec's dictionary (extra keys
+  such as `skin_color` kept), `generation` a whole number of at least 1, `history` a list. The creature's points are
+  the save's `adaptation_points`: one lineage, one pool of points. IMPLEMENTED (`game/domain/save_game.gd`).
+- **Migration.** `SaveMigrations` 2 to 3 adds `creature: {}`; v1 saves go through 1 to 2 and then 2 to 3, in memory,
+  and the file is rewritten only by the next save. Fixtures: `tests/fixtures/save_v1.json`, `save_v2_step2.json` and
+  the new `save_v3_creature.json` (a creature at generation 3 with two history entries). IMPLEMENTED.
+- **Validation.** The creature's types are checked in `SaveGame.validate`; its body is checked against the body rules
+  and the part rules by `CreatureRules` (`game/systems/creature/creature_rules.gd`), which `PersistenceService` passes
+  in. A bad body fails the load with the reasons and the `.bak` loads instead, as with an invalid genome; parts are
+  never dropped. A write is verified by reading it back, the creature's generation and body included. IMPLEMENTED.
+- **The stage.** `CreatureStage` reads and writes the session's slot through `PersistenceService` (`--slot` applies).
+  A slot with no save founds a lineage (`Lineage.found`, the omnivore cell, the stage's start points); a lineage
+  without a creature gets the starter quadruped and keeps its points and seed. A slot that exists but will not load
+  is shown on screen with the reasons and is never written over; Escape leaves. `CreatureStore` and
+  `--creature-store` are removed (the old flag is now an unknown argument). IMPLEMENTED.
+- **Unchanged.** The era stays `microscopic`: moving between eras is a Bible transaction and out of scope here.
+  Continue still rebuilds the cell pool from its seed (the 2026-10-24 entry above).

@@ -2,7 +2,8 @@ class_name CreatureStage
 extends Node
 ## The creature stage's root (creature-stage plan sections 3 to 5, PROPOSED): Main hosts it as the screen. It holds
 ## one child screen at a time, the editor (CreatureEditor) or the world (CreatureWorld), owns the stage's state and
-## its save file (CreatureStore, under user://creature_stage/, never the lineage slot) and answers the screens:
+## writes it into the lineage save (save schema v3, SaveGame.creature; its points are the save's adaptation_points;
+## owner direction of 2026-10-24: follow the Bible, section 18) through PersistenceService, and answers the screens:
 ##   editor.done_requested  -> the committed body and points go into the state, saved, then the world opens
 ##   editor.back_requested  -> saved, then exit_requested (Main shows the title)
 ##   world.evolve_requested -> the points go into the state, saved, then the editor opens
@@ -21,12 +22,15 @@ const EDITOR_SCENE_PATH := "res://game/scenes/creature/creature_editor.tscn"
 const WORLD_SCENE_PATH := "res://game/scenes/creature/creature_world.tscn"
 const MISSING_TEXT := "Creature stage scenes missing"
 
-## The stage's state (CreatureStore.new_state's keys); saved by save_now().
+## The stage's working view of the save: {"name", "body", "points", "world_seed", "generation", "history"}.
+## save_now() writes it back into `save` (points into adaptation_points, the rest into save.creature).
 var state: Dictionary = {}
-## The file the state is saved to (CreatureStore.default_path of the slot).
-var store_path := ""
-var store: CreatureStore
-## Why the store file could not be read (empty when it loaded or did not exist yet); the state is then fresh.
+## The lineage slot the stage reads and writes (the session's slot).
+var slot_path := ""
+## The lineage save the state belongs to; null when the slot exists but would not load (nothing is then written).
+var save: SaveGame
+var persistence: PersistenceService
+## Why the slot could not be loaded; when not empty the stage shows them and never writes over the file.
 var load_problems: PackedStringArray = []
 ## The screen shown now: the editor, the world, or null (the missing-scenes notice). Nodes, since the tests inject
 ## stubs through make_editor / make_world; editor_scene() and world_scene() give the real scenes typed.
@@ -45,26 +49,56 @@ var _missing_label: Label
 var _warned := false
 
 
-## Loads the state from `p_store_path`, or starts fresh with `world_seed` (keeping the load's reasons in
-## load_problems), then opens the editor.
-func setup(p_store_path: String, world_seed: int) -> void:
-	store_path = p_store_path
-	if store == null:
-		store = CreatureStore.new()
+## Loads the lineage save in `p_slot_path` (its backup when the file is bad, as Continue does). A slot with no save
+## founds a lineage here (Lineage.found with `world_seed` and the omnivore cell, the stage's start points); a lineage that has not met
+## the creature stage gets the starter creature and keeps its points. A slot that exists but will not load is left
+## untouched: the stage shows why and only lets the player leave. Then the editor opens.
+func setup(p_slot_path: String, world_seed: int) -> void:
+	slot_path = p_slot_path
+	if persistence == null:
+		persistence = PersistenceService.new(PartCatalog.load_from())
 	load_problems = PackedStringArray()
-	var loaded := store.load_from(store_path)
-	if loaded.ok:
-		state = loaded.state
-	else:
-		state = CreatureStore.new_state(world_seed)
-		if FileAccess.file_exists(store_path):
+	save = null
+	var exists := FileAccess.file_exists(slot_path) or FileAccess.file_exists(slot_path + PersistenceService.BACKUP_SUFFIX) \
+			or FileAccess.file_exists(slot_path + PersistenceService.TEMP_SUFFIX)
+	if exists:
+		var loaded := persistence.load_from(slot_path)
+		if loaded.ok:
+			save = loaded.save
+		else:
 			load_problems = loaded.errors
 			for problem in load_problems:
-				push_warning("Creature stage: %s Starting fresh; the file is left as it is." % problem)
+				push_warning("Creature stage: %s The save is left as it is." % problem)
+			_show_problems()
+			return
+	else:
+		var founded := Lineage.found(world_seed, BuildInfo.build_id(), persistence.catalog, _starting_cell(persistence.catalog))
+		if not founded.ok:
+			load_problems = founded.errors
+			for problem in load_problems:
+				push_warning("Creature stage: could not found a lineage: %s" % problem)
+			_show_problems()
+			return
+		save = founded.save
+		save.adaptation_points = CreatureRules.start_points()
+	if save.creature.is_empty():
+		save.creature = CreatureRules.new_creature()
+	state = {"name": String(save.creature["name"]), "body": (save.creature["body"] as Dictionary).duplicate(true),
+			"points": save.adaptation_points, "world_seed": save.world_seed,
+			"generation": int(save.creature["generation"]), "history": (save.creature["history"] as Array).duplicate(true)}
 	open_editor()
 
 
-## "editor" or "world": the screen asked for, whether or not its scene was there.
+## The cell a lineage founded in the creature stage starts from: the omnivore, else the first starting body.
+static func _starting_cell(catalog: PartCatalog) -> String:
+	if catalog.starting_bodies.has("omnivore"):
+		return "omnivore"
+	var names: Array = catalog.starting_bodies.keys()
+	names.sort()
+	return String(names[0]) if not names.is_empty() else ""
+
+
+## "editor", "world" or "problems": the screen asked for, whether or not its scene was there.
 func mode() -> String:
 	return _mode
 
@@ -115,12 +149,15 @@ func enter_world() -> void:
 ## Writes the state to the store, with the points the world's sim holds when the world is up (so a quit from the
 ## world, Main.request_quit, keeps what was eaten). A failure is warned about and kept in last_save; play goes on.
 func save_now() -> Error:
-	if store == null or store_path.is_empty():
+	if save == null or persistence == null or slot_path.is_empty():
 		return ERR_UNCONFIGURED
 	sync_from_world()
-	last_save = store.save_to(store_path, state)
+	save.adaptation_points = int(state["points"])
+	save.creature = {"name": String(state["name"]), "body": (state["body"] as Dictionary).duplicate(true),
+			"generation": int(state["generation"]), "history": (state["history"] as Array).duplicate(true)}
+	last_save = persistence.save_to(slot_path, save)
 	if last_save != OK:
-		push_warning("Creature stage: could not save to %s (%s)." % [store_path, error_string(last_save)])
+		push_warning("Creature stage: could not save to %s (%s)." % [slot_path, error_string(last_save)])
 	return last_save
 
 
@@ -244,6 +281,21 @@ func _show_missing() -> void:
 	_missing_label.text = MISSING_TEXT
 	_missing_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_missing_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_missing_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_missing_label)
+
+
+## The slot would not load: say why on screen; Escape (back) leaves without writing.
+func _show_problems() -> void:
+	_mode = "problems"
+	_clear_screen()
+	_missing_label = Label.new()
+	_missing_label.name = "LoadProblems"
+	_missing_label.text = "This save could not be opened, so the creature stage will not change it.\n%s\nEscape goes back." \
+			% "\n".join(load_problems)
+	_missing_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_missing_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_missing_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_missing_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_missing_label)
 

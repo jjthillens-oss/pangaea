@@ -4,7 +4,7 @@ extends RefCounted
 ## "coat_pattern" and "detail_pattern" as whole numbers), which the codec keeps as unknown keys
 ## (tests/test_creature_body.gd), so the editor, the store and the world all draw the same skin. They are written as
 ## floats: JSON reads every number back as one, and the store's write check compares the body's encoding before and
-## after the round trip (CreatureStore.save_to), so an int would come back as 3.0 and fail it. Not domain code: it is the presentation's
+## after the round trip (PersistenceService.save_to), so an int would come back as 3.0 and fail it. Not domain code: it is the presentation's
 ## convention, read by scenes only.
 
 const SKIN_COLOR_KEY := "skin_color"

@@ -10,7 +10,11 @@ extends RefCounted
 ## between its two moves leaves no primary, the older save as .bak and the newest, already
 ## verified save as .tmp; that .tmp is then loaded ("recovered") instead of the older backup, and
 ## the next save moves its own .tmp into the empty place as usual.
+## The creature (schema v3): its body is checked against the body rules and part rules (CreatureRules,
+## loaded on first use) on every load and save, so a save whose creature breaks them fails to load
+## with the reasons and the backup is tried; its parts are never dropped.
 
+const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const CURRENT_VERSION := SaveGame.SCHEMA_VERSION
 const BACKUP_SUFFIX := ".bak"
 const TEMP_SUFFIX := ".tmp"
@@ -18,6 +22,8 @@ const TEMP_SUFFIX := ".tmp"
 ## from_version (int) -> Callable(Dictionary) -> Dictionary returning the next version's data.
 var migrations: Dictionary = {}
 var catalog: PartCatalog
+## The creature's body rules, loaded the first time a save with a creature is checked.
+var creature_rules: CreatureRules
 
 
 func _init(p_catalog: PartCatalog) -> void:
@@ -25,8 +31,17 @@ func _init(p_catalog: PartCatalog) -> void:
 	migrations = SaveMigrations.all()
 
 
+## SaveGame.validate with the creature's body rules.
+func validate(save: SaveGame) -> PackedStringArray:
+	if save.creature.is_empty():
+		return save.validate(catalog)
+	if creature_rules == null:
+		creature_rules = CreatureRules.new()
+	return save.validate(catalog, creature_rules.body_validator())
+
+
 func save_to(path: String, save: SaveGame) -> Error:
-	var errors := save.validate(catalog)
+	var errors := validate(save)
 	if not errors.is_empty():
 		push_error("Save refused: %s" % "; ".join(errors))
 		return ERR_INVALID_DATA
@@ -43,7 +58,8 @@ func save_to(path: String, save: SaveGame) -> Error:
 	# A save is only reported as written if it loads back as the same lineage and world: a number
 	# the file cannot hold exactly would otherwise pass here and fail (or change) on Continue.
 	var written := _read_current_version(tmp)
-	if not written.ok or written.save.lineage_id != save.lineage_id or written.save.world_seed != save.world_seed:
+	if not written.ok or written.save.lineage_id != save.lineage_id or written.save.world_seed != save.world_seed \
+			or not _same_creature(written.save.creature, save.creature):
 		DirAccess.remove_absolute(tmp)
 		return ERR_FILE_CORRUPT
 
@@ -107,7 +123,7 @@ func _read_current_version(path: String) -> Dictionary:
 		result.errors.append("%s: %s" % [path.get_file(), migrated.error])
 		return result
 	var save := SaveGame.from_dict(migrated.data)
-	var problems := save.validate(catalog)
+	var problems := validate(save)
 	if not problems.is_empty():
 		for problem in problems:
 			result.errors.append("%s: %s" % [path.get_file(), problem])
@@ -135,6 +151,15 @@ func migrate(data: Dictionary) -> Dictionary:
 			return {"ok": false, "data": {}, "error": "migration from schema %d did not advance the version." % v}
 		v = next
 	return {"ok": true, "data": current, "error": ""}
+
+
+## The creature read back is the one written: the same body text (the codec's encoding, the look keys
+## included) and generation. Both empty is the same too.
+static func _same_creature(read: Dictionary, written: Dictionary) -> bool:
+	if read.is_empty() or written.is_empty():
+		return read.is_empty() == written.is_empty()
+	return int(read.get("generation", 0)) == int(written.get("generation", 0)) \
+		and BodyCodec.encode(BodyCodec.from_dict(read.get("body", {}))) == BodyCodec.encode(BodyCodec.from_dict(written.get("body", {})))
 
 
 ## Parses quietly; a damaged file is an expected case here, not an engine error.

@@ -23,9 +23,9 @@ extends Node
 ## InputPrompts which device is in use, so hints name the controller's buttons or the keys.
 ##
 ## Creature stage preview (creature-stage plan, PROPOSED): open_creature_stage() puts the CreatureStage
-## in place of the screen; the title's "Creature stage" button and --creature open it. It keeps its
-## own save file (CreatureStore.default_path of the settings' slot number, or --creature-store's
-## file; --slot does not apply) and comes back to the title through exit_requested.
+## in place of the screen; the title's "Creature stage" button and --creature open it. It reads and
+## writes the session's lineage slot (save schema v3 keeps the creature there; --slot applies) and
+## comes back to the title through exit_requested.
 
 signal screen_changed(screen: Node)
 
@@ -119,30 +119,18 @@ func show_start() -> void:
 	_set_screen(start_screen)
 
 
-## Opens the creature stage preview as the screen, on its own save file for the current slot number
-## (creature_store_path()); a --seed names the seed of a fresh stage state. Its exit comes back to
+## Opens the creature stage preview as the screen, on the session's lineage slot (save schema v3: the creature
+## lives in the lineage save); a --seed names the seed of a lineage the stage founds. Its exit comes back to
 ## the title.
 func open_creature_stage() -> CreatureStage:
 	_clear_screen()
 	creature_stage = CREATURE_STAGE_SCENE.instantiate()
 	add_child(creature_stage)
 	creature_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
-	var seed_value := flags.seed_value if flags.seed_value >= 0 else randi_range(0, RunFlags.MAX_SEED)
-	creature_stage.setup(creature_store_path(), seed_value)
+	var seed_value := flags.seed_value if flags.seed_value >= 0 else randi()
+	creature_stage.setup(session.slot, seed_value)
 	_set_screen(creature_stage)
 	return creature_stage
-
-
-## The creature stage's store file: --creature-store when given (the creature smoke's), else
-## user://creature_stage/slot_<n>.json, n the settings' slot number (1 when the slot in use is a
-## --slot file that is none of the numbered ones).
-func creature_store_path() -> String:
-	if flags != null and not flags.creature_store.is_empty():
-		return flags.creature_store
-	var n := SaveSlots.number_of(session.slot) if session != null else 0
-	if n == 0 and settings != null:
-		n = SaveSlots.number_of(settings.current_slot_path())
-	return CreatureStore.default_path(maxi(n, 1))
 
 
 ## Founds a lineage with a starting body and opens the pool. A seed below 0 uses --seed, else a

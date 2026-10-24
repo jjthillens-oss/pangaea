@@ -1,10 +1,19 @@
 class_name SaveGame
 extends RefCounted
-## One run's persistent state, schema version 2 (Bible section 18).
-## v2 (M1) adds adaptation_points; see SaveMigrations for the v1 -> v2 step. Plain data plus validation.
-## File handling, migration and recovery live in PersistenceService.
+## One run's persistent state, schema version 3 (Bible section 18).
+## v2 (M1) adds adaptation_points; v3 (the creature stage) adds the creature; see SaveMigrations for the
+## steps. Plain data plus validation. File handling, migration and recovery live in PersistenceService.
+##
+## The creature (v3): {} until the lineage enters the creature stage, then {"name": String, "body":
+## Dictionary (the body codec's dictionary, extra keys such as the editor's skin_color included),
+## "generation": int >= 1, "history": Array}. Its points are adaptation_points: one lineage, one pool
+## of points, carried between the cell pool and the creature stage. The body's rules (the body rules
+## and the part rules) are data a service loads, so validate() takes them as an optional Callable
+## (body Dictionary -> PackedStringArray of problems); without one the creature's types are still
+## checked. A body that breaks the rules fails to load with the reasons, like an invalid genome: parts
+## are never dropped.
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 ## 2^53: save files keep numbers as doubles, which hold whole numbers exactly only up to here.
 const MAX_WORLD_SEED := 9007199254740992
 ## Era ids are PROPOSED names from Bible section 4.
@@ -17,6 +26,8 @@ var era: String = "microscopic"
 var genome: Genome
 ## Unspent adaptation points, earned by eating and surviving, spent in the editor.
 var adaptation_points: int = 0
+## The creature stage's creature (see above), {} before the lineage has one.
+var creature: Dictionary = {}
 ## Ordered events: {"generation": int, "genome_id": String, "event": String}
 var lineage_history: Array = []
 var discoveries: Array = []
@@ -40,7 +51,7 @@ static func new_run(seed: int, p_build_id: String) -> SaveGame:
 	return save
 
 
-func validate(catalog: PartCatalog) -> PackedStringArray:
+func validate(catalog: PartCatalog, creature_body_rules: Callable = Callable()) -> PackedStringArray:
 	var errors := PackedStringArray(load_problems)
 	if not StableId.is_valid(lineage_id, "lineage"):
 		errors.append("Save has an invalid lineage id '%s'." % lineage_id)
@@ -63,6 +74,33 @@ func validate(catalog: PartCatalog) -> PackedStringArray:
 	var pos = player.get("position")
 	if not (pos is Array and pos.size() == 3):
 		errors.append("Player position must be three numbers.")
+	errors.append_array(validate_creature(creature, creature_body_rules))
+	return errors
+
+
+## Every problem with a creature dictionary: {} is fine (no creature yet); otherwise the four keys with
+## their types, generation 1 or higher, a name that is not blank, then the body against `body_rules`
+## when one is given (a Callable taking the body Dictionary and returning its problems).
+static func validate_creature(data: Dictionary, body_rules: Callable = Callable()) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if data.is_empty():
+		return errors
+	var problems := []
+	var creature_name := JsonValues.text(data, "name", problems)
+	var body := JsonValues.dict(data, "body", problems)
+	var generation := JsonValues.whole(data, "generation", problems)
+	JsonValues.array(data, "history", problems)
+	for problem in problems:
+		errors.append("Creature: %s" % problem)
+	if not errors.is_empty():
+		return errors
+	if creature_name.strip_edges().is_empty():
+		errors.append("Creature: the name is blank.")
+	if generation < 1:
+		errors.append("Creature: generation must be 1 or higher, got %d." % generation)
+	if body_rules.is_valid():
+		for problem in body_rules.call(body):
+			errors.append("Creature body: %s" % problem)
 	return errors
 
 
@@ -75,6 +113,7 @@ func to_dict() -> Dictionary:
 		"era": era,
 		"genome": genome.to_dict() if genome else {},
 		"adaptation_points": adaptation_points,
+		"creature": creature.duplicate(true),
 		"lineage_history": lineage_history.duplicate(true),
 		"discoveries": discoveries.duplicate(true),
 		"relationships": relationships.duplicate(true),
@@ -98,6 +137,11 @@ static func from_dict(data: Dictionary) -> SaveGame:
 	var genome_data = data.get("genome")
 	save.genome = Genome.from_dict(genome_data) if genome_data is Dictionary else null
 	save.adaptation_points = JsonValues.whole(data, "adaptation_points", problems)
+	save.creature = JsonValues.dict(data, "creature", problems)
+	# JSON reads every number as a float; the creature's generation is a whole number in memory.
+	var generation = save.creature.get("generation")
+	if generation is float and is_finite(generation) and generation == floorf(generation):
+		save.creature["generation"] = int(generation)
 	save.lineage_history = JsonValues.array(data, "lineage_history", problems)
 	save.discoveries = JsonValues.array(data, "discoveries", problems)
 	save.relationships = JsonValues.array(data, "relationships", problems)
