@@ -1,0 +1,12 @@
+config_version=5
+
+[application]
+config/name="PROPOSED Social Prototype"
+run/main_scene="res://social.tscn"
+
+[display]
+window/size/viewport_width=1000
+window/size/viewport_height=650
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
