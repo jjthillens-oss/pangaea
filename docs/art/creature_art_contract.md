@@ -58,9 +58,12 @@ The `part_*` record fields stay. These are added under `"part_rules"`, with valu
   "tilt_limit_deg": 30,
   "centerline": "allowed",
   "hosts": ["spine", "limb", "limb_end"],
+  "role": "weapon",
   "handles": [{"key": "H1_Length", "meaning": "shaft length", "default_permille": 0}]
 }
 ```
+
+- `role` (added 2026-10-24) says what the part is for: `eye`, `mouth`, `hand` (graspers), `foot`, `weapon` or `detail`. The editor can group its palette by it, and the stats can count eyes and mouths from it instead of a list of types. Variants of a kind are their own types (`eye`, `eye_slit`, `eye_round`), so each keeps its own mesh and rules.
 
 - `orientation` takes one of three values:
   - `normal`: up follows the skin;
@@ -151,7 +154,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds twenty-six parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds thirty-one parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -181,6 +184,11 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_club_tail` | club_tail, `normal`, spine, centreline required | 1053 | H1_Length, H2_Size | Knobbed bony club on a thick fleshy stalk for the tail cap |
 | `cpart_lure` | lure, `normal` | 602 | H1_Length, H2_Droop | Slender stalk arching forward over the head to a glowing pale-cyan bulb (flat emission); paint_mix 0 on the bulb |
 | `cpart_barbels` | barbels, `forward_cone`, centreline required | 476 | H1_Length, H2_Lift | Two long and two short whisker barbels on a fleshy chin pad |
+| `cpart_eye_slit` | eye_slit, `forward_cone` | 870 | H1_Blink (on `Lid`), H2_Bulge (on `EyeSlit`) | Reptile eye: a gold iris with a slit pupil (narrow across y) in an almond of scaly lids; the iris is a second material on the ball's own ring, so its edge stays round |
+| `cpart_eye_round` | eye_round, `forward_cone` | 990 | H1_Blink (on `Lid`), H2_Bulge (on `EyeRound`) | Big round eye standing proud of the skin: white ball, wide blue iris, large pupil, thin rolled lid |
+| `cpart_eye_cluster` | eye_cluster, `forward_cone` | 1004 | H1_Bulge, H2_Spread (on `Eyes`) | Four glossy black eyes, two big and two small, in a low fleshy pad |
+| `cpart_jaw` | jaw, `forward_cone`, centreline required | 492 | H1_Open, H2_Length (on `Jaw` and `Teeth`) | Long toothy snout: scaly upper (+Y) and lower jaws with rows of pointed teeth and pink gums, on a collar |
+| `cpart_bill` | bill, `forward_cone`, centreline required | 912 | H1_Open, H2_Width | Broad flat spoon-tipped bill with nostril dents, a closing seam and a dark nail, on a fleshy gape |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 

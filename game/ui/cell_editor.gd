@@ -5,7 +5,8 @@ extends Control
 ## tiles grouped by category with each part's model as the icon, adds a part where it fits; the rim
 ## picks a part and drags it round the body; the selected part can be mirrored, resized, upgraded
 ## (S4.5 part levels) or removed; undo and redo step through the edits. The 3D preview draws the
-## working body as the pool will, and the stat lines show each number before and after. Mate commits
+## working body as the pool will, and the stat lines show each number before and after; Test drive
+## swims it round a small empty dish (TestPool, IB-03) and comes back unchanged. Mate commits
 ## through Lineage.reproduce (the save's genome becomes the child, its points pay the cost); Back
 ## leaves the body as it was. Either way `closed` reports whether a new generation was born.
 ##
@@ -45,6 +46,8 @@ const DISH_PX := 780.0
 ## The body's half length as a share of the rim's radius: the rim's dots ring the body, and a
 ## long upgraded tail still fits on the dish.
 const BODY_ON_RIM := 0.58
+## The foods a mouth's diet means, on the Eats line (Bible section 5 previews feeding).
+const DIET_NAMES := {"plant": "plants", "meat": "meat"}
 const BETTER := Color(0.55, 0.95, 0.6)
 const WORSE := Color(1.0, 0.55, 0.5)
 
@@ -52,6 +55,7 @@ var session: EditorSession
 var save: SaveGame
 var state: ActorState
 var selected := ""                 ## the selected part's id, "" for none
+var chase := {}                    ## {"speed", "name"}: the fastest hunter here; {} for none
 
 var _preview: CellPreview
 var _rim: RimView
@@ -65,6 +69,8 @@ var _upgrade: Button
 var _selected_label: Label
 var _part_buttons: Array[Button] = []
 var _part_info: Label
+var _warning: Label
+var _test_pool: TestPool
 
 
 func _init() -> void:
@@ -79,9 +85,12 @@ func _ready() -> void:
 
 
 ## Opens on `p_save`'s genome with its points; `p_state` is the cell's (Lineage checks its energy).
-func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState) -> void:
+## `chase` is the fastest chase where the cell lives (SpeciesCatalog.fastest_chase, with the
+## species' "name" added); the editor warns when the new body is no faster. {} for none.
+func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: Dictionary = {}) -> void:
 	save = p_save
 	state = p_state
+	chase = p_chase
 	session = EditorSession.new(save.genome, catalog, save.adaptation_points)
 	selected = ""
 	_status.text = ""
@@ -200,7 +209,30 @@ func stat_lines() -> Array:
 		if not is_equal_approx(a, b):
 			better = (b > a) == bool(s[2])
 		out.append([s[0], s[3] % a, s[3] % b, better])
+	out.insert(3, ["Eats", eats_text(before.diets), eats_text(after.diets), _diet_better(before.diets, after.diets)])
 	return out
+
+
+## What a body can eat, for the Eats line: "plants and meat", "nothing" for no mouth.
+static func eats_text(diets: PackedStringArray) -> String:
+	var names := []
+	for diet in ["plant", "meat"]:
+		if diets.has(diet):
+			names.append(DIET_NAMES[diet])
+	for diet in diets:
+		if not DIET_NAMES.has(diet):
+			names.append(diet)
+	return " and ".join(names) if not names.is_empty() else "nothing"
+
+
+## true when the edit only adds foods, false when it only takes some away, null when it is the
+## same or trades one for another.
+static func _diet_better(before: PackedStringArray, after: PackedStringArray) -> Variant:
+	var gained := Array(after).filter(func(d: String) -> bool: return not before.has(d))
+	var lost := Array(before).filter(func(d: String) -> bool: return not after.has(d))
+	if gained.is_empty() == lost.is_empty():
+		return null
+	return lost.is_empty()
 
 
 func _after(result: Dictionary) -> void:
@@ -236,6 +268,7 @@ func _refresh() -> void:
 	var errors: PackedStringArray = p.errors
 	_mate.disabled = not (p.affordable and errors.is_empty())
 	_mate.tooltip_text = "" if not _mate.disabled else ("Not enough points" if errors.is_empty() else errors[0])
+	_warning.text = chase_warning(p.phenotype.speed)
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
 	_show_selected()
@@ -251,6 +284,28 @@ func _refresh() -> void:
 		if line[3] != null:
 			value.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
 		_stats.add_child(value)
+
+
+## Swims the working body round the test dish (IB-03); Back returns here with nothing changed.
+func test_drive() -> void:
+	if session == null:
+		return
+	_test_pool.start(session.working, session.preview().phenotype)
+
+
+func _on_test_pool_left() -> void:
+	if is_inside_tree():
+		_mate.grab_focus()
+
+
+## The rule 3 warning (S4.6): a body no faster than the fastest chase here can be caught. The editor
+## allows it (heavy and slow is a fair trade), but says so. "" when the body outswims every hunter.
+func chase_warning(speed: float) -> String:
+	var hunter := float(chase.get("speed", 0.0))
+	if hunter <= 0.0 or speed > hunter:
+		return ""
+	return "The %s can catch this body: it chases at %.1f, this body swims %.1f." % [
+		str(chase.get("name", "hunter")), hunter, speed]
 
 
 ## Names the selected part and its level, and prices its next level on the Upgrade button.
@@ -382,6 +437,12 @@ func _build() -> void:
 	_stats.columns = 2
 	_stats.add_theme_constant_override(&"h_separation", 16)
 	right.add_child(_stats)
+	_warning = Label.new()
+	_warning.name = "ChaseWarning"
+	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_warning.custom_minimum_size = Vector2(260, 0)
+	_warning.add_theme_color_override(&"font_color", WORSE)
+	right.add_child(_warning)
 
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override(&"separation", 12)
@@ -389,10 +450,14 @@ func _build() -> void:
 	_points = Label.new()
 	_points.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(_points)
+	_button(bottom, "Test drive", test_drive).name = "TestDrive"
 	_undo = _button(bottom, "Undo", undo)
 	_redo = _button(bottom, "Redo", redo)
 	_button(bottom, "Back", cancel)
 	_mate = _button(bottom, "Mate", commit)
+	_test_pool = TestPool.new()
+	_test_pool.left.connect(_on_test_pool_left)
+	add_child(_test_pool)   # last, so it covers the editor while it is shown
 
 
 ## The palette's groups, Spore's way: [heading, [part type ids]] by category in CATEGORIES order,
@@ -445,7 +510,7 @@ func _button(parent: Control, label: String, action: Callable) -> Button:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or _test_pool.visible:
 		return
 	if event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()

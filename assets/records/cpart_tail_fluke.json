@@ -71,6 +71,7 @@
     "hosts": [
       "spine"
     ],
+    "role": "detail",
     "handles": [
       {
         "key": "H1_Span",

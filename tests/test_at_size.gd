@@ -210,3 +210,22 @@ func _first_tell(rec: Dictionary, zone: Dictionary, at: Vector2, heading: float,
 				return e
 		mem.events.clear()
 	return {}
+
+
+func test_the_fastest_chase_at_each_size_is_the_quickest_live_pursuer() -> void:
+	# The editor's rule 3 warning (S4.6) compares the new body with this.
+	for n in range(1, TOP + 1):
+		var want := 0.0
+		var who := ""
+		for id in species.species_ids():
+			if species.live_at(id, n, parts):
+				var chase := float(species.species[id].speeds.pursue) * (species.at_size(id, n, parts).phenotype as Phenotype).speed
+				if chase > want:
+					want = chase
+					who = id
+		var got := species.fastest_chase(n, parts)
+		check_eq(got, {"speed": want, "species": who}, "size %d" % n)
+	var first := species.fastest_chase(1, parts)
+	check(float(first.speed) > 0.0 and first.species != "", "something hunts a new cell (%s)" % [first])
+	var bound := float(species.fairness.max_pursue_share_of_slowest_fed) * float(SpeciesCatalog._starting_bodies(parts).slowest_fed)
+	check(float(first.speed) <= bound + 1e-6, "and rule 3 holds for the starting bodies (%.3f <= %.3f)" % [first.speed, bound])

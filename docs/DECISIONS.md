@@ -794,6 +794,13 @@ calls a mate of the player's own kind. It walks up beside the player, a heart ri
 editor opens. The beat lasts `CreatureWorld.MATE_BEAT_S` (2.5 s) and the world holds still during it. The mate is a
 twin of the player's body: an egg, a hatchling and mates of other kinds come later.
 
+## 2026-10-24 · Creature editor palette grouped by kind (PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, built better with the Bible's ideas; the playthrough notes
+(docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md) show the editor's part grid grouped by kind on the left with the
+creature on a plinth on the right. The palette gains tabs (All, Mouths, Senses, Limbs, Weapons, Details) above the
+part pictures; picking a tool by key switches to its tab, and a part type art adds later lands in Details until it
+is listed in `CreatureEditorHud.PART_CATEGORY`. Layout and styling stay Pangaea's own.
+
 ## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
 Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
 - **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
@@ -905,5 +912,6 @@ its tabs pick them up from the records.
   - two deaths keep the body and each takes a quarter of the points.
 - **Open (rule 3 against edited bodies).** The pursue bound is checked against the slowest *starting*
   body. A heavy edited body (shells, spikes, no tail) can be slower than a hunter's chase. That is
-  the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
-  editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
+  the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
+  warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
+  is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.

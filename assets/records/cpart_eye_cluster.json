@@ -1,0 +1,103 @@
+{
+  "id": "cpart_eye_cluster",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature eye part (PROPOSED): four glossy black eyes, two big and two small, in a low fleshy pad.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_eye_cluster.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_eye_cluster.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.1,
+    "y_forward": 0.084,
+    "z_up": 0.047
+  },
+  "triangles": 1004,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEyeCluster_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEyeCluster_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEyeCluster_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EyeClusterLens",
+    "M_EyeClusterPad"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "EyeCluster",
+    "Eyes"
+  ],
+  "part_type": "eye_cluster",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "eye_cluster",
+    "footprint_radius_m": 0.051,
+    "sink_depth_m": 0.015,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 45,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "eye",
+    "handles": [
+      {
+        "key": "H1_Bulge",
+        "meaning": "the eyes stand 6 mm prouder of the pad",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Spread",
+        "meaning": "the eyes 25% further apart across, 15% along",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both handles are on Eyes; the pad stays put."
+  },
+  "paint_mix": {
+    "M_EyeClusterPad": 0.9,
+    "M_EyeClusterLens": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0004,
+    "triangles_before": 1600,
+    "triangles_after": 1004
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
