@@ -28,6 +28,12 @@ const FAR_BOX_TM := 1e12          ## a query box reaching past this covers every
 ## are picked again, and the rounding slack added to every pick (as GRID_SLACK is to a grid's).
 const ROUTE_KEEP_TM := 1.0
 const ROUTE_KEEP_SLACK := 0.01
+## How many of the latest add_chunk and remove_chunk changes are kept (_changes), so that a RouteKeep
+## picked up to this many epochs ago can be carried over instead of picked again; and the tm a
+## change's chunk square must stay clear of a pick's box by (float32 local centres, against the box's
+## float64 absolute bounds, differ by some 1e-5 tm).
+const ROUTE_CHANGES := 64
+const ROUTE_CARRY_MARGIN_TM := 1.0
 
 ## What route_point_kept keeps for one caller between calls: the canonical indices of the colliders
 ## that could block its route from anywhere within ROUTE_KEEP_TM of where they were picked, and what
@@ -48,6 +54,9 @@ var settle_fallbacks := 0
 ## picked in another epoch is picked again. set_origin moves only the local centres, which a
 ## RouteKeep's absolute places follow.
 var epoch := 0
+## Epoch -> Vector4i(first index, index shift, chunk key x, chunk key y) of the add_chunk (shift +n)
+## or remove_chunk (-n) that made it, for the last ROUTE_CHANGES epochs (route_point_kept's carry).
+var _changes := {}
 
 var _keys: Array[Vector2i] = []   # loaded, sorted (y, x): the canonical order
 var _abs_x := PackedFloat64Array()  # per collider, canonical order
@@ -127,6 +136,7 @@ func add_chunk(key: Vector2i, colliders: Array[Dictionary]) -> void:
 	_keys.insert(pos, key)
 	_range[key] = Vector2i(first, kept.size())
 	_chunk_colliders[key] = kept
+	_note_change(first, kept.size(), key)
 	# 2. Its grid counts its own colliders and its loaded neighbours' that reach into it;
 	# 3. its colliders are counted into the loaded neighbours' grids they reach. A collider clear of
 	# a chunk (_may_reach false: most neighbours' are) would mark none of its cells, so is skipped.
@@ -179,6 +189,13 @@ func remove_chunk(key: Vector2i, let_go: Array = []) -> void:
 	_range.erase(key)
 	_grids.erase(key)
 	_chunk_colliders.erase(key)
+	_note_change(span.x, -span.y, key)
+
+
+## Keeps this epoch's change for route_point_kept's carry, and lets go of the one ROUTE_CHANGES back.
+func _note_change(first: int, shift: int, key: Vector2i) -> void:
+	_changes[epoch] = Vector4i(first, shift, key.x, key.y)
+	_changes.erase(epoch - ROUTE_CHANGES)
 
 
 func has_chunk(key: Vector2i) -> bool:
@@ -360,12 +377,14 @@ func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: floa
 	var key := keep.key
 	var ox := origin_x
 	var oy := origin_y
-	var kept := key.size() == 7 and key[0] == epoch and key[3] == ox + to.x and key[4] == oy + to.y \
+	var kept := key.size() == 7 and key[3] == ox + to.x and key[4] == oy + to.y \
 			and key[5] == body_r and key[6] == clearance
 	if kept:
 		var dx: float = key[1] - ox - from.x
 		var dy: float = key[2] - oy - from.y
 		kept = dx * dx + dy * dy <= ROUTE_KEEP_TM * ROUTE_KEEP_TM
+	if kept and key[0] != epoch:
+		kept = _carry_keep(keep)
 	if not kept:
 		_keep_route(from, to, body_r, clearance, keep)
 	var dir := to_target / length
@@ -391,6 +410,45 @@ func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: floa
 	if side != 0:
 		away = dir.orthogonal() * signf(side)
 	return _centers[blocking] + away * (_radii[blocking] + body_r + margin)
+
+
+## Carries `keep` over the add_chunk and remove_chunk changes since it was picked, when every changed
+## chunk's square lies clear of the box its pick searched (by ROUTE_CARRY_MARGIN_TM, in absolute tm):
+## none of those chunks' colliders is or would be in it (a collider in `near` has its centre within
+## 2 r + pad of the segment, so inside the box), so a pick now finds the same colliders in the same
+## canonical order, each index moved by the changes before it. False (pick again) when a change
+## touches the box or is older than ROUTE_CHANGES. The answer is route_point's either way.
+func _carry_keep(keep: RouteKeep) -> bool:
+	var key := keep.key
+	var since := int(key[0])
+	if since < epoch - ROUTE_CHANGES or since > epoch:
+		return false
+	var h := 2.0 * MAX_COLLIDER_R + ROUTE_KEEP_TM + ROUTE_KEEP_SLACK + key[5] + key[6] + GRID_SLACK \
+			+ ROUTE_CARRY_MARGIN_TM
+	var lo_x := minf(key[1], key[3]) - h
+	var hi_x := maxf(key[1], key[3]) + h
+	var lo_y := minf(key[2], key[4]) - h
+	var hi_y := maxf(key[2], key[4]) + h
+	var size_tm := chunk_tm
+	for e in range(since + 1, epoch + 1):
+		var c: Vector4i = _changes[e]
+		var x0 := c.z * size_tm
+		var y0 := c.w * size_tm
+		if x0 <= hi_x and x0 + size_tm >= lo_x and y0 <= hi_y and y0 + size_tm >= lo_y:
+			return false
+	var near := keep.near
+	for e in range(since + 1, epoch + 1):
+		var c: Vector4i = _changes[e]
+		if c.y == 0:
+			continue
+		var from_index := c.x if c.y > 0 else c.x - c.y   # an add moves first on; a remove what followed it
+		for i in near.size():
+			if near[i] >= from_index:
+				near[i] += c.y
+	keep.near = near
+	key[0] = epoch
+	keep.key = key
+	return true
 
 
 ## Picks `keep`'s colliders for a route from `from` to `to` (route_point_kept).

@@ -359,11 +359,14 @@ func step(intent: SimIntent) -> void:
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
 		# S2: the growth tick tries no site (every site of its view set is due at once); the beat's ticks
-		# try a few each.
-		var tries := -1
-		if growth != null and world != null and tick < growth.beat_until:
-			tries = 0 if world.grew_tick == tick else CreatureField.BEAT_TRIES_PER_TICK
-		creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK, tries)
+		# try a few each. A tick whose streaming step loaded a chunk makes no spawn tries: the due sites
+		# (the new chunk's among them) wait for the next tick, so no tick pays for a load and the spawns
+		# (B-7).
+		if world == null or not world.loaded_now():
+			var tries := -1
+			if growth != null and world != null and tick < growth.beat_until:
+				tries = 0 if world.grew_tick == tick else CreatureField.BEAT_TRIES_PER_TICK
+			creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK, tries)
 		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()

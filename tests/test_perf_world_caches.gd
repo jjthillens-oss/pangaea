@@ -1441,6 +1441,49 @@ func test_a_kept_route_keeps_a_blocker_past_the_goal_and_one_the_caller_moves_in
 	check_eq(keep.key, key, "by the keep picked before the move")
 
 
+## B-7: a keep is carried over a chunk loaded or unloaded clear of the box its pick searched (its
+## indices moved by the change, the epoch brought up to date) and picked again for a chunk that
+## touches the box. Each time it holds what a fresh pick from the same place holds, and the route is
+## route_point's.
+func test_a_kept_route_is_carried_over_a_far_chunk_change_and_picked_again_for_a_near_one() -> void:
+	var body_r := 0.5
+	var clearance := PoolArena.ROUTE_CLEARANCE
+	var margin := PoolArena.ROUTE_MARGIN
+	var shells: Array[Dictionary] = [{"id": "a", "center": Vector2(7.0, 10.5), "radius": 1.0},
+		{"id": "b", "center": Vector2(25.0, 25.0), "radius": 1.0}]
+	var arena := ChunkArena.from_shells(shells)
+	var keep := ChunkArena.RouteKeep.new()
+	var from := Vector2(2.0, 10.0)
+	var to := Vector2(12.0, 10.0)
+	var want := arena.route_point(from, to, body_r, clearance, margin, 0)
+	check(want != to, "collider a blocks the route")
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, margin, 0, keep), want, "the kept route is route_point's")
+	var first_near := keep.near.duplicate()   # packed arrays are shared by reference
+	check(not first_near.is_empty(), "the keep holds collider a")
+	# Far: chunk (-5, -5) sorts before (0, 0), so every index of a moves on by its two colliders.
+	var far: Array[Dictionary] = [{"id": "f1", "x": -150.0, "y": -150.0, "r": 1.0}, {"id": "f2", "x": -140.0, "y": -145.0, "r": 1.0}]
+	arena.add_chunk(Vector2i(-5, -5), far)
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, margin, 0, keep), arena.route_point(from, to, body_r, clearance, margin, 0),
+		"after a far load the route is route_point's")
+	check_eq(int(keep.key[0]), arena.epoch, "the keep is brought up to date")
+	var fresh := ChunkArena.RouteKeep.new()
+	arena._keep_route(from, to, body_r, clearance, fresh)
+	check_eq(keep.near, fresh.near, "carried: what a fresh pick holds")
+	check_eq(keep.near[0], first_near[0] + 2, "a's index moved on by the two colliders before it")
+	arena.remove_chunk(Vector2i(-5, -5))
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, margin, 0, keep), want, "after a far unload the route is route_point's")
+	check_eq(keep.near, first_near, "and the keep holds a at its old index again")
+	# Near: chunk (-1, 0) touches the box; its collider lies within reach of the segment.
+	var near: Array[Dictionary] = [{"id": "n", "x": -0.5, "y": 10.0, "r": 1.0}]
+	arena.add_chunk(Vector2i(-1, 0), near)
+	check_eq(arena.route_point_kept(from, to, body_r, clearance, margin, 0, keep), arena.route_point(from, to, body_r, clearance, margin, 0),
+		"after a near load the route is route_point's")
+	fresh = ChunkArena.RouteKeep.new()
+	arena._keep_route(from, to, body_r, clearance, fresh)
+	check_eq(keep.near, fresh.near, "picked again: the new collider is in it")
+	check_eq(keep.near.size(), first_near.size() + 1, "one more collider than before")
+
+
 ## A keep is picked again when one input of its key changes on its own: the goal (to past a collider
 ## the old route never came near), where the caller is (a move of some 20 tm, well past ROUTE_KEEP_TM,
 ## to beside one) or the body's radius (a wider body reaches one the narrow body's pick left out).

@@ -257,9 +257,9 @@ static func _reference_distance(quad: PackedVector2Array, x0: float, y0: float, 
 # --- load and unload (T2.2) ---
 
 ## A swim east then back west, checked every tick against the rules worked out here from the cell's
-## absolute place: the chunks beyond 72 tm unload, in (y, x) order, then the nearest missing chunk
-## within 56 tm loads (ties to the lower key), one a tick; unloads before loads; the arena, the
-## region and the stream agree on what is loaded.
+## absolute place: the chunks beyond 72 tm unload, in (y, x) order; on a tick that unloaded none the
+## nearest missing chunk within 56 tm loads (ties to the lower key), one a tick (B-7: no tick both
+## unloads and loads); the arena, the region and the stream agree on what is loaded.
 func test_chunks_load_nearest_first_one_a_tick_within_the_load_ring() -> void:
 	var sim := _endless(SEED, null, false)
 	sim.drain_events()
@@ -289,7 +289,7 @@ func test_chunks_load_nearest_first_one_a_tick_within_the_load_ring() -> void:
 		var after_unload := before.filter(func(k: Vector2i) -> bool: return not want_unloaded.has(k))
 		var want_loaded: Array = []
 		var best: Variant = _ref_nearest_missing(after_unload, a[0], a[1], 56.0)
-		if best != null:
+		if best != null and want_unloaded.is_empty():
 			want_loaded.append(best)
 		loads += got_loaded.size()
 		unloads += got_unloaded.size()
@@ -438,7 +438,7 @@ func test_chunks_at_equal_distance_load_in_key_order() -> void:
 	check_eq(sim.absolute_position_am(), PackedFloat64Array([1024.0, 0.0]), "exactly")
 	sim.drain_events()
 	var loaded: Array = []
-	for t in 4:
+	for t in 5:   # the first step unloads the chunks left behind and so loads none (B-7)
 		sim.world.step(sim)
 		for e in _of(sim.drain_events(), "chunk_loaded"):
 			loaded.append(e.key)
@@ -472,9 +472,10 @@ func test_a_loaded_chunk_settles_the_cell_and_awake_bodies_out_of_new_shells() -
 	var other := sim.world.local_of_abs(184.0, 56.0)
 	var c := sim.creatures.spawn_at("rammer", other, 0.0, "", sim.tick, true)
 	var r := FakeWorldGen.SHELL_R
-	# The streaming block alone, so the M1 move after it cannot be what frees them. (5, 0) loads
-	# first (distance 0), then (6, 0) and (5, 1), both at 8 tm, in key order.
-	for t in 3:
+	# The streaming block alone, so the M1 move after it cannot be what frees them. The first step
+	# unloads the chunks the teleport left behind and so loads none (B-7); then (5, 0) loads (distance
+	# 0), then (6, 0) and (5, 1), both at 8 tm, in key order.
+	for t in 4:
 		sim.world.step(sim)
 	check(sim.world.chunk(Vector2i(5, 0)) != null and sim.world.chunk(Vector2i(5, 1)) != null, "both chunks loaded")
 	check(sim.motion.position.distance_to(shell) >= r + sim.phenotype.radius - 1e-4,

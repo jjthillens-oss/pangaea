@@ -88,6 +88,8 @@ const RELEASE_PER_TICK := 1
 ## after the growth (which fills none) until every zone shown at the growth has filled (the beat is 120
 ## ticks; a view set shows about 16).
 const FILL_ZONES_PER_TICK := 4
+## Bytes of the block a tick that loads nothing asks for and drops at its end (_settle_heap).
+const HEAP_SETTLE_BYTES := 4096
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -200,9 +202,17 @@ var _ahead_tick := 0                   ## the first tick the next look may run (
 ## The site records of the chunks generated ahead, made a few a tick on quiet ticks (_prepare_ahead)
 ## with each site's next creature (CreatureField.prepare_site), so the tick that loads the chunk and
 ## spawns its sites does not make them: the same key -> {site id: record}, forgotten with the chunk.
-## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn.
+## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn (-1:
+## its parts, _ahead_parts, are still to be made).
 var _ahead_sites := {}
 var _prepare_todo: Array = []
+## The rest of what a load makes from a chunk generated ahead, made on a quiet tick before its site
+## records (_prepare_parts), so the load tick does not: the same key -> {"colliders", "streams" (zone
+## id -> its plankton stream), "zone_abs", "zone_local", "event" (the chunk_loaded payload), "frame"
+## (origin and scale they were made in), "mixed" (a site record was made in another frame)}. The
+## colliders, streams and absolute centres are the chunk's alone; the local values and the payload
+## are used only when every part and record was made in the frame in force at the load.
+var _ahead_parts := {}
 ## What the ring's unloads let go, in pieces (each chunk; the creatures that left; its site records
 ## and zones; its colliders), freed RELEASE_PER_TICK pieces a tick, the last first, on the ticks that
 ## generate, load, unload and rebase nothing. Freed on the unload tick, which often loads a chunk too,
@@ -212,6 +222,7 @@ var _prepare_todo: Array = []
 var _let_go: Array = []
 var _quiet := true                     ## nothing loaded, unloaded or rebased since the last step ended
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
+var _loaded_now := false               ## the last step loaded a chunk (loaded_now)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
@@ -336,12 +347,15 @@ func step(sim: PoolSim) -> void:
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
-	_unload(sim)
+	var unloaded := _unload(sim)
 	var view := _wake_view(sim)
 	var loads := _loads
 	if not grew:
-		_load(sim, view)   # the growth tick's loads are its view set; the beat's begin the next tick
-	var quiet := _loads == loads and not grew   # nothing loaded: the ahead work, the prefetch and the frees may run
+		_load(sim, view, unloaded == 0)   # the growth tick's loads are its view set; the beat's begin the next tick
+	_loaded_now = _loads != loads
+	# Nothing loaded or unloaded (B-7: such a tick does one of them): the ahead work, the prefetch and
+	# the frees may run.
+	var quiet := not _loaded_now and unloaded == 0 and not grew
 	var made := quiet and _look_ahead(sim)   # one chunk generation a tick: the prefetch waits
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
@@ -355,7 +369,26 @@ func step(sim: PoolSim) -> void:
 	if quiet and not made and _quiet:
 		for i in mini(RELEASE_PER_TICK, _let_go.size()):
 			_let_go.pop_back()
+	if not _loaded_now and not grew:
+		_settle_heap()
 	_quiet = true
+
+
+## Whether this tick's step loaded a chunk (step 4, or a sleeper's wake): PoolSim's spawn pass then
+## waits for the next tick (B-7).
+func loaded_now() -> bool:
+	return _loaded_now
+
+
+## Makes the allocator settle, on this tick, the small blocks freed since the last tick that
+## loaded nothing: a block of HEAP_SETTLE_BYTES is asked for and dropped. To glibc's malloc (Linux,
+## CI) that is a large request, and a large request first merges every small block freed since the
+## last one, a cost that grows with how many were freed. Without it a load tick's first large request
+## (a chunk's near grid, 1 KB) paid for all the ticks before it: 230 to 280 us of B-7's tick 564,
+## measured. Other allocators take it as a plain request and free. No state changes.
+static func _settle_heap() -> void:
+	var block := PackedByteArray()
+	block.resize(HEAP_SETTLE_BYTES)
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -735,14 +768,15 @@ func snapshot(sim: PoolSim) -> Dictionary:
 
 ## Unloads every chunk whose nearest point lies beyond the unload ring from the body, unless an awake
 ## creature's reach touches it (its site's chunks, or the leash disc of a creature with no site; a
-## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order.
-func _unload(sim: PoolSim) -> void:
+## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order. Returns how
+## many it unloaded.
+func _unload(sim: PoolSim) -> int:
 	var a := abs_of_local(sim.motion.position)   # nearest() for every key, the body's part once
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
 	var ring := float(rings.unload)
 	if _within_bound(_unload_bound, x, y, ring):
-		return   # every loaded chunk is still within the ring
+		return 0   # every loaded chunk is still within the ring
 	var held: Variant = null   # the holds are only needed for a chunk beyond the ring
 	var gone: Array[Vector2i] = []
 	var far := 0.0
@@ -765,6 +799,7 @@ func _unload(sim: PoolSim) -> void:
 		_unload_chunk(sim, key)
 	if not gone.is_empty():
 		_apply_caps(sim)   # after the unloaded sites' creatures left (G7)
+	return gone.size()
 
 
 ## The chunks awake creatures hold: a site creature its site's reach chunks, a creature with no site
@@ -941,12 +976,17 @@ func _drop_zone(sim: PoolSim, id: String) -> Dictionary:
 ## wake this tick have their site chunks. With caps.chunks loaded, the nearest missing chunk of the
 ## view set loads instead (never refused), and chunk_waits counts each time the nearest missing chunk
 ## had to give way or wait (B-5: a backstop a swim should never need).
-func _load(sim: PoolSim, view_from: Dictionary) -> void:
+## With `ring` false (a tick that unloaded a chunk) only the wakers' chunks load: the load ring's
+## wait for the next tick, so that no tick pays for an unload and a load (B-7; the load ring lies
+## 22 tm beyond the view's, a tick's swim is under 0.2 tm).
+func _load(sim: PoolSim, view_from: Dictionary, ring := true) -> void:
 	# The sleepers step 5 will wake: their reach chunks load first, never refused and never counted.
 	for c in _wakers(sim, view_from):
 		for key in sites[c.site_id].chunks:
 			if not _chunks.has(key):
 				_load_chunk(sim, key)
+	if not ring:
+		return
 	var body := sim.motion.position
 	var view: Array[Vector2i] = []
 	var per_tick := int(caps.loads_per_tick)
@@ -1060,9 +1100,16 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	_loads += 1
 	_site_epoch += 1
 	_quiet = false
+	# What a quiet tick made ahead for this chunk at this size (_prepare_parts); its local values hold
+	# only in the frame they were made in.
+	var k3 := Vector3i(key.x, key.y, size)
+	var parts: Dictionary = _ahead_parts.get(k3, {})
+	_ahead_parts.erase(k3)
+	var have_parts := not parts.is_empty()
+	var framed: bool = have_parts and not parts.mixed and parts.frame == _frame()
 	var arena := sim.arena as ChunkArena
 	if not (_growing and arena.has_chunk(key)):
-		arena.add_chunk(key, _colliders(ch))
+		arena.add_chunk(key, parts.colliders if have_parts else _colliders(ch))
 	var k := _tm_to_am   # local_of_tm written out: (x k - origin) / k, through float64
 	var region := sim.region
 	var prepared := zone_recs.size() == 2 and (zone_recs[0] as Array).size() == ch.zones.size()
@@ -1073,13 +1120,13 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 			fresh = region.add_zone_prepared(zone_recs[0][i], Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k))
 			_zone_abs[z.id] = zone_recs[1][i]
 		else:
-			fresh = region.add_zone(z.id, Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k),
-				float(z.radius), float(z.capacity), float(z.growth_rate))
-			_zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+			var at: Vector2 = parts.zone_local[i] if framed else Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k)
+			fresh = region.add_zone(z.id, at, float(z.radius), float(z.capacity), float(z.growth_rate))
+			_zone_abs[z.id] = parts.zone_abs[z.id] if have_parts else PackedFloat64Array([float(z.x), float(z.y)])
 		i += 1
 		var stream: RandomNumberGenerator = _next_streams.get(z.id)
 		if stream == null:
-			stream = _zone_stream(z.id)
+			stream = parts.streams[z.id] if have_parts else _zone_stream(z.id)
 		else:
 			_next_streams.erase(z.id)
 		region.streams[z.id] = stream
@@ -1089,19 +1136,23 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 			_index_added_zone(region)
 	if sim.creatures != null:
 		var ahead: Dictionary = _ahead_sites.get(Vector3i(key.x, key.y, size), {})
+		var due: Array[Dictionary] = []   # their queue entries, in this order: _enqueue_retries places each as _enqueue would
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
 				_note_home(s.id, key)
 				var rec: Dictionary = ahead.get(s.id, {})
+				var framed_rec := framed and not rec.is_empty()   # made in the frame in force (_prepare_parts)
 				if rec.is_empty():
 					rec = site_recs.get(s.id, {})   # made ahead for the next size (now this one)
 				if not rec.is_empty() and is_same(rec.abs, s):
-					_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
+					if not framed_rec:
+						_derive_site_local(rec, _tm_to_am, origin_x_am, origin_y_am)   # in the frame in force now
 				else:
 					rec = _site_record(s, key)
 				sites[s.id] = rec
 				_note_role(sim, s.id, str(s.species))
-				sim.creatures._enqueue(s.id, s.species, sim.tick)
+				due.append(s)
+		sim.creatures._enqueue_retries(due, sim.tick)
 	_ahead_sites.erase(Vector3i(key.x, key.y, size))
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
@@ -1115,7 +1166,10 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 	_insert_key(key)
 	_chunks[key] = ch
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
-	_emit(sim, chunk_loaded_event(ch) if made.is_empty() else _placed_event(made, ch))
+	if not made.is_empty():
+		_emit(sim, _placed_event(made, ch))
+	else:
+		_emit(sim, parts.event if framed else chunk_loaded_event(ch))
 	if not _growing:
 		_apply_caps(sim)
 
@@ -1208,7 +1262,7 @@ func _look_ahead(sim: PoolSim) -> bool:
 		_forget_ahead_sites(far)
 	var made := Vector3i(best.x, best.y, size)
 	_ahead[made] = gen.chunk(size, best.x, best.y)
-	_prepare_todo.append([made, 0])
+	_prepare_todo.append([made, -1])   # -1: its parts first (_prepare_parts)
 	_ahead_tick = 0   # look again on the next quiet tick, until the keep is full or nothing is nearer
 	return true
 
@@ -1231,11 +1285,18 @@ func _prepare_ahead(sim: PoolSim) -> bool:
 			_prepare_todo.pop_front()   # gone through, loaded or forgotten
 			continue
 		todo[1] = i + 1
+		if i < 0:
+			_prepare_parts(k, ch)
+			left -= PREPARE_PER_TICK   # the parts are a tick's share
+			continue
 		var s: Dictionary = ch.sites[i]
 		if not (s.sizes as Array).has(k.z):
 			continue
 		if not _ahead_sites.has(k):
 			_ahead_sites[k] = {}
+		var parts: Dictionary = _ahead_parts.get(k, {})
+		if not parts.is_empty() and parts.frame != _frame():
+			parts.mixed = true
 		var rec := _site_record(s, Vector2i(k.x, k.y))
 		_ahead_sites[k][s.id] = rec
 		sim.creatures.prepare_site(rec)
@@ -1243,8 +1304,27 @@ func _prepare_ahead(sim: PoolSim) -> bool:
 	return left < PREPARE_PER_TICK
 
 
+## A chunk's colliders, its zones' plankton streams and absolute centres, and (in the frame in force)
+## its zones' local centres and its chunk_loaded payload, as _load_chunk would make them.
+func _prepare_parts(k: Vector3i, ch: WorldChunk) -> void:
+	var streams := {}
+	var zone_abs := {}
+	var zone_local: Array[Vector2] = []
+	for z in ch.zones:
+		streams[z.id] = _zone_stream(z.id)
+		zone_abs[z.id] = PackedFloat64Array([float(z.x), float(z.y)])
+		zone_local.append(local_of_tm(float(z.x), float(z.y)))
+	_ahead_parts[k] = {"colliders": _colliders(ch), "streams": streams, "zone_abs": zone_abs, "zone_local": zone_local,
+		"event": chunk_loaded_event(ch), "frame": _frame(), "mixed": false}
+
+
+## The frame local values are made in: the origin (am) and the scale (am a tm).
+func _frame() -> PackedFloat64Array:
+	return PackedFloat64Array([origin_x_am, origin_y_am, _tm_to_am])
+
+
 ## Forgets what _prepare_ahead made for the chunk generated ahead at `key` (every one when null): its
-## records here and its sites' creatures in the field.
+## parts and records here and its sites' creatures in the field.
 func _forget_ahead_sites(key: Variant = null) -> void:
 	var field: CreatureField = _field.get_ref() if _field != null else null
 	for k in ([key] if key != null else _ahead_sites.keys()):
@@ -1253,7 +1333,10 @@ func _forget_ahead_sites(key: Variant = null) -> void:
 				field.forget_prepared(id)
 		_ahead_sites.erase(k)
 	if key == null:
+		_ahead_parts.clear()
 		_prepare_todo.clear()
+	else:
+		_ahead_parts.erase(key)
 
 
 # --- sleep and wake (step 5) ---

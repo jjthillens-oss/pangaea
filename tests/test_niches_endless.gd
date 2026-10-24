@@ -441,6 +441,10 @@ func test_an_awake_spawn_has_its_site_chunks_loaded_on_its_spawn_tick() -> void:
 	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
 	# Measured: from here two awake spawns' east chunks lie outside the view set.
 	check(sim.debug_teleport_abs(5015.9, 9.0), "teleported")
+	# No load-ring loads: a tick that loads holds its spawn pass (B-7), so with the ring filling a
+	# chunk a tick the spawns would wait until it had loaded every chunk they reach. Without them
+	# the spawns run from the first tick, and only they load the chunks beyond the view set.
+	sim.world.caps.loads_per_tick = 0
 	sim.drain_events()
 	var awake_spawns := 0
 	var missing_before := 0
@@ -461,6 +465,32 @@ func test_an_awake_spawn_has_its_site_chunks_loaded_on_its_spawn_tick() -> void:
 	check(awake_spawns >= 3, "%d awake spawns" % awake_spawns)
 	check(missing_before >= 1, "%d of them had a site chunk missing when the tick began" % missing_before)
 	check_eq(bad, 0, "every awake spawn's site chunks loaded")
+
+
+## B-7: a tick whose streaming step loads a chunk makes no spawn tries; the due sites, the new
+## chunk's among them, spawn on the ticks after it.
+func test_a_tick_that_loads_a_chunk_spawns_nothing() -> void:
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, null, PackedFloat64Array(), 1)
+	sim.world.caps.sleepers = 1000
+	sim.world.caps.awake = 1000
+	sim.drain_events()
+	var load_ticks := 0
+	var spawns := 0
+	var bad := 0
+	for t in 600:
+		sim.step(SimIntent.new(Vector2.RIGHT))
+		var spawned := 0
+		for e in sim.drain_events():
+			if e.type == "creature_spawned" and not e.debug:
+				spawned += 1
+		spawns += spawned
+		if sim.world.loaded_now():
+			load_ticks += 1
+			if spawned > 0:
+				bad += 1
+	check(load_ticks >= 3, "%d ticks loaded a chunk" % load_ticks)
+	check(spawns >= 3, "%d sites spawned on the other ticks" % spawns)
+	check_eq(bad, 0, "no tick that loaded a chunk spawned")
 
 
 ## B-7: a tick's spawn pass (PoolSim.step) spawns at most CreatureField.SLEEPER_SPAWNS_PER_TICK
