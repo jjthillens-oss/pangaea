@@ -228,7 +228,11 @@ func open_cell_editor() -> CellEditor:
 	cell_editor = CellEditor.new()
 	cell_editor.name = "CellEditor"
 	pool.ui.add_child(cell_editor)
-	cell_editor.open(session.sim.save, session.sim.catalog, session.sim.state)
+	var chase := {}
+	if session.sim.species != null:
+		chase = session.sim.species.fastest_chase(session.sim.size(), session.sim.catalog)
+		chase["name"] = str(session.sim.species.species.get(chase.species, {}).get("name", "hunter"))
+	cell_editor.open(session.sim.save, session.sim.catalog, session.sim.state, chase)
 	cell_editor.closed.connect(_on_cell_editor_closed, CONNECT_DEFERRED)
 	return cell_editor
 

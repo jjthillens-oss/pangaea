@@ -274,6 +274,21 @@ func live_at(species_id: String, n: int, part_catalog: PartCatalog = null) -> bo
 	return str(at_size(species_id, n, part_catalog).get("ladder_role", "haze")) != "haze"
 
 
+## The fastest chase a cell of size n can meet: {"speed" (m/s, the species' pursue share of its body
+## at that size), "species" (its id)}; speed 0 and species "" when nothing lives there. The editor
+## warns when an edited body is no faster (rule 3 holds only for the starting bodies; S4.6).
+func fastest_chase(n: int, part_catalog: PartCatalog = null) -> Dictionary:
+	var out := {"speed": 0.0, "species": ""}
+	for id in species_ids():
+		if not live_at(id, n, part_catalog):
+			continue
+		var body: Phenotype = at_size(id, n, part_catalog).phenotype
+		var chase := float(species[id].speeds.pursue) * body.speed
+		if chase > float(out.speed):
+			out = {"speed": chase, "species": id}
+	return out
+
+
 ## The "relationships" block (D-18); {} when the data has none.
 func relationships_cfg() -> Dictionary:
 	return relationships

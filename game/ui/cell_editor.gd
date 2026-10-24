@@ -55,6 +55,7 @@ var session: EditorSession
 var save: SaveGame
 var state: ActorState
 var selected := ""                 ## the selected part's id, "" for none
+var chase := {}                    ## {"speed", "name"}: the fastest hunter here; {} for none
 
 var _preview: CellPreview
 var _rim: RimView
@@ -68,6 +69,7 @@ var _upgrade: Button
 var _selected_label: Label
 var _part_buttons: Array[Button] = []
 var _part_info: Label
+var _warning: Label
 var _test_pool: TestPool
 
 
@@ -83,9 +85,12 @@ func _ready() -> void:
 
 
 ## Opens on `p_save`'s genome with its points; `p_state` is the cell's (Lineage checks its energy).
-func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState) -> void:
+## `chase` is the fastest chase where the cell lives (SpeciesCatalog.fastest_chase, with the
+## species' "name" added); the editor warns when the new body is no faster. {} for none.
+func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: Dictionary = {}) -> void:
 	save = p_save
 	state = p_state
+	chase = p_chase
 	session = EditorSession.new(save.genome, catalog, save.adaptation_points)
 	selected = ""
 	_status.text = ""
@@ -263,6 +268,7 @@ func _refresh() -> void:
 	var errors: PackedStringArray = p.errors
 	_mate.disabled = not (p.affordable and errors.is_empty())
 	_mate.tooltip_text = "" if not _mate.disabled else ("Not enough points" if errors.is_empty() else errors[0])
+	_warning.text = chase_warning(p.phenotype.speed)
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
 	_show_selected()
@@ -290,6 +296,16 @@ func test_drive() -> void:
 func _on_test_pool_left() -> void:
 	if is_inside_tree():
 		_mate.grab_focus()
+
+
+## The rule 3 warning (S4.6): a body no faster than the fastest chase here can be caught. The editor
+## allows it (heavy and slow is a fair trade), but says so. "" when the body outswims every hunter.
+func chase_warning(speed: float) -> String:
+	var hunter := float(chase.get("speed", 0.0))
+	if hunter <= 0.0 or speed > hunter:
+		return ""
+	return "The %s can catch this body: it chases at %.1f, this body swims %.1f." % [
+		str(chase.get("name", "hunter")), hunter, speed]
 
 
 ## Names the selected part and its level, and prices its next level on the Upgrade button.
@@ -421,6 +437,12 @@ func _build() -> void:
 	_stats.columns = 2
 	_stats.add_theme_constant_override(&"h_separation", 16)
 	right.add_child(_stats)
+	_warning = Label.new()
+	_warning.name = "ChaseWarning"
+	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_warning.custom_minimum_size = Vector2(260, 0)
+	_warning.add_theme_color_override(&"font_color", WORSE)
+	right.add_child(_warning)
 
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override(&"separation", 12)
