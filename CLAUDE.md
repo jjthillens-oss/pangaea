@@ -26,6 +26,7 @@ An original seven-era evolution game in Godot 4 with Blender-authored art. The d
 tools/setup_toolchain.sh --templates   # pinned Godot + Windows export templates into .toolchain/
 tools/check.sh                         # import, tests, M0 boot check, launch run, play, UI and death smokes, error-log gate, release pack
 tools/export_windows.sh                # builds/windows/Pangaea.exe (release) and Pangaea-dev.exe (dev tools)
+tools/balance_lab.sh [--seeds=1001-1008 --seconds=300 --bodies=a,b --bots=a,b --jobs=N]   # bots × bodies × seeds → builds/balance/report.md (information, not a gate)
 python tools/blender/make_sample_cell.py   # with `pip install bpy==5.2.2` (Python 3.13), or blender --background --python
 python tools/blender/make_m1_blockouts.py [--only id[,id...]]   # the M1 blockouts, the same way
 python tools/blender/make_m1_threats.py [--only id[,id...]]   # the step 3 threat bodies and the spike part, the same way; then --import
