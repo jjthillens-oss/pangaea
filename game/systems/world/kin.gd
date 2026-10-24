@@ -10,7 +10,8 @@ extends RefCounted
 ## The kin is drawn from the cell's own genome and phenotype, so it looks like the cell. It is no
 ## creature: brains never see it, it never fights, eats or blocks, and it takes nothing from any
 ## random stream, so the sea plays out exactly as without it. A death, a respawn or a growth sends it
-## away (a growth rescales the sea); a rebase shifts it (WorldStream.rebase). It is not saved.
+## away (WorldStream.grow, before it rescales the sea); a rebase shifts it (WorldStream.rebase). While
+## absent its position is unset (INF), so neither moves it. It is not saved.
 ##
 ## Events: kin_arrived {position, heading}; kin_left {reason: "not ready"|"left behind"|"died"|
 ## "grew"|"mated"}; mate {position} (the kin's).
@@ -24,7 +25,7 @@ const SPEED_SHARE := 0.8        ## its throttle: a little slower than the cell, 
 
 var present := false
 var waiting := false            ## a mate was reported and the scene has not finished it
-var motion := Locomotion.MotionState.new()
+var motion := _unset_motion()
 var ready_ticks := 0            ## consecutive ticks the cell has been ready
 var unready_ticks := 0          ## consecutive ticks a present kin's cell has not been ready
 var _side := 1.0                ## the side it holds: 1 left of the cell's heading at arrival, -1 right
@@ -101,6 +102,7 @@ func leave(sim: PoolSim, reason: String) -> void:
 	waiting = false
 	unready_ticks = 0
 	ready_ticks = 0
+	motion = _unset_motion()
 	sim._emit({"type": "kin_left", "reason": reason})
 
 
@@ -116,6 +118,13 @@ func hold_point(sim: PoolSim) -> Vector2:
 	if away.length() < 1e-6:
 		away = Vector2.from_angle(sim.motion.heading + _side * PI / 2.0)
 	return sim.motion.position + away.normalized() * HOLD_RADII * sim.phenotype.radius
+
+
+static func _unset_motion() -> Locomotion.MotionState:
+	var m := Locomotion.MotionState.new()
+	m.position = Vector2.INF
+	m.prev_position = Vector2.INF
+	return m
 
 
 func _arrive(sim: PoolSim) -> void:

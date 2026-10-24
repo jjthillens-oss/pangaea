@@ -104,6 +104,21 @@ func test_a_kin_goes_when_the_cell_stops_being_ready_or_dies() -> void:
 	sim.debug_hurt_player(sim.state.max_health + 1.0)
 	events = _run(sim, 1)
 	check_eq(_of(events, "kin_left").map(func(e: Dictionary) -> String: return e.reason), ["died"], "a death sends it away")
+	check(not sim.kin.motion.position.is_finite(), "and its position is unset while it is away")
+
+
+func test_a_growth_sends_the_kin_away_before_the_sea_rescales() -> void:
+	var sim := _sim()
+	_make_ready(sim)
+	_run(sim, CreatureBrain.ticks(Kin.CALL_S) + 1)
+	check(sim.kin.present, "arrived")
+	check(sim.debug_force_growth(), "growth forced")
+	sim.drain_events()
+	var events := _run(sim, 1)
+	var left := _of(events, "kin_left")
+	check_eq(left.map(func(e: Dictionary) -> String: return e.reason), ["grew"], "gone with the growth")
+	check(events.find(left[0]) < events.find(_of(events, "growth_began")[0]) if not left.is_empty() else false,
+		"before the growth began")
 
 
 func test_no_mate_while_hunted_and_the_kin_changes_nothing_else() -> void:
