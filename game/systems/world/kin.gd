@@ -31,23 +31,30 @@ var unready_ticks := 0          ## consecutive ticks a present kin's cell has no
 var _side := 1.0                ## the side it holds: 1 left of the cell's heading at arrival, -1 right
 var _size := 0                  ## the size it arrived at: a growth sends it away
 
+static var _cheapest_in: PartCatalog = null   ## cheapest_part's last catalog and its answer (a loaded catalog never changes)
+static var _cheapest := 0
+
 
 ## Whether the cell could mate now: alive and on the sea, enough energy, and points for a part.
+## Asked every tick (Kin.tick), so it builds nothing: Lineage.may_reproduce, and the catalog's
+## cheapest part found once.
 static func is_ready(sim: PoolSim) -> bool:
-	if sim.dead or sim.respawn_pending:
-		return false
-	if not Lineage.can_reproduce(sim.state).ok:
+	if sim.dead or sim.respawn_pending or not Lineage.may_reproduce(sim.state):
 		return false
 	return sim.save.adaptation_points >= cheapest_part(sim.catalog)
 
 
 ## The cheapest part the editor offers (0 when it offers none).
 static func cheapest_part(catalog: PartCatalog) -> int:
+	if catalog == _cheapest_in:
+		return _cheapest
 	var best := -1
 	for type_id: String in catalog.parts:
 		if catalog.in_editor(type_id) and (best < 0 or catalog.cost_of(type_id) < best):
 			best = catalog.cost_of(type_id)
-	return maxi(best, 0)
+	_cheapest_in = catalog
+	_cheapest = maxi(best, 0)
+	return _cheapest
 
 
 ## Whether nothing keeps the cell from mating: Growth's blockers, but a recent meal is fine.
