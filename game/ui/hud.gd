@@ -333,6 +333,11 @@ static func survival_toast(points: int, alive_s: float) -> String:
 	return "+%d point%s · survived %d s" % [points, "" if points == 1 else "s", roundi(alive_s)]
 
 
+## "+10 points · new place" for an "earned" event a find paid (`reason` "place" or "landmark").
+static func find_toast(points: int, reason: String) -> String:
+	return "+%d point%s · new %s" % [points, "" if points == 1 else "s", reason]
+
+
 ## The toast for entering a tile: its rare kind's name when `rare` is not "", else its region's;
 ## "" for a name the HUD does not know.
 static func region_toast(region: String, rare: String) -> String:
@@ -561,8 +566,13 @@ func _on_sim_event(event: Dictionary) -> void:
 			_flash(int(event.get("points", 0)))
 		"earned":
 			# A ring paid out at the top has its own toast (ring_paid); the points only flash (C-V8).
-			if str(event.get("reason", "")) != "ring":
-				_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
+			match str(event.get("reason", "")):
+				"ring":
+					pass
+				"place", "landmark":
+					_add_toast(find_toast(int(event.points), str(event.reason)))
+				_:
+					_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
 			_flash(int(event.points))
 		"ring_paid":
 			_add_toast(GrowthHud.ring_paid_text(int(event.points)))

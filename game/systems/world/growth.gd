@@ -403,7 +403,9 @@ func _killed(sim: PoolSim, e: Dictionary) -> void:
 ## landmark_find_tm of the cell, over the 3 x 3 loaded chunks round its chunk, that this size has not
 ## paid are written to the ledger in id order, each with discovered {kind, id, size, lump} (the find's
 ## type is `kind`: the event's own `type` is "discovered"); with lumps, a place pays place x the ring
-## and a landmark landmark_at_top x the ring at the build top only.
+## and a landmark landmark_at_top x the ring at the build top only. Each find also pays its points
+## (cfg.points, S4.1) through Lineage.earn, reported as earned {points, reason: kind, id}, so
+## exploring earns parts as well as eating.
 func _discover(sim: PoolSim, n: int) -> void:
 	var w := sim.world
 	var at := sim.motion.position
@@ -447,6 +449,9 @@ func _discover(sim: PoolSim, n: int) -> void:
 		var lump := _lumps(sim) and (kind == "place" or top)
 		_note(sim, kind, f[2], n)
 		sim._emit({"type": "discovered", "kind": kind, "id": f[2], "size": n, "lump": lump})
+		var points := Lineage.earn(sim.save, int(cfg.points[kind]))
+		if points > 0:
+			sim._emit({"type": "earned", "points": points, "reason": kind, "id": f[2]})
 		if lump:
 			add(sim, float(cfg.lumps.place if kind == "place" else cfg.lumps.landmark_at_top) * ring(n), kind, f[2])
 

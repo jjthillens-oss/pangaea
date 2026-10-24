@@ -802,3 +802,20 @@ size physics. Built on the recommended option, "earn levels by doing" (`game/dom
 - **Revisit.** A loading screen or a spread-out load at the start, if 0.9 s shows on the owner's
   PC. Worker-thread loads come back only with a Windows WARP run that passes several times.
 
+
+## 2026-10-24 · S4.1 pacing: parts cost four times as much, and finds pay points (PROPOSED)
+
+- **Why.** After his playtest the owner asked for Spore's loop: mate with a cell like yours and add
+  parts, instead of grazing for 20 minutes to level up (docs/s4/s4-plan.md). Measured first (ForageBot
+  grazer and omnivore, HuntBot hunter, seeds 11 and 12, growth on, 9 minutes): points are plentiful.
+  The grazer had 46 points at 3 minutes and earned about 15 a minute (plants 118 of 146), the hunter
+  66 and about 25 (meat 174 of 222, 19 kills). At the M1 costs (10 to 25) the first mate would buy
+  three parts and the eight slots would be full in under 10 minutes.
+- **What.** The editor parts cost four times as much: mouth_filter, cilia and eye_spot 40, mouth_jaw,
+  flagellum and spike 60 (shell_plate 80 and toxin_gland 100, not in the editor yet). A new place
+  pays 10 points and a new landmark 20 (`growth.points` in world_cell.json, at every size, as
+  `earned {points, reason, id}`, toasted "+10 points · new place"), so exploring earns parts too.
+  Food and survival points stay (M1's goldens hold them); kills pay through their meat.
+- **Gate.** `tests/test_pacing_gates.gd` (soak): the grazer and the hunter can afford the cheapest
+  part by 3 minutes, and earn a part of the mean editor cost every 1.5 to 4.5 minutes.
+- **Revisit.** After the owner plays S4's mating: the costs and the find points are data.

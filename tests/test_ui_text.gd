@@ -123,6 +123,8 @@ func test_points_and_meal_toasts_name_what_was_earned() -> void:
 	check_eq(Hud.meal_toast({"absorbed": 24.0, "points": 3}), "+24 energy · +3 points", "carrion")
 	check_eq(Hud.meal_toast({"absorbed": 4.4, "points": 0}), "+4 energy", "a meal that earned nothing")
 	check_eq(Hud.survival_toast(1, 30.0), "+1 point · survived 30 s", "survival")
+	check_eq(Hud.find_toast(10, "place"), "+10 points · new place", "a place found")
+	check_eq(Hud.find_toast(20, "landmark"), "+20 points · new landmark", "a landmark found")
 
 
 func test_controls_are_named_from_the_key_bindings() -> void:

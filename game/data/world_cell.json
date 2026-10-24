@@ -19,7 +19,7 @@
              "lumps": {"threat_kill": 0.15, "place": 0.10, "landmark_at_top": 0.10, "food_look": 0.05, "kill_carcass_share": 0.25},
              "remnants": {"cap": 12, "min_rel": 0.45, "morsel_min_rel": 0.25, "life_s": 30.0, "morsel_max_radius_tm": 0.225,
                           "morsel_rot_s": 120.0},
-             "discovery": {"place_find_tm": 10.0, "landmark_find_tm": 6.0}},
+             "discovery": {"place_find_tm": 10.0, "landmark_find_tm": 6.0}, "points": {"place": 10, "landmark": 20}},
   "second_size": {"zone_thin_share": 0.4},
   "ladder": {"labels": ["about 20 µm", "about 32 µm", "about 51 µm", "about 82 µm", "about 131 µm", "about 210 µm",
                         "about 336 µm", "about 537 µm", "about 859 µm", "about 1.37 mm"],
