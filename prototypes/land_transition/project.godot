@@ -1,0 +1,12 @@
+config_version=5
+
+[application]
+config/name="PROPOSED Shoreline Handoff"
+run/main_scene="res://shore.tscn"
+
+[display]
+window/size/viewport_width=1000
+window/size/viewport_height=600
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
