@@ -24,8 +24,9 @@ const MAX_COLLIDER_R := 4.0       ## tm; add_chunk refuses larger colliders (the
 ## that deep needs a body placed inside a collider, which only a debug move does).
 const SETTLE_TRAVEL_TM := 2.0
 const FAR_BOX_TM := 1e12          ## a query box reaching past this covers every loaded chunk
-## tm: how far a route_point_kept caller may move from where its colliders were picked before they
-## are picked again, and the rounding slack added to every pick (as GRID_SLACK is to a grid's).
+## tm: how far either end of a route_point_kept route may move from where its colliders were picked
+## before they are picked again, and the rounding slack added to every pick (as GRID_SLACK is to a
+## grid's).
 const ROUTE_KEEP_TM := 1.0
 const ROUTE_KEEP_SLACK := 0.01
 ## How many of the latest add_chunk and remove_chunk changes are kept (_changes), so that a RouteKeep
@@ -356,16 +357,17 @@ func route_point(from: Vector2, to: Vector2, body_r: float, clearance: float = R
 	return _centers[blocking] + away * (_radii[blocking] + body_r + margin)
 
 
-## route_point for a caller that asks again and again for the same `to` from nearby places (a
-## forager seeking its goal): only the colliders in `keep` are looped, in canonical order, so the
-## answer is route_point's. A collider blocks only when its centre lies within r + body_r +
-## clearance of the line and projects no further than r past `to`, so within 2 r + body_r +
-## clearance of the segment from `from` to `to`; moving `from` by d moves that segment by at most d.
-## `keep` holds every collider within that, plus ROUTE_KEEP_TM and ROUTE_KEEP_SLACK, of the segment
-## it was picked for, and is picked again when the caller has moved farther, or `to`, body_r,
-## clearance or the epoch differ. Places are compared in absolute terms (float64): a rebase moves a
-## local place and its colliders' local centres by the same whole chunks, up to float32 rounding
-## (some 1e-5 tm), which ROUTE_KEEP_SLACK covers; a `to` the rounding moved at all picks again.
+## route_point for a caller that asks again and again for a route from nearby places to a nearby
+## `to` (a forager seeking its goal, a hunter its stand-off point, a fleeing body its way out): only
+## the colliders in `keep` are looped, in canonical order, so the answer is route_point's. A collider
+## blocks only when its centre lies within r + body_r + clearance of the line and projects no
+## further than r past `to`, so within 2 r + body_r + clearance of the segment from `from` to `to`;
+## moving each end by at most d moves every point of that segment by at most d. `keep` holds every
+## collider within that, plus ROUTE_KEEP_TM and ROUTE_KEEP_SLACK, of the segment it was picked for,
+## and is picked again when either end has moved farther, or body_r, clearance or the epoch differ.
+## Places are compared in absolute terms (float64): a rebase moves a local place and its colliders'
+## local centres by the same whole chunks, up to float32 rounding (some 1e-5 tm), which
+## ROUTE_KEEP_SLACK covers.
 func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: float, margin: float, side: int,
 		keep: RouteKeep) -> Vector2:
 	if not rock_grid:
@@ -377,12 +379,13 @@ func route_point_kept(from: Vector2, to: Vector2, body_r: float, clearance: floa
 	var key := keep.key
 	var ox := origin_x
 	var oy := origin_y
-	var kept := key.size() == 7 and key[3] == ox + to.x and key[4] == oy + to.y \
-			and key[5] == body_r and key[6] == clearance
+	var kept := key.size() == 7 and key[5] == body_r and key[6] == clearance
 	if kept:
 		var dx: float = key[1] - ox - from.x
 		var dy: float = key[2] - oy - from.y
-		kept = dx * dx + dy * dy <= ROUTE_KEEP_TM * ROUTE_KEEP_TM
+		var tx: float = key[3] - ox - to.x
+		var ty: float = key[4] - oy - to.y
+		kept = dx * dx + dy * dy <= ROUTE_KEEP_TM * ROUTE_KEEP_TM and tx * tx + ty * ty <= ROUTE_KEEP_TM * ROUTE_KEEP_TM
 	if kept and key[0] != epoch:
 		kept = _carry_keep(keep)
 	if not kept:

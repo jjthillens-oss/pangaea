@@ -1413,6 +1413,83 @@ func test_a_kept_route_equals_route_point_through_moves_loads_and_rebases() -> v
 	check(blockers > 2000, "blockers were checked (%d)" % blockers)
 
 
+## A hunter's stand-off point and a fleeing body's way out move with it: with both ends of every
+## route creeping (and now and then jumping) while chunks load and unload and the origin moves, every
+## kept route is route_point's, and on every 8th call every collider that could block is kept.
+func test_a_kept_route_equals_route_point_while_its_goal_creeps_too() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4411
+	var arena := ChunkArena.create_endless()
+	for ky in range(-2, 2):
+		for kx in range(-2, 2):
+			var list: Array[Dictionary] = []
+			for i in rng.randi_range(4, 10):
+				list.append(ArenaTests._collider(rng, Vector2i(kx, ky), "r%d_%d_%d" % [kx, ky, i]))
+			arena.add_chunk(Vector2i(kx, ky), list)
+	var keeps: Array[ChunkArena.RouteKeep] = []
+	var froms: Array[Vector2] = []
+	var tos: Array[Vector2] = []
+	for i in 8:
+		keeps.append(ChunkArena.RouteKeep.new())
+		froms.append(Vector2.ZERO)
+		tos.append(Vector2.ZERO)
+		_new_goal(rng, arena, i, froms, tos)
+	var calls := 0
+	var held := 0
+	var blocked_held := 0
+	var origin := Vector2.ZERO
+	for step in 30000:
+		var i := rng.randi_range(0, keeps.size() - 1)
+		var roll := rng.randf()
+		if roll < 0.002:
+			var key := Vector2i(rng.randi_range(-2, 1), rng.randi_range(-2, 1))
+			if arena.has_chunk(key):
+				arena.remove_chunk(key)
+			else:
+				var list: Array[Dictionary] = []
+				for j in rng.randi_range(4, 10):
+					list.append(ArenaTests._collider(rng, key, "s%d_%d" % [step, j]))
+				arena.add_chunk(key, list)
+		elif roll < 0.003:
+			var by := Vector2(32.0 * rng.randi_range(-1, 1), 32.0 * rng.randi_range(-1, 1))
+			origin += by
+			arena.set_origin(origin.x, origin.y)
+			if rng.randf() < 0.5:
+				for j in keeps.size():
+					froms[j] -= by
+					tos[j] -= by
+		elif roll < 0.01:
+			_new_goal(rng, arena, i, froms, tos)
+		elif roll < 0.02:
+			tos[i] += Vector2(rng.randf_range(-3.0, 3.0), rng.randf_range(-3.0, 3.0))   # a goal jumping past the keep
+		else:
+			# Both ends creep, the goal about as fast as the caller (a stand-off point on a moving body).
+			froms[i] += Vector2(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.12, 0.12)) + (tos[i] - froms[i]).limit_length(0.05)
+			tos[i] += Vector2(rng.randf_range(-0.12, 0.12), rng.randf_range(-0.12, 0.12))
+		var body_r := [0.5, 0.9, 1.4][i % 3] as float
+		var side := [0, 1, -1][(i / 3) % 3] as int
+		var key_before := keeps[i].key
+		var got := arena.route_point_kept(froms[i], tos[i], body_r, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, side, keeps[i])
+		var want := arena.route_point(froms[i], tos[i], body_r, PoolArena.ROUTE_CLEARANCE, PoolArena.ROUTE_MARGIN, side)
+		calls += 1
+		if got != want:
+			check(false, "step %d: the kept route %s differs from route_point's %s" % [step, got, want])
+			return
+		if step % 8 == 0:
+			var missing := _blockers_not_kept(arena, froms[i], tos[i], body_r, keeps[i])
+			if not missing.is_empty():
+				check(false, "step %d: colliders %s could block but are not kept" % [step, missing])
+				return
+		if keeps[i].key == key_before:
+			held += 1
+			if want != tos[i]:
+				blocked_held += 1
+	print("test-perf-world-caches: with the goal creeping, the kept route held on %d of %d calls, %d of them blocked" % [
+		held, calls, blocked_held])
+	check(held > calls / 2, "the keep held on most calls (%d of %d)" % [held, calls])
+	check(blocked_held > 500, "kept routes went round a collider (%d)" % blocked_held)
+
+
 ## The two margins of a keep, each at the place only it covers: a collider past the goal that blocks
 ## though its centre lies 2 r + body_r + clearance - 1.6 tm off the segment (the 2 r), and one the
 ## caller comes to block by moving 0.99 tm without the keep being picked again (ROUTE_KEEP_TM).

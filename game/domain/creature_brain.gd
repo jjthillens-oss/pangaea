@@ -593,7 +593,7 @@ static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Arr
 ## from memory alone: {"mode": steer|turn|tell|burst|glide, "move": Vector2 (|move| <= 1),
 ## "speed_mul" (share of top speed, <= 1), "face" (heading to turn toward in turn/tell/burst/glide,
 ## else 0), "strike": bool, "target": String, "feed": food id or ""}.
-static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolArena) -> Dictionary:
+static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	if mem.state == ATTACK:
 		_advance_attack(mem, self_view, tick)
 	var speeds: Dictionary = mem.cfg.speeds
@@ -606,9 +606,9 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 			return _coast(mem, speeds.wander)
 		WANDER:
 			if mem.phase == RETURN_HOME:
-				return _seek(mem, self_view, mem.home, speeds.wander, arena, true)
+				return _seek(mem, self_view, mem.home, speeds.wander, arena, true, keep)
 			if mem.goal.is_finite():
-				return _seek(mem, self_view, mem.goal, speeds.wander, arena, true)
+				return _seek(mem, self_view, mem.goal, speeds.wander, arena, true, keep)
 			return _coast(mem, speeds.wander)
 		FORAGE:
 			if mem.phase == EAT and mem.goal.is_finite():
@@ -616,18 +616,18 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 				out.feed = mem.food_id
 				return out
 			if mem.goal.is_finite():
-				return _seek(mem, self_view, mem.goal, speeds.forage, arena, true)
+				return _seek(mem, self_view, mem.goal, speeds.forage, arena, true, keep)
 			return _coast(mem, speeds.forage)
 		NOTICE:
 			if mem.seen.has(mem.target):
 				return _turn(mem, _face(self_view, _reckon(mem, mem.target, tick)), speeds.wander)
 			return _coast(mem, speeds.wander)
 		CHASE:
-			return _drive_chase(mem, self_view, tick, arena)
+			return _drive_chase(mem, self_view, tick, arena, keep)
 		ATTACK:
 			return _drive_attack(mem, self_view)
 		FLEE:
-			return _drive_flee(mem, self_view, arena)
+			return _drive_flee(mem, self_view, arena, keep)
 	return _coast(mem, speeds.wander)
 
 
@@ -1140,7 +1140,7 @@ static func _advance_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 		_recover(mem, "missed", tick)
 
 
-static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolArena) -> Dictionary:
+static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var share: float = mem.cfg.speeds.pursue
 	if not mem.seen.has(mem.target):
 		return _coast(mem, share)
@@ -1161,7 +1161,7 @@ static func _drive_chase(mem: Memory, me: Dictionary, tick: int, arena: PoolAren
 		standoff = disc.center + reach / reach.length() * float(disc.radius)
 	if at.distance_to(standoff) <= float(mem.cfg.face_at_standoff_m):
 		return _turn(mem, _face(me, target_at), share)
-	return _seek(mem, me, standoff, share, arena, true)
+	return _seek(mem, me, standoff, share, arena, true, keep)
 
 
 static func _drive_attack(mem: Memory, me: Dictionary) -> Dictionary:
@@ -1178,7 +1178,7 @@ static func _drive_attack(mem: Memory, me: Dictionary) -> Dictionary:
 	return out
 
 
-static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictionary:
+static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena, keep: ChunkArena.RouteKeep = null) -> Dictionary:
 	var at: Vector2 = me.position
 	var from := mem.flee_from if mem.flee_from.is_finite() else at - Vector2.from_angle(float(me.heading))
 	var away := at - from
@@ -1192,13 +1192,16 @@ static func _drive_flee(mem: Memory, me: Dictionary, arena: PoolArena) -> Dictio
 		if outward > 0.0:
 			away -= n * outward
 			away = away / away.length() if away.length() > 1e-3 else n.orthogonal()
-	return _seek(mem, me, at + away * float(mem.cfg.flee_lookahead_m), float(mem.cfg.speeds.flee), arena, false)
+	return _seek(mem, me, at + away * float(mem.cfg.flee_lookahead_m), float(mem.cfg.speeds.flee), arena, false, keep)
 
 
 ## Steers toward `goal` (round the first rock in the way), slowing on arrival when `arrive` is set
-## so the body stops there without overshooting.
-static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool) -> Dictionary:
-	return seek_from(mem, me.position, float(me.radius), float(me.speed), float(me.acceleration), goal, share, arena, arrive)
+## so the body stops there without overshooting. With `keep`, the route is route_point_kept's: the
+## same point.
+static func _seek(mem: Memory, me: Dictionary, goal: Vector2, share: float, arena: PoolArena, arrive: bool,
+		keep: ChunkArena.RouteKeep = null) -> Dictionary:
+	return seek_from(mem, me.position, float(me.radius), float(me.speed), float(me.acceleration), goal, share, arena, arrive,
+		keep)
 
 
 ## _seek from the body's own position, radius, top speed and acceleration (the self view's values)
