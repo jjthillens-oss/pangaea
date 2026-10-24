@@ -440,6 +440,14 @@ M1 step 5's "real audio", built by the sound and music thread while engineering 
 - **UiSounds** (`main.tscn`) hooks every button and slider that enters the tree: hover (mouse, or focus moved by keyboard or gamepad), press, and back for Back, Cancel, Resume, Close and Quit. A control can opt out with the meta `silent_ui` or pick its sound with `ui_sound`.
 - **Placeholders.** `placeholder_audio.gd` and its 14 inventory entries are gone; `tests/test_placeholders.gd` now checks no audio placeholder comes back. `tests/test_audio.gd` checks records against files, the cue table against the synth, loop modes, lengths and loop seams, peaks (none above −0.9 dBFS, none near silent), repeatable renders, the bus layout, the moods and the UI sound rules.
 
+## 2026-10-24 · Continue rebuilds the world from its seed (CONFIRMED)
+
+Godfrey's test review round 3 (issue #77, PR #95) asked for a test that a save → load → continue run matches an
+uninterrupted run tick for tick. That cannot hold under D6 and D16 above: Continue restores the cell, its body, lineage,
+adaptation points and checkpoint, and repopulates plankton, creatures and shelter from the world seed. Asked whether to
+keep that contract or change the save schema to restore the exact moment, Joshua chose **keep** (2026-10-24 00:07 UTC).
+The seeded-restart contract stays; exact restores are a separate, later decision if a stage needs them.
+
 ## 2026-10-23 · Creature stage preview (PROPOSED)
 
 The first playable slice of the creature stage (`docs/milestones/creature-stage-plan.md`), built under the owner's
