@@ -1056,3 +1056,318 @@ func test_two_post_sites_carry_both_posts_and_reach_over_their_union() -> void:
 				check(float(r.reach.radius) > float(union_k1.radius) * 0.625 + 0.5, "%s: k 1.6 widens the reach (%s at k 1)" % [id, union_k1])
 				check_eq(r.chunks, WorldGen.disc_chunks(r.reach.x, r.reach.y, r.reach.radius, 32.0), "%s: the union's chunks" % id)
 	check(met.lk >= 3 and met.er >= 3 and orientations.size() >= 4, "two-post sites met %s in orientations %s" % [met, orientations.keys()])
+
+
+# --- S3 (T3.5; docs/s3: spine 5.5 and 5.6, s3-sim 3.11): band 1 ---
+
+const WORLD_B1 := "res://tests/fixtures/world/world_b1_min.json"
+const B1_REGIONS: PackedStringArray = ["veil_garden", "warden_flat", "glass_reef"]
+const BLOOM_CYCLE_TICKS := 5400
+
+static var _b1_cache: WorldContent = null
+
+
+## world_b1_min.json (band 0 as world_min.json, band 1's fixture tiles and the cradle) with the
+## shipped kit, which holds both bands (T3.2; the fixture kit is band 0's only).
+static func _b1_content() -> WorldContent:
+	if _b1_cache == null:
+		_content()
+		_b1_cache = WorldContent.load_from(WORLD_B1, PoolLayout.load_from(), _species_cache)
+		_b1_cache.kit = PlacementKit.load_from()
+	return _b1_cache
+
+
+static func _b1_gen(seed_value: int) -> WorldGen:
+	return WorldGen.create(_b1_content(), _species_cache, seed_value)
+
+
+## Every chunk of [x0, x1) x [y0, y1) at size n, merged: {shells, zones, sites, morsel_sites, anchors,
+## places} by id.
+static func _area(gen: WorldGen, n: int, x0: int, x1: int, y0: int, y1: int) -> Dictionary:
+	var out := {"shells": {}, "zones": {}, "sites": {}, "morsel_sites": {}, "anchors": {}, "places": {}}
+	for cy in range(y0, y1):
+		for cx in range(x0, x1):
+			var c := gen.chunk(n, cx, cy)
+			for kind in out:
+				for item in c.get(kind):
+					out[kind][item.id] = item
+	return out
+
+
+func test_band_1_has_its_own_regions_and_fixed_rare() -> void:
+	var gen := _b1_gen(401)
+	var counts := {}
+	for ty in range(-24, 24):
+		for tx in range(-24, 24):
+			var info := gen.tile_info(1, tx, ty)
+			counts[info.region] = int(counts.get(info.region, 0)) + 1
+			if info.region == "rare":
+				check(TileCatalog.RARE_KINDS_BY_BAND[1].has(info.rare), "a band-1 rare kind at %s (%s)" % [Vector2i(tx, ty), info.rare])
+	for region in counts:
+		check(B1_REGIONS.has(region) or region in ["home", "rare"], "band 1's regions only (%s)" % region)
+	for region in B1_REGIONS:
+		var share := float(counts.get(region, 0)) / (48.0 * 48.0)
+		check(share > 0.2 and share < 0.45, "%s holds about a third (%.3f): band 1 has no drift rule" % [region, share])
+	var fixed := gen.tile_info(1, 2, -1)
+	check_eq([fixed.region, fixed.rare, fixed.orientation], ["rare", "sunbeam_well", 0], "band 1's fixed rare (arrangement.bands)")
+	check_eq(gen.tile_info(0, 2, -1).rare, _gen(401).tile_info(0, 2, -1).rare, "band 0's is the file's own")
+	for ty in range(-6, 6):
+		for tx in range(-6, 6):
+			check_eq(gen.tile_info(0, tx, ty), _gen(401).tile_info(0, tx, ty), "band 0 unchanged at %s" % Vector2i(tx, ty))
+
+
+## S3G39: band-1 chunks at sizes 3 and 4 are the same from a fresh generator, a shared one, one cleared
+## every 10 chunks and one that first walked the route at sizes 1 and 2 (a band-up).
+func test_band_1_chunks_are_the_same_along_any_route() -> void:
+	var line: Array[Vector2i] = []
+	for i in 80:
+		line.append(Vector2i(-40 + i, 5))
+	for n in [3, 4]:
+		var shared := _b1_gen(401)
+		var cleared := _b1_gen(401)
+		var differ := 0
+		var objects := 0
+		for route in [_spiral(80), line]:
+			var walked := _b1_gen(401)
+			for i in route.size():
+				var k: Vector2i = route[i]
+				if i % 10 == 0:
+					cleared.clear_memo()
+				walked.chunk(1, k.x, k.y)
+				walked.chunk(2, k.x, k.y)
+				var a := _b1_gen(401).chunk(n, k.x, k.y)
+				objects += _objects(a).size() + a.morsel_sites.size()
+				var d := a.digest()
+				if d != shared.chunk(n, k.x, k.y).digest() or d != cleared.chunk(n, k.x, k.y).digest() \
+						or d != walked.chunk(n, k.x, k.y).digest():
+					differ += 1
+		check_eq(differ, 0, "size-%d chunks that depend on the route, the memo or the sizes before" % n)
+		check(objects > 300, "size %d: the routes hold objects (%d)" % [n, objects])
+
+
+## D-97: a site is placed by its ladder role at the size; a morsel site is food with the species'
+## radius (at most morsel_max_radius_tm) and carcass.energy x r / 0.5 (X3-23), none at size 3.
+func test_sites_are_placed_by_their_role() -> void:
+	var gen := _b1_gen(401)
+	var tol := _species_cache.share_tolerance()
+	for n in [3, 4]:
+		var area := _area(gen, n, -12, 12, -12, 12)
+		check(area.sites.size() > 20, "size %d places creature sites (%d)" % [n, area.sites.size()])
+		for id in area.sites:
+			var sp: String = area.sites[id].species
+			var role := Relationships.ladder_role(_species_cache.entry_size(sp), n, _species_cache.radius_at(sp, n), tol)
+			check(role in ["threat", "rival", "prey"], "site %s (%s) is a creature at %d (%s)" % [id, sp, n, role])
+		if n == 3:
+			check_eq(area.morsel_sites.size(), 0, "no morsel site at size 3 (D-135)")
+			continue
+		check(area.morsel_sites.size() > 5, "size 4 places morsel sites (%d)" % area.morsel_sites.size())
+		for id in area.morsel_sites:
+			var m: Dictionary = area.morsel_sites[id]
+			var r := _species_cache.radius_at(m.species, 4)
+			check(str(id).begins_with("m_1_") or str(id).begins_with("m_c_"), "a placed morsel id (%s)" % id)
+			check_eq(Relationships.ladder_role(_species_cache.entry_size(m.species), 4, r, tol), "morsel", "%s is a morsel" % id)
+			check_eq(m.radius, minf(r, 0.225), "%s radius" % id)
+			check_eq(m.energy, float(_species_cache.species[m.species].carcass.energy) * r / Relationships.PLAYER_RADIUS, "%s energy" % id)
+			check(str(m.key).ends_with("/" + str(id).get_slice("_", str(id).get_slice_count("_") - 1)), "%s key names its site (%s)" % [id, m.key])
+	var c := gen.chunk(4, 0, 0)
+	var with_morsels: WorldChunk = null
+	for cy in range(-12, 12):
+		for cx in range(-12, 12):
+			var k := gen.chunk(4, cx, cy)
+			if with_morsels == null and not k.morsel_sites.is_empty():
+				with_morsels = k
+	check(with_morsels != null and with_morsels.to_dict().has("morsel_sites"), "a chunk with morsel sites lists them")
+	check(not gen.chunk(3, 5, 5).to_dict().has("morsel_sites"), "a chunk without keeps its S2 shape")
+	check(c != null, "")
+
+
+## D-104, D-128, S3G15b (gen part): an elder Warden's placed site and its two meadows share one bloom
+## phase (slot 0 its territory zone, slot 1 its second post's), hashed from the placed id, so two
+## placements of one tile bloom out of step; nothing blooms at size 3.
+func test_an_elder_wardens_site_and_meadows_share_one_bloom_phase() -> void:
+	var gen := _b1_gen(401)
+	var at_3 := _area(gen, 3, -8, 8, -8, 8)
+	check(at_3.zones.values().all(func(z: Dictionary) -> bool: return not z.has("bloom")), "no bloom at size 3")
+	var area := _area(gen, 4, -16, 16, -16, 16)
+	var phases := {}       # placed site id -> offset
+	var by_tile := {}      # tile id -> [offsets of its placements]
+	for id in area.sites:
+		var site: Dictionary = area.sites[id]
+		check_eq(site.has("bloom"), site.species == "elder_warden", "%s has a bloom phase exactly when it is an elder Warden" % id)
+		if site.has("bloom"):
+			check_eq(site.bloom.cycle_ticks, BLOOM_CYCLE_TICKS, "a 90 s cycle")
+			check(site.bloom.offset_ticks >= 0 and site.bloom.offset_ticks < BLOOM_CYCLE_TICKS, "the offset within the cycle")
+			phases[id] = site.bloom.offset_ticks
+	check(phases.size() > 4, "elder Wardens placed (%d)" % phases.size())
+	var slots := {}
+	for id in area.zones:
+		var z: Dictionary = area.zones[id]
+		if not z.has("bloom"):
+			continue
+		var prefix := "t_c_" if str(id).begins_with("z_c_") else "t_1_%d_%d_" % [z.tile.x, z.tile.y]
+		var owners := phases.keys().filter(func(sid: String) -> bool:
+			return sid.begins_with(prefix) and phases[sid] == z.bloom.offset_ticks)
+		check_eq(owners.size(), 1, "meadow %s has its elder Warden's phase (%s)" % [id, z.bloom])
+		if owners.size() == 1:
+			if not slots.has(owners[0]):
+				slots[owners[0]] = []
+			slots[owners[0]].append(z.bloom.slot)
+	var two := 0
+	for sid in slots:
+		var got: Array = slots[sid]
+		got.sort()
+		if got == [0, 1]:
+			two += 1
+		var tile_id := _tile_id_of(gen, sid)
+		if not tile_id.is_empty():
+			if not by_tile.has(tile_id):
+				by_tile[tile_id] = []
+			by_tile[tile_id].append(phases[sid])
+	check(two > 4, "elder Wardens with both meadows in view bloom slots 0 and 1 (%d)" % two)
+	var out_of_step := 0
+	for tile_id in by_tile:
+		var offsets: Array = by_tile[tile_id]
+		if offsets.size() > 1 and offsets.min() != offsets.max():
+			out_of_step += 1
+	check(out_of_step > 0, "two placements of one tile bloom out of step (%s)" % [by_tile])
+
+
+## The tile id a placed tile site id ("t_1_<tx>_<ty>_<site>") was placed from, or "" for the cradle's.
+static func _tile_id_of(gen: WorldGen, site_id: String) -> String:
+	var parts := site_id.split("_")
+	if parts[1] != "1":
+		return ""
+	return gen.tile_info(1, int(parts[2]), int(parts[3])).id
+
+
+## D-94, D-138: at band 1 the home tiles hold the cradle, not the band-0 home block: its shells,
+## zones and sites by role, ids "s_c_", "z_c_", "t_c_" and "m_c_", region home, tile its quadrant; sunk
+## shells and dropped zones gone at size 4.
+func test_the_cradle_takes_the_home_tiles_at_band_1() -> void:
+	var gen := _b1_gen(401)
+	var cradle := _b1_content().cradle_of(1)
+	check(cradle != null and cradle.load_problems.is_empty(), "the cradle is loaded")
+	for n in [3, 4]:
+		var area := _area(gen, n, -3, 3, -3, 3)
+		var second: bool = n == 4
+		var shells: Array = area.shells.keys().filter(func(id: String) -> bool: return id.begins_with("s_c_"))
+		var want_shells: Array = cradle.shells.filter(func(s: Dictionary) -> bool: return not (second and s.at_second_size == "sink"))
+		check_eq(shells.size(), want_shells.size(), "size %d: the cradle's shells" % n)
+		var zones: Array = area.zones.keys().filter(func(id: String) -> bool: return id.begins_with("z_c_"))
+		var want_zones: Array = cradle.zones.filter(func(z: Dictionary) -> bool: return not (second and z.at_second_size == "drop"))
+		check_eq(zones.size(), want_zones.size(), "size %d: the cradle's zones" % n)
+		for id in zones:
+			var z: Dictionary = area.zones[id]
+			check_eq(z.region, "home", "%s is home" % id)
+			var src: Dictionary = _item_of(cradle.zones, id.trim_prefix("z_c_"))
+			check_eq(z.tile, CradleBlock.quadrant_of(src.center[0], src.center[1]), "%s in its quadrant" % id)
+			check_eq([z.x, z.y], [src.center[0] * WorldConfig.bu_to_tm(n), src.center[1] * WorldConfig.bu_to_tm(n)], "%s at its place x s" % id)
+		var placed: Array = area.sites.keys().filter(func(id: String) -> bool: return id.begins_with("t_c_"))
+		var morsels: Array = area.morsel_sites.keys().filter(func(id: String) -> bool: return id.begins_with("m_c_"))
+		var creatures := 0
+		var food := 0
+		for s in cradle.sites:
+			if not (s.sizes as Array).has(n):
+				continue
+			var role := TileCatalog.site_role(_species_cache, s, n)
+			creatures += 1 if role in ["threat", "rival", "prey"] else 0
+			food += 1 if role == "morsel" else 0
+		check_eq([placed.size(), morsels.size()], [creatures, food], "size %d: its creature and morsel sites" % n)
+		check(not area.shells.keys().any(func(id: String) -> bool: return id.begins_with("s_h_")), "no band-0 ring shell")
+		check(not area.zones.values().any(func(z: Dictionary) -> bool: return not str(z.id).begins_with("z_c_") and z.region == "home"),
+			"no band-0 home zone")
+
+
+static func _item_of(list: Array, id: String) -> Dictionary:
+	for item in list:
+		if item.id == id:
+			return item
+	return {}
+
+
+## S3G29 (helper part), V3-21: landmark_piece and rare_piece are where the band's chunks put the anchor
+## and the place, at both sizes of the band (1e-9 tm), with the same id, model, dressing, yaw, scale
+## (x s), kind, yaw and mirror; band 0 on world_min, band 1 on world_b1_min.
+func test_the_old_band_pieces_are_where_the_chunks_put_them() -> void:
+	for b in [0, 1]:
+		var gen := _gen(401) if b == 0 else _b1_gen(401)
+		var anchors := 0
+		var places := 0
+		for n in [2 * b + 1, 2 * b + 2]:
+			var s := WorldConfig.bu_to_tm(n)
+			for ly in range(-4, 4):
+				for lx in range(-4, 4):
+					var piece := gen.landmark_piece(b, lx, ly)
+					if piece.is_empty():
+						check(gen.landmark_of_cell(b, lx, ly).is_empty(), "a cell with a landmark has a piece")
+						continue
+					var c := gen.chunk(n, floori(piece.x_bu * s / 32.0), floori(piece.y_bu * s / 32.0))
+					var found := c.anchors.filter(func(a: Dictionary) -> bool: return a.id == piece.id)
+					check_eq(found.size(), 1, "band %d size %d: anchor %s in its chunk" % [b, n, piece.id])
+					if found.size() != 1:
+						continue
+					var a: Dictionary = found[0]
+					check(absf(a.x - piece.x_bu * s) <= 1e-9 and absf(a.y - piece.y_bu * s) <= 1e-9, "%s at x s" % piece.id)
+					check_eq([a.model, a.dressing, a.tile], [piece.model, piece.dressing, piece.tile], "%s model" % piece.id)
+					var lm := c.shells.filter(func(sh: Dictionary) -> bool: return sh.kind == "landmark" and sh.x == a.x and sh.y == a.y)
+					check_eq([lm[0].yaw_deg, lm[0].scale, lm[0].r], [piece.yaw_deg, piece.scale * s, piece.collide_r_bu * s], "%s yaw, scale and collider" % piece.id)
+					anchors += 1
+			for by in range(-2, 2):
+				for bx in range(-2, 2):
+					var piece := gen.rare_piece(b, bx, by)
+					check(not piece.is_empty(), "band %d block %s has a rare place" % [b, Vector2i(bx, by)])
+					if piece.is_empty():
+						continue
+					var c := gen.chunk(n, floori(piece.x_bu * s / 32.0), floori(piece.y_bu * s / 32.0))
+					var found := c.places.filter(func(p: Dictionary) -> bool: return p.id == piece.id)
+					check_eq(found.size(), 1, "band %d size %d: place %s in its chunk" % [b, n, piece.id])
+					if found.size() != 1:
+						continue
+					var p: Dictionary = found[0]
+					check(absf(p.x - piece.x_bu * s) <= 1e-9 and absf(p.y - piece.y_bu * s) <= 1e-9, "%s at x s" % piece.id)
+					check_eq([p.kind, p.yaw_deg, p.mirror, p.tile], [piece.kind, piece.yaw_deg, piece.mirror, piece.tile], "%s" % piece.id)
+					places += 1
+		check(anchors > 20 and places == 32, "band %d: anchors %d, places %d" % [b, anchors, places])
+
+
+## C3V-8: old_pool_pieces is the shipped home block as its size-1 chunks draw it: the 18 M1 rocks and
+## the 8 ring shells, with their assets, yaws and scales.
+func test_old_pool_pieces_are_the_home_blocks_shells() -> void:
+	var content := WorldContent.load_from(WorldConfig.DEFAULT_PATH, PoolLayout.load_from(), _species_cache)
+	var gen := WorldGen.create(content, _species_cache, 401)
+	var pieces := gen.old_pool_pieces()
+	var rocks := pieces.filter(func(p: Dictionary) -> bool: return not str(p.id).begins_with("s_h_"))
+	check_eq([rocks.size(), pieces.size() - rocks.size()], [18, 8], "18 rocks and 8 ring shells")
+	var drawn := {}
+	for cy in range(-2, 2):
+		for cx in range(-2, 2):
+			for sh in gen.chunk(1, cx, cy).shells:
+				drawn[sh.id] = sh
+	for p in pieces:
+		check(drawn.has(p.id), "%s is drawn at size 1" % p.id)
+		if not drawn.has(p.id):
+			continue
+		var d: Dictionary = drawn[p.id]
+		check_eq([p.x_bu, p.y_bu, p.r_bu, p.asset, p.yaw_deg, p.scale], [d.x, d.y, d.r, d.asset, d.yaw_deg, d.scale], "%s as drawn" % p.id)
+
+
+func test_the_touching_helpers_list_cells_and_blocks() -> void:
+	check_eq(WorldGen.landmark_cells_touching(Rect2(10.0, 10.0, 20.0, 20.0), 2, 64.0), [Vector2i(0, 0)] as Array[Vector2i], "inside one cell")
+	check_eq(WorldGen.landmark_cells_touching(Rect2(-10.0, 120.0, 20.0, 20.0), 2, 64.0),
+		[Vector2i(-1, 0), Vector2i(0, 0), Vector2i(-1, 1), Vector2i(0, 1)] as Array[Vector2i], "across both lines, sorted by (y, x)")
+	check_eq(WorldGen.rare_blocks_touching(Rect2(-10.0, -10.0, 20.0, 20.0), 6, -3, 64.0), [Vector2i(0, 0)] as Array[Vector2i], "block (0, 0) from tile -3")
+	check_eq(WorldGen.rare_blocks_touching(Rect2(-250.0, 0.0, 10.0, 10.0), 6, -3, 64.0), [Vector2i(-1, 0)] as Array[Vector2i], "west of tile -3")
+	check_eq(WorldGen.rare_blocks_touching(Rect2(-200.0, 0.0, 10.0, 10.0), 6, -3, 64.0), [Vector2i(-1, 0), Vector2i(0, 0)] as Array[Vector2i],
+		"across tile -3's west edge (-192 bu)")
+
+
+## BP3-8: reach_max_threat(n) is the largest reach plus body over the band's sites live at n whose
+## species is the cell's size there: at 4, an elder Warden's union disc and body (the plan's 14.55 tm
+## is D-147's widest spacing; the fixture's posts give 13.31).
+func test_reach_max_threat_is_the_widest_live_threat() -> void:
+	var content := _b1_content()
+	var at_4 := content.reach_max_threat(4, _species_cache)
+	check(at_4 > 12.5 and at_4 < 14.6, "size 4: an elder Warden's union and body, at most 14.55 tm (%.3f)" % at_4)
+	var at_3 := content.reach_max_threat(3, _species_cache)
+	check(at_3 > 7.5, "size 3: a veil or a Warden (%.3f)" % at_3)
+	check(_content().reach_max_threat(1, _species_cache) > 0.0, "size 1 on band 0")

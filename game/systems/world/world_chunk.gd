@@ -24,6 +24,10 @@ var sites: Array[Dictionary] = []
 var anchors: Array[Dictionary] = []
 ## {id, kind, x, y, tile}: rare set pieces; their colliders are "set_piece" shells
 var places: Array[Dictionary] = []
+## S3 (spine 5.6): {id "m_...", key "<tile id>/<site id>", species, x, y, tile, radius (tm), energy}:
+## the morsel sites live at `size`, food rather than creatures; absent from to_dict() when empty, so
+## a chunk without any keeps its S1 and S2 digest
+var morsel_sites: Array[Dictionary] = []
 
 
 ## SHA-256 of the chunk's JSON (sorted keys, full precision): equal digests, equal chunks.
@@ -31,10 +35,13 @@ func digest() -> String:
 	return JSON.stringify(to_dict(), "", true, true).sha256_text()
 
 
-## {key: [cx, cy], size, shells, zones, sites, anchors, places}, every Vector2i as [x, y].
+## {key: [cx, cy], size, shells, zones, sites, anchors, places, morsel_sites?}, every Vector2i as [x, y].
 func to_dict() -> Dictionary:
-	return {"key": [key.x, key.y], "size": size, "shells": _plain(shells), "zones": _plain(zones),
+	var out := {"key": [key.x, key.y], "size": size, "shells": _plain(shells), "zones": _plain(zones),
 		"sites": _plain(sites), "anchors": _plain(anchors), "places": _plain(places)}
+	if not morsel_sites.is_empty():
+		out["morsel_sites"] = _plain(morsel_sites)
+	return out
 
 
 ## A JSON-ready copy: Vector2i becomes [x, y], containers are copied, other values kept.

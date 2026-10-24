@@ -17,6 +17,9 @@ var config: WorldConfig
 var tiles: TileCatalog
 var home: HomeBlock
 var kit: PlacementKit
+## S3 (D-94): {int band: CradleBlock}, the home tiles of each band from 1 to band_of(max_size_in_build)
+## that content.cradle names.
+var cradles := {}
 ## The M1 pool layout the home block builds on (its camera and carrion are checked here too).
 var layout: PoolLayout
 ## What WorldGen derives from the content alone (each tile's objects in each orientation, the kit's
@@ -35,7 +38,17 @@ static func load_from(config_path: String, p_layout: PoolLayout, species: Specie
 	world.kit = PlacementKit.load_from(str(paths.get("kit", "")))
 	world.tiles = TileCatalog.load_from(paths.get("tiles", {}))
 	world.home = HomeBlock.load_from(str(paths.get("home", "")), world.layout, species)
+	for band in WorldConfig._sorted(world.config.cradle_paths.keys()):
+		if int(band) >= 1 and int(band) <= WorldConfig.band_of(world.config.max_size_in_build):
+			world.cradles[int(band)] = CradleBlock.load_from(world.config.cradle_paths[band])
+	world.tiles.morsel_max_radius_tm = float(world.config.growth.get("remnants", {}).get("morsel_max_radius_tm",
+		world.tiles.morsel_max_radius_tm))
 	return world
+
+
+## Band `band`'s cradle, or null (band 0, or none loaded).
+func cradle_of(band: int) -> CradleBlock:
+	return cradles.get(band)
 
 
 ## Problems across the content; empty when the world can run. Cheap checks only (at most 50 ms,
@@ -151,6 +164,33 @@ func _take_reach(best: Dictionary, species: SpeciesCatalog, kind: String, home_b
 		if radius > float(best.radius_tm):
 			best.radius_tm = radius
 			best.where = where
+
+
+## BP3-8: the farthest a threat's body reaches from its reach disc's centre at size n, in tm: the
+## largest reach radius plus body radius (SpeciesCatalog.radius_at) over every site of band_of(n)
+## (tiles and cradle) live at n whose species is the cell's size there (q_of 1). 0.0 with none.
+func reach_max_threat(n: int, species: SpeciesCatalog) -> float:
+	var best := {"radius_tm": 0.0, "where": ""}
+	var band := WorldConfig.band_of(n)
+	var blocks: Array[Dictionary] = []
+	for id in WorldConfig._sorted(tiles.tiles.keys()):
+		if int(tiles.tiles[id].band) == band:
+			blocks.append(tiles.tiles[id])
+	if cradle_of(band) != null:
+		blocks.append(cradle_of(band)._block())
+	for t in blocks:
+		for s in t.sites:
+			if not species.species.has(s.species) or species.q_of(s.species, n) != 1.0 or not (s.sizes as Array).has(n):
+				continue
+			var post: Dictionary = s.get("post_b", {})
+			var b := {} if post.is_empty() else {"home": TileCatalog._vec(post.home), "heading": float(post.heading),
+				"zone": TileCatalog._circle_of(TileCatalog._zone(t, str(post.territory_zone)))}
+			var one := {"radius_tm": 0.0, "where": ""}
+			_take_reach(one, species, s.species, TileCatalog._vec(s.home), float(s.heading),
+				TileCatalog._circle_of(TileCatalog._zone(t, s.territory_zone)), b, s.sizes, [n], "")
+			if float(one.radius_tm) > 0.0:
+				best.radius_tm = maxf(float(best.radius_tm), float(one.radius_tm) + species.radius_at(s.species, n))
+	return float(best.radius_tm)
 
 
 ## The widest collider circle at size n, in tm, over the tiles of n's band (TileCatalog.colliders_at:
