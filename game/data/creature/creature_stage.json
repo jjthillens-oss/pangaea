@@ -9,6 +9,7 @@
 	"rivals": {"count": 6, "sight_m": 12, "flee_mass_ratio": 1.3, "hunt_mass_ratio": 0.7, "hungry_below": 0.5},
 	"health": {"per_kg": 2.0, "regen_per_s": 0.5},
 	"bite": {"base": 5, "per_mouth": 5, "scale_power": 1.0, "cooldown_s": 0.8, "no_mouth_fruit_share": 0.5},
+	"weapon": {"per_part": 2, "scale_power": 1.0, "cap": 4, "_note": "claws, horns, spikes and tusks add to the bite; the largest four count"},
 	"sight": {"base_m": 6, "per_eye_m": 3, "max_m": 24},
 	"death": {"points_loss_share": 0.2},
 	"mass": {"kg_per_m3": 900},

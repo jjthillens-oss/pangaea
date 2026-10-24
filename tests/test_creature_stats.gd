@@ -81,6 +81,24 @@ func test_every_mouth_and_eye_role_part_counts() -> void:
 		check(stats_of(bare)["eyes"] == 1, "a %s sees" % t)
 
 
+func test_weapons_add_to_the_bite_with_a_cap() -> void:
+	var bare = Fixtures.body("bean")
+	bare.add_part("maw", {"host": "spine", "u": 0, "ring": 500, "scale": 1000})
+	var plain := stats_of(bare)
+	var k: float = plain["strength_factor"]
+	bare.add_part("horn", {"host": "spine", "u": 100, "ring": 300, "scale": 1000})
+	var horned := stats_of(bare)
+	check(is_equal_approx(horned["bite_power"], plain["bite_power"] + 2.0 * k), "a horn adds 2 x strength (%.1f)" % horned["bite_power"])
+	check(horned["weapons"] == 1, "one weapon counted")
+	for i in 6:
+		bare.add_part("spike", {"host": "spine", "u": 200 + 100 * i, "ring": 300, "scale": 1000})
+	var spiky := stats_of(bare)
+	check(is_equal_approx(spiky["bite_power"], plain["bite_power"] + 8.0 * k), "only four weapons count (%.1f)" % spiky["bite_power"])
+	var mouthless = Fixtures.body("bean")
+	mouthless.add_part("horn", {"host": "spine", "u": 100, "ring": 300, "scale": 1000})
+	check(stats_of(mouthless)["bite_power"] == 0.0, "no mouth, no attack, horn or not")
+
+
 func test_mass_and_health_come_from_volume() -> void:
 	var small = Fixtures.body("bean")
 	var big = Fixtures.body("bean")

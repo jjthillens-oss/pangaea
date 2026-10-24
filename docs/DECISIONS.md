@@ -788,6 +788,14 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
+
+- Weapon-role parts (claws, horns, spikes, tusks, tail spikes, club tails, quills) add 2 attack each at scale 1
+  (times scale), before the body's strength factor, and the largest four count. Tuning is `creature_stage.json`
+  "weapon".
+- A creature attacks with its mouth, so a mouthless body gains nothing from weapons. The cost is the parts' editor
+  price, as for every part (Bible section 2: every change has a benefit and a cost).
+
 ## 2026-10-24 · Mating at the nest calls a mate before the editor (CONFIRMED direction; presentation PROPOSED; IMPLEMENTED)
 Joshua (07:39): keep Spore's breeding, where mating at the nest opens the editor. Evolving at the nest (E, pad Y) now
 calls a mate of the player's own kind. It walks up beside the player, a heart rises over the pair, and then the
