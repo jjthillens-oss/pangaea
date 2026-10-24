@@ -121,6 +121,10 @@ var ghosts: GhostLayer
 ## The Lurkers' silt ribbons and lair mouths (S2, in WorldSpace).
 var silt_trail: SiltTrail
 var older_haze: OlderHaze
+## The old band below (S3, s3-view 5): band - 1's landmarks and rare pieces sunk under the plane.
+var old_band: OldBandLayer
+## S3G28's test switch: false builds no old band (never in a save).
+var old_band_enabled := true
 ## What this computer remembers about its player (main's), read for the giants' first pass; none
 ## outside main, and then every lineage gets its pass.
 var player_memory: UserSettings
@@ -211,6 +215,9 @@ func _ready() -> void:
 	if older_haze == null:
 		older_haze = OlderHaze.new()
 		add_child(older_haze)
+	if old_band == null:
+		old_band = OldBandLayer.new()
+		add_child(old_band)
 	_mount_ambience()
 	if session != null and not _built:
 		_build()
@@ -271,7 +278,7 @@ func _build() -> void:
 		intent_provider = swim_input
 	hints.reset()
 	cell_view.attach_fx(world_fx)
-	for node: Node3D in [rim_node, zone_lights, rocks, landmarks, feedback, world_fx, silt_trail, older_haze]:
+	for node: Node3D in [rim_node, zone_lights, rocks, landmarks, feedback, world_fx, silt_trail, older_haze, old_band]:
 		world_space.register(node)
 	for player in audio.get_children():
 		if player is AudioStreamPlayer3D:
@@ -296,12 +303,18 @@ func _build() -> void:
 		for key in sim.world.loaded_keys():
 			apply_world_event(WorldSpace.chunk_loaded_event(sim.world, sim.world.chunk(key)))
 		older_haze.refresh(sim.world, sim.motion.position)
+		if old_band_enabled:
+			old_band.setup(session.world, sim.species, sim.world.world_seed, session.world.kit)
+			old_band.attach(sim.world)
+			old_band.focus_am = sim.world.abs_of_local(sim.motion.position)
+			old_band.set_band(WorldConfig.band_of(sim_size()), sim_size())
 	else:
 		rim_node.visible = true
 		rocks.build_pool(session.layout)
 		landmarks.clear()
 		silt_trail.setup(sim.species, sim_size())
 		older_haze.setup({}, [], 0)
+		old_band.set_band(0, 1)
 		zone_lights.build(session.layout.zones)
 		feedback.setup(session.layout.zones, camera)
 	_hide_kin()
@@ -421,7 +434,7 @@ func shown_size() -> int:
 ## The containers that follow the growth beat's contract (apply_growth, retire_chunk, settle_growth,
 ## beat_frame, end_growth).
 func growth_containers() -> Array:
-	return [rocks, landmarks, zone_lights, feedback, silt_trail, older_haze]
+	return [rocks, landmarks, zone_lights, feedback, silt_trail, older_haze, old_band]
 
 
 ## Every depth layer at k of its depth (the growth beat; 1 otherwise), s2-view 4.2: the Backdrop's
@@ -680,6 +693,10 @@ func _begin_growth(e: Dictionary) -> void:
 		camera.end_dolly()
 	older_haze.begin_growth(int(e.get("to", 2)))
 	world_space.apply_growth(center, factor)
+	if is_endless():
+		# S3 (s3-view 4.1): the old band's new targets, eased to over the beat (V3-7).
+		old_band.focus_am = _focus_am()
+		old_band.set_band(WorldConfig.band_of(int(e.get("to", sim_size()))), int(e.get("to", sim_size())))
 	_bake_fx()
 	creature_layer.apply_growth(center, factor)
 	ghosts.begin_growth(int(e.get("from", 1)), int(e.get("to", 2)))
@@ -694,6 +711,18 @@ func _begin_growth(e: Dictionary) -> void:
 func _refresh_older_haze() -> void:
 	if is_endless():
 		older_haze.refresh(sim.world, sim.motion.position)
+
+
+## The camera's focus in absolute am (the scale view's focus_am).
+func _focus_am() -> PackedFloat64Array:
+	return sim.world.abs_of_local(Vector2(camera.focus.x, camera.focus.z))
+
+
+## The old band round the camera's focus now (a respawn, a teleport; s3-view 5).
+func _refresh_old_band() -> void:
+	if is_endless():
+		old_band.focus_am = _focus_am()
+		old_band.refresh(OldBandLayer.view_rect(old_band.focus_am, old_band.size))
 
 
 ## Ends a running growth beat at once, before the camera snaps (a respawn, a teleport, a dev size).
@@ -747,6 +776,7 @@ func warm_up_meshes() -> Array[Mesh]:
 			out.append(mesh)
 	out.append_array(CreatureLayer.warm_up_meshes())
 	out.append_array(OlderHaze.warm_up_meshes())
+	out.append_array(OldBandLayer.warm_up_meshes())
 	return out
 
 
@@ -795,6 +825,9 @@ func _process(delta: float) -> void:
 	silt_trail.step(draw_t)
 	older_haze.step(draw_t)
 	_refresh_older_haze()
+	if is_endless():
+		old_band.focus_am = _focus_am()
+		old_band.tick(draw_t)
 	if world_fx.scale != Vector3.ONE:
 		_bake_fx()   # a meal ghost was in flight at the growth: once it has landed
 	cell_view.show_motion(sim.motion, fraction)
@@ -908,6 +941,7 @@ func _route(event: Dictionary) -> void:
 			cell_view.place(sim.motion)
 			camera.snap_to(cell_view.position)
 			_refresh_older_haze()
+			_refresh_old_band()
 			hints.reset()
 			audio.play("respawn")
 			respawned.emit(float(event.get("grace_s", 0.0)), bool(event.get("teleport", false)))
@@ -969,6 +1003,7 @@ func _route(event: Dictionary) -> void:
 				cell_view.place(sim.motion)
 				camera.snap_to(cell_view.position)
 				_refresh_older_haze()
+				_refresh_old_band()
 			elif event.get("command") == "set_size":
 				# No beat (C-V9): the scene jumps to the new size at once.
 				_cancel_growth()
@@ -981,6 +1016,8 @@ func _route(event: Dictionary) -> void:
 				silt_trail.resize(sim_size())
 				older_haze.set_size(sim_size())
 				_refresh_older_haze()
+				old_band.focus_am = _focus_am()
+				old_band.set_band(WorldConfig.band_of(sim_size()), sim_size())
 				if audio.has_method(&"set_size"):
 					audio.call(&"set_size", sim_size())
 	creature_layer.on_event(event)

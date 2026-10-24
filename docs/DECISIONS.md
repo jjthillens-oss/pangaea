@@ -1138,3 +1138,27 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   food hue still fails.
 - **Note**: T4.4's commit cited V3-14 for the ghost rows; those rows are V3-13's ladder work, and
   V3-14 is this haze.
+
+## 2026-10-24 · S3 T5.1: the old band below (V3-3 to V3-5, V3-21; S3G28, S3G29; PROPOSED; IMPLEMENTED)
+
+- **What**: `OldBandLayer` (`game/scenes/pool/old_band_layer.gd`, node `OldBand`) as s3-view
+  section 5 writes it. From band 1 it draws the band before's landmarks and rare set pieces sunk
+  under the plane at their true size: absolute am = (x_bu, y_bu) x 2.56^b, scale = piece scale x
+  2.56^b / 1.6^(n - 1), top at `top_target_tm(h)` (-2 tm for pieces up to 1 tm tall, -3 from 3 tm).
+  It builds its own `WorldGen` from the same content and seed, and no sim file names it (S3G28: the
+  sim's hashes and the save are the same with it on and off).
+- **Bake**: each band-0 model (6 landmarks, 2 rare kinds) is baked once a run into one surface with
+  vertex colours = the old colour of each surface's albedo (desaturated 0.65 in linear light, luma
+  capped at 0.30), one material per model with the model's detail texture. Measured: every colour
+  at luma 0.27 to 0.30, chroma at most 12, at least 33 degrees of LAB hue from food and 63 from
+  threat. The mesh stores 8 bits a channel, so colours are rounded down to keep the cap.
+- **Two sides**: a MultiMesh has no per-instance mirror flag, so a mirrored rare piece would draw
+  inside out. The baked materials draw both sides; the pieces are opaque and closed, so the cost is
+  small.
+- **Pool wiring**: registered container and growth container (`old_band_enabled` false skips
+  setup); `set_band` at the build, at `debug set_size`, and in `_begin_growth` after
+  `apply_growth` (the in-band 3 to 4 growth eases each instance's y to its new target over the beat,
+  V3-7); `refresh` on respawn and teleport; `tick` each frame refreshes every 0.5 s outside a beat and
+  bakes one model a frame until all are baked. The band-up fade and hand-off are T5.2's.
+- **Refresh cost**: the pieces of a cell or block are pure, so the layer keeps them (at most 4096)
+  between refreshes. Median 0.35 ms headless over 100 refreshes moving 2.2 tm each (gate 1.0 ms).
