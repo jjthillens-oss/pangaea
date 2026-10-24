@@ -601,6 +601,15 @@ func test_the_wedge_blocker_holds_a_shut_cell_and_lets_it_grow_once_clear() -> v
 # --- T2.6: the ledger and lumps, the death cost, respawn energy, the dev commands, the save (S2G20,
 # S2G32; D-35, D-71 to D-76) ---
 
+## The points finds paid in `events`: [reason, points, id] of each earned place or landmark.
+static func _finds_paid(events: Array) -> Array:
+	var out := []
+	for e in events:
+		if str(e.type) == "earned" and str(e.reason) in ["place", "landmark"]:
+			out.append([str(e.reason), int(e.points), str(e.id)])
+	return out
+
+
 ## The meter_lump events among `events`, as [reason, amount, id].
 static func _lumps_of(events: Array[Dictionary]) -> Array:
 	var out := []
@@ -688,7 +697,8 @@ func test_a_kill_pays_threat_kill_at_q_one_and_a_carcass_share_otherwise() -> vo
 
 ## Step 10: a place within place_find_tm (10) and a landmark anchor within landmark_find_tm (6) of
 ## the cell are found once per size, in id order, each with discovered {kind, id, size, lump}; a place
-## pays place x the ring, a landmark landmark_at_top x the ring at the build top only.
+## pays place x the ring, a landmark landmark_at_top x the ring at the build top only. Each find pays
+## its adaptation points at every size (S4.1: place 10, landmark 20), as earned {points, reason, id}.
 func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void:
 	var sim := _growth_sim()
 	var g := sim.growth
@@ -706,6 +716,8 @@ func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void
 	check_eq(_of(events, "discovered"), [{"type": "discovered", "kind": "place", "id": "giant_husk", "size": 1, "lump": true}],
 		"the place")
 	check_eq(_lumps_of(events), [["place", 0.1 * 90.0, "giant_husk"]], "pays 10 % of the ring")
+	var points := sim.save.adaptation_points
+	check_eq(_finds_paid(events), [["place", 10, "giant_husk"]], "and 10 points")
 	events = _tick(sim)
 	check_eq(_of(events, "discovered") + _of(events, "meter_lump"), [], "once")
 	check(sim.debug_teleport_abs(c.x - 1.0, c.y + 6.0), "5 tm from the arch, 3.6 from the second")
@@ -713,6 +725,8 @@ func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void
 	check_eq(_of(events, "discovered"), [{"type": "discovered", "kind": "landmark", "id": "landmark_arch", "size": 1, "lump": false}],
 		"the landmark once though two arches are near, no lump below the top")
 	check_eq(_lumps_of(events), [], "nothing paid")
+	check_eq(_finds_paid(events), [["landmark", 20, "landmark_arch"]], "but 20 points, at any size")
+	check_eq(sim.save.adaptation_points, points + 20, "into the save")
 	check_eq(g.discoveries, [{"type": "place", "id": "giant_husk", "size": 1}, {"type": "landmark", "id": "landmark_arch", "size": 1}],
 		"the ledger")
 	check(sim.debug_set_size(2), "size 2, the top")
@@ -724,6 +738,7 @@ func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void
 		{"type": "discovered", "kind": "place", "id": "giant_husk", "size": 2, "lump": true}], "both again at size 2, in id order")
 	check_eq(_lumps_of(events), [["landmark", 0.1 * 120.0, "landmark_arch"], ["place", 0.1 * 120.0, "giant_husk"]],
 		"the landmark pays at the top")
+	check_eq(_finds_paid(events), [["landmark", 20, "landmark_arch"], ["place", 10, "giant_husk"]], "and points again at size 2")
 	check_eq(g.paid, {"place": ["giant_husk"], "landmark": ["landmark_arch"], "food": []}, "paid at size 2")
 
 
@@ -876,7 +891,7 @@ func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_r
 	check(back.debug_teleport_abs(c.x - 9.0, c.y), "beside the place again")
 	back.growth.observe(back, [{"type": "ate", "kind": "plant"}])
 	var events := back.drain_events() + _tick(back)
-	check_eq(_of(events, "discovered") + _of(events, "meter_lump"), [], "a Continue never pays twice")
+	check_eq(_of(events, "discovered") + _of(events, "meter_lump") + _finds_paid(events), [], "a Continue never pays twice")
 	# D-74: the size clamped to the build's sizes, the meter to the ring (a full ring at the top pays
 	# out on the first tick); with growth off, size 1 and no meter.
 	sim.save.growth = {"size": 5, "meter": 999.0}

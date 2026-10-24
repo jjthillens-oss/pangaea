@@ -37,14 +37,16 @@ const FIXED_RARE_KEYS: PackedStringArray = ["tile", "kind"]
 const CONTENT_KEYS: PackedStringArray = ["home", "tiles", "kit"]
 const SWITCH_KEYS: PackedStringArray = ["generated_creatures", "growth", "lumps", "habits"]
 const REGIONS: PackedStringArray = ["drift", "sunlit", "reef"]
-## The growth block (rule 10). Its nested objects are lumps, remnants and discovery.
+## The growth block (rule 10). Its nested objects are lumps, remnants, discovery and points.
 const GROWTH_KEYS: PackedStringArray = ["trigger", "rings", "drain_floor_share", "drain_ring_seconds", "calm_ticks",
 	"quiet_ticks", "chase_window_ticks", "chase_close_tm", "chase_track_tm", "wedge_tm", "showcase_s", "blocked_hint_s",
 	"shelter_s", "beat_s", "beat_loads_per_tick", "death_meter_share", "respawn_floor_share", "respawn_cap_over_death",
-	"top_payout_points", "prefetch_share", "prefetch_per_tick", "lumps", "remnants", "discovery"]
+	"top_payout_points", "prefetch_share", "prefetch_per_tick", "lumps", "remnants", "discovery", "points"]
 const LUMP_KEYS: PackedStringArray = ["threat_kill", "place", "landmark_at_top", "food_look", "kill_carcass_share"]
 const REMNANT_KEYS: PackedStringArray = ["cap", "min_rel", "morsel_min_rel", "life_s", "morsel_max_radius_tm", "morsel_rot_s"]
 const DISCOVERY_KEYS: PackedStringArray = ["place_find_tm", "landmark_find_tm"]
+## The adaptation points a find pays (S4.1), whole numbers 0 or more: a place, a landmark.
+const POINTS_KEYS: PackedStringArray = ["place", "landmark"]
 const SECOND_SIZE_KEYS: PackedStringArray = ["zone_thin_share"]
 const LADDER_KEYS: PackedStringArray = ["labels", "food_looks"]
 const FOOD_LOOK_KEYS: PackedStringArray = ["plant", "meat"]
@@ -199,7 +201,7 @@ static func _read_growth(w: String, g: Dictionary, problems: PackedStringArray) 
 		rings.append(number_at(w + ".rings", {str(i): raw_rings[i]}, str(i), problems))
 	out.rings = rings
 	for key in GROWTH_KEYS:
-		if out.has(key) or key in ["lumps", "remnants", "discovery"]:
+		if out.has(key) or key in ["lumps", "remnants", "discovery", "points"]:
 			continue
 		var whole := GROWTH_COUNTS.has(key) or key == "top_payout_points"
 		var v := number_at(w, g, key, problems, whole)
@@ -217,6 +219,10 @@ static func _read_growth(w: String, g: Dictionary, problems: PackedStringArray) 
 	out.discovery = {}
 	for key in DISCOVERY_KEYS:
 		out.discovery[key] = number_at(w + ".discovery", discovery, key, problems)
+	var points := object_at(w, g, "points", POINTS_KEYS, problems)
+	out.points = {}
+	for key in POINTS_KEYS:
+		out.points[key] = int(number_at(w + ".points", points, key, problems, true))
 	return out
 
 
@@ -410,6 +416,9 @@ func _check_growth(w: String, errors: PackedStringArray) -> void:
 	for key in GROWTH_AT_LEAST_0:
 		if float(g[key]) < 0.0:
 			errors.append("%s.%s: rule 10: must be 0 or more (%s)" % [w, key, g[key]])
+	for key in POINTS_KEYS:
+		if int(g.points[key]) < 0:
+			errors.append("%s.points.%s: rule 10: must be 0 or more (%s)" % [w, key, g.points[key]])
 	if int(g.chase_window_ticks) >= int(g.quiet_ticks):
 		errors.append("%s.chase_window_ticks: rule 10: must be below quiet_ticks (%d >= %d)" % [w, g.chase_window_ticks, g.quiet_ticks])
 	for pair in [["min_rel", REMNANT_MIN_REL], ["morsel_min_rel", MORSEL_MIN_REL]]:
