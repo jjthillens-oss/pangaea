@@ -1,0 +1,99 @@
+{
+  "id": "cpart_foot_frog",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, four long splayed toes ending in round sticky disc pads, smooth wet skin.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_foot_frog.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_foot_frog.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.145,
+    "y_forward": 0.147,
+    "z_up": 0.075
+  },
+  "triangles": 620,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartFootFrog_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFootFrog_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFootFrog_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FootFrogSkin"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FootFrog"
+  ],
+  "part_type": "foot_frog",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "foot_frog",
+    "footprint_radius_m": 0.117,
+    "sink_depth_m": 0.0,
+    "chiral": false,
+    "orientation": "ground",
+    "turn_limit_deg": 25,
+    "tilt_limit_deg": 15,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "foot",
+    "handles": [
+      {
+        "key": "H1_Spread",
+        "meaning": "toes splayed a further 14 degrees",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Long",
+        "meaning": "toes 30% longer",
+        "default_permille": 0
+      }
+    ],
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m) meets the limb tip."
+  },
+  "paint_mix": {
+    "M_FootFrogSkin": 0.9
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1140,
+    "triangles_after": 620
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

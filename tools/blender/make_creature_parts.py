@@ -125,8 +125,8 @@ def _grey(sh, fac, lo):
 ROLE = {
     "eye": "eye", "eye_stalk": "eye", "compound_eye": "eye", "eye_slit": "eye", "eye_round": "eye", "eye_cluster": "eye",
     "beak": "mouth", "mandibles": "mouth", "maw": "mouth", "proboscis": "mouth", "jaw": "mouth", "bill": "mouth",
-    "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand",
-    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot",
+    "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand", "hand_primate": "hand",
+    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot",
     "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
     "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
     "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
@@ -3184,6 +3184,134 @@ def build_spike():
             "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
 
 
+def _wet_skin_material(name, scale=90.0, rough=0.28):
+    """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet."""
+    sh = sf.Shader(name)
+    mottle = sh.remap(sh.noise(scale, 2.0), 0.35, 0.65)
+    pebble = sh.remap(sh.voronoi(scale * 6.0, 0.9), 0.3, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.12, 0.0004)
+    return sh.out(_grey(sh, sh.math("ADD", 0.55, sh.math("MULTIPLY", mottle, 0.45)), 0.6), rough)
+
+
+def _leather_material(name):
+    """Primate palm and finger leather: fine creases across the knuckles and a soft pore grain."""
+    sh = sf.Shader(name)
+    creases = sh.remap(sh.noise(220.0, 2.0, vector=mp._stretched(sh, (0.25, 1.0, 6.0))), 0.42, 0.58)
+    pores = sh.remap(sh.voronoi(420.0, 0.8), 0.2, 0.05)
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", creases, 0.7), sh.math("MULTIPLY", pores, 0.3)), 0.3, 0.0006)
+    return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", creases, 0.28)), 0.75), 0.62)
+
+
+PRIMATE_T = (0.0, 0.15, 0.3, 0.36, 0.5, 0.62, 0.68, 0.8, 0.9, 0.96, 1.0)
+
+
+def _primate_finger_r(t, r0):
+    """Long finger with three knuckle swells (the joints at 0.33, 0.65) and a flattened rounded tip."""
+    r = r0 * (1.0 - 0.22 * t) * (1.0 + 0.14 * math.exp(-((t - 0.33) / 0.05) ** 2) + 0.12 * math.exp(-((t - 0.65) / 0.05) ** 2))
+    if t > 0.86:
+        r *= math.sqrt(max(0.0, 1.0 - ((t - 0.86) / 0.14) ** 2))
+    return r
+
+
+def build_hand_primate():
+    """A monkey's hand on the end of the limb (+Z out along it): a long flat palm, four long jointed fingers
+    with flat nails and a short opposable thumb set low on the side. H1_Grip curls the fingers around a
+    branch, H2_Spread fans them."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs = [], []
+    # A flatter, longer palm than the generic hand: monkeys hang from it.
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.036, n.y * 0.017, 0.04 + n.z * 0.045))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.0, -0.012, -0.024)], lambda i, a: 0.021 + 0.003 * i, 16)
+    bc.append(verts, fcs, wv, wf)
+    tips = []
+    for fx, length, r0 in ((-0.024, 0.062, 0.0078), (-0.008, 0.074, 0.0085), (0.008, 0.078, 0.0085), (0.024, 0.07, 0.008)):
+        base = Vector((fx, 0.0, 0.078))
+        path = [base + Vector((fx * 0.12 * t, 0.006 * t * t, length * t)) for t in PRIMATE_T]
+        v, f, _ = _tube(path, lambda i, a, r0=r0: _primate_finger_r(PRIMATE_T[i], r0), 12)
+        bc.append(verts, fcs, v, f)
+        tips.append((path[-3], (path[-1] - path[-4]).normalized()))
+    # The thumb leaves the palm low on +X and points across it, so the grip key can oppose it.
+    tpath = [Vector((0.03, 0.006, 0.03)) + Vector((0.026 * t, 0.012 * t, 0.03 * t)) for t in PRIMATE_T]
+    v, f, _ = _tube(tpath, lambda i, a: _primate_finger_r(PRIMATE_T[i], 0.0095), 12)
+    bc.append(verts, fcs, v, f)
+    tips.append((tpath[-3], (tpath[-1] - tpath[-4]).normalized()))
+    skin = _leather_material("M_HandPrimateSkinProc")
+    hand = bc.mesh_object("HandPrimate", verts, fcs, [skin])
+    skin.name = "M_HandPrimateSkin"
+    nail_mat = _nail_material("M_HandPrimateNailProc")
+    nv, nf = [], []
+    for tip, d in tips:
+        # Flat nails on the back (-Y) of each tip: a squashed cone laid along the finger.
+        v, f = _nail(tip + Vector((0.0, -0.0045, 0.0)), d, 0.011, 0.005)
+        bc.append(nv, nf, [(x, tip.y - 0.0045 + (y - tip.y + 0.0045) * 0.35, z) for x, y, z in v], f)
+    nails = bc.mesh_object("Nails", nv, nf, [nail_mat], parent=hand)
+    nail_mat.name = "M_HandPrimateNail"
+    baked = _bake([hand, nails], "PartHandPrimate", {"M_HandPrimateSkin": sf.tint(_lin("#5E4A40")), "M_HandPrimateNail": sf.tint(_lin("#2E2622"))})
+    pts = _check_pivot("hand_primate", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def grip(co):
+        if co.z > 0.078:
+            dz = co.z - 0.078
+            ang = math.radians(95.0) * min(1.0, dz / 0.075)
+            return Vector((co.x, co.y + dz * math.sin(ang) * 0.8, 0.078 + dz * math.cos(ang) * 0.8 + dz * 0.2))
+        if co.x > 0.03:
+            k = (co.x - 0.03) / 0.026
+            return Vector((co.x - 0.02 * k, co.y + 0.014 * k, co.z + 0.01 * k))
+        return co
+
+    def spread(co):
+        if co.z > 0.078:
+            co.x *= 1.0 + 0.5 * min(1.0, (co.z - 0.078) / 0.075)
+        return co
+
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 95 degrees around a branch, the thumb opposes"),
+                                 ("H2_Spread", spread, "fingers fan 50% wider at the tips")])
+    _shape_keys(nails, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
+    rules = _hand_rules("hand_primate", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a monkey's hand, a long flat leathery palm, four long jointed fingers with flat nails and a low opposable thumb; grips on a shape key.",
+            "category": "part", "part_type": "hand_primate", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandPrimateSkin": 0.35, "M_HandPrimateNail": 0.0}, "revision": 1, **baked}
+
+
+def build_foot_frog():
+    """A tree frog's foot standing on its sole: a small heel, four long thin splayed toes, each ending in a round
+    sticky disc pad, in smooth wet skin. H1_Spread splays the toes, H2_Long lengthens them."""
+    unit, faces = bc.icosphere(3)
+    palm_c = Vector((0.0, -0.006, 0.016))
+    verts, fcs = [], []
+    bc.append(verts, fcs, [tuple(palm_c + Vector((n.x * 0.022, n.y * 0.026, n.z * 0.016))) for n in (Vector(co).normalized() for co in unit)], faces)
+    av, af = _ankle(0.075, 0.013, -0.01)
+    bc.append(verts, fcs, av, af)
+    disc_unit, disc_faces = bc.icosphere(2)
+    for ang, length in ((-52.0, 0.06), (-18.0, 0.085), (16.0, 0.095), (48.0, 0.07)):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        start = palm_c + d * 0.014 + Vector((0.0, 0.0, -0.006))
+        ts = (0.0, 0.25, 0.5, 0.75, 1.0)
+        # The toes arch up off the ground between the heel and the pad, as a frog's do.
+        path = [start + d * (length * t) + Vector((0.0, 0.0, 0.006 * math.sin(math.pi * t) - 0.004 * t)) for t in ts]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0055 * (1.0 - 0.25 * i / 4), 10)
+        bc.append(verts, fcs, tv, tf)
+        c = path[-1] + d * 0.004
+        r = 0.0095
+        bc.append(verts, fcs, [tuple(c + Vector((n.x * r, n.y * r, 0.0045 + n.z * r * 0.55))) for n in (Vector(co).normalized() for co in disc_unit)], disc_faces)
+    skin = _wet_skin_material("M_FootFrogSkinProc")
+    foot = bc.mesh_object("FootFrog", _ground(verts), fcs, [skin])
+    skin.name = "M_FootFrogSkin"
+    objs = [foot]
+    baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#7FA35A"))})
+    pts = _check_pivot("foot_frog", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _foot_handles(objs, 14.0, 0.01, 0.3)
+    rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, four long splayed toes ending in round sticky disc pads, smooth wet skin.",
+            "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootFrogSkin": 0.9}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -3228,6 +3356,8 @@ ASSETS = {
     "cpart_horn_ram": (build_horn_ram, 1200),
     "cpart_horn_nose": (build_horn_nose, 1200),
     "cpart_spike": (build_spike, 1200),
+    "cpart_hand_primate": (build_hand_primate, 2500),
+    "cpart_foot_frog": (build_foot_frog, 2500),
 }
 
 
