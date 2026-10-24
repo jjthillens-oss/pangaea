@@ -804,6 +804,13 @@ The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R,
 Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
 avoids a universal rhythm minigame unless approved.
 
+## 2026-10-24 · Creature editor palette grouped by kind (PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, built better with the Bible's ideas; the playthrough notes
+(docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md) show the editor's part grid grouped by kind on the left with the
+creature on a plinth on the right. The palette gains tabs (All, Mouths, Senses, Limbs, Weapons, Details) above the
+part pictures; picking a tool by key switches to its tab, and a part type art adds later lands in Details until it
+is listed in `CreatureEditorHud.PART_CATEGORY`. Layout and styling stay Pangaea's own.
+
 ## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
 Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
 - **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
@@ -917,3 +924,6 @@ its tabs pick them up from the records.
   the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
   editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
 
+  the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
+  warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
+  is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.

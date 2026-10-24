@@ -1,0 +1,105 @@
+{
+  "id": "cpart_eye_round",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature eye part (PROPOSED): a big round eye, white with a wide blue iris and a large pupil, in a thin rolled lid; blinks on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_eye_round.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_eye_round.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.16,
+    "y_forward": 0.159,
+    "z_up": 0.118
+  },
+  "triangles": 990,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEyeRound_Albedo",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEyeRound_ORM",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEyeRound_Normal",
+      "size": [
+        256,
+        256
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EyeRoundBall",
+    "M_EyeRoundIris",
+    "M_EyeRoundLid"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "EyeRound",
+    "Lid"
+  ],
+  "part_type": "eye_round",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "eye_round",
+    "footprint_radius_m": 0.081,
+    "sink_depth_m": 0.035,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 45,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "eye",
+    "handles": [
+      {
+        "key": "H1_Blink",
+        "meaning": "the lid rolls over the ball to a slit",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Bulge",
+        "meaning": "the ball pushed 25% further out",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1 is on Lid, H2 on EyeRound; both are 0 to 1000 per mille."
+  },
+  "paint_mix": {
+    "M_EyeRoundBall": 0.0,
+    "M_EyeRoundIris": 0.0,
+    "M_EyeRoundLid": 0.9
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1784,
+    "triangles_after": 990
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

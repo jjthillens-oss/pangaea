@@ -102,6 +102,40 @@ func test_an_added_part_shows_its_cost_and_the_numbers_it_changes() -> void:
 	check_eq(editor.session.working.parts.size(), 3, "redo puts it back")
 
 
+func test_the_eats_line_previews_what_the_new_body_can_feed_on() -> void:
+	# Bible section 5: the editor previews feeding with speed, turning, defense and energy.
+	editor.open(save, catalog, _state())
+	var eats := func() -> Array:
+		return editor.stat_lines().filter(func(l: Array) -> bool: return l[0] == "Eats")[0]
+	check_eq(eats.call(), ["Eats", "plants", "plants", null], "a filter mouth eats plants")
+	var jaw: Dictionary = editor.add("mouth_jaw")
+	check(jaw.ok, "a jaw added: %s" % [jaw])
+	check_eq(eats.call(), ["Eats", "plants", "plants and meat", true], "a jaw adds meat")
+	for part in editor.session.working.parts:
+		if part.type == "mouth_filter":
+			editor.selected = part.id
+	check(editor.remove_selected().ok, "the filter taken off")
+	check_eq(eats.call(), ["Eats", "plants", "meat", null], "a trade is neither better nor worse")
+	check_eq(CellEditor.eats_text(PackedStringArray()), "nothing", "no mouth eats nothing")
+
+
+func test_a_body_a_hunter_can_catch_is_allowed_with_a_warning() -> void:
+	# Rule 3 holds for the starting bodies only; a heavy edit may be slower than a chase. The editor
+	# allows the trade (Joshua's size and strength tradeoffs) and says so.
+	var speed := Phenotype.derive(save.genome, catalog).speed
+	editor.open(save, catalog, _state(), {"speed": speed - 0.05, "name": "ambush hunter"})
+	var warning := editor.find_child("ChaseWarning", true, false) as Label
+	check_eq(warning.text, "", "the body as it is outswims the chase (%.2f)" % speed)
+	check(editor.add("spike").ok, "a spike added")
+	check(editor.session.preview().phenotype.speed < speed - 0.05, "and it is slower now")
+	check(warning.text.begins_with("The ambush hunter can catch this body"), "warned: %s" % warning.text)
+	check(not editor.find_child("Mate", true, false).disabled, "but Mate is still allowed")
+	editor.undo()
+	check_eq(warning.text, "", "undone, the warning goes")
+	editor.chase = {}
+	check_eq(editor.chase_warning(0.1), "", "nothing chasing here, no warning")
+
+
 func test_parts_go_where_they_fit_and_move_round_the_rim() -> void:
 	editor.open(save, catalog, _state())
 	check_eq(editor.free_angle("mouth_jaw"), 0.0, "a mouth at the front")
@@ -192,3 +226,23 @@ func test_the_body_is_seen_from_above_under_the_rim_each_dot_on_its_part() -> vo
 	var front := inverse * PartPlacement.surface_point(0.0)
 	check_near(absf(front.y) / camera.size * rim.size.y, CellEditor.BODY_ON_RIM * rim.radius(), 0.5,
 		"the body's front at %.1f of the rim" % CellEditor.BODY_ON_RIM)
+
+
+func test_test_drive_swims_the_working_body_and_comes_back_unchanged() -> void:
+	editor.open(save, catalog, _state())
+	editor.add("spike")
+	var parts_before := editor.session.working.parts.duplicate(true)
+	var saved_before := save.genome.parts.duplicate(true)
+	_button("TestDrive").pressed.emit()
+	var pool := editor.find_children("*", "TestPool", false, false)[0] as TestPool
+	check(pool.visible, "the test dish is shown")
+	var view := pool.find_child("PlayerCell", true, false) as PlayerCellView
+	check_eq(view.part_nodes().size(), parts_before.size(), "with the working body")
+	for i in 30:
+		pool.step(Vector2.RIGHT, PoolSim.DT)
+	check(pool.motion.position.x > 0.0, "and it swims")
+	_button("BackToEditor").pressed.emit()
+	check(not pool.visible, "back to the editor")
+	check_eq(editor.session.working.parts, parts_before, "the edit is kept")
+	check_eq(save.genome.parts, saved_before, "nothing saved")
+	check(closes.is_empty(), "the editor is still open")
