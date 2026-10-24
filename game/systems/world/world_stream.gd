@@ -68,6 +68,8 @@ const AHEAD_REFRESH_TICKS := 15
 const PREPARE_PER_TICK := 2
 ## How many of the pieces the unloads let go (_let_go) a quiet tick frees.
 const RELEASE_PER_TICK := 1
+## Bytes of the block a tick that loads nothing asks for and drops at its end (_settle_heap).
+const HEAP_SETTLE_BYTES := 4096
 ## tm: what the wake bound allows for float32 rounding in the distances and the path it sums, which
 ## is under a thousandth of this at 128 tm and a million ticks.
 const WAKE_SLACK_TM := 0.05
@@ -184,6 +186,7 @@ var _prepare_todo: Array = []
 var _let_go: Array = []
 var _quiet := true                     ## nothing loaded, unloaded or rebased since the last step ended
 var _loads := 0                        ## chunks loaded so far (whether a tick loaded any)
+var _loaded_now := false               ## the last step loaded a chunk (loaded_now)
 var _tm_to_am := 1.0                   ## 1.6^(size - 1): 1.0 in S1
 var _field: WeakRef = null             ## the sim's CreatureField (weak: the field holds this stream)
 var _sim: WeakRef = null               ## the sim (weak: it holds this stream), for load_site_chunks
@@ -254,18 +257,38 @@ func step(sim: PoolSim) -> void:
 	var p := sim.motion.position
 	if p.length() > rebase_beyond_tm:
 		rebase(sim, Vector2(roundf(p.x / rebase_step_tm) * rebase_step_tm, roundf(p.y / rebase_step_tm) * rebase_step_tm))
-	_unload(sim)
+	var unloaded := _unload(sim)
 	var view := _wake_view(sim)
 	var loads := _loads
-	_load(sim, view)
-	if _loads == loads and not _look_ahead(sim):
+	_load(sim, view, unloaded == 0)
+	_loaded_now = _loads != loads
+	if not _loaded_now and unloaded == 0 and not _look_ahead(sim):
 		_prepare_ahead(sim)
 		if _quiet:
 			for i in mini(RELEASE_PER_TICK, _let_go.size()):
 				_let_go.pop_back()
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
+	if not _loaded_now:
+		_settle_heap()
 	_quiet = true
+
+
+## Whether this tick's step loaded a chunk (step 4, or a sleeper's wake): PoolSim's spawn pass then
+## waits for the next tick (B-7).
+func loaded_now() -> bool:
+	return _loaded_now
+
+
+## Makes the allocator settle, on this tick, the small blocks freed since the last tick that
+## loaded nothing: a block of HEAP_SETTLE_BYTES is asked for and dropped. To glibc's malloc (Linux,
+## CI) that is a large request, and a large request first merges every small block freed since the
+## last one, a cost that grows with how many were freed. Without it a load tick's first large request
+## (a chunk's near grid, 1 KB) paid for all the ticks before it: 230 to 280 us of B-7's tick 564,
+## measured. Other allocators take it as a plain request and free. No state changes.
+static func _settle_heap() -> void:
+	var block := PackedByteArray()
+	block.resize(HEAP_SETTLE_BYTES)
 
 
 ## The food view now with every food zone filled at once (a new world, a Continue, a teleport).
@@ -568,14 +591,15 @@ func snapshot(sim: PoolSim) -> Dictionary:
 
 ## Unloads every chunk whose nearest point lies beyond the unload ring from the body, unless an awake
 ## creature's reach touches it (its site's chunks, or the leash disc of a creature with no site; a
-## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order.
-func _unload(sim: PoolSim) -> void:
+## token holder is awake, so it holds its ground too). Keys are visited in (y, x) order. Returns how
+## many it unloaded.
+func _unload(sim: PoolSim) -> int:
 	var a := abs_of_local(sim.motion.position)   # nearest() for every key, the body's part once
 	var x := a[0] / _tm_to_am
 	var y := a[1] / _tm_to_am
 	var ring := float(rings.unload)
 	if _within_bound(_unload_bound, x, y, ring):
-		return   # every loaded chunk is still within the ring
+		return 0   # every loaded chunk is still within the ring
 	var held: Variant = null   # the holds are only needed for a chunk beyond the ring
 	var gone: Array[Vector2i] = []
 	var far := 0.0
@@ -598,6 +622,7 @@ func _unload(sim: PoolSim) -> void:
 		_unload_chunk(sim, key)
 	if not gone.is_empty():
 		_apply_caps(sim)   # after the unloaded sites' creatures left (G7)
+	return gone.size()
 
 
 ## The chunks awake creatures hold: a site creature its site's reach chunks, a creature with no site
@@ -676,12 +701,17 @@ func _unload_chunk(sim: PoolSim, key: Vector2i) -> void:
 ## tick, after the sleepers that wake this tick have their site chunks. With caps.chunks loaded, the
 ## nearest missing chunk of the view set loads instead (never refused), and chunk_waits counts each
 ## time the nearest missing chunk had to give way or wait (B-5: a backstop a swim should never need).
-func _load(sim: PoolSim, view_from: Dictionary) -> void:
+## With `ring` false (a tick that unloaded a chunk) only the wakers' chunks load: the load ring's
+## wait for the next tick, so that no tick pays for an unload and a load (B-7; the load ring lies
+## 22 tm beyond the view's, a tick's swim is under 0.2 tm).
+func _load(sim: PoolSim, view_from: Dictionary, ring := true) -> void:
 	# The sleepers step 5 will wake: their reach chunks load first, never refused and never counted.
 	for c in _wakers(sim, view_from):
 		for key in sites[c.site_id].chunks:
 			if not _chunks.has(key):
 				_load_chunk(sim, key)
+	if not ring:
+		return
 	var body := sim.motion.position
 	var view: Array[Vector2i] = []
 	for i in int(caps.loads_per_tick):
@@ -791,6 +821,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 			_index_added_zone(sim.region)
 	if sim.creatures != null:
 		var made: Dictionary = _ahead_sites.get(Vector3i(key.x, key.y, size), {})
+		var due: Array[Dictionary] = []   # their queue entries, in this order: _enqueue_retries places each as _enqueue would
 		for s in ch.sites:
 			if (s.sizes as Array).has(size):
 				_note_home(s.id, key)
@@ -801,7 +832,8 @@ func _load_chunk(sim: PoolSim, key: Vector2i) -> void:
 					rec = _site_record(s, key)
 				sites[s.id] = rec
 				_note_role(sim, s.id, str(s.species))
-				sim.creatures._enqueue(s.id, s.species, sim.tick)
+				due.append(s)
+		sim.creatures._enqueue_retries(due, sim.tick)
 	_ahead_sites.erase(Vector3i(key.x, key.y, size))
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.

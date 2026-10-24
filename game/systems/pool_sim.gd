@@ -298,7 +298,10 @@ func step(intent: SimIntent) -> void:
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
-		creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK)
+		# A tick whose streaming step loaded a chunk makes no spawn tries: the due sites (the new
+		# chunk's among them) wait for the next tick, so no tick pays for a load and the spawns (B-7).
+		if world == null or not world.loaded_now():
+			creatures.tick_spawns_at(arena, _player_places(), tick, CreatureField.SLEEPER_SPAWNS_PER_TICK)
 		creatures.remove_stuck_at(_player_places(), tick)
 	_take_field_events()
 	_sync_actor()
