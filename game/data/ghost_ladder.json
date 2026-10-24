@@ -45,6 +45,8 @@
       "body_rect": [0.066, 0.113, 0.934, 0.887], "plural": "stinger veils", "haze": "res://assets/export/ambience/T_Haze_veil.png"},
     "warden": {"entry_size": 3, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_warden.png",
       "body_rect": [0.193, 0.191, 0.807, 0.791], "plural": "Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"},
+    "elder_ambush": {"entry_size": 3, "radius_tm": 0.75, "texture": "res://assets/export/ambience/T_Ghost_elder_ambush.png",
+      "body_rect": [0.066, 0.084, 0.934, 0.895], "plural": "elder hunters", "haze": "res://assets/export/ambience/T_Haze_ambush.png"},
     "deep_lurker": {"entry_size": 4, "radius_tm": 0.78, "texture": "res://assets/export/ambience/T_Ghost_deep_lurker.png",
       "body_rect": [0.066, 0.100, 0.934, 0.887], "plural": "Deep lurkers", "haze": "res://assets/export/ambience/T_Haze_lurker.png"},
     "elder_warden": {"entry_size": 4, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_elder_warden.png",

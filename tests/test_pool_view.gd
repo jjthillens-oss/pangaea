@@ -844,7 +844,7 @@ func test_outlines_badges_and_the_lane_edge_share_one_navy_keyline() -> void:
 
 
 ## S3 (T4.6, s3-view 13; S3G36 frame part): the start fade also draws what sizes 3 and 4 bring: the
-## glass flake and the bead cluster, the four new bodies, the veil threads in the threat ink and in
+## glass flake and the bead cluster, the five new bodies, the veil threads in the threat ink and in
 ## the neutral and their outline, a baked morsel in M_Morsel and in the morsel rim, and the older
 ## haze.
 func test_the_start_fade_warms_every_s3_look() -> void:

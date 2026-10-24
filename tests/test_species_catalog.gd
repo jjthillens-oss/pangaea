@@ -57,8 +57,8 @@ func test_the_real_species_data_is_valid() -> void:
 	var cat := SpeciesCatalog.load_from()
 	var errors := cat.validate(layout, parts)
 	check(errors.is_empty(), "no errors: %s" % [errors])
-	check_eq(Array(cat.species_ids()), ["ambush_hunter", "deep_lurker", "elder_rammer", "elder_warden", "lurker", "rammer",
-		"veil", "warden"], "eight species, sorted")
+	check_eq(Array(cat.species_ids()), ["ambush_hunter", "deep_lurker", "elder_ambush", "elder_rammer", "elder_warden", "lurker", "rammer",
+		"veil", "warden"], "nine species, sorted")
 	check_eq(cat.sites.size(), 7, "seven sites")
 	check_eq(cat.sites_of("ambush_hunter").size(), 3, "three lairs")
 	check_eq(cat.sites_of("rammer").size(), 4, "four territories")
@@ -646,8 +646,8 @@ func test_rule_15_a_species_one_size_past_its_entry_cannot_attack_the_cell() -> 
 		"species 'elder_rammer'")
 	check_only_rule(_s2_errors_after(func(d: Dictionary) -> void: d.erase("relationships")), 15, "needs the relationships block")
 	# A size-1 species is never outgrown in this sense: the M1 ones pass with any shares.
-	check(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.prey_share = 1.9), 15).size() == 2,
-		"only the Lurker and the Deep lurker answer to the prey share")
+	check(_rule_errors(_s2_errors_after(func(d: Dictionary) -> void: d.relationships.prey_share = 1.9), 15).size() == 3,
+		"only the Lurker, the Deep lurker and the elder ambush hunter answer to the prey share")
 
 
 ## S2G29: every new block refuses unknown and missing keys and wrong kinds, and its values.

@@ -42,9 +42,10 @@
   ],
   "sites": [
     {"id": "dl", "species": "deep_lurker", "home": [-11.0, -9.0], "heading": 1.5708, "territory_zone": "", "sizes": [4]},
-    {"id": "lu", "species": "lurker", "home": [-19.0, 14.0], "heading": 0.3263, "territory_zone": "", "sizes": [3, 4], "post_b": {"home": [-19.0, 11.0], "heading": -2.571}},
+    {"id": "lu", "species": "lurker", "home": [-19.0, 14.0], "heading": 0.3263, "territory_zone": "", "sizes": [4], "post_b": {"home": [-19.0, 11.0], "heading": -2.571}},
     {"id": "ah", "species": "ambush_hunter", "home": [16.0, -20.0], "heading": -3.0296, "territory_zone": "", "sizes": [3, 4]},
     {"id": "va", "species": "veil", "home": [-3.0, 21.0], "heading": -0.5308, "territory_zone": "", "sizes": [3]},
-    {"id": "vb", "species": "veil", "home": [21.0, -3.0], "heading": 0.0163, "territory_zone": "", "sizes": [3]}
+    {"id": "eb", "species": "elder_ambush", "home": [-21.5, 18.33], "heading": -0.706, "territory_zone": "", "sizes": [3]},
+    {"id": "ea", "species": "elder_ambush", "home": [-3.76, 5.94], "heading": -2.8798, "territory_zone": "", "sizes": [3]}
   ]
 }

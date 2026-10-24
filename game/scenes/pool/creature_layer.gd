@@ -44,8 +44,8 @@ const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
 const MORSEL_RIM_SHADER := preload("res://game/scenes/pool/morsel_rim.gdshader")
 ## The bodies that first come at sizes 3 and 4 (warm_up_meshes), and the species whose bake stands for
 ## every morsel (each bake has the same vertex format).
-const WARM_UP_BODIES: PackedStringArray = ["creature_veil_body", "creature_warden_body", "creature_deep_lurker_body",
-	"creature_elder_warden_body"]
+const WARM_UP_BODIES: PackedStringArray = ["creature_veil_body", "creature_warden_body", "creature_elder_ambush_body",
+	"creature_deep_lurker_body", "creature_elder_warden_body"]
 const WARM_UP_MORSEL := "rammer"
 
 var sim: PoolSim

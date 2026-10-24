@@ -165,8 +165,10 @@ func test_counts_hold_per_quadrant() -> void:
 	# Rule 9: the north-east rammer only at 3 leaves that quadrant no prey or morsel at 4.
 	var problems := _problems(func(d: Dictionary) -> void: _item(d.sites, "nera").sizes = [3], 4)
 	check(_has(problems, "cradle_b1/q0_0: rule 9: a tile needs a prey or morsel site at both sizes"), "rule 9 (%s)" % [problems])
-	# Rule 7: no live threat in the south-west at 3.
-	problems = _problems(func(d: Dictionary) -> void: d.sites.erase(_item(d.sites, "swwa")), 3)
+	# Rule 7: no live threat in the south-west at 3 (neither its Warden nor its elder ambush hunter).
+	problems = _problems(func(d: Dictionary) -> void:
+		d.sites.erase(_item(d.sites, "swwa"))
+		d.sites.erase(_item(d.sites, "swea")), 3)
 	check(_has(problems, "cradle_b1/q-1_-1: rule 7: a home tile needs a live threat site at size 3"), "rule 7 (%s)" % [problems])
 	# D-135: a thirteenth zone in the north-west.
 	problems = _problems(func(d: Dictionary) -> void:

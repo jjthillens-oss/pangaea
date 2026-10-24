@@ -28,6 +28,7 @@ const BODY_SCENES := {
 	"creature_elder_rammer_body": preload("res://assets/export/creature_elder_rammer_body.glb"),
 	"creature_veil_body": preload("res://assets/export/creature_veil_body.glb"),
 	"creature_warden_body": preload("res://assets/export/creature_warden_body.glb"),
+	"creature_elder_ambush_body": preload("res://assets/export/creature_elder_ambush_body.glb"),
 	"creature_deep_lurker_body": preload("res://assets/export/creature_deep_lurker_body.glb"),
 	"creature_elder_warden_body": preload("res://assets/export/creature_elder_warden_body.glb"),
 }
@@ -41,7 +42,8 @@ const MANDIBLE_PATHS: Array[NodePath] = [^"JawBase/Mandible_L", ^"JawBase/Mandib
 const EYE_EMISSION_REST := 0.4
 ## S3 (V3-20): the bodies whose eyes were authored at another strength (their records'
 ## eye_emission_rest); 0 leaves the eyes undriven (the veil's are not emissive).
-const EYE_EMISSION_REST_BY_BODY := {"creature_veil_body": 0.0, "creature_deep_lurker_body": 0.7}
+const EYE_EMISSION_REST_BY_BODY := {"creature_veil_body": 0.0, "creature_deep_lurker_body": 0.7,
+	"creature_elder_ambush_body": 0.5}
 
 ## Pose amplitudes (plan section 14). PROPOSED and view-only: no sim timing depends on them.
 const COIL_LENGTH := 0.82        ## ambush tell: the body squashes along its length...
