@@ -112,7 +112,12 @@ func validate(catalog: PartCatalog, creature_body_rules: Callable = Callable()) 
 		errors.append("Lineage history is empty; it must at least record the founding.")
 	var pos = player.get("position")
 	if not (pos is Array and pos.size() == 3):
-		errors.append("Player position must be three numbers.")
+		errors.append("Player position must be three finite numbers.")
+	else:
+		for coordinate in pos:
+			if not _is_number(coordinate):
+				errors.append("Player position must be three finite numbers.")
+				break
 	errors.append_array(_key_problems("player", player, PLAYER_KEYS))
 	for key in ["energy", "health"]:
 		var value = player.get(key)

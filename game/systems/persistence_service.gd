@@ -18,6 +18,7 @@ const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const CURRENT_VERSION := SaveGame.SCHEMA_VERSION
 const BACKUP_SUFFIX := ".bak"
 const TEMP_SUFFIX := ".tmp"
+const MAX_SAVE_BYTES := 8 * 1024 * 1024
 
 ## from_version (int) -> Callable(Dictionary) -> Dictionary returning the next version's data.
 var migrations: Dictionary = {}
@@ -117,7 +118,16 @@ func _read_current_version(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		result.errors.append("%s: file not found." % path.get_file())
 		return result
-	var data = _parse(FileAccess.get_file_as_string(path))
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		result.errors.append("%s: could not be read." % path.get_file())
+		return result
+	if file.get_length() > MAX_SAVE_BYTES:
+		file.close()
+		result.errors.append("%s: save file is too large (limit %d bytes)." % [path.get_file(), MAX_SAVE_BYTES])
+		return result
+	var data = _parse(file.get_as_text())
+	file.close()
 	if typeof(data) != TYPE_DICTIONARY:
 		result.errors.append("%s: not a readable save file." % path.get_file())
 		return result
@@ -139,8 +149,10 @@ func _read_current_version(path: String) -> Dictionary:
 ## Returns {"ok": bool, "data": Dictionary, "error": String}. Works on a copy; the input is untouched.
 func migrate(data: Dictionary) -> Dictionary:
 	var version = data.get("schema_version")
-	if not (version is int or version is float):
+	if version == null:
 		return {"ok": false, "data": {}, "error": "missing schema version."}
+	if not (version is int or version is float) or not is_finite(float(version)) or version != floorf(float(version)):
+		return {"ok": false, "data": {}, "error": "schema version must be a whole number."}
 	var current: Dictionary = data.duplicate(true)
 	var v := int(version)
 	if v > CURRENT_VERSION:
