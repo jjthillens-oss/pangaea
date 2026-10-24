@@ -1,0 +1,2 @@
+# Prefixes ending in / and exact paths are supported. Add only intentional
+# future paths from proposals or the bible, after reviewing the report.

@@ -32,6 +32,10 @@ jobs:
         continue-on-error: true
         run: gdformat --check game tests tools
 
+      - name: Report missing paths in documentation
+        if: always()
+        run: python tools/check_docs.py --report
+
   test-and-export:
     runs-on: ubuntu-24.04
     # A backstop only: check.sh and check_release.sh stop each Godot run that hangs (the unit
