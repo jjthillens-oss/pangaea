@@ -4,6 +4,7 @@ extends SceneTree
 ## Ripeness shape at 0.3 and rising. A watch thread prints when no frame comes for 10 s.
 
 var frame := 0
+var WEIGHT_FROM := int(OS.get_environment("WEIGHT_FROM")) if OS.get_environment("WEIGHT_FROM") != "" else 60
 var body: MeshInstance3D
 var last_ms := 0
 var watch: Thread
@@ -13,18 +14,20 @@ var stop := false
 
 
 func _init() -> void:
+	print("probe: init, weight from frame %d" % WEIGHT_FROM)
+	watch = Thread.new()
+	watch.start(_watch)
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 0.5, 3)
 	root.add_child(cam)
-	cam.look_at(Vector3.ZERO)
 	root.add_child(DirectionalLight3D.new())
+	print("probe: loading the cell")
 	var cell: Node3D = (load("res://assets/export/sample_cell.glb") as PackedScene).instantiate()
+	print("probe: adding the cell")
 	root.add_child(cell)
 	body = cell.find_child("Body", true, false) as MeshInstance3D
 	print("probe: body %s, %d blend shapes, Ripeness at %d, driver %s" % [body, body.get_blend_shape_count() if body else -1,
 		body.find_blend_shape_by_name(&"Ripeness") if body else -1, RenderingServer.get_current_rendering_driver_name()])
-	watch = Thread.new()
-	watch.start(_watch)
 	last_ms = Time.get_ticks_msec()
 
 
@@ -59,10 +62,10 @@ func _process(_delta: float) -> bool:
 		print("probe: frame %d, %d ms since the last" % [frame, now - last_ms])
 	last_ms = now
 	var i := body.find_blend_shape_by_name(&"Ripeness") if body else -1
-	if frame == 60:
+	if frame == WEIGHT_FROM:
 		print("probe: Ripeness to 0.3 (shape %d)" % i)
-	if frame >= 60 and i >= 0:
-		body.set_blend_shape_value(i, minf(0.3 + 0.002 * (frame - 60), 1.0))
+	if frame >= WEIGHT_FROM and i >= 0:
+		body.set_blend_shape_value(i, minf(0.3 + 0.002 * (frame - WEIGHT_FROM), 1.0))
 	if frame >= 200:
 		print("probe: done, 200 frames")
 		lock.lock()

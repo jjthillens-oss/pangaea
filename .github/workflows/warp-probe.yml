@@ -26,17 +26,20 @@ jobs:
           run-id: 40054268633
           github-token: ${{ github.token }}
 
-      - name: Blend shape probe, Forward+ (D3D12)
+      - name: Probes on Forward+ (D3D12)
         continue-on-error: true
         run: |
           source tools/bounded.sh
           mkdir -p logs
-          bounded 150 builds/windows/Pangaea-dev.exe --log-file "$(cygpath -m "$PWD/logs/blend.txt")" --resolution 640x360 --script "$(cygpath -m "$PWD/ci-probe/blend_probe.gd")" > logs/blend.log 2>&1 || echo "exit $?"
-          grep -v 'Unreferenced static\|string_name.cpp' logs/blend.log | head -80
-
-      - name: Grow tour, Compatibility over ANGLE (D3D11)
-        continue-on-error: true
-        run: |
-          source tools/bounded.sh
-          bounded 300 builds/windows/Pangaea-dev.exe --log-file "$(cygpath -m "$PWD/logs/grow_angle.txt")" --rendering-driver opengl3_angle --rendering-method gl_compatibility --resolution 640x360 -- --perf-tour=grow --slot=user://smoke/probe_grow.json > logs/grow_angle.log 2>&1 || echo "exit $?"
-          grep -v 'Unreferenced static\|string_name.cpp' logs/grow_angle.log | head -80
+          probe() {
+            local name="$1"; shift
+            echo "=== $name"
+            bounded 90 "$@" > "logs/$name.log" 2>&1 || echo "exit $?"
+            grep -v 'Unreferenced static\|string_name.cpp' "logs/$name.log" | head -60
+            echo "--- Godot log"
+            grep -v 'Unreferenced static\|string_name.cpp' "logs/$name.txt" 2>/dev/null | head -60
+          }
+          EXE=builds/windows/Pangaea-dev.exe
+          probe print $EXE --log-file "$(cygpath -m "$PWD/logs/print.txt")" --resolution 640x360 --script "$(cygpath -m "$PWD/ci-probe/print_probe.gd")"
+          WEIGHT_FROM=100000 probe noweight $EXE --log-file "$(cygpath -m "$PWD/logs/noweight.txt")" --resolution 640x360 --script "$(cygpath -m "$PWD/ci-probe/blend_probe.gd")"
+          WEIGHT_FROM=60 probe weight $EXE --log-file "$(cygpath -m "$PWD/logs/weight.txt")" --resolution 640x360 --script "$(cygpath -m "$PWD/ci-probe/blend_probe.gd")"
