@@ -792,7 +792,7 @@ the levels:
 Joshua (07:39): keep Spore's fundamentals, including "dancing, friend/foe", built better with the Bible's ideas.
 The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R, pad B) is the friend path:
 - **Songs.** Each song, facing a creature up close, adds the singer's charm to its friendship. Charm is base 1, plus
-  0.5 for each display organ (crest, frill, lure, antenna, gill fan, wing, fin), counting at most four of them
+  0.5 for each display organ (every detail-role part: crest, frill, lure, antenna, barbels, gill fan, wing, fin, tail fluke), counting at most four of them
   (Bible §12: communication organs give signal, with diminishing returns).
 - **Allies.** A creature at friendship 5 joins the pack, which is worth 10 adaptation points. Allies follow the
   player and attack whatever it is fighting. The player and its allies never bite each other.

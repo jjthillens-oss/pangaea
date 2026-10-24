@@ -2,7 +2,7 @@ class_name CreatureStats
 extends RefCounted
 ## Anatomy to play numbers (PROPOSED, creature-stage-plan.md section 5): what a body description can do in the world.
 ## Speed and cadence come from the gait planner's leg length (domain/creature/body_mechanics.gd, the Froude table);
-## bite power from the mouth parts (maw, mandibles, beak) and their scale; sight from the eye parts; health from the
+## bite power from the mouth-role parts and their scale; sight from the eye-role parts; health from the
 ## body's volume. Tuning numbers come from data/creature/creature_stage.json. Pure rules: no scene or file access.
 ##
 ## Size follows physics (owner direction, 2026-10-24: a bigger creature is slower, size and parts set strength):
@@ -17,11 +17,12 @@ const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
 const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 
-const MOUTH_TYPES: PackedStringArray = ["maw", "mandibles", "beak"]
-const EYE_TYPES: PackedStringArray = ["eye", "compound_eye", "eye_stalk"]
-## Display organs (Bible section 12, communication organs: signal modality and range): parts a creature shows off
-## with when it sings and dances to befriend another (PROPOSED).
-const DISPLAY_TYPES: PackedStringArray = ["crest", "frill", "lure", "antenna", "gill_fan", "wing", "fin"]
+## The part_rules "role" (from each cpart_ record) that makes a part a mouth or an eye.
+const MOUTH_ROLE := "mouth"
+const EYE_ROLE := "eye"
+## Display organs (Bible section 12, communication organs: signal modality and range): the detail-role parts a
+## creature shows off with when it sings and dances to befriend another (PROPOSED).
+const DISPLAY_ROLE := "detail"
 ## A mouth bites this far past the head's skin per metre of its scale (PROPOSED).
 const REACH_PER_MOUTH_SCALE_M := 0.25
 ## A body without a mouth still touches food within this reach past its head.
@@ -33,20 +34,21 @@ const TOUCH_REACH_M := 0.15
 ## leg_length_m, mouths, eyes, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
 ## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
 ## drives.
-## `part_rules` is only consulted for which types exist; a part of an unknown type counts for nothing.
+## `part_rules` is consulted for which types exist and their role; a part of an unknown type counts for nothing.
 static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted, tuning: Dictionary) -> Dictionary:
 	var mass := mass_kg(body, float(tuning["mass"]["kg_per_m3"]))
 	var speed_k := speed_factor(mass, tuning)
 	var strength_k := strength_factor(mass, tuning)
-	var mouths := count_parts(body, MOUTH_TYPES, part_rules)
-	var eyes := count_parts(body, EYE_TYPES, part_rules)
+	var mouth_types := types_with_role(part_rules, MOUTH_ROLE)
+	var mouths := count_parts(body, mouth_types, part_rules)
+	var eyes := count_parts(body, types_with_role(part_rules, EYE_ROLE), part_rules)
 	var bite: Dictionary = tuning["bite"]
 	var bite_power := 0.0
 	var mouth_scale := 0.0
 	if mouths > 0:
 		bite_power = float(bite["base"])
 		for p in body.parts:
-			if MOUTH_TYPES.has(p["type"]) and part_rules.has(p["type"]):
+			if mouth_types.has(p["type"]):
 				var s := float(p["scale"]) / 1000.0
 				bite_power += float(bite["per_mouth"]) * pow(s, float(bite["scale_power"]))
 				mouth_scale = maxf(mouth_scale, s)
@@ -71,7 +73,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 	var social: Dictionary = tuning.get("social", {})
 	if not social.is_empty():
 		# Diminishing returns (Bible section 12): only the first display_cap display organs add charm.
-		var displays := mini(count_parts(body, DISPLAY_TYPES, part_rules), int(social["display_cap"]))
+		var displays := mini(count_parts(body, types_with_role(part_rules, DISPLAY_ROLE), part_rules), int(social["display_cap"]))
 		charm = float(social["base_charm"]) + float(social["per_display_part"]) * displays
 	return {
 		"mass_kg": mass,
@@ -123,6 +125,16 @@ static func mass_kg(body: RefCounted, kg_per_m3: float) -> float:
 		var rb: float = field.rb[k]
 		volume += PI / 3.0 * h * (ra * ra + ra * rb + rb * rb)
 	return volume * kg_per_m3
+
+
+## The part types whose rules carry `role`, sorted.
+static func types_with_role(part_rules: Dictionary, role: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for type in part_rules:
+		if str(part_rules[type].get("role", "")) == role:
+			out.append(type)
+	out.sort()
+	return out
 
 
 ## How many parts of the given types the body wears, a mirrored part counting twice. Unknown types count for nothing.

@@ -109,7 +109,7 @@ func test_display_organs_add_charm_up_to_a_cap() -> void:
 	var data := Sim.load_data()
 	var body = Fixtures.body("s1_quadruped")
 	var plain := CreatureStats.of(body, data["part_rules"], data["gait_table"], tuning)
-	var displays := CreatureStats.count_parts(body, CreatureStats.DISPLAY_TYPES, data["part_rules"])
+	var displays := CreatureStats.count_parts(body, CreatureStats.types_with_role(data["part_rules"], CreatureStats.DISPLAY_ROLE), data["part_rules"])
 	var social: Dictionary = tuning["social"]
 	check(is_equal_approx(float(plain["charm"]), float(social["base_charm"]) + float(social["per_display_part"])
 			* mini(displays, int(social["display_cap"]))), "charm = base + per display organ, capped")

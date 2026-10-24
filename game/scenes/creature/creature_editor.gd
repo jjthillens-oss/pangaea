@@ -201,7 +201,10 @@ func setup(body: RefCounted, points: int) -> void:
 		_worker = SkinWorker.new(rules, divisions)
 		if threaded:
 			_worker.start()
-	hud.setup(tools, costs, SKIN_COLORS)
+	var roles := {}
+	for type in part_rules:
+		roles[type] = String(part_rules[type].get("role", ""))
+	hud.setup(tools, costs, SKIN_COLORS, roles)
 	if _icons == null:
 		_icons = PartIcons.new()
 		_icons.name = "PartIcons"
