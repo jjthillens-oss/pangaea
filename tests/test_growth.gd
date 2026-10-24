@@ -476,6 +476,20 @@ func test_a_broken_window_starts_again() -> void:
 	check(g.due, "due after a fresh calm_ticks")
 
 
+## S3G18b (D-140): a sting on the cell within quiet_ticks is being hunted, and blocks growth.
+func test_a_recent_sting_blocks_growth_as_hunted() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var quiet := int(g.cfg.quiet_ticks)
+	check_eq(g.blocker_of(sim), "", "calm with no sting")
+	sim.last_sting_tick = sim.tick
+	check_eq(g.blocker_of(sim), "hunted", "a sting this tick")
+	sim.last_sting_tick = sim.tick - quiet + 1
+	check_eq(g.blocker_of(sim), "hunted", "a sting quiet_ticks - 1 ago")
+	sim.last_sting_tick = sim.tick - quiet
+	check_eq(g.blocker_of(sim), "", "quiet_ticks after the sting: calm again")
+
+
 func test_a_long_block_is_named_and_cleared_and_a_short_one_says_nothing() -> void:
 	var sim := _calm_sim()
 	var g := sim.growth

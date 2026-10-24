@@ -1191,3 +1191,224 @@ func test_at_size_two_creatures_remnants_and_pushed_bodies_stop_at_the_mouth_of_
 	check(sim.remnants.find(rem.id) != null, "the remnant stayed in view")
 	check(most <= FuzzInvariants.ROCK_SLACK_M, "a remnant: never more than 1 mm into a shell (%.4f m)" % most)
 	check(most >= -0.02 and rem.motion.position.x < mid.x, "a remnant: at the mouth (%.4f m)" % most)
+
+
+# --- S3 (T2.5): the band-up tick (S3G18), adoption (S3G18c), the stream state across it (S3G39b) ---
+
+const B1_WORLD := "res://tests/fixtures/world/world_b1_min.json"
+## S2G33's order; a band-up tick shows the tags it has, in this order.
+const GROWTH_ORDER := ["growth_began", "creature_converted", "carrion_spawned", "creature_removed{growth}",
+	"carrion_expired{growth}", "chunk_unloaded{growth}", "chunk_loaded", "grew"]
+
+var _shipped: SpeciesCatalog
+
+
+## An endless sim on the fake generator and the band-1 fixture world (sizes to 4) with the shipped
+## species and growth on, at `size` round absolute `at`, a site per `period` x `period` chunks, its
+## events drained.
+func _b1_sim(seed_value: int, size: int, at := PackedFloat64Array(), period := 4) -> PoolSim:
+	if _shipped == null:
+		_shipped = SpeciesCatalog.load_from()
+	var content := FakeWorldGen.fixture_content(B1_WORLD)
+	var sim := FakeWorldGen.endless_sim(seed_value, catalog, layout, _shipped, content, at, period, true)
+	if size != 1:
+		check(sim.debug_set_size(size), "seed %d: size %d" % [seed_value, size])
+	sim.drain_events()
+	return sim
+
+
+## The absolute place (am) of the point `tm` in size-4 tm.
+static func _am4(tm: Vector2) -> PackedFloat64Array:
+	var k := WorldConfig.tm_to_am(4)
+	return PackedFloat64Array([tm.x * k, tm.y * k])
+
+
+## The tags of `events` in order, a run of one tag once, a growth reason marked.
+static func _order(events: Array[Dictionary]) -> Array:
+	var order := []
+	for e in events:
+		var tag := str(e.type)
+		if e.has("reason") and str(e.reason) == "growth":
+			tag += "{growth}"
+		if order.is_empty() or order[-1] != tag:
+			order.append(tag)
+	return order
+
+
+## S3G18: the 2 to 3 tick. grew says band 0 to band 1; every site record left is a size-3 site of band
+## 1 (no band-0 record survives the unloads); the size-3 roles are registered; every chunk held is a
+## size-3 chunk; the cell settles clear in band-1 terrain; the events keep S2's order.
+func test_the_band_up_tick_leaves_only_band_one() -> void:
+	var sim := _b1_sim(SEEDS[0], 2, PackedFloat64Array(), 2)
+	sim.debug_set_ai_frozen(true)
+	var cell := sim.motion.position
+	check(sim.debug_spawn_creature("rammer", cell + Vector2(-7.0, 3.0), 0.0), "a rammer (prey at size 3)")
+	sim.drain_events()
+	var w := sim.world
+	check(w.sites.keys().any(func(id: String) -> bool: return id.begins_with("l_f_")), "band-0 size-2 sites before")
+	_due(sim)
+	var ev := _tick(sim)
+	var grew := _first(ev, "grew")
+	check_eq([grew.get("from"), grew.get("to"), grew.get("band_from"), grew.get("band_to")], [2, 3, 0, 1], "grew: 2 to 3, band 0 to 1")
+	var order := _order(ev)
+	var at_grew := order.find("grew")
+	check_eq(order.slice(0, at_grew + 1), GROWTH_ORDER.filter(func(t: String) -> bool: return order.has(t)), "S2's order")
+	check(not w.sites.is_empty(), "size-3 sites loaded")
+	for id: String in w.sites:
+		check(id.begins_with("v_f_") and (w.sites[id].abs.sizes as Array).has(3), "site %s is a size-3 band-1 site" % id)
+	for sp in ["veil", "warden"]:
+		var role := str(sim.species.niche_of(sp).role)
+		check(sim.region.niches.has(role), "the %s's role '%s' registered" % [sp, role])
+	for key in w.loaded_keys():
+		check_eq(w.chunk(key).size, 3, "chunk %s is a size-3 chunk" % key)
+	check(sim.arena.is_clear(sim.motion.position, sim.phenotype.radius), "the cell settled clear")
+	check_eq(_of(ev, "creature_converted")[0].to, "remnant", "the rammer a remnant")
+
+
+## S3G18c (D-130): at 3 to 4 a rammer from site t_f_2_2 (prey at 3, a morsel at 4) hands its morsel
+## to the site's morsel site m_f_2_2: the site, loaded at 4 out of view, holds that item and spawns
+## none of its own while it lives; once it is eaten the site is due again.
+func test_a_hunter_converted_at_three_to_four_leaves_one_item_at_its_site() -> void:
+	var sim := _b1_sim(SEEDS[1], 3, _am4(Vector2(83.0, 50.0)))
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(6.0, 0.0), 0.0), "a rammer beside the cell")
+	var rammer: CreatureField.Creature = sim.creatures.creatures.back()
+	rammer.site_id = "t_f_2_2"
+	sim.drain_events()
+	_due(sim)
+	var ev := _tick(sim)
+	var conv := _of(ev, "creature_converted").filter(func(e: Dictionary) -> bool: return e.id == rammer.id)
+	check(conv.size() == 1 and conv[0].to == "morsel", "the rammer became a morsel")
+	if conv.size() != 1:
+		return
+	var food_id: String = conv[0].food_id
+	var w := sim.world
+	check(w._morsel_loaded.has("m_f_2_2"), "its morsel site loaded at 4")
+	check_eq(w.morsel_sites.get("m_f_2_2", {}).get("food_id", ""), food_id, "the site holds the morsel")
+	check_eq(w.morsel_claims(), 1, "one claim")
+	var spawned := []
+	for t in WorldStream.MORSEL_PASS_TICKS * 4:
+		for e in _tick(sim):
+			if e.type == "carrion_spawned" and e.get("site", "") == "m_f_2_2":
+				spawned.append(e)
+	check_eq(spawned, [], "no second item while it lives")
+	check(not sim.carrion.find(food_id).is_empty(), "the morsel still there")
+	check(sim.carrion.consume(food_id), "eaten")
+	for t in WorldStream.MORSEL_PASS_TICKS:
+		_tick(sim)
+	check_eq([w.morsel_sites.get("m_f_2_2", {}).get("food_id", "?"), w.morsel_claims()], ["", 0], "the site is free again")
+	check(int(w.morsel_sites.get("m_f_2_2", {}).get("due_tick", 0)) > sim.tick, "and due after its respawn time")
+
+
+## BP3-5's stream state over `keys`: S2G12's content (digests, colliders, site records, zones) and the
+## zones' bloom, the loaded morsel sites, the entries whose site is loaded, each chunk's anchors, and
+## the landmark fields (empty).
+static func _stream_state(sim: PoolSim, keys: Array[Vector2i]) -> Dictionary:
+	var w := sim.world
+	var out := _content(sim, keys)
+	var blooms := []
+	for z in sim.region.zones:
+		if keys.has(w._zone_chunk.get(z.id)) and z.has("bloom"):
+			blooms.append([z.id, z.bloom])
+	blooms.sort()
+	var loaded := {}
+	for id: String in w._morsel_loaded:
+		var m: Dictionary = w._morsel_loaded[id]
+		if keys.has(m.chunk):
+			loaded[id] = [_plain(m.abs), m.species, m.radius, m.energy, m.chunk]
+	var entries := []
+	for id: String in w.morsel_sites:
+		if loaded.has(id):
+			entries.append(id)
+	entries.sort()
+	var anchors := {}
+	for key in keys:
+		var ch := w.chunk(key)
+		anchors[str(key)] = ch.anchors.duplicate(true) if ch != null else []
+	out.merge({"blooms": blooms, "morsel_loaded": loaded, "entries": entries, "anchors": anchors,
+		"landmark": [w.landmark_anchor, w._landmark_points.size()]})
+	return out
+
+
+## S3G39b (1): a growth to `to` (3 or 4) after a swim meets the stream state a debug_set_size(to)
+## arrival at the same point meets.
+func _check_band_growth_equals_arrival(seed_value: int, to: int) -> void:
+	var grown := _b1_sim(seed_value, to - 1)
+	var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0)
+	for t in SWIM_TICKS:
+		grown.step(SimIntent.new(dir * 0.6))
+	grown.drain_events()
+	var a := grown.world.abs_of_local(grown.motion.position)
+	grown.world.grow(grown)
+	var direct := _b1_sim(seed_value, 1, a)
+	check(direct.debug_set_size(to), "seed %d: debug_set_size(%d)" % [seed_value, to])
+	var keys := grown.world.loaded_keys()
+	check_eq(direct.world.loaded_keys(), keys, "seed %d at %d: the same chunks held" % [seed_value, to])
+	var want := _stream_state(grown, keys)
+	check_eq(_stream_state(direct, keys), want, "seed %d at %d: the same stream state" % [seed_value, to])
+	check(direct.motion.position == grown.motion.position, "seed %d at %d: the same settled point" % [seed_value, to])
+	check_eq(want.landmark, ["", 0], "seed %d at %d: no landmark fields after the size change" % [seed_value, to])
+
+
+func test_a_band_up_growth_meets_the_stream_a_direct_arrival_meets() -> void:
+	for seed_value: int in SEEDS:
+		_check_band_growth_equals_arrival(seed_value, 3)
+		_check_band_growth_equals_arrival(seed_value, 4)
+
+
+## S3G39b (1): two swims at `size` to the point a growth to `size` made meet its stream state once
+## each has held still 120 ticks there.
+func _check_band_routes(seed_value: int, size: int) -> void:
+	var grown := _b1_sim(seed_value, size - 1)
+	grown.world.grow(grown)
+	var p := grown.world.abs_of_local(grown.motion.position)
+	for t in 120:
+		grown.step(SimIntent.new())
+	var keys := _round(grown, p)
+	var want := _stream_state(grown, keys)
+	for from in [Vector2(-ROUTE_AM, 0.0), Vector2(0.0, ROUTE_AM)]:
+		var swim := _b1_sim(seed_value, size, PackedFloat64Array([p[0] + from.x, p[1] + from.y]))
+		var bot = SwimBot.toward(p)
+		var t := 0
+		while t < 6000 and swim.world.local_of_abs(p[0], p[1]).distance_to(swim.motion.position) > 1.0:
+			SwimBot.overdrive(swim)
+			swim.step(bot.next_intent(swim))
+			t += 1
+		check(t < 6000, "seed %d at %d: the swim from %s arrived" % [seed_value, size, from])
+		for i in 120:
+			swim.step(SimIntent.new())
+		check_eq(_stream_state(swim, keys), want, "seed %d at %d: the route from %s meets the same stream" % [seed_value, size, from])
+
+
+func test_two_band_one_routes_meet_the_stream_a_growth_makes() -> void:
+	_check_band_routes(SEEDS[0], 3)
+	_check_band_routes(SEEDS[0], 4)
+
+
+## S3G39b (2): prefetch neutrality through a growth from `from` (2 or 3), as S2G35: the next size's
+## caches on and off give equal hashes before the growth tick, after it and HASH_AT ticks after.
+func _check_band_prefetch_on_off(seed_value: int, from: int) -> void:
+	var on := _b1_sim(seed_value, from)
+	var off := _b1_sim(seed_value, from)
+	off.world.next_cache = false
+	var dir := Vector2.from_angle(float(seed_value % 360) * PI / 180.0) * 0.6
+	var parted := -1
+	for t in 120:
+		if t < 60:
+			for sim: PoolSim in [on, off]:
+				sim.growth.meter = 0.95 * sim.growth.ring(from)
+		if t == 60:
+			check(not on.world._next_chunks.is_empty(), "seed %d from %d: the prefetch ran" % [seed_value, from])
+			_due(on)
+			_due(off)
+		on.step(SimIntent.new(dir))
+		off.step(SimIntent.new(dir))
+		if (t == 59 or t == 60 or HASH_AT.has(t)) and parted < 0 and on.state_hash() != off.state_hash():
+			parted = t
+	check(parted < 0 and on.size() == from + 1, "seed %d from %d: equal through the growth (parted at %d)" % [seed_value, from, parted])
+
+
+func test_band_up_prefetch_on_and_off_give_equal_hashes() -> void:
+	for seed_value: int in SEEDS:
+		_check_band_prefetch_on_off(seed_value, 2)
+		_check_band_prefetch_on_off(seed_value, 3)

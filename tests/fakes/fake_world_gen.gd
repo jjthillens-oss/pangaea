@@ -10,8 +10,13 @@ extends WorldGen
 ##     REACH_R centred REACH_SHIFT east of it (so it reaches into the chunk to the east: its chunks
 ##     are both), live at size 1; and beside it a second rammer site of the same shape,
 ##     "u_f_<cx>_<cy>", live only at size 2 (so never in a size 1 table).
-## At size 4 (S3, D-145) each site chunk also holds a morsel site "m_f_<cx>_<cy>" (a rammer, radius
-## MORSEL_R, energy MORSEL_ENERGY) at the t_f_ site's home.
+## At size 3 (S3, D-145) each site chunk also holds a veil site "v_f_<cx>_<cy>" (live at 3) VEIL_SHIFT
+## south of the zone centre, heading 0, with the veil's reach disc. At size 4 it holds an elder-Warden
+## site "e_f_<cx>_<cy>" (live at 4) with two posts guarding the zone disc and the meadow "z_fb_<cx>_<cy>"
+## MEADOW_SHIFT east of it, both meadows blooming at its phase, and a morsel site "m_f_<cx>_<cy>" (a
+## rammer, radius MORSEL_R, energy MORSEL_ENERGY) at the t_f_ site's home. At sizes 3 and 4
+## ANCHOR_CHUNK holds the landmark anchor "a_f_lm" at its centre, inside a landmark collider of
+## ANCHOR_R. The fake's content answers reach_max_threat from these sites (Content).
 ## At size 2 (S2) every chunk is the same pattern in size-2 tm, and each site chunk also holds two
 ## two-post sites live only at size 2 (S2 spine 3.17): a Lurker, "l_f_<cx>_<cy>", with posts LURKER_GAP
 ## apart and no territory, and an elder rammer, "e_f_<cx>_<cy>", whose first post guards the chunk's
@@ -50,6 +55,11 @@ const ZONE_CLEAR_MARGIN := 0.7
 ## centre and north of it, and the elder rammer's second zone disc.
 const LURKER_GAP := 5.0
 const ELDER_ZONE_R := 3.0
+const VEIL_SHIFT := 8.0
+const MEADOW_SHIFT := 12.0
+const ANCHOR_CHUNK := Vector2i(2, -2)
+const ANCHOR_R := 1.25
+const ANCHOR_MODEL := "landmark_b1_heliozoan"
 ## The size-4 morsel site's item: the rammer's radius at 4 (0.625 x 1.6^-3) and its energy (D-145).
 const MORSEL_R := 0.15259
 const MORSEL_ENERGY := 7.3242
@@ -73,7 +83,7 @@ func _init(p_content: WorldContent = null, p_species: SpeciesCatalog = null, p_s
 ## The fixture content the fake streams with: the world file's rings and caps (a copy, so a test may
 ## change them), and the home block's spawn. `config_path` names another world file.
 static func fixture_content(config_path: String = WorldConfig.DEFAULT_PATH) -> WorldContent:
-	var c := WorldContent.new()
+	var c := Content.new()
 	c.config = WorldConfig.load_from(config_path)
 	c.home = HomeBlock.new()
 	return c
@@ -113,6 +123,10 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 	for i in more.size():
 		c.shells.append({"id": "s_x_%d_%d_%d" % [cx, cy, i], "x": float(more[i].x), "y": float(more[i].y), "r": float(more[i].r),
 			"kind": "shell", "asset": "rock_a", "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+	if key == ANCHOR_CHUNK and n >= 3:
+		c.shells.append({"id": "s_f_lm", "x": x0 + 16.0, "y": y0 + 16.0, "r": ANCHOR_R, "kind": "landmark",
+			"asset": ANCHOR_MODEL, "yaw_deg": 0.0, "scale": 1.0, "tint": ""})
+		c.anchors.append({"id": "a_f_lm", "x": x0 + 16.0, "y": y0 + 16.0, "model": ANCHOR_MODEL, "dressing": "plain", "tile": tile})
 	for a in extra_anchors.get(Vector3i(cx, cy, n), []):
 		c.anchors.append({"id": str(a.id), "x": float(a.x), "y": float(a.y), "model": str(a.model), "dressing": {}, "tile": tile})
 	if key == PLACE_CHUNK:
@@ -141,6 +155,10 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 		c.sites.append({"id": "u_f_%d_%d" % [cx, cy], "species": SITE_SPECIES, "x": zx - ZONE_R + 2.0, "y": zy,
 			"heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R},
 			"reach": reach.duplicate(), "chunks": reach_chunks.duplicate(), "sizes": [2] as Array[int], "tile": tile})
+		if n == 3 and species != null and species.has_species("veil"):
+			c.sites.append(_veil("v_f_%d_%d" % [cx, cy], Vector2(zx, zy + VEIL_SHIFT), tile, chunk_tm))
+		if n == 4 and species != null and species.has_species("elder_warden"):
+			_add_elder_warden(c, "%d_%d" % [cx, cy], zx, zy, tile, chunk_tm)
 		if n == 4:
 			c.morsel_sites.append({"id": "m_f_%d_%d" % [cx, cy], "key": "fake/m_f_%d_%d" % [cx, cy], "species": SITE_SPECIES,
 				"x": zx + ZONE_R - 2.0, "y": zy, "tile": tile, "radius": MORSEL_R, "energy": MORSEL_ENERGY})
@@ -153,6 +171,41 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 				{"x": zx - 7.0, "y": zy + 8.0, "heading": SITE_HEADING,
 					"territory": {"x": zx - 8.0, "y": zy + 8.0, "radius": ELDER_ZONE_R}}], tile, chunk_tm))
 	return c
+
+
+## A veil site live at 3 at `home` (absolute tm), heading 0, with the veil's reach disc (D-145).
+func _veil(id: String, home: Vector2, tile: Vector2i, chunk_tm: float) -> Dictionary:
+	var disc := species.reach_disc_for({"species": "veil", "home": home, "heading": 0.0}, {})
+	var at: Vector2 = disc.center
+	return {"id": id, "species": "veil", "x": home.x, "y": home.y, "heading": 0.0, "territory": {},
+		"reach": {"x": at.x, "y": at.y, "radius": float(disc.radius)},
+		"chunks": disc_chunks(at.x, at.y, float(disc.radius), chunk_tm), "sizes": [3] as Array[int], "tile": tile}
+
+
+## An elder Warden live at 4 (D-145): its posts guard the zone disc at (zx, zy) and the meadow z_fb_
+## MEADOW_SHIFT east, its reach their union disc; both meadows bloom at the site's phase, slots 0 and 1.
+func _add_elder_warden(c: WorldChunk, suffix: String, zx: float, zy: float, tile: Vector2i, chunk_tm: float) -> void:
+	var id := "e_f_" + suffix
+	var posts := [
+		{"x": zx + 2.0, "y": zy + 4.0, "heading": SITE_HEADING, "territory": {"x": zx, "y": zy, "radius": ZONE_R}},
+		{"x": zx + MEADOW_SHIFT + 2.0, "y": zy + 4.0, "heading": SITE_HEADING,
+			"territory": {"x": zx + MEADOW_SHIFT, "y": zy, "radius": ZONE_R}}]
+	var circle := func(t: Dictionary) -> Dictionary: return {"center": Vector2(t.x, t.y), "radius": float(t.radius)}
+	var u := species.two_post_disc_for({"species": "elder_warden", "home": Vector2(posts[0].x, posts[0].y),
+		"heading": SITE_HEADING}, circle.call(posts[0].territory), {"home": Vector2(posts[1].x, posts[1].y),
+		"heading": SITE_HEADING}, circle.call(posts[1].territory))
+	var at: Vector2 = u.center
+	var phase := _bloom_phase(id, "elder_warden")
+	c.sites.append({"id": id, "species": "elder_warden", "x": posts[0].x, "y": posts[0].y, "heading": SITE_HEADING,
+		"territory": posts[0].territory.duplicate(), "reach": {"x": at.x, "y": at.y, "radius": float(u.radius)},
+		"chunks": disc_chunks(at.x, at.y, float(u.radius), chunk_tm), "sizes": [4] as Array[int], "tile": tile,
+		"posts": posts, "bloom": phase})
+	for z in c.zones:
+		if z.id == "z_f_" + suffix:
+			z["bloom"] = {"slot": 0, "offset_ticks": phase.offset_ticks, "cycle_ticks": phase.cycle_ticks}
+	c.zones.append({"id": "z_fb_" + suffix, "x": zx + MEADOW_SHIFT, "y": zy, "radius": ZONE_R, "capacity": ZONE_CAPACITY,
+		"growth_rate": ZONE_GROWTH, "tile": tile, "region": "sunlit",
+		"bloom": {"slot": 1, "offset_ticks": phase.offset_ticks, "cycle_ticks": phase.cycle_ticks}})
 
 
 ## A two-post site live only at size 2, as WorldGen places one (s2-sim 3.10): its home, heading and
@@ -234,3 +287,16 @@ static func disc_chunks(x: float, y: float, r: float, chunk_tm: float) -> Array[
 
 func tile_info(band: int, tx: int, ty: int) -> Dictionary:
 	return {"id": "fake", "region": "sunlit", "rare": "", "set": posmod(tx + ty, 2), "orientation": 0}
+
+
+## The fake's content (BP3-8): reach_max_threat from the fake's own sites, the largest reach radius
+## plus body radius over a site chunk's sites live at n whose species is the cell's size there.
+class Content extends WorldContent:
+	func reach_max_threat(n: int, p_species: SpeciesCatalog) -> float:
+		var gen: WorldGen = load("res://tests/fakes/fake_world_gen.gd").new(self, p_species, 0)
+		gen.site_period = 1
+		var best := 0.0
+		for s in gen.chunk(n, 0, 0).sites:
+			if (s.sizes as Array).has(n) and p_species.q_of(s.species, n) == 1.0:
+				best = maxf(best, float(s.reach.radius) + p_species.radius_at(s.species, n))
+		return best

@@ -125,6 +125,10 @@ const MORSEL_PASS_TICKS := 30
 var _morsel_loaded := {}               ## loaded morsel-site id -> {abs, species, radius, energy, chunk}
 var _claims := 0                       ## entries of morsel_sites with a food_id (BP3-3)
 var _food_total := 0                   ## the last food view's total, the morsel claims included
+## The landmark return point (S3, D-132): the anchor id of the checkpoint's landmark ("" for none),
+## and each tried anchor's clear point (or [INF, INF]) at this size. set_size clears both (D-131).
+var landmark_anchor := ""
+var _landmark_points := {}
 ## The world file's rings (tm) and caps, read once.
 var rings := {}
 var caps := {}
@@ -475,6 +479,8 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 ## bounds (they hold tm at the old size). The caller re-expresses the world (grow, set_size_teleport).
 func set_size(n: int) -> void:
 	size = n
+	landmark_anchor = ""
+	_landmark_points.clear()
 	_tm_to_am = WorldConfig.tm_to_am(n)
 	_clear_next()
 	_ahead.clear()
@@ -571,6 +577,7 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	for key in _keys.duplicate():
 		_unload_chunk(sim, key)
+	_drop_all_entries(sim)
 	if sim.remnants != null:
 		for r in sim.remnants.items.duplicate():
 			sim.remnants.remove(r, "unloaded", sim.tick)
@@ -759,6 +766,8 @@ func snapshot(sim: PoolSim) -> Dictionary:
 		"cell_tile": [_cell_tile.x, _cell_tile.y],
 		"counters": counters.duplicate(),
 	}
+	if not landmark_anchor.is_empty():
+		out["landmark_anchor"] = landmark_anchor
 	if not morsel_sites.is_empty():
 		var entries := {}
 		for id in _sorted(morsel_sites.keys()):
@@ -941,8 +950,8 @@ func _unload_all(sim: PoolSim) -> void:
 	if _home_count != sites.size():
 		_index_homes()
 	var field := sim.creatures
+	_drop_all_entries(sim)
 	for key in keys:
-		_unload_morsels(sim, _chunks[key])
 		if field != null and not field.creatures.is_empty():
 			var mine: Dictionary = _home_sites.get(key, {})
 			var leaving: Array[CreatureField.Creature] = []
@@ -1139,7 +1148,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 			_zone_abs[z.id] = zone_recs[1][i]
 		else:
 			var at: Vector2 = parts.zone_local[i] if framed else Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k)
-			fresh = region.add_zone(z.id, at, float(z.radius), float(z.capacity), float(z.growth_rate))
+			fresh = region.add_zone(z.id, at, float(z.radius), float(z.capacity), float(z.growth_rate), z.get("bloom", {}))
 			_zone_abs[z.id] = parts.zone_abs[z.id] if have_parts else PackedFloat64Array([float(z.x), float(z.y)])
 		i += 1
 		var stream: RandomNumberGenerator = _next_streams.get(z.id)
@@ -1721,8 +1730,11 @@ func _prepare_next() -> bool:
 				for value in [radius, capacity, rate]:
 					if not (is_finite(value) and value > 0.0):
 						sound = false
-				records.append({"id": z.id, "center": Vector2.ZERO, "radius": radius, "capacity": capacity,
-					"growth_rate": rate, "amount": capacity})
+				var rec := {"id": z.id, "center": Vector2.ZERO, "radius": radius, "capacity": capacity,
+					"growth_rate": rate, "amount": capacity}
+				if z.has("bloom"):
+					rec["bloom"] = (z.bloom as Dictionary).duplicate()   # as add_zone keeps it
+				records.append(rec)
 				places.append(PackedFloat64Array([float(z.x), float(z.y)]))
 			if sound:
 				_next_zones[key] = [records, places]
@@ -1844,6 +1856,7 @@ func grow(sim: PoolSim) -> void:
 	var morsel_ids := []
 	var body_haze := []
 	var fresh := {}
+	var adopt := {}   # D-130: morsel-site id -> the morsel item of the creature from its creature site
 	var moved := {}   # remnant -> [x, y, previous x, previous y] (am)
 	var cfg: Dictionary = g.cfg.remnants
 	for c in bodies:
@@ -1863,6 +1876,8 @@ func grow(sim: PoolSim) -> void:
 			food_id = str(item.get("id", ""))
 			fresh[food_id] = true
 			morsel_ids.append(food_id)
+			if not food_id.is_empty() and c.site_id.begins_with("t_"):
+				adopt["m_" + c.site_id.substr(2)] = food_id
 		else:
 			body_haze.append({"kind": "creature", "look": c.species_id, "position": at})
 		if c is RemnantField.Remnant:
@@ -1908,6 +1923,8 @@ func grow(sim: PoolSim) -> void:
 	_retired.append(old_arena)
 	sim.arena = _arena_after(old_arena, ChunkArena.create_endless(chunk_tm))
 	recompute_caps(sim)
+	for m_id in _sorted(adopt.keys()):
+		adopt_morsel(m_id, adopt[m_id])
 	# 4. Size and origin: the next size's cache, its prepared loads and its arena stay for step 5 and
 	# the beat.
 	var next := _next_chunks
@@ -1980,7 +1997,8 @@ func grow(sim: PoolSim) -> void:
 	# 8. Emit.
 	_emit(sim, {"type": "grew", "from": n, "to": n + 1, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
 		"settled_to": p, "remnants": remnant_ids, "morsels": morsel_ids, "haze": haze,
-		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1]})
+		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1],
+		"band_from": WorldConfig.band_of(n), "band_to": WorldConfig.band_of(n + 1)})
 
 
 ## `arena` as the growth tick's new arena in place of `old`: its epoch past every epoch `old` had (so
@@ -2349,6 +2367,18 @@ func _unload_morsels(sim: PoolSim, ch: WorldChunk) -> void:
 				sim.carrion.expire(food_id, "unloaded")
 			_drop_entry(m.id)
 		_morsel_loaded.erase(m.id)
+
+
+## Every entry leaves, its live item expiring ("unloaded"): the growth tick's unloads and a teleport's
+## erase the entries of sites that never loaded too (adopted ones), so nothing adopted before them
+## survives (D-130) and the claims end at 0.
+func _drop_all_entries(sim: PoolSim) -> void:
+	for id in _sorted(morsel_sites.keys()):
+		var food_id := str(morsel_sites[id].food_id)
+		if not food_id.is_empty():
+			sim.carrion.expire(food_id, "unloaded")
+		_drop_entry(id)
+	_morsel_loaded.clear()
 
 
 ## The morsel sites' pass (D-129), every MORSEL_PASS_TICKS ticks after the food view, in site id order:

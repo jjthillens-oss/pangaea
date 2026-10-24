@@ -242,6 +242,8 @@ func _hint_ticks() -> int:
 
 
 func _hunted(sim: PoolSim) -> bool:
+	if sim.tick - sim.last_sting_tick < int(cfg.quiet_ticks):
+		return true   # D-140: a sting is being hunted
 	if sim.creatures == null:
 		return false
 	if not sim.creatures.engaged_on_player.is_empty():
