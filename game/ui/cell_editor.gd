@@ -32,6 +32,11 @@ const PART_ROLES := {
 	"shell_plate": "tougher", "toxin_gland": "poisons",
 }
 const SCALE_STEP := 0.25
+## The round stage in the middle: the body seen from above with the rim over it.
+const DISH_PX := 780.0
+## The body's half length as a share of the rim's radius: the rim's dots ring the body, and a
+## long upgraded tail still fits on the dish.
+const BODY_ON_RIM := 0.58
 const BETTER := Color(0.55, 0.95, 0.6)
 const WORSE := Color(1.0, 0.55, 0.5)
 
@@ -315,16 +320,25 @@ func _build() -> void:
 	views.alignment = BoxContainer.ALIGNMENT_CENTER
 	views.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	middle.add_child(views)
-	# Both square at their own size, centred: a preview stretched taller than wide crops the body.
+	# One round stage, square at its own size and centred: the dish, the body on it seen from above,
+	# and the rim over the body, so each part's dot sits on the part.
+	var dish := Control.new()
+	dish.custom_minimum_size = Vector2(DISH_PX, DISH_PX)
+	dish.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dish.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	views.add_child(dish)
+	var stage := DishView.new()
+	stage.set_anchors_preset(Control.PRESET_FULL_RECT)
+	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dish.add_child(stage)
 	_preview = PREVIEW_SCENE.instantiate()
-	_preview.custom_minimum_size = Vector2(460, 460)
-	_preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	views.add_child(_preview)
+	_preview.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_preview.view_from_above(PartPlacement.RZ / (BODY_ON_RIM * RimView.SHARE))
+	dish.add_child(_preview)
 	_rim = RimView.new()
 	_rim.editor = self
-	_rim.custom_minimum_size = Vector2(320, 320)
-	_rim.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	views.add_child(_rim)
+	_rim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dish.add_child(_rim)
 	_selected_label = Label.new()
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	middle.add_child(_selected_label)
@@ -392,12 +406,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		undo()
 
 
-## The body seen from above, front up: each part a dot on the rim, the selected one ringed. A click
-## picks the nearest part; dragging it moves it round the rim.
+## The round stage under the body.
+class DishView:
+	extends Control
+
+	func _draw() -> void:
+		var r := minf(size.x, size.y) * 0.48
+		draw_circle(size / 2.0, r, Color(0.06, 0.16, 0.28, 0.92))
+		draw_arc(size / 2.0, r, 0.0, TAU, 96, Color(0.45, 0.75, 0.9, 0.45), 3.0, true)
+
+
+## The rim over the body seen from above, front up: each part a dot on the rim, the selected one
+## ringed. A click picks the nearest part; dragging it moves it round the rim.
 class RimView:
 	extends Control
 
 	const DOT := 11.0
+	## The rim's radius as a share of the view's smaller side.
+	const SHARE := 0.34
 	var editor: CellEditor
 	var _dragging := false
 
@@ -405,7 +431,7 @@ class RimView:
 		return size / 2.0
 
 	func radius() -> float:
-		return minf(size.x, size.y) * 0.34
+		return minf(size.x, size.y) * SHARE
 
 	## The point on the rim at a part angle (0 the front, at the top; positive to the right).
 	func at(angle: float) -> Vector2:
@@ -418,9 +444,7 @@ class RimView:
 	func _draw() -> void:
 		if editor == null or editor.session == null:
 			return
-		draw_circle(center(), radius(), Color(0.2, 0.45, 0.6, 0.35))
 		draw_arc(center(), radius(), 0.0, TAU, 64, Color(0.6, 0.9, 1.0, 0.8), 2.0, true)
-		draw_line(center(), at(0.0), Color(1, 1, 1, 0.25), 1.0)
 		for p in editor.session.working.parts:
 			var q := at(float(p.angle))
 			var r := DOT * float(p.scale)
