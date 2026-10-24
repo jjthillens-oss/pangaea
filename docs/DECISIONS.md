@@ -536,3 +536,16 @@ with strength", with a level-up system for stats to come on top. `CreatureStats`
   1.2 t at 0.35. The world sim scales the throttle by the same factor, so play matches the editor's number.
 - **Strength.** Bite power is multiplied by (mass / 60 kg)^(2/3), muscle cross-section, kept within 0.25x..6x.
 - **Not yet.** The incremental level-up system is still to be designed and built.
+
+## 2026-10-24 · Creature levels earned by doing (CONFIRMED direction; design PROPOSED until the owner picks; IMPLEMENTED)
+Joshua (2026-10-24 02:42 UTC): "you can level up your strengths ... an incremental system for that", on top of the
+size physics. Built on the recommended option, "earn levels by doing" (`game/domain/creature/creature_levels.gd`):
+
+- **Four stats.** Speed (xp per 10 m walked), strength (3 xp per landed bite), toughness (2 xp per hit taken) and
+  senses (2 xp the first time each rival is seen in a life).
+- **Curve.** Level n needs 10 * n * (n + 1) / 2 xp in that stat; the cap is level 10. Each level adds 5% to the
+  stat's numbers (speed and speed factor, bite power, max health, sight within its cap), on top of the physics.
+- **Save.** The lineage save's `creature` record gains an optional `xp` dictionary (stat -> whole xp), checked by
+  `SaveGame.validate_creature`. Old saves load with no xp. A level-up shows a notice in the world.
+- **Pending.** Joshua's pick on the decision card may change the earning rules; the numbers live in
+  `game/data/creature/creature_stage.json` "levels".

@@ -56,6 +56,8 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 ## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
+## Shown when the player's creature gains a stat level (CreatureLevels, earned by doing).
+const LEVEL_UP_NOTICE := "%s up: level %d"
 ## The world dressing (assets/records/creature_field_ground, creature_nest_ring, creature_fruit_bush,
 ## creature_meat_chunk). The bush GLB has two root meshes, Bush and Fruit; the meat GLB one, MeatChunk.
 const FIELD_SCENE := "res://assets/export/creature_field_ground.glb"
@@ -217,6 +219,10 @@ func _on_event(e: Dictionary) -> void:
 		"refused":
 			notice = String(e["reason"])
 			hud.show_notice(notice)
+		"level_up":
+			notice = LEVEL_UP_NOTICE % [String(e["stat"]).capitalize(), int(e["level"])]
+			hud.show_notice(notice)
+			hud.refresh()
 
 
 func _build_ground() -> void:
