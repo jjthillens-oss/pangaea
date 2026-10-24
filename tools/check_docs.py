@@ -17,6 +17,7 @@ SUFFIXES = (".gd", ".tscn", ".tres", ".json", ".sh", ".py", ".glb", ".blend", ".
 INLINE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 RESOURCE = re.compile(r"res://[^\s`<>\]\[(){}]+")
 EDGE = " \t\r\n.,;:!?()[]{}<>\"'"
+LEADING_EDGE = EDGE.replace(".", "")
 
 
 def documents(root: Path) -> list[Path]:
@@ -38,18 +39,18 @@ def candidates(line: str) -> set[str]:
     found: set[str] = set()
     for match in INLINE.finditer(line):
         for word in match.group(1).split():
-            word = word.strip(EDGE)
+            word = word.lstrip(LEADING_EDGE).rstrip(EDGE)
             if word.startswith("res://") or "/" in word or word.endswith(SUFFIXES):
                 found.add(word)
-    found.update(match.group(0).strip(EDGE) for match in RESOURCE.finditer(line))
+    found.update(match.group(0).lstrip(LEADING_EDGE).rstrip(EDGE) for match in RESOURCE.finditer(line))
     return found
 
 
 def normalized(raw: str) -> str | None:
-    path = raw.strip(EDGE).rstrip("/")
+    path = raw.lstrip(LEADING_EDGE).rstrip(EDGE).rstrip("/")
     if path.startswith("res://"):
         path = path[6:]
-    path = path.strip(EDGE).replace("\\", "/")
+    path = path.lstrip(LEADING_EDGE).rstrip(EDGE).replace("\\", "/")
     if not path or "*" in path or "://" in path or path.startswith(("#", "-", "--", "/")):
         return None
     if path.startswith(("builds/", ".toolchain/")):
@@ -84,12 +85,17 @@ def selftest() -> None:
         (root / "docs").mkdir()
         (root / "game").mkdir()
         (root / "game/existing.gd").write_text("", encoding="utf-8")
+        (root / ".github/workflows").mkdir(parents=True)
+        (root / ".github/workflows/ci.yml").write_text("", encoding="utf-8")
         doc = root / "docs/example.md"
         doc.write_text(
             "`game/existing.gd` `game/missing.gd`\n"
-            "`future/intent.gd` res://game/existing.gd `game/*.gd`\n",
+            "`future/intent.gd` res://game/existing.gd `game/*.gd`\n"
+            "`.toolchain/x` `.github/workflows/ci.yml`\n",
             encoding="utf-8",
         )
+        assert normalized(".toolchain/x") is None
+        assert normalized(".github/workflows/ci.yml") == ".github/workflows/ci.yml"
         result = missing(root, [doc], ["future/"])
         assert result == [("docs/example.md", 1, "game/missing.gd")], result
     print("SELFTEST OK")
