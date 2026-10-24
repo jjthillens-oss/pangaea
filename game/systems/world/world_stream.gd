@@ -174,7 +174,8 @@ var _ahead_tick := 0                   ## the first tick the next look may run (
 ## The site records of the chunks generated ahead, made a few a tick on quiet ticks (_prepare_ahead)
 ## with each site's next creature (CreatureField.prepare_site), so the tick that loads the chunk and
 ## spawns its sites does not make them: the same key -> {site id: record}, forgotten with the chunk.
-## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn.
+## _prepare_todo holds [key, next site index] for each chunk still to be gone through, in turn (-1:
+## its parts, _ahead_parts, are still to be made).
 var _ahead_sites := {}
 var _prepare_todo: Array = []
 ## The rest of what a load makes from a chunk generated ahead, made on a quiet tick before its site
