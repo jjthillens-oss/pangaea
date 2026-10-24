@@ -44,6 +44,43 @@ func test_the_palette_offers_the_editor_parts_with_their_costs() -> void:
 			check(b == null, "%s is not offered" % type_id)
 
 
+func test_the_palette_groups_the_parts_by_category_each_with_its_model_as_the_icon() -> void:
+	# Spore's palette: the parts in groups (mouths, movement, ...), each tile the part itself.
+	var groups := CellEditor.palette_groups(catalog)
+	var headings := groups.map(func(g: Array) -> String: return g[0])
+	var order := CellEditor.CATEGORIES.map(func(c: Array) -> String: return c[1])
+	check_eq(headings, order.filter(func(h: String) -> bool: return headings.has(h)), "groups in the set order")
+	var seen := []
+	for group: Array in groups:
+		var category := ""
+		for c: Array in CellEditor.CATEGORIES:
+			if c[1] == group[0]:
+				category = c[0]
+		for type_id: String in group[1]:
+			check_eq(catalog.category_of(type_id), category, "%s under %s" % [type_id, group[0]])
+			seen.append(type_id)
+	var offered := catalog.parts.keys().filter(func(t: String) -> bool: return catalog.in_editor(t))
+	seen.sort()
+	offered.sort()
+	check_eq(seen, offered, "every offered part once")
+	for type_id: String in offered:
+		var b := _button("Add_" + type_id)
+		var icon := editor.find_child("Icon_" + type_id, false, false) as PartIcon
+		check(icon != null and icon.has_model(), "%s has its model drawn for the icon" % type_id)
+		check(b != null and icon != null and b.icon == icon.get_texture(), "%s shows it" % type_id)
+
+
+func test_a_part_icon_frames_the_whole_part() -> void:
+	for type_id: String in PlayerCellView.PART_SCENES:
+		var icon := PartIcon.new(type_id)
+		var bounds := PartIcon.bounds_of(icon.get_node("Model"))
+		var camera := icon.find_children("*", "Camera3D", false, false)[0] as Camera3D
+		check(bounds.size.length() > 0.0, "%s has a size" % type_id)
+		check(camera.size >= bounds.size[bounds.get_longest_axis_index()], "%s fits the view" % type_id)
+		check(camera.transform.basis.z.dot(camera.position - bounds.get_center()) > 0.0, "%s faces the camera" % type_id)
+		icon.free()
+
+
 func test_an_added_part_shows_its_cost_and_the_numbers_it_changes() -> void:
 	editor.open(save, catalog, _state())
 	var result := editor.add("cilia")

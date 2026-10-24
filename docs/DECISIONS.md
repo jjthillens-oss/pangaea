@@ -804,6 +804,16 @@ The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R,
 Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
 avoids a universal rhythm minigame unless approved.
 
+## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
+Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
+- **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
+  bring the count to 12.
+- **Random creature.** The button sits beside the preset menu, for a first design only. It picks a preset and
+  dresses it with extra parts the same way the world's rivals are made, so every result passes the rules. It then
+  picks a random swatch colour and coat. Like a preset, it costs nothing.
+More variants of each part type (eyes, feet, hands...) need new Blender meshes from the art team; the palette and
+its tabs pick them up from the records.
+
 ## 2026-10-24 · The sea's pieces load on the main thread at setup, not on worker threads (PROPOSED)
 
 - **Why.** The Windows launch check's grow run (D3D12 on WARP, the CI runner's software renderer)
