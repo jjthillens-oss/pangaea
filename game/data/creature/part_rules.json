@@ -139,6 +139,60 @@
 				}
 			]
 		},
+		"claw_rake": {
+			"type": "claw_rake",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end",
+				"limb"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the claws 35% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the tips hooked further forward and down",
+					"default_permille": 0
+				}
+			]
+		},
+		"claw_scythe": {
+			"type": "claw_scythe",
+			"footprint_radius_m": 0.027,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "forbidden",
+			"hosts": [
+				"limb_end",
+				"limb"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the blade 30% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the point hooked further down",
+					"default_permille": 0
+				}
+			]
+		},
 		"club_tail": {
 			"type": "club_tail",
 			"footprint_radius_m": 0.031,
@@ -753,6 +807,60 @@
 				}
 			]
 		},
+		"horn_nose": {
+			"type": "horn_nose",
+			"footprint_radius_m": 0.041,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the horn 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Sweep",
+					"meaning": "the point tipped further forward",
+					"default_permille": 0
+				}
+			]
+		},
+		"horn_ram": {
+			"type": "horn_ram",
+			"footprint_radius_m": 0.028,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the spiral drawn 15 to 25% wider",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Thick",
+					"meaning": "the horn up to 30% thicker, most at its root",
+					"default_permille": 0
+				}
+			]
+		},
 		"jaw": {
 			"type": "jaw",
 			"footprint_radius_m": 0.049,
@@ -914,6 +1022,34 @@
 				}
 			],
 			"placement_note": "Rakes toward the tail (-Y); several patches along the back read as a coat."
+		},
+		"spike": {
+			"type": "spike",
+			"footprint_radius_m": 0.041,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"limb",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the spike 50% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Lean",
+					"meaning": "the spike raked back toward the tail",
+					"default_permille": 0
+				}
+			]
 		},
 		"tail_fluke": {
 			"type": "tail_fluke",

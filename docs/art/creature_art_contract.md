@@ -154,7 +154,7 @@ Rendered with gl_compatibility under Xvfb.
 
 ## 2.7 First parts (PROPOSED, built)
 
-`tools/blender/make_creature_parts.py` builds thirty-seven parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
+`tools/blender/make_creature_parts.py` builds forty-two parts in this convention. Review sheets are `docs/art/renders/production/cpart_<type>_sheet.jpg`.
 
 | Id | Type | Triangles | Handles | Notes |
 |---|---|---|---|---|
@@ -195,6 +195,11 @@ Rendered with gl_compatibility under Xvfb.
 | `cpart_hand_paw` | hand_paw, `normal`, limb_end, grasper | 998 | H1_Grip, H2_Spread (on `HandPaw` and `Nails`) | Soft mitten paw: four short fat fingers side by side and a stubby thumb, with small nails |
 | `cpart_hand_pincer` | hand_pincer, `normal`, limb_end, grasper | 602 | H1_Open, H2_Size | Crab pincer: a pitted shell palm, a fixed finger on -Y and a hinged one on +Y with knobbly teeth and dark tips; symmetric across x, so not chiral |
 | `cpart_hand_tentacle` | hand_tentacle, `normal`, limb_end, grasper | 622 | H1_Curl, H2_Spread | Three tentacle fingers reaching out and curling back in to cup a grip, with sucker rows, from a fleshy palm |
+| `cpart_claw_scythe` | claw_scythe, `normal`, limb_end/limb, chiral, centreline forbidden | 372 | H1_Length, H2_Hook | A mantis-like scythe: a long flat dark blade rising from a padded sheath and arcing forward to a hooked point, small spines on its inner edge, leaning in toward the midline |
+| `cpart_claw_rake` | claw_rake, `normal`, limb_end/limb | 692 | H1_Length, H2_Hook | Three parallel hooked claws in a row across x, the middle one longest, curving forward from a padded base like a raking hand |
+| `cpart_horn_ram` | horn_ram, `normal`, spine/part, chiral, centreline forbidden | 670 | H1_Length, H2_Thick | A thick ridged ram's horn rising from the skin and curling back over itself in a shrinking spiral that drifts out to +X, clear of itself and of the skin, to a point |
+| `cpart_horn_nose` | horn_nose, `normal`, spine/part | 342 | H1_Length, H2_Sweep | A stout conical horn on a broad base with six growth rings, sweeping up and forward to a blunt point; for the snout or brow |
+| `cpart_spike` | spike, `normal`, spine/limb/part, sink 0.015 | 316 | H1_Length, H2_Lean | One bony thorn with concave flanks and three keeled edges, raked a little back, flaring into a low oval scaly scute; for the back, shoulders, limbs or tail |
 
 Curved tubes (claw, fingers) use the generator's `_tube`, which carries its ring frame by parallel transport; the M1 `_sweep` flips its frame when the path turns past about 25 degrees from +Z and leaves a kink.
 
