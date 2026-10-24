@@ -706,18 +706,6 @@ func test_cell_offset_reaches_the_settled_point() -> void:
 	pool.free()
 
 
-## The cell's shapes stay at rest only on Windows' software Direct3D 12 adapter, where the frame
-## they first move in never ends (windows-launch, 2026-10-24); everywhere else they move.
-func test_shapes_stay_at_rest_only_on_the_software_d3d12_adapter() -> void:
-	var warp := "Microsoft Basic Render Driver"
-	check(not PlayerCellView.shapes_safe(warp, "forward_plus"), "WARP, Forward+")
-	check(not PlayerCellView.shapes_safe(warp, "mobile"), "WARP, Mobile")
-	var angle := "ANGLE (Microsoft, %s (0x0000008C) Direct3D11)" % warp
-	check(PlayerCellView.shapes_safe(angle, "gl_compatibility"), "WARP under ANGLE")
-	check(PlayerCellView.shapes_safe("llvmpipe (LLVM 19.1.7, 256 bits)", "forward_plus"), "lavapipe")
-	check(PlayerCellView.shapes_safe("AMD Radeon RX 7800 XT", "forward_plus"), "a GPU")
-
-
 func test_beat_is_frame_rate_independent() -> void:
 	var seen := []
 	for fps: float in [30.0, 144.0]:

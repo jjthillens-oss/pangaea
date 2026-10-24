@@ -49,6 +49,8 @@ const PROGRESS_EVERY_S := 10.0
 ## this long: how long, what the main thread was doing (physics, process, the draw) and at which
 ## route tick, so a run that hangs (no progress lines at all) still shows where.
 const WATCH_STALL_S := 10.0
+const WATCH_FIRST := -2147483648   ## the tour's process_priority on a route: before every node
+const WATCH_LAST := 2147483647     ## WatchTail's: after every node
 const LONG_FRAME_MS := 50.0
 const TAG_WINDOW_S := 0.25         ## a long frame is tagged with the events this near it, either side
 const SWIM_BOT_PATH := "res://game/dev/swim_bot.gd"
@@ -404,6 +406,12 @@ func _begin() -> void:
 	if _route != null:
 		RenderingServer.frame_pre_draw.connect(_watch_note.bind("the draw"))
 		RenderingServer.frame_post_draw.connect(_watch_note.bind("the engine between frames"))
+		# The tour's process step runs first and WatchTail's last, so a stall names the tour's own
+		# step, the other nodes' or what the engine does after them.
+		process_priority = WATCH_FIRST
+		var tail := WatchTail.new()
+		tail.tour = self
+		add_child(tail)
 		_watch_usec = Time.get_ticks_usec()
 		_watch = Thread.new()
 		_watch.start(_watch_loop)
@@ -445,7 +453,7 @@ func _process(_delta: float) -> void:
 	if not _running:
 		return
 	if _route != null:
-		_watch_note("the process step", true)
+		_watch_note("the tour's GPU reading", true)
 	var now := Time.get_ticks_usec()
 	var measured := frame_ms.size()
 	var over := sample(now, gpu_reading(self))
@@ -461,6 +469,8 @@ func _process(_delta: float) -> void:
 		print(progress_line(_route_name, _clock_s(now), main.pool.sim.tick - int(_route.start_tick), frame_ms.size()))
 	if _route.done:
 		_finish()
+	else:
+		_watch_note("the other nodes' process steps")
 
 
 ## Notes where the main thread is now, and with `frame` that a frame's process step starts (the
@@ -511,6 +521,19 @@ func _exit_tree() -> void:
 	_stop_watch()
 
 
+## The watch's last word each frame (process_priority last): every node's process step is done.
+class WatchTail:
+	extends Node
+
+	var tour: Node
+
+	func _init() -> void:
+		process_priority = WATCH_LAST
+
+	func _process(_delta: float) -> void:
+		tour.call("_watch_note", "the engine after the process step")
+
+
 ## The watch's line: "Perf tour (grow): no frame for 30 s, in the draw at route tick 300".
 static func stall_line(route: String, stalled_s: float, doing: String, route_ticks: int) -> String:
 	return "Perf tour (%s): no frame for %d s, in %s at route tick %d" % [
@@ -532,9 +555,12 @@ func _clock_s(now_usec: int) -> float:
 func _sample_world() -> void:
 	var sim: PoolSim = main.pool.sim
 	var w := sim.world
+	_watch_note("the tour's chunk count")
 	_world.max_loaded_chunks = maxi(_world.max_loaded_chunks, w.loaded_keys().size())
+	_watch_note("the tour's creature count")
 	_world.max_awake = maxi(_world.max_awake, sim.creatures.awake().size() if sim.creatures != null else 0)
 	_world.max_sleepers = maxi(_world.max_sleepers, w.sleeping_ids().size())
+	_watch_note("the tour's draw-call reading")
 	_world.max_draw_calls = maxi(_world.max_draw_calls, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
 	_world.max_primitives = maxi(_world.max_primitives, int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
 

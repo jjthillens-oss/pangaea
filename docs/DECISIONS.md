@@ -668,19 +668,6 @@ CI read #29E (each 5 s window of the 30 s after a growth, 12 remnants and 10 awa
 
 The scene's end hash after the 1,800 timed ticks is the same before and after (1846101512), and so are the growth, remnant and endless tests.
 
-## 2026-10-24 · The cell keeps its rest shape on Windows' software Direct3D 12 (PROPOSED)
-
-CI's windows-launch grow tour stopped inside one frame, 15 route ticks in, on the runner's software adapter
-(D3D12 on WARP, "Microsoft Basic Render Driver"), and never came back: the perf tour's watch thread put the main
-thread in the process step at that tick on `2f45a1e`. The same route finishes in about 45 s on Linux under llvmpipe
-and lavapipe, and on the same runner under ANGLE (Compatibility). The grow route refills the meter at its start, so
-that is the first frame the cell's Ripeness blend shape moves; the rendered route's cell never moves a shape. So on
-that adapter, outside Compatibility, `PlayerCellView` leaves the Body's shapes at rest (`shapes_safe`). The shapes
-only swell and stretch the body a little, and a player on that adapter (a PC without a working GPU driver) gets a
-game that runs instead of one that freezes when the meter fills. The creature stage's part handles also move blend
-shapes (`part_library.gd`) and are not covered yet. The check stays as it was; it no longer exercises the cell's
-shapes on Direct3D 12, which a run on Joshua's PC does.
-
 ## 2026-10-24 · Continue rebuilds the world from its seed (CONFIRMED)
 
 Godfrey's test review round 3 (issue #77, PR #95) asked for a test that a save → load → continue run matches an

@@ -399,6 +399,10 @@ func test_a_route_that_hangs_says_where_the_main_thread_is() -> void:
 	check(not PerfTour.stall_line("grow", 10.0, "the physics step", 0).begins_with("Perf tour: "),
 		"it never reads as the finished tour's line")
 	check_eq(PerfTour.WATCH_STALL_S, 10.0, "after 10 s without a frame")
+	check(PerfTour.WATCH_FIRST < PerfTour.WATCH_LAST, "the tour's step runs before the tail's")
+	var tail := PerfTour.WatchTail.new()
+	check_eq(tail.process_priority, PerfTour.WATCH_LAST, "the tail's step runs after every node's")
+	tail.free()
 
 
 func test_the_swim_tour_tags_long_frames_with_the_events_around_them() -> void:

@@ -24,9 +24,9 @@
 #             300 s (it finishes in about 45 s on Linux in both renderers, llvmpipe and lavapipe, also
 #             after the launch and rendered runs), so a watch thread now prints where the main thread
 #             is after 10 s without a frame ("Perf tour (grow): no frame for 30 s, in the draw at
-#             route tick 300"). On e2 2f45a1e it said "in the process step at route tick 15", the
-#             first frame the cell's Ripeness blend shape moves; on that adapter the cell now keeps its
-#             rest shape (PlayerCellView.shapes_safe, DECISIONS 2026-10-24).
+#             route tick 300"). On e2 2f45a1e it said "in the process step at route tick 15", and
+#             the same with the cell's blend shapes held still (2e11d8c, reverted), so the watch now
+#             names the tour's own steps, the other nodes' process steps and the engine after them.
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
