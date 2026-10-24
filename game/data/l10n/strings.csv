@@ -1,0 +1,276 @@
+keys,en
+UI_0_ADAPTATION_POINTS_93C78F,0 adaptation points
+UI_100_FAE31E,100%
+UI_115_CE9870,115%
+UI_130_C33822,130%
+UI_1F_KM_4618B7,%.1f km
+UI_1F_M_S_0771B4,%.1f m/s
+UI_2F_ENERGY_S_8EA4A4,%.2f energy/s
+UI_3D_RESOLUTION_862A40,3D resolution
+UI_ACCESSIBILITY_D66004,Accessibility
+UI_ACTION_97C89A,Action
+UI_AFTER_YOUR_NEXT_GROWTH_904015,After your next growth: 
+UI_ALL_6A7208,All
+UI_AMBIENCE_E0FFE6,Ambience
+UI_ANTI_ALIASING_55A0B8,Anti-aliasing
+UI_ARROWS_OR_MOUSE_MOVE_55EA41,Arrows or mouse  Move
+UI_AUDIO_ACDAC2,Audio
+UI_AUTOMATIC_AT_A_CALM_MOMENT_23A59B,"Automatic, at a calm moment"
+UI_A_CELL_LIKE_YOU_IS_HERE_SWIM_INTO_IT_TO_MATE_746BE2,A cell like you is here. Swim into it to mate.
+UI_A_FILTER_MOUTH_AND_A_JAW_SO_IT_CAN_EAT_ANYTHING__496362,"A filter mouth and a jaw, so it can eat anything it finds."
+UI_A_STEADY_DRIFTER_WITH_AN_EYE_SPOT_AND_A_FILTER_M_1326BD,A steady drifter with an eye spot and a filter mouth.
+UI_A_SURPRISE_CREATURE_TO_START_FROM_31DA71,A surprise creature to start from
+UI_BACK_AT_THE_GENERATION_START_CFBE1A,Back at the generation start.
+UI_BACK_B52B36,Back
+UI_BACK_TO_THE_EDITOR_BAB40D,Back to the editor
+UI_BITE_2A0BBD,Bite
+UI_BODY_718A7E,Body
+UI_BUILD_S_6F2D9E,Build %s
+UI_CANCEL_77DFD2,Cancel
+UI_CARRION_6EC07A,carrion
+UI_CHOOSE_A_CREATURE_026A28,Choose a creature...
+UI_COMING_IN_A_LATER_BUILD_10974C,Coming in a later build: 
+UI_CONTINUE_2E0262,Continue
+UI_CONTROLLER_A36A5F,Controller
+UI_CONTROLS_BEE75C,Controls
+UI_COST_D_D_LEFT_822EAC,Cost %d   →   %d left
+UI_COST_D_D_MORE_THAN_YOU_HAVE_8D21AE,Cost %d: %d more than you have
+UI_COULD_NOT_CONTINUE_325E14,Could not continue
+UI_COULD_NOT_DELETE_SLOT_D_800739,Could not delete slot %d
+UI_COULD_NOT_SAVE_875138,Could not save
+UI_COULD_NOT_SAVE_S_3F6EF9,Could not save: %s
+UI_COULD_NOT_START_A_NEW_LINEAGE_CB166D,Could not start a new lineage
+UI_CREATURE_EDITOR_3730E3,Creature editor
+UI_CREATURE_EDITOR_S_TOOL_58479B,Creature editor   ·   %s tool
+UI_CREATURE_STAGE_0AA52E,Creature stage
+UI_DEATH_NOT_SAVED_3D3DEC,Death not saved
+UI_DELETE_F6FDBE,Delete
+UI_DELETE_THE_LINEAGE_IN_SLOT_D_ITS_SAVE_AND_ITS_BA_786DC0,Delete the lineage in slot %d? Its save and its backup are removed. This cannot be undone.
+UI_DELETE_THIS_LINEAGE_725CE9,Delete this lineage?
+UI_DETAILS_DC3DEC,Details
+UI_DISPLAY_574FF9,Display
+UI_DODGED_2567D5,Dodged!
+UI_DONE_E9B450,Done
+UI_D_ADAPTATION_POINT_S_F7E4B7,%d adaptation point%s
+UI_D_ENERGY_2BBAA9,+%d energy
+UI_D_KM_94F96B,%d km
+UI_D_M_01BA69,%d m
+UI_D_PAD_OR_LEFT_STICK_MOVE_FF32F0,D-pad or left stick  Move
+UI_D_POINT_S_E7655C, · +%d point%s
+UI_D_POINT_S_NEW_S_7D5E84,+%d point%s · new %s
+UI_D_POINT_S_SURVIVED_D_S_F0BC60,+%d point%s · survived %d s
+UI_D_S_446F0C,%d°/s
+UI_EATING_WELL_MAKES_YOU_GROW_499BD7,Eating well makes you grow
+UI_EATS_BOTH_EBB968,Eats both
+UI_EATS_NOTHING_5064B9,Eats nothing
+UI_EATS_S_C73430,Eats %s
+UI_EAT_BY_TOUCHING_CARRION_STILL_BROWN_CHUNKS_WITH__25D67E,Eat by touching carrion (still brown chunks) with your jaw; more comes only from kills.
+UI_EAT_BY_TOUCHING_DRIFTING_PLANKTON_SMALL_GREEN_BL_F25804,Eat by touching drifting plankton (small green blobs) with your filter mouth.
+UI_EAT_BY_TOUCHING_FOOD_WITH_A_MOUTH_DRIFTING_PLANK_62FA18,"Eat by touching food with a mouth: drifting plankton with your filter mouth, still carrion with your jaw."
+UI_EFFECTS_8F25A8,Effects
+UI_EMPTY_3159FE,Empty
+UI_ENERGY_60_100_68E1D4,Energy 60 / 100
+UI_ENERGY_D_D_101341,Energy %d / %d
+UI_EVOLVED_CELL_CFC292,Evolved cell
+UI_EVOLVE_AT_THE_NEST_38F20E,Evolve at the nest
+UI_FED_6FF2BC,Fed
+UI_FOOD_D_M_50EC97,Food %d m
+UI_FOUND_A_NEW_LINEAGE_HERE_50B79D,Found a new lineage here.
+UI_FRAME_RATE_LIMIT_A87E30,Frame rate limit
+UI_FROM_THE_BACKUP_2F95E8,From the backup
+UI_FULL_10B28A,Full
+UI_FULL_52E6D8,full
+UI_FULL_SCREEN_BORDERLESS_2A6AB6,Full screen (borderless)
+UI_FULL_SCREEN_D15F88,Full screen
+UI_FULL_SCREEN_EXCLUSIVE_E860B4,Full screen (exclusive)
+UI_FULL_SCREEN_S_761276,Full screen: %s
+UI_GAMEPLAY_E04C71,Gameplay
+UI_GENERATION_D_D0FBBA,Generation %d
+UI_GENERATION_D_S_9BD1A5,Generation %d · %s
+UI_GENERATION_START_A4A5C9,Generation start
+UI_GRAPHICS_AB255C,Graphics
+UI_GRAZER_113814,Grazer
+UI_GRAZER_LINEAGE_0000_0000_GENERATION_1_C8192F,Grazer lineage 0000-0000 · Generation 1
+UI_GREEN_RIM_YOU_CAN_EAT_IT_NOW_4DC6CC,Green rim: you can eat it now
+UI_GROWING_DCF20F,Growing
+UI_GROW_7E2299,Grow
+UI_HEALTH_30_30_DE20F3,Health 30 / 30
+UI_HEALTH_D_D_FCA86D,Health %d / %d
+UI_HOME_WATERS_12671C,Home waters
+UI_HUNGRY_229099,Hungry
+UI_HUNTER_147847,Hunter
+UI_HUNT_RAMMERS_FROM_BEHIND_FOR_MEAT_7E60CE,Hunt rammers from behind for meat
+UI_IMPORTANT_CUES_NEVER_RELY_ON_COLOUR_OR_SOUND_ALO_B6F830,Important cues never rely on colour or sound alone. Subtitles arrive with the first spoken lines.
+UI_INSERT_95802D,Insert
+UI_INVERT_ZOOM_481D0C,Invert zoom
+UI_IN_USE_469F38,  ·  in use
+UI_KEYBOARD_AND_MOUSE_0572D5,Keyboard and mouse
+UI_LEFT_MOUSE_E06E43,Left mouse
+UI_LIFE_STARTS_SMALL_A4B412,Life starts small.
+UI_LIMBS_E1162D,Limbs
+UI_LIMB_B6F6F5,Limb
+UI_LINEAGE_S_F58390,Lineage %s
+UI_MASTER_VOLUME_A444D6,Master volume
+UI_MAX_ENERGY_6D57F6,Max energy
+UI_MIDDLE_DRAG_ORBIT_3A9427,Middle drag  Orbit
+UI_MIDDLE_MOUSE_AA0743,Middle mouse
+UI_MIRROR_74ADC5,Mirror
+UI_MOUSE_BUTTON_D_370C55,Mouse button %d
+UI_MOUTHS_8DDD5F,Mouths
+UI_MSAA_2X_AE1DB0,MSAA 2x
+UI_MSAA_4X_E4AEEA,MSAA 4x
+UI_MSAA_8X_4C82A6,MSAA 8x
+UI_MUSIC_131260,Music
+UI_MUTE_WHEN_THE_WINDOW_IS_IN_THE_BACKGROUND_B09BE0,Mute when the window is in the background
+UI_NEEDS_A_FILTER_MOUTH_YOUR_JAW_ONLY_EATS_CARRION_54520E,Needs a filter mouth: your jaw only eats carrion
+UI_NEEDS_A_JAW_YOUR_FILTER_MOUTH_ONLY_EATS_PLANKTON_2200D1,Needs a jaw: your filter mouth only eats plankton
+UI_NEWCOMER_GENERATION_1_8BC0DB,Newcomer · Generation 1
+UI_NEW_LINEAGE_B5810D,New lineage
+UI_NEW_LINEAGE_CHOOSE_A_STARTING_BODY_0BE092,New lineage: choose a starting body
+UI_NOTHING_WAS_CHANGED_C60D5D,Nothing was changed.
+UI_NOT_SAVED_YET_S_D09359,Not saved yet: %s
+UI_NOW_FOOD_668FB9,Now food
+UI_NO_CHANGES_TO_PAY_FOR_922CC1,No changes to pay for
+UI_NO_LIMIT_10850B,No limit
+UI_NO_SAVED_LINEAGE_YET_CHOOSE_NEW_LINEAGE_TO_FOUND_B2C642,No saved lineage yet. Choose New lineage to found one.
+UI_OFF_E3DE5A,Off
+UI_OK_9CE3BD,OK
+UI_OMNIVORE_EA442A,Omnivore
+UI_ON_E0049A,On
+UI_OPEN_DRIFT_7B8349,Open drift
+UI_OR_ARROW_KEYS_4B9B97, or arrow keys
+UI_OUT_OF_ENERGY_119C43,Out of energy
+UI_PANGAEA_1D39D2,Pangaea
+UI_PARTS_E37428,Parts
+UI_PAUSED_BECAUSE_THE_WINDOW_LOST_FOCUS_9A86AA,Paused because the window lost focus.
+UI_PAUSED_C7DFB6,Paused
+UI_PAUSE_781961,Pause
+UI_PAUSE_S_D20337,Pause: %s
+UI_PAUSE_WHEN_THE_WINDOW_LOSES_FOCUS_3314DF,Pause when the window loses focus
+UI_PICK_A_PART_THEN_CLICK_THE_CREATURE_48BE04,"Pick a part, then click the creature"
+UI_PLANKTON_B1957F,plankton
+UI_PLAYING_THIS_SLOT_976C68,Playing this slot
+UI_PLAY_THIS_SLOT_0A4D65,Play this slot
+UI_POINTS_0_B23DF7,Points  0
+UI_POINTS_150_D8C343,Points 150
+UI_POINTS_D_CDF65F,Points  %d
+UI_POINTS_D_E4F467,Points %d
+UI_POINT_A_SPIKE_AT_IT_766DBA,Point a spike at it
+UI_PRESS_AN_INPUT_A2C08C,Press an input.
+UI_PRESS_AN_INPUT_F01722,Press an input…
+UI_PRESS_AN_INPUT_TO_CHANGE_IT_THEN_PRESS_THE_NEW_K_0961E3,"Press an input to change it, then press the new key, click or button. Esc cancels."
+UI_PREVIEW_F1FBB2,Preview
+UI_QUIT_1A2285,Quit
+UI_QUIT_TO_DESKTOP_9248DB,Quit to desktop
+UI_QUIT_WITHOUT_SAVING_3EDB45,Quit without saving
+UI_RANDOM_CREATURE_A0E42C,Random creature
+UI_REDO_471B94,Redo
+UI_REDUCE_CAMERA_MOTION_3BB6D8,Reduce camera motion
+UI_REDUCE_FLASHING_EFFECTS_23DB01,Reduce flashing effects
+UI_REFUND_D_D_LEFT_167E68,Refund %d   →   %d left
+UI_REGROWING_D_7C1486,Regrowing %d%%
+UI_RESET_INPUTS_FB428A,Reset inputs
+UI_RESET_TAB_DEEF05,Reset tab
+UI_RESUME_B3BD0B,Resume
+UI_RETURN_TO_THE_NEST_TO_EVOLVE_B71DED,Return to the nest to evolve
+UI_RIGHT_MOUSE_678BEB,Right mouse
+UI_RIGHT_STICK_ORBIT_5A4943,Right stick  Orbit
+UI_RING_FULL_ENERGY_REFILLED_D_POINT_S_63C31A,Ring full: energy refilled · +%d point%s
+UI_SAVED_02D_02D_68E206,Saved %02d:%02d
+UI_SAVED_9D4AF6,Saved.
+UI_SAVED_S_B593E5,Saved %s
+UI_SAVE_AND_QUIT_B4C0CE,Save and quit
+UI_SAVE_AND_QUIT_TO_TITLE_E619BA,Save and quit to title
+UI_SAVE_EFC007,Save
+UI_SAVE_FIRST_196213,Save first?
+UI_SAVE_SLOTS_99D783,Save slots
+UI_SAVING_IS_OFF_UNTIL_YOU_CONTINUE_AFTER_YOUR_CELL_S_D_6853A5, Saving is off until you continue after your cell's death.
+UI_SELECTED_9A976F,Selected
+UI_SELECT_859822,Select
+UI_SENSES_F01EAF,Senses
+UI_SETTINGS_C7F73B,Settings
+UI_SHELL_REEF_75933F,Shell reef
+UI_SHELTERED_5_1855CE,Sheltered 5
+UI_SHELTERED_D_AA0AFE,Sheltered %d
+UI_SIGHT_3437DC,Sight
+UI_SING_AD6C57,Sing
+UI_SIZE_1_ABOUT_20_M_B04EE4,Size 1 · about 20 µm
+UI_SIZE_D_FE2755,Size %d
+UI_SIZE_D_S_819246,Size %d · %s
+UI_SKIN_COLOUR_8EF3E3,SKIN COLOUR
+UI_SLOT_D_S_3C048D,Slot %d%s
+UI_SLOT_D_YOUR_LINEAGE_9BED2C,Slot %d  ·  Your lineage
+UI_SPEED_2D2CB0,Speed
+UI_START_952F37,Start
+UI_START_A_NEW_LINEAGE_1D4B99,Start a new lineage?
+UI_START_FROM_A_PRESET_E95F0D,Start from a preset
+UI_START_NEW_LINEAGE_34F251,Start new lineage
+UI_STARVING_D50F6A,Starving
+UI_STARVING_YOU_ARE_SLOW_AND_LOSING_HEALTH_NFIND_FO_20834E,"Starving: you are slow and losing health.
+Find food."
+UI_STICK_DEADZONE_A25C06,Stick deadzone
+UI_STOP_TEST_DRIVE_EA48B7,Stop test drive
+UI_SUNLIT_SHALLOWS_06ECD4,Sunlit shallows
+UI_SWIM_6CAE1A,Swim
+UI_SWIM_DOWN_CA88AC,Swim down
+UI_SWIM_LEFT_F66444,Swim left
+UI_SWIM_RIGHT_03133B,Swim right
+UI_SWIM_S_S_431AE7,Swim: %s%s
+UI_SWIM_TO_THE_CURSOR_651ECA,Swim to the cursor
+UI_SWIM_TO_THE_CURSOR_HOLD_S_906812,Swim to the cursor: hold %s
+UI_SWIM_UP_2C249D,Swim up
+UI_S_APPEAR_BB549D,%s appear
+UI_S_BECOME_MORSELS_CB975E,%s become morsels
+UI_S_C3B03F,‹  %s  ›
+UI_S_CHANGE_3ECCE6,%s  Change
+UI_S_D_POINTS_46A3E4,"%s, %d points"
+UI_S_FADE_TO_HAZE_194027,%s fade to haze
+UI_S_FLEE_FROM_YOU_DD999A,%s flee from you
+UI_S_GENERATION_D_218479,%s · Generation %d
+UI_S_IGNORE_YOU_9738D8,%s ignore you
+UI_S_LINEAGE_S_GENERATION_U00A0_D_6E25CD,%s lineage %s · Generation\u00a0%d
+UI_S_MOVE_83EF03,%s  Move
+UI_S_TABS_535627,%s  Tabs
+UI_TEST_DRIVE_F11B82,Test drive
+UI_TEXT_SIZE_3CC6E1,Text size
+UI_THEY_FLEE_FROM_YOU_NOW_F06762,They flee from you now
+UI_THEY_RE_SMALLER_THAN_YOU_NOW_F1290C,They're smaller than you now
+UI_THE_FILES_ARE_STILL_IN_THE_SAVE_FOLDER_9BB6D6, The files are still in the save folder.
+UI_THE_GIANT_HUSK_24B655,The giant husk
+UI_THE_LINEAGE_CONTINUES_FROM_THE_START_OF_GENERATION_D_64718B,The lineage continues from the start of generation %d. 
+UI_THE_SEA_GOES_ON_786B11,The sea goes on
+UI_THE_SHELL_CATHEDRAL_148F43,The shell cathedral
+UI_THIS_BODY_HAS_NO_MOUTH_THAT_CAN_EAT_89990D,This body has no mouth that can eat.
+UI_THIS_REPLACES_YOUR_CURRENT_LINEAGE_THE_PREVIOUS__346556,This replaces your current lineage. The previous save is kept as a backup until your next save.
+UI_THIS_SAVE_COULD_NOT_BE_READ_NOTHING_WAS_DELETED_E289B4,This save could not be read. Nothing was deleted.
+UI_TOO_BIG_TO_BITE_E6042F,Too big to bite
+UI_TURNING_9212A5,Turning
+UI_TURN_YOUR_JAW_TOWARD_IT_47EE7F,Turn your jaw toward it
+UI_TURN_YOUR_MOUTH_TOWARD_IT_433C8A,Turn your mouth toward it
+UI_TWO_TAILS_FOR_SPEED_AND_A_JAW_FOR_CARRION_HUNTER_C3D47B,Two tails for speed and a jaw for carrion. Hunters must hunt to eat.
+UI_UNDO_39FC72,Undo
+UI_UNREADABLE_E6D35C,Unreadable
+UI_UPKEEP_120946,Upkeep
+UI_VERTICAL_SYNC_09ED6D,Vertical sync
+UI_WEAPONS_F32D06,Weapons
+UI_WHEEL_DOWN_F5596C,Wheel down
+UI_WHEEL_UP_20F39B,Wheel up
+UI_WHEN_I_PRESS_GROW_AE7F89,When I press Grow
+UI_WHERE_YOU_BEGAN_S_ABD536,Where you began · %s
+UI_WINDOW_41DFC0,Window
+UI_W_MOVE_F_BITE_E_EVOLVE_AT_THE_NEST_E01C2D,W  Move   ·   F  Bite   ·   E  Evolve at the nest
+UI_YOUR_CELL_DIED_D81DB6,Your cell died
+UI_YOUR_CELL_RESTED_ENERGY_D_HEALTH_S_9BEBEE,"Your cell rested: Energy %d%%, Health %s"
+UI_YOUR_CELL_S_DEATH_COULD_NOT_BE_SAVED_QUIT_ANYWAY_49213A,Your cell's death could not be saved. Quit anyway?
+UI_YOUR_LAST_SAVE_COULD_NOT_BE_READ_CONTINUING_FROM_54AFB3,Your last save could not be read; continuing from the backup.
+UI_YOUR_LINEAGE_E307EE,Your lineage
+UI_YOUR_SAVE_COULD_NOT_BE_READ_0397B0,Your save could not be read
+UI_YOUR_SAVE_COULD_NOT_BE_READ_SO_CONTINUE_IS_OFF_N_F46F27,"Your save could not be read, so Continue is off. Nothing was deleted."
+UI_YOU_HAD_TOO_FEW_UNSPENT_ADAPTATION_POINTS_TO_LOSE_AN_DA2D8D,You had too few unspent adaptation points to lose any.
+UI_YOU_HAVE_PROGRESS_SINCE_YOUR_LAST_SAVE_86787B,You have progress since your last save.
+UI_YOU_LOST_A_QUARTER_OF_YOUR_UNSPENT_ADAPTATION_POINTS_D83F1E,You lost a quarter of your unspent adaptation points (−%d).
+UI_YOU_MATED_2E82A7,You mated.
+UI_ZOOM_IN_4FC05F,Zoom in
+UI_ZOOM_OUT_A4AE4B,Zoom out
+UI_ZOOM_SPEED_034C07,Zoom speed
+UI_ZOOM_S_S_ADD274,Zoom: %s / %s
