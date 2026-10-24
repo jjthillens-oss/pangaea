@@ -2,7 +2,7 @@
 
 Status: PROTOTYPE, approved by the owner on 2026-10-23 ("Build Gait Lab"). Not production code. Nothing here is loaded
 by the game, and nothing in `game/` was changed. This folder is its own Godot project, so the main project's import,
-tests and export skip it. The research plan put it in `prototypes/creature-lab/gait/`; it sits one level up so that later
+tests and export skip it. The research plan put it in a planned `gait/` subfolder; it sits one level up so that later
 prototypes (0b spine skin) can share the project. Results are in
 `docs/research/spore/GAIT_LAB_REPORT.md`.
 
