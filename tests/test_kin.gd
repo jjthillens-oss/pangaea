@@ -137,3 +137,22 @@ func test_no_mate_while_hunted_and_the_kin_changes_nothing_else() -> void:
 	check(a.kin.present or a.kin.ready_ticks == 0, "a's kin ran (%s)" % a.kin.present)
 	check_eq(a.state_hash(), b.state_hash(), "the sea is the same with the kin as without")
 	check(not Kin.is_calm(a) or a.growth.blocker_of(a, false) in ["", "eating"], "calm is Growth's blockers but eating")
+
+
+func test_the_cell_takes_its_offspring_body_where_it_is() -> void:
+	var sim := _sim()
+	_make_ready(sim)
+	sim.save.adaptation_points = 200
+	sim.debug_set_energy(sim.state.energy_capacity * 0.8)
+	var at := sim.motion.position
+	var speed := sim.phenotype.speed
+	var session := EditorSession.new(sim.save.genome, catalog, sim.save.adaptation_points)
+	check(session.add_part("flagellum", 2.0).ok, "a second tail")
+	check(Lineage.reproduce(sim.save, session, sim.state).ok, "reproduced")
+	sim.apply_offspring()
+	var events := sim.drain_events()
+	check_eq(_of(events, "offspring").size(), 1, "offspring reported")
+	check(sim.phenotype.speed > speed, "the new body swims faster (%.2f > %.2f)" % [sim.phenotype.speed, speed])
+	check(sim.actor.phenotype == sim.phenotype, "the resolver acts with it")
+	check_near(sim.state.energy / sim.state.energy_capacity, 0.8, 1e-6, "energy keeps its share")
+	check_eq(sim.motion.position, at, "where it was")

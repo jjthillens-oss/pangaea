@@ -125,6 +125,14 @@ func redo() -> bool:
 	return true
 
 
+func can_undo() -> bool:
+	return not _undo.is_empty()
+
+
+func can_redo() -> bool:
+	return not _redo.is_empty()
+
+
 func cost() -> int:
 	var before := {}
 	for part in original.parts:
