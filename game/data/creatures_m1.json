@@ -203,6 +203,28 @@
                  "recover_s": 1.2, "blocked_recover_s": 2.0, "knockback": 2.5},
       "flee": {"below_health_share": 0.4, "for_s": 5.0},
       "carcass": {"chunks": 3, "energy": 24.0, "on_starve": false}
+    },
+    "elder_ambush": {
+      "name": "elder ambush hunter",
+      "death_reason": "Caught by an elder ambush hunter",
+      "death_tip": "Elder ambush hunters lie in wait beside the richest food in reefs and veil gardens. When one coils, swim out of its line on the side you face.",
+      "entry_size": 3,
+      "behavior": "ambush", "body_asset": "creature_ambush_body", "body_size": 1.5,
+      "parts": [{"type": "mouth_jaw", "angle": 0.0}, {"type": "eye_spot", "angle": 0.6}, {"type": "eye_spot", "angle": -0.6}, {"type": "flagellum", "angle": 2.8}, {"type": "flagellum", "angle": -2.8}],
+      "niche": {"role": "elder_ambush", "cap": 0, "respawn_s": 60.0, "respawn_jitter_s": 10.0},
+      "metabolism_share": 0.1, "start_energy_share": 0.9, "hungry_below": 0.6, "full_above": 0.85,
+      "senses": {"fov_deg": 200.0, "near_m": 1.0, "memory_s": 2.0},
+      "speeds": {"wander": 0.5, "forage": 0.6, "pursue": 0.85, "flee": 1.0},
+      "prey_max_radius_share": 1.6,
+      "notice_s": 0.5, "give_up_s": 5.0, "leash_m": 9.0,
+      "forage_radius_m": 18.0, "forage_timeout_s": 30.0, "forage_retry_s": 20.0,
+      "refractory_s": 6.0, "nav_timeout_s": 20.0,
+      "attack": {"kind": "bite", "tell": "lunge", "start_min_m": 2.5, "start_max_m": 3.0, "standoff_m": 2.75, "aim_deg": 20.0,
+                 "lead_s": 1.2, "lead_cap_m": 1.0, "tell_s": 1.2,
+                 "burst_speed": 4.5, "burst_s": 0.35, "glide_s": 0.25, "glide_drag": 6.0,
+                 "recover_s": 1.0, "blocked_recover_s": 1.0, "knockback": 1.5},
+      "flee": {"below_health_share": 0.35, "for_s": 4.0},
+      "carcass": {"chunks": 4, "energy": 24.0, "on_starve": false}
     }
   },
   "sites": [

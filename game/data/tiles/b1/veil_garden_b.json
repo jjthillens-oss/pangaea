@@ -42,6 +42,6 @@
     {"id": "ra", "species": "rammer", "home": [-18.0, 21.0], "heading": 0.5806, "territory_zone": "zr1", "sizes": [3, 4]},
     {"id": "rb", "species": "rammer", "home": [21.0, -18.0], "heading": 1.9822, "territory_zone": "zr2", "sizes": [3, 4]},
     {"id": "va", "species": "veil", "home": [7.0, -22.5], "heading": 3.1236, "territory_zone": "", "sizes": [3, 4]},
-    {"id": "vb", "species": "veil", "home": [-22.5, 7.0], "heading": 0.4827, "territory_zone": "", "sizes": [3]}
+    {"id": "ea", "species": "elder_ambush", "home": [-7.7, -3.52], "heading": -2.8798, "territory_zone": "", "sizes": [3]}
   ]
 }
