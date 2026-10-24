@@ -49,6 +49,11 @@ func test_corrupt_and_truncated_json_is_refused_with_a_message() -> void:
 	var cases := ["", "{", "null", "[]", "true", "42", "{oops}", "{\"schema_version\":4"]
 	for text in cases:
 		_assert_rejected_unchanged(text, "corrupt %s" % text)
+	var cuts := RandomNumberGenerator.new()
+	cuts.seed = 38038
+	for i in 24:
+		var n := cuts.randi_range(1, valid.length() - 1)
+		_assert_rejected_unchanged(valid.substr(0, n), "seeded truncation %d at %d" % [i, n])
 	for length in [1, 2, 8, 32, 128, valid.length() / 2]:
 		_assert_rejected_unchanged(valid.substr(0, length), "truncated at %d" % length)
 
@@ -81,6 +86,8 @@ func test_old_and_future_versions_keep_originals() -> void:
 	var data := _valid_data()
 	data.schema_version = SaveGame.SCHEMA_VERSION + 1
 	_assert_rejected_unchanged(JSON.stringify(data), "future version")
+	data.schema_version = 1e40
+	_assert_rejected_unchanged(JSON.stringify(data), "very large future version")
 
 
 func test_oversized_primary_falls_back_to_backup_and_is_preserved() -> void:
