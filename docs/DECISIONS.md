@@ -550,3 +550,19 @@ the levels:
 - **Stats.** They come from the body and its physics only; the points buy body changes in the editor.
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
+
+## 2026-10-24 · Creature stage friend path: sing to befriend, allies follow (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, including "dancing, friend/foe", built better with the Bible's ideas.
+The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R, pad B) is the friend path:
+- **Songs.** Each song, facing a creature up close, adds the singer's charm to its friendship. Charm is base 1, plus
+  0.5 for each display organ (crest, frill, lure, antenna, gill fan, wing, fin), counting at most four of them
+  (Bible §12: communication organs give signal, with diminishing returns).
+- **Allies.** A creature at friendship 5 joins the pack, which is worth 10 adaptation points. Allies follow the
+  player and attack whatever it is fighting. The player and its allies never bite each other.
+- **Anger.** A creature the player bites stops listening for the rest of its life. Biting an ally drives it out of
+  the pack.
+- **Not saved.** Respawned creatures are new individuals. Allies last only for the visit and are not saved yet
+  (Bible §18 relationships come with species memory later).
+
+Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
+avoids a universal rhythm minigame unless approved.

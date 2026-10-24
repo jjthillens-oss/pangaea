@@ -19,6 +19,9 @@ const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
 
 const MOUTH_TYPES: PackedStringArray = ["maw", "mandibles", "beak"]
 const EYE_TYPES: PackedStringArray = ["eye", "compound_eye", "eye_stalk"]
+## Display organs (Bible section 12, communication organs: signal modality and range): parts a creature shows off
+## with when it sings and dances to befriend another (PROPOSED).
+const DISPLAY_TYPES: PackedStringArray = ["crest", "frill", "lure", "antenna", "gill_fan", "wing", "fin"]
 ## A mouth bites this far past the head's skin per metre of its scale (PROPOSED).
 const REACH_PER_MOUTH_SCALE_M := 0.25
 ## A body without a mouth still touches food within this reach past its head.
@@ -26,7 +29,7 @@ const TOUCH_REACH_M := 0.15
 
 
 ## Returns {mass_kg, max_health, bite_power, bite_reach_m, sight_m, speed_mps, cadence_hz, speed_factor,
-## strength_factor, has_mouth, has_legs,
+## strength_factor, charm, has_mouth, has_legs,
 ## leg_length_m, mouths, eyes, body_length_m, body_radius_m}. speed_mps is the top ground speed the gait planner
 ## allows (the run band's Froude number on the shortest leg) times speed_factor; the walk is 0.3 of it, as the lab's
 ## drives.
@@ -64,6 +67,12 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		var period: float = gait_table.rel_stride(gait_table.fr_top()) * mech.hip_height / mech.v_top
 		cadence = 1.0 / period if period > 0.0 else 0.0
 	var box: AABB = body.bounds_m()
+	var charm := 1.0
+	var social: Dictionary = tuning.get("social", {})
+	if not social.is_empty():
+		# Diminishing returns (Bible section 12): only the first display_cap display organs add charm.
+		var displays := mini(count_parts(body, DISPLAY_TYPES, part_rules), int(social["display_cap"]))
+		charm = float(social["base_charm"]) + float(social["per_display_part"]) * displays
 	return {
 		"mass_kg": mass,
 		"max_health": mass * float(tuning["health"]["per_kg"]),
@@ -74,6 +83,7 @@ static func of(body: RefCounted, part_rules: Dictionary, gait_table: RefCounted,
 		"cadence_hz": cadence,
 		"speed_factor": speed_k,
 		"strength_factor": strength_k,
+		"charm": charm,
 		"has_mouth": mouths > 0,
 		"has_legs": has_legs,
 		"leg_length_m": leg_length,

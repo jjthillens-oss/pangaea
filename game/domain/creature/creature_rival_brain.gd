@@ -12,8 +12,12 @@ extends RefCounted
 ##   heading:   own forward direction
 ##   bite_reach: how far own mouth reaches, m (0 without a mouth)
 ##   noise:     a seeded draw in -1..1, for wandering
+##   leader:    {dir, dist} of the creature this one has befriended and follows (allies only; {} otherwise)
+##   foe:       {dir, dist} of the creature the leader is fighting, when in sight (allies only)
 ## Memory is the brain's own dictionary, returned updated: {mode, wander: Vector2, hold: int}.
-## The decision: {mode: "wander"|"graze"|"flee"|"hunt", heading: Vector2, throttle: 0..1, bite: bool}.
+## The decision: {mode: "wander"|"graze"|"flee"|"hunt"|"follow"|"assist", heading: Vector2, throttle: 0..1,
+## bite: bool}. An ally (a leader percept) helps its leader fight, keeps up with it past `follow_m`, and otherwise
+## lives as any rival does; the sim never shows an ally its leader or the leader's other allies as a creature.
 
 const WANDER_THROTTLE := 0.3
 const GRAZE_THROTTLE := 0.5
@@ -30,8 +34,21 @@ static func fresh_memory(start_heading: Vector2) -> Dictionary:
 	return {"mode": "wander", "wander": start_heading, "hold": 0}
 
 
-## `tuning` is the "rivals" block of creature_stage.json: flee_mass_ratio, hunt_mass_ratio, hungry_below.
+## `tuning` is the "rivals" block of creature_stage.json: flee_mass_ratio, hunt_mass_ratio, hungry_below; and
+## follow_m for allies (the "social" block's).
 static func decide(percepts: Dictionary, memory: Dictionary, tuning: Dictionary) -> Dictionary:
+	var leader: Dictionary = percepts.get("leader", {})
+	if not leader.is_empty():
+		var foe: Dictionary = percepts.get("foe", {})
+		var reach := float(percepts.get("bite_reach", 0.0))
+		var out := {}
+		if not foe.is_empty() and reach > 0.0:
+			out = {"mode": "assist", "heading": foe["dir"], "throttle": 1.0, "bite": float(foe["dist"]) <= reach}
+		elif float(leader["dist"]) > float(tuning.get("follow_m", 5.0)):
+			out = {"mode": "follow", "heading": leader["dir"], "throttle": 1.0, "bite": false}
+		if not out.is_empty():
+			memory["mode"] = out["mode"]
+			return out
 	var creature: Dictionary = percepts.get("creature", {})
 	var food: Dictionary = percepts.get("food", {})
 	var fullness := float(percepts.get("fullness", 1.0))

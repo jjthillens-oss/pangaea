@@ -31,7 +31,9 @@ extends RefCounted
 ## tick() returns the tick's events, each {kind, ...}: "ate" {who, food, points, position}, "bit" {by, target,
 ## damage}, "hit" {target, by, damage} (the two sides of one landed bite), "died" {who, cause, by, position, points}
 ## (the player's also carries points_lost), "evolve" {points}, "refused" {reason}, "earned" {deed, points} (points
-## for walking, biting, surviving a hit or spotting a rival, tuning "deeds").
+## for walking, biting, surviving a hit, spotting a rival or befriending one, tuning "deeds" and "social"); the
+## friend path's "charmed" {who, name, friendship, needed}, "befriended" {who, name}, "snubbed" {who} and
+## "ally_lost" {who}.
 
 const TICKS_PER_SECOND := 60
 const DT := 1.0 / 60.0
@@ -68,6 +70,8 @@ var nest_radius := 6.0
 var nest := Vector3.ZERO
 ## Whole-tick durations from the tuning's seconds.
 var ticks := {}
+## The rival brain's tuning: the "rivals" block plus the social block's follow_m.
+var _brain_tuning := {}
 ## The player's creature (`me`: see _make_creature). Its planner is null when the body has no legs.
 var me: Dictionary
 ## Rivals in id order ("r1".."rN"), each a creature dictionary with a brain memory.
@@ -79,6 +83,9 @@ var meat: Array = []
 var _next_meat := 1
 var _evolve_held := false
 var _bite_held := false
+var _social_held := false
+## The creature the player is fighting (the last one it bit, or the last that bit it): its allies help.
+var _foe_id := ""
 var _last_notice := ""
 ## Metres walked since the last walking point (tuning "deeds").
 var _walk_m := 0.0
@@ -100,8 +107,12 @@ func _init(body_dict: Dictionary, p_world_seed: int, p_tuning: Dictionary, p_dat
 		"fruit_regrow": Rules.to_ticks(float(tuning["fruit"]["regrow_s"]), TICKS_PER_SECOND),
 		"meat_decay": Rules.to_ticks(float(tuning["meat"]["decay_s"]), TICKS_PER_SECOND),
 		"bite_cooldown": Rules.to_ticks(float(tuning["bite"]["cooldown_s"]), TICKS_PER_SECOND),
+		"social_cooldown": Rules.to_ticks(float(tuning.get("social", {}).get("cooldown_s", 1.0)), TICKS_PER_SECOND),
 		"rival_respawn": Rules.to_ticks(RIVAL_RESPAWN_S, TICKS_PER_SECOND),
 	}
+	_brain_tuning = (tuning["rivals"] as Dictionary).duplicate()
+	if tuning.has("social"):
+		_brain_tuning["follow_m"] = float(tuning["social"]["follow_m"])
 	me = _make_creature(PLAYER_ID, BodyCodec.from_dict(body_dict), nest, 0.0)
 	var fruit_spots: Array = Rules.scatter(rng, int(tuning["fruit"]["count"]), half_size, nest_radius, FIELD_MARGIN_M)
 	for i in fruit_spots.size():
@@ -142,7 +153,8 @@ func _make_creature(id: String, body: RefCounted, at: Vector3, yaw: float) -> Di
 	var stats: Dictionary = CreatureStats.of(body, data["part_rules"], data["gait_table"], tuning)
 	var c := {"id": id, "body": body, "stats": stats, "planner": null, "mech": null, "gait": GaitBody.from_description(body),
 			"position": at, "yaw": yaw, "health": float(stats["max_health"]), "cooldown": 0, "alive": true,
-			"respawn_at": 0, "fullness": 1.0, "memory": {}, "mode": "", "starter": ""}
+			"respawn_at": 0, "fullness": 1.0, "memory": {}, "mode": "", "starter": "", "friendship": 0.0, "ally": false,
+			"hostile": false, "social_cooldown": 0}
 	if stats["has_legs"]:
 		c["mech"] = BodyMechanics.create(id, c["gait"]["body"], data["gait_table"])
 		c["planner"] = GaitPlanner.create(c["mech"], at, yaw)
@@ -150,7 +162,7 @@ func _make_creature(id: String, body: RefCounted, at: Vector3, yaw: float) -> Di
 
 
 ## Advances one tick. intent: {move: Vector2 (a ground direction, x along +X and y along +Z, length 0..1 as the
-## throttle), bite: bool, evolve: bool}. Returns the tick's events.
+## throttle), bite: bool, evolve: bool, social: bool}. Returns the tick's events.
 func tick(intent: Dictionary) -> Array:
 	var events := []
 	var move: Vector2 = intent.get("move", Vector2.ZERO)
@@ -173,7 +185,7 @@ func tick(intent: Dictionary) -> Array:
 	for r in rivals:
 		if not r["alive"]:
 			continue
-		var decision: Dictionary = Brain.decide(_percepts(r, noted), r["memory"], tuning["rivals"])
+		var decision: Dictionary = Brain.decide(_percepts(r, noted), r["memory"], _brain_tuning)
 		r["mode"] = decision["mode"]
 		r["wants_bite"] = decision["bite"]
 		_drive(r, Rules.steer(r["yaw"], decision["heading"], float(decision["throttle"])))
@@ -217,6 +229,13 @@ func tick(intent: Dictionary) -> Array:
 		elif not _bite_held:
 			events.append({"kind": "refused", "reason": "No mouth to bite with"})
 	_bite_held = bite
+	# 7b. Singing and dancing (the friend path).
+	if me["social_cooldown"] > 0:
+		me["social_cooldown"] -= 1
+	var social := bool(intent.get("social", false))
+	if social and me["alive"] and tuning.has("social"):
+		_sing(events, not _social_held)
+	_social_held = social
 	for r in rivals:
 		if r["alive"] and r.get("wants_bite", false):
 			_bite(r, biters, events)
@@ -244,6 +263,10 @@ func tick(intent: Dictionary) -> Array:
 			r["fullness"] = 0.6
 			_respawn(r, spot[0] if not spot.is_empty() else Vector3(half_size * 0.5, 0.0, 0.0), rng.randf_range(-PI, PI))
 			r["memory"] = Brain.fresh_memory(Rules.forward(r["yaw"]))
+			# A respawn is a new individual: it has to be befriended (or angered) again.
+			r["friendship"] = 0.0
+			r["ally"] = false
+			r["hostile"] = false
 	for f in fruit:
 		if not f["ripe"] and tick_count >= int(f["regrow_at"]):
 			f["ripe"] = true
@@ -320,12 +343,22 @@ func _percepts(r: Dictionary, noted: Dictionary) -> Dictionary:
 	for id in _creature_ids():
 		if id == r["id"] or not noted[id]["alive"] or _at_nest(noted[id]["position"]):
 			continue   # a creature at the nest is not prey
+		if r["ally"] and (id == PLAYER_ID or _creature(id).get("ally", false)):
+			continue   # an ally does not hunt or flee its pack
 		var d := _ground_distance(me, noted[id]["position"])
 		if d < best and d <= sight:
 			best = d
 			creature = {"dir": _ground_dir(me, noted[id]["position"]), "dist": d,
 					"mass_ratio": float(noted[id]["mass"]) / maxf(1e-6, float(r["stats"]["mass_kg"]))}
 	out["creature"] = creature
+	if r["ally"]:
+		var lead: Vector3 = noted[PLAYER_ID]["position"]
+		out["leader"] = {"dir": _ground_dir(me, lead), "dist": _ground_distance(me, lead)}
+		var foe := _creature(_foe_id)
+		if not foe.is_empty() and noted[_foe_id]["alive"] and not foe.get("ally", false):
+			var d := _ground_distance(me, noted[_foe_id]["position"])
+			if d <= sight:
+				out["foe"] = {"dir": _ground_dir(me, noted[_foe_id]["position"]), "dist": d}
 	return out
 
 
@@ -370,6 +403,8 @@ func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 	for c in bodies:
 		if c["id"] == biter["id"] or _at_nest(c["position"]):
 			continue
+		if _same_pack(biter, c):
+			continue   # the player and its allies do not bite each other
 		if Rules.bite_lands(biter["position"], biter["yaw"], float(biter["stats"]["bite_reach_m"]), c["position"],
 				float(c["stats"]["body_radius_m"])):
 			var d := _ground_distance(biter["position"], c["position"])
@@ -382,6 +417,15 @@ func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 	var damage := float(biter["stats"]["bite_power"])
 	target["health"] -= damage
 	target["last_hit_by"] = biter["id"]
+	if biter["id"] == PLAYER_ID:
+		_foe_id = target["id"]
+		if target["ally"]:
+			events.append({"kind": "ally_lost", "who": target["id"]})
+		target["ally"] = false
+		target["friendship"] = 0.0
+		target["hostile"] = true
+	elif target["id"] == PLAYER_ID and not biter["ally"]:
+		_foe_id = biter["id"]
 	events.append({"kind": "bit", "by": biter["id"], "target": target["id"], "damage": damage})
 	events.append({"kind": "hit", "target": target["id"], "by": biter["id"], "damage": damage})
 	var deeds: Dictionary = tuning.get("deeds", {})
@@ -390,6 +434,60 @@ func _bite(biter: Dictionary, bodies: Array, events: Array) -> void:
 			_earn("bit", int(deeds["bite_points"]), events)
 		elif target["id"] == PLAYER_ID:
 			_earn("survived", int(deeds["hit_points"]), events)
+
+
+## The player sings and dances at the nearest rival in front of it within the social reach (cooldown permitting):
+## the rival's friendship grows by the player's charm, and at friend_at it joins the player's pack ("befriended",
+## worth befriend_points). A rival the player has bitten this life will not listen ("snubbed"). `fresh` is the
+## rising edge of the intent: only then is "nobody to sing to" reported.
+func _sing(events: Array, fresh: bool) -> void:
+	if me["social_cooldown"] > 0:
+		return
+	var social: Dictionary = tuning["social"]
+	var best := INF
+	var target := {}
+	for r in rivals:
+		if not r["alive"] or r["ally"]:
+			continue
+		if Rules.bite_lands(me["position"], me["yaw"], float(social["reach_m"]) + float(me["stats"]["body_radius_m"]),
+				r["position"], float(r["stats"]["body_radius_m"])):
+			var d := _ground_distance(me["position"], r["position"])
+			if d < best:
+				best = d
+				target = r
+	if target.is_empty():
+		if fresh:
+			events.append({"kind": "refused", "reason": "Face a creature up close to sing to it"})
+		return
+	me["social_cooldown"] = int(ticks["social_cooldown"])
+	if target["hostile"]:
+		events.append({"kind": "snubbed", "who": target["id"]})
+		return
+	var needed := float(social["friend_at"])
+	target["friendship"] = minf(needed, float(target["friendship"]) + float(me["stats"].get("charm", 1.0)))
+	events.append({"kind": "charmed", "who": target["id"], "name": _killer_name(target["id"]),
+			"friendship": target["friendship"], "needed": needed})
+	if target["friendship"] >= needed:
+		target["ally"] = true
+		target["memory"] = Brain.fresh_memory(Rules.forward(target["yaw"]))
+		events.append({"kind": "befriended", "who": target["id"], "name": _killer_name(target["id"])})
+		_earn("befriended", int(social["befriend_points"]), events)
+
+
+## Whether `a` and `b` are on the same side: the player and its allies.
+func _same_pack(a: Dictionary, b: Dictionary) -> bool:
+	var a_side: bool = a["id"] == PLAYER_ID or a["ally"]
+	var b_side: bool = b["id"] == PLAYER_ID or b["ally"]
+	return a_side and b_side
+
+
+## The allies following the player, in id order.
+func allies() -> Array:
+	var out := []
+	for r in rivals:
+		if r["alive"] and r["ally"]:
+			out.append(r["id"])
+	return out
 
 
 ## Adds `amount` adaptation points the player earned by a deed (walked, bit, survived, spotted): an "earned" event.
@@ -507,7 +605,7 @@ func snapshot() -> Dictionary:
 func _creature_snapshot(c: Dictionary) -> Dictionary:
 	return {"id": c["id"], "position": _arr(c["position"]), "yaw": c["yaw"], "health": c["health"],
 			"max_health": float(c["stats"]["max_health"]), "alive": c["alive"], "mode": c["mode"],
-			"fullness": c["fullness"], "starter": c["starter"]}
+			"fullness": c["fullness"], "starter": c["starter"], "ally": c["ally"], "friendship": c["friendship"]}
 
 
 static func _arr(v: Vector3) -> Array:
