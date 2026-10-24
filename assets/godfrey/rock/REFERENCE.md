@@ -7,6 +7,7 @@ Status: PROPOSED reference evidence for an original, isolated Blender prop.
 - Source page's original source: https://pixnio.com/de/media/megalith-steinbrocken-stein-gros-rock
 - License: [Creative Commons CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)
 - License evidence: the Wikimedia Commons file page states CC0 1.0 in its Licensing section.
+- Source-page revision retaining that claim: https://commons.wikimedia.org/w/index.php?title=File:Boulder_2021-12-22.jpg&oldid=1278204652
 - Accessed: 2026-10-24 UTC.
 - Retained reference image: `reference_cc0.jpg`, a 960 × 720 Wikimedia thumbnail of the CC0 photo, SHA-256 `4BFC232863E9EA1277FB5E9958162BE55E6878FB5143695D07EA8349DDD2ECCD`.
 - Intended use: visual observation and paired comparison only. No image texture or photo geometry is included in the exported GLB. The rock is authored independently in Blender.
