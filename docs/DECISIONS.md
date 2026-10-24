@@ -942,3 +942,106 @@ its tabs pick them up from the records.
     ("swim out of its line on the side you face"), which F2 requires of every species that strikes.
     The veil never strikes, so its tip names its threads instead.
 - A hazard's threat-arrow glyph is "warning". The veil never engages, so it never shows.
+
+## 2026-10-24 · S3 "Band 1": the build decisions, and T0's readings (PROPOSED)
+
+S3 (cell sizes 3 and 4, band 1) is planned in four files in the project files: the spine
+`docs/s3/s3-interfaces.md`, the sim half `docs/s3/s3-sim.md` (T0 to T3), the view half
+`docs/s3/s3-view.md` (T4 and T5) and the corrections layer `docs/s3/s3-build-plan.md`, which wins
+where they differ (then s3-sim for T0 to T3 and s3-view for T4 and T5, then the spine). Every number
+not verified there is PROPOSED tuning held in data or a named constant. Standing rules (owner): the
+GENESIS Bible is binding; never wait on Joshua; merge when green; never change a cost-gate limit.
+
+- **Ids in this entry.** D-88 to D-118, C3-n and Q3-n are the spine's; D-119 to D-147, X3-n and
+  SQ3-n are s3-sim's; V3-n, C3V-n, Q3V-n and A3V-n are s3-view's; BP3-1 to BP3-20 are the build
+  plan's. Gates S3G1 to S3G42 are the spine's, lettered sub-gates s3-sim's, S3G43 s3-view's, and
+  S3G5c, S3G12e, S3G14b, S3G17d, S3G24d, S3G34b, S3G39b and S3G42c the build plan's.
+- **The build plan, BP3-1 to BP3-20.**
+  - BP3-1. The integration branch is `e3`, the tracks `e3-t0-gates` to `e3-t5-worldview` (never
+    `s3-*`, which M1 holds). `e3-base` is main with S1, S2 and S4 merged (a branch: tags are refused
+    here). Precedence as above; push after every commit.
+  - BP3-2. S3G34 holds by keys: `hazard_live` gates the sting and strike-hit snapshot keys, and
+    `debug_set_size` resets them (a cut). The S2 identity hashes are recorded on `e3-base` with
+    `max_in_build` 2 and `landmark_return` off and replayed in `test_hash_identity` (T0); S3G34b in
+    `test_stings` (T2).
+  - BP3-3. `_morsel_live` is replaced by `_claims`, kept exact through `_set_food` and `_drop_entry`;
+    `morsel_claims()` for the checker; S3G17b's three cases and S3G17d on every fuzz tick.
+  - BP3-4. A sting's `hit` carries `engaged` (sorted, at the sting); invariant 15 (c) reads it, not
+    the before-snapshot (S3G14b, S3G12e).
+  - BP3-5. S3G39b (T2): arrival equality at 2 to 3 and 3 to 4, and prefetch neutrality.
+  - BP3-6. S3G20 (band-1 chunk cost) is T3's, measured in the same run as band 0, with absolute and
+    relative rows and a data lever.
+  - BP3-7. S3G21's rows: size 3 at most 1.15 x size 1 and size 4 at most 1.10 x size 2 (#28E and
+    saturated medians, blocking); the absolute rows block where `BASE_GREEN` has the row green at the
+    size they are held against. Replaces D-115's merge rule and settles Q3-11.
+  - BP3-8. The landmark spiral is bounded (`LANDMARK_SPIRAL_RINGS` 8, 4 tm); "no_clear_point" and
+    the new "unloaded" refusal; D the respawn clear radius plus the cell plus twice
+    `reach_max_threat`; S3G5c, S3G42c, S3G24d; S3G26's mutation is the unbounded spiral with a
+    blocked anchor.
+  - BP3-9. Cross-track rows land with the track named in the build plan's 4.1.
+  - BP3-10. The spine's tile and cradle examples are replaced by two schema-example fixtures; the
+    tile rules read band-1 regions, rare kinds, transit and the elder-Warden posts.
+  - BP3-11. File owners: `test_fuzz_invariants` is T0's; asset tables stay art's; S3G23 in
+    `test_growth_gates` (T0); `test_endless_sim` is T2's.
+  - BP3-12. S3G28 compares the state hash and the save dictionary; T2.8's round trip is three key
+    checks; `EcologyRegion.tick(dt, tick_number)`.
+  - BP3-13 to BP3-20 as the build plan's table: D-134's anchor rule at band 1 and up only; the cradle
+    ring follows PR #64 (14.0625); `write_kit.py` amends D-143; hooks follow function names;
+    `switches.landmark_return` and partial bands; band-0 live sets unchanged; a sting's `engaged`
+    is event-only; the checker clears invariant 15's windows at a `set_size` cut.
+- **The spine's D-88 to D-118 and s3-sim's D-119 to D-147.** Adopted as the build plan amends them:
+  D-114's fixture sentence (BP3-2), D-115's merge rule (BP3-7), D-126's snapshot keys (BP3-2),
+  D-132b's spiral (BP3-8), D-134 (BP3-13) and D-143 (BP3-15). D-121's veil `leash_m` is 4.75, not
+  the spine's 7.0.
+- **Contradictions and questions.** The spine's C3-n, s3-sim's X3-n and s3-view's C3V-n are adopted
+  as the build plan's 4.1 and 4.2 settle them; Q3-1 to Q3-13 as its 4.3 answers them (Q3-6: the Deep
+  lurker's `fov_deg` 90, 120 if S3G10 is red); SQ3-n and Q3V-n as written. C3V-16's two `check.sh`
+  lines (s3-view 16.3) wait for T5's `band_up` and `band_up_continue` smoke phases, which are not on
+  `e3` yet; T0 adds them in a T0.9 commit when they land.
+- **T0's lines** (PROPOSED; the gates track's own readings and the ways it read the plan).
+  - T0.1. `e3-base` is a branch at a9afd3b; the size 1 and 2 baseline is the entry above.
+  - T0.3. Invariant 7's hazard form allows a hazard that enters DRIFT off its path (a spawn at home,
+    the end of a flee, a wake) the gap at rule 14 (f)'s margin on top of D-141's 120 ticks; one that
+    enters on its path keeps the 120. Invariant 4's lane origin may move past `LANE_DRIFT_M` when the
+    cell itself leaned on the creature in its tell (a size-4 tour moved a telling Deep lurker 0.70
+    tm). D-117 (b), the sunbeam well, runs on the shipped world, because `world_b1_min.json`'s tiles
+    break the real kit's rules.
+  - T0.4. The size-4 tours' creatures eat each morsel item soon after it spawns, so no item is live
+    at an unload on a tour; that clause is read by `test_morsel_sites` and `test_fuzz_invariants`.
+  - T0.5. The S3 gates run on the shipped world with its top at 4 (`Gates.make_sim_at`), set to the
+    size by `debug_set_size`, with bots that never press Grow; foragers unjam at sizes 3 and 4, because
+    band 1's cracks jam a ForageBot (seed 502's grazer stuck 100 s and starved). #32 counts a veil's
+    sting as a meeting (a veil never notices or tells). The bloom gate compares a hungry camper's
+    yield in an elder Warden's meadows with each meadow's plain twin over six cycles: 1.04, with the
+    x2.0 bloom mutation 1.27.
+  - T0.5, a balance finding put to the owner: #32 is red at size 3 (0.3 to 0.7 meetings a minute
+    against 1.0). Size 1 reads about 4 a minute and size 4 about 3. A species never lives below its
+    entry size, so at size 3 only the Warden and the veil are at q 1; the rammer, ambush hunter,
+    lurker and elder rammer are outgrown (q 0.39 to 0.625). Veil gardens and glass reefs hold veils
+    alone, a forager seldom touches a thread, and the unguarded elder-Warden mounds (capacity 18) are
+    its favourite size-3 food. Probes in a scratch copy, none shipped: Wardens on the mounds and veils
+    on the mounds and the food gave the grazer 0.47 from home and 0.84 from points and the omnivore
+    1.27 and 1.46; a second Warden per flat and veil per reef did no better; an ambush hunter
+    stand-in at entry size 3 left the grazer at 0.40 from home. Moving veils onto food also breaks
+    rules 6 and 12 in most tiles. So the first card ("as tense as size 1" by moving threats) was
+    withdrawn, and a second asks between a calmer size 3 (one meeting every 4 minutes, a run may meet
+    none; recommended, unblocking S3) and a new size-3 hunter species (scope beyond S3, new art).
+  - T0.5b. S3G23's medians pool the grazer and the omnivore (12 runs), as S2's first-growth gate
+    pools its bodies: second growth 385.6 s, third 944.2 s against 960 (grazer 772, omnivore 1,137).
+  - T0.6. S3G21 runs sizes 1 to 4 in one process on the top-4 world. Relative rows on a dev
+    container: #28E 7.13 against 7.19 at size 3 (tight) and 7.43 against 7.76 at size 4; saturated
+    green at both. That container put size 1's own P99.9, rebase and saturated rows over their limits
+    too (17.1, +2.25, 13.4 in their own tests), so the absolute rows are read on CI. S3G21b reads
+    0.25 to 0.29 yd after `_landmark_pass` keeps the 3 x 3 chunks' anchors between chunk changes
+    (10.5 to 3.3 us a tick, the same choice); the route wakes no veil, so its sting row is the gates
+    and the awake scan. S3G19: warm 31.2 (2 to 3) and 25.8 (3 to 4) at worst.
+  - T0.7. S3G26 runs the 10 tests' checkpoint rules at 50 landmark checkpoints in one soak case (the
+    save-side tests do not depend on the checkpoint's place; S3G33 covers the save at size 4). The S3
+    save fixture is `tests/fixtures/saves/save_v4_s3.json`, not `save_v3_s3.json`: this build's writer
+    stamps schema 4 (the creature save work); S3 adds no field (D-142).
+- **CI.** soak-a (endless gates and cost) read 8.4 min and soak-b 26 min on main's last run. With
+  T0.5 to T0.7, soak-a's 16 cases took 28.8 min on this container (4 CPUs, shared with balance probes
+  the whole time, so slower than CI); S3G26 adds about 1 min to soak-b. Both stay inside each job's
+  60-minute bound, so the split stays as it is; the PR's first CI run gives the real figures.
+  The same run's reds: S3G22's #32 at size 3 (below), and the cost rows that fail here at size 1 too
+  (saturated, the racer, S3G21's absolute rows), which CI reads (BP3-7).
