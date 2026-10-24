@@ -129,6 +129,9 @@ var _food_total := 0                   ## the last food view's total, the morsel
 ## and each tried anchor's clear point (or [INF, INF]) at this size. set_size clears both (D-131).
 var landmark_anchor := ""
 var _landmark_points := {}
+const LANDMARK_SPIRAL_RINGS := 8       ## BP3-8: the return point's spiral stops 4 tm out
+var _landmark_spirals := 0             ## spirals run (tests: one per anchor per size, S3G24b)
+var _landmark_d := -1.0                ## BP3-8's D at this size (tm), measured once a size
 ## The world file's rings (tm) and caps, read once.
 var rings := {}
 var caps := {}
@@ -372,6 +375,7 @@ func step(sim: PoolSim) -> void:
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
 	_morsel_pass(sim)
+	_landmark_pass(sim)
 	var busy := made   # this tick generated a chunk ahead, or the prefetch worked: the sites' prep waits
 	if g != null:
 		busy = _prefetch(sim, quiet and not made) or busy
@@ -481,6 +485,7 @@ func set_size(n: int) -> void:
 	size = n
 	landmark_anchor = ""
 	_landmark_points.clear()
+	_landmark_d = -1.0
 	_tm_to_am = WorldConfig.tm_to_am(n)
 	_clear_next()
 	_ahead.clear()
@@ -2367,6 +2372,89 @@ func _unload_morsels(sim: PoolSim, ch: WorldChunk) -> void:
 				sim.carrion.expire(food_id, "unloaded")
 			_drop_entry(m.id)
 		_morsel_loaded.erase(m.id)
+
+
+## The landmark pass (D-132a): at the build's top, with the cell alive and growth on (and the
+## landmark_return switch on, BP3-17), the nearest anchor of the 3 x 3 loaded chunks round the cell
+## within landmark_find_tm (ties to the lower id) that is not the checkpoint's own is tried; an
+## accepted one moves the checkpoint to its clear point (checkpoint_moved, reason "landmark").
+func _landmark_pass(sim: PoolSim) -> void:
+	if size != max_size or sim.dead or sim.respawn_pending or sim.growth == null \
+			or not bool(content.config.switches.get("landmark_return", false)):
+		return
+	var best := {}
+	var best_d := INF
+	var reach := float(content.config.growth.discovery.landmark_find_tm)
+	var at := chunk_of_local(sim.motion.position)
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var ch: WorldChunk = _chunks.get(Vector2i(at.x + dx, at.y + dy))
+			if ch == null:
+				continue
+			for a in ch.anchors:
+				if str(a.id) == landmark_anchor:
+					continue
+				var d := sim.motion.position.distance_to(local_of_tm(float(a.x), float(a.y)))
+				if d <= reach and (d < best_d or (d == best_d and str(a.id) < str(best.id))):
+					best = a
+					best_d = d
+	if best.is_empty():
+		return
+	var r := landmark_candidate(sim, best)
+	if not r.ok:
+		return
+	var p := abs_of_local(r.point)
+	checkpoint_am = PackedFloat64Array([p[0], p[1], sim.motion.heading, float(size)])
+	landmark_anchor = str(best.id)
+	_emit(sim, {"type": "checkpoint_moved", "reason": "landmark", "anchor": landmark_anchor,
+		"checkpoint_am": Array(checkpoint_am)})
+
+
+## Whether `anchor` ({id, x, y} in absolute tm) gives a return point now (D-132b, BP3-8): {ok, point
+## (local), reason}. Refused "seen" (the checkpoint's own), "not_calm" (Growth.is_calm without the
+## wedge), "no_clear_point" (no clear point within LANDMARK_SPIRAL_RINGS rings of it; memoised for the
+## size with the point), "unloaded" (a chunk within D of the point is not loaded; never memoised) or
+## "reach" (a loaded site of a species at the cell's size reaches within respawn_clear_m of a cell
+## there).
+func landmark_candidate(sim: PoolSim, anchor: Dictionary) -> Dictionary:
+	var out := {"ok": false, "point": Vector2.INF, "reason": ""}
+	if str(anchor.id) == landmark_anchor:
+		out.reason = "seen"
+		return out
+	if not sim.growth.is_calm(sim, false):
+		out.reason = "not_calm"
+		return out
+	if not _landmark_points.has(anchor.id):
+		_landmark_spirals += 1
+		var q := PoolSim.clear_point_on(sim.arena, local_of_tm(float(anchor.x), float(anchor.y)), sim.phenotype.radius,
+			LANDMARK_SPIRAL_RINGS)
+		_landmark_points[anchor.id] = abs_of_local(q) if q.is_finite() else PackedFloat64Array([INF, INF])
+	var a: PackedFloat64Array = _landmark_points[anchor.id]
+	if not is_finite(a[0]):
+		out.reason = "no_clear_point"
+		return out
+	var p := local_of_abs(a[0], a[1])
+	# A world without creatures (no species) has no threat: D is the cell's radius.
+	var clear := float(sim.species.fairness.respawn_clear_m) if sim.species != null else 0.0
+	if _landmark_d < 0.0:
+		_landmark_d = clear + sim.phenotype.radius \
+			+ (2.0 * content.reach_max_threat(size, sim.species) if sim.species != null else 0.0)
+	for key in disc_keys({"center": p, "radius": _landmark_d}):
+		if not _chunks.has(key):
+			out.reason = "unloaded"
+			return out
+	for id in sites if sim.species != null else {}:
+		var rec: Dictionary = sites[id]
+		if sim.species.q_of(str(rec.species), size) != 1.0:
+			continue
+		var gap: float = p.distance_to(rec.reach.center) - float(rec.reach.radius) \
+			- sim.species.radius_at(str(rec.species), size) - sim.phenotype.radius
+		if gap < clear:
+			out.reason = "reach"
+			return out
+	out.ok = true
+	out.point = p
+	return out
 
 
 ## Every entry leaves, its live item expiring ("unloaded"): the growth tick's unloads and a teleport's

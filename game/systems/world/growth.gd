@@ -208,6 +208,11 @@ func _window(sim: PoolSim, n: int) -> void:
 ##   four rings round the cell (WorldStream.next_size_clear_point is INF, BP-4).
 ## Pure: it reads the sim and this meter's history, at any size. The wedge is tested last, so the point
 ## is computed only on ticks that are otherwise calm.
+## Whether nothing blocks growth now (X3-11): the landmark pass asks it without the wedge.
+func is_calm(sim: PoolSim, include_wedge := true) -> bool:
+	return blocker_of(sim, include_wedge) == ""
+
+
 func blocker_of(sim: PoolSim, with_wedge := true) -> String:
 	if _hunted(sim):
 		return "hunted"
