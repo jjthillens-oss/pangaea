@@ -788,6 +788,12 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Mating at the nest calls a mate before the editor (CONFIRMED direction; presentation PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's breeding, where mating at the nest opens the editor. Evolving at the nest (E, pad Y) now
+calls a mate of the player's own kind. It walks up beside the player, a heart rises over the pair, and then the
+editor opens. The beat lasts `CreatureWorld.MATE_BEAT_S` (2.5 s) and the world holds still during it. The mate is a
+twin of the player's body: an egg, a hatchling and mates of other kinds come later.
+
 ## 2026-10-24 · Twelve preset creatures and a Random creature button (owner ask; designs PROPOSED; IMPLEMENTED)
 Joshua (07:46) asked for 12 default creatures, or a button that makes a random creature. Both are built:
 - **Presets.** Two new ones, Prowler (a maned four-legged hunter) and Angler (a round lure-headed ambusher),
