@@ -9,13 +9,14 @@ extends RefCounted
 ## moves in between one undo step.
 ##
 ## Cost (PROPOSED numbers, data/editor_costs.json): what this session adds minus refund_rate x what it removes, per
-## vertebra, limb joint and part. A mirrored limb's joints and a mirrored part's twin count twice. Moving, resizing and
-## turning are free. Lineage (ids, generation) belongs to the caller, as the body description has none.
+## vertebra, limb joint and part. A mirrored limb's joints and a mirrored part's twin count twice. Moving, resizing,
+## turning and the head shape dials are free. Lineage (ids, generation) belongs to the caller, as the body description has none.
 ## Pure rules: no scene, file access or randomness.
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
+const HeadShape := preload("res://game/domain/creature/head_shape.gd")
 
 ## Water, for a mass estimate from the capsule volumes.
 const DENSITY_KG_M3 := 1000.0
@@ -334,6 +335,31 @@ func _set_part(part_id: String, values: Dictionary, allowed: Array) -> Dictionar
 					p[k] = (values[k] as Array).map(func(h): return int(h))
 				_:
 					p[k] = int(values[k])
+		return "")
+
+
+# Head shape ------------------------------------------------------------------------------------------------------
+
+
+## The working body's head dials (HeadShape.FIELDS -> per mille).
+func head_shape() -> Dictionary:
+	return HeadShape.of(working.extra)
+
+
+## key -> [min, max] per mille, from the body rules.
+func head_shape_ranges() -> Dictionary:
+	return HeadShape.ranges(rules)
+
+
+## Sets one head dial (snout, width, height, jaw or brow) to `value` per mille. Outside the body rules' range it is
+## refused; a drag of a slider is one gesture, so one undo step.
+func set_head_shape(key: String, value: int) -> Dictionary:
+	return _apply(func(d):
+		if not HeadShape.FIELDS.has(key):
+			return "%s is not a head dial" % key
+		var shape: Dictionary = HeadShape.of(d.extra)
+		shape[key] = value
+		HeadShape.store(d.extra, shape)
 		return "")
 
 

@@ -3,7 +3,8 @@ extends Control
 ## The creature editor's panels (creature stage plan section 4, PROPOSED): the part palette on the left (one tool
 ## per part type in the art records with its cost, the limb tool, and a "no tool" state), the points and the stats
 ## on the right with the Undo / Redo / Delete / Insert / Mirror buttons, the Test drive toggle and Done and Back,
-## eight skin colour swatches, a refusal line at the bottom and a hint line naming the keys. It only presents:
+## eight skin colour swatches, the head shape sliders (snout, skull width and height, jaw, brow; built in code by
+## setup_head_shape, under the stats), a refusal line at the bottom and a hint line naming the keys. It only presents:
 ## every button emits a signal and CreatureEditor calls the same method the key would. The space between the
 ## panels lets the mouse through to the 3D view.
 
@@ -15,12 +16,25 @@ signal color_chosen(color: Color)
 signal preset_chosen(preset_name: String)
 ## The "Random creature" button beside the presets.
 signal random_requested
+## A head shape slider moved: `key` is a HeadShape field, `value` per mille.
+signal head_shape_changed(key: String, value: int)
+## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
+signal head_shape_drag(started: bool)
 
 const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
 const ICON_BUTTON_FONT_PX := 15
 const ICON_COLUMNS := 3
 const SWATCH_PX := 40
+## The head shape sliders, in order: {key (HeadShape field), title, kind ("scale": shown as 1.40x, "amount": 0..100%)}.
+const HEAD_SLIDERS := [
+	{"key": "snout", "title": "Snout", "kind": "scale"}, {"key": "width", "title": "Skull width", "kind": "scale"},
+	{"key": "height", "title": "Skull height", "kind": "scale"}, {"key": "jaw", "title": "Jaw", "kind": "amount"},
+	{"key": "brow", "title": "Brow ridge", "kind": "amount"},
+]
+## One slider step, per mille.
+const HEAD_STEP := 50
+const HEAD_FONT_PX := 17
 ## The palette's category tabs, {id, title}, in order (the playthrough notes: parts grouped by kind in a grid on the
 ## left). "all" shows every tool.
 const CATEGORIES := [
@@ -48,6 +62,9 @@ var _category := "all"
 var _category_tabs: GridContainer
 var _category_buttons := {}   ## category id -> Button
 var _random_button: Button
+var _head_box: VBoxContainer
+var _head_sliders := {}   ## head field -> HSlider
+var _head_values := {}   ## head field -> Label
 
 var tools_grid: GridContainer
 var swatch_row: HBoxContainer
@@ -349,3 +366,84 @@ func set_tool_icon(type: String, texture: Texture2D) -> void:
 func tool_icon(type: String) -> Texture2D:
 	var b: Button = _tool_buttons.get(type)
 	return b.icon if b != null else null
+
+
+## The head shape sliders under the stats, built once: `ranges` is key -> [min, max] per mille (the body rules'
+## head_shape table). Each slider emits head_shape_changed; a drag also brackets itself with head_shape_drag.
+func setup_head_shape(ranges: Dictionary) -> void:
+	if _head_box == null:
+		var box: VBoxContainer = stats_text.get_parent()
+		_head_box = VBoxContainer.new()
+		_head_box.name = "HeadShape"
+		_head_box.add_theme_constant_override("separation", 2)
+		var title := Label.new()
+		title.text = "HEAD SHAPE"
+		title.theme_type_variation = &"CaptionLabel"
+		_head_box.add_child(title)
+		for spec in HEAD_SLIDERS:
+			var key := String(spec["key"])
+			var row := HBoxContainer.new()
+			row.name = "Head_" + key
+			var name_label := Label.new()
+			name_label.text = String(spec["title"])
+			name_label.custom_minimum_size = Vector2(130, 0)
+			name_label.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+			var slider := HSlider.new()
+			slider.name = "Slider"
+			slider.step = HEAD_STEP
+			slider.focus_mode = Control.FOCUS_NONE
+			slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			slider.tooltip_text = String(spec["title"])
+			var value_label := Label.new()
+			value_label.custom_minimum_size = Vector2(62, 0)
+			value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			value_label.add_theme_font_size_override("font_size", HEAD_FONT_PX)
+			slider.value_changed.connect(func(v: float):
+				value_label.text = head_value_text(key, int(v))
+				head_shape_changed.emit(key, int(v)))
+			slider.drag_started.connect(func(): head_shape_drag.emit(true))
+			slider.drag_ended.connect(func(_changed: bool): head_shape_drag.emit(false))
+			row.add_child(name_label)
+			row.add_child(slider)
+			row.add_child(value_label)
+			_head_box.add_child(row)
+			_head_sliders[key] = slider
+			_head_values[key] = value_label
+		var sep := HSeparator.new()
+		sep.name = "HeadSep"
+		box.add_child(sep)
+		box.add_child(_head_box)
+		var at := stats_text.get_index() + 1
+		box.move_child(sep, at)
+		box.move_child(_head_box, at + 1)
+	for key in _head_sliders:
+		var r: Array = ranges.get(key, [0, 1000])
+		var slider: HSlider = _head_sliders[key]
+		slider.set_block_signals(true)
+		slider.min_value = float(r[0])
+		slider.max_value = float(r[1])
+		slider.set_block_signals(false)
+
+
+## Shows the head dials (key -> per mille) on the sliders without emitting head_shape_changed.
+func set_head_shape(shape: Dictionary) -> void:
+	for key in _head_sliders:
+		if not shape.has(key):
+			continue
+		var slider: HSlider = _head_sliders[key]
+		slider.set_value_no_signal(float(shape[key]))
+		(_head_values[key] as Label).text = head_value_text(key, int(shape[key]))
+
+
+## The slider for a head field (null before setup_head_shape).
+func head_slider(key: String) -> HSlider:
+	return _head_sliders.get(key)
+
+
+## "1.40x" for a scale dial, "40%" for an amount (jaw, brow).
+static func head_value_text(key: String, value: int) -> String:
+	for spec in HEAD_SLIDERS:
+		if spec["key"] == key and spec["kind"] == "amount":
+			return "%d%%" % roundi(value / 10.0)
+	return "%.2fx" % (value / 1000.0)

@@ -6,13 +6,19 @@ extends RefCounted
 ## (P = 1) bulges about 15% at every vertebra (2 f(d) = ISO at d = 1.15 r), and max (P = infinity) leaves creases
 ## where a bent spine's capsules meet. P = 3 bulges about 5% and rounds the creases. Grid builders store
 ## S = sum f^P and compare it with ISO_P = ISO^P, which is the same surface. Limbs are more chains of capsules in the
-## same blend, so where a limb meets the trunk the p-norm also rounds the junction into a small fillet.
+## same blend, so where a limb meets the trunk the p-norm also rounds the junction into a small fillet. The head
+## shape dials (domain/creature/head_shape.gd) scale the first capsule's head radius and add a few capsules around
+## vertebra 0 after every chain: they count as spine (limb id 0) for paint and weights, ride on bone 0, and paint as
+## the head end (spine coordinate about 0); picking and anchors skip them as chain segments (shape_from).
 ## Pure rules: no scene or file access. skin/surface_nets.glsl repeats these formulas and must stay in step.
 
 const SUPPORT := 1.6
 const ISO := 0.22628403  # (1 - 1 / SUPPORT^2)^3
 const BLEND_P := 3.0
 const ISO_P := 0.011586752  # ISO^BLEND_P
+const HeadShape := preload("res://game/domain/creature/head_shape.gd")
+## A head-shape capsule's chain length: large, so its spine coordinate stays at the head end (0).
+const HEAD_CHAIN_LENGTH := 1.0e6
 
 ## Capsule k runs from a[k] to b[k] and belongs to bones bone_a[k] and bone_b[k]. Spine capsules come first.
 var a := PackedVector3Array()
@@ -29,6 +35,8 @@ var limb := PackedFloat32Array()
 var attach_u := PackedFloat32Array()
 ## Spine length.
 var total_length := 0.0
+## Index of the first head-shape capsule (capsule_count() when there are none). Chains end before it.
+var shape_from := 0
 
 
 static func from_description(desc: RefCounted) -> RefCounted:
@@ -55,6 +63,13 @@ static func from_description(desc: RefCounted) -> RefCounted:
 		for k in range(first, f.a.size()):
 			f.chain_length[k] = along
 		bone += pts.size()
+	f.shape_from = f.a.size()
+	var head: Dictionary = HeadShape.geometry(desc)
+	if n >= 2:
+		f.ra[0] *= float(head["core"])
+	for cap in head["capsules"]:
+		f._add(cap[0], cap[1], cap[2], cap[3], 0, 0, 0.0, 0.0, 0.0)
+		f.chain_length[f.a.size() - 1] = HEAD_CHAIN_LENGTH
 	return f
 
 
