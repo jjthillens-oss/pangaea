@@ -10,7 +10,7 @@
   "caps": {"awake": 12, "sleepers": 30, "food_items": 120, "food_per_zone": 12, "chunks": 36, "view_set_chunks": 12,
            "loads_per_tick": 1},
   "growth": {"trigger": "auto", "rings": [90, 120, 150, 170, 180, 190, 200, 205, 210],
-             "drain_floor_share": 0.8, "drain_ring_seconds": 200.0,
+             "drain_floor_share": 0.8, "drain_ring_seconds": 190.0,
              "calm_ticks": 90, "quiet_ticks": 120, "chase_window_ticks": 60, "chase_close_tm": 1.0, "chase_track_tm": 15.0,
              "wedge_tm": 2.0, "showcase_s": 20.0, "blocked_hint_s": 3.0, "shelter_s": 5.0,
              "beat_s": 2.0, "beat_loads_per_tick": 2,
