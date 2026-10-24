@@ -941,3 +941,430 @@ its tabs pick them up from the records.
   the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
   warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
   is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.
+
+## 2026-10-24 · S3 T0.1: the size 1 and 2 baseline on e3-base (PROPOSED)
+
+- **`e3-base` is a branch, not a tag.** The proxy refuses tag pushes and ref writes here, so the
+  base S3 is measured against is the branch `e3-base` at a9afd3b (main with the S4 stack).
+- **Hash identity (S3G34).** `tests/fixtures/endless_s2_hashes.json` holds six runs at sizes 1 and 2
+  recorded on `e3-base` with `max_in_build` 2 and `landmark_return` off; `test_hash_identity`
+  replays them at 600 ticks (fast) and 18,000 (slow).
+- **Cost baseline (BP3-7)**, from main's CI run 40084302551 (soak-a), each the median run:
+  - size 1: #28E 4.28 yardsticks, P99.9 13.21, rebase +1.50, saturated (B-7) 9.75 of 10;
+  - size 2: #28E 5.00 yardsticks.
+  - `BASE_GREEN` in `tests/test_endless_cost.gd` records these rows as green. Size 2's P99.9,
+    rebase and saturated rows had no case on the base; T0 measures them before I-3.
+  - The size-1 #28E median is far under 7.6 yardsticks, so section 8's size-3 lever is not needed.
+  - The saturated row sits at 9.75 of 10. A size-3 saturated case that blocks on it has little room;
+    the relative row (size 3 at most 1.15 x size 1) is the one to watch.
+
+## 2026-10-24 · S3 T1: the hazard rules and the four new species (PROPOSED)
+
+- **The species catalog** (s3-sim 3.2) gains the hazard behavior and its rule 14 (D-121, D-122),
+  `radius_at` (D-139) and a hazard's reach disc of leash plus a thread (D-121). The brain's cfg
+  carries a hazard's drift and threads in ticks (D-124), built in T1.1 because the catalog reads the
+  sting cooldown from it.
+- **`creatures_m1.json`** gains the stinger veil and the Warden (entry size 3) and the Deep lurker and
+  elder Warden (entry size 4), as s3-sim 4.2 gives them, none with a pool site, so the M1 and S2
+  hash files replay unchanged. Two changes from 4.2:
+  - The elder Warden keeps the elder rammer's 16 s `nav_timeout_s`, not the rammer's 8 s. D-147's
+    12.8 s move between meadows is 0.8 x 16 s; with 8 s the post-travel rule refuses every meadow
+    pair D-147 allows.
+  - The Warden, Deep lurker and elder Warden tips keep 4.2's advice and add the M1 strike's dodge
+    ("swim out of its line on the side you face"), which F2 requires of every species that strikes.
+    The veil never strikes, so its tip names its threads instead.
+- A hazard's threat-arrow glyph is "warning". The veil never engages, so it never shows.
+
+## 2026-10-24 · S3 "Band 1": the build decisions, and T0's readings (PROPOSED)
+
+S3 (cell sizes 3 and 4, band 1) is planned in four files in the project files: the spine
+`docs/s3/s3-interfaces.md`, the sim half `docs/s3/s3-sim.md` (T0 to T3), the view half
+`docs/s3/s3-view.md` (T4 and T5) and the corrections layer `docs/s3/s3-build-plan.md`, which wins
+where they differ (then s3-sim for T0 to T3 and s3-view for T4 and T5, then the spine). Every number
+not verified there is PROPOSED tuning held in data or a named constant. Standing rules (owner): the
+GENESIS Bible is binding; never wait on Joshua; merge when green; never change a cost-gate limit.
+
+- **Ids in this entry.** D-88 to D-118, C3-n and Q3-n are the spine's; D-119 to D-147, X3-n and
+  SQ3-n are s3-sim's; V3-n, C3V-n, Q3V-n and A3V-n are s3-view's; BP3-1 to BP3-20 are the build
+  plan's. Gates S3G1 to S3G42 are the spine's, lettered sub-gates s3-sim's, S3G43 s3-view's, and
+  S3G5c, S3G12e, S3G14b, S3G17d, S3G24d, S3G34b, S3G39b and S3G42c the build plan's.
+- **The build plan, BP3-1 to BP3-20.**
+  - BP3-1. The integration branch is `e3`, the tracks `e3-t0-gates` to `e3-t5-worldview` (never
+    `s3-*`, which M1 holds). `e3-base` is main with S1, S2 and S4 merged (a branch: tags are refused
+    here). Precedence as above; push after every commit.
+  - BP3-2. S3G34 holds by keys: `hazard_live` gates the sting and strike-hit snapshot keys, and
+    `debug_set_size` resets them (a cut). The S2 identity hashes are recorded on `e3-base` with
+    `max_in_build` 2 and `landmark_return` off and replayed in `test_hash_identity` (T0); S3G34b in
+    `test_stings` (T2).
+  - BP3-3. `_morsel_live` is replaced by `_claims`, kept exact through `_set_food` and `_drop_entry`;
+    `morsel_claims()` for the checker; S3G17b's three cases and S3G17d on every fuzz tick.
+  - BP3-4. A sting's `hit` carries `engaged` (sorted, at the sting); invariant 15 (c) reads it, not
+    the before-snapshot (S3G14b, S3G12e).
+  - BP3-5. S3G39b (T2): arrival equality at 2 to 3 and 3 to 4, and prefetch neutrality.
+  - BP3-6. S3G20 (band-1 chunk cost) is T3's, measured in the same run as band 0, with absolute and
+    relative rows and a data lever.
+  - BP3-7. S3G21's rows: size 3 at most 1.15 x size 1 and size 4 at most 1.10 x size 2 (#28E and
+    saturated medians, blocking); the absolute rows block where `BASE_GREEN` has the row green at the
+    size they are held against. Replaces D-115's merge rule and settles Q3-11.
+  - BP3-8. The landmark spiral is bounded (`LANDMARK_SPIRAL_RINGS` 8, 4 tm); "no_clear_point" and
+    the new "unloaded" refusal; D the respawn clear radius plus the cell plus twice
+    `reach_max_threat`; S3G5c, S3G42c, S3G24d; S3G26's mutation is the unbounded spiral with a
+    blocked anchor.
+  - BP3-9. Cross-track rows land with the track named in the build plan's 4.1.
+  - BP3-10. The spine's tile and cradle examples are replaced by two schema-example fixtures; the
+    tile rules read band-1 regions, rare kinds, transit and the elder-Warden posts.
+  - BP3-11. File owners: `test_fuzz_invariants` is T0's; asset tables stay art's; S3G23 in
+    `test_growth_gates` (T0); `test_endless_sim` is T2's.
+  - BP3-12. S3G28 compares the state hash and the save dictionary; T2.8's round trip is three key
+    checks; `EcologyRegion.tick(dt, tick_number)`.
+  - BP3-13 to BP3-20 as the build plan's table: D-134's anchor rule at band 1 and up only; the cradle
+    ring follows PR #64 (14.0625); `write_kit.py` amends D-143; hooks follow function names;
+    `switches.landmark_return` and partial bands; band-0 live sets unchanged; a sting's `engaged`
+    is event-only; the checker clears invariant 15's windows at a `set_size` cut.
+- **The spine's D-88 to D-118 and s3-sim's D-119 to D-147.** Adopted as the build plan amends them:
+  D-114's fixture sentence (BP3-2), D-115's merge rule (BP3-7), D-126's snapshot keys (BP3-2),
+  D-132b's spiral (BP3-8), D-134 (BP3-13) and D-143 (BP3-15). D-121's veil `leash_m` is 4.75, not
+  the spine's 7.0.
+- **Contradictions and questions.** The spine's C3-n, s3-sim's X3-n and s3-view's C3V-n are adopted
+  as the build plan's 4.1 and 4.2 settle them; Q3-1 to Q3-13 as its 4.3 answers them (Q3-6: the Deep
+  lurker's `fov_deg` 90, 120 if S3G10 is red); SQ3-n and Q3V-n as written. C3V-16's two `check.sh`
+  lines (s3-view 16.3) wait for T5's `band_up` and `band_up_continue` smoke phases, which are not on
+  `e3` yet; T0 adds them in a T0.9 commit when they land.
+- **T0's lines** (PROPOSED; the gates track's own readings and the ways it read the plan).
+  - T0.1. `e3-base` is a branch at a9afd3b; the size 1 and 2 baseline is the entry above.
+  - T0.3. Invariant 7's hazard form allows a hazard that enters DRIFT off its path (a spawn at home,
+    the end of a flee, a wake) the gap at rule 14 (f)'s margin on top of D-141's 120 ticks; one that
+    enters on its path keeps the 120. Invariant 4's lane origin may move past `LANE_DRIFT_M` when the
+    cell itself leaned on the creature in its tell (a size-4 tour moved a telling Deep lurker 0.70
+    tm). D-117 (b), the sunbeam well, runs on the shipped world, because `world_b1_min.json`'s tiles
+    break the real kit's rules.
+  - T0.4. The size-4 tours' creatures eat each morsel item soon after it spawns, so no item is live
+    at an unload on a tour; that clause is read by `test_morsel_sites` and `test_fuzz_invariants`.
+  - T0.5. The S3 gates run on the shipped world with its top at 4 (`Gates.make_sim_at`), set to the
+    size by `debug_set_size`, with bots that never press Grow; foragers unjam at sizes 3 and 4, because
+    band 1's cracks jam a ForageBot (seed 502's grazer stuck 100 s and starved). #32 counts a veil's
+    sting as a meeting (a veil never notices or tells). The bloom gate compares a hungry camper's
+    yield in an elder Warden's meadows with each meadow's plain twin over six cycles: 1.04, with the
+    x2.0 bloom mutation 1.27.
+  - T0.5, a balance finding put to the owner: #32 is red at size 3 (0.3 to 0.7 meetings a minute
+    against 1.0). Size 1 reads about 4 a minute and size 4 about 3. A species never lives below its
+    entry size, so at size 3 only the Warden and the veil are at q 1; the rammer, ambush hunter,
+    lurker and elder rammer are outgrown (q 0.39 to 0.625). Veil gardens and glass reefs hold veils
+    alone, a forager seldom touches a thread, and the unguarded elder-Warden mounds (capacity 18) are
+    its favourite size-3 food. Probes in a scratch copy, none shipped: Wardens on the mounds and veils
+    on the mounds and the food gave the grazer 0.47 from home and 0.84 from points and the omnivore
+    1.27 and 1.46; a second Warden per flat and veil per reef did no better; an ambush hunter
+    stand-in at entry size 3 left the grazer at 0.40 from home. Moving veils onto food also breaks
+    rules 6 and 12 in most tiles. So the first card ("as tense as size 1" by moving threats) was
+    withdrawn, and a second asks between a calmer size 3 (one meeting every 4 minutes, a run may meet
+    none; recommended, unblocking S3) and a new size-3 hunter species (scope beyond S3, new art).
+  - T0.5b. S3G23's medians pool the grazer and the omnivore (12 runs), as S2's first-growth gate
+    pools its bodies: second growth 385.6 s, third 944.2 s against 960 (grazer 772, omnivore 1,137).
+  - T0.6. S3G21 runs sizes 1 to 4 in one process on the top-4 world. Relative rows on a dev
+    container: #28E 7.13 against 7.19 at size 3 (tight) and 7.43 against 7.76 at size 4; saturated
+    green at both. That container put size 1's own P99.9, rebase and saturated rows over their limits
+    too (17.1, +2.25, 13.4 in their own tests), so the absolute rows are read on CI. S3G21b reads
+    0.25 to 0.29 yd after `_landmark_pass` keeps the 3 x 3 chunks' anchors between chunk changes
+    (10.5 to 3.3 us a tick, the same choice); the route wakes no veil, so its sting row is the gates
+    and the awake scan. S3G19: warm 31.2 (2 to 3) and 25.8 (3 to 4) at worst.
+  - T0.7. S3G26 runs the 10 tests' checkpoint rules at 50 landmark checkpoints in one soak case (the
+    save-side tests do not depend on the checkpoint's place; S3G33 covers the save at size 4). The S3
+    save fixture is `tests/fixtures/saves/save_v4_s3.json`, not `save_v3_s3.json`: this build's writer
+    stamps schema 4 (the creature save work); S3 adds no field (D-142).
+- **CI.** soak-a (endless gates and cost) read 8.4 min and soak-b 26 min on main's last run. With
+  T0.5 to T0.7, soak-a's 16 cases took 28.8 min on this container (4 CPUs, shared with balance probes
+  the whole time, so slower than CI); S3G26 adds about 1 min to soak-b. Both stay inside each job's
+  60-minute bound, so the split stays as it is; the PR's first CI run gives the real figures.
+  The same run's reds: S3G22's #32 at size 3 (below), and the cost rows that fail here at size 1 too
+  (saturated, the racer, S3G21's absolute rows), which CI reads (BP3-7).
+
+## 2026-10-24 · S3: the owner's calls on cost limits and size-3 danger
+
+Joshua answered four cards at 16:47 to 16:48 UTC.
+
+- **soak-a's two cost limits: raised to 11 and 2.5 yardsticks** (card "Raise soak-a's two cost limits
+  to cover the spread between CI runners?", option "Raise to 11 and 2.5"). `DENSE_LIMIT_YARDSTICKS`
+  10 → 11 (B-7's saturated case, the median run's median tick) and `REBASE_LIMIT_YARDSTICKS` 2.0 → 2.5
+  (a rebase tick's median excess). The cases are renamed to the new numbers
+  (`test_soak_a_saturated_world_costs_at_most_11_yardsticks_a_tick`,
+  `test_slow_a_rebase_tick_costs_at_most_2_5_yardsticks_more`). Reason: the same tree read on either
+  side of the old limits on different CI runners. Every other cost limit is unchanged.
+- **S3G20: band 1's chunks may cost 1.20 × band 0's** (card "Accept band 1's world-loading cost being
+  15 to 20% above band 0's?", option "Accept 1.20x for band 1"). The relative rows of
+  `test_slow_band_1_chunks_cost_as_band_0s` become median and p90 at most 1.20 × and max at most
+  1.35 × (1.10 and 1.25 before). The absolute rows (G17's at size 3, S2G37's at size 4) are unchanged.
+- **Size 3 is as tense as size 1, with a new size-3 hunter** (cards "How dangerous should size 3
+  feel?", option "As tense as size 1", and "Size 3 can't match size 1's danger by moving creatures.
+  Which way?", option "Add a new size-3 hunter"). T0.5c (the calmer size-3 bar) is reverted: #32 at
+  size 3 needs M1's 1.0 meetings a minute and a meeting in every run again. A new species, an elder
+  ambush hunter entering at size 3, joins the glass reefs and veil gardens; it is a scope addition the
+  owner approved here. Its body is a stand-in until art delivers its model, ghost and haze sprite.
+
+### The elder ambush hunter as built (S3G22)
+
+- **Species** `elder_ambush` ("elder ambush hunter"): entry size 3, behaviour ambush, the M1 ambush
+  hunter's numbers (speeds, leash 9 m, lunge, tell 1.2 s, start energy 0.9, hungry below 0.6) with two
+  eye spots added, so its sight is 12 m: it sees across the mound or zone it waits beside. At size 4
+  it is outgrown (q 0.625) and answers to the prey share, as the Lurker and the Deep lurker do one
+  size past their entry. Art's body (`creature_elder_ambush_body`, eye_emission_rest 0.5) and near
+  ghost (`T_Ghost_elder_ambush`) landed the same day; its haze is the ambush hunter's. The ladder
+  strip's caption is "elder hunters" (three words do not fit 68 px at the largest text size).
+- **Where it lies in wait** (all sizes [3], every tile passing rules 6 to 10 at sizes 3 and 4):
+  - glass reefs: `ea` 3 to 4.5 m off the central zone; `eb` by an outer pocket of food, by the Lurker's
+    corner in reefs a, c, d and f and in the east pocket of reefs b and e, which the #32 point runs
+    showed held no threat at all at size 3. The Lurker leaves size 3 in reefs (rule 7's four sites;
+    the outgrown ambush hunter stays as the prey rule 9 needs).
+  - veil gardens: `ea` 3 to 4.5 m off the inner mound; the second veil (`vb`) leaves gardens a to e.
+  - warden flats: `ea` 3 to 4.5 m off the inner mound (unguarded at size 3; the elder Warden takes it at 4);
+    in flats b and e it takes the second Warden's place (rule 7). This goes one tile kind past the
+    card's "reefs and veil gardens": the mounds were where the quiet #32 runs fed.
+  - the cradle: one by each quadrant's inner meadow.
+  Every `ea` keeps at least 2.9 m outside every zone. Placed right beside them first, the hunters
+  pushed the wary forager off the richest food at size 3 (it skips food within 8 m of a creature),
+  and the pacing gate's third growth went from 944 s to 1109 s.
+- **Measured** (#32 at size 3, 3 home seeds and 10 points, 5 minutes each): grazer 1.53 meetings a
+  minute from home and 1.84 from points, omnivore 1.40 and 1.88, a meeting in every run, no deaths.
+  Before the reefs' second hunters one point run (seed 516) met nothing even at 15 m sight, and a
+  hungrier start (0.7) changed nothing; with them, two eye spots are enough.
+- **The size-3 growth ring is 120, down from 150 (S3G23; Joshua, 02:42: faster progression)**. With the
+  hunters off the zones the pacing gate still read 1096 s. The slow runs are not held by a blocker:
+  they roam far from home, where size-3 food is thin, so energy sits under the drain floor (80%) and
+  the meter barely moves. A smaller ring is the one lever that touches size 3 alone (the drain floor
+  would move the first growth under its 3-minute floor). Measured over the gate's 12 runs: ring 130,
+  1017 s; ring 120, 932 s (grazer 753 s, omnivore 1092 s). Rings now read 90, 120, 120, 170. Open:
+  two of the six wary omnivore runs (seeds 622 and 624) never reach size 4 in 22 minutes, with about
+  230 meals each; the size-3 food economy for an omnivore is a balance item for the next pass.
+
+## 2026-10-24 · S3 T4.4: the ghost ladder reaches sizes 5 and 6 (PROPOSED; IMPLEMENTED)
+
+- **Rows**: the engulfer (entry 5, 0.85 tm) and the lancer (entry 6, 0.70 tm) join `ghost_ladder.json`
+  with art's measured body rects and no haze yet (an empty haze is skipped by the file checks and
+  by `haze_paths`); the band-1 foods' hazes (glass flake, bead cluster) join `food_haze`, and the
+  top-of-ladder preview at 4 names the engulfer.
+- **A long body is sized by its length on screen (V-11)**: near quads lie flat with the texture's
+  top to the north, so a body long from north to south shows that length foreshortened by the view
+  (`GhostLayer._foreshortening`, measured through the camera at the ghost). `_rule_side` divides by
+  the larger of the rect's width and its height times that factor. Every ghost with a rect wider
+  than tall is unchanged; the lancer now draws at least 1.4 cells along its length at sizes 1 to 4
+  and zooms 10, 14 and 20 (it drew 0.98 before). `test_near_ghosts_draw_at_least_1_4_cells` measures
+  each ghost's longer side on screen.
+
+## 2026-10-24 · S3 T4.5: the haze of older sizes (V3-14; PROPOSED; IMPLEMENTED)
+
+- **What**: `OlderHaze` (`game/scenes/pool/older_haze.gd`, `older_haze.gdshader`) as s3-view 9.3
+  writes it: from size 3 one MultiMesh of the size before's plant-food haze (the algae ball at 3,
+  the glass flake at 4), 24 per 32 tm chunk on a jittered 5 x 5 grid over the focus chunk and the
+  eight round it (216), 2.6 to 3.4 tm under the plane, tinted #B8C4D6 at brightness 0.7 and opacity
+  0.25, in the fog. Places come from `WorldHash.hash_ints(seed, size, cx, cy, i)` split three ways
+  with `mix32`, since `mix32` takes two words. It rebuilds only when the cell's chunk changes.
+- **Growth**: a registered growth container. It re-expresses in place, keeps the old set through
+  the beat, and at `end_growth` draws the new size's set, fading in over 1.0 s. A growth to 3 brings
+  its first set in at 2.0 s of the beat. The pool tells it the new size (`begin_growth`) before
+  `apply_growth`. The fade runs on the drawn sim time, so it stops while paused.
+- **Contract reading (test_ambience_contract)**: the contract read a shader material's textures and
+  colour uniforms separately, each times `brightness`. The haze sprite's white core read 0.45 luma,
+  over the 0.40 limit under the plane, though the shader draws texture x tint (0.25). A texture is
+  now read times the material's `tint` uniform when it has one, as a standard material's albedo
+  texture is read times its albedo. No other contract material has a `tint` uniform beside a
+  texture, so no other reading changes. The tint still counts as a flat colour too, so a tint in the
+  food hue still fails.
+- **Note**: T4.4's commit cited V3-14 for the ghost rows; those rows are V3-13's ladder work, and
+  V3-14 is this haze.
+
+## 2026-10-24 · S3 T5.1: the old band below (V3-3 to V3-5, V3-21; S3G28, S3G29; PROPOSED; IMPLEMENTED)
+
+- **What**: `OldBandLayer` (`game/scenes/pool/old_band_layer.gd`, node `OldBand`) as s3-view
+  section 5 writes it. From band 1 it draws the band before's landmarks and rare set pieces sunk
+  under the plane at their true size: absolute am = (x_bu, y_bu) x 2.56^b, scale = piece scale x
+  2.56^b / 1.6^(n - 1), top at `top_target_tm(h)` (-2 tm for pieces up to 1 tm tall, -3 from 3 tm).
+  It builds its own `WorldGen` from the same content and seed, and no sim file names it (S3G28: the
+  sim's hashes and the save are the same with it on and off).
+- **Bake**: each band-0 model (6 landmarks, 2 rare kinds) is baked once a run into one surface with
+  vertex colours = the old colour of each surface's albedo (desaturated 0.65 in linear light, luma
+  capped at 0.30), one material per model with the model's detail texture. Measured: every colour
+  at luma 0.27 to 0.30, chroma at most 12, at least 33 degrees of LAB hue from food and 63 from
+  threat. The mesh stores 8 bits a channel, so colours are rounded down to keep the cap.
+- **Two sides**: a MultiMesh has no per-instance mirror flag, so a mirrored rare piece would draw
+  inside out. The baked materials draw both sides; the pieces are opaque and closed, so the cost is
+  small.
+- **Pool wiring**: registered container and growth container (`old_band_enabled` false skips
+  setup); `set_band` at the build, at `debug set_size`, and in `_begin_growth` after
+  `apply_growth` (the in-band 3 to 4 growth eases each instance's y to its new target over the beat,
+  V3-7); `refresh` on respawn and teleport; `tick` each frame refreshes every 0.5 s outside a beat and
+  bakes one model a frame until all are baked. The band-up fade and hand-off are T5.2's.
+- **Refresh cost**: the pieces of a cell or block are pure, so the layer keeps them (at most 4096)
+  between refreshes. Median 0.35 ms headless over 100 refreshes moving 2.2 tm each (gate 1.0 ms).
+
+## 2026-10-24 · S3 T5.2: the band-up beat (V3-1, V3-2, V3-16; S3G30, S3G36 F part; PROPOSED; IMPLEMENTED)
+
+- **Profile (V3-1)**: `GrowthBeat.begin` calls `set_retire_profile` on every growth container that
+  has it: `BAND_UP_SINK_TM` 3.0 and `BAND_UP_RETIRE_S` 2.0 on a band-up (`is_band_up(from, to)`:
+  `band_of` differs), the S2 values otherwise, so the next in-band growth is back to S2's beat.
+  RockField and SiltTrail sink their retiring chunks by the profile; ZoneLights sinks its retiring
+  discs only on a band-up (its S2 beat fades them in place, which stays).
+- **Hand-off (V3-2)**: after `apply_growth`, `LandmarkLayer.release_band(b)` detaches every
+  `a_<b>_` and `p_<b>_` piece with its global transform, and `OldBandLayer.adopt` puts them under
+  `Handoff`. Each sinks from its y to its old-band y (the drawn instance with the same id, or the
+  piece's own AABB) by `ease_in_out_cubic` over `HANDOFF_SINK_S` 1.4 s, then cross-fades with the
+  old band's MultiMeshes over 1.4 to 2.0 s; `end_growth` frees it. A cancelled beat fades the handed
+  pieces out over `GrowthBeat.MIN_FADE_S` and shows the old band at once. No piece pops.
+- **Two fixes in LandmarkLayer found by the hand-off**: a rare piece looks its asset up in its own
+  band (`band_of_rare`, from `TileCatalog.RARE_KINDS_BY_BAND`), not the drawn band; and a place's
+  `scale` reaches its pose (it was dropped, so a scaled landmark drew at 1).
+- **Preload (V3-16)**: the endless `_build` requests a threaded load of `s3_preload_paths()` (every
+  kit shell, landmark and rare of the bands this build reaches, the cradle ring, the home beacon);
+  `_process` polls, and when all are in `_warm_up_late` draws each scene's meshes once at the hidden
+  warm-up point. **Changed from the plan**: `use_sub_threads` is false. With sub-threads a GLB's
+  loads outlive the pool and Godot 4.7.2 aborts at exit (seen in `test_warm_up`); one thread per
+  scene still keeps the loads off the main thread. A pool freed mid-preload collects its requests
+  first.
+- **Tests**: `test_growth_view` (no pop at a band-up, the profile resets, a cancelled band-up still
+  fades) and `test_warm_up` (the S3 assets are preloaded, their meshes warmed). Mutations caught:
+  a cancel that frees the pieces, a profile never reset, a sink offset of 0.3 tm, old-band
+  instances shown from frame 0.
+
+## 2026-10-24 · S3 T5.3: the cradle and the home beacon (V3-6 to V3-9; S3G37, S3G32 F part; PROPOSED; IMPLEMENTED)
+
+- **What**: `CradleView` (`game/scenes/pool/cradle_view.gd`, node `Cradle`) and `HomeBeacon`
+  (`home_beacon.gd`), made once in the endless build (never in the M1 pool) and registered in
+  WorldSpace: the cradle a container, the beacon a leaf. From band 1 the cradle draws art's
+  `cradle_ring.glb` (materials dimmed x 0.5 in linear light, top at -2.0 tm), the M1 pool's 18 rocks
+  and 8 ring shells at true size (baked like the old band, sharing its bake cache, tops at -2.5 tm),
+  48 plankton-haze glitter sprites on `glitter_ring.gdshader` at -1.8 tm, and the caption "Your
+  lineage began here" at the ring's north edge, faded from 35 to 40 tm from home.
+- **Ring scale**: art re-exported the ring at the old pool's size (record `radius_bu` 14.0625, the
+  plan's 7.0 was rev 0), so `RING_RECORD_RADIUS_BU` is 14.0625 and the scale is
+  `pool_ring.radius_bu / 14.0625 x bu_to_tm(n)`: 1.0 at size 3, 0.625 at 4. A test pins the constant
+  to the record.
+- **Beat**: a growth re-expresses what the cradle shows; `set_size(to)` lays out the new size and
+  the pieces ease to it over the beat (V3-7). A band-up lays size 3 out at once and fades it in over
+  0.5 to 2.0 s. The beacon follows S2's leaf rule, so its top is -12.71 / 1.6^(n - 1) at every size.
+- **Tests**: `test_world_scene` (ring at the pool radius, record constant, visible from band 1,
+  caption text and range, dish at true size, beacon top per size through real growths, nodes
+  grouped, ring and beacon dimmed) and `test_growth_view` (the band-up fade, the in-band ease).
+  The decor rows (S3G32 F part) live in `test_ambience_contract.gd` as `test_s3_decor_rows`, next to
+  T4's older-haze rows, since they use its readers. With this art an undimmed ring is still under
+  `MAX_LUMA_BELOW` (Silica luma 0.38), so a direct check that every ring and beacon surface is
+  dimmed guards V3-6. Mutations caught: no dimming, beacon scaled by `bu_to_tm`, cradle at band 0,
+  caption always on, dish at am scale, dish and ring tops not pinned, no in-band ease, a fade from 0 s.
+
+## 2026-10-24 · S3 T5.4: zone patches and the bloom tint (V3-10, V3-11; S3G15 view; PROPOSED; IMPLEMENTED)
+
+- **Patches (V3-10)**: `PATCH_REGIONS` moves from the pool to `ZoneLights` and gains
+  `warden_flat`; the pool passes every chunk zone and `ZoneLights.has_patch` picks: a listed region,
+  no region (the M1 pool's zones), or a bloom meadow.
+- **Bloom tint (V3-11)**: a bloom meadow also gets `bloom_<zone id>`, a disc laid as its patch on
+  the shared `bloom_mesh` (`bloom_tint.gdshader`: `T_BloomTint` mask, tint #E8C27A, no fog, under
+  every cue). Its alpha is 0.05 (Forward+) or 0.18 (Compatibility) times a per-instance strength:
+  `bloom_strength` is 1 while the meadow's slot blooms and 0.25 while the other does, eased over 2 s
+  after each switch, at the drawn sim tick (`update_bloom` from the pool's frame), so it switches
+  with `EcologyRegion.bloom_multiplier` and never pops. The shader's alpha uniform is named
+  `opacity`, as the other decor's, so the contract readers find it.
+- **Tests**: `test_growth_view` (the tint follows the regrowth phase over two cycles, never both
+  slots full, eases through each switch; only bloom meadows get a disc, warden flats a patch, glass
+  reefs none, freed with the chunk) and `test_ambience_contract.test_bloom_disc_rows` (under the
+  plane band, no fog, under the lane, 30 degrees clear of food, luminance x alpha 0.10 at the
+  Compatibility alpha). Mutations caught: both slots blooming together, every zone patched,
+  warden flats unlisted, the tick read undrawn, no ease, the spine's #E8D27A, a 0.4 alpha.
+
+## 2026-10-24 · S3 T5.5: the HUD for sizes 3 and 4 (V3-15, V3-17 to V3-19; S3G27 HUD, S3G41; PROPOSED; IMPLEMENTED)
+
+- **Names (D-116)**: `REGION_NAMES` gains band 1's regions and rare places verbatim. Home from band
+  1 is the cradle: `region_toast(region, rare, band)` gives "Your lineage began here", shown once
+  per `bind` (the 30 s rule still applies to every other name). The band is read from
+  `pool.sim_size()` in `_on_region`, so the start tile at bind takes it too.
+- **Toasts wait for the chord (V3-15, C3V-21)**: a `tile_entered` during a growth beat before
+  `CHORD_S` is held (the last one wins) and shown from `on_growth_chord`.
+- **Places line (V3-17, C3V-1)**: `%PlacesLine` after `%GrowthLine`, from
+  `growth.places_found(pool.shown_size())` at every endless size, hidden in the M1 pool;
+  `GrowthHud.places_text` is static and `Hud.set_places` owns the label.
+- **Hazard phrase (V3-18)**: "stop" ("stinger veils stop stinging") sits after "ignore" in
+  `PHRASE_ORDER`; ladder entries carry `behavior` from the species catalog.
+- **Veil hint (V3-19)**: kept, not cut (it is first on the cut list, but S3 is not running long).
+  `IdeaHints` id `veil_threads`, "Threads sting: swim around them", wanted while
+  `hint_context().veil_in_view` (`inked_veils_in_view > 0`); followed `VEIL_FOLLOW_S` 10 s after it
+  showed when a veil was in view since and no sting hit the cell. The sting comes from the `hit`
+  event (kind "sting", target the cell) that `IdeaHints.on_event` already gets, so the context
+  carries no `last_sting_s` (the spec's route); the behaviour is the same.
+- **Tests**: `test_growth_hud` (`test_places_text`, `test_hazard_phrase`, `test_preview_at_four`,
+  `test_veil_hint`, the context's keys) and `test_world_hud` (`test_band_one_names`,
+  `test_cradle_toast_once`, `test_toast_waits_for_the_chord`). Mutations caught: the cradle on the
+  30 s rule, no reset at bind, a toast at frame 0, a held toast never shown, home as the cradle at
+  band 0, a misnamed region, "stop" missing from or out of `PHRASE_ORDER`, "ignore you" for the
+  veil, entries without `behavior`, the line at the new size during the beat, the line in the M1
+  pool, the veil hint repeating after a pass, a sting or a bite ignored or counted, no veil in view
+  required, a 5 s follow, a context that never sees the veil.
+
+## 2026-10-24 · S3 T5.6: dev tools for sizes 3 and 4 (s3-view 12, D-118; PROPOSED; IMPLEMENTED)
+
+- **Buttons**: `%Size3` and `%Size4` join `GROWTH_BUTTONS` beside Size 1 and 2 (the spec put them
+  in `WORLD_BUTTONS`; they show where the sea grows, as S2's size buttons do, and a button in both
+  lists would have its visibility set twice). `%GoToCradle` is a world button: from band 1 it
+  teleports to the band's cradle `view_point_bu` times `band_factor` to the band (band 1:
+  (0, 46.08) am, `DebugPanel.cradle_point_am`), facing north; at band 0 it is disabled, reads "Go
+  to cradle (size 3+)" and a run is refused with a reason on the refusal line.
+- **Creature lines**: a hazard gets a third line with where it is on each drift sine now
+  (`posmod(tick + phase, period)`, more use to a dev than the fixed phase) and its drift goal; a
+  bloom brain its blooming slot, the post it guards and the seconds to the next switch.
+- **Gizmos**: `DevGizmos.habit_layer` gives each hazard's thread capsule (drawn as two sides and two
+  half circles) and its drift path (48 points of `drift_goal` over the longer period, every other
+  segment drawn), and each channel lurker's strike lane from its lair (`_lane` takes a colour).
+- **Tests**: `test_debug_panel` (`test_size_3_and_4_and_go_to_cradle`,
+  `test_hazard_and_bloom_lines_and_marks`). Mutations caught: band 0's factor (18 am), the button
+  never disabled, a cradle at band 0, Size 4 unrouted, the fixed drift phase, the time since the
+  switch, the drift path over the x period, a 1.0 prey radius, a lane for every creature.
+
+## 2026-10-24 · S3 T5.7: build top 4, band-up smoke and perf tour (D-89, C3V-16, C3V-21; S3G36, S3G43; PROPOSED; IMPLEMENTED)
+
+- **Build top 4 (D-89)**: `world_cell.json` `sizes.max_in_build` is 4, so the shipped endless world
+  grows to size 4. Tests written for S2's top-2 world pin it where the test is about S2 (the
+  config fixture's `_base()`, the place and dev-meter tests in `test_growth`, `test_tiles`, the
+  band-0 content tests via `WorldChecks.shipped_world_at(2)`), and the rest read the top from
+  `world.max_size` instead of a literal 2 or 3.
+- **Band-up names its tile (C3V-21)**: C3V-21 assumed a band-up fires `tile_entered`. It does not
+  at home: the cell keeps tile (0, 0) across the band-up, so no toast came and the cradle toast in
+  the smoke never showed. `Hud.on_growth_chord` now names the tile the cell is on when the chord
+  lands on a band-up and no toast is held (`test_band_up_names_the_tile_at_the_chord`).
+- **Endless smoke (S3G43)**: `band_up` and `band_up_continue` as s3-view 16.2 (23 and 11 checks).
+  The two `check.sh` lines go after S2's `grow` lines (C3V-16, bound 120 s each; the phases ran in
+  about 20 s together here).
+- **Perf tour (S3G36)**: the swim route takes the S3 steps at 9,000, 9,600 (go to cradle), 10,800
+  and 16,500 (band-up under reduce motion); the grow route runs 3,600 ticks with three growths, a
+  set size 2 and the reduce-motion band-up. `PerfTour.s3_gate` reports `report.gate.s3`
+  (`growth_pass`: every growth window ≤ 50 ms; `draw_pass`: max draw calls ≤
+  `S3G36_MAX_DRAW_CALLS` 104) and the printed line appends " · S3G36 pass" or " · S3G36 FAIL: …".
+  `test_debug_panel` checks both routes' ticks and the verdict text.
+
+## 2026-10-24 · S3 T5.7: the look probe at sizes 3 and 4 (s3-view 15; S3G31, S3G32 M; PROPOSED; IMPLEMENTED)
+
+- **Scenes**: `lineup_s3`, `lineup_s4` and `hatch_band_up` join `ENDLESS_SCENES` and
+  `GROWTH_SCENES` (an omnivore, the AI frozen). The lineups stand at the band's cradle view point
+  (`cradle_view_point_tm`: (0, 18) tm at 3, (0, 11.25) at 4), with the spec's bodies, morsel items
+  and ghosts; they play `CARRION_SETTLE_FRAMES` (45), not `START_FRAMES` (30), so the morsel items
+  have grown in (0.6 s). `hatch_band_up` is size 2 at (0, 28.8) tm and shoots as `hatch`, adding
+  the old band's draw calls at 2.0 s.
+- **Readings**: the veil's threads (frames with and without `Threads`: ink, width, median CIE76,
+  neutral gap) and, at 4, each morsel item's rim (frames with and without the `__rim` MultiMeshes)
+  and the strip's preview. A near ghost's `cell_multiple` is now its larger side over the cell
+  (`test_ghosts`' measure): the lancer is tall and thin, 0.65 across and 1.65 high. S1's and S2's
+  ghosts read as before (their width is the larger side).
+- **The veil's threads ink (S3G32 M)**: the spec's outline (a 0.06 tm line, alpha 0.85 at its very
+  middle) read 0.5% of the threads' pixels within 15 degrees of the threat pink, because the line
+  blends with the navy at every pixel. The inked outline is now solid over its inner half and 0.08 tm
+  wide (`capsule_outline.gdshader` `smoothstep(0.5 w, w, ...)`, `OUTLINE_ALPHA` (0.6, 1.0),
+  `OUTLINE_W_TM` 0.08). In Forward+, the game's renderer, the spec's flat fill (alpha 0.10) then
+  blended to a purple wash (CIE76 about 20, hue about 300 degrees) over more than half the capsule
+  and the share fell to 26.7%. The fill is now 0.10 at the rim and fades to nothing on the axis
+  (`(d / r)^3`), so the whole stinging area still reads from its edge: 46.2% at size 3 in
+  Compatibility and 45.3% in Forward+, and the neutral outline at 4 stays 95 and 79 degrees off the
+  pink.
+- **Gates**: 21 rows, all pass in Compatibility (50 of 50 with S1's and S2's), each with its reading
+  in its `what`. S1's and S2's growth scenes read as at S2. The endless set (16 of 16) moved a little
+  (reef food gap 140.0, reef contrast 6.4, shed husk 164.4 and 92.3) and the arrow home's centre
+  reads L* 90.6 against 99.8 (bound 75); each `what` records it.
+- **Found, not fixed (look review)**: the near ghosts and giants draw no pixel above the probe's
+  change threshold at sizes 3 and 4 (largest change 6 of 255), as S2's faint-ghost item; and the
+  Compatibility renderer draws a band's fresh pieces and the cradle at frame 0 of the band-up
+  (P99 47.7), although their `GeometryInstance3D.transparency` is 1 at that draw (read at
+  `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
+  landmark at the screen's edge).

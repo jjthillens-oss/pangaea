@@ -10,6 +10,11 @@ extends RefCounted
 ##
 ## Asset records are not exported with the game (as PoolLayout notes), so where the records
 ## directory is absent (an export) the record halves of rules 9 and 10 are left to the tests.
+##
+## S3 (docs/s3/s3-interfaces.md 5.2 and 6.2, s3-build-plan.md 7.3): band-1 pieces. A piece's band is
+## 0 to MAX_KIT_BAND (markers -1), landmark.groups gives each band's models per group
+## {"0": [2, 2, 1, 1], "1": [...]}, and rules 5, 6 and 11 hold within each band. The file is written
+## by tools/kit/write_kit.py from the asset records.
 
 const DEFAULT_PATH := "res://game/data/placement_kit.json"
 const FILE_NAME := "placement_kit"
@@ -42,6 +47,7 @@ const MAX_SCALE_SPAN := 2.0     ## hi / lo
 const LANDMARK_SCALE := [0.9, 1.1]
 const LANDMARK_DRESSINGS := 3
 const GROUPS := 4
+const MAX_KIT_BAND := 1
 const MIN_PICKABLE_PER_CLASS := 2
 const MIN_COLLIDER_R := 0.6
 ## A scale ratio within this of a range's end counts as inside it: data written on a class edge (the
@@ -59,8 +65,10 @@ var load_problems := PackedStringArray()
 var classes := {}
 var anchor_radius_bu := 3.0
 var collide_radius_bu := 2.0
-## Models per landmark group, [2, 2, 1, 1] for band 0.
+## Models per landmark group, [2, 2, 1, 1] for band 0 (landmark_groups_by_band[0]).
 var landmark_groups: Array[int] = []
+## {int band -> Array[int]}: each band's models per landmark group, from landmark.groups.
+var landmark_groups_by_band := {}
 ## id -> record dict: the entry as read, with "band", "group" as ints, "scale" as [lo, hi] floats,
 ## "dressings" as [{id, tint, growth, scale}] and "colliders" as [{center: PackedFloat64Array, radius}].
 var assets := {}
@@ -97,9 +105,21 @@ static func from_dict(data: Variant) -> PlacementKit:
 	var landmark := WorldConfig.object_at(w, data, "landmark", LANDMARK_KEYS, problems)
 	kit.anchor_radius_bu = WorldConfig.number_at(w + ".landmark", landmark, "anchor_radius_bu", problems)
 	kit.collide_radius_bu = WorldConfig.number_at(w + ".landmark", landmark, "collide_radius_bu", problems)
-	var groups := WorldConfig.list_at(w + ".landmark", landmark, "groups", problems)
-	for i in groups.size():
-		kit.landmark_groups.append(int(WorldConfig.number_at(w + ".landmark.groups", {str(i): groups[i]}, str(i), problems, true)))
+	var raw_groups: Variant = landmark.get("groups", {})
+	if raw_groups is Dictionary:
+		for band in WorldConfig._sorted(raw_groups.keys()):
+			var gw := "%s.landmark.groups.%s" % [w, band]
+			if not str(band).is_valid_int():
+				problems.append("%s: a band must be a whole number" % gw)
+				continue
+			var counts: Array[int] = []
+			var groups := WorldConfig.list_at(w + ".landmark.groups", raw_groups, band, problems)
+			for i in groups.size():
+				counts.append(int(WorldConfig.number_at(gw, {str(i): groups[i]}, str(i), problems, true)))
+			kit.landmark_groups_by_band[int(band)] = counts
+	else:
+		problems.append("%s.landmark.groups: must be an object of bands, {\"0\": [2, 2, 1, 1]}" % w)
+	kit.landmark_groups.assign(kit.landmark_groups_by_band.get(0, []))
 	var raw_assets := WorldConfig.list_at(w, data, "assets", problems)
 	for i in raw_assets.size():
 		var entry := _read_asset("%s.assets[%d]" % [w, i], raw_assets[i], problems)
@@ -164,6 +184,17 @@ static func _read_asset(w: String, raw: Variant, problems: PackedStringArray) ->
 				colliders.append({"center": WorldConfig.pair_at(cw, c, "center", problems), "radius": WorldConfig.number_at(cw, c, "radius", problems)})
 			entry["colliders"] = colliders
 	return entry
+
+
+## The bands with at least one piece that is not a marker, ascending.
+func bands() -> PackedInt32Array:
+	var seen := {}
+	for a in _entries:
+		if a.kind != "marker" and int(a.band) >= 0 and int(a.band) <= MAX_KIT_BAND:
+			seen[int(a.band)] = true
+	var out := PackedInt32Array(seen.keys())
+	out.sort()
+	return out
 
 
 ## The footprint class of a slot radius in bu: "" when it lies outside every class.
@@ -234,8 +265,8 @@ func validate() -> PackedStringArray:
 		if not _matches(a.id, ID_PATTERN):
 			errors.append("%s.id: '%s' does not match %s" % [aw, a.id, ID_PATTERN])
 			continue
-		if (a.kind == "marker") != (a.band == -1) or (a.kind != "marker" and a.band != 0):
-			errors.append("%s.band: %d; band-0 content is band 0 and only markers (any band) are -1" % [aw, a.band])
+		if (a.kind == "marker") != (a.band == -1) or (a.kind != "marker" and (a.band < 0 or a.band > MAX_KIT_BAND)):
+			errors.append("%s.band: %d; content is band 0 to %d and only markers (any band) are -1" % [aw, a.band, MAX_KIT_BAND])
 			continue
 		# Rule 3: the scale range.
 		var lo: float = a.scale[0]
@@ -282,7 +313,8 @@ func validate() -> PackedStringArray:
 					errors.append("%s.group: %d is not in [0, %d)" % [aw, a.group, GROUPS])
 					groups_ok = false
 				else:
-					group_counts[a.group] = int(group_counts.get(a.group, 0)) + 1
+					var key := Vector2i(a.band, a.group)
+					group_counts[key] = int(group_counts.get(key, 0)) + 1
 				if a.dressings.size() != LANDMARK_DRESSINGS:
 					errors.append("%s.dressings: a landmark has exactly %d (%d)" % [aw, LANDMARK_DRESSINGS, a.dressings.size()])
 				for j in a.dressings.size():
@@ -291,9 +323,10 @@ func validate() -> PackedStringArray:
 						errors.append("%s.dressings[%d].scale: %s is outside the asset's scale %s" % [aw, j, s, a.scale])
 			"rare":
 				# Rule 6: one piece per rare kind, colliders a chunk arena takes.
-				if rare_kinds.has(a.rare_kind) or str(a.rare_kind).is_empty():
+				var rare_key := "%d/%s" % [a.band, a.rare_kind]
+				if rare_kinds.has(rare_key) or str(a.rare_kind).is_empty():
 					errors.append("%s.rare_kind: '%s' is empty or repeated in band %d" % [aw, a.rare_kind, a.band])
-				rare_kinds[a.rare_kind] = true
+				rare_kinds[rare_key] = true
 				if a.colliders.is_empty():
 					errors.append("%s.colliders: a set piece needs at least one" % aw)
 				for j in a.colliders.size():
@@ -308,24 +341,34 @@ func validate() -> PackedStringArray:
 		elif a.approved and a.placeholder:
 			errors.append("%s.approved: a placeholder is never approved" % aw)
 
-	# Rule 5: the band's landmark groups hold [2, 2, 1, 1] models.
+	# Rule 5: each band's landmark groups hold the models landmark.groups lists for it, and the list
+	# names only bands the kit has pieces for.
+	var kit_bands := bands()
 	if groups_ok:
-		var counts: Array[int] = []
-		for g in GROUPS:
-			counts.append(int(group_counts.get(g, 0)))
-		if landmark_groups.size() != GROUPS or counts != landmark_groups:
-			errors.append("%s.landmark.groups: band 0's landmarks per group are %s, not %s" % [w, counts, landmark_groups])
-	# Rule 11: coverage, and the two markers.
+		var group_bands := {}
+		for b in kit_bands:
+			group_bands[b] = true
+		for b in landmark_groups_by_band:
+			group_bands[b] = true
+		for b in WorldConfig._sorted(group_bands.keys()):
+			var counts: Array[int] = []
+			for g in GROUPS:
+				counts.append(int(group_counts.get(Vector2i(b, g), 0)))
+			var want: Array = landmark_groups_by_band.get(b, [])
+			if want.size() != GROUPS or counts != want:
+				errors.append("%s.landmark.groups: band %d's landmarks per group are %s, not %s" % [w, b, counts, want])
+	# Rule 11: coverage in each band, and the two markers.
 	if classes_ok:
-		for name in _class_names():
-			var span: Array = classes[name]
-			var covering := 0
-			for id in assets:
-				var a: Dictionary = assets[id]
-				if a.kind == "shell" and a.band == 0 and a.pickable and _covers(a, float(span[0])) and _covers(a, float(span[1])):
-					covering += 1
-			if covering < MIN_PICKABLE_PER_CLASS:
-				errors.append("%s.assets: %d pickable band-0 shells cover all of %s %s; it needs %d" % [w, covering, name, span, MIN_PICKABLE_PER_CLASS])
+		for b in kit_bands:
+			for name in _class_names():
+				var span: Array = classes[name]
+				var covering := 0
+				for id in assets:
+					var a: Dictionary = assets[id]
+					if a.kind == "shell" and a.band == b and a.pickable and _covers(a, float(span[0])) and _covers(a, float(span[1])):
+						covering += 1
+				if covering < MIN_PICKABLE_PER_CLASS:
+					errors.append("%s.assets: %d pickable band-%d shells cover all of %s %s; it needs %d" % [w, covering, b, name, span, MIN_PICKABLE_PER_CLASS])
 	for id in MARKERS:
 		if not (assets.has(id) and assets[id].kind == "marker"):
 			errors.append("%s.assets: the marker '%s' is missing" % [w, id])

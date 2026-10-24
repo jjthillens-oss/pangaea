@@ -145,6 +145,14 @@ var _last_refusal := {}    ## {"food_id", "reason", "touching", "at"}
 var _contact := {}         ## {"food_id", "since"}: the food being touched, and since when
 var _last_attack_refusal := {}   ## kind -> {"target", "reason", "at"}: the attack refusal throttle
 var _killer := ""          ## the creature whose hit on the cell landed last this tick
+## S3's sting rules (spine 5.9, D-101, D-119): no sting within this many ticks of a strike hit on the
+## cell, and no creature takes the token for as long after a sting.
+const STING_STRIKE_GAP_TICKS := 120
+## The last tick a creature's strike hit the cell, and the last tick a veil stung it (-NEVER: never).
+## Written to the snapshot only in the endless world at a size where a hazard can be live
+## (creatures.hazard_live), so the pool's goldens and S2's hashes hold (D-126, BP3-2).
+var last_strike_hit_tick := -CreatureBrain.NEVER
+var last_sting_tick := -CreatureBrain.NEVER
 ## Strikes on the cell that ended this tick without a hit, {"id", "species"}; dodged at step 11.
 var _dodges: Array[Dictionary] = []
 
@@ -262,6 +270,9 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	world.start(sim)
 	sim._start_growth(Growth.config_of(p_world.config), p_world.config.max_size_in_build)
 	if sim.growth != null:
+		for b in range(WorldConfig.band_of(p_world.config.max_size_in_build) + 1):
+			sim.growth.place_kinds_by_band[b] = p_world.place_kinds(b)   # D-133
+	if sim.growth != null:
 		sim.growth.restore(p_save, n)   # the meter and the ledger (D-74)
 	# The home block's starting carrion that lies within the food ring (absolute pairs).
 	for p: Array in p_world.home.carrion_initial:
@@ -372,7 +383,7 @@ func step(intent: SimIntent) -> void:
 		_metabolism(moved)
 	if creatures != null:
 		_creature_metabolism(creature_moved)
-	region.tick(DT)
+	region.tick(DT, tick)
 	plankton.tick(region, arena, tick, now())
 	carrion.tick(DT, now(), region, arena)
 	if creatures != null:
@@ -416,7 +427,8 @@ func step(intent: SimIntent) -> void:
 ##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
 ##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)
 ##   zone_empty {zone}; zone_regrown {zone}
-##   carrion_spawned {source, food_id, position}; carrion_expired {food_id, position}
+##   carrion_spawned {source, food_id, position, and S3's species and site for a morsel site's item};
+##   carrion_expired {food_id, position, and a reason when not rot: growth (S2), unloaded (S3)}
 ##   debug {command, ...}
 ## With creatures (M1 step 3), from the field and the brains (each with the creature's id):
 ##   creature_spawned {id, species, site, position, heading, debug}
@@ -427,7 +439,8 @@ func step(intent: SimIntent) -> void:
 ##   creature_recovered {id, target, outcome, position}; creature_fled {id, from, position}
 ## and from the sim: creature_ate {id, kind, food_id}; creature_died {id, species, cause, by, position, carcass}
 ##   hit {attacker, target, kind, damage, dealt, target_health, knockback, position} (every landed hit,
-##     either way; position is the target's); attack_refused {target, kind, reason} (the cell only,
+##     either way; position is the target's; a sting adds engaged, the token holders when it landed,
+##     sorted: event-only, BP3-4, BP3-19); attack_refused {target, kind, reason} (the cell only,
 ##     throttled, quiet reasons never); dodged {id, species} (a strike on the cell ended without a hit)
 func drain_events() -> Array[Dictionary]:
 	_take_field_events()
@@ -447,8 +460,13 @@ func snapshot() -> Dictionary:
 		plants.append({"id": item.id, "zone": item.zone, "position": _pair(item.position), "anchor": _pair(item.anchor)})
 	var meats := []
 	for item in carrion.items:
-		meats.append({"id": item.id, "position": _pair(item.position), "age": item.age, "energy": item.energy,
-			"source": item.source})
+		var meat := {"id": item.id, "position": _pair(item.position), "age": item.age, "energy": item.energy,
+			"source": item.source}
+		if item.has("species"):
+			meat["species"] = item.species
+		if item.has("site"):
+			meat["site"] = item.site
+		meats.append(meat)
 	var out := {
 		"tick": tick,
 		"alive_ticks": _alive_ticks,
@@ -481,6 +499,11 @@ func snapshot() -> Dictionary:
 		out["death_streak"] = death_streak
 	if world != null:
 		out["world"] = world.snapshot(self)
+		if creatures != null and creatures.hazard_live:
+			if last_strike_hit_tick != -CreatureBrain.NEVER:
+				out["last_strike_hit_tick"] = last_strike_hit_tick
+			if last_sting_tick != -CreatureBrain.NEVER:
+				out["last_sting_tick"] = last_sting_tick
 	return out
 
 
@@ -763,11 +786,16 @@ func debug_teleport_abs(x_am: float, y_am: float, heading: float = NAN) -> bool:
 ## Dev (endless, D-76): the world at size `n` (1 to the build top) round the living cell's absolute
 ## place now, by the teleport path (WorldStream.set_size_teleport): the remnants leave, the view set
 ## loads at size n with its food, the cell takes the clear point nearest its place, and the meter
-## starts again at size n (its paid lists from the ledger). Emits debug {command: "set_size", size}
-## (C-V9). False in the pool, while dead or waiting to respawn, or for a size outside the ladder.
+## starts again at size n (its paid lists from the ledger). A debug size change is a cut: the sting
+## rule's ticks start again (BP3-2). Emits debug {command: "set_size", size} (C-V9). False in the pool,
+## while dead or waiting to respawn, or for a size outside the ladder.
 func debug_set_size(n: int) -> bool:
 	if world == null or dead or respawn_pending or n < 1 or n > world.max_size:
 		return false
+	last_strike_hit_tick = -CreatureBrain.NEVER
+	last_sting_tick = -CreatureBrain.NEVER
+	if creatures != null:
+		creatures.token_closed_until = 0
 	world.set_size_teleport(self, n)
 	motion.place(_clear_point_near(Vector2.ZERO, phenotype.radius), motion.heading)
 	_sync_actor()
@@ -1311,6 +1339,7 @@ func _combat(swim: Dictionary) -> void:
 		_player_attacks(swim)
 	for c in striking:
 		_creature_strike(c, swim)
+	_hazard_stings()
 	_deaths()
 
 
@@ -1388,6 +1417,7 @@ func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
 		_killer = c.id
 		stats.hits_taken += 1
 		stats.damage_taken += dealt
+		last_strike_hit_tick = tick
 		CreatureBrain.on_strike_landed(c.brain, tick)
 		_take_field_events()
 		return
@@ -1410,11 +1440,56 @@ func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
 	_take_field_events()
 
 
+## Step 10c (S3, D-119, D-125): a veil's threads sting the cell they touch. Not while the cell is
+## dead, concealed or sheltered, within the cell's sting cooldown (the longest hazard's, D-101), while
+## a creature holds the token, or within STING_STRIKE_GAP_TICKS of a strike hit. The awake hazards in
+## (number, id) order; the first whose capsule (CreatureBrain.thread_capsule) touches the cell and
+## whose thread damage at its q is above 0 stings: a hit of kind "sting" from the nearest point of
+## its threads, pushing the cell off them sideways, and the token closes for the gap. A lethal sting
+## kills this tick (_deaths, with the veil's death_reason).
+func _hazard_stings() -> void:
+	if creatures == null or dead or is_concealed() or not state.is_alive():
+		return
+	var cd := species.hazard_cooldown_ticks()
+	if cd <= 0 or tick < last_sting_tick + cd or not creatures.engaged_on_player.is_empty() \
+			or tick < last_strike_hit_tick + STING_STRIKE_GAP_TICKS:
+		return
+	var me := motion.position
+	var cell_r := phenotype.radius
+	for c in creatures.awake():
+		if c.brain == null or c.brain.behavior != CreatureBrain.HAZARD or not c.state.is_alive():
+			continue
+		var th: Dictionary = c.brain.cfg.threads
+		var far := c.phenotype.radius + float(th.length_m) + float(th.radius_m) + cell_r
+		if me.distance_squared_to(c.motion.position) > far * far:
+			continue
+		var cap := CreatureBrain.thread_capsule(c.brain, c.motion.position, c.motion.heading, c.phenotype.radius)
+		var near := Geometry2D.get_closest_point_to_segment(me, cap.a, cap.b)
+		if me.distance_to(near) > float(cap.r) + cell_r:
+			continue
+		var dmg := Relationships.thread_damage(float(th.damage), float(creatures.record_of(c.species_id).get("q", 1.0)))
+		if dmg <= 0.0:
+			continue
+		var origin := Locomotion.MotionState.new(near, c.motion.heading + PI / 2.0)
+		# BP3-4: the sting carries who held the token at that moment (always none when the rule holds).
+		var engaged := Array(creatures.engaged_on_player)
+		engaged.sort()
+		var dealt := _apply_hit(c.id, origin, CreatureField.PLAYER_ID, motion, state, "sting", dmg, float(th.knockback),
+			{"engaged": engaged})
+		_killer = c.id
+		stats.hits_taken += 1
+		stats.damage_taken += dealt
+		last_sting_tick = tick
+		creatures.token_closed_until = tick + STING_STRIKE_GAP_TICKS
+		_take_field_events()
+		return
+
+
 ## One landed hit (steps 10a-c): the damage, a knockback of `knockback` m/s on the target away from
 ## the attacker, both speeds clamped to combat.max_speed_after_hit (the tunnelling bound, T10), and
-## the hit event. Returns the health taken.
+## the hit event (with `extra` merged in: a sting's "engaged", BP3-4). Returns the health taken.
 func _apply_hit(attacker_id: String, a: Locomotion.MotionState, target_id: String, t: Locomotion.MotionState,
-		t_state: ActorState, kind: String, damage: float, knockback: float) -> float:
+		t_state: ActorState, kind: String, damage: float, knockback: float, extra := {}) -> float:
 	var dealt := t_state.take_damage(damage)
 	var away := t.position - a.position
 	var dir := away / away.length() if away.length() > 1e-6 else Vector2.from_angle(a.heading)
@@ -1423,8 +1498,11 @@ func _apply_hit(attacker_id: String, a: Locomotion.MotionState, target_id: Strin
 	for m in [a, t]:
 		if m.velocity.length() > top:
 			m.velocity = m.velocity.normalized() * top
-	_emit({"type": "hit", "attacker": attacker_id, "target": target_id, "kind": kind, "damage": damage, "dealt": dealt,
-		"target_health": t_state.health, "knockback": knockback, "position": t.position})
+	var hit := {"type": "hit", "attacker": attacker_id, "target": target_id, "kind": kind, "damage": damage, "dealt": dealt,
+		"target_health": t_state.health, "knockback": knockback, "position": t.position}
+	if not extra.is_empty():
+		hit.merge(extra)
+	_emit(hit)
 	return dealt
 
 

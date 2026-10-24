@@ -13,7 +13,8 @@ extends RefCounted
 ##  3  no data creature within respawn_clear_m of the checkpoint (its edge, as rule 8 measures)
 ##  4  every creature_strike comes exactly its tell (at least 1.2 s) after the same creature's
 ##     creature_tell, in attack/tell on every tick between, along that tell's lane: the same heading,
-##     from within LANE_DRIFT_M of the lane's origin
+##     from within LANE_DRIFT_M of the lane's origin, unless the cell itself touched the creature in
+##     its tell (a cell leaning on it pushes it as far as it likes, and is in its reach anyway)
 ##  5  every creature's hit lands inside its own strike or glide, at most one per strike, and a hit
 ##     on the cell lands inside the lane its tell showed (grown by how far that strike started from it)
 ##  6  every chase ends within give-up plus one attack cycle of its start (a notice, a chase from
@@ -47,6 +48,25 @@ extends RefCounted
 ## 13  every position the sim stores (the explicit list of core 8.7) is under 256 tm long.
 ## 16  every sleeper is at least spawn_safe_m from the cell and out of its view.
 ##
+## S3 (D-141, BP3-4, BP3-20; s3-sim 3.12):
+##  3  at a landmark checkpoint (the run's last checkpoint change a checkpoint_moved of reason
+##     "landmark", until a growth moves it) only the creatures at q == 1 at the cell's size count.
+##  5  a hazard's sting is no strike: invariant 15 judges it.
+##  7  a hazard form: a hazard settled in DRIFT lies within 1.0 x q tm of its drift goal. It settles
+##     DRIFT_SETTLE_TICKS after it entered DRIFT, plus the ticks it needs to close the gap it entered
+##     with (past 1.0 x q) at rule 14 (f)'s margin: a site's spawn at home, a flee's end and a wake
+##     each leave it off its path, and it gains on the goal by no more than that margin.
+## 12  a morsel site's carrion_spawned is an M1-step event (at least spawn_safe_m from the cell and out
+##     of view, from the checkpoint too while dead); a carrion_expired "unloaded" off a growth tick is
+##     a block-step event (out of view); after every step morsel_claims() is the number of morsel-site
+##     entries holding an item (S3G17d).
+## 15  stings on the cell: (a) in any STING_WINDOW_TICKS at most floor(window / the least hazard
+##     cooldown) + 1, each dealing under max_single_hit_share x the smallest starting health; (b) no
+##     sting within STING_WINDOW_TICKS of a strike hit on the cell, either first; (c) no sting whose
+##     `engaged` (the token holders when it landed, BP3-4) is non-empty. A debug set_size clears the
+##     windows, as it clears the sim's own fields (BP3-20); a respawn does not.
+## Invariant 14 (test_threat_fuzz.broken_14) counts a sting from a q < 1 hazard as a hit on the cell.
+##
 ## Each event's positions are in the frame in force at its place in the list: a rebased changes it.
 ## The positions kept from before the step (where each creature looked, its lane, its stall ring) move
 ## with the tick's rebases, as the sim's own do.
@@ -75,6 +95,7 @@ const LANE_HEADING_SLACK := 1e-6         ## rad: a strike's heading is its lane'
 ## through the tell, but a body leaning on it can still push it: the four seeds' worst is 0.446 m
 ## (seed 402, the z_n rammer c_4 pushed by its neighbour c_5 through its puff); most are under 0.03.
 const LANE_DRIFT_M := 0.5
+const TELL_TOUCH_SLACK := 0.05           ## tm: the cell's disc this near a telling body counts as touching
 const LANE_HIT_SLACK := 1e-3             ## m: float32 positions
 ## The give-up fires on the exact tick it falls due, and a last tell may start the tick before.
 const CHASE_SLACK_TICKS := 2
@@ -85,6 +106,9 @@ const LOCAL_BOUND := 256.0
 const PLACE_RADIUS_TM := 4.0           ## core 8.7: a place's extent
 const ANCHOR_RADIUS_BU := 3.0          ## core 8.7: an anchor's extent, times the band's bu-to-tm
 ## Reasons a creature leaves that the player must not see happen.
+const STING_WINDOW_TICKS := 120         ## invariant 15's window and the sting/strike gap (D-126)
+const DRIFT_SETTLE_TICKS := 120         ## invariant 7's hazard form: ticks in DRIFT before it is held,
+                                        ## on its path at entry (see _drift_settle_ticks)
 const HIDDEN_REMOVALS := {"unloaded": "block", "evicted": "block", "stuck": "step", "growth": "block", "remnant_left": "step"}
 
 var bad := {}      ## invariant -> {"count": int, "first": String}, across runs
@@ -96,6 +120,8 @@ var _quad := PackedVector2Array()   ## the widest view's footprint round (0, 0)
 var _margin := 0.0                  ## look-ahead plus the spawn gap
 var _safe := 0.0
 var _endless := false                ## the sim checked last has a world (invariant 7's restated measure)
+var _sting_cap := 0                  ## invariant 15 (a): stings allowed in a window (0: no hazard species)
+var _sting_damage_limit := -1.0      ## invariant 15 (a): max_single_hit_share x the smallest starting health
 
 
 func _init(p_species: SpeciesCatalog, p_layout: PoolLayout) -> void:
@@ -105,6 +131,14 @@ func _init(p_species: SpeciesCatalog, p_layout: PoolLayout) -> void:
 	_quad = ViewFootprint.corners(Vector2.ZERO, layout.camera, float(layout.camera.zoom_max), float(fairness.spawn_view_aspect))
 	_margin = float(layout.camera.look_ahead_max) + float(fairness.spawn_view_margin_m)
 	_safe = float(fairness.spawn_safe_m)
+	var least := 0
+	for id: String in species.species:
+		var hz: Dictionary = species.species[id].get("hazard", {})
+		if not hz.is_empty():
+			var cd := CreatureBrain.ticks(float(hz.threads.cooldown_s))
+			least = cd if least == 0 else mini(least, cd)
+	if least > 0:
+		_sting_cap = STING_WINDOW_TICKS / least + 1
 	start_run()
 
 
@@ -113,11 +147,14 @@ func start_run() -> void:
 	counts = {"tells": 0, "strikes": 0, "hits_on_cell": 0, "hits_by_cell": 0, "give_ups": 0, "flees": 0,
 		"notices": 0, "deaths": 0, "creature_deaths": 0, "visits": 0, "drift": 0.0, "memory_checks": 0,
 		"checked": 0, "spawns": 0, "sleeps": 0, "wakes": 0, "loads": 0, "unloads": 0, "evictions": 0,
-		"zone_changes": 0, "rebases": 0, "cuts": 0, "growths": 0, "set_sizes": 0, "after_growth": 0}
+		"zone_changes": 0, "rebases": 0, "cuts": 0, "growths": 0, "set_sizes": 0, "after_growth": 0,
+		"stings": 0, "strike_hits_on_cell": 0, "morsel_spawns": 0, "morsel_unloads": 0, "drift_checks": 0}
 	k = {
 		"tell_at": {}, "tell_since": {}, "striking": {}, "strike_hits": {}, "engaged_from": {}, "noticed_at": {},
 		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {}, "lane": {}, "strike_lane": {},
 		"memory_checks": 0,
+		"stings": [], "strike_hit_ticks": [], "landmark_checkpoint": false, "drift_since": {},
+		"tell_touched": {},
 	}
 
 
@@ -174,8 +211,14 @@ func after(sim: PoolSim, events: Array[Dictionary], t: int, where: String, was: 
 	_endless = sim.world != null
 	if sim.world != null:
 		_follow_rebases(events, was)
+	for e in events:
+		if e.type == "checkpoint_moved":
+			k.landmark_checkpoint = str(e.get("reason", "")) == "landmark"
+		elif e.type == "grew":
+			k.landmark_checkpoint = false
 	if sim.creatures != null:
 		take_events(sim, events, t, where)
+		check_15(sim, events, t, where)
 		_check_bodies(sim, where)
 		_check_creatures(sim, t, where, was, k)
 		counts.memory_checks = k.memory_checks
@@ -248,6 +291,7 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 			"creature_tell":
 				counts.tells += 1
 				k.tell_at[e.id] = t
+				k.tell_touched.erase(e.id)
 				k.lane[e.id] = e.lane
 				var c := sim.creatures.find(e.id)
 				if c != null and c.brain != null:
@@ -280,6 +324,8 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 					counts.hits_by_cell += 1
 					k.hurt_by_cell[e.target] = t
 					continue
+				if str(e.get("kind", "")) == "sting":
+					continue   # a hazard's sting is no strike: invariant 15 judges it
 				if not k.striking.has(e.attacker) or int(k.strike_hits.get(e.attacker, 0)) > 0:
 					_fail(5, "%s: %s hit %s outside a strike or twice in one (%d before)" % [
 						where, e.attacker, e.target, int(k.strike_hits.get(e.attacker, 0))])
@@ -315,8 +361,11 @@ func _check_strike_lane(e: Dictionary, where: String, k: Dictionary, counts: Dic
 	if off > LANE_HEADING_SLACK:
 		_fail(4, "%s: %s struck %.2f degrees off the lane its tell showed" % [where, e.id, rad_to_deg(off)])
 	var drift: float = Vector2(e.position).distance_to(lane.origin)
-	counts.drift = maxf(float(counts.drift), drift)
-	if drift > LANE_DRIFT_M:
+	var touched := bool(k.tell_touched.get(e.id, false))
+	k.tell_touched.erase(e.id)
+	if not touched:
+		counts.drift = maxf(float(counts.drift), drift)
+	if drift > LANE_DRIFT_M and not touched:
 		_fail(4, "%s: %s struck from %.3f m off its lane's origin" % [where, e.id, drift])
 	k.strike_lane[e.id] = {"lane": lane, "drift": drift}
 
@@ -364,7 +413,8 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		var who := "%s (%s)" % [c.id, c.species_id]
 		_check_motion(who, c.motion, c.phenotype.radius, sim.arena, where)
 		_check_condition(who, c.state, where)
-		if not c.debug and checkpoint.distance_to(c.motion.position) - c.phenotype.radius < clear_m:
+		var counted: bool = not k.landmark_checkpoint or sim.species.q_of(c.species_id, sim.size()) == 1.0
+		if not c.debug and counted and checkpoint.distance_to(c.motion.position) - c.phenotype.radius < clear_m:
 			_fail(3, "%s: %s is %.2f m from the checkpoint" % [where, who, checkpoint.distance_to(c.motion.position) - c.phenotype.radius])
 		if c.brain == null:
 			continue
@@ -374,6 +424,9 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		if out > LEASH_SLACK_M:
 			_fail(2, "%s: %s in %s/%s is %.4f m past its leash" % [where, who, b.state, b.phase, out])
 		var label := "%s/%s" % [b.state, b.phase]
+		if label == "attack/tell" and not sim.dead and c.motion.position.distance_to(sim.motion.position) \
+				<= c.phenotype.radius + sim.phenotype.radius + TELL_TOUCH_SLACK:
+			k.tell_touched[c.id] = true
 		var was := str(k.label.get(c.id, ""))
 		# Invariant 4's other half: how long attack/tell has held without a break.
 		if label == "attack/tell":
@@ -383,6 +436,8 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 			k.tell_since.erase(c.id)
 		_check_engagement(c, t, where, was, k)
 		_check_stall(c, t, where, label, k)
+		if b.behavior == CreatureBrain.HAZARD:
+			_check_drift(sim, c, t, where, k)
 		var looked: Dictionary = before.looks.get(c.id, {})
 		if b.target == CreatureField.PLAYER_ID and not looked.is_empty() and looked.target != CreatureField.PLAYER_ID:
 			_check_sensed(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
@@ -390,6 +445,90 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		if not looked.is_empty() and not memory.is_empty() and memory != looked.memory:
 			_check_memory(c, t, where, looked, before.cell, sim.arena, k, sim.creatures)
 		k.label[c.id] = label
+
+
+## Invariant 7's hazard form (D-141): once settled in DRIFT (awake), a hazard lies within 1.0 x q tm
+## of CreatureBrain.drift_goal at the tick. k.drift_since holds each drifting hazard's [entry tick,
+## settle ticks]; the settle ticks are fixed at entry from the gap it entered with.
+func _check_drift(sim: PoolSim, c: CreatureField.Creature, t: int, where: String, k: Dictionary) -> void:
+	if c.asleep or c.brain.state != CreatureBrain.DRIFT:
+		k.drift_since.erase(c.id)
+		return
+	var q := sim.species.q_of(c.species_id, sim.size())
+	var off := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, t))
+	if not k.drift_since.has(c.id):
+		k.drift_since[c.id] = [t, _drift_settle_ticks(c, off - q)]
+	var since: Array = k.drift_since[c.id]
+	if t - int(since[0]) < int(since[1]):
+		return
+	counts.drift_checks += 1
+	if off > 1.0 * q:
+		_fail(7, "%s: %s (%s) %d ticks in drift is %.3f tm from its drift goal (bound %.3f)" % [where, c.id,
+			c.species_id, t - int(since[0]), off, q])
+
+
+## The ticks a hazard entering DRIFT `gap` tm past invariant 7's bound has before the bound holds:
+## DRIFT_SETTLE_TICKS plus the gap at rule 14 (f)'s margin, its wander speed less its drift goal's
+## top speed (2π r √(1/P0² + 1/P1²), the periods in seconds).
+static func _drift_settle_ticks(c: CreatureField.Creature, gap: float) -> int:
+	if gap <= 0.0:
+		return DRIFT_SETTLE_TICKS
+	var cfg: Dictionary = c.brain.cfg
+	var hz := float(CreatureBrain.TICKS_PER_SECOND)
+	var periods: Array = cfg.drift.period_ticks
+	var goal_speed := TAU * float(cfg.drift.radius_m) * sqrt(pow(hz / float(periods[0]), 2.0) + pow(hz / float(periods[1]), 2.0))
+	var margin := float(cfg.speeds.wander) * c.phenotype.speed - goal_speed
+	if margin <= 0.0:
+		return 1 << 30   # rule 14 (f) refuses such a species; never held
+	return DRIFT_SETTLE_TICKS + ceili(gap / margin * hz)
+
+
+## Invariant 15 on the tick's events (`t` the tick, `where` names it in a failure): the stings on the
+## cell and the strike hits on it, in order; a debug set_size clears both windows first (BP3-20).
+func check_15(sim: PoolSim, events: Array[Dictionary], t: int, where: String) -> void:
+	var stings: Array = k.stings
+	var strikes: Array = k.strike_hit_ticks
+	for e in events:
+		if e.type == "debug" and str(e.get("command", "")) == "set_size":
+			stings.clear()
+			strikes.clear()
+			continue
+		if e.type != "hit" or e.target != CreatureField.PLAYER_ID or e.attacker == CreatureField.PLAYER_ID:
+			continue
+		if str(e.get("kind", "")) != "sting":
+			counts.strike_hits_on_cell += 1
+			for s: int in stings:
+				if t - s < STING_WINDOW_TICKS:
+					_fail(15, "%s: (b) %s hit the cell %d ticks after a sting" % [where, e.attacker, t - s])
+					break
+			strikes.append(t)
+			continue
+		counts.stings += 1
+		if not (e.get("engaged", []) as Array).is_empty():
+			_fail(15, "%s: (c) %s stung the cell with %s engaged on it" % [where, e.attacker, e.engaged])
+		if float(e.damage) >= _damage_limit(sim):
+			_fail(15, "%s: (a) %s's sting dealt %.3f (limit %.3f)" % [where, e.attacker, float(e.damage), _damage_limit(sim)])
+		for s: int in strikes:
+			if t - s < STING_WINDOW_TICKS:
+				_fail(15, "%s: (b) %s stung the cell %d ticks after a strike hit" % [where, e.attacker, t - s])
+				break
+		stings.append(t)
+		var n := 0
+		for s: int in stings:
+			if t - s < STING_WINDOW_TICKS:
+				n += 1
+		if n > _sting_cap:
+			_fail(15, "%s: (a) %d stings in %d ticks (at most %d)" % [where, n, STING_WINDOW_TICKS, _sting_cap])
+	k.stings = stings.filter(func(s: int) -> bool: return t - s < STING_WINDOW_TICKS)
+	k.strike_hit_ticks = strikes.filter(func(s: int) -> bool: return t - s < STING_WINDOW_TICKS)
+
+
+## max_single_hit_share x the smallest starting health (rule 14 (b)'s limit), worked out once.
+func _damage_limit(sim: PoolSim) -> float:
+	if _sting_damage_limit < 0.0:
+		var bodies := SpeciesCatalog._starting_bodies(PartCatalog.load_from())
+		_sting_damage_limit = float(species.fairness.max_single_hit_share) * float(bodies.smallest_health)
+	return _sting_damage_limit
 
 
 ## Invariant 6: the engagement started at a notice, a chase from rest or the creature's own hit.
@@ -546,6 +685,13 @@ func _check_condition(who: String, s: ActorState, where: String) -> void:
 
 func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, was: Dictionary) -> void:
 	var w := sim.world
+	var held := 0
+	for id: String in w.morsel_sites:
+		if not str(w.morsel_sites[id].get("food_id", "")).is_empty():
+			held += 1
+	if w.morsel_claims() != held:
+		_fail(12, "%s: morsel_claims() is %d with %d morsel-site entries holding an item (S3G17d)" % [where,
+			w.morsel_claims(), held])
 	var k_now := w._tm_to_am
 	var k_was := float(was.k)
 	var now_origin := PackedFloat64Array([w.origin_x_am, w.origin_y_am])
@@ -623,6 +769,20 @@ func _check_12(sim: PoolSim, events: Array[Dictionary], _t: int, where: String, 
 			"carrion_expired":
 				if str(e.get("reason", "")) == "growth":
 					_out_of_view(_at(e.position, frame, fk), sim.carrion.item_radius * fk, block, "%s %s" % [tag, e.food_id])
+				elif str(e.get("reason", "")) == "unloaded" and not in_growth:
+					counts.morsel_unloads += 1
+					_out_of_view(_at(e.position, frame, fk), sim.carrion.item_radius * fk, block,
+						"%s %s (unloaded)" % [tag, e.food_id])
+			"carrion_spawned":
+				if str(e.get("source", "")) != "morsel_site":
+					continue
+				counts.morsel_spawns += 1
+				var item := sim.carrion.find(str(e.food_id))
+				var r_am := float(item.get("radius", sim.carrion.item_radius)) * fk
+				var at := _at(e.position, frame, fk)
+				_morsel_hidden(at, r_am, cell_after, "%s %s" % [tag, e.food_id])
+				if was.dead and sim.dead:
+					_morsel_hidden(at, r_am, _at(was.checkpoint, was.origin, k_was), "%s %s (by the checkpoint)" % [tag, e.food_id])
 			"chunk_loaded":
 				counts.loads += 1
 				for s in e.shells:
@@ -737,6 +897,17 @@ func _creature_hidden(sim: PoolSim, e: Dictionary, at: PackedFloat64Array, m: Pa
 		_fail(12, "%s %s %.2f tm from the cell" % [tag, id, rel.length()])
 	elif _in_view(rel, r_am / m[2]):
 		_fail(12, "%s %s in view at %s from the cell" % [tag, id, rel])
+
+
+## A morsel site's item (radius `r_am`, am, at `at`): at least spawn_safe_m from the measuring point
+## `m` and out of its view.
+func _morsel_hidden(at: PackedFloat64Array, r_am: float, m: PackedFloat64Array, tag: String) -> void:
+	counts.checked += 1
+	var rel := _rel(at, m)
+	if rel.length() < _safe:
+		_fail(12, "%s %.2f tm from the cell" % [tag, rel.length()])
+	elif _in_view(rel, r_am / m[2]):
+		_fail(12, "%s in view at %s from the cell" % [tag, rel])
 
 
 ## Something of radius `r_am` (am) at `at` (am) is out of the view of the measuring point `m`.

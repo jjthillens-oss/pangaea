@@ -15,7 +15,7 @@ and I), rendered in Blender from the finished models:
 
 The textures are sRGB with straight alpha. Their sources are the models' own .blend files; this
 script and assets/records/sprites/endless_sprites.json record how each was made.
-Run: python tools/blender/make_endless_sprites.py [--only ghosts,haze,silt,materials]
+Run: python tools/blender/make_endless_sprites.py [--only ghosts,haze,silt,materials] [--ids <model id>[,...]]
 """
 import argparse
 import json
@@ -36,7 +36,7 @@ RECORD = os.path.join(ld.ROOT, "assets", "records", "sprites", "endless_sprites.
 GENERATOR = "tools/blender/make_endless_sprites.py"
 
 GHOSTS = ["creature_lurker_body", "creature_elder_rammer_body", "creature_veil_body", "creature_warden_body",
-          "creature_deep_lurker_body", "creature_elder_warden_body",
+          "creature_deep_lurker_body", "creature_elder_warden_body", "creature_elder_ambush_body",
           # Size 5 and 6, from rough render-only models (tools/blender/make_endless_extras.py).
           "ghost_engulfer", "ghost_lancer"]
 GHOST_COLOR = "#8E9CC8"       # cool lavender-blue: far from the food (h 114) and threat (h 11) hues
@@ -108,9 +108,9 @@ def _save(name, px):
     return {"name": name, "path": f"assets/export/ambience/{name}.png", "size": [w, h]}
 
 
-def ghosts():
+def ghosts(ids=None):
     out = []
-    for asset_id in GHOSTS:
+    for asset_id in (a for a in GHOSTS if not ids or a in ids):
         meshes = _open(asset_id)
         mat = ld.principled("M_Ghost", ld.color(GHOST_COLOR), 0.6)
         _paint(meshes, mat)
@@ -124,9 +124,9 @@ def ghosts():
     return out
 
 
-def haze():
+def haze(ids=None):
     out = []
-    for asset_id in HAZE:
+    for asset_id in (a for a in HAZE if not ids or a in ids):
         meshes = _open(asset_id)
         mat = bpy.data.materials.new("M_Haze")
         mat.use_nodes = True
@@ -227,8 +227,10 @@ PARTS = {"ghosts": ghosts, "haze": haze, "silt": silt, "materials": materials, "
 def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", default="", help="comma-separated parts: " + ",".join(PARTS))
+    parser.add_argument("--ids", default="", help="comma-separated model ids: only these ghosts and haze (the rest keep their files)")
     args = parser.parse_args(argv)
     parts = [p for p in args.only.split(",") if p] or list(PARTS)
+    ids = {i for i in args.ids.split(",") if i}
     os.makedirs(OUT, exist_ok=True)
     os.makedirs(os.path.dirname(RECORD), exist_ok=True)
     record = {}
@@ -245,7 +247,7 @@ def main(argv):
     })
     items = {i["name"]: i for i in record.get("items", [])}
     for part in parts:
-        for item in PARTS[part]():
+        for item in (PARTS[part](ids) if part in ("ghosts", "haze") else PARTS[part]()):
             items[item["name"]] = item
     record["items"] = sorted(items.values(), key=lambda i: i["name"])
     with open(RECORD, "w") as f:

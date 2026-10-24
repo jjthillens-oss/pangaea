@@ -12,11 +12,17 @@ extends RefCounted
 const CAMERA_ASSUMED := {"zoom_max": 20.0, "pitch_deg": 55.0, "fov_deg": 45.0}
 ## species.fairness.spawn_view_aspect, the screen shape the same derivation assumes.
 const VIEW_ASPECT_ASSUMED := 2.4
+## tm: the landmark pass's clear point lies at most this far from the anchor (WorldStream's 8 rings of
+## 0.5 tm, BP3-8).
+const LANDMARK_SPIRAL_TM := 4.0
 
 var config: WorldConfig
 var tiles: TileCatalog
 var home: HomeBlock
 var kit: PlacementKit
+## S3 (D-94): {int band: CradleBlock}, the home tiles of each band from 1 to band_of(max_size_in_build)
+## that content.cradle names.
+var cradles := {}
 ## The M1 pool layout the home block builds on (its camera and carrion are checked here too).
 var layout: PoolLayout
 ## What WorldGen derives from the content alone (each tile's objects in each orientation, the kit's
@@ -33,17 +39,36 @@ static func load_from(config_path: String, p_layout: PoolLayout, species: Specie
 	world.config = WorldConfig.load_from(config_path)
 	var paths: Dictionary = world.config.content
 	world.kit = PlacementKit.load_from(str(paths.get("kit", "")))
-	world.tiles = TileCatalog.load_from(paths.get("tiles", {}))
+	# BP3-17: only the bands the build reaches load (a size-2 build ships band 1's files unread).
+	var top_band := WorldConfig.band_of(world.config.max_size_in_build)
+	var dirs := {}
+	var raw_dirs: Variant = paths.get("tiles", {})
+	if raw_dirs is Dictionary:
+		for band_key in raw_dirs:
+			if not (str(band_key).is_valid_int() and int(str(band_key)) > top_band):
+				dirs[band_key] = raw_dirs[band_key]
+	world.tiles = TileCatalog.load_from(dirs)
 	world.home = HomeBlock.load_from(str(paths.get("home", "")), world.layout, species)
+	for band in WorldConfig._sorted(world.config.cradle_paths.keys()):
+		if int(band) >= 1 and int(band) <= WorldConfig.band_of(world.config.max_size_in_build):
+			world.cradles[int(band)] = CradleBlock.load_from(world.config.cradle_paths[band])
+	world.tiles.morsel_max_radius_tm = float(world.config.growth.get("remnants", {}).get("morsel_max_radius_tm",
+		world.tiles.morsel_max_radius_tm))
 	return world
 
 
+## Band `band`'s cradle, or null (band 0, or none loaded).
+func cradle_of(band: int) -> CradleBlock:
+	return cradles.get(band)
+
+
 ## Problems across the content; empty when the world can run. Cheap checks only (at most 50 ms,
-## tests/test_world_content.gd), in this order: the world file, the kit, the tiles and the home block
-## at each size from size_start to max_size_in_build (D-70), then the checks across files: the fixed
-## rare kind, the interim carrion supply (C-13), the camera the rings assume, the local bound round a
-## held creature's reach (B-6) and the largest shell (BP-4). A world file that did not read gives its
-## own problems alone, since the content paths came from it.
+## tests/test_world_content.gd), in this order: the world file, the kit, the tiles at each size from
+## size_start to max_size_in_build (each size checks its band's tiles, D-70), the home block at band
+## 0's sizes and each cradle at its band's (S3), then the checks across files: each band's fixed rare
+## kind, the interim carrion supply (C-13), the camera the rings assume, the local bound round a held
+## creature's reach (B-6), the largest shell (BP-4) and the landmark pass's load bound (S3G42c). A
+## world file that did not read gives its own problems alone, since the content paths came from it.
 func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStringArray:
 	var out := config.validate()
 	if not config.load_problems.is_empty():
@@ -56,11 +81,21 @@ func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStrin
 	for n in sizes:
 		_add_new(out, seen, tiles.validate(species, kit, part_catalog, n))
 	for n in sizes:
-		_add_new(out, seen, home.validate(species, kit, part_catalog, n))
-	var kind := str(config.arrangement.fixed_rare.kind)
-	var kinds := tiles.rare_kinds(0)
-	if not kinds.has(kind):
-		out.append("world_cell.arrangement.fixed_rare.kind: '%s' is not a rare kind of band 0's tiles %s" % [kind, kinds])
+		if WorldConfig.band_of(n) == 0:
+			_add_new(out, seen, home.validate(species, kit, part_catalog, n))
+	for n in sizes:
+		var band := WorldConfig.band_of(n)
+		if band >= 1:
+			if cradle_of(band) == null:
+				_add_new(out, seen, PackedStringArray(["%s.content.cradle: band %d has no cradle" % [WorldConfig.FILE_NAME, band]]))
+			else:
+				_add_new(out, seen, cradle_of(band).validate(species, kit, part_catalog, n))
+	for band in range(WorldConfig.band_of(config.max_size_in_build) + 1):
+		var kind := str(config.arrangement_of(band).get("fixed_rare", {}).get("kind", ""))
+		var kinds := tiles.rare_kinds(band)
+		if not kinds.has(kind):
+			var key := "arrangement.fixed_rare.kind" if band == 0 else "arrangement.bands.%d.fixed_rare_kind" % band
+			out.append("world_cell.%s: '%s' is not a rare kind of band %d's tiles %s" % [key, kind, band, kinds])
 	# C-13: the interim supply draws its points over the zones in the region, which in endless mode
 	# depend on the route the cell swam, so the same seed would not give the same world.
 	if config.mode == "endless" and bool(layout.carrion.get("interim_supply", {}).get("enabled", false)):
@@ -88,6 +123,15 @@ func problems(part_catalog: PartCatalog, species: SpeciesCatalog) -> PackedStrin
 		if float(shell.radius_tm) > widest:
 			out.append("%s: BP-4: radius %.2f tm at size %d; every shell keeps <= chunk_tm - 2 x wedge_tm (%.2f tm)"
 				% [shell.where, shell.radius_tm, n, widest])
+	# S3G42c (BP3-8): a landmark found within landmark_find_tm has its clear point within 4 tm of the
+	# anchor, and every site that could reach near that point lies within D of it, so all of them are
+	# inside the load ring and the "unloaded" refusal never waits for long.
+	var find := float(config.growth.get("discovery", {}).get("landmark_find_tm", 0.0))
+	var top := config.max_size_in_build
+	var d := float(species.fairness.respawn_clear_m) + Relationships.PLAYER_RADIUS + 2.0 * reach_max_threat(top, species)
+	if bool(config.switches.get("landmark_return", false)) and not (find + LANDMARK_SPIRAL_TM + d < float(config.rings.load)):
+		out.append("%s.rings_tm.load: landmark_find_tm + %.0f + D at size %d (%.2f + %.0f + %.2f) must be below it (%.2f)"
+			% [WorldConfig.FILE_NAME, LANDMARK_SPIRAL_TM, top, find, LANDMARK_SPIRAL_TM, d, float(config.rings.load)])
 	return out
 
 
@@ -125,6 +169,14 @@ func reach_max(species: SpeciesCatalog) -> Dictionary:
 			"zone": zone_by_id.get(str(post.territory_zone), {})}
 		_take_reach(best, species, s.species, Vector2(s.x, s.y), float(s.heading), zone_by_id.get(s.territory_zone, {}), b,
 			s.sizes, sizes, "%s site '%s'" % [home.where, s.id])
+	for band in WorldConfig._sorted(cradles.keys()):
+		var t: Dictionary = cradles[band]._block()
+		for s in t.sites:
+			var post: Dictionary = s.post_b
+			var b := {} if post.is_empty() else {"home": TileCatalog._vec(post.home), "heading": float(post.heading),
+				"zone": TileCatalog._circle_of(TileCatalog._zone(t, str(post.territory_zone)))}
+			_take_reach(best, species, s.species, TileCatalog._vec(s.home), float(s.heading),
+				TileCatalog._circle_of(TileCatalog._zone(t, s.territory_zone)), b, s.sizes, sizes, "%s site '%s'" % [t.where, s.id])
 	return best
 
 
@@ -153,6 +205,33 @@ func _take_reach(best: Dictionary, species: SpeciesCatalog, kind: String, home_b
 			best.where = where
 
 
+## BP3-8: the farthest a threat's body reaches from its reach disc's centre at size n, in tm: the
+## largest reach radius plus body radius (SpeciesCatalog.radius_at) over every site of band_of(n)
+## (tiles and cradle) live at n whose species is the cell's size there (q_of 1). 0.0 with none.
+func reach_max_threat(n: int, species: SpeciesCatalog) -> float:
+	var best := {"radius_tm": 0.0, "where": ""}
+	var band := WorldConfig.band_of(n)
+	var blocks: Array[Dictionary] = []
+	for id in WorldConfig._sorted(tiles.tiles.keys()):
+		if int(tiles.tiles[id].band) == band:
+			blocks.append(tiles.tiles[id])
+	if cradle_of(band) != null:
+		blocks.append(cradle_of(band)._block())
+	for t in blocks:
+		for s in t.sites:
+			if not species.species.has(s.species) or species.q_of(s.species, n) != 1.0 or not (s.sizes as Array).has(n):
+				continue
+			var post: Dictionary = s.get("post_b", {})
+			var b := {} if post.is_empty() else {"home": TileCatalog._vec(post.home), "heading": float(post.heading),
+				"zone": TileCatalog._circle_of(TileCatalog._zone(t, str(post.territory_zone)))}
+			var one := {"radius_tm": 0.0, "where": ""}
+			_take_reach(one, species, s.species, TileCatalog._vec(s.home), float(s.heading),
+				TileCatalog._circle_of(TileCatalog._zone(t, s.territory_zone)), b, s.sizes, [n], "")
+			if float(one.radius_tm) > 0.0:
+				best.radius_tm = maxf(float(best.radius_tm), float(one.radius_tm) + species.radius_at(s.species, n))
+	return float(best.radius_tm)
+
+
 ## The widest collider circle at size n, in tm, over the tiles of n's band (TileCatalog.colliders_at:
 ## shells, the landmark collider, a set piece's colliders) and the home block (circles_at), and where
 ## it is: {radius_tm, where: "b0/reef_c 's2'"}; radius 0 and where "" with none.
@@ -168,7 +247,22 @@ func largest_shell(n: int) -> Dictionary:
 	if home.band == band:
 		for c in home.circles_at(n):
 			_take_shell(best, float(c.radius) * s, "%s '%s'" % [home.where, c.id])
+	if cradle_of(band) != null:
+		var block := cradle_of(band)._block()
+		for c in TileCatalog.colliders_at(block, TileCatalog.colliders_of(block, kit), n):
+			_take_shell(best, float(c.radius) * s, "%s '%s'" % [block.where, c.id])
 	return best
+
+
+## D-133: the kinds of place a band holds, sorted: its rare kinds and its landmark models.
+func place_kinds(band: int) -> PackedStringArray:
+	var out := Array(tiles.rare_kinds(band))
+	for group in 4:
+		for model in kit.landmarks(band, group):
+			if not out.has(model):
+				out.append(model)
+	out.sort()
+	return PackedStringArray(out)
 
 
 static func _take_shell(best: Dictionary, radius_tm: float, where: String) -> void:

@@ -39,6 +39,16 @@
       "kind": "near ghost"
     },
     {
+      "name": "T_Ghost_elder_ambush",
+      "path": "assets/export/ambience/T_Ghost_elder_ambush.png",
+      "size": [
+        512,
+        512
+      ],
+      "source": "assets/source/blender/creature_elder_ambush_body.blend",
+      "kind": "near ghost"
+    },
+    {
       "name": "T_Ghost_elder_rammer",
       "path": "assets/export/ambience/T_Ghost_elder_rammer.png",
       "size": [

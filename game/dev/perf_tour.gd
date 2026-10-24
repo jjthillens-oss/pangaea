@@ -24,12 +24,20 @@ extends Node
 ## TAG_WINDOW_S of them, and the G18 gate (gate()). The pool (--world=pool) has no swim route.
 ##
 ## S2 (docs/s2/s2-view.md 12.2; S2G26) puts growths on the swim route's way out (SWIM_GROWTH_STEPS:
-## a forced growth at 2:00, back to size 1 at 4:00, a growth under reduce camera motion at 4:10)
+## a forced growth at 2:00, back to size 1 (at 4:00, at 3:20 from S3), a growth under reduce camera
+## motion at 4:10)
 ## and adds `-- --perf-tour=grow` (GrowRoute, GROW_ROUTE_TICKS of a still cell, GROW_STEPS). Both
 ## record each growth_began with the reduce-motion setting then, report the frames within
 ## GROWTH_WINDOW_S of each (growth_windows()) as `growths`, and judge S2G26 (growth_gate(): no such
 ## frame over GROWTH_MAX_FRAME_MS) as gate.growth_pass; the printed line ends with the verdict. The
 ## setting is changed in the shared settings and put back, never saved.
+##
+## S3 (docs/s3/s3-view.md 16.1; S3G36) adds band-ups to both routes: on the swim route 2 to 3 at
+## 2:30, the debug panel's Go to cradle at 2:40, 3 to 4 at 3:00, back to size 1 at 3:20 (S2's later
+## steps keep their ticks) and a band-up under reduce motion at 4:35; the grow route runs
+## GROW_ROUTE_TICKS (60 s) through 1 to 4 and a band-up under reduce motion. The gate gains `s3`
+## (s3_gate(): every growth window within 50 ms and no frame over S3G36_MAX_DRAW_CALLS), and the
+## printed line ends with its verdict too.
 
 const DURATION_S := 90.0
 const WARM_UP_S := 2.0             ## the first frames (shader warm-up, fade-in) are not measured
@@ -59,12 +67,17 @@ const G18_LOW_1PCT_MS := 8.3       ## the slowest 1% of frames average at most t
 const G18_MAX_FRAME_MS := 50.0     ## ...no frame is longer...
 const G18_MAX_DRAW_CALLS := 96     ## ...no frame draws more...
 const G18_GPU_OVER_M1_MS := 2.0    ## ...and the GPU's P99 is at most the M1 tour's P99 plus this
-# S2's growths (s2-view 12.2; S2G26). Steps are [tick from the route's start, action], taken in order
-# at the first call at or after their tick: "grow" fills the ring and forces a growth, "size_1" goes
-# back to size 1, "reduce_on" and "reduce_off" turn reduce camera motion on and back.
-const SWIM_GROWTH_STEPS := [[7200, "grow"], [14400, "size_1"], [15000, "reduce_on"], [15000, "grow"], [15900, "reduce_off"]]
-const GROW_ROUTE_TICKS := 2400     ## 40 s still
-const GROW_STEPS := [[300, "grow"], [1200, "size_1"], [1500, "reduce_on"], [1500, "grow"], [2100, "reduce_off"]]
+# S2's growths (s2-view 12.2; S2G26) and S3's band-ups (s3-view 16.1; S3G36). Steps are [tick from
+# the route's start, action], taken in order at the first call at or after their tick: "grow" fills
+# the ring and forces a growth, "size_1" and "size_2" set the size, "go_to_cradle" runs the debug
+# panel's Go to cradle, "reduce_on" and "reduce_off" turn reduce camera motion on and back.
+const SWIM_GROWTH_STEPS := [[7200, "grow"], [9000, "grow"], [9600, "go_to_cradle"], [10800, "grow"], [12000, "size_1"],
+	[15000, "reduce_on"], [15000, "grow"], [15900, "reduce_off"],
+	[16500, "size_2"], [16500, "reduce_on"], [16500, "grow"], [17100, "reduce_off"]]
+const GROW_ROUTE_TICKS := 3600     ## 60 s still
+const GROW_STEPS := [[300, "grow"], [900, "grow"], [1500, "grow"], [2100, "size_2"], [2400, "reduce_on"], [2400, "grow"],
+	[3000, "reduce_off"]]
+const S3G36_MAX_DRAW_CALLS := 104  ## S3G36: no frame of a route draws more
 const REDUCE_MOTION := "accessibility/reduce_camera_motion"
 const GROWTH_WINDOW_S := 2.5       ## the frames this near a growth, either side, are its window
 const GROWTH_MAX_FRAME_MS := 50.0  ## S2G26: no frame in a growth's window is longer
@@ -77,6 +90,8 @@ class GrowthSteps:
 
 	var steps: Array
 	var settings: SettingsService
+	## Runs Go to cradle (the tour sets the debug panel's run); with none the step does nothing.
+	var go_to_cradle := Callable()
 	var taken := 0                      ## how many steps have run
 	var _reduce_before := false
 
@@ -95,6 +110,11 @@ class GrowthSteps:
 					sim.debug_force_growth()
 				"size_1":
 					sim.debug_set_size(1)
+				"size_2":
+					sim.debug_set_size(2)
+				"go_to_cradle":
+					if go_to_cradle.is_valid():
+						go_to_cradle.call()
 				"reduce_on":
 					_reduce_before = settings.reduce_camera_motion()
 					settings.set_value(REDUCE_MOTION, true)
@@ -337,6 +357,23 @@ static func growth_verdict(g: Dictionary) -> String:
 	return " · S2G26 pass" if g.growth_pass else " · S2G26 FAIL: %s" % g.growth_failed[0]
 
 
+## S3G36 on a route: {"growth_pass" (every growth window's longest frame at most
+## GROWTH_MAX_FRAME_MS, with a growth), "draw_pass" (max_draw_calls at most S3G36_MAX_DRAW_CALLS),
+## "failed": [which], "pass"}.
+static func s3_gate(windows: Array, max_draw_calls: int) -> Dictionary:
+	var growth := growth_gate(windows)
+	var failed: Array = growth.growth_failed.duplicate()
+	if max_draw_calls > S3G36_MAX_DRAW_CALLS:
+		failed.append("draw calls %d > %d" % [max_draw_calls, S3G36_MAX_DRAW_CALLS])
+	return {"growth_pass": growth.growth_pass, "draw_pass": max_draw_calls <= S3G36_MAX_DRAW_CALLS, "failed": failed,
+		"pass": failed.is_empty()}
+
+
+## The verdict the printed line ends with: " · S3G36 pass", or " · S3G36 FAIL: " and the first failure.
+static func s3_verdict(s3: Dictionary) -> String:
+	return " · S3G36 pass" if s3.pass else " · S3G36 FAIL: %s" % s3.failed[0]
+
+
 ## G18 on the swim route: {"low_1pct_ms", "max_frame_ms", "max_draw_calls", "gpu_p99_ms",
 ## "gpu_m1_p99_ms", "failed": [which], "pass"}. `report` is a swim report so far (summarize's
 ## fields and max_draw_calls); `m1_gpu_p99_ms` is the M1 tour's GPU P99 on the same machine, or a
@@ -386,6 +423,10 @@ func _begin() -> void:
 			_route = SwimRoute.new()
 		"grow":
 			_route = GrowRoute.new()
+	if _route != null:
+		_route.growth_steps.go_to_cradle = func() -> void:
+			if main.debug_panel != null:
+				main.debug_panel.run("go_to_cradle")
 	main.intent_provider = _route if _route != null else load(BOT_PATH).new()
 	var seed_value: int = main.flags.seed_value if main.flags.seed_value >= 0 else SEED
 	var result: Dictionary = main.start_new(BODY, seed_value)
@@ -625,14 +666,14 @@ func _finish() -> void:
 	if _route_name == "swim":
 		line += " · G18 pass" if report.gate.pass else " · G18 FAIL: %s" % "; ".join(report.gate.failed)
 	if _route != null:
-		line += growth_verdict(report.gate)
+		line += growth_verdict(report.gate) + s3_verdict(report.gate.s3)
 	print(line)
 	main.get_tree().quit(0)
 
 
 ## The route's fields (S1 section 9, S2 12.2): the route, its ticks and the out leg's distance, the
 ## world's streaming, the frame maxima, the long frames, the growths' windows, and the gate: on the
-## swim route G18 against this machine's M1 tour, on both S2G26 (growth_pass).
+## swim route G18 against this machine's M1 tour, on both S2G26 (growth_pass) and S3G36 (s3).
 func _add_route_fields(report: Dictionary) -> void:
 	var w: WorldStream = main.pool.sim.world
 	var windows := growth_windows(_frames, _growths)
@@ -648,6 +689,7 @@ func _add_route_fields(report: Dictionary) -> void:
 	report.gate = gate(report, m1_gpu_p99_ms("%s/perf_%s.json" % [REPORT_DIR, BuildInfo.build_id().validate_filename()])) \
 		if _route_name == "swim" else {}
 	report.gate.merge(growth_gate(windows))
+	report.gate.s3 = s3_gate(windows, int(report.get("max_draw_calls", 0)))
 
 
 ## The GPU P99 in the M1 tour's report at `path` (this machine and build's perf_<build>.json), or
