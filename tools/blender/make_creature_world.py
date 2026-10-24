@@ -77,7 +77,8 @@ CARD_PAIRS = 120         # crossed pairs of quads, 4 triangles a pair
 CARD_SIZE = (0.16, 0.22)   # a pair's length and width, metres
 CARD_LEAN = (0.6, 1.3)     # how much of world up is added to the surface normal to give each pair's axis
 CARD_SINK = 0.035        # the base of each pair sits this far under the core's surface
-CARD_Z_MIN = -0.6        # cards cover the clump above this unit-sphere height; lower ones lean up, clear of the ground
+CARD_Z_MIN = -0.8        # cards cover the clump above this unit-sphere height; lower ones lean up, clear of the ground
+CARD_Z_FLOOR = 0.06      # a pair whose lowest corner would come under this is lifted to it, so the bare skirt stays covered
 PAD_R = 1.0              # the editor pad: unit radius, the scene scales it (s, 1, s) to the body
 PAD_T = 0.035            # thickness under the top face (the scene never scales y, so this stays 3.5 cm)
 PAD_RIM_H = 0.012        # the rim stands this far above the top face
@@ -126,8 +127,9 @@ def _lerp_rgb(a, b, t):
 def turf_tile(rng):
     """Sage turf: soft tuft crowns of mixed sizes (wrapped Voronoi domes, each its own shade) over a mottled
     ground, with fine blade streaks that gather on the crowns. Lighter on the crowns, darker between. The colour
-    is a muted sage (CIELAB hue 150 to 155, chroma about 22), the dry variation and the sheen come from the field
-    shader, so the field reads as meadow rather than water."""
+    is a dull, darkish sage (CIELAB hue 145 to 146, chroma 18 to 20, L 36 to 54): the stage's blue sky ambient
+    and fog push whatever is authored about 15 degrees toward cyan and lighten it, so the tile is authored greyer
+    and darker than the meadow it should read as. The dry variation comes from the field shader."""
     cells = 110
     d1, _, idx = mm._voronoi(rng, cells)
     shade = rng.uniform(0.0, 1.0, cells)[idx]                  # per-tuft, seamless because the cells wrap
@@ -138,7 +140,7 @@ def turf_tile(rng):
     blades = mm._norm(mm._periodic_noise(rng, [36, 64, 90, 128], [0.5, 0.35, 0.25, 0.2]))
     h = 0.5 * crown + 0.3 * ground + 0.2 * blades * (0.5 + 0.5 * crown)
     light = np.clip(0.38 * crown * (0.7 + 0.3 * shade) + 0.3 * ground + 0.32 * blades, 0.0, 1.0)
-    rgb = _lerp_rgb(_srgb("#355C45"), _srgb("#6F9A7A"), light)
+    rgb = _lerp_rgb(_srgb("#425B44"), _srgb("#6A896D"), light)
     rgb = rgb * (1.0 + 0.16 * (shade - 0.5) * crown)[..., None]
     return h, rgb, 1.1
 
@@ -453,14 +455,18 @@ def _leaf_cards(clumps, rng):
         size = rng.uniform(*CARD_SIZE)
         variant = rng.randrange(4)
         u0, v0 = (variant % 2) * 0.5, 0.5 - (variant // 2) * 0.5     # the atlas's top row is the high v half
+        pair = []
         for w in (w1, axis.cross(w1).normalized()):
             half = w * (size * 0.5)
             tip = base + axis * size
-            i = len(verts)
-            verts.extend([tuple(base - half), tuple(base + half), tuple(tip + half), tuple(tip - half)])
-            faces.append((i, i + 1, i + 2, i + 3))
+            pair.append([base - half, base + half, tip + half, tip - half])
             ua, ub = (u0, u0 + 0.5) if rng.random() < 0.5 else (u0 + 0.5, u0)
             uvs.extend([(ua, v0), (ub, v0), (ub, v0 + 0.5), (ua, v0 + 0.5)])
+        lift = max(0.0, CARD_Z_FLOOR - min(v.z for quad in pair for v in quad))   # the lowest pairs ride up a little
+        for quad in pair:
+            i = len(verts)
+            verts.extend([(v.x, v.y, v.z + lift) for v in quad])
+            faces.append((i, i + 1, i + 2, i + 3))
     return verts, faces, uvs
 
 
@@ -673,12 +679,12 @@ def build_editor_room():
     radial = pad.vmath("LENGTH", pad.vmath("MULTIPLY", pad.pos, (1.0, 1.0, 0.0)))        # radius in the face plane
     spin = pad.noise(1.0, 2.0, vector=pad.vmath("MULTIPLY", radial, (70.0, 70.0, 70.0)))   # concentric brushed streaks, about 1.5 cm
     grain = pad.noise(40.0, 2.0)
-    pad.bump(pad.math("ADD", pad.math("MULTIPLY", spin, 0.7), pad.math("MULTIPLY", grain, 0.3)), 0.2, 0.0012)
+    pad.bump(pad.math("ADD", pad.math("MULTIPLY", spin, 0.7), pad.math("MULTIPLY", grain, 0.3)), 0.2, 0.006)
     pad_fac = pad.math("ADD", pad.math("MULTIPLY", pad.remap(spin, 0.3, 0.7), 0.65), pad.math("MULTIPLY", grain, 0.35), clamp=True)
     rim = sf.Shader("M_EditorRimProc")
     rim_r = rim.vmath("LENGTH", rim.vmath("MULTIPLY", rim.pos, (1.0, 1.0, 0.0)))
     brush = rim.noise(1.0, 2.0, vector=rim.vmath("MULTIPLY", rim_r, (150.0, 150.0, 150.0)))
-    rim.bump(brush, 0.3, 0.0008)
+    rim.bump(brush, 0.3, 0.004)
     groove = sf.Shader("M_EditorGrooveProc")
     dust = groove.noise(60.0, 2.0)
     mats = [pad.out(cp._grey(pad, pad_fac, 0.8), pad.remap(grain, 0.0, 1.0, 0.47, 0.56)),
@@ -841,6 +847,8 @@ def map_materials():
     for name in ("T_CreatureField_Turf_Normal", "T_CreatureField_Earth_Normal"):
         _set_import_param(os.path.join(TILE_DIR, f"{name}.png.import"), "compress/normal_map", 1)
         print("normal map:", name)
+    _set_import_param(os.path.join(CARD_DIR, f"{CARD_ATLAS}.png.import"), "mipmaps/generate", "true")   # as the extracted copy has
+    print("mipmaps:", CARD_ATLAS)
 
 
 # asset id -> (builder, triangle budget)

@@ -21,7 +21,7 @@ uniform float edge_break : hint_range(0.0, 2.0) = 1.0;    // how much the turf's
 uniform float clearing_r = 7.5;         // the nest's bare floor, metres from the origin
 uniform float clearing_soft = 3.0;      // metres over which the clearing fades into the turf
 uniform vec3 turf_tint : source_color = vec3(1.0);
-uniform vec3 turf_dry_tint = vec3(1.08, 1.05, 0.9);       // a linear multiplier where the macro noise dries the turf
+uniform vec3 turf_dry_tint = vec3(1.10, 1.07, 0.98);      // a linear multiplier where the macro noise dries the turf (keeps the hue 25 degrees off the food green)
 uniform float dry_amount : hint_range(0.0, 1.0) = 1.0;
 uniform vec3 earth_tint : source_color = vec3(1.0);
 uniform float turf_roughness : hint_range(0.0, 1.0) = 1.0;
@@ -44,8 +44,8 @@ void vertex() {
 
 void fragment() {
 	vec2 uv = world_pos.xz / tile_m;
-	vec3 turf = two_scale(turf_albedo, uv).rgb * 1.08;         // the even mix of two samples sits a little dark
-	vec3 earth = two_scale(earth_albedo, uv).rgb * 1.08;
+	vec3 turf = two_scale(turf_albedo, uv).rgb;
+	vec3 earth = two_scale(earth_albedo, uv).rgb;
 	float mask = texture(patch_mask, world_pos.xz / patch_m).r;
 	float t = smoothstep(patch_low, patch_high, mask);
 	float clearing = 1.0 - smoothstep(clearing_r, clearing_r + clearing_soft, length(world_pos.xz));
