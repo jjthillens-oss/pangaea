@@ -39,6 +39,11 @@ func _init() -> void:
 		_check(FileAccess.get_file_as_string(path) == image, "committed SVG matches renderer")
 	var malformed := TreeModel.load_save("res://fixtures/malformed.json")
 	_check(not malformed["ok"] and malformed["error"].contains("Missing save field"), "malformed save rejected clearly")
+	var long_run: Dictionary = TreeModel.load_save("res://fixtures/long_run_v2.json")
+	if long_run["ok"]:
+		var long_nodes: Array = TreeModel.timeline(long_run["save"])["nodes"]
+		_check(long_nodes.size() == 25, "long fixture has founding plus 24 adaptations")
+		_check(TreeModel.svg(TreeModel.timeline(long_run["save"]), long_run["save"]).count('class="event-node"') == 25, "long SVG has one node per event")
 	var fresh: Dictionary = TreeModel.load_save("res://fixtures/fresh_v2.json")
 	if fresh["ok"]:
 		var no_history: Dictionary = fresh["save"].duplicate(true)
