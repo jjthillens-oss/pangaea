@@ -5,7 +5,8 @@ extends Control
 ## tiles grouped by category with each part's model as the icon, adds a part where it fits; the rim
 ## picks a part and drags it round the body; the selected part can be mirrored, resized, upgraded
 ## (S4.5 part levels) or removed; undo and redo step through the edits. The 3D preview draws the
-## working body as the pool will, and the stat lines show each number before and after. Mate commits
+## working body as the pool will, and the stat lines show each number before and after; Test drive
+## swims it round a small empty dish (TestPool, IB-03) and comes back unchanged. Mate commits
 ## through Lineage.reproduce (the save's genome becomes the child, its points pay the cost); Back
 ## leaves the body as it was. Either way `closed` reports whether a new generation was born.
 ##
@@ -65,6 +66,7 @@ var _upgrade: Button
 var _selected_label: Label
 var _part_buttons: Array[Button] = []
 var _part_info: Label
+var _test_pool: TestPool
 
 
 func _init() -> void:
@@ -253,6 +255,18 @@ func _refresh() -> void:
 		_stats.add_child(value)
 
 
+## Swims the working body round the test dish (IB-03); Back returns here with nothing changed.
+func test_drive() -> void:
+	if session == null:
+		return
+	_test_pool.start(session.working, session.preview().phenotype)
+
+
+func _on_test_pool_left() -> void:
+	if is_inside_tree():
+		_mate.grab_focus()
+
+
 ## Names the selected part and its level, and prices its next level on the Upgrade button.
 func _show_selected() -> void:
 	var part := _part(selected)
@@ -389,10 +403,14 @@ func _build() -> void:
 	_points = Label.new()
 	_points.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(_points)
+	_button(bottom, "Test drive", test_drive).name = "TestDrive"
 	_undo = _button(bottom, "Undo", undo)
 	_redo = _button(bottom, "Redo", redo)
 	_button(bottom, "Back", cancel)
 	_mate = _button(bottom, "Mate", commit)
+	_test_pool = TestPool.new()
+	_test_pool.left.connect(_on_test_pool_left)
+	add_child(_test_pool)   # last, so it covers the editor while it is shown
 
 
 ## The palette's groups, Spore's way: [heading, [part type ids]] by category in CATEGORIES order,
@@ -445,7 +463,7 @@ func _button(parent: Control, label: String, action: Callable) -> Button:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not visible:
+	if not visible or _test_pool.visible:
 		return
 	if event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()
