@@ -10,6 +10,9 @@ const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
 const Yardstick := preload("res://tests/cost_yardstick.gd")
+const Scenarios := preload("res://tests/m1_scenarios.gd")
+## The two-post fixture's reader (tests/fixtures/creatures_posts_test.json).
+const Habits := preload("res://tests/test_habits.gd")
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
 const DT := PoolSim.DT
@@ -54,7 +57,11 @@ const PERTURBATIONS: PackedStringArray = ["creature position.x by one float32 st
 	"creature heading", "creature health", "creature energy", "a cooldown", "phase_tick", "target", "lock_heading",
 	"a seen position", "an ignore entry", "landed_on", "the brain RNG", "the field RNG", "a queue at_tick",
 	"engaged_on_player", "the AI frozen switch", "the hidden switch", "the cell's death", "the shelter's end",
-	"the death streak"]
+	"the death streak", "fear_of", "two posts", "post", "post_since"]
+## creatures_m1.json's relationships block with every rule on (spine 4.2; S2 plan B.6).
+const RELATIONSHIPS_ON := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
+	"outgrown_hazards": true}, "prey_share": 1.0, "intruder_max_radius_share": 1.2, "fear_radius_share": 1.25,
+	"tolerance": 1e-6}
 
 var catalog: PartCatalog
 var fixture: PoolLayout
@@ -97,9 +104,15 @@ func _plain_sim(body: String, seed_value: int, p_layout: PoolLayout) -> PoolSim:
 
 ## A creature placed at `at` facing `heading`, settled (it may notice from its first think), at
 ## `energy_share` of its capacity when given (below its hungry share it hunts or forages).
-func _creature(sim: PoolSim, species_id: String, at: Vector2, heading: float, energy_share := -1.0) -> CreatureField.Creature:
+## With `posts` (S2G4) the creature is a size-2 species at its entry size (the field drawn at size 2,
+## q = 1) given those two posts, so its leash disc is their union.
+func _creature(sim: PoolSim, species_id: String, at: Vector2, heading: float, energy_share := -1.0, posts := []) -> CreatureField.Creature:
+	if not posts.is_empty():
+		sim.creatures.set_size(sim.species.entry_size(species_id))
 	var c := sim.creatures.spawn_at(species_id, at, heading, "", sim.tick, true)
 	check(c != null, "a %s placed at %s" % [species_id, at])
+	if not posts.is_empty():
+		CreatureBrain.set_posts(c.brain, posts)
 	c.brain.ignore_all_until = 0
 	if energy_share >= 0.0:
 		c.state.energy = c.state.energy_capacity * energy_share
@@ -143,12 +156,12 @@ func _creature_json(sim: PoolSim) -> String:
 ## tick), "tell_tick", "reacted_at", "turn" (degrees from the cell's heading to the dodge at the
 ## reaction; NAN without one), "events"}.
 func _strike(species_id: String, body: String, d: float, h: float, throttle: float, starving: bool, react: int,
-		far := false) -> Dictionary:
-	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h)
+		far := false, posts := []) -> Dictionary:
+	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h, null, _species_for(posts))
 	if starving:
 		sim.debug_set_energy(0.0)
 	sim.motion.velocity = Vector2.from_angle(h) * sim.phenotype.speed * sim.state.speed_multiplier() * throttle
-	var c := _creature(sim, species_id, STRIKE_ORIGIN, 0.0)
+	var c := _creature(sim, species_id, STRIKE_ORIGIN, 0.0, -1.0, posts)
 	_begin_tell(sim, c)
 	var swim_on := SimIntent.new(Vector2.from_angle(h) * throttle)
 	var bot = EvadeBot.new()
@@ -233,7 +246,7 @@ static func _sector_gap(d: float, th: float, r: float, a: float) -> float:
 ## shorter turn, at most 90 degrees). Returns {"body/base/fed" -> {"hits": [heading index...],
 ## "clear": min clearance, "clear_out": min clearance outside head-on, "max_turn": the dodge's
 ## largest turn in degrees}}, and checks the reaction came exactly 24 ticks after every tell.
-func _grid(species_id: String, dists: Array) -> Dictionary:
+func _grid(species_id: String, dists: Array, posts := []) -> Dictionary:
 	var cells := {}
 	var late := 0
 	for body in BODIES:
@@ -242,7 +255,8 @@ func _grid(species_id: String, dists: Array) -> Dictionary:
 				var cell := {"hits": [], "clear": INF, "clear_out": INF, "max_turn": 0.0, "runs": 0}
 				for d in dists:
 					for k in 12:
-						var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0 if base == "still" else GRAZE, starving, EvadeBot.REACTION_TICKS)
+						var r := _strike(species_id, body, d, k * TAU / 12.0, 0.0 if base == "still" else GRAZE, starving, EvadeBot.REACTION_TICKS,
+							false, posts)
 						cell.runs += 1
 						if r.reacted_at != int(r.tell_tick) + EvadeBot.REACTION_TICKS:
 							late += 1
@@ -322,7 +336,11 @@ func test_a_lunge_is_dodged_by_swimming_out_of_its_line_on_the_side_the_cell_fac
 	# S5 lunge grid (plan section 18 #2): bounds from the probe in section 0. EvadeBot dodges on the
 	# side the cell faces, a turn of at most 90 degrees (F2). The slow tests below add every 5 degrees
 	# of the head-on sector and measure the side behind the cell.
-	var cells := _grid("ambush_hunter", LUNGE_DISTS)
+	_check_lunge_grid(_grid("ambush_hunter", LUNGE_DISTS))
+
+
+## The lunge grid's bounds (plan section 18 #2), for the ambush hunter and (S2G4) the Lurker.
+func _check_lunge_grid(cells: Dictionary) -> void:
 	for cell_key in cells:
 		check(float(cells[cell_key].max_turn) <= PROMISED_TURN_DEG + 1e-3,
 			"the dodge turns at most %d degrees: %s" % [PROMISED_TURN_DEG, _cell_text(cells, cell_key)])
@@ -345,7 +363,11 @@ func test_a_lunge_is_dodged_by_swimming_out_of_its_line_on_the_side_the_cell_fac
 func test_a_charge_is_dodged_by_swimming_out_of_its_line_on_the_side_the_cell_faces_0_4_s_after_the_puff_starts() -> void:
 	# S5 charge grid (plan section 18 #3), inside the rammer's territory, dodging on the side the
 	# cell faces (F2).
-	var cells := _grid("rammer", CHARGE_DISTS)
+	_check_charge_grid(_grid("rammer", CHARGE_DISTS))
+
+
+## The charge grid's bounds (plan section 18 #3), for the rammer and (S2G4) the elder rammer.
+func _check_charge_grid(cells: Dictionary) -> void:
 	for cell_key in cells:
 		check(float(cells[cell_key].max_turn) <= PROMISED_TURN_DEG + 1e-3,
 			"the dodge turns at most %d degrees: %s" % [PROMISED_TURN_DEG, _cell_text(cells, cell_key)])
@@ -538,54 +560,62 @@ func _natural_strike(species_id: String, body: String, h: float, throttle: float
 
 func test_a_cell_swimming_straight_away_outpaces_a_pursuer_when_fed_and_is_never_hit_when_starving() -> void:
 	# S6 escape (plan #5, F3): the creature starts 4 m behind the cell, already pursuing it.
-	var slowest_fed: float = SpeciesCatalog._starting_bodies(catalog).slowest_fed
 	for species_id in ["ambush_hunter", "rammer"]:
-		for body in BODIES:
-			for starving in [false, true]:
-				var start := Vector2(-8.0, -16.0)
-				var sim := _sim(body, 51, start, 0.0)
-				if starving:
-					sim.debug_set_energy(0.0)
-				sim.motion.velocity = Vector2.RIGHT * sim.phenotype.speed * sim.state.speed_multiplier()
-				var c := _creature(sim, species_id, start - Vector2(4.0, 0.0), 0.0, 0.4 if species_id == "ambush_hunter" else -1.0)
-				_engage(sim, c)
-				c.motion.velocity = Vector2.RIGHT * c.phenotype.speed * float(c.brain.cfg.speeds.pursue)
-				var gaps: Array[float] = []
-				var cell_speed: float = sim.phenotype.speed * sim.state.speed_multiplier()
-				var attack: Dictionary = c.brain.cfg.attack
-				var bound: int = c.brain.cfg.give_up_ticks + attack.tell_ticks + attack.burst_ticks + attack.glide_ticks + attack.recover_ticks
-				var ended := -1   # the engagement is over: a give-up, or the attack ends without a reason to go on
-				var hits := 0
-				var shrunk := ""
-				for t in bound + 1:
-					sim.step(SimIntent.new(Vector2.RIGHT))
-					gaps.append(c.motion.position.distance_to(sim.motion.position))
-					for e in sim.drain_events():
-						if e.type == "hit" and e.attacker == c.id:
-							hits += 1
-					if not CreatureBrain.is_engaged_with(c.brain, PLAYER):
-						ended = t
-						break
-				var label := "%s behind a %s %s cell" % [species_id, "starving" if starving else "fed", body]
-				check_eq(hits, 0, "%s: never hit" % label)
-				if starving:
-					check(ended >= 0, "%s: the creature let the cell go by tick %d (at %d)" % [label, bound, ended])
-				else:
-					for t in range(120, gaps.size()):
-						if shrunk.is_empty() and gaps[t] < gaps[t - 60] - 0.05:
-							shrunk = "tick %d: %.2f m -> %.2f m" % [t, gaps[t - 60], gaps[t]]
-					check(shrunk.is_empty(), "%s: after the first second the gap never shrinks over a second (%s)" % [label, shrunk])
-					# F3 measured in the sim: the pursuer is no faster than the escape rule's share of the
-					# slowest fed starting body, so every second the gap opens by at least the cell's speed
-					# minus that bound (less the same 0.05 m tolerance).
-					var bound_speed: float = float(sim.species.fairness.max_pursue_share_of_slowest_fed) * slowest_fed
-					var opens := INF
-					for t in range(120, gaps.size()):
-						opens = minf(opens, gaps[t] - gaps[t - 60])
-					print("test-threats-escape: %s opens at least %.3f m/s (rule margin %.3f)" % [label, opens, cell_speed - bound_speed])
-					check(opens >= cell_speed - bound_speed - 0.05,
-						"%s: the gap opens by at least %.3f m every second (worst %.3f m)" % [label, cell_speed - bound_speed - 0.05, opens])
-					check(gaps.size() >= 120, "%s: the chase lasted past the first two seconds (%d ticks)" % [label, gaps.size()])
+		_escape(species_id)
+
+
+## S6 for one species, every body fed and starving; with `two_posts` (S2G4) the creature is given the
+## posts fixture's two posts, post a's zone centred where it starts as an M1 rammer's is.
+func _escape(species_id: String, two_posts := false) -> void:
+	var slowest_fed: float = SpeciesCatalog._starting_bodies(catalog).slowest_fed
+	var ambush := species.behavior_of(species_id) == CreatureBrain.AMBUSH
+	for body in BODIES:
+		for starving in [false, true]:
+			var start := Vector2(-8.0, -16.0)
+			var posts := _fixture_posts(species_id, start - Vector2(4.0, 0.0), true) if two_posts else []
+			var sim := _sim(body, 51, start, 0.0, null, _species_for(posts))
+			if starving:
+				sim.debug_set_energy(0.0)
+			sim.motion.velocity = Vector2.RIGHT * sim.phenotype.speed * sim.state.speed_multiplier()
+			var c := _creature(sim, species_id, start - Vector2(4.0, 0.0), 0.0, 0.4 if ambush else -1.0, posts)
+			_engage(sim, c)
+			c.motion.velocity = Vector2.RIGHT * c.phenotype.speed * float(c.brain.cfg.speeds.pursue)
+			var gaps: Array[float] = []
+			var cell_speed: float = sim.phenotype.speed * sim.state.speed_multiplier()
+			var attack: Dictionary = c.brain.cfg.attack
+			var bound: int = c.brain.cfg.give_up_ticks + attack.tell_ticks + attack.burst_ticks + attack.glide_ticks + attack.recover_ticks
+			var ended := -1   # the engagement is over: a give-up, or the attack ends without a reason to go on
+			var hits := 0
+			var shrunk := ""
+			for t in bound + 1:
+				sim.step(SimIntent.new(Vector2.RIGHT))
+				gaps.append(c.motion.position.distance_to(sim.motion.position))
+				for e in sim.drain_events():
+					if e.type == "hit" and e.attacker == c.id:
+						hits += 1
+				if not CreatureBrain.is_engaged_with(c.brain, PLAYER):
+					ended = t
+					break
+			var label := "%s behind a %s %s cell" % [species_id, "starving" if starving else "fed", body]
+			check_eq(hits, 0, "%s: never hit" % label)
+			if starving:
+				check(ended >= 0, "%s: the creature let the cell go by tick %d (at %d)" % [label, bound, ended])
+			else:
+				for t in range(120, gaps.size()):
+					if shrunk.is_empty() and gaps[t] < gaps[t - 60] - 0.05:
+						shrunk = "tick %d: %.2f m -> %.2f m" % [t, gaps[t - 60], gaps[t]]
+				check(shrunk.is_empty(), "%s: after the first second the gap never shrinks over a second (%s)" % [label, shrunk])
+				# F3 measured in the sim: the pursuer is no faster than the escape rule's share of the
+				# slowest fed starting body, so every second the gap opens by at least the cell's speed
+				# minus that bound (less the same 0.05 m tolerance).
+				var bound_speed: float = float(sim.species.fairness.max_pursue_share_of_slowest_fed) * slowest_fed
+				var opens := INF
+				for t in range(120, gaps.size()):
+					opens = minf(opens, gaps[t] - gaps[t - 60])
+				print("test-threats-escape: %s opens at least %.3f m/s (rule margin %.3f)" % [label, opens, cell_speed - bound_speed])
+				check(opens >= cell_speed - bound_speed - 0.05,
+					"%s: the gap opens by at least %.3f m every second (worst %.3f m)" % [label, cell_speed - bound_speed - 0.05, opens])
+				check(gaps.size() >= 120, "%s: the chase lasted past the first two seconds (%d ticks)" % [label, gaps.size()])
 
 
 ## The creature's brain has just seen the cell and chases it, its give-up timer starting now
@@ -1623,6 +1653,47 @@ func _perturb(s: PoolSim, what: String) -> void:
 			s.grace_until += 1
 		"the death streak":
 			s.death_streak += 1
+		"fear_of":
+			c.brain.fear_of = "c_9"
+		"two posts":
+			CreatureBrain.set_posts(c.brain, [{"home": c.brain.home, "heading": c.brain.home_heading, "territory": {}},
+				{"home": c.brain.home + Vector2(4.0, 0.0), "heading": 0.0, "territory": {}}])
+		"post":
+			c.brain.post = 1
+		"post_since":
+			c.brain.post_since += 1
+
+
+## S2G1 (plan B.6): every M1 pair lies inside the relationship shares, so with every rule switched on
+## the M1 threat scenarios hash exactly as their goldens. Scenarios.make, with the catalog's brain
+## configs built from the relationships block.
+func test_with_every_relationship_rule_on_the_m1_threat_scenarios_hash_as_their_goldens() -> void:
+	var goldens := Scenarios.load_goldens()
+	check(not goldens.is_empty(), "the goldens file loads")
+	for scenario in ["threats_forage", "threats_kiter"]:
+		var r := Lineage.found(401, Scenarios.BUILD_ID, catalog, Scenarios.BODY)
+		r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+		# creatures_m1.json carries the block with every rule on (T1.7), so the catalog's configs are ruled.
+		var ruled := SpeciesCatalog.load_from()
+		check_eq(ruled.relationships_cfg(), RELATIONSHIPS_ON, "%s: the data has every rule on" % scenario)
+		for id in ruled.configs:
+			var on: Dictionary = ruled.configs[id]
+			check(CreatureBrain.config(id, ruled.species[id], ruled.ai) != on, "%s: %s's cfg has the rules on" % [scenario, id])
+			check(bool(on.engage_rule) and not is_inf(float(on.fear_radius_share)), "%s: %s fears and flees" % [scenario, id])
+		var sim := PoolSim.create(r.save, catalog, layout, ruled)
+		var bot: Object = Scenarios.KiterBot.new(401) if scenario == "threats_kiter" else ForageBot.new()
+		var kinds := {}
+		while sim.tick < 3600:
+			sim.step(bot.next_intent(sim))
+			for e in sim.drain_events():
+				kinds[e.type] = true
+			if sim.tick == 600 or sim.tick == 3600:
+				var got := Scenarios.record_of(scenario, 401, sim)
+				var why := Scenarios.difference(got, Scenarios.golden(goldens, scenario, 401, sim.tick))
+				check(why.is_empty(), "every rule on: " + why)
+		if scenario == "threats_kiter":
+			for kind in ["creature_noticed", "creature_tell"]:
+				check(kinds.has(kind), "the kiter run includes a %s: %s" % [kind, kinds.keys()])
 
 
 func test_without_creatures_the_species_machinery_changes_nothing_in_the_step_2_pool() -> void:
@@ -1757,3 +1828,49 @@ func _no_vectors(value: Variant) -> bool:
 			if not _no_vectors(v):
 				return false
 	return true
+
+
+# --- S2: the size-2 species at their entry size (S2G4) ---
+
+## The site-less catalog with the size-2 species (creatures_m1.json without its sites) for a run with
+## `posts`; the fixture's M1 catalog otherwise.
+func _species_for(posts: Array) -> SpeciesCatalog:
+	if posts.is_empty():
+		return test_species
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	data.sites = []
+	return SpeciesCatalog.from_dict(data)
+
+
+## The posts fixture's two posts for `species_id`, moved so that post a's home is `at`, or with
+## `zone_at` its zone's centre (an M1 rammer's own zone is centred on its home).
+func _fixture_posts(species_id: String, at: Vector2, zone_at := false) -> Array:
+	for site: Dictionary in Habits.posts_fixture().sites:
+		if site.species == species_id:
+			var t: Dictionary = site.territory
+			var from: Vector2 = t.center if zone_at and not t.is_empty() else site.home
+			return Habits.posts_at(site, at - (from - Vector2(site.home)))
+	check(false, "the posts fixture has a %s site" % species_id)
+	return []
+
+
+func test_slow_a_lurkers_lunge_with_two_posts_is_dodged_as_the_ambush_hunters_is() -> void:
+	# S2G4: the S5 lunge grid for the Lurker at its entry size (q = 1), post a at the strike origin,
+	# so its leash is the union disc. It copies the ambush hunter's attack, so the bounds are those.
+	var posts := _fixture_posts("lurker", STRIKE_ORIGIN)
+	_check_lunge_grid(_grid("lurker", LUNGE_DISTS, posts))
+
+
+func test_slow_an_elder_rammers_charge_with_two_posts_is_dodged_as_the_rammers_is() -> void:
+	# S2G4: the S5 charge grid for the elder rammer at q = 1, post a at the strike origin with its zone
+	# behind it, so every cell of the grid is inside the territory.
+	var posts := _fixture_posts("elder_rammer", STRIKE_ORIGIN)
+	check(Vector2(posts[0].territory.center).distance_to(STRIKE_ORIGIN + Vector2(CHARGE_DISTS.max(), 0.0))
+		< float(posts[0].territory.radius) + float(species.species.elder_rammer.territory_margin_m), "the grid lies in the territory")
+	_check_charge_grid(_grid("elder_rammer", CHARGE_DISTS, posts))
+
+
+func test_slow_a_cell_swimming_straight_away_outpaces_a_lurker_or_an_elder_rammer_with_two_posts() -> void:
+	# S2G4: S6 for both size-2 species at q = 1 with two posts.
+	for species_id in ["lurker", "elder_rammer"]:
+		_escape(species_id, true)

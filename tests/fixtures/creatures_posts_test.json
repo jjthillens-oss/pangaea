@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "status": "TEST FIXTURE",
+  "note": "S2 two-post sites before the tiles exist (spine 3.2 and 3.17, BP-11): the Lurker and the elder rammer of creatures_m1.json at their entry size (q = 1, lengths in m), each with its two posts as spine 4.3's post_b writes them, on a bounded arena of shells (soft wall 36 m). The Lurker's post homes are 5.15 m apart (D-61: 4 to 6), the elder rammer's 10 m apart on two zones that do not overlap (D-61: 6 to 10.5, travel 12.1 s at its wander speed, under 0.8 x its 16 s navigation timeout). Rules 9 and 10 hold on each post's disc and on the union disc, and no shell comes within the post-path capsule (BP-11). Post a's home lies 2.2 m from its zone's centre, the centre behind it, so a cell up to 5 m ahead of post a is inside the territory (the S5 charge grid).",
+  "arena": {
+    "soft_start": 36.0,
+    "rocks": [
+      {"id": "reef_1", "center": [-10.5, 12.0], "radius": 1.0},
+      {"id": "reef_2", "center": [-24.0, 9.0], "radius": 1.0},
+      {"id": "reef_3", "center": [12.5, -2.5], "radius": 1.2},
+      {"id": "reef_4", "center": [4.0, -4.0], "radius": 1.0}
+    ]
+  },
+  "zones": [
+    {"id": "z_a", "center": [8.0, -10.0], "radius": 6.0},
+    {"id": "z_b", "center": [20.0, -2.0], "radius": 6.0}
+  ],
+  "sites": [
+    {"id": "lk", "species": "lurker", "home": [-12.0, 8.0], "heading": 0.0,
+     "post_b": {"home": [-7.5, 10.5], "heading": 2.4}},
+    {"id": "er", "species": "elder_rammer", "home": [10.0, -9.0], "heading": 0.0, "territory_zone": "z_a",
+     "post_b": {"home": [18.0, -3.0], "heading": 3.1, "territory_zone": "z_b"}}
+  ]
+}

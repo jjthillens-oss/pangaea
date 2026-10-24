@@ -22,10 +22,15 @@ extends SceneTree
 ##
 ## Flags after --:
 ##   --out=DIR          the frames and look_probe.json (default user://look_probe/out)
-##   --look=NAME        the gate set: micro (plan section 6, the default) or baseline (today's look)
-##   --scenes=a,b       only these scenes (default every one, in SCENES order)
+##   --look=NAME        the gate set: micro (plan section 6, the default in the pool), baseline
+##                      (today's look), endless (the endless sea's, the default there) or growth
+##                      (S2's, in the endless sea: --scenes=lineup_s1,lineup_s2,hatch; about
+##                      2 minutes in Compatibility)
+##   --scenes=a,b       only these scenes (default every one of the world's, in its list's order)
 ##   --parity=DIR       another renderer's run of the same scenes: adds the parity readings and gates
 ##   --zoom=M           the camera distance (default the layout's, 14 m)
+##   --world=MODE       pool (the default: the M1 scenes below, staged in the walled pool) or
+##                      endless (the endless scenes further down, docs/s1/s1-content.md section 10)
 ## Exit code: 0 when every gate passes, 1 when one fails or a scene could not be staged, 2 when the
 ## probe cannot run (headless, no --fixed-fps, or the output folder cannot be made).
 ##
@@ -81,13 +86,88 @@ extends SceneTree
 ## against the same pixels unsheltered, and against the fluid just outside it; and the L* the patch
 ## adds behind the cell). With --parity every scene adds
 ## parity: the median CIE76 between the two runs over the whole frame, the fluid frame and the cell.
+##
+## Endless scenes (--world=endless, ENDLESS_SCENES). Each starts the same way, then freezes the AI,
+## moves the cell to an absolute place in the sea (debug_teleport_abs: the view set there loads and
+## its food fills) and plays START_FRAMES there, so its creatures finish fading in:
+##   reef         the densest knot of shells of the reef tile nearest the origin, facing north: the
+##                cell REEF_SOUTH_TM south of the centroid of the shell with the most others within
+##                REEF_KNOT_TM and those others (a reef tile keeps its shells round its zones, not at
+##                its centre, so the content doc's "6 tm south of the centre" frames open water)
+##   landmark     ANCHOR_SOUTH_TM south of the nearest landmark anchor that is not a shed husk
+##   husk         HUSK_GAP_TM south of the giant husk's southmost collider, at the giant husk nearest
+##                the origin, facing north: the husk side-on from the south (build plan B-30)
+##   shed_husk    ANCHOR_SOUTH_TM south of the nearest landmark_shed_husk anchor (B-30)
+##   markers      MARKERS_AT facing east, the checkpoint at home: the arrow home and the column's pip
+##   rebase_pair  the reef moment, paused, before and after a dev rebase by one chunk east: shells
+##                all round, so the world-placed layers show if they do not follow (the content doc
+##                stages it at the markers spot, open water where only world-rebuilt things show)
+## Their frames: reef adds <scene>_norocks.png (every shell hidden); landmark, husk and shed_husk add
+## <scene>_nopiece.png (that piece hidden); markers adds <scene>_nomarkers.png (both markers hidden)
+## and <scene>_nooverlay.png (the HUD's world overlay hidden); rebase_pair saves frame A as
+## <scene>.png, A shot again as <scene>_still.png and frame B as <scene>_after.png.
+## Their readings: a piece's pixels are those it draws, where the frame differs from the same moment
+## without it by more than SILHOUETTE_CHANGE in a channel, read against the fluid frame there:
+## fluid_dL between their median and the fluid's, and fluid_dL_px, the median of each pixel's own
+## |dL*|. A hue gap is the LAB hue's distance from the food or threat colour, 180 for a colour under
+## ACHROMATIC_C chroma (it has no hue to confuse; the look rule's exemption). Every endless scene has
+## staged (where it was staged and what it frames) and the common readings above. reef adds shells
+## (each shell on screen clear of HUD panels, nearest the centre first, with its silhouette in its
+## projected box; food_gap_min, threat_gap_min, fluid_dL_min, fluid_dL_px_min); landmark, husk and
+## shed_husk add the piece's silhouette in its projected box (silhouette, silhouette_behind, pixels,
+## share, fluid_dL, fluid_dL_px, food_gap, threat_gap); markers adds arrow_L (L* of the arrow's
+## centre, ARROW_DISC_PX round its mesh's centre), arrow (its silhouette), arrow_state, and
+## pip_present (1 when the column's pip changes pixels where the overlay draws it) with pip;
+## rebase_pair adds median_dE and p99_dE (CIE76 between A and B over every PARITY_STRIDE-th pixel)
+## and still_median_dE and still_p99_dE (A against A again: what drawing twice changes by itself).
+##
+## S2's growth scenes (docs/s2/s2-view.md 12.3, gate set growth; also in ENDLESS_SCENES). Each
+## starts a new GROWTH_BODY lineage (a jaw, so the rim shows) at home with the AI frozen:
+##   lineup_s1  size 1: the ambush hunter and the rammer at the M1 lineup's offsets beside the cell;
+##              the near ghosts (lurker, elder rammer, veil, warden) staged at LINEUP_NEAR_SPOTS and
+##              the three giants at LINEUP_FAR_SPOTS; zoom GROWTH_ZOOM
+##   lineup_s2  debug_set_size(2) first, then the same with the lurker and the elder rammer beside
+##              the cell too, and the size-2 near ghosts (veil, warden, deep lurker, elder warden)
+##   hatch      size 1, still: two rammers and three carrion pieces beside the cell, plankton in
+##              view, the ring filled (debug_fill_meter(1.0)); then one ordinary tick, frame A,
+##              debug_force_growth() and the growth's tick, frame 0
+## Their frames: the lineups add <scene>_noghosts.png (the ghost layer hidden), <scene>_ink.png
+## (each lineup body's ink surfaces keyed to INK_KEY), <scene>_marker.png and
+## <scene>_nomarker.png (the "!" over the lineup bodies with no ink surface, shown and hidden) and
+## <scene>_norim.png (every lineup body's rim off). hatch saves <scene>.png (the frozen moment with
+## the HUD), <scene>_world.png (frame A, no 2D layer), <scene>_zero.png (frame 0), and for review
+## <scene>_beat1s.png and <scene>_beat2s.png (the beat at 1.0 s and 2.0 s, with the HUD).
+## Their readings: the lineups add bodies (each lineup body's id), near.<species> and far.<i>: a
+## ghost's body (its texture's body_rect, projected through the camera) as width_px, height_px,
+## cell_multiple (its width over the cell's drawn diameter), cell_radius_multiple (its height over
+## the cell's drawn radius), screen_share (its height over the screen's) and pixels (how many it
+## changes against the frame without ghosts, drawn_share of its box, and box); ink.<species> (1 when at least INK_SHARE of the
+## pixels its ink surfaces draw, or the "!" draws for a body with none, lie within INK_HUE_DEG of
+## the threat hue with C* at least INK_MIN_C, else 0) with ink_detail.<species>; rim.<species> (1
+## when at least RIM_PIXELS of the pixels its rim draws, against the frame with it off, lie within
+## RIM_HUE_DEG of the food hue) with rim_detail.<species>. hatch adds median_dE, p99_dE and max_dE
+## (frame A against frame 0, every PARITY_STRIDE-th pixel, no 2D layer), tick_median_dE and
+## tick_p99_dE (the ordinary tick before A, against A: what any tick changes by itself),
+## bare_median_dE and bare_p99_dE (the same pair paused with the ambience hidden), size_after and
+## plankton_on_screen.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SLOT := "user://look_probe/slot.json"
 const DEFAULT_OUT := "user://look_probe/out"
 const BODY := "grazer"
 const SEED := 4242
-const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
+## The M1 pool's scenes, every one with --world=pool.
+const POOL_SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter"]
+## The endless sea's scenes (docs/s1/s1-content.md section 10), every one with --world=endless.
+const ENDLESS_SCENES: Array[String] = ["reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair",
+	"lineup_s1", "lineup_s2", "hatch"]
+## S2's growth scenes (gate set growth), staged with GROWTH_BODY.
+const GROWTH_SCENES: Array[String] = ["lineup_s1", "lineup_s2", "hatch"]
+## Every scene the probe can stage: POOL_SCENES, then ENDLESS_SCENES.
+const SCENES: Array[String] = ["lineup", "tell", "puff", "rim_north", "rim_south", "starving", "hud", "sunlit", "shelter",
+	"reef", "landmark", "husk", "shed_husk", "markers", "rebase_pair", "lineup_s1", "lineup_s2", "hatch"]
+## The world each gate set measures.
+const LOOK_WORLDS := {"micro": "pool", "baseline": "pool", "endless": "endless", "growth": "endless"}
 const SIZE := Vector2i(1920, 1080)       ## the gates' thresholds were measured at this size
 const START_FRAMES := 30                 ## frames of a new run before staging (the fade-in is 0.3 s)
 const FIRST_SETTLE := 2                  ## frames drawn before a moment's first capture...
@@ -134,6 +214,46 @@ const SHELTER_FRAMES := 30               ## the shelter rim fades in over 0.3 s
 const SHELTER_BAND := Vector2(0.6, 1.3)  ## the rim: the cell's own pixels this far out (radii)...
 const SHELTER_OUTSIDE := Vector2(1.3, 1.6)    ## ...and the fluid just outside the cell
 const BOX_COLOR := Color(1.0, 0.95, 0.0)
+# The endless scenes (absolute positions in tm; at S1's size 1 an am is a tm).
+const REEF_KNOT_TM := 8.0                ## the reef scene frames the shell with most others this near...
+const REEF_SOUTH_TM := 2.0               ## ...with the cell this far south of their centroid
+const ANCHOR_SOUTH_TM := 8.0             ## the landmark scenes' cell, south of the anchor
+const HUSK_GAP_TM := 4.4                 ## the husk scene's cell, south of the husk's southmost collider
+const MARKERS_AT := Vector2(300.0, 9.0)  ## the markers scene's cell, facing east
+const SHED_HUSK := "landmark_shed_husk"
+const SEARCH_TILES := 12                 ## the nearest reef tile is looked for this many tiles out...
+const SEARCH_CHUNKS := 12                ## ...and the nearest anchors and rare places this many chunks out
+const SHELL_ON_SCREEN := 0.5            ## a shell is read when this share of its projected box is on screen...
+const SHELL_PIXELS_NEEDED := 100         ## ...and it draws at least this many pixels there
+const SILHOUETTE_CHANGE := 0.03          ## a piece draws a pixel it changes by more than this in a channel
+const ACHROMATIC_C := 5.0                ## a colour under this chroma has no hue (the look rule's exemption)
+const ARROW_DISC_PX := 3.0
+const REBASE_BY := Vector2i(1, 0)        ## the rebase pair's dev rebase, in chunks
+# S2's growth scenes (s2-view 12.3).
+const GROWTH_BODY := "omnivore"          ## a jaw, so a body the cell can eat shows its rim
+const GROWTH_ZOOM := 14.0
+## Lineup bodies by size: [species, offset from the cell (tm)], facing north. The M1 lineup's
+## ambush hunter and rammer, and at size 2 the lurker and the elder rammer south of the cell, between
+## the HUD's lower panels (further out the controls and the ladder strip cover them).
+const LINEUP_BODIES := {
+	1: [["ambush_hunter", Vector2(-4.2, -1.0)], ["rammer", Vector2(4.4, -2.2)]],
+	2: [["ambush_hunter", Vector2(-4.2, -1.0)], ["rammer", Vector2(4.4, -2.2)], ["lurker", Vector2(-2.4, 3.6)],
+		["elder_rammer", Vector2(2.6, 3.6)]],
+}
+## The near ghosts staged by size, at LINEUP_NEAR_SPOTS in order (tm from the focus, north is -y).
+const LINEUP_NEAR := {1: ["lurker", "elder_rammer", "veil", "warden"], 2: ["veil", "warden", "deep_lurker", "elder_warden"]}
+const LINEUP_NEAR_SPOTS: Array[Vector2] = [Vector2(-6.0, -8.0), Vector2(6.0, -8.0), Vector2(-8.0, -16.0), Vector2(8.0, -16.0)]
+## The giants staged at these offsets from the focus, at the far band's middle depth.
+const LINEUP_FAR_SPOTS: Array[Vector2] = [Vector2(-20.0, -30.0), Vector2(0.0, -40.0), Vector2(20.0, -30.0)]
+const INK_KEY := Color(0.0, 1.0, 0.0)    ## the lineup's ink surfaces are keyed to this to find their pixels
+const INK_SHARE := 0.3                   ## ink shows when this share of its pixels...
+const INK_HUE_DEG := 15.0                ## ...lies within this of the threat hue...
+const INK_MIN_C := 30.0                  ## ...with at least this chroma
+const RIM_PIXELS := 20                   ## the rim shows when this many of its pixels...
+const RIM_HUE_DEG := 15.0                ## ...lie within this of the food hue (C* at least ACHROMATIC_C)
+const RIM_BOX_PX := 6                    ## a body's screen box grown this much for its rim
+const HATCH_RAMMERS: Array[Vector2] = [Vector2(-4.0, -2.5), Vector2(4.0, -2.5)]
+const HATCH_RING_FRAMES := 3             ## frames drawn with the ring full before frame A
 
 ## The acceptance gates by look. A gate reads the number at `path` in the readings ("lineup.cell.h")
 ## and passes when it lies in [min, max] (either end may be left out); a reading that is missing
@@ -147,6 +267,10 @@ const BOX_COLOR := Color(1.0, 0.95, 0.0)
 ##   "Microscopic world look"), so the probe itself can be checked on today's build. Its "fluid" is
 ##   the teal floor. It has no skirt or plankton clipping gate: there is no skirt yet (those samples
 ##   land on the floor's caustics), and the plankton's sunlit tops reach 255 in both renderers.
+##   endless: the endless sea (docs/s1/s1-content.md section 10, PROPOSED there; build plan Q15 has
+##   T5.6 set them from its measurement): shells, landmarks and the husks keep clear of food and
+##   threat on screen, after light and fog (20 degrees; the albedo rule is 25) and stand out from the
+##   fluid, the arrow home is light, the column's pip shows, and a rebase never shows (G10).
 const GATES := {
 	"micro": [
 		{"id": "cell_hue", "path": "lineup.cell.h", "min": 30.0, "max": 50.0, "what": "coral cell hue (LAB h)"},
@@ -200,6 +324,64 @@ const GATES := {
 		{"id": "parity_fluid", "path": "lineup.parity.fluid_dE", "max": 10.0, "parity": true, "what": "renderer parity, floor (median CIE76; 6.7)"},
 		{"id": "parity_cell", "path": "lineup.parity.cell_dE", "max": 10.0, "parity": true, "what": "renderer parity, cell (median CIE76; 7.0)"},
 	],
+	# Measured at T5.6 (seed 4242, 1920x1080, zoom 14), Compatibility | Forward+ (lavapipe); the
+	# renderers agree within 0.1 CIE76 over the frame. Where the content doc's PROPOSED threshold
+	# held it is kept; where it did not, the gate is pinned about a fifth under the lower reading
+	# (build plan Q15) and the content doc's number is given. Contrast is read per pixel (the median
+	# of each drawn pixel's |dL*| against the fluid behind it): the kit's pieces are tall, lit on top
+	# and fluid-tinted on their sides, so the median of a silhouette can match the fluid's while its
+	# parts stand well apart (the shed husk: 0.8 | 1.1 between the medians, 5.5 | 5.8 per pixel).
+	"endless": [
+		{"id": "reef_food_gap", "path": "reef.shells.food_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the food colour (degrees, the least on screen; 137.8 | 137.8)"},
+		{"id": "reef_threat_gap", "path": "reef.shells.threat_gap_min", "min": 20.0, "what": "reef shells, LAB hue away from the threat colour (degrees, the least on screen; 89.8 | 89.8)"},
+		{"id": "reef_contrast", "path": "reef.shells.fluid_dL_px_min", "min": 5.0, "what": "reef shells against the fluid behind them (|dL*| per pixel, the least on screen; 6.3 | 6.3, a diatom disc seen side-on; PROPOSED 8)"},
+		{"id": "landmark_contrast", "path": "landmark.fluid_dL_px", "min": 7.5, "what": "the nearest landmark against the fluid (|dL*| per pixel; 9.6 | 9.8; PROPOSED 10)"},
+		{"id": "landmark_food_gap", "path": "landmark.food_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the food colour (degrees; 171.2 | 171.2)"},
+		{"id": "landmark_threat_gap", "path": "landmark.threat_gap", "min": 20.0, "what": "the nearest landmark, LAB hue away from the threat colour (degrees; 85.5 | 85.5)"},
+		{"id": "husk_contrast", "path": "husk.fluid_dL_px", "min": 6.0, "what": "the giant husk side-on from the south against the fluid (|dL*| per pixel; 7.5 | 7.5; PROPOSED 10)"},
+		{"id": "husk_food_gap", "path": "husk.food_gap", "min": 20.0, "what": "the giant husk never reads as food: LAB hue away from the food colour (degrees; 165.8 | 165.8)"},
+		{"id": "husk_threat_gap", "path": "husk.threat_gap", "min": 20.0, "what": "the giant husk, LAB hue away from the threat colour (degrees; 90.9 | 90.9)"},
+		{"id": "shed_husk_contrast", "path": "shed_husk.fluid_dL_px", "min": 4.5, "what": "the shed husk landmark against the fluid (|dL*| per pixel; 5.5 | 5.8; PROPOSED 10)"},
+		{"id": "shed_husk_food_gap", "path": "shed_husk.food_gap", "min": 20.0, "what": "the shed husk never reads as food: LAB hue away from the food colour (degrees; 165.0 | 165.0)"},
+		{"id": "shed_husk_threat_gap", "path": "shed_husk.threat_gap", "min": 20.0, "what": "the shed husk, LAB hue away from the threat colour (degrees; 91.7 | 91.7)"},
+		{"id": "arrow_value", "path": "markers.arrow_L", "min": 75.0, "what": "the arrow home's centre (L*; 99.8 | 99.8)"},
+		{"id": "column_pip", "path": "markers.pip_present", "min": 1.0, "max": 1.0, "what": "the column's pip shows while the column is off screen (1 | 1)"},
+		{"id": "rebase_median", "path": "rebase_pair.median_dE", "max": 1.0, "what": "a rebase never shows: frame B against frame A (median CIE76; 0.0 | 0.0)"},
+		{"id": "rebase_p99", "path": "rebase_pair.p99_dE", "max": 5.0, "what": "a rebase never shows: frame B against frame A (99th percentile CIE76; 0.0 | 0.0)"},
+	],
+	# S2's growth (s2-view 12.3; S2G13 M, S2G14 M), PROPOSED there; the readings measured at T5.7
+	# (seed 4242, omnivore, 1920x1080, zoom 14, Compatibility on llvmpipe) follow each one.
+	"growth": [
+		{"id": "s1_near_lurker", "path": "lineup_s1.near.lurker.cell_multiple", "min": 1.4, "what": "size 1: the Lurker's near ghost against the cell (body width over the cell's diameter; 1.45)"},
+		{"id": "s1_near_elder_rammer", "path": "lineup_s1.near.elder_rammer.cell_multiple", "min": 1.4, "what": "size 1: the elder rammer's near ghost against the cell (1.43)"},
+		{"id": "s1_near_veil", "path": "lineup_s1.near.veil.cell_multiple", "min": 1.4, "what": "size 1: the veil's near ghost against the cell (1.66)"},
+		{"id": "s1_near_warden", "path": "lineup_s1.near.warden.cell_multiple", "min": 1.4, "what": "size 1: the warden's near ghost against the cell (1.45)"},
+		{"id": "s2_near_veil", "path": "lineup_s2.near.veil.cell_multiple", "min": 1.4, "what": "size 2: the veil's near ghost against the cell (1.45)"},
+		{"id": "s2_near_warden", "path": "lineup_s2.near.warden.cell_multiple", "min": 1.4, "what": "size 2: the warden's near ghost against the cell (1.45)"},
+		{"id": "s2_near_deep_lurker", "path": "lineup_s2.near.deep_lurker.cell_multiple", "min": 1.4, "what": "size 2: the deep Lurker's near ghost against the cell (1.61)"},
+		{"id": "s2_near_elder_warden", "path": "lineup_s2.near.elder_warden.cell_multiple", "min": 1.4, "what": "size 2: the elder warden's near ghost against the cell (1.45)"},
+		{"id": "s1_far_0_size", "path": "lineup_s1.far.0.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 0 at least five cell radii high (7.42)"},
+		{"id": "s1_far_1_size", "path": "lineup_s1.far.1.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 1 at least five cell radii high (7.42)"},
+		{"id": "s1_far_2_size", "path": "lineup_s1.far.2.cell_radius_multiple", "min": 5.0, "what": "size 1: giant 2 at least five cell radii high (7.42)"},
+		{"id": "s2_far_0_size", "path": "lineup_s2.far.0.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 0 at least five cell radii high (7.42)"},
+		{"id": "s2_far_1_size", "path": "lineup_s2.far.1.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 1 at least five cell radii high (7.42)"},
+		{"id": "s2_far_2_size", "path": "lineup_s2.far.2.cell_radius_multiple", "min": 5.0, "what": "size 2: giant 2 at least five cell radii high (7.42)"},
+		{"id": "s1_far_0_share", "path": "lineup_s1.far.0.screen_share", "max": 0.3333, "what": "size 1: giant 0 at most a third of the screen high (0.32)"},
+		{"id": "s1_far_1_share", "path": "lineup_s1.far.1.screen_share", "max": 0.3333, "what": "size 1: giant 1 at most a third of the screen high (0.32)"},
+		{"id": "s1_far_2_share", "path": "lineup_s1.far.2.screen_share", "max": 0.3333, "what": "size 1: giant 2 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_0_share", "path": "lineup_s2.far.0.screen_share", "max": 0.3333, "what": "size 2: giant 0 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_1_share", "path": "lineup_s2.far.1.screen_share", "max": 0.3333, "what": "size 2: giant 1 at most a third of the screen high (0.32)"},
+		{"id": "s2_far_2_share", "path": "lineup_s2.far.2.screen_share", "max": 0.3333, "what": "size 2: giant 2 at most a third of the screen high (0.32)"},
+		{"id": "s1_ink_ambush", "path": "lineup_s1.ink.ambush_hunter", "min": 1.0, "max": 1.0, "what": "size 1: the ambush hunter shows the threat colour (1: 39% of its \"!\" pixels)"},
+		{"id": "s1_ink_rammer", "path": "lineup_s1.ink.rammer", "min": 1.0, "max": 1.0, "what": "size 1: the rammer shows the threat colour (1: 52% of its ink surfaces' pixels)"},
+		{"id": "s2_ink_rammer", "path": "lineup_s2.ink.rammer", "min": 0.0, "max": 0.0, "what": "size 2: the rammer (prey) shows no threat colour (0: 3%)"},
+		{"id": "s2_ink_ambush", "path": "lineup_s2.ink.ambush_hunter", "min": 0.0, "max": 0.0, "what": "size 2: the ambush hunter (a rival) shows no threat colour (0: 0% of its \"!\")"},
+		{"id": "s2_ink_lurker", "path": "lineup_s2.ink.lurker", "min": 1.0, "max": 1.0, "what": "size 2: the Lurker shows the threat colour (1: 40% of its \"!\")"},
+		{"id": "s2_ink_elder_rammer", "path": "lineup_s2.ink.elder_rammer", "min": 1.0, "max": 1.0, "what": "size 2: the elder rammer shows the threat colour (1: 71%)"},
+		{"id": "s2_rim_rammer", "path": "lineup_s2.rim.rammer", "min": 1.0, "max": 1.0, "what": "size 2: the rammer, food now, shows the green rim (1: 911 food-hue rim pixels)"},
+		{"id": "s2_rim_ambush", "path": "lineup_s2.rim.ambush_hunter", "min": 0.0, "max": 0.0, "what": "size 2: the ambush hunter, a rival and not food, shows no rim (0: no rim pixels)"},
+		{"id": "hatch_median", "path": "hatch.median_dE", "max": 2.0, "what": "the growth's frame 0 against frame A, no 2D layer (median CIE76; 0.0; p99 12.8, all of it the ambience's drift, whose x and z wrap in world space; 0.1 with it hidden)"},
+	],
 }
 
 ## Swims nowhere: the cell holds still while a scene plays to its moment.
@@ -216,6 +398,9 @@ var out_dir := ""
 var look := "micro"
 var parity_dir := ""
 var zoom := 0.0
+## The world every scene runs in (RunFlags.world): "pool" unless --world says otherwise, so the M1
+## scenes stage in the walled pool they were measured in.
+var world := "pool"
 ## Every sim event of the current run, in order.
 var events: Array[Dictionary] = []
 ## scene -> {"frames": {variant: file}, "readings": {...}, "error": text}
@@ -223,23 +408,38 @@ var results := {}
 ## Regions sampled in the current scene, outlined in <scene>_points.png.
 var _boxes: Array[Rect2i] = []
 var _decor: MeshInstance3D
+## Where an endless scene was staged and what it frames (its readings' "staged"); the piece a
+## landmark scene reads is staged["id"].
+var _staged := {}
+## The endless sea's anchors, rare places and set-piece colliders round the origin (_sea()).
+var _sea_cache := {}
+## A growth lineup's bodies: species -> creature id.
+var _lineup_ids := {}
 
 
 func _initialize() -> void:
 	RenderingServer.render_loop_enabled = false
-	var scenes: Array[String] = SCENES.duplicate()
+	var scenes: Array[String] = []
+	var look_given := false
 	out_dir = DEFAULT_OUT
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out_dir = arg.trim_prefix("--out=")
 		elif arg.begins_with("--look="):
 			look = arg.trim_prefix("--look=")
+			look_given = true
 		elif arg.begins_with("--scenes="):
 			scenes.assign(Array(arg.trim_prefix("--scenes=").split(",")))
 		elif arg.begins_with("--parity="):
 			parity_dir = arg.trim_prefix("--parity=")
 		elif arg.begins_with("--zoom="):
 			zoom = float(arg.trim_prefix("--zoom="))
+		elif arg.begins_with("--world="):
+			world = arg.trim_prefix("--world=")
+	if not look_given and world == "endless":
+		look = "endless"
+	if scenes.is_empty():
+		scenes = scenes_for(world)
 	var problem := _setup_problem(scenes)
 	if problem.is_empty():
 		root.size = SIZE
@@ -258,8 +458,11 @@ func _initialize() -> void:
 		RenderingServer.get_video_adapter_name(), ", ".join(scenes)])
 	for scene in scenes:
 		results[scene] = {"frames": {}, "readings": {}, "error": ""}
-		await _fresh_run()
-		if not await _stage(scene):
+		await _fresh_run(body_for(scene))
+		var staged := await _stage(scene)
+		if not _staged.is_empty():
+			results[scene].readings.staged = _staged.duplicate()
+		if not staged:
 			results[scene].error = "could not stage the scene"
 			printerr("Look probe: could not stage %s" % scene)
 			continue
@@ -284,9 +487,14 @@ func _setup_problem(scenes: Array[String]) -> String:
 		return "it needs a real renderer (run it under xvfb-run, not --headless)"
 	if not GATES.has(look):
 		return "--look must be one of %s" % ", ".join(GATES.keys())
+	var own := scenes_for(world)
+	if own.is_empty():
+		return "--world must be pool or endless"
+	if LOOK_WORLDS.get(look, world) != world:
+		return "--look=%s measures the %s world: pass --world=%s" % [look, LOOK_WORLDS[look], LOOK_WORLDS[look]]
 	for scene in scenes:
-		if not SCENES.has(scene):
-			return "there is no scene %s (scenes: %s)" % [scene, ", ".join(SCENES)]
+		if not own.has(scene):
+			return "there is no %s scene %s (scenes: %s)" % [world, scene, ", ".join(own)]
 	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_dir)) != OK:
 		return "cannot make %s" % out_dir
 	return ""
@@ -294,13 +502,14 @@ func _setup_problem(scenes: Array[String]) -> String:
 
 # --- Runs and moments ----------------------------------------------------------------------------
 
-## A new grazer lineage on SEED in a fresh pool, the cell holding still and unsheltered,
-## START_FRAMES in.
-func _fresh_run() -> void:
+## A new `body` lineage (a grazer unless a scene says otherwise, body_for) on SEED in a fresh pool,
+## the cell holding still and unsheltered, START_FRAMES in.
+func _fresh_run(body := BODY) -> void:
 	if main == null:
 		main = (load(MAIN_SCENE) as PackedScene).instantiate()
 		root.add_child(main)
 		await process_frame
+		main.flags.world = world
 		main.open_session(SLOT)
 	for path in [SLOT, SLOT + ".bak"]:
 		if FileAccess.file_exists(path):
@@ -308,7 +517,9 @@ func _fresh_run() -> void:
 	main.intent_provider = Still.new()
 	events.clear()
 	_decor = null
-	main.start_new(BODY, SEED)
+	_staged = {}
+	_lineup_ids = {}
+	main.start_new(body, SEED)
 	pool = main.pool
 	sim = pool.sim
 	pool.pause_on_focus_loss = false
@@ -371,9 +582,13 @@ func _save(scene: String, variant: String, img: Image) -> void:
 
 
 ## Shows or hides what lies in front of the fluid: the cell, creatures, food, rocks, world labels
-## and the 2D layer (HUD, target ring, starving arrow).
+## and the 2D layer (HUD, target ring, starving arrow); in the endless sea its landmarks, rare set
+## pieces and way-markers too.
 func _show_gameplay(on: bool) -> void:
-	for node: Node3D in [pool.cell_view, pool.creature_layer, pool.plankton_view, pool.carrion_view, pool.rocks, pool.feedback]:
+	var nodes: Array[Node3D] = [pool.cell_view, pool.creature_layer, pool.plankton_view, pool.carrion_view, pool.rocks, pool.feedback]
+	if pool.is_endless():
+		nodes.append_array([pool.landmarks, pool.markers])
+	for node in nodes:
 		node.visible = on
 	pool.ui.visible = on
 
@@ -420,6 +635,25 @@ func _stage(scene: String) -> bool:
 			return await _stage_sunlit()
 		"shelter":
 			return await _stage_shelter()
+		"reef":
+			return await _stage_reef()
+		"landmark":
+			return await _stage_anchor(false)
+		"shed_husk":
+			return await _stage_anchor(true)
+		"husk":
+			return await _stage_husk()
+		"markers":
+			_staged = {"at_tm": [MARKERS_AT.x, MARKERS_AT.y], "checkpoint_am": Array(sim.world.checkpoint_am) if sim.world != null else []}
+			return await _stage_at(MARKERS_AT, 0.0)
+		"rebase_pair":
+			return await _stage_reef()
+		"lineup_s1":
+			return await _stage_growth_lineup(1)
+		"lineup_s2":
+			return await _stage_growth_lineup(2)
+		"hatch":
+			return await _stage_hatch()
 	return false
 
 
@@ -523,6 +757,184 @@ func _whole_frames(frames: int) -> int:
 	return maxi(frames, sim.species.fade_in_ticks + 1)
 
 
+# --- Endless scenes: staging --------------------------------------------------------------------
+
+## The cell moved to `at_tm` (absolute tm) facing `heading`, the AI frozen, then START_FRAMES played
+## there (at least long enough for a creature to fade in), so the view set round it is loaded and
+## drawn. False in the pool.
+func _stage_at(at_tm: Vector2, heading: float) -> bool:
+	if sim.world == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	var at := sim.world.abs_of_local(sim.world.local_of_tm(at_tm.x, at_tm.y))
+	if not sim.debug_teleport_abs(at[0], at[1], heading):
+		return false
+	await _play(_whole_frames(START_FRAMES))
+	return true
+
+
+## The reef tile nearest the origin, framed on its densest knot of shells, facing north.
+func _stage_reef() -> bool:
+	if sim.world == null:
+		return false
+	var band := WorldConfig.band_of(sim.world.size)
+	var tile_tm := _tile_tm()
+	var best := Vector2i.MAX
+	var best_d := INF
+	for ty in range(-SEARCH_TILES, SEARCH_TILES + 1):
+		for tx in range(-SEARCH_TILES, SEARCH_TILES + 1):
+			if sim.world.gen.tile_info(band, tx, ty).region != "reef":
+				continue
+			var d := ((Vector2(tx, ty) + Vector2.ONE * 0.5) * tile_tm).length()
+			if d < best_d:
+				best = Vector2i(tx, ty)
+				best_d = d
+	if best == Vector2i.MAX:
+		return false
+	var shells: Array[Vector2] = []
+	var per_tile := roundi(tile_tm / sim.world.chunk_tm)
+	for cy in range(best.y * per_tile, (best.y + 1) * per_tile):
+		for cx in range(best.x * per_tile, (best.x + 1) * per_tile):
+			for e: Dictionary in sim.world.gen.chunk(sim.world.size, cx, cy).shells:
+				if e.kind == "shell":
+					shells.append(Vector2(float(e.x), float(e.y)))
+	var knot: Array[Vector2] = []
+	for a in shells:
+		var near := shells.filter(func(b: Vector2) -> bool: return a.distance_to(b) <= REEF_KNOT_TM)
+		if near.size() > knot.size():
+			knot.assign(near)
+	if knot.is_empty():
+		return false
+	var centroid := Vector2.ZERO
+	for p in knot:
+		centroid += p / knot.size()
+	var at := centroid + Vector2(0.0, REEF_SOUTH_TM)
+	_staged = {"tile": [best.x, best.y], "knot": knot.size(), "knot_centroid_tm": [snappedf(centroid.x, 0.01), snappedf(centroid.y, 0.01)],
+		"at_tm": [snappedf(at.x, 0.01), snappedf(at.y, 0.01)]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## ANCHOR_SOUTH_TM south of the nearest landmark anchor, facing north: a shed husk when `shed`,
+## otherwise any other landmark.
+func _stage_anchor(shed: bool) -> bool:
+	if sim.world == null:
+		return false
+	var a := _nearest(_sea().anchors.filter(func(x: Dictionary) -> bool: return (str(x.model) == SHED_HUSK) == shed))
+	if a.is_empty():
+		return false
+	var at := Vector2(float(a.x), float(a.y) + ANCHOR_SOUTH_TM)
+	_staged = {"id": str(a.id), "model": str(a.model), "dressing": str(a.dressing), "anchor_tm": [a.x, a.y], "at_tm": [at.x, at.y]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## The giant husk nearest the origin, side-on from the south (build plan B-30): the cell HUSK_GAP_TM
+## south of its southmost collider, under the place's centre, facing north at the default zoom.
+func _stage_husk() -> bool:
+	if sim.world == null:
+		return false
+	var place := _nearest(_sea().places.filter(func(x: Dictionary) -> bool: return str(x.kind) == "giant_husk"))
+	if place.is_empty():
+		return false
+	var prefix := "s_%s_r" % str(place.id).trim_prefix("p_")
+	var south := -INF
+	for c: Dictionary in _sea().set_pieces:
+		if str(c.id).begins_with(prefix):
+			south = maxf(south, float(c.y) + float(c.r))
+	if not is_finite(south):
+		return false
+	var at := Vector2(float(place.x), south + HUSK_GAP_TM)
+	_staged = {"id": str(place.id), "place_tm": [place.x, place.y], "yaw_deg": place.get("yaw_deg", 0.0),
+		"mirror": place.get("mirror", false), "at_tm": [at.x, at.y]}
+	return await _stage_at(at, -PI / 2.0)
+
+
+## The tile's side in tm at the run's size.
+func _tile_tm() -> float:
+	return sim.world.content.config.tile_bu * WorldConfig.bu_to_tm(sim.world.size)
+
+
+## The landmark anchors, rare places and set-piece colliders (WorldChunk, absolute tm) of every chunk
+## within SEARCH_CHUNKS of the origin's, generated once: every scene starts the same sea.
+func _sea() -> Dictionary:
+	if not _sea_cache.is_empty():
+		return _sea_cache
+	var out := {"anchors": [], "places": [], "set_pieces": []}
+	for cy in range(-SEARCH_CHUNKS, SEARCH_CHUNKS + 1):
+		for cx in range(-SEARCH_CHUNKS, SEARCH_CHUNKS + 1):
+			var ch: WorldChunk = sim.world.gen.chunk(sim.world.size, cx, cy)
+			out.anchors.append_array(ch.anchors)
+			out.places.append_array(ch.places)
+			out.set_pieces.append_array(ch.shells.filter(func(x: Dictionary) -> bool: return x.kind == "set_piece"))
+	_sea_cache = out
+	return out
+
+
+## The object nearest the origin (its x, y in tm; ties go to the smaller id), or {}.
+static func _nearest(objects: Array) -> Dictionary:
+	var best := {}
+	var best_d := INF
+	for o: Dictionary in objects:
+		var d := Vector2(float(o.x), float(o.y)).length()
+		if d < best_d or (d == best_d and str(o.id) < str(best.get("id", ""))):
+			best = o
+			best_d = d
+	return best
+
+
+# --- S2's growth scenes: staging ----------------------------------------------------------------
+
+## A growth lineup at `size`: the AI frozen (size 2 set first), LINEUP_BODIES[size] beside the cell
+## facing north, the near ghosts LINEUP_NEAR[size] at LINEUP_NEAR_SPOTS and the giants at
+## LINEUP_FAR_SPOTS, at GROWTH_ZOOM (or --zoom). False where the sea does not grow, when the size is
+## refused or a body has no room.
+func _stage_growth_lineup(size: int) -> bool:
+	if sim.world == null or sim.growth == null:
+		return false
+	sim.debug_set_ai_frozen(true)
+	if sim.size() != size and not sim.debug_set_size(size):
+		return false
+	await _play(START_FRAMES)
+	var c := sim.motion.position
+	for entry: Array in LINEUP_BODIES[size]:
+		if not sim.debug_spawn_creature(entry[0], c + (entry[1] as Vector2), -PI / 2.0):
+			printerr("Look probe: no room for the %s at %s" % [entry[0], c + (entry[1] as Vector2)])
+			return false
+		_lineup_ids[entry[0]] = sim.creatures.creatures.back().id
+	var near := []
+	for i in LINEUP_NEAR_SPOTS.size():
+		near.append({"species": LINEUP_NEAR[size][i], "offset": LINEUP_NEAR_SPOTS[i]})
+	pool.ghosts.stage(near, LINEUP_FAR_SPOTS.map(func(o: Vector2) -> Dictionary: return {"offset": o}))
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_am": Array(sim.absolute_position_am()), "bodies": _lineup_ids.duplicate()}
+	return true
+
+
+## The hatch: at home, size 1, the AI frozen, two rammers and three carrion pieces beside the cell
+## (plankton is in view at home), then the ring filled and drawn full. The growth itself is shot.
+func _stage_hatch() -> bool:
+	if sim.world == null or sim.growth == null or sim.size() != 1:
+		return false
+	sim.debug_set_ai_frozen(true)
+	var c := sim.motion.position
+	for offset in HATCH_RAMMERS:
+		if not sim.debug_spawn_creature("rammer", c + offset, -PI / 2.0):
+			printerr("Look probe: no room for a rammer at %s" % [c + offset])
+			return false
+	for i in 3:
+		var p := c + Vector2(0.5, 3.4) + Vector2.from_angle(TAU * i / 3.0 + 0.4) * 0.9
+		if sim.arena.is_clear(p, sim.carrion.item_radius):
+			sim.carrion.spawn(p, "debug")
+	pool.camera.distance = zoom if zoom > 0.0 else GROWTH_ZOOM
+	await _play(_whole_frames(CARRION_SETTLE_FRAMES))
+	if not sim.debug_fill_meter(1.0):
+		return false
+	await _play(HATCH_RING_FRAMES)
+	_staged = {"body": GROWTH_BODY, "size": sim.size(), "at_am": Array(sim.absolute_position_am()),
+		"carrion": sim.carrion.items.size(), "meter": sim.growth.meter, "ring": sim.growth.ring(1)}
+	return true
+
+
 # --- Scenes: frames and readings ----------------------------------------------------------------
 
 ## Captures the frozen moment's frames and takes its readings.
@@ -536,6 +948,18 @@ func _shoot(scene: String) -> void:
 			await _shoot_sunlit(scene)
 		"shelter":
 			await _shoot_shelter(scene)
+		"reef":
+			await _shoot_reef(scene)
+		"landmark", "husk", "shed_husk":
+			await _shoot_piece(scene)
+		"markers":
+			await _shoot_markers(scene)
+		"rebase_pair":
+			await _shoot_rebase(scene)
+		"lineup_s1", "lineup_s2":
+			await _shoot_growth_lineup(scene)
+		"hatch":
+			await _shoot_hatch(scene)
 		_:
 			var frames := await _shoot_common(scene)
 			var r: Dictionary = results[scene].readings
@@ -743,6 +1167,441 @@ func _shoot_lane(scene: String) -> void:
 	results[scene].readings.lane.merge(_lane_patch(lane, bare, unlit))
 	results[scene].readings.marker = await _marker_readings(scene, view)
 	_write_points(scene, frames[0])
+
+
+# --- Endless scenes: frames and readings -------------------------------------------------------
+
+## The reef: its frames, then the same moment with every shell hidden, for the shells' own pixels.
+func _shoot_reef(scene: String) -> void:
+	var frames := await _shoot_common(scene)
+	pool.rocks.visible = false
+	var bare := await _capture()
+	pool.rocks.visible = true
+	_save(scene, "norocks", bare)
+	results[scene].readings.shells = _shell_readings(frames[0], frames[1], bare)
+	_write_points(scene, frames[0])
+
+
+## Each shell on screen and clear of HUD panels, nearest the screen centre first: its silhouette,
+## the pixels it draws in its projected box (its mesh's box at its instance), against the fluid frame
+## there. The shells are drums and towers 2.4 to 2.7 m tall, with lit tops and fluid-tinted sides,
+## so the whole silhouette is read, not a disc at the projected centre (the content doc's core), which
+## falls on the top or the side by where the shell stands on screen. A shell with less than
+## SHELL_ON_SCREEN of its box on screen is left out. {"items", "count", "achromatic", "food_gap_min", "threat_gap_min", "fluid_dL_min",
+## "fluid_dL_px_min", "fluid_dL_px_median"}; no minimum when no shell could be read.
+func _shell_readings(full: Image, fluid: Image, bare: Image) -> Dictionary:
+	var panels := _hud_panels()
+	var screen := Rect2i(Vector2i.ZERO, full.get_size())
+	var centre := Vector2(full.get_size()) * 0.5
+	var found := []
+	for asset in pool.rocks.assets_in_use():
+		var piece: Dictionary = pool.rocks._pieces[asset]
+		var mesh_box: AABB = (piece.mesh as Mesh).get_aabb()
+		for e: Dictionary in pool.rocks.instances_of(asset):
+			var t: Transform3D = pool.rocks.global_transform * e.transform * piece.offset
+			var w := t * mesh_box.get_center()
+			if not _on_screen(w, full):
+				continue
+			var whole := _project_box(t * mesh_box)
+			var box := whole.intersection(screen)
+			if box.get_area() < SHELL_ON_SCREEN * whole.get_area() or panels.any(func(p: Rect2) -> bool: return p.intersects(Rect2(box))):
+				continue
+			var drawn := _drawn(full, bare, fluid, box)
+			if drawn.on.size() < SHELL_PIXELS_NEEDED:
+				continue
+			_boxes.append(box)
+			var at := _px(w)
+			var one := _against_fluid(drawn)
+			one.merge({"id": e.id, "asset": asset, "px": [roundi(at.x), roundi(at.y)], "d": snappedf(at.distance_to(centre), 0.1)})
+			found.append(one)
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.d < b.d)
+	var out := {"items": found, "count": found.size(), "achromatic": found.filter(func(x: Dictionary) -> bool: return x.achromatic).size()}
+	if found.is_empty():
+		return out
+	out.food_gap_min = found.map(func(x: Dictionary) -> float: return x.food_gap).min()
+	out.threat_gap_min = found.map(func(x: Dictionary) -> float: return x.threat_gap).min()
+	out.fluid_dL_min = found.map(func(x: Dictionary) -> float: return x.fluid_dL).min()
+	var each: Array = found.map(func(x: Dictionary) -> float: return x.fluid_dL_px)
+	out.fluid_dL_px_min = each.min()
+	each.sort()
+	out.fluid_dL_px_median = each[each.size() / 2]
+	return out
+
+
+## A landmark or the husk (the staged piece): its frames, then the same moment with that piece
+## hidden, for its silhouette in its projected box against the fluid frame.
+func _shoot_piece(scene: String) -> void:
+	var piece := _piece_node(str(_staged.get("id", "")))
+	if piece == null:
+		results[scene].error = "%s is not drawn" % _staged.get("id", "the piece")
+		return
+	var frames := await _shoot_common(scene)
+	piece.visible = false
+	var without := await _capture()
+	piece.visible = true
+	_save(scene, "nopiece", without)
+	var box := _screen_box(piece)
+	_boxes.append(box)
+	results[scene].readings.merge(_against_fluid(_drawn(frames[0], without, frames[1], box)))
+	results[scene].readings.box = [box.position.x, box.position.y, box.size.x, box.size.y]
+	_write_points(scene, frames[0])
+
+
+## The arrow home and the column's pip: the frames, then the moment with both markers hidden and
+## with the HUD's world overlay hidden.
+func _shoot_markers(scene: String) -> void:
+	var arrow := pool.markers.arrow()
+	var overlay: Control = main.hud.world_overlay
+	if arrow == null or not arrow.visible or overlay == null:
+		results[scene].error = "the arrow home is not showing"
+		return
+	var frames := await _shoot_common(scene)
+	pool.markers.visible = false
+	var bare := await _capture()
+	pool.markers.visible = true
+	overlay.visible = false
+	var plain := await _capture()
+	overlay.visible = true
+	_save(scene, "nomarkers", bare)
+	_save(scene, "nooverlay", plain)
+	var r: Dictionary = results[scene].readings
+	var mesh := arrow.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D
+	var core := _disc_point(frames[0], _px(mesh.global_transform * mesh.get_aabb().get_center()), ARROW_DISC_PX)
+	r.arrow_centre = core
+	r.arrow_L = core.L
+	var box := _screen_box(arrow)
+	_boxes.append(box)
+	r.arrow = _against_fluid(_drawn(frames[0], bare, frames[1], box))
+	var state: Dictionary = pool.markers.arrow_state()
+	r.arrow_state = {"distance_tm": snappedf(float(state.distance_tm), 0.1),
+		"direction": [snappedf(state.direction.x, 0.001), snappedf(state.direction.y, 0.001)]}
+	r.pip_present = 0
+	r.pip = {}
+	var pip: Dictionary = overlay.get("pip")
+	if pip.has("at"):
+		var at: Vector2 = pip.at
+		var pip_box := _disc_rect(at, Hud.WorldOverlay.PIP_RADIUS_PX + Hud.WorldOverlay.PIP_OUTLINE_PX + 2.0)
+		_boxes.append(pip_box)
+		var drawn := _drawn(frames[0], plain, frames[1], pip_box)
+		r.pip = {"at": [roundi(at.x), roundi(at.y)], "pixels": drawn.on.size()}
+		if not drawn.on.is_empty():
+			r.pip.color = reading(median_color(drawn.on))
+			r.pip_present = 1
+	_write_points(scene, frames[0])
+
+
+## The rebase pair (G10): frame A of the paused moment, A again with nothing changed, then a dev
+## rebase by REBASE_BY chunks routed as the pool routes it and frame B. A rebase never shows when B
+## matches A about as well as A matches itself.
+func _shoot_rebase(scene: String) -> void:
+	_boxes.clear()
+	var a := await _capture(FIRST_SETTLE)
+	var still := await _capture()
+	var before := [sim.world.origin_x_am, sim.world.origin_y_am]
+	if not sim.debug_rebase(REBASE_BY):
+		results[scene].error = "the dev rebase did not run"
+		return
+	var b := await _capture()
+	_save(scene, "", a)
+	_save(scene, "still", still)
+	_save(scene, "after", b)
+	var whole := Rect2i(Vector2i.ZERO, a.get_size())
+	var moved := delta_e_spread(a, b, whole, PARITY_STRIDE)
+	var same := delta_e_spread(a, still, whole, PARITY_STRIDE)
+	var r: Dictionary = results[scene].readings
+	r.render_info = _render_info()
+	r.origin_moved_am = [sim.world.origin_x_am - before[0], sim.world.origin_y_am - before[1]]
+	if not moved.is_empty():
+		r.median_dE = moved.median
+		r.p99_dE = moved.p99
+		r.max_dE = moved.max
+	if not same.is_empty():
+		r.still_median_dE = same.median
+		r.still_p99_dE = same.p99
+
+
+## A growth lineup's frames and readings: the common ones, then the ghosts (against the frame
+## without them), each lineup body's rim (against the frame with every lineup rim off) and its ink
+## (its ink surfaces keyed, or its "!" where it has none; popping the "!" steps those views on, so it
+## comes last).
+func _shoot_growth_lineup(scene: String) -> void:
+	var frames := await _shoot_common(scene)
+	var full: Image = frames[0]
+	var fluid: Image = frames[1]
+	var r: Dictionary = results[scene].readings
+	r.bodies = _lineup_ids.duplicate()
+	var ghosts := pool.ghosts.billboards()
+	pool.ghosts.visible = false
+	var bare := await _capture()
+	pool.ghosts.visible = true
+	_save(scene, "noghosts", bare)
+	r.near = {}
+	r.far = {}
+	var cell_px := 2.0 * _px_radius(pool.cell_view.global_position, sim.phenotype.radius)
+	for node in ghosts:
+		var species := pool.ghosts.species_of(node)
+		var far := str(node.name).begins_with("Far")
+		if species.is_empty() and not far:
+			continue
+		var body := _ghost_body(node, _ghost_rect(node, species))
+		var drawn := _drawn(full, bare, fluid, body.box)
+		_boxes.append(body.box)
+		var one := {"node": str(node.name), "width_px": snappedf(body.width, 0.1), "height_px": snappedf(body.height, 0.1),
+			"cell_multiple": snappedf(body.width / cell_px, 0.01), "cell_radius_multiple": snappedf(body.height / (cell_px * 0.5), 0.01),
+			"screen_share": snappedf(body.height / float(full.get_height()), 0.0001), "pixels": (drawn.on as PackedColorArray).size(),
+			"drawn_share": snappedf((drawn.on as PackedColorArray).size() / float(maxi(int(drawn.of), 1)), 0.001),
+			"box": [body.box.position.x, body.box.position.y, body.box.size.x, body.box.size.y],
+			"on_screen": Rect2(Vector2.ZERO, Vector2(full.get_size())).has_point(body.centre)}
+		if far:
+			r.far[str(node.name).trim_prefix("Far")] = one
+		else:
+			r.near[species] = one
+	var views := {}
+	for species: String in _lineup_ids:
+		var view := pool.creature_layer.view_of(_lineup_ids[species])
+		if view != null:
+			views[species] = view
+	r.rim = {}
+	r.rim_detail = {}
+	for v: CreatureView in views.values():
+		v._rim_material.set_shader_parameter("rim", 0.0)
+	var unrimmed := await _capture()
+	for v: CreatureView in views.values():
+		v._apply_rim()
+	_save(scene, "norim", unrimmed)
+	for species: String in views:
+		var v: CreatureView = views[species]
+		var box := _screen_box(v).grow(RIM_BOX_PX)
+		var pixels := _changed(full, unrimmed, box, full)
+		var green := hue_share(pixels, FOOD_HEX, RIM_HUE_DEG, ACHROMATIC_C)
+		r.rim[species] = 1 if int(green.count) >= RIM_PIXELS else 0
+		r.rim_detail[species] = {"pixels": pixels.size(), "food_hue_pixels": green.count, "view_rim": v.rim}
+	r.ink = {}
+	r.ink_detail = {}
+	var keyed_views := views.values().filter(func(v: CreatureView) -> bool: return not v._ink_slots.is_empty())
+	var marked_views := views.values().filter(func(v: CreatureView) -> bool: return v._ink_slots.is_empty())
+	for v: CreatureView in keyed_views:
+		for slot: Dictionary in v._ink_slots:
+			(slot.material as BaseMaterial3D).albedo_color = INK_KEY
+	var keyed := await _capture()
+	for v: CreatureView in keyed_views:
+		v._apply_ink()
+	_save(scene, "ink", keyed)
+	var marker_on: Image = null
+	var marker_off: Image = null
+	if not marked_views.is_empty():
+		for v: CreatureView in marked_views:
+			v.show_marker()
+			v._process(CreatureView.MARKER_POP_S)
+		marker_on = await _capture()
+		for v: CreatureView in marked_views:
+			(v.get_node("%Marker") as Label3D).visible = false
+		marker_off = await _capture()
+		_save(scene, "marker", marker_on)
+		_save(scene, "nomarker", marker_off)
+	for species: String in views:
+		var v: CreatureView = views[species]
+		var pixels := PackedColorArray()
+		var source := "surfaces"
+		var box := _screen_box(v)
+		if v._ink_slots.is_empty():
+			source = "marker"
+			var at := Vector2i(_px((v.get_node("%Marker") as Label3D).global_position))
+			box = Rect2i(at - Vector2i.ONE * MARKER_BOX_PX, Vector2i.ONE * MARKER_BOX_PX * 2)
+			pixels = _changed(marker_on, marker_off, box, marker_on)
+		else:
+			pixels = _changed(full, keyed, box, full)
+		_boxes.append(box)
+		var share := hue_share(pixels, THREAT_HEX, INK_HUE_DEG, INK_MIN_C)
+		r.ink[species] = 1 if pixels.size() > 0 and share.share >= INK_SHARE else 0
+		r.ink_detail[species] = {"source": source, "pixels": pixels.size(), "share": share.share, "view_ink": v.ink,
+			"median": reading(median_color(pixels))}
+	_write_points(scene, full)
+
+
+## The hatch: frame A (one ordinary tick after the ring was drawn full) and frame 0 (the growth's
+## tick), both with no 2D layer, compared over the whole frame; the ordinary tick before A against A
+## for scale; the same pair paused with the ambience hidden; then the beat at 1.0 s and 2.0 s, with
+## the HUD, for review. Ticks run here: the pool plays one frame at a time at --fixed-fps.
+func _shoot_hatch(scene: String) -> void:
+	_boxes.clear()
+	var r: Dictionary = results[scene].readings
+	var full := await _capture(FIRST_SETTLE)
+	_save(scene, "", full)
+	r.render_info = _render_info()
+	var ambience := pool.get_node_or_null(^"Ambience") as Node3D
+	pool.ui.visible = false
+	_run_ticks(true)
+	var before := await _capture()
+	var a := await _capture()
+	_run_ticks(false)
+	await _play(1)
+	if ambience != null:
+		ambience.visible = false
+	var a_bare := await _capture()
+	if ambience != null:
+		ambience.visible = true
+	var size_before := sim.size()
+	if not sim.debug_force_growth():
+		results[scene].error = "debug_force_growth was refused"
+		pool.ui.visible = true
+		return
+	_run_ticks(true)
+	var zero := await _capture()
+	_run_ticks(false)
+	await _play(1)
+	r.size_before = size_before
+	r.size_after = sim.size()
+	if ambience != null:
+		ambience.visible = false
+	var zero_bare := await _capture()
+	if ambience != null:
+		ambience.visible = true
+	_save(scene, "world", a)
+	_save(scene, "zero", zero)
+	var whole := Rect2i(Vector2i.ZERO, a.get_size())
+	var growth := delta_e_spread(a, zero, whole, PARITY_STRIDE)
+	var tick := delta_e_spread(before, a, whole, PARITY_STRIDE)
+	var bare := delta_e_spread(a_bare, zero_bare, whole, PARITY_STRIDE)
+	if not growth.is_empty():
+		r.median_dE = growth.median
+		r.p99_dE = growth.p99
+		r.max_dE = growth.max
+	if not tick.is_empty():
+		r.tick_median_dE = tick.median
+		r.tick_p99_dE = tick.p99
+	if not bare.is_empty():
+		r.bare_median_dE = bare.median
+		r.bare_p99_dE = bare.p99
+	r.ambience = "shown in A and 0 (its apply_scale_view re-expresses it); hidden in the bare pair" if ambience != null else "none mounted"
+	r.plankton_on_screen = sim.plankton.items.filter(func(item: Dictionary) -> bool: return _on_screen(PlaneSpace.to_world(item.position), a)).size()
+	pool.ui.visible = true
+	_run_ticks(true)
+	for at_s in [1.0, 2.0]:
+		var guard := 0
+		while pool.growth_beat.running() and pool.growth_beat.t() < at_s and guard < 600:
+			await process_frame
+			guard += 1
+		_save(scene, "beat%ds" % int(at_s), await _capture())
+		r["beat_t_%ds" % int(at_s)] = snappedf(pool.growth_beat.t(), 0.001)
+	_run_ticks(false)
+
+
+## Lets the sim tick (one tick a frame at --fixed-fps) or stops it again, as _freeze does.
+func _run_ticks(on: bool) -> void:
+	Engine.time_scale = 1.0 if on else 0.0
+	pool.set_paused(not on)
+
+
+## A ghost billboard's body rect: its species' from the ladder, or the far texture's.
+func _ghost_rect(node: Node3D, species: String) -> Array:
+	var ladder := pool.ghosts.ladder()
+	if not species.is_empty():
+		return ladder.species[species].body_rect
+	var far: Dictionary = ladder.far
+	return far.body_rects[str(far.textures[int(str(node.name).trim_prefix("Far"))]).get_file().get_basename()]
+
+
+## A billboard's body on screen (the quad lies flat, u east and v south): its centre, its width
+## across its middle, its height and its screen box. {"centre", "width", "height", "box"}.
+func _ghost_body(node: Node3D, rect: Array) -> Dictionary:
+	var xf := node.global_transform
+	var at := func(u: float, v: float) -> Vector2: return _px(xf * Vector3(u - 0.5, 0.0, v - 0.5))
+	var mid_v := (float(rect[1]) + float(rect[3])) * 0.5
+	var corners: Array[Vector2] = []
+	for corner in [[rect[0], rect[1]], [rect[2], rect[1]], [rect[0], rect[3]], [rect[2], rect[3]]]:
+		corners.append(at.call(float(corner[0]), float(corner[1])))
+	var box := Rect2(corners[0], Vector2.ZERO)
+	for c in corners:
+		box = box.expand(c)
+	return {"centre": _px(xf.origin), "width": (at.call(float(rect[0]), mid_v) as Vector2).distance_to(at.call(float(rect[2]), mid_v)),
+		"height": box.size.y, "box": Rect2i(Vector2i(box.position.floor()), Vector2i(box.end.ceil()) - Vector2i(box.position.floor()))}
+
+
+## The pixels of `colors_from` in `rect` where `a` and `b` differ by more than SILHOUETTE_CHANGE in a
+## channel.
+func _changed(a: Image, b: Image, rect: Rect2i, colors_from: Image) -> PackedColorArray:
+	var out := PackedColorArray()
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, a.get_size()))
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var p := a.get_pixel(x, y)
+			var q := b.get_pixel(x, y)
+			if maxf(absf(p.r - q.r), maxf(absf(p.g - q.g), absf(p.b - q.b))) > SILHOUETTE_CHANGE:
+				out.append(colors_from.get_pixel(x, y))
+	return out
+
+
+## The pixels a piece draws in `rect` (within `radius` of `center` when one is given): where `full`
+## differs from `without` (the moment without it) by more than SILHOUETTE_CHANGE in a channel, with
+## the fluid frame's pixels there. {"on", "behind" (PackedColorArray), "of" (pixels looked at)}.
+func _drawn(full: Image, without: Image, fluid: Image, rect: Rect2i, center := Vector2.INF, radius := 0.0) -> Dictionary:
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, full.get_size()))
+	var on := PackedColorArray()
+	var behind := PackedColorArray()
+	var of := 0
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			if radius > 0.0 and Vector2(x, y).distance_to(center) > radius:
+				continue
+			of += 1
+			var a := full.get_pixel(x, y)
+			var b := without.get_pixel(x, y)
+			if maxf(absf(a.r - b.r), maxf(absf(a.g - b.g), absf(a.b - b.b))) > SILHOUETTE_CHANGE:
+				on.append(a)
+				behind.append(fluid.get_pixel(x, y))
+	return {"on": on, "behind": behind, "of": of}
+
+
+## A piece's drawn pixels (_drawn) against the fluid behind them: their medians, how many and what
+## share of the pixels looked at, |dL*| between the medians (fluid_dL), the median of each pixel's
+## own |dL*| (fluid_dL_px: texture and shading count there), and the LAB hue gaps from the food and
+## threat colours (180 for a colour under ACHROMATIC_C chroma). {"silhouette", "silhouette_behind",
+## "pixels", "share", "fluid_dL", "fluid_dL_px", "achromatic", "food_gap", "threat_gap"}.
+func _against_fluid(drawn: Dictionary) -> Dictionary:
+	var on: PackedColorArray = drawn.on
+	var piece := reading(median_color(on))
+	var behind := reading(median_color(drawn.behind))
+	var out := {"silhouette": piece, "silhouette_behind": behind, "pixels": on.size(),
+		"share": snappedf(on.size() / float(maxi(int(drawn.of), 1)), 0.01)}
+	if on.is_empty():
+		return out
+	out.fluid_dL = _dl(piece, behind)
+	var each := PackedFloat32Array()
+	for i in on.size():
+		each.append(absf(lab(on[i]).x - lab(drawn.behind[i]).x))
+	each.sort()
+	out.fluid_dL_px = snappedf(each[each.size() / 2], 0.1)
+	out.achromatic = piece.C < ACHROMATIC_C
+	out.food_gap = 180.0 if out.achromatic else snappedf(hue_gap(piece.h, hue(lab(Color(FOOD_HEX)))), 0.1)
+	out.threat_gap = 180.0 if out.achromatic else snappedf(hue_gap(piece.h, hue(lab(Color(THREAT_HEX)))), 0.1)
+	return out
+
+
+## The landmark layer's piece named `id` (an anchor's or a rare place's), or null.
+func _piece_node(id: String) -> Node3D:
+	for piece in pool.landmarks.pieces():
+		if str(piece.name) == id:
+			return piece
+	return null
+
+
+## The screen box round the bounding boxes of a node's visible meshes, clipped to the screen.
+func _screen_box(node: Node3D) -> Rect2i:
+	var box := Rect2i()
+	for mi: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
+		if mi.is_visible_in_tree():
+			var one := _project_box(mi.global_transform * mi.get_aabb())
+			box = box.merge(one) if box.has_area() else one
+	return box.intersection(Rect2i(Vector2i.ZERO, root.size))
+
+
+## The screen box round a world box's eight corners (unclipped).
+func _project_box(aabb: AABB) -> Rect2i:
+	var box := Rect2(_px(aabb.get_endpoint(0)), Vector2.ZERO)
+	for k in range(1, 8):
+		box = box.expand(_px(aabb.get_endpoint(k)))
+	return Rect2i(Vector2i(box.position.floor()), Vector2i(box.end.ceil()) - Vector2i(box.position.floor()))
 
 
 # --- Measuring -----------------------------------------------------------------------------------
@@ -1207,6 +2066,7 @@ func _write_report(gates: Array[Dictionary], failed: int) -> void:
 		"resolution": [window.x, window.y],
 		"body": BODY,
 		"seed": SEED,
+		"world": world,
 		"zoom": pool.camera.distance if pool != null else zoom,
 		"parity_with": parity_dir,
 		"gates": gates,
@@ -1339,6 +2199,48 @@ static func median_delta_e(a: Image, b: Image, rect: Rect2i, stride := 1, center
 		return NAN
 	d.sort()
 	return snappedf(d[d.size() / 2], 0.1)
+
+
+## The median, 99th percentile and largest CIE76 between two frames' pixels in `rect` (every
+## `stride`th one on both axes), to 0.1: {"median", "p99", "max"}; {} when no pixel lies in them.
+static func delta_e_spread(a: Image, b: Image, rect: Rect2i, stride := 1) -> Dictionary:
+	var area := rect.intersection(Rect2i(Vector2i.ZERO, a.get_size()))
+	var d := PackedFloat32Array()
+	for y in range(area.position.y, area.end.y, stride):
+		for x in range(area.position.x, area.end.x, stride):
+			d.append(delta_e(a.get_pixel(x, y), b.get_pixel(x, y)))
+	if d.is_empty():
+		return {}
+	d.sort()
+	return {"median": snappedf(d[d.size() / 2], 0.1), "p99": snappedf(d[mini(d.size() - 1, int(d.size() * 0.99))], 0.1),
+		"max": snappedf(d[d.size() - 1], 0.1)}
+
+
+## The body a scene's lineage starts with: GROWTH_BODY for S2's growth scenes, else BODY.
+static func body_for(scene: String) -> String:
+	return GROWTH_BODY if GROWTH_SCENES.has(scene) else BODY
+
+
+## Of `colors`, those whose LAB hue lies within `deg` of `hex`'s with C* at least `min_c`:
+## {"count", "of", "share"} (share 0 for no colours).
+static func hue_share(colors: PackedColorArray, hex: String, deg: float, min_c: float) -> Dictionary:
+	var target := hue(lab(Color(hex)))
+	var count := 0
+	for c in colors:
+		var v := lab(c)
+		if Vector2(v.y, v.z).length() >= min_c and hue_gap(hue(v), target) <= deg:
+			count += 1
+	return {"count": count, "of": colors.size(), "share": snappedf(count / float(colors.size()), 0.001) if not colors.is_empty() else 0.0}
+
+
+## The scenes --world=`world_name` stages by default: POOL_SCENES or ENDLESS_SCENES ([] for neither).
+static func scenes_for(world_name: String) -> Array[String]:
+	match world_name:
+		"pool":
+			return POOL_SCENES.duplicate()
+		"endless":
+			return ENDLESS_SCENES.duplicate()
+	return []
 
 
 ## The value at a dotted path in nested dictionaries ("lineup.cell.h"), or null.

@@ -1,0 +1,186 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "T1 test fixture: the smallest tile set the rules accept; not game content.",
+	"id": "sunlit_b",
+	"band": 0,
+	"region": "sunlit",
+	"set": 1,
+	"rare": "",
+	"landmark_anchor": [
+		0.0,
+		-25.0
+	],
+	"set_piece": null,
+	"shells": [
+		{
+			"id": "a",
+			"center": [
+				16.0,
+				-8.0
+			],
+			"radius": 1.22,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				22.0,
+				-16.0
+			],
+			"radius": 0.78,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "sink"
+		},
+		{
+			"id": "c",
+			"center": [
+				10.0,
+				-25.0
+			],
+			"radius": 1.02,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "d",
+			"center": [
+				-16.0,
+				-8.0
+			],
+			"radius": 1.38,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "e",
+			"center": [
+				-22.0,
+				-18.0
+			],
+			"radius": 0.72,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "f",
+			"center": [
+				-10.0,
+				-25.0
+			],
+			"radius": 1.08,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "g",
+			"center": [
+				25.0,
+				25.0
+			],
+			"radius": 0.92,
+			"yaw_deg": [
+				30.0,
+				120.0
+			],
+			"at_second_size": "keep"
+		},
+		{
+			"id": "h",
+			"center": [
+				-25.0,
+				25.0
+			],
+			"radius": 1.33,
+			"yaw_deg": [
+				0.0,
+				360.0
+			],
+			"at_second_size": "keep"
+		}
+	],
+	"zones": [
+		{
+			"id": "a",
+			"center": [
+				-12.0,
+				12.0
+			],
+			"radius": 4.0,
+			"capacity": 40.0,
+			"growth_rate": 0.08,
+			"at_second_size": "keep"
+		},
+		{
+			"id": "b",
+			"center": [
+				14.0,
+				4.0
+			],
+			"radius": 3.0,
+			"capacity": 30.0,
+			"growth_rate": 0.08,
+			"at_second_size": "thin"
+		}
+	],
+	"sites": [
+		{
+			"id": "a",
+			"species": "rammer",
+			"home": [
+				-12.0,
+				13.0
+			],
+			"heading": -1.5708,
+			"sizes": [
+				1
+			],
+			"territory_zone": "a"
+		},
+		{
+			"id": "b",
+			"species": "ambush_hunter",
+			"home": [
+				12.0,
+				12.0
+			],
+			"heading": -3.1416,
+			"sizes": [
+				1,
+				2
+			]
+		},
+		{
+			"id": "er",
+			"species": "elder_rammer",
+			"home": [
+				-11.5,
+				11.5
+			],
+			"heading": -0.7854,
+			"sizes": [
+				2
+			],
+			"territory_zone": "a"
+		}
+	]
+}

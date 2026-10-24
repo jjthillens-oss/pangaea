@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Open drift, the transit: a loose shell cluster, no sites, small zones of 1 or 2 items each (docs/s1/s1-content.md 3.2 and 3.4).",
+  "id": "drift_b",
+  "band": 0,
+  "region": "drift",
+  "set": 0,
+  "rare": "",
+  "landmark_anchor": [18.0, -18.0],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [-16.5, 12.5], "radius": 0.85, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-16.1, 6.9], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [0.3, 10.0], "radius": 0.65, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-12.4, 2.7], "radius": 0.75, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "f0", "center": [26.0, -23.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f1", "center": [-20.0, -22.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f2", "center": [3.0, -22.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f3", "center": [-4.0, 0.0], "radius": 5.0, "capacity": 16.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f4", "center": [-26.0, 2.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f5", "center": [20.0, 2.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f6", "center": [-21.0, 21.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f7", "center": [20.0, 22.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"},
+    {"id": "f8", "center": [3.0, 25.0], "radius": 5.0, "capacity": 8.0, "growth_rate": 0.1, "at_second_size": "keep"}
+  ],
+  "sites": []
+}

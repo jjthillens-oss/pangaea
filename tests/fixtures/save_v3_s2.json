@@ -1,0 +1,100 @@
+{
+	"adaptation_points": 16,
+	"build_id": "0.0.2-m1+dev",
+	"checkpoint": {
+		"heading": 1.25,
+		"size": 2,
+		"x_am": 812.25,
+		"y_am": -40.0625
+	},
+	"discoveries": [
+		{
+			"id": "plankton",
+			"size": 1,
+			"type": "food"
+		},
+		{
+			"id": "carrion",
+			"size": 1,
+			"type": "food"
+		},
+		{
+			"id": "giant_husk",
+			"size": 1,
+			"type": "place"
+		},
+		{
+			"id": "algae_ball",
+			"size": 2,
+			"type": "food"
+		},
+		{
+			"id": "landmark_arch",
+			"size": 2,
+			"type": "landmark"
+		}
+	],
+	"era": "microscopic",
+	"gen_version": 1,
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 1,
+		"genome_id": "genome_6096616b0e6a0d9d",
+		"lineage_id": "lineage_f493210d26af6415",
+		"next_part_number": 4,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.35,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_filter"
+			},
+			{
+				"angle": -0.35,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159,
+				"id": "part_3",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"growth": {
+		"meter": 37.5,
+		"size": 2
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_6096616b0e6a0d9d"
+		}
+	],
+	"lineage_id": "lineage_f493210d26af6415",
+	"pending_transactions": [],
+	"player": {
+		"energy": null,
+		"health": null,
+		"position": [
+			830.5,
+			0.0,
+			-52.375
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 1792766329,
+	"schema_version": 3,
+	"settlements": [],
+	"spawn": null,
+	"world_changes": [],
+	"world_seed": 2024
+}
