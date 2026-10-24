@@ -229,7 +229,7 @@ UI_S_FADE_TO_HAZE_194027,%s fade to haze
 UI_S_FLEE_FROM_YOU_DD999A,%s flee from you
 UI_S_GENERATION_D_218479,%s · Generation %d
 UI_S_IGNORE_YOU_9738D8,%s ignore you
-UI_S_LINEAGE_S_GENERATION_U00A0_D_6E25CD,%s lineage %s · Generation\u00a0%d
+UI_S_LINEAGE_S_GENERATION_U00A0_D_6E25CD,%s lineage %s · Generation %d
 UI_S_MOVE_83EF03,%s  Move
 UI_S_TABS_535627,%s  Tabs
 UI_TEST_DRIVE_F11B82,Test drive
