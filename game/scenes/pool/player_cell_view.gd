@@ -8,6 +8,11 @@ extends Node3D
 ## flinch and the death pose go on Pivot, so they never move the point the camera and tests read.
 ## One overlay (cell_overlay.gdshader) greys the cell while it starves or is dead, flashes it red
 ## when it is hurt and draws the soft rim of shelter (M1 step 3).
+##
+## Growth (S2, s2-view 4.3): set_growth_pose is the growth beat's swell (a factor on Pivot), the
+## offset from the sim's position the cell is drawn at while it eases to where the tick settled it,
+## and the Body's Stretch blend shape; set_ripeness is its Ripeness shape (the meter's share). A body
+## without a shape ignores it.
 
 const PART_SCENES := {
 	"mouth_filter": preload("res://assets/export/part_mouth_filter.glb"),
@@ -79,6 +84,16 @@ var _overlay := ShaderMaterial.new()
 var _overlay_on := false
 var _warm_overlay := 0   ## frames left to draw the overlay unseen, so its shader is ready before play
 
+var _growth_swell := 1.0
+var _growth_offset := Vector2.ZERO
+var _stretch := 0.0
+var _ripeness := 0.0
+
+## The eat burst, kept here because attach_fx moves it out of this scene (where % no longer finds it).
+var _eat_fx: CPUParticles3D
+## Where the eat burst and the meal ghosts live (the pool's WorldFx), or null outside a pool.
+var _fx_root: Node3D
+
 @onready var _pivot: Node3D = %Pivot
 
 
@@ -133,7 +148,7 @@ func part_nodes() -> Array[Node]:
 func show_motion(motion: Locomotion.MotionState, fraction: float) -> void:
 	var p := motion.prev_position.lerp(motion.position, fraction)
 	var heading := lerp_angle(motion.prev_heading, motion.heading, fraction)
-	position = PlaneSpace.to_world(p)
+	position = PlaneSpace.to_world(p + _growth_offset)
 	rotation = Vector3(0.0, PlaneSpace.yaw_for_heading(heading), 0.0)
 	_speed = motion.position.distance_to(motion.prev_position) / PoolSim.DT
 	_turn = angle_difference(motion.prev_heading, motion.heading) / PoolSim.DT
@@ -145,6 +160,40 @@ func place(motion: Locomotion.MotionState) -> void:
 	_speed = 0.0
 	_turn = 0.0
 	_bank = 0.0
+
+
+## The growth beat's pose (S2): `swell` scales Pivot, `offset` (tm) moves the drawn cell off the
+## sim's position (applied by the next show_motion), `stretch` is the Stretch shape's weight.
+func set_growth_pose(swell: float, offset: Vector2, stretch: float) -> void:
+	_growth_swell = swell
+	_growth_offset = offset
+	if stretch != _stretch:
+		_stretch = stretch
+		_set_shape(&"Stretch", stretch)
+
+
+## The meter's share as the Ripeness shape's weight (S2; 0 in the pool).
+func set_ripeness(share: float) -> void:
+	if share != _ripeness:
+		_ripeness = share
+		_set_shape(&"Ripeness", share)
+
+
+## The growth pose now: {swell, offset, stretch, ripeness} (tests).
+func growth_pose() -> Dictionary:
+	return {"swell": _growth_swell, "offset": _growth_offset, "stretch": _stretch, "ripeness": _ripeness}
+
+
+func _set_shape(shape: StringName, weight: float) -> void:
+	var body := get_node_or_null(^"%Model/Body") as MeshInstance3D
+	if body == null:
+		var model := get_node_or_null(^"%Model")
+		body = model.find_child("Body", true, false) as MeshInstance3D if model != null else null
+	if body == null:
+		return
+	var i := body.find_blend_shape_by_name(shape)
+	if i >= 0:
+		body.set_blend_shape_value(i, weight)
 
 
 func set_starving(starving: bool) -> void:
@@ -218,9 +267,30 @@ func warm_up(meshes: Array[Mesh], at: Vector3) -> void:
 			_ghost(mesh, at, at)
 
 
+## Moves the eat burst under `root` (the pool's WorldFx, which a rebase shifts) with local particle
+## coordinates, so a burst in the air rides the rebase with the world (S1). The ghosts go there too.
+func attach_fx(root: Node3D) -> void:
+	var fx := _fx()
+	_fx_root = root
+	if fx.get_parent() != root:
+		fx.owner = null   # it leaves this scene
+		fx.reparent(root, false)
+	fx.local_coords = true
+
+
+func _fx() -> CPUParticles3D:
+	if _eat_fx == null:
+		_eat_fx = %EatFx
+	return _eat_fx
+
+
+## The burst at `at` (the pool's space): in WorldFx's frame once attached, else at the global point.
 func _burst(at: Vector3, color: Color) -> void:
-	var fx: CPUParticles3D = %EatFx
-	fx.global_position = at
+	var fx := _fx()
+	if _fx_root != null:
+		fx.position = WorldSpace.to_frame(_fx_root, Vector2(at.x, at.z), at.y)
+	else:
+		fx.global_position = at
 	fx.color = color
 	fx.restart()
 	fx.emitting = true
@@ -230,10 +300,18 @@ func _ghost(mesh: Mesh, from: Vector3, to: Vector3) -> void:
 	var ghost := MeshInstance3D.new()
 	ghost.mesh = mesh
 	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_parent().add_child(ghost)
-	ghost.global_position = from
-	var tween := ghost.create_tween().set_parallel()
-	tween.tween_property(ghost, "global_position", to, GHOST_S).set_ease(Tween.EASE_IN)
+	var tween: Tween
+	if _fx_root != null:
+		# In WorldFx's frame, so a rebase during the flight shifts the ghost with its container.
+		_fx_root.add_child(ghost)
+		ghost.position = WorldSpace.to_frame(_fx_root, Vector2(from.x, from.z), from.y)
+		tween = ghost.create_tween().set_parallel()
+		tween.tween_property(ghost, "position", WorldSpace.to_frame(_fx_root, Vector2(to.x, to.z), to.y), GHOST_S).set_ease(Tween.EASE_IN)
+	else:
+		get_parent().add_child(ghost)
+		ghost.global_position = from
+		tween = ghost.create_tween().set_parallel()
+		tween.tween_property(ghost, "global_position", to, GHOST_S).set_ease(Tween.EASE_IN)
 	tween.tween_property(ghost, "scale", Vector3.ONE * GHOST_END_SCALE, GHOST_S)
 	tween.chain().tween_callback(ghost.queue_free)
 
@@ -276,7 +354,7 @@ func _process(delta: float) -> void:
 	_pivot.rotation = Vector3(0.0, shake, _bank + deg_to_rad(DEAD_ROLL_DEG) * pose)
 	_pivot.position = Vector3(0.0, -DEAD_SINK_M * pose, FLINCH_BACK_M * flinch)
 	var squash := 1.0 - FLINCH_SQUASH * flinch
-	_pivot.scale = Vector3(1.0 / sqrt(squash), squash, 1.0 / sqrt(squash)) * gulp_scale
+	_pivot.scale = Vector3(1.0 / sqrt(squash), squash, 1.0 / sqrt(squash)) * gulp_scale * _growth_swell
 	_update_overlay(delta)
 
 
