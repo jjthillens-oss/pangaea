@@ -1,0 +1,42 @@
+name: WARP probe (scratch)
+
+on:
+  push:
+    branches: ['ci-probe/**']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the PR #82 Windows build (run 40054268633, e2 2f45a1e)
+        uses: actions/download-artifact@v4
+        with:
+          name: pangaea-windows-dfa1d87bb1a1711cd8674a6a34e3e1c03bedc694
+          path: builds/windows
+          run-id: 40054268633
+          github-token: ${{ github.token }}
+
+      - name: Blend shape probe, Forward+ (D3D12)
+        continue-on-error: true
+        run: |
+          source tools/bounded.sh
+          mkdir -p logs
+          bounded 150 builds/windows/Pangaea-dev.exe --log-file "$(cygpath -m "$PWD/logs/blend.txt")" --resolution 640x360 --script "$(cygpath -m "$PWD/ci-probe/blend_probe.gd")" > logs/blend.log 2>&1 || echo "exit $?"
+          grep -v 'Unreferenced static\|string_name.cpp' logs/blend.log | head -80
+
+      - name: Grow tour, Compatibility over ANGLE (D3D11)
+        continue-on-error: true
+        run: |
+          source tools/bounded.sh
+          bounded 300 builds/windows/Pangaea-dev.exe --log-file "$(cygpath -m "$PWD/logs/grow_angle.txt")" --rendering-driver opengl3_angle --rendering-method gl_compatibility --resolution 640x360 -- --perf-tour=grow --slot=user://smoke/probe_grow.json > logs/grow_angle.log 2>&1 || echo "exit $?"
+          grep -v 'Unreferenced static\|string_name.cpp' logs/grow_angle.log | head -80
