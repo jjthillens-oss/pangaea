@@ -37,6 +37,8 @@ extends Control
 ## panel has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
 ## messages never run under the side panels, whatever the body, lineage or message.
 
+const KIN_TOAST := "A cell like you is here. Swim into it to mate."
+const MATE_TOAST := "You mated."
 const LABEL_REFRESH_S := 0.1
 const HUNGRY_SHARE := 0.25          ## below this share of capacity the chip says "Hungry"
 const FLASH_S := 1.4
@@ -574,6 +576,10 @@ func _on_sim_event(event: Dictionary) -> void:
 				_:
 					_add_toast(survival_toast(int(event.points), pool.sim.alive_s))
 			_flash(int(event.points))
+		"kin_arrived":
+			_add_toast(KIN_TOAST)
+		"mate":
+			_add_toast(MATE_TOAST)
 		"ring_paid":
 			_add_toast(GrowthHud.ring_paid_text(int(event.points)))
 			meter_ring.sweep()
