@@ -1,0 +1,248 @@
+{
+	"adaptation_points": 0,
+	"build_id": "lineage-fixture",
+	"discoveries": [],
+	"era": "microscopic",
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 1,
+		"genome_id": "genome_8d21e6a4f03b9c57",
+		"lineage_id": "lineage_3f9a1c07b2e84d65",
+		"next_part_number": 3,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.0,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_000",
+			"index": 0
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_001",
+			"index": 1,
+			"part_type": "part_3"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_002",
+			"index": 2,
+			"part_type": "part_4"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_003",
+			"index": 3,
+			"part_type": "part_5"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_004",
+			"index": 4,
+			"part_type": "part_6"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_005",
+			"index": 5,
+			"part_type": "part_7"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_006",
+			"index": 6,
+			"part_type": "part_8"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_007",
+			"index": 7,
+			"part_type": "part_9"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_008",
+			"index": 8,
+			"part_type": "part_10"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_009",
+			"index": 9,
+			"part_type": "part_11"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_010",
+			"index": 10,
+			"part_type": "part_12"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_011",
+			"index": 11,
+			"part_type": "part_13"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_012",
+			"index": 12,
+			"part_type": "part_14"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_013",
+			"index": 13,
+			"part_type": "part_15"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_014",
+			"index": 14,
+			"part_type": "part_16"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_015",
+			"index": 15,
+			"part_type": "part_17"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_016",
+			"index": 16,
+			"part_type": "part_18"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_017",
+			"index": 17,
+			"part_type": "part_19"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_018",
+			"index": 18,
+			"part_type": "part_20"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_019",
+			"index": 19,
+			"part_type": "part_21"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_020",
+			"index": 20,
+			"part_type": "part_22"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_021",
+			"index": 21,
+			"part_type": "part_23"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_022",
+			"index": 22,
+			"part_type": "part_24"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_023",
+			"index": 23,
+			"part_type": "part_25"
+		},
+		{
+			"event": "adapted",
+			"generation": 1,
+			"genome_id": "genome_8d21e6a4f03b9c57",
+			"id": "event_024",
+			"index": 24,
+			"part_type": "part_26"
+		}
+	],
+	"lineage_id": "lineage_3f9a1c07b2e84d65",
+	"pending_transactions": [],
+	"player": {
+		"position": [
+			0.0,
+			0.0,
+			0.0
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 0,
+	"schema_version": 2,
+	"settlements": [],
+	"world_changes": [],
+	"world_seed": 2026
+}
