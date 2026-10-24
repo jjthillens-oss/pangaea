@@ -29,11 +29,23 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _draw() -> void:
 	draw_rect(Rect2(0, 170, 1000, 430), Color("315d78"))
 	draw_rect(Rect2(TransitionModel.SHORE_X, 170, 700, 430), Color("987a51"))
-	draw_line(Vector2(TransitionModel.SHORE_X, 170), Vector2(TransitionModel.SHORE_X, 600), Color.WHITE, 3)
+	draw_line(
+		Vector2(TransitionModel.SHORE_X, 170), Vector2(TransitionModel.SHORE_X, 600),
+		Color.WHITE, 3
+	)
 	draw_circle(Vector2(model.x, 380), 25, Color("94d6b8"))
 	draw_circle(Vector2(model.x + 9, 371), 5, Color("18383d"))
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(28, 55), "PROPOSED: Microscopic → Aquatic → Terrestrial", HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
+	draw_string(
+		font, Vector2(28, 55), "PROPOSED: Microscopic → Aquatic → Terrestrial",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 24
+	)
 	draw_string(font, Vector2(28, 94), status, HORIZONTAL_ALIGNMENT_LEFT, -1, 19)
-	draw_string(font, Vector2(28, 128), "Arrows move · Down rests · Enter opens/commits editor · R resets", HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
-	draw_string(font, Vector2(28, 553), "Lineage: %s   Feeding: %s   Stage: %s   Stamina: %d" % [model.lineage_id, model.ancestral_feeding, model.stage, int(model.stamina)], HORIZONTAL_ALIGNMENT_LEFT, -1, 17)
+	draw_string(
+		font, Vector2(28, 128), "Arrows move · Down rests · Enter opens/commits editor · R resets",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 17
+	)
+	var state_text := "Lineage: %s   Feeding: %s   Stage: %s   Stamina: %d" % [
+		model.lineage_id, model.ancestral_feeding, model.stage, int(model.stamina)
+	]
+	draw_string(font, Vector2(28, 553), state_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17)

@@ -51,5 +51,8 @@ func test_editor_and_lineage() -> void:
 	check(m.stage == "aquatic", "rejected edit keeps prior stage")
 	check(m.choose_land_support(0.8), "editor commits viable support")
 	check(m.stage == "terrestrial", "commit changes stage")
-	check(m.lineage_id == "founding-lineage" and m.ancestral_feeding == "filter", "identity and feeding ancestry persist")
+	check(
+		m.lineage_id == "founding-lineage" and m.ancestral_feeding == "filter",
+		"identity and feeding ancestry persist"
+	)
 	check(not m.editor_open, "editor closes after commit")
