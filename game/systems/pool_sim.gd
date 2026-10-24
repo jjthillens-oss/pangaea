@@ -145,6 +145,13 @@ var _last_refusal := {}    ## {"food_id", "reason", "touching", "at"}
 var _contact := {}         ## {"food_id", "since"}: the food being touched, and since when
 var _last_attack_refusal := {}   ## kind -> {"target", "reason", "at"}: the attack refusal throttle
 var _killer := ""          ## the creature whose hit on the cell landed last this tick
+## S3's sting rules (spine 5.9, D-101, D-119): no sting within this many ticks of a strike hit on the
+## cell, and no creature takes the token for as long after a sting.
+const STING_STRIKE_GAP_TICKS := 120
+## The last tick a creature's strike hit the cell, and the last tick a veil stung it (-NEVER: never).
+## Written to the snapshot only in the endless world, so the pool's goldens hold (D-126).
+var last_strike_hit_tick := -CreatureBrain.NEVER
+var last_sting_tick := -CreatureBrain.NEVER
 ## Strikes on the cell that ended this tick without a hit, {"id", "species"}; dodged at step 11.
 var _dodges: Array[Dictionary] = []
 
@@ -481,6 +488,10 @@ func snapshot() -> Dictionary:
 		out["death_streak"] = death_streak
 	if world != null:
 		out["world"] = world.snapshot(self)
+		if last_strike_hit_tick != -CreatureBrain.NEVER:
+			out["last_strike_hit_tick"] = last_strike_hit_tick
+		if last_sting_tick != -CreatureBrain.NEVER:
+			out["last_sting_tick"] = last_sting_tick
 	return out
 
 
@@ -1311,6 +1322,7 @@ func _combat(swim: Dictionary) -> void:
 		_player_attacks(swim)
 	for c in striking:
 		_creature_strike(c, swim)
+	_hazard_stings()
 	_deaths()
 
 
@@ -1388,6 +1400,7 @@ func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
 		_killer = c.id
 		stats.hits_taken += 1
 		stats.damage_taken += dealt
+		last_strike_hit_tick = tick
 		CreatureBrain.on_strike_landed(c.brain, tick)
 		_take_field_events()
 		return
@@ -1408,6 +1421,47 @@ func _creature_strike(c: CreatureField.Creature, swim: Dictionary) -> void:
 	if t.brain != null:
 		CreatureBrain.on_hurt(t.brain, creatures.body_of(c), tick)
 	_take_field_events()
+
+
+## Step 10c (S3, D-119, D-125): a veil's threads sting the cell they touch. Not while the cell is
+## dead, concealed or sheltered, within the cell's sting cooldown (the longest hazard's, D-101), while
+## a creature holds the token, or within STING_STRIKE_GAP_TICKS of a strike hit. The awake hazards in
+## (number, id) order; the first whose capsule (CreatureBrain.thread_capsule) touches the cell and
+## whose thread damage at its q is above 0 stings: a hit of kind "sting" from the nearest point of
+## its threads, pushing the cell off them sideways, and the token closes for the gap. A lethal sting
+## kills this tick (_deaths, with the veil's death_reason).
+func _hazard_stings() -> void:
+	if creatures == null or dead or is_concealed() or not state.is_alive():
+		return
+	var cd := species.hazard_cooldown_ticks()
+	if cd <= 0 or tick < last_sting_tick + cd or not creatures.engaged_on_player.is_empty() \
+			or tick < last_strike_hit_tick + STING_STRIKE_GAP_TICKS:
+		return
+	var me := motion.position
+	var cell_r := phenotype.radius
+	for c in creatures.awake():
+		if c.brain == null or c.brain.behavior != CreatureBrain.HAZARD or not c.state.is_alive():
+			continue
+		var th: Dictionary = c.brain.cfg.threads
+		var far := c.phenotype.radius + float(th.length_m) + float(th.radius_m) + cell_r
+		if me.distance_squared_to(c.motion.position) > far * far:
+			continue
+		var cap := CreatureBrain.thread_capsule(c.brain, c.motion.position, c.motion.heading, c.phenotype.radius)
+		var near := Geometry2D.get_closest_point_to_segment(me, cap.a, cap.b)
+		if me.distance_to(near) > float(cap.r) + cell_r:
+			continue
+		var dmg := Relationships.thread_damage(float(th.damage), float(creatures.record_of(c.species_id).get("q", 1.0)))
+		if dmg <= 0.0:
+			continue
+		var origin := Locomotion.MotionState.new(near, c.motion.heading + PI / 2.0)
+		var dealt := _apply_hit(c.id, origin, CreatureField.PLAYER_ID, motion, state, "sting", dmg, float(th.knockback))
+		_killer = c.id
+		stats.hits_taken += 1
+		stats.damage_taken += dealt
+		last_sting_tick = tick
+		creatures.token_closed_until = tick + STING_STRIKE_GAP_TICKS
+		_take_field_events()
+		return
 
 
 ## One landed hit (steps 10a-c): the damage, a knockback of `knockback` m/s on the target away from
