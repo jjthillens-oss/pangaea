@@ -71,6 +71,11 @@ func add_from(c: CreatureField.Creature, rec: Dictionary, p_tick: int) -> Remnan
 ## its flee speed and moves through the arena as a creature does (PoolSim.move_body: sliding along
 ## rocks, held at the mouth of a crack narrower than it); then those D-84 lets go leave, in order.
 ## Nothing moves while the dev freeze holds (C-V14).
+## Only a leaving remnant is put to D-84's test: one still in the default view from the cell is
+## within its radius of that view, so within may_leave's wider margin of the zoom-max view from the
+## same cell (the cell is the first place), which holds the default view (corners() scales one shape
+## about the look target by the distance, and the default distance is at most zoom_max), and may_leave
+## would say no. With a default distance past zoom_max every remnant is tested, as before.
 func tick(sim: PoolSim) -> void:
 	if items.is_empty() or sim.dev_ai_frozen:
 		return
@@ -78,6 +83,9 @@ func tick(sim: PoolSim) -> void:
 	var cam: Dictionary = sim.layout.camera
 	var aspect := float(sim.species.fairness.spawn_view_aspect)
 	var view := ViewFootprint.corners(cell, cam, float(cam.distance), aspect)   # one view for them all
+	var box := ViewFootprint.boxes(view)
+	var every := float(cam.distance) > float(cam.zoom_max)
+	var tested := every
 	for r in items:
 		var m := r.motion
 		var away := m.position - cell
@@ -85,12 +93,15 @@ func tick(sim: PoolSim) -> void:
 		Locomotion.steer(m, dir, r.phenotype, r.flee_speed / r.phenotype.speed, PoolSim.DT)
 		sim.move_body(m, r.phenotype.radius)
 		r.leaving = sim.tick - r.born_tick >= life_ticks \
-			or not ViewFootprint.quad_contains(view, m.position, r.phenotype.radius)
+			or not ViewFootprint.quad_contains_boxed(view, box, m.position, r.phenotype.radius)
+		tested = tested or r.leaving
+	if not tested:
+		return
 	var places := sim._player_places()
 	var quads := leave_views(sim, places)
 	var gone: Array[Remnant] = []
 	for r in items:
-		if may_leave(sim, r, places, quads):
+		if (r.leaving or every) and may_leave(sim, r, places, quads):
 			gone.append(r)
 	for r in gone:
 		remove(r, "remnant_left", sim.tick)

@@ -23,6 +23,9 @@ const MAX_COLLIDER_R := 4.0       ## tm; add_chunk refuses larger colliders (the
 ## tm: how far settle() may push a body before it hands the whole settle to the reference (a push
 ## that deep needs a body placed inside a collider, which only a debug move does).
 const SETTLE_TRAVEL_TM := 2.0
+## tm: settle() passes over a collider farther than its reach plus SETTLE_TRAVEL_TM from the body on
+## an axis by more than this (float32 local positions differ from their exact values by some 1e-5 tm).
+const SETTLE_SKIP_SLACK_TM := 0.01
 const FAR_BOX_TM := 1e12          ## a query box reaching past this covers every loaded chunk
 ## tm: how far either end of a route_point_kept route may move from where its colliders were picked
 ## before they are picked again, and the rounding slack added to every pick (as GRID_SLACK is to a
@@ -265,31 +268,42 @@ func settle(m: Locomotion.MotionState, body_r: float) -> void:
 		var v0 := m.velocity
 		var h := MAX_COLLIDER_R + body_r + GRID_SLACK + SETTLE_TRAVEL_TM
 		var n := _candidates(p0.x - h, p0.y - h, p0.x + h, p0.y + h)
+		# The passes keep the body within SETTLE_TRAVEL_TM of p0 on each axis (a push past that starts
+		# again with the reference), so a candidate farther than r + body_r + SETTLE_TRAVEL_TM from p0
+		# on an axis fails the loop body's first test in every pass: the passes loop the others only,
+		# in the same canonical order, and push exactly as the full loop does.
+		var touch := PackedInt32Array()
+		var reach := body_r + SETTLE_TRAVEL_TM + SETTLE_SKIP_SLACK_TM
+		for i in n:
+			for k in range(_cand[2 * i], _cand[2 * i + 1]):
+				var c := _centers[k]
+				var lim := _radii[k] + reach
+				if absf(p0.x - c.x) < lim and absf(p0.y - c.y) < lim:
+					touch.append(k)
 		for pass_index in ROCK_PASSES:
-			for i in n:
-				for k in range(_cand[2 * i], _cand[2 * i + 1]):
-					# PoolArena.settle's loop body, unchanged.
-					var center := _centers[k]
-					var offset: Vector2 = m.position - center
-					var min_dist: float = _radii[k] + body_r
-					if absf(offset.x) >= min_dist or absf(offset.y) >= min_dist:
-						continue
-					var dist := offset.length()
-					if dist >= min_dist:
-						continue
-					var normal := offset / dist if dist > 1e-9 else Vector2.RIGHT
-					m.position = center + normal * min_dist
-					var inward := m.velocity.dot(normal)
-					if inward < 0.0:
-						m.velocity -= normal * inward
-					if absf(m.position.x - p0.x) > SETTLE_TRAVEL_TM or absf(m.position.y - p0.y) > SETTLE_TRAVEL_TM:
-						# Out of the box: a collider no candidate covers could now overlap. Start again
-						# with the reference, over every loaded collider.
-						m.position = p0
-						m.velocity = v0
-						settle_fallbacks += 1
-						super.settle(m, body_r)
-						return
+			for k in touch:
+				# PoolArena.settle's loop body, unchanged.
+				var center := _centers[k]
+				var offset: Vector2 = m.position - center
+				var min_dist: float = _radii[k] + body_r
+				if absf(offset.x) >= min_dist or absf(offset.y) >= min_dist:
+					continue
+				var dist := offset.length()
+				if dist >= min_dist:
+					continue
+				var normal := offset / dist if dist > 1e-9 else Vector2.RIGHT
+				m.position = center + normal * min_dist
+				var inward := m.velocity.dot(normal)
+				if inward < 0.0:
+					m.velocity -= normal * inward
+				if absf(m.position.x - p0.x) > SETTLE_TRAVEL_TM or absf(m.position.y - p0.y) > SETTLE_TRAVEL_TM:
+					# Out of the box: a collider no candidate covers could now overlap. Start again
+					# with the reference, over every loaded collider.
+					m.position = p0
+					m.velocity = v0
+					settle_fallbacks += 1
+					super.settle(m, body_r)
+					return
 	# The reference's hard limit is hard_radius - body_r = INF here, so it never acts.
 
 
