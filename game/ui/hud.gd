@@ -258,6 +258,9 @@ func show_message(text: String, seconds: float = MESSAGE_S) -> void:
 
 ## The growth beat's chord (S2, 1.9 s in): the new size's message ("Size 2 · about 32 µm"); the
 ## badge and the ring follow pool.shown_size(), which turns to the new size at the same moment.
+## Then the region entered during the beat (V3-15); at a band-up with none, the tile the cell is in
+## under its new band's name, since a cell that keeps its tile coordinates (home's, at the origin)
+## gets no tile_entered and would never hear that home is now the cradle.
 func on_growth_chord(size: int) -> void:
 	show_message(GrowthHud.badge_text(size, pool.session.world.config.ladder.get("labels", [])))
 	update_growth()
@@ -267,6 +270,9 @@ func on_growth_chord(size: int) -> void:
 		var held := _held_region
 		_held_region = []
 		_on_region(held[0], held[1])
+	elif pool.is_endless() and WorldConfig.band_of(size) > WorldConfig.band_of(size - 1):
+		var here := start_tile_info(pool.sim)
+		_on_region(str(here.get("region", "")), str(here.get("rare", "")))
 
 
 ## The places line (S3, D-133): "Places found at this size: 3 of 10".

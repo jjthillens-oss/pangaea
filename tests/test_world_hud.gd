@@ -527,3 +527,38 @@ func test_toast_waits_for_the_chord() -> void:
 	check_eq(hud.toast_texts().size(), count + 1, "and only one")
 	hud.free()
 	pool.free()
+
+
+## A band-up where the cell keeps its tile (home, at the origin) gets no tile_entered: the chord
+## names the tile under the new band, so home is the cradle once; an in-band growth names nothing.
+func test_band_up_names_the_tile_at_the_chord() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(2), "the dev's size 2")
+	FakeEvents.frame(pool)
+	var hud := _hud(pool)
+	check_eq(str(Hud.start_tile_info(sim).get("region", "")), "home", "the cell is in the home tile")
+	var before := hud.toast_texts().size()
+	check(sim.debug_force_growth(), "a forced growth, 2 to 3")
+	FakeEvents.frame(pool)
+	while pool.growth_beat.running() and pool.growth_beat.t() < GrowthBeat.CHORD_S:
+		check_eq(hud.toast_texts().size(), before, "%.2f s: no toast before the chord" % pool.growth_beat.t())
+		FakeEvents.frame(pool)
+	check_eq(hud.toast_texts().count(Hud.CRADLE_TOAST), 1, "the chord names home the cradle")
+	# Away from home, its name's 30 s window over: the next growth is in band, and names nothing.
+	check(sim.debug_teleport_abs(400.0, 400.0, 0.0), "the cell far from home")
+	for i in 240:
+		FakeEvents.frame(pool)
+	hud._region_shown.clear()
+	var added := 0
+	var on_screen := hud.toast_texts().size()
+	check(sim.debug_force_growth(), "a forced growth, 3 to 4")
+	for i in 240:
+		FakeEvents.frame(pool)
+		var now := hud.toast_texts().size()
+		added += maxi(now - on_screen, 0)
+		on_screen = now
+	check_eq(added, 0, "an in-band growth names nothing (%s)" % [hud.toast_texts()])
+	hud.free()
+	pool.free()

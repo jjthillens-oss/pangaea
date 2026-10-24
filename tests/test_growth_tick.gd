@@ -203,10 +203,11 @@ func test_step_one_grows_only_a_living_cell_below_the_top() -> void:
 	check_eq(sim.size(), 1, "a dead cell does not grow")
 	check(not sim.growth.due, "and the due is dropped")
 	sim.dead = false
-	check(sim.debug_set_size(2), "to the top")
+	var top := sim.world.max_size
+	check(sim.debug_set_size(top), "to the top (size %d)" % top)
 	_due(sim)
 	sim.world.step(sim)
-	check_eq(sim.size(), 2, "the top does not grow")
+	check_eq(sim.size(), top, "the top does not grow")
 	check(not sim.growth.due, "and the due is dropped")
 
 

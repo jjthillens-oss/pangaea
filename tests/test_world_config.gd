@@ -18,10 +18,12 @@ func _shipped() -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string(WorldConfig.DEFAULT_PATH))
 
 
-## The shipped data with content paths that exist.
+## The shipped data with content paths that exist, at S2's top (size 2), so S1's and S2's rules show
+## alone; _band_one() is the shipped reach, size 4 (D-89), with band 1's entries.
 func _base() -> Dictionary:
 	var data := _shipped()
 	data.content = PRESENT_CONTENT.duplicate(true)
+	data.sizes.max_in_build = 2
 	return data
 
 
@@ -65,7 +67,7 @@ func test_the_shipped_world_cell_has_no_problems() -> void:
 		[PackedStringArray(["veil_garden", "warden_flat", "glass_reef"]), "sunbeam_well"], "band 1's arrangement")
 	check_eq(config.switches, {"generated_creatures": true, "growth": true, "lumps": true, "habits": true,
 		"landmark_return": true}, "tile creatures, growth, lumps, habits and the landmark return on")
-	check_eq(config.max_size_in_build, 2, "S2's top is size 2 (BP-5)")
+	check_eq(config.max_size_in_build, 4, "S3's top is size 4 (D-89)")
 
 
 ## The S2 numbers as s2-sim 4.1 and the build plan (BP-4, D-60, D-68) give them.

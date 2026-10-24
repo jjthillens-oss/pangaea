@@ -630,34 +630,39 @@ func test_the_tours_take_their_growth_steps() -> void:
 	var settings := SettingsService.new("user://test_debug_panel/settings.cfg")
 	for step: int in [1, 7]:
 		var tag := "%d ticks a call" % step
-		# The swim route's 16,000 ticks are walked at least 4 a call (the fast tier's time; every step
+		# The swim route's 17,200 ticks are walked at least 4 a call (the fast tier's time; every step
 		# tick is a multiple of 4, so each is still met on its tick); the grow route's take every step.
 		var swim_step := maxi(step, 4)
 		var sim := RouteSim.new()
 		var route := PerfTour.SwimRoute.new(settings)
+		route.growth_steps.go_to_cradle = func() -> void: sim.calls.append(["cradle", sim.tick])
 		var start := sim.tick
 		var reduce := {}
-		while sim.tick - start < 16000:
+		while sim.tick - start < 17200:
 			route.next_intent(sim)
 			reduce[sim.tick - start] = settings.reduce_camera_motion()
 			sim.tick += swim_step
-		var steps := sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in ["fill 1.0", "force", "size 1"])
-		check_eq(steps.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "size 1", "fill 1.0", "force"],
-			"%s: a growth, back to size 1, a growth" % tag)
-		if steps.size() == 5:
-			for i: int in 5:
-				var due: int = [7200, 7200, 14400, 15000, 15000][i]
+		var acted := ["fill 1.0", "force", "size 1", "size 2", "cradle"]
+		var steps := sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in acted)
+		check_eq(steps.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "fill 1.0", "force", "cradle", "fill 1.0",
+			"force", "size 1", "fill 1.0", "force", "size 2", "fill 1.0", "force"],
+			"%s: 1 to 2, the band-up, the cradle, 3 to 4, back to size 1, a growth, size 2 and a band-up" % tag)
+		var swim_due := [7200, 7200, 9000, 9000, 9600, 10800, 10800, 12000, 15000, 15000, 16500, 16500, 16500]
+		if steps.size() == swim_due.size():
+			for i: int in swim_due.size():
+				var due: int = swim_due[i]
 				check(steps[i][1] - start >= due and steps[i][1] - start < due + swim_step, "%s: step %d at %d (%d)" % [tag, i, due, steps[i][1] - start])
+		var on := func(t: int) -> bool: return (t >= 15000 and t < 15900) or (t >= 16500 and t < 17100)
 		for t: int in reduce:
-			check_eq(reduce[t], t >= 15000 and t < 15900, "%s: reduce motion on from 15,000 to 15,900 only (at %d)" % [tag, t])
-			if reduce[t] != (t >= 15000 and t < 15900):
+			check_eq(reduce[t], on.call(t), "%s: reduce motion on from 15,000 to 15,900 and 16,500 to 17,100 only (at %d)" % [tag, t])
+			if reduce[t] != on.call(t):
 				break
 		var grow_sim := RouteSim.new()
 		var grow := PerfTour.GrowRoute.new(settings)
 		var begin := grow_sim.tick
 		var seen_reduce := []
 		var done_at := -1
-		while grow_sim.tick - begin < 3000:
+		while grow_sim.tick - begin < 4000:
 			var v := grow.next_intent(grow_sim).move
 			check_eq(v, Vector2.ZERO, "%s: the grow route keeps the cell still" % tag)
 			if v != Vector2.ZERO:
@@ -669,16 +674,18 @@ func test_the_tours_take_their_growth_steps() -> void:
 				seen_reduce.append(grow_sim.tick - begin)
 			grow_sim.tick += step
 		check(done_at >= PerfTour.GROW_ROUTE_TICKS and done_at < PerfTour.GROW_ROUTE_TICKS + step,
-			"%s: done at the first call from 2,400 ticks (%d)" % [tag, done_at])
+			"%s: done at the first call from 3,600 ticks (%d)" % [tag, done_at])
 		check_eq(grow_sim.calls[0], ["hidden true", begin], "%s: hidden at once" % tag)
-		var acts := grow_sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in ["fill 1.0", "force", "size 1"])
-		check_eq(acts.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "size 1", "fill 1.0", "force"], "%s: the grow route's steps" % tag)
-		if acts.size() == 5:
-			for i: int in 5:
-				var due: int = [300, 300, 1200, 1500, 1500][i]
+		var acts := grow_sim.calls.filter(func(c: Array) -> bool: return str(c[0]) in acted)
+		check_eq(acts.map(func(c: Array) -> String: return c[0]), ["fill 1.0", "force", "fill 1.0", "force", "fill 1.0", "force",
+			"size 2", "fill 1.0", "force"], "%s: the grow route's steps: 1 to 4, size 2, a band-up" % tag)
+		var grow_due := [300, 300, 900, 900, 1500, 1500, 2100, 2400, 2400]
+		if acts.size() == grow_due.size():
+			for i: int in grow_due.size():
+				var due: int = grow_due[i]
 				check(acts[i][1] - begin >= due and acts[i][1] - begin < due + step, "%s: grow step %d at %d (%d)" % [tag, i, due, acts[i][1] - begin])
-		check(not seen_reduce.is_empty() and seen_reduce.min() >= 1500 and seen_reduce.max() < 2100 + step,
-			"%s: reduce motion on from 1,500 to 2,100" % tag)
+		check(not seen_reduce.is_empty() and seen_reduce.min() >= 2400 and seen_reduce.max() < 3000 + step,
+			"%s: reduce motion on from 2,400 to 3,000" % tag)
 		check(not settings.reduce_camera_motion(), "%s: and back off after" % tag)
 	settings.set_value(PerfTour.REDUCE_MOTION, true)
 	var kept := RouteSim.new()
@@ -821,3 +828,19 @@ func test_hazard_and_bloom_lines_and_marks() -> void:
 	var lurker: CreatureField.Creature = by.deep_lurker
 	check_eq(layer.channels, [CreatureBrain.strike_lane(lurker.brain.cfg.attack, lurker.phenotype.radius, 0.5, lurker.brain.home,
 		lurker.brain.home_heading)], "the channel lurker's lane from its lair, and only it")
+
+
+## S3G36 (s3-view 16.1): every growth window within 50 ms and no frame over 104 draw calls; the line's
+## verdict names the first failure.
+func test_the_tours_judge_s3g36() -> void:
+	var ok_window := [{"tick": 9001, "t_s": 150.0, "max_frame_ms": 50.0, "frames": 300, "reduce_motion": false}]
+	var s3 := PerfTour.s3_gate(ok_window, 104)
+	check(s3.pass and s3.growth_pass and s3.draw_pass, "50 ms and 104 calls pass (%s)" % [s3])
+	check_eq(PerfTour.s3_verdict(s3), " · S3G36 pass", "and the line says so")
+	var slow := [{"tick": 9001, "t_s": 150.0, "max_frame_ms": 61.5, "frames": 300, "reduce_motion": false}]
+	s3 = PerfTour.s3_gate(slow, 105)
+	check(not s3.pass and not s3.growth_pass and not s3.draw_pass, "61.5 ms and 105 calls fail both (%s)" % [s3])
+	check_eq(s3.failed, ["growth at tick 9001: 61.5 ms", "draw calls 105 > 104"], "both named, the growth first")
+	check_eq(PerfTour.s3_verdict(s3), " · S3G36 FAIL: growth at tick 9001: 61.5 ms", "the line names the first")
+	check_eq(PerfTour.s3_gate([], 10).failed, ["no growth"], "a route with no growth fails")
+	check_eq(PerfTour.s3_verdict(PerfTour.s3_gate(ok_window, 105)), " · S3G36 FAIL: draw calls 105 > 104", "draw calls alone")

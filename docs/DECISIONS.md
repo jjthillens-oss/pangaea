@@ -1281,3 +1281,24 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   `test_hazard_and_bloom_lines_and_marks`). Mutations caught: band 0's factor (18 am), the button
   never disabled, a cradle at band 0, Size 4 unrouted, the fixed drift phase, the time since the
   switch, the drift path over the x period, a 1.0 prey radius, a lane for every creature.
+
+## 2026-10-24 · S3 T5.7: build top 4, band-up smoke and perf tour (D-89, C3V-16, C3V-21; S3G36, S3G43; PROPOSED; IMPLEMENTED)
+
+- **Build top 4 (D-89)**: `world_cell.json` `sizes.max_in_build` is 4, so the shipped endless world
+  grows to size 4. Tests written for S2's top-2 world pin it where the test is about S2 (the
+  config fixture's `_base()`, the place and dev-meter tests in `test_growth`, `test_tiles`, the
+  band-0 content tests via `WorldChecks.shipped_world_at(2)`), and the rest read the top from
+  `world.max_size` instead of a literal 2 or 3.
+- **Band-up names its tile (C3V-21)**: C3V-21 assumed a band-up fires `tile_entered`. It does not
+  at home: the cell keeps tile (0, 0) across the band-up, so no toast came and the cradle toast in
+  the smoke never showed. `Hud.on_growth_chord` now names the tile the cell is on when the chord
+  lands on a band-up and no toast is held (`test_band_up_names_the_tile_at_the_chord`).
+- **Endless smoke (S3G43)**: `band_up` and `band_up_continue` as s3-view 16.2 (23 and 11 checks).
+  The two `check.sh` lines go after S2's `grow` lines (C3V-16, bound 120 s each; the phases ran in
+  about 20 s together here).
+- **Perf tour (S3G36)**: the swim route takes the S3 steps at 9,000, 9,600 (go to cradle), 10,800
+  and 16,500 (band-up under reduce motion); the grow route runs 3,600 ticks with three growths, a
+  set size 2 and the reduce-motion band-up. `PerfTour.s3_gate` reports `report.gate.s3`
+  (`growth_pass`: every growth window ≤ 50 ms; `draw_pass`: max draw calls ≤
+  `S3G36_MAX_DRAW_CALLS` 104) and the printed line appends " · S3G36 pass" or " · S3G36 FAIL: …".
+  `test_debug_panel` checks both routes' ticks and the verdict text.
