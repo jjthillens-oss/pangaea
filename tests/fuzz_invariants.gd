@@ -13,7 +13,8 @@ extends RefCounted
 ##  3  no data creature within respawn_clear_m of the checkpoint (its edge, as rule 8 measures)
 ##  4  every creature_strike comes exactly its tell (at least 1.2 s) after the same creature's
 ##     creature_tell, in attack/tell on every tick between, along that tell's lane: the same heading,
-##     from within LANE_DRIFT_M of the lane's origin
+##     from within LANE_DRIFT_M of the lane's origin, unless the cell itself touched the creature in
+##     its tell (a cell leaning on it pushes it as far as it likes, and is in its reach anyway)
 ##  5  every creature's hit lands inside its own strike or glide, at most one per strike, and a hit
 ##     on the cell lands inside the lane its tell showed (grown by how far that strike started from it)
 ##  6  every chase ends within give-up plus one attack cycle of its start (a notice, a chase from
@@ -51,7 +52,10 @@ extends RefCounted
 ##  3  at a landmark checkpoint (the run's last checkpoint change a checkpoint_moved of reason
 ##     "landmark", until a growth moves it) only the creatures at q == 1 at the cell's size count.
 ##  5  a hazard's sting is no strike: invariant 15 judges it.
-##  7  a hazard form: a hazard DRIFT_SETTLE_TICKS in DRIFT lies within 1.0 x q tm of its drift goal.
+##  7  a hazard form: a hazard settled in DRIFT lies within 1.0 x q tm of its drift goal. It settles
+##     DRIFT_SETTLE_TICKS after it entered DRIFT, plus the ticks it needs to close the gap it entered
+##     with (past 1.0 x q) at rule 14 (f)'s margin: a site's spawn at home, a flee's end and a wake
+##     each leave it off its path, and it gains on the goal by no more than that margin.
 ## 12  a morsel site's carrion_spawned is an M1-step event (at least spawn_safe_m from the cell and out
 ##     of view, from the checkpoint too while dead); a carrion_expired "unloaded" off a growth tick is
 ##     a block-step event (out of view); after every step morsel_claims() is the number of morsel-site
@@ -91,6 +95,7 @@ const LANE_HEADING_SLACK := 1e-6         ## rad: a strike's heading is its lane'
 ## through the tell, but a body leaning on it can still push it: the four seeds' worst is 0.446 m
 ## (seed 402, the z_n rammer c_4 pushed by its neighbour c_5 through its puff); most are under 0.03.
 const LANE_DRIFT_M := 0.5
+const TELL_TOUCH_SLACK := 0.05           ## tm: the cell's disc this near a telling body counts as touching
 const LANE_HIT_SLACK := 1e-3             ## m: float32 positions
 ## The give-up fires on the exact tick it falls due, and a last tell may start the tick before.
 const CHASE_SLACK_TICKS := 2
@@ -102,7 +107,8 @@ const PLACE_RADIUS_TM := 4.0           ## core 8.7: a place's extent
 const ANCHOR_RADIUS_BU := 3.0          ## core 8.7: an anchor's extent, times the band's bu-to-tm
 ## Reasons a creature leaves that the player must not see happen.
 const STING_WINDOW_TICKS := 120         ## invariant 15's window and the sting/strike gap (D-126)
-const DRIFT_SETTLE_TICKS := 120         ## invariant 7's hazard form: ticks in DRIFT before it is held
+const DRIFT_SETTLE_TICKS := 120         ## invariant 7's hazard form: ticks in DRIFT before it is held,
+                                        ## on its path at entry (see _drift_settle_ticks)
 const HIDDEN_REMOVALS := {"unloaded": "block", "evicted": "block", "stuck": "step", "growth": "block", "remnant_left": "step"}
 
 var bad := {}      ## invariant -> {"count": int, "first": String}, across runs
@@ -148,6 +154,7 @@ func start_run() -> void:
 		"hurt_by_cell": {}, "label": {}, "label_since": {}, "visit": {}, "ring": {}, "lane": {}, "strike_lane": {},
 		"memory_checks": 0,
 		"stings": [], "strike_hit_ticks": [], "landmark_checkpoint": false, "drift_since": {},
+		"tell_touched": {},
 	}
 
 
@@ -284,6 +291,7 @@ func _take_events(sim: PoolSim, events: Array[Dictionary], t: int, where: String
 			"creature_tell":
 				counts.tells += 1
 				k.tell_at[e.id] = t
+				k.tell_touched.erase(e.id)
 				k.lane[e.id] = e.lane
 				var c := sim.creatures.find(e.id)
 				if c != null and c.brain != null:
@@ -353,8 +361,11 @@ func _check_strike_lane(e: Dictionary, where: String, k: Dictionary, counts: Dic
 	if off > LANE_HEADING_SLACK:
 		_fail(4, "%s: %s struck %.2f degrees off the lane its tell showed" % [where, e.id, rad_to_deg(off)])
 	var drift: float = Vector2(e.position).distance_to(lane.origin)
-	counts.drift = maxf(float(counts.drift), drift)
-	if drift > LANE_DRIFT_M:
+	var touched := bool(k.tell_touched.get(e.id, false))
+	k.tell_touched.erase(e.id)
+	if not touched:
+		counts.drift = maxf(float(counts.drift), drift)
+	if drift > LANE_DRIFT_M and not touched:
 		_fail(4, "%s: %s struck from %.3f m off its lane's origin" % [where, e.id, drift])
 	k.strike_lane[e.id] = {"lane": lane, "drift": drift}
 
@@ -413,6 +424,9 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		if out > LEASH_SLACK_M:
 			_fail(2, "%s: %s in %s/%s is %.4f m past its leash" % [where, who, b.state, b.phase, out])
 		var label := "%s/%s" % [b.state, b.phase]
+		if label == "attack/tell" and not sim.dead and c.motion.position.distance_to(sim.motion.position) \
+				<= c.phenotype.radius + sim.phenotype.radius + TELL_TOUCH_SLACK:
+			k.tell_touched[c.id] = true
 		var was := str(k.label.get(c.id, ""))
 		# Invariant 4's other half: how long attack/tell has held without a break.
 		if label == "attack/tell":
@@ -433,22 +447,40 @@ func _check_creatures(sim: PoolSim, t: int, where: String, before: Dictionary, k
 		k.label[c.id] = label
 
 
-## Invariant 7's hazard form (D-141): after DRIFT_SETTLE_TICKS in DRIFT (awake), a hazard lies within
-## 1.0 x q tm of CreatureBrain.drift_goal at the tick.
+## Invariant 7's hazard form (D-141): once settled in DRIFT (awake), a hazard lies within 1.0 x q tm
+## of CreatureBrain.drift_goal at the tick. k.drift_since holds each drifting hazard's [entry tick,
+## settle ticks]; the settle ticks are fixed at entry from the gap it entered with.
 func _check_drift(sim: PoolSim, c: CreatureField.Creature, t: int, where: String, k: Dictionary) -> void:
 	if c.asleep or c.brain.state != CreatureBrain.DRIFT:
 		k.drift_since.erase(c.id)
 		return
-	if not k.drift_since.has(c.id):
-		k.drift_since[c.id] = t
-	if t - int(k.drift_since[c.id]) < DRIFT_SETTLE_TICKS:
-		return
-	counts.drift_checks += 1
 	var q := sim.species.q_of(c.species_id, sim.size())
 	var off := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, t))
+	if not k.drift_since.has(c.id):
+		k.drift_since[c.id] = [t, _drift_settle_ticks(c, off - q)]
+	var since: Array = k.drift_since[c.id]
+	if t - int(since[0]) < int(since[1]):
+		return
+	counts.drift_checks += 1
 	if off > 1.0 * q:
 		_fail(7, "%s: %s (%s) %d ticks in drift is %.3f tm from its drift goal (bound %.3f)" % [where, c.id,
-			c.species_id, t - int(k.drift_since[c.id]), off, q])
+			c.species_id, t - int(since[0]), off, q])
+
+
+## The ticks a hazard entering DRIFT `gap` tm past invariant 7's bound has before the bound holds:
+## DRIFT_SETTLE_TICKS plus the gap at rule 14 (f)'s margin, its wander speed less its drift goal's
+## top speed (2π r √(1/P0² + 1/P1²), the periods in seconds).
+static func _drift_settle_ticks(c: CreatureField.Creature, gap: float) -> int:
+	if gap <= 0.0:
+		return DRIFT_SETTLE_TICKS
+	var cfg: Dictionary = c.brain.cfg
+	var hz := float(CreatureBrain.TICKS_PER_SECOND)
+	var periods: Array = cfg.drift.period_ticks
+	var goal_speed := TAU * float(cfg.drift.radius_m) * sqrt(pow(hz / float(periods[0]), 2.0) + pow(hz / float(periods[1]), 2.0))
+	var margin := float(cfg.speeds.wander) * c.phenotype.speed - goal_speed
+	if margin <= 0.0:
+		return 1 << 30   # rule 14 (f) refuses such a species; never held
+	return DRIFT_SETTLE_TICKS + ceili(gap / margin * hz)
 
 
 ## Invariant 15 on the tick's events (`t` the tick, `where` names it in a failure): the stings on the

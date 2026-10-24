@@ -601,15 +601,19 @@ func test_at_a_landmark_checkpoint_invariant_3_counts_only_q_one() -> void:
 	c.debug = true
 
 
-## D-141's invariant 7 hazard form: a veil left to drift stays within 1.0 x q tm of its drift goal
-## once it has drifted DRIFT_SETTLE_TICKS (checked on every tick after), and one pushed 5 tm off fails.
+## D-141's invariant 7 hazard form: a veil spawned at its home, off its path, is given the ticks it
+## needs to join it (_drift_settle_ticks: more than DRIFT_SETTLE_TICKS here) and then stays within
+## 1.0 x q tm of its drift goal (checked on every tick after); one pushed 5 tm off then fails.
 func test_a_drifting_hazard_keeps_to_its_path_and_one_pushed_off_fails_7() -> void:
 	var sim := _b1(3)
 	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
 	var c: CreatureField.Creature = sim.creatures.creatures.back()
 	sim.drain_events()
 	var fuzz := FuzzInvariants.new(sim.species, layout)
-	for t in FuzzInvariants.DRIFT_SETTLE_TICKS + 120:
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 3)
+	var settle := FuzzInvariants._drift_settle_ticks(c, gap)
+	check(settle > FuzzInvariants.DRIFT_SETTLE_TICKS, "spawned off its path: %d settle ticks for %.2f tm" % [settle, gap])
+	for t in settle + 120:
 		_step(sim, fuzz, "drift tick %d" % t)
 	check(int(fuzz.counts.drift_checks) >= 60, "drift checked on %d ticks" % fuzz.counts.drift_checks)
 	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
@@ -621,3 +625,29 @@ func test_a_drifting_hazard_keeps_to_its_path_and_one_pushed_off_fails_7() -> vo
 	fuzz.after(sim, sim.drain_events(), t, "pushed", was)
 	check(fuzz.bad.has(7) and str(fuzz.bad[7].first).contains("drift goal"), "pushed 5 tm off fails 7: %s" % fuzz.report())
 
+
+
+## Invariant 4's lane origin: a strike 0.7 tm from the origin its tell's lane showed fails, unless the
+## cell touched the creature in its tell (the cell leaning on it pushed it there, and is in its reach).
+func test_a_strike_off_its_lane_origin_fails_4_unless_the_cell_leaned_on_it() -> void:
+	var sim := _b1(3)
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(6.0, 0.0), PI), "a rammer")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	c.brain.state = CreatureBrain.ATTACK
+	c.brain.phase = "tell"
+	var tell := int(c.brain.cfg.attack.tell_ticks)
+	var origin := c.motion.position
+	var lane := {"origin": origin, "heading": PI, "travel": 2.0, "length": 3.0, "half_width": 1.0}
+	for lean in [false, true]:
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var t := sim.tick
+		fuzz.take_events(sim, [{"type": "creature_tell", "id": c.id, "target": "player", "lane": lane}] as Array[Dictionary], t, "tell")
+		var gap := c.phenotype.radius + sim.phenotype.radius if lean else 5.0
+		sim.motion.position = origin - Vector2(gap, 0.0)
+		fuzz.after(sim, [] as Array[Dictionary], t, "in the tell", fuzz.before(sim))
+		fuzz.take_events(sim, [{"type": "creature_strike", "id": c.id, "target": "player", "kind": "bite", "heading": PI,
+			"position": origin + Vector2(0.0, 0.7)}] as Array[Dictionary], t + tell, "strike")
+		var off: bool = fuzz.bad.has(4) and str(fuzz.bad[4].first).contains("off its lane's origin")
+		check_eq(off, not lean, "leaning %s: %s" % [lean, fuzz.report()])
