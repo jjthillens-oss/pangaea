@@ -909,3 +909,19 @@ its tabs pick them up from the records.
   the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
   warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
   is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.
+
+## 2026-10-24 · S3 T0.1: the size 1 and 2 baseline on e3-base (PROPOSED)
+
+- **`e3-base` is a branch, not a tag.** The proxy refuses tag pushes and ref writes here, so the
+  base S3 is measured against is the branch `e3-base` at a9afd3b (main with the S4 stack).
+- **Hash identity (S3G34).** `tests/fixtures/endless_s2_hashes.json` holds six runs at sizes 1 and 2
+  recorded on `e3-base` with `max_in_build` 2 and `landmark_return` off; `test_hash_identity`
+  replays them at 600 ticks (fast) and 18,000 (slow).
+- **Cost baseline (BP3-7)**, from main's CI run 40084302551 (soak-a), each the median run:
+  - size 1: #28E 4.28 yardsticks, P99.9 13.21, rebase +1.50, saturated (B-7) 9.75 of 10;
+  - size 2: #28E 5.00 yardsticks.
+  - `BASE_GREEN` in `tests/test_endless_cost.gd` records these rows as green. Size 2's P99.9,
+    rebase and saturated rows had no case on the base; T0 measures them before I-3.
+  - The size-1 #28E median is far under 7.6 yardsticks, so section 8's size-3 lever is not needed.
+  - The saturated row sits at 9.75 of 10. A size-3 saturated case that blocks on it has little room;
+    the relative row (size 3 at most 1.15 x size 1) is the one to watch.

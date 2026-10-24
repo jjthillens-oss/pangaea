@@ -117,6 +117,17 @@ const GROWTH_TICK_LIMIT_YARDSTICKS := 40.0
 const GROWTH_WAIT_TICKS := 10          ## a forced growth grows within this many ticks
 const PREFETCH_SEEDS: Array[int] = [2811, 2812]   ## the prefetch case: the first two growth-tick seeds
 
+## S3 (T0.1, BP3-7): which absolute rows were green on e3-base (a9afd3b, main's CI run 40084302551,
+## soak-a), by size. A row at size 3 blocks iff it is true at size 1, and at size 4 iff it is true
+## at size 2; a false or missing row reports in the merge note instead. Measured: size 1 #28E 4.28
+## yd, P99.9 13.21, rebase +1.50, saturated 9.75 (B-7's 10, tight); size 2 #28E 5.00 yd. Size 2's
+## P99.9, rebase and saturated rows had no case on e3-base; T0 measures them with S3G21's size cases
+## and fills them in before I-3.
+const BASE_GREEN := {
+	1: {"median_28e": true, "p999": true, "rebase": true, "saturated": true},
+	2: {"median_28e": true},
+}
+
 static var _runs := {}                ## "overdriven/size" or "racer/size" -> the timed swim runs
 static var _dense: Array[Dictionary] = []   ## the saturated case's 3 runs
 
