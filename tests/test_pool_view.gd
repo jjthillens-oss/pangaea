@@ -7,6 +7,17 @@ const CAMERA_SETTINGS := {"pitch_deg": 55.0, "fov_deg": 45.0, "distance": 14.0, 
 	"zoom_max": 20.0, "zoom_step": 2.0, "follow_half_life_s": 0.12, "look_ahead_s": 0.35, "look_ahead_max": 2.5}
 
 
+# --- threats (M1 step 3): creature views, the creature layer, the player's hurt and shelter ---
+
+const CREATURE_VIEW := "res://game/scenes/pool/creature_view.tscn"
+const CELL_VIEW := "res://game/scenes/pool/player_cell_view.tscn"
+## Every brain label a creature can show, for the pose sweeps.
+const PHASES: PackedStringArray = ["rest/lurk", "rest/watch", "rest", "wander/patrol", "wander/return", "forage/seek",
+	"forage/eat", "notice", "notice/wait", "chase/pursue", "chase/aim", "attack/tell", "attack/strike", "attack/glide",
+	"attack/recover", "flee"]
+
+
+## A pool with the real layout and species (seven creatures at their sites) for a new grazer.
 func _camera() -> PoolCamera:
 	var camera := PoolCamera.new()
 	camera.configure(CAMERA_SETTINGS)
@@ -400,17 +411,6 @@ func test_new_carrion_sinks_onto_the_swim_plane_and_starting_carrion_is_simply_t
 	meat.free()
 
 
-# --- threats (M1 step 3): creature views, the creature layer, the player's hurt and shelter ---
-
-const CREATURE_VIEW := "res://game/scenes/pool/creature_view.tscn"
-const CELL_VIEW := "res://game/scenes/pool/player_cell_view.tscn"
-## Every brain label a creature can show, for the pose sweeps.
-const PHASES: PackedStringArray = ["rest/lurk", "rest/watch", "rest", "wander/patrol", "wander/return", "forage/seek",
-	"forage/eat", "notice", "notice/wait", "chase/pursue", "chase/aim", "attack/tell", "attack/strike", "attack/glide",
-	"attack/recover", "flee"]
-
-
-## A pool with the real layout and species (seven creatures at their sites) for a new grazer.
 func _threat_sim(seed_value := 4242) -> PoolSim:
 	var catalog := PartCatalog.load_from()
 	var layout := PoolLayout.load_from()
