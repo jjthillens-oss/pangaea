@@ -270,6 +270,9 @@ static func _create_endless(p_save: SaveGame, p_catalog: PartCatalog, p_layout: 
 	world.start(sim)
 	sim._start_growth(Growth.config_of(p_world.config), p_world.config.max_size_in_build)
 	if sim.growth != null:
+		for b in range(WorldConfig.band_of(p_world.config.max_size_in_build) + 1):
+			sim.growth.place_kinds_by_band[b] = p_world.place_kinds(b)   # D-133
+	if sim.growth != null:
 		sim.growth.restore(p_save, n)   # the meter and the ledger (D-74)
 	# The home block's starting carrion that lies within the food ring (absolute pairs).
 	for p: Array in p_world.home.carrion_initial:

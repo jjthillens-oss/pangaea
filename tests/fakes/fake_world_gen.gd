@@ -292,6 +292,10 @@ func tile_info(band: int, tx: int, ty: int) -> Dictionary:
 ## The fake's content (BP3-8): reach_max_threat from the fake's own sites, the largest reach radius
 ## plus body radius over a site chunk's sites live at n whose species is the cell's size there.
 class Content extends WorldContent:
+	## The fake's kinds of place (D-133): the husk in band 0, the landmark model in band 1.
+	func place_kinds(band: int) -> PackedStringArray:
+		return PackedStringArray(["giant_husk"] if band == 0 else [ANCHOR_MODEL])
+
 	func reach_max_threat(n: int, p_species: SpeciesCatalog) -> float:
 		var gen: WorldGen = load("res://tests/fakes/fake_world_gen.gd").new(self, p_species, 0)
 		gen.site_period = 1

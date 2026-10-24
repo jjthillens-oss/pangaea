@@ -920,3 +920,53 @@ func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_r
 	pool.write_growth_to_save()
 	check_eq([pool.save.growth, pool.save.checkpoint, pool.save.gen_version],
 		[{"size": 1, "meter": 0.0}, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, 1], "the pool writes the defaults")
+
+
+## S3G27 (D-32, D-133): at size 4, the top of a world built to 4, a full ring pays out (energy to
+## capacity, +10) and the cell stays at 4; places_found(n) is (the distinct place and landmark kinds
+## found at n among n's band's kinds, that band's kind count). place_kinds_by_band holds every band
+## up to the top's, as the content gives them (test_world_content counts 8 and 10 in the shipped one).
+func test_at_four_a_full_ring_pays_out_without_growing_and_places_found_counts_kinds() -> void:
+	var content := FakeWorldGen.fixture_content("res://tests/fixtures/world/world_b1_min.json")
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, SpeciesCatalog.load_from(), content,
+		PackedFloat64Array(), 8, true)
+	check_eq(sim.world.max_size, 4, "the top is 4")
+	check(sim.debug_set_size(4), "size 4")
+	sim.drain_events()
+	var g := sim.growth
+	sim.state.energy = sim.state.energy_capacity * 0.5
+	var points := sim.save.adaptation_points
+	g.add(sim, g.ring(4), "debug", "")
+	var events := sim.drain_events()
+	check_eq(sim.state.energy, sim.state.energy_capacity, "energy refilled")
+	check_eq(sim.save.adaptation_points, points + 10, "+10")
+	check_eq(g.meter, 0.0, "the meter starts again")
+	var paid := _of(events, "ring_paid")
+	check_eq(paid.size(), 1, "one payout")
+	if paid.size() == 1:
+		check_eq([paid[0].size, paid[0].points], [4, 10], "at 4, 10 points")
+	var grew := 0
+	for i in 60:
+		sim.step(SimIntent.new())
+		grew += _of(sim.drain_events(), "grew").size()
+	check_eq([grew, sim.size()], [0, 4], "never grows past the top")
+
+	var bands := g.place_kinds_by_band.keys()
+	bands.sort()
+	check_eq(bands, [0, 1], "bands 0 and 1 (band_of(4))")
+	for b in bands:
+		check_eq(g.place_kinds_by_band[b], content.place_kinds(b), "band %d as the content gives it" % b)
+	var lm := FakeWorldGen.ANCHOR_MODEL
+	check_eq(g.places_found(4), Vector2i(0, 1), "nothing found at 4 yet, of 1")
+	g.discoveries.append_array([
+		{"type": "landmark", "id": lm, "size": 4},
+		{"type": "landmark", "id": lm, "size": 4},          # the same kind twice counts once
+		{"type": "food", "id": "giant_husk", "size": 2},    # a food look, not a place
+		{"type": "place", "id": "giant_husk", "size": 4},   # band 0's kind, not band 1's
+		{"type": "landmark", "id": lm, "size": 3},
+	])
+	check_eq(g.places_found(4), Vector2i(1, 1), "one kind at 4")
+	check_eq(g.places_found(3), Vector2i(1, 1), "and one at 3, its own size")
+	check_eq(g.places_found(2), Vector2i(0, 1), "none at 2, of band 0's one")
+	g.discoveries.append({"type": "place", "id": "giant_husk", "size": 2})
+	check_eq(g.places_found(2), Vector2i(1, 1), "the husk at 2")
