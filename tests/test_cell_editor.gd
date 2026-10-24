@@ -81,6 +81,7 @@ func test_parts_go_where_they_fit_and_move_round_the_rim() -> void:
 	var rim := editor.find_children("*", "Control", true, false).filter(func(c: Control) -> bool: return c is CellEditor.RimView)
 	check_eq(rim.size(), 1, "one rim view")
 	var view: CellEditor.RimView = rim[0]
+	view.set_anchors_preset(Control.PRESET_TOP_LEFT)   # out of a live tree it has no laid-out size
 	view.size = Vector2(300, 300)
 	check(view.at(0.0).y < view.center().y, "the front is up")
 	for a in [0.3, -1.2, 2.9]:
@@ -133,3 +134,24 @@ func test_the_editor_covers_and_dims_the_whole_screen_over_the_game() -> void:
 	check(dim != null and dim.anchor_right == 1.0 and dim.anchor_bottom == 1.0 and dim.offset_right == 0.0,
 		"and its dim covers all of it")
 	fresh.free()
+
+
+func test_the_body_is_seen_from_above_under_the_rim_each_dot_on_its_part() -> void:
+	# The preview looks straight down, front up and right to the right, so the rim's dot for a part at
+	# any angle sits in the part's direction, and the body's front fills the rim to BODY_ON_RIM.
+	var camera := editor._preview.get_node("%Camera") as Camera3D
+	check_eq(camera.projection, Camera3D.PROJECTION_ORTHOGONAL, "an orthographic view")
+	var rim := editor._rim
+	rim.set_anchors_preset(Control.PRESET_TOP_LEFT)   # out of a live tree it has no laid-out size
+	rim.size = Vector2(CellEditor.DISH_PX, CellEditor.DISH_PX)   # the dish's, as laid out
+	var inverse := camera.transform.affine_inverse()
+	for angle: float in [0.0, 0.7, PI / 2.0, 2.4, PI, -PI / 2.0, -1.2]:
+		var seen := inverse * PartPlacement.surface_point(angle)
+		# Orthographic and square: the view's x is right, its y up, and it is camera.size metres tall.
+		var on_screen := rim.center() + Vector2(seen.x, -seen.y) / camera.size * rim.size.y
+		var dot := rim.at(angle) - rim.center()
+		check(absf(angle_difference((on_screen - rim.center()).angle(), dot.angle())) < 0.1,
+			"a part at %.1f rad shows under its dot (%s vs %s)" % [angle, on_screen - rim.center(), dot])
+	var front := inverse * PartPlacement.surface_point(0.0)
+	check_near(absf(front.y) / camera.size * rim.size.y, CellEditor.BODY_ON_RIM * rim.radius(), 0.5,
+		"the body's front at %.1f of the rim" % CellEditor.BODY_ON_RIM)
