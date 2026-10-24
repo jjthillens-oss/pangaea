@@ -29,8 +29,8 @@ func test_speed_and_cadence_follow_leg_length() -> void:
 	var b := stats_of(long)
 	check(a["has_legs"] and b["has_legs"], "the quadruped has legs")
 	check(b["leg_length_m"] > a["leg_length_m"], "a body twice as long has longer legs")
-	check(b["speed_mps"] > a["speed_mps"], "and is faster (%.2f > %.2f m/s)" % [b["speed_mps"], a["speed_mps"]])
-	check(is_equal_approx(b["speed_mps"] / a["speed_mps"], sqrt(2.0)), "top speed scales with the square root of leg length")
+	var gait_ratio: float = (b["speed_mps"] / b["speed_factor"]) / (a["speed_mps"] / a["speed_factor"])
+	check(is_equal_approx(gait_ratio, sqrt(2.0)), "the legs' top speed scales with the square root of leg length")
 	check(b["cadence_hz"] < a["cadence_hz"], "and steps slower (%.2f < %.2f Hz)" % [b["cadence_hz"], a["cadence_hz"]])
 	check(a["speed_mps"] > 0.5 and a["speed_mps"] < 20.0, "a playable speed (%.2f m/s)" % a["speed_mps"])
 
@@ -44,10 +44,11 @@ func test_bite_grows_with_mouths_and_their_scale() -> void:
 	check(not none["has_mouth"] and none["bite_power"] == 0.0, "no mouth, no bite")
 	bare.add_part("maw", {"host": "spine", "u": 0, "ring": 500, "scale": 1000})
 	var one := stats_of(bare)
-	check(one["has_mouth"] and is_equal_approx(one["bite_power"], 10.0), "one maw: base 5 + 5 (%.1f)" % one["bite_power"])
+	var k: float = one["strength_factor"]
+	check(one["has_mouth"] and is_equal_approx(one["bite_power"], 10.0 * k), "one maw: (base 5 + 5) x strength (%.1f)" % one["bite_power"])
 	bare.add_part("mandibles", {"host": "spine", "u": 1000, "ring": 500, "scale": 2000})
 	var two := stats_of(bare)
-	check(is_equal_approx(two["bite_power"], 20.0), "a second mouth at scale 2 adds 10 (%.1f)" % two["bite_power"])
+	check(is_equal_approx(two["bite_power"], 20.0 * k), "a second mouth at scale 2 adds 10 x strength (%.1f)" % two["bite_power"])
 	check(two["bite_reach_m"] > none["bite_reach_m"], "a mouth reaches further than touch")
 	check(two["mouths"] == 2, "two mouths counted")
 
@@ -86,3 +87,30 @@ func test_every_starter_body_gives_finite_stats() -> void:
 		var s := stats_of(Fixtures.body(n))
 		for key in ["mass_kg", "max_health", "bite_power", "bite_reach_m", "sight_m", "speed_mps", "cadence_hz", "leg_length_m"]:
 			check(is_finite(float(s[key])) and float(s[key]) >= 0.0, "%s %s is finite and not negative" % [n, key])
+
+
+## Owner direction, 2026-10-24: a bigger creature is slower, and size sets strength.
+func test_heavy_bodies_lose_top_speed_and_gain_strength() -> void:
+	var ref := float(tuning["size"]["ref_kg"])
+	check_eq(CreatureStats.speed_factor(ref * 0.5, tuning), 1.0, "a light body runs at its legs' top speed")
+	check_eq(CreatureStats.speed_factor(ref, tuning), 1.0, "up to the reference mass")
+	var last := 1.0
+	for m in [ref * 2.0, ref * 5.0, ref * 20.0]:
+		var f := CreatureStats.speed_factor(m, tuning)
+		check(f < last and f > 0.0, "%.0f kg runs at %.2f of its legs' top speed" % [m, f])
+		last = f
+	check(CreatureStats.strength_factor(200.0, tuning) > CreatureStats.strength_factor(20.0, tuning), "a heavier body bites harder")
+	var sref := float(tuning["strength"]["ref_kg"])
+	check(is_equal_approx(CreatureStats.strength_factor(sref * 8.0, tuning), pow(8.0, float(tuning["strength"]["mass_power"]))),
+			"strength grows as mass to the 2/3")
+
+
+func test_a_giant_is_slower_than_the_same_body_at_a_middle_size() -> void:
+	var mid = Fixtures.body("s1_quadruped")
+	var giant = Fixtures.body("s1_quadruped")
+	giant.reference_length_mm = mid.reference_length_mm * 4
+	var a := stats_of(mid)
+	var b := stats_of(giant)
+	check(b["mass_kg"] > 30.0 * a["mass_kg"], "the giant is far heavier (%.0f kg against %.0f)" % [b["mass_kg"], a["mass_kg"]])
+	check(b["speed_mps"] < a["speed_mps"], "and slower (%.2f < %.2f m/s)" % [b["speed_mps"], a["speed_mps"]])
+	check(b["bite_power"] >= a["bite_power"], "but bites at least as hard")

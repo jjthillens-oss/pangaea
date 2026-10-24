@@ -249,7 +249,8 @@ func _drive(c: Dictionary, command: Vector2) -> void:
 	var planner = c["planner"]
 	if planner == null:
 		return
-	planner.step(DT, command.x, command.y)
+	# A heavy body cannot reach its legs' top speed (CreatureStats.speed_factor): the throttle is scaled down.
+	planner.step(DT, command.x * float(c["stats"].get("speed_factor", 1.0)), command.y)
 	_place(c, Rules.clamp_to_field(planner.position, half_size, float(c["stats"]["body_radius_m"])))
 	c["yaw"] = planner.yaw
 
@@ -404,7 +405,7 @@ static func _ground_dir(a: Vector3, b: Vector3) -> Vector2:
 func player() -> Dictionary:
 	var s: Dictionary = me["stats"]
 	return {"position": me["position"], "yaw": me["yaw"], "health": me["health"],
-			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "has_legs": s["has_legs"],
+			"max_health": float(s["max_health"]), "speed_mps": float(s["speed_mps"]), "speed_factor": float(s["speed_factor"]), "has_legs": s["has_legs"],
 			"has_mouth": s["has_mouth"], "bite_power": float(s["bite_power"]), "bite_reach_m": float(s["bite_reach_m"]),
 			"sight_m": float(s["sight_m"]), "mass_kg": float(s["mass_kg"]), "cooldown": me["cooldown"],
 			"body_length_m": float(s["body_length_m"]), "at_nest": at_nest()}
