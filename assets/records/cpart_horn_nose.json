@@ -1,0 +1,99 @@
+{
+  "id": "cpart_horn_nose",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature horn part (PROPOSED): a stout ringed conical horn sweeping up and forward to a blunt point, for the snout or brow.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_horn_nose.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_horn_nose.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.079,
+    "y_forward": 0.1,
+    "z_up": 0.159
+  },
+  "triangles": 342,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartHornNose_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartHornNose_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartHornNose_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_HornNose"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "HornNose"
+  ],
+  "part_type": "horn_nose",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "horn_nose",
+    "footprint_radius_m": 0.041,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 40,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "weapon",
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the horn 40% longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Sweep",
+        "meaning": "the point tipped further forward",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_HornNose": 0.1
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 640,
+    "triangles_after": 342
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

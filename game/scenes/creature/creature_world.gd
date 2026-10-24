@@ -63,6 +63,11 @@ const PALETTE := [Color(0.36, 0.66, 0.86), Color(0.52, 0.78, 0.45), Color(0.86, 
 ## comes from the same extra keys (creature_look.gd), the editor's default when they are missing.
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 const SKIN_COLOR_KEY := Look.SKIN_COLOR_KEY
+## The friend path's notices (sing and dance, CreatureWorldSim._sing).
+const CHARMED_NOTICE := "You sing to %s: %d / %d"
+const BEFRIENDED_NOTICE := "%s joins your pack"
+const SNUBBED_NOTICE := "It won't listen: you bit it"
+const ALLY_LOST_NOTICE := "You bit an ally. It leaves your pack"
 ## The world dressing (assets/records/creature_field_ground, creature_nest_ring, creature_fruit_bush,
 ## creature_meat_chunk). The bush GLB has two root meshes, Bush and Fruit; the meat GLB one, MeatChunk.
 const FIELD_SCENE := "res://assets/export/creature_field_ground.glb"
@@ -203,7 +208,8 @@ func _input(event: InputEvent) -> void:
 
 func _read_input() -> Dictionary:
 	var keys := Input.get_vector(&"move_left", &"move_right", &"move_down", &"move_up")
-	return {"move": keys, "bite": Input.is_action_pressed(&"creature_bite"), "evolve": Input.is_action_pressed(&"creature_evolve")}
+	return {"move": keys, "bite": Input.is_action_pressed(&"creature_bite"), "evolve": Input.is_action_pressed(&"creature_evolve"),
+			"social": Input.is_action_pressed(&"creature_social")}
 
 
 ## A camera-relative move (x right, y forward) as the sim's ground direction (x along +X, y along +Z).
@@ -233,6 +239,18 @@ func _on_event(e: Dictionary) -> void:
 			_call_mate(int(e["points"]))
 		"refused":
 			notice = String(e["reason"])
+			hud.show_notice(notice)
+		"charmed":
+			notice = CHARMED_NOTICE % [String(e["name"]), int(e["friendship"]), int(e["needed"])]
+			hud.show_notice(notice)
+		"befriended":
+			notice = BEFRIENDED_NOTICE % String(e["name"]).capitalize()
+			hud.show_notice(notice)
+		"snubbed":
+			notice = SNUBBED_NOTICE
+			hud.show_notice(notice)
+		"ally_lost":
+			notice = ALLY_LOST_NOTICE
 			hud.show_notice(notice)
 		"earned":
 			hud.flash_points(int(e["points"]))

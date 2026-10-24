@@ -14,6 +14,9 @@
 	"mass": {"kg_per_m3": 900},
 	"size": {"ref_kg": 120, "power": 0.6, "_note": "above ref_kg the top speed falls: 0.69x at 300 kg, 0.35x at 1.2 t"},
 	"strength": {"ref_kg": 60, "mass_power": 0.667, "min": 0.25, "max": 6.0, "_note": "bite x (mass / ref_kg)^(2/3)"},
+	"social": {"reach_m": 3.0, "cooldown_s": 1.0, "base_charm": 1.0, "per_display_part": 0.5, "display_cap": 4,
+		"friend_at": 5.0, "befriend_points": 10, "follow_m": 5.0,
+		"_note": "sing and dance to befriend: each song adds the singer's charm; display organs (crest, frill, lure...) add charm, capped; a bitten creature will not listen"},
 	"deeds": {"walk_m_per_point": 25, "bite_points": 2, "hit_points": 1, "spot_points": 2,
 		"_note": "adaptation points earned by doing, on top of eating; spent in the editor (Bible section 3)"}
 }

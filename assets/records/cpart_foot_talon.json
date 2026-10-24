@@ -1,0 +1,102 @@
+{
+  "id": "cpart_foot_talon",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature foot part (PROPOSED): a bird's scaly foot, three knuckled toes forward and one back, each with a hooked talon.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_foot_talon.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_foot_talon.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.108,
+    "y_forward": 0.213,
+    "z_up": 0.1
+  },
+  "triangles": 580,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartFootTalon_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFootTalon_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFootTalon_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FootTalonClaw",
+    "M_FootTalonScale"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FootTalon",
+    "Talons"
+  ],
+  "part_type": "foot_talon",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "foot_talon",
+    "footprint_radius_m": 0.134,
+    "sink_depth_m": 0.0,
+    "chiral": false,
+    "orientation": "ground",
+    "turn_limit_deg": 25,
+    "tilt_limit_deg": 15,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "foot",
+    "handles": [
+      {
+        "key": "H1_Spread",
+        "meaning": "toes splayed a further 12 degrees",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Long",
+        "meaning": "toes 25% longer",
+        "default_permille": 0
+      }
+    ],
+    "pivot_note": "Ground part: the toes sit on the pivot; the shank top (z 0.1 m) meets the limb tip."
+  },
+  "paint_mix": {
+    "M_FootTalonScale": 0.4,
+    "M_FootTalonClaw": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1198,
+    "triangles_after": 580
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

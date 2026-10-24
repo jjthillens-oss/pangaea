@@ -2516,6 +2516,674 @@ def build_bill():
             "paint_mix": {"M_BillGape": 0.8, "M_Bill": 0.1}, "revision": 1, **baked}
 
 
+# --- Set 7: more feet and hands ------------------------------------------------------------------------
+
+def _skin_material(name, scale=220.0, lo=0.75, rough=0.7):
+    sh = sf.Shader(name)
+    pebble = sh.remap(sh.voronoi(scale, 0.8), 0.25, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.35, 0.001)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", pebble, 0.35)), lo), rough)
+
+
+def _scale_material(name, scale=300.0):
+    sh = sf.Shader(name)
+    groove = sh.remap(sh.voronoi(scale, 0.45, feature="DISTANCE_TO_EDGE"), 0.0, 0.09)
+    sh.bump(groove, 0.4, 0.0008)
+    return sh.out(_grey(sh, sh.math("ADD", 0.6, sh.math("MULTIPLY", groove, 0.35)), 0.6), 0.55)
+
+
+def _nail_material(name):
+    sh = sf.Shader(name)
+    ns = sh.noise(90.0, 3.0, vector=mp._stretched(sh, (0.4, 5.0, 5.0)))
+    sh.bump(ns, 0.2, 0.001)
+    return sh.out(_grey(sh, sh.remap(ns, 0.3, 0.7), 0.8), 0.3)
+
+
+def _nail(tip, d, length=0.026, width=0.011, down=0.0):
+    """A small horn nail cone at a toe tip, pointing along d (and `down` toward -Z), its base sunk in the toe."""
+    d = (d + Vector((0.0, 0.0, -down))).normalized()
+    prof = [(0.0, 0.0), (0.004, width), (length * 0.55, width * 0.85), (length, 0.0)]
+    nv, nf, _ = bc.revolve(prof, 12)
+    rot = Vector((0.0, 1.0, 0.0)).rotation_difference(d)
+    return [tuple(tip - d * 0.006 + rot @ Vector(v)) for v in nv], nf
+
+
+def _ground(verts):
+    return [(x, y, max(z, 0.0)) for x, y, z in verts]
+
+
+def _foot_handles(objs, spread_deg, from_y, longer):
+    def spread(co):
+        if co.y > from_y:
+            a = math.radians(spread_deg) * (co.x / max(abs(co.x), 1e-6)) * min(1.0, abs(co.x) / 0.02)
+            return Matrix.Rotation(-a, 3, "Z") @ co
+        return co
+
+    def long_(co):
+        if co.y > from_y:
+            co.y = from_y + (co.y - from_y) * (1.0 + longer)
+        return co
+
+    handles = []
+    for o in objs:
+        handles = _shape_keys(o, [("H1_Spread", spread, f"toes splayed a further {spread_deg:.0f} degrees"),
+                                  ("H2_Long", long_, f"toes {longer * 100:.0f}% longer")])
+    return handles
+
+
+def _ankle(top=0.09, r0=0.018, y=-0.01):
+    # Swept from the top down, so the sweep's capped start closes the ankle where it meets the limb.
+    return mp._sweep([Vector((0.0, y, 0.02 + (top - 0.02) * t)) for t in (1.0, 0.66, 0.33, 0.0)], lambda i, a: r0 + 0.004 * i, 20)
+
+
+def build_foot_webbed():
+    """A webbed swimmer's foot standing on its sole: three long slender toes fanned wide with a thin scalloped web
+    between them and small claws at the tips. H1_Spread fans the toes and web, H2_Long lengthens them."""
+    unit, faces = bc.icosphere(3)
+    palm_c = Vector((0.0, 0.0, 0.026))
+    verts, fcs = [], []
+    for co in unit:
+        n = Vector(co).normalized()
+        verts.append(tuple(palm_c + Vector((n.x * 0.036, n.y * 0.036, n.z * 0.026))))
+    fcs = list(faces)
+    av, af = _ankle(0.09, 0.016)
+    bc.append(verts, fcs, av, af)
+    toes, paths = [], []
+    for ang in (-34.0, 0.0, 34.0):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        start = palm_c + d * 0.02 + Vector((0.0, 0.0, -0.008))
+        path = [start + d * (0.1 * t) + Vector((0.0, 0.0, -0.012 * t + 0.004 * math.sin(math.pi * t))) for t in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0 if i == 5 else 0.0105 * (1.0 - 0.13 * i), 12)
+        bc.append(verts, fcs, tv, tf)
+        toes.append((path[-1], d))
+        paths.append(path)
+    skin = _skin_material("M_FootWebbedSkinProc")
+    foot = bc.mesh_object("FootWebbed", _ground(verts), fcs, [skin])
+    skin.name = "M_FootWebbedSkin"
+    wv, wf = [], []
+    for left, right in ((paths[0], paths[1]), (paths[1], paths[2])):
+        def point(s_, c, left=left, right=right):
+            # s_ runs root (0) to tip (1) along the toes, c across from one toe to the next; the free edge scallops in.
+            i = s_ * 4.0
+            k = min(3, int(i))
+            f = i - k
+            a = left[k].lerp(left[k + 1], f)
+            b = right[k].lerp(right[k + 1], f)
+            p = a.lerp(b, c)
+            sag = 0.012 * s_ ** 2 * math.sin(math.pi * c)       # the web's edge bows back toward the palm
+            p = p - (a.lerp(b, 0.5) - palm_c).normalized() * sag
+            return Vector((p.x, p.y, max(0.004, p.z + 0.002)))
+        _membrane(wv, wf, point, 6, 6, thickness=0.0012, facing=Vector((0.0, 0.0, 1.0)))
+    web_sh = sf.Shader("M_FootWebbedWebProc")
+    veins = web_sh.noise(160.0, 2.0, vector=mp._stretched(web_sh, (2.0, 0.3, 1.0)))
+    web_sh.bump(veins, 0.2, 0.0005)
+    web_mat = web_sh.out(_grey(web_sh, web_sh.remap(veins, 0.3, 0.7), 0.7), 0.5)
+    web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
+    web_mat.name = "M_FootWebbedWeb"
+    nail_mat = _nail_material("M_FootWebbedNailProc")
+    nv, nf = [], []
+    for tip, d in toes:
+        v, f = _nail(tip, d, 0.02, 0.0075, down=0.3)
+        bc.append(nv, nf, _ground(v), f)
+    nails = bc.mesh_object("Nails", nv, nf, [nail_mat], parent=foot)
+    nail_mat.name = "M_FootWebbedNail"
+    objs = [foot, web, nails]
+    baked = _bake(objs, "PartFootWebbed", {"M_FootWebbedSkin": sf.tint(_lin("#9CA27E")), "M_FootWebbedWeb": sf.tint(_lin("#B4AE86")),
+                                           "M_FootWebbedNail": sf.tint(_lin("#4E4438"))})
+    pts = _check_pivot("foot_webbed", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _foot_handles(objs, 12.0, 0.02, 0.3)
+    rules = _rules("foot_webbed", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a webbed swimmer's foot, three long toes fanned wide with a scalloped web and small claws.",
+            "category": "part", "part_type": "foot_webbed", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootWebbedSkin": 0.85, "M_FootWebbedWeb": 0.9, "M_FootWebbedNail": 0.0}, "revision": 1, **baked}
+
+
+def build_foot_paw():
+    """A round padded paw standing on its sole: a broad palm and four plump toes in an arc toward the head, each
+    with a short dark claw. H1_Spread splays the toes, H2_Long lengthens them."""
+    unit, faces = bc.icosphere(3)
+    palm_c = Vector((0.0, -0.008, 0.03))
+    verts, fcs = [], []
+    for co in unit:
+        n = Vector(co).normalized()
+        verts.append(tuple(palm_c + Vector((n.x * 0.05, n.y * 0.045, n.z * 0.03))))
+    fcs = list(faces)
+    av, af = _ankle(0.095, 0.024, -0.015)
+    bc.append(verts, fcs, av, af)
+    toe_unit, toe_faces = bc.icosphere(2)
+    toes = []
+    for ang in (-48.0, -16.0, 16.0, 48.0):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        c = palm_c + d * 0.05 + Vector((0.0, 0.0, -0.008))
+        r = 0.019 if abs(ang) < 30 else 0.016
+        bc.append(verts, fcs, [tuple(c + Vector((n.x * r, n.y * r * 1.15, n.z * r * 0.95))) for n in (Vector(co).normalized() for co in toe_unit)], toe_faces)
+        toes.append((c + d * r * 1.0 + Vector((0.0, 0.0, 0.002)), d))
+    skin = _skin_material("M_FootPawSkinProc", scale=260.0, lo=0.78, rough=0.75)
+    paw = bc.mesh_object("FootPaw", _ground(verts), fcs, [skin])
+    skin.name = "M_FootPawSkin"
+    nail_mat = _nail_material("M_FootPawClawProc")
+    nv, nf = [], []
+    for tip, d in toes:
+        v, f = _nail(tip, d, 0.018, 0.006, down=0.5)
+        bc.append(nv, nf, _ground(v), f)
+    claws = bc.mesh_object("Claws", nv, nf, [nail_mat], parent=paw)
+    nail_mat.name = "M_FootPawClaw"
+    objs = [paw, claws]
+    baked = _bake(objs, "PartFootPaw", {"M_FootPawSkin": sf.tint(_lin("#B8977C")), "M_FootPawClaw": sf.tint(_lin("#3E3630"))})
+    pts = _check_pivot("foot_paw", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _foot_handles(objs, 10.0, 0.02, 0.25)
+    rules = _rules("foot_paw", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a round padded paw with four plump toes in an arc and short dark claws.",
+            "category": "part", "part_type": "foot_paw", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootPawSkin": 0.85, "M_FootPawClaw": 0.0}, "revision": 1, **baked}
+
+
+def build_foot_talon():
+    """A bird's scaly foot standing on its toes: a thin scaled shank, three long knuckled toes forward and one
+    back, each ending in a hooked talon. H1_Spread splays the toes, H2_Long lengthens them."""
+    verts, fcs = [], []
+    sv, sf_ = mp._sweep([Vector((0.0, -0.004, 0.02 + 0.08 * t)) for t in (1.0, 0.75, 0.5, 0.25, 0.0)],
+                        lambda i, a: 0.011 + 0.0015 * i, 14)
+    bc.append(verts, fcs, sv, sf_)
+    unit, faces = bc.icosphere(2)
+    heel = Vector((0.0, -0.004, 0.016))
+    bc.append(verts, fcs, [tuple(heel + Vector(co).normalized() * 0.017) for co in unit], faces)
+    talons = []
+    for ang, length in ((-26.0, 0.1), (0.0, 0.115), (26.0, 0.1), (180.0, 0.055)):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        start = heel + d * 0.006 + Vector((0.0, 0.0, -0.004))
+        ts = (0.0, 0.2, 0.4, 0.55, 0.7, 0.85, 1.0)
+        path = [start + d * (length * t) + Vector((0.0, 0.0, -0.006 * t)) for t in ts]
+
+        def radius_at(i, a, ts=ts):
+            if i == len(ts) - 1:
+                return 0.0
+            t = ts[i]
+            return 0.0072 * (1.0 - 0.3 * t) * (1.0 + 0.16 * math.exp(-((t - 0.4) / 0.06) ** 2) + 0.14 * math.exp(-((t - 0.7) / 0.06) ** 2))
+
+        tv, tf, _ = _tube(path, radius_at, 10)
+        bc.append(verts, fcs, tv, tf)
+        talons.append((path[-1], d))
+    scale = _scale_material("M_FootTalonScaleProc", 280.0)
+    foot = bc.mesh_object("FootTalon", _ground(verts), fcs, [scale])
+    scale.name = "M_FootTalonScale"
+    nail_mat = _nail_material("M_FootTalonClawProc")
+    nv, nf = [], []
+    for tip, d in talons:
+        steps = 8
+        base = tip - d * 0.004 + Vector((0.0, 0.0, 0.004))
+        path = [base + d * (0.02 * math.sin(1.3 * k / steps) / math.sin(1.3)) + Vector((0.0, 0.0, -0.016 * (1 - math.cos(1.3 * k / steps)) / (1 - math.cos(1.3)) + 0.0)) for k in range(steps + 1)]
+        v, f, _ = _tube(path, lambda i, a: 0.0 if i == steps else 0.0055 * (1.0 - i / steps) ** 0.8, 8)
+        bc.append(nv, nf, _ground(v), f)
+    claws = bc.mesh_object("Talons", nv, nf, [nail_mat], parent=foot)
+    nail_mat.name = "M_FootTalonClaw"
+    objs = [foot, claws]
+    baked = _bake(objs, "PartFootTalon", {"M_FootTalonScale": sf.tint(_lin("#C8A24E")), "M_FootTalonClaw": sf.tint(_lin("#2E2A28"))})
+    pts = _check_pivot("foot_talon", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _foot_handles(objs, 12.0, 0.01, 0.25)
+    rules = _rules("foot_talon", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the toes sit on the pivot; the shank top (z 0.1 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a bird's scaly foot, three knuckled toes forward and one back, each with a hooked talon.",
+            "category": "part", "part_type": "foot_talon", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootTalonScale": 0.4, "M_FootTalonClaw": 0.0}, "revision": 1, **baked}
+
+
+def _hand_rules(part_type, foot):
+    rules = _rules(part_type, round(foot + 0.001, 3), 0.025, "normal", ["limb_end"], 40, 40)
+    rules["capabilities"] = ["grasper"]
+    return rules
+
+
+def build_hand_paw():
+    """A soft mitten paw on the end of the limb (+Z out along it): a rounded palm, four short fat fingers fused
+    side by side and a stubby thumb, with small nails. H1_Grip curls the fingers in, H2_Spread fans them."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs = [], []
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.042, n.y * 0.03, 0.035 + n.z * 0.036))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.0, -0.012, -0.024)], lambda i, a: 0.026 + 0.003 * i, 16)
+    bc.append(verts, fcs, wv, wf)
+    tips = []
+    for fx in (-0.027, -0.009, 0.009, 0.027):
+        base = Vector((fx, 0.002, 0.058))
+        path = [base + Vector((fx * 0.15 * t, 0.006 * t * t, 0.032 * t)) for t in FINGER_T]
+        v, f, _ = _tube(path, lambda i, a: _finger_r(FINGER_T[i], 0.0115), 12)
+        bc.append(verts, fcs, v, f)
+        tips.append((path[-2], Vector((0.0, 0.25, 1.0)).normalized()))
+    tpath = [Vector((0.036, 0.012, 0.03)) + Vector((0.022 * t, 0.014 * t, 0.018 * t)) for t in FINGER_T]
+    v, f, _ = _tube(tpath, lambda i, a: _finger_r(FINGER_T[i], 0.012), 12)
+    bc.append(verts, fcs, v, f)
+    skin = _skin_material("M_HandPawSkinProc", 240.0, 0.78, 0.75)
+    paw = bc.mesh_object("HandPaw", verts, fcs, [skin])
+    skin.name = "M_HandPawSkin"
+    nail_mat = _nail_material("M_HandPawNailProc")
+    nv, nf = [], []
+    for tip, d in tips:
+        v, f = _nail(tip + Vector((0.0, 0.004, 0.0)), d, 0.012, 0.0055)
+        bc.append(nv, nf, v, f)
+    nails = bc.mesh_object("Nails", nv, nf, [nail_mat], parent=paw)
+    nail_mat.name = "M_HandPawNail"
+    baked = _bake([paw, nails], "PartHandPaw", {"M_HandPawSkin": sf.tint(_lin("#BE9A82")), "M_HandPawNail": sf.tint(_lin("#4A4038"))})
+    pts = _check_pivot("hand_paw", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def grip(co):
+        if co.z > 0.055:
+            k = min(1.0, (co.z - 0.055) / 0.04)
+            ang = math.radians(75.0) * k
+            dz = co.z - 0.055
+            return Vector((co.x, co.y + dz * math.sin(ang), 0.055 + dz * math.cos(ang)))
+        if co.x > 0.036:
+            return Vector((co.x - 0.015 * (co.x - 0.036) / 0.022, co.y + 0.008, co.z))
+        return co
+
+    def spread(co):
+        if co.z > 0.055:
+            co.x *= 1.0 + 0.5 * min(1.0, (co.z - 0.055) / 0.04)
+        return co
+
+    handles = _shape_keys(paw, [("H1_Grip", grip, "fingers curl 75 degrees in, the thumb folds across"),
+                                ("H2_Spread", spread, "fingers fan 50% wider at the tips")])
+    _shape_keys(nails, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
+    rules = _hand_rules("hand_paw", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a soft mitten paw, four short fat fingers and a stubby thumb with small nails; grips on a shape key.",
+            "category": "part", "part_type": "hand_paw", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandPawSkin": 0.85, "M_HandPawNail": 0.0}, "revision": 1, **baked}
+
+
+PINCER_HINGE = 0.075
+
+
+def build_hand_pincer():
+    """A crab's pincer on the end of the limb (+Z out along it): a swollen shell palm, a fixed finger on -Y and
+    a hinged finger on +Y closing on it, both with knobbly teeth along the bite and dark tips. Symmetric across
+    x, so one piece serves both sides. H1_Open swings the hinged finger open, H2_Size swells the palm."""
+    verts, fcs = [], []
+    pv, pf = mp._sweep([Vector((0.0, 0.0, z)) for z in (-0.025, 0.0, 0.02, 0.045, 0.065, PINCER_HINGE + 0.008)],
+                       lambda i, a: (0.026, 0.03, 0.042, 0.045, 0.038, 0.024)[i] * math.sqrt((1.0 * math.cos(a)) ** 2 + (0.72 * math.sin(a)) ** 2), 20)
+    bc.append(verts, fcs, pv, pf)
+    fingers = []
+    for sign, length, curve in ((-1.0, 0.07, 0.016), (1.0, 0.075, 0.02)):
+        ts = (0.0, 0.2, 0.4, 0.6, 0.75, 0.88, 1.0)
+        root = Vector((0.0, sign * 0.016, PINCER_HINGE))
+        path = [root + Vector((0.0, -sign * curve * t * t + sign * 0.008 * math.sin(math.pi * t), length * t)) for t in ts]
+        v, f, _ = _tube(path, lambda i, a, ts=ts: 0.0 if i == len(ts) - 1 else 0.016 * (1.0 - 0.75 * ts[i]) * (1.0 + 0.12 * math.cos(2 * a)), 12)
+        bc.append(verts, fcs, v, f)
+        fingers.append((sign, path))
+    teeth = []
+    for sign, path in fingers:
+        for k in (1, 2, 3, 4):
+            p = path[k] + Vector((0.0, -sign * 0.0105 * (1.0 - 0.18 * k), 0.0))
+            teeth.append(p)
+            bc.append(verts, fcs, [tuple(p + Vector(co).normalized() * 0.0048) for co in bc.icosphere(1)[0]], bc.icosphere(1)[1])
+    shell = sf.Shader("M_HandPincerShellProc")
+    pits = shell.remap(shell.voronoi(180.0, 0.9), 0.12, 0.0)
+    bumps = shell.noise(60.0, 3.0)
+    shell.bump(shell.math("ADD", shell.math("MULTIPLY", pits, 0.5), shell.math("MULTIPLY", bumps, 0.3)), 0.35, 0.001)
+    tips = shell.remap(shell.axis("Z"), PINCER_HINGE + 0.035, PINCER_HINGE + 0.055)
+    shell_mat = shell.out(_grey(shell, shell.math("SUBTRACT", shell.math("SUBTRACT", 0.82, shell.math("MULTIPLY", pits, 0.2)), shell.math("MULTIPLY", tips, 0.6)), 0.15), 0.35)
+    pincer = bc.mesh_object("HandPincer", verts, fcs, [shell_mat])
+    shell_mat.name = "M_HandPincerShell"
+    baked = _bake([pincer], "PartHandPincer", {"M_HandPincerShell": sf.tint(_lin("#C27A4E"))}, tolerance=0.0003)   # a smooth shell silhouette
+    pts = _check_pivot("hand_pincer", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def open_(co):
+        if co.z > PINCER_HINGE - 0.004 and co.y > 0.004:
+            rel = Vector((0.0, co.y - 0.016, co.z - PINCER_HINGE))
+            rot = Matrix.Rotation(math.radians(-32.0), 3, "X") @ rel
+            return Vector((co.x, rot.y + 0.016, rot.z + PINCER_HINGE))
+        return co
+
+    def size(co):
+        if co.z < PINCER_HINGE + 0.004:
+            k = max(0.0, min(1.0, co.z / 0.03))
+            return Vector((co.x * (1.0 + 0.25 * k), co.y * (1.0 + 0.25 * k), co.z))
+        return co
+
+    handles = _shape_keys(pincer, [("H1_Open", open_, "the hinged finger swings 32 degrees open"),
+                                   ("H2_Size", size, "the shell palm 25% stouter")])
+    rules = _hand_rules("hand_pincer", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a crab's pincer, a pitted shell palm with a fixed and a hinged finger, knobbly teeth and dark tips; opens on a shape key.",
+            "category": "part", "part_type": "hand_pincer", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandPincerShell": 0.35}, "revision": 1, **baked}
+
+
+def build_hand_tentacle():
+    """Three soft tentacle fingers curling out from a fleshy palm on the end of the limb (+Z out along it), with
+    rows of pale suckers on their inner sides. H1_Curl rolls the tips in, H2_Spread fans the fingers."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs = [], []
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.034, n.y * 0.03, 0.022 + n.z * 0.03))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.0, -0.012, -0.024)], lambda i, a: 0.024 + 0.003 * i, 16)
+    bc.append(verts, fcs, wv, wf)
+    steps = 14
+    for k in range(3):
+        a0 = 2.0 * math.pi * k / 3 + math.pi / 2
+        out = Vector((math.cos(a0), math.sin(a0), 0.0))
+        base = Vector((0.0, 0.0, 0.035)) + out * 0.014
+        path = []
+        for i in range(steps + 1):
+            t = i / steps
+            # A C-shaped reach: out and up, then the tip curls back in toward the axis, so the three cup a grip.
+            r_out = 0.045 * math.sin(math.pi * t) - 0.022 * t * t
+            path.append(base + out * r_out + Vector((0.0, 0.0, 0.12 * t - 0.012 * t ** 3)))
+        v, f, _ = _tube(path, lambda i, a: 0.0 if i == steps else 0.0135 * (1.0 - i / steps) ** 0.7 + 0.0012, 10)
+        bc.append(verts, fcs, v, f)
+    sh = sf.Shader("M_HandTentacleSkinProc")
+    cells = sh.voronoi(120.0, 0.25)
+    suckers = sh.remap(cells, 0.22, 0.12)                          # discs
+    rims = sh.math("MULTIPLY", sh.remap(cells, 0.26, 0.2), sh.remap(cells, 0.1, 0.16))   # their raised rims
+    sh.bump(sh.math("SUBTRACT", rims, sh.math("MULTIPLY", suckers, 0.6)), 0.6, 0.0015)
+    mat = sh.out(_grey(sh, sh.math("ADD", 0.6, sh.math("ADD", sh.math("MULTIPLY", suckers, 0.25), sh.math("MULTIPLY", rims, 0.15))), 0.7), 0.4)
+    tent = bc.mesh_object("HandTentacle", verts, fcs, [mat])
+    mat.name = "M_HandTentacleSkin"
+    baked = _bake([tent], "PartHandTentacle", {"M_HandTentacleSkin": sf.tint(_lin("#B98C9C"))})
+    pts = _check_pivot("hand_tentacle", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def curl(co):
+        if co.z > 0.05:
+            k = min(1.0, (co.z - 0.05) / 0.1)
+            r = math.hypot(co.x, co.y)
+            if r > 1e-6:
+                s_ = max(0.4, 1.0 - 0.55 * k)
+                return Vector((co.x * s_, co.y * s_, co.z - 0.02 * k ** 2))
+        return co
+
+    def spread(co):
+        if co.z > 0.04:
+            k = min(1.0, (co.z - 0.04) / 0.07)
+            return Vector((co.x * (1.0 + 0.5 * k), co.y * (1.0 + 0.5 * k), co.z - 0.01 * k))
+        return co
+
+    handles = _shape_keys(tent, [("H1_Curl", curl, "the tips curl in toward the axis"),
+                                 ("H2_Spread", spread, "the fingers fan 50% wider")])
+    rules = _hand_rules("hand_tentacle", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): three soft tentacle fingers with sucker rows curling from a fleshy palm; curls on a shape key.",
+            "category": "part", "part_type": "hand_tentacle", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandTentacleSkin": 0.85}, "revision": 1, **baked}
+
+
+# --- Set 7: more claws, horns and spikes ----------------------------------------------------------------
+
+def _horn_material(name, ring_freq=300.0, lo=0.7):
+    sh = sf.Shader(name)
+    rings = sh.math("SINE", sh.math("MULTIPLY", sh.axis("Z"), ring_freq))
+    streak = sh.noise(80.0, 3.0, vector=mp._stretched(sh, (5.0, 5.0, 0.3)))
+    h = sh.math("ADD", sh.math("MULTIPLY", rings, 0.3), streak)
+    sh.bump(h, 0.35, 0.0015)
+    return sh.out(_grey(sh, sh.remap(h, -0.1, 0.9), lo), 0.35)
+
+
+def _sheath_material(name):
+    sh = sf.Shader(name)
+    wr = sh.noise(160.0, 3.0)
+    sh.bump(wr, 0.3, 0.0008)
+    return sh.out(_grey(sh, sh.remap(wr, 0.3, 0.7), 0.8), 0.6)
+
+
+def build_claw_scythe():
+    """A mantis-like scythe: a long flat blade rising from a padded sheath and arcing forward (+Y) and down to a
+    hooked point, with a row of small spines along its inner edge. Leans in toward the midline (-X): chiral.
+    H1_Length lengthens the blade, H2_Hook curls the point further down."""
+    steps = 20
+    path = []
+    for i in range(steps + 1):
+        t = i / steps
+        a = 2.5 * t                                     # sweeps up, over, forward and down to the hook
+        path.append(Vector((-0.014 * t * t, 0.07 * (1 - math.cos(a)) / (1 - math.cos(2.2)) * 1.25, -0.015 + 0.1 * math.sin(a) / math.sin(1.57) + 0.012 * t)))
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = i / steps
+        deep = 0.022 * (1.0 - t) ** 0.7 * (1.0 - 0.3 * t) + 0.0006     # across the blade, in the arc's plane
+        thin = 0.0075 * (1.0 - t) ** 0.6 + 0.0005                      # its thickness across x: a thin blade
+        if t < 0.12:
+            deep = thin = 0.024                            # the round padded sheath
+        return 1.0 / math.sqrt((math.cos(a) / deep) ** 2 + (math.sin(a) / thin) ** 2)
+
+    verts, faces, ring = _tube(path, radius_at, 16)
+    face_mats = [0 if r < 2 else 1 for r in ring]
+    spines = []
+    for k in range(4, steps - 3):
+        curv = (path[k + 1] - 2 * path[k] + path[k - 1])
+        inner = curv.normalized() if curv.length > 1e-9 else Vector((0.0, 0.0, -1.0))
+        t = k / steps
+        root = path[k] + inner * (0.022 * (1.0 - t) ** 0.7 * (1.0 - 0.3 * t) - 0.0015)
+        tang = (path[k + 1] - path[k - 1]).normalized()
+        d = (inner * 0.75 - tang * 0.66).normalized()
+        size = 1.0 - 0.5 * t
+        sv, sf_, _ = _tube([root, root + d * 0.008 * size, root + d * 0.016 * size], lambda i, a: 0.0 if i == 2 else 0.0034 * size * (1.0 - i / 2), 6)
+        bc.append(verts, faces, sv, sf_)
+        face_mats.extend([1] * len(sf_))
+        spines.append(root)
+    mats = [_sheath_material("M_ClawScytheSheathProc"), _horn_material("M_ClawScytheProc", 0.0, 0.6)]
+    claw = bc.mesh_object("ClawScythe", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_ClawScytheSheath", "M_ClawScythe"
+    baked = _bake([claw], "PartClawScythe", {"M_ClawScytheSheath": sf.tint(_lin("#A88A6E")), "M_ClawScythe": sf.tint(_lin("#5A4E3E"))}, tolerance=0.0005)
+    pts = _check_pivot("claw_scythe", 0.02)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) < 0, "claw_scythe: leans in toward the midline (-X on the right-hand piece)")
+
+    def length(co):
+        if co.z > 0.012:
+            co.z = 0.012 + (co.z - 0.012) * 1.3
+            co.y *= 1.3
+        return co
+
+    def hook(co):
+        k = max(0.0, co.y) / 0.09
+        co.z -= 0.025 * k ** 3
+        return co
+
+    handles = _shape_keys(claw, [("H1_Length", length, "the blade 30% longer"), ("H2_Hook", hook, "the point hooked further down")])
+    rules = _rules("claw_scythe", round(foot + 0.001, 3), 0.02, "normal", ["limb_end", "limb"], 30, 30, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature claw part (PROPOSED): a mantis-like scythe, a long flat blade arcing forward to a hooked point with spines on its inner edge, right-hand piece (mirrored at bake).",
+            "category": "part", "part_type": "claw_scythe", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ClawScytheSheath": 0.8, "M_ClawScythe": 0.0}, "revision": 1, **baked}
+
+
+def build_claw_rake():
+    """Three parallel hooked claws in a row across x on a padded base, curving forward (+Y) like a raking hand.
+    Symmetric across x. H1_Length lengthens them, H2_Hook curls the tips."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs, mats_ix = [], [], []
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.042, n.y * 0.026, max(-0.02, 0.006 + n.z * 0.02)))) for n in (Vector(co).normalized() for co in unit)], faces)
+    mats_ix.extend([0] * len(faces))
+    steps = 14
+    for x0, length in ((-0.026, 0.085), (0.0, 0.1), (0.026, 0.085)):
+        path = []
+        for i in range(steps + 1):
+            t = i / steps
+            a = 1.15 * t
+            path.append(Vector((x0 * (1.0 + 0.15 * t), 0.06 * (1 - math.cos(a)) / (1 - math.cos(1.15)) * length / 0.1, 0.012 + length * math.sin(a) / math.sin(1.15))))
+        v, f, ring = _tube(path, lambda i, a: 0.0 if i == steps else 0.0115 * (1.0 - i / steps) ** 0.8 * (1.0 + 0.2 * max(0.0, -math.cos(a)) ** 2), 12)
+        bc.append(verts, fcs, v, f)
+        mats_ix.extend([0 if r < 1 else 1 for r in ring])
+    mats = [_sheath_material("M_ClawRakePadProc"), _horn_material("M_ClawRakeProc", 0.0, 0.6)]
+    rake = bc.mesh_object("ClawRake", verts, fcs, mats, mats_ix)
+    mats[0].name, mats[1].name = "M_ClawRakePad", "M_ClawRake"
+    baked = _bake([rake], "PartClawRake", {"M_ClawRakePad": sf.tint(_lin("#B08C74")), "M_ClawRake": sf.tint(_lin("#3E3630"))}, tolerance=0.0005)
+    pts = _check_pivot("claw_rake", 0.02)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.02:
+            co.z = 0.02 + (co.z - 0.02) * 1.35
+            co.y *= 1.35
+        return co
+
+    def hook(co):
+        k = max(0.0, co.z - 0.02) / 0.08
+        co.y += 0.03 * k ** 3
+        co.z -= 0.02 * k ** 3
+        return co
+
+    handles = _shape_keys(rake, [("H1_Length", length, "the claws 35% longer"), ("H2_Hook", hook, "the tips hooked further forward and down")])
+    rules = _rules("claw_rake", round(foot + 0.001, 3), 0.02, "normal", ["limb_end", "limb"], 30, 30)
+    rules["handles"] = handles
+    return {"purpose": "Creature claw part (PROPOSED): three parallel hooked claws on a padded base, curving forward like a rake.",
+            "category": "part", "part_type": "claw_rake", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ClawRakePad": 0.85, "M_ClawRake": 0.0}, "revision": 1, **baked}
+
+
+RAM_R = 0.056
+RAM_TURN = 1.75 * math.pi
+
+
+def build_horn_ram():
+    """A ram's horn: thick and ridged, it rises from the skin, curls back over itself and round in a shrinking
+    spiral that drifts out to the right (+X), so the coil clears itself, and ends in a point: chiral.
+    H1_Length winds it further, H2_Thick thickens it."""
+    h = 0.047                                           # the coil's underside stays clear of the skin
+    centre = Vector((0.0, -RAM_R, h))
+    path = [Vector((0.0, 0.0, -0.0185)), Vector((0.0, 0.0, h * 0.5))]
+    n = 60
+    for i in range(n + 1):
+        f = i / n
+        phi = RAM_TURN * f
+        r = RAM_R * (1.0 - 0.6 * f)
+        path.append(Vector((0.06 * f ** 1.3, centre.y + r * math.cos(phi), centre.z + r * math.sin(phi))))
+    total = len(path) - 1
+
+    def radius_at(i, a):
+        if i == total:
+            return 0.0
+        t = max(0.0, (i - 1) / (total - 1))
+        ridge = 1.0 + 0.11 * math.cos(2.0 * math.pi * 10.0 * t) * (1.0 - t)      # growth ridges, fading to the tip
+        flat = 1.0 if math.cos(a) >= 0.0 else 1.0 - 0.18 * math.cos(a) ** 2       # the inner face flatter
+        return (0.024 * (1.0 - t) ** 0.85 + 0.0006) * ridge * flat * (1.0 - 0.15 * math.sin(a) ** 2)
+
+    verts, faces, _ = _tube(path, radius_at, 16)
+    mat = _horn_material("M_HornRamProc", 0.0, 0.72)
+    horn = bc.mesh_object("HornRam", verts, faces, [mat])
+    mat.name = "M_HornRam"
+    baked = _bake([horn], "PartHornRam", {"M_HornRam": sf.tint(_lin("#CDB894"))})
+    pts = _check_pivot("horn_ram", 0.02)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) > 0, "horn_ram: drifts out to +X (the right-hand side ships)")
+
+    def length(co):
+        k = min(1.0, max(0.0, -co.y / 0.03))                  # eases in behind the root column
+        co.x *= 1.0 + 0.25 * k
+        co.y *= 1.0 + 0.15 * k
+        return co
+
+    def thick(co):
+        # push each point away from the nearest point of the horn's centre line, more toward the root
+        i = min(range(1, total), key=lambda j: (path[j] - co).length_squared)
+        t = (i - 1) / (total - 1)
+        return path[i] + (co - path[i]) * (1.0 + 0.3 * (1.0 - t)) if co.z > 0.0 else co
+
+    handles = _shape_keys(horn, [("H1_Length", length, "the spiral drawn 15 to 25% wider"), ("H2_Thick", thick, "the horn up to 30% thicker, most at its root")])
+    rules = _rules("horn_ram", round(foot + 0.001, 3), 0.02, "normal", ["spine", "part"], 60, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature horn part (PROPOSED): a thick ridged ram's horn curling back in a spiral that drifts out to the right and ends in a point (mirrored at bake for the left).",
+            "category": "part", "part_type": "horn_ram", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HornRam": 0.1}, "revision": 1, **baked}
+
+
+def build_horn_nose():
+    """A stout conical horn on a broad base, sweeping up and forward (+Y) to a blunt point, with growth rings;
+    meant for the snout or brow. H1_Length lengthens it, H2_Sweep tips it further forward."""
+    steps = 16
+    path = [Vector((0.0, 0.06 * (i / steps) ** 2.2, -0.0185 + 0.1585 * (i / steps))) for i in range(steps + 1)]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = i / steps
+        return (0.036 * (1.0 - t) ** 1.1 + 0.002) * (1.0 + 0.04 * math.cos(2.0 * math.pi * 6.0 * t))     # six growth rings
+
+    verts, faces, _ = _tube(path, radius_at, 20)
+    mat = _horn_material("M_HornNoseProc", 260.0, 0.65)
+    horn = bc.mesh_object("HornNose", verts, faces, [mat])
+    mat.name = "M_HornNose"
+    baked = _bake([horn], "PartHornNose", {"M_HornNose": sf.tint(_lin("#B9AC92"))})
+    pts = _check_pivot("horn_nose", 0.02)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.0:
+            co.z *= 1.4
+            co.y *= 1.4
+        return co
+
+    def sweep(co):
+        k = max(0.0, co.z) / 0.14
+        co.y += 0.04 * k ** 2
+        co.z -= 0.012 * k ** 2
+        return co
+
+    handles = _shape_keys(horn, [("H1_Length", length, "the horn 40% longer"), ("H2_Sweep", sweep, "the point tipped further forward")])
+    rules = _rules("horn_nose", round(foot + 0.001, 3), 0.02, "normal", ["spine", "part"], 60, 40)
+    rules["handles"] = handles
+    return {"purpose": "Creature horn part (PROPOSED): a stout ringed conical horn sweeping up and forward to a blunt point, for the snout or brow.",
+            "category": "part", "part_type": "horn_nose", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HornNose": 0.1}, "revision": 1, **baked}
+
+
+def build_spike():
+    """A single bony thorn with concave flanks and three keeled edges, raked a little back (-Y), flaring into a
+    low oval scaly scute; for the back, shoulders, limbs or tail. H1_Length lengthens it, H2_Lean rakes it
+    further back toward the tail."""
+    steps = 16
+    ts = [(i / steps) ** 1.35 for i in range(steps + 1)]             # rings packed toward the flared base
+    path = [Vector((0.0, -0.014 * t * t, -0.012 + 0.135 * t)) for t in ts]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t, z = ts[i], path[i].z
+        flare = 0.009 * (1.0 - min(1.0, max(0.0, z) / 0.014)) ** 2
+        keel = 0.86 + 0.14 * abs(math.cos(1.5 * a)) ** 0.6       # three keels, fluted between
+        return (0.019 * (1.0 - t) ** 1.5 + 0.0007 + flare) * keel
+
+    verts, faces, _ = _tube(path, radius_at, 24)
+    unit, ufaces = bc.icosphere(3)
+    plate = [tuple(Vector((n.x * 0.034, n.y * 0.04, max(-0.015, n.z * 0.0075)))) for n in (Vector(co).normalized() for co in unit)]
+    face_mats = [1] * len(faces)
+    bc.append(verts, faces, plate, ufaces)
+    face_mats.extend([0] * len(ufaces))
+    mats = [_scale_material("M_SpikePlateProc", 260.0), _horn_material("M_SpikeProc", 0.0, 0.75)]
+    spike = bc.mesh_object("Spike", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_SpikePlate", "M_Spike"
+    baked = _bake([spike], "PartSpike", {"M_SpikePlate": sf.tint(_lin("#8E8468")), "M_Spike": sf.tint(_lin("#DCCFB0"))})
+    pts = _check_pivot("spike", 0.015)
+    foot = _footprint(pts)
+
+    def length(co):
+        if co.z > 0.01:
+            co.z = 0.01 + (co.z - 0.01) * 1.5
+        return co
+
+    def lean(co):
+        k = max(0.0, co.z) / 0.12
+        co.y -= 0.045 * k
+        co.z -= 0.008 * k * k
+        return co
+
+    handles = _shape_keys(spike, [("H1_Length", length, "the spike 50% longer"), ("H2_Lean", lean, "the spike raked back toward the tail")])
+    rules = _rules("spike", round(foot + 0.001, 3), 0.015, "normal", ["spine", "limb", "part"], 60, 45)
+    rules["handles"] = handles
+    return {"purpose": "Creature spike part (PROPOSED): a single bony thorn with three keeled edges, raked a little back and flaring into a low scaly scute, for the back, shoulders, limbs or tail.",
+            "category": "part", "part_type": "spike", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -2549,6 +3217,17 @@ ASSETS = {
     "cpart_eye_cluster": (build_eye_cluster, 1200),
     "cpart_jaw": (build_jaw, 1200),
     "cpart_bill": (build_bill, 1200),
+    "cpart_foot_webbed": (build_foot_webbed, 2500),
+    "cpart_foot_paw": (build_foot_paw, 2500),
+    "cpart_foot_talon": (build_foot_talon, 2500),
+    "cpart_hand_paw": (build_hand_paw, 2500),
+    "cpart_hand_pincer": (build_hand_pincer, 2500),
+    "cpart_hand_tentacle": (build_hand_tentacle, 2500),
+    "cpart_claw_scythe": (build_claw_scythe, 1200),
+    "cpart_claw_rake": (build_claw_rake, 1200),
+    "cpart_horn_ram": (build_horn_ram, 1200),
+    "cpart_horn_nose": (build_horn_nose, 1200),
+    "cpart_spike": (build_spike, 1200),
 }
 
 

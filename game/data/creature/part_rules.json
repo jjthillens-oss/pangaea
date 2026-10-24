@@ -139,6 +139,60 @@
 				}
 			]
 		},
+		"claw_rake": {
+			"type": "claw_rake",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end",
+				"limb"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the claws 35% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the tips hooked further forward and down",
+					"default_permille": 0
+				}
+			]
+		},
+		"claw_scythe": {
+			"type": "claw_scythe",
+			"footprint_radius_m": 0.027,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "forbidden",
+			"hosts": [
+				"limb_end",
+				"limb"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the blade 30% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the point hooked further down",
+					"default_permille": 0
+				}
+			]
+		},
 		"club_tail": {
 			"type": "club_tail",
 			"footprint_radius_m": 0.031,
@@ -446,6 +500,87 @@
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
 		},
+		"foot_paw": {
+			"type": "foot_paw",
+			"footprint_radius_m": 0.073,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 10 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 25% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+		},
+		"foot_talon": {
+			"type": "foot_talon",
+			"footprint_radius_m": 0.134,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 12 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 25% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the toes sit on the pivot; the shank top (z 0.1 m) meets the limb tip."
+		},
+		"foot_webbed": {
+			"type": "foot_webbed",
+			"footprint_radius_m": 0.134,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 12 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 30% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+		},
 		"frill": {
 			"type": "frill",
 			"footprint_radius_m": 0.058,
@@ -531,6 +666,93 @@
 				"grasper"
 			]
 		},
+		"hand_paw": {
+			"type": "hand_paw",
+			"footprint_radius_m": 0.038,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Grip",
+					"meaning": "fingers curl 75 degrees in, the thumb folds across",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "fingers fan 50% wider at the tips",
+					"default_permille": 0
+				}
+			]
+		},
+		"hand_pincer": {
+			"type": "hand_pincer",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the hinged finger swings 32 degrees open",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Size",
+					"meaning": "the shell palm 25% stouter",
+					"default_permille": 0
+				}
+			]
+		},
+		"hand_tentacle": {
+			"type": "hand_tentacle",
+			"footprint_radius_m": 0.035,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the tips curl in toward the axis",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "the fingers fan 50% wider",
+					"default_permille": 0
+				}
+			]
+		},
 		"hoof": {
 			"type": "hoof",
 			"footprint_radius_m": 0.046,
@@ -581,6 +803,60 @@
 				{
 					"key": "H2_Curl",
 					"meaning": "the tip curled further out and down",
+					"default_permille": 0
+				}
+			]
+		},
+		"horn_nose": {
+			"type": "horn_nose",
+			"footprint_radius_m": 0.041,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the horn 40% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Sweep",
+					"meaning": "the point tipped further forward",
+					"default_permille": 0
+				}
+			]
+		},
+		"horn_ram": {
+			"type": "horn_ram",
+			"footprint_radius_m": 0.028,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the spiral drawn 15 to 25% wider",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Thick",
+					"meaning": "the horn up to 30% thicker, most at its root",
 					"default_permille": 0
 				}
 			]
@@ -746,6 +1022,34 @@
 				}
 			],
 			"placement_note": "Rakes toward the tail (-Y); several patches along the back read as a coat."
+		},
+		"spike": {
+			"type": "spike",
+			"footprint_radius_m": 0.041,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"limb",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the spike 50% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Lean",
+					"meaning": "the spike raked back toward the tail",
+					"default_permille": 0
+				}
+			]
 		},
 		"tail_fluke": {
 			"type": "tail_fluke",

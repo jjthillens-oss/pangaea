@@ -794,6 +794,22 @@ calls a mate of the player's own kind. It walks up beside the player, a heart ri
 editor opens. The beat lasts `CreatureWorld.MATE_BEAT_S` (2.5 s) and the world holds still during it. The mate is a
 twin of the player's body: an egg, a hatchling and mates of other kinds come later.
 
+## 2026-10-24 · Creature stage friend path: sing to befriend, allies follow (CONFIRMED direction; numbers PROPOSED; IMPLEMENTED)
+Joshua (07:39): keep Spore's fundamentals, including "dancing, friend/foe", built better with the Bible's ideas.
+The creature world now has both paths. Bite (F, pad X) is the foe path. Sing (R, pad B) is the friend path:
+- **Songs.** Each song, facing a creature up close, adds the singer's charm to its friendship. Charm is base 1, plus
+  0.5 for each display organ (every detail-role part: crest, frill, lure, antenna, barbels, gill fan, wing, fin, tail fluke), counting at most four of them
+  (Bible §12: communication organs give signal, with diminishing returns).
+- **Allies.** A creature at friendship 5 joins the pack, which is worth 10 adaptation points. Allies follow the
+  player and attack whatever it is fighting. The player and its allies never bite each other.
+- **Anger.** A creature the player bites stops listening for the rest of its life. Biting an ally drives it out of
+  the pack.
+- **Not saved.** Respawned creatures are new individuals. Allies last only for the visit and are not saved yet
+  (Bible §18 relationships come with species memory later).
+
+Tuning lives in `creature_stage.json` "social". Spore's call-and-response minigame is not copied: the Bible §14
+avoids a universal rhythm minigame unless approved.
+
 ## 2026-10-24 · Creature editor palette grouped by kind (PROPOSED; IMPLEMENTED)
 Joshua (07:39): keep Spore's fundamentals, built better with the Bible's ideas; the playthrough notes
 (docs/research/spore/PLAYTHROUGH_VIDEO_NOTES.md) show the editor's part grid grouped by kind on the left with the
@@ -825,7 +841,6 @@ its tabs pick them up from the records.
   cost moves to the run's start: about 0.9 s headless on the Linux container (9 to 150 ms a piece).
 - **Revisit.** A loading screen or a spread-out load at the start, if 0.9 s shows on the owner's
   PC. Worker-thread loads come back only with a Windows WARP run that passes several times.
-
 
 ## 2026-10-24 · S4.1 pacing: parts cost four times as much, and finds pay points (PROPOSED)
 
@@ -912,6 +927,9 @@ its tabs pick them up from the records.
   - two deaths keep the body and each takes a quarter of the points.
 - **Open (rule 3 against edited bodies).** The pursue bound is checked against the slowest *starting*
   body. A heavy edited body (shells, spikes, no tail) can be slower than a hunter's chase. That is
+  the size and strength tradeoff Joshua asked for, so the editor allows it. The proposal is that the
+  editor warns "Hunters can catch this body" instead of refusing; it is not built yet.
+
   the size and strength tradeoff Joshua asked for, so the editor allows it. Built (S4.4): the editor
   warns "The <hunter> can catch this body: it chases at x, this body swims y." when the working body
   is no faster than `SpeciesCatalog.fastest_chase` at the cell's size, and Mate stays allowed.
