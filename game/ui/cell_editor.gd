@@ -52,12 +52,13 @@ var _part_buttons: Array[Button] = []
 
 
 func _init() -> void:
+	# Anchored here, out of the tree: inside it, set_anchors_preset keeps the offsets of a zero size.
+	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_refresh()
 
 
