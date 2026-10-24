@@ -741,6 +741,11 @@ func warm_up_meshes() -> Array[Mesh]:
 	out.append_array(CreatureView.warm_up_growth_meshes())
 	out.append_array(GrowthBeat.warm_up_meshes())
 	out.append(GhostLayer.warm_up_mesh())
+	# S3 (T4.6, s3-view 13): the band-1 foods, the new bodies, threads and morsels, the older haze.
+	for mesh in FoodView.warm_up_meshes():
+		if not out.has(mesh):
+			out.append(mesh)
+	out.append_array(CreatureLayer.warm_up_meshes())
 	out.append_array(OlderHaze.warm_up_meshes())
 	return out
 

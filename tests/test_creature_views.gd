@@ -285,6 +285,26 @@ func test_morsel_site_leaves_softly() -> void:
 
 
 ## An endless pool at size 4 with a cell of founder `body` and no creatures in the way.
+## S3 (V3-19, the veil hint's context): the inked veils on screen are counted; one off screen is not,
+## nor any once the cell has outgrown them.
+func test_inked_veils_in_view() -> void:
+	var pool := _site_pool("omnivore")
+	pool.sim.creatures.set_size(3)
+	pool.sim.world.size = 3
+	var c := pool.sim.motion.position
+	for p in [Vector2(3.0, 0.0), Vector2(-4.0, 2.0), Vector2(60.0, 0.0)]:
+		check(pool.sim.debug_spawn_creature("veil", c + p, 0.0), "a veil at %s" % p)
+	check(pool.sim.debug_spawn_creature("warden", c + Vector2(0.0, 4.0), 0.0), "and a warden")
+	FakeEvents.frame(pool)
+	var layer := pool.creature_layer
+	layer.apply_relations(3, 0.0)
+	var screen := Vector2(1920.0, 1080.0)
+	check_eq(layer.inked_veils_in_view(pool.camera, screen), 2, "two inked veils on screen, the far one off it")
+	layer.apply_relations(4, 0.0)
+	check_eq(layer.inked_veils_in_view(pool.camera, screen), 0, "none once the cell has outgrown them")
+	pool.free()
+
+
 func _site_pool(body: String) -> PoolScene:
 	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
 	pool.sim.creatures.set_size(4)

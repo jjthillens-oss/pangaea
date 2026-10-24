@@ -88,6 +88,21 @@ func food_mesh() -> Mesh:
 
 
 ## The mesh of look `name` (a LOOKS key), loaded once; null for an unknown look.
+## The looks that first show at sizes 3 and 4 (S3, s3-view 9.2).
+const S3_LOOKS: PackedStringArray = ["glass_flake", "bead_cluster"]
+
+
+## What the start fade draws once so the band-1 foods show without a first-use compile (S3 T4.6,
+## s3-view 13): the glass flake's and bead cluster's meshes.
+static func warm_up_meshes() -> Array[Mesh]:
+	var out: Array[Mesh] = []
+	for look in S3_LOOKS:
+		var mesh := look_mesh(look)
+		if mesh != null:
+			out.append(mesh)
+	return out
+
+
 static func look_mesh(name: String) -> Mesh:
 	if not LOOKS.has(name):
 		return null

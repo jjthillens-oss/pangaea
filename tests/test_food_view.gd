@@ -372,6 +372,7 @@ func test_a_look_swaps_the_mesh_and_each_item_draws_at_its_own_radius() -> void:
 		check(plants.look == look and FoodView.look_mesh(look) != null and plants.multimesh.mesh == FoodView.look_mesh(look),
 			"the %s's mesh is drawn from now on" % look)
 		check_near(_scale_of(plants, "p1"), 1.0, 1e-6, "%s: an item at 0.18 draws at the mesh's own size" % look)
+		check(FoodView.warm_up_meshes().has(FoodView.look_mesh(look)), "the start fade warms the %s (T4.6)" % look)
 	plants.free()
 	var meat := _food_view("meat")
 	check_eq(meat.look, "carrion", "carrion starts as carrion")

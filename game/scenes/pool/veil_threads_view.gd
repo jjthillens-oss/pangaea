@@ -104,6 +104,11 @@ func set_ink(can_sting: bool, fade_s := 0.0) -> void:
 	_apply()
 
 
+## Whether the threads wear the threat ink now or are fading to it (they can sting the cell).
+func inked() -> bool:
+	return _ink_target > 0.5
+
+
 ## A sting landed: the threads flash bright for FLASH_S.
 func flash() -> void:
 	_flash_t = 0.0

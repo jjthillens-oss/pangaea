@@ -42,6 +42,11 @@ const MORSEL_IN_S := 0.6
 const MORSEL_OUT_S := 0.6
 const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
 const MORSEL_RIM_SHADER := preload("res://game/scenes/pool/morsel_rim.gdshader")
+## The bodies that first come at sizes 3 and 4 (warm_up_meshes), and the species whose bake stands for
+## every morsel (each bake has the same vertex format).
+const WARM_UP_BODIES: PackedStringArray = ["creature_veil_body", "creature_warden_body", "creature_deep_lurker_body",
+	"creature_elder_warden_body"]
+const WARM_UP_MORSEL := "rammer"
 
 var sim: PoolSim
 var catalog: PartCatalog
@@ -56,6 +61,7 @@ var _morsel_views := {}    ## carrion item id -> CreatureView (S2)
 var _sites := {}
 var _sites_root: Node3D
 var _morsel_meshes := {}   ## species id -> the baked body
+static var _warm_up: Array[Mesh] = []
 var _morsel_radii := {}    ## species id -> its phenotype's radius (a morsel's q is its radius over it)
 
 
@@ -177,6 +183,48 @@ func views_in_view(camera: Camera3D, screen: Vector2) -> Array[CreatureView]:
 			if absf(ndc.x) <= 1.0 and absf(ndc.y) <= 1.0:
 				out.append(view)
 	return out
+
+
+## How many views on a `screen`-sized view of `camera` have threads that can sting the cell (S3,
+## V3-19: the veil hint's context).
+func inked_veils_in_view(camera: Camera3D, screen: Vector2) -> int:
+	var count := 0
+	for view in views_in_view(camera, screen):
+		if view.threads != null and view.threads.inked():
+			count += 1
+	return count
+
+
+## What the start fade draws once so S3's creatures show without a first-use compile (T4.6,
+## s3-view 13): the meshes of the bodies that first come at sizes 3 and 4, the veil threads' unit
+## mesh in the threat ink and in the neutral, the capsule outline, and a baked morsel in M_Morsel
+## and in the morsel rim (drawn in play as MultiMeshes of that bake).
+static func warm_up_meshes() -> Array[Mesh]:
+	if not _warm_up.is_empty():
+		return _warm_up
+	for asset in WARM_UP_BODIES:
+		_warm_up.append_array(CreatureView.body_meshes(asset))
+	var threads := VeilThreadsView.new()
+	for can_sting: bool in [true, false]:
+		threads.set_ink(can_sting)
+		var rig := VeilThreadsView.unit_mesh().duplicate() as Mesh
+		rig.surface_set_material(0, threads.rig_material().duplicate() as Material)
+		_warm_up.append(rig)
+	var outline := PlaneMesh.new()
+	outline.material = threads.outline_material().duplicate() as Material
+	_warm_up.append(outline)
+	threads.free()
+	var bake := bake_morsel(SpeciesCatalog.load_from(), WARM_UP_MORSEL, PartCatalog.load_from())
+	var rim := ShaderMaterial.new()
+	rim.shader = MORSEL_RIM_SHADER
+	rim.set_shader_parameter("color", CreatureView.RIM_COLOR)
+	rim.set_shader_parameter("grow", CreatureView.RIM_GROW_TM)
+	for material: Material in [MORSEL_MATERIAL, rim]:
+		var copy := bake.duplicate() as Mesh
+		if copy.get_surface_count() > 0:
+			copy.surface_set_material(0, material)
+			_warm_up.append(copy)
+	return _warm_up
 
 
 ## The live creature's view, or null.
