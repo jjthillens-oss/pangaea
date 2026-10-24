@@ -281,12 +281,15 @@ func _build() -> void:
 	views.alignment = BoxContainer.ALIGNMENT_CENTER
 	views.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	middle.add_child(views)
+	# Both square at their own size, centred: a preview stretched taller than wide crops the body.
 	_preview = PREVIEW_SCENE.instantiate()
-	_preview.custom_minimum_size = Vector2(340, 340)
+	_preview.custom_minimum_size = Vector2(460, 460)
+	_preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	views.add_child(_preview)
 	_rim = RimView.new()
 	_rim.editor = self
-	_rim.custom_minimum_size = Vector2(300, 300)
+	_rim.custom_minimum_size = Vector2(320, 320)
+	_rim.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	views.add_child(_rim)
 	var tools := HBoxContainer.new()
 	tools.alignment = BoxContainer.ALIGNMENT_CENTER

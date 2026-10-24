@@ -224,6 +224,7 @@ func open_cell_editor() -> CellEditor:
 		return null
 	pool.release_input()
 	pool.set_paused(true)
+	hud.visible = false   # the editor is its own screen; the swim's panels would show through its dim
 	cell_editor = CellEditor.new()
 	cell_editor.name = "CellEditor"
 	pool.ui.add_child(cell_editor)
@@ -240,6 +241,7 @@ func _on_cell_editor_closed(committed: bool) -> void:
 		cell_editor = null
 	if pool == null:
 		return
+	hud.visible = true
 	if committed:
 		session.sim.apply_offspring()
 		session.save_now()
