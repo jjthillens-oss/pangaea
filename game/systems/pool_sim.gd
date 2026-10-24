@@ -1081,6 +1081,8 @@ func _creatures_act(snapshot_bodies: CreatureSenses.Bodies) -> void:
 			var p := c.phenotype
 			d = CreatureBrain.seek_from(brain, c.motion.position, p.radius, p.speed, p.acceleration, brain.goal,
 				float(brain.cfg.speeds.forage), arena, true, c.route_keep)
+		elif brain.state == CreatureBrain.REST and not (brain.phase == CreatureBrain.WATCH and brain.seen.has(brain.target)):
+			d = CreatureBrain.drive(brain, {}, tick, arena, c.route_keep)   # a rest reads its view only to watch
 		else:
 			if self_view.is_empty():
 				self_view = creatures.self_view_of(c)

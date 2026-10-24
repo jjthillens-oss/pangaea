@@ -17,6 +17,10 @@ extends RefCounted
 ## How many cameras _shape keeps (a free zoom could ask for any number of distances).
 const _SHAPES_MAX := 16
 
+## quad_contains_boxed answers from the boxes only this far inside or outside them: far more than the
+## float32 corners and the edge tests round by.
+const BOX_SLACK := 1e-3
+
 ## [pitch_deg, fov_deg, distance, aspect] -> _shape's answer: the trig is the same wherever the
 ## camera looks, and the sim asks for the same few views every tick.
 static var _shapes := {}
@@ -70,6 +74,33 @@ static func contains(look_target: Vector2, p: Vector2, camera: Dictionary, dista
 ## corners once.
 static func quad_contains(quad: PackedVector2Array, p: Vector2, margin: float = 0.0) -> bool:
 	return quad.is_empty() or distance_outside(quad, p) <= margin
+
+
+## For quad_contains_boxed: the box a corners() trapezoid spans and the box of its narrower end's
+## width over its whole depth (inside it, as the trapezoid is convex with level ends), as
+## [outer lo x, outer hi x, inner lo x, inner hi x, far y, near y]; empty for an empty quad.
+static func boxes(quad: PackedVector2Array) -> PackedFloat64Array:
+	if quad.size() != 4:
+		return PackedFloat64Array()
+	return PackedFloat64Array([minf(quad[0].x, quad[3].x), maxf(quad[1].x, quad[2].x),
+		maxf(quad[0].x, quad[3].x), minf(quad[1].x, quad[2].x),
+		maxf(quad[0].y, quad[1].y), minf(quad[2].y, quad[3].y)])
+
+
+## quad_contains(quad, p, margin), answered from boxes(quad) when `p` lies clearly inside the inner
+## box (in the view: true for a margin of 0 or more) or clearly further than `margin` outside the
+## outer one (false); "clearly" is by BOX_SLACK. Otherwise, and for an empty quad, quad_contains itself.
+static func quad_contains_boxed(quad: PackedVector2Array, box: PackedFloat64Array, p: Vector2, margin: float = 0.0) -> bool:
+	if box.size() == 6:
+		var x := p.x
+		var y := p.y
+		if margin >= 0.0 and x > box[2] + BOX_SLACK and x < box[3] - BOX_SLACK and y > box[4] + BOX_SLACK \
+				and y < box[5] - BOX_SLACK:
+			return true
+		var out := margin + BOX_SLACK
+		if x < box[0] - out or x > box[1] + out or y < box[4] - out or y > box[5] + out:
+			return false
+	return quad_contains(quad, p, margin)
 
 
 ## How far `p` lies outside the convex polygon `quad` (clockwise on screen, as corners() gives it):

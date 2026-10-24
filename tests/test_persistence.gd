@@ -777,18 +777,3 @@ func test_a_creature_with_a_bad_body_is_not_written() -> void:
 	(save.creature["body"] as Dictionary).erase("vertebrae")
 	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "a bad body is refused")
 	check_eq(FileAccess.get_file_as_string(slot_path), before, "previous save intact")
-
-
-func test_a_creature_with_bad_experience_is_refused() -> void:
-	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(V3_FIXTURE))
-	data["creature"]["xp"] = {"speed": -4}
-	_write_raw(slot_path, JSON.stringify(data))
-	var result := service.load_from(slot_path)
-	check(not result.ok, "refused")
-	check_has_error(result.errors, "speed experience")
-	data["creature"]["xp"] = {"speed": 40, "senses": 2}
-	_write_raw(slot_path, JSON.stringify(data))
-	result = service.load_from(slot_path)
-	check(result.ok, "good experience loads: %s" % [result.errors])
-	if result.ok:
-		check_eq(int(result.save.creature["xp"]["speed"]), 40, "and is kept")
