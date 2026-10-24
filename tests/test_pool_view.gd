@@ -3,6 +3,7 @@ extends TestCase
 ## refusal hints (when a refused meal is worth telling the player), the meal label and the food
 ## views' drawn transforms. The running pool itself is covered by the scene smoke.
 
+const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const CAMERA_SETTINGS := {"pitch_deg": 55.0, "fov_deg": 45.0, "distance": 14.0, "zoom_min": 10.0,
 	"zoom_max": 20.0, "zoom_step": 2.0, "follow_half_life_s": 0.12, "look_ahead_s": 0.35, "look_ahead_max": 2.5}
 
@@ -22,6 +23,62 @@ func _camera() -> PoolCamera:
 	var camera := PoolCamera.new()
 	camera.configure(CAMERA_SETTINGS)
 	return camera
+
+
+## S2 (V-3): while the growth beat's dolly runs, the wheel changes nothing; once it hands back the
+## zoom works as before.
+func test_zoom_is_ignored_while_the_growth_dolly_runs() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session())
+	var zoom := func(action: String) -> void:
+		var e := InputEventAction.new()
+		e.action = action
+		e.pressed = true
+		pool._unhandled_input(e)
+	var asked := pool.camera.distance
+	pool.camera.reexpress(Vector2.ZERO, 1.6)
+	check(pool.camera.dolly_active(), "a dolly runs")
+	zoom.call("zoom_in")
+	zoom.call("zoom_out")
+	zoom.call("zoom_out")
+	check_near(pool.camera.distance, asked, 1e-9, "the wheel is ignored during the dolly")
+	pool.camera.end_dolly()
+	zoom.call("zoom_in")
+	check_near(pool.camera.distance, asked - pool.camera.zoom_step, 1e-9, "and works once it hands back")
+	pool.free()
+
+
+## S2 (V-20): the start fade draws every look the growth brings once, so none compiles in play: the
+## algae ball, the lurker's and the elder rammer's bodies, M_Morsel, M_RemnantLimp, the rim hull, the
+## beat's pre-blur veil and its glitter, and a ghost.
+func test_the_start_fade_warms_every_growth_look() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session())
+	var meshes := pool.warm_up_meshes()
+	var has_material := func(test: Callable) -> bool:
+		for mesh in meshes:
+			for i in mesh.get_surface_count():
+				var m := mesh.surface_get_material(i)
+				if m != null and test.call(m):
+					return true
+		return false
+	check(meshes.has(FoodView.look_mesh("algae_ball")), "the algae ball")
+	check(meshes.has(FoodView.look_mesh("plankton")) and meshes.has(FoodView.look_mesh("carrion")), "and the M1 food")
+	for asset in ["creature_lurker_body", "creature_elder_rammer_body"]:
+		var body := CreatureView.body_meshes(asset)
+		check(not body.is_empty() and body.all(func(m: Mesh) -> bool: return meshes.has(m)), "every mesh of %s" % asset)
+	check(has_material.call(func(m: Material) -> bool: return m == CreatureView.MORSEL_MATERIAL), "M_Morsel")
+	check(has_material.call(func(m: Material) -> bool: return m == CreatureView.LIMP_MATERIAL), "M_RemnantLimp")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == CreatureView.RIM_SHADER), "the rim hull")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == GrowthBeat.PREBLUR_SHADER), "the pre-blur veil")
+	check(has_material.call(_is_glitter), "the glitter")
+	check(has_material.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == GhostLayer.BACKDROP_SHADER \
+		and m.get_shader_parameter("image") != null), "a ghost")
+	pool.free()
+
+
+static func _is_glitter(m: Material) -> bool:
+	var sprite := m as StandardMaterial3D
+	return sprite != null and sprite.billboard_mode == BaseMaterial3D.BILLBOARD_ENABLED and sprite.albedo_texture != null \
+		and sprite.albedo_texture.resource_path == GrowthBeat.FOOD_HAZE.plankton
 
 
 func test_the_camera_looks_north_down_at_the_set_pitch_and_distance() -> void:

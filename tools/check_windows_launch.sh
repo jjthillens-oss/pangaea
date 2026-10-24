@@ -11,6 +11,25 @@
 #             and nothing errors. The runner has no Vulkan and no audio device, so Godot switches
 #             to Direct3D 12 and the dummy audio driver; those errors are the runner's, not the
 #             build's, and are the only ones let through (RUNNER_ONLY).
+#   grow:     (S2) Pangaea-dev.exe, rendered, runs --perf-tour=grow: the cell still in the sea for
+#             40 s with two growths, the second with reduce motion. Its frame times mean nothing
+#             here either (S2G26 is a run on Joshua's machine); what counts is that the growth
+#             renders on Windows, the tour finishes and nothing errors.
+#             It runs at 640 x 360. At 1280 x 720 it did not finish in 300 s on the runner's
+#             software adapter (e2 at eb93634 and dd137d7): the route is 2,400 sim ticks, and the
+#             engine steps at most 8 a frame, so a slow enough frame holds the route back. Each
+#             route prints its progress every 10 s ("Perf tour (grow): 20 s, route tick 1180,
+#             9.3 FPS"), so a run stopped at the limit shows how far it got, and each growth step
+#             as it is taken. At 640 x 360 on e2 081adb9 it printed no progress line at all in
+#             300 s (it finishes in about 45 s on Linux in both renderers, llvmpipe and lavapipe, also
+#             after the launch and rendered runs), so a watch thread now prints where the main thread
+#             is after 10 s without a frame ("Perf tour (grow): no frame for 30 s, in the draw at
+#             route tick 300"). On e2 2f45a1e it said "in the process step at route tick 15", and
+#             the same with the cell's blend shapes held still (2e11d8c, reverted), so the watch now
+#             names the tour's own steps, the other nodes' process steps and the engine after them.
+#             On 37292fc it said "in the engine after the process step at route tick 15" on two
+#             hosts and passed on a third: the stall came as the sea's worker-thread GLB loads
+#             finished, so the sea now loads those pieces on the main thread at setup.
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
@@ -64,11 +83,14 @@ run() {
 
 run launch "$BUILD/Pangaea.exe" --headless --fixed-fps 60 --quit-after 120 -- --slot=user://smoke/windows_launch.json
 run rendered "$BUILD/Pangaea-dev.exe" --resolution 1280x720 -- --perf-tour
+run grow "$BUILD/Pangaea-dev.exe" --resolution 640x360 -- --perf-tour=grow --slot=user://smoke/windows_grow.json
 
-if ! grep -q "^Perf tour: .* FPS average" "$LOGS/rendered.log"; then
-  echo "The perf tour did not finish in the rendered run."
-  status=1
-fi
+for name in rendered grow; do
+  if ! grep -q "^Perf tour: .* FPS average" "$LOGS/$name.log"; then
+    echo "The perf tour did not finish in the $name run."
+    status=1
+  fi
+done
 # Each error with the line after it (its "at:"), less the runner's own.
 errors="$(awk -v skip="$RUNNER_ONLY" '
   FNR == 1 && pending != "" { if (pending !~ skip) print file ": " pending; pending = "" }

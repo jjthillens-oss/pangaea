@@ -21,10 +21,28 @@ extends RefCounted
 ## Travel keeps LAIR_CLEARANCE_M from every ambush lair; only the last CLOSE_IN_FAR_M to a rammer
 ## may go nearer.
 ##
+## In the endless world (S1, sim.world set; S1 core C-21) the zones and lairs come from what is
+## loaded, counting only the sites live at the world's size: it retreats to the nearest loaded zone
+## whose centre no site's reach disc covers, patrols the 3 nearest loaded zones that lie in a
+## territorial site's territory, nearest first, choosing again on each arrival, and keeps clear of
+## the loaded ambush sites' homes. It hunts awake creatures only. In the pool it keeps RETREAT_ZONE
+## and PATROL, which #30 and threats_sim #22 are tuned on: there the endless rule picks the same
+## zones, but patrols them in another order.
+## The endless world also asks it to roam, as a player who has eaten the rammers round them swims
+## on to find more (S1 integration, docs/DECISIONS.md): between 4 and 5 it swims to the nearest
+## sleeping rammer, which wakes as it nears; with no rammer alive in the loaded ground it heads home,
+## where the arrow points, hunting what it meets on the way; and its travel frees itself where it
+## wedges between shells (SwimBot.Unjam). Patrolling a cluster whose rammers it has killed would keep
+## their sites in its view, so they would never respawn, and it would starve there.
+##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full.
+##
 ##     var bot = load("res://game/dev/hunt_bot.gd").new()
 ##     sim.step(bot.next_intent(sim, events_from_the_last_step))
 
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
+const SwimBot := preload("res://game/dev/swim_bot.gd")
 
 ## m: the point it closes on lies this far behind the rammer's tail (plan section 16).
 const BEHIND_M := 1.2
@@ -51,14 +69,18 @@ const TURN_THROTTLE := 0.08        ## at the food: just above the input deadzone
 const CONTACT_MARGIN_M := 0.1
 
 var evade = EvadeBot.new()
+var keys := EvadeBot.GrowthKeys.new()
 var kills := 0                     ## creatures its own bites killed (from the events it is given)
 var _prey_id := ""
 var _patrol_index := 0
+var _patrol_zone := ""             ## endless: the zone it patrols to now
 var _retreating := false
+var _unjam = null                  ## endless: its SwimBot.Unjam, made on its first travel
 
 
 func _init() -> void:
 	evade.base = _hunt
+	evade.keys.trigger = ""   # this bot sends the keys
 	# After a dodged strike the rammer recovers on the spot, unable to turn or strike: the time to
 	# bite, not to swim away.
 	evade.away_ticks = 0
@@ -69,7 +91,7 @@ func next_intent(sim: PoolSim, events: Array) -> SimIntent:
 	for e in events:
 		if e.get("type", "") == "creature_died" and e.get("by", "") == CreatureField.PLAYER_ID:
 			kills += 1
-	return evade.next_intent(sim, events)
+	return keys.apply(sim, evade.next_intent(sim, events))
 
 
 ## The id of the rammer it hunts, or "".
@@ -97,16 +119,93 @@ func _hunt(sim: PoolSim) -> SimIntent:
 	if _retreating and (health_share >= RESUME_ABOVE or not can_heal):
 		_retreating = false
 	if _retreating:
-		var spot := _zone_center(sim, RETREAT_ZONE)
+		var spot := _zone_center(sim, retreat_zone_id(sim))
 		return _travel(sim, spot, REST_M)
 	var prey := _prey(sim)
 	if prey != null:
 		return _close_on(sim, prey)
+	if _world(sim) != null:
+		var sleeper := _sleeping_prey(sim)
+		if sleeper != null:
+			return _travel(sim, sleeper.motion.position, 0.0)
+		if not _any_rammer(sim):
+			return _travel(sim, _world(sim).local_of_abs(0.0, 0.0), 0.0)
+		return _travel(sim, _endless_patrol_goal(sim), 0.0)
 	var goal := _zone_center(sim, PATROL[_patrol_index % PATROL.size()])
 	if pos.distance_to(goal) <= PATROL_ARRIVE_M:
 		_patrol_index = (_patrol_index + 1) % PATROL.size()
 		goal = _zone_center(sim, PATROL[_patrol_index])
 	return _travel(sim, goal, 0.0)
+
+
+## The zone it rests in to heal: RETREAT_ZONE in the pool; in the endless world the nearest loaded
+## zone no site's reach disc covers ("" when there is none).
+func retreat_zone_id(sim: PoolSim) -> String:
+	if _world(sim) == null:
+		return RETREAT_ZONE
+	return endless_retreat_zone(sim.motion.position, sim.region.zones, live_site_discs(sim, "reach"))
+
+
+## The zones it patrols, in the order it takes them from here: PATROL in the pool; in the endless
+## world the 3 nearest loaded zones in a territory, nearest first.
+func patrol_zone_ids(sim: PoolSim) -> PackedStringArray:
+	if _world(sim) == null:
+		return PATROL
+	return endless_patrol_zones(sim.motion.position, sim.region.zones, live_site_discs(sim, "territory"))
+
+
+## The endless retreat rule: the nearest zone (ties by id) whose centre lies outside every disc
+## ({"center", "radius"}); "" when every zone is covered.
+static func endless_retreat_zone(from: Vector2, zones: Array, reach_discs: Array) -> String:
+	var best := ""
+	var best_d := INF
+	for z in zones:
+		var c: Vector2 = z.center
+		var covered := false
+		for disc in reach_discs:
+			if c.distance_to(disc.center) < float(disc.radius):
+				covered = true
+				break
+		var d := from.distance_to(c)
+		if not covered and (d < best_d or (d == best_d and str(z.id) < best)):
+			best_d = d
+			best = str(z.id)
+	return best
+
+
+## The endless patrol rule: the `count` nearest zones (ties by id) whose centres lie inside a
+## territory disc, nearest first.
+static func endless_patrol_zones(from: Vector2, zones: Array, territories: Array, count: int = PATROL.size()) -> PackedStringArray:
+	var found: Array = []
+	for z in zones:
+		var c: Vector2 = z.center
+		for disc in territories:
+			if c.distance_to(disc.center) <= float(disc.radius):
+				found.append([from.distance_to(c), str(z.id)])
+				break
+	found.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var out := PackedStringArray()
+	for f in found.slice(0, count):
+		out.append(f[1])
+	return out
+
+
+## Endless patrol: toward the current patrol zone; on arrival (or when it is gone) the nearest other
+## patrol zone. With no territory loaded it holds where it is (_hunt heads home instead).
+func _endless_patrol_goal(sim: PoolSim) -> Vector2:
+	var pos := sim.motion.position
+	var zones := patrol_zone_ids(sim)
+	var current := sim.region.zone(_patrol_zone)
+	if current.is_empty() or not zones.has(_patrol_zone) or pos.distance_to(current.center) <= PATROL_ARRIVE_M:
+		var arrived := _patrol_zone
+		_patrol_zone = ""
+		for id in zones:
+			if id != arrived:
+				_patrol_zone = id
+				break
+		if _patrol_zone.is_empty() and not zones.is_empty():
+			_patrol_zone = zones[0]
+	return _zone_center(sim, _patrol_zone)
 
 
 ## The nearest meat on screen (ties by id), or {}.
@@ -146,7 +245,7 @@ func _prey(sim: PoolSim) -> CreatureField.Creature:
 	var current: CreatureField.Creature = null
 	var best: CreatureField.Creature = null
 	var best_d := INF
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		if c.brain == null or c.brain.behavior != CreatureBrain.TERRITORIAL or _committed(c):
 			continue
 		var d := pos.distance_to(c.motion.position)
@@ -159,6 +258,29 @@ func _prey(sim: PoolSim) -> CreatureField.Creature:
 		best = current
 	_prey_id = best.id if best != null else ""
 	return best
+
+
+## Endless: the nearest sleeping rammer (ties by id), or null. It wakes once the cell is inside the
+## wake ring.
+func _sleeping_prey(sim: PoolSim) -> CreatureField.Creature:
+	var best: CreatureField.Creature = null
+	var best_d := INF
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if not c.asleep or c.brain == null or c.brain.behavior != CreatureBrain.TERRITORIAL:
+			continue
+		var d := sim.motion.position.distance_to(c.motion.position)
+		if d < best_d or (d == best_d and c.id < best.id):
+			best_d = d
+			best = c
+	return best
+
+
+## Endless: whether any rammer lives in the loaded ground, awake or asleep.
+static func _any_rammer(sim: PoolSim) -> bool:
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.brain != null and c.brain.behavior == CreatureBrain.TERRITORIAL:
+			return true
+	return false
 
 
 ## Telling or striking: its line is set, so the cell keeps off it (the EvadeBot reaction handles a
@@ -187,7 +309,13 @@ func _travel(sim: PoolSim, goal: Vector2, stop_m: float, mind_lairs := true) -> 
 	if pos.distance_to(goal) <= stop_m:
 		return SimIntent.new()
 	var via := _round_lairs(sim, pos, goal) if mind_lairs else goal
-	var aim := sim.arena.route_point(pos, via, sim.phenotype.radius)
+	var aim: Vector2
+	if _world(sim) != null:
+		if _unjam == null:
+			_unjam = SwimBot.Unjam.new()
+		aim = _unjam.aim(sim, via)
+	else:
+		aim = sim.arena.route_point(pos, via, sim.phenotype.radius)
 	var to := aim - pos
 	if to.length() < 1e-6:
 		return SimIntent.new()
@@ -217,10 +345,17 @@ func _round_lairs(sim: PoolSim, pos: Vector2, goal: Vector2) -> Vector2:
 	return best if best.is_finite() else goal
 
 
-## Every ambush site's home.
+## Every ambush site's home: the species data's sites in the pool, the loaded sites in the endless
+## world (in the cell's frame).
 func _lairs(sim: PoolSim) -> Array[Vector2]:
 	var out: Array[Vector2] = []
 	if sim.species == null:
+		return out
+	var world = _world(sim)
+	if world != null:
+		for s in _loaded_sites(world):
+			if _live(s, world) and sim.species.behavior_of(str(s.species)) == CreatureBrain.AMBUSH:
+				out.append(world.local_of_tm(float(s.x), float(s.y)))
 		return out
 	for s in sim.species.sites:
 		if sim.species.behavior_of(str(s.species)) == CreatureBrain.AMBUSH:
@@ -228,6 +363,54 @@ func _lairs(sim: PoolSim) -> Array[Vector2]:
 	return out
 
 
+## A zone's centre; where the cell starts in the pool, or where the cell is in the endless world,
+## when the zone is not there.
 func _zone_center(sim: PoolSim, zone_id: String) -> Vector2:
 	var z := sim.region.zone(zone_id)
-	return z.center if not z.is_empty() else sim.layout.spawn
+	if not z.is_empty():
+		return z.center
+	return sim.motion.position if _world(sim) != null else sim.layout.spawn
+
+
+## The endless world's stream (PoolSim.world, S1 spine 3.9), or null in the pool. Read by name, so
+## the bot also loads on a sim built before the endless world.
+static func _world(sim: PoolSim) -> Variant:
+	return sim.get("world")
+
+
+## The creatures that act this tick: all of them in the pool, the awake ones in the endless world
+## (CreatureField.awake(), S1 spine 3.10, which is the creature list itself in the pool).
+static func _active(sim: PoolSim) -> Array:
+	var field: Object = sim.creatures
+	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
+
+
+## Every site of every loaded chunk (WorldChunk.sites: absolute tm at the stream's size, which
+## local_of_tm takes to the cell's frame; S2), in the stream's canonical order.
+static func _loaded_sites(world: Object) -> Array:
+	var out: Array = []
+	for key in world.loaded_keys():
+		var chunk: Object = world.chunk(key)
+		if chunk != null:
+			out.append_array(chunk.sites)
+	return out
+
+
+## Whether a site's creature lives at the world's size: its `sizes` hold it (WorldChunk.sites).
+static func _live(site: Dictionary, world: Object) -> bool:
+	for n in site.get("sizes", []):
+		if int(n) == int(world.size):
+			return true
+	return false
+
+
+## The live loaded sites' `which` discs ("reach" or "territory") as {"center" (the cell's frame),
+## "radius"}.
+static func live_site_discs(sim: PoolSim, which: String) -> Array:
+	var world = _world(sim)
+	var out: Array = []
+	for s in _loaded_sites(world):
+		var disc: Dictionary = s.get(which, {})
+		if not disc.is_empty() and _live(s, world):
+			out.append({"center": world.local_of_tm(float(disc.x), float(disc.y)), "radius": float(disc.radius)})
+	return out

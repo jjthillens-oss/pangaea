@@ -11,6 +11,19 @@ extends RefCounted
 ## cannot hear the sim's events; it watches the creatures' attack phases instead, as a player watches
 ## their poses, and hands EvadeBot the tells and their ends it sees.
 ##
+## In the endless world (S1, sim.world set) it minds only the awake creatures, and with no zone
+## loaded it waits where it is rather than heading for the pool's spawn, which is not in the cell's
+## frame there. The pool's output is unchanged (the golden M1 hashes drive it).
+##
+## With `unjam` (S2; off by default, so the M1 goldens and S1's forager runs do not move) its way
+## round rocks frees itself where it wedges, as SwimBot's homing swimmer and HuntBot's travel do
+## (SwimBot.Unjam): once the cell, touching a collider, has moved less than Unjam.STUCK_TM over
+## Unjam.STUCK_TICKS ticks of swimming for one place, it steps aside and heads on. S2's size-2
+## threat runner turns it on.
+##
+## Its `keys` (EvadeBot.GrowthKeys, S2) send the growth trigger on its first intent and, in a press
+## run, Grow while the ring is full; a bot that wraps it sends its own and blanks these.
+##
 ##     var bot = load("res://game/dev/forage_bot.gd").new()
 ##     sim.step(bot.next_intent(sim))
 
@@ -31,9 +44,12 @@ const EvadeBot := preload("res://game/dev/evade_bot.gd")
 ## Where to swim and stop instead of foraging; Vector2.INF to forage.
 var park_at := Vector2.INF
 var avoid_threats := false
+var unjam := false
+var keys := EvadeBot.GrowthKeys.new()
 var _target_id := ""
 var evade = null               ## with avoid_threats: the EvadeBot it dodges with, made when first needed
 var _attacking := {}           ## creature id -> true: telling or striking at the cell last tick
+var _unjam = null              ## with unjam: its SwimBot.Unjam, made when first needed
 
 
 ## The id of the food the last intent swam for, or "" when there was none.
@@ -42,11 +58,16 @@ func target_id() -> String:
 
 
 func next_intent(sim: PoolSim) -> SimIntent:
+	return keys.apply(sim, _intent(sim))
+
+
+func _intent(sim: PoolSim) -> SimIntent:
 	if not avoid_threats or sim.creatures == null:
 		return _forage(sim)
 	if evade == null:
 		evade = EvadeBot.new()
 		evade.base = _wary_forage
+		evade.keys.trigger = ""   # this bot sends the keys
 	return evade.next_intent(sim, _attack_events(sim))
 
 
@@ -74,7 +95,7 @@ func _wary_forage(sim: PoolSim) -> SimIntent:
 	if sim.dead:
 		return intent
 	var push := Vector2.ZERO
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		var off := sim.motion.position - c.motion.position
 		var d := off.length()
 		if d < THREAT_AVOID_M and d > 1e-6:
@@ -91,7 +112,7 @@ func _wary_forage(sim: PoolSim) -> SimIntent:
 func _attack_events(sim: PoolSim) -> Array:
 	var out: Array = []
 	var now := {}
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		var b := c.brain
 		if b == null or b.target != CreatureField.PLAYER_ID or b.state != CreatureBrain.ATTACK or b.phase == CreatureBrain.RECOVER:
 			continue
@@ -146,12 +167,14 @@ func _chosen_food(sim: PoolSim) -> Dictionary:
 
 
 ## With nothing to eat, wait at the nearest zone's center (carrion and plankton both appear there);
-## with avoid_threats, the nearest one with no creature within THREAT_FOOD_M (else the spawn).
+## with avoid_threats, the nearest one with no creature within THREAT_FOOD_M. With no such zone, the
+## spawn in the pool and the cell's own place in the endless world.
 func _waiting_spot(sim: PoolSim) -> Vector2:
+	var fallback := sim.motion.position if sim.get("world") != null else sim.layout.spawn
 	if not avoid_threats or sim.creatures == null:
 		var z := sim.region.zone(sim.nearest_zone_id())
-		return z.center if not z.is_empty() else sim.layout.spawn
-	var best := sim.layout.spawn
+		return z.center if not z.is_empty() else fallback
+	var best := fallback
 	var best_d := INF
 	for z in sim.region.zones:
 		var d := sim.motion.position.distance_to(z.center)
@@ -164,13 +187,26 @@ func _waiting_spot(sim: PoolSim) -> Vector2:
 static func _near_creature(sim: PoolSim, p: Vector2, within: float) -> bool:
 	if sim.creatures == null:
 		return false
-	for c in sim.creatures.creatures:
+	for c: CreatureField.Creature in _active(sim):
 		if c.motion.position.distance_to(p) < within:
 			return true
 	return false
 
 
+## The creatures that act this tick: all of them in the pool, the awake ones in the endless world
+## (CreatureField.awake(), S1 spine 3.10, which is the creature list itself in the pool). Read by
+## name, so the bot also loads before the endless world.
+static func _active(sim: PoolSim) -> Array:
+	var field: Object = sim.creatures
+	return field.call("awake") if field.has_method("awake") else sim.creatures.creatures
+
+
 ## The point to swim at now: the target itself, or a point beside the first rock in the way
-## (PoolArena.route_point, which creatures share).
+## (PoolArena.route_point, which creatures share); with `unjam`, through SwimBot.Unjam, which steps
+## aside where that way wedges the cell. swim_bot.gd preloads this file, so Unjam is loaded by path.
 func _route(sim: PoolSim, pos: Vector2, target: Vector2) -> Vector2:
-	return sim.arena.route_point(pos, target, sim.phenotype.radius)
+	if not unjam:
+		return sim.arena.route_point(pos, target, sim.phenotype.radius)
+	if _unjam == null:
+		_unjam = (load("res://game/dev/swim_bot.gd") as GDScript).Unjam.new()
+	return _unjam.aim(sim, target)

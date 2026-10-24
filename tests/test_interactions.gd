@@ -221,3 +221,38 @@ func test_a_full_stomach_refusal_starts_no_cooldown() -> void:
 	_check_refused(grazer, InteractionResolver.feed.bind(grazer, food, 2.0, 1.0), "not hungry")
 	check(grazer.cooldowns.is_empty(), "no cooldown recorded")
 	check(InteractionResolver.feed(grazer, food, 2.0, 50.0).allowed, "eats in the same instant once there is room")
+
+
+## S2 (plan B.6): an actor's reach_scale (q of a creature drawn below its entry size) multiplies
+## the feed, bite and ram reaches; at 1.0, the player's and every M1 body's, each reach is the constant.
+func test_reach_scale_multiplies_every_reach_and_at_one_is_the_constants() -> void:
+	var grazer := _actor("g", [["mouth_filter", 0.0]])
+	var hunter := _actor("h", [["mouth_jaw", 0.0]])
+	var rammer := _actor("r", [["mouth_filter", 0.0], ["spike", 0.0]])
+	var prey := _actor("p", [["mouth_filter", 0.0]])
+	check_eq(grazer.reach_scale, 1.0, "a new actor's reach is the constants'")
+	for q in [1.0, 0.625, 0.390625]:
+		var reaches := {"feed": InteractionResolver.FEED_REACH * q, "bite": InteractionResolver.BITE_REACH * q,
+			"ram": InteractionResolver.RAM_REACH * q}
+		for kind in reaches:
+			var actor: InteractionResolver.Actor = grazer if kind == "feed" else (hunter if kind == "bite" else rammer)
+			actor.reach_scale = q
+			actor.cooldowns.clear()
+			var other_r := 0.1 if kind == "feed" else prey.phenotype.radius
+			var edge: float = actor.phenotype.radius + other_r + float(reaches[kind])
+			for step in [-1e-4, 1e-4]:
+				var at := Vector2(edge + step, 0.0)
+				var r: Dictionary
+				match kind:
+					"feed":
+						r = InteractionResolver.feed(actor, _plant(at), 10.0 * q + step)
+					"bite":
+						prey.position = at
+						r = InteractionResolver.bite(actor, prey, 10.0 * q + step)
+					"ram":
+						prey.position = at
+						r = InteractionResolver.ram(actor, prey, 2.0, 10.0 * q + step)
+				var where := "%s at q %.6f, %+.4f m from %.4f" % [kind, q, step, edge]
+				check_eq(r.allowed, step < 0.0, "%s: %s" % [where, r.reason])
+				if step > 0.0:
+					check_eq(r.reason, "out of reach", where)

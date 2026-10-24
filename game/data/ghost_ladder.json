@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "brightness": 0.38,
+  "far": {
+    "textures": [
+      "res://assets/export/ambience/T_Backdrop_colony.png",
+      "res://assets/export/ambience/T_Backdrop_ciliate.png",
+      "res://assets/export/ambience/T_Backdrop_radiolarian.png"
+    ],
+    "body_rects": {
+      "T_Backdrop_colony": [0.107, 0.104, 0.912, 0.914],
+      "T_Backdrop_ciliate": [0.203, 0.109, 0.797, 0.891],
+      "T_Backdrop_radiolarian": [0.170, 0.158, 0.828, 0.877]
+    },
+    "depth_tm": [-35.0, -25.0],
+    "count": 3,
+    "min_cell_radius_multiple": 5.0,
+    "max_screen_share": 0.3333,
+    "screen_share": 0.32,
+    "opacity": 0.25,
+    "cycle_s": 90.0,
+    "first_pass": {"depth_tm": -30.0, "start_s": [30.0, 60.0], "duration_s": 20.0}
+  },
+  "near": {
+    "depth_tm": [-14.0, -8.0],
+    "count": 6,
+    "min_cell_multiple": 1.4,
+    "rise_depth_tm": -1.5,
+    "design_multiple": 1.45,
+    "max_draw_scale": 2.0,
+    "d_ref_tm": 14.0,
+    "opacity": [0.30, 0.35],
+    "cycle_s": 40.0,
+    "fade_s": 5.0,
+    "ring_tm": [6.0, 22.0],
+    "drift_tm_s": 0.4
+  },
+  "species": {
+    "lurker": {"entry_size": 2, "radius_tm": 0.75, "texture": "res://assets/export/ambience/T_Ghost_lurker.png",
+      "body_rect": [0.066, 0.098, 0.934, 0.887], "plural": "Lurkers", "haze": "res://assets/export/ambience/T_Haze_lurker.png"},
+    "elder_rammer": {"entry_size": 2, "radius_tm": 0.625, "texture": "res://assets/export/ambience/T_Ghost_elder_rammer.png",
+      "body_rect": [0.273, 0.262, 0.727, 0.721], "plural": "elder rammers", "haze": "res://assets/export/ambience/T_Haze_elder_rammer.png"},
+    "veil": {"entry_size": 3, "radius_tm": 0.80, "texture": "res://assets/export/ambience/T_Ghost_veil.png",
+      "body_rect": [0.066, 0.113, 0.934, 0.887], "plural": "stinger veils", "haze": "res://assets/export/ambience/T_Haze_veil.png"},
+    "warden": {"entry_size": 3, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_warden.png",
+      "body_rect": [0.193, 0.191, 0.807, 0.791], "plural": "Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"},
+    "deep_lurker": {"entry_size": 4, "radius_tm": 0.78, "texture": "res://assets/export/ambience/T_Ghost_deep_lurker.png",
+      "body_rect": [0.066, 0.100, 0.934, 0.887], "plural": "Deep lurkers", "haze": "res://assets/export/ambience/T_Haze_lurker.png"},
+    "elder_warden": {"entry_size": 4, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_elder_warden.png",
+      "body_rect": [0.234, 0.225, 0.766, 0.752], "plural": "elder Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"}
+  },
+  "names": {
+    "ambush_hunter": {"plural": "ambush hunters", "haze": "res://assets/export/ambience/T_Haze_ambush.png"},
+    "rammer": {"plural": "rammers", "haze": "res://assets/export/ambience/T_Haze_rammer.png"}
+  },
+  "food_haze": {
+    "plankton": "res://assets/export/ambience/T_Haze_plankton.png",
+    "algae_ball": "res://assets/export/ambience/T_Haze_algae_ball.png",
+    "carrion": "res://assets/export/ambience/T_Haze_carrion.png"
+  },
+  "preview_at_top": {"2": "the stinger veil"}
+}

@@ -269,6 +269,69 @@ func test_the_body_card_the_first_meal_line_and_the_death_notice_fit_their_panel
 			% [h, _wrapped(text, font, size, body_w).size(), body_w, tip])
 
 
+## The growth line and the ladder strip at the largest text size (S2, s2-view 10.4): every line
+## Growth.hint() gives, with a long key name in place of its (G), wraps to at most two lines across
+## the status panel; the ladder strip's preview line, at its longest for the shipped ladder and
+## species, to at most PREVIEW_MAX_LINES in its width, and each caption to two lines under its icon;
+## and the strip's panel stays clear of the bottom center's widest hint or idea.
+func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_text_size() -> void:
+	var theme: Theme = load(THEME)
+	var font := theme.get_font(&"font", &"Label")
+	var scale := float(GameSettings.SPEC["accessibility/text_scale"].options.max()) / 100.0
+	check_near(scale, 1.3, 1e-9, "the largest text size is 130%")
+	var small := roundi(theme.get_font_size(&"font_size", &"SmallLabel") * scale)
+	var chrome := theme.get_stylebox(&"panel", &"HudPanel").get_minimum_size().x
+	var hud: Control = (load(HUD_SCENE) as PackedScene).instantiate()
+	var status_w: float = (hud.get_node("Frame/Status") as Control).custom_minimum_size.x
+	var frame: MarginContainer = hud.get_node("Frame")
+	var right_margin := int(frame.get("theme_override_constants/margin_right"))
+	hud.free()
+	var lines := [Growth.HINT_GROWING, Growth.HINT_READY, Growth.HINT_NOT_WHILE_HUNTED]
+	lines.append_array(Growth.BLOCKER_HINTS.values())
+	for line: String in lines:
+		for key in ["G", "Right Shoulder"]:
+			var text := GrowthHud.with_grow_key(line, key)
+			var wrapped := _wrapped(text, font, small, status_w - chrome)
+			check(wrapped.size() <= 2, "the growth line takes %d lines in %.0f px: %s" % [wrapped.size(), status_w - chrome, wrapped])
+	# Every preview the shipped data gives: at each size, any two live species with the ghosts to come.
+	var catalog := SpeciesCatalog.load_from()
+	var ladder: Dictionary = GhostLayer.shipped().data
+	var ghosts := GhostLayer.new()
+	var longest := ""
+	for n in range(1, 4):
+		ghosts.configure(ladder, n, 7)
+		var live := PackedStringArray()
+		for id in catalog.species_ids():
+			if catalog.live_at(id, n):
+				live.append(id)
+		var sets: Array[PackedStringArray] = [live]
+		for a in live:
+			for b in live:
+				sets.append(PackedStringArray([a, b]))
+		for one in sets:
+			var entries := LadderStrip.entries_for(one, ghosts.near_species(n), n, catalog, ladder)
+			for at_top in [false, true]:
+				var preview := LadderStrip.preview_line(entries, at_top, n, ladder)
+				if preview.length() > longest.length():
+					longest = preview
+	ghosts.free()
+	var preview_lines := _wrapped(longest, font, small, LadderStrip.PREVIEW_W)
+	check(preview_lines.size() <= LadderStrip.PREVIEW_MAX_LINES, "the longest ladder line takes %d lines in %.0f px: %s"
+		% [preview_lines.size(), LadderStrip.PREVIEW_W, preview_lines])
+	for group in ["species", "names"]:
+		for id in ladder[group]:
+			var caption := _wrapped(str(ladder[group][id].plural), font, LadderStrip.CAPTION_SIZE, LadderStrip.SLOT_W)
+			check(caption.size() <= 2, "the %s caption takes %d lines in %.0f px: %s" % [id, caption.size(), LadderStrip.SLOT_W, caption])
+	var accent := roundi(theme.get_font_size(&"font_size", &"AccentLabel") * scale)
+	var widest := 0.0
+	for text: String in RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values() + IdeaHints.TEXTS.values():
+		widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, accent).x)
+	var center_right := 960.0 + (widest + chrome) / 2.0
+	var strip_left := 1920.0 - right_margin - (LadderStrip.PREVIEW_W + chrome)
+	check(strip_left - center_right >= LadderStrip.BAND_GAP_PX, "the strip's panel (from %.0f px) is clear of the bottom center's (to %.0f px)"
+		% [strip_left, center_right])
+
+
 func test_the_death_notice_says_whether_the_death_was_saved() -> void:
 	var failed := {"attempted": true, "ok": false, "error": "Could not save to user://saves/slot_1.json: Can't open file."}
 	var text := Main.death_text("killed", 3, "", failed)

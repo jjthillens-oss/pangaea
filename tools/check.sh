@@ -17,6 +17,17 @@
 #             the window's close button at the death notice quits with no dialog
 #   after_death:  a new process continues that slot: the points the death left, the cell at its
 #             checkpoint and sheltered, the death last in its history
+#   (each phase above runs the M1 pool, --world=pool; the four below run the endless sea, S1)
+#   endless_out: a new omnivore swims 300 tm east (rebases, unloads, new tiles), then saves
+#   endless_continue: a new process finds the cell at its absolute place within 1e-6 tm with the
+#             same chunks; the column, the arrow home and its distance; a meal ghost keeping its
+#             place across a dev rebase; a far death whose respawn message waits for the respawn
+#   fps30, fps144: the same sim state hash at tick 1,200 at 30 and at 144 frames a second
+#   grow:     (S2) a new omnivore, still and hidden, its ring filled at tick 60, grows by itself
+#             once the showcase and calm windows pass; the beat, the badge, the camera, the size-2
+#             plankton look and the slot's autosave on the growth are checked, then it saves
+#   grow_continue: a new process continues that slot at size 2, at the same place and checkpoint,
+#             with the same look, badge, near ghosts and camera
 #   creature_build: the creature stage (--creature) on its own store under user://smoke/: the editor
 #             grows a pair of neck limbs, adds a maw, eyes and feet, picks a swatch and Done enters
 #             the world (the body, colour, points and title); the player eats the nearest fruit, bites
@@ -27,13 +38,17 @@
 #   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
 #             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
 #             run; its own settings file and slots under user://smoke/menus
-#   release:  tools/check_release.sh exports the release pack (no game/dev, no tests) and starts it
+#   release:  tools/check_release.sh exports the release pack (no game/dev, no tests), starts it
+#             and checks it holds the endless content
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
-# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 900 s, each
-# other run 300 s, about three times its usual length on the shared 4-CPU container), so a hang
-# fails the check with exit code 124 and the output so far instead of running until CI's job
-# timeout; tools/test_bounded.sh checks those limits first, and that a Ctrl-C still stops it all.
+# Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each
+# endless phase 120 s (twice its measured time, at least 120 s, build plan B-17), each other run,
+# the growth phases among them, 300 s, about three times its usual length on the shared 4-CPU
+# container; the suite's
+# limit holds the S1 fast and slow budgets, build plan B-13), so a hang fails the check with exit
+# code 124 and the output so far instead of running until CI's job timeout (40 minutes);
+# tools/test_bounded.sh checks those limits first, and that a Ctrl-C still stops it all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source tools/toolchain.env
@@ -43,16 +58,22 @@ source tools/bounded.sh
 
 tools/test_bounded.sh
 bounded 600 "$GODOT" --headless --path . --import
-bounded 900 "$GODOT" --headless --path . --script res://tests/run_tests.gd
+bounded 1200 "$GODOT" --headless --path . --script res://tests/run_tests.gd
 bounded 300 "$GODOT" --headless --path . res://game/scenes/boot.tscn -- --smoke
 rm -rf builds/smoke
 mkdir -p builds/smoke
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd 2>&1 | tee builds/smoke/ui.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
-bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --quit-after 300 -- --world=pool --slot=user://smoke/launch.json 2>&1 | tee builds/smoke/launch.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=found --slot=user://smoke/slot_1.json --seed=4242 2>&1 | tee builds/smoke/found.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=continue --slot=user://smoke/slot_1.json 2>&1 | tee builds/smoke/continue.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/ui_smoke.gd -- --world=pool 2>&1 | tee builds/smoke/ui.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=die_and_quit --slot=user://smoke/death.json --seed=4243 2>&1 | tee builds/smoke/die_and_quit.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/play_smoke.gd -- --world=pool --phase=after_death --slot=user://smoke/death.json 2>&1 | tee builds/smoke/after_death.log
+bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=endless_out --world=endless --slot=user://smoke/endless.json --seed=4244 2>&1 | tee builds/smoke/endless_out.log
+bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=endless_continue --world=endless --slot=user://smoke/endless.json 2>&1 | tee builds/smoke/endless_continue.log
+bounded 120 "$GODOT" --headless --fixed-fps 30 --resolution 1280x720 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps30.json --fps-out=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps30.log
+bounded 120 "$GODOT" --headless --fixed-fps 144 --resolution 1920x1080 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps144.json --compare=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps144.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow --world=endless --slot=user://smoke/grow.json --seed=4246 2>&1 | tee builds/smoke/grow.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json 2>&1 | tee builds/smoke/grow_continue.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then

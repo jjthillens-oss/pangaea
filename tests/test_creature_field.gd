@@ -7,6 +7,7 @@ extends TestCase
 
 const THREATS_FIXTURE := "res://tests/fixtures/pool_test_threats.json"
 const TEST_SPECIES := "res://tests/fixtures/creatures_test.json"
+const FakeWorldGen := preload("res://tests/fakes/fake_world_gen.gd")
 const SEED := 77
 ## Real sites in data order, as populate() numbers them.
 const SITE_ORDER := ["lair_se", "lair_sw", "lair_s", "terr_n_a", "terr_n_b", "terr_nw", "terr_ne"]
@@ -398,3 +399,262 @@ func _no_vectors(value: Variant) -> bool:
 			if not _no_vectors(v):
 				return false
 	return true
+
+
+# --- the endless world's place lists (S1 T2.5): in the pool they reduce to M1's one place ---
+
+func test_awake_is_the_creature_list_itself_in_pool_mode() -> void:
+	var field := _field()
+	field.populate(layout.build_arena(), layout.spawn, 0)
+	check(not field.endless, "the pool field is not endless")
+	check(is_same(field.awake(), field.creatures), "awake() is the very list (the pool tick runs over it unchanged)")
+	var bodies := field.bodies(_player(layout.spawn))
+	check_eq(bodies.size(), 8, "the player and all seven")
+	var stray := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	check(field.awake().has(stray), "a new creature is awake in the pool at once")
+	check_eq(field.creatures[-1], stray, "appended in the pool (numbers rise)")
+
+
+func test_blocker_from_one_place_equals_the_m1_spawn_blocker() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	var squatter := field.spawn_at("rammer", species.site("lair_sw").home + Vector2(1.5, 0.0), 0.0, "", 0, true)
+	var places: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE, NORTH_OF_LAIR_SE, Vector2(30.0, -30.0), Vector2(-25.0, 20.0)]
+	var on_rock := {"id": "on_rock", "species": "ambush_hunter", "home": layout.rocks[16].center, "heading": 0.0}
+	var sites: Array = species.sites.duplicate()
+	sites.append(on_rock)
+	var reasons := {}
+	for s in sites:
+		for p in places:
+			var one: Array[Vector2] = [p]
+			var m1 := field.spawn_blocker(s, arena, p)
+			check_eq(field.blocker_from(s, arena, one), m1, "%s from %s" % [s.id, p])
+			reasons[m1] = true
+	for r in ["", "near the player", "in view", "not clear", "occupied"]:
+		check(reasons.has(r), "the cases cover %s" % ("a free site" if r.is_empty() else "'%s'" % r))
+	# Two places: the nearer rule wins from either, and "near" is checked before "in view".
+	var lair: Dictionary = species.site("lair_se")
+	var two: Array[Vector2] = [layout.spawn, NORTH_OF_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, two), "near the player", "near from the second place")
+	var both: Array[Vector2] = [BESIDE_LAIR_SE, NORTH_OF_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, both), "near the player", "near before in view, whatever the place order")
+	var seen: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE]
+	check_eq(field.blocker_from(lair, arena, seen), "in view", "in view from the second place")
+	field.remove(squatter, "test", 0, false)
+
+
+func test_remove_stuck_at_one_place_equals_remove_stuck() -> void:
+	for p in [NORTH_OF_LAIR_SE, BESIDE_LAIR_SE, layout.spawn]:
+		var a := _field()
+		var b := _field()
+		var arena := layout.build_arena()
+		a.populate(arena, layout.spawn, 0)
+		b.populate(arena, layout.spawn, 0)
+		for f in [a, b]:
+			f.take_events()
+			f.find("c_1").brain.stuck = true
+			f.find("c_4").brain.stuck = true
+		a.remove_stuck(p, 50)
+		var one: Array[Vector2] = [p]
+		b.remove_stuck_at(one, 50)
+		check_eq(_site_ids(b), _site_ids(a), "the same creatures stay with the player at %s" % p)
+		check_eq(b.queue, a.queue, "the same queue")
+	# Two places: a stuck creature near or in view of either stays.
+	var c := _field()
+	c.populate(layout.build_arena(), layout.spawn, 0)
+	c.find("c_1").brain.stuck = true
+	var places: Array[Vector2] = [layout.spawn, BESIDE_LAIR_SE]
+	c.remove_stuck_at(places, 60)
+	check(c.find("c_1") != null, "kept: the second place sees it")
+	var far: Array[Vector2] = [layout.spawn, Vector2(-30.0, -20.0)]
+	c.remove_stuck_at(far, 61)
+	check(c.find("c_1") == null, "removed when no place is near or sees it")
+
+
+# --- S2 T2.2: the growth tick's take, and the cell in the self_view (D-59) ---
+
+func test_take_for_growth_leaves_the_field_with_no_event_and_no_hook() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	field.populate(arena, layout.spawn, 0)
+	field.take_events()
+	var rammer := field.find("c_4")
+	var neighbour := field.find("c_5")
+	neighbour.brain.seen[rammer.id] = {"position": rammer.motion.position, "velocity": Vector2.ZERO, "tick": 5, "by": "sight",
+		"species": "rammer", "radius": rammer.phenotype.radius, "engageable": true}
+	field.engaged_on_player.append(rammer.id)
+	var count: int = field.region.niches.territorial.count
+	check(field.take_for_growth(rammer) == rammer, "it gives the creature back")
+	check(field.find(rammer.id) == null, "out of the creature list")
+	check_eq(field.region.niches.territorial.count, count - 1, "its niche slot is free")
+	check(not field.engaged_on_player.has(rammer.id), "it leaves the token")
+	check(field.take_events().is_empty(), "no event")
+	check(neighbour.brain.seen.has(rammer.id), "no brain is told (every other awake creature leaves in the same step)")
+	check(field.queue.is_empty(), "its site is not queued")
+	check(field.take_for_growth(rammer) == null, "a second take finds nothing")
+	var debug := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	count = field.region.niches.territorial.count
+	field.take_for_growth(debug)
+	check_eq(field.region.niches.territorial.count, count, "a debug creature held no niche slot")
+
+	# The endless world: a rammer site of its own 20 tm from the cell, its creature spawned awake.
+	var sim := FakeWorldGen.endless_sim(SEED, parts, layout, species)
+	for t in 40:
+		sim.step(SimIntent.new())
+	sim.drain_events()
+	var home := sim.motion.position + Vector2(20.0, 0.0)
+	var a := sim.world.abs_of_local(home)
+	var key := sim.world.chunk_of_local(home)
+	var s := {"id": "x_take", "species": "rammer", "x": a[0], "y": a[1], "heading": 0.0,
+		"territory": {"x": a[0], "y": a[1], "radius": 3.0}, "reach": {"x": a[0], "y": a[1], "radius": 6.0},
+		"chunks": [key] as Array[Vector2i], "sizes": [1] as Array[int], "tile": Vector2i.ZERO}
+	sim.world.sites["x_take"] = sim.world._site_record(s, key)
+	sim.world.recompute_caps(sim)
+	var f := sim.creatures
+	var c := f.spawn_site(sim.world.sites["x_take"], sim.tick, false)
+	check(c != null and not c.asleep and c.think_slot >= 0, "an awake creature at its own site")
+	if c == null:
+		return
+	f.take_events()
+	var slot := c.think_slot
+	var on_slot: int = f._slot_counts[slot]
+	f.take_for_growth(c)
+	check(not f.awake().has(c), "out of the awake list")
+	check_eq(c.think_slot, -1, "off its think slot")
+	check_eq(f._slot_counts[slot], on_slot - 1, "the slot count drops")
+	check(f._occupant(c.site_id) == null, "its site is empty")
+	check(f.take_events().is_empty(), "no event in the endless world either")
+
+
+func test_think_hands_the_brain_the_cell_where_it_is_alive_and_not_concealed() -> void:
+	var field := _field()
+	var arena := layout.build_arena()
+	field.populate(arena, layout.spawn, 0)
+	var c := field.find("c_4")
+	var near := c.motion.position + Vector2.from_angle(c.motion.heading) * 3.0
+	var far := c.motion.position + Vector2(200.0, 0.0)
+	var cases := [
+		["in sight", _player(near), near, true],
+		["beyond its senses", _player(far), far, false],
+		["concealed", _player(near).merged({"concealed": true}, true), Vector2.INF, false],
+		["dead", _player(near).merged({"alive": false}, true), Vector2.INF, false],
+	]
+	for row in cases:
+		var body: Dictionary = row[1]
+		for form in ["list", "columns"]:
+			var bodies: Variant = field.bodies(body) if form == "list" else field.body_snapshot(body)
+			var sv := field.self_view_of(c)
+			field.think(c, bodies, [], arena, 10, sv)
+			check_eq(sv.get("cell", null), row[2], "%s (%s): the cell" % [row[0], form])
+			check_eq(sv.get("cell_seen", null), row[3], "%s (%s): cell_seen" % [row[0], form])
+	# The first body is not the player: no cell.
+	var sv := field.self_view_of(c)
+	var others: Array = field.bodies(_player(near)).slice(1)
+	field.think(c, others, [], arena, 11, sv)
+	check_eq(sv.get("cell", null), Vector2.INF, "no player in the bodies: no cell")
+	check_eq(sv.get("cell_seen", null), false, "and not seen")
+
+
+# --- S2 T2.2: the field per size (D-16, D-79, BP-10) ---
+
+## The fields a body is compared on (every Phenotype.scaled field and the unscaled ones).
+func _body(p: Phenotype) -> Array:
+	return [p.radius, p.speed, p.acceleration, p.sight, p.max_health, p.bite_damage, p.mass, p.upkeep,
+		p.move_cost, p.energy_capacity, p.turn_rate, p.defense, p.spikes.size()]
+
+
+func test_create_holds_the_niches_and_records_of_the_first_size_only() -> void:
+	var s2 := FakeWorldGen.s2_species()
+	var field := _field(SEED, s2)
+	var m1 := _field()
+	check_eq(field.region.niches, m1.region.niches, "the M1 roles and caps, nothing for the size-2 species")
+	check_eq(field.size, 1, "size 1")
+	for id in ["ambush_hunter", "rammer"]:
+		var rec := field.record_of(id)
+		check_eq(rec.q, 1.0, "%s: q 1" % id)
+		check_eq(_body(rec.phenotype), _body(s2.phenotype(id, parts)), "%s: its own body, bit for bit" % id)
+		check_eq(rec.cfg, s2.brain_config(id), "%s: its own brain config" % id)
+		var senses: Dictionary = s2.species[id].senses
+		check_eq(field._senses[id], {"sight": s2.phenotype(id, parts).sight, "fov": deg_to_rad(float(senses.fov_deg)),
+			"near": float(senses.near_m)}, "%s: its own senses" % id)
+	for id in ["lurker", "elder_rammer"]:
+		check(field.record_of(id).is_empty(), "%s: no record at size 1" % id)
+		check(field.spawn_at(id, Vector2(0.0, -30.0), 0.0, "", 0, true) == null, "%s: nothing spawns it at size 1" % id)
+	check(field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 0, true) != null, "an M1 species does")
+
+
+func test_set_size_takes_every_record_at_the_size_and_spawns_from_them() -> void:
+	var s2 := FakeWorldGen.s2_species()
+	var field := _field(SEED, s2)
+	var arena := layout.build_arena()
+	field.set_size(2)
+	check_eq(field.size, 2, "size 2")
+	for id in s2.species_ids():
+		var rec := field.record_of(id)
+		check_eq(rec, s2.at_size(id, 2, parts), "%s: its at_size record" % id)
+	check_eq(field.record_of("rammer").q, 0.625, "an M1 species one size down")
+	check_eq(field.record_of("lurker").q, 1.0, "a size-2 species at its entry size")
+	var rec: Dictionary = field.record_of("rammer")
+	var c := field.spawn_at("rammer", Vector2(0.0, -30.0), 0.0, "", 5, true)
+	check(c != null, "a rammer spawns")
+	if c == null:
+		return
+	check_eq(_body(c.phenotype), _body(rec.phenotype), "its body is the record's")
+	check_eq(c.state.max_health, rec.phenotype.max_health, "and its health")
+	check_eq(c.actor.reach_scale, 0.625, "its reach scales by q")
+	check_eq(c.brain.cfg, rec.cfg, "its brain runs the scaled config")
+	check_eq(field._senses.rammer, {"sight": rec.sight, "fov": rec.fov, "near": rec.near_m}, "its senses are the record's")
+	var points := field.carcass_points(c, arena, 0.05)
+	for p in points:
+		check(absf(p.distance_to(c.motion.position) - float(rec.carcass_rings[0])) < 1e-5,
+			"a chunk lands on the first scaled ring (%s)" % p.distance_to(c.motion.position))
+	var lurker := field.spawn_at("lurker", Vector2(20.0, -30.0), 0.0, "", 5, true)
+	check(lurker != null and lurker.actor.reach_scale == 1.0, "a Lurker spawns at size 2, at q 1")
+	field.set_size(1)
+	check(field.record_of("lurker").is_empty(), "back at size 1 the Lurker has no record")
+	check_eq(field.record_of("rammer").q, 1.0, "and the rammer is its own again")
+	check_eq(_body(c.phenotype), _body(rec.phenotype), "a creature already out keeps its body")
+
+
+## S2 (B.7, D-83): a two-post site's creature takes the site record's posts (local, as the record
+## holds them; a copy, so a rebase that shifts the brain's leaves the record's to be derived again)
+## when the world file switches habits on, and none when it is off; a one-post site never has any.
+func test_a_two_post_sites_creature_takes_its_posts_only_with_habits_on() -> void:
+	for habits in [true, false]:
+		var content := FakeWorldGen.fixture_content()
+		content.config.switches["habits"] = habits
+		var sim := FakeWorldGen.endless_sim(SEED, parts, layout, FakeWorldGen.s2_species(), content, PackedFloat64Array(), 4, true)
+		check(sim.debug_set_size(2), "size 2")
+		var home := sim.motion.position + Vector2(20.0, 0.0)
+		var a := sim.world.abs_of_local(home)
+		var k := WorldConfig.tm_to_am(2)
+		var x := a[0] / k
+		var y := a[1] / k
+		var key := sim.world.chunk_of_local(home)
+		var posts := [{"x": x, "y": y, "heading": 0.5, "territory": {}},
+			{"x": x + 5.0, "y": y, "heading": -0.5, "territory": {"x": x + 5.0, "y": y + 1.0, "radius": 3.0}}]
+		var sites := [
+			{"id": "x_posts", "species": "lurker", "x": x, "y": y, "heading": 0.5, "territory": {},
+				"reach": {"x": x + 2.5, "y": y, "radius": 10.0}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
+				"tile": Vector2i.ZERO, "posts": posts},
+			{"id": "x_one", "species": "rammer", "x": x, "y": y + 8.0, "heading": 0.0, "territory": {"x": x, "y": y + 8.0, "radius": 3.0},
+				"reach": {"x": x, "y": y + 8.0, "radius": 6.0}, "chunks": [key] as Array[Vector2i], "sizes": [2] as Array[int],
+				"tile": Vector2i.ZERO}]
+		for s in sites:
+			sim.world.sites[s.id] = sim.world._site_record(s, key)
+		sim.world.recompute_caps(sim)
+		var rec: Dictionary = sim.world.sites["x_posts"]
+		var c := sim.creatures.spawn_site(rec, sim.tick, false)
+		var one := sim.creatures.spawn_site(sim.world.sites["x_one"], sim.tick, false)
+		check(c != null and one != null, "both spawn (habits %s)" % habits)
+		if c == null or one == null:
+			continue
+		check(one.brain.posts.is_empty(), "a one-post site's creature has no posts (habits %s)" % habits)
+		if not habits:
+			check(c.brain.posts.is_empty(), "habits off: no posts")
+			continue
+		check_eq(c.brain.posts.size(), 2, "two posts")
+		check_eq(c.brain.posts, rec.posts, "the record's posts")
+		check_eq(c.brain.posts[0].home, home, "the first at the site's home, local")
+		check_eq(c.brain.posts[1].territory.center, sim.world.local_of_tm(x + 5.0, y + 1.0), "the second's zone, local")
+		check(not is_same(c.brain.posts[1].territory, rec.posts[1].territory), "a copy of them")

@@ -1,0 +1,590 @@
+{
+	"schema_version": 1,
+	"status": "PROPOSED",
+	"note": "The smallest kit the endless world's rules accept, for the T1 tests: real GLBs, fixture records.",
+	"footprint_classes": {
+		"fp_s": [
+			0.6,
+			0.9
+		],
+		"fp_m": [
+			0.9,
+			1.2
+		],
+		"fp_l": [
+			1.2,
+			1.5
+		]
+	},
+	"landmark": {
+		"anchor_radius_bu": 3.0,
+		"collide_radius_bu": 2.0,
+		"groups": [
+			2,
+			2,
+			1,
+			1
+		]
+	},
+	"assets": [
+		{
+			"id": "shell_s_pill",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_diatom_disc.glb",
+			"record": "res://tests/fixtures/world/records/shell_s_pill.json",
+			"footprint_class": "fp_s",
+			"footprint_radius_m": 0.75,
+			"scale": [
+				0.8,
+				1.2
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_s_lens",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_radiolarian_lens.glb",
+			"record": "res://tests/fixtures/world/records/shell_s_lens.json",
+			"footprint_class": "fp_s",
+			"footprint_radius_m": 0.6,
+			"scale": [
+				1.0,
+				1.5
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_m_pill",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_diatom_disc.glb",
+			"record": "res://tests/fixtures/world/records/shell_m_pill.json",
+			"footprint_class": "fp_m",
+			"footprint_radius_m": 1.0,
+			"scale": [
+				0.9,
+				1.2
+			],
+			"yaw_rule": "slot",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_m_lens",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_radiolarian_lens.glb",
+			"record": "res://tests/fixtures/world/records/shell_m_lens.json",
+			"footprint_class": "fp_m",
+			"footprint_radius_m": 0.9,
+			"scale": [
+				1.0,
+				1.4
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_l_bell",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_bell.glb",
+			"record": "res://tests/fixtures/world/records/shell_l_bell.json",
+			"footprint_class": "fp_l",
+			"footprint_radius_m": 1.25,
+			"scale": [
+				0.96,
+				1.2
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_l_tower",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_fluted_tower.glb",
+			"record": "res://tests/fixtures/world/records/shell_l_tower.json",
+			"footprint_class": "fp_l",
+			"footprint_radius_m": 1.5,
+			"scale": [
+				0.8,
+				1.0
+			],
+			"yaw_rule": "slot",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "shell_l_wide",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/shell_bell.glb",
+			"record": "res://tests/fixtures/world/records/shell_l_wide.json",
+			"footprint_class": "fp_l",
+			"footprint_radius_m": 1.2,
+			"scale": [
+				1.0,
+				1.25
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": true,
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_arch",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_arch.glb",
+			"record": "res://tests/fixtures/world/records/landmark_arch.json",
+			"group": 0,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "steps_90",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_fan",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_fan.glb",
+			"record": "res://tests/fixtures/world/records/landmark_fan.json",
+			"group": 0,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "steps_90",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_great_shell",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_great_shell.glb",
+			"record": "res://tests/fixtures/world/records/landmark_great_shell.json",
+			"group": 1,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_ring",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_ring.glb",
+			"record": "res://tests/fixtures/world/records/landmark_ring.json",
+			"group": 1,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_spire",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_spire.glb",
+			"record": "res://tests/fixtures/world/records/landmark_spire.json",
+			"group": 2,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "steps_90",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "landmark_shed_husk",
+			"kind": "landmark",
+			"band": 0,
+			"glb": "res://assets/export/landmark_shed_husk.glb",
+			"record": "res://tests/fixtures/world/records/landmark_shed_husk.json",
+			"group": 3,
+			"footprint_radius_m": 2.0,
+			"scale": [
+				0.9,
+				1.1
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "pale",
+					"tint": "#E8E0D0",
+					"growth": "",
+					"scale": 1.0
+				},
+				{
+					"id": "algae",
+					"tint": "#C8D8B0",
+					"growth": "Growth_Algae",
+					"scale": 0.95
+				},
+				{
+					"id": "tall",
+					"tint": "#D8D0C0",
+					"growth": "",
+					"scale": 1.1
+				}
+			],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "rare_giant_husk",
+			"kind": "rare",
+			"band": 0,
+			"glb": "res://assets/export/rare_giant_husk.glb",
+			"record": "res://tests/fixtures/world/records/rare_giant_husk.json",
+			"rare_kind": "giant_husk",
+			"colliders": [
+				{
+					"center": [
+						0.0,
+						0.0
+					],
+					"radius": 3.0
+				}
+			],
+			"scale": [
+				1.0,
+				1.0
+			],
+			"yaw_rule": "fixed",
+			"dressings": [],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "rare_shell_cathedral",
+			"kind": "rare",
+			"band": 0,
+			"glb": "res://assets/export/rare_shell_cathedral.glb",
+			"record": "res://tests/fixtures/world/records/rare_shell_cathedral.json",
+			"rare_kind": "shell_cathedral",
+			"colliders": [
+				{
+					"center": [
+						-1.5,
+						0.0
+					],
+					"radius": 2.0
+				},
+				{
+					"center": [
+						1.5,
+						0.5
+					],
+					"radius": 1.5
+				}
+			],
+			"scale": [
+				1.0,
+				1.0
+			],
+			"yaw_rule": "fixed",
+			"dressings": [],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "marker_checkpoint_column",
+			"kind": "marker",
+			"band": -1,
+			"glb": "res://assets/export/marker_checkpoint_column.glb",
+			"record": "res://tests/fixtures/world/records/marker_checkpoint_column.json",
+			"scale": [
+				1.0,
+				1.0
+			],
+			"yaw_rule": "fixed",
+			"dressings": [],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "marker_origin_arrow",
+			"kind": "marker",
+			"band": -1,
+			"glb": "res://assets/export/marker_origin_arrow.glb",
+			"record": "res://tests/fixtures/world/records/marker_origin_arrow.json",
+			"scale": [
+				1.0,
+				1.0
+			],
+			"yaw_rule": "fixed",
+			"dressings": [],
+			"placeholder": true,
+			"approved": false
+		},
+		{
+			"id": "rock_a",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/rock_a.glb",
+			"record": "res://tests/fixtures/world/records/rock_a.json",
+			"footprint_class": "fp_m",
+			"footprint_radius_m": 1.0,
+			"scale": [
+				0.8,
+				1.5
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": false,
+			"placeholder": false,
+			"approved": false
+		},
+		{
+			"id": "rock_b",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/rock_b.glb",
+			"record": "res://tests/fixtures/world/records/rock_b.json",
+			"footprint_class": "fp_m",
+			"footprint_radius_m": 1.0,
+			"scale": [
+				0.8,
+				1.5
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": false,
+			"placeholder": false,
+			"approved": false
+		},
+		{
+			"id": "rock_c",
+			"kind": "shell",
+			"band": 0,
+			"glb": "res://assets/export/rock_c.glb",
+			"record": "res://tests/fixtures/world/records/rock_c.json",
+			"footprint_class": "fp_m",
+			"footprint_radius_m": 1.0,
+			"scale": [
+				0.8,
+				1.5
+			],
+			"yaw_rule": "free",
+			"dressings": [
+				{
+					"id": "plain",
+					"tint": "#FFFFFF",
+					"growth": "",
+					"scale": 1.0
+				}
+			],
+			"pickable": false,
+			"placeholder": false,
+			"approved": false
+		}
+	]
+}
