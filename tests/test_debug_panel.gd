@@ -73,6 +73,10 @@ class RouteSim:
 		calls.append(["size %d" % n, tick])
 		return true
 
+	func debug_ready_to_mate() -> bool:
+		calls.append(["mate", tick])
+		return true
+
 	func absolute_position_am() -> PackedFloat64Array:
 		return PackedFloat64Array([tick * 0.1, 9.0])
 
@@ -522,7 +526,8 @@ func test_the_growth_buttons_run_the_dev_commands_and_refuse_a_size_above_the_to
 		check(panel._sim.text.contains(panel.fields.growth_line), "%s: in the sim section" % tag)
 		if not grows:
 			check_eq(panel.fields.growth_line, "Growth: off", "growth off says so")
-			check(not panel.run("fill_meter") and not panel.run("force_growth"), "growth off: fill and force do nothing")
+			check(not panel.run("fill_meter") and not panel.run("force_growth") and not panel.run("ready_to_mate"),
+				"growth off: fill, force and mate do nothing")
 			check(not panel.run("size_2") and sim.size() == 1, "growth off: no size 2")
 			check_eq(panel.fields.refusal, "Size 2: the sea does not grow here", "and the refusal says why")
 			check(panel._sim.text.ends_with("Refused: Size 2: the sea does not grow here"), "under the growth line")
@@ -532,6 +537,9 @@ func test_the_growth_buttons_run_the_dev_commands_and_refuse_a_size_above_the_to
 		check(panel.run("fill_meter"), "fill_meter applies")
 		check(is_equal_approx(g.meter, g.ring(1)) and g.full_since >= 0, "the ring is full (%.1f of %.0f)" % [g.meter, g.ring(1)])
 		check(panel.run("force_growth") and g.due, "force_growth makes the growth due")
+		sim.save.adaptation_points = 0
+		check(panel.run("ready_to_mate") and Kin.is_ready(sim), "ready_to_mate fills energy and points")
+		check_eq(sim.save.adaptation_points, PoolSim.DEBUG_MATE_POINTS, "to DEBUG_MATE_POINTS")
 		check(panel._sim.text.contains("Growth: size 1 · meter %.1f/%.0f · " % [g.ring(1), g.ring(1)]), "the line shows the full ring (%s)" % panel._sim.text)
 		g.due = false
 		var top := sim.world.max_size

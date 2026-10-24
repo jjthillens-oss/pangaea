@@ -14,12 +14,15 @@ extends Node3D
 ## and the Body's Stretch blend shape; set_ripeness is its Ripeness shape (the meter's share). A body
 ## without a shape ignores it.
 
+## Each level above the first draws a part this much larger (S4.5 part levels).
+const LEVEL_LOOK := 0.15
 const PART_SCENES := {
 	"mouth_filter": preload("res://assets/export/part_mouth_filter.glb"),
 	"mouth_jaw": preload("res://assets/export/part_mouth_jaw.glb"),
 	"flagellum": preload("res://assets/export/part_flagellum.glb"),
 	"eye_spot": preload("res://assets/export/part_eye_spot.glb"),
 	"spike": preload("res://assets/export/part_spike.glb"),
+	"shell_plate": preload("res://assets/export/part_shell_plate.glb"),
 }
 ## Baked parts of the sample cell that the genome's parts replace (GLB contract names that
 ## test_assets checks). Its eyes and pupils stay.
@@ -121,7 +124,9 @@ func build(genome: Genome, phenotype: Phenotype) -> void:
 		var scale := float(part.get("scale", 1.0))
 		var holder := Node3D.new()
 		holder.name = str(part.get("id", "part"))
-		holder.transform = PartPlacement.transform_for(angle, type, scale)
+		# An upgraded part (S4.5) is drawn a little larger, so a level shows on the body.
+		var look := scale * (1.0 + LEVEL_LOOK * (Genome.level_of(part) - 1))
+		holder.transform = PartPlacement.transform_for(angle, type, look)
 		holder.set_meta("part_id", str(part.get("id", "")))
 		holder.set_meta("part_type", type)
 		holder.set_meta("part_angle", angle)

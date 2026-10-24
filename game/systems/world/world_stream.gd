@@ -533,6 +533,8 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 		for r in sim.remnants.items:   # S2: a remnant is a body and an actor, with no brain
 			RebaseShift.motion(r.motion, offset)
 			r.actor.position -= offset
+	if sim.kin != null:
+		sim.kin.rebase(offset)
 	RebaseShift.items(sim.plankton.items, PLANKTON_POSITIONS, offset)
 	RebaseShift.items(sim.carrion.items, CARRION_POSITIONS, offset)
 	if _swum_from.is_finite():
@@ -1779,6 +1781,9 @@ func grow(sim: PoolSim) -> void:
 	var cell := sim.motion
 	var r_cell := sim.phenotype.radius
 	grew_tick = sim.tick
+	if sim.kin != null:
+		# The kin goes before the sea is rescaled (S4.3): it came for the smaller cell.
+		sim.kin.leave(sim, "grew")
 	# 1. Record.
 	var a := abs_of_local(cell.position)
 	var ap := abs_of_local(cell.prev_position)

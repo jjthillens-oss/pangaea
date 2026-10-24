@@ -120,6 +120,8 @@ var grace_until := -1
 var death_streak := 0
 ## The endless world's growth meter (S2); null in the pool and with growth switched off (D-46).
 var growth: Growth = null
+## S4.3: the cell's kin, which swims in when the cell is ready to mate (with growth only).
+var kin: Kin = null
 ## The remnants a growth left (S2, D-57); null wherever growth is.
 var remnants: RemnantField = null
 ## This tick's intent for Growth (D-58): a Grow press, and the trigger setting ("" for no change).
@@ -288,8 +290,24 @@ func _start_growth(cfg: Dictionary, max_in_build: int) -> void:
 		return
 	growth = Growth.create(cfg, str(cfg.trigger))
 	remnants = RemnantField.create(cfg)
+	kin = Kin.new()
 	world.max_size = max_in_build
 	world.counters["remnant_overflow"] = 0
+
+
+## S4.4: the save's genome has become the next generation (Lineage.reproduce, from the cell editor):
+## the cell takes the new body where it is, its energy and health keeping their shares of the new
+## capacities. Reports offspring {generation, genome_id}.
+func apply_offspring() -> void:
+	var energy_share := state.energy / state.energy_capacity if state.energy_capacity > 0.0 else 1.0
+	var health_share := state.health / state.max_health if state.max_health > 0.0 else 1.0
+	phenotype = Phenotype.derive(save.genome, catalog)
+	state.energy_capacity = phenotype.energy_capacity
+	state.max_health = phenotype.max_health
+	state.energy = energy_share * state.energy_capacity
+	state.health = health_share * state.max_health
+	actor.phenotype = phenotype
+	_emit({"type": "offspring", "generation": save.genome.generation, "genome_id": save.genome.genome_id})
 
 
 ## True in the endless world (S1), false in the pool.
@@ -384,6 +402,8 @@ func step(intent: SimIntent) -> void:
 	if growth != null:
 		_take_field_events()
 		growth.observe(self, _events.slice(mark))
+	if kin != null:
+		kin.tick(self)
 	tick += 1
 
 
@@ -391,6 +411,7 @@ func step(intent: SimIntent) -> void:
 ##   ate {kind, food_id, zone, supplied, absorbed, points, position}
 ##   refused {kind, food_id, reason, touching, contact_s}
 ##   earned {points, reason}; starving_started; starving_ended
+##   kin_arrived {position, heading}; kin_left {reason}; mate {position} (S4.3, with growth: Kin)
 ##   respawned {grace_s, energy, relocated (creature ids sent home), streak}
 ##   died {cause, by, by_species, reason, position} (cause "starved" or "killed")
 ##   grace_ended {reason: "timeout"|"attacked"} (the shelter ended; with creatures only)
@@ -618,6 +639,8 @@ func nearest_zone_id() -> String:
 
 # Dev commands (dev tools and tests only). Each reports a "debug" event and returns whether it applied.
 
+const DEBUG_MATE_POINTS := 400   ## debug_ready_to_mate tops the points up to this
+
 func debug_set_energy(value: float) -> bool:
 	if not is_finite(value):
 		return false
@@ -765,6 +788,18 @@ func debug_fill_meter(share := 1.0) -> bool:
 		return false
 	growth.add(self, share * growth.ring(size()) - growth.meter, "debug", "")
 	_emit({"type": "debug", "command": "fill_meter", "share": share})
+	return true
+
+
+## Dev (endless, growth on; S4): full energy and at least DEBUG_MATE_POINTS points, so a kin swims in
+## after Kin.CALL_S and the editor can be tried at once. Emits debug {command: "ready_to_mate"}. False
+## with growth off, while dead or waiting to respawn.
+func debug_ready_to_mate() -> bool:
+	if growth == null or dead or respawn_pending:
+		return false
+	debug_set_energy(state.energy_capacity)
+	save.adaptation_points = maxi(save.adaptation_points, DEBUG_MATE_POINTS)
+	_emit({"type": "debug", "command": "ready_to_mate"})
 	return true
 
 

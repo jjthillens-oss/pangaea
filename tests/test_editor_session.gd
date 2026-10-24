@@ -84,7 +84,6 @@ func test_cost_charges_additions_and_refunds_removals() -> void:
 func test_refused_edits_change_nothing() -> void:
 	var s := _session()
 	var before := _snapshot(s.working)
-	check_eq(s.add_part("shell_plate", 1.0).reason, "shell_plate is not available yet", "locked part")
 	check_eq(s.add_part("toxin_gland", 1.0).reason, "toxin_gland is not available yet", "locked part")
 	check_eq(s.add_part("eye_spot", 0.5, NAN).reason, "size out of range", "NaN size")
 	check_eq(s.add_part("eye_spot", NAN).reason, "bad position", "NaN position")
@@ -150,13 +149,15 @@ func test_failed_commit_keeps_the_original_and_points() -> void:
 	check_eq(_snapshot(genome), before, "original untouched")
 
 
-func test_exactly_six_parts_are_in_the_editor() -> void:
+## M1's six approved parts, and the shell plate from S4 (s4-plan: band 1, art PR #42's model).
+func test_exactly_seven_parts_are_in_the_editor() -> void:
 	var available := []
 	for type_id in catalog.parts:
 		if catalog.in_editor(type_id):
 			available.append(type_id)
 	available.sort()
-	check_eq(available, ["cilia", "eye_spot", "flagellum", "mouth_filter", "mouth_jaw", "spike"], "approved M1 editor parts")
+	check_eq(available, ["cilia", "eye_spot", "flagellum", "mouth_filter", "mouth_jaw", "shell_plate", "spike"],
+		"approved M1 editor parts and the S4 shell plate")
 
 
 func test_exactly_enough_points_is_enough() -> void:
