@@ -1,0 +1,349 @@
+{
+	"adaptation_points": 42,
+	"build_id": "0.0.3-m2+fixture",
+	"creature": {
+		"body": {
+			"body_version": 3,
+			"generator": "skin-1",
+			"limbs": [
+				{
+					"attach": "v_3",
+					"id": "l_1",
+					"joints": [
+						{
+							"id": "j_1",
+							"p": [
+								90,
+								-40,
+								-260
+							],
+							"r": 55
+						},
+						{
+							"id": "j_2",
+							"p": [
+								110,
+								-260,
+								-240
+							],
+							"r": 42
+						},
+						{
+							"id": "j_3",
+							"p": [
+								110,
+								-480,
+								-260
+							],
+							"r": 38
+						},
+						{
+							"id": "j_4",
+							"p": [
+								110,
+								-520,
+								-320
+							],
+							"r": 36
+						}
+					],
+					"mirror": true
+				},
+				{
+					"attach": "v_6",
+					"id": "l_2",
+					"joints": [
+						{
+							"id": "j_5",
+							"p": [
+								90,
+								-30,
+								160
+							],
+							"r": 60
+						},
+						{
+							"id": "j_6",
+							"p": [
+								115,
+								-250,
+								200
+							],
+							"r": 46
+						},
+						{
+							"id": "j_7",
+							"p": [
+								110,
+								-470,
+								170
+							],
+							"r": 38
+						},
+						{
+							"id": "j_8",
+							"p": [
+								110,
+								-520,
+								110
+							],
+							"r": 36
+						}
+					],
+					"mirror": true
+				}
+			],
+			"next": {
+				"j": 9,
+				"l": 3,
+				"p": 7,
+				"v": 10
+			},
+			"parts": [
+				{
+					"elev": 0,
+					"handles": [],
+					"height": 0,
+					"host": "spine",
+					"id": "p_1",
+					"mirror": true,
+					"ring": 170,
+					"roll": 0,
+					"scale": 800,
+					"tilt": 0,
+					"turn": 0,
+					"type": "eye",
+					"u": 60
+				},
+				{
+					"elev": 20,
+					"handles": [],
+					"height": 0,
+					"host": "spine",
+					"id": "p_2",
+					"mirror": false,
+					"ring": 500,
+					"roll": 0,
+					"scale": 900,
+					"tilt": 0,
+					"turn": 0,
+					"type": "beak",
+					"u": 0
+				},
+				{
+					"elev": 0,
+					"handles": [],
+					"height": 0,
+					"host": "spine",
+					"id": "p_3",
+					"mirror": true,
+					"ring": 90,
+					"roll": 0,
+					"scale": 1200,
+					"tilt": 0,
+					"turn": 0,
+					"type": "horn",
+					"u": 90
+				},
+				{
+					"elev": 0,
+					"handles": [
+						0,
+						300,
+						0
+					],
+					"height": 0,
+					"host": "spine",
+					"id": "p_4",
+					"mirror": false,
+					"ring": 0,
+					"roll": 0,
+					"scale": 800,
+					"tilt": 0,
+					"turn": 0,
+					"type": "fin",
+					"u": 450
+				},
+				{
+					"elev": 0,
+					"handles": [],
+					"height": 0,
+					"host": "l_1:end",
+					"id": "p_5",
+					"mirror": true,
+					"ring": 0,
+					"roll": 0,
+					"scale": 1000,
+					"tilt": 0,
+					"turn": 0,
+					"type": "foot",
+					"u": 500
+				},
+				{
+					"elev": 0,
+					"handles": [],
+					"height": 0,
+					"host": "l_2:end",
+					"id": "p_6",
+					"mirror": true,
+					"ring": 0,
+					"roll": 0,
+					"scale": 1000,
+					"tilt": 0,
+					"turn": 0,
+					"type": "foot",
+					"u": 500
+				}
+			],
+			"plan": "spine",
+			"reference_length_mm": 1200,
+			"vertebrae": [
+				{
+					"id": "v_1",
+					"p": [
+						0,
+						40,
+						-480
+					],
+					"r": 60
+				},
+				{
+					"id": "v_2",
+					"p": [
+						0,
+						20,
+						-380
+					],
+					"r": 80
+				},
+				{
+					"id": "v_3",
+					"p": [
+						0,
+						0,
+						-260
+					],
+					"r": 110
+				},
+				{
+					"id": "v_4",
+					"p": [
+						0,
+						0,
+						-120
+					],
+					"r": 120
+				},
+				{
+					"id": "v_5",
+					"p": [
+						0,
+						0,
+						20
+					],
+					"r": 120
+				},
+				{
+					"id": "v_6",
+					"p": [
+						0,
+						0,
+						160
+					],
+					"r": 110
+				},
+				{
+					"id": "v_7",
+					"p": [
+						0,
+						10,
+						280
+					],
+					"r": 80
+				},
+				{
+					"id": "v_8",
+					"p": [
+						0,
+						30,
+						400
+					],
+					"r": 55
+				},
+				{
+					"id": "v_9",
+					"p": [
+						0,
+						50,
+						500
+					],
+					"r": 40
+				}
+			]
+		},
+		"generation": 3,
+		"history": [
+			{
+				"body_sha256": "a",
+				"generation": 1,
+				"points": 10
+			},
+			{
+				"body_sha256": "b",
+				"generation": 2,
+				"points": 25
+			}
+		],
+		"name": "Fixture"
+	},
+	"discoveries": [],
+	"era": "microscopic",
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 1,
+		"genome_id": "genome_15a08e60aee6e1df",
+		"lineage_id": "lineage_bdb13d0648a668d0",
+		"next_part_number": 3,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.0,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159265358979,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_15a08e60aee6e1df"
+		}
+	],
+	"lineage_id": "lineage_bdb13d0648a668d0",
+	"pending_transactions": [],
+	"player": {
+		"position": [
+			0.0,
+			0.0,
+			0.0
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 1792800000,
+	"schema_version": 3,
+	"settlements": [],
+	"world_changes": [],
+	"world_seed": 777001
+}

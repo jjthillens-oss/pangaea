@@ -199,7 +199,7 @@ func test_invalid_save_is_not_written_and_existing_file_survives() -> void:
 	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
 
 
-func test_m0_save_migrates_to_v2_with_no_adaptation_points() -> void:
+func test_m0_save_migrates_to_the_current_schema_with_no_adaptation_points() -> void:
 	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v1.json")
 	check(not text.is_empty(), "fixture readable")
 	_write_raw(PATH, text)
@@ -213,7 +213,8 @@ func test_m0_save_migrates_to_v2_with_no_adaptation_points() -> void:
 	check_eq(loaded.genome.parts.size(), 2, "body kept")
 	check_eq(FileAccess.get_file_as_string(PATH), text, "file not rewritten on load")
 	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
-	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(PATH))["schema_version"]), 2, "written as v2")
+	check_eq(int(JSON.parse_string(FileAccess.get_file_as_string(PATH))["schema_version"]), SaveGame.SCHEMA_VERSION, "written at the current schema")
+	check(service.load_from(PATH).save.creature.is_empty(), "with no creature yet")
 
 
 func test_negative_adaptation_points_are_refused() -> void:
@@ -311,3 +312,79 @@ func test_a_save_that_cannot_be_moved_into_place_leaves_no_temp_file() -> void:
 	check(service.save_to(folder, _new_save()) != OK, "refused")
 	check(not FileAccess.file_exists(folder + ".tmp"), "no temp file left")
 	DirAccess.remove_absolute(folder)
+
+
+## Save schema v3 (Bible section 18): the creature stage's creature lives in the lineage save.
+const V3_FIXTURE := "res://tests/fixtures/save_v3_creature.json"
+
+
+func test_a_v2_save_migrates_to_v3_with_no_creature() -> void:
+	var text := FileAccess.get_file_as_string("res://tests/fixtures/save_v2_step2.json")
+	_write_raw(PATH, text)
+	var result := service.load_from(PATH)
+	check(result.ok, "v2 loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check(loaded.creature.is_empty(), "with no creature")
+	check_eq(loaded.adaptation_points, 16, "the points kept")
+	check_eq(loaded.genome.parts.size(), 3, "the body kept")
+	check_eq(FileAccess.get_file_as_string(PATH), text, "file not rewritten on load")
+	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
+	var written: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(PATH))
+	check_eq(int(written["schema_version"]), 3, "written as v3")
+	check_eq(written["creature"], {}, "with an empty creature")
+
+
+func test_the_v3_fixture_loads_and_round_trips_the_creature() -> void:
+	var text := FileAccess.get_file_as_string(V3_FIXTURE)
+	check(not text.is_empty(), "fixture readable")
+	_write_raw(PATH, text)
+	var result := service.load_from(PATH)
+	check(result.ok, "v3 loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var loaded: SaveGame = result.save
+	check_eq(loaded.creature["name"], "Fixture", "the name")
+	check_eq(loaded.creature["generation"], 3, "the generation, an int")
+	check(loaded.creature["generation"] is int, "not a float")
+	check_eq((loaded.creature["history"] as Array).size(), 2, "the history")
+	check_eq(loaded.adaptation_points, 42, "the points")
+	var body_before := JSON.stringify(JSON.parse_string(text)["creature"]["body"], "", true)
+	check_eq(service.save_to(PATH, loaded), OK, "re-saves")
+	var again: SaveGame = service.load_from(PATH).save
+	check_eq(JSON.stringify(again.creature["body"], "", true), body_before, "the body survives a round trip unchanged")
+	check_eq(again.creature["history"], loaded.creature["history"], "and the history")
+
+
+func test_a_creature_with_a_bad_body_is_refused_and_the_backup_loads() -> void:
+	_write_raw(PATH + PersistenceService.BACKUP_SUFFIX, FileAccess.get_file_as_string(V3_FIXTURE))
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(V3_FIXTURE))
+	(data["creature"]["body"] as Dictionary).erase("vertebrae")
+	_write_raw(PATH, JSON.stringify(data))
+	var primary := service._read_current_version(PATH)
+	check(not primary.ok, "the primary is refused")
+	var result := service.load_from(PATH)
+	check(result.ok, "the backup loads: %s" % [result.errors])
+	if result.ok:
+		check_eq(result.save.creature["name"], "Fixture", "with its creature")
+
+
+func test_a_creature_with_wrong_types_is_refused() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(V3_FIXTURE))
+	data["creature"]["generation"] = 0
+	data["creature"]["name"] = "  "
+	_write_raw(PATH, JSON.stringify(data))
+	var result := service.load_from(PATH)
+	check(not result.ok, "refused")
+	check(result.errors.size() >= 1, "with reasons: %s" % [result.errors])
+
+
+func test_a_creature_with_a_bad_body_is_not_written() -> void:
+	var save := _new_save()
+	save.creature = CreatureRules.new_creature()
+	check_eq(service.save_to(PATH, save), OK, "a good creature saves")
+	var before := FileAccess.get_file_as_string(PATH)
+	(save.creature["body"] as Dictionary).erase("vertebrae")
+	check_eq(service.save_to(PATH, save), ERR_INVALID_DATA, "a bad body is refused")
+	check_eq(FileAccess.get_file_as_string(PATH), before, "previous save intact")
