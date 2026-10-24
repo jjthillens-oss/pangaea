@@ -7,6 +7,7 @@ extends TestCase
 const EDITOR_SCENE := preload("res://game/scenes/creature/creature_editor.tscn")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
+const Picking := preload("res://game/domain/creature/editor_picking.gd")
 
 const POINTS := 150
 
@@ -246,3 +247,95 @@ func test_the_camera_stays_above_the_floor_and_the_wheel_zooms_off_the_selection
 	editor.wheel(1, editor._unproject(handle["world"]))
 	check(text() != before and is_equal_approx(editor._distance, distance), "over the selected handle it thickens")
 	check(editor.undo(), "as one undo step")
+
+
+## Owner playtest, 2026-10-24: right-drag turns the creature, the zoom reaches in to a part and out to a big body,
+## and every part can be resized.
+func test_a_right_drag_orbits_the_camera() -> void:
+	open()
+	var before: Vector3 = editor.camera.position
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_RIGHT
+	press.pressed = true
+	editor._unhandled_input(press)
+	var move := InputEventMouseMotion.new()
+	move.relative = Vector2(80.0, 0.0)
+	editor._unhandled_input(move)
+	check(editor.camera.position.distance_to(before) > 0.01, "the camera moved round the body")
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_RIGHT
+	release.pressed = false
+	editor._unhandled_input(release)
+	var after: Vector3 = editor.camera.position
+	editor._unhandled_input(move)
+	check(editor.camera.position.is_equal_approx(after), "and stops when the button is up")
+
+
+func test_the_zoom_stays_between_a_close_look_and_the_whole_body() -> void:
+	open()
+	var framed: float = editor._frame_distance
+	check(framed > 0.0, "the body was framed")
+	for i in 60:
+		editor.zoom(1)
+	check(is_equal_approx(editor._distance, framed * CreatureEditor.ZOOM_MIN), "zoomed in to %.2f of the framing" % (editor._distance / framed))
+	for i in 60:
+		editor.zoom(-1)
+	check(is_equal_approx(editor._distance, framed * CreatureEditor.ZOOM_MAX), "zoomed out to %.2f of the framing" % (editor._distance / framed))
+
+
+func test_a_selected_part_grows_and_shrinks_within_the_rules() -> void:
+	open()
+	var desc = editor.working_body()
+	var part: Dictionary = desc.parts[0]
+	check(editor.select("part", part["id"]), "a part selected")
+	var start := int(part["scale"])
+	var r: Dictionary = editor.resize_selected(1)
+	check(r["ok"], "grows: %s" % r["reason"])
+	var grown: int = editor.working_body().parts[0]["scale"]
+	check_eq(grown, int(round(start * CreatureEditor.PART_SCALE_STEP)), "by one step")
+	check(editor.undo(), "as one undo step")
+	check_eq(int(editor.working_body().parts[0]["scale"]), start, "undo gives the size back")
+	editor.select("part", part["id"])
+	var hi := int(editor.rules["part_scale_max"])
+	for i in 40:
+		editor.resize_selected(1)
+	check_eq(int(editor.working_body().parts[0]["scale"]), hi, "up to the rules' largest")
+	check(not editor.resize_selected(1)["ok"], "and no further")
+	var key := InputEventKey.new()
+	key.keycode = KEY_MINUS
+	key.pressed = true
+	editor._unhandled_input(key)
+	check(int(editor.working_body().parts[0]["scale"]) < hi, "the - key shrinks it")
+
+
+func test_new_parts_are_sized_to_the_body() -> void:
+	open()
+	var desc = editor.working_body()
+	var rules: Dictionary = editor.rules
+	var size: float = (desc.bounds_m() as AABB).get_longest_axis_size()
+	check_eq(Picking.fit_scale(desc, size, rules), 1000, "on a body the reference size, scale 1000")
+	check_eq(Picking.fit_scale(desc, size / 2.0, rules), 2000, "on a body twice the size, twice as big")
+	check_eq(Picking.fit_scale(desc, size * 100.0, rules), int(rules["part_scale_min"]), "never under the rules' smallest")
+	check_eq(Picking.fit_scale(desc, size / 100.0, rules), int(rules["part_scale_max"]), "never over the largest")
+
+
+func test_a_first_design_can_start_from_a_preset_at_no_cost() -> void:
+	open()
+	check(not editor.start_from_preset("raptor")["ok"], "refused while presets are not offered")
+	editor.offer_presets(true)
+	var names := CreatureData.preset_names()
+	check_eq(editor.hud.preset_count(), names.size(), "a button per preset")
+	var r: Dictionary = editor.start_from_preset("raptor")
+	check(r["ok"], "starts from the raptor: %s" % r.get("reason", ""))
+	var want: Dictionary = CreatureData.preset("raptor")["body"]
+	var got: Dictionary = editor.working_body().to_dict()
+	for key in ["vertebrae", "limbs", "parts", "reference_length_mm"]:
+		check_eq(JSON.stringify(got[key]), JSON.stringify(BodyCodec.from_dict(want).to_dict()[key]), "the raptor's %s" % key)
+	check_eq(editor.skin_color.to_html(false), Color(want["skin_color"]).to_html(false), "and its colour")
+	check_eq(editor.points(), POINTS, "the points are untouched")
+	check_eq(int(editor.session.preview()["cost"]), 0, "it costs nothing")
+	check_eq(editor.back(), "asked", "Back asks before leaving the preset")
+	var done := editor.finish()
+	check(done["ok"], "Done commits it: %s" % done.get("reason", ""))
+	editor.offer_presets(false)
+	check(not editor.start_from_preset("dragon")["ok"], "refused once presets are withdrawn")

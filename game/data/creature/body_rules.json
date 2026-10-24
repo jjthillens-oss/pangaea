@@ -21,6 +21,6 @@
 	"limb_joints_max": 5,
 	"bone_count_max": 128,
 	"part_count_max": 24,
-	"part_scale_min": 500,
-	"part_scale_max": 2000
+	"part_scale_min": 250,
+	"part_scale_max": 4000
 }

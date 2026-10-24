@@ -53,6 +53,24 @@ static func body(body_name: String) -> RefCounted:
 	return BodyCodec.from_dict(bodies[key])
 
 
+## The preset creatures' names in their palette order (data/creature/presets.json, written by
+## tools/make_creature_presets.py; PROPOSED designs from the owner's playtest of 2026-10-24).
+static func preset_names() -> PackedStringArray:
+	return PackedStringArray(read_json(DATA_DIR + "/presets.json")["order"])
+
+
+## A preset creature: {title, blurb, body (the codec's dictionary, skin_color included)}.
+static func preset(preset_name: String) -> Dictionary:
+	var presets: Dictionary = read_json(DATA_DIR + "/presets.json")["presets"]
+	assert(presets.has(preset_name), "no preset %s" % preset_name)
+	return presets[preset_name]
+
+
+## A preset creature's body as a description.
+static func preset_body(preset_name: String) -> RefCounted:
+	return BodyCodec.from_dict(preset(preset_name)["body"])
+
+
 ## Part rules, type -> part_rules, from data/creature/part_rules.json (the compiled records; the release pack
 ## carries this file and not the records). tests/test_assets.gd keeps it equal to part_rules_from_records().
 static func part_rules() -> Dictionary:

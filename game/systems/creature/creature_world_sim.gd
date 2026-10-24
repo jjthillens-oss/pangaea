@@ -117,12 +117,13 @@ func _init(body_dict: Dictionary, p_world_seed: int, p_tuning: Dictionary, p_dat
 
 
 ## The data every sim needs, from the data files and the art records (CreatureData reads them; the sim itself only
-## takes dictionaries). Starter bodies are codec dictionaries by name.
+## takes dictionaries). "starter_bodies" are the rivals' species, codec dictionaries by name: the preset creatures
+## (data/creature/presets.json; owner playtest, 2026-10-24: the presets roam the world), so the world shows the
+## designs a new player can start from.
 static func load_data() -> Dictionary:
 	var starters := {}
-	var bodies: Dictionary = CreatureData.read_json(CreatureData.DATA_DIR + "/starter_bodies.json")["bodies"]
-	for n in bodies:
-		starters[String(n)] = bodies[n]
+	for n in CreatureData.preset_names():
+		starters[String(n)] = CreatureData.preset(n)["body"]
 	return {"body_rules": CreatureData.rules(), "part_rules": CreatureData.part_rules(),
 			"editor_costs": CreatureData.editor_costs(), "gait_table": CreatureData.gait_table(),
 			"starter_bodies": starters}

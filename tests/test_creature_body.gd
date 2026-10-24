@@ -238,8 +238,8 @@ func test_parts_valid_and_refused() -> void:
 	turned.parts[0]["turn"] = 90
 	cases["eye turned past its limit"] = turned
 	var scaled = quad()
-	scaled.parts[0]["scale"] = 3000
-	cases["part at 3x scale"] = scaled
+	scaled.parts[0]["scale"] = 5000
+	cases["part at 5x scale (past the 4x limit)"] = scaled
 	var missing = quad()
 	missing.parts[4]["host"] = "l_9:end"
 	cases["part on a missing limb"] = missing
