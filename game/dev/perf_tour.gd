@@ -45,6 +45,10 @@ const REFILL_TICKS := 1800         ## the energy is refilled this often
 ## A route prints where it is this often (wall clock), so a run stopped from outside (CI's limit on a
 ## software renderer) shows how far it got and at what frame rate.
 const PROGRESS_EVERY_S := 10.0
+## A route's watch thread speaks when the main thread has not started a frame's process step for
+## this long: how long, what the main thread was doing (physics, process, the draw) and at which
+## route tick, so a run that hangs (no progress lines at all) still shows where.
+const WATCH_STALL_S := 10.0
 const LONG_FRAME_MS := 50.0
 const TAG_WINDOW_S := 0.25         ## a long frame is tagged with the events this near it, either side
 const SWIM_BOT_PATH := "res://game/dev/swim_bot.gd"
@@ -78,9 +82,11 @@ class GrowthSteps:
 		steps = p_steps
 		settings = p_settings if p_settings != null else SettingsService.shared()
 
-	## Runs every step due by `t` ticks from the route's start that has not run yet, in order.
+	## Runs every step due by `t` ticks from the route's start that has not run yet, in order, and
+	## prints each one ("Perf tour: step grow at route tick 300").
 	func take(sim, t: int) -> void:
 		while taken < steps.size() and t >= int(steps[taken][0]):
+			print("Perf tour: step %s at route tick %d" % [steps[taken][1], t])
 			match str(steps[taken][1]):
 				"grow":
 					sim.debug_fill_meter(1.0)
@@ -209,6 +215,13 @@ var _measured_ms := 0.0
 var _route: RefCounted
 var _route_name := ""
 var _next_progress_s := PROGRESS_EVERY_S
+# The watch (WATCH_STALL_S): its thread, and what the main thread last did, under _watch_lock.
+var _watch: Thread
+var _watch_lock := Mutex.new()
+var _watch_stop := false
+var _watch_usec := 0               ## when the main thread last started a process step
+var _watch_doing := "the start"    ## where the main thread is now, as stall_line() words it
+var _watch_tick := 0               ## the route tick then
 var _growths: Array[Dictionary] = []     ## {tick, t_s, reduce_motion} of each growth_began
 var _frames: Array[Dictionary] = []      ## {t_s, ms, tick} of each measured frame
 var _events: Array[Dictionary] = []      ## {t_s, text} of each sim event
@@ -388,6 +401,12 @@ func _begin() -> void:
 	if _route != null:
 		main.pool.sim_event.connect(_on_event)
 	_running = true
+	if _route != null:
+		RenderingServer.frame_pre_draw.connect(_watch_note.bind("the draw"))
+		RenderingServer.frame_post_draw.connect(_watch_note.bind("the engine between frames"))
+		_watch_usec = Time.get_ticks_usec()
+		_watch = Thread.new()
+		_watch.start(_watch_loop)
 	if _route_name == "swim":
 		print("Perf tour (swim): %d s east, a far death, %d s north, after a %d s warm-up." % [
 			SWIM_OUT_TICKS / 60, SWIM_BACK_TICKS / 60, WARM_UP_S])
@@ -417,9 +436,16 @@ func sample(now_usec: int, gpu_frame_ms := 0.0) -> bool:
 	return _measured_ms >= DURATION_S * 1000.0
 
 
+func _physics_process(_delta: float) -> void:
+	if _running and _route != null:
+		_watch_note("the physics step")
+
+
 func _process(_delta: float) -> void:
 	if not _running:
 		return
+	if _route != null:
+		_watch_note("the process step", true)
 	var now := Time.get_ticks_usec()
 	var measured := frame_ms.size()
 	var over := sample(now, gpu_reading(self))
@@ -435,6 +461,60 @@ func _process(_delta: float) -> void:
 		print(progress_line(_route_name, _clock_s(now), main.pool.sim.tick - int(_route.start_tick), frame_ms.size()))
 	if _route.done:
 		_finish()
+
+
+## Notes where the main thread is now, and with `frame` that a frame's process step starts (the
+## watch reads them).
+func _watch_note(doing: String, frame := false) -> void:
+	_watch_lock.lock()
+	_watch_doing = doing
+	if frame:
+		_watch_usec = Time.get_ticks_usec()
+	_watch_tick = main.pool.sim.tick - int(_route.start_tick) if _route.start_tick >= 0 else 0
+	_watch_lock.unlock()
+
+
+## The watch thread: every half second it looks at when the main thread last started a process step,
+## and after WATCH_STALL_S without one it prints stall_line(), then again each WATCH_STALL_S the
+## stall lasts. It ends when _stop_watch() asks.
+func _watch_loop() -> void:
+	var told_usec := 0
+	while true:
+		OS.delay_msec(500)
+		_watch_lock.lock()
+		var stop := _watch_stop
+		var last := _watch_usec
+		var doing := _watch_doing
+		var tick := _watch_tick
+		_watch_lock.unlock()
+		if stop:
+			return
+		var now := Time.get_ticks_usec()
+		var since := maxi(last, told_usec)
+		if now - since >= int(WATCH_STALL_S * 1e6):
+			told_usec = now
+			print(stall_line(_route_name, (now - last) / 1e6, doing, tick))
+
+
+## Ends the watch thread and waits for it.
+func _stop_watch() -> void:
+	if _watch == null:
+		return
+	_watch_lock.lock()
+	_watch_stop = true
+	_watch_lock.unlock()
+	_watch.wait_to_finish()
+	_watch = null
+
+
+func _exit_tree() -> void:
+	_stop_watch()
+
+
+## The watch's line: "Perf tour (grow): no frame for 30 s, in the draw at route tick 300".
+static func stall_line(route: String, stalled_s: float, doing: String, route_ticks: int) -> String:
+	return "Perf tour (%s): no frame for %d s, in %s at route tick %d" % [
+		route, int(stalled_s), doing, route_ticks]
 
 
 ## A route's progress line: "Perf tour (grow): 20 s, route tick 1180, 9.5 FPS".
@@ -486,6 +566,7 @@ static func gpu_reading(node: Node) -> float:
 
 func _finish() -> void:
 	_running = false
+	_stop_watch()
 	var report := summarize(frame_ms, gpu_ms)
 	var headless := DisplayServer.get_name() == "headless"
 	var window := Vector2i.ZERO if headless else DisplayServer.window_get_size()

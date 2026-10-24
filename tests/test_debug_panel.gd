@@ -393,6 +393,14 @@ func test_a_route_prints_how_far_it_got_and_at_what_frame_rate() -> void:
 	check_eq(PerfTour.PROGRESS_EVERY_S, 10.0, "every 10 s")
 
 
+func test_a_route_that_hangs_says_where_the_main_thread_is() -> void:
+	check_eq(PerfTour.stall_line("grow", 30.7, "the draw", 300), "Perf tour (grow): no frame for 30 s, in the draw at route tick 300",
+		"how long without a frame, where the main thread is and the route tick")
+	check(not PerfTour.stall_line("grow", 10.0, "the physics step", 0).begins_with("Perf tour: "),
+		"it never reads as the finished tour's line")
+	check_eq(PerfTour.WATCH_STALL_S, 10.0, "after 10 s without a frame")
+
+
 func test_the_swim_tour_tags_long_frames_with_the_events_around_them() -> void:
 	var frames := [{"t_s": 1.00, "ms": 10.0, "tick": 60}, {"t_s": 1.06, "ms": 60.0, "tick": 64}, {"t_s": 1.07, "ms": 12.0, "tick": 65}]
 	var events := [{"t_s": 0.70, "text": "chunk_unloaded 2,0"}, {"t_s": 1.05, "text": "chunk_loaded 4,0"},

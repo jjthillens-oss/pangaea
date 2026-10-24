@@ -19,7 +19,12 @@
 #             software adapter (e2 at eb93634 and dd137d7): the route is 2,400 sim ticks, and the
 #             engine steps at most 8 a frame, so a slow enough frame holds the route back. Each
 #             route prints its progress every 10 s ("Perf tour (grow): 20 s, route tick 1180,
-#             9.3 FPS"), so a run stopped at the limit shows how far it got.
+#             9.3 FPS"), so a run stopped at the limit shows how far it got, and each growth step
+#             as it is taken. At 640 x 360 on e2 081adb9 it printed no progress line at all in
+#             300 s (it finishes in about 45 s on Linux in both renderers, llvmpipe and lavapipe, also
+#             after the launch and rendered runs), so a watch thread now prints where the main thread
+#             is after 10 s without a frame ("Perf tour (grow): no frame for 30 s, in the draw at
+#             route tick 300").
 # release_probe.gd does not run here: a release exe ignores --script. check_release.sh runs it on
 # the same pack.
 # The exes are GUI programs whose output may not reach a pipe, so each run also writes Godot's own
