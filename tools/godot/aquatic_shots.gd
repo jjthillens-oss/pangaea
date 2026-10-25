@@ -10,12 +10,14 @@ extends SceneTree
 ## shallows_minnows (the minnow school), fallen_giant_near (the dead giant and its carcass), reef_cleaners (a hurt friend resting at the cleaner station, the sim stepped
 ## 4 s so they gather), glowfins_lured (a deep lure body by the glowfins' home, stepped 6 s), krill_pillars (the
 ## krill swarm and the pillar ring), vent_chimney; the nest (aquatic-r2 chunk 4): nest_side (side-on across the slope
-## from about 20 m, the fit to the floor), nest_beacon (from the reef side, up at the beacon), nest_clutch (after two
-## generations, so three clutches show, looking down into the dish), nest_rest (a hurt fish resting, the HUD prompt);
+## from about 20 m, the fit to the floor), nest_beacon (from the reef side, up at the beacon), nest_clutch (two more
+## generations, a clutch for each, looking down into the dish; in the default order glowfins_lured's generation comes
+## first, so four show), nest_rest (a hurt fish resting, the HUD prompt);
 ## editor (the fin and tail
 ## editor as it opens) and editor_tails (one editor frame per tail in the rules, the fish held side-on:
 ## editor_tail_<id>.png; with --close, close views of the fish only at tail strength 3: tail_<id>_<angle>.png, then
-## fins_<n>_<angle>.png for the side fin steps and dorsal_<n>_<angle>.png for the back fin steps).
+## fins_<n>_<angle>.png for the side fin steps and dorsal_<n>_<angle>.png for the back fin steps); tail_sides (the
+## step 1 before frames' close side view of each tail, on the fish as the editor opens it: tail_<id>.png).
 
 const StageScript := preload("res://game/scenes/aquatic/aquatic_stage.gd")
 ## view -> [player position, heading, or a point to face]. Heading 0 faces -Z (down the route), PI faces back to the
@@ -42,7 +44,7 @@ const PLACES := {
 ## The views that step the sim or change the fish come last, so they leave the others as they were.
 const ALL_VIEWS := ["nest_start", "nest_far", "nest_side", "nest_beacon", "reef_west", "reef_east", "twilight_ledge",
 		"fallen_giant", "deep_vents", "shallows_minnows", "fallen_giant_near", "krill_pillars", "vent_chimney", "editor",
-		"editor_tails", "reef_cleaners", "glowfins_lured", "nest_rest", "nest_clutch"]
+		"editor_tails", "tail_sides", "reef_cleaners", "glowfins_lured", "nest_rest", "nest_clutch"]
 
 var out_dir := "user://aquatic_shots"
 var views: PackedStringArray = []
@@ -131,10 +133,11 @@ func _run() -> void:
 			var editor: Control = stage.open_editor()
 			await _frames(30)
 			await _shot("editor")
-			editor.call("cancel_edit")
-			await _frames(4)
+			await _close_editor(editor)
 		elif view == "editor_tails":
 			await _tails()
+		elif view == "tail_sides":
+			await _tail_sides()
 		else:
 			push_warning("aquatic_shots: unknown view '%s'" % view)
 	quit(0)
@@ -166,8 +169,29 @@ func _tails() -> void:
 			holder.rotation = Vector3(0.0, -PI * 0.5, 0.0)
 			await _frames(20)
 			await _shot("editor_tail_%s" % tail)
-	editor.call("cancel_edit")
-	await _frames(4)
+	await _close_editor(editor)
+
+
+## The before frames' close tail views (step 1, PR #192's base), taken the same way for every tail in the rules: the
+## fish as the editor opens it (the lineage's own tail strength), held side-on, the camera where step 1 put it, and
+## only the plinth viewport saved as tail_<id>.png.
+func _tail_sides() -> void:
+	var editor: Control = stage.open_editor()
+	await _frames(10)
+	editor.set_process(false)
+	var viewport := editor.get("viewport") as SubViewport
+	for tail in stage.rules.body.tails:
+		editor.call("set_choice", "tail", String(tail))
+		var holder: Node3D = editor.get("rig_holder")
+		holder.rotation = Vector3(0.0, -PI * 0.5, 0.0)
+		var cam := viewport.get_camera_3d()
+		cam.position = Vector3(0.0, 0.95, 1.9)
+		cam.look_at(Vector3(0.0, 0.85, 0.0), Vector3.UP)
+		await _frames(20)
+		var path := out_dir.path_join("tail_%s.png" % tail)
+		viewport.get_texture().get_image().save_png(path)
+		print("aquatic_shots: wrote ", path)
+	await _close_editor(editor)
 
 
 ## Close views of the editor's fish (it faces +X, side-on to the camera): only the plinth viewport is saved.
@@ -187,6 +211,14 @@ func _close_shots(editor: Control, name: String, angles: Array) -> void:
 		var path := out_dir.path_join("%s_%s.png" % [name, angle])
 		viewport.get_texture().get_image().save_png(path)
 		print("aquatic_shots: wrote ", path)
+
+
+## Closes the editor as Cancel does, then drops the "your kin swims off" toast that closing it leaves on the HUD, so
+## a view shot after the editor shows only its own lines (a player cannot cancel three editors in a few seconds).
+func _close_editor(editor: Control) -> void:
+	editor.call("cancel_edit")
+	await _frames(4)
+	(stage.hud.get("_toasts") as Array).clear()
 
 
 ## Steps the sim `seconds` with the fish held at `pos`, facing `heading`, still, then lets the view settle.
