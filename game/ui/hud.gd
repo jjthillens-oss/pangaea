@@ -12,10 +12,11 @@ extends Control
 ##                 meal, survival and region toasts as pills under it
 ##   top center:   the starving banner (HudBanner, the one solid warm red panel: a warning icon, words
 ##                 and a 1 Hz pulse), and one-off messages in a pill
-##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
-##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
-##   bottom left:  the controls, from the key bindings, for 30 s, or until the first meal once they
-##                 have been up for 12 s
+##   bottom center: refusal hints in an amber-worded pill (HudPill), worded by RefusalHints, above
+##                 the band the bottom edge arrows use (ThreatIndicators.band_px, about 108 px), so an
+##                 arrow never covers a hint
+##   bottom left:  the controls in a glass card under a "CONTROLS" caption, from the key bindings,
+##                 for 30 s, or until the first meal once they have been up for 12 s
 ##
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
 ##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
@@ -25,10 +26,10 @@ extends Control
 ##                 the grow key bound now (BP-19). GrowthHud works out what they show; all three are
 ##                 hidden in the M1 pool, which has no growth (D-46). A ring paid out at the top gets
 ##                 its own toast, never the survival one (C-V8)
-##   bottom right: the ladder strip (LadderStrip): the species near and to come, each tinted by
-##                 what it is to the cell, and what the next growth changes; hidden in the pool
-##   bottom center: above the refusal hints, one idea at a time (IdeaHints), its followed ideas
-##                 kept in main's player memory (bind_memory)
+##   bottom right: the ladder strip (LadderStrip) in a glass card: the species near and to come, each
+##                 tinted by what it is to the cell, and what the next growth changes; hidden in the pool
+##   bottom center: above the refusal hints, one idea at a time (IdeaHints) in the same pill, its
+##                 followed ideas kept in main's player memory (bind_memory)
 ##
 ##   endless sea (S1): a toast naming each region or rare tile the cell enters, at most once per
 ##                 REGION_TOAST_REPEAT_S for each, the start tile's at once; and the WorldOverlay,
@@ -40,8 +41,10 @@ extends Control
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
 ## card has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
 ## messages never run under the side panels, whatever the body, lineage or message. The look is
-## the title menu's glass (game/ui/theme/pangaea_theme.tres: HudGlass, slim bars); every text
-## size comes from the theme, so the text size setting scales it.
+## the title menu's glass (game/ui/theme/pangaea_theme.tres: HudGlass cards, HudPill pills, slim
+## bars, the HudBanner warning). Every text size comes from the theme, which the text size setting
+## scales; the few set in code (the ring's digit, the strip's captions, the overlay's words) scale
+## with the same setting.
 
 const KIN_TOAST := "A cell like you is here. Swim into it to mate."
 const MATE_TOAST := "You mated."
@@ -743,6 +746,7 @@ class WorldOverlay extends Control:
 	const PIP_OUTLINE_PX := 3.0
 	const PIP_TEXT := "Generation start"
 	const ARROW_TEXT := "Where you began · %s"
+	## The words' size at 100% text; font_size() scales it with the text size setting (Bible 19).
 	const FONT_SIZE := 18
 	const TEXT_GAP_PX := 8.0
 	const TEXT_PAD_PX := 8.0              ## text stays this far inside the screen
@@ -872,8 +876,12 @@ class WorldOverlay extends Control:
 			_text(font, _text_rect(font, rect, label.at, label.text, label.side).position, label.text)
 
 	## Where `text` goes beside `anchor` on its `side`, kept inside `rect`.
+	## The words' font size now: FONT_SIZE at the text size setting.
+	static func font_size() -> int:
+		return roundi(FONT_SIZE * int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0)
+
 	func _text_rect(font: Font, rect: Rect2, anchor: Vector2, text: String, side: Vector2) -> Rect2:
-		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE)
+		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size())
 		var top_left := anchor + Vector2(TEXT_GAP_PX if side.x >= 0.0 else -TEXT_GAP_PX - size.x, -size.y * 0.5)
 		if absf(side.y) > absf(side.x):
 			top_left = anchor + Vector2(-size.x * 0.5, 0.0 if side.y > 0.0 else -size.y)
@@ -882,6 +890,7 @@ class WorldOverlay extends Control:
 
 	## Draws `text` outlined with its top left at `top_left`.
 	func _text(font: Font, top_left: Vector2, text: String) -> void:
-		var baseline := top_left + Vector2(0.0, font.get_ascent(FONT_SIZE))
-		draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, 6, OUTLINE)
-		draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, WorldMarkers.MARKER_COLOR)
+		var px := font_size()
+		var baseline := top_left + Vector2(0.0, font.get_ascent(px))
+		draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, 6, OUTLINE)
+		draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, WorldMarkers.MARKER_COLOR)

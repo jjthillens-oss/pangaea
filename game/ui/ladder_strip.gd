@@ -24,11 +24,15 @@ const MAX_ENTRIES := 6
 const MAX_PHRASES := 2
 const REFRESH_S := 0.5
 const ICON_PX := 40.0
+## The captions' size at 100% text; caption_size() scales it with the text size setting (Bible 19).
 const CAPTION_SIZE := 12
+## The strip's panel: the HUD's compact glass card.
+const PANEL_TYPE := &"HudGlass"
 const GHOST_ALPHA := 0.5
-## Each icon's column (its caption wraps in it, two lines at most for the shipped plurals) and the
-## gap between columns; the preview line wraps in the width of six.
-const SLOT_W := 68.0
+## Each icon's column (its caption wraps in it, two lines at most for the shipped plurals at the
+## largest text size, so "Wardens" never breaks inside the word) and the gap between columns; the
+## preview line wraps in the width of six.
+const SLOT_W := 76.0
 const SLOT_GAP := 8
 const PREVIEW_W := MAX_ENTRIES * SLOT_W + (MAX_ENTRIES - 1) * SLOT_GAP
 ## The most lines the longest preview the shipped ladder gives takes at the largest text size.
@@ -60,7 +64,7 @@ func _ready() -> void:
 	add_theme_constant_override(&"separation", 0)
 	_panel = PanelContainer.new()
 	_panel.name = "Panel"
-	_panel.theme_type_variation = &"HudPanel"
+	_panel.theme_type_variation = PANEL_TYPE
 	_panel.size_flags_horizontal = Control.SIZE_SHRINK_END
 	add_child(_panel)
 	var box := VBoxContainer.new()
@@ -274,7 +278,10 @@ func _show(entries: Array[Dictionary], has_jaw: bool, preview: String) -> void:
 		var path := str(e.texture)
 		icon.texture = load(path) as Texture2D if path != "" and ResourceLoader.exists(path) else null
 		icon.self_modulate = tint_of(str(e.role), has_jaw)
-		(slot.get_child(1) as Label).text = str(e.plural)
+		var caption := slot.get_child(1) as Label
+		caption.text = str(e.plural)
+		if caption.get_theme_font_size(&"font_size") != caption_size():
+			caption.add_theme_font_size_override(&"font_size", caption_size())
 	_preview.text = preview
 	_preview.visible = preview != ""
 	visible = not entries.is_empty()
@@ -293,13 +300,19 @@ func _icon_slot() -> VBoxContainer:
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(icon)
 	var caption := Label.new()
-	caption.add_theme_font_size_override(&"font_size", CAPTION_SIZE)
+	caption.add_theme_font_size_override(&"font_size", caption_size())
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	caption.custom_minimum_size = Vector2(SLOT_W, 0.0)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(caption)
 	return slot
+
+
+## The captions' font size now: CAPTION_SIZE at the text size setting. A per-node size is not
+## scaled by SettingsService.apply_text_scale, so it is scaled here and set again at each refresh.
+static func caption_size() -> int:
+	return roundi(CAPTION_SIZE * int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0)
 
 
 ## The gap under the panel: from the frame's bottom margin up to BAND_GAP_PX over the arrows' band.

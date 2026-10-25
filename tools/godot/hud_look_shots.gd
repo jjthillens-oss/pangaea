@@ -83,6 +83,8 @@ func _cell() -> void:
 	await _frames(60)
 	await _shot("cell_start")
 	var hud: Hud = main.hud
+	# The panels as laid out (test_world_hud's rects are read off these).
+	print("panels cell_start ", hud.panel_rects())
 	hud._on_sim_event({"type": "ate", "absorbed": 8.0, "points": 1})
 	hud._on_sim_event({"type": "ate", "absorbed": 8.0, "points": 1})
 	hud.show_hint(RefusalHints.TEXTS["mouth is not facing it"])
@@ -91,6 +93,7 @@ func _cell() -> void:
 	pool.set_paused(true)
 	await _frames(4)
 	await _shot("cell_busy")
+	print("panels cell_busy ", hud.panel_rects())
 	pool.set_paused(false)
 	pool.sim.debug_set_energy(0.0)
 	await _frames(45)
@@ -98,6 +101,7 @@ func _cell() -> void:
 	pool.set_paused(true)
 	await _frames(4)
 	await _shot("cell_starving")
+	print("panels cell_starving ", hud.panel_rects())
 	# The brightest water: the sunlit tile nearest the origin, fed again, for text contrast.
 	pool.set_paused(false)
 	pool.sim.debug_set_energy(80.0)

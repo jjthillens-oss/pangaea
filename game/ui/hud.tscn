@@ -267,24 +267,24 @@ size_flags_vertical = 8
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
-theme_type_variation = &"HudPanel"
+theme_type_variation = &"HudPill"
 
 [node name="IdeaHintText" type="Label" parent="Frame/BottomCenter/IdeaHint"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"AccentLabel"
+theme_type_variation = &"HudAccentLabel"
 horizontal_alignment = 1
 
 [node name="Hint" type="PanelContainer" parent="Frame/BottomCenter"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
-theme_type_variation = &"HudPanel"
+theme_type_variation = &"HudPill"
 
 [node name="HintText" type="Label" parent="Frame/BottomCenter/Hint"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"AccentLabel"
+theme_type_variation = &"HudAccentLabel"
 horizontal_alignment = 1
 
 [node name="Gap" type="Control" parent="Frame/BottomCenter"]
@@ -293,20 +293,19 @@ layout_mode = 2
 
 [node name="Controls" type="PanelContainer" parent="Frame"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(500, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 8
-theme_type_variation = &"HudPanel"
+theme_type_variation = &"HudGlass"
 
 [node name="Box" type="VBoxContainer" parent="Frame/Controls"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Title" type="Label" parent="Frame/Controls/Box"]
 layout_mode = 2
-theme_type_variation = &"AccentLabel"
-text = "Controls"
+theme_type_variation = &"CaptionLabel"
+text = "CONTROLS"
 
 [node name="ControlsText" type="Label" parent="Frame/Controls/Box"]
 unique_name_in_owner = true
@@ -317,6 +316,7 @@ theme_type_variation = &"SmallLabel"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
+theme_type_variation = &"HudValueLabel"
 autowrap_mode = 3
 
 [node name="LadderStrip" type="VBoxContainer" parent="Frame"]

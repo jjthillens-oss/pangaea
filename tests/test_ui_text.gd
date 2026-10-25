@@ -245,10 +245,12 @@ func test_the_body_card_the_first_meal_line_and_the_death_notice_fit_their_panel
 	card.free()
 	# The first-meal line in the controls panel (bottom left) is no taller than step 2's longest.
 	var hud: Control = (load(HUD_SCENE) as PackedScene).instantiate()
-	var meal_w: float = (hud.get_node("%FirstMealText") as Label).custom_minimum_size.x
+	var meal: Label = hud.get_node("%FirstMealText")
+	var meal_w: float = meal.custom_minimum_size.x
+	var meal_size := theme.get_font_size(&"font_size", _type_of(meal, &"Label"))
 	hud.free()
 	for body in BodyText.ORDER:
-		var lines := _wrapped(Hud.first_meal_line(_phenotype(body)), font, size, meal_w)
+		var lines := _wrapped(Hud.first_meal_line(_phenotype(body)), font, meal_size, meal_w)
 		check(lines.size() <= FIRST_MEAL_MAX_LINES, "the %s first-meal line takes %d lines at %.0f px (at most %d): %s"
 			% [body, lines.size(), meal_w, FIRST_MEAL_MAX_LINES, lines])
 	# The death notice grows with its text: the longest title, a failed save and each tip must leave
@@ -286,7 +288,6 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	var scale := float(GameSettings.SPEC["accessibility/text_scale"].options.max()) / 100.0
 	check_near(scale, 1.3, 1e-9, "the largest text size is 130%")
 	var small := roundi(theme.get_font_size(&"font_size", &"SmallLabel") * scale)
-	var chrome := theme.get_stylebox(&"panel", &"HudPanel").get_minimum_size().x
 	var hud: Control = (load(HUD_SCENE) as PackedScene).instantiate()
 	# The status card and the growth line are measured with the variations they really use.
 	var status: PanelContainer = hud.get_node("Frame/Status")
@@ -296,6 +297,13 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	var growth_size := roundi(theme.get_font_size(&"font_size", _type_of(growth_line, &"Label")) * scale)
 	var frame: MarginContainer = hud.get_node("Frame")
 	var right_margin := int(frame.get("theme_override_constants/margin_right"))
+	# The bottom center's two pills (refusal hints, ideas), each with its own panel and words.
+	var centers := {}
+	for pair in [["Hint", RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values()], ["IdeaHint", IdeaHints.TEXTS.values()]]:
+		var panel: PanelContainer = hud.get_node("%" + str(pair[0]))
+		var label: Label = panel.get_child(0)
+		centers[pair[0]] = {"texts": pair[1], "chrome": theme.get_stylebox(&"panel", _type_of(panel, &"PanelContainer")).get_minimum_size().x,
+			"px": roundi(theme.get_font_size(&"font_size", _type_of(label, &"Label")) * scale)}
 	hud.free()
 	var lines := [Growth.HINT_GROWING, Growth.HINT_READY, Growth.HINT_NOT_WHILE_HUNTED]
 	lines.append_array(Growth.BLOCKER_HINTS.values())
@@ -332,16 +340,34 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 		% [preview_lines.size(), LadderStrip.PREVIEW_W, preview_lines])
 	for group in ["species", "names"]:
 		for id in ladder[group]:
-			var caption := _wrapped(str(ladder[group][id].plural), font, LadderStrip.CAPTION_SIZE, LadderStrip.SLOT_W)
+			# The captions scale with the text size (LadderStrip.caption_size()): measured at the largest.
+			var caption := _wrapped(str(ladder[group][id].plural), font, roundi(LadderStrip.CAPTION_SIZE * scale), LadderStrip.SLOT_W)
 			check(caption.size() <= 2, "the %s caption takes %d lines in %.0f px: %s" % [id, caption.size(), LadderStrip.SLOT_W, caption])
-	var accent := roundi(theme.get_font_size(&"font_size", &"AccentLabel") * scale)
 	var widest := 0.0
-	for text: String in RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values() + IdeaHints.TEXTS.values():
-		widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, accent).x)
-	var center_right := 960.0 + (widest + chrome) / 2.0
-	var strip_left := 1920.0 - right_margin - (LadderStrip.PREVIEW_W + chrome)
+	for center: Dictionary in centers.values():
+		for text: String in center["texts"]:
+			widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, center["px"]).x + center["chrome"])
+	var center_right := 960.0 + widest / 2.0
+	var strip_chrome := theme.get_stylebox(&"panel", LadderStrip.PANEL_TYPE).get_minimum_size().x
+	var strip_left := 1920.0 - right_margin - (LadderStrip.PREVIEW_W + strip_chrome)
 	check(strip_left - center_right >= LadderStrip.BAND_GAP_PX, "the strip's panel (from %.0f px) is clear of the bottom center's (to %.0f px)"
 		% [strip_left, center_right])
+
+
+func test_the_hud_words_sized_in_code_follow_the_text_size() -> void:
+	# A per-node or drawn font size is not scaled by SettingsService.apply_text_scale, so these scale
+	# themselves: the ring's digit, the ladder strip's captions and the world overlay's words.
+	var old := SettingsService.shared()
+	var service := SettingsService.new("user://test_ui_text/settings.cfg")
+	SettingsService.set_shared(service)
+	for pct in [100, 115, 130]:
+		service.set_value("accessibility/text_scale", pct)
+		check_eq(MeterRing.font_size(), roundi(MeterRing.FONT_SIZE * pct / 100.0), "the ring's digit at %d%%" % pct)
+		check_eq(LadderStrip.caption_size(), roundi(LadderStrip.CAPTION_SIZE * pct / 100.0), "the strip's captions at %d%%" % pct)
+		check_eq(Hud.WorldOverlay.font_size(), roundi(Hud.WorldOverlay.FONT_SIZE * pct / 100.0), "the overlay's words at %d%%" % pct)
+	# Back to 100%, which also puts the shared theme's sizes back.
+	service.set_value("accessibility/text_scale", 100)
+	SettingsService.set_shared(old)
 
 
 ## The theme type a control draws with: its type variation, or its base type when it has none.
