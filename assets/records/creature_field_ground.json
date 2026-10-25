@@ -10,15 +10,15 @@
   "export_path": "assets/export/creature_field_ground.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 2,
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 400.0,
     "y_forward": 400.0,
-    "z_up": 16.276
+    "z_up": 16.293
   },
-  "triangles": 15488,
-  "triangle_budget": 16000,
+  "triangles": 114995,
+  "triangle_budget": 116000,
   "textures": [
     {
       "name": "T_CreatureField_Turf_Albedo",
@@ -67,12 +67,105 @@
     }
   ],
   "materials": [
-    "M_CreatureField"
+    "M_CreatureBoulderA",
+    "M_CreatureBoulderB",
+    "M_CreatureBoulderC",
+    "M_CreatureField",
+    "M_CreatureTreeLantern",
+    "M_CreatureTreeUmbrella",
+    "M_MeadowCards",
+    "M_Pebble",
+    "M_TreeCanopyCards"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
+    "Berm0_Cards",
+    "Berm0_Wood",
+    "Berm1_Cards",
+    "Berm1_Wood",
+    "Berm2_Cards",
+    "Berm2_Wood",
+    "Berm3_Cards",
+    "Berm3_Wood",
+    "Berm4_Cards",
+    "Berm4_Wood",
+    "Berm5_Cards",
+    "Berm5_Wood",
+    "Berm6_Cards",
+    "Berm6_Wood",
+    "Berm7_Cards",
+    "Berm7_Wood",
+    "Cover00_Cards",
+    "Cover02_Cards",
+    "Cover03_Cards",
+    "Cover04_Cards",
+    "Cover05_Cards",
+    "Cover06_Cards",
+    "Cover10_Cards",
+    "Cover11_Cards",
+    "Cover12_Cards",
+    "Cover12_Stones",
+    "Cover13_Cards",
+    "Cover14_Cards",
+    "Cover14_Stones",
+    "Cover15_Cards",
+    "Cover15_Stones",
+    "Cover16_Cards",
+    "Cover17_Cards",
+    "Cover21_Cards",
+    "Cover23_Cards",
+    "Cover24_Cards",
+    "Cover25_Cards",
+    "Cover26_Cards",
+    "Cover26_Stones",
+    "Cover27_Cards",
+    "Cover30_Cards",
+    "Cover31_Cards",
+    "Cover31_Stones",
+    "Cover32_Cards",
+    "Cover33_Cards",
+    "Cover34_Cards",
+    "Cover35_Cards",
+    "Cover35_Stones",
+    "Cover36_Cards",
+    "Cover37_Cards",
+    "Cover40_Cards",
+    "Cover41_Cards",
+    "Cover42_Cards",
+    "Cover43_Cards",
+    "Cover43_Stones",
+    "Cover44_Cards",
+    "Cover45_Cards",
+    "Cover46_Cards",
+    "Cover47_Cards",
+    "Cover50_Cards",
+    "Cover51_Cards",
+    "Cover52_Cards",
+    "Cover53_Cards",
+    "Cover53_Stones",
+    "Cover54_Cards",
+    "Cover54_Stones",
+    "Cover55_Cards",
+    "Cover56_Cards",
+    "Cover57_Cards",
+    "Cover60_Cards",
+    "Cover61_Cards",
+    "Cover62_Cards",
+    "Cover64_Cards",
+    "Cover64_Stones",
+    "Cover65_Cards",
+    "Cover66_Cards",
+    "Cover67_Cards",
+    "Cover70_Cards",
+    "Cover71_Cards",
+    "Cover72_Cards",
+    "Cover73_Cards",
+    "Cover74_Cards",
+    "Cover75_Cards",
+    "Cover76_Cards",
+    "Cover77_Cards",
     "CreatureField",
     "CreatureFieldHills"
   ],
@@ -99,6 +192,282 @@
     ],
     "top_m": 16.2,
     "cast_shadow": false
+  },
+  "scatter": {
+    "generator": "tools/blender/creature_flora.py build_field_scatter (through make_creature_world.py)",
+    "kit": {
+      "creature_grass_tuft": {
+        "pieces": 748,
+        "triangles_each": 48,
+        "source": "assets/export/creature_grass_tuft.glb"
+      },
+      "creature_fern_clump": {
+        "pieces": 81,
+        "triangles_each": 96,
+        "source": "assets/export/creature_fern_clump.glb"
+      },
+      "creature_flower_clump": {
+        "pieces": 120,
+        "triangles_each": 72,
+        "source": "assets/export/creature_flower_clump.glb"
+      },
+      "creature_pebble_cluster": {
+        "pieces": 17,
+        "triangles_each": 157,
+        "source": "assets/export/creature_pebble_cluster.glb"
+      },
+      "creature_tree_umbrella": {
+        "pieces": 8,
+        "triangles_each": 2168,
+        "source": "assets/export/creature_tree_umbrella.glb"
+      },
+      "creature_tree_lantern": {
+        "pieces": 8,
+        "triangles_each": 1724,
+        "source": "assets/export/creature_tree_lantern.glb"
+      },
+      "creature_boulder_a": {
+        "pieces": 7,
+        "triangles_each": 689,
+        "source": "assets/export/creature_boulder_a.glb"
+      },
+      "creature_boulder_b": {
+        "pieces": 7,
+        "triangles_each": 885,
+        "source": "assets/export/creature_boulder_b.glb"
+      },
+      "creature_boulder_c": {
+        "pieces": 2,
+        "triangles_each": 1182,
+        "source": "assets/export/creature_boulder_c.glb"
+      }
+    },
+    "seed": 6100,
+    "cover": {
+      "triangles": 54989,
+      "budget": 55000,
+      "chunks": "8 x 8 of 20 m, CoverIJ_Cards and CoverIJ_Stones, origin at the chunk centre",
+      "inside_m": 78.3,
+      "clear_of_nest_m": 8.05,
+      "height_max_m": 0.45,
+      "density": "Poisson, 4 clusters a chunk times the home-meadow weight 0.2 + 3.2 exp(-(r / 28 m)^2) (a lush meadow round the nest, open plain toward the walls) and 3 single tufts a chunk, before whole clusters are dropped in a seeded order to the budget; stones and tufts on the bare earth (shader patch mask), tufts on its edges, dense grass beds, fern beds and flower patches on the turf (flowers more where it is lush)",
+      "widen": {
+        "creature_grass_tuft": [
+          1.15,
+          1.5
+        ],
+        "creature_fern_clump": [
+          1.15,
+          1.45
+        ],
+        "creature_flower_clump": [
+          1.05,
+          1.3
+        ],
+        "creature_pebble_cluster": [
+          1.0,
+          1.0
+        ]
+      },
+      "clusters": {
+        "bed": {
+          "members": [
+            [
+              "creature_grass_tuft",
+              12,
+              22
+            ],
+            [
+              "creature_flower_clump",
+              0,
+              3
+            ]
+          ],
+          "spread_sigma_m": [
+            0.9,
+            1.6
+          ]
+        },
+        "ferns": {
+          "members": [
+            [
+              "creature_fern_clump",
+              4,
+              7
+            ],
+            [
+              "creature_grass_tuft",
+              3,
+              6
+            ]
+          ],
+          "spread_sigma_m": [
+            0.9,
+            1.5
+          ]
+        },
+        "flowers": {
+          "members": [
+            [
+              "creature_flower_clump",
+              6,
+              10
+            ],
+            [
+              "creature_grass_tuft",
+              4,
+              8
+            ]
+          ],
+          "spread_sigma_m": [
+            0.9,
+            1.4
+          ]
+        },
+        "edge": {
+          "members": [
+            [
+              "creature_grass_tuft",
+              3,
+              6
+            ],
+            [
+              "creature_pebble_cluster",
+              0,
+              1
+            ]
+          ],
+          "spread_sigma_m": [
+            0.5,
+            1.0
+          ]
+        },
+        "stones": {
+          "members": [
+            [
+              "creature_pebble_cluster",
+              1,
+              2
+            ],
+            [
+              "creature_grass_tuft",
+              0,
+              1
+            ]
+          ],
+          "spread_sigma_m": [
+            0.4,
+            0.8
+          ]
+        }
+      },
+      "import": "no shadow, visibility range end 60 m, card meshes without LODs"
+    },
+    "berm": {
+      "triangles": 44518,
+      "budget": 45000,
+      "sectors": "8 by angle, BermK_Cards (canopy, no LODs) and BermK_Wood (bark and boulders, Godot's LODs)",
+      "outside_m": 81.0,
+      "tree_slope_max_m": 0.45,
+      "layout": "per sector a grove of one umbrella and one lantern tree and a third tree at 87 to 99 m (umbrellas scaled 0.95 to 1.3, lanterns 0.9 to 1.2), three or four boulders on the berm's crest and outer slope (81.5 to 92 m), some at the grove's foot; the third trees, then boulders, dropped in a seeded order to the budget"
+    },
+    "materials": {
+      "M_MeadowCards": "res://assets/export/M_MeadowCards.tres",
+      "M_Pebble": "res://assets/export/M_Pebble.tres",
+      "M_CreatureBoulderA": "res://assets/export/M_CreatureBoulderA.tres",
+      "M_CreatureBoulderB": "res://assets/export/M_CreatureBoulderB.tres",
+      "M_CreatureBoulderC": "res://assets/export/M_CreatureBoulderC.tres",
+      "M_TreeCanopyCards": "res://assets/export/M_TreeCanopyCards.tres",
+      "M_CreatureTreeUmbrella": "res://assets/export/M_CreatureTreeUmbrella.tres",
+      "M_CreatureTreeLantern": "res://assets/export/M_CreatureTreeLantern.tres"
+    },
+    "nodes": [
+      "Cover00_Cards",
+      "Cover02_Cards",
+      "Cover03_Cards",
+      "Cover04_Cards",
+      "Cover05_Cards",
+      "Cover06_Cards",
+      "Cover10_Cards",
+      "Cover11_Cards",
+      "Cover12_Cards",
+      "Cover12_Stones",
+      "Cover13_Cards",
+      "Cover14_Cards",
+      "Cover14_Stones",
+      "Cover15_Cards",
+      "Cover15_Stones",
+      "Cover16_Cards",
+      "Cover17_Cards",
+      "Cover21_Cards",
+      "Cover23_Cards",
+      "Cover24_Cards",
+      "Cover25_Cards",
+      "Cover26_Cards",
+      "Cover26_Stones",
+      "Cover27_Cards",
+      "Cover30_Cards",
+      "Cover31_Cards",
+      "Cover31_Stones",
+      "Cover32_Cards",
+      "Cover33_Cards",
+      "Cover34_Cards",
+      "Cover35_Cards",
+      "Cover35_Stones",
+      "Cover36_Cards",
+      "Cover37_Cards",
+      "Cover40_Cards",
+      "Cover41_Cards",
+      "Cover42_Cards",
+      "Cover43_Cards",
+      "Cover43_Stones",
+      "Cover44_Cards",
+      "Cover45_Cards",
+      "Cover46_Cards",
+      "Cover47_Cards",
+      "Cover50_Cards",
+      "Cover51_Cards",
+      "Cover52_Cards",
+      "Cover53_Cards",
+      "Cover53_Stones",
+      "Cover54_Cards",
+      "Cover54_Stones",
+      "Cover55_Cards",
+      "Cover56_Cards",
+      "Cover57_Cards",
+      "Cover60_Cards",
+      "Cover61_Cards",
+      "Cover62_Cards",
+      "Cover64_Cards",
+      "Cover64_Stones",
+      "Cover65_Cards",
+      "Cover66_Cards",
+      "Cover67_Cards",
+      "Cover70_Cards",
+      "Cover71_Cards",
+      "Cover72_Cards",
+      "Cover73_Cards",
+      "Cover74_Cards",
+      "Cover75_Cards",
+      "Cover76_Cards",
+      "Cover77_Cards",
+      "Berm0_Cards",
+      "Berm0_Wood",
+      "Berm1_Cards",
+      "Berm1_Wood",
+      "Berm2_Cards",
+      "Berm2_Wood",
+      "Berm3_Cards",
+      "Berm3_Wood",
+      "Berm4_Cards",
+      "Berm4_Wood",
+      "Berm5_Cards",
+      "Berm5_Wood",
+      "Berm6_Cards",
+      "Berm6_Wood",
+      "Berm7_Cards",
+      "Berm7_Wood"
+    ]
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
 }

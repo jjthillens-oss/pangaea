@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://5vas4lonwtu6"
-path="res://.godot/imported/creature_boulder_b_T_CreatureBoulderB_ORM.png-f25ff8644848636df724665539fa1a53.ctex"
+path.s3tc="res://.godot/imported/creature_boulder_b_T_CreatureBoulderB_ORM.png-f25ff8644848636df724665539fa1a53.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d7a9b93ede34f5727360e02dfcec833f"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/export/creature_boulder_b_T_CreatureBoulderB_ORM.png"
-dest_files=["res://.godot/imported/creature_boulder_b_T_CreatureBoulderB_ORM.png-f25ff8644848636df724665539fa1a53.ctex"]
+dest_files=["res://.godot/imported/creature_boulder_b_T_CreatureBoulderB_ORM.png-f25ff8644848636df724665539fa1a53.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

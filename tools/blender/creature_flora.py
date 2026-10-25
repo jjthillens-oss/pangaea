@@ -1618,17 +1618,17 @@ BERM_KIT = ("creature_tree_umbrella", "creature_tree_lantern", "creature_boulder
 CLUSTERS = {
     # cluster: ([(kit id, fewest, most)], spread sigma range in metres). Beds are dense, so each reads as a lush
     # clump from the gameplay camera; pebbles (157 triangles for a few centimetres of stone) stay few.
-    "bed": ([("creature_grass_tuft", 8, 15), ("creature_flower_clump", 0, 2)], (0.6, 1.2)),
-    "ferns": ([("creature_fern_clump", 3, 6), ("creature_grass_tuft", 2, 4)], (0.7, 1.3)),
-    "flowers": ([("creature_flower_clump", 5, 9), ("creature_grass_tuft", 3, 6)], (0.7, 1.2)),
+    "bed": ([("creature_grass_tuft", 12, 22), ("creature_flower_clump", 0, 3)], (0.9, 1.6)),
+    "ferns": ([("creature_fern_clump", 4, 7), ("creature_grass_tuft", 3, 6)], (0.9, 1.5)),
+    "flowers": ([("creature_flower_clump", 6, 10), ("creature_grass_tuft", 4, 8)], (0.9, 1.4)),
     "edge": ([("creature_grass_tuft", 3, 6), ("creature_pebble_cluster", 0, 1)], (0.5, 1.0)),
     "stones": ([("creature_pebble_cluster", 1, 2), ("creature_grass_tuft", 0, 1)], (0.4, 0.8)),
 }
-CLUSTERS_PER_CHUNK = 6.0    # before thinning to the budget, times the home-meadow weight
-SINGLES_PER_CHUNK = 6.0
+CLUSTERS_PER_CHUNK = 4.0    # before thinning to the budget, times the home-meadow weight
+SINGLES_PER_CHUNK = 3.0
 WIDEN = {"creature_grass_tuft": (1.15, 1.5), "creature_fern_clump": (1.15, 1.45), "creature_flower_clump": (1.05, 1.3),
          "creature_pebble_cluster": (1.0, 1.0)}   # horizontal stretch over the height scale: fuller, never taller
-HOME_R_M = 30.0             # the home meadow round the nest is denser: clusters x (0.6 + 1.6 exp(-(r / HOME_R_M)^2))
+HOME_R_M = 28.0             # the home meadow round the nest is denser: clusters x (0.2 + 3.2 exp(-(r / HOME_R_M)^2))
 
 
 class _Kit:
@@ -1795,14 +1795,14 @@ def _cover_layout(kits, mask, ground):
         for cj in range(CHUNKS):
             rng = random.Random(SCATTER_SEED * 100 + ci * CHUNKS + cj)
             x0, y0 = -CHUNKS * CHUNK_M / 2 + ci * CHUNK_M, -CHUNKS * CHUNK_M / 2 + cj * CHUNK_M
-            r_mid = math.hypot(x0 + CHUNK_M / 2, y0 + CHUNK_M / 2)
-            home = 0.6 + 1.6 * math.exp(-(r_mid / HOME_R_M) ** 2)
-            groups = [("cluster", n) for n in range(_poisson(rng, CLUSTERS_PER_CHUNK * home))] + \
+            groups = [("cluster", n) for n in range(_poisson(rng, CLUSTERS_PER_CHUNK * HOME_PEAK))] + \
                      [("single", n) for n in range(_poisson(rng, SINGLES_PER_CHUNK))]
             for kind, _n in groups:
                 cx, cy = x0 + rng.uniform(0.0, CHUNK_M), y0 + rng.uniform(0.0, CHUNK_M)
                 if max(abs(cx), abs(cy)) > COVER_EDGE_M - 0.6 or math.hypot(cx, cy) < COVER_CLEAR_M + 0.8:
                     continue
+                if kind == "cluster" and rng.random() * HOME_PEAK > _home(cx, cy):
+                    continue                                       # thinned with distance from the nest
                 earth = mask.earth(cx, cy)
                 if kind == "single":
                     if earth > 0.4:
@@ -1849,6 +1849,14 @@ def _cover_layout(kits, mask, ground):
     return out, tris
 
 
+HOME_PEAK = 3.4
+
+
+def _home(x, y):
+    """The home meadow's weight on cover clusters at (x, y): 3.4 at the nest, 1.4 at 28 m, 0.2 far off."""
+    return 0.2 + 3.2 * math.exp(-(math.hypot(x, y) / HOME_R_M) ** 2)
+
+
 def _poisson(rng, mean):
     k, p, limit = 0, 1.0, math.exp(-mean)
     while True:
@@ -1879,8 +1887,8 @@ def _berm_layout(kits, ground):
     """Per sector (eighths of the ring, by angle), a grove of an umbrella and a lantern tree, and a third tree, on
     the hills just past the berm, and boulders on the berm's crest and outer slope, some at the grove's foot. Every
     piece keeps its whole footprint at max(|x|, |y|) >= OBSTACLE_EDGE_M (outside the walls), and trees stand only
-    where the ground is near level. The third trees and the boulders are dropped in a seeded order until the berm
-    fits BERM_TRIS.
+    where the ground is near level. Until the berm fits BERM_TRIS the third trees are dropped first, then
+    boulders, each in a seeded order.
     Returns {sector: [(kit id, position, yaw, scale, 1.0)]}."""
     picks = []
     placed = []                                       # (x, y, footprint radius) of every piece so far
@@ -1897,7 +1905,7 @@ def _berm_layout(kits, ground):
         for n, kit_id in enumerate(trees):
             kit = kits[kit_id]
             scale = rng.uniform(0.95, 1.3) if kit_id == "creature_tree_umbrella" else rng.uniform(0.9, 1.2)
-            key = 0.0 if n < 2 else rng.uniform(0.0, 1.0)
+            key = 0.0 if n < 2 else rng.uniform(1.0, 2.0)            # third trees go before any boulder
             for _try in range(30):
                 a = grove + (n - 1.0) * rng.uniform(0.06, 0.1) + rng.uniform(-0.02, 0.02)
                 d = rng.uniform(87.0, 97.0) + 2.0 * (n % 2)
@@ -1997,13 +2005,13 @@ def build_field_scatter(ground_objs):
             "seed": SCATTER_SEED,
             "cover": {"triangles": cover_tris, "budget": COVER_TRIS, "chunks": f"{CHUNKS} x {CHUNKS} of {CHUNK_M:g} m, CoverIJ_Cards and CoverIJ_Stones, origin at the chunk centre",
                       "inside_m": COVER_EDGE_M, "clear_of_nest_m": COVER_CLEAR_M, "height_max_m": COVER_MAX_M,
-                      "density": f"Poisson, {CLUSTERS_PER_CHUNK:g} clusters a chunk times the home-meadow weight 0.6 + 1.6 exp(-(r / {HOME_R_M:g} m)^2) and {SINGLES_PER_CHUNK:g} single tufts a chunk, before whole clusters are dropped in a seeded order to the budget; stones and tufts on the bare earth (shader patch mask), tufts on its edges, dense grass beds, fern beds and flower patches on the turf (flowers more where it is lush)",
+                      "density": f"Poisson, {CLUSTERS_PER_CHUNK:g} clusters a chunk times the home-meadow weight 0.2 + 3.2 exp(-(r / {HOME_R_M:g} m)^2) (a lush meadow round the nest, open plain toward the walls) and {SINGLES_PER_CHUNK:g} single tufts a chunk, before whole clusters are dropped in a seeded order to the budget; stones and tufts on the bare earth (shader patch mask), tufts on its edges, dense grass beds, fern beds and flower patches on the turf (flowers more where it is lush)",
                       "widen": {k: list(v) for k, v in WIDEN.items()},
                       "clusters": {k: {"members": [list(m) for m in v[0]], "spread_sigma_m": list(v[1])} for k, v in CLUSTERS.items()},
                       "import": f"no shadow, visibility range end {COVER_VIS_END_M:g} m, card meshes without LODs"},
             "berm": {"triangles": berm_tris, "budget": BERM_TRIS, "sectors": f"{SECTORS} by angle, BermK_Cards (canopy, no LODs) and BermK_Wood (bark and boulders, Godot's LODs)",
                      "outside_m": OBSTACLE_EDGE_M, "tree_slope_max_m": TREE_SLOPE_MAX_M,
-                     "layout": "per sector a grove of one umbrella and one lantern tree and a third tree at 87 to 99 m (umbrellas scaled 0.95 to 1.3, lanterns 0.9 to 1.2), three or four boulders on the berm's crest and outer slope (81.5 to 92 m), some at the grove's foot; the third trees and the boulders dropped in a seeded order to the budget"},
+                     "layout": "per sector a grove of one umbrella and one lantern tree and a third tree at 87 to 99 m (umbrellas scaled 0.95 to 1.3, lanterns 0.9 to 1.2), three or four boulders on the berm's crest and outer slope (81.5 to 92 m), some at the grove's foot; the third trees, then boulders, dropped in a seeded order to the budget"},
             "materials": {name: (f"res://assets/export/{name}.tres") for name in KIT_MATERIALS},
             "nodes": nodes}
 
@@ -2171,11 +2179,11 @@ CANOPY_TRES = """[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
 ; tools/blender/creature_flora.py): the T_TreeCanopyCards atlas's authored colour times the mesh's COLOR_0 (a
 ; greyscale brightness per card, read as sRGB), cut out by the atlas's alpha (transparency 2, alpha scissor at 0.5).
 ; Back faces are culled: every card is two sheets back to back whose normals point out of the crown, so the crown
-; shades as one rounded volume from any side. It casts shadows (the scissor cuts them out too) but receives none:
-; a card's lower sheet lies 1.2 mm under its upper one, so with shadows received every underside fell into its own
-; card's shadow and the crown read as black and mint blotches (the first engine frames); the crown's rounded normals
-; shade it instead. A StandardMaterial3D, so the field can carry merged copies beside its own ShaderMaterial. Each
-; tree GLB's .glb.import and the field's point the imported M_TreeCanopyCards here. Written by
+; shades as one rounded volume from any side. It casts shadows (the scissor cuts them out too) but receives none (a
+; card's lower sheet lies 1.2 mm under its upper one, in its own card's shadow). Backlight lets the sun through the
+; leaves: seen against the light, the crown's far side is a dim leaf green rather than near black. A
+; StandardMaterial3D, so the field can carry merged copies beside its own ShaderMaterial. Each tree GLB's
+; .glb.import and the field's point the imported M_TreeCanopyCards here. Written by
 ; tools/blender/make_creature_world.py --import.
 
 [ext_resource type="Texture2D" path="res://{atlas}" id="1_albedo"]
@@ -2184,6 +2192,8 @@ CANOPY_TRES = """[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
 resource_name = "M_TreeCanopyCards"
 transparency = 2
 disable_receive_shadows = true
+backlight_enabled = true
+backlight = Color(0.36, 0.46, 0.38, 1)
 alpha_scissor_threshold = 0.5
 vertex_color_use_as_albedo = true
 vertex_color_is_srgb = true

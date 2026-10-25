@@ -4,11 +4,11 @@
 ; tools/blender/creature_flora.py): the T_TreeCanopyCards atlas's authored colour times the mesh's COLOR_0 (a
 ; greyscale brightness per card, read as sRGB), cut out by the atlas's alpha (transparency 2, alpha scissor at 0.5).
 ; Back faces are culled: every card is two sheets back to back whose normals point out of the crown, so the crown
-; shades as one rounded volume from any side. It casts shadows (the scissor cuts them out too) but receives none:
-; a card's lower sheet lies 1.2 mm under its upper one, so with shadows received every underside fell into its own
-; card's shadow and the crown read as black and mint blotches (the first engine frames); the crown's rounded normals
-; shade it instead. A StandardMaterial3D, so the field can carry merged copies beside its own ShaderMaterial. Each
-; tree GLB's .glb.import and the field's point the imported M_TreeCanopyCards here. Written by
+; shades as one rounded volume from any side. It casts shadows (the scissor cuts them out too) but receives none (a
+; card's lower sheet lies 1.2 mm under its upper one, in its own card's shadow). Backlight lets the sun through the
+; leaves: seen against the light, the crown's far side is a dim leaf green rather than near black. A
+; StandardMaterial3D, so the field can carry merged copies beside its own ShaderMaterial. Each tree GLB's
+; .glb.import and the field's point the imported M_TreeCanopyCards here. Written by
 ; tools/blender/make_creature_world.py --import.
 
 [ext_resource type="Texture2D" path="res://assets/export/creature_flora/T_TreeCanopyCards.png" id="1_albedo"]
@@ -17,6 +17,8 @@
 resource_name = "M_TreeCanopyCards"
 transparency = 2
 disable_receive_shadows = true
+backlight_enabled = true
+backlight = Color(0.36, 0.46, 0.38, 1)
 alpha_scissor_threshold = 0.5
 vertex_color_use_as_albedo = true
 vertex_color_is_srgb = true

@@ -41,13 +41,934 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={
 "materials": {
+"M_CreatureBoulderA": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_CreatureBoulderA.tres",
+"use_external/path": "res://assets/export/M_CreatureBoulderA.tres"
+},
+"M_CreatureBoulderB": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_CreatureBoulderB.tres",
+"use_external/path": "res://assets/export/M_CreatureBoulderB.tres"
+},
+"M_CreatureBoulderC": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_CreatureBoulderC.tres",
+"use_external/path": "res://assets/export/M_CreatureBoulderC.tres"
+},
 "M_CreatureField": {
 "use_external/enabled": true,
 "use_external/fallback_path": "res://assets/export/M_CreatureField.tres",
 "use_external/path": "res://assets/export/M_CreatureField.tres"
+},
+"M_CreatureTreeLantern": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_CreatureTreeLantern.tres",
+"use_external/path": "res://assets/export/M_CreatureTreeLantern.tres"
+},
+"M_CreatureTreeUmbrella": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_CreatureTreeUmbrella.tres",
+"use_external/path": "res://assets/export/M_CreatureTreeUmbrella.tres"
+},
+"M_MeadowCards": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_MeadowCards.tres",
+"use_external/path": "res://assets/export/M_MeadowCards.tres"
+},
+"M_Pebble": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_Pebble.tres",
+"use_external/path": "res://assets/export/M_Pebble.tres"
+},
+"M_TreeCanopyCards": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://assets/export/M_TreeCanopyCards.tres",
+"use_external/path": "res://assets/export/M_TreeCanopyCards.tres"
+}
+},
+"meshes": {
+"creature_field_ground_Berm0_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm1_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm2_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm3_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm4_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm5_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm6_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Berm7_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover00_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover02_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover03_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover04_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover05_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover06_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover10_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover11_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover12_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover13_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover14_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover15_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover16_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover17_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover21_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover23_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover24_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover25_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover26_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover27_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover30_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover31_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover32_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover33_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover34_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover35_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover36_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover37_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover40_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover41_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover42_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover43_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover44_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover45_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover46_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover47_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover50_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover51_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover52_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover53_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover54_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover55_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover56_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover57_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover60_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover61_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover62_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover64_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover65_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover66_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover67_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover70_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover71_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover72_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover73_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover74_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover75_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover76_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
+},
+"creature_field_ground_Cover77_Cards_mesh": {
+"generate/lightmap_uv": 0,
+"generate/lods": 2,
+"generate/shadow_meshes": 0,
+"lods/normal_merge_angle": 20.0,
+"save_to_file/enabled": false,
+"save_to_file/fallback_path": "",
+"save_to_file/path": ""
 }
 },
 "nodes": {
+"PATH:Cover00_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover02_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover03_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover04_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover05_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover06_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover10_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover11_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover12_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover12_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover13_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover14_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover14_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover15_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover15_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover16_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover17_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover21_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover23_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover24_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover25_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover26_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover26_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover27_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover30_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover31_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover31_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover32_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover33_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover34_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover35_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover35_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover36_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover37_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover40_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover41_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover42_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover43_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover43_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover44_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover45_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover46_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover47_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover50_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover51_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover52_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover53_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover53_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover54_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover54_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover55_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover56_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover57_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover60_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover61_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover62_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover64_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover64_Stones": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover65_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover66_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover67_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover70_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover71_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover72_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover73_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover74_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover75_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover76_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
+"PATH:Cover77_Cards": {
+"mesh_instance/cast_shadow": 0,
+"mesh_instance/visibility_range_end": 60.0
+},
 "PATH:CreatureFieldHills": {
 "mesh_instance/cast_shadow": 0
 }

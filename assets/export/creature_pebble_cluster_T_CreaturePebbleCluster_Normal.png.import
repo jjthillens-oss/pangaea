@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://t1v71plwddox"
-path="res://.godot/imported/creature_pebble_cluster_T_CreaturePebbleCluster_Normal.png-4a46a2ac340fd39a94d68904a706d10f.ctex"
+path.s3tc="res://.godot/imported/creature_pebble_cluster_T_CreaturePebbleCluster_Normal.png-4a46a2ac340fd39a94d68904a706d10f.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "bb18f595937e6dab966303ef5bb61eac"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/export/creature_pebble_cluster_T_CreaturePebbleCluster_Normal.png"
-dest_files=["res://.godot/imported/creature_pebble_cluster_T_CreaturePebbleCluster_Normal.png-4a46a2ac340fd39a94d68904a706d10f.ctex"]
+dest_files=["res://.godot/imported/creature_pebble_cluster_T_CreaturePebbleCluster_Normal.png-4a46a2ac340fd39a94d68904a706d10f.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

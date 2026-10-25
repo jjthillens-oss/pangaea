@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://concysahlyps2"
-path="res://.godot/imported/creature_tree_lantern_T_CreatureTreeLantern_Normal.png-d63f70872742704178ee42866dac15b9.ctex"
+path.s3tc="res://.godot/imported/creature_tree_lantern_T_CreatureTreeLantern_Normal.png-d63f70872742704178ee42866dac15b9.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "9b9fd9a6ef01eccc02a11af871ac9785"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/export/creature_tree_lantern_T_CreatureTreeLantern_Normal.png"
-dest_files=["res://.godot/imported/creature_tree_lantern_T_CreatureTreeLantern_Normal.png-d63f70872742704178ee42866dac15b9.ctex"]
+dest_files=["res://.godot/imported/creature_tree_lantern_T_CreatureTreeLantern_Normal.png-d63f70872742704178ee42866dac15b9.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -6,7 +6,7 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 
 | Asset | Replaces | Triangles (budget) | Materials | Notes |
 | --- | --- | --- | --- | --- |
-| `creature_field_ground` | the field plane | 15 488 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | rev 2: the 172 x 172 m walkable grid (`CreatureField`, 12 800 triangles), relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them, the centre flat for 7.5 m round the nest; plus `CreatureFieldHills` (2 688 triangles), a coarse square ring of hills from 84 m (under the berm) out to 200 m: low rolling hills 1.5 to 4 m over the berm's crest, then from about 120 m an uneven far ridge 2 to 14 m higher (top 16.2 m); it casts no shadow (an import option) |
+| `creature_field_ground` | the field plane | 114 995 (116 000: ground 16 000, cover 55 000, berm 45 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`); the scatter's kit materials (external, see "The field's scatter") | rev 3 (field rev 2b): the 172 x 172 m walkable grid (`CreatureField`, 12 800 triangles), relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them, the centre flat for 7.5 m round the nest; `CreatureFieldHills` (2 688 triangles), a coarse square ring of hills from 84 m (under the berm) out to 200 m: low rolling hills 1.5 to 4 m over the berm's crest, then from about 120 m an uneven far ridge 2 to 14 m higher (top 16.2 m), casting no shadow; and the scatter: 69 `Cover*` objects (54 989 triangles: 748 grass tufts, 120 flower clumps, 81 ferns, 17 pebble patches) and 16 `Berm*` objects (44 518: 8 umbrella and 8 lantern trees, 16 boulders). GLB 5.8 MB |
 | `creature_nest_ring` | the nest torus | 3 000 (4 000) | `M_NestEarth`, `M_NestTwig`, `M_NestStone` (baked) | mound of earth and straw round the sim's 6 m nest: inner 5.35 m, crown 5.85 m, outer 6.45 m, 0.44 m high (0.52 m with its heaps); the inside is clear and flat to 5.3 m |
 | `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.06 x 1.06 x 0.79 m, every vertex within 0.56 m of the pivot horizontally (the top card tips are 0.81 m from it) |
 | `creature_meat_chunk` | the meat box | 604 (1 200) | `M_MeatFlesh` (external, instance tint), `M_MeatBone` (baked) | a torn haunch with a bone end, 0.58 m long, lying on the ground |
@@ -16,6 +16,8 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 | `creature_flower_clump` | nothing (new cover) | 72 (120) | `M_MeadowCards` (external) | kit: three leaf cards at the foot (rosette, clover, fine grass) and three crossed pairs of sprig cards (lilac bells; blue and cream stars; cream umbels with blue bells); 0.34 x 0.36 m, 0.36 m high |
 | `creature_pebble_cluster` | nothing (new cover) | 157 (160) | `M_Pebble` (baked 512, tint #8C8070) | kit: seven half-sunk rounded pebbles of 3 to 12 cm in a patch 0.38 x 0.23 m, 5 cm high |
 | `creature_boulder_a`, `_b`, `_c` | nothing (new; outside the walls only) | 689, 885, 1 182 (700, 900, 1 200) | `M_CreatureBoulderA`/`B`/`C` (baked 512, 1024, 1024) | kit: rounded boulders 1.0, 1.8 and 3.0 m across (0.6, 1.1, 1.9 m high) with a near-level top facet and soft side facets, cool blue-grey stone with the CC0 Rock Boulder Dry scan's grain (recoloured) and a moss cap; each sinks 12% of its height |
+| `creature_tree_umbrella` | nothing (new; outside the walls only) | 2 168 (3 000) | `M_CreatureTreeUmbrella` (baked 1024), `M_TreeCanopyCards` (external, `assets/export/M_TreeCanopyCards.tres`) | kit: `UmbrellaTree`, a bulbous buttressed trunk forking into four limbs and a leader (984 triangles, Godot's LODs), and `UmbrellaCanopy`, 148 two-sided leaf-spray cards in five domed pads (no LODs); 7.6 m tall, 7.8 x 7.5 m across, the crown within 4.1 m of the trunk; roots sink 12 cm |
+| `creature_tree_lantern` | nothing (new; outside the walls only) | 1 724 (2 500) | `M_CreatureTreeLantern` (baked 1024: bark, stalks and pods), `M_TreeCanopyCards` (external) | kit: `LanternTree`, a slender curved trunk with ring scars, six fine stalks and six round pods (1 132 triangles, the pods kept out of the reduction), and `LanternCanopy`, 44 two-sided cards (a domed cap of 14 and a curtain of 30); 4.9 m tall, 3.5 x 3.5 m across, the hem at about 2 m |
 
 Every asset keeps the stage's contract: 1 m = 1 unit, the pivot on the ground (Godot y = 0; the editor pad's is the
 centre of its top face), Blender +Y forward (Godot -Z), no node names read by game code. Sources are in
@@ -153,6 +155,137 @@ teal: the means are now hue 164 to 168 at chroma 5 to 6. The boulders are
 for outside the walls, so their size is not limited by the walk-through rule. The test checks every kit texture both
 ways: no more than 1% of its chromatic texels near a reserved hue, and its mean clear of them.
 
+## The trees (rev 1, PROPOSED)
+
+Two original trees for the berm and the hills, in the Bible's rounded, bold-silhouette language (section 15:
+"rounded organic forms ... bold silhouettes ... rich greens and turquoise habitats"), built by
+`tools/blender/creature_flora.py` like the rest of the kit. They are obstacles, so they stand only outside the walls
+(`max(|x|, |z|) >= 80.5 m`, crown included) until the sim has obstacles (issue #210).
+
+**Wood.** Each trunk is a skeleton of chains (sampled curves with a radius each) skinned by Blender's Skin modifier
+and subdivided three times, so forks join smoothly instead of as tubes poking through each other. Then a root flare
+pushes the lowest metre out in buttress lobes (five on the umbrella, three on the lantern), everything under the
+ground is pressed to a flat foot 10 to 12 cm down (so a tree sits into a slope and never hovers), and a broad noise
+breaks the tube's regularity. The full-detail wood (53k and 230k triangles) is collapse-decimated to its budget and
+its normals and the shader's relief are baked to a 1024 px set (albedo, ORM, normal), as the boulders are. The
+umbrella's bark is a dark warm grey-brown (CIE LCh hue 60 to 70, chroma 7 to 12) in long plates whose grooves turn
+round the trunk with height (the shader's coordinates rotate with z), with paler weathered patches; its mean is
+L 23, C 7, h 65 (the grooves and the 30% AO darken it more than the L 27 to 58 it was painted at). The lantern's
+bark is a smooth pale grey-tan with dark ring scars every 19 cm (L 38 to 71, chroma 6 to 8). No moss on either:
+green on the bark would pull its mean toward the food green, the trap the warm-stone boulders fell into.
+
+**Canopy.** The crowns are two-sided cut-out cards like the meadow cover, on their own atlas:
+`assets/export/creature_flora/T_TreeCanopyCards.png`, 1024 px, a 2 x 2 grid of 512 px cells painted in numpy the
+same way (tapered strokes in CIE LCh, contact shadows, a push-pull fill under the cut-away area): 0 a leaf spray
+(about 150 rounded ovate leaves on a branching stem, hue 155 to 166), 1 a finer, bluer spray (hue 161 to 172), 2 a
+curtain strip (four hanging fronds of narrow leaflets swept toward their tips, hue 166 to 176), 3 a cap (seven
+short fronds fanned from the base). The stems are a dark teal-grey, not brown, so their anti-aliased edges never
+blend through the food green's band. No cell has a chromatic texel near a reserved hue (0.00%); the atlas's mean
+is L 46.5, C 28, h 166. Both sheets of a card carry the same normal, pointing out of the crown's ellipsoid plus
+0.45 x up, so a crown shades as one rounded volume from any side (light on top, shade under it) rather than card
+by card. `assets/export/M_TreeCanopyCards.tres` is a `StandardMaterial3D` (so the field can carry merged trees):
+alpha scissor 0.5, back faces culled, the `COLOR_0` jitter, roughness 0.85, `disable_receive_shadows` (a card's
+lower sheet lies 1.2 mm under its upper one, in its own card's shadow) and a leaf-green backlight (0.36, 0.46,
+0.38). The first engine frames showed the umbrella's crown in black and mint blotches. An A/B in the same pose
+(`docs/evidence/credit-creature-world-art/trees_crown_shadow.jpg`) showed received shadows were only a small part
+of that; the rest is the crown's own shaded side: the pads' sloping shoulders face away from a sun behind the tree,
+and with no light through the leaves they went near black (most in Compatibility, whose ambient is weak). The
+backlight lets the sun through the leaves, as real foliage does, so a crown seen against the light is a dim leaf
+green. The crowns still cast their cut-out shadows. The canopy meshes keep no LODs (an import option; Godot's LOD
+pass collapses whole cards), the wood keeps Godot's generated LODs.
+
+**`creature_tree_umbrella`** (7.6 m): a bottle trunk that swells to about 0.6 m in radius at 1.5 m, narrows to a
+fork at 4.5 m, and carries a leader and four limbs to five flat-topped pads (one high in the middle, four lower
+round it), each a low dome of leaf-spray cards in four rings: three near-flat cards on top, rings sloping out and
+down, and a fringe of sprays that droop 55 to 72 degrees. The silhouette is a broad, scalloped parasol. The card
+GLB links the atlas by URI (`creature_flora.link_atlas`); the baked bark stays embedded (the GLB is 1.9 MB).
+
+**`creature_tree_lantern`** (4.9 m): a slender trunk that rises in a slow curve and leans its crown out over its
+foot, topped by a cap of fourteen fronds that arch over a curtain of thirty long frond strips. The strips leave
+the cap's rim 50 to 58 degrees down and fall to near vertical, so the crown is a lampshade with its hem about 2 m
+off the ground and the trunk showing under it. Six round pale lilac-cream pods (LCh L 78 to 87, chroma 9 to 12,
+hue 302 to 308: no amber, which reads as fruit) hang on fine pale stalks inside the curtain, down to about its hem,
+like lanterns in a shade. The pods are a vertex group the decimation leaves alone, so they stay round. The first
+build of this tree failed its gates and was rebuilt (rev 2 of the build, still record revision 1): its curtain had
+28 strips of three thin fronds that flared out almost flat from the cap, so it read as a sparse palm and thinned to
+nothing far off, and its pods were decimated into faceted diamonds on thick ringed stalks.
+
+## The field's scatter (field rev 2b, record revision 3, PROPOSED)
+
+The kit is composed into the field itself, with no game code (lead decision 6, route A): `assets/export/creature_field_ground.glb`
+carries merged copies of the kit as extra root meshes beside `CreatureField` and `CreatureFieldHills`, so the world,
+which instances that one GLB, draws them. `tools/blender/creature_flora.py` (`build_field_scatter`, called by the
+field's builder after its tiles are written) imports each kit GLB back into Blender, reads its meshes (positions,
+corner normals, UVs, the cards' jitter colours, material per face) and copies them, turned, scaled and set on the
+ground by a ray cast down onto the field and hills meshes. The pinned Godot's glTF importer has no
+`EXT_mesh_gpu_instancing` (the extensions named in the 4.7.2 binary are KHR_animation_pointer, KHR_collision_shapes,
+KHR_lights_punctual, KHR_materials_emissive_strength, KHR_materials_unlit, KHR_node_visibility,
+KHR_physics_rigid_bodies, KHR_texture_basisu, KHR_texture_transform, EXT_texture_webp and Godot's own), so Blender's
+GPU-instance export would import as plain nodes; merged chunks it is.
+
+**Cover** (walk-through, inside the walls): 8 x 8 chunks of 20 m, each up to two objects, `CoverIJ_Cards` (tufts,
+ferns, flowers; `M_MeadowCards`) and `CoverIJ_Stones` (pebbles; `M_Pebble`), each object's origin at its chunk's
+centre, so a visibility range measured from the origin or from the box's centre ends at the same distance. Every
+piece stays inside 78.3 m (the berm starts rising at 79 m), keeps every vertex out of the nest's 8 m, and stands
+under 0.45 m (its height scale is capped; it may be widened by up to 1.5 x, never made taller). Placement is
+seeded (`SCATTER_SEED` 6100, one stream a chunk) and follows the ground the player sees: the shader's own patch mask
+is sampled the way `creature_field.gdshader` samples it (rotated, domain-warped, bilinear, repeating), so bare earth
+carries pebbles and a few tufts, its edges tufts, and the turf dense grass beds (12 to 22 tufts), fern beds and
+flower patches (more flowers where the shader's lush mask is high). Clusters thin out with distance from the nest:
+a lush home meadow round the nest, open plain toward the walls (cluster weight 0.2 + 3.2 exp(-(r / 28 m)^2)). Whole
+clusters are dropped in a seeded order until the cover fits its budget. The cover casts no shadow and draws within
+60 m of its chunk's centre (import options); its card meshes keep no LODs.
+
+**Berm** (obstacles, outside the walls): 8 sectors by angle, each `BermK_Cards` (the trees' canopies,
+`M_TreeCanopyCards`, no LODs) and `BermK_Wood` (bark and boulders, Godot's LODs). Each sector has a grove of an
+umbrella and a lantern tree on the hills just past the berm (87 to 99 m; umbrellas scaled 0.95 to 1.3, lanterns 0.9
+to 1.2), standing only where the ground within 1.2 m of the trunk varies by 0.45 m or less, and three or four
+boulders on the berm's crest and outer slope, some at the grove's foot, sunk to the lowest ground under them. A
+third tree is added per sector if the budget allows; it is dropped before any boulder. Every vertex of a berm piece
+stands at `max(|x|, |z|) >= 81 m` (the art test's 80.5), so nothing a creature could walk into stands inside the walls
+(issue #210 would let them in).
+
+**Materials.** The merged copies carry stand-in materials with no images, named as the kit's own (`M_MeadowCards`,
+`M_Pebble`, `M_CreatureBoulderA`/`B`/`C`, `M_TreeCanopyCards`, `M_CreatureTreeUmbrella`, `M_CreatureTreeLantern`),
+so the field GLB embeds no copy of a kit texture. `--import` maps each to a material resource file in `assets/export/`: the card
+materials to the kit's own, the baked ones to new `StandardMaterial3D` files that read the textures Godot extracted
+from each kit GLB, as that GLB's material does (albedo times its base colour factor, roughness from the ORM's green,
+the normal map; metallic is 0 throughout). `tests/test_assets.gd` stays green unchanged: the field's one
+`ShaderMaterial` is still `M_CreatureField`, and every other surface has an albedo texture.
+
+**Load cost.** The first build added about 0.6 s to the world's setup (the scene test read 2 862 ms against its
+3 000 ms budget). The probe showed why: the kit's twenty textures were imported lossless, and each decoded on the
+CPU at load, 20 to 40 ms each, about 330 ms in all, with the field scene itself. `--import` now sets the kit's baked
+textures and both card atlases to VRAM compression (S3TC/RGTC on desktop): they load in about 1 ms each, and the
+scene test reads 2 596 (2 635 with the final cover) ms. That also changes how the kit assets themselves load (the same files); their look in
+the frames is unchanged at gameplay distance.
+
+**Measured** (2026-10-25, the real `game/scenes/creature/creature_world.tscn`, seed 4242, the quadruped, HUD
+hidden; `tools/godot/creature_world_gameplay_shots.gd -- --perf`; Compatibility on llvmpipe, a CPU rasteriser, on a
+4-CPU container shared with other jobs, so frame times carry about 10% noise between runs):
+
+| | Before (field rev 2a, no scatter) | After (field rev 2b) |
+| --- | --- | --- |
+| world_spawn | 240 draw calls, 109.7k primitives, 803 to 843 ms a frame | 264 draw calls, 141.5k primitives, 880 ms |
+| world_roam | 101 draw calls, 80.7k primitives, 653 to 679 ms | 120 draw calls, 102.7k primitives, 542 ms |
+| world_edge, world_treeline | 7 and 115 draw calls, 42.7k and 106.5k primitives | 19 and 146 draw calls, 53.0k and 134.4k primitives |
+| setup_ms total, in the shot tool (xvfb) | 2 435 to 2 464 | 2 132 (the first, lossless build: 2 971) |
+| setup_ms total, `tests/test_creature_world_scene.gd` (headless, budget 3 000) | 2 314 to 2 504 (earlier runs) | 2 635 (the first, lossless build: 2 862) |
+| field GLB | 351 KB | 5.8 MB (budget 6 MB in the brief, 8 MB from the lead) |
+
+On a real GPU the extra 20 to 30 draw calls and 20 to 30k primitives are small; on llvmpipe the frame time stays
+within its noise. A texture load probe (headless, scratch) read the field's 25 textures in 426 ms before the VRAM
+change and 88 ms after (the remaining cost is the field's own lossless tiles, untouched here).
+
+**What it looks like.** `docs/evidence/credit-creature-world-art/scatter_world_*_compat.jpg` (before and after at the
+same poses) and `scatter_fplus.jpg` (Forward+): from the gameplay camera the home meadow shows grass beds, ferns and
+flower patches round the creature and across the plain, the bare earth keeps a few tufts and stones, and the skyline
+carries the trees and boulders on the berm with the hills behind. It is a meadow with clumps, not a carpet: 55k
+triangles of knee-high cards cannot cover 25 000 m², so the far field is deliberately open plain (lead decision 4
+keeps everything taller out of the walls). The fruit bushes, once the world draws them (issue #195), add the field's
+tallest dressing.
+
+
 ## Regenerating
 
 ```bash
@@ -163,12 +296,19 @@ godot --headless --path . --import                                # picks the ma
 python tools/blender/render_production.py creature_nest_ring creature_fruit_bush creature_meat_chunk creature_editor_room   # review sheets
 python tools/blender/render_world_review.py creature_fruit_bush [...]   # gate views: grey (grazing key), beauty, close-up, unlit base colour, card alpha
 python tools/blender/render_world_review.py creature_grass_tuft creature_fern_clump creature_flower_clump creature_pebble_cluster creature_boulder_a creature_boulder_b creature_boulder_c
+python tools/blender/render_world_review.py creature_tree_umbrella creature_tree_lantern
 ```
+
+The field's scatter merges the kit's exported GLBs, so build the kit before the field (`--only creature_field_ground`
+builds any kit GLB that is missing first); rebuild the field after any kit asset changes.
 
 `tools/godot/world_dressing_shot.gd -- --kit` stages the kit in the stage's light: the four cover pieces in a row
 at 1.6 m and at the gameplay camera's distance, a 9 m patch of mixed cover, the boulders up close (on the turf, for
 review only) and on the berm past the east wall from 20 m inside. Pieces stand on the field's relief (the nearest
-vertices of `CreatureField`).
+vertices of `CreatureField`). `-- --trees` stages the two trees (a pair at 12 m, each from under its crown, both on
+the berm from 20 m inside and from the nest); `--bare-field` hides the field's own scatter so a kit review sees only
+what it places. The gameplay shots add `world_edge` (the berm, its trees and boulders and the hills from just
+inside the east wall) and `world_treeline` (from the nest across the field).
 
 In-engine screenshots: `tools/godot/creature_world_gameplay_shots.gd` runs the real `game/scenes/creature/creature_world.tscn`
 (and `game/scenes/creature/creature_editor.tscn` with `--editor`) and saves gameplay frames, close-ups and the editor's zoom extremes, with
@@ -288,8 +428,9 @@ The owner may also relax the 25-degree food-green gap for creature-stage ground 
 ## Next
 
 Straw tufts and a worn path for the nest, two or three bush and meat variants (a second leaf atlas or card
-layout would do for the bush), and walls or a backdrop for the editor room beyond its pad. Two original trees for
-the berm, then the field's scatter, which composes the kit (cover inside the walls, boulders and trees outside).
+layout would do for the bush), and walls or a backdrop for the editor room beyond its pad. The trees and the field's
+scatter are in (above). Once the sim has obstacles (issue #210), trees and boulders can stand inside the walls,
+which is where the field would gain most of the lush read the cover's height and budget cannot give it.
 Found while building the kit: `assets/export/M_BushCards.tres` sets `transparency = 1`, which in Godot 4 is alpha
 blending, not scissor (2), so the bush's cards are sorted and write no depth; the bush revision should set 2 (the
 kit's `M_MeadowCards` does, and its test checks it).

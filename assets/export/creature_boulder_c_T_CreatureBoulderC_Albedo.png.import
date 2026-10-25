@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dqvgh5w5gvn3u"
-path="res://.godot/imported/creature_boulder_c_T_CreatureBoulderC_Albedo.png-c66bae8c79a32d77df8db9a1fa75237c.ctex"
+path.s3tc="res://.godot/imported/creature_boulder_c_T_CreatureBoulderC_Albedo.png-c66bae8c79a32d77df8db9a1fa75237c.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "606b788a22ce809c336cb8dfd5ce4949"
@@ -14,11 +15,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/export/creature_boulder_c_T_CreatureBoulderC_Albedo.png"
-dest_files=["res://.godot/imported/creature_boulder_c_T_CreatureBoulderC_Albedo.png-c66bae8c79a32d77df8db9a1fa75237c.ctex"]
+dest_files=["res://.godot/imported/creature_boulder_c_T_CreatureBoulderC_Albedo.png-c66bae8c79a32d77df8db9a1fa75237c.s3tc.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

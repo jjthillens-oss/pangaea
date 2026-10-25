@@ -23,9 +23,8 @@ opened and looked at. The assets the job has not revised yet keep their baseline
 | 3 Neutral lighting | pass | The tiles carry no baked light: the turf albedo's mean is L 46, C 28, h 147 and the earth's L 45, C 20, h 70 (`tests/test_creature_world_art.gd` prints them); light and shade come from the scene. The same field reads as land under both renderers' light and under main's light (`env_*.jpg`, left halves), so the look does not depend on one light rig. |
 | 4 Export and Godot | pass (Forward+); Compatibility reads as land but overexposed | Forward+ (`env_world_spawn_fplus.jpg`, `env_world_low_fplus.jpg`, right halves): a sunlit meadow with earth patches, low hills past the walls and a far ridge fading into haze; the skyline is land (horizon dE 17), turf on screen L 57 to 61, C 21 to 26, h 144 to 150. Compatibility (`env_world_roam_compat.jpg`, `env_world_low_compat.jpg`): the same land read and skyline (dE 35 to 38), turf h 152 to 154, but the shadowed sun's additive sRGB pass lifts the lit turf and hill faces to a pale mint (L 67 to 74); that is the renderer (docs/TOOLCHAIN.md). The import maps `M_CreatureField` and switches the hills' shadow off (`PATH:CreatureFieldHills`); the contract test checks both. One extra draw call and 2.7k primitives against rev 1. |
 
-Not covered yet: the field's scatter (grass tufts, ferns, flowers, pebbles inside the walls; boulders and trees on
-the berm), which comes with the kit assets, and the Gate 4 roam frame in Forward+ (a 240-frame walk on lavapipe takes
-about two hours; the roam frame was judged in Compatibility).
+The field's scatter (rev 3, field rev 2b) has its own section below. Not covered: the Gate 4 roam frame in Forward+ (a
+240-frame walk on lavapipe takes about two hours; the roam frame was judged in Compatibility).
 
 ## The flora and rock kit, rev 1 (2026-10-25)
 
@@ -91,3 +90,68 @@ Remaining: (1) the moss cap is the same on all three and uniform over the top; a
 thinner cap on one of them would make a group read less stamped; (2) the stone is a different rock from the warm
 pebbles and nest stones (deliberate, for the hue rule; the owner may prefer warm stone with less moss); (3) alone on
 the berm at 20 m they read small: they need grouping with trees and each other (step 10).
+
+## The trees, rev 1 (2026-10-25)
+
+Built by `tools/blender/creature_flora.py`; see "The trees" in `docs/art/creature_world_dressing.md`. Godot frames:
+`tools/godot/world_dressing_shot.gd -- --trees --bare-field` (both trees on the turf at about 12 m and from under
+each crown, set inside the walls for this review only, then on the berm past the east wall from 20 m inside and
+from the nest), Compatibility on llvmpipe in the stage's own light; and the trees in the game itself, on the berm,
+in the field's scatter (below). Evidence: `docs/evidence/credit-creature-world-art/trees_pair.jpg`,
+`trees_close.jpg` and `trees_crown_shadow.jpg`.
+
+### creature_tree_umbrella
+
+2 168 triangles (budget 3 000): wood 984 (decimated from 53 184; surface error 4.4 cm on a 7.6 m tree), canopy 148
+two-sided cards (1 184). Materials: `M_CreatureTreeUmbrella` (baked Albedo, ORM, Normal at 1024 px) and
+`M_TreeCanopyCards` (external `StandardMaterial3D`; the shared 1024 px canopy atlas, linked by URI). GLB 1.9 MB.
+
+| Gate | Verdict | Observation |
+| --- | --- | --- |
+| 1 Shape | pass | `docs/art/renders/production/creature_tree_umbrella_gates.jpg` (grey front, side, three-quarter, top; grazing key): a bottle trunk swelling low and narrowing to a fork, five buttress roots flaring into the ground, four limbs and a leader joining the trunk in smooth unions (the skin modifier; no tube poking through another), and five domed pads that stack into a broad, scalloped parasol. From the side the pads read as separate layers with shade between them; from above as a five-lobed crown. |
+| 2 Materials | pass | Beauty, close-up and unlit: plated bark whose grooves run up the trunk with a slight spiral, dark warm grey-brown with paler weathered plates; the leaf sprays read as clusters of rounded leaves with a mid-rib, teal-green, the finer bluer spray mixed in. No dark fringe on the cut-outs. Hue: 0.00% of the atlas's and the bark's chromatic texels near a reserved hue; means: canopy L 46.5 C 28 h 166, bark L 23 C 7 h 65 (the test prints them). |
+| 3 Neutral lighting | pass | The bark's albedo is base colour plus the shared 30% occlusion darkening; the cards carry no light, only a per-card brightness jitter (0.74 to 1.0, the fringe darker). Shade on the crown comes from its normals in the scene. |
+| 4 Export and Godot | pass (Compatibility) | `trees_pair.jpg` (12 m), `trees_close.jpg` (under the crown, 4 m): the parasol silhouette, the bottle trunk and the plated bark hold at both distances; the crown casts a dappled cut-out shadow. The first engine frames showed the crown in black and mint blotches; `trees_crown_shadow.jpg` (an A/B in one pose) shows received shadows were only a small part of it (the canopy now receives none), and the rest was the crown's own shaded side seen against the light, which the canopy's backlight now lights a dim leaf green (frames below). On the berm at 20 to 100 m (the field frames below) it is the skyline's main shape. Import: the canopy mesh keeps no LODs (the test reads the mapping, the twin sheets and that both sheets share one normal). Forward+ not rendered for the trees (lavapipe frames were spent on the field). |
+
+Remaining: (1) the bark is darker than painted (mean L 23): in deep shade the trunk is nearly black-brown; (2) the
+pads' undersides show see-through gaps to the cards above from right under the tree (only seen if a creature ever
+stands under one, which the walls prevent today); (3) in Compatibility the lit sprays go pale mint (the renderer's
+overexposed shadowed sun, docs/TOOLCHAIN.md); Forward+ will be greener.
+
+### creature_tree_lantern
+
+1 724 triangles (budget 2 500): wood, stalks and pods 1 132 (decimated from 229 632 with the pods kept whole; surface
+error 8.2 cm, at the hub where the six stalks meet), canopy 44 two-sided cards (592). Materials:
+`M_CreatureTreeLantern` (baked at 1024 px) and `M_TreeCanopyCards`.
+
+| Gate | Verdict | Observation |
+| --- | --- | --- |
+| 1 Shape | pass (rev 2 of the build) | `docs/art/renders/production/creature_tree_lantern_gates.jpg`: a slender trunk rising in a slow curve with three small root flares, a domed cap, and a dense curtain that falls from the cap's rim like a lampshade, hem about 2 m off the ground. The first build failed this gate (its frames were not kept): 28 strips of three thin fronds flaring out almost flat from a small cap read as a sparse palm and would thin to nothing far off, and the decimation cut the pods into faceted diamonds on thick, ringed stalks. Rev 2: thirty strips of four fuller fronds leaving the rim 50 degrees down, a cap of fourteen arching fronds, round pods kept out of the reduction, fine pale stalks. |
+| 2 Materials | pass | Pale grey-tan bark with dark ring scars every 19 cm; turquoise fronds lighter toward their tips; pale lilac-cream pods. Hue: 0.00% near a reserved hue; the wood set's mean is near neutral (L 46, C 3.4). |
+| 3 Neutral lighting | pass | As the umbrella's: baked base colour with occlusion only; shade from the crown normals. |
+| 4 Export and Godot | pass (Compatibility) | `trees_pair.jpg`, `trees_close.jpg`: at 12 m a lampshade crown on a slim trunk, from under it the pods hang inside the shade like lanterns; on the berm (the field frames) the curtain keeps a solid bell outline. |
+
+Remaining: (1) the cap sits a little apart from the curtain's top, so from above a ring of gap shows (the game's
+camera does not look down on the berm's trees); (2) the pods hide inside the curtain except from below or close by;
+(3) Forward+ not rendered.
+
+## creature_field_ground, rev 3 (field rev 2b: the scatter, 2026-10-25)
+
+114 995 triangles (budget 116 000, PROPOSED: the ground's 16 000 plus cover 55 000 and berm 45 000): the ground as in
+rev 2 (15 488), 69 `Cover*` objects (54 989) and 16 `Berm*` objects (44 518). Materials: `M_CreatureField` and the
+kit's eight, each mapped to an external material file (the field GLB embeds no texture). GLB 5.8 MB. The ground itself is unchanged
+from rev 2, so its gates above stand; these rows judge the scatter.
+
+| Gate | Verdict | Observation |
+| --- | --- | --- |
+| 1 Shape | pass | The pieces are the kit's own meshes (their gates above), turned, scaled under 0.45 m and widened up to 1.5 x; the builder checks every vertex (cover inside 78.3 m, out of the nest's 8 m, under 0.45 m over the relief; berm at `max(|x|, |y|)` of 81 m or more) and the art test checks the same rules on the imported GLB. In the frames nothing floats or sinks: pieces sit on the field's surface by ray cast, trees on near-level ground on the hills, boulders sunk to the lowest ground under them. |
+| 2 Materials | pass | Every scatter surface draws with a kit material (the test reads each surface's material path): the cards with `M_MeadowCards` and `M_TreeCanopyCards`, the rest with material files that read the kit's extracted baked textures. In the frames the cover, trees and boulders look as they do as kit assets (`scatter_world_roam_compat.jpg`, `scatter_world_edge_compat.jpg`). |
+| 3 Neutral lighting | pass | Nothing new is baked: the merged copies keep the kit's UVs, normals and textures; the cards' jitter is multiplied by a per-piece brightness of 0.88 to 1.0 only. |
+| 4 Export and Godot | pass | `docs/evidence/credit-creature-world-art/scatter_world_spawn_compat.jpg`, `_roam_`, `_low_`, `_edge_`, `_treeline_` (before and after, Compatibility) and `scatter_fplus.jpg` (Forward+): grass beds, ferns and flower patches round the nest and across the plain, a treeline of umbrella and lantern trees with boulders on the berm, the hills behind. The import maps every stand-in material; the cover casts no shadow and stops drawing 60 m from its chunk's centre; card meshes keep no LODs (the test checks the shadow, the range, the materials, the walls rule, the budgets and the GLB's size). Setup and frame cost are in `docs/art/creature_world_dressing.md` ("The field's scatter"): the world's setup is back under its pre-scatter time once the kit's textures load VRAM-compressed. |
+
+Three largest remaining differences from the target (a lush, Spore-quality field): (1) the cover is a meadow with
+clumps, not a carpet: at 55k triangles of knee-high cards only the home meadow round the nest is dense, and the far
+field is open plain; (2) nothing tall stands inside the walls (trees and boulders wait on sim obstacles, issue #210),
+so beyond the cover the field's only tall dressing is the food, whose bushes the world does not draw yet (#195); (3)
+the cover pops in and out at 60 m in whole 20 m chunks (no visibility fade is set); against the turf it
+is hard to see in the frames, but a player walking may notice it.

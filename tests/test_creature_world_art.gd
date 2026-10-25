@@ -632,3 +632,53 @@ func test_tree_colours_keep_the_hue_gaps_texel_by_texel() -> void:
 				check(share <= CLASH_MAX, "%s's wood keeps the hue gaps texel by texel (%.2f%% clash)" % [id, share * 100.0])
 				_check_hue("%s wood mean (a far mip)" % id, _mean_linear(sm.albedo_texture) * tint)
 		root.free()
+
+
+# --- The field's scatter (field rev 2b) ------------------------------------------------------------------------
+
+func test_the_field_scatter_keeps_its_import_rules_materials_and_budgets() -> void:
+	var root := _load(FIELD)
+	var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(FIELD_RECORD))
+	var scatter: Dictionary = record.get("scatter", {})
+	check(not scatter.is_empty(), "the field's record has its scatter block")
+	var cover_nodes := 0
+	var berm_nodes := 0
+	var allowed := {}
+	for m: String in SCATTER_TRES:
+		allowed["res://assets/export/%s.tres" % m] = true
+	for mi in _mesh_instances(root):
+		var n := String(mi.name)
+		if not (n.begins_with("Cover") or n.begins_with("Berm")):
+			continue
+		for s in mi.mesh.get_surface_count():
+			var mat := mi.mesh.surface_get_material(s)
+			var path := mat.resource_path if mat != null else "none"
+			check(allowed.has(path), "%s surface %d draws with a kit material (%s)" % [n, s, path])
+			if n.ends_with("_Cards"):
+				check(path in ["res://assets/export/M_MeadowCards.tres", "res://assets/export/M_TreeCanopyCards.tres"], "%s draws its cards with a card material (%s)" % [n, path])
+		if n.begins_with("Cover"):
+			cover_nodes += 1
+			check(mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s casts no shadow (cover)" % n)
+			check(mi.visibility_range_end > 0.0 and mi.visibility_range_end <= SCATTER_VIS_MAX, "%s stops drawing within %.0f m (%.1f)" % [n, SCATTER_VIS_MAX, mi.visibility_range_end])
+			var centre := mi.mesh.get_aabb().get_center()
+			check(absf(centre.x) <= 10.6 and absf(centre.z) <= 10.6, "%s's origin sits at its chunk's centre (mesh centre %s)" % [n, centre])
+		else:
+			berm_nodes += 1
+			var inside := 0
+			for v in _vertices(mi, root):
+				if maxf(absf(v.x), absf(v.z)) < OBSTACLE_MIN_M:
+					inside += 1
+			check(inside == 0, "%s keeps every vertex outside the walls at +-%.1f m (%d inside)" % [n, OBSTACLE_MIN_M, inside])
+	check(cover_nodes >= 32, "the cover is chunked (%d objects)" % cover_nodes)
+	check(berm_nodes >= 8, "the berm carries trees and boulders (%d objects)" % berm_nodes)
+	var cover: Dictionary = scatter.get("cover", {})
+	var berm: Dictionary = scatter.get("berm", {})
+	check(int(cover.get("triangles", 1 << 30)) <= int(cover.get("budget", 0)), "the cover keeps to its triangle budget (%s of %s)" % [cover.get("triangles"), cover.get("budget")])
+	check(int(berm.get("triangles", 1 << 30)) <= int(berm.get("budget", 0)), "the berm keeps to its triangle budget (%s of %s)" % [berm.get("triangles"), berm.get("budget")])
+	var kit: Dictionary = scatter.get("kit", {})
+	for id: String in ["creature_grass_tuft", "creature_fern_clump", "creature_flower_clump", "creature_pebble_cluster", "creature_tree_umbrella", "creature_tree_lantern"]:
+		check(int((kit.get(id, {}) as Dictionary).get("pieces", 0)) > 0, "the scatter places %s" % id)
+	var bytes := FileAccess.get_file_as_bytes(FIELD).size()
+	print("    field GLB: %.2f MB, cover %s and berm %s triangles in %d + %d objects" % [bytes / 1048576.0, cover.get("triangles"), berm.get("triangles"), cover_nodes, berm_nodes])
+	check(bytes <= FIELD_GLB_MAX_BYTES, "the field GLB stays under %d MB (%.2f)" % [FIELD_GLB_MAX_BYTES / 1048576, bytes / 1048576.0])
+	root.free()
