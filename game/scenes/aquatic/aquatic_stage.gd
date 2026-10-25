@@ -269,3 +269,9 @@ func crawl_ashore() -> void:
 	lineage["stayed"] = false
 	save_progress()
 	ashore_requested.emit()
+
+
+## The arrival from the cell stage (Main, after the pool's edge opened to the sea): the entry card with `text` first.
+func show_arrival(text: String) -> void:
+	hud.show_entry_card(lineage)
+	hud.card_label.text = text + "\n\n" + hud.card_label.text

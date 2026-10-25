@@ -137,8 +137,30 @@ func _run() -> void:
 	var stayed: Variant = JSON.parse_string(FileAccess.get_file_as_string(slot))
 	_check(stayed is Dictionary and (stayed.lineage_history as Array).any(func(e): return e.get("event") == "stayed_in_the_sea"),
 			"the lineage records that it stayed in the sea")
-	await _escape()
-	_check(main.aquatic_stage == null, "Escape leaves again")
+
+	# Back out and into the shore: the offer opens again, and Crawl onto land carries the lineage to the land.
+	sim.player.pos = Vector3(float(shore[0]), -4.0, float(shore[2]) - 20.0)
+	await _frames(SETTLE_FRAMES)
+	sim.player.pos = Vector3(float(shore[0]), float(shore[1]), float(shore[2]) - 1.0)
+	await _frames(SETTLE_FRAMES)
+	_check(stage.shore_offer != null, "the offer opens again on the next visit")
+	if stage.shore_offer == null:
+		return
+	(stage.shore_offer.find_child("Crawl", true, false) as Button).pressed.emit()
+	await _frames(SETTLE_FRAMES * 3)
+	_check(main.aquatic_stage == null and main.creature_stage != null and main.screen == main.creature_stage,
+			"Crawl onto land opens the creature stage")
+	var ashore: Variant = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	_check(ashore is Dictionary and String(ashore.era) == "terrestrial", "the slot's era is terrestrial")
+	if ashore is Dictionary:
+		var events: Array = (ashore.lineage_history as Array).map(func(e): return e.get("event"))
+		_check(events.back() == "came_ashore" and "stayed_in_the_sea" in events, "the lineage stayed once, then came ashore: %s" % [events])
+		_check(String(ashore.lineage_id) == founded.save.lineage_id and not (ashore.creature as Dictionary).is_empty(),
+				"the same lineage, now with a land creature")
+		_check(not (ashore.aquatic as Dictionary).is_empty(), "the sea's record is kept")
+	_check(EraTransition.has_checkpoint(slot, "terrestrial"), "the sea is kept as a checkpoint")
+	main.show_start()
+	await _frames(SETTLE_FRAMES)
 
 
 func _escape() -> void:

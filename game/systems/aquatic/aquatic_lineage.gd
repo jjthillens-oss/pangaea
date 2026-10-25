@@ -90,7 +90,7 @@ static func write(slot_path: String, lineage: Dictionary, sim: AquaticSim) -> Er
 static func last_path_event(save: SaveGame) -> String:
 	for i in range(save.lineage_history.size() - 1, -1, -1):
 		var e: Variant = save.lineage_history[i]
-		if e is Dictionary and String(e.get("event", "")) in [STAYED_EVENT, ShoreLink.EVENT]:
+		if e is Dictionary and String(e.get("event", "")) in [STAYED_EVENT, String(ShoreLink.link("aquatic").get("event", "came_ashore"))]:
 			return String(e.event)
 	return ""
 
