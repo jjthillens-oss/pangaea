@@ -34,13 +34,13 @@
 #             second growth to size 4 (bead clusters, the engulfer preview), then it saves
 #   band_up_continue: a new process continues that slot at size 4 with the old band ready, the
 #             cradle, the preview and the places line as saved
-#   shore:    a new omnivore at the top size fills its ring and the shore rises (in the save and the
-#             slot, shown, its arrow and message); teleported onto it, "Crawl onto land?" pauses the
-#             pool, Stay in the water holds the offer until the cell has been out and back, and Crawl
-#             ashore opens the creature stage: the slot on land with the same lineage and points,
-#             and the checkpoint from the water beside it
-#   shore_continue: a new process: the title offers Back to the water, Continue opens the creature
-#             stage, and Back to the water brings the cell back at the shore from the checkpoint
+#   shore:    a new omnivore at the top size fills its ring and the sea edge rises (in the save and the
+#             slot, shown, its arrow and message); teleported onto it, "Swim out to sea?" pauses the
+#             pool, Stay in the pool holds the offer until the cell has been out and back, and Swim out
+#             to sea opens the Aquatic stage: the slot in the sea with the same lineage and points,
+#             and the checkpoint from the pool beside it
+#   shore_continue: a new process: the title offers Back to the pool, Continue opens the Aquatic
+#             stage, and Back to the pool brings the cell back at the sea edge from the checkpoint
 #   creature_build: the creature stage (--creature) on its own store under user://smoke/: the editor
 #             grows a pair of neck limbs, adds a maw, eyes and feet, picks a swatch and Done enters
 #             the world (the body, colour, points and title); the player eats the nearest fruit, bites
@@ -53,6 +53,10 @@
 #             run; its own settings file and slots under user://smoke/menus
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests), starts it
 #             and checks it holds the endless content
+#   aquatic: the Aquatic stage slice (--aquatic) on a hunter cell lineage saved under user://smoke/: the converted
+#             body and lineage, a swim down the route, mating opens the fin and tail editor, Done makes generation 2,
+#             Escape saves and returns to the title, the slot holds the v5 aquatic block beside the cell's data, and
+#             the stage opens again with the same fish, generation, finds, points and place
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
 # Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each
@@ -93,6 +97,7 @@ bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=shore_continue --world=endless --slot=user://smoke/shore.json 2>&1 | tee builds/smoke/shore_continue.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/aquatic_smoke.gd -- --aquatic --slot=user://smoke/aquatic.json --seed=4250 2>&1 | tee builds/smoke/aquatic.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

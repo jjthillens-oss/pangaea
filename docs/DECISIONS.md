@@ -788,6 +788,23 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+
+## 2026-10-25 · Creature parts are found in the world (PROPOSED; IMPLEMENTED)
+Spore's creature stage hands out new parts as the creature explores; the coordinator gave this thread world part
+pickups (2026-10-25) under Joshua's "Spore but better" direction.
+
+- **Starter set.** A new lineage can use 17 starter parts (`creature_stage.json` "pickups" "starter_parts":
+  basic mouths, eyes, feet, hands, claws, horns, spikes, a crest, a fin, a fluke, feelers). The other part types are
+  greyed out in the editor's palette, sorted after the open ones, and refused as a tool until found.
+- **Pickups.** Each world visit lays out 4 of the lineage's unfound parts away from the nest, drawn from their own
+  seeded stream so the rest of the field is unchanged. Each is the part's own model turning over a pale gold light
+  column. Walking over one finds it: a notice names it, it is worth 3 points, and it is in the editor from then on.
+- **Save.** No new key and no schema change: a find is a lineage event, `{"event": "found_part", "part",
+  "creature_generation", "source"}` in `lineage_history` (Bible section 18: the lineage history records
+  discoveries). A part on the body is always usable, and committing a preset or random body records its unfound
+  parts as finds with source "preset".
+- Rules: `game/domain/creature/part_unlocks.gd`; tests: `tests/test_creature_part_unlocks.gd`.
+
 ## 2026-10-24 · The twelve preset creatures read as their archetypes (PROPOSED; IMPLEMENTED)
 
 - Joshua (23:40) asked for the default creatures to look like what they are, the dragon most of all, and still
@@ -1475,6 +1492,9 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
   landmark at the screen's edge).
 
+## 2026-10-25 · Save schema v5: the Aquatic stage's progress (CONFIRMED; IMPLEMENTED)
+Joshua chose "Yes, add aquatic saves (v5)" on 2026-10-25 02:48 (aquatic plan decision 2). Save v5 adds one top-level key, `aquatic`: `{}` until the lineage swims in the Aquatic stage, then the fish's body (AquaticBody), generation, history of parents, discovered zones and sites, relations per species (standing and rapport), meals, position, heading, energy and health. Points stay in `adaptation_points`. The v4 -> v5 migration adds the empty block and changes nothing else; every v4 key is unchanged. PersistenceService checks the block's body against `game/data/aquatic/aquatic_rules.json` on every load and save, so a fish that breaks the rules is refused like a bad creature. The stage writes the slot on a new generation, a find, a relation change, a death, on leaving and on closing the window, re-reading the slot first so the cell's and creature's data are kept; a slot that will not load is never written, and an empty slot gets a new lineage. The `era` field is not changed by the Aquatic stage: when the cell stage leads into the sea is still plan decision 3. Reason: Bible §18 (lineage, discoveries and relationships persist). Impact: a build before v5 refuses a v5 save as newer. Tests: `tests/test_persistence.gd` (v5 section), `tests/test_aquatic_sim.gd`, the aquatic smoke's reload check.
+
 ## 2026-10-25 · Cell to creature link: the cell crawls onto land (Bible section 4; PROPOSED; IMPLEMENTED)
 
 Joshua said "Go" (2026-10-25 01:23 UTC) to the studio's proposal: "the cell crawls onto land and the
@@ -1533,3 +1553,39 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25 · Studio operating model v2: the director's office, approval tiers and budget (CONFIRMED)
+The owner approved the autonomous studio proposal (https://claude.ai/artifact/WJyS6LkaodmVRfmhBCbmwz) on
+2026-10-25 at 05:09 UTC ("Exactly. Let's do it this way. I approve."). Claude runs as creative and game director;
+the owner approves milestones. It amends the 2026-10-22 studio operating model entry.
+- **The director's office** (`docs/director/`): the handbook (non-negotiables, Spore pillars per stage, case law),
+  visual, design and feel rubrics that a reviewer other than the builder scores, the backlog of Bible M2 to M5 exit
+  evidence (`docs/director/backlog.json`), a progress log and the Bible §21 templates.
+- **Three approval tiers**: agents decide code, tuning and drop-in swaps; looks, feel, pacing and HUD go into a weekly
+  Sunday batch after merging; scope, era, save schema, pipeline, money, dependencies, Spore pillars, Bible departures,
+  the M2 benchmark and anything public always go to the owner.
+- **Budget**: 10% of weekly usage a day from Wednesday to Monday, solo work only; the owner keeps 5 to 10%;
+  Tuesday, the last day before the Wednesday 06:00 UTC reset, is ultracode day, from a fixed job list. At most 3
+  routine runs and 3 task briefs a day and 2 active builder threads. The $250 cloud credit is nearly spent.
+- **Routines**: daily plan 06:00, nightly build 09:17, playtest capture 14:10 (moved from 11:00 to follow the nightly build, which lands about 13:20), weekly report Sunday 18:10 (UTC).
+Impact: no code, schema or scope change. Rubric thresholds and the backlog order are PROPOSED tuning.
+
+## 2026-10-25 · A fully aquatic lineage can stay underwater through later eras (CONFIRMED direction; content PROPOSED)
+The owner asked on 2026-10-25 at 05:25 UTC whether cities and the later eras could be underwater, and said "I do think
+we should do that". So a lineage that never goes ashore keeps playing underwater through Social, Tribal and
+Civilization (underwater settlements and cities), as an alternative to the land route. This answers the Bible §26 open
+question on non-terrestrial routes and follows Bible §4: never force a land body on a fully aquatic lineage, and
+"alternative paths require bounded content plans; seven eras do not authorize seven full campaigns per body plan".
+- **Era count, names and the save schema are unchanged.** The route is a variant inside each era, sharing that era's
+  systems (relationships, settlement, diplomacy) with aquatic habitats, buildings and vehicles.
+- **Scheduled after the four-week vertical slice** (backlog features U-01 to U-04); it does not change the current
+  roadmap. Each era's underwater variant needs a bounded content plan the owner approves before it is built.
+- Details (what an underwater city needs, Interstellar from the sea, how a mixed lineage chooses) are PROPOSED.
+- 05:42 UTC: the owner approved the full aquatic path addendum (`docs/bible/addendum-aquatic-path.md`, PR #198); its section J decisions 2 to 5 stay open.
+
+## 2026-10-25: One continuous game, pool to sea to land (Joshua)
+
+Joshua: "we want to make sure that you level up out of the spore world, the original world, to the aquatic". The cell-to-creature link (#189) becomes a chain of two links (ShoreLink.LINKS): the cell's top-size shore is now the sea edge, microscopic to aquatic (event `entered_the_sea`, checkpoint `<slot>.pre-aquatic`); the Aquatic stage's shore leads aquatic to terrestrial (event `came_ashore`, checkpoint `<slot>.pre-terrestrial`). EraTransition.cross takes the link out of the save's era; restore and has_checkpoint name the era the checkpoint leads into. Continue opens the stage of the slot's era. The title's way back restores the checkpoint from before the slot's last crossing ("Back to the pool" from the sea, "Back to the water" from land). Slots that crossed straight onto land under #189 keep their `.pre-terrestrial` checkpoint, which still holds the cell, and go back the same way. Into the sea the aquatic block stays empty, so AquaticLineage builds the first fish from the cell's parts. The Aquatic stage owns its shore offer and the fish-to-creature conversion (AquaticLineage.to_creature); main.arrive_ashore() opens the creature stage after that crossing.
+## 2026-10-25: band-1 chunk cost max row averages the slowest 5 chunks (Joshua)
+
+test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
