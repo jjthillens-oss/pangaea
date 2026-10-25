@@ -1,0 +1,109 @@
+{
+  "id": "cpart_eye_turret",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature eye part (PROPOSED): a chameleon-like scaly conical eye turret with a small gold-ringed pupil at its tip; shuts and reaches on shape keys.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_eye_turret.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_eye_turret.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.084,
+    "y_forward": 0.084,
+    "z_up": 0.083
+  },
+  "triangles": 668,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEyeTurret_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEyeTurret_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEyeTurret_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EyeTurretBall",
+    "M_EyeTurretScale"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "EyeTurret",
+    "EyeTurretCone"
+  ],
+  "part_type": "eye_turret",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "eye_turret",
+    "footprint_radius_m": 0.043,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 45,
+    "centerline": "allowed",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "eye",
+    "handles": [
+      {
+        "key": "H1_Blink",
+        "meaning": "the aperture drawn shut over the pupil",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Reach",
+        "meaning": "the turret about 2.2 cm taller, reaching further out",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm."
+  },
+  "paint_mix": {
+    "M_EyeTurretBall": 0.0,
+    "M_EyeTurretScale": 0.85
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 1840,
+    "triangles_after": 668
+  },
+  "review_notes": {
+    "gate1_shape": "pass: a smooth, slightly convex cone 8.4 cm across and 6 cm out of the skin with a round aperture at its tip (gray_top), the ball sitting just inside it. H1_Blink puckers the aperture shut, H2_Reach stretches the turret about 2.2 cm taller with the ball riding up inside. Iterated: the first turret read as a beehive dome whose geometric ridges decimated into irregular terraces and whose aperture was a hexagon; the ridges are now in the normal map and the cone is decimated at a tighter 0.3 mm tolerance (668 triangles).",
+    "gate2_materials": "pass: two finishes - turquoise skin of small domed granular tubercles in concentric ring bands, and through the aperture a glossy gold iris ring round a black pupil (the crop of mat_threequarter shows both). Iterated: the first scale shader read as cracked mud.",
+    "gate3_neutral_light": "pass: under the neutral rig the ring bands and tubercles read by soft grazing light, the gold ring is visible inside the shadowed aperture; no clipping.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
