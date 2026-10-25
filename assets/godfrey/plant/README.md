@@ -11,4 +11,4 @@ Build with the locally installed Blender 5.2 binary:
 & assets\godfrey\plant\make_sheets.ps1
 ```
 
-The shape, material, import, visual and scale gates are recorded in `GATES.md` after the export is inspected. This directory intentionally contains only the asset and its evidence, not a production integration.
+The final shape, material, import, visual and scale results are recorded in `GATES.md`. `gray-comparison.png` and `beauty-comparison.png` pair the reference with three views each; `godot-review.png` is an actual screenshot from an isolated Godot 4.7.2 OpenGL Compatibility run. This directory intentionally contains only the asset and its evidence, not a production integration.
