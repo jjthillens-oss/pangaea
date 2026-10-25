@@ -39,7 +39,9 @@ const PRICE_PAIR := "Price %d for the mirrored pair"
 const PRICE_BOTH := "Price %d · a mirrored pair %d"
 const LEAVES := "Leaves %d of your %d points"
 const SHORT := "%d points more than you have"
-const REFUND := "A part you came in with refunds %d%% when taken off"
+## Taking a part off before Done gives every point back (the session prices the change since the visit began);
+## after Done it is part of the body, and taking it off later refunds refund_rate of its price.
+const REFUND := "Free to take off again before Done; later it refunds %d%%"
 const FULL := "No free part slots (%d at most)"
 const SELECT_TITLE := "Select"
 const SELECT_LINES := [
