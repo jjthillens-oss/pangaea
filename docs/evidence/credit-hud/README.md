@@ -94,6 +94,12 @@ Creature world HUD:
   test_world_gen,test_settings,test_menus,test_look_probe` 178 tests, 0 failed; `tests/smoke/ui_smoke.gd`
   (`--world=pool`) 44 checks, 0 failed. The look probe with its current gates
   (`tools/godot/look_probe.gd -- --scenes=hud,starving,sunlit`): 29 gates, 0 failed.
+- The full check on the merged branch: tools/check.sh steps run via check_full.sh, with the unit suite's limit
+  raised to 3600 s for this 4-CPU container. It took 1761 s. Unit suite: 1931 tests, 2 failed (38 soak skipped),
+  both timing gates in the container's baseline for main (`test_endless_cost::test_slow_a_sleeper_costs_at_most_2_us`
+  and `test_endless_cost::test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window`). Every step
+  after it passed: the play, ui, endless, grow, band, shore, aquatic, creature (build 56, reload 11) and menus
+  (61) smokes, the error-log gate, and the release pack and content probes.
 - Contrast, measured on the after frames against the median of each panel (the glass): over the creature field's
   sand and sky the goal card, notice pill, controls pill and dock read 13.1-14.3:1 for near-white text, 10.6-11.5:1
   for amber, 8.1-8.8:1 for SmallLabel and 7.6-8.3:1 for the caption, at 1920x1080 (100% and 130%) and 1280x720. In
