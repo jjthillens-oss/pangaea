@@ -3348,67 +3348,72 @@ def build_hand_primate():
 
 
 def build_foot_frog():
-    """A tree frog's foot standing on its sole: a slim ankle coming down from behind onto a flat narrow
-    sole, five long slender knuckled toes fanned forward, a short web at their roots, and a broad round
-    sticky disc at each tip in a paler, glossier pad skin. H1_Spread splays the toes, H2_Long lengthens them."""
+    """A tree frog's foot standing on a fleshy sole: a thick ankle coming down at a slant from behind onto a
+    plump sole with a heel pad, five knuckled toes fanned forward (and a little out, never back), a broad web
+    reaching past the first knuckle, and a broad round sticky disc at each tip in a paler, glossier pad skin.
+    H1_Spread splays the toes, H2_Long lengthens them."""
     verts, fcs = [], []
-    sole_c = Vector((0.0, 0.002, 0.008))
-    bc.append(verts, fcs, *_blob(sole_c, 0.017, 0.026, 0.0075, power=0.9,
-                                 shape=lambda n: (0.75 + 0.25 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
-    apath = [Vector(p) for p in ((0.0, -0.036, 0.075), (0.0, -0.03, 0.05), (0.0, -0.02, 0.028), (0.0, -0.01, 0.014), (0.0, -0.002, 0.006))]
-    av, af, _ = _tube(apath, lambda i, a: (0.0115, 0.011, 0.0102, 0.0095, 0.006)[i], 16)
+    sole_c = Vector((0.0, 0.004, 0.009))
+    # The fleshy sole: wider at the front where the toes leave it, with a separate plump heel pad.
+    bc.append(verts, fcs, *_blob(sole_c, 0.022, 0.028, 0.0105, power=0.85,
+                                 shape=lambda n: (0.72 + 0.28 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
+    bc.append(verts, fcs, *_blob(Vector((0.0, -0.02, 0.008)), 0.014, 0.013, 0.009, power=0.9))
+    # A thick ankle slanting down and forward from behind, flaring into the sole.
+    apath = [Vector(p) for p in ((0.0, -0.052, 0.074), (0.0, -0.042, 0.056), (0.0, -0.031, 0.04), (0.0, -0.02, 0.026), (0.0, -0.01, 0.016), (0.0, -0.004, 0.011))]
+    av, af, _ = _tube(apath, lambda i, a: (0.0175, 0.017, 0.0168, 0.017, 0.0165, 0.012)[i], 18)
     bc.append(verts, fcs, av, af)
     ts = [k / 8 for k in range(9)]
     paths, discs = [], []
-    for ang, length in ((-58.0, 0.042), (-30.0, 0.058), (-6.0, 0.072), (18.0, 0.082), (44.0, 0.06)):
+    for ang, length in ((-40.0, 0.04), (-20.0, 0.052), (0.0, 0.06), (19.0, 0.064), (38.0, 0.048)):
         d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
-        start = sole_c + d * 0.012 + Vector((0.0, 0.0, -0.001))
+        # Toes leave the sole along its broad front edge, not from one point, so the web shows between them.
+        start = sole_c + Vector((0.018 * ang / 40.0, 0.017 - 0.007 * abs(ang) / 40.0, -0.001))
         # The toes arch up off the ground between the sole and the disc, as a frog's do.
-        path = [start + d * (length * t) + Vector((0.0, 0.0, 0.006 * math.sin(math.pi * t) - 0.003 * t)) for t in ts]
-        tv, tf, _ = _tube(path, lambda i, a: 0.0052 * (1.0 - 0.3 * ts[i]) * (1.0 + 0.2 * _bump(ts[i], 0.45, 0.07) + 0.2 * _bump(ts[i], 0.75, 0.07)), 10)
+        path = [start + d * (length * t) + Vector((0.0, 0.0, 0.006 * math.sin(math.pi * t) - 0.004 * t)) for t in ts]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0058 * (1.0 - 0.32 * ts[i]) * (1.0 + 0.18 * _bump(ts[i], 0.45, 0.07) + 0.18 * _bump(ts[i], 0.75, 0.07)), 12)
         bc.append(verts, fcs, tv, tf)
         paths.append(path)
-        discs.append((path[-1] + d * 0.004, d))
+        discs.append((path[-1] + d * 0.0045, d))
     skin = _wet_skin_material("M_FootFrogSkinProc")
     foot = bc.mesh_object("FootFrog", _ground(verts), fcs, [skin])
     skin.name = "M_FootFrogSkin"
     pv, pf = [], []
     for c, d in discs:
         side = Vector((d.y, -d.x, 0.0))
-        r = 0.0088
+        r = 0.0098
         dv, df = _blob(Vector((0.0, 0.0, 0.0)), 1.0, 1.0, 1.0, sub=2)
         bc.append(pv, pf, [tuple(c + Vector((0.0, 0.0, 0.0042)) + side * (x * r) + d * (y * r * 0.92) + Vector((0.0, 0.0, z * r * 0.5 - (0.0012 if z < 0 else 0.0)))) for x, y, z in dv], df)
-    pad_mat = _pad_material("M_FootFrogPadProc", 0.3)
+    pad_mat = _pad_material("M_FootFrogPadProc")
     pads = bc.mesh_object("Pads", _ground(pv), pf, [pad_mat], parent=foot)
     pad_mat.name = "M_FootFrogPad"
     wv, wf = [], []
     for left, right in zip(paths[:-1], paths[1:]):
         def point(s_, c, left=left, right=right):
-            i = s_ * 3.0          # the web reaches the first joint: 3/8 of the toe
+            i = s_ * 5.6          # the web runs past the first knuckle: about 2/3 of the toe
             k = min(len(left) - 2, int(i))
             f = i - k
             a = left[k].lerp(left[k + 1], f)
             b = right[k].lerp(right[k + 1], f)
             p = a.lerp(b, c)
-            sag = 0.006 * s_ ** 2 * math.sin(math.pi * c)
+            sag = 0.008 * s_ ** 2 * math.sin(math.pi * c)
             p = p - (a.lerp(b, 0.5) - sole_c).normalized() * sag
-            return Vector((p.x, p.y, max(0.003, p.z)))
-        _membrane(wv, wf, point, 5, 4, thickness=0.0008, facing=Vector((0.0, 0.0, 1.0)))
+            return Vector((p.x, p.y, max(0.0035, p.z + 0.0012)))
+        _membrane(wv, wf, point, 6, 6, thickness=0.0016, facing=Vector((0.0, 0.0, 1.0)))
     web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.35)
     web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
     web_mat.name = "M_FootFrogWeb"
     objs = [foot, pads, web]
-    baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#6F9A4C")), "M_FootFrogPad": sf.tint(_lin("#D2C48E")),
-                                         "M_FootFrogWeb": sf.tint(_lin("#A6B878"))})
+    baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#5E9A44")), "M_FootFrogPad": sf.tint(_lin("#E2D6A2")),
+                                         "M_FootFrogWeb": sf.tint(_lin("#B8C46E"))})
     pts = _check_pivot("foot_frog", 0.0, ground=True)
     reach = max(math.hypot(p.x, p.y) for p in pts)
     handles = _foot_handles(objs, 14.0, 0.01, 0.3)
     rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
     rules["handles"] = handles
-    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
-    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a slim ankle on a narrow sole, five long knuckled toes fanned forward with a short root web and broad pale sticky disc pads, smooth wet skin.",
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.074 m, y -0.052 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a thick slanted ankle on a fleshy sole with a heel pad, five knuckled toes fanned forward with a broad pale web past the first knuckle and broad pale sticky disc pads, smooth wet skin.",
             "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 2, **baked}
+            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 3, **baked}
 
 
 def build_foot_primate():

@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a slim ankle on a narrow sole, five long knuckled toes fanned forward with a short root web and broad pale sticky disc pads, smooth wet skin.",
+  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a thick slanted ankle on a fleshy sole with a heel pad, five knuckled toes fanned forward with a broad pale web past the first knuckle and broad pale sticky disc pads, smooth wet skin.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_foot_frog.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_foot_frog.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 2,
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.119,
-    "y_forward": 0.15,
-    "z_up": 0.077
+    "x": 0.114,
+    "y_forward": 0.161,
+    "z_up": 0.083
   },
-  "triangles": 781,
+  "triangles": 917,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -65,7 +65,7 @@
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "foot_frog",
-    "footprint_radius_m": 0.109,
+    "footprint_radius_m": 0.098,
     "sink_depth_m": 0.0,
     "chiral": false,
     "orientation": "ground",
@@ -88,7 +88,7 @@
         "default_permille": 0
       }
     ],
-    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.074 m, y -0.052 m) meets the limb tip."
   },
   "paint_mix": {
     "M_FootFrogSkin": 0.9,
@@ -98,8 +98,8 @@
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 2034,
-    "triangles_after": 781
+    "triangles_before": 2834,
+    "triangles_after": 917
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
