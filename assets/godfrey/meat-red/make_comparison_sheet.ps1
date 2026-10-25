@@ -24,16 +24,17 @@ $font = [System.Drawing.Font]::new('Arial', 21)
 $subfont = [System.Drawing.Font]::new('Arial', 14)
 $ink = [System.Drawing.Brushes]::Black
 
-function Draw-Tile([string]$imagePath, [string]$title, [int]$x, [int]$y, [int]$w, [int]$h) {
+function Draw-Tile([string]$imagePath, [string]$title, [int]$x, [int]$y, [int]$w, [int]$h, [System.Drawing.Rectangle]$crop) {
     $photo = [System.Drawing.Image]::FromFile($imagePath)
     try {
-        $scale = [Math]::Min(($w - 14) / $photo.Width, ($h - 43) / $photo.Height)
-        $drawW = [int]($photo.Width * $scale)
-        $drawH = [int]($photo.Height * $scale)
+        $scale = [Math]::Min(($w - 14) / $crop.Width, ($h - 43) / $crop.Height)
+        $drawW = [int]($crop.Width * $scale)
+        $drawH = [int]($crop.Height * $scale)
         $drawX = $x + [int](($w - $drawW) / 2)
         $drawY = $y + 33 + [int](($h - 43 - $drawH) / 2)
         $graphics.DrawString($title, $subfont, $ink, $x + 6, $y + 4)
-        $graphics.DrawImage($photo, $drawX, $drawY, $drawW, $drawH)
+        $dest = [System.Drawing.Rectangle]::new($drawX, $drawY, $drawW, $drawH)
+        $graphics.DrawImage($photo, $dest, $crop, [System.Drawing.GraphicsUnit]::Pixel)
     } finally {
         $photo.Dispose()
     }
@@ -41,10 +42,10 @@ function Draw-Tile([string]$imagePath, [string]$title, [int]$x, [int]$y, [int]$w
 
 try {
     $graphics.DrawString('Red meat food prop — reference and final review', $font, $ink, 24, 16)
-    Draw-Tile $reference 'CC0 reference: Jez Timms, 2015' 24 70 750 450
-    Draw-Tile $gray 'Blender gray shape' 820 70 750 450
-    Draw-Tile $material 'Blender neutral material' 24 550 750 450
-    Draw-Tile $game 'Godot gameplay-distance import' 820 550 750 450
+    Draw-Tile $reference 'CC0 reference: Jez Timms, 2015' 24 70 750 450 ([System.Drawing.Rectangle]::new(180, 0, 650, 600))
+    Draw-Tile $game 'Godot elevated gameplay view' 820 70 750 450 ([System.Drawing.Rectangle]::new(155, 205, 665, 520))
+    Draw-Tile $gray 'Blender gray shape, three-quarter' 24 550 750 450 ([System.Drawing.Rectangle]::new(145, 220, 665, 490))
+    Draw-Tile $material 'Blender neutral material, three-quarter' 820 550 750 450 ([System.Drawing.Rectangle]::new(145, 220, 665, 490))
     $canvas.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
     Write-Output $output
 } finally {

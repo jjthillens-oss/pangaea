@@ -31,9 +31,9 @@ def material(name, color, roughness=0.84):
     return mat
 
 
-muscle = material("muscle_muted_berry", (0.30, 0.065, 0.087))
-muscle_dark = material("muscle_soft_burgundy", (0.21, 0.047, 0.067))
-fat = material("fat_warm_ivory", (0.77, 0.62, 0.55), 0.9)
+muscle = material("muscle_muted_berry", (0.112, 0.006, 0.010))
+muscle_dark = material("muscle_soft_burgundy", (0.067, 0.003, 0.006))
+fat = material("fat_warm_ivory", (0.62, 0.48, 0.40), 0.9)
 clay = material("review_neutral_clay", (0.46, 0.46, 0.44), 0.83)
 
 
@@ -101,7 +101,8 @@ def build_body():
     mesh.materials.append(muscle_dark)
     for poly in mesh.polygons:
         poly.use_smooth = True
-        if 0 < poly.index < SEGMENTS * 2 and poly.index % 17 in (0, 1, 2):
+        # One broad irregular darker region, rather than random polygon noise.
+        if SEGMENTS < poly.index < SEGMENTS * 3 and poly.index % SEGMENTS in range(5, 14):
             poly.material_index = 1
     MAIN.append(obj)
 
@@ -135,29 +136,37 @@ def build_rim_and_seams():
     # A partial, tapered edge cuff: no all-around white cartoon outline.
     for start, end, thickness in ((2.75, 4.45, 0.020), (4.72, 5.38, 0.013)):
         coords = []
-        for j in range(20):
-            a = start + (end - start) * j / 19
+        for j in range(16):
+            a = start + (end - start) * j / 15
             coords.append(point(a, 0.992, 0.103 + 0.009 * math.sin(3 * a)))
         mesh_curve("fat_partial_edge", coords, thickness, fat, True)
 
     # Restrained branchlike pale seams. Deliberate arcs, no texture repetition.
     seam_paths = (
-        ((-0.17, -0.11, 0.178), (-0.09, -0.055, 0.185), (-0.025, 0.005, 0.184), (0.042, 0.047, 0.175)),
-        ((-0.035, 0.005, 0.184), (0.005, -0.075, 0.183), (0.095, -0.105, 0.172), (0.16, -0.09, 0.151)),
-        ((-0.09, -0.055, 0.185), (-0.13, 0.012, 0.185), (-0.122, 0.082, 0.177)),
+        ((-0.17, -0.11, 0.171), (-0.09, -0.055, 0.178), (-0.025, 0.005, 0.177), (0.042, 0.047, 0.168)),
+        ((-0.035, 0.005, 0.177), (0.005, -0.075, 0.176), (0.095, -0.105, 0.165), (0.16, -0.09, 0.144)),
+        ((-0.09, -0.055, 0.178), (-0.13, 0.012, 0.178), (-0.122, 0.082, 0.170)),
     )
     for idx, controls in enumerate(seam_paths):
         coords = []
-        for j in range(13):
-            u = j / 12
+        for j in range(11):
+            u = j / 10
             t = u * (len(controls) - 1)
             k = min(int(t), len(controls) - 2)
             blend = t - k
+            before = Vector(controls[max(k - 1, 0)])
             left = Vector(controls[k])
             right = Vector(controls[k + 1])
-            co = left.lerp(right, blend)
+            after = Vector(controls[min(k + 2, len(controls) - 1)])
+            # Catmull-Rom keeps the broad muscle direction without sharp zigzags.
+            co = 0.5 * (
+                2 * left
+                + (-before + right) * blend
+                + (2 * before - 5 * left + 4 * right - after) * blend * blend
+                + (-before + 3 * left - 3 * right + after) * blend * blend * blend
+            )
             coords.append(tuple(co))
-        mesh_curve(f"fat_seam_{idx + 1}", coords, (0.0055, 0.0045, 0.0035)[idx], fat, True)
+        mesh_curve(f"fat_seam_{idx + 1}", coords, (0.0028, 0.0023, 0.0019)[idx], fat, True)
 
 
 def camera(name, at):
@@ -202,16 +211,16 @@ build_body()
 build_rim_and_seams()
 
 scene = bpy.context.scene
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.engine = "BLENDER_EEVEE"
 scene.render.resolution_x = 900
 scene.render.resolution_y = 900
 scene.render.resolution_percentage = 100
 scene.render.image_settings.file_format = "PNG"
 scene.world.color = (0.22, 0.22, 0.22)
 scene.view_settings.view_transform = "AgX"
-light("review_key", (1.6, 1.7, 2.3), 380, 2.5)
-light("review_fill", (-1.9, -0.6, 1.4), 225, 2.8)
-light("review_grazing", (-0.7, 1.5, 0.7), 140, 1.1)
+light("review_key", (1.6, 1.7, 2.3), 290, 2.5)
+light("review_fill", (-1.9, -0.6, 1.4), 145, 2.8)
+light("review_grazing", (-0.7, 1.5, 0.7), 85, 1.1)
 (OUT / "renders").mkdir(exist_ok=True)
 
 saved_slots = {obj: tuple(obj.data.materials) for obj in MAIN}

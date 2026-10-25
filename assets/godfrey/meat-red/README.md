@@ -1,6 +1,6 @@
-# Red meat food prop — preparation
+# Red meat food prop
 
-Status: PROPOSED asset for review. It is not admitted into production scenes.
+Status: PROPOSED asset for review. Built and visually inspected in an isolated Godot setup; not admitted into production scenes.
 
 ## Reference and license
 
@@ -9,11 +9,11 @@ The inspected [Steak and Herbs photograph](https://commons.wikimedia.org/wiki/Fi
 ## Asset brief
 
 - **Function:** readable food pickup for a terrestrial or social stage prototype; no current game integration.
-- **Scale and orientation:** approximately 0.72 m wide, 0.60 m long, 0.17 m high; origin at ground contact; Blender +Z up and front +Y, Godot +Y up and front -Z.
+- **Scale and orientation:** measured GLB bounds approximately 0.80 m wide, 0.62 m long, 0.16 m high; origin at ground contact; Blender +Z up and front +Y, Godot +Y up and front -Z.
 - **Viewing distance:** 1.5–6 m, including an elevated gameplay camera. Distinguishable by outline and pale fat edge before close-up detail.
-- **Triangle budget:** target under 1,200 triangles (small-prop provisional budget from Bible §16); two or three opaque PBR materials, no baked light, no required texture. Actual count remains pending Blender export.
+- **Triangle budget:** target under 1,200 triangles (small-prop provisional budget from Bible §16); final export 1,104 triangles, two opaque PBR materials, no texture, no baked light.
 - **Materials:** broad muted berry-red muscle, a little deeper burgundy variation, and warm ivory fat. Nonmetallic, rough, no wet/shiny or graphic detail.
-- **Source of record:** final editable `meat-red.blend` and export `meat-red.glb` under this package after validation. The script is a reproducible construction aid, not a substitute for the `.blend`.
+- **Source of record:** editable `meat-red.blend` and export `meat-red.glb` under this package. The script is a reproducible construction aid, not a substitute for the `.blend`.
 
 ## Reference contract before materials
 
@@ -28,11 +28,11 @@ The inspected [Steak and Herbs photograph](https://commons.wikimedia.org/wiki/Fi
 
 Reference only determines the photographed face. Back and underside are invented as simple, coherent closed geometry. This is a game-food prop, not an anatomical reconstruction. There is no bone, blood, organ detail, or photoreal texture.
 
-## Gate plan
+## Review process
 
-1. Run `build_meat_red.py` in the existing Blender 5.2.2 installation only when the art render window is released. It creates an editable `.blend`, gray shape renders, neutral material renders, and a GLB of export objects only.
-2. Open and inspect all gray views before accepting materials. Revise outline/height if the pickup reads as a primitive disk or the notch/lobes vanish.
-3. Inspect neutral material views, validate GLB/material/triangle/dimension counts, and import/render in an isolated Godot 4.7.2 review setup. A headless parse alone is insufficient visual acceptance.
-4. Make paired reference/result and region crops; open the final sheet and record the three largest remaining differences and gate states in `GATES.md`.
+1. Run `build_meat_red.py` in Blender 5.2.2. It creates the editable `.blend`, gray shape renders, neutral material renders, and selected-object GLB.
+2. Inspect `renders/gray-front.png`, `gray-side.png`, and `gray-three-quarter.png` before materials. The first version's pink body, hard seam bends, and 1,272-triangle export were revised. `validate_glb.py` now passes the 1,200-triangle budget.
+3. Copy only `project.godot`, `review_godot.gd`, and `meat-red.glb` into a separate temporary Godot review project with a `renders/` directory. Run pinned Godot 4.7.2 `--headless --editor --path <review> --import`, then `--path <review> --script res://review_godot.gd` with the actual Windows OpenGL renderer. Copy its PNG to `renders/godot-gameplay.png`. Keeping `.blend` out of that project avoids requiring editor Blender-path configuration for unrelated blend import.
+4. Run `make_comparison_sheet.ps1`, open `comparison.png`, and inspect all final views. See `GATES.md` for results and limitations.
 
-Prep state: reference and script only. Shape, materials, export, engine transfer, and visual fidelity are **unverified** until the final version is rendered and inspected.
+The source photograph is a reference, not a texture. No production scene imports this GLB yet.
