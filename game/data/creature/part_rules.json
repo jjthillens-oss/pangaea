@@ -838,7 +838,7 @@
 		},
 		"hand_frog": {
 			"type": "hand_frog",
-			"footprint_radius_m": 0.025,
+			"footprint_radius_m": 0.027,
 			"sink_depth_m": 0.025,
 			"chiral": false,
 			"orientation": "normal",
@@ -855,12 +855,12 @@
 			"handles": [
 				{
 					"key": "H1_Grip",
-					"meaning": "fingers curl 80 degrees in toward the palm",
+					"meaning": "fingers curl about 95 degrees in toward the palm at two joints; pads ride on the tips",
 					"default_permille": 0
 				},
 				{
 					"key": "H2_Spread",
-					"meaning": "fingers fan 45% wider at the tips",
+					"meaning": "fingers fan 45% wider",
 					"default_permille": 0
 				}
 			]
