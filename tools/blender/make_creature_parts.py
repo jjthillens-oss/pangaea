@@ -127,7 +127,6 @@ ROLE = {
     "beak": "mouth", "mandibles": "mouth", "maw": "mouth", "proboscis": "mouth", "jaw": "mouth", "bill": "mouth",
     "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand", "hand_primate": "hand",
     "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot", "foot_primate": "foot",
-    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot",
     "eye_bulge": "eye", "hand_frog": "hand", "throat_sac": "detail",
     "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
     "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon", "horn_swept": "weapon",
