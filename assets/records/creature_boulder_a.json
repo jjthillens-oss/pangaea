@@ -1,0 +1,86 @@
+{
+  "id": "creature_boulder_a",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature world rock (PROPOSED): a rounded, mossy boulder about 1 m across with soft cleavage facets, warm grey stone and blue-green moss on its up-facing top.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_boulder_a.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_boulder_a.glb",
+  "export_format": "GLB",
+  "dependencies": [
+    {
+      "path": "assets/source/textures/cc0/polyhaven_rock_boulder_dry",
+      "asset": "Rock Boulder Dry",
+      "source_url": "https://polyhaven.com/a/rock_boulder_dry",
+      "files": [
+        "rock_boulder_dry_diff_1k.jpg",
+        "rock_boulder_dry_disp_1k.jpg"
+      ],
+      "license": "CC0 1.0 (https://polyhaven.com/license)",
+      "authors": "Dimitrios Savva (photography), Rico Cilliers (processing)",
+      "retrieved": "kept in the repository since the M1 production rocks (docs/art/production_m1.md)",
+      "use": "grain (the diffuse scan's luminance, recoloured to the palette) and height (the displacement scan, as bump), box-projected on the boulder and baked; the scan's own colour is never shown"
+    }
+  ],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.001,
+    "y_forward": 0.82,
+    "z_up": 0.603
+  },
+  "triangles": 689,
+  "triangle_budget": 700,
+  "textures": [
+    {
+      "name": "T_CreatureBoulderA_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_CreatureBoulderA_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_CreatureBoulderA_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_CreatureBoulderA"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "BoulderA"
+  ],
+  "kind": "boulder",
+  "pivot": "the boulder's centre on the ground (Godot y = 0); its base sinks 0.07 m so it sits into a slope",
+  "placement": "an obstacle-sized rock: OUTSIDE the walls only (the berm and the hills, where max(|x|, |z|) is 80.5 m or more) until the sim has obstacles; tests/test_creature_world_art.gd keeps anything over 0.45 m out of the walkable field",
+  "size_m": 1.0,
+  "sink_m": 0.073,
+  "reduction": {
+    "method": "Blender collapse decimation to the triangle budget; the full-detail shape and shader relief baked to the normal map",
+    "triangles_before": 5092,
+    "triangles_after": 689,
+    "surface_error_m": 0.003
+  },
+  "provenance": "Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no external or generated meshes. Textures baked in Blender from procedural shaders over the CC0 Poly Haven Rock Boulder Dry scan (grain and height only, recoloured; see dependencies)."
+}

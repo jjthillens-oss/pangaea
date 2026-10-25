@@ -11,6 +11,11 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 | `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.06 x 1.06 x 0.79 m, every vertex within 0.56 m of the pivot horizontally (the top card tips are 0.81 m from it) |
 | `creature_meat_chunk` | the meat box | 604 (1 200) | `M_MeatFlesh` (external, instance tint), `M_MeatBone` (baked) | a torn haunch with a bone end, 0.58 m long, lying on the ground |
 | `creature_editor_room` | the editor's floor cylinder (`creature_editor_floor`) | 1 152 (1 200) | `M_EditorPad`, `M_EditorRim`, `M_EditorGroove` (baked; the grooves emit a faint flat #5FB3FF at 0.15) | a unit-radius pedestal pad, 3.5 cm thick under the face: dark blue face (#14305C, roughness about 0.5, concentric brushing), a steel-blue rim (#5A7FA8) 12 mm high with a quarter-round edge, V grooves at r 0.33 and 0.60 and at the rim's foot (0.86), revolved at 48 segments. The pivot is the centre of the top face, so the editor's y = -0.01 placement and (s, 1, s) scaling keep working; the rings are geometry and scale with the pad |
+| `creature_grass_tuft` | nothing (new cover) | 48 (48) | `M_MeadowCards` (external, `assets/export/M_MeadowCards.tres`) | kit (`tools/blender/creature_flora.py`): six two-sided bent cards, three crossed through the centre and three leaning out round the foot; 0.52 x 0.52 m, 0.39 m above the ground |
+| `creature_fern_clump` | nothing (new cover) | 96 (96) | `M_MeadowCards` (external) | kit: eight two-sided arching fronds of three segments (two young, upright ones inside); 0.90 x 0.85 m, 0.34 m high |
+| `creature_flower_clump` | nothing (new cover) | 72 (120) | `M_MeadowCards` (external) | kit: three leaf cards at the foot (rosette, clover, fine grass) and three crossed pairs of sprig cards (lilac bells; blue and cream stars; cream umbels with blue bells); 0.34 x 0.36 m, 0.36 m high |
+| `creature_pebble_cluster` | nothing (new cover) | 157 (160) | `M_Pebble` (baked 512, tint #8C8070) | kit: seven half-sunk rounded pebbles of 3 to 12 cm in a patch 0.38 x 0.23 m, 5 cm high |
+| `creature_boulder_a`, `_b`, `_c` | nothing (new; outside the walls only) | 689, 885, 1 182 (700, 900, 1 200) | `M_CreatureBoulderA`/`B`/`C` (baked 512, 1024, 1024) | kit: rounded boulders 1.0, 1.8 and 3.0 m across (0.6, 1.1, 1.9 m high) with a near-level top facet and soft side facets, cool blue-grey stone with the CC0 Rock Boulder Dry scan's grain (recoloured) and a moss cap; each sinks 12% of its height |
 
 Every asset keeps the stage's contract: 1 m = 1 unit, the pivot on the ground (Godot y = 0; the editor pad's is the
 centre of its top face), Blender +Y forward (Godot -Z), no node names read by game code. Sources are in
@@ -91,6 +96,63 @@ alpha borders) with alpha scissor at 0.5, no culling and roughness 0.8. The `Fru
 ripeness still toggles it. The review sheet's clay row shows the cards as plain quads, since clay ignores the
 alpha; judge the leaves on the beauty row and in the engine.
 
+## The flora and rock kit (rev 1, PROPOSED)
+
+Built by `tools/blender/creature_flora.py` through `tools/blender/make_creature_world.py` (its `ASSETS` lists them, so the CLAUDE.md
+command builds them too). Original designs. Two placement rules come with them, because the creature sim has no
+obstacles yet (open issue B): **cover** (the grass tuft, the fern, the flowers and the pebbles) stands under 0.45 m
+and may go anywhere inside the walls except the nest's 8 m clearing; **boulders** (and the trees to come) stand only
+outside the walls, on the berm and the hills (`max(|x|, |z|) >= 80.5 m`). `tests/test_creature_world_art.gd`
+checks both on the kit itself and, once the scatter lands, on every dressing mesh in the field GLB.
+
+**The meadow atlas.** `assets/export/creature_flora/T_MeadowCards.png` is one 1024 px RGBA atlas painted in numpy, a
+4 x 4 grid of 256 px cells: six grass fans (meadow, tall, short, sage, sedge, fine), three fern fronds (broad, narrow,
+young), five flower sprigs (lilac bells, blue and cream stars, cream umbels, blue bells, fine grass with lilac stars)
+and two broad-leaf cells (a leaf rosette and clover). Every leaf, blade, petal and stem is a tapered stroke laid
+back to front with a soft contact shadow on what lies under it, coloured in CIE LCh: greens at hue 139 to 155
+(chroma 17 to 36, darker at the base for occlusion, no light baked in), lilac 300 to 308, sky blue 262 to 271, cream
+80 to 86. There is no amber or yellow (amber reads as fruit). Alpha is zero within 4 px of each cell's edge, and
+under the cut-away area the RGB is the nearest leaf colour pushed outward (a push-pull fill), so a mip never
+blends a leaf toward black or toward the next cell. Cream florets carry a thin near-neutral rim, so where they lie
+over a green stem their anti-aliased edge passes through grey, not through a yellow-green. The builder fails if more
+than 1% of any cell's chromatic texels fall within 25 degrees of the food green or the threat pink; the test checks
+the whole atlas the same way (0.04% as built) and its mean (L 47, C 20, h 152).
+
+**Two-sided cards.** A cut-out card drawn from both sides (`cull_mode` disabled) gets its normal flipped for the
+back face, so one side of every card shades as if it faced the soil: the first Blender sheets showed every back side
+black. So each card is two sheets back to back with opposite winding, 1.2 mm apart, each with its normals leaned
+toward world up (face normal plus 1.4 x up, so both sides light like the ground), and `M_MeadowCards` culls back
+faces. That doubles the triangles (tuft 48, fern 96, flowers 72) and costs nothing else. The 1.2 mm gap keeps a ray
+tracer from skipping the near sheet; the engine never sees it.
+
+**`assets/export/M_MeadowCards.tres`** is a `StandardMaterial3D`, not a shader, so the field can later carry merged copies of the
+cards beside its own `ShaderMaterial` and still pass `tests/test_assets.gd` (one engine `ShaderMaterial` per record):
+the atlas cut out at alpha 0.5, roughness 0.9, `metallic_specular` 0.3, times the mesh's `COLOR_0` (a greyscale
+brightness per card, 0.82 to 1.0; a scatter can darken whole clumps the same way, with no code). It reads the
+authored atlas, which has its own `.import` with mipmaps. The card GLBs do not embed the atlas: after export,
+`creature_flora.link_atlas` rewrites each GLB's image as a URI relative to the GLB (the atlas beside it) and drops
+its bytes, so the repository holds one 1.1 MB atlas instead of three more copies (the GLBs are 4 to 7 KB). The card
+meshes keep no LODs (the mesh import option generate/lods at 2: Godot's LOD pass collapses whole cards) and cast no shadow (cover; the
+scatter will draw it the same way); both are import options written by `--import`.
+
+**Rocks.** The pebbles and boulders are baked like the nest: a procedural Blender shader on a full-detail mesh,
+collapse-decimated to the triangle budget, with albedo, ORM and a normal map baked from the full-detail shape and
+the shader's bump. The pebbles' greyscale detail is tinted #8C8070 (LCh L 54, C 10.5, h 80). Each boulder is an
+icosphere cut by a near-level top plane and six to nine side planes through a smooth minimum (broad facets with
+rounded edges), leaned slightly, fitted to its size and sunk 12% of its height so it sits into the berm's slope.
+Stone grain and height come from the CC0 Poly Haven "Rock Boulder Dry" scan already kept in
+`assets/source/textures/cc0/polyhaven_rock_boulder_dry/` (the 1k diffuse's luminance and the displacement,
+box-projected at one tile per 1.6 m), recoloured between #52565A and #9DA2A6 (a cool blue-grey, hue 250 to 256,
+chroma about 3) and never shown raw; each boulder's record logs it in `dependencies`. The moss cap grows where the
+surface faces up and toward the top, its edge broken by a fine fractal noise, flecked light and dark (#2F5A3E to
+#5C8A5E, hue 143 to 152), and between stone and moss the colour passes through a near-neutral damp grey of the
+stone's lightness. The stone is cool on purpose: rev 1's first bake used a warm grey (#5D5348 to #A79A8A, hue 75 to
+80, like the pebbles), and although no single texel came near the food green, the albedo's mean, which is what a
+far mip shows, landed on it (hue 112 to 116 at chroma 9.5). A blend of the cool stone with the moss runs through
+teal: the means are now hue 164 to 168 at chroma 5 to 6. The boulders are
+for outside the walls, so their size is not limited by the walk-through rule. The test checks every kit texture both
+ways: no more than 1% of its chromatic texels near a reserved hue, and its mean clear of them.
+
 ## Regenerating
 
 ```bash
@@ -100,7 +162,13 @@ python tools/blender/make_creature_world.py --import              # the .tres fi
 godot --headless --path . --import                                # picks the mappings up
 python tools/blender/render_production.py creature_nest_ring creature_fruit_bush creature_meat_chunk creature_editor_room   # review sheets
 python tools/blender/render_world_review.py creature_fruit_bush [...]   # gate views: grey (grazing key), beauty, close-up, unlit base colour, card alpha
+python tools/blender/render_world_review.py creature_grass_tuft creature_fern_clump creature_flower_clump creature_pebble_cluster creature_boulder_a creature_boulder_b creature_boulder_c
 ```
+
+`tools/godot/world_dressing_shot.gd -- --kit` stages the kit in the stage's light: the four cover pieces in a row
+at 1.6 m and at the gameplay camera's distance, a 9 m patch of mixed cover, the boulders up close (on the turf, for
+review only) and on the berm past the east wall from 20 m inside. Pieces stand on the field's relief (the nearest
+vertices of `CreatureField`).
 
 In-engine screenshots: `tools/godot/creature_world_gameplay_shots.gd` runs the real `game/scenes/creature/creature_world.tscn`
 (and `game/scenes/creature/creature_editor.tscn` with `--editor`) and saves gameplay frames, close-ups and the editor's zoom extremes, with
@@ -220,4 +288,8 @@ The owner may also relax the 25-degree food-green gap for creature-stage ground 
 ## Next
 
 Straw tufts and a worn path for the nest, two or three bush and meat variants (a second leaf atlas or card
-layout would do for the bush), and walls or a backdrop for the editor room beyond its pad.
+layout would do for the bush), and walls or a backdrop for the editor room beyond its pad. Two original trees for
+the berm, then the field's scatter, which composes the kit (cover inside the walls, boulders and trees outside).
+Found while building the kit: `assets/export/M_BushCards.tres` sets `transparency = 1`, which in Godot 4 is alpha
+blending, not scissor (2), so the bush's cards are sorted and write no depth; the bush revision should set 2 (the
+kit's `M_MeadowCards` does, and its test checks it).

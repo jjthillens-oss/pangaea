@@ -49,7 +49,7 @@ const THREAT_PINK_H := 11.1
 const HUE_GAP := 25.0
 const CHROMA_MIN := 8.0
 const KIT_COVER := {"creature_grass_tuft": "GrassTuft", "creature_fern_clump": "FernClump",
-	"creature_flower_clump": "FlowerClump"}
+	"creature_flower_clump": "FlowerClump", "creature_pebble_cluster": "PebbleCluster"}
 const KIT_CARDS := ["creature_grass_tuft", "creature_fern_clump", "creature_flower_clump"]
 const KIT_BOULDERS := {"creature_boulder_a": 1.0, "creature_boulder_b": 1.8, "creature_boulder_c": 3.0}
 const MEADOW_TRES := "res://assets/export/M_MeadowCards.tres"
@@ -429,6 +429,29 @@ func test_meadow_cards_draw_with_the_shared_cut_out_material() -> void:
 		root.free()
 
 
+func test_boulders_are_obstacle_sized_and_sink_into_the_ground() -> void:
+	for id: String in KIT_BOULDERS:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		var lo := Vector3.INF
+		var hi := -Vector3.INF
+		for mi in _mesh_instances(root):
+			for v in _vertices(mi, root):
+				lo = lo.min(v)
+				hi = hi.max(v)
+		var size: float = KIT_BOULDERS[id]
+		var longest := maxf(hi.x - lo.x, hi.z - lo.z)
+		check(absf(longest - size) <= 0.15 * size, "%s is about %.1f m across (%.2f)" % [id, size, longest])
+		check(hi.y > LOW_MAX_M, "%s stands taller than walk-through cover (%.2f), so it belongs outside the walls" % [id, hi.y])
+		check(lo.y < -0.03, "%s sinks its base under the ground, so it never hovers on the berm (%.3f)" % [id, lo.y])
+		var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/records/%s.json" % id))
+		check(String(record.get("placement", "")).contains("OUTSIDE the walls"), "%s's record keeps it outside the walls" % id)
+		var deps: Array = record.get("dependencies", [])
+		check(deps.size() == 1 and String((deps[0] as Dictionary).get("source_url", "")).ends_with("rock_boulder_dry"), "%s logs the CC0 rock scan it uses" % id)
+		root.free()
+
+
 ## The share of `img`'s opaque, chromatic texels (every `step`-th) whose hue, times `tint` (linear), lies within the
 ## hue gap of the food green or the threat pink.
 func _clash_share(img: Image, tint: Vector3, step: int) -> float:
@@ -456,3 +479,26 @@ func test_kit_colours_keep_the_hue_gaps_texel_by_texel() -> void:
 		print("    meadow atlas: %.2f%% of chromatic texels near a reserved hue" % (share * 100.0))
 		check(share <= CLASH_MAX, "the meadow atlas keeps the hue gaps (%.2f%% of chromatic texels clash)" % (share * 100.0))
 		_check_hue("the meadow atlas's mean (a far mip)", _mean_linear(load(MEADOW_ATLAS)))
+	var rocks := ["creature_pebble_cluster"]
+	rocks.append_array(KIT_BOULDERS.keys())
+	for id: String in rocks:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		for mi in _mesh_instances(root):
+			for s in mi.mesh.get_surface_count():
+				var sm := mi.mesh.surface_get_material(s) as StandardMaterial3D
+				check(sm != null and sm.albedo_texture != null, "%s %s surface %d has a baked albedo" % [id, mi.name, s])
+				if sm == null or sm.albedo_texture == null:
+					continue
+				var tint := Vector3(_to_linear(sm.albedo_color.r), _to_linear(sm.albedo_color.g), _to_linear(sm.albedo_color.b))
+				var img := Image.load_from_file(ProjectSettings.globalize_path(sm.albedo_texture.resource_path))
+				check(img != null and not img.is_empty(), "%s reads" % sm.albedo_texture.resource_path)
+				if img == null or img.is_empty():
+					continue
+				var share := _clash_share(img, tint, 4)
+				print("    %s %s: %.2f%% of chromatic texels near a reserved hue" % [id, mi.name, share * 100.0])
+				check(share <= CLASH_MAX, "%s %s keeps the hue gaps texel by texel (%.2f%% clash)" % [id, mi.name, share * 100.0])
+				# And as a whole: far off, the mips blend stone and moss into their mean.
+				_check_hue("%s %s mean (a far mip)" % [id, mi.name], _mean_linear(sm.albedo_texture) * tint)
+		root.free()
