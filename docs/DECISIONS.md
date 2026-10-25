@@ -788,6 +788,44 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature gait follows limb proportions: bound and knuckle-walk (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for walking that follows leg sizes and hands, frogs more frog-like and monkeys more monkey-like.
+- Bound: a four-legged body whose hind legs are at least 1.5 times as long as its front legs bounds at run speed
+  instead of trotting. Each pair moves together, the front pair lands first and the hind pair pushes off last, then
+  every foot is off the ground. The body dips once per cycle and pitches nose down on landing, nose up in flight.
+  Tuning: `game/data/creature/gait_table.json` (bound_*, the run band's long_hind_pattern).
+- A body that bounds sits on folded hind legs (hips at 0.4 of their length), about level, like a frog, instead of
+  standing front-down on straight hind legs.
+- Long arms: a hanging limb whose root sits no higher than 1.2 limb lengths above the ground is a front leg, so an
+  ape knuckle-walks, leaning onto its arms. Short arms still hang. Legs are ordered front to back by hip position.
+- Short legs set the pace: speed and stride scale with the lowest standing hip, and no hip stands above 0.82 of its
+  leg, so feet stay in reach. Even legs walk, trot and run exactly as before.
+
+## 2026-10-24 · Creature head shape dials in the editor (PROPOSED; IMPLEMENTED)
+Joshua (23:40) asked for more head shape options. The creature editor's stats panel gets five sliders: snout
+(1.0x to 2.0x), skull width and skull height (0.6x to 1.6x; ranges agreed with the art thread), jaw and brow ridge
+(0 to 100%). They are free, and a slider drag is one undo step.
+
+- **Storage.** A `head_shape` block in the body's extra dictionary (per mille, whole-number floats, left out when
+  neutral), which the codec keeps as an unknown key: no save schema or body version change. Ranges are in
+  `game/data/creature/body_rules.json` "head_shape"; `validate()` refuses values outside them.
+- **Shape.** The vertebrae do not move. `BodyField` scales the head end of the first spine capsule and adds up to four
+  capsules around vertebra 0 (`game/domain/creature/head_shape.gd`) on bone 0, so the skin (CPU and GPU), the part
+  anchors, picking and the bounds follow. A part on the head end rides out to the snout tip.
+- **Cosmetic only.** The dials cost nothing, so they change no stat: mass (and the health, bite strength and speed
+  built on it, in the world sim and the editor's panel) counts only the spine and limb capsules at their plain head
+  radius (`BodyField.body_volume_m3`). `tests/test_creature_head_shape.gd` pins this. Giving the head a stat effect
+  would need a cost and the owner's sign-off.
+
+## 2026-10-24 · Creature legs of different lengths tilt the body (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for walking that follows leg sizes. Every leg now stands at the gait table's
+  stance_height_ratio of its own length, instead of every hip standing at the shortest leg's height.
+- A least-squares line through those heights along the body sets the hip height and a standing tilt, capped at
+  30 degrees. An ape on long arms knuckle-walks front-up, and a body on long hind legs stands front-down.
+- Even legs stand level as before.
+
 ## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
 
 - Weapon-role parts (claws, horns, spikes, tusks, tail spikes, club tails, quills) add 2 attack each at scale 1

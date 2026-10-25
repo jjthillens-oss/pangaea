@@ -9,13 +9,14 @@ extends RefCounted
 ## moves in between one undo step.
 ##
 ## Cost (PROPOSED numbers, data/editor_costs.json): what this session adds minus refund_rate x what it removes, per
-## vertebra, limb joint and part. A mirrored limb's joints and a mirrored part's twin count twice. Moving, resizing and
-## turning are free. Lineage (ids, generation) belongs to the caller, as the body description has none.
+## vertebra, limb joint and part. A mirrored limb's joints and a mirrored part's twin count twice. Moving, resizing,
+## turning and the head shape dials are free. Lineage (ids, generation) belongs to the caller, as the body description has none.
 ## Pure rules: no scene, file access or randomness.
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
+const HeadShape := preload("res://game/domain/creature/head_shape.gd")
 
 ## Water, for a mass estimate from the capsule volumes.
 const DENSITY_KG_M3 := 1000.0
@@ -337,6 +338,31 @@ func _set_part(part_id: String, values: Dictionary, allowed: Array) -> Dictionar
 		return "")
 
 
+# Head shape ------------------------------------------------------------------------------------------------------
+
+
+## The working body's head dials (HeadShape.FIELDS -> per mille).
+func head_shape() -> Dictionary:
+	return HeadShape.of(working.extra)
+
+
+## key -> [min, max] per mille, from the body rules.
+func head_shape_ranges() -> Dictionary:
+	return HeadShape.ranges(rules)
+
+
+## Sets one head dial (snout, width, height, jaw or brow) to `value` per mille. Outside the body rules' range it is
+## refused; a drag of a slider is one gesture, so one undo step.
+func set_head_shape(key: String, value: int) -> Dictionary:
+	return _apply(func(d):
+		if not HeadShape.FIELDS.has(key):
+			return "%s is not a head dial" % key
+		var shape: Dictionary = HeadShape.of(d.extra)
+		shape[key] = value
+		HeadShape.store(d.extra, shape)
+		return "")
+
+
 # Undo, cost, preview, commit ---------------------------------------------------------------------------------------
 
 
@@ -387,10 +413,7 @@ func cost() -> int:
 ## Summary numbers for the editor's before/after panel (PROPOSED; the creature stage's real stats come later).
 static func stats(d: RefCounted) -> Dictionary:
 	var field = BodyField.from_description(d)
-	var volume := 0.0
-	for k in field.capsule_count():
-		var h: float = field.a[k].distance_to(field.b[k])
-		volume += PI / 3.0 * h * (field.ra[k] * field.ra[k] + field.ra[k] * field.rb[k] + field.rb[k] * field.rb[k])
+	var volume: float = field.body_volume_m3()
 	var legs: Array = GaitBody.from_description(d)["legs"] if not d.limbs.is_empty() else []
 	var by_type := {}
 	for p in d.parts:

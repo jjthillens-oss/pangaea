@@ -274,6 +274,86 @@
 				}
 			]
 		},
+		"dorsal_spine": {
+			"type": "dorsal_spine",
+			"footprint_radius_m": 0.063,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Height",
+					"meaning": "the plate 50% taller",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Rake",
+					"meaning": "the plate raked further back",
+					"default_permille": 0
+				}
+			]
+		},
+		"ear_pointed": {
+			"type": "ear_pointed",
+			"footprint_radius_m": 0.032,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 35,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Tall",
+					"meaning": "the ear 35% taller",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Droop",
+					"meaning": "the upper half folded 55 degrees back toward the tail",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "On the head, the cup opening toward the head direction (+Y); mirrored for the left ear."
+		},
+		"ear_round": {
+			"type": "ear_round",
+			"footprint_radius_m": 0.029,
+			"sink_depth_m": 0.008,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 45,
+			"tilt_limit_deg": 35,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Perk",
+					"meaning": "the ear tips 25 degrees forward",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Size",
+					"meaning": "the ear 30% larger",
+					"default_permille": 0
+				}
+			]
+		},
 		"eye": {
 			"type": "eye",
 			"footprint_radius_m": 0.062,
@@ -301,6 +381,34 @@
 				}
 			],
 			"handles_note": "H1 is on Lid, H2 on Eye; both are 0 to 1000 per mille."
+		},
+		"eye_bulge": {
+			"type": "eye_bulge",
+			"footprint_radius_m": 0.066,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the mound's lip rolls up over the ball and shuts",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 25% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
 		},
 		"eye_cluster": {
 			"type": "eye_cluster",
@@ -500,6 +608,33 @@
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
 		},
+		"foot_frog": {
+			"type": "foot_frog",
+			"footprint_radius_m": 0.109,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 14 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 30% longer",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
+		},
 		"foot_paw": {
 			"type": "foot_paw",
 			"footprint_radius_m": 0.073,
@@ -526,6 +661,41 @@
 				}
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+		},
+		"foot_primate": {
+			"type": "foot_primate",
+			"footprint_radius_m": 0.094,
+			"sink_depth_m": 0.0,
+			"chiral": true,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes splayed a further 10 degrees",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes 25% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Grasp",
+					"meaning": "toes curl 80 degrees down and the big toe swings across to close on a branch",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.08 m, y -0.036 m) meets the limb tip. Right foot: the big toe is on the inside (-X)."
 		},
 		"foot_talon": {
 			"type": "foot_talon",
@@ -666,6 +836,35 @@
 				"grasper"
 			]
 		},
+		"hand_frog": {
+			"type": "hand_frog",
+			"footprint_radius_m": 0.025,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Grip",
+					"meaning": "fingers curl 80 degrees in toward the palm",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "fingers fan 45% wider at the tips",
+					"default_permille": 0
+				}
+			]
+		},
 		"hand_paw": {
 			"type": "hand_paw",
 			"footprint_radius_m": 0.038,
@@ -720,6 +919,35 @@
 				{
 					"key": "H2_Size",
 					"meaning": "the shell palm 25% stouter",
+					"default_permille": 0
+				}
+			]
+		},
+		"hand_primate": {
+			"type": "hand_primate",
+			"footprint_radius_m": 0.037,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 40,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "hand",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Grip",
+					"meaning": "fingers curl 95 degrees around a branch, the thumb opposes",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "fingers fan 50% wider at the tips",
 					"default_permille": 0
 				}
 			]
@@ -861,6 +1089,33 @@
 				}
 			]
 		},
+		"horn_swept": {
+			"type": "horn_swept",
+			"footprint_radius_m": 0.034,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the sweep 35% longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Curl",
+					"meaning": "the tip curled further up",
+					"default_permille": 0
+				}
+			]
+		},
 		"jaw": {
 			"type": "jaw",
 			"footprint_radius_m": 0.049,
@@ -942,6 +1197,33 @@
 				}
 			]
 		},
+		"mane": {
+			"type": "mane",
+			"footprint_radius_m": 0.207,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 20,
+			"tilt_limit_deg": 25,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Raise",
+					"meaning": "the mane bristled up 40%",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the locks 30% longer and wider",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "On the neck or shoulders; the locks fall back (-Y) and down both sides."
+		},
 		"maw": {
 			"type": "maw",
 			"footprint_radius_m": 0.079,
@@ -968,6 +1250,33 @@
 				}
 			],
 			"handles_note": "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
+		},
+		"muzzle_primate": {
+			"type": "muzzle_primate",
+			"footprint_radius_m": 0.058,
+			"sink_depth_m": 0.008,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 25,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Snout",
+					"meaning": "the snout and nose pushed 14 mm further out",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Brow",
+					"meaning": "the brow ridge 5 mm heavier",
+					"default_permille": 0
+				}
+			],
+			"pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
 		},
 		"proboscis": {
 			"type": "proboscis",
@@ -1051,6 +1360,33 @@
 				}
 			]
 		},
+		"tail_bushy": {
+			"type": "tail_bushy",
+			"footprint_radius_m": 0.026,
+			"sink_depth_m": 0.015,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the tail curled 70 degrees up toward the head over the back",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Fluff",
+					"meaning": "the brush 35% fuller across",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "Meant for the tail cap (spine_u = 1), like tail_fluke."
+		},
 		"tail_fluke": {
 			"type": "tail_fluke",
 			"footprint_radius_m": 0.071,
@@ -1105,6 +1441,33 @@
 			],
 			"placement_note": "Meant for the tail cap (spine_u = 1); the pairs splay across the body's x."
 		},
+		"throat_sac": {
+			"type": "throat_sac",
+			"footprint_radius_m": 0.047,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Inflate",
+					"meaning": "the pouch blown up into a 0.11 m balloon",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Wide",
+					"meaning": "the sac 35% wider sideways",
+					"default_permille": 0
+				}
+			],
+			"placement_note": "Meant for the underside of the throat, behind the jaw."
+		},
 		"tusk": {
 			"type": "tusk",
 			"footprint_radius_m": 0.051,
@@ -1150,6 +1513,33 @@
 				{
 					"key": "H1_Fold",
 					"meaning": "fingers furled back toward the tail",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Flap",
+					"meaning": "the outer wing bent toward -X for the downstroke",
+					"default_permille": 0
+				}
+			]
+		},
+		"wing_dragon": {
+			"type": "wing_dragon",
+			"footprint_radius_m": 0.16,
+			"sink_depth_m": 0.038,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 30,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"limb"
+			],
+			"role": "detail",
+			"handles": [
+				{
+					"key": "H1_Fold",
+					"meaning": "fingers and membrane furled back and down toward the tail",
 					"default_permille": 0
 				},
 				{

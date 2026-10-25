@@ -1,0 +1,104 @@
+{
+  "id": "cpart_hand_frog",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature hand part (PROPOSED): a frog's hand, a small palm and four slender splayed fingers ending in round sticky disc pads, smooth wet skin; grips on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_hand_frog.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_hand_frog.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.089,
+    "y_forward": 0.028,
+    "z_up": 0.137
+  },
+  "triangles": 448,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartHandFrog_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartHandFrog_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartHandFrog_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_HandFrogPad",
+    "M_HandFrogSkin"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "HandFrog",
+    "Pads"
+  ],
+  "part_type": "hand_frog",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "hand_frog",
+    "footprint_radius_m": 0.025,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 40,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "hand",
+    "capabilities": [
+      "grasper"
+    ],
+    "handles": [
+      {
+        "key": "H1_Grip",
+        "meaning": "fingers curl 80 degrees in toward the palm",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Spread",
+        "meaning": "fingers fan 45% wider at the tips",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_HandFrogSkin": 0.9,
+    "M_HandFrogPad": 0.2
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1178,
+    "triangles_after": 448
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
