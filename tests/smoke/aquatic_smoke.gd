@@ -120,6 +120,23 @@ func _run() -> void:
 	_check(Array(sim.discovered) == Array(left.discovered), "the same places found: %s" % [sim.discovered])
 	var was := Vector3(float(left.position[0]), float(left.position[1]), float(left.position[2]))
 	_check(sim.player.pos.distance_to(was) < 0.01, "back where it left the water (%.2f m off)" % sim.player.pos.distance_to(was))
+
+	# The shore (plan sections 7 and 7a): a fish with crawl-strong lobe fins is offered land; staying is recorded.
+	var crawler: Dictionary = sim.player.body.duplicate()
+	crawler["limbs"] = int(stage.rules.body.crawl_limbs)
+	sim.points = 20
+	_check(sim.apply_offspring(crawler, 0), "a generation with crawling lobe fins")
+	var shore: Array = stage.rules.world.shore.pos
+	sim.player.pos = Vector3(float(shore[0]), float(shore[1]), float(shore[2]) - 1.0)
+	await _frames(SETTLE_FRAMES)
+	_check(stage.shore_offer != null, "the shore offers land")
+	if stage.shore_offer != null:
+		(stage.shore_offer.find_child("Stay", true, false) as Button).pressed.emit()
+		await _frames(SETTLE_FRAMES)
+	_check(stage.shore_offer == null, "Stay in the sea closes the offer")
+	var stayed: Variant = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	_check(stayed is Dictionary and (stayed.lineage_history as Array).any(func(e): return e.get("event") == "stayed_in_the_sea"),
+			"the lineage records that it stayed in the sea")
 	await _escape()
 	_check(main.aquatic_stage == null, "Escape leaves again")
 

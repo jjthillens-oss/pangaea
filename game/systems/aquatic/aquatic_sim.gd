@@ -343,7 +343,7 @@ func _zones_and_sites() -> void:
 				_emit("found", {"id": String(site.id), "name": String(site.name), "points": 0})
 	var at_shore: bool = player.pos.distance_to(_v(rules.world.shore.pos)) <= float(rules.world.shore.radius)
 	if at_shore and not _at_shore:
-		_emit("shore")
+		_emit("shore", {"can_crawl": bool(player.stats.can_crawl)})
 	_at_shore = at_shore
 
 

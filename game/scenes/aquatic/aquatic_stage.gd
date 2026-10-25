@@ -14,6 +14,9 @@ extends Node
 ## swims instead of the player for the smokes; while it is set the keyboard and pad are ignored.
 
 signal exit_requested
+## The player chose to crawl ashore at the shore (plan section 7); the progress is already saved. Main carries the
+## lineage over to the creature stage (EraTransition) and opens it.
+signal ashore_requested
 
 const WorldScript := preload("res://game/scenes/aquatic/aquatic_world.gd")
 const HudScript := preload("res://game/ui/aquatic_hud.gd")
@@ -27,6 +30,8 @@ var sim: AquaticSim
 var world: Node3D
 var hud: Control
 var editor: Control
+## The "Crawl onto land?" card while it is open.
+var shore_offer: Control
 var ui: CanvasLayer
 var driver: Callable
 ## Every sim event so far, for the smokes.
@@ -84,7 +89,7 @@ func _notification(what: int) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if sim == null or editor != null:
+	if sim == null or editor != null or shore_offer != null:
 		return
 	var intent: AquaticSim.Intent = driver.call() if driver.is_valid() else _read_input()
 	sim.step(intent)
@@ -97,6 +102,8 @@ func _physics_process(_delta: float) -> void:
 		save_now = save_now or String(e.type) in SAVE_ON
 		if e.type == "mate":
 			open_editor()
+		elif e.type == "shore" and bool(e.get("can_crawl", false)):
+			open_shore_offer()
 	if save_now:
 		save_progress()
 
@@ -148,7 +155,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"ui_cancel") or (event is InputEventJoypadButton and event.is_pressed()
 			and (event as InputEventJoypadButton).button_index == JOY_BUTTON_BACK):
 		get_viewport().set_input_as_handled()
-		if editor != null:
+		if shore_offer != null:
+			stay_in_the_sea()
+		elif editor != null:
 			editor.call("cancel_edit")
 		else:
 			save_progress()
@@ -189,3 +198,74 @@ func _on_editor_closed(committed: bool, body: Dictionary, cost: int) -> void:
 		editor = null
 	world.visible = true
 	hud.visible = true
+
+
+## The shore with crawl-capable lobe fins (plan sections 7 and 7a): the choice, over the paused world. Crawling ashore
+## saves and asks Main to carry the lineage onto land; staying records the choice in the lineage and swims on. The
+## offer opens again the next time the fish swims into the shore.
+func open_shore_offer() -> Control:
+	if shore_offer != null:
+		return shore_offer
+	shore_offer = PanelContainer.new()
+	shore_offer.name = "ShoreOffer"
+	ui.add_child(shore_offer)
+	HudScript._pin(shore_offer, 0.5, 0.5, -440.0, -170.0, 880.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.02, 0.1, 0.18, 0.92)
+	style.set_corner_radius_all(18)
+	style.set_content_margin_all(30)
+	style.border_color = Color(0.95, 0.85, 0.55, 0.7)
+	style.set_border_width_all(2)
+	shore_offer.add_theme_stylebox_override("panel", style)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	shore_offer.add_child(box)
+	var title := Label.new()
+	title.text = "Crawl onto land?"
+	title.add_theme_font_size_override("font_size", 38)
+	box.add_child(title)
+	var text := Label.new()
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.add_theme_font_size_override("font_size", 23)
+	text.text = ("Your lobe fins can carry you out of the water. On land your line walks, and its fins become legs; "
+			+ "the sea is kept as a checkpoint you can go back to. Or stay: the sea is a path of its own, and your line "
+			+ "keeps evolving here.")
+	box.add_child(text)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	box.add_child(row)
+	var crawl := Button.new()
+	crawl.name = "Crawl"
+	crawl.text = "Crawl onto land"
+	crawl.pressed.connect(crawl_ashore)
+	row.add_child(crawl)
+	var stay := Button.new()
+	stay.name = "Stay"
+	stay.text = "Stay in the sea"
+	stay.pressed.connect(stay_in_the_sea)
+	row.add_child(stay)
+	stay.call_deferred("grab_focus")
+	return shore_offer
+
+
+func _close_shore_offer() -> void:
+	if shore_offer != null:
+		ui.remove_child(shore_offer)
+		shore_offer.queue_free()
+		shore_offer = null
+
+
+## Turns the shore down: the lineage is recorded as staying in the sea (AquaticLineage.STAYED_EVENT), and play goes on.
+func stay_in_the_sea() -> void:
+	_close_shore_offer()
+	lineage["stayed"] = true
+	save_progress()
+	hud.toast("Your line stays in the sea")
+
+
+## Saves, then hands the lineage to Main to carry onto land.
+func crawl_ashore() -> void:
+	_close_shore_offer()
+	lineage["stayed"] = false
+	save_progress()
+	ashore_requested.emit()

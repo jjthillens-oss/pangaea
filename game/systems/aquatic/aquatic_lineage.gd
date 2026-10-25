@@ -7,6 +7,9 @@ extends RefCounted
 
 const RULES_PATH := "res://game/data/aquatic/aquatic_rules.json"
 const SPECIES_PATH := "res://game/data/creatures_m1.json"
+## The lineage event a crawl-capable fish writes when it turns the shore down (plan section 7a): later eras read
+## the last of this and ShoreLink's "came_ashore" to tell which path the lineage is on.
+const STAYED_EVENT := "stayed_in_the_sea"
 
 
 static func rules(path := RULES_PATH) -> Dictionary:
@@ -77,7 +80,48 @@ static func write(slot_path: String, lineage: Dictionary, sim: AquaticSim) -> Er
 		return ERR_INVALID_PARAMETER
 	save.aquatic = sim.to_save()
 	save.adaptation_points = sim.points
+	if bool(lineage.get("stayed", false)) and last_path_event(save) != STAYED_EVENT:
+		save.lineage_history.append({"generation": save.genome.generation, "genome_id": save.genome.genome_id,
+				"event": STAYED_EVENT})
 	return service.save_to(slot_path, save)
+
+
+## The last path event in the lineage's history ("stayed_in_the_sea", "came_ashore"), or "" for none.
+static func last_path_event(save: SaveGame) -> String:
+	for i in range(save.lineage_history.size() - 1, -1, -1):
+		var e: Variant = save.lineage_history[i]
+		if e is Dictionary and String(e.get("event", "")) in [STAYED_EVENT, ShoreLink.EVENT]:
+			return String(e.event)
+	return ""
+
+
+## The first land creature of a fish that crawls ashore (plan section 7): the creature stage's four-legged starter
+## (its legs are the lobe fins), longer with the fish's length and stouter with its girth, with the fish's mouth, its
+## back fin when it had one, and its colour; CreatureRules.ashore keeps the skin rule in one place.
+static func to_creature(body: Dictionary, genome: Genome) -> Dictionary:
+	var creature := CreatureRules.new_creature()
+	var cbody: Dictionary = creature["body"]
+	cbody["reference_length_mm"] = 900 + 150 * int(body.get("length", 2))
+	var stout := 0.85 + 0.15 * float(body.get("girth", 1))
+	for v in cbody.get("vertebrae", []):
+		v["r"] = int(round(float(v.r) * stout))
+	var mouth := "maw" if String(body.get("mouth", "both")) == "filter" else "jaw"
+	var parts: Array = []
+	for part in cbody.get("parts", []):
+		match String(part.type):
+			"beak":
+				part["type"] = mouth
+				parts.append(part)
+			"horn":
+				pass
+			"fin":
+				if int(body.get("dorsal", 0)) > 0:
+					parts.append(part)
+			_:
+				parts.append(part)
+	cbody["parts"] = parts
+	cbody[CreatureRules.SKIN_COLOR_KEY] = "#" + CreatureRules.cell_skin(float(body.get("hue", 0.55))).to_html(false)
+	return CreatureRules.ashore(creature, genome)
 
 
 ## The cell stage's species, by name, as the entry card remembers them: the microscopic world is history, not

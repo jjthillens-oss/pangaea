@@ -326,3 +326,58 @@ func test_the_lineage_is_written_only_to_a_slot_it_can_read() -> void:
 	check_eq(FileAccess.get_file_as_string(slot), "not json", "the broken file is left as it is")
 	for f in [slot, slot + ".bak", slot + ".tmp"]:
 		DirAccess.remove_absolute(f)
+
+
+## Plan section 7: lobe fins are a body choice with a cost; at the rules' crawl_limbs the fish can crawl ashore, and a
+## body saved before lobe fins existed is still legal (it has none).
+func test_lobe_fins_cost_speed_and_open_the_shore() -> void:
+	var old := AquaticBody.DARTER.duplicate()
+	check(not old.has("limbs") and AquaticBody.validate(old, rules.body).is_empty(), "a body without lobe fins is legal")
+	var crawler := old.duplicate()
+	crawler["limbs"] = int(rules.body.crawl_limbs)
+	check(AquaticBody.validate(crawler, rules.body).is_empty(), "a crawler is legal")
+	var a := AquaticBody.stats(old, rules.body)
+	var b := AquaticBody.stats(crawler, rules.body)
+	check(not bool(a.can_crawl) and bool(b.can_crawl), "only the crawler can crawl")
+	check(float(b.top_speed) < float(a.top_speed), "lobe fins slow the swim (%.2f < %.2f)" % [b.top_speed, a.top_speed])
+	check_eq(AquaticBody.edit_cost(old, crawler, rules.editor), int(rules.editor.step_cost.limbs) * int(crawler.limbs), "each step costs")
+	var too_many := crawler.duplicate()
+	too_many["limbs"] = 9
+	check(not AquaticBody.validate(too_many, rules.body).is_empty(), "out of range is refused")
+	var sim := _sim(crawler)
+	sim.player.pos = Vector3(float(rules.world.shore.pos[0]), float(rules.world.shore.pos[1]), float(rules.world.shore.pos[2]) - 1.0)
+	sim.step(AquaticSim.Intent.new())
+	var shore := sim.take_events().filter(func(e): return e.type == "shore")
+	check(shore.size() == 1 and bool(shore[0].can_crawl), "the shore knows the fish can crawl: %s" % [shore])
+
+
+func test_a_fish_comes_ashore_as_a_legal_creature_of_its_colour() -> void:
+	var catalog := PartCatalog.load_from()
+	var founded := Lineage.found(5, "test", catalog, "hunter")
+	var crules := CreatureRules.new()
+	for fish in [AquaticBody.DARTER, AquaticBody.HOVERER]:
+		var body: Dictionary = fish.duplicate()
+		body["limbs"] = 2
+		body["hue"] = 0.3
+		var creature := AquaticLineage.to_creature(body, founded.save.genome)
+		check(crules.body_problems(creature.body).is_empty(), "a legal land body: %s" % [crules.body_problems(creature.body)])
+		check_eq(String(creature.body.skin_color), "#" + CreatureRules.cell_skin(0.3).to_html(false), "the fish's colour")
+
+
+func test_staying_in_the_sea_is_written_once_as_a_lineage_event() -> void:
+	var dir := "user://test_saves/aquatic_stay_%d" % OS.get_process_id()
+	DirAccess.make_dir_recursive_absolute(dir)
+	var slot := dir + "/slot.json"
+	for f in [slot, slot + ".bak", slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
+	var lineage := AquaticLineage.read(slot, rules, 3)
+	var sim := AquaticSim.new(rules, 3, lineage.body, lineage)
+	lineage["stayed"] = true
+	check_eq(AquaticLineage.write(slot, lineage, sim), OK, "written")
+	check_eq(AquaticLineage.write(slot, lineage, sim), OK, "written again")
+	var save: SaveGame = PersistenceService.new(PartCatalog.load_from()).load_from(slot).save
+	var stays := save.lineage_history.filter(func(e): return e.get("event") == AquaticLineage.STAYED_EVENT)
+	check_eq(stays.size(), 1, "one event")
+	check_eq(AquaticLineage.last_path_event(save), AquaticLineage.STAYED_EVENT, "the path later eras read")
+	for f in [slot, slot + ".bak", slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
