@@ -3498,23 +3498,41 @@ EAR_SINK = 0.006
 
 
 def build_ear_round():
-    """A monkey's rounded ear standing out from the side of the head: a thin cupped flap a little taller than
-    wide, a thick rolled rim (helix) open at the bottom where the ear meets the head, a soft inner ridge round
-    a deep bowl, and a fur tuft at its root. H1_Perk tips it forward, H2_Size scales it."""
+    """A monkey's ear standing out from the side of the head (right ear; the runtime mirrors it): a thin
+    D-shaped flap wider at the top than at the root, a smooth rolled rim (helix) over the top and down the back
+    (+X) edge that fades out before the front, a notch low on the front (-X) edge where the ear meets the head
+    with a small tragus bump beside it, a deep concha bowl in the lower front and a soft antihelix ridge round
+    it. Fur on the back, bare skin inside. H1_Perk tips it forward, H2_Size scales it."""
     if EAR_N.y < 0:
         raise RuntimeError("ear face must point forward")
-    centre_u, R = 0.03, 0.029
-    rings, segs = 8, 32
+    centre_u, R = 0.031, 0.027
+    rings, segs = 9, 40
+    notch_phi = math.radians(-118.0)
+
+    def edge(phi):
+        d = (phi - notch_phi + math.pi) % (2 * math.pi) - math.pi
+        return 1.0 - 0.38 * math.exp(-(d / 0.18) ** 2)
+
+    def flat(rho, phi):
+        rr = rho * edge(phi)
+        s = math.sin(phi)
+        u = centre_u + R * 1.12 * rr * s
+        v = 0.004 + R * (0.86 + 0.2 * s) * rr * math.cos(phi) + 0.003 * rr * s     # wider at the top, top leans back
+        return u, v
+
+    def cup(u, v):
+        return 0.0075 * math.exp(-(((u - (centre_u - 0.006)) / 0.012) ** 2 + ((v - 0.0005) / 0.011) ** 2))
 
     def surf(rho, phi, side):
-        u = centre_u + R * 1.12 * rho * math.sin(phi)
-        v = R * rho * math.cos(phi)
-        attach = max(0.0, -math.sin(phi)) * rho                 # the lower edge, where the ear meets the head, is flatter
-        cup = 0.0045 * (1.0 - rho * rho) * (1.0 - 0.6 * attach) - 0.003 * max(0.0, (rho - 0.75) / 0.25) ** 2
-        return EAR_U * u + EAR_V * v - EAR_N * cup + EAR_N * (0.0016 * side)
+        u, v = flat(rho, phi)
+        th = 0.0012 + 0.0012 * max(0.0, 1.0 - u / 0.03)
+        c = cup(u, v) + 0.0025 * (1.0 - rho * rho)
+        if side < 0:
+            c *= 0.75     # the back follows the bowl a little less, so the flap thickens behind it
+        return EAR_U * u + EAR_V * v - EAR_N * c + EAR_N * (th * side)
 
-    verts, fcs = [], []
-    for side in (1.0, -1.0):
+    verts, fcs, mats = [], [], []
+    for side, mat in ((1.0, 1), (-1.0, 0)):
         base = len(verts)
         verts.append(tuple(surf(0.0, 0.0, side)))
         for r in range(1, rings + 1):
@@ -3522,33 +3540,50 @@ def build_ear_round():
                 verts.append(tuple(surf(r / rings, 2 * math.pi * s / segs, side)))
         for s in range(segs):
             fcs.append((base, base + 1 + s, base + 1 + (s + 1) % segs))
+            mats.append(mat)
         for r in range(1, rings):
             a, b = base + 1 + (r - 1) * segs, base + 1 + r * segs
             for s in range(segs):
                 t = (s + 1) % segs
                 fcs.append((a + s, b + s, b + t, a + t))
+                mats.append(mat)
     outer_f, outer_b = 1 + (rings - 1) * segs, len(verts) // 2 + 1 + (rings - 1) * segs
     for s in range(segs):
         t = (s + 1) % segs
         fcs.append((outer_f + s, outer_f + t, outer_b + t, outer_b + s))
-    # The helix: a rolled rim from the front lower edge over the top and down the back, open at the root.
-    phis = [math.radians(-55.0 + 290.0 * k / 24) for k in range(25)]
-    rim = [surf(0.97, p, 0.0) + EAR_N * 0.0012 for p in phis]
-    hv, hf, _ = _tube(rim, lambda i, a: 0.0026 * min(1.0, 0.35 + 0.65 * math.sin(math.pi * i / 24) ** 0.5), 10)
+        mats.append(0)
+    # The helix: from low on the back edge, over the top, fading out on the upper front edge.
+    n = 28
+    phis = [math.radians(-70.0 + 225.0 * k / n) for k in range(n + 1)]
+    rim = [surf(0.955, p, 1.0) + EAR_N * 0.0006 for p in phis]
+
+    def helix_r(i, a):
+        t = i / n
+        return 0.0034 * min(1.0, (t / 0.18) ** 0.6) * min(1.0, ((1.0 - t) / 0.35) ** 0.8) + 0.0004
+
+    hv, hf, _ = _tube(rim, helix_r, 12)
     bc.append(verts, fcs, hv, hf)
-    # The antihelix: a soft ridge inside the rim round the upper bowl.
-    ridge = [surf(0.62, math.radians(25.0 + 130.0 * k / 12), 1.0) for k in range(13)]
-    rv, rf, _ = _tube(ridge, lambda i, a: 0.0024 * math.sin(math.pi * (0.1 + 0.8 * i / 12)), 8)
+    mats += [1] * (len(fcs) - len(mats))
+    # The antihelix: a soft ridge inside the rim curving round the top and back of the bowl.
+    ridge = [surf(0.6, math.radians(-50.0 + 150.0 * k / 14), 1.0) + EAR_N * 0.0004 for k in range(15)]
+    rv, rf, _ = _tube(ridge, lambda i, a: 0.0022 * math.sin(math.pi * (0.08 + 0.84 * i / 14)) + 0.0003, 10)
     bc.append(verts, fcs, rv, rf)
-    skin = _skin_material("M_EarRoundSkinProc", scale=300.0, lo=0.8, rough=0.55)
-    ear = bc.mesh_object("EarRound", verts, fcs, [skin])
-    skin.name = "M_EarRoundSkin"
-    tv, tf = _blob(Vector((0.0, -0.013, 0.002)), 0.024, 0.011, 0.0055, power=0.9)
+    mats += [1] * (len(fcs) - len(mats))
+    # The tragus: a small rounded bump just behind the notch, guarding the bowl.
+    tu, tvv = flat(0.72, math.radians(-95.0))
+    gv, gf = _blob(EAR_U * tu + EAR_V * tvv + EAR_N * 0.0004, 0.0032, 0.0026, 0.0042, sub=2, power=0.85)
+    bc.append(verts, fcs, gv, gf)
+    mats += [1] * (len(fcs) - len(mats))
     fur_mat = _fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
-    tuft = bc.mesh_object("Tuft", tv, tf, [fur_mat], parent=ear)
-    fur_mat.name = "M_EarRoundFur"
+    skin = _skin_material("M_EarRoundSkinProc", scale=300.0, lo=0.8, rough=0.55)
+    ear = bc.mesh_object("EarRound", verts, fcs, [fur_mat, skin], mats)
+    tv, tf = _blob(Vector((0.004, -0.014, 0.002)), 0.024, 0.011, 0.0055, power=0.9)
+    tuft_mat = _fur_material("M_EarRoundTuftProc", along=(6.0, 0.4, 6.0))
+    tuft = bc.mesh_object("Tuft", tv, tf, [tuft_mat], parent=ear)
+    skin.name, fur_mat.name, tuft_mat.name = "M_EarRoundSkin", "M_EarRoundFur", "M_EarRoundTuft"
     objs = [ear, tuft]
-    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#A27B68")), "M_EarRoundFur": sf.tint(_lin("#7A6652"))})
+    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A")),
+                                         "M_EarRoundTuft": sf.tint(_lin("#80604A"))}, tolerance=0.0003)
     pts = _check_pivot("ear_round", EAR_SINK + 0.002)
     foot = _footprint(pts)
 
@@ -3560,11 +3595,12 @@ def build_ear_round():
 
     handles = _shape_keys(ear, [("H1_Perk", perk, "the ear tips 25 degrees forward"), ("H2_Size", size, "the ear 30% larger")])
     _shape_keys(tuft, [("H1_Perk", perk, ""), ("H2_Size", size, "")])
-    rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden")
+    rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden", chiral=True)
     rules["handles"] = handles
-    return {"purpose": "Creature detail part (PROPOSED): a monkey's rounded cupped ear with a rolled rim open at the root, an inner ridge round a deep bowl and a fur tuft at its base.",
+    rules["placement_note"] = "Right ear on the head, bowl facing forward (+Y); the notch and tragus are on the front (-X) edge toward the face. Mirrored for the left ear."
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's ear, a flap wider at the top with a smooth rolled helix over the top and back, a notch and tragus at the root, a deep concha bowl, bare skin inside and fur behind.",
             "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 1, **baked}
+            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9, "M_EarRoundTuft": 0.9}, "revision": 2, **baked}
 
 
 def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):

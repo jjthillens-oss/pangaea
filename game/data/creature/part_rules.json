@@ -330,9 +330,9 @@
 		},
 		"ear_round": {
 			"type": "ear_round",
-			"footprint_radius_m": 0.029,
+			"footprint_radius_m": 0.033,
 			"sink_depth_m": 0.008,
-			"chiral": false,
+			"chiral": true,
 			"orientation": "normal",
 			"turn_limit_deg": 45,
 			"tilt_limit_deg": 35,
@@ -352,7 +352,8 @@
 					"meaning": "the ear 30% larger",
 					"default_permille": 0
 				}
-			]
+			],
+			"placement_note": "Right ear on the head, bowl facing forward (+Y); the notch and tragus are on the front (-X) edge toward the face. Mirrored for the left ear."
 		},
 		"eye": {
 			"type": "eye",
