@@ -135,7 +135,7 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the bead's highlight reads its roll, the teeth "
                                "stand out against the dark disc, the throat stays dark without crushing the disc; "
                                "no clipping.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (every existing mouth and eye points the same way; not this art). In the creature editor on the angler (maw swapped in memory, docs/evidence/credit-more-parts/after_angler_mouth_sucker.jpg) it loads, seats on the snout tip without floating or deep clipping, sits in scale with the head and keeps its sea-green lip, plum disc and amber teeth, but its opening faces up. With the frame fix previewed (more_parts_shots.gd --cone-fix-preview, conefix_angler_mouth_sucker.jpg) the funnel juts forward from the snout and the toothed disc faces ahead, reading as a lamprey's sucker in the front and close views."},
     "cpart_mouth_fangs": {
         "gate1_shape": "pass: a short, wide, low snout of lips (13.1 cm across, 6.5 cm deep, standing 7.5 cm out of "
                        "the skin) resting a little open over a shorter lower jaw; face-on (gray_top, the in-game "
@@ -153,7 +153,7 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the scales' domes catch soft highlights, the fangs "
                                "stay bright without clipping and the tongue's fork reads against the sky; the mouth "
                                "slot is dark but not crushed.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the stalker (mandibles swapped in memory, after_stalker_mouth_fangs_eye_turret.jpg) it loads, seats under the head without floating or deep clipping and keeps its teal scales, ivory fangs and plum tongue, but its opening faces up. With the frame fix previewed (conefix_stalker_mouth_fangs_eye_turret.jpg) the fangs hang down in front of the chin and the forked tongue pokes out ahead, reading as a snake's mouth in the close view; at the world camera's distance on this spider-like body it is a small teal shape under the head, partly behind the forelegs, and the fangs are only a few pixels."},
     "cpart_eye_turret": {
         "gate1_shape": "pass: a smooth, slightly convex cone 8.4 cm across and 6 cm out of the skin with a round "
                        "aperture at its tip (gray_top), the ball sitting just inside it. H1_Blink puckers the "
@@ -166,7 +166,7 @@ REVIEW = {
                            "mat_threequarter shows both). Iterated: the first scale shader read as cracked mud.",
         "gate3_neutral_light": "pass: under the neutral rig the ring bands and tubercles read by soft grazing light, "
                                "the gold ring is visible inside the shadowed aperture; no clipping.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the stalker (both eye stalks swapped in memory, at the preset's scale 1400, after_stalker_mouth_fangs_eye_turret.jpg) the pair loads, seats on the head without floating and keeps its turquoise granular skin, but the apertures face up. With the frame fix previewed (conefix_stalker_mouth_fangs_eye_turret.jpg) the two cones point forward with their gold-ringed pupils looking ahead, reading as chameleon turrets in the front and close views."},
     "cpart_eye_lashed": {
         "gate1_shape": "pass: a big ball 10 cm across set in the skin to about its middle, seen through an almond "
                        "opening in one smooth lid ring that runs back into the skin like a socket - heavy and rolled "
@@ -184,7 +184,7 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the ball's highlight sits on the iris, the lid's "
                                "roll reads by its soft shading, the lashes stay dark against the lid without "
                                "crushing; no clipping.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the prowler (both slit eyes swapped in memory, after_prowler_eye_lashed.jpg) the pair loads, seats on the head without floating or deep clipping, keeps its materials and is in scale, but the iris faces the sky and the heavy lid faces forward. With the frame fix previewed (conefix_prowler_eye_lashed.jpg) the brown iris and big pupil look forward under the heavy lid with the dark lash fringe on top, reading as a big lashed eye in the close and side views; at the world camera's distance it reads as a large dark-lashed eye on the side of the head."},
 }
 
 
