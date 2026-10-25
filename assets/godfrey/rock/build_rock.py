@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import math
+import os
 import bpy
 from mathutils import Vector
 
@@ -26,8 +27,9 @@ bpy.context.scene.collection.children.link(review_group)
 
 verts = []
 cavities = []
-for i, (z, base_r) in enumerate(RINGS):
+for i, (z0, base_r) in enumerate(RINGS):
     for j in range(N):
+        z = z0
         a = 2.0 * math.pi * j / N
         r = base_r * (1.0 + 0.060 * math.sin(3*a + 0.3)
                       + 0.036 * math.sin(5*a - 2.4*z)
@@ -35,14 +37,15 @@ for i, (z, base_r) in enumerate(RINGS):
         x = r * math.cos(a) + 0.030 * math.sin(2.6*z)
         y = 0.77 * r * math.sin(a)
         # A real inset surface: broad cavity on the viewing side left of center.
-        cavity = (math.exp(-((x + 0.28) / 0.37)**2 - ((z - 0.93) / 0.39)**2)
+        cavity = (math.exp(-((x - 0.27) / 0.30)**4 - ((z - 0.94) / 0.34)**4)
                   * max(0.0, math.sin(a))**2)
-        y -= 0.39 * cavity
+        y -= 0.82 * cavity
         # The right shoulder remains fuller and smoother than the cavity lip.
-        x += 0.10 * math.exp(-((z - 0.82)/0.43)**2) * max(0.0, math.cos(a))
+        x -= 0.10 * math.exp(-((z - 0.82)/0.43)**2) * max(0.0, -math.cos(a))
         # An uneven cap shelf without a manufactured ring.
-        if i in (8, 9):
-            z += 0.012 * math.sin(4*a + 0.8)
+        z += 0.04 * math.sin(4*a + 0.8) * math.sin(math.pi * i / (len(RINGS)-1))
+        if i >= 8:
+            z += 0.12 * max(0.0, -math.cos(a)) * max(0.0, math.sin(a))
         verts.append((x, y, z))
         cavities.append(cavity)
 
@@ -95,9 +98,9 @@ def mat(name, rgb, roughness):
     return m
 
 gray = mat("Shape_gray", (0.43,0.43,0.43), 0.84)
-main = mat("Warm_sandstone", (0.40,0.15,0.095), 0.86)
-cavity_mat = mat("Weathered_recess", (0.25,0.095,0.065), 0.94)
-cap = mat("Sun_worn_cap", (0.53,0.245,0.155), 0.81)
+main = mat("Warm_sandstone", (0.33,0.095,0.060), 0.86)
+cavity_mat = mat("Weathered_recess", (0.16,0.040,0.027), 0.94)
+cap = mat("Sun_worn_cap", (0.42,0.145,0.075), 0.81)
 mesh.materials.append(gray)
 
 def light(name, loc, energy, size):
@@ -152,6 +155,10 @@ def render_view(name, suffix):
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "rock_blockout.blend"))
 for name in ("front","side","three_quarter"):
     render_view(name, "gray")
+
+if os.environ.get("GODFREY_ROCK_STAGE") == "gray":
+    print("Gray shape pass complete; inspect views before running the material stage.")
+    raise SystemExit(0)
 
 mesh.materials.clear()
 for m in (main,cavity_mat,cap):

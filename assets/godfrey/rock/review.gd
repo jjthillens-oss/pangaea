@@ -20,13 +20,19 @@ func _review() -> void:
 	stage.add_child(camera)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 3.4
-	camera.position = Vector3(2.7, 2.2, 3.5)
+	camera.position = Vector3(-2.7, 2.2, -3.5)
 	camera.look_at(Vector3(0.0, 0.82, 0.0))
 	camera.current = true
-	var key := DirectionalLight3D.new()
+	var key := OmniLight3D.new()
 	stage.add_child(key)
-	key.light_energy = 1.3
-	key.rotation_degrees = Vector3(-40.0, -28.0, 0.0)
+	key.position = Vector3(-3.0, 4.0, -4.0)
+	key.light_energy = 2.2
+	key.omni_range = 12.0
+	var fill := OmniLight3D.new()
+	stage.add_child(fill)
+	fill.position = Vector3(4.0, 2.0, -2.0)
+	fill.light_energy = 0.9
+	fill.omni_range = 10.0
 	var environment := WorldEnvironment.new()
 	stage.add_child(environment)
 	var env := Environment.new()
@@ -34,7 +40,7 @@ func _review() -> void:
 	env.background_color = Color(0.48, 0.53, 0.59)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.7, 0.73, 0.79)
-	env.ambient_light_energy = 0.65
+	env.ambient_light_energy = 0.75
 	environment.environment = env
 	for _i in 8:
 		await process_frame
