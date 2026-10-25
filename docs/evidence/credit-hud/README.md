@@ -85,6 +85,11 @@ Creature world HUD:
   its visibility).
 - Every control in the creature HUD ignores the mouse, so the middle-drag orbit reaches the camera.
 - The top right is empty now: the points moved into the goal card.
+- The cell HUD was restyled in place, per the lead's decision for this job: energy and health stay top left as a
+  glass card, with the growth ring, the controls card bottom left and the ladder strip bottom right, and no ability
+  row. Main's handbook "Small HUD" pillar (`docs/director/HANDBOOK.md`; backlog Q-02 in
+  `docs/director/backlog.json`: goals top left, abilities bottom centre, one progress bar) arrived after this job
+  started; the creature HUD follows it, and Q-02 for the cell stage stays open.
 
 ## Verified (IMPLEMENTED)
 
@@ -93,11 +98,13 @@ Creature world HUD:
   `_points_flash`).
 - The creature HUD's chips, goal line, mouse handling and controls-line timeout have their own unit tests in
   `tests/test_creature_world_hud.gd` (a stub world), added at the round 1 reviewers' request; the file is outside
-  the job brief's list, so the lead signs it off in the PR. They cover the chips' names and a rebinding shown when
-  the world opens again, Evolve lit only at the nest, Bite dimmed while it recharges and absent without a mouth, no
-  mouse or focus anywhere, the goal line, and the controls line timing out with the dock's line then naming the
-  move, orbit and way-out keys, and the line coming back on a real device change (`InputPrompts.note` with a
-  controller button) and when the world opens again.
+  the job brief's list, so the lead signs it off in the PR, together with the added test in `tests/test_ui_text.gd`
+  (below), which the brief's wording for that file ("only to read the real nodes' variations") does not cover. Both
+  were added at reviewers' request, only add coverage and loosen no bound. They cover the chips' names and a
+  rebinding shown when the world opens again, Evolve lit only at the nest, Bite dimmed while it recharges and absent
+  without a mouth, no mouse or focus anywhere, the goal line, and the controls line timing out with the dock's line
+  then naming the move, orbit and way-out keys, and the line coming back on a real device change
+  (`InputPrompts.note` with a controller button) and when the world opens again.
 - The status card's width has a unit test at each text size (`tests/test_ui_text.gd`,
   `test_the_hud_words_sized_in_code_follow_the_text_size`): 420, 452 and 483 px at 100, 115 and 130%, and at the
   largest size the card still ends 16 px clear of the widest centred banner or message (x 540).
@@ -136,9 +143,9 @@ Creature world HUD:
   creature systems code, which other agents own: issues #205 (sing cooldown) and #206 (player hunger, an owner
   decision first).
 - On a controller, B is both Sing (`creature_social` is bound to joypad button 1 in `project.godot`) and Back to the
-  editor (Godot's default `ui_cancel`), so pressing B to sing also leaves the world. This was so before the
-  restyle (main's key line showed the same names); the chips only make it visible. `project.godot` and the
-  creature code belong to other owners, so it is not changed here.
+  editor (`ui_cancel`'s controller B, which `SettingsService.UI_PAD` adds at start in `apply_bindings`), so pressing
+  B to sing also leaves the world. This was so before the restyle (main's key line showed the same names); the chips
+  only make it visible. `project.godot` and the creature code belong to other owners, so it is not changed here.
 - `tests/test_world_hud.gd` still feeds the pre-glass panel rects into its pip test as fixed inputs, and its
   comment still says they are read off the running game. Refreshed from the new layout, its west-south-west case
   no longer lies under the controls card, so the scenario would need the owner's approval to change. The shot
