@@ -1,0 +1,30 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[sub_resource type="Shader" id="Shader_shore_light"]
+code = "// The shore's light (shore_piece: the Shaft and the Reach ring), additive and unlit, no fog.
+// Written by tools/blender/make_shore_piece.py. COLOR_0 (LightWeight, raw) tells the parts apart:
+// red is the part's strength, green 0 for the shaft (it fades at both ends and toward its silhouette)
+// and 1 for the ring (a soft band across UV v, which runs 0 inside to 1 outside). The view pulses a
+// duplicate's strength, never this file.
+shader_type spatial;
+render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
+
+uniform vec4 tint : source_color = vec4(1.0, 0.831, 0.525, 1.0);
+uniform float strength = 1.0;
+
+void fragment() {
+	float ends = smoothstep(0.0, 0.35, UV.y) * (1.0 - smoothstep(0.45, 1.0, UV.y));
+	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+	float shaft = ends * pow(facing, 2.0);
+	float band = 1.0 - smoothstep(0.0, 1.0, abs(UV.y * 2.0 - 1.0));
+	float shape = mix(shaft, band, COLOR.g);
+	ALBEDO = tint.rgb * (0.5 * strength * COLOR.r * shape);
+}
+"
+
+[resource]
+resource_name = "M_ShoreLight"
+render_priority = 0
+shader = SubResource("Shader_shore_light")
+shader_parameter/tint = Color(1.0, 0.831, 0.525, 1)
+shader_parameter/strength = 1.0

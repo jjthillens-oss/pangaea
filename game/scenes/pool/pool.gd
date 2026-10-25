@@ -914,6 +914,8 @@ func warm_up_meshes() -> Array[Mesh]:
 	out.append_array(OlderHaze.warm_up_meshes())
 	out.append_array(OldBandLayer.warm_up_meshes())
 	out.append_array(CradleView.warm_up_meshes())
+	if is_endless():
+		out.append_array(ShoreView.warm_up_meshes())
 	return out
 
 
