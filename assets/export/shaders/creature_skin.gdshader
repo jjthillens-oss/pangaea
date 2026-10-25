@@ -37,6 +37,11 @@ uniform float fur_length : hint_range(0.0, 1.0) = 0.5;   // longer: bigger clump
 uniform float fur_density : hint_range(20.0, 400.0) = 220.0; // strands per body length
 uniform float scale_size : hint_range(8.0, 120.0) = 45.0;  // scales per body length (rest space)
 uniform float wet_gloss : hint_range(0.0, 1.0) = 0.8;    // smooth-wet: 1 is a wet, glossy film
+// Fur shells (covering 1 only). The base pass is layer 0; SpineRig chains FUR_SHELLS copies of this material as
+// next_pass with shell_layer 1..shell_count, each pushed out along the normal and alpha-tested into strands.
+uniform int shell_layer = 0;                           // 0 = the skin itself; >0 = a fur shell (discarded unless fur)
+uniform int shell_count = 6;
+uniform float fur_height_m : hint_range(0.0, 0.1) = 0.022; // shell height at fur_length 1, in metres
 
 varying vec4 skin;     // spine_u, ring_v, limb_id, limb_t
 varying vec3 rest_pos; // rest-pose body-space position, x folded so both sides match, scaled to the body
@@ -55,6 +60,11 @@ void vertex() {
 	rest_pos = vec3(abs(rest.x), rest.y, rest.z) / max(body_length_m, 0.001);
 	obj_pos = VERTEX;
 	obj_normal = NORMAL;
+	if (shell_layer > 0 && covering == 1) {
+		float h = float(shell_layer) / float(max(shell_count, 1));
+		VERTEX += NORMAL * h * fur_height_m * (0.3 + 0.7 * fur_length) * covering_strength;
+		VERTEX.y -= h * h * fur_height_m * 0.35 * fur_length;   // tips droop a little
+	}
 	crease = COLOR.r;
 }
 
@@ -114,7 +124,27 @@ vec3 triplanar_weights(vec3 n) {
 	return w / (w.x + w.y + w.z);
 }
 
+// Strand mask for shell height h (0 root, 1 tip): jittered strands per cell, tapering, some shorter.
+float fur_strand(vec3 p, float h) {
+	vec3 c = floor(p);
+	vec3 o = hash33(c) * 0.5 + 0.25;
+	float d = length(fract(p) - o);
+	float len = 0.45 + 0.55 * hash13(c + 3.1);
+	return (h < len) ? step(d, 0.3 * (1.0 - h / len)) : 0.0;   // no floor: the strand thins to nothing, no stacked discs
+}
+
 void fragment() {
+	if (shell_layer > 0) {
+		if (covering != 1 || covering_strength <= 0.0) { discard; }
+		float h = float(shell_layer) / float(max(shell_count, 1));
+		vec3 fp = rest_pos * fur_density * 0.45 + vec3(float(pattern_seed) * 1.7);
+		if (skin.z > 0.5) {
+			fp.y += h * 0.6;   // limb strands hang down the limb (rest space +y up, so the sample point climbs)
+		} else {
+			fp.z += h * 0.6;   // body strands lean back along the body
+		}
+		if (fur_strand(fp, h / max(covering_strength, 0.01)) < 0.5) { discard; }
+	}
 	float u = skin.x;
 	float v = skin.y;
 	bool on_limb = skin.z > 0.5;
@@ -221,6 +251,10 @@ void fragment() {
 	col = mix(col, vec3(grey) * 0.7, damage * 0.6);
 	col *= 1.0 - 0.35 * crease;
 
+	if (shell_layer > 0) {
+		float sh = float(shell_layer) / float(max(shell_count, 1));
+		col *= mix(0.9, 1.1, sh);   // mild depth shading only: shells darker than the skin read as spots
+	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
 	SPECULAR = spec;
