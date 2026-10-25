@@ -1,6 +1,6 @@
 # Aquatic stage plan
 
-Status: **PROPOSED** unless a line says otherwise. The owner approved building the Aquatic stage and its first
+Status: **PROPOSED** unless a line says otherwise. The slice in section 8 is **IMPLEMENTED** (2026-10-25, tests and smoke below); its tuning stays PROPOSED. The owner approved building the Aquatic stage and its first
 playable slice on 2026-10-25 (CONFIRMED: "Go for it"); every number, name and part list below is still PROPOSED
 until playtested and recorded in [DECISIONS.md](../DECISIONS.md). The [GENESIS Bible](../bible/GENESIS_Master_Developer_Bible_v0.1.pdf)
 is binding: §4 (era table and transition contract), §6 (Aquatic), §7 (shore link to Terrestrial), §12 (anatomy),
@@ -169,8 +169,22 @@ its Blender-authored parts (tail fluke, fins, eyes, mouth). Props reuse recorded
 the nest ring, plankton, algae).
 
 File boundaries: the cell stage (`game/scenes/pool`, `game/systems/pool_sim.gd`) and the creature stage
-(`game/**/creature/**`, the creature editor) are read, never edited, here. `main.gd` and the start screen get only
+(`game/**/creature/**`, the creature editor) are read, never edited, here. `game/scenes/main.gd` and the start screen get only
 the entry hook. The cpart art belongs to the art thread; the slice uses parts already recorded.
+
+## 8a. What the slice delivers (IMPLEMENTED)
+
+| Piece | Where | Checked by |
+|---|---|---|
+| Swim stats from the body, the cell conversion, edit costs | `game/domain/aquatic/aquatic_body.gd`, `game/data/aquatic/aquatic_rules.json` | `tests/test_aquatic_sim.gd` |
+| The route, niches, hazards, friend or foe, mating, generations | `game/systems/aquatic/aquatic_sim.gd` | `tests/test_aquatic_sim.gd`, `tests/test_sim_purity.gd` |
+| Reading the cell lineage (read-only) | `game/systems/aquatic/aquatic_lineage.gd` | `tests/smoke/aquatic_smoke.gd` |
+| World view, HUD, editor, stage root | `game/scenes/aquatic/`, `game/ui/aquatic_hud.gd`, `game/ui/aquatic_editor.gd` | `tests/smoke/aquatic_smoke.gd` (in `tools/check.sh`) |
+| Sea floor (Blender, record, baked tiles) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_seafloor.json` | `tests/test_assets.gd` |
+
+Measured on the shared rules: the darter tops 8.7 m/s and turns on a 10 m radius at speed, stands 36 m; the hoverer
+tops 5.2 m/s, turns on 1.7 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
+it and the hoverer must hide in an arch or burst.
 
 ## 9. Acceptance (Bible §6 and §23 M4)
 
