@@ -135,7 +135,8 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 		# A species wears its preset's colour; a body without one takes the palette's next.
 		var rival_color: Color = skin_color_of(r["body"]) if (r["body"].extra as Dictionary).has(SKIN_COLOR_KEY) \
 				else PALETTE[rival_rigs.size() % PALETTE.size()]
-		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color, Look.rival_pattern(rival_rigs.size() + 1))
+		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color,
+				Look.rival_pattern(rival_rigs.size() + 1, r["body"].extra))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
@@ -345,7 +346,7 @@ static func _multimesh(node_name: String, mesh: Mesh, count: int) -> MultiMeshIn
 func _build_player() -> void:
 	var body = sim.body_of(Sim.PLAYER_ID)
 	var color := skin_color_of(body)
-	var pattern: Dictionary = Look.pattern_of(body.extra)
+	var pattern: Dictionary = Look.look_of(body.extra)
 	if sim.player()["has_legs"]:
 		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, pattern)
 	else:
