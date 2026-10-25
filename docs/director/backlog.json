@@ -413,6 +413,114 @@
    "feature": "Land and water movement costs in the phenotype service: fins slow a body on land and legs slow it in water (tuning data), with same-scenario tests",
    "evidence": [],
    "passes": false
+  },
+  {
+   "id": "S-01",
+   "milestone": "quality",
+   "stage": "all",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Charm layer: shared secondary motion (breathing, blink, squash) for every rigged body",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-02",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 2,
+   "owner": "art",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Land ground kit and landmarks for the creature world",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-03",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Warm key light with dusk and night profiles that keep creature contrast",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-04",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Pickup marker: shape, bob and ground ring, no light beam",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-05",
+   "milestone": "quality",
+   "stage": "M4.5",
+   "bible": "\u00a715, \u00a720",
+   "tier": 2,
+   "owner": "art",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Reef dressing set and caustic pass, inside the reef spike (U-03)",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-06",
+   "milestone": "quality",
+   "stage": "aquatic",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Swim body wave and idle bob",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-07",
+   "milestone": "quality",
+   "stage": "menus, editors",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "menus",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Title and plinth idle, part-landing sound and wobble",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-08",
+   "milestone": "quality",
+   "stage": "audio",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "audio",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Land ambience bed and editor sounds",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "S-09",
+   "milestone": "quality",
+   "stage": "microscopic",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "engineering",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Ambience scene in every review capture",
+   "evidence": [],
+   "passes": false
   }
  ]
 }
