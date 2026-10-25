@@ -1,8 +1,13 @@
 extends SceneTree
 ## Screenshots of the creature stage's world dressing (tools/blender/make_creature_world.py) in the engine, for
 ## the look review: the field, the nest ring, fruit bushes and meat chunks drawn the way creature_world.gd will
-## draw them (MultiMesh instances with a colour each), under a plain sun and sky. Run under Xvfb
-## (docs/TOOLCHAIN.md):
+## draw them (MultiMesh instances with a colour each), under the stage's own sky, fog, ambient and sun: _light()
+## takes the WorldEnvironment and the Sun out of game/scenes/creature/creature_world.tscn itself, so a retune of
+## that scene shows up here too. (Until 2026-10-25 this tool built its own light, which had drifted from the
+## scene: ambient 0.55 against 0.3, thin exponential fog against depth fog from 20 to 78 m, a sun of 1.4 against
+## 0.75, a dark sky ground and exposure 1.0 against 0.9; art reviewed with it was seen brighter and clearer than the
+## game draws it.) For frames of the running stage itself, see tools/godot/creature_world_gameplay_shots.gd.
+## Run under Xvfb (docs/TOOLCHAIN.md):
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1920x1080 --script res://tools/godot/world_dressing_shot.gd -- --out=DIR
 ## Writes nest.png (from inside the nest), bushes.png (a bush, a bare bush and meat up close), bush_ripe.png and
@@ -14,6 +19,7 @@ const FIELD := "res://assets/export/creature_field_ground.glb"
 const NEST := "res://assets/export/creature_nest_ring.glb"
 const BUSH := "res://assets/export/creature_fruit_bush.glb"
 const MEAT := "res://assets/export/creature_meat_chunk.glb"
+const WORLD_SCENE := "res://game/scenes/creature/creature_world.tscn"
 const BARE_TINT := Color(0.62, 0.74, 0.58)   # the stage's bare-bush tint, over the baked leaf colour
 const BUSH_COUNT := 14
 
@@ -104,42 +110,20 @@ func _run() -> void:
 
 
 func _light(world: Node3D) -> void:
-	# The creature world scene's own sky, environment and sun (game/scenes/creature/creature_world.tscn), so the
-	# review sees the assets in the stage's light.
-	var sky_material := ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color(0.16, 0.3, 0.62)
-	sky_material.sky_horizon_color = Color(0.68, 0.78, 0.9)
-	sky_material.sky_curve = 0.12
-	sky_material.ground_bottom_color = Color(0.12, 0.17, 0.22)
-	sky_material.ground_horizon_color = Color(0.62, 0.7, 0.78)
-	sky_material.sun_angle_max = 20.0
-	sky_material.sun_curve = 0.1
-	var sky := Sky.new()
-	sky.sky_material = sky_material
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_white = 1.3
-	env.fog_enabled = true
-	env.fog_light_color = Color(0.72, 0.8, 0.9)
-	env.fog_density = 0.0035
-	env.fog_sky_affect = 0.15
-	var we := WorldEnvironment.new()
-	we.environment = env
-	world.add_child(we)
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(-0.872665, -0.523599, 0.0)
-	sun.light_color = Color(1.0, 0.97, 0.9)
-	sun.light_energy = 1.4
+	# The creature world scene's own WorldEnvironment (sky, ambient, fog, tonemap) and Sun, taken out of the packed
+	# scene before it enters the tree (so its script never runs) and the rest freed, so the review sees the assets in
+	# exactly the stage's light.
+	var stage: Node = load(WORLD_SCENE).instantiate()
+	for node_name in ["WorldEnvironment", "Sun"]:
+		var node := stage.get_node(node_name)
+		stage.remove_child(node)
+		node.owner = null
+		world.add_child(node)
+	stage.free()
 	# Compatibility draws a shadowed light as an additive pass in sRGB and overexposes (docs/TOOLCHAIN.md);
 	# --no-shadow approximates the Forward+ exposure there when lavapipe is not to hand.
-	sun.shadow_enabled = not no_shadow
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 80.0
-	world.add_child(sun)
+	if no_shadow:
+		(world.get_node("Sun") as DirectionalLight3D).shadow_enabled = false
 
 
 func _food(world: Node3D) -> void:
