@@ -633,7 +633,7 @@
 					"default_permille": 0
 				}
 			],
-			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.03 m) meets the limb tip."
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
 		},
 		"foot_paw": {
 			"type": "foot_paw",
