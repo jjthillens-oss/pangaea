@@ -48,6 +48,11 @@
 #             the world (the editor), Escape in the editor (the title), then Quit
 #   creature_reload: a new process opens the stage from that store and finds the same body SHA-256,
 #             points and generation
+#   social:   the Social stage preview (--social) on a lineage saved under user://smoke/: the slot's creature
+#             walks; refusals in words; the loner backs away from Sing; the band joins on fitting signals;
+#             Follow, an unreachable Investigate, Assist to the task's end, the hunter deterred and the scout's
+#             warning, Retreat, a faint and recovery, Dismiss; the title's button opens it again; the slot's
+#             SHA-256 and folder are unchanged (it never writes the save)
 #   menus:    the title, settings and save slots screens driven with controller buttons (d-pad, A,
 #             B, LB and RB), a keyboard rebind, the text size, and the pause menu's settings over a
 #             run; its own settings file and slots under user://smoke/menus
@@ -97,6 +102,7 @@ bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=shore_continue --world=endless --slot=user://smoke/shore.json 2>&1 | tee builds/smoke/shore_continue.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/social_smoke.gd -- --social --slot=user://smoke/social.json --seed=4260 2>&1 | tee builds/smoke/social.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/aquatic_smoke.gd -- --aquatic --slot=user://smoke/aquatic.json --seed=4250 2>&1 | tee builds/smoke/aquatic.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
