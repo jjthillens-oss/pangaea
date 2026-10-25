@@ -1,0 +1,99 @@
+{
+  "id": "cpart_horn_swept",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature horn part (PROPOSED): a long ridged dragon horn sweeping back from the brow to a blunt upturned point, drifting out to the right (mirrored for the left; place in pairs).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_horn_swept.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_horn_swept.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.057,
+    "y_forward": 0.223,
+    "z_up": 0.172
+  },
+  "triangles": 564,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartHornSwept_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartHornSwept_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartHornSwept_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_HornSwept"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "HornSwept"
+  ],
+  "part_type": "horn_swept",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "horn_swept",
+    "footprint_radius_m": 0.034,
+    "sink_depth_m": 0.02,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 40,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "weapon",
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the sweep 35% longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Curl",
+        "meaning": "the tip curled further up",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_HornSwept": 0.1
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 1476,
+    "triangles_after": 564
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
