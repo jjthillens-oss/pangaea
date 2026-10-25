@@ -79,13 +79,31 @@ Swim rules (one rule set for play, the editor preview and the bots; Bible §12):
 
 | Part | What it changes | What it costs |
 |---|---|---|
-| Tail (fluke or ribbon, size 1 to 3) | Thrust, top speed, burst | Energy per second at thrust; a big tail widens the turn |
+| Tail (fluke, ribbon, lunate, paddle or whip, size 1 to 3) | Thrust, top speed, burst | Energy per second at thrust; a big tail widens the turn; each kind trades these differently (below) |
 | Pectoral fins (size 0 to 3) | Turn rate at low speed, depth trim (rise and dive control), hovering | Drag (lower top speed) |
 | Dorsal fin (size 0 to 2) | Stability: less drift in currents, steadier turns | Drag |
 | Body (length and girth) | Long: top speed, cruise efficiency. Deep: hit points, rated depth | Long: turn radius. Deep: drag and mass |
 | Swim bladder (0 to 3) | Holds depth with no effort; neutral bodies hover | Above 0 it rises when idle in the shallows and slows dives |
 | Senses (eyes, barbels or lure) | Sight range; barbels sense prey in dark water; a lure draws prey in the deep | Energy upkeep |
 | Mouth (inherited) | Diet: filter (plankton and algae), jaw (meat), or both | Fixed by lineage in the slice |
+
+Tail kinds (aquatic-r2; the tuning is PROPOSED, the rules and their test are IMPLEMENTED). Each kind reads its own
+row of thrust, turn penalty, drag, burst share and swim cost in `game/data/aquatic/aquatic_rules.json`, and
+`tests/test_aquatic_sim.gd` checks that on the darter, the hoverer and a middle body, at every tail size, no kind is
+at least as good as another on top speed, a one-second burst dash swum in the sim, yaw at 4 m/s and swim cost, and
+better on one (Bible §2: a single part must not solve every problem). They are drawn with recorded creature parts and
+their handles (no fish-only part yet). Measured in Godot on the darter (tail size 3) and the hoverer (size 1):
+
+| Tail | Role | Darter: top / burst / turn radius / swim cost | Hoverer: top / burst / turn radius / swim cost |
+|---|---|---|---|
+| Fluke | All-rounder | 8.7 m/s / 15.7 / 10.2 m / 1.65 per s | 3.2 / 5.8 / 1.0 / 0.55 |
+| Ribbon | Strong at small sizes, nimble, costly | 7.4 / 12.1 / 7.0 / 2.06 | 4.3 / 7.0 / 1.4 / 0.69 |
+| Lunate | Cruiser: the top speed at strength 2 and 3, cheap, slow to start, wide turns | 10.8 / 13.7 / 19.9 / 1.32 | 3.7 / 4.6 / 1.3 / 0.44 |
+| Paddle | Sprinter: the best burst and tight turns, draggy and costly | 7.9 / 21.3 / 7.1 / 2.23 | 3.8 / 10.3 / 1.2 / 0.74 |
+| Whip | Thrifty: cheapest and tightest turns, slow | 5.9 / 8.0 / 4.5 / 0.91 | 3.0 / 4.0 / 0.9 / 0.30 |
+
+The ribbon was retuned (thrust 6.4 + 1.3 per size, was 7.0 + 2.2) because it out-thrust the fluke at every size for
+the same cost; that moves the hoverer from 5.2 to 4.3 m/s and its turn from 1.7 to 1.4 m (PROPOSED).
 
 Rated depth: each body has a depth it can stand (body girth and bladder raise it). Below it, the pressure hazard
 runs: a 4-second warning (creaking sound, the depth gauge turns striped amber, "Pressure: rise" text) and only then a
@@ -183,7 +201,7 @@ the entry hook. The cpart art belongs to the art thread; the slice uses parts al
 | Sea floor (Blender, record, baked tiles) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_seafloor.json` | `tests/test_assets.gd` |
 
 Measured on the shared rules: the darter tops 8.7 m/s and turns on a 10 m radius at speed, stands 36 m; the hoverer
-tops 5.2 m/s, turns on 1.7 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
+tops 4.3 m/s (5.2 before the aquatic-r2 ribbon retune), turns on 1.4 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
 it and the hoverer must hide in an arch or burst.
 
 ## 9. Acceptance (Bible §6 and §23 M4)
