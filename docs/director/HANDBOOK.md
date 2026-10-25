@@ -92,7 +92,9 @@ The owner's past calls, as precedents. When a new question resembles one, follow
   discoveries, relationships, location and persistent world changes. (2026-10-24 00:07; Bible §18.)
 - **Every save schema version is the owner's call** (v3, v5 approved). (Tier 3.)
 - **A fully aquatic lineage may stay underwater** through Social, Tribal and Civilization (underwater cities), as
-  a bounded variant of each era, never forced ashore. Built after the vertical slice. (2026-10-25 05:25; Bible §4.)
+  a bounded variant of each era, never forced ashore. Built after the vertical slice. (2026-10-25 05:25; Bible §4.) The full path is approved, with three rules: bubble
+  cities from Tribal that land creatures can enter, submarines as the only way back to sea for a legged lineage, and
+  fins slow on land while legs slow in water. (2026-10-25 05:42 and 05:43; `docs/bible/addendum-aquatic-path.md`.)
 - **An era change is a transaction** with a pre-transition checkpoint and a player choice. (Bible §4, §18.)
 
 ### How the studio works
