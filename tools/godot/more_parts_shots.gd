@@ -20,7 +20,8 @@ extends SceneTree
 ## --showcase=PATH (res:// or absolute) reads a JSON list of {name, preset, parts: [part dict, ...], swap: {old type:
 ##   new type}}: the preset's parts, with swapped types (their handles reset to rest), plus these, so a new part is
 ##   seen on a real body. It changes the bodies in memory only, never presets.json. Without it the bodies are the
-##   unmodified presets.
+##   unmodified presets. An entry's optional "focus_type" aims the close and side views at the placed part of that
+##   type nearest the front right (a foot, say) instead of the head.
 ## --cone-fix-preview (review only) turns the forward_cone parts (mouths and eyes) on the rig the way the proposed
 ##   frame fix would, to check they read right once it lands; use a distinct --set name for those frames.
 
@@ -125,7 +126,7 @@ func _creatures() -> void:
 		var length: float = (desc.bounds_m() as AABB).get_longest_axis_size()
 		var distance := clampf(DISTANCE_PER_BODY_M * length, DISTANCE_MIN_M, DISTANCE_MAX_M)
 		var centre: Vector3 = editor._focus
-		var head: Vector3 = _head(desc) + editor._rig_offset
+		var head: Vector3 = _focus_point(desc, String(entry.get("focus_type", ""))) + editor._rig_offset
 		var pitch := deg_to_rad(PITCH_DEG)
 		var shot_name := "%s_%s" % [set_name, entry["name"]]
 		await _view(centre, distance, 0.75, pitch, shot_name + "_game")       # behind (+Z) and to the side
@@ -180,6 +181,25 @@ func _head(desc: RefCounted) -> Vector3:
 			sum += (placed["transform"] as Transform3D).origin
 			n += 1
 	return sum / n if n > 0 else desc.position_m(0)
+
+
+## The close and side views' target: the head, or the placed part of `focus_type` nearest the front right (the
+## largest x - z in Godot's frame, where the head is -Z), so a foot's close-up shows the foot.
+func _focus_point(desc: RefCounted, focus_type: String) -> Vector3:
+	if focus_type == "":
+		return _head(desc)
+	var by_id := {}
+	for p in desc.parts:
+		by_id[p["id"]] = String(p["type"])
+	var best := Vector3.ZERO
+	var best_score := -INF
+	for placed in AnchorResolver.resolve_all(desc, BodyField.from_description(desc), editor.orientations):
+		if by_id.get(placed["part"], "") == focus_type:
+			var o: Vector3 = (placed["transform"] as Transform3D).origin
+			if o.x - o.z > best_score:
+				best_score = o.x - o.z
+				best = o
+	return best if best_score > -INF else _head(desc)
 
 
 ## The editor camera's orbit about `focus`: yaw 0 looks from +Z (behind), PI/2 from +X (the right side), PI from -Z
