@@ -154,6 +154,11 @@ choice real and recorded, so those eras can read it:
   a bounded plan for its own milestone, sized like the land path's era, not a second full campaign.
 - **Both paths stay connected.** Land lineages keep river and shore access (Bible §7: water remains useful); sea
   lineages meet land species at the shore. Relations with species carry across (§4 continuity).
+- **Traits matter both ways** (Joshua, 2026-10-25 05:43). Lobe fins (legs-to-be) cost swim speed in the sea; a fish
+  that crawls ashore keeps its tail fin and side fins as creature parts, which the creature stage weighs as a land
+  speed cost until the player trades them away in its editor. Going ashore is not a one-way trap: a land lineage
+  can return to the sea later by building a submarine to reach the bubble cities (aquatic-path addendum), so
+  nothing here ties the sea to a body plan.
 - **Owner gate.** Building any underwater era past Aquatic changes milestone scope, so it waits for Joshua's go on its
   bounded plan (backlog U-01 to U-04, after the vertical slice; DECISIONS.md "A fully aquatic lineage can stay
   underwater through later eras").
