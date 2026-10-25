@@ -9,10 +9,10 @@ extends SceneTree
 ## Writes creature_idle, creature_hover_eye (the pointer resting on the Eye tool), creature_tool_eye (the Eye tool
 ## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), and where
 ## the editor-ease node exists creature_stat_help (the pointer resting on the Sight row's name) and
-## creature_undo_tip (the pointer resting on Undo), cell_idle,
+## creature_undo_tip (the pointer resting on Undo) and creature_tool_foot (the Foot tool chosen), cell_idle,
 ## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror),
 ## cell_undo_tip (the pointer resting on Undo after that edit) and cell_drag_snap (a part dragged round the rim,
-## held near the front). Where the editor-ease APIs exist it also writes cell_stat_help (the pointer resting on a
+## held just right of the front, beside the mouth that holds the middle line there). Where the editor-ease APIs exist it also writes cell_stat_help (the pointer resting on a
 ## stat's name) and cell_pair_drag (a mirrored pair dragged towards the front with Symmetry on). Uses its own
 ## settings under user://editor_ease_shots/, never the player's.
 
@@ -71,6 +71,10 @@ func _creature() -> void:
 	editor.choose_tool("eye")
 	await _frames(10)
 	await _shot("creature_tool_eye")
+	if hud.has_method("tool_button") and hud.tool_button("foot") != null:
+		editor.choose_tool("foot")   # a limb-end part: its placement line must leave the feet in view
+		await _frames(10)
+		await _shot("creature_tool_foot")
 	editor.choose_tool("")
 	hud.set_category("all")
 

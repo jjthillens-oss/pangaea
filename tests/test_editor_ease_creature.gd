@@ -335,13 +335,19 @@ func test_the_hint_says_what_a_click_will_do_about_pairs() -> void:
 func test_the_placement_line_follows_the_tool_and_hides_for_none_and_the_test_drive() -> void:
 	open_hud()
 	var row: Control = hud.editor_ease.snap_hint
-	check(row.get_parent() == hud.get_node("Bottom") and row.get_index() < hud.get_node("Bottom/DockCenter").get_index(),
-			"the line sits just above the dock")
+	check(row.get_parent() == hud and row.get_index() == hud.get_node("TitleCenter").get_index() + 1,
+			"the line sits with the title pill, at the top, clear of the creature's feet")
+	var title: Control = hud.get_node("TitleCenter/TitlePill")
+	check(row.offset_top >= title.get_parent_control().position.y + title.position.y + title.size.y,
+			"just under the title pill")
 	var pill_bg := (row.get_child(0) as Control).get_theme_stylebox(&"panel") as StyleBoxFlat
 	check(pill_bg != null and pill_bg.bg_color.a >= 0.95, "the pill is opaque enough to read over the creature")
 	check(not row.visible, "hidden with no tool")
 	hud.set_tool("eye")
-	check(row.visible and hud.editor_ease.snap_label.text.begins_with("Eye  ·  Click the head or body"), "the eye's line (%s)" % hud.editor_ease.snap_label.text)
+	check(row.visible and hud.editor_ease.snap_label.text.begins_with("Eye  ·  Click the head or body"),
+			"the eye's line (%s)" % hud.editor_ease.snap_label.text)
+	check(not hud.editor_ease.snap_label.text.contains(PlacementHint.ON_PARTS), "short: the card has the rest")
+	check(hud.editor_ease.hint_for("eye").ends_with(PlacementHint.ON_PARTS), "the full hint still says it")
 	hud.set_tool("limb")
 	check_eq(hud.editor_ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(), "the limb tool's line")
 	hud.set_test_drive(true)
@@ -398,8 +404,10 @@ func test_the_placement_line_and_the_card_follow_the_symmetry_switch() -> void:
 	hud.set_tool("eye")
 	check(hud.editor_ease.snap_label.text.contains("mirrored pair"), "on: a pair further out (%s)" % hud.editor_ease.snap_label.text)
 	hud.set_symmetry(false)
-	check_eq(hud.editor_ease.snap_label.text, "Eye  ·  " + PlacementHint.creature(rules["eye"], false), "off: the line changes at once")
-	check(hud.editor_ease.snap_label.text.contains("alone") and not hud.editor_ease.snap_label.text.contains("mirrored pair"), "off: alone")
+	var alone := PlacementHint.creature(rules["eye"], false).trim_suffix(". " + PlacementHint.ON_PARTS)
+	check_eq(hud.editor_ease.snap_label.text, "Eye  ·  " + alone, "off: the line changes at once")
+	var said := hud.editor_ease.snap_label.text as String
+	check(said.contains("alone") and not said.contains("mirrored pair"), "off: alone")
 	hud.tool_button("eye").mouse_entered.emit()
 	check(not _card_has(hud.editor_ease.card.texts(), Effects.PAIR_LABEL), "off: the card shows no pair (%s)" % ", ".join(hud.editor_ease.card.texts()))
 	hud.set_tool("limb")

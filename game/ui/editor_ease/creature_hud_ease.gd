@@ -23,10 +23,10 @@ const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
 const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 
-## The placement line's widest: it wraps rather than run under the palette and the stats panels beside the dock,
-## and narrows further when larger text widens those panels.
+## The placement line's widest: it wraps rather than run under the palette and the stats panels beside it, and
+## narrows further when larger text widens those panels.
 const SNAP_HINT_WIDTH := 660.0
-## The space kept between the placement line and the panels beside it.
+## The space kept between the placement line and the panels beside it, and under the title pill.
 const SNAP_HINT_GAP := 16.0
 ## The body a card measures against when the HUD runs without an editor (the editor's own REFERENCE_BODY).
 const REFERENCE_BODY := "s1_quadruped"
@@ -332,17 +332,18 @@ func _on_stat_exited(key: String) -> void:
 		hide_card()
 
 
-## The placement line row, above the dock: a pill with a caption, hidden for no tool and during the test drive.
+## The placement line: a pill under the title pill, over the sky and the creature's back, hidden for no tool and
+## during the test drive. Above the dock it wrapped over the creature's feet at large text, hiding the limb tips a
+## foot or hand tool is clicked on (the full words, "it can also sit on another part" included, are on the card).
 func _build_snap_hint() -> void:
-	var bottom := hud.get_node_or_null("Bottom") as Control
-	var dock := hud.get_node_or_null("Bottom/DockCenter") as Control
 	snap_hint = CenterContainer.new()
 	snap_hint.name = "SnapHint"
 	snap_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	snap_hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	var pill := PanelContainer.new()
 	pill.theme_type_variation = &"PillPanel"
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# The theme's pill is 62% opaque: over the creature's legs its text was hard to read, so it is as opaque as the card.
+	# The theme's pill is 62% opaque: over the creature its text was hard to read, so it is as opaque as the card.
 	var glass := PartCard.GAME_THEME.get_stylebox(&"panel", &"PillPanel").duplicate() as StyleBox
 	if glass is StyleBoxFlat:
 		glass.bg_color.a = maxf(glass.bg_color.a, PartCard.OPACITY)
@@ -357,20 +358,37 @@ func _build_snap_hint() -> void:
 	pill.add_child(snap_label)
 	snap_hint.add_child(pill)
 	snap_hint.visible = false
-	if bottom != null and dock != null:
-		bottom.add_child(snap_hint)
-		bottom.move_child(snap_hint, dock.get_index())
-	else:
-		hud.add_child(snap_hint)
+	hud.add_child(snap_hint)
+	var title := hud.get_node_or_null("TitleCenter") as Control
+	if title != null:
+		hud.move_child(snap_hint, title.get_index() + 1)
+		title.item_rect_changed.connect(_place_snap_hint)
+	_place_snap_hint()
+
+
+## Puts the placement line just under the title pill.
+func _place_snap_hint() -> void:
+	var title := hud.get_node_or_null("TitleCenter/TitlePill") as Control
+	if title == null or snap_hint == null:
+		return
+	var below := title.get_parent_control().position.y + title.position.y + title.size.y
+	snap_hint.offset_top = below + SNAP_HINT_GAP / 2.0
+	snap_hint.offset_bottom = snap_hint.offset_top
+
+
+## The pill's words: the tool's placement hint without the "it can also sit on another part" sentence (the card
+## keeps it), so the line stays short at large text.
+func pill_text(type: String) -> String:
+	var text := hint_for(type).trim_suffix(". " + PlacementHint.ON_PARTS)
+	return "" if text.is_empty() else "%s  ·  %s" % [type.capitalize(), text]
 
 
 func _refresh_hint() -> void:
-	var text := hint_for(_tool)
-	if not text.is_empty():
-		text = "%s  ·  %s" % [_tool.capitalize(), text]
+	var text := pill_text(_tool)
 	snap_label.text = text
 	snap_label.custom_minimum_size.x = _snap_width()
 	snap_hint.visible = not text.is_empty() and not _driving
+	_place_snap_hint()
 
 
 ## The placement line's width: centred on the HUD, clear of the palette on the left and the stats on the right.
