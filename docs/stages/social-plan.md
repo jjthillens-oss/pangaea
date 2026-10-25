@@ -70,7 +70,7 @@ What Spore does (playthrough notes, Creature 0:10 to 0:50 and Tribal 0:51 to 1:3
 | Pack hunts | Assist sends the band's fighters at your foe; together they drive off the hunter (section 8). Hunting prey as a band is in the full stage, not the slice |
 | Your nest, and other species' nests you walk to | Your nest (home, retreat point, faint respawn) and the band's den (where its members live before they join and go back to when dismissed) |
 | Mating at the nest opens the editor | Kept: mating at the nest opens the same creature editor, now with a reach and cost preview for signals (section 9). Not in the slice |
-| A small HUD: goals top left, abilities bottom centre | Goal card top left, band cards top right, the signal and order dock bottom centre, one caption line (section 11) |
+| A small HUD: goals top left, abilities bottom centre | Goal card top left, band cards top right, the signal and order dock bottom centre, a short caption stack (section 11) |
 
 **Tribal stage (what Social prepares):**
 
@@ -254,10 +254,13 @@ leaves the stage, because pad B is also Sing. Prompts name the bound keys from t
 
 The HUD is small and Spore-like on the glass theme: goal card top left; band cards top right with a Dismiss button
 each; the dock bottom centre (Sing, Display, Share, Calm | Follow, Wait, Investigate, Retreat, Assist), whose enabled
-state and tooltip come from the same rule as the action; one caption line for responses, acknowledgements and
-refusals; one hint line. Tags over individuals give name, role and mood, and a ▸ marker on the target: the individual
-within 15 m that the player faces most squarely (distance times (2 - cos angle) squared, lowest wins). Nothing relies
-on colour alone.
+state and tooltip come from the same rule as the action; a caption stack of at most three lines for responses,
+acknowledgements and refusals (so a whole band's answers to one order fit; in one tick, key lines such as a round's
+end, a join, a faint, a strike or a warning are captioned after routine ones, so the routine ones make room); one hint
+line. Tags over individuals give name, role and mood, and a ▸ marker on the target: the individual within 15 m that
+the player faces most squarely (distance times (2 - cos angle) squared, lowest wins). A tag never covers the HUD's
+glass (it hides instead), and tags that would overlap stack upwards, the nearest body's lowest. Nothing relies on
+colour alone.
 
 ## 12. Persistence
 
@@ -320,8 +323,78 @@ in for it); new input actions; new art.
 
 ### 14a. What the slice delivers
 
-Not built yet. This section is filled in, and marked IMPLEMENTED, only after the slice, its tests, its smoke and
-rendered frames are done.
+**Status: IMPLEMENTED** on the branch claude/credit-social-stage: built, its tests and its smoke pass, and its frames
+were rendered and read by eye on the Linux container. Every number in the tuning stays **PROPOSED**. Not run on
+Windows.
+
+**Files (all new except the entry hooks).**
+
+| Layer | Files |
+|---|---|
+| Tuning | `game/data/social/social_slice.json` |
+| Domain | `game/domain/social/social_traits.gd`, `game/domain/social/social_memory.gd`, `game/domain/social/social_rules.gd`, `game/domain/social/companion_brain.gd`, `game/domain/social/hunter_brain.gd` |
+| Services | `game/systems/social/social_data.gd`, `game/systems/social/social_sim.gd` |
+| Presentation | `game/scenes/social/social_world.gd`, `game/scenes/social/social_stage.gd` |
+| UI | `game/ui/social/social_hud.gd`, `game/ui/social/social_tags.gd` |
+| Tests | `tests/test_social_traits.gd`, `tests/test_social_memory.gd`, `tests/test_social_rules.gd`, `tests/test_social_brain.gd`, `tests/test_social_sim.gd`, `tests/test_social_purity.gd`, `tests/test_social_stage.gd`; the smoke `tests/smoke/social_smoke.gd` (a `tools/check.sh` step) |
+| Tools | `tools/godot/social_shots.gd` (the frames below) |
+| Entry hooks | `game/scenes/main.gd`, `game/systems/run_flags.gd` (`--social`), `game/ui/start_screen.gd` (the Preview button), `tools/check.sh` (the smoke line) |
+
+**What checks each piece.**
+
+| Piece | Checked by |
+|---|---|
+| Anatomy to voice, hearing, display, carry and role | test_social_traits |
+| Fading memory, capped reputation, hostility after repeated bites only | test_social_memory |
+| One resolver: refusals in words that spend nothing, the fitting rule, five responses, orders acknowledged or refused, no timing input | test_social_rules |
+| Brains from percepts only; every order reports; the hunter's cycle; the nest | test_social_brain, test_social_purity, test_sim_purity |
+| The sim: determinism, join and dismiss, the loner, the group task, unreachable orders, leader loss, far tier, the test record, the hunter, the scout, one bump | test_social_sim |
+| The stage: `--social`, the title button, Main's hooks, the slot read only, the starter fallbacks, dock previews equal to the resolver, marks in words, the hint, words for every event, key lines kept on the caption, the controls, no save written | test_social_stage |
+| All of it through the real Main | the smoke: 65 checks. The slot's creature walks (body SHA-256); refusals in words with no cooldown spent; the loner backs away from Sing; each band member joins on signals that fit its mood; Follow over a 10 m walk; an Investigate past the field's edge reported within its timeout; Assist to the end of the round; the hunter deterred by the band standing together and the scout's warning; Retreat to the nest; a faint and recovery; Dismiss; no tag covers the HUD; the title's button opens it again; pause asks first; the slot's bytes and folder unchanged |
+
+**Measured** (world seed 4260 and the starter body; the stage's sim with no skins, through a scratch probe that is not
+committed, and the smoke). One signal is given each time the 1 s cooldown ends, so a signal count of n takes about
+n seconds.
+
+| Measure | Result |
+|---|---|
+| Curious strider (display-rich) | joins after 2 fitting Displays (2.0 s); after 6 Sings, Calms or Shares, each answered "ok" (6.1 s) |
+| Warm, hungry boar | joins after 2 fitting signals, Share then Sing once fed (2.0 s); after 3 Shares only, or 5 Sings, Displays or Calms (5.1 s) |
+| Wary monkey | joins after 3 fitting signals, Calm until it is at ease and then Sing (3.05 s); after 5 Calms only, or 7 Shares; never with Sing or Display: each startles it, and after 20 startles in a row its group stops listening ("They won't listen: you hurt them too often") |
+| Group task (the band of three on Assist from the den) | 6 fruit in 3274 ticks (54.6 s); 3300 ticks in the smoke |
+| Hunter pursuit | 360 ticks (6.0 s), then it disengages because the pursuit timed out ("it tired"), striking at most every 1.2 s; then it rests at its lair (about 13 s) and patrols again |
+| A band of three standing together | the hunter watches, then disengages ("too many together") without striking (smoke) |
+| Investigate past the field's edge | "can't reach that spot" after 399 ticks (6.7 s), inside the 20 s timeout (smoke) |
+| The smoke on this container | 28 s wall time (the check's limit is 300 s); the skins for six bodies take about 2.1 s to build |
+
+**Evidence** (rendered under Xvfb with the Compatibility renderer, which overexposes a shadowed sun; see the toolchain
+notes):
+
+| Beat | Frame |
+|---|---|
+| The title's Preview list with Social stage focused | [title_after](../evidence/credit-social-stage/title_after.jpg) (before: [title_before](../evidence/credit-social-stage/title_before.jpg)) |
+| Entry card: nothing here is saved, who walks and why | [social_entry](../evidence/credit-social-stage/social_entry.jpg) |
+| A refusal in words: Share with empty hands, the dock's Share dimmed | [social_refusal](../evidence/credit-social-stage/social_refusal.jpg) |
+| Meeting: the strider marked as the target, Display selected | [social_recognition](../evidence/credit-social-stage/social_recognition.jpg) |
+| A signal answered: "Kave welcomes you" | [social_response](../evidence/credit-social-stage/social_response.jpg) |
+| The band befriended and following | [social_band_follow](../evidence/credit-social-stage/social_band_follow.jpg) |
+| The orders menu: each member's answer before the order is given | [social_orders_menu](../evidence/credit-social-stage/social_orders_menu.jpg) |
+| An order acknowledged: Assist, each member "gathers food" | [social_order_ack](../evidence/credit-social-stage/social_order_ack.jpg) |
+| The group task: a carrier bringing fruit to the nest | [social_task_carry](../evidence/credit-social-stage/social_task_carry.jpg) |
+| The round done: "The nest is fed: 7 fruit" (the last carrier brought two), the goal card ticked | [social_task_done](../evidence/credit-social-stage/social_task_done.jpg) |
+| The hunter: the scout's warning and the chase | [social_hunter](../evidence/credit-social-stage/social_hunter.jpg) |
+| Leaving asks first | [social_leave_dialog](../evidence/credit-social-stage/social_leave_dialog.jpg) |
+| The HUD at 1280x720 | [social_hud_1280](../evidence/credit-social-stage/social_hud_1280.jpg) |
+
+**Limits (honest).** No audio. No mating or editor visit. Nothing is saved: the test-only record is never written.
+No streaming world: the far tier stands in for it. Not run on Windows. The camera sits behind the player, so a band
+that follows trails between it and the player; the frames orbit the camera (as the right stick does) to show the
+band. Three caption lines fit a whole band's answers, but right after a round ends they briefly cover the lower
+part of the field, the player's back included, until they fade (3.5 s). The carried fruit is the bush's fruit cluster
+at 0.9 scale; there is no single-fruit model yet. Repeated
+startles count against a group's reputation like harm, so the refusal after 20 of them says "you hurt them", which
+overstates a startle: the wording and that tuning are for the owner to review (PROPOSED). The measured numbers come
+from one seed and the starter body; other bodies change the display, voice and carry numbers by design (section 4).
 
 ## 15. Acceptance mapped to tests (PROPOSED)
 
