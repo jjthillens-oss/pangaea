@@ -19,9 +19,11 @@ const LIGHT_NODES: Array[StringName] = [&"Shaft", &"Reach", &"Glow"]
 const AUTHORED_REACH_M := 4.0
 const PULSE_HZ := 0.5
 const PULSE_SHARE := 0.25
-## rise(): the piece starts this far down (m, under the 43 m bank's own -20 m skirt, deep in the fog) and comes up
-## over RISE_S seconds of play, easing out; the light comes on with it.
-const RISE_DEPTH_M := 16.0
+## rise(): the piece starts this far down (m), its top (-1.6) then under the pool's opaque Backdrop (y -40), so
+## nothing of it shows; it comes up over RISE_S seconds of play, easing in and out (the crest breaks through the
+## Backdrop's fog after about a third of a second), and its light comes on as it arrives. A bank that started any
+## shallower would pop in as a pale fogged silhouette, since the fog is paler than the Backdrop.
+const RISE_DEPTH_M := 40.0
 const RISE_S := 3.0
 ## M_ShoreLight's gains are the light's look in Forward+. Compatibility tonemaps each additive layer before it blends
 ## (docs/TOOLCHAIN.md), so the dim shaft and the bright ring drift apart there: the view scales them by this (x the
@@ -94,9 +96,9 @@ func pulse(delta: float) -> void:
 	_light.set_shader_parameter(&"strength", rise_share() * rise_share() * (1.0 + PULSE_SHARE * sin(TAU * PULSE_HZ * _t)))
 
 
-## How far up the piece has come, 0 (just risen, RISE_DEPTH_M down) to 1 (at rest), eased out.
+## How far up the piece has come, 0 (just risen, RISE_DEPTH_M down) to 1 (at rest), eased in and out.
 func rise_share() -> float:
-	return 1.0 - pow(1.0 - _rise, 3.0)
+	return smoothstep(0.0, 1.0, _rise)
 
 
 ## Whether a rise is still under way.

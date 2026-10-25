@@ -209,6 +209,29 @@ func test_the_view_keeps_its_api() -> void:
 	view.free()
 
 
+## The pool's Backdrop height as pool.tscn authors it (its transform's origin y), or INF when it is not found.
+func _backdrop_y() -> float:
+	var state := (load("res://game/scenes/pool/pool.tscn") as PackedScene).get_state()
+	for i in state.get_node_count():
+		if state.get_node_name(i) != &"Backdrop":
+			continue
+		for p in state.get_node_property_count(i):
+			if state.get_node_property_name(i, p) == &"transform":
+				return (state.get_node_property_value(i, p) as Transform3D).origin.y
+	return INF
+
+
+## The highest point of `model`'s solid meshes (the light starts off), in the model's frame at rest (y 0).
+func _model_top(model: Node3D) -> float:
+	var top := -INF
+	for n: Node in model.find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.name in ShoreView.LIGHT_NODES:
+			continue
+		top = maxf(top, (mi.transform * mi.get_aabb()).end.y)
+	return top
+
+
 func test_a_shore_that_rises_in_play_comes_up_out_of_the_deep() -> void:
 	var view := ShoreView.new()
 	var model := view.find_child("Model", false, false) as Node3D
@@ -223,6 +246,10 @@ func test_a_shore_that_rises_in_play_comes_up_out_of_the_deep() -> void:
 	check(view.visible, "place() shows a rising shore")
 	check_near(model.position.y, -ShoreView.RISE_DEPTH_M, 1e-4, "it starts RISE_DEPTH_M down")
 	check_near(view.light_strength(), 0.0, 1e-6, "its light starts off")
+	var backdrop_y := _backdrop_y()
+	check(-ShoreView.RISE_DEPTH_M + _model_top(model) < backdrop_y,
+		"it starts wholly under the pool's opaque Backdrop (top %.2f m, Backdrop %.2f m), so it cannot pop in" % [
+			-ShoreView.RISE_DEPTH_M + _model_top(model), backdrop_y])
 	view.pulse(ShoreView.RISE_S * 0.5)
 	var mid := model.position.y
 	check(mid > -ShoreView.RISE_DEPTH_M and mid < 0.0, "half way through it is on its way up (%.2f m)" % mid)

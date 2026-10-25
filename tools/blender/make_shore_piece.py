@@ -86,8 +86,10 @@ SHAFT_FADE = 0.4           # the shaft fades from this share of its height (from
 SHAFT_EDGE = 1.5           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
 NEAR_TOP = 0.6             # the wall toward the camera is gone above this share of the shaft's height (it would
                            # light the cell standing in the shaft); the far wall carries the column
-GLOW_GAIN = 0.10           # the glow's strength (times LightWeight red, and the shaft's renderer gain)
-GLOW_CORE = 0.45           # the glow is even out to this share of its radius, then falls softly to 0 at the rim
+SHAFT_FOOT = 0.25          # the shaft's walls fade in over this share of its height from the sand (the glow lights
+                           # the sand itself; walls bright down to the sand outline the foot as a disc)
+GLOW_GAIN = 0.12           # the glow's strength (times LightWeight red, and the shaft's renderer gain)
+GLOW_CORE = 0.5            # the glow is even out to this share of its radius, then falls softly to 0 at the rim
 # The pool's sun and ambient light the sand at about 1.9 times its albedo on screen (Gate 4, docs/art/shore_piece.md):
 # the baked albedo is scaled once so the shelf reads L* 36 to 48 behind the cell, under the coral cell.
 ALBEDO_GAIN = 0.27
@@ -746,6 +748,7 @@ uniform float ring_gain = {ring_gain};
 uniform float shaft_fade = {shaft_fade};
 uniform float shaft_edge = {shaft_edge};
 uniform float near_top = {near_top};
+uniform float shaft_foot = {shaft_foot};
 uniform float glow_gain = {glow_gain};
 uniform float glow_core = {glow_core};
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
@@ -768,7 +771,7 @@ void fragment() {{
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
 	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
-	float shaft = smoothstep(0.0, 0.05, v) * rise * near_cut * pow(facing, shaft_edge);
+	float shaft = smoothstep(0.0, shaft_foot, v) * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
 	float glow = 1.0 - smoothstep(glow_core, 1.0, v);
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
@@ -787,6 +790,7 @@ shader_parameter/ring_gain = {ring_gain}
 shader_parameter/shaft_fade = {shaft_fade}
 shader_parameter/shaft_edge = {shaft_edge}
 shader_parameter/near_top = {near_top}
+shader_parameter/shaft_foot = {shaft_foot}
 shader_parameter/glow_gain = {glow_gain}
 shader_parameter/glow_core = {glow_core}
 shader_parameter/renderer_gain = Vector2(1, 1)
@@ -800,7 +804,7 @@ def write_light_material():
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(SHORE_LIGHT_TRES.format(r=r, g=g, b=b, shaft_gain=SHAFT_GAIN, ring_gain=RING_GAIN, shaft_fade=SHAFT_FADE,
-                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP, glow_gain=GLOW_GAIN,
+                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP, shaft_foot=SHAFT_FOOT, glow_gain=GLOW_GAIN,
                                         glow_core=GLOW_CORE))
     print("wrote", path)
 
