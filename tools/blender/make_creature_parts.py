@@ -127,6 +127,7 @@ ROLE = {
     "beak": "mouth", "mandibles": "mouth", "maw": "mouth", "proboscis": "mouth", "jaw": "mouth", "bill": "mouth",
     "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand", "hand_primate": "hand",
     "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot",
+    "eye_bulge": "eye", "hand_frog": "hand", "throat_sac": "detail",
     "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
     "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
     "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
@@ -2129,7 +2130,7 @@ def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28):
     return obj
 
 
-def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0):
+def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0, slit_axis=(0.0, 1.0, 0.0)):
     """Greyscale iris detail for a cap: radial fibres, a dark limbal ring at the edge and a dark pupil, round
     (`pupil` its half-angle in radians) or, with `slit` > 0, a slit that narrow (in the ball's unit units) across y."""
     sh = sf.Shader(name)
@@ -2142,7 +2143,7 @@ def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0):
     detail = sh.math("ADD", sh.remap(fibres, 0.3, 0.7, 0.55, 0.95), sh.math("MULTIPLY", flecks, -0.1))
     base = sh.mix(limbal, (0.22, 0.22, 0.22, 1.0), sh.mix(detail, (0.5, 0.5, 0.5, 1.0), (0.95, 0.95, 0.95, 1.0)))
     if slit > 0.0:
-        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, (0.0, 1.0, 0.0)))
+        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, tuple(slit_axis)))
         hole = sh.math("MULTIPLY", sh.remap(across, slit + 0.015, slit), sh.remap(facing, math.cos(pupil) - 0.02, math.cos(pupil)))
     else:
         hole = sh.remap(facing, math.cos(pupil) - 0.004, math.cos(pupil) + 0.004)
@@ -3312,6 +3313,191 @@ def build_foot_frog():
             "paint_mix": {"M_FootFrogSkin": 0.9}, "revision": 1, **baked}
 
 
+# --- Set "amphibian": frog eye, frog hand, throat sac ----------------------------------------------
+
+BULGE_R = 0.042
+BULGE_SINK = 0.025
+
+
+def _pad_material(name):
+    """The sticky toe discs: paler, glossier and finely pitted, so they read apart from the skin."""
+    sh = sf.Shader(name)
+    pits = sh.remap(sh.voronoi(900.0, 0.8), 0.25, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pits), 0.2, 0.0003)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 0.95, sh.math("MULTIPLY", pits, 0.15)), 0.8), 0.18)
+
+
+def build_eye_bulge():
+    """A frog's eye: a big glossy ball, mostly bronze iris with a wide horizontal pupil, sitting high on a raised
+    mound of wet skin that hugs its lower half. Placed on the side of the head (+Y to the head), the pupil's long
+    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out."""
+    R = BULGE_R
+    centre = Vector((0.0, 0.0, R * 1.05))
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = _sclera_material("M_EyeBulgeBallProc")
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, math.radians(86.0), math.radians(30.0), slit=0.16,
+                              slit_axis=(1.0, 0.0, 0.0))
+    ball = _eye_ball("EyeBulge", centre, R, math.radians(86.0), sclera, iris_mat, segs=24)
+    sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
+    # The mound: a skirt flaring into the skin, rising to a rolled lip just above the ball's equator.
+    prof = []
+    steps = 12
+    top = centre.z + 0.06 * R
+    for i in range(steps + 1):
+        t = i / steps
+        z = -(BULGE_SINK - 0.0012) + (top + BULGE_SINK - 0.0012) * t
+        if z <= 0.0:
+            r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
+        else:
+            u = min(1.0, z / top)
+            r = max(R * 1.04, R * (1.55 - 0.51 * math.sin(u * math.pi / 2) ** 0.8))
+        prof.append((z, r))
+    lv, lf, _ = bc.revolve(prof, 24)
+    mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
+    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat], parent=ball, fix_normals=False)
+    mound_mat.name = "M_EyeBulgeMound"
+    baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#D9D2A8")),
+                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=256)
+    pts = _check_pivot("eye_bulge", BULGE_SINK)
+    foot = _footprint(pts, z_max=0.02)
+    low = centre.z - 0.6 * R
+
+    def blink(co):
+        if co.z <= low:
+            return co
+        k = min(1.0, (co.z - low) / (top - low))
+        d = co - centre
+        theta = math.atan2(math.hypot(d.x, d.y), d.z)
+        phi = math.atan2(d.y, d.x)
+        th = theta * (1.0 - 0.94 * k ** 1.5)
+        rad = d.length + max(0.0, 1.07 * R - d.length) * k
+        return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.25 * R * max(0.0, co.z) / (R * 1.55)))
+
+    handles = _shape_keys(mound, [("H1_Blink", blink, "the mound's lip rolls up over the ball and shuts")])
+    handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
+    rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
+    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
+            "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 1, **baked}
+
+
+HAND_FROG_T = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+HAND_FROG_KNUCKLE = 0.046
+
+
+def build_hand_frog():
+    """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a small rounded palm and four
+    slender splayed fingers, each ending in a round flat sticky disc, in smooth wet skin. H1_Grip curls the
+    fingers in toward the palm, H2_Spread fans them."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs = [], []
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.027, n.y * 0.0105, 0.03 + n.z * 0.021))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0105 + 0.0012 * i, 14)
+    bc.append(verts, fcs, wv, wf)
+    disc_unit, disc_faces = bc.icosphere(2)
+    pv, pf = [], []
+    for ang, length in ((-34.0, 0.04), (-11.0, 0.052), (11.0, 0.055), (34.0, 0.044)):
+        d = Vector((math.sin(math.radians(ang)), 0.0, math.cos(math.radians(ang))))
+        start = Vector((0.0, 0.0, 0.03)) + d * 0.018
+        path = [start + d * (length * t) + Vector((0.0, 0.003 * math.sin(math.pi * t), 0.0)) for t in HAND_FROG_T]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0056 * (1.0 - 0.3 * i / 5) * (1.0 + 0.12 * math.exp(-((i - 2.5) / 0.6) ** 2)), 10)
+        bc.append(verts, fcs, tv, tf)
+        c = path[-1] + d * 0.003
+        r = 0.0098
+        side = Vector((d.z, 0.0, -d.x))
+        # A round disc, flat across the finger's width, its pad face toward the palm side.
+        bc.append(pv, pf, [tuple(c + side * (n.x * r) + d * (n.z * r * 0.9) + Vector((0.0, n.y * r * 0.35 + 0.0015, 0.0))) for n in (Vector(co).normalized() for co in disc_unit)], disc_faces)
+    skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0)
+    hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
+    skin.name = "M_HandFrogSkin"
+    pad_mat = _pad_material("M_HandFrogPadProc")
+    pads = bc.mesh_object("Pads", pv, pf, [pad_mat], parent=hand)
+    pad_mat.name = "M_HandFrogPad"
+    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))})
+    pts = _check_pivot("hand_frog", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def grip(co):
+        if co.z > HAND_FROG_KNUCKLE:
+            dz = co.z - HAND_FROG_KNUCKLE
+            k = min(1.0, dz / 0.05)
+            ang = math.radians(80.0) * k
+            return Vector((co.x * (1.0 - 0.3 * k), co.y + dz * math.sin(ang) * 0.85, HAND_FROG_KNUCKLE + dz * math.cos(ang) * 0.85 + dz * 0.15))
+        return co
+
+    def spread(co):
+        if co.z > HAND_FROG_KNUCKLE:
+            co.x *= 1.0 + 0.45 * min(1.0, (co.z - HAND_FROG_KNUCKLE) / 0.05)
+        return co
+
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 80 degrees in toward the palm"),
+                                 ("H2_Spread", spread, "fingers fan 45% wider at the tips")])
+    _shape_keys(pads, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
+    rules = _hand_rules("hand_frog", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a small palm and four slender splayed fingers ending in round sticky disc pads, smooth wet skin; grips on a shape key.",
+            "category": "part", "part_type": "hand_frog", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 1, **baked}
+
+
+SAC_SINK = 0.02
+SAC_REST_C = Vector((0.0, 0.0, 0.005))
+SAC_REST_AX = Vector((0.046, 0.04, 0.02))
+SAC_FULL_C = Vector((0.0, 0.0, 0.04))
+SAC_FULL_R = 0.056
+
+
+def _sac_material(name):
+    """The vocal sac's thin skin: very wet, faint folds and a paler throat colour."""
+    sh = sf.Shader(name)
+    folds = sh.remap(sh.noise(160.0, 2.0, vector=mp._stretched(sh, (1.0, 0.2, 1.0))), 0.4, 0.6)
+    pebble = sh.remap(sh.voronoi(500.0, 0.9), 0.3, 0.05)
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", folds, 0.7), sh.math("MULTIPLY", pebble, -0.3)), 0.2, 0.0005)
+    return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", folds, 0.25)), 0.75), 0.2)
+
+
+def build_throat_sac():
+    """A frog's vocal sac under the chin: at rest a soft flattened pouch of thin wet skin, sunk into the throat;
+    H1_Inflate blows it up into a big round balloon (the croak), H2_Wide spreads it sideways."""
+    unit, faces = bc.icosphere(4)
+    verts = []
+    for co in unit:
+        n = Vector(co).normalized()
+        verts.append(tuple(SAC_REST_C + Vector((n.x * SAC_REST_AX.x, n.y * SAC_REST_AX.y, n.z * SAC_REST_AX.z))))
+    mat = _sac_material("M_ThroatSacProc")
+    sac = bc.mesh_object("ThroatSac", verts, faces, [mat])
+    mat.name = "M_ThroatSac"
+    baked = _bake([sac], "PartThroatSac", {"M_ThroatSac": sf.tint(_lin("#E6D9A8"))}, tolerance=0.00015)
+    pts = _check_pivot("throat_sac", SAC_SINK)
+    foot = _footprint(pts, z_max=0.005)
+
+    def inflate(co):
+        d = co - SAC_REST_C
+        n = Vector((d.x / SAC_REST_AX.x, d.y / SAC_REST_AX.y, d.z / SAC_REST_AX.z)).normalized()
+        full = SAC_FULL_C + n * SAC_FULL_R
+        if n.z < -0.1:                       # the root stays in the throat
+            s = min(1.0, max(0.0, (-0.1 - n.z) / 0.6))
+            full.z = full.z + (min(full.z, co.z) - full.z) * s * s * (3 - 2 * s)
+        return full
+
+    def wide(co):
+        return Vector((co.x * 1.35, co.y, co.z))
+
+    handles = _shape_keys(sac, [("H1_Inflate", inflate, "the pouch blown up into a 0.11 m balloon"),
+                                ("H2_Wide", wide, "the sac 35% wider sideways")])
+    rules = _rules("throat_sac", round(foot + 0.001, 3), SAC_SINK, "normal", ["spine"], 30, 30, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the underside of the throat, behind the jaw."
+    return {"purpose": "Creature display part (PROPOSED): a frog's vocal sac, a flat pouch of pale wet skin under the chin that inflates into a round balloon on a shape key.",
+            "category": "part", "part_type": "throat_sac", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ThroatSac": 0.5}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -3358,6 +3544,9 @@ ASSETS = {
     "cpart_spike": (build_spike, 1200),
     "cpart_hand_primate": (build_hand_primate, 2500),
     "cpart_foot_frog": (build_foot_frog, 2500),
+    "cpart_eye_bulge": (build_eye_bulge, 1200),
+    "cpart_hand_frog": (build_hand_frog, 2500),
+    "cpart_throat_sac": (build_throat_sac, 1200),
 }
 
 
