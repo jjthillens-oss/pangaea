@@ -17,6 +17,8 @@ render_production.py does, so lookdev's review lights fit every asset), adds loo
   alpha_34, alpha_top                        card assets only: white where the alpha passes Godot's 0.5 scissor,
                                              a see-through red where the card is cut away, so the red deepens with
                                              every layer of card drawn for nothing (overdraw)
+A material with Backface Culling on (glTF doubleSided false; the kit's two-sheet cards) is drawn see-through from
+behind in every view, as Godot culls it: Cycles itself ignores that flag.
 PNGs go to --scratch (default builds/review/<id>/, not kept in git); a labelled contact sheet goes to
 docs/art/renders/production/<id>_gates.jpg (ImageMagick montage, a review tool only, not a game dependency).
 
@@ -101,6 +103,27 @@ def _cut_by_alpha(nt, bsdf, shader_socket, out):
     nt.links.new(mix.outputs[0], out.inputs["Surface"])
 
 
+def _cull_backfaces(mat):
+    """Cycles ignores a material's Backface Culling flag, which Godot honours (glTF doubleSided false); a two-sided
+    card made of two sheets back to back would then draw both sheets. For such a material the review routes the
+    surface through a transparent shader wherever the face is seen from behind, as the engine culls it."""
+    if mat is None or not mat.use_backface_culling or not mat.node_tree:
+        return
+    nt = mat.node_tree
+    out = _output(nt)
+    if not out.inputs["Surface"].is_linked or out.inputs["Surface"].links[0].from_node.name == "ReviewCull":
+        return
+    src = out.inputs["Surface"].links[0].from_socket
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.name = "ReviewCull"
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    nt.links.new(geo.outputs["Backfacing"], mix.inputs["Fac"])
+    nt.links.new(src, mix.inputs[1])
+    nt.links.new(clear.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs["Surface"])
+
+
 def _unlit_copy(mat):
     """`mat` with its Principled base colour as an emission of strength 1 (no lighting at all)."""
     copy = mat.copy()
@@ -115,6 +138,7 @@ def _unlit_copy(mat):
     else:
         _feed(nt, bsdf.inputs["Base Color"], emit.inputs["Color"])
     _cut_by_alpha(nt, bsdf, emit.outputs[0], _output(nt))
+    _cull_backfaces(copy)
     return copy
 
 
@@ -147,6 +171,7 @@ def _alpha_copy(mat):
     nt.links.new(tint.outputs[0], mix.inputs[1])
     nt.links.new(keep.outputs[0], mix.inputs[2])
     nt.links.new(mix.outputs[0], out.inputs["Surface"])
+    _cull_backfaces(copy)
     return copy
 
 
@@ -215,6 +240,8 @@ def _grazing_key():
 
 def render(asset_id, args):
     bpy.ops.wm.open_mainfile(filepath=os.path.join(ld.ROOT, "assets", "source", "blender", f"{asset_id}.blend"))
+    for mat in bpy.data.materials:
+        _cull_backfaces(mat)                  # before the copies below, which keep it (the clay) or redo it
     lo, hi = _bounds()
     centre = [(a + b) / 2 for a, b in zip(lo, hi)]
     dims = [b - a for a, b in zip(lo, hi)]
@@ -230,6 +257,9 @@ def render(asset_id, args):
 
     ld.setup_render(resolution=args.resolution, samples=args.samples)
     scene = bpy.context.scene
+    # Card clumps stack many cut-out layers (two sheets a card, one culled to transparent): Cycles' default of 8
+    # transparent bounces ends a ray inside a clump and leaves a grey veil where the cards are cut away.
+    scene.cycles.transparent_max_bounces = 64
     ld.review_lighting()
     review_world = scene.world
     floor = ld.ground_disc(radius=200, z=(lo[2] - centre[2]) * scale - 0.002)

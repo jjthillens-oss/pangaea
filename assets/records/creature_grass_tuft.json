@@ -1,0 +1,56 @@
+{
+  "id": "creature_grass_tuft",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature world ground cover (PROPOSED): a meadow grass tuft of bent, crossed cards cut out by the T_MeadowCards grass fans.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/creature_grass_tuft.blend",
+  "generator_script": "tools/blender/make_creature_world.py",
+  "export_path": "assets/export/creature_grass_tuft.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.524,
+    "y_forward": 0.522,
+    "z_up": 0.421
+  },
+  "triangles": 48,
+  "triangle_budget": 48,
+  "textures": [
+    {
+      "name": "T_MeadowCards",
+      "path": "assets/export/creature_flora/T_MeadowCards.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "RGB the authored colour (CIE LCh greens at hue 139 or more; lilac, sky blue and cream flowers) in a 4 x 4 grid of 256 px cells: 0 grass meadow; 1 grass tall; 2 grass short; 3 grass sage; 4 sedge; 5 grass fine; 6 fern broad; 7 fern narrow; 8 lilac bells; 9 blue and cream stars; 10 cream umbels; 11 blue bells; 12 leaf rosette; 13 fern young; 14 clover; 15 grass and lilac stars; A the cut-out mask (alpha scissor at 0.5)"
+    }
+  ],
+  "materials": [
+    "M_MeadowCards"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "GrassTuft"
+  ],
+  "kind": "flora_cover",
+  "pivot": "the clump's centre on the ground (Godot y = 0); card bottoms sink about 2 cm so the roots meet the ground on gentle relief",
+  "external_material": "res://assets/export/M_MeadowCards.tres",
+  "placement": "walk-through cover: under 0.45 m, so it may stand anywhere inside the walls outside the nest's 8 m clearing (tests/test_creature_world_art.gd)",
+  "cards": {
+    "count": 6,
+    "atlas": "assets/export/creature_flora/T_MeadowCards.png",
+    "material": "M_MeadowCards (StandardMaterial3D: alpha scissor 0.5, back faces culled, COLOR_0 jitter)",
+    "sides": "two sheets back to back per card, opposite winding",
+    "normals": "each sheet's face normal plus 1.4 x world up, so both sides light like the ground"
+  },
+  "height_m": 0.389,
+  "provenance": "Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no external or generated meshes. The card atlas is painted in numpy (strokes in CIE LCh); no scans."
+}

@@ -11,7 +11,15 @@ extends TestCase
 ## - the editor room: the pad's top face at y 0 and radius 1 (the editor scales it to the body); any wall stands
 ##   at 7.5 units or more, outside the camera at its farthest;
 ## - colour: every non-food albedo (the ground, the nest, the bush's leaves, the room) keeps 25 degrees of CIELAB
-##   hue from the food green (114.4) and the threat pink (11.1) once its chroma reaches 8.
+##   hue from the food green (114.4) and the threat pink (11.1) once its chroma reaches 8;
+## - the flora and rock kit (tools/blender/creature_flora.py): the cover pieces (grass, fern, flowers, pebbles)
+##   stand under 0.45 m so they may go anywhere inside the walls; the cards draw with the shared cut-out
+##   M_MeadowCards.tres (a StandardMaterial3D, so the field can merge them beside its own shader), two sheets a
+##   card with up-leaning normals so both sides light like the ground; the boulders are
+##   obstacle-sized and sink into the ground, so they belong outside the walls; and texel by texel (their textures
+##   mix stone and moss, or leaf and petal, so a mean alone hides a clashing edge) no more than 1% of the kit's
+##   chromatic texels sit within 25 degrees of the food or threat hue, while each texture's mean (what a far mip
+##   shows) keeps the gap too.
 
 const FIELD := "res://assets/export/creature_field_ground.glb"
 const NEST := "res://assets/export/creature_nest_ring.glb"
@@ -40,6 +48,15 @@ const FOOD_GREEN_H := 114.4
 const THREAT_PINK_H := 11.1
 const HUE_GAP := 25.0
 const CHROMA_MIN := 8.0
+const KIT_COVER := {"creature_grass_tuft": "GrassTuft", "creature_fern_clump": "FernClump",
+	"creature_flower_clump": "FlowerClump"}
+const KIT_CARDS := ["creature_grass_tuft", "creature_fern_clump", "creature_flower_clump"]
+const KIT_BOULDERS := {"creature_boulder_a": 1.0, "creature_boulder_b": 1.8, "creature_boulder_c": 3.0}
+const MEADOW_TRES := "res://assets/export/M_MeadowCards.tres"
+const MEADOW_ATLAS := "res://assets/export/creature_flora/T_MeadowCards.png"
+const COVER_REACH_M := 0.6        # a cover piece's footprint radius
+const COVER_SINK_M := 0.05        # card bottoms sink a little, so roots meet the ground on gentle relief
+const CLASH_MAX := 0.01           # the share of a kit texture's chromatic texels allowed near a reserved hue
 
 
 func _load(path: String) -> Node3D:
@@ -332,3 +349,110 @@ func test_ground_flora_nest_and_room_colours_keep_the_hue_gaps() -> void:
 	n += _check_albedos(BUSH, ["Fruit"])
 	n += _check_albedos(ROOM, [])
 	check(n >= 6, "albedos checked (%d)" % n)
+
+
+# --- The flora and rock kit ----------------------------------------------------------------------------------
+
+func _glb(id: String) -> String:
+	return "res://assets/export/%s.glb" % id
+
+
+func test_kit_cover_is_low_walk_through_and_on_the_ground() -> void:
+	for id: String in KIT_COVER:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		check(_named(root, KIT_COVER[id]) != null, "%s has its %s mesh" % [id, KIT_COVER[id]])
+		var top := -INF
+		var lowest := INF
+		var reach := 0.0
+		for mi in _mesh_instances(root):
+			for v in _vertices(mi, root):
+				top = maxf(top, v.y)
+				lowest = minf(lowest, v.y)
+				reach = maxf(reach, Vector2(v.x, v.z).length())
+		check(top <= LOW_MAX_M, "%s stands under %.2f m, walk-through cover (%.3f)" % [id, LOW_MAX_M, top])
+		check(lowest >= -COVER_SINK_M and lowest <= 0.0, "%s sits on the ground, sunk no more than %.2f m (%.3f)" % [id, COVER_SINK_M, lowest])
+		check(reach <= COVER_REACH_M, "%s keeps within %.1f m of its pivot (%.3f)" % [id, COVER_REACH_M, reach])
+		root.free()
+
+
+func test_meadow_cards_draw_with_the_shared_cut_out_material() -> void:
+	var shared: Material = load(MEADOW_TRES)
+	check(shared is StandardMaterial3D, "M_MeadowCards.tres is a StandardMaterial3D (the field may merge the cards beside its shader)")
+	if not (shared is StandardMaterial3D):
+		return
+	var sm := shared as StandardMaterial3D
+	check(sm.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR and is_equal_approx(sm.alpha_scissor_threshold, 0.5),
+		"the cards are cut out at 0.5 (alpha scissor, %d; not alpha blending)" % sm.transparency)
+	check(sm.cull_mode == BaseMaterial3D.CULL_BACK, "back faces are culled (each card is two sheets, one per side)")
+	check(sm.albedo_texture != null and sm.albedo_texture.resource_path == MEADOW_ATLAS, "the cards read the authored atlas")
+	check(sm.vertex_color_use_as_albedo and sm.vertex_color_is_srgb, "the cards take their COLOR_0 jitter as sRGB")
+	for id: String in KIT_CARDS:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		for mi in _mesh_instances(root):
+			check(mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s %s casts no shadow (cover)" % [id, mi.name])
+			for s in mi.mesh.get_surface_count():
+				var mat := mi.mesh.surface_get_material(s)
+				check(mat != null and mat.resource_path == MEADOW_TRES, "%s %s surface %d draws with M_MeadowCards.tres" % [id, mi.name, s])
+				var arrays := mi.mesh.surface_get_arrays(s)
+				var colours: Variant = arrays[Mesh.ARRAY_COLOR]
+				check(colours is PackedColorArray and (colours as PackedColorArray).size() > 0, "%s %s carries its jitter colours" % [id, mi.name])
+				# Two sheets back to back: every triangle has a twin facing the other way within 2 mm of it, and each
+				# sheet's normal leans up, so both sides light like the ground.
+				var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+				var centres: Array[Vector3] = []
+				var facing: Array[Vector3] = []
+				for t in range(0, index.size(), 3):
+					var a := verts[index[t]]
+					var b := verts[index[t + 1]]
+					var c := verts[index[t + 2]]
+					centres.append((a + b + c) / 3.0)
+					facing.append((b - a).cross(c - a).normalized())
+				var lonely := 0
+				for i in centres.size():
+					var twin := false
+					for j in centres.size():
+						if j != i and centres[i].distance_to(centres[j]) < 0.002 and facing[i].dot(facing[j]) < -0.99:
+							twin = true
+							break
+					lonely += 0 if twin else 1
+				check(lonely == 0, "%s %s: every card is two sheets back to back (%d triangles without a twin)" % [id, mi.name, lonely])
+				var down := 0
+				for n: Vector3 in arrays[Mesh.ARRAY_NORMAL]:
+					if n.y <= 0.0:
+						down += 1
+				check(down == 0, "%s %s: every card normal leans up (%d do not)" % [id, mi.name, down])
+		root.free()
+
+
+## The share of `img`'s opaque, chromatic texels (every `step`-th) whose hue, times `tint` (linear), lies within the
+## hue gap of the food green or the threat pink.
+func _clash_share(img: Image, tint: Vector3, step: int) -> float:
+	var chromatic := 0
+	var clash := 0
+	for y in range(0, img.get_height(), step):
+		for x in range(0, img.get_width(), step):
+			var c := img.get_pixel(x, y)
+			if c.a < 0.5:
+				continue
+			var lch_c := lch(Vector3(_to_linear(c.r) * tint.x, _to_linear(c.g) * tint.y, _to_linear(c.b) * tint.z))
+			if lch_c.y < CHROMA_MIN:
+				continue
+			chromatic += 1
+			if hue_gap(lch_c.z, FOOD_GREEN_H) < HUE_GAP or hue_gap(lch_c.z, THREAT_PINK_H) < HUE_GAP:
+				clash += 1
+	return float(clash) / maxf(1.0, chromatic)
+
+
+func test_kit_colours_keep_the_hue_gaps_texel_by_texel() -> void:
+	var atlas := Image.load_from_file(ProjectSettings.globalize_path(MEADOW_ATLAS))
+	check(atlas != null and not atlas.is_empty(), "the meadow atlas reads")
+	if atlas != null and not atlas.is_empty():
+		var share := _clash_share(atlas, Vector3.ONE, 2)
+		print("    meadow atlas: %.2f%% of chromatic texels near a reserved hue" % (share * 100.0))
+		check(share <= CLASH_MAX, "the meadow atlas keeps the hue gaps (%.2f%% of chromatic texels clash)" % (share * 100.0))
+		_check_hue("the meadow atlas's mean (a far mip)", _mean_linear(load(MEADOW_ATLAS)))

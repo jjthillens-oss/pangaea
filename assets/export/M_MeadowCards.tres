@@ -1,0 +1,23 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+; The creature world's meadow cards (assets/records/creature_grass_tuft.json, creature_fern_clump.json,
+; creature_flower_clump.json; tools/blender/creature_flora.py): the T_MeadowCards atlas's authored colour times the
+; mesh's COLOR_0 (a greyscale brightness per card, read as sRGB), cut out by the atlas's alpha (transparency 2 is
+; TRANSPARENCY_ALPHA_SCISSOR, at 0.5; 1 would be alpha blending, sorted and without depth writes). Back
+; faces are culled: every card is two sheets back to back, each with a normal leaned toward world up, so both sides
+; light like the ground. A StandardMaterial3D rather than a shader, so the field can carry merged copies beside its
+; own ShaderMaterial.
+; It reads the authored atlas, which the card GLBs link by URI rather than embed. Each card GLB's .glb.import points
+; the imported M_MeadowCards here. Written by tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Texture2D" path="res://assets/export/creature_flora/T_MeadowCards.png" id="1_albedo"]
+
+[resource]
+resource_name = "M_MeadowCards"
+transparency = 2
+alpha_scissor_threshold = 0.5
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_texture = ExtResource("1_albedo")
+metallic_specular = 0.3
+roughness = 0.9

@@ -17,6 +17,9 @@ per instance, so their materials take an instance tint (vertex_color_use_as_albe
   silhouette; two surfaces of one mesh) and Fruit (nine amber fruit on it), so the stage can draw the fruit only
   while the bush is ripe. The cards sample T_BushLeafCards, a numpy atlas of four leaf clusters.
 - creature_meat_chunk: a torn haunch with a bone end, lying on the ground.
+- the kit (tools/blender/creature_flora.py, listed in ASSETS below): creature_grass_tuft, creature_fern_clump and
+  creature_flower_clump (walk-through cover of cut-out cards sharing T_MeadowCards and M_MeadowCards.tres),
+  creature_pebble_cluster, and creature_boulder_a, _b and _c (rocks for outside the walls only).
 - creature_editor_room: the creature editor's floor, a unit-radius pedestal pad (the pivot at the centre of its
   top face) with a raised steel-blue rim, a rounded edge and faintly lit concentric grooves. The editor places it
   at y = -0.01 and scales it (s, 1, s) to the body, so the rings are geometry that scales with the pad.
@@ -39,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import blockout_common as bc  # noqa: E402  (imports bpy first)
 import bpy  # noqa: E402
+import creature_flora as cf  # noqa: E402  (the flora and rock kit: meadow cards, pebbles, boulders)
 import make_creature_parts as cp  # noqa: E402
 import make_m1_production as mp  # noqa: E402
 import make_membranes as mm  # noqa: E402
@@ -919,6 +923,7 @@ EXTERNAL = {
     "creature_field_ground": {"M_CreatureField": "M_CreatureField"},
     "creature_fruit_bush": {"M_BushLeaf": "M_BushLeaf", "M_BushCards": "M_BushCards", "M_BushFruit": "M_BushFruit"},
     "creature_meat_chunk": {"M_MeatFlesh": "M_MeatFlesh"},
+    **cf.EXTERNAL,
 }
 # asset id -> per-mesh and per-node import options, written into the same `_subresources` block as the materials:
 #   "meshes": {"<asset id>_<glTF mesh name>": {"generate/lods": 2}}   (e.g. for card meshes, whose LODs eat the cards)
@@ -931,6 +936,7 @@ EXTERNAL = {
 IMPORT_OPTIONS = {
     # The outer hills stand beyond the sun's 80 m shadow distance almost everywhere: they need not cast.
     "creature_field_ground": {"nodes": {"PATH:CreatureFieldHills": {"mesh_instance/cast_shadow": 0}}},
+    **cf.IMPORT_OPTIONS,
 }
 # Godot writes these back into every mesh entry it matches; writing them too keeps a rerun byte for byte the same.
 MESH_IMPORT_DEFAULTS = {"generate/lightmap_uv": 0, "generate/shadow_meshes": 0, "lods/normal_merge_angle": 20.0,
@@ -1060,6 +1066,7 @@ def map_materials():
         print("normal map:", name)
     _set_import_param(os.path.join(CARD_DIR, f"{CARD_ATLAS}.png.import"), "mipmaps/generate", "true")   # as the extracted copy has
     print("mipmaps:", CARD_ATLAS)
+    cf.map_materials(export, _set_import_param)
 
 
 # asset id -> (builder, triangle budget)
@@ -1069,6 +1076,7 @@ ASSETS = {
     "creature_fruit_bush": (build_fruit_bush, 1200),
     "creature_meat_chunk": (build_meat_chunk, 1200),
     "creature_editor_room": (build_editor_room, 1200),
+    **cf.ASSETS,
 }
 
 
@@ -1089,7 +1097,10 @@ def main():
         builder, budget = ASSETS[asset_id]
         bc.reset_scene()
         fields = builder()
-        record = bc.export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=PROVENANCE)
+        record = bc.export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR,
+                           provenance=fields.pop("provenance", PROVENANCE))
+        if asset_id in cf.CARD_ASSETS:
+            cf.link_atlas(bc.paths(asset_id)[1])
         dims = record["dimensions_m"]
         print(f"{asset_id}: {record['triangles']} triangles, {dims['x']} x {dims['y_forward']} x {dims['z_up']} m")
 
