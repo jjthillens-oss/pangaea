@@ -1,0 +1,104 @@
+{
+  "id": "cpart_ear_pointed",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature detail part (PROPOSED): a tall pointed furred mammal ear, a cupped shell with a pale bare inside, an inner fringe and a tip tuft.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_ear_pointed.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_ear_pointed.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.061,
+    "y_forward": 0.028,
+    "z_up": 0.122
+  },
+  "triangles": 576,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartEarPointed_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartEarPointed_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartEarPointed_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_EarFur",
+    "M_EarSkin",
+    "M_EarTuft"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "EarPointed",
+    "Tufts"
+  ],
+  "part_type": "ear_pointed",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "ear_pointed",
+    "footprint_radius_m": 0.032,
+    "sink_depth_m": 0.015,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 35,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine"
+    ],
+    "role": "detail",
+    "handles": [
+      {
+        "key": "H1_Tall",
+        "meaning": "the ear 35% taller",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Droop",
+        "meaning": "the upper half folded 55 degrees back toward the tail",
+        "default_permille": 0
+      }
+    ],
+    "placement_note": "On the head, the cup opening toward the head direction (+Y); mirrored for the left ear."
+  },
+  "paint_mix": {
+    "M_EarFur": 0.9,
+    "M_EarSkin": 0.15,
+    "M_EarTuft": 0.2
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 1000,
+    "triangles_after": 576
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
