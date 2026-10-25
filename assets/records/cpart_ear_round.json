@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature detail part (PROPOSED): a monkey's ear, a flap wider at the top with a smooth rolled helix over the top and back, a notch and tragus at the root, a deep concha bowl, bare skin inside and fur behind.",
+  "purpose": "Creature detail part (PROPOSED): a monkey's ear, one thick flap wider at the top with a rolled helix over the top and back, a soft notch and flat tragus at the root, a concha bowl and antihelix carved into the front, bare skin inside, fur behind and a fur collar at the root.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_ear_round.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_ear_round.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 2,
+  "revision": 3,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.051,
-    "y_forward": 0.029,
-    "z_up": 0.062
+    "x": 0.054,
+    "y_forward": 0.031,
+    "z_up": 0.066
   },
-  "triangles": 923,
+  "triangles": 764,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -64,9 +64,9 @@
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "ear_round",
-    "footprint_radius_m": 0.033,
+    "footprint_radius_m": 0.023,
     "sink_depth_m": 0.008,
-    "chiral": true,
+    "chiral": false,
     "orientation": "normal",
     "turn_limit_deg": 45,
     "tilt_limit_deg": 35,
@@ -86,8 +86,7 @@
         "meaning": "the ear 30% larger",
         "default_permille": 0
       }
-    ],
-    "placement_note": "Right ear on the head, bowl facing forward (+Y); the notch and tragus are on the front (-X) edge toward the face. Mirrored for the left ear."
+    ]
   },
   "paint_mix": {
     "M_EarRoundSkin": 0.4,
@@ -97,8 +96,8 @@
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0003,
-    "triangles_before": 2814,
-    "triangles_after": 923
+    "triangles_before": 3072,
+    "triangles_after": 764
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
