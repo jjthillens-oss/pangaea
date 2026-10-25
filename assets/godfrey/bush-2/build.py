@@ -135,7 +135,7 @@ for polygon, material_index in zip(mesh.polygons, face_materials):
     polygon.material_index = material_index
 
 scene = bpy.context.scene
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.engine = "BLENDER_EEVEE"
 scene.render.resolution_x = 800
 scene.render.resolution_y = 800
 scene.render.resolution_percentage = 100
