@@ -3610,7 +3610,7 @@ def _mz_socket(x, y):
     best = (0.0, 0.0)
     for ex, ey in MZ_EYES:
         d = math.sqrt(((x - ex) / 0.0098) ** 2 + ((y - ey) / 0.0088) ** 2)
-        cur = (1.0 - _smooth(0.55, 1.0, d), math.exp(-((d - 1.12) / 0.16) ** 2))
+        cur = (1.0 - _smooth(0.6, 1.05, d), math.exp(-((d - 1.12) / 0.16) ** 2))
         best = max(best, cur)
     return best
 
@@ -3684,12 +3684,12 @@ def build_muzzle_primate():
     for ex, ey in MZ_EYES:
         base = len(hv)
         lr, ls = 4, 20
-        hv.append((ex, ey, _mz_height(ex, ey) + 0.0004))
+        hv.append((ex, ey, _mz_height(ex, ey) + 0.0012))
         for r in range(1, lr + 1):
             for k in range(ls):
                 a = 2 * math.pi * k / ls
-                x, y = ex + 0.0098 * 0.78 * r / lr * math.cos(a), ey + 0.0088 * 0.78 * r / lr * math.sin(a)
-                hv.append(_mz_overhang(x, y, _mz_height(x, y) + 0.0004))
+                x, y = ex + 0.0098 * 0.55 * r / lr * math.cos(a), ey + 0.0088 * 0.55 * r / lr * math.sin(a)
+                hv.append(_mz_overhang(x, y, _mz_height(x, y) + 0.0012))
         for k in range(ls):
             hf.append((base, base + 1 + (k + 1) % ls, base + 1 + k))
         for r in range(1, lr):
