@@ -28,6 +28,7 @@ import blockout_common as bc  # noqa: E402  (imports bpy first)
 import make_m1_production as mp  # noqa: E402
 import surfacing as sf  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 
 GENERATOR = "tools/blender/make_creature_parts.py"
 REVIEW_STATE = mp.REVIEW_STATE
@@ -95,13 +96,15 @@ def _shape_keys(obj, handles):
     return out
 
 
-def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=()):
+def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=(), accept=None):
     """`keep` names objects authored at their final density, which decimation would spoil (an iris edge that is
-    a material boundary): they get a tolerance so small nothing collapses."""
+    a material boundary): they get a tolerance so small nothing collapses. `accept` maps an object name to a test
+    its reduced mesh must also pass (surfacing.reduce's `accept`), for a region that needs a tighter fit than the
+    rest (the round ear's rolled rim)."""
     before = after = 0
     highs = {}
     for obj in objs:
-        b, a, high = sf.reduce(obj, 1e-7 if obj.name in keep else tolerance)
+        b, a, high = sf.reduce(obj, 1e-7 if obj.name in keep else tolerance, accept=(accept or {}).get(obj.name))
         before, after = before + b, after + a
         if a == b:
             sf.drop_highs([high])
@@ -3515,18 +3518,17 @@ EAR_N = EAR_U.cross(EAR_V).normalized()     # the ear's face: forward (+Y) and o
 EAR_SINK = 0.006
 
 
-def build_ear_round():
-    """A monkey's ear standing out from the side of the head (symmetric part; the runtime places it either side):
-    one continuous thick flap, wider at the top than at the root. Its front is a single sculpted surface: a deep
-    concha bowl in the lower front, a soft antihelix ridge rising out of the flap round the top and back of the
-    bowl, and a flat tragus flap blending out of the bowl's front lip. The edge is rolled all the way round (no
-    cut faces): a fat helix over the top and down the back, thinning to a small curl at the notch low on the
-    front edge. Fur on the back, which is thicker behind the bowl and swells into the root (no separate collar:
-    a stuck-on roll read as paper leaves). H1_Perk tips it forward, H2_Size scales it."""
-    if EAR_N.y < 0:
-        raise RuntimeError("ear face must point forward")
+def _ear_round_shell(rings=20, segs=56, roll=12, ease0=0.72, scapha=0.0006):
+    """The round ear's one closed shell, as (verts, faces, face materials, rim indices, edge indices): the front grid
+    from the centre out, the rolled edge, then the back grid back in. Material 1 is skin, 0 fur. Revision 5: the flap
+    eases into the helix with zero slope at both ends from rho `ease0` (the old squared ramp met the roll at a 50 to
+    70 degree bend, which shaded as a crease inside the rim), a shallow scapha groove (`scapha` metres deep under the
+    fat helix) keeps the helix reading as a rolled ridge, and the roll is a cubic Hermite from the front rim to the
+    back rim that leaves and meets both surfaces along their own slope. Every turn between neighbouring rows near
+    the rim stays under about 26 degrees, like the bowl's and the antihelix's own. The rim indices (the last front ring, the roll and
+    the last back ring) are what the decimation must keep close, and the edge indices (the three outermost roll
+    rows, which make the outline seen from the front or back) closest, so the outline stays round."""
     centre_u, R = 0.031, 0.027
-    rings, segs, roll = 20, 56, 8
     notch_phi = math.radians(-118.0)
 
     def wrap(d):
@@ -3555,13 +3557,14 @@ def build_ear_round():
     tu, tv = flat(0.7, math.radians(-100.0))
 
     def lift(rho, phi):
-        return helix(phi) * max(0.0, (rho - 0.82) / 0.18) ** 2     # the flap rises into the helix roll
+        return helix(phi) * bc.smoothstep((rho - ease0) / (1.0 - ease0))     # the flap rises into the helix roll
 
     def front_h(rho, phi):
         u, v = flat(rho, phi)
         anti = 0.0026 * gauss((rho - 0.68) / 0.14) * gauss(wrap(phi - math.radians(25.0)) / 1.05)
         trag = 0.0022 * gauss(math.hypot((u - tu) / 0.0065, (v - tv) / 0.0085))     # a soft mound out of the lip
-        return -bowl(u, v) - 0.0022 * (1.0 - rho * rho) + anti + trag + lift(rho, phi) + 0.0011
+        groove = scapha * gauss((rho - 0.84) / 0.07) * helix(phi) / 0.0044     # the scapha, inside the helix
+        return -bowl(u, v) - 0.0022 * (1.0 - rho * rho) + anti + trag + lift(rho, phi) + 0.0011 - groove
 
     def back_h(rho, phi):
         u, v = flat(rho, phi)
@@ -3575,7 +3578,6 @@ def build_ear_round():
     def ring_pts(r):
         return [(r / rings, 2 * math.pi * s / segs) for s in range(segs)]
 
-    # One closed shell: the front grid from the centre out, the rolled edge, then the back grid back in.
     verts, fcs, mats = [], [], []
     rows, row_mat = [[0]], [1]
     verts.append(tuple(at(0.0, 0.0, front_h(0.0, 0.0))))
@@ -3583,22 +3585,32 @@ def build_ear_round():
         rows.append([len(verts) + s for s in range(segs)])
         verts.extend(tuple(at(rho, phi, front_h(rho, phi))) for rho, phi in ring_pts(r))
         row_mat.append(1)
+    rim, outer = list(rows[-1]), []
+    # The roll: per meridian a cubic Hermite from the front rim point, leaving along the front surface's slope, to
+    # the back rim point, arriving along the back surface's. Tangent length 1.8 x the rim's thickness keeps the old
+    # semicircle's reach (0.45 x the thickness past the rim).
+    curves = []
+    for s in range(segs):
+        phi = 2 * math.pi * s / segs
+        pf, pb = at(1.0, phi, front_h(1.0, phi)), at(1.0, phi, back_h(1.0, phi))
+        tf = (pf - at(0.99, phi, front_h(0.99, phi))).normalized()
+        tb = (pb - at(0.99, phi, back_h(0.99, phi))).normalized()
+        span = 1.8 * (pf - pb).length
+        curves.append((pf, tf * span, pb, -tb * span))
     for k in range(1, roll):
-        a = math.pi * k / roll
-        row = []
-        for s in range(segs):
-            phi = 2 * math.pi * s / segs
-            hf, hb = front_h(1.0, phi), back_h(1.0, phi)
-            mid, half = 0.5 * (hf + hb), 0.5 * (hf - hb)
-            u0, v0 = flat(1.0, phi)
-            u1, v1 = flat(0.97, phi)
-            out = (EAR_U * (u0 - u1) + EAR_V * (v0 - v1)).normalized()
-            row.append(len(verts))
-            verts.append(tuple(at(1.0, phi, mid + half * math.cos(a)) + out * (half * 0.9 * math.sin(a))))
-        rows.append(row)
+        t = k / roll
+        h00, h10 = 2 * t ** 3 - 3 * t * t + 1, t ** 3 - 2 * t * t + t
+        h01, h11 = -2 * t ** 3 + 3 * t * t, t ** 3 - t * t
+        rows.append([len(verts) + s for s in range(segs)])
+        rim.extend(rows[-1])
+        if abs(k - roll / 2) <= 1:
+            outer.extend(rows[-1])
+        verts.extend(tuple(pf * h00 + mf * h10 + pb * h01 + mb * h11) for pf, mf, pb, mb in curves)
         row_mat.append(1 if k < roll // 2 else 0)
     for r in range(rings, 0, -1):
         rows.append([len(verts) + s for s in range(segs)])
+        if r == rings:
+            rim.extend(rows[-1])
         verts.extend(tuple(at(rho, phi, back_h(rho, phi))) for rho, phi in ring_pts(r))
         row_mat.append(0)
     rows.append([len(verts)])
@@ -3616,12 +3628,49 @@ def build_ear_round():
             else:
                 fcs.append((a[s], b[s], b[t], a[t]))
             mats.append(m)
+    return verts, fcs, mats, rim, outer
+
+
+EAR_RIM_TOL = (0.00013, 0.00026)     # the outline rows, the rest of the rim (metres)
+
+
+def _ear_round_rim_fits(outline, rim):
+    """A decimation test: every high-detail outline point lies within EAR_RIM_TOL[0] of the reduced surface and
+    every other rim point within EAR_RIM_TOL[1]."""
+    def fits(mesh):
+        tree = BVHTree.FromPolygons([v.co.copy() for v in mesh.vertices], [tuple(p.vertices) for p in mesh.polygons])
+        for points, tol in ((outline, EAR_RIM_TOL[0]), (rim, EAR_RIM_TOL[1])):
+            for p in points:
+                hit = tree.find_nearest(p)
+                if hit[0] is None or hit[3] > tol:
+                    return False
+        return True
+    return fits
+
+
+def build_ear_round():
+    """A monkey's ear standing out from the side of the head (symmetric part; the runtime places it either side):
+    one continuous thick flap, wider at the top than at the root. Its front is a single sculpted surface: a deep
+    concha bowl in the lower front, a soft antihelix ridge rising out of the flap round the top and back of the
+    bowl, and a flat tragus flap blending out of the bowl's front lip. The edge is rolled all the way round (no
+    cut faces): a fat helix over the top and down the back, thinning to a small curl at the notch low on the
+    front edge. Fur on the back, which is thicker behind the bowl and swells into the root (no separate collar:
+    a stuck-on roll read as paper leaves). H1_Perk tips it forward, H2_Size scales it."""
+    if EAR_N.y < 0:
+        raise RuntimeError("ear face must point forward")
+    verts, fcs, mats, rim, outer = _ear_round_shell()
     fur_mat = _mammal_fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
     skin = _skin_material("M_EarRoundSkinProc", scale=420.0, lo=0.86, rough=0.55, pore=0.14)
     ear = bc.mesh_object("EarRound", verts, fcs, [fur_mat, skin], mats)
     skin.name, fur_mat.name = "M_EarRoundSkin", "M_EarRoundFur"
     objs = [ear]
-    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A"))}, tolerance=0.0003)
+    # The interior keeps the 0.3 mm tolerance; the rolled rim must stay within EAR_RIM_TOL of its high-detail
+    # points, so the outline stays round (at 0.3 mm everywhere it came out a 28-gon with 14 mm sides).
+    outer_set = set(outer)
+    outline_pts = [Vector(verts[i]) for i in outer]
+    rim_pts = [Vector(verts[i]) for i in rim if i not in outer_set]
+    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A"))}, tolerance=0.0003,
+                  accept={"EarRound": _ear_round_rim_fits(outline_pts, rim_pts)})
     pts = _check_pivot("ear_round", EAR_SINK + 0.002)
     foot = _footprint(pts)
 
@@ -3636,7 +3685,35 @@ def build_ear_round():
     rules["handles"] = handles
     return {"purpose": "Creature detail part (PROPOSED): a monkey's ear, one thick flap wider at the top with a rolled helix over the top and back, a soft notch and flat tragus at the root, a concha bowl and antihelix carved into the front, bare skin inside and fur behind, thickest behind the bowl and at the root.",
             "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 4, **baked}
+            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 5, "review_notes": EAR_ROUND_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+EAR_ROUND_REVIEW = {
+    "revision": 5,
+    "change": "Rim crease: the flap now eases into the helix with zero slope at both ends (rho 0.72 to 1) instead of "
+              "a squared ramp from 0.82, a shallow scapha groove keeps the helix reading as a rolled ridge, and the "
+              "roll is a cubic Hermite per meridian that leaves the front rim and meets the back rim along their own "
+              "slopes (it was a semicircle that started flat, a 50 to 70 degree bend that shaded as a line inside "
+              "the rim). The largest turn between neighbouring rows near the rim is now 26 degrees, like the bowl's "
+              "and antihelix's own. Rim facets: the decimation keeps the three outermost roll rows within 0.13 mm "
+              "and the rest of the rim within 0.26 mm of the high mesh (the interior keeps 0.3 mm); at 0.3 mm "
+              "everywhere the outline was a 28-gon with sides up to 14 mm. 1070 of 1200 triangles; dimensions, "
+              "pivot, sink, footprint, handles and materials unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) and the head-sphere front, 3/4 and side "
+                   "(tools/ear_round_shots.gd) show a smooth oval outline with no straight runs or lumps and no dark "
+                   "line inside the rim; the rolled helix, the scapha, the antihelix round the bowl, the tragus and "
+                   "the notch read. Before: lumpy outline, a kink at the top of the notch side, a crease line along "
+                   "the inside of the top rim.",
+    "gate2_materials": "pass (materials unchanged): pink pored skin on the front and the roll's front half, brown "
+                       "grained fur behind, split at the roll's apex, in the Blender material views and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py), the neutral Godot "
+                      "capture (tools/godot/capture_part.gd) and the head-sphere shots; no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the monkey preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) at the world's gameplay distance reads as a round ear on the "
+                   "side of the head; close up the outline stays smooth at rest and with H1_Perk and H2_Size at "
+                   "1000.",
+}
 
 
 def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):

@@ -10,14 +10,14 @@
   "export_path": "assets/export/cpart_ear_round.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 4,
+  "revision": 5,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.056,
     "y_forward": 0.034,
     "z_up": 0.065
   },
-  "triangles": 770,
+  "triangles": 1070,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -90,11 +90,19 @@
     "M_EarRoundSkin": 0.4,
     "M_EarRoundFur": 0.9
   },
+  "review_notes": {
+    "revision": 5,
+    "change": "Rim crease: the flap now eases into the helix with zero slope at both ends (rho 0.72 to 1) instead of a squared ramp from 0.82, a shallow scapha groove keeps the helix reading as a rolled ridge, and the roll is a cubic Hermite per meridian that leaves the front rim and meets the back rim along their own slopes (it was a semicircle that started flat, a 50 to 70 degree bend that shaded as a line inside the rim). The largest turn between neighbouring rows near the rim is now 26 degrees, like the bowl's and antihelix's own. Rim facets: the decimation keeps the three outermost roll rows within 0.13 mm and the rest of the rim within 0.26 mm of the high mesh (the interior keeps 0.3 mm); at 0.3 mm everywhere the outline was a 28-gon with sides up to 14 mm. 1070 of 1200 triangles; dimensions, pivot, sink, footprint, handles and materials unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) and the head-sphere front, 3/4 and side (tools/ear_round_shots.gd) show a smooth oval outline with no straight runs or lumps and no dark line inside the rim; the rolled helix, the scapha, the antihelix round the bowl, the tragus and the notch read. Before: lumpy outline, a kink at the top of the notch side, a crease line along the inside of the top rim.",
+    "gate2_materials": "pass (materials unchanged): pink pored skin on the front and the roll's front half, brown grained fur behind, split at the roll's apex, in the Blender material views and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py), the neutral Godot capture (tools/godot/capture_part.gd) and the head-sphere shots; no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the monkey preset in the creature editor scene (tools/godot/part_on_body_shot.gd) at the world's gameplay distance reads as a round ear on the side of the head; close up the outline stays smooth at rest and with H1_Perk and H2_Size at 1000."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0003,
-    "triangles_before": 5264,
-    "triangles_after": 770
+    "triangles_before": 5712,
+    "triangles_after": 1070
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

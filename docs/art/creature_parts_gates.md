@@ -59,6 +59,30 @@ every cpart_ to 1000 (imported blend shapes hold absolute positions) and checks 
 the skin, that the vertices sunk deeper than half the sink depth stay under it, and that a ground part still reaches
 its sole.
 
+## cpart_ear_round, revision 5 (IMPLEMENTED)
+
+Change: the rim crease and the rim facets. The front of the flap now eases into the helix with zero slope at both ends
+(from rho 0.72 out to the rim; it was a squared ramp from 0.82), a shallow scapha groove (0.6 mm under the fat helix)
+keeps the helix reading as a rolled ridge, and the roll is a cubic Hermite per meridian that leaves the front rim and
+meets the back rim along their own slopes. Before, the roll was a semicircle that started flat, so it met the front
+at a 50 to 70 degree bend all the way round, which shaded as a line inside the rim. The largest turn between
+neighbouring rows near the rim is now 26 degrees, the same as the bowl's and antihelix's own turns. For the facets,
+`_bake` takes an optional `accept` per object (passed to `surfacing.reduce`). The ear's test keeps the three outermost
+roll rows within 0.13 mm and the rest of the rim within 0.26 mm of the high mesh; the interior keeps 0.3 mm. At 0.3 mm
+everywhere the outline was a 28-gon with sides up to 14 mm. Triangles 1070 of 1200 (was 770). Dimensions
+(0.056 x 0.034 x 0.065 m), pivot, sink, footprint, handles (H1_Perk, H2_Size), sockets (none) and materials are
+unchanged.
+
+| Gate | Status | Observation |
+| --- | --- | --- |
+| 1 shape | pass | Blender gray front, side and three-quarter and the head-sphere front, three-quarter and side (`tools/ear_round_shots.gd`): a smooth oval outline with no straight runs or lumps and no dark line inside the rim; the rolled helix, scapha, antihelix round the bowl, tragus and notch read. Before: a lumpy outline, a kink at the top of the notch side and a crease line along the inside of the top rim. |
+| 2 materials | pass (unchanged) | Pink pored skin on the front and the front half of the roll, brown grained fur behind, split at the roll's apex (Blender material views and Godot). |
+| 3 lighting | pass | Neutral Blender review light, the neutral Godot capture and the head-sphere light; no bloom. |
+| 4 Godot | pass | Imported; on the monkey preset in the editor scene at the world's gameplay distance it reads as a round ear on the side of the head; close up the outline stays smooth at rest and with H1_Perk and H2_Size at 1000. |
+
+Evidence: `ear_round_head_before_after.jpg` (head sphere, top before, bottom after), `ear_round_gray_before_after.jpg`
+and `ear_round_monkey_before_after_perk.jpg` (monkey close: before, after, after with both handles at 1000).
+
 ## Known issues
 
 - `cpart_foot_frog` H2_Long at 1000 reaches about 0.119 m against the recorded footprint of 0.098 m (scout's
