@@ -3217,8 +3217,9 @@ def _leather_material(name):
     return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", creases, 0.28)), 0.75), 0.62)
 
 
-def _fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
-    """Short dense fur: fine strands stretched along one axis, broken into clumps, rough and matte."""
+def _primate_fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
+    """Short dense fur (the primate hand and foot): fine strands stretched along one axis, broken into clumps,
+    rough and matte."""
     sh = sf.Shader(name)
     strands = sh.noise(scale, 2.5, vector=mp._stretched(sh, along))
     clumps = sh.remap(sh.noise(scale * 0.12, 2.0), 0.3, 0.7)
@@ -3226,8 +3227,8 @@ def _fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
     return sh.out(_grey(sh, sh.math("ADD", 0.5, sh.math("MULTIPLY", sh.math("MULTIPLY", strands, clumps), 0.5)), 0.5), 0.88)
 
 
-def _pad_material(name, rough=0.4):
-    """A soft adhesive pad or nose leather: a fine tight pebble, smoother than the skin around it."""
+def _leather_pad_material(name, rough=0.4):
+    """Nose leather (the primate muzzle): a fine tight pebble, smoother than the skin around it."""
     sh = sf.Shader(name)
     pebble = sh.remap(sh.voronoi(900.0, 0.9), 0.3, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.18, 0.0003)
@@ -3322,7 +3323,7 @@ def build_hand_primate():
     # A fur cuff where the furred limb meets the bare hand; closed at its top so it reads as a ruff.
     cuff_path = [Vector((0.0, 0.0, z)) for z in (-0.01, 0.0, 0.008, 0.016, 0.022)]
     cv, cf, _ = _tube(cuff_path, lambda i, a: (0.026, 0.0275, 0.027, 0.023, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
-    fur_mat = _fur_material("M_HandPrimateFurProc")
+    fur_mat = _primate_fur_material("M_HandPrimateFurProc")
     cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=hand)
     fur_mat.name = "M_HandPrimateFur"
     objs = [hand, nails, cuff]
@@ -3395,7 +3396,7 @@ def build_foot_frog():
         r = 0.0098
         dv, df = _blob(Vector((0.0, 0.0, 0.0)), 1.0, 1.0, 1.0, sub=3)
         bc.append(pv, pf, [tuple(c + Vector((0.0, 0.0, 0.0042)) + side * (x * r) + d * (y * r * 0.92) + Vector((0.0, 0.0, z * r * 0.5 - (0.0012 if z < 0 else 0.0)))) for x, y, z in dv], df)
-    pad_mat = _pad_material("M_FootFrogPadProc")
+    pad_mat = _frog_disc_material("M_FootFrogPadProc")
     pads = bc.mesh_object("Pads", _ground(pv), pf, [pad_mat], parent=foot)
     pad_mat.name = "M_FootFrogPad"
     wv, wf = [], []
@@ -3464,7 +3465,7 @@ def build_foot_primate():
     nail_mat.name = "M_FootPrimateNail"
     cuff_path = [Vector((0.0, -0.036 + 0.0015 * k, z)) for k, z in enumerate((0.08, 0.072, 0.064, 0.056, 0.05))]
     cv, cf, _ = _tube(cuff_path, lambda i, a: (0.02, 0.0215, 0.022, 0.02, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
-    fur_mat = _fur_material("M_FootPrimateFurProc")
+    fur_mat = _primate_fur_material("M_FootPrimateFurProc")
     cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=foot)
     fur_mat.name = "M_FootPrimateFur"
     objs = [foot, nails, cuff]
@@ -3615,7 +3616,7 @@ def build_ear_round():
             else:
                 fcs.append((a[s], b[s], b[t], a[t]))
             mats.append(m)
-    fur_mat = _fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
+    fur_mat = _mammal_fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
     skin = _skin_material("M_EarRoundSkinProc", scale=420.0, lo=0.86, rough=0.55, pore=0.14)
     ear = bc.mesh_object("EarRound", verts, fcs, [fur_mat, skin], mats)
     skin.name, fur_mat.name = "M_EarRoundSkin", "M_EarRoundFur"
@@ -3660,7 +3661,7 @@ MZ_RX, MZ_RY = 0.044, 0.048
 MZ_EYES = ((-0.0155, 0.009), (0.0155, 0.009))
 
 
-def _smooth(e0, e1, v):
+def _mz_smoothstep(e0, e1, v):
     t = min(1.0, max(0.0, (v - e0) / (e1 - e0)))
     return t * t * (3.0 - 2.0 * t)
 
@@ -3673,7 +3674,7 @@ def _mz_brow_y(x):
 def _mz_muzzle(x, y):
     """0..1 plateau of the squared muzzle block (a superellipse with steep sides)."""
     m = ((x / 0.021) ** 4 + ((y + 0.016) / 0.0165) ** 4) ** 0.25
-    return 1.0 - _smooth(0.45, 1.25, m)
+    return 1.0 - _mz_smoothstep(0.45, 1.25, m)
 
 
 def _mz_socket(x, y):
@@ -3681,7 +3682,7 @@ def _mz_socket(x, y):
     best = (0.0, 0.0)
     for ex, ey in MZ_EYES:
         d = math.sqrt(((x - ex) / 0.0098) ** 2 + ((y - ey) / 0.0088) ** 2)
-        cur = (1.0 - _smooth(0.6, 1.05, d), math.exp(-((d - 1.12) / 0.16) ** 2))
+        cur = (1.0 - _mz_smoothstep(0.6, 1.05, d), math.exp(-((d - 1.12) / 0.16) ** 2))
         best = max(best, cur)
     return best
 
@@ -3695,10 +3696,10 @@ def _mz_height(x, y):
     deep, rim = _mz_socket(x, y)
     z += 0.0015 * rim - 0.0115 * deep
     by = _mz_brow_y(x)
-    xm = 1.0 - _smooth(0.032, 0.040, abs(x))
+    xm = 1.0 - _mz_smoothstep(0.032, 0.040, abs(x))
     z += 0.0135 * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else 0.0135 * xm * math.exp(-((y - by) / 0.009) ** 2)
     z += 0.0135 * _mz_muzzle(x, y)
-    z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _smooth(-0.005, 0.0, y) * (1.0 - _smooth(0.012, 0.018, y))  # nose-bridge groove
+    z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _mz_smoothstep(-0.005, 0.0, y) * (1.0 - _mz_smoothstep(0.012, 0.018, y))  # nose-bridge groove
     edge = max(0.0, (math.sqrt(r2) - 0.86) / 0.14)
     return z - (z + MUZZLE_SINK * 0.9) * edge ** 2
 
@@ -3706,8 +3707,8 @@ def _mz_height(x, y):
 def _mz_overhang(x, y, z):
     """Pull the brow's lower face down over the sockets so the ridge really overhangs them."""
     by = _mz_brow_y(x)
-    w = math.exp(-((y - by) / 0.006) ** 2) * (1.0 - _smooth(0.032, 0.040, abs(x)))
-    return (x, y - 0.004 * w * _smooth(0.004, 0.012, z), z)
+    w = math.exp(-((y - by) / 0.006) ** 2) * (1.0 - _mz_smoothstep(0.032, 0.040, abs(x)))
+    return (x, y - 0.004 * w * _mz_smoothstep(0.004, 0.012, z), z)
 
 
 def build_muzzle_primate():
@@ -3738,7 +3739,7 @@ def build_muzzle_primate():
     top = _mz_height(0.0, -0.011)
     nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0012)), 0.0105, 0.0062, 0.0026, sub=2, power=0.7,
                    shape=lambda n: (1.0 - 0.25 * max(0.0, -n.y), 1.0, 0.0))
-    nose_mat = _pad_material("M_MuzzlePrimateNoseProc")
+    nose_mat = _leather_pad_material("M_MuzzlePrimateNoseProc")
     nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
     nose_mat.name = "M_MuzzlePrimateNose"
     # The nostrils (set into the pad's lower edge) and the mouth line across the muzzle front: dark recesses.
@@ -3785,7 +3786,7 @@ def build_muzzle_primate():
         path.append(Vector((px, py, _mz_height(px, py) + 0.0008 * w)))
         rad.append(max(0.0008, w * (0.0055 + 0.003 * lobe)))
     tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 7)
-    fur_mat = _fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
+    fur_mat = _mammal_fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
     fur = bc.mesh_object("FurFrame", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in tv], tf, [fur_mat], parent=face)
     fur_mat.name = "M_MuzzlePrimateFur"
     objs = [face, nose, holes, fur]
@@ -4101,8 +4102,9 @@ BULGE_R = 0.042
 BULGE_SINK = 0.025
 
 
-def _pad_material(name):
-    """The sticky toe discs: paler, glossier and finely pitted, so they read apart from the skin."""
+def _frog_disc_material(name):
+    """The sticky toe discs of the frog hand and foot: paler, glossier and finely pitted, so they read apart from
+    the skin."""
     sh = sf.Shader(name)
     pits = sh.remap(sh.voronoi(900.0, 0.8), 0.25, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pits), 0.2, 0.0003)
@@ -4208,7 +4210,7 @@ def _frog_s(co, f):
     return (co - HAND_FROG_BASE).dot(_frog_dir(f))
 
 
-def _smooth(x, a, b):
+def _frog_smooth(x, a, b):
     t = min(1.0, max(0.0, (x - a) / (b - a)))
     return t * t * (3.0 - 2.0 * t)
 
@@ -4221,7 +4223,7 @@ def _frog_bend(co, f, hinges):
     s = _frog_s(co, f)
     p = co.copy()
     for s_at, deg in reversed(hinges):
-        w = _smooth(s, s_at - 0.004, s_at + 0.004)
+        w = _frog_smooth(s, s_at - 0.004, s_at + 0.004)
         if w <= 0.0:
             continue
         pivot = HAND_FROG_BASE + d * s_at
@@ -4279,7 +4281,7 @@ def build_hand_frog():
     skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0, rough=0.22)
     hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
     skin.name = "M_HandFrogSkin"
-    pad_mat = _pad_material("M_HandFrogPadProc")
+    pad_mat = _frog_disc_material("M_HandFrogPadProc")
     pads = bc.mesh_object("Pads", pv, pf, [pad_mat], parent=hand)
     pad_mat.name = "M_HandFrogPad"
     baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))})
@@ -4297,7 +4299,7 @@ def build_hand_frog():
         if co.z <= HAND_FROG_KNUCKLE - 0.008:
             return co
         f = _frog_finger_of(co)
-        w = _smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008)
+        w = _frog_smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008)
         rot = Matrix.Rotation(math.radians(HAND_FROG_FINGERS[f][0] * 0.45) * w, 3, Vector((0.0, 1.0, 0.0)))
         return HAND_FROG_BASE + rot @ (co - HAND_FROG_BASE)
 
@@ -4366,7 +4368,7 @@ def build_throat_sac():
 
 # --- Fur parts (mammal set): tufted clumps over a core, strand grain baked to the normal map -------
 
-def _fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
+def _mammal_fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
     """Matte fur: fine streaks stretched along the strands (the low-frequency axis of `along`), clumped breakup."""
     sh = sf.Shader(name)
     strands = sh.noise(260.0, 2.0, vector=mp._stretched(sh, along))
@@ -4440,9 +4442,9 @@ def build_ear_pointed():
         u = (k / 6.0) * 1.4 - 0.7
         p = Vector((u * 0.022, -0.012 + 0.006 * (1.0 - u * u), 0.002 + 0.004 * rnd.random()))
         _tuft(tv, tf, p, Vector((u * 0.5, 0.15, 1.0)).normalized(), 0.022 + 0.008 * rnd.random(), 0.0036, bend=Vector((0, 0.25, 0)), sides=6)
-    fur = _fur_material("M_EarFurProc", 0.5)
+    fur = _mammal_fur_material("M_EarFurProc", 0.5)
     skin = _skin_material("M_EarSkinProc", 260.0, 0.82, 0.6)
-    tuft = _fur_material("M_EarTuftProc", 0.7)
+    tuft = _mammal_fur_material("M_EarTuftProc", 0.7)
     ear = bc.mesh_object("EarPointed", verts, fcs, [fur, skin], mats, fix_normals=False)
     tufts = bc.mesh_object("Tufts", tv, tf, [tuft], parent=ear)
     fur.name, skin.name, tuft.name = "M_EarFur", "M_EarSkin", "M_EarTuft"
@@ -4510,8 +4512,8 @@ def build_tail_bushy():
         nb = len(fcs)
         _tuft(verts, fcs, base, d, length, max(0.006, _tail_r(t) * 0.42), bend=tan * 0.3)
         mats.extend([1 if t > 0.8 else 0] * (len(fcs) - nb))
-    fur = _fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
-    tipm = _fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
+    fur = _mammal_fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
+    tipm = _mammal_fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
     tail = bc.mesh_object("TailBushy", verts, fcs, [fur, tipm], mats)
     fur.name, tipm.name = "M_TailFur", "M_TailTip"
     baked = _bake([tail], "PartTailBushy", {"M_TailFur": sf.tint(_lin("#A8683A")), "M_TailTip": sf.tint(_lin("#EDE6DA"))}, tolerance=0.0006)
@@ -4567,8 +4569,8 @@ def build_mane():
             nb = len(fcs)
             _tuft(verts, fcs, base, d, length, 0.016 * size, bend=Vector((u * 0.4, -0.3, -0.7)))
             mats.extend([1 if (row + k) % 3 == 0 else 0] * (len(fcs) - nb))
-    pad = _fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
-    lock = _fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
+    pad = _mammal_fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
+    lock = _mammal_fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
     mane = bc.mesh_object("Mane", verts, fcs, [pad, lock], mats)
     pad.name, lock.name = "M_ManeFur", "M_ManeLock"
     baked = _bake([mane], "PartMane", {"M_ManeFur": sf.tint(_lin("#6B4A2E")), "M_ManeLock": sf.tint(_lin("#8E6640"))}, tolerance=0.0006)
@@ -4655,7 +4657,25 @@ ASSETS = {
 }
 
 
+def _check_unique_names():
+    """Module-level names must be unique: Python binds a global at call time, so a second `def` of the same name
+    silently replaces the first for every builder (a merge once gave the muzzle the frog hand's `_smooth` with its
+    arguments in another order, and the muzzle's nose the frog's toe-disc material). Prefix helpers with their
+    builder's name instead."""
+    import ast
+    seen, dups = {}, []
+    for node in ast.parse(open(__file__, encoding="utf-8").read()).body:
+        names = [node.name] if isinstance(node, (ast.FunctionDef, ast.ClassDef)) else \
+            [t.id for t in getattr(node, "targets", []) if isinstance(t, ast.Name)]
+        for name in names:
+            if name in seen:
+                dups.append(f"{name} (lines {seen[name]} and {node.lineno})")
+            seen.setdefault(name, node.lineno)
+    mp._check(not dups, "module-level names defined twice: " + ", ".join(dups))
+
+
 def main():
+    _check_unique_names()
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Build the creature parts.")
     parser.add_argument("--only", default="", help="comma-separated asset ids (default: all)")
