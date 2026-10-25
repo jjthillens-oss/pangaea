@@ -3661,6 +3661,42 @@ DWING_SPAN = 0.42
 DWING_SINK = 0.018
 
 
+def _dwing_slab(verts, fcs, point, cols, rows, edge, t0=0.0022, hem=0.0055):
+    """One closed membrane slab for the dragon wing: a grid point(s, c) offset both ways along its own surface
+    normal (oriented toward +X), the two skins joined by a rim around all four sides so no open edge or
+    back-to-back sliver shows. Thickness grows toward the free edge (`edge` "s1" for s = 1, "c1" for c = 1)
+    into a rolled hem."""
+    grid = [[point(r / rows, c / cols) for c in range(cols + 1)] for r in range(rows + 1)]
+    w = cols + 1
+
+    def normal(r, c):
+        r0, r1, c0, c1 = max(0, r - 1), min(rows, r + 1), max(0, c - 1), min(cols, c + 1)
+        n = (grid[r1][c] - grid[r0][c]).cross(grid[r][c1] - grid[r][c0])
+        if n.length < 1e-9:
+            n = Vector((1.0, 0.0, 0.0))
+        n.normalize()
+        return n if n.x >= 0 else -n
+
+    base = len(verts)
+    for sign in (1.0, -1.0):
+        for r in range(rows + 1):
+            for c in range(cols + 1):
+                f = r / rows if edge == "s1" else c / cols
+                t = t0 + (hem - t0) * f ** 6
+                verts.append(tuple(grid[r][c] + normal(r, c) * (sign * t)))
+    top, bot = base, base + (rows + 1) * w
+    for r in range(rows):
+        for c in range(cols):
+            a, b, d, e = r * w + c, r * w + c + 1, (r + 1) * w + c, (r + 1) * w + c + 1
+            fcs.append((top + a, top + b, top + e, top + d))
+            fcs.append((bot + a, bot + d, bot + e, bot + b))
+    ring = [c for c in range(cols)] + [r * w + cols for r in range(rows)] + \
+           [rows * w + c for c in range(cols, 0, -1)] + [r * w for r in range(rows, 0, -1)]
+    for i, a in enumerate(ring):
+        b = ring[(i + 1) % len(ring)]
+        fcs.append((top + a, bot + a, bot + b, top + b))
+
+
 def build_wing_dragon():
     """A big chunky dragon wing in the skin's YZ plane: a thick arm out along +Z to a knuckled wrist, a hooked
     thumb claw at the wrist pointing forward (+Y), four stout finger struts fanning back toward the tail, and a
@@ -3709,42 +3745,76 @@ def build_wing_dragon():
     bc.append(verts, fcs, v, f)
     face_mats.extend([2] * (len(fcs) - len(face_mats)))
     mverts, mfcs = [], []
-    # Membrane (its own object, so the bones' normal bake never sees it): fans between neighbouring fingers, then the inner panel from the last finger back to the body.
+    # Membrane (its own object, so the bones' normal bake never sees it): fans between neighbouring fingers, then
+    # the inner panel from the last finger back to the body. Each panel is one closed slab (two skins plus a rim),
+    # thickening toward the trailing edge into a rolled hem so the edge reads from the front.
     for k in range(3):
         a, b = tips[k], tips[k + 1]
 
         def fan(s, c, a=a, b=b):
+            # Stop just short of the tapered finger tips so no membrane corner pokes past the bone.
+            s = s * 0.95
             q = a.lerp(b, c)
-            return cup(wrist + (q - wrist) * s * (1.0 - 0.34 * math.sin(math.pi * c) * s ** 3))
-        _membrane(mverts, mfcs, fan, 7, 7, thickness=0.0025)
+            return cup(wrist + (q - wrist) * s * (1.0 - 0.36 * math.sin(math.pi * c) * (s / 0.95) ** 3))
+        _dwing_slab(mverts, mfcs, fan, 7, 9, edge="s1")
 
     def inner(s, c):
         c = c * (1.0 - 0.3 * math.sin(math.pi * s) * c ** 3)
-        top = wrist.lerp(tips[3], c)
+        top = wrist.lerp(tips[3], c * 0.95)
         bottom = root.lerp(body_trail, c)
         return cup(bottom.lerp(top, s))
-    _membrane(mverts, mfcs, inner, 9, 9, thickness=0.0025)
+    _dwing_slab(mverts, mfcs, inner, 8, 9, edge="c1")
     mem = sf.Shader("M_WingDragonMembraneProc")
     veins = mem.remap(mem.voronoi(45.0, 0.9, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
     mem.bump(mem.math("SUBTRACT", 1.0, veins), 0.35, 0.001)
     mem_mat = mem.out(_grey(mem, mem.math("ADD", 0.7, mem.math("MULTIPLY", veins, 0.3)), 0.7), 0.55)
     mats = [_scale_material("M_WingDragonBoneProc", 240.0), _horn_material("M_WingDragonClawProc", 0.0, 0.6)]
     wing = bc.mesh_object("WingDragon", verts, fcs, mats, [m - 1 for m in face_mats])
-    membrane = bc.mesh_object("Membrane", mverts, mfcs, [mem_mat], fix_normals=False, parent=wing)
+    membrane = bc.mesh_object("Membrane", mverts, mfcs, [mem_mat], parent=wing)
     mem_mat.name, mats[0].name, mats[1].name = "M_WingDragonMembrane", "M_WingDragonBone", "M_WingDragonClaw"
     baked = _bake([wing, membrane], "PartWingDragon", {"M_WingDragonMembrane": sf.tint(_lin("#B5584A")),
                                              "M_WingDragonBone": sf.tint(_lin("#5E7A4C")),
-                                             "M_WingDragonClaw": sf.tint(_lin("#E8DCC0"))}, tolerance=0.0003)
+                                             "M_WingDragonClaw": sf.tint(_lin("#E8DCC0"))}, tolerance=0.0003, keep=("Membrane",))
     pts = _check_pivot("wing_dragon", DWING_SINK + 0.02)
     foot = max(abs(p.y) for p in pts if p.z <= 0.01)
     mp._check(sum(p.x for p in pts) < 0, "wing_dragon: cups toward -X (the right-hand piece ships)")
 
+    # H1_Fold, bat-style: every finger swings about the wrist to lie back down along the forearm, the four struts
+    # converging into a tight bundle. Each finger turns rigidly inside a narrow band around it, and the membrane
+    # between two fingers takes up the squeeze by pleating out of the plane, alternately toward -X and +X.
+    fing = [math.degrees(math.atan2(t.z - wrist.z, t.y - wrist.y)) for t in tips]
+    targets = [236.0, 244.0, 252.0, 260.0]
+    band = 3.5
+
+    def turn(theta):
+        """Degrees of rotation for a point at polar angle theta (degrees, about the wrist in YZ), and its pleat."""
+        if theta < fing[0] - band:
+            lo = fing[0] - band - 30.0
+            return (targets[0] - fing[0]) * max(0.0, (theta - lo) / 30.0), 0.0
+        for i in range(4):
+            if abs(theta - fing[i]) <= band:
+                return targets[i] - fing[i], 0.0
+            if i < 3 and fing[i] + band < theta < fing[i + 1] - band:
+                u = (theta - fing[i] - band) / (fing[i + 1] - fing[i] - 2 * band)
+                r = (targets[i] - fing[i]) * (1 - u) + (targets[i + 1] - fing[i + 1]) * u
+                return r, (-1.0 if i % 2 == 0 else 1.0) * math.sin(math.pi * u)
+        arm = 277.0
+        u = min(1.0, (theta - fing[3] - band) / (arm - fing[3] - band))
+        return (targets[3] - fing[3]) * (1 - u), -0.5 * math.sin(math.pi * u)
+
     def fold(co):
-        if co.z > 0.03 and co.y < 0.03:
-            k = min(1.0, (co.z - 0.03) / 0.35)
-            co.y -= 0.14 * k
-            co.z -= 0.17 * k * k
-            co.x -= 0.02 * k
+        dy, dz = co.y - wrist.y, co.z - wrist.z
+        d = math.hypot(dy, dz)
+        if d < 1e-6:
+            return co
+        theta = math.degrees(math.atan2(dz, dy)) % 360.0
+        w = min(1.0, max(0.0, (d - 0.02) / 0.04))
+        w = w * w * (3 - 2 * w)
+        rot, pleat = turn(theta)
+        a = math.radians(theta + rot * w)
+        dd = d * (1.0 - 0.38 * w)
+        co.y, co.z = wrist.y + dd * math.cos(a), wrist.z + dd * math.sin(a)
+        co.x += w * (0.09 * min(1.0, d / 0.3) * pleat - 0.015)
         return co
 
     def flap(co):
