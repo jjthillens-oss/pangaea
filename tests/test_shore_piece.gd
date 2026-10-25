@@ -127,7 +127,7 @@ func test_the_reach_ring_lies_on_the_plane_at_the_reach() -> void:
 	view.free()
 
 
-func test_the_glow_lies_on_the_sand_in_the_shafts_foot() -> void:
+func test_the_glow_lies_on_the_sand_over_the_shafts_foot() -> void:
 	var root := (load(ShoreView.SCENE) as PackedScene).instantiate()
 	var meshes := _meshes(root)
 	var glow: MeshInstance3D = meshes.get("Glow")
@@ -139,9 +139,43 @@ func test_the_glow_lies_on_the_sand_in_the_shafts_foot() -> void:
 		var foot: AABB = shaft.transform * shaft.get_aabb()
 		check(g.end.y <= PLANE_BAND.x, "the glow tops out at %.3f m, under the swim band" % g.end.y)
 		check(g.position.y >= (bank.transform * bank.get_aabb()).position.y, "the glow lies on the bank")
-		check_near(g.size.x, foot.size.x, 0.05, "the glow fills the shaft's foot across x")
-		check_near(g.size.z, foot.size.z, 0.05, "the glow fills the shaft's foot across z")
+		# Its soft rim overlaps the walls' fade-in from the sand, so no unlit crescent is left between them.
+		check(g.size.x > foot.size.x + 0.2 and g.size.z > foot.size.z + 0.2,
+			"the glow (%.2f x %.2f m) reaches past the shaft's foot (%.2f x %.2f m)" % [g.size.x, g.size.z, foot.size.x,
+				foot.size.z])
+		var ring_inside := 2.0 * (ShoreLink.REACH_TM - RING_HALF_WIDTH)
+		check(g.size.x < ring_inside and g.size.z < ring_inside, "the glow stays inside the reach ring")
+		check_near(g.get_center().x, 0.0, 0.05, "the glow is centred on the shore point (x)")
+		check_near(g.get_center().z, 0.0, 0.05, "the glow is centred on the shore point (z)")
 		check_near(foot.position.y, g.position.y, 0.05, "the shaft's foot stands on the sand with the glow")
+	root.free()
+
+
+## The shader fades the shaft by its facing (NORMAL against VIEW), so a ring seam split into two vertex columns,
+## each with a one-sided smooth normal, draws a hard vertical edge down the column in Forward+.
+func test_the_light_parts_have_no_split_seam() -> void:
+	var root := (load(ShoreView.SCENE) as PackedScene).instantiate()
+	var meshes := _meshes(root)
+	for part in ["Shaft", "Reach", "Glow"]:
+		var mi: MeshInstance3D = meshes.get(part)
+		check(mi != null and mi.mesh != null, "the piece has its %s" % part)
+		if mi == null or mi.mesh == null:
+			continue
+		var arrays := mi.mesh.surface_get_arrays(0)
+		var pos: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var nrm: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var first := {}
+		var worst := 0.0
+		var shared := 0
+		for i in pos.size():
+			var key := pos[i].snapped(Vector3.ONE * 0.001)
+			if first.has(key):
+				shared += 1
+				worst = maxf(worst, rad_to_deg(nrm[i].angle_to(first[key])))
+			else:
+				first[key] = nrm[i]
+		check(shared > 0, "%s keeps a UV seam (u runs 0 to 1), so the check sees shared positions" % part)
+		check(worst < 1.0, "%s carries normals %.1f deg apart at one position (a split seam)" % [part, worst])
 	root.free()
 
 

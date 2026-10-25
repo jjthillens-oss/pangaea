@@ -16,8 +16,10 @@ Four nodes, the pivot on the shore point on the swim plane (Blender z = 0), fron
 - Shaft: an open cone of light standing on the landing, its foot seated on the sand, up to +4.5 m (the
   toast says "Swim into its light"). UV v runs 0 at the bottom to 1 at the top.
 - Glow: the pool of light the shaft lays on the sand, a disc that follows the shelf a few cm above it,
-  so the inside of the shaft's foot reads lit rather than as a dark hole. UV v runs 0 at the centre to 1
-  at the rim.
+  so the inside of the shaft's foot reads lit rather than as a dark hole. It reaches a little past the
+  foot so its soft rim overlaps the walls' fade-in. UV v runs 0 at the centre to 1 at the rim.
+The light parts' ring seams are welded, so their smooth normals have no break (the shaft fades by its
+facing, and a split seam drew a hard edge down one side).
 - Reach: a flat annulus on the swim plane (z -0.05) centred on ShoreLink.REACH_TM (4 m), where the
   offer opens. UV v runs 0 inside to 1 outside.
 
@@ -72,7 +74,8 @@ REACH_Z = -0.05
 SHAFT_TOP_M = 4.5
 SHAFT_R_TOP, SHAFT_R_BOTTOM = 1.8, 2.8
 LIGHT_LIFT_M = 0.04        # the shaft's foot and the glow sit this far above the sand (they follow ground())
-GLOW_R = SHAFT_R_BOTTOM    # the glow fills the shaft's foot
+GLOW_R = 3.2               # the glow reaches past the shaft's foot (2.8), inside the reach ring (3.7), so its
+                           # soft rim overlaps the walls' fade-in from the sand and no unlit crescent is left
 SKIRT_BOTTOM_M = -20.0
 SHAFT_WEIGHT = 0.45        # LightWeight red: the shaft draws dimmer than the ring
 RING_WEIGHT = 1.0
@@ -89,7 +92,8 @@ NEAR_TOP = 0.6             # the wall toward the camera is gone above this share
 SHAFT_FOOT = 0.25          # the shaft's walls fade in over this share of its height from the sand (the glow lights
                            # the sand itself; walls bright down to the sand outline the foot as a disc)
 GLOW_GAIN = 0.12           # the glow's strength (times LightWeight red, and the shaft's renderer gain)
-GLOW_CORE = 0.5            # the glow is even out to this share of its radius, then falls softly to 0 at the rim
+GLOW_CORE = 0.7            # the glow is even out to this share of its radius (2.24 m), then falls softly to 0 at
+                           # the rim; at the shaft's foot (2.8 m) it is still at about 0.38
 # The pool's sun and ambient light the sand at about 1.9 times its albedo on screen (Gate 4, docs/art/shore_piece.md):
 # the baked albedo is scaled once so the shelf reads L* 36 to 48 behind the cell, under the coral cell.
 ALBEDO_GAIN = 0.27
@@ -482,70 +486,93 @@ def _strip_attributes(obj):
 
 def build_light(mat):
     """The Shaft (open cone, its foot on the sand), the Reach ring and the Glow on the sand, with LightWeight
-    as raw COLOR_0 values."""
+    as raw COLOR_0 values. Each is a ring grid whose seam is welded (one vertex per azimuth), so the smooth
+    normals are continuous all the way round: the shader scales the shaft by its facing, and a seam split into
+    two columns gave each side a one-sided normal and a hard edge at azimuth 0. u runs 0 to 1 per face corner
+    (the closing face's corners take u = 1), so the exporter splits only the UV seam, with one shared normal."""
     seg = 24
     rows = 5
-    verts, faces, uvs = [], [], []
+    verts = []
     for i in range(rows):
         f = i / (rows - 1)
         r = SHAFT_R_BOTTOM + (SHAFT_R_TOP - SHAFT_R_BOTTOM) * f
-        for j in range(seg + 1):                       # a duplicated seam column so u runs 0 to 1
+        for j in range(seg):
             a = math.tau * j / seg
             x, y = r * math.cos(a), r * math.sin(a)
             bottom = ground(SHAFT_R_BOTTOM * math.cos(a), SHAFT_R_BOTTOM * math.sin(a)) + LIGHT_LIFT_M
             verts.append((x, y, bottom + (SHAFT_TOP_M - bottom) * f))
-            uvs.append((j / seg, f))
-    cols = seg + 1
-    for i in range(rows - 1):
-        for j in range(seg):
-            faces.append((i * cols + j, i * cols + j + 1, (i + 1) * cols + j + 1, (i + 1) * cols + j))
+    faces, corner_uvs = _ring_quads(rows, seg, [i / (rows - 1) for i in range(rows)], outward=False)
     shaft = bc.mesh_object("Shaft", verts, faces, [mat], fix_normals=False)
-    _per_vertex_uv(shaft, uvs)
+    _corner_uv(shaft, corner_uvs)
     _weight(shaft, (SHAFT_WEIGHT, 0.0, 0.0))
 
     seg = 64
     radii = [REACH_M - REACH_HALF_WIDTH, REACH_M, REACH_M + REACH_HALF_WIDTH]
-    verts, faces, uvs = [], [], []
-    for i, r in enumerate(radii):
-        for j in range(seg + 1):
-            a = math.tau * j / seg
-            verts.append((r * math.cos(a), r * math.sin(a), REACH_Z))
-            uvs.append((j / seg, i / (len(radii) - 1)))
-    cols = seg + 1
-    for i in range(len(radii) - 1):
-        for j in range(seg):
-            faces.append((i * cols + j, (i + 1) * cols + j, (i + 1) * cols + j + 1, i * cols + j + 1))
+    verts = [(r * math.cos(math.tau * j / seg), r * math.sin(math.tau * j / seg), REACH_Z)
+             for r in radii for j in range(seg)]
+    faces, corner_uvs = _ring_quads(len(radii), seg, [i / (len(radii) - 1) for i in range(len(radii))], outward=True)
     reach = bc.mesh_object("Reach", verts, faces, [mat], fix_normals=False)
-    _per_vertex_uv(reach, uvs)
+    _corner_uv(reach, corner_uvs)
     _weight(reach, (RING_WEIGHT, 1.0, 0.0))
 
-    # The glow: a fan of rings out to the shaft's foot, each vertex on the sand plus the lift.
+    # The glow: a fan of rings out past the shaft's foot (GLOW_R), each vertex on the sand plus the lift.
     seg = 32
-    fracs = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
-    verts, faces, uvs = [(0.0, 0.0, ground(0.0, 0.0) + LIGHT_LIFT_M)], [], [(0.5, 0.0)]
-    for i, t in enumerate(fracs[1:]):
-        for j in range(seg + 1):
+    fracs = [0.2, 0.4, 0.6, 0.8, 1.0]
+    verts = [(0.0, 0.0, ground(0.0, 0.0) + LIGHT_LIFT_M)]
+    for t in fracs:
+        for j in range(seg):
             a = math.tau * j / seg
             x, y = GLOW_R * t * math.cos(a), GLOW_R * t * math.sin(a)
             verts.append((x, y, ground(x, y) + LIGHT_LIFT_M))
-            uvs.append((j / seg, t))
-    cols = seg + 1
+    faces, corner_uvs = [], []
     for j in range(seg):
-        faces.append((0, 1 + j, 1 + j + 1))
-    for i in range(len(fracs) - 2):
-        for j in range(seg):
-            a0, b0 = 1 + i * cols + j, 1 + (i + 1) * cols + j
-            faces.append((a0, b0, b0 + 1, a0 + 1))
-    glow = bc.mesh_object("Glow", verts, faces, [mat], fix_normals=False)
-    _per_vertex_uv(glow, uvs)
+        faces.append((0, 1 + j, 1 + (j + 1) % seg))
+        corner_uvs.append((((j + 0.5) / seg, 0.0), (j / seg, fracs[0]), ((j + 1) / seg, fracs[0])))
+    quads, quad_uvs = _ring_quads(len(fracs), seg, fracs, outward=True, first=1)
+    glow = bc.mesh_object("Glow", verts, faces + quads, [mat], fix_normals=False)
+    _corner_uv(glow, corner_uvs + quad_uvs)
     _weight(glow, (GLOW_WEIGHT, 0.0, 1.0))
     return shaft, reach, glow
 
 
-def _per_vertex_uv(obj, uvs):
+def _ring_quads(rows, seg, vs, outward, first=0):
+    """Quads between consecutive rings of `seg` welded vertices (ring i starts at first + i * seg), and each
+    face's corner UVs: u = column / seg (1 on the closing face's far corners), v = vs[ring]. `outward` keeps the
+    winding of the flat parts (their normals point up); the shaft's winding is the other way round."""
+    faces, uvs = [], []
+    for i in range(rows - 1):
+        for j in range(seg):
+            j1 = (j + 1) % seg
+            a, b = first + i * seg + j, first + i * seg + j1
+            c, d = first + (i + 1) * seg + j1, first + (i + 1) * seg + j
+            ua, ub = j / seg, (j + 1) / seg
+            if outward:
+                faces.append((a, d, c, b))
+                uvs.append(((ua, vs[i]), (ua, vs[i + 1]), (ub, vs[i + 1]), (ub, vs[i])))
+            else:
+                faces.append((a, b, c, d))
+                uvs.append(((ua, vs[i]), (ub, vs[i]), (ub, vs[i + 1]), (ua, vs[i + 1])))
+    return faces, uvs
+
+
+LIGHT_PARTS = ("Shaft", "Reach", "Glow")
+
+
+def _split_normal_deg(mesh):
+    """The widest angle between the corner normals that meet at one position: 0 on a welded smooth mesh."""
+    by_pos = {}
+    normals = mesh.corner_normals
+    for loop in mesh.loops:
+        key = tuple(round(c, 4) for c in mesh.vertices[loop.vertex_index].co)
+        by_pos.setdefault(key, []).append(normals[loop.index].vector.copy())
+    return max((math.degrees(ns[0].angle(n, 0.0)) for ns in by_pos.values() for n in ns), default=0.0)
+
+
+def _corner_uv(obj, corner_uvs):
     layer = obj.data.uv_layers["UVMap"]
-    for loop in obj.data.loops:
-        layer.data[loop.index].uv = uvs[loop.vertex_index]
+    for poly in obj.data.polygons:
+        for uv, li in zip(corner_uvs[poly.index], poly.loop_indices):
+            layer.data[li].uv = uv
 
 
 def _weight(obj, rgb):
@@ -694,6 +721,12 @@ def _checks(bank, stats):
                      f"({v.co.x:.2f}, {v.co.y:.2f}), not {LIGHT_LIFT_M}")
     k._check(max(v.co.z for v in bpy.data.objects["Glow"].data.vertices) <= SOLID_MAX_M,
              "shore_piece: the glow rises into the swim band")
+    glow_r = max(math.hypot(v.co.x, v.co.y) for v in bpy.data.objects["Glow"].data.vertices)
+    k._check(SHAFT_R_BOTTOM < glow_r < REACH_M - REACH_HALF_WIDTH,
+             f"shore_piece: the glow reaches {glow_r:.2f} m, not past the shaft's foot and inside the ring")
+    for name in LIGHT_PARTS:
+        worst = _split_normal_deg(bpy.data.objects[name].data)
+        k._check(worst < 0.5, f"shore_piece: {name} carries normals {worst:.1f} deg apart at one position (a split seam)")
     tris = bc.triangle_count()
     k._check(tris <= BUDGET, f"shore_piece: {tris} triangles is over {BUDGET}")
 

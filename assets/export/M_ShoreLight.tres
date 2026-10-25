@@ -21,7 +21,7 @@ uniform float shaft_edge = 1.5;
 uniform float near_top = 0.6;
 uniform float shaft_foot = 0.25;
 uniform float glow_gain = 0.12;
-uniform float glow_core = 0.5;
+uniform float glow_core = 0.7;
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
 uniform float strength = 1.0;
 
@@ -63,6 +63,6 @@ shader_parameter/shaft_edge = 1.5
 shader_parameter/near_top = 0.6
 shader_parameter/shaft_foot = 0.25
 shader_parameter/glow_gain = 0.12
-shader_parameter/glow_core = 0.5
+shader_parameter/glow_core = 0.7
 shader_parameter/renderer_gain = Vector2(1, 1)
 shader_parameter/strength = 1.0
