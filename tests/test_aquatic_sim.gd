@@ -14,7 +14,7 @@ const SLICE_SITES := ["plankton_bay", "plankton_shelf", "algae_west", "algae_eas
 ## recorded on the hard-wired grazer and shoal code before aquatic-r2's data-driven species refactor. The refactored
 ## code must play the slice's species exactly as that code did. Content added later that changes this run must be
 ## kept out of it in _slice_rules(), not re-recorded.
-const GOLDEN_SPECIES_RUN := "d18070185c5d87f0f55f275f61c39892"
+const GOLDEN_SPECIES_RUN := "dafeaab3a7ed0346e1dbb431ce583af4"
 
 var rules: Dictionary
 var _golden_sim: AquaticSim
@@ -433,7 +433,10 @@ func _slice_rules() -> Dictionary:
 func _golden_step(intent: AquaticSim.Intent) -> void:
 	_golden_sim.step(intent)
 	for e in _golden_sim.take_events():
-		_golden_log.append([int(e.tick), String(e.type), String(e.get("species", "")), String(e.get("standing", ""))])
+		# What each event does in play (which animal, which standing, how much rapport), not which fields name it:
+		# the refactor may add names to an event for the HUD.
+		_golden_log.append([int(e.tick), String(e.type), String(e.get("id", "")), String(e.get("standing", "")),
+				int(e.get("rapport", -1))])
 	for a in _golden_sim.animals:
 		_golden_states["%s:%s" % [a.species, a.state]] = true
 
