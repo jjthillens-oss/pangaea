@@ -1553,3 +1553,6 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25 · An aquatic path through the later eras (direction CONFIRMED; design PROPOSED)
+Joshua, 2026-10-25 05:25: a lineage may stay in the sea as a real path, toward underwater Social, Tribal and city eras, as players asked for. Bible §4 allows continued aquatic play within a bounded content plan, so: Aquatic never forces the shore; declining it with a crawl-capable body records the lineage event `stayed_in_the_sea` (an event in the existing `lineage_history`, no schema change), and going ashore records `came_ashore`. The underwater later eras are a later milestone, each with its own bounded plan and Joshua's go before building. Plan: `docs/stages/aquatic-plan.md` section 7a.

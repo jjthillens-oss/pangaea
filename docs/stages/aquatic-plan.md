@@ -132,6 +132,31 @@ the body qualifies. Accepting saves a checkpoint, keeps the water reachable from
 stage with the same lineage. The land transition itself belongs to the cell-to-creature work in the "Spore-style
 evolution game" thread; Aquatic hands it the lineage, it does not build its own land.
 
+## 7a. Staying in the sea: the aquatic path (direction CONFIRMED 2026-10-25; design PROPOSED)
+
+Joshua, 2026-10-25 05:25: a lineage that stays in the water should be a real path through the later eras (underwater
+Social, Tribal and city life), because players asked for it (community-wants theme 12, "stay aquatic", and the cut
+features list's underwater cities). The Bible allows it within bounds (§4): "Never force a land-adapted build onto a
+fully aquatic lineage", "allow continued aquatic play within supported scope", but "alternative paths require bounded
+content plans; seven eras do not authorize seven full campaigns per body plan". So the later underwater eras are a
+**later milestone** with their own bounded plan; nothing past Aquatic is built now. What Aquatic does now is make the
+choice real and recorded, so those eras can read it:
+
+- **No dead end.** The shore is always optional. A fish with crawling limbs can decline it and keep evolving in the
+  sea; the stage keeps working (feeding, mating, the editor, friends) for as long as the player stays.
+- **The choice is a lineage fact.** When a crawl-capable lineage declines the shore, or is past the point where it
+  could go ashore and keeps swimming, the save records a `lineage_history` event `"stayed_in_the_sea"` (an event
+  string in an existing list: no schema change). Going ashore records `"came_ashore"`, as the cell-to-creature link
+  already does. The save's `aquatic` block (v5) keeps the fish, its friends and its finds either way.
+- **What later eras read.** The last of those two events decides which path a lineage is on. An aquatic lineage's
+  Social era would be pods and shoals (calls, schooling, shared nests); Tribal, reef or vent villages built from
+  coral, shell and stone; Civilization, underwater cities with their own resources (currents, vents, light). Each is
+  a bounded plan for its own milestone, sized like the land path's era, not a second full campaign.
+- **Both paths stay connected.** Land lineages keep river and shore access (Bible §7: water remains useful); sea
+  lineages meet land species at the shore. Relations with species carry across (§4 continuity).
+- **Owner gate.** Building any underwater era past Aquatic changes milestone scope, so it waits for Joshua's go on its
+  bounded plan and is recorded in DECISIONS.md.
+
 ## 8. First playable slice (step 2)
 
 Scope (PROPOSED, built in `game/**/aquatic/**`):
