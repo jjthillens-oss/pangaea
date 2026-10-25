@@ -75,14 +75,15 @@ Creature world HUD:
 - Above the dock, the controls line as a `HudPill`, unchanged in wording. It shows for 15 s (`KEYS_HINT_S`) each
   time the world opens and again when the device in use changes (keys and mouse to a controller or back), then
   fades. A rebinding is made in the settings, outside the world, so it shows the next time the world opens.
-- When the controls line goes, a small caption line in the dock takes its place and stays: the keys the chips do
+- As the controls line fades, a small caption line in the dock fades in and stays: the keys the chips do
   not name, "WASD  Move   ·   Middle drag  Orbit   ·   Escape  Back to the editor" (on a controller "Left stick",
   "Right stick" and "B"), named from the bindings like the line itself. So moving, orbiting and the way out never
   leave the screen, as Bible 19 asks of tutorial prompts ("can be dismissed or revisited"). The creature world has
   no pause menu (Escape goes straight back to the editor), and the pool's pause menu lists only the cell's
   controls, so this dock line is where those keys stay. Whether the timed line should also drop the abilities the
   chips already show is the owner's call (tests read Bite, Evolve, Move and "Back to the editor" in its text, not
-  its visibility).
+  its visibility). The dock line's row is always laid out (alpha 0 while the controls line is up), so the dock
+  keeps one height and does not jump up when the line comes in.
 - Every control in the creature HUD ignores the mouse, so the middle-drag orbit reaches the camera.
 - The top right is empty now: the points moved into the goal card.
 - The cell HUD was restyled in place, per the lead's decision for this job: energy and health stay top left as a
@@ -113,6 +114,17 @@ Creature world HUD:
   the creature smoke 56 and 11 checks, 0 failed. Round 1's look probe with its current gates
   (`tools/godot/look_probe.gd -- --scenes=hud,starving,sunlit`): 29 gates, 0 failed (the cell HUD's look has not
   changed since).
+- Round 3 (the dock keeps one height): the dock's key line is always laid out and only its alpha changes. In the
+  shot logs the dock is (609, 944) 701x108 both while the controls line is up and after it goes, at 1920x1080 100%
+  and 1280x720, and (577, 930) 765x122 both times at 130%. `tests/test_creature_world_hud.gd` checks that the line
+  keeps its row and is faded out while the controls line is up; run against round 2's HUD code that check fails (5
+  tests, 1 failed). The headless runner does not lay out hidden-in-tree controls, so the dock's height itself is
+  checked in the frames, not in the unit test. With the final test: `--only=test_creature_world_hud,test_ui_text` 29
+  tests, 0 failed. With this HUD code (earlier drafts of the test):
+  `test_creature_world_hud,test_creature_world_scene,test_creature_stage,test_ui_text` 46 tests, 0 failed;
+  `tests/smoke/ui_smoke.gd` 44 checks, 0 failed; the creature smoke 56 and 11 checks, 0 failed. The creature after
+  frames were re-rendered. The full check below was not rerun for this round's change (one HUD file's fade handling,
+  a test and docs; main's merge 4b0ef032 added docs only).
 - The full check at HEAD 462efb26: tools/check.sh steps run via check_full.sh, with the unit suite's limit raised
   to 3600 s for this 4-CPU container. It took 1779 s. Unit suite: 1931 tests, 3 failed (38 soak skipped): two
   timing gates in the container's baseline for main (`test_endless_cost::test_slow_a_sleeper_costs_at_most_2_us`
