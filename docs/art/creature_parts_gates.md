@@ -102,7 +102,7 @@ the skin tucks in under the widest ring at the skin line, so the mound's edge cu
 segments round (was 24) and six iris rows (was four). H1_Blink closes the same round dome; H2_Bulge now stretches only
 the ball above the lip (the top still rises a third of a radius), so it never pulls away from the lid. Triangles: 1152
 of 1200 (was 960). Dimensions (0.13 x 0.13 x 0.11 m), footprint, sink, pivot, handle keys, sockets (none) and material
-names are unchanged; `part_rules.json` is unchanged. `_eye_ball` and `_wet_skin_material` gained optional parameters
+names are unchanged; `game/data/creature/part_rules.json` is unchanged. `_eye_ball` and `_wet_skin_material` gained optional parameters
 whose defaults keep every other part's output.
 
 | Gate | Status | Observation |
