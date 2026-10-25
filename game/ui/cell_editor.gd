@@ -339,7 +339,7 @@ func drag_to(angle: float) -> Dictionary:
 	if part.is_empty():
 		return {"angle": angle, "kind": "", "of": ""}
 	var twin := selected_twin()
-	var keep := [] if twin.is_empty() else [str(twin.id)]
+	var keep: Array = [] if twin.is_empty() else [str(twin.id)]
 	var snap := CellSymmetry.snap(angle, session.working.parts, selected, keep, _rim.clear_angle())
 	if not twin.is_empty():
 		var kept := CellSymmetry.off_line(angle, float(part.angle))
@@ -472,7 +472,7 @@ static func stat_help(label: String, catalog: PartCatalog) -> String:
 	for spec: Array in STATS:
 		if spec[0] == label and catalog.caps.has(spec[1]):
 			var cap := float(catalog.caps[spec[1]])
-			var shown := "%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap
+			var shown: String = "%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap
 			return text % shown
 	return text.get_slice(" At most", 0).get_slice(", up to", 0)
 

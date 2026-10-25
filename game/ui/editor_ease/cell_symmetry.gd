@@ -71,7 +71,7 @@ static func snap(angle: float, parts: Array, moving_id: String, keep: Array = []
 	var best := {"angle": a, "kind": "", "of": ""}
 	var best_d := SNAP_RAD
 	var taken := false
-	var skip := keep.map(func(id: Variant) -> String: return str(id))
+	var skip: Array = keep.map(func(id: Variant) -> String: return str(id))
 	skip.append(moving_id)
 	for line: float in [0.0, PI]:
 		var d := absf(angle_difference(a, line))
@@ -101,7 +101,7 @@ static func snap(angle: float, parts: Array, moving_id: String, keep: Array = []
 			best_d = d
 			best = {"angle": target, "kind": "twin", "of": str(p.id)}
 	if taken and str(best.kind) == "":
-		best.kind = "taken"
+		best["kind"] = "taken"
 	return best
 
 

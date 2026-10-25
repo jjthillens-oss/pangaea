@@ -371,6 +371,9 @@ func _build_snap_hint() -> void:
 	if title != null:
 		hud.move_child(snap_hint, title.get_index() + 1)
 		title.item_rect_changed.connect(_place_snap_hint)
+		var pill_node := title.get_node_or_null("TitlePill") as Control
+		if pill_node != null:
+			pill_node.item_rect_changed.connect(_place_snap_hint)   # a taller title (larger text) moves the line down
 	_place_snap_hint()
 
 
