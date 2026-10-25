@@ -101,12 +101,13 @@ def brink_radius(th):
 
 
 def slope_params(th):
-    """(tan of the slope past the brink, the brink's rounding length, where the skirt starts steepening)."""
+    """(tan of the straight slope past the brink, the brink's rounding length, the depth below the brink
+    where the slope ends and the skirt plunges into the fog)."""
     s = math.sin(th)
-    deg = 36.0 + 9.0 * s - 5.0 * _bump(th, -0.72, 0.25)     # south ramp about 27 deg, flanks 36, north face 45
-    rounding = 1.0 - 0.55 * max(0.0, s)                    # a soft brink on the ramp, a sharper crest edge north
-    steepen = 4.0 - 1.5 * max(0.0, s)
-    return math.tan(math.radians(deg)), rounding, steepen
+    deg = 36.0 + 12.0 * max(0.0, s) + 10.0 * min(0.0, s) - 4.0 * _bump(th, -0.72, 0.25)   # S 26, E/W 36, N 48
+    rounding = 0.3 - 0.15 * max(0.0, s)                    # a tight brink on the ramp, a sharp crest edge north
+    ramp_depth = 6.0 + 2.0 * max(0.0, -s) - 2.0 * max(0.0, s)  # the south ramp runs deepest, to about -10 m
+    return math.tan(math.radians(deg)), rounding, ramp_depth
 
 
 def plateau(x, y):
@@ -117,10 +118,13 @@ def plateau(x, y):
 
 
 def _drop(s, th):
-    t, b, q0 = slope_params(th)
+    """How far the bank has fallen at s metres past the brink: a rounded brink, a straight slope, then a
+    skirt plunging steeply once the slope has fallen ramp_depth metres."""
+    t, b, ramp_depth = slope_params(th)
     if s <= 0.0:
         return 0.0
-    return t * (math.sqrt(s * s + b * b) - b) + 0.35 * max(0.0, s - q0) ** 2
+    s1 = ramp_depth / t + b
+    return t * (math.sqrt(s * s + b * b) - b) + 0.4 * max(0.0, s - s1) ** 2
 
 
 def _relief(x, y, s):
@@ -134,15 +138,20 @@ def _brink_point(th):
     return CENTRE[0] + r * math.cos(th), CENTRE[1] + r * math.sin(th)
 
 
+BERM_M = 0.09             # a low lip along the brink that catches the light
+BERM_W = 0.55
+
+
 def height_polar(th, s):
     """Height at signed distance s from the brink along the ray th from CENTRE (s < 0 inside)."""
     r = brink_radius(th)
     d = r + s
     x, y = CENTRE[0] + d * math.cos(th), CENTRE[1] + d * math.sin(th)
+    berm = BERM_M * math.exp(-((s + 0.35) / BERM_W) ** 2)
     if s <= 0.0:
-        return plateau(x, y)
+        return min(plateau(x, y) + berm, SAND_TOP_M)
     bx, by = _brink_point(th)
-    return plateau(bx, by) - _drop(s, th) + _relief(x, y, s)
+    return plateau(bx, by) + berm - _drop(s, th) + _relief(x, y, s)
 
 
 def ground(x, y):
@@ -566,14 +575,14 @@ def sand_shader():
                     sh.math("ADD", sh.math("MULTIPLY", is_grain, 0.34), sh.math("MULTIPLY", is_glass, 0.16)))
 
     # Relief: ripples (about 0.04 m), swells (about 0.05 m), sand texture; smooth grains; glass ribs.
-    h_sand = sh.math("ADD", sh.math("MULTIPLY", crest_f, 1.0), sh.math("MULTIPLY", swell, sh.math("MULTIPLY", rip_fade, 1.2)))
-    h_sand = sh.math("ADD", h_sand, sh.math("MULTIPLY", fine, 0.35))
-    h_sand = sh.math("SUBTRACT", h_sand, sh.math("MULTIPLY", specks, 0.25))
+    h_sand = sh.math("ADD", sh.math("MULTIPLY", crest_f, 1.0), sh.math("MULTIPLY", swell, sh.math("MULTIPLY", rip_fade, 0.6)))
+    h_sand = sh.math("ADD", h_sand, sh.math("MULTIPLY", fine, 0.15))
+    h_sand = sh.math("SUBTRACT", h_sand, sh.math("MULTIPLY", specks, 0.1))
     h_grain = sh.math("MULTIPLY", g_mottle, 0.25)
     h_glass = sh.math("SUBTRACT", sh.math("MULTIPLY", ribs, 0.5), sh.math("MULTIPLY", pores, 0.5))
     height = sh.math("ADD", sh.math("MULTIPLY", sh.math("SUBTRACT", 1.0, sh.math("MAXIMUM", is_grain, is_glass)), h_sand),
                      sh.math("ADD", sh.math("MULTIPLY", is_grain, h_grain), sh.math("MULTIPLY", is_glass, h_glass)))
-    sh.bump(height, 1.0, 0.04)
+    sh.bump(height, 1.0, 0.035)
     return sh.out(base, rough)
 
 

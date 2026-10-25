@@ -39,7 +39,7 @@ import lookdev as ld  # noqa: E402
 
 DEFAULT_BLEND = os.path.join(ld.ROOT, "assets", "source", "blender", "shore_piece.blend")
 DEFAULT_OUT = "/home/user/xdg/shore/scratch/gates"
-SCALE = 0.1                     # 24 m of landing becomes 2.4 units under the 1 m review rig
+SCALE = 0.04                    # about 33 m of landing becomes 1.3 units under the 1 m review rig
 LIGHT_NODES = ("Shaft", "Reach")
 FOOD, THREAT = "#CFE86A", "#D9466B"
 
@@ -134,8 +134,8 @@ def _top(cam, res=720):
     scene = bpy.context.scene
     scene.render.resolution_x = scene.render.resolution_y = res
     cam.data.type = "ORTHO"
-    cam.data.ortho_scale = 26.0 * SCALE
-    cam.location = (0.0, 0.0, 30.0 * SCALE)
+    cam.data.ortho_scale = 54.0 * SCALE
+    cam.location = (0.0, -6.0 * SCALE, 30.0 * SCALE)
     cam.rotation_euler = (0.0, 0.0, 0.0)
 
 
@@ -155,20 +155,20 @@ def _grazing_sun():
 
 VIEWS = {
     # name: (material mode, light parts shown, camera setup)
-    "gray_front": ("clay", False, lambda c: _orbit(c, (0, 0, -3), 34, 0, 22)),
-    "gray_side": ("clay", False, lambda c: _orbit(c, (0, 0, -3), 34, 90, 22)),
-    "gray_three_quarter": ("clay", False, lambda c: _orbit(c, (0, 0, -3), 34, 35, 30)),
-    "gray_south": ("clay", False, lambda c: _orbit(c, (0, 0, -3), 34, 215, 30)),
+    "gray_front": ("clay", False, lambda c: _orbit(c, (0, -4, -8), 95, 0, 18)),
+    "gray_side": ("clay", False, lambda c: _orbit(c, (0, -4, -8), 95, 90, 18)),
+    "gray_three_quarter": ("clay", False, lambda c: _orbit(c, (0, -4, -8), 95, 35, 30)),
+    "gray_south": ("clay", False, lambda c: _orbit(c, (0, -4, -8), 95, 215, 30)),
     "gray_top": ("clay", False, _top),
     "gray_game": ("clay", False, lambda c: _game_camera(c, (0, 0, 0))),
     "gray_game_approach": ("clay", False, lambda c: _game_camera(c, (0, -10, 0))),
     "grazing": ("relief", False, lambda c: _game_camera(c, (0, -2, 0))),
     "beauty_game": ("beauty", False, lambda c: _game_camera(c, (0, 0, 0))),
     "beauty_game_approach": ("beauty", False, lambda c: _game_camera(c, (0, -10, 0))),
-    "beauty_three_quarter": ("beauty", False, lambda c: _orbit(c, (0, 0, -3), 34, 215, 30)),
+    "beauty_three_quarter": ("beauty", False, lambda c: _orbit(c, (0, 0, -8), 80, 215, 30)),
     "close_crest": ("beauty", False, lambda c: _orbit(c, (1.5, -2.5, -2.0), 6.5, 200, 38, lens=50.0)),
     "close_grains": ("beauty", False, lambda c: _orbit(c, (2.6, -6.4, -2.6), 5.0, 205, 34, lens=50.0)),
-    "light_layout": ("beauty", True, lambda c: _orbit(c, (0, 0, 0), 36, 215, 32)),
+    "light_layout": ("beauty", True, lambda c: _orbit(c, (0, 0, -2), 40, 205, 30)),
 }
 
 
