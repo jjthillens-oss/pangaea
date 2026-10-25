@@ -8,7 +8,7 @@ a berm past them); the nest ring sits at the origin, outer radius about 6 m, wit
 bush is about 0.5 m across and the meat chunk 0.3 m; fruit and meat draw as MultiMesh instances with a colour
 per instance, so their materials take an instance tint (vertex_color_use_as_albedo in the external .tres).
 
-- creature_field_ground: a 172 x 172 m grid with gentle relief and a berm, ringed by coarse low hills out to 200 m
+- creature_field_ground: a 172 x 172 m grid with gentle relief and a berm, ringed by coarse hills out to 200 m
   (CreatureFieldHills) so the horizon is land. Drawn with the external M_CreatureField.tres
   (assets/export/shaders/creature_field.gdshader): two seamless 2.5 m tiles (a 1024 px meadow turf of grass blades
   and a 512 px bare earth) blended by a 37 m patch mask and a bare clearing round the nest.
@@ -64,7 +64,8 @@ TURF_DRY = (0.467, 0.561, 0.465)   # #778F77, CIELAB L 57, C 17, h 143: the dry 
 TURF_LUSH = (0.78, 0.92, 0.92)     # the lush meadow's linear multiplier: deeper, toward h 150
 HILLS_HALF = 200.0       # the outer hills reach this far, so the horizon is land, not the sky's ground colour
 HILLS_IN = 84.0          # their inner edge starts under the berm (field edge at 86 m), so no seam shows from inside
-HILLS_H = (3.0, 12.0)    # the hills' height range past the berm
+HILLS_NEAR = (1.5, 4.0)  # low rolling hills just past the berm (metres above the berm's crest)
+HILLS_FAR = (2.0, 14.0)  # an uneven far ridge from about 120 m out, with gaps and peaks, so the skyline is not a wall
 NEST_R = 6.0
 FRUIT_COUNT = 9
 NEST_TOL = 0.012         # the nest's decimation tolerance: 1.2 cm on a 13 m ring
@@ -274,19 +275,20 @@ def _relief(x, y):
 
 
 def _hills_z(x, y):
-    """The outer hills: from under the berm at HILLS_IN they rise over 40 m to rolling crests of HILLS_H, with a
-    taller far ridge, so a creature at the wall sees a slope and the field's horizon is a line of land."""
+    """The outer hills: from under the berm at HILLS_IN, low rolling hills (HILLS_NEAR) and, from about 120 m out,
+    an uneven far ridge (HILLS_FAR) whose peaks and saddles come from a broad noise raised to a power, so a creature
+    at the wall sees a slope and the skyline is a broken line of land rather than a wall."""
     d = max(abs(x), abs(y))
     join = 1.4 + 1.3 * bc.smoothstep((d - HILLS_IN) / 3.0)          # meets the berm's crest at the field's edge
-    rise = bc.smoothstep((d - HILLS_IN - 2.0) / 40.0)
-    roll = 0.5 + 0.5 * noise.noise(Vector((x / 47.0 + 1.7, y / 47.0 - 4.2, 3.3)))
-    ridge = bc.smoothstep((d - 130.0) / 50.0) * (0.5 + 0.5 * noise.noise(Vector((x / 83.0, y / 83.0, 7.7))))
-    lo, hi = HILLS_H
-    return join + rise * (lo + (hi - lo) * (0.65 * roll + 0.35 * ridge))
+    roll = 0.5 + 0.5 * noise.noise(Vector((x / 37.0 + 1.7, y / 37.0 - 4.2, 3.3)))
+    peak = 0.5 + 0.5 * noise.noise(Vector((x / 71.0 - 2.3, y / 71.0 + 5.1, 7.7)))
+    near = bc.smoothstep((d - HILLS_IN - 2.0) / 30.0) * (HILLS_NEAR[0] + (HILLS_NEAR[1] - HILLS_NEAR[0]) * roll)
+    far = bc.smoothstep((d - 120.0) / 60.0) * (HILLS_FAR[0] + (HILLS_FAR[1] - HILLS_FAR[0]) * peak ** 1.6)
+    return join + near + far
 
 
 def build_field_hills(mat):
-    """A square ring of low hills from HILLS_IN to HILLS_HALF round the field, coarse (spacing 4 to 15 m outward,
+    """A square ring of hills from HILLS_IN to HILLS_HALF round the field, coarse (spacing 4 to 15 m outward,
     10.5 m along the ring), drawn with the field's own material. Outside the walls, so nothing walks on it."""
     outer = [HILLS_IN + (HILLS_HALF - HILLS_IN) * (k / 12.0) ** 1.35 for k in range(1, 13)]
     inner = [-HILLS_IN + 2 * HILLS_IN * k / 16.0 for k in range(17)]
@@ -309,7 +311,7 @@ def build_field_hills(mat):
 
 def build_field_ground():
     """A square of ground 172 m across: gentle relief inside the walls at +-80 m and a berm past them, so the
-    edge reads as a bank rather than a cliff, ringed by low hills out to 200 m (CreatureFieldHills) so the horizon
+    edge reads as a bank rather than a cliff, ringed by hills out to 200 m (CreatureFieldHills) so the horizon
     is land. UV = metres / TILE_M, one turf tile per 2.5 m. Drawn with the external M_CreatureField.tres (mapped in
     its .glb.import), which blends the turf and earth tiles in world space."""
     n = int(round(2 * FIELD_HALF / FIELD_STEP)) + 1
@@ -329,12 +331,12 @@ def build_field_ground():
     mp._check(max(abs(z) for z in inside) <= RELIEF_M + 1e-6, "field: relief inside the walls stays under %.2f m" % RELIEF_M)
     mp._check(max(z for (x, y, z) in verts) >= BERM_M * 0.8, "field: the berm rises past the walls")
     hills_top = build_field_hills(mat)
-    return {"purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of low hills out to 200 m; meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
+    return {"purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of hills out to 200 m (low near the berm, an uneven ridge farther out); meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
             "category": "environment", "kind": "ground", "pivot": "the field's centre on the ground (Godot y = 0); the nest sits at the origin",
             "engine_material": "res://assets/export/M_CreatureField.tres",
             "walkable": {"wall_m": WALL_M, "relief_max_m": RELIEF_M, "berm_m": BERM_M, "clearing_r_m": NEST_R + 1.5},
-            "hills": {"node": "CreatureFieldHills", "inner_m": HILLS_IN, "outer_m": HILLS_HALF, "height_m": list(HILLS_H),
-                      "top_m": round(hills_top, 2), "cast_shadow": False},
+            "hills": {"node": "CreatureFieldHills", "inner_m": HILLS_IN, "outer_m": HILLS_HALF, "near_m": list(HILLS_NEAR),
+                      "far_ridge_m": list(HILLS_FAR), "top_m": round(hills_top, 2), "cast_shadow": False},
             "textures": build_field_tiles(), "revision": 2}
 
 

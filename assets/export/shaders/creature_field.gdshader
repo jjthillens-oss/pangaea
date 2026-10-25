@@ -36,6 +36,13 @@ uniform float clump_strength : hint_range(0.0, 0.5) = 0.14;
 // Ambient occlusion on the ground: the sky's ambient falls on it at this fraction; the sun is not affected
 // (AO_LIGHT_AFFECT 0), so the lit side stays warm and the shade stays dark instead of turning sky blue.
 uniform float ambient_occlusion : hint_range(0.0, 1.0) = 0.7;
+// The patch mask is read rotated and domain-warped, so the earth patches have no axis-aligned, boxy edges.
+uniform float patch_angle = 0.6;        // radians
+uniform float patch_warp : hint_range(0.0, 0.5) = 0.22;   // in patch-mask tiles
+// Past the walls (the berm and the outer hills, square distance from the origin) the earth patches fade out and the
+// turf turns lush, so the hills read as grassland rather than a patchwork.
+uniform float hills_from = 74.0;
+uniform float hills_soft = 8.0;
 uniform vec3 earth_tint : source_color = vec3(1.0);
 uniform float turf_roughness : hint_range(0.0, 1.0) = 1.0;
 uniform float earth_roughness : hint_range(0.0, 1.0) = 0.9;
@@ -59,8 +66,11 @@ void fragment() {
 	vec2 uv = world_pos.xz / tile_m;
 	vec3 turf = two_scale(turf_albedo, uv).rgb;
 	vec3 earth = two_scale(earth_albedo, uv).rgb;
-	float mask = texture(patch_mask, world_pos.xz / patch_m).r;
-	float t = smoothstep(patch_low, patch_high, mask);
+	vec2 pp = mat2(vec2(cos(patch_angle), sin(patch_angle)), vec2(-sin(patch_angle), cos(patch_angle))) * world_pos.xz / patch_m;
+	pp += patch_warp * (vec2(texture(patch_mask, pp * 1.9 + vec2(0.21, 0.53)).r, texture(patch_mask, pp * 1.9 + vec2(0.71, 0.08)).r) - 0.5) * 2.0;
+	float mask = texture(patch_mask, pp).r;
+	float outside = smoothstep(hills_from, hills_from + hills_soft, max(abs(world_pos.x), abs(world_pos.z)));
+	float t = smoothstep(patch_low, patch_high, mask) * (1.0 - 0.9 * outside);
 	float clearing = 1.0 - smoothstep(clearing_r, clearing_r + clearing_soft, length(world_pos.xz));
 	t = max(t, clearing);
 	// The turf's lighter crowns hold out longest against the earth, so the edge is ragged, not a soft gradient.
@@ -70,7 +80,7 @@ void fragment() {
 	float macro = texture(patch_mask, world_pos.xz / (patch_m * 0.37) + vec2(0.31, 0.77)).r;
 	float dry = smoothstep(0.45, 0.8, macro) * dry_amount;
 	float lush_mask = texture(patch_mask, world_pos.xz / (patch_m * 0.61) + vec2(0.63, 0.12)).r;
-	float lush = smoothstep(0.5, 0.8, lush_mask) * (1.0 - dry) * lush_amount;
+	float lush = max(smoothstep(0.5, 0.8, lush_mask) * (1.0 - dry), outside) * lush_amount;
 	float clump = texture(patch_mask, world_pos.xz / clump_m + vec2(0.47, 0.29)).r;
 	vec3 turf_col = turf * turf_tint * mix(vec3(1.0), lush_tint, lush);
 	turf_col *= 1.0 + clump_strength * (clump - 0.5) * 2.0;

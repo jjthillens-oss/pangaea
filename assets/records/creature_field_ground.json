@@ -3,7 +3,7 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of low hills out to 200 m; meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
+  "purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of hills out to 200 m (low near the berm, an uneven ridge farther out); meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
   "category": "environment",
   "source_blend": "assets/source/blender/creature_field_ground.blend",
   "generator_script": "tools/blender/make_creature_world.py",
@@ -15,7 +15,7 @@
   "dimensions_m": {
     "x": 400.0,
     "y_forward": 400.0,
-    "z_up": 12.379
+    "z_up": 16.276
   },
   "triangles": 15488,
   "triangle_budget": 16000,
@@ -89,11 +89,15 @@
     "node": "CreatureFieldHills",
     "inner_m": 84.0,
     "outer_m": 200.0,
-    "height_m": [
-      3.0,
-      12.0
+    "near_m": [
+      1.5,
+      4.0
     ],
-    "top_m": 12.3,
+    "far_ridge_m": [
+      2.0,
+      14.0
+    ],
+    "top_m": 16.2,
     "cast_shadow": false
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
