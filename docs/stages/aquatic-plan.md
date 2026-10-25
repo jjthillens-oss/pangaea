@@ -1,6 +1,7 @@
 # Aquatic stage plan
 
-Status: **PROPOSED** unless a line says otherwise. The slice in section 8 is **IMPLEMENTED** (2026-10-25, tests and smoke below); its tuning stays PROPOSED. The owner approved building the Aquatic stage and its first
+Status: **PROPOSED** unless a line says otherwise. The slice in section 8 is **IMPLEMENTED** (2026-10-25, tests and smoke below); its tuning stays PROPOSED.
+Round 2 (aquatic-r2, section 8b) is IMPLEMENTED as listed there; its tuning, names and looks stay PROPOSED. The owner approved building the Aquatic stage and its first
 playable slice on 2026-10-25 (CONFIRMED: "Go for it"); every number, name and part list below is still PROPOSED
 until playtested and recorded in [DECISIONS.md](../DECISIONS.md). The [GENESIS Bible](../bible/GENESIS_Master_Developer_Bible_v0.1.pdf)
 is binding: §4 (era table and transition contract), §6 (Aquatic), §7 (shore link to Terrestrial), §12 (anatomy),
@@ -279,6 +280,47 @@ Measured on the shared rules: the darter tops 8.7 m/s and turns on a 10 m radius
 tops 4.3 m/s (5.2 before the aquatic-r2 ribbon retune), turns on 1.4 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns
 it and the hoverer must hide in an arch or burst.
 
+## 8b. Round 2 (aquatic-r2)
+
+The owner's request (CONFIRMED, 2026-10-25): extend the slice with more species niches, shelters and feeding grounds,
+a nest landmark, and fin and tail editor parts with real swim tradeoffs; keep PR #192's v5 `aquatic` save block
+working and do not change the schema further. A piece below is IMPLEMENTED where the named test or smoke check
+verifies it; every number, name and look in it is PROPOSED tuning. Test names are in `tests/test_aquatic_sim.gd`
+unless a file is named; "the smoke" is `tests/smoke/aquatic_smoke.gd` (in `tools/check.sh`).
+
+| Piece | Where | Checked by |
+|---|---|---|
+| Five tails (fluke, ribbon, lunate, paddle, whip), each with its own thrust, turn penalty, drag, burst share and swim cost; the ribbon retune (section 4) | `game/data/aquatic/aquatic_rules.json`, `game/domain/aquatic/aquatic_body.gd` | `test_no_tail_part_beats_another_on_every_count`, `test_each_tail_wins_its_own_course` |
+| The tails and the fin steps drawn with recorded creature parts and their handles; the back fin upright; the spine plate shown when the back fin stings | `game/domain/aquatic/aquatic_body.gd` | `test_fish_part_handles_keep_their_meaning`, `test_fish_bodies_are_legal_creature_descriptions` |
+| The editor's tail roles, the pick-up and swim cost rows, and the test swim from the same sim (section 6) | `game/systems/aquatic/aquatic_sim.gd` (`trial`), `game/ui/aquatic_editor.gd` | `test_the_editor_preview_and_the_water_agree`; the smoke (a lunate swap costs 4 and its test swim is the sim's) |
+| Species as data, played by one shared set of rules (section 5) | `game/data/aquatic/aquatic_rules.json`, `game/systems/aquatic/aquatic_sim.gd`, `game/ui/aquatic_hud.gd` | `test_the_slice_species_play_as_recorded` (recorded on the hard-wired code), `test_species_logic_is_data_driven` |
+| Glass minnows; reef cleaners and their healing station; vent glowfins drawn in by a lure | the rules, the sim, `game/scenes/aquatic/fish_view.gd`, the HUD | `test_minnows_feed_a_jaw_lineage_in_the_shallows`, `test_cleaners_befriend_and_heal_a_resting_friend`, `test_a_lure_draws_glowfins_and_eyes_do_not`, `test_every_species_is_drawn_and_none_crowds_the_spawn`; the smoke (all drawn, a minnow caught and eaten) |
+| The pillar ring and the vent chimney; a shelter also hides a fish from the drifter's sweep | the rules, the sim, `game/scenes/aquatic/aquatic_world.gd` | `test_the_pillar_ring_ends_a_lancer_pursuit`, `test_the_vent_chimney_hides_a_fish_from_the_drifter_sweep`; the smoke (every shelter drawn with its own look) |
+| The nest-side algae bed, the krill swarm and the fallen giant | the rules, the sim, `game/scenes/aquatic/aquatic_world.gd` | `test_new_feeding_grounds_feed_the_right_mouths_and_regrow`, `test_every_site_sits_in_the_water_and_its_zone`, `test_every_site_and_food_kind_is_drawn` |
+| The spawning nest (Blender asset), a clutch per generation, resting heals (section 6) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_nest.json`, `game/scenes/aquatic/aquatic_world.gd`, the sim | `tests/test_aquatic_assets.gd`, `test_resting_at_the_nest_heals`, `tests/test_assets.gd`; the smoke (the nest drawn, one clutch then two, a rest that heals) |
+| The editor's reef-stone plinth (Blender asset) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_plinth.json`, `game/ui/aquatic_editor.gd` | `tests/test_aquatic_assets.gd`, `tests/test_assets.gd`; the smoke |
+| The save stays v5 | no save, migration or persistence file changed | `test_a_slice_v5_block_still_loads`, `test_a_new_tail_and_new_relations_round_trip_through_the_save`; the smoke's reload |
+
+The finish gates of the two Blender assets are in `docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md`, and the
+before and after frames (the `*_before.jpg` and `*_after.jpg` pairs) are beside it.
+
+**The save** (IMPLEMENTED; the rule is the owner's: no schema change). Round 2 writes only the fields the v5 block
+already has: `game/domain/save_game.gd`, `game/systems/save_migrations.gd`, `game/systems/persistence_service.gd`,
+`docs/saves/` and `tests/test_persistence.gd` are as PR #192 left them. New content travels as new values in existing
+fields: a tail kind the rules list (`body.tail`), a species id in `relations`, a zone or site id in `discovered`; the
+nest's clutches are read from `history`. The rules' list of tails is what makes a tail legal when a save loads, so:
+
+- a slot that PR #192's slice wrote loads in this build, the new species start neutral, and it is written back with
+  exactly the v5 keys (`test_a_slice_v5_block_still_loads` also pins the block's and the body's keys to PR #192's);
+- a block this build writes for a fish with a fluke or ribbon tail still loads in a slice build, whose restore skips
+  the species it does not know;
+- a fish with a round 2 tail (lunate, paddle or whip) is forward only: a build with the slice's rules refuses that save
+  and names the unknown tail; nothing is dropped.
+
+Not in round 2: pectoral fin shapes (they need a new body key, decision 5); dedicated fish parts (a crescent or paddle
+caudal fin, a swept pectoral fin), so the tails are drawn with the creature parts `tail_fluke` and `fin` and their
+handles, and the Aquatic code adds no part records; and a percept-fed species brain (Bible §13).
+
 ## 9. Acceptance (Bible §6 and §23 M4)
 
 - Two body variants on the same route show different movement outcomes (automated: the same course, both bodies,
@@ -289,6 +331,8 @@ it and the hoverer must hide in an arch or burst.
 - The cell lineage's id, generation, diet and colour arrive in the aquatic body (automated).
 - Discovery and relationships survive a reload: the slot keeps the aquatic block (save v5) and the smoke opens the
   stage again to the same fish, generation, finds, points and place (IMPLEMENTED).
+- After round 2, a slot from the slice still loads, and round 2's tails, species and sites survive a reload
+  (IMPLEMENTED, section 8b).
 - Windows build exported; not Windows-verified until launched there.
 
 ## 10. Decisions for the owner
@@ -301,3 +345,8 @@ it and the hoverer must hide in an arch or burst.
 3. When the cell stage offers "go to the sea" (the cell-to-Aquatic transition): proposed at cell size 4 at the
    pool's edge, as a choice.
 4. Whether oxygen is ever added (Bible §6 makes it conditional; the slice uses pressure only).
+5. Pectoral fin shapes (aquatic-r2, PROPOSED): a paddle, wing or frill shape for the side fins needs one optional key
+   in the saved body (`fin_shape`). That is a save schema change, so it needs the owner's approval. Until then the
+   side fins are size steps (0 to 3), each drawn differently.
+6. Round 2's names (PROPOSED, original): glass minnows, reef cleaners, vent glowfins; the lunate, paddle and whip
+   tails; the pillar ring, the vent chimney, the nest-side algae bed, the krill swarm and the fallen giant.
