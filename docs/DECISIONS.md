@@ -1553,3 +1553,7 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25: band-1 chunk cost max row averages the slowest 5 chunks (Joshua)
+
+test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
