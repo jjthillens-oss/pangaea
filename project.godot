@@ -165,3 +165,7 @@ anti_aliasing/quality/msaa_3d=2
 
 import/blender/enabled=false
 import/fbx2gltf/enabled=false
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://game/data/l10n/strings.en.translation")

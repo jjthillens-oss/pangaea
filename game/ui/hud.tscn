@@ -67,7 +67,7 @@ theme_override_constants/separation = 12
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Energy 60 / 100"
+text = "UI_ENERGY_60_100_68E1D4"
 
 [node name="StateChip" type="PanelContainer" parent="Frame/Status/Box/EnergyRow"]
 unique_name_in_owner = true
@@ -79,7 +79,7 @@ theme_type_variation = &"ChipFed"
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"ChipLabel"
-text = "Fed"
+text = "UI_FED_6FF2BC"
 
 [node name="EnergyBar" type="ProgressBar" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -106,7 +106,7 @@ script = ExtResource("6_meter")
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Size 1 · about 20 µm"
+text = "UI_SIZE_1_ABOUT_20_M_B04EE4"
 
 [node name="GrowthLine" type="Label" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -146,7 +146,7 @@ color = Color(0.62, 0.98, 1, 1)
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"ChipLabel"
-text = "Sheltered 5"
+text = "UI_SHELTERED_5_1855CE"
 
 [node name="HealthRow" type="VBoxContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -156,7 +156,7 @@ theme_override_constants/separation = 6
 [node name="HealthText" type="Label" parent="Frame/Status/Box/HealthRow"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Health 30 / 30"
+text = "UI_HEALTH_30_30_DE20F3"
 
 [node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box/HealthRow"]
 unique_name_in_owner = true
@@ -171,7 +171,7 @@ show_percentage = false
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
-text = "Grazer lineage 0000-0000 · Generation 1"
+text = "UI_GRAZER_LINEAGE_0000_0000_GENERATION_1_C8192F"
 autowrap_mode = 3
 
 [node name="Right" type="VBoxContainer" parent="Frame"]
@@ -198,7 +198,7 @@ script = ExtResource("3_icon")
 [node name="PointsText" type="Label" parent="Frame/Right/Points/Row"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "0 adaptation points"
+text = "UI_0_ADAPTATION_POINTS_93C78F"
 
 [node name="PointsFlash" type="Label" parent="Frame/Right/Points/Row"]
 unique_name_in_owner = true
@@ -240,7 +240,7 @@ shape = "warning"
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"LargeLabel"
-text = "Starving"
+text = "UI_STARVING_D50F6A"
 autowrap_mode = 3
 
 [node name="Message" type="PanelContainer" parent="Frame/Center"]
@@ -302,7 +302,7 @@ theme_override_constants/separation = 8
 [node name="Title" type="Label" parent="Frame/Controls/Box"]
 layout_mode = 2
 theme_type_variation = &"AccentLabel"
-text = "Controls"
+text = "UI_CONTROLS_BEE75C"
 
 [node name="ControlsText" type="Label" parent="Frame/Controls/Box"]
 unique_name_in_owner = true

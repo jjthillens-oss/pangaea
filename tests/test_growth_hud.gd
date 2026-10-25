@@ -388,7 +388,9 @@ func test_ladder_phrases() -> void:
 	check(not shown.is_empty() and shown.slice(shown.size() - 2).all(func(e: Dictionary) -> bool: return e.role == "ghost"),
 		"the strip ends with the ghosts to come")
 	check_eq(strip.preview_text(), LadderStrip.preview_line(shown, false, 1, ladder), "and shows their preview line")
-	check(strip.preview_text().begins_with(LadderStrip.PREVIEW_PREFIX), "\"%s\"" % strip.preview_text())
+	var preview_prefix := str(TranslationServer.translate(LadderStrip.PREVIEW_PREFIX))
+	check_eq(preview_prefix, "After your next growth:", "English preview heading is unchanged")
+	check(strip.preview_text().begins_with(preview_prefix), "\"%s\"" % strip.preview_text())
 	hud.free()
 	pool.free()
 
@@ -650,6 +652,8 @@ func test_places_text() -> void:
 
 ## V3-18: a hazard that stops being a threat stops stinging; a hunter still ignores you.
 func test_hazard_phrase() -> void:
+	var preview_prefix := str(TranslationServer.translate(LadderStrip.PREVIEW_PREFIX)) + " "
+	check_eq(preview_prefix, "After your next growth: ", "English hazard preview heading is unchanged")
 	check_eq(LadderStrip.phrase("stinger veils", "threat", "rival", "hazard"), "stinger veils stop stinging", "the veil")
 	check_eq(LadderStrip.phrase("rammers", "threat", "rival"), "rammers ignore you", "a hunter")
 	check_eq(LadderStrip.phrase("stinger veils", "threat", "prey", "hazard"), "stinger veils flee from you", "other changes as before")
@@ -658,16 +662,16 @@ func test_hazard_phrase() -> void:
 	var entries := LadderStrip.entries_for(PackedStringArray(["veil"]), PackedStringArray(), 3, catalog, ladder)
 	check_eq(entries[0].get("behavior"), "hazard", "entries carry the species' behaviour")
 	check_eq([entries[0].role, entries[0].next_role], ["threat", "rival"], "the veil stings at 3, not at 4")
-	check_eq(LadderStrip.preview_line(entries, false, 3, ladder), LadderStrip.PREVIEW_PREFIX + "stinger veils stop stinging",
+	check_eq(LadderStrip.preview_line(entries, false, 3, ladder), preview_prefix + "stinger veils stop stinging",
 		"the preview at 3 words the veil so")
 	# The line shows MAX_PHRASES phrases in PHRASE_ORDER: "stop" after "ignore", before "morsels".
 	var veil := {"role": "threat", "next_role": "rival", "plural": "stinger veils", "behavior": "hazard"}
 	var rammers := {"role": "threat", "next_role": "rival", "plural": "rammers", "behavior": "ram"}
 	var grazers := {"role": "prey", "next_role": "morsel", "plural": "grazers", "behavior": ""}
 	check_eq(LadderStrip.preview_line([veil, rammers] as Array[Dictionary], false, 2, ladder),
-		LadderStrip.PREVIEW_PREFIX + "rammers ignore you; stinger veils stop stinging", "after ignore")
+		preview_prefix + "rammers ignore you; stinger veils stop stinging", "after ignore")
 	check_eq(LadderStrip.preview_line([grazers, veil] as Array[Dictionary], false, 2, ladder),
-		LadderStrip.PREVIEW_PREFIX + "stinger veils stop stinging; grazers become morsels", "before morsels")
+		preview_prefix + "stinger veils stop stinging; grazers become morsels", "before morsels")
 
 
 ## V3-15 (S3G41 HUD): at the top of this build, size 4, the preview names the engulfer.

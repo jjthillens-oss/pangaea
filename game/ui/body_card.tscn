@@ -38,7 +38,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_type_variation = &"HeaderLabel"
-text = "Body"
+text = "UI_BODY_718A7E"
 
 [node name="Selected" type="Label" parent="Margin/Box/Top"]
 unique_name_in_owner = true
@@ -46,7 +46,7 @@ visible = false
 layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"AccentLabel"
-text = "Selected"
+text = "UI_SELECTED_9A976F"
 
 [node name="Role" type="Label" parent="Margin/Box"]
 unique_name_in_owner = true

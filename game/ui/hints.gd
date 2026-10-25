@@ -29,13 +29,13 @@ const AFTER_GROWTH_S := 2.0
 const GREEN_RIM_AFTER_S := 8.0
 const VEIL_FOLLOW_S := 10.0
 const TEXTS := {
-	"eat_to_grow": "Eating well makes you grow",
-	"sea_goes_on": "The sea goes on",
-	"smaller_now": "They're smaller than you now",
-	"flee_now": "They flee from you now",
-	"green_rim": "Green rim: you can eat it now",
-	"hunt_for_meat": "Hunt rammers from behind for meat",
-	"veil_threads": "Threads sting: swim around them",
+	"eat_to_grow": "UI_EATING_WELL_MAKES_YOU_GROW_499BD7",
+	"sea_goes_on": "UI_THE_SEA_GOES_ON_786B11",
+	"smaller_now": "UI_THEY_RE_SMALLER_THAN_YOU_NOW_F1290C",
+	"flee_now": "UI_THEY_FLEE_FROM_YOU_NOW_F06762",
+	"green_rim": "UI_GREEN_RIM_YOU_CAN_EAT_IT_NOW_4DC6CC",
+	"hunt_for_meat": "UI_HUNT_RAMMERS_FROM_BEHIND_FOR_MEAT_7E60CE",
+	"veil_threads": "UI_THREADS_STING_SWIM_AROUND_THEM_CFC833",
 }
 ## The order in which waiting ideas get their turn.
 const ORDER: PackedStringArray = ["hunt_for_meat", "eat_to_grow", "smaller_now", "flee_now", "green_rim", "veil_threads", "sea_goes_on"]
@@ -153,4 +153,4 @@ func showing() -> String:
 
 
 static func text_of(id: String) -> String:
-	return str(TEXTS.get(id, ""))
+	return TranslationServer.translate(str(TEXTS.get(id, "")))

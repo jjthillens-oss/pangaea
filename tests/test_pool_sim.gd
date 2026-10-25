@@ -521,7 +521,9 @@ func test_a_mouth_on_the_side_eats_only_food_on_that_side() -> void:
 	check(first_touch >= 0 and shown[first_touch] == "", "while touching it, with no hint at first: %s" % [shown])
 	check(refusals.any(func(e: Dictionary) -> bool: return e.touching and e.contact_s >= RefusalHints.FACING_AFTER_S),
 		"and still touching it %.1f s later" % RefusalHints.FACING_AFTER_S)
-	check(shown.has(RefusalHints.TEXTS["mouth is not facing it"]), "then the player is told to turn: %s" % [shown])
+	var turn_hint := str(TranslationServer.translate(RefusalHints.TEXTS["mouth is not facing it"]))
+	check_eq(turn_hint, "Turn your mouth toward it", "English turn hint is unchanged")
+	check(shown.has(turn_hint), "then the player is told to turn: %s" % [shown])
 	check(_beside(sim, _item(sim, food.id), PI / 2.0), "placed with the food on its right")
 	var ate := {}
 	for i in 30:

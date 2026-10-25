@@ -58,13 +58,13 @@ static func places_text(found: int, total: int) -> String:
 ## the labels do not reach that size.
 static func badge_text(n: int, labels: Array) -> String:
 	if n >= 1 and n <= labels.size():
-		return "Size %d · %s" % [n, labels[n - 1]]
-	return "Size %d" % n
+		return TranslationServer.translate("UI_SIZE_D_S_819246") % [n, labels[n - 1]]
+	return TranslationServer.translate("UI_SIZE_D_FE2755") % n
 
 
 ## The toast when the ring pays out at the build's top (D-32).
 static func ring_paid_text(points: int) -> String:
-	return "Ring full: energy refilled · +%d point%s" % [points, "" if points == 1 else "s"]
+	return TranslationServer.translate("UI_RING_FULL_ENERGY_REFILLED_D_POINT_S_63C31A") % [points, "" if points == 1 else "s"]
 
 
 ## The hint with its literal "(G)" naming the key bound to grow now (BP-19): Growth.hint() keeps

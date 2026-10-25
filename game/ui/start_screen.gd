@@ -21,10 +21,10 @@ signal settings_requested
 signal creature_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
-const REPLACE_TEXT := "This replaces your current lineage. The previous save is kept as a backup until your next save."
-const BACKUP_TEXT := "Your last save could not be read; continuing from the backup."
-const UNREADABLE_TEXT := "Your save could not be read, so Continue is off. Nothing was deleted."
-const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
+const REPLACE_TEXT := "UI_THIS_REPLACES_YOUR_CURRENT_LINEAGE_THE_PREVIOUS__346556"
+const BACKUP_TEXT := "UI_YOUR_LAST_SAVE_COULD_NOT_BE_READ_CONTINUING_FROM_54AFB3"
+const UNREADABLE_TEXT := "UI_YOUR_SAVE_COULD_NOT_BE_READ_SO_CONTINUE_IS_OFF_N_F46F27"
+const NO_SAVE_TEXT := "UI_NO_SAVED_LINEAGE_YET_CHOOSE_NEW_LINEAGE_TO_FOUND_B2C642"
 ## Where the camera slides on each view (TitleWorld.frame): the hero right of the menu, and on the
 ## picker up and further right, above its plate and clear of the cards.
 const MAIN_FRAME := Vector2(-1.15, 0.0)
@@ -123,7 +123,7 @@ func _ready() -> void:
 	start_button.pressed.connect(request_start)
 	back_button.pressed.connect(show_main)
 	confirm.chosen.connect(_on_confirm)
-	_build_label.text = "Build %s" % BuildInfo.build_id()
+	_build_label.text = tr("UI_BUILD_S_6F2D9E") % BuildInfo.build_id()
 	if catalog != null and not _built:
 		_build()
 
@@ -139,8 +139,8 @@ func _build() -> void:
 	world.set_companions(others, catalog)
 	show_main()
 	if bool(peek.get("exists", false)) and not bool(peek.get("ok", false)):
-		confirm.open("Your save could not be read", UNREADABLE_TEXT + " The files are still in the save folder.",
-			[["ok", "OK", true]], "ok", "ok", "\n".join(peek.get("errors", PackedStringArray())))
+		confirm.open(tr("UI_YOUR_SAVE_COULD_NOT_BE_READ_0397B0"), tr(UNREADABLE_TEXT) + tr("UI_THE_FILES_ARE_STILL_IN_THE_SAVE_FOLDER_9BB6D6"),
+			[["ok", tr("UI_OK_9CE3BD"), true]], "ok", "ok", "\n".join(peek.get("errors", PackedStringArray())))
 
 
 ## The motion of the world and the (fallback) backdrop follows "Reduce camera motion"; the
@@ -157,8 +157,8 @@ func fit_backdrop() -> void:
 
 ## The hint at the bottom: the inputs of the device in use.
 func hint_text() -> String:
-	var move := "D-pad or left stick  Move" if InputPrompts.device == "pad" else "Arrows or mouse  Move"
-	var rest := InputPrompts.hint_line([[&"ui_accept", "Select"], [&"ui_cancel", "Back"]])
+	var move: String = tr("UI_D_PAD_OR_LEFT_STICK_MOVE_FF32F0") if InputPrompts.device == "pad" else tr("UI_ARROWS_OR_MOUSE_MOVE_55EA41")
+	var rest := InputPrompts.hint_line([[&"ui_accept", tr("UI_SELECT_859822")], [&"ui_cancel", tr("UI_BACK_B52B36")]])
 	return move + ("   ·   " + rest if not rest.is_empty() else "")
 
 
@@ -220,7 +220,7 @@ func select(body: String) -> void:
 ## pressing Enter through the screens does not replace the lineage by accident.
 func request_start() -> void:
 	if bool(peek.get("exists", false)):
-		confirm.open("Start a new lineage?", REPLACE_TEXT, [["start", "Start new lineage", true], ["cancel", "Cancel"]],
+		confirm.open(tr("UI_START_A_NEW_LINEAGE_1D4B99"), tr(REPLACE_TEXT), [["start", tr("UI_START_NEW_LINEAGE_34F251"), true], ["cancel", tr("UI_CANCEL_77DFD2")]],
 			"cancel", "cancel")
 	else:
 		new_requested.emit(selected_body)
@@ -288,22 +288,22 @@ func _fill_continue_card() -> void:
 	for label: Label in [_card_name, _card_tag, _card_progress, _card_saved]:
 		label.visible = ok
 	_card_note.visible = true
-	_card_title.text = "Slot %d  ·  Your lineage" % slot_number if slot_number > 0 else "Your lineage"
+	_card_title.text = tr("UI_SLOT_D_YOUR_LINEAGE_9BED2C") % slot_number if slot_number > 0 else tr("UI_YOUR_LINEAGE_E307EE")
 	if ok:
 		var summary: Dictionary = peek.summary
 		_card_name.text = BodyText.body_name(summary.body)
-		_card_tag.text = "Lineage %s" % summary.lineage_tag
-		_card_progress.text = "Generation %d · %s" % [summary.generation, Hud.points_line(summary.adaptation_points)]
-		_card_saved.text = "Saved %s" % local_time_text(summary.saved_at_unix)
+		_card_tag.text = tr("UI_LINEAGE_S_F58390") % summary.lineage_tag
+		_card_progress.text = tr("UI_GENERATION_D_S_9BD1A5") % [summary.generation, Hud.points_line(summary.adaptation_points)]
+		_card_saved.text = tr("UI_SAVED_S_B593E5") % local_time_text(summary.saved_at_unix)
 		_saved_genome = summary.genome
 		_saved_phenotype = Phenotype.derive(summary.genome, catalog)
-		_card_note.text = BACKUP_TEXT if peek.get("source", "") == "backup" else ""
+		_card_note.text = tr(BACKUP_TEXT) if peek.get("source", "") == "backup" else ""
 		_card_note.visible = not _card_note.text.is_empty()
 	elif bool(peek.get("exists", false)):
-		_card_note.text = UNREADABLE_TEXT
+		_card_note.text = tr(UNREADABLE_TEXT)
 	else:
-		_card_note.text = NO_SAVE_TEXT
-	_card_note.theme_type_variation = &"SmallLabel" if _card_note.text == NO_SAVE_TEXT else &"WarnLabel"
+		_card_note.text = tr(NO_SAVE_TEXT)
+	_card_note.theme_type_variation = &"SmallLabel" if _card_note.text == tr(NO_SAVE_TEXT) else &"WarnLabel"
 
 
 func _on_card_pressed(body: String) -> void:

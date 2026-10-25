@@ -21,17 +21,17 @@ const FACING_AFTER_S := 0.5
 const FACING_REPEAT_S := 4.0
 const FULL_REPEAT_S := 5.0
 const TEXTS := {
-	"needs a jaw": "Needs a jaw: your filter mouth only eats plankton",
-	"needs a filter mouth": "Needs a filter mouth: your jaw only eats carrion",
-	"mouth is not facing it": "Turn your mouth toward it",
-	"not hungry": "Full",
+	"needs a jaw": "UI_NEEDS_A_JAW_YOUR_FILTER_MOUTH_ONLY_EATS_PLANKTON_2200D1",
+	"needs a filter mouth": "UI_NEEDS_A_FILTER_MOUTH_YOUR_JAW_ONLY_EATS_CARRION_54520E",
+	"mouth is not facing it": "UI_TURN_YOUR_MOUTH_TOWARD_IT_433C8A",
+	"not hungry": "UI_FULL_10B28A",
 }
 
 ## The cell's attack refusals worth a hint, and their words.
 const ATTACK_TEXTS := {
-	"jaw is not facing it": "Turn your jaw toward it",
-	"no spike points at it": "Point a spike at it",
-	"too big to bite": "Too big to bite",
+	"jaw is not facing it": "UI_TURN_YOUR_JAW_TOWARD_IT_47EE7F",
+	"no spike points at it": "UI_POINT_A_SPIKE_AT_IT_766DBA",
+	"too big to bite": "UI_TOO_BIG_TO_BITE_E6042F",
 }
 const ATTACK_REPEAT_S := 2.0
 
@@ -64,7 +64,7 @@ func consider(event: Dictionary, now: float) -> String:
 	if repeat > 0.0 and _last_shown.has(reason) and now - float(_last_shown[reason]) < repeat:
 		return ""
 	_last_shown[reason] = now
-	return str(TEXTS.get(reason, reason))
+	return tr(str(TEXTS.get(reason, reason)))
 
 
 ## The hint to show now for an "attack_refused" event at sim time `now`, or "" (a reason with no
@@ -76,7 +76,7 @@ func consider_attack(event: Dictionary, now: float) -> String:
 	if _last_attack.has(reason) and now - float(_last_attack[reason]) < ATTACK_REPEAT_S:
 		return ""
 	_last_attack[reason] = now
-	return str(ATTACK_TEXTS[reason])
+	return tr(str(ATTACK_TEXTS[reason]))
 
 
 ## Forgets what was shown (a new run or a respawn).

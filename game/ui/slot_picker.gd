@@ -14,7 +14,7 @@ signal closed
 
 const THEME := preload("res://game/ui/theme/pangaea_theme.tres")
 const PREVIEW_SCENE := preload("res://game/ui/cell_preview.tscn")
-const DELETE_TEXT := "Delete the lineage in slot %d? Its save and its backup are removed. This cannot be undone."
+const DELETE_TEXT := "UI_DELETE_THE_LINEAGE_IN_SLOT_D_ITS_SAVE_AND_ITS_BA_786DC0"
 
 var catalog: PartCatalog
 ## The slot in use (0 when the game runs a --slot file that is none of them).
@@ -93,7 +93,7 @@ func is_open() -> bool:
 ## Asks before deleting slot n; the answer comes back through the confirm dialog.
 func request_delete(n: int) -> void:
 	_pending_delete = n
-	_confirm.open("Delete this lineage?", DELETE_TEXT % n, [["delete", "Delete"], ["cancel", "Cancel"]], "cancel", "cancel")
+	_confirm.open(tr("UI_DELETE_THIS_LINEAGE_725CE9"), tr(DELETE_TEXT) % n, [["delete", tr("UI_DELETE_F6FDBE")], ["cancel", tr("UI_CANCEL_77DFD2")]], "cancel", "cancel")
 
 
 ## The words on slot n's card, top to bottom (for checks).
@@ -117,18 +117,18 @@ func delete_button(n: int) -> Button:
 ## The facts a slot's card shows: "Empty", an unreadable note, or the lineage's lines.
 static func slot_lines(peek: Dictionary) -> PackedStringArray:
 	if not bool(peek.get("exists", false)):
-		return PackedStringArray(["Empty", "Found a new lineage here."])
+		return PackedStringArray([TranslationServer.translate("UI_EMPTY_3159FE"), TranslationServer.translate("UI_FOUND_A_NEW_LINEAGE_HERE_50B79D")])
 	if not bool(peek.get("ok", false)):
-		return PackedStringArray(["Unreadable", "This save could not be read. Nothing was deleted."])
+		return PackedStringArray([TranslationServer.translate("UI_UNREADABLE_E6D35C"), TranslationServer.translate("UI_THIS_SAVE_COULD_NOT_BE_READ_NOTHING_WAS_DELETED_E289B4")])
 	var s: Dictionary = peek.summary
 	var lines := PackedStringArray([
 		BodyText.body_name(s.body),
-		"Lineage %s" % s.lineage_tag,
-		"Generation %d · %s" % [s.generation, Hud.points_line(s.adaptation_points)],
-		"Saved %s" % StartScreen.local_time_text(s.saved_at_unix),
+		TranslationServer.translate("UI_LINEAGE_S_F58390") % s.lineage_tag,
+		TranslationServer.translate("UI_GENERATION_D_S_9BD1A5") % [s.generation, Hud.points_line(s.adaptation_points)],
+		TranslationServer.translate("UI_SAVED_S_B593E5") % StartScreen.local_time_text(s.saved_at_unix),
 	])
 	if peek.get("source", "") == "backup":
-		lines.append("From the backup")
+		lines.append(TranslationServer.translate("UI_FROM_THE_BACKUP_2F95E8"))
 	return lines
 
 
@@ -151,7 +151,7 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 28)
 	center.add_child(box)
 	var header := Label.new()
-	header.text = "Save slots"
+	header.text = tr("UI_SAVE_SLOTS_99D783")
 	header.theme_type_variation = &"HeaderLabel"
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(header)
@@ -166,7 +166,7 @@ func _build() -> void:
 	box.add_child(bottom)
 	_back = Button.new()
 	_back.name = "Back"
-	_back.text = "Back"
+	_back.text = tr("UI_BACK_B52B36")
 	_back.custom_minimum_size = Vector2(260, 0)
 	_back.pressed.connect(close)
 	bottom.add_child(_back)
@@ -207,7 +207,7 @@ func _make_card(n: int) -> Control:
 	box.add_child(play)
 	var delete := Button.new()
 	delete.name = "Delete"
-	delete.text = "Delete"
+	delete.text = tr("UI_DELETE_F6FDBE")
 	delete.pressed.connect(request_delete.bind(n))
 	box.add_child(delete)
 	_play_buttons.append(play)
@@ -221,7 +221,7 @@ func _fill() -> void:
 		var card := _cards_box.get_child(i)
 		var peek: Dictionary = peeks[i] if i < peeks.size() else {}
 		var title: Label = card.find_child("Title", true, false)
-		title.text = "Slot %d%s" % [n, "  ·  in use" if n == current else ""]
+		title.text = tr("UI_SLOT_D_S_3C048D") % [n, tr("UI_IN_USE_469F38") if n == current else ""]
 		var preview: CellPreview = card.find_child("Preview", true, false)
 		var spacer: Control = card.find_child("Spacer", true, false)
 		var ok := bool(peek.get("ok", false))
@@ -242,13 +242,13 @@ func _fill() -> void:
 			label.custom_minimum_size = Vector2(490, 0)
 			if j == 0:
 				label.theme_type_variation = &"HeaderLabel"
-			elif lines[j] == "From the backup" or lines[0] == "Unreadable":
+			elif label.text == tr("UI_FROM_THE_BACKUP_2F95E8") or lines[0] == tr("UI_UNREADABLE_E6D35C"):
 				label.theme_type_variation = &"WarnLabel"
-			elif j >= 3 or lines[0] == "Empty":
+			elif j >= 3 or lines[0] == tr("UI_EMPTY_3159FE"):
 				label.theme_type_variation = &"SmallLabel"
 			facts.add_child(label)
 		var play := _play_buttons[i]
-		play.text = "Play this slot" if n != current else "Playing this slot"
+		play.text = tr("UI_PLAY_THIS_SLOT_0A4D65") if n != current else tr("UI_PLAYING_THIS_SLOT_976C68")
 		play.theme_type_variation = &"PrimaryButton" if n != current else &""
 		play.disabled = n == current
 		play.focus_mode = Control.FOCUS_NONE if play.disabled else Control.FOCUS_ALL

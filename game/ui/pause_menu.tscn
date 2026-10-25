@@ -43,7 +43,7 @@ theme_override_constants/separation = 18
 [node name="Title" type="Label" parent="Center/Panel/Box"]
 layout_mode = 2
 theme_type_variation = &"HeaderLabel"
-text = "Paused"
+text = "UI_PAUSED_C7DFB6"
 
 [node name="Reason" type="Label" parent="Center/Panel/Box"]
 unique_name_in_owner = true
@@ -60,27 +60,27 @@ theme_override_constants/separation = 14
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
-text = "Resume"
+text = "UI_RESUME_B3BD0B"
 
 [node name="Save" type="Button" parent="Center/Panel/Box/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Save"
+text = "UI_SAVE_EFC007"
 
 [node name="Settings" type="Button" parent="Center/Panel/Box/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Settings"
+text = "UI_SETTINGS_C7F73B"
 
 [node name="SaveQuit" type="Button" parent="Center/Panel/Box/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Save and quit to title"
+text = "UI_SAVE_AND_QUIT_TO_TITLE_E619BA"
 
 [node name="Quit" type="Button" parent="Center/Panel/Box/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Quit to desktop"
+text = "UI_QUIT_TO_DESKTOP_9248DB"
 
 [node name="Status" type="Label" parent="Center/Panel/Box"]
 unique_name_in_owner = true
@@ -95,7 +95,7 @@ layout_mode = 2
 [node name="ControlsTitle" type="Label" parent="Center/Panel/Box"]
 layout_mode = 2
 theme_type_variation = &"AccentLabel"
-text = "Controls"
+text = "UI_CONTROLS_BEE75C"
 
 [node name="ControlsText" type="Label" parent="Center/Panel/Box"]
 unique_name_in_owner = true

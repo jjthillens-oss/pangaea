@@ -15,41 +15,43 @@ signal closed
 const THEME := preload("res://game/ui/theme/pangaea_theme.tres")
 const TABS := ["Graphics", "Audio", "Controls", "Accessibility", "Gameplay"]
 ## Each tab's rows: [setting id, label, words for the values (choices only; else {})].
+const TAB_LABELS := {"Graphics": "UI_GRAPHICS_AB255C", "Audio": "UI_AUDIO_ACDAC2", "Controls": "UI_CONTROLS_BEE75C", "Accessibility": "UI_ACCESSIBILITY_D66004", "Gameplay": "UI_GAMEPLAY_E04C71"}
+const BIND_LABELS := {"move_up": "UI_SWIM_UP_2C249D", "move_down": "UI_SWIM_DOWN_CA88AC", "move_left": "UI_SWIM_LEFT_F66444", "move_right": "UI_SWIM_RIGHT_03133B", "swim_to_cursor": "UI_SWIM_TO_THE_CURSOR_651ECA", "zoom_in": "UI_ZOOM_IN_4FC05F", "zoom_out": "UI_ZOOM_OUT_A4AE4B", "grow": "UI_GROW_7E2299", "pause": "UI_PAUSE_781961", "toggle_fullscreen": "UI_FULL_SCREEN_D15F88"}
 const ROWS := {
 	"Graphics": [
-		["graphics/window_mode", "Display", {"windowed": "Window", "borderless": "Full screen (borderless)", "fullscreen": "Full screen (exclusive)"}],
-		["graphics/vsync", "Vertical sync", {}],
-		["graphics/max_fps", "Frame rate limit", {0: "No limit", 30: "30", 60: "60", 120: "120", 144: "144", 240: "240"}],
-		["graphics/render_scale", "3D resolution", {}],
-		["graphics/msaa", "Anti-aliasing", {"off": "Off", "2x": "MSAA 2x", "4x": "MSAA 4x", "8x": "MSAA 8x"}],
+		["graphics/window_mode", "UI_DISPLAY_574FF9", {"windowed": "UI_WINDOW_41DFC0", "borderless": "UI_FULL_SCREEN_BORDERLESS_2A6AB6", "fullscreen": "UI_FULL_SCREEN_EXCLUSIVE_E860B4"}],
+		["graphics/vsync", "UI_VERTICAL_SYNC_09ED6D", {}],
+		["graphics/max_fps", "UI_FRAME_RATE_LIMIT_A87E30", {0: "UI_NO_LIMIT_10850B", 30: "30", 60: "60", 120: "120", 144: "144", 240: "240"}],
+		["graphics/render_scale", "UI_3D_RESOLUTION_862A40", {}],
+		["graphics/msaa", "UI_ANTI_ALIASING_55A0B8", {"off": "UI_OFF_E3DE5A", "2x": "UI_MSAA_2X_AE1DB0", "4x": "UI_MSAA_4X_E4AEEA", "8x": "UI_MSAA_8X_4C82A6"}],
 	],
 	"Audio": [
-		["audio/master", "Master volume", {}],
-		["audio/music", "Music", {}],
-		["audio/sfx", "Effects", {}],
-		["audio/ambience", "Ambience", {}],
-		["audio/mute_unfocused", "Mute when the window is in the background", {}],
+		["audio/master", "UI_MASTER_VOLUME_A444D6", {}],
+		["audio/music", "UI_MUSIC_131260", {}],
+		["audio/sfx", "UI_EFFECTS_8F25A8", {}],
+		["audio/ambience", "UI_AMBIENCE_E0FFE6", {}],
+		["audio/mute_unfocused", "UI_MUTE_WHEN_THE_WINDOW_IS_IN_THE_BACKGROUND_B09BE0", {}],
 	],
 	"Controls": [
-		["controls/zoom_speed", "Zoom speed", {}],
-		["controls/invert_zoom", "Invert zoom", {}],
-		["controls/stick_deadzone", "Stick deadzone", {}],
+		["controls/zoom_speed", "UI_ZOOM_SPEED_034C07", {}],
+		["controls/invert_zoom", "UI_INVERT_ZOOM_481D0C", {}],
+		["controls/stick_deadzone", "UI_STICK_DEADZONE_A25C06", {}],
 	],
 	"Accessibility": [
-		["accessibility/text_scale", "Text size", {100: "100%", 115: "115%", 130: "130%"}],
-		["accessibility/reduce_camera_motion", "Reduce camera motion", {}],
-		["accessibility/reduce_flashing", "Reduce flashing effects", {}],
+		["accessibility/text_scale", "UI_TEXT_SIZE_3CC6E1", {100: "UI_100_FAE31E", 115: "UI_115_CE9870", 130: "UI_130_C33822"}],
+		["accessibility/reduce_camera_motion", "UI_REDUCE_CAMERA_MOTION_3BB6D8", {}],
+		["accessibility/reduce_flashing", "UI_REDUCE_FLASHING_EFFECTS_23DB01", {}],
 	],
 	"Gameplay": [
-		["gameplay/growth_trigger", "Growing", {"auto": "Automatic, at a calm moment", "press": "When I press Grow"}],
-		["gameplay/pause_on_focus_loss", "Pause when the window loses focus", {}],
+		["gameplay/growth_trigger", "UI_GROWING_DCF20F", {"auto": "UI_AUTOMATIC_AT_A_CALM_MOMENT_23A59B", "press": "UI_WHEN_I_PRESS_GROW_AE7F89"}],
+		["gameplay/pause_on_focus_loss", "UI_PAUSE_WHEN_THE_WINDOW_LOSES_FOCUS_3314DF", {}],
 	],
 }
 const NOTES := {
-	"Accessibility": "Important cues never rely on colour or sound alone. Subtitles arrive with the first spoken lines.",
-	"Controls": "Press an input to change it, then press the new key, click or button. Esc cancels.",
+	"Accessibility": "UI_IMPORTANT_CUES_NEVER_RELY_ON_COLOUR_OR_SOUND_ALO_B6F830",
+	"Controls": "UI_PRESS_AN_INPUT_TO_CHANGE_IT_THEN_PRESS_THE_NEW_K_0961E3",
 }
-const WAIT_TEXT := "Press an input…"
+const WAIT_TEXT := "UI_PRESS_AN_INPUT_F01722"
 
 var service: SettingsService
 var tab := 0
@@ -131,7 +133,7 @@ func show_tab(index: int) -> void:
 	for i in _tab_buttons.size():
 		_tab_buttons[i].button_pressed = i == tab
 	_fill_rows()
-	_note.text = NOTES.get(TABS[tab], "")
+	_note.text = tr(str(NOTES.get(TABS[tab], "")))
 	_note.visible = not _note.text.is_empty()
 	_reset_binds.visible = TABS[tab] == "Controls"
 	if is_inside_tree():
@@ -143,11 +145,11 @@ func show_tab(index: int) -> void:
 ## The text a row shows for its value ("On", "75%", "Full screen (borderless)").
 static func value_text(id: String, value: Variant, words: Dictionary = {}) -> String:
 	if words.has(value):
-		return words[value]
+		return TranslationServer.translate(str(words[value]))
 	var spec: Dictionary = GameSettings.SPEC[id]
 	match spec.kind:
 		"bool":
-			return "On" if value else "Off"
+			return TranslationServer.translate("UI_ON_E0049A") if value else TranslationServer.translate("UI_OFF_E3DE5A")
 		"int":
 			return "%d%%" % value if id.begins_with("audio/") else str(value)
 		"float":
@@ -162,7 +164,7 @@ static func value_text(id: String, value: Variant, words: Dictionary = {}) -> St
 ## The controller or keyboard input shown on a binding button.
 func binding_text(action: String, device: String) -> String:
 	if capture_action == action and capture_device == device:
-		return WAIT_TEXT
+		return tr(WAIT_TEXT)
 	var code := service.first_code(action, device)
 	return InputPrompts.code_name(code) if not code.is_empty() else "—"
 
@@ -249,12 +251,12 @@ func _update_hint() -> void:
 ## controller input shows as it is. Tab switching is fixed menu navigation (_is_tab_key), not a
 ## rebindable action, and says so by being the same everywhere.
 static func hint_text() -> String:
-	var parts := PackedStringArray(["%s  Tabs" % ("LB / RB" if InputPrompts.device == "pad" else "Q / E")])
+	var parts := PackedStringArray([TranslationServer.translate("UI_S_TABS_535627") % ("LB / RB" if InputPrompts.device == "pad" else "Q / E")])
 	var left := InputPrompts.names_for(&"ui_left")
 	var right := InputPrompts.names_for(&"ui_right")
 	if not left.is_empty() and not right.is_empty():
-		parts.append("%s  Change" % pair_name(left[0], right[0]))
-	var rest := InputPrompts.hint_line([[&"ui_accept", "Select"], [&"ui_cancel", "Back"]])
+		parts.append(TranslationServer.translate("UI_S_CHANGE_3ECCE6") % pair_name(left[0], right[0]))
+	var rest := InputPrompts.hint_line([[&"ui_accept", TranslationServer.translate("UI_SELECT_859822")], [&"ui_cancel", TranslationServer.translate("UI_BACK_B52B36")]])
 	if not rest.is_empty():
 		parts.append(rest)
 	return "   ·   ".join(parts)
@@ -286,7 +288,7 @@ func _build() -> void:
 	box.add_theme_constant_override("separation", 18)
 	panel.add_child(box)
 	var header := Label.new()
-	header.text = "Settings"
+	header.text = tr("UI_SETTINGS_C7F73B")
 	header.theme_type_variation = &"HeaderLabel"
 	box.add_child(header)
 
@@ -297,7 +299,7 @@ func _build() -> void:
 	for i in TABS.size():
 		var b := Button.new()
 		b.name = "Tab" + TABS[i]
-		b.text = TABS[i]
+		b.text = tr(TAB_LABELS[TABS[i]])
 		b.toggle_mode = true
 		b.button_group = group
 		b.theme_type_variation = &"TabButton"
@@ -331,17 +333,17 @@ func _build() -> void:
 	bottom.add_child(_hint)
 	_reset_binds = Button.new()
 	_reset_binds.name = "ResetBindings"
-	_reset_binds.text = "Reset inputs"
+	_reset_binds.text = tr("UI_RESET_INPUTS_FB428A")
 	_reset_binds.pressed.connect(func(): service.reset_bindings())
 	bottom.add_child(_reset_binds)
 	_reset = Button.new()
 	_reset.name = "ResetTab"
-	_reset.text = "Reset tab"
+	_reset.text = tr("UI_RESET_TAB_DEEF05")
 	_reset.pressed.connect(func(): service.reset_section(TABS[tab].to_lower()))
 	bottom.add_child(_reset)
 	_back = Button.new()
 	_back.name = "Back"
-	_back.text = "Back"
+	_back.text = tr("UI_BACK_B52B36")
 	_back.theme_type_variation = &"PrimaryButton"
 	_back.custom_minimum_size = Vector2(200, 0)
 	_back.pressed.connect(close)
@@ -372,7 +374,7 @@ func _add_setting_row(id: String, label_text: String, words: Dictionary) -> void
 	row.add_theme_constant_override("separation", 24)
 	_rows_box.add_child(row)
 	var label := Label.new()
-	label.text = label_text
+	label.text = tr(label_text)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 	var spec: Dictionary = GameSettings.SPEC[id]
@@ -419,12 +421,12 @@ func _add_binding_header() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 24)
 	_rows_box.add_child(row)
-	for text in ["Action", "Keyboard and mouse", "Controller"]:
+	for text in [tr("UI_ACTION_97C89A"), tr("UI_KEYBOARD_AND_MOUSE_0572D5"), tr("UI_CONTROLLER_A36A5F")]:
 		var label := Label.new()
 		label.text = text
 		label.theme_type_variation = &"AccentLabel"
 		label.custom_minimum_size = Vector2(300, 0)
-		if text == "Action":
+		if text == tr("UI_ACTION_97C89A"):
 			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
 
@@ -435,7 +437,7 @@ func _add_binding_row(action: String, label_text: String) -> void:
 	row.add_theme_constant_override("separation", 24)
 	_rows_box.add_child(row)
 	var label := Label.new()
-	label.text = label_text
+	label.text = tr(BIND_LABELS.get(action, label_text))
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 	for device in ["keys", "pad"]:
@@ -452,7 +454,7 @@ func _refresh_bindings() -> void:
 	for key in _bind_buttons:
 		var b: Button = _bind_buttons[key]
 		b.text = binding_text(key[0], key[1])
-		b.theme_type_variation = &"PrimaryButton" if b.text == WAIT_TEXT else &""
+		b.theme_type_variation = &"PrimaryButton" if b.text == tr(WAIT_TEXT) else &""
 
 
 ## Rows lead down to the bottom buttons and the bottom buttons lead back up.
@@ -518,7 +520,7 @@ class ChoiceButton extends Button:
 		pressed.connect(step.bind(1))
 
 	func refresh() -> void:
-		text = "‹  %s  ›" % SettingsMenu.value_text(id, service.get_value(id), words)
+		text = tr("UI_S_C3B03F") % SettingsMenu.value_text(id, service.get_value(id), words)
 
 	func step(direction: int) -> void:
 		var options: Array = GameSettings.SPEC[id].options

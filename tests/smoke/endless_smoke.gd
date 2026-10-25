@@ -358,7 +358,9 @@ func _endless_continue() -> void:
 	_check(arrow != null and arrow.visible and absf(angle_difference(arrow.rotation.y, yaw)) <= ARROW_YAW_TOLERANCE,
 		"the arrow shows, pointing home (yaw %.4f, want %.4f)" % [arrow.rotation.y if arrow != null else NAN, yaw])
 	var label: Dictionary = main.hud.world_overlay.label if main.hud.world_overlay != null else {}
-	var words := Hud.WorldOverlay.ARROW_TEXT % WorldMarkers.distance_text(Vector2(float(want[0]), float(want[1])).length())
+	var distance := WorldMarkers.distance_text(Vector2(float(want[0]), float(want[1])).length())
+	var words := TranslationServer.translate(Hud.WorldOverlay.ARROW_TEXT) % distance
+	_check(words == "Where you began · %s" % distance, "the overlay's English is unchanged (%s)" % words)
 	_check(str(label.get("text", "")) == words, "the overlay reads '%s' (%s)" % [words, label.get("text", "")])
 	var panels := main.hud.panel_rects()
 	var pip: Dictionary = main.hud.world_overlay.pip if main.hud.world_overlay != null else {}

@@ -42,12 +42,12 @@ theme_override_constants/separation = 8
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
-text = "Newcomer · Generation 1"
+text = "UI_NEWCOMER_GENERATION_1_8BC0DB"
 
 [node name="HealthText" type="Label" parent="Frame/Status/Box"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Health 30 / 30"
+text = "UI_HEALTH_30_30_DE20F3"
 
 [node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -76,7 +76,7 @@ theme_override_constants/separation = 12
 [node name="PointsText" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Points 150"
+text = "UI_POINTS_150_D8C343"
 
 [node name="PointsFlash" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
 unique_name_in_owner = true
@@ -100,7 +100,7 @@ theme_type_variation = &"BannerPanel"
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"WarnLabel"
-text = "Return to the nest to evolve"
+text = "UI_RETURN_TO_THE_NEST_TO_EVOLVE_B71DED"
 horizontal_alignment = 1
 
 [node name="Bottom" type="VBoxContainer" parent="Frame"]
@@ -120,5 +120,5 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"SmallLabel"
-text = "W  Move   ·   F  Bite   ·   E  Evolve at the nest"
+text = "UI_W_MOVE_F_BITE_E_EVOLVE_AT_THE_NEST_E01C2D"
 horizontal_alignment = 1

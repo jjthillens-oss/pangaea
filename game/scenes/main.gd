@@ -46,7 +46,11 @@ const DEV_GIZMOS_PATH := "res://game/dev/dev_gizmos.gd"
 const DEV_KEYS_PATH := "res://game/dev/dev_keys.gd"
 const DEV_PERF_TOUR_PATH := "res://game/dev/perf_tour.gd"
 ## The quit dialog's words when the cell's death could not be saved (GameSession.death_save_failed).
-const DEATH_NOT_SAVED_TEXT := "Your cell's death could not be saved. Quit anyway?"
+const DEATH_NOT_SAVED_TEXT := "UI_YOUR_CELL_S_DEATH_COULD_NOT_BE_SAVED_QUIT_ANYWAY_49213A"
+
+static func _tr(key: String) -> String:
+	return str(TranslationServer.translate(key))
+
 
 var flags: RunFlags
 var session: GameSession
@@ -168,11 +172,11 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	var result := session.start_new(body, seed_value if seed_value >= 0 else flags.seed_value)
 	last_run = result
 	if not result.ok:
-		_alert("Could not start a new lineage", result.errors)
+		_alert(_tr("UI_COULD_NOT_START_A_NEW_LINEAGE_CB166D"), result.errors)
 		return result
 	_open_pool()
 	if not result.saved:
-		hud.show_message("Not saved yet: %s" % "; ".join(result.errors))
+		hud.show_message(_tr("UI_NOT_SAVED_YET_S_D09359") % "; ".join(result.errors))
 	return result
 
 
@@ -181,7 +185,7 @@ func continue_run() -> Dictionary:
 	var result := session.continue_run()
 	last_run = result
 	if not result.ok:
-		_alert("Could not continue", result.errors)
+		_alert(_tr("UI_COULD_NOT_CONTINUE_325E14"), result.errors)
 		return result
 	_open_pool()
 	var text := Hud.rested_line(session.sim.state)
@@ -249,7 +253,7 @@ func _on_cell_editor_closed(committed: bool) -> void:
 	if committed:
 		session.sim.apply_offspring()
 		session.save_now()
-		hud.show_message("Generation %d" % session.sim.save.genome.generation)
+		hud.show_message(_tr("UI_GENERATION_D_D0FBBA") % session.sim.save.genome.generation)
 	pool.finish_mate(committed)
 	pool.set_paused(false)
 
@@ -345,7 +349,7 @@ func delete_slot(n: int) -> Error:
 	if slot_picker != null:
 		slot_picker.show_slots(SaveSlots.peek_all(), SaveSlots.number_of(session.slot))
 	if err != OK:
-		_alert("Could not delete slot %d" % n, PackedStringArray([error_string(err)]))
+		_alert(_tr("UI_COULD_NOT_DELETE_SLOT_D_800739") % n, PackedStringArray([error_string(err)]))
 	return err
 
 
@@ -354,7 +358,7 @@ static func save_status_text(result: Dictionary) -> String:
 	if not result.ok:
 		return str(result.error)
 	var t := Time.get_time_dict_from_system()
-	return "Saved %02d:%02d" % [t.hour, t.minute]
+	return _tr("UI_SAVED_02D_02D_68E206") % [t.hour, t.minute]
 
 
 ## The quit dialog for a run with unsaved progress: {"title", "body", "choices", "focus"}.
@@ -363,25 +367,25 @@ static func save_status_text(result: Dictionary) -> String:
 ## step 2's "Save first?", with no save while the cell is dead.
 static func quit_prompt(dead: bool, death_save_failed: bool) -> Dictionary:
 	if dead and death_save_failed:
-		return {"title": "Death not saved", "body": DEATH_NOT_SAVED_TEXT,
-			"choices": [["quit", "Quit"], ["cancel", "Cancel"]], "focus": "cancel"}
-	var body := "You have progress since your last save."
-	var choices := [["quit", "Quit without saving"], ["cancel", "Cancel"]]
+		return {"title": _tr("UI_DEATH_NOT_SAVED_3D3DEC"), "body": _tr(DEATH_NOT_SAVED_TEXT),
+			"choices": [["quit", _tr("UI_QUIT_1A2285")], ["cancel", _tr("UI_CANCEL_77DFD2")]], "focus": "cancel"}
+	var body := _tr("UI_YOU_HAVE_PROGRESS_SINCE_YOUR_LAST_SAVE_86787B")
+	var choices := [["quit", _tr("UI_QUIT_WITHOUT_SAVING_3EDB45")], ["cancel", _tr("UI_CANCEL_77DFD2")]]
 	if dead:
-		body += " Saving is off until you continue after your cell's death."
+		body += _tr("UI_SAVING_IS_OFF_UNTIL_YOU_CONTINUE_AFTER_YOUR_CELL_S_D_6853A5")
 	else:
-		choices.push_front(["save_quit", "Save and quit", true])
-	return {"title": "Save first?", "body": body, "choices": choices, "focus": "cancel" if dead else "save_quit"}
+		choices.push_front(["save_quit", _tr("UI_SAVE_AND_QUIT_B4C0CE"), true])
+	return {"title": _tr("UI_SAVE_FIRST_196213"), "body": body, "choices": choices, "focus": "cancel" if dead else "save_quit"}
 
 
 ## The death notice's title: how the cell died. A kill names its killer (the species'
 ## death_reason, such as "Caught by an ambush hunter").
 static func death_title(cause: String, reason: String = "") -> String:
 	if cause == "starved":
-		return "Out of energy"
+		return _tr("UI_OUT_OF_ENERGY_119C43")
 	if cause == "killed" and not reason.is_empty():
 		return reason
-	return "Your cell died"
+	return _tr("UI_YOUR_CELL_DIED_D81DB6")
 
 
 ## The death notice's body: what the death cost, already applied ("You lost ... (−3)", or that there
@@ -392,11 +396,11 @@ static func death_title(cause: String, reason: String = "") -> String:
 ## names only a food the body can eat, and no food without a phenotype.
 static func death_text(cause: String, lost: int, tip: String = "", saved: Dictionary = {}, generation: int = 1,
 		phenotype: Phenotype = null) -> String:
-	var text := "The lineage continues from the start of generation %d. " % generation
+	var text := _tr("UI_THE_LINEAGE_CONTINUES_FROM_THE_START_OF_GENERATION_D_64718B") % generation + " "
 	if lost > 0:
-		text += "You lost a quarter of your unspent adaptation points (−%d)." % lost
+		text += _tr("UI_YOU_LOST_A_QUARTER_OF_YOUR_UNSPENT_ADAPTATION_POINTS_D83F1E") % lost
 	else:
-		text += "You had too few unspent adaptation points to lose any."
+		text += _tr("UI_YOU_HAD_TOO_FEW_UNSPENT_ADAPTATION_POINTS_TO_LOSE_AN_DA2D8D")
 	var save_line := death_save_line(saved)
 	if not save_line.is_empty():
 		text += " " + save_line
@@ -412,22 +416,22 @@ static func death_save_line(saved: Dictionary) -> String:
 	if not bool(saved.get("attempted", false)):
 		return ""
 	if bool(saved.get("ok", false)):
-		return "Saved."
+		return _tr("UI_SAVED_9D4AF6")
 	var error := str(saved.get("error", ""))
-	return error if error.begins_with("Could not save") else "Could not save: %s" % error
+	return error if error.begins_with("Could not save") else _tr("UI_COULD_NOT_SAVE_S_3F6EF9") % error
 
 
 ## The message after Continue: "Back at the generation start · sheltered for 5 s." (no shelter
 ## part when there is none, as in a pool without creatures).
 static func respawn_text(shelter_s: int) -> String:
 	if shelter_s <= 0:
-		return "Back at the generation start."
-	return "Back at the generation start · sheltered for %d s." % shelter_s
+		return _tr("UI_BACK_AT_THE_GENERATION_START_CFBE1A")
+	return _tr("UI_BACK_AT_THE_GENERATION_START_SHELTERED_FOR_D_S_E32E57") % shelter_s
 
 
 ## "Seed 4242 · build 0.0.2-m1+abc1234" for the pause menu.
 func footer_text() -> String:
-	return "Seed %d · build %s" % [session.sim.save.world_seed, BuildInfo.build_id()]
+	return tr("UI_SEED_D_BUILD_S_6E834B") % [session.sim.save.world_seed, BuildInfo.build_id()]
 
 
 func _notification(what: int) -> void:
@@ -521,7 +525,7 @@ func _on_died(cause: String, reason: String = "") -> void:
 	var saved: Dictionary = d.get("saved", {})
 	death_notice.open(death_title(cause, reason),
 		death_text(cause, lost, tip, saved, session.sim.save.genome.generation, session.sim.phenotype),
-		[["continue", "Continue", true]], "continue")
+		[["continue", _tr("UI_CONTINUE_2E0262"), true]], "continue")
 
 
 ## The pool reported the respawn: "Back at the generation start · sheltered for 5 s.", in the frame
@@ -590,8 +594,8 @@ func _on_quit_choice(choice: String) -> void:
 			if result.ok:
 				_quit()
 			else:
-				quit_dialog.open("Could not save", str(result.error),
-					[["quit", "Quit without saving"], ["cancel", "Cancel"]], "cancel", "cancel")
+				quit_dialog.open(_tr("UI_COULD_NOT_SAVE_875138"), str(result.error),
+					[["quit", _tr("UI_QUIT_WITHOUT_SAVING_3EDB45")], ["cancel", _tr("UI_CANCEL_77DFD2")]], "cancel", "cancel")
 		"quit":
 			_quit()
 		"cancel":
@@ -601,7 +605,7 @@ func _on_quit_choice(choice: String) -> void:
 
 
 func _alert(title: String, errors: PackedStringArray) -> void:
-	alert.open(title, "Nothing was changed.", [["ok", "OK", true]], "ok", "ok", "\n".join(errors))
+	alert.open(title, _tr("UI_NOTHING_WAS_CHANGED_C60D5D"), [["ok", _tr("UI_OK_9CE3BD"), true]], "ok", "ok", "\n".join(errors))
 
 
 func _quit() -> void:

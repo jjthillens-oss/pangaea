@@ -111,8 +111,10 @@ func test_top_center_texts_wrap_at_spaces_into_even_lines_within_the_width_they_
 	check(lines.size() == 2 and lines[1].split(" ").size() > 1, "the last line is more than one word: %s" % lines)
 	check(lines.size() == 2 and lines[0].contains("user://saves/slot_1.json:"), "the save path is whole on one line: %s" % lines)
 	var large := theme.get_font_size(&"font_size", &"LargeLabel")
-	var banner := Hud.wrap_width(Hud.STARVING_TEXT, font, large, 800.0)
-	check(banner < 800.0 and _wrapped(Hud.STARVING_TEXT, font, large, banner).size() == 2,
+	var banner_text := str(TranslationServer.translate(Hud.STARVING_TEXT))
+	check_eq(banner_text, "Starving: you are slow and losing health.\nFind food.", "banner English is unchanged")
+	var banner := Hud.wrap_width(banner_text, font, large, 800.0)
+	check(banner < 800.0 and _wrapped(banner_text, font, large, banner).size() == 2,
 		"the starving banner keeps its two lines as written (%.0f px)" % banner)
 
 
@@ -331,7 +333,7 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	var accent := roundi(theme.get_font_size(&"font_size", &"AccentLabel") * scale)
 	var widest := 0.0
 	for text: String in RefusalHints.TEXTS.values() + RefusalHints.ATTACK_TEXTS.values() + IdeaHints.TEXTS.values():
-		widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, accent).x)
+		widest = maxf(widest, font.get_string_size(TranslationServer.translate(text), HORIZONTAL_ALIGNMENT_LEFT, -1, accent).x)
 	var center_right := 960.0 + (widest + chrome) / 2.0
 	var strip_left := 1920.0 - right_margin - (LadderStrip.PREVIEW_W + chrome)
 	check(strip_left - center_right >= LadderStrip.BAND_GAP_PX, "the strip's panel (from %.0f px) is clear of the bottom center's (to %.0f px)"

@@ -477,7 +477,8 @@ func test_band_one_names() -> void:
 		check_eq(Hud.region_toast("rare", rare, 1), rares[rare], rare)
 	for rare in TileCatalog.RARE_KINDS_BY_BAND[1]:
 		check(rares.has(rare), "%s has a name" % rare)
-	check_eq(Hud.region_toast("home", "", 1), Hud.CRADLE_TOAST, "home at band 1: the cradle")
+	check_eq(str(TranslationServer.translate(Hud.CRADLE_TOAST)), "Your lineage began here", "cradle English is unchanged")
+	check_eq(Hud.region_toast("home", "", 1), str(TranslationServer.translate(Hud.CRADLE_TOAST)), "home at band 1: the cradle")
 	check_eq(Hud.region_toast("home", "", 0), "Home waters", "home at band 0")
 
 
@@ -489,7 +490,7 @@ func test_cradle_toast_once() -> void:
 	FakeEvents.frame(pool)
 	sim.tick = 0
 	var hud := _hud(pool)
-	var count := func() -> int: return hud.toast_texts().count(Hud.CRADLE_TOAST)
+	var count := func() -> int: return hud.toast_texts().count(str(TranslationServer.translate(Hud.CRADLE_TOAST)))
 	check_eq(count.call(), 1, "bind at home toasts the cradle")
 	for s in [40.0, 70.0, 100.0]:
 		sim.tick = roundi(s / PoolSim.DT)
@@ -545,7 +546,7 @@ func test_band_up_names_the_tile_at_the_chord() -> void:
 	while pool.growth_beat.running() and pool.growth_beat.t() < GrowthBeat.CHORD_S:
 		check_eq(hud.toast_texts().size(), before, "%.2f s: no toast before the chord" % pool.growth_beat.t())
 		FakeEvents.frame(pool)
-	check_eq(hud.toast_texts().count(Hud.CRADLE_TOAST), 1, "the chord names home the cradle")
+	check_eq(hud.toast_texts().count(str(TranslationServer.translate(Hud.CRADLE_TOAST))), 1, "the chord names home the cradle")
 	# Away from home, its name's 30 s window over: the next growth is in band, and names nothing.
 	check(sim.debug_teleport_abs(400.0, 400.0, 0.0), "the cell far from home")
 	for i in 240:
