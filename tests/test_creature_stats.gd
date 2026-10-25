@@ -150,3 +150,28 @@ func test_a_giant_is_slower_than_the_same_body_at_a_middle_size() -> void:
 	check(b["mass_kg"] > 30.0 * a["mass_kg"], "the giant is far heavier (%.0f kg against %.0f)" % [b["mass_kg"], a["mass_kg"]])
 	check(b["speed_mps"] < a["speed_mps"], "and slower (%.2f < %.2f m/s)" % [b["speed_mps"], a["speed_mps"]])
 	check(b["bite_power"] >= a["bite_power"], "but bites at least as hard")
+
+
+func test_swim_parts_kept_on_land_slow_the_run_and_trading_them_away_restores_it() -> void:
+	var body = Fixtures.body("s1_quadruped")
+	var plain := stats_of(body)
+	check(body.parts.any(func(p): return p["type"] == "fin" and not p["mirror"]), "the starter has a lone back fin")
+	check_eq(plain["land_factor"], 1.0, "a lone back fin does not drag")
+	check_eq(plain["swim_parts"], 0, "and is not counted")
+	body.add_part("fin", {"host": "spine", "u": 400, "ring": 250, "scale": 1000, "mirror": true})
+	var finned := stats_of(body)
+	var per: Dictionary = tuning["land_drag"]["per_part"]
+	check(is_equal_approx(finned["land_factor"], 1.0 - 2.0 * float(per["fin"])), "a fin pair takes 2 x %.2f (%.3f)"
+			% [float(per["fin"]), finned["land_factor"]])
+	check_eq(finned["swim_parts"], 2, "a pair counts twice")
+	check(is_equal_approx(finned["speed_mps"], plain["speed_mps"] * finned["land_factor"]), "and slows the run")
+	check_eq(finned["mass_kg"], plain["mass_kg"], "the drag is not mass")
+	body.add_part("tail_fluke", {"host": "spine", "u": 1000, "ring": 0, "scale": 2000})
+	var fluked := stats_of(body)
+	check(fluked["speed_mps"] < finned["speed_mps"], "a big fluke slows it more (%.2f < %.2f m/s)"
+			% [fluked["speed_mps"], finned["speed_mps"]])
+	for i in 20:
+		body.add_part("fin", {"host": "spine", "u": 50 * i, "ring": 500, "scale": 3000, "mirror": true})
+	check(is_equal_approx(stats_of(body)["land_factor"], float(tuning["land_drag"]["floor"])), "never below the floor")
+	var bare := Fixtures.body("s1_quadruped")
+	check_eq(stats_of(bare)["speed_mps"], plain["speed_mps"], "trading them away restores the speed")
