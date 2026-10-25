@@ -91,12 +91,45 @@ godot --headless --path . --import                                # writes the .
 python tools/blender/make_creature_world.py --import              # the .tres files, the .glb.import mappings, normal-map flags
 godot --headless --path . --import                                # picks the mappings up
 python tools/blender/render_production.py creature_nest_ring creature_fruit_bush creature_meat_chunk creature_editor_room   # review sheets
+python tools/blender/render_world_review.py creature_fruit_bush [...]   # gate views: grey (grazing key), beauty, close-up, unlit base colour, card alpha
 ```
 
-In-engine screenshots: `tools/godot/world_dressing_shot.gd` under Xvfb (recipe in its header), and
-`tools/godot/editor_room_shot.gd` for the editor pad in the editor scene's own sky and lights, from the editor camera's
-pose. The Compatibility renderer overexposes a shadowed sun (docs/TOOLCHAIN.md), so judge colour on Forward+
-(lavapipe) or with `--no-shadow`.
+In-engine screenshots: `tools/godot/creature_world_gameplay_shots.gd` runs the real `creature_world.tscn` (and
+`creature_editor.tscn` with `--editor`) and saves gameplay frames, close-ups and the editor's zoom extremes, with
+draw calls, primitives and `setup_ms`. `tools/godot/world_dressing_shot.gd` stages the dressing alone, and
+`tools/godot/editor_room_shot.gd` the editor pad from the editor camera's poses; both take their light out of the
+real scenes (recipes in their headers). The Compatibility renderer overexposes a shadowed sun (docs/TOOLCHAIN.md), so
+judge colour on Forward+ (lavapipe) or with `--no-shadow`.
+
+## Baseline frames (2026-10-25, before the creature-world-art revision)
+
+Frames of main at 2ffc1218 from `creature_world_gameplay_shots.gd` (seed 4242, the `s1_quadruped` starter, HUD
+hidden), in `docs/evidence/credit-creature-world-art/before_*.jpg`. Ground band = the mean CIELAB (D65) between the
+horizon and 60% of the frame's height, leaving out the middle fifth of the columns where the creature stands.
+
+| Frame | Renderer | Band L / C / h | Ground just under the horizon L / C / h | Horizon dE |
+| --- | --- | --- | --- | --- |
+| close_ground | Forward+ (lavapipe) | 46.8 / 18.5 / 146 | 51.8 / 11.8 / 129 | 30.7 |
+| world_roam | Compatibility, shadowed sun | 59.0 / 20.8 / 170 | 82.5 / 11.1 / 176 | 19.1 |
+| world_roam | Compatibility, `--no-shadow` | 48.0 / 16.9 / 146 | 55.7 / 8.0 / 148 | 24.5 |
+| close_ground | Compatibility, shadowed sun | 59.0 / 23.1 / 169 | 77.6 / 13.3 / 174 | 21.0 |
+
+- The water read is strongest in Compatibility with the shadowed sun: its additive sRGB pass lifts the turf to a pale
+  teal (h170) and the fogged far field to a pale cyan (L83), which reads as shallow sea with sandbars. Forward+, the
+  shipping renderer, draws the same turf as a low-chroma grey-green (h146, C18), but the far third still fades into
+  the blue-grey depth fog from 20 to 78 m and meets the sky with no land on the horizon, the turf's round blotches
+  read as puddles, and nothing stands up from the ground.
+- The fruit bushes do not draw in the game: `creature_world.gd` `_multimesh()` starts every MultiMesh at
+  `visible_instance_count = 0`, and `_draw_food()` raises it for the fruit and the meat but never for the bushes, so
+  the fruit floats in the air with only its own shadows (`before_close_bush_fplus.jpg`). The art tools draw the bush
+  through their own MultiMesh, so earlier review frames showed it. The fix is a line in `creature_world.gd`, which
+  this art job does not own (filed as an issue).
+- The nest mound reads as smooth tan: the straw streaks are too fine to show at gameplay distance.
+- The editor pad floats in the room's sky with no walls; seen from PITCH_MAX at ZOOM_MAX it sits in a black void.
+- Cost (Compatibility on llvmpipe, 1920x1080, a 4-CPU container shared with other jobs): spawn frame 239 draw calls,
+  107k primitives, about 640 ms a frame (470 ms without the sun's shadow); `setup_ms.total` 1,968 ms (test budget
+  3,000 ms). Forward+ on lavapipe: setup 4,112 ms, about 30 s a frame. These are software-renderer numbers for
+  before/after comparison only, not a performance claim for real GPUs.
 
 ## Next
 
