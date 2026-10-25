@@ -61,10 +61,15 @@ gradually: the slope gets steeper with distance, so a new player meets the deep 
 
 | Zone | Depth | What lives there | Food | Danger |
 |---|---|---|---|---|
-| Sunlit shallows | 0 to 12 m | Your nest and kin, the shore | Plankton clouds (scaled-up microscopic life) | None |
-| Reef | 12 to 30 m | Reef grazers (can be befriended), shelters | Algae patches | Low |
-| Twilight drop | 30 to 60 m | Silver shoal (prey), the lancer predator | Shoal fish (meat) | The lancer |
-| Deep | 60 m and below | The abyssal drifter's path, vents | Vent grazing (rich) | Pressure, the drifter |
+| Sunlit shallows | 0 to 12 m | Your nest and kin, the shore, glass minnows (prey) | Plankton clouds (scaled-up microscopic life), the nest-side algae bed, minnows (meat) | None |
+| Reef | 12 to 30 m | Reef grazers (can be befriended), reef cleaners (can be befriended; their station heals), the two reef arches | Algae patches | Low |
+| Twilight drop | 30 to 60 m | Silver shoal (prey), the lancer predator; the ledge cave and the pillar ring (shelters) | Shoal fish (meat), the krill swarm (filter food, inside the lancer's patrol) | The lancer |
+| Deep | 60 m and below | The abyssal drifter's path, the vents and the vent chimney (a shelter), vent glowfins (prey a lure draws in) | Vent grazing (rich), the fallen giant's carcass (meat) | Pressure, the drifter |
+
+aquatic-r2 added the minnows, cleaners and glowfins, the pillar ring and the vent chimney, and the nest-side algae
+bed, the krill swarm and the fallen giant (the content is IMPLEMENTED and tested; every number and name is
+PROPOSED, in `game/data/aquatic/aquatic_rules.json`). Every shelter and feeding site names its zone in the rules, and
+`test_every_site_sits_in_the_water_and_its_zone` checks it.
 
 The cell stage stays in history and in the water: plankton clouds are drawn with the cell stage's plankton and
 algae art at the new scale, and the species the lineage met as a cell are named on the entry card.
@@ -127,7 +132,21 @@ colour becomes the fish's skin colour. The entry card shows each conversion so n
   can be met again.
 - **Abyssal drifter**: a huge animal on a fixed slow loop through the deep. It is scenery unless you are in its path;
   then a shadow and a deep tone warn you 3 seconds before its sweep, which hurts a lot but does not kill a healthy
-  fish outright.
+  fish outright. A fish inside a shelter still hears the warning but is not swept (aquatic-r2): the vent chimney
+  stands under its loop for that.
+- **Glass minnows** (aquatic-r2): a small school in the shallows near the nest that always flees a fish. They are a
+  jaw lineage's first meat (the shallows' plankton and algae feed only a filter mouth) and come back 30 s after a
+  catch.
+- **Reef cleaners** (aquatic-r2): live at the east reef arch. Two spaced calls befriend them; a friend that rests
+  (swims slower than 0.6 m/s) at their station is tended: they gather round it and it heals 4 health a second, with
+  one "cleaned" line a visit. A bite makes them foes and the station closes to you.
+- **Vent glowfins** (aquatic-r2): deep prey round the vents that flee any fish, glowing cyan. A fish with the lure
+  sense draws them in to its head from 12 m while it stays within 20 m of their home, so a deep-rated lure angler
+  with a jaw can catch them (the lure sense's use).
+- **Shelters**: the two reef arches, the ledge cave (a giant ciliate's split casing lying on the ledge, its mouth up
+  the slope), the pillar ring (a ring of glass drums round an open nave, inside the lancer's territory) and the vent
+  chimney (a glass-sponge basket on its drum, under the drifter's loop). The new looks are recorded cell-world GLBs
+  at the fish's scale; the fallen giant is a dead fish of the drifter's kind drawn with the fish skin.
 - Food regrows on each site's own timer (Bible §13: no endless free food, no empty world).
 
 The species are data (aquatic-r2, IMPLEMENTED; the values are PROPOSED tuning). `species_order` and each species'

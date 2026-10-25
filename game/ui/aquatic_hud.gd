@@ -188,13 +188,17 @@ func refresh(delta: float) -> void:
 	var warn_color := WARN_COLOR
 	match String(w.lancer):
 		"investigate":
-			warn = "Something is watching you: swim away or hide in an arch"
+			warn = "Something is watching you: swim away or hide in a shelter"
 		"pursue":
-			warn = "The lancer is chasing! Hide in an arch, or outswim it"
+			warn = "The lancer is chasing! Hide in a shelter, or outswim it"
 			warn_color = DANGER_COLOR
 	if float(w.drifter) > 0.0:
-		warn = "A huge shadow is passing: swim clear of its path"
-		warn_color = DANGER_COLOR if float(w.drifter) >= 1.0 else WARN_COLOR
+		if sim.sheltered(p.pos) != "":
+			warn = "A huge shadow passes over your hiding place"
+			warn_color = WARN_COLOR
+		else:
+			warn = "A huge shadow is passing: swim clear of its path or hide"
+			warn_color = DANGER_COLOR if float(w.drifter) >= 1.0 else WARN_COLOR
 	if pressure > 0.0 and warn == "":
 		warn = "The water presses on you: rise" if pressure < 1.0 else "The pressure is hurting you: rise now"
 		warn_color = DANGER_COLOR if pressure >= 1.0 else WARN_COLOR

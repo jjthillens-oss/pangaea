@@ -10,9 +10,30 @@ const FishView := preload("res://game/scenes/aquatic/fish_view.gd")
 const SEAFLOOR := "res://assets/export/aquatic_seafloor.glb"
 const NEST := "res://assets/export/creature_nest_ring.glb"
 const SHELTER := "res://assets/export/landmark_arch.glb"
+## Shelters drawn as something other than the reef arch (aquatic-r2, PROPOSED; recorded GLBs from the cell world at
+## the fish's scale, so the cell stage stays in the sea's history), each one a place the fish is seen to be inside:
+## scene, scale, yaw (rad), and how far the scene's lowest point sinks below the floor (m), so it sits on the slope
+## whatever its pivot. "lie" lays an upright scene down along the slope with its top uphill (+Z), its pivot "lift" m
+## over the floor. The ledge cave is a giant ciliate's split, empty casing lying on the ledge with its open mouth up
+## the slope; the pillar ring a ring of crowned glass drums round an open nave; the vent chimney a glass-sponge
+## basket on its drum, the fish hiding in the basket.
+const SHELTER_LOOKS := {
+	"shelter_ledge": {"scene": "res://assets/export/landmark_shed_husk.glb", "scale": 1.5, "yaw": 0.2, "lie": true, "lift": 2.4},
+	"shelter_pillars": {"scene": "res://assets/export/rare_shell_cathedral.glb", "scale": 1.3, "yaw": 0.3, "sink": 0.6},
+	"shelter_vent_chimney": {"scene": "res://assets/export/landmark_b1_sponge_tower.glb", "scale": 1.6, "yaw": 0.0, "sink": 0.4},
+}
+## Landmarks at feeding sites (by site id). The fallen giant is a dead fish of the drifter's kind lying on its side
+## on the deep floor, the carcass food beside it (FishView's drifter body, pale, never animated): "fish" is the
+## FishView species, scale_m its size, offset (x, z m) from the site's centre, lift over the floor, yaw and roll.
+const SITE_LANDMARKS := {
+	"fallen_giant": {"fish": "drifter", "scale_m": 13.0, "divisions": 26, "color": Color(0.72, 0.7, 0.66), "offset": [0.0, -6.5],
+			"lift": 1.5, "yaw": 1.45, "roll": 1.5,
+			"shader": {"color_coat": Color(0.5, 0.48, 0.46), "color_detail": Color(0.82, 0.8, 0.76), "roughness_base": 0.9}},
+}
 const FOOD_SCENES := {"plankton": "res://assets/export/plankton.glb", "algae": "res://assets/export/algae_ball.glb",
-		"vent": "res://assets/export/bead_cluster.glb"}
-const FOOD_SCALE := {"plankton": 2.2, "algae": 2.6, "vent": 3.2}
+		"vent": "res://assets/export/bead_cluster.glb", "krill": "res://assets/export/glass_flake.glb",
+		"carcass": "res://assets/export/carrion.glb"}
+const FOOD_SCALE := {"plankton": 2.2, "algae": 2.6, "vent": 3.2, "krill": 1.6, "carcass": 1.8}
 const DRESSING := ["res://assets/export/landmark_fan.glb", "res://assets/export/landmark_spire.glb",
 		"res://assets/export/rare_sponge_grove.glb", "res://assets/export/rock_a.glb", "res://assets/export/rock_b.glb",
 		"res://assets/export/rock_c.glb", "res://assets/export/landmark_great_shell.glb"]
@@ -55,11 +76,31 @@ func setup(p_sim: AquaticSim) -> void:
 	_add_scene(NEST, Transform3D(Basis().scaled(Vector3.ONE * 0.55), Vector3(nest.x, sim.floor_at(nest.x, nest.z), nest.z)))
 	for s in sim.rules.world.shelters:
 		var p := AquaticSim._v(s.pos)
-		_add_scene(SHELTER, Transform3D(Basis(Vector3.UP, float(p.x) * 0.1).scaled(Vector3.ONE * 1.35),
-				Vector3(p.x, sim.floor_at(p.x, p.z) - 0.4, p.z)))
+		var node: Node3D
+		if SHELTER_LOOKS.has(s.id):
+			node = _seat(SHELTER_LOOKS[s.id], p)
+		else:
+			node = _add_scene(SHELTER, Transform3D(Basis(Vector3.UP, float(p.x) * 0.1).scaled(Vector3.ONE * 1.35),
+					Vector3(p.x, sim.floor_at(p.x, p.z) - 0.4, p.z)))
+		if node != null:
+			node.name = String(s.id)
+	for site in sim.rules.world.feeding:
+		if SITE_LANDMARKS.has(site.id):
+			var look: Dictionary = SITE_LANDMARKS[site.id]
+			var p: Vector3 = AquaticSim._v(site.pos) + Vector3(float(look.offset[0]), 0.0, float(look.offset[1]))
+			var s: Dictionary = FishView.SPECIES.get(String(look.fish), FishView.FALLBACK)
+			var rig := FishView.make(s.body, float(look.scale_m), int(look.divisions), look.color, int(s.pattern), s.get("look", {}),
+					look.get("shader", {}))
+			rig.name = String(site.id)
+			rig.position = Vector3(p.x, sim.floor_at(p.x, p.z) + float(look.lift), p.z)
+			rig.rotation = Vector3(0.0, float(look.yaw), float(look.roll))
+			add_child(rig)
 	_dress_reef()
 	for f in sim.food:
-		var node := _add_scene(FOOD_SCENES[f.kind], Transform3D(Basis().scaled(Vector3.ONE * FOOD_SCALE[f.kind]), f.pos))
+		if not FOOD_SCENES.has(f.kind):
+			push_warning("Aquatic world: no scene for the food kind '%s'; drawn as plankton." % f.kind)
+		var node := _add_scene(FOOD_SCENES.get(f.kind, FOOD_SCENES.plankton),
+				Transform3D(Basis().scaled(Vector3.ONE * float(FOOD_SCALE.get(f.kind, 1.5))), f.pos))
 		food_nodes[f.id] = node
 	for a in sim.animals:
 		var rig := FishView.make_species(a.species, ANIMAL_DIVISIONS, animal_rigs.size())
@@ -120,6 +161,32 @@ func _add_scene(path: String, xform: Transform3D) -> Node3D:
 	var node := packed.instantiate() as Node3D
 	node.transform = xform
 	add_child(node)
+	return node
+
+
+## A recorded scene at `pos` (x, z; y is the floor there) by `look` (see SHELTER_LOOKS): upright with its lowest point
+## `sink` m below the floor, or laid along the slope ("lie") with its pivot `lift` m over the floor.
+func _seat(look: Dictionary, pos: Vector3) -> Node3D:
+	var node := _add_scene(String(look.scene), Transform3D.IDENTITY)
+	if node == null:
+		return null
+	var k := float(look.scale)
+	var floor_y := sim.floor_at(pos.x, pos.z)
+	if bool(look.get("lie", false)):
+		# Its up axis along the floor, rising toward +Z as the slope does.
+		var rise := (sim.floor_at(pos.x, pos.z + 1.0) - sim.floor_at(pos.x, pos.z - 1.0)) * 0.5
+		var basis := Basis(Vector3.UP, float(look.yaw)) * Basis(Vector3.RIGHT, PI * 0.5 - atan(rise))
+		node.transform = Transform3D(basis.scaled(Vector3.ONE * k), Vector3(pos.x, floor_y + float(look.lift), pos.z))
+		return node
+	var low := INF
+	for m in node.find_children("*", "MeshInstance3D", true, false):
+		var mi := m as MeshInstance3D
+		var box: AABB = (node.global_transform.affine_inverse() * mi.global_transform) * mi.get_aabb()
+		low = minf(low, box.position.y)
+	if low == INF:
+		low = 0.0
+	node.transform = Transform3D(Basis(Vector3.UP, float(look.yaw)).scaled(Vector3.ONE * k),
+			Vector3(pos.x, floor_y - float(look.sink) - low * k, pos.z))
 	return node
 
 
@@ -218,7 +285,7 @@ func sync(delta: float) -> void:
 		var node: Node3D = food_nodes.get(f.id)
 		if node != null:
 			node.visible = f.alive
-			if f.kind == "plankton":
+			if bool(sim.rules.world.food[f.kind].get("floats", false)):
 				node.position = f.pos + Vector3(0.0, sin(Time.get_ticks_msec() * 0.001 + float(f.pos.x)) * 0.25, 0.0)
 	var goal := _camera_goal()
 	_cam_pos = goal if delta <= 0.0 else _cam_pos.lerp(goal, minf(1.0, CAMERA_FOLLOW * delta))

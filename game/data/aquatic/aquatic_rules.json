@@ -59,23 +59,31 @@
     ],
     "nest": {"pos": [0.0, -7.5, 8.0], "radius": 5.0},
     "shore": {"pos": [0.0, -1.0, 30.0], "radius": 6.0},
+    "sites_note": "Shelters and feeding sites, each with the zone it sits in (tests/test_aquatic_sim.gd checks it, and that every site is in the water inside the walls, no deeper than the deepest legal rated depth). New ones are appended so the earlier ids and food_NNN numbers stay. aquatic-r2 added the pillar ring (a ring of glass drums in the twilight, inside the lancer's territory), the vent chimney (the drifter's sweep passes over it; a fish inside is not swept), the nest-side algae bed, the krill swarm in the lancer's patrol and the fallen giant (a carcass for jaws, within the drifter's warning but not its sweep). A food kind that floats drifts in open water; the others lie on the floor. A diet of plant is what a filter mouth takes (the krill too), meat what a jaw takes.",
     "shelters": [
-      {"id": "shelter_reef_west", "name": "West reef arch", "pos": [-16.0, -18.0, -50.0], "radius": 5.0},
-      {"id": "shelter_reef_east", "name": "East reef arch", "pos": [18.0, -24.0, -88.0], "radius": 5.0},
-      {"id": "shelter_ledge", "name": "Ledge cave", "pos": [-8.0, -34.0, -122.0], "radius": 4.5}
+      {"id": "shelter_reef_west", "name": "West reef arch", "zone": "reef", "pos": [-16.0, -18.0, -50.0], "radius": 5.0},
+      {"id": "shelter_reef_east", "name": "East reef arch", "zone": "reef", "pos": [18.0, -24.0, -88.0], "radius": 5.0},
+      {"id": "shelter_ledge", "name": "Ledge cave", "zone": "twilight", "pos": [-8.0, -34.0, -122.0], "radius": 4.5},
+      {"id": "shelter_pillars", "name": "Pillar ring", "zone": "twilight", "pos": [22.0, -50.0, -168.0], "radius": 5.0},
+      {"id": "shelter_vent_chimney", "name": "Vent chimney", "zone": "deep", "pos": [28.0, -82.0, -262.0], "radius": 5.0}
     ],
     "feeding": [
-      {"id": "plankton_bay", "kind": "plankton", "name": "Plankton bay", "pos": [10.0, -5.0, 0.0], "spread": 8.0, "items": 10},
-      {"id": "plankton_shelf", "kind": "plankton", "name": "Shelf drift", "pos": [-12.0, -8.0, -18.0], "spread": 8.0, "items": 8},
-      {"id": "algae_west", "kind": "algae", "name": "West algae bed", "pos": [-20.0, -17.0, -58.0], "spread": 7.0, "items": 8},
-      {"id": "algae_east", "kind": "algae", "name": "East algae bed", "pos": [22.0, -23.0, -96.0], "spread": 7.0, "items": 8},
-      {"id": "vents", "kind": "vent", "name": "Warm vents", "pos": [6.0, -78.0, -270.0], "spread": 9.0, "items": 8}
+      {"id": "plankton_bay", "kind": "plankton", "name": "Plankton bay", "zone": "shallows", "pos": [10.0, -5.0, 0.0], "spread": 8.0, "items": 10},
+      {"id": "plankton_shelf", "kind": "plankton", "name": "Shelf drift", "zone": "shallows", "pos": [-12.0, -8.0, -18.0], "spread": 8.0, "items": 8},
+      {"id": "algae_west", "kind": "algae", "name": "West algae bed", "zone": "reef", "pos": [-20.0, -17.0, -58.0], "spread": 7.0, "items": 8},
+      {"id": "algae_east", "kind": "algae", "name": "East algae bed", "zone": "reef", "pos": [22.0, -23.0, -96.0], "spread": 7.0, "items": 8},
+      {"id": "vents", "kind": "vent", "name": "Warm vents", "zone": "deep", "pos": [6.0, -78.0, -270.0], "spread": 9.0, "items": 8},
+      {"id": "algae_nest", "kind": "algae", "name": "Nest-side algae bed", "zone": "shallows", "pos": [-16.0, -6.0, 14.0], "spread": 6.0, "items": 6},
+      {"id": "krill_swarm", "kind": "krill", "name": "Krill swarm", "zone": "twilight", "pos": [-6.0, -36.0, -152.0], "spread": 6.0, "items": 8},
+      {"id": "fallen_giant", "kind": "carcass", "name": "Fallen giant", "zone": "deep", "pos": [-22.0, -72.0, -228.0], "spread": 4.0, "items": 4}
     ],
     "food": {
-      "plankton": {"energy": 7.0, "diet": "plant", "regrow": 20.0},
+      "plankton": {"energy": 7.0, "diet": "plant", "regrow": 20.0, "floats": true},
       "algae": {"energy": 10.0, "diet": "plant", "regrow": 30.0},
       "vent": {"energy": 22.0, "diet": "plant", "regrow": 40.0},
-      "fish": {"energy": 26.0, "diet": "meat", "regrow": 45.0}
+      "fish": {"energy": 26.0, "diet": "meat", "regrow": 45.0},
+      "krill": {"energy": 12.0, "diet": "plant", "regrow": 35.0, "floats": true},
+      "carcass": {"energy": 30.0, "diet": "meat", "regrow": 90.0}
     },
     "eat_reach": 1.4,
     "points": {"meals_per_point": 4, "zone_found": 2, "friend": 3},
@@ -99,7 +107,7 @@
     "shoal": {"name": "silver shoal", "one": "a silver shoal fish", "count": 10, "zone": "twilight", "home": [10.0, -34.0, -128.0],
               "wander": 10.0, "speed": 2.6, "flee_speed": 5.2, "flee_reach": 6.0, "flees": "always", "health": 15.0},
     "minnow": {"name": "glass minnows", "one": "a glass minnow", "count": 8, "zone": "shallows", "home": [12.0, -5.0, -8.0],
-               "wander": 9.0, "speed": 2.0, "flee_speed": 4.6, "flee_reach": 5.0, "flees": "always", "health": 8.0, "meal": 9.0,
+               "wander": 6.0, "speed": 2.0, "flee_speed": 4.6, "flee_reach": 5.0, "flees": "always", "health": 8.0, "meal": 9.0,
                "respawn": 30.0},
     "cleaner": {"name": "reef cleaners", "one": "a reef cleaner", "count": 4, "zone": "reef", "home": "shelter_reef_east",
                 "wander": 4.0, "speed": 1.6, "flee_speed": 3.6, "flee_reach": 8.0, "flees": "foe", "hide_from_lancer": 18.0,

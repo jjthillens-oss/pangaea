@@ -11,7 +11,9 @@ extends SceneTree
 ##       its test swim is the sim's own) and Done make generation 2 with the parent recorded; Escape saves and goes
 ##       back to the title. The slot then holds the aquatic block (save v5)
 ##       beside the cell's own data, and opening the stage again brings back the same fish, generation, finds,
-##       points and place (the reload check), the new tail included.
+##       points and place (the reload check), the new tail included. aquatic-r2: the new species, shelters and the
+##       fallen giant are drawn, and before mating the jaw hunter swims down and eats a glass minnow in the shallows
+##       (the minnows are its first meat).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SMOKE_DIR := "user://smoke"
@@ -57,6 +59,19 @@ func _run() -> void:
 	_check(int(sim.player.generation) == founded.save.genome.generation, "the generation is the save's (%d)" % int(sim.player.generation))
 	_check(stage.hud.card.visible, "the entry card shows")
 	_check(stage.world.get_node_or_null("Player") != null and stage.world.get_node_or_null("Lancer") != null, "the fish are drawn")
+	var drawn := PackedStringArray()
+	for id in ["minnow_01", "cleaner_01", "glowfin_01", "fallen_giant"]:
+		if stage.world.get_node_or_null(id) == null:
+			drawn.append(id)
+	_check(drawn.is_empty(), "the minnows, cleaners, glowfins and the fallen giant are drawn (missing: %s)" % [drawn])
+	var looks := {"shelter_ledge": "landmark_shed_husk", "shelter_pillars": "rare_shell_cathedral",
+			"shelter_vent_chimney": "landmark_b1_sponge_tower", "shelter_reef_west": "landmark_arch"}
+	var wrong := PackedStringArray()
+	for id in looks:
+		var node := stage.world.get_node_or_null(id)
+		if node == null or not String(node.scene_file_path).ends_with(looks[id] + ".glb"):
+			wrong.append(id)
+	_check(wrong.is_empty(), "every shelter is drawn with its own look (wrong: %s)" % [wrong])
 
 	# Swim down the slope towards the reef, diving a little; the plankton bay is on the way for an omnivore, a
 	# jaw darter finds the shoal later, so the check is that the swim moved and the zones changed.
@@ -66,6 +81,22 @@ func _run() -> void:
 	_check(sim.player.pos.distance_to(start) > 40.0, "the fish swims (%.0f m)" % sim.player.pos.distance_to(start))
 	_check(sim.discovered.size() >= 2, "it finds new places on the way: %s" % [sim.discovered])
 	_check(float(sim.player.health) > 0.0 or sim.deaths > 0, "the swim is survivable or returns to the nest")
+
+	# The hunter's first meat: back in the shallows by the minnows, it swims one down and eats it (aquatic-r2).
+	sim.player.pos = sim.home_of("minnow") + Vector3(0.0, 0.0, 12.0)
+	sim.player.heading = 0.0
+	sim.player.speed = 0.0
+	sim.player.energy = float(sim.player.stats.energy_capacity) * 0.3
+	var meals_before := sim.meals
+	var logged := stage.event_log.size()
+	stage.driver = func() -> AquaticSim.Intent: return _chase(sim, "minnow")
+	var caught := false
+	for i in 30 * AquaticSim.TICK_HZ:
+		await process_frame
+		caught = stage.event_log.slice(logged).any(func(e): return e.type == "killed" and e.species == "minnow")
+		if caught:
+			break
+	_check(caught and sim.meals == meals_before + 1, "the jaw hunter catches and eats a glass minnow in the shallows")
 
 	# Mate: a fed fish by its kin.
 	stage.driver = func() -> AquaticSim.Intent: return AquaticSim.Intent.new()
@@ -131,6 +162,22 @@ func _run() -> void:
 	_check(sim.player.pos.distance_to(was) < 0.01, "back where it left the water (%.2f m off)" % sim.player.pos.distance_to(was))
 	await _escape()
 	_check(main.aquatic_stage == null, "Escape leaves again")
+
+
+## Steers at the nearest live animal of `species`, biting when in reach.
+func _chase(sim: AquaticSim, species: String) -> AquaticSim.Intent:
+	var target: Dictionary = {}
+	for a in sim.animals:
+		if a.alive and a.species == species and (target.is_empty()
+				or a.pos.distance_to(sim.player.pos) < target.pos.distance_to(sim.player.pos)):
+			target = a
+	if target.is_empty():
+		return AquaticSim.Intent.new()
+	var to: Vector3 = target.pos - sim.player.pos
+	var off := wrapf(atan2(-to.x, -to.z) - float(sim.player.heading), -PI, PI)
+	var intent := AquaticSim.Intent.new(1.0 if absf(off) < 1.0 else 0.3, clampf(-off * 3.0, -1.0, 1.0), clampf(to.y * 0.8, -1.0, 1.0))
+	intent.bite = to.length() <= float(sim.player.stats.radius) + 1.6
+	return intent
 
 
 func _escape() -> void:

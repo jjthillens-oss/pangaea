@@ -6,13 +6,17 @@ extends SceneTree
 ##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 \
 ##     --script res://tools/godot/aquatic_shots.gd -- --out=DIR [--view=nest_start,editor,...]
 ## Views: nest_start (the spawn frame), nest_far (looking back at the nest from about 25 m), reef_west and reef_east
-## (the reef shelters), twilight_ledge (the ledge shelter), fallen_giant, deep_vents, editor (the fin and tail
+## (the reef shelters), twilight_ledge (the ledge shelter), fallen_giant, deep_vents; aquatic-r2's content:
+## shallows_minnows (the minnow school), fallen_giant_near (the dead giant and its carcass), reef_cleaners (a hurt friend resting at the cleaner station, the sim stepped
+## 4 s so they gather), glowfins_lured (a deep lure body by the glowfins' home, stepped 6 s), krill_pillars (the
+## krill swarm and the pillar ring), vent_chimney; editor (the fin and tail
 ## editor as it opens) and editor_tails (one editor frame per tail in the rules, the fish held side-on:
 ## editor_tail_<id>.png; with --close, close views of the fish only at tail strength 3: tail_<id>_<angle>.png, then
 ## fins_<n>_<angle>.png for the side fin steps and dorsal_<n>_<angle>.png for the back fin steps).
 
 const StageScript := preload("res://game/scenes/aquatic/aquatic_stage.gd")
-## view -> [player position, heading]. Heading 0 faces -Z (down the route), PI faces back to the shore.
+## view -> [player position, heading, or a point to face]. Heading 0 faces -Z (down the route), PI faces back to the
+## shore.
 const PLACES := {
 	"nest_start": [],
 	"nest_far": [Vector3(6.0, -12.0, -16.0), PI],
@@ -21,9 +25,17 @@ const PLACES := {
 	"twilight_ledge": [Vector3(-4.0, -30.0, -106.0), 0.25],
 	"fallen_giant": [Vector3(-16.0, -64.0, -212.0), 0.35],
 	"deep_vents": [Vector3(6.0, -72.0, -250.0), 0.0],
+	"shallows_minnows": [Vector3(5.0, -4.5, -1.0), Vector3(12.0, -5.0, -8.0)],
+	"fallen_giant_near": [Vector3(-10.0, -66.0, -216.0), Vector3(-22.0, -73.0, -232.0)],
+	"reef_cleaners": [],
+	"glowfins_lured": [],
+	"krill_pillars": [Vector3(-4.0, -36.0, -136.0), Vector3(8.0, -42.0, -162.0)],
+	"vent_chimney": [Vector3(15.0, -77.0, -247.0), Vector3(28.0, -82.0, -262.0)],
 }
+## The views that step the sim or change the fish come last, so they leave the others as they were.
 const ALL_VIEWS := ["nest_start", "nest_far", "reef_west", "reef_east", "twilight_ledge", "fallen_giant",
-		"deep_vents", "editor", "editor_tails"]
+		"deep_vents", "shallows_minnows", "fallen_giant_near", "krill_pillars", "vent_chimney", "editor", "editor_tails", "reef_cleaners",
+		"glowfins_lured"]
 
 var out_dir := "user://aquatic_shots"
 var views: PackedStringArray = []
@@ -54,12 +66,38 @@ func _run() -> void:
 	stage.hud.hide_card()
 	var start: Dictionary = {"pos": stage.sim.player.pos, "heading": float(stage.sim.player.heading)}
 	for view in views:
-		if PLACES.has(view):
+		if view == "reef_cleaners":
+			# A hurt friend of the cleaners rests at their station; they gather round it.
+			var sim: AquaticSim = stage.sim
+			sim.relations.cleaner.standing = "friend"
+			sim.player.health = float(sim.player.stats.max_health) * 0.4
+			await _hold(sim.home_of("cleaner") + Vector3(0.0, 0.0, 1.5), 0.0, 4.0)
+			await _shot(view)
+		elif view == "glowfins_lured":
+			# A deep-rated lure body waits by the glowfins' home; they come to its lure.
+			var sim: AquaticSim = stage.sim
+			var angler := AquaticBody.HOVERER.duplicate()
+			angler.girth = 3
+			angler.bladder = 3
+			angler.sense = "lure"
+			angler.mouth = "jaw"
+			sim.apply_offspring(angler, 0)
+			sim.take_events()
+			stage.world.rebuild_player()
+			await _hold(sim.home_of("glowfin") + Vector3(0.0, 0.0, 9.0), 0.0, 6.0)
+			await _shot(view)
+		elif PLACES.has(view):
 			var place: Array = PLACES[view]
 			var pos: Vector3 = start.pos if place.is_empty() else place[0]
 			pos.y = maxf(pos.y, stage.sim.floor_at(pos.x, pos.z) + 2.0)
 			stage.sim.player.pos = pos
-			stage.sim.player.heading = start.heading if place.is_empty() else float(place[1])
+			var heading := float(start.heading)
+			if place.size() > 1 and place[1] is Vector3:
+				var to: Vector3 = place[1] - pos
+				heading = atan2(-to.x, -to.z)
+			elif place.size() > 1:
+				heading = float(place[1])
+			stage.sim.player.heading = heading
 			stage.world.sync(0.0)
 			await _frames(30)
 			await _shot(view)
@@ -123,6 +161,19 @@ func _close_shots(editor: Control, name: String, angles: Array) -> void:
 		var path := out_dir.path_join("%s_%s.png" % [name, angle])
 		viewport.get_texture().get_image().save_png(path)
 		print("aquatic_shots: wrote ", path)
+
+
+## Steps the sim `seconds` with the fish held at `pos`, facing `heading`, still, then lets the view settle.
+func _hold(pos: Vector3, heading: float, seconds: float) -> void:
+	var sim: AquaticSim = stage.sim
+	for i in int(seconds * AquaticSim.TICK_HZ):
+		sim.player.pos = pos
+		sim.player.heading = heading
+		sim.player.speed = 0.0
+		sim.step(AquaticSim.Intent.new())
+		sim.take_events()
+	stage.world.sync(0.0)
+	await _frames(30)
 
 
 func _frames(n: int) -> void:

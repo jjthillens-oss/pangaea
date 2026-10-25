@@ -825,6 +825,185 @@ func test_every_species_is_drawn_and_none_crowds_the_spawn() -> void:
 		check(a.pos.distance_to(sim.player.pos) > reach, "%s starts clear of the fish (%.1f m)" % [a.id, a.pos.distance_to(sim.player.pos)])
 
 
+## The rules entry with `id` in rules.world[`list`] ("shelters" or "feeding").
+func _site(list: String, id: String) -> Dictionary:
+	for s in rules.world[list]:
+		if String(s.id) == id:
+			return s
+	return {}
+
+
+## aquatic-r2 (PROPOSED): a fish inside the vent chimney hears the drifter's warning but is not swept, though the
+## drifter passes within its sweep reach; the same pass sweeps a fish just above the chimney.
+func test_the_vent_chimney_hides_a_fish_from_the_drifter_sweep() -> void:
+	var chimney := _site("shelters", "shelter_vent_chimney")
+	check(not chimney.is_empty(), "the vent chimney is a shelter")
+	if chimney.is_empty():
+		return
+	var deep := AquaticBody.HOVERER.duplicate()
+	deep.girth = 3
+	deep.bladder = 3
+	var centre := AquaticSim._v(chimney.pos)
+	var runs := {}
+	for spot in [["inside", centre], ["above", centre + Vector3(0.0, float(chimney.radius) + 1.0, 0.0)]]:
+		var sim := _sim(deep)
+		var run := {"warned": false, "struck": false, "closest": INF, "sheltered": sim.sheltered(spot[1])}
+		for i in 30 * AquaticSim.TICK_HZ:
+			sim.player.pos = spot[1]
+			sim.player.health = float(sim.player.stats.max_health)
+			sim.step(AquaticSim.Intent.new())
+			run.closest = minf(run.closest, (spot[1] as Vector3).distance_to(sim.drifter.pos))
+			for e in sim.take_events():
+				run.warned = run.warned or e.type == "drifter_warning"
+				run.struck = run.struck or (e.type == "struck" and e.by == "drifter")
+		runs[spot[0]] = run
+	var reach := float(rules.hazards.drifter.sweep_reach)
+	check_eq(String(runs.inside.sheltered), "shelter_vent_chimney", "the fish is in the chimney")
+	check(runs.inside.closest < reach, "the drifter passes within its sweep of the chimney (%.1f m)" % runs.inside.closest)
+	check(runs.inside.warned and not runs.inside.struck, "inside: warned, not swept (%s)" % [runs.inside])
+	check(String(runs.above.sheltered) == "" and runs.above.warned and runs.above.struck, "just above it: swept (%s)" % [runs.above])
+	var hud := preload("res://game/ui/aquatic_hud.gd").new()
+	var sim := _sim(deep)
+	hud.setup(sim)
+	sim.player.pos = centre
+	sim.drifter.warn_ticks = 10
+	hud.refresh(0.0)
+	check_eq(hud.warn_label.text, "A huge shadow passes over your hiding place", "the HUD says the fish is hidden")
+	hud.free()
+
+
+## aquatic-r2 (PROPOSED): the pillar ring lies inside the lancer's territory, and a hoverer (slower than the lancer)
+## that reaches it ends a pursuit unhurt; the same chase away from it ends in a strike.
+func test_the_pillar_ring_ends_a_lancer_pursuit() -> void:
+	var over := _site("shelters", "shelter_pillars")
+	check(not over.is_empty(), "the pillar ring is a shelter")
+	if over.is_empty():
+		return
+	var lancer: Dictionary = rules.hazards.lancer
+	var centre := AquaticSim._v(over.pos)
+	check(centre.distance_to(AquaticSim._v(lancer.home)) < float(lancer.territory), "it is inside the lancer's territory")
+	check(float(AquaticBody.stats(AquaticBody.HOVERER, rules.body).top_speed) < float(lancer.pursue_speed), "the hoverer cannot outswim it")
+	var runs := {}
+	for way in [["to", 0.0], ["away", PI]]:
+		var sim := _sim(AquaticBody.HOVERER)
+		# 9 m out on the ring's +Z side, swimming at top speed; the lancer 10 m behind, chasing.
+		sim.player.pos = centre + Vector3(0.0, 1.5, 9.0)
+		sim.player.heading = float(way[1])
+		sim.player.speed = float(sim.player.stats.top_speed)
+		sim.lancer.pos = sim.player.pos - AquaticSim.forward_of(float(way[1])) * 10.0
+		sim.lancer.state = "pursue"
+		sim.lancer.until = sim.tick + int(round(float(lancer.pursue) * AquaticSim.TICK_HZ))
+		var run := {"why": "", "struck": false}
+		for i in 8 * AquaticSim.TICK_HZ:
+			sim.step(AquaticSim.Intent.new(1.0, 0.0, 0.0))
+			for e in sim.take_events():
+				if e.type == "struck" and e.by == "lancer":
+					run.struck = true
+				if e.type == "lancer_gave_up" and run.why == "":
+					run.why = String(e.why)
+			if run.why != "":
+				break
+		runs[way[0]] = run
+	check(runs.to.why == "hidden" and not runs.to.struck, "into the pillar ring: it gives up unhurt (%s)" % [runs.to])
+	check(runs.away.struck, "away from it: struck (%s)" % [runs.away])
+
+
+## aquatic-r2 (PROPOSED): the krill swarm (twilight, in the lancer's patrol) feeds a filter mouth and not a jaw; the
+## fallen giant's carcass (deep) feeds a jaw and not a filter mouth; each regrows on its own timer, the krill drifts in
+## open water and the carcass lies on the floor, and the nest-side algae bed is filter food in the shallows.
+func test_new_feeding_grounds_feed_the_right_mouths_and_regrow() -> void:
+	var filter := AquaticBody.HOVERER.duplicate()
+	filter.mouth = "filter"
+	var jaw := AquaticBody.HOVERER.duplicate()
+	jaw.mouth = "jaw"
+	for c in [["krill_swarm", filter, true], ["krill_swarm", jaw, false], ["fallen_giant", jaw, true], ["fallen_giant", filter, false],
+			["algae_nest", filter, true], ["algae_nest", jaw, false]]:
+		var sim := _sim(c[1])
+		var site := _site("feeding", c[0])
+		check(not site.is_empty(), "%s is a feeding site" % c[0])
+		if site.is_empty():
+			continue
+		var item: Dictionary = sim.food.filter(func(f): return f.site == c[0])[0]
+		var kind: Dictionary = rules.world.food[site.kind]
+		sim.player.energy = 10.0
+		sim.player.pos = item.pos
+		sim.step(AquaticSim.Intent.new())
+		var ate: Array = sim.take_events().filter(func(e): return e.type == "ate")
+		check_eq(not item.alive, c[2], "%s by a %s mouth: eaten %s" % [c[0], c[1].mouth, c[2]])
+		if not c[2]:
+			continue
+		check(ate.size() == 1 and is_equal_approx(float(ate[0].energy), float(kind.energy)), "worth its energy: %s" % [ate])
+		var regrow := AquaticSim._ticks(kind.regrow)
+		for i in regrow - 1:
+			sim.player.pos = Vector3(0.0, -5.0, 25.0)
+			sim.step(AquaticSim.Intent.new())
+		check(not item.alive, "%s is not back before its %.0f s" % [c[0], float(kind.regrow)])
+		sim.step(AquaticSim.Intent.new())
+		check(item.alive, "%s regrows after %.0f s" % [c[0], float(kind.regrow)])
+	var sim := _sim(AquaticBody.DARTER)
+	for f in sim.food:
+		var on_floor := float(f.pos.y) - sim.floor_at(f.pos.x, f.pos.z) <= float(rules.world.floor_margin) + 0.01
+		if f.site == "krill_swarm":
+			check(not on_floor and float(f.pos.y) > sim.floor_at(f.pos.x, f.pos.z) + 3.0, "%s drifts in open water" % f.id)
+		elif f.site == "fallen_giant":
+			check(on_floor, "%s lies on the floor" % f.id)
+
+
+## Every shelter and feeding site, and every food item, sits in the water inside the walls, in the zone its rules entry
+## names and no deeper than the deepest legal rated depth (a shelter's centre may lie on the floor, as the west arch's
+## does, but not under it, and its reach rises into open water); the ids are unique (the save's discovered list keeps
+## them); and no shelter lies across the drifter's loop, so a fish in its path is swept.
+func test_every_site_sits_in_the_water_and_its_zone() -> void:
+	var sim := _sim(AquaticBody.DARTER)
+	var w: Dictionary = rules.world
+	var r: Dictionary = rules.body.ranges
+	var rd: Dictionary = rules.body.rated_depth
+	var deepest := float(rd.base) + float(rd.per_girth) * (int(r.girth[1]) - 1) + float(rd.per_bladder) * int(r.bladder[1])
+	var ids := {}
+	var zone_of := {}
+	for list in ["shelters", "feeding"]:
+		for site in w[list]:
+			var p := AquaticSim._v(site.pos)
+			var id := String(site.id)
+			check(not ids.has(id), "%s is a unique id" % id)
+			ids[id] = true
+			zone_of[id] = String(site.get("zone", ""))
+			check_eq(String(sim.zone_at(p).id), String(site.get("zone", "")), "%s is in its zone" % id)
+			var floor_y := sim.floor_at(p.x, p.z)
+			var in_water := p.y > floor_y + float(w.floor_margin) if list == "feeding" else \
+					(p.y >= floor_y - 0.01 and p.y + float(site.radius) > floor_y + float(w.floor_margin) + 2.0)
+			check(p.y < -float(w.surface_margin) and in_water, "%s is in the water (%.1f, floor %.1f)" % [id, p.y, floor_y])
+			check(absf(p.x) <= AquaticSim.WALL_START and p.z < float(w.shore_z) and p.z > float(w.end_z), "%s is inside the walls" % id)
+			check(-p.y <= deepest, "%s is no deeper than %.0f m" % [id, deepest])
+	for f in sim.food:
+		check(-float(f.pos.y) <= deepest and String(sim.zone_at(f.pos).id) == zone_of[f.site],
+				"%s (%s) is in its site's zone at %.1f m" % [f.id, f.site, -f.pos.y])
+	var period := AquaticSim._ticks(rules.hazards.drifter.period)
+	for site in w.shelters:
+		var closest := INF
+		for t in range(0, period, 6):
+			sim.tick = t
+			sim._move_drifter()
+			closest = minf(closest, AquaticSim._v(site.pos).distance_to(sim.drifter.pos))
+		check(closest > float(site.radius) + 2.0, "%s keeps off the drifter's loop (%.1f m)" % [site.id, closest])
+
+
+## The world draws every food kind a site uses, and every shelter and landmark look names a real site and a real scene
+## (or, for a landmark, a fish FishView draws).
+func test_every_site_and_food_kind_is_drawn() -> void:
+	var world := preload("res://game/scenes/aquatic/aquatic_world.gd")
+	var fish_view := preload("res://game/scenes/aquatic/fish_view.gd")
+	for site in rules.world.feeding:
+		check(world.FOOD_SCENES.has(site.kind) and ResourceLoader.exists(world.FOOD_SCENES.get(site.kind, "")),
+				"the %s food has its scene" % site.kind)
+	for id in world.SHELTER_LOOKS:
+		check(not _site("shelters", id).is_empty(), "%s is a shelter in the rules" % id)
+		check(ResourceLoader.exists(String(world.SHELTER_LOOKS[id].scene)), "%s's scene exists" % id)
+	for id in world.SITE_LANDMARKS:
+		check(not _site("feeding", id).is_empty(), "%s is a feeding site in the rules" % id)
+		check(fish_view.SPECIES.has(String(world.SITE_LANDMARKS[id].fish)), "%s is drawn as a fish FishView knows" % id)
+
+
 func test_the_world_is_deterministic() -> void:
 	var a := _sim(AquaticBody.HOVERER, 42)
 	var b := _sim(AquaticBody.HOVERER, 42)

@@ -197,6 +197,7 @@ func _clamp_to_water(pos: Vector3) -> Vector3:
 	return pos
 
 
+## The shelter `pos` is in, or "". A sheltered fish is left alone by the lancer and out of the drifter's sweep.
 func sheltered(pos: Vector3) -> String:
 	for s in rules.world.shelters:
 		if pos.distance_to(_v(s.pos)) <= float(s.radius):
@@ -218,7 +219,7 @@ func _build_food() -> void:
 			var a := _rng_food.randf() * TAU
 			var r := sqrt(_rng_food.randf()) * float(site.spread)
 			var p := centre + Vector3(cos(a) * r, (_rng_food.randf() - 0.5) * 3.0, sin(a) * r)
-			if String(site.kind) != "plankton":
+			if not bool(rules.world.food[site.kind].get("floats", false)):
 				p.y = floor_at(p.x, p.z) + 0.6
 			n += 1
 			food.append({"id": "food_%03d" % n, "kind": String(site.kind), "site": String(site.id),
@@ -392,9 +393,10 @@ func _animals_tick() -> void:
 			speed = float(cfg.flee_speed)
 		elif cfg.has("lured") and player.stats.lure and to_player.length() <= float(cfg.lured.reach) \
 				and player.pos.distance_to(a.home) <= float(cfg.lured.leash):
-			# Drawn to the lure that hangs ahead of the fish's head, each a little to one side.
+			# Drawn to the lure that hangs ahead of the fish's head, each to its own side of it.
 			a.state = "lured"
-			goal = head + Vector3(float(n % 3) - 1.0, 0.3 if n % 6 >= 3 else -0.3, 0.0) * 0.8
+			var ang := float(n) * 2.4
+			goal = head + Vector3(cos(ang) * 0.9, sin(float(n) * 1.7) * 0.45, sin(ang) * 0.55)
 			speed = float(cfg.lured.speed)
 		elif to_player.length() < float(cfg.flee_reach) and (String(cfg.get("flees", "foe")) == "always" or rel.standing == "foe"):
 			a.state = "flee"
@@ -560,7 +562,9 @@ func _drifter_tick() -> void:
 		drifter.warn_ticks = int(drifter.warn_ticks) + 1
 	else:
 		drifter.warn_ticks = 0
-	if dist < float(cfg.sweep_reach) and int(drifter.warn_ticks) > int(_t.drifter_warn) and tick >= int(drifter.cooldown_until):
+	# Its warning runs over a sheltered fish too, but the sweep cannot reach into a shelter (aquatic-r2).
+	if dist < float(cfg.sweep_reach) and int(drifter.warn_ticks) > int(_t.drifter_warn) and tick >= int(drifter.cooldown_until) \
+			and sheltered(player.pos) == "":
 		_hurt(float(cfg.sweep_damage), "drifter")
 		var away: Vector3 = (player.pos - drifter.pos)
 		away.y = 0.0

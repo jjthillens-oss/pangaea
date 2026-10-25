@@ -12,10 +12,13 @@ const Look := preload("res://game/scenes/creature/creature_look.gd")
 
 ## The species' bodies and sizes (scale_m: the reference length, about the fish's length at body length 2). Each body
 ## is a legal AquaticBody (tests/test_aquatic_sim.gd). "look" fixes the skin pattern (creature_skin.gdshader's
-## coat_pattern and detail_pattern) for a species that is told by it; without one each animal gets its own.
-## aquatic-r2 (PROPOSED looks): the glass minnows are small pale countershaded flukes, the reef cleaners blue striped
-## ribbons with barbels, the vent glowfins violet spotted paddles with a lure. None is the threat pink or the
-## yellow-green of food.
+## coat_pattern and detail_pattern) for a species that is told by it; without one each animal gets its own. "shader"
+## sets more of the skin shader's parameters (stage_look 0 is the cell stage's soft membrane with its rim glow);
+## "light" hangs a small light on the fish (colour, energy, range m) that lights it and the water round it.
+## aquatic-r2 (PROPOSED looks): the glass minnows are small glassy countershaded flukes, the reef cleaners blue
+## ribbons with pale cross bands and barbels, the vent glowfins violet paddles with a lure, cyan eye spots and their
+## own cyan glow. The small ones have no side fins drawn, so they read as fish, not as fins. None is the threat pink
+## or the yellow-green of food.
 const SPECIES := {
 	"grazer": {"body": {"length": 1, "girth": 2, "tail": "ribbon", "tail_size": 1, "fins": 2, "dorsal": 1, "bladder": 2,
 			"sense": "eyes", "mouth": "filter", "hue": 0.13}, "scale_m": 0.85, "sat": 0.7, "val": 0.95, "pattern": 1},
@@ -25,15 +28,16 @@ const SPECIES := {
 			"sense": "eyes", "mouth": "jaw", "hue": 0.98}, "scale_m": 2.3, "sat": 0.55, "val": 0.55, "pattern": 3},
 	"drifter": {"body": {"length": 3, "girth": 3, "tail": "fluke", "tail_size": 3, "fins": 2, "dorsal": 0, "bladder": 3,
 			"sense": "barbels", "mouth": "filter", "hue": 0.62}, "scale_m": 17.0, "sat": 0.35, "val": 0.4, "pattern": 4},
-	"minnow": {"body": {"length": 2, "girth": 1, "tail": "fluke", "tail_size": 1, "fins": 1, "dorsal": 0, "bladder": 1,
-			"sense": "eyes", "mouth": "filter", "hue": 0.52}, "scale_m": 0.3, "sat": 0.14, "val": 1.0, "pattern": 5,
-			"look": {"coat_pattern": 3, "detail_pattern": 0}},
-	"cleaner": {"body": {"length": 1, "girth": 1, "tail": "ribbon", "tail_size": 2, "fins": 2, "dorsal": 1, "bladder": 1,
-			"sense": "barbels", "mouth": "filter", "hue": 0.6}, "scale_m": 0.55, "sat": 0.8, "val": 0.95, "pattern": 6,
+	"minnow": {"body": {"length": 2, "girth": 1, "tail": "fluke", "tail_size": 1, "fins": 0, "dorsal": 0, "bladder": 1,
+			"sense": "eyes", "mouth": "filter", "hue": 0.54}, "scale_m": 0.5, "sat": 0.4, "val": 1.0, "pattern": 5,
+			"look": {"coat_pattern": 3, "detail_pattern": 0}, "shader": {"stage_look": 0}},
+	"cleaner": {"body": {"length": 1, "girth": 1, "tail": "ribbon", "tail_size": 2, "fins": 0, "dorsal": 1, "bladder": 1,
+			"sense": "barbels", "mouth": "filter", "hue": 0.6}, "scale_m": 0.55, "sat": 0.85, "val": 0.95, "pattern": 6,
 			"look": {"coat_pattern": 2, "detail_pattern": 1}},
-	"glowfin": {"body": {"length": 2, "girth": 2, "tail": "paddle", "tail_size": 2, "fins": 2, "dorsal": 0, "bladder": 3,
-			"sense": "lure", "mouth": "jaw", "hue": 0.76}, "scale_m": 0.7, "sat": 0.55, "val": 0.85, "pattern": 7,
-			"look": {"coat_pattern": 3, "detail_pattern": 4}},
+	"glowfin": {"body": {"length": 2, "girth": 2, "tail": "paddle", "tail_size": 2, "fins": 0, "dorsal": 0, "bladder": 3,
+			"sense": "lure", "mouth": "jaw", "hue": 0.78}, "scale_m": 0.7, "sat": 0.5, "val": 1.0, "pattern": 7,
+			"look": {"coat_pattern": 3, "detail_pattern": 4}, "shader": {"stage_look": 0, "color_detail": Color(0.55, 0.95, 1.0)},
+			"light": [Color(0.45, 0.9, 1.0), 1.4, 3.0]},
 }
 ## Drawn for a species with no entry above (a species added to the rules before its look): a plain grey fish.
 const FALLBACK := {"body": {"length": 2, "girth": 1, "tail": "fluke", "tail_size": 2, "fins": 1, "dorsal": 0, "bladder": 1,
@@ -51,8 +55,10 @@ static func color_of(hue: float, sat := 0.6, val := 0.85) -> Color:
 
 
 ## A rig for `body` at `scale_m`, skinned at `divisions`. Faces -Z, like the sim's heading 0. `look` (coat_pattern,
-## detail_pattern) fixes the pattern; without it the pattern follows `pattern_index`.
-static func make(body: Dictionary, scale_m: float, divisions: int, color: Color, pattern_index := 0, look := {}) -> Node3D:
+## detail_pattern) fixes the pattern; without it the pattern follows `pattern_index`. `shader` sets more skin shader
+## parameters.
+static func make(body: Dictionary, scale_m: float, divisions: int, color: Color, pattern_index := 0, look := {},
+		shader := {}) -> Node3D:
 	var desc = AquaticBody.to_description(body, scale_m)
 	var key := JSON.stringify([body, scale_m, divisions], "", true)
 	if not _arrays.has(key):
@@ -65,7 +71,9 @@ static func make(body: Dictionary, scale_m: float, divisions: int, color: Color,
 	rig.add_parts(AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
 	var pattern := Look.rival_pattern(pattern_index)
 	pattern.merge(look, true)
-	rig.use_skin_shader(Look.shader_params(color, pattern))
+	var params := Look.shader_params(color, pattern)
+	params.merge(shader, true)
+	rig.use_skin_shader(params)
 	rig.swim_amplitude_deg = 12.0
 	rig.swim_wavelength = 1.0
 	return rig
@@ -75,8 +83,17 @@ static func make_species(species: String, divisions: int, index := 0) -> Node3D:
 	if not SPECIES.has(species):
 		push_warning("FishView: no look for the species '%s'; drawn plain." % species)
 	var s: Dictionary = SPECIES.get(species, FALLBACK)
-	return make(s.body, float(s.scale_m), divisions, color_of(float(s.body.hue), float(s.sat), float(s.val)), int(s.pattern) + index,
-			s.get("look", {}))
+	var rig := make(s.body, float(s.scale_m), divisions, color_of(float(s.body.hue), float(s.sat), float(s.val)), int(s.pattern) + index,
+			s.get("look", {}), s.get("shader", {}))
+	if s.has("light"):
+		var glow := OmniLight3D.new()
+		glow.name = "Glow"
+		glow.light_color = s.light[0]
+		glow.light_energy = float(s.light[1])
+		glow.omni_range = float(s.light[2])
+		glow.shadow_enabled = false
+		rig.add_child(glow)
+	return rig
 
 
 ## The rig's swim wave follows its speed: faster beats as it swims faster, a slow idle wave when still.
