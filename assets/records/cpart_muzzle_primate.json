@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short squared muzzle with a broad dark nose pad, nostrils and a mouth line, framed by locks of fur.",
+  "purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short snout with a primate's side profile (nose bridge, rounded nose tip, upper lip, mouth line, lower lip, small chin) and a squared front, a broad dark nose pad with nostrils, framed by locks of fur.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_muzzle_primate.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_muzzle_primate.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 3,
+  "revision": 4,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.089,
-    "y_forward": 0.102,
-    "z_up": 0.03
+    "x": 0.09,
+    "y_forward": 0.103,
+    "z_up": 0.029
   },
-  "triangles": 1151,
+  "triangles": 1095,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -67,7 +67,7 @@
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "muzzle_primate",
-    "footprint_radius_m": 0.055,
+    "footprint_radius_m": 0.056,
     "sink_depth_m": 0.008,
     "chiral": false,
     "orientation": "forward_cone",
@@ -98,11 +98,20 @@
     "M_MuzzlePrimateCavity": 0.0,
     "M_MuzzlePrimateFur": 0.9
   },
+  "review_notes": {
+    "revision": 4,
+    "cause": "Revision 3's snout was a superellipse plateau: a flat top 19 mm high from y -23 to -8 mm with steep steps at both ends, and the brow ridge stood just as high (18.8 mm), so the Blender gray side view read as two slabs with a slot between them. The nose pad was a flattened blob laid on the flat top. The first revision 4 build also showed that the default 0.8 mm decimation cut a pad that follows a curved snout down to 8 triangles.",
+    "change": "The snout is a side profile (MZ_PROFILE, a clamped cubic spline over the face plane): it rises from the nose bridge between the eyes (y +2 mm, 7.8 mm high) to a rounded nose tip (y -14 mm, 20 mm), rolls over the upper lip (y -20 mm, 18.7 mm) to a 1 mm crease at the mouth line, a small rolled lower lip, a shallow groove and a chin pad, and recedes into the face by y -44 mm. Across x it is a narrow 7 mm bridge widening to the squared 21.5 mm half width at the nose and lips, a little narrower at the chin, with steep sides, so the front outline stays square. The brow is lower (10 mm, was 13.5 mm) and sits under the nose tip. The nose pad is a leather oval (the leather pad material, roughness 0.4; through the old helper-name collision it had been the glossy frog-disc material) laid over the nose tip along the snout's curve, 0.9 mm proud with its rim tucked under; the nostrils are two tilted dark ovals on it and the mouth line follows the crease. The eye hollows, nostrils and mouth line face out of the face (+Z); they were wound inward and showed only because the materials are double-sided. The decimation keeps the default 0.8 mm but holds the snout within 0.45 mm (_points_fit); the nose pad and the dark decals are authored at their final density and not decimated. The fur ruff is resampled (41 points, 6 sides; was 49 and 7) to stay in budget. H1_Snout moves the whole snout with the new snout mask (12 mm out, 3 mm down); H2_Brow is unchanged. 1095 of 1200 triangles (was 1151); 0.09 x 0.103 x 0.029 m (was 0.089 x 0.102 x 0.03); footprint 0.056 m (was 0.055, from the resampled ruff); sink, pivot, the eye sockets (x +-15.5 mm, y +9 mm, same depth), handle keys, sockets (none) and material names unchanged.",
+    "gate1_shape": "pass: Blender gray front, side, three-quarter and low three-quarter with the plate stood up as on a head (tools/blender/render_part_review.py --stand): the side outline runs from the brow ridge down into a dip at the bridge, out along the snout to a rounded nose tip, over the upper lip into the mouth crease, and back past a small lower lip and chin into the face (before: a flat-topped block with a vertical front, as high as the brow, with a slot between). Front: a squared muzzle with an oval nose pad and a curved mouth line. H1_Snout at 1000 pushes the whole snout out keeping its profile; H2_Brow at 1000 makes the brow heavier. Remaining: in grazing light a few flat facets show on the snout's lower sides.",
+    "gate2_materials": "pass: Blender material front and three-quarter: a dark leather nose pad with two darker nostrils, pale pored skin, the dark mouth line and eye hollows, the brown fur ruff; in Godot the same pieces read apart.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); captured front and side in Godot. On the monkey preset in the creature editor scene (tools/godot/part_on_body_shot.gd) it reads at the world's gameplay distance as the grey snout under the eyes, and close up the rounded snout with its oval nose pad replaces the box with a nose block. The preset places the plate low on the head facing forward and down, so in the editor the profile is seen mostly from below: placement, not the part."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 2844,
-    "triangles_after": 1151
+    "triangles_before": 4183,
+    "triangles_after": 1095
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -3864,9 +3864,29 @@ def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
     return verts, faces
 
 
+def _disc_faces(fcs, base, rings, segs):
+    """Faces of a disc laid out as a centre vertex at `base` and then `rings` rings of `segs` vertices each (rings
+    counter-clockwise seen from +Z), wound to face +Z."""
+    for k in range(segs):
+        fcs.append((base, base + 1 + k, base + 1 + (k + 1) % segs))
+    for r in range(1, rings):
+        a0, b0 = base + 1 + (r - 1) * segs, base + 1 + r * segs
+        for k in range(segs):
+            t = (k + 1) % segs
+            fcs.append((a0 + k, b0 + k, b0 + t, a0 + t))
+
+
 MUZZLE_SINK = 0.008
 MZ_RX, MZ_RY = 0.044, 0.048
 MZ_EYES = ((-0.0155, 0.009), (0.0155, 0.009))
+MZ_BROW = 0.010         # the brow ridge's height over the face plane (was 0.0135): it now sits under the nose tip
+# The snout's side profile at x = 0, as the total surface height (mm) at y (m) before the mouth crease, lip roll and
+# chin pad are added: it rises from the nose bridge between the eyes (y +2 mm, 8 mm) to the nose tip (y -14 mm,
+# 20 mm), rounds over the upper lip (y -20 mm, 18.7 mm) and recedes past the mouth line to the chin (y -36 mm, 8 mm).
+# None marks where the snout term is zero.
+MZ_PROFILE = ((0.008, None), (0.004, 6.0), (0.002, 7.8), (-0.001, 10.6), (-0.004, 13.7), (-0.008, 17.7), (-0.012, 19.9),
+              (-0.016, 19.8), (-0.020, 18.7), (-0.023, 17.3), (-0.0255, 16.0), (-0.028, 14.6), (-0.031, 12.6),
+              (-0.034, 10.0), (-0.037, 7.2), (-0.040, 5.0), (-0.044, None))
 
 
 def _mz_smoothstep(e0, e1, v):
@@ -3879,12 +3899,6 @@ def _mz_brow_y(x):
     return 0.0205 + 0.0035 * math.exp(-((abs(x) - 0.0155) / 0.009) ** 2) - 0.003 * (x / 0.034) ** 2
 
 
-def _mz_muzzle(x, y):
-    """0..1 plateau of the squared muzzle block (a superellipse with steep sides)."""
-    m = ((x / 0.021) ** 4 + ((y + 0.016) / 0.0165) ** 4) ** 0.25
-    return 1.0 - _mz_smoothstep(0.45, 1.25, m)
-
-
 def _mz_socket(x, y):
     """(depth 0..1, rim 0..1) of the nearer eye socket."""
     best = (0.0, 0.0)
@@ -3895,21 +3909,111 @@ def _mz_socket(x, y):
     return best
 
 
-def _mz_height(x, y):
-    """The face plate's surface as one height field: a gently domed face plane, two deep eye sockets with a
-    raised rim, a heavy brow ridge fused into the plate above them, and a squared muzzle block below that
-    stands well proud of the face with a flat front; the rim rolls back into the skin."""
+def _mz_face(x, y):
+    """The face plate without the snout: a gently domed face plane, two deep eye sockets with a raised rim, the
+    brow ridge fused into the plate above them and the groove down the nose bridge."""
     r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
     z = 0.006 - 0.0035 * r2
     deep, rim = _mz_socket(x, y)
     z += 0.0015 * rim - 0.0115 * deep
     by = _mz_brow_y(x)
     xm = 1.0 - _mz_smoothstep(0.032, 0.040, abs(x))
-    z += 0.0135 * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else 0.0135 * xm * math.exp(-((y - by) / 0.009) ** 2)
-    z += 0.0135 * _mz_muzzle(x, y)
+    z += MZ_BROW * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else MZ_BROW * xm * math.exp(-((y - by) / 0.009) ** 2)
     z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _mz_smoothstep(-0.005, 0.0, y) * (1.0 - _mz_smoothstep(0.012, 0.018, y))  # nose-bridge groove
+    return z
+
+
+def _mz_clamped_spline(knots):
+    """A cubic spline through (x, y) knots (x increasing) with zero slope at both ends; returns f(x), 0 outside."""
+    xs, ys = [k[0] for k in knots], [k[1] for k in knots]
+    n = len(xs)
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    a, b, c, d = [0.0] * n, [0.0] * n, [0.0] * n, [0.0] * n
+    a[0], c[0], d[0] = 2 * h[0], h[0], 3 * (ys[1] - ys[0]) / h[0]
+    for i in range(1, n - 1):
+        a[i], b[i], c[i] = 2 * (h[i - 1] + h[i]), h[i - 1], h[i]
+        d[i] = 3 * ((ys[i + 1] - ys[i]) / h[i] - (ys[i] - ys[i - 1]) / h[i - 1])
+    a[-1], b[-1], d[-1] = 2 * h[-1], h[-1], -3 * (ys[-1] - ys[-2]) / h[-1]
+    cp, dp = [0.0] * n, [0.0] * n
+    cp[0], dp[0] = c[0] / a[0], d[0] / a[0]
+    for i in range(1, n):
+        m = a[i] - b[i] * cp[i - 1]
+        cp[i] = c[i] / m if i < n - 1 else 0.0
+        dp[i] = (d[i] - b[i] * dp[i - 1]) / m
+    cc = [0.0] * n
+    cc[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        cc[i] = dp[i] - cp[i] * cc[i + 1]
+    segs = [(xs[i], ys[i], (ys[i + 1] - ys[i]) / h[i] - h[i] * (2 * cc[i] + cc[i + 1]) / 3, cc[i], (cc[i + 1] - cc[i]) / (3 * h[i]))
+            for i in range(n - 1)]
+
+    def f(v):
+        if v <= xs[0] or v >= xs[-1]:
+            return 0.0
+        for i in range(n - 1):
+            if v <= xs[i + 1]:
+                x0, y0, s1, s2, s3 = segs[i]
+                t = v - x0
+                return y0 + t * (s1 + t * (s2 + t * s3))
+        return 0.0
+    return f
+
+
+# The snout's added height along x = 0: the profile minus the face plate under it, as a smooth spline.
+_MZ_SNOUT_Y = _mz_clamped_spline(sorted((y, 0.0 if t is None else t / 1000.0 - _mz_face(0.0, y)) for y, t in MZ_PROFILE))
+
+
+def _mz_mouth_y(x):
+    """The mouth line across the muzzle front, curving up at the corners."""
+    return -0.0255 + 0.0035 * (x / 0.014) ** 2
+
+
+def _mz_snout_w(y):
+    """The snout's half width: a narrow nose bridge (7 mm) between the eyes, widening to the squared muzzle
+    (21.5 mm) at the nose and lips, a little narrower again at the chin."""
+    return (0.007 + 0.0145 * _mz_smoothstep(0.004, -0.014, y)) * (1.0 - 0.22 * _mz_smoothstep(-0.028, -0.040, y))
+
+
+def _mz_snout_mask(x, y):
+    """0..1 across the snout: flat over its middle, falling steeply at its sides (the squared front outline)."""
+    return 1.0 - _mz_smoothstep(0.55, 1.15, abs(x) / _mz_snout_w(y))
+
+
+def _mz_snout(x, y):
+    """The snout's height over the face plate: the side profile, a crease at the mouth line, the lower lip rolled
+    out under it, a shallow groove and then a small chin pad."""
+    my = _mz_mouth_y(x)
+    z = _MZ_SNOUT_Y(y)
+    z -= 0.0010 * math.exp(-((y - my) / 0.0014) ** 2)
+    z += 0.0006 * math.exp(-((y - my + 0.0030) / 0.0016) ** 2)
+    z -= 0.0005 * math.exp(-((y + 0.0315) / 0.0016) ** 2)
+    z += 0.0010 * math.exp(-((y + 0.0345) / 0.0026) ** 2) * math.exp(-(x / 0.011) ** 2)
+    return z * _mz_snout_mask(x, y)
+
+
+def _mz_height(x, y):
+    """The face plate's surface as one height field: the face plane with its sockets and brow (_mz_face) and the
+    snout standing out of it below the eyes; the rim rolls back into the skin."""
+    r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
+    z = _mz_face(x, y) + _mz_snout(x, y)
     edge = max(0.0, (math.sqrt(r2) - 0.86) / 0.14)
     return z - (z + MUZZLE_SINK * 0.9) * edge ** 2
+
+
+# The nose pad: an oval of leather laid over the nose tip, narrower at its lower end, standing up to 0.9 mm proud
+# of the snout with its rim tucked 0.5 mm under it.
+MZ_NOSE = (0.0, -0.0105, 0.0105, 0.0064)     # centre x, y, half width, half height
+
+
+def _mz_nose_u(x, y):
+    cx, cy, rx, ry = MZ_NOSE
+    v = (y - cy) / ry
+    return math.hypot((x - cx) / (rx * (1.0 - 0.2 * max(0.0, -v))), v)
+
+
+def _mz_nose_top(x, y):
+    u = _mz_nose_u(x, y)
+    return _mz_height(x, y) + 0.0014 * math.sqrt(max(0.0, 1.0 - u * u)) - 0.0005
 
 
 def _mz_overhang(x, y, z):
@@ -3921,10 +4025,12 @@ def _mz_overhang(x, y, z):
 
 def build_muzzle_primate():
     """A monkey's face plate, mounted on the front of the head (+Z out of the face, +Y up toward the brow): a
-    bare face plane with two deep eye sockets (room for eye parts), a heavy brow ridge fused into the plate that
-    overhangs them, a squared muzzle block with a broad dark nose pad and two nostrils, a mouth line across the
-    muzzle, and locks of fur growing from the face edge. H1_Snout pushes the muzzle out, H2_Brow makes the brow heavier."""
-    rings, segs = 18, 48
+    bare face plane with two deep eye sockets (room for eye parts), a brow ridge fused into the plate that
+    overhangs them, a snout with a primate's side profile (a narrow nose bridge rising between the eyes to a
+    rounded nose tip, an upper lip rolling over into the mouth line, a lower lip and a small receding chin) and a
+    squared front, a broad dark nose pad over the nose tip with two nostrils, and locks of fur growing from the
+    face edge. H1_Snout pushes the snout out, H2_Brow makes the brow heavier."""
+    rings, segs = 26, 64
     verts, fcs = [(0.0, 0.0, _mz_height(0.0, 0.0))], []
     for r in range(1, rings + 1):
         for s in range(segs):
@@ -3943,45 +4049,58 @@ def build_muzzle_primate():
     hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
     face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin])
     skin.name = "M_MuzzlePrimateSkin"
-    # The nose pad: broad, flat and dark across the top of the muzzle.
-    top = _mz_height(0.0, -0.011)
-    nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0012)), 0.0105, 0.0062, 0.0026, sub=2, power=0.7,
-                   shape=lambda n: (1.0 - 0.25 * max(0.0, -n.y), 1.0, 0.0))
+    # The nose pad: a leather oval laid over the nose tip, following the snout's curve, its rim tucked under.
+    cx, cy, rx, ry = MZ_NOSE
+    nv, nf = [(cx, cy, _mz_nose_top(cx, cy))], []
+    lr, ls = 5, 24
+    for r in range(1, lr + 1):
+        u = math.sin(0.5 * math.pi * r / lr)       # rings crowd toward the rim, where the pad rolls under
+        for k in range(ls):
+            a = 2 * math.pi * k / ls
+            v = u * math.sin(a)
+            x, y = cx + rx * (1.0 - 0.2 * max(0.0, -v)) * u * math.cos(a), cy + ry * v
+            nv.append((x, y, _mz_nose_top(x, y)))
+    _disc_faces(nf, 0, lr, ls)
     nose_mat = _leather_pad_material("M_MuzzlePrimateNoseProc")
-    nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
+    nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face, fix_normals=False)
     nose_mat.name = "M_MuzzlePrimateNose"
-    # The nostrils (set into the pad's lower edge) and the mouth line across the muzzle front: dark recesses.
+    # The nostrils (two dark ovals set into the pad's lower part, on the front of the nose tip, tilted out at the
+    # top) and the mouth line along the crease across the muzzle front: dark recesses.
     hv, hf = [], []
     for sx in (-1.0, 1.0):
-        bc.append(hv, hf, *_blob(Vector((sx * 0.0048, -0.0138, top + 0.0016)), 0.0022, 0.0014, 0.0012, sub=1))
+        base = len(hv)
+        ox, oy, tilt = sx * 0.0047, -0.0142, sx * math.radians(25.0)
+        hv.append((ox, oy, _mz_nose_top(ox, oy) + 0.00015))
+        for r in range(1, 3):
+            for k in range(10):
+                a = 2 * math.pi * k / 10
+                lx, ly = 0.0021 * r / 2 * math.cos(a), 0.0012 * r / 2 * math.sin(a)
+                x, y = ox + lx * math.cos(tilt) - ly * math.sin(tilt), oy + lx * math.sin(tilt) + ly * math.cos(tilt)
+                hv.append((x, y, _mz_nose_top(x, y) + (0.00015 if r < 2 else 0.00005)))
+        _disc_faces(hf, base, 2, 10)
     mouth = []
     for k in range(9):
         x = -0.014 + 0.028 * k / 8
-        y = -0.0255 + 0.0035 * (x / 0.014) ** 2
+        y = _mz_mouth_y(x)
         mouth.append(Vector((x, y, _mz_height(x, y) + 0.0002)))
     mv, mf, _ = _tube(mouth, lambda i, a: 0.0011 * math.sin(math.pi * (0.05 + 0.9 * i / 8)) ** 0.5, 5)
-    bc.append(hv, hf, mv, mf)
+    bc.append(hv, hf, mv, [q[::-1] for q in mf])     # _tube winds its faces inward
     for ex, ey in MZ_EYES:
         base = len(hv)
-        lr, ls = 4, 20
+        lr, ls = 2, 12
         hv.append((ex, ey, _mz_height(ex, ey) + 0.0012))
         for r in range(1, lr + 1):
             for k in range(ls):
                 a = 2 * math.pi * k / ls
                 x, y = ex + 0.0098 * 0.55 * r / lr * math.cos(a), ey + 0.0088 * 0.55 * r / lr * math.sin(a)
                 hv.append(_mz_overhang(x, y, _mz_height(x, y) + 0.0012))
-        for k in range(ls):
-            hf.append((base, base + 1 + (k + 1) % ls, base + 1 + k))
-        for r in range(1, lr):
-            a0, b0 = base + 1 + (r - 1) * ls, base + 1 + r * ls
-            for k in range(ls):
-                t = (k + 1) % ls
-                hf.append((a0 + k, a0 + t, b0 + t, b0 + k))
-    holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face)
+        _disc_faces(hf, base, lr, ls)
+    # Every piece is wound to face out of the face (+Z): open discs are left as authored, not re-oriented.
+    holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face, fix_normals=False)
     hole_mat.name = "M_MuzzlePrimateCavity"
     # The fur frame: a thick scalloped ruff over the crown and down the cheeks, tapering out at the jaw so the
     # chin stays bare; each scallop a clump of fur swelling outward, not a flat even ring.
-    n, lobes = 49, 11
+    n, lobes = 41, 11
     a0, a1 = math.radians(-58.0), math.radians(238.0)
     path, rad = [], []
     for i in range(n):
@@ -3993,19 +4112,26 @@ def build_muzzle_primate():
         px, py = out * MZ_RX * c, out * MZ_RY * s
         path.append(Vector((px, py, _mz_height(px, py) + 0.0008 * w)))
         rad.append(max(0.0008, w * (0.0055 + 0.003 * lobe)))
-    tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 7)
+    tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 6)
     fur_mat = _mammal_fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
     fur = bc.mesh_object("FurFrame", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in tv], tf, [fur_mat], parent=face)
     fur_mat.name = "M_MuzzlePrimateFur"
     objs = [face, nose, holes, fur]
+    # The decimation keeps the default 0.8 mm tolerance over the face, but the snout (its profile is the point of
+    # revision 4) must stay within 0.45 mm. The nose pad (0.9 mm proud) and the thin dark decals (sockets, nostrils,
+    # mouth, 0.15 to 1.2 mm proud) are authored at their final density and not decimated: at 0.8 mm the pad fell to
+    # 8 triangles and the decals could sink under the skin.
+    snout_pts = [Vector(v) for v in verts if _mz_snout(v[0], v[1]) > 0.0005]
     baked = _bake(objs, "PartMuzzlePrimate", {"M_MuzzlePrimateSkin": sf.tint(_lin("#C49A86")), "M_MuzzlePrimateNose": sf.tint(_lin("#4A3532")),
-                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#6E5A48"))})
+                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#6E5A48"))},
+                  keep=("Nose", "Cavities"), accept={"MuzzlePrimate": _points_fit(snout_pts, 0.00045)})
     pts = _check_pivot("muzzle_primate", MUZZLE_SINK)
     foot = _footprint(pts)
 
     def snout(co):
-        # The whole squared block moves out together (a plateau mask), so it stays a block, not a cone.
-        k = _mz_muzzle(co.x, co.y + 0.002) if co.z > 0.0 else 0.0
+        # The whole snout moves out together (its own mask, flat across the nose and lips and fading over the
+        # bridge and under the chin), so it keeps its profile instead of turning into a cone.
+        k = _mz_snout_mask(co.x, co.y + 0.002) * _mz_smoothstep(0.006, -0.008, co.y) * (1.0 - _mz_smoothstep(-0.030, -0.042, co.y)) if co.z > 0.0 else 0.0
         co.z += 0.012 * k
         co.y -= 0.003 * k
         return co
@@ -4024,9 +4150,56 @@ def build_muzzle_primate():
     rules = _rules("muzzle_primate", round(foot + 0.001, 3), MUZZLE_SINK, "forward_cone", ["spine"], 30, 25, centerline="required")
     rules["handles"] = handles
     rules["pivot_note"] = "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
-    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short squared muzzle with a broad dark nose pad, nostrils and a mouth line, framed by locks of fur.",
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short snout with a primate's side profile (nose bridge, rounded nose tip, upper lip, mouth line, lower lip, small chin) and a squared front, a broad dark nose pad with nostrils, framed by locks of fur.",
             "category": "part", "part_type": "muzzle_primate", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 3, **baked}
+            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 4,
+            "review_notes": MUZZLE_PRIMATE_REVIEW, **baked}
+
+
+MUZZLE_PRIMATE_REVIEW = {
+    "revision": 4,
+    "cause": "Revision 3's snout was a superellipse plateau: a flat top 19 mm high from y -23 to -8 mm with steep steps "
+             "at both ends, and the brow ridge stood just as high (18.8 mm), so the Blender gray side view read as two "
+             "slabs with a slot between them. The nose pad was a flattened blob laid on the flat top. The first "
+             "revision 4 build also showed that the default 0.8 mm decimation cut a pad that follows a curved snout "
+             "down to 8 triangles.",
+    "change": "The snout is a side profile (MZ_PROFILE, a clamped cubic spline over the face plane): it rises from the "
+              "nose bridge between the eyes (y +2 mm, 7.8 mm high) to a rounded nose tip (y -14 mm, 20 mm), rolls over "
+              "the upper lip (y -20 mm, 18.7 mm) to a 1 mm crease at the mouth line, a small rolled lower lip, a "
+              "shallow groove and a chin pad, and recedes into the face by y -44 mm. Across x it is a narrow 7 mm "
+              "bridge widening to the squared 21.5 mm half width at the nose and lips, a little narrower at the chin, "
+              "with steep sides, so the front outline stays square. The brow is lower (10 mm, was 13.5 mm) and sits "
+              "under the nose tip. The nose pad is a leather oval (the leather pad material, roughness 0.4; through "
+              "the old helper-name collision it had been the glossy frog-disc material) laid over the nose tip along "
+              "the snout's curve, 0.9 mm proud with its rim tucked under; the nostrils are two tilted dark ovals on "
+              "it and the mouth line follows the crease. The eye hollows, nostrils and mouth line face out of the "
+              "face (+Z); they were wound inward and showed only because the materials are double-sided. The "
+              "decimation keeps the default 0.8 mm but holds the snout within 0.45 mm (_points_fit); the nose pad and "
+              "the dark decals are authored at their final density and not decimated. The fur ruff is resampled (41 "
+              "points, 6 sides; was 49 and 7) to stay in budget. H1_Snout moves the whole snout with the new snout "
+              "mask (12 mm out, 3 mm down); H2_Brow is unchanged. 1095 of 1200 triangles (was 1151); 0.09 x 0.103 x "
+              "0.029 m (was 0.089 x 0.102 x 0.03); footprint 0.056 m (was 0.055, from the resampled ruff); sink, "
+              "pivot, the eye sockets (x +-15.5 mm, y +9 mm, same depth), handle keys, sockets (none) and material "
+              "names unchanged.",
+    "gate1_shape": "pass: Blender gray front, side, three-quarter and low three-quarter with the plate stood up as on a "
+                   "head (tools/blender/render_part_review.py --stand): the side outline runs from the brow ridge down "
+                   "into a dip at the bridge, out along the snout to a rounded nose tip, over the upper lip into the "
+                   "mouth crease, and back past a small lower lip and chin into the face (before: a flat-topped block "
+                   "with a vertical front, as high as the brow, with a slot between). Front: a squared muzzle with an "
+                   "oval nose pad and a curved mouth line. H1_Snout at 1000 pushes the whole snout out keeping its "
+                   "profile; H2_Brow at 1000 makes the brow heavier. Remaining: in grazing light a few flat facets "
+                   "show on the snout's lower sides.",
+    "gate2_materials": "pass: Blender material front and three-quarter: a dark leather nose pad with two darker "
+                       "nostrils, pale pored skin, the dark mouth line and eye hollows, the brown fur ruff; in Godot the "
+                       "same pieces read apart.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); captured front and side in Godot. On the monkey preset in "
+                   "the creature editor scene (tools/godot/part_on_body_shot.gd) it reads at the world's gameplay "
+                   "distance as the grey snout under the eyes, and close up the rounded snout with its oval nose pad "
+                   "replaces the box with a nose block. The preset places the plate low on the head facing forward and "
+                   "down, so in the editor the profile is seen mostly from below: placement, not the part.",
+}
 
 
 # --- Dragon set: wing, swept horn, dorsal spine ------------------------------------------------------

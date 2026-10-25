@@ -14,7 +14,10 @@ identity (close-up), 3 neutral lighting, 4 export and Godot verification at game
 ## How the frames are made
 
 - Blender gate 1 and 2 views: `python3 tools/blender/render_part_review.py [--shape=H1_Fold:1000] <glb> <out dir>`
-  (gray_ and mat_ front, side, threequarter, top; `--shape` poses a handle).
+  (gray_ and mat_ front, side, threequarter, top; `--shape` poses a handle). `--views=` picks views (also `low34`, a
+  three-quarter from below, and `back`), `--dist=` sets the camera distance in bounding-box diagonals (default 2.2;
+  1.1 to 1.3 frame a small part closely), `--size=` the frame size, and `--stand` stands a face part up as it sits on a
+  head (its face toward the front camera, its brow up), so the side view shows a muzzle's profile.
 - Godot part views: `tools/godot/capture_part.gd -- <glb> <out dir> [--handles=Key:permille] [--fit] [--mirror]
   [--views=front,side]` (neutral sky colour, one sun, a ground plane at the pivot).
 - On a real body: `tools/godot/part_on_body_shot.gd -- --preset=<name> --focus=<part type>` builds the preset in the
@@ -122,6 +125,44 @@ Evidence: `eye_bulge_band_cause_marked.jpg` (the hopper close up, plain and with
 `eye_bulge_editor_gameplay_before_after.jpg`, `eye_bulge_gray_before_after.jpg` (gray front and side, material
 three-quarter) and `eye_bulge_blink_bulge_after.jpg` (Godot at rest, H1_Blink 500 and 1000, H2_Bulge 1000).
 
+## cpart_muzzle_primate, revision 4 (IMPLEMENTED)
+
+Cause: revision 3's snout was a superellipse plateau, a flat top 19 mm high from y -23 to -8 mm with steep steps at
+both ends, and the brow ridge stood just as high (18.8 mm). Seen from the side (Blender gray, the plate stood up as on
+a head) it read as two slabs with a slot between them, with the nose pad a flattened blob on the flat top.
+
+Change: the snout follows a side profile (`MZ_PROFILE` in the generator, a clamped cubic spline over the face plane,
+printed and checked before the build). At x = 0 it rises from the nose bridge between the eyes (y +2 mm, 7.8 mm high)
+to a rounded nose tip (y -14 mm, 20 mm), rolls over the upper lip (y -20 mm, 18.7 mm) to a 1 mm crease at the mouth
+line (y -25.5 mm, 15 mm), then a small rolled lower lip, a shallow groove and a chin pad, and recedes into the face
+(y -36 mm, 8.8 mm). Across x it is a narrow 7 mm bridge widening to the squared 21.5 mm half width at the nose and
+lips, with steep sides, so the front outline stays square. The brow is lower (10 mm, was 13.5 mm) and sits under the
+nose tip. The nose pad is a leather oval laid over the nose tip along the snout's curve (0.9 mm proud, rim tucked
+under) in the leather pad material (roughness 0.4); the old helper-name collision had given it the glossy frog-disc
+material. Two tilted dark nostrils sit on it and the mouth line follows the crease. The eye hollows, nostrils and mouth
+line now face out of the face; they were wound inward and showed only because the materials are double-sided.
+
+Triangles: at the default 0.8 mm decimation the first build cut the nose pad to 8 triangles, so the pad and the dark
+decals are authored at their final density and not decimated, and the snout is held within 0.45 mm by a fit test
+(`_points_fit`, the same kind of test the round ear's rim uses). A no-export diagnostic gave the face 981 triangles at
+0.3 mm, 401 at 0.45 mm and 299 at 0.6 mm (the same as no test); 0.45 mm fits the budget. The fur ruff is resampled
+(41 points and 6 sides, was 49 and 7). 1095 of 1200 triangles (was 1151). Dimensions 0.09 x 0.103 x 0.029 m (was 0.089
+x 0.102 x 0.03); the footprint is 0.056 m (was 0.055, from the resampled ruff; no game code reads it). Sink, pivot, the
+eye sockets (x +-15.5 mm, y +9 mm, same depth), handle keys (H1_Snout now moves the whole snout with its own mask,
+H2_Brow is unchanged), sockets (none) and material names are unchanged.
+
+| Gate | Status | Observation |
+| --- | --- | --- |
+| 1 shape | pass | Blender gray front, side, three-quarter and low three-quarter, stood up (`tools/blender/render_part_review.py --stand`): the side outline runs from the brow ridge into a dip at the bridge, out along the snout to a rounded nose tip, over the upper lip into the mouth crease and back past a small lower lip and chin (before: a flat-topped block with a vertical front, as high as the brow). Front: a squared muzzle, an oval nose pad, a curved mouth line. H1_Snout 1000 pushes the whole snout out keeping its profile; H2_Brow 1000 makes the brow heavier. Remaining: a few flat facets on the snout's lower sides in grazing light. |
+| 2 materials | pass | Blender material views: a dark leather nose pad with two darker nostrils, pale pored skin, the dark mouth line and eye hollows, the brown fur ruff; the same pieces read apart in Godot. |
+| 3 lighting | pass | Neutral Blender review light and the neutral Godot capture; no bloom. |
+| 4 Godot | pass | Imported; captured front and side. On the monkey preset in the editor scene it reads at gameplay distance as the grey snout under the eyes; close up the rounded snout and oval nose pad replace the box and nose block. The preset places the plate low on the head facing forward and down, so the editor shows the profile mostly from below (placement, not the part). |
+
+Evidence: `muzzle_primate_gray_before_after.jpg` (gray front, side, three-quarter and material three-quarter, before
+on top), `muzzle_primate_side_before_after.jpg` (side, before gray, after gray, after material),
+`muzzle_primate_handles_after.jpg` (rest, H1_Snout 1000, H2_Brow 1000 material, H1_Snout 1000 side) and
+`muzzle_primate_monkey_before_after.jpg` (the monkey preset close and side, before left).
+
 ## Known issues
 
 - `cpart_foot_frog` H2_Long at 1000 reaches about 0.119 m against the recorded footprint of 0.098 m (scout's
@@ -130,3 +171,5 @@ three-quarter) and `eye_bulge_blink_bulge_after.jpg` (Godot at rest, H1_Blink 50
 - The frog feet of the hopper preset sit under the editor's floor pad (the anchor resolver and the editor's rig
   offset, not the part); in the world the walker plants them.
 - A bare face (fur thinning near the head) is acceptable (PROPOSED).
+- On the monkey preset the muzzle plate sits low on the head facing forward and down, so its side profile is seen
+  mostly from below in the editor (the preset and the anchor resolver, which other agents own).
