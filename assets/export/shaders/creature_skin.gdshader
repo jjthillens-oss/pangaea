@@ -29,7 +29,7 @@ uniform float detail_tiling = 6.0;
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.35;
 uniform float roughness_base : hint_range(0.0, 1.0) = 0.7;
 
-// Covering (PROPOSED, art-owned; docs/art/creature_art_contract.md section 2.8). Single pass, no shells or fins:
+// Covering (PROPOSED, art-owned; docs/art/creature_art_contract.md section 2.4a). Single pass, no shells or fins:
 // the relief is a screen-space bump from a rest-space height field, so it costs a few noise taps per pixel.
 uniform int covering : hint_range(0, 3) = 0;          // 0 default (unchanged), 1 fur, 2 scales, 3 smooth-wet
 uniform float covering_strength : hint_range(0.0, 1.0) = 1.0; // 0 = the default look, 1 = the full covering
