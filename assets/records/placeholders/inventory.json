@@ -258,6 +258,18 @@
       "node": "CreatureWorld/Heart"
     },
     {
+      "id": "creature_part_pickup",
+      "kind": "ui",
+      "description": "The light column over a part pickup in the creature world: an open, unshaded, additive pale gold CylinderMesh that marks where a part the lineage has not found lies, so it can be seen across the field. A status sign drawn in the 3D view, like the mating heart; the part itself is the art team's model.",
+      "types": [
+        "CylinderMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd"
+      ],
+      "node": "CreatureWorld/Pickups/Column"
+    },
+    {
       "id": "editor_test_dish",
       "kind": "ui",
       "description": "The cell editor's test drive dish (TestPool): a flat CylinderMesh floor and TorusMesh rings for the wall and the floor's distance marks, in their own little world behind the editor. Editing UI for feeling a body's speed, not a model of the sea.",

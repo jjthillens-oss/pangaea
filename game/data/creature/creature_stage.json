@@ -19,5 +19,14 @@
 		"friend_at": 5.0, "befriend_points": 10, "follow_m": 5.0,
 		"_note": "sing and dance to befriend: each song adds the singer's charm; display organs (crest, frill, lure...) add charm, capped; a bitten creature will not listen"},
 	"deeds": {"walk_m_per_point": 25, "bite_points": 2, "hit_points": 1, "spot_points": 2,
-		"_note": "adaptation points earned by doing, on top of eating; spent in the editor (Bible section 3)"}
+		"_note": "adaptation points earned by doing, on top of eating; spent in the editor (Bible section 3)"},
+	"pickups": {
+		"_note": "World part pickups (PROPOSED, domain/creature/part_unlocks.gd): a new lineage starts with starter_parts; the other part types are found in the world, count per visit, picked up within reach_m of the body's edge, each worth points adaptation points.",
+		"starter_parts": ["antenna", "beak", "claw", "crest", "eye", "eye_round", "fin", "foot", "foot_paw", "hand", "hoof",
+			"horn", "jaw", "mandibles", "maw", "spike", "tail_fluke"],
+		"count": 4,
+		"reach_m": 1.0,
+		"min_nest_distance_m": 12,
+		"points": 3
+	}
 }

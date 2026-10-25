@@ -788,6 +788,22 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+
+## 2026-10-25 · Creature parts are found in the world (PROPOSED; IMPLEMENTED)
+Spore's creature stage hands out new parts as the creature explores; the coordinator gave this thread world part
+pickups (2026-10-25) under Joshua's "Spore but better" direction.
+
+- **Starter set.** A new lineage can use 17 starter parts (`creature_stage.json` "pickups" "starter_parts":
+  basic mouths, eyes, feet, hands, claws, horns, spikes, a crest, a fin, a fluke, feelers). The other part types are
+  greyed out in the editor's palette, sorted after the open ones, and refused as a tool until found.
+- **Pickups.** Each world visit lays out 4 of the lineage's unfound parts away from the nest, drawn from their own
+  seeded stream so the rest of the field is unchanged. Each is the part's own model turning over a pale gold light
+  column. Walking over one finds it: a notice names it, it is worth 3 points, and it is in the editor from then on.
+- **Save.** No new key and no schema change: a find is a lineage event, `{"event": "found_part", "part",
+  "creature_generation", "source"}` in `lineage_history` (Bible section 18: the lineage history records
+  discoveries). A part on the body is always usable, and committing a preset or random body records its unfound
+  parts as finds with source "preset".
+- Rules: `game/domain/creature/part_unlocks.gd`; tests: `tests/test_creature_part_unlocks.gd`.
 ## 2026-10-24 · The twelve preset creatures read as their archetypes (PROPOSED; IMPLEMENTED)
 
 - Joshua (23:40) asked for the default creatures to look like what they are, the dragon most of all, and still
