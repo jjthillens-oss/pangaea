@@ -32,6 +32,8 @@ var stance_height_max_ratio := 0.82
 ## cycle, so the front lands first and the long hind legs push off last into the flight; the body dips once per cycle
 ## (bound_bob_ratio of hip height) and pitches nose down on landing, nose up in flight (bound_pitch_deg).
 var bound_hind_ratio := 1.5
+## A body that bounds sits on folded hind legs: their hips stand at this share of their length.
+var long_hind_stance_ratio := 0.4
 var bound_pair_lag := 0.2
 var bound_bob_ratio := 0.12
 var bound_pitch_deg := 7.0
@@ -46,7 +48,7 @@ static func from_dict(d: Dictionary) -> RefCounted:
 			"min_rel_stride", "swing_lift_ratio", "max_swing_time", "min_swing_time", "band_hysteresis",
 			"phase_coupling", "accel_cycles", "settle_threshold_ratio", "settle_idle_time", "bob_ratio", "pitch_gain",
 			"pitch_max_deg", "roll_gain", "roll_max_deg", "sway_ratio", "posture_smoothing", "stance_height_max_ratio",
-			"bound_hind_ratio", "bound_pair_lag", "bound_bob_ratio", "bound_pitch_deg"]:
+			"bound_hind_ratio", "long_hind_stance_ratio", "bound_pair_lag", "bound_bob_ratio", "bound_pitch_deg"]:
 		if d.has(key):
 			t.set(key, float(d[key]))
 	for b in d.get("bands", []):

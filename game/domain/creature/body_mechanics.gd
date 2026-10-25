@@ -15,7 +15,8 @@ extends RefCounted
 ## shortest legs set the pace they can keep their feet under (on even legs it is hip_height).
 ##
 ## Bound (gait_table.gd): a body on four legs whose hind legs are bound_hind_ratio times its front legs' length or
-## more (a frog, a rabbit) is `long_hind`, and its bands use their long_hind_pattern when they name one.
+## more (a frog, a rabbit) is `long_hind`: it sits with its hind legs folded (long_hind_stance_ratio of their length)
+## and its bands use their long_hind_pattern when they name one.
 
 const EPS := 1e-9
 ## The steepest standing tilt uneven legs give a body (PROPOSED; a gorilla knuckle-walks at about 20 degrees).
@@ -49,10 +50,19 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 	var m = load("res://game/domain/creature/body_mechanics.gd").new()
 	m.name = body_name
 	m.table = gait_table
-	_fit_stance(m, body["legs"], gait_table.stance_height_ratio)
+	var ranks := _front_to_back_ranks(body["legs"])
+	var sized := []
+	for li in (body["legs"] as Array).size():
+		sized.append({"k": ranks[li], "length": float(body["legs"][li]["upper"]) + float(body["legs"][li]["lower"])})
+	m.long_hind = _is_long_hind(sized, gait_table.bound_hind_ratio)
+	# A long_hind body folds its hind legs under it, as a frog sits; every other leg stands at stance_height_ratio.
+	var ratios := PackedFloat64Array()
+	for li in sized.size():
+		ratios.append(gait_table.long_hind_stance_ratio if m.long_hind and sized[li]["k"] > 0
+				else gait_table.stance_height_ratio)
+	_fit_stance(m, body["legs"], ratios)
 	var tilt := Basis(Vector3.RIGHT, m.rest_pitch)
 	var counts := {-1: 0, 1: 0}
-	var ranks := _front_to_back_ranks(body["legs"])
 	for li in (body["legs"] as Array).size():
 		var leg: Dictionary = body["legs"][li]
 		var side := -1 if String(leg["side"]) == "L" else 1
@@ -77,7 +87,6 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 	for leg in m.legs:
 		m.gait_height = minf(m.gait_height, m.hip_height + (tilt * ((leg["hip"] as Vector3)
 				- Vector3(0.0, m.hip_height, 0.0))).y)
-	m.long_hind = _is_long_hind(m.legs, gait_table.bound_hind_ratio)
 	m.v_top = sqrt(gait_table.fr_top() * gait_table.g_eff * m.gait_height)
 	m.omega_max = m.v_top / m.hip_radius_max
 	# Reach top speed in `accel_cycles` cycles of the top gait. v_top^2 / (lambda_top * h) = Fr_top * g / lambda_top,
@@ -88,26 +97,26 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 	return m
 
 
-## Sets m.hip_height and m.rest_pitch from the legs' standing heights (ratio x length) by a least-squares line over
-## the hips' z (see the header). Even legs, or legs all at one z, give no tilt.
-static func _fit_stance(m: RefCounted, legs: Array, ratio: float) -> void:
+## Sets m.hip_height and m.rest_pitch from the legs' standing heights (ratios[i] x length) by a least-squares line
+## over the hips' z (see the header). Even legs, or legs all at one z, give no tilt.
+static func _fit_stance(m: RefCounted, legs: Array, ratios: PackedFloat64Array) -> void:
 	var n := float(legs.size())
 	if n == 0.0:
 		return
 	# Each hip wants the body origin's line at its own standing height less its offset above the hips' centre.
 	var mz := 0.0
 	var mh := 0.0
-	for leg in legs:
-		mz += float((leg["hip"] as Array)[2])
-		mh += _origin_height_wanted(leg, ratio)
+	for i in legs.size():
+		mz += float((legs[i]["hip"] as Array)[2])
+		mh += _origin_height_wanted(legs[i], ratios[i])
 	mz /= n
 	mh /= n
 	var szz := 0.0
 	var szh := 0.0
-	for leg in legs:
-		var dz := float((leg["hip"] as Array)[2]) - mz
+	for i in legs.size():
+		var dz := float((legs[i]["hip"] as Array)[2]) - mz
 		szz += dz * dz
-		szh += dz * (_origin_height_wanted(leg, ratio) - mh)
+		szh += dz * (_origin_height_wanted(legs[i], ratios[i]) - mh)
 	var slope := szh / szz if szz > EPS else 0.0
 	# Height at the hips' centre (z = 0 by construction of the gait origin), and the tilt: height grows towards -Z
 	# (the front) when the slope is negative.

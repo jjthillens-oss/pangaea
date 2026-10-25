@@ -24,6 +24,7 @@
 	"posture_smoothing": 0.2,
 	"stance_height_max_ratio": 0.82,
 	"bound_hind_ratio": 1.5,
+	"long_hind_stance_ratio": 0.4,
 	"bound_pair_lag": 0.2,
 	"bound_bob_ratio": 0.12,
 	"bound_pitch_deg": 7.0,

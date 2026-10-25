@@ -164,8 +164,9 @@ func test_sixty_seconds_random_drive_stays_finite() -> void:
 				% [body_name, p.max_stance_reach_ratio, p.steps, p.early_lifts])
 
 
-## Uneven legs (body_mechanics.gd header): an ape on long arms stands front-up, a frog-like body on long hind legs
-## front-down, every hip at its own leg's standing height, and both walk with their feet in reach.
+## Uneven legs (body_mechanics.gd header): an ape on long arms stands front-up; a frog-like body on long hind legs
+## folds them under it and sits about level; every hip at its own leg's standing height, and both walk with their feet
+## in reach.
 func test_uneven_legs_tilt_the_body_and_keep_each_hip_at_its_own_height() -> void:
 	var table = CreatureData.gait_table()
 	var ape := {"legs": [
@@ -178,12 +179,18 @@ func test_uneven_legs_tilt_the_body_and_keep_each_hip_at_its_own_height() -> voi
 		leg["hip"][2] = -float(leg["hip"][2])
 	for case in [["ape", ape, 1.0], ["frog", frog, -1.0]]:
 		var mech = BodyMechanics.create(case[0], case[1], table)
-		check(signf(mech.rest_pitch) == case[2] and absf(mech.rest_pitch) > deg_to_rad(5.0),
-				"%s: the body tilts %s (%.1f deg)" % [case[0], "front up" if case[2] > 0 else "front down",
-				rad_to_deg(mech.rest_pitch)])
+		if case[2] > 0:
+			check(mech.rest_pitch > deg_to_rad(5.0), "%s: the body tilts front up (%.1f deg)" % [case[0],
+					rad_to_deg(mech.rest_pitch)])
+		else:
+			check(mech.long_hind and absf(mech.rest_pitch) < deg_to_rad(5.0),
+					"%s: long hind legs fold, the body sits about level (%.1f deg)" % [case[0],
+					rad_to_deg(mech.rest_pitch)])
 		var p = GaitPlanner.create(mech)
 		for i in mech.legs.size():
-			var want: float = table.stance_height_ratio * float(mech.legs[i]["length"])
+			var ratio: float = table.long_hind_stance_ratio if mech.long_hind and mech.legs[i]["k"] > 0 \
+					else table.stance_height_ratio
+			var want: float = ratio * float(mech.legs[i]["length"])
 			check(absf(p.hip_world(i).y - want) < 0.03, "%s leg %d: hip at %.3f m, its own height %.3f m" % [
 					case[0], i, p.hip_world(i).y, want])
 		for f in 240:
