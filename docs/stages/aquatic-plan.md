@@ -201,7 +201,7 @@ of cream cartilage egg capsules ("mermaid's purses", the aquatic era's cartilage
 stacked reef-stone pillar with amber ribbon fronds on the front-left rim, about 5.5 m tall, so the nest reads from the
 spawn's first frame and from about 25 m away. It replaces the creature stage's nest ring.
 
-- **On the slope.** The floor rises 0.2 m a metre at the nest, so `aquatic_world.gd` tilts the nest to the slope at
+- **On the slope.** The floor rises 0.2 m a metre at the nest, so `game/scenes/aquatic/aquatic_world.gd` tilts the nest to the slope at
   its site and sinks it 0.1 m; its foot meets the drawn sea floor all round (within 0.2 m; the floor's own relief
   there is within 0.11 m of the profile), its skirt runs under the floor, and the beacon is stood upright on its
   foot. The PR #192 nest ring sat flat on the slope, half floating and half buried.

@@ -111,7 +111,7 @@ func test_the_nest_fits_its_site_and_leaves_the_spawn_clear() -> void:
 	if nest == null:
 		return
 	var verts := _vertices(nest)
-	for part in ["NestMound", "NestRim", "Beacon"]:
+	for part in ["NestMound", "NestRim", "NestPolyps", "Beacon", "BeaconDetail"]:
 		check(verts.has(part), "the nest has its %s" % part)
 	var c := sim.nest_pos()
 	var widest := 0.0
@@ -124,8 +124,9 @@ func test_the_nest_fits_its_site_and_leaves_the_spawn_clear() -> void:
 			"the nest stays within its %.1f m footprint, inside the nest's %.0f m radius (%.2f m)" % [FOOTPRINT_R, float(rules.world.nest.radius), widest])
 	check(nearest >= SPAWN_CLEAR_M, "nothing of the nest comes within %.1f m of the fish's spawn or its kin (%.2f m)" % [SPAWN_CLEAR_M, nearest])
 	var beacon_top := -INF
-	for p: Vector3 in verts.get("Beacon", [[], []])[1]:
-		beacon_top = maxf(beacon_top, p.y - sim.floor_at(p.x, p.z))
+	for part in ["Beacon", "BeaconDetail"]:     # the pillar, and its polyps and fronds (a child piece)
+		for p: Vector3 in verts.get(part, [[], []])[1]:
+			beacon_top = maxf(beacon_top, p.y - sim.floor_at(p.x, p.z))
 	check(beacon_top >= 4.0 and beacon_top <= 6.2, "the beacon stands 4 to 6 m over the floor, a landmark (%.1f m)" % beacon_top)
 	nest.free()
 
