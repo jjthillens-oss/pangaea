@@ -8,7 +8,9 @@ extends SceneTree
 ##       it. Main opens the Aquatic stage on it: the body is the converted darter with the jaw, the generation and
 ##       lineage id are the save's, and the entry card shows. A scripted swim goes from the nest down the slope and
 ##       eats; a fed fish by its kin mates and the editor opens; one fin step and Done make generation 2 with the
-##       parent recorded; Escape goes back to the title. The slot's file is never written by the stage.
+##       parent recorded; Escape saves and goes back to the title. The slot then holds the aquatic block (save v5)
+##       beside the cell's own data, and opening the stage again brings back the same fish, generation, finds,
+##       points and place (the reload check).
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SMOKE_DIR := "user://smoke"
@@ -87,13 +89,47 @@ func _run() -> void:
 		_check(int(sim.player.body.fins) == parent_fins + 1 and sim.history.size() == 1, "with the new fins, the parent recorded")
 		_check(stage.world.get_node_or_null("Player") != null, "the new body is drawn")
 	await _frames(30)
+	var left: Dictionary = sim.to_save()
+	var left_points := sim.points
+	await _escape()
+	_check(main.start_screen != null and main.aquatic_stage == null, "Escape goes back to the title")
+
+	# The save: the cell's data untouched, the aquatic block as the fish left the water.
+	var before: Dictionary = JSON.parse_string(saved_text)
+	var after: Variant = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	_check(after is Dictionary and int(after.schema_version) == SaveGame.SCHEMA_VERSION, "the slot is a v%d save" % SaveGame.SCHEMA_VERSION)
+	if not after is Dictionary:
+		return
+	for key in ["lineage_id", "world_seed", "genome", "growth", "checkpoint", "era", "creature"]:
+		_check(JSON.stringify(after[key], "", true) == JSON.stringify(before[key], "", true), "the cell's %s is kept" % key)
+	var block: Dictionary = after.aquatic
+	_check(int(block.get("generation", 0)) == int(left.generation) and int(after.adaptation_points) == left_points,
+			"the aquatic block holds generation %d and %d points" % [int(left.generation), left_points])
+	var loaded := persistence.load_from(slot)
+	_check(loaded.ok, "the written slot loads: %s" % [loaded.get("errors")])
+
+	# The reload check: the stage opens again where it was left.
+	stage = main.open_aquatic_stage()
+	await _frames(SETTLE_FRAMES)
+	sim = stage.sim
+	_check(bool(stage.lineage.get("returning", false)), "the stage knows this line has swum before")
+	_check(JSON.stringify(sim.player.body, "", true) == JSON.stringify(left.body, "", true), "the same body")
+	_check(int(sim.player.generation) == int(left.generation) and sim.history.size() == (left.history as Array).size(),
+			"the same generation and history")
+	_check(sim.points == left_points and sim.meals == int(left.meals), "the same points and meals")
+	_check(Array(sim.discovered) == Array(left.discovered), "the same places found: %s" % [sim.discovered])
+	var was := Vector3(float(left.position[0]), float(left.position[1]), float(left.position[2]))
+	_check(sim.player.pos.distance_to(was) < 0.01, "back where it left the water (%.2f m off)" % sim.player.pos.distance_to(was))
+	await _escape()
+	_check(main.aquatic_stage == null, "Escape leaves again")
+
+
+func _escape() -> void:
 	var esc := InputEventAction.new()
 	esc.action = &"ui_cancel"
 	esc.pressed = true
 	Input.parse_input_event(esc)
 	await _frames(SETTLE_FRAMES)
-	_check(main.start_screen != null and main.aquatic_stage == null, "Escape goes back to the title")
-	_check(FileAccess.get_file_as_string(slot) == saved_text, "the stage never wrote the lineage save")
 
 
 func _frames(count: int) -> void:

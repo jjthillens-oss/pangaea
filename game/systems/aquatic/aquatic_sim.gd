@@ -109,6 +109,9 @@ func _init(p_rules: Dictionary, p_world_seed: int, body: Dictionary, p_lineage :
 	_move_drifter()
 	for species in ["grazer", "shoal"]:
 		relations[species] = {"standing": "neutral", "rapport": 0, "last_signal": -1000000}
+	var saved: Dictionary = p_lineage.get("aquatic", {})
+	if not saved.is_empty():
+		restore(saved)
 	_zone = zone_at(player.pos).id
 	_discover(_zone)
 
@@ -639,6 +642,39 @@ func snapshot() -> Dictionary:
 	return {"tick": tick, "player": [_arr(player.pos), player.heading, player.speed, player.energy, player.health],
 			"animals": a_out, "food": f_out, "lancer": [_arr(lancer.pos), lancer.state], "drifter": _arr(drifter.pos),
 			"points": points, "relations": relations.duplicate(true), "discovered": Array(discovered)}
+
+
+## The save's aquatic block (schema v5, SaveGame header): what a lineage keeps between sessions. The points are the
+## save's adaptation_points, so they are not in here; the world itself (food, animals, hazards) comes back from the
+## seed.
+func to_save() -> Dictionary:
+	var rel := {}
+	for species in relations:
+		rel[species] = {"standing": String(relations[species].standing), "rapport": int(relations[species].rapport)}
+	return {"body": (player.body as Dictionary).duplicate(), "generation": int(player.generation),
+			"history": history.duplicate(true), "discovered": Array(discovered), "relations": rel, "meals": meals,
+			"position": _arr(player.pos), "heading": float(player.heading), "energy": float(player.energy),
+			"health": float(player.health)}
+
+
+## Takes back a saved block (already validated by the save): the body, generation, history, finds, relations and
+## meals, and the fish where it was, kept inside the water and its bars inside the body's limits. A fish saved with
+## no health left starts again at the nest, as a death would.
+func restore(saved: Dictionary) -> void:
+	_place_player(saved.body, int(saved.generation))
+	history = (saved.history as Array).duplicate(true)
+	discovered = PackedStringArray(saved.discovered)
+	meals = int(saved.meals)
+	for species in saved.relations:
+		if relations.has(species):
+			relations[species].standing = String(saved.relations[species].standing)
+			relations[species].rapport = int(saved.relations[species].rapport)
+	var s: Dictionary = player.stats
+	if float(saved.health) > 0.0:
+		player.pos = _clamp_to_water(_v(saved.position))
+		player.heading = float(saved.heading)
+		player.health = minf(float(saved.health), float(s.max_health))
+	player.energy = clampf(float(saved.energy), 0.0, float(s.energy_capacity))
 
 
 static func _arr(v: Vector3) -> Array:

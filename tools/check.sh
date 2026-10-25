@@ -48,7 +48,8 @@
 #             and checks it holds the endless content
 #   aquatic: the Aquatic stage slice (--aquatic) on a hunter cell lineage saved under user://smoke/: the converted
 #             body and lineage, a swim down the route, mating opens the fin and tail editor, Done makes generation 2,
-#             Escape returns to the title, and the lineage save is never written
+#             Escape saves and returns to the title, the slot holds the v5 aquatic block beside the cell's data, and
+#             the stage opens again with the same fish, generation, finds, points and place
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
 # Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each

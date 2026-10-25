@@ -33,7 +33,8 @@ extends Node
 ## comes back to the title through exit_requested.
 ##
 ## Aquatic stage slice (aquatic plan, PROPOSED): open_aquatic_stage() puts the AquaticStage in place of the screen; the
-## title's "Aquatic stage" button and --aquatic open it. It reads the lineage slot and never writes it.
+## title's "Aquatic stage" button and --aquatic open it. It reads the lineage slot and keeps its progress in the
+## slot's aquatic block (save schema v5).
 
 signal screen_changed(screen: Node)
 
@@ -169,8 +170,8 @@ func open_creature_stage() -> CreatureStage:
 	return creature_stage
 
 
-## Opens the Aquatic stage slice as the screen, on the session's lineage slot (read-only); a --seed names the seed of a
-## lineage it founds in memory when the slot has none. Its exit comes back to the title.
+## Opens the Aquatic stage slice as the screen, on the session's lineage slot; a --seed names the seed of a lineage it
+## founds (and saves) when the slot has none. Its exit comes back to the title.
 func open_aquatic_stage() -> AquaticStage:
 	_clear_screen()
 	aquatic_stage = AquaticStage.new()

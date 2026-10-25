@@ -218,7 +218,7 @@ func test_the_cell_lineage_arrives_in_the_body() -> void:
 	for made in [hunter, grazer]:
 		check(AquaticBody.validate(made.body, rules.body).is_empty(), "the converted body is legal")
 	var read := AquaticLineage.read("", rules, 5)
-	check(read.ok and read.source == "new", "no save: a fresh lineage, never written")
+	check(read.ok and read.source == "new" and not read.writable, "no slot: a fresh lineage, never written")
 	check(not String(read.lineage_id).is_empty(), "with a lineage id")
 
 
@@ -266,3 +266,63 @@ func test_food_regrows_and_the_diet_decides_what_is_eaten() -> void:
 	sim.player.pos = sim.food[0].pos
 	sim.step(AquaticSim.Intent.new())
 	check(sim.food[0].alive, "a jaw does not filter plankton")
+
+
+## Save v5 (plan decision 2): what the sim keeps comes back as it was, the world is rebuilt from the seed, and the
+## lineage is written only to a slot it can read.
+func test_the_saved_block_restores_the_fish_and_keeps_the_save_rules() -> void:
+	var sim := _sim(AquaticBody.DARTER)
+	sim.player.pos = Vector3(4.0, -20.0, -60.0)
+	sim.player.heading = 0.75
+	sim.player.energy = 30.0
+	sim.player.health = 9.0
+	sim.meals = 5
+	sim.discovered.append("kelp_arch")
+	sim.relations.grazer.standing = "friend"
+	sim.relations.grazer.rapport = 3
+	check(sim.apply_offspring(AquaticBody.HOVERER, 0), "a new generation")
+	# A place in the water (the floor rises here), with its zone found, as a swim there would leave it.
+	sim.player.pos = sim._clamp_to_water(Vector3(4.0, -12.0, -60.0))
+	sim._discover(String(sim.zone_at(sim.player.pos).id))
+	var block := sim.to_save()
+	var save := SaveGame.new_run(7, "test")
+	save.aquatic = block
+	check(SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, rules.body)).is_empty(),
+		"the block passes the save's checks: %s" % [SaveGame.validate_aquatic(block)])
+	var again := SaveGame.from_dict(JSON.parse_string(JSON.stringify(save.to_dict())))
+	var back := AquaticSim.new(rules, 7, again.aquatic.body, {"aquatic": again.aquatic, "points": 4})
+	check_eq(JSON.stringify(back.to_save(), "", true), JSON.stringify(block, "", true), "the same block after a round trip")
+	check_eq(back.points, 4, "points are the save's")
+	check_eq(back.snapshot().food, _sim(AquaticBody.DARTER).snapshot().food, "the food comes from the seed")
+	var dead := block.duplicate(true)
+	dead.health = 0.0
+	var fresh := AquaticSim.new(rules, 7, dead.body, {"aquatic": dead})
+	check(fresh.player.pos.distance_to(fresh.nest_pos()) < 5.0 and float(fresh.player.health) > 0.0,
+		"a fish saved with no health starts again at the nest")
+
+
+func test_the_lineage_is_written_only_to_a_slot_it_can_read() -> void:
+	var dir := "user://test_saves/aquatic_%d" % OS.get_process_id()
+	DirAccess.make_dir_recursive_absolute(dir)
+	var slot := dir + "/slot.json"
+	for f in [slot, slot + ".bak", slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
+	var lineage := AquaticLineage.read(slot, rules, 11)
+	check(lineage.ok and lineage.writable and not lineage.returning, "an empty slot founds a lineage it can write")
+	var sim := AquaticSim.new(rules, 11, lineage.body, lineage)
+	sim.points = 9
+	check_eq(AquaticLineage.write(slot, lineage, sim), OK, "written")
+	var again := AquaticLineage.read(slot, rules, 99)
+	check(again.returning and again.lineage_id == lineage.lineage_id, "read back as a line that has swum")
+	check_eq(int(again.points), 9, "with its points, no starting floor")
+	check_eq(int(again.world_seed), 11, "and the save's seed")
+	var file := FileAccess.open(slot, FileAccess.WRITE)
+	file.store_string("not json")
+	file.close()
+	DirAccess.remove_absolute(slot + ".bak")
+	var broken := AquaticLineage.read(slot, rules, 11)
+	check(not broken.writable and not broken.errors.is_empty(), "a slot that will not load is not writable")
+	check(AquaticLineage.write(slot, broken, AquaticSim.new(rules, 11, broken.body, broken)) != OK, "and is never written")
+	check_eq(FileAccess.get_file_as_string(slot), "not json", "the broken file is left as it is")
+	for f in [slot, slot + ".bak", slot + ".tmp"]:
+		DirAccess.remove_absolute(f)

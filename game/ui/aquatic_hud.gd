@@ -127,6 +127,16 @@ func _bar(parent: Node, title: String, color: Color) -> ProgressBar:
 ## The lineage card on arrival: where this fish came from and what each cell trait became.
 func show_entry_card(lineage: Dictionary) -> void:
 	var lines := PackedStringArray()
+	if bool(lineage.get("returning", false)):
+		var saved: Dictionary = lineage.get("aquatic", {})
+		lines.append("Your line swims again.")
+		lines.append("Lineage %s, generation %d, %d points, %d places found." % [String(lineage.get("lineage_id", "")).right(6),
+				int(lineage.get("generation", 1)), int(lineage.get("points", 0)), (saved.get("discovered", []) as Array).size()])
+		lines.append("Back where you left the water. Any key to swim.")
+		card_label.text = "\n".join(lines)
+		card.visible = true
+		_card_left = CARD_S
+		return
 	lines.append("Your lineage reaches the sea.")
 	lines.append("Lineage %s, generation %d, %s." % [String(lineage.get("lineage_id", "")).right(6),
 			int(lineage.get("generation", 1)), "from your saved cell" if lineage.get("source") == "save" else "a new line (no cell save found)"])

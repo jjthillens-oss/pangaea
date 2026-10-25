@@ -150,7 +150,7 @@ Scope (PROPOSED, built in `game/**/aquatic/**`):
    records and friendships are read from the lineage save; the entry card shows them.
 7. Reachable from the title in debug builds and with `--aquatic`, like the creature stage preview.
 
-Out of scope for the slice: saving the aquatic state (see decision 2), the land crossing, currents, a dance
+Out of scope for the slice: the land crossing, currents, a dance
 mini-game, art beyond the existing Blender-authored props and the generated creature skin, and audio beyond the
 existing synth hooks.
 
@@ -194,15 +194,17 @@ it and the hoverer must hide in an arch or burst.
 - Species stay in their niches over a long run (automated soak).
 - Mating opens the editor and a commit makes generation + 1 with the parent recorded; cancel changes nothing.
 - The cell lineage's id, generation, diet and colour arrive in the aquatic body (automated).
-- Discovery and relationships survive a reload: needs decision 2.
+- Discovery and relationships survive a reload: the slot keeps the aquatic block (save v5) and the smoke opens the
+  stage again to the same fish, generation, finds, points and place (IMPLEMENTED).
 - Windows build exported; not Windows-verified until launched there.
 
 ## 10. Decisions for the owner
 
 1. Trait conversion from the cell (section 4): approve, or choose a different mapping.
-2. Saving the aquatic stage: the slice reads the lineage save but does not write it. Keeping the aquatic body,
-   friends and discoveries across a reload needs a save schema change (an `aquatic` block, schema v5). Waits for
-   Joshua's OK.
+2. Saving the aquatic stage: CONFIRMED by Joshua 2026-10-25 02:48 ("Yes, add aquatic saves (v5)"). Save schema v5
+   adds an `aquatic` block (body, generation, history, finds, relations, meals, place, energy and health; points
+   stay in `adaptation_points`); v4 -> v5 adds it empty. The stage saves on a new generation, a find, a relation
+   change, a death and on leaving. The era field is not changed (decision 3). IMPLEMENTED; see docs/DECISIONS.md.
 3. When the cell stage offers "go to the sea" (the cell-to-Aquatic transition): proposed at cell size 4 at the
    pool's edge, as a choice.
 4. Whether oxygen is ever added (Bible §6 makes it conditional; the slice uses pressure only).

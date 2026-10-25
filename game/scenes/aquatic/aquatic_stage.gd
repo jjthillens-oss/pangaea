@@ -1,10 +1,12 @@
 class_name AquaticStage
 extends Node
 ## The Aquatic stage's root (aquatic plan section 8, PROPOSED): Main hosts it as the screen, like the creature stage
-## preview. It reads the lineage from the session's slot (read-only: saving the aquatic stage waits for the owner's
-## OK on a save schema change, plan decision 2), builds the AquaticSim, steps it once per physics frame with the
+## preview. It reads the lineage from the session's slot, builds the AquaticSim (a lineage that swam before comes back
+## as it was saved), steps it once per physics frame with the
 ## player's intent, and shows the world, the HUD and, after mating at the nest, the fin and tail editor. Escape (or
 ## the pad's Back) leaves for the title through exit_requested.
+## Saving (schema v5, plan decision 2): the progress goes into the slot's aquatic block when a generation is born, a
+## place is found, a relation changes, the fish dies, and on leaving or closing the window (AquaticLineage.write).
 ##
 ## Input: move_up / move_down swim forward and back, move_left / move_right turn, Space or the right trigger rises,
 ## C or the left trigger dives, Shift or pad A bursts, creature_bite (F, pad X) bites, creature_social (Q, pad B)
@@ -16,6 +18,8 @@ signal exit_requested
 const WorldScript := preload("res://game/scenes/aquatic/aquatic_world.gd")
 const HudScript := preload("res://game/ui/aquatic_hud.gd")
 const FinEditorScript := preload("res://game/ui/aquatic_editor.gd")
+## The events after which the progress is saved at once.
+const SAVE_ON := ["generation", "found", "relation", "died"]
 
 var rules: Dictionary
 var lineage: Dictionary
@@ -27,17 +31,22 @@ var ui: CanvasLayer
 var driver: Callable
 ## Every sim event so far, for the smokes.
 var event_log: Array = []
+var slot := ""
+## The result of the last write (OK, or why it was not written), for the smokes.
+var last_save := ERR_UNCONFIGURED
+var saves := 0
 
 var _pressed := {}
 
 
 func setup(slot_path: String, world_seed: int) -> void:
+	slot = slot_path
 	rules = AquaticLineage.rules()
 	lineage = AquaticLineage.read(slot_path, rules, world_seed)
 	if not lineage.ok:
 		push_warning("Aquatic stage: %s" % "; ".join(lineage.errors))
-		lineage = {"ok": true, "source": "new", "generation": 1, "notes": [], "body": AquaticBody.DARTER.duplicate(),
-				"world_seed": world_seed, "points": int(rules.editor.start_points)}
+		lineage = {"ok": true, "source": "new", "writable": false, "generation": 1, "notes": [],
+				"body": AquaticBody.DARTER.duplicate(), "world_seed": world_seed, "points": int(rules.editor.start_points)}
 	for problem in lineage.get("errors", []):
 		push_warning("Aquatic stage: %s A new line swims instead; the save is left as it is." % problem)
 	sim = AquaticSim.new(rules, int(lineage.get("world_seed", world_seed)), lineage.body, lineage)
@@ -53,6 +62,25 @@ func setup(slot_path: String, world_seed: int) -> void:
 	ui.add_child(hud)
 	hud.setup(sim)
 	hud.show_entry_card(lineage)
+	if bool(lineage.get("writable", false)) and not bool(lineage.get("returning", false)):
+		save_progress()
+
+
+## Writes the progress to the slot now (see the header). Returns OK or why not.
+func save_progress() -> Error:
+	if sim == null:
+		return ERR_UNCONFIGURED
+	last_save = AquaticLineage.write(slot, lineage, sim)
+	if last_save == OK:
+		saves += 1
+	elif bool(lineage.get("writable", false)):
+		push_warning("Aquatic stage: the progress was not saved (error %d)." % last_save)
+	return last_save
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		save_progress()
 
 
 func _physics_process(_delta: float) -> void:
@@ -60,13 +88,17 @@ func _physics_process(_delta: float) -> void:
 		return
 	var intent: AquaticSim.Intent = driver.call() if driver.is_valid() else _read_input()
 	sim.step(intent)
+	var save_now := false
 	for e in sim.take_events():
 		event_log.append(e)
 		var text: String = HudScript.event_text(e)
 		if text != "":
 			hud.toast(text)
+		save_now = save_now or String(e.type) in SAVE_ON
 		if e.type == "mate":
 			open_editor()
+	if save_now:
+		save_progress()
 
 
 func _process(delta: float) -> void:
@@ -119,6 +151,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if editor != null:
 			editor.call("cancel_edit")
 		else:
+			save_progress()
 			exit_requested.emit()
 
 
@@ -149,6 +182,8 @@ func _on_editor_closed(committed: bool, body: Dictionary, cost: int) -> void:
 		var text: String = HudScript.event_text(e)
 		if text != "":
 			hud.toast(text)
+	if committed:
+		save_progress()
 	if editor != null:
 		editor.queue_free()
 		editor = null
