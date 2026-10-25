@@ -31,6 +31,9 @@ const WORSE := Color(1.0, 0.6, 0.52)
 const PLAIN := Color(0.78, 0.83, 0.9)
 ## Widest change text the column keeps room for, so the table does not jump wider at the first change.
 const CHANGE_SAMPLE := "▼ -00.0 m/s"
+## The table's least text size: that of the stats text it replaced (19 px), so at 100% text it reads no smaller;
+## at larger text settings the theme's CaptionLabel is already bigger than this, and the table follows it.
+const MIN_FONT_SIZE := 19
 
 var grid: GridContainer
 var counts_label: Label
@@ -169,10 +172,24 @@ func _reserve_space() -> void:
 		counts_label.custom_minimum_size.y = 2.0 * font.get_height(px)   # two lines even while one wraps
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED:
+		var px := font_size()
+		for label: Label in find_children("*", "Label", true, false):
+			label.add_theme_font_size_override(&"font_size", px)
+		_reserve_space()
+
+
+## The size every label in the panel uses: the theme's CaptionLabel size, but not under MIN_FONT_SIZE.
+func font_size() -> int:
+	return maxi(get_theme_font_size(&"font_size", &"CaptionLabel"), MIN_FONT_SIZE)
+
+
 func _label(text: String, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.theme_type_variation = &"CaptionLabel"
+	label.add_theme_font_size_override(&"font_size", font_size())
 	label.add_theme_color_override(&"font_color", color)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label

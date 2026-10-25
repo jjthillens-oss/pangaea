@@ -15,6 +15,7 @@ const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const Picking := preload("res://game/domain/creature/editor_picking.gd")
 const Stats := preload("res://game/domain/creature/creature_stats.gd")
 const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
+const StatsPanelScript := preload("res://game/ui/editor_ease/stats_panel.gd")
 
 const POINTS := 150
 
@@ -134,6 +135,8 @@ func test_the_stats_panel_replaces_the_text_block_and_unknown_lines_stay_readabl
 	open_hud()
 	hud.set_stats(PackedStringArray(["Length  1.31 m", "Mass  73.9 kg", "Selected  -"]))
 	var panel: Control = hud.editor_ease.stats
+	var value_px := (panel.grid.get_child(panel.grid.columns + 1) as Label).get_theme_font_size(&"font_size")
+	check(value_px >= StatsPanelScript.MIN_FONT_SIZE, "the table reads no smaller than the old stats text (%d px)" % value_px)
 	check(panel.visible and not hud.stats_text.visible, "the table shows and the old text block hides")
 	check(panel.get_index() < hud.stats_text.get_index(), "the table sits where the text was, before it")
 	check_eq(panel.row_texts(), PackedStringArray(["Length 1.31 m", "Mass 73.9 kg"]), "a row per stat")
