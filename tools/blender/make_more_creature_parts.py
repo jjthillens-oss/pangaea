@@ -185,6 +185,20 @@ REVIEW = {
                                "roll reads by its soft shading, the lashes stay dark against the lid without "
                                "crushing; no clipping.",
         "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the prowler (both slit eyes swapped in memory, after_prowler_eye_lashed.jpg) the pair loads, seats on the head without floating or deep clipping, keeps its materials and is in scale, but the iris faces the sky and the heavy lid faces forward. With the frame fix previewed (conefix_prowler_eye_lashed.jpg) the brown iris and big pupil look forward under the heavy lid with the dark lash fringe on top, reading as a big lashed eye in the close and side views; at the world camera's distance it reads as a large dark-lashed eye on the side of the head."},
+    "cpart_foot_otter": {
+        "gate1_shape": "pass: a broad furred palm and five short plump toes fanned from -70 to +70 degrees with a "
+                       "web between them reaching nearly to the tips, its free edge scalloped back between the toes "
+                       "(clear from above, gray_top); a dark pad under each toe tip shows under it from the side, the "
+                       "palm pad's rim round the base; short pale claws. H1_Spread fans the toes further, H2_Long "
+                       "draws them out, and the web, pads and claws follow with no tearing. In a scratch geometry "
+                       "preview before the first build, the first draft's toes were too fat for their spacing and hid "
+                       "the web, and cp._foot_handles tore the outer toes (its spread switches on at y = 0.02 with no "
+                       "blend), so this part has its own eased handles.",
+        "gate2_materials": "pass: four finishes - brown short-furred skin on the palm and toes, a darker, smoother "
+                           "web membrane with fine veins, near-black glossy leather pads, ivory claws.",
+        "gate3_neutral_light": "pass: under the neutral white rig the web reads as a darker membrane between lit toes, "
+                               "the pads stay dark without crushing and the claws bright without clipping.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -1486,6 +1500,594 @@ def build_eye_lashed():
                                                "M_EyeLashedLash": 0.2}, "revision": 1, **baked}
 
 
+# --- Batch E: feet (foot_otter, foot_pillar) ----------------------------------------------------------------------
+# cp's ground convention (build_foot_webbed): +Z is body up at rest, the toes toward the head (+Y), the sole on the
+# pivot (z = 0) and the ankle top at z 0.09 (anchor_resolver.gd GROUND_ANKLE_M), where the limb's tip meets it.
+
+FOOT_ANKLE = 0.09
+OTTER_PALM = Vector((0.0, -0.006, 0.024))
+# Each toe: its angle from +Y (toward +X), its length past its root and its root radius.
+OTTER_TOES = ((-70.0, 0.048, 0.0104), (-35.0, 0.06, 0.0112), (0.0, 0.064, 0.0114), (35.0, 0.06, 0.0112),
+              (70.0, 0.048, 0.0104))
+OTTER_T = (0.0, 0.12, 0.24, 0.36, 0.48, 0.6, 0.7, 0.78, 0.85, 0.9, 0.94, 0.97, 0.99, 1.0)
+OTTER_WEB_END = 0.9      # the web reaches 90% of the way up the toes, nearly to their tips
+
+
+def _otter_dir(k):
+    a = math.radians(OTTER_TOES[k][0])
+    return Vector((math.sin(a), math.cos(a), 0.0))
+
+
+def _otter_toe(k, t):
+    """Toe k's centre line at t (0 at its root inside the palm, 1 at its tip): out along its direction, arched a
+    little over the knuckle and coming down, so the pad under its tip rests on the ground."""
+    length = OTTER_TOES[k][1]
+    return OTTER_PALM + _otter_dir(k) * (0.026 + length * t) + Vector(
+        (0.0, 0.0, -0.004 - 0.0105 * t ** 1.2 + 0.003 * math.sin(math.pi * t)))
+
+
+def _otter_toe_r(k, t):
+    """Plump: barely tapering, a soft swelling over the knuckle, then a round cap over the last quarter."""
+    r = OTTER_TOES[k][2] * (1.0 - 0.12 * t) * (1.0 + 0.06 * math.exp(-((t - 0.35) / 0.12) ** 2))
+    if t > 0.75:
+        r *= math.sqrt(max(0.0, 1.0 - ((t - 0.75) / 0.25) ** 2))
+    return r
+
+
+def _otter_handles(objs):
+    """H1_Spread fans the toes (and the web, pads and claws with them) up to 12 degrees further apart about the palm's
+    centre, the outer toes most; H2_Long draws the toes out 30% along their own directions. Both ease in round the
+    palm and leave the ankle and the back of the palm still, so nothing tears. (cp._foot_handles switches its spread
+    on at the line y = 0.02 with no blend, which tears this wider fan's outer toes, and lengthens along +Y only.)"""
+    c = Vector((OTTER_PALM.x, OTTER_PALM.y, 0.0))
+    reach = OTTER_TOES[-1][0]
+
+    def frame(co):
+        d = Vector((co.x - c.x, co.y - c.y, 0.0))
+        r = d.length
+        fwd = _mp_smooth(d.y / r, -0.2, 0.3) if r > 1e-6 else 0.0      # forward of the palm's sides
+        return d, r, fwd * (1.0 - _mp_smooth(co.z, 0.035, 0.05))        # and below the ankle
+
+    def spread(co):
+        d, r, w = frame(co)
+        phi = math.atan2(d.x, d.y)
+        a = math.radians(12.0) * max(-1.0, min(1.0, phi / math.radians(reach))) * w * _mp_smooth(r, 0.022, 0.042)
+        d = Matrix.Rotation(-a, 3, "Z") @ d
+        return Vector((c.x + d.x, c.y + d.y, co.z))
+
+    def long_(co):
+        d, r, w = frame(co)
+        if r < 1e-6:
+            return co
+        grow = 0.3 * (r - 0.03) * _mp_smooth(r, 0.03, 0.05) * w
+        d = d * ((r + grow) / r)
+        return Vector((c.x + d.x, c.y + d.y, co.z))
+
+    handles = []
+    for o in objs:
+        handles = cp._shape_keys(o, [("H1_Spread", spread, "toes fanned up to 12 degrees further apart, the outer ones most"),
+                                     ("H2_Long", long_, "toes about 30% longer along their own directions")])
+    return handles
+
+
+def build_foot_otter():
+    """An otter's hind foot standing on its sole: a broad furred palm and five short plump toes fanned wide, a web
+    between them reaching nearly to the tips with its free edge scalloped back between the toes, dark leathery pads
+    under the palm and each toe tip, and short pale claws. H1_Spread fans the toes and web, H2_Long lengthens them."""
+    unit, faces = bc.icosphere(3)
+    verts = [tuple(OTTER_PALM + Vector((v[0] * 0.042, v[1] * 0.038, v[2] * 0.024))) for v in
+             (Vector(co).normalized() for co in unit)]
+    fcs = list(faces)
+    av, af = cp._ankle(FOOT_ANKLE, 0.019, -0.014)
+    bc.append(verts, fcs, av, af)
+    for k in range(len(OTTER_TOES)):
+        path = [_otter_toe(k, t) for t in OTTER_T]
+        tv, tf, _ = cp._tube(path, lambda i, a, k=k: _otter_toe_r(k, OTTER_T[i]), 14)
+        bc.append(verts, fcs, tv, tf)
+
+    wv, wf = [], []
+    for k in range(len(OTTER_TOES) - 1):
+        def web_point(s_, c, k=k):
+            t = OTTER_WEB_END * s_
+            a, b = _otter_toe(k, t), _otter_toe(k + 1, t)
+            mid = (a + b) * 0.5
+            out = Vector((mid.x - OTTER_PALM.x, mid.y - OTTER_PALM.y, 0.0)).normalized()
+            sag = 0.008 * s_ ** 2.5 * math.sin(math.pi * c)         # the free edge scallops back between the toes
+            return a.lerp(b, c) - out * sag + Vector((0.0, 0.0, 0.0008 - 0.0015 * s_ * math.sin(math.pi * c)))
+        cp._membrane(wv, wf, web_point, 6, 8, thickness=0.0013, facing=Vector((0.0, 0.0, 1.0)))
+
+    pv, pf = [], []
+    up = Vector((0.0, 0.0, 1.0))
+    for k in range(len(OTTER_TOES)):              # a bean under each toe tip, showing below it from the side
+        _mp_append(pv, pf, *_mp_ellipsoid(_otter_toe(k, 0.8) + Vector((0.0, 0.0, -0.0072)), _otter_dir(k), up,
+                                          (0.0115, 0.0075, 0.0104)))
+    _mp_append(pv, pf, *_mp_ellipsoid(OTTER_PALM + Vector((0.0, 0.006, -0.0155)), Vector((0.0, 1.0, 0.0)), up,
+                                      (0.025, 0.0105, 0.031), sub=3))      # the palm pad, its rim showing round the base
+    cv, cf = [], []
+    tips = []
+    for k in range(len(OTTER_TOES)):
+        tip = _otter_toe(k, 1.0) + Vector((0.0, 0.0, 0.0035))
+        tips.append(tip)
+        v, f = cp._nail(tip, _otter_dir(k), 0.017, 0.0056, down=0.35)
+        bc.append(cv, cf, v, f)
+
+    skin = _mp_fur_material("M_FootOtterSkinProc", lo=0.62, along=(6.0, 0.35, 6.0), rough=0.85)
+    web_sh = sf.Shader("M_FootOtterWebProc")
+    veins = web_sh.noise(150.0, 2.0, vector=mp._stretched(web_sh, (2.5, 0.3, 1.0)))
+    cells = web_sh.remap(web_sh.voronoi(500.0, 0.8), 0.3, 0.05)
+    web_sh.bump(web_sh.math("SUBTRACT", veins, web_sh.math("MULTIPLY", cells, 0.3)), 0.25, 0.0004)
+    web_mat = web_sh.out(_grey(web_sh, web_sh.remap(veins, 0.3, 0.7), 0.6), 0.45)
+    pad_mat = _mp_pad_material("M_FootOtterPadProc", rough=0.35)
+    claw_mat = cp._nail_material("M_FootOtterClawProc")
+    foot = bc.mesh_object("FootOtter", cp._ground(verts), fcs, [skin])
+    web = bc.mesh_object("FootOtterWeb", wv, wf, [web_mat], parent=foot, fix_normals=False)
+    pads = bc.mesh_object("FootOtterPads", cp._ground(pv), pf, [pad_mat], parent=foot)
+    claws = bc.mesh_object("FootOtterClaws", cp._ground(cv), cf, [claw_mat], parent=foot)
+    skin.name, web_mat.name, pad_mat.name, claw_mat.name = ("M_FootOtterSkin", "M_FootOtterWeb", "M_FootOtterPad",
+                                                            "M_FootOtterClaw")
+    objs = [foot, web, pads, claws]
+    baked = _bake_parts(objs, "PartFootOtter", {"M_FootOtterSkin": sf.tint(cp._lin("#7A5B46")),
+                                                "M_FootOtterWeb": sf.tint(cp._lin("#5E4B44")),
+                                                "M_FootOtterPad": sf.tint(cp._lin("#2C2624")),
+                                                "M_FootOtterClaw": sf.tint(cp._lin("#D8CBB0"))})
+    pts = cp._check_pivot("foot_otter", 0.0, ground=True)
+    top = max(p.z for p in pts)
+    mp._check(abs(top - FOOT_ANKLE) < 0.003, "foot_otter: the ankle top meets the limb at z 0.09 (%.4f)" % top)
+    mp._check(all(t.z > 0.006 for t in tips), "foot_otter: the claws clear the ground")
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _otter_handles(objs)
+    rules = _rules("foot_otter", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["handles_note"] = ("Both keys are on all four meshes (FootOtter, FootOtterWeb, FootOtterPads, FootOtterClaws) "
+                             "with the same names; the runtime sets them together.")
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): an otter's webbed and padded hind foot, five short plump toes "
+                       "fanned wide with a web nearly to the tips, dark pads under the palm and toes, short pale claws.",
+            "category": "part", "part_type": "foot_otter", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_FootOtterSkin": 0.85, "M_FootOtterWeb": 0.9, "M_FootOtterPad": 0.1,
+                                               "M_FootOtterClaw": 0.0}, "revision": 1, **baked}
+
+
+PILLAR_NAILS = (-64.0, -32.0, 0.0, 32.0, 64.0)   # each toenail's angle from +Y toward +X, round the front
+PILLAR_SOLE = 0.0115     # the dark padded sole runs from the ground up to here
+PILLAR_Y = 1.07          # the column a little longer front to back than across
+PILLAR_FWD = 0.004       # and shifted forward over its toes
+PILLAR_NAIL_Z = 0.0185   # the nails' centres: they rest on the sole's bulging rim
+PILLAR_DOME = ((0.0935, 0.0485), (0.0965, 0.043), (0.099, 0.034), (0.1005, 0.022), (0.1013, 0.010))
+
+
+def _pillar_r(z):
+    """The column's radius at height z: a thick padded sole bulging to its widest (0.0725) at z 0.009 over a rounded
+    bottom edge, then flaring in to a 0.05 column by the ankle."""
+    if z < 0.009:
+        return 0.0635 + math.sqrt(max(0.0, 0.009 ** 2 - (0.009 - z) ** 2))
+    return 0.0505 + 0.022 * math.exp(-(z - 0.009) / 0.022)
+
+
+def _pillar_lobe(a, z):
+    """The toes' swelling round the front of the base, one lobe under each nail (a: angle from +Y toward +X)."""
+    band = math.exp(-((z - 0.018) / 0.013) ** 2)
+    return 0.0035 * band * sum(math.exp(-((a - math.radians(n)) / 0.2) ** 2) for n in PILLAR_NAILS)
+
+
+def _pillar_wrinkle(a, z):
+    """Wavy horizontal creases up the column (fine enough to go to the normal map in the bake)."""
+    w = 0.5 + 0.5 * math.cos(2.0 * math.pi * (z + 0.0022 * math.sin(3.0 * a + 1.0) + 0.0012 * math.sin(7.0 * a))
+                             / 0.0085)
+    return 0.0006 * w ** 3 * _mp_smooth(z, 0.026, 0.036) * (1.0 - _mp_smooth(z, 0.086, 0.093))
+
+
+def build_foot_pillar():
+    """An elephant's pillar foot standing on its sole: a wide round column of wrinkled grey skin flaring to a thick
+    padded sole with a rounded rim, five broad rounded toenails round the front on the toes' swellings, and a rounded
+    shoulder closing over the top inside the limb's tip. H1_Wide spreads the base, H2_Nails enlarges the nails."""
+    seg = 72
+    zs = [0.0, 0.0012, 0.003, 0.0055, 0.008, 0.0095, PILLAR_SOLE]
+    z = PILLAR_SOLE
+    while z < FOOT_ANKLE - 1e-6:
+        z = min(FOOT_ANKLE, z + 0.0015)
+        zs.append(z)
+    rows = [(z, None) for z in zs] + [(z, r) for z, r in PILLAR_DOME]
+    verts, faces, face_mats, rings = [], [], [], []
+    for z, r_fixed in rows:
+        ring = []
+        for j in range(seg):
+            a = 2.0 * math.pi * j / seg - math.pi
+            r = r_fixed if r_fixed is not None else _pillar_r(z) + _pillar_lobe(a, z) - _pillar_wrinkle(a, z)
+            ring.append(len(verts))
+            verts.append((r * math.sin(a), r * math.cos(a) * PILLAR_Y + PILLAR_FWD, z))
+        rings.append(ring)
+    sole_c, top_c = len(verts), len(verts) + 1
+    verts.append((0.0, PILLAR_FWD, 0.0))
+    verts.append((0.0, PILLAR_FWD, PILLAR_DOME[-1][0] + 0.0003))
+    for j in range(seg):
+        k = (j + 1) % seg
+        faces.append((sole_c, rings[0][k], rings[0][j]))
+        face_mats.append(1)
+        for i in range(len(rows) - 1):
+            faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
+            face_mats.append(1 if rows[i + 1][0] <= PILLAR_SOLE + 1e-9 else 0)
+        faces.append((rings[-1][j], rings[-1][k], top_c))
+        face_mats.append(0)
+
+    nail_v, nail_f, nail_frames = [], [], []
+    for deg in PILLAR_NAILS:
+        a = math.radians(deg)
+        r = _pillar_r(PILLAR_NAIL_Z) + _pillar_lobe(a, PILLAR_NAIL_Z)
+        p = Vector((r * math.sin(a), r * math.cos(a) * PILLAR_Y + PILLAR_FWD, PILLAR_NAIL_Z))
+        horiz = Vector((math.sin(a), math.cos(a) / PILLAR_Y, 0.0)).normalized()
+        slope = (_pillar_r(PILLAR_NAIL_Z + 0.001) - _pillar_r(PILLAR_NAIL_Z - 0.001)) / 0.002   # dr/dz, < 0: the flare
+        n = (horiz + Vector((0.0, 0.0, -slope))).normalized()            # the surface's outward normal, tilted up
+        s = (Vector((0.0, 0.0, 1.0)) + horiz * slope).normalized()       # up along the surface
+        c = p + n * 0.0012
+        nail_frames.append((c, n))
+        _mp_append(nail_v, nail_f, *_mp_ellipsoid(c, n, s, (0.006, 0.0125, 0.0165)))
+
+    skin = sf.Shader("M_FootPillarSkinProc")
+    warp = skin.math("MULTIPLY", skin.noise(60.0, 2.0), 0.006)
+    folds = skin.math("SINE", skin.math("MULTIPLY", skin.math("ADD", skin.axis("Z"), warp), 740.0))
+    crease = skin.remap(folds, 0.55, 1.0)                                         # 1 in the horizontal creases
+    cells = skin.remap(skin.voronoi(150.0, 0.8, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)   # 0 on the cracked grid
+    skin.bump(skin.math("SUBTRACT", skin.math("MULTIPLY", cells, 0.5), skin.math("MULTIPLY", crease, 0.8)), 0.5, 0.0012)
+    skin_mat = skin.out(_grey(skin, skin.math("SUBTRACT", skin.math("ADD", 0.5, skin.math("MULTIPLY", cells, 0.5)),
+                                              skin.math("MULTIPLY", crease, 0.45)), 0.55), 0.85)
+    sole = sf.Shader("M_FootPillarSoleProc")
+    cracks = sole.remap(sole.voronoi(200.0, 0.9, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    grain = sole.noise(400.0, 3.0)
+    sole.bump(sole.math("ADD", cracks, sole.math("MULTIPLY", grain, 0.3)), 0.45, 0.0008)
+    sole_mat = sole.out(_grey(sole, sole.math("ADD", sole.math("MULTIPLY", cracks, 0.6),
+                                              sole.math("MULTIPLY", grain, 0.25)), 0.5), 0.7)
+    nail = sf.Shader("M_FootPillarNailProc")
+    ridges = nail.math("SINE", nail.math("MULTIPLY", nail.axis("Z"), 1300.0))      # horizontal growth lines
+    ngrain = nail.noise(140.0, 3.0)
+    nh = nail.math("ADD", nail.math("MULTIPLY", ridges, 0.25), ngrain)
+    nail.bump(nh, 0.3, 0.0008)
+    nail_mat = nail.out(_grey(nail, nail.remap(nh, 0.0, 0.9), 0.78), 0.42)
+    foot = bc.mesh_object("FootPillar", verts, faces, [skin_mat, sole_mat], face_mats)
+    nails = bc.mesh_object("FootPillarNails", nail_v, nail_f, [nail_mat], parent=foot)
+    skin_mat.name, sole_mat.name, nail_mat.name = "M_FootPillarSkin", "M_FootPillarSole", "M_FootPillarNail"
+    baked = _bake_parts([foot, nails], "PartFootPillar", {"M_FootPillarSkin": sf.tint(cp._lin("#8E8782")),
+                                                          "M_FootPillarSole": sf.tint(cp._lin("#4A4440")),
+                                                          "M_FootPillarNail": sf.tint(cp._lin("#DCD2BF"))})
+    pts = cp._check_pivot("foot_pillar", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    mp._check(min(c.z - 0.0125 for c, _n in nail_frames) > 0.0, "foot_pillar: the nails stay above the ground")
+
+    def wide(co):
+        k = 1.0 + 0.25 * (1.0 - _mp_smooth(co.z, 0.0, FOOT_ANKLE))
+        return Vector((co.x * k, (co.y - PILLAR_FWD) * k + PILLAR_FWD, co.z))
+
+    def big_nails(co):
+        c, n = min(nail_frames, key=lambda f: (co - f[0]).length_squared)
+        return c + (co - c) * 1.35 + n * 0.0015
+
+    handles = cp._shape_keys(foot, [("H1_Wide", wide, "the base up to 25% wider, most at the sole")])
+    handles += cp._shape_keys(nails, [("H1_Wide", wide, ""),
+                                      ("H2_Nails", big_nails, "the toenails 35% bigger and standing out further")])[1:]
+    rules = _rules("foot_pillar", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["handles_note"] = ("H1_Wide is on FootPillar and FootPillarNails (the nails ride on the widening base); "
+                             "H2_Nails is on FootPillarNails only.")
+    rules["pivot_note"] = ("Ground part: the sole sits on the pivot; the column is 0.05 m across at the ankle (z 0.09 m), "
+                           "where the limb tip meets it, and closes over its top in a shoulder inside the limb.")
+    return {"purpose": "Creature foot part (PROPOSED): an elephant's pillar foot, a wide wrinkled column on a thick "
+                       "padded sole with five broad rounded toenails round the front.",
+            "category": "part", "part_type": "foot_pillar", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_FootPillarSkin": 0.9, "M_FootPillarNail": 0.05,
+                                               "M_FootPillarSole": 0.2}, "revision": 1, **baked}
+
+
+# --- Batch F: antlers (antler_branched, antler_palmate) -----------------------------------------------------------
+# cp's horn convention (build_horn_ram): orientation "normal", +Z the skin normal, +Y toward the head; chiral, the
+# right-hand (+X) side ships and the runtime mirrors it for the left. Each antler rises from a furred skin pedicle
+# through a knobbly burr ring (the coronet), as a deer's does.
+
+ANTLER_SINK = 0.02
+ANTLER_BURR = Vector((0.0, 0.0, 0.021))
+
+
+def _mp_catmull(points, n):
+    """n + 1 points along a Catmull-Rom curve through `points` (Vectors), evenly spaced by arc length."""
+    dense, segs = [], len(points) - 1
+    for k in range(segs):
+        p0, p1, p2, p3 = points[max(k - 1, 0)], points[k], points[k + 1], points[min(k + 2, segs)]
+        for j in range(16):
+            f = j / 16
+            dense.append(0.5 * (2.0 * p1 + (p2 - p0) * f + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * f * f
+                                + (3.0 * p1 - p0 - 3.0 * p2 + p3) * f ** 3))
+    dense.append(points[-1].copy())
+    cum = [0.0]
+    for a, b in zip(dense, dense[1:]):
+        cum.append(cum[-1] + (b - a).length)
+    out, i = [], 0
+    for k in range(n + 1):
+        d = cum[-1] * k / n
+        while i < len(dense) - 2 and cum[i + 1] < d:
+            i += 1
+        f = 0.0 if cum[i + 1] == cum[i] else (d - cum[i]) / (cum[i + 1] - cum[i])
+        out.append(dense[i].lerp(dense[i + 1], min(1.0, max(0.0, f))))
+    return out
+
+
+def _mp_arc_length(path):
+    cum = [0.0]
+    for a, b in zip(path, path[1:]):
+        cum.append(cum[-1] + (b - a).length)
+    return cum
+
+
+def _mp_pedicle(r):
+    """A short furred skin stump from under the skin to just inside the burr, its top closed inside the burr."""
+    prof = [(-ANTLER_SINK, 0.0), (-ANTLER_SINK, r), (-0.006, r * 1.04), (0.006, r), (0.013, r * 0.93),
+            (0.018, r * 0.82), (0.021, r * 0.6), (0.0225, 0.0)]
+    v, f, _ = bc.revolve(prof, 24)
+    return cp._up(v), f
+
+
+def _mp_beam_r(s, a, length, r_base, r_tip, burr_s, close=True):
+    """An antler beam's radius at arc length s and angle a: tapering, with shallow gutters along it, a knobbly burr
+    ring at burr_s, and (close) a blunt rounded end over its last tenth."""
+    t = s / length
+    r = r_base + (r_tip - r_base) * t ** 0.9
+    r *= 1.0 + 0.05 * math.cos(5.0 * a + 2.5 * t) * (1.0 - 0.7 * t)
+    if close and t > 0.9:
+        r *= math.sqrt(max(0.0, 1.0 - ((t - 0.9) / 0.1) ** 2))
+    knobs = 1.0 + 0.3 * math.sin(11.0 * a) * math.sin(4.0 * a + 1.3)
+    return r + 0.0068 * math.exp(-((s - burr_s) / 0.0042) ** 2) * knobs
+
+
+def _mp_tine(root, d0, length, r0, bend, up=Vector((0.0, 0.0, 1.0)), steps=12, sides=14):
+    """An antler point: from `root` (inside its beam) along d0, bending toward `up` by `bend` radians over its length
+    (a circular arc), swelling a little where it leaves the beam and tapering to a blunt rounded tip."""
+    d0 = d0.normalized()
+    axis = d0.cross(up)
+    axis = axis.normalized() if axis.length > 1e-6 else Vector((1.0, 0.0, 0.0))
+    side = axis.cross(d0)
+    ts = [i / steps for i in range(steps)] + [0.97, 1.0]
+
+    def at(t):
+        b = bend * t
+        if abs(bend) < 1e-6:
+            return root + d0 * (length * t)
+        return root + (d0 * math.sin(b) + side * (1.0 - math.cos(b))) * (length / bend)
+
+    path = [at(t) for t in ts]
+
+    def radius(i, a):
+        t = ts[i]
+        if t >= 1.0:
+            return 0.0
+        r = r0 * (1.0 - 0.6 * t) * (1.0 + 0.22 * math.exp(-(t / 0.1) ** 2))
+        if t > 0.85:
+            r *= math.sqrt(max(0.0, 1.0 - ((t - 0.85) / 0.15) ** 2))
+        return r
+
+    v, f, _ = cp._tube(path, radius, sides)
+    return v, f, path
+
+
+def _mp_antler_material(name, lo=0.6, pearl_top=0.12, tip_from=0.06, tip_to=0.3):
+    """Antler bone: fine gutters along the beam, pearled knobs toward the base fading out by pearl_top, darker and
+    rougher low down and paler and smoother toward the tips (by height)."""
+    sh = sf.Shader(name)
+    gutter = sh.noise(55.0, 3.0, vector=mp._stretched(sh, (6.0, 6.0, 0.25)))
+    pearl = sh.remap(sh.voronoi(300.0, 0.9), 0.3, 0.05)
+    knobs = sh.math("MULTIPLY", pearl, sh.remap(sh.axis("Z"), pearl_top, 0.025))
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", gutter, 0.7), sh.math("MULTIPLY", knobs, 0.8)), 0.45, 0.0012)
+    tip = sh.remap(sh.axis("Z"), tip_from, tip_to)
+    fac = sh.math("ADD", sh.math("MULTIPLY", sh.remap(gutter, 0.3, 0.7), 0.45), sh.math("MULTIPLY", tip, 0.55))
+    fac = sh.math("SUBTRACT", fac, sh.math("MULTIPLY", knobs, 0.2))
+    return sh.out(_grey(sh, fac, lo), sh.remap(sh.axis("Z"), tip_from, tip_to, 0.72, 0.45))
+
+
+def _mp_antler_handles_rot(pivot, axis, angle):
+    """A shape-key function turning everything above the burr about `axis` through `pivot`, eased in over the burr."""
+    def fn(co):
+        w = _mp_smooth(co.z, 0.024, 0.06)
+        return pivot + Matrix.Rotation(angle * w, 3, axis) @ (co - pivot)
+    return fn
+
+
+BRANCHED_BEAM = (Vector((0.0, 0.0, 0.006)), Vector((0.006, -0.006, 0.045)), Vector((0.035, -0.038, 0.11)),
+                 Vector((0.07, -0.068, 0.17)), Vector((0.098, -0.078, 0.235)), Vector((0.114, -0.063, 0.29)),
+                 Vector((0.114, -0.035, 0.33)))
+# Each tine: its root's share of the beam's length, its direction as it leaves, its length, root radius and how far
+# it bends up (radians): the brow, bez and trez tines forward, and the crown's fork near the top.
+BRANCHED_TINES = ((0.1, (-0.25, 1.0, 0.25), 0.11, 0.0125, 0.8),
+                  (0.2, (0.1, 1.0, 0.4), 0.09, 0.0115, 0.7),
+                  (0.48, (0.45, 1.0, 0.7), 0.095, 0.0105, 0.5),
+                  (0.78, (-0.6, 0.5, 1.0), 0.078, 0.0092, 0.35))
+
+
+def build_antler_branched():
+    """A deer's branched antler (right-hand side): a ridged beam rising from a furred pedicle through a knobbly burr,
+    curving up, out and back and turning forward at the top, with four tines (brow, bez, trez and the crown's fork)
+    reaching forward and up; pale rounded tips. H1_Length draws it out, H2_Spread leans it further out, H3_Sweep
+    sweeps it further back."""
+    steps = 46
+    path = _mp_catmull(list(BRANCHED_BEAM), steps)
+    cum = _mp_arc_length(path)
+    length = cum[-1]
+    burr_s = next(cum[i] for i, p in enumerate(path) if p.z >= ANTLER_BURR.z)
+    verts, faces, _ = cp._tube(path, lambda i, a: _mp_beam_r(cum[i], a, length, 0.0185, 0.0078, burr_s), 18)
+    for share, d0, tlen, r0, bend in BRANCHED_TINES:
+        i = min(range(len(cum)), key=lambda j: abs(cum[j] - share * length))
+        tv, tf, _ = _mp_tine(path[i], Vector(d0), tlen, r0, bend)
+        bc.append(verts, faces, tv, tf)
+    ped_v, ped_f = _mp_pedicle(0.021)
+
+    bone = _mp_antler_material("M_AntlerBranchedProc")
+    fur = _mp_fur_material("M_AntlerBranchedPedicleProc", lo=0.6)
+    antler = bc.mesh_object("AntlerBranched", verts, faces, [bone])
+    pedicle = bc.mesh_object("AntlerBranchedPedicle", ped_v, ped_f, [fur], parent=antler)
+    bone.name, fur.name = "M_AntlerBranched", "M_AntlerBranchedPedicle"
+    baked = _bake_parts([antler, pedicle], "PartAntlerBranched", {"M_AntlerBranched": sf.tint(cp._lin("#A98B63")),
+                                                                  "M_AntlerBranchedPedicle": sf.tint(cp._lin("#6E5646"))})
+    pts = cp._check_pivot("antler_branched", ANTLER_SINK)
+    foot = cp._footprint(pts)
+    mean_x = sum(p.x for p in pts) / len(pts)
+    mp._check(mean_x > 0.002, "antler_branched: leans out to +X, the right-hand side ships (mean x %.4f)" % mean_x)
+
+    def longer(co):
+        return ANTLER_BURR + (co - ANTLER_BURR) * (1.0 + 0.25 * _mp_smooth(co.z, 0.024, 0.06))
+
+    handles = cp._shape_keys(antler, [
+        ("H1_Length", longer, "the antler 25% longer above the burr"),
+        ("H2_Spread", _mp_antler_handles_rot(ANTLER_BURR, "Y", math.radians(18.0)), "leans 18 degrees further out"),
+        ("H3_Sweep", _mp_antler_handles_rot(ANTLER_BURR, "X", math.radians(18.0)), "swept 18 degrees further back")])
+    rules = _rules("antler_branched", round(foot + 0.001, 3), ANTLER_SINK, "normal", ["spine", "part"], 60, 40,
+                   centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    rules["handles_note"] = ("The keys are on AntlerBranched (beam and tines); the pedicle (AntlerBranchedPedicle) "
+                             "stays put under the burr.")
+    return {"purpose": "Creature antler part (PROPOSED): a deer's branched antler, a ridged beam from a furred pedicle "
+                       "and knobbly burr curving up and back with four forward tines (mirrored at bake for the left).",
+            "category": "part", "part_type": "antler_branched", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_AntlerBranched": 0.05, "M_AntlerBranchedPedicle": 0.85},
+            "revision": 1, **baked}
+
+
+PALM_BEAM = (Vector((0.0, 0.0, 0.006)), Vector((0.002, -0.002, 0.032)), Vector((0.02, -0.008, 0.058)),
+             Vector((0.05, -0.014, 0.072)), Vector((0.074, -0.018, 0.08)))
+PALM_R = 0.0178          # the beam's radius where the palm opens from it
+PALM_C = (0.08, 0.05)    # the palm's centre in its plane: (along U from the beam's end, along W)
+PALM_AU, PALM_AW = 0.078, 0.068     # the palm's base half-extents along U and W
+PALM_TH = 0.0088         # its half-thickness through the middle
+PALM_E = 4.0             # its section's exponent: flat faces thinning over the outer fifth to a rounded rim
+# The fringe of points round the upper edge and the far end, each a flat lobe of the palm's outline: (angle in the
+# palm's plane from U toward W, length).
+PALM_POINTS = ((150.0, 0.026), (124.0, 0.036), (98.0, 0.042), (72.0, 0.044), (46.0, 0.042), (20.0, 0.036),
+               (-6.0, 0.03), (-32.0, 0.022))
+PALM_SIGMA = 0.095       # a point's half-width, as an angle at the palm's centre (radians)
+PALM_BLUNT = 2.6         # the lobes' profile exponent: over 2 gives broader, blunter tips than a Gaussian
+
+
+def _palm_neck(phi):
+    """1 toward the beam (the neck), falling to 0 round the rest of the rim; and the angle off the neck."""
+    pb = math.atan2(-PALM_C[1], -PALM_C[0])
+    d = math.atan2(math.sin(phi - pb), math.cos(phi - pb))
+    return d
+
+
+def _palm_oval(phi):
+    c, s_ = math.cos(phi), math.sin(phi)
+    return 1.0 / math.sqrt((c / PALM_AU) ** 2 + (s_ / PALM_AW) ** 2)
+
+
+def _palm_outline(phi):
+    """The palm's outline at angle phi from its centre: (the broad oval's radius, drawn out into a wide neck that
+    reaches the beam's end; the points' lobes added past it)."""
+    d_neck = _palm_neck(phi)
+    reach = math.hypot(*PALM_C) + 0.004 - _palm_oval(math.atan2(-PALM_C[1], -PALM_C[0]))
+    lobes = 0.0
+    for deg, length in PALM_POINTS:
+        d = math.atan2(math.sin(phi - math.radians(deg)), math.cos(phi - math.radians(deg)))
+        lobes += length * math.exp(-(abs(d) / PALM_SIGMA) ** PALM_BLUNT)
+    return _palm_oval(phi) + reach * math.exp(-(d_neck / 0.42) ** 2), lobes
+
+
+def _palm_cup(x, y, phi):
+    """The palm's mid-surface offset along N at (x, y) from its centre: cupped forward, easing to flat at the neck
+    so the palm meets the beam, with a slight waviness."""
+    r2 = (x * x + y * y) / 0.08 ** 2
+    neck = math.exp(-(_palm_neck(phi) / 0.7) ** 2)
+    return 0.016 * r2 / (1.0 + 0.25 * r2) * (1.0 - 0.9 * neck) + 0.0012 * math.sin(x * 80.0 + y * 50.0)
+
+
+def _palm_th(phi):
+    return PALM_TH * (1.0 + 0.5 * math.exp(-(_palm_neck(phi) / 0.5) ** 2))     # thicker where the beam runs in
+
+
+def build_antler_palmate():
+    """A moose's palmate antler (right-hand side): a short beam from a furred pedicle and knobbly burr running out
+    sideways and opening into a broad flat palm, cupped forward and rising up and in, its upper edge and far end
+    drawn out into a fringe of eight flat blunt points, with a brow tine reaching forward off the beam.
+    H1_Span broadens the palm, H2_Tilt raises it."""
+    bsteps = 22
+    beam_path = _mp_catmull(list(PALM_BEAM), bsteps)
+    end = beam_path[-1]
+    U = (beam_path[-1] - beam_path[-3]).normalized()
+    beam_path += [end + U * (0.013 * k) for k in (1, 2, 3)]       # a ridge running into the palm, closing inside it
+    cum = _mp_arc_length(beam_path)
+    blen = cum[bsteps]
+    burr_s = next(cum[i] for i, p in enumerate(beam_path) if p.z >= ANTLER_BURR.z)
+
+    def beam_r(i, a):
+        if i <= bsteps:
+            return _mp_beam_r(cum[i], a, blen, 0.0185, PALM_R, burr_s, close=False)
+        return PALM_R * max(0.0, 1.0 - 0.32 * (i - bsteps)) if i < len(beam_path) - 1 else 0.0
+
+    verts, faces, _ = cp._tube(beam_path, beam_r, 18)
+    W0 = Vector((0.0, -0.3, 1.0)).normalized()
+    W = (W0 - U * W0.dot(U)).normalized()
+    N = W.cross(U)                                          # forward and a little up: the cupped face
+    origin = end - U * 0.006
+
+    def palm_at(x, y, n):
+        return origin + U * (PALM_C[0] + x) + W * (PALM_C[1] + y) + N * n
+
+    # The palm: a closed flattened shell round its centre, rings of constant theta from the back face's centre to the
+    # front face's (a superellipse section, so the faces stay flat and the rim rounds over), phi round the outline.
+    KP, KT = 180, 16
+    rings = []
+    for it in range(1, KT):
+        ang = -0.5 * math.pi + math.pi * it / KT
+        rho = abs(math.cos(ang)) ** (2.0 / PALM_E)
+        nn = math.copysign(abs(math.sin(ang)) ** (2.0 / PALM_E), math.sin(ang))
+        ring = []
+        for j in range(KP):
+            phi = 2.0 * math.pi * j / KP
+            base, lobes = _palm_outline(phi)
+            rr = base * rho + lobes * _mp_smooth(rho, 0.55, 0.995)     # the points grow from the outer part only
+            x, y = math.cos(phi) * rr, math.sin(phi) * rr
+            ring.append(len(verts))
+            verts.append(tuple(palm_at(x, y, _palm_th(phi) * nn + _palm_cup(x, y, phi))))
+        rings.append(ring)
+    back_c, front_c = len(verts), len(verts) + 1
+    verts.append(tuple(palm_at(0.0, 0.0, -PALM_TH + _palm_cup(0.0, 0.0, 0.0))))
+    verts.append(tuple(palm_at(0.0, 0.0, PALM_TH + _palm_cup(0.0, 0.0, 0.0))))
+    for j in range(KP):
+        k = (j + 1) % KP
+        faces.append((back_c, rings[0][k], rings[0][j]))
+        for i in range(len(rings) - 1):
+            faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
+        faces.append((rings[-1][j], rings[-1][k], front_c))
+    bi = min(range(bsteps + 1), key=lambda j: abs(cum[j] - 0.4 * blen))
+    tv, tf, _ = _mp_tine(beam_path[bi], Vector((0.35, 1.0, 0.3)), 0.066, 0.0105, 0.5)       # the brow tine
+    bc.append(verts, faces, tv, tf)
+    ped_v, ped_f = _mp_pedicle(0.023)
+
+    bone = _mp_antler_material("M_AntlerPalmateProc", lo=0.62, pearl_top=0.08, tip_from=0.08, tip_to=0.27)
+    fur = _mp_fur_material("M_AntlerPalmatePedicleProc", lo=0.6)
+    antler = bc.mesh_object("AntlerPalmate", verts, faces, [bone])
+    pedicle = bc.mesh_object("AntlerPalmatePedicle", ped_v, ped_f, [fur], parent=antler)
+    bone.name, fur.name = "M_AntlerPalmate", "M_AntlerPalmatePedicle"
+    baked = _bake_parts([antler, pedicle], "PartAntlerPalmate", {"M_AntlerPalmate": sf.tint(cp._lin("#BBA582")),
+                                                                 "M_AntlerPalmatePedicle": sf.tint(cp._lin("#6E5646"))})
+    pts = cp._check_pivot("antler_palmate", ANTLER_SINK)
+    foot = cp._footprint(pts)
+    mean_x = sum(p.x for p in pts) / len(pts)
+    mp._check(mean_x > 0.002, "antler_palmate: reaches out to +X, the right-hand side ships (mean x %.4f)" % mean_x)
+
+    def span(co):
+        k = _mp_smooth((co - origin).dot(U), -0.01, 0.03)
+        return origin + (co - origin) * (1.0 + 0.25 * k) if k > 0.0 else co
+
+    handles = cp._shape_keys(antler, [
+        ("H1_Span", span, "the palm and its points 25% broader and longer"),
+        ("H2_Tilt", _mp_antler_handles_rot(ANTLER_BURR, "Y", math.radians(-22.0)), "the palm raised 22 degrees")])
+    rules = _rules("antler_palmate", round(foot + 0.001, 3), ANTLER_SINK, "normal", ["spine", "part"], 60, 40,
+                   centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    rules["handles_note"] = ("The keys are on AntlerPalmate (beam, palm and points); the pedicle "
+                             "(AntlerPalmatePedicle) stays put under the burr.")
+    return {"purpose": "Creature antler part (PROPOSED): a moose's palmate antler, a short beam opening into a broad "
+                       "cupped palm fringed with flat blunt points, and a brow tine (mirrored at bake for the left).",
+            "category": "part", "part_type": "antler_palmate", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_AntlerPalmate": 0.05, "M_AntlerPalmatePedicle": 0.85},
+            "revision": 1, **baked}
+
+
 def _bake_parts(objs, texture, tints, size=512, tolerance=cp.TOLERANCE, keep=()):
     return cp._bake(objs, texture, tints, size=size, tolerance=tolerance, keep=keep)
 
@@ -1503,6 +2105,10 @@ ASSETS = {
     "cpart_mouth_fangs": (build_mouth_fangs, 1200),
     "cpart_eye_turret": (build_eye_turret, 1200),
     "cpart_eye_lashed": (build_eye_lashed, 1200),
+    "cpart_foot_otter": (build_foot_otter, 2500),
+    "cpart_foot_pillar": (build_foot_pillar, 2500),
+    "cpart_antler_branched": (build_antler_branched, 2500),
+    "cpart_antler_palmate": (build_antler_palmate, 2500),
 }
 
 

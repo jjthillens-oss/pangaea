@@ -1,0 +1,115 @@
+{
+  "id": "cpart_foot_otter",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature foot part (PROPOSED): an otter's webbed and padded hind foot, five short plump toes fanned wide with a web nearly to the tips, dark pads under the palm and toes, short pale claws.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_foot_otter.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_foot_otter.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.159,
+    "y_forward": 0.139,
+    "z_up": 0.09
+  },
+  "triangles": 1507,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartFootOtter_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFootOtter_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFootOtter_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FootOtterClaw",
+    "M_FootOtterPad",
+    "M_FootOtterSkin",
+    "M_FootOtterWeb"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FootOtter",
+    "FootOtterClaws",
+    "FootOtterPads",
+    "FootOtterWeb"
+  ],
+  "part_type": "foot_otter",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "foot_otter",
+    "footprint_radius_m": 0.095,
+    "sink_depth_m": 0.0,
+    "chiral": false,
+    "orientation": "ground",
+    "turn_limit_deg": 25,
+    "tilt_limit_deg": 15,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "foot",
+    "handles": [
+      {
+        "key": "H1_Spread",
+        "meaning": "toes fanned up to 12 degrees further apart, the outer ones most",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Long",
+        "meaning": "toes about 30% longer along their own directions",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both keys are on all four meshes (FootOtter, FootOtterWeb, FootOtterPads, FootOtterClaws) with the same names; the runtime sets them together.",
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+  },
+  "paint_mix": {
+    "M_FootOtterSkin": 0.85,
+    "M_FootOtterWeb": 0.9,
+    "M_FootOtterPad": 0.1,
+    "M_FootOtterClaw": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 4008,
+    "triangles_after": 1507
+  },
+  "review_notes": {
+    "gate1_shape": "pass: a broad furred palm and five short plump toes fanned from -70 to +70 degrees with a web between them reaching nearly to the tips, its free edge scalloped back between the toes (clear from above, gray_top); a dark pad under each toe tip shows under it from the side, the palm pad's rim round the base; short pale claws. H1_Spread fans the toes further, H2_Long draws them out, and the web, pads and claws follow with no tearing. In a scratch geometry preview before the first build, the first draft's toes were too fat for their spacing and hid the web, and cp._foot_handles tore the outer toes (its spread switches on at y = 0.02 with no blend), so this part has its own eased handles.",
+    "gate2_materials": "pass: four finishes - brown short-furred skin on the palm and toes, a darker, smoother web membrane with fine veins, near-black glossy leather pads, ivory claws.",
+    "gate3_neutral_light": "pass: under the neutral white rig the web reads as a darker membrane between lit toes, the pads stay dark without crushing and the claws bright without clipping.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
