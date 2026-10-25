@@ -3585,74 +3585,124 @@ def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
 
 
 MUZZLE_SINK = 0.008
+MZ_RX, MZ_RY = 0.044, 0.048
+MZ_EYES = ((-0.0155, 0.009), (0.0155, 0.009))
+
+
+def _mz_height(x, y):
+    """The face plate's surface: a nearly flat face plane, two open eye-socket hollows under the brow, and a
+    short squared muzzle below that rises to a flat nose pad; the rim rolls back into the skin."""
+    r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
+    z = 0.006 - 0.003 * r2
+    for ex, ey in MZ_EYES:
+        d2 = ((x - ex) / 0.0095) ** 2 + ((y - ey) / 0.0085) ** 2
+        z -= 0.0075 * math.exp(-d2 * 1.6)
+    m = ((x / 0.019) ** 4 + ((y + 0.015) / 0.015) ** 4) ** 0.25          # a squared muzzle
+    z += 0.013 * max(0.0, 1.0 - m ** 3) ** 0.7
+    edge = max(0.0, (math.sqrt(r2) - 0.8) / 0.2)
+    return z - (z + MUZZLE_SINK * 0.9) * edge ** 2
 
 
 def build_muzzle_primate():
     """A monkey's face plate, mounted on the front of the head (+Z out of the face, +Y up toward the brow): a
-    broad bare shallow dome, a heavy brow ridge across the top, a short flat snout below with a dark nose pad
-    and two nostrils opening forward and down, a full upper lip over a mouth line, all framed by a ring of fur.
-    H1_Snout pushes the snout out, H2_Brow makes the brow heavier."""
-    verts, fcs = [], []
-    bc.append(verts, fcs, *_blob(Vector((0.0, 0.0, 0.004)), 0.044, 0.042, 0.012, power=0.85))
-    bc.append(verts, fcs, *_blob(Vector((0.0, -0.014, 0.017)), 0.022, 0.02, 0.02, power=0.9,
-                                 shape=lambda n: (1.0 - 0.15 * max(0.0, n.y), 1.0, 0.0)))
-    brow = [Vector((x, 0.021 + 0.005 * abs(math.sin(math.pi * x / 0.042)), 0.013 - 0.008 * (x / 0.042) ** 2 - 0.002 * math.exp(-(x / 0.008) ** 2)))
-            for x in (-0.042 + 0.084 * k / 16 for k in range(17))]
-    bv, bf, _ = _tube(brow, lambda i, a: 0.0072 * math.sin(math.pi * (0.04 + 0.92 * i / 16)) ** 0.6 * (1.0 + 0.25 * math.sin(a)), 12)
+    flat bare face plane with two open eye-socket hollows (room for eye parts), a heavy brow ridge that
+    overhangs them, a short squared muzzle with a broad dark nose pad and two nostrils, a mouth line across the
+    muzzle, and locks of fur framing the face edge. H1_Snout pushes the muzzle out, H2_Brow makes the brow heavier."""
+    rings, segs = 13, 40
+    verts, fcs = [(0.0, 0.0, _mz_height(0.0, 0.0))], []
+    for r in range(1, rings + 1):
+        for s in range(segs):
+            a = 2 * math.pi * s / segs
+            x, y = MZ_RX * r / rings * math.cos(a), MZ_RY * r / rings * math.sin(a)
+            verts.append((x, y, _mz_height(x, y)))
+    for s in range(segs):
+        fcs.append((0, 1 + s, 1 + (s + 1) % segs))
+    for r in range(1, rings):
+        a0, b0 = 1 + (r - 1) * segs, 1 + r * segs
+        for s in range(segs):
+            t = (s + 1) % segs
+            fcs.append((a0 + s, b0 + s, b0 + t, a0 + t))
+    # The brow ridge: a thick bar arching over each socket, pushed forward so it overhangs the hollows.
+    brow = []
+    for k in range(17):
+        x = -0.032 + 0.064 * k / 16
+        arch = 0.0035 * math.exp(-((abs(x) - 0.0155) / 0.009) ** 2)
+        brow.append(Vector((x, 0.0195 + arch - 0.002 * (x / 0.032) ** 2,
+                            0.0085 + 0.0015 * math.exp(-((abs(x) - 0.0155) / 0.01) ** 2) - 0.004 * (x / 0.032) ** 4)))
+    bv, bf, _ = _tube(brow, lambda i, a: 0.0058 * math.sin(math.pi * (0.06 + 0.88 * i / 16)) ** 0.45 * (1.0 + 0.2 * math.sin(a)), 10)
     bc.append(verts, fcs, bv, bf)
-    lip = [Vector((x, -0.023 + 0.004 * (x / 0.016) ** 2, 0.035 - 0.007 * (x / 0.016) ** 2)) for x in (-0.016 + 0.032 * k / 10 for k in range(11))]
-    lv, lf, _ = _tube(lip, lambda i, a: 0.003 * math.sin(math.pi * (0.05 + 0.9 * i / 10)) ** 0.5, 10)
-    bc.append(verts, fcs, lv, lf)
     skin = _skin_material("M_MuzzlePrimateSkinProc", scale=260.0, lo=0.82, rough=0.55)
     face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin])
     skin.name = "M_MuzzlePrimateSkin"
-    nv, nf = _blob(Vector((0.0, -0.006, 0.0345)), 0.0085, 0.006, 0.0038, power=0.85,
-                   shape=lambda n: (1.0 - 0.2 * max(0.0, n.y), 1.0, 0.0))
-    nose_mat = _pad_material("M_MuzzlePrimateNoseProc", 0.35)
+    # The nose pad: broad, flat and dark across the top of the muzzle.
+    top = _mz_height(0.0, -0.011)
+    nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0008)), 0.0105, 0.0062, 0.0032, sub=2, power=0.7,
+                   shape=lambda n: (1.0 - 0.25 * max(0.0, -n.y), 1.0, 0.0))
+    nose_mat = _pad_material("M_MuzzlePrimateNoseProc")
     nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
     nose_mat.name = "M_MuzzlePrimateNose"
-    # The nostrils and the mouth line: near-black recesses set into the nose pad and under the lip.
+    # The nostrils (set into the pad's lower edge) and the mouth line across the muzzle front: dark recesses.
     hv, hf = [], []
     for sx in (-1.0, 1.0):
-        bc.append(hv, hf, *_blob(Vector((sx * 0.0037, -0.0095, 0.0365)), 0.0019, 0.0013, 0.0016, sub=2))
-    mouth = [Vector((x, -0.0265 + 0.004 * (x / 0.015) ** 2, 0.0325 - 0.007 * (x / 0.015) ** 2)) for x in (-0.015 + 0.03 * k / 10 for k in range(11))]
-    mv, mf, _ = _tube(mouth, lambda i, a: 0.0014 * math.sin(math.pi * (0.05 + 0.9 * i / 10)) ** 0.5, 8)
+        bc.append(hv, hf, *_blob(Vector((sx * 0.0048, -0.0138, top + 0.0016)), 0.0022, 0.0014, 0.0012, sub=1))
+    mouth = []
+    for k in range(9):
+        x = -0.014 + 0.028 * k / 8
+        y = -0.0255 + 0.0035 * (x / 0.014) ** 2
+        mouth.append(Vector((x, y, _mz_height(x, y) + 0.0002)))
+    mv, mf, _ = _tube(mouth, lambda i, a: 0.0011 * math.sin(math.pi * (0.05 + 0.9 * i / 8)) ** 0.5, 5)
     bc.append(hv, hf, mv, mf)
     hole_sh = sf.Shader("M_MuzzlePrimateCavityProc")
     hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
     holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face)
     hole_mat.name = "M_MuzzlePrimateCavity"
-    rv, rf = _torus(0.047, 0.0085, 24, 8, wobble=0.12)
-    fur_mat = _fur_material("M_MuzzlePrimateFurProc")
-    fur = bc.mesh_object("FurRing", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in rv], rf, [fur_mat], parent=face)
+    # The fur frame: a thick scalloped ruff over the crown and down the cheeks, tapering out at the jaw so the
+    # chin stays bare; each scallop a clump of fur swelling outward, not a flat even ring.
+    n, lobes = 49, 11
+    a0, a1 = math.radians(-58.0), math.radians(238.0)
+    path, rad = [], []
+    for i in range(n):
+        a = a0 + (a1 - a0) * i / (n - 1)
+        c, s = math.cos(a), math.sin(a)
+        lobe = 0.5 + 0.5 * math.cos(lobes * (a - math.pi / 2))
+        w = math.sin(math.pi * i / (n - 1)) ** 0.6 * (0.75 + 0.25 * s)
+        out = 0.93 + 0.08 * lobe * w
+        path.append(Vector((out * MZ_RX * c, out * MZ_RY * s, -0.001 + 0.0045 * w)))
+        rad.append(max(0.0008, w * (0.0065 + 0.0035 * lobe)))
+    tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 7)
+    fur_mat = _fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
+    fur = bc.mesh_object("FurFrame", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in tv], tf, [fur_mat], parent=face)
     fur_mat.name = "M_MuzzlePrimateFur"
     objs = [face, nose, holes, fur]
-    baked = _bake(objs, "PartMuzzlePrimate", {"M_MuzzlePrimateSkin": sf.tint(_lin("#B98478")), "M_MuzzlePrimateNose": sf.tint(_lin("#7A5450")),
-                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#857260"))})
+    baked = _bake(objs, "PartMuzzlePrimate", {"M_MuzzlePrimateSkin": sf.tint(_lin("#C49A86")), "M_MuzzlePrimateNose": sf.tint(_lin("#4A3532")),
+                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#6E5A48"))})
     pts = _check_pivot("muzzle_primate", MUZZLE_SINK)
     foot = _footprint(pts)
 
     def snout(co):
-        if co.y < 0.0 and co.z > 0.008:
-            k = min(1.0, -co.y / 0.02) * min(1.0, (co.z - 0.008) / 0.012)
-            co.z += 0.014 * k
+        k = max(0.0, 1.0 - (((co.x / 0.022) ** 2 + ((co.y + 0.016) / 0.018) ** 2) ** 0.5))
+        if co.z > 0.004 and k > 0.0:
+            co.z += 0.012 * min(1.0, k * 2.0)
+            co.y -= 0.004 * min(1.0, k * 2.0)
         return co
 
     def brow_(co):
-        if co.y > 0.014 and co.z > 0.004:
-            co.z += 0.005 * min(1.0, (co.y - 0.014) / 0.01)
+        if co.y > 0.013 and co.z > 0.003:
+            f = min(1.0, (co.y - 0.013) / 0.008)
+            co.z += 0.004 * f
+            co.y -= 0.002 * f
         return co
 
-    keys = [("H1_Snout", snout, "the snout and nose pushed 14 mm further out"), ("H2_Brow", brow_, "the brow ridge 5 mm heavier")]
+    keys = [("H1_Snout", snout, "the muzzle and nose pad pushed 12 mm further out"), ("H2_Brow", brow_, "the brow ridge 4 mm heavier and lower")]
     handles = _shape_keys(face, keys)
     for o in (nose, holes, fur):
         _shape_keys(o, [(k, fn, "") for k, fn, _ in keys])
     rules = _rules("muzzle_primate", round(foot + 0.001, 3), MUZZLE_SINK, "forward_cone", ["spine"], 30, 25, centerline="required")
     rules["handles"] = handles
-    rules["pivot_note"] = "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
-    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a bare shallow dome with a heavy brow ridge, a short flat snout with a dark nose pad and nostrils, a full upper lip and a fur frame.",
+    rules["pivot_note"] = "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short squared muzzle with a broad dark nose pad, nostrils and a mouth line, framed by locks of fur.",
             "category": "part", "part_type": "muzzle_primate", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 1, **baked}
+            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 2, **baked}
 
 
 # --- Dragon set: wing, swept horn, dorsal spine ------------------------------------------------------
