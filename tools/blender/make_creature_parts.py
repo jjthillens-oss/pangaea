@@ -3933,33 +3933,99 @@ def build_eye_bulge():
             "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 1, **baked}
 
 
-HAND_FROG_T = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+HAND_FROG_T = tuple(i / 8 for i in range(9))
 HAND_FROG_KNUCKLE = 0.046
+HAND_FROG_FINGERS = ((-36.0, 0.040), (-12.0, 0.050), (12.0, 0.053), (36.0, 0.043))
+HAND_FROG_BASE = Vector((0.0, 0.0, 0.03))
+HAND_FROG_ROOT = 0.016
+
+
+def _frog_finger_of(co):
+    """The finger a point belongs to, by its angle about the palm centre (fingers splay in the XZ plane)."""
+    d = co - HAND_FROG_BASE
+    a = math.degrees(math.atan2(d.x, max(1e-6, d.z)))
+    return min(range(len(HAND_FROG_FINGERS)), key=lambda i: abs(HAND_FROG_FINGERS[i][0] - a))
+
+
+def _frog_dir(f):
+    ang = math.radians(HAND_FROG_FINGERS[f][0])
+    return Vector((math.sin(ang), 0.0, math.cos(ang)))
+
+
+def _frog_s(co, f):
+    """Distance along finger f from the palm centre."""
+    return (co - HAND_FROG_BASE).dot(_frog_dir(f))
+
+
+def _smooth(x, a, b):
+    t = min(1.0, max(0.0, (x - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _frog_bend(co, f, hinges):
+    """Rigid hinges along finger f: [(s_at, degrees)] rotate everything past s_at about the finger's sideways
+    axis, curling toward +Y (the palm side). Pads lie past the last hinge, so they ride rigidly with the tip."""
+    d = _frog_dir(f)
+    side = Vector((d.z, 0.0, -d.x))
+    s = _frog_s(co, f)
+    p = co.copy()
+    for s_at, deg in reversed(hinges):
+        w = _smooth(s, s_at - 0.004, s_at + 0.004)
+        if w <= 0.0:
+            continue
+        pivot = HAND_FROG_BASE + d * s_at
+        p = pivot + Matrix.Rotation(-math.radians(deg) * w, 3, side) @ (p - pivot)
+    return p
 
 
 def build_hand_frog():
-    """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a small rounded palm and four
-    slender splayed fingers, each ending in a round flat sticky disc, in smooth wet skin. H1_Grip curls the
-    fingers in toward the palm, H2_Spread fans them."""
+    """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a flat rounded palm and four
+    splayed tapering fingers with a knuckle joint each, ending in round flat sticky discs, faint webbing between
+    the finger roots, smooth wet skin. H1_Grip curls the fingers at two joints (pads ride rigidly on the tips),
+    H2_Spread fans them."""
     unit, faces = bc.icosphere(3)
     verts, fcs = [], []
-    bc.append(verts, fcs, [tuple(Vector((n.x * 0.027, n.y * 0.0105, 0.03 + n.z * 0.021))) for n in (Vector(co).normalized() for co in unit)], faces)
-    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0105 + 0.0012 * i, 14)
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.029, n.y * 0.0085, 0.03 + n.z * 0.022))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0095 + 0.0014 * i, 14)
     bc.append(verts, fcs, wv, wf)
     disc_unit, disc_faces = bc.icosphere(2)
     pv, pf = [], []
-    for ang, length in ((-34.0, 0.04), (-11.0, 0.052), (11.0, 0.055), (34.0, 0.044)):
+    roots = []
+    for ang, length in HAND_FROG_FINGERS:
         d = Vector((math.sin(math.radians(ang)), 0.0, math.cos(math.radians(ang))))
-        start = Vector((0.0, 0.0, 0.03)) + d * 0.018
-        path = [start + d * (length * t) + Vector((0.0, 0.003 * math.sin(math.pi * t), 0.0)) for t in HAND_FROG_T]
-        tv, tf, _ = _tube(path, lambda i, a: 0.0056 * (1.0 - 0.3 * i / 5) * (1.0 + 0.12 * math.exp(-((i - 2.5) / 0.6) ** 2)), 10)
+        start = HAND_FROG_BASE + d * HAND_FROG_ROOT
+        path = [start + d * (length * t) for t in HAND_FROG_T]
+        n = len(path) - 1
+
+        def rad(i, a, n=n):
+            t = i / n
+            return 0.0084 - 0.0036 * t + 0.0016 * math.exp(-((t - 0.5) / 0.08) ** 2)
+        tv, tf, _ = _tube(path, rad, 10)
         bc.append(verts, fcs, tv, tf)
-        c = path[-1] + d * 0.003
-        r = 0.0098
+        roots.append((start, d))
+        c = path[-1] + d * 0.0035
+        r = 0.0094
         side = Vector((d.z, 0.0, -d.x))
-        # A round disc, flat across the finger's width, its pad face toward the palm side.
-        bc.append(pv, pf, [tuple(c + side * (n.x * r) + d * (n.z * r * 0.9) + Vector((0.0, n.y * r * 0.35 + 0.0015, 0.0))) for n in (Vector(co).normalized() for co in disc_unit)], disc_faces)
-    skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0)
+        bc.append(pv, pf, [tuple(c + side * (q.x * r) + d * (q.z * r * 0.92) + Vector((0.0, q.y * r * 0.36 + 0.0012, 0.0))) for q in (Vector(co).normalized() for co in disc_unit)], disc_faces)
+    # Faint webbing: a thin double-sided sheet between neighbouring finger roots, its free edge scalloped.
+    for (pa, da), (pb, db) in zip(roots, roots[1:]):
+        rows = 4
+        base = len(verts)
+        for j in range(rows + 1):
+            t = j / rows
+            a = pa + da * (0.01 + 0.02 * t)
+            b = pb + db * (0.01 + 0.02 * t)
+            mid = (a + b) / 2 - Vector((0.0, 0.0, 0.009 * t))
+            for p in (a, mid, b):
+                for y in (-0.0012, 0.0012):
+                    verts.append(tuple(p + Vector((0.0, y + 0.0012, 0.0))))
+        for j in range(rows):
+            for k in range(2):
+                i0 = base + j * 6 + k * 2
+                i1 = i0 + 6
+                fcs.append((i0, i0 + 2, i1 + 2, i1))
+                fcs.append((i0 + 1, i1 + 1, i1 + 3, i0 + 3))
+    skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0, rough=0.22)
     hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
     skin.name = "M_HandFrogSkin"
     pad_mat = _pad_material("M_HandFrogPadProc")
@@ -3970,26 +4036,28 @@ def build_hand_frog():
     foot = _footprint(pts, z_max=0.02)
 
     def grip(co):
-        if co.z > HAND_FROG_KNUCKLE:
-            dz = co.z - HAND_FROG_KNUCKLE
-            k = min(1.0, dz / 0.05)
-            ang = math.radians(80.0) * k
-            return Vector((co.x * (1.0 - 0.3 * k), co.y + dz * math.sin(ang) * 0.85, HAND_FROG_KNUCKLE + dz * math.cos(ang) * 0.85 + dz * 0.15))
-        return co
+        if co.z <= HAND_FROG_KNUCKLE - 0.008:
+            return co
+        f = _frog_finger_of(co)
+        length = HAND_FROG_FINGERS[f][1]
+        return _frog_bend(co, f, [(HAND_FROG_ROOT + 0.004, 45.0), (HAND_FROG_ROOT + length * 0.5, 50.0)])
 
     def spread(co):
-        if co.z > HAND_FROG_KNUCKLE:
-            co.x *= 1.0 + 0.45 * min(1.0, (co.z - HAND_FROG_KNUCKLE) / 0.05)
-        return co
+        if co.z <= HAND_FROG_KNUCKLE - 0.008:
+            return co
+        f = _frog_finger_of(co)
+        w = _smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008)
+        rot = Matrix.Rotation(math.radians(HAND_FROG_FINGERS[f][0] * 0.45) * w, 3, Vector((0.0, 1.0, 0.0)))
+        return HAND_FROG_BASE + rot @ (co - HAND_FROG_BASE)
 
-    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 80 degrees in toward the palm"),
-                                 ("H2_Spread", spread, "fingers fan 45% wider at the tips")])
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl about 95 degrees in toward the palm at two joints; pads ride on the tips"),
+                                 ("H2_Spread", spread, "fingers fan 45% wider")])
     _shape_keys(pads, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
     rules = _hand_rules("hand_frog", foot)
     rules["handles"] = handles
-    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a small palm and four slender splayed fingers ending in round sticky disc pads, smooth wet skin; grips on a shape key.",
+    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a flat palm and four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
             "category": "part", "part_type": "hand_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 1, **baked}
+            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 2, **baked}
 
 
 SAC_SINK = 0.02
