@@ -1,0 +1,21 @@
+{
+  "status": "candidate_pending_visual_review",
+  "blender": "5.2.2 LTS",
+  "triangles": 1900,
+  "triangle_budget": 2000,
+  "materials": [
+    "Warm_Reed",
+    "Pale_Fiber",
+    "Dark_Twig"
+  ],
+  "texture_files": [],
+  "dimensions_blender_m": [
+    1.0102,
+    0.9583,
+    0.2668
+  ],
+  "origin": "bottom-center",
+  "front": "+Y",
+  "up": "+Z",
+  "export": "nest-straw.glb"
+}
