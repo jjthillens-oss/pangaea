@@ -210,7 +210,7 @@
    "bible": "\u00a74, \u00a726",
    "tier": 3,
    "owner": "director",
-   "feature": "Bounded content plan for the aquatic route through Social, Tribal and Civilization: what each era's underwater variant shares with the land version and what it adds; owner approves before any build",
+   "feature": "Bounded content plan for the aquatic route: docs/bible/addendum-aquatic-path.md (PR #198, PROPOSED) approved by the owner before any U build",
    "evidence": [],
    "passes": false
   },
@@ -226,22 +226,70 @@
   },
   {
    "id": "U-03",
-   "milestone": "after slice",
-   "bible": "\u00a79, \u00a710",
-   "tier": 2,
+   "milestone": "M4.5",
+   "bible": "\u00a74, \u00a79",
+   "tier": 3,
    "owner": "aquatic",
-   "feature": "Underwater settlement slice: one functioning reef or seabed settlement and a neighbour, sharing the land settlement systems",
+   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "feature": "Reef spike before M5: one reef settlement, three modules, a vent hearth, a food pen, three workers pathing in 3D, one camera; a 10-minute soak with no stuck worker",
    "evidence": [],
    "passes": false
   },
   {
    "id": "U-04",
-   "milestone": "after slice",
-   "bible": "\u00a710, \u00a718",
-   "tier": 2,
-   "owner": "aquatic",
-   "feature": "Underwater city: connected settlements and routes on the sea floor; the same save and lineage carry over",
+   "milestone": "M5 aquatic",
+   "bible": "\u00a78",
+   "tier": 3,
+   "owner": "creature",
+   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "feature": "Aquatic Social variant: an underwater signal set and a swimmer-and-wader companion task",
    "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "U-05",
+   "milestone": "M6 aquatic",
+   "bible": "\u00a79",
+   "tier": 3,
+   "owner": "aquatic",
+   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "feature": "Reef settlement that shares the land settlement's module code",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "U-06",
+   "milestone": "M7 aquatic",
+   "bible": "\u00a710",
+   "tier": 3,
+   "owner": "aquatic",
+   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "feature": "Current routes between a reef and a tideline settlement, and one shore-people agreement",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "U-07",
+   "milestone": "M8 aquatic",
+   "bible": "\u00a711",
+   "tier": 3,
+   "owner": "aquatic",
+   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "feature": "Water-filled ship module set and ocean suitability in planet survey",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "R-01",
+   "milestone": "research",
+   "bible": "\u00a726",
+   "tier": 3,
+   "owner": "director",
+   "status": "PROPOSED; innovation backlog IB-30 to IB-33 (PR #191), each needs the owner's yes before entering the build backlog",
+   "feature": "Triage innovation backlog items IB-30 to IB-33 into milestones once PR #191 merges",
+   "evidence": [
+    "docs/research/innovation-backlog.md"
+   ],
    "passes": false
   }
  ]
