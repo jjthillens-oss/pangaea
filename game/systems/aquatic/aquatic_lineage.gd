@@ -97,7 +97,8 @@ static func last_path_event(save: SaveGame) -> String:
 
 ## The first land creature of a fish that crawls ashore (plan section 7): the creature stage's four-legged starter
 ## (its legs are the lobe fins), longer with the fish's length and stouter with its girth, with the fish's mouth, its
-## back fin when it had one, and its colour; CreatureRules.ashore keeps the skin rule in one place.
+## back fin when it had one, its tail fin and side fins, and its colour; CreatureRules.ashore keeps the skin rule in
+## one place.
 static func to_creature(body: Dictionary, genome: Genome) -> Dictionary:
 	var creature := CreatureRules.new_creature()
 	var cbody: Dictionary = creature["body"]
@@ -119,6 +120,21 @@ static func to_creature(body: Dictionary, genome: Genome) -> Dictionary:
 					parts.append(part)
 			_:
 				parts.append(part)
+	# The swimming parts come ashore too (Joshua, 2026-10-25 05:43: traits matter both ways): the tail fin, and the
+	# side fins when the fish had them. On land they are the creature stage's to weigh (a swimmer's parts slow a
+	# walker); the creature editor can trade them away.
+	var next: Dictionary = cbody.get("next", {})
+	var fish_parts := [{"type": "tail_fluke", "u": 1000, "ring": 0, "scale": 500 + 120 * int(body.get("tail_size", 1)),
+			"handles": [], "mirror": false}]
+	if int(body.get("fins", 0)) > 0:
+		fish_parts.append({"type": "fin", "u": 300, "ring": 250, "scale": 350 + 150 * int(body.fins), "handles": [0, 0, 0],
+				"mirror": true})
+	for fp in fish_parts:
+		var n := int(next.get("p", parts.size() + 1))
+		next["p"] = n + 1
+		parts.append({"id": "p_%d" % n, "type": fp.type, "host": "spine", "u": fp.u, "ring": fp.ring, "elev": 0, "height": 0,
+				"turn": 0, "tilt": 0, "roll": 0, "scale": fp.scale, "handles": fp.handles, "mirror": fp.mirror})
+	cbody["next"] = next
 	cbody["parts"] = parts
 	cbody[CreatureRules.SKIN_COLOR_KEY] = "#" + CreatureRules.cell_skin(float(body.get("hue", 0.55))).to_html(false)
 	return CreatureRules.ashore(creature, genome)

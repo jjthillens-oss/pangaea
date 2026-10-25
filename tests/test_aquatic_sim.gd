@@ -362,6 +362,9 @@ func test_a_fish_comes_ashore_as_a_legal_creature_of_its_colour() -> void:
 		var creature := AquaticLineage.to_creature(body, founded.save.genome)
 		check(crules.body_problems(creature.body).is_empty(), "a legal land body: %s" % [crules.body_problems(creature.body)])
 		check_eq(String(creature.body.skin_color), "#" + CreatureRules.cell_skin(0.3).to_html(false), "the fish's colour")
+		var types: Array = creature.body.parts.map(func(p): return String(p.type))
+		check("tail_fluke" in types, "the tail fin comes ashore: %s" % [types])
+		check(("fin" in types) == (int(body.fins) > 0 or int(body.dorsal) > 0), "and the fins it had")
 
 
 func test_staying_in_the_sea_is_written_once_as_a_lineage_event() -> void:
