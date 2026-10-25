@@ -13,6 +13,7 @@ extends RefCounted
 ## The creature (schema v3): its body is checked against the body rules and part rules (CreatureRules,
 ## loaded on first use) on every load and save, so a save whose creature breaks them fails to load
 ## with the reasons and the backup is tried; its parts are never dropped.
+## The aquatic stage (schema v5): its body is checked against game/data/aquatic/aquatic_rules.json the same way.
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const CURRENT_VERSION := SaveGame.SCHEMA_VERSION
@@ -24,6 +25,8 @@ var migrations: Dictionary = {}
 var catalog: PartCatalog
 ## The creature's body rules, loaded the first time a save with a creature is checked.
 var creature_rules: CreatureRules
+## The aquatic stage's rules, loaded the first time a save with an aquatic block is checked.
+var aquatic_rules: Dictionary = {}
 
 
 func _init(p_catalog: PartCatalog) -> void:
@@ -31,13 +34,20 @@ func _init(p_catalog: PartCatalog) -> void:
 	migrations = SaveMigrations.all()
 
 
-## SaveGame.validate with the creature's body rules.
+## SaveGame.validate with the creature's and the aquatic stage's body rules.
 func validate(save: SaveGame) -> PackedStringArray:
-	if save.creature.is_empty():
-		return save.validate(catalog)
-	if creature_rules == null:
-		creature_rules = CreatureRules.new()
-	return save.validate(catalog, creature_rules.body_validator())
+	var creature_check := Callable()
+	if not save.creature.is_empty():
+		if creature_rules == null:
+			creature_rules = CreatureRules.new()
+		creature_check = creature_rules.body_validator()
+	var aquatic_check := Callable()
+	if not save.aquatic.is_empty():
+		if aquatic_rules.is_empty():
+			aquatic_rules = AquaticLineage.rules()
+		var body_rules: Dictionary = aquatic_rules.get("body", {})
+		aquatic_check = func(body: Dictionary) -> PackedStringArray: return AquaticBody.validate(body, body_rules)
+	return save.validate(catalog, creature_check, aquatic_check)
 
 
 func save_to(path: String, save: SaveGame) -> Error:

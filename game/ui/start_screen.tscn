@@ -123,6 +123,11 @@ theme_type_variation = &"TitleMenuButton"
 alignment = 0
 text = "Creature stage"
 
+[node name="AquaticButton" type="Button" parent="MainView/Left/Preview"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Aquatic stage"
+
 [node name="ContinueCard" type="PanelContainer" parent="MainView"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(460, 0)

@@ -77,6 +77,7 @@ const PITCH_MAX := 1.4
 ## Back with edits since the last Done asks once; Done on a body without legs asks once.
 const UNSAVED_TEXT := "Unsaved edits: press Esc or Back again to leave without them"
 const NO_LEGS_TEXT := "No legs to walk on; press Done again to go anyway"
+const LOCKED_TEXT := "Find a %s in the world to use it"
 const COLORS := {"vertebra": Color(1.0, 0.6, 0.15), "joint": Color(0.3, 0.7, 1.0), "part": Color(0.4, 1.0, 0.5),
 		"turn": Color(1.0, 0.9, 0.2)}
 const SKIN_COLOR_KEY := "skin_color"
@@ -98,6 +99,10 @@ var costs := {}
 var orientations := {}
 ## Part tools: every part type in the art records, by name.
 var tools: Array = []
+## Part types the lineage has not found yet (PROPOSED, domain/creature/part_unlocks.gd): greyed in the palette and
+## refused as a tool. The stage sets them (set_locked_parts); a type on the body being edited is never locked.
+var locked := {}
+var _locked_base: Array = []
 var tool := ""
 var selected := {}
 var dragging := false
@@ -486,10 +491,13 @@ func _on_hud_action(name: String) -> void:
 # Method twins ----------------------------------------------------------------------------------------------------
 
 
-## A part type from the art records, "limb", or "" for no tool. An unknown type is ignored.
+## A part type from the art records, "limb", or "" for no tool. An unknown type is ignored; a locked one is refused.
 func choose_tool(type: String) -> void:
 	if type != "" and type != "limb" and not tools.has(type):
 		_refuse("no %s tool" % type)
+		return
+	if locked.has(type):
+		_refuse(LOCKED_TEXT % type.capitalize().to_lower())
 		return
 	tool = type
 	hud.set_tool(tool)
@@ -728,6 +736,7 @@ func _start_from(body: RefCounted, color: Color, pattern: Dictionary) -> void:
 	if walker != null:
 		test_drive(false)
 	session = Session.new(body, rules, part_rules, costs, session.available_points)
+	_refresh_locked()
 	skin_color = color
 	skin_pattern = Look.pattern_of(pattern)
 	skin_covering = Look.covering_of(pattern)
@@ -739,6 +748,25 @@ func _start_from(body: RefCounted, color: Color, pattern: Dictionary) -> void:
 	_frame_body()
 	_mark_dirty()
 	_rebuild()
+
+
+## The part types the lineage has not found (CreatureStage.locked_parts): the palette greys them and choose_tool
+## refuses them, except a type on the body being edited.
+func set_locked_parts(types: Array) -> void:
+	_locked_base = types.duplicate()
+	_refresh_locked()
+
+
+## Locks the base types that are not on the session's starting body (a preset's parts are usable once it is picked).
+func _refresh_locked() -> void:
+	var on_body := {}
+	for p in session.original.parts:
+		on_body[String(p["type"])] = true
+	locked = {}
+	for t in _locked_base:
+		if not on_body.has(String(t)):
+			locked[String(t)] = true
+	hud.set_locked(locked)
 
 
 ## The skin colour, from a swatch; the working body carries it as "skin_color".

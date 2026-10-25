@@ -69,11 +69,11 @@ func test_brain_wake_overrides_staggered_schedule() -> void:
 
 
 ## v1 to v2 (M1), v2 to v3 (the creature in the lineage save, approved 2026-10-24, docs/DECISIONS.md)
-## and v3 to v4 (S2, the growth fields).
+## v3 to v4 (S2, the growth fields) and v4 to v5 (the Aquatic stage, approved 2026-10-25).
 func test_migration_registry_contains_only_the_approved_steps() -> void:
 	var steps := SaveMigrations.all()
-	check_eq(steps.size(), 3, "three approved upgrades")
-	check(steps.has(1) and steps.has(2) and steps.has(3), "v1, v2 and v3 upgrades registered")
+	check_eq(steps.size(), 4, "four approved upgrades")
+	check(steps.has(1) and steps.has(2) and steps.has(3) and steps.has(4), "v1, v2, v3 and v4 upgrades registered")
 
 
 func test_v2_to_v3_adds_an_empty_creature_and_keeps_the_rest() -> void:
