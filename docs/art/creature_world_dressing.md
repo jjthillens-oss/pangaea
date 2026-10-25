@@ -123,7 +123,7 @@ horizon and 60% of the frame's height, leaving out the middle fifth of the colum
   `visible_instance_count = 0`, and `_draw_food()` raises it for the fruit and the meat but never for the bushes, so
   the fruit floats in the air with only its own shadows (`before_close_bush_fplus.jpg`). The art tools draw the bush
   through their own MultiMesh, so earlier review frames showed it. The fix is a line in `creature_world.gd`, which
-  this art job does not own (filed as an issue).
+  this art job does not own (issue #195).
 - The nest mound reads as smooth tan: the straw streaks are too fine to show at gameplay distance.
 - The editor pad floats in the room's sky with no walls; seen from PITCH_MAX at ZOOM_MAX it sits in a black void.
 - Cost (Compatibility on llvmpipe, 1920x1080, a 4-CPU container shared with other jobs): spawn frame 239 draw calls,
