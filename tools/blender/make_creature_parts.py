@@ -119,6 +119,21 @@ def _bake(objs, texture, tints, size=512, tolerance=TOLERANCE, keep=(), accept=N
                           "tolerance_m": tolerance, "triangles_before": before, "triangles_after": after}}
 
 
+def _points_fit(points, tol):
+    """A decimation test (surfacing.reduce's `accept`): every one of `points` (the high mesh's, in the object's
+    space) lies within `tol` of the reduced surface."""
+    pts = [Vector(p) for p in points]
+
+    def fits(mesh):
+        tree = BVHTree.FromPolygons([v.co.copy() for v in mesh.vertices], [tuple(p.vertices) for p in mesh.polygons])
+        for p in pts:
+            hit = tree.find_nearest(p)
+            if hit[0] is None or hit[3] > tol:
+                return False
+        return True
+    return fits
+
+
 def _grey(sh, fac, lo):
     return mp._grey(sh, fac, lo)
 
@@ -3365,22 +3380,89 @@ def build_hand_primate():
             "paint_mix": {"M_HandPrimateSkin": 0.35, "M_HandPrimateNail": 0.0, "M_HandPrimateFur": 0.9}, "revision": 2, **baked}
 
 
+# The frog foot's ankle, heel and sole as one lofted surface (revision 6), given by its side outline: each key is
+# a ring through a back-or-bottom outline point B and a front-or-top outline point F (y, z in mm), with the ring's
+# half width W across x and the superellipse exponents of its B half and F half (2 is round, 4 is a flat sole
+# with rounded edges). The rings run from the ankle top, where the limb meets it (centre y -12.8 mm, z 39.5 mm,
+# horizontal rings), down the back of the ankle into a heel that bulges back and down, and along the flat sole
+# (z 0) to under the toe roots, where the rings stand upright; the front outline turns from the ankle's front
+# into the instep along one concave curve.
+FROG_FOOT_KEYS = (((-21.3, 39.5), (-4.3, 39.5), 8.7, 2.0, 2.0),
+                  ((-21.8, 31.5), (-3.6, 31.5), 9.3, 2.0, 2.0),
+                  ((-23.0, 23.5), (-2.2, 24.0), 10.6, 2.0, 2.0),
+                  ((-25.0, 15.5), (0.6, 19.4), 12.4, 2.1, 2.0),
+                  ((-26.0, 8.5), (4.6, 17.4), 13.8, 2.3, 2.1),
+                  ((-24.0, 2.6), (8.8, 16.5), 14.8, 2.8, 2.2),
+                  ((-17.5, 0.0), (13.0, 15.9), 15.6, 3.4, 2.3),
+                  ((-9.0, 0.0), (17.0, 15.0), 16.6, 3.8, 2.4),
+                  ((0.0, 0.0), (20.5, 14.0), 18.0, 4.0, 2.4),
+                  ((8.0, 0.0), (23.2, 13.0), 19.5, 4.0, 2.4),
+                  ((15.5, 0.0), (25.8, 11.9), 20.4, 4.0, 2.4),
+                  ((22.0, 0.4), (28.2, 10.4), 19.8, 3.6, 2.4),
+                  ((27.0, 1.6), (30.6, 8.4), 16.0, 3.0, 2.3))
+
+
+def _frog_foot_body(sub=2, sides=24):
+    """(verts, faces) of the frog foot's ankle, heel and sole (FROG_FOOT_KEYS, Catmull-Rom between the keys with
+    `sub` rings per span). The ankle top rounds over through two shrinking rings to a centre 2.5 mm above its last
+    full ring; the sole's front closes the same way forward, under the toe roots."""
+    flat = [(b[0], b[1], f[0], f[1], w, pb, pf) for b, f, w, pb, pf in FROG_FOOT_KEYS]
+    n = len(flat)
+    rows = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = flat[max(i - 1, 0)], flat[i], flat[i + 1], flat[min(i + 2, n - 1)]
+        for k in range(sub):
+            t = k / sub
+            rows.append(tuple(0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t ** 3)
+                              for a, b, c, d in zip(p0, p1, p2, p3)))
+    rows.append(flat[-1])
+
+    def spow(c, p):
+        return math.copysign(abs(c) ** (2.0 / p), c)
+
+    rings = []
+    for by, bz, fy, fz, w, pb, pf in rows:
+        my, mz, dy, dz = (by + fy) / 2, (bz + fz) / 2, (fy - by) / 2, (fz - bz) / 2
+        ring = []
+        for j in range(sides):
+            a = 2 * math.pi * j / sides
+            p = pf if math.sin(a) > 0 else pb
+            u, v = spow(math.cos(a), p), spow(math.sin(a), p)
+            ring.append(Vector((w * u, my + dy * v, mz + dz * v)) * 0.001)
+        rings.append(ring)
+    top_c = sum(rings[0], Vector()) / sides
+    top = [[top_c + (q - top_c) * sc + Vector((0.0, 0.0, dz * 0.001)) for q in rings[0]] for sc, dz in ((0.4, 2.4), (0.72, 1.9))]
+    end_c = sum(rings[-1], Vector()) / sides
+    front = [[end_c + (q - end_c) * sc + Vector((0.0, dy * 0.001, 0.0)) for q in rings[-1]] for sc, dy in ((0.7, 1.6), (0.38, 2.6))]
+    seq = top + rings + front
+    verts = [tuple(q) for ring in seq for q in ring]
+    faces = []
+    for i in range(len(seq) - 1):
+        a0, b0 = i * sides, (i + 1) * sides
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a0 + j, b0 + j, b0 + k, a0 + k))
+    tc, fc = len(verts), len(verts) + 1
+    verts += [tuple(top_c + Vector((0.0, 0.0, 0.00255))), tuple(end_c + Vector((0.0, 0.003, 0.0)))]
+    last = (len(seq) - 1) * sides
+    for j in range(sides):
+        k = (j + 1) % sides
+        faces.append((tc, j, k))
+        faces.append((fc, last + k, last + j))
+    return verts, faces
+
+
 def build_foot_frog():
-    """A tree frog's foot standing on a fleshy sole: a thick ankle coming down at a slant from behind onto a
-    plump sole with a heel pad, five knuckled toes fanned forward (and a little out, never back), a broad web
+    """A tree frog's foot standing on a fleshy sole: one smooth form from the ankle top down the back of the ankle
+    into a rounded heel and along a flat, widening sole (no seams between ankle, heel and sole), five knuckled toes fanned forward (and a little out, never back), a broad web
     reaching past the first knuckle, and a broad round sticky disc at each tip in a paler, glossier pad skin.
     H1_Spread splays the toes, H2_Long lengthens them."""
     verts, fcs = [], []
     sole_c = Vector((0.0, 0.004, 0.009))
-    # The fleshy sole: wider at the front where the toes leave it, with a separate plump heel pad.
-    bc.append(verts, fcs, *_blob(sole_c, 0.022, 0.028, 0.0105, power=0.85,
-                                 shape=lambda n: (0.72 + 0.28 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
-    bc.append(verts, fcs, *_blob(Vector((0.0, -0.008, 0.0085)), 0.017, 0.016, 0.0085, power=0.85))   # sunk into the sole, no collar
-    # A thick ankle slanting down and forward from behind, flaring into the sole.
-    # Short (half the old height) and tapering: narrow where the limb meets it, flaring wide into the sole.
-    apath = [Vector(p) for p in ((0.0, -0.013, 0.04), (0.0, -0.011, 0.033), (0.0, -0.008, 0.025), (0.0, -0.004, 0.018), (0.0, 0.0, 0.0125), (0.0, 0.004, 0.009))]
-    av, af, _ = _tube(apath, lambda i, a: (0.0092, 0.0102, 0.0118, 0.0138, 0.0152, 0.014)[i], 18)
-    bc.append(verts, fcs, av, af)
+    # The ankle, heel and sole: one closed surface (revision 6; was a sole blob, a heel blob and an ankle tube
+    # meeting at creases).
+    body_v, body_f = _frog_foot_body()
+    bc.append(verts, fcs, body_v, body_f)
     ts = [k / 8 for k in range(9)]
     paths, discs = [], []
     for ang, length in ((-32.0, 0.042), (-16.0, 0.053), (0.0, 0.06), (15.0, 0.064), (30.0, 0.05)):
@@ -3417,22 +3499,68 @@ def build_foot_frog():
             sag = 0.005 * s_ ** 2 * math.sin(math.pi * c)
             p = p - (a.lerp(b, 0.5) - sole_c).normalized() * sag
             return Vector((p.x, p.y, max(0.0035, p.z + 0.0012)))
+        n0 = len(wv)
         _membrane(wv, wf, point, 6, 6, thickness=0.0022, facing=Vector((0.0, 0.0, 1.0)))
+        # Close the scalloped free edge (s = 1) between the two layers (revision 6): left open, it showed as a
+        # dark slit along the web's edge from the front and side.
+        w, layer = 7, 7 * 7
+        for c in range(6):
+            a, b = n0 + 6 * w + c, n0 + 6 * w + c + 1
+            quad = (a, b, b + layer, a + layer)
+            out = Vector(wv[a]) - Vector(wv[a - w])
+            nrm = (Vector(wv[b]) - Vector(wv[a])).cross(Vector(wv[a + layer]) - Vector(wv[a]))
+            wf.append(quad if nrm.dot(out) > 0 else quad[::-1])
     web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.6)
     web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
     web_mat.name = "M_FootFrogWeb"
     objs = [foot, pads, web]
+    # The ankle, heel and sole keep within 0.35 mm of their loft (at the default 0.8 mm their outline was polygonal).
     baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#5E9A44")), "M_FootFrogPad": sf.tint(_lin("#E2D6A2")),
-                                         "M_FootFrogWeb": sf.tint(_lin("#2C4A1E"))}, keep=("Pads",))
+                                         "M_FootFrogWeb": sf.tint(_lin("#2C4A1E"))}, keep=("Pads",),
+                  accept={"FootFrog": _points_fit(_ground(body_v), 0.00035)})
     pts = _check_pivot("foot_frog", 0.0, ground=True)
     reach = max(math.hypot(p.x, p.y) for p in pts)
     handles = _foot_handles(objs, 8.0, 0.01, 0.3)   # capped so the outer toes stay near 40 degrees
     rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
     rules["handles"] = handles
     rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
-    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle on a fleshy sole with a sunk heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle flowing down into a rounded heel and a flat fleshy sole as one form, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
             "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 5, **baked}
+            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 6,
+            "review_notes": FOOT_FROG_REVIEW, **baked}
+
+
+FOOT_FROG_REVIEW = {
+    "revision": 6,
+    "cause": "Revision 5 was three separate closed pieces: an ankle tube with a flat top, a sole blob and a heel blob. In "
+             "the Blender gray views and on the hopper the ankle met the sole in a crease ring, the heel read as a lump "
+             "stuck on behind it with its own seam, and the ankle ended in a flat disc with a hard rim. The web's free "
+             "edge was two open layers 4.4 mm apart, which showed as dark slits between the toes from the front.",
+    "change": "The ankle, heel and sole are one closed lofted surface (FROG_FOOT_KEYS, _frog_foot_body): each ring runs "
+              "between a back-or-bottom outline point and a front-or-top one, so the side outline is drawn directly. The "
+              "back of the ankle runs down into a heel that bulges about 3 mm back and down, the sole lies flat on the "
+              "ground and widens to 20 mm half width under the toe roots, and the front of the ankle turns into the "
+              "instep along one concave curve. The ankle top rounds over through two shrinking rings. The decimation "
+              "keeps the loft within 0.35 mm (at the default 0.8 mm the heel's outline was polygonal). The web's free "
+              "edge is closed with rim faces. Toes, web shape, pads, materials, handles (H1_Spread, H2_Long), the ankle "
+              "top where the limb meets it (z 0.04 m, y -0.013 m), the footprint (0.098 m) and sink (0) are unchanged. "
+              "2498 of 2500 triangles (was 2361); 0.106 x 0.12 x 0.042 m (was 0.106 x 0.118 x 0.042: the heel reaches "
+              "2 mm further back).",
+    "gate1_shape": "pass: Blender gray side, back, three-quarter and front: one smooth form from a rounded ankle top down "
+                   "into the heel and along the sole, with no crease ring, no separate heel lump and no slit along the "
+                   "web's edge (before: all three). H1_Spread and H2_Long at 1000 move only the toes, web and front of "
+                   "the sole. Remaining: seen straight from behind, the heel's lower corners still show two or three "
+                   "flat segments; the budget has 2 triangles left.",
+    "gate2_materials": "pass (unchanged): wet green skin, pale glossy disc pads and the darker green web read apart in "
+                       "the Blender material view and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot capture shows the heel and ankle as one rounded "
+                   "form; on the hopper preset (tools/godot/part_on_body_shot.gd, side view on the bare scene) the ankle "
+                   "flows into the heel and sole where revision 5 showed a seam, and at the world's gameplay distance "
+                   "the feet read as green feet with pale pads. The hopper's hind legs end above the feet: placement by "
+                   "the anchor resolver, not the part (see Known issues in docs/art/creature_parts_gates.md).",
+}
 
 
 def build_foot_primate():

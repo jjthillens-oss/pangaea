@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle on a fleshy sole with a sunk heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
+  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle flowing down into a rounded heel and a flat fleshy sole as one form, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_foot_frog.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_foot_frog.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 5,
+  "revision": 6,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.106,
-    "y_forward": 0.118,
+    "y_forward": 0.12,
     "z_up": 0.042
   },
-  "triangles": 2361,
+  "triangles": 2498,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -95,11 +95,20 @@
     "M_FootFrogPad": 0.3,
     "M_FootFrogWeb": 0.8
   },
+  "review_notes": {
+    "revision": 6,
+    "cause": "Revision 5 was three separate closed pieces: an ankle tube with a flat top, a sole blob and a heel blob. In the Blender gray views and on the hopper the ankle met the sole in a crease ring, the heel read as a lump stuck on behind it with its own seam, and the ankle ended in a flat disc with a hard rim. The web's free edge was two open layers 4.4 mm apart, which showed as dark slits between the toes from the front.",
+    "change": "The ankle, heel and sole are one closed lofted surface (FROG_FOOT_KEYS, _frog_foot_body): each ring runs between a back-or-bottom outline point and a front-or-top one, so the side outline is drawn directly. The back of the ankle runs down into a heel that bulges about 3 mm back and down, the sole lies flat on the ground and widens to 20 mm half width under the toe roots, and the front of the ankle turns into the instep along one concave curve. The ankle top rounds over through two shrinking rings. The decimation keeps the loft within 0.35 mm (at the default 0.8 mm the heel's outline was polygonal). The web's free edge is closed with rim faces. Toes, web shape, pads, materials, handles (H1_Spread, H2_Long), the ankle top where the limb meets it (z 0.04 m, y -0.013 m), the footprint (0.098 m) and sink (0) are unchanged. 2498 of 2500 triangles (was 2361); 0.106 x 0.12 x 0.042 m (was 0.106 x 0.118 x 0.042: the heel reaches 2 mm further back).",
+    "gate1_shape": "pass: Blender gray side, back, three-quarter and front: one smooth form from a rounded ankle top down into the heel and along the sole, with no crease ring, no separate heel lump and no slit along the web's edge (before: all three). H1_Spread and H2_Long at 1000 move only the toes, web and front of the sole. Remaining: seen straight from behind, the heel's lower corners still show two or three flat segments; the budget has 2 triangles left.",
+    "gate2_materials": "pass (unchanged): wet green skin, pale glossy disc pads and the darker green web read apart in the Blender material view and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot capture shows the heel and ankle as one rounded form; on the hopper preset (tools/godot/part_on_body_shot.gd, side view on the bare scene) the ankle flows into the heel and sole where revision 5 showed a seam, and at the world's gameplay distance the feet read as green feet with pale pads. The hopper's hind legs end above the feet: placement by the anchor resolver, not the part (see Known issues in docs/art/creature_parts_gates.md)."
+  },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 4034,
-    "triangles_after": 2361
+    "triangles_before": 4636,
+    "triangles_after": 2498
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
