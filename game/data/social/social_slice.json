@@ -1,0 +1,115 @@
+{
+	"_comment": "PROPOSED tuning for the Social stage preview slice (docs/stages/social-plan.md). Every number is PROPOSED. Seconds (keys ending _s) are converted once to whole ticks at load (60 ticks a second); distances are metres; positions are [x, z] on the ground plane, the nest at the origin.",
+	"schema_version": 1,
+	"field_half_size_m": 40.0,
+	"nest": {"position": [0.0, 0.0], "radius_m": 6.0},
+	"den": {"position": [-22.0, -18.0], "radius_m": 5.0},
+	"perch": {"position": [-24.0, 22.0], "radius_m": 4.0, "_note": "where the wary loner lives"},
+	"lair": {"position": [26.0, -24.0], "radius_m": 4.0, "meat": 3},
+	"grove": {"centre": [18.0, -30.0], "radius_m": 8.0, "count": 8, "min_spacing_m": 2.5, "regrow_s": 25.0},
+	"player": {"start": [0.0, 4.0], "faint_s": 3.0, "health_regen_per_s": 0.5},
+	"cast": [
+		{"id": "b1", "preset": "strider", "disposition": "curious", "group": "band", "home": "den", "hunger": 0.2},
+		{"id": "b2", "preset": "boar", "disposition": "warm", "group": "band", "home": "den", "hunger": 0.7},
+		{"id": "b3", "preset": "monkey", "disposition": "wary", "group": "band", "home": "den", "hunger": 0.3},
+		{"id": "l1", "preset": "hopper", "disposition": "wary", "group": "loner", "home": "perch", "hunger": 0.4}
+	],
+	"hunter": {
+		"id": "h1",
+		"preset": "prowler",
+		"patrol": [[26.0, -24.0], [18.0, -30.0], [10.0, -20.0], [20.0, -14.0]],
+		"sight_m": 14.0,
+		"investigate_s": 2.5,
+		"pursue_s": 6.0,
+		"disengage_s": 4.0,
+		"rest_s": 12.0,
+		"strike_reach_m": 1.8,
+		"strike_health_share": 0.25,
+		"strike_cooldown_s": 1.2,
+		"nerve": 3,
+		"deterred_by_group": 3,
+		"group_radius_m": 6.0,
+		"nest_margin_m": 1.5
+	},
+	"names": {
+		"_note": "Original syllables; a name joins 2 or 3 of them, drawn from the world seed's name stream.",
+		"syllables": ["ka", "lo", "mi", "ru", "ta", "ve", "shi", "no", "pa", "zu", "re", "yo", "ba", "fi", "ul", "om", "te", "ari"],
+		"parts": [2, 3]
+	},
+	"signals": {
+		"order": ["sing", "display", "share", "calm"],
+		"cooldown_s": 1.0,
+		"sing": {"range_m": 6.0, "voice_bonus_m": 4.0, "hearing_mult": 1.5, "loud": true},
+		"display": {"range_cap_m": 12.0, "per_display": 0.5, "falloff": 0.6, "display_cap": 4, "view_cone_deg": 70.0, "loud": true},
+		"share": {"range_m": 2.5, "loud": false},
+		"calm": {"range_m": 3.0, "loud": false}
+	},
+	"organs": {
+		"_note": "Detail-role parts that are voice or hearing organs; every other detail-role part is a display organ. Types not named here and roles other than detail count for nothing.",
+		"voice_types": ["throat_sac"],
+		"hearing_types": ["ear_round", "ear_pointed"]
+	},
+	"carry": {"with_mouth": 1, "with_hand": 2},
+	"fit": {
+		"_note": "The fitting signal, one rule in order: hungry -> share; wary (disposition wary while trust < wary_until_trust) or fear >= frightened_at -> calm; display-rich species -> display; else sing.",
+		"hungry_at": 0.6,
+		"wary_until_trust": 2.0,
+		"frightened_at": 0.4,
+		"busy_fear_at": 0.7,
+		"display_rich_at": 2
+	},
+	"responses": {
+		"fits": {"words": "welcomes you", "memory": "by_signal"},
+		"ok": {"words": "listens", "memory": "listened"},
+		"unsure": {"words": "is unsure", "memory": "listened"},
+		"startles": {"words": "backs away", "memory": "startled"},
+		"busy": {"words": "is busy", "memory": ""},
+		"by_signal": {"sing": "kind", "display": "kind", "share": "gift", "calm": "calm"}
+	},
+	"trust": {"join_at": 6.0, "base": {"warm": 1.0, "curious": 0.0, "wary": -1.0}, "min": -10.0, "max": 10.0},
+	"memory": {
+		"cap": 8,
+		"kinds": {
+			"kind": {"weight": 3.0, "life_s": 240.0},
+			"gift": {"weight": 3.5, "life_s": 300.0},
+			"calm": {"weight": 3.0, "life_s": 240.0},
+			"listened": {"weight": 1.0, "life_s": 120.0},
+			"helped": {"weight": 2.0, "life_s": 600.0},
+			"startled": {"weight": -1.0, "life_s": 30.0},
+			"bumped": {"weight": -0.5, "life_s": 10.0},
+			"parted": {"weight": -1.0, "life_s": 60.0},
+			"bitten": {"weight": -4.0, "life_s": 90.0}
+		}
+	},
+	"hostile": {"bites": 3, "window_s": 60.0, "lasts_s": 120.0},
+	"reputation": {"rate": 0.25, "step_cap": 0.5, "hostile_at": -5.0, "weight": 0.5, "min": -10.0, "max": 10.0},
+	"band": {"cap": 3, "follow_m": 4.0, "spacing_m": 2.0, "lost_m": 30.0},
+	"orders": {
+		"order": ["follow", "wait", "investigate", "retreat", "assist"],
+		"investigate_m": 12.0,
+		"timeout_s": 20.0,
+		"stuck_s": 4.0,
+		"arrive_m": 1.5,
+		"scared_fear": 0.5,
+		"scared_trust_below": 8.0,
+		"near_hunter_m": 14.0
+	},
+	"roles": {
+		"_note": "role = the highest score, ties in the order below. Measured with CreatureStats on main 2ffc1218 (eyes and hands count each mirrored copy): strider scout 2.51 (defender 0.96, forager 0.5); boar defender 3.48 (scout 2.11); monkey forager 3.5 (scout 2.11); hopper forager 3.5 (scout 1.85).",
+		"order": ["forager", "scout", "defender"],
+		"scout": {"per_sight_m": 0.1, "per_speed_mps": 0.3},
+		"defender": {"per_weapon": 1.0, "per_kg": 0.02},
+		"forager": {"per_hand": 1.5, "per_mouth": 0.5},
+		"costs": {
+			"scout": {"noticed_bonus_m": 3.0},
+			"defender": {"speed_mult": 0.85, "hunger_mult": 1.25},
+			"forager": {"fights": false, "flee_fear": 0.3}
+		}
+	},
+	"needs": {"hunger_full_s": 180.0, "eat_drop": 0.5, "fear_decay_s": 6.0},
+	"bite": {"cooldown_s": 0.8, "fear": 1.0, "nerve_cost": 1},
+	"bump": {"cooldown_s": 3.0},
+	"task": {"fruit_goal": 6, "pick_s": 0.8},
+	"learning": {"route_after_deliveries": 1, "search_s": 1.5, "inherit_at_uses": 3, "forget_after_generations": 1},
+	"tiers": {"far_m": 30.0, "near_brain_every_ticks": 6, "far_every_ticks": 30}
+}
