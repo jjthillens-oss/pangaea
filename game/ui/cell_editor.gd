@@ -15,11 +15,17 @@ extends Control
 ## one), and Undo, Redo and Back name the keys bound to them. The Symmetry toggle (PROPOSED, off by default and
 ## kept in memory only) adds, moves, sizes, upgrades and removes a part and its mirrored twin as one action. A drag
 ## round the rim snaps onto the middle line or opposite a part of its type, with a guide on the rim and a line
-## under the dish that says what it snapped to.
+## under the dish that says what it snapped to. The editor's panels use the game's theme (pangaea_theme.tres, the
+## hud job's; used, not edited), so its text follows the text size setting like the other menus.
 
 signal closed(committed: bool)
 
 const PREVIEW_SCENE := preload("res://game/ui/cell_preview.tscn")
+## The game's UI theme (owned by the hud job; only its type variations are used here). SettingsService scales its
+## font sizes by the text size setting.
+const GAME_THEME := preload("res://game/ui/theme/pangaea_theme.tres")
+## A palette tile's padding: the theme's button styles with room for a square icon.
+const TILE_PAD := 6.0
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const CellSymmetry := preload("res://game/ui/editor_ease/cell_symmetry.gd")
@@ -65,7 +71,7 @@ const TILE_PX := 92.0
 const TILE_COLUMNS := 3
 const SCALE_STEP := 0.25
 ## The round stage in the middle: the body seen from above with the rim over it.
-const DISH_PX := 780.0
+const DISH_PX := 720.0
 ## The body's half length as a share of the rim's radius: the rim's dots ring the body, and a
 ## long upgraded tail still fits on the dish.
 const BODY_ON_RIM := 0.58
@@ -541,6 +547,7 @@ func _build() -> void:
 	add_child(dim)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	margin.theme = GAME_THEME   # the editor's panels only: the dim and the test dish keep their own look
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 32)
 	add_child(margin)
@@ -549,7 +556,7 @@ func _build() -> void:
 	margin.add_child(column)
 	var title := Label.new()
 	title.text = "Your next generation"
-	title.add_theme_font_size_override(&"font_size", 30)
+	title.theme_type_variation = &"LargeLabel"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
 	var row := HBoxContainer.new()
@@ -563,14 +570,13 @@ func _build() -> void:
 	row.add_child(palette)
 	var palette_title := Label.new()
 	palette_title.text = "Add a part"
-	palette_title.add_theme_font_size_override(&"font_size", 20)
 	palette.add_child(palette_title)
 	_part_buttons.clear()
 	var catalog := PartCatalog.load_from()
 	for group: Array in palette_groups(catalog):
 		var heading := Label.new()
 		heading.text = group[0]
-		heading.modulate = Color(1, 1, 1, 0.6)
+		heading.theme_type_variation = &"CaptionLabel"
 		palette.add_child(heading)
 		var grid := GridContainer.new()
 		grid.columns = TILE_COLUMNS
@@ -578,6 +584,7 @@ func _build() -> void:
 		for type_id: String in group[1]:
 			grid.add_child(_part_tile(type_id, catalog))
 	_part_info = Label.new()
+	_part_info.theme_type_variation = &"SmallLabel"
 	_part_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_part_info.custom_minimum_size = Vector2(PALETTE_PX, 48)
 	palette.add_child(_part_info)
@@ -612,16 +619,20 @@ func _build() -> void:
 	_rim_hint.name = "RimHint"
 	_rim_hint.text = RIM_HINT
 	_rim_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rim_hint.theme_type_variation = &"SmallLabel"
 	_rim_hint.modulate = Color(1, 1, 1, 0.6)
 	middle.add_child(_rim_hint)
 	_selected_label = Label.new()
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_selected_label.theme_type_variation = &"SmallLabel"
 	middle.add_child(_selected_label)
 	var tools := HBoxContainer.new()
 	tools.alignment = BoxContainer.ALIGNMENT_CENTER
+	tools.add_theme_constant_override(&"separation", 8)
 	middle.add_child(tools)
 	_symmetry_button = Button.new()
 	_symmetry_button.name = "Symmetry"
+	_symmetry_button.theme_type_variation = &"DockButton"
 	_symmetry_button.toggle_mode = true
 	_symmetry_button.text = "Symmetry: off"   # the state in words, not by colour alone (Bible 19)
 	_symmetry_button.tooltip_text = SYMMETRY_TIP
@@ -633,6 +644,7 @@ func _build() -> void:
 		var b := Button.new()
 		b.name = spec[0]
 		b.text = spec[0]
+		b.theme_type_variation = &"DockButton"
 		b.pressed.connect(spec[1])
 		tools.add_child(b)
 		if spec[0] == "Upgrade":
@@ -640,6 +652,7 @@ func _build() -> void:
 	_status = Label.new()
 	_status.name = "Status"
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status.theme_type_variation = &"SmallLabel"
 	_status.add_theme_color_override(&"font_color", WORSE)
 	middle.add_child(_status)
 
@@ -657,6 +670,7 @@ func _build() -> void:
 	_warning.name = "ChaseWarning"
 	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_warning.custom_minimum_size = Vector2(260, 0)
+	_warning.theme_type_variation = &"SmallLabel"
 	_warning.add_theme_color_override(&"font_color", WORSE)
 	right.add_child(_warning)
 
@@ -668,13 +682,15 @@ func _build() -> void:
 	bottom.add_child(_points)
 	_keys = Label.new()
 	_keys.name = "KeyLine"
-	_keys.modulate = Color(1, 1, 1, 0.6)
+	_keys.theme_type_variation = &"SmallLabel"
+	_keys.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bottom.add_child(_keys)
 	_button(bottom, "Test drive", test_drive).name = "TestDrive"
 	_undo = _button(bottom, "Undo", undo)
 	_redo = _button(bottom, "Redo", redo)
 	_button(bottom, "Back", cancel)
 	_mate = _button(bottom, "Mate", commit)
+	_mate.theme_type_variation = &"PrimaryButton"   # the step that makes the next generation stands out
 	_test_pool = TestPool.new()
 	_test_pool.left.connect(_on_test_pool_left)
 	add_child(_test_pool)   # last, so it covers the editor while it is shown
@@ -710,6 +726,8 @@ func _part_tile(type_id: String, catalog: PartCatalog) -> Button:
 	b.clip_text = true   # every tile the same width, however long the name
 	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	b.add_theme_font_size_override(&"font_size", 15)
+	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		b.add_theme_stylebox_override(state, _tile_style(state))
 	b.tooltip_text = PART_ROLES.get(type_id, "")
 	b.pressed.connect(add.bind(type_id))
 	var info := "%s · %d points: %s" % [type_id.capitalize(), catalog.cost_of(type_id), PART_ROLES.get(type_id, "")]
@@ -719,10 +737,19 @@ func _part_tile(type_id: String, catalog: PartCatalog) -> Button:
 	return b
 
 
+## The theme's button style for `state` with a tile's small padding, so the icon keeps the tile's width.
+static func _tile_style(state: String) -> StyleBox:
+	var style := GAME_THEME.get_stylebox(state, &"Button").duplicate() as StyleBox
+	for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+		style.set_content_margin(side, TILE_PAD)
+	return style
+
+
 func _button(parent: Control, label: String, action: Callable) -> Button:
 	var b := Button.new()
 	b.name = label
 	b.text = label
+	b.theme_type_variation = &"DockButton"
 	b.custom_minimum_size = Vector2(110, 0)
 	b.pressed.connect(action)
 	parent.add_child(b)
