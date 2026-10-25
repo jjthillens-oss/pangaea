@@ -594,6 +594,68 @@ corner_radius_top_right = 16
 corner_radius_bottom_right = 16
 corner_radius_bottom_left = 16
 
+[sub_resource type="StyleBoxFlat" id="Panel_hud_glass"]
+content_margin_left = 18.0
+content_margin_top = 14.0
+content_margin_right = 18.0
+content_margin_bottom = 14.0
+bg_color = Color(0.03, 0.085, 0.18, 0.78)
+border_width_top = 1
+border_color = Color(0.62, 0.8, 1, 0.38)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0.02, 0.08, 0.4)
+shadow_size = 14
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="Panel_hud_pill"]
+content_margin_left = 18.0
+content_margin_top = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 6.0
+bg_color = Color(0.03, 0.085, 0.18, 0.74)
+border_width_top = 1
+border_color = Color(0.62, 0.8, 1, 0.34)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+shadow_color = Color(0, 0.02, 0.08, 0.35)
+shadow_size = 10
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxFlat" id="Bar_slim"]
+content_margin_top = 5.0
+content_margin_bottom = 5.0
+bg_color = Color(0.005, 0.03, 0.08, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.62, 0.8, 1, 0.22)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="Panel_tooltip"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.03, 0.085, 0.18, 0.92)
+border_width_top = 1
+border_color = Color(0.62, 0.8, 1, 0.38)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0.02, 0.08, 0.4)
+shadow_size = 10
+shadow_offset = Vector2(0, 3)
+
 [resource]
 default_font_size = 26
 Label/colors/font_color = Color(0.924, 0.941, 0.97, 1)
@@ -729,3 +791,19 @@ TitleMenuButton/styles/pressed = SubResource("Menu_pressed")
 TitleMenuButton/styles/hover_pressed = SubResource("Menu_pressed")
 TitleMenuButton/styles/disabled = SubResource("Menu_disabled")
 TitleMenuButton/styles/focus = SubResource("Focus_ring")
+HudGlass/base_type = &"PanelContainer"
+HudGlass/styles/panel = SubResource("Panel_hud_glass")
+HudPill/base_type = &"PanelContainer"
+HudPill/styles/panel = SubResource("Panel_hud_pill")
+SlimEnergyBar/base_type = &"ProgressBar"
+SlimEnergyBar/styles/background = SubResource("Bar_slim")
+SlimEnergyBar/styles/fill = SubResource("Bar_energy")
+SlimHealthBar/base_type = &"ProgressBar"
+SlimHealthBar/styles/background = SubResource("Bar_slim")
+SlimHealthBar/styles/fill = SubResource("Bar_health")
+TooltipPanel/styles/panel = SubResource("Panel_tooltip")
+TooltipLabel/colors/font_color = Color(0.924, 0.941, 0.97, 1)
+TooltipLabel/font_sizes/font_size = 20
+HudValueLabel/base_type = &"Label"
+HudValueLabel/colors/font_color = Color(0.924, 0.941, 0.97, 1)
+HudValueLabel/font_sizes/font_size = 22
