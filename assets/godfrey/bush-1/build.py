@@ -43,7 +43,7 @@ mat_ids = []
 def polygon(points, mat_id):
     """Emit a polygon with explicit geometry and one material slot."""
     first = len(verts)
-    verts.extend(tuple(p) for p in points)
+    verts.extend((p[0] * 0.82, p[1] * 0.90, p[2]) for p in points)
     faces.append(tuple(range(first, len(verts))))
     mat_ids.append(mat_id)
 
@@ -88,11 +88,11 @@ def small_bloom(center, angle):
     direction = Vector((math.cos(angle), math.sin(angle), 0.08)).normalized()
     across = Vector((-direction.y, direction.x, 0.10)).normalized()
     stem_tip = center + Vector((0, 0, 0.035))
-    polygon((stem_tip, stem_tip + direction * 0.052 + across * 0.026,
-             stem_tip + direction * 0.082, stem_tip + direction * 0.052 - across * 0.026), 2)
-    polygon((stem_tip + direction * 0.03 + across * 0.014,
-             stem_tip + direction * 0.068 + across * 0.045,
-             stem_tip + direction * 0.074 + across * 0.005), 2)
+    polygon((stem_tip, stem_tip + direction * 0.075 + across * 0.044,
+             stem_tip + direction * 0.125, stem_tip + direction * 0.075 - across * 0.044), 2)
+    polygon((stem_tip + direction * 0.04 + across * 0.025,
+             stem_tip + direction * 0.082 + across * 0.065,
+             stem_tip + direction * 0.105 + across * 0.010), 2)
 
 
 # Seven distinct primary fans plus a lower outward branch. These are designed
@@ -109,24 +109,36 @@ fans = [
 
 # Root knot: short leaning stems make an irregular base rather than a sphere.
 for i, (root, middle, tip) in enumerate(fans):
-    tapered_stem(root, middle, 0.047 - i * 0.003, 0.020, 6)
-    tapered_stem(middle, tip, 0.022, 0.007, 5)
+    tapered_stem(root, middle, 0.027 - i * 0.001, 0.012, 6)
+    tapered_stem(middle, tip, 0.013, 0.004, 5)
     m = Vector(middle)
     t = Vector(tip)
     axis = (t - m).normalized()
-    for k in range(3):
-        fraction = 0.22 + k * 0.25
+    base = Vector(root)
+    # Paired foliage climbs the main stems, leaving the central silhouette open.
+    for fraction in (0.68, 0.84):
+        anchor = base.lerp(m, fraction)
+        for side_sign in (-1, 1):
+            outward = Vector((side_sign * (0.82 + i * 0.04), (1 if i % 2 else -1) * 0.36, 0.21))
+            narrow_leaf(anchor, outward, 0.16, 0.065, side_sign * 0.15)
+    for fraction in (0.31, 0.62):
+        anchor = m.lerp(t, fraction)
+        for side_sign in (-1, 1):
+            outward = Vector((side_sign * 0.72, (-1 if i % 2 else 1) * 0.45, 0.16))
+            narrow_leaf(anchor, outward, 0.15, 0.058, side_sign * 0.15)
+    for k in range(4):
+        fraction = 0.16 + k * 0.21
         anchor = m.lerp(t, fraction)
         side = -1 if (i + k) % 2 else 1
         azimuth = (i * 0.87 + k * 1.42)
         splay = Vector((math.cos(azimuth) * side, math.sin(azimuth) * side, 0.28))
-        twig_tip = anchor + splay * (0.13 + 0.02 * ((i + k) % 3)) + axis * 0.05
-        tapered_stem(anchor, twig_tip, 0.009, 0.002, 5)
-        for n in range(2):
-            location = anchor.lerp(twig_tip, 0.47 + n * 0.31)
-            outward = splay + Vector((0.19 * (-1 if n else 1), 0.09, 0.10))
-            narrow_leaf(location, outward, 0.105 + 0.013 * ((i + n) % 3), 0.034, 0.16 * side)
-        if (i * 3 + k) % 5 == 0:
+        twig_tip = anchor + splay * (0.17 + 0.025 * ((i + k) % 3)) + axis * 0.06
+        tapered_stem(anchor, twig_tip, 0.006, 0.0015, 5)
+        for n in range(3):
+            location = anchor.lerp(twig_tip, 0.39 + n * 0.25)
+            outward = splay + Vector((0.21 * (-1 if n else 1), 0.15 * (1 if n == 1 else -1), 0.12))
+            narrow_leaf(location, outward, 0.145 + 0.015 * ((i + n) % 3), 0.058, 0.16 * side)
+        if (i * 4 + k) % 3 == 0:
             small_bloom(twig_tip, azimuth)
 
 mesh = bpy.data.meshes.new("flowering_sage_original_mesh")
@@ -141,14 +153,14 @@ for face, mat_id in zip(mesh.polygons, mat_ids):
 
 world = bpy.context.scene.world
 world.use_nodes = True
-world.node_tree.nodes.get("Background").inputs["Color"].default_value = (0.55, 0.57, 0.60, 1)
-world.node_tree.nodes.get("Background").inputs["Strength"].default_value = 0.5
+world.node_tree.nodes.get("Background").inputs["Color"].default_value = (0.14, 0.17, 0.18, 1)
+world.node_tree.nodes.get("Background").inputs["Strength"].default_value = 0.42
 
 light_data = bpy.data.lights.new("neutral softbox", "AREA")
 light = bpy.data.objects.new("neutral softbox", light_data)
 bpy.context.collection.objects.link(light)
 light.location = (1.8, -2.5, 3.8)
-light_data.energy = 350
+light_data.energy = 190
 light_data.shape = "DISK"
 light_data.size = 3
 
@@ -160,12 +172,12 @@ camera_data.type = "ORTHO"
 camera_data.ortho_scale = 2.2
 
 scene = bpy.context.scene
-scene.render.engine = "BLENDER_EEVEE_NEXT"
+scene.render.engine = "BLENDER_EEVEE"
 scene.render.resolution_x = 800
 scene.render.resolution_y = 800
 scene.render.resolution_percentage = 100
 scene.render.image_settings.file_format = "PNG"
-scene.render.film_transparent = True
+scene.render.film_transparent = False
 
 
 def render_view(name, position):

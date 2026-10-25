@@ -1,0 +1,21 @@
+{
+  "asset": "Bush 1 - airy flowering sage",
+  "vertices": 4298,
+  "triangles": 1584,
+  "materials": [
+    "weathered gray brown wood",
+    "muted sage leaf",
+    "blue violet flower"
+  ],
+  "bounds_min_m": [
+    -0.944805383682251,
+    -0.567903995513916,
+    0.07097767293453217
+  ],
+  "bounds_max_m": [
+    0.9728416204452515,
+    0.5152695775032043,
+    1.3752104043960571
+  ],
+  "notes": "Designed original geometry; Blender Z-up; glTF Godot conversion handles Y-up."
+}
