@@ -226,6 +226,7 @@ func _follow() -> void:
 	for id in CAST:
 		_check(_gap(id) <= limit and sim.individual(id)["state"] == "follow",
 				"%s keeps up (%.1f m, %s)" % [id, _gap(id), sim.individual(id)["state"]])
+	_tags_clear("with the band following")
 
 
 ## An Investigate past the field's east edge is acknowledged, then reported as unreachable within the timeout.
@@ -265,6 +266,8 @@ func _assist() -> void:
 	var acks := _of(_since(mark), "ack")
 	_check(acks.size() == 3 and acks.all(func(a: Dictionary) -> bool: return a["words"] == "gathers food"),
 			"each member acknowledges Assist and gathers: %s" % [acks])
+	await _frames(3)
+	_tags_clear("with the acknowledgements captioned")
 	var start := sim.tick_count
 	var waited := 0
 	while waited < 9000 and _of(_since(mark), "task_done").is_empty():
@@ -395,6 +398,24 @@ func _leave_and_return(slot: String) -> void:
 	stage.leave_dialog.choose("leave")
 	await _frames(SETTLE_FRAMES)
 	_check(main.social_stage == null and main.screen == main.start_screen, "Back to title leaves")
+
+
+## No tag that shows sits on the HUD's glass (the captions, the dock, the cards).
+func _tags_clear(when: String) -> void:
+	var covered := stage.hud.covered_rects()
+	var shown := 0
+	var bad := []
+	for id in stage.tags.tags:
+		var panel: Control = stage.tags.tags[id]["panel"]
+		if not panel.visible:
+			continue
+		shown += 1
+		for r in covered:
+			if panel.get_global_rect().intersects(r):
+				bad.append(id)
+				break
+	_check(bad.is_empty(), "%s, no tag covers the HUD: %d tags shown, %d HUD panels, overlapping %s"
+			% [when, shown, covered.size(), bad])
 
 
 func _press(action: StringName) -> void:

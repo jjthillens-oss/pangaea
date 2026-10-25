@@ -13,9 +13,15 @@ const RESPONSE_S := 3.0
 const SHOW_M := 34.0
 ## A tag whose body is this close to the bottom edge (px, design canvas) would sit under the dock: it is hidden.
 const BOTTOM_CLEAR_PX := 150.0
+## Overlapping tags stack upwards, this far apart (px); after this many moves the farther one hides instead.
+const STACK_GAP_PX := 4.0
+const STACK_TRIES := 4
 
 var sim: SocialSim
 var world: SocialWorld
+## Returns the screen rects (global) a tag must not cover, such as SocialHud.covered_rects: a tag that would overlap
+## one is hidden, so the HUD's words never sit on top of a tag's.
+var keep_clear: Callable
 ## id -> {panel, top, bottom}
 var tags := {}
 var _responses := {}
@@ -100,12 +106,19 @@ func refresh(delta: float) -> void:
 		if float(_responses[id]["left"]) <= 0.0:
 			_responses.erase(id)
 	var camera := world.camera
+	var covered: Array = keep_clear.call() if keep_clear.is_valid() else []
+	# Nearest first: a nearer tag keeps its place and a farther one that would overlap it stacks above it.
+	var order := []
 	for id in tags:
+		order.append([camera.global_position.distance_to(world.tag_point(id)), id])
+	order.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))
+	var placed := []
+	for pair in order:
+		var id: String = pair[1]
 		var tag: Dictionary = tags[id]
 		var panel: PanelContainer = tag["panel"]
 		var at := world.tag_point(id)
-		var shown := camera.is_inside_tree() and not camera.is_position_behind(at) \
-				and camera.global_position.distance_to(at) <= SHOW_M
+		var shown := camera.is_inside_tree() and not camera.is_position_behind(at) and float(pair[0]) <= SHOW_M
 		panel.visible = shown
 		if not shown:
 			continue
@@ -120,4 +133,19 @@ func refresh(delta: float) -> void:
 			panel.visible = false
 			continue
 		panel.reset_size()
-		panel.position = screen - Vector2(panel.size.x * 0.5, panel.size.y)
+		var rect := Rect2(screen - Vector2(panel.size.x * 0.5, panel.size.y), panel.size)
+		for attempt in STACK_TRIES:
+			var moved := false
+			for other: Rect2 in placed:
+				if rect.intersects(other):
+					rect.position.y = other.position.y - rect.size.y - STACK_GAP_PX
+					moved = true
+			if not moved:
+				break
+		panel.position = rect.position
+		for r in placed + covered:
+			if rect.intersects(r) or rect.position.y < 0.0:
+				panel.visible = false
+				break
+		if panel.visible:
+			placed.append(rect)

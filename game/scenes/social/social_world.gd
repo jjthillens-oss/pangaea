@@ -29,7 +29,7 @@ const FRUIT_NODE := "Fruit"
 const NEST_RING_RADIUS_M := 6.45
 ## The Fruit mesh's centre above a bush's pivot (m), and the carried copy's size against the bush's.
 const FRUIT_CENTRE_Y_M := 0.54
-const CARRIED_FRUIT_SCALE := 0.45
+const CARRIED_FRUIT_SCALE := 0.9
 ## Where the meat lies round the lair's centre (m).
 const MEAT_RING_M := 1.1
 

@@ -7,13 +7,16 @@ extends SceneTree
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --audio-driver Dummy --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --script res://tools/godot/social_shots.gd \
 ##     -- --out=DIR [--slot=PATH] [--suffix=_1280] [--only=entry,recognition,...] [--title]
-## The shots: entry, recognition, response, band_follow, orders_menu, hunter. sim.place() (tests and tools only)
+## The shots: entry, refusal (Share with empty hands, refused in words), recognition, response, band_follow,
+## orders_menu, order_ack (Assist chosen in the menu and acknowledged), task_carry (a carrier bringing fruit to the
+## nest), task_done and hunter. sim.place() (tests and tools only)
 ## moves the player between beats so the script stays short; every answer, join and order comes from the sim.
 ## --title instead runs Main (its own settings and slots under user://smoke/social_shots/): the title with the
 ## Social stage button focused, the stage that button opens, the leave question, and the title again after leaving
 ## (title, title_stage, leave_dialog, title_back).
 
 const SEED := 4262
+const FAST_TICKS := 12
 
 var out_dir := "user://social_shots"
 var slot := "user://smoke/social_shots/none.json"
@@ -56,6 +59,17 @@ func _run() -> void:
 	stage.driver = func() -> Dictionary: return {"move": _move, "bite": false}
 	await _frames(2)
 
+	# A refusal: Share with nothing carried, refused in words; it spends nothing.
+	_stand_before("b2", 2.5)
+	stage.choose_signal("share")
+	await _frames(10)
+	stage.signal_now("share")
+	await _frames(20)
+	print("social_shots: refusal ", stage.hud.caption_texts(), " cooldown ", stage.sim.player()["cooldown_t"])
+	await _shot("refusal")
+	# Until the refusal's caption has faded, so the next frames show one answer each.
+	await _frames(int((SocialHud.CAPTION_S + 0.2) * 60.0))
+
 	# Before the curious strider, facing it, Display selected.
 	if not _face_for("b1", "display"):
 		print("social_shots: no spot where b1 is the target and Display reaches it")
@@ -83,13 +97,55 @@ func _run() -> void:
 	await _frames(200)
 	_move = Vector2.ZERO
 	await _frames(50)
+	# The band trails between the camera and the player: orbit to a front three-quarter view, as the right stick does.
+	stage.world.camera_yaw = float(stage.sim.player()["yaw"]) + PI * 0.75
+	stage.world.snap_camera()
+	await _frames(4)
 	await _shot("band_follow")
 
 	stage.open_menu()
 	stage._step_menu(2)
 	await _frames(8)
 	await _shot("orders_menu")
-	stage.close_menu()
+	# Assist, chosen in the menu: each member acknowledges.
+	stage._step_menu(2)
+	await _frames(4)
+	stage.give_order(SocialRules.ORDERS[stage.menu_index])
+	await _frames(15)
+	print("social_shots: order_ack ", stage.hud.caption_texts())
+	await _shot("order_ack")
+
+	# The group task from the nest, the camera towards the grove.
+	var grove_at: Vector2 = _v2(stage.sim.tuning["grove"]["centre"])
+	var to_grove := (grove_at - home).normalized()
+	_put(home + to_grove * 2.0, atan2(-to_grove.x, -to_grove.y))
+	# Fast-forward the round (several stage ticks a rendered frame, through the stage's own loop) until a few fruit
+	# are in, then at normal speed until a carrier is a few metres out, and fast again to the end of the round.
+	var mark := stage.event_log.size()
+	await _fast(func() -> bool: return int(stage.sim.task_state()["delivered"]) >= 2, 4000)
+	var carrier := ""
+	for t in 1500:
+		await _frames(1)
+		for c in stage.sim.individuals():
+			var p: Vector3 = c["position"]
+			var gap := Vector2(p.x, p.z).distance_to(home + to_grove * 2.0)
+			if int(c["carrying"]) > 0 and gap < 6.0 and gap > 3.0:
+				carrier = c["id"]
+				print("social_shots: task_carry ", c["id"], " at %.1f m" % gap, " ", stage.sim.task_state())
+		if carrier != "":
+			break
+	await _shot("task_carry")
+	# Fast to one fruit short of the goal, then the last delivery at normal speed so its caption is on screen.
+	var goal := int(stage.sim.task_state()["goal"])
+	await _fast(func() -> bool: return int(stage.sim.task_state()["delivered"]) >= goal - 1, 4000)
+	for t in 2400:
+		await _frames(1)
+		if stage.event_log.slice(mark).any(func(e: Dictionary) -> bool: return e["kind"] == "task_done"):
+			break
+	await _frames(15)
+	print("social_shots: task_done ", stage.sim.task_state(), " ", stage.hud.caption_texts(), " ticks ",
+			stage.sim.tick_count)
+	await _shot("task_done")
 
 	# Towards the grove, where the hunter patrols.
 	var grove: Dictionary = stage.sim.tuning["grove"]
@@ -98,6 +154,13 @@ func _run() -> void:
 	stage.world.camera_yaw = atan2(-6.0, 10.0)
 	stage.world.snap_camera()
 	await _frames(240)
+	# Look from the player towards the hunter (an orbit, as the right stick does), so both are mid-screen.
+	var hp: Vector3 = stage.sim.hunter()["position"]
+	var me: Vector3 = stage.sim.player()["position"]
+	var look := Vector2(hp.x - me.x, hp.z - me.z)
+	stage.world.camera_yaw = atan2(-look.x, -look.y)
+	stage.world.snap_camera()
+	await _frames(3)
 	print("social_shots: hunter ", stage.sim.hunter()["state"], " captions ", stage.hud.caption_texts())
 	await _shot("hunter")
 	quit()
@@ -196,9 +259,25 @@ func _stand_before(id: String, dist: float) -> void:
 	stage.world.snap_camera()
 
 
+static func _v2(a: Array) -> Vector2:
+	return Vector2(float(a[0]), float(a[1]))
+
+
 func _forward() -> Vector2:
 	var yaw := float(stage.sim.player()["yaw"])
 	return Vector2(-sin(yaw), -cos(yaw))
+
+
+## Runs the stage FAST_TICKS ticks a rendered frame until `done` holds or `limit` ticks have passed, then lets the
+## walkers' feet settle at normal speed. Each tick is the stage's own _physics_process (the same intent, events, HUD).
+func _fast(done: Callable, limit: int) -> void:
+	var ticks := 0
+	while ticks < limit and not done.call():
+		for i in FAST_TICKS:
+			stage._physics_process(SocialSim.DT)
+		ticks += FAST_TICKS
+		await _frames(1)
+	await _frames(45)
 
 
 func _frames(n: int) -> void:

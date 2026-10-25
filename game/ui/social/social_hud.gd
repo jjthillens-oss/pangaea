@@ -22,7 +22,11 @@ const THEME := preload("res://game/ui/theme/pangaea_theme.tres")
 const REFRESH_S := 0.1
 const CAPTION_S := 3.5
 const CAPTION_FADE_S := 0.6
-const CAPTION_LINES := 2
+## Three lines, so a whole band's answers to one order fit.
+const CAPTION_LINES := 3
+## Events that must not be pushed off the caption by routine ones in the same tick: they are captioned last.
+const KEY_EVENTS := ["task_done", "joined", "befriended", "left", "hostile", "fainted", "recovered", "hit", "warned",
+		"drove_off"]
 const MARK := "▸ "
 const DONE := "✓ "
 const SIGNAL_WORDS := {"sing": "Sing", "display": "Display", "share": "Share", "calm": "Calm"}
@@ -281,13 +285,21 @@ func set_menu(open: bool, index: int) -> void:
 	refresh_now()
 
 
-## The tick's events: each one that has words goes to the caption.
+## The tick's events: each one that has words goes to the caption, the key ones (KEY_EVENTS) after the routine ones,
+## so the oldest lines that make room are routine (a round's end is followed by every gatherer's "done").
 func on_events(events: Array) -> void:
 	var names := names_of(sim)
+	var key := []
 	for e in events:
 		var text := event_text(e, names)
-		if not text.is_empty():
+		if text.is_empty():
+			continue
+		if KEY_EVENTS.has(String(e.get("kind", ""))):
+			key.append(text)
+		else:
 			caption(text)
+	for text in key:
+		caption(text)
 
 
 ## Puts `text` on the caption line (the newest at the bottom, at most CAPTION_LINES).
@@ -306,6 +318,26 @@ func caption(text: String) -> void:
 	while _captions.size() > CAPTION_LINES:
 		var old: Dictionary = _captions.pop_front()
 		old["panel"].queue_free()
+
+
+## The HUD's glass on screen now, as global rects: the goal card, the band cards, the orders menu, the entry card,
+## the captions, the dock and the hint. The tags keep clear of them (SocialTags.keep_clear).
+func covered_rects() -> Array:
+	var panels: Array = [_panel_of(goal_label), menu_panel, card, dock, _panel_of(hint_label)]
+	panels.append_array(band_box.get_children())
+	for entry in _captions:
+		panels.append(entry["panel"])
+	var out := []
+	for panel in panels:
+		if panel is Control and not (panel as Control).is_queued_for_deletion() and (panel as Control).is_visible_in_tree():
+			out.append((panel as Control).get_global_rect())
+	return out
+
+
+static func _panel_of(node: Node) -> Control:
+	while node != null and not node is PanelContainer:
+		node = node.get_parent()
+	return node as Control
 
 
 ## The words on the caption line now, oldest first.

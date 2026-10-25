@@ -285,6 +285,29 @@ func test_every_shown_event_has_words() -> void:
 		check_eq(SocialHud.event_text(quiet, names), "", "%s stays off the caption" % quiet["kind"])
 
 
+## A round's end comes in the same tick as every gatherer's "done": the key line stays on the caption, and a whole
+## band's answers to one order fit.
+func test_key_lines_stay_on_the_caption() -> void:
+	var sim := _sim()
+	var hud := SocialHud.new()
+	_nodes.append(hud)
+	hud.bind(sim)
+	var names := SocialHud.names_of(sim)
+	hud.on_events([{"kind": "task_done", "round": 1, "count": 6}, {"kind": "done", "who": "b1", "order": "assist"},
+			{"kind": "done", "who": "b2", "order": "assist"}, {"kind": "done", "who": "b3", "order": "assist"}])
+	var shown := hud.caption_texts()
+	check_eq(shown.size(), SocialHud.CAPTION_LINES, "the caption is full: %s" % [shown])
+	check(shown.has("The nest is fed: 6 fruit"), "the round's end is still shown: %s" % [shown])
+	check_eq(shown[shown.size() - 1], "The nest is fed: 6 fruit", "as the newest line")
+	var acks := []
+	for id in ["b1", "b2", "b3"]:
+		acks.append({"kind": "ack", "who": id, "order": "follow", "words": "follows you"})
+	hud.on_events(acks)
+	shown = hud.caption_texts()
+	for id in ["b1", "b2", "b3"]:
+		check(shown.has("%s follows you" % names[id]), "%s's answer is shown: %s" % [names[id], shown])
+
+
 # --- The real stage (generated skins). -------------------------------------------------------------------------------
 
 func _stage(path: String) -> SocialStage:

@@ -79,6 +79,7 @@ func setup(slot_path: String, world_seed: int) -> void:
 	hud.name = "SocialHud"
 	ui.add_child(hud)
 	hud.bind(sim)
+	tags.keep_clear = hud.covered_rects
 	hud.set_selected(selected_signal)
 	hud.signal_pressed.connect(signal_now)
 	hud.order_pressed.connect(give_order)
