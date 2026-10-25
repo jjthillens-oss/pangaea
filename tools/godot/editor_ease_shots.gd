@@ -10,7 +10,9 @@ extends SceneTree
 ## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), cell_idle,
 ## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror),
 ## cell_undo_tip (the pointer resting on Undo after that edit) and cell_drag_snap (a part dragged round the rim,
-## held near the front). Uses its own settings under user://editor_ease_shots/, never the player's.
+## held near the front). Where the editor-ease APIs exist it also writes cell_stat_help (the pointer resting on a
+## stat's name) and cell_pair_drag (a mirrored pair dragged towards the front with Symmetry on). Uses its own
+## settings under user://editor_ease_shots/, never the player's.
 
 const ROOT := "user://editor_ease_shots"
 const CREATURE_EDITOR := "res://game/scenes/creature/creature_editor.tscn"
@@ -125,12 +127,34 @@ func _cell() -> void:
 	await _frames(10)
 	await _shot("cell_drag_snap")
 	_mouse(rim, to, false)
+
+	var panel := editor.find_child("StatsPanel", true, false)
+	if panel != null:
+		var names := panel.find_children("*", "Label", true, false).filter(
+			func(l: Label) -> bool: return l.text == "Energy use")
+		await _hover(names[0])
+		await _shot("cell_stat_help")
+		_hover_away()
+
+	if editor.has_method("set_symmetry"):
+		editor.undo()   # the eye spot back off the middle line, beside its twin
+		editor.set_symmetry(true)
+		var eye: Dictionary = editor.session.working.parts[-1]
+		var from: Vector2 = rim.at(float(eye.angle))
+		_mouse(rim, from, true)
+		for i in 8:
+			_motion(rim, rim.at(lerp_angle(float(eye.angle), -0.03, (i + 1) / 8.0)))
+			await _frames(2)
+		await _frames(10)
+		await _shot("cell_pair_drag")
+		_mouse(rim, rim.at(-0.03), false)
 	editor.queue_free()
 	await _frames(5)
 
 
 ## Rests the pointer on `c` (a real motion event through the viewport, so the GUI hovers it and any tooltip
-## opens), then waits past the tooltip delay.
+## opens), then waits past the tooltip delay. The event is in the viewport's own coordinates, so it lands on `c`
+## at any window size (the 1920x1080 canvas is stretched to the window).
 func _hover(c: Control) -> void:
 	if c == null:
 		push_warning("editor_ease_shots: nothing to hover")
@@ -140,8 +164,8 @@ func _hover(c: Control) -> void:
 	e.position = at
 	e.global_position = at
 	e.relative = Vector2(2, 0)
-	Input.warp_mouse(at)
-	root.push_input(e)
+	Input.warp_mouse(root.get_final_transform() * at)
+	root.push_input(e, true)
 	await _frames(HOVER_FRAMES)
 
 
@@ -150,7 +174,7 @@ func _hover_away() -> void:
 	e.position = Vector2(960, 1060)
 	e.global_position = e.position
 	e.relative = Vector2(2, 0)
-	root.push_input(e)
+	root.push_input(e, true)
 
 
 ## A left press or release at `local` in the rim view, fed to its _gui_input as the GUI would.

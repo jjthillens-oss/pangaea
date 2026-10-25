@@ -11,6 +11,8 @@ const GAP := 16.0
 const BETTER := Color(0.55, 0.95, 0.6)
 const WORSE := Color(1.0, 0.55, 0.5)
 const MARKS := {true: "▲", false: "▼"}
+## The card's least opacity: the theme's glass, made solid enough to read over the dish and the hint lines under it.
+const OPACITY := 0.97
 
 var _title: Label
 var _box: VBoxContainer
@@ -22,6 +24,10 @@ func _init() -> void:
 	name = "PartCard"
 	theme = GAME_THEME   # its own, so it looks the same in either editor
 	theme_type_variation = &"GlassPanel"
+	var glass := GAME_THEME.get_stylebox(&"panel", &"GlassPanel").duplicate() as StyleBox
+	if glass is StyleBoxFlat:
+		glass.bg_color.a = maxf(glass.bg_color.a, OPACITY)
+	add_theme_stylebox_override(&"panel", glass)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	custom_minimum_size = Vector2(WIDTH, 0)
 	visible = false
