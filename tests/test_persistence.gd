@@ -528,32 +528,34 @@ static func _field_name(path: String) -> String:
 	return out
 
 
-func test_v4_is_the_current_schema_and_a_new_run_holds_its_defaults() -> void:
-	check_eq(SaveGame.SCHEMA_VERSION, 4, "v4")
-	check_eq(PersistenceService.CURRENT_VERSION, 4, "the service reads up to v4, so a v5 file is refused")
+func test_v5_is_the_current_schema_and_a_new_run_holds_its_defaults() -> void:
+	check_eq(SaveGame.SCHEMA_VERSION, 5, "v5")
+	check_eq(PersistenceService.CURRENT_VERSION, 5, "the service reads up to v5, so a v6 file is refused")
 	var steps := SaveMigrations.all().keys()
 	steps.sort()
-	check_eq(steps, [1, 2, 3], "one step each from v1, v2 and v3")
+	check_eq(steps, [1, 2, 3, 4], "one step each from v1, v2, v3 and v4")
 	var data := SaveGame.new_run(7, "test+dev").to_dict()
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v4 keys")
+	check_eq(keys, SessionTests.SAVE_KEYS, "exactly the v5 keys")
 	check_eq(data.creature, {}, "no creature before the creature stage")
+	check_eq(data.aquatic, {}, "no aquatic state before the Aquatic stage")
 	check_eq(data.growth, {"size": 1, "meter": 0.0}, "a new lineage starts at size 1 with an empty meter")
 	check_eq(data.checkpoint, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, "at the home spawn's checkpoint")
 	check_eq(data.spawn, null, "no spawn of its own: the checkpoint")
 	check_eq(data.gen_version, 1, "the first generator")
 	check_eq(data.player, {"position": [0.0, 0.0, 0.0], "energy": null, "health": null}, "fresh energy and health")
-	check(_new_save().validate(catalog).is_empty(), "a new run is a valid v4 save: %s" % [_new_save().validate(catalog)])
+	check(_new_save().validate(catalog).is_empty(), "a new run is a valid v5 save: %s" % [_new_save().validate(catalog)])
 
 
-func test_a_step_2_save_migrates_to_v4_exactly() -> void:
+func test_a_step_2_save_migrates_to_v5_exactly() -> void:
 	var text := FileAccess.get_file_as_string(STEP2_SAVE)
 	var v2: Dictionary = JSON.parse_string(text)
 	check_eq(int(v2.schema_version), 2, "the fixture is a v2 save")
 	var expected := v2.duplicate(true)
-	expected["schema_version"] = 4
+	expected["schema_version"] = 5
 	expected["creature"] = {}
+	expected["aquatic"] = {}
 	expected["growth"] = {"size": 1, "meter": 0.0}
 	expected["checkpoint"] = {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}
 	expected["spawn"] = null
@@ -562,7 +564,7 @@ func test_a_step_2_save_migrates_to_v4_exactly() -> void:
 	var migrated := service.migrate(v2)
 	check(migrated.ok, "migrates: %s" % migrated.error)
 	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true),
-		"v2 -> v4 adds the creature, growth, checkpoint, spawn, gen_version, energy and health, and nothing else")
+		"v2 -> v5 adds the creature, growth, checkpoint, spawn, gen_version, energy, health and aquatic, and nothing else")
 	check_eq(JSON.stringify(v2), JSON.stringify(JSON.parse_string(text)), "the v2 data it was given is untouched")
 
 	_write_raw(slot_path, text)
@@ -583,8 +585,8 @@ func test_a_step_2_save_migrates_to_v4_exactly() -> void:
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot_path))
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "written with exactly the v4 keys")
-	check_eq(int(data.schema_version), 4, "written as v4")
+	check_eq(keys, SessionTests.SAVE_KEYS, "written with exactly the v5 keys")
+	check_eq(int(data.schema_version), 5, "written as v5")
 
 
 func test_every_v4_field_round_trips() -> void:
@@ -641,7 +643,7 @@ func test_an_unknown_field_is_refused() -> void:
 			"discoveries.0.generation"]:
 		var result := _load_data(_with(good, path, 1))
 		check(not result.ok, "a save with '%s' is refused" % path)
-		check_has_error(result.errors, "'%s' is not part of a v4 save" % _field_name(path))
+		check_has_error(result.errors, "'%s' is not part of a v5 save" % _field_name(path))
 
 
 # The S2-written fixture (T4.4; build plan 7.1 and BP-18; S2G19): a size-2 save as the S2 preview
@@ -664,7 +666,8 @@ func test_the_s2_fixture_is_a_v3_save_at_size_2_holding_the_recorders_values() -
 	keys.sort()
 	var v3_keys := SessionTests.SAVE_KEYS.duplicate()
 	v3_keys.erase("creature")
-	check_eq(keys, v3_keys, "exactly the v4 keys but the creature")
+	v3_keys.erase("aquatic")
+	check_eq(keys, v3_keys, "exactly the v5 keys but the creature and aquatic")
 	_write_raw(slot_path, text)
 	var result := service.load_from(slot_path)
 	check(result.ok and result.errors.is_empty(), "it loads: %s" % [result.errors])
@@ -691,8 +694,9 @@ func test_the_s2_fixture_is_a_v3_save_at_size_2_holding_the_recorders_values() -
 	# parsed).
 	var again = JSON.parse_string(JSON.stringify(save.to_dict(), "\t", true, true))
 	var expected: Dictionary = data.duplicate(true)
-	expected["schema_version"] = 4.0
+	expected["schema_version"] = 5.0
 	expected["creature"] = {}
+	expected["aquatic"] = {}
 	check_eq(JSON.stringify(again, "", true, true), JSON.stringify(expected, "", true, true), "the same data written back")
 
 
@@ -754,12 +758,13 @@ func test_the_v3_fixture_loads_and_round_trips_the_creature() -> void:
 
 ## The creature stage's v3 has no cell size: v3 -> v4 gives it S2's defaults (size 1, empty meter,
 ## the home checkpoint, no spawn, the first generator, fresh energy and health) and nothing else.
-func test_the_creature_v3_fixture_migrates_to_v4_exactly() -> void:
+func test_the_creature_v3_fixture_migrates_to_v5_exactly() -> void:
 	var text := FileAccess.get_file_as_string(V3_FIXTURE)
 	var v3: Dictionary = JSON.parse_string(text)
 	check_eq(int(v3.schema_version), 3, "the fixture is a v3 save")
 	var expected := v3.duplicate(true)
-	expected["schema_version"] = 4
+	expected["schema_version"] = 5
+	expected["aquatic"] = {}
 	expected["growth"] = {"size": 1, "meter": 0.0}
 	expected["checkpoint"] = {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}
 	expected["spawn"] = null
@@ -769,7 +774,7 @@ func test_the_creature_v3_fixture_migrates_to_v4_exactly() -> void:
 	var migrated := service.migrate(v3)
 	check(migrated.ok, "migrates: %s" % migrated.error)
 	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true),
-		"v3 -> v4 adds S2's fields with their defaults and changes nothing else")
+		"v3 -> v5 adds S2's fields with their defaults and an empty aquatic block, and changes nothing else")
 	check_eq(JSON.stringify(v3), JSON.stringify(JSON.parse_string(text)), "the v3 data it was given is untouched")
 
 
@@ -803,4 +808,85 @@ func test_a_creature_with_a_bad_body_is_not_written() -> void:
 	var before := FileAccess.get_file_as_string(slot_path)
 	(save.creature["body"] as Dictionary).erase("vertebrae")
 	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "a bad body is refused")
+	check_eq(FileAccess.get_file_as_string(slot_path), before, "previous save intact")
+
+
+# Save v5 (the Aquatic stage, owner approval 2026-10-25, docs/stages/aquatic-plan.md decision 2): v4 -> v5 adds
+# only an empty "aquatic" block; a lineage that has swum holds the fish's body, generation, history, finds,
+# relations, meals, place and bars, and every one of them round-trips and is checked on load and save.
+
+## An aquatic block away from every default.
+func _aquatic_block() -> Dictionary:
+	var body := AquaticBody.HOVERER.duplicate()
+	body["fins"] = 2
+	body["hue"] = 0.3125
+	return {"body": body, "generation": 3, "meals": 17, "discovered": ["reef", "kelp_arch"],
+		"history": [{"generation": 1, "body": AquaticBody.DARTER.duplicate()}, {"generation": 2, "body": body.duplicate()}],
+		"relations": {"grazer": {"standing": "friend", "rapport": 3}, "shoal": {"standing": "foe", "rapport": 0}},
+		"position": [12.5, -31.25, -140.0], "heading": 1.25, "energy": 42.5, "health": 18.0}
+
+
+func test_v4_to_v5_adds_an_empty_aquatic_block_and_nothing_else() -> void:
+	var v4 := _v3_save().to_dict()
+	v4.erase("aquatic")
+	v4["schema_version"] = 4
+	var expected := v4.duplicate(true)
+	expected["schema_version"] = 5
+	expected["aquatic"] = {}
+	var migrated := service.migrate(v4.duplicate(true))
+	check(migrated.ok, "migrates: %s" % migrated.error)
+	check_eq(JSON.stringify(migrated.data, "", true, true), JSON.stringify(expected, "", true, true), "only the aquatic block")
+	var loaded := _load_data(v4)
+	check(loaded.ok, "a v4 file loads: %s" % [loaded.errors])
+	if loaded.ok:
+		check_eq((loaded.save as SaveGame).aquatic, {}, "with no aquatic state")
+
+
+func test_the_aquatic_block_round_trips_with_whole_numbers() -> void:
+	var save := _v3_save()
+	save.aquatic = _aquatic_block()
+	check(service.validate(save).is_empty(), "valid: %s" % [service.validate(save)])
+	check_eq(service.save_to(slot_path, save), OK, "saved")
+	var result := service.load_from(slot_path)
+	check(result.ok, "loads: %s" % [result.errors])
+	if not result.ok:
+		return
+	var again: Dictionary = (result.save as SaveGame).aquatic
+	check_eq(JSON.stringify(again, "", true), JSON.stringify(save.aquatic, "", true), "the same block")
+	check(again.generation is int and again.meals is int and again.body.fins is int, "whole numbers come back as ints")
+	check(again.relations.grazer.rapport is int and again.history[1].generation is int, "rapport and history too")
+	check(again.body.hue is float, "the hue stays a number with its fraction")
+
+
+func test_a_bad_aquatic_block_is_refused() -> void:
+	var cases := [
+		["generation", 0, "generation must be 1 or higher"],
+		["meals", -1, "meals must not be negative"],
+		["position", [1.0, 2.0], "position must be three numbers"],
+		["heading", "north", "heading must be a number"],
+		["energy", -5.0, "energy must be a number of at least 0"],
+		["discovered", [""], "every discovered entry must be a non-empty id"],
+		["relations", {"grazer": {"standing": "lover", "rapport": 1}}, "the relation with 'grazer'"],
+		["speed", 3, "'aquatic.speed' is not part of a v5 save"],
+	]
+	for c in cases:
+		var block := _aquatic_block()
+		block[c[0]] = c[1]
+		var data := _v3_save().to_dict()
+		data["aquatic"] = block
+		var result := _load_data(data)
+		check(not result.ok, "aquatic.%s = %s is refused" % [c[0], c[1]])
+		check(" ".join(result.errors).contains(String(c[2])), "naming it (%s): %s" % [c[2], result.errors])
+
+
+func test_an_aquatic_body_that_breaks_the_rules_is_not_written() -> void:
+	var save := _v3_save()
+	save.aquatic = _aquatic_block()
+	check_eq(service.save_to(slot_path, save), OK, "a legal fish saves")
+	var before := FileAccess.get_file_as_string(slot_path)
+	save.aquatic.body["fins"] = 99
+	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "a fish out of range is refused")
+	save.aquatic.body["fins"] = 2
+	save.aquatic.body["tail"] = "propeller"
+	check_eq(service.save_to(slot_path, save), ERR_INVALID_DATA, "an unknown tail is refused")
 	check_eq(FileAccess.get_file_as_string(slot_path), before, "previous save intact")

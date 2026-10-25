@@ -7,7 +7,7 @@ extends TestCase
 const DOMAIN_DIR := "res://game/domain"
 const SIM_FILES: PackedStringArray = ["res://game/systems/pool_sim.gd", "res://game/systems/plankton_field.gd",
 	"res://game/systems/carrion_field.gd", "res://game/systems/sim_intent.gd", "res://game/systems/species_catalog.gd",
-	"res://game/systems/creature_field.gd"]
+	"res://game/systems/creature_field.gd", "res://game/systems/aquatic/aquatic_sim.gd"]
 ## Every .gd in it and its subfolders is scanned, like DOMAIN_DIR (S1: the endless world's sim).
 const WORLD_DIR := "res://game/systems/world"
 ## These read their tuning data from a file (read-only loads): the part and species catalogs, and the

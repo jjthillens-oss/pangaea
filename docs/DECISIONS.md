@@ -1475,6 +1475,9 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
   landmark at the screen's edge).
 
+## 2026-10-25 · Save schema v5: the Aquatic stage's progress (CONFIRMED; IMPLEMENTED)
+Joshua chose "Yes, add aquatic saves (v5)" on 2026-10-25 02:48 (aquatic plan decision 2). Save v5 adds one top-level key, `aquatic`: `{}` until the lineage swims in the Aquatic stage, then the fish's body (AquaticBody), generation, history of parents, discovered zones and sites, relations per species (standing and rapport), meals, position, heading, energy and health. Points stay in `adaptation_points`. The v4 -> v5 migration adds the empty block and changes nothing else; every v4 key is unchanged. PersistenceService checks the block's body against `game/data/aquatic/aquatic_rules.json` on every load and save, so a fish that breaks the rules is refused like a bad creature. The stage writes the slot on a new generation, a find, a relation change, a death, on leaving and on closing the window, re-reading the slot first so the cell's and creature's data are kept; a slot that will not load is never written, and an empty slot gets a new lineage. The `era` field is not changed by the Aquatic stage: when the cell stage leads into the sea is still plan decision 3. Reason: Bible §18 (lineage, discoveries and relationships persist). Impact: a build before v5 refuses a v5 save as newer. Tests: `tests/test_persistence.gd` (v5 section), `tests/test_aquatic_sim.gd`, the aquatic smoke's reload check.
+
 ## 2026-10-25 · Cell to creature link: the cell crawls onto land (Bible section 4; PROPOSED; IMPLEMENTED)
 
 Joshua said "Go" (2026-10-25 01:23 UTC) to the studio's proposal: "the cell crawls onto land and the

@@ -1,9 +1,9 @@
 class_name SaveGame
 extends RefCounted
-## One run's persistent state, schema version 4 (Bible section 18, plan E). Plain data plus
+## One run's persistent state, schema version 5 (Bible section 18, plan E). Plain data plus
 ## validation; file handling, migration and recovery live in PersistenceService, and SaveMigrations
 ## holds each step (v1 -> v2 adds adaptation_points; v2 -> v3 adds the creature; v3 -> v4 is
-## exact, S2).
+## exact, S2; v4 -> v5 adds the aquatic stage).
 ##
 ## v4 (S2) adds the cell's size and growth meter, the checkpoint (absolute am in float64, heading,
 ## size) and gen_version, and step 4's fields with their defaults, so S4 adds none: spawn (null =
@@ -22,12 +22,18 @@ extends RefCounted
 ## still checked. A body that breaks the rules fails to load with the reasons, like an invalid
 ## genome: parts are never dropped.
 ##
-## Frozen once S2 ships (build plan BP-18): no key is added or changed after that; a later need is
+## The aquatic stage (v5, owner approval 2026-10-25, docs/stages/aquatic-plan.md decision 2): {} until the lineage
+## swims in the Aquatic stage, then {"body": the AquaticBody dictionary, "generation": int >= 1, "history": Array,
+## "discovered": Array of zone and site ids, "relations": {species: {"standing", "rapport"}}, "meals": int >= 0,
+## "position": [x, y, z], "heading": number, "energy" and "health": numbers >= 0}. Its points are adaptation_points,
+## as the creature's are. validate() takes the body's rules as an optional Callable, as for the creature.
+##
+## v4 was frozen once S2 shipped (build plan BP-18): no key is added or changed after that; a later need is
 ## v5, with its own migration and fixture. The genome's appearance stays a free dictionary (S4's
 ## membrane lives there). The growth trigger, reduce motion, hints and the giant pass are not in a
 ## save (SettingsService and UserSettings). A build older than S2 refuses a v4 save as newer.
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 ## 2^53: save files keep numbers as doubles, which hold whole numbers exactly only up to here.
 const MAX_WORLD_SEED := 9007199254740992
 ## Era ids are PROPOSED names from Bible section 4.
@@ -37,8 +43,8 @@ const MIN_SIZE := 1
 const MAX_SIZE := 10
 ## A rare place's kind, a landmark's model, or a food look whose lump is paid (D-33).
 const DISCOVERY_TYPES: PackedStringArray = ["place", "landmark", "food"]
-## The keys of a v4 save, and of each object v4 adds or changes, sorted.
-const KEYS: PackedStringArray = ["adaptation_points", "build_id", "checkpoint", "creature", "discoveries", "era",
+## The keys of a v5 save, and of each object v4 or v5 adds or changes, sorted.
+const KEYS: PackedStringArray = ["adaptation_points", "aquatic", "build_id", "checkpoint", "creature", "discoveries", "era",
 	"gen_version", "genome", "growth", "lineage_history", "lineage_id", "pending_transactions", "player", "relationships",
 	"saved_at_unix", "schema_version", "settlements", "spawn", "world_changes", "world_seed"]
 const PLAYER_KEYS: PackedStringArray = ["energy", "health", "position"]
@@ -46,6 +52,9 @@ const GROWTH_KEYS: PackedStringArray = ["meter", "size"]
 const CHECKPOINT_KEYS: PackedStringArray = ["heading", "size", "x_am", "y_am"]
 const SPAWN_KEYS: PackedStringArray = ["heading", "x_am", "y_am"]
 const DISCOVERY_KEYS: PackedStringArray = ["id", "size", "type"]
+const AQUATIC_KEYS: PackedStringArray = ["body", "discovered", "energy", "generation", "health", "heading", "history", "meals",
+	"position", "relations"]
+const AQUATIC_STANDINGS: PackedStringArray = ["neutral", "friend", "foe"]
 
 var build_id: String = ""
 var world_seed: int = 0
@@ -56,6 +65,8 @@ var genome: Genome
 var adaptation_points: int = 0
 ## The creature stage's creature (see above), {} before the lineage has one.
 var creature: Dictionary = {}
+## The aquatic stage's state (v5): {} until the lineage swims there. See the header.
+var aquatic: Dictionary = {}
 ## Ordered events: {"generation": int, "genome_id": String, "event": String}
 var lineage_history: Array = []
 ## What this lineage has found, in find order: {"type": DISCOVERY_TYPES, "id": String, "size": int}.
@@ -90,7 +101,7 @@ static func new_run(seed: int, p_build_id: String) -> SaveGame:
 	return save
 
 
-func validate(catalog: PartCatalog, creature_body_rules: Callable = Callable()) -> PackedStringArray:
+func validate(catalog: PartCatalog, creature_body_rules: Callable = Callable(), aquatic_body_rules: Callable = Callable()) -> PackedStringArray:
 	var errors := PackedStringArray(load_problems)
 	if not StableId.is_valid(lineage_id, "lineage"):
 		errors.append("Save has an invalid lineage id '%s'." % lineage_id)
@@ -130,6 +141,55 @@ func validate(catalog: PartCatalog, creature_body_rules: Callable = Callable()) 
 	for i in discoveries.size():
 		errors.append_array(_discovery_problems(i, discoveries[i]))
 	errors.append_array(validate_creature(creature, creature_body_rules))
+	errors.append_array(validate_aquatic(aquatic, aquatic_body_rules))
+	return errors
+
+
+## Every problem with an aquatic dictionary: {} is fine (the lineage has not swum there); otherwise exactly the
+## AQUATIC_KEYS with their types, then the body against `body_rules` when one is given.
+static func validate_aquatic(data: Dictionary, body_rules: Callable = Callable()) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if data.is_empty():
+		return errors
+	for problem in _key_problems("aquatic", data, AQUATIC_KEYS):
+		errors.append(problem)
+	if not errors.is_empty():
+		return errors
+	var problems := []
+	var body := JsonValues.dict(data, "body", problems)
+	var generation := JsonValues.whole(data, "generation", problems)
+	JsonValues.array(data, "history", problems)
+	var discovered := JsonValues.array(data, "discovered", problems)
+	var relations := JsonValues.dict(data, "relations", problems)
+	var meals := JsonValues.whole(data, "meals", problems)
+	for problem in problems:
+		errors.append("Aquatic: %s" % problem)
+	if not errors.is_empty():
+		return errors
+	if generation < 1:
+		errors.append("Aquatic: generation must be 1 or higher, got %d." % generation)
+	if meals < 0:
+		errors.append("Aquatic: meals must not be negative.")
+	for id in discovered:
+		if not (id is String and not (id as String).is_empty()):
+			errors.append("Aquatic: every discovered entry must be a non-empty id.")
+			break
+	for species in relations:
+		var r: Variant = relations[species]
+		if not (r is Dictionary and String(r.get("standing", "")) in AQUATIC_STANDINGS and _is_number(r.get("rapport"))
+				and float(r.rapport) >= 0.0):
+			errors.append("Aquatic: the relation with '%s' needs a standing (neutral, friend or foe) and a rapport of 0 or more." % species)
+	var pos: Variant = data.position
+	if not (pos is Array and pos.size() == 3 and pos.all(func(v): return _is_number(v))):
+		errors.append("Aquatic: position must be three numbers.")
+	if not _is_number(data.heading):
+		errors.append("Aquatic: heading must be a number.")
+	for key in ["energy", "health"]:
+		if not (_is_number(data[key]) and float(data[key]) >= 0.0):
+			errors.append("Aquatic: %s must be a number of at least 0." % key)
+	if body_rules.is_valid():
+		for problem in body_rules.call(body):
+			errors.append("Aquatic body: %s" % problem)
 	return errors
 
 
@@ -169,6 +229,7 @@ func to_dict() -> Dictionary:
 		"genome": genome.to_dict() if genome else {},
 		"adaptation_points": adaptation_points,
 		"creature": creature.duplicate(true),
+		"aquatic": aquatic.duplicate(true),
 		"lineage_history": lineage_history.duplicate(true),
 		"discoveries": discoveries.duplicate(true),
 		"relationships": relationships.duplicate(true),
@@ -205,6 +266,7 @@ static func from_dict(data: Dictionary) -> SaveGame:
 	var generation = save.creature.get("generation")
 	if generation is float and is_finite(generation) and generation == floorf(generation):
 		save.creature["generation"] = int(generation)
+	save.aquatic = _aquatic_ints(JsonValues.dict(data, "aquatic", problems))
 	save.lineage_history = JsonValues.array(data, "lineage_history", problems)
 	save.discoveries = JsonValues.array(data, "discoveries", problems)
 	for entry in save.discoveries:
@@ -225,6 +287,32 @@ static func from_dict(data: Dictionary) -> SaveGame:
 	save.gen_version = JsonValues.whole(data, "gen_version", problems)
 	save.saved_at_unix = JsonValues.whole(data, "saved_at_unix", problems)
 	return save
+
+
+## JSON reads every number as a float; the aquatic block's whole numbers (generation, meals, the body's sizes and
+## the rapports) are ints in memory, as the stage holds them.
+static func _aquatic_ints(data: Dictionary) -> Dictionary:
+	for key in ["generation", "meals"]:
+		if data.has(key):
+			data[key] = _whole_or_same(data[key])
+	if data.get("body") is Dictionary:
+		for key in data.body:
+			data.body[key] = _whole_or_same(data.body[key]) if key != "hue" else data.body[key]
+	if data.get("relations") is Dictionary:
+		for species in data.relations:
+			if data.relations[species] is Dictionary and data.relations[species].has("rapport"):
+				data.relations[species]["rapport"] = _whole_or_same(data.relations[species].rapport)
+	for entry in data.get("history", []):
+		if entry is Dictionary:
+			entry["generation"] = _whole_or_same(entry.get("generation"))
+			if entry.get("body") is Dictionary:
+				for key in entry.body:
+					entry.body[key] = _whole_or_same(entry.body[key]) if key != "hue" else entry.body[key]
+	return data
+
+
+static func _whole_or_same(v: Variant) -> Variant:
+	return int(v) if v is float and is_finite(v) and v == floorf(v) else v
 
 
 func _growth_problems() -> PackedStringArray:
