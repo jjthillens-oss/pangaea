@@ -28,6 +28,67 @@
 				}
 			]
 		},
+		"antler_branched": {
+			"type": "antler_branched",
+			"footprint_radius_m": 0.023,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the antler 25% longer above the burr",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Spread",
+					"meaning": "leans 18 degrees further out",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Sweep",
+					"meaning": "swept 18 degrees further back",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "The keys are on AntlerBranched (beam and tines); the pedicle (AntlerBranchedPedicle) stays put under the burr."
+		},
+		"antler_palmate": {
+			"type": "antler_palmate",
+			"footprint_radius_m": 0.025,
+			"sink_depth_m": 0.02,
+			"chiral": true,
+			"orientation": "normal",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 40,
+			"centerline": "forbidden",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "weapon",
+			"handles": [
+				{
+					"key": "H1_Span",
+					"meaning": "the palm and its points 25% broader and longer",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Tilt",
+					"meaning": "the palm raised 22 degrees",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "The keys are on AntlerPalmate (beam, palm and points); the pedicle (AntlerPalmatePedicle) stays put under the burr."
+		},
 		"barbels": {
 			"type": "barbels",
 			"footprint_radius_m": 0.163,
@@ -755,6 +816,34 @@
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
 		},
+		"foot_otter": {
+			"type": "foot_otter",
+			"footprint_radius_m": 0.095,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Spread",
+					"meaning": "toes fanned up to 12 degrees further apart, the outer ones most",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Long",
+					"meaning": "toes about 30% longer along their own directions",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on all four meshes (FootOtter, FootOtterWeb, FootOtterPads, FootOtterClaws) with the same names; the runtime sets them together.",
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.09 m) meets the limb tip."
+		},
 		"foot_paw": {
 			"type": "foot_paw",
 			"footprint_radius_m": 0.073,
@@ -781,6 +870,34 @@
 				}
 			],
 			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.095 m) meets the limb tip."
+		},
+		"foot_pillar": {
+			"type": "foot_pillar",
+			"footprint_radius_m": 0.087,
+			"sink_depth_m": 0.0,
+			"chiral": false,
+			"orientation": "ground",
+			"turn_limit_deg": 25,
+			"tilt_limit_deg": 15,
+			"centerline": "allowed",
+			"hosts": [
+				"limb_end"
+			],
+			"role": "foot",
+			"handles": [
+				{
+					"key": "H1_Wide",
+					"meaning": "the base up to 25% wider, most at the sole",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Nails",
+					"meaning": "the toenails 35% bigger and standing out further",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Wide is on FootPillar, FootPillarSole and FootPillarNails (the sole and nails ride on the widening base); H2_Nails is on FootPillarNails only.",
+			"pivot_note": "Ground part: the sole sits on the pivot; the column is 0.05 m across at the ankle (z 0.09 m), where the limb tip meets it, and closes over its top in a shoulder inside the limb."
 		},
 		"foot_primate": {
 			"type": "foot_primate",
