@@ -24,6 +24,11 @@ extends SceneTree
 ##   type nearest the front right (a foot, say) instead of the head.
 ## --cone-fix-preview (review only) turns the forward_cone parts (mouths and eyes) on the rig the way the proposed
 ##   frame fix would, to check they read right once it lands; use a distinct --set name for those frames.
+## --floor-at-soles (review only) lowers the editor's floor disc to the lowest foot sole. The editor puts its floor at
+##   the body's bounds (limb tips less their radius), but the resolver stands each ground part 0.09 x scale below its
+##   limb tip, so the lowest few centimetres of every foot sink through the floor in the editor; in the world the walker
+##   lifts each tip by that height and the soles stand on the ground. Entries with a focus_type also get a slightly
+##   raised side view, so the floor's rim does not block a foot's profile.
 
 const EDITOR_SCENE := "res://game/scenes/creature/creature_editor.tscn"
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -48,6 +53,8 @@ var set_name := "before"
 var presets: Array = DEFAULT_PRESETS.duplicate()
 var showcase_path := ""
 var cone_fix_preview := false
+var floor_at_soles := false
+var floor_rest_y := NAN
 var editor: Node
 
 
@@ -65,6 +72,8 @@ func _initialize() -> void:
 			showcase_path = arg.trim_prefix("--showcase=")
 		elif arg == "--cone-fix-preview":
 			cone_fix_preview = true
+		elif arg == "--floor-at-soles":
+			floor_at_soles = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -123,6 +132,8 @@ func _creatures() -> void:
 			_preview_cone_fix()
 		await _frames(6)
 		var desc: RefCounted = editor.working_body()
+		if floor_at_soles:
+			_lower_floor_to_soles(desc)
 		var length: float = (desc.bounds_m() as AABB).get_longest_axis_size()
 		var distance := clampf(DISTANCE_PER_BODY_M * length, DISTANCE_MIN_M, DISTANCE_MAX_M)
 		var centre: Vector3 = editor._focus
@@ -132,7 +143,8 @@ func _creatures() -> void:
 		await _view(centre, distance, 0.75, pitch, shot_name + "_game")       # behind (+Z) and to the side
 		await _view(centre, distance, 2.3, pitch, shot_name + "_front")       # front (-Z) three-quarter
 		await _view(head, CLOSE_SHARE * distance, 2.3, 0.25, shot_name + "_close")
-		await _view(head, SIDE_SHARE * distance, PI / 2.0, 0.03, shot_name + "_side")
+		var side_pitch := 0.15 if entry.has("focus_type") else 0.03
+		await _view(head, SIDE_SHARE * distance, PI / 2.0, side_pitch, shot_name + "_side")
 		print("creature ", entry["name"], " length ", snappedf(length, 0.01), " parts ", desc.parts.size())
 
 
@@ -181,6 +193,25 @@ func _head(desc: RefCounted) -> Vector3:
 			sum += (placed["transform"] as Transform3D).origin
 			n += 1
 	return sum / n if n > 0 else desc.position_m(0)
+
+
+## Review only (--floor-at-soles): the floor disc down to the lowest ground part's sole (the resolver's placement
+## origin for a ground part is its sole), where the walker would stand it in the world.
+func _lower_floor_to_soles(desc: RefCounted) -> void:
+	if is_nan(floor_rest_y):
+		floor_rest_y = editor.floor_disc.position.y
+	editor.floor_disc.position.y = floor_rest_y      # each body starts from the editor's own floor
+	var lowest := INF
+	for placed in AnchorResolver.resolve_all(desc, BodyField.from_description(desc), editor.orientations):
+		var type := ""
+		for p in desc.parts:
+			if p["id"] == placed["part"]:
+				type = String(p["type"])
+		if String(editor.orientations.get(type, "normal")) == "ground":
+			lowest = minf(lowest, (placed["transform"] as Transform3D).origin.y + editor._rig_offset.y)
+	if lowest < editor.floor_disc.position.y:
+		print("floor lowered by ", snappedf(editor.floor_disc.position.y - lowest, 0.001), " m to the soles")
+		editor.floor_disc.position.y = lowest
 
 
 ## The close and side views' target: the head, or the placed part of `focus_type` nearest the front right (the
