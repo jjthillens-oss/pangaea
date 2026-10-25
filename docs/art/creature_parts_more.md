@@ -1,8 +1,8 @@
 # More creature parts (more-parts)
 
 Twenty new creature parts, so players can build many more animal types. All of it is PROPOSED art and data, and it
-waits for the owner's look review. Each part ships as an editable `.blend`, a GLB and an `assets/records/cpart_<id>.json`
-record with a role. It reaches the editor through data only: `python3 tools/make_part_rules.py` copies each record's
+waits for the owner's look review. Each part ships as an editable Blender source in `assets/source/blender/`, a GLB in
+`assets/export/` and a `cpart_` record with a role in `assets/records/`. It reaches the editor through data only: `python3 tools/make_part_rules.py` copies each record's
 `part_rules` into `game/data/creature/part_rules.json`, and the editor's palette and tabs read that file.
 
 Owner request (CONFIRMED, verbatim): "20 more creature parts so players can build many animal types (beaks, trunks,
