@@ -1553,3 +1553,17 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25 · Swim parts slow a creature on land (PROPOSED; IMPLEMENTED)
+
+- **Owner direction (Joshua, 2026-10-25 05:43)**: traits matter both ways. "If they leave their fins and
+  their floppers on, they're slower on land", and a player who wants to be faster on land changes the
+  creature in the editor.
+- **Rule** (`CreatureStats.land_factor`, tuning `creature_stage.json` "land_drag"): each fin pair, tail
+  fluke and flipper takes per_part x scale off the top land speed (fin 0.06, fluke 0.10, flipper 0.08 at
+  scale 1; a mirrored part twice), never below 0.5 of what the legs allow. A lone centerline fin (the
+  starter quadruped's back fin) rides clear of the legs and does not drag. The parts add no mass. The
+  editor's stats show "Swim parts N · land speed -X%" while a walking body keeps them.
+- A fish that crawls ashore (aquatic PR #200) arrives with its fluke and side fins, so it starts slow on
+  land until the player trades them for legs. Water access later (rivers, the submarine return in the
+  aquatic path) gives the same parts their payoff.
