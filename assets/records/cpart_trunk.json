@@ -107,10 +107,10 @@
     "triangles_after": 2303
   },
   "review_notes": {
-    "gate1_shape": "unverified: not reviewed yet",
-    "gate2_materials": "unverified: not reviewed yet",
-    "gate3_neutral_light": "unverified: not reviewed yet",
-    "gate4_godot": "unverified: not reviewed yet"
+    "gate1_shape": "pass: a thick root tapering over about 0.38 m, hanging down and turning forward at the end in an S, flatter underneath; the grip pad shows two finger-like lips (the upper larger) round a dished face; H1_Curl coils the outer half into a grasping hook, H2_Raise lifts it forward and up, H3_Length lengthens it, the pad riding rigidly on the end.",
+    "gate2_materials": "pass: cool grey wrinkled skin whose ring folds and crackle read in the normal map and albedo, against a darker warm-brown pebbled grip pad with two dark nostrils.",
+    "gate3_neutral_light": "pass: neutral white light shows the ring wrinkles by grazing light along the whole length; no clipped highlights, the pad stays readable in shadow.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
