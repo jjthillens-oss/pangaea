@@ -130,7 +130,7 @@ float fur_strand(vec3 p, float h) {
 	vec3 o = hash33(c) * 0.5 + 0.25;
 	float d = length(fract(p) - o);
 	float len = 0.45 + 0.55 * hash13(c + 3.1);
-	return (h < len) ? step(d, 0.62 * pow(1.0 - h / len, 0.8) + 0.06) : 0.0;
+	return (h < len) ? step(d, 0.3 * (1.0 - h / len)) : 0.0;   // no floor: the strand thins to nothing, no stacked discs
 }
 
 void fragment() {
@@ -138,7 +138,11 @@ void fragment() {
 		if (covering != 1 || covering_strength <= 0.0) { discard; }
 		float h = float(shell_layer) / float(max(shell_count, 1));
 		vec3 fp = rest_pos * fur_density * 0.45 + vec3(float(pattern_seed) * 1.7);
-		fp.z += h * 0.6;   // strands lean back along the body
+		if (skin.z > 0.5) {
+			fp.y += h * 0.6;   // limb strands hang down the limb (rest space +y up, so the sample point climbs)
+		} else {
+			fp.z += h * 0.6;   // body strands lean back along the body
+		}
 		if (fur_strand(fp, h / max(covering_strength, 0.01)) < 0.5) { discard; }
 	}
 	float u = skin.x;
@@ -248,7 +252,8 @@ void fragment() {
 	col *= 1.0 - 0.35 * crease;
 
 	if (shell_layer > 0) {
-		col *= mix(0.95, 1.18, float(shell_layer) / float(max(shell_count, 1)));   // dark roots, light tips
+		float sh = float(shell_layer) / float(max(shell_count, 1));
+		col *= mix(0.9, 1.1, sh);   // mild depth shading only: shells darker than the skin read as spots
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
