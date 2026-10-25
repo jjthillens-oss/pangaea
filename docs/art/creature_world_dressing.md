@@ -6,7 +6,7 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 
 | Asset | Replaces | Triangles (budget) | Materials | Notes |
 | --- | --- | --- | --- | --- |
-| `creature_field_ground` | the field plane | 15 488 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | rev 2: the 172 x 172 m walkable grid (`CreatureField`, 12 800 triangles), relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them, the centre flat for 7.5 m round the nest; plus `CreatureFieldHills` (2 688 triangles), a coarse square ring of low hills from 84 m (under the berm) out to 200 m, 3 to 12 m high, which casts no shadow (an import option) |
+| `creature_field_ground` | the field plane | 15 488 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | rev 2: the 172 x 172 m walkable grid (`CreatureField`, 12 800 triangles), relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them, the centre flat for 7.5 m round the nest; plus `CreatureFieldHills` (2 688 triangles), a coarse square ring of hills from 84 m (under the berm) out to 200 m: low rolling hills 1.5 to 4 m over the berm's crest, then from about 120 m an uneven far ridge 2 to 14 m higher (top 16.2 m); it casts no shadow (an import option) |
 | `creature_nest_ring` | the nest torus | 3 000 (4 000) | `M_NestEarth`, `M_NestTwig`, `M_NestStone` (baked) | mound of earth and straw round the sim's 6 m nest: inner 5.35 m, crown 5.85 m, outer 6.45 m, 0.44 m high (0.52 m with its heaps); the inside is clear and flat to 5.3 m |
 | `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.06 x 1.06 x 0.79 m, every vertex within 0.56 m of the pivot horizontally (the top card tips are 0.81 m from it) |
 | `creature_meat_chunk` | the meat box | 604 (1 200) | `M_MeatFlesh` (external, instance tint), `M_MeatBone` (baked) | a torn haunch with a bone end, 0.58 m long, lying on the ground |
@@ -156,8 +156,66 @@ The new turf, shader variations, AO and hills, with `game/scenes/creature/creatu
   #8FA08C at 0.42; the shipped #778F77 at 0.4 is darker and greyer.)
 - The hills stand beyond the 78 m fog end, so in both renderers they are fully fogged into the sky's horizon colour
   and the horizon still has no land line. The environment retune below is the fix the art cannot make.
+- After these frames, two more art changes went in (commit "uneven hills and organic earth patches"): the hills became
+  low near hills plus an uneven far ridge (they had read as a wall once the fog let them show), and the shader now
+  reads the patch mask rotated and domain-warped (rev 1's earth patches had boxy, axis-aligned edges) and fades the
+  earth patches out past 74 m, so the berm and hills are grass.
 - Cost: unchanged within noise (Compatibility spawn 240 draw calls, 109.7k primitives; `setup_ms.total` 2,206 ms on
   the shared container, test budget 3,000 ms).
+
+## The world's light (PROPOSED retune of `game/scenes/creature/creature_world.tscn`, 2026-10-25)
+
+The lead allowed this job to change only the values of the scene's sky, environment and fog sub-resources and the
+sun's energy, in one isolated commit ("land-coloured light and haze (values only)"), after the art-only fixes above.
+No nodes, scripts or other properties changed; dropping that commit restores main's light.
+
+| Value | Main | Now | Why |
+| --- | --- | --- | --- |
+| `Sky_material.ground_bottom_color` | (0.42, 0.54, 0.66) | (0.30, 0.32, 0.25) | the sky's lower half lights the ground's shade from below; earth, not blue |
+| `Sky_material.ground_horizon_color` | (0.52, 0.64, 0.78) | (0.62, 0.68, 0.66) | a grey-green land haze under the horizon instead of the sky's blue |
+| `ambient_light_color` / `ambient_light_sky_contribution` | (unset) / 1.0 | (0.60, 0.64, 0.52) / 0.6 | 40% of the ambient is a warm neutral, so the shade stops turning cyan |
+| `ambient_light_energy` | 0.3 | 0.4 | the shade keeps some colour with less sky in it |
+| `fog_light_color` | (0.52, 0.64, 0.78), the sky's horizon | (0.66, 0.72, 0.76) | a paler grey haze that differs from the sky, so the hills keep a skyline |
+| `fog_density` | 1.0 | 0.85 | the farthest hills keep some of their green |
+| `fog_aerial_perspective` | 0.5 | 0.25 | less sky colour mixed into the haze |
+| `fog_depth_begin` / `fog_depth_end` | 20 / 78 m | 35 / 200 m | the whole field (to ±80 m) and the hills show; the haze starts past the gameplay camera's ground |
+| Sun `light_energy` | 0.75 | 1.0 | a sunlit day: the lit side of the turf is green and the earth warm |
+
+Before/after pairs (the same art, main's light on the left), in `docs/evidence/credit-creature-world-art/env_*.jpg`.
+"Turf" is the mean CIELAB of only the turf pixels (hue 115 to 215, chroma over 6) in the ground band (between the
+first sharp edge under the sky, now the hills' skyline, and 60% of the frame height, the middle fifth of the columns
+left out); the share of earth in the band varies with the pose, so the turf-only reading is the fair comparison.
+Horizon dE is between the sky just above that edge and the land just under it.
+
+| Frame | Renderer | Turf L / C / h before | after | Horizon dE before | after |
+| --- | --- | --- | --- | --- | --- |
+| world_roam | Compatibility, shadowed sun | 56.9 / 26.2 / 164.5 | 67.2 / 31.8 / 151.8 | 12.3 (a fogged blue band) | 34.9 |
+| close_ground | Compatibility, shadowed sun | 57.4 / 25.0 / 166.6 | 69.0 / 29.7 / 152.7 | | |
+| world_low | Compatibility, shadowed sun | 61.3 / 26.3 / 166.1 | 73.9 / 30.5 / 153.7 | 12.9 | 37.8 |
+| close_ground | Forward+ (lavapipe) | 49.7 / 24.2 / 147.8 | 57.5 / 25.8 / 143.7 | | |
+| world_spawn | Forward+ (lavapipe) | 51.4 / 25.9 / 148.9 | 59.6 / 24.9 / 146.0 | | |
+| world_low | Forward+ (lavapipe) | 51.9 / 24.4 / 151.6 | 61.2 / 21.2 / 149.5 | 29.3 (field edge into fog) | 17.1 (hills' skyline) |
+
+Against the brief's PROPOSED targets (turf hue 160 or under, chroma 15 or more, a land horizon with dE 8 or more):
+met in both renderers. Against main (the baseline table above, rev 1 art and main's light) the Compatibility roam turf
+went from h 171.8 to 151.8 and Forward+'s close-up turf from C 19.2 to 25.8.
+
+What the frames show:
+- Forward+, the shipping renderer: a sunlit grass meadow with bare earth patches, low hills behind the walls and a
+  far ridge fading into a grey-blue haze; the skyline is land. The turf reads at hue 144 to 150 on screen, still on the
+  far side of the food green's band (89 to 139).
+- Compatibility (these Linux frames): the same land read, but the shadowed sun's additive sRGB pass lifts the turf
+  (L 67 to 74 against 57 to 61 in Forward+) and the sunlit hill faces to a pale mint. That is the renderer, not the
+  values (docs/TOOLCHAIN.md); judge colour on Forward+.
+- No water read remains in either renderer: no pale cyan plane at the horizon, no sky-coloured far field.
+- Cost: the light change leaves every frame's counts exactly as they were (fog culls nothing, so the hills were
+  drawn before too): world_spawn 240 draw calls and 109.7k primitives in both renderers, world_low 254 / 94.0k in
+  Forward+ and 126 / 78.5k in Compatibility. Against main's 239 / 107k at world_spawn, the hills mesh is the one extra
+  draw call and 2.7k primitives. `setup_ms.total` in these runs was 2,105 to 3,221 ms on the shared container (the
+  higher ones are the Forward+ runs, whose skin build is slower; the creature skins and rigs are most of it).
+
+The owner may also relax the 25-degree food-green gap for creature-stage ground (open question 2): true grass greens
+(h 120 to 138) would read as land even more readily, and the creature stage's food is amber fruit and red meat.
 
 ## Next
 
