@@ -788,6 +788,13 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-25 · Creature skin covering picker (PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 23:40) asked for monkeys with fur and frogs that read as frogs. The editor's palette gains four
+covering toggles under the swatches: Smooth, Fur, Scales, Wet. The choice rides in the body's extra keys as
+`skin_covering` (a whole-number float 0..3, smooth when missing or out of range; `creature_look.gd`), so no save field
+or schema change. It reaches the skin shader as its int `covering` uniform, which the art thread owns. Like the swatch
+it is free and outside undo. Presets and rivals wear the covering their body carries; a random first design draws one.
+
 ## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
 
 - Weapon-role parts (claws, horns, spikes, tusks, tail spikes, club tails, quills) add 2 attack each at scale 1
