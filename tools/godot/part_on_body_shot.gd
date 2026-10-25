@@ -8,7 +8,7 @@ extends SceneTree
 ##     --rendering-driver opengl3 --resolution 1600x900 --fixed-fps 60 --script res://tools/godot/part_on_body_shot.gd \
 ##     -- --preset=monkey --out=DIR [--focus=muzzle_primate] [--handles=wing_dragon:H1_Fold:1000,...] [--covering=N]
 ##     [--shells=N] [--views=editor,gameplay,front,close,side,back] [--prefix=NAME] [--shadow] [--scene=bare]
-##     [--no-floor] [--zoom=F] [--mark=eye_bulge:M_EyeBulgeLid:#ff0000,...]
+##     [--no-floor] [--zoom=F] [--mark=eye_bulge:M_EyeBulgeLid:#ff0000,...] [--param=fur_shag:0.6,...]
 ## Views: "editor" is the editor's own camera with its HUD and handle dots (editor scene only); "gameplay" is the
 ## creature world's camera distance (2.4 x the body length, 2.6-12 m, fov 50, 16 degrees up) from the front
 ## three-quarter; "front" the same distance straight on; "back" the world's default view from behind; "close" and
@@ -17,6 +17,8 @@ extends SceneTree
 ## Files are <prefix>_<view>.png (prefix defaults to the preset name). In the bare scene the key light casts no
 ## shadow unless --shadow (Compatibility overexposes a shadowed light). --mark (diagnostic) paints every surface of
 ## that part type whose material has that name a flat unlit colour, to find which faces make a highlight or a band.
+## --param sets skin shader uniforms (float values) on the body and every fur shell pass (SpineRig.set_skin_param),
+## to compare settings without editing the shader. Each view prints "part_on_body <prefix> <view>: X ms/frame".
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
@@ -45,6 +47,7 @@ var bare := false
 var no_floor := false
 var zoom := 1.0
 var marks := []             # [part type, material name, colour]
+var skin_params := {}       # --param: skin shader uniform -> float
 
 
 func _initialize() -> void:
@@ -77,6 +80,9 @@ func _initialize() -> void:
 			no_floor = true
 		elif arg.begins_with("--zoom="):
 			zoom = float(arg.trim_prefix("--zoom="))
+		elif arg.begins_with("--param="):
+			for pair in arg.trim_prefix("--param=").split(",", false):
+				skin_params[pair.get_slice(":", 0)] = float(pair.get_slice(":", 1))
 		elif arg.begins_with("--mark="):
 			for triple in arg.trim_prefix("--mark=").split(",", false):
 				var t := triple.split(":")
@@ -125,6 +131,8 @@ func _run() -> void:
 			var params: Dictionary = ed._shader_params()
 			params["fur_shells"] = shells
 			rig.use_skin_shader(params)
+	for k in skin_params:
+		rig.set_skin_param(k, skin_params[k])
 	for e in rig.part_nodes:
 		var node: Node3D = e["node"]
 		var type := String(node.name).get_slice("_p_", 0)
@@ -167,9 +175,12 @@ func _run() -> void:
 				var dir := Vector3(0.75 * side, 0.4, -0.75) if view == "close" else Vector3(side, 0.08, 0.0)
 				var r := maxf(target.size.length() * 0.5, 0.04)
 				cam.look_at_from_position(c + dir.normalized() * (r / tan(deg_to_rad(FOV * 0.5)) * 1.2 + 0.15) / zoom, c, Vector3.UP)
-		for f in 24:
+		for f in 14:
 			await process_frame
-		await RenderingServer.frame_post_draw
+		var t0 := Time.get_ticks_usec()
+		for f in 10:
+			await RenderingServer.frame_post_draw
+		print("part_on_body %s %s: %.1f ms/frame" % [prefix, view, (Time.get_ticks_usec() - t0) / 10000.0])
 		root.get_texture().get_image().save_png(out_dir.path_join("%s_%s.png" % [prefix, view]))
 	quit()
 
