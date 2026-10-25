@@ -7,8 +7,9 @@ review. Spore features are named only to explain a request; GENESIS reuses no Sp
 - **Date:** 2026-10-25 (all sources accessed on this date)
 - **Author:** research thread, Pangaea
 - **Companion briefs:** `community-wants.md` (fan themes 1 to 17), `innovation-backlog.md` (IB items),
-  `spore/LEGAL_RESEARCH_BOUNDARIES.md`, and the engineering thread's `pcg-talk-lessons.md` (in progress at the time
-  of writing; link to be confirmed when it lands).
+  `spore/LEGAL_RESEARCH_BOUNDARIES.md`, and `pcg-talk-lessons.md` (notes from Kate Compton's GDC talk on procedural
+  generation; its "ownership" lesson, letting players find, name and claim things, is the design-side twin of wish 11
+  and IB-31).
 
 ## Method and boundaries
 
