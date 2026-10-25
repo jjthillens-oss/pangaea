@@ -546,6 +546,54 @@ corner_radius_top_right = 26
 corner_radius_bottom_right = 26
 corner_radius_bottom_left = 26
 
+[sub_resource type="StyleBoxFlat" id="Menu_normal"]
+content_margin_left = 30.0
+content_margin_top = 12.0
+content_margin_right = 30.0
+content_margin_bottom = 12.0
+bg_color = Color(0.03, 0.085, 0.18, 0.55)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="Menu_hover"]
+content_margin_left = 30.0
+content_margin_top = 12.0
+content_margin_right = 30.0
+content_margin_bottom = 12.0
+bg_color = Color(0.12, 0.26, 0.46, 0.85)
+border_width_left = 5
+border_color = Color(0.45, 0.85, 1, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="Menu_pressed"]
+content_margin_left = 30.0
+content_margin_top = 12.0
+content_margin_right = 30.0
+content_margin_bottom = 12.0
+bg_color = Color(0.2, 0.4, 0.62, 0.95)
+border_width_left = 5
+border_color = Color(1, 0.83, 0.42, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="Menu_disabled"]
+content_margin_left = 30.0
+content_margin_top = 12.0
+content_margin_right = 30.0
+content_margin_bottom = 12.0
+bg_color = Color(0.03, 0.06, 0.12, 0.35)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
 [resource]
 default_font_size = 26
 Label/colors/font_color = Color(0.924, 0.941, 0.97, 1)
@@ -673,3 +721,11 @@ DockButton/styles/disabled = SubResource("Dock_disabled")
 CaptionLabel/base_type = &"Label"
 CaptionLabel/colors/font_color = Color(0.56, 0.74, 0.95, 1)
 CaptionLabel/font_sizes/font_size = 17
+TitleMenuButton/base_type = &"Button"
+TitleMenuButton/constants/h_separation = 12
+TitleMenuButton/styles/normal = SubResource("Menu_normal")
+TitleMenuButton/styles/hover = SubResource("Menu_hover")
+TitleMenuButton/styles/pressed = SubResource("Menu_pressed")
+TitleMenuButton/styles/hover_pressed = SubResource("Menu_pressed")
+TitleMenuButton/styles/disabled = SubResource("Menu_disabled")
+TitleMenuButton/styles/focus = SubResource("Focus_ring")
