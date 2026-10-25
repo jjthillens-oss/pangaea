@@ -113,7 +113,8 @@ the tile's own name.
 **Cell editor (IMPLEMENTED).** On hovering or focusing a palette tile, `game/ui/editor_ease/cell_effects.gd` runs
 `Phenotype.derive` on a copy of the working body with the part added where Add would put it (with its twin when
 Symmetry is on). The card shows the part's role, only the stats that change (before → after), the diminishing-copies
-rule (from the catalog's `diminishing_factor`), "N of M on the body now", "Limit reached" or "No free part slots",
+rule when the body already has one ("Copies add less: each extra one gives N% of the one before", from the
+catalog's `diminishing_factor`), "N of M on the body now", "Limit reached" or "No free part slots",
 the points it leaves or the points still needed, and where it goes.
 
 **Creature editor (IMPLEMENTED).** On hovering a tool, `game/ui/editor_ease/creature_effects.gd` runs
@@ -199,8 +200,11 @@ asks tell the editor to do the same.
 - The creature editor's Mass line uses 1000 kg/m³ and `CreatureStats.of` uses the stage tuning's 900 kg/m³, so the
   stat help avoids quoting a mass threshold (#208).
 - Undo and Redo keep the engine's theme tooltip, not the part card.
-- At 130% text a part card can cover part of a neighbouring panel while the pointer rests on a tile. It is a hover
-  overlay and closes when the pointer leaves.
+- A part card is a hover overlay: it closes when the pointer leaves the tile. While it is open it covers what lies
+  beside the palette. In the creature editor at 1920x1080 that is the rear half of the creature (the space between
+  the palette and the stats panel holds the creature, and the 380 px card does not fit beside it); a stat's help
+  card covers part of the head. In the cell editor it covers the dish's left edge. At 130% text the cards are
+  taller and also reach the dock or the buttons under the dish.
 - The new strings are not translatable yet (no `tr()` until #172 merges).
 
 ## Files
