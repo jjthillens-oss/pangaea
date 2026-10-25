@@ -166,7 +166,7 @@ VIEWS = {
     "beauty_game": ("beauty", False, lambda c: _game_camera(c, (0, 0, 0))),
     "beauty_game_approach": ("beauty", False, lambda c: _game_camera(c, (0, -10, 0))),
     "beauty_three_quarter": ("beauty", False, lambda c: _orbit(c, (0, 0, -8), 80, 215, 30)),
-    "close_crest": ("beauty", False, lambda c: _orbit(c, (1.5, -2.5, -2.0), 6.5, 200, 38, lens=50.0)),
+    "close_crest": ("beauty", False, lambda c: _orbit(c, (-1.5, -5.6, -2.3), 9.0, 200, 40, lens=50.0)),
     "close_grains": ("beauty", False, lambda c: _orbit(c, (2.6, -6.4, -2.6), 5.0, 205, 34, lens=50.0)),
     "light_layout": ("beauty", True, lambda c: _orbit(c, (0, 0, -2), 40, 205, 30)),
 }

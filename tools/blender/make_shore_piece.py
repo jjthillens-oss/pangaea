@@ -175,17 +175,21 @@ def run_to_depth(th, depth):
 
 
 def ripple_phase(x, y, th, s):
-    """Horizontal distance (m) that ripple marks count along: southward from the crest on the shelf,
-    outward from the brink on the slopes, blended near the brink so the crests bend round the edge."""
+    """Horizontal distance (m) that ripple marks count along: southward from the crest, so the crests run
+    east-west, parallel to the shore in the north. On the south half they bend to follow the brink
+    (constant phase along it), fading back to east-west toward the flanks; the north half stays
+    east-west (no fold, so no closed loops on the crest)."""
     def inner(px, py):
         return (CREST_Y + 4.0 - py) + 0.35 * math.sin(0.42 * px + 0.9) + 0.2 * math.sin(0.9 * px - 0.3 * py)
     bx, by = _brink_point(th)
-    outer = inner(bx, by) + s
+    along = inner(bx, by) - s * math.sin(th)
     if s >= 0.0:
-        return outer
-    t = 1.0 + s / brink_radius(th)
-    w = bc.smoothstep((t - 0.7) / 0.3)
-    return (1.0 - w) * inner(x, y) + w * outer
+        wt = 1.0
+    else:
+        wt = bc.smoothstep((1.0 + s / brink_radius(th) - 0.7) / 0.3)
+    w = wt * max(0.0, -math.sin(th)) ** 2
+    here = inner(x, y)
+    return here + w * (along - here)
 
 
 # --- Mesh assembly ------------------------------------------------------------------------------------------
@@ -534,16 +538,17 @@ def sand_shader():
     # Wave ripples: sharp crests, broad troughs, wavelength 0.72 m; broad swells 2.6 m.
     crest = sh.math("SUBTRACT", 1.0, sh.math("ABSOLUTE", sh.math("SINE", sh.math("MULTIPLY", phase, math.pi / 0.72))))
     swell = sh.math("SINE", sh.math("MULTIPLY", phase, math.tau / 2.6))
-    # Ripples fade on the steep faces and in the skirt.
-    rip_fade = sh.remap(z, -7.5, -3.0)
+    # Ripples fade in the skirt and on faces steeper than about 30 degrees (the north slip face, the flanks).
+    up = sh.vmath("DOT_PRODUCT", sh.node("ShaderNodeNewGeometry").outputs["Normal"], (0.0, 0.0, 1.0))
+    rip_fade = sh.math("MULTIPLY", sh.remap(z, -7.5, -3.0), sh.remap(up, 0.8, 0.9))
     crest_f = sh.math("MULTIPLY", crest, rip_fade)
     mottle = sh.noise(1.2, 3.0, 0.55)
     fine = sh.noise(22.0, 2.0, 0.6)
-    tone_sand = sh.math("ADD", sh.math("MULTIPLY", dry, 0.78),
+    tone_sand = sh.math("ADD", sh.math("MULTIPLY", dry, 0.88),
                         sh.math("ADD", sh.math("MULTIPLY", sh.math("SUBTRACT", crest_f, 0.5), 0.14),
                                 sh.math("MULTIPLY", sh.math("SUBTRACT", mottle, 0.5), 0.2)))
     tone_sand = sh.math("ADD", tone_sand, sh.math("MULTIPLY", sh.math("SUBTRACT", fine, 0.5), 0.08))
-    sand = sh.ramp(tone_sand, [(0.0, "#62513E"), (0.35, "#7A6650"), (0.62, "#8F7859"), (0.85, "#A28B6A"), (1.0, "#AD9676")])
+    sand = sh.ramp(tone_sand, [(0.0, "#5C4A36"), (0.35, "#7A6549"), (0.62, "#937A57"), (0.85, "#A88F6B"), (1.0, "#B39A76")])
     # Heavy minerals gather in the ripple troughs; a few amber feldspar flecks.
     specks = sh.remap(sh.voronoi(9.0, 1.0), 0.12, 0.05)                # 1 in a speck
     trough = sh.math("POWER", sh.math("SUBTRACT", 1.0, crest_f), 2.0)
@@ -556,7 +561,7 @@ def sand_shader():
 
     # Grains: quartz cream (most), amber feldspar, umber; faint frosting and inclusions.
     g_mottle = sh.noise(3.5, 3.0, 0.6)
-    grain = sh.ramp(tone, [(0.0, "#A39882"), (0.5, "#A89D86"), (0.52, "#9E7A4F"), (0.8, "#A27D51"), (0.82, "#5D4A3A"), (1.0, "#625040")])
+    grain = sh.ramp(tone, [(0.0, "#A3967D"), (0.5, "#A89A80"), (0.52, "#9E7A4F"), (0.8, "#A27D51"), (0.82, "#5D4A3A"), (1.0, "#625040")])
     grain = sh.mix(sh.math("MULTIPLY", sh.math("SUBTRACT", g_mottle, 0.5), 0.5), grain, "#FFFFFF", "OVERLAY")
     # Glass: a pale grey-green silica with radial ribs and rings of pores from the valve's centre.
     angle = sh.math("ARCTAN2", ly, lx)
@@ -565,14 +570,14 @@ def sand_shader():
     pores = sh.math("MULTIPLY", sh.remap(sh.math("SINE", sh.math("MULTIPLY", radius, 40.0)), 0.6, 0.95),
                     sh.math("SUBTRACT", 1.0, ribs))
     glass = sh.mix(sh.math("MULTIPLY", pores, 0.6), "#8E9A97", "#5E6966")
-    glass = sh.mix(sh.math("MULTIPLY", ribs, 0.35), glass, "#A3AEAB")
+    glass = sh.mix(sh.math("MULTIPLY", ribs, 0.35), glass, "#9DA8A5")
 
     base = sh.mix(is_grain, sand, grain)
     base = sh.mix(is_glass, base, glass)
 
     rough_sand = sh.remap(dry, 0.0, 1.0, 0.6, 0.9)
     rough = sh.math("ADD", sh.math("MULTIPLY", sh.math("SUBTRACT", 1.0, sh.math("MAXIMUM", is_grain, is_glass)), rough_sand),
-                    sh.math("ADD", sh.math("MULTIPLY", is_grain, 0.34), sh.math("MULTIPLY", is_glass, 0.16)))
+                    sh.math("ADD", sh.math("MULTIPLY", is_grain, 0.42), sh.math("MULTIPLY", is_glass, 0.16)))
 
     # Relief: ripples (about 0.04 m), swells (about 0.05 m), sand texture; smooth grains; glass ribs.
     h_sand = sh.math("ADD", sh.math("MULTIPLY", crest_f, 1.0), sh.math("MULTIPLY", swell, sh.math("MULTIPLY", rip_fade, 0.6)))
@@ -590,7 +595,7 @@ def sand_shader():
 
 
 def build():
-    """The scene: ShoreBank (with the procedural sand shader), Shaft and Reach. Returns (bank, stats)."""
+    """The landing: ShoreBank with the procedural sand shader. Returns (bank, stats)."""
     rng = random.Random(SEED)
     m = Mesh()
     stats = build_bank(m)
@@ -607,10 +612,13 @@ def build():
     stats["fragments"] = 2
     bank = _object("ShoreBank", m, [sand_shader()])
     _set_attributes(bank, m)
+    return bank, stats
+
+
+def add_light():
+    """The engine-drawn parts, added after the bake so the sand's baked occlusion never sees them."""
     light = bc.material("M_ShoreLight", (1.0, 0.83, 0.53), 0.5, emission=(1.0, 0.83, 0.53), emission_strength=1.5)
     build_light(light)
-    _checks(bank)
-    return bank, stats
 
 
 def _checks(bank):
@@ -733,8 +741,10 @@ def main():
         return
     bc.reset_scene()
     bank, stats = build()
-    print("stats:", stats, "triangles:", bc.triangle_count())
     if args.rough:
+        add_light()
+        _checks(bank)
+        print("stats:", stats, "triangles:", bc.triangle_count())
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         if os.path.exists(args.out):
             os.remove(args.out)
@@ -743,6 +753,9 @@ def main():
         return
     textures = sf.bake_set([bank], "ShorePiece", TEXTURE_PX, normal=True)
     _strip_attributes(bank)
+    add_light()
+    _checks(bank)
+    print("stats:", stats, "triangles:", bc.triangle_count())
     write_light_material()
     record = bc.export(ASSET_ID, BUDGET, fields(stats, textures), review_state=REVIEW_STATE, generator=GENERATOR,
                        provenance=PROVENANCE)
