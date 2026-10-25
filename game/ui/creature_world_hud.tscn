@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://game/ui/creature_world_hud.gd" id="1_hud"]
 [ext_resource type="Theme" path="res://game/ui/theme/pangaea_theme.tres" id="2_theme"]
+[ext_resource type="Script" path="res://game/ui/hud_icon.gd" id="3_icon"]
 
 [node name="CreatureWorldHud" type="Control"]
 layout_mode = 3
@@ -23,83 +24,78 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 24
+theme_override_constants/margin_top = 28
 theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 24
+theme_override_constants/margin_bottom = 28
 
 [node name="Status" type="PanelContainer" parent="Frame"]
-custom_minimum_size = Vector2(420, 0)
+custom_minimum_size = Vector2(300, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
-theme_type_variation = &"HudPanel"
+mouse_filter = 2
+theme_type_variation = &"HudGlass"
 
 [node name="Box" type="VBoxContainer" parent="Frame/Status"]
 layout_mode = 2
-theme_override_constants/separation = 8
+mouse_filter = 2
+theme_override_constants/separation = 4
 
 [node name="NameText" type="Label" parent="Frame/Status/Box"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"SmallLabel"
+theme_type_variation = &"CaptionLabel"
 text = "Newcomer · Generation 1"
 
-[node name="HealthText" type="Label" parent="Frame/Status/Box"]
+[node name="PointsRow" type="HBoxContainer" parent="Frame/Status/Box"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Diamond" type="Control" parent="Frame/Status/Box/PointsRow"]
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("3_icon")
+
+[node name="PointsText" type="Label" parent="Frame/Status/Box/PointsRow"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Health 30 / 30"
-
-[node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 22)
-layout_mode = 2
-theme_type_variation = &"HealthBar"
-max_value = 30.0
-value = 30.0
-show_percentage = false
-
-[node name="Right" type="VBoxContainer" parent="Frame"]
-layout_mode = 2
-size_flags_horizontal = 8
-size_flags_vertical = 0
-theme_override_constants/separation = 8
-
-[node name="PointsPanel" type="PanelContainer" parent="Frame/Right"]
-layout_mode = 2
-size_flags_horizontal = 8
-theme_type_variation = &"HudPanel"
-
-[node name="PointsRow" type="HBoxContainer" parent="Frame/Right/PointsPanel"]
-layout_mode = 2
-theme_override_constants/separation = 12
-
-[node name="PointsText" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
-unique_name_in_owner = true
-layout_mode = 2
+theme_type_variation = &"HudValueLabel"
 text = "Points 150"
 
-[node name="PointsFlash" type="Label" parent="Frame/Right/PointsPanel/PointsRow"]
+[node name="PointsFlash" type="Label" parent="Frame/Status/Box/PointsRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+theme_type_variation = &"HudAccentLabel"
+text = "+5"
+
+[node name="GoalText" type="Label" parent="Frame/Status/Box"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"AccentLabel"
-text = "+5"
+theme_type_variation = &"SmallLabel"
+text = "Goal: evolve at the nest"
 
 [node name="Center" type="VBoxContainer" parent="Frame"]
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 0
+mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="NoticePanel" type="PanelContainer" parent="Frame/Center"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
-theme_type_variation = &"BannerPanel"
+mouse_filter = 2
+theme_type_variation = &"HudPill"
 
 [node name="NoticeText" type="Label" parent="Frame/Center/NoticePanel"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"WarnLabel"
+theme_type_variation = &"HudAccentLabel"
 text = "Return to the nest to evolve"
 horizontal_alignment = 1
 
@@ -107,18 +103,60 @@ horizontal_alignment = 1
 layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 8
-theme_override_constants/separation = 6
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 2
 
 [node name="HintPanel" type="PanelContainer" parent="Frame/Bottom"]
 layout_mode = 2
 size_flags_horizontal = 4
 mouse_filter = 2
-theme_type_variation = &"ToastPanel"
+theme_type_variation = &"HudPill"
 
 [node name="HintText" type="Label" parent="Frame/Bottom/HintPanel"]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_type_variation = &"SmallLabel"
-text = "W  Move   ·   F  Bite   ·   E  Evolve at the nest"
+text = "WASD  Move   ·   F  Bite   ·   E  Evolve at the nest"
 horizontal_alignment = 1
+
+[node name="Dock" type="PanelContainer" parent="Frame/Bottom"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+theme_type_variation = &"HudGlass"
+
+[node name="DockRow" type="HBoxContainer" parent="Frame/Bottom/Dock"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 22
+
+[node name="Vitals" type="VBoxContainer" parent="Frame/Bottom/Dock/DockRow"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="HealthText" type="Label" parent="Frame/Bottom/Dock/DockRow/Vitals"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HudValueLabel"
+text = "Health 30 / 30"
+
+[node name="HealthBar" type="ProgressBar" parent="Frame/Bottom/Dock/DockRow/Vitals"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 12)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"SlimHealthBar"
+max_value = 30.0
+value = 30.0
+show_percentage = false
+
+[node name="Abilities" type="HBoxContainer" parent="Frame/Bottom/Dock/DockRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 8

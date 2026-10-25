@@ -1,14 +1,18 @@
 extends Control
-## The creature stage's world HUD (PROPOSED, creature-stage-plan.md section 5). It only reads the world scene; it
-## never changes anything. CreatureWorld mounts it under its UI layer and calls bind(world).
+## The creature stage's world HUD (PROPOSED, creature-stage-plan.md section 5; the glass look is the hud job's,
+## docs/evidence/credit-hud/README.md). It only reads the world scene; it never changes anything. CreatureWorld mounts
+## it under its UI layer and calls bind(world).
 ##
-##   top left:      the creature's name and generation, the health bar and text
-##   top right:     points, with a "+N" flash after a meal
-##   top center:    one notice line at a time: "Return to the nest to evolve", the death notice, "This creature
+##   top left:      a small glass card: the creature's name and generation, the points with a "+N" flash after a
+##                  meal, and the goal line ("Goal: evolve at the nest", or the evolve key once at the nest)
+##   top center:    one notice pill at a time: "Return to the nest to evolve", the death notice, "This creature
 ##                  needs legs to walk" (which stays while it is true)
-##   bottom center: the controls, named from the bindings for the device in use (InputPrompts), on the same dark
-##                  pill as the cards so they read over the field
-## Labels refresh at 10 Hz; the bar every frame. The HUD ignores the mouse, so the orbit drag reaches the camera.
+##   bottom center: the dock, a glass bar with the health text and a slim bar, and the ability chips (Bite, Sing,
+##                  Evolve, each named by its bound key). The chips only show state: Evolve lights while the
+##                  creature stands at the nest and Bite dims while it recharges. They never act; the keys do.
+##                  Above the dock, the controls line, named from the bindings for the device in use (InputPrompts).
+## Labels and chips refresh at 10 Hz; the bar every frame. The HUD and every control in it ignore the mouse, so the
+## orbit drag reaches the camera.
 
 const LABEL_REFRESH_S := 0.1
 const FLASH_S := 1.4
@@ -29,6 +33,10 @@ var _points_flash: Label
 var _notice_panel: PanelContainer
 var _notice_text: Label
 var _hint_text: Label
+var _goal_text: Label
+var _abilities: HBoxContainer
+## The display-only ability chips by action, rebuilt with the hint line.
+var _chips := {}
 
 
 func _ready() -> void:
@@ -47,6 +55,11 @@ func _resolve() -> void:
 	_notice_panel = %NoticePanel
 	_notice_text = %NoticeText
 	_hint_text = %HintText
+	_goal_text = %GoalText
+	_abilities = %Abilities
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for control: Control in find_children("*", "Control", true, false):
+		control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_points_flash.visible = false
 	_notice_panel.visible = false
 	_refresh_hints()
@@ -125,6 +138,18 @@ func refresh() -> void:
 	var p: Dictionary = world.sim.player()
 	_health_text.text = "Health %d / %d" % [int(ceil(float(p["health"]))), int(ceil(float(p["max_health"])))]
 	_points_text.text = "Points %d" % int(world.sim.points)
+	var at_nest := bool(p["at_nest"])
+	var evolve_key := InputPrompts.names_for(&"creature_evolve")
+	if at_nest and not evolve_key.is_empty():
+		_goal_text.text = "At the nest: %s to evolve" % evolve_key[0]
+	else:
+		_goal_text.text = "Goal: evolve at the nest"
+	var evolve: Button = _chips.get(&"creature_evolve")
+	if evolve != null:
+		evolve.set_pressed_no_signal(at_nest)
+	var bite: Button = _chips.get(&"creature_bite")
+	if bite != null:
+		bite.disabled = int(p["cooldown"]) > 0
 
 
 func _refresh_hints() -> void:
@@ -138,6 +163,32 @@ func _refresh_hints() -> void:
 		line = "%s  Move" % move + ("   ·   " + line if not line.is_empty() else "")
 	var orbit := "Right stick  Orbit" if InputPrompts.device == "pad" else "Middle drag  Orbit"
 	_hint_text.text = line + "   ·   " + orbit if not line.is_empty() else orbit
+	_build_chips(pairs)
+	refresh()
+
+
+## The dock's ability chips: one per action of the hint's pairs but the way out, named by its first binding
+## ("F  Bite"). They are display only: no focus, no mouse, never pressed by the player.
+func _build_chips(pairs: Array) -> void:
+	for chip: Node in _abilities.get_children():
+		_abilities.remove_child(chip)
+		chip.queue_free()
+	_chips.clear()
+	for pair: Array in pairs:
+		if pair[0] == &"ui_cancel":
+			continue
+		var names := InputPrompts.names_for(pair[0])
+		if names.is_empty():
+			continue
+		var chip := Button.new()
+		chip.name = String(pair[1]).get_slice(" ", 0)
+		chip.theme_type_variation = &"DockButton"
+		chip.text = "%s  %s" % [names[0], String(pair[1]).get_slice(" ", 0)]
+		chip.toggle_mode = true
+		chip.focus_mode = Control.FOCUS_NONE
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_abilities.add_child(chip)
+		_chips[pair[0]] = chip
 
 
 ## The four move_* bindings of the device in use as one name ("WASD" or "Arrows" for the keys, "Left stick" for

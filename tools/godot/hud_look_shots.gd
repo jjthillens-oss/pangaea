@@ -14,6 +14,8 @@ extends SceneTree
 ##   pool_start     the M1 pool, hunter: no growth row or ladder strip
 ##   creature_world the creature stage's world, 90 frames after enter_world
 ##   creature_notice a notice and a "+5" points flash on the creature HUD
+##   creature_away   walked off the nest and bit at the air (the Bite chip recharging), with the longest notice,
+##                   the death notice (added with the glass dock; no before frame)
 
 const ROOT := "user://shots/hud"
 
@@ -153,6 +155,15 @@ func _creature() -> void:
 	world.hud.flash_points(5)
 	await _frames(4)
 	await _shot("creature_notice")
+	world.set_intent(Vector2(0.0, 1.0), false, false)
+	await _frames(150)
+	world.set_intent(Vector2.ZERO, true, false)
+	await _frames(3)
+	world.hud.show_notice(CreatureWorld.DEATH_NOTICE % ["killed by a hexapod", 30])
+	world.hud.refresh()
+	await _frames(2)
+	await _shot("creature_away")
+	world.clear_intent()
 
 
 func _frames(n: int) -> void:
