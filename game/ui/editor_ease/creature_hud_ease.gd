@@ -5,8 +5,8 @@ extends Node
 ## only presents, reading the body being edited (hud.owner.working_body()) where a card needs it, guarded so the HUD
 ## also works alone.
 ## - Undo and Redo name the keys bound to ui_undo / ui_redo (Bible 19: inputs shown from the bindings); the editor's
-##   other keys are hardcoded today, so their buttons say what they do in plain words (an issue asks the editor for
-##   input actions).
+##   other keys are hardcoded today, so their buttons say what they do in plain words (GitHub issue #207 asks the
+##   editor for input actions).
 ## - A stats table with each stat's change since the visit began, marked ▲ better / ▼ worse (shape and colour).
 ## - A part card on hover with what the part does by the world's own stats rule (Bible 12, 14), in place of the
 ##   default tooltip, and a stat's meaning on the card when the pointer rests on its name.

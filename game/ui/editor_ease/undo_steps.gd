@@ -4,7 +4,7 @@ extends RefCounted
 ## mouse motion, would take one Undo per motion event. This counts the session's steps per player action: an
 ## op outside a group is a step of its own; the ops between begin_group() and end_group() (a drag, or a part and
 ## its symmetry twin) are one step. undo() and redo() then step the session that many times. UI only: the
-## session's own stacks are untouched (an issue asks for gestures in EditorSession). No class_name.
+## session's own stacks are untouched (GitHub issue #209 asks for gestures in EditorSession). No class_name.
 
 ## The session steps in each action that can be undone, the newest last.
 var _undo: Array[int] = []
