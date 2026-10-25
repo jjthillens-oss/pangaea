@@ -19,7 +19,9 @@ extends SceneTree
 ## World frames: world_spawn (the gameplay camera as setup leaves it), world_roam (after walking forward 4 s),
 ## world_overview (the gameplay camera at 45 degrees, 12 m), world_low (3 degrees, 12 m: the horizon), then, with the
 ## world's processing stopped, fixed close-ups: close_ground, close_nest, close_bush and close_meat (a chunk dropped
-## beside the bush through the sim's own drop, so it is drawn by the world's own MultiMesh).
+## beside the bush through the sim's own drop, so it is drawn by the world's own MultiMesh), world_edge (the berm,
+## its boulders and trees and the hills, from just inside the east wall) and world_treeline (from the nest across the
+## field to the trees past the north-east corner).
 ## Editor frames: editor_default (the editor's framing), editor_close (ZOOM_MIN), editor_far (ZOOM_MAX),
 ## editor_far_low (ZOOM_MAX at PITCH_MIN) and editor_far_high (ZOOM_MAX at PITCH_MAX).
 ## Every frame prints "SHOT name draw_calls=.. primitives=.. objects=..", and the world prints setup_ms.
@@ -123,6 +125,10 @@ func _run_world() -> void:
 		"close_nest": [Vector3(1.4, 1.5, 9.2), Vector3(0.0, 0.25, 5.8)],
 		"close_bush": [bush + Vector3(-1.4, 1.0, 1.6), bush + Vector3(0.0, 0.35, 0.0)],
 		"close_meat": [meat_at + Vector3(-0.7, 0.55, 0.8), meat_at + Vector3(0.0, 0.08, 0.0)],
+		# The field's edge: the berm's boulders and trees and the hills behind, from just inside the east wall.
+		"world_edge": [Vector3(62.0, 2.0, 40.0), Vector3(80.0, 1.0, 60.0)],
+		# The treeline from the nest, across the whole field.
+		"world_treeline": [Vector3(0.0, 2.4, 6.0), Vector3(40.0, 3.0, 40.0)],
 	}
 	for pose in poses:
 		if _want(pose):

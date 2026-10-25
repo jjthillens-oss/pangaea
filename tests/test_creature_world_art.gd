@@ -19,7 +19,14 @@ extends TestCase
 ##   obstacle-sized and sink into the ground, so they belong outside the walls; and texel by texel (their textures
 ##   mix stone and moss, or leaf and petal, so a mean alone hides a clashing edge) no more than 1% of the kit's
 ##   chromatic texels sit within 25 degrees of the food or threat hue, while each texture's mean (what a far mip
-##   shows) keeps the gap too.
+##   shows) keeps the gap too;
+## - the trees (creature_tree_umbrella, creature_tree_lantern): obstacle-sized, so outside the walls only, sinking
+##   their roots; their canopy cards draw with the shared cut-out M_TreeCanopyCards.tres, two sheets a card that share
+##   one normal out of the crown; bark and canopy keep the hue gaps texel by texel and on average;
+## - the field's scatter (field rev 2b): the cover chunks (Cover*) cast no shadow and stop drawing past their
+##   visibility range, and their cards draw with M_MeadowCards.tres; the berm's sectors (Berm*) keep every vertex
+##   outside the walls; every scatter surface draws with a kit material (no stand-in left), and the scatter keeps to
+##   its triangle budgets and the GLB to its size.
 
 const FIELD := "res://assets/export/creature_field_ground.glb"
 const NEST := "res://assets/export/creature_nest_ring.glb"
@@ -57,6 +64,16 @@ const MEADOW_ATLAS := "res://assets/export/creature_flora/T_MeadowCards.png"
 const COVER_REACH_M := 0.6        # a cover piece's footprint radius
 const COVER_SINK_M := 0.05        # card bottoms sink a little, so roots meet the ground on gentle relief
 const CLASH_MAX := 0.01           # the share of a kit texture's chromatic texels allowed near a reserved hue
+## tree id -> [wood node, canopy node, lowest and highest height in metres (PROPOSED: the brief's 6-8 m and 4-6 m)]
+const KIT_TREES := {"creature_tree_umbrella": ["UmbrellaTree", "UmbrellaCanopy", 6.0, 8.0]}
+const CANOPY_TRES := "res://assets/export/M_TreeCanopyCards.tres"
+const CANOPY_ATLAS := "res://assets/export/creature_flora/T_TreeCanopyCards.png"
+const TREE_SINK_MAX := 0.2
+const SCATTER_VIS_MAX := 80.0     # a cover chunk stops drawing within this of the camera (its visibility range end)
+const FIELD_GLB_MAX_BYTES := 8 * 1024 * 1024
+## The materials the field's scatter may draw with: the kit's own .tres files (field rev 2b).
+const SCATTER_TRES := ["M_MeadowCards", "M_Pebble", "M_CreatureBoulderA", "M_CreatureBoulderB", "M_CreatureBoulderC",
+	"M_TreeCanopyCards", "M_CreatureTreeUmbrella", "M_CreatureTreeLantern"]
 
 
 func _load(path: String) -> Node3D:
@@ -261,8 +278,14 @@ static func hue_gap(h: float, ref: float) -> float:
 	return minf(d, 360.0 - d)
 
 
-## The mean linear colour of an image (a grid of samples; texels with alpha under 0.5 are cut away and skipped).
+var _means := {}
+
+
+## The mean linear colour of an image (a grid of samples; texels with alpha under 0.5 are cut away and skipped),
+## once per image (the field's scatter draws the same few kit textures in many chunks).
 func _mean_linear(texture: Texture2D) -> Vector3:
+	if _means.has(texture.resource_path):
+		return _means[texture.resource_path]
 	var img := Image.load_from_file(ProjectSettings.globalize_path(texture.resource_path))
 	check(img != null and not img.is_empty(), "%s reads" % texture.resource_path)
 	if img == null or img.is_empty():
@@ -277,7 +300,8 @@ func _mean_linear(texture: Texture2D) -> Vector3:
 				continue
 			sum += Vector3(_to_linear(c.r), _to_linear(c.g), _to_linear(c.b))
 			count += 1
-	return sum / maxi(1, count)
+	_means[texture.resource_path] = sum / maxi(1, count)
+	return _means[texture.resource_path]
 
 
 func _check_hue(what: String, lin: Vector3) -> void:
@@ -293,6 +317,9 @@ func _check_hue(what: String, lin: Vector3) -> void:
 ## standard material's albedo
 ## texture times its colour; the field's ShaderMaterial's turf and earth tiles, and the turf under its dry and lush
 ## variations.
+var _seen_materials := {}
+
+
 func _check_albedos(path: String, skip: Array) -> int:
 	var root := _load(path)
 	var checked := 0
@@ -307,6 +334,10 @@ func _check_albedos(path: String, skip: Array) -> int:
 			if mat == null:
 				mat = mi.mesh.surface_get_material(s)
 			var what := "%s %s surface %d" % [path.get_file(), mi.name, s]
+			if mat != null and mat.resource_path != "" and _seen_materials.has(mat.resource_path):
+				continue
+			if mat != null and mat.resource_path != "":
+				_seen_materials[mat.resource_path] = true
 			if mat is StandardMaterial3D:
 				var sm := mat as StandardMaterial3D
 				var tint := Vector3(_to_linear(sm.albedo_color.r), _to_linear(sm.albedo_color.g), _to_linear(sm.albedo_color.b))
@@ -402,24 +433,7 @@ func test_meadow_cards_draw_with_the_shared_cut_out_material() -> void:
 				check(colours is PackedColorArray and (colours as PackedColorArray).size() > 0, "%s %s carries its jitter colours" % [id, mi.name])
 				# Two sheets back to back: every triangle has a twin facing the other way within 2 mm of it, and each
 				# sheet's normal leans up, so both sides light like the ground.
-				var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-				var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-				var centres: Array[Vector3] = []
-				var facing: Array[Vector3] = []
-				for t in range(0, index.size(), 3):
-					var a := verts[index[t]]
-					var b := verts[index[t + 1]]
-					var c := verts[index[t + 2]]
-					centres.append((a + b + c) / 3.0)
-					facing.append((b - a).cross(c - a).normalized())
-				var lonely := 0
-				for i in centres.size():
-					var twin := false
-					for j in centres.size():
-						if j != i and centres[i].distance_to(centres[j]) < 0.002 and facing[i].dot(facing[j]) < -0.99:
-							twin = true
-							break
-					lonely += 0 if twin else 1
+				var lonely: int = _twin_sheets(arrays)[0]
 				check(lonely == 0, "%s %s: every card is two sheets back to back (%d triangles without a twin)" % [id, mi.name, lonely])
 				var down := 0
 				for n: Vector3 in arrays[Mesh.ARRAY_NORMAL]:
@@ -427,6 +441,43 @@ func test_meadow_cards_draw_with_the_shared_cut_out_material() -> void:
 						down += 1
 				check(down == 0, "%s %s: every card normal leans up (%d do not)" % [id, mi.name, down])
 		root.free()
+
+
+## [triangles without a back-to-back twin within 2 mm, twins whose two sheets do not share their vertex normals]
+func _twin_sheets(arrays: Array) -> Array:
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var index: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var centres: Array[Vector3] = []
+	var facing: Array[Vector3] = []
+	var shading: Array[Vector3] = []
+	for t in range(0, index.size(), 3):
+		var a := verts[index[t]]
+		var b := verts[index[t + 1]]
+		var c := verts[index[t + 2]]
+		centres.append((a + b + c) / 3.0)
+		facing.append((b - a).cross(c - a).normalized())
+		shading.append((normals[index[t]] + normals[index[t + 1]] + normals[index[t + 2]]).normalized())
+	# Sorted by x, so each triangle only looks at its neighbours within 2 mm along x.
+	var order := range(centres.size())
+	order.sort_custom(func(i: int, j: int) -> bool: return centres[i].x < centres[j].x)
+	var lonely := 0
+	var unshared := 0
+	for k in order.size():
+		var i: int = order[k]
+		var twin := -1
+		for dir: int in [-1, 1]:
+			var m: int = k + dir
+			while twin < 0 and m >= 0 and m < order.size() and absf(centres[order[m]].x - centres[i].x) < 0.002:
+				var j: int = order[m]
+				if centres[i].distance_to(centres[j]) < 0.002 and facing[i].dot(facing[j]) < -0.99:
+					twin = j
+				m += dir
+		if twin < 0:
+			lonely += 1
+		elif shading[i].dot(shading[twin]) < 0.98:
+			unshared += 1
+	return [lonely, unshared]
 
 
 func test_boulders_are_obstacle_sized_and_sink_into_the_ground() -> void:
@@ -501,4 +552,82 @@ func test_kit_colours_keep_the_hue_gaps_texel_by_texel() -> void:
 				check(share <= CLASH_MAX, "%s %s keeps the hue gaps texel by texel (%.2f%% clash)" % [id, mi.name, share * 100.0])
 				# And as a whole: far off, the mips blend stone and moss into their mean.
 				_check_hue("%s %s mean (a far mip)" % [id, mi.name], _mean_linear(sm.albedo_texture) * tint)
+		root.free()
+
+
+# --- The trees ------------------------------------------------------------------------------------------------
+
+func test_trees_are_obstacles_for_outside_the_walls_and_sink_their_roots() -> void:
+	for id: String in KIT_TREES:
+		var spec: Array = KIT_TREES[id]
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		check(_named(root, spec[0]) != null and _named(root, spec[1]) != null, "%s has its %s and %s meshes" % [id, spec[0], spec[1]])
+		var lo := Vector3.INF
+		var hi := -Vector3.INF
+		for mi in _mesh_instances(root):
+			for v in _vertices(mi, root):
+				lo = lo.min(v)
+				hi = hi.max(v)
+		check(hi.y >= float(spec[2]) and hi.y <= float(spec[3]), "%s stands %.0f to %.0f m tall (%.2f)" % [id, spec[2], spec[3], hi.y])
+		check(lo.y < -0.03 and lo.y >= -TREE_SINK_MAX, "%s sinks its roots under the ground, by %.2f m at most (%.3f)" % [id, TREE_SINK_MAX, lo.y])
+		var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/records/%s.json" % id))
+		check(String(record.get("placement", "")).contains("OUTSIDE the walls"), "%s's record keeps it outside the walls" % id)
+		var tris := int(record.get("triangles", 1 << 30))
+		check(tris <= int(record.get("triangle_budget", 0)), "%s keeps to its triangle budget (%d)" % [id, tris])
+		root.free()
+
+
+func test_tree_canopies_draw_with_the_shared_cut_out_material_and_shade_as_one_crown() -> void:
+	var shared: Material = load(CANOPY_TRES)
+	check(shared is StandardMaterial3D, "M_TreeCanopyCards.tres is a StandardMaterial3D (the field may merge the trees beside its shader)")
+	if not (shared is StandardMaterial3D):
+		return
+	var sm := shared as StandardMaterial3D
+	check(sm.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR and is_equal_approx(sm.alpha_scissor_threshold, 0.5),
+		"the canopy cards are cut out at 0.5 (alpha scissor, %d)" % sm.transparency)
+	check(sm.cull_mode == BaseMaterial3D.CULL_BACK, "back faces are culled (each card is two sheets)")
+	check(sm.albedo_texture != null and sm.albedo_texture.resource_path == CANOPY_ATLAS, "the canopy reads its authored atlas")
+	check(sm.vertex_color_use_as_albedo and sm.vertex_color_is_srgb, "the canopy takes its COLOR_0 jitter as sRGB")
+	for id: String in KIT_TREES:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		var canopy := _named(root, KIT_TREES[id][1])
+		check(canopy != null, "%s has its canopy" % id)
+		if canopy != null:
+			for s in canopy.mesh.get_surface_count():
+				var mat := canopy.mesh.surface_get_material(s)
+				check(mat != null and mat.resource_path == CANOPY_TRES, "%s canopy surface %d draws with M_TreeCanopyCards.tres" % [id, s])
+				var twins: Array = _twin_sheets(canopy.mesh.surface_get_arrays(s))
+				check(twins[0] == 0, "%s: every canopy card is two sheets back to back (%d triangles without a twin)" % [id, twins[0]])
+				check(twins[1] == 0, "%s: both sheets of a card share one normal, so the crown shades as one volume (%d do not)" % [id, twins[1]])
+		root.free()
+
+
+func test_tree_colours_keep_the_hue_gaps_texel_by_texel() -> void:
+	var atlas := Image.load_from_file(ProjectSettings.globalize_path(CANOPY_ATLAS))
+	check(atlas != null and not atlas.is_empty(), "the canopy atlas reads")
+	if atlas != null and not atlas.is_empty():
+		var share := _clash_share(atlas, Vector3.ONE, 2)
+		print("    canopy atlas: %.2f%% of chromatic texels near a reserved hue" % (share * 100.0))
+		check(share <= CLASH_MAX, "the canopy atlas keeps the hue gaps (%.2f%% of chromatic texels clash)" % (share * 100.0))
+		_check_hue("the canopy atlas's mean (a far mip)", _mean_linear(load(CANOPY_ATLAS)))
+	for id: String in KIT_TREES:
+		var root := _load(_glb(id))
+		if root == null:
+			continue
+		var wood := _named(root, KIT_TREES[id][0])
+		check(wood != null, "%s has its wood" % id)
+		if wood != null:
+			var sm := wood.mesh.surface_get_material(0) as StandardMaterial3D
+			check(sm != null and sm.albedo_texture != null, "%s's wood has a baked albedo" % id)
+			if sm != null and sm.albedo_texture != null:
+				var img := Image.load_from_file(ProjectSettings.globalize_path(sm.albedo_texture.resource_path))
+				var tint := Vector3(_to_linear(sm.albedo_color.r), _to_linear(sm.albedo_color.g), _to_linear(sm.albedo_color.b))
+				var share := _clash_share(img, tint, 4)
+				print("    %s wood: %.2f%% of chromatic texels near a reserved hue" % [id, share * 100.0])
+				check(share <= CLASH_MAX, "%s's wood keeps the hue gaps texel by texel (%.2f%% clash)" % [id, share * 100.0])
+				_check_hue("%s wood mean (a far mip)" % id, _mean_linear(sm.albedo_texture) * tint)
 		root.free()

@@ -335,13 +335,15 @@ def build_field_ground():
     mp._check(max(abs(z) for z in inside) <= RELIEF_M + 1e-6, "field: relief inside the walls stays under %.2f m" % RELIEF_M)
     mp._check(max(z for (x, y, z) in verts) >= BERM_M * 0.8, "field: the berm rises past the walls")
     hills_top = build_field_hills(mat)
+    tiles = build_field_tiles()                     # the scatter reads the patch tile, so it is written first
+    scatter = cf.build_field_scatter([o for o in bpy.data.objects if o.name in ("CreatureField", "CreatureFieldHills")])
     return {"purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of hills out to 200 m (low near the berm, an uneven ridge farther out); meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
             "category": "environment", "kind": "ground", "pivot": "the field's centre on the ground (Godot y = 0); the nest sits at the origin",
             "engine_material": "res://assets/export/M_CreatureField.tres",
             "walkable": {"wall_m": WALL_M, "relief_max_m": RELIEF_M, "berm_m": BERM_M, "clearing_r_m": NEST_R + 1.5},
             "hills": {"node": "CreatureFieldHills", "inner_m": HILLS_IN, "outer_m": HILLS_HALF, "near_m": list(HILLS_NEAR),
                       "far_ridge_m": list(HILLS_FAR), "top_m": round(hills_top, 2), "cast_shadow": False},
-            "textures": build_field_tiles(), "revision": 2}
+            "scatter": scatter, "vertex_colors_attribute": cf.VC, "textures": tiles, "revision": 3}
 
 
 def _bake_mixed(objs_tol, texture, tints, size=512, accepts=None, normal=False):
@@ -920,7 +922,7 @@ roughness = 0.8
 
 # asset id -> {imported material name: .tres name}
 EXTERNAL = {
-    "creature_field_ground": {"M_CreatureField": "M_CreatureField"},
+    "creature_field_ground": {"M_CreatureField": "M_CreatureField", **{m: m for m in cf.KIT_MATERIALS}},
     "creature_fruit_bush": {"M_BushLeaf": "M_BushLeaf", "M_BushCards": "M_BushCards", "M_BushFruit": "M_BushFruit"},
     "creature_meat_chunk": {"M_MeatFlesh": "M_MeatFlesh"},
     **cf.EXTERNAL,
@@ -1038,6 +1040,18 @@ def _replace_subresources(text, block):
     raise RuntimeError("unbalanced braces in _subresources")
 
 
+def _import_options(asset_id):
+    """IMPORT_OPTIONS for `asset_id`, plus, for the field, its scatter objects' options (from its record's nodes)."""
+    options = {group: dict(entries) for group, entries in IMPORT_OPTIONS.get(asset_id, {}).items()}
+    if asset_id == "creature_field_ground":
+        import json
+        with open(os.path.join(bc.ROOT, "assets", "records", f"{asset_id}.json")) as f:
+            nodes = json.load(f).get("nodes", [])
+        for group, entries in cf.scatter_import_options(nodes).items():
+            options.setdefault(group, {}).update(entries)
+    return options
+
+
 def map_materials():
     """Writes the engine materials and points each .glb.import at them; marks the field's normal tiles as normal
     maps. Run after `godot --headless --import` has written the .import files (then import once more)."""
@@ -1051,10 +1065,14 @@ def map_materials():
     r, g, b = (round(int(CARD_TINT.lstrip("#")[i:i + 2], 16) / 255.0, 3) for i in (0, 2, 4))
     with open(os.path.join(export, "M_BushCards.tres"), "w") as f:
         f.write(CARDS_TRES.format(hex=CARD_TINT, atlas=CARD_ATLAS, r=r, g=g, b=b))
+    cf.write_kit_materials(export)
     for asset_id in sorted(set(EXTERNAL) | set(IMPORT_OPTIONS)):
         mats = EXTERNAL.get(asset_id, {})
-        options = IMPORT_OPTIONS.get(asset_id, {})
+        options = _import_options(asset_id)
         path = os.path.join(export, f"{asset_id}.glb.import")
+        if not os.path.exists(path):
+            print("not imported yet (run godot --headless --import first):", os.path.basename(path))
+            continue
         with open(path) as f:
             text = f.read()
         with open(path, "w") as f:
@@ -1071,7 +1089,8 @@ def map_materials():
 
 # asset id -> (builder, triangle budget)
 ASSETS = {
-    "creature_field_ground": (build_field_ground, 16000),
+    # The ground's 15,488 triangles plus the scatter's PROPOSED budgets (cover 50,000, berm 50,000; field rev 2b).
+    "creature_field_ground": (build_field_ground, 16000 + cf.COVER_TRIS + cf.BERM_TRIS),
     "creature_nest_ring": (build_nest_ring, 4000),
     "creature_fruit_bush": (build_fruit_bush, 1200),
     "creature_meat_chunk": (build_meat_chunk, 1200),
@@ -1093,14 +1112,20 @@ def main():
     unknown = [i for i in ids if i not in ASSETS]
     if unknown:
         parser.error(f"unknown asset id(s): {', '.join(unknown)}; known: {', '.join(ASSETS)}")
+    if "creature_field_ground" in ids:
+        # The field's scatter merges copies of the kit's exported GLBs: build any that is missing first.
+        missing = [i for i in cf.COVER_KIT + cf.BERM_KIT if i not in ids and not os.path.exists(bc.paths(i)[1])]
+        if missing:
+            print("the field's scatter needs", ", ".join(missing), "first")
+        ids = missing + [i for i in ids if i != "creature_field_ground"] + ["creature_field_ground"]
     for asset_id in ids:
         builder, budget = ASSETS[asset_id]
         bc.reset_scene()
         fields = builder()
         record = bc.export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR,
                            provenance=fields.pop("provenance", PROVENANCE))
-        if asset_id in cf.CARD_ASSETS:
-            cf.link_atlas(bc.paths(asset_id)[1])
+        if asset_id in cf.ATLAS_LINKS:
+            cf.link_atlas(bc.paths(asset_id)[1], *cf.ATLAS_LINKS[asset_id])
         dims = record["dimensions_m"]
         print(f"{asset_id}: {record['triangles']} triangles, {dims['x']} x {dims['y_forward']} x {dims['z_up']} m")
 

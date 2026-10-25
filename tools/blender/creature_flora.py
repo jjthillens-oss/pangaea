@@ -161,8 +161,8 @@ def _stroke(xx, yy, pts, half, soft=1.1):
 class _Cell:
     """One atlas cell being painted, back to front: RGB in display sRGB and the coverage."""
 
-    def __init__(self, rng, under_lch):
-        n = CELL
+    def __init__(self, rng, under_lch, n=CELL):
+        self.n = n
         self.rng = rng
         self.yy, self.xx = np.mgrid[0:n, 0:n].astype(np.float64) + 0.5
         self.rgb = np.empty((n, n, 3))
@@ -177,7 +177,7 @@ class _Cell:
         under it, so overlapping blades read in depth."""
         x0, y0 = np.min(pts, axis=0) - np.max(half) - 6
         x1, y1 = np.max(pts, axis=0) + np.max(half) + 6
-        sl = (slice(max(0, int(y0)), min(CELL, int(y1) + 1)), slice(max(0, int(x0)), min(CELL, int(x1) + 1)))
+        sl = (slice(max(0, int(y0)), min(self.n, int(y1) + 1)), slice(max(0, int(x0)), min(self.n, int(x1) + 1)))
         a, t, across = _stroke(self.xx[sl], self.yy[sl], pts, half)
         a = a * self.margin[sl]
         a_wide, _, _ = _stroke(self.xx[sl], self.yy[sl], pts, np.asarray(half) + 3.0)
@@ -191,8 +191,8 @@ class _Cell:
 
     def inside(self, pts, pad=13.0):
         pts = np.asarray(pts)
-        return (pts[:, 0].min() >= pad and pts[:, 0].max() <= CELL - pad and pts[:, 1].min() >= pad
-                and pts[:, 1].max() <= CELL - ROOT_PX + 2)
+        return (pts[:, 0].min() >= pad and pts[:, 0].max() <= self.n - pad and pts[:, 1].min() >= pad
+                and pts[:, 1].max() <= self.n - ROOT_PX + 2)
 
     def finish(self):
         """Pushes the nearest leaf colour out under the cut-away area (a push-pull fill weighted by coverage), so
@@ -527,12 +527,13 @@ def meadow_atlas():
 
 # --- Cards --------------------------------------------------------------------------------------------------------
 
-def _cell_uv(cell, flip):
+def _cell_uv(cell, flip, grid=(COLS, ROWS)):
     """The cell's UV rectangle in Blender's convention (v up; the atlas's top row is the high v half):
     (u at the left edge, u at the right edge, v at the base, v at the tip)."""
-    col, row = cell % COLS, cell // COLS
-    u0, u1 = col / COLS, (col + 1) / COLS
-    v0, v1 = 1.0 - (row + 1) / ROWS, 1.0 - row / ROWS
+    cols, rows = grid
+    col, row = cell % cols, cell // cols
+    u0, u1 = col / cols, (col + 1) / cols
+    v0, v1 = 1.0 - (row + 1) / rows, 1.0 - row / rows
     return (u1, u0, v0, v1) if flip else (u0, u1, v0, v1)
 
 
@@ -543,14 +544,18 @@ class _Cards:
     up, and the material culls back faces: from either side the near sheet draws and lights like the ground. (A single sheet drawn from both sides cannot do that: the renderer flips its normal for the
     back face, so one side of every card would shade as if facing the soil.)"""
 
-    def __init__(self):
+    def __init__(self, grid=(COLS, ROWS), lit=None):
+        """`grid` is the atlas's (columns, rows). `lit(point) -> Vector`, when given, is the lit normal of both
+        sheets at a vertex (a canopy shades as one rounded volume: the normal points out of the crown wherever a
+        card faces); otherwise each sheet's own face normal plus NORMAL_UP x world up."""
+        self.grid, self.lit = grid, lit
         self.verts, self.faces, self.uvs, self.cols, self.normals, self.facing = [], [], [], [], [], []
 
     def strip(self, centres, sides, half_width, cell, flip=False, shade=1.0):
         """A card along `centres` (base to tip, one row each) spanning +-half_width along each row's `sides`
         vector, mapped to the whole of atlas `cell`. The front sheet is the one whose normal leans up (the top of
         a fern frond)."""
-        u_l, u_r, v0, v1 = _cell_uv(cell, flip)
+        u_l, u_r, v0, v1 = _cell_uv(cell, flip, self.grid)
         rows = len(centres)
         up = Vector((0.0, 0.0, 1.0))
         left, right, row_n = [], [], []
@@ -567,12 +572,15 @@ class _Cards:
             for k in range(rows):
                 v = v0 + (v1 - v0) * k / (rows - 1)
                 n = row_n[k] * (sheet if front_up else -sheet)
-                lit = (n + up * NORMAL_UP).normalized()
                 gap = n * (SHEET_GAP / 2)                          # each sheet stands just off the card on its side
                 self.verts += [tuple(left[k] + gap), tuple(right[k] + gap)]
                 self.uvs += [(u_l, v), (u_r, v)]
                 self.cols += [(shade, shade, shade)] * 2
-                self.normals += [tuple(lit), tuple(lit)]
+                if self.lit is None:
+                    lit = (n + up * NORMAL_UP).normalized()
+                    self.normals += [tuple(lit), tuple(lit)]
+                else:
+                    self.normals += [tuple(self.lit(left[k])), tuple(self.lit(right[k]))]
                 self.facing += [tuple(n), tuple(n)]
             outward = sheet if front_up else -sheet                # wind each sheet so its face normal is its n
             for k in range(rows - 1):
@@ -597,17 +605,19 @@ def _srgb_to_lin(c):
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
-def _card_material():
+def _card_material(name="M_MeadowCards", atlas=ATLAS, path=ATLAS_PATH):
     """The cards' Blender material: the atlas's colour times the decoded jitter colour, cut out by its alpha (the
-    Round node is what the glTF exporter reads as alphaMode MASK). The engine draws M_MeadowCards.tres instead."""
-    meadow_atlas()                                   # writes the atlas on the first card of a run
-    path = os.path.join(ROOT, ATLAS_PATH)
-    mat = bpy.data.materials.new("M_MeadowCards")
+    Round node is what the glTF exporter reads as alphaMode MASK). The engine draws M_MeadowCards.tres (or, for
+    the tree canopies, M_TreeCanopyCards.tres) instead."""
+    if atlas == ATLAS:
+        meadow_atlas()                               # writes the atlas on the first card of a run
+    path = os.path.join(ROOT, path)
+    mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     bsdf = nodes["Principled BSDF"]
     img = bpy.data.images.load(path, check_existing=True)
-    img.name = ATLAS
+    img.name = atlas
     img.colorspace_settings.name = "sRGB"
     img.alpha_mode = "STRAIGHT"            # not packed: the .blend links the atlas by a relative path, as the GLB does
     tex = nodes.new("ShaderNodeTexImage")
@@ -764,9 +774,10 @@ def build_flower_clump():
 
 # --- Rocks ----------------------------------------------------------------------------------------------------
 
-def _reduce_to(obj, budget):
+def _reduce_to(obj, budget, protect=None):
     """Collapse-decimates `obj` to at most `budget` triangles, keeping a hidden full-detail copy for the normal
-    bake. Returns (triangles before, after, the copy, the largest surface error in metres)."""
+    bake; the vertices of vertex group `protect`, when given, are left as they are. Returns (triangles before,
+    after, the copy, the largest surface error in metres)."""
     high = obj.copy()
     high.data = obj.data.copy()
     high.name = f"{obj.name}_high"
@@ -776,6 +787,11 @@ def _reduce_to(obj, budget):
     mod = obj.modifiers.new("Reduce", "DECIMATE")
     mod.decimate_type = "COLLAPSE"
     mod.use_collapse_triangulate = True
+    if protect is not None:
+        keep = obj.vertex_groups[protect].index
+        free = [v.index for v in obj.data.vertices if not any(g.group == keep and g.weight > 0.0 for g in v.groups)]
+        obj.vertex_groups.new(name="Reduce").add(free, 1.0, "REPLACE")
+        mod.vertex_group = "Reduce"
     ratio = budget * 0.985 / before
     deps = bpy.context.evaluated_depsgraph_get()
     for _ in range(40):
@@ -796,8 +812,8 @@ def _reduce_to(obj, budget):
     return before, after, high, error
 
 
-def _bake_rock(obj, budget, texture, size, tints=None):
-    before, after, high, error = _reduce_to(obj, budget)
+def _bake_rock(obj, budget, texture, size, tints=None, protect=None):
+    before, after, high, error = _reduce_to(obj, budget, protect)
     sf.unwrap([obj])
     textures = sf.bake_set([obj], texture, size, normal=True, highs={obj.name: high}, tints=tints)
     sf.drop_highs([high])
@@ -988,13 +1004,1048 @@ def build_boulder(asset_id):
             "provenance": PROVENANCE_BOULDER, **baked}
 
 
+# --- Trees (outside the walls only, until the sim has obstacles) ----------------------------------------------
+
+CANOPY_ATLAS = "T_TreeCanopyCards"
+CANOPY_PATH = "assets/export/creature_flora/T_TreeCanopyCards.png"
+CANOPY_PX = 1024
+CANOPY_CELL = 512
+CANOPY_GRID = (2, 2)
+CANOPY_UMBRELLA, CANOPY_UMBRELLA_FINE, CANOPY_CURTAIN, CANOPY_CAP = 0, 1, 2, 3
+CANOPY_NORMAL_UP = 0.45      # how much of world up joins the crown's outward normal on the canopy cards
+PROVENANCE_TREE = ("Authored procedurally by tools/blender/creature_flora.py (through make_creature_world.py); no "
+                   "external or generated meshes. The wood is a skin-modifier skeleton baked in Blender from "
+                   "procedural shaders; the canopy card atlas is painted in numpy (strokes in CIE LCh); no scans.")
+
+
+def _lch_lin(L, C, h):
+    """CIE LCh to a linear RGBA tuple for a Blender shader."""
+    srgb = lch_srgb(L, C, h)
+    return (*(float(_srgb_to_lin(float(c))) for c in srgb), 1.0)
+
+
+def _leaf(cell, base, angle, length, width, colour, bend=0.0, shadow=0.24):
+    """An ovate leaf from `base` (its petiole end) at `angle` from straight up: widest a third of the way along,
+    tapering to a soft point."""
+    pts = _arc(base, angle, length, bend, steps=8)
+    u = np.linspace(0.0, 1.0, len(pts))
+    half = width * np.sin(np.pi * np.clip(u * 0.9 + 0.08, 0.0, 1.0)) ** 0.6 * (1.0 - 0.3 * u ** 2) + 0.6
+    cell.paint(pts, half, colour, shadow=shadow)
+
+
+def _spray_cell(rng, fine):
+    """A leaf spray seen from above, its stem leaving the cell's bottom centre (where the card meets its branch):
+    a curved stem with side twigs, each carrying rounded leaves that fan outward, so laid on a crown the cards
+    build a soft, rounded canopy surface with a leafy edge. "fine" carries more, smaller and bluer leaves."""
+    n = CANOPY_CELL
+    hue = (161.0, 172.0) if fine else (155.0, 166.0)
+    cell = _Cell(rng, (40.0, 28.0, sum(hue) / 2), n=n)
+    root = np.array((n / 2, n - ROOT_PX))
+    stem = _arc(root, rng.normal(0.0, 0.08), n * 0.7, rng.normal(0.0, 0.2), steps=14)
+    twigs = [stem]
+    for k in range(9 if fine else 7):
+        t = 0.18 + 0.7 * k / (8 if fine else 6) + rng.uniform(-0.03, 0.03)
+        j = int(t * (len(stem) - 1))
+        side = -1.0 if k % 2 else 1.0
+        d = stem[min(j + 1, len(stem) - 1)] - stem[j]
+        up_angle = math.atan2(d[0], -d[1])
+        twig = _arc(stem[j], up_angle + side * rng.uniform(0.75, 1.15), n * rng.uniform(0.2, 0.32) * (1.0 - 0.35 * t),
+                    -side * rng.uniform(0.2, 0.5), steps=8)
+        twigs.append(twig)
+    leaves = []
+    size = (34.0, 52.0, 10.0, 14.0) if fine else (52.0, 80.0, 17.0, 24.0)
+    for twig in twigs:
+        seg = np.diff(twig, axis=0)
+        count = int(len(twig) * (1.6 if fine else 1.0))
+        for i in range(count):
+            t = 0.2 + 0.8 * i / max(1, count - 1)
+            j = min(len(seg) - 1, int(t * len(seg)))
+            at = twig[j] + seg[j] * (t * len(seg) - j)
+            d = seg[j] / max(1e-6, np.linalg.norm(seg[j]))
+            along = math.atan2(d[0], -d[1])
+            for side in ((-1.0, 1.0) if i % 2 == 0 else (rng.choice((-1.0, 1.0)),)):
+                angle = along + side * rng.uniform(0.45, 0.95)
+                length = rng.uniform(size[0], size[1]) * (1.0 - 0.25 * t)
+                pts = _arc(at, angle, length, side * rng.uniform(-0.15, 0.25), steps=8)
+                if not cell.inside(pts, pad=12.0 + size[3]):
+                    continue
+                leaves.append((at, angle, length, rng.uniform(size[2], size[3]), rng.uniform(*hue), rng.uniform(26.0, 33.0),
+                               rng.uniform(-6.0, 6.0), side))
+        tip = twig[-1]
+        d = twig[-1] - twig[-2]
+        angle = math.atan2(d[0], -d[1])
+        pts = _arc(tip, angle, size[1], 0.0, steps=8)
+        if cell.inside(pts, pad=12.0 + size[3]):
+            leaves.append((tip, angle, size[1] * 0.9, size[3], rng.uniform(*hue), 30.0, 3.0, 1.0))
+    for twig in twigs:                                                 # the wood, under the leaves
+        t = np.linspace(0.0, 1.0, len(twig))
+        cell.paint(twig, (4.5 if twig is stem else 2.6) * (1.0 - 0.6 * t) + 0.8, _lch_colour(29.0, 36.0, 12.0, 152.0, rib=2.0, edge=2.0), shadow=0.1)
+    leaves.sort(key=lambda leaf: leaf[6])                              # darker leaves at the back
+    for at, angle, length, width, h, c, tone, side in leaves:
+        _leaf(cell, at, angle, length, width, _lch_colour(33.0 + tone, 55.0 + tone, c, h, rib=5.0, edge=8.0),
+              bend=side * 0.12, shadow=0.26)
+    return cell.finish()
+
+
+def _frond(cell, rng, root, angle, length, leaflet, hue, light=0.0, steps=18, sweep=0.62, width=0.2):
+    """A hanging frond: a fine rachis from `root` with paired narrow leaflets that sweep toward its tip, so hung
+    tip-down it droops."""
+    rachis = _arc(root, angle, length, rng.normal(0.0, 0.12), steps=steps, curl=1.2)
+    seg = np.diff(rachis, axis=0)
+    pairs = int(length / (leaflet * 0.42))
+    leaflets = []
+    for i in range(pairs):
+        t = 0.04 + 0.94 * i / max(1, pairs - 1)
+        j = min(len(seg) - 1, int(t * len(seg)))
+        at = rachis[j] + seg[j] * (t * len(seg) - j)
+        d = seg[j] / max(1e-6, np.linalg.norm(seg[j]))
+        along = math.atan2(d[0], -d[1])
+        for side in (-1.0, 1.0):
+            size = leaflet * (1.0 - 0.55 * t ** 1.4) * rng.uniform(0.85, 1.1)
+            pts = _arc(at, along + side * rng.uniform(sweep - 0.12, sweep + 0.12), max(6.0, size), -side * 0.18, steps=6)
+            if cell.inside(pts, pad=10.0):
+                leaflets.append((pts, size, t, rng.uniform(-4.0, 4.0)))
+    for pts, size, t, tone in leaflets:
+        u = np.linspace(0.0, 1.0, len(pts))
+        half = size * width * np.sin(np.pi * np.clip(u * 0.92 + 0.06, 0.0, 1.0)) ** 0.7 + 0.5
+        cell.paint(pts, half, _lch_colour(36.0 + light + 10.0 * t + tone, 56.0 + light + 6.0 * t + tone, 30.0, hue + 4.0 * t, rib=3.0, edge=6.0), shadow=0.18)
+    t = np.linspace(0.0, 1.0, len(rachis))
+    cell.paint(rachis, 2.4 * (1.0 - t) + 0.9, _lch_colour(34.0 + light, 46.0 + light, 22.0, hue - 4.0, rib=2.0, edge=2.0), shadow=0.08)
+
+
+def _curtain_cell(rng):
+    """Four hanging fronds side by side from the cell's bottom edge (the card's attached end) to near its top (the
+    tip), with full leaflets that overlap their neighbours', turquoise, lighter toward their tips: hung from the
+    lantern tree's crown, a card is a strip of curtain dense enough to keep its shape far off."""
+    n = CANOPY_CELL
+    cell = _Cell(rng, (44.0, 27.0, 171.0), n=n)
+    for k, x in enumerate((0.17, 0.39, 0.61, 0.83)):
+        _frond(cell, rng, (n * x + rng.uniform(-6.0, 6.0), n - ROOT_PX), rng.normal(0.0, 0.04), n * rng.uniform(0.8, 0.88),
+               rng.uniform(58.0, 66.0), rng.uniform(166.0, 172.0), light=rng.uniform(-2.0, 3.0), width=0.3)
+    return cell.finish()
+
+
+def _cap_cell(rng):
+    """Short fronds fanned from the cell's bottom centre: laid round the top of the lantern tree's crown."""
+    n = CANOPY_CELL
+    cell = _Cell(rng, (42.0, 27.0, 166.0), n=n)
+    fronds = sorted(range(7), key=lambda _: rng.random())
+    for k in fronds:
+        angle = (-1.0 + 2.0 * k / 6.0) * 0.85 + rng.normal(0.0, 0.05)
+        _frond(cell, rng, (n / 2 + rng.normal(0.0, 6.0), n - ROOT_PX), angle, n * rng.uniform(0.5, 0.64) * (1.0 - 0.25 * abs(angle)),
+               rng.uniform(38.0, 46.0), rng.uniform(161.0, 168.0), light=rng.uniform(-3.0, 3.0), steps=14, sweep=0.7)
+    return cell.finish()
+
+
+CANOPY_PAINTERS = (("umbrella spray", lambda rng: _spray_cell(rng, False)), ("umbrella spray fine", lambda rng: _spray_cell(rng, True)),
+                   ("lantern curtain", _curtain_cell), ("lantern cap", _cap_cell))
+
+
+def canopy_atlas():
+    """Writes T_TreeCanopyCards once per run (seeded, so the same file every run) and returns its record entry."""
+    if "canopy" in _ATLAS_DONE:
+        return dict(_ATLAS_DONE["canopy"])
+    rng = np.random.default_rng(5301)
+    cols, rows = CANOPY_GRID
+    atlas = np.zeros((CANOPY_PX, CANOPY_PX, 4))
+    for i, (name, painter) in enumerate(CANOPY_PAINTERS):
+        rgba = painter(rng)
+        col, row = i % cols, i // cols
+        atlas[row * CANOPY_CELL:(row + 1) * CANOPY_CELL, col * CANOPY_CELL:(col + 1) * CANOPY_CELL] = rgba
+        share = float((rgba[..., 3] >= 0.5).mean())
+        clash = hue_clash(rgba[..., :3], rgba[..., 3])
+        L, C, h = srgb_lch(rgba[..., :3][rgba[..., 3] >= 0.5].mean(axis=0))
+        mp._check(0.12 < share < 0.75, f"canopy atlas cell {i} ({name}): the cut-out covers a fair share of the card ({share:.2f})")
+        mp._check(clash <= 0.01, f"canopy atlas cell {i} ({name}): {clash:.2%} of its chromatic texels sit near the food or threat hue")
+        print(f"  canopy cell {i} {name:20s} coverage {share:.2f}, hue clashes {clash:.2%}, mean L {float(L):.0f} C {float(C):.0f} h {float(h):.0f}")
+    _save_rgba(CANOPY_ATLAS, atlas, CANOPY_PX)
+    _ATLAS_DONE["canopy"] = {"name": CANOPY_ATLAS, "path": CANOPY_PATH, "size": [CANOPY_PX, CANOPY_PX], "colorspace": "sRGB",
+                             "packing": "RGB the authored colour (CIE LCh greens and turquoise at hue 155 to 176, stems a low-chroma brown) in a 2 x 2 grid of 512 px cells: " + "; ".join(f"{i} {n}" for i, (n, _) in enumerate(CANOPY_PAINTERS)) + "; A the cut-out mask (alpha scissor at 0.5)"}
+    return dict(_ATLAS_DONE["canopy"])
+
+
+def _save_rgba(name, rgba, px):
+    out = np.ascontiguousarray(np.clip(rgba[::-1], 0.0, 1.0).astype(np.float32))   # Blender stores rows bottom-up
+    img = bpy.data.images.new(name, px, px, alpha=True)
+    img.colorspace_settings.name = "Non-Color"      # values are written as-is; the RGB is already sRGB-encoded
+    img.alpha_mode = "STRAIGHT"
+    img.pixels.foreach_set(out.ravel())
+    os.makedirs(FLORA_DIR, exist_ok=True)
+    img.filepath_raw = os.path.join(FLORA_DIR, f"{name}.png")
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
+
+
+def _canopy_material():
+    """The canopy cards' Blender material: as the meadow cards' (the atlas times the decoded jitter, cut out at
+    0.5, back faces culled); the engine draws M_TreeCanopyCards.tres instead."""
+    canopy_atlas()
+    mat = _card_material(name="M_TreeCanopyCards", atlas=CANOPY_ATLAS, path=CANOPY_PATH)
+    mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.85
+    return mat
+
+
+def _skin(name, verts, edges, radii, levels=2, branch_smoothing=0.5):
+    """A smooth organic tube network from a skeleton (Blender's Skin modifier, then subdivision), applied to a
+    plain mesh. `radii` is each skeleton vertex's radius; vertex 0 is the root."""
+    mesh = bpy.data.meshes.new(f"{name}_skeleton")
+    mesh.from_pydata([tuple(v) for v in verts], [tuple(e) for e in edges], [])
+    obj = bpy.data.objects.new(f"{name}_skeleton", mesh)
+    bpy.context.collection.objects.link(obj)
+    skin = obj.modifiers.new("Skin", "SKIN")
+    skin.branch_smoothing = branch_smoothing
+    skin.use_smooth_shade = True
+    if not len(obj.data.skin_vertices):
+        sf.select([obj])
+        bpy.ops.mesh.customdata_skin_add()
+    data = obj.data.skin_vertices[0].data
+    for i, r in enumerate(radii):
+        data[i].radius = (r, r)
+        data[i].use_root = i == 0
+    sub = obj.modifiers.new("Smooth", "SUBSURF")
+    sub.levels = sub.render_levels = levels
+    deps = bpy.context.evaluated_depsgraph_get()
+    out_mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(deps))
+    out_mesh.name = f"{name}_mesh"
+    bpy.data.objects.remove(obj)
+    bpy.data.meshes.remove(mesh)
+    out = bpy.data.objects.new(name, out_mesh)
+    bpy.context.collection.objects.link(out)
+    return out
+
+
+class _Skeleton:
+    """Skeleton vertices, edges and radii; chains sampled from a path function."""
+
+    def __init__(self):
+        self.verts, self.edges, self.radii = [], [], []
+
+    def chain(self, path, radius, steps, start=None):
+        """Adds `steps` segments along path(t), t in [0, 1], with radius(t); joined to vertex `start` when given
+        (the chain's t = 0 is then that vertex). Returns the chain's vertex indices."""
+        ids = []
+        prev = start
+        for k in range(0 if start is None else 1, steps + 1):
+            t = k / steps
+            self.verts.append(Vector(path(t)))
+            self.radii.append(radius(t))
+            i = len(self.verts) - 1
+            if prev is not None:
+                self.edges.append((prev, i))
+            prev = i
+            ids.append(i)
+        return ids
+
+    def nearest(self, ids, z):
+        return min(ids, key=lambda i: abs(self.verts[i].z - z))
+
+
+def _bezier(a, b, c):
+    a, b, c = Vector(a), Vector(b), Vector(c)
+    return lambda t: a * (1 - t) ** 2 + b * 2 * t * (1 - t) + c * t * t
+
+
+def _smooth_radius(stops):
+    """Radius along a chain from (t, radius) stops, smoothstep between them."""
+    def radius(t):
+        for (t0, r0), (t1, r1) in zip(stops, stops[1:]):
+            if t <= t1:
+                return r0 + (r1 - r0) * bc.smoothstep((t - t0) / max(1e-6, t1 - t0))
+        return stops[-1][1]
+    return radius
+
+
+def _flare(obj, axis_at, height, lobes, amount, seed, sink):
+    """Root flare: near the ground the wood swells outward in `lobes` buttresses (each a little different), fading
+    out by `height`; under the ground everything is pressed to `-sink`, so the base sits into a slope. `axis_at(z)`
+    is the trunk's centre at height z."""
+    rng = random.Random(seed)
+    phase = rng.uniform(0.0, math.tau)
+    weights = [rng.uniform(0.7, 1.15) for _ in range(lobes)]
+    for v in obj.data.vertices:
+        co = v.co
+        if co.z < height:
+            c = axis_at(max(co.z, 0.0))
+            d = Vector((co.x - c.x, co.y - c.y, 0.0))
+            if d.length > 1e-5:
+                a = math.atan2(d.y, d.x) - phase
+                k = int((((a + math.pi / lobes) % math.tau) / math.tau) * lobes) % lobes
+                lobe = (0.5 + 0.5 * math.cos(lobes * a)) ** 2.5 * weights[k]
+                f = (1.0 - bc.smoothstep(max(co.z, 0.0) / height)) ** 2
+                s = 1.0 + amount * f * (0.3 + 0.7 * lobe)
+                co.x, co.y = c.x + d.x * s, c.y + d.y * s
+        if co.z < -sink:
+            co.z = -sink
+
+
+def _lumps(obj, amount, scale, seed):
+    """A low, broad irregularity over the wood (bark is not a machined tube)."""
+    off = Vector((seed * 0.37, seed * 0.11, seed * 0.73))
+    obj.data.update()
+    for v in obj.data.vertices:
+        v.co += v.normal * (amount * noise.noise(v.co * scale + off))
+
+
+def _bark_material(name, kind):
+    """Bark from object-space noise, baked. "umbrella": dark warm grey-brown (LCh hue 60 to 68, chroma 9 to 12)
+    with deep fibrous ridges that spiral round the trunk (the grain's coordinates turn with height), and paler
+    weathered patches. "lantern": a smooth pale grey-tan with dark ring scars (horizontal bands) every 15 to 25 cm.
+    No moss: a green on the bark would pull its mean toward the food green."""
+    sh = sf.Shader(name)
+    if kind == "umbrella":
+        rot = sh.node("ShaderNodeVectorRotate", rotation_type="Z_AXIS")
+        sh.link(sh.pos, rot.inputs["Vector"])
+        sh.link(sh.math("MULTIPLY", sh.axis("Z"), 0.32), rot.inputs["Angle"])
+        grain_v = sh.node("ShaderNodeVectorMath", operation="MULTIPLY")
+        sh.link(rot.outputs["Vector"], grain_v.inputs[0])
+        grain_v.inputs[1].default_value = (6.5, 6.5, 0.7)
+        g = grain_v.outputs["Vector"]
+        ridge = sh.voronoi(1.3, 1.0, vector=g, feature="DISTANCE_TO_EDGE")
+        fibre = sh.noise(3.0, 6.0, 0.62, vector=g)
+        groove = sh.remap(ridge, 0.0, 0.16)                          # 0 in the grooves, 1 on the ridges
+        patch = sh.noise(0.7, 3.0, 0.5)
+        tone = sh.math("ADD", sh.math("MULTIPLY", groove, 0.55), sh.math("MULTIPLY", sh.remap(fibre, 0.3, 0.7), 0.45), clamp=True)
+        bark = sh.mix(tone, _lch_lin(27.0, 9.0, 60.0), _lch_lin(49.0, 12.0, 66.0))
+        base = sh.mix(sh.math("MULTIPLY", sh.remap(patch, 0.55, 0.75), groove), bark, _lch_lin(58.0, 7.0, 70.0))
+        sh.bump(sh.math("ADD", sh.math("MULTIPLY", groove, 0.75), sh.math("MULTIPLY", fibre, 0.25)), 0.6, 0.03)
+        return sh.out(base, sh.remap(groove, 0.0, 1.0, 0.95, 0.82))
+    ring_v = sh.node("ShaderNodeVectorMath", operation="MULTIPLY")
+    sh.link(sh.pos, ring_v.inputs[0])
+    ring_v.inputs[1].default_value = (0.6, 0.6, 5.0)
+    wobble = sh.noise(1.2, 2.0, 0.5)
+    rings = sh.math("SINE", sh.math("ADD", sh.math("MULTIPLY", sh.axis("Z"), math.tau / 0.19), sh.math("MULTIPLY", wobble, 3.0)))
+    scar = sh.remap(rings, 0.82, 0.97)                               # thin dark bands
+    speck = sh.noise(40.0, 3.0, 0.6)
+    tone = sh.math("ADD", sh.math("MULTIPLY", sh.remap(sh.noise(5.0, 4.0, 0.6, vector=ring_v.outputs["Vector"]), 0.3, 0.7), 0.7), sh.math("MULTIPLY", speck, 0.3), clamp=True)
+    bark = sh.mix(tone, _lch_lin(56.0, 6.0, 66.0), _lch_lin(71.0, 6.0, 72.0))
+    base = sh.mix(scar, bark, _lch_lin(38.0, 8.0, 60.0))
+    sh.bump(sh.math("SUBTRACT", sh.math("MULTIPLY", speck, 0.2), sh.math("MULTIPLY", scar, 0.8)), 0.5, 0.01)
+    return sh.out(base, 0.7)
+
+
+def _pod_material():
+    """The lantern tree's seed pods: a pale lilac cream (LCh L 78 to 87, chroma 9 to 12, hue 302 to 308; no amber,
+    which reads as fruit), softly mottled; the facets of the lathed pod carry its ribs."""
+    sh = sf.Shader("M_LanternPodProc")
+    mottle = sh.noise(30.0, 3.0)
+    base = sh.mix(sh.remap(mottle, 0.3, 0.7), _lch_lin(78.0, 12.0, 302.0), _lch_lin(87.0, 9.0, 308.0))
+    sh.bump(mottle, 0.15, 0.003)
+    return sh.out(base, 0.6)
+
+
+def _crown_normal(centre, radii, up=CANOPY_NORMAL_UP):
+    """A canopy card vertex's lit normal: out of the crown's ellipsoid (centre, radii), leaned toward world up."""
+    centre, radii = Vector(centre), Vector(radii)
+    def lit(p):
+        d = p - centre
+        n = Vector((d.x / radii.x ** 2, d.y / radii.y ** 2, d.z / radii.z ** 2))
+        if n.length < 1e-6:
+            n = Vector((0.0, 0.0, 1.0))
+        return (n.normalized() + Vector((0.0, 0.0, up))).normalized()
+    return lit
+
+
+def _check_tree(what, reach_max):
+    pts = bc.world_vertices()
+    low = min(p.z for p in pts)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    mp._check(low < -0.03, f"{what}: its base sits under the ground ({low:.3f})")
+    mp._check(low >= -0.2, f"{what}: sinks no more than 20 cm ({low:.3f})")
+    mp._check(reach <= reach_max, f"{what}: keeps within {reach_max} m of its trunk ({reach:.2f})")
+    return max(p.z for p in pts), reach
+
+
+# Umbrella tree: a central crown pad and four lower pads round it, (centre, radius) in metres from the trunk base.
+UMBRELLA_PADS = [((0.15, 0.05, 7.05), 1.95), ((2.35, 0.55, 6.05), 1.55), ((-1.25, 2.2, 6.25), 1.5),
+                 ((-2.0, -1.15, 5.85), 1.6), ((0.85, -2.3, 6.35), 1.4)]
+UMBRELLA_FORK = 4.5
+UMBRELLA_WOOD = 1000        # triangles for the trunk and limbs after reduction
+TREE_TEX = 1024
+
+
+def _umbrella_axis(z):
+    t = z / UMBRELLA_FORK
+    return Vector((0.22 * math.sin(math.pi * t * 1.3), 0.16 * math.sin(math.pi * t * 0.8 + 0.5), z))
+
+
+def build_tree_umbrella():
+    """An umbrella tree about 7.5 m tall and 8 m across (PROPOSED, original): a bulbous trunk, swollen at about
+    1.5 m like a water-storing bottle tree and narrowing to a fork, with five buttress roots flaring into the
+    ground and a spiral bark grain; five limbs carry a layered umbrella crown of five flat-topped pads (a high
+    central one and four lower ones round it), each a dome of leaf-spray cards laid in rings with a drooping
+    fringe, so the silhouette is a broad, scalloped parasol. The wood is baked (1024); the cards share
+    T_TreeCanopyCards and shade as one rounded crown (normals out of each pad)."""
+    rng = random.Random(4401)
+    sk = _Skeleton()
+    trunk = sk.chain(lambda t: _umbrella_axis(-0.25 + (UMBRELLA_FORK + 0.25) * t),
+                     _smooth_radius([(0.0, 0.42), (0.1, 0.44), (0.38, 0.56), (0.62, 0.42), (0.85, 0.27), (1.0, 0.21)]), 22)
+    top = sk.chain(lambda t: _bezier(_umbrella_axis(UMBRELLA_FORK), _umbrella_axis(UMBRELLA_FORK) + Vector((0.0, 0.0, 1.2)),
+                                     Vector(UMBRELLA_PADS[0][0]) - Vector((0.0, 0.0, 0.45)))(t),
+                   _smooth_radius([(0.0, 0.2), (1.0, 0.1)]), 8, start=trunk[-1])
+    for k, (centre, radius) in enumerate(UMBRELLA_PADS[1:]):
+        z0 = UMBRELLA_FORK - 0.15 - 0.22 * k
+        s = sk.nearest(trunk, z0)
+        a = sk.verts[s].copy()
+        end = Vector(centre) - Vector((0.0, 0.0, 0.4))
+        mid = a + (end - a) * 0.3 + Vector((0.0, 0.0, 0.9))
+        sk.chain(_bezier(a, mid, end), _smooth_radius([(0.0, 0.17), (0.4, 0.13), (1.0, 0.07)]), 9, start=s)
+    obj = _skin("UmbrellaTree", sk.verts, sk.edges, [r * 1.12 for r in sk.radii], levels=3)
+    _flare(obj, _umbrella_axis, 1.1, 5, 1.05, 4402, 0.12)
+    _lumps(obj, 0.025, 1.6, 7)
+    obj.data.materials.append(_bark_material("M_UmbrellaBarkProc", "umbrella"))
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    baked = _bake_rock(obj, UMBRELLA_WOOD, "CreatureTreeUmbrella", TREE_TEX)
+    wood_tris = baked["reduction"]["triangles_after"]
+    # The crown: per pad a ring of near-flat cards at the top, two rings sloping out and down, and a drooping
+    # fringe, every card radial (its stem toward the pad's centre) and bent down at its tip.
+    cards = _Cards(CANOPY_GRID)
+    mat = _canopy_material()
+    n_cards = 0
+    for p, (centre, radius) in enumerate(UMBRELLA_PADS):
+        c = Vector(centre)
+        lit = _crown_normal(c - Vector((0.0, 0.0, 0.35 * radius)), (radius * 1.05, radius * 1.05, radius * 0.62))
+        cards.lit = lit
+        spin = rng.uniform(0.0, math.tau)
+        rings = [(0.0, 3, 0.95, (8, 16), 0.15), (0.42, 7, 0.9, (14, 26), 0.3), (0.78, 10, 0.78, (30, 44), 0.4),
+                 (0.98, 12, 0.66, (55, 72), 0.25)]
+        for ring, (r_share, count, size, tilt, bend) in enumerate(rings):
+            count = max(3, int(round(count * radius / 1.75)))
+            for i in range(count):
+                az = spin + math.tau * (i + 0.5 * (ring % 2)) / count + rng.uniform(-0.12, 0.12)
+                out = Vector((math.cos(az), math.sin(az), 0.0))
+                side = Vector((-math.sin(az), math.cos(az), 0.0))
+                length = radius * size * rng.uniform(0.9, 1.08)
+                dome = 0.3 * radius * (1.0 - r_share ** 2)                   # the pad's top is a low dome
+                base = c + out * (radius * r_share - 0.35 * length) + Vector((0.0, 0.0, dome - 0.06 * ring))
+                e0 = -math.radians(rng.uniform(*tilt))
+                centres, sides = [], []
+                q = base.copy()
+                for k in range(3):
+                    centres.append(q.copy())
+                    sides.append(side)
+                    e = e0 - bend * (k + 0.5) / 2
+                    q = q + (out * math.cos(e) + Vector((0.0, 0.0, math.sin(e)))) * (length / 2)
+                shade = rng.uniform(0.84, 1.0) if ring < 3 else rng.uniform(0.74, 0.9)
+                cell = CANOPY_UMBRELLA_FINE if (ring + i + p) % 3 == 0 else CANOPY_UMBRELLA
+                cards.strip(centres, sides, length * rng.uniform(0.42, 0.5), cell, rng.random() < 0.5, shade)
+                n_cards += 1
+    cards.build("UmbrellaCanopy", mat)
+    top_z, reach = _check_tree("umbrella tree", 4.4)
+    return _tree_record("Creature world tree (PROPOSED, original): an umbrella tree about %.1f m tall with a bulbous, buttressed trunk and a broad layered umbrella crown of leaf-spray cards." % top_z,
+                        "UmbrellaTree", "UmbrellaCanopy", n_cards, wood_tris, top_z, reach, baked)
+
+
+LANTERN_TOP = Vector((0.85, 0.3, 4.75))
+LANTERN_WOOD = 1150
+
+
+def _lantern_axis(z):
+    t = max(0.0, min(1.0, z / LANTERN_TOP.z))
+    return Vector((LANTERN_TOP.x * t ** 2.2, LANTERN_TOP.y * math.sin(math.pi * t * 0.9), z))
+
+
+def _pod(centre, height, radius, sides=7, rings=6):
+    """A pod: a lathed teardrop, its stalk end up."""
+    verts, faces = [], []
+    for k in range(rings + 1):
+        t = k / rings
+        r = radius * math.sin(math.pi * t) ** 0.8 * (1.0 - 0.35 * t)
+        z = height * (0.5 - t)
+        if k in (0, rings):
+            verts.append(tuple(Vector(centre) + Vector((0.0, 0.0, z))))
+            continue
+        for j in range(sides):
+            a = math.tau * j / sides
+            verts.append(tuple(Vector(centre) + Vector((r * math.cos(a), r * math.sin(a), z))))
+    top, bottom = 0, len(verts) - 1
+    for j in range(sides):
+        faces.append((top, 1 + (j + 1) % sides, 1 + j))
+    for k in range(rings - 2):
+        a0, b0 = 1 + k * sides, 1 + (k + 1) * sides
+        for j in range(sides):
+            jn = (j + 1) % sides
+            faces.append((a0 + j, a0 + jn, b0 + jn, b0 + j))
+    last = 1 + (rings - 2) * sides
+    for j in range(sides):
+        faces.append((last + j, last + (j + 1) % sides, bottom))
+    return verts, faces
+
+
+def build_tree_lantern():
+    """A lantern tree about 5 m tall (PROPOSED, original): a slender trunk that rises in a slow curve and leans
+    its crown out over its foot, with three small root flares and pale bark ringed with dark scars; the crown is a
+    domed cap of fronds arching over a dense curtain of long turquoise fronds that falls almost straight down round
+    it like a lampshade, and six round pale lilac-cream seed pods hang on fine pale stalks from the hub, down inside
+    the curtain to about its hem, like lanterns in a shade. Wood, stalks and pods are baked (1024; the pods are kept
+    out of the triangle reduction so they stay round); the cards share T_TreeCanopyCards and shade as one rounded
+    crown."""
+    rng = random.Random(4501)
+    sk = _Skeleton()
+    trunk = sk.chain(lambda t: _lantern_axis(-0.22 + (LANTERN_TOP.z + 0.22) * t),
+                     _smooth_radius([(0.0, 0.2), (0.12, 0.17), (0.5, 0.13), (0.9, 0.105), (1.0, 0.14)]), 20)
+    hub = trunk[-1]
+    pods = []
+    spin = rng.uniform(0.0, math.tau)
+    for k in range(6):
+        az = spin + math.tau * k / 6 + rng.uniform(-0.2, 0.2)
+        out = Vector((math.cos(az), math.sin(az), 0.0))
+        r = rng.uniform(0.55, 0.75)
+        drop = rng.uniform(1.5, 2.0)
+        a = LANTERN_TOP + out * 0.12
+        end = LANTERN_TOP + out * r - Vector((0.0, 0.0, drop))
+        mid = LANTERN_TOP + out * (r * 0.9) + Vector((0.0, 0.0, 0.05))
+        sk.chain(_bezier(a, mid, end), lambda t: 0.012, 5, start=hub)
+        pods.append(end - Vector((0.0, 0.0, 0.17)))
+    obj = _skin("LanternTree", sk.verts, sk.edges, [r * 1.12 for r in sk.radii], levels=3)
+    _flare(obj, _lantern_axis, 0.6, 3, 0.8, 4502, 0.1)
+    _lumps(obj, 0.008, 3.0, 11)
+    bark = _bark_material("M_LanternBarkProc", "lantern")
+    pod_mat = _pod_material()
+    obj.data.materials.append(bark)
+    obj.data.materials.append(pod_mat)
+    for poly in obj.data.polygons:                    # the stalks: pale like the pods, not ringed like the trunk
+        c = poly.center
+        poly.material_index = 1 if c.z > 2.0 and (Vector((c.x, c.y, 0.0)) - _lantern_axis(c.z).to_2d().to_3d()).length > 0.17 else 0
+    pverts, pfaces = [], []
+    for c in pods:
+        v, f = _pod(c, rng.uniform(0.34, 0.4), rng.uniform(0.12, 0.14), sides=8, rings=6)
+        bc.append(pverts, pfaces, v, f)
+    pod_obj = bc.mesh_object("LanternPods", pverts, pfaces, [pod_mat])
+    pod_obj.vertex_groups.new(name="Pods").add(list(range(len(pverts))), 1.0, "REPLACE")
+    sf.select([obj, pod_obj])
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.join()
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    baked = _bake_rock(obj, LANTERN_WOOD, "CreatureTreeLantern", TREE_TEX, protect="Pods")
+    wood_tris = baked["reduction"]["triangles_after"]
+    cards = _Cards(CANOPY_GRID)
+    mat = _canopy_material()
+    crown = LANTERN_TOP - Vector((0.0, 0.0, 0.9))
+    cards.lit = _crown_normal(crown, (1.4, 1.4, 1.6))
+    n_cards = 0
+    # The cap: fronds radiating from the hub, level at first and arching down over the curtain's top.
+    for i in range(14):
+        az = spin + math.tau * i / 14 + rng.uniform(-0.08, 0.08)
+        out = Vector((math.cos(az), math.sin(az), 0.0))
+        side = Vector((-math.sin(az), math.cos(az), 0.0))
+        length = rng.uniform(1.15, 1.35)
+        q = LANTERN_TOP + Vector((0.0, 0.0, 0.1)) - out * 0.1
+        centres, sides = [], []
+        e0 = math.radians(rng.uniform(10.0, 16.0))
+        for k in range(3):
+            centres.append(q.copy())
+            sides.append(side)
+            e = e0 - 0.9 * (k + 0.5) / 2
+            q = q + (out * math.cos(e) + Vector((0.0, 0.0, math.sin(e)))) * (length / 2)
+        cards.strip(centres, sides, rng.uniform(0.4, 0.46), CANOPY_CAP, rng.random() < 0.5, rng.uniform(0.88, 1.0))
+        n_cards += 1
+    # The curtain: long fronds from under the cap's rim, falling steeply and then straight down.
+    count = 30
+    for i in range(count):
+        az = spin + math.tau * (i + 0.5) / count + rng.uniform(-0.05, 0.05)
+        out = Vector((math.cos(az), math.sin(az), 0.0))
+        side = Vector((-math.sin(az), math.cos(az), 0.0))
+        length = rng.uniform(2.0, 2.6)
+        q = LANTERN_TOP + out * rng.uniform(0.95, 1.08) - Vector((0.0, 0.0, rng.uniform(0.15, 0.3)))
+        centres, sides = [], []
+        for k in range(5):
+            centres.append(q.copy())
+            sides.append(side)
+            e = -math.radians(50.0) - math.radians(40.0) * ((k + 0.5) / 4) ** 0.8
+            q = q + (out * math.cos(e) + Vector((0.0, 0.0, math.sin(e)))) * (length / 4)
+        cards.strip(centres, sides, rng.uniform(0.3, 0.36), CANOPY_CURTAIN, rng.random() < 0.5, rng.uniform(0.8, 1.0))
+        n_cards += 1
+    canopy = cards.build("LanternCanopy", mat)
+    top_z, reach = _check_tree("lantern tree", 3.6)
+    hem = min((canopy.matrix_world @ v.co).z for v in canopy.data.vertices)
+    mp._check(hem > 1.6, f"lantern tree: the curtain's hem stays well above the ground, so the trunk shows under it ({hem:.2f})")
+    record = _tree_record("Creature world tree (PROPOSED, original): a lantern tree about %.1f m tall, a slender curved trunk under a domed crown with a curtain of hanging turquoise fronds and pale lilac-cream seed pods." % top_z,
+                          "LanternTree", "LanternCanopy", n_cards, wood_tris, top_z, reach, baked)
+    record["pods"] = {"count": len(pods), "colour": "pale lilac cream, CIE LCh L 78 to 87, chroma 9 to 12, hue 302 to 308 (no amber: amber reads as fruit); the stalks the same",
+                      "reduction": "kept out of the triangle reduction (vertex group), so they stay round"}
+    return record
+
+
+def _tree_record(purpose, wood, canopy, n_cards, wood_tris, top_z, reach, baked):
+    textures = baked.pop("textures") + [canopy_atlas()]
+    return {"purpose": purpose, "category": "environment", "kind": "tree",
+            "pivot": "the trunk's foot on the ground (Godot y = 0); the roots sink about 10 cm so the tree sits into a slope",
+            "placement": "an obstacle: OUTSIDE the walls only (the berm and the hills, where max(|x|, |z|) is 80.5 m or more, crown included) until the sim has obstacles (issue #210); tests/test_creature_world_art.gd keeps anything over 0.45 m out of the walkable field",
+            "height_m": round(top_z, 2), "crown_reach_m": round(reach, 2),
+            "wood": {"node": wood, "triangles": wood_tris, "lods": "Godot's generated LODs"},
+            "canopy": {"node": canopy, "cards": n_cards, "atlas": CANOPY_PATH,
+                       "material": "M_TreeCanopyCards (StandardMaterial3D: alpha scissor 0.5, back faces culled, COLOR_0 jitter)",
+                       "sides": "two sheets back to back per card, opposite winding",
+                       "normals": f"out of the crown's ellipsoid plus {CANOPY_NORMAL_UP} x world up on both sheets, so the crown shades as one rounded volume",
+                       "lods": "none (Godot's LOD pass collapses whole cards)"},
+            "vertex_colors_attribute": VC, "textures": textures, "revision": 1, "provenance": PROVENANCE_TREE, **baked}
+
+
+# --- The field's scatter (field rev 2b): the kit composed into chunked meshes of creature_field_ground ------------
+
+SCATTER_SEED = 6100
+CHUNK_M = 20.0
+CHUNKS = 8                  # 8 x 8 cover chunks of 20 m over +-80 m
+COVER_EDGE_M = 78.3         # cover stays inside this square (the berm starts rising at 79 m)
+COVER_CLEAR_M = 8.05        # and every vertex outside the nest's clearing (the art test's 8 m)
+COVER_TRIS = 50000          # PROPOSED budgets: cover inside the walls, and the berm's trees and boulders
+BERM_TRIS = 50000
+COVER_VIS_END_M = 60.0      # a cover chunk draws while the camera is within this of its centre (its origin)
+OBSTACLE_EDGE_M = 81.0      # every vertex of a berm piece stands at max(|x|, |y|) of this or more (the test's 80.5)
+SECTORS = 8
+TREE_SLOPE_MAX_M = 0.45     # a tree's foot: the ground may rise or fall this much within 1.2 m of its trunk
+PATCH_ANGLE, PATCH_WARP, PATCH_M = 0.6, 0.22, 37.0   # as shaders/creature_field.gdshader reads its patch mask
+EARTH_LOW, EARTH_HIGH = 0.56, 0.7
+CLEARING_R, CLEARING_SOFT = 7.5, 3.0
+# Stand-in materials in the field's .blend and GLB: no images, named as the kit's own, and mapped in the field's
+# .glb.import to the .tres files map_materials writes (so the field GLB embeds no copy of a kit texture).
+KIT_MATERIALS = {
+    # material: (kit id it comes from, baked texture set or None for a card atlas, sRGB tint or None, stand-in colour)
+    "M_MeadowCards": ("creature_grass_tuft", None, None, "#4E7A52"),
+    "M_Pebble": ("creature_pebble_cluster", "CreaturePebbleCluster", "#8C8070", "#8C8070"),
+    "M_CreatureBoulderA": ("creature_boulder_a", "CreatureBoulderA", None, "#7D8287"),
+    "M_CreatureBoulderB": ("creature_boulder_b", "CreatureBoulderB", None, "#7D8287"),
+    "M_CreatureBoulderC": ("creature_boulder_c", "CreatureBoulderC", None, "#7D8287"),
+    "M_TreeCanopyCards": ("creature_tree_umbrella", None, None, "#3D8A72"),
+    "M_CreatureTreeUmbrella": ("creature_tree_umbrella", "CreatureTreeUmbrella", None, "#5A5047"),
+    "M_CreatureTreeLantern": ("creature_tree_lantern", "CreatureTreeLantern", None, "#A49B90"),
+}
+COVER_KIT = ("creature_grass_tuft", "creature_fern_clump", "creature_flower_clump", "creature_pebble_cluster")
+BERM_KIT = ("creature_tree_umbrella", "creature_tree_lantern", "creature_boulder_a", "creature_boulder_b", "creature_boulder_c")
+CLUSTERS = {
+    # cluster: ([(kit id, fewest, most)], spread sigma range in metres)
+    "tufts": ([("creature_grass_tuft", 4, 9), ("creature_flower_clump", 0, 1)], (0.45, 1.1)),
+    "ferns": ([("creature_fern_clump", 2, 4), ("creature_grass_tuft", 1, 3)], (0.55, 1.2)),
+    "flowers": ([("creature_flower_clump", 3, 6), ("creature_grass_tuft", 1, 3)], (0.45, 1.0)),
+    "stones": ([("creature_pebble_cluster", 1, 3), ("creature_grass_tuft", 0, 2)], (0.4, 0.9)),
+}
+CLUSTERS_PER_CHUNK = 7.0    # before thinning to the budget
+SINGLES_PER_CHUNK = 5.0
+
+
+class _Kit:
+    """One kit asset read back from its exported GLB: per source mesh, the arrays a merged copy needs."""
+
+    def __init__(self, asset_id):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "assets", "export", f"{asset_id}.glb"))
+        objs = [o for o in bpy.data.objects if o not in before]
+        self.id, self.parts = asset_id, []
+        lo, hi = Vector((1e9, 1e9, 1e9)), Vector((-1e9, -1e9, -1e9))
+        for obj in sorted((o for o in objs if o.type == "MESH"), key=lambda o: o.name):
+            m = obj.data
+            world = np.array(obj.matrix_world)                       # the importer's node transform, if any
+            normal_m = np.array(obj.matrix_world.to_3x3().inverted().transposed())
+            verts = np.array([v.co[:] for v in m.vertices]) @ world[:3, :3].T + world[:3, 3]
+            polys = [tuple(p.vertices) for p in m.polygons]
+            normals = np.array([n.vector[:] for n in m.corner_normals]) @ normal_m.T
+            normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-9)
+            uv = m.uv_layers.active
+            uvs = np.array([d.uv[:] for d in uv.data])
+            colours = None
+            if len(m.color_attributes):
+                attr = m.color_attributes[0]
+                vals = np.array([d.color[:3] for d in attr.data])
+                if attr.domain == "CORNER":                       # one colour a card: any corner of a vertex will do
+                    per_vertex = np.ones((len(verts), 3))
+                    for loop in m.loops:
+                        per_vertex[loop.vertex_index] = vals[loop.index]
+                    vals = per_vertex
+                colours = vals
+            mats = [m.materials[p.material_index].name.split(".")[0] for p in m.polygons]
+            self.parts.append({"name": obj.name, "verts": verts, "polys": polys, "normals": normals, "uvs": uvs,
+                               "colours": colours, "mats": mats, "cards": colours is not None})
+            lo = Vector(np.minimum(lo, verts.min(axis=0)))
+            hi = Vector(np.maximum(hi, verts.max(axis=0)))
+        self.tris = sum(len(p) - 2 for part in self.parts for p in part["polys"])
+        self.top = hi.z
+        self.reach = max(float(np.hypot(part["verts"][:, 0], part["verts"][:, 1]).max()) for part in self.parts)
+        for obj in objs:
+            bpy.data.objects.remove(obj)
+
+
+class _Merged:
+    """The merged copies going into one field object: vertices, faces, corner normals and UVs, vertex colours."""
+
+    def __init__(self, name, origin):
+        self.name, self.origin = name, Vector(origin)
+        self.verts, self.faces, self.normals, self.uvs, self.cols, self.mats = [], [], [], [], [], []
+        self.tris = 0
+
+    def add(self, part, at, yaw, scale, shade=1.0):
+        c, s = math.cos(yaw), math.sin(yaw)
+        rot = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        base = len(self.verts)
+        pts = part["verts"] @ rot.T * scale + (np.array(at[:]) - np.array(self.origin[:]))
+        self.verts.extend(map(tuple, pts))
+        self.faces.extend(tuple(i + base for i in p) for p in part["polys"])
+        self.normals.extend(map(tuple, part["normals"] @ rot.T))
+        self.uvs.extend(map(tuple, part["uvs"]))
+        cols = part["colours"] if part["colours"] is not None else np.ones((len(pts), 3))
+        self.cols.extend(map(tuple, np.clip(cols * shade, 0.0, 1.0)))
+        self.mats.extend(part["mats"])
+        self.tris += sum(len(p) - 2 for p in part["polys"])
+
+    def build(self, materials, colours):
+        if not self.faces:
+            return None
+        mesh = bpy.data.meshes.new(f"{self.name}_mesh")
+        mesh.from_pydata(self.verts, [], self.faces)
+        names = sorted(set(self.mats))
+        for n in names:
+            mesh.materials.append(materials[n])
+        mesh.polygons.foreach_set("material_index", [names.index(n) for n in self.mats])
+        mesh.polygons.foreach_set("use_smooth", [True] * len(self.faces))
+        layer = mesh.uv_layers.new(name="UVMap")
+        layer.data.foreach_set("uv", [c for uv in self.uvs for c in uv])
+        if colours:
+            attr = mesh.color_attributes.new(name=VC, type="FLOAT_COLOR", domain="POINT")
+            attr.data.foreach_set("color", [c for rgb in self.cols for c in (*rgb, 1.0)])
+        mesh.normals_split_custom_set(self.normals)
+        mesh.update()
+        obj = bpy.data.objects.new(self.name, mesh)
+        bpy.context.collection.objects.link(obj)
+        obj.location = self.origin
+        return obj
+
+
+def _stand_ins():
+    """The stand-in materials: a flat colour each, no images (Godot maps them to the kit's .tres)."""
+    out = {}
+    for name, (_kit, _tex, _tint, colour) in KIT_MATERIALS.items():
+        out[name] = bc.material(name, _lin(colour), 0.9)
+    return out
+
+
+class _PatchMask:
+    """The field shader's earth weight and lush mask (shaders/creature_field.gdshader), sampled from the patch
+    tile as the shader samples it (world xz, rotated, domain-warped, bilinear, repeating), so cover follows the
+    turf and the bare earth the player sees."""
+
+    def __init__(self):
+        img = bpy.data.images.load(os.path.join(ROOT, "assets", "export", "creature_field", "T_CreatureField_Patch.png"))
+        w, h = img.size
+        px = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        self.r = px.reshape(h, w, 4)[::-1, :, 0].astype(np.float64)    # top row first, as a shader's v runs
+        bpy.data.images.remove(img)
+
+    def sample(self, u, v):
+        h, w = self.r.shape
+        x, y = u * w - 0.5, v * h - 0.5
+        x0, y0 = math.floor(x), math.floor(y)
+        fx, fy = x - x0, y - y0
+        a = self.r[y0 % h, x0 % w] * (1 - fx) + self.r[y0 % h, (x0 + 1) % w] * fx
+        b = self.r[(y0 + 1) % h, x0 % w] * (1 - fx) + self.r[(y0 + 1) % h, (x0 + 1) % w] * fx
+        return a * (1 - fy) + b * fy
+
+    def earth(self, x, y):
+        X, Z = x, -y                                                    # Blender (x, y) is Godot (x, -z)
+        c, s = math.cos(PATCH_ANGLE), math.sin(PATCH_ANGLE)
+        pu, pv = (c * X - s * Z) / PATCH_M, (s * X + c * Z) / PATCH_M
+        wu, wv = self.sample(pu * 1.9 + 0.21, pv * 1.9 + 0.53), self.sample(pu * 1.9 + 0.71, pv * 1.9 + 0.08)
+        pu, pv = pu + PATCH_WARP * (wu - 0.5) * 2.0, pv + PATCH_WARP * (wv - 0.5) * 2.0
+        t = bc.smoothstep((self.sample(pu, pv) - EARTH_LOW) / (EARTH_HIGH - EARTH_LOW))
+        clearing = 1.0 - bc.smoothstep((math.hypot(x, y) - CLEARING_R) / CLEARING_SOFT)
+        return max(t, clearing)
+
+    def lush(self, x, y):
+        return bc.smoothstep((self.sample(x / (PATCH_M * 0.61) + 0.63, -y / (PATCH_M * 0.61) + 0.12) - 0.5) / 0.3)
+
+
+class _Ground:
+    """Ray casts down onto the field and hills meshes, so every piece stands on the surface the game draws."""
+
+    def __init__(self, objs):
+        from mathutils.bvhtree import BVHTree
+        deps = bpy.context.evaluated_depsgraph_get()
+        self.trees = [BVHTree.FromObject(o, deps) for o in objs]
+
+    def z(self, x, y):
+        best = None
+        for tree in self.trees:
+            hit = tree.ray_cast(Vector((x, y, 200.0)), Vector((0.0, 0.0, -1.0)))
+            if hit[0] is not None and (best is None or hit[0].z > best):
+                best = hit[0].z
+        mp._check(best is not None, f"scatter: ground under ({x:.1f}, {y:.1f})")
+        return best
+
+
+def _cover_layout(kits, mask, ground):
+    """Clusters of cover over the walkable field: each cluster's kind follows the ground under its centre (stones
+    on the bare earth, tufts on its edges, tufts, ferns and flowers on the turf, more flowers where the turf is
+    lush), and single tufts scattered between. Then whole clusters are dropped, in a seeded order, until the cover
+    fits COVER_TRIS. Returns {chunk: [(kit id, position, yaw, scale, shade)]}."""
+    clusters = []
+    for ci in range(CHUNKS):
+        for cj in range(CHUNKS):
+            rng = random.Random(SCATTER_SEED * 100 + ci * CHUNKS + cj)
+            x0, y0 = -CHUNKS * CHUNK_M / 2 + ci * CHUNK_M, -CHUNKS * CHUNK_M / 2 + cj * CHUNK_M
+            groups = [("cluster", n) for n in range(_poisson(rng, CLUSTERS_PER_CHUNK))] + \
+                     [("single", n) for n in range(_poisson(rng, SINGLES_PER_CHUNK))]
+            for kind, _n in groups:
+                cx, cy = x0 + rng.uniform(0.0, CHUNK_M), y0 + rng.uniform(0.0, CHUNK_M)
+                if max(abs(cx), abs(cy)) > COVER_EDGE_M - 0.6 or math.hypot(cx, cy) < COVER_CLEAR_M + 0.8:
+                    continue
+                earth = mask.earth(cx, cy)
+                if kind == "single":
+                    if earth > 0.4:
+                        continue
+                    members, spread = [("creature_grass_tuft", 1, 1)], (0.0, 0.0)
+                else:
+                    if earth > 0.55:
+                        name = "stones"
+                    elif earth > 0.3:
+                        name = rng.choice(("tufts", "stones"))
+                    else:
+                        lush = mask.lush(cx, cy)
+                        name = _weighted(rng, {"tufts": 0.45, "ferns": 0.25, "flowers": 0.3 * (0.6 + lush)})
+                    members, spread = CLUSTERS[name]
+                sigma = rng.uniform(*spread)
+                pieces = []
+                for kit_id, lo, hi in members:
+                    for _ in range(rng.randint(lo, hi)):
+                        kit = kits[kit_id]
+                        scale = min(rng.uniform(0.8, 1.12), (COVER_MAX_M - 0.02) / kit.top)
+                        for _try in range(12):
+                            px, py = cx + rng.gauss(0.0, sigma), cy + rng.gauss(0.0, sigma)
+                            reach = kit.reach * scale
+                            if max(abs(px), abs(py)) + reach > COVER_EDGE_M or math.hypot(px, py) - reach < COVER_CLEAR_M:
+                                continue
+                            if any(math.hypot(px - q[1][0], py - q[1][1]) < 0.55 * (reach + q[5]) for q in pieces):
+                                continue
+                            pieces.append((kit_id, (px, py), rng.uniform(0.0, math.tau), scale, rng.uniform(0.88, 1.0), reach))
+                            break
+                if pieces:
+                    clusters.append((rng.random(), pieces))
+    clusters.sort(key=lambda c: c[0])
+    tris = sum(kits[p[0]].tris for _k, ps in clusters for p in ps)
+    while tris > COVER_TRIS:
+        _k, dropped = clusters.pop()
+        tris -= sum(kits[p[0]].tris for p in dropped)
+    out = {}
+    for _k, pieces in clusters:
+        for kit_id, (px, py), yaw, scale, shade, _reach in pieces:
+            ci = min(CHUNKS - 1, int((px + CHUNKS * CHUNK_M / 2) // CHUNK_M))
+            cj = min(CHUNKS - 1, int((py + CHUNKS * CHUNK_M / 2) // CHUNK_M))
+            out.setdefault((ci, cj), []).append((kit_id, Vector((px, py, ground.z(px, py))), yaw, scale, shade))
+    return out, tris
+
+
+def _poisson(rng, mean):
+    k, p, limit = 0, 1.0, math.exp(-mean)
+    while True:
+        p *= rng.random()
+        if p <= limit:
+            return k
+        k += 1
+
+
+def _weighted(rng, weights):
+    total = sum(weights.values())
+    r = rng.uniform(0.0, total)
+    for name in sorted(weights):
+        r -= weights[name]
+        if r <= 0.0:
+            return name
+    return sorted(weights)[-1]
+
+
+def _ring_point(angle, d):
+    """The point at `angle` (radians) whose square distance max(|x|, |y|) from the origin is d."""
+    c, s = math.cos(angle), math.sin(angle)
+    k = d / max(abs(c), abs(s))
+    return c * k, s * k
+
+
+def _berm_layout(kits, ground):
+    """Per sector (eighths of the ring, by angle), a grove of an umbrella and a lantern tree, and a third tree, on
+    the hills just past the berm, and boulders on the berm's crest and outer slope, some at the grove's foot. Every
+    piece keeps its whole footprint at max(|x|, |y|) >= OBSTACLE_EDGE_M (outside the walls), and trees stand only
+    where the ground is near level. The third trees and the boulders are dropped in a seeded order until the berm
+    fits BERM_TRIS.
+    Returns {sector: [(kit id, position, yaw, scale, 1.0)]}."""
+    picks = []
+    placed = []                                       # (x, y, footprint radius) of every piece so far
+    def clear(x, y, r):
+        return all(math.hypot(x - qx, y - qy) >= r + qr for qx, qy, qr in placed)
+    for k in range(SECTORS):
+        rng = random.Random(SCATTER_SEED * 7 + k)
+        mid = math.tau * k / SECTORS
+        grove = mid + rng.uniform(-0.25, 0.25)
+        trees = ["creature_tree_umbrella", "creature_tree_lantern"]
+        if rng.random() < 0.5:
+            trees.reverse()
+        trees.append("creature_tree_umbrella" if k % 2 else "creature_tree_lantern")   # a third, kept if the budget allows
+        for n, kit_id in enumerate(trees):
+            kit = kits[kit_id]
+            scale = rng.uniform(0.95, 1.3) if kit_id == "creature_tree_umbrella" else rng.uniform(0.9, 1.2)
+            key = 0.0 if n < 2 else rng.uniform(0.0, 1.0)
+            for _try in range(30):
+                a = grove + (n - 1.0) * rng.uniform(0.06, 0.1) + rng.uniform(-0.02, 0.02)
+                d = rng.uniform(87.0, 97.0) + 2.0 * (n % 2)
+                x, y = _ring_point(a, d)
+                if max(abs(x), abs(y)) - kit.reach * scale < OBSTACLE_EDGE_M + 0.5:
+                    continue
+                if not clear(x, y, 1.2):
+                    continue
+                around = [ground.z(x + 1.2 * math.cos(t), y + 1.2 * math.sin(t)) for t in np.linspace(0.0, math.tau, 6, endpoint=False)]
+                if max(around) - min(around) > TREE_SLOPE_MAX_M:
+                    continue
+                picks.append((k, key, kit_id, Vector((x, y, min(around) - 0.03)), rng.uniform(0.0, math.tau), scale))
+                placed.append((x, y, 1.2))
+                break
+        for n in range(rng.randint(3, 4)):
+            kit_id = rng.choice(("creature_boulder_a", "creature_boulder_a", "creature_boulder_b", "creature_boulder_b", "creature_boulder_c"))
+            kit = kits[kit_id]
+            scale = rng.uniform(0.8, 1.2)
+            near_grove = n < 2
+            for _try in range(30):
+                a = (grove + rng.uniform(-0.12, 0.12)) if near_grove else (mid + rng.uniform(-0.38, 0.38))
+                d = rng.uniform(82.0, 92.0) if near_grove else rng.uniform(81.5, 87.0)
+                x, y = _ring_point(a, d)
+                if max(abs(x), abs(y)) - kit.reach * scale < OBSTACLE_EDGE_M:
+                    continue
+                if not clear(x, y, kit.reach * scale * 0.85):
+                    continue
+                r = kit.reach * scale * 0.9
+                around = [ground.z(x + r * math.cos(t), y + r * math.sin(t)) for t in np.linspace(0.0, math.tau, 6, endpoint=False)]
+                sink = 0.12 * kit.top * scale
+                picks.append((k, rng.uniform(1e-6, 1.0), kit_id, Vector((x, y, min(around) + 0.4 * sink)), rng.uniform(0.0, math.tau), scale))
+                placed.append((x, y, kit.reach * scale * 0.85))
+                break
+    kept = [p for p in picks if p[1] == 0.0]                       # two trees a sector, always
+    optional = sorted((p for p in picks if p[1] > 0.0), key=lambda p: p[1])
+    tris = sum(kits[p[2]].tris for p in picks)
+    while tris > BERM_TRIS and optional:
+        tris -= kits[optional.pop()[2]].tris
+    out = {}
+    for k, _key, kit_id, at, yaw, scale in kept + optional:
+        out.setdefault(k, []).append((kit_id, at, yaw, scale, 1.0))
+    return out, tris
+
+
+def _centre(items):
+    xs = [p[1].x for p in items]
+    ys = [p[1].y for p in items]
+    return Vector(((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, 0.0))
+
+
+def build_field_scatter(ground_objs):
+    """Composes the kit into the field (field rev 2b, PROPOSED; no game code): the cover as 8 x 8 chunks of 20 m
+    inside the walls (CoverIJ_Cards and CoverIJ_Stones, each object's origin at its chunk's centre so a visibility
+    range reads the same from either end), and the trees and boulders as 8 sectors on the berm and hills outside
+    the walls (BermK_Cards and BermK_Wood). Each piece is a merged copy of a kit GLB's meshes (their UVs, corner
+    normals and card colours), turned, scaled and set on the ground by a ray cast. Returns the record's `scatter`
+    block."""
+    kits = {kit_id: _Kit(kit_id) for kit_id in COVER_KIT + BERM_KIT}
+    for mat in list(bpy.data.materials):                               # the kit's own materials and images go
+        if mat.name.split(".")[0] in KIT_MATERIALS or mat.users == 0:
+            mat.name = f"_kit_{mat.name}"
+    materials = _stand_ins()
+    mask, ground = _PatchMask(), _Ground(ground_objs)
+    cover, cover_tris = _cover_layout(kits, mask, ground)
+    berm, berm_tris = _berm_layout(kits, ground)
+    counts, nodes = {}, []
+    groups = [((f"Cover{ci}{cj}", Vector((-CHUNKS * CHUNK_M / 2 + (ci + 0.5) * CHUNK_M, -CHUNKS * CHUNK_M / 2 + (cj + 0.5) * CHUNK_M, 0.0))), items)
+              for (ci, cj), items in sorted(cover.items())]
+    groups += [((f"Berm{k}", _centre(items)), items) for k, items in sorted(berm.items())]
+    for (name, origin), items in groups:
+        cards, solid = _Merged(f"{name}_Cards", origin), _Merged(f"{name}_Stones" if name.startswith("Cover") else f"{name}_Wood", origin)
+        for kit_id, at, yaw, scale, shade in items:
+            counts[kit_id] = counts.get(kit_id, 0) + 1
+            for part in kits[kit_id].parts:
+                (cards if part["cards"] else solid).add(part, at, yaw, scale, shade)
+        for merged, coloured in ((cards, True), (solid, False)):
+            if merged.build(materials, coloured) is not None:
+                nodes.append(merged.name)
+    for mat in [m for m in bpy.data.materials if m.name.startswith("_kit_")]:
+        bpy.data.materials.remove(mat)
+    for img in [i for i in bpy.data.images if i.users == 0]:
+        bpy.data.images.remove(img)
+    for mesh in [m for m in bpy.data.meshes if m.users == 0]:
+        bpy.data.meshes.remove(mesh)
+    bpy.context.view_layer.update()                                    # the new objects' world matrices
+    pts = [(o, o.matrix_world @ v.co) for o in bpy.context.scene.objects if o.name.startswith(("Cover", "Berm")) for v in o.data.vertices]
+    for o, p in pts:
+        if o.name.startswith("Cover"):
+            mp._check(math.hypot(p.x, p.y) >= COVER_CLEAR_M - 0.05 and max(abs(p.x), abs(p.y)) <= COVER_EDGE_M + 0.05 and p.z <= COVER_MAX_M + 0.13,
+                      f"scatter: {o.name} keeps to the walkable cover rules ({p.x:.2f}, {p.y:.2f}, {p.z:.2f})")
+        else:
+            mp._check(max(abs(p.x), abs(p.y)) >= OBSTACLE_EDGE_M - 0.05, f"scatter: {o.name} stays outside the walls ({p.x:.2f}, {p.y:.2f})")
+    print(f"  scatter: cover {cover_tris} triangles in {sum(1 for n in nodes if n.startswith('Cover'))} objects, berm {berm_tris} in "
+          f"{sum(1 for n in nodes if n.startswith('Berm'))}; pieces {counts}")
+    return {"generator": "tools/blender/creature_flora.py build_field_scatter (through make_creature_world.py)",
+            "kit": {kit_id: {"pieces": counts.get(kit_id, 0), "triangles_each": kits[kit_id].tris, "source": f"assets/export/{kit_id}.glb"} for kit_id in COVER_KIT + BERM_KIT},
+            "seed": SCATTER_SEED,
+            "cover": {"triangles": cover_tris, "budget": COVER_TRIS, "chunks": f"{CHUNKS} x {CHUNKS} of {CHUNK_M:g} m, CoverIJ_Cards and CoverIJ_Stones, origin at the chunk centre",
+                      "inside_m": COVER_EDGE_M, "clear_of_nest_m": COVER_CLEAR_M, "height_max_m": COVER_MAX_M,
+                      "density": f"Poisson, {CLUSTERS_PER_CHUNK:g} clusters and {SINGLES_PER_CHUNK:g} single tufts per chunk before whole clusters are dropped in a seeded order to the budget; stones on the bare earth (shader patch mask), tufts on its edges, tufts, ferns and flowers on the turf (flowers more where it is lush)",
+                      "clusters": {k: {"members": [list(m) for m in v[0]], "spread_sigma_m": list(v[1])} for k, v in CLUSTERS.items()},
+                      "import": f"no shadow, visibility range end {COVER_VIS_END_M:g} m, card meshes without LODs"},
+            "berm": {"triangles": berm_tris, "budget": BERM_TRIS, "sectors": f"{SECTORS} by angle, BermK_Cards (canopy, no LODs) and BermK_Wood (bark and boulders, Godot's LODs)",
+                     "outside_m": OBSTACLE_EDGE_M, "tree_slope_max_m": TREE_SLOPE_MAX_M,
+                     "layout": "per sector a grove of one umbrella and one lantern tree and a third tree at 87 to 99 m (umbrellas scaled 0.95 to 1.3, lanterns 0.9 to 1.2), three or four boulders on the berm's crest and outer slope (81.5 to 92 m), some at the grove's foot; the third trees and the boulders dropped in a seeded order to the budget"},
+            "materials": {name: (f"res://assets/export/{name}.tres") for name in KIT_MATERIALS},
+            "nodes": nodes}
+
+
+def scatter_import_options(nodes):
+    """The field's per-node and per-mesh import options for its scatter objects (from the record's node list)."""
+    out = {"meshes": {}, "nodes": {}}
+    for name in nodes:
+        if name.endswith("_Cards"):
+            out["meshes"][f"creature_field_ground_{name}_mesh"] = {"generate/lods": 2}
+        if name.startswith("Cover"):
+            out["nodes"][f"PATH:{name}"] = {"mesh_instance/cast_shadow": 0, "mesh_instance/visibility_range_end": COVER_VIS_END_M}
+    return out
+
+
+BAKED_TRES = """[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
+
+; {mat}: the creature field's merged copies of {kit} (field rev 2b scatter, tools/blender/creature_flora.py
+; build_field_scatter) draw with the kit asset's own baked textures, which Godot extracted from
+; assets/export/{kit}.glb, as that GLB's material does (its base colour factor as the albedo colour; roughness in
+; the ORM's green; metallic is 0 throughout, the ORM's blue). The field's stand-in {mat} is mapped here in its
+; .glb.import. Written by tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Texture2D" path="res://assets/export/{kit}_T_{tex}_Albedo.png" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://assets/export/{kit}_T_{tex}_ORM.png" id="2_orm"]
+[ext_resource type="Texture2D" path="res://assets/export/{kit}_T_{tex}_Normal.png" id="3_normal"]
+
+[resource]
+resource_name = "{mat}"
+albedo_color = Color({r}, {g}, {b}, 1)
+albedo_texture = ExtResource("1_albedo")
+roughness_texture = ExtResource("2_orm")
+roughness_texture_channel = 1
+normal_enabled = true
+normal_texture = ExtResource("3_normal")
+"""
+
+
+def write_kit_materials(export):
+    """The .tres files the field's baked stand-ins map to (the card stand-ins map to M_MeadowCards.tres and
+    M_TreeCanopyCards.tres)."""
+    for name, (kit, tex, tint, _colour) in KIT_MATERIALS.items():
+        if tex is None:
+            continue
+        r, g, b = (round(int((tint or "#FFFFFF").lstrip("#")[i:i + 2], 16) / 255.0, 3) for i in (0, 2, 4))
+        with open(os.path.join(export, f"{name}.tres"), "w") as f:
+            f.write(BAKED_TRES.format(mat=name, kit=kit, tex=tex, r=r, g=g, b=b))
+        print("kit material:", name)
+
+
 # --- The card GLBs' atlas link ----------------------------------------------------------------------------------
 
-def link_atlas(glb_path):
-    """Rewrites a card GLB so its image points at the shared atlas file (a relative URI,
-    creature_flora/T_MeadowCards.png) instead of embedding a copy of it: the repository then holds one 1 MB atlas,
-    not one per card GLB, and a glTF viewer or Godot's importer still finds the texture beside the GLB. The image's
-    bufferView is dropped and the binary chunk repacked."""
+def link_atlas(glb_path, name=ATLAS, path=ATLAS_PATH):
+    """Rewrites a card GLB so its atlas image `name` points at the shared atlas file (a relative URI, e.g.
+    creature_flora/T_MeadowCards.png) instead of embedding a copy of it: the repository then holds one atlas, not
+    one per card GLB, and a glTF viewer or Godot's importer still finds the texture beside the GLB. The image's
+    bufferView is dropped and the binary chunk repacked; other (baked) images stay embedded."""
     import json
     import struct
     with open(glb_path, "rb") as f:
@@ -1008,11 +2059,11 @@ def link_atlas(glb_path):
     blob = data[bin_at + 8:bin_at + 8 + bin_len]
     drop = set()
     for img in doc.get("images", []):
-        if img.get("name") == ATLAS and "bufferView" in img:
+        if img.get("name") == name and "bufferView" in img:
             drop.add(img.pop("bufferView"))
             img.pop("mimeType", None)
-            img["uri"] = os.path.relpath(os.path.join(ROOT, ATLAS_PATH), os.path.dirname(glb_path)).replace(os.sep, "/")
-    mp._check(len(drop) == 1, f"{glb_path}: one embedded {ATLAS} to link")
+            img["uri"] = os.path.relpath(os.path.join(ROOT, path), os.path.dirname(glb_path)).replace(os.sep, "/")
+    mp._check(len(drop) == 1, f"{glb_path}: one embedded {name} to link")
     views, remap, packed = [], {}, b""
     for i, view in enumerate(doc["bufferViews"]):
         if i in drop:
@@ -1044,6 +2095,11 @@ def link_atlas(glb_path):
 # --- Registration (read by make_creature_world.py) --------------------------------------------------------------
 
 CARD_ASSETS = {"creature_grass_tuft": "GrassTuft", "creature_fern_clump": "FernClump", "creature_flower_clump": "FlowerClump"}
+# tree id -> (wood node, canopy card node)
+TREE_ASSETS = {"creature_tree_umbrella": ("UmbrellaTree", "UmbrellaCanopy"), "creature_tree_lantern": ("LanternTree", "LanternCanopy")}
+# asset id -> the shared atlas its GLB links by URI after export (make_creature_world.main)
+ATLAS_LINKS = {**{asset_id: (ATLAS, ATLAS_PATH) for asset_id in CARD_ASSETS},
+               **{asset_id: (CANOPY_ATLAS, CANOPY_PATH) for asset_id in TREE_ASSETS}}
 
 # asset id -> (builder, triangle budget)
 ASSETS = {
@@ -1052,15 +2108,21 @@ ASSETS = {
     "creature_flower_clump": (build_flower_clump, 120),
     "creature_pebble_cluster": (build_pebble_cluster, 160),
     **{asset_id: ((lambda i=asset_id: build_boulder(i)), spec[2]) for asset_id, spec in BOULDERS.items()},
+    "creature_tree_umbrella": (build_tree_umbrella, 3000),
+    "creature_tree_lantern": (build_tree_lantern, 2500),
 }
 
-EXTERNAL = {asset_id: {"M_MeadowCards": "M_MeadowCards"} for asset_id in CARD_ASSETS}
+EXTERNAL = {**{asset_id: {"M_MeadowCards": "M_MeadowCards"} for asset_id in CARD_ASSETS},
+            **{asset_id: {"M_TreeCanopyCards": "M_TreeCanopyCards"} for asset_id in TREE_ASSETS}}
 
 # The cards keep no LODs (Godot's LOD pass collapses whole cards) and cast no shadow (cover; the field's scatter
-# draws its cover without shadows too).
-IMPORT_OPTIONS = {asset_id: {"meshes": {f"{asset_id}_{node}_mesh": {"generate/lods": 2}},
-                             "nodes": {f"PATH:{node}": {"mesh_instance/cast_shadow": 0}}}
-                  for asset_id, node in CARD_ASSETS.items()}
+# draws its cover without shadows too). A tree's canopy keeps no LODs either but casts its shadow (it stands
+# outside the walls, where its shade grounds it on the berm); its wood keeps Godot's generated LODs.
+IMPORT_OPTIONS = {**{asset_id: {"meshes": {f"{asset_id}_{node}_mesh": {"generate/lods": 2}},
+                                "nodes": {f"PATH:{node}": {"mesh_instance/cast_shadow": 0}}}
+                     for asset_id, node in CARD_ASSETS.items()},
+                  **{asset_id: {"meshes": {f"{asset_id}_{canopy}_mesh": {"generate/lods": 2}}}
+                     for asset_id, (_wood, canopy) in TREE_ASSETS.items()}}
 
 MEADOW_TRES = """[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
 
@@ -1088,9 +2150,43 @@ roughness = 0.9
 """
 
 
+CANOPY_TRES = """[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+; The creature world trees' canopy cards (assets/records/creature_tree_umbrella.json, creature_tree_lantern.json;
+; tools/blender/creature_flora.py): the T_TreeCanopyCards atlas's authored colour times the mesh's COLOR_0 (a
+; greyscale brightness per card, read as sRGB), cut out by the atlas's alpha (transparency 2, alpha scissor at 0.5).
+; Back faces are culled: every card is two sheets back to back whose normals point out of the crown, so the crown
+; shades as one rounded volume from any side. It casts shadows (the scissor cuts them out too) but receives none:
+; a card's lower sheet lies 1.2 mm under its upper one, so with shadows received every underside fell into its own
+; card's shadow and the crown read as black and mint blotches (the first engine frames); the crown's rounded normals
+; shade it instead. A StandardMaterial3D, so the field can carry merged copies beside its own ShaderMaterial. Each
+; tree GLB's .glb.import and the field's point the imported M_TreeCanopyCards here. Written by
+; tools/blender/make_creature_world.py --import.
+
+[ext_resource type="Texture2D" path="res://{atlas}" id="1_albedo"]
+
+[resource]
+resource_name = "M_TreeCanopyCards"
+transparency = 2
+disable_receive_shadows = true
+alpha_scissor_threshold = 0.5
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_texture = ExtResource("1_albedo")
+metallic_specular = 0.25
+roughness = 0.85
+"""
+
+
 def map_materials(export, set_import_param):
-    """Writes M_MeadowCards.tres and gives the atlas mipmaps. make_creature_world.map_materials calls this."""
+    """Writes M_MeadowCards.tres and M_TreeCanopyCards.tres and gives their atlases mipmaps.
+    make_creature_world.map_materials calls this."""
     with open(os.path.join(export, "M_MeadowCards.tres"), "w") as f:
         f.write(MEADOW_TRES.format(atlas=ATLAS_PATH))
-    set_import_param(os.path.join(FLORA_DIR, f"{ATLAS}.png.import"), "mipmaps/generate", "true")
-    print("mipmaps:", ATLAS)
+    with open(os.path.join(export, "M_TreeCanopyCards.tres"), "w") as f:
+        f.write(CANOPY_TRES.format(atlas=CANOPY_PATH))
+    for name in (ATLAS, CANOPY_ATLAS):
+        path = os.path.join(FLORA_DIR, f"{name}.png.import")
+        if os.path.exists(path):
+            set_import_param(path, "mipmaps/generate", "true")
+            print("mipmaps:", name)

@@ -19,6 +19,12 @@ extends SceneTree
 ## gameplay camera's distance and pitch), kit_patch.png (a 9 m patch of mixed cover round the row at the gameplay
 ## camera), kit_boulders.png (the three boulders at 4 to 7 m, set on the turf for this review only: the game keeps
 ## them outside the walls) and kit_berm.png (the boulders on the berm past the wall at 80 m, from 20 m inside).
+## --trees renders the two kit trees instead: tree_pair.png (the umbrella and the lantern tree side by side on the
+## turf at about 12 m, set inside the walls for this review only), tree_umbrella_close.png and
+## tree_lantern_close.png (from under each crown, about 4 m off), tree_berm.png (both on the berm and hills past
+## the east wall, from 20 m inside) and tree_far.png (the same from the nest, about 90 m off).
+## --bare-field hides the field's own scatter (its Cover* and Berm* objects), so a kit review sees only the pieces
+## it places.
 
 const FIELD := "res://assets/export/creature_field_ground.glb"
 const NEST := "res://assets/export/creature_nest_ring.glb"
@@ -30,11 +36,15 @@ const BUSH_COUNT := 14
 const KIT_COVER := ["creature_grass_tuft", "creature_fern_clump", "creature_flower_clump", "creature_pebble_cluster"]
 const KIT_BOULDERS := ["creature_boulder_a", "creature_boulder_b", "creature_boulder_c"]
 const KIT_AT := Vector3(0.0, 0.0, 15.0)      # the kit row's centre: turf, south of the nest's clearing
+const KIT_TREES := ["creature_tree_umbrella", "creature_tree_lantern"]
+const TREES_AT := Vector3(0.0, 0.0, 30.0)    # the tree pair's centre: turf, south of the nest
 
 var out_dir := "user://world_dressing"
 var probe := false
 var no_shadow := false
 var kit := false
+var trees := false
+var bare_field := false
 var camera: Camera3D
 
 
@@ -48,6 +58,10 @@ func _initialize() -> void:
 			no_shadow = true
 		elif arg == "--kit":
 			kit = true
+		elif arg == "--trees":
+			trees = true
+		elif arg == "--bare-field":
+			bare_field = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -56,12 +70,21 @@ func _run() -> void:
 	var world := Node3D.new()
 	root.add_child(world)
 	_light(world)
-	world.add_child(load(FIELD).instantiate())
+	var field: Node3D = load(FIELD).instantiate()
+	if bare_field:
+		for child in field.find_children("*", "MeshInstance3D", true, false):
+			if String(child.name).begins_with("Cover") or String(child.name).begins_with("Berm"):
+				(child as Node3D).visible = false
+	world.add_child(field)
 	world.add_child(load(NEST).instantiate())
 	camera = Camera3D.new()
 	camera.fov = 60.0
 	world.add_child(camera)
 	camera.current = true
+	if trees:
+		await _tree_shots(world)
+		quit()
+		return
 	if kit:
 		await _kit_shots(world)
 		quit()
@@ -200,6 +223,34 @@ func _kit_shots(world: Node3D) -> void:
 	camera.look_at(Vector3(84.0, 2.5, 0.0))
 	await _frames(10)
 	await _shot("kit_berm")
+
+
+func _tree_shots(world: Node3D) -> void:
+	_kit_piece(world, KIT_TREES[0], TREES_AT + Vector3(-4.5, 0.0, 0.0), 0.4)
+	_kit_piece(world, KIT_TREES[1], TREES_AT + Vector3(4.5, 0.0, 1.0), 2.1)
+	_kit_piece(world, KIT_TREES[0], Vector3(85.8, 0.0, -9.0), 1.7)
+	_kit_piece(world, KIT_TREES[1], Vector3(84.6, 0.0, 4.0), 0.3)
+	await _frames(20)
+	camera.position = TREES_AT + Vector3(0.0, 1.8, -12.5)
+	camera.look_at(TREES_AT + Vector3(0.0, 3.6, 0.0))
+	await _frames(10)
+	await _shot("tree_pair")
+	camera.position = TREES_AT + Vector3(-6.0, 1.5, -4.2)
+	camera.look_at(TREES_AT + Vector3(-4.5, 4.6, 0.0))
+	await _frames(10)
+	await _shot("tree_umbrella_close")
+	camera.position = TREES_AT + Vector3(3.2, 1.6, -3.0)
+	camera.look_at(TREES_AT + Vector3(5.2, 3.4, 1.0))
+	await _frames(10)
+	await _shot("tree_lantern_close")
+	camera.position = Vector3(64.0, 2.2, -2.0)
+	camera.look_at(Vector3(88.0, 4.5, -2.0))
+	await _frames(10)
+	await _shot("tree_berm")
+	camera.position = Vector3(0.0, 2.6, -2.0)
+	camera.look_at(Vector3(88.0, 4.0, -2.0))
+	await _frames(10)
+	await _shot("tree_far")
 
 
 func _light(world: Node3D) -> void:
