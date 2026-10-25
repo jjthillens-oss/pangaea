@@ -155,7 +155,8 @@ choice real and recorded, so those eras can read it:
 - **Both paths stay connected.** Land lineages keep river and shore access (Bible §7: water remains useful); sea
   lineages meet land species at the shore. Relations with species carry across (§4 continuity).
 - **Owner gate.** Building any underwater era past Aquatic changes milestone scope, so it waits for Joshua's go on its
-  bounded plan and is recorded in DECISIONS.md.
+  bounded plan (backlog U-01 to U-04, after the vertical slice; DECISIONS.md "A fully aquatic lineage can stay
+  underwater through later eras").
 
 ## 8. First playable slice (step 2)
 
