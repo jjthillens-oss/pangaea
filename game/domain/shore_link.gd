@@ -1,23 +1,32 @@
 class_name ShoreLink
 extends RefCounted
-## The cell-to-creature link's rules on the save (Bible section 4, transition contract; owner "Go", 2026-10-25,
-## docs/DECISIONS.md "Cell to creature link"). Plain data on a SaveGame, no files: EraTransition does the writes.
+## The links between eras on the save (Bible section 4, transition contract; owner "Go", 2026-10-25,
+## docs/DECISIONS.md "Cell to creature link" and "One continuous game"). Plain data on a SaveGame, no files:
+## EraTransition does the writes.
 ##
-## Capability: the shore rises once the lineage fills its ring at the build's top size (the first ring_paid there).
-## It is a world change, {"kind": "shore", "x_am", "y_am", "size"} in save.world_changes (an array whose elements
-## schema v4 leaves to their readers), so it stays where it rose across a reload and no key is added to the frozen
-## v4 schema. Destination: the shore stands on a clear point near where it rose, and the offer opens only when the
-## cell swims into its reach. Choice: the player crawls ashore or stays in the water, as often as they like.
+## Two links, one after the other (LINKS): the cell's pool opens on the sea (microscopic to aquatic, event
+## "entered_the_sea"), and the sea's shore opens on land (aquatic to terrestrial, event "came_ashore"). cross() takes
+## the link that leaves the save's era.
 ##
-## Crossing writes era "terrestrial", a "came_ashore" lineage event and the lineage's first creature, carrying the
-## lineage id, genome, history, points, discoveries and world seed over unchanged. The Bible's Aquatic era sits
-## between the two; this link joins the cell stage to the creature stage that exists now, and Aquatic slots in
-## between when it is built (an owner decision, as era boundaries are).
+## The cell's side, the sea edge: it rises once the lineage fills its ring at the build's top size (the first
+## ring_paid there). It is a world change, {"kind": "shore", "x_am", "y_am", "size"} in save.world_changes (an array
+## whose elements the schema leaves to their readers), so it stays where it rose across a reload. Destination: it
+## stands on a clear point near where it rose, and the offer opens only when the cell swims into its reach. Choice:
+## the player swims out or stays in the pool, as often as they like. The Aquatic stage owns the shore's side.
+##
+## Crossing writes the next era, the link's lineage event and, onto land, the lineage's first creature, carrying the
+## lineage id, genome, history, points, discoveries and world seed over unchanged. Into the sea the aquatic block
+## stays as it is (empty for a cell), so AquaticLineage builds the first fish from the cell's parts.
 
 const KIND := "shore"
+## The cell's era, whose pool the sea edge rises in, and the era it opens on.
 const FROM_ERA := "microscopic"
-const TO_ERA := "terrestrial"
-const EVENT := "came_ashore"
+const TO_ERA := "aquatic"
+## from era -> {"to", "event"}.
+const LINKS := {
+	"microscopic": {"to": "aquatic", "event": "entered_the_sea"},
+	"aquatic": {"to": "terrestrial", "event": "came_ashore"},
+}
 ## How far ahead of the cell the shore rises (tm at the size it rose): inside the 3 x 3 chunks round the cell
 ## (32 tm each), so the clear point is found among the colliders that are loaded.
 const RISE_AHEAD_TM := 20.0
@@ -37,9 +46,22 @@ static func shore_of(save: SaveGame) -> Dictionary:
 	return {}
 
 
-## Whether the lineage may still cross: it has not left the microscopic era.
+## The link out of `from_era`: {"to", "event", "checkpoint_suffix"}, or {} for an era with no way on yet.
+static func link(from_era: String) -> Dictionary:
+	if not LINKS.has(from_era):
+		return {}
+	var l: Dictionary = LINKS[from_era]
+	return {"to": l.to, "event": l.event, "checkpoint_suffix": ".pre-" + str(l.to)}
+
+
+## Whether the lineage is still a cell, so its sea edge may rise and be crossed.
 static func in_water(save: SaveGame) -> bool:
 	return save.era == FROM_ERA
+
+
+## Whether the save's era has a link out of it.
+static func can_cross(save: SaveGame) -> bool:
+	return LINKS.has(save.era)
 
 
 ## Records the shore at (x_am, y_am), risen at size `n`, once: false (and nothing changed) when one has risen
@@ -77,20 +99,23 @@ static func out_of_reach(d_am: float, n: int) -> bool:
 	return d_am > REACH_TM * REOPEN_SHARE * WorldConfig.tm_to_am(n)
 
 
-## The lineage event the crossing appends: the generation and genome that came ashore.
+## The lineage event the crossing out of the save's era appends: the generation and genome that crossed.
 static func event_of(save: SaveGame) -> Dictionary:
-	return {"generation": save.genome.generation, "genome_id": save.genome.genome_id, "event": EVENT}
+	return {"generation": save.genome.generation, "genome_id": save.genome.genome_id,
+		"event": str(link(save.era).get("event", ""))}
 
 
-## Moves the save ashore in memory: era, the lineage event and the first creature. Returns what it replaced, for
-## undo() when the write fails; {} (and nothing changed) when the lineage is already ashore.
-static func cross(save: SaveGame, creature: Dictionary) -> Dictionary:
-	if not in_water(save):
+## Moves the save across the link out of its era in memory: era, the lineage event and, when `payload` has one, its
+## "creature" (onto land, the lineage's first creature). Returns what it replaced, for undo() when the write fails;
+## {} (and nothing changed) when the era has no link out.
+static func cross(save: SaveGame, payload := {}) -> Dictionary:
+	if not can_cross(save):
 		return {}
 	var before := {"era": save.era, "history_size": save.lineage_history.size(), "creature": save.creature}
-	save.era = TO_ERA
 	save.lineage_history.append(event_of(save))
-	save.creature = creature.duplicate(true)
+	save.era = str(link(save.era).to)
+	if payload.has("creature"):
+		save.creature = (payload.creature as Dictionary).duplicate(true)
 	return before
 
 
