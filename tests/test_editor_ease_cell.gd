@@ -408,3 +408,60 @@ func test_with_symmetry_the_part_card_shows_the_pair() -> void:
 	editor.add("eye_spot")
 	check_eq(_parts_of("eye_spot").size(), 2, "and the add makes what the card showed")
 	check_near(Phenotype.derive(editor.session.working, catalog).sight, then.sight, 1e-6, "with the sight it showed")
+
+
+## The stats panel's rows as shown: [name, before, after column, change column] per row.
+func _shown_stats() -> Array:
+	var grid: GridContainer = editor.find_child("StatsPanel", true, false).find_children("*", "GridContainer", true, false)[0]
+	var cells := grid.get_children()
+	var out := []
+	for i in range(0, cells.size(), 4):
+		out.append([cells[i].text, cells[i + 1].text, cells[i + 2].text, cells[i + 3].text])
+	return out
+
+
+func test_the_stats_panel_marks_each_change_by_shape_and_its_signed_size() -> void:
+	editor.open(save, catalog, _state())
+	editor.add("cilia")
+	var lines := editor.stat_lines()
+	var shown := _shown_stats()
+	check_eq(shown.size(), lines.size(), "a row for each stat line")
+	var marked := 0
+	for i in lines.size():
+		var line: Array = lines[i]
+		var row: Array = shown[i]
+		check_eq(row[0], line[0], "in stat_lines order")
+		check_eq(row[1], line[1], "%s before" % line[0])
+		if line[1] == line[2]:
+			check(row[2] == "" and row[3] == "", "%s unchanged: no arrow, no mark (%s)" % [line[0], row])
+			continue
+		check_eq(row[2], "→ " + line[2], "%s after" % line[0])
+		if line[3] == null:
+			check(not row[3].contains("▲") and not row[3].contains("▼"), "%s neither: no mark (%s)" % [line[0], row[3]])
+		else:
+			marked += 1
+			check(row[3].begins_with("▲" if line[3] else "▼"), "%s marked %s: %s" % [line[0], "better" if line[3] else "worse", row[3]])
+	check(marked >= 3, "cilia change turning, energy use and mass at least (%d marked)" % marked)
+	var turning: Array = lines.filter(func(l: Array) -> bool: return l[0] == "Turning")[0]
+	var change := float(turning[2]) - float(turning[1])
+	check(shown.any(func(r: Array) -> bool: return r[0] == "Turning" and r[3] == "▲ %+.1f" % change),
+		"turning's change is signed in its format (▲ %+.1f)" % change)
+	check_eq(CellEditor.change_mark(["Eats", "plants", "plants and meat", true]), "▲", "a new food is marked better")
+	check_eq(CellEditor.change_mark(["Eats", "plants", "meat", null]), "", "a trade is neither")
+	check_eq((editor.find_child("StatLegend", true, false) as Label).text, CellEditor.STAT_LEGEND, "the legend says what the marks mean")
+
+
+func test_resting_on_a_stat_s_name_explains_it_with_the_catalog_s_caps() -> void:
+	editor.open(save, catalog, _state())
+	var grid: GridContainer = editor.find_child("StatsPanel", true, false).find_children("*", "GridContainer", true, false)[0]
+	var defense: Label = grid.get_children().filter(func(l: Label) -> bool: return l.text == "Defense")[0]
+	defense.mouse_entered.emit()
+	var texts := _card_texts()
+	check(editor.part_card().visible and texts[0] == "Defense", "the card names the stat: %s" % [texts])
+	check(texts[1].contains("%d%%" % roundi(float(catalog.caps.defense) * 100.0)), "with the defense cap: " + texts[1])
+	check(CellEditor.stat_help("Speed", catalog).contains("%.1f" % float(catalog.caps.speed)), "and the speed cap")
+	for label: String in CellEditor.STAT_HELP:
+		var help := CellEditor.stat_help(label, catalog)
+		check(not help.is_empty() and not help.contains("%s"), "%s's help is filled in: %s" % [label, help])
+	defense.mouse_exited.emit()
+	check(not editor.part_card().visible, "leaving the name closes it")

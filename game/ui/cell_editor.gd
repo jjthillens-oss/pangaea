@@ -17,8 +17,10 @@ extends Control
 ## round the rim snaps onto the middle line or opposite a part of its type, with a guide on the rim and a line
 ## under the dish that says what it snapped to. Hovering or focusing a palette tile opens the part card beside the
 ## palette: what the part is for, each stat it changes before → after (Phenotype.derive on a copy of the working
-## body with the part where it would go), its count, price and where it goes. The editor's panels use the game's theme (pangaea_theme.tres, the
-## hud job's; used, not edited), so its text follows the text size setting like the other menus.
+## body with the part where it would go), its count, price and where it goes. The stats panel marks each change
+## ▲ better or ▼ worse with its signed size (shape and words, not colour alone), and hovering a stat's name
+## explains it. The editor's panels use the game's theme (pangaea_theme.tres, the hud job's; used, not edited), so
+## its text follows the text size setting like the other menus.
 
 signal closed(committed: bool)
 
@@ -60,6 +62,22 @@ const STATS := [
 	["Energy use", "upkeep", false, "%.2f/s"],
 	["Mass", "mass", false, "%.2f"],
 ]
+## What each stat means, on the part card when the pointer rests on its name in the stats panel. "%s" is the stat's
+## cap from the catalog (PartCatalog.caps) where it has one.
+const STAT_HELP := {
+	"Speed": "Top swimming speed, in metres a second. Extra mass slows it. At most %s.",
+	"Turning": "How fast it turns, in radians a second. At most %s.",
+	"Health": "How much damage it takes before it dies.",
+	"Eats": "What its mouths feed on: a filter mouth eats plants, a jaw eats meat.",
+	"Bite": "Damage of each bite from a jaw.",
+	"Ram": "Damage its spikes do when it rams into something.",
+	"Defense": "Share of each hit its shell plates block, up to %s.",
+	"Sight": "How far it notices food and danger, in metres. At most %s.",
+	"Energy use": "Energy burned each second at rest; lower lasts longer between meals.",
+	"Mass": "How heavy it is. Mass slows speed and acceleration, and makes moving cost more energy.",
+}
+## The stats panel's legend: the marks mean better and worse, whichever way the number goes.
+const STAT_LEGEND := "▲ better   ▼ worse"
 ## What each part is for, on its palette button.
 const PART_ROLES := {
 	"mouth_filter": "eats plants", "mouth_jaw": "eats meat, bites", "flagellum": "swims faster",
@@ -74,8 +92,9 @@ const PALETTE_PX := 300.0
 const TILE_PX := 92.0
 const TILE_COLUMNS := 3
 const SCALE_STEP := 0.25
-## The round stage in the middle: the body seen from above with the rim over it.
-const DISH_PX := 720.0
+## The round stage in the middle: the body seen from above with the rim over it. Its smallest side: it grows,
+## square, to fill the room the other rows leave (larger text leaves less).
+const DISH_PX := 480.0
 ## The body's half length as a share of the rim's radius: the rim's dots ring the body, and a
 ## long upgraded tail still fits on the dish.
 const BODY_ON_RIM := 0.58
@@ -96,6 +115,8 @@ var symmetry := false
 var _preview: CellPreview
 var _rim: RimView
 var _stats: GridContainer
+var _stats_panel: PanelContainer
+var _stat_cells: Array = []        ## per stat_lines() row: [name, before, after, change] Labels, built once
 var _points: Label
 var _status: Label
 var _mate: Button
@@ -394,6 +415,41 @@ func stat_lines() -> Array:
 	return stat_rows(p.current, p.phenotype)
 
 
+## Keeps room in the stats panel for the after and change columns while they are empty, so the panel (and the dish
+## beside it) does not jump wider at the first change. Sized from the label font, so it follows the text size.
+func _reserve_stat_columns() -> void:
+	for spec: Array in [[2, "→ 0.00/s"], [3, "▼ +0.00"]]:
+		var cell: Label = _stat_cells[0][spec[0]]
+		var font := cell.get_theme_font(&"font")
+		cell.custom_minimum_size.x = font.get_string_size(spec[1], HORIZONTAL_ALIGNMENT_LEFT, -1,
+			cell.get_theme_font_size(&"font_size")).x
+
+
+## A stats row's change column: ▲ for better or ▼ for worse, then the signed change of the shown numbers in the
+## stat's format ("▲ +1.5", "▼ +0.15"); just the mark for the Eats line; "" when the row shows no change.
+static func change_mark(line: Array) -> String:
+	if line[1] == line[2]:
+		return ""
+	var mark: String = {true: "▲", false: "▼"}.get(line[3], "")
+	for spec: Array in STATS:
+		if spec[0] == line[0]:
+			var number := "%+" + str(spec[3]).substr(1, str(spec[3]).find("f"))
+			return ("%s %s" % [mark, number % (str(line[2]).to_float() - str(line[1]).to_float())]).strip_edges()
+	return mark
+
+
+## What a stat means, for its row's card: STAT_HELP with the catalog's cap filled in.
+static func stat_help(label: String, catalog: PartCatalog) -> String:
+	var text: String = STAT_HELP.get(label, "")
+	if not text.contains("%s"):
+		return text
+	for spec: Array in STATS:
+		if spec[0] == label and catalog.caps.has(spec[1]):
+			var cap := float(catalog.caps[spec[1]])
+			return text % ("%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap)
+	return text.get_slice(" At most", 0).get_slice(", up to", 0)
+
+
 ## stat_lines() for any two bodies: the stats panel compares the parent with the working body, the part card the
 ## working body with the part added (CellEffects).
 static func stat_rows(before: Phenotype, after: Phenotype) -> Array:
@@ -465,24 +521,27 @@ func _refresh() -> void:
 	_mate.disabled = not (p.affordable and errors.is_empty())
 	_mate.tooltip_text = "" if not _mate.disabled else ("Not enough points" if errors.is_empty() else errors[0])
 	_warning.text = chase_warning(p.phenotype.speed)
-	if _card_type != "":
+	if _card_type != "" and not _card_type.begins_with("stat:"):
 		show_part_card(_card_type)   # the numbers follow the body
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
 	_show_bindings()
 	_show_selected()
-	for child in _stats.get_children():
-		_stats.remove_child(child)
-		child.queue_free()
-	for line in stat_lines():
-		var name_label := Label.new()
-		name_label.text = line[0]
-		_stats.add_child(name_label)
-		var value := Label.new()
-		value.text = line[1] if line[1] == line[2] else "%s → %s" % [line[1], line[2]]
-		if line[3] != null:
-			value.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
-		_stats.add_child(value)
+	_reserve_stat_columns()
+	var rows := stat_lines()
+	for i in rows.size():
+		var line: Array = rows[i]
+		var cells: Array = _stat_cells[i]
+		var changed: bool = line[1] != line[2]
+		cells[0].text = line[0]
+		cells[1].text = line[1]
+		cells[2].text = "→ %s" % line[2] if changed else ""
+		cells[3].text = change_mark(line)
+		for cell: Label in [cells[2], cells[3]]:
+			if changed and line[3] != null:
+				cell.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
+			else:
+				cell.remove_theme_color_override(&"font_color")
 
 
 ## Opens the part card for the tile of `type_id`, beside the palette at the tile's height: what adding it would do
@@ -502,6 +561,17 @@ func show_part_card(type_id: String) -> void:
 		var tile_rect := tile.get_global_rect()
 		var beside := Rect2(Vector2(_palette.get_global_rect().end.x, tile_rect.position.y), Vector2(0, tile_rect.size.y))
 		_card.place_beside(beside, get_global_rect())
+
+
+## Explains the stat named on `cell` on the card, to the left of the stats panel at the row's height.
+func _show_stat_help(cell: Label) -> void:
+	if session == null or cell.text.is_empty():
+		return
+	_card_type = "stat:" + cell.text
+	_card.show_lines(cell.text, [[stat_help(cell.text, session.catalog), ""]])
+	var panel := _stats_panel.get_global_rect()
+	var at := Rect2(Vector2(panel.position.x, cell.get_global_rect().position.y), Vector2(panel.size.x, 0))
+	_card.place_beside(at, get_global_rect())
 
 
 ## Closes the part card if it shows `type_id`.
@@ -634,15 +704,14 @@ func _build() -> void:
 	var middle := VBoxContainer.new()
 	middle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(middle)
-	var views := HBoxContainer.new()
-	views.alignment = BoxContainer.ALIGNMENT_CENTER
+	var views := AspectRatioContainer.new()   # keeps the dish square, as large as the room allows
 	views.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	views.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	middle.add_child(views)
-	# One round stage, square at its own size and centred: the dish, the body on it seen from above,
-	# and the rim over the body, so each part's dot sits on the part.
+	# One round stage, square and centred: the dish, the body on it seen from above, and the rim over the
+	# body, so each part's dot sits on the part.
 	var dish := Control.new()
 	dish.custom_minimum_size = Vector2(DISH_PX, DISH_PX)
-	dish.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	dish.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	views.add_child(dish)
 	var stage := DishView.new()
@@ -668,9 +737,10 @@ func _build() -> void:
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_selected_label.theme_type_variation = &"SmallLabel"
 	middle.add_child(_selected_label)
-	var tools := HBoxContainer.new()
-	tools.alignment = BoxContainer.ALIGNMENT_CENTER
-	tools.add_theme_constant_override(&"separation", 8)
+	var tools := HFlowContainer.new()   # wraps onto a second line when large text leaves no room
+	tools.alignment = FlowContainer.ALIGNMENT_CENTER
+	tools.add_theme_constant_override(&"h_separation", 8)
+	tools.add_theme_constant_override(&"v_separation", 8)
 	middle.add_child(tools)
 	_symmetry_button = Button.new()
 	_symmetry_button.name = "Symmetry"
@@ -700,14 +770,41 @@ func _build() -> void:
 
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(260, 0)
+	right.add_theme_constant_override(&"separation", 12)
 	row.add_child(right)
+	_stats_panel = PanelContainer.new()
+	_stats_panel.name = "StatsPanel"
+	_stats_panel.theme_type_variation = &"GlassPanel"
+	right.add_child(_stats_panel)
+	var stats_box := VBoxContainer.new()
+	_stats_panel.add_child(stats_box)
 	var stats_title := Label.new()
 	stats_title.text = "Before → after"
-	right.add_child(stats_title)
+	stats_title.uppercase = true
+	stats_title.theme_type_variation = &"CaptionLabel"
+	stats_box.add_child(stats_title)
 	_stats = GridContainer.new()
-	_stats.columns = 2
-	_stats.add_theme_constant_override(&"h_separation", 16)
-	right.add_child(_stats)
+	_stats.columns = 4
+	_stats.add_theme_constant_override(&"h_separation", 14)
+	stats_box.add_child(_stats)
+	_stat_cells.clear()
+	for i in STATS.size() + 1:   # the stats and the Eats line
+		var cells := []
+		for c in 4:
+			var cell := Label.new()
+			cell.theme_type_variation = &"SmallLabel"
+			_stats.add_child(cell)
+			cells.append(cell)
+		var name_cell: Label = cells[0]
+		name_cell.mouse_filter = Control.MOUSE_FILTER_STOP   # its name explains it on the card
+		name_cell.mouse_entered.connect(_show_stat_help.bind(name_cell))
+		name_cell.mouse_exited.connect(func() -> void: hide_part_card("stat:" + name_cell.text))
+		_stat_cells.append(cells)
+	var legend := Label.new()
+	legend.name = "StatLegend"
+	legend.text = STAT_LEGEND
+	legend.theme_type_variation = &"CaptionLabel"
+	stats_box.add_child(legend)
 	_warning = Label.new()
 	_warning.name = "ChaseWarning"
 	_warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -721,6 +818,8 @@ func _build() -> void:
 	column.add_child(bottom)
 	_points = Label.new()
 	_points.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_points.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_points.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # two lines rather than off the screen at large text
 	bottom.add_child(_points)
 	_keys = Label.new()
 	_keys.name = "KeyLine"
