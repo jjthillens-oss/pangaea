@@ -186,6 +186,36 @@ the course its role names. Measured in Godot on the darter at tail strength 3:
 | Paddle | 7.6 m | 70.5 m | 64° | 30.4 |
 | Whip | 2.5 m | 51.8 m | 77° | 17.2 |
 
+The fish turns on the stage's own **reef-stone plinth** (aquatic-r2; the look is PROPOSED, the swap is IMPLEMENTED):
+`aquatic_plinth`, a unit-radius slab of reef stone with a sand-dusted top and lilac polyps and two small amber sponges on
+its rim, from `tools/blender/make_aquatic_world.py`, scaled uniformly by the editor. It replaces the creature editor's
+pad (`creature_editor_room`), which the creature stage is rebuilding with walls; `tests/test_aquatic_assets.gd` checks
+the swap and the pad's contract.
+
+### The spawning nest (aquatic-r2)
+
+The nest is the stage's home landmark (Bible §6: "nests or spawning sites create recognizable locations"), its own
+Blender asset `aquatic_nest` (the look is PROPOSED; the placement and the rules are IMPLEMENTED and tested): a raised
+mound of shell gravel with a scooped dish, a ring of rounded reef stones crusted with lilac coral polyps, six clutches
+of cream cartilage egg capsules ("mermaid's purses", the aquatic era's cartilage and scale), and a **beacon**, a
+stacked reef-stone pillar with amber ribbon fronds on the front-left rim, about 5.5 m tall, so the nest reads from the
+spawn's first frame and from about 25 m away. It replaces the creature stage's nest ring.
+
+- **On the slope.** The floor rises 0.2 m a metre at the nest, so `aquatic_world.gd` tilts the nest to the slope at
+  its site and sinks it 0.1 m; its foot meets the drawn sea floor all round (within 0.2 m; the floor's own relief
+  there is within 0.11 m of the profile), its skirt runs under the floor, and the beacon is stood upright on its
+  foot. The PR #192 nest ring sat flat on the slope, half floating and half buried.
+- **A clutch per generation.** One clutch shows for the first fish and one more for each generation born this stage
+  (the sim's history, at most six), read from the saved history: no save field is added.
+- **Resting heals** (PROPOSED tuning: 3 health a second, below 0.6 m/s, within the nest's 5 m): the nest is home, as
+  in Spore. The HUD says "Rest at the nest to heal" to a hurt fish there and "Resting at the nest: you heal" while it
+  heals. Rules without `rest_heal_per_s` (PR #192's slice) never heal there.
+
+Checked by `tests/test_aquatic_assets.gd` (the footprint, the spawn's clearance, the fit to the drawn sea floor, the
+upright beacon, six clutches), `tests/test_aquatic_sim.gd` (`test_resting_at_the_nest_heals`) and the aquatic smoke
+(the nest drawn, one clutch then two after the commit and the reload, a rest that heals and its HUD line, the
+plinth). The finish gates for both assets are in `docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md`.
+
 ## 7. Exit to land (Bible §7)
 
 The shore at the near end of the shallows is the transition point. Going ashore needs a body that can crawl (limbs,
@@ -228,7 +258,7 @@ Architecture (CLAUDE.md layout):
 
 The fish's body is drawn with the creature stage's generated skin (`SpineRig`, owner-approved runtime skins) and
 its Blender-authored parts (tail fluke, fins, eyes, mouth). Props reuse recorded Blender assets (rocks, the arch,
-the nest ring, plankton, algae).
+plankton, algae); aquatic-r2 gives the stage its own nest and editor plinth (section 6).
 
 File boundaries: the cell stage (`game/scenes/pool`, `game/systems/pool_sim.gd`) and the creature stage
 (`game/**/creature/**`, the creature editor) are read, never edited, here. `game/scenes/main.gd` and the start screen get only
@@ -243,6 +273,7 @@ the entry hook. The cpart art belongs to the art thread; the slice uses parts al
 | Reading the cell lineage (read-only) | `game/systems/aquatic/aquatic_lineage.gd` | `tests/smoke/aquatic_smoke.gd` |
 | World view, HUD, editor, stage root | `game/scenes/aquatic/`, `game/ui/aquatic_hud.gd`, `game/ui/aquatic_editor.gd` | `tests/smoke/aquatic_smoke.gd` (in `tools/check.sh`) |
 | Sea floor (Blender, record, baked tiles) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_seafloor.json` | `tests/test_assets.gd` |
+| aquatic-r2: the nest and the editor plinth (Blender, records, baked textures) | `tools/blender/make_aquatic_world.py`, `assets/records/aquatic_nest.json`, `assets/records/aquatic_plinth.json` | `tests/test_assets.gd`, `tests/test_aquatic_assets.gd` |
 
 Measured on the shared rules: the darter tops 8.7 m/s and turns on a 10 m radius at speed, stands 36 m; the hoverer
 tops 4.3 m/s (5.2 before the aquatic-r2 ribbon retune), turns on 1.4 m, holds its depth and stands 76 m. The lancer pursues at 6.4 m/s, so the darter outruns

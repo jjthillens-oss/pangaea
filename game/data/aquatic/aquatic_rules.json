@@ -57,7 +57,7 @@
       {"id": "twilight", "name": "Twilight drop", "depth": 30.0},
       {"id": "deep", "name": "Deep", "depth": 60.0}
     ],
-    "nest": {"pos": [0.0, -7.5, 8.0], "radius": 5.0},
+    "nest": {"pos": [0.0, -7.5, 8.0], "radius": 5.0, "rest_heal_per_s": 3.0, "rest_speed": 0.6},
     "shore": {"pos": [0.0, -1.0, 30.0], "radius": 6.0},
     "sites_note": "Shelters and feeding sites, each with the zone it sits in (tests/test_aquatic_sim.gd checks it, and that every site is in the water inside the walls, no deeper than the deepest legal rated depth). New ones are appended so the earlier ids and food_NNN numbers stay. aquatic-r2 added the pillar ring (a ring of glass drums in the twilight, inside the lancer's territory), the vent chimney (the drifter's sweep passes over it; a fish inside is not swept), the nest-side algae bed, the krill swarm in the lancer's patrol and the fallen giant (a carcass for jaws, within the drifter's warning but not its sweep). A food kind that floats drifts in open water; the others lie on the floor. A diet of plant is what a filter mouth takes (the krill too), meat what a jaw takes.",
     "shelters": [

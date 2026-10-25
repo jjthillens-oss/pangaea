@@ -93,6 +93,9 @@ var _tending := {}
 var _visiting := {}
 var _cleaned := {}
 var _lured := {}
+## Resting at the nest (aquatic-r2): whether the fish is within the nest's radius, and whether it heals there this tick.
+var _at_nest := false
+var _nest_resting := false
 
 
 ## A world for `body` (an AquaticBody dictionary) from the rules (aquatic_rules.json) and the world seed.
@@ -264,6 +267,7 @@ func step(intent: Intent) -> void:
 	_feed()
 	_zones_and_sites()
 	_stations_tick()
+	_nest_tick()
 	_animals_tick()
 	_lancer_tick()
 	_drifter_tick()
@@ -454,6 +458,27 @@ func _stations_tick() -> void:
 			if not _cleaned.get(species, false):
 				_cleaned[species] = true
 				_emit("cleaned", {"species": species, "name": String(cfg.name)})
+
+
+## Resting at the nest (aquatic-r2, PROPOSED; the nest is home, and in Spore the nest heals): a hurt fish within
+## rules.world.nest.radius of the nest, moving no faster than rest_speed, heals rest_heal_per_s. Rules without
+## rest_heal_per_s (PR #192's slice) never heal there.
+func _nest_tick() -> void:
+	var cfg: Dictionary = rules.world.nest
+	var heal := float(cfg.get("rest_heal_per_s", 0.0))
+	_at_nest = player.pos.distance_to(nest_pos()) <= float(cfg.radius)
+	_nest_resting = _at_nest and heal > 0.0 and absf(float(player.speed)) <= float(cfg.get("rest_speed", 0.0)) \
+			and float(player.health) < float(player.stats.max_health)
+	if _nest_resting:
+		player.health = minf(float(player.stats.max_health), float(player.health) + heal * DT)
+
+
+## The nest, for the HUD: {"heals": whether resting there heals, "resting": whether it heals the fish now}, or {} when
+## the fish is not at the nest.
+func nest_here() -> Dictionary:
+	if not _at_nest:
+		return {}
+	return {"heals": float(rules.world.nest.get("rest_heal_per_s", 0.0)) > 0.0, "resting": _nest_resting}
 
 
 ## The cleaning station the fish is at, for the HUD: {"species", "name", "standing", "tending"}, or {} when none.

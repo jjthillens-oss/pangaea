@@ -9,7 +9,10 @@ extends SceneTree
 ## (the reef shelters), twilight_ledge (the ledge shelter), fallen_giant, deep_vents; aquatic-r2's content:
 ## shallows_minnows (the minnow school), fallen_giant_near (the dead giant and its carcass), reef_cleaners (a hurt friend resting at the cleaner station, the sim stepped
 ## 4 s so they gather), glowfins_lured (a deep lure body by the glowfins' home, stepped 6 s), krill_pillars (the
-## krill swarm and the pillar ring), vent_chimney; editor (the fin and tail
+## krill swarm and the pillar ring), vent_chimney; the nest (aquatic-r2 chunk 4): nest_side (side-on across the slope
+## from about 20 m, the fit to the floor), nest_beacon (from the reef side, up at the beacon), nest_clutch (after two
+## generations, so three clutches show, looking down into the dish), nest_rest (a hurt fish resting, the HUD prompt);
+## editor (the fin and tail
 ## editor as it opens) and editor_tails (one editor frame per tail in the rules, the fish held side-on:
 ## editor_tail_<id>.png; with --close, close views of the fish only at tail strength 3: tail_<id>_<angle>.png, then
 ## fins_<n>_<angle>.png for the side fin steps and dorsal_<n>_<angle>.png for the back fin steps).
@@ -31,11 +34,15 @@ const PLACES := {
 	"glowfins_lured": [],
 	"krill_pillars": [Vector3(-4.0, -36.0, -136.0), Vector3(8.0, -42.0, -162.0)],
 	"vent_chimney": [Vector3(15.0, -77.0, -247.0), Vector3(28.0, -82.0, -262.0)],
+	"nest_side": [Vector3(17.0, -7.6, 8.5), Vector3(0.0, -7.6, 8.0)],
+	"nest_beacon": [Vector3(-4.0, -9.5, -6.0), Vector3(-2.2, -6.0, 4.9)],
+	"nest_clutch": [],
+	"nest_rest": [],
 }
 ## The views that step the sim or change the fish come last, so they leave the others as they were.
-const ALL_VIEWS := ["nest_start", "nest_far", "reef_west", "reef_east", "twilight_ledge", "fallen_giant",
-		"deep_vents", "shallows_minnows", "fallen_giant_near", "krill_pillars", "vent_chimney", "editor", "editor_tails", "reef_cleaners",
-		"glowfins_lured"]
+const ALL_VIEWS := ["nest_start", "nest_far", "nest_side", "nest_beacon", "reef_west", "reef_east", "twilight_ledge",
+		"fallen_giant", "deep_vents", "shallows_minnows", "fallen_giant_near", "krill_pillars", "vent_chimney", "editor",
+		"editor_tails", "reef_cleaners", "glowfins_lured", "nest_rest", "nest_clutch"]
 
 var out_dir := "user://aquatic_shots"
 var views: PackedStringArray = []
@@ -85,6 +92,25 @@ func _run() -> void:
 			sim.take_events()
 			stage.world.rebuild_player()
 			await _hold(sim.home_of("glowfin") + Vector3(0.0, 0.0, 9.0), 0.0, 6.0)
+			await _shot(view)
+		elif view == "nest_rest":
+			# A hurt fish resting at the nest heals there; the HUD says so.
+			var sim: AquaticSim = stage.sim
+			sim.player.health = float(sim.player.stats.max_health) * 0.45
+			await _hold(start.pos, float(start.heading), 1.0)
+			stage.hud.refresh(0.0)
+			await _shot(view)
+		elif view == "nest_clutch":
+			# Two generations later the nest shows three clutches; the fish hovers over the dish from the shore side.
+			var sim: AquaticSim = stage.sim
+			for k in 2:
+				sim.apply_offspring((sim.player.body as Dictionary).duplicate(), 0)
+			sim.take_events()
+			stage.world.rebuild_player()
+			sim.player.pos = sim.nest_pos() + Vector3(0.6, 1.0, 4.2)
+			sim.player.heading = 0.12
+			stage.world.sync(0.0)
+			await _frames(30)
 			await _shot(view)
 		elif PLACES.has(view):
 			var place: Array = PLACES[view]

@@ -13,7 +13,9 @@ extends SceneTree
 ##       beside the cell's own data, and opening the stage again brings back the same fish, generation, finds,
 ##       points and place (the reload check), the new tail included. aquatic-r2: the new species, shelters and the
 ##       fallen giant are drawn, and before mating the jaw hunter swims down and eats a glass minnow in the shallows
-##       (the minnows are its first meat).
+##       (the minnows are its first meat). The nest is its own asset showing one clutch of eggs per generation (one,
+##       then two after the commit and after the reload), a hurt fish resting there heals and the HUD says so, and the
+##       editor stands the fish on the reef-stone plinth.
 
 const MAIN_SCENE := "res://game/scenes/main.tscn"
 const SMOKE_DIR := "user://smoke"
@@ -72,6 +74,20 @@ func _run() -> void:
 		if node == null or not String(node.scene_file_path).ends_with(looks[id] + ".glb"):
 			wrong.append(id)
 	_check(wrong.is_empty(), "every shelter is drawn with its own look (wrong: %s)" % [wrong])
+	var nest := stage.world.get_node_or_null("Nest")
+	_check(nest != null and String(nest.scene_file_path).ends_with("aquatic_nest.glb"), "the nest is drawn with its own asset")
+	_check(_clutches(stage) == sim.history.size() + 1, "the nest shows one clutch for the first generation (%d)" % _clutches(stage))
+
+	# Resting at the nest heals a hurt fish, and the HUD says so (aquatic-r2).
+	stage.driver = func() -> AquaticSim.Intent: return AquaticSim.Intent.new()
+	var hurt := float(sim.player.stats.max_health) * 0.5
+	sim.player.health = hurt
+	sim.player.speed = 0.0
+	await _frames(AquaticSim.TICK_HZ)
+	var healed := float(sim.player.health) - hurt
+	_check(absf(healed - float(stage.rules.world.nest.rest_heal_per_s)) < 0.2, "a second's rest at the nest heals %.1f" % healed)
+	_check(stage.hud.prompt_label.text.contains("Resting at the nest"), "the HUD says the fish is resting at the nest: '%s'" % stage.hud.prompt_label.text.replace("\n", " / "))
+	sim.player.health = float(sim.player.stats.max_health)
 
 	# Swim down the slope towards the reef, diving a little; the plankton bay is on the way for an omnivore, a
 	# jaw darter finds the shoal later, so the check is that the swim moved and the zones changed.
@@ -111,6 +127,8 @@ func _run() -> void:
 	stage.driver = func() -> AquaticSim.Intent: return AquaticSim.Intent.new()
 	_check(stage.editor != null, "mating at the nest opens the editor")
 	if stage.editor != null:
+		var plinth := (stage.editor.get("viewport") as SubViewport).get_node_or_null("Plinth")
+		_check(plinth != null and String(plinth.scene_file_path).ends_with("aquatic_plinth.glb"), "the editor stands the fish on the reef-stone plinth")
 		var parent_fins := int(sim.player.body.fins)
 		stage.editor.call("step", "fins", 1)
 		_check(int(stage.editor.get("cost")) == 2, "a fin step costs 2 points")
@@ -128,6 +146,7 @@ func _run() -> void:
 		_check(int(sim.player.body.fins) == parent_fins + 1 and sim.history.size() == 1, "with the new fins, the parent recorded")
 		_check(String(sim.player.body.tail) == "lunate", "and the lunate tail")
 		_check(stage.world.get_node_or_null("Player") != null, "the new body is drawn")
+		_check(_clutches(stage) == 2, "the nest shows a second clutch for the new generation (%d)" % _clutches(stage))
 	await _frames(30)
 	var left: Dictionary = sim.to_save()
 	var left_points := sim.points
@@ -160,6 +179,7 @@ func _run() -> void:
 	_check(Array(sim.discovered) == Array(left.discovered), "the same places found: %s" % [sim.discovered])
 	var was := Vector3(float(left.position[0]), float(left.position[1]), float(left.position[2]))
 	_check(sim.player.pos.distance_to(was) < 0.01, "back where it left the water (%.2f m off)" % sim.player.pos.distance_to(was))
+	_check(_clutches(stage) == sim.history.size() + 1 and _clutches(stage) == 2, "the nest still shows both clutches (%d)" % _clutches(stage))
 	await _escape()
 	_check(main.aquatic_stage == null, "Escape leaves again")
 
@@ -186,6 +206,17 @@ func _escape() -> void:
 	esc.pressed = true
 	Input.parse_input_event(esc)
 	await _frames(SETTLE_FRAMES)
+
+
+## The clutches of eggs the stage's nest shows.
+func _clutches(stage: Node) -> int:
+	var nest: Node = stage.world.get_node_or_null("Nest")
+	var shown := 0
+	for i in 6:
+		var clutch := nest.get_node_or_null("Clutch_%d" % (i + 1)) as Node3D if nest != null else null
+		if clutch != null and clutch.visible:
+			shown += 1
+	return shown
 
 
 func _frames(count: int) -> void:

@@ -9,7 +9,10 @@ extends Control
 signal closed(committed: bool, body: Dictionary, cost: int)
 
 const FishView := preload("res://game/scenes/aquatic/fish_view.gd")
-const PLINTH := "res://assets/export/creature_editor_room.glb"
+## The reef-stone plinth (aquatic-r2; plan section 2): a unit-radius pad, its pivot at the centre of its top face,
+## scaled uniformly so the polyps on its rim keep their shape.
+const PLINTH := "res://assets/export/aquatic_plinth.glb"
+const PLINTH_SCALE := 1.6
 ## The tail choices' names (aquatic-r2). No tail is simply "fast" or "nimble": the stats below the fish show each one's
 ## tradeoff, from the same rules the water uses.
 const TAIL_NAMES := {"fluke": "Fluke", "ribbon": "Ribbon", "lunate": "Lunate", "paddle": "Paddle", "whip": "Whip"}
@@ -167,7 +170,8 @@ func _build_plinth() -> void:
 	var packed := load(PLINTH) as PackedScene
 	if packed != null:
 		var pad := packed.instantiate() as Node3D
-		pad.scale = Vector3(1.6, 1.0, 1.6)
+		pad.name = "Plinth"
+		pad.scale = Vector3.ONE * PLINTH_SCALE
 		pad.position = Vector3(0.0, -0.01, 0.0)
 		viewport.add_child(pad)
 	rig_holder = Node3D.new()

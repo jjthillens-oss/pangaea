@@ -759,6 +759,46 @@ func test_cleaners_befriend_and_heal_a_resting_friend() -> void:
 	check(not bool(sim.station_here().get("tending", true)), "the station is closed to it")
 
 
+## aquatic-r2 (PROPOSED): resting at the nest heals, as the nest is home (Spore's nest heals): a hurt fish within the
+## nest's radius that keeps still heals rest_heal_per_s up to its full health, and the HUD is told; a fish swimming
+## through, or one away from the nest, is not healed, and the slice's rules (no rest_heal_per_s) never heal there.
+func test_resting_at_the_nest_heals() -> void:
+	var cfg: Dictionary = rules.world.nest
+	check(float(cfg.get("rest_heal_per_s", 0.0)) > 0.0, "the rules give the nest a rest heal")
+	var sim := _sim(AquaticBody.DARTER)
+	var full := float(sim.player.stats.max_health)
+	var spot: Vector3 = sim.player.pos
+	check(spot.distance_to(sim.nest_pos()) <= float(cfg.radius), "the fish starts at the nest")
+	var rest := func(s: AquaticSim, at: Vector3, seconds: float, speed: float) -> void:
+		for i in int(seconds * AquaticSim.TICK_HZ):
+			s.player.pos = at
+			s.player.speed = speed
+			s.step(AquaticSim.Intent.new())
+			s.take_events()
+	sim.player.health = full * 0.5
+	rest.call(sim, spot, 2.0, 0.0)
+	check_near(float(sim.player.health), full * 0.5 + float(cfg.rest_heal_per_s) * 2.0, 0.05,
+			"two seconds' rest at the nest heals %.0f (%.1f of %.0f)" % [float(cfg.rest_heal_per_s) * 2.0, float(sim.player.health), full])
+	check(bool(sim.nest_here().get("resting", false)) and bool(sim.nest_here().get("heals", false)), "the HUD is told the fish is healing")
+	var hp := float(sim.player.health)
+	rest.call(sim, spot, 1.0, float(cfg.rest_speed) * 3.0)
+	check(float(sim.player.health) <= hp + 1e-6, "swimming through the nest is no rest")
+	check(not bool(sim.nest_here().get("resting", true)), "and the HUD is told so")
+	var away: Vector3 = sim.nest_pos() + Vector3(0.0, 0.0, -float(cfg.radius) - 4.0)
+	rest.call(sim, away, 2.0, 0.0)
+	check(float(sim.player.health) <= hp + 1e-6, "resting away from the nest does not heal")
+	check(sim.nest_here().is_empty(), "the fish is not at the nest")
+	sim.player.health = full - 1.0
+	rest.call(sim, spot, 3.0, 0.0)
+	check_near(float(sim.player.health), full, 1e-6, "the nest heals up to full health and no further")
+	var slice := rules.duplicate(true)
+	(slice.world.nest as Dictionary).erase("rest_heal_per_s")
+	var old := AquaticSim.new(slice, 7, AquaticBody.DARTER)
+	old.player.health = full * 0.5
+	rest.call(old, spot, 2.0, 0.0)
+	check_near(float(old.player.health), full * 0.5, 1e-6, "rules without a rest heal (PR #192's slice) never heal at the nest")
+
+
 ## aquatic-r2 (PROPOSED): the vent glowfins flee any fish, but a fish with the lure sense draws them to its head from
 ## the lure's reach while it stays near their home, so a lure angler can catch them; with eyes they keep away.
 func test_a_lure_draws_glowfins_and_eyes_do_not() -> void:

@@ -1,0 +1,112 @@
+{
+  "id": "aquatic_plinth",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Aquatic editor plinth (PROPOSED): the fin and tail editor's reef-stone plinth, a unit-radius slab of layered reef rock with sand settled on its flat top, a stepped, bitten and pitted edge crusted with lilac coral, polyp colonies and two small amber sponges on its rim; replaces the creature editor's pad in the aquatic editor (aquatic plan section 2).",
+  "category": "environment",
+  "source_blend": "assets/source/blender/aquatic_plinth.blend",
+  "generator_script": "tools/blender/make_aquatic_world.py",
+  "export_path": "assets/export/aquatic_plinth.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 1.962,
+    "y_forward": 1.961,
+    "z_up": 0.452
+  },
+  "triangles": 3874,
+  "triangle_budget": 4000,
+  "textures": [
+    {
+      "name": "T_AquaticPlinth_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_AquaticPlinth_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_AquaticPlinth_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_AquaticPlinth",
+    "M_PlinthCoralProc",
+    "M_PlinthSpongeProc",
+    "M_PlinthStoneProc"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "AquaticPlinth"
+  ],
+  "kind": "editor_floor",
+  "pivot": "the centre of the top face (Blender z = 0, Godot y = 0); the slab is 0.35 m deep under it",
+  "usage": "game/ui/aquatic_editor.gd places it at y = -0.01 and scales it uniformly (PLINTH_SCALE), so the polyps and sponges keep their shape; the camera sees the top face and the far rim against the water.",
+  "plinth_m": {
+    "radius": 1.0,
+    "top_face_r": 0.9,
+    "depth": 0.35,
+    "polyps": 30,
+    "sponges": 2
+  },
+  "palette": {
+    "rock": [
+      "#554E45",
+      "#746B5F",
+      "#3E3933"
+    ],
+    "top": [
+      "#5C554B",
+      "#776E62",
+      "#454039"
+    ],
+    "sand": [
+      "#887E6B",
+      "#9C927E"
+    ],
+    "crust": [
+      "#7A6894",
+      "#988AB0"
+    ],
+    "coral": [
+      "#7E6A9A",
+      "#9C86B4",
+      "#CDBEDC"
+    ],
+    "sponge": [
+      "#B98146",
+      "#6E4524"
+    ]
+  },
+  "gate_report": "docs/evidence/credit-aquatic-r2/aquatic_asset_gates.md",
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance per piece; full-detail shading baked to the normal map",
+    "tolerance_m": {
+      "AquaticPlinth": 0.0015
+    },
+    "triangles_before": 4448,
+    "triangles_after": 3874
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_aquatic_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders (no image sources)."
+}

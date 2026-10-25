@@ -8,7 +8,13 @@ extends Node3D
 const FishView := preload("res://game/scenes/aquatic/fish_view.gd")
 
 const SEAFLOOR := "res://assets/export/aquatic_seafloor.glb"
-const NEST := "res://assets/export/creature_nest_ring.glb"
+## The spawning nest (aquatic-r2): its own Blender asset (tools/blender/make_aquatic_world.py), at scale 1. The floor
+## slopes 0.2 m/m at the nest, so the nest is tilted to the slope and sunk NEST_SINK m, its foot meeting the sea
+## floor's own relief there (within 0.11 m of the profile) and its skirt running under it; its Beacon pillar is then
+## stood upright on its foot. Clutch_1..Clutch_6 show one clutch of eggs per generation hatched this stage.
+const NEST := "res://assets/export/aquatic_nest.glb"
+const NEST_SINK := 0.1
+const NEST_CLUTCHES := 6
 const SHELTER := "res://assets/export/landmark_arch.glb"
 ## Shelters drawn as something other than the reef arch (aquatic-r2, PROPOSED; recorded GLBs from the cell world at
 ## the fish's scale, so the cell stage stays in the sea's history), each one a place the fish is seen to be inside:
@@ -63,6 +69,7 @@ var drifter_rig: Node3D
 var animal_rigs := {}
 var food_nodes := {}
 var lancer_tell: Label3D
+var nest: Node3D
 
 var _cam_pos := Vector3.ZERO
 var _player_body_key := ""
@@ -72,8 +79,11 @@ func setup(p_sim: AquaticSim) -> void:
 	sim = p_sim
 	_build_environment()
 	_add_scene(SEAFLOOR, Transform3D.IDENTITY)
-	var nest := sim.nest_pos()
-	_add_scene(NEST, Transform3D(Basis().scaled(Vector3.ONE * 0.55), Vector3(nest.x, sim.floor_at(nest.x, nest.z), nest.z)))
+	nest = _add_scene(NEST, Transform3D.IDENTITY)
+	if nest != null:
+		nest.name = "Nest"
+		place_nest(nest, sim)
+		_show_clutches()
 	for s in sim.rules.world.shelters:
 		var p := AquaticSim._v(s.pos)
 		var node: Node3D
@@ -134,8 +144,42 @@ func setup(p_sim: AquaticSim) -> void:
 	sync(0.0)
 
 
+## Where the nest stands: on the floor profile at rules.world.nest (x, z), tilted about X to the profile's rise over
+## 4 m there, and sunk NEST_SINK m along its tilted up.
+static func nest_transform(p_sim: AquaticSim) -> Transform3D:
+	var c := p_sim.nest_pos()
+	var rise := (p_sim.floor_at(c.x, c.z + 2.0) - p_sim.floor_at(c.x, c.z - 2.0)) / 4.0
+	var tilt := Basis(Vector3.RIGHT, -atan(rise))
+	return Transform3D(tilt, Vector3(c.x, p_sim.floor_at(c.x, c.z), c.z) - tilt.y * NEST_SINK)
+
+
+## Seats the nest scene `node` at its site (nest_transform) and stands its Beacon upright on its foot.
+static func place_nest(node: Node3D, p_sim: AquaticSim) -> void:
+	node.transform = nest_transform(p_sim)
+	var beacon := node.get_node_or_null("Beacon") as Node3D
+	if beacon != null:
+		beacon.basis = node.basis.inverse()
+
+
+## How many clutches the nest shows: one per generation hatched this stage (the first fish's own, then one for each
+## generation in the sim's history), at most NEST_CLUTCHES. Read from the saved history, so no save field is added.
+static func clutches_for(history_size: int) -> int:
+	return mini(NEST_CLUTCHES, history_size + 1)
+
+
+func _show_clutches() -> void:
+	if nest == null:
+		return
+	var shown := clutches_for(sim.history.size())
+	for i in NEST_CLUTCHES:
+		var clutch := nest.get_node_or_null("Clutch_%d" % (i + 1)) as Node3D
+		if clutch != null:
+			clutch.visible = i < shown
+
+
 ## Rebuilds the player's and the kin's fish from the sim's body (after a new generation).
 func rebuild_player() -> void:
+	_show_clutches()
 	var key := JSON.stringify(sim.player.body, "", true)
 	if key == _player_body_key:
 		return

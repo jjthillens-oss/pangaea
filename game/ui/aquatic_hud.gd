@@ -57,7 +57,8 @@ func setup(p_sim: AquaticSim) -> void:
 	_pin(warn_label, 0.5, 0.0, -700.0, 150.0, 1400.0)
 	warn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	prompt_label = _label(self, 28)
-	_pin(prompt_label, 0.5, 0.5, -600.0, 230.0, 1200.0)
+	_pin(prompt_label, 0.5, 0.5, -600.0, 270.0, 1200.0)
+	prompt_label.grow_vertical = Control.GROW_DIRECTION_BEGIN   # a second line (the nest's rest) grows up, clear of the toasts
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	toast_label = _label(self, 26)
 	_pin(toast_label, 0.5, 1.0, -700.0, -230.0, 1400.0)
@@ -215,6 +216,10 @@ func refresh(delta: float) -> void:
 				prompt = "The %s tend you" % station.name if station.tending else "Rest here: the %s tend you" % station.name
 			"neutral":
 				prompt = "The %s tend their friends: call them (Q)" % station.name
+	var nest := sim.nest_here()
+	if not nest.is_empty() and bool(nest.heals) and float(p.health) < float(s.max_health):
+		var rest := "Resting at the nest: you heal" if bool(nest.resting) else "Rest at the nest to heal"
+		prompt = rest if prompt == "" else prompt + "\n" + rest
 	prompt_label.text = prompt
 	var lines := PackedStringArray()
 	for t in _toasts:
