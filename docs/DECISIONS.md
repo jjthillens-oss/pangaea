@@ -1553,3 +1553,10 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the adaptation that still matters is the shared point pool (the creature world has no diets, so
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
+
+## 2026-10-25: One continuous game, pool to sea to land (Joshua)
+
+Joshua: "we want to make sure that you level up out of the spore world, the original world, to the aquatic". The cell-to-creature link (#189) becomes a chain of two links (ShoreLink.LINKS): the cell's top-size shore is now the sea edge, microscopic to aquatic (event `entered_the_sea`, checkpoint `<slot>.pre-aquatic`); the Aquatic stage's shore leads aquatic to terrestrial (event `came_ashore`, checkpoint `<slot>.pre-terrestrial`). EraTransition.cross takes the link out of the save's era; restore and has_checkpoint name the era the checkpoint leads into. Continue opens the stage of the slot's era. The title's way back restores the checkpoint from before the slot's last crossing ("Back to the pool" from the sea, "Back to the water" from land). Slots that crossed straight onto land under #189 keep their `.pre-terrestrial` checkpoint, which still holds the cell, and go back the same way. Into the sea the aquatic block stays empty, so AquaticLineage builds the first fish from the cell's parts. The Aquatic stage owns its shore offer and the fish-to-creature conversion (AquaticLineage.to_creature); main.arrive_ashore() opens the creature stage after that crossing.
+## 2026-10-25: band-1 chunk cost max row averages the slowest 5 chunks (Joshua)
+
+test_world_gen's band-1 vs band-0 cold chunk cost check compared the single slowest chunk per size, which read 0.9x to 1.5x on the same tree (one chunk's time is runner noise) and turned main red after #189. Joshua chose (decision card, 05:27 UTC) to compare the mean of the 5 slowest chunks at each size instead, still against 1.35x. The median and p90 rows (1.20x) and the absolute limits are unchanged.
