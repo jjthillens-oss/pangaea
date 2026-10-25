@@ -29,6 +29,7 @@ Run: python3 tools/blender/make_more_creature_parts.py [--only <id>[,<id>...]]  
 Then godot --headless --path . --import, and python3 tools/make_part_rules.py.
 """
 import argparse
+import json
 import math
 import os
 import sys
@@ -72,8 +73,44 @@ ROLE = {
 CAPABILITIES = {"trunk": ["grasper"], "tail_curl": ["grasper"]}
 
 GATES = ("gate1_shape", "gate2_materials", "gate3_neutral_light", "gate4_godot")
-# asset id -> {gate: "pass: ..." | "needs revision: ..." | "unverified: ..."}, filled in as each part is reviewed.
-REVIEW = {}
+# asset id -> {gate: "pass: ..." | "needs revision: ..." | "unverified: ..."}, filled in as each part is reviewed
+# (Gates 1-3 from tools/blender/render_more_parts_gates.py sheets; Gate 4 from tools/godot/more_parts_shots.gd).
+# `--notes-only` copies these into the existing records without rebuilding the meshes.
+G4_PENDING = "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+REVIEW = {
+    "cpart_beak_hooked": {
+        "gate1_shape": "pass: side view reads as a raptor's beak - a deep keeled upper mandible arcing into a pointed "
+                       "hook that overhangs the shorter lower mandible, the two closed along a seam with the upper's "
+                       "edges flanking the lower; the cere stands proud as a clean ring band; handles render as named "
+                       "(H1_Open drops the lower mandible, H2_Hook curls the hook under, H3_Length draws it out).",
+        "gate2_materials": "pass: two distinct finishes - slate-blue horn darkening to a near-black hook with fine "
+                           "lengthwise grain, and a saturated yellow waxy cere with one round dark nostril each side; "
+                           "the material borders are clean rings (the lower mandible is kept undecimated for that).",
+        "gate3_neutral_light": "pass: under the neutral white rig the horn's soft highlight runs along the keel and "
+                               "the hook, nothing clips and the underside of the hook stays readable.",
+        "gate4_godot": G4_PENDING},
+    "cpart_beak_long": {
+        "gate1_shape": "pass: a slender gently decurved bill about 0.23 m out of the skin with a rounded probe tip and "
+                       "a fleshy gape bulge at the root; the upper mandible overhangs the lower by about 1 cm and the "
+                       "seam reads as a crease; handles move both mandibles together (H1_Length, H2_Curve) or the "
+                       "lower alone (H3_Open) without tearing.",
+        "gate2_materials": "pass: a saturated orange horn with lengthwise streaks, a darker probe tip, the closing "
+                           "seam and the nostril groove painted as two dark lines along each side; a separate pink "
+                           "fleshy gape at the root.",
+        "gate3_neutral_light": "pass: even neutral light, a narrow highlight along the culmen, no clipping; the "
+                               "groove and seam lines stay visible in the side and close views.",
+        "gate4_godot": G4_PENDING},
+    "cpart_trunk": {
+        "gate1_shape": "pass: a thick root tapering over about 0.38 m, hanging down and turning forward at the end in "
+                       "an S, flatter underneath; the grip pad shows two finger-like lips (the upper larger) round a "
+                       "dished face; H1_Curl coils the outer half into a grasping hook, H2_Raise lifts it forward "
+                       "and up, H3_Length lengthens it, the pad riding rigidly on the end.",
+        "gate2_materials": "pass: cool grey wrinkled skin whose ring folds and crackle read in the normal map and "
+                           "albedo, against a darker warm-brown pebbled grip pad with two dark nostrils.",
+        "gate3_neutral_light": "pass: neutral white light shows the ring wrinkles by grazing light along the whole "
+                               "length; no clipped highlights, the pad stays readable in shadow.",
+        "gate4_godot": G4_PENDING},
+}
 
 
 def _rules(part_type, footprint, sink, orientation, hosts, turn, tilt, centerline="allowed", chiral=False):
@@ -728,11 +765,25 @@ def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Build the more-parts creature parts.")
     parser.add_argument("--only", default="", help="comma-separated asset ids (default: all)")
+    parser.add_argument("--notes-only", action="store_true",
+                        help="rewrite only review_notes in the existing records from REVIEW (no rebuild)")
     args = parser.parse_args(argv)
     ids = [i for i in args.only.split(",") if i] or list(ASSETS)
     unknown = [i for i in ids if i not in ASSETS]
     if unknown:
         parser.error(f"unknown asset id(s): {', '.join(unknown)}; known: {', '.join(ASSETS) or '(none yet)'}")
+    if args.notes_only:
+        for asset_id in ids:
+            path = bc.paths(asset_id)[2]
+            with open(path) as f:
+                record = json.load(f)
+            record["review_notes"] = _review_notes(asset_id)
+            record["provenance"] = record.pop("provenance")      # keep provenance last, as bc.export writes it
+            with open(path, "w") as f:
+                json.dump(record, f, indent=2)
+                f.write("\n")
+            print(f"{asset_id}: review notes updated")
+        return
     for asset_id in ids:
         builder, budget = ASSETS[asset_id]
         bc.reset_scene()
