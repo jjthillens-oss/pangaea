@@ -9,12 +9,16 @@ from __future__ import annotations
 import json
 import math
 import random
+import sys
 from pathlib import Path
 
 import bpy
 from mathutils import Vector
 
 OUT = Path(__file__).resolve().parent
+PHASE = sys.argv[sys.argv.index("--") + 1] if "--" in sys.argv else "final"
+if PHASE not in ("gray", "final"):
+    raise ValueError("Phase must be gray or final")
 RNG = random.Random(20261024)
 VERTS: list[tuple[float, float, float]] = []
 FACES: list[tuple[int, ...]] = []
@@ -215,8 +219,11 @@ def main():
     add_area("Grazing", (1.6, 0.7, 0.85), 130, 1.0)
 
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "nest-straw-blockout.blend"))
-    for view in ("threequarter", "front", "side"):
-        render(OUT / f"gray-{view}.png", cameras[view])
+    if PHASE == "gray":
+        for view in ("threequarter", "front", "side"):
+            render(OUT / f"gray-{view}.png", cameras[view])
+        print("GRAY_PHASE_COMPLETE")
+        return
 
     nest.data.materials.clear()
     for mat in final_mats:
