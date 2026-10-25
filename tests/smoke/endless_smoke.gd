@@ -766,13 +766,14 @@ func _band_up_continue() -> void:
 	_end()
 
 
-# shore (the cell-to-creature link)
+# shore (the cell-to-sea link)
 
 func _shore() -> void:
 	_begin("shore rises")
 	var flags := RunFlags.current()
 	_remove_slot(flags.slot)
-	_remove_slot(EraTransition.checkpoint_path(flags.slot))
+	for era in EraTransition.checkpoint_eras():
+		_remove_slot(EraTransition.checkpoint_path(flags.slot, era))
 	DirAccess.remove_absolute(SHORE_EXPECT_PATH)
 	await _open_main()
 	if not _slot_is_safe():
@@ -824,7 +825,7 @@ func _shore() -> void:
 	await _frames(SHORE_SETTLE_FRAMES)
 	var tick := sim.tick
 	frames = await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_STAY_FRAMES)
-	_check(not pool.paused and sim.tick > tick, "Stay in the water: the pool runs (%d ticks)" % (sim.tick - tick))
+	_check(not pool.paused and sim.tick > tick, "Stay in the pool: the pool runs (%d ticks)" % (sim.tick - tick))
 	_check(main.shore_notice == null and ShoreLink.in_reach(_shore_am(sim), sim.size()),
 		"no offer opens in %d frames while the cell stays in reach (%.2f tm)" % [frames, _shore_tm(sim)])
 	_teleport(driver, sim, from_am)
@@ -844,38 +845,30 @@ func _shore() -> void:
 	if notice == null:
 		return
 
-	_begin("ashore")
+	_begin("out to sea")
 	var lineage := sim.save.lineage_id
 	var points := sim.save.adaptation_points
 	main.crawl_time_scale = 0.0
-	notice.choose("ashore")
+	notice.choose("sea")
 	await _frames(SHORE_SETTLE_FRAMES)
-	var stage := main.creature_stage
+	var stage := main.aquatic_stage
 	_check(stage != null and main.screen == stage and main.pool == null,
-		"Crawl ashore with no fade: the creature stage is the screen (%s)" % [main.screen])
-	var arrival: Label = stage.get_node_or_null("Arrival/Text") as Label if stage != null else null
-	_check(stage != null and stage.get_node_or_null("Arrival") is CanvasLayer and arrival != null
-		and arrival.text == Main.ARRIVAL_TEXT,
-		"its Arrival layer reads '%s' (%s)" % [Main.ARRIVAL_TEXT, arrival.text if arrival != null else null])
-	var ashore := persistence.load_from(flags.slot)
-	var land: SaveGame = ashore.save if ashore.ok else null
-	_check(land != null and land.era == ShoreLink.TO_ERA and land.lineage_id == lineage,
-		"the slot loads on land, the same lineage (%s, %s)" % [land.era if land != null else ashore.errors, lineage])
-	if land != null:
-		var last: Variant = land.lineage_history.back() if not land.lineage_history.is_empty() else {}
-		_check(last is Dictionary and str(last.get("event", "")) == ShoreLink.EVENT,
-			"%s is last in the lineage's history (%s)" % [ShoreLink.EVENT, last])
-		var body: Dictionary = land.creature.get("body", {})
-		var skin := "#" + CreatureRules.cell_skin(float(land.genome.appearance.get("hue", 0.0))).to_html(false)
-		_check(str(body.get(CreatureRules.SKIN_COLOR_KEY, "")) == skin,
-			"its first creature has the cell's hue as its skin (%s, %s)" % [body.get(CreatureRules.SKIN_COLOR_KEY), skin])
-		_check(land.adaptation_points == points, "the same adaptation points as in the water (%d, %d)"
-			% [land.adaptation_points, points])
-	var before := persistence.load_from(EraTransition.checkpoint_path(flags.slot))
+		"Swim out to sea with no fade: the Aquatic stage is the screen (%s)" % [main.screen])
+	var at_sea := persistence.load_from(flags.slot)
+	var sea: SaveGame = at_sea.save if at_sea.ok else null
+	_check(sea != null and sea.era == ShoreLink.TO_ERA and sea.lineage_id == lineage,
+		"the slot loads in the sea, the same lineage (%s, %s)" % [sea.era if sea != null else at_sea.errors, lineage])
+	if sea != null:
+		var last: Variant = sea.lineage_history.back() if not sea.lineage_history.is_empty() else {}
+		_check(last is Dictionary and str(last.get("event", "")) == "entered_the_sea",
+			"entered_the_sea is last in the lineage's history (%s)" % [last])
+		_check(sea.adaptation_points == points, "the same adaptation points as in the pool (%d, %d)"
+			% [sea.adaptation_points, points])
+	var before := persistence.load_from(EraTransition.checkpoint_path(flags.slot, ShoreLink.TO_ERA))
 	var water: SaveGame = before.save if before.ok else null
 	_check(water != null and water.era == ShoreLink.FROM_ERA and water.lineage_id == lineage
 		and _same_place(ShoreLink.point_am(water), shore_am),
-		"the checkpoint holds the cell in the water, the same lineage and the shore (%s)"
+		"the checkpoint holds the cell in the pool, the same lineage and the sea edge (%s)"
 		% [water.era if water != null else before.errors])
 	var expect := {"lineage_id": lineage, "points": points, "shore_am": Array(shore_am)}
 	var file := FileAccess.open(SHORE_EXPECT_PATH, FileAccess.WRITE)
@@ -896,19 +889,17 @@ func _shore_continue() -> void:
 	if not _slot_is_safe():
 		return
 	var flags := RunFlags.current()
-	_check(main.start_screen != null and main.screen == main.start_screen and main.start_screen.water_button.visible,
-		"the title offers '%s'" % StartScreen.WATER_TEXT)
+	_check(main.start_screen != null and main.screen == main.start_screen and main.start_screen.water_button.visible
+		and main.start_screen.water_button.text == StartScreen.POOL_TEXT,
+		"the title offers '%s'" % StartScreen.POOL_TEXT)
 	var result := main.continue_run()
-	var stage := main.creature_stage
+	var stage := main.aquatic_stage
 	_check(result.ok and stage != null and main.screen == stage and main.pool == null,
-		"Continue opens the creature stage, not the sea (%s)" % [result])
-	_check(stage != null and stage.save != null and stage.save.lineage_id == str(expect.lineage_id)
-		and int(stage.state.get("points", -1)) == int(expect.points),
-		"on the lineage that came ashore, with its points (%d)" % int(expect.points))
+		"Continue opens the Aquatic stage, not the pool (%s)" % [result])
 	await _frames(2)
 	_end()
 
-	_begin("back to the water")
+	_begin("back to the pool")
 	main.show_start()
 	await _frames(2)
 	_check(main.start_screen != null and main.start_screen.water_button.visible, "back at the title, it is offered still")
@@ -917,21 +908,21 @@ func _shore_continue() -> void:
 	var confirm := main.start_screen.confirm
 	main.start_screen.water_button.pressed.emit()
 	_check(confirm.is_open() and confirm.cancel_choice == "cancel" and confirm.choice_ids().has("water"),
-		"'%s' asks first, and Esc stays on land (%s)" % [StartScreen.WATER_TEXT, confirm.choice_ids()])
+		"'%s' asks first, and Esc stays in the sea (%s)" % [StartScreen.POOL_TEXT, confirm.choice_ids()])
 	confirm.choose("cancel")
 	await _frames(2)
-	_check(main.screen == main.start_screen and main.pool == null, "Stay on land keeps the title")
+	_check(main.screen == main.start_screen and main.pool == null, "Stay in the sea keeps the title")
 	main.start_screen.water_button.pressed.emit()
 	confirm.choose("water")
 	await _frames(2)
 	var pool := main.pool
-	_check(pool != null and pool.is_endless(), "Back to the water opens the sea (%s)" % [main.last_run])
+	_check(pool != null and pool.is_endless(), "Back to the pool opens the pool (%s)" % [main.last_run])
 	if pool == null or not pool.is_endless():
 		return
 	var sim := pool.sim
 	_check(sim.save.era == ShoreLink.FROM_ERA and sim.save.lineage_id == str(expect.lineage_id)
 		and sim.save.adaptation_points == int(expect.points),
-		"the save is in the water, the same lineage and points (%s, %d)" % [sim.save.era, sim.save.adaptation_points])
+		"the save is in the pool, the same lineage and points (%s, %d)" % [sim.save.era, sim.save.adaptation_points])
 	_check(_same_place(ShoreLink.point_am(sim.save), PackedFloat64Array(expect.shore_am)),
 		"the shore is still where it rose (%s)" % [ShoreLink.shore_of(sim.save)])
 	await _frames(2)
@@ -939,9 +930,9 @@ func _shore_continue() -> void:
 	var text := str(main.hud.message_text.text)
 	_check(text == Main.WATER_BACK_TEXT, "the HUD says '%s' (%s)" % [Main.WATER_BACK_TEXT, text])
 	var bak := main.session.persistence.load_from(flags.slot + PersistenceService.BACKUP_SUFFIX)
-	var land: SaveGame = bak.save if bak.ok else null
-	_check(land != null and land.era == ShoreLink.TO_ERA and land.lineage_id == str(expect.lineage_id),
-		"the slot's backup is the save on land (%s)" % [land.era if land != null else bak.errors])
+	var sea: SaveGame = bak.save if bak.ok else null
+	_check(sea != null and sea.era == ShoreLink.TO_ERA and sea.lineage_id == str(expect.lineage_id),
+		"the slot's backup is the save in the sea (%s)" % [sea.era if sea != null else bak.errors])
 	_end()
 
 	_begin("at the shore")
