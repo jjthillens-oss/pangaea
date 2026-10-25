@@ -36,6 +36,28 @@ fire; power from currents and living electric organs; light as a managed resourc
 living material shaped by breeding in place of much early machinery. This is a game-design stance, not a claim
 about real-world feasibility, and it is open to owner review.
 
+## A2. Owner direction: bubble cities, submarines, traits that matter both ways (CONFIRMED, 2026-10-25)
+
+Joshua set three rules for the aquatic path on 2026-10-25 05:43 UTC. They are CONFIRMED requirements; how each is
+built is PROPOSED.
+
+1. **Underwater cities sit inside air bubbles.** From the Tribal era on, a sea people's settlements are pockets of
+   air held on or in the reef, so land creatures can enter and leave them and the two peoples meet inside the city,
+   not only at the tideline. The bubble is the settlement's defining structure: its size, light and air are managed
+   resources, and losing one is a readable disaster. Sections E and F are to be read with this in mind.
+2. **Leaving the water is not a one-way transition.** A lineage that walks out keeps the sea open, but going back in
+   costs something: it builds a submarine (an approved vehicle module set, from the Tribal era as a crude vessel and
+   from Civilization as proper craft) or it keeps its swimming anatomy. The land route and the sea route stay
+   connected for the whole game rather than diverging at the shore.
+3. **Traits matter both ways.** Fins, flippers and a swim bladder make a body slower, heavier or costlier on land;
+   legs and lungs make it worse in the water. A player who reshapes for land speed gives up free access to the sea
+   and buys it back with a submarine; a player who keeps fins stays a strong swimmer and accepts the land cost. The
+   phenotype service (Bible §12) owns these costs as tuning data, with the same diminishing returns as every other
+   part.
+
+Research backing: wish 3 (bubble cities, Will Wright's 2005 phrase), wish 6 (submarines and underwater vehicles),
+wish 4 (land and sea peoples meeting), and `community-wants.md` theme 7 (body design must change how you play).
+
 ## B. Era 2 Aquatic (adds to §6)
 
 Already specified in `docs/stages/aquatic-plan.md`; its first slice is IMPLEMENTED, and its section 7a (on the
@@ -75,7 +97,7 @@ shore gradient stays meaningful. Relationships, roles and memory carry the land 
 
 This is the heart of the owner's request and the first new content the addendum proposes to build.
 
-- **Settlement:** functional modules placed on and in a reef: shelters stacked from shell and stone or grown from
+- **Settlement:** an air bubble held on or in the reef (section A2, CONFIRMED) with functional modules inside and around it: shelters stacked from shell and stone or grown from
   living coral; a hearth that is a tended vent or warm seep; food pens and kelp or shellfish beds; a lookout; a
   nursery. Placement previews, collision checks, access validation and explicit costs follow §9. Modules occupy
   volume, not footprint: height matters, and workers path in three dimensions.
@@ -101,7 +123,7 @@ This is the heart of the owner's request and the first new content the addendum 
   shares the land tree's shape with different inputs rather than being a separate tree.
 - **Sea and shore peoples:** a land or tideline culture on the same world is a diplomatic partner, rival or trading
   counterpart. Treaties change behaviour; conflict targets and consequences are readable.
-- **Vehicles:** an approved module set for underwater craft before arbitrary forms (§11's ship rule applied early).
+- **Vehicles:** submarines are the land lineage's way back into the sea (section A2, CONFIRMED): an approved module set for underwater craft before arbitrary forms (§11's ship rule applied early), with a crude vessel available from the Tribal era.
 - **Presentation (from city-builder players' complaints, research finding 5):** a settlement reads as a living reef,
   not a refinery: homes, pens and workshops mix; sea life passes through; light and life are visible from inside;
   routes curve with the current rather than running as straight pipes.
@@ -137,6 +159,7 @@ cut the content (research finding 6). It is a risk reduction, not a feature.
 | --- | --- | --- |
 | Two campaigns' worth of content | Separate module sets or research trees for sea and land | Shared systems and module code; content, not systems, differ |
 | 3D settlement navigation and camera | Workers stuck, players losing "up" | Reef spike before M5; movement plane constraints where they help |
+| Bubble cities and submarines read as a gimmick rather than a system | Players ignore the bubble's air and light; submarines are a menu item | Make bubble air and light real resources with shortages; make the submarine the only route back for a legged body |
 | Sea path becomes the easy or the hard path | Playtest completion rates diverge | Tune shared difficulty presets, not separate rules |
 | Realism arguments stall design | Debate about metallurgy in reviews | Owner-confirmed tone position in section A |
 

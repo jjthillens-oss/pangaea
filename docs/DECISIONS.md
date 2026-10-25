@@ -155,6 +155,16 @@ Open for Joshua (addendum section J): the tone position, the M4.5 spike placemen
 era-5 module names; section K's recommendation is the working assumption. The Bible moves to v0.2 at its next
 revision.
 
+## 2026-10-25 · Bubble cities, submarines, and traits that matter both ways (CONFIRMED)
+Joshua's design direction for the aquatic path, 2026-10-25 05:43 UTC: underwater cities sit inside air bubbles so
+land creatures can come in and out; leaving the water is not a one-way transition, because a lineage that walks out
+has to build a submarine to go back in (or keep its fins); and traits matter both ways, so fins and flippers make a
+body slower on land while a body reshaped for land speed buys the sea back with a submarine. Recorded as section A2
+of `docs/bible/addendum-aquatic-path.md`. Reason: it answers the mod and forum wish for underwater cities and
+submarines and keeps the Bible's rule that anatomy must influence gameplay. Impact: the Tribal and Civilization
+aquatic variants centre on the bubble; a submarine vehicle module set is required (crude from Tribal, proper from
+Civilization); the phenotype service owns land-versus-water movement costs as tuning data. Numbers are PROPOSED.
+
 ## Open decisions (from Bible section 26)
 - Visual reference package and benchmark scene (M2).
 - Minimum supported PC spec (below the owner's high-end baseline).
