@@ -10,12 +10,18 @@ const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
 
 const COVERINGS := ["default", "fur", "scales", "smooth_wet"]
 var out_dir := "user://covering_shots"
+var only := -1         # --only=fur renders one covering
+var shells := -1       # --shells=N overrides the fur shell count (0 = off)
 
 
 func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--out="):
 			out_dir = arg.trim_prefix("--out=")
+		elif arg.begins_with("--only="):
+			only = COVERINGS.find(arg.trim_prefix("--only="))
+		elif arg.begins_with("--shells="):
+			shells = int(arg.trim_prefix("--shells="))
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -52,12 +58,20 @@ func _run() -> void:
 	world.add_child(cam)
 	cam.fov = 35
 	for i in COVERINGS.size():
-		rig.use_skin_shader({"covering": i, "base_pattern": 0, "coat_pattern": 1, "detail_pattern": 0})
-		for view in [["side", Vector3(1.0, 0.45, -0.2), 1.25], ["close", Vector3(0.7, 0.35, 0.5), 0.45]]:
+		if only >= 0 and i != only:
+			continue
+		var p := {"covering": i, "base_pattern": 0, "coat_pattern": 1, "detail_pattern": 0}
+		if shells >= 0:
+			p["fur_shells"] = shells
+		rig.use_skin_shader(p)
+		for view in [["gameplay", Vector3(1.0, 0.45, -0.2), 2.0], ["side", Vector3(1.0, 0.45, -0.2), 1.25], ["close", Vector3(0.7, 0.35, 0.5), 0.45]]:
 			var dir: Vector3 = (view[1] as Vector3).normalized()
 			cam.look_at_from_position(c + dir * r * float(view[2]), c, Vector3.UP)
 			for f in 4:
 				await process_frame
-			await RenderingServer.frame_post_draw
+			var t0 := Time.get_ticks_usec()
+			for f in 10:
+				await RenderingServer.frame_post_draw
+			print("covering_shots %s %s shells=%d: %.1f ms/frame" % [COVERINGS[i], view[0], shells, (Time.get_ticks_usec() - t0) / 10000.0])
 			root.get_texture().get_image().save_png(out_dir.path_join("%d_%s_%s.png" % [i, COVERINGS[i], view[0]]))
 	quit()

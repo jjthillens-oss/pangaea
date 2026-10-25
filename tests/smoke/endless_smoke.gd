@@ -48,6 +48,23 @@ extends SceneTree
 ##       A new process continues that slot at size 4: the same place within 1e-6 am, bead
 ##       clusters, the old band ready and drawn in at most 8 calls (with instances when the first
 ##       run had any), the cradle shown, the preview line and the places line as saved.
+##   -- --phase=shore --world=endless --slot=user://smoke/shore.json --seed=4248
+##       The cell-to-creature link (ShoreLink, EraTransition), on a slot and checkpoint removed
+##       first: a new omnivore, still and hidden, is put at the top size at tick SHORE_SIZE_TICK
+##       and its ring filled at SHORE_FILL_TICK. The ring pays out and the shore rises: in the save
+##       and in the slot on disk, shown with its arrow, and the HUD says so. A dev teleport onto it
+##       opens "Crawl onto land?" over the paused pool. "Stay in the water" plays on with no offer
+##       while the cell stays in reach; out past the reopen distance and back, it opens again.
+##       "Crawl ashore" with no fade opens the creature stage under the arrival banner; the slot is
+##       ashore with the same lineage and points, came_ashore last in its history and the cell's
+##       hue as its skin, and the checkpoint holds the cell and the shore. It writes
+##       SHORE_EXPECT_PATH.
+##   -- --phase=shore_continue --world=endless --slot=user://smoke/shore.json
+##       A new process: the title offers Back to the water and Continue opens the creature stage on
+##       that lineage. Back at the title, Back to the water opens the sea from the checkpoint: the
+##       same lineage, points and shore, the shore shown, the HUD saying so, and the save ashore
+##       kept as the slot's backup. The cell is in the shore's reach and no offer greets it; out
+##       where the shore rose and back onto it, the offer opens.
 ##
 ## Every phase plays on its own settings (SETTINGS_PATH, deleted first and never saved) and the
 ## player memory beside the slot; the S1 phases set the growth trigger to press and never press, so
@@ -106,12 +123,22 @@ const SIZE_3_LOOK := "glass_flake"
 const SIZE_4_LOOK := "bead_cluster"
 const PREVIEW_AT_4 := "Coming in a later build: the engulfer"
 const NEAR_AT_4: Array = ["engulfer", "lancer"]
+# The cell-to-creature link (ShoreLink, EraTransition).
+const SHORE_EXPECT_PATH := "user://smoke/shore_expect.json"
+const SHORE_TOP := 4                ## the build's top size, where a paid ring raises the shore
+const SHORE_SIZE_TICK := 30
+const SHORE_FILL_TICK := 60
+const SHORE_CAP_TICKS := 600        ## the ring pays out on the fill tick; a teleport comes on the next
+const SHORE_OFFER_FRAMES := 120
+const SHORE_STAY_FRAMES := 60
+const SHORE_SETTLE_FRAMES := 4
 
 
 ## The intent provider: `bot` swims (null holds still), and the dev calls are keyed on sim.tick:
-## hidden from the AI at its first tick, the energy refilled every REFILL_TICKS from then, and (S2)
-## the ring filled `fill_tick` ticks after the first. At `record_tick` it calls `on_record` once,
-## before that tick's step.
+## hidden from the AI at its first tick, the energy refilled every REFILL_TICKS from then, (S2)
+## the ring filled `fill_tick` ticks after the first and (the shore) the cell teleported to
+## `teleport_am` at `teleport_tick`. At `record_tick` it calls `on_record` once, before that
+## tick's step.
 class Driver:
 	var bot: RefCounted
 	var first_tick := -1
@@ -121,6 +148,8 @@ class Driver:
 	var size_tick := -1                 ## S3: debug_set_size(size_to) this many ticks after the first
 	var size_to := 0
 	var force_tick := -1                ## S3: fill and force this many ticks after the first
+	var teleport_tick := -1             ## the shore: debug_teleport_abs to teleport_am, likewise
+	var teleport_am := PackedFloat64Array()
 	var _next_refill := 0
 
 	func _init(p_bot: RefCounted = null) -> void:
@@ -141,6 +170,8 @@ class Driver:
 		if t == force_tick:
 			sim.debug_fill_meter(1.0)
 			sim.debug_force_growth()
+		if t == teleport_tick and teleport_am.size() == 2:
+			sim.debug_teleport_abs(teleport_am[0], teleport_am[1])
 		if sim.tick == record_tick and on_record.is_valid():
 			on_record.call(sim)
 			on_record = Callable()
@@ -191,9 +222,13 @@ func _initialize() -> void:
 			await _band_up()
 		"band_up_continue":
 			await _band_up_continue()
+		"shore":
+			await _shore()
+		"shore_continue":
+			await _shore_continue()
 		_:
-			_check(false, "--phase is endless_out, endless_continue, fps, grow, grow_continue, band_up or band_up_continue (got '%s')"
-				% phase)
+			_check(false, ("--phase is endless_out, endless_continue, fps, grow, grow_continue, band_up, "
+				+ "band_up_continue, shore or shore_continue (got '%s')") % phase)
 	_finished = true
 	_report()
 
@@ -731,6 +766,229 @@ func _band_up_continue() -> void:
 	_end()
 
 
+# shore (the cell-to-creature link)
+
+func _shore() -> void:
+	_begin("shore rises")
+	var flags := RunFlags.current()
+	_remove_slot(flags.slot)
+	_remove_slot(EraTransition.checkpoint_path(flags.slot))
+	DirAccess.remove_absolute(SHORE_EXPECT_PATH)
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	var driver := Driver.new()
+	driver.size_tick = SHORE_SIZE_TICK
+	driver.size_to = SHORE_TOP
+	driver.fill_tick = SHORE_FILL_TICK
+	main.intent_provider = driver
+	var started := main.start_new(BODY)
+	var pool := main.pool
+	_check(started.ok and pool != null and pool.growth() != null and pool.shore != null
+		and pool.sim.world.max_size == SHORE_TOP,
+		"a new %s lineage opens the growing sea, top size %d (%s)" % [BODY, SHORE_TOP, started])
+	if pool == null or pool.growth() == null or pool.shore == null:
+		return
+	_watch(pool)
+	var sim := pool.sim
+	var persistence := main.session.persistence
+	var ticks := await _ticks_until(sim, func() -> bool: return int(_events.get("ring_paid", 0)) >= 1,
+		SHORE_CAP_TICKS)
+	_check(int(_events.get("ring_paid", 0)) == 1 and sim.size() == SHORE_TOP,
+		"the ring paid out at size %d, %d ticks in (cap %d)" % [sim.size(), ticks, SHORE_CAP_TICKS])
+	await _frames_until(func() -> bool: return pool.shore.visible, SHORE_SETTLE_FRAMES)
+	var shore := ShoreLink.shore_of(sim.save)
+	var shore_am := ShoreLink.point_am(sim.save)
+	_check(not shore.is_empty() and int(shore.get("size", 0)) == SHORE_TOP,
+		"the shore rose in the save at size %d (%s)" % [SHORE_TOP, shore])
+	var on_disk := persistence.load_from(flags.slot)
+	_check(on_disk.ok and _same_place(ShoreLink.point_am(on_disk.save), shore_am),
+		"the slot on disk holds the shore, saved as it rose (%s)" % [on_disk.errors])
+	_check(pool.shore.visible, "the shore shows")
+	var text := str(main.hud.message_text.text)
+	_check(text == Main.SHORE_RISEN_TEXT, "the HUD says '%s' (%s)" % [Main.SHORE_RISEN_TEXT, text])
+	_check(pool.shore_arrow.visible, "the arrow points to it, %.1f tm away" % _shore_tm(sim))
+	_end()
+
+	_begin("the offer")
+	var from_am := sim.absolute_position_am()
+	_teleport(driver, sim, shore_am)
+	var frames := await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_OFFER_FRAMES)
+	var notice := main.shore_notice
+	_check(notice != null and notice.is_open() and notice.title_text() == Main.SHORE_TITLE,
+		"teleported onto the shore, '%s' opens (%d frames)" % [Main.SHORE_TITLE, frames])
+	if notice == null:
+		return
+	_check(pool.paused and not pool.shore_arrow.visible, "the pool is paused and the arrow hides")
+	notice.choose("stay")
+	await _frames(SHORE_SETTLE_FRAMES)
+	var tick := sim.tick
+	frames = await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_STAY_FRAMES)
+	_check(not pool.paused and sim.tick > tick, "Stay in the water: the pool runs (%d ticks)" % (sim.tick - tick))
+	_check(main.shore_notice == null and ShoreLink.in_reach(_shore_am(sim), sim.size()),
+		"no offer opens in %d frames while the cell stays in reach (%.2f tm)" % [frames, _shore_tm(sim)])
+	_teleport(driver, sim, from_am)
+	ticks = await _ticks_until(sim, func() -> bool: return ShoreLink.out_of_reach(_shore_am(sim), sim.size()),
+		SHORE_CAP_TICKS)
+	await _frames(SHORE_SETTLE_FRAMES)
+	_check(ShoreLink.out_of_reach(_shore_am(sim), sim.size()) and main.shore_notice == null
+		and pool.shore_arrow.visible,
+		"teleported out past the reopen distance (%.1f tm, %d ticks): no offer, and the arrow shows"
+		% [_shore_tm(sim), ticks])
+	_teleport(driver, sim, shore_am)
+	frames = await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_OFFER_FRAMES)
+	notice = main.shore_notice
+	_check(notice != null and notice.is_open() and pool.paused,
+		"and back onto the shore, the offer opens again (%d frames)" % frames)
+	_end()
+	if notice == null:
+		return
+
+	_begin("ashore")
+	var lineage := sim.save.lineage_id
+	var points := sim.save.adaptation_points
+	main.crawl_time_scale = 0.0
+	notice.choose("ashore")
+	await _frames(SHORE_SETTLE_FRAMES)
+	var stage := main.creature_stage
+	_check(stage != null and main.screen == stage and main.pool == null,
+		"Crawl ashore with no fade: the creature stage is the screen (%s)" % [main.screen])
+	var arrival: Label = stage.get_node_or_null("Arrival/Text") as Label if stage != null else null
+	_check(stage != null and stage.get_node_or_null("Arrival") is CanvasLayer and arrival != null
+		and arrival.text == Main.ARRIVAL_TEXT,
+		"its Arrival layer reads '%s' (%s)" % [Main.ARRIVAL_TEXT, arrival.text if arrival != null else null])
+	var ashore := persistence.load_from(flags.slot)
+	var land: SaveGame = ashore.save if ashore.ok else null
+	_check(land != null and land.era == ShoreLink.TO_ERA and land.lineage_id == lineage,
+		"the slot loads on land, the same lineage (%s, %s)" % [land.era if land != null else ashore.errors, lineage])
+	if land != null:
+		var last: Variant = land.lineage_history.back() if not land.lineage_history.is_empty() else {}
+		_check(last is Dictionary and str(last.get("event", "")) == ShoreLink.EVENT,
+			"%s is last in the lineage's history (%s)" % [ShoreLink.EVENT, last])
+		var body: Dictionary = land.creature.get("body", {})
+		var skin := "#" + CreatureRules.cell_skin(float(land.genome.appearance.get("hue", 0.0))).to_html(false)
+		_check(str(body.get(CreatureRules.SKIN_COLOR_KEY, "")) == skin,
+			"its first creature has the cell's hue as its skin (%s, %s)" % [body.get(CreatureRules.SKIN_COLOR_KEY), skin])
+		_check(land.adaptation_points == points, "the same adaptation points as in the water (%d, %d)"
+			% [land.adaptation_points, points])
+	var before := persistence.load_from(EraTransition.checkpoint_path(flags.slot))
+	var water: SaveGame = before.save if before.ok else null
+	_check(water != null and water.era == ShoreLink.FROM_ERA and water.lineage_id == lineage
+		and _same_place(ShoreLink.point_am(water), shore_am),
+		"the checkpoint holds the cell in the water, the same lineage and the shore (%s)"
+		% [water.era if water != null else before.errors])
+	var expect := {"lineage_id": lineage, "points": points, "shore_am": Array(shore_am)}
+	var file := FileAccess.open(SHORE_EXPECT_PATH, FileAccess.WRITE)
+	_check(file != null, "wrote %s" % SHORE_EXPECT_PATH)
+	if file != null:
+		file.store_string(JSON.stringify(expect, "\t", true, true))
+		file.close()
+	_end()
+
+
+func _shore_continue() -> void:
+	_begin("shore continue")
+	var expect: Variant = JSON.parse_string(FileAccess.get_file_as_string(SHORE_EXPECT_PATH))
+	_check(expect is Dictionary, "shore left %s" % SHORE_EXPECT_PATH)
+	if not expect is Dictionary:
+		return
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	var flags := RunFlags.current()
+	_check(main.start_screen != null and main.screen == main.start_screen and main.start_screen.water_button.visible,
+		"the title offers '%s'" % StartScreen.WATER_TEXT)
+	var result := main.continue_run()
+	var stage := main.creature_stage
+	_check(result.ok and stage != null and main.screen == stage and main.pool == null,
+		"Continue opens the creature stage, not the sea (%s)" % [result])
+	_check(stage != null and stage.save != null and stage.save.lineage_id == str(expect.lineage_id)
+		and int(stage.state.get("points", -1)) == int(expect.points),
+		"on the lineage that came ashore, with its points (%d)" % int(expect.points))
+	await _frames(2)
+	_end()
+
+	_begin("back to the water")
+	main.show_start()
+	await _frames(2)
+	_check(main.start_screen != null and main.start_screen.water_button.visible, "back at the title, it is offered still")
+	var driver := Driver.new()
+	main.intent_provider = driver
+	var confirm := main.start_screen.confirm
+	main.start_screen.water_button.pressed.emit()
+	_check(confirm.is_open() and confirm.cancel_choice == "cancel" and confirm.choice_ids().has("water"),
+		"'%s' asks first, and Esc stays on land (%s)" % [StartScreen.WATER_TEXT, confirm.choice_ids()])
+	confirm.choose("cancel")
+	await _frames(2)
+	_check(main.screen == main.start_screen and main.pool == null, "Stay on land keeps the title")
+	main.start_screen.water_button.pressed.emit()
+	confirm.choose("water")
+	await _frames(2)
+	var pool := main.pool
+	_check(pool != null and pool.is_endless(), "Back to the water opens the sea (%s)" % [main.last_run])
+	if pool == null or not pool.is_endless():
+		return
+	var sim := pool.sim
+	_check(sim.save.era == ShoreLink.FROM_ERA and sim.save.lineage_id == str(expect.lineage_id)
+		and sim.save.adaptation_points == int(expect.points),
+		"the save is in the water, the same lineage and points (%s, %d)" % [sim.save.era, sim.save.adaptation_points])
+	_check(_same_place(ShoreLink.point_am(sim.save), PackedFloat64Array(expect.shore_am)),
+		"the shore is still where it rose (%s)" % [ShoreLink.shore_of(sim.save)])
+	await _frames(2)
+	_check(pool.shore != null and pool.shore.visible, "the shore shows")
+	var text := str(main.hud.message_text.text)
+	_check(text == Main.WATER_BACK_TEXT, "the HUD says '%s' (%s)" % [Main.WATER_BACK_TEXT, text])
+	var bak := main.session.persistence.load_from(flags.slot + PersistenceService.BACKUP_SUFFIX)
+	var land: SaveGame = bak.save if bak.ok else null
+	_check(land != null and land.era == ShoreLink.TO_ERA and land.lineage_id == str(expect.lineage_id),
+		"the slot's backup is the save on land (%s)" % [land.era if land != null else bak.errors])
+	_end()
+
+	_begin("at the shore")
+	# The checkpoint holds the cell at the shore: no offer greets it until it has swum out and back.
+	var frames := await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_STAY_FRAMES)
+	_check(main.shore_notice == null and not pool.paused and ShoreLink.in_reach(_shore_am(sim), sim.size()),
+		"the cell is in the shore's reach (%.2f tm) and no offer greets it in %d frames" % [_shore_tm(sim), frames])
+	_teleport(driver, sim, _below_shore(sim, ShoreLink.RISE_AHEAD_TM))
+	var ticks := await _ticks_until(sim, func() -> bool: return ShoreLink.out_of_reach(_shore_am(sim), sim.size()),
+		SHORE_CAP_TICKS)
+	await _frames(SHORE_SETTLE_FRAMES)
+	_teleport(driver, sim, ShoreLink.point_am(sim.save))
+	frames = await _frames_until(func() -> bool: return main.shore_notice != null, SHORE_OFFER_FRAMES)
+	_check(main.shore_notice != null and pool.paused,
+		"out where the shore rose (%d ticks) and back onto it, the offer opens (%d frames)" % [ticks, frames])
+	_end()
+
+
+## The place `tm` tm (at the cell's size) back from the shore's centre the way it rose: where the cell was when it
+## rose RISE_AHEAD_TM ahead.
+static func _below_shore(sim: PoolSim, tm: float) -> PackedFloat64Array:
+	var p := ShoreLink.point_am(sim.save)
+	var am := tm * WorldConfig.tm_to_am(sim.size())
+	return PackedFloat64Array([p[0] - ShoreLink.RISE_DIRECTION.x * am, p[1] - ShoreLink.RISE_DIRECTION.y * am])
+
+
+## Has the driver teleport the cell to `am` (absolute) on the next tick.
+static func _teleport(driver: Driver, sim: PoolSim, am: PackedFloat64Array) -> void:
+	driver.teleport_am = am
+	driver.teleport_tick = sim.tick - driver.first_tick + 1
+
+
+## The cell's distance to the shore's centre in am, and in tm at its size.
+static func _shore_am(sim: PoolSim) -> float:
+	return ShoreLink.distance_am(sim.save, sim.absolute_position_am())
+
+
+static func _shore_tm(sim: PoolSim) -> float:
+	return _shore_am(sim) / WorldConfig.tm_to_am(sim.size())
+
+
+## Whether two absolute places (am) are the same within POSITION_TOLERANCE_TM.
+static func _same_place(a: PackedFloat64Array, b: PackedFloat64Array) -> bool:
+	return a.size() == 2 and b.size() == 2 and absf(a[0] - b[0]) <= POSITION_TOLERANCE_TM \
+		and absf(a[1] - b[1]) <= POSITION_TOLERANCE_TM
+
+
 # helpers
 
 ## A node's box in the pool's frame (its own transform up to the pool times its meshes' box).
@@ -744,14 +1002,15 @@ static func _box_in(node: Node3D, pool: Node) -> AABB:
 
 
 ## Every phase plays on SETTINGS_PATH, deleted first and never saved; the S1 phases set the growth
-## trigger to press and never press, so they play as S1 did.
+## trigger to press and never press, so they play as S1 did. The growth, band-up and shore phases
+## keep the automatic trigger.
 func _use_own_settings(phase: String) -> void:
 	DirAccess.make_dir_recursive_absolute(SMOKE_DIR)
 	if FileAccess.file_exists(SETTINGS_PATH):
 		DirAccess.remove_absolute(SETTINGS_PATH)
 	var settings := SettingsService.new(SETTINGS_PATH)
 	SettingsService.set_shared(settings)
-	if not phase.begins_with("grow") and not phase.begins_with("band_up"):
+	if not phase.begins_with("grow") and not phase.begins_with("band_up") and not phase.begins_with("shore"):
 		settings.set_value("gameplay/growth_trigger", "press")
 
 

@@ -16,6 +16,10 @@ const DEFAULT_NAME := "Newcomer"
 ## The world tuning file (owned by the world track); start_points falls back to DEFAULT_START_POINTS without it.
 const TUNING_PATH := "res://game/data/creature/creature_stage.json"
 const DEFAULT_START_POINTS := 150
+## The body key the editor keeps the skin colour in (CreatureEditor.SKIN_COLOR_KEY), and the cell skin's softening.
+const SKIN_COLOR_KEY := "skin_color"
+const CELL_SKIN_SATURATION := 0.55
+const CELL_SKIN_VALUE := 0.8
 
 ## The body rules and part rules bodies are validated with (CreatureData's by default; tests may inject).
 var rules: Dictionary
@@ -41,6 +45,38 @@ static func start_points() -> int:
 ## A fresh creature: the starter quadruped, generation 1 and no history.
 static func new_creature() -> Dictionary:
 	return {"name": DEFAULT_NAME, "body": CreatureData.body(STARTER_BODY).to_dict(), "generation": 1, "history": []}
+
+
+## The first creature of a lineage that came ashore (ShoreLink, the cell-to-creature link): the fresh creature, its
+## skin the cell's hue (the genome's appearance.hue, 0 to 1) as "#rrggbb" in the body's "skin_color", the key the
+## editor reads. Everything else the lineage keeps (id, genome, history, points) stays in the save.
+static func from_cell(genome: Genome) -> Dictionary:
+	var creature := new_creature()
+	var hue = genome.appearance.get("hue") if genome != null else null
+	if hue is float or hue is int:
+		var body: Dictionary = creature["body"]
+		body[SKIN_COLOR_KEY] = "#" + cell_skin(float(hue)).to_html(false)
+	return creature
+
+
+## The creature a lineage takes ashore: the one it already has (shaped in the creature stage preview while it was in
+## the water, so the points spent on it are not lost), else from_cell's. A kept body with no skin of its own takes the
+## cell's.
+static func ashore(creature: Dictionary, genome: Genome) -> Dictionary:
+	var cell := from_cell(genome)
+	if creature.is_empty():
+		return cell
+	var out := creature.duplicate(true)
+	var body = out.get("body")
+	var cell_body: Dictionary = cell["body"]
+	if body is Dictionary and not body.has(SKIN_COLOR_KEY) and cell_body.has(SKIN_COLOR_KEY):
+		body[SKIN_COLOR_KEY] = cell_body[SKIN_COLOR_KEY]
+	return out
+
+
+## The skin a cell of hue `hue` (0 to 1) gives its first creature: that hue, softened to sit among the editor's swatches.
+static func cell_skin(hue: float) -> Color:
+	return Color.from_hsv(fposmod(hue, 1.0), CELL_SKIN_SATURATION, CELL_SKIN_VALUE)
 
 
 ## Every problem with a body dictionary: the codec's reading problems, the body rules and the part rules.

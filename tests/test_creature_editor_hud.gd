@@ -72,6 +72,27 @@ func test_tool_and_colour_states_follow_without_emitting() -> void:
 	check_eq(emitted[0], 0, "state setters emit nothing")
 
 
+func test_the_covering_toggles_emit_their_index_and_follow_without_emitting() -> void:
+	palette()
+	var labels := PackedStringArray()
+	for b in hud.covering_row.get_children():
+		labels.append((b as Button).text)
+	check_eq(labels, PackedStringArray(["Smooth", "Fur", "Scales", "Wet"]), "four covering toggles")
+	check((hud.covering_row.get_child(0) as Button).button_pressed, "smooth is down to start")
+	var got := []
+	hud.covering_chosen.connect(func(i: int): got.append(i))
+	(hud.covering_row.get_child(3) as Button).pressed.emit()
+	(hud.covering_row.get_child(1) as Button).pressed.emit()
+	check_eq(got, [3, 1], "a toggle emits its index")
+	hud.set_covering(2)
+	check((hud.covering_row.get_child(2) as Button).button_pressed and not (hud.covering_row.get_child(0) as Button).button_pressed,
+			"the scales toggle is down")
+	check_eq(got.size(), 2, "set_covering emits nothing")
+	palette()
+	check_eq(hud.covering_row.get_child_count(), 4, "a second setup refills the row, not adds another")
+	check_eq(hud.covering_row.get_index(), hud.swatch_row.get_index() + 2, "the row sits under its caption after the swatches")
+
+
 func test_points_refusal_and_test_drive_lines() -> void:
 	palette()
 	hud.set_points(150, 0, true)

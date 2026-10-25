@@ -430,7 +430,7 @@ static func _nearest_radius(desc: RefCounted, p: Vector3) -> float:
 ## The body's text with the editor's skin_color left out, to compare with a starter's.
 static func _text_without_colour(desc: RefCounted) -> String:
 	var dict: Dictionary = desc.to_dict().duplicate(true)
-	for key in ["skin_color", "pattern_seed", "coat_pattern", "detail_pattern"]:   # the editor's look (creature_look.gd)
+	for key in ["skin_color", "pattern_seed", "coat_pattern", "detail_pattern", "skin_covering"]:   # the editor's look (creature_look.gd)
 		dict.erase(key)
 	return BodyCodec.encode(BodyCodec.from_dict(dict))
 

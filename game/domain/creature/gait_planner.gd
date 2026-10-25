@@ -3,7 +3,7 @@ extends RefCounted
 ## throttle and a turn input. Pure rules: no scene or file access, deterministic for the same inputs and time steps.
 ##
 ## One gait clock per body: the cycle period is T = rel_stride(Fr) * h / s, with s the fastest hip speed over the
-## ground and Fr = s^2 / (g * h). Each leg runs its own phase, pulled towards clock + pattern offset, so a pattern
+## ground, Fr = s^2 / (g * h) and h the body's gait_height (its lowest standing hip, body_mechanics.gd). Each leg runs its own phase, pulled towards clock + pattern offset, so a pattern
 ## change blends in over a cycle or two. A stance foot stays fixed in the world; it lifts when its phase reaches the
 ## duty factor, or early if the hip has moved out of reach. A swinging foot aims at where its rest point will be at
 ## mid-stance, predicted from the current speed and turn rate.
@@ -41,9 +41,13 @@ var idle_time := 0.0
 
 ## Posture (PROPOSED): the body bobs, pitches with acceleration, banks into turns and sways at a walk, about the
 ## point at hip height above the body origin. It never lifts a hip above its rest height, so it cannot overstretch a
-## leg. bob is a height change in metres (never above 0).
+## leg. bob is a height change in metres (never above 0). In a bound (gait_table.gd) the body dips once per cycle
+## while its feet are down and pitches nose down on landing, nose up in flight, so it reads as a hop; hop_weight
+## blends that in and out over posture_smoothing as the pattern changes.
 var bob := 0.0
 var pitch := 0.0
+var hop_pitch := 0.0
+var hop_weight := 0.0
 var roll := 0.0
 var sway := 0.0
 var posture_basis := Basis()
@@ -56,6 +60,8 @@ var _length := PackedFloat64Array()
 var _reach := PackedFloat64Array()
 ## _offsets[band][leg]: pattern phase offset.
 var _offsets: Array[PackedFloat64Array] = []
+## _patterns[band]: the pattern this body uses in the band (body_mechanics.gd band_pattern).
+var _patterns := PackedStringArray()
 var _v_prev := 0.0
 
 ## Telemetry.
@@ -84,16 +90,17 @@ static func create(mechanics: RefCounted, start_position := Vector3.ZERO, start_
 		p._rest.append(leg["rest"])
 		p._length.append(leg["length"])
 		p._reach.append(leg["reach"])
-	for b in p.table.bands:
+	for b in p.table.bands.size():
+		p._patterns.append(mechanics.band_pattern(b))
 		var offs := PackedFloat64Array()
 		for i in mechanics.legs.size():
-			offs.append(mechanics.pattern_offset(i, b["pattern"]))
+			offs.append(mechanics.pattern_offset(i, p._patterns[b]))
 		p._offsets.append(offs)
 	for i in mechanics.legs.size():
 		var rest: Vector3 = p.rest_world(i)
 		p.foot.append(rest)
 		p.state.append(STANCE)
-		p.leg_phase.append(mechanics.pattern_offset(i, p.table.bands[0]["pattern"]))
+		p.leg_phase.append(p._offsets[0][i])
 		p.leg_rate.append(1.0)
 		p.swing_from.append(rest)
 		p.swing_u.append(0.0)
@@ -124,7 +131,7 @@ func step(dt: float, throttle: float, turn: float) -> void:
 	band = table.pick_band(band, froude_now)
 	duty = table.bands[band]["duty"]
 	var offsets: PackedFloat64Array = _offsets[band]
-	period = table.rel_stride(froude_now) * mech.hip_height / s if s > EPS else INF
+	period = table.rel_stride(froude_now) * mech.gait_height / s if s > EPS else INF
 	var dphi := dt / period if s > EPS else 0.0
 	cycle_phase = fposmod(cycle_phase + dphi, 1.0)
 	cycles += dphi
@@ -173,6 +180,11 @@ func body_after(t: float) -> Array:
 	return [p, y]
 
 
+## The pattern the body steps in now ("walk", "trot" or "bound").
+func pattern() -> String:
+	return _patterns[band]
+
+
 func hip_world(i: int) -> Vector3:
 	return position + Basis(Vector3.UP, yaw) * _posed_hip(i)
 
@@ -208,12 +220,22 @@ func _update_posture(dt: float) -> void:
 			deg_to_rad(table.roll_max_deg))
 	pitch = lerpf(pitch, target_pitch, k)
 	roll = lerpf(roll, target_roll, k)
-	posture_basis = Basis(Vector3.BACK, roll) * Basis(Vector3.RIGHT, mech.rest_pitch + pitch)
-	# Two dips per cycle (one per stance of each diagonal pair or tripod), deeper at speed.
+	hop_weight = lerpf(hop_weight, 1.0 if _patterns[band] == "bound" else 0.0, k)
+	# A bound's feet are down from the front pair's landing (phase 1 - lag) to the hind pair's push-off (duty): the
+	# deepest dip and the nose-down peak sit in that stretch, the nose-up peak half a cycle on, in the flight.
+	var lag: float = table.bound_pair_lag
+	var front_mid := 1.0 - lag + 0.5 * duty
+	var down_mid := 1.0 - lag + 0.5 * (lag + duty)
+	hop_pitch = -hop_weight * deg_to_rad(table.bound_pitch_deg) * cos(TAU * (cycle_phase - front_mid))
+	posture_basis = Basis(Vector3.BACK, roll) * Basis(Vector3.RIGHT, mech.rest_pitch + pitch + hop_pitch)
+	# Two dips per cycle (one per stance of each diagonal pair or tripod), deeper at speed; a bound's single dip
+	# blends in with hop_weight.
 	var gait_strength := clampf(froude_now / 1.0, 0.0, 1.0)
-	bob = -table.bob_ratio * h * gait_strength * (0.5 - 0.5 * cos(TAU * 2.0 * cycle_phase))
+	var trot_dip: float = table.bob_ratio * (0.5 - 0.5 * cos(TAU * 2.0 * cycle_phase))
+	var hop_dip: float = table.bound_bob_ratio * (0.5 + 0.5 * cos(TAU * (cycle_phase - down_mid)))
+	bob = -h * gait_strength * lerpf(trot_dip, hop_dip, hop_weight)
 	# At a walk the body shifts a little towards the side that is standing.
-	var walk_strength := clampf(froude_now / 0.2, 0.0, 1.0) if table.bands[band]["pattern"] == "walk" else 0.0
+	var walk_strength := clampf(froude_now / 0.2, 0.0, 1.0) if _patterns[band] == "walk" else 0.0
 	sway = table.sway_ratio * h * walk_strength * sin(TAU * cycle_phase)
 	# Never lift a hip above its rest height (on the standing tilt): lower the body by the highest hip's rise.
 	var tilt := Basis(Vector3.RIGHT, mech.rest_pitch)

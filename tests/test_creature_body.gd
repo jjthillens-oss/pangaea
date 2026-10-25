@@ -183,6 +183,29 @@ func test_codec_keeps_unknown_and_reports_bad() -> void:
 	check(not BodyCodec.from_dict(newer).validate(rules).is_empty(), "a newer body_version is refused with a reason")
 
 
+## The skin covering (creature_look.gd) rides in the extra keys: the codec keeps it through a save's JSON, and the look
+## reads back what it wrote, smooth for anything missing or out of range, and hands the shader its "covering".
+func test_the_skin_covering_round_trips_through_the_look_and_the_codec() -> void:
+	var Look = load("res://game/scenes/creature/creature_look.gd")
+	var desc = Fixtures.body("bean")
+	check_eq(int(Look.covering_of(desc.extra)), 0, "a body without one is smooth")
+	Look.store_covering(desc.extra, 2)
+	check(desc.extra[Look.COVERING_KEY] is float, "stored as a whole-number float, as JSON reads it back")
+	var back: Dictionary = JSON.parse_string(JSON.stringify({"body": desc.to_dict()}))
+	var loaded = BodyCodec.from_dict(back["body"])
+	check(loaded.load_problems.is_empty(), "the body loads cleanly (%s)" % str(loaded.load_problems))
+	check_eq(int(Look.covering_of(loaded.extra)), 2, "the codec keeps skin_covering through JSON")
+	check_eq(BodyCodec.encode(loaded), BodyCodec.encode(desc), "and writes it back byte-identically")
+	var look: Dictionary = Look.look_of(loaded.extra)
+	check_eq(int(look[Look.COVERING_KEY]), 2, "the look carries it beside the pattern")
+	check_eq(int(Look.shader_params(Color.WHITE, look)["covering"]), 2, "the shader gets it as covering")
+	check_eq(int(Look.shader_params(Color.WHITE, Look.DEFAULT_PATTERN)["covering"]), 0, "smooth by default")
+	for bad in [4, -1, 1.5, "fur", null]:
+		check_eq(int(Look.covering_of({Look.COVERING_KEY: bad})), 0, "%s is not a covering" % [bad])
+	check_eq(int(Look.rival_pattern(3, {Look.COVERING_KEY: 1.0})[Look.COVERING_KEY]), 1, "a rival wears its body's covering")
+	check_eq(int(Look.rival_pattern(3)[Look.COVERING_KEY]), 0, "and is smooth without one")
+
+
 func test_version_1_body_loads() -> void:
 	var desc = Fixtures.body("bean")
 	check(desc.limbs.is_empty() and desc.validate(rules).is_empty() and int(desc.next_ids["l"]) == 1,

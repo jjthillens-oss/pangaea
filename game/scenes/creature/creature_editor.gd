@@ -25,10 +25,11 @@ extends Node3D
 ## for REFUSAL_S seconds.
 ##
 ## The skin colour comes from a swatch; it rides in the body dictionary as "skin_color" ("#rrggbb") beside the three
-## skin-pattern ints (creature_look.gd), fields the codec keeps as unknown keys (tests/test_creature_body.gd), so the
-## world and the store carry them without a schema change. The HUD's head shape sliders (snout, skull width and
-## height, jaw, brow) set the body's "head_shape" block the same way (domain/creature/head_shape.gd); a slider drag is
-## one undo step, and the dials cost nothing and change no stat (mass leaves the head shape out).
+## skin-pattern ints and the covering (set_skin_covering: smooth, fur, scales or wet; creature_look.gd), fields the
+## codec keeps as unknown keys (tests/test_creature_body.gd), so the world and the store carry them without a schema
+## change. The HUD's head shape sliders (snout, skull width and height, jaw, brow) set the body's "head_shape" block
+## the same way (domain/creature/head_shape.gd); a slider drag is one undo step, and the dials cost nothing and change
+## no stat (mass leaves the head shape out).
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
@@ -106,6 +107,8 @@ var _handle_meshes: Array = []   ## {mesh: MeshInstance3D, scale: float}, resize
 var skin_color: Color = SKIN_COLORS[0]
 ## The skin-shader pattern (pattern_seed, coat_pattern, detail_pattern), from the body or Look.DEFAULT_PATTERN.
 var skin_pattern: Dictionary = Look.DEFAULT_PATTERN.duplicate()
+## The skin covering, an index into Look.COVERINGS (smooth, fur, scales, wet), from the body or 0.
+var skin_covering := 0
 ## The last refused op's reason, for REFUSAL_S seconds.
 var refusal_text := ""
 var rig: Node3D
@@ -171,6 +174,7 @@ func _wire() -> void:
 	hud.action.connect(_on_hud_action)
 	hud.test_drive_toggled.connect(func(on: bool): test_drive(on))
 	hud.color_chosen.connect(set_skin_color)
+	hud.covering_chosen.connect(set_skin_covering)
 	hud.preset_chosen.connect(start_from_preset)
 	hud.random_requested.connect(func(): start_random())
 	hud.head_shape_changed.connect(func(key: String, value: int): set_head_shape(key, value))
@@ -202,6 +206,7 @@ func setup(body: RefCounted, points: int) -> void:
 	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
 	skin_color = Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0]
 	skin_pattern = Look.pattern_of(body.extra)
+	skin_covering = Look.covering_of(body.extra)
 	selected = {}
 	tool = ""
 	preset = ""
@@ -212,7 +217,7 @@ func setup(body: RefCounted, points: int) -> void:
 	var roles := {}
 	for type in part_rules:
 		roles[type] = String(part_rules[type].get("role", ""))
-	hud.setup(tools, costs, SKIN_COLORS, roles)
+	hud.setup(tools, costs, SKIN_COLORS, roles, Look.COVERINGS)
 	hud.setup_head_shape(session.head_shape_ranges())
 	if _icons == null:
 		_icons = PartIcons.new()
@@ -222,6 +227,7 @@ func setup(body: RefCounted, points: int) -> void:
 	_icons.render(tools)
 	hud.set_tool(tool)
 	hud.set_color(skin_color)
+	hud.set_covering(skin_covering)
 	_frame_body()
 	_rebuild()
 
@@ -281,13 +287,16 @@ func _present(built: Dictionary) -> void:
 
 
 func _shader_params() -> Dictionary:
-	return Look.shader_params(skin_color, skin_pattern)
+	var look := skin_pattern.duplicate()
+	look[Look.COVERING_KEY] = skin_covering
+	return Look.shader_params(skin_color, look)
 
 
-## The swatch and the pattern into a body's extra keys, as the world reads them (creature_look.gd).
+## The swatch, the pattern and the covering into a body's extra keys, as the world reads them (creature_look.gd).
 func _store_look(extra: Dictionary) -> void:
 	extra[SKIN_COLOR_KEY] = skin_color.to_html(false)
 	Look.store_pattern(extra, skin_pattern)
+	Look.store_covering(extra, skin_covering)
 
 
 func _collect_skin() -> void:
@@ -683,7 +692,7 @@ func start_from_preset(preset_name: String) -> Dictionary:
 		return _refuse("no preset %s" % preset_name)
 	var body: RefCounted = CreatureData.preset_body(preset_name)
 	var stored := String(body.extra.get(SKIN_COLOR_KEY, ""))
-	_start_from(body, Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0], Look.pattern_of(body.extra))
+	_start_from(body, Color.html(stored) if Color.html_is_valid(stored) else SKIN_COLORS[0], Look.look_of(body.extra))
 	preset = preset_name
 	hud.set_preset(preset_name)
 	return {"ok": true, "reason": ""}
@@ -706,21 +715,25 @@ func start_random(seed_value: int = -1) -> Dictionary:
 	var pattern := {}
 	for key in Look.PATTERN_KEYS:
 		pattern[key] = rng.randi_range(int(Look.PATTERN_RANGE[key][0]), int(Look.PATTERN_RANGE[key][1]))
-	_start_from(body, SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)], pattern)
+	var color: Color = SKIN_COLORS[rng.randi_range(0, SKIN_COLORS.size() - 1)]
+	pattern[Look.COVERING_KEY] = rng.randi_range(0, Look.COVERINGS.size() - 1)
+	_start_from(body, color, pattern)
 	preset = base
 	hud.set_preset("")
 	return {"ok": true, "reason": "", "base": base}
 
 
-## Starts a fresh session on `body` (keeping the points), in `color` and `pattern`.
+## Starts a fresh session on `body` (keeping the points), in `color` and the look `pattern` (with its covering).
 func _start_from(body: RefCounted, color: Color, pattern: Dictionary) -> void:
 	if walker != null:
 		test_drive(false)
 	session = Session.new(body, rules, part_rules, costs, session.available_points)
 	skin_color = color
-	skin_pattern = pattern
+	skin_pattern = Look.pattern_of(pattern)
+	skin_covering = Look.covering_of(pattern)
 	_store_look(session.working.extra)
 	hud.set_color(skin_color)
+	hud.set_covering(skin_covering)
 	selected = {}
 	choose_tool("")
 	_frame_body()
@@ -733,6 +746,18 @@ func set_skin_color(color: Color) -> void:
 	skin_color = color
 	_store_look(session.working.extra)
 	hud.set_color(color)
+	if rig:
+		rig.use_skin_shader(_shader_params())
+	if walker:
+		walker.body.use_skin_shader(_shader_params())
+
+
+## The skin covering, from the covering buttons (an index into Look.COVERINGS; out of range is smooth). Like the
+## swatch it is free and outside undo; the working body carries it as "skin_covering".
+func set_skin_covering(covering: int) -> void:
+	skin_covering = Look.covering_of({Look.COVERING_KEY: covering})
+	_store_look(session.working.extra)
+	hud.set_covering(skin_covering)
 	if rig:
 		rig.use_skin_shader(_shader_params())
 	if walker:
