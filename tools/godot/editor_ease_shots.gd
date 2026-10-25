@@ -7,7 +7,8 @@ extends SceneTree
 ##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --script res://tools/godot/editor_ease_shots.gd \
 ##     -- --out=DIR [--text-scale=130] [--only=creature|cell]
 ## Writes creature_idle, creature_hover_eye (the pointer resting on the Eye tool), creature_tool_eye (the Eye tool
-## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), cell_idle,
+## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), and where
+## the editor-ease node exists creature_stat_help (the pointer resting on the Sight row's name), cell_idle,
 ## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror),
 ## cell_undo_tip (the pointer resting on Undo after that edit) and cell_drag_snap (a part dragged round the rim,
 ## held near the front). Where the editor-ease APIs exist it also writes cell_stat_help (the pointer resting on a
@@ -77,6 +78,16 @@ func _creature() -> void:
 	editor.undo()
 	await _frames(30)
 	await _shot("creature_edited")
+	var ease: Node = hud.get("ease")
+	if ease != null and ease.get("stats") != null:
+		var label: Control = ease.stats.grid.get_child(0)
+		for i in range(0, ease.stats.grid.get_child_count(), ease.stats.grid.columns):
+			if (ease.stats.grid.get_child(i) as Label).text == "Sight":
+				label = ease.stats.grid.get_child(i)
+		await _hover(label)
+		await _shot("creature_stat_help")
+		_hover_away()
+		await _frames(5)
 	editor.queue_free()
 	await _frames(5)
 

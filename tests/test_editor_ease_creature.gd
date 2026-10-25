@@ -10,6 +10,10 @@ const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const Ease := preload("res://game/ui/editor_ease/creature_hud_ease.gd")
 const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
+const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
+const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
+const Picking := preload("res://game/domain/creature/editor_picking.gd")
+const Stats := preload("res://game/domain/creature/creature_stats.gd")
 
 const POINTS := 150
 
@@ -175,3 +179,109 @@ func test_the_selection_is_named_in_words() -> void:
 	editor.release()
 	check(editor.selected.get("id", "") == v_id, "the third vertebra's handle picked")
 	check_eq(label.text, "Selected: vertebra 3 of %d from the head" % desc.vertebrae.size(), "a vertebra by its place")
+
+
+func _card_has(card_texts: PackedStringArray, piece: String) -> bool:
+	for t in card_texts:
+		if t.contains(piece):
+			return true
+	return false
+
+
+func test_hovering_a_tool_opens_the_part_card_in_place_of_the_engine_tooltip() -> void:
+	open_hud()
+	var eye := hud.tool_button("eye")
+	eye.tooltip_text = "Eye, 10 points"   # as set_tool_icon writes it
+	eye.mouse_entered.emit()
+	var card: Control = hud.ease.card
+	check(card.visible, "the card opens on hover")
+	var price := int((CreatureData.editor_costs()["part"] as Dictionary).get("eye", CreatureData.editor_costs()["part_default"]))
+	var texts: PackedStringArray = card.texts()
+	check_eq(texts[0], "Eye · %d points" % price, "its title names the part and its price")
+	check(_card_has(texts, "%d points" % (2 * price)), "and the price of a mirrored pair (%s)" % ", ".join(texts))
+	check(_card_has(texts, "Sight"), "an eye's card shows the sight it adds")
+	check_eq(eye.tooltip_text, "", "the engine's tooltip, which covered the tool's name, is not shown")
+	check_eq(card.mouse_filter, Control.MOUSE_FILTER_IGNORE, "the card never takes the mouse")
+	eye.mouse_exited.emit()
+	check(not card.visible, "and closes when the pointer leaves")
+	hud.tool_button("").mouse_entered.emit()
+	check(card.visible and card.texts()[0] == "Select", "Select has a card too")
+	hud.tool_button("limb").mouse_entered.emit()
+	check(card.texts()[0].begins_with("Limb · %d" % int(hud.tool_button("limb").get_meta("price"))), "and the limb tool")
+
+
+func test_the_card_tells_what_each_kind_of_part_does() -> void:
+	open_hud()
+	var rules := CreatureData.part_rules()
+	var body: RefCounted = CreatureData.body("s1_quadruped")
+	var mouthless: RefCounted = BodyCodec.from_dict(body.to_dict())
+	mouthless.parts = mouthless.parts.filter(func(p): return String(rules.get(p["type"], {}).get("role", "")) != "mouth")
+	var tuning := CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json")
+	var gait := CreatureData.gait_table()
+	var size: float = (body.bounds_m() as AABB).get_longest_axis_size()
+	for type in rules:
+		var role := String(rules[type].get("role", ""))
+		var fx := Effects.effects(mouthless, type, rules, gait, tuning, CreatureData.rules(), size)
+		var c := Effects.card(type, rules[type], fx, {"price": 10})
+		var texts := PackedStringArray()
+		for line: Array in c["lines"]:
+			texts.append(" ".join(line.map(func(x): return str(x))))
+		check(not texts.is_empty() and not texts[0].is_empty(), "%s has a card" % type)
+		match role:
+			"weapon":
+				check(_card_has(texts, Effects.NEEDS_MOUTH), "a %s on a mouthless body says it needs a mouth" % type)
+			"foot", "hand":
+				check(_card_has(texts, Effects.NO_STAT_CHANGE), "a %s changes the look only" % type)
+			"mouth":
+				check(_card_has(texts, "Bite"), "a %s adds bite" % type)
+			"detail":
+				check(_card_has(texts, "Charm"), "a %s adds charm" % type)
+			"eye":
+				check(_card_has(texts, "Sight"), "a %s adds sight" % type)
+	hud.set_locked({"eye": true})
+	hud.tool_button("eye").mouse_entered.emit()
+	check(_card_has(hud.ease.card.texts(), Effects.LOCKED), "a locked part says where to find it")
+
+
+## Bible 14: the card's preview asks the same rules as the action. An eye added by a real click, and a mirrored pair
+## of eyes added with the editor's own picking rules, give exactly the sight the card predicted.
+func test_the_card_predicts_the_sight_an_eye_really_gives() -> void:
+	open_editor()
+	var tuning := CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json")
+	var rules := CreatureData.part_rules()
+	var size: float = (CreatureData.body("s1_quadruped").bounds_m() as AABB).get_longest_axis_size()
+	var fx := Effects.effects(editor.working_body(), "eye", rules, CreatureData.gait_table(), tuning, CreatureData.rules(), size)
+	editor.hud.tool_button("eye").mouse_entered.emit()
+	var predicted := PackedStringArray()
+	for t in editor.hud.ease.card.texts():
+		if t.begins_with("Sight") or t.begins_with(Effects.PAIR_LABEL):
+			predicted.append(t)
+	check_eq(predicted.size(), 2, "the card shows one eye's and a pair's sight (%s)" % ", ".join(editor.hud.ease.card.texts()))
+	check(predicted[0].contains("%.0f m" % float(fx["one"]["sight_m"])) and predicted[1].contains("%.0f m" % float(fx["pair"]["sight_m"])),
+			"the card's numbers are the effects' (%s)" % ", ".join(predicted))
+	editor.choose_tool("eye")
+	var r: Dictionary = editor.click_skin(editor.screen_of(back_point(editor.working_body())))
+	check(r["ok"], "an eye added by a click: %s" % r.get("reason", ""))
+	var eye: Dictionary = editor.working_body().parts.filter(func(p): return p["id"] == editor.selected["id"])[0]
+	var got := Stats.of(editor.working_body(), rules, CreatureData.gait_table(), tuning)
+	check_eq(got["sight_m"], fx["pair" if eye["mirror"] else "one"]["sight_m"], "the clicked eye gives the predicted sight")
+	editor.undo()
+	var desc = editor.working_body()
+	var a: Dictionary = Picking.anchor_for_part(desc, rules["eye"], {"host": "spine", "u": 200, "ring": 250, "elev": 0})
+	check(bool(a.get("mirror", false)), "a side spot gives a pair")
+	a["scale"] = Picking.fit_scale(desc, size, CreatureData.rules())
+	check(editor.session.add_part("eye", a)["ok"], "a pair of eyes added the editor's way")
+	got = Stats.of(editor.working_body(), rules, CreatureData.gait_table(), tuning)
+	check_eq(got["sight_m"], fx["pair"]["sight_m"], "the pair gives the predicted sight")
+
+
+func test_a_stat_name_explains_itself_on_the_card() -> void:
+	open_editor()
+	var panel: Control = editor.hud.ease.stats
+	var tuning := CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json")
+	panel.stat_entered.emit("sight", panel)
+	var texts: PackedStringArray = editor.hud.ease.card.texts()
+	check(editor.hud.ease.card.visible and texts[0] == "Sight", "the card names the stat")
+	check(_card_has(texts, "%d m at most" % int(tuning["sight"]["max_m"])), "with the stage's own numbers (%s)" % ", ".join(texts))
+	panel.stat_exited.emit("sight")
+	check(not editor.hud.ease.card.visible, "and closes")

@@ -12,7 +12,7 @@ signal stat_entered(key: String, label: Control)
 signal stat_exited(key: String)
 
 const TITLE := "STATS"
-const LEGEND := "▲ better   ▼ worse   since you came in"
+const LEGEND := "▲ better   ▼ worse   ·   since you came in"
 const SELECTED := "Selected: %s"
 const NOTHING_SELECTED := "nothing"
 const VALUE_COLOR := Color(0.924, 0.941, 0.97)

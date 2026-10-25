@@ -1,15 +1,25 @@
 extends Node
 ## Editor-ease in the creature editor (docs/proposals/editor-ease.md): the HUD's usability layer, built in code by
 ## this one node so creature_editor_hud.gd keeps only a few one-line hooks (attach, on_setup, on_tool, on_stats,
-## on_undo_redo). It adds nothing to the palette's tool grid and never writes the editor's state: it only presents.
-## Undo and Redo name the keys bound to ui_undo / ui_redo (Bible 19: inputs shown from the bindings); the editor's
-## other keys are hardcoded today, so their buttons say what they do in plain words (GitHub issue B asks for input
-## actions). No class_name: the HUD preloads it.
+## on_undo_redo). It adds nothing to the palette's tool grid and never writes the editor's state: it
+## only presents, reading the body being edited (hud.owner.working_body()) where a card needs it, guarded so the HUD
+## also works alone.
+## - Undo and Redo name the keys bound to ui_undo / ui_redo (Bible 19: inputs shown from the bindings); the editor's
+##   other keys are hardcoded today, so their buttons say what they do in plain words (GitHub issue B).
+## - A stats table with each stat's change since the visit began, marked ▲ better / ▼ worse (shape and colour).
+## - A part card on hover with what the part does by the world's own stats rule (Bible 12, 14), in place of the
+##   default tooltip, and a stat's meaning on the card when the pointer rests on its name.
+## No class_name: the HUD preloads it.
 
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
 const StatsPanel := preload("res://game/ui/editor_ease/stats_panel.gd")
+const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
+const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
+const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 
+## The body a card measures against when the HUD runs without an editor (the editor's own REFERENCE_BODY).
+const REFERENCE_BODY := "s1_quadruped"
 const UNDO_WORDS := "Undo the last change"
 const REDO_WORDS := "Redo the change you undid"
 const NOTHING_TO_UNDO := "Nothing to undo"
@@ -23,10 +33,25 @@ const DOCK_TIPS := {
 	"Done": "Keep this design and pay its cost",
 	"Back": "Clear the tool or the selection first; then leave (unsaved edits ask once)",
 }
+## What each stat means, on the card when the pointer rests on its name; %s are filled from the stage tuning.
+const STAT_HELP := {
+	"length": "Nose to tail. A longer body is a choice, not an upgrade.",
+	"mass": "From the body's volume. Heavier bodies bite harder; very heavy ones run slower.",
+	"legs": "Limbs that reach the ground. A creature needs legs to walk.",
+	"limbs": "Every leg and arm; a mirrored limb counts twice.",
+	"parts": "Parts worn; a mirrored pair counts twice.",
+	"bones": "Vertebrae and limb joints.",
+	"speed": "Top running speed, from the legs' length; very heavy bodies run slower.",
+	"health": "From the body's mass: %s per kg.",
+	"bite": "Damage per bite: each mouth, plus your largest weapons, times strength (heavier bodies bite harder). No mouth, no bite.",
+	"sight": "How far it sees: %s m, plus %s m per eye, %s m at most.",
+}
 
 var hud: Control
 ## The stats table, in the Stats panel just before the editor's own stat text (which it hides once the lines parse).
 var stats: VBoxContainer
+## The part card, a child of the HUD drawn over the 3D view.
+var card: PanelContainer
 ## The rows the changes are measured from: the first stats after a new visit or a new editor session.
 var _baseline: Array = []
 var _baseline_pending := true
@@ -35,6 +60,12 @@ var _can_undo := false
 var _can_redo := false
 ## InputPrompts.generation the Undo / Redo tooltips were written for.
 var _keys_generation := -1
+## Read once, on the first setup: part_rules, tuning (creature_stage.json), gait, body_rules, ref_size_m.
+var _data := {}
+var _costs := {}
+var _reference: RefCounted
+## The tool (or "stat:<key>") the card shows, or "" when it is hidden.
+var _shown := ""
 
 
 func _init() -> void:
@@ -53,11 +84,27 @@ func attach(owner_hud: Control) -> void:
 	var box: Node = hud.stats_text.get_parent()
 	box.add_child(stats)
 	box.move_child(stats, hud.stats_text.get_index())
+	stats.stat_entered.connect(_on_stat_entered)
+	stats.stat_exited.connect(_on_stat_exited)
+	card = PartCard.new()
+	card.z_index = 10
+	hud.add_child(card)
 
 
 ## Called at the end of the HUD's setup() (a new visit): the palette's buttons were just made again.
-func on_setup(_tools: Array, _costs: Dictionary, _roles: Dictionary) -> void:
+func on_setup(tools: Array, costs: Dictionary, _roles: Dictionary) -> void:
 	_baseline_pending = true
+	_costs = costs
+	if _data.is_empty():
+		_load_data()
+	var types: Array = ["", "limb"]
+	types.append_array(tools)
+	for type in types:
+		var b: Button = hud.tool_button(String(type))
+		if b != null:
+			b.mouse_entered.connect(_on_tool_entered.bind(String(type)))
+			b.mouse_exited.connect(_on_tool_exited.bind(String(type)))
+	hide_card()
 
 
 ## Called at the end of the HUD's set_tool(): `type` is the tool now in use ("" for none).
@@ -80,6 +127,65 @@ func on_stats(lines: PackedStringArray) -> void:
 		any = any or not row.get("raw", false)
 	stats.visible = any
 	hud.stats_text.visible = not any
+	if _shown != "" and not _shown.begins_with("stat:"):
+		show_card(_shown)   # the body changed under an open card
+
+
+## Called at the end of the HUD's set_undo_redo().
+func on_undo_redo(can_undo: bool, can_redo: bool) -> void:
+	_can_undo = can_undo
+	_can_redo = can_redo
+	_write_undo_tips()
+
+
+## The card for a tool ("" Select, "limb" or a part type): {title, lines}, the same the hover shows.
+func card_for(type: String) -> Dictionary:
+	if type == "":
+		return Effects.select_card()
+	var where := ""
+	if type == "limb":
+		var limb: Button = hud.tool_button("limb")
+		return Effects.limb_card(int(limb.get_meta("price", 0)) if limb != null else 0, where)
+	var rules: Dictionary = _data.get("part_rules", {})
+	if not rules.has(type):
+		return {"title": type.capitalize(), "lines": [[Effects.ROLE_UNKNOWN, ""]]}
+	var body := working_body()
+	if body == null:
+		body = _reference_body()
+	var fx := Effects.effects(body, type, rules, _data["gait"], _data["tuning"], _data["body_rules"], _data["ref_size_m"])
+	var tuning: Dictionary = _data["tuning"]
+	var info := {
+		"price": int((_costs.get("part", {}) as Dictionary).get(type, _costs.get("part_default", 0))),
+		"refund_rate": float(_costs.get("refund_rate", 0.0)),
+		"locked": hud.has_method("is_locked") and bool(hud.call("is_locked", type)),
+		"parts": body.parts.size(),
+		"part_count_max": int(_data["body_rules"].get("part_count_max", 1 << 30)),
+		"sight_max_m": float(tuning.get("sight", {}).get("max_m", 0.0)),
+	}
+	if tuning.has("social"):
+		info["display_cap"] = int(tuning["social"]["display_cap"])
+	if tuning.has("weapon"):
+		info["weapon_cap"] = int(tuning["weapon"]["cap"])
+	info.merge(_points())
+	return Effects.card(type, rules[type], fx, info, where)
+
+
+## Shows the card for `type` beside the palette, level with its button.
+func show_card(type: String) -> void:
+	var c := card_for(type)
+	card.show_lines(String(c["title"]), c["lines"])
+	_shown = type
+	var b: Button = hud.tool_button(type)
+	var palette := hud.get_node_or_null("Palette") as Control
+	if b == null or palette == null:
+		return
+	var at := b.get_global_rect()
+	card.place_beside(Rect2(Vector2(palette.get_global_rect().end.x, at.position.y), Vector2(0, at.size.y)), _bounds())
+
+
+func hide_card() -> void:
+	card.hide()
+	_shown = ""
 
 
 ## The selection in words from the editor's "part p3" / "vertebra v2" / "joint j4": "eye (a mirrored pair)",
@@ -113,22 +219,23 @@ func working_body() -> RefCounted:
 	return null
 
 
-## The editor session's object id (0 without one), so a new session (preset, random, Done) resets the baseline.
-func _session_id() -> int:
-	var editor: Node = hud.owner if hud != null else null
-	var session: Variant = editor.get("session") if editor != null else null
-	return (session as Object).get_instance_id() if session is Object else 0
-
-
-## Called at the end of the HUD's set_undo_redo().
-func on_undo_redo(can_undo: bool, can_redo: bool) -> void:
-	_can_undo = can_undo
-	_can_redo = can_redo
-	_write_undo_tips()
+## What a stat means, with the stage's own numbers.
+func stat_help(key: String) -> String:
+	var t: Dictionary = _data.get("tuning", {})
+	var text := String(STAT_HELP.get(key, ""))
+	match key:
+		"health":
+			return text % _num(t.get("health", {}).get("per_kg", "?"))
+		"sight":
+			var s: Dictionary = t.get("sight", {})
+			return text % [_num(s.get("base_m", "?")), _num(s.get("per_eye_m", "?")), _num(s.get("max_m", "?"))]
+	return text
 
 
 func _process(_delta: float) -> void:
-	if hud != null and InputPrompts.generation != _keys_generation:
+	if hud == null:
+		return
+	if InputPrompts.generation != _keys_generation:
 		_write_undo_tips()
 
 
@@ -139,3 +246,73 @@ func _write_undo_tips() -> void:
 		return
 	hud.undo_button.tooltip_text = ShortcutText.with_binding(UNDO_WORDS, &"ui_undo") if _can_undo else NOTHING_TO_UNDO
 	hud.redo_button.tooltip_text = ShortcutText.with_binding(REDO_WORDS, &"ui_redo") if _can_redo else NOTHING_TO_REDO
+
+
+func _on_tool_entered(type: String) -> void:
+	var b: Button = hud.tool_button(type)
+	if b != null:
+		b.tooltip_text = ""   # the card replaces the engine's tooltip, which would cover the tool's name
+	show_card(type)
+
+
+func _on_tool_exited(type: String) -> void:
+	if _shown == type:
+		hide_card()
+
+
+func _on_stat_entered(key: String, label: Control) -> void:
+	var help := stat_help(key)
+	if help.is_empty():
+		return
+	card.show_lines(key.capitalize(), [[help, ""]])
+	_shown = "stat:" + key
+	card.place_beside(label.get_global_rect(), _bounds())
+
+
+func _on_stat_exited(key: String) -> void:
+	if _shown == "stat:" + key:
+		hide_card()
+
+
+func _load_data() -> void:
+	_data = {
+		"part_rules": CreatureData.part_rules(),
+		"tuning": CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json"),
+		"gait": CreatureData.gait_table(),
+		"body_rules": CreatureData.rules(),
+	}
+	_data["ref_size_m"] = (_reference_body().bounds_m() as AABB).get_longest_axis_size()
+
+
+func _reference_body() -> RefCounted:
+	if _reference == null:
+		_reference = CreatureData.body(REFERENCE_BODY)
+	return _reference
+
+
+## The points to spend and this visit's cost so far, from the editor's session; {} without one.
+func _points() -> Dictionary:
+	var editor: Node = hud.owner if hud != null else null
+	var session: Variant = editor.get("session") if editor != null else null
+	if session is Object and (session as Object).has_method("cost") and (session as Object).get("available_points") != null:
+		return {"points": int(session.available_points), "cost": int(session.cost())}
+	return {}
+
+
+## The editor session's object id (0 without one), so a new session (preset, random, Done) resets the baseline.
+func _session_id() -> int:
+	var editor: Node = hud.owner if hud != null else null
+	var session: Variant = editor.get("session") if editor != null else null
+	return (session as Object).get_instance_id() if session is Object else 0
+
+
+## The screen, for keeping the card on it; the HUD's own rect, or the viewport's when the HUD has no size yet.
+func _bounds() -> Rect2:
+	var r := hud.get_global_rect()
+	if r.size.x > 0.0 or not hud.is_inside_tree():
+		return r
+	return hud.get_viewport().get_visible_rect()
+
+
+static func _num(v: Variant) -> String:
+	return ("%.1f" % v).trim_suffix(".0") if v is float else str(v)
