@@ -15,9 +15,9 @@
   "dimensions_m": {
     "x": 0.085,
     "y_forward": 0.085,
-    "z_up": 0.144
+    "z_up": 0.14
   },
-  "triangles": 724,
+  "triangles": 964,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -97,13 +97,13 @@
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
     "triangles_before": 2180,
-    "triangles_after": 724
+    "triangles_after": 964
   },
   "review_notes": {
-    "gate1_shape": "unverified: not reviewed yet",
-    "gate2_materials": "unverified: not reviewed yet",
-    "gate3_neutral_light": "unverified: not reviewed yet",
-    "gate4_godot": "unverified: not reviewed yet"
+    "gate1_shape": "pass: a broad, slightly flattened snout about 0.11 m out of the skin, tapering and drooping over a soft lower lip tucked under its root, so the mouth reads as a crease beneath an overhang; a domed oval nose pad with two flared nostril lobes closes the end cleanly; H1_Curl turns the end down over the lip, H2_Length draws it out, the pad riding rigidly.",
+    "gate2_materials": "pass: fine-grained grey skin with soft transverse folds, against a near-black glossy pebbled nose pad with two dark nostril openings.",
+    "gate3_neutral_light": "pass: neutral light shows the folds and the pad's gloss without clipping; the mouth crease reads as a shadowed line.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -110,6 +110,16 @@ REVIEW = {
         "gate3_neutral_light": "pass: neutral white light shows the ring wrinkles by grazing light along the whole "
                                "length; no clipped highlights, the pad stays readable in shadow.",
         "gate4_godot": G4_PENDING},
+    "cpart_trunk_short": {
+        "gate1_shape": "pass: a broad, slightly flattened snout about 0.11 m out of the skin, tapering and drooping "
+                       "over a soft lower lip tucked under its root, so the mouth reads as a crease beneath an "
+                       "overhang; a domed oval nose pad with two flared nostril lobes closes the end cleanly; H1_Curl "
+                       "turns the end down over the lip, H2_Length draws it out, the pad riding rigidly.",
+        "gate2_materials": "pass: fine-grained grey skin with soft transverse folds, against a near-black glossy "
+                           "pebbled nose pad with two dark nostril openings.",
+        "gate3_neutral_light": "pass: neutral light shows the folds and the pad's gloss without clipping; the "
+                               "mouth crease reads as a shadowed line.",
+        "gate4_godot": G4_PENDING},
 }
 
 
