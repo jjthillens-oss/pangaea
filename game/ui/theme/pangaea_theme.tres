@@ -675,6 +675,22 @@ shadow_color = Color(0.12, 0, 0, 0.45)
 shadow_size = 14
 shadow_offset = Vector2(0, 4)
 
+[sub_resource type="StyleBoxFlat" id="Hud_chip_disabled"]
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+bg_color = Color(0.1, 0.19, 0.33, 0.35)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.56, 0.74, 0.95, 0.6)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+
 [resource]
 default_font_size = 26
 Label/colors/font_color = Color(0.924, 0.941, 0.97, 1)
@@ -831,3 +847,6 @@ HudBanner/styles/panel = SubResource("Panel_hud_banner")
 HudAccentLabel/base_type = &"Label"
 HudAccentLabel/colors/font_color = Color(1, 0.83, 0.42, 1)
 HudAccentLabel/font_sizes/font_size = 22
+HudChip/base_type = &"DockButton"
+HudChip/colors/font_disabled_color = Color(0.66, 0.72, 0.82, 1)
+HudChip/styles/disabled = SubResource("Hud_chip_disabled")

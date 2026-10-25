@@ -10,13 +10,18 @@ extends Control
 ##   bottom center: the dock, a glass bar with the health text and a slim bar, and the ability chips (Bite, Sing,
 ##                  Evolve, each named by its bound key). The chips only show state: Evolve lights while the
 ##                  creature stands at the nest and Bite dims while it recharges. They never act; the keys do.
-##                  Above the dock, the controls line, named from the bindings for the device in use (InputPrompts).
+##                  Above the dock, the controls line, named from the bindings for the device in use (InputPrompts),
+##                  for KEYS_HINT_S after the world opens and again after the device or a binding changes; then
+##                  only the dock stays, its chips still naming the ability keys (PROPOSED).
 ## Labels and chips refresh at 10 Hz; the bar every frame. The HUD and every control in it ignore the mouse, so the
 ## orbit drag reaches the camera.
 
 const LABEL_REFRESH_S := 0.1
 const FLASH_S := 1.4
 const NOTICE_S := 3.0
+## How long the controls line stays up, and how long it takes to fade at the end.
+const KEYS_HINT_S := 15.0
+const KEYS_FADE_S := 0.5
 
 var world: Node3D
 var _refresh_t := 0.0
@@ -24,6 +29,7 @@ var _flash_t := 0.0
 var _notice_t := 0.0
 var _sticky_notice := ""
 var _prompts_generation := -1
+var _keys_t := 0.0
 
 var _name_text: Label
 var _health_text: Label
@@ -33,6 +39,7 @@ var _points_flash: Label
 var _notice_panel: PanelContainer
 var _notice_text: Label
 var _hint_text: Label
+var _hint_panel: PanelContainer
 var _goal_text: Label
 var _abilities: HBoxContainer
 ## The display-only ability chips by action, rebuilt with the hint line.
@@ -55,6 +62,7 @@ func _resolve() -> void:
 	_notice_panel = %NoticePanel
 	_notice_text = %NoticeText
 	_hint_text = %HintText
+	_hint_panel = %HintPanel
 	_goal_text = %GoalText
 	_abilities = %Abilities
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -130,6 +138,10 @@ func _process(delta: float) -> void:
 				_notice_text.text = _sticky_notice
 	if _prompts_generation != InputPrompts.generation:
 		_refresh_hints()
+	if _keys_t > 0.0:
+		_keys_t -= delta
+		_hint_panel.modulate.a = clampf(_keys_t / KEYS_FADE_S, 0.0, 1.0)
+		_hint_panel.visible = _keys_t > 0.0
 
 
 func refresh() -> void:
@@ -163,6 +175,9 @@ func _refresh_hints() -> void:
 		line = "%s  Move" % move + ("   ·   " + line if not line.is_empty() else "")
 	var orbit := "Right stick  Orbit" if InputPrompts.device == "pad" else "Middle drag  Orbit"
 	_hint_text.text = line + "   ·   " + orbit if not line.is_empty() else orbit
+	_keys_t = KEYS_HINT_S
+	_hint_panel.visible = true
+	_hint_panel.modulate.a = 1.0
 	_build_chips(pairs)
 	refresh()
 
@@ -182,7 +197,7 @@ func _build_chips(pairs: Array) -> void:
 			continue
 		var chip := Button.new()
 		chip.name = String(pair[1]).get_slice(" ", 0)
-		chip.theme_type_variation = &"DockButton"
+		chip.theme_type_variation = &"HudChip"
 		chip.text = "%s  %s" % [names[0], String(pair[1]).get_slice(" ", 0)]
 		chip.toggle_mode = true
 		chip.focus_mode = Control.FOCUS_NONE
