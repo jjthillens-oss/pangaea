@@ -167,6 +167,24 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral rig the ring bands and tubercles read by soft grazing light, "
                                "the gold ring is visible inside the shadowed aperture; no clipping.",
         "gate4_godot": G4_PENDING},
+    "cpart_eye_lashed": {
+        "gate1_shape": "pass: a big ball 10 cm across set in the skin to about its middle, seen through an almond "
+                       "opening in one smooth lid ring that runs back into the skin like a socket - heavy and rolled "
+                       "above (covering the iris's top), thin below, meeting at the two corners; seven bold flat "
+                       "tapered lashes reach forward off the upper margin and flick up, fanning toward the corners "
+                       "(face-on, gray_top, they read as a fringe over the eye). H1_Blink swings the upper lid and "
+                       "lashes down on a hinge through the corners to meet the lower lid (some soft creasing at "
+                       "full close); H2_Bulge pushes the ball out. Iterated: the first build wrapped two thin lid "
+                       "shells round the whole ball and read as a cracked eggshell with spidery lashes (1588 "
+                       "triangles); the second still creased where the two lids met and its lashes curled back over "
+                       "the lid like claws.",
+        "gate2_materials": "pass: four finishes - a glossy white sclera with faint veins, a wide chestnut iris with "
+                           "radial fibres, a dark limbal ring and a big black pupil, soft warm skin on the lid with "
+                           "fine pores, and near-black glossy lashes.",
+        "gate3_neutral_light": "pass: under the neutral white rig the ball's highlight sits on the iris, the lid's "
+                               "roll reads by its soft shading, the lashes stay dark against the lid without "
+                               "crushing; no clipping.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -1424,7 +1442,7 @@ def build_eye_lashed():
             beta = math.radians(6.0 + 56.0 * ((k + 0.5) / steps) ** 1.4)
             p = p + (d * math.cos(beta) + e_th * math.sin(beta) + fan).normalized() * (length / steps)
         path.append(p.copy())
-        lash_tips.append(p)
+        lash_tips.append((root, p))
         # Bold flat petals: wide at the root and tapering to a point, as a cartoon lash reads at a distance.
         half_w = [0.0042 * (1.0 - k / steps) ** 0.6 for k in range(steps)] + [0.0]
         half_t = [0.0015 * (1.0 - k / steps) ** 0.6 for k in range(steps)] + [0.0]
@@ -1445,7 +1463,9 @@ def build_eye_lashed():
                         keep=("EyeLashed", "EyeLashedLashes"))      # the iris ring and the thin lashes stay whole
     pts = cp._check_pivot("eye_lashed", LASHED_SINK)
     foot = cp._footprint(pts, z_max=0.02)
-    mp._check(min(t.y for t in lash_tips) > LASHED_C.y + 0.03, "eye_lashed: every lash flicks up above the ball")
+    mp._check(all(tip.y > root.y + 0.003 for root, tip in lash_tips) and
+              max(tip.y for _, tip in lash_tips) > LASHED_C.y + 0.045,
+              "eye_lashed: every lash rises from its root, the middle ones well above the lid")
 
     def bulge(co):
         return Vector((co.x, co.y, co.z + 0.2 * LASHED_R * max(0.0, co.z) / (LASHED_R * 1.42)))
