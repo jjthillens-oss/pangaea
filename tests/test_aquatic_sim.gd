@@ -543,6 +543,89 @@ func test_the_slice_species_play_as_recorded() -> void:
 	check_eq(String(run.md5), GOLDEN_SPECIES_RUN, "the slice's species play as recorded before the refactor")
 
 
+## aquatic-r2 step 5: a species is data. Every entry in the rules is complete, and two made-up species added only to a
+## copy of the rules (a befriendable one that follows and warns, and a prey that always flees) are built after the
+## slice's species without moving them, befriended, bitten, caught and respawned by the same code, named in its
+## events and the HUD's lines, and written in the save's relations.
+func test_species_logic_is_data_driven() -> void:
+	var order: Array = rules.species_order
+	check_eq(order.size(), rules.species.size(), "species_order lists every species once: %s" % [order])
+	for id in rules.species:
+		check(id in order, "%s is in species_order" % id)
+		var cfg: Dictionary = rules.species[id]
+		for key in ["name", "one", "count", "zone", "home", "wander", "speed", "flee_speed", "flee_reach", "flees", "health"]:
+			check(cfg.has(key), "%s has %s" % [id, key])
+		check(String(cfg.get("flees", "")) in ["always", "foe"], "%s flees always or as a foe" % id)
+		if cfg.has("signals_to_friend"):
+			check(cfg.has("signal_reach") and cfg.has("signal_gap"), "%s can be called" % id)
+		if cfg.get("home") is String:
+			check((rules.world.shelters as Array).any(func(sh): return String(sh.id) == String(cfg.home)), "%s's home shelter exists" % id)
+	var r: Dictionary = rules.duplicate(true)
+	r.species["test_puffers"] = {"name": "test puffers", "one": "a test puffer", "count": 3, "zone": "shallows",
+			"home": [-10.0, -8.0, -10.0], "wander": 3.0, "speed": 1.5, "flee_speed": 3.0, "flee_reach": 8.0, "flees": "foe",
+			"signals_to_friend": 2, "signal_reach": 8.0, "signal_gap": 0.5, "follow_leash": 30.0, "warn_reach": 22.0, "health": 30.0}
+	r.species["test_darts"] = {"name": "test darts", "one": "a test dart", "count": 3, "zone": "shallows",
+			"home": [14.0, -6.0, -8.0], "wander": 3.0, "speed": 2.0, "flee_speed": 3.0, "flee_reach": 6.0, "flees": "always",
+			"health": 10.0, "meal": 40.0, "respawn": 1.0}
+	r.species_order = order + ["test_puffers", "test_darts"]
+	var plain := _sim(AquaticBody.DARTER)
+	var sim := AquaticSim.new(r, 7, AquaticBody.DARTER)
+	check_eq(sim.animals.size(), plain.animals.size() + 6, "the added species' animals are built")
+	for i in plain.animals.size():
+		check(sim.animals[i].id == plain.animals[i].id and sim.animals[i].pos == plain.animals[i].pos,
+				"%s is where it was without the added species" % plain.animals[i].id)
+	check(sim.relations.has("test_puffers") and String(sim.relations.test_puffers.standing) == "neutral", "a relation for each")
+	var puffer: Dictionary = sim.animals[plain.animals.size()]
+	var dart: Dictionary = sim.animals[plain.animals.size() + 3]
+	check_eq(String(puffer.id), "test_puffers_01", "ids come from the species")
+	# Two spaced calls befriend the puffers; the grazers far off on the reef do not hear them.
+	var hud := preload("res://game/ui/aquatic_hud.gd")
+	var lines := PackedStringArray()
+	for k in 2:
+		var call := AquaticSim.Intent.new()
+		call.signal_call = true
+		sim.player.pos = puffer.pos + Vector3(0.0, 1.0, 2.0)
+		sim.step(call)
+		for i in AquaticSim.TICK_HZ:
+			sim.player.pos = puffer.pos + Vector3(0.0, 1.0, 2.0)
+			sim.step(AquaticSim.Intent.new())
+		for e in sim.take_events():
+			lines.append(hud.event_text(e))
+	check_eq(String(sim.relations.test_puffers.standing), "friend", "two spaced calls befriend the puffers")
+	check_eq(String(sim.relations.grazer.standing), "neutral", "and only them")
+	check(lines.has("The test puffers are your friends now (+%d points)" % int(rules.world.points.friend)), "named by the HUD: %s" % [lines])
+	check_eq(sim._ally_near(), "test_puffers", "friends near warn of the lancer")
+	sim.step(AquaticSim.Intent.new())
+	check(sim.animals.slice(plain.animals.size(), plain.animals.size() + 3).any(func(a): return a.state == "follow"),
+			"friends follow the fish in their own zone")
+	# A neutral dart flees a fish near it; a bite catches it (a meal of its own size) and it comes back.
+	_face(sim, dart)
+	sim.step(AquaticSim.Intent.new())
+	check_eq(String(dart.state), "flee", "prey that always flees runs from a neutral fish")
+	sim.player.energy = 10.0
+	var bite := AquaticSim.Intent.new()
+	bite.bite = true
+	_face(sim, dart)
+	sim.step(bite)
+	var killed: Array = sim.take_events().filter(func(e): return e.type == "killed")
+	check(killed.size() == 1 and killed[0].species == "test_darts" and hud.event_text(killed[0]) == "You caught a test dart",
+			"one bite catches a dart: %s" % [killed])
+	check_near(float(sim.player.energy), 50.0, 0.2, "its meal is its own")
+	check_eq(String(sim.relations.test_darts.standing), "neutral", "prey with no calls is never a foe")
+	for i in AquaticSim.TICK_HZ + 1:
+		sim.step(AquaticSim.Intent.new())
+	check(killed.size() == 1 and sim.animals.filter(func(a): return a.id == killed[0].id)[0].alive, "it respawns after its own time")
+	# A bite on a puffer makes them foes, and the save keeps it.
+	_face(sim, puffer)
+	sim.step(bite)
+	var turned: Array = sim.take_events().filter(func(e): return e.type == "relation")
+	check(turned.size() == 1 and turned[0].species == "test_puffers" and hud.event_text(turned[0]) == "The test puffers will remember that bite",
+			"a bite makes the puffers foes: %s" % [turned])
+	var block := sim.to_save()
+	check_eq(String(block.relations.test_puffers.standing), "foe", "the save's relations hold the added species")
+	check(SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, rules.body)).is_empty(), "in a valid block")
+
+
 func test_the_world_is_deterministic() -> void:
 	var a := _sim(AquaticBody.HOVERER, 42)
 	var b := _sim(AquaticBody.HOVERER, 42)

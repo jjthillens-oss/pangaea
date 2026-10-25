@@ -230,7 +230,8 @@ static func _bearing(to: Vector3, heading: float) -> String:
 	return "◀ left" if angle > 0.0 else "right ▶"
 
 
-## A player-facing line for a sim event, or "" for none.
+## A player-facing line for a sim event, or "" for none. Species are named from the event (the rules' name and one),
+## so a species added to the rules needs no wording here (aquatic-r2).
 static func event_text(e: Dictionary) -> String:
 	match String(e.type):
 		"found":
@@ -238,18 +239,18 @@ static func event_text(e: Dictionary) -> String:
 		"points":
 			return "+%d point for your meals" % int(e.amount)
 		"relation":
-			return "The reef grazers are your friends now (+%d points)" % int(e.get("points", 0)) if e.standing == "friend" \
-					else "The reef grazers will remember that bite"
+			return "The %s are your friends now (+%d points)" % [e.get("name", "fish"), int(e.get("points", 0))] \
+					if e.standing == "friend" else "The %s will remember that bite" % e.get("name", "fish")
 		"signal_answered":
 			if e.has("rapport"):
-				return "The grazers answer your call (%d of %d)" % [int(e.rapport), int(e.needed)]
-			return "The grazers answer" if e.get("standing") == "friend" else "The grazers keep away from you"
+				return "The %s answer your call (%d of %d)" % [e.get("name", "fish"), int(e.rapport), int(e.needed)]
+			return ("The %s answer" if e.get("standing") == "friend" else "The %s keep away from you") % e.get("name", "fish")
 		"signal_too_fast":
-			return "Wait for their answer before you call again"
+			return "Wait for the %s to answer before you call again" % e.get("name", "fish")
 		"signal_unheard":
 			return "Nobody near enough to hear your call"
 		"ally_warning":
-			return "Your grazer friends flash a warning!"
+			return "Your friends the %s flash a warning!" % e.get("name", "fish")
 		"lancer_gave_up":
 			return "The lancer gives up" if e.why != "died" else ""
 		"struck":
@@ -259,7 +260,7 @@ static func event_text(e: Dictionary) -> String:
 		"bite_weak":
 			return "Your filter mouth cannot bite"
 		"killed":
-			return "You caught a fish" if e.species == "shoal" else ""
+			return "You caught %s" % e.get("one", "a fish")
 		"died":
 			return "You died (%s). Back at the nest." % e.cause
 		"shore":

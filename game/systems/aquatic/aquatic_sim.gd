@@ -1,7 +1,9 @@
 class_name AquaticSim
 extends RefCounted
 ## The Aquatic stage's world (aquatic plan section 8, PROPOSED): one reef-to-deep route, the player's fish, its kin
-## at the nest, the reef grazers, the silver shoal, the lancer and the abyssal drifter, and the feeding sites.
+## at the nest, the species of rules.species (the reef grazers and the silver shoal, ...), the lancer and the abyssal
+## drifter, and the feeding sites. The species are data (aquatic-r2): each one's home, fleeing, hiding, befriending,
+## following, warning, meal and respawn come from its rules entry, in rules.species_order.
 ## Deterministic at 60 ticks a second: durations are whole ticks (converted once here), actors are kept in id order,
 ## and every random draw comes from a stream seeded by the world seed. No scene, clock, input or files: the stage
 ## feeds it an intent per tick and reads its state and events.
@@ -102,10 +104,14 @@ func _init(p_rules: Dictionary, p_world_seed: int, body: Dictionary, p_lineage :
 		"disengage": _ticks(hz.lancer.disengage), "lancer_cooldown": _ticks(hz.lancer.cooldown),
 		"drifter_period": _ticks(hz.drifter.period), "drifter_warn": _ticks(hz.drifter.warn),
 		"drifter_cooldown": _ticks(hz.drifter.cooldown),
-		"signal_gap": _ticks(rules.species.grazer.signal_gap),
 	}
 	for kind in w.food:
 		_t["regrow_" + kind] = _ticks(w.food[kind].regrow)
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		_t["respawn_" + species] = _ticks(cfg.get("respawn", w.food.fish.regrow))
+		if cfg.has("signals_to_friend"):
+			_t["signal_gap_" + species] = _ticks(cfg.signal_gap)
 	points = int(p_lineage.get("points", int(rules.editor.start_points)))
 	_place_player(body, int(p_lineage.get("generation", 1)))
 	kin = {"pos": nest_pos() + Vector3(2.5, 0.4, -1.5), "heading": PI * 0.5}
@@ -114,7 +120,7 @@ func _init(p_rules: Dictionary, p_world_seed: int, body: Dictionary, p_lineage :
 	lancer = {"pos": _v(hz.lancer.home), "heading": 0.0, "state": "patrol", "until": 0, "cooldown_until": 0, "angle": 0.0}
 	drifter = {"pos": Vector3.ZERO, "heading": 0.0, "warn_ticks": 0, "cooldown_until": 0}
 	_move_drifter()
-	for species in ["grazer", "shoal"]:
+	for species in rules.species_order:
 		relations[species] = {"standing": "neutral", "rapport": 0, "last_signal": -1000000}
 	var saved: Dictionary = p_lineage.get("aquatic", {})
 	if not saved.is_empty():
@@ -214,12 +220,10 @@ func _build_food() -> void:
 
 
 func _build_animals() -> void:
-	var sp: Dictionary = rules.species
-	var home_of := {"grazer": _shelter_pos(String(sp.grazer.home)), "shoal": _v(sp.shoal.home)}
-	for species in ["grazer", "shoal"]:
-		var cfg: Dictionary = sp[species]
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		var home: Vector3 = _shelter_pos(String(cfg.home)) if cfg.home is String else _v(cfg.home)
 		for i in int(cfg.count):
-			var home: Vector3 = home_of[species]
 			var p := _clamp_to_water(home + _wander_offset(float(cfg.wander)))
 			animals.append({"id": "%s_%02d" % [species, i + 1], "species": species, "home": home, "pos": p,
 					"heading": _rng_life.randf() * TAU, "hp": float(cfg.health), "alive": true, "respawn_at": 0,
@@ -367,15 +371,15 @@ func _animals_tick() -> void:
 		var speed := float(cfg.speed)
 		var goal: Vector3 = a.target
 		a.state = "wander"
-		if a.species == "grazer" and lancer_hunting and a.pos.distance_to(lancer.pos) < 18.0:
+		if lancer_hunting and cfg.has("hide_from_lancer") and a.pos.distance_to(lancer.pos) < float(cfg.hide_from_lancer):
 			a.state = "hide"
 			goal = a.home
 			speed = float(cfg.flee_speed)
-		elif to_player.length() < float(cfg.flee_reach) and (a.species == "shoal" or rel.standing == "foe"):
+		elif to_player.length() < float(cfg.flee_reach) and (String(cfg.get("flees", "foe")) == "always" or rel.standing == "foe"):
 			a.state = "flee"
 			goal = a.pos - to_player.normalized() * 6.0
 			speed = float(cfg.flee_speed)
-		elif a.species == "grazer" and rel.standing == "friend" and _zone == "reef" \
+		elif cfg.has("follow_leash") and rel.standing == "friend" and _zone == String(cfg.zone) \
 				and player.pos.distance_to(a.home) < float(cfg.follow_leash):
 			a.state = "follow"
 			var side := Vector3(float(int(String(a.id).right(2)) % 3) - 1.0, 0.6, 1.0).normalized() * 3.5
@@ -408,8 +412,9 @@ func _lancer_tick() -> void:
 			if tick >= int(lancer.cooldown_until) and dist < float(cfg.notice) and in_territory and not hidden:
 				_set_lancer("investigate", _t.investigate)
 				_emit("lancer_investigate")
-				if _friend_near(float(rules.species.grazer.warn_reach)):
-					_emit("ally_warning")
+				var ally := _ally_near()
+				if ally != "":
+					_emit("ally_warning", {"species": ally, "name": String(rules.species[ally].name)})
 		"investigate":
 			goal = p
 			speed = float(cfg.investigate_speed)
@@ -441,13 +446,17 @@ func _lancer_tick() -> void:
 		lancer.heading = atan2(-stepv.x, -stepv.z)
 
 
-func _friend_near(reach: float) -> bool:
-	if relations.grazer.standing != "friend":
-		return false
-	for a in animals:
-		if a.alive and a.species == "grazer" and a.pos.distance_to(player.pos) < reach:
-			return true
-	return false
+## The first species (in species_order) that is a friend and warns of the lancer with one of its animals within its
+## warn_reach of the fish, or "".
+func _ally_near() -> String:
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		if not cfg.has("warn_reach") or relations[species].standing != "friend":
+			continue
+		for a in animals:
+			if a.alive and a.species == species and a.pos.distance_to(player.pos) < float(cfg.warn_reach):
+				return species
+	return ""
 
 
 func _set_lancer(state: String, ticks: int) -> void:
@@ -563,11 +572,12 @@ func _bite() -> void:
 	if best.is_empty():
 		_emit("bite_missed")
 		return
+	var cfg: Dictionary = rules.species[best.species]
 	var rel: Dictionary = relations[best.species]
-	if best.species == "grazer" and rel.standing != "foe":
+	if cfg.has("signals_to_friend") and rel.standing != "foe":
 		rel.standing = "foe"
 		rel.rapport = 0
-		_emit("relation", {"species": "grazer", "standing": "foe"})
+		_emit("relation", {"species": best.species, "name": String(cfg.name), "standing": "foe"})
 	if float(s.bite) <= 0.0:
 		_emit("bite_weak", {"species": best.species})
 		return
@@ -575,36 +585,46 @@ func _bite() -> void:
 	_emit("bit", {"id": best.id, "species": best.species})
 	if float(best.hp) <= 0.0:
 		best.alive = false
-		best.respawn_at = tick + int(_t.regrow_fish)
-		_emit("killed", {"id": best.id, "species": best.species})
+		best.respawn_at = tick + int(_t["respawn_" + String(best.species)])
+		_emit("killed", {"id": best.id, "species": best.species, "name": String(cfg.name), "one": String(cfg.get("one", cfg.name))})
 		if s.eats_meat:
-			_gain_meal(float(rules.world.food.fish.energy), "fish")
+			_gain_meal(float(cfg.get("meal", rules.world.food.fish.energy)), "fish")
 
 
+## A call (Q): heard by the nearest befriendable species (one with signals_to_friend) that has an animal within its
+## signal_reach; spaced calls build its rapport until it is a friend.
 func _signal() -> void:
-	var cfg: Dictionary = rules.species.grazer
-	var rel: Dictionary = relations.grazer
-	var near := false
-	for a in animals:
-		if a.alive and a.species == "grazer" and a.pos.distance_to(player.pos) <= float(cfg.signal_reach):
-			near = true
-			break
-	if not near:
+	var species := ""
+	var nearest := INF
+	for id in rules.species_order:
+		var c: Dictionary = rules.species[id]
+		if not c.has("signals_to_friend"):
+			continue
+		for a in animals:
+			if a.alive and a.species == id:
+				var d: float = a.pos.distance_to(player.pos)
+				if d <= float(c.signal_reach) and d < nearest:
+					species = id
+					nearest = d
+	if species == "":
 		_emit("signal_unheard")
 		return
+	var cfg: Dictionary = rules.species[species]
+	var rel: Dictionary = relations[species]
+	var who := {"species": species, "name": String(cfg.name)}
 	if rel.standing != "neutral":
-		_emit("signal_answered", {"species": "grazer", "standing": rel.standing})
+		_emit("signal_answered", who.merged({"standing": rel.standing}))
 		return
-	if tick - int(rel.last_signal) < int(_t.signal_gap):
-		_emit("signal_too_fast")
+	if tick - int(rel.last_signal) < int(_t["signal_gap_" + species]):
+		_emit("signal_too_fast", who)
 		return
 	rel.last_signal = tick
 	rel.rapport = int(rel.rapport) + 1
-	_emit("signal_answered", {"species": "grazer", "rapport": rel.rapport, "needed": int(cfg.signals_to_friend)})
+	_emit("signal_answered", who.merged({"rapport": rel.rapport, "needed": int(cfg.signals_to_friend)}))
 	if int(rel.rapport) >= int(cfg.signals_to_friend):
 		rel.standing = "friend"
 		points += int(rules.world.points.friend)
-		_emit("relation", {"species": "grazer", "standing": "friend", "points": int(rules.world.points.friend)})
+		_emit("relation", who.merged({"standing": "friend", "points": int(rules.world.points.friend)}))
 
 
 ## Mating (plan section 6): with energy above the mark and the kin in reach, a press opens the editor.

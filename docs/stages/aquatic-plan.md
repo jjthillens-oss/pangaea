@@ -130,6 +130,14 @@ colour becomes the fish's skin colour. The entry card shows each conversion so n
   fish outright.
 - Food regrows on each site's own timer (Bible §13: no endless free food, no empty world).
 
+The species are data (aquatic-r2, IMPLEMENTED; the values are PROPOSED tuning). `species_order` and each species'
+entry in `game/data/aquatic/aquatic_rules.json` (its home, whether it flees always or only as a foe, the lancer reach
+it hides at, the spaced calls that befriend it, how far it follows a friend, how near it warns of the lancer, its meal
+and respawn time, its names) drive one shared set of rules in `AquaticSim`; the HUD names each species from its event,
+so a new species needs no code. A scripted 80 s run recorded on the hard-wired grazer and shoal code before the change
+(`test_the_slice_species_play_as_recorded`) shows the grazers and the shoal play exactly as before, and
+`test_species_logic_is_data_driven` adds two made-up species through the rules alone.
+
 ## 6. Mating and the editor
 
 Spore's rhythm: eat, return, mate, edit, every few minutes. Eating, discovering a zone for the first time and making
@@ -141,6 +149,23 @@ The editor (bounded, Bible §5): Tail, Fins, Body and Senses on the left, each o
 turns on a plinth on the right; a stats panel shows top speed, burst, turn, depth hold, rated depth, sight and upkeep
 as before and after bars. Done commits the new generation (generation + 1, the parent recorded) and spends the
 points; Cancel keeps the parent. The world keeps everything else: the friends, the fed sites, the drifter's place.
+
+Round 2 (aquatic-r2; the wording and courses are PROPOSED, the build is IMPLEMENTED): the tail row names each kind,
+with its tradeoff as a caption and as each button's tooltip, and the stats add pick-up and swim cost. The **test
+swim** (Spore's test drive, the Bible §12 test space) is `AquaticSim.trial()`: the parent and the offspring swim fixed
+courses in the same sim, on an emptied copy of the route, and the editor shows the metres of a 1 s burst dash and a
+10 s cruise, that cruise's energy and the degrees turned in the first second of a hard turn after 3 s of full thrust,
+beside a top-down drawing of both turn courses. `tests/test_aquatic_sim.gd` checks that a hand run in the full world
+covers the same metres, that a long burst and a long cruise reach the speeds the stats show, and that each tail wins
+the course its role names. Measured in Godot on the darter at tail strength 3:
+
+| Tail | Dash, 1 s | Cruise, 10 s | Turn in 1 s at speed | Energy, 10 s |
+|---|---|---|---|---|
+| Fluke | 5.0 m | 76.6 m | 51° | 24.6 |
+| Ribbon | 3.8 m | 65.2 m | 63° | 28.7 |
+| Lunate | 3.6 m | 91.7 m | 34° | 21.3 |
+| Paddle | 7.6 m | 70.5 m | 64° | 30.4 |
+| Whip | 2.5 m | 51.8 m | 77° | 17.2 |
 
 ## 7. Exit to land (Bible §7)
 
