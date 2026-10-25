@@ -120,6 +120,22 @@ REVIEW = {
         "gate3_neutral_light": "pass: neutral light shows the folds and the pad's gloss without clipping; the "
                                "mouth crease reads as a shadowed line.",
         "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the boar (after_boar_trunk_short.jpg) it loads, seats on the snout between the tusks and keeps its dark nose pad, but points up and forward. With the frame fix previewed (conefix_boar_trunk_short.jpg) it juts forward and droops, reading as a tapir's snout."},
+    "cpart_mouth_sucker": {
+        "gate1_shape": "pass: a short trumpet-shaped funnel about 5.5 cm out of the skin flaring to a fleshy bead "
+                       "of lip scalloped into ten soft ruffled lobes (about 11 cm across); inside it a dished disc "
+                       "with three distinct concentric rings of small cones (16, 12, 8) all hooking in toward a "
+                       "round throat. It reads apart from the maw (flat rolled ring, fourteen long fangs) by the "
+                       "standing funnel, the scalloped rim and the many small teeth. H1_Gape opens the throat and "
+                       "spreads the inner rings; H2_Flare spreads the rim wide and flat, the teeth riding with the "
+                       "disc. Iterated: the first rim was a sharp zigzag crown on a thin cup wall.",
+        "gate2_materials": "pass: three finishes - wet sea-green lip skin with ring wrinkles and small round "
+                           "papillae on the bead, a low-chroma plum disc darkening to near black down the throat, "
+                           "and amber horn teeth; the lip-to-disc border is a clean line (the disc is its own mesh "
+                           "tucked under the bead; the first build's single mesh decimated it into a sawtooth).",
+        "gate3_neutral_light": "pass: under the neutral white rig the bead's highlight reads its roll, the teeth "
+                               "stand out against the dark disc, the throat stays dark without crushing the disc; "
+                               "no clipping.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -755,6 +771,654 @@ def build_trunk_short():
             **baked}
 
 
+# --- Batch C: mouths (mouth_sucker, mouth_fangs) -------------------------------------------------------------------
+
+
+def _mp_lathe(stations, at, segs):
+    """A surface of revolution about +Z whose station i at angle a is at(i, a) -> (r, z) (so the profile can ripple
+    with the angle, like a frill). Rings run counterclockwise seen from +Z; with stations going up the outside and
+    down the inside, every face points out of the material. A station whose r is 0 is a pole (at either end). Returns verts, faces
+    and each face's station index (the lower-numbered of its two rings)."""
+    verts, faces, rings, face_station = [], [], [], []
+    for i in range(stations):
+        r0, z0 = at(i, 0.0)
+        if r0 <= 0.0:
+            rings.append([len(verts)])
+            verts.append((0.0, 0.0, z0))
+            continue
+        ring = []
+        for j in range(segs):
+            a = 2.0 * math.pi * j / segs
+            r, z = at(i, a)
+            ring.append(len(verts))
+            verts.append((r * math.cos(a), r * math.sin(a), z))
+        rings.append(ring)
+    for i in range(stations - 1):
+        a, b = rings[i], rings[i + 1]
+        for j in range(segs):
+            k = (j + 1) % segs
+            if len(a) == 1:
+                faces.append((a[0], b[k], b[j]))
+            else:
+                faces.append((a[j], a[k], b[0]) if len(b) == 1 else (a[j], a[k], b[k], b[j]))
+            face_station.append(i)
+    return verts, faces, face_station
+
+
+def _mp_spike(path, half_w, half_t, sides, hint=None):
+    """An open-rooted tapering spike along `path` (no cap: its root is buried): station i is an ellipse of half-width
+    half_w[i] across (perpendicular to the path and to `hint`) and half-thickness half_t[i] along the remaining axis;
+    a half-width of 0 closes it to a point. The frame is parallel-transported, so a curving path does not twist it.
+    Faces wind inward like cp._tube's; mesh_object's fix_normals turns them out."""
+    verts, faces, rings = [], [], []
+    n = len(path)
+    t0 = (path[1] - path[0]).normalized()
+    hint = Vector(hint) if hint is not None else (Vector((0.0, 0.0, 1.0)) if abs(t0.z) < 0.9 else Vector((1.0, 0.0, 0.0)))
+    side = t0.cross(hint).normalized()
+    for i, p in enumerate(path):
+        t = (path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized()
+        side = (side - t * side.dot(t)).normalized() if i else side
+        up = side.cross(t).normalized()
+        if half_w[i] <= 0.0:
+            rings.append([len(verts)])
+            verts.append(tuple(p))
+            continue
+        ring = []
+        for j in range(sides):
+            a = 2.0 * math.pi * j / sides
+            ring.append(len(verts))
+            verts.append(tuple(p + side * (half_w[i] * math.cos(a)) + up * (half_t[i] * math.sin(a))))
+        rings.append(ring)
+    for i in range(n - 1):
+        a, b = rings[i], rings[i + 1]
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a[j], a[k], b[0]) if len(b) == 1 else (a[j], a[k], b[k], b[j]))
+    return verts, faces
+
+
+SUCKER_SINK = 0.03
+# The sucker's profile as (r, z): up the funnel's outside from under the skin, over the fleshy bead of the lip and a
+# short tuck under it (stations 0 to SUCKER_DISC - 1, the MouthSucker mesh); then, from just inside the bead, down
+# across the toothed oral disc and into the throat (the MouthSuckerDisc mesh). The two meshes overlap under the bead,
+# so each is decimated with one material and the border between them stays a clean line.
+SUCKER_PROFILE = ((0.0290, -0.0285), (0.0310, -0.0120), (0.0325, 0.0), (0.0318, 0.0100), (0.0328, 0.0200),
+                  (0.0360, 0.0300), (0.0415, 0.0380), (0.0470, 0.0440),
+                  (0.0517, 0.0480), (0.0547, 0.0510), (0.0545, 0.0550), (0.0510, 0.0575), (0.0468, 0.0565),
+                  (0.0450, 0.0528), (0.0440, 0.0488), (0.0436, 0.0455),
+                  (0.0447, 0.0502), (0.0405, 0.0472), (0.0365, 0.0448), (0.0300, 0.0410), (0.0240, 0.0373),
+                  (0.0182, 0.0335), (0.0134, 0.0292), (0.0100, 0.0225), (0.0083, 0.0120), (0.0062, 0.0010),
+                  (0.0034, -0.0110), (0.0, -0.0150))
+SUCKER_DISC = 16         # the first station of the disc; stations 8 to 13 are the lip's bead
+SUCKER_FRILL = {6: 0.2, 7: 0.55, 8: 0.9, 9: 1.0, 10: 1.0, 11: 0.9, 12: 0.6, 13: 0.3, 14: 0.3, 15: 0.3, 16: 0.3,
+                17: 0.12}    # station -> how much it ruffles
+SUCKER_LOBES = 10
+SUCKER_SEGS = 60
+SUCKER_TEETH = ((0.0368, 16, 0.0080, 0.0027), (0.0278, 12, 0.0090, 0.0030), (0.0196, 8, 0.0102, 0.0033))   # r, count, length, root radius
+
+
+def _sucker_at(i, a):
+    # Rounded scallops with narrow notches between them, each lobe lifting a little as it bulges out.
+    r, z = SUCKER_PROFILE[i]
+    w = SUCKER_FRILL.get(i, 0.0)
+    lobe = (0.5 + 0.5 * math.cos(SUCKER_LOBES * a)) ** 0.6 - 0.62
+    return r * (1.0 + 0.085 * w * lobe), z + 0.004 * w * lobe
+
+
+def _sucker_station(co):
+    """The profile parameter s (a float station index) of the point nearest co, at co's own angle."""
+    a = math.atan2(co.y, co.x)
+    q = (math.hypot(co.x, co.y), co.z)
+    best, best_s = None, 0.0
+    for i in range(len(SUCKER_PROFILE) - 1):
+        p0, p1 = _sucker_at(i, a), _sucker_at(i + 1, a)
+        dx, dz = p1[0] - p0[0], p1[1] - p0[1]
+        L2 = dx * dx + dz * dz
+        t = 0.0 if L2 == 0.0 else min(1.0, max(0.0, ((q[0] - p0[0]) * dx + (q[1] - p0[1]) * dz) / L2))
+        d = (q[0] - p0[0] - t * dx) ** 2 + (q[1] - p0[1] - t * dz) ** 2
+        if best is None or d < best:
+            best, best_s = d, i + t
+    return best_s
+
+
+def _sucker_gape(s):
+    # The disc and throat open: nothing at the rim, 30% wider at the inner tooth ring, 70% at the throat.
+    return 0.3 * _mp_smooth(s, 16.5, 20.5) + 0.4 * _mp_smooth(s, 20.5, 23.0)
+
+
+def _sucker_flare(s):
+    # The funnel's upper part, the rim and the disc's outer half spread out and settle a little lower.
+    return _mp_smooth(s, 3.0, 8.0) * (1.0 - _mp_smooth(s, 16.5, 20.0))
+
+
+def _sucker_move(co, handle, s=None):
+    s = _sucker_station(co) if s is None else s
+    r = math.hypot(co.x, co.y)
+    if r < 1e-9:
+        return co.copy()
+    if handle == "H1_Gape":
+        k = _sucker_gape(s)
+        return Vector((co.x * (1.0 + k), co.y * (1.0 + k), co.z))
+    f = _sucker_flare(s)
+    k = (r + 0.012 * f) / r
+    return Vector((co.x * k, co.y * k, co.z - 0.007 * f))
+
+
+def build_mouth_sucker():
+    """A lamprey's oral disc: a short trumpet-shaped funnel standing about 5.5 cm off the skin, flaring to a fleshy
+    bead of lip scalloped into ten soft ruffled lobes about 11 cm across; inside it a dished disc (MouthSuckerDisc)
+    set with three concentric rings of small amber teeth (16, 12 and 8) hooking in toward a dark round throat. It
+    reads apart from the maw (a flat ring of rolled lips with fourteen long fangs) by its standing funnel, its
+    scalloped rim and its many small teeth. H1_Gape opens the disc and throat, H2_Flare spreads the rim wide and
+    flat to latch on."""
+    stations = len(SUCKER_PROFILE)
+    verts, faces, _ = _mp_lathe(SUCKER_DISC, _sucker_at, SUCKER_SEGS)
+    dverts, dfaces, _ = _mp_lathe(stations - SUCKER_DISC, lambda i, a: _sucker_at(SUCKER_DISC + i, a), SUCKER_SEGS)
+
+    # The teeth: hooked cones rooted on the disc, leaning in toward the throat; each ring offset from the next.
+    def disc_point(r_root):
+        for i in range(SUCKER_DISC, stations - 1):
+            (ra, za), (rb, zb) = SUCKER_PROFILE[i], SUCKER_PROFILE[i + 1]
+            if rb <= r_root <= ra:
+                t = (ra - r_root) / (ra - rb)
+                n = Vector((zb - za, -(rb - ra))).normalized()      # (r, z) normal facing the opening (in and up)
+                return za + t * (zb - za), n, i + t
+        raise ValueError(r_root)
+
+    tverts, tfaces, roots = [], [], []
+    for k, (r_root, count, length, r0) in enumerate(SUCKER_TEETH):
+        z_root, n_rz, s_root = disc_point(r_root)
+        for m in range(count):
+            a = 2.0 * math.pi * (m + 0.5 * (k % 2)) / count
+            radial = Vector((math.cos(a), math.sin(a), 0.0))
+            normal = (radial * n_rz.x + Vector((0.0, 0.0, n_rz.y))).normalized()
+            root = radial * r_root + Vector((0.0, 0.0, z_root))
+            path = [root - normal * 0.0014, root + normal * (0.5 * length) - radial * (0.12 * length),
+                    root + normal * (0.86 * length) - radial * (0.52 * length)]
+            v, f = _mp_spike(path, (r0, 0.62 * r0, 0.0), (r0, 0.62 * r0, 0.0), 5)
+            _mp_append(tverts, tfaces, v, f)
+            roots.append((root, s_root))
+    mp._check(min(SUCKER_TEETH[0][0] - SUCKER_TEETH[1][0], SUCKER_TEETH[1][0] - SUCKER_TEETH[2][0]) > 0.007,
+              "mouth_sucker: the tooth rings are distinct")
+
+    lip = sf.Shader("M_SuckerLipProc")
+    wrinkle = lip.noise(120.0, 2.0, vector=mp._stretched(lip, (1.0, 1.0, 6.0)))     # rings round the funnel
+    papillae = lip.remap(lip.voronoi(320.0, 0.7), 0.3, 0.06)                     # small round bumps
+    grain = lip.noise(420.0, 3.0)
+    lip.bump(lip.math("ADD", lip.math("MULTIPLY", papillae, 0.55),
+                      lip.math("ADD", lip.math("MULTIPLY", wrinkle, 0.3), lip.math("MULTIPLY", grain, 0.15))), 0.35, 0.0008)
+    lip_mat = lip.out(_grey(lip, lip.math("ADD", lip.remap(wrinkle, 0.3, 0.7, 0.7, 0.95),
+                                          lip.math("MULTIPLY", papillae, 0.08)), 0.55), 0.36)
+    throat = sf.Shader("M_SuckerThroatProc")
+    radial_r = throat.vmath("LENGTH", throat.vmath("MULTIPLY", throat.pos, (1.0, 1.0, 0.0)))
+    deep = throat.remap(radial_r, 0.007, 0.03)                                       # near black down the throat
+    folds = throat.noise(160.0, 2.0)
+    throat.bump(folds, 0.3, 0.0006)
+    throat_mat = throat.out(_grey(throat, throat.math("MULTIPLY", deep, throat.remap(folds, 0.3, 0.7, 0.75, 1.0)), 0.04),
+                            0.3)
+    tooth = sf.Shader("M_SuckerToothProc")
+    streak = tooth.noise(220.0, 3.0, vector=mp._stretched(tooth, (4.0, 4.0, 0.4)))
+    tooth.bump(streak, 0.12, 0.0004)
+    tooth_mat = tooth.out(_grey(tooth, tooth.remap(streak, 0.2, 0.8, 0.82, 1.0), 0.8), 0.25)
+    body = bc.mesh_object("MouthSucker", verts, faces, [lip_mat], fix_normals=False)
+    disc = bc.mesh_object("MouthSuckerDisc", dverts, dfaces, [throat_mat], parent=body, fix_normals=False)
+    teeth = bc.mesh_object("MouthSuckerTeeth", tverts, tfaces, [tooth_mat], parent=body)
+    lip_mat.name, throat_mat.name, tooth_mat.name = "M_SuckerLip", "M_SuckerThroat", "M_SuckerTooth"
+    baked = _bake_parts([body, disc, teeth], "PartMouthSucker", {"M_SuckerLip": sf.tint(cp._lin("#6E8C86")),
+                                                          "M_SuckerThroat": sf.tint(cp._lin("#5E4A5C")),
+                                                          "M_SuckerTooth": sf.tint(cp._lin("#EDC27C"))},
+                        keep=("MouthSuckerTeeth",))       # the small teeth stay whole
+    pts = cp._check_pivot("mouth_sucker", SUCKER_SINK)
+    foot = cp._footprint(pts, z_max=0.005)
+    top = max(p.z for p in pts)
+    mp._check(0.045 < top < 0.065, "mouth_sucker: stands about 5 cm off the skin (top %.3f)" % top)
+
+    def nearest_root(co):
+        return min(roots, key=lambda rs: (rs[0] - co).length_squared)
+
+    def body_key(name):
+        return lambda co: _sucker_move(co, name)
+
+    def teeth_key(name):
+        def move(co):
+            root, s_root = nearest_root(co)
+            return co + (_sucker_move(root, name, s_root) - root)
+        return move
+
+    keys = (("H1_Gape", "the disc and throat open, the throat about 70% wider and the teeth riding out with it"),
+            ("H2_Flare", "the rim spread about 1.2 cm wider and flatter, as when it latches on"))
+    handles = cp._shape_keys(body, [(k, body_key(k), meaning) for k, meaning in keys])
+    cp._shape_keys(disc, [(k, body_key(k), "") for k, _ in keys])
+    cp._shape_keys(teeth, [(k, teeth_key(k), "") for k, _ in keys])
+    rules = _rules("mouth_sucker", round(foot + 0.001, 3), SUCKER_SINK, "forward_cone", ["spine"], 40, 30,
+                   centerline="required")
+    rules["handles"] = handles
+    rules["handles_note"] = ("Both keys are on MouthSucker, MouthSuckerDisc and MouthSuckerTeeth with the same names; the "
+                             "runtime sets them together. Each tooth rides rigidly with the point of the disc it is "
+                             "rooted on.")
+    return {"purpose": "Creature mouth part (PROPOSED): a lamprey-like oral disc on a short funnel, with a frilled lip "
+                       "and three rings of small hooked teeth round a dark throat; gapes and flares on shape keys.",
+            "category": "part", "part_type": "mouth_sucker", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_SuckerLip": 0.85, "M_SuckerTooth": 0.0, "M_SuckerThroat": 0.0},
+            "revision": 1, **baked}
+
+
+FANGS_SINK = 0.025
+FANGS_HINGE = Vector((0.0, -0.006, -0.02))      # the lower jaw's hinge axis (along X), at the back of the mouth
+FANGS_UPPER_HINGE = Vector((0.0, 0.0, -0.02))
+FANGS_REST_DROP = math.radians(6.0)             # the mouth rests a little open, so the tongue and fangs show
+FANGS_ROOTS = (Vector((0.021, -0.0005, 0.042)), Vector((-0.021, -0.0005, 0.042)))
+FANGS_LEN = 0.042
+
+
+def _fangs_jaw(rx, rz, z0, y0, y_top, y_bottom, top_stations, bottom_stations, front_slope=0.0, segs=28):
+    """A jaw as a lathed dome: round in plan (an ellipse of half-width rx and half-length rz, centred at z0), domed
+    up to y0 + y_top and down to y0 - y_bottom (a small y_top or y_bottom flattens that side into a palate or a
+    mouth floor). The rings crowd toward the lip edge, where the two sides meet, so it stays round at the mouth
+    line with few triangles. front_slope lowers the top toward the front, like a snake's snout. Returns verts,
+    faces and each face's station (stations before len(top_stations) - 1 are the outer side)."""
+    prof = [(rho, y_top * math.sqrt(max(0.0, 1.0 - rho * rho)) ** 0.9) for rho in top_stations]
+    prof += [(rho, -y_bottom * math.sqrt(max(0.0, 1.0 - rho * rho))) for rho in bottom_stations]
+    lv, faces, station = _mp_lathe(len(prof), lambda i, a: prof[i], segs)
+    verts = []
+    for x, y, z in lv:
+        up = z * (1.0 - front_slope * 0.5 * (1.0 + y)) if z > 0.0 else z
+        verts.append(Vector((rx * x, y0 + up, z0 + rz * y)))
+    return verts, faces, station
+
+
+def _rot_x(co, pivot, angle):
+    return pivot + Matrix.Rotation(angle, 3, "X") @ (co - pivot)
+
+
+def _fang_heading(u):
+    # From the radians off -Y toward -Z: leaning a little forward at the root, curving back toward the tip.
+    return -0.22 + 1.0 * u ** 1.3
+
+
+def build_mouth_fangs():
+    """A snake's mouth: a short, wide, low snout of scaly lips (about 13 cm across and 6 cm deep, with large pale
+    lip plates along the mouth line) resting a little open over a shorter lower jaw, with two long ivory fangs
+    hanging from the front of the upper jaw in front of the chin and curving back, and a dark forked tongue poking
+    out between the lips. H1_Open drops the lower jaw and swings the fangs forward to strike; H2_Tongue flicks the
+    tongue out and spreads its fork."""
+    clamp = -FANGS_SINK + 0.0012
+
+    def sink(v):
+        return Vector((v.x, v.y, max(clamp, v.z)))
+
+    top = (0.0, 0.35, 0.6, 0.78, 0.89, 0.95, 0.985, 1.0)
+    under = (0.985, 0.94, 0.8, 0.5, 0.0)
+    uv, uf, ust = _fangs_jaw(0.066, 0.064, -0.012, 0.0, 0.03, 0.0075, top, under, front_slope=0.3)
+    upper_v = [tuple(sink(v)) for v in uv]
+    upper_m = [1 if st >= len(top) + 1 else 0 for st in ust]       # the palate, inside the lip's edge
+    lv, lf, lst = _fangs_jaw(0.058, 0.05, -0.014, -0.009, 0.004, 0.021, (0.0, 0.5, 0.8, 0.94, 0.985, 1.0),
+                             (0.985, 0.94, 0.85, 0.65, 0.35, 0.0))
+    lower_v = [tuple(sink(_rot_x(v, FANGS_HINGE, FANGS_REST_DROP))) for v in lv]
+    lower_m = [1 if st < 3 else 0 for st in lst]                   # the mouth floor, inside the lip's edge
+
+    fverts, ffaces, tips = [], [], []
+    steps = 8
+    for root in FANGS_ROOTS:
+        path, p = [], root.copy()
+        for k in range(steps):
+            path.append(p.copy())
+            th = _fang_heading((k + 0.5) / steps)
+            p = p + Vector((0.0, -math.cos(th), -math.sin(th))) * (FANGS_LEN / steps)
+        path.append(p.copy())
+        tips.append(p.copy())
+        r = [0.0052 * (1.0 - k / steps) ** 0.85 for k in range(steps + 1)]
+        v, f = _mp_spike(path, r, [0.9 * x for x in r], 6, hint=(1.0, 0.0, 0.0))
+        _mp_append(fverts, ffaces, v, f)
+
+    # The tongue, authored on the closed jaw's mouth floor and dropped with it: a flat ribbon running forward out
+    # between the lips, then two tines that part and lift a little.
+    tverts, tfaces = [], []
+    zs = [-0.004 + 0.068 * k / 8 for k in range(9)]
+    path = [Vector((0.0, -0.0036 + 0.0012 * _mp_smooth(z, 0.04, 0.064), z)) for z in zs]
+    half_w = [0.0044 - 0.0012 * k / 8 for k in range(8)] + [0.0]
+    v, f = _mp_spike(path, half_w, [0.0012] * 8 + [0.0], 5, hint=(0.0, -1.0, 0.0))
+    _mp_append(tverts, tfaces, v, f)
+    fork = path[-2]
+    for side in (1.0, -1.0):
+        tine = [fork + Vector((side * 0.0012, 0.0, -0.002)), fork + Vector((side * 0.0036, 0.0007, 0.0066)),
+                fork + Vector((side * 0.0062, 0.0015, 0.0134)), fork + Vector((side * 0.0086, 0.0024, 0.0196))]
+        v, f = _mp_spike(tine, (0.0018, 0.0014, 0.0009, 0.0), (0.0010, 0.0008, 0.0006, 0.0), 4, hint=(0.0, -1.0, 0.0))
+        _mp_append(tverts, tfaces, v, f)
+    tverts = [tuple(_rot_x(Vector(v), FANGS_HINGE, FANGS_REST_DROP)) for v in tverts]
+
+    lip = sf.Shader("M_FangsLipProc")
+    small = lip.remap(lip.voronoi(300.0, 0.55, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)
+    big = lip.remap(lip.voronoi(105.0, 0.35, feature="DISTANCE_TO_EDGE", vector=mp._stretched(lip, (0.55, 1.6, 1.0))),
+                    0.0, 0.05)
+    line = lip.remap(lip.math("ABSOLUTE", lip.math("ADD", lip.axis("Y"), 0.004)), 0.015, 0.006)   # the lip plates
+    groove = lip.math("ADD", lip.math("MULTIPLY", small, lip.math("SUBTRACT", 1.0, line)), lip.math("MULTIPLY", big, line))
+    lip.bump(groove, 0.45, 0.0008)
+    lip_mat = lip.out(_grey(lip, lip.math("ADD", lip.math("MULTIPLY", groove, 0.3), lip.math("MULTIPLY", line, 0.18)),
+                            0.5), 0.48)
+    mouth = sf.Shader("M_FangsMouthProc")
+    folds = mouth.noise(180.0, 2.0)
+    mouth.bump(folds, 0.25, 0.0005)
+    mouth_mat = mouth.out(_grey(mouth, mouth.remap(folds, 0.3, 0.7, 0.7, 1.0), 0.45), 0.32)
+    fang = sf.Shader("M_FangsFangProc")
+    streak = fang.noise(240.0, 3.0, vector=mp._stretched(fang, (4.0, 0.4, 4.0)))
+    fang.bump(streak, 0.1, 0.0003)
+    fang_mat = fang.out(_grey(fang, fang.remap(streak, 0.2, 0.8, 0.86, 1.0), 0.8), 0.22)
+    upper = bc.mesh_object("MouthFangs", upper_v, uf, [lip_mat, mouth_mat], upper_m)
+    lower = bc.mesh_object("MouthFangsLower", lower_v, lf, [lip_mat, mouth_mat], lower_m, parent=upper)
+    fangs = bc.mesh_object("MouthFangsFangs", fverts, ffaces, [fang_mat], parent=upper)
+    tongue = bc.mesh_object("MouthFangsTongue", tverts, tfaces, [mouth_mat], parent=upper)
+    lip_mat.name, mouth_mat.name, fang_mat.name = "M_FangsLip", "M_FangsMouth", "M_FangsFang"
+    baked = _bake_parts([upper, lower, fangs, tongue], "PartMouthFangs",
+                        {"M_FangsLip": sf.tint(cp._lin("#3E8A84")), "M_FangsMouth": sf.tint(cp._lin("#5A3452")),
+                         "M_FangsFang": sf.tint(cp._lin("#F2EAD4"))},
+                        keep=("MouthFangsFangs", "MouthFangsTongue"))       # the thin fangs and tongue stay whole
+    pts = cp._check_pivot("mouth_fangs", FANGS_SINK)
+    foot = cp._footprint(pts, z_max=0.005)
+    chin = max(Vector(v).z for v in lower_v if Vector(v).y < tips[0].y + 0.01)
+    mp._check(tips[0].y < -0.03 and tips[0].z > chin + 0.004,
+              "mouth_fangs: the fangs hang below the lip in front of the chin (tip %.3f, %.3f; chin %.3f)"
+              % (tips[0].y, tips[0].z, chin))
+    tongue_tip = max(v[2] for v in tverts)
+    mp._check(tongue_tip > max(v[2] for v in upper_v) + 0.015, "mouth_fangs: the fork shows past the lips (%.3f)"
+              % tongue_tip)
+
+    open_drop, upper_lift, swing = math.radians(34.0), math.radians(-5.0), math.radians(-55.0)
+
+    def nearest_root(co):
+        return min(FANGS_ROOTS, key=lambda r: (r - co).length_squared)
+
+    def fang_open(co):
+        root = nearest_root(co)
+        return _rot_x(_rot_x(co, root, swing), FANGS_UPPER_HINGE, upper_lift)
+
+    out = Vector((0.0, -math.sin(FANGS_REST_DROP), math.cos(FANGS_REST_DROP)))
+
+    def tongue_out(co):
+        k = _mp_smooth(co.z, 0.004, 0.034)
+        fork_k = _mp_smooth(co.z, 0.058, 0.08)
+        moved = co + out * (0.04 * k)
+        return Vector((moved.x * (1.0 + 0.8 * fork_k), moved.y + 0.004 * fork_k, moved.z))
+
+    handles = cp._shape_keys(lower, [("H1_Open", lambda co: _rot_x(co, FANGS_HINGE, open_drop),
+                                      "the lower jaw drops about 34 degrees and the fangs swing forward to strike")])
+    cp._shape_keys(upper, [("H1_Open", lambda co: _rot_x(co, FANGS_UPPER_HINGE, upper_lift), "")])
+    cp._shape_keys(fangs, [("H1_Open", fang_open, "")])
+    handles += cp._shape_keys(tongue, [("H1_Open", lambda co: _rot_x(co, FANGS_HINGE, open_drop), ""),
+                                       ("H2_Tongue", tongue_out, "the forked tongue flicked 4 cm further out, its tines "
+                                                                 "spread and lifted")])[1:]
+    rules = _rules("mouth_fangs", round(foot + 0.001, 3), FANGS_SINK, "forward_cone", ["spine"], 40, 30,
+                   centerline="required")
+    rules["handles"] = handles
+    rules["handles_note"] = ("H1_Open is on all four meshes (MouthFangsLower drops on its hinge, MouthFangs lifts 5 "
+                             "degrees, MouthFangsFangs swing forward about 55 degrees from their roots, "
+                             "MouthFangsTongue drops with the lower jaw); H2_Tongue is on MouthFangsTongue only.")
+    return {"purpose": "Creature mouth part (PROPOSED): a snake-like wide lipped mouth with two long curved front "
+                       "fangs and a forked tongue; opens to strike and flicks its tongue on shape keys.",
+            "category": "part", "part_type": "mouth_fangs", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_FangsLip": 0.85, "M_FangsFang": 0.0, "M_FangsMouth": 0.0},
+            "revision": 1, **baked}
+
+
+# --- Batch D: eyes (eye_turret, eye_lashed) -----------------------------------------------------------------------
+# cp's eye convention (build_eye_round): the iris axis is Blender +Z, the upper side +Y; the ball is the root mesh,
+# named after the part type, and kept whole in the bake so the iris edge stays a clean ring.
+
+
+def _mp_eye_ball(name, centre, radius, iris_half, mats, segs=24, iris_bands=3, sclera_bands=(0.15, 0.35, 0.6, 1.0)):
+    """An eyeball revolved round +Z with a ring exactly at the iris edge (as cp._eye_ball), but with fewer rings on
+    the hidden back half, which the lids and the skin cover. mats is [sclera, iris] (faces inside iris_half take
+    the second), or a single material for the whole ball."""
+    thetas = [iris_half * k / iris_bands for k in range(iris_bands + 1)]
+    thetas += [iris_half + (math.pi - iris_half) * f for f in sclera_bands]
+    prof = [(radius * math.cos(t), radius * math.sin(t) if 0.0 < t < math.pi - 1e-9 else 0.0) for t in thetas]
+    rv, rf, bands = bc.revolve(prof, segs)
+    verts = [tuple(centre + Vector(v)) for v in cp._up(rv)]
+    face_mats = [1 if b < iris_bands else 0 for b in bands] if len(mats) > 1 else None
+    return bc.mesh_object(name, verts, rf, list(mats), face_mats)
+
+
+def _mp_resample(points, n):
+    """n points evenly spaced by arc length along the polyline `points` (2D tuples), with each one's arc length."""
+    cum = [0.0]
+    for a, b in zip(points, points[1:]):
+        cum.append(cum[-1] + math.dist(a, b))
+    out = []
+    for k in range(n):
+        d = cum[-1] * k / (n - 1)
+        i = max(0, min(len(points) - 2, next((j for j in range(len(cum) - 1) if cum[j + 1] >= d), len(points) - 2)))
+        t = 0.0 if cum[i + 1] == cum[i] else (d - cum[i]) / (cum[i + 1] - cum[i])
+        a, b = points[i], points[i + 1]
+        out.append(((a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])), d))
+    return out
+
+
+TURRET_SINK = 0.025
+TURRET_BALL_R = 0.026
+TURRET_BALL = Vector((0.0, 0.0, 0.031))
+# The turret's outside as (r, z), from under the skin up the cone to the shoulder of the aperture; then the lip.
+TURRET_OUTSIDE = ((0.0405, -0.0235), (0.0418, -0.006), (0.0421, 0.006), (0.0410, 0.016), (0.0385, 0.026),
+                  (0.0346, 0.0355), (0.0296, 0.0435), (0.0238, 0.0500), (0.0178, 0.0550), (0.0128, 0.0583),
+                  (0.0098, 0.0598))
+TURRET_LIP = ((0.0085, 0.0601), (0.0077, 0.0594), (0.0076, 0.0580), (0.0080, 0.0565))
+TURRET_APERTURE = 0.0085
+
+
+def _turret_close(r):
+    """How far a point at radius r near the aperture moves in when the eye shuts: the lip almost to the axis, the
+    shoulder less, nothing past 1.8 cm, so the cone puckers shut without folding."""
+    if r <= TURRET_APERTURE:
+        return 0.9 * r
+    return 0.9 * TURRET_APERTURE * (1.0 - _mp_smooth(r, TURRET_APERTURE, 0.0178))
+
+
+def build_eye_turret():
+    """A chameleon's eye: a scaly conical turret about 8.4 cm across and 6 cm tall, ringed with concentric ridges of
+    granular scales, its skin fused over the ball so only a small aperture at the tip shows a gold-ringed, glossy
+    black pupil. H1_Blink draws the aperture shut, H2_Reach stretches the turret about 2 cm further out (the ball
+    riding up inside it)."""
+    samples = _mp_resample(TURRET_OUTSIDE, 30)
+    outside = []
+    for k, ((r, z), d) in enumerate(samples):
+        (r0, z0), (r1, z1) = samples[max(0, k - 1)][0], samples[min(len(samples) - 1, k + 1)][0]
+        n = Vector((z1 - z0, -(r1 - r0)))
+        n = n.normalized() if n.length > 0 else Vector((1.0, 0.0))
+        ridge = 0.0007 * math.cos(2.0 * math.pi * d / 0.0072) * _mp_smooth(z, 0.0, 0.01) * (1.0 - _mp_smooth(z, 0.054, 0.059))
+        outside.append((r + n.x * ridge, z + n.y * ridge))
+    profile = outside + list(TURRET_LIP)
+    verts, faces, _ = _mp_lathe(len(profile), lambda i, a: profile[i], 30)
+    ball_mat = cp._iris_material("M_EyeTurretBallProc", TURRET_BALL, Vector((0.0, 0.0, 1.0)), math.radians(18.0),
+                                 math.radians(9.5))
+    ball = _mp_eye_ball("EyeTurret", TURRET_BALL, TURRET_BALL_R, math.radians(18.0), [ball_mat], segs=24, iris_bands=4,
+                        sclera_bands=(0.2, 0.5, 1.0))
+    sh = sf.Shader("M_EyeTurretScaleProc")
+    cells = sh.remap(sh.voronoi(420.0, 0.6, feature="DISTANCE_TO_EDGE"), 0.0, 0.1)        # granular scales
+    rings = sh.remap(sh.math("SINE", sh.math("MULTIPLY", sh.axis("Z"), 2.0 * math.pi / 0.0072)), -0.2, 0.9)
+    mottle = sh.remap(sh.noise(55.0, 2.0), 0.4, 0.62)
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", cells, 0.7), sh.math("MULTIPLY", rings, 0.3)), 0.45, 0.0008)
+    scale_mat = sh.out(_grey(sh, sh.math("ADD", sh.math("ADD", 0.42, sh.math("MULTIPLY", cells, 0.33)),
+                                         sh.math("MULTIPLY", mottle, 0.25)), 0.5), 0.55)
+    cone = bc.mesh_object("EyeTurretCone", verts, faces, [scale_mat], parent=ball, fix_normals=False)
+    ball_mat.name, scale_mat.name = "M_EyeTurretBall", "M_EyeTurretScale"
+    baked = _bake_parts([ball, cone], "PartEyeTurret", {"M_EyeTurretBall": sf.tint(cp._lin("#D9A030")),
+                                                       "M_EyeTurretScale": sf.tint(cp._lin("#3A9C94"))},
+                        keep=("EyeTurret",))
+    pts = cp._check_pivot("eye_turret", TURRET_SINK)
+    foot = cp._footprint(pts, z_max=0.006)
+    apex = TURRET_BALL.z + TURRET_BALL_R
+    mp._check(TURRET_LIP[0][1] - apex < 0.0045 and TURRET_LIP[-1][1] - (TURRET_BALL.z + math.sqrt(
+        TURRET_BALL_R ** 2 - TURRET_LIP[-1][0] ** 2)) > 0.0, "eye_turret: the pupil sits just inside the aperture")
+
+    def blink(co):
+        if co.z < 0.045:
+            return co.copy()
+        r = math.hypot(co.x, co.y)
+        if r < 1e-9:
+            return co.copy()
+        d = _turret_close(r)
+        return Vector((co.x * (r - d) / r, co.y * (r - d) / r, co.z + 0.0012 * d / (0.9 * TURRET_APERTURE)))
+
+    def reach(co):
+        return Vector((co.x, co.y, co.z + 0.022 * _mp_smooth(co.z, 0.006, 0.040)))
+
+    handles = cp._shape_keys(cone, [("H1_Blink", blink, "the aperture drawn shut over the pupil"),
+                                    ("H2_Reach", reach, "the turret about 2.2 cm taller, reaching further out")])
+    cp._shape_keys(ball, [("H2_Reach", lambda co: co + Vector((0.0, 0.0, 0.022)), "")])
+    rules = _rules("eye_turret", round(foot + 0.001, 3), TURRET_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = ("H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with "
+                             "the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm.")
+    return {"purpose": "Creature eye part (PROPOSED): a chameleon-like scaly conical eye turret with a small "
+                       "gold-ringed pupil at its tip; shuts and reaches on shape keys.",
+            "category": "part", "part_type": "eye_turret", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_EyeTurretBall": 0.0, "M_EyeTurretScale": 0.85}, "revision": 1,
+            **baked}
+
+
+LASHED_R = 0.05
+LASHED_SINK = 0.03
+LASHED_C = Vector((0.0, 0.0, 0.021))
+LASHED_UPPER_EDGE = math.radians(27.0)     # the upper lid's margin, from +Z toward +Y (it covers the iris's top)
+LASHED_LOWER_EDGE = math.radians(50.0)
+LASHED_BLINK = math.radians(82.0)          # the upper lid comes down past the lower lid's margin
+LASHED_LASHES = 7
+
+
+def _sphere_x(a, phi, rho):
+    """A point on a sphere about LASHED_C, by its angle a toward +-X and phi round the X axis from +Z toward +Y."""
+    return LASHED_C + Vector((math.sin(a), math.cos(a) * math.sin(phi), math.cos(a) * math.cos(phi))) * rho
+
+
+def _lashed_lid(sign, edge, r_in, thick, thick_back, rows, body=7, rim=5, inner=5, back=math.radians(172.0)):
+    """One eyelid as a closed slab on a sphere about the ball: for each angle a (rows, from -88 to 88 degrees, the
+    eye's corners) a loop from the back of its outer face forward to a rounded margin at `edge`, and back along its
+    inner face. sign is +1 for the upper lid, -1 for the lower. The lid swells from thick_back behind to `thick` at
+    its margin. Each end is closed with a small fan at the corner. Returns verts and faces."""
+    rim_r = 0.5 * thick
+    rho_mid = r_in + rim_r
+    phi_rim = edge + rim_r / rho_mid
+    loop = []
+    for k in range(body):
+        phi = back + (phi_rim - back) * k / body
+        w = _mp_smooth(phi, back, phi_rim)
+        loop.append((phi, r_in + thick_back + (thick - thick_back) * w ** 1.6))
+    for k in range(rim + 1):
+        th = math.pi * k / rim
+        loop.append((phi_rim - (rim_r / rho_mid) * math.sin(th), rho_mid + rim_r * math.cos(th)))
+    for k in range(1, inner + 1):
+        loop.append((phi_rim + (back - phi_rim) * k / inner, r_in))
+    m = len(loop)
+    verts, faces, ring_ix = [], [], []
+    a_max = math.radians(88.0)
+    for i in range(rows + 1):
+        a = -a_max + 2.0 * a_max * i / rows
+        ring_ix.append(list(range(len(verts), len(verts) + m)))
+        for phi, rho in loop:
+            verts.append(_sphere_x(a, sign * phi, rho))
+    for i in range(rows):
+        for j in range(m):
+            k = (j + 1) % m
+            faces.append((ring_ix[i][j], ring_ix[i][k], ring_ix[i + 1][k], ring_ix[i + 1][j]))
+    for ring in (ring_ix[0], ring_ix[-1]):
+        centre = sum((verts[j] for j in ring), Vector()) / m
+        c = len(verts)
+        verts.append(centre)
+        for j in range(m):
+            faces.append((ring[j], ring[(j + 1) % m], c))
+    clamp = -LASHED_SINK + 0.0012
+    return [tuple(Vector((v.x, v.y, max(clamp, v.z)))) for v in verts], faces
+
+
+def _lashed_phi(co):
+    d = co - LASHED_C
+    return math.atan2(d.y, d.z)
+
+
+def _lashed_blink(co, rigid=False):
+    phi = _lashed_phi(co)
+    if phi >= 0.0:
+        w = 1.0 if rigid else 1.0 - _mp_smooth(phi, math.radians(100.0), math.radians(168.0))
+        return _rot_x(co, LASHED_C, LASHED_BLINK * w)
+    w = 1.0 - _mp_smooth(-phi, math.radians(75.0), math.radians(160.0))
+    return _rot_x(co, LASHED_C, -math.radians(7.0) * w)
+
+
+def build_eye_lashed():
+    """A big expressive eye: a white ball 10 cm across with a wide chestnut iris and a large pupil, under a heavy
+    rolled upper lid that covers the top of the iris, over a thin lower lid; the upper lid's margin carries a
+    fringe of seven bold, tapered, upcurled lashes, longest in the middle. H1_Blink brings the upper lid and its
+    lashes down over the ball to meet the lower lid (which rises a little); H2_Bulge pushes the ball out."""
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = cp._sclera_material("M_EyeLashedBallProc")
+    iris_mat = cp._iris_material("M_EyeLashedIrisProc", LASHED_C, axis, math.radians(44.0), math.radians(21.0))
+    ball = _mp_eye_ball("EyeLashed", LASHED_C, LASHED_R, math.radians(44.0), [sclera, iris_mat], segs=26)
+    uv_, uf = _lashed_lid(1.0, LASHED_UPPER_EDGE, LASHED_R * 1.035, 0.0105, 0.004, 20)
+    lv_, lf = _lashed_lid(-1.0, LASHED_LOWER_EDGE, LASHED_R * 1.03, 0.0048, 0.003, 16, body=5, rim=4, inner=4)
+    lid_v, lid_f = list(uv_), list(uf)
+    _mp_append(lid_v, lid_f, lv_, lf)
+
+    # The lashes, rooted on the outer front of the upper lid's margin: each leaves the lid forward and curls up
+    # and back, the outer ones fanning toward the corners.
+    rim_r = 0.5 * 0.0105
+    rho_mid = LASHED_R * 1.035 + rim_r
+    th = 0.75
+    phi_root = LASHED_UPPER_EDGE + rim_r / rho_mid - (rim_r / rho_mid) * math.sin(th)
+    rho_root = rho_mid + rim_r * math.cos(th) - 0.0012
+    lash_v, lash_f, lash_tips = [], [], []
+    for n in range(LASHED_LASHES):
+        a = math.radians(-60.0 + 120.0 * n / (LASHED_LASHES - 1))
+        root = _sphere_x(a, phi_root, rho_root)
+        d = (root - LASHED_C).normalized()
+        e_phi = Vector((0.0, math.cos(phi_root), -math.sin(phi_root)))
+        e_a = Vector((math.cos(a), -math.sin(a) * math.sin(phi_root), -math.sin(a) * math.cos(phi_root)))
+        length = 0.034 * (0.66 + 0.34 * math.cos(1.3 * a))
+        path, p, steps = [], root.copy(), 5
+        for k in range(steps):
+            path.append(p.copy())
+            beta = math.radians(8.0 + 72.0 * ((k + 0.5) / steps) ** 1.4)
+            heading = (d * math.cos(beta) + e_phi * math.sin(beta) + e_a * (0.3 * math.sin(a))).normalized()
+            p = p + heading * (length / steps)
+        path.append(p.copy())
+        lash_tips.append(p)
+        half_w = [0.0027 * (1.0 - k / steps) ** 0.7 for k in range(steps)] + [0.0]
+        half_t = [0.0011 * (1.0 - k / steps) ** 0.7 for k in range(steps)] + [0.0]
+        v, f = _mp_spike(path, half_w, half_t, 4, hint=-e_phi)
+        _mp_append(lash_v, lash_f, v, f)
+
+    lid_mat = cp._lid_material("M_EyeLashedLidProc")
+    lash = sf.Shader("M_EyeLashedLashProc")
+    sheen = lash.noise(300.0, 2.0, vector=mp._stretched(lash, (3.0, 3.0, 3.0)))
+    lash_mat = lash.out(_grey(lash, lash.remap(sheen, 0.3, 0.7, 0.8, 1.0), 0.75), 0.3)
+    lid = bc.mesh_object("EyeLashedLid", lid_v, lid_f, [lid_mat], parent=ball)
+    lashes = bc.mesh_object("EyeLashedLashes", lash_v, lash_f, [lash_mat], parent=ball)
+    sclera.name, iris_mat.name, lid_mat.name, lash_mat.name = ("M_EyeLashedBall", "M_EyeLashedIris",
+                                                               "M_EyeLashedLid", "M_EyeLashedLash")
+    baked = _bake_parts([ball, lid, lashes], "PartEyeLashed",
+                        {"M_EyeLashedBall": sf.tint(cp._lin("#F2EEE6")), "M_EyeLashedIris": sf.tint(cp._lin("#9A5A2C")),
+                         "M_EyeLashedLid": sf.tint(cp._lin("#C49A86")), "M_EyeLashedLash": sf.tint(cp._lin("#2A2230"))},
+                        keep=("EyeLashed", "EyeLashedLashes"))      # the iris ring and the thin lashes stay whole
+    pts = cp._check_pivot("eye_lashed", LASHED_SINK)
+    foot = cp._footprint(pts, z_max=0.02)
+    mp._check(min(t.y for t in lash_tips) > LASHED_C.y + 0.02, "eye_lashed: every lash curls up above the ball")
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.2 * LASHED_R * max(0.0, co.z) / (LASHED_R * 1.42)))
+
+    handles = cp._shape_keys(lid, [("H1_Blink", _lashed_blink, "the heavy upper lid comes down over the ball to meet "
+                                                                "the lower lid, which rises a little")])
+    cp._shape_keys(lashes, [("H1_Blink", lambda co: _lashed_blink(co, rigid=True), "")])
+    handles += cp._shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 20% further out")])
+    rules = _rules("eye_lashed", round(foot + 0.001, 3), LASHED_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = ("H1_Blink is on EyeLashedLid and EyeLashedLashes (the lashes ride the upper lid's "
+                             "margin down); H2_Bulge is on the ball, EyeLashed. Both are 0 to 1000 per mille.")
+    return {"purpose": "Creature eye part (PROPOSED): a big expressive eye with a chestnut iris under a heavy upper "
+                       "lid fringed with bold upcurled lashes; blinks and bulges on shape keys.",
+            "category": "part", "part_type": "eye_lashed", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_EyeLashedBall": 0.0, "M_EyeLashedIris": 0.0, "M_EyeLashedLid": 0.9,
+                                               "M_EyeLashedLash": 0.2}, "revision": 1, **baked}
+
+
 def _bake_parts(objs, texture, tints, size=512, tolerance=cp.TOLERANCE, keep=()):
     return cp._bake(objs, texture, tints, size=size, tolerance=tolerance, keep=keep)
 
@@ -768,6 +1432,10 @@ ASSETS = {
     "cpart_beak_long": (build_beak_long, 1200),
     "cpart_trunk": (build_trunk, 2500),
     "cpart_trunk_short": (build_trunk_short, 1200),
+    "cpart_mouth_sucker": (build_mouth_sucker, 1200),
+    "cpart_mouth_fangs": (build_mouth_fangs, 1200),
+    "cpart_eye_turret": (build_eye_turret, 1200),
+    "cpart_eye_lashed": (build_eye_lashed, 1200),
 }
 
 

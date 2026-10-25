@@ -1,0 +1,111 @@
+{
+  "id": "cpart_mouth_sucker",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a lamprey-like oral disc on a short funnel, with a frilled lip and three rings of small hooked teeth round a dark throat; gapes and flares on shape keys.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_mouth_sucker.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_mouth_sucker.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.113,
+    "y_forward": 0.109,
+    "z_up": 0.087
+  },
+  "triangles": 1126,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartMouthSucker_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartMouthSucker_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartMouthSucker_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_SuckerLip",
+    "M_SuckerThroat",
+    "M_SuckerTooth"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "MouthSucker",
+    "MouthSuckerDisc",
+    "MouthSuckerTeeth"
+  ],
+  "part_type": "mouth_sucker",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "mouth_sucker",
+    "footprint_radius_m": 0.034,
+    "sink_depth_m": 0.03,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Gape",
+        "meaning": "the disc and throat open, the throat about 70% wider and the teeth riding out with it",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Flare",
+        "meaning": "the rim spread about 1.2 cm wider and flatter, as when it latches on",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both keys are on MouthSucker, MouthSuckerDisc and MouthSuckerTeeth with the same names; the runtime sets them together. Each tooth rides rigidly with the point of the disc it is rooted on."
+  },
+  "paint_mix": {
+    "M_SuckerLip": 0.85,
+    "M_SuckerTooth": 0.0,
+    "M_SuckerThroat": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 3600,
+    "triangles_after": 1126
+  },
+  "review_notes": {
+    "gate1_shape": "pass: a short trumpet-shaped funnel about 5.5 cm out of the skin flaring to a fleshy bead of lip scalloped into ten soft ruffled lobes (about 11 cm across); inside it a dished disc with three distinct concentric rings of small cones (16, 12, 8) all hooking in toward a round throat. It reads apart from the maw (flat rolled ring, fourteen long fangs) by the standing funnel, the scalloped rim and the many small teeth. H1_Gape opens the throat and spreads the inner rings; H2_Flare spreads the rim wide and flat, the teeth riding with the disc. Iterated: the first rim was a sharp zigzag crown on a thin cup wall.",
+    "gate2_materials": "pass: three finishes - wet sea-green lip skin with ring wrinkles and small round papillae on the bead, a low-chroma plum disc darkening to near black down the throat, and amber horn teeth; the lip-to-disc border is a clean line (the disc is its own mesh tucked under the bead; the first build's single mesh decimated it into a sawtooth).",
+    "gate3_neutral_light": "pass: under the neutral white rig the bead's highlight reads its roll, the teeth stand out against the dark disc, the throat stays dark without crushing the disc; no clipping.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
