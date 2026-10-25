@@ -30,10 +30,21 @@ try {
         try {
             $cellX = 20 + $index * 500
             $drawing.DrawString($labels[$index], $smallFont, $ink, $cellX + 5, 61)
-            $scale = [Math]::Min(485.0 / $image.Width, 700.0 / $image.Height)
-            $width = [int]($image.Width * $scale)
-            $height = [int]($image.Height * $scale)
-            $drawing.DrawImage($image, $cellX + [int]((485 - $width) / 2), 100, $width, $height)
+            # Review renders include intentional framing space. Crop only that
+            # empty margin so the reference and result plants have comparable
+            # display height; leave every part of the asset in frame.
+            if ($index -eq 0) {
+                $frame = New-Object System.Drawing.Rectangle 0, 0, $image.Width, $image.Height
+            } elseif ($index -eq 3) {
+                $frame = New-Object System.Drawing.Rectangle 260, 125, 500, 550
+            } else {
+                $frame = New-Object System.Drawing.Rectangle 165, 105, 500, 590
+            }
+            $scale = [Math]::Min(485.0 / $frame.Width, 700.0 / $frame.Height)
+            $width = [int]($frame.Width * $scale)
+            $height = [int]($frame.Height * $scale)
+            $targetFull = New-Object System.Drawing.Rectangle ($cellX + [int]((485 - $width) / 2)), 100, $width, $height
+            $drawing.DrawImage($image, $targetFull, $frame, [System.Drawing.GraphicsUnit]::Pixel)
             if ($index -eq 0 -or $index -eq 2) {
                 # Crops compare crown layering/color separately from framing.
                 $source = New-Object System.Drawing.Rectangle ([int]($image.Width * 0.17)), ([int]($image.Height * 0.14)), ([int]($image.Width * 0.66)), ([int]($image.Height * 0.48))

@@ -1,0 +1,22 @@
+{
+  "asset": "Bush 2 - dense bronzeleaf",
+  "vertices": 5052,
+  "triangles": 1744,
+  "materials": [
+    "bronzeleaf fibrous stem",
+    "bronze-purple upper leaf",
+    "muted olive lower leaf"
+  ],
+  "bounds_min_m": [
+    -0.7786697745323181,
+    -0.4945352077484131,
+    0.001677054911851883
+  ],
+  "bounds_max_m": [
+    0.7604937553405762,
+    0.5383121371269226,
+    1.6104347705841064
+  ],
+  "texture_count": 0,
+  "notes": "Original Blender geometry; Z up, radial shrub with no rig."
+}

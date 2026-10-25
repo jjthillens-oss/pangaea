@@ -31,9 +31,9 @@ def pbr(name, color, roughness):
 
 
 wood = pbr("bronzeleaf fibrous stem", (0.27, 0.20, 0.16), 0.91)
-bronze = pbr("bronze-purple upper leaf", (0.31, 0.18, 0.23), 0.78)
-olive = pbr("muted olive lower leaf", (0.31, 0.39, 0.20), 0.83)
-clay = pbr("neutral shape clay", (0.49, 0.47, 0.43), 0.65)
+bronze = pbr("bronze-purple upper leaf", (0.090, 0.050, 0.065), 0.83)
+olive = pbr("muted olive lower leaf", (0.110, 0.155, 0.075), 0.87)
+clay = pbr("neutral shape clay", (0.36, 0.35, 0.33), 0.72)
 
 vertices = []
 faces = []
@@ -66,38 +66,39 @@ def stem(start, end, bottom_radius, top_radius):
 
 
 def lance_leaf(anchor, azimuth, length, width, lift, sweep, material_index):
-    """A pointed, recurved broad leaf with center ridge and visible back.
+    """A broad organic lance with two tapered cross sections and visible back.
 
-    The four triangles on each side have actual bent vertices. This geometry,
-    not an alpha cutout or noise material, carries the crown silhouette.
+    Four triangles on each side preserve the budget while the extra cross
+    section softens the polygon language. Geometry carries the silhouette.
     """
     anchor = Vector(anchor)
     radial = Vector((math.cos(azimuth), math.sin(azimuth), 0.0))
     across = Vector((-radial.y, radial.x, 0.0))
     base = anchor
-    left = anchor + radial * (length * 0.44) + across * (width * 0.49) + Vector((0, 0, lift * 0.43))
-    right = anchor + radial * (length * 0.44) - across * (width * 0.49) + Vector((0, 0, lift * 0.43))
-    ridge = anchor + radial * (length * 0.45) + across * sweep + Vector((0, 0, lift * 0.49 + width * 0.14))
-    tip = anchor + radial * length + across * sweep * 1.7 + Vector((0, 0, lift - length * 0.13))
-    face((base, left, ridge), material_index)
-    face((base, ridge, right), material_index)
-    face((left, tip, ridge), material_index)
-    face((ridge, tip, right), material_index)
+    left = anchor + radial * (length * 0.34) + across * (width * 0.48) + Vector((0, 0, lift * 0.38))
+    right = anchor + radial * (length * 0.34) - across * (width * 0.48) + Vector((0, 0, lift * 0.38))
+    upper_left = anchor + radial * (length * 0.68) + across * (width * 0.26 + sweep) + Vector((0, 0, lift * 0.62))
+    upper_right = anchor + radial * (length * 0.68) + across * (-width * 0.26 + sweep) + Vector((0, 0, lift * 0.62))
+    tip = anchor + radial * length + across * sweep * 2.1 + Vector((0, 0, lift - length * 0.20))
+    face((base, left, right), material_index)
+    face((left, upper_left, right), material_index)
+    face((right, upper_left, upper_right), material_index)
+    face((upper_left, tip, upper_right), material_index)
     back = Vector((0, 0, -0.003))
-    face((ridge + back, left + back, base + back), material_index)
-    face((right + back, ridge + back, base + back), material_index)
-    face((ridge + back, tip + back, left + back), material_index)
-    face((right + back, tip + back, ridge + back), material_index)
+    face((right + back, left + back, base + back), material_index)
+    face((right + back, upper_left + back, left + back), material_index)
+    face((upper_right + back, upper_left + back, right + back), material_index)
+    face((upper_right + back, tip + back, upper_left + back), material_index)
 
 
 # Designed crown centers, not traced photo coordinates. Each stem has a distinct
 # height, depth and lean; a tall center is balanced by shorter offset crowns.
 crowns = [
-    ((0.00, 0.00, 0.03), (0.05, 0.03, 1.61), 4, 11, 0.34),
-    ((-0.31, -0.05, 0.02), (-0.44, -0.13, 1.15), 3, 9, 0.31),
-    ((0.30, 0.06, 0.02), (0.43, 0.19, 1.24), 3, 9, 0.31),
-    ((-0.34, 0.13, 0.02), (-0.57, 0.32, 0.73), 2, 7, 0.24),
-    ((0.24, -0.15, 0.02), (0.52, -0.27, 0.78), 2, 7, 0.24),
+    ((0.00, 0.00, 0.03), (0.05, 0.03, 1.61), 6, 11, 0.40),
+    ((-0.07, -0.02, 0.02), (-0.44, -0.13, 1.15), 5, 9, 0.37),
+    ((0.07, 0.02, 0.02), (0.43, 0.19, 1.24), 5, 9, 0.37),
+    ((-0.06, 0.03, 0.02), (-0.57, 0.32, 0.73), 3, 7, 0.31),
+    ((0.06, -0.03, 0.02), (0.52, -0.27, 0.78), 3, 7, 0.31),
 ]
 
 for crown_index, (base, apex, tiers, leaves_per_tier, reach) in enumerate(crowns):
@@ -106,22 +107,21 @@ for crown_index, (base, apex, tiers, leaves_per_tier, reach) in enumerate(crowns
     mid.x += 0.018 * (1 if crown_index % 2 else -1)
     stem(base, mid, 0.050 if crown_index == 0 else 0.033, 0.027)
     stem(mid, apex, 0.027, 0.008)
-    for tier in range(tiers):
-        fraction = 0.24 + tier * (0.62 / max(1, tiers - 1))
+    total_leaves = tiers * leaves_per_tier
+    for index in range(total_leaves):
+        # Golden-angle phyllotaxis breaks the conspicuous horizontal whorls of
+        # the first blockout. Leaves interleave continuously up each stem.
+        fraction = 0.22 + 0.74 * (index + 0.5) / total_leaves
+        fraction += 0.012 * (((index * 5 + crown_index) % 5) - 2)
         center = base.lerp(apex, fraction)
-        count = leaves_per_tier - (1 if tier == tiers - 1 else 0)
-        for index in range(count):
-            angle = 2 * math.pi * (index + 0.43 * (tier % 2)) / count
-            angle += crown_index * 0.31 + tier * 0.11
-            variation = 0.91 + 0.12 * ((index * 7 + tier * 3 + crown_index) % 5) / 4
-            length = reach * variation * (0.92 if tier == tiers - 1 else 1.0)
-            width = length * (0.31 + 0.05 * ((index + tier) % 3))
-            lift = length * (0.44 if tier == tiers - 1 else 0.21)
-            # Lower tiers keep olive undertones; upper crowns make the bronze
-            # region visible at gameplay distance without a painted highlight.
-            material_index = 2 if tier == 0 or (tier == 1 and index % 4 == 0) else 1
-            lance_leaf(center, angle, length, width, lift,
-                       0.012 * ((index % 3) - 1), material_index)
+        angle = 2.3999632297 * index + crown_index * 0.71
+        variation = 0.73 + 0.41 * ((index * 7 + crown_index * 3) % 11) / 10
+        length = reach * variation * (0.86 if fraction > 0.83 else 1.0)
+        width = length * (0.42 + 0.06 * (index % 4))
+        lift = length * (0.49 if fraction > 0.80 else 0.38)
+        material_index = 2 if fraction < 0.48 or (fraction < 0.67 and index % 5 == 0) else 1
+        lance_leaf(center, angle, length, width, lift,
+                   0.026 * ((index % 3) - 1), material_index)
 
 mesh = bpy.data.meshes.new("bronzeleaf_crown_mesh")
 mesh.from_pydata(vertices, [], faces)
@@ -146,7 +146,7 @@ scene.view_settings.view_transform = "Standard"
 scene.world.use_nodes = True
 background = scene.world.node_tree.nodes.get("Background")
 background.inputs["Color"].default_value = (0.52, 0.55, 0.59, 1.0)
-background.inputs["Strength"].default_value = 0.55
+background.inputs["Strength"].default_value = 0.40
 
 
 def area_light(name, position, energy, size):
@@ -160,8 +160,8 @@ def area_light(name, position, energy, size):
     item.rotation_euler = (Vector((0, 0, 0.83)) - item.location).to_track_quat("-Z", "Y").to_euler()
 
 
-area_light("neutral broad key", (-2.2, -2.0, 3.3), 400, 3.2)
-area_light("neutral cool fill", (2.6, 1.7, 2.0), 180, 2.7)
+area_light("neutral broad key", (-2.2, -2.0, 3.3), 280, 3.2)
+area_light("neutral cool fill", (2.6, 1.7, 2.0), 125, 2.7)
 camera_data = bpy.data.cameras.new("review camera")
 camera = bpy.data.objects.new("review camera", camera_data)
 bpy.context.collection.objects.link(camera)
@@ -171,6 +171,7 @@ scene.camera = camera
 
 
 def render(label, position):
+    camera_data.ortho_scale = 12.0 if label == "game-distance" else 2.5
     camera.location = position
     camera.rotation_euler = (Vector((0, 0, 0.83)) - camera.location).to_track_quat("-Z", "Y").to_euler()
     scene.render.filepath = str(VIEWS / label)
