@@ -1,14 +1,14 @@
 extends TestCase
-## Save, quit and continue bring back the same lineage, body, points and place, using the v4 save
+## Save, quit and continue bring back the same lineage, body, points and place, using the v5 save
 ## schema; a death is applied once (test_checkpoints covers the death flow in full). Saves go to a
 ## per-process folder under user://test_saves.
 
 const SaveFolder := preload("res://tests/save_folder.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
-## The v4 save's top-level keys (v2's 15, the creature stage's "creature" and S2's four). A field
-## added without a schema version and migration fails here; v4 is frozen once S2 ships (build plan
-## BP-18).
-const SAVE_KEYS := ["adaptation_points", "build_id", "checkpoint", "creature", "discoveries", "era", "gen_version",
+## The v5 save's top-level keys (v2's 15, the creature stage's "creature", S2's four and the Aquatic
+## stage's "aquatic"). A field added without a schema version and migration fails here; v4 was frozen
+## once S2 shipped (build plan BP-18), and v5 adds only "aquatic" (owner approval 2026-10-25).
+const SAVE_KEYS := ["adaptation_points", "aquatic", "build_id", "checkpoint", "creature", "discoveries", "era", "gen_version",
 	"genome", "growth", "lineage_history", "lineage_id", "pending_transactions", "player", "relationships",
 	"saved_at_unix", "schema_version", "settlements", "spawn", "world_changes", "world_seed"]
 
@@ -87,8 +87,9 @@ func test_a_saved_file_has_exactly_the_v3_keys() -> void:
 	var keys := data.keys()
 	keys.sort()
 	check_eq(keys, SAVE_KEYS, "top-level keys")
-	check_eq(int(data.schema_version), 4, "schema version")
+	check_eq(int(data.schema_version), 5, "schema version")
 	check_eq(data.creature, {}, "no creature before the creature stage")
+	check_eq(data.aquatic, {}, "no aquatic state before the Aquatic stage")
 	var player_keys: Array = data.player.keys()
 	player_keys.sort()
 	check_eq(player_keys, ["energy", "health", "position"], "the player holds a position and step 4's two fields")

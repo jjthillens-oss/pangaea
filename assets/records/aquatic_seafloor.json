@@ -1,0 +1,62 @@
+{
+  "id": "aquatic_seafloor",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Aquatic stage sea floor (PROPOSED): the reef-to-deep route's ground, its centre line on the floor profile in aquatic_rules.json, rock walls past |x| = 36 m and a beach at the shore; sand and rock shaded in world space by M_AquaticSeafloor.tres.",
+  "category": "environment",
+  "source_blend": "assets/source/blender/aquatic_seafloor.blend",
+  "generator_script": "tools/blender/make_aquatic_world.py",
+  "export_path": "assets/export/aquatic_seafloor.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 112.0,
+    "y_forward": 426.0,
+    "z_up": 130.631
+  },
+  "triangles": 19040,
+  "triangle_budget": 24000,
+  "textures": [
+    {
+      "name": "T_AquaticSeafloor_Sand",
+      "path": "assets/export/aquatic_seafloor/T_AquaticSeafloor_Sand.png",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB"
+    },
+    {
+      "name": "T_AquaticSeafloor_Normal",
+      "path": "assets/export/aquatic_seafloor/T_AquaticSeafloor_Normal.png",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color"
+    }
+  ],
+  "materials": [
+    "M_AquaticSeafloor"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "AquaticSeafloor"
+  ],
+  "kind": "ground",
+  "pivot": "the world origin (Godot y = 0 is the water's surface); the nest sits at z = +8",
+  "engine_material": "res://assets/export/M_AquaticSeafloor.tres",
+  "swim_lane": {
+    "half_width_m": 48.0,
+    "relief_max_m": 0.35,
+    "wall_start_m": 36.0,
+    "wall_span_m": 16.0,
+    "wall_height_m": 16.0
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_aquatic_world.py from the floor profile in game/data/aquatic/aquatic_rules.json; no external or generated meshes. The sand tile is periodic noise in numpy, so it repeats without seams."
+}

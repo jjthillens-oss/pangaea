@@ -28,6 +28,8 @@ const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
 const ICON_BUTTON_FONT_PX := 15
 const ICON_COLUMNS := 3
+## A locked tool (a part not found yet) is drawn this faded.
+const LOCKED_TOOL_MODULATE := Color(1, 1, 1, 0.35)
 const SWATCH_PX := 40
 ## The head shape sliders, in order: {key (HeadShape field), title, kind ("scale": shown as 1.40x, "amount": 0..100%)}.
 const HEAD_SLIDERS := [
@@ -208,6 +210,7 @@ func _add_tool(type: String, label: String, price: int) -> void:
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.pressed.connect(func(): tool_chosen.emit(type))
+	b.set_meta("order", _tool_buttons.size())
 	tools_grid.add_child(b)
 	_tool_buttons[type] = b
 
@@ -395,6 +398,38 @@ func show_presets(on: bool) -> void:
 
 ## Gives a part tool its picture (PartIcons): the picture on top, the name and price under it, and the palette goes
 ## to ICON_COLUMNS columns. Select and Limb keep their text.
+## Greys out and disables the tools of the part types in `types` (a set: type -> true), the parts the lineage has not
+## found in the world yet, and moves them after the open ones; every other tool is enabled, in palette order.
+func set_locked(types: Dictionary) -> void:
+	var buttons: Array = []
+	for t in _tool_buttons:
+		var b: Button = _tool_buttons[t]
+		var is_locked := types.has(t)
+		b.set_meta("locked", is_locked)
+		b.disabled = is_locked
+		b.modulate = LOCKED_TOOL_MODULATE if is_locked else Color.WHITE
+		b.tooltip_text = _tooltip_of(b)
+		buttons.append(b)
+	buttons.sort_custom(func(a: Button, b: Button) -> bool:
+		var la := int(bool(a.get_meta("locked")))
+		var lb := int(bool(b.get_meta("locked")))
+		return la < lb if la != lb else int(a.get_meta("order")) < int(b.get_meta("order")))
+	for i in buttons.size():
+		tools_grid.move_child(buttons[i], i)
+
+
+## Whether a part type's tool is locked (set_locked).
+func is_locked(type: String) -> bool:
+	var b: Button = _tool_buttons.get(type)
+	return b != null and bool(b.get_meta("locked", false))
+
+
+static func _tooltip_of(b: Button) -> String:
+	if bool(b.get_meta("locked", false)):
+		return "%s: find it in the world to use it" % String(b.get_meta("label"))
+	return "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+
+
 func set_tool_icon(type: String, texture: Texture2D) -> void:
 	var b: Button = _tool_buttons.get(type)
 	if b == null:
@@ -406,7 +441,7 @@ func set_tool_icon(type: String, texture: Texture2D) -> void:
 	b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX)
 	b.text = "%s %d" % [String(b.get_meta("label")), int(b.get_meta("price"))]
 	b.clip_text = true
-	b.tooltip_text = "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	b.tooltip_text = _tooltip_of(b)
 	tools_grid.columns = ICON_COLUMNS
 
 
