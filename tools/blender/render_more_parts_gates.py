@@ -6,7 +6,8 @@ It imports what ships (assets/export/<asset_id>.glb) into a factory-empty scene 
 neutral rig (a grey environment for reflections, a broad white key, a white fill and a low white grazing light
 across the part):
 - Gate 1, shape: gray_front, gray_side, gray_back, gray_threequarter and gray_top in a neutral clay, and
-  handle_<key> (the three-quarter view with that shape key at 1000 per mille) for each handle;
+  handle_<key> (the three-quarter view with that shape key at 1000 per mille on every mesh that has it, as the
+  runtime sets it) for each handle;
 - Gates 2 and 3, materials under neutral light: mat_threequarter, mat_side and mat_close (closer, on the part's
   upper half);
 - the art look for comparison: art_threequarter under lookdev.review_lighting (warm key, cool fill, teal rim).
@@ -61,16 +62,17 @@ def neutral_lighting(centre, size):
 
 
 def handle_keys(objs):
-    """[(object, key name)] for every H<n>_ shape key on the imported meshes."""
-    out = []
+    """[(key name, [shape key blocks])] for every H<n>_ shape key, each with that key on every imported mesh that
+    has it: the runtime sets a handle on all of a part's meshes together, so the review does the same."""
+    out = {}
     for obj in objs:
         keys = obj.data.shape_keys
         if keys is None:
             continue
         for kb in keys.key_blocks:
             if kb.name.startswith("H") and "_" in kb.name:
-                out.append((obj, kb.name))
-    return out
+                out.setdefault(kb.name, []).append(kb)
+    return sorted(out.items())
 
 
 def contact_sheet(asset_id, out, frames, info):
@@ -151,11 +153,12 @@ def main():
     for name, (yaw, pitch) in GRAY_VIEWS.items():
         shot(f"gray_{name}", centre, size * DISTANCE, yaw, pitch)
     if not args.no_handles:
-        for obj, key in handle_keys(objs):
-            kb = obj.data.shape_keys.key_blocks[key]
-            kb.value = 1.0
+        for key, blocks in handle_keys(objs):
+            for kb in blocks:
+                kb.value = 1.0
             shot(f"handle_{key}", centre, size * DISTANCE * 1.15, 35, 30)
-            kb.value = 0.0
+            for kb in blocks:
+                kb.value = 0.0
 
     # The art look, for comparison with the other parts' review sheets: a fresh import with its own materials.
     bpy.ops.wm.read_factory_settings(use_empty=True)

@@ -1,0 +1,113 @@
+{
+  "id": "cpart_beak_hooked",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a raptor's hooked beak, a deep keeled upper mandible arcing into a sharp hook over a shorter lower mandible, with a yellow cere and nostril slits; opens, hooks and lengthens on shape keys.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_beak_hooked.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_beak_hooked.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.053,
+    "y_forward": 0.074,
+    "z_up": 0.117
+  },
+  "triangles": 1152,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartBeakHooked_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartBeakHooked_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartBeakHooked_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_BeakHookedCere",
+    "M_BeakHookedHorn"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "BeakHooked",
+    "BeakHookedLower"
+  ],
+  "part_type": "beak_hooked",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "beak_hooked",
+    "footprint_radius_m": 0.037,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Open",
+        "meaning": "the lower mandible dropped 26 degrees at the gape",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Hook",
+        "meaning": "the hook's outer half curled 22 degrees further under",
+        "default_permille": 0
+      },
+      {
+        "key": "H3_Length",
+        "meaning": "the beak 30% longer past the cere",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "All three keys are on BeakHooked and BeakHookedLower with the same names; the runtime sets them together. H1_Open moves only the lower mandible, H2_Hook only the upper."
+  },
+  "paint_mix": {
+    "M_BeakHookedCere": 0.6,
+    "M_BeakHookedHorn": 0.05
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 2400,
+    "triangles_after": 1152
+  },
+  "review_notes": {
+    "gate1_shape": "unverified: not reviewed yet",
+    "gate2_materials": "unverified: not reviewed yet",
+    "gate3_neutral_light": "unverified: not reviewed yet",
+    "gate4_godot": "unverified: not reviewed yet"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

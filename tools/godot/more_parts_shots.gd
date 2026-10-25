@@ -17,8 +17,10 @@ extends SceneTree
 ##   <set>_<name>_close.png   0.45 x that distance, front three-quarter, on the head;
 ##   <set>_<name>_side.png    a level side profile of the head at 0.3 x that distance (which way mouths and eyes
 ##                            point).
-## --showcase=PATH (res:// or absolute) reads a JSON list of {name, preset, parts: [part dict, ...]}: the preset's
-##   parts plus these, so a new part is seen on a real body. Without it the bodies are the unmodified presets.
+## --showcase=PATH (res:// or absolute) reads a JSON list of {name, preset, parts: [part dict, ...], swap: {old type:
+##   new type}}: the preset's parts, with swapped types (their handles reset to rest), plus these, so a new part is
+##   seen on a real body. It changes the bodies in memory only, never presets.json. Without it the bodies are the
+##   unmodified presets.
 
 const EDITOR_SCENE := "res://game/scenes/creature/creature_editor.tscn"
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -102,6 +104,11 @@ func _creatures() -> void:
 	editor.camera.fov = FOV_DEG   # the world camera's (creature_world.tscn), not the editor's 40
 	for entry in _bodies():
 		var body: RefCounted = CreatureData.preset_body(String(entry["preset"]))
+		var swap: Dictionary = entry.get("swap", {})
+		for p in body.parts:
+			if swap.has(p["type"]):
+				p["type"] = swap[p["type"]]
+				p["handles"] = []     # the new type's handles rest at 0
 		for p in entry.get("parts", []):
 			body.parts.append((p as Dictionary).duplicate(true))
 		editor.setup(body, POINTS)

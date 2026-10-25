@@ -1,0 +1,113 @@
+{
+  "id": "cpart_beak_long",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a long slender decurved probing bill with a nostril groove and a rounded tip, on a fleshy gape; lengthens, curves and opens on shape keys.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_beak_long.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_beak_long.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.051,
+    "y_forward": 0.082,
+    "z_up": 0.249
+  },
+  "triangles": 342,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartBeakLong_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartBeakLong_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartBeakLong_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_BeakLongGape",
+    "M_BeakLongHorn"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "BeakLong",
+    "BeakLongLower"
+  ],
+  "part_type": "beak_long",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "beak_long",
+    "footprint_radius_m": 0.027,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the bill 35% longer above the skin",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Curve",
+        "meaning": "the decurve about 30 degrees deeper at the tip",
+        "default_permille": 0
+      },
+      {
+        "key": "H3_Open",
+        "meaning": "the lower mandible dropped 16 degrees at the gape",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "All three keys are on BeakLong and BeakLongLower with the same names; the runtime sets them together. H3_Open moves only the lower mandible."
+  },
+  "paint_mix": {
+    "M_BeakLongGape": 0.8,
+    "M_BeakLongHorn": 0.1
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 4904,
+    "triangles_after": 342
+  },
+  "review_notes": {
+    "gate1_shape": "unverified: not reviewed yet",
+    "gate2_materials": "unverified: not reviewed yet",
+    "gate3_neutral_light": "unverified: not reviewed yet",
+    "gate4_godot": "unverified: not reviewed yet"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

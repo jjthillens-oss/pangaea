@@ -1,0 +1,109 @@
+{
+  "id": "cpart_trunk_short",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature mouth part (PROPOSED): a tapir-like short mobile snout overhanging a small mouth, with a dark nose pad and flared nostrils; curls and lengthens on shape keys.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_trunk_short.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_trunk_short.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.085,
+    "y_forward": 0.085,
+    "z_up": 0.144
+  },
+  "triangles": 724,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartTrunkShort_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartTrunkShort_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartTrunkShort_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_TrunkShortNose",
+    "M_TrunkShortSkin"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "TrunkShort",
+    "TrunkShortLip",
+    "TrunkShortNose"
+  ],
+  "part_type": "trunk_short",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "trunk_short",
+    "footprint_radius_m": 0.046,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "forward_cone",
+    "turn_limit_deg": 40,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "mouth",
+    "handles": [
+      {
+        "key": "H1_Curl",
+        "meaning": "the snout's end turned about 50 degrees further down over the lip",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Length",
+        "meaning": "the snout 35% longer past the face",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "Both keys are on TrunkShort and TrunkShortNose with the same names; the runtime sets them together. The nose pad moves rigidly with the snout's end; the lip (TrunkShortLip) has no keys and stays put."
+  },
+  "paint_mix": {
+    "M_TrunkShortSkin": 0.9,
+    "M_TrunkShortNose": 0.4
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 2180,
+    "triangles_after": 724
+  },
+  "review_notes": {
+    "gate1_shape": "unverified: not reviewed yet",
+    "gate2_materials": "unverified: not reviewed yet",
+    "gate3_neutral_light": "unverified: not reviewed yet",
+    "gate4_godot": "unverified: not reviewed yet"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
