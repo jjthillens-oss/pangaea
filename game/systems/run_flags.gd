@@ -13,6 +13,7 @@ extends RefCounted
 ##   --creature      open the creature stage preview instead of the title (on the lineage slot,
 ##                   --slot's too)
 ##   --aquatic       open the Aquatic stage slice instead of the title (reads the lineage slot, never writes it)
+##   --social        open the Social stage preview instead of the title (reads the lineage slot, never writes it)
 ## Other arguments are kept in `other` for tools that read their own (the play smoke's --phase).
 
 ## The range a random seed is drawn from (GameSession.start_new), so a flag seed is never one a
@@ -35,6 +36,7 @@ var world := ""
 var perf_route := ""
 var creature := false
 var aquatic := false
+var social := false
 var other: PackedStringArray = []
 ## Flags that were given but not usable, in plain words.
 var problems: PackedStringArray = []
@@ -76,6 +78,8 @@ static func from_args(args: PackedStringArray) -> RunFlags:
 			flags.creature = true
 		elif arg == "--aquatic":
 			flags.aquatic = true
+		elif arg == "--social":
+			flags.social = true
 		else:
 			flags.other.append(arg)
 	return flags

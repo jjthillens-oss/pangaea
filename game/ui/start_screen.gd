@@ -19,6 +19,8 @@ signal slots_requested
 signal settings_requested
 ## The creature stage preview (creature-stage plan): Main opens it with open_creature_stage().
 signal creature_requested
+## The Social stage preview (docs/stages/social-plan.md): Main opens it with open_social_stage().
+signal social_requested
 ## The Aquatic stage slice (aquatic plan): Main opens it with open_aquatic_stage().
 signal aquatic_requested
 ## "Back to the water": the lineage came ashore and its checkpoint from before is there (set_water_offer).
@@ -29,6 +31,7 @@ const REPLACE_TEXT := "This replaces your current lineage. The previous save is 
 const BACKUP_TEXT := "Your last save could not be read; continuing from the backup."
 const UNREADABLE_TEXT := "Your save could not be read, so Continue is off. Nothing was deleted."
 const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
+const SOCIAL_TEXT := "Social stage"
 ## The cell-to-creature link: the button that brings back the cell from before the lineage came ashore, and the
 ## card's note on a lineage that is ashore.
 const WATER_TEXT := "Back to the water"
@@ -99,6 +102,8 @@ var picker_preview: PlayerCellView:
 @onready var _picked_name: Label = %PickedName
 @onready var _picked_diet: Label = %PickedDiet
 @onready var _build_label: Label = %BuildLabel
+## "Social stage" under Preview, built in code (start_screen.tscn is left as it is).
+var social_button: Button
 ## "Back to the water" (the cell-to-creature link): beside the creature stage button, shown by set_water_offer.
 var water_button: Button
 
@@ -135,6 +140,7 @@ func _ready() -> void:
 	settings_button.pressed.connect(func(): settings_requested.emit())
 	creature_button.pressed.connect(func(): creature_requested.emit())
 	aquatic_button.pressed.connect(func(): aquatic_requested.emit())
+	_add_social_button()
 	water_button = Button.new()
 	water_button.name = "WaterButton"
 	water_button.text = WATER_TEXT
@@ -426,3 +432,16 @@ func _cover(covered: bool) -> void:
 	_covered = covered
 	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_property(main_view, "modulate:a", 0.0 if covered else 1.0, 0.2)
+
+
+## The Social stage preview's button, last under Preview, styled like the Creature stage button.
+func _add_social_button() -> void:
+	social_button = Button.new()
+	social_button.name = "SocialButton"
+	social_button.text = SOCIAL_TEXT
+	social_button.theme_type_variation = &"TitleMenuButton"
+	social_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	main_view.get_node("Left/Preview").add_child(social_button)
+	MenuBounce.pill(social_button)
+	MenuBounce.attach(social_button)
+	social_button.pressed.connect(func(): social_requested.emit())

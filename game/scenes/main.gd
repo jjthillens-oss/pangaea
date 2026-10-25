@@ -78,6 +78,7 @@ var start_screen: StartScreen
 var pool: PoolScene
 var creature_stage: CreatureStage
 var aquatic_stage: AquaticStage
+var social_stage: SocialStage
 var hud: Hud
 var pause_menu: PauseMenu
 var cell_editor: CellEditor   ## S4.4: open while the cell chooses its next generation
@@ -133,6 +134,8 @@ func _ready() -> void:
 		open_creature_stage()
 	elif flags.aquatic:
 		open_aquatic_stage()
+	elif flags.social:
+		open_social_stage()
 	if screen == null:
 		show_start()
 
@@ -174,6 +177,7 @@ func show_start() -> void:
 	start_screen.settings_requested.connect(open_settings, CONNECT_DEFERRED)
 	start_screen.slots_requested.connect(open_slots, CONNECT_DEFERRED)
 	start_screen.creature_requested.connect(open_creature_stage, CONNECT_DEFERRED)
+	start_screen.social_requested.connect(open_social_stage, CONNECT_DEFERRED)
 	start_screen.aquatic_requested.connect(open_aquatic_stage, CONNECT_DEFERRED)
 	start_screen.water_requested.connect(back_to_water, CONNECT_DEFERRED)
 	start_screen.set_water_offer(_water_offered())
@@ -676,6 +680,7 @@ func _clear_screen() -> void:
 	pool = null
 	creature_stage = null
 	aquatic_stage = null
+	social_stage = null
 	hud = null
 	pause_menu = null
 	death_notice = null
@@ -825,3 +830,17 @@ func _start_perf_tour() -> void:
 	tour.name = "PerfTour"
 	dev_layer.add_child(tour)
 	tour.call("attach", self)
+
+
+## The Social stage preview (docs/stages/social-plan.md, PROPOSED) as the screen: the title's "Social stage" button
+## and --social open it. It reads the session's lineage slot for the player's creature and never writes it (nothing
+## in the preview is saved); a --seed names its world seed when the slot brings none. Leaving comes back to the title.
+func open_social_stage() -> SocialStage:
+	_clear_screen()
+	social_stage = SocialStage.new()
+	social_stage.name = "SocialStage"
+	add_child(social_stage)
+	social_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	social_stage.setup(session.slot, flags.seed_value if flags.seed_value >= 0 else randi())
+	_set_screen(social_stage)
+	return social_stage
