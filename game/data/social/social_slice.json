@@ -97,7 +97,7 @@
 	"roles": {
 		"_note": "role = the highest score, ties in the order below. Measured with CreatureStats on main 2ffc1218 (eyes and hands count each mirrored copy): strider scout 2.51 (defender 0.96, forager 0.5); boar defender 3.48 (scout 2.11); monkey forager 3.5 (scout 2.11); hopper forager 3.5 (scout 1.85).",
 		"order": ["forager", "scout", "defender"],
-		"scout": {"per_sight_m": 0.1, "per_speed_mps": 0.3},
+		"scout": {"per_sight_m": 0.1, "per_speed_mps": 0.3, "spot_bonus_m": 6.0, "_spot_note": "a band scout spots the hunter this much further than its eyes alone (12 + 6 = 18 m), so it sees the hunter before the hunter notices it (14 + noticed_bonus_m 3 = 17 m) and warns the band"},
 		"defender": {"per_weapon": 1.0, "per_kg": 0.02},
 		"forager": {"per_hand": 1.5, "per_mouth": 0.5},
 		"costs": {

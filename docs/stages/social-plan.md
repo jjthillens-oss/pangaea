@@ -187,7 +187,7 @@ Roles are bounded behaviours, not classes. Each individual's role is the highest
 
 | Role | Score from | Advantage | Visible cost |
 |---|---|---|---|
-| Scout | sight and speed | Sees the hunter first and warns the band ("Name warns: hunter!") | The hunter notices a scout from 3 m further: it draws attention |
+| Scout | sight and speed | Sees the hunter first (it spots it 6 m further than its eyes alone, so before the hunter notices it) and warns the band ("Name warns: hunter!"); the band then senses the hunter through it | The hunter notices a scout from 3 m further: it draws attention |
 | Defender | weapons and mass | Fights beside you on Assist and makes the hunter lose its nerve | Follows slower (0.85 times speed) and gets hungry 1.25 times faster |
 | Forager | hands and mouths | Carries more (two fruit with a hand) and gathers on Assist | Will not fight: refuses an Assist in a fight ("no fighter") and flees earlier |
 
@@ -218,7 +218,8 @@ state, and trust in words (*trusting*, *friendly*, *unsure*).
   2.5 s readable tell: it stops, turns side-on, its tag reads *watching*) → **pursue** for at most 6 s, only while it
   still sees its target and fewer than 3 of the group stand within 6 m of that target → **strike** with a 1.2 s cooldown →
   **disengage** after the pursuit time, when its nerve (3) runs out under bites, or when its target is inside the
-  nest → **rest** at its lair for 12 s → patrol. It never steps inside the nest. Meat at its lair says "a predator
+  nest → **rest** at its lair for 12 s → patrol. It never steps inside the nest. A strike takes a quarter of the
+  player's health; an individual it strikes is frightened (fear 1) and flees, but no individual is hurt in the slice. Meat at its lair says "a predator
   lives here" before it is ever seen.
 - **Pack defence.** Assist sends fighters at the hunter; each bite costs it nerve. A band that stands together
   deters it without a fight.
@@ -254,7 +255,8 @@ leaves the stage, because pad B is also Sing. Prompts name the bound keys from t
 The HUD is small and Spore-like on the glass theme: goal card top left; band cards top right with a Dismiss button
 each; the dock bottom centre (Sing, Display, Share, Calm | Follow, Wait, Investigate, Retreat, Assist), whose enabled
 state and tooltip come from the same rule as the action; one caption line for responses, acknowledgements and
-refusals; one hint line. Tags over individuals give name, role and mood, and a ▸ marker on the target. Nothing relies
+refusals; one hint line. Tags over individuals give name, role and mood, and a ▸ marker on the target: the individual
+within 15 m that the player faces most squarely (distance times (2 - cos angle) squared, lowest wins). Nothing relies
 on colour alone.
 
 ## 12. Persistence

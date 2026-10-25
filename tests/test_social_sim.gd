@@ -1,7 +1,9 @@
 extends TestCase
 ## The Social stage slice's world (PROPOSED, docs/stages/social-plan.md sections 4 to 10): deterministic for a seed
 ## and the intents, stable individuals with names, roles and needs, befriending into the band and dismissing out of
-## it, and a wary loner that backs away from a loud signal and listens to Calm.
+## it, a wary loner that backs away from a loud signal and listens to Calm; orders that are acknowledged, reported
+## and released; the group task with reservations; the hunter's bounded pursuit; leader loss; the far tier; the
+## test-only record; and bumps that never start a war.
 
 const SocialData := preload("res://game/systems/social/social_data.gd")
 const PLAYER_PRESET := "raptor"
@@ -56,8 +58,12 @@ static func _scripted(t: int) -> Dictionary:
 		intent["signal"] = SocialRules.SIGNALS[(t / 90) % SocialRules.SIGNALS.size()]
 	if t == 300:
 		intent["order"] = "follow"
+	if t == 350:
+		intent["order"] = "assist"
 	if t == 400:
 		intent["dismiss"] = "b1"
+	if t > 500 and t < 520:
+		intent["bite"] = true
 	return intent
 
 
@@ -215,3 +221,333 @@ func test_the_wary_loner_backs_away_from_a_loud_signal_and_listens_to_calm() -> 
 	check(c.size() == 1 and c[0]["response"] == "fits" and c[0]["words"] == "welcomes you", "Calm fits the wary loner")
 	check(float(sim.individual("l1")["trust"]) > float(view["trust"]) + 2.0, "and its trust rises")
 	check_eq(sim.band().size(), 0, "a loner never joins the band")
+
+
+## A world whose band already holds `ids` (through the test-only record, as a reload would).
+func _with_band(ids: Array, world_seed: int = SEED) -> SocialSim:
+	var rec := _sim(world_seed).to_record()
+	for person in rec["individuals"]:
+		if ids.has(person["id"]):
+			person["member"] = true
+			person["befriended"] = true
+	return SocialSim.from_record(rec, _data["presets"][PLAYER_PRESET], _tuning, _data)
+
+
+## No bush is reserved by two individuals, and every reservation is mirrored on its bush.
+static func _reservations_ok(sim: SocialSim) -> String:
+	var held := {}
+	for c in sim.cast:
+		var id := String(c["reserved"])
+		if id == "":
+			continue
+		if held.has(id):
+			return "%s and %s both hold %s" % [held[id], c["id"], id]
+		held[id] = c["id"]
+	for b in sim.bushes:
+		var by := String(b["reserved_by"])
+		if by != "" and held.get(b["id"], "") != by:
+			return "%s says %s holds it" % [b["id"], by]
+		if held.has(b["id"]) and by != held[b["id"]]:
+			return "%s holds %s, the bush says '%s'" % [held[b["id"]], b["id"], by]
+	return ""
+
+
+func test_a_group_task_feeds_the_nest_and_no_bush_is_picked_twice() -> void:
+	var sim := _with_band(["b1", "b2", "b3"])
+	var regrow := int(_tuning["grove"]["regrow_t"])
+	var acks := _of_kind(sim.tick({"order": "assist"}), "ack")
+	check_eq(acks.size(), 3, "each member acknowledges Assist")
+	for a in acks:
+		check_eq(a["words"], "gathers food", "without a fight everyone gathers")
+	var last_pick := {}
+	var delivered := 0
+	var deliverers := {}
+	var picked := 0
+	var done_at := -1
+	var bad := ""
+	var events := []
+	for t in 9000:
+		var out := sim.tick({})
+		events.append_array(out)
+		for e in out:
+			if e["kind"] == "picked":
+				picked += 1
+				if last_pick.has(e["bush"]) and sim.tick_count - int(last_pick[e["bush"]]) < regrow:
+					bad = "%s was picked twice before it regrew" % e["bush"]
+				last_pick[e["bush"]] = sim.tick_count
+			elif e["kind"] == "delivered":
+				delivered += int(e["count"])
+				deliverers[e["who"]] = true
+			elif e["kind"] == "task_done":
+				done_at = sim.tick_count
+		if bad == "":
+			bad = _reservations_ok(sim)
+		if done_at >= 0:
+			break
+	check_eq(bad, "", "reservations hold and no bush is picked twice")
+	check(done_at > 0, "the task is done (%d fruit delivered in %d ticks)" % [delivered, sim.tick_count])
+	check(delivered >= int(_tuning["task"]["fruit_goal"]), "six fruit reached the nest (%d)" % delivered)
+	check(picked >= delivered, "every delivered fruit was picked first")
+	check(deliverers.size() >= 2, "it was a group effort (%s)" % [deliverers.keys()])
+	for id in deliverers:
+		var kinds := []
+		for e in sim.to_record()["individuals"]:
+			if e["id"] == id:
+				for m in e["memory"]:
+					kinds.append(m["kind"])
+		check(kinds.has("helped"), "%s remembers helping" % id)
+	check_eq(sim.task_state()["rounds_done"], 1, "one round done")
+	check_eq(sim.task_state()["delivered"], 0, "the next round starts empty")
+	check_eq(_of_kind(events, "done").size(), 3, "every gatherer's Assist ends")
+	for id in sim.band():
+		check_eq(sim.individual(id)["order"], "follow", "%s follows again" % id)
+	check(_of_kind(events, "learned").size() >= 1, "a carrier learned the grove route")
+	_run(sim, regrow + 2)
+	for id in last_pick:
+		check(sim._bush(id)["ripe"], "%s regrew" % id)
+
+
+func test_an_unreachable_investigate_is_acknowledged_then_reported_and_released() -> void:
+	var sim := _with_band(["b1"])
+	# Facing the east wall: the spot 12 m ahead lies outside the field.
+	sim.place(SocialSim.PLAYER_ID, Vector2(36.0, 0.0), -PI / 2.0)
+	sim.place("b1", Vector2(34.0, 2.0), -PI / 2.0)
+	sim.tick({"order": "assist"})
+	_run(sim, 12)
+	var held := String(sim.individual("b1")["reserved"])
+	check(held != "", "a gatherer reserves a bush first")
+	var given := sim.tick({"order": "investigate"})
+	var acks := _of_kind(given, "ack")
+	check(acks.size() == 1 and acks[0]["words"] == "goes to look", "Investigate is acknowledged")
+	check_eq(sim.individual("b1")["reserved"], "", "the new order released the old one's bush")
+	check_eq(sim._bush(held)["reserved_by"], "", "and the bush is free")
+	var events := []
+	var limit := int(_tuning["orders"]["timeout_t"]) + 60
+	for t in limit:
+		events.append_array(sim.tick({}))
+		if not _of_kind(events, "cannot").is_empty():
+			break
+	var cannot := _of_kind(events, "cannot")
+	check_eq(cannot.size(), 1, "it reports that it cannot get there")
+	if cannot.size() == 1:
+		check_eq(cannot[0]["reason"], "can't reach that spot", "in words")
+		check_eq(cannot[0]["order"], "investigate", "for the investigation")
+	check_eq(_of_kind(events, "arrived").size(), 0, "it never claims to arrive")
+	check_eq(sim.individual("b1")["order"], "follow", "then it comes back to follow")
+	_run(sim, 240)
+	var back := _ground(sim.individual("b1")["position"]).distance_to(_ground(sim.player()["position"]))
+	check(back <= float(_tuning["band"]["follow_m"]) + 2.0, "and it is back beside the player (%.1f m)" % back)
+
+
+func test_losing_the_leader_keeps_the_band_and_its_relationships() -> void:
+	var sim := _with_band(["b1", "b2"])
+	_run(sim, 150, {"move": Vector2(1.0, 0.0)})
+	check(not sim.player()["at_nest"], "the player walked out of the nest")
+	var before := sim.to_record()
+	sim.me["health"] = 0.0
+	var out := sim.tick({})
+	var fainted := _of_kind(out, "fainted")
+	check(fainted.size() == 1 and fainted[0]["band"] == ["b1", "b2"], "the player faints with its band")
+	check_eq(Array(sim.band()), ["b1", "b2"], "the band keeps every member")
+	for id in sim.band():
+		check_eq(sim.individual(id)["order"], "retreat", "%s retreats to the nest" % id)
+	var refused := _of_kind(sim.tick({"signal": "sing"}), "refused")
+	check(refused.size() == 1 and refused[0]["reason"] == "You are out cold", "no signal while out cold")
+	var events := []
+	for t in int(_tuning["player"]["faint_t"]) + 2:
+		events.append_array(sim.tick({}))
+	check_eq(_of_kind(events, "recovered").size(), 1, "the player recovers")
+	check(sim.player()["at_nest"], "at the nest")
+	check(float(sim.player()["health"]) >= float(sim.player()["max_health"]) - 0.01, "at full health")
+	var acks := _of_kind(events, "ack")
+	check_eq(acks.size(), 2, "both members follow again")
+	check_eq(Array(sim.band()), ["b1", "b2"], "the band is whole")
+	var after := sim.to_record()
+	for i in before["individuals"].size():
+		check_eq(var_to_str(after["individuals"][i]["memory"]), var_to_str(before["individuals"][i]["memory"]),
+				"%s remembers the same" % before["individuals"][i]["id"])
+		check_eq(after["individuals"][i]["name"], before["individuals"][i]["name"], "and keeps its name")
+	check_eq(var_to_str(after["reputation"]), var_to_str(before["reputation"]), "reputation is untouched")
+	for id in sim.band():
+		var d := _ground(sim.individual(id)["position"]).distance_to(Vector2.ZERO)
+		check(d <= float(_tuning["nest"]["radius_m"]) + 3.0, "%s went to the nest (%.1f m from it)" % [id, d])
+
+
+func test_far_individuals_change_tier_without_duplication_or_identity_loss() -> void:
+	var sim := _with_band(["b1"])
+	sim.place("b1", Vector2(-22.0, -16.0), 0.0)
+	sim.place(SocialSim.PLAYER_ID, Vector2(30.0, 30.0), 0.0)
+	var start := sim.individuals()
+	var first := sim.tick({"order": "retreat"})
+	var tiers := _of_kind(first, "tier")
+	var far_ids := []
+	for e in tiers:
+		check_eq(e["tier"], "far", "%s goes far" % e["who"])
+		far_ids.append(e["who"])
+	far_ids.sort()
+	check_eq(far_ids, ["b1", "b2", "b3", "h1", "l1"], "every actor 30 m away goes to the far tier, once")
+	check_eq(_of_kind(first, "ack").size(), 1, "a far member still takes orders")
+	var from_nest := _ground(sim.individual("b1")["position"]).length()
+	var events := []
+	events.append_array(_run(sim, 240))
+	check_eq(_of_kind(events, "tier").size(), 0, "no tier flicker while it stays far")
+	var now := sim.individual("b1")
+	check_eq(now["tier"], "far", "b1 is far")
+	check(_ground(now["position"]).length() < from_nest - 3.0,
+			"a far actor still moves (%.1f -> %.1f m from the nest)" % [from_nest, _ground(now["position"]).length()])
+	check((sim.planner_of("b1").position as Vector3).is_equal_approx(now["position"]), "its planner body follows")
+	sim.place(SocialSim.PLAYER_ID, Vector2(0.0, 2.0), 0.0)
+	var back := _of_kind(sim.tick({}), "tier")
+	var near_b1 := false
+	for e in back:
+		check_eq(e["tier"], "near", "%s comes near" % e["who"])
+		near_b1 = near_b1 or e["who"] == "b1"
+	check(near_b1, "b1 is near again")
+	var ids := {}
+	for i in sim.individuals().size():
+		var c: Dictionary = sim.individuals()[i]
+		check(not ids.has(c["id"]), "%s appears once" % c["id"])
+		ids[c["id"]] = true
+		check_eq(c["name"], start[i]["name"], "%s keeps its name" % c["id"])
+		check_eq(c["role"], start[i]["role"], "and its role")
+	check_eq(ids.size(), 4, "nothing was duplicated or dropped")
+	check_eq(Array(sim.band()), ["b1"], "b1 is still in the band")
+	check_eq(sim.individual("b1")["order"], "retreat", "with its order")
+
+
+func test_a_record_round_trip_keeps_identities_and_significant_relationships() -> void:
+	var sim := _sim()
+	var cooldown := int(_tuning["signals"]["cooldown_t"])
+	for attempt in 4:
+		_stand_before(sim, "b1", 3.0)
+		sim.tick({"signal": "display"})
+		if sim.band().has("b1"):
+			break
+		_run(sim, cooldown)
+	check_eq(Array(sim.band()), ["b1"], "the strider joined")
+	var reach := float(sim.me["stats"]["bite_reach_m"])
+	var gap := float(sim.me["stats"]["body_radius_m"]) + float(sim._individual_of("l1")["stats"]["body_radius_m"]) + 0.02
+	var bites := 0
+	for i in 3:
+		_stand_before(sim, "l1", minf(gap, reach * 0.9 + float(sim._individual_of("l1")["stats"]["body_radius_m"])))
+		bites += _of_kind(sim.tick({"bite": true}), "bit").size()
+		_run(sim, int(_tuning["bite"]["cooldown_t"]) + 1)
+	check_eq(bites, 3, "three bites landed on the loner")
+	check(int(sim.individual("l1")["hostile_left_t"]) > 0, "it is hostile")
+	var rec := sim.to_record()
+	check_eq(rec["record"], "social_slice_record_v0", "the test-only record kind (not the save)")
+	var plain = JSON.parse_string(JSON.stringify(rec))
+	check(plain is Dictionary, "the record is plain data")
+	var back := SocialSim.from_record(plain, _data["presets"][PLAYER_PRESET], _tuning, _data)
+	check(back != null, "it loads")
+	check_eq(back.tick_count, sim.tick_count, "at the same tick")
+	check_eq(Array(back.band()), ["b1"], "the band is the same")
+	for i in sim.individuals().size():
+		var a: Dictionary = sim.individuals()[i]
+		var b: Dictionary = back.individuals()[i]
+		for key in ["id", "name", "preset", "role", "member", "befriended", "hostile_left_t", "mood"]:
+			check_eq(b[key], a[key], "%s keeps its %s" % [a["id"], key])
+		check_near(float(b["trust"]), float(a["trust"]), 0.0001, "%s keeps its trust" % a["id"])
+	check_near(float(back.reputation["loner"]), float(sim.reputation["loner"]), 0.0001, "the loner group's reputation")
+	check_near(float(back.reputation["band"]), float(sim.reputation["band"]), 0.0001, "the band's reputation")
+	_stand_before(back, "l1", 2.0)
+	var refused := _of_kind(back.tick({"signal": "calm"}), "refused")
+	check(refused.size() == 1 and String(refused[0]["reason"]).begins_with("It won't listen: you hurt it ("),
+			"the hurt loner still won't listen after the reload")
+	check(SocialSim.from_record({"record": "pangaea_save"}, _data["presets"][PLAYER_PRESET], _tuning, _data) == null,
+			"another kind of record is not read")
+
+
+func test_the_hunter_pursuit_ends_and_the_band_recovers() -> void:
+	var sim := _with_band(["b2"])
+	sim.place(SocialSim.PLAYER_ID, Vector2(17.0, -17.0), 0.0)
+	sim.place("b2", Vector2(15.0, -14.0), 0.0)
+	var states := []
+	var events := []
+	var nest_r := float(_tuning["nest"]["radius_m"])
+	var inside := 0
+	var rested := false
+	# One whole cycle: until the hunter has rested and patrols again.
+	for t in 3600:
+		var out := sim.tick({})
+		events.append_array(out)
+		for e in out:
+			if e["kind"] == "hunter_state":
+				states.append(e["state"])
+				rested = rested or (e["state"] == "patrol" and states.has("rest"))
+		if _ground(sim.hunter()["position"]).length() < nest_r:
+			inside += 1
+		if rested:
+			break
+	check(rested, "the hunter went through a whole cycle: %s" % [states])
+	check_eq(inside, 0, "the hunter never stands in the nest")
+	var investigate := states.find("investigate")
+	var pursue := states.find("pursue")
+	check(investigate >= 0 and pursue > investigate, "a tell before the pursuit: %s" % [states])
+	var disengage := states.find("disengage", maxi(pursue, 0))
+	check(disengage > pursue, "the pursuit ends: %s" % [states])
+	check(states.find("rest", maxi(disengage, 0)) > disengage, "then it rests: %s" % [states])
+	check(_of_kind(events, "hit").size() >= 1, "it struck")
+	check_eq(Array(sim.band()), ["b2"], "the band is whole")
+	var b2 := sim.individual("b2")
+	check(float(b2["fear"]) < float(_tuning["fit"]["frightened_at"]), "its fear faded (%.2f)" % b2["fear"])
+	check_eq(b2["order"], "follow", "it follows again")
+	var gap := _ground(b2["position"]).distance_to(_ground(sim.player()["position"]))
+	check(gap <= float(_tuning["band"]["follow_m"]) + 2.0, "beside the player (%.1f m)" % gap)
+
+
+func test_the_scout_warns_and_a_band_together_deters_the_hunter() -> void:
+	var sim := _with_band(["b1", "b2", "b3"])
+	sim.place(SocialSim.PLAYER_ID, Vector2(17.0, -17.0), 0.0)
+	sim.place("b1", Vector2(15.5, -15.0), 0.0)
+	sim.place("b2", Vector2(18.5, -15.0), 0.0)
+	sim.place("b3", Vector2(17.0, -14.5), 0.0)
+	var events := _run(sim, 900)
+	var warned := _of_kind(events, "warned")
+	check(warned.size() >= 1 and warned[0]["who"] == "b1", "the scout warns the band")
+	var states := []
+	for e in _of_kind(events, "hunter_state"):
+		states.append(e["state"])
+	check(states.has("investigate"), "the hunter watches: %s" % [states])
+	check(not states.has("strike"), "it never strikes a band that stands together: %s" % [states])
+	var drove := _of_kind(events, "drove_off")
+	check(drove.size() >= 1 and drove[0]["why"] == "group", "the band drove it off together")
+	for e in sim.to_record()["individuals"]:
+		if sim.band().has(e["id"]):
+			var kinds := []
+			for m in e["memory"]:
+				kinds.append(m["kind"])
+			check(kinds.has("helped"), "%s remembers it" % e["id"])
+
+
+func test_one_bump_never_turns_the_band_hostile() -> void:
+	var sim := _with_band(["b2"])
+	var r_sum := float(sim.me["stats"]["body_radius_m"]) + float(sim._individual_of("b2")["stats"]["body_radius_m"])
+	sim.place(SocialSim.PLAYER_ID, Vector2(0.0, 2.0), 0.0)
+	sim.place("b2", Vector2(0.0, 2.0 - r_sum - 0.05), 0.0)
+	var trust_before := float(sim.individual("b2")["trust"])
+	var rep_before := float(sim.reputation["band"])
+	var events := _run(sim, 40, {"move": Vector2(0.0, -1.0)})
+	var bumps := _of_kind(events, "bumped")
+	check_eq(bumps.size(), 1, "walking into it is one bump, not one per tick")
+	check_eq(_of_kind(events, "hostile").size() + _of_kind(events, "left").size(), 0, "nothing hostile")
+	var after := sim.individual("b2")
+	check(float(after["trust"]) >= trust_before - 0.6, "a bump is a mild memory (%.2f -> %.2f)" % [trust_before, after["trust"]])
+	check_near(float(sim.reputation["band"]), rep_before - 0.125, 0.0001, "and a capped, small reputation step")
+	check(after["mood"] != "hostile", "it is not hostile")
+	check(not SocialMemory.group_hostile(float(sim.reputation["band"]), _tuning), "nor is its group")
+	check_eq(Array(sim.band()), ["b2"], "it stays in the band")
+	var acks := _of_kind(sim.tick({"order": "wait"}), "ack")
+	check_eq(acks.size(), 1, "and still takes orders")
+	_run(sim, int(_tuning["memory"]["kinds"]["bumped"]["life_t"]))
+	var bump_weight := 0.0
+	var bump_entries := 0
+	for e in sim.to_record()["individuals"]:
+		if e["id"] == "b2":
+			for m in e["memory"]:
+				if m["kind"] == "bumped":
+					bump_entries += 1
+					bump_weight += SocialMemory.weight_at(m, sim.tick_count, _tuning)
+	check(bump_entries <= 1, "one bump memory at most")
+	check_near(bump_weight, 0.0, 0.000001, "the bump has faded to nothing")
+	check(float(sim.individual("b2")["trust"]) >= trust_before - 0.1, "and its trust comes back (%.2f)" % sim.individual("b2")["trust"])
