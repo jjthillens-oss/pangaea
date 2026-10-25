@@ -74,7 +74,7 @@ const KIN_VIEW_SCENE := "res://game/scenes/pool/player_cell_view.tscn"
 const KIN_PULSE := 0.05      ## the kin's swell while the cell could mate with it
 ## The shore's arrow (the cell-to-creature link): pale sunlight, apart from the food arrow's amber, and its own words.
 const SHORE_ARROW_COLOR := Color(1.0, 0.97, 0.82)
-const SHORE_ARROW_LABEL := "Shore %d m"
+const SHORE_ARROW_LABEL := "Open sea %d m"
 const KIN_PULSE_HZ := 0.8
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The idea hints' "near a smaller body": a surface gap of at most this (tm, s2-view 7.5).

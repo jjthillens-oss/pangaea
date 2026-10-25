@@ -775,22 +775,28 @@ func test_slow_band_1_chunks_cost_as_band_0s() -> void:
 		check(c.median <= l[0] and c.median_ratio <= l[1], "size %d: median %.0f us, %.2f yardsticks" % [n, c.median, c.median_ratio])
 		check(c.max <= l[2] and c.top <= l[3], "size %d: max %.0f us, %.2f yardsticks" % [n, c.max, c.top])
 		var base: Dictionary = cost[n - 2]
-		for row in [["median", 1.20], ["p90", 1.20], ["max", 1.35]]:
+		# The max row compares the mean of each size's TOP_N slowest chunks: one chunk's time is mostly machine
+		# noise (0.9x to 1.5x run to run on the same code), the mean of the slowest few is steady.
+		for row in [["median", 1.20], ["p90", 1.20], ["top_mean", 1.35]]:
 			var ratio := float(c[row[0]]) / maxf(1.0, float(base[row[0]]))
 			check(ratio <= row[1], "size %d against %d: %s %.0f us / %.0f us = %.2f x (at most %.2f)"
 				% [n, n - 2, row[0], c[row[0]], base[row[0]], ratio, row[1]])
 
 
+## The slowest chunks the band-1 max row averages.
+const TOP_N := 5
+
+
 ## G17's measure at size n: 500 chunks in spiral order, each its fastest of 3 runs on a new generator
 ## (the fixture world's) and its fastest ratio to the yardstick timed after it.
-## {median, p90, median_ratio, max, top}.
+## {median, p90, median_ratio, max, top, top_mean}.
 func _cold_chunk_costs(n: int) -> Dictionary:
 	return _cold_chunk_costs_at([n], func() -> WorldGen: return _gen(4242))[n]
 
 
 ## G17's measure at each of `sizes` in one pass: each run makes a new generator per size (`make`)
 ## and times each chunk at every size in turn before the next chunk. size -> {median, p90,
-## median_ratio, max, top}.
+## median_ratio, max, top, top_mean}.
 func _cold_chunk_costs_at(sizes: Array, make: Callable) -> Dictionary:
 	var keys := _spiral(500)
 	var best := {}
@@ -828,7 +834,11 @@ func _cold_chunk_costs_at(sizes: Array, make: Callable) -> Dictionary:
 		var top := 0.0
 		for r in ratio[n]:
 			top = maxf(top, r)
-		out[n] = {"median": Yardstick.median(b), "p90": p90, "median_ratio": Yardstick.median(ratio[n]), "max": b[worst], "top": top}
+		var top_mean := 0.0
+		for k in TOP_N:
+			top_mean += sorted[sorted.size() - 1 - k] / TOP_N
+		out[n] = {"median": Yardstick.median(b), "p90": p90, "median_ratio": Yardstick.median(ratio[n]), "max": b[worst], "top": top,
+			"top_mean": top_mean}
 		print("test-world-gen: size %d cold chunks median %.0f us (%.2f yardsticks), p90 %.0f us, max %.0f us at %s (%.2f yardsticks max)"
 			% [n, out[n].median, out[n].median_ratio, p90, b[worst], keys[worst], top])
 	return out
