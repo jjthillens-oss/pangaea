@@ -1,0 +1,104 @@
+{
+  "id": "cpart_wing_dragon",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature wing part (PROPOSED): a big dragon wing, a thick knuckled arm, a hooked thumb claw, four stout finger struts and a deeply scalloped leathery membrane, right-hand piece (mirrored for the left).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_wing_dragon.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_wing_dragon.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.068,
+    "y_forward": 0.345,
+    "z_up": 0.444
+  },
+  "triangles": 1927,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartWingDragon_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartWingDragon_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartWingDragon_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_WingDragonBone",
+    "M_WingDragonClaw",
+    "M_WingDragonMembrane"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Membrane",
+    "WingDragon"
+  ],
+  "part_type": "wing_dragon",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "wing_dragon",
+    "footprint_radius_m": 0.16,
+    "sink_depth_m": 0.038,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 30,
+    "tilt_limit_deg": 40,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine",
+      "limb"
+    ],
+    "role": "detail",
+    "handles": [
+      {
+        "key": "H1_Fold",
+        "meaning": "fingers and membrane furled back and down toward the tail",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Flap",
+        "meaning": "the outer wing bent toward -X for the downstroke",
+        "default_permille": 0
+      }
+    ]
+  },
+  "paint_mix": {
+    "M_WingDragonMembrane": 0.75,
+    "M_WingDragonBone": 0.85,
+    "M_WingDragonClaw": 0.0
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0003,
+    "triangles_before": 2184,
+    "triangles_after": 1927
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

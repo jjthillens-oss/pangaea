@@ -5,7 +5,11 @@ extends RefCounted
 ## Limbs (version 2) are joint chains that start on a vertebra; a mirrored limb also makes its copy across the X = 0
 ## plane, so a pair is one entry and stays symmetric while it is edited. Parts (version 3) are Blender-authored
 ## pieces placed by an anchor relative to a host (domain/anchor_resolver.gd), so they ride along with body edits.
+## The head's shape dials ride in `extra` under "head_shape" (domain/creature/head_shape.gd): the bounds, the preview
+## grid and validate() take them into account, the vertebrae stay as they are.
 ## Pure rules: no scene or file access.
+
+const HeadShape := preload("res://game/domain/creature/head_shape.gd")
 
 const BODY_VERSION := 3
 
@@ -207,6 +211,10 @@ func bounds_m() -> AABB:
 		for k in (c["points"] as PackedVector3Array).size():
 			var r: float = c["radii"][k]
 			box = box.merge(AABB(c["points"][k] - Vector3.ONE * r, Vector3.ONE * 2.0 * r))
+	for cap in HeadShape.geometry(self)["capsules"]:
+		for e in 2:
+			var r: float = cap[2 + e]
+			box = box.merge(AABB((cap[e] as Vector3) - Vector3.ONE * r, Vector3.ONE * 2.0 * r))
 	return box
 
 
@@ -225,6 +233,11 @@ func preview_divisions(rules: Dictionary) -> int:
 	for limb in limbs:
 		for j in limb["joints"]:
 			thinnest = minf(thinnest, float(j["r"]) * scale_m())
+	var head: Dictionary = HeadShape.geometry(self)
+	if vertebrae.size() >= 2:
+		thinnest = minf(thinnest, radius_m(0) * float(head["core"]))
+	for cap in head["capsules"]:
+		thinnest = minf(thinnest, minf(float(cap[2]), float(cap[3])))
 	var need := int(ceil(float(rules["min_radius_preview_cells"]) * bounds_m().get_longest_axis_size() / thinnest)) \
 			if thinnest > 0.0 else int(rules["preview_divisions_max"])
 	return clampi(need, int(rules["preview_divisions"]), int(rules["preview_divisions_max"]))
@@ -238,13 +251,15 @@ func to_dict() -> Dictionary:
 			"generator": generator, "vertebrae": verts, "limbs": limbs.duplicate(true), "parts": parts.duplicate(true),
 			"next": next_ids.duplicate()}
 	for k in extra:
-		d[k] = extra[k]
+		# Deep copies: a snapshot (the editor's undo) must not share a nested block with the live body.
+		d[k] = extra[k].duplicate(true) if extra[k] is Dictionary or extra[k] is Array else extra[k]
 	return d
 
 
 ## Every limit broken, as readable reasons. Empty means valid. `rules` is the body_rules table.
 func validate(rules: Dictionary) -> PackedStringArray:
 	var out := PackedStringArray(load_problems)
+	out.append_array(HeadShape.validate(extra, rules))
 	var n := vertebrae.size()
 	if body_version > BODY_VERSION:
 		out.append("body_version %d is newer than this game knows (%d)" % [body_version, BODY_VERSION])

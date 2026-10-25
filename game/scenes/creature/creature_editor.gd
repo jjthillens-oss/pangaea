@@ -20,13 +20,15 @@ extends Node3D
 ## only orbits here (no input action uses it, tests/test_project_settings.gd).
 ##
 ## Every input path has a method twin (choose_tool, click_skin, drag, select, undo, redo, remove_selected,
-## insert_after_selected, mirror_selected, thicken, resize_selected, orbit, zoom, test_drive, finish, back), so the smoke and the scene tests drive
+## insert_after_selected, mirror_selected, thicken, resize_selected, set_head_shape, orbit, zoom, test_drive, finish, back), so the smoke and the scene tests drive
 ## it without input events. The UI buttons call the same methods. `refusal_text` holds the last refused op's reason
 ## for REFUSAL_S seconds.
 ##
 ## The skin colour comes from a swatch; it rides in the body dictionary as "skin_color" ("#rrggbb") beside the three
 ## skin-pattern ints (creature_look.gd), fields the codec keeps as unknown keys (tests/test_creature_body.gd), so the
-## world and the store carry them without a schema change.
+## world and the store carry them without a schema change. The HUD's head shape sliders (snout, skull width and
+## height, jaw, brow) set the body's "head_shape" block the same way (domain/creature/head_shape.gd); a slider drag is
+## one undo step, and the dials cost nothing and change no stat (mass leaves the head shape out).
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
@@ -171,6 +173,12 @@ func _wire() -> void:
 	hud.color_chosen.connect(set_skin_color)
 	hud.preset_chosen.connect(start_from_preset)
 	hud.random_requested.connect(func(): start_random())
+	hud.head_shape_changed.connect(func(key: String, value: int): set_head_shape(key, value))
+	hud.head_shape_drag.connect(func(started: bool):
+		if started:
+			session.begin_gesture()
+		else:
+			session.end_gesture())
 	hud.set_hint(HINT)
 	if ResourceLoader.exists(STATS_PATH):
 		_stats_script = load(STATS_PATH)
@@ -205,6 +213,7 @@ func setup(body: RefCounted, points: int) -> void:
 	for type in part_rules:
 		roles[type] = String(part_rules[type].get("role", ""))
 	hud.setup(tools, costs, SKIN_COLORS, roles)
+	hud.setup_head_shape(session.head_shape_ranges())
 	if _icons == null:
 		_icons = PartIcons.new()
 		_icons.name = "PartIcons"
@@ -730,6 +739,15 @@ func set_skin_color(color: Color) -> void:
 		walker.body.use_skin_shader(_shader_params())
 
 
+## One head shape dial (HeadShape field: snout, width, height, jaw, brow) to `value` per mille; a value outside the
+## body rules is refused and the slider goes back.
+func set_head_shape(key: String, value: int) -> Dictionary:
+	var r: Dictionary = _result(session.set_head_shape(key, value))
+	if not r["ok"]:
+		hud.set_head_shape(session.head_shape())
+	return r
+
+
 ## The screen position of a point in body space (the description's metres), for driving by the method twins.
 func screen_of(body_point: Vector3) -> Vector2:
 	return _unproject(body_point + _rig_offset)
@@ -1077,6 +1095,7 @@ func _refresh_hud() -> void:
 	lines.append("Selected  %s" % (("%s %s" % [selected["kind"], selected["id"]]) if not selected.is_empty() else "-"))
 	hud.set_stats(lines)
 	hud.set_undo_redo(not session._undo.is_empty(), not session._redo.is_empty())
+	hud.set_head_shape(session.head_shape())
 
 
 func _exit_tree() -> void:
