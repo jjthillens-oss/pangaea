@@ -1,5 +1,5 @@
 extends SceneTree
-## Owner frames of the shore at the build's top size (4): plays one new lineage on seed 4248 in the
+## Owner frames of the shore (the pool's sea edge, ShoreLink) at the build's top size (4): plays one new lineage on seed 4248 in the
 ## real game (main scene, HUD and all), raises the shore the way a paid ring at the top does, then
 ## moves the cell around it with the dev teleport and saves the frames the shore review looks at.
 ## The AI is frozen, the cell is hidden from it and holds still, so every run shows the same moments.
@@ -39,18 +39,26 @@ const OFFER_CAP_FRAMES := 120
 ## The sand behind the cell: this far north of the cell (tm, on the plane) and this box (px).
 const BEHIND_TM := 1.8
 const BOX_PX := 60
+## The light's foot on the sand round the shore point (shore_piece: the shelf about 1.75 m down there, the
+## shaft's foot r 2.8): where 05's cell-hidden frame reads its middle and its rims.
+const FOOT_SAND_M := 1.75
+const FOOT_RIM_M := 2.6
 ## Each shot in staging order. "at" is the offset from the shore point in tm at the top size
 ## (x east, y south); "zoom" sets the camera distance first (0 keeps the layout's 14).
 ##   risen   the frame right after the shore rose (no move)
+##   wait    play on for "frames" more without moving (the rise out of the deep, ShoreView.RISE_S)
 ##   move    a teleport to the shore point + at, facing north
-##   offer   a move, then wait for the "Crawl onto land?" notice over the paused pool
-##   stay    answer the notice "Stay in the water", then a move
+##   offer   a move, then wait for the "Swim out to sea?" notice over the paused pool
+##   stay    answer the notice "Stay in the pool", then a move
 const SHOTS: Array[Dictionary] = [
 	{"name": "01_risen", "do": "risen", "what": "Right after the rise: the toast and the warm arrow, the shore 20 tm off screen"},
+	{"name": "01b_rising_1s", "do": "wait", "frames": 55, "what": "1 s into the rise: the bank coming up out of the deep"},
+	{"name": "01c_rising_2s", "do": "wait", "frames": 60, "what": "2 s into the rise"},
+	{"name": "01d_rose_3s", "do": "wait", "frames": 72, "what": "Just after the rise (RISE_S 3 s): the bank at rest"},
 	{"name": "02_approach", "do": "move", "at": Vector2(0.0, 10.0), "what": "10 tm south of the shore point, approaching"},
 	{"name": "03_reach_edge", "do": "move", "at": Vector2(0.0, 4.6), "what": "Just outside the 4 tm reach: no offer yet"},
 	{"name": "04_offer", "do": "offer", "at": Vector2(0.0, 3.0), "what": "Inside the reach: the offer over the paused pool"},
-	{"name": "05_on_shelf", "do": "stay", "at": Vector2(0.0, 0.0), "what": "Stay in the water, then on the shore point itself"},
+	{"name": "05_on_shelf", "do": "stay", "at": Vector2(0.0, 0.0), "what": "Stay in the pool, then on the shore point itself"},
 	{"name": "06_east", "do": "move", "at": Vector2(6.0, 0.0), "what": "6 tm east: the landing's flank side-on"},
 	{"name": "07_zoom10", "do": "move", "at": Vector2(0.0, 4.6), "zoom": 10.0, "what": "The reach edge at the closest zoom"},
 	{"name": "08_zoom20", "do": "move", "at": Vector2(0.0, 4.6), "zoom": 20.0, "what": "The reach edge at the farthest zoom"},
@@ -93,10 +101,12 @@ func _initialize() -> void:
 	if FileAccess.file_exists(SETTINGS):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SETTINGS))
 	SettingsService.set_shared(SettingsService.new(SETTINGS))
-	for base in [SLOT, EraTransition.checkpoint_path(SLOT)]:
-		for suffix in ["", ".bak", ".tmp"]:
-			if FileAccess.file_exists(base + suffix):
-				DirAccess.remove_absolute(ProjectSettings.globalize_path(base + suffix))
+	# The slot and every checkpoint a crossing could have left by it, with their backup and temporary files.
+	var stale := PackedStringArray([SLOT, SLOT + PersistenceService.BACKUP_SUFFIX, SLOT + PersistenceService.TEMP_SUFFIX])
+	stale.append_array(EraTransition.checkpoint_files(SLOT))
+	for path in stale:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	main = (load(MAIN_SCENE) as PackedScene).instantiate()
 	root.add_child(main)
 	await process_frame
@@ -174,6 +184,9 @@ func _stage(shot: Dictionary) -> bool:
 		"risen":
 			await _play(5)
 			return pool.shore.visible
+		"wait":
+			await _play(int(shot.frames))
+			return pool.shore.visible
 		"move":
 			if not _move(shot.at):
 				return false
@@ -223,6 +236,8 @@ func _readings(img: Image) -> Dictionary:
 		"north_of_cell": _box_reading(img, cam.unproject_position(cell + Vector3(0.0, 0.0, -BEHIND_TM)), BOX_PX * 0.5),
 		"reach_west": _box_reading(img, cam.unproject_position(shore + Vector3(-ShoreLink.REACH_TM, 0.0, 0.0)), 20.0),
 		"fluid_bottom": _box_reading(img, Vector2(SIZE.x * 0.5, SIZE.y - 60.0), BOX_PX * 0.5),
+		"foot_middle": _box_reading(img, cam.unproject_position(shore + Vector3(0.0, -FOOT_SAND_M, 0.0)), BOX_PX * 0.5),
+		"foot_west_rim": _box_reading(img, cam.unproject_position(shore + Vector3(-FOOT_RIM_M, -FOOT_SAND_M, 0.0)), 20.0),
 	}
 	return out
 
@@ -241,9 +256,16 @@ func _behind_cell() -> Dictionary:
 	img.convert(Image.FORMAT_RGB8)
 	pool.cell_view.visible = true
 	img.save_png(out_dir.path_join("05_on_shelf_cell_hidden.png"))
+	# The light's foot on the sand (about 1.75 m under the plane at the shore point): its middle against
+	# its west and east rims, so a dark hole inside the foot shows as a middle under its rims.
+	var shore := pool.shore.global_position
+	var sand := Vector3(0.0, -FOOT_SAND_M, 0.0)
 	return {
 		"under_cell_hidden": _box_reading(img, at, BOX_PX * 0.5),
 		"north_of_cell_hidden": _box_reading(img, cam.unproject_position(cell + Vector3(0.0, 0.0, -BEHIND_TM)), BOX_PX * 0.5),
+		"foot_middle": _box_reading(img, cam.unproject_position(shore + sand), BOX_PX * 0.5),
+		"foot_west_rim": _box_reading(img, cam.unproject_position(shore + sand + Vector3(-FOOT_RIM_M, 0.0, 0.0)), 20.0),
+		"foot_east_rim": _box_reading(img, cam.unproject_position(shore + sand + Vector3(FOOT_RIM_M, 0.0, 0.0)), 20.0),
 	}
 
 
