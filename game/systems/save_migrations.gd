@@ -10,6 +10,7 @@ static func all() -> Dictionary:
 		1: v1_to_v2,
 		2: v2_to_v3,
 		3: v3_to_v4,
+		4: v4_to_v5,
 	}
 
 
@@ -48,4 +49,12 @@ static func v3_to_v4(data: Dictionary) -> Dictionary:
 			player["energy"] = null
 			player["health"] = null
 	data["schema_version"] = 4
+	return data
+
+
+## v5 (the Aquatic stage, owner approval 2026-10-25): the aquatic stage's state lives in the lineage save. A run saved
+## before has not swum there: {}.
+static func v4_to_v5(data: Dictionary) -> Dictionary:
+	data["aquatic"] = {}
+	data["schema_version"] = 5
 	return data

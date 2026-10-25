@@ -32,6 +32,9 @@ extends Node
 ## writes the session's lineage slot (save schema v3 keeps the creature there; --slot applies) and
 ## comes back to the title through exit_requested.
 ##
+## Aquatic stage slice (aquatic plan, PROPOSED): open_aquatic_stage() puts the AquaticStage in place of the screen; the
+## title's "Aquatic stage" button and --aquatic open it. It reads the lineage slot and keeps its progress in the
+## slot's aquatic block (save schema v5).
 ## The cell-to-creature link (ShoreLink, EraTransition; Bible section 4's transition contract): when the cell swims
 ## into the shore's reach the pool pauses under "Crawl onto land?", which says what unlocks, what changes and what
 ## stays. "Stay in the water" plays on (the offer opens again once the cell has swum out and back). "Crawl ashore"
@@ -74,6 +77,7 @@ var screen: Node
 var start_screen: StartScreen
 var pool: PoolScene
 var creature_stage: CreatureStage
+var aquatic_stage: AquaticStage
 var hud: Hud
 var pause_menu: PauseMenu
 var cell_editor: CellEditor   ## S4.4: open while the cell chooses its next generation
@@ -127,6 +131,8 @@ func _ready() -> void:
 		_start_perf_tour()
 	if flags.creature:
 		open_creature_stage()
+	elif flags.aquatic:
+		open_aquatic_stage()
 	if screen == null:
 		show_start()
 
@@ -168,6 +174,7 @@ func show_start() -> void:
 	start_screen.settings_requested.connect(open_settings, CONNECT_DEFERRED)
 	start_screen.slots_requested.connect(open_slots, CONNECT_DEFERRED)
 	start_screen.creature_requested.connect(open_creature_stage, CONNECT_DEFERRED)
+	start_screen.aquatic_requested.connect(open_aquatic_stage, CONNECT_DEFERRED)
 	start_screen.water_requested.connect(back_to_water, CONNECT_DEFERRED)
 	start_screen.set_water_offer(_water_offered())
 	_set_screen(start_screen)
@@ -196,6 +203,19 @@ func open_creature_stage() -> CreatureStage:
 	creature_stage.setup(session.slot, seed_value)
 	_set_screen(creature_stage)
 	return creature_stage
+
+
+## Opens the Aquatic stage slice as the screen, on the session's lineage slot; a --seed names the seed of a lineage it
+## founds (and saves) when the slot has none. Its exit comes back to the title.
+func open_aquatic_stage() -> AquaticStage:
+	_clear_screen()
+	aquatic_stage = AquaticStage.new()
+	aquatic_stage.name = "AquaticStage"
+	add_child(aquatic_stage)
+	aquatic_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	aquatic_stage.setup(session.slot, flags.seed_value if flags.seed_value >= 0 else randi())
+	_set_screen(aquatic_stage)
+	return aquatic_stage
 
 
 ## Founds a lineage with a starting body and opens the pool. A seed below 0 uses --seed, else a
@@ -655,6 +675,7 @@ func _clear_screen() -> void:
 	slot_picker = null
 	pool = null
 	creature_stage = null
+	aquatic_stage = null
 	hud = null
 	pause_menu = null
 	death_notice = null
