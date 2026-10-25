@@ -204,6 +204,13 @@ func refresh(delta: float) -> void:
 	if p.pos.distance_to(sim.kin.pos) < float(sim.rules.world.mating.reach) + 2.0:
 		prompt = "E: mate with your kin and evolve" if sim.can_mate() else \
 				"Your kin waits. Eat until your energy is %d%% full to mate." % int(round(float(sim.rules.world.mating.energy_share) * 100.0))
+	var station := sim.station_here()
+	if prompt == "" and not station.is_empty() and float(p.health) < float(s.max_health):
+		match String(station.standing):
+			"friend":
+				prompt = "The %s tend you" % station.name if station.tending else "Rest here: the %s tend you" % station.name
+			"neutral":
+				prompt = "The %s tend their friends: call them (Q)" % station.name
 	prompt_label.text = prompt
 	var lines := PackedStringArray()
 	for t in _toasts:
@@ -261,6 +268,10 @@ static func event_text(e: Dictionary) -> String:
 			return "Your filter mouth cannot bite"
 		"killed":
 			return "You caught %s" % e.get("one", "a fish")
+		"cleaned":
+			return "The %s clean your wounds" % e.get("name", "fish")
+		"lured":
+			return "Your lure draws the %s in" % e.get("name", "fish")
 		"died":
 			return "You died (%s). Back at the nest." % e.cause
 		"shore":

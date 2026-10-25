@@ -251,6 +251,13 @@ func test_fish_bodies_are_legal_creature_descriptions() -> void:
 					var desc = AquaticBody.to_description(body)
 					var problems: PackedStringArray = desc.validate_parts(body_rules, part_rules)
 					check(problems.is_empty(), "%s %s %s: %s" % [tail, sense, mouth, problems])
+	# The animals of the world are drawn the same way, from legal bodies (fish_view.gd).
+	var fish_view := preload("res://game/scenes/aquatic/fish_view.gd")
+	for id in fish_view.SPECIES.keys() + ["(fallback)"]:
+		var body: Dictionary = fish_view.SPECIES[id].body if id != "(fallback)" else fish_view.FALLBACK.body
+		check(AquaticBody.validate(body, rules.body).is_empty(), "%s's body is legal: %s" % [id, AquaticBody.validate(body, rules.body)])
+		var problems: PackedStringArray = AquaticBody.to_description(body).validate_parts(body_rules, part_rules)
+		check(problems.is_empty(), "%s is a legal description: %s" % [id, problems])
 
 
 ## The fish are drawn with recorded creature parts, told apart by their handles (AquaticBody.TAIL_ART,
@@ -624,6 +631,198 @@ func test_species_logic_is_data_driven() -> void:
 	var block := sim.to_save()
 	check_eq(String(block.relations.test_puffers.standing), "foe", "the save's relations hold the added species")
 	check(SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, rules.body)).is_empty(), "in a valid block")
+
+
+## Steers the fish at the nearest live animal of `species` and bites when it is in reach. Returns the "killed" event
+## of the first one it catches within `seconds`, with the energy of that tick's meal ("meal"), or {}. The sim's own
+## swim: thrust, turn and rise only.
+func _hunt(sim: AquaticSim, species: String, seconds: float) -> Dictionary:
+	for i in int(seconds * AquaticSim.TICK_HZ):
+		var target: Dictionary = {}
+		for a in sim.animals:
+			if a.alive and a.species == species and (target.is_empty()
+					or a.pos.distance_to(sim.player.pos) < target.pos.distance_to(sim.player.pos)):
+				target = a
+		if target.is_empty():
+			return {}
+		var to: Vector3 = target.pos - sim.player.pos
+		var off := wrapf(atan2(-to.x, -to.z) - float(sim.player.heading), -PI, PI)
+		var intent := AquaticSim.Intent.new(1.0 if absf(off) < 1.0 else 0.3, clampf(-off * 3.0, -1.0, 1.0), clampf(to.y * 0.8, -1.0, 1.0))
+		intent.bite = to.length() <= float(sim.player.stats.radius) + 1.6
+		sim.step(intent)
+		var events := sim.take_events()
+		for e in events:
+			if e.type == "killed" and e.species == species:
+				var meal: Array = events.filter(func(x): return x.type == "ate")
+				return e.merged({"meal": float(meal[0].energy) if not meal.is_empty() else 0.0})
+	return {}
+
+
+## aquatic-r2 (PROPOSED): the glass minnows are the jaw lineage's first meat, in the shallows by the nest; the
+## plankton and algae there feed only a filter mouth. A jaw darter (the smoke's hunter cell) swims one down and eats it.
+func test_minnows_feed_a_jaw_lineage_in_the_shallows() -> void:
+	var hunter: Dictionary = AquaticBody.from_genome([{"type": "mouth_jaw"}, {"type": "flagellum"}, {"type": "flagellum"}], 0.12,
+			rules.conversion).body
+	var sim := _sim(hunter)
+	var home := sim.home_of("minnow")
+	check_eq(String(sim.zone_at(home).id), "shallows", "the minnows live in the shallows")
+	check(home.distance_to(sim.nest_pos()) < 30.0, "near the nest (%.0f m)" % home.distance_to(sim.nest_pos()))
+	for site in rules.world.feeding:
+		if String(sim.zone_at(AquaticSim._v(site.pos)).id) == "shallows":
+			check_eq(String(rules.world.food[site.kind].diet), "plant", "%s feeds a filter mouth, not a jaw" % site.id)
+	sim.player.energy = 30.0
+	var meals := sim.meals
+	var caught := _hunt(sim, "minnow", 30.0)
+	check(String(caught.get("id", "")).begins_with("minnow_"), "the jaw darter catches a minnow by swimming it down: %s" % [caught])
+	if caught.is_empty():
+		return
+	check_eq(sim.meals, meals + 1, "a meal")
+	check_near(float(caught.meal), float(rules.species.minnow.meal), 1e-6, "worth the minnow's meal")
+	check_eq(String(sim.zone_at(sim.player.pos).id), "shallows", "without leaving the shallows (%.1f m deep)" % -sim.player.pos.y)
+	check_eq(String(sim.relations.minnow.standing), "neutral", "prey is never a foe")
+	# They always flee a fish near them, and come back after their respawn.
+	var a: Dictionary = sim.animals.filter(func(x): return x.id == caught.id)[0]
+	for i in AquaticSim._ticks(rules.species.minnow.respawn) + 1:
+		sim.player.pos = Vector3(0.0, -5.0, 25.0)
+		sim.step(AquaticSim.Intent.new())
+	check(a.alive, "the caught minnow comes back")
+	_face(sim, a)
+	sim.step(AquaticSim.Intent.new())
+	check_eq(String(a.state), "flee", "a minnow flees a fish near it")
+
+
+## aquatic-r2 (PROPOSED): the reef cleaners at the east arch are befriended with two spaced calls; a friend resting at
+## their station is tended and healed (one "cleaned" event a visit), a neutral or a fast fish is not, and a bite makes
+## them foes that tend no more.
+func test_cleaners_befriend_and_heal_a_resting_friend() -> void:
+	var sim := _sim(AquaticBody.HOVERER)
+	var st: Dictionary = rules.species.cleaner.station
+	var home := sim.home_of("cleaner")
+	check_eq(String(sim.zone_at(home).id), "reef", "the cleaners live on the reef")
+	var spot := home + Vector3(0.0, 0.0, 1.5)
+	var cleaned := [0]
+	var rest := func(seconds: float, speed: float) -> void:
+		for i in int(seconds * AquaticSim.TICK_HZ):
+			sim.player.pos = spot
+			sim.player.speed = speed
+			sim.step(AquaticSim.Intent.new())
+			for e in sim.take_events():
+				if e.type == "cleaned":
+					cleaned[0] += 1
+	sim.player.health = 20.0
+	rest.call(2.0, 0.0)
+	check_near(float(sim.player.health), 20.0, 1e-6, "a neutral fish is not tended")
+	check_eq(String(sim.station_here().get("standing", "")), "neutral", "though it is at the station")
+	for k in int(rules.species.cleaner.signals_to_friend):
+		var call := AquaticSim.Intent.new()
+		call.signal_call = true
+		sim.player.pos = spot
+		sim.step(call)
+		rest.call(1.0, 0.0)
+	check_eq(String(sim.relations.cleaner.standing), "friend", "two spaced calls befriend the cleaners")
+	# A new visit, hurt, as a friend.
+	sim.player.pos = home + Vector3(0.0, 0.0, 20.0)
+	sim.step(AquaticSim.Intent.new())
+	sim.take_events()
+	sim.player.health = 20.0
+	var hp := float(sim.player.health)
+	cleaned[0] = 0
+	rest.call(3.0, 0.0)
+	check_near(float(sim.player.health), hp + float(st.heal_per_s) * 3.0, 0.1, "resting at the station heals (%.1f -> %.1f)" % [hp, sim.player.health])
+	check_eq(cleaned[0], 1, "one 'cleaned' event for the visit")
+	check(bool(sim.station_here().get("tending", false)), "the station tends the fish")
+	var cleaners: Array = sim.animals.filter(func(x): return x.species == "cleaner")
+	check(cleaners.all(func(x): return x.state == "clean"), "the cleaners gather round it")
+	check(cleaners.all(func(x): return x.pos.distance_to(sim.player.pos) < float(sim.player.stats.radius) + 2.0), "close to it")
+	# Leaving and coming back is another visit; swimming through fast is not a rest.
+	sim.player.pos = home + Vector3(0.0, 0.0, 20.0)
+	sim.step(AquaticSim.Intent.new())
+	sim.take_events()
+	sim.player.health = 20.0
+	rest.call(0.5, 0.0)
+	check_eq(cleaned[0], 2, "a new visit is cleaned again")
+	hp = float(sim.player.health)
+	rest.call(1.0, float(st.rest_speed) * 3.0)
+	check(float(sim.player.health) <= hp + 1e-6, "a fish swimming past at speed is not tended")
+	# A bite: foes, and no more cleaning.
+	var c: Dictionary = cleaners.filter(func(x): return x.alive)[0]
+	_face(sim, c)
+	var bite := AquaticSim.Intent.new()
+	bite.bite = true
+	sim.step(bite)
+	check_eq(String(sim.relations.cleaner.standing), "foe", "a bite makes the cleaners foes")
+	sim.player.health = 20.0
+	cleaned[0] = 0
+	rest.call(2.0, 0.0)
+	check_near(float(sim.player.health), 20.0, 1e-6, "a foe is not tended")
+	check_eq(cleaned[0], 0, "and not cleaned")
+	check(not bool(sim.station_here().get("tending", true)), "the station is closed to it")
+
+
+## aquatic-r2 (PROPOSED): the vent glowfins flee any fish, but a fish with the lure sense draws them to its head from
+## the lure's reach while it stays near their home, so a lure angler can catch them; with eyes they keep away.
+func test_a_lure_draws_glowfins_and_eyes_do_not() -> void:
+	var deep := AquaticBody.HOVERER.duplicate()
+	deep.girth = 3
+	deep.bladder = 3
+	var angler := deep.duplicate()
+	angler.sense = "lure"
+	var cfg: Dictionary = rules.species.glowfin
+	var nearest := func(sim: AquaticSim) -> float:
+		var out := INF
+		for a in sim.animals:
+			if a.alive and a.species == "glowfin":
+				out = minf(out, a.pos.distance_to(sim.player.pos))
+		return out
+	var runs := {}
+	for body in [angler, deep]:
+		var sim := _sim(body)
+		var home := sim.home_of("glowfin")
+		check(float(sim.player.stats.rated_depth) >= -home.y, "%s stands the vents' depth" % body.sense)
+		var spot := home + Vector3(0.0, 0.0, 9.0)
+		var lured_events := 0
+		var seen_lured := false
+		for i in 8 * AquaticSim.TICK_HZ:
+			sim.player.pos = spot
+			sim.player.heading = 0.0
+			sim.step(AquaticSim.Intent.new())
+			lured_events += sim.take_events().filter(func(e): return e.type == "lured").size()
+			seen_lured = seen_lured or sim.animals.any(func(a): return a.state == "lured")
+		runs[body.sense] = {"sim": sim, "nearest": nearest.call(sim), "events": lured_events, "seen": seen_lured}
+	check(runs.lure.seen and runs.lure.nearest < 2.5, "a lure draws a glowfin to the fish's head (%.1f m)" % runs.lure.nearest)
+	check_eq(runs.lure.events, 1, "one 'lured' event while they come")
+	check(not runs.eyes.seen and runs.eyes.nearest > 3.0, "with eyes they keep away (%.1f m)" % runs.eyes.nearest)
+	# The lure angler bites one it has drawn in.
+	var sim: AquaticSim = runs.lure.sim
+	var lured: Array = sim.animals.filter(func(a): return a.state == "lured")
+	check(not lured.is_empty(), "glowfins at the lure")
+	if not lured.is_empty():
+		sim.player.energy = 10.0
+		sim.player.heading = AquaticSim.forward_of(0.0).signed_angle_to(lured[0].pos - sim.player.pos, Vector3.UP)
+		var bite := AquaticSim.Intent.new()
+		bite.bite = true
+		sim.step(bite)
+		var killed: Array = sim.take_events().filter(func(e): return e.type == "killed")
+		check(killed.size() == 1 and killed[0].species == "glowfin", "a bite catches a lured glowfin: %s" % [killed])
+		check(float(sim.player.energy) > 10.0 + float(cfg.meal) - 0.5, "a glowfin's meal (%.1f)" % sim.player.energy)
+	# Beyond the leash from their home they let the lure go.
+	var far: Vector3 = sim.home_of("glowfin") + Vector3(0.0, 0.0, float(cfg.lured.leash) + 4.0)
+	for i in 2 * AquaticSim.TICK_HZ:
+		sim.player.pos = far
+		sim.step(AquaticSim.Intent.new())
+	check(not sim.animals.any(func(a): return a.alive and a.state == "lured"), "they keep to their home's reach")
+
+
+## Every species in the rules has its look in the world (fish_view.gd), and no animal starts within reach of the
+## fish at the nest.
+func test_every_species_is_drawn_and_none_crowds_the_spawn() -> void:
+	var fish_view := preload("res://game/scenes/aquatic/fish_view.gd")
+	for id in rules.species_order:
+		check(fish_view.SPECIES.has(id), "%s has its look in FishView.SPECIES" % id)
+	var sim := _sim(AquaticBody.DARTER)
+	for a in sim.animals:
+		var reach := maxf(8.0, float(rules.species[a.species].flee_reach) + 3.0)
+		check(a.pos.distance_to(sim.player.pos) > reach, "%s starts clear of the fish (%.1f m)" % [a.id, a.pos.distance_to(sim.player.pos)])
 
 
 func test_the_world_is_deterministic() -> void:

@@ -90,13 +90,23 @@
     "drifter": {"centre": [0.0, 0.0, -300.0], "radii": [38.0, 52.0], "height_over_floor": 14.0, "period": 90.0, "warn_reach": 26.0, "warn": 3.0,
                 "sweep_reach": 11.0, "sweep_damage": 45.0, "cooldown": 6.0, "length_m": 18.0}
   },
-  "species_order": ["grazer", "shoal"],
-  "species_note": "The animals (aquatic-r2: data, not code). species_order is the order they are built and ticked in (their ids, animals and seeded draws follow it, so a species added at the end leaves the earlier ones as they were). Per species: name (the group, for the HUD), one (a single animal), count, zone (its niche), home (a shelter id, 3 m above it, or a position), wander, speed, flee_speed, flee_reach, health; flees: always (prey that flees any fish near) or foe (only once it is a foe); hide_from_lancer: the reach (m) at which it hides at home from a hunting lancer; signals_to_friend, signal_reach and signal_gap (s): it is befriended by that many spaced calls, and a bite makes it a foe; follow_leash: as a friend it follows the fish in its own zone while the fish is this near its home; warn_reach: a friend this near flashes a warning when the lancer investigates; meal and respawn (s): the energy a kill gives and its return time (default the fish food's energy and regrow).",
+  "species_order": ["grazer", "shoal", "minnow", "cleaner", "glowfin"],
+  "species_note": "The animals (aquatic-r2: data, not code). species_order is the order they are built and ticked in (their ids, animals and seeded draws follow it, so a species added at the end leaves the earlier ones as they were). Per species: name (the group, for the HUD), one (a single animal), count, zone (its niche), home (a shelter id, 3 m above it, or a position), wander, speed, flee_speed, flee_reach, health; flees: always (prey that flees any fish near) or foe (only once it is a foe); hide_from_lancer: the reach (m) at which it hides at home from a hunting lancer; signals_to_friend, signal_reach and signal_gap (s): it is befriended by that many spaced calls, and a bite makes it a foe; follow_leash: as a friend it follows the fish in its own zone while the fish is this near its home; warn_reach: a friend this near flashes a warning when the lancer investigates; meal and respawn (s): the energy a kill gives and its return time (default the fish food's energy and regrow); station {reach, rest_speed, heal_per_s}: as a friend, a fish resting (slower than rest_speed) this near the species' home is tended and healed while one of its animals lives (a \"cleaned\" event once a visit), and the animals swim to it; lured {reach, leash, speed}: a fish whose sense is the lure draws the species' animals to its head from this near while it stays within leash of their home (they stop fleeing it). aquatic-r2 added minnow (the jaw lineage's first food, in the shallows), cleaner (befriended on the reef, a cleaning station) and glowfin (deep prey only a lure brings near).",
   "species": {
     "grazer": {"name": "reef grazers", "one": "a reef grazer", "count": 6, "zone": "reef", "home": "shelter_reef_west", "wander": 14.0,
                "speed": 2.2, "flee_speed": 4.0, "flee_reach": 10.0, "flees": "foe", "hide_from_lancer": 18.0, "signals_to_friend": 3,
                "signal_reach": 8.0, "signal_gap": 0.8, "follow_leash": 70.0, "warn_reach": 22.0, "health": 30.0},
     "shoal": {"name": "silver shoal", "one": "a silver shoal fish", "count": 10, "zone": "twilight", "home": [10.0, -34.0, -128.0],
-              "wander": 10.0, "speed": 2.6, "flee_speed": 5.2, "flee_reach": 6.0, "flees": "always", "health": 15.0}
+              "wander": 10.0, "speed": 2.6, "flee_speed": 5.2, "flee_reach": 6.0, "flees": "always", "health": 15.0},
+    "minnow": {"name": "glass minnows", "one": "a glass minnow", "count": 8, "zone": "shallows", "home": [12.0, -5.0, -8.0],
+               "wander": 9.0, "speed": 2.0, "flee_speed": 4.6, "flee_reach": 5.0, "flees": "always", "health": 8.0, "meal": 9.0,
+               "respawn": 30.0},
+    "cleaner": {"name": "reef cleaners", "one": "a reef cleaner", "count": 4, "zone": "reef", "home": "shelter_reef_east",
+                "wander": 4.0, "speed": 1.6, "flee_speed": 3.6, "flee_reach": 8.0, "flees": "foe", "hide_from_lancer": 18.0,
+                "signals_to_friend": 2, "signal_reach": 8.0, "signal_gap": 0.8, "health": 20.0,
+                "station": {"reach": 5.0, "rest_speed": 0.6, "heal_per_s": 4.0}},
+    "glowfin": {"name": "vent glowfins", "one": "a vent glowfin", "count": 6, "zone": "deep", "home": [6.0, -82.0, -266.0],
+                "wander": 8.0, "speed": 1.4, "flee_speed": 3.4, "flee_reach": 8.0, "flees": "always", "health": 12.0, "meal": 18.0,
+                "respawn": 40.0, "lured": {"reach": 12.0, "leash": 20.0, "speed": 2.0}}
   }
 }

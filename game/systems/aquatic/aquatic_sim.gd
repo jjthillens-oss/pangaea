@@ -87,6 +87,12 @@ var _rng_life := RandomNumberGenerator.new()
 var _bite_ready_at := 0
 var _at_shore := false
 var _zone := ""
+## Per station species (rules.species[*].station): whether it tends the fish this tick, whether the fish is in its reach
+## (a visit), and whether this visit has had its "cleaned" event. Per lured species: whether any animal is lured.
+var _tending := {}
+var _visiting := {}
+var _cleaned := {}
+var _lured := {}
 
 
 ## A world for `body` (an AquaticBody dictionary) from the rules (aquatic_rules.json) and the world seed.
@@ -222,12 +228,18 @@ func _build_food() -> void:
 func _build_animals() -> void:
 	for species in rules.species_order:
 		var cfg: Dictionary = rules.species[species]
-		var home: Vector3 = _shelter_pos(String(cfg.home)) if cfg.home is String else _v(cfg.home)
+		var home := home_of(species)
 		for i in int(cfg.count):
 			var p := _clamp_to_water(home + _wander_offset(float(cfg.wander)))
 			animals.append({"id": "%s_%02d" % [species, i + 1], "species": species, "home": home, "pos": p,
 					"heading": _rng_life.randf() * TAU, "hp": float(cfg.health), "alive": true, "respawn_at": 0,
 					"target": p, "state": "wander"})
+
+
+## A species' home: 3 m above its home shelter, or its position.
+func home_of(species: String) -> Vector3:
+	var cfg: Dictionary = rules.species[species]
+	return _shelter_pos(String(cfg.home)) if cfg.home is String else _v(cfg.home)
 
 
 func _shelter_pos(id: String) -> Vector3:
@@ -250,6 +262,7 @@ func step(intent: Intent) -> void:
 	_swim(intent)
 	_feed()
 	_zones_and_sites()
+	_stations_tick()
 	_animals_tick()
 	_lancer_tick()
 	_drifter_tick()
@@ -362,6 +375,7 @@ func _zones_and_sites() -> void:
 
 func _animals_tick() -> void:
 	var lancer_hunting := String(lancer.state) in ["investigate", "pursue"]
+	var head: Vector3 = player.pos + forward_of(player.heading) * (float(player.stats.length_m) * 0.5 + 0.8)
 	for a in animals:
 		if not a.alive:
 			continue
@@ -370,15 +384,27 @@ func _animals_tick() -> void:
 		var to_player: Vector3 = player.pos - a.pos
 		var speed := float(cfg.speed)
 		var goal: Vector3 = a.target
+		var n := int(String(a.id).right(2))
 		a.state = "wander"
 		if lancer_hunting and cfg.has("hide_from_lancer") and a.pos.distance_to(lancer.pos) < float(cfg.hide_from_lancer):
 			a.state = "hide"
 			goal = a.home
 			speed = float(cfg.flee_speed)
+		elif cfg.has("lured") and player.stats.lure and to_player.length() <= float(cfg.lured.reach) \
+				and player.pos.distance_to(a.home) <= float(cfg.lured.leash):
+			# Drawn to the lure that hangs ahead of the fish's head, each a little to one side.
+			a.state = "lured"
+			goal = head + Vector3(float(n % 3) - 1.0, 0.3 if n % 6 >= 3 else -0.3, 0.0) * 0.8
+			speed = float(cfg.lured.speed)
 		elif to_player.length() < float(cfg.flee_reach) and (String(cfg.get("flees", "foe")) == "always" or rel.standing == "foe"):
 			a.state = "flee"
 			goal = a.pos - to_player.normalized() * 6.0
 			speed = float(cfg.flee_speed)
+		elif _tending.get(a.species, false):
+			# A cleaning station at work: the animals gather round the resting fish.
+			a.state = "clean"
+			var ang := TAU * float(n) / maxf(1.0, float(cfg.count))
+			goal = player.pos + Vector3(cos(ang), 0.35, sin(ang)) * (float(player.stats.radius) + 0.9)
 		elif cfg.has("follow_leash") and rel.standing == "friend" and _zone == String(cfg.zone) \
 				and player.pos.distance_to(a.home) < float(cfg.follow_leash):
 			a.state = "follow"
@@ -394,6 +420,47 @@ func _animals_tick() -> void:
 			var stepv := d.normalized() * minf(d.length(), speed * DT)
 			a.pos = _clamp_to_water(a.pos + stepv)
 			a.heading = atan2(-stepv.x, -stepv.z)
+	for species in rules.species_order:
+		if not rules.species[species].has("lured"):
+			continue
+		var any := animals.any(func(x): return x.alive and x.species == species and x.state == "lured")
+		if any and not _lured.get(species, false):
+			_emit("lured", {"species": species, "name": String(rules.species[species].name)})
+		_lured[species] = any
+
+
+## The cleaning stations (rules.species[*].station): a friend resting near the species' home is tended while one of
+## its animals lives, and healed while hurt; the first heal of a visit is a "cleaned" event. A foe is never tended.
+func _stations_tick() -> void:
+	for species in rules.species_order:
+		var cfg: Dictionary = rules.species[species]
+		if not cfg.has("station"):
+			continue
+		var st: Dictionary = cfg.station
+		var near: bool = player.pos.distance_to(home_of(species)) <= float(st.reach)
+		if not near:
+			_visiting[species] = false
+			_cleaned[species] = false
+			_tending[species] = false
+			continue
+		_visiting[species] = true
+		var tending: bool = relations[species].standing == "friend" and absf(float(player.speed)) <= float(st.rest_speed) \
+				and animals.any(func(x): return x.alive and x.species == species)
+		_tending[species] = tending
+		if tending and float(player.health) < float(player.stats.max_health):
+			player.health = minf(float(player.stats.max_health), float(player.health) + float(st.heal_per_s) * DT)
+			if not _cleaned.get(species, false):
+				_cleaned[species] = true
+				_emit("cleaned", {"species": species, "name": String(cfg.name)})
+
+
+## The cleaning station the fish is at, for the HUD: {"species", "name", "standing", "tending"}, or {} when none.
+func station_here() -> Dictionary:
+	for species in rules.species_order:
+		if _visiting.get(species, false):
+			return {"species": species, "name": String(rules.species[species].name),
+					"standing": String(relations[species].standing), "tending": bool(_tending.get(species, false))}
+	return {}
 
 
 func _lancer_tick() -> void:
