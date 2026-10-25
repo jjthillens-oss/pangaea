@@ -11,13 +11,14 @@ const MARK := "▸ "
 const RESPONSE_S := 3.0
 ## Tags are drawn only within this distance of the camera (m).
 const SHOW_M := 34.0
+## A tag whose body is this close to the bottom edge (px, design canvas) would sit under the dock: it is hidden.
+const BOTTOM_CLEAR_PX := 150.0
 
 var sim: SocialSim
 var world: SocialWorld
 ## id -> {panel, top, bottom}
 var tags := {}
 var _responses := {}
-var _last_ms := 0
 
 
 func _init() -> void:
@@ -32,7 +33,6 @@ func bind(p_sim: SocialSim, p_world: SocialWorld) -> void:
 	for c in sim.individuals():
 		tags[c["id"]] = _make_tag(String(c["id"]))
 	tags[String(sim.hunter()["id"])] = _make_tag(String(sim.hunter()["id"]))
-	_last_ms = Time.get_ticks_msec()
 
 
 func _make_tag(id: String) -> Dictionary:
@@ -44,12 +44,12 @@ func _make_tag(id: String) -> Dictionary:
 	box.add_theme_constant_override("separation", 0)
 	panel.add_child(box)
 	var top := Label.new()
-	top.add_theme_font_size_override("font_size", 20)
+	top.add_theme_font_size_override("font_size", 22)
 	top.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(top)
 	var bottom := Label.new()
 	bottom.theme_type_variation = &"SmallLabel"
-	bottom.add_theme_font_size_override("font_size", 17)
+	bottom.add_theme_font_size_override("font_size", 18)
 	bottom.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(bottom)
 	add_child(panel)
@@ -91,12 +91,10 @@ static func hunter_word(state: String) -> String:
 			"disengage": "breaking off", "rest": "resting"}.get(state, state)
 
 
-func refresh() -> void:
+## Once a frame, after the world has moved its camera: `delta` (s) ages the answers shown.
+func refresh(delta: float) -> void:
 	if sim == null or world == null or world.camera == null:
 		return
-	var now := Time.get_ticks_msec()
-	var delta := float(now - _last_ms) / 1000.0
-	_last_ms = now
 	for id in _responses.keys():
 		_responses[id]["left"] = float(_responses[id]["left"]) - delta
 		if float(_responses[id]["left"]) <= 0.0:
@@ -117,5 +115,9 @@ func refresh() -> void:
 		# unproject_position gives the canvas's own coordinates (the stretch's design size), which this full-rect
 		# Control under an untransformed CanvasLayer shares.
 		var screen := camera.unproject_position(at)
+		# Not under the HUD's bottom row (the captions, the dock and the hint).
+		if screen.y > size.y - BOTTOM_CLEAR_PX:
+			panel.visible = false
+			continue
 		panel.reset_size()
 		panel.position = screen - Vector2(panel.size.x * 0.5, panel.size.y)

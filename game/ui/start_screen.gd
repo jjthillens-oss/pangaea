@@ -434,8 +434,13 @@ func _cover(covered: bool) -> void:
 	tween.tween_property(main_view, "modulate:a", 0.0 if covered else 1.0, 0.2)
 
 
-## The Social stage preview's button, last under Preview, styled like the Creature stage button.
+## The Social stage preview's button, last under Preview, styled like the Creature stage button. A third stage button
+## would push the column into the hint line at 1080 px, so the spacer under the tagline goes and the column's gaps
+## tighten (20 to 12 px).
 func _add_social_button() -> void:
+	var left := main_view.get_node("Left") as VBoxContainer
+	left.get_node("Gap").visible = false
+	left.add_theme_constant_override("separation", 12)
 	social_button = Button.new()
 	social_button.name = "SocialButton"
 	social_button.text = SOCIAL_TEXT

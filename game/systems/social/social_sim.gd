@@ -1209,15 +1209,23 @@ func gait_of(id: String) -> Dictionary:
 	return c["gait"] if not c.is_empty() else {}
 
 
-## Puts a body at a ground point facing `yaw` (tests and the dev tools only; the stage never calls it).
+## Puts a body at a ground point facing `yaw`, its feet planted at rest there (tests and the dev tools only; the
+## stage never calls it).
 func place(id: String, at: Vector2, yaw: float) -> void:
 	var c := _body(id)
 	if c.is_empty():
 		return
 	c["yaw"] = yaw
-	if c["planner"] != null:
-		c["planner"].yaw = yaw
+	var planner = c["planner"]
+	if planner != null:
+		planner.yaw = yaw
 	_place(c, Vector3(at.x, 0.0, at.y))
+	if planner != null:
+		for i in planner.foot.size():
+			planner.foot[i] = planner.rest_world(i)
+			planner.swing_from[i] = planner.foot[i]
+			planner.state[i] = GaitPlanner.STANCE
+			planner.swing_u[i] = 0.0
 
 
 ## Plain data in a fixed order: ground vectors as [x, z] pairs, lists in id order.

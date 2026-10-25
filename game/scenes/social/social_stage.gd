@@ -211,7 +211,7 @@ func _process(delta: float) -> void:
 	if sim == null:
 		return
 	world.sync(delta)
-	tags.refresh()
+	tags.refresh(delta)
 	hud.refresh(delta)
 
 

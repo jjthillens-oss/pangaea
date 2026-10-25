@@ -7,7 +7,8 @@ extends Control
 ##   top right:     one card per companion ("Name · scout · following · trusting") with its Dismiss button
 ##   bottom centre: the caption (responses, acknowledgements and refusals, in words), the dock (Sing, Display, Share,
 ##                  Calm | Follow, Wait, Investigate, Retreat, Assist) and the hint line named from the bindings
-##   centre:        the entry card, until play begins; the orders menu's panel over the dock while it is open
+##   top centre:    the orders menu's panel while it is open (each member's answer to the marked order)
+##   centre:        the entry card, until play begins
 ## Each dock button's enabled state and tooltip come from SocialSim.preview_signal() / preview_order(), the same check
 ## the action makes. The selected signal and the menu's order carry a "▸" mark, so nothing relies on colour alone.
 ## Only the buttons take the mouse; nothing takes keyboard or pad focus (the stage reads those itself), so the
@@ -122,10 +123,6 @@ func _build_band_box() -> void:
 	band_box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	band_box.add_theme_constant_override("separation", 8)
 	add_child(band_box)
-	var title := _label("Your band", "CaptionLabel")
-	title.name = "BandTitle"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	band_box.add_child(title)
 
 
 func _build_bottom() -> void:
@@ -168,18 +165,20 @@ func _build_bottom() -> void:
 		b.pressed.connect(func(): order_pressed.emit(order))
 		row.add_child(b)
 		order_buttons[order] = b
+	var hint_pill := _panel("PillPanel", "HintPill")
+	hint_pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bottom.add_child(hint_pill)
 	hint_label = _label("", "SmallLabel")
 	hint_label.name = "Hint"
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	bottom.add_child(hint_label)
+	hint_pill.add_child(hint_label)
 
 
 func _build_menu_panel() -> void:
 	menu_panel = _panel("GlassPanel", "OrdersMenu")
-	menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	menu_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	menu_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	menu_panel.position.y = -250
+	menu_panel.position.y = 28
 	menu_panel.visible = false
 	add_child(menu_panel)
 	var box := VBoxContainer.new()
@@ -374,7 +373,6 @@ func _refresh_band() -> void:
 		if not seen.has(id):
 			_band_cards[id]["panel"].queue_free()
 			_band_cards.erase(id)
-	band_box.get_node("BandTitle").visible = not _band_cards.is_empty()
 
 
 func _make_band_card(id: String) -> Dictionary:
@@ -430,8 +428,8 @@ func _refresh_dock() -> void:
 		b.tooltip_text = order_tooltip(order, preview, names_of(sim))
 	if menu_shown:
 		var order: String = SocialRules.ORDERS[menu_index]
-		menu_label.text = "%s%s:  %s" % [MARK, ORDER_WORDS[order], order_tooltip(order, sim.preview_order(order),
-				names_of(sim))]
+		menu_label.text = "%s%s\n%s" % [MARK, ORDER_WORDS[order], order_tooltip(order, sim.preview_order(order),
+				names_of(sim)).replace("; ", "\n")]
 
 
 ## A signal button's tooltip: who it goes to, or why it cannot be given now (the resolver's own words).

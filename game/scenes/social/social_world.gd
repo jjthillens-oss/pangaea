@@ -39,10 +39,12 @@ const CAST_SKIN_DIVISIONS_MAX := 32
 const RIG_LOD_M := 40.0
 const PLAYER_COLOR := Color(0.93, 0.55, 0.36)
 
-const CAMERA_DISTANCE_PER_BODY_M := 3.4
-const CAMERA_DISTANCE_MIN_M := 6.0
-const CAMERA_DISTANCE_MAX_M := 13.0
-const CAMERA_PITCH_DEG := 24.0
+## Higher and further back than the creature world's camera, so a band trailing the player stays in view around it
+## instead of filling the foreground.
+const CAMERA_DISTANCE_PER_BODY_M := 5.0
+const CAMERA_DISTANCE_MIN_M := 9.5
+const CAMERA_DISTANCE_MAX_M := 16.0
+const CAMERA_PITCH_DEG := 34.0
 const CAMERA_PITCH_MIN_DEG := 6.0
 const CAMERA_PITCH_MAX_DEG := 70.0
 const CAMERA_GROUND_CLEARANCE_M := 0.4
@@ -52,6 +54,9 @@ const CAMERA_FOLLOW_HALF_LIFE_S := 0.1
 const CAMERA_REALIGN_AFTER_S := 1.5
 const CAMERA_REALIGN_HALF_LIFE_S := 1.2
 const STICK_DEADZONE := 0.25
+## The camera frames the band with the player: members within BAND_FRAME_M pull its focus BAND_PULL of the way.
+const BAND_FRAME_M := 9.0
+const BAND_PULL := 0.35
 
 var sim: SocialSim
 var data: Dictionary
@@ -88,8 +93,7 @@ func setup(p_sim: SocialSim, p_data: Dictionary) -> void:
 	var length := _body_length(sim.body_of(SocialSim.PLAYER_ID))
 	camera_distance = clampf(CAMERA_DISTANCE_PER_BODY_M * length, CAMERA_DISTANCE_MIN_M, CAMERA_DISTANCE_MAX_M)
 	camera_yaw = float(sim.player()["yaw"])
-	_focus = _focus_point()
-	_place_camera()
+	snap_camera()
 
 
 func _build_environment() -> void:
@@ -303,7 +307,7 @@ func tag_point(id: String) -> Vector3:
 	if planner == null:
 		return Vector3.ZERO
 	var height: float = body.bounds_m().size.y if body != null else 1.0
-	return (planner.position as Vector3) + Vector3(0.0, height + 0.45, 0.0)
+	return (planner.position as Vector3) + Vector3(0.0, height + 0.2, 0.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -343,10 +347,27 @@ func camera_relative(move: Vector2) -> Vector2:
 	return (right * move.x + forward * move.y).limit_length(1.0)
 
 
+## Puts the camera straight at its place behind the player, with no easing (setup, and tools after moving the player).
+func snap_camera() -> void:
+	_focus = _focus_point()
+	_place_camera()
+
+
+## Just over the player, drawn BAND_PULL of the way toward the band members within BAND_FRAME_M, so a band
+## trailing the player stays in the frame with it.
 func _focus_point() -> Vector3:
 	var body: RefCounted = sim.body_of(SocialSim.PLAYER_ID)
 	var height: float = body.bounds_m().size.y if body != null else 1.0
-	return (sim.player()["position"] as Vector3) + Vector3(0.0, 0.6 * height + 0.3, 0.0)
+	var me: Vector3 = sim.player()["position"]
+	var sum := Vector3.ZERO
+	var count := 0
+	for id in sim.band():
+		var at: Vector3 = sim.individual(id)["position"]
+		if at.distance_to(me) <= BAND_FRAME_M:
+			sum += at
+			count += 1
+	var ground := me if count == 0 else me.lerp(sum / float(count), BAND_PULL)
+	return Vector3(ground.x, 0.6 * height + 0.3, ground.z)
 
 
 func _follow_camera(delta: float) -> void:
