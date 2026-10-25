@@ -96,7 +96,7 @@ def brink_radius(th):
     r = 6.3 - 0.95 * max(0.0, s) ** 1.5 + 0.45 * max(0.0, -s)
     r += 0.22 * math.cos(3 * th + 0.7) + 0.14 * math.sin(5 * th + 1.9) + 0.07 * math.cos(9 * th + 0.4)
     r += 2.7 * _bump(th, -0.72, 0.21)          # the spit, curling south-east
-    r -= 1.5 * _bump(th, math.pi * 1.06, 0.2)  # the notch, cutting the west
+    r -= 1.2 * _bump(th, math.pi * 1.06, 0.2)  # the notch, cutting the west (the brink stays 4.8 m from the pivot)
     return r
 
 
@@ -151,7 +151,7 @@ def height_polar(th, s):
     if s <= 0.0:
         return min(plateau(x, y) + berm, SAND_TOP_M)
     bx, by = _brink_point(th)
-    return plateau(bx, by) + berm - _drop(s, th) + _relief(x, y, s)
+    return min(plateau(bx, by) + berm - _drop(s, th) + _relief(x, y, s), SAND_TOP_M)
 
 
 def ground(x, y):
@@ -621,9 +621,12 @@ def add_light():
     build_light(light)
 
 
-def _checks(bank):
+def _checks(bank, stats):
     top = max(v.co.z for v in bank.data.vertices)
     k._check(top <= SOLID_MAX_M, f"shore_piece: the bank reaches {top:.3f} m, above {SOLID_MAX_M} (the swim band)")
+    stats["sand_top_m"] = round(top, 3)
+    near = min(math.hypot(*_brink_point(math.tau * i / 360)) for i in range(360))
+    k._check(near >= REACH_M + REACH_HALF_WIDTH + 0.4, f"shore_piece: the brink comes within {near:.2f} m of the pivot")
     for i in range(72):
         a = math.tau * i / 72
         g = ground(REACH_M * math.cos(a), REACH_M * math.sin(a))
@@ -646,7 +649,7 @@ def fields(stats, textures):
         "category": "landmark", "kind": "shore",
         "pivot": "the shore point on the swim plane (Godot y = 0); the shelf's crest lies about 1.8 m north (-Z)",
         "reach_radius_m": REACH_M,
-        "sand_top_m": SAND_TOP_M,
+        "sand_top_m": stats["sand_top_m"],
         "bottom_m": SKIRT_BOTTOM_M,
         "top_m": SHAFT_TOP_M,
         "engine_material": "res://assets/export/M_ShoreLight.tres",
@@ -743,7 +746,7 @@ def main():
     bank, stats = build()
     if args.rough:
         add_light()
-        _checks(bank)
+        _checks(bank, stats)
         print("stats:", stats, "triangles:", bc.triangle_count())
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         if os.path.exists(args.out):
@@ -754,7 +757,7 @@ def main():
     textures = sf.bake_set([bank], "ShorePiece", TEXTURE_PX, normal=True)
     _strip_attributes(bank)
     add_light()
-    _checks(bank)
+    _checks(bank, stats)
     print("stats:", stats, "triangles:", bc.triangle_count())
     write_light_material()
     record = bc.export(ASSET_ID, BUDGET, fields(stats, textures), review_state=REVIEW_STATE, generator=GENERATOR,
