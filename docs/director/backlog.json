@@ -232,7 +232,7 @@
    "tier": 2,
    "owner": "aquatic",
    "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
-   "feature": "Reef spike before M5: one reef settlement, three modules, a vent hearth, a food pen, three workers pathing in 3D, one camera; a 10-minute soak with no stuck worker",
+   "feature": "Reef spike before M5: one reef settlement, three modules, a vent hearth, a food pen, three workers pathing in 3D, one camera; a 10-minute soak with no stuck worker; the settlement shell is one air bubble on the reef",
    "evidence": [],
    "passes": false
   },
@@ -291,6 +291,39 @@
    "evidence": [
     "docs/research/innovation-backlog.md"
    ],
+   "passes": false
+  },
+  {
+   "id": "U-08",
+   "milestone": "M6 aquatic",
+   "bible": "\u00a79, addendum A2",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Bubble cities: from the Tribal era, underwater settlements are air bubbles on or in the reef that land creatures can enter and leave; bubble air and light are managed resources",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "U-09",
+   "milestone": "M6 to M7 aquatic",
+   "bible": "\u00a710, addendum A2",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Submarines: an underwater vehicle module set, crude from Tribal and proper from Civilization; the only way back into the sea for a lineage that reshaped for legs",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "U-10",
+   "milestone": "M3",
+   "bible": "\u00a712, addendum A2",
+   "tier": 1,
+   "owner": "creature",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Land and water movement costs in the phenotype service: fins slow a body on land and legs slow it in water (tuning data), with same-scenario tests",
+   "evidence": [],
    "passes": false
   }
  ]
