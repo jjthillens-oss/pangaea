@@ -2,6 +2,12 @@
 
 Asset id `shore_piece`. It replaces the `shore_light` placeholder (`game/scenes/pool/shore_view.gd`, two engine
 cylinders) with a Blender-authored sand landing, and its entry in `assets/records/placeholders/inventory.json` goes.
+
+Since main's "One continuous game" (`docs/DECISIONS.md`, 2026-10-25, #199) the pool's shore is the **sea edge**: the
+cell swims out of the pool into the open sea (microscopic to aquatic), and the land comes later, from the sea. The
+owner's sand bank still stands; it now reads as the sandbar at the pool's mouth that the cell swims over on its way
+out. That reading is PROPOSED and needs the owner's look review. The before frames below were shot on base main
+2ffc1218, when the offer still read "Crawl onto land?".
 This page is the Bible section 16 step 1 brief (gameplay function, dimensions, camera distance, silhouette, rig family,
 material family, budget, acceptance criteria) and, further down, the gate report.
 
@@ -18,19 +24,21 @@ The production rules apply too: a Blender source in `assets/source/blender/`, a 
 
 ## Gameplay function
 
-- The shore is where the cell-to-creature link ends (`game/domain/shore_link.gd`, read-only for this job). It rises
-  once, on the first paid ring at the build's top size (4), `RISE_AHEAD_TM` 20 tm north (`RISE_DIRECTION` (0, -1),
-  Godot -Z) of the cell, on a point `GameSession.raise_shore` finds clear for about two cell radii.
-- Within `REACH_TM` (4 tm at the current size) of the shore point, "Crawl onto land?" opens. Past
-  `REACH_TM * REOPEN_SHARE` (6 tm) and back, it opens again.
-- The toast says "A shore has risen up ahead. Swim into its light to crawl onto land." (`Main.SHORE_RISEN_TEXT`), so
-  the piece keeps a **light shaft** (lead decision).
+- The shore is the pool's sea edge, the first of `ShoreLink`'s links (microscopic to aquatic;
+  `game/domain/shore_link.gd`, read-only for this job). It rises once, on the first paid ring at the build's top size
+  (4), `RISE_AHEAD_TM` 20 tm north (`RISE_DIRECTION` (0, -1), Godot -Z) of the cell, on a point
+  `GameSession.raise_shore` finds clear for about two cell radii.
+- Within `REACH_TM` (4 tm at the current size) of the shore point, "Swim out to sea?" opens ("Swim out to sea" or
+  "Stay in the pool"). Past `REACH_TM * REOPEN_SHARE` (6 tm) and back, it opens again.
+- The toast says "The open sea lies up ahead. Swim into its light to leave the pool." (`Main.SHORE_RISEN_TEXT`), and
+  the arrow reads "Open sea N m", so the piece keeps a **light shaft** (lead decision) and lays its light on the sand.
 - The shore has **no collider**. The sim knows it only as a `world_changes` entry. So nothing solid may enter the
   swim band: the ambience contract keeps -1.5 m to +0.5 m free of decor (`tests/test_ambience.gd` `PLANE_BAND`),
   and the cradle ring and lair mouth sit at -1.6 m. The landing is **submerged**, its top at about -1.6 m (lead
   decision). A dry crest the cell climbs would need a sim collider in code this job may not edit.
 - `ShoreView`'s API stays: `ShoreView.new()`, `place(local: Vector2)`, `pulse(delta: float)`, node name `Shore`,
-  hidden until placed. The pool places it every frame from the save, in the plane's local frame (tm at the current
+  hidden until placed. It gains `rise()`, which the pool calls when the shore rises during play (its `shore_risen`):
+  the piece then comes up out of the deep over `RISE_S` 3 s instead of appearing under the cell at once. The pool places it every frame from the save, in the plane's local frame (tm at the current
   size, 1 tm = 1 Godot unit).
 
 ## Camera and scale
@@ -41,18 +49,19 @@ The production rules apply too: a Blender source in `assets/source/blender/`, a 
 - The cell is always about 1 tm across, because growth re-expresses the world, not the cell. So the piece is
   authored at size 4 with **1 m = 1 tm at the size shown**, and the view never rescales it.
 - Points below the plane draw toward the camera (south): about 1 tm on screen at 1.6 m deep and about 2.8 tm at 6 m.
-- When the shore rises it is 20 tm off screen and only its arrow shows; the bank's long south skirt already lies under
-  the cell then, dim in the fog (Gate 4, frame 01). The lit shelf, the ring and the foot of the shaft enter at the top
+- When the shore rises it is 20 tm off screen and only its arrow shows; the bank's long south skirt reaches under the
+  cell, so `ShoreView.rise()` brings the piece up from 16 m down (in the fog) over 3 s rather than popping it in
+  (Gate 4, frames 01 to 01d). The lit shelf, the ring and the foot of the shaft enter at the top
   edge when the cell is about 10 to 12 tm south of the shore point.
 
 ## Look direction
 
-A sunlit sand bank rising out of the deep blue toward the shore (north). From the size-4 camera it must read clearly
-as a landform rising toward land, not as a decal or a disc:
+A sunlit sand bank rising out of the deep blue toward the pool's mouth (north), where the open sea begins. From the
+size-4 camera it must read clearly as a landform rising into the shallows, not as a decal or a disc:
 
 - **Pale sand**, paler and drier toward the crest, darker and wetter down the slope where the fluid's fog takes it.
 - **Ripple marks** running along the contours, parallel to the "shoreline", so the bank's direction reads.
-- A **crest edge**: the shelf breaks to a steeper face on the north (inland) side, so the eye reads "the top".
+- A **crest edge**: the shelf breaks to a steeper face on the north (seaward) side, so the eye reads "the top".
 - **Shallow-water light** over it: the shaft, and the light it implies on the sand.
 - Micro scale (PROPOSED, needs the owner's look review): **giant sand grains**, rounded mineral grains 0.3 to 1.0 m
   across half sunk in the crest and spilling down the south ramp. The size-4 cell is about one grain across, which
@@ -66,7 +75,8 @@ reserved hues.
 ## Dimensions (Blender metres, Z up, front +Y = north)
 
 The pivot is the shore point on the swim plane (Godot y = 0). Yaw is fixed: the ramp faces south (Godot +Z, Blender
--Y) toward the camera and the approaching cell, the crest is inland to the north (Godot -Z, Blender +Y, the front).
+-Y) toward the camera and the approaching cell, the crest is to the north, toward the open sea (Godot -Z, Blender
++Y, the front).
 
 As built by `tools/blender/make_shore_piece.py` (chunk 2, PROPOSED). The plan before the build was a 24 by 20 m piece
 with the skirt at -20 m by r 11 to 12 m; the Gate 1 grays showed that as a gumdrop (a flat top on a mound with steep
@@ -161,11 +171,13 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
   material in `assets/export/shore_piece.glb.import` after a Godot import; `--light` rewrites only the light material
   (light tuning without a bake). `--rough` saves the unbaked build to a
   scratch Blender file for shape review; `--root=DIR` writes every output under DIR instead of the repository (the chunk 2
-  bakes went to `/home/user/xdg/shore/scratch/build`, so no record sat in the repo before the atomic commit).
+  bakes went to a scratch folder outside Git, so no record sat in the repo before the atomic commit). `--rough`
+  defaults to `builds/shore_piece/`, which Git ignores.
   Build-time checks: no bank, grain or valve vertex above -1.55 m; the shelf under every point of the r 4 circle
   between -1.6 and -2.6 m; the brink at least 4.7 m from the pivot; the ring flat at -0.05 with mid radius 4.0; at
   most 6000 triangles.
-- Gate renders: `tools/blender/render_shore_piece.py` into `/home/user/xdg/shore/scratch/gates` (outside Git); `--blend`
+- Gate renders: `tools/blender/render_shore_piece.py` into `builds/shore_piece/gates` by default (Git ignores
+  `builds/`), or any scratch folder outside Git with `--out`; `--blend`
   picks the build, `--audit` writes the baked albedo and prints its luminance and hue numbers.
 - In-game frames: `tools/godot/shore_shots.gd` (size 4, seed 4248, open sea or `--home`); each shot's notes give the
   light's pulse strength.
@@ -188,7 +200,8 @@ In game, `gl_compatibility` at 1920x1080, zoom 14, size 4 (`tools/godot/shore_sh
 2. Sand median L* behind the cell (05, cell hidden) is 36 to 48: at least 8 above the fluid around it and at least 15
    below the coral cell (L* about 62), so the cell stays the brightest thing in its neighbourhood.
 3. The reach ring reads in front of the cell at the reach edge (03) and peaks at L* 80 or less.
-4. The light shaft reads as light, not as a solid, and the "Crawl onto land?" dialog (04) stays legible over the bank.
+4. The light shaft reads as light, not as a solid, the sand inside its foot reads lit (not as a dark disc), and the
+   "Swim out to sea?" dialog (04) stays legible over the bank.
 5. Nothing solid in the swim band: every bank and grain vertex at or below -1.55 m (build-time assert and a unit test).
 6. No food or threat hues: at most 2% of albedo texels with chroma 12 or more within 25° of either.
 7. No clipping or ugly overlap side-on (06) or near home with the cradle ring (`--home`); partly buried kit pieces
