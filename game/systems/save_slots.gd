@@ -43,14 +43,15 @@ static func peek(n: int) -> Dictionary:
 	return result
 
 
-## Deletes a slot's save and its backup (and a temporary file left by an interrupted write), and the checkpoint from
-## before the lineage came ashore with its own (EraTransition). Files set aside as unreadable (.corrupt-*) are left
+## Deletes a slot's save and its backup (and a temporary file left by an interrupted write), and the checkpoints from
+## before each era crossing with their own (EraTransition). Files set aside as unreadable (.corrupt-*) are left
 ## for the player to look at. Returns the first error.
 static func delete(slot_path: String) -> Error:
 	var first := OK
-	var cp := EraTransition.checkpoint_path(slot_path)
-	for file in [slot_path, slot_path + PersistenceService.BACKUP_SUFFIX, slot_path + PersistenceService.TEMP_SUFFIX,
-			cp, cp + PersistenceService.BACKUP_SUFFIX, cp + PersistenceService.TEMP_SUFFIX]:
+	var files := PackedStringArray([slot_path, slot_path + PersistenceService.BACKUP_SUFFIX,
+			slot_path + PersistenceService.TEMP_SUFFIX])
+	files.append_array(EraTransition.checkpoint_files(slot_path))
+	for file in files:
 		if FileAccess.file_exists(file):
 			var err := DirAccess.remove_absolute(file)
 			if err != OK and first == OK:

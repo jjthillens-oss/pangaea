@@ -23,7 +23,8 @@ signal creature_requested
 signal social_requested
 ## The Aquatic stage slice (aquatic plan): Main opens it with open_aquatic_stage().
 signal aquatic_requested
-## "Back to the water": the lineage came ashore and its checkpoint from before is there (set_water_offer).
+## "Back to the water" (or, from the sea, "Back to the pool"): the checkpoint from before the lineage's last crossing
+## is there (set_water_offer).
 signal water_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
@@ -41,6 +42,13 @@ const WATER_CONFIRM_TEXT := ("Your lineage goes back to the cell it was at the s
 	+ "its land body, its generations ashore and the points it spent there.")
 const STAY_ON_LAND_TEXT := "Stay on land"
 const ON_LAND_TEXT := "On land"
+## The same from the sea, back to the cell at the sea's edge.
+const POOL_TEXT := "Back to the pool"
+const POOL_TITLE := "Go back to the pool?"
+const POOL_CONFIRM_TEXT := ("Your lineage goes back to the cell it was at the sea's edge. What it did in the sea is lost: "
+	+ "its fish, its generations there and the points it spent there.")
+const STAY_IN_SEA_TEXT := "Stay in the sea"
+const IN_SEA_TEXT := "In the sea"
 ## Where the camera slides on each view (TitleWorld.frame): the hero right of the menu, and on the
 ## picker up and further right, above its plate and clear of the cards.
 const MAIN_FRAME := Vector2(-1.15, 0.0)
@@ -106,6 +114,8 @@ var picker_preview: PlayerCellView:
 var social_button: Button
 ## "Back to the water" (the cell-to-creature link): beside the creature stage button, shown by set_water_offer.
 var water_button: Button
+## The era the way back leaves (set_water_offer): "aquatic" back to the pool, else back to the water.
+var water_era := "terrestrial"
 
 
 ## Shows the slot summary and the starting bodies. Call it before or after the screen enters the tree.
@@ -257,8 +267,12 @@ func request_start() -> void:
 		new_requested.emit(selected_body)
 
 
-## "Back to the water": asks first, as the land progress goes. Cancel has focus, as in request_start.
+## "Back to the water": asks first, as the progress since the crossing goes. Cancel has focus, as in request_start.
 func request_water() -> void:
+	if water_era == ShoreLink.TO_ERA:
+		confirm.open(POOL_TITLE, POOL_CONFIRM_TEXT, [["water", POOL_TEXT, true], ["cancel", STAY_IN_SEA_TEXT]],
+			"cancel", "cancel")
+		return
 	confirm.open(WATER_TITLE, WATER_CONFIRM_TEXT, [["water", WATER_TEXT, true], ["cancel", STAY_ON_LAND_TEXT]],
 		"cancel", "cancel")
 
@@ -316,10 +330,13 @@ func _build_cards() -> void:
 		selected_body = _cards.keys()[0]
 
 
-## Shows "Back to the water" when `on` (main: the slot's lineage came ashore and its checkpoint is there).
-func set_water_offer(on: bool) -> void:
+## Shows the way back when `on` (main: the checkpoint from before the slot's last crossing is there), worded for
+## `era`, the era it leaves.
+func set_water_offer(on: bool, era := "terrestrial") -> void:
+	water_era = era
 	if water_button != null:
 		water_button.visible = on
+		water_button.text = POOL_TEXT if era == ShoreLink.TO_ERA else WATER_TEXT
 
 
 func _fill_continue_card() -> void:
@@ -337,7 +354,10 @@ func _fill_continue_card() -> void:
 		_card_name.text = BodyText.body_name(summary.body)
 		_card_tag.text = "Lineage %s" % summary.lineage_tag
 		_card_progress.text = "Generation %d · %s" % [summary.generation, Hud.points_line(summary.adaptation_points)]
-		if str(summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA:
+		var era := str(summary.get("era", ShoreLink.FROM_ERA))
+		if era == ShoreLink.TO_ERA:
+			_card_progress.text += " · " + IN_SEA_TEXT
+		elif era != ShoreLink.FROM_ERA:
 			_card_progress.text += " · " + ON_LAND_TEXT
 		_card_saved.text = "Saved %s" % local_time_text(summary.saved_at_unix)
 		_saved_genome = summary.genome
