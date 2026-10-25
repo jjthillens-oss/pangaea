@@ -116,9 +116,11 @@
    "feature": "Director's office in the repo: handbook, rubrics, backlog, progress log, templates",
    "evidence": [
     "docs/director/README.md",
-    "docs/director/HANDBOOK.md"
+    "docs/director/HANDBOOK.md",
+    "PR #196 merged 2026-10-25 (CI green)",
+    "PR #215: first progress line from the playtest capture routine"
    ],
-   "passes": false,
+   "passes": true,
    "deps": []
   },
   {
@@ -218,8 +220,14 @@
    "tier": 3,
    "owner": "aquatic",
    "feature": "Cell top size exits into the Aquatic stage through EraTransition with a .pre-aquatic checkpoint (era boundary needs owner approval)",
-   "evidence": [],
-   "passes": false,
+   "evidence": [
+    "PR #199 (era chain) merged 2026-10-25",
+    "builds/smoke/shore.log 2026-10-25 on ad64c95: 'Swim out to sea' opens the Aquatic stage, entered_the_sea is last in the history, the .pre-aquatic checkpoint holds the cell",
+    "builds/smoke/shore_continue.log: Continue opens the sea; 'Back to the pool' restores the checkpoint",
+    "Era boundary approved by the owner: docs/DECISIONS.md 2026-10-25 'One continuous game, pool to sea to land'",
+    "Reviewed by the weekly report (not the builder); feel not yet scored, waits for D-02"
+   ],
+   "passes": true,
    "deps": []
   },
   {

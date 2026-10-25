@@ -17,3 +17,7 @@ one-line summary each.
   creature world 2.33 fail (3, 5, 7, 11), aquatic 2.67 fail (3, 7), title 4.33 pass, editor about 4. Filed #212, #213,
   #214. Feel and design unscored until D-02 (scripted gameplay capture). Frames and score sheet in the project files
   under `pangaea/playtest/2026-10-25/`. Usage about 3% of the week.
+- 2026-10-25 18:40 weekly report (week of 22 Oct): 139 merges to main. Backlog passing: D-01 (director's office), M4-01
+  (cell to sea, reviewed against the shore smokes). Tier 2 batch of 6 and Tier 3 cards (creature hunger #206, aquatic
+  addendum decisions 2 to 5, IB-30 to IB-33) sent to the owner. Tuesday 28 Oct ultracode jobs proposed: creature world
+  look pass, aquatic look pass, D-02 capture plus M4-03 continuity save. Usage about 4% of the week.
