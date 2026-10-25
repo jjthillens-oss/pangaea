@@ -208,11 +208,12 @@
    "id": "U-01",
    "milestone": "after slice",
    "bible": "\u00a74, \u00a726",
-   "tier": 3,
+   "tier": 1,
    "owner": "director",
-   "feature": "Bounded content plan for the aquatic route: docs/bible/addendum-aquatic-path.md (PR #198, PROPOSED) approved by the owner before any U build",
+   "feature": "Aquatic path addendum docs/bible/addendum-aquatic-path.md (PR #198) recorded as CONFIRMED and merged",
    "evidence": [],
-   "passes": false
+   "passes": false,
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open"
   },
   {
    "id": "U-02",
@@ -226,11 +227,11 @@
   },
   {
    "id": "U-03",
-   "milestone": "M4.5",
+   "milestone": "M4.5 (after the vertical slice, ahead of the M5 aquatic variant)",
    "bible": "\u00a74, \u00a79",
-   "tier": 3,
+   "tier": 2,
    "owner": "aquatic",
-   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
    "feature": "Reef spike before M5: one reef settlement, three modules, a vent hearth, a food pen, three workers pathing in 3D, one camera; a 10-minute soak with no stuck worker",
    "evidence": [],
    "passes": false
@@ -239,9 +240,9 @@
    "id": "U-04",
    "milestone": "M5 aquatic",
    "bible": "\u00a78",
-   "tier": 3,
+   "tier": 2,
    "owner": "creature",
-   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
    "feature": "Aquatic Social variant: an underwater signal set and a swimmer-and-wader companion task",
    "evidence": [],
    "passes": false
@@ -250,9 +251,9 @@
    "id": "U-05",
    "milestone": "M6 aquatic",
    "bible": "\u00a79",
-   "tier": 3,
+   "tier": 2,
    "owner": "aquatic",
-   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
    "feature": "Reef settlement that shares the land settlement's module code",
    "evidence": [],
    "passes": false
@@ -261,9 +262,9 @@
    "id": "U-06",
    "milestone": "M7 aquatic",
    "bible": "\u00a710",
-   "tier": 3,
+   "tier": 2,
    "owner": "aquatic",
-   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
    "feature": "Current routes between a reef and a tideline settlement, and one shore-people agreement",
    "evidence": [],
    "passes": false
@@ -272,9 +273,9 @@
    "id": "U-07",
    "milestone": "M8 aquatic",
    "bible": "\u00a711",
-   "tier": 3,
+   "tier": 2,
    "owner": "aquatic",
-   "status": "PROPOSED, awaiting the owner's approval of the addendum (U-01)",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
    "feature": "Water-filled ship module set and ocean suitability in planet survey",
    "evidence": [],
    "passes": false

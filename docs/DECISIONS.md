@@ -1581,3 +1581,4 @@ question on non-terrestrial routes and follows Bible §4: never force a land bod
 - **Scheduled after the four-week vertical slice** (backlog features U-01 to U-04); it does not change the current
   roadmap. Each era's underwater variant needs a bounded content plan the owner approves before it is built.
 - Details (what an underwater city needs, Interstellar from the sea, how a mixed lineage chooses) are PROPOSED.
+- 05:42 UTC: the owner approved the full aquatic path addendum (`docs/bible/addendum-aquatic-path.md`, PR #198); its section J decisions 2 to 5 stay open.
