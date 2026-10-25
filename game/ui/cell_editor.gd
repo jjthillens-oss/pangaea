@@ -13,7 +13,9 @@ extends Control
 ## It only edits a working copy: the save changes only in commit(), and only when Lineage accepts.
 ## Editor-ease (docs/proposals/editor-ease.md): one Undo takes back one action (a whole drag round the rim is
 ## one), and Undo, Redo and Back name the keys bound to them. The Symmetry toggle (PROPOSED, off by default and
-## kept in memory only) adds, moves, sizes, upgrades and removes a part and its mirrored twin as one action.
+## kept in memory only) adds, moves, sizes, upgrades and removes a part and its mirrored twin as one action. A drag
+## round the rim snaps onto the middle line or opposite a part of its type, with a guide on the rim and a line
+## under the dish that says what it snapped to.
 
 signal closed(committed: bool)
 
@@ -27,6 +29,14 @@ const UNDO_TIP := "Undo the last change"
 const REDO_TIP := "Redo the change you undid"
 const NO_UNDO_TIP := "Nothing to undo"
 const NO_REDO_TIP := "Nothing to redo"
+## The line under the dish: how to move a part, and while dragging, what the drag snapped to (CellSymmetry.snap).
+const RIM_HINT := "Drag a dot round the rim to move its part"
+const DRAG_HINT := "Near the middle line, or opposite a part of the same kind, it snaps"
+const SNAP_HINTS := {
+	"centre": "Snapped to the middle line",
+	"twin": "Snapped opposite the other %s",
+	"pair_edge": "A mirrored pair keeps off the middle line",
+}
 const SYMMETRY_TIP := "When on, a part off the middle line comes with a mirrored twin, and the two move, change and go together"
 ## [label, Phenotype field, higher is better, format]
 const STATS := [
@@ -91,6 +101,7 @@ var _steps := UndoSteps.new()      ## the session steps in each action, so one U
 var _keys: Label                   ## the key line: the bindings of undo, redo and back
 var _keys_generation := -1         ## InputPrompts.generation the key line was written for
 var _symmetry_button: Button
+var _rim_hint: Label               ## under the dish: RIM_HINT, or what a drag snapped to
 
 
 func _init() -> void:
@@ -251,10 +262,37 @@ func _close_group(opened: bool) -> void:
 ## A gesture (a drag round the rim) starts: every op until end_gesture() is one Undo step.
 func begin_gesture() -> void:
 	_steps.begin_group()
+	_rim_hint.text = DRAG_HINT
 
 
 func end_gesture() -> void:
 	_steps.end_group()
+	_rim_hint.text = RIM_HINT
+	_rim_hint.modulate.a = 0.6
+
+
+## A drag round the rim reached `angle`: moves the selected part there, snapped (CellSymmetry.snap; a part with its
+## twin keeps off the middle line instead), and says on the hint line what it snapped to. move_selected() itself
+## stays exact. Returns the snap {"angle", "kind", "of"}; kind "" for none.
+func drag_to(angle: float) -> Dictionary:
+	var part := _part(selected)
+	if part.is_empty():
+		return {"angle": angle, "kind": "", "of": ""}
+	var snap := CellSymmetry.snap(angle, session.working.parts, selected)
+	if not selected_twin().is_empty():
+		var kept := CellSymmetry.off_line(angle, float(part.angle))
+		var moved := not is_equal_approx(kept, wrapf(angle, -PI, PI))
+		snap = {"angle": kept, "kind": "pair_edge" if moved else "", "of": ""}
+	move_selected(snap.angle)
+	_rim_hint.modulate.a = 0.6 if str(snap.kind) == "" else 1.0   # a snap reads brighter; the words say which
+	match str(snap.kind):
+		"":
+			_rim_hint.text = DRAG_HINT
+		"twin":
+			_rim_hint.text = SNAP_HINTS.twin % str(part.type).capitalize()
+		_:
+			_rim_hint.text = SNAP_HINTS[snap.kind]
+	return snap
 
 
 ## Mate: commits the working body through Lineage. Returns its {"ok", "errors"}.
@@ -570,6 +608,12 @@ func _build() -> void:
 	_rim.editor = self
 	_rim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dish.add_child(_rim)
+	_rim_hint = Label.new()
+	_rim_hint.name = "RimHint"
+	_rim_hint.text = RIM_HINT
+	_rim_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rim_hint.modulate = Color(1, 1, 1, 0.6)
+	middle.add_child(_rim_hint)
 	_selected_label = Label.new()
 	_selected_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	middle.add_child(_selected_label)
@@ -717,8 +761,11 @@ class RimView:
 	const DOT := 11.0
 	## The rim's radius as a share of the view's smaller side.
 	const SHARE := 0.34
+	## The snapped spot's diamond, centre to corner: clear of the selected part's ring.
+	const DIAMOND := 26.0
 	var editor: CellEditor
 	var _dragging := false
+	var _snap := {}   ## the last drag_to() result while dragging, for the guide
 
 	func center() -> Vector2:
 		return size / 2.0
@@ -738,9 +785,25 @@ class RimView:
 		if editor == null or editor.session == null:
 			return
 		draw_arc(center(), radius(), 0.0, TAU, 64, Color(0.6, 0.9, 1.0, 0.8), 2.0, true)
-		if editor.symmetry:
+		var snap_kind := str(_snap.get("kind", "")) if _dragging else ""
+		if snap_kind == "centre":
+			# Snapped onto the middle line: a bright solid line and a diamond at the spot (shape, not colour alone).
+			draw_line(at(0.0) + Vector2(0, -24), at(PI) + Vector2(0, 24), Color(1, 1, 1, 0.9), 3.0, true)
+			_diamond(at(float(_snap.angle)), DIAMOND, Color.WHITE)
+		elif _dragging:
+			# The middle line, faint, while a part is dragged: it snaps onto it.
+			draw_line(at(0.0) + Vector2(0, -24), at(PI) + Vector2(0, 24), Color(0.8, 0.95, 1.0, 0.3), 1.5, true)
+		elif editor.symmetry:
 			# The mirror line, front to back, dashed: the parts on one side mirror the other's.
 			draw_dashed_line(at(0.0) + Vector2(0, -24), at(PI) + Vector2(0, 24), Color(0.8, 0.95, 1.0, 0.5), 2.0, 10.0)
+		if snap_kind == "twin":
+			# Snapped opposite a part of its kind: a dashed ring on that part and a dashed chord across to it.
+			var other := editor._part(str(_snap.of))
+			if not other.is_empty():
+				var o := at(float(other.angle))
+				_dashed_ring(o, DOT * float(other.scale) + 7.0, Color.WHITE)
+				draw_dashed_line(at(float(_snap.angle)), o, Color(1, 1, 1, 0.7), 2.0, 8.0)
+				_diamond(at(float(_snap.angle)), DIAMOND, Color.WHITE)
 		var twin := editor.selected_twin()
 		for p in editor.session.working.parts:
 			var q := at(float(p.angle))
@@ -754,6 +817,11 @@ class RimView:
 			var out := (q - center()).normalized()
 			for i in Genome.level_of(p) - 1:
 				draw_circle(q + out * (r + 9.0 + 7.0 * i), 2.5, Color.WHITE)
+
+	## A diamond outline round `q`, `r` from its centre to each corner.
+	func _diamond(q: Vector2, r: float, color: Color) -> void:
+		var pts := PackedVector2Array([q + Vector2(0, -r), q + Vector2(r, 0), q + Vector2(0, r), q + Vector2(-r, 0), q + Vector2(0, -r)])
+		draw_polyline(pts, color, 2.0, true)
 
 	## A ring of short dashes round `q`.
 	func _dashed_ring(q: Vector2, r: float, color: Color) -> void:
@@ -778,6 +846,7 @@ class RimView:
 			return
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
+				stop_drag()   # a press with no release before it (focus lost mid-drag) closes that drag first
 				editor.selected = _nearest(event.position)
 				_dragging = editor.selected != ""
 				if _dragging:
@@ -787,14 +856,17 @@ class RimView:
 				stop_drag()
 			accept_event()
 		elif event is InputEventMouseMotion and _dragging:
-			editor.move_selected(angle_of(event.position))
+			_snap = editor.drag_to(angle_of(event.position))   # snapped onto the middle line or opposite a twin
+			queue_redraw()
 			accept_event()
 
 	## Ends a drag in progress, closing its Undo step.
 	func stop_drag() -> void:
 		if _dragging:
 			_dragging = false
+			_snap = {}
 			editor.end_gesture()
+			queue_redraw()
 
 	func _nearest(p: Vector2) -> String:
 		var best := ""

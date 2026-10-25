@@ -273,3 +273,64 @@ func test_twins_are_found_by_type_size_level_and_mirrored_angle() -> void:
 	check_near(Sym.off_line(-0.01, -2.0), -Sym.PAIR_EDGE, 1e-9, "front, left side")
 	check_near(Sym.off_line(PI - 0.01, 2.0), PI - Sym.PAIR_EDGE, 1e-9, "back, right side")
 	check_near(Sym.off_line(1.0, -2.0), 1.0, 1e-9, "off the line it is left alone")
+
+
+func test_a_drag_snaps_onto_the_middle_line_or_opposite_its_kind_and_says_so() -> void:
+	var parts := [
+		{"id": "p1", "type": "eye_spot", "angle": 1.0, "scale": 1.0},
+		{"id": "p2", "type": "eye_spot", "angle": 2.0, "scale": 1.0},
+		{"id": "p3", "type": "cilia", "angle": -2.5, "scale": 1.0},
+	]
+	var near_front := Sym.snap(0.03, parts, "p2")
+	check(near_front.kind == "centre" and near_front.angle == 0.0, "near the front it snaps onto the line: %s" % near_front)
+	var near_back := Sym.snap(-PI + 0.05, parts, "p2")
+	check(near_back.kind == "centre" and absf(angle_difference(near_back.angle, PI)) < 1e-9, "and at the back: %s" % near_back)
+	var opposite := Sym.snap(-1.0 + 0.05, parts, "p2")
+	check(opposite.kind == "twin" and opposite.of == "p1", "opposite the other eye spot: %s" % opposite)
+	check_eq(float(opposite.angle), -1.0, "exactly at its mirror")
+	var far := Sym.snap(-1.5, parts, "p2")
+	check(far.kind == "" and is_equal_approx(far.angle, -1.5), "far from both it stays put: %s" % far)
+	check_eq(str(Sym.snap(2.5 + 0.03, parts, "p2").kind), "", "a part of another kind is no twin")
+	check_eq(str(Sym.snap(-2.0, parts, "p2").kind), "", "nor is its own mirror")
+
+
+func test_a_drag_round_the_rim_ends_snapped_with_a_guide_and_a_hint_line() -> void:
+	editor.open(save, catalog, _state())
+	editor.add("eye_spot")
+	var eye := editor.selected
+	var hint := editor.find_child("RimHint", true, false) as Label
+	check_eq(hint.text, CellEditor.RIM_HINT, "at rest the line says how to move a part")
+	var rim := _rim()
+	_press(rim, rim.at(_angle(eye)), true)
+	for i in 5:
+		_move(rim, rim.at(lerp_angle(_angle(eye), 0.03, (i + 1) / 5.0)))
+	check_eq(_angle(eye), 0.0, "the pointer near the front leaves the part on the middle line")
+	check_eq(hint.text, CellEditor.SNAP_HINTS.centre, "the line says so")
+	check_eq(str(rim._snap.get("kind", "")), "centre", "and the rim draws the snapped guide")
+	_move(rim, rim.at(1.2))
+	check_near(_angle(eye), 1.2, 1e-5, "away from the line it follows the pointer")
+	check_eq(hint.text, CellEditor.DRAG_HINT, "and the line says where it would snap")
+	_move(rim, rim.at(0.03))
+	_press(rim, rim.at(0.03), false)
+	check_eq(_angle(eye), 0.0, "released, it stays on the line")
+	check_eq(hint.text, CellEditor.RIM_HINT, "and the line is back to how to move a part")
+	editor.undo()
+	check_near(absf(_angle(eye)), PI / 2.0, 0.01, "one Undo takes the whole snapped drag back")
+
+
+func test_with_symmetry_a_dragged_pair_stops_off_the_middle_line() -> void:
+	editor.open(save, catalog, _state())
+	editor.set_symmetry(true)
+	editor.add("eye_spot")
+	var eye := editor.selected
+	var rim := _rim()
+	_press(rim, rim.at(_angle(eye)), true)
+	for i in 5:
+		_move(rim, rim.at(lerp_angle(_angle(eye), 0.03, (i + 1) / 5.0)))
+	check_near(absf(_angle(eye)), Sym.PAIR_EDGE, 1e-6, "the pair stops just off the line")
+	check_near(float(editor.selected_twin().angle), -_angle(eye), 1e-6, "mirrored")
+	check_eq((editor.find_child("RimHint", true, false) as Label).text, CellEditor.SNAP_HINTS.pair_edge, "and says why")
+	_press(rim, rim.at(0.03), false)
+	editor.undo()
+	check_eq(_parts_of("eye_spot").size(), 2, "one Undo takes the drag back and keeps the pair")
+	check_near(absf(_angle(eye)), PI / 2.0, 0.01, "where it was")

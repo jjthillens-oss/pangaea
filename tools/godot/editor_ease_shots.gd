@@ -109,7 +109,10 @@ func _cell() -> void:
 	await _shot("cell_undo_tip")
 	_hover_away()
 
-	# Drag the selected eye spot round the rim and hold it a little right of the front.
+	# Drag the selected eye spot round the rim and hold it a little right of the front, alone (symmetry off), as in
+	# the BEFORE frame.
+	if editor.has_method("set_symmetry"):
+		editor.set_symmetry(false)
 	var rim: Control = editor.find_children("*", "Control", true, false).filter(
 		func(c: Control) -> bool: return c is CellEditor.RimView)[0]
 	var part: Dictionary = editor.session.working.parts[-1]
