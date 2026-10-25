@@ -139,6 +139,8 @@ Coats and cross bands follow `spine_u` and the folded ring value. Spots, cells a
 
 ### 2.4a Covering uniforms (PROPOSED look, IMPLEMENTED in the shader; for the Creature stage thread to wire)
 
+Fur shells (PROPOSED, covering 1 only): `SpineRig.use_skin_shader` chains `fur_shells` (default `FUR_SHELLS`; 0 turns shells off as a cheap mode) copies of the skin material as `next_pass`, each with `shell_layer` 1..N. Shells extrude `fur_height_m` (default 0.06 m) along the normal and draw only near the silhouette (fragments with |N.V| above about 0.55 are discarded), so they add a shaggy edge without face-on specks. Change shared skin params with `SpineRig.set_skin_param` so the shells stay in sync. Frame cost is an open owner decision.
+
 Relief is a screen-space bump of a rest-space height field, faded where it would alias. Fur (`covering = 1`) also gets a shaggy strand edge from shells: `SpineRig.use_skin_shader` chains 6 copies of the material as `next_pass` with `shell_layer` 1..6, each pushed out along the normal, drooping slightly, alpha-tested into tapering rest-space strands with darker roots and lighter tips. Shells discard everything for any other covering, and no shells are chained unless `covering == 1`, so the defaults (`covering = 0`) leave the existing look unchanged. Cost (llvmpipe, gl_compatibility, 1280x720, one quadruped): about 27 to 70 ms per frame at gameplay distance and 53 to 173 ms close up; a GPU will be far cheaper but the shells scale with covered screen area.
 
 | Uniform | Type, range, default | Meaning |

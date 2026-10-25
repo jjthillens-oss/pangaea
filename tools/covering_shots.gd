@@ -64,7 +64,7 @@ func _run() -> void:
 		if shells >= 0:
 			p["fur_shells"] = shells
 		rig.use_skin_shader(p)
-		for view in [["side", Vector3(1.0, 0.45, -0.2), 1.25], ["close", Vector3(0.7, 0.35, 0.5), 0.45]]:
+		for view in [["gameplay", Vector3(1.0, 0.45, -0.2), 2.0], ["side", Vector3(1.0, 0.45, -0.2), 1.25], ["close", Vector3(0.7, 0.35, 0.5), 0.45]]:
 			var dir: Vector3 = (view[1] as Vector3).normalized()
 			cam.look_at_from_position(c + dir * r * float(view[2]), c, Vector3.UP)
 			for f in 4:
