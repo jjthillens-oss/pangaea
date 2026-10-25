@@ -1,10 +1,10 @@
 # In-game HUD restyle (credit-hud): frames and layout
 
 The cell HUD (`game/ui/hud.tscn`, `game/ui/hud.gd`, `game/ui/ladder_strip.gd`, `game/ui/meter_ring.gd`) and the
-creature world HUD (`game/ui/creature_world_hud.tscn`, `game/ui/creature_world_hud.gd`) take the glass look of the title menu, in a small,
-Spore-like layout. The owner's request is CONFIRMED: restyle both HUDs with the title menu's glass theme, keep them
-small and Spore-like, keep the HUD API game code calls. The layout and sizes below are PROPOSED: the owner judges the
-look.
+creature world HUD (`game/ui/creature_world_hud.tscn`, `game/ui/creature_world_hud.gd`) take the glass look of the
+title menu, in a small, Spore-like layout. The owner's request is CONFIRMED: restyle both HUDs with the title menu's
+glass theme, keep them small and Spore-like, keep the HUD API game code calls. The layout and sizes below are
+PROPOSED: the owner judges the look.
 
 ## Frames
 
@@ -22,7 +22,7 @@ the same name.
 | creature_world | the creature field 90 frames after enter_world, at the nest | [before](before_creature_world_100.jpg) · [after](after_creature_world_100.jpg) | | [after](after_720_creature_world.jpg) |
 | creature_death | at the nest, the longest notice (the death notice, set by the shot script) with Evolve lit | [after](after_creature_death_100.jpg) | [after](after_creature_death_130.jpg) | [after](after_720_creature_death.jpg) |
 | creature_notice | walked off the nest and pressed evolve: the sim's own "Return to the nest to evolve" refusal, and a "+5" flash (set by the shot script). The before frames forced this notice at the nest. | [before](before_creature_notice_100.jpg) · [after](after_creature_notice_100.jpg) | [before](before_creature_notice_130.jpg) · [after](after_creature_notice_130.jpg) | [before](before_720_creature_notice.jpg) · [after](after_720_creature_notice.jpg) |
-| creature_away | still off the nest, bit at the air (Bite recharging, a rimmed chip), notice cleared, the controls line timed out (its timer run out by the shot script): the HUD as it stays | [after](after_creature_away_100.jpg) | [after](after_creature_away_130.jpg) | [after](after_720_creature_away.jpg) |
+| creature_away | still off the nest, bit at the air (Bite recharging, a rimmed chip), notice cleared, the controls line timed out (its timer run out by the shot script) and the dock's line naming Move, Orbit and the way back in its place: the HUD as it stays | [after](after_creature_away_100.jpg) | [after](after_creature_away_130.jpg) | [after](after_720_creature_away.jpg) |
 | editor_tooltip | the creature editor with the mouse held over Random creature: a real tooltip in the glass `TooltipPanel` / `TooltipLabel` | [after](after_editor_tooltip_100.jpg) | | |
 
 `creature_death`, `creature_away` and `editor_tooltip` were added with the restyle, so they have no before frames.
@@ -70,13 +70,19 @@ Creature world HUD:
   "E  Evolve"). The chips only show state: Evolve lights (the dock's cyan, dark text) while the creature is at the
   nest, and Bite dims while its cooldown runs (a faint pill with a light 1 px rim and grey-blue text, so it reads
   as recharging, not gone; its text measures about 7.5:1 on the pill at 1920x1080 and 5.9:1 at 1280x720, where
-  the thinner strokes lower the measured peak). They take no focus and no mouse and never act: the keys do. Bite is left out for a
-  body with no mouth, as in the controls line.
-- Above the dock, the controls line as a `HudPill`, unchanged in wording. It shows for 15 s (`KEYS_HINT_S`) after
-  the world opens and again whenever the device or a binding changes, then fades, leaving the goal card and the
-  dock: the small HUD the creature plays with. The chips keep naming the ability keys and the pause menu lists
-  every control. Whether the line should also drop the abilities the chips already show is the owner's call (tests
-  read Bite, Evolve, Move and "Back to the editor" in its text, not its visibility).
+  the thinner strokes lower the measured peak). They take no focus and no mouse and never act: the keys do. Bite
+  is left out for a body with no mouth, as in the controls line.
+- Above the dock, the controls line as a `HudPill`, unchanged in wording. It shows for 15 s (`KEYS_HINT_S`) each
+  time the world opens and again when the device in use changes (keys and mouse to a controller or back), then
+  fades. A rebinding is made in the settings, outside the world, so it shows the next time the world opens.
+- When the controls line goes, a small caption line in the dock takes its place and stays: the keys the chips do
+  not name, "WASD  Move   ·   Middle drag  Orbit   ·   Escape  Back to the editor" (on a controller "Left stick",
+  "Right stick" and "B"), named from the bindings like the line itself. So moving, orbiting and the way out never
+  leave the screen, as Bible 19 asks of tutorial prompts ("can be dismissed or revisited"). The creature world has
+  no pause menu (Escape goes straight back to the editor), and the pool's pause menu lists only the cell's
+  controls, so this dock line is where those keys stay. Whether the timed line should also drop the abilities the
+  chips already show is the owner's call (tests read Bite, Evolve, Move and "Back to the editor" in its text, not
+  its visibility).
 - Every control in the creature HUD ignores the mouse, so the middle-drag orbit reaches the camera.
 - The top right is empty now: the points moved into the goal card.
 
@@ -86,9 +92,12 @@ Creature world HUD:
   lists, and the private fields the creature tests read (`_hint_text`, `_name_text`, `_points_text`,
   `_points_flash`).
 - The creature HUD's chips, goal line, mouse handling and controls-line timeout have their own unit tests in
-  `tests/test_creature_world_hud.gd` (a stub world): the chips' names and a rebind, Evolve lit only at the nest,
-  Bite dimmed while it recharges and absent without a mouth, no mouse or focus anywhere, the goal line, and the
-  controls line timing out and coming back when the bindings change.
+  `tests/test_creature_world_hud.gd` (a stub world), added at the round 1 reviewers' request; the file is outside
+  the job brief's list, so the lead signs it off in the PR. They cover the chips' names and a rebinding shown when
+  the world opens again, Evolve lit only at the nest, Bite dimmed while it recharges and absent without a mouth, no
+  mouse or focus anywhere, the goal line, and the controls line timing out with the dock's line then naming the
+  move, orbit and way-out keys, and the line coming back on a real device change (`InputPrompts.note` with a
+  controller button) and when the world opens again.
 - Tests on this branch, after merging main b358e717: `tests/run_tests.gd -- --only=test_creature_world_hud,
   test_ui_text,test_growth_hud,test_world_hud,test_threat_indicators,test_creature_world_scene,test_creature_stage,
   test_world_gen,test_settings,test_menus,test_look_probe` 178 tests, 0 failed; `tests/smoke/ui_smoke.gd`
@@ -120,6 +129,10 @@ Creature world HUD:
   only. Sing never dims: `player()` does not expose the sing cooldown. Both need a read-only addition to the
   creature systems code, which other agents own: issues #205 (sing cooldown) and #206 (player hunger, an owner
   decision first).
+- On a controller, B is both Sing (`creature_social` is bound to joypad button 1 in `project.godot`) and Back to the
+  editor (Godot's default `ui_cancel`), so pressing B to sing also leaves the world. This was so before the
+  restyle (main's key line showed the same names); the chips only make it visible. `project.godot` and the
+  creature code belong to other owners, so it is not changed here.
 - `tests/test_world_hud.gd` still feeds the pre-glass panel rects into its pip test as fixed inputs, and its
   comment still says they are read off the running game. Refreshed from the new layout, its west-south-west case
   no longer lies under the controls card, so the scenario would need the owner's approval to change. The shot

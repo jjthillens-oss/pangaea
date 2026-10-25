@@ -178,7 +178,8 @@ func _creature() -> void:
 	world.hud._keys_t = 0.001
 	await _frames(2)
 	world.hud.refresh()
-	print("creature_away keys line visible ", world.hud._hint_panel.visible)
+	print("creature_away keys line visible ", world.hud._hint_panel.visible, " dock line visible ",
+		world.hud._ways_text.is_visible_in_tree(), " '", world.hud._ways_text.text, "'")
 	await _shot("creature_away")
 	world.clear_intent()
 
