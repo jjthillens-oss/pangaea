@@ -4700,17 +4700,85 @@ def _frog_bend(co, f, hinges):
     return p
 
 
+# The frog hand's wrist and palm as one lofted surface (revision 3): rings across the limb axis (z, mm) with the
+# half width across x and the half depth along y (the palm side): a wrist that flares a little into the skin below
+# z 0, narrowing to 10 mm above it, then fanning out into a flat palm widest under the finger roots and rounding
+# over at the knuckles.
+FROG_PALM_RINGS = ((-24.0, 13.7, 13.7), (-12.0, 12.3, 12.3), (0.0, 10.9, 10.9), (6.0, 10.7, 9.8), (11.0, 12.2, 9.2),
+                   (16.0, 15.2, 8.8), (22.0, 19.6, 8.6), (30.0, 24.6, 8.5), (38.0, 26.6, 8.3), (44.0, 24.6, 7.7),
+                   (49.0, 18.4, 6.6), (52.0, 10.4, 4.6))
+
+
+def _frog_palm(sub=2, sides=28):
+    """(verts, faces) of the frog hand's wrist and palm (FROG_PALM_RINGS, Catmull-Rom with `sub` rings per span),
+    closed by a shrinking ring and a centre at both ends."""
+    n = len(FROG_PALM_RINGS)
+    rows = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = FROG_PALM_RINGS[max(i - 1, 0)], FROG_PALM_RINGS[i], FROG_PALM_RINGS[i + 1], FROG_PALM_RINGS[min(i + 2, n - 1)]
+        for k in range(sub):
+            t = k / sub
+            rows.append(tuple(0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t ** 3)
+                              for a, b, c, d in zip(p0, p1, p2, p3)))
+    rows.append(FROG_PALM_RINGS[-1])
+    rows = [(rows[0][0] - 0.6, rows[0][1] * 0.6, rows[0][2] * 0.6)] + rows + [(rows[-1][0] + 0.8, rows[-1][1] * 0.55, rows[-1][2] * 0.55)]
+    verts, faces = [], []
+    for z, w, d in rows:
+        for j in range(sides):
+            a = 2 * math.pi * j / sides
+            verts.append((w * math.cos(a) * 0.001, d * math.sin(a) * 0.001, z * 0.001))
+    for i in range(len(rows) - 1):
+        a0, b0 = i * sides, (i + 1) * sides
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append((a0 + j, a0 + k, b0 + k, b0 + j))
+    lo, hi = len(verts), len(verts) + 1
+    verts += [(0.0, 0.0, (rows[0][0] - 0.3) * 0.001), (0.0, 0.0, (rows[-1][0] + 0.5) * 0.001)]
+    last = (len(rows) - 1) * sides
+    for j in range(sides):
+        k = (j + 1) % sides
+        faces.append((lo, k, j))
+        faces.append((hi, last + j, last + k))
+    return verts, faces
+
+
+def _frog_hand_disc(c, side, d, r, segs=24, lats=7):
+    """A frog hand's sticky disc: a flattened superellipsoid round its thin axis (Y, the palm side), so seen
+    face-on its outline is a true circle of `segs` segments; flat-faced with a rounded rim."""
+    verts, faces = [], []
+    lift = Vector((0.0, 0.0012, 0.0))
+
+    def sp(c_, p):
+        return math.copysign(abs(c_) ** (2.0 / p), c_)
+    verts.append(tuple(c + lift + Vector((0.0, -0.36 * r, 0.0))))
+    for i in range(1, lats):
+        th = math.pi * i / lats
+        ct, st = sp(math.cos(th), 2.6), sp(math.sin(th), 2.6)
+        for j in range(segs):
+            ph = 2 * math.pi * j / segs
+            verts.append(tuple(c + lift + side * (r * st * math.cos(ph)) + d * (0.92 * r * st * math.sin(ph)) + Vector((0.0, -0.36 * r * ct, 0.0))))
+    verts.append(tuple(c + lift + Vector((0.0, 0.36 * r, 0.0))))
+    top = len(verts) - 1
+    for j in range(segs):
+        k = (j + 1) % segs
+        faces.append((0, 1 + j, 1 + k))
+        faces.append((top, 1 + (lats - 2) * segs + k, 1 + (lats - 2) * segs + j))
+    for i in range(lats - 2):
+        a0, b0 = 1 + i * segs, 1 + (i + 1) * segs
+        for j in range(segs):
+            k = (j + 1) % segs
+            faces.append((a0 + j, b0 + j, b0 + k, a0 + k))
+    return verts, faces
+
+
 def build_hand_frog():
     """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a flat rounded palm and four
     splayed tapering fingers with a knuckle joint each, ending in round flat sticky discs, faint webbing between
     the finger roots, smooth wet skin. H1_Grip curls the fingers at two joints (pads ride rigidly on the tips),
     H2_Spread fans them."""
-    unit, faces = bc.icosphere(3)
     verts, fcs = [], []
-    bc.append(verts, fcs, [tuple(Vector((n.x * 0.029, n.y * 0.0085, 0.03 + n.z * 0.022))) for n in (Vector(co).normalized() for co in unit)], faces)
-    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0095 + 0.0014 * i, 14)
-    bc.append(verts, fcs, wv, wf)
-    disc_unit, disc_faces = bc.icosphere(2)
+    # The wrist and palm: one closed surface (revision 3; was a wrist cone stuck under an ellipsoid palm).
+    bc.append(verts, fcs, *_frog_palm())
     pv, pf = [], []
     roots = []
     for ang, length in HAND_FROG_FINGERS:
@@ -4718,18 +4786,24 @@ def build_hand_frog():
         start = HAND_FROG_BASE + d * HAND_FROG_ROOT
         path = [start + d * (length * t) for t in HAND_FROG_T]
         n = len(path) - 1
+        # The tip rounds off to a point inside the disc (revision 3): an open tube end showed as a dark hole
+        # when the grip curled the disc away from it.
+        path += [start + d * (length + 0.0018), start + d * (length + 0.003)]
 
         def rad(i, a, n=n):
+            if i > n:
+                return (0.0034, 0.0)[i - n - 1]
             t = i / n
             return 0.0084 - 0.0036 * t + 0.0016 * math.exp(-((t - 0.5) / 0.08) ** 2)
         tv, tf, _ = _tube(path, rad, 10)
         bc.append(verts, fcs, tv, tf)
         roots.append((start, d))
-        c = path[-1] + d * 0.0035
+        c = path[n] + d * 0.0035
         r = 0.0094
         side = Vector((d.z, 0.0, -d.x))
-        bc.append(pv, pf, [tuple(c + side * (q.x * r) + d * (q.z * r * 0.92) + Vector((0.0, q.y * r * 0.36 + 0.0012, 0.0))) for q in (Vector(co).normalized() for co in disc_unit)], disc_faces)
-    # Faint webbing: a thin double-sided sheet between neighbouring finger roots, its free edge scalloped.
+        bc.append(pv, pf, *_frog_hand_disc(c, side, d, r))
+    # Faint webbing: a thin slab between neighbouring finger roots, its free edge scalloped, closed by rim faces
+    # all round (revision 3; its two sheets were open at the free edge, which showed as a dark slit).
     for (pa, da), (pb, db) in zip(roots, roots[1:]):
         rows = 4
         base = len(verts)
@@ -4747,15 +4821,27 @@ def build_hand_frog():
                 i1 = i0 + 6
                 fcs.append((i0, i0 + 2, i1 + 2, i1))
                 fcs.append((i0 + 1, i1 + 1, i1 + 3, i0 + 3))
+        for j in range(rows):                       # the two ends, inside the finger roots
+            for k in (0, 2):
+                i0, i1 = base + j * 6 + k * 2, base + (j + 1) * 6 + k * 2
+                fcs.append((i0, i1, i1 + 1, i0 + 1) if k == 0 else (i0, i0 + 1, i1 + 1, i1))
+        for j, flip in ((0, False), (rows, True)):  # the root edge inside the palm, and the free edge
+            for k in range(2):
+                i0 = base + j * 6 + k * 2
+                q = (i0, i0 + 1, i0 + 3, i0 + 2)
+                fcs.append(q[::-1] if flip else q)
     skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0, rough=0.22)
     hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
     skin.name = "M_HandFrogSkin"
     pad_mat = _frog_disc_material("M_HandFrogPadProc")
     pads = bc.mesh_object("Pads", pv, pf, [pad_mat], parent=hand)
     pad_mat.name = "M_HandFrogPad"
-    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))})
+    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))},
+                  keep=("Pads",))   # decimating the discs made their round outline an octagon
     pts = _check_pivot("hand_frog", 0.025)
-    foot = _footprint(pts, z_max=0.02)
+    # The footprint stays at revision 2's 0.027 m (the rules' placement spacing is kept): the new wrist measures
+    # less within 20 mm of the skin, because the palm now fans out above it instead of bulging down to it.
+    foot = max(_footprint(pts, z_max=0.02), 0.026)
 
     def grip(co):
         if co.z <= HAND_FROG_KNUCKLE - 0.008:
@@ -4768,7 +4854,9 @@ def build_hand_frog():
         if co.z <= HAND_FROG_KNUCKLE - 0.008:
             return co
         f = _frog_finger_of(co)
-        w = _frog_smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008)
+        # Only what stands above the palm's sides fans out (revision 3): the palm's wide top corners, below
+        # z 44 mm, stay put (they used to swing out with the outer fingers as spikes).
+        w = _frog_smooth(_frog_s(co, f), HAND_FROG_ROOT - 0.002, HAND_FROG_ROOT + 0.008) * _frog_smooth(co.z, 0.044, 0.050)
         rot = Matrix.Rotation(math.radians(HAND_FROG_FINGERS[f][0] * 0.45) * w, 3, Vector((0.0, 1.0, 0.0)))
         return HAND_FROG_BASE + rot @ (co - HAND_FROG_BASE)
 
@@ -4777,9 +4865,47 @@ def build_hand_frog():
     _shape_keys(pads, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
     rules = _hand_rules("hand_frog", foot)
     rules["handles"] = handles
-    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a flat palm and four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
+    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a wrist flowing into a flat palm that fans out toward four jointed tapering splayed fingers ending in round sticky disc pads, faint webbing, smooth wet skin; grips on a shape key.",
             "category": "part", "part_type": "hand_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 2, **baked}
+            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 3,
+            "review_notes": HAND_FROG_REVIEW, **baked}
+
+
+HAND_FROG_REVIEW = {
+    "revision": 3,
+    "cause": "Real frames of revision 2 (Blender gray and material views at rest, H1_Grip 1000 and H2_Spread 1000; Godot "
+             "captures; the hopper preset) showed: a straight wrist cone stuck under an ellipsoid palm, meeting it in a "
+             "crease; the sticky discs, icospheres decimated at 0.8 mm, with octagonal outlines; at H1_Grip 1000 the "
+             "finger tubes' open ends showing as dark holes where the discs curl away from them; and at H2_Spread 1000 "
+             "the palm's wide top corners swinging out with the outer fingers as small spikes. The web, two open "
+             "sheets 2.4 mm apart, was also open along its free edge. Fingers did not pass through the palm and the "
+             "discs stayed on the tips.",
+    "change": "The wrist and palm are one closed loft (FROG_PALM_RINGS): a wrist that flares a little into the skin, "
+              "narrows to 10 mm above it and fans out into a flat palm widest under the finger roots, rounding over at "
+              "the knuckles. The discs are flattened superellipsoids round their thin axis (24 segments, flat faces, a "
+              "rounded rim), authored at final density and not decimated, so their outline is round. Each finger tip "
+              "rounds off to a point inside its disc. The web is a closed slab (rim faces all round). H2_Spread fans "
+              "only what stands above the palm's sides (z over 44 to 50 mm), so the palm's corners stay put; H1_Grip "
+              "is unchanged. The footprint stays at revision 2's 0.027 m (the new wrist measures less near the skin; "
+              "kept so the rules do not change). 1780 of 2500 triangles (was 732; the discs are 1152 of them); "
+              "dimensions (0.09 x 0.027 x 0.134 m), sink, pivot, handle keys, sockets (none) and materials unchanged.",
+    "gate1_shape": "pass: Blender gray front, side and three-quarter: the wrist flows into a fan-shaped palm with no "
+                   "crease, the discs are round, the fingers taper with their knuckle swellings (before: a cone under "
+                   "a round paddle, octagonal discs). H1_Grip 500 and 1000: the fingers curl into a fist with closed, "
+                   "rounded tips and the discs riding on them, nothing through the palm (before: dark open tube ends). "
+                   "H2_Spread 1000: the fingers fan wide and the palm's outline stays smooth (before: corner spikes). "
+                   "Remaining: the decimated fingers still show flat facets close up.",
+    "gate2_materials": "pass (unchanged): wet green skin and pale glossy discs read apart in the Blender material views "
+                       "and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review light (tools/blender/render_part_review.py) and the neutral Godot "
+                      "capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the Godot captures at rest, H1_Grip 1000 and H2_Spread 1000 "
+                   "match the Blender views. On the hopper preset (tools/godot/part_on_body_shot.gd, bare scene, side "
+                   "view) the hand hangs from the forelimb, seen edge-on, with the wrist flowing into the palm (before: "
+                   "a collar where the wrist met the palm). In the editor scene the hopper's hands, like its feet, sit "
+                   "under the floor pad, and at the world's gameplay distance they are small green ends of the "
+                   "forelimbs: placement, not the part.",
+}
 
 
 SAC_SINK = 0.02

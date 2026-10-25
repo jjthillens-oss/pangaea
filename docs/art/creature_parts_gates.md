@@ -34,8 +34,8 @@ identity (close-up), 3 neutral lighting, 4 export and Godot verification at game
 
 | Part | Open review item | Seen in the before frames |
 | --- | --- | --- |
-| cpart_foot_frog (rev 5) | ankle and heel | Gray front and three-quarter: the ankle is a straight tube with a flat top and a crease ring where it enters the sole; the heel is a separate lump behind it. On the hopper in the editor the frog feet sit under the floor pad (placement, not the part); `--no-floor` shows them. |
-| cpart_hand_frog (rev 2) | (finish) | Gray: faceted round toe discs, a flat-ended wrist stub. |
+| cpart_foot_frog (rev 5) | ankle and heel | Gray front and three-quarter: the ankle is a straight tube with a flat top and a crease ring where it enters the sole; the heel is a separate lump behind it; from the front the web's open free edge shows as dark slits. On the hopper in the editor the frog feet sit under the floor pad (placement, not the part); `--no-floor` shows them. |
+| cpart_hand_frog (rev 2) | (finish) | Gray: faceted round toe discs, a flat-ended wrist stub. At H1_Grip 1000 the open finger-tube ends show as dark holes; at H2_Spread 1000 the palm's top corners spike out (see the revision 3 section). |
 | cpart_eye_bulge (rev 4) | cream band | Godot close: a faceted iris ball and a thin dark line at the lid lip; no cream band shows under the neutral capture light. On the hopper in the editor's light: a pale cream-green flat ledge round each ball, which is the lid band (confirmed with `--mark`, see the revision 5 section). |
 | cpart_ear_round (rev 4) | rim facets and crease | Head-sphere front and three-quarter: straight segments along the outline and a crease line inside the rolled rim. |
 | cpart_muzzle_primate (rev 3) | side profile | Gray side: a flat slab with a box-shaped muzzle table and a brow of the same height, a slot between them. On the monkey it sits small under the eyes. |
@@ -154,6 +154,38 @@ Evidence: `foot_frog_gray_before_after.jpg` (gray side, back, three-quarter and 
 `foot_frog_hopper_before_after.jpg` (the hopper's foot, bare scene side and editor close, before on top) and
 `foot_frog_material_handles_after.jpg` (material three-quarter, H1_Spread 1000, H2_Long 1000).
 
+## cpart_hand_frog, revision 3 (IMPLEMENTED)
+
+What the frames showed (Blender gray and material views at rest, H1_Grip 1000 and H2_Spread 1000, the Godot captures
+and the hopper preset): a straight wrist cone stuck under an ellipsoid palm, meeting it in a crease; the sticky discs
+(icospheres decimated at 0.8 mm) with octagonal outlines; at H1_Grip 1000 the finger tubes' open ends showing as dark
+holes where the discs curl away from them; at H2_Spread 1000 the palm's wide top corners swinging out with the outer
+fingers as small spikes; and the web (two sheets 2.4 mm apart) open along its free edge. The fingers did not pass
+through the palm and the discs stayed on the tips.
+
+Change: the wrist and palm are one closed loft (`FROG_PALM_RINGS`): a wrist that flares a little into the skin,
+narrows to 10 mm above it and fans out into a flat palm widest under the finger roots, rounding over at the knuckles.
+The discs are flattened superellipsoids round their thin axis (24 segments, flat faces, a rounded rim) authored at
+final density and not decimated. Each finger tip rounds off to a point inside its disc. The web is a closed slab with
+rim faces all round. H2_Spread fans only what stands above the palm's sides (a ramp over z 44 to 50 mm), so the palm's
+corners stay put; a first try that weighted by distance from each finger's axis folded the palm's edge into a dark
+crumple (`hand_frog_spread_corner_before_interim_after.jpg`, middle). H1_Grip is unchanged. The footprint stays at
+revision 2's 0.027 m (the narrower wrist measures less near the skin; kept so the rules do not change). 1780 of 2500
+triangles (was 732; the discs are 1152 of them). Dimensions (0.09 x 0.027 x 0.134 m), sink, pivot, handle keys,
+sockets (none) and materials are unchanged.
+
+| Gate | Status | Observation |
+| --- | --- | --- |
+| 1 shape | pass | Blender gray front, side and three-quarter: the wrist flows into a fan-shaped palm with no crease, the discs are round, the fingers taper with their knuckle swellings (before: a cone under a round paddle, octagonal discs). H1_Grip 500 and 1000: the fingers curl into a fist with closed, rounded tips and the discs riding on them, nothing through the palm (before: dark open tube ends). H2_Spread 1000: the fingers fan wide and the palm's outline stays smooth (before: corner spikes). Remaining: the decimated fingers still show flat facets close up. |
+| 2 materials | pass (unchanged) | Wet green skin and pale glossy discs read apart in the Blender material views and in Godot. |
+| 3 lighting | pass | Neutral Blender review light and the neutral Godot capture; no bloom. |
+| 4 Godot | pass | Imported; the Godot captures at rest, H1_Grip 1000 and H2_Spread 1000 match the Blender views. On the hopper preset (bare scene, side view) the hand hangs from the forelimb, seen edge-on, with the wrist flowing into the palm (before: a collar where they met). In the editor scene the hopper's hands, like its feet, sit under the floor pad, and at gameplay distance they are small green ends of the forelimbs (placement, not the part). |
+
+Evidence: `hand_frog_gray_before_after.jpg` (gray front and side, material three-quarter at H1_Grip 1000, gray front at
+H2_Spread 1000; before on top), `hand_frog_spread_corner_before_interim_after.jpg` (the palm's corner at H2_Spread
+1000), `hand_frog_handles_after.jpg` (H1_Grip 500 side, H1_Grip 1000 front, H2_Spread 1000 material, Godot grip) and
+`hand_frog_hopper_before_after.jpg` (the hopper's forelimb end, before left, then the editor and gameplay views).
+
 ## cpart_muzzle_primate, revision 4 (IMPLEMENTED)
 
 Cause: revision 3's snout was a superellipse plateau, a flat top 19 mm high from y -23 to -8 mm with steep steps at
@@ -197,8 +229,8 @@ on top), `muzzle_primate_side_before_after.jpg` (side, before gray, after gray, 
 - `cpart_foot_frog` H2_Long at 1000 reaches about 0.119 m against the recorded footprint of 0.098 m (scout's
   measure; other `_foot_handles` feet may do the same). Left as is: the footprint semantics in `part_rules` do not
   change in this job.
-- The frog feet of the hopper preset sit under the editor's floor pad (the anchor resolver and the editor's rig
-  offset, not the part); in the world the walker plants them.
+- The frog feet and hands of the hopper preset sit under the editor's floor pad (the anchor resolver and the editor's
+  rig offset, not the part); in the world the walker plants them.
 - A bare face (fur thinning near the head) is acceptable (PROPOSED).
 - On the monkey preset the muzzle plate sits low on the head facing forward and down, so its side profile is seen
   mostly from below in the editor (the preset and the anchor resolver, which other agents own).
