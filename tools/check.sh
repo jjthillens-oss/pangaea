@@ -46,6 +46,9 @@
 #             run; its own settings file and slots under user://smoke/menus
 #   release:  tools/check_release.sh exports the release pack (no game/dev, no tests), starts it
 #             and checks it holds the endless content
+#   aquatic: the Aquatic stage slice (--aquatic) on a hunter cell lineage saved under user://smoke/: the converted
+#             body and lineage, a swim down the route, mating opens the fin and tail editor, Done makes generation 2,
+#             Escape returns to the title, and the lineage save is never written
 # Smoke saves go to user://smoke/, never to the player's slot. Logs are in builds/smoke/ and
 # builds/release/.
 # Every Godot run has a time limit (tools/bounded.sh: the import 600 s, the unit suite 1200 s, each
@@ -84,6 +87,7 @@ bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smo
 bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=band_up_continue --world=endless --slot=user://smoke/band_up.json 2>&1 | tee builds/smoke/band_up_continue.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
+bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/aquatic_smoke.gd -- --aquatic --slot=user://smoke/aquatic.json --seed=4250 2>&1 | tee builds/smoke/aquatic.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then
   echo "Engine or script errors in the smoke logs (builds/smoke/)."
   exit 1

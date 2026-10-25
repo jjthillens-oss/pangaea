@@ -19,6 +19,8 @@ signal slots_requested
 signal settings_requested
 ## The creature stage preview (creature-stage plan): Main opens it with open_creature_stage().
 signal creature_requested
+## The Aquatic stage slice (aquatic plan): Main opens it with open_aquatic_stage().
+signal aquatic_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
 const REPLACE_TEXT := "This replaces your current lineage. The previous save is kept as a backup until your next save."
@@ -69,6 +71,7 @@ var picker_preview: PlayerCellView:
 @onready var slots_button: Button = %SlotsButton
 @onready var settings_button: Button = %SettingsButton
 @onready var creature_button: Button = %CreatureButton
+@onready var aquatic_button: Button = %AquaticButton
 @onready var background: ColorRect = %Background
 @onready var hint: Label = %Hint
 @onready var _card_title: Label = %CardTitle
@@ -106,7 +109,7 @@ func _ready() -> void:
 	background.visible = false
 	add_child(_make_shade())
 	move_child(get_node("Shade"), 1)
-	for b: Button in [continue_button, new_button, slots_button, settings_button, quit_button, creature_button]:
+	for b: Button in [continue_button, new_button, slots_button, settings_button, quit_button, creature_button, aquatic_button]:
 		MenuBounce.pill(b)
 		MenuBounce.attach(b)
 	for b: Button in [back_button, start_button]:
@@ -118,6 +121,7 @@ func _ready() -> void:
 	slots_button.pressed.connect(func(): slots_requested.emit())
 	settings_button.pressed.connect(func(): settings_requested.emit())
 	creature_button.pressed.connect(func(): creature_requested.emit())
+	aquatic_button.pressed.connect(func(): aquatic_requested.emit())
 	resized.connect(fit_backdrop)
 	fit_backdrop()
 	start_button.pressed.connect(request_start)
