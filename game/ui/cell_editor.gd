@@ -323,12 +323,15 @@ func begin_gesture() -> void:
 	_rim_hint.text = DRAG_HINT
 
 
+## The gesture ends. A drop opposite a single part of its kind makes a pair from here on, so the panel is refreshed:
+## the selection line and the Upgrade price then say "pair", as Upgrade, Remove and resize will act on both.
 func end_gesture() -> void:
 	_gesture = false
 	_gesture_twin = ""
 	_steps.end_group()
 	_rim_hint.text = RIM_HINT
 	_rim_hint.modulate.a = 0.6
+	_refresh()
 
 
 ## A drag round the rim reached `angle`: moves the selected part there, snapped (CellSymmetry.snap; a part with its
@@ -472,7 +475,9 @@ static func stat_help(label: String, catalog: PartCatalog) -> String:
 	for spec: Array in STATS:
 		if spec[0] == label and catalog.caps.has(spec[1]):
 			var cap := float(catalog.caps[spec[1]])
-			var shown: String = "%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap
+			var shown := str(spec[3]).get_slice("/", 0) % cap
+			if spec[1] == "defense":
+				shown = "%d%%" % roundi(cap * 100.0)
 			return text % shown
 	return text.get_slice(" At most", 0).get_slice(", up to", 0)
 

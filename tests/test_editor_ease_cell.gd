@@ -391,6 +391,34 @@ func test_with_symmetry_a_drag_does_not_take_along_a_part_it_passes_opposite() -
 	check_near(_angle(a), 1.0, 1e-6, "and A never moved")
 
 
+## Review round 2: a release that makes a pair refreshes the panel, so the selection line and the Upgrade price say
+## "pair" before Upgrade (which then acts on both) is pressed.
+func test_with_symmetry_a_drop_that_makes_a_pair_shows_the_pair_and_its_price_at_once() -> void:
+	editor.open(save, catalog, _state())
+	editor.add("eye_spot")
+	var a := editor.selected
+	editor.move_selected(1.0)
+	editor.add("eye_spot")
+	var b := editor.selected
+	editor.move_selected(2.0)
+	editor.set_symmetry(true)
+	var label: Label = editor._selected_label
+	var upgrade := editor.find_child("Upgrade", true, false) as Button
+	var price := catalog.upgrade_cost("eye_spot", 1)
+	var rim := _rim()
+	_press(rim, rim.at(_angle(b)), true)
+	_move(rim, rim.at(-0.98))
+	check(not label.text.ends_with(CellEditor.PAIR_TEXT.selected), "while dragged, B is a single part")
+	_press(rim, rim.at(-0.98), false)
+	check_eq(str(editor.selected_twin().get("id", "")), a, "the release makes A and B a pair")
+	check(label.text.ends_with(CellEditor.PAIR_TEXT.selected), "and the selection line says so: " + label.text)
+	check_eq(upgrade.text, CellEditor.PAIR_TEXT.upgrade % (2 * price), "Upgrade shows the pair's price")
+	check_eq(upgrade.tooltip_text, CellEditor.PAIR_TEXT.upgrade_tip % price, "and its tooltip the price of each")
+	var cost_before := editor.session.cost()
+	check(editor.upgrade_selected().ok, "upgraded")
+	check_eq(editor.session.cost() - cost_before, 2 * price, "and the price shown is the price paid")
+
+
 func test_with_symmetry_a_dragged_pair_stops_off_the_middle_line() -> void:
 	editor.open(save, catalog, _state())
 	editor.set_symmetry(true)
