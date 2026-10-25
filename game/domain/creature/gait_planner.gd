@@ -77,7 +77,8 @@ static func create(mechanics: RefCounted, start_position := Vector3.ZERO, start_
 	p.position = start_position
 	p.yaw = start_yaw
 	p.duty = p.table.bands[0]["duty"]
-	p._pose = Transform3D(Basis(), Vector3(0.0, mechanics.hip_height, 0.0))
+	p.posture_basis = Basis(Vector3.RIGHT, mechanics.rest_pitch)
+	p._pose = Transform3D(p.posture_basis, Vector3(0.0, mechanics.hip_height, 0.0))
 	for leg in mechanics.legs:
 		p._hip.append(leg["hip"])
 		p._rest.append(leg["rest"])
@@ -207,17 +208,19 @@ func _update_posture(dt: float) -> void:
 			deg_to_rad(table.roll_max_deg))
 	pitch = lerpf(pitch, target_pitch, k)
 	roll = lerpf(roll, target_roll, k)
-	posture_basis = Basis(Vector3.BACK, roll) * Basis(Vector3.RIGHT, pitch)
+	posture_basis = Basis(Vector3.BACK, roll) * Basis(Vector3.RIGHT, mech.rest_pitch + pitch)
 	# Two dips per cycle (one per stance of each diagonal pair or tripod), deeper at speed.
 	var gait_strength := clampf(froude_now / 1.0, 0.0, 1.0)
 	bob = -table.bob_ratio * h * gait_strength * (0.5 - 0.5 * cos(TAU * 2.0 * cycle_phase))
 	# At a walk the body shifts a little towards the side that is standing.
 	var walk_strength := clampf(froude_now / 0.2, 0.0, 1.0) if table.bands[band]["pattern"] == "walk" else 0.0
 	sway = table.sway_ratio * h * walk_strength * sin(TAU * cycle_phase)
-	# Never lift a hip above its rest height: lower the body by the highest hip's rise.
+	# Never lift a hip above its rest height (on the standing tilt): lower the body by the highest hip's rise.
+	var tilt := Basis(Vector3.RIGHT, mech.rest_pitch)
 	var rise := 0.0
 	for i in _hip.size():
-		rise = maxf(rise, (posture_basis * (_hip[i] - Vector3(0.0, h, 0.0))).y + bob - (_hip[i].y - h))
+		var local := _hip[i] - Vector3(0.0, h, 0.0)
+		rise = maxf(rise, (posture_basis * local).y + bob - (tilt * local).y)
 	bob -= rise
 	_pose = body_pose_local()
 
