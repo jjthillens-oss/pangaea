@@ -44,6 +44,9 @@ var _fresh := {}
 var _beat := false
 var _settled_t := -1.0
 var _beat_t := 0.0
+## The leftovers' sink (tm) and fade (s) this growth (set_retire_profile; S2's unless a band-up).
+var _sink_tm := GrowthBeat.SINK_TM
+var _retire_s := GrowthBeat.RETIRE_S
 
 
 ## Loads every shell piece of `kit` not loaded yet, as the sea is set up: loading one in a growth's
@@ -183,17 +186,23 @@ func settle_growth() -> void:
 		_settled_t = _beat_t
 
 
+## The leftovers' sink and fade for the growth that begins (GrowthBeat.begin, V3-1).
+func set_retire_profile(sink_tm: float, retire_s: float) -> void:
+	_sink_tm = sink_tm
+	_retire_s = retire_s
+
+
 ## Each beat frame: the leftovers sink and fade behind the veil, the fresh come in from it.
 func beat_frame(t: float, _k: float) -> void:
 	if not _beat:
 		return
 	_beat_t = t
-	var s := GrowthBeat.retire_share(t, _settled_t)
+	var s := GrowthBeat.retire_share(t, _settled_t, _retire_s)
 	var p := GrowthBeat.fresh_share(t)
 	for asset in _retiring:
 		var mmi := multimesh_of(_retiring_name(asset))
 		if mmi != null:
-			_write(_retiring_name(asset), -GrowthBeat.SINK_TM * s)
+			_write(_retiring_name(asset), -_sink_tm * s)
 			_veil(mmi, s)
 	for asset in _fresh:
 		var mmi := multimesh_of(_fresh_name(asset))

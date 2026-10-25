@@ -119,3 +119,30 @@ func test_category_tabs_filter_the_palette_and_follow_the_tool() -> void:
 	if tabs != null:
 		var details: Button = tabs.get_child(5)
 		check(not details.visible, "no details parts here, so no Details tab")
+
+
+func test_the_head_shape_sliders_emit_and_follow_without_emitting() -> void:
+	palette()
+	hud.setup_head_shape({"snout": [1000, 2000], "width": [600, 1600], "height": [600, 1600], "jaw": [0, 1000],
+			"brow": [0, 1000]})
+	hud.setup_head_shape({"snout": [1000, 2000], "width": [600, 1600], "height": [600, 1600], "jaw": [0, 1000],
+			"brow": [0, 1000]})
+	check(hud.get_node_or_null("Stats/Box/HeadShape") != null, "the sliders sit in the stats panel, built once")
+	check_eq((hud.get_node("Stats/Box/HeadShape") as Node).get_child_count(), 6, "a title and five rows")
+	var slider := hud.head_slider("width")
+	check(slider.min_value == 600.0 and slider.max_value == 1600.0 and slider.focus_mode == Control.FOCUS_NONE,
+			"width runs 0.6x to 1.6x and takes no focus")
+	var got := []
+	hud.head_shape_changed.connect(func(k: String, v: int): got.append("%s=%d" % [k, v]))
+	hud.head_shape_drag.connect(func(on: bool): got.append("drag:%s" % on))
+	hud.set_head_shape({"snout": 1500, "width": 800, "height": 1000, "jaw": 300, "brow": 0})
+	check(got.is_empty() and hud.head_slider("snout").value == 1500.0, "set_head_shape shows without emitting")
+	hud.head_slider("snout").drag_started.emit()
+	# Setting `value` does not emit while the runner is inside _initialize, so the tests emit as the slider would.
+	hud.head_slider("snout").value_changed.emit(1750.0)
+	hud.head_slider("snout").drag_ended.emit(true)
+	hud.head_slider("jaw").value_changed.emit(600.0)
+	check_eq(got, ["drag:true", "snout=1750", "drag:false", "jaw=600"], "a drag is bracketed; each move emits")
+	check_eq((hud.get_node("Stats/Box/HeadShape/Head_snout").get_child(2) as Label).text, "1.75x", "the value label follows")
+	check_eq(CreatureEditorHud.head_value_text("snout", 1750), "1.75x", "scale dials read as a factor")
+	check_eq(CreatureEditorHud.head_value_text("jaw", 600), "60%", "amount dials read as a percentage")

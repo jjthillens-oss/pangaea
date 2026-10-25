@@ -8,6 +8,11 @@ extends RefCounted
 ## labels and food looks (ladder) and three switches (docs/s2/s2-interfaces.md 4.1, docs/s2/s2-sim.md
 ## 3.10, docs/s2/s2-build-plan.md 7.3), and lets the build reach size 2.
 ##
+## S3 adds band 1 (docs/s3/s3-interfaces.md 5.1 and 6.1, s3-build-plan.md BP3-17): per-band region
+## tables, arrangement.bands (band 1's region order and fixed rare kind), content.cradle (each
+## band's cradle file), two more plant looks, the landmark_return switch, and a top of size 4. Bands
+## past band_of(max_in_build) may be present; only the reachable ones must be.
+##
 ## Also the schema helper the four world loaders share (world_cell, placement kit, tiles, home
 ## block): every file refuses unknown and missing keys, and every problem names its JSON path, as
 ## "world_cell.rings_tm.foo: unknown key". Numbers are JSON numbers (JSON parses every number as a
@@ -33,10 +38,19 @@ const CAP_KEYS: PackedStringArray = ["awake", "sleepers", "food_items", "food_pe
 const ORIGIN_KEYS: PackedStringArray = ["rebase_beyond_tm", "rebase_step_tm", "local_bound_tm"]
 const ARRANGEMENT_KEYS: PackedStringArray = ["region_period_tiles", "region_order", "region_thresholds", "max_drift_run",
 	"landmark_cell_tiles", "rare_block_tiles", "rare_block_first_tile", "home_tiles", "fixed_rare"]
+## S3: arrangement.bands {"<band>": {region_order, fixed_rare_kind}} for bands 1 and on, and
+## content.cradle {"<band>": path}. Both may be absent in a band-0 world (world_min.json).
+const ARRANGEMENT_OPTIONAL: PackedStringArray = ["bands"]
+const BAND_KEYS: PackedStringArray = ["region_order", "fixed_rare_kind"]
 const FIXED_RARE_KEYS: PackedStringArray = ["tile", "kind"]
 const CONTENT_KEYS: PackedStringArray = ["home", "tiles", "kit"]
-const SWITCH_KEYS: PackedStringArray = ["generated_creatures", "growth", "lumps", "habits"]
+const CONTENT_OPTIONAL: PackedStringArray = ["cradle"]
+## landmark_return (BP3-17): the landmark pass may move the return point at a band's second size.
+const SWITCH_KEYS: PackedStringArray = ["generated_creatures", "growth", "lumps", "habits", "landmark_return"]
 const REGIONS: PackedStringArray = ["drift", "sunlit", "reef"]
+## The regions of each band, and the band's transit region ("" for none: band 1 has no drift).
+const REGIONS_BY_BAND := {0: ["drift", "sunlit", "reef"], 1: ["veil_garden", "warden_flat", "glass_reef"]}
+const TRANSIT_BY_BAND := {0: "drift", 1: ""}
 ## The growth block (rule 10). Its nested objects are lumps, remnants, discovery and points.
 const GROWTH_KEYS: PackedStringArray = ["trigger", "rings", "drain_floor_share", "drain_ring_seconds", "calm_ticks",
 	"quiet_ticks", "chase_window_ticks", "chase_close_tm", "chase_track_tm", "wedge_tm", "showcase_s", "blocked_hint_s",
@@ -63,7 +77,7 @@ const REMNANT_POSITIVE: PackedStringArray = ["life_s", "morsel_max_radius_tm", "
 ## choice comes from SettingsService through SimIntent.trigger).
 const TRIGGERS: PackedStringArray = ["auto", "press"]
 ## The food looks the scene can draw (s2-sim 3.10): a plant look per size, and carrion for meat.
-const PLANT_LOOKS: PackedStringArray = ["plankton", "algae_ball"]
+const PLANT_LOOKS: PackedStringArray = ["plankton", "algae_ball", "glass_flake", "bead_cluster"]
 const MEAT_LOOKS: PackedStringArray = ["carrion"]
 ## D-68: the conversion thresholds are the ladder's (Relationships.PREY_MIN_REL and MORSEL_MIN_REL,
 ## plan B.7). The file keeps them for the reader, and any other value is refused.
@@ -77,7 +91,8 @@ const TILE_BU := 64.0
 const CHUNK_TM := 32.0
 const MAX_SIZE := 10
 const S1_MAX_SIZE := 1         ## a larger size needs growth, which is S2
-const S2_MAX_SIZE := 2         ## the top this build can reach: S2 has content for sizes 1 and 2 (BP-5)
+const S2_MAX_SIZE := 2         ## S2's top: S2 had content for sizes 1 and 2 (BP-5)
+const S3_MAX_SIZE := 4         ## the top this build can reach: S3 adds band 1, sizes 3 and 4
 const MAX_DRIFT_RUN := 2
 const LANDMARK_CELL_TILES := 2
 const RARE_BLOCK_TILES := 6
@@ -109,8 +124,11 @@ var local_bound_tm := 256.0
 ##  "max_drift_run": int, "landmark_cell_tiles": int, "rare_block_tiles": int, "rare_block_first_tile": int,
 ##  "home_tiles": Array[int] (two), "fixed_rare": {"tile": Vector2i, "kind": String}}
 var arrangement := {}
-## {"home": String, "tiles": {band String -> dir String}, "kit": String}, res:// paths
+## {"home": String, "tiles": {band String -> dir String}, "kit": String, "cradle": {band String -> file
+## String}}, res:// paths
 var content := {}
+## {int band -> res:// path} from content.cradle (band 1 and on)
+var cradle_paths := {}
 ## The growth economy (rule 10; s2-sim 4.1, BP-4): {"trigger": "auto"|"press", "rings":
 ## PackedFloat64Array (the meter's ring at sizes 1 to 9), the shares, tm and seconds as float, the
 ## tick and other counts as int, "lumps": {kind -> share}, "remnants": {cap: int, min_rel,
@@ -122,7 +140,7 @@ var second_size := {}
 ## {"labels": PackedStringArray (one per size, 1 to MAX_SIZE), "food_looks": [{plant, meat}, ...]
 ## (one per size the build can reach, or more)}
 var ladder := {}
-## {"generated_creatures": bool, "growth": bool, "lumps": bool, "habits": bool}
+## {"generated_creatures": bool, "growth": bool, "lumps": bool, "habits": bool, "landmark_return": bool}
 var switches := {}
 
 
@@ -169,9 +187,10 @@ static func from_dict(data: Variant) -> WorldConfig:
 	config.rebase_step_tm = number_at(w + ".origin", origin, "rebase_step_tm", problems)
 	config.local_bound_tm = number_at(w + ".origin", origin, "local_bound_tm", problems)
 
-	config.arrangement = _read_arrangement(w + ".arrangement", object_at(w, data, "arrangement", ARRANGEMENT_KEYS, problems), problems)
+	config.arrangement = _read_arrangement(w + ".arrangement",
+		object_at(w, data, "arrangement", ARRANGEMENT_KEYS, problems, ARRANGEMENT_OPTIONAL), problems)
 
-	var content_data := object_at(w, data, "content", CONTENT_KEYS, problems)
+	var content_data := object_at(w, data, "content", CONTENT_KEYS, problems, CONTENT_OPTIONAL)
 	var tile_dirs := {}
 	var raw_tiles: Variant = content_data.get("tiles")
 	if raw_tiles is Dictionary:
@@ -179,8 +198,17 @@ static func from_dict(data: Variant) -> WorldConfig:
 			tile_dirs[str(band)] = text_at(w + ".content.tiles", raw_tiles, band, problems)
 	elif content_data.has("tiles"):
 		problems.append("%s.content.tiles: must be an object" % w)
+	var cradles := {}
+	var raw_cradles: Variant = content_data.get("cradle", {})
+	if raw_cradles is Dictionary:
+		for band in _sorted(raw_cradles.keys()):
+			cradles[str(band)] = text_at(w + ".content.cradle", raw_cradles, band, problems)
+			if str(band).is_valid_int():
+				config.cradle_paths[int(band)] = cradles[str(band)]
+	else:
+		problems.append("%s.content.cradle: must be an object" % w)
 	config.content = {"home": text_at(w + ".content", content_data, "home", problems), "tiles": tile_dirs,
-		"kit": text_at(w + ".content", content_data, "kit", problems)}
+		"kit": text_at(w + ".content", content_data, "kit", problems), "cradle": cradles}
 
 	config.growth = _read_growth(w + ".growth", object_at(w, data, "growth", GROWTH_KEYS, problems), problems)
 	var second := object_at(w, data, "second_size", SECOND_SIZE_KEYS, problems)
@@ -263,7 +291,24 @@ static func _read_arrangement(w: String, a: Dictionary, problems: PackedStringAr
 		var p: PackedFloat64Array = pair[0]
 		if p.size() == 2 and (fposmod(p[0], 1.0) != 0.0 or fposmod(p[1], 1.0) != 0.0):
 			problems.append("%s.%s: must be two whole numbers" % [w, pair[1]])
+	var bands := {}
+	var raw_bands: Variant = a.get("bands", {})
+	if raw_bands is Dictionary:
+		for key in _sorted(raw_bands.keys()):
+			var bw := "%s.bands.%s" % [w, key]
+			problems.append_array(schema_problems(bw, raw_bands[key], BAND_KEYS))
+			var b: Dictionary = raw_bands[key] if raw_bands[key] is Dictionary else {}
+			var band_order := PackedStringArray()
+			if b.get("region_order") is Array:
+				for v in b.region_order:
+					band_order.append(str(v))
+			elif b.has("region_order"):
+				problems.append("%s.region_order: must be a list" % bw)
+			bands[str(key)] = {"region_order": band_order, "fixed_rare_kind": text_at(bw, b, "fixed_rare_kind", problems)}
+	else:
+		problems.append("%s.bands: must be an object" % w)
 	return {
+		"bands": bands,
 		"region_period_tiles": int(number_at(w, a, "region_period_tiles", problems, true)),
 		"region_order": order,
 		"region_thresholds": thresholds,
@@ -295,9 +340,9 @@ func validate() -> PackedStringArray:
 		errors.append("%s.sizes.start: must be 1 (%d)" % [w, size_start])
 	if max_size_in_build < 1 or max_size_in_build > MAX_SIZE:
 		errors.append("%s.sizes.max_in_build: must be 1 to %d (%d)" % [w, MAX_SIZE, max_size_in_build])
-	elif max_size_in_build > S2_MAX_SIZE:
-		errors.append("%s.sizes.max_in_build: size %d is above this build's top (%d; S2 has content for sizes 1 and 2)"
-			% [w, max_size_in_build, S2_MAX_SIZE])
+	elif max_size_in_build > S3_MAX_SIZE:
+		errors.append("%s.sizes.max_in_build: size %d is above this build's top (%d; S3 has content for sizes 1 to 4)"
+			% [w, max_size_in_build, S3_MAX_SIZE])
 
 	# Rule 3: the units the S1 code assumes.
 	for pair in [["growth_factor", growth_factor, GROWTH_FACTOR], ["band_factor", band_factor, BAND_FACTOR],
@@ -357,6 +402,15 @@ func validate() -> PackedStringArray:
 		if not (str(band).is_valid_int() and int(band) >= 0):
 			errors.append("%s.content.tiles.%s: a band must be a whole number of 0 or more" % [w, band])
 		_check_path("%s.content.tiles.%s" % [w, band], str(tile_dirs[band]), true, errors)
+	# S3: a cradle for every reachable band past band 0, and none for a band this build has no tables for.
+	var cradles: Dictionary = content.get("cradle", {})
+	for band in range(1, band_of(_top()) + 1):
+		if not cradles.has(str(band)):
+			errors.append("%s.content.cradle.%d: missing (band %d is reachable)" % [w, band, band])
+	for band in _sorted(cradles.keys()):
+		if not (str(band).is_valid_int() and int(band) >= 1 and int(band) <= band_of(S3_MAX_SIZE)):
+			errors.append("%s.content.cradle.%s: a band must be 1 to %d" % [w, band, band_of(S3_MAX_SIZE)])
+		_check_path("%s.content.cradle.%s" % [w, band], str(cradles[band]), false, errors)
 	# Rule 9 (switches are bools) is a reading rule: from_dict refuses anything else.
 
 	# Rules 10 to 12 (S2): the growth economy, the second size and the ladder.
@@ -371,7 +425,7 @@ func validate() -> PackedStringArray:
 ## The largest size the build reaches, for the rules that depend on it; 1 while rule 2 fails, so a
 ## wrong top is rule 2's one problem.
 func _top() -> int:
-	return max_size_in_build if size_start == 1 and max_size_in_build >= 1 and max_size_in_build <= S2_MAX_SIZE else 1
+	return max_size_in_build if size_start == 1 and max_size_in_build >= 1 and max_size_in_build <= S3_MAX_SIZE else 1
 
 
 ## Rule 10: the growth block. The rings: one per size below the ladder's top, each above 0. Shares
@@ -475,6 +529,24 @@ func _check_arrangement(w: String, errors: PackedStringArray) -> void:
 		errors.append("%s.fixed_rare.tile: %s is a home tile" % [w, fixed])
 	if str(a.fixed_rare.kind).is_empty():
 		errors.append("%s.fixed_rare.kind: must name a rare kind" % w)
+	# S3: bands has an entry for every reachable band past band 0, each a permutation of its regions
+	# with a fixed rare kind, and none for a band without region tables.
+	var bands: Dictionary = a.get("bands", {})
+	for band in range(1, band_of(_top()) + 1):
+		if not bands.has(str(band)):
+			errors.append("%s.bands.%d: missing (band %d is reachable)" % [w, band, band])
+	for key in _sorted(bands.keys()):
+		if not (str(key).is_valid_int() and REGIONS_BY_BAND.has(int(key)) and int(key) >= 1):
+			errors.append("%s.bands.%s: a band must be 1 to %d" % [w, key, REGIONS_BY_BAND.size() - 1])
+			continue
+		var band_sorted := Array(bands[key].region_order)
+		band_sorted.sort()
+		var want := Array(regions_of(int(key)))
+		want.sort()
+		if band_sorted != want:
+			errors.append("%s.bands.%s.region_order: must be a permutation of %s" % [w, key, ", ".join(regions_of(int(key)))])
+		if str(bands[key].fixed_rare_kind).is_empty():
+			errors.append("%s.bands.%s.fixed_rare_kind: must name a rare kind" % [w, key])
 
 
 static func _check_path(where: String, path: String, is_dir: bool, errors: PackedStringArray) -> void:
@@ -505,6 +577,30 @@ func with_mode(p_mode: String) -> WorldConfig:
 	else:
 		copy.load_problems.append("%s.mode: the --world mode '%s' is not one of %s" % [FILE_NAME, p_mode, ", ".join(MODES)])
 	return copy
+
+
+## The regions of band `band` (empty for a band with no tables).
+static func regions_of(band: int) -> PackedStringArray:
+	return PackedStringArray(REGIONS_BY_BAND.get(band, []))
+
+
+## The transit region of band `band`: "drift" in band 0, "" where the band has none.
+static func transit_of(band: int) -> String:
+	return str(TRANSIT_BY_BAND.get(band, ""))
+
+
+## The arrangement as band `band` uses it: band 0's is the file's own; a later band's is a copy with
+## the region order and the fixed rare kind from arrangement.bands. Empty for a band not in the file.
+func arrangement_of(band: int) -> Dictionary:
+	if band == 0:
+		return arrangement
+	var entry: Variant = (arrangement.get("bands", {}) as Dictionary).get(str(band))
+	if not entry is Dictionary:
+		return {}
+	var out := arrangement.duplicate(true)
+	out.region_order = PackedStringArray(entry.region_order)
+	out.fixed_rare = {"tile": arrangement.fixed_rare.tile, "kind": str(entry.fixed_rare_kind)}
+	return out
 
 
 ## How many tm one bu is at size n: pow(band_factor, band_of(n)) / pow(growth_factor, n - 1). Since

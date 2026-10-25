@@ -13,6 +13,9 @@ extends TestCase
 ##    ticks and the overdriven racer, the run that covers the most ground, at 3,600 too (all three to
 ##    3,600 cost about 5 s, over T0's fast share). Slow: every run at every recorded tick, to 18,000.
 ##    Gates.make_sim sets the growth switch on every call.
+##  - S3G34 (S3 build plan BP3-2): S2's endless world, growth on, at start sizes 1 and 2, hashes as
+##    tests/fixtures/endless_s2_hashes.json, recorded on e3-base by T0.1 under the file's overrides
+##    (test_endless_gates' IDENTITY_S2_RUNS). Fast: every run at 600 ticks. Slow: every recorded tick.
 ## Why it holds with the rules on: every M1 pair lies inside the block's shares, so each rule
 ## decides as M1 did. A fast case checks that pair by pair against the block's numbers. The M1
 ## scenarios alone cannot: their rammers and ambush hunters never come within sight of each other
@@ -106,6 +109,26 @@ func _check_endless(ticks: Dictionary) -> void:
 				run.name, n, file.get("base_commit", "")])
 
 
+## S3G34: runs every S3 identity run to the tick counts `at` and compares each with the file.
+func _check_endless_s2(at: Array[int]) -> void:
+	var waiting := Gates.missing(Gates.SIM)
+	check(waiting.is_empty(), "an endless sim can be made (%s)" % "; ".join(waiting))
+	check_eq(Gates.content_path(), Gates.REAL_WORLD, "the gates run on the real content, as the file was recorded")
+	if not waiting.is_empty():
+		return
+	var file := Gates.identity_file(Gates.IDENTITY_S2_PATH)
+	check(not file.is_empty(), "the S2 identity file loads")
+	var recorded := {}
+	for r in file.get("runs", []):
+		recorded[str(r.get("name", ""))] = r.get("hashes", {})
+	for run in Gates.IDENTITY_S2_RUNS:
+		var got := Gates.identity_run_s2(run, at)
+		var want: Dictionary = recorded.get(run.name, {})
+		for n in at:
+			check_eq(str(got.get(str(n), "")), str(want.get(str(n), "?")), "%s at %d ticks hashes as on e3-base (%s)" % [
+				run.name, n, file.get("base_commit", "")])
+
+
 # ---- Fast ----
 
 func test_with_every_relationship_rule_off_the_m1_scenarios_hash_as_their_goldens() -> void:
@@ -114,6 +137,10 @@ func test_with_every_relationship_rule_off_the_m1_scenarios_hash_as_their_golden
 
 func test_with_growth_off_the_endless_world_hashes_as_s1_at_600_and_3600_ticks() -> void:
 	_check_endless(ENDLESS_FAST_TICKS)
+
+
+func test_s2s_endless_world_at_sizes_1_and_2_hashes_as_on_e3_base_at_600_ticks() -> void:
+	_check_endless_s2([600])
 
 
 ## BP-6: the gate content is shared, so make_sim sets the switch on every call, and the default is off.
@@ -219,6 +246,10 @@ func test_slow_with_growth_off_the_endless_world_hashes_as_s1_to_18000_ticks() -
 	for run in Gates.IDENTITY_RUNS:
 		every[run.name] = Gates.IDENTITY_TICKS
 	_check_endless(every)
+
+
+func test_slow_s2s_endless_world_at_sizes_1_and_2_hashes_as_on_e3_base_to_18000_ticks() -> void:
+	_check_endless_s2(Gates.IDENTITY_TICKS)
 
 
 # ---- Soak ----

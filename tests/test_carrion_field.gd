@@ -209,3 +209,25 @@ func test_find_gives_the_item_or_nothing() -> void:
 	check_eq(field.find("cr_999"), {}, "{} for an unknown id")
 	field.consume(a.id)
 	check_eq(field.find(a.id), {}, "{} once eaten")
+
+
+# --- S3: morsel sites' items (S3G17's carrion part) ---
+
+func test_a_morsel_sites_item_carries_its_species_and_site_and_can_be_expired() -> void:
+	var field := CarrionField.create(layout.carrion, 1)
+	var plain := field.spawn(Vector2(1.0, 2.0), "kill")
+	check(not plain.has("species") and not plain.has("site"), "a kill's item has neither")
+	check(not field.events[0].has("species"), "nor does its event")
+	var m := field.spawn(Vector2(3.0, 2.0), "morsel_site", 18.75, -1, 0.1875, 45.0, {"species": "warden", "site": "m_7"})
+	check_eq([m.species, m.site], ["warden", "m_7"], "the item carries both")
+	check_eq([field.events[1].species, field.events[1].site], ["warden", "m_7"], "and so does carrion_spawned")
+	field.events.clear()
+	var gone := field.expire(m.id, "unloaded")
+	check(is_same(gone, m), "expire returns the item")
+	check(field.find(m.id).is_empty(), "and takes it out")
+	check_eq(field.events, [{"type": "carrion_expired", "food_id": m.id, "position": Vector2(3.0, 2.0), "reason": "unloaded"}],
+		"with its reason")
+	field.events.clear()
+	check_eq(field.expire(m.id, "unloaded"), {}, "an absent item gives {}")
+	check(field.events.is_empty(), "and no event")
+	check_eq(field.items.size(), 1, "the kill's item stays")

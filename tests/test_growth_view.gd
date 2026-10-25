@@ -979,6 +979,298 @@ func test_a_respawn_ends_the_beat_at_once() -> void:
 	pool.free()
 
 
+# --- S3: the band-up beat (S3G30; s3-view 4.2 to 4.4) ---
+
+func test_band_up_has_no_pop() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var r := _band_up(pool)
+	var began: Dictionary = r.began
+	check(not began.is_empty() and began.from == 2 and began.to == 3, "the forced growth is a band-up (2 to 3)")
+	if began.is_empty():
+		pool.free()
+		return
+	var before: Dictionary = r.before
+	check(not before.is_empty(), "band-0 landmarks are drawn at size 2 (%d)" % before.size())
+	var handed := pool.old_band.handed()
+	var names := handed.map(func(p: Node3D) -> String: return str(p.name))
+	names.sort()
+	var want := before.keys()
+	want.sort()
+	check_eq(names, want, "frame 0: every band-0 landmark and place is handed to the old band (V3-2)")
+	check(pool.landmarks.pieces().all(func(p: Node3D) -> bool: return not str(p.name).begins_with("a_0_") and not str(p.name).begins_with("p_0_")),
+		"and none is left with the landmark layer")
+	var f := float(began.factor)
+	for piece in handed:
+		var a: Transform3D = before[str(piece.name)]
+		var b := OldBandLayer.global_of(piece)
+		var expected := Transform3D(a.basis.scaled(Vector3.ONE / f), WorldSpace.reexpress_point(a.origin, began.center_old, f))
+		check(b.origin.distance_to(expected.origin) <= 1e-5 and (b.basis.x - expected.basis.x).length() <= 1e-5,
+			"frame 0: %s where frame A drew it, re-expressed (%s, %s)" % [piece.name, b.origin, expected.origin])
+	check_eq(pool.old_band.mmi_transparency(), 1.0, "frame 0: the old band's instances not yet shown")
+	check(pool.old_band.draw_calls() > 0, "and placed")
+	var retiring := _rock_lists(pool, "__retiring")
+	var fresh := _rock_lists(pool, "__fresh")
+	check(not retiring.is_empty() and retiring.all(func(m: MultiMeshInstance3D) -> bool: return m.transparency < 1e-6), "frame 0: the band-0 shells drawn whole")
+	check(not fresh.is_empty() and fresh.all(func(m: MultiMeshInstance3D) -> bool: return is_equal_approx(m.transparency, 1.0)), "frame 0: the band-1 shells not yet in")
+	var discs: Array = pool.zone_lights.retiring().values()
+	var targets := {}
+	for inst in pool.old_band.instances():
+		targets[inst.id] = inst.transform
+	var seen := {"0.45": false, "1.0": false, "1.4": false, "2.0": false}
+	while pool.growth_beat.running() and pool.growth_beat.t() < 2.1:
+		Frames.frame(pool)
+		var t := pool.growth_beat.t()
+		if t <= HANDOFF_END and t >= 0.0:
+			check(pool.old_band.mmi_transparency() >= 1.0 - 1e-6, "%.2f s: the old band's instances still hidden" % t)
+		if not seen["0.45"] and t >= 0.45:
+			seen["0.45"] = true
+			check(retiring.all(func(m: MultiMeshInstance3D) -> bool: return is_instance_valid(m) and m.transparency < 1.0), "0.45 s: the band-0 shells still drawn")
+			check(discs.all(func(d: MeshInstance3D) -> bool: return is_instance_valid(d) and d.transparency < 1.0), "0.45 s: the band-0 patches still drawn")
+			check(handed.all(func(p: Node3D) -> bool: return is_instance_valid(p) and _piece_transparency(p) < 1.0), "0.45 s: the handed pieces still drawn")
+		if not seen["1.0"] and t >= 1.0:
+			seen["1.0"] = true
+			check(fresh.all(func(m: MultiMeshInstance3D) -> bool: return not is_instance_valid(m) or m.transparency < 1.0), "1.0 s: the band-1 shells coming in")
+		if not seen["1.4"] and t >= HANDOFF_END and t < OldBandLayer.FADE.y:
+			seen["1.4"] = true
+			for piece in handed:
+				if targets.has(str(piece.name)):
+					var to: Transform3D = targets[str(piece.name)]
+					check(absf(piece.position.y - to.origin.y) <= 1e-4 and Vector2(piece.position.x - to.origin.x, piece.position.z - to.origin.z).length() <= 1e-3,
+						"%.2f s: %s has sunk onto its instance (%s, %s)" % [t, piece.name, piece.position, to.origin])
+					check((piece.transform.basis.get_scale() - to.basis.get_scale()).length() <= 1e-5, "%s at its instance's scale" % piece.name)
+		if not seen["2.0"] and t >= OldBandLayer.FADE.y:
+			seen["2.0"] = true
+			check_eq(pool.old_band.mmi_transparency(), 0.0, "2.0 s: the old band's instances shown")
+	check(seen.values().all(func(v: bool) -> bool: return v), "the beat ran past every check (%s)" % seen)
+	check(pool.old_band.handed().is_empty() and handed.all(func(p: Node3D) -> bool: return not is_instance_valid(p) or p.is_queued_for_deletion()),
+		"2.1 s: the handed pieces are gone")
+	check(_rock_lists(pool, "__retiring").is_empty() and pool.zone_lights.retiring().is_empty(), "2.1 s: the band-0 shells and patches are gone")
+	pool.free()
+
+
+func test_band_up_profile_resets() -> void:
+	var pool := _growth_pool()
+	var c := pool.sim.motion.position
+	pool._route(FakeGrowthEvents.began(c, 2, 3))
+	for container: Node in [pool.rocks, pool.silt_trail]:
+		check_eq([container.get(&"_sink_tm"), container.get(&"_retire_s")], [GrowthBeat.BAND_UP_SINK_TM, GrowthBeat.BAND_UP_RETIRE_S],
+			"%s: a band-up's leftovers sink 3 tm over 2 s (V3-1)" % container.name)
+	check_eq([pool.zone_lights.get(&"_sink_tm"), pool.zone_lights.get(&"_retire_s")], [GrowthBeat.BAND_UP_SINK_TM, GrowthBeat.BAND_UP_RETIRE_S],
+		"ZoneLights: and its patches sink with them")
+	pool._route({"type": "respawned", "grace_s": 0.0, "teleport": false})
+	pool._route(FakeGrowthEvents.began(c, 3, 4))
+	for container: Node in [pool.rocks, pool.silt_trail]:
+		check_eq([container.get(&"_sink_tm"), container.get(&"_retire_s")], [GrowthBeat.SINK_TM, GrowthBeat.RETIRE_S],
+			"%s: an in-band growth after it is S2's 1.5 tm over 1.2 s" % container.name)
+	check_eq([pool.zone_lights.get(&"_sink_tm"), pool.zone_lights.get(&"_retire_s")], [0.0, GrowthBeat.RETIRE_S],
+		"ZoneLights: S2's patches fade without sinking")
+	pool.free()
+
+
+func test_band_up_cancel_still_fades() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	_band_up(pool)
+	var handed := pool.old_band.handed()
+	check(not handed.is_empty(), "pieces are handed at the band-up")
+	while pool.growth_beat.running() and pool.growth_beat.t() < 0.5:
+		Frames.frame(pool)
+	pool._route({"type": "respawned", "grace_s": 0.0, "teleport": false})
+	check(not pool.growth_beat.running(), "a respawn at 0.5 s ends the beat")
+	check_eq(pool.old_band.mmi_transparency(), 0.0, "the old band's instances show at once")
+	var t0 := pool.sim.now()
+	while pool.sim.now() - t0 < 0.45:
+		Frames.frame(pool)
+	check(handed.all(func(p: Node3D) -> bool: return is_instance_valid(p) and not p.is_queued_for_deletion() and _piece_transparency(p) < 1.0),
+		"0.45 s after the cancel the handed pieces are still drawn, fading")
+	while pool.sim.now() - t0 < GrowthBeat.MIN_FADE_S + 0.1:
+		Frames.frame(pool)
+	check(pool.old_band.handed().is_empty(), "and gone after MIN_FADE_S")
+	pool.free()
+
+
+## The hand-off's sink ends here (OldBandLayer.HANDOFF_SINK_S).
+const HANDOFF_END := OldBandLayer.HANDOFF_SINK_S
+
+
+## Size 2 on the shipped world, then a forced growth to 3 on the real tick, up to its frame 0.
+## Returns {began: the growth_began event, before: {band-0 landmark id: its transform in the pool's
+## space at frame A}}.
+func _band_up(pool: PoolScene) -> Dictionary:
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(2), "the dev's size 2")
+	for i in 3:
+		Frames.frame(pool)
+	var before := {}
+	for piece in pool.landmarks.pieces():
+		var id := str(piece.name)
+		if id.begins_with("a_0_") or id.begins_with("p_0_"):
+			before[id] = OldBandLayer.global_of(piece)
+	var began := []
+	var catch := func(e: Dictionary) -> void:
+		if e.get("type") == "growth_began":
+			began.append(e)
+	pool.sim_event.connect(catch)
+	check(sim.debug_force_growth(), "a forced growth")
+	Frames.frame(pool)
+	pool.sim_event.disconnect(catch)
+	return {"began": began[0] if not began.is_empty() else {}, "before": before}
+
+
+## S3 (s3-view 4.2, 6): a band-up shows the cradle where size 3 lays it out, hidden at frame 0, and
+## fades it in over CradleView.FADE_IN; the caption fades with it.
+func test_band_up_fades_the_cradle_in() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var cradle := pool.cradle
+	check(cradle != null and not cradle.visible, "size 1: the cradle is hidden")
+	var r := _band_up(pool)
+	if (r.began as Dictionary).is_empty():
+		check(false, "the forced growth")
+		pool.free()
+		return
+	check(cradle.visible, "frame 0 of the band-up: the cradle is laid out")
+	check(cradle.fade() <= 1e-6, "and not yet shown (%.2f)" % cradle.fade())
+	check_near(cradle.ring_scale(), float(cradle.cradle.pool_ring.radius_bu) / CradleView.RING_RECORD_RADIUS_BU * WorldConfig.bu_to_tm(3), 1e-6,
+		"at size 3's scale from frame 0")
+	var last := 0.0
+	var mid := false
+	while pool.growth_beat.running():
+		Frames.frame(pool)
+		var t := pool.growth_beat.t()
+		if t >= 0.0 and t < CradleView.FADE_IN.x:
+			check(cradle.fade() <= 1e-6, "%.2f s: still hidden" % t)
+		check(cradle.fade() >= last - 1e-6, "%.2f s: the fade only rises" % t)
+		last = cradle.fade()
+		if t > 1.0 and t < 1.6:
+			mid = mid or (cradle.fade() > 0.2 and cradle.fade() < 0.9)
+	check(mid, "it is part-way in mid-beat")
+	check_eq(cradle.fade(), 1.0, "shown in full once the beat ends")
+	pool.free()
+
+
+## S3 (V3-7): the in-band growth 3 to 4 re-expresses the cradle at frame 0 (nothing moves on screen),
+## then eases the ring's top back to RING_TOP_TM and its scale to size 4's over the beat.
+func test_in_band_growth_eases_the_cradle() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(3), "the dev's size 3")
+	for i in 3:
+		Frames.frame(pool)
+	var cradle := pool.cradle
+	var ring := cradle.ring()
+	var before := ring.global_transform if ring.is_inside_tree() else OldBandLayer.global_of(ring)
+	var began := []
+	var catch := func(e: Dictionary) -> void:
+		if e.get("type") == "growth_began":
+			began.append(e)
+	pool.sim_event.connect(catch)
+	check(sim.debug_force_growth(), "a forced growth")
+	Frames.frame(pool)
+	pool.sim_event.disconnect(catch)
+	if began.is_empty():
+		check(false, "the growth began")
+		pool.free()
+		return
+	var e: Dictionary = began[0]
+	check(e.from == 3 and e.to == 4, "an in-band growth (3 to 4)")
+	var f := float(e.factor)
+	var at0 := OldBandLayer.global_of(ring)
+	var t0 := pool.growth_beat.t()
+	var want := WorldSpace.reexpress_point(before.origin, e.center_old, f)
+	var eased := GrowthBeat.ease_in_out_cubic(clampf(t0 / GrowthBeat.BEAT_S, 0.0, 1.0))
+	check(Vector2(at0.origin.x - want.x, at0.origin.z - want.z).length() < 1e-3, "frame 0: the ring where frame A drew it, re-expressed")
+	check(absf(at0.origin.y - want.y) <= absf(want.y) * eased + 1e-3, "frame 0: its depth barely moved (%.3f from %.3f)" % [at0.origin.y, want.y])
+	check_eq(cradle.fade(), 1.0, "an in-band growth does not fade the cradle")
+	var top := func() -> float: return (OldBandLayer.global_of(ring) * CradleView.aabb_under(ring)).end.y
+	var last_top: float = top.call()
+	while pool.growth_beat.running():
+		Frames.frame(pool)
+		var now: float = top.call()
+		check(now <= last_top + 1e-5, "%.2f s: the top only sinks (%.3f after %.3f)" % [pool.growth_beat.t(), now, last_top])
+		last_top = now
+	check_near(top.call(), CradleView.RING_TOP_TM, 1e-4, "the ring's top back at %.1f tm" % CradleView.RING_TOP_TM)
+	check_near(cradle.ring_scale(), float(cradle.cradle.pool_ring.radius_bu) / CradleView.RING_RECORD_RADIUS_BU * WorldConfig.bu_to_tm(4), 1e-6,
+		"at size 4's scale")
+	pool.free()
+
+
+## S3G15 (view, s3-view 7.4): a bloom disc's strength follows its meadow's phase, the one that sets
+## the meadow's regrowth (EcologyRegion.bloom_multiplier): full while its slot blooms and low while the
+## other does, past the ease after each switch, where it moves only toward its target. The two
+## slots never bloom together.
+func test_bloom_tint_follows_the_phase() -> void:
+	var cycle := 5400
+	var half := cycle / 2
+	var ease := int(ZoneLights.BLOOM_EASE_S * CreatureBrain.TICKS_PER_SECOND)
+	for o in [0, 1234]:
+		var blooms := [{"slot": 0, "offset_ticks": o, "cycle_ticks": cycle}, {"slot": 1, "offset_ticks": o, "cycle_ticks": cycle}]
+		var wrong := 0
+		for tick in range(0, 2 * cycle, 30):
+			var full := 0
+			for b: Dictionary in blooms:
+				var s := ZoneLights.bloom_strength(b, float(tick))
+				var high := EcologyRegion.bloom_multiplier(b, tick) == EcologyRegion.BLOOM_HIGH
+				if s >= 0.99:
+					full += 1
+				if posmod(tick + o, half) >= ease:
+					if (s >= 0.99) != high:
+						wrong += 1
+				else:
+					var next := ZoneLights.bloom_strength(b, float(tick) + 1.0)
+					if (high and next < s - 1e-9) or (not high and next > s + 1e-9):
+						wrong += 1
+				if s < ZoneLights.BLOOM_LOW - 1e-6 or s > 1.0 + 1e-6:
+					wrong += 1
+			check(full <= 1, "offset %d, tick %d: never both slots in full bloom" % [o, tick])
+		check_eq(wrong, 0, "offset %d: the tint follows the regrowth phase over two cycles" % o)
+		# No pop at a switch: the strength a tick after it is the strength a tick before.
+		for k in range(1, 5):
+			var at: int = k * half - int(o)
+			for b: Dictionary in blooms:
+				check(absf(ZoneLights.bloom_strength(b, float(at) + 1.0) - ZoneLights.bloom_strength(b, float(at) - 1.0)) < 0.01,
+					"offset %d: slot %d eases through the switch at tick %d" % [o, b.slot, at])
+
+
+## V3-10, V3-11: the sea's zones reach ZoneLights whole; a zone gets a patch when its region is
+## listed or it blooms, and only a bloom meadow gets a bloom disc, laid as its patch and freed with it.
+func test_bloom_disc_only_on_bloom_zones() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	var lights := pool.zone_lights
+	var bloom := {"slot": 1, "offset_ticks": 300, "cycle_ticks": 5400}
+	var at := pool.sim.motion.position
+	pool.apply_world_event(FakeEvents.loaded(Vector2i(70, 70), [], [
+		{"id": "z_bloom", "region": "veil_garden", "center": at + Vector2(10.0, 0.0), "radius": 6.0, "bloom": bloom},
+		{"id": "z_flat", "region": "warden_flat", "center": at + Vector2(30.0, 0.0), "radius": 6.0},
+		{"id": "z_reef", "region": "glass_reef", "center": at + Vector2(50.0, 0.0), "radius": 6.0}]))
+	check(lights.disc_of("z_bloom") != null, "the bloom meadow has a patch")
+	check(lights.disc_of("z_flat") != null, "a warden flat has a patch")
+	check(lights.disc_of("z_reef") == null, "a glass reef has none")
+	var discs := lights.bloom_discs()
+	check_eq(discs.size(), 1, "one bloom disc")
+	if discs.size() == 1:
+		var disc := discs[0]
+		var patch := lights.disc_of("z_bloom")
+		check_eq(str(disc.name), "bloom_z_bloom", "named for its meadow")
+		check(disc.position.is_equal_approx(patch.position) and disc.scale.is_equal_approx(patch.scale), "laid as its patch")
+		check_eq(disc.mesh, lights.bloom_mesh, "on the bloom mesh")
+		lights.update_bloom(5130, 0.5)   # 29.5 ticks into a switch: mid-ease
+		check_near(float(disc.get_instance_shader_parameter(&"strength")), ZoneLights.bloom_strength(bloom, 5129.5), 1e-6,
+			"its strength at the drawn tick")
+	pool.apply_world_event(FakeEvents.unloaded(Vector2i(70, 70)))
+	check(lights.bloom_discs().is_empty() and lights.disc_of("z_flat") == null, "freed with the chunk")
+	pool.free()
+
+
+## The rock field's MultiMeshes whose names end `suffix` ("__retiring", "__fresh").
+static func _rock_lists(pool: PoolScene, suffix: String) -> Array[MultiMeshInstance3D]:
+	var out: Array[MultiMeshInstance3D] = []
+	for child in pool.rocks.get_children():
+		if child is MultiMeshInstance3D and str(child.name).ends_with(suffix) and not child.is_queued_for_deletion():
+			out.append(child)
+	return out
+
+
 # --- helpers ---
 
 ## An endless pool with a still cell, quiet cues, a rammer beside the cell and a chunk (900, 900) in

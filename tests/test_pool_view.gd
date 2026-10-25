@@ -843,6 +843,39 @@ func test_outlines_badges_and_the_lane_edge_share_one_navy_keyline() -> void:
 	view.free()
 
 
+## S3 (T4.6, s3-view 13; S3G36 frame part): the start fade also draws what sizes 3 and 4 bring: the
+## glass flake and the bead cluster, the five new bodies, the veil threads in the threat ink and in
+## the neutral and their outline, a baked morsel in M_Morsel and in the morsel rim, and the older
+## haze.
+func test_the_start_fade_warms_every_s3_look() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.pool_session())
+	var meshes := pool.warm_up_meshes()
+	var materials: Array[Material] = []
+	for mesh in meshes:
+		for i in mesh.get_surface_count():
+			if mesh.surface_get_material(i) != null:
+				materials.append(mesh.surface_get_material(i))
+	for look in ["glass_flake", "bead_cluster"]:
+		check(meshes.has(FoodView.look_mesh(look)), "the %s" % look)
+	for asset in CreatureLayer.WARM_UP_BODIES:
+		var body := CreatureView.body_meshes(asset)
+		check(not body.is_empty() and body.all(func(m: Mesh) -> bool: return meshes.has(m)), "every mesh of %s" % asset)
+	var inks := []
+	for m in materials:
+		if m is ShaderMaterial and (m as ShaderMaterial).shader == VeilThreadsView.THREADS_SHADER:
+			inks.append(float((m as ShaderMaterial).get_shader_parameter("ink")))
+	inks.sort()
+	check(inks == [0.0, 1.0], "the threads in the neutral and the threat ink (%s)" % [inks])
+	var has := func(test: Callable) -> bool: return materials.any(test)
+	check(has.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == VeilThreadsView.OUTLINE_SHADER), "the capsule outline")
+	check(has.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == CreatureLayer.MORSEL_RIM_SHADER), "the morsel rim")
+	check(has.call(func(m: Material) -> bool: return m is ShaderMaterial and m.shader == OlderHaze.SHADER), "the older haze")
+	var bakes := meshes.filter(func(m: Mesh) -> bool: return m is ArrayMesh and m.get_surface_count() == 1 \
+		and m.surface_get_material(0) == CreatureLayer.MORSEL_MATERIAL)
+	check(not bakes.is_empty(), "a baked morsel in M_Morsel")
+	pool.free()
+
+
 func test_the_start_fade_warms_the_lane_shader_at_the_lanes_priority() -> void:
 	var pool := (load("res://game/scenes/pool/pool.tscn") as PackedScene).instantiate()
 	pool.notification(Node.NOTIFICATION_READY)

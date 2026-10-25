@@ -1296,9 +1296,54 @@ func test_debug_set_size_takes_the_world_to_a_size_by_the_teleport_path() -> voi
 		check_eq(sim.world.chunk(key).size, 2, "chunk %s at size 2" % key)
 	check_eq(sim.growth.meter, 0.0, "the meter starts again")
 	check_eq(events.back(), {"type": "debug", "command": "set_size", "size": 2}, "the debug event last")
-	check(not sim.debug_set_size(3), "no size above the build top")
+	check(not sim.debug_set_size(sim.world.max_size + 1), "no size above the build top")
 	check(not sim.debug_set_size(0), "no size 0")
 	check(sim.debug_set_size(1), "back to size 1")
 	check_eq([sim.size(), sim.creatures.size, int(sim.world.checkpoint_am[3])], [1, 1, 1], "size 1 again")
 	sim._player_dies("starved", "", "", "test")
 	check(not sim.debug_set_size(2), "not while dead")
+
+
+## S3G15b (D-128, T2's part): on FakeWorldGen at size 4 each elder-Warden site's two meadows reach the
+## view (chunk_loaded) and the region with the site's own bloom (slots 0 and 1); its record carries the
+## bloom to the brain (set_bloom); and two placed sites bloom out of step.
+func test_a_placed_sites_meadows_and_brain_share_one_bloom_offset() -> void:
+	var content := FakeWorldGen.fixture_content("res://tests/fixtures/world/world_b1_min.json")
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, species, content, PackedFloat64Array(), 2, true)
+	check(sim.debug_set_size(4), "size 4")
+	var w := sim.world
+	var shown := {}
+	for e in _of(sim.drain_events(), "chunk_loaded"):
+		for z: Dictionary in e.zones:
+			if z.has("bloom"):
+				shown[z.id] = z.bloom
+	var held := {}
+	for z: Dictionary in sim.region.zones:
+		if z.has("bloom"):
+			held[z.id] = z.bloom
+	var wardens := w.sites.keys().filter(func(id: String) -> bool: return id.begins_with("e_f_"))
+	wardens.sort()
+	check(wardens.size() >= 2, "two elder-Warden sites loaded (%s)" % [wardens])
+	var offsets := {}
+	var meadows := 0
+	for id: String in wardens:
+		var bloom: Dictionary = w.sites[id].get("bloom", {})
+		check(int(bloom.get("cycle_ticks", 0)) > 0, "%s: the record carries its bloom" % id)
+		if bloom.is_empty():
+			continue
+		offsets[int(bloom.offset_ticks)] = true
+		var suffix := id.trim_prefix("e_f_")
+		for slot in 2:
+			var zid := ("z_f_" if slot == 0 else "z_fb_") + suffix
+			var want := {"slot": slot, "offset_ticks": bloom.offset_ticks, "cycle_ticks": bloom.cycle_ticks}
+			if held.has(zid):
+				meadows += 1
+				check_eq(held[zid], want, "%s: slot %d in the region with the site's offset" % [zid, slot])
+				check_eq(shown.get(zid, {}), want, "%s: and in chunk_loaded" % zid)
+		var c := sim.creatures.spawn_site(w.sites[id], sim.tick)
+		check(c != null, "%s spawns" % id)
+		if c != null:
+			check_eq([c.brain.bloom_offset, c.brain.bloom_cycle], [int(bloom.offset_ticks), int(bloom.cycle_ticks)],
+				"%s: the brain's schedule is the site's" % id)
+	check(meadows >= 2, "meadows held (%d)" % meadows)
+	check(offsets.size() >= 2, "two placed sites bloom out of step (%s)" % [offsets.keys()])

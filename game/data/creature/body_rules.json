@@ -22,5 +22,13 @@
 	"bone_count_max": 128,
 	"part_count_max": 24,
 	"part_scale_min": 250,
-	"part_scale_max": 4000
+	"part_scale_max": 4000,
+	"head_shape": {
+		"note": "Head shape dials (domain/creature/head_shape.gd), per mille: [min, max]. Width, height and snout ranges agreed with the art thread (2026-10-24).",
+		"snout": [1000, 2000],
+		"width": [600, 1600],
+		"height": [600, 1600],
+		"jaw": [0, 1000],
+		"brow": [0, 1000]
+	}
 }
