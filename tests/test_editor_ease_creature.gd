@@ -192,6 +192,13 @@ func test_the_selection_is_named_in_words() -> void:
 	check_eq(label.text, "Selected: vertebra 3 of %d from the head" % desc.vertebrae.size(), "a vertebra by its place")
 
 
+func _texts_of(c: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray([str(c["title"])])
+	for line: Array in c["lines"]:
+		out.append(" ".join(line.map(func(x): return str(x))))   # a stat row is ["stat", label, before, after, better]
+	return out
+
+
 func _card_has(card_texts: PackedStringArray, piece: String) -> bool:
 	for t in card_texts:
 		if t.contains(piece):
@@ -252,6 +259,18 @@ func test_the_card_tells_what_each_kind_of_part_does() -> void:
 	hud.set_locked({"eye": true})
 	hud.tool_button("eye").mouse_entered.emit()
 	check(_card_has(hud.editor_ease.card.texts(), Effects.LOCKED), "a locked part says where to find it")
+	# Review round 2: a locked part's card keeps its role and stats but has no line about adding it now.
+	var eye_rule: Dictionary = rules["eye"]
+	var eye_fx := Effects.effects(body, "eye", rules, gait, tuning, CreatureData.rules(), size)
+	var info := {"price": 10, "points": 150, "cost": 0, "refund_rate": 0.5, "parts": 3, "part_count_max": 3}
+	var open_texts := _texts_of(Effects.card("eye", eye_rule, eye_fx, info, "WHERE IT GOES"))
+	for piece in ["Leaves 140", "WHERE IT GOES", Effects.REFUND.get_slice("%", 0), Effects.FULL.get_slice("%", 0)]:
+		check(_card_has(open_texts, piece), "an unlocked eye's card has '%s'" % piece)
+	info["locked"] = true
+	var locked_texts := _texts_of(Effects.card("eye", eye_rule, eye_fx, info, "WHERE IT GOES"))
+	check(_card_has(locked_texts, Effects.LOCKED) and _card_has(locked_texts, "Sight"), "locked: says so, keeps stats")
+	for piece in ["Leaves 140", "WHERE IT GOES", Effects.REFUND.get_slice("%", 0), Effects.FULL.get_slice("%", 0)]:
+		check(not _card_has(locked_texts, piece), "a locked eye's card has no '%s'" % piece)
 
 
 ## Bible 14: the card's preview asks the same rules as the action. An eye added by a real click, and a mirrored pair

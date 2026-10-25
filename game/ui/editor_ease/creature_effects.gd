@@ -114,7 +114,8 @@ static func stat_lines(fx: Dictionary, mode: String) -> Array:
 ## The card for a part tool: {title, lines} (PartCard.show_lines). `info` carries {price, refund_rate, points,
 ## cost (this visit's so far), locked, parts, part_count_max, sight_max_m, display_cap, weapon_cap}; a key it lacks
 ## leaves its line out. `where` is the placement line ("" for none); `mirrored` false when the editor's symmetry is
-## off. A blocking line (locked, too few points, no free slot) is marked "worse", as the cell editor's card does.
+## off. A blocking line (locked, too few points, no free slot) is marked "worse", as the cell editor's card does. A
+## locked part's card keeps its role, stat preview and price, and leaves out the lines about adding it now.
 static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionary, where := "",
 		mirrored := true) -> Dictionary:
 	var label := type.capitalize()
@@ -148,6 +149,9 @@ static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionar
 			lines.append([PRICE_PAIR % (2 * price), ""])
 		_:
 			lines.append([PRICE_BOTH % [price, 2 * price], ""])
+	if bool(info.get("locked", false)):
+		# A locked part cannot be added yet: no spend, slot, placement or refund lines that read as if it could.
+		return {"title": TITLE % [label, price], "lines": lines}
 	if info.has("points") and info.has("cost"):
 		var left := int(info["points"]) - int(info["cost"]) - (2 * price if mode == "pair" else price)
 		if left >= 0:
