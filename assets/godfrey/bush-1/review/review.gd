@@ -42,5 +42,3 @@ func capture() -> void:
         return
     print("GODOT_REVIEW_SAVED ", img.get_width(), "x", img.get_height())
     quit()
-
-
