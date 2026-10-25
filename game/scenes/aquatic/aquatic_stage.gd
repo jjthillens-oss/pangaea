@@ -238,11 +238,13 @@ func open_shore_offer() -> Control:
 	crawl.name = "Crawl"
 	crawl.text = "Crawl onto land"
 	crawl.pressed.connect(crawl_ashore)
+	crawl.add_theme_font_size_override("font_size", 26)
 	row.add_child(crawl)
 	var stay := Button.new()
 	stay.name = "Stay"
 	stay.text = "Stay in the sea"
 	stay.pressed.connect(stay_in_the_sea)
+	stay.add_theme_font_size_override("font_size", 26)
 	row.add_child(stay)
 	stay.call_deferred("grab_focus")
 	return shore_offer
