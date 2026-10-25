@@ -66,6 +66,6 @@ Follow Bible section 21, plus the long-running-agent practice this office is bui
 
 1. Read `docs/director/progress.md`, `git log --oneline -20`, the backlog entries you own, and the handbook sections you touch.
 2. Work one backlog feature at a time. Agree its sprint contract (the evidence that proves it) before building.
-3. Change only `passes` and `evidence` in `docs/director/backlog.json`; only the director adds, removes or reorders features.
+3. Change only `passes` and `evidence` in `docs/director/backlog.json`; only the director adds, removes or reorders features and sets `deps`. Start a feature only when every id in its `deps` passes.
 4. Builders never grade their own work. A feature passes only after a separate review against the rubrics.
 5. End with committed, pushed, mergeable work and a `docs/director/progress.md` line.
