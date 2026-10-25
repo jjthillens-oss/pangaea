@@ -12,10 +12,15 @@ extends SceneTree
 ##   cell_starving  energy 0: the starving banner, the Starving chip, the health bar and the rested message
 ##   cell_sunlit    fed again and moved to the sunlit tile nearest the origin: the HUD over the brightest water
 ##   pool_start     the M1 pool, hunter: no growth row or ladder strip
-##   creature_world the creature stage's world, 90 frames after enter_world
-##   creature_notice a notice and a "+5" points flash on the creature HUD
-##   creature_away   walked off the nest and bit at the air (the Bite chip recharging), with the longest notice,
-##                   the death notice (added with the glass dock; no before frame)
+##   editor_tooltip  the creature editor, the mouse held over a button with a tooltip: the glass TooltipPanel and
+##                   TooltipLabel (no before frame)
+##   creature_world  the creature stage's world, 90 frames after enter_world: the controls line is still up
+##   creature_death  at the nest, the longest notice (the death notice, set by hand: "Back at the nest") with the
+##                   Evolve chip lit (no before frame)
+##   creature_notice walked off the nest and pressed evolve: the sim's own refusal notice, and a "+5" points flash
+##                   (set by hand)
+##   creature_away   still off the nest, bit at the air (the Bite chip recharging), the notice cleared and the
+##                   controls line timed out (its timer run out by hand): the HUD as it stays (no before frame)
 
 const ROOT := "user://shots/hud"
 
@@ -85,7 +90,8 @@ func _cell() -> void:
 	await _frames(60)
 	await _shot("cell_start")
 	var hud: Hud = main.hud
-	# The panels as laid out (test_world_hud's rects are read off these).
+	# The panels as laid out, printed so test_world_hud's rects can be refreshed from them later (that test still
+	# holds the pre-glass rects as fixed inputs).
 	print("panels cell_start ", hud.panel_rects())
 	hud._on_sim_event({"type": "ate", "absorbed": 8.0, "points": 1})
 	hud._on_sim_event({"type": "ate", "absorbed": 8.0, "points": 1})
@@ -144,6 +150,7 @@ func _creature() -> void:
 	await _new_main("endless", "creature.json")
 	var stage: CreatureStage = main.open_creature_stage()
 	await _frames(30)
+	await _tooltip(stage)
 	stage.enter_world()
 	await _frames(90)
 	await _shot("creature_world")
@@ -151,19 +158,51 @@ func _creature() -> void:
 	if world == null:
 		push_error("hud_look_shots: the creature world did not open")
 		return
-	world.hud.show_notice("Return to the nest to evolve")
-	world.hud.flash_points(5)
-	await _frames(4)
-	await _shot("creature_notice")
-	world.set_intent(Vector2(0.0, 1.0), false, false)
-	await _frames(150)
-	world.set_intent(Vector2.ZERO, true, false)
-	await _frames(3)
 	world.hud.show_notice(CreatureWorld.DEATH_NOTICE % ["killed by a hexapod", 30])
 	world.hud.refresh()
 	await _frames(2)
+	await _shot("creature_death")
+	world.set_intent(Vector2(0.0, 1.0), false, false)
+	await _frames(150)
+	world.set_intent(Vector2.ZERO, false, true)
+	await _frames(3)
+	world.set_intent(Vector2.ZERO, false, false)
+	world.hud.flash_points(5)
+	await _frames(2)
+	print("creature_notice notice '", world.hud.notice_text(), "' goal '", world.hud._goal_text.text, "'")
+	await _shot("creature_notice")
+	world.set_intent(Vector2.ZERO, true, false)
+	await _frames(3)
+	world.set_intent(Vector2.ZERO, false, false)
+	world.hud.clear_notice()
+	world.hud._keys_t = 0.001
+	await _frames(2)
+	world.hud.refresh()
+	print("creature_away keys line visible ", world.hud._hint_panel.visible)
 	await _shot("creature_away")
 	world.clear_intent()
+
+
+## Holds the mouse over the creature editor's Random button (or else the first visible button with a tooltip)
+## until its tooltip shows.
+func _tooltip(stage: Node) -> void:
+	var target: Control = null
+	for b: Button in stage.find_children("*", "Button", true, false):
+		if b.is_visible_in_tree() and not b.tooltip_text.is_empty() and (target == null or b.name == "Random"):
+			target = b
+	if target == null:
+		push_error("hud_look_shots: no editor button with a tooltip")
+		return
+	var at := target.get_global_rect().get_center()
+	Input.warp_mouse(root.get_final_transform() * at)
+	await _frames(2)
+	var ev := InputEventMouseMotion.new()
+	ev.position = at
+	ev.global_position = at
+	root.push_input(ev, true)
+	await _frames(60)
+	print("editor_tooltip over '", target.name, "' (", target.tooltip_text, ")")
+	await _shot("editor_tooltip")
 
 
 func _frames(n: int) -> void:
