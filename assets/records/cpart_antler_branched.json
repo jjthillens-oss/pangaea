@@ -1,0 +1,114 @@
+{
+  "id": "cpart_antler_branched",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature antler part (PROPOSED): a deer's branched antler, a ridged beam from a furred pedicle and knobbly burr curving up and back with four forward tines (mirrored at bake for the left).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_antler_branched.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_antler_branched.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.15,
+    "y_forward": 0.167,
+    "z_up": 0.35
+  },
+  "triangles": 1070,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartAntlerBranched_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartAntlerBranched_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartAntlerBranched_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_AntlerBranched",
+    "M_AntlerBranchedPedicle"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "AntlerBranched",
+    "AntlerBranchedPedicle"
+  ],
+  "part_type": "antler_branched",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "antler_branched",
+    "footprint_radius_m": 0.023,
+    "sink_depth_m": 0.02,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 40,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "weapon",
+    "handles": [
+      {
+        "key": "H1_Length",
+        "meaning": "the antler 25% longer above the burr",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Spread",
+        "meaning": "leans 18 degrees further out",
+        "default_permille": 0
+      },
+      {
+        "key": "H3_Sweep",
+        "meaning": "swept 18 degrees further back",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "The keys are on AntlerBranched (beam and tines); the pedicle (AntlerBranchedPedicle) stays put under the burr."
+  },
+  "paint_mix": {
+    "M_AntlerBranched": 0.05,
+    "M_AntlerBranchedPedicle": 0.85
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 3418,
+    "triangles_after": 1070
+  },
+  "review_notes": {
+    "gate1_shape": "pass: from the side a deer's antler - a ridged beam rising from a furred pedicle through a knobbly burr ring, sweeping up and back and turning forward at the top, with brow, bez and trez tines reaching forward and up; from behind the crown tine forks inward off the beam and the brow tine angles in, so it branches from every side (0.15 x 0.167 x 0.35 m). H1_Length, H2_Spread and H3_Sweep move everything above the burr without tearing. In a scratch geometry preview the first draft was a thin straight stick whose stubby tines all pointed forward.",
+    "gate2_materials": "pass: two finishes - antler bone with gutters along the beam, pearled knobs toward the base and pale cream, smoother tips on every tine and the beam's end (a per-vertex Tip weight baked into the albedo; in mat_side the tine tips sample about 1.4 x the mid-beam's brightness, a moderate contrast), over short brown fur on the pedicle. The first bake read as turned wood (even tan, grain streaks) and the second hid the tips (beam already near white).",
+    "gate3_neutral_light": "pass: under the neutral white rig the gutters and burr knobs read by grazing light, the pedicle's fur stays brown without crushing, no clipping on the pale tips.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

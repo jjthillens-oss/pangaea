@@ -215,6 +215,22 @@ REVIEW = {
                                "swellings, the sole band stays dark without crushing, the nails bright without "
                                "clipping.",
         "gate4_godot": G4_PENDING},
+    "cpart_antler_branched": {
+        "gate1_shape": "pass: from the side a deer's antler - a ridged beam rising from a furred pedicle through a "
+                       "knobbly burr ring, sweeping up and back and turning forward at the top, with brow, bez and "
+                       "trez tines reaching forward and up; from behind the crown tine forks inward off the beam and "
+                       "the brow tine angles in, so it branches from every side (0.15 x 0.167 x 0.35 m). H1_Length, "
+                       "H2_Spread and H3_Sweep move everything above the burr without tearing. In a scratch geometry "
+                       "preview the first draft was a thin straight stick whose stubby tines all pointed forward.",
+        "gate2_materials": "pass: two finishes - antler bone with gutters along the beam, pearled knobs toward the "
+                           "base and pale cream, smoother tips on every tine and the beam's end (a per-vertex Tip weight "
+                           "baked into the albedo; in mat_side the tine tips sample about 1.4 x the mid-beam's "
+                           "brightness, a moderate contrast), over short brown fur on the pedicle. The first bake read "
+                           "as turned wood (even tan, grain streaks) and the second hid the tips (beam already near "
+                           "white).",
+        "gate3_neutral_light": "pass: under the neutral white rig the gutters and burr knobs read by grazing light, "
+                               "the pedicle's fur stays brown without crushing, no clipping on the pale tips.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -1892,7 +1908,7 @@ def _mp_tine(root, d0, length, r0, bend, up=Vector((0.0, 0.0, 1.0)), steps=12, s
     return v, f, path
 
 
-def _mp_antler_material(name, lo=0.36, pearl_top=0.12, height_from=0.03, height_to=0.25):
+def _mp_antler_material(name, lo=0.18, pearl_top=0.12, height_from=0.03, height_to=0.25):
     """Antler bone: dark and pearled with knobs toward the base (fading out by pearl_top), lighter up the beam, with
     shallow gutters running along it, and pale, smoother polished tips where the mesh's "Tip" attribute (0 to 1, set
     per vertex by _mp_tip_weights, stored sRGB-encoded by bc.mesh_object) rises."""
@@ -1904,9 +1920,11 @@ def _mp_antler_material(name, lo=0.36, pearl_top=0.12, height_from=0.03, height_
     knobs = sh.math("MULTIPLY", sh.math("MULTIPLY", pearl, sh.remap(sh.axis("Z"), pearl_top, 0.02)),
                     sh.math("SUBTRACT", 1.0, tip))
     sh.bump(sh.math("ADD", sh.math("MULTIPLY", ridge, 0.6), sh.math("MULTIPLY", knobs, 0.9)), 0.6, 0.0015)
-    fac = sh.math("ADD", 0.22, sh.math("MULTIPLY", sh.remap(sh.axis("Z"), height_from, height_to), 0.38))
-    fac = sh.math("ADD", fac, sh.math("MULTIPLY", ridge, 0.18))
-    fac = sh.math("ADD", sh.math("SUBTRACT", fac, sh.math("MULTIPLY", knobs, 0.1)), sh.math("MULTIPLY", tip, 0.6))
+    # The tint is the tips' cream; the beam sits well below it (about 0.25 linear at the pearled base rising to about
+    # 0.47 up the beam, a mid brown once tinted), so the tips (+0.75) read clearly paler even in sRGB.
+    fac = sh.math("ADD", 0.05, sh.math("MULTIPLY", sh.remap(sh.axis("Z"), height_from, height_to), 0.25))
+    fac = sh.math("ADD", fac, sh.math("MULTIPLY", ridge, 0.1))
+    fac = sh.math("ADD", sh.math("SUBTRACT", fac, sh.math("MULTIPLY", knobs, 0.06)), sh.math("MULTIPLY", tip, 0.75))
     return sh.out(_grey(sh, fac, lo), sh.math("SUBTRACT", 0.74, sh.math("MULTIPLY", tip, 0.4)))
 
 
@@ -2045,8 +2063,12 @@ def _palm_cup(x, y, phi):
     return 0.016 * r2 / (1.0 + 0.25 * r2) * (1.0 - 0.9 * neck) + 0.0012 * math.sin(x * 80.0 + y * 50.0)
 
 
-def _palm_th(phi):
-    return PALM_TH * (1.0 + 0.5 * math.exp(-(_palm_neck(phi) / 0.5) ** 2))     # thicker where the beam runs in
+def _palm_th(phi, rho=0.0):
+    """Half-thickness: thicker where the beam runs in, and swelling into a low rib that runs out into each point."""
+    rib = sum(math.exp(-(math.atan2(math.sin(phi - math.radians(d)), math.cos(phi - math.radians(d))) / PALM_SIGMA)
+                       ** 2) for d, _l in PALM_POINTS)
+    return PALM_TH * (1.0 + 0.5 * math.exp(-(_palm_neck(phi) / 0.5) ** 2)
+                      + 0.34 * min(1.0, rib) * _mp_smooth(rho, 0.58, 0.93))
 
 
 def build_antler_palmate():
@@ -2094,7 +2116,7 @@ def build_antler_palmate():
             x, y = math.cos(phi) * rr, math.sin(phi) * rr
             tips.append(_mp_smooth((rr - base) / lobes, 0.35, 0.9) if lobes > 0.012 else 0.0)
             ring.append(len(verts))
-            verts.append(tuple(palm_at(x, y, _palm_th(phi) * nn + _palm_cup(x, y, phi))))
+            verts.append(tuple(palm_at(x, y, _palm_th(phi, rho) * nn + _palm_cup(x, y, phi))))
         rings.append(ring)
     back_c, front_c = len(verts), len(verts) + 1
     verts.append(tuple(palm_at(0.0, 0.0, -PALM_TH + _palm_cup(0.0, 0.0, 0.0))))
@@ -2112,7 +2134,7 @@ def build_antler_palmate():
     bc.append(verts, faces, tv, tf)
     ped_v, ped_f = _mp_pedicle(0.023)
 
-    bone = _mp_antler_material("M_AntlerPalmateProc", lo=0.42, pearl_top=0.09, height_from=0.06, height_to=0.24)
+    bone = _mp_antler_material("M_AntlerPalmateProc", lo=0.24, pearl_top=0.09, height_from=0.06, height_to=0.24)
     fur = _mp_fur_material("M_AntlerPalmatePedicleProc", lo=0.6)
     antler = bc.mesh_object("AntlerPalmate", verts, faces, [bone], vertex_colors=("Tip", [(w, w, w) for w in tips]))
     pedicle = bc.mesh_object("AntlerPalmatePedicle", ped_v, ped_f, [fur], parent=antler)
