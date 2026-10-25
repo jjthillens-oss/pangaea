@@ -12,11 +12,11 @@ shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
 
 uniform vec4 tint : source_color = vec4(1.0, 0.831, 0.525, 1.0);
-uniform float shaft_gain = 0.5;
-uniform float ring_gain = 0.5;
-uniform float shaft_fade = 0.1;
-uniform float shaft_edge = 2.0;
-uniform float near_top = 0.4;
+uniform float shaft_gain = 0.85;
+uniform float ring_gain = 0.35;
+uniform float shaft_fade = 0.4;
+uniform float shaft_edge = 1.5;
+uniform float near_top = 0.6;
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
 uniform float strength = 1.0;
 
@@ -24,8 +24,8 @@ varying float near_side;
 
 void vertex() {
 	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
-	// camera and whatever is in the light, so above the sand it fades by near_top (v) and the far
-	// wall carries the column.
+	// camera and whatever is in the light, so it fades out from the sand up to near_top (v) and the
+	// far wall carries the column.
 	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	vec2 out_dir = VERTEX.xz;
 	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
@@ -36,7 +36,7 @@ void fragment() {
 	float v = 1.0 - UV.y;
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
-	float near_cut = mix(1.0, 1.0 - smoothstep(near_top * 0.5, near_top, v), near_side);
+	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
 	float shaft = smoothstep(0.0, 0.05, v) * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
@@ -49,10 +49,10 @@ resource_name = "M_ShoreLight"
 render_priority = 0
 shader = SubResource("Shader_shore_light")
 shader_parameter/tint = Color(1.0, 0.831, 0.525, 1)
-shader_parameter/shaft_gain = 0.5
-shader_parameter/ring_gain = 0.5
-shader_parameter/shaft_fade = 0.1
-shader_parameter/shaft_edge = 2.0
-shader_parameter/near_top = 0.4
+shader_parameter/shaft_gain = 0.85
+shader_parameter/ring_gain = 0.35
+shader_parameter/shaft_fade = 0.4
+shader_parameter/shaft_edge = 1.5
+shader_parameter/near_top = 0.6
 shader_parameter/renderer_gain = Vector2(1, 1)
 shader_parameter/strength = 1.0

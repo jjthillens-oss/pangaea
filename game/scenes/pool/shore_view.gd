@@ -19,8 +19,10 @@ const PULSE_HZ := 0.5
 const PULSE_SHARE := 0.25
 ## M_ShoreLight's gains are the light's look in Forward+. Compatibility tonemaps each additive layer before it blends
 ## (docs/TOOLCHAIN.md), so the dim shaft and the bright ring drift apart there: the view scales them by this (x the
-## shaft, y the ring), as ZoneLights.strength_for() does for its patches. Measured with tools/godot/shore_shots.gd.
-const RENDERER_GAIN_COMPATIBILITY := Vector2(1.0, 1.0)
+## shaft, y the ring), as ZoneLights.strength_for() does for its patches. Measured at the pulse's top at the reach
+## edge and on the shore point (docs/art/shore_piece.md, Gate 4): the shaft matches within 4 L*, the ring reads about
+## 3 L* brighter in Compatibility.
+const RENDERER_GAIN_COMPATIBILITY := Vector2(1.0, 0.9)
 
 var _model: Node3D
 ## This view's own copy of M_ShoreLight: pulse() sets its strength, never the shared file's.

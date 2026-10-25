@@ -72,11 +72,11 @@ RING_WEIGHT = 1.0
 LIGHT_TINT = "#FFD486"     # warm sunlight through shallow water: LAB h 82.9, 31.5 degrees from the food green
 # M_ShoreLight's look in Forward+ (the shipped renderer). ShoreView scales the two gains for Compatibility, which
 # tonemaps each additive layer before it blends (docs/TOOLCHAIN.md), so dim and bright layers drift apart there.
-SHAFT_GAIN = 0.5           # the shaft's strength (times LightWeight red)
-RING_GAIN = 0.5            # the ring's strength (times LightWeight red)
-SHAFT_FADE = 0.1           # the shaft fades from this share of its height (from the sand) to its top
-SHAFT_EDGE = 2.0           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
-NEAR_TOP = 0.4             # the wall toward the camera is gone above this share of the shaft's height (it would
+SHAFT_GAIN = 0.85          # the shaft's strength (times LightWeight red)
+RING_GAIN = 0.35           # the ring's strength (times LightWeight red): it peaks under L* 80 at the pulse's top
+SHAFT_FADE = 0.4           # the shaft fades from this share of its height (from the sand) to its top
+SHAFT_EDGE = 1.5           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
+NEAR_TOP = 0.6             # the wall toward the camera is gone above this share of the shaft's height (it would
                            # light the cell standing in the shaft); the far wall carries the column
 # The pool's sun and ambient light the sand at about 1.9 times its albedo on screen (Gate 4, docs/art/shore_piece.md):
 # the baked albedo is scaled once so the shelf reads L* 36 to 48 behind the cell, under the coral cell.
@@ -707,8 +707,8 @@ varying float near_side;
 
 void vertex() {{
 	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
-	// camera and whatever is in the light, so above the sand it fades by near_top (v) and the far
-	// wall carries the column.
+	// camera and whatever is in the light, so it fades out from the sand up to near_top (v) and the
+	// far wall carries the column.
 	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	vec2 out_dir = VERTEX.xz;
 	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
@@ -719,7 +719,7 @@ void fragment() {{
 	float v = 1.0 - UV.y;
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
-	float near_cut = mix(1.0, 1.0 - smoothstep(near_top * 0.5, near_top, v), near_side);
+	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
 	float shaft = smoothstep(0.0, 0.05, v) * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;

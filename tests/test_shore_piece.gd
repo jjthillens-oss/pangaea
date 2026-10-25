@@ -139,6 +139,20 @@ func test_the_light_adds_unshaded_without_fog() -> void:
 	root.free()
 
 
+func test_the_light_takes_its_gains_per_renderer() -> void:
+	check_eq(ShoreView.renderer_gain_for("forward_plus"), Vector2.ONE, "Forward+ draws M_ShoreLight as authored")
+	check_eq(ShoreView.renderer_gain_for(PoolLook.COMPATIBILITY_METHOD), ShoreView.RENDERER_GAIN_COMPATIBILITY,
+		"Compatibility scales the shaft and the ring by their own factors")
+	var view := ShoreView.new()
+	var shaft := view.find_child("Shaft", true, false) as GeometryInstance3D
+	var want := ShoreView.renderer_gain_for(RenderingServer.get_current_rendering_method())
+	check_eq((shaft.material_override as ShaderMaterial).get_shader_parameter(&"renderer_gain"), want,
+		"the view's light takes the running renderer's gains")
+	check_eq((load(ShoreView.LIGHT_MATERIAL) as ShaderMaterial).get_shader_parameter(&"renderer_gain"), Vector2.ONE,
+		"M_ShoreLight.tres keeps the Forward+ look")
+	view.free()
+
+
 func test_the_view_keeps_its_api() -> void:
 	var authored := float((load(ShoreView.LIGHT_MATERIAL) as ShaderMaterial).get_shader_parameter(&"strength"))
 	var view := ShoreView.new()
