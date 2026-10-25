@@ -2,7 +2,8 @@
 
 ; The creature stage field's material (assets/records/creature_field_ground.json): assets/export/shaders/creature_field.gdshader
 ; blends the seamless turf and earth tiles in world space (one tile per 2.5 m, at two scales against repetition) by a 37 m patch mask, with a bare
-; clearing round the nest. creature_field_ground.glb.import points the imported M_CreatureField here. Written by
+; clearing round the nest. dry_color (sRGB) and lush_tint (a linear multiplier) are the meadow's two macro variations; both keep the turf's hue
+; at 139 or more (tests/test_creature_world_art.gd). creature_field_ground.glb.import points the imported M_CreatureField here. Written by
 ; tools/blender/make_creature_world.py --import.
 
 [ext_resource type="Shader" path="res://assets/export/shaders/creature_field.gdshader" id="1_shader"]
@@ -25,3 +26,5 @@ shader_parameter/patch_m = 37.0
 shader_parameter/clearing_r = 7.5
 shader_parameter/patch_low = 0.56
 shader_parameter/patch_high = 0.7
+shader_parameter/dry_color = Color(0.467, 0.561, 0.465, 1)
+shader_parameter/lush_tint = Vector3(0.78, 0.92, 0.92)

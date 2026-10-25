@@ -3,29 +3,29 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them; blue-green turf and bare earth tiles blended in world space by M_CreatureField.tres.",
+  "purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of low hills out to 200 m; meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
   "category": "environment",
   "source_blend": "assets/source/blender/creature_field_ground.blend",
   "generator_script": "tools/blender/make_creature_world.py",
   "export_path": "assets/export/creature_field_ground.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 172.0,
-    "y_forward": 172.0,
-    "z_up": 2.48
+    "x": 400.0,
+    "y_forward": 400.0,
+    "z_up": 12.379
   },
-  "triangles": 12800,
+  "triangles": 15488,
   "triangle_budget": 16000,
   "textures": [
     {
       "name": "T_CreatureField_Turf_Albedo",
       "path": "assets/export/creature_field/T_CreatureField_Turf_Albedo.png",
       "size": [
-        512,
-        512
+        1024,
+        1024
       ],
       "colorspace": "sRGB"
     },
@@ -33,8 +33,8 @@
       "name": "T_CreatureField_Turf_Normal",
       "path": "assets/export/creature_field/T_CreatureField_Turf_Normal.png",
       "size": [
-        512,
-        512
+        1024,
+        1024
       ],
       "colorspace": "Non-Color"
     },
@@ -73,7 +73,8 @@
   "animations": [],
   "sockets": [],
   "nodes": [
-    "CreatureField"
+    "CreatureField",
+    "CreatureFieldHills"
   ],
   "kind": "ground",
   "pivot": "the field's centre on the ground (Godot y = 0); the nest sits at the origin",
@@ -83,6 +84,17 @@
     "relief_max_m": 0.12,
     "berm_m": 2.5,
     "clearing_r_m": 7.5
+  },
+  "hills": {
+    "node": "CreatureFieldHills",
+    "inner_m": 84.0,
+    "outer_m": 200.0,
+    "height_m": [
+      3.0,
+      12.0
+    ],
+    "top_m": 12.3,
+    "cast_shadow": false
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_world.py; no external or generated meshes. Textures baked in Blender from procedural shaders; the field tiles are periodic sine sums and wrapped Voronoi in numpy, so they repeat without seams."
 }

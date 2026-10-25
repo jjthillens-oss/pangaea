@@ -8,9 +8,10 @@ a berm past them); the nest ring sits at the origin, outer radius about 6 m, wit
 bush is about 0.5 m across and the meat chunk 0.3 m; fruit and meat draw as MultiMesh instances with a colour
 per instance, so their materials take an instance tint (vertex_color_use_as_albedo in the external .tres).
 
-- creature_field_ground: a 172 x 172 m grid with gentle relief and a berm. Drawn with the external
-  M_CreatureField.tres (assets/export/shaders/creature_field.gdshader): two seamless 2 m tiles (sage turf
-  and bare earth) blended by a 37 m patch mask and a bare clearing round the nest.
+- creature_field_ground: a 172 x 172 m grid with gentle relief and a berm, ringed by coarse low hills out to 200 m
+  (CreatureFieldHills) so the horizon is land. Drawn with the external M_CreatureField.tres
+  (assets/export/shaders/creature_field.gdshader): two seamless 2.5 m tiles (a 1024 px meadow turf of grass blades
+  and a 512 px bare earth) blended by a 37 m patch mask and a bare clearing round the nest.
 - creature_nest_ring: a mound of packed earth and straw with twigs across it, revolved round the origin.
 - creature_fruit_bush: two root meshes, Bush (a hidden clump core under crossed leaf cards that cut out a leafy
   silhouette; two surfaces of one mesh) and Fruit (nine amber fruit on it), so the stage can draw the fruit only
@@ -21,7 +22,7 @@ per instance, so their materials take an instance tint (vertex_color_use_as_albe
   at y = -0.01 and scales it (s, 1, s) to the body, so the rings are geometry that scales with the pad.
 
 Colours keep 25 degrees of LAB hue from the food green (114) and the threat pink (11), as every asset does; the turf
-is blue-green rather than grass green for that reason, and it keeps the deep-blue world's family.
+is a blue-leaning meadow green (hue 141 to 154) rather than a yellow grass green for that reason.
 
 Run: python tools/blender/make_creature_world.py [--only <id>[,<id>...]]   (bpy 5.2.2 venv)
 Then godot --headless --import, python tools/blender/make_creature_world.py --import, and --import again.
@@ -57,7 +58,13 @@ RELIEF_M = 0.12
 BERM_M = 2.5
 TILE_DIR = os.path.join(bc.ROOT, "assets", "export", "creature_field")
 TILE_M = 2.5
+TURF_PX = 1024           # the turf tile: 2.4 mm a pixel, so single blades hold up at the close-up camera
 PATCH_M = 37.0
+TURF_DRY = (0.467, 0.561, 0.465)   # #778F77, CIELAB L 57, C 17, h 143: the dry meadow's grey sage (sRGB)
+TURF_LUSH = (0.78, 0.92, 0.92)     # the lush meadow's linear multiplier: deeper, toward h 150
+HILLS_HALF = 200.0       # the outer hills reach this far, so the horizon is land, not the sky's ground colour
+HILLS_IN = 84.0          # their inner edge starts under the berm (field edge at 86 m), so no seam shows from inside
+HILLS_H = (3.0, 12.0)    # the hills' height range past the berm
 NEST_R = 6.0
 FRUIT_COUNT = 9
 NEST_TOL = 0.012         # the nest's decimation tolerance: 1.2 cm on a 13 m ring
@@ -100,8 +107,8 @@ def _lin(hex_color):
 # --- Field tiles (numpy, seamless) --------------------------------------------------------------------------
 
 def _save_tile(name, rgb, colorspace):
-    """rgb: (SIZE, SIZE, 3) in display order, row 0 at the top; Blender stores rows bottom-up."""
-    size = mm.SIZE
+    """rgb: (n, n, 3) in display order, row 0 at the top; Blender stores rows bottom-up."""
+    size = rgb.shape[0]
     px = np.ones((size, size, 4), dtype=np.float32)
     px[..., :3] = np.clip(rgb[::-1], 0.0, 1.0)
     img = bpy.data.images.new(name, size, size, alpha=False)
@@ -124,25 +131,97 @@ def _lerp_rgb(a, b, t):
     return a[None, None, :] + (b - a)[None, None, :] * t[..., None]
 
 
+def _pnoise(rng, n, freqs, amps):
+    """mm._periodic_noise at any size: a sum of random-phase sines with whole-number frequencies, seamless."""
+    v, u = np.mgrid[0:n, 0:n].astype(np.float64) / n
+    h = np.zeros((n, n))
+    for f, a in zip(freqs, amps):
+        for _ in range(6):
+            kx, ky = rng.integers(-f, f + 1, 2)
+            if kx == 0 and ky == 0:
+                continue
+            h += a * np.sin(2.0 * np.pi * (kx * u + ky * v) + rng.uniform(0.0, 2.0 * np.pi))
+    return h
+
+
+def _wrap_blur(a, r):
+    """A wrapped box blur of radius r, run twice (seamless)."""
+    for _ in range(2):
+        for axis in (0, 1):
+            a = sum(np.roll(a, d, axis=axis) for d in range(-r, r + 1)) / (2 * r + 1)
+    return a
+
+
+def _normal_tile(h, strength):
+    """mm._normal_map at any size: tangent-space normal (OpenGL, +Y up) from a height field, wrapped differences."""
+    k = 0.5 * strength * h.shape[0] / 64.0
+    dx = (np.roll(h, -1, axis=1) - np.roll(h, 1, axis=1)) * k
+    dy = (np.roll(h, -1, axis=0) - np.roll(h, 1, axis=0)) * k
+    n = np.stack([-dx, -dy, np.ones_like(h)], axis=-1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    return n * 0.5 + 0.5
+
+
+def _lch_srgb(L, C, h):
+    """CIE LCh (D65) to display sRGB in [0, 1], so the turf is authored in the hue band it has to keep."""
+    a, b = C * np.cos(np.radians(h)), C * np.sin(np.radians(h))
+    fy = (L + 16.0) / 116.0
+    d = 6.0 / 29.0
+    finv = lambda f: np.where(f > d, f ** 3, 3.0 * d * d * (f - 4.0 / 29.0))   # noqa: E731
+    xyz = np.stack([finv(fy + a / 500.0) * 0.95047, finv(fy), finv(fy - b / 200.0) * 1.08883], -1)
+    m = np.array([[3.2404542, -1.5371385, -0.4985314], [-0.9692660, 1.8760108, 0.0415560], [0.0556434, -0.2040259, 1.0572252]])
+    lin = np.clip(xyz @ m.T, 0.0, 1.0)
+    return np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * lin ** (1.0 / 2.4) - 0.055)
+
+
 def turf_tile(rng):
-    """Sage turf: soft tuft crowns of mixed sizes (wrapped Voronoi domes, each its own shade) over a mottled
-    ground, with fine blade streaks that gather on the crowns. Lighter on the crowns, darker between. The colour
-    is a dull, darkish sage (CIELAB hue 145 to 146, chroma 18 to 20, L 36 to 54): the stage's blue sky ambient
-    and fog push whatever is authored about 15 degrees toward cyan and lighten it, so the tile is authored greyer
-    and darker than the meadow it should read as. The dry variation comes from the field shader."""
-    cells = 110
-    d1, _, idx = mm._voronoi(rng, cells)
-    shade = rng.uniform(0.0, 1.0, cells)[idx]                  # per-tuft, seamless because the cells wrap
-    radius = (0.028 + 0.022 * rng.uniform(0.0, 1.0, cells))[idx]   # inside its cell, so no cell edge shows
-    crown = np.clip(1.0 - (d1 / radius) ** 2, 0.0, 1.0)
-    crown = crown * crown * (3.0 - 2.0 * crown)
-    ground = mm._norm(mm._periodic_noise(rng, [3, 6, 12], [1.0, 0.6, 0.35]))
-    blades = mm._norm(mm._periodic_noise(rng, [36, 64, 90, 128], [0.5, 0.35, 0.25, 0.2]))
-    h = 0.5 * crown + 0.3 * ground + 0.2 * blades * (0.5 + 0.5 * crown)
-    light = np.clip(0.38 * crown * (0.7 + 0.3 * shade) + 0.3 * ground + 0.32 * blades, 0.0, 1.0)
-    rgb = _lerp_rgb(_srgb("#425B44"), _srgb("#6A896D"), light)
-    rgb = rgb * (1.0 + 0.16 * (shade - 0.5) * crown)[..., None]
-    return h, rgb, 1.1
+    """Meadow turf seen from above (rev 2): a carpet of short grass blades, strokes 1.2 to 4 cm long and about 5 mm
+    wide laid with a z-order so each pixel shows its top blade, which crowd into irregular clumps with dark thatch
+    in the gaps between them. No round crowns: rev 1's lighter Voronoi domes read as puddles from the game camera.
+    Authored in CIE LCh: blades at hue 141 to 154 and chroma 27 to 36 (the tile's mean is about L 45, C 26, h 147),
+    so the turf keeps 25 degrees of hue from the food green (114) and still has the chroma to read as grass under
+    the sky's blue ambient. The base of each blade is darker than its tip. TURF_PX square."""
+    n = TURF_PX
+    clump = mm._norm(_pnoise(rng, n, [3, 5, 8, 13], [1.0, 0.7, 0.45, 0.25]))     # where the blades crowd
+    tone = mm._norm(_pnoise(rng, n, [3, 5, 9], [1.0, 0.6, 0.35]))                # mid-scale light and dark
+    count = int(n * n * 0.085)
+    cx, cy = rng.uniform(0, n, count), rng.uniform(0, n, count)
+    keep = rng.uniform(0, 1, count) < 0.35 + 0.65 * clump[cy.astype(int) % n, cx.astype(int) % n]
+    cx, cy = cx[keep], cy[keep]
+    m = cx.size
+    c = clump[cy.astype(int) % n, cx.astype(int) % n]
+    ang = rng.uniform(0.0, 2.0 * np.pi, m)
+    length = rng.uniform(5.0, 13.0, m) * (0.7 + 0.6 * c)          # pixels; longer blades in the clumps
+    bend = rng.normal(0.0, 0.18, m) * length
+    lay = rng.uniform(0.0, 1.0, m) * (0.6 + 0.4 * c)              # how high the blade lies: the clumps stand taller
+    shade = rng.uniform(0.0, 1.0, m)
+    hue = rng.uniform(0.0, 1.0, m)
+    t = np.linspace(0.0, 1.0, 12)[None, :]
+    dx, dy = np.cos(ang)[:, None], np.sin(ang)[:, None]
+    xs = (cx[:, None] + dx * length[:, None] * t - dy * bend[:, None] * t * t).ravel()
+    ys = (cy[:, None] + dy * length[:, None] * t + dx * bend[:, None] * t * t).ravel()
+    val = (lay[:, None] * (0.55 + 0.45 * t)).ravel()             # the tip lies over the base
+    bri = (shade[:, None] * 0.6 + 0.4 * t).ravel()               # and catches more light
+    sid = np.repeat(np.arange(m), t.size)
+    top = np.full(n * n, -1.0)
+    lit = np.zeros(n * n)
+    who = np.zeros(n * n, dtype=np.int64)
+    offsets = ((0, 0), (1, 0), (0, 1))                            # about 2 px (5 mm) wide
+    for ox, oy in offsets:
+        np.maximum.at(top, ((ys.astype(int) + oy) % n) * n + (xs.astype(int) + ox) % n, val)
+    for ox, oy in offsets:
+        idx = ((ys.astype(int) + oy) % n) * n + (xs.astype(int) + ox) % n
+        win = val >= top[idx]
+        lit[idx[win]] = bri[win]
+        who[idx[win]] = sid[win]
+    top, lit, who = top.reshape(n, n), lit.reshape(n, n), who.reshape(n, n)
+    blade = top >= 0.0
+    L = np.where(blade, 36.0 + 28.0 * lit + 6.0 * (tone - 0.5) + 6.0 * (top.clip(0.0) - 0.5), 25.0 + 6.0 * tone)
+    C = np.where(blade, 27.0 + 9.0 * lit + 4.0 * (tone - 0.5), 11.0)
+    H = np.where(blade, 141.0 + 13.0 * hue[who], 142.0)
+    h = np.where(blade, 0.35 + 0.65 * top.clip(0.0), 0.0)
+    h = 0.6 * _wrap_blur(h, 1) + 0.4 * clump
+    return h, _lch_srgb(L, C, H), 0.9
 
 
 def earth_tile(rng):
@@ -176,7 +255,7 @@ def build_field_tiles():
         h, rgb, strength = fn(np.random.default_rng(seed))
         h = mm._norm(h)
         out.append(_save_tile(f"{name}_Albedo", rgb, "sRGB"))
-        out.append(_save_tile(f"{name}_Normal", mm._normal_map(h, strength), "Non-Color"))
+        out.append(_save_tile(f"{name}_Normal", _normal_tile(h, strength), "Non-Color"))
     out.append(_save_tile("T_CreatureField_Patch", patch_tile(np.random.default_rng(5102)), "Non-Color"))
     return out
 
@@ -194,10 +273,45 @@ def _relief(x, y):
     return z
 
 
+def _hills_z(x, y):
+    """The outer hills: from under the berm at HILLS_IN they rise over 40 m to rolling crests of HILLS_H, with a
+    taller far ridge, so a creature at the wall sees a slope and the field's horizon is a line of land."""
+    d = max(abs(x), abs(y))
+    join = 1.4 + 1.3 * bc.smoothstep((d - HILLS_IN) / 3.0)          # meets the berm's crest at the field's edge
+    rise = bc.smoothstep((d - HILLS_IN - 2.0) / 40.0)
+    roll = 0.5 + 0.5 * noise.noise(Vector((x / 47.0 + 1.7, y / 47.0 - 4.2, 3.3)))
+    ridge = bc.smoothstep((d - 130.0) / 50.0) * (0.5 + 0.5 * noise.noise(Vector((x / 83.0, y / 83.0, 7.7))))
+    lo, hi = HILLS_H
+    return join + rise * (lo + (hi - lo) * (0.65 * roll + 0.35 * ridge))
+
+
+def build_field_hills(mat):
+    """A square ring of low hills from HILLS_IN to HILLS_HALF round the field, coarse (spacing 4 to 15 m outward,
+    10.5 m along the ring), drawn with the field's own material. Outside the walls, so nothing walks on it."""
+    outer = [HILLS_IN + (HILLS_HALF - HILLS_IN) * (k / 12.0) ** 1.35 for k in range(1, 13)]
+    inner = [-HILLS_IN + 2 * HILLS_IN * k / 16.0 for k in range(17)]
+    coords = [-c for c in reversed(outer)] + inner + outer
+    n = len(coords)
+    verts = [(x, y, _hills_z(x, y)) for y in coords for x in coords]
+    faces = []
+    for j in range(n - 1):
+        for i in range(n - 1):
+            x0, x1, y0, y1 = coords[i], coords[i + 1], coords[j], coords[j + 1]
+            if max(abs(x0), abs(x1)) <= HILLS_IN + 1e-6 and max(abs(y0), abs(y1)) <= HILLS_IN + 1e-6:
+                continue                                              # the field itself
+            a = j * n + i
+            faces.append((a, a + 1, a + n + 1, a + n))
+    bc.mesh_object("CreatureFieldHills", verts, faces, [mat], fix_normals=False, uv=lambda co: (co.x / TILE_M, co.y / TILE_M))
+    edge = [z for (x, y, z) in verts if abs(max(abs(x), abs(y)) - HILLS_IN) < 1e-6]
+    mp._check(max(edge) < BERM_M * 0.85 * 0.98, "hills: the inner edge stays under the berm's crest")
+    return max(z for (_, _, z) in verts)
+
+
 def build_field_ground():
     """A square of ground 172 m across: gentle relief inside the walls at +-80 m and a berm past them, so the
-    edge reads as a bank rather than a cliff. UV = metres / TILE_M, one turf tile per 2.5 m. Drawn with the external
-    M_CreatureField.tres (mapped in its .glb.import), which blends the turf and earth tiles in world space."""
+    edge reads as a bank rather than a cliff, ringed by low hills out to 200 m (CreatureFieldHills) so the horizon
+    is land. UV = metres / TILE_M, one turf tile per 2.5 m. Drawn with the external M_CreatureField.tres (mapped in
+    its .glb.import), which blends the turf and earth tiles in world space."""
     n = int(round(2 * FIELD_HALF / FIELD_STEP)) + 1
     verts, faces = [], []
     for j in range(n):
@@ -209,16 +323,19 @@ def build_field_ground():
         for i in range(n - 1):
             a = j * n + i
             faces.append((a, a + 1, a + n + 1, a + n))
-    mat = bc.material("M_CreatureField", _lin("#3F7E68"), 0.92)
+    mat = bc.material("M_CreatureField", _lin("#4F7A55"), 0.95)
     bc.mesh_object("CreatureField", verts, faces, [mat], fix_normals=False, uv=lambda co: (co.x / TILE_M, co.y / TILE_M))
     inside = [z for (x, y, z) in verts if max(abs(x), abs(y)) <= WALL_M - 1.0]
     mp._check(max(abs(z) for z in inside) <= RELIEF_M + 1e-6, "field: relief inside the walls stays under %.2f m" % RELIEF_M)
     mp._check(max(z for (x, y, z) in verts) >= BERM_M * 0.8, "field: the berm rises past the walls")
-    return {"purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them; blue-green turf and bare earth tiles blended in world space by M_CreatureField.tres.",
+    hills_top = build_field_hills(mat)
+    return {"purpose": "Creature stage field (PROPOSED): the walkable ground, flat to within 0.12 m inside the walls at +-80 m, with a berm past them and a ring of low hills out to 200 m; meadow turf and bare earth tiles blended in world space by M_CreatureField.tres.",
             "category": "environment", "kind": "ground", "pivot": "the field's centre on the ground (Godot y = 0); the nest sits at the origin",
             "engine_material": "res://assets/export/M_CreatureField.tres",
             "walkable": {"wall_m": WALL_M, "relief_max_m": RELIEF_M, "berm_m": BERM_M, "clearing_r_m": NEST_R + 1.5},
-            "textures": build_field_tiles(), "revision": 1}
+            "hills": {"node": "CreatureFieldHills", "inner_m": HILLS_IN, "outer_m": HILLS_HALF, "height_m": list(HILLS_H),
+                      "top_m": round(hills_top, 2), "cast_shadow": False},
+            "textures": build_field_tiles(), "revision": 2}
 
 
 def _bake_mixed(objs_tol, texture, tints, size=512, accepts=None, normal=False):
@@ -720,7 +837,8 @@ FIELD_TRES = """[gd_resource type="ShaderMaterial" load_steps=7 format=3]
 
 ; The creature stage field's material (assets/records/creature_field_ground.json): assets/export/shaders/creature_field.gdshader
 ; blends the seamless turf and earth tiles in world space (one tile per 2.5 m, at two scales against repetition) by a 37 m patch mask, with a bare
-; clearing round the nest. creature_field_ground.glb.import points the imported M_CreatureField here. Written by
+; clearing round the nest. dry_color (sRGB) and lush_tint (a linear multiplier) are the meadow's two macro variations; both keep the turf's hue
+; at 139 or more (tests/test_creature_world_art.gd). creature_field_ground.glb.import points the imported M_CreatureField here. Written by
 ; tools/blender/make_creature_world.py --import.
 
 [ext_resource type="Shader" path="res://assets/export/shaders/creature_field.gdshader" id="1_shader"]
@@ -743,6 +861,8 @@ shader_parameter/patch_m = {patch}
 shader_parameter/clearing_r = {clearing}
 shader_parameter/patch_low = 0.56
 shader_parameter/patch_high = 0.7
+shader_parameter/dry_color = Color({dry[0]}, {dry[1]}, {dry[2]}, 1)
+shader_parameter/lush_tint = Vector3({lush[0]}, {lush[1]}, {lush[2]})
 """
 
 TINT_TRES = """[gd_resource type="StandardMaterial3D" load_steps=4 format=3]
@@ -806,7 +926,10 @@ EXTERNAL = {
 # to 0 and visibility_range_end to 55; the mesh key is the GLB's file name, "_", then the glTF mesh name
 # ("<id>_MeatChunk_mesh"), and "generate/lods" is an enum (0 project default, 1 enable, 2 disable): 2 took the
 # mesh from 3 LOD levels to none, while a bare "MeatChunk_mesh" key or the value false did nothing.
-IMPORT_OPTIONS = {}
+IMPORT_OPTIONS = {
+    # The outer hills stand beyond the sun's 80 m shadow distance almost everywhere: they need not cast.
+    "creature_field_ground": {"nodes": {"PATH:CreatureFieldHills": {"mesh_instance/cast_shadow": 0}}},
+}
 # Godot writes these back into every mesh entry it matches; writing them too keeps a rerun byte for byte the same.
 MESH_IMPORT_DEFAULTS = {"generate/lightmap_uv": 0, "generate/shadow_meshes": 0, "lods/normal_merge_angle": 20.0,
                         "save_to_file/enabled": False, "save_to_file/fallback_path": "", "save_to_file/path": ""}
@@ -912,7 +1035,7 @@ def map_materials():
     maps. Run after `godot --headless --import` has written the .import files (then import once more)."""
     export = os.path.join(bc.ROOT, "assets", "export")
     with open(os.path.join(export, "M_CreatureField.tres"), "w") as f:
-        f.write(FIELD_TRES.format(tile=TILE_M, patch=PATCH_M, clearing=NEST_R + 1.5))
+        f.write(FIELD_TRES.format(tile=TILE_M, patch=PATCH_M, clearing=NEST_R + 1.5, dry=TURF_DRY, lush=TURF_LUSH))
     for mat, (what, asset_id, tex, hex_color) in TINTED.items():
         r, g, b = (round(int(hex_color.lstrip("#")[i:i + 2], 16) / 255.0, 3) for i in (0, 2, 4))
         with open(os.path.join(export, f"{mat}.tres"), "w") as f:

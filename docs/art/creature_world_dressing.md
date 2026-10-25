@@ -6,7 +6,7 @@ The owner judges the look at merge; nothing here changes the stage's rules.
 
 | Asset | Replaces | Triangles (budget) | Materials | Notes |
 | --- | --- | --- | --- | --- |
-| `creature_field_ground` | the field plane | 12 800 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | 172 x 172 m grid, relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them; the centre is flat for 7.5 m round the nest |
+| `creature_field_ground` | the field plane | 15 488 (16 000) | `M_CreatureField` (external, `assets/export/M_CreatureField.tres`) | rev 2: the 172 x 172 m walkable grid (`CreatureField`, 12 800 triangles), relief under 0.12 m inside the walls at ±80 m, a 2.5 m berm past them, the centre flat for 7.5 m round the nest; plus `CreatureFieldHills` (2 688 triangles), a coarse square ring of low hills from 84 m (under the berm) out to 200 m, 3 to 12 m high, which casts no shadow (an import option) |
 | `creature_nest_ring` | the nest torus | 3 000 (4 000) | `M_NestEarth`, `M_NestTwig`, `M_NestStone` (baked) | mound of earth and straw round the sim's 6 m nest: inner 5.35 m, crown 5.85 m, outer 6.45 m, 0.44 m high (0.52 m with its heaps); the inside is clear and flat to 5.3 m |
 | `creature_fruit_bush` | the fruit sphere | 1 100 (1 200) | `M_BushLeaf`, `M_BushCards`, `M_BushFruit` (external, instance tint) | two root meshes: `Bush` (an 80-triangle core and 480 triangles of leaf cards, two surfaces of one mesh) and `Fruit` (nine fruit, 540); ripe draws both, bare draws `Bush` only; 1.06 x 1.06 x 0.79 m, every vertex within 0.56 m of the pivot horizontally (the top card tips are 0.81 m from it) |
 | `creature_meat_chunk` | the meat box | 604 (1 200) | `M_MeatFlesh` (external, instance tint), `M_MeatBone` (baked) | a torn haunch with a bone end, 0.58 m long, lying on the ground |
@@ -22,25 +22,33 @@ centre of its top face), Blender +Y forward (Godot -Z), no node names read by ga
 `assets/export/shaders/creature_field.gdshader`, carried by `M_CreatureField.tres` and mapped onto the imported
 `M_CreatureField` in `creature_field_ground.glb.import`. It samples two seamless 2.5 m tiles in world space (so the
 mesh can be scaled or re-gridded freely), each at two scales (`detail_scale` 0.37, offset) and averaged, so no
-repeat shows at 1 to 2 m or across the field: sage turf (`T_CreatureField_Turf_*`, tuft crowns over mottled ground
-with blade streaks) and bare earth (`T_CreatureField_Earth_*`, sparse pebbles half sunk in dust), blended by a
-37 m patch mask (`T_CreatureField_Patch`, earth where the mask passes `patch_low` to `patch_high`, so about a
-fifth of the field) and a bare clearing round the nest (`clearing_r`, 7.5 m). A second, offset read of the patch
-mask dries the turf (`turf_dry_tint`, a lighter yellower multiplier, `dry_amount`) in broad swathes, so the
-meadow varies at the scale a camera 10 to 60 m up sees. The tiles are numpy sums of periodic sines and wrapped
-Voronoi (`make_membranes.py`'s helpers), 512 px, in `assets/export/creature_field/`.
+repeat shows at 1 to 2 m or across the field: meadow turf (`T_CreatureField_Turf_*`, 1024 px) and bare earth
+(`T_CreatureField_Earth_*`, 512 px, sparse pebbles half sunk in dust), blended by a 37 m patch mask
+(`T_CreatureField_Patch`, earth where the mask passes `patch_low` to `patch_high`, so about a fifth of the field) and
+a bare clearing round the nest (`clearing_r`, 7.5 m). The hills use the same material.
 
-Colour: the turf is authored at LAB hue 145 to 146, chroma 18 to 20, L 36 to 54 (`#425B44` to `#6A896D`), and the
-dry multiplier keeps it at 139 or more, the 25 degrees of LAB hue from the food green (114) every asset keeps
-(`docs/art/production_m1.md`). The stage's blue sky ambient and sky-coloured fog push whatever is authored about
-25 to 30 degrees toward cyan on screen (the first, minty palette rendered at hue 170; this one at 172 to 179 but
-with the chroma halved, 11 to 13, and L 60), so the field reads as muted land rather than sea; a grass green on
-screen would need either a warmer ambient and fog in `creature_world.tscn` (the Creature stage thread's) or
-relaxing the food-hue gap for creature-stage ground, which is the owner's call.
+Rev 2 (field rev 2a, PROPOSED):
+- The turf tile is a carpet of grass blades: strokes 1.2 to 4 cm long and about 5 mm wide, laid with a z-order so each
+  pixel shows its top blade, crowding into irregular clumps with dark thatch in the gaps. Rev 1's lighter, round
+  Voronoi tuft crowns read as puddles or caustics from the game camera, so the tile has no round shapes any more.
+- Three world-space variations, all reads of the patch mask: `dry_color` (#778F77, CIELAB L 57, C 17, h 143) mixed in
+  up to `dry_amount` 0.4 in broad swathes; `lush_tint` (a linear multiplier, 0.78 / 0.92 / 0.92) that deepens other
+  swathes toward h 150; and a 6 m `clump_m` light and dark (`clump_strength` 0.14) at the scale the gameplay camera
+  sees. `dry_color` and `lush_tint` are written into `assets/export/M_CreatureField.tres`, so the contract test reads them.
+- `ambient_occlusion` 0.7 with `AO_LIGHT_AFFECT` 0: the sky's blue ambient falls on the ground at 70%, the sun at 100%.
+
+Colour: the blades are authored in CIE LCh at hue 141 to 154, chroma 27 to 36; the tile's mean is L 46, C 28, h 147
+(rev 1: hue 145 to 146 at chroma 18 to 20). The dry and lush variations keep the turf at hue 143 to 150 at every
+mix, so the field keeps the 25 degrees of LAB hue from the food green (114) every asset keeps
+(`docs/art/production_m1.md`); a straw or yellow dry tint would cross that band on its way, which is why the dry
+meadow is a grey sage. `tests/test_creature_world_art.gd` checks these means. The owner may relax the gap for
+creature-stage ground (open question 2), since its food is amber fruit and red meat rather than green; true grass
+greens (h 120 to 138) would then be available.
 
 Uniforms worth touching: `tile_m`, `detail_scale`, `patch_m`, `patch_low`/`patch_high` (how much of the field is
-earth), `clearing_r`/`clearing_soft`, `turf_tint`/`earth_tint`, `turf_dry_tint`/`dry_amount`, `macro_strength`,
-`edge_break` (how ragged the blend edge is), the roughness and specular pairs (the turf has no sheen).
+earth), `clearing_r`/`clearing_soft`, `turf_tint`/`earth_tint`, `dry_color`/`dry_amount`, `lush_tint`/`lush_amount`,
+`clump_m`/`clump_strength`, `macro_strength`, `ambient_occlusion`, `edge_break` (how ragged the blend edge is), the
+roughness and specular pairs (the turf has no sheen).
 
 ## Instance tints
 
@@ -130,6 +138,26 @@ horizon and 60% of the frame's height, leaving out the middle fifth of the colum
   107k primitives, about 640 ms a frame (470 ms without the sun's shadow); `setup_ms.total` 1,968 ms (test budget
   3,000 ms). Forward+ on lavapipe: setup 4,112 ms, about 30 s a frame. These are software-renderer numbers for
   before/after comparison only, not a performance claim for real GPUs.
+
+## Field rev 2a frames (art only, 2026-10-25)
+
+The new turf, shader variations, AO and hills, with `game/scenes/creature/creature_world.tscn` untouched, in
+`docs/evidence/credit-creature-world-art/art_*.jpg`. Same poses and measure as the baseline.
+
+| Frame | Renderer | Band L / C / h | Ground just under the horizon L / C / h | Horizon dE |
+| --- | --- | --- | --- | --- |
+| close_ground | Forward+ (lavapipe) | 48.4 / 24.8 / 147 (was 46.8 / 18.5 / 146) | 52.9 / 14.7 / 140 (was 51.8 / 11.8 / 129) | 32.5 |
+| world_roam | Compatibility, shadowed sun | 58.2 / 24.8 / 165 (was 59.0 / 20.8 / 170) | 81.7 / 13.1 / 176 | 19.5 |
+
+- Forward+ (the shipping renderer): the turf reads as a grass meadow up close and at the gameplay camera, with blades,
+  clumps and drier and lusher swathes; no puddle-like blotches.
+- Compatibility with the shadowed sun is still teal (h 165): its additive sRGB sun pass lifts the blue ambient and
+  fog, and the art cannot hold that back alone. (This Compatibility frame was taken with a first, paler dry tint,
+  #8FA08C at 0.42; the shipped #778F77 at 0.4 is darker and greyer.)
+- The hills stand beyond the 78 m fog end, so in both renderers they are fully fogged into the sky's horizon colour
+  and the horizon still has no land line. The environment retune below is the fix the art cannot make.
+- Cost: unchanged within noise (Compatibility spawn 240 draw calls, 109.7k primitives; `setup_ms.total` 2,206 ms on
+  the shared container, test budget 3,000 ms).
 
 ## Next
 
