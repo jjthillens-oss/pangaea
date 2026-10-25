@@ -502,6 +502,34 @@
 			],
 			"handles_note": "Both handles are on Eyes; the pad stays put."
 		},
+		"eye_lashed": {
+			"type": "eye_lashed",
+			"footprint_radius_m": 0.057,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the heavy upper lid and its lashes swing down over the ball to meet the lower lid, which rises a little",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Bulge",
+					"meaning": "the ball pushed 20% further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Blink is on EyeLashedLid and EyeLashedLashes with the same name (the upper lid and its lashes swing down together on a hinge through the eye's corners); H2_Bulge is on the ball, EyeLashed. Both are 0 to 1000 per mille."
+		},
 		"eye_round": {
 			"type": "eye_round",
 			"footprint_radius_m": 0.081,
@@ -585,6 +613,34 @@
 				}
 			],
 			"handles_note": "Both keys are on EyeStalk and Eye with the same names; the runtime sets them together. Above the socket the ball moves rigidly."
+		},
+		"eye_turret": {
+			"type": "eye_turret",
+			"footprint_radius_m": 0.043,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 60,
+			"tilt_limit_deg": 45,
+			"centerline": "allowed",
+			"hosts": [
+				"spine",
+				"part"
+			],
+			"role": "eye",
+			"handles": [
+				{
+					"key": "H1_Blink",
+					"meaning": "the aperture drawn shut over the pupil",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Reach",
+					"meaning": "the turret about 2.2 cm taller, reaching further out",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Blink is on EyeTurretCone; H2_Reach is on EyeTurretCone and the ball EyeTurret with the same name: the cone stretches and the ball rides up inside it by the same 2.2 cm."
 		},
 		"fin": {
 			"type": "fin",
@@ -1314,6 +1370,60 @@
 				}
 			],
 			"handles_note": "H1 is on Maw and Teeth (the teeth ride the rim out); H2 is on Teeth only."
+		},
+		"mouth_fangs": {
+			"type": "mouth_fangs",
+			"footprint_radius_m": 0.067,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower jaw drops about 34 degrees and the fangs swing forward to strike",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Tongue",
+					"meaning": "the forked tongue flicked 4 cm further out, its tines spread and lifted",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "H1_Open is on all four meshes (MouthFangsLower drops on its hinge, MouthFangs lifts 5 degrees, MouthFangsFangs swing forward about 55 degrees from their roots, MouthFangsTongue drops with the lower jaw); H2_Tongue is on MouthFangsTongue only."
+		},
+		"mouth_sucker": {
+			"type": "mouth_sucker",
+			"footprint_radius_m": 0.034,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Gape",
+					"meaning": "the disc and throat open, the throat about 70% wider and the teeth riding out with it",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Flare",
+					"meaning": "the rim spread about 1.2 cm wider and flatter, as when it latches on",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on MouthSucker, MouthSuckerDisc and MouthSuckerTeeth with the same names; the runtime sets them together. Each tooth rides rigidly with the point of the disc it is rooted on."
 		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",

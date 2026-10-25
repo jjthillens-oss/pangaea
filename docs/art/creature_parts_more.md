@@ -89,6 +89,9 @@ observation behind it). The same notes are in each record's `review_notes`.
 | beak_long | pass: slender decurved bill, rounded probe tip, gape bulge; upper overhangs lower by about 1 cm | pass: orange streaked horn with seam and nostril-groove lines, pink gape | pass: highlight along the culmen, lines stay visible | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 342 / 1200 |
 | trunk | pass: tapering S-curve hanging and turning forward, flatter underneath, two-fingered grip pad | pass: cool grey ring-wrinkled crackled skin against a warm-brown pebbled pad with two nostrils | pass: grazing light shows the rings, pad readable | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 2303 / 2500 |
 | trunk_short | pass: broad snout tapering and drooping over a tucked lower lip; domed oval nose pad with two flared nostril lobes | pass: fine grey folded skin against a near-black glossy nose pad with dark nostrils | pass: folds and gloss read, mouth crease shadowed | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 964 / 1200 |
+| mouth_sucker | pass: trumpet funnel flaring to a fleshy bead lip in ten soft scallops; a dished disc with three distinct rings of small teeth (16, 12, 8) hooking in toward a round throat | pass: wet sea-green lip with ring wrinkles and papillae, low-chroma plum disc darkening down the throat, amber teeth; clean lip-to-disc line | pass: bead highlight, teeth bright on the dark disc, throat dark but not crushed | unverified: Gate 4 frames pending | 1126 / 1200 |
+| mouth_fangs | pass: wide low lipped snout resting a little open; face-on a lens of a mouth with two long fangs in front of the chin, curving back, and a forked tongue between the lips | pass: teal domed snake scales (slightly larger, paler plates along the mouth line, faint in the gap's shade), ivory fangs, dark plum mouth and tongue | pass: scale domes catch soft highlights, fangs bright without clipping | unverified: Gate 4 frames pending | 909 / 1200 |
+| eye_turret | pass: smooth slightly convex cone 8.4 cm across, round aperture at the tip with the ball just inside; blink puckers it shut, reach stretches it | pass: turquoise granular tubercles in concentric ring bands; a gold iris ring round a black pupil inside the aperture | pass: ring bands read by grazing light, gold ring visible in the shadowed aperture | unverified: Gate 4 frames pending | 668 / 1200 |
 
 Gate 4 (beaks and trunks): `tools/godot/more_parts_shots.gd --mode=creatures --showcase=<json>` with each new
 mouth swapped in memory for a preset's mouth (tortoise beak to beak_hooked, strider beak to beak_long, longneck beak
@@ -106,6 +109,14 @@ Iterations that the sheets caught (Gate 1 needs revision, then fixed): the first
 apart with a V gap and read as a horn, with a sawtooth cere edge and a second nostril pair mirrored onto the lower
 jaw; the first long bill's nostril groove did not survive decimation and was not visible; the first tapir snout's lip
 floated free of the snout and its round nose pad stuck out of the oval tube in a ragged crown.
+
+Iterations that the sheets caught for the mouths and eyes (Gate 1 or 2 needs revision, then fixed): the first
+lamprey disc had a sharp zigzag crown of a rim on a thin cup wall, then a single mesh whose lip-to-disc material
+border decimated into a sawtooth (the disc is now its own mesh tucked under the bead); the first snake jaws were
+icosphere ellipsoids at 1518 triangles (now lathed domes with rings crowded at the lip edge) and its first scale
+shader read as cracked mud; the first chameleon turret read as a beehive dome whose geometric ridges decimated into
+irregular terraces round a hexagonal aperture (the ridges are now in the normal map and the cone is decimated at a
+tighter 0.3 mm tolerance).
 
 ## Issues
 
