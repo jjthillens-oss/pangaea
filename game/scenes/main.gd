@@ -32,12 +32,16 @@ extends Node
 ## writes the session's lineage slot (save schema v3 keeps the creature there; --slot applies) and
 ## comes back to the title through exit_requested.
 ##
-## The cell-to-creature link (ShoreLink, EraTransition; Bible section 4's transition contract): when the cell swims
-## into the shore's reach the pool pauses under "Crawl onto land?", which says what unlocks, what changes and what
-## stays. "Stay in the water" plays on (the offer opens again once the cell has swum out and back). "Crawl ashore"
-## saves the slot, keeps it as the checkpoint, writes the lineage ashore, and under the crawl's fade opens the
-## creature stage on the same slot with the arrival banner. Continue on a lineage that is ashore opens the creature
-## stage; the title's "Back to the water" brings the checkpoint back and continues the cell.
+## Aquatic stage slice (aquatic plan, PROPOSED): open_aquatic_stage() puts the AquaticStage in place of the screen; the
+## title's "Aquatic stage" button and --aquatic open it. It reads the lineage slot and keeps its progress in the
+## slot's aquatic block (save schema v5).
+## One continuous game (ShoreLink, EraTransition; Bible section 4's transition contract; Joshua 2026-10-25): when the
+## cell swims into the sea edge's reach the pool pauses under "Swim out to sea?", which says what unlocks, what changes
+## and what stays. "Stay in the pool" plays on (the offer opens again once the cell has swum out and back). "Swim out
+## to sea" saves the slot, keeps it as the checkpoint, writes the lineage into the aquatic era, and under the fade
+## opens the Aquatic stage on the same slot. The Aquatic stage's own shore leads on to land (arrive_ashore opens the
+## creature stage). Continue opens the stage of the slot's era; the title's way back brings back the checkpoint from
+## before the slot's last crossing and continues there.
 
 signal screen_changed(screen: Node)
 
@@ -55,15 +59,16 @@ const DEV_PERF_TOUR_PATH := "res://game/dev/perf_tour.gd"
 ## The quit dialog's words when the cell's death could not be saved (GameSession.death_save_failed).
 const DEATH_NOT_SAVED_TEXT := "Your cell's death could not be saved. Quit anyway?"
 ## The cell-to-creature link's words.
-const SHORE_RISEN_TEXT := "A shore has risen up ahead. Swim into its light to crawl onto land."
-const SHORE_TITLE := "Crawl onto land?"
-const CRAWL_TEXT := "Your lineage crawls onto land"
+const SHORE_RISEN_TEXT := "The open sea lies up ahead. Swim into its light to leave the pool."
+const SHORE_TITLE := "Swim out to sea?"
+const CRAWL_TEXT := "Your lineage swims out to sea"
 const ARRIVAL_TEXT := "Your lineage came ashore. Shape its first land body: every adaptation point it earned in the water comes with it."
-const WATER_BACK_TEXT := "Back in the water, as your cell was before it came ashore."
-## The crawl's fade (s): in to opaque, the creature stage opens, then out.
+const SEA_ARRIVAL_TEXT := "Your lineage reached the open sea. Every adaptation point it earned in the pool comes with it."
+const WATER_BACK_TEXT := "Back in the pool, as your cell was before it swam out to sea."
+## The crossing's fade (s): in to opaque, the next stage opens, then out.
 const CRAWL_IN_S := 1.2
 const CRAWL_OUT_S := 0.8
-const CRAWL_COLOR := Color(0.97, 0.93, 0.84)
+const CRAWL_COLOR := Color(0.80, 0.91, 0.96)
 
 var flags: RunFlags
 var session: GameSession
@@ -74,11 +79,12 @@ var screen: Node
 var start_screen: StartScreen
 var pool: PoolScene
 var creature_stage: CreatureStage
+var aquatic_stage: AquaticStage
 var hud: Hud
 var pause_menu: PauseMenu
 var cell_editor: CellEditor   ## S4.4: open while the cell chooses its next generation
 var death_notice: NoticeDialog
-## "Crawl onto land?" while it is open, else null.
+## "Swim out to sea?" while it is open, else null.
 var shore_notice: NoticeDialog
 ## The crawl's fade length factor: 1 plays CRAWL_IN_S and CRAWL_OUT_S, 0 (tests) switches at once.
 var crawl_time_scale := 1.0
@@ -127,6 +133,8 @@ func _ready() -> void:
 		_start_perf_tour()
 	if flags.creature:
 		open_creature_stage()
+	elif flags.aquatic:
+		open_aquatic_stage()
 	if screen == null:
 		show_start()
 
@@ -168,20 +176,28 @@ func show_start() -> void:
 	start_screen.settings_requested.connect(open_settings, CONNECT_DEFERRED)
 	start_screen.slots_requested.connect(open_slots, CONNECT_DEFERRED)
 	start_screen.creature_requested.connect(open_creature_stage, CONNECT_DEFERRED)
+	start_screen.aquatic_requested.connect(open_aquatic_stage, CONNECT_DEFERRED)
 	start_screen.water_requested.connect(back_to_water, CONNECT_DEFERRED)
-	start_screen.set_water_offer(_water_offered())
+	var back := _way_back()
+	start_screen.set_water_offer(not back.is_empty(), back)
 	_set_screen(start_screen)
 
 
-## Whether the title offers "Back to the water": the slot's checkpoint is there and its lineage is ashore, or its
-## save is there but will not load (back_to_water then skips the lineage check, so the cell is not lost with it).
-func _water_offered() -> bool:
-	if not EraTransition.has_checkpoint(session.slot):
-		return false
+## The era the title's way back leaves, or "" when it offers none: the slot's era when the checkpoint from before
+## the lineage crossed into it is there; when the save is there but will not load, the latest era with a checkpoint
+## (back_to_water then skips the lineage check, so the lineage is not lost with the save).
+func _way_back() -> String:
 	var peek := session.peek_slot()
-	if not bool(peek.ok):
-		return bool(peek.exists)
-	return str(peek.summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA
+	if bool(peek.ok):
+		var era := str(peek.summary.get("era", ShoreLink.FROM_ERA))
+		return era if EraTransition.has_checkpoint(session.slot, era) else ""
+	if not bool(peek.exists):
+		return ""
+	var eras := EraTransition.checkpoint_eras()
+	for i in range(eras.size() - 1, -1, -1):
+		if EraTransition.has_checkpoint(session.slot, eras[i]):
+			return eras[i]
+	return ""
 
 
 ## Opens the creature stage preview as the screen, on the session's lineage slot (save schema v3: the creature
@@ -196,6 +212,19 @@ func open_creature_stage() -> CreatureStage:
 	creature_stage.setup(session.slot, seed_value)
 	_set_screen(creature_stage)
 	return creature_stage
+
+
+## Opens the Aquatic stage slice as the screen, on the session's lineage slot; a --seed names the seed of a lineage it
+## founds (and saves) when the slot has none. Its exit comes back to the title.
+func open_aquatic_stage() -> AquaticStage:
+	_clear_screen()
+	aquatic_stage = AquaticStage.new()
+	aquatic_stage.name = "AquaticStage"
+	add_child(aquatic_stage)
+	aquatic_stage.exit_requested.connect(show_start, CONNECT_DEFERRED)
+	aquatic_stage.setup(session.slot, flags.seed_value if flags.seed_value >= 0 else randi())
+	_set_screen(aquatic_stage)
+	return aquatic_stage
 
 
 ## Founds a lineage with a starting body and opens the pool. A seed below 0 uses --seed, else a
@@ -215,9 +244,13 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 ## Loads the slot and opens the pool. Returns GameSession.continue_run's {"ok", "source", "errors"}.
 func continue_run() -> Dictionary:
 	var peek := session.peek_slot()
-	if bool(peek.ok) and str(peek.summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA:
-		# The lineage came ashore: its run goes on in the creature stage.
-		open_creature_stage()
+	var era := str(peek.summary.get("era", ShoreLink.FROM_ERA)) if bool(peek.ok) else ShoreLink.FROM_ERA
+	if era != ShoreLink.FROM_ERA:
+		# The lineage left the pool: its run goes on in its era's stage.
+		if era == ShoreLink.TO_ERA:
+			open_aquatic_stage()
+		else:
+			open_creature_stage()
 		last_run = {"ok": true, "source": peek.source, "errors": peek.errors}
 		return last_run
 	var result := session.continue_run()
@@ -296,7 +329,7 @@ func _on_cell_editor_closed(committed: bool) -> void:
 	pool.set_paused(false)
 
 
-## The cell swam into the shore's reach (the pool's shore_reached): the pool pauses under "Crawl onto land?".
+## The cell swam into the sea edge's reach (the pool's shore_reached): the pool pauses under "Swim out to sea?".
 func open_shore_offer() -> NoticeDialog:
 	if pool == null or shore_notice != null:
 		return shore_notice
@@ -307,17 +340,17 @@ func open_shore_offer() -> NoticeDialog:
 	pool.ui.add_child(shore_notice)
 	shore_notice.chosen.connect(_on_shore_choice, CONNECT_DEFERRED)
 	shore_notice.open(SHORE_TITLE, shore_offer_text(session.sim.save.adaptation_points),
-		[["ashore", "Crawl ashore", true], ["stay", "Stay in the water"]], "ashore", "stay")
+		[["sea", "Swim out to sea", true], ["stay", "Stay in the pool"]], "sea", "stay")
 	return shore_notice
 
 
 ## The offer's body (Bible section 4: what unlocks, which responsibilities change, what remains available).
 static func shore_offer_text(points: int) -> String:
-	return ("Your cell can leave the water and become a land creature.\n"
-		+ "Unlocks: legs, walking, and a creature editor where you shape the body part by part.\n"
-		+ "Changes: you walk a land world and find your food there.\n"
+	return ("Your cell can leave the pool and grow into a creature of the open sea.\n"
+		+ "Unlocks: fins and a tail, swimming in depth, and an editor where you shape the body at the nest.\n"
+		+ "Changes: you swim a wide sea, with its own food, rivals and dangers.\n"
 		+ "Stays: your lineage, its history and your %s. " % Hud.points_line(points)
-		+ "The cell is kept as a checkpoint: Back to the water on the title screen brings it back.")
+		+ "The cell is kept as a checkpoint: Back to the pool on the title screen brings it back.")
 
 
 func _on_shore_choice(choice: String) -> void:
@@ -326,20 +359,20 @@ func _on_shore_choice(choice: String) -> void:
 		shore_notice = null
 	if pool == null:
 		return
-	if choice == "ashore":
-		cross_to_land()
+	if choice == "sea":
+		cross_to_sea()
 		return
 	pool.decline_shore()
 	pool.set_paused(false)
 
 
-## "Crawl ashore": GameSession.cross_ashore (the cell saved at the shore, the checkpoint, then the lineage ashore),
-## then under the crawl's fade the creature stage opens. On a failure the cell stays in the water and an alert says
-## why. Returns cross_ashore's result.
-func cross_to_land() -> Dictionary:
-	var result := session.cross_ashore()
+## "Swim out to sea": GameSession.cross_to_sea (the cell saved at the sea's edge, the checkpoint, then the lineage in
+## the aquatic era), then under the fade the Aquatic stage opens. On a failure the cell stays in the pool and an
+## alert says why. Returns cross_to_sea's result.
+func cross_to_sea() -> Dictionary:
+	var result := session.cross_to_sea()
 	if not result.ok:
-		_alert("Could not go ashore", result.errors)
+		_alert("Could not swim out to sea", result.errors)
 		if pool != null:
 			pool.decline_shore()
 			# The run goes on once the alert is read, not under it.
@@ -355,10 +388,10 @@ func _unpause_after_alert(_choice: String) -> void:
 		pool.set_paused(false)
 
 
-## The crawl's fade: in, then the creature stage opens under it with the arrival banner, then out.
+## The crossing's fade: in, then the Aquatic stage opens under it, then out.
 func _play_crawl() -> void:
 	if crawl_time_scale <= 0.0:
-		_arrive_ashore()
+		_arrive_at_sea()
 		return
 	crawl_fade = CanvasLayer.new()
 	crawl_fade.name = "CrawlFade"
@@ -380,12 +413,21 @@ func _play_crawl() -> void:
 	rect.add_child(label)
 	var tween := rect.create_tween()
 	tween.tween_property(rect, "modulate:a", 1.0, CRAWL_IN_S * crawl_time_scale)
-	tween.tween_callback(_arrive_ashore)
+	tween.tween_callback(_arrive_at_sea)
 	tween.tween_property(rect, "modulate:a", 0.0, CRAWL_OUT_S * crawl_time_scale)
 	tween.tween_callback(_end_crawl)
 
 
-func _arrive_ashore() -> void:
+func _arrive_at_sea() -> void:
+	open_aquatic_stage()
+	# The Aquatic stage's arrival card (aquatic plan), once it has one.
+	if aquatic_stage != null and aquatic_stage.has_method(&"show_arrival"):
+		aquatic_stage.call(&"show_arrival", SEA_ARRIVAL_TEXT)
+
+
+## The lineage came ashore from the sea (the Aquatic stage's crossing, EraTransition): the creature stage opens with
+## the arrival banner.
+func arrive_ashore() -> void:
 	open_creature_stage()
 	if creature_stage != null:
 		creature_stage.show_arrival(ARRIVAL_TEXT)
@@ -397,17 +439,18 @@ func _end_crawl() -> void:
 		crawl_fade = null
 
 
-## The title's "Back to the water": writes the checkpoint from before the lineage came ashore back as the slot
-## (EraTransition.restore; the lineage's save ashore becomes the backup) and continues the cell. Returns
-## restore's result.
+## The title's way back: writes the checkpoint from before the lineage crossed into the slot's era (_way_back) back
+## as the slot (EraTransition.restore; the slot's save becomes the backup) and continues there. Returns restore's
+## result.
 func back_to_water() -> Dictionary:
 	var peek := session.peek_slot()
 	var lineage := str(peek.summary.get("lineage_id", "")) if bool(peek.ok) else ""
-	var result := EraTransition.restore(session.slot, session.persistence, lineage)
+	var era := _way_back()
+	var result := EraTransition.restore(session.slot, session.persistence, era, lineage)
 	if not result.ok:
-		_alert("Could not go back to the water", result.errors)
+		_alert("Could not go back", result.errors)
 		return result
-	if continue_run().ok and hud != null:
+	if continue_run().ok and hud != null and pool != null:
 		hud.show_message(WATER_BACK_TEXT)
 	return result
 
@@ -501,7 +544,8 @@ func delete_slot(n: int) -> Error:
 	if err == OK and start_screen != null and SaveSlots.number_of(session.slot) == n:
 		start_screen.setup(session.peek_slot(), session.catalog, n)
 	if start_screen != null:
-		start_screen.set_water_offer(_water_offered())
+		var back := _way_back()
+		start_screen.set_water_offer(not back.is_empty(), back)
 	if slot_picker != null:
 		slot_picker.show_slots(SaveSlots.peek_all(), SaveSlots.number_of(session.slot))
 	if err != OK:
@@ -655,6 +699,7 @@ func _clear_screen() -> void:
 	slot_picker = null
 	pool = null
 	creature_stage = null
+	aquatic_stage = null
 	hud = null
 	pause_menu = null
 	death_notice = null

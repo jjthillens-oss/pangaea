@@ -20,6 +20,7 @@ extends RefCounted
 ##  4. contacts: overlapping bodies are pushed apart once, in id order, positions only;
 ##  5. condition: health regenerates, rivals get hungrier;
 ##  6. eating: the player, then each rival; fruit by touch (half points without a mouth), meat needs a mouth;
+##     then the player picks up any part pickup in reach (a "found_part" event and the pickup's points);
 ##  7. bites: the player's, then each rival's, each on the nearest target in reach and in the bite cone, with a
 ##     cooldown; every body alive at the start of this step may bite, so a mutual kill kills both;
 ##  8. deaths: the player first (back at the nest, full health, the points loss, meat where it fell), then rivals in
@@ -33,7 +34,12 @@ extends RefCounted
 ## (the player's also carries points_lost), "evolve" {points}, "refused" {reason}, "earned" {deed, points} (points
 ## for walking, biting, surviving a hit, spotting a rival or befriending one, tuning "deeds" and "social"); the
 ## friend path's "charmed" {who, name, friendship, needed}, "befriended" {who, name}, "snubbed" {who} and
-## "ally_lost" {who}.
+## "ally_lost" {who}; "found_part" {part, position} when the player picks up a part (then an "earned" event).
+##
+## Part pickups (PROPOSED, domain/creature/part_unlocks.gd): when the data carries "locked_parts" (the part types the
+## lineage has not found), the field holds tuning "pickups" "count" of them at spots drawn from their own stream
+## (seeded from the world seed with PICKUP_SEED_OFFSET), so the fruit, the rivals and every draw before stay as
+## they were. Without locked parts there are none.
 
 const TICKS_PER_SECOND := 60
 const DT := 1.0 / 60.0
@@ -50,6 +56,7 @@ const MEAT_FULLNESS := 0.5
 const FIELD_MARGIN_M := 2.0
 const WORLD_SEED_STRIDE := 1000003
 const FIELD_SEED_OFFSET := 7
+const PICKUP_SEED_OFFSET := 11
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const GaitBody := preload("res://game/domain/creature/gait_body.gd")
@@ -58,6 +65,7 @@ const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 const Rules := preload("res://game/domain/creature/creature_world_rules.gd")
 const Brain := preload("res://game/domain/creature/creature_rival_brain.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
+const PartUnlocks := preload("res://game/domain/creature/part_unlocks.gd")
 
 var tick_count := 0
 var points := 0
@@ -80,6 +88,8 @@ var rivals: Array = []
 var fruit: Array = []
 ## {id, position, points, decay_at}
 var meat: Array = []
+## Part pickups in id order: {id, part, position, taken}.
+var pickups: Array = []
 var _next_meat := 1
 var _evolve_held := false
 var _bite_held := false
@@ -130,6 +140,22 @@ func _init(body_dict: Dictionary, p_world_seed: int, p_tuning: Dictionary, p_dat
 		rival["fullness"] = rng.randf_range(0.3, 1.0)
 		rival["memory"] = Brain.fresh_memory(Rules.forward(yaw))
 		rivals.append(rival)
+	_place_pickups()
+
+
+## Lays out this visit's part pickups from the data's "locked_parts" (see the header).
+func _place_pickups() -> void:
+	var cfg: Dictionary = tuning.get("pickups", {})
+	var locked: Array = data.get("locked_parts", [])
+	if cfg.is_empty() or locked.is_empty():
+		return
+	var prng := RandomNumberGenerator.new()
+	prng.seed = world_seed * WORLD_SEED_STRIDE + PICKUP_SEED_OFFSET
+	var types: Array = PartUnlocks.draw(locked, int(cfg["count"]), prng)
+	var spots: Array = Rules.scatter(prng, types.size(), half_size * 0.8, float(cfg["min_nest_distance_m"]),
+			FIELD_MARGIN_M)
+	for i in spots.size():
+		pickups.append({"id": "k%d" % (i + 1), "part": types[i], "position": spots[i], "taken": false})
 
 
 ## The data every sim needs, from the data files and the art records (CreatureData reads them; the sim itself only
@@ -217,9 +243,17 @@ func tick(intent: Dictionary) -> Array:
 					and _ground_distance(me["position"], r["position"]) <= float(me["stats"]["sight_m"]):
 				_spotted[r["id"]] = true
 				_earn("spotted", int(deeds["spot_points"]), events)
-	# 6. Eating.
+	# 6. Eating, then part pickups.
 	for c in bodies:
 		_eat(c, events)
+	if me["alive"] and not pickups.is_empty():
+		var cfg: Dictionary = tuning["pickups"]
+		var reach := float(cfg["reach_m"]) + float(me["stats"]["body_radius_m"])
+		for k in pickups:
+			if not k["taken"] and _ground_distance(me["position"], k["position"]) <= reach:
+				k["taken"] = true
+				events.append({"kind": "found_part", "part": k["part"], "position": k["position"]})
+				_earn("found_part", int(cfg["points"]), events)
 	# 7. Bites.
 	var biters := bodies.duplicate()
 	var bite := bool(intent.get("bite", false))
@@ -599,6 +633,10 @@ func snapshot() -> Dictionary:
 		out["fruit"].append({"id": f["id"], "position": _arr(f["position"]), "ripe": f["ripe"]})
 	for m in meat:
 		out["meat"].append({"id": m["id"], "position": _arr(m["position"]), "points": m["points"]})
+	if not pickups.is_empty():
+		out["pickups"] = []
+		for k in pickups:
+			out["pickups"].append({"id": k["id"], "part": k["part"], "position": _arr(k["position"]), "taken": k["taken"]})
 	return out
 
 
