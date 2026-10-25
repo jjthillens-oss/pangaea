@@ -41,11 +41,10 @@ extends Control
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
 ## card's width is set by the text size (status_width()) and the top center wraps within
 ## CENTER_MAX_W, so the banner and messages never run under the side panels, whatever the body,
-## lineage or message. The look is
-## the title menu's glass (game/ui/theme/pangaea_theme.tres: HudGlass cards, HudPill pills, slim
-## bars, the HudBanner warning). Every text size comes from the theme, which the text size setting
-## scales; the few set in code (the ring's digit, the strip's captions, the overlay's words) scale
-## with the same setting.
+## lineage or message. The look is the title menu's glass (game/ui/theme/pangaea_theme.tres:
+## HudGlass cards, HudPill pills, slim bars, the HudBanner warning). Every text size comes from the
+## theme, which the text size setting scales; the few set in code (the ring's digit, the strip's
+## captions, the overlay's words) scale with the same setting.
 
 const KIN_TOAST := "A cell like you is here. Swim into it to mate."
 const MATE_TOAST := "You mated."
