@@ -12,6 +12,94 @@
  },
  "features": [
   {
+   "id": "T-01",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-social-stage from its tip, open the PR, merge when green (furthest along at 05:20)",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-02",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-aquatic-r2 from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-03",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "menus",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-hud from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-04",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "menus",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-editor-ease from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-05",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-creature-parts from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-06",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-creature-world-art from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-07",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-shore from its tip, open the PR, merge when green (blockout only at 05:20)",
+   "evidence": [],
+   "passes": false
+  },
+  {
+   "id": "T-08",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-more-parts from its tip, open the PR, merge when green (scaffold only at 05:20)",
+   "evidence": [],
+   "passes": false
+  },
+  {
    "id": "D-01",
    "milestone": "harness",
    "bible": "\u00a721, \u00a728",

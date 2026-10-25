@@ -44,7 +44,9 @@ The weekly plan resets Wednesday 06:00 UTC.
   is green and stops before the Wednesday reset.
 - Routine runs: the daily plan, the playtest capture and the research digest each day, plus the Sunday report. At most 3 task briefs a day and 2 active builder threads. Nothing re-schedules itself or
   loops overnight. The owner keeps extra usage off, so the cap stops work instead of billing.
-- The $250 cloud credit is nearly spent (25 Oct); what is left only finishes open `claude/credit-*` branches.
+- The $250 cloud credit is nearly spent ($55 left on 25 Oct 05:47). When the credit session stops, its eight
+  `claude/credit-*` branches are taken over by their owners (backlog items T-01 to T-08), ahead of new features and
+  within the 2-builder cap.
 - Agents cannot read the usage meter reliably. Each run logs what it ran in `docs/director/progress.md`; the owner's usage
   screenshots, when he sends them, correct the estimate.
 
