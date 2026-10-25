@@ -1,7 +1,7 @@
 extends Node
 ## Editor-ease in the creature editor (docs/proposals/editor-ease.md): the HUD's usability layer, built in code by
 ## this one node so creature_editor_hud.gd keeps only a few one-line hooks (attach, on_setup, on_tool, on_stats,
-## on_undo_redo). It adds nothing to the palette's tool grid and never writes the editor's state: it
+## on_undo_redo, show_symmetry). It adds nothing to the palette's tool grid and never writes the editor's state: it
 ## only presents, reading the body being edited (hud.owner.working_body()) where a card needs it, guarded so the HUD
 ## also works alone.
 ## - Undo and Redo name the keys bound to ui_undo / ui_redo (Bible 19: inputs shown from the bindings); the editor's
@@ -10,6 +10,7 @@ extends Node
 ## - A part card on hover with what the part does by the world's own stats rule (Bible 12, 14), in place of the
 ##   default tooltip, and a stat's meaning on the card when the pointer rests on its name.
 ## - A placement line for the chosen tool (where it goes, when it snaps to the middle line, when it comes as a pair).
+## - A Symmetry toggle that shows only once the editor listens to it (GitHub issue A).
 ## No class_name: the HUD preloads it.
 
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
@@ -37,6 +38,11 @@ const DOCK_TIPS := {
 	"Done": "Keep this design and pay its cost",
 	"Back": "Clear the tool or the selection first; then leave (unsaved edits ask once)",
 }
+const SYMMETRY_TEXT := {true: "Symmetry: on", false: "Symmetry: off"}
+const SYMMETRY_TIP := {
+	true: "New parts and limbs off the middle line come as mirrored pairs",
+	false: "New parts and limbs come one at a time",
+}
 ## What each stat means, on the card when the pointer rests on its name; %s are filled from the stage tuning.
 const STAT_HELP := {
 	"length": "Nose to tail. A longer body is a choice, not an upgrade.",
@@ -59,6 +65,8 @@ var card: PanelContainer
 ## The placement line above the dock, and its label.
 var snap_hint: Control
 var snap_label: Label
+## The Symmetry toggle in the dock, after Mirror; hidden until the editor connects symmetry_toggled.
+var symmetry_button: Button
 ## The rows the changes are measured from: the first stats after a new visit or a new editor session.
 var _baseline: Array = []
 var _baseline_pending := true
@@ -99,6 +107,7 @@ func attach(owner_hud: Control) -> void:
 	card.z_index = 10
 	hud.add_child(card)
 	_build_snap_hint()
+	_build_symmetry()
 
 
 ## Called at the end of the HUD's setup() (a new visit): the palette's buttons were just made again.
@@ -115,6 +124,7 @@ func on_setup(tools: Array, costs: Dictionary, _roles: Dictionary) -> void:
 			b.mouse_entered.connect(_on_tool_entered.bind(String(type)))
 			b.mouse_exited.connect(_on_tool_exited.bind(String(type)))
 	hide_card()
+	symmetry_button.visible = hud.has_signal("symmetry_toggled") and not hud.symmetry_toggled.get_connections().is_empty()
 
 
 ## Called at the end of the HUD's set_tool(): `type` is the tool now in use ("" for none).
@@ -147,6 +157,12 @@ func on_undo_redo(can_undo: bool, can_redo: bool) -> void:
 	_can_undo = can_undo
 	_can_redo = can_redo
 	_write_undo_tips()
+
+
+## Called from the HUD's set_symmetry(): shows the state without emitting.
+func show_symmetry(on: bool) -> void:
+	symmetry_button.set_pressed_no_signal(on)
+	_write_symmetry(on)
 
 
 ## The card for a tool ("" Select, "limb" or a part type): {title, lines}, the same the hover shows.
@@ -332,6 +348,29 @@ func _refresh_hint() -> void:
 		text = "%s  ·  %s" % [_tool.capitalize(), text]
 	snap_label.text = text
 	snap_hint.visible = not text.is_empty() and not _driving
+
+
+func _build_symmetry() -> void:
+	symmetry_button = Button.new()
+	symmetry_button.name = "Symmetry"
+	symmetry_button.toggle_mode = true
+	symmetry_button.focus_mode = Control.FOCUS_NONE
+	symmetry_button.theme_type_variation = &"DockButton"
+	symmetry_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	symmetry_button.visible = false
+	symmetry_button.toggled.connect(func(on: bool):
+		_write_symmetry(on)
+		hud.symmetry_toggled.emit(on))
+	_write_symmetry(false)
+	var mirror := hud.get_node_or_null("%Mirror") as Control
+	if mirror != null:
+		mirror.get_parent().add_child(symmetry_button)
+		mirror.get_parent().move_child(symmetry_button, mirror.get_index() + 1)
+
+
+func _write_symmetry(on: bool) -> void:
+	symmetry_button.text = SYMMETRY_TEXT[on]
+	symmetry_button.tooltip_text = SYMMETRY_TIP[on]
 
 
 func _load_data() -> void:

@@ -344,3 +344,32 @@ func test_the_placement_line_follows_the_tool_and_hides_for_none_and_the_test_dr
 	check(not row.visible, "hidden again with no tool")
 	hud.tool_button("eye").mouse_entered.emit()
 	check(_card_has(hud.ease.card.texts(), PlacementHint.creature(CreatureData.part_rules()["eye"])), "the card says where it goes too")
+
+
+func test_the_symmetry_toggle_shows_only_when_the_editor_listens() -> void:
+	hud = HUD_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(hud)
+	hud.wire()
+	var button: Button = hud.ease.symmetry_button
+	check(button.get_parent() == hud.get_node("%Mirror").get_parent() and button.get_index() == hud.get_node("%Mirror").get_index() + 1,
+			"the toggle sits after Mirror in the dock")
+	hud.setup(["eye"], CreatureData.editor_costs(), [Color.RED])
+	check(not button.visible, "hidden while nothing listens: no dead control ships")
+	var got := []
+	hud.symmetry_toggled.connect(func(on: bool): got.append(on))
+	hud.setup(["eye"], CreatureData.editor_costs(), [Color.RED])
+	check(button.visible, "shown once the editor connects symmetry_toggled before setup")
+	check_eq(button.focus_mode, Control.FOCUS_NONE, "it takes no focus, so Enter and Escape reach the editor")
+	button.button_pressed = true
+	check_eq(button.text, "Symmetry: on", "its state in words")
+	button.button_pressed = false
+	check_eq(got, [true, false], "a press emits the new state")
+	hud.set_symmetry(true)
+	check(button.button_pressed and button.text == "Symmetry: on", "set_symmetry shows the state")
+	check_eq(got, [true, false], "without emitting")
+
+
+func test_the_editor_does_not_listen_to_symmetry_yet_so_the_toggle_stays_hidden() -> void:
+	open_editor()
+	check_eq(editor.hud.ease.symmetry_button.visible, not editor.hud.symmetry_toggled.get_connections().is_empty(),
+			"the toggle shows exactly when the editor connects it (GitHub issue A)")

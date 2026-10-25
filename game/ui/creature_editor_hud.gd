@@ -23,6 +23,9 @@ signal random_requested
 signal head_shape_changed(key: String, value: int)
 ## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
 signal head_shape_drag(started: bool)
+## Editor-ease: the Symmetry toggle (on: new parts and limbs off the middle line come as mirrored pairs). The toggle
+## shows only when something is connected to this at setup() (GitHub issue A asks the editor to connect it).
+signal symmetry_toggled(on: bool)
 
 const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
@@ -468,6 +471,12 @@ func tool_icon(type: String) -> Texture2D:
 ## The palette button of a tool ("" Select, "limb", or a part type), or null.
 func tool_button(type: String) -> Button:
 	return _tool_buttons.get(type)
+
+
+## Shows the symmetry state on its toggle without emitting symmetry_toggled.
+func set_symmetry(on: bool) -> void:
+	if ease:
+		ease.show_symmetry(on)
 
 
 ## The head shape sliders under the stats, built once: `ranges` is key -> [min, max] per mille (the body rules'
