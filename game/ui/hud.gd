@@ -39,8 +39,9 @@ extends Control
 ##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
-## card has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
-## messages never run under the side panels, whatever the body, lineage or message. The look is
+## card's width is set by the text size (status_width()) and the top center wraps within
+## CENTER_MAX_W, so the banner and messages never run under the side panels, whatever the body,
+## lineage or message. The look is
 ## the title menu's glass (game/ui/theme/pangaea_theme.tres: HudGlass cards, HudPill pills, slim
 ## bars, the HudBanner warning). Every text size comes from the theme, which the text size setting
 ## scales; the few set in code (the ring's digit, the strip's captions, the overlay's words) scale
@@ -68,8 +69,15 @@ const BANNER_PULSE_GLOW := Color(1.45, 1.25, 1.15)
 const BANNER_PULSE_GROW := 0.18
 const STARVING_TEXT := "Starving: you are slow and losing health.\nFind food."
 ## The widest the starving banner and a message may be, panel included: centered, this leaves a
-## gap to the status card (x 32..452 at the 1920 x 1080 base) and the points panel.
+## gap to the status card (x 32..452 at 100% text and 32..515 at 130%, at the 1920 x 1080 base)
+## and the points panel.
 const CENTER_MAX_W := 840.0
+## The status card's width at 100% text (PROPOSED). It widens by STATUS_GROW of the text size's
+## growth: 452 px at 115%, 483 at 130%, so "Places found at this size: 0 of 8" keeps to one line
+## (it fits 440 px of words at 130%) and the card (x 32..515) ends 25 px clear of the widest
+## centered banner (x 540 at the 1920 x 1080 base).
+const STATUS_W := 420.0
+const STATUS_GROW := 0.5
 ## Step when narrowing a wrapped message so its lines come out about even.
 const WRAP_STEP_PX := 8.0
 ## How a Label with AUTOWRAP_WORD_SMART breaks lines, with its default trim flags.
@@ -171,6 +179,7 @@ func _ready() -> void:
 		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner_text.text = STARVING_TEXT
 	_fit_center(banner_text, starving_banner)
+	_fit_status()
 	_warning_icon.pivot_offset = _warning_icon.custom_minimum_size * 0.5
 	starving_banner.visible = false
 	message.visible = false
@@ -236,6 +245,7 @@ func refresh() -> void:
 		return
 	var sim := pool.sim
 	var state := sim.state
+	_fit_status()
 	_set_text(energy_text, energy_line(state))
 	var chip := state_name(state)
 	_set_text(state_text, chip)
@@ -710,6 +720,20 @@ func _fade(panel: Control, t: float, delta: float, fade_s: float) -> float:
 	return t
 
 
+## The status card's width at the current text size: STATUS_W at 100%, wider by STATUS_GROW of
+## the text's growth.
+static func status_width() -> float:
+	var scale := int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0
+	return roundf(STATUS_W * (1.0 + STATUS_GROW * (scale - 1.0)))
+
+
+## Keeps the status card at status_width() (when the HUD is ready and at every label refresh, so
+## a text size changed in the pause menu applies at once).
+func _fit_status() -> void:
+	var status: Control = get_node("Frame/Status")
+	status.custom_minimum_size.x = status_width()
+
+
 ## Sizes a top-center label so its panel is at most CENTER_MAX_W wide; longer text wraps.
 func _fit_center(label: Label, panel: Control) -> void:
 	label.custom_minimum_size.x = 0.0
@@ -875,11 +899,11 @@ class WorldOverlay extends Control:
 		if not label.is_empty():
 			_text(font, _text_rect(font, rect, label.at, label.text, label.side).position, label.text)
 
-	## Where `text` goes beside `anchor` on its `side`, kept inside `rect`.
 	## The words' font size now: FONT_SIZE at the text size setting.
 	static func font_size() -> int:
 		return roundi(FONT_SIZE * int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0)
 
+	## Where `text` goes beside `anchor` on its `side`, kept inside `rect`.
 	func _text_rect(font: Font, rect: Rect2, anchor: Vector2, text: String, side: Vector2) -> Rect2:
 		var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size())
 		var top_left := anchor + Vector2(TEXT_GAP_PX if side.x >= 0.0 else -TEXT_GAP_PX - size.x, -size.y * 0.5)
