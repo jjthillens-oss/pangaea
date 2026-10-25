@@ -1132,3 +1132,194 @@ func test_the_lineage_is_written_only_to_a_slot_it_can_read() -> void:
 	check_eq(FileAccess.get_file_as_string(slot), "not json", "the broken file is left as it is")
 	for f in [slot, slot + ".bak", slot + ".tmp"]:
 		DirAccess.remove_absolute(f)
+
+
+# Save v5 stays as PR #192 made it (owner, 2026-10-25: aquatic-r2 keeps the "aquatic" block working and does not change
+# the schema further). aquatic-r2's content travels only as new values in the block's existing fields: tail kinds the
+# rules list, species ids in relations, zone and site ids in discovered.
+
+## PR #192's v5 keys: the aquatic block's and the fish body's. A new key in either needs the owner (plan section 10).
+const SLICE_AQUATIC_KEYS := ["body", "discovered", "energy", "generation", "health", "heading", "history", "meals",
+		"position", "relations"]
+const SLICE_BODY_KEYS := ["length", "girth", "tail", "tail_size", "fins", "dorsal", "bladder", "sense", "mouth", "hue"]
+## The aquatic block as PR #192's slice writes it into a v5 slot (its AquaticSim.to_save, as JSON keeps it: every
+## number a double): a second-generation fluke darter on the reef whose parent was a ribbon hoverer, the slice's two
+## species, and only the slice's zone and site ids.
+const SLICE_V5_BLOCK := """{
+	"body": {"bladder": 0, "dorsal": 1, "fins": 1, "girth": 1, "hue": 0.55, "length": 3, "mouth": "both",
+		"sense": "eyes", "tail": "fluke", "tail_size": 3},
+	"discovered": ["shallows", "plankton_bay", "plankton_shelf", "reef", "shelter_reef_west", "algae_west"],
+	"energy": 63.5,
+	"generation": 2,
+	"health": 41.25,
+	"heading": 2.5,
+	"history": [{"body": {"bladder": 2, "dorsal": 1, "fins": 3, "girth": 2, "hue": 0.55, "length": 1, "mouth": "both",
+		"sense": "eyes", "tail": "ribbon", "tail_size": 1}, "generation": 1}],
+	"meals": 6,
+	"position": [-14.0, -20.0, -84.0],
+	"relations": {"grazer": {"rapport": 3, "standing": "friend"}, "shoal": {"rapport": 0, "standing": "foe"}}
+}"""
+
+
+## `v` as a save file holds it (every number a double), with sorted keys, so blocks compare value for value.
+static func _as_saved(v: Variant) -> String:
+	return JSON.stringify(JSON.parse_string(JSON.stringify(v)), "", true, true)
+
+
+static func _sorted_keys(d: Dictionary) -> Array:
+	return _sorted(d.keys())
+
+
+static func _sorted(a: Array) -> Array:
+	var out := a.duplicate()
+	out.sort()
+	return out
+
+
+## A fresh slot under user://test_saves for this test, with no file, backup or temp file left from an earlier run.
+static func _fresh_slot(name: String) -> String:
+	var dir := "user://test_saves/aquatic_r2_%d" % OS.get_process_id()
+	DirAccess.make_dir_recursive_absolute(dir)
+	var slot := "%s/%s.json" % [dir, name]
+	for f in [slot, slot + PersistenceService.BACKUP_SUFFIX, slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
+	return slot
+
+
+## A slot that PR #192's slice wrote loads in this build through the real save path (PersistenceService and
+## AquaticLineage, the r2 rules' validator), comes back as it was with the new species neutral, and is written back
+## with exactly the v5 keys. The block this build writes for a fish with a slice tail still loads in a slice build.
+func test_a_slice_v5_block_still_loads() -> void:
+	check_eq(Array(SaveGame.AQUATIC_KEYS), SLICE_AQUATIC_KEYS, "the save's aquatic keys are PR #192's")
+	check_eq(Array(AquaticBody.KEYS), SLICE_BODY_KEYS, "the fish body's keys are PR #192's")
+	var slice_block: Dictionary = JSON.parse_string(SLICE_V5_BLOCK)
+	check_eq(_sorted_keys(slice_block), _sorted(SLICE_AQUATIC_KEYS), "the literal block is a whole v5 block")
+	var catalog := PartCatalog.load_from()
+	var founded: Dictionary = Lineage.found(7, "slice-build", catalog, "omnivore")
+	check(founded.ok, "a lineage to hold the block")
+	var data: Dictionary = (founded.save as SaveGame).to_dict()
+	data["aquatic"] = slice_block
+	data["adaptation_points"] = 5
+	var slot := _fresh_slot("slice_v5")
+	var file := FileAccess.open(slot, FileAccess.WRITE)
+	file.store_string(JSON.stringify(data, "\t", true, true))
+	file.close()
+	var lineage := AquaticLineage.read(slot, rules, 99)
+	check(lineage.ok and lineage.returning and lineage.writable and (lineage.errors as PackedStringArray).is_empty(),
+		"the slice's slot loads as a lineage that has swum and can be written: %s" % [lineage.get("errors")])
+	check_eq(int(lineage.generation), 2, "with its generation")
+	check_eq(int(lineage.points), 5, "and its points")
+	var sim := AquaticSim.new(rules, int(lineage.world_seed), lineage.body, lineage)
+	check(sim.player.pos.is_equal_approx(Vector3(-14.0, -20.0, -84.0)), "the fish is where it was saved: %s" % sim.player.pos)
+	check_eq(int(sim.player.generation), 2, "the generation is restored")
+	check_eq(int(sim.meals), 6, "the meals are restored")
+	check_eq(String(sim.player.body.tail), "fluke", "the slice's fluke is a fluke here")
+	check_eq(String(sim.history[0].body.tail), "ribbon", "and its parent's ribbon a ribbon")
+	check_eq(String(sim.relations.grazer.standing), "friend", "the grazers are still friends")
+	check_eq(int(sim.relations.grazer.rapport), 3, "with their rapport")
+	check_eq(String(sim.relations.shoal.standing), "foe", "the shoal is still a foe")
+	for species in rules.species_order:
+		if not String(species) in SLICE_SPECIES:
+			check(sim.relations[species].standing == "neutral" and int(sim.relations[species].rapport) == 0,
+				"%s, new in this build, starts neutral" % species)
+	var block := sim.to_save()
+	check_eq(_sorted_keys(block), _sorted(SLICE_AQUATIC_KEYS), "the block written back has exactly the v5 keys")
+	check_eq(_sorted_keys(block.body), _sorted_keys(slice_block.body), "and the body exactly the slice's keys")
+	check(SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, rules.body)).is_empty(),
+		"and passes the save's checks: %s" % [SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, rules.body))])
+	for key in SLICE_AQUATIC_KEYS:
+		if key != "relations":
+			check_eq(_as_saved(block[key]), _as_saved(slice_block[key]), "'%s' is written back as the slice saved it" % key)
+	var expected_relations: Dictionary = slice_block.relations.duplicate(true)
+	for species in rules.species_order:
+		if not expected_relations.has(species):
+			expected_relations[species] = {"standing": "neutral", "rapport": 0}
+	check_eq(_as_saved(block.relations), _as_saved(expected_relations), "the relations gain only the new species, neutral")
+	# Through the real writer and reader again: the slot holds exactly a v5 save, with this block.
+	check_eq(AquaticLineage.write(slot, lineage, sim), OK, "the lineage is written back to the slice's slot")
+	var written: Variant = JSON.parse_string(FileAccess.get_file_as_string(slot))
+	check(written is Dictionary and _sorted_keys(written) == _sorted(Array(SaveGame.KEYS)), "the slot holds exactly the v5 keys")
+	check(written is Dictionary and int(written.schema_version) == 5, "at schema 5")
+	var reloaded: Dictionary = PersistenceService.new(catalog).load_from(slot)
+	check(reloaded.ok, "the written slot loads: %s" % [reloaded.get("errors")])
+	if reloaded.ok:
+		check_eq(_as_saved((reloaded.save as SaveGame).aquatic), _as_saved(block), "with the block this build wrote")
+	# Back the other way: a slice build (only the slice's tails and species) still reads this build's block for a fish
+	# with a slice tail. It checks a relation's shape, not its species, and its restore skips species it does not know.
+	var slice := _slice_rules()
+	slice.body.tails = ["fluke", "ribbon"]
+	check(SaveGame.validate_aquatic(block, func(b): return AquaticBody.validate(b, slice.body)).is_empty(),
+		"a slice build's checks accept the block")
+	var old := AquaticSim.new(slice, 7, block.body, {"aquatic": block})
+	check_eq(_as_saved(old.to_save()), _as_saved(slice_block), "and a slice build reads it back as the slice's own block")
+	for f in [slot, slot + PersistenceService.BACKUP_SUFFIX, slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
+
+
+## A lineage with aquatic-r2's content (a lunate fish whose parent swam with a whip, the reef cleaners as friends,
+## the glowfins as foes, the new shelters and feeding grounds found) goes through the save's own writer and reader
+## and comes back identical, with the same meaning in play: the cleaners still tend their friend. A slice build,
+## which lists only the fluke and the ribbon, refuses the lunate with a reason rather than dropping it.
+func test_a_new_tail_and_new_relations_round_trip_through_the_save() -> void:
+	var sim := _sim(AquaticBody.DARTER)
+	var whip := AquaticBody.HOVERER.duplicate()
+	whip.tail = "whip"
+	whip.tail_size = 2
+	var lunate := AquaticBody.DARTER.duplicate()
+	lunate.tail = "lunate"
+	lunate.fins = 2
+	lunate.sense = "lure"
+	lunate.hue = 0.375
+	check(sim.apply_offspring(whip, 0) and sim.apply_offspring(lunate, 0), "two generations: a whip, then a lunate")
+	sim.relations.cleaner.standing = "friend"
+	sim.relations.cleaner.rapport = 2
+	sim.relations.glowfin.standing = "foe"
+	for id in ["reef", "shelter_reef_east", "algae_east", "krill_swarm", "shelter_pillars", "fallen_giant",
+			"shelter_vent_chimney", "algae_nest"]:
+		sim._discover(id)
+	sim.meals = 9
+	var spot := sim._clamp_to_water(sim.home_of("cleaner") + Vector3(0.0, 0.0, 1.5))
+	sim.player.pos = spot
+	sim.player.heading = -0.5
+	sim.player.energy = 40.0
+	sim.player.health = 30.0
+	var block := sim.to_save()
+	check_eq(_sorted_keys(block), _sorted(SLICE_AQUATIC_KEYS), "the block has exactly the v5 keys")
+	check_eq(_sorted_keys(block.body), _sorted_keys(AquaticBody.DARTER), "the lunate body has the slice's body keys")
+	check(block.history.all(func(h): return _sorted_keys(h) == ["body", "generation"]), "each parent is a generation and a body")
+	var catalog := PartCatalog.load_from()
+	var founded: Dictionary = Lineage.found(7, "r2-build", catalog, "omnivore")
+	var save: SaveGame = founded.save
+	save.aquatic = block
+	var service := PersistenceService.new(catalog)
+	var slot := _fresh_slot("r2_content")
+	check_eq(service.save_to(slot, save), OK, "the save's own checks accept the new tail, species and sites")
+	var loaded: Dictionary = service.load_from(slot)
+	check(loaded.ok, "and the slot loads: %s" % [loaded.get("errors")])
+	if not loaded.ok:
+		return
+	var again: Dictionary = (loaded.save as SaveGame).aquatic
+	check_eq(JSON.stringify(again, "", true), JSON.stringify(block, "", true), "the same block from the slot")
+	check(SaveGame.validate_aquatic(again, func(b): return AquaticBody.validate(b, rules.body)).is_empty(), "it passes the save's checks")
+	var back := AquaticSim.new(rules, 7, again.body, {"aquatic": again, "points": 3})
+	check_eq(JSON.stringify(back.to_save(), "", true), JSON.stringify(block, "", true), "and restores to the same block")
+	check_eq(String(back.player.body.tail), "lunate", "the lunate is back")
+	check_eq(back.history.map(func(h): return String(h.body.tail)), ["fluke", "whip"], "and its parents' tails")
+	check(back.relations.cleaner.standing == "friend" and int(back.relations.cleaner.rapport) == 2, "the cleaners are friends")
+	check_eq(String(back.relations.glowfin.standing), "foe", "the glowfins are foes")
+	for id in ["krill_swarm", "fallen_giant", "shelter_vent_chimney"]:
+		check(id in back.discovered, "%s is still found" % id)
+	# The friendship means the same after the reload: resting at the cleaners' station heals.
+	var hp := float(back.player.health)
+	for i in AquaticSim.TICK_HZ:
+		back.player.pos = spot
+		back.player.speed = 0.0
+		back.step(AquaticSim.Intent.new())
+	check(float(back.player.health) > hp + 1.0 and bool(back.station_here().get("tending", false)),
+		"the reloaded friend is tended at the station (%.1f -> %.1f)" % [hp, back.player.health])
+	# Forward only: a build that lists only the slice's tails refuses the lunate, with the reason, and drops nothing.
+	var slice_body: Dictionary = rules.body.duplicate(true)
+	slice_body.tails = ["fluke", "ribbon"]
+	check_has_error(SaveGame.validate_aquatic(again, func(b): return AquaticBody.validate(b, slice_body)), "Unknown tail 'lunate'")
+	for f in [slot, slot + PersistenceService.BACKUP_SUFFIX, slot + ".tmp"]:
+		DirAccess.remove_absolute(f)
