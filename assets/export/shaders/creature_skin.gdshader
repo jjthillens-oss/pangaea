@@ -29,6 +29,15 @@ uniform float detail_tiling = 6.0;
 uniform float detail_strength : hint_range(0.0, 1.0) = 0.35;
 uniform float roughness_base : hint_range(0.0, 1.0) = 0.7;
 
+// Covering (PROPOSED, art-owned; docs/art/creature_art_contract.md section 2.8). Single pass, no shells or fins:
+// the relief is a screen-space bump from a rest-space height field, so it costs a few noise taps per pixel.
+uniform int covering : hint_range(0, 3) = 0;          // 0 default (unchanged), 1 fur, 2 scales, 3 smooth-wet
+uniform float covering_strength : hint_range(0.0, 1.0) = 1.0; // 0 = the default look, 1 = the full covering
+uniform float fur_length : hint_range(0.0, 1.0) = 0.5;   // longer: bigger clumps, wider fuzz rim, darker roots
+uniform float fur_density : hint_range(20.0, 400.0) = 220.0; // strands per body length
+uniform float scale_size : hint_range(8.0, 120.0) = 45.0;  // scales per body length (rest space)
+uniform float wet_gloss : hint_range(0.0, 1.0) = 0.8;    // smooth-wet: 1 is a wet, glossy film
+
 varying vec4 skin;     // spine_u, ring_v, limb_id, limb_t
 varying vec3 rest_pos; // rest-pose body-space position, x folded so both sides match, scaled to the body
 varying vec3 obj_pos;
@@ -168,6 +177,43 @@ void fragment() {
 	col *= mix(1.0, grain, detail_strength);
 	float rough = clamp(roughness_base + 0.25 * (1.0 - grain) * detail_strength, 0.0, 1.0);
 
+	// Covering: albedo, roughness, specular and a bump height in rest space.
+	float spec = 0.4;
+	float bump_h = 0.0;
+	float bump_amp = 0.0;
+	float fuzz = 0.0;
+	float cs = covering_strength;
+	if (covering == 1) {
+		// Fur: strands stretched along the body axis (rest z), grouped into clumps; roots darken, tips lighten.
+		vec3 fp = rest_pos * fur_density + seed;
+		float strand = value_noise(fp * vec3(1.0, 1.0, 0.22));
+		float clump = fbm(rest_pos * fur_density * mix(0.12, 0.04, fur_length) + seed * 0.5);
+		float hair = mix(strand, clump, 0.45);
+		col *= mix(1.0, mix(1.0 - 0.45 * fur_length, 1.1, hair), cs);
+		rough = mix(rough, 0.92, cs);
+		spec = mix(spec, 0.22, cs);
+		bump_h = hair;
+		bump_amp = 0.25 + 0.3 * fur_length;
+		fuzz = cs * (0.35 + 0.45 * fur_length);
+	} else if (covering == 2) {
+		// Scales: domed cells with a grooved border and a sheen that varies per scale.
+		vec3 c = voronoi(rest_pos * scale_size + seed);
+		float wall = c.y - c.x;
+		float dome = smoothstep(0.0, 0.45, wall);
+		col *= mix(1.0, mix(0.68, 1.06, dome) * mix(0.93, 1.05, c.z), cs);
+		rough = mix(rough, mix(0.62, 0.38, dome) - 0.08 * c.z, cs);
+		spec = mix(spec, 0.5, cs);
+		bump_h = dome;
+		bump_amp = 0.55;
+	} else if (covering == 3) {
+		// Smooth-wet: darker saturated albedo, a tight glossy film over a soft wobble.
+		col = mix(col, pow(col, vec3(1.25)) * 0.9, cs * wet_gloss);
+		rough = mix(rough, mix(0.45, 0.06, wet_gloss), cs);
+		spec = mix(spec, 0.65, cs);
+		bump_h = fbm(rest_pos * 6.0 + seed);
+		bump_amp = 0.1;
+	}
+
 	// State.
 	float ripple = 0.5 + 0.5 * sin(TAU * (anim_phase - u * 1.5));
 	col = mix(col, col * vec3(1.08, 1.05, 0.96), ripeness);
@@ -177,7 +223,29 @@ void fragment() {
 
 	ALBEDO = col;
 	ROUGHNESS = rough;
-	SPECULAR = 0.4;
+	SPECULAR = spec;
+	if (covering != 0 && cs > 0.0) {
+		// Screen-space bump (surface gradient from derivatives); needs no tangents.
+		vec3 dpdx = dFdx(VERTEX);
+		vec3 dpdy = dFdy(VERTEX);
+		float hx = dFdx(bump_h);
+		float hy = dFdy(bump_h);
+		vec3 r1 = cross(dpdy, NORMAL);
+		vec3 r2 = cross(NORMAL, dpdx);
+		float det = dot(dpdx, r1);
+		vec3 grad = sign(det) * (hx * r1 + hy * r2);
+		NORMAL = normalize(abs(det) * NORMAL - grad * bump_amp * cs * 0.003 / (1.0 + 3.0 * fwidth(bump_h)));   // 0.003 m relief, faded where it would alias
+		if (covering == 1) {
+			float graze = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), mix(3.0, 1.6, fur_length));
+			RIM = fuzz;
+			RIM_TINT = 0.7;
+			ALBEDO = mix(col, col * 1.35 + vec3(0.04), graze * fuzz);
+		}
+		if (covering == 3) {
+			CLEARCOAT = cs * wet_gloss;
+			CLEARCOAT_ROUGHNESS = 0.05;
+		}
+	}
 	if (stage_look == 0) {
 		// A soft membrane: rim glow, a gentle back-lit sheen and a slow breathing ripple.
 		float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.5);
