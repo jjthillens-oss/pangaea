@@ -1591,8 +1591,8 @@ CHUNK_M = 20.0
 CHUNKS = 8                  # 8 x 8 cover chunks of 20 m over +-80 m
 COVER_EDGE_M = 78.3         # cover stays inside this square (the berm starts rising at 79 m)
 COVER_CLEAR_M = 8.05        # and every vertex outside the nest's clearing (the art test's 8 m)
-COVER_TRIS = 50000          # PROPOSED budgets: cover inside the walls, and the berm's trees and boulders
-BERM_TRIS = 50000
+COVER_TRIS = 55000          # PROPOSED budgets: cover inside the walls, and the berm's trees and boulders
+BERM_TRIS = 45000
 COVER_VIS_END_M = 60.0      # a cover chunk draws while the camera is within this of its centre (its origin)
 OBSTACLE_EDGE_M = 81.0      # every vertex of a berm piece stands at max(|x|, |y|) of this or more (the test's 80.5)
 SECTORS = 8
@@ -1616,14 +1616,19 @@ KIT_MATERIALS = {
 COVER_KIT = ("creature_grass_tuft", "creature_fern_clump", "creature_flower_clump", "creature_pebble_cluster")
 BERM_KIT = ("creature_tree_umbrella", "creature_tree_lantern", "creature_boulder_a", "creature_boulder_b", "creature_boulder_c")
 CLUSTERS = {
-    # cluster: ([(kit id, fewest, most)], spread sigma range in metres)
-    "tufts": ([("creature_grass_tuft", 4, 9), ("creature_flower_clump", 0, 1)], (0.45, 1.1)),
-    "ferns": ([("creature_fern_clump", 2, 4), ("creature_grass_tuft", 1, 3)], (0.55, 1.2)),
-    "flowers": ([("creature_flower_clump", 3, 6), ("creature_grass_tuft", 1, 3)], (0.45, 1.0)),
-    "stones": ([("creature_pebble_cluster", 1, 3), ("creature_grass_tuft", 0, 2)], (0.4, 0.9)),
+    # cluster: ([(kit id, fewest, most)], spread sigma range in metres). Beds are dense, so each reads as a lush
+    # clump from the gameplay camera; pebbles (157 triangles for a few centimetres of stone) stay few.
+    "bed": ([("creature_grass_tuft", 8, 15), ("creature_flower_clump", 0, 2)], (0.6, 1.2)),
+    "ferns": ([("creature_fern_clump", 3, 6), ("creature_grass_tuft", 2, 4)], (0.7, 1.3)),
+    "flowers": ([("creature_flower_clump", 5, 9), ("creature_grass_tuft", 3, 6)], (0.7, 1.2)),
+    "edge": ([("creature_grass_tuft", 3, 6), ("creature_pebble_cluster", 0, 1)], (0.5, 1.0)),
+    "stones": ([("creature_pebble_cluster", 1, 2), ("creature_grass_tuft", 0, 1)], (0.4, 0.8)),
 }
-CLUSTERS_PER_CHUNK = 7.0    # before thinning to the budget
-SINGLES_PER_CHUNK = 5.0
+CLUSTERS_PER_CHUNK = 6.0    # before thinning to the budget, times the home-meadow weight
+SINGLES_PER_CHUNK = 6.0
+WIDEN = {"creature_grass_tuft": (1.15, 1.5), "creature_fern_clump": (1.15, 1.45), "creature_flower_clump": (1.05, 1.3),
+         "creature_pebble_cluster": (1.0, 1.0)}   # horizontal stretch over the height scale: fuller, never taller
+HOME_R_M = 30.0             # the home meadow round the nest is denser: clusters x (0.6 + 1.6 exp(-(r / HOME_R_M)^2))
 
 
 class _Kit:
@@ -1656,8 +1661,10 @@ class _Kit:
                     vals = per_vertex
                 colours = vals
             mats = [m.materials[p.material_index].name.split(".")[0] for p in m.polygons]
+            cards = any(name in ("M_MeadowCards", "M_TreeCanopyCards") for name in mats)
+            mp._check(not cards or colours is not None, f"{asset_id}: {obj.name}'s cards import with their jitter colours")
             self.parts.append({"name": obj.name, "verts": verts, "polys": polys, "normals": normals, "uvs": uvs,
-                               "colours": colours, "mats": mats, "cards": colours is not None})
+                               "colours": colours, "mats": mats, "cards": cards})
             lo = Vector(np.minimum(lo, verts.min(axis=0)))
             hi = Vector(np.maximum(hi, verts.max(axis=0)))
         self.tris = sum(len(p) - 2 for part in self.parts for p in part["polys"])
@@ -1675,14 +1682,18 @@ class _Merged:
         self.verts, self.faces, self.normals, self.uvs, self.cols, self.mats = [], [], [], [], [], []
         self.tris = 0
 
-    def add(self, part, at, yaw, scale, shade=1.0):
+    def add(self, part, at, yaw, scale, shade=1.0, widen=1.0):
+        """A copy of `part` turned by `yaw`, scaled by `scale` (and its width by `widen` more), at `at`."""
         c, s = math.cos(yaw), math.sin(yaw)
         rot = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        stretch = np.diag([scale * widen, scale * widen, scale])
         base = len(self.verts)
-        pts = part["verts"] @ rot.T * scale + (np.array(at[:]) - np.array(self.origin[:]))
+        pts = part["verts"] @ (rot @ stretch).T + (np.array(at[:]) - np.array(self.origin[:]))
         self.verts.extend(map(tuple, pts))
         self.faces.extend(tuple(i + base for i in p) for p in part["polys"])
-        self.normals.extend(map(tuple, part["normals"] @ rot.T))
+        normals = part["normals"] @ (rot @ np.linalg.inv(stretch)).T          # normals take the inverse stretch
+        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-9)
+        self.normals.extend(map(tuple, normals))
         self.uvs.extend(map(tuple, part["uvs"]))
         cols = part["colours"] if part["colours"] is not None else np.ones((len(pts), 3))
         self.cols.extend(map(tuple, np.clip(cols * shade, 0.0, 1.0)))
@@ -1784,7 +1795,9 @@ def _cover_layout(kits, mask, ground):
         for cj in range(CHUNKS):
             rng = random.Random(SCATTER_SEED * 100 + ci * CHUNKS + cj)
             x0, y0 = -CHUNKS * CHUNK_M / 2 + ci * CHUNK_M, -CHUNKS * CHUNK_M / 2 + cj * CHUNK_M
-            groups = [("cluster", n) for n in range(_poisson(rng, CLUSTERS_PER_CHUNK))] + \
+            r_mid = math.hypot(x0 + CHUNK_M / 2, y0 + CHUNK_M / 2)
+            home = 0.6 + 1.6 * math.exp(-(r_mid / HOME_R_M) ** 2)
+            groups = [("cluster", n) for n in range(_poisson(rng, CLUSTERS_PER_CHUNK * home))] + \
                      [("single", n) for n in range(_poisson(rng, SINGLES_PER_CHUNK))]
             for kind, _n in groups:
                 cx, cy = x0 + rng.uniform(0.0, CHUNK_M), y0 + rng.uniform(0.0, CHUNK_M)
@@ -1797,12 +1810,12 @@ def _cover_layout(kits, mask, ground):
                     members, spread = [("creature_grass_tuft", 1, 1)], (0.0, 0.0)
                 else:
                     if earth > 0.55:
-                        name = "stones"
+                        name = "stones" if rng.random() < 0.5 else "edge"
                     elif earth > 0.3:
-                        name = rng.choice(("tufts", "stones"))
+                        name = "edge"
                     else:
                         lush = mask.lush(cx, cy)
-                        name = _weighted(rng, {"tufts": 0.45, "ferns": 0.25, "flowers": 0.3 * (0.6 + lush)})
+                        name = _weighted(rng, {"bed": 0.5, "ferns": 0.22, "flowers": 0.28 * (0.6 + lush)})
                     members, spread = CLUSTERS[name]
                 sigma = rng.uniform(*spread)
                 pieces = []
@@ -1810,14 +1823,15 @@ def _cover_layout(kits, mask, ground):
                     for _ in range(rng.randint(lo, hi)):
                         kit = kits[kit_id]
                         scale = min(rng.uniform(0.8, 1.12), (COVER_MAX_M - 0.02) / kit.top)
+                        widen = rng.uniform(*WIDEN[kit_id])
                         for _try in range(12):
                             px, py = cx + rng.gauss(0.0, sigma), cy + rng.gauss(0.0, sigma)
-                            reach = kit.reach * scale
+                            reach = kit.reach * scale * widen
                             if max(abs(px), abs(py)) + reach > COVER_EDGE_M or math.hypot(px, py) - reach < COVER_CLEAR_M:
                                 continue
-                            if any(math.hypot(px - q[1][0], py - q[1][1]) < 0.55 * (reach + q[5]) for q in pieces):
+                            if any(math.hypot(px - q[1][0], py - q[1][1]) < 0.45 * (reach + q[5]) for q in pieces):
                                 continue
-                            pieces.append((kit_id, (px, py), rng.uniform(0.0, math.tau), scale, rng.uniform(0.88, 1.0), reach))
+                            pieces.append((kit_id, (px, py), rng.uniform(0.0, math.tau), scale, rng.uniform(0.88, 1.0), reach, widen))
                             break
                 if pieces:
                     clusters.append((rng.random(), pieces))
@@ -1828,10 +1842,10 @@ def _cover_layout(kits, mask, ground):
         tris -= sum(kits[p[0]].tris for p in dropped)
     out = {}
     for _k, pieces in clusters:
-        for kit_id, (px, py), yaw, scale, shade, _reach in pieces:
+        for kit_id, (px, py), yaw, scale, shade, _reach, widen in pieces:
             ci = min(CHUNKS - 1, int((px + CHUNKS * CHUNK_M / 2) // CHUNK_M))
             cj = min(CHUNKS - 1, int((py + CHUNKS * CHUNK_M / 2) // CHUNK_M))
-            out.setdefault((ci, cj), []).append((kit_id, Vector((px, py, ground.z(px, py))), yaw, scale, shade))
+            out.setdefault((ci, cj), []).append((kit_id, Vector((px, py, ground.z(px, py))), yaw, scale, shade, widen))
     return out, tris
 
 
@@ -1924,7 +1938,7 @@ def _berm_layout(kits, ground):
         tris -= kits[optional.pop()[2]].tris
     out = {}
     for k, _key, kit_id, at, yaw, scale in kept + optional:
-        out.setdefault(k, []).append((kit_id, at, yaw, scale, 1.0))
+        out.setdefault(k, []).append((kit_id, at, yaw, scale, 1.0, 1.0))
     return out, tris
 
 
@@ -1955,10 +1969,10 @@ def build_field_scatter(ground_objs):
     groups += [((f"Berm{k}", _centre(items)), items) for k, items in sorted(berm.items())]
     for (name, origin), items in groups:
         cards, solid = _Merged(f"{name}_Cards", origin), _Merged(f"{name}_Stones" if name.startswith("Cover") else f"{name}_Wood", origin)
-        for kit_id, at, yaw, scale, shade in items:
+        for kit_id, at, yaw, scale, shade, widen in items:
             counts[kit_id] = counts.get(kit_id, 0) + 1
             for part in kits[kit_id].parts:
-                (cards if part["cards"] else solid).add(part, at, yaw, scale, shade)
+                (cards if part["cards"] else solid).add(part, at, yaw, scale, shade, widen)
         for merged, coloured in ((cards, True), (solid, False)):
             if merged.build(materials, coloured) is not None:
                 nodes.append(merged.name)
@@ -1983,7 +1997,8 @@ def build_field_scatter(ground_objs):
             "seed": SCATTER_SEED,
             "cover": {"triangles": cover_tris, "budget": COVER_TRIS, "chunks": f"{CHUNKS} x {CHUNKS} of {CHUNK_M:g} m, CoverIJ_Cards and CoverIJ_Stones, origin at the chunk centre",
                       "inside_m": COVER_EDGE_M, "clear_of_nest_m": COVER_CLEAR_M, "height_max_m": COVER_MAX_M,
-                      "density": f"Poisson, {CLUSTERS_PER_CHUNK:g} clusters and {SINGLES_PER_CHUNK:g} single tufts per chunk before whole clusters are dropped in a seeded order to the budget; stones on the bare earth (shader patch mask), tufts on its edges, tufts, ferns and flowers on the turf (flowers more where it is lush)",
+                      "density": f"Poisson, {CLUSTERS_PER_CHUNK:g} clusters a chunk times the home-meadow weight 0.6 + 1.6 exp(-(r / {HOME_R_M:g} m)^2) and {SINGLES_PER_CHUNK:g} single tufts a chunk, before whole clusters are dropped in a seeded order to the budget; stones and tufts on the bare earth (shader patch mask), tufts on its edges, dense grass beds, fern beds and flower patches on the turf (flowers more where it is lush)",
+                      "widen": {k: list(v) for k, v in WIDEN.items()},
                       "clusters": {k: {"members": [list(m) for m in v[0]], "spread_sigma_m": list(v[1])} for k, v in CLUSTERS.items()},
                       "import": f"no shadow, visibility range end {COVER_VIS_END_M:g} m, card meshes without LODs"},
             "berm": {"triangles": berm_tris, "budget": BERM_TRIS, "sectors": f"{SECTORS} by angle, BermK_Cards (canopy, no LODs) and BermK_Wood (bark and boulders, Godot's LODs)",
@@ -2190,3 +2205,17 @@ def map_materials(export, set_import_param):
         if os.path.exists(path):
             set_import_param(path, "mipmaps/generate", "true")
             print("mipmaps:", name)
+    # The kit's textures load through the field (field rev 2b): imported VRAM-compressed (S3TC/RGTC on desktop)
+    # rather than lossless, so loading them is a file read and an upload, not a PNG decode of every mip on the CPU
+    # (lossless, the twenty of them added about 0.6 s to the creature world's setup).
+    for path in vram_textures(export):
+        set_import_param(path, "compress/mode", 2)
+    print("VRAM compressed:", len(vram_textures(export)), "kit textures")
+
+
+def vram_textures(export):
+    """The .import files of the kit textures the field's scatter draws (baked sets and card atlases) that exist."""
+    names = [f"{kit}_T_{tex}_{kind}.png" for kit, tex, _tint, _c in KIT_MATERIALS.values() if tex for kind in ("Albedo", "ORM", "Normal")]
+    paths = [os.path.join(export, f"{n}.import") for n in names]
+    paths += [os.path.join(FLORA_DIR, f"{n}.png.import") for n in (ATLAS, CANOPY_ATLAS)]
+    return [p for p in paths if os.path.exists(p)]

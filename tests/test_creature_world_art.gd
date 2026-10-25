@@ -65,7 +65,8 @@ const COVER_REACH_M := 0.6        # a cover piece's footprint radius
 const COVER_SINK_M := 0.05        # card bottoms sink a little, so roots meet the ground on gentle relief
 const CLASH_MAX := 0.01           # the share of a kit texture's chromatic texels allowed near a reserved hue
 ## tree id -> [wood node, canopy node, lowest and highest height in metres (PROPOSED: the brief's 6-8 m and 4-6 m)]
-const KIT_TREES := {"creature_tree_umbrella": ["UmbrellaTree", "UmbrellaCanopy", 6.0, 8.0]}
+const KIT_TREES := {"creature_tree_umbrella": ["UmbrellaTree", "UmbrellaCanopy", 6.0, 8.0],
+	"creature_tree_lantern": ["LanternTree", "LanternCanopy", 4.0, 6.0]}
 const CANOPY_TRES := "res://assets/export/M_TreeCanopyCards.tres"
 const CANOPY_ATLAS := "res://assets/export/creature_flora/T_TreeCanopyCards.png"
 const TREE_SINK_MAX := 0.2
