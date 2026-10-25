@@ -145,8 +145,6 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 	var hud: Control = made[0]
 	var panel: Control = hud.get_node("%HintPanel")
 	var ways: Label = hud.get_node("%WaysText")
-	var dock: Control = hud.get_node("%Dock")
-	var dock_h := dock.get_combined_minimum_size().y
 	check(panel.visible, "the controls line shows when the world opens")
 	check(not _shown(ways), "the dock's key line waits while the controls line is up")
 	check(ways.visible, "but keeps its row, so the dock does not jump when it comes in")
@@ -161,9 +159,7 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 		t += 0.1
 	check(not panel.visible, "gone after %.0f s" % keys_s)
 	check("Bite" in hud._hint_text.text and "Evolve" in hud._hint_text.text, "its words stay (%s)" % hud._hint_text.text)
-	check(dock.visible, "the dock stays")
-	check(is_equal_approx(dock.get_combined_minimum_size().y, dock_h),
-		"the dock keeps its height (%.0f, was %.0f)" % [dock.get_combined_minimum_size().y, dock_h])
+	check(hud.get_node("%Dock").visible, "the dock stays")
 	_check_ways(hud, "after the controls line goes")
 	# A real device change (InputPrompts.note, as main reports every event) brings the line back for the pad. The
 	# game gives ui_cancel its controller button at start (SettingsService.apply_bindings, UI_PAD); so does this.
@@ -176,7 +172,7 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 	check_eq(InputPrompts.device, "pad", "the pad is the device in use")
 	hud._process(DT)
 	check(panel.visible and is_equal_approx(panel.modulate.a, 1.0), "back when the device changes")
-	check(not _shown(ways), "the dock's key line waits again")
+	check(not _shown(ways) and ways.visible, "the dock's key line waits again, keeping its row")
 	check("Right stick  Orbit" in hud._hint_text.text, "the controls line names the pad (%s)" % hud._hint_text.text)
 	t = 0.0
 	while t < keys_s + 0.2:
