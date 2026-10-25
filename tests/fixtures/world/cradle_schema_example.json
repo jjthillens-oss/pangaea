@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "band": 1,
+  "note": "Schema example (s3-build-plan 7.2), not content.",
+  "pool_ring": {"radius_bu": 14.0625, "glitter_radius_bu": 15.0, "caption": "Your lineage began here", "dressing": "cradle_ring"},
+  "clear_r_bu": 16.0,
+  "view_point_bu": [0.0, 18.0],
+  "shells": [
+    {"id": "c1", "center": [30.0, -40.0], "radius": 1.2, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"}
+  ],
+  "zones": [
+    {"id": "g1", "center": [0.0, 0.0], "radius": 6.0, "capacity": 12.0, "growth_rate": 0.05, "at_second_size": "thin"},
+    {"id": "q2m", "center": [-40.0, 30.0], "radius": 7.0, "capacity": 16.0, "growth_rate": 0.05, "at_second_size": "keep"}
+  ],
+  "sites": [
+    {"id": "w1", "species": "warden", "home": [-40.0, 30.0], "heading": 0.8, "territory_zone": "q2m", "sizes": [3]}
+  ]
+}

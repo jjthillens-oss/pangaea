@@ -13,6 +13,8 @@ extends RefCounted
 ##   green_rim      a rimmed body in view from 8 s after a growth (5 s after "Now food" ended);
 ##                  followed by hitting or eating one
 ##   hunt_for_meat  a meat-only body starving (balance input 6, Q-V4): once a run, never remembered
+##   veil_threads   S3 (V3-19, D-116): a veil whose threads can sting in view; followed VEIL_FOLLOW_S
+##                  after it showed if a veil was in view since and nothing stung the cell
 ##
 ## The HUD feeds it the pool's context (PoolScene.hint_context) every few frames, each sim event
 ## with the pool's facts about it (PoolScene.hint_facts), and asks step() what shows; every time is
@@ -25,6 +27,7 @@ const EAT_SHARE := 0.1
 const HOME_S := 120.0
 const AFTER_GROWTH_S := 2.0
 const GREEN_RIM_AFTER_S := 8.0
+const VEIL_FOLLOW_S := 10.0
 const TEXTS := {
 	"eat_to_grow": "UI_EATING_WELL_MAKES_YOU_GROW_499BD7",
 	"sea_goes_on": "UI_THE_SEA_GOES_ON_786B11",
@@ -32,9 +35,10 @@ const TEXTS := {
 	"flee_now": "UI_THEY_FLEE_FROM_YOU_NOW_F06762",
 	"green_rim": "UI_GREEN_RIM_YOU_CAN_EAT_IT_NOW_4DC6CC",
 	"hunt_for_meat": "UI_HUNT_RAMMERS_FROM_BEHIND_FOR_MEAT_7E60CE",
+	"veil_threads": "UI_THREADS_STING_SWIM_AROUND_THEM_CFC833",
 }
 ## The order in which waiting ideas get their turn.
-const ORDER: PackedStringArray = ["hunt_for_meat", "eat_to_grow", "smaller_now", "flee_now", "green_rim", "sea_goes_on"]
+const ORDER: PackedStringArray = ["hunt_for_meat", "eat_to_grow", "smaller_now", "flee_now", "green_rim", "veil_threads", "sea_goes_on"]
 ## Ideas shown at most once a run and never remembered.
 const ONCE_A_RUN: PackedStringArray = ["hunt_for_meat"]
 
@@ -47,6 +51,8 @@ var _shown_at := {}          ## idea -> sim time it last showed
 var _last_new_at := -INF
 var _showing := ""
 var _until := -INF
+## Since the veil hint last showed: {since (sim s), seen (a veil in view since), stung}; {} for none.
+var _veil_watch := {}
 
 
 ## Followed ideas are read from and added to `p_memory`, and `save` is called as each is added.
@@ -80,6 +86,9 @@ func observe(ctx: Dictionary) -> void:
 	_wanted["flee_now"] = beat_t >= AFTER_GROWTH_S and not jaw
 	_wanted["green_rim"] = beat_t >= GREEN_RIM_AFTER_S and bool(ctx.get("rimmed_in_view", false))
 	_wanted["hunt_for_meat"] = bool(ctx.get("meat_only", false)) and bool(ctx.get("starving", false))
+	_wanted["veil_threads"] = bool(ctx.get("veil_in_view", false))
+	if _wanted["veil_threads"] and not _veil_watch.is_empty():
+		_veil_watch.seen = true
 	if bool(ctx.get("near_smaller", false)):
 		follow("smaller_now")
 		follow("flee_now")
@@ -100,6 +109,9 @@ func on_event(event: Dictionary, facts: Dictionary, ctx: Dictionary) -> void:
 			if str(event.get("region", "")) != "home":
 				follow("sea_goes_on")
 		"hit":
+			if event.get("target") == CreatureField.PLAYER_ID and str(event.get("kind", "")) == "sting" \
+					and not _veil_watch.is_empty():
+				_veil_watch.stung = true
 			if event.get("attacker") == CreatureField.PLAYER_ID:
 				if bool(facts.get("smaller", false)):
 					follow("smaller_now")
@@ -111,6 +123,10 @@ func on_event(event: Dictionary, facts: Dictionary, ctx: Dictionary) -> void:
 ## is followed), else the first waiting idea by ORDER that may show, at most one new every
 ## NEW_IDEA_GAP_S.
 func step(now_s: float) -> String:
+	if not _veil_watch.is_empty() and now_s - float(_veil_watch.since) >= VEIL_FOLLOW_S:
+		if _veil_watch.seen and not _veil_watch.stung:
+			follow("veil_threads")
+		_veil_watch = {}
 	if _showing != "" and now_s < _until and not is_followed(_showing):
 		return _showing
 	_showing = ""
@@ -125,6 +141,8 @@ func step(now_s: float) -> String:
 		_until = now_s + SHOW_S
 		_shown_at[id] = now_s
 		_last_new_at = now_s
+		if id == "veil_threads":
+			_veil_watch = {"since": now_s, "seen": false, "stung": false}
 		break
 	return _showing
 

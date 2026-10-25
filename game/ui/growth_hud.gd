@@ -49,6 +49,11 @@ static func hint_of(growth: Object) -> String:
 	return growth.hint()
 
 
+## The places line (S3, D-116, D-133).
+static func places_text(found: int, total: int) -> String:
+	return "Places found at this size: %d of %d" % [found, total]
+
+
 ## "Size 2 · about 32 µm", from the ladder's labels (world_cell.json ladder.labels); "Size 2" when
 ## the labels do not reach that size.
 static func badge_text(n: int, labels: Array) -> String:

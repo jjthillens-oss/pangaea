@@ -39,9 +39,9 @@ const INK := CreatureView.MARKER_COLOR
 const RIM := CreatureView.RIM_COLOR
 const NEUTRAL := CreatureView.NEUTRAL_CREST
 ## The phrases' order in the preview line (keys of phrase_key); ties keep entry order.
-const PHRASE_ORDER: PackedStringArray = ["flee", "appear", "ignore", "morsels", "haze"]
+const PHRASE_ORDER: PackedStringArray = ["flee", "appear", "ignore", "stop", "morsels", "haze"]
 const PHRASES := {"flee": "UI_S_FLEE_FROM_YOU_DD999A", "appear": "UI_S_APPEAR_BB549D", "ignore": "UI_S_IGNORE_YOU_9738D8",
-	"morsels": "UI_S_BECOME_MORSELS_CB975E", "haze": "UI_S_FADE_TO_HAZE_194027"}
+	"stop": "UI_S_STOP_STINGING_CBE7F5", "morsels": "UI_S_BECOME_MORSELS_CB975E", "haze": "UI_S_FADE_TO_HAZE_194027"}
 const PREVIEW_PREFIX := "UI_AFTER_YOUR_NEXT_GROWTH_904015"
 const TOP_PREFIX := "UI_COMING_IN_A_LATER_BUILD_10974C"
 
@@ -143,7 +143,8 @@ static func entries_for(live: PackedStringArray, ghosts: PackedStringArray, n: i
 		seen[id] = true
 		var role := role_at(id, n, species, ladder)
 		out.append({"id": id, "role": role, "next_role": role_at(id, n + 1, species, ladder),
-			"plural": plural_of(id, ladder), "texture": texture_of(id, role, ladder)})
+			"plural": plural_of(id, ladder), "texture": texture_of(id, role, ladder),
+			"behavior": species.behavior_of(id) if species != null else ""})
 	return out
 
 
@@ -192,8 +193,9 @@ static func tint_of(role: String, has_jaw: bool) -> Color:
 
 
 ## Which phrase a change of role from `from` to `to` takes (PHRASES' keys), "" for none: no change,
-## or a change the table does not word.
-static func phrase_key(from: String, to: String) -> String:
+## or a change the table does not word. A hazard (`behavior`, S3 V3-18) that stops being a threat
+## stops stinging; it never hunted, so "ignore you" would be false.
+static func phrase_key(from: String, to: String, behavior := "") -> String:
 	if from == to:
 		return ""
 	match to:
@@ -204,15 +206,17 @@ static func phrase_key(from: String, to: String) -> String:
 		"haze":
 			return "haze"
 		"rival":
-			return "ignore" if from == "threat" else ""
+			if from != "threat":
+				return ""
+			return "stop" if behavior == "hazard" else "ignore"
 		"threat":
 			return "appear" if from == "ghost" else ""
 	return ""
 
 
 ## The phrase for `plural` going from `from` to `to` ("rammers flee from you"), "" for none.
-static func phrase(plural: String, from: String, to: String) -> String:
-	var key := phrase_key(from, to)
+static func phrase(plural: String, from: String, to: String, behavior := "") -> String:
+	var key := phrase_key(from, to, behavior)
 	return TranslationServer.translate(PHRASES[key]) % plural if key != "" else ""
 
 
@@ -225,7 +229,7 @@ static func preview_line(entries: Array[Dictionary], at_top: bool, n: int, ladde
 	var keyed := []
 	for i in entries.size():
 		var e := entries[i]
-		var key := phrase_key(str(e.role), str(e.next_role))
+		var key := phrase_key(str(e.role), str(e.next_role), str(e.get("behavior", "")))
 		if key != "":
 			keyed.append([PHRASE_ORDER.find(key), i, TranslationServer.translate(PHRASES[key]) % str(e.plural)])
 	keyed.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0] or (a[0] == b[0] and a[1] < b[1]))

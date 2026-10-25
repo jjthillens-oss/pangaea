@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "The band-1 test world (s3-sim D-146), written by make_b1_fixture.py: world_min.json reaching size 4.",
+  "mode": "endless",
+  "gen_version": 1,
+  "sizes": {
+    "start": 1,
+    "max_in_build": 4
+  },
+  "units": {
+    "growth_factor": 1.6,
+    "band_factor": 2.56,
+    "tile_bu": 64.0,
+    "chunk_tm": 32.0
+  },
+  "rings_tm": {
+    "mirror": 20.0,
+    "view": 33.9,
+    "wake": 40.0,
+    "sleep": 44.0,
+    "food": 52.0,
+    "load": 56.0,
+    "unload": 72.0,
+    "hold": 96.0
+  },
+  "caps": {
+    "awake": 12,
+    "sleepers": 30,
+    "food_items": 120,
+    "food_per_zone": 12,
+    "chunks": 36,
+    "view_set_chunks": 12,
+    "loads_per_tick": 1
+  },
+  "growth": {
+    "trigger": "auto",
+    "rings": [
+      90,
+      120,
+      120,
+      170,
+      180,
+      190,
+      200,
+      205,
+      210
+    ],
+    "drain_floor_share": 0.8,
+    "drain_ring_seconds": 190.0,
+    "calm_ticks": 90,
+    "quiet_ticks": 120,
+    "chase_window_ticks": 60,
+    "chase_close_tm": 1.0,
+    "chase_track_tm": 15.0,
+    "wedge_tm": 2.0,
+    "showcase_s": 20.0,
+    "blocked_hint_s": 3.0,
+    "shelter_s": 5.0,
+    "beat_s": 2.0,
+    "beat_loads_per_tick": 2,
+    "death_meter_share": 0.25,
+    "respawn_floor_share": 0.8,
+    "respawn_cap_over_death": 20.0,
+    "top_payout_points": 10,
+    "prefetch_share": 0.9,
+    "prefetch_per_tick": 1,
+    "lumps": {
+      "threat_kill": 0.15,
+      "place": 0.1,
+      "landmark_at_top": 0.1,
+      "food_look": 0.05,
+      "kill_carcass_share": 0.25
+    },
+    "remnants": {
+      "cap": 12,
+      "min_rel": 0.45,
+      "morsel_min_rel": 0.25,
+      "life_s": 30.0,
+      "morsel_max_radius_tm": 0.225,
+      "morsel_rot_s": 120.0
+    },
+    "discovery": {
+      "place_find_tm": 10.0,
+      "landmark_find_tm": 6.0
+    },
+    "points": {
+      "place": 10,
+      "landmark": 20
+    }
+  },
+  "second_size": {
+    "zone_thin_share": 0.4
+  },
+  "ladder": {
+    "labels": [
+      "about 20 \u00b5m",
+      "about 32 \u00b5m",
+      "about 51 \u00b5m",
+      "about 82 \u00b5m",
+      "about 131 \u00b5m",
+      "about 210 \u00b5m",
+      "about 336 \u00b5m",
+      "about 537 \u00b5m",
+      "about 859 \u00b5m",
+      "about 1.37 mm"
+    ],
+    "food_looks": [
+      {
+        "plant": "plankton",
+        "meat": "carrion"
+      },
+      {
+        "plant": "algae_ball",
+        "meat": "carrion"
+      },
+      {
+        "plant": "glass_flake",
+        "meat": "carrion"
+      },
+      {
+        "plant": "bead_cluster",
+        "meat": "carrion"
+      }
+    ]
+  },
+  "origin": {
+    "rebase_beyond_tm": 96.0,
+    "rebase_step_tm": 32.0,
+    "local_bound_tm": 256.0
+  },
+  "arrangement": {
+    "region_period_tiles": 8,
+    "region_order": [
+      "drift",
+      "sunlit",
+      "reef"
+    ],
+    "region_thresholds": [
+      0.395,
+      0.605
+    ],
+    "max_drift_run": 2,
+    "landmark_cell_tiles": 2,
+    "rare_block_tiles": 6,
+    "rare_block_first_tile": -3,
+    "home_tiles": [
+      -1,
+      0
+    ],
+    "fixed_rare": {
+      "tile": [
+        2,
+        -1
+      ],
+      "kind": "giant_husk"
+    },
+    "bands": {
+      "1": {
+        "region_order": [
+          "veil_garden",
+          "warden_flat",
+          "glass_reef"
+        ],
+        "fixed_rare_kind": "sunbeam_well"
+      }
+    }
+  },
+  "content": {
+    "home": "res://tests/fixtures/world/home_min.json",
+    "tiles": {
+      "0": "res://tests/fixtures/world/tiles/b0",
+      "1": "res://tests/fixtures/world/tiles_b1/b1"
+    },
+    "kit": "res://tests/fixtures/world/kit_min.json",
+    "cradle": {
+      "1": "res://game/data/cradle_b1.json"
+    }
+  },
+  "switches": {
+    "generated_creatures": true,
+    "growth": false,
+    "lumps": true,
+    "habits": true,
+    "landmark_return": true
+  }
+}

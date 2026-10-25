@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Fallen lattice (S3 band 1, rare): a great glass lattice lying on the floor; a Deep lurker waits in the channel along its side (docs/s3: s3-sim 4.3).",
+  "id": "fallen_lattice",
+  "band": 1,
+  "region": "rare",
+  "set": null,
+  "rare": "fallen_lattice",
+  "landmark_anchor": null,
+  "set_piece": {"asset": "rare_fallen_lattice", "center": [0.0, 0.0], "yaw_deg": 0.0},
+  "shells": [
+    {"id": "s0", "center": [2.0, -8.5], "radius": 1.0, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [10.0, -4.0], "radius": 1.2, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s2", "center": [9.6, 3.6], "radius": 1.0, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s3", "center": [-17.9, -5.0], "radius": 1.16, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s4", "center": [-20.1, -17.9], "radius": 0.94, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s5", "center": [16.4, 9.1], "radius": 1.02, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"},
+    {"id": "s6", "center": [19.9, 14.6], "radius": 1.33, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s7", "center": [23.2, 3.7], "radius": 0.78, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s8", "center": [5.2, -26.2], "radius": 1.16, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s9", "center": [-5.4, 14.9], "radius": 1.28, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s10", "center": [-19.1, 4.7], "radius": 1.14, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"}
+  ],
+  "zones": [
+    {"id": "zl", "center": [6.0, -14.5], "radius": 3.0, "capacity": 10.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "f1", "center": [-5.1, 26.9], "radius": 3.36, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f2", "center": [-26.8, -26.8], "radius": 3.67, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f3", "center": [26.1, 10.1], "radius": 3.57, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f4", "center": [-27.2, 9.8], "radius": 3.26, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f5", "center": [11.8, -24.2], "radius": 3.32, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "f6", "center": [-4.1, 6.9], "radius": 3.45, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f7", "center": [17.1, 25.1], "radius": 3.56, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f8", "center": [23.7, -19.3], "radius": 3.22, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f9", "center": [-27.7, 18.3], "radius": 2.83, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f10", "center": [-24.4, -13.4], "radius": 3.15, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"},
+    {"id": "f11", "center": [-18.4, -27.4], "radius": 3.13, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "dl", "species": "deep_lurker", "home": [6.0, 0.0], "heading": -1.5708, "territory_zone": "", "sizes": [4]},
+    {"id": "va", "species": "veil", "home": [-18.0, 16.0], "heading": -2.1121, "territory_zone": "", "sizes": [3]},
+    {"id": "ah", "species": "ambush_hunter", "home": [-17.0, -14.0], "heading": 0.8676, "territory_zone": "", "sizes": [3, 4]}
+  ]
+}

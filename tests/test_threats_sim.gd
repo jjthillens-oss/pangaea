@@ -105,9 +105,10 @@ func _plain_sim(body: String, seed_value: int, p_layout: PoolLayout) -> PoolSim:
 ## A creature placed at `at` facing `heading`, settled (it may notice from its first think), at
 ## `energy_share` of its capacity when given (below its hungry share it hunts or forages).
 ## With `posts` (S2G4) the creature is a size-2 species at its entry size (the field drawn at size 2,
-## q = 1) given those two posts, so its leash disc is their union.
+## q = 1) given those two posts, so its leash disc is their union. A species past size 1 (S3G10) is
+## drawn at its entry size too.
 func _creature(sim: PoolSim, species_id: String, at: Vector2, heading: float, energy_share := -1.0, posts := []) -> CreatureField.Creature:
-	if not posts.is_empty():
+	if not posts.is_empty() or sim.species.entry_size(species_id) > 1:
 		sim.creatures.set_size(sim.species.entry_size(species_id))
 	var c := sim.creatures.spawn_at(species_id, at, heading, "", sim.tick, true)
 	check(c != null, "a %s placed at %s" % [species_id, at])
@@ -157,7 +158,7 @@ func _creature_json(sim: PoolSim) -> String:
 ## reaction; NAN without one), "events"}.
 func _strike(species_id: String, body: String, d: float, h: float, throttle: float, starving: bool, react: int,
 		far := false, posts := []) -> Dictionary:
-	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h, null, _species_for(posts))
+	var sim := _sim(body, 31, STRIKE_ORIGIN + Vector2(d, 0.0), h, null, _species_for(posts, species_id))
 	if starving:
 		sim.debug_set_energy(0.0)
 	sim.motion.velocity = Vector2.from_angle(h) * sim.phenotype.speed * sim.state.speed_multiplier() * throttle
@@ -573,7 +574,7 @@ func _escape(species_id: String, two_posts := false) -> void:
 		for starving in [false, true]:
 			var start := Vector2(-8.0, -16.0)
 			var posts := _fixture_posts(species_id, start - Vector2(4.0, 0.0), true) if two_posts else []
-			var sim := _sim(body, 51, start, 0.0, null, _species_for(posts))
+			var sim := _sim(body, 51, start, 0.0, null, _species_for(posts, species_id))
 			if starving:
 				sim.debug_set_energy(0.0)
 			sim.motion.velocity = Vector2.RIGHT * sim.phenotype.speed * sim.state.speed_multiplier()
@@ -1834,8 +1835,8 @@ func _no_vectors(value: Variant) -> bool:
 
 ## The site-less catalog with the size-2 species (creatures_m1.json without its sites) for a run with
 ## `posts`; the fixture's M1 catalog otherwise.
-func _species_for(posts: Array) -> SpeciesCatalog:
-	if posts.is_empty():
+func _species_for(posts: Array, species_id := "") -> SpeciesCatalog:
+	if posts.is_empty() and (species_id.is_empty() or test_species.species.has(species_id)):
 		return test_species
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
 	data.sites = []
@@ -1843,10 +1844,12 @@ func _species_for(posts: Array) -> SpeciesCatalog:
 
 
 ## The posts fixture's two posts for `species_id`, moved so that post a's home is `at`, or with
-## `zone_at` its zone's centre (an M1 rammer's own zone is centred on its home).
+## `zone_at` its zone's centre (an M1 rammer's own zone is centred on its home). The elder Warden
+## (S3G10) takes the elder rammer's: the same zones, territory margin and leash.
 func _fixture_posts(species_id: String, at: Vector2, zone_at := false) -> Array:
+	var like := "elder_rammer" if species_id == "elder_warden" else species_id
 	for site: Dictionary in Habits.posts_fixture().sites:
-		if site.species == species_id:
+		if site.species == like:
 			var t: Dictionary = site.territory
 			var from: Vector2 = t.center if zone_at and not t.is_empty() else site.home
 			return Habits.posts_at(site, at - (from - Vector2(site.home)))
@@ -1874,3 +1877,98 @@ func test_slow_a_cell_swimming_straight_away_outpaces_a_lurker_or_an_elder_ramme
 	# S2G4: S6 for both size-2 species at q = 1 with two posts.
 	for species_id in ["lurker", "elder_rammer"]:
 		_escape(species_id, true)
+
+
+# --- S3G10: the S3 threats are as fair as S1's (s3-sim T1.5) ---
+
+func test_slow_a_wardens_charge_and_an_elder_wardens_with_two_posts_are_dodged_as_the_rammers_is() -> void:
+	# The S5 charge grid for the Warden at its entry size (q = 1), and for the elder Warden with the
+	# elder rammer's posts, post a at the strike origin, so its leash is the union disc.
+	_check_charge_grid(_grid("warden", CHARGE_DISTS))
+	_check_charge_grid(_grid("elder_warden", CHARGE_DISTS, _fixture_posts("elder_warden", STRIKE_ORIGIN)))
+
+
+func test_slow_a_deep_lurkers_lunge_is_dodged_as_the_ambush_hunters_is() -> void:
+	_check_lunge_grid(_grid("deep_lurker", LUNGE_DISTS))
+
+
+func test_slow_a_cell_swimming_straight_away_outpaces_a_warden_a_deep_lurker_and_an_elder_warden() -> void:
+	# S6 at q = 1; the elder Warden with two posts.
+	for species_id in ["warden", "deep_lurker"]:
+		_escape(species_id)
+	_escape("elder_warden", true)
+
+
+## The veil escape grid: a fed cell that swims into the veil's threads at full speed (the contact
+## points: 64 round the threads' capsule, widened by the cell's radius) and turns to swim straight
+## out is clear of the threads by VEIL_CLEAR_M within one sting cooldown. The veil drifts its path all
+## the while; the cell is never stung here (T2 adds the sting, whose knockback only helps).
+const VEIL_CONTACTS := 64
+const VEIL_CLEAR_M := 0.5
+
+
+func test_a_fed_cell_touching_the_veils_threads_swims_clear_within_one_cooldown() -> void:
+	var real := _species_for([], "veil")
+	var cooldown := real.hazard_cooldown_ticks()
+	check_eq(cooldown, 75, "one cooldown is 1.25 s")
+	var worst := 0
+	var slow := ""
+	var inside := 0
+	for body in BODIES:
+		for i in VEIL_CONTACTS:
+			var sim := _sim(body, 61, STRIKE_ORIGIN + Vector2(0.0, 6.0), 0.0, null, real)
+			var veil := _creature(sim, "veil", STRIKE_ORIGIN, 0.0)
+			CreatureBrain.set_drift(veil.brain, 0x7E11 + i)
+			var cap := CreatureBrain.thread_capsule(veil.brain, veil.motion.position, veil.motion.heading, veil.phenotype.radius)
+			var touch := _capsule_rim(cap.a, cap.b, float(cap.r) + sim.phenotype.radius, float(i) / VEIL_CONTACTS)
+			if Vector2(touch.point).distance_to(veil.motion.position) < veil.phenotype.radius + sim.phenotype.radius:
+				inside += 1   # round the threads' root, inside the veil's own body: no cell gets there
+				continue
+			var out: Vector2 = touch.normal
+			var speed := sim.phenotype.speed * sim.state.speed_multiplier()
+			check(sim.debug_teleport(touch.point, (-out).angle()), "%s placed at contact %d" % [body, i])
+			sim.motion.velocity = -out * speed
+			var clear_at := -1
+			for t in cooldown:
+				sim.step(SimIntent.new(out))
+				var now := CreatureBrain.thread_capsule(veil.brain, veil.motion.position, veil.motion.heading, veil.phenotype.radius)
+				var gap := _segment_distance(sim.motion.position, now.a, now.b) - sim.phenotype.radius - float(now.r)
+				if gap >= VEIL_CLEAR_M:
+					clear_at = t + 1
+					break
+			if clear_at < 0 or clear_at > worst:
+				worst = cooldown + 1 if clear_at < 0 else clear_at
+				slow = "%s at contact %d" % [body, i]
+	print("test-threats-veil-escape: the slowest clear in %d ticks (%s), one cooldown %d; %d contacts inside the body"
+		% [worst, slow, cooldown, inside])
+	check(inside < BODIES.size() * VEIL_CONTACTS / 2, "most contacts are reachable (%d inside the body)" % inside)
+	check(worst <= cooldown, "every fed cell clears the threads by %.1f m within %d ticks (worst %d, %s)"
+		% [VEIL_CLEAR_M, cooldown, worst, slow])
+
+
+## The point at share `u` of the way round the rim of the capsule (segment a-b, radius r), with its
+## outward normal: {"point", "normal"}.
+static func _capsule_rim(a: Vector2, b: Vector2, r: float, u: float) -> Dictionary:
+	var along: Vector2 = (b - a).normalized()
+	var side := along.orthogonal()
+	var length := a.distance_to(b)
+	var arc := PI * r
+	var at := u * (2.0 * length + 2.0 * arc)
+	if at < length:
+		return {"point": a + along * at + side * r, "normal": side}
+	at -= length
+	if at < arc:
+		var n := side.rotated(at / r)
+		return {"point": b + n * r, "normal": n}
+	at -= arc
+	if at < length:
+		return {"point": b - along * at - side * r, "normal": -side}
+	at -= length
+	var m := (-side).rotated(at / r)
+	return {"point": a + m * r, "normal": m}
+
+
+static func _segment_distance(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 1e-12), 0.0, 1.0)
+	return p.distance_to(a + ab * t)

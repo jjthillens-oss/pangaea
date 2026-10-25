@@ -74,6 +74,7 @@ UI_ENERGY_60_100_68E1D4,Energy 60 / 100
 UI_ENERGY_D_D_101341,Energy %d / %d
 UI_EVOLVED_CELL_CFC292,Evolved cell
 UI_EVOLVE_AT_THE_NEST_38F20E,Evolve at the nest
+UI_FALLEN_LATTICE_686232,Fallen lattice
 UI_FED_6FF2BC,Fed
 UI_FOOD_D_M_50EC97,Food %d m
 UI_FOUND_A_NEW_LINEAGE_HERE_50B79D,Found a new lineage here.
@@ -89,6 +90,7 @@ UI_GAMEPLAY_E04C71,Gameplay
 UI_GENERATION_D_D0FBBA,Generation %d
 UI_GENERATION_D_S_9BD1A5,Generation %d · %s
 UI_GENERATION_START_A4A5C9,Generation start
+UI_GLASS_REEF_8EEF7F,Glass reef
 UI_GRAPHICS_AB255C,Graphics
 UI_GRAZER_113814,Grazer
 UI_GRAZER_LINEAGE_0000_0000_GENERATION_1_C8192F,Grazer lineage 0000-0000 · Generation 1
@@ -190,6 +192,7 @@ UI_SELECTED_9A976F,Selected
 UI_SELECT_859822,Select
 UI_SENSES_F01EAF,Senses
 UI_SETTINGS_C7F73B,Settings
+UI_SHED_SHELL_117F58,Shed shell
 UI_SHELL_REEF_75933F,Shell reef
 UI_SHELTERED_5_1855CE,Sheltered 5
 UI_SHELTERED_D_AA0AFE,Sheltered %d
@@ -202,6 +205,7 @@ UI_SKIN_COLOUR_8EF3E3,SKIN COLOUR
 UI_SLOT_D_S_3C048D,Slot %d%s
 UI_SLOT_D_YOUR_LINEAGE_9BED2C,Slot %d  ·  Your lineage
 UI_SPEED_2D2CB0,Speed
+UI_SPONGE_GROVE_F3AEAD,Sponge grove
 UI_START_952F37,Start
 UI_START_A_NEW_LINEAGE_1D4B99,Start a new lineage?
 UI_START_FROM_A_PRESET_E95F0D,Start from a preset
@@ -211,6 +215,7 @@ UI_STARVING_YOU_ARE_SLOW_AND_LOSING_HEALTH_NFIND_FO_20834E,"Starving: you are sl
 Find food."
 UI_STICK_DEADZONE_A25C06,Stick deadzone
 UI_STOP_TEST_DRIVE_EA48B7,Stop test drive
+UI_SUNBEAM_WELL_A1D199,Sunbeam well
 UI_SUNLIT_SHALLOWS_06ECD4,Sunlit shallows
 UI_SWIM_6CAE1A,Swim
 UI_SWIM_DOWN_CA88AC,Swim down
@@ -231,6 +236,7 @@ UI_S_GENERATION_D_218479,%s · Generation %d
 UI_S_IGNORE_YOU_9738D8,%s ignore you
 UI_S_LINEAGE_S_GENERATION_U00A0_D_6E25CD,%s lineage %s · Generation %d
 UI_S_MOVE_83EF03,%s  Move
+UI_S_STOP_STINGING_CBE7F5,%s stop stinging
 UI_S_TABS_535627,%s  Tabs
 UI_TEST_DRIVE_F11B82,Test drive
 UI_TEXT_SIZE_3CC6E1,Text size
@@ -244,6 +250,7 @@ UI_THE_SHELL_CATHEDRAL_148F43,The shell cathedral
 UI_THIS_BODY_HAS_NO_MOUTH_THAT_CAN_EAT_89990D,This body has no mouth that can eat.
 UI_THIS_REPLACES_YOUR_CURRENT_LINEAGE_THE_PREVIOUS__346556,This replaces your current lineage. The previous save is kept as a backup until your next save.
 UI_THIS_SAVE_COULD_NOT_BE_READ_NOTHING_WAS_DELETED_E289B4,This save could not be read. Nothing was deleted.
+UI_THREADS_STING_SWIM_AROUND_THEM_CFC833,Threads sting: swim around them
 UI_TOO_BIG_TO_BITE_E6042F,Too big to bite
 UI_TURNING_9212A5,Turning
 UI_TURN_YOUR_JAW_TOWARD_IT_47EE7F,Turn your jaw toward it
@@ -252,7 +259,9 @@ UI_TWO_TAILS_FOR_SPEED_AND_A_JAW_FOR_CARRION_HUNTER_C3D47B,Two tails for speed a
 UI_UNDO_39FC72,Undo
 UI_UNREADABLE_E6D35C,Unreadable
 UI_UPKEEP_120946,Upkeep
+UI_VEIL_GARDENS_298CB8,Veil gardens
 UI_VERTICAL_SYNC_09ED6D,Vertical sync
+UI_WARDEN_FLATS_C388D8,Warden flats
 UI_WEAPONS_F32D06,Weapons
 UI_WHEEL_DOWN_F5596C,Wheel down
 UI_WHEEL_UP_20F39B,Wheel up
@@ -264,6 +273,7 @@ UI_YOUR_CELL_DIED_D81DB6,Your cell died
 UI_YOUR_CELL_RESTED_ENERGY_D_HEALTH_S_9BEBEE,"Your cell rested: Energy %d%%, Health %s"
 UI_YOUR_CELL_S_DEATH_COULD_NOT_BE_SAVED_QUIT_ANYWAY_49213A,Your cell's death could not be saved. Quit anyway?
 UI_YOUR_LAST_SAVE_COULD_NOT_BE_READ_CONTINUING_FROM_54AFB3,Your last save could not be read; continuing from the backup.
+UI_YOUR_LINEAGE_BEGAN_HERE_2C5BC3,Your lineage began here
 UI_YOUR_LINEAGE_E307EE,Your lineage
 UI_YOUR_SAVE_COULD_NOT_BE_READ_0397B0,Your save could not be read
 UI_YOUR_SAVE_COULD_NOT_BE_READ_SO_CONTINUE_IS_OFF_N_F46F27,"Your save could not be read, so Continue is off. Nothing was deleted."

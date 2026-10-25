@@ -178,6 +178,10 @@ func test_a_kill_notice_names_the_killer_the_saved_loss_and_the_species_tip() ->
 	check_eq(lines[1], tip, "the species tip on its own line")
 	for id in species.species:
 		var each := str(species.species[id].death_tip)
+		if species.behavior_of(id) == "hazard":
+			# A hazard never strikes (S3): its tip names its threads instead of a strike's dodge.
+			check(each.contains("threads"), "the %s tip names its threads: %s" % [id, each])
+			continue
 		check(each.contains("out of its line on the side you face"), "the %s tip names the dodge the S5 grid proves (F2): %s" % [id, each])
 	check(Main.death_text("killed", 3, tip, saved, 2).contains("generation 2"), "the generation is the save's")
 

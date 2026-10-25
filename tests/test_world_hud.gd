@@ -462,3 +462,104 @@ func _projector(camera: Camera3D) -> Callable:
 		var clip := Projection.create_perspective(camera.fov, SCREEN.aspect(), camera.near, camera.far) * Vector4(view.x, view.y, view.z, 1.0)
 		var ndc := Vector2(clip.x, clip.y) / clip.w
 		return {"at": Vector2((ndc.x + 1.0) * 0.5 * SCREEN.x, (1.0 - ndc.y) * 0.5 * SCREEN.y), "behind": view.z >= 0.0}
+
+
+# --- S3 (s3-view 11; S3G41) ---
+
+## Band 1's regions and rare places by their D-116 names; home from band 1 is the cradle.
+func test_band_one_names() -> void:
+	var names := {"veil_garden": "Veil gardens", "warden_flat": "Warden flats", "glass_reef": "Glass reef"}
+	for region: String in names:
+		check_eq(Hud.region_toast(region, "", 1), names[region], region)
+	var rares := {"sunbeam_well": "Sunbeam well", "fallen_lattice": "Fallen lattice", "sponge_grove": "Sponge grove",
+		"shed_shell": "Shed shell"}
+	for rare: String in rares:
+		check_eq(Hud.region_toast("rare", rare, 1), rares[rare], rare)
+	for rare in TileCatalog.RARE_KINDS_BY_BAND[1]:
+		check(rares.has(rare), "%s has a name" % rare)
+	check_eq(str(TranslationServer.translate(Hud.CRADLE_TOAST)), "Your lineage began here", "cradle English is unchanged")
+	check_eq(Hud.region_toast("home", "", 1), str(TranslationServer.translate(Hud.CRADLE_TOAST)), "home at band 1: the cradle")
+	check_eq(Hud.region_toast("home", "", 0), "Home waters", "home at band 0")
+
+
+## The cradle's toast shows once a session (a bind), however often the cell comes home.
+func test_cradle_toast_once() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	check(sim.debug_set_size(3), "the dev's size 3")
+	FakeEvents.frame(pool)
+	sim.tick = 0
+	var hud := _hud(pool)
+	var count := func() -> int: return hud.toast_texts().count(str(TranslationServer.translate(Hud.CRADLE_TOAST)))
+	check_eq(count.call(), 1, "bind at home toasts the cradle")
+	for s in [40.0, 70.0, 100.0]:
+		sim.tick = roundi(s / PoolSim.DT)
+		hud._on_sim_event(FakeEvents.tile_entered(Vector2i(0, 0), "home", ""))
+	check_eq(count.call(), 1, "three more homecomings in 100 s: no more")
+	hud._on_sim_event(FakeEvents.tile_entered(Vector2i(1, 0), "glass_reef", ""))
+	check_eq(_last_toast(hud), "Glass reef", "other regions still toast")
+	var camera := pool.camera
+	pool.camera = null
+	hud.bind(pool)
+	pool.camera = camera
+	check_eq(count.call(), 2, "a new bind toasts it again")
+	hud.free()
+	pool.free()
+
+
+## A tile entered during a growth beat before its chord toasts at the chord, once.
+func test_toast_waits_for_the_chord() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	var hud := _hud(pool)
+	check(sim.debug_force_growth(), "a forced growth")
+	FakeEvents.frame(pool)
+	check(pool.growth_beat.running(), "the beat runs")
+	var count := hud.toast_texts().size()
+	hud._on_sim_event(FakeEvents.tile_entered(Vector2i(3, 0), "reef", ""))
+	while pool.growth_beat.running() and pool.growth_beat.t() < GrowthBeat.CHORD_S:
+		check_eq(hud.toast_texts().size(), count, "%.2f s: no toast yet" % pool.growth_beat.t())
+		FakeEvents.frame(pool)
+	check_eq(hud.toast_texts().size(), count + 1, "one toast at the chord")
+	check_eq(_last_toast(hud), "Shell reef", "the region entered")
+	for i in 30:
+		FakeEvents.frame(pool)
+	check_eq(hud.toast_texts().size(), count + 1, "and only one")
+	hud.free()
+	pool.free()
+
+
+## A band-up where the cell keeps its tile (home, at the origin) gets no tile_entered: the chord
+## names the tile under the new band, so home is the cradle once; an in-band growth names nothing.
+func test_band_up_names_the_tile_at_the_chord() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_set_size(2), "the dev's size 2")
+	FakeEvents.frame(pool)
+	var hud := _hud(pool)
+	check_eq(str(Hud.start_tile_info(sim).get("region", "")), "home", "the cell is in the home tile")
+	var before := hud.toast_texts().size()
+	check(sim.debug_force_growth(), "a forced growth, 2 to 3")
+	FakeEvents.frame(pool)
+	while pool.growth_beat.running() and pool.growth_beat.t() < GrowthBeat.CHORD_S:
+		check_eq(hud.toast_texts().size(), before, "%.2f s: no toast before the chord" % pool.growth_beat.t())
+		FakeEvents.frame(pool)
+	check_eq(hud.toast_texts().count(str(TranslationServer.translate(Hud.CRADLE_TOAST))), 1, "the chord names home the cradle")
+	# Away from home, its name's 30 s window over: the next growth is in band, and names nothing.
+	check(sim.debug_teleport_abs(400.0, 400.0, 0.0), "the cell far from home")
+	for i in 240:
+		FakeEvents.frame(pool)
+	hud._region_shown.clear()
+	var added := 0
+	var on_screen := hud.toast_texts().size()
+	check(sim.debug_force_growth(), "a forced growth, 3 to 4")
+	for i in 240:
+		FakeEvents.frame(pool)
+		var now := hud.toast_texts().size()
+		added += maxi(now - on_screen, 0)
+		on_screen = now
+	check_eq(added, 0, "an in-band growth names nothing (%s)" % [hud.toast_texts()])
+	hud.free()
+	pool.free()

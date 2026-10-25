@@ -108,6 +108,12 @@ var rng := RandomNumberGenerator.new()
 var queue: Array[Dictionary] = []
 ## Creature ids engaged (chase or attack) with the player, in the order they took the token.
 var engaged_on_player := PackedStringArray()
+## No creature takes the token before this tick (S3, D-126): a sting closes it for
+## PoolSim.STING_STRIKE_GAP_TICKS, so no strike follows a sting at once.
+var token_closed_until := 0
+## Whether a hazard can be live at this size: some species with a hazard block enters at or below it
+## (set_size; BP3-2). The sting rule's fields are snapshotted only then, so sizes 1 and 2 hash as S2.
+var hazard_live := false
 ## creature_spawned / creature_removed and the brains' events (with the creature's id), since the
 ## sim last took them.
 var events: Array[Dictionary] = []
@@ -128,6 +134,7 @@ var _slot_counts := PackedInt32Array()
 ## Endless mode: site id -> its creature.
 var _by_site := {}
 var _str_brain := WorldHash.str32("brain")
+var _str_drift := WorldHash.str32("drift")
 var _str_respawn := WorldHash.str32("respawn")
 var _senses := {}       ## species id -> {"sight", "fov" (radians, whole), "near"}
 ## Endless mode: a sleeper's brain may hold events (it went to sleep with some, or a hook on every
@@ -169,6 +176,10 @@ static func create(p_species: SpeciesCatalog, p_catalog: PartCatalog, p_layout: 
 ## M1 value is S1's, bit for bit. Creatures already in the field keep the body they have.
 func set_size(n: int) -> void:
 	size = n
+	hazard_live = false
+	for id in species.species_ids():
+		if not species.hazard_of(id).is_empty() and species.entry_size(id) <= n:
+			hazard_live = true
 	_records.clear()
 	_phenotypes.clear()
 	_senses.clear()
@@ -361,8 +372,22 @@ func spawn_at(species_id: String, p: Vector2, heading: float, site := "", tick :
 		territory = species.territory_of(species.site(site), layout)
 	var cfg: Dictionary = rec.cfg
 	c.brain = CreatureBrain.create(str(cfg.behavior), cfg, p, heading, territory, seed_value * BRAIN_SEED_STRIDE + c.number, tick)
+	if c.brain.behavior == CreatureBrain.HAZARD:
+		CreatureBrain.set_drift(c.brain, WorldHash.hash_ints(PackedInt64Array([seed_value, c.number, _str_drift])))
 	_add(c)
 	return c
+
+
+## Tests only (D-127): the species' record at its entry size (q = 1) in place of the field's, its
+## body and senses with it, so a pool test can place a species above size 1 as itself. test_pool_sim
+## holds every file under game/ to never calling it.
+func use_entry_record(species_id: String) -> void:
+	var rec := species.at_size(species_id, species.entry_size(species_id), catalog)
+	if rec.is_empty():
+		return
+	_records[species_id] = rec
+	_phenotypes[species_id] = rec.phenotype
+	_senses[species_id] = {"sight": rec.sight, "fov": rec.fov, "near": rec.near_m}
 
 
 ## Places a scripted body (a test decoy, never a real creature): any species id and phenotype, no
@@ -537,8 +562,15 @@ func spawn_site(s: Dictionary, tick: int, asleep := false) -> Creature:
 		c = _site_creature(s, count, role)
 	c.born_tick = tick
 	CreatureBrain.start(c.brain, tick)
-	if s.has("posts") and bool(world.content.config.switches.get("habits", false)):
+	var habits := bool(world.content.config.switches.get("habits", false))
+	if s.has("posts") and habits:
 		CreatureBrain.set_posts(c.brain, s.posts)
+	if c.brain.behavior == CreatureBrain.HAZARD:
+		# The placed site's own path, with no spawn count: a respawn or a reload rejoins it (D-124).
+		CreatureBrain.set_drift(c.brain, WorldHash.hash_ints(PackedInt64Array([world.world_seed, world.gen_version,
+			WorldHash.str32(site_id), _str_drift])))
+	if habits and not s.get("bloom", {}).is_empty():
+		CreatureBrain.set_bloom(c.brain, int(s.bloom.offset_ticks), int(s.bloom.cycle_ticks))
 	c.asleep = asleep
 	_by_site[site_id] = c
 	_add(c)
@@ -798,7 +830,7 @@ func think(c: Creature, p_bodies: Variant, food_items: Array, arena: PoolArena, 
 	var sv := self_view if not self_view.is_empty() else self_view_of(c)
 	sv["cell"] = _cell_of(p_bodies)
 	var seen := false
-	var may := may_engage_player(c)
+	var may := may_engage_player(c) and tick >= token_closed_until
 	for percept in percepts:
 		if percept.id == PLAYER_ID:
 			percept.engageable = may
@@ -878,11 +910,15 @@ func update_token(c: Creature, tick: int) -> void:
 	var engaged := c.brain != null and CreatureBrain.is_engaged_with(c.brain, PLAYER_ID)
 	var at := engaged_on_player.find(c.id)
 	if engaged and at < 0:
-		if engaged_on_player.size() < int(species.fairness.max_engaged_on_player):
+		if engaged_on_player.size() < int(species.fairness.max_engaged_on_player) and tick >= token_closed_until:
 			engaged_on_player.append(c.id)
 			return
-		push_error("CreatureField: %s engaged the player at tick %d while %s held the token; it stands down" % [
-			c.id, tick, engaged_on_player])
+		if tick < token_closed_until:
+			push_error("CreatureField: %s engaged the player at tick %d while the token was closed until %d; it stands down"
+				% [c.id, tick, token_closed_until])
+		else:
+			push_error("CreatureField: %s engaged the player at tick %d while %s held the token; it stands down" % [
+				c.id, tick, engaged_on_player])
 		CreatureBrain.forget(c.brain, PLAYER_ID, 0, tick)
 	elif not engaged and at >= 0:
 		engaged_on_player.remove_at(at)
@@ -937,8 +973,11 @@ func snapshot() -> Dictionary:
 	var waiting := []
 	for entry in queue:
 		waiting.append({"site": entry.site, "species": entry.species, "at_tick": entry.at_tick})
-	return {"creatures": list, "creature_next": next_number, "creature_rng": rng.state, "spawn_queue": waiting,
+	var out := {"creatures": list, "creature_next": next_number, "creature_rng": rng.state, "spawn_queue": waiting,
 		"engaged_on_player": Array(engaged_on_player)}
+	if hazard_live and token_closed_until != 0:
+		out["token_closed_until"] = token_closed_until
+	return out
 
 
 func _new_creature(species_id: String, p_phenotype: Phenotype, p: Vector2, heading: float, tick: int) -> Creature:

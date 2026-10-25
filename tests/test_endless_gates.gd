@@ -32,6 +32,13 @@ extends TestCase
 ##  - G13: two overdriven runs of a 10 km straight swim (100,000 ticks) give the same hashes and
 ##    snapshot strings throughout, and so do two runs of RACER as it is (about 136,000 ticks): a hash
 ##    needs two runs, so G13's racer run is a pair. Its mutation is T2's zone stream left unseeded.
+##  - S3 (S3G22, S3G38 S part; D-115): #32 from home and the 10 points, #33 in 4 tile zones, hunter
+##    viability from home and F9 again at sizes 3 and 4 (make_sim_at: the shipped world with its top
+##    at 4), and #33 in an elder Warden's two bloom meadows at size 4 with the bloom's mean of 1.0 in
+##    the sim. Their bots never press Grow, and the foragers unjam (band 1's cracks jam a ForageBot:
+##    test_threat_fuzz's S3 runners do the same). A veil's meeting is its sting. Measured 2026-10-24:
+##    every row green but #32 at size 3, where a forager meets about 0.3 to 0.7 threats a minute (an
+##    open balance question to the owner; docs/DECISIONS.md, S3 T0.5).
 ## A #32 or hunter run from a point arrives there as a player does (arrive()): it swims in, hidden,
 ## from 100 tm out, so the sites round the point spawn while it is still far off. Dropped onto the
 ## point by a teleport it found the sea round it empty, since no site spawns within spawn_safe_m of
@@ -44,6 +51,7 @@ const SwimBot := preload("res://game/dev/swim_bot.gd")
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const EvadeBot := preload("res://game/dev/evade_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
+const WorldChecks := preload("res://tests/world_checks.gd")
 
 ## The surfaces the gates read, and the file whose arrival says each has landed.
 const POOL_SIM_PATH := "res://game/systems/pool_sim.gd"
@@ -128,6 +136,18 @@ const STARVE_SEED := 901
 const STARVE_POINTS_SEED := 3209
 const STARVE_POINTS := 30
 const STARVE_LIMIT_TICKS := 25 * 60
+
+## S3G22, S3G38 (S part; s3-sim T0.5, D-115): the gates above again at sizes 3 and 4 on the shipped
+## world with its top at 4 (make_sim_at), with their seeds and points, a player who never presses
+## Grow. The bloom meadows (D-104): one elder Warden's two meadows, the pair nearest home outside the
+## cradle at size 4, camped as #33 camps (hidden: the meadows are the Warden's own), and each
+## camped hungry for BLOOM_CYCLES whole cycles beside its plain twin (the same meadow with its bloom
+## taken off): the bloom's mean is 1.0, so the two yield alike.
+const S3_SIZES: Array[int] = [3, 4]
+const BLOOM_SEARCH_CHUNKS := 12
+const BLOOM_CYCLES := 6
+const BLOOM_HUNGRY_SHARE := 0.3        ## the hungry camper's energy, reset to this share outside [0.2, 0.4]
+const BLOOM_MAX_YIELD_RATIO := 1.15    ## the two meadows' yield over their plain twins'; measured 1.04 (x 2.0 bloom: 1.27)
 ## G13: two runs of a 10 km straight swim, compared every TEN_KM_RECORD_EVERY ticks and at the end.
 const TEN_KM_SEED := 1013
 const TEN_KM_TM := 10000.0
@@ -144,6 +164,20 @@ const IDENTITY_RUNS: Array[Dictionary] = [
 	{"name": "swim_racer", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven"},
 	{"name": "circle_hunter", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle"}]
 const IDENTITY_TICKS: Array[int] = [600, 3600, 18000]
+## S3's identity (S3 build plan BP3-2 and 7.5): S2's endless world, growth on as S2 ships it, each
+## run of IDENTITY_RUNS started at size 1 and again at size 2 (debug_set_size at tick 0). T0.1
+## recorded IDENTITY_S2_PATH on e3-base with record_endless_hashes.gd --set=s2, and
+## tests/test_hash_identity.gd runs them again on e3 (S3G34). Each override applies only where its key
+## exists, so the same runs replay on e3-base and on e3 (landmark_return arrives with T3.1).
+const IDENTITY_S2_PATH := "res://tests/fixtures/endless_s2_hashes.json"
+const IDENTITY_S2_OVERRIDES := {"sizes.max_in_build": 2, "switches.landmark_return": false}
+const IDENTITY_S2_RUNS: Array[Dictionary] = [
+	{"name": "swim_hunter_s1", "body": "hunter", "seed": SWIM_SEED, "driver": "swim", "start_size": 1},
+	{"name": "swim_hunter_s2", "body": "hunter", "seed": SWIM_SEED, "driver": "swim", "start_size": 2},
+	{"name": "swim_racer_s1", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven", "start_size": 1},
+	{"name": "swim_racer_s2", "body": RACER, "seed": SWIM_SEED, "driver": "swim_overdriven", "start_size": 2},
+	{"name": "circle_hunter_s1", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle", "start_size": 1},
+	{"name": "circle_hunter_s2", "body": "hunter", "seed": CIRCLE_SEED, "driver": "circle", "start_size": 2}]
 
 ## S2's growth gates (test_threat_fuzz's size-2 runner, test_endless_fuzz's growth fuzz,
 ## test_growth_gates, test_endless_cost's size-2 cases) wait on the S2 seams they read (S2 build plan
@@ -309,6 +343,37 @@ static func make_sim(body: String, seed_value: int, growth := false) -> Variant:
 	return sim
 
 
+## make_sim's sim at `size` (S3G21, S3G22, S3G38): a new `body` lineage (or RACER) at home on the
+## shipped world with its top at 4 (WorldChecks.shipped_world_at; the real world once I-3 has made 4
+## its top), growth on, set to `size` by debug_set_size. The content is shared by every such sim.
+## Null when the size cannot be set.
+static func make_sim_at(body: String, seed_value: int, size: int) -> Variant:
+	var d := data()
+	if not _data.has("top4"):
+		var content_class := load(str(_global_classes().WorldContent)) as GDScript
+		_data.top4 = content_class.call("load_from", WorldChecks.shipped_world_at(4), d.layout, d.species)
+	d.top4.config.switches["growth"] = true
+	var r := Lineage.found(seed_value, BUILD_ID, d.catalog, "hunter" if body == RACER else body)
+	if body == RACER:
+		make_racer(r.save.genome, d.catalog)
+	r.save.player["position"] = PlaneSpace.to_save(HOME)
+	var sim: Variant = (load(POOL_SIM_PATH) as GDScript).callv("create", [r.save, d.catalog, d.layout, d.species, d.top4])
+	if size > 1 and not sim.debug_set_size(size):
+		return null
+	sim.drain_events()
+	return sim
+
+
+## A press player who never presses (EvadeBot.GrowthKeys) on `bot`, and no keys on the bot it wraps
+## (`inner`, if any): the cell stays at the size make_sim_at set.
+static func never_grows(bot: Variant, inner: Variant = null) -> Variant:
+	if inner != null:
+		inner.keys.trigger = ""
+	bot.keys.trigger = "press"
+	bot.keys.press = false
+	return bot
+
+
 ## Makes `g` the fastest legal body: a jaw, and the most flagella the catalog allows at its largest
 ## scale, spread over the rear.
 static func make_racer(g: Genome, catalog: PartCatalog) -> void:
@@ -333,20 +398,22 @@ static func teleport(sim: Variant, at: PackedFloat64Array) -> bool:
 ## A teleport onto the point instead keeps every site within spawn_safe_m of the cell, or in its
 ## view, from spawning for as long as the cell stays near (CreatureField.blocker_from), so the runs
 ## from points used to start in a sea emptied round the cell. The cell then shows itself again with
-## the energy it had before. Returns {"placed", "ticks", "left_tm", "bearing"}.
-static func arrive(sim: Variant, at: PackedFloat64Array, seed_value: int) -> Dictionary:
+## the energy it had before. Returns {"placed", "ticks", "left_tm", "bearing"}. `scale` is the am in
+## a tm at the cell's size (WorldConfig.tm_to_am; S3G22 passes it, the size-2 park does not), and
+## the distances above are in that size's tm; left_tm is in am.
+static func arrive(sim: Variant, at: PackedFloat64Array, seed_value: int, scale := 1.0) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = ARRIVE_BEARING_SEED + seed_value
 	var bearing := rng.randf() * TAU
 	var out := {"placed": false, "ticks": 0, "left_tm": INF, "bearing": bearing}
 	var energy: float = sim.state.energy
-	var from := Vector2.from_angle(bearing) * ARRIVE_FROM_TM
+	var from := Vector2.from_angle(bearing) * ARRIVE_FROM_TM * scale
 	if not teleport(sim, PackedFloat64Array([at[0] + from.x, at[1] + from.y])):
 		return out
 	out.placed = true
 	sim.debug_set_hidden(true)
 	var bot = SwimBot.toward(at)
-	while int(out.ticks) < ARRIVE_LIMIT_TICKS and abs_distance(sim.absolute_position_am(), at) > ARRIVE_WITHIN_TM:
+	while int(out.ticks) < ARRIVE_LIMIT_TICKS and abs_distance(sim.absolute_position_am(), at) > ARRIVE_WITHIN_TM * scale:
 		keep_fed(sim)
 		tick(sim, bot.next_intent(sim))
 		out.ticks += 1
@@ -397,9 +464,12 @@ static func circle_intent(sim: Variant, corner: PackedFloat64Array) -> SimIntent
 ## One endless identity run (S2 build plan 7.5) from make_sim, driven as the S1 gates drive theirs:
 ## "swim" and "swim_overdriven" as the straight swims (east, hidden, keep_fed or overdriven), "circle"
 ## as the corner circle. Returns {"<ticks>": "<state_hash() in decimal>"} after exactly each step
-## count in `at` (ascending), or {} when a circle finds no clear corner.
-static func identity_run(run: Dictionary, at: Array[int]) -> Dictionary:
-	var sim: Variant = make_sim(str(run.body), int(run.seed))
+## count in `at` (ascending), or {} when a circle finds no clear corner. With `growth` (S3's runs,
+## BP3-2) the sim grows as S2 ships and starts at the run's "start_size" (debug_set_size at tick 0).
+static func identity_run(run: Dictionary, at: Array[int], growth := false) -> Dictionary:
+	var sim: Variant = make_sim(str(run.body), int(run.seed), growth)
+	if int(run.get("start_size", 1)) != 1:
+		sim.debug_set_size(int(run.start_size))
 	sim.debug_set_hidden(true)
 	var driver := str(run.driver)
 	assert(driver in IDENTITY_DRIVERS, "unknown identity driver %s" % driver)
@@ -417,6 +487,28 @@ static func identity_run(run: Dictionary, at: Array[int]) -> Dictionary:
 			tick(sim, circle_intent(sim, corner) if driver == "circle" else bot.next_intent(sim))
 			steps += 1
 		out[str(n)] = str(sim.state_hash())
+	return out
+
+
+## S3G34's run (BP3-2): identity_run with growth on under IDENTITY_S2_OVERRIDES, each applied to the
+## shared content's config only where its key exists and put back after the run.
+static func identity_run_s2(run: Dictionary, at: Array[int]) -> Dictionary:
+	var config: Variant = data().content.config
+	var saved := {}
+	for key: String in IDENTITY_S2_OVERRIDES:
+		var value: Variant = IDENTITY_S2_OVERRIDES[key]
+		if key == "sizes.max_in_build":
+			saved[key] = config.max_size_in_build
+			config.max_size_in_build = int(value)
+		elif key.begins_with("switches.") and key.trim_prefix("switches.") in WorldConfig.SWITCH_KEYS:
+			saved[key] = config.switches.get(key.trim_prefix("switches."))
+			config.switches[key.trim_prefix("switches.")] = value
+	var out := identity_run(run, at, true)
+	for key: String in saved:
+		if key == "sizes.max_in_build":
+			config.max_size_in_build = int(saved[key])
+		else:
+			config.switches[key.trim_prefix("switches.")] = saved[key]
 	return out
 
 
@@ -685,6 +777,36 @@ func test_the_endless_identity_file_holds_every_run_at_every_tick() -> void:
 			check(h.is_valid_int() and int(h) >= 0, "%s tick %d: a decimal hash (%s)" % [want.name, n, h])
 
 
+## S3's identity file (S3 build plan 7.5) holds every run of IDENTITY_S2_RUNS, as named there, with a
+## decimal hash at every tick count of IDENTITY_TICKS, recorded on the real content under
+## IDENTITY_S2_OVERRIDES at a named commit (e3-base).
+func test_the_s2_identity_file_holds_every_run_at_every_tick() -> void:
+	var file := identity_file(IDENTITY_S2_PATH)
+	check(not file.is_empty(), "%s is there and is a JSON object" % IDENTITY_S2_PATH)
+	check_eq(str(file.get("content", "")), REAL_WORLD, "recorded on the real content")
+	var overrides: Dictionary = file.get("overrides", {})
+	check_eq(overrides.size(), IDENTITY_S2_OVERRIDES.size(), "recorded under the overrides (%s)" % overrides)
+	for key in IDENTITY_S2_OVERRIDES:
+		var want: Variant = IDENTITY_S2_OVERRIDES[key]
+		var g: Variant = overrides.get(key)   # JSON numbers read back as floats
+		check(float(g) == float(want) if want is int and g is float else g == want, "override %s: %s (want %s)" % [key, g, want])
+	check(str(file.get("base_commit", "")).length() == 40, "the base commit is a full sha (%s)" % file.get("base_commit"))
+	var runs: Array = file.get("runs", [])
+	check_eq(runs.size(), IDENTITY_S2_RUNS.size(), "one record per run")
+	for i in mini(runs.size(), IDENTITY_S2_RUNS.size()):
+		var want: Dictionary = IDENTITY_S2_RUNS[i]
+		var got: Dictionary = runs[i]
+		for key in want:
+			var g: Variant = got.get(key)   # JSON numbers read back as floats
+			var same: bool = typeof(g) == TYPE_FLOAT and float(g) == float(want[key]) if want[key] is int else str(g) == str(want[key])
+			check(same, "run %d %s: %s (want %s)" % [i, key, g, want[key]])
+		var hashes: Dictionary = got.get("hashes", {})
+		check_eq(hashes.size(), IDENTITY_TICKS.size(), "%s: a hash per tick count" % want.name)
+		for n in IDENTITY_TICKS:
+			var h := str(hashes.get(str(n), ""))
+			check(h.is_valid_int() and int(h) >= 0, "%s tick %d: a decimal hash (%s)" % [want.name, n, h])
+
+
 func test_random_points_repeat_and_stay_in_their_square() -> void:
 	var a := random_points(77, 50, 100.0)
 	var b := random_points(77, 50, 100.0)
@@ -773,7 +895,25 @@ func test_soak_circling_a_chunk_corner_does_not_churn_chunks() -> void:
 func test_soak_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() -> void:
 	if _waits("#32"):
 		return
-	var points := random_points(PRESSURE_POINTS_SEED, 10)
+	_pressure_gate(1)
+
+
+## S3G22: #32 at sizes 3 and 4 (D-115), on make_sim_at's world, from home and from the same 10
+## points scaled to each size's tm, with M1's thresholds.
+func test_soak_at_sizes_three_and_four_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() -> void:
+	if _waits("#32 at sizes 3 and 4"):
+		return
+	for size in S3_SIZES:
+		_pressure_gate(size)
+
+
+## #32 at `size`. A veil never notices or tells (a hazard): its meeting with the cell is its sting,
+## so a meeting is a notice, a tell or a sting (none stings below size 3).
+func _pressure_gate(size: int) -> void:
+	var k := WorldConfig.tm_to_am(size)
+	var points: Array[PackedFloat64Array] = []
+	for p in random_points(PRESSURE_POINTS_SEED, 10):
+		points.append(PackedFloat64Array([p[0] * k, p[1] * k]))
 	var deaths := 0
 	var starved := 0
 	var minutes := 0.0
@@ -787,36 +927,43 @@ func test_soak_a_forager_meets_threats_and_one_that_dodges_is_not_worn_down() ->
 			for s: int in starts:
 				var seed_value: int = s if from_home else PRESSURE_POINT_RUN_SEED + s
 				var at: PackedFloat64Array = PackedFloat64Array() if from_home else points[s]
-				var run := _pressure_run(body, seed_value, at)
-				var met := int(run.notices) + int(run.tells)
+				var run := _pressure_run(body, seed_value, at, size)
+				var met := int(run.notices) + int(run.tells) + int(run.stings)
 				meetings += met
 				met_in += 1 if met > 0 else 0
 				deaths += int(run.killed)
 				starved += int(run.starved)
-				print("test-endless-gates: #32 %s %s seed %d: %d notices, %d tells, %d dodged, %d hits taken, %d killed, %d starved, %d meals%s" % [
-					body, "home" if from_home else "point (%.0f, %.0f)" % [at[0], at[1]], seed_value, run.notices, run.tells,
-					run.dodges, run.hits_taken, run.killed, run.starved, run.meals, "" if from_home else "; " + str(run.arrival)])
+				print("test-endless-gates: #32 size %d %s %s seed %d: %d notices, %d tells, %d stings, %d dodged, %d hits taken, %d killed, %d starved, %d meals%s" % [
+					size, body, "home" if from_home else "point (%.0f, %.0f)" % [at[0], at[1]], seed_value, run.notices, run.tells,
+					run.stings, run.dodges, run.hits_taken, run.killed, run.starved, run.meals, "" if from_home else "; " + str(run.arrival)])
 			var group_minutes := starts.size() * PRESSURE_TICKS / 3600.0
 			minutes += group_minutes
-			var where := "%s from %s" % [body, "home" if from_home else "points"]
+			var where := "size %d: %s from %s" % [size, body, "home" if from_home else "points"]
 			check(meetings / group_minutes >= PRESSURE_MIN_MEETINGS_PER_MIN, "%s: %.2f meetings a minute (need %.1f)" % [
 				where, meetings / group_minutes, PRESSURE_MIN_MEETINGS_PER_MIN])
 			check_eq(met_in, starts.size(), "%s: met a threat in every run" % where)
 	var rate := deaths / minutes * 5.0
-	print("test-endless-gates: #32: %d deaths in %.0f minutes, %.2f per 5 minutes; %d starved" % [deaths, minutes, rate, starved])
-	check(rate <= PRESSURE_MAX_DEATHS_PER_5_MIN, "%.2f deaths per 5 minutes (at most %.1f)" % [rate, PRESSURE_MAX_DEATHS_PER_5_MIN])
-	check_eq(starved, 0, "the forager never starved")
+	print("test-endless-gates: #32 at size %d: %d deaths in %.0f minutes, %.2f per 5 minutes; %d starved" % [size, deaths, minutes, rate, starved])
+	check(rate <= PRESSURE_MAX_DEATHS_PER_5_MIN, "size %d: %.2f deaths per 5 minutes (at most %.1f)" % [size, rate, PRESSURE_MAX_DEATHS_PER_5_MIN])
+	check_eq(starved, 0, "size %d: the forager never starved" % size)
 
 
-func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array) -> Dictionary:
-	var sim: Variant = make_sim(body, seed_value)
-	var run := {"notices": 0, "tells": 0, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0, "meals": 0,
-		"arrival": ""}
+## One #32 run; at `size` above 1 on make_sim_at's world from home, a player who never presses Grow.
+func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array, size := 1) -> Dictionary:
+	var sim: Variant = make_sim(body, seed_value) if size == 1 else make_sim_at(body, seed_value, size)
+	var run := {"notices": 0, "tells": 0, "stings": 0, "dodges": 0, "hits_taken": 0, "killed": 0, "starved": 0,
+		"meals": 0, "arrival": ""}
+	if sim == null:
+		run.arrival = "no size %d" % size
+		return run
 	if not at.is_empty():
-		run.arrival = _arrived(sim, at, seed_value, "%s seed %d" % [body, seed_value])
+		run.arrival = _arrived(sim, at, seed_value, "%s seed %d" % [body, seed_value], WorldConfig.tm_to_am(size))
 	var forager = ForageBot.new()
 	var bot = EvadeBot.new()
 	bot.base = forager.next_intent
+	if size > 1:
+		forager.unjam = true   # as the S3 runners' forager (test_threat_fuzz._s3_bot): band 1's cracks jam it
+		never_grows(bot, forager)
 	var events: Array[Dictionary] = []
 	var dead := {"since": -1}
 	for i in PRESSURE_TICKS:
@@ -832,6 +979,7 @@ func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array) -> Dic
 				"hit":
 					if e.target == CreatureField.PLAYER_ID:
 						run.hits_taken += 1
+						run.stings += 1 if e.kind == "sting" else 0
 				"died":
 					run[("starved" if e.cause == "starved" else "killed")] += 1
 				"ate":
@@ -841,10 +989,10 @@ func _pressure_run(body: String, seed_value: int, at: PackedFloat64Array) -> Dic
 
 ## arrive(), checked: the cell was placed and ended its arrival within ARRIVE_NEAR_TM of the point.
 ## Returns the arrival in words for the run's line.
-func _arrived(sim: Variant, at: PackedFloat64Array, seed_value: int, who: String) -> String:
-	var a := arrive(sim, at, seed_value)
+func _arrived(sim: Variant, at: PackedFloat64Array, seed_value: int, who: String, scale := 1.0) -> String:
+	var a := arrive(sim, at, seed_value, scale)
 	check(bool(a.placed), "%s: placed %.0f tm out from (%.0f, %.0f)" % [who, ARRIVE_FROM_TM, at[0], at[1]])
-	check(float(a.left_tm) <= ARRIVE_NEAR_TM, "%s: arrived within %.0f tm of (%.0f, %.0f) (%.1f tm off)" % [
+	check(float(a.left_tm) <= ARRIVE_NEAR_TM * scale, "%s: arrived within %.0f tm of (%.0f, %.0f) (%.1f am off)" % [
 		who, ARRIVE_NEAR_TM, at[0], at[1], a.left_tm])
 	return "arrived from %.0f deg in %.1f s, %.1f tm off" % [rad_to_deg(a.bearing), int(a.ticks) / 60.0, a.left_tm]
 
@@ -862,29 +1010,25 @@ func test_soak_a_greedy_camper_runs_dry_in_six_unguarded_zones() -> void:
 	check_eq(zones.size(), CAMP_HOME_ZONES.size() + CAMP_TILE_ZONES, "six zones to camp in")
 	for at in zones:
 		for body in PRESSURE_BODIES:
-			var run := _camp_run(body, at)
-			var share := float(run.in_zone) / maxi(1, run.ticks)
-			var where := "%s at (%.1f, %.1f) %s" % [run.zone, at[0], at[1], body]
-			print("test-endless-gates: #33 %s: ran dry after %s, %d meals (full stock %d), %.0f%% in the zone, %d meetings, %d killed" % [
-				where, "%.0f s" % (run.dry_at / 60.0) if run.dry_at >= 0 else "never in %d s" % (CAMP_LIMIT_TICKS / 60),
-				run.meals, run.full_stock, 100.0 * share, run.meetings, run.killed])
-			check(not str(run.zone).is_empty(), "%s: the zone is loaded" % where)
-			check_eq(int(run.killed), 0, "%s: no threat killed the camper" % where)
-			check(int(run.dry_at) >= 0, "%s: a camper that starts full runs dry within %d s" % [where, CAMP_LIMIT_TICKS / 60])
-			check(share >= CAMP_MIN_IN_ZONE_SHARE, "%s: it camped (%.0f%% in the zone)" % [where, 100.0 * share])
-			check(int(run.meals) >= int(run.full_stock), "%s: it ate more than the zone holds when full" % where)
+			_check_camp(_camp_run(body, at), body, at, "size 1", true)
 
 
 ## Tile zones (outside the home block) whose centres no live reach disc covers: from each probe
 ## point the nearest one within CAMP_PROBE_TM not found before, until `count`.
-func _unguarded_tile_zones(count: int) -> Array[PackedFloat64Array]:
+## At `size` above 1 on make_sim_at's world, with the probe points and the home block (the cradle
+## there) scaled to that size's tm.
+func _unguarded_tile_zones(count: int, size := 1) -> Array[PackedFloat64Array]:
 	var found: Array[PackedFloat64Array] = []
 	var seen := {}
-	var sim: Variant = make_sim("grazer", CAMP_SEED)
+	var sim: Variant = make_sim("grazer", CAMP_SEED) if size == 1 else make_sim_at("grazer", CAMP_SEED, size)
+	if sim == null:
+		return found
+	var k := WorldConfig.tm_to_am(size)
 	sim.debug_set_hidden(true)
-	for at in random_points(CAMP_PROBE_SEED, CAMP_PROBES):
+	for p in random_points(CAMP_PROBE_SEED, CAMP_PROBES):
 		if found.size() >= count:
 			break
+		var at := PackedFloat64Array([p[0] * k, p[1] * k])
 		if not teleport(sim, at):
 			continue
 		for i in CAMP_PROBE_SETTLE_TICKS:
@@ -903,7 +1047,7 @@ func _unguarded_tile_zones(count: int) -> Array[PackedFloat64Array]:
 		for z in near:
 			var c: PackedFloat64Array = sim.world.abs_of_local(z.center)
 			var r := float(z.radius)
-			var in_home := absf(c[0]) < HOME_BLOCK_TM + r and absf(c[1]) < HOME_BLOCK_TM + r
+			var in_home := absf(c[0]) < (HOME_BLOCK_TM + r) * k and absf(c[1]) < (HOME_BLOCK_TM + r) * k
 			if in_home or seen.has(str(z.id)) or covered(z.center, reach):
 				continue
 			seen[str(z.id)] = true
@@ -913,12 +1057,15 @@ func _unguarded_tile_zones(count: int) -> Array[PackedFloat64Array]:
 
 
 ## A new `body` lineage placed full at the centre of the zone at `at`, eating only that zone's food
-## (a greedy SwimBot camper) and dodging tells, until its energy first runs out or the limit.
-func _camp_run(body: String, at: PackedFloat64Array) -> Dictionary:
-	var sim: Variant = make_sim(body, CAMP_SEED)
+## (a greedy SwimBot camper) and dodging tells, until its energy first runs out or the limit. At `size`
+## above 1 on make_sim_at's world, a player who never presses Grow; `hidden` hides it from the
+## creatures (the bloom meadows, an elder Warden's own).
+func _camp_run(body: String, at: PackedFloat64Array, size := 1, hidden := false) -> Dictionary:
+	var sim: Variant = make_sim(body, CAMP_SEED) if size == 1 else make_sim_at(body, CAMP_SEED, size)
 	var run := {"zone": "", "ticks": 0, "dry_at": -1, "meals": 0, "in_zone": 0, "meetings": 0, "killed": 0, "full_stock": 0}
-	if not teleport(sim, at):
+	if sim == null or not teleport(sim, at):
 		return run
+	sim.debug_set_hidden(hidden)
 	var z := zone_at(sim, at)
 	if z.is_empty():
 		return run
@@ -929,6 +1076,9 @@ func _camp_run(body: String, at: PackedFloat64Array) -> Dictionary:
 	var camper = SwimBot.camper(run.zone, true)
 	var bot = EvadeBot.new()
 	bot.base = camper.next_intent
+	if size > 1:
+		never_grows(bot, camper)
+	var start: int = sim.tick
 	var events: Array[Dictionary] = []
 	while int(run.ticks) < CAMP_LIMIT_TICKS and not sim.dead:
 		events = tick(sim, bot.next_intent(sim, events))
@@ -946,7 +1096,7 @@ func _camp_run(body: String, at: PackedFloat64Array) -> Dictionary:
 				"ate":
 					run.meals += 1
 		if sim.state.energy <= 0.0:
-			run.dry_at = sim.tick
+			run.dry_at = sim.tick - start
 			break
 	return run
 
@@ -968,12 +1118,19 @@ func test_soak_a_hunter_lineage_lives_on_its_kills_from_home_and_ten_points() ->
 	check(point_passed >= HUNTER_POINT_PASSES_NEEDED, "from points: %d of %d pass" % [point_passed, points.size()])
 
 
-func _hunter_pass(seed_value: int, at: PackedFloat64Array) -> bool:
-	var sim: Variant = make_sim("hunter", seed_value)
+## One viability run; at `size` above 1 on make_sim_at's world from home, a player who never presses
+## Grow.
+func _hunter_pass(seed_value: int, at: PackedFloat64Array, size := 1) -> bool:
+	var sim: Variant = make_sim("hunter", seed_value) if size == 1 else make_sim_at("hunter", seed_value, size)
+	if sim == null:
+		check(false, "hunter seed %d: size %d" % [seed_value, size])
+		return false
 	var arrival := ""
 	if not at.is_empty():
 		arrival = "; " + _arrived(sim, at, seed_value, "hunter seed %d" % seed_value)
 	var bot = HuntBot.new()
+	if size > 1:
+		never_grows(bot)
 	var run := {"starved": 0, "killed": 0, "meat": 0, "kills": 0}
 	var events: Array[Dictionary] = []
 	var dead := {"since": -1}
@@ -989,8 +1146,8 @@ func _hunter_pass(seed_value: int, at: PackedFloat64Array) -> bool:
 				"creature_died":
 					run.kills += 1 if e.by == CreatureField.PLAYER_ID else 0
 	var ok: bool = run.starved == 0 and run.killed <= HUNTER_MAX_THREAT_DEATHS and run.meat >= HUNTER_MIN_MEAT
-	print("test-endless-gates: hunter seed %d from %s: %s; %d kills, %d meat eaten, %d starved, %d killed%s" % [
-		seed_value, "home" if at.is_empty() else "(%.0f, %.0f)" % [at[0], at[1]], "pass" if ok else "FAIL", run.kills,
+	print("test-endless-gates: hunter size %d seed %d from %s: %s; %d kills, %d meat eaten, %d starved, %d killed%s" % [
+		size, seed_value, "home" if at.is_empty() else "(%.0f, %.0f)" % [at[0], at[1]], "pass" if ok else "FAIL", run.kills,
 		run.meat, run.starved, run.killed, arrival])
 	return ok
 
@@ -1000,14 +1157,27 @@ func _hunter_pass(seed_value: int, at: PackedFloat64Array) -> bool:
 func test_soak_a_starving_grazer_reaches_food_from_thirty_points() -> void:
 	if _waits("F9"):
 		return
+	_starving_grazers(1)
+
+
+## F9 from STARVE_POINTS points at `size` (above 1: make_sim_at's world, the points scaled to that
+## size's tm, a player who never presses Grow).
+func _starving_grazers(size: int) -> void:
 	var slowest := 0
-	for at in random_points(STARVE_POINTS_SEED, STARVE_POINTS):
-		var sim: Variant = make_sim("grazer", STARVE_SEED)
+	var k := WorldConfig.tm_to_am(size)
+	for p in random_points(STARVE_POINTS_SEED, STARVE_POINTS):
+		var at := PackedFloat64Array([p[0] * k, p[1] * k])
+		var sim: Variant = make_sim("grazer", STARVE_SEED) if size == 1 else make_sim_at("grazer", STARVE_SEED, size)
+		if sim == null:
+			check(false, "size %d" % size)
+			return
 		sim.debug_set_hidden(true)
 		check(teleport(sim, at), "placed at (%.0f, %.0f)" % [at[0], at[1]])
 		sim.debug_set_energy(0.0)
 		sim.drain_events()
 		var bot = ForageBot.new()
+		if size > 1:
+			never_grows(bot)
 		var ate_at := -1
 		var died := false
 		for i in STARVE_LIMIT_TICKS:
@@ -1018,9 +1188,147 @@ func test_soak_a_starving_grazer_reaches_food_from_thirty_points() -> void:
 			if ate_at >= 0 or died:
 				break
 		slowest = maxi(slowest, ate_at)
-		check(ate_at >= 0 and not died, "a starving grazer at (%.0f, %.0f) ate before it died (%s)" % [
-			at[0], at[1], "died" if died else ("ate at %.1f s" % (ate_at / 60.0) if ate_at >= 0 else "never ate")])
-	print("test-endless-gates: F9: %d starving grazers; the slowest ate after %.1f s" % [STARVE_POINTS, slowest / 60.0])
+		check(ate_at >= 0 and not died, "size %d: a starving grazer at (%.0f, %.0f) ate before it died (%s)" % [
+			size, at[0], at[1], "died" if died else ("ate at %.1f s" % (ate_at / 60.0) if ate_at >= 0 else "never ate")])
+	print("test-endless-gates: F9 at size %d: %d starving grazers; the slowest ate after %.1f s" % [size, STARVE_POINTS, slowest / 60.0])
+
+
+## S3G22: #33 at sizes 3 and 4: a greedy camper in CAMP_TILE_ZONES tile zones no live reach disc
+## covers, at each size, M1's checks.
+func test_soak_at_sizes_three_and_four_a_greedy_camper_runs_dry_in_four_unguarded_zones() -> void:
+	if _waits("#33 at sizes 3 and 4"):
+		return
+	for size in S3_SIZES:
+		var zones := _unguarded_tile_zones(CAMP_TILE_ZONES, size)
+		check_eq(zones.size(), CAMP_TILE_ZONES, "size %d: %d zones to camp in" % [size, CAMP_TILE_ZONES])
+		for at in zones:
+			for body in PRESSURE_BODIES:
+				_check_camp(_camp_run(body, at, size), body, at, "size %d" % size, true)
+
+
+## S3G22 (D-104): #33 in an elder Warden's two bloom meadows at size 4, and the bloom's mean of 1.0
+## in the sim: hungry campers on the two meadows over BLOOM_CYCLES cycles take at most
+## BLOOM_MAX_YIELD_RATIO of what they take from the meadows' plain twins (the mutation: bloom high 2.0
+## with low 0.5, a mean above 1).
+func test_soak_a_camper_in_an_elder_wardens_bloom_meadows_runs_dry_and_the_bloom_feeds_its_mean() -> void:
+	if _waits("#33 in the bloom meadows"):
+		return
+	var meadows := _bloom_pair(4)
+	check_eq(meadows.size(), 2, "an elder Warden's two bloom meadows within %d chunks of home" % BLOOM_SEARCH_CHUNKS)
+	var bloom := 0.0
+	var plain := 0.0
+	for m in meadows:
+		for body in PRESSURE_BODIES:
+			_check_camp(_camp_run(body, m.at, 4, true), body, m.at, "bloom meadow slot %d" % m.slot, false)
+		var with := _hungry_camp(m.at, false)
+		var without := _hungry_camp(m.at, true)
+		print("test-endless-gates: bloom meadow %s (slot %d): %.1f energy over %d cycles, its plain twin %.1f" % [
+			m.id, m.slot, with, BLOOM_CYCLES, without])
+		bloom += with
+		plain += without
+	check(plain > 0.0, "the plain twins fed the camper (%.1f)" % plain)
+	var ratio := bloom / maxf(plain, 1e-6)
+	print("test-endless-gates: the bloom meadows yield %.3f of their plain twins'" % ratio)
+	check(ratio <= BLOOM_MAX_YIELD_RATIO, "the bloom meadows yield %.3f of their plain twins' (at most %.2f)" % [
+		ratio, BLOOM_MAX_YIELD_RATIO])
+
+
+## S3G22: hunter viability at sizes 3 and 4 from home on M1's seeds (5 of 6 must pass).
+func test_soak_at_sizes_three_and_four_a_hunter_lineage_lives_on_its_kills() -> void:
+	if _waits("hunter viability at sizes 3 and 4"):
+		return
+	for size in S3_SIZES:
+		var passed := 0
+		for seed_value in HUNTER_SEEDS:
+			passed += 1 if _hunter_pass(seed_value, PackedFloat64Array(), size) else 0
+		print("test-endless-gates: hunter viability at size %d: %d of %d seeds from home (need %d)" % [
+			size, passed, HUNTER_SEEDS.size(), HUNTER_PASSES_NEEDED])
+		check(passed >= HUNTER_PASSES_NEEDED, "size %d: %d of %d seeds pass" % [size, passed, HUNTER_SEEDS.size()])
+
+
+## S3G38 (S part): F9 at sizes 3 and 4, from STARVE_POINTS points scaled to each size's tm.
+func test_soak_at_sizes_three_and_four_a_starving_grazer_reaches_food_from_thirty_points() -> void:
+	if _waits("F9 at sizes 3 and 4"):
+		return
+	for size in S3_SIZES:
+		_starving_grazers(size)
+
+
+## The elder Warden's two bloom meadows (D-104) nearest home outside the cradle at `size`, from the
+## generator's chunks within BLOOM_SEARCH_CHUNKS: [{"id", "at" (am), "slot"}], slot 0 first; [] for none.
+func _bloom_pair(size: int) -> Array[Dictionary]:
+	var sim: Variant = make_sim_at("grazer", CAMP_SEED, size)
+	var out: Array[Dictionary] = []
+	if sim == null:
+		return out
+	var k := WorldConfig.tm_to_am(size)
+	var best := INF
+	for cy in range(-BLOOM_SEARCH_CHUNKS, BLOOM_SEARCH_CHUNKS + 1):
+		for cx in range(-BLOOM_SEARCH_CHUNKS, BLOOM_SEARCH_CHUNKS + 1):
+			var by_site := {}
+			for z in sim.world.gen.chunk(size, cx, cy).zones:
+				if z.has("bloom") and not str(z.id).begins_with("z_c_"):
+					var key := str(z.id).left(str(z.id).length() - 1)   # "..._ma" and "..._mb": one site's pair
+					if not by_site.has(key):
+						by_site[key] = []
+					by_site[key].append(z)
+			for key in by_site:
+				var pair: Array = by_site[key]
+				if pair.size() != 2:
+					continue
+				var d := Vector2(float(pair[0].x), float(pair[0].y)).length()
+				if d >= best:
+					continue
+				best = d
+				out.clear()
+				for z in pair:
+					out.append({"id": str(z.id), "at": PackedFloat64Array([float(z.x) * k, float(z.y) * k]), "slot": int(z.bloom.slot)})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.slot) < int(b.slot))
+	return out
+
+
+## The energy a hidden greedy camper takes from the zone at `at` over BLOOM_CYCLES bloom cycles at
+## size 4, held hungry (BLOOM_HUNGRY_SHARE) so it eats whatever grows. `plain` takes the zone's bloom
+## off first: its plain twin, regrowing at x 1.0.
+func _hungry_camp(at: PackedFloat64Array, plain: bool) -> float:
+	var sim: Variant = make_sim_at("grazer", CAMP_SEED, 4)
+	if sim == null or not teleport(sim, at):
+		return 0.0
+	var z := zone_at(sim, at)
+	if z.is_empty() or not z.has("bloom"):
+		return 0.0
+	var cycle := int(z.bloom.cycle_ticks)
+	sim.debug_set_hidden(true)
+	if plain:
+		sim.region._bloom.erase(z)
+		z.erase("bloom")
+		sim.region._plain.append(z)
+	sim.drain_events()
+	var camper = never_grows(SwimBot.camper(str(z.id), true))
+	var taken := 0.0
+	var cap: float = sim.state.energy_capacity
+	for i in BLOOM_CYCLES * cycle:
+		if sim.state.energy < 0.2 * cap or sim.state.energy > 0.4 * cap:
+			sim.debug_set_energy(BLOOM_HUNGRY_SHARE * cap)
+		for e in tick(sim, camper.next_intent(sim)):
+			if e.type == "ate" and str(e.zone) == str(z.id):
+				taken += float(e.supplied)
+	return taken
+
+
+## #33's checks on one camp run.
+func _check_camp(run: Dictionary, body: String, at: PackedFloat64Array, label: String, unguarded: bool) -> void:
+	var share := float(run.in_zone) / maxi(1, run.ticks)
+	var where := "%s %s at (%.1f, %.1f) %s" % [label, run.zone, at[0], at[1], body]
+	print("test-endless-gates: #33 %s: ran dry after %s, %d meals (full stock %d), %.0f%% in the zone, %d meetings, %d killed" % [
+		where, "%.0f s" % (run.dry_at / 60.0) if run.dry_at >= 0 else "never in %d s" % (CAMP_LIMIT_TICKS / 60),
+		run.meals, run.full_stock, 100.0 * share, run.meetings, run.killed])
+	check(not str(run.zone).is_empty(), "%s: the zone is loaded" % where)
+	if unguarded:
+		check_eq(int(run.killed), 0, "%s: no threat killed the camper" % where)
+	check(int(run.dry_at) >= 0, "%s: a camper that starts full runs dry within %d s" % [where, CAMP_LIMIT_TICKS / 60])
+	check(share >= CAMP_MIN_IN_ZONE_SHARE, "%s: it camped (%.0f%% in the zone)" % [where, 100.0 * share])
+	check(int(run.meals) >= int(run.full_stock), "%s: it ate more than the zone holds when full" % where)
 
 
 ## G13: two runs of a 10 km straight swim are the same run, overdriven and with RACER as it is.

@@ -21,7 +21,7 @@ const BODIES := {
 }
 ## Texture name prefix -> [count, size].
 const SPRITES := {
-	"T_Ghost_": [8, Vector2i(512, 512)],
+	"T_Ghost_": [9, Vector2i(512, 512)],
 	"T_Haze_": [11, Vector2i(128, 128)],
 	"T_Backdrop_": [5, Vector2i(-1, -1)],
 	"T_SiltTrail": [1, Vector2i(256, 64)],

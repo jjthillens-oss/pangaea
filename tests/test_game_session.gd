@@ -248,6 +248,30 @@ func test_a_tick_in_which_the_cell_grew_is_saved_at_once() -> void:
 	check_eq(int(data.adaptation_points), session.sim.save.adaptation_points, "the file holds this tick's points")
 
 
+## S3G24 and S3G24c (D-132): a landmark's checkpoint_moved is saved at once, as a growth is; when
+## that save fails the moved checkpoint alone keeps the session dirty.
+func test_a_moved_checkpoint_is_saved_at_once_and_dirty_until_it_is() -> void:
+	var session := _endless(34)
+	if session.sim == null:
+		return
+	var w := session.sim.world
+	check(not session.dirty, "saved at the start")
+	var moved := {"type": "checkpoint_moved", "reason": "landmark", "anchor": "a_test"}
+	w.checkpoint_am = PackedFloat64Array([w.checkpoint_am[0] + 40.0, w.checkpoint_am[1], w.checkpoint_am[2], w.checkpoint_am[3]])
+	check(session.dirty, "a moved checkpoint is an unsaved change")
+	var saved := session.after_events([moved])
+	check(saved.get("ok", false), "the tick that moved it is saved: %s" % [saved])
+	check(not session.dirty, "nothing unsaved after it")
+	var blocker := SaveFolder.path("blocked_landmark")
+	var f := FileAccess.open(blocker, FileAccess.WRITE)
+	f.store_string("not a folder")
+	f.close()
+	session.slot = blocker + "/slot.json"
+	w.checkpoint_am = PackedFloat64Array([w.checkpoint_am[0] + 40.0, w.checkpoint_am[1], w.checkpoint_am[2], w.checkpoint_am[3]])
+	check(not session.after_events([moved]).get("ok", true), "the autosave failed")
+	check(session.dirty, "so the session is dirty")
+
+
 ## Sets the endless world's size the way the dev command does (D-76: the world at size n round the
 ## cell, by the teleport path), for the dirty test. The world must run growth (BP-6).
 func _set_size(sim: PoolSim, n: int) -> void:

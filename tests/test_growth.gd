@@ -55,7 +55,7 @@ func test_growth_exists_only_in_the_endless_world_with_its_switch_on() -> void:
 	check_eq(pool.size(), 1, "the pool is size 1")
 	check(not pool.snapshot().has("world"), "the pool snapshot is M1's")
 	var on := _growth_sim()
-	check_eq(on.world.max_size, 2, "the build top from the world file")
+	check_eq(on.world.max_size, 4, "the build top from the world file (S3, D-89)")
 	var on_world: Dictionary = on.snapshot().world
 	for key in ["growth", "carrion_radius", "carrion_lifetime"]:
 		check(on_world.has(key), "growth on: world.%s" % key)
@@ -476,6 +476,20 @@ func test_a_broken_window_starts_again() -> void:
 	check(g.due, "due after a fresh calm_ticks")
 
 
+## S3G18b (D-140): a sting on the cell within quiet_ticks is being hunted, and blocks growth.
+func test_a_recent_sting_blocks_growth_as_hunted() -> void:
+	var sim := _calm_sim()
+	var g := sim.growth
+	var quiet := int(g.cfg.quiet_ticks)
+	check_eq(g.blocker_of(sim), "", "calm with no sting")
+	sim.last_sting_tick = sim.tick
+	check_eq(g.blocker_of(sim), "hunted", "a sting this tick")
+	sim.last_sting_tick = sim.tick - quiet + 1
+	check_eq(g.blocker_of(sim), "hunted", "a sting quiet_ticks - 1 ago")
+	sim.last_sting_tick = sim.tick - quiet
+	check_eq(g.blocker_of(sim), "", "quiet_ticks after the sting: calm again")
+
+
 func test_a_long_block_is_named_and_cleared_and_a_short_one_says_nothing() -> void:
 	var sim := _calm_sim()
 	var g := sim.growth
@@ -701,6 +715,7 @@ func test_a_kill_pays_threat_kill_at_q_one_and_a_carcass_share_otherwise() -> vo
 ## its adaptation points at every size (S4.1: place 10, landmark 20), as earned {points, reason, id}.
 func test_a_place_and_a_landmark_near_the_cell_are_found_once_per_size() -> void:
 	var sim := _growth_sim()
+	sim.world.max_size = 2   # S2's top, so size 2 is the top where the landmark pays
 	var g := sim.growth
 	var key := FakeWorldGen.PLACE_CHUNK
 	var c := Vector2(32.0 * key.x + 16.0, 32.0 * key.y + 16.0)
@@ -819,6 +834,7 @@ func test_a_respawn_takes_its_energy_from_respawn_energy() -> void:
 ## next tick grow even while hunted or wedged; both refuse with growth off, dead, or (force) at the top.
 func test_the_dev_meter_commands_fill_and_force() -> void:
 	var sim := _growth_sim()
+	sim.world.max_size = 2   # S2's top, so the force is refused at size 2
 	var g := sim.growth
 	check(sim.debug_fill_meter(0.5), "half")
 	var events := sim.drain_events()
@@ -896,8 +912,8 @@ func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_r
 	# out on the first tick); with growth off, size 1 and no meter.
 	sim.save.growth = {"size": 5, "meter": 999.0}
 	var clamped := _continue(sim.save)
-	check_eq([clamped.size(), clamped.growth.meter, clamped.growth.full_since, int(clamped.world.checkpoint_am[3])], [2, 120.0, 0, 2],
-		"size 5 is 2 here; the meter the ring")
+	check_eq([clamped.size(), clamped.growth.meter, clamped.growth.full_since, int(clamped.world.checkpoint_am[3])], [4, 170.0, 0, 4],
+		"size 5 is 4 here (D-89); the meter the ring")
 	check_eq(_of(_tick(clamped), "ring_paid").size(), 1, "full at the top: it pays out")
 	check_eq(clamped.growth.meter, 0.0, "and starts again")
 	var s1 := _continue(sim.save, false)
@@ -906,3 +922,53 @@ func test_the_save_carries_the_size_meter_checkpoint_and_ledger_and_a_continue_r
 	pool.write_growth_to_save()
 	check_eq([pool.save.growth, pool.save.checkpoint, pool.save.gen_version],
 		[{"size": 1, "meter": 0.0}, {"x_am": 0.0, "y_am": 9.0, "heading": -1.5708, "size": 1}, 1], "the pool writes the defaults")
+
+
+## S3G27 (D-32, D-133): at size 4, the top of a world built to 4, a full ring pays out (energy to
+## capacity, +10) and the cell stays at 4; places_found(n) is (the distinct place and landmark kinds
+## found at n among n's band's kinds, that band's kind count). place_kinds_by_band holds every band
+## up to the top's, as the content gives them (test_world_content counts 8 and 10 in the shipped one).
+func test_at_four_a_full_ring_pays_out_without_growing_and_places_found_counts_kinds() -> void:
+	var content := FakeWorldGen.fixture_content("res://tests/fixtures/world/world_b1_min.json")
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, SpeciesCatalog.load_from(), content,
+		PackedFloat64Array(), 8, true)
+	check_eq(sim.world.max_size, 4, "the top is 4")
+	check(sim.debug_set_size(4), "size 4")
+	sim.drain_events()
+	var g := sim.growth
+	sim.state.energy = sim.state.energy_capacity * 0.5
+	var points := sim.save.adaptation_points
+	g.add(sim, g.ring(4), "debug", "")
+	var events := sim.drain_events()
+	check_eq(sim.state.energy, sim.state.energy_capacity, "energy refilled")
+	check_eq(sim.save.adaptation_points, points + 10, "+10")
+	check_eq(g.meter, 0.0, "the meter starts again")
+	var paid := _of(events, "ring_paid")
+	check_eq(paid.size(), 1, "one payout")
+	if paid.size() == 1:
+		check_eq([paid[0].size, paid[0].points], [4, 10], "at 4, 10 points")
+	var grew := 0
+	for i in 60:
+		sim.step(SimIntent.new())
+		grew += _of(sim.drain_events(), "grew").size()
+	check_eq([grew, sim.size()], [0, 4], "never grows past the top")
+
+	var bands := g.place_kinds_by_band.keys()
+	bands.sort()
+	check_eq(bands, [0, 1], "bands 0 and 1 (band_of(4))")
+	for b in bands:
+		check_eq(g.place_kinds_by_band[b], content.place_kinds(b), "band %d as the content gives it" % b)
+	var lm := FakeWorldGen.ANCHOR_MODEL
+	check_eq(g.places_found(4), Vector2i(0, 1), "nothing found at 4 yet, of 1")
+	g.discoveries.append_array([
+		{"type": "landmark", "id": lm, "size": 4},
+		{"type": "landmark", "id": lm, "size": 4},          # the same kind twice counts once
+		{"type": "food", "id": "giant_husk", "size": 2},    # a food look, not a place
+		{"type": "place", "id": "giant_husk", "size": 4},   # band 0's kind, not band 1's
+		{"type": "landmark", "id": lm, "size": 3},
+	])
+	check_eq(g.places_found(4), Vector2i(1, 1), "one kind at 4")
+	check_eq(g.places_found(3), Vector2i(1, 1), "and one at 3, its own size")
+	check_eq(g.places_found(2), Vector2i(0, 1), "none at 2, of band 0's one")
+	g.discoveries.append({"type": "place", "id": "giant_husk", "size": 2})
+	check_eq(g.places_found(2), Vector2i(1, 1), "the husk at 2")

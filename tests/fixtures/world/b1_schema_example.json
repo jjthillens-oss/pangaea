@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED",
+  "note": "Schema example (s3-build-plan 7.1), not content.",
+  "id": "veil_garden_a",
+  "band": 1,
+  "region": "veil_garden",
+  "set": 0,
+  "rare": "",
+  "landmark_anchor": [-18.0, 22.0],
+  "set_piece": null,
+  "shells": [
+    {"id": "s0", "center": [12.5, -20.0], "radius": 1.1, "yaw_deg": [0.0, 360.0], "at_second_size": "keep"},
+    {"id": "s1", "center": [-24.0, -20.0], "radius": 0.8, "yaw_deg": [0.0, 360.0], "at_second_size": "sink"}
+  ],
+  "zones": [
+    {"id": "ma", "center": [-8.0, -6.0], "radius": 5.5, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "mb", "center": [7.0, -6.0], "radius": 5.5, "capacity": 18.0, "growth_rate": 0.05, "at_second_size": "keep"},
+    {"id": "z3", "center": [2.0, -18.0], "radius": 4.0, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "thin"},
+    {"id": "z4", "center": [-22.0, 14.0], "radius": 4.0, "capacity": 12.0, "growth_rate": 0.06, "at_second_size": "keep"},
+    {"id": "z5", "center": [20.0, 20.0], "radius": 3.0, "capacity": 8.0, "growth_rate": 0.06, "at_second_size": "drop"}
+  ],
+  "sites": [
+    {"id": "v1", "species": "veil", "home": [-14.0, 10.0], "heading": 0.0, "territory_zone": "", "sizes": [3, 4]},
+    {"id": "ra", "species": "rammer", "home": [2.0, -18.0], "heading": 2.2, "territory_zone": "z3", "sizes": [3, 4]},
+    {"id": "rb", "species": "rammer", "home": [-22.0, 14.0], "heading": 0.4, "territory_zone": "z4", "sizes": [3, 4]},
+    {"id": "ew", "species": "elder_warden", "home": [-8.0, -6.0], "heading": 0.0, "territory_zone": "ma", "sizes": [4],
+     "post_b": {"home": [7.0, -6.0], "heading": 3.1416, "territory_zone": "mb"}}
+  ]
+}

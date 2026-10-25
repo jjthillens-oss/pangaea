@@ -26,6 +26,11 @@ const BODY_SCENES := {
 	"creature_rammer_body": preload("res://assets/export/creature_rammer_body.glb"),
 	"creature_lurker_body": preload("res://assets/export/creature_lurker_body.glb"),
 	"creature_elder_rammer_body": preload("res://assets/export/creature_elder_rammer_body.glb"),
+	"creature_veil_body": preload("res://assets/export/creature_veil_body.glb"),
+	"creature_warden_body": preload("res://assets/export/creature_warden_body.glb"),
+	"creature_elder_ambush_body": preload("res://assets/export/creature_elder_ambush_body.glb"),
+	"creature_deep_lurker_body": preload("res://assets/export/creature_deep_lurker_body.glb"),
+	"creature_elder_warden_body": preload("res://assets/export/creature_elder_warden_body.glb"),
 }
 ## Pose nodes, as their records name them (assets/records/creature_*_body.json and part_mouth_jaw.json).
 const EYE_PATHS: Array[NodePath] = [^"Body/Eye_L", ^"Body/Eye_R"]
@@ -35,6 +40,10 @@ const MANDIBLE_PATHS: Array[NodePath] = [^"JawBase/Mandible_L", ^"JawBase/Mandib
 ## The emission strength M_AmbushEye was authored at (its record's eye_emission_rest): the glTF
 ## export folds it into the colour, so a strength g is an energy multiplier of g / this.
 const EYE_EMISSION_REST := 0.4
+## S3 (V3-20): the bodies whose eyes were authored at another strength (their records'
+## eye_emission_rest); 0 leaves the eyes undriven (the veil's are not emissive).
+const EYE_EMISSION_REST_BY_BODY := {"creature_veil_body": 0.0, "creature_deep_lurker_body": 0.7,
+	"creature_elder_ambush_body": 0.5}
 
 ## Pose amplitudes (plan section 14). PROPOSED and view-only: no sim timing depends on them.
 const COIL_LENGTH := 0.82        ## ambush tell: the body squashes along its length...
@@ -128,13 +137,17 @@ var morsel_id := ""
 ## The pose drawn last (pose() keys), for tests and blends.
 var shown_pose := {}
 var dying := false
+## A stinger veil's threads (S3 8.2): null unless the species is a hazard.
+var threads: VeilThreadsView
 
 var _top_speed := 1.0
 var _speed := 0.0
+var _drawn_heading := 0.0
 var _label := ""
 var _blend_from := {}
 var _blend_t := BLEND_S
 var _eye_material: StandardMaterial3D
+var _eye_rest := EYE_EMISSION_REST
 var _mandibles: Array[Node3D] = []
 var _spikes: Array[Node3D] = []
 var _spike_rest: Array[Transform3D] = []
@@ -303,7 +316,9 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	if old != null:
 		model.remove_child(old)
 		old.free()
-	var packed: PackedScene = BODY_SCENES.get(str(data.get("body_asset", "")))
+	var body_asset := str(data.get("body_asset", ""))
+	_eye_rest = float(EYE_EMISSION_REST_BY_BODY.get(body_asset, EYE_EMISSION_REST))
+	var packed: PackedScene = BODY_SCENES.get(body_asset)
 	if packed != null:
 		var body: Node3D = packed.instantiate()
 		body.name = "Body"
@@ -361,6 +376,15 @@ func build(species: SpeciesCatalog, p_species_id: String, catalog: PartCatalog, 
 	_label = ""
 	_build_ink()
 	_build_rim()
+	if threads != null:
+		remove_child(threads)
+		threads.free()
+		threads = null
+	if behavior == CreatureBrain.HAZARD:
+		# A child of the root, which only translates (the Pivot turns), so its frame is world-aligned.
+		threads = VeilThreadsView.new()
+		add_child(threads)
+		threads.set_ink(true)
 	ink = 1.0
 	_ink_target = 1.0
 	rim = 0.0
@@ -453,6 +477,8 @@ func set_relation(can_attack: bool, rimmed: bool, fade_s: float) -> void:
 		rim = _rim_target
 	_apply_ink()
 	_apply_rim()
+	if threads != null:
+		threads.set_ink(_ink_target > 0.0, fade_s)
 
 
 ## The rim the next relation fades to (1 when the cell can eat it).
@@ -541,7 +567,8 @@ func rim_grow_world() -> float:
 ## Moves the view to the sim's motion, `fraction` of the way from the previous tick to this one.
 func show_motion(motion: Locomotion.MotionState, fraction: float) -> void:
 	position = PlaneSpace.to_world(motion.prev_position.lerp(motion.position, fraction))
-	_pivot.rotation.y = PlaneSpace.yaw_for_heading(lerp_angle(motion.prev_heading, motion.heading, fraction))
+	_drawn_heading = lerp_angle(motion.prev_heading, motion.heading, fraction)
+	_pivot.rotation.y = PlaneSpace.yaw_for_heading(_drawn_heading)
 	_speed = motion.position.distance_to(motion.prev_position) / PoolSim.DT
 	_sim_at = PlaneSpace.to_world(motion.position)
 
@@ -573,10 +600,19 @@ func show_brain(mem: CreatureBrain.Memory, tick: int, fraction: float) -> void:
 		_lane_material.set_shader_parameter("fill", progress)
 	elif label == "attack/strike" or label == "attack/glide":
 		_lane_material.set_shader_parameter("fill", 1.0)
+	if threads != null:
+		# The sim's thread capsule at the drawn position and heading, so what shows is what stings.
+		var p := PlaneSpace.to_plane(position)
+		var cap := CreatureBrain.thread_capsule(mem, p, _drawn_heading, radius)
+		if not cap.is_empty():
+			threads.set_capsule(Vector3(cap.a.x - p.x, VeilThreadsView.THREAD_Y, cap.a.y - p.y),
+				Vector3(cap.b.x - p.x, VeilThreadsView.THREAD_Y, cap.b.y - p.y), float(cap.r))
 
 
-## Shows the strike lane of a tell on the player (a creature_tell event's "lane").
+## Shows the strike lane of a tell on the player (a creature_tell event's "lane"). A veil never tells.
 func show_lane(lane: Dictionary) -> void:
+	if threads != null:
+		return
 	var length := float(lane.length)
 	var width := 2.0 * float(lane.half_width)
 	var heading := float(lane.heading)
@@ -664,8 +700,10 @@ func lane_visible() -> bool:
 	return _lane.visible and float(_lane_material.get_shader_parameter("strength")) > 0.0
 
 
-## The "!" over a creature that noticed the player.
+## The "!" over a creature that noticed the player. A veil notices nothing.
 func show_marker() -> void:
+	if threads != null:
+		return
 	_marker_t = 0.0
 	_apply_marker()
 
@@ -737,6 +775,8 @@ func _process(delta: float) -> void:
 		if _die_t >= DIE_S:
 			queue_free()
 	_step_relation(delta)
+	if threads != null:
+		threads.step(delta)
 	if _now_t >= 0.0:
 		_now_t += delta
 		if _now_t >= _now_s:
@@ -787,8 +827,8 @@ func _apply_pose(p: Dictionary) -> void:
 		_hood.scale = Vector3(1.0, 1.0 + HOOD_RAISE * float(p.get("hood", 0.0)), 1.0)
 	if _brow != null:
 		_brow.position = _brow_rest + Vector3.DOWN * BROW_DROP_M * float(p.get("brow", 0.0))
-	if _eye_material != null:
-		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / EYE_EMISSION_REST
+	if _eye_material != null and _eye_rest > 0.0:
+		_eye_material.emission_energy_multiplier = float(p.get("eye_glow", EYE_GLOW_IDLE)) / _eye_rest
 	var flash := PlayerCellView.hit_flash(_hurt_t, HURT_S, SettingsService.shared().reduce_flashing())
 	_hurt_overlay.albedo_color = Color(HURT_COLOR, HURT_COLOR.a * flash)
 	_body_hurt.albedo_color = _hurt_overlay.albedo_color

@@ -636,3 +636,44 @@ func test_a_tick_costs_well_under_a_millisecond() -> void:
 	var average := spent / 3600.0
 	print("test-step-cost: %.1f us per tick over 3600 ticks" % average)
 	check(average <= STEP_COST_LIMIT_US, "average %.1f us per tick" % average)
+
+
+# --- S3: what the stings add to the pool (D-126, D-127; S3G12d) ---
+
+## S3G12d: the pool writes neither sting-rule tick to its snapshot, even after a strike hit, so the
+## M1 goldens hold; the endless world does. A token closure is written only where a hazard can live
+## (BP3-2): never at the pool's size 1.
+func test_a_pool_snapshot_never_carries_the_sting_rule_ticks() -> void:
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(SpeciesCatalog.DEFAULT_PATH))
+	data.sites = []
+	var r := Lineage.found(7, "test+dev", catalog, "grazer")
+	r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+	var sim := PoolSim.create(r.save, catalog, layout, SpeciesCatalog.from_dict(data))
+	sim.last_strike_hit_tick = 40   # as a strike hit on the cell leaves it
+	sim.last_sting_tick = 41
+	sim.creatures.token_closed_until = 0
+	var snap := sim.snapshot()
+	check(not snap.has("last_strike_hit_tick") and not snap.has("last_sting_tick"), "the pool writes neither")
+	check(not snap.has("token_closed_until"), "nor an unset token closure")
+	sim.creatures.token_closed_until = 161
+	check(not sim.snapshot().has("token_closed_until"), "nor a set one, with no hazard live")
+	sim.creatures.hazard_live = true
+	check_eq(sim.snapshot().get("token_closed_until", -1), 161, "a closure is written where a hazard lives")
+
+
+## D-127: use_entry_record is a test seam: no file under game/ calls it.
+func test_no_game_file_calls_the_entry_record_seam() -> void:
+	var callers := []
+	var dirs := ["res://game"]
+	while not dirs.is_empty():
+		var dir: String = dirs.pop_back()
+		for sub in DirAccess.get_directories_at(dir):
+			dirs.append(dir + "/" + sub)
+		for f in DirAccess.get_files_at(dir):
+			if not f.ends_with(".gd"):
+				continue
+			var text := FileAccess.get_file_as_string(dir + "/" + f)
+			for line in text.split("\n"):
+				if line.contains("use_entry_record(") and not line.begins_with("func use_entry_record("):
+					callers.append("%s/%s: %s" % [dir, f, line.strip_edges()])
+	check_eq(callers, [], "no caller under game/")
