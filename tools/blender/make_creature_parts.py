@@ -128,9 +128,10 @@ ROLE = {
     "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand", "hand_primate": "hand",
     "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot", "foot_primate": "foot",
     "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
-    "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
+    "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon", "horn_swept": "weapon",
     "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
     "gill_fan": "detail", "lure": "detail", "barbels": "detail", "ear_round": "detail", "muzzle_primate": "detail",
+    "wing_dragon": "detail", "dorsal_spine": "detail",
 }
 
 
@@ -3651,6 +3652,211 @@ def build_muzzle_primate():
             "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 1, **baked}
 
 
+# --- Dragon set: wing, swept horn, dorsal spine ------------------------------------------------------
+
+DWING_SPAN = 0.42
+DWING_SINK = 0.018
+
+
+def build_wing_dragon():
+    """A big chunky dragon wing in the skin's YZ plane: a thick arm out along +Z to a knuckled wrist, a hooked
+    thumb claw at the wrist pointing forward (+Y), four stout finger struts fanning back toward the tail, and a
+    leathery membrane whose trailing edge scallops deeply between them. Chiral: the right-hand piece cups
+    toward -X. H1_Fold furls the fingers back against the arm, H2_Flap bends the outer wing toward -X."""
+    root, body_trail = Vector((0.0, 0.04, -DWING_SINK)), Vector((0.0, -0.16, -DWING_SINK))
+    wrist = Vector((0.0, 0.015, 0.19))
+    tips = [Vector((0.0, 0.0, DWING_SPAN)), Vector((0.0, -0.13, 0.38)), Vector((0.0, -0.23, 0.29)), Vector((0.0, -0.27, 0.15))]
+    verts, fcs, face_mats = [], [], []
+
+    def cup(p):
+        d = (p - wrist).length
+        return p + Vector((-0.025 * math.sin(min(1.0, d / 0.24) * math.pi), 0.0, 0.0))
+
+    def bone(a, b, r0, r1, bend, mat=1):
+        path = []
+        for k in range(11):
+            t = k / 10
+            path.append(cup(a.lerp(b, t)) + (b - a).cross(Vector((1.0, 0.0, 0.0))).normalized() * bend * math.sin(math.pi * t))
+
+        def rad(i, ang):
+            if i == 10:
+                return 0.0
+            t = i / 10
+            knuckle = 1.0 + 0.35 * math.exp(-((t - 0.5) / 0.08) ** 2)
+            end = math.sqrt(max(0.0, 1.0 - ((t - 0.85) / 0.15) ** 2)) if t > 0.85 else 1.0
+            return (r0 + (r1 - r0) * t) * knuckle * end
+        v, f, _ = _tube(path, rad, 10)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([mat] * (len(fcs) - len(face_mats)))
+        return path
+
+    bone(root, wrist, 0.02, 0.015, 0.0)
+    for k, tip in enumerate(tips):
+        bone(wrist, tip, 0.012, 0.007 - 0.001 * k, 0.012)
+    unit, ufaces = bc.icosphere(2)
+    bc.append(verts, fcs, [tuple(cup(wrist) + Vector(co).normalized() * 0.022) for co in unit], ufaces)
+    face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    # Thumb claw: a short hooked horn off the wrist, forward (+Y) and up, then hooking down at the tip.
+    tpath = []
+    for k in range(9):
+        t = k / 8
+        a = 1.3 * t
+        tpath.append(cup(wrist) + Vector((-0.004, 0.012 + 0.05 * math.sin(a), 0.01 + 0.048 * (1 - math.cos(a)) - 0.012 * t ** 3)))
+    v, f, _ = _tube(tpath, lambda i, a: 0.0 if i == 8 else 0.011 * (1.0 - i / 8) ** 0.9, 12)
+    bc.append(verts, fcs, v, f)
+    face_mats.extend([2] * (len(fcs) - len(face_mats)))
+    mverts, mfcs = [], []
+    # Membrane (its own object, so the bones' normal bake never sees it): fans between neighbouring fingers, then the inner panel from the last finger back to the body.
+    for k in range(3):
+        a, b = tips[k], tips[k + 1]
+
+        def fan(s, c, a=a, b=b):
+            q = a.lerp(b, c)
+            return cup(wrist + (q - wrist) * s * (1.0 - 0.34 * math.sin(math.pi * c) * s ** 3))
+        _membrane(mverts, mfcs, fan, 7, 7, thickness=0.0025)
+
+    def inner(s, c):
+        c = c * (1.0 - 0.3 * math.sin(math.pi * s) * c ** 3)
+        top = wrist.lerp(tips[3], c)
+        bottom = root.lerp(body_trail, c)
+        return cup(bottom.lerp(top, s))
+    _membrane(mverts, mfcs, inner, 9, 9, thickness=0.0025)
+    mem = sf.Shader("M_WingDragonMembraneProc")
+    veins = mem.remap(mem.voronoi(45.0, 0.9, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    mem.bump(mem.math("SUBTRACT", 1.0, veins), 0.35, 0.001)
+    mem_mat = mem.out(_grey(mem, mem.math("ADD", 0.7, mem.math("MULTIPLY", veins, 0.3)), 0.7), 0.55)
+    mats = [_scale_material("M_WingDragonBoneProc", 240.0), _horn_material("M_WingDragonClawProc", 0.0, 0.6)]
+    wing = bc.mesh_object("WingDragon", verts, fcs, mats, [m - 1 for m in face_mats])
+    membrane = bc.mesh_object("Membrane", mverts, mfcs, [mem_mat], fix_normals=False, parent=wing)
+    mem_mat.name, mats[0].name, mats[1].name = "M_WingDragonMembrane", "M_WingDragonBone", "M_WingDragonClaw"
+    baked = _bake([wing, membrane], "PartWingDragon", {"M_WingDragonMembrane": sf.tint(_lin("#B5584A")),
+                                             "M_WingDragonBone": sf.tint(_lin("#5E7A4C")),
+                                             "M_WingDragonClaw": sf.tint(_lin("#E8DCC0"))}, tolerance=0.0003)
+    pts = _check_pivot("wing_dragon", DWING_SINK + 0.02)
+    foot = max(abs(p.y) for p in pts if p.z <= 0.01)
+    mp._check(sum(p.x for p in pts) < 0, "wing_dragon: cups toward -X (the right-hand piece ships)")
+
+    def fold(co):
+        if co.z > 0.03 and co.y < 0.03:
+            k = min(1.0, (co.z - 0.03) / 0.35)
+            co.y -= 0.14 * k
+            co.z -= 0.17 * k * k
+            co.x -= 0.02 * k
+        return co
+
+    def flap(co):
+        k = max(0.0, co.z) / DWING_SPAN
+        co.x -= 0.14 * k * k
+        return co
+
+    handles = _shape_keys(wing, [("H1_Fold", fold, "fingers and membrane furled back and down toward the tail"),
+                                 ("H2_Flap", flap, "the outer wing bent toward -X for the downstroke")])
+    _shape_keys(membrane, [("H1_Fold", fold, ""), ("H2_Flap", flap, "")])
+    rules = _rules("wing_dragon", round(foot, 3), DWING_SINK + 0.02, "normal", ["spine", "limb"], 30, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature wing part (PROPOSED): a big dragon wing, a thick knuckled arm, a hooked thumb claw, four stout finger struts and a deeply scalloped leathery membrane, right-hand piece (mirrored for the left).",
+            "category": "part", "part_type": "wing_dragon", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_WingDragonMembrane": 0.75, "M_WingDragonBone": 0.85, "M_WingDragonClaw": 0.0},
+            "revision": 1, **baked}
+
+
+def build_horn_swept():
+    """A long dragon horn: a broad oval base rising from the skin, sweeping back (-Y) in a long arc and drifting
+    a little out (+X) so a pair clears the head, with raised growth ridges fading to a blunt upturned point.
+    Chiral. H1_Length lengthens the sweep, H2_Curl curls the tip further up."""
+    steps = 40
+    path = [Vector((0.0, 0.0, -0.018))]
+    for i in range(steps + 1):
+        t = i / steps
+        a = 1.45 * t
+        path.append(Vector((0.018 * t * t, -0.19 * (1 - math.cos(a)) / (1 - math.cos(1.45)), 0.004 + 0.13 * math.sin(a) / math.sin(1.45) + 0.02 * t ** 4)))
+    total = len(path) - 1
+
+    def radius_at(i, a):
+        if i == total:
+            return 0.0
+        t = max(0.0, (i - 1) / (total - 1))
+        ridge = 1.0 + 0.1 * max(0.0, math.cos(2.0 * math.pi * 9.0 * t)) ** 2 * (1.0 - t)
+        oval = 1.0 - 0.15 * math.sin(a) ** 2
+        tip = math.sqrt(max(0.0, 1.0 - ((t - 0.88) / 0.12) ** 2)) if t > 0.88 else 1.0
+        return (0.026 * (1.0 - t) ** 0.8 + 0.004) * ridge * oval * tip
+
+    verts, faces, _ = _tube(path, radius_at, 18)
+    mat = _horn_material("M_HornSweptProc", 0.0, 0.7)
+    horn = bc.mesh_object("HornSwept", verts, faces, [mat])
+    mat.name = "M_HornSwept"
+    baked = _bake([horn], "PartHornSwept", {"M_HornSwept": sf.tint(_lin("#D9C9A0"))})
+    pts = _check_pivot("horn_swept", 0.02)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) > 0, "horn_swept: drifts out to +X (the right-hand side ships)")
+
+    def length(co):
+        if co.z > 0.0:
+            co.y *= 1.35
+            co.z *= 1.1
+        return co
+
+    def curl(co):
+        k = max(0.0, -co.y) / 0.19
+        co.z += 0.05 * k ** 3
+        co.y += 0.02 * k ** 3
+        return co
+
+    handles = _shape_keys(horn, [("H1_Length", length, "the sweep 35% longer"), ("H2_Curl", curl, "the tip curled further up")])
+    rules = _rules("horn_swept", round(foot + 0.001, 3), 0.02, "normal", ["spine", "part"], 60, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature horn part (PROPOSED): a long ridged dragon horn sweeping back from the brow to a blunt upturned point, drifting out to the right (mirrored for the left; place in pairs).",
+            "category": "part", "part_type": "horn_swept", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HornSwept": 0.1}, "revision": 1, **baked}
+
+
+def build_dorsal_spine():
+    """A dragon's dorsal plate: a thick, rounded triangular blade in the YZ plane, longer at its base, raked back
+    (-Y) to a blunt point, with growth ridges, set on a low oval scaly scute. Symmetric, so a row of them runs
+    down the spine. H1_Height raises it, H2_Rake rakes it further back."""
+    steps = 18
+    ts = [(i / steps) ** 1.25 for i in range(steps + 1)]
+    path = [Vector((0.0, -0.03 * t ** 1.5, -0.012 + 0.122 * t)) for t in ts]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = ts[i]
+        ay = (0.05 * (1.0 - t) ** 1.1 + 0.004) * (1.0 + 0.04 * math.cos(2.0 * math.pi * 5.0 * t))
+        ax = 0.013 * (1.0 - t) ** 0.6 + 0.0035
+        c, s = math.cos(a), math.sin(a)
+        return 1.0 / math.sqrt((c / ay) ** 2 + (s / ax) ** 2)
+
+    verts, faces, _ = _tube(path, radius_at, 24)
+    face_mats = [1] * len(faces)
+    unit, ufaces = bc.icosphere(3)
+    bc.append(verts, faces, [tuple(Vector((n.x * 0.028, n.y * 0.062, max(-0.014, n.z * 0.008)))) for n in (Vector(co).normalized() for co in unit)], ufaces)
+    face_mats.extend([0] * len(ufaces))
+    mats = [_scale_material("M_DorsalScuteProc", 260.0), _horn_material("M_DorsalPlateProc", 220.0, 0.72)]
+    spine = bc.mesh_object("DorsalSpine", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_DorsalScute", "M_DorsalPlate"
+    baked = _bake([spine], "PartDorsalSpine", {"M_DorsalScute": sf.tint(_lin("#5E7A4C")), "M_DorsalPlate": sf.tint(_lin("#E0B860"))})
+    pts = _check_pivot("dorsal_spine", 0.015)
+    foot = _footprint(pts)
+
+    def height(co):
+        if co.z > 0.008:
+            co.z = 0.008 + (co.z - 0.008) * 1.5
+        return co
+
+    def rake(co):
+        k = max(0.0, co.z) / 0.11
+        co.y -= 0.04 * k * k
+        return co
+
+    handles = _shape_keys(spine, [("H1_Height", height, "the plate 50% taller"), ("H2_Rake", rake, "the plate raked further back")])
+    rules = _rules("dorsal_spine", round(foot + 0.001, 3), 0.015, "normal", ["spine", "part"], 30, 30)
+    rules["handles"] = handles
+    return {"purpose": "Creature detail part (PROPOSED): a thick rounded triangular dorsal plate raked back on a scaly scute, for a row down a dragon's back or tail.",
+            "category": "part", "part_type": "dorsal_spine", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_DorsalScute": 0.85, "M_DorsalPlate": 0.3}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -3700,6 +3906,9 @@ ASSETS = {
     "cpart_foot_primate": (build_foot_primate, 2500),
     "cpart_ear_round": (build_ear_round, 1200),
     "cpart_muzzle_primate": (build_muzzle_primate, 1200),
+    "cpart_wing_dragon": (build_wing_dragon, 2500),
+    "cpart_horn_swept": (build_horn_swept, 1200),
+    "cpart_dorsal_spine": (build_dorsal_spine, 1200),
 }
 
 

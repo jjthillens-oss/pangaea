@@ -26,8 +26,8 @@ ROWS = [
     ["cpart_eye", "cpart_eye_slit", "cpart_eye_round", "cpart_eye_cluster", "cpart_eye_stalk", "cpart_compound_eye", "cpart_antenna", "cpart_lure", "cpart_gill_fan"],
     ["cpart_foot", "cpart_foot_webbed", "cpart_foot_paw", "cpart_foot_talon", "cpart_foot_frog", "cpart_foot_primate", "cpart_hoof", "cpart_flipper"],
     ["cpart_hand", "cpart_hand_paw", "cpart_hand_pincer", "cpart_hand_tentacle", "cpart_hand_primate"],
-    ["cpart_claw", "cpart_claw_scythe", "cpart_claw_rake", "cpart_horn", "cpart_horn_ram", "cpart_horn_nose", "cpart_spike", "cpart_tusk"],
-    ["cpart_fin", "cpart_crest", "cpart_frill", "cpart_wing", "cpart_tail_fluke", "cpart_tail_spikes", "cpart_club_tail", "cpart_quills", "cpart_ear_round", "cpart_muzzle_primate"],
+    ["cpart_claw", "cpart_claw_scythe", "cpart_claw_rake", "cpart_horn", "cpart_horn_ram", "cpart_horn_nose", "cpart_spike", "cpart_tusk", "cpart_horn_swept"],
+    ["cpart_fin", "cpart_crest", "cpart_frill", "cpart_wing", "cpart_tail_fluke", "cpart_tail_spikes", "cpart_club_tail", "cpart_quills", "cpart_ear_round", "cpart_muzzle_primate", "cpart_wing_dragon", "cpart_dorsal_spine"],
 ]
 SPACING_X = 0.42
 SPACING_Y = 0.5
