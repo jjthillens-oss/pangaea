@@ -85,10 +85,22 @@ observation behind it). The same notes are in each record's `review_notes`.
 
 | Id | Gate 1 shape | Gate 2 materials | Gate 3 neutral light | Gate 4 Godot, on a body | Triangles / budget |
 | --- | --- | --- | --- | --- | --- |
-| beak_hooked | pass: deep keeled upper mandible arcing into a pointed hook over a shorter lower one; cere a clean raised band | pass: slate horn darkening to a near-black hook, saturated yellow cere with a nostril each side | pass: no clipping, hook underside readable | see below | 1152 / 1200 |
-| beak_long | pass: slender decurved bill, rounded probe tip, gape bulge; upper overhangs lower by about 1 cm | pass: orange streaked horn with seam and nostril-groove lines, pink gape | pass: highlight along the culmen, lines stay visible | see below | 342 / 1200 |
-| trunk | pass: tapering S-curve hanging and turning forward, flatter underneath, two-fingered grip pad | pass: cool grey ring-wrinkled crackled skin against a warm-brown pebbled pad with two nostrils | pass: grazing light shows the rings, pad readable | see below | 2303 / 2500 |
-| trunk_short | pass: broad snout tapering and drooping over a tucked lower lip; domed oval nose pad with two flared nostril lobes | pass: fine grey folded skin against a near-black glossy nose pad with dark nostrils | pass: folds and gloss read, mouth crease shadowed | see below | 964 / 1200 |
+| beak_hooked | pass: deep keeled upper mandible arcing into a pointed hook over a shorter lower one; cere a clean raised band | pass: slate horn darkening to a near-black hook, saturated yellow cere with a nostril each side | pass: no clipping, hook underside readable | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 1152 / 1200 |
+| beak_long | pass: slender decurved bill, rounded probe tip, gape bulge; upper overhangs lower by about 1 cm | pass: orange streaked horn with seam and nostril-groove lines, pink gape | pass: highlight along the culmen, lines stay visible | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 342 / 1200 |
+| trunk | pass: tapering S-curve hanging and turning forward, flatter underneath, two-fingered grip pad | pass: cool grey ring-wrinkled crackled skin against a warm-brown pebbled pad with two nostrils | pass: grazing light shows the rings, pad readable | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 2303 / 2500 |
+| trunk_short | pass: broad snout tapering and drooping over a tucked lower lip; domed oval nose pad with two flared nostril lobes | pass: fine grey folded skin against a near-black glossy nose pad with dark nostrils | pass: folds and gloss read, mouth crease shadowed | needs revision: points up (shared forward_cone frame); reads right with the fix previewed | 964 / 1200 |
+
+Gate 4 (beaks and trunks): `tools/godot/more_parts_shots.gd --mode=creatures --showcase=<json>` with each new
+mouth swapped in memory for a preset's mouth (tortoise beak to beak_hooked, strider beak to beak_long, longneck beak
+to trunk, boar maw to trunk_short). The `after_<preset>_<part>.jpg` frames in `docs/evidence/credit-more-parts/` (top
+left: world camera distance from behind; top right: from the front; bottom left: nearer; bottom right: level head
+profile) show all four load, seat on the snout tip without floating or deep clipping, keep their materials and sit in
+scale with the head, but point up out of the snout like every existing mouth: the forward_cone frame finding above.
+The `conefix_<preset>_<part>.jpg` frames add `--cone-fix-preview`, a review-only turn of each forward_cone part on the
+rig (no game code changes) to the frame the orientation issue proposes: there the hooked beak points forward with its
+hook down, the long bill reaches forward and curves down, the trunk comes forward and hangs, and the tapir snout juts
+forward and droops, each reading as its animal feature at the world camera's distance. The eyes on those heads turn
+to face forward too. The Gates 1-3 contact sheets are `gates_<part>.jpg` there as well.
 
 Iterations that the sheets caught (Gate 1 needs revision, then fixed): the first hooked beak splayed its mandibles
 apart with a V gap and read as a horn, with a sawtooth cere edge and a second nostril pair mirrored onto the lower

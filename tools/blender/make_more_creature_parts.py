@@ -88,7 +88,7 @@ REVIEW = {
                            "the material borders are clean rings (the lower mandible is kept undecimated for that).",
         "gate3_neutral_light": "pass: under the neutral white rig the horn's soft highlight runs along the keel and "
                                "the hook, nothing clips and the underside of the hook stays readable.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (every existing mouth and eye points the same way; not this art). In the creature editor on the tortoise (beak swapped in memory, docs/evidence/credit-more-parts/after_tortoise_beak_hooked.jpg) it loads, seats on the snout tip without floating or deep clipping, is in scale with the head and keeps its slate horn and yellow cere, but it points up out of the snout. With the frame fix previewed (more_parts_shots.gd --cone-fix-preview, conefix_tortoise_beak_hooked.jpg) it points forward with the hook curving down and reads as a raptor's beak at the world camera's distance."},
     "cpart_beak_long": {
         "gate1_shape": "pass: a slender gently decurved bill about 0.23 m out of the skin with a rounded probe tip and "
                        "a fleshy gape bulge at the root; the upper mandible overhangs the lower by about 1 cm and the "
@@ -99,7 +99,7 @@ REVIEW = {
                            "fleshy gape at the root.",
         "gate3_neutral_light": "pass: even neutral light, a narrow highlight along the culmen, no clipping; the "
                                "groove and seam lines stay visible in the side and close views.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the strider (after_strider_beak_long.jpg) it loads, seats on the snout tip and keeps its orange horn, but stands up like a horn. With the frame fix previewed (conefix_strider_beak_long.jpg) it reaches forward and curves down, reading as an ibis-like probing bill at the world camera's distance."},
     "cpart_trunk": {
         "gate1_shape": "pass: a thick root tapering over about 0.38 m, hanging down and turning forward at the end in "
                        "an S, flatter underneath; the grip pad shows two finger-like lips (the upper larger) round a "
@@ -109,7 +109,7 @@ REVIEW = {
                            "albedo, against a darker warm-brown pebbled grip pad with two dark nostrils.",
         "gate3_neutral_light": "pass: neutral white light shows the ring wrinkles by grazing light along the whole "
                                "length; no clipped highlights, the pad stays readable in shadow.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the longneck (after_longneck_trunk.jpg) it loads and seats on the snout tip, but rises and arcs back over the head. With the frame fix previewed (conefix_longneck_trunk.jpg) it comes forward and hangs down from the snout, reading as a trunk; on this 3 m body it is slim at its default scale, which the editor's scale handle covers."},
     "cpart_trunk_short": {
         "gate1_shape": "pass: a broad, slightly flattened snout about 0.11 m out of the skin, tapering and drooping "
                        "over a soft lower lip tucked under its root, so the mouth reads as a crease beneath an "
@@ -119,7 +119,7 @@ REVIEW = {
                            "pebbled nose pad with two dark nostril openings.",
         "gate3_neutral_light": "pass: neutral light shows the folds and the pad's gloss without clipping; the "
                                "mouth crease reads as a shadowed line.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the boar (after_boar_trunk_short.jpg) it loads, seats on the snout between the tusks and keeps its dark nose pad, but points up and forward. With the frame fix previewed (conefix_boar_trunk_short.jpg) it juts forward and droops, reading as a tapir's snout."},
 }
 
 

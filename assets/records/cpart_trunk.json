@@ -110,7 +110,7 @@
     "gate1_shape": "pass: a thick root tapering over about 0.38 m, hanging down and turning forward at the end in an S, flatter underneath; the grip pad shows two finger-like lips (the upper larger) round a dished face; H1_Curl coils the outer half into a grasping hook, H2_Raise lifts it forward and up, H3_Length lengthens it, the pad riding rigidly on the end.",
     "gate2_materials": "pass: cool grey wrinkled skin whose ring folds and crackle read in the normal map and albedo, against a darker warm-brown pebbled grip pad with two dark nostrils.",
     "gate3_neutral_light": "pass: neutral white light shows the ring wrinkles by grazing light along the whole length; no clipped highlights, the pad stays readable in shadow.",
-    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+    "gate4_godot": "needs revision: orientation only, from the shared forward_cone frame (not this art). On the longneck (after_longneck_trunk.jpg) it loads and seats on the snout tip, but rises and arcs back over the head. With the frame fix previewed (conefix_longneck_trunk.jpg) it comes forward and hangs down from the snout, reading as a trunk; on this 3 m body it is slim at its default scale, which the editor's scale handle covers."
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
