@@ -37,6 +37,8 @@ var attach_u := PackedFloat32Array()
 var total_length := 0.0
 ## Index of the first head-shape capsule (capsule_count() when there are none). Chains end before it.
 var shape_from := 0
+## The first spine capsule's head radius before the head shape's core scale (for body_volume_m3).
+var plain_head_ra := 0.0
 
 
 static func from_description(desc: RefCounted) -> RefCounted:
@@ -66,6 +68,7 @@ static func from_description(desc: RefCounted) -> RefCounted:
 	f.shape_from = f.a.size()
 	var head: Dictionary = HeadShape.geometry(desc)
 	if n >= 2:
+		f.plain_head_ra = f.ra[0]
 		f.ra[0] *= float(head["core"])
 	for cap in head["capsules"]:
 		f._add(cap[0], cap[1], cap[2], cap[3], 0, 0, 0.0, 0.0, 0.0)
@@ -88,6 +91,18 @@ func _add(pa: Vector3, pb: Vector3, r0: float, r1: float, b0: int, b1: int, at: 
 
 func capsule_count() -> int:
 	return a.size()
+
+
+## Volume of the spine and limb capsules (each as a cone frustum), in m^3. The head shape is cosmetic, so its
+## capsules and its core scale on the first capsule are left out: the dials never change mass or the stats built on it.
+func body_volume_m3() -> float:
+	var volume := 0.0
+	for k in shape_from:
+		var h: float = a[k].distance_to(b[k])
+		var r0: float = plain_head_ra if k == 0 else ra[k]
+		var r1: float = rb[k]
+		volume += PI / 3.0 * h * (r0 * r0 + r0 * r1 + r1 * r1)
+	return volume
 
 
 ## Falloff of capsule k at p, and the axis parameter t of the closest point (for weights).

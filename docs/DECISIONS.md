@@ -799,6 +799,10 @@ Joshua (23:40) asked for more head shape options. The creature editor's stats pa
 - **Shape.** The vertebrae do not move. `BodyField` scales the head end of the first spine capsule and adds up to four
   capsules around vertebra 0 (`game/domain/creature/head_shape.gd`) on bone 0, so the skin (CPU and GPU), the part
   anchors, picking and the bounds follow. A part on the head end rides out to the snout tip.
+- **Cosmetic only.** The dials cost nothing, so they change no stat: mass (and the health, bite strength and speed
+  built on it, in the world sim and the editor's panel) counts only the spine and limb capsules at their plain head
+  radius (`BodyField.body_volume_m3`). `tests/test_creature_head_shape.gd` pins this. Giving the head a stat effect
+  would need a cost and the owner's sign-off.
 
 ## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
 

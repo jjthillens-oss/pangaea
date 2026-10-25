@@ -2,7 +2,8 @@ extends TestCase
 ## The head shape dials (game/domain/creature/head_shape.gd): the block in the body's extra dictionary, its ranges
 ## from body_rules.json, the capsules BodyField adds around the head end (the skin changes, the vertebrae do not),
 ## parts on the head still land on the skin, the codec round trip through a save's JSON, and the editor session's
-## set_head_shape with its refusals, undo, redo and gesture, at no cost.
+## set_head_shape with its refusals, undo, redo and gesture, at no cost, and that the dials stay cosmetic: they do not
+## change mass or any creature stat built on it.
 
 const Fixtures := preload("res://tests/creature_fixtures.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -11,6 +12,7 @@ const BodyField := preload("res://game/domain/creature/body_field.gd")
 const HeadShape := preload("res://game/domain/creature/head_shape.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const Session := preload("res://game/domain/creature/creature_editor_session.gd")
+const Sim := preload("res://game/systems/creature/creature_world_sim.gd")
 
 var rules := {}
 
@@ -194,3 +196,25 @@ func test_the_session_sets_dials_with_undo_and_refusals_at_no_cost() -> void:
 	var c: Dictionary = s.commit()
 	check(c["ok"] and HeadShape.of(c["body"].extra)["height"] == 1300 and c["points_left"] == 10,
 			"commit carries the head and spends nothing")
+
+
+func test_the_dials_are_cosmetic_and_leave_mass_and_stats_alone() -> void:
+	var tuning: Dictionary = Sim.load_tuning()
+	var table = CreatureData.gait_table()
+	var part_rules: Dictionary = CreatureData.part_rules()
+	var maxed := {"snout": 2000, "width": 1600, "height": 600, "jaw": 1000, "brow": 1000}
+	var tall := {"snout": 1000, "width": 600, "height": 1600, "jaw": 0, "brow": 0}
+	for preset in ["monkey", "prowler"]:
+		var plain = CreatureData.preset_body(preset)
+		var base: Dictionary = CreatureStats.of(plain, part_rules, table, tuning)
+		var base_editor: Dictionary = Session.stats(plain)
+		for shape in [maxed, tall]:
+			var desc := shaped(shape, preset)
+			check(BodyField.from_description(desc).capsule_count() > BodyField.from_description(plain).capsule_count(),
+					"%s: the shape adds capsules" % preset)
+			var st: Dictionary = CreatureStats.of(desc, part_rules, table, tuning)
+			for key in ["mass_kg", "max_health", "bite_power", "speed_mps", "speed_factor"]:
+				check(is_equal_approx(float(st[key]), float(base[key])),
+						"%s %s: %s stays %s with %s" % [preset, key, st[key], base[key], shape])
+			check(is_equal_approx(float(Session.stats(desc)["mass_kg"]), float(base_editor["mass_kg"])),
+					"%s: the editor panel's mass stays put" % preset)

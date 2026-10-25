@@ -28,7 +28,7 @@ extends Node3D
 ## skin-pattern ints (creature_look.gd), fields the codec keeps as unknown keys (tests/test_creature_body.gd), so the
 ## world and the store carry them without a schema change. The HUD's head shape sliders (snout, skull width and
 ## height, jaw, brow) set the body's "head_shape" block the same way (domain/creature/head_shape.gd); a slider drag is
-## one undo step and the dials cost nothing.
+## one undo step, and the dials cost nothing and change no stat (mass leaves the head shape out).
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")

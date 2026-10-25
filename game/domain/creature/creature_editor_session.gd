@@ -413,10 +413,7 @@ func cost() -> int:
 ## Summary numbers for the editor's before/after panel (PROPOSED; the creature stage's real stats come later).
 static func stats(d: RefCounted) -> Dictionary:
 	var field = BodyField.from_description(d)
-	var volume := 0.0
-	for k in field.capsule_count():
-		var h: float = field.a[k].distance_to(field.b[k])
-		volume += PI / 3.0 * h * (field.ra[k] * field.ra[k] + field.ra[k] * field.rb[k] + field.rb[k] * field.rb[k])
+	var volume: float = field.body_volume_m3()
 	var legs: Array = GaitBody.from_description(d)["legs"] if not d.limbs.is_empty() else []
 	var by_type := {}
 	for p in d.parts:
