@@ -142,7 +142,8 @@ def main():
         bc.reset_scene()
         fields = builder()
         fields["review_notes"] = _review_notes(asset_id)
-        record = bc.export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR, provenance=PROVENANCE)
+        record = bc.export(asset_id, budget, fields, review_state=REVIEW_STATE, generator=GENERATOR,
+                           provenance=PROVENANCE)
         dims = record["dimensions_m"]
         print(f"{asset_id}: {record['triangles']} triangles, {dims['x']} x {dims['y_forward']} x {dims['z_up']} m")
 
