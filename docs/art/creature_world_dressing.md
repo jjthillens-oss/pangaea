@@ -94,8 +94,8 @@ python tools/blender/render_production.py creature_nest_ring creature_fruit_bush
 python tools/blender/render_world_review.py creature_fruit_bush [...]   # gate views: grey (grazing key), beauty, close-up, unlit base colour, card alpha
 ```
 
-In-engine screenshots: `tools/godot/creature_world_gameplay_shots.gd` runs the real `creature_world.tscn` (and
-`creature_editor.tscn` with `--editor`) and saves gameplay frames, close-ups and the editor's zoom extremes, with
+In-engine screenshots: `tools/godot/creature_world_gameplay_shots.gd` runs the real `game/scenes/creature/creature_world.tscn`
+(and `game/scenes/creature/creature_editor.tscn` with `--editor`) and saves gameplay frames, close-ups and the editor's zoom extremes, with
 draw calls, primitives and `setup_ms`. `tools/godot/world_dressing_shot.gd` stages the dressing alone, and
 `tools/godot/editor_room_shot.gd` the editor pad from the editor camera's poses; both take their light out of the
 real scenes (recipes in their headers). The Compatibility renderer overexposes a shadowed sun (docs/TOOLCHAIN.md), so
@@ -103,7 +103,7 @@ judge colour on Forward+ (lavapipe) or with `--no-shadow`.
 
 ## Baseline frames (2026-10-25, before the creature-world-art revision)
 
-Frames of main at 2ffc1218 from `creature_world_gameplay_shots.gd` (seed 4242, the `s1_quadruped` starter, HUD
+Frames of main at 2ffc1218 from `tools/godot/creature_world_gameplay_shots.gd` (seed 4242, the `s1_quadruped` starter, HUD
 hidden), in `docs/evidence/credit-creature-world-art/before_*.jpg`. Ground band = the mean CIELAB (D65) between the
 horizon and 60% of the frame's height, leaving out the middle fifth of the columns where the creature stands.
 
@@ -119,10 +119,10 @@ horizon and 60% of the frame's height, leaving out the middle fifth of the colum
   shipping renderer, draws the same turf as a low-chroma grey-green (h146, C18), but the far third still fades into
   the blue-grey depth fog from 20 to 78 m and meets the sky with no land on the horizon, the turf's round blotches
   read as puddles, and nothing stands up from the ground.
-- The fruit bushes do not draw in the game: `creature_world.gd` `_multimesh()` starts every MultiMesh at
+- The fruit bushes do not draw in the game: `game/scenes/creature/creature_world.gd` `_multimesh()` starts every MultiMesh at
   `visible_instance_count = 0`, and `_draw_food()` raises it for the fruit and the meat but never for the bushes, so
-  the fruit floats in the air with only its own shadows (`before_close_bush_fplus.jpg`). The art tools draw the bush
-  through their own MultiMesh, so earlier review frames showed it. The fix is a line in `creature_world.gd`, which
+  the fruit floats in the air with only its own shadows (`docs/evidence/credit-creature-world-art/before_close_bush_fplus.jpg`). The art tools draw the bush
+  through their own MultiMesh, so earlier review frames showed it. The fix is one line in that script, which
   this art job does not own (issue #195).
 - The nest mound reads as smooth tan: the straw streaks are too fine to show at gameplay distance.
 - The editor pad floats in the room's sky with no walls; seen from PITCH_MAX at ZOOM_MAX it sits in a black void.
