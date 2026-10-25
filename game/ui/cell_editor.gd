@@ -48,6 +48,7 @@ const SNAP_HINTS := {
 	"centre": "Snapped to the middle line",
 	"twin": "Snapped opposite the other %s",
 	"pair_edge": "A mirrored pair keeps off the middle line",
+	"taken": "Another part holds that spot, so it does not snap there",
 }
 const SYMMETRY_TIP := "When on, a part off the middle line comes with a mirrored twin, and the two move, change and go together"
 ## [label, Phenotype field, higher is better, format]
@@ -111,6 +112,8 @@ var chase := {}                    ## {"speed", "name"}: the fastest hunter here
 ## Editor-ease symmetry (PROPOSED default off): parts off the middle line are added, moved, sized, upgraded and
 ## removed with their mirrored twin. Kept in memory only, never in the save or the settings.
 var symmetry := false
+var _gesture := false              ## true from begin_gesture() to end_gesture() (a drag round the rim)
+var _gesture_twin := ""            ## the selected part's twin when the gesture began ("" for none), kept for its length
 
 var _preview: CellPreview
 var _rim: RimView
@@ -223,12 +226,12 @@ func resize_selected(step: float) -> Dictionary:
 	if part.is_empty():
 		return {"ok": false, "reason": "no part selected"}
 	var twin := selected_twin()
-	var scale := float(part.scale) + step
+	var new_scale := float(part.scale) + step
 	var opened := _open_group(not twin.is_empty())
-	var result := session.scale_part(selected, scale)
+	var result := session.scale_part(selected, new_scale)
 	_steps.note(result.ok)
 	if result.ok and not twin.is_empty():
-		_steps.note(session.scale_part(str(twin.id), scale).ok)
+		_steps.note(session.scale_part(str(twin.id), new_scale).ok)
 	_close_group(opened)
 	_after(result)
 	return result
@@ -274,10 +277,14 @@ func set_symmetry(on: bool) -> void:
 	_refresh()
 
 
-## The selected part's mirrored twin while symmetry is on (CellSymmetry.twin_of); {} otherwise.
+## The selected part's mirrored twin while symmetry is on (CellSymmetry.twin_of); {} otherwise. During a gesture it
+## is the twin the part had when the gesture began: a drag that snaps a single part opposite another of its kind does
+## not take that part along (they count as a pair from the release on).
 func selected_twin() -> Dictionary:
 	if not symmetry or session == null:
 		return {}
+	if _gesture:
+		return {} if _gesture_twin == "" else _part(_gesture_twin)
 	return CellSymmetry.twin_of(session.working.parts, _part(selected))
 
 
@@ -297,11 +304,16 @@ func _close_group(opened: bool) -> void:
 
 ## A gesture (a drag round the rim) starts: every op until end_gesture() is one Undo step.
 func begin_gesture() -> void:
+	var twin := selected_twin()
+	_gesture_twin = "" if twin.is_empty() else str(twin.id)
+	_gesture = true
 	_steps.begin_group()
 	_rim_hint.text = DRAG_HINT
 
 
 func end_gesture() -> void:
+	_gesture = false
+	_gesture_twin = ""
 	_steps.end_group()
 	_rim_hint.text = RIM_HINT
 	_rim_hint.modulate.a = 0.6
@@ -314,8 +326,10 @@ func drag_to(angle: float) -> Dictionary:
 	var part := _part(selected)
 	if part.is_empty():
 		return {"angle": angle, "kind": "", "of": ""}
-	var snap := CellSymmetry.snap(angle, session.working.parts, selected)
-	if not selected_twin().is_empty():
+	var twin := selected_twin()
+	var keep := [] if twin.is_empty() else [str(twin.id)]
+	var snap := CellSymmetry.snap(angle, session.working.parts, selected, keep, _rim.clear_angle())
+	if not twin.is_empty():
 		var kept := CellSymmetry.off_line(angle, float(part.angle))
 		var moved := not is_equal_approx(kept, wrapf(angle, -PI, PI))
 		snap = {"angle": kept, "kind": "pair_edge" if moved else "", "of": ""}
@@ -949,6 +963,12 @@ class RimView:
 	func at(angle: float) -> Vector2:
 		return center() + Vector2(sin(angle), -cos(angle)) * radius()
 
+	## The angle two dots of a part's usual size take on the rim, centre to centre: a snap target closer than this
+	## to another part is taken (CellSymmetry.snap). CellSymmetry.CLEAR_RAD until the view has a size.
+	func clear_angle() -> float:
+		var r := radius()
+		return CellSymmetry.CLEAR_RAD if r < 1.0 else maxf(2.0 * DOT / r, CellSymmetry.CLEAR_RAD / 2.0)
+
 	func angle_of(p: Vector2) -> float:
 		var d := p - center()
 		return atan2(d.x, -d.y)
@@ -1040,12 +1060,17 @@ class RimView:
 			editor.end_gesture()
 			queue_redraw()
 
+	## The part whose dot is nearest `p`, within reach; "" for none. On a tie (dots on top of each other) the selected
+	## part keeps the pick, or else the one drawn last, on top.
 	func _nearest(p: Vector2) -> String:
 		var best := ""
 		var best_d := DOT * 2.5
 		for part in editor.session.working.parts:
 			var d := p.distance_to(at(float(part.angle)))
-			if d < best_d:
+			if d >= DOT * 2.5:
+				continue
+			var tie := absf(d - best_d) <= 0.5
+			if (d < best_d and not tie) or (tie and (best == "" or best != editor.selected)):
 				best_d = d
 				best = str(part.id)
 		return best

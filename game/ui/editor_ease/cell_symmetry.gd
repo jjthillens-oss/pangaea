@@ -55,31 +55,59 @@ static func off_line(angle: float, from_angle: float) -> float:
 	return side * (PAIR_EDGE if cos(a) > 0.0 else PI - PAIR_EDGE)
 
 
+## A snap target this close to another part's angle is taken (radians): snapping there would put the dragged dot
+## on top of that part's dot, where a click picks the other part. The rim passes its own dot size instead.
+const CLEAR_RAD := 0.1
+
+
 ## A dragged part's angle, snapped: onto the middle line (front or back) or opposite another part of its type (where
-## its mirror would be), when within SNAP_RAD; the nearest wins, the middle line on a tie, then the lower id.
-## Returns {"angle", "kind": "centre" | "twin" | "", "of": the part it is opposite, for "twin"}.
-static func snap(angle: float, parts: Array, moving_id: String) -> Dictionary:
+## its mirror would be), when within SNAP_RAD; the nearest wins, the middle line on a tie, then the lower id. A target
+## within `clear` of a part other than the moving one (and the ids in `keep`, its twin) is taken and skipped, so a
+## drag never snaps one dot onto another (the mouth at the front and the tail at the back hold the middle line).
+## Returns {"angle", "kind": "centre" | "twin" | "taken" | "", "of": the part it is opposite, for "twin"}; "taken"
+## when the only target in reach was taken (the angle is then the pointer's own).
+static func snap(angle: float, parts: Array, moving_id: String, keep: Array = [], clear := CLEAR_RAD) -> Dictionary:
 	var a := wrapf(angle, -PI, PI)
 	var best := {"angle": a, "kind": "", "of": ""}
 	var best_d := SNAP_RAD
+	var taken := false
+	var skip := keep.map(func(id: Variant) -> String: return str(id))
+	skip.append(moving_id)
 	for line: float in [0.0, PI]:
 		var d := absf(angle_difference(a, line))
-		if d < best_d:
-			best_d = d
-			best = {"angle": line, "kind": "centre", "of": ""}
+		if d >= best_d:
+			continue
+		if is_taken(line, parts, skip, clear):
+			taken = true
+			continue
+		best_d = d
+		best = {"angle": line, "kind": "centre", "of": ""}
 	var moving := {}
 	for p: Dictionary in parts:
 		if str(p.id) == moving_id:
 			moving = p
-	if moving.is_empty():
-		return best
-	var others := parts.filter(func(p: Dictionary) -> bool:
-		return str(p.id) != moving_id and str(p.type) == str(moving.type) and not is_central(float(p.angle)))
-	others.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x.id) < str(y.id))
-	for p: Dictionary in others:
-		var target := mirrored(float(p.angle))
-		var d := absf(angle_difference(a, target))
-		if d < best_d:
+	if not moving.is_empty():
+		var others := parts.filter(func(p: Dictionary) -> bool:
+			return not str(p.id) in skip and str(p.type) == str(moving.type) and not is_central(float(p.angle)))
+		others.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return str(x.id) < str(y.id))
+		for p: Dictionary in others:
+			var target := mirrored(float(p.angle))
+			var d := absf(angle_difference(a, target))
+			if d >= best_d:
+				continue
+			if is_taken(target, parts, skip, clear):
+				taken = true
+				continue
 			best_d = d
 			best = {"angle": target, "kind": "twin", "of": str(p.id)}
+	if taken and str(best.kind) == "":
+		best.kind = "taken"
 	return best
+
+
+## Whether a part whose id is not in `skip` sits within `clear` of `angle`.
+static func is_taken(angle: float, parts: Array, skip: Array, clear: float) -> bool:
+	for p: Dictionary in parts:
+		if not str(p.id) in skip and absf(angle_difference(float(p.angle), angle)) < clear:
+			return true
+	return false
