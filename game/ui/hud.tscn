@@ -49,24 +49,25 @@ theme_override_constants/margin_right = 32
 theme_override_constants/margin_bottom = 28
 
 [node name="Status" type="PanelContainer" parent="Frame"]
-custom_minimum_size = Vector2(480, 0)
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 0
-theme_type_variation = &"HudPanel"
+theme_type_variation = &"HudGlass"
 
 [node name="Box" type="VBoxContainer" parent="Frame/Status"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="EnergyRow" type="HBoxContainer" parent="Frame/Status/Box"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
 [node name="EnergyText" type="Label" parent="Frame/Status/Box/EnergyRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"HudValueLabel"
 text = "Energy 60 / 100"
 
 [node name="StateChip" type="PanelContainer" parent="Frame/Status/Box/EnergyRow"]
@@ -83,46 +84,31 @@ text = "Fed"
 
 [node name="EnergyBar" type="ProgressBar" parent="Frame/Status/Box"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 22)
+custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
-theme_type_variation = &"EnergyBar"
+theme_type_variation = &"SlimEnergyBar"
 value = 60.0
 show_percentage = false
 
-[node name="GrowthRow" type="HBoxContainer" parent="Frame/Status/Box"]
+[node name="HealthRow" type="VBoxContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
-visible = false
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 4
 
-[node name="MeterRing" type="Control" parent="Frame/Status/Box/GrowthRow"]
+[node name="HealthText" type="Label" parent="Frame/Status/Box/HealthRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-size_flags_vertical = 4
-script = ExtResource("6_meter")
+theme_type_variation = &"HudValueLabel"
+text = "Health 30 / 30"
 
-[node name="SizeBadge" type="Label" parent="Frame/Status/Box/GrowthRow"]
+[node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box/HealthRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
-size_flags_horizontal = 3
-text = "Size 1 · about 20 µm"
-
-[node name="GrowthLine" type="Label" parent="Frame/Status/Box"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-theme_type_variation = &"SmallLabel"
-autowrap_mode = 3
-max_lines_visible = 2
-
-[node name="PlacesLine" type="Label" parent="Frame/Status/Box"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-theme_type_variation = &"SmallLabel"
-autowrap_mode = 3
-max_lines_visible = 2
+theme_type_variation = &"SlimHealthBar"
+max_value = 30.0
+value = 30.0
+show_percentage = false
 
 [node name="ShelterChip" type="PanelContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
@@ -148,29 +134,46 @@ layout_mode = 2
 theme_type_variation = &"ChipLabel"
 text = "Sheltered 5"
 
-[node name="HealthRow" type="VBoxContainer" parent="Frame/Status/Box"]
+[node name="GrowthRow" type="HBoxContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
+visible = false
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 10
 
-[node name="HealthText" type="Label" parent="Frame/Status/Box/HealthRow"]
+[node name="MeterRing" type="Control" parent="Frame/Status/Box/GrowthRow"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-text = "Health 30 / 30"
+size_flags_vertical = 4
+script = ExtResource("6_meter")
 
-[node name="HealthBar" type="ProgressBar" parent="Frame/Status/Box/HealthRow"]
+[node name="SizeBadge" type="Label" parent="Frame/Status/Box/GrowthRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 22)
 layout_mode = 2
-theme_type_variation = &"HealthBar"
-max_value = 30.0
-value = 30.0
-show_percentage = false
+size_flags_horizontal = 3
+theme_type_variation = &"HudValueLabel"
+text = "Size 1 · about 20 µm"
+
+[node name="GrowthLine" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+autowrap_mode = 3
+max_lines_visible = 2
+
+[node name="PlacesLine" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+autowrap_mode = 3
+max_lines_visible = 2
 
 [node name="LineageText" type="Label" parent="Frame/Status/Box"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"SmallLabel"
+theme_type_variation = &"CaptionLabel"
 text = "Grazer lineage 0000-0000 · Generation 1"
 autowrap_mode = 3
 

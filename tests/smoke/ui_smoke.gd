@@ -21,7 +21,7 @@ const CONFIRM_SLOT := "user://smoke/ui_confirm.json"
 ## A file where the slot's folder should be, so no save can be written.
 const BLOCKED_DIR := "user://smoke/hud_layout_blocked"
 const VIEW_SIZE := Vector2(1920, 1080)
-const STATUS_W := 480.0
+const STATUS_W := 420.0
 ## The least space between two HUD panels, so their borders never touch.
 const MIN_GAP_PX := 16.0
 const HEX := "0123456789ABCDEF"

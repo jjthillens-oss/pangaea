@@ -4,8 +4,9 @@ extends Control
 ## with the cell's size in its middle. The HUD sets what it shows each frame through show_ring();
 ## this node only draws and animates.
 ##
-##   track    a dark ring (the keyline at 0.6) under the fill; a cream outline round it when the
-##            state is "blocked" or "ready", so the waiting ring has a shape cue, not a colour alone
+##   track    a dark ring (the keyline at 0.6, with a faint cream sheen) under the fill; a cream
+##            outline round it when the state is "blocked" or "ready", so the waiting ring has a
+##            shape cue, not a colour alone
 ##   fill     cream, from the top clockwise, by share
 ##   growing  the whole ring pulses 1.0 to 1.06 at 1.5 Hz (held still under reduce flashing)
 ##   flash()  its glow brightens for FLASH_S (a meter lump, a discovery)
@@ -14,9 +15,12 @@ extends Control
 const RADIUS := 19.0
 const WIDTH := 5.0
 const OUTLINE_W := 1.5
+## The size digit's size at 100% text; font_size() scales it with the text size setting (Bible 19).
 const FONT_SIZE := 18
 const CREAM := Color("#F4EAD2")
 const TRACK_ALPHA := 0.6
+## A faint cream sheen over the dark track, so the empty ring still reads on the HUD's dark glass card.
+const TRACK_SHEEN_ALPHA := 0.16
 const PULSE_HZ := 1.5
 const PULSE_GROW := 0.06
 const FLASH_S := 0.6
@@ -98,11 +102,17 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
+## The size digit's font size now: FONT_SIZE at the text size setting.
+static func font_size() -> int:
+	return roundi(FONT_SIZE * int(SettingsService.shared().get_value("accessibility/text_scale")) / 100.0)
+
+
 func _draw() -> void:
 	var c := size * 0.5
 	if _flash_t > 0.0:
 		draw_arc(c, RADIUS, 0.0, TAU, SEGMENTS, Color(CREAM, FLASH_ALPHA * _flash_t / FLASH_S), FLASH_W, true)
 	draw_arc(c, RADIUS, 0.0, TAU, SEGMENTS, Color(UiPalette.KEYLINE, TRACK_ALPHA), WIDTH, true)
+	draw_arc(c, RADIUS, 0.0, TAU, SEGMENTS, Color(CREAM, TRACK_SHEEN_ALPHA), WIDTH, true)
 	if outlined():
 		for r in [RADIUS - WIDTH * 0.5 - OUTLINE_W * 0.5, RADIUS + WIDTH * 0.5 + OUTLINE_W * 0.5]:
 			draw_arc(c, r, 0.0, TAU, SEGMENTS, CREAM, OUTLINE_W, true)
@@ -112,7 +122,8 @@ func _draw() -> void:
 		draw_arc(c, RADIUS, start, start + TAU * fill, maxi(2, ceili(SEGMENTS * fill)), CREAM, WIDTH, true)
 	var font := get_theme_font(&"font", &"Label")
 	var text := str(size_n)
-	var ascent := font.get_ascent(FONT_SIZE)
-	var height := font.get_height(FONT_SIZE)
+	var font_px := font_size()
+	var ascent := font.get_ascent(font_px)
+	var height := font.get_height(font_px)
 	draw_string(font, Vector2(0.0, c.y + ascent - height * 0.5), text, HORIZONTAL_ALIGNMENT_CENTER, size.x,
-		FONT_SIZE, get_theme_color(&"font_color", &"Label"))
+		font_px, get_theme_color(&"font_color", &"Label"))

@@ -288,7 +288,12 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	var small := roundi(theme.get_font_size(&"font_size", &"SmallLabel") * scale)
 	var chrome := theme.get_stylebox(&"panel", &"HudPanel").get_minimum_size().x
 	var hud: Control = (load(HUD_SCENE) as PackedScene).instantiate()
-	var status_w: float = (hud.get_node("Frame/Status") as Control).custom_minimum_size.x
+	# The status card and the growth line are measured with the variations they really use.
+	var status: PanelContainer = hud.get_node("Frame/Status")
+	var status_w: float = status.custom_minimum_size.x
+	var status_chrome := theme.get_stylebox(&"panel", _type_of(status, &"PanelContainer")).get_minimum_size().x
+	var growth_line: Label = hud.get_node("%GrowthLine")
+	var growth_size := roundi(theme.get_font_size(&"font_size", _type_of(growth_line, &"Label")) * scale)
 	var frame: MarginContainer = hud.get_node("Frame")
 	var right_margin := int(frame.get("theme_override_constants/margin_right"))
 	hud.free()
@@ -297,8 +302,9 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	for line: String in lines:
 		for key in ["G", "Right Shoulder"]:
 			var text := GrowthHud.with_grow_key(line, key)
-			var wrapped := _wrapped(text, font, small, status_w - chrome)
-			check(wrapped.size() <= 2, "the growth line takes %d lines in %.0f px: %s" % [wrapped.size(), status_w - chrome, wrapped])
+			var wrapped := _wrapped(text, font, growth_size, status_w - status_chrome)
+			check(wrapped.size() <= 2, "the growth line takes %d lines in %.0f px: %s"
+				% [wrapped.size(), status_w - status_chrome, wrapped])
 	# Every preview the shipped data gives: at each size, any two live species with the ghosts to come.
 	var catalog := SpeciesCatalog.load_from()
 	var ladder: Dictionary = GhostLayer.shipped().data
@@ -337,6 +343,10 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 	check(strip_left - center_right >= LadderStrip.BAND_GAP_PX, "the strip's panel (from %.0f px) is clear of the bottom center's (to %.0f px)"
 		% [strip_left, center_right])
 
+
+## The theme type a control draws with: its type variation, or its base type when it has none.
+static func _type_of(node: Control, base: StringName) -> StringName:
+	return node.theme_type_variation if node.theme_type_variation != &"" else base
 
 func test_the_death_notice_says_whether_the_death_was_saved() -> void:
 	var failed := {"attempted": true, "ok": false, "error": "Could not save to user://saves/slot_1.json: Can't open file."}

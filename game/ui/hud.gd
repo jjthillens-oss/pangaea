@@ -3,9 +3,11 @@ extends Control
 ## The pool's heads-up display (M1 step 2). It only reads the sim and the pool's signals; it
 ## never changes anything. Main mounts it under the pool's UI layer and calls bind(pool).
 ##
-##   top left:     energy bar and text with a Fed / Hungry / Starving chip, the "Sheltered 5"
-##                 chip with a ring icon while the cell is sheltered (M1 step 3), the health bar
-##                 (whenever health is below full, or while starving) and the lineage line
+##   top left:     a compact glass card (HudGlass, 420 px wide), vitals first: the energy text with a
+##                 Fed / Hungry / Starving chip over a slim energy bar, the health text and slim bar
+##                 (whenever health is below full, or while starving), the "Sheltered 5" chip with a
+##                 ring icon while the cell is sheltered (M1 step 3); then the growth block (below)
+##                 and the lineage line in caption type
 ##   top right:    adaptation points with a "+N" flash, and meal and survival toasts
 ##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
 ##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
@@ -16,7 +18,7 @@ extends Control
 ##   screen edges: the hurt vignette, one dark red pulse per hit on the cell (at most one per
 ##                 VIGNETTE_MIN_GAP_S), and the off-screen threat arrows (ThreatIndicators)
 ##
-##   growth (S2):  under the energy bar, the meter ring with the size in it and the size badge
+##   growth (S2):  in the card under the vitals, the meter ring with the size in it and the size badge
 ##                 ("Size 1 · about 20 µm"), and under them Growth.hint() as it is, its "(G)" naming
 ##                 the grow key bound now (BP-19). GrowthHud works out what they show; all three are
 ##                 hidden in the M1 pool, which has no growth (D-46). A ring paid out at the top gets
@@ -34,8 +36,10 @@ extends Control
 ##
 ## Labels refresh at 10 Hz and on every sim event; bars every frame. Every colour cue also has
 ## words or a shape. The whole HUD ignores the mouse, so clicks reach the swim input. The status
-## panel has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
-## messages never run under the side panels, whatever the body, lineage or message.
+## card has a fixed width and the top center wraps within CENTER_MAX_W, so the banner and
+## messages never run under the side panels, whatever the body, lineage or message. The look is
+## the title menu's glass (game/ui/theme/pangaea_theme.tres: HudGlass, slim bars); every text
+## size comes from the theme, so the text size setting scales it.
 
 const KIN_TOAST := "A cell like you is here. Swim into it to mate."
 const MATE_TOAST := "You mated."
@@ -59,7 +63,7 @@ const BANNER_PULSE_GLOW := Color(1.45, 1.25, 1.15)
 const BANNER_PULSE_GROW := 0.18
 const STARVING_TEXT := "Starving: you are slow and losing health.\nFind food."
 ## The widest the starving banner and a message may be, panel included: centered, this leaves a
-## gap to the status panel (x 32..512 at the 1920 x 1080 base) and the points panel.
+## gap to the status card (x 32..452 at the 1920 x 1080 base) and the points panel.
 const CENTER_MAX_W := 840.0
 ## Step when narrowing a wrapped message so its lines come out about even.
 const WRAP_STEP_PX := 8.0
