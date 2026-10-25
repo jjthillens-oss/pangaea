@@ -597,14 +597,24 @@ func test_bites_make_a_group_refuse_for_a_while_then_it_listens_again() -> void:
 	var r: Dictionary = _tuning["reputation"]
 	var events := []
 	var bites := 0
-	while _of_kind(events, "group_hostile").is_empty() and bites < 30:
-		_stand_before(sim, "b2", 0.6)
+	var radius := float(sim._individual_of("b2")["stats"]["body_radius_m"])
+	var close := minf(float(sim.me["stats"]["body_radius_m"]) + radius + 0.02,
+			float(sim.me["stats"]["bite_reach_m"]) * 0.9 + radius)
+	for attempt in 30:
+		_stand_before(sim, "b2", close)
 		var out := sim.tick({"bite": true})
-		bites += _of_kind(out, "bit").size()
+		for e in _of_kind(out, "bit"):
+			if e["target"] == "b2":
+				bites += 1
 		events.append_array(out)
 		events.append_array(_run(sim, bite_cd + 1))
+		if not _of_kind(events, "group_hostile").is_empty():
+			break
 	var turned := _of_kind(events, "group_hostile")
-	check_eq(turned.size(), 1, "the band turned against the player once, after %d bites" % bites)
+	check_eq(turned.size(), 1, "the band turned against the player once, after %d bites on the boar (reputation %.2f)"
+			% [bites, sim.reputation["band"]])
+	if turned.is_empty():
+		return
 	check(bites >= 10, "and only after ten bites or more (%d)" % bites)
 	check_eq(String(turned[0]["group"]), "band", "it was the band")
 	check(sim.group_hostile_left("band") > 0, "the band refuses for a while")
