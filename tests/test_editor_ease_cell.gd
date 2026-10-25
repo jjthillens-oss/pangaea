@@ -1,12 +1,14 @@
 extends TestCase
 ## Editor-ease in the cell editor (game/ui/cell_editor.gd, game/ui/editor_ease/; docs/proposals/editor-ease.md):
 ## one Undo takes back one action, a whole drag round the rim included; Undo, Redo and Back name the keys bound to
-## them; and with Symmetry on a part and its twin are added, changed and removed as one (Bible 12 undo, redo and
-## mirroring; Bible 19 inputs shown from the bindings, states in words).
+## them; with Symmetry on a part and its twin are added, changed and removed as one; a drag snaps; and the part card
+## shows what a part does by the game's own rules (Bible 12 undo, redo, mirroring and one stats rule; Bible 14
+## previews; Bible 19 inputs shown from the bindings, states in words and shapes).
 
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const Sym := preload("res://game/ui/editor_ease/cell_symmetry.gd")
+const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
 
 var catalog: PartCatalog
 var save: SaveGame
@@ -334,3 +336,75 @@ func test_with_symmetry_a_dragged_pair_stops_off_the_middle_line() -> void:
 	editor.undo()
 	check_eq(_parts_of("eye_spot").size(), 2, "one Undo takes the drag back and keeps the pair")
 	check_near(absf(_angle(eye)), PI / 2.0, 0.01, "where it was")
+
+
+func _card_texts() -> PackedStringArray:
+	return editor.part_card().call("texts")
+
+
+## The card's stat row for `label` ("Turning 2.5 → 4.0 ▲"), "" when it has none.
+func _card_row(label: String) -> String:
+	for t in _card_texts():
+		if t.begins_with(label + " "):
+			return t
+	return ""
+
+
+func test_the_part_card_shows_what_the_part_does_by_the_game_s_own_rules() -> void:
+	editor.open(save, catalog, _state())
+	check(not editor.part_card().visible, "opening the editor does not open a card")
+	var tile := editor.find_child("Add_cilia", true, false) as Button
+	check_eq(tile.tooltip_text, "", "no plain tooltip over the tile's name: the card says it")
+	tile.mouse_entered.emit()
+	check(editor.part_card().visible, "hovering a tile opens its card")
+	var copy := Genome.from_dict(editor.session.working.to_dict())
+	copy.add_part("cilia", editor.place_angle("cilia"))
+	var now := Phenotype.derive(editor.session.working, catalog)
+	var then := Phenotype.derive(copy, catalog)
+	var turning := _card_row("Turning")
+	check(turning.contains("%.1f → %.1f" % [now.turn_rate, then.turn_rate]), "turning before → after as derived: " + turning)
+	check(turning.ends_with(PartCard.MARKS[true]), "marked better by shape: " + turning)
+	var upkeep := _card_row("Energy use")
+	check(upkeep.contains("→ %.2f/s" % then.upkeep) and upkeep.ends_with(PartCard.MARKS[false]), "energy use worse: " + upkeep)
+	check_eq(_card_row("Health"), "", "a stat it leaves alone is not listed")
+	check(_card_texts()[0].contains(str(catalog.cost_of("cilia"))), "the title has the price: " + _card_texts()[0])
+	check(Array(_card_texts()).has("0 of %d on the body now" % catalog.max_count_of("cilia")), "and the count")
+	tile.mouse_exited.emit()
+	check(not editor.part_card().visible, "leaving the tile closes it")
+
+
+func test_the_part_card_follows_the_body_and_says_when_the_limit_is_reached() -> void:
+	editor.open(save, catalog, _state())
+	var tile := editor.find_child("Add_cilia", true, false) as Button
+	tile.mouse_entered.emit()
+	editor.add("cilia")
+	check(Array(_card_texts()).has("1 of 3 on the body now"), "an add updates the open card: %s" % [_card_texts()])
+	check(Array(_card_texts()).any(func(t: String) -> bool: return t.begins_with("Copies add less: each extra one gives 60%")),
+		"and says a second copy gives less (diminishing_factor %.1f)" % catalog.diminishing_factor)
+	var copy := Genome.from_dict(editor.session.working.to_dict())
+	copy.add_part("cilia", editor.place_angle("cilia"))
+	var then := Phenotype.derive(copy, catalog)
+	check(_card_row("Turning").contains("→ %.1f" % then.turn_rate), "the second copy's turning, diminished: " + _card_row("Turning"))
+	editor.add("cilia")
+	editor.add("cilia")
+	var texts := _card_texts()
+	check(Array(texts).any(func(t: String) -> bool: return t.contains("Limit reached: 3 of 3")), "at the limit it says so: %s" % [texts])
+	check_eq(_card_row("Turning"), "", "and lists no numbers")
+
+
+func test_with_symmetry_the_part_card_shows_the_pair() -> void:
+	editor.open(save, catalog, _state())
+	editor.set_symmetry(true)
+	(editor.find_child("Add_eye_spot", true, false) as Button).focus_entered.emit()
+	check(editor.part_card().visible, "focusing a tile opens its card too")
+	var a := editor.place_angle("eye_spot")
+	var copy := Genome.from_dict(editor.session.working.to_dict())
+	copy.add_part("eye_spot", a)
+	copy.add_part("eye_spot", -a)
+	var then := Phenotype.derive(copy, catalog)
+	check(_card_texts()[0].contains("pair") and _card_texts()[0].contains(str(2 * catalog.cost_of("eye_spot"))),
+		"the title prices the pair: " + _card_texts()[0])
+	check(_card_row("Sight").contains("→ %.1f" % then.sight), "sight with both eye spots: " + _card_row("Sight"))
+	editor.add("eye_spot")
+	check_eq(_parts_of("eye_spot").size(), 2, "and the add makes what the card showed")
+	check_near(Phenotype.derive(editor.session.working, catalog).sight, then.sight, 1e-6, "with the sight it showed")

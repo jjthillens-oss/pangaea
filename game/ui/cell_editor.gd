@@ -15,7 +15,9 @@ extends Control
 ## one), and Undo, Redo and Back name the keys bound to them. The Symmetry toggle (PROPOSED, off by default and
 ## kept in memory only) adds, moves, sizes, upgrades and removes a part and its mirrored twin as one action. A drag
 ## round the rim snaps onto the middle line or opposite a part of its type, with a guide on the rim and a line
-## under the dish that says what it snapped to. The editor's panels use the game's theme (pangaea_theme.tres, the
+## under the dish that says what it snapped to. Hovering or focusing a palette tile opens the part card beside the
+## palette: what the part is for, each stat it changes before → after (Phenotype.derive on a copy of the working
+## body with the part where it would go), its count, price and where it goes. The editor's panels use the game's theme (pangaea_theme.tres, the
 ## hud job's; used, not edited), so its text follows the text size setting like the other menus.
 
 signal closed(committed: bool)
@@ -29,6 +31,8 @@ const TILE_PAD := 6.0
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const CellSymmetry := preload("res://game/ui/editor_ease/cell_symmetry.gd")
+const CellEffects := preload("res://game/ui/editor_ease/cell_effects.gd")
+const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
 ## The words on the editor's key line and its Undo and Redo tooltips; the keys come from the bindings.
 const KEY_LINE := [[&"ui_undo", "undo"], [&"ui_redo", "redo"], [&"ui_cancel", "back"]]
 const UNDO_TIP := "Undo the last change"
@@ -100,7 +104,10 @@ var _redo: Button
 var _upgrade: Button
 var _selected_label: Label
 var _part_buttons: Array[Button] = []
-var _part_info: Label
+var _palette: Control
+var _card: PartCard                ## the palette's part card (editor-ease), shown beside the hovered tile
+var _card_type := ""               ## the part the card shows; "" while it is hidden
+var _quiet_focus := false          ## true while open() focuses the first tile, so the card waits for the player
 var _warning: Label
 var _test_pool: TestPool
 var _steps := UndoSteps.new()      ## the session steps in each action, so one Undo takes back one action
@@ -134,7 +141,9 @@ func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: 
 	_status.text = ""
 	_refresh()
 	if is_inside_tree() and not _part_buttons.is_empty():
+		_quiet_focus = true
 		_part_buttons[0].grab_focus()
+		_quiet_focus = false
 
 
 ## Adds a part of `type_id` where it fits best (mouths at the front, propulsion at the back, the rest
@@ -382,8 +391,12 @@ func place_angle(type_id: String) -> float:
 ## The before and after line of each stat: [label, before, after, better (true, false or null)].
 func stat_lines() -> Array:
 	var p := session.preview()
-	var before: Phenotype = p.current
-	var after: Phenotype = p.phenotype
+	return stat_rows(p.current, p.phenotype)
+
+
+## stat_lines() for any two bodies: the stats panel compares the parent with the working body, the part card the
+## working body with the part added (CellEffects).
+static func stat_rows(before: Phenotype, after: Phenotype) -> Array:
 	var out := []
 	for s in STATS:
 		var a := float(before.get(s[1]))
@@ -452,6 +465,8 @@ func _refresh() -> void:
 	_mate.disabled = not (p.affordable and errors.is_empty())
 	_mate.tooltip_text = "" if not _mate.disabled else ("Not enough points" if errors.is_empty() else errors[0])
 	_warning.text = chase_warning(p.phenotype.speed)
+	if _card_type != "":
+		show_part_card(_card_type)   # the numbers follow the body
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
 	_show_bindings()
@@ -468,6 +483,37 @@ func _refresh() -> void:
 		if line[3] != null:
 			value.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
 		_stats.add_child(value)
+
+
+## Opens the part card for the tile of `type_id`, beside the palette at the tile's height: what adding it would do
+## where add() would put it (with its twin when Symmetry is on).
+func show_part_card(type_id: String) -> void:
+	_card_type = type_id
+	if session == null:
+		return
+	var angle := place_angle(type_id)
+	var angles := [angle]
+	if symmetry and not CellSymmetry.is_central(angle):
+		angles.append(CellSymmetry.mirrored(angle))
+	var card := CellEffects.card(session, type_id, angles, PART_ROLES.get(type_id, ""))
+	_card.show_lines(card.title, card.lines)
+	var tile := find_child("Add_" + type_id, true, false) as Control
+	if tile != null and _palette != null:
+		var tile_rect := tile.get_global_rect()
+		var beside := Rect2(Vector2(_palette.get_global_rect().end.x, tile_rect.position.y), Vector2(0, tile_rect.size.y))
+		_card.place_beside(beside, get_global_rect())
+
+
+## Closes the part card if it shows `type_id`.
+func hide_part_card(type_id: String) -> void:
+	if _card_type == type_id:
+		_card_type = ""
+		_card.hide()
+
+
+## The part card (editor-ease), for tests and the shot script.
+func part_card() -> Control:
+	return _card
 
 
 ## The key line and the Undo and Redo tooltips, from the bindings of the device in use (Bible 19).
@@ -583,11 +629,7 @@ func _build() -> void:
 		palette.add_child(grid)
 		for type_id: String in group[1]:
 			grid.add_child(_part_tile(type_id, catalog))
-	_part_info = Label.new()
-	_part_info.theme_type_variation = &"SmallLabel"
-	_part_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_part_info.custom_minimum_size = Vector2(PALETTE_PX, 48)
-	palette.add_child(_part_info)
+	_palette = palette
 
 	var middle := VBoxContainer.new()
 	middle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -691,6 +733,8 @@ func _build() -> void:
 	_button(bottom, "Back", cancel)
 	_mate = _button(bottom, "Mate", commit)
 	_mate.theme_type_variation = &"PrimaryButton"   # the step that makes the next generation stands out
+	_card = PartCard.new()
+	add_child(_card)   # over the editor, under the test dish
 	_test_pool = TestPool.new()
 	_test_pool.left.connect(_on_test_pool_left)
 	add_child(_test_pool)   # last, so it covers the editor while it is shown
@@ -710,8 +754,8 @@ static func palette_groups(catalog: PartCatalog) -> Array:
 	return out
 
 
-## One palette tile: the part's icon over its name and cost. Hovering or focusing it names what
-## the part does under the grid.
+## One palette tile: the part's icon over its name and cost. Hovering or focusing it opens the part card (in place of
+## a plain tooltip, which would cover the tile's name).
 func _part_tile(type_id: String, catalog: PartCatalog) -> Button:
 	var icon := PartIcon.new(type_id)
 	add_child(icon)   # a viewport draws only in the tree; it is not a Control, so it takes no room
@@ -728,11 +772,13 @@ func _part_tile(type_id: String, catalog: PartCatalog) -> Button:
 	b.add_theme_font_size_override(&"font_size", 15)
 	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
 		b.add_theme_stylebox_override(state, _tile_style(state))
-	b.tooltip_text = PART_ROLES.get(type_id, "")
 	b.pressed.connect(add.bind(type_id))
-	var info := "%s · %d points: %s" % [type_id.capitalize(), catalog.cost_of(type_id), PART_ROLES.get(type_id, "")]
-	b.mouse_entered.connect(func() -> void: _part_info.text = info)
-	b.focus_entered.connect(func() -> void: _part_info.text = info)
+	b.mouse_entered.connect(show_part_card.bind(type_id))
+	b.focus_entered.connect(func() -> void:
+		if not _quiet_focus:
+			show_part_card(type_id))
+	b.mouse_exited.connect(hide_part_card.bind(type_id))
+	b.focus_exited.connect(hide_part_card.bind(type_id))
 	_part_buttons.append(b)
 	return b
 
