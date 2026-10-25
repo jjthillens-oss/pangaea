@@ -17,8 +17,8 @@ extends RefCounted
 ##   nest:       {dir, dist, radius} of the band's nest (where fruit is delivered)
 ##   attention:  {dir, dist, response} while it answers a signal ("welcomes", "listens", "unsure", "backs"), or {}
 ##   visitor:    {dir, dist} of a stranger nearby it can see (non-members only), or {}
-##   carrying, fear (0..1), hunger (0..1), role, disposition, heading, bite_reach, noise (-1..1), elapsed_t (ticks
-##   since its last decision, default 1)
+##   carrying, room (how many more it can carry, default 0), fear (0..1), hunger (0..1), role, disposition, heading,
+##   bite_reach, noise (-1..1), elapsed_t (ticks since its last decision, default 1)
 ## The decision: {state, heading: Vector2, throttle: 0..1, bite: bool, report: {} or {kind, ...}}. States: idle,
 ## forage, follow, wait, investigate, retreat, assist, flee, socialize, recover, return. Reports, once per order:
 ## "arrived" (at the spot or the nest), "cannot" {reason} (an investigation without progress for orders.stuck_t or out
@@ -176,15 +176,16 @@ static func _assist(p: Dictionary, order: Dictionary, memory: Dictionary, tuning
 	return _gather(p, memory, tuning)
 
 
-## Gather: carry fruit to the nest; otherwise walk to a bush it may pick (and stand at it while picking).
+## Gather: carry fruit to the nest once it can carry no more (room 0) or no bush is left for it; otherwise walk to a
+## bush it may pick (and stand at it while picking).
 static func _gather(p: Dictionary, memory: Dictionary, tuning: Dictionary) -> Dictionary:
 	var arrive := float(tuning["orders"]["arrive_m"])
-	if int(p.get("carrying", 0)) > 0:
+	var food: Dictionary = p.get("food", {})
+	if int(p.get("carrying", 0)) > 0 and (int(p.get("room", 0)) <= 0 or food.is_empty()):
 		var nest: Dictionary = p.get("nest", {})
 		if not nest.is_empty() and float(nest["dist"]) > float(nest.get("radius", arrive)) * 0.5:
 			return _act("forage", nest["dir"], 1.0)
 		return _act("forage", p.get("heading", Vector2(0.0, -1.0)), 0.0)
-	var food: Dictionary = p.get("food", {})
 	if not food.is_empty() and bool(food.get("reserved_ok", true)):
 		return _act("forage", food["dir"], 0.0 if float(food["dist"]) <= arrive else 1.0)
 	return _follow(p, memory, tuning)
