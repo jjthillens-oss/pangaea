@@ -1,0 +1,99 @@
+{
+  "id": "cpart_throat_sac",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature display part (PROPOSED): a frog's vocal sac, a flat pouch of pale wet skin under the chin that inflates into a round balloon on a shape key.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_throat_sac.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_throat_sac.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.092,
+    "y_forward": 0.08,
+    "z_up": 0.04
+  },
+  "triangles": 1072,
+  "triangle_budget": 1200,
+  "textures": [
+    {
+      "name": "T_PartThroatSac_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartThroatSac_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartThroatSac_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_ThroatSac"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "ThroatSac"
+  ],
+  "part_type": "throat_sac",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "throat_sac",
+    "footprint_radius_m": 0.047,
+    "sink_depth_m": 0.02,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 30,
+    "tilt_limit_deg": 30,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "detail",
+    "handles": [
+      {
+        "key": "H1_Inflate",
+        "meaning": "the pouch blown up into a 0.11 m balloon",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Wide",
+        "meaning": "the sac 35% wider sideways",
+        "default_permille": 0
+      }
+    ],
+    "placement_note": "Meant for the underside of the throat, behind the jaw."
+  },
+  "paint_mix": {
+    "M_ThroatSac": 0.5
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.00015,
+    "triangles_before": 1280,
+    "triangles_after": 1072
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
