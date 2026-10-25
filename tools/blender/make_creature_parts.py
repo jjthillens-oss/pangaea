@@ -2522,11 +2522,11 @@ def build_bill():
 
 # --- Set 7: more feet and hands ------------------------------------------------------------------------
 
-def _skin_material(name, scale=220.0, lo=0.75, rough=0.7):
+def _skin_material(name, scale=220.0, lo=0.75, rough=0.7, pore=0.35):
     sh = sf.Shader(name)
     pebble = sh.remap(sh.voronoi(scale, 0.8), 0.25, 0.05)
-    sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.35, 0.001)
-    return sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", pebble, 0.35)), lo), rough)
+    sh.bump(sh.math("SUBTRACT", 0.0, pebble), pore, 0.001)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", pebble, pore)), lo), rough)
 
 
 def _scale_material(name, scale=300.0):
@@ -3503,12 +3503,12 @@ def build_ear_round():
     concha bowl in the lower front, a soft antihelix ridge rising out of the flap round the top and back of the
     bowl, and a flat tragus flap blending out of the bowl's front lip. The edge is rolled all the way round (no
     cut faces): a fat helix over the top and down the back, thinning to a small curl at the notch low on the
-    front edge. Fur on the back, which is thicker behind the bowl, and a short fur collar wrapping the root into
-    the back. H1_Perk tips it forward, H2_Size scales it."""
+    front edge. Fur on the back, which is thicker behind the bowl and swells into the root (no separate collar:
+    a stuck-on roll read as paper leaves). H1_Perk tips it forward, H2_Size scales it."""
     if EAR_N.y < 0:
         raise RuntimeError("ear face must point forward")
     centre_u, R = 0.031, 0.027
-    rings, segs, roll = 12, 48, 6
+    rings, segs, roll = 20, 56, 8
     notch_phi = math.radians(-118.0)
 
     def wrap(d):
@@ -3529,26 +3529,26 @@ def build_ear_round():
 
     def helix(phi):
         # The rim's roll: fat from low on the back edge over the top, thin round the notch and the front.
-        return 0.0012 + 0.0024 * gauss(wrap(phi - math.radians(42.0)) / 1.45) ** 1.5
+        return 0.0014 + 0.0030 * gauss(wrap(phi - math.radians(42.0)) / 1.45) ** 1.5
 
     def bowl(u, v):
-        return 0.0075 * gauss(math.hypot((u - (centre_u - 0.006)) / 0.012, (v - 0.0005) / 0.011))
+        return 0.0062 * gauss(math.hypot((u - (centre_u - 0.006)) / 0.0135, (v - 0.0005) / 0.0125))
 
-    tu, tv = flat(0.62, math.radians(-100.0))
+    tu, tv = flat(0.7, math.radians(-100.0))
 
     def lift(rho, phi):
         return helix(phi) * max(0.0, (rho - 0.82) / 0.18) ** 2     # the flap rises into the helix roll
 
     def front_h(rho, phi):
         u, v = flat(rho, phi)
-        anti = 0.0032 * gauss((rho - 0.66) / 0.1) * gauss(wrap(phi - math.radians(25.0)) / 1.05)
-        trag = 0.0028 * gauss(math.hypot((u - tu) / 0.0045, (v - tv) / 0.0065)) ** 0.7
+        anti = 0.0026 * gauss((rho - 0.68) / 0.14) * gauss(wrap(phi - math.radians(25.0)) / 1.05)
+        trag = 0.0022 * gauss(math.hypot((u - tu) / 0.0065, (v - tv) / 0.0085))     # a soft mound out of the lip
         return -bowl(u, v) - 0.0022 * (1.0 - rho * rho) + anti + trag + lift(rho, phi) + 0.0011
 
     def back_h(rho, phi):
         u, v = flat(rho, phi)
-        base = 0.0016 + 0.0016 * max(0.0, 1.0 - u / 0.03)
-        return -bowl(u, v) * 0.9 - 0.0022 * (1.0 - rho * rho) - base - 0.0018 * gauss(rho / 0.7) - 0.6 * lift(rho, phi)     # thicker behind the bowl
+        base = 0.0022 + 0.0034 * max(0.0, 1.0 - u / 0.03) ** 1.5
+        return -bowl(u, v) * 0.9 - 0.0022 * (1.0 - rho * rho) - base - 0.0026 * gauss(rho / 0.7) - 1.1 * lift(rho, phi)     # thicker behind the bowl
 
     def at(rho, phi, h):
         u, v = flat(rho, phi)
@@ -3599,21 +3599,11 @@ def build_ear_round():
                 fcs.append((a[s], b[s], b[t], a[t]))
             mats.append(m)
     fur_mat = _fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
-    skin = _skin_material("M_EarRoundSkinProc", scale=300.0, lo=0.8, rough=0.55)
+    skin = _skin_material("M_EarRoundSkinProc", scale=420.0, lo=0.86, rough=0.55, pore=0.14)
     ear = bc.mesh_object("EarRound", verts, fcs, [fur_mat, skin], mats)
-    # The fur collar: a short thick roll from in front of the root, round behind the flap and up into its back.
-    path = []
-    for k in range(13):
-        phi = math.radians(-165.0 + 150.0 * k / 12)
-        rho = 0.8 + 0.2 * math.sin(math.pi * k / 12)
-        path.append(at(rho, phi, back_h(rho, phi) - 0.0015))
-    cv, cf, _ = _tube(path, lambda i, a: 0.0 if i == 12 else 0.0055 * max(0.3, math.sin(math.pi * i / 12)) ** 0.5 * (1.0 + 0.12 * math.sin(3 * a)), 12)
-    tuft_mat = _fur_material("M_EarRoundTuftProc", along=(6.0, 0.4, 6.0))
-    tuft = bc.mesh_object("Tuft", [(x, y, max(z, -EAR_SINK - 0.0015)) for x, y, z in cv], cf, [tuft_mat], parent=ear)
-    skin.name, fur_mat.name, tuft_mat.name = "M_EarRoundSkin", "M_EarRoundFur", "M_EarRoundTuft"
-    objs = [ear, tuft]
-    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A")),
-                                         "M_EarRoundTuft": sf.tint(_lin("#80604A"))}, tolerance=0.0003)
+    skin.name, fur_mat.name = "M_EarRoundSkin", "M_EarRoundFur"
+    objs = [ear]
+    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#B4836E")), "M_EarRoundFur": sf.tint(_lin("#80604A"))}, tolerance=0.0003)
     pts = _check_pivot("ear_round", EAR_SINK + 0.002)
     foot = _footprint(pts)
 
@@ -3624,12 +3614,11 @@ def build_ear_round():
         return Vector((co.x * 1.3, co.y * 1.3, co.z * 1.3)) if co.z > 0.0 else co
 
     handles = _shape_keys(ear, [("H1_Perk", perk, "the ear tips 25 degrees forward"), ("H2_Size", size, "the ear 30% larger")])
-    _shape_keys(tuft, [("H1_Perk", perk, ""), ("H2_Size", size, "")])
     rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden")
     rules["handles"] = handles
-    return {"purpose": "Creature detail part (PROPOSED): a monkey's ear, one thick flap wider at the top with a rolled helix over the top and back, a soft notch and flat tragus at the root, a concha bowl and antihelix carved into the front, bare skin inside, fur behind and a fur collar at the root.",
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's ear, one thick flap wider at the top with a rolled helix over the top and back, a soft notch and flat tragus at the root, a concha bowl and antihelix carved into the front, bare skin inside and fur behind, thickest behind the bowl and at the root.",
             "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9, "M_EarRoundTuft": 0.9}, "revision": 3, **baked}
+            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 4, **baked}
 
 
 def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
