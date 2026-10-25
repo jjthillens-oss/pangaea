@@ -98,17 +98,23 @@ Creature world HUD:
   mouse or focus anywhere, the goal line, and the controls line timing out with the dock's line then naming the
   move, orbit and way-out keys, and the line coming back on a real device change (`InputPrompts.note` with a
   controller button) and when the world opens again.
-- Tests on this branch, after merging main b358e717: `tests/run_tests.gd -- --only=test_creature_world_hud,
-  test_ui_text,test_growth_hud,test_world_hud,test_threat_indicators,test_creature_world_scene,test_creature_stage,
-  test_world_gen,test_settings,test_menus,test_look_probe` 178 tests, 0 failed; `tests/smoke/ui_smoke.gd`
-  (`--world=pool`) 44 checks, 0 failed. The look probe with its current gates
-  (`tools/godot/look_probe.gd -- --scenes=hud,starving,sunlit`): 29 gates, 0 failed.
-- The full check on the merged branch: tools/check.sh steps run via check_full.sh, with the unit suite's limit
-  raised to 3600 s for this 4-CPU container. It took 1761 s. Unit suite: 1931 tests, 2 failed (38 soak skipped),
-  both timing gates in the container's baseline for main (`test_endless_cost::test_slow_a_sleeper_costs_at_most_2_us`
-  and `test_endless_cost::test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window`). Every step
-  after it passed: the play, ui, endless, grow, band, shore, aquatic, creature (build 56, reload 11) and menus
-  (61) smokes, the error-log gate, and the release pack and content probes.
+- The status card's width has a unit test at each text size (`tests/test_ui_text.gd`,
+  `test_the_hud_words_sized_in_code_follow_the_text_size`): 420, 452 and 483 px at 100, 115 and 130%, and at the
+  largest size the card still ends 16 px clear of the widest centred banner or message (x 540).
+- Targeted tests for round 2's fixes: `tests/run_tests.gd -- --only=test_creature_world_hud,test_ui_text,
+  test_creature_world_scene` 36 tests, 0 failed; `tests/smoke/ui_smoke.gd` (`--world=pool`) 44 checks, 0 failed;
+  the creature smoke 56 and 11 checks, 0 failed. Round 1's look probe with its current gates
+  (`tools/godot/look_probe.gd -- --scenes=hud,starving,sunlit`): 29 gates, 0 failed (the cell HUD's look has not
+  changed since).
+- The full check at HEAD 462efb26: tools/check.sh steps run via check_full.sh, with the unit suite's limit raised
+  to 3600 s for this 4-CPU container. It took 1779 s. Unit suite: 1931 tests, 3 failed (38 soak skipped): two
+  timing gates in the container's baseline for main (`test_endless_cost::test_slow_a_sleeper_costs_at_most_2_us`
+  and `test_endless_cost::test_slow_the_30_s_after_a_growth_cost_at_most_14_yardsticks_a_window`), and
+  `test_world_gen::test_slow_band_1_chunks_cost_as_band_0s` (size 4: max 658 us, 7.49 yardsticks; limits 600 us
+  and 7.0), a timing gate not in the baseline that passed in round 1's full check and passes alone on this branch
+  (45 tests, 0 failed; size 4 max 568 us, 6.24 yardsticks); this branch changes no world-gen code. Every step
+  after the unit suite passed: the play, ui, endless, grow, band, shore, aquatic, creature (build 56, reload 11)
+  and menus (61) smokes, the error-log gate, and the release pack and content probes.
 - Contrast, measured on the after frames against the median of each panel (the glass): over the creature field's
   sand and sky the goal card, notice pill, controls pill and dock read 13.1-14.3:1 for near-white text, 10.6-11.5:1
   for amber, 8.1-8.8:1 for SmallLabel and 7.6-8.3:1 for the caption, at 1920x1080 (100% and 130%) and 1280x720. In
