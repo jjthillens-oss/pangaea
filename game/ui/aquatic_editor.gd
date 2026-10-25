@@ -9,6 +9,9 @@ signal closed(committed: bool, body: Dictionary, cost: int)
 
 const FishView := preload("res://game/scenes/aquatic/fish_view.gd")
 const PLINTH := "res://assets/export/creature_editor_room.glb"
+## The tail choices' names (aquatic-r2). No tail is simply "fast" or "nimble": the stats below the fish show each one's
+## tradeoff, from the same rules the water uses.
+const TAIL_NAMES := {"fluke": "Fluke", "ribbon": "Ribbon", "lunate": "Lunate", "paddle": "Paddle", "whip": "Whip"}
 const STAT_ROWS := [
 	["top_speed", "Top speed", "m/s", true],
 	["burst_speed", "Burst", "m/s", true],
@@ -109,7 +112,7 @@ func _build_panel() -> void:
 	title.add_theme_font_size_override("font_size", 40)
 	panel.add_child(title)
 	_section(panel, "Tail")
-	_choice_row(panel, "tail", rules.body.tails, {"fluke": "Fluke (fast)", "ribbon": "Ribbon (nimble)"})
+	_choice_row(panel, "tail", rules.body.tails, TAIL_NAMES)
 	_step_row(panel, "tail_size", "Tail strength")
 	_section(panel, "Fins")
 	_step_row(panel, "fins", "Side fins")

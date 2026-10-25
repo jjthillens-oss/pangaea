@@ -268,7 +268,7 @@ func _swim(intent: Intent) -> void:
 	if starving:
 		thrust *= 0.4
 	var burst := intent.burst and thrust > 0.0 and not starving
-	var power := float(s.accel) * thrust * (float(rules.body.burst.thrust_share) if burst else 1.0)
+	var power := float(s.accel) * thrust * (float(s.burst_share) if burst else 1.0)
 	if thrust < 0.0:
 		power *= 0.35
 	var speed := float(player.speed)

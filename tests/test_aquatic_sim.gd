@@ -225,9 +225,10 @@ func test_the_cell_lineage_arrives_in_the_body() -> void:
 func test_fish_bodies_are_legal_creature_descriptions() -> void:
 	var body_rules: Dictionary = CreatureData.rules()
 	var part_rules: Dictionary = CreatureData.part_rules()
-	for tail in ["fluke", "ribbon"]:
-		for sense in ["eyes", "barbels", "lure"]:
-			for mouth in ["filter", "jaw"]:
+	check(rules.body.tails.size() >= 5, "five tails in the rules: %s" % [rules.body.tails])
+	for tail in rules.body.tails:
+		for sense in rules.body.senses:
+			for mouth in rules.body.mouths:
 				for corner in [AquaticBody.DARTER, AquaticBody.HOVERER]:
 					var body: Dictionary = corner.duplicate()
 					body.tail = tail
@@ -236,6 +237,55 @@ func test_fish_bodies_are_legal_creature_descriptions() -> void:
 					var desc = AquaticBody.to_description(body)
 					var problems: PackedStringArray = desc.validate_parts(body_rules, part_rules)
 					check(problems.is_empty(), "%s %s %s: %s" % [tail, sense, mouth, problems])
+
+
+## The distance a body covers in its first second from still with a full burst, in the sim itself (aquatic-r2).
+func _dash_1s(body: Dictionary) -> float:
+	var sim := _sim(body)
+	sim.player.pos = Vector3(0.0, -6.0, 20.0)
+	var start: Vector3 = sim.player.pos
+	var intent := AquaticSim.Intent.new(1.0, 0.0, 0.0)
+	intent.burst = true
+	for i in AquaticSim.TICK_HZ:
+		sim.step(intent)
+	return Vector2(sim.player.pos.x - start.x, sim.player.pos.z - start.z).length()
+
+
+## Bible §2 and §12 (aquatic-r2, PROPOSED tuning): every tail is a tradeoff. On the darter, the hoverer and a middle
+## body, at every tail size, no tail is at least as good as another on all four counts (top speed, a one-second burst
+## dash in the water, the yaw rate at 4 m/s and the swim cost) and better on one.
+func test_no_tail_part_beats_another_on_every_count() -> void:
+	var middle := {"length": 2, "girth": 2, "tail": "fluke", "tail_size": 2, "fins": 2, "dorsal": 1, "bladder": 1,
+			"sense": "eyes", "mouth": "both", "hue": 0.5}
+	for corner in [["darter", AquaticBody.DARTER], ["hoverer", AquaticBody.HOVERER], ["middle", middle]]:
+		for size in [1, 2, 3]:
+			var counts := {}
+			for tail in rules.body.tails:
+				var body: Dictionary = (corner[1] as Dictionary).duplicate()
+				body.tail = tail
+				body.tail_size = size
+				var s := AquaticBody.stats(body, rules.body)
+				counts[tail] = [float(s.top_speed), _dash_1s(body), AquaticBody.yaw_rate(s, 4.0), -float(s.thrust_cost)]
+			for a in counts:
+				for b in counts:
+					if a == b:
+						continue
+					var no_worse := true
+					var better := false
+					for k in 4:
+						no_worse = no_worse and counts[a][k] >= counts[b][k] - 0.0001
+						better = better or counts[a][k] > counts[b][k] + 0.0001
+					check(not (no_worse and better), "%s size %d: %s beats %s on every count (%s vs %s)" % [corner[0],
+							size, a, b, counts[a], counts[b]])
+	# The burst the editor shows is the burst the water gives: the stat reads the tail's own burst share.
+	var paddle := AquaticBody.DARTER.duplicate()
+	paddle.tail = "paddle"
+	var lunate := AquaticBody.DARTER.duplicate()
+	lunate.tail = "lunate"
+	check(_dash_1s(paddle) > _dash_1s(AquaticBody.DARTER) and _dash_1s(lunate) < _dash_1s(AquaticBody.DARTER),
+			"the paddle dashes further than the fluke, the lunate less")
+	check(AquaticBody.stats(lunate, rules.body).top_speed > AquaticBody.stats(AquaticBody.DARTER, rules.body).top_speed,
+			"and the lunate cruises faster")
 
 
 func test_the_world_is_deterministic() -> void:

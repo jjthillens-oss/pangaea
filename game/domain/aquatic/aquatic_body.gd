@@ -1,10 +1,14 @@
 class_name AquaticBody
 extends RefCounted
 ## An aquatic body and its swim stats (aquatic plan sections 4 and 8, PROPOSED). The body is plain data:
-##   {"length", "girth": 1..3, "tail": "fluke" | "ribbon", "tail_size": 1..3, "fins": 0..3, "dorsal": 0..2,
-##    "bladder": 0..3, "sense": "eyes" | "barbels" | "lure", "mouth": "filter" | "jaw" | "both", "hue": 0..1}
+##   {"length", "girth": 1..3, "tail": one of the rules' "tails" (fluke, ribbon, lunate, paddle, whip), "tail_size": 1..3,
+##    "fins": 0..3, "dorsal": 0..2, "bladder": 0..3, "sense": "eyes" | "barbels" | "lure",
+##    "mouth": "filter" | "jaw" | "both", "hue": 0..1}
 ## and every stat comes from it through the tuning in game/data/aquatic/aquatic_rules.json ("body"), so play, the
 ## editor's preview and the bots read one answer (Bible §12). Pure rules: no scene, UI or file access.
+## Each tail reads its own row of every per-tail table (thrust, turn_speed_penalty "<tail>_per_size", tail_drag,
+## tail_burst, tail_cost), so a tail is a tradeoff across pick-up, top speed, burst, turning and swim cost, never a
+## plain upgrade (Bible §2: a single part must not solve every problem).
 ## to_description() builds the creature stage's body description for the generated skin, so the fish is drawn by
 ## the same skin and Blender-authored parts as the creature stage.
 
@@ -59,12 +63,14 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 	var t: Dictionary = rules.thrust[tail]
 	var thrust: float = float(t.base) + float(t.per_size) * tail_size
 	var d: Dictionary = rules.drag
-	var drag: float = d.base + d.per_fin * fins + d.per_dorsal * dorsal + d.per_girth * girth + d.per_length * length
+	var drag: float = maxf(0.2, d.base + d.per_fin * fins + d.per_dorsal * dorsal + d.per_girth * girth
+			+ d.per_length * length + float(rules.get("tail_drag", {}).get(tail, 0.0)))
 	var accel := thrust / mass
 	var tr: Dictionary = rules.turn
 	var turn: float = maxf(0.4, tr.base + tr.per_fin * fins + tr.per_dorsal * dorsal + tr.per_length * length)
 	var tp: Dictionary = rules.turn_speed_penalty
-	var penalty: float = (tp.fluke_per_size if tail == "fluke" else tp.ribbon_per_size) * tail_size + tp.per_length * length
+	var penalty: float = float(tp[tail + "_per_size"]) * tail_size + tp.per_length * length
+	var burst_share: float = float(rules.burst.thrust_share) * float(rules.get("tail_burst", {}).get(tail, 1.0))
 	var tm: Dictionary = rules.trim
 	var drift: Array = rules.idle_drift
 	var rd: Dictionary = rules.rated_depth
@@ -76,7 +82,9 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 		"accel": accel,
 		"drag": drag,
 		"top_speed": top,
-		"burst_speed": top * float(rules.burst.thrust_share),
+		## The thrust multiplier a burst gives this tail (the sim's burst uses it, so the editor's "Burst" is the water's).
+		"burst_share": burst_share,
+		"burst_speed": top * burst_share,
 		"turn_rate": turn,
 		"turn_penalty": penalty,
 		## Radius of the tightest turn at top speed (v / yaw rate at v), the editor's "turn" reading.
@@ -88,7 +96,7 @@ static func stats(body: Dictionary, rules: Dictionary) -> Dictionary:
 		"dark_sense": sense in rules.get("dark_sense", []),
 		"lure": sense == "lure",
 		"upkeep": up.base + up.per_length * length + up.per_girth * girth + float(up.get(sense, 0.0)),
-		"thrust_cost": float(rules.thrust_cost.per_tail) * tail_size,
+		"thrust_cost": float(rules.thrust_cost.per_tail) * tail_size * float(rules.get("tail_cost", {}).get(tail, 1.0)),
 		"energy_capacity": rules.energy_capacity.base + rules.energy_capacity.per_girth * girth,
 		"max_health": rules.max_health.base + rules.max_health.per_girth * girth,
 		"bite": float(rules.bite.get(String(body.mouth), 0.0)),
