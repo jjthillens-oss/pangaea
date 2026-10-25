@@ -8,8 +8,10 @@ extends Control
 ##                 (whenever health is below full, or while starving), the "Sheltered 5" chip with a
 ##                 ring icon while the cell is sheltered (M1 step 3); then the growth block (below)
 ##                 and the lineage line in caption type
-##   top right:    adaptation points with a "+N" flash, and meal and survival toasts
-##   top center:   the starving banner (icon, words and a 1 Hz pulse), and one-off messages
+##   top right:    adaptation points with a "+N" flash in a small glass pill (HudPill), and the
+##                 meal, survival and region toasts as pills under it
+##   top center:   the starving banner (HudBanner, the one solid warm red panel: a warning icon, words
+##                 and a 1 Hz pulse), and one-off messages in a pill
 ##   bottom center: refusal hints, worded by RefusalHints, above the band the bottom edge arrows use
 ##                 (ThreatIndicators.band_px, about 108 px), so an arrow never covers a hint
 ##   bottom left:  the controls, from the key bindings, for 30 s, or until the first meal once they
@@ -672,10 +674,12 @@ func _flash(points: int) -> void:
 
 func _add_toast(text: String) -> void:
 	var panel := PanelContainer.new()
-	panel.theme_type_variation = &"ToastPanel"
+	panel.theme_type_variation = &"HudPill"
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_END
 	var label := Label.new()
+	label.theme_type_variation = &"HudValueLabel"
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.text = text
 	panel.add_child(label)
 	toast_list.add_child(panel)

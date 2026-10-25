@@ -656,6 +656,25 @@ shadow_color = Color(0, 0.02, 0.08, 0.4)
 shadow_size = 10
 shadow_offset = Vector2(0, 3)
 
+[sub_resource type="StyleBoxFlat" id="Panel_hud_banner"]
+content_margin_left = 20.0
+content_margin_top = 12.0
+content_margin_right = 26.0
+content_margin_bottom = 12.0
+bg_color = Color(0.42, 0.07, 0.06, 0.93)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 0.72, 0.46, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.12, 0, 0, 0.45)
+shadow_size = 14
+shadow_offset = Vector2(0, 4)
+
 [resource]
 default_font_size = 26
 Label/colors/font_color = Color(0.924, 0.941, 0.97, 1)
@@ -807,3 +826,8 @@ TooltipLabel/font_sizes/font_size = 20
 HudValueLabel/base_type = &"Label"
 HudValueLabel/colors/font_color = Color(0.924, 0.941, 0.97, 1)
 HudValueLabel/font_sizes/font_size = 22
+HudBanner/base_type = &"PanelContainer"
+HudBanner/styles/panel = SubResource("Panel_hud_banner")
+HudAccentLabel/base_type = &"Label"
+HudAccentLabel/colors/font_color = Color(1, 0.83, 0.42, 1)
+HudAccentLabel/font_sizes/font_size = 22
