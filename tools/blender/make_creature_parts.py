@@ -3423,8 +3423,8 @@ def build_foot_primate():
     av, af, _ = _tube(apath, lambda i, a: (0.017, 0.0175, 0.019, 0.02)[i], 16)
     bc.append(verts, fcs, av, af)
     tips = []
-    for bx, by, length, r0, ang in ((-0.01, 0.036, 0.05, 0.0076, -3.0), (0.003, 0.038, 0.054, 0.0077, 3.0),
-                                    (0.015, 0.034, 0.048, 0.0071, 10.0), (0.025, 0.026, 0.038, 0.0064, 20.0)):
+    for bx, by, length, r0, ang in ((-0.002, 0.036, 0.05, 0.0076, -3.0), (0.011, 0.038, 0.054, 0.0077, 3.0),
+                                    (0.023, 0.034, 0.048, 0.0071, 10.0), (0.033, 0.026, 0.038, 0.0064, 20.0)):
         d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
         base = Vector((bx, by, 0.012))
         # Long toes that rise a little off the ground at the knuckles and curl their tips down to grip.
@@ -3560,7 +3560,7 @@ def build_ear_round():
 
     handles = _shape_keys(ear, [("H1_Perk", perk, "the ear tips 25 degrees forward"), ("H2_Size", size, "the ear 30% larger")])
     _shape_keys(tuft, [("H1_Perk", perk, ""), ("H2_Size", size, "")])
-    rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden", chiral=True)
+    rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden")
     rules["handles"] = handles
     return {"purpose": "Creature detail part (PROPOSED): a monkey's rounded cupped ear with a rolled rim open at the root, an inner ridge round a deep bowl and a fur tuft at its base.",
             "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
@@ -4146,7 +4146,7 @@ def build_ear_pointed():
 
     handles = _shape_keys(ear, [("H1_Tall", tall, "the ear 35% taller"), ("H2_Droop", droop, "the upper half folded 55 degrees back toward the tail")])
     _shape_keys(tufts, [("H1_Tall", tall, ""), ("H2_Droop", droop, "")])
-    rules = _rules("ear_pointed", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 40, 35, centerline="forbidden", chiral=True)
+    rules = _rules("ear_pointed", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 40, 35, centerline="forbidden")
     rules["handles"] = handles
     rules["placement_note"] = "On the head, the cup opening toward the head direction (+Y); mirrored for the left ear."
     return {"purpose": "Creature detail part (PROPOSED): a tall pointed furred mammal ear, a cupped shell with a pale bare inside, an inner fringe and a tip tuft.",

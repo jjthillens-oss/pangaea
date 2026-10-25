@@ -65,7 +65,7 @@
     "type": "ear_round",
     "footprint_radius_m": 0.029,
     "sink_depth_m": 0.008,
-    "chiral": true,
+    "chiral": false,
     "orientation": "normal",
     "turn_limit_deg": 45,
     "tilt_limit_deg": 35,

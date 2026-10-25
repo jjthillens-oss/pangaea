@@ -13,7 +13,7 @@
   "revision": 1,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.097,
+    "x": 0.105,
     "y_forward": 0.148,
     "z_up": 0.084
   },
