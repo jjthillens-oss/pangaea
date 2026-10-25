@@ -211,17 +211,33 @@ func save_now() -> Dictionary:
 ## survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s result when it saved, else {}.
 ##
 ## The cell-to-creature link (ShoreLink): the first ring paid at the build's top size raises the shore, and that
-## tick is saved too, so the shore stands where it rose after a reload.
+## tick is saved too, so the shore stands where it rose after a reload. Every event is read before the one save:
+## a landmark's checkpoint_moved comes before a ring_paid in the same tick (the world steps before growth).
 func after_events(events: Array) -> Dictionary:
-	var raised := false
+	var wanted := false
 	for event in events:
 		if not event is Dictionary:
 			continue
-		if event.get("type") == "grew" or event.get("type") == "checkpoint_moved":
-			return save_now()
-		if event.get("type") == "ring_paid" and raise_shore():
-			raised = true
-	return save_now() if raised else {}
+		var type: Variant = event.get("type")
+		if type == "grew" or type == "checkpoint_moved":
+			wanted = true
+		elif type == "ring_paid" and raise_shore():
+			wanted = true
+	return save_now() if wanted else {}
+
+
+## "Crawl ashore" (the cell-to-creature link): saves the cell at the shore, then EraTransition.cross with the
+## lineage's first creature (CreatureRules.from_cell). On success the lineage is ashore on disk and in the sim's
+## save, and the session counts it saved, so a quit during the crawl asks nothing. Returns cross's {"ok", "errors",
+## "checkpoint"}, or the save's error with ok false.
+func cross_ashore() -> Dictionary:
+	var saved := save_now()
+	if not saved.ok:
+		return {"ok": false, "errors": PackedStringArray([str(saved.error)]), "checkpoint": ""}
+	var result := EraTransition.cross(sim.save, slot, persistence, CreatureRules.from_cell(sim.save.genome))
+	if result.ok:
+		_mark_saved()
+	return result
 
 
 ## Raises the shore (ShoreLink.raise) RISE_AHEAD_TM up the screen from the cell, on the first clear point the

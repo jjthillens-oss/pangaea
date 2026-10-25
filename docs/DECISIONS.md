@@ -1467,7 +1467,9 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   adaptation point it earned in the water comes with it."
 - **Going back**: Continue on a lineage that is ashore opens the creature stage. The title shows
   "Back to the water" while the checkpoint is there: it writes the checkpoint back as the slot (the
-  save ashore becomes the slot's `.bak`) and continues the cell at the shore, which can cross again.
+  save ashore becomes the slot's `.bak`) and continues the cell at the shore, which can cross again
+  once it has swum out of the reach and back (a run that starts in the reach never opens the offer
+  at once).
   The continue card says "On land" for a lineage ashore.
 - **Open for Joshua (era boundaries need owner approval)**: the Bible puts the Aquatic era between
   Microscopic and Terrestrial. This link goes from the cell stage to the creature stage that exists

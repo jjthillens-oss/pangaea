@@ -493,8 +493,10 @@ func _build_shore() -> void:
 		ui.move_child(shore_arrow, starving_arrow.get_index())
 	_shore_seen = not ShoreLink.point_am(sim.save).is_empty()
 	_shore_offered = false
-	_shore_declined = false
-	_update_shore(0.0)
+	# A run that starts in the reach (Back to the water, or a save made there) waits for the cell to swim out and
+	# back, as after "Stay in the water", so the offer never greets a player who has just come back.
+	_shore_declined = _shore_seen and ShoreLink.in_reach(
+			ShoreLink.distance_am(sim.save, sim.absolute_position_am()), sim_size())
 
 
 ## Places the shore from the save, points its arrow and sends shore_risen and shore_reached (see there). The offer

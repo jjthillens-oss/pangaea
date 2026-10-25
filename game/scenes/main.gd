@@ -329,17 +329,11 @@ func _on_shore_choice(choice: String) -> void:
 	pool.set_paused(false)
 
 
-## "Crawl ashore": saves the cell at the shore, crosses the lineage ashore (EraTransition: the checkpoint, then
-## the lineage ashore), then under the crawl's fade opens the creature stage. On a failure the cell stays in the
-## water and an alert says why. Returns EraTransition.cross's result ({"ok": false, ...} when the save failed).
+## "Crawl ashore": GameSession.cross_ashore (the cell saved at the shore, the checkpoint, then the lineage ashore),
+## then under the crawl's fade the creature stage opens. On a failure the cell stays in the water and an alert says
+## why. Returns cross_ashore's result.
 func cross_to_land() -> Dictionary:
-	var saved := session.save_now()
-	var result := {"ok": false, "errors": PackedStringArray(), "checkpoint": ""}
-	if saved.ok:
-		result = EraTransition.cross(session.sim.save, session.slot, session.persistence,
-				CreatureRules.from_cell(session.sim.save.genome))
-	else:
-		result.errors.append(str(saved.error))
+	var result := session.cross_ashore()
 	if not result.ok:
 		_alert("Could not go ashore", result.errors)
 		if pool != null:
