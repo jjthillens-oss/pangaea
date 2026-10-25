@@ -21,6 +21,10 @@ const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const EDITOR_SCENE_PATH := "res://game/scenes/creature/creature_editor.tscn"
 const WORLD_SCENE_PATH := "res://game/scenes/creature/creature_world.tscn"
 const MISSING_TEXT := "Creature stage scenes missing"
+## The arrival banner after the lineage came ashore (the cell-to-creature link): how long it stays, and its fade.
+const ARRIVAL_S := 7.0
+const ARRIVAL_FADE_S := 1.0
+const ARRIVAL_FONT_SIZE := 30
 
 ## The stage's working view of the save: {"name", "body", "points", "world_seed", "generation", "history"}.
 ## save_now() writes it back into `save` (points into adaptation_points, the rest into save.creature).
@@ -168,6 +172,34 @@ func save_now() -> Error:
 func sync_from_world() -> void:
 	if _mode == "world" and world != null:
 		_take_points(_world_points())
+
+
+## The banner Main shows when the lineage has just come ashore: `text` across the top of the screen over whichever
+## screen is up, fading out after ARRIVAL_S. Returns its label (tests).
+func show_arrival(text: String) -> Label:
+	var layer := CanvasLayer.new()
+	layer.name = "Arrival"
+	layer.layer = 12
+	add_child(layer)
+	var label := Label.new()
+	label.name = "Text"
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", ARRIVAL_FONT_SIZE)
+	label.add_theme_constant_override("outline_size", 8)
+	label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE)
+	label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	label.offset_top = 96.0
+	label.offset_left = 160.0
+	label.offset_right = -160.0
+	layer.add_child(label)
+	var tween := label.create_tween()
+	tween.tween_interval(ARRIVAL_S)
+	tween.tween_property(label, "modulate:a", 0.0, ARRIVAL_FADE_S)
+	tween.tween_callback(layer.queue_free)
+	return label
 
 
 ## Leaves the stage: saves, then asks Main for the title.

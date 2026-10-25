@@ -1474,3 +1474,62 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
   (P99 47.7), although their `GeometryInstance3D.transparency` is 1 at that draw (read at
   `frame_post_draw`). Forward+, the game's renderer, hides them (P99 23.2: the old plankton and one
   landmark at the screen's edge).
+
+## 2026-10-25 · Cell to creature link: the cell crawls onto land (Bible section 4; PROPOSED; IMPLEMENTED)
+
+Joshua said "Go" (2026-10-25 01:23 UTC) to the studio's proposal: "the cell crawls onto land and the
+creature editor opens, which joins the two stages into one game." This is the first era transition
+in the game, built to the Bible's transition contract (section 4) and its transaction rule (section
+18). Code: `ShoreLink` (`game/domain/shore_link.gd`, the rules on the save), `EraTransition`
+(`game/systems/era_transition.gd`, the writes), `ShoreView` (`game/scenes/pool/shore_view.gd`),
+`GameSession.raise_shore`, the pool's `shore_reached`, Main's `open_shore_offer`, `cross_to_land` and
+`back_to_water`, and `CreatureRules.from_cell`.
+
+- **Demonstrated capability**: the shore rises the first time the lineage fills its ring at the
+  build's top size (the first `ring_paid` at size 4), so a lineage must reach the top and fill it
+  once. The toast says "A shore has risen up ahead. Swim into its light to crawl onto land."
+- **A survivable destination**: the shore stands 20 tm up the screen from where the cell was (inside
+  the loaded 3 x 3 chunks), on the first clear point the rule C1 spiral finds there for twice the
+  cell's radius. It is a shaft of warm light with a sand disc as wide as its 4 tm reach, and a warm
+  arrow (a second `StarvingArrow`) points to it from the cell while it is out of reach. The shaft and
+  disc are primitive meshes until art makes the shore piece (art follow-up).
+- **A player choice**: swimming into the reach pauses the pool under "Crawl onto land?", which says
+  what unlocks (legs, walking, the creature editor), what changes (a land world, its food) and what
+  stays (the lineage, its history, the points, the checkpoint). "Stay in the water" plays on; the
+  offer opens again only after the cell has swum out past 1.5 times the reach and back. Nothing
+  forces the crossing, so aquatic play goes on as long as the player likes.
+- **Saved as a transaction with a checkpoint**: "Crawl ashore" saves the slot (the cell at the
+  shore), writes the same save as `<slot>.pre-terrestrial` (the checkpoint, through the usual temp,
+  verify and backup path), then writes the lineage ashore: era `terrestrial`, a `came_ashore`
+  lineage event (generation and genome id) and the lineage's first creature. A failed last write
+  undoes the move in memory and the slot still holds the cell; the order of the writes is the safe
+  equivalent of a pending transaction, so `pending_transactions` stays empty. No key is added: the
+  shore is a `world_changes` entry `{"kind": "shore", "x_am", "y_am", "size"}` (an array v4 leaves
+  to its readers), and the era and creature fields are v4's own. Deleting a slot, or founding a new
+  lineage in it, removes the checkpoint.
+- **The same lineage continues**: lineage id, genome, lineage history, adaptation points (one pool
+  for both stages, as before), discoveries, world seed and the shore carry over unchanged. The first
+  creature is the starter quadruped with the cell's hue as its skin (`from_cell`: the genome's
+  `appearance.hue` at saturation 0.55 and value 0.8, as `"#rrggbb"` in the body's `skin_color`,
+  agreed with the Creature stage thread), and the editor still offers the presets on a first visit.
+  A lineage that already shaped a creature in the title's creature stage preview keeps it, with the
+  cell's skin only when it has none of its own (`CreatureRules.ashore`), so no spent point is lost.
+  The crawl is a 1.2 s fade to sand with "Your lineage crawls onto land", then the creature editor
+  opens under it with the banner "Your lineage came ashore. Shape its first land body: every
+  adaptation point it earned in the water comes with it."
+- **Going back**: Continue on a lineage that is ashore opens the creature stage. The title shows
+  "Back to the water" while the checkpoint is there (also when the slot no longer loads, so the cell
+  is not lost with it). It asks first, Cancel focused, as what the lineage did on land is lost:
+  it writes the checkpoint back as the slot (the save ashore becomes the slot's `.bak` until the next
+  save) and continues the cell at the shore, which can cross again
+  once it has swum out of the reach and back (a run that starts in the reach never opens the offer
+  at once).
+  The continue card says "On land" for a lineage ashore.
+- **Open for Joshua (era boundaries need owner approval)**: the Bible puts the Aquatic era between
+  Microscopic and Terrestrial. This link goes from the cell stage to the creature stage that exists
+  now; when Aquatic is built it slots in between (the cell's top size would lead to the aquatic
+  stage, and its shore to land). The contract's three carry-over tests are only partly met until
+  then: the earlier local activity that stays playable is the cell itself, through the checkpoint;
+  the adaptation that still matters is the shared point pool (the creature world has no diets, so
+  the cell's diet does not carry yet); the relationship that persists waits for the creature world's
+  species records.
