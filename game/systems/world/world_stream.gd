@@ -117,6 +117,26 @@ var checkpoint_am := PackedFloat64Array([0.0, 9.0, -1.5708, 1.0])    ## x, y, he
 ## item cap), evictions (a sleeper removed over the sleeper cap). With growth (S2, BP-20) also
 ## remnant_overflow (a growth tick with more remnants than their cap).
 var counters := {"awake_overflow": 0, "chunk_waits": 0, "food_trimmed": 0, "evictions": 0}
+## Morsel sites (S3, D-98, D-129): placed morsel-site id -> {food_id, due_tick}. An entry's food_id is
+## its live item's carrion id ("" when it has none); due_tick is when it may spawn one. Only
+## _set_food and _drop_entry write a food_id or erase an entry (BP3-3).
+var morsel_sites := {}
+const MORSEL_PASS_TICKS := 30
+var _morsel_loaded := {}               ## loaded morsel-site id -> {abs, species, radius, energy, chunk}
+var _claims := 0                       ## entries of morsel_sites with a food_id (BP3-3)
+var _food_total := 0                   ## the last food view's total, the morsel claims included
+## The landmark return point (S3, D-132): the anchor id of the checkpoint's landmark ("" for none),
+## and each tried anchor's clear point (or [INF, INF]) at this size. set_size clears both (D-131).
+var landmark_anchor := ""
+var _landmark_points := {}
+const LANDMARK_SPIRAL_RINGS := 8       ## BP3-8: the return point's spiral stops 4 tm out
+var _landmark_spirals := 0             ## spirals run (tests: one per anchor per size, S3G24b)
+var _landmark_d := -1.0                ## BP3-8's D at this size (tm), measured once a size
+## The landmark pass's anchors of the 3 x 3 loaded chunks round _landmark_near_at, in its scan order;
+## a chunk loading or unloading clears it (S3G21b: the pass then costs no chunk lookups a tick).
+var _landmark_near: Array[Dictionary] = []
+var _landmark_near_at := NO_CHUNK
+const NO_CHUNK := Vector2i(-2147483648, -2147483648)
 ## The world file's rings (tm) and caps, read once.
 var rings := {}
 var caps := {}
@@ -359,6 +379,8 @@ func step(sim: PoolSim) -> void:
 	var made := quiet and _look_ahead(sim)   # one chunk generation a tick: the prefetch waits
 	_sleep_and_wake(sim, view)
 	_food_view(sim)
+	_morsel_pass(sim)
+	_landmark_pass(sim)
 	var busy := made   # this tick generated a chunk ahead, or the prefetch worked: the sites' prep waits
 	if g != null:
 		busy = _prefetch(sim, quiet and not made) or busy
@@ -466,6 +488,9 @@ func set_origin_abs(sim: PoolSim, x_am: float, y_am: float) -> void:
 ## bounds (they hold tm at the old size). The caller re-expresses the world (grow, set_size_teleport).
 func set_size(n: int) -> void:
 	size = n
+	landmark_anchor = ""
+	_landmark_points.clear()
+	_landmark_d = -1.0
 	_tm_to_am = WorldConfig.tm_to_am(n)
 	_clear_next()
 	_ahead.clear()
@@ -562,6 +587,7 @@ func rebase(sim: PoolSim, offset: Vector2) -> void:
 func teleport(sim: PoolSim, x_am: float, y_am: float) -> void:
 	for key in _keys.duplicate():
 		_unload_chunk(sim, key)
+	_drop_all_entries(sim)
 	if sim.remnants != null:
 		for r in sim.remnants.items.duplicate():
 			sim.remnants.remove(r, "unloaded", sim.tick)
@@ -750,6 +776,13 @@ func snapshot(sim: PoolSim) -> Dictionary:
 		"cell_tile": [_cell_tile.x, _cell_tile.y],
 		"counters": counters.duplicate(),
 	}
+	if not landmark_anchor.is_empty():
+		out["landmark_anchor"] = landmark_anchor
+	if not morsel_sites.is_empty():
+		var entries := {}
+		for id in _sorted(morsel_sites.keys()):
+			entries[id] = {"food_id": morsel_sites[id].food_id, "due_tick": morsel_sites[id].due_tick}
+		out["morsel_sites"] = entries
 	if sim.growth != null:
 		out["growth"] = sim.growth.snapshot()
 		out["remnants"] = sim.remnants.snapshot()
@@ -858,6 +891,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", whole := false) ->
 		_forget_role(id)
 		if sim.creatures != null:
 			sim.creatures.forget_prepared(id)   # made ahead but never spawned
+	_unload_morsels(sim, ch)
 	if not whole:
 		for z in ch.zones:
 			sim.plankton.drop_zone(z.id)
@@ -868,6 +902,7 @@ func _unload_chunk(sim: PoolSim, key: Vector2i, reason := "", whole := false) ->
 		_let_go.append(colliders)
 	_chunks.erase(key)
 	_keys.erase(key)
+	_landmark_near_at = NO_CHUNK
 	_load_bound = PackedFloat64Array()   # a missing chunk now
 	var event := {"type": "chunk_unloaded", "key": key}
 	if not reason.is_empty():
@@ -926,6 +961,7 @@ func _unload_all(sim: PoolSim) -> void:
 	if _home_count != sites.size():
 		_index_homes()
 	var field := sim.creatures
+	_drop_all_entries(sim)
 	for key in keys:
 		if field != null and not field.creatures.is_empty():
 			var mine: Dictionary = _home_sites.get(key, {})
@@ -951,6 +987,7 @@ func _unload_all(sim: PoolSim) -> void:
 	_home_count = 0
 	_chunks = {}
 	_keys = keys_fresh
+	_landmark_near_at = NO_CHUNK
 	_load_bound = PackedFloat64Array()
 
 
@@ -1123,7 +1160,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 			_zone_abs[z.id] = zone_recs[1][i]
 		else:
 			var at: Vector2 = parts.zone_local[i] if framed else Vector2((float(z.x) * k - origin_x_am) / k, (float(z.y) * k - origin_y_am) / k)
-			fresh = region.add_zone(z.id, at, float(z.radius), float(z.capacity), float(z.growth_rate))
+			fresh = region.add_zone(z.id, at, float(z.radius), float(z.capacity), float(z.growth_rate), z.get("bloom", {}))
 			_zone_abs[z.id] = parts.zone_abs[z.id] if have_parts else PackedFloat64Array([float(z.x), float(z.y)])
 		i += 1
 		var stream: RandomNumberGenerator = _next_streams.get(z.id)
@@ -1155,6 +1192,11 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 				_note_role(sim, s.id, str(s.species))
 				due.append(s)
 		sim.creatures._enqueue_retries(due, sim.tick)
+		for m in ch.morsel_sites:
+			_morsel_loaded[m.id] = {"abs": PackedFloat64Array([float(m.x), float(m.y)]), "species": str(m.species),
+				"radius": float(m.radius), "energy": float(m.energy), "chunk": key}
+			if not morsel_sites.has(m.id):
+				morsel_sites[m.id] = {"food_id": "", "due_tick": sim.tick}
 	_ahead_sites.erase(Vector3i(key.x, key.y, size))
 	# The backstop: no body is left inside a new collider. The loads come from 56 tm out, but a debug
 	# move, a waking creature or a test may put a body anywhere.
@@ -1167,6 +1209,7 @@ func _load_chunk(sim: PoolSim, key: Vector2i, settle := true) -> void:
 		sim.actor.position = sim.motion.position
 	_insert_key(key)
 	_chunks[key] = ch
+	_landmark_near_at = NO_CHUNK
 	_unload_bound = PackedFloat64Array()   # a loaded chunk that may lie beyond the unload ring
 	if not made.is_empty():
 		_emit(sim, _placed_event(made, ch))
@@ -1700,8 +1743,11 @@ func _prepare_next() -> bool:
 				for value in [radius, capacity, rate]:
 					if not (is_finite(value) and value > 0.0):
 						sound = false
-				records.append({"id": z.id, "center": Vector2.ZERO, "radius": radius, "capacity": capacity,
-					"growth_rate": rate, "amount": capacity})
+				var rec := {"id": z.id, "center": Vector2.ZERO, "radius": radius, "capacity": capacity,
+					"growth_rate": rate, "amount": capacity}
+				if z.has("bloom"):
+					rec["bloom"] = (z.bloom as Dictionary).duplicate()   # as add_zone keeps it
+				records.append(rec)
 				places.append(PackedFloat64Array([float(z.x), float(z.y)]))
 			if sound:
 				_next_zones[key] = [records, places]
@@ -1823,6 +1869,7 @@ func grow(sim: PoolSim) -> void:
 	var morsel_ids := []
 	var body_haze := []
 	var fresh := {}
+	var adopt := {}   # D-130: morsel-site id -> the morsel item of the creature from its creature site
 	var moved := {}   # remnant -> [x, y, previous x, previous y] (am)
 	var cfg: Dictionary = g.cfg.remnants
 	for c in bodies:
@@ -1842,6 +1889,8 @@ func grow(sim: PoolSim) -> void:
 			food_id = str(item.get("id", ""))
 			fresh[food_id] = true
 			morsel_ids.append(food_id)
+			if not food_id.is_empty() and c.site_id.begins_with("t_"):
+				adopt["m_" + c.site_id.substr(2)] = food_id
 		else:
 			body_haze.append({"kind": "creature", "look": c.species_id, "position": at})
 		if c is RemnantField.Remnant:
@@ -1887,6 +1936,8 @@ func grow(sim: PoolSim) -> void:
 	_retired.append(old_arena)
 	sim.arena = _arena_after(old_arena, ChunkArena.create_endless(chunk_tm))
 	recompute_caps(sim)
+	for m_id in _sorted(adopt.keys()):
+		adopt_morsel(m_id, adopt[m_id])
 	# 4. Size and origin: the next size's cache, its prepared loads and its arena stay for step 5 and
 	# the beat.
 	var next := _next_chunks
@@ -1959,7 +2010,8 @@ func grow(sim: PoolSim) -> void:
 	# 8. Emit.
 	_emit(sim, {"type": "grew", "from": n, "to": n + 1, "center": Vector2.ZERO, "settled_from": Vector2.ZERO,
 		"settled_to": p, "remnants": remnant_ids, "morsels": morsel_ids, "haze": haze,
-		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1]})
+		"checkpoint_am": [cp[0], cp[1], cell.heading, n + 1],
+		"band_from": WorldConfig.band_of(n), "band_to": WorldConfig.band_of(n + 1)})
 
 
 ## `arena` as the growth tick's new arena in place of `old`: its epoch past every epoch `old` had (so
@@ -2075,7 +2127,7 @@ static func _site_record_abs(s: Dictionary, key: Vector2i) -> Dictionary:
 		"abs_tm": PackedFloat64Array([float(s.x), float(s.y), NAN if t.is_empty() else float(t.x),
 			NAN if t.is_empty() else float(t.y), float(r.x), float(r.y)]),
 		"territory": {} if t.is_empty() else {"center": Vector2.ZERO, "radius": float(t.radius)},
-		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}}
+		"reach": {"center": Vector2.ZERO, "radius": float(r.radius)}, "bloom": s.get("bloom", {})}   # D-128: to the brain
 	if s.has("posts"):
 		var posts := []
 		var abs_posts := PackedFloat64Array()
@@ -2192,7 +2244,10 @@ func _event_of(ch: WorldChunk, placed: bool) -> Dictionary:
 	for z in ch.zones:
 		if placed:
 			at = Vector2((float(z.x) * k - ox) / k, (float(z.y) * k - oy) / k)
-		zones.append({"id": z.id, "center": at, "radius": float(z.radius), "region": z.region})
+		var zone := {"id": z.id, "center": at, "radius": float(z.radius), "region": z.region}
+		if z.has("bloom"):
+			zone["bloom"] = (z.bloom as Dictionary).duplicate()   # D-128: {slot, offset_ticks, cycle_ticks}
+		zones.append(zone)
 	var anchors := []
 	for a in ch.anchors:
 		if placed:
@@ -2290,6 +2345,200 @@ static func _key_less(a: Vector2i, b: Vector2i) -> bool:
 ## a zone in view is never trimmed. Zones that leave the set drop their items without events (they
 ## are out of view). Carrion beyond the ring goes for good. Zones flagged to fill at once fill now.
 ## Last, tile_entered when the cell's tile changed.
+## The morsel sites' claims: the entries of morsel_sites with a food_id (BP3-3), for the fuzz checker.
+func morsel_claims() -> int:
+	return _claims
+
+
+## A growth tick hands a converted creature's morsel item to its site (D-130): the entry holds the
+## item, due at once once it is gone.
+func adopt_morsel(site_key: String, food_id: String) -> void:
+	if not morsel_sites.has(site_key):
+		morsel_sites[site_key] = {"food_id": "", "due_tick": 0}
+	morsel_sites[site_key].due_tick = 0
+	_set_food(site_key, food_id)
+
+
+## The only writer of an entry's food_id: keeps _claims the count of entries with one (BP3-3).
+func _set_food(m_id: String, food_id: String) -> void:
+	var e: Dictionary = morsel_sites[m_id]
+	_claims += int(not food_id.is_empty()) - int(not str(e.food_id).is_empty())
+	e.food_id = food_id
+
+
+## The only eraser of an entry (BP3-3).
+func _drop_entry(m_id: String) -> void:
+	if not str(morsel_sites[m_id].food_id).is_empty():
+		_claims -= 1
+	morsel_sites.erase(m_id)
+
+
+## An unloading chunk's morsel sites leave: each live item expires ("unloaded"), then the entry and
+## the loaded record go.
+func _unload_morsels(sim: PoolSim, ch: WorldChunk) -> void:
+	for m in ch.morsel_sites:
+		if morsel_sites.has(m.id):
+			var food_id := str(morsel_sites[m.id].food_id)
+			if not food_id.is_empty():
+				sim.carrion.expire(food_id, "unloaded")
+			_drop_entry(m.id)
+		_morsel_loaded.erase(m.id)
+
+
+## The landmark pass (D-132a): at the build's top, with the cell alive and growth on (and the
+## landmark_return switch on, BP3-17), the nearest anchor of the 3 x 3 loaded chunks round the cell
+## within landmark_find_tm (ties to the lower id) that is not the checkpoint's own is tried; an
+## accepted one moves the checkpoint to its clear point (checkpoint_moved, reason "landmark").
+func _landmark_pass(sim: PoolSim) -> void:
+	if size != max_size or sim.dead or sim.respawn_pending or sim.growth == null \
+			or not bool(content.config.switches.get("landmark_return", false)):
+		return
+	var best := {}
+	var best_d := INF
+	var reach := float(content.config.growth.discovery.landmark_find_tm)
+	var at := chunk_of_local(sim.motion.position)
+	if at != _landmark_near_at:
+		_landmark_near_at = at
+		_landmark_near.clear()
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var ch: WorldChunk = _chunks.get(Vector2i(at.x + dx, at.y + dy))
+				if ch != null:
+					_landmark_near.append_array(ch.anchors)
+	for a in _landmark_near:
+		if str(a.id) == landmark_anchor:
+			continue
+		var d := sim.motion.position.distance_to(local_of_tm(float(a.x), float(a.y)))
+		if d <= reach and (d < best_d or (d == best_d and str(a.id) < str(best.id))):
+			best = a
+			best_d = d
+	if best.is_empty():
+		return
+	var r := landmark_candidate(sim, best)
+	if not r.ok:
+		return
+	var p := abs_of_local(r.point)
+	checkpoint_am = PackedFloat64Array([p[0], p[1], sim.motion.heading, float(size)])
+	landmark_anchor = str(best.id)
+	_emit(sim, {"type": "checkpoint_moved", "reason": "landmark", "anchor": landmark_anchor,
+		"checkpoint_am": Array(checkpoint_am)})
+
+
+## Whether `anchor` ({id, x, y} in absolute tm) gives a return point now (D-132b, BP3-8): {ok, point
+## (local), reason}. Refused "seen" (the checkpoint's own), "not_calm" (Growth.is_calm without the
+## wedge), "no_clear_point" (no clear point within LANDMARK_SPIRAL_RINGS rings of it; memoised for the
+## size with the point), "unloaded" (a chunk within D of the point is not loaded; never memoised) or
+## "reach" (a loaded site of a species at the cell's size reaches within respawn_clear_m of a cell
+## there).
+func landmark_candidate(sim: PoolSim, anchor: Dictionary) -> Dictionary:
+	var out := {"ok": false, "point": Vector2.INF, "reason": ""}
+	if str(anchor.id) == landmark_anchor:
+		out.reason = "seen"
+		return out
+	if not sim.growth.is_calm(sim, false):
+		out.reason = "not_calm"
+		return out
+	if not _landmark_points.has(anchor.id):
+		_landmark_spirals += 1
+		var q := PoolSim.clear_point_on(sim.arena, local_of_tm(float(anchor.x), float(anchor.y)), sim.phenotype.radius,
+			LANDMARK_SPIRAL_RINGS)
+		_landmark_points[anchor.id] = abs_of_local(q) if q.is_finite() else PackedFloat64Array([INF, INF])
+	var a: PackedFloat64Array = _landmark_points[anchor.id]
+	if not is_finite(a[0]):
+		out.reason = "no_clear_point"
+		return out
+	var p := local_of_abs(a[0], a[1])
+	# A world without creatures (no species) has no threat: D is the cell's radius.
+	var clear := float(sim.species.fairness.respawn_clear_m) if sim.species != null else 0.0
+	if _landmark_d < 0.0:
+		_landmark_d = clear + sim.phenotype.radius \
+			+ (2.0 * content.reach_max_threat(size, sim.species) if sim.species != null else 0.0)
+	for key in disc_keys({"center": p, "radius": _landmark_d}):
+		if not _chunks.has(key):
+			out.reason = "unloaded"
+			return out
+	for id in sites if sim.species != null else {}:
+		var rec: Dictionary = sites[id]
+		if sim.species.q_of(str(rec.species), size) != 1.0:
+			continue
+		var gap: float = p.distance_to(rec.reach.center) - float(rec.reach.radius) \
+			- sim.species.radius_at(str(rec.species), size) - sim.phenotype.radius
+		if gap < clear:
+			out.reason = "reach"
+			return out
+	out.ok = true
+	out.point = p
+	return out
+
+
+## Every entry leaves, its live item expiring ("unloaded"): the growth tick's unloads and a teleport's
+## erase the entries of sites that never loaded too (adopted ones), so nothing adopted before them
+## survives (D-130) and the claims end at 0.
+func _drop_all_entries(sim: PoolSim) -> void:
+	for id in _sorted(morsel_sites.keys()):
+		var food_id := str(morsel_sites[id].food_id)
+		if not food_id.is_empty():
+			sim.carrion.expire(food_id, "unloaded")
+		_drop_entry(id)
+	_morsel_loaded.clear()
+
+
+## The morsel sites' pass (D-129), every MORSEL_PASS_TICKS ticks after the food view, in site id order:
+## an entry whose item is gone (eaten, rotted or dropped) is due again after its species' respawn
+## time and a hashed jitter; an entry whose site is not loaded leaves once it holds no item; a due
+## site spawns its item when the cell lives, the food total is under the cap, and its place is in the
+## food ring, spawn_safe_m from every player place, out of the zoom-max view and clear.
+func _morsel_pass(sim: PoolSim) -> void:
+	if morsel_sites.is_empty() or posmod(sim.tick, MORSEL_PASS_TICKS) != 0:
+		return
+	var alive := {}
+	for item in sim.carrion.items:
+		alive[item.id] = true
+	var body := sim.motion.position
+	var places := sim._player_places()
+	var quad := ViewFootprint.corners(body, camera, float(camera.zoom_max), view_aspect)
+	var box := _box(quad)
+	var safe := float(sim.species.fairness.spawn_safe_m)
+	var ring := float(rings.food)
+	var rot := float(content.config.growth.remnants.morsel_rot_s)
+	for id in _sorted(morsel_sites.keys()):
+		var e: Dictionary = morsel_sites[id]
+		var m: Dictionary = _morsel_loaded.get(id, {})
+		if not str(e.food_id).is_empty():
+			if alive.has(e.food_id):
+				continue
+			_set_food(id, "")
+			if not m.is_empty():
+				e.due_tick = sim.tick + _respawn_ticks(sim, id, str(m.species))
+		if m.is_empty():
+			_drop_entry(id)
+			continue
+		if sim.tick < int(e.due_tick) or sim.dead or _food_total >= int(caps.food_items):
+			continue
+		var p := local_of_tm(m.abs[0], m.abs[1])
+		var r := float(m.radius)
+		if body.distance_to(p) > ring:
+			continue
+		var ok := true
+		for at in places:
+			ok = ok and at.distance_to(p) >= safe
+		if not ok or not _out_of_view(quad, box, p, r) or not sim.arena.is_clear(p, r):
+			continue
+		var item := sim.carrion.spawn(p, "morsel_site", float(m.energy), -1, r, rot, {"species": m.species, "site": id})
+		if item.is_empty():
+			continue
+		_set_food(id, str(item.id))
+		_food_total += 1
+
+
+## A morsel site's wait after its item goes: its species' niche respawn_s plus a jitter in
+## [-respawn_jitter_s, respawn_jitter_s] hashed from the world, the site and the tick (D-129).
+func _respawn_ticks(sim: PoolSim, id: String, species_id: String) -> int:
+	var niche := sim.species.niche_of(species_id)
+	var u := WorldHash.unit(WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(id), sim.tick])))
+	return CreatureBrain.ticks(niche.respawn_s) + roundi((2.0 * u - 1.0) * CreatureBrain.ticks(niche.respawn_jitter_s))
+
+
 func _food_view(sim: PoolSim) -> void:
 	var body := sim.motion.position
 	_index_zones(sim.region)
@@ -2321,6 +2570,7 @@ func _food_view(sim: PoolSim) -> void:
 		var n := mini(most, floori(float(_zone_refs[i].amount) / unit + PlanktonField.COUNT_EPSILON))
 		counts.append(n)
 		total += n
+	total += _claims   # the morsel sites' items (BP3-3); no zone trim removes them
 	var shown := at                       # the food zones less those trimmed
 	var cap := int(caps.food_items)
 	if total > cap:
@@ -2355,6 +2605,7 @@ func _food_view(sim: PoolSim) -> void:
 		for m in at.size():
 			if cut[m] == 0:
 				shown.append(at[m])
+	_food_total = total
 	# The food set: the one given to the plankton last time while the same zones are shown (nothing
 	# else changes it), else built afresh in zone order.
 	var food: Dictionary = plankton.active_zones

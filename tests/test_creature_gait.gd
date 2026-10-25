@@ -4,6 +4,9 @@ extends TestCase
 
 const Fixtures := preload("res://tests/creature_fixtures.gd")
 const DT := 1.0 / 60.0
+const CreatureData := preload("res://game/systems/creature/creature_data.gd")
+const BodyMechanics := preload("res://game/domain/creature/body_mechanics.gd")
+const GaitPlanner := preload("res://game/domain/creature/gait_planner.gd")
 
 
 func run(body_name: String, program: String, seconds: float, seed_value := 1) -> RefCounted:
@@ -156,3 +159,39 @@ func test_sixty_seconds_random_drive_stays_finite() -> void:
 		check(finite and p.max_stance_reach_ratio <= 1.0,
 				"%s: 60 s random drive, finite state, max stance reach %.3f, steps %d, early lifts %d"
 				% [body_name, p.max_stance_reach_ratio, p.steps, p.early_lifts])
+
+
+## Uneven legs (body_mechanics.gd header): an ape on long arms stands front-up, a frog-like body on long hind legs
+## front-down, every hip at its own leg's standing height, and both walk with their feet in reach.
+func test_uneven_legs_tilt_the_body_and_keep_each_hip_at_its_own_height() -> void:
+	var table = CreatureData.gait_table()
+	var ape := {"legs": [
+		{"side": "L", "hip": [-0.25, 0.0, -0.45], "upper": 0.5, "lower": 0.5, "knee": "back"},
+		{"side": "L", "hip": [-0.2, 0.0, 0.45], "upper": 0.25, "lower": 0.25, "knee": "forward"},
+		{"side": "R", "hip": [0.25, 0.0, -0.45], "upper": 0.5, "lower": 0.5, "knee": "back"},
+		{"side": "R", "hip": [0.2, 0.0, 0.45], "upper": 0.25, "lower": 0.25, "knee": "forward"}]}
+	var frog := ape.duplicate(true)
+	for leg in frog["legs"]:
+		leg["hip"][2] = -float(leg["hip"][2])
+	for case in [["ape", ape, 1.0], ["frog", frog, -1.0]]:
+		var mech = BodyMechanics.create(case[0], case[1], table)
+		check(signf(mech.rest_pitch) == case[2] and absf(mech.rest_pitch) > deg_to_rad(5.0),
+				"%s: the body tilts %s (%.1f deg)" % [case[0], "front up" if case[2] > 0 else "front down",
+				rad_to_deg(mech.rest_pitch)])
+		var p = GaitPlanner.create(mech)
+		for i in mech.legs.size():
+			var want: float = table.stance_height_ratio * float(mech.legs[i]["length"])
+			check(absf(p.hip_world(i).y - want) < 0.03, "%s leg %d: hip at %.3f m, its own height %.3f m" % [
+					case[0], i, p.hip_world(i).y, want])
+		for f in 240:
+			var input := Fixtures.drive("walk", f * DT)
+			p.step(DT, input.x, input.y)
+		check(p.is_finite_state(), "%s: the walk stays finite" % case[0])
+		for i in mech.legs.size():
+			var reach: float = p.hip_world(i).distance_to(p.foot[i]) / float(mech.legs[i]["length"])
+			check(reach <= 1.0, "%s leg %d: its foot stays in reach (%.2f of its length)" % [case[0], i, reach])
+
+
+func test_even_legs_stand_level() -> void:
+	check(Fixtures.gait_body("quad_short").rest_pitch == 0.0, "even legs: no tilt")
+	check(Fixtures.gait_body("hexapod").rest_pitch == 0.0, "six even legs: no tilt")

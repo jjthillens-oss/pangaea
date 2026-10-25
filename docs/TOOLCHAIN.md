@@ -53,14 +53,15 @@ A name in `--only` or `--skip` that matches no file fails the run, and so does a
 
 The long S1 gates are `test_soak_*` methods: the golden M1 hashes at 18,000 ticks and, as the endless world lands, the long swims, the seams and the samples. `tools/check.sh` never runs them. `tools/check_soak.sh [path-to-godot] [--only=a,b | --skip=a,b]` runs `tools/test_bounded.sh`, the import (600 s limit), then `tests/run_tests.gd -- --soak` with any runner flags passed on, under a 3600 s limit. The flags may come without the Godot path.
 
-CI runs it in two jobs, in parallel with `test-and-export` and with each other, each with a 75-minute timeout (S1 build plan B-14):
+CI runs it in three jobs, in parallel with `test-and-export` and with each other, each with a 75-minute timeout (S1 build plan B-14; `soak-c` since S3):
 
 | Job | Command | Holds |
 | --- | --- | --- |
 | `soak-a` | `tools/check_soak.sh --only=test_endless_gates,test_endless_cost` | The endless gates (straight swims, the corner circle, #32, #33, hunter viability, F9, the 10 km hash) and the cost soak cases. |
-| `soak-b` | `tools/check_soak.sh --skip=test_endless_gates,test_endless_cost` | Every other soak file, so a new one lands here without a list edit: the 18,000-tick goldens, and later the seams, the content passes, `sample_sites` and the home ring. |
+| `soak-b` | `tools/check_soak.sh --skip=test_endless_gates,test_endless_cost,test_threat_fuzz` | Every other soak file, so a new one lands here without a list edit: the 18,000-tick goldens, and later the seams, the content passes, `sample_sites` and the home ring. |
+| `soak-c` | `tools/check_soak.sh --only=test_threat_fuzz` | The threat fuzz soaks: S3G13's pairs at sizes 2 to 4 (80 runs of 5 minutes) and D-117's four-seed pool and sunbeam well runs. In `soak-b` they ran past its hour on PR #164. |
 
-`tests/test_m1_goldens.gd` checks both jobs' commands and timeouts, and that between them they take every test file exactly once. S1 sign-off needs both green on the final commit. If either job measures over 60 minutes, the diagonal seam placements and any sample beyond 1,000 move to a nightly workflow, `ci-nightly.yml`.
+`tests/test_m1_goldens.gd` checks the jobs' commands and timeouts, and that between them they take every test file exactly once. S1 sign-off needs both green on the final commit. If either job measures over 60 minutes, the diagonal seam placements and any sample beyond 1,000 move to a nightly workflow, `ci-nightly.yml`.
 
 Measured on 2026-10-23 at T0.8, in the shared 4-CPU container: `soak-b`'s command took 86 s (the 18,000-tick goldens, after `test_bounded.sh` and the import), and `soak-a`'s 18 s, because its gates still wait on T2.8 and print what they wait on. At T0.9 the 10 km hash (G13), which reads no invariant, runs on T1's fixture world: 33 s a run overdriven (100,000 ticks) and 45 s a run for the racer as it is (136,218 ticks), so its two pairs take about 160 s. At T0.10 B-7's saturated cost gate (`test_soak_a_saturated_world_costs_at_most_10_yardsticks_a_tick`, about 13 s) runs in `soak-a` and fails: the dense case reads about 21 yardsticks a median tick against 10, and B-7's own remedy does not close it (`docs/DECISIONS.md`, the S1 build plan entry), so `soak-a` stays red until the cost or the budget changes. In a trial merge of T2's tree with its FuzzInvariants (every gate running, on the fixture world), `test_endless_gates`' soak took 739 s and the cost soak cases about 17 s, so `soak-a` comes to about 13 minutes before the real tiles. The S1 planning estimates are about 28 minutes for `soak-a` and 35 for `soak-b` once every gate runs; each PR records its measured times.
 

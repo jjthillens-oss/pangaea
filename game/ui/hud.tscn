@@ -116,6 +116,14 @@ theme_type_variation = &"SmallLabel"
 autowrap_mode = 3
 max_lines_visible = 2
 
+[node name="PlacesLine" type="Label" parent="Frame/Status/Box"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"SmallLabel"
+autowrap_mode = 3
+max_lines_visible = 2
+
 [node name="ShelterChip" type="PanelContainer" parent="Frame/Status/Box"]
 unique_name_in_owner = true
 layout_mode = 2

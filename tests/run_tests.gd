@@ -14,9 +14,9 @@ extends SceneTree
 ## A name in --only or --skip that matches no file fails the run, so a typo cannot pass unnoticed.
 ##
 ## Soak tier (S1): the methods named test_soak_* never run by default; --soak runs only them (still
-## honouring --only= and --skip=). tools/check_soak.sh passes --soak, in CI's two parallel jobs:
-## soak-a runs --only=test_endless_gates,test_endless_cost and soak-b --skip= the same files, so a
-## new soak file lands in soak-b without a list edit.
+## honouring --only= and --skip=). tools/check_soak.sh passes --soak, in CI's three parallel jobs:
+## soak-a runs --only=test_endless_gates,test_endless_cost, soak-c --only=test_threat_fuzz and soak-b
+## --skip= all three files, so a new soak file lands in soak-b without a list edit.
 ##
 ## Fast-suite budget report (S2 gate S2G30): a run of every file outside the soak tier (check.sh's,
 ## or --skip-slow's) ends with each S2 track's fast time against its share: the time of the fast

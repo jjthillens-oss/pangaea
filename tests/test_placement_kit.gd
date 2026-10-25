@@ -6,10 +6,16 @@ extends TestCase
 ##
 ## The tests use tests/fixtures/world/kit_min.json: real GLBs, fixture records. The kit the world
 ## ships (art's, game/data/placement_kit.json) is checked by the same rules.
+##
+## S3 (s3-build-plan.md BP3-15, 7.3; S3G8, S3G8b): tools/kit/write_kit.py writes the shipped kit from
+## the records, band-1 pieces included; landmark.groups is per band; rules 5, 6 and 11 hold in each
+## band; and every band-0 entry is the one main had at e3-base (tests/fixtures/world/kit_band0_main.json).
 
 const KIT := "res://tests/fixtures/world/kit_min.json"
 const RECORDS := "res://tests/fixtures/world/records/"
 const VARIANTS := "res://tests/fixtures/world/records/variants/"
+const BAND0_MAIN := "res://tests/fixtures/world/kit_band0_main.json"
+const WRITER := "res://tools/kit/write_kit.py"
 
 
 func _fixture() -> Dictionary:
@@ -70,12 +76,48 @@ func test_the_shipped_kit_validates() -> void:
 	check_eq(kit.validate(), PackedStringArray(), "the kit the world ships")
 	var ids := PackedStringArray(kit.assets.keys())
 	ids.sort()
-	check_eq(ids, PackedStringArray(["landmark_arch", "landmark_fan", "landmark_great_shell", "landmark_ring",
-		"landmark_shed_husk", "landmark_spire", "marker_checkpoint_column", "marker_lair_mouth", "marker_origin_arrow",
-		"rare_giant_husk", "rare_shell_cathedral", "rock_a", "rock_b", "rock_c", "shell_bell", "shell_diatom_disc",
-		"shell_fluted_tower", "shell_girdle_drum", "shell_radiolarian_lens"]), "the 18 S1 pieces and the lair mouth")
+	check_eq(ids, PackedStringArray(["landmark_arch", "landmark_b1_bell_colony", "landmark_b1_coccolith_stack",
+		"landmark_b1_diatom_chain", "landmark_b1_foram_spiral", "landmark_b1_heliozoan", "landmark_b1_sponge_tower",
+		"landmark_fan", "landmark_great_shell", "landmark_ring", "landmark_shed_husk", "landmark_spire",
+		"marker_checkpoint_column", "marker_lair_mouth", "marker_origin_arrow", "rare_fallen_lattice", "rare_giant_husk",
+		"rare_shed_shell", "rare_shell_cathedral", "rare_sponge_grove", "rare_sunbeam_well", "rock_a", "rock_b", "rock_c",
+		"shell_b1_glass_dome", "shell_b1_lattice_cap", "shell_b1_rimmed_cup", "shell_b1_spined_drum", "shell_b1_tiered_disc",
+		"shell_bell", "shell_diatom_disc", "shell_fluted_tower", "shell_girdle_drum", "shell_radiolarian_lens"]),
+		"the 18 S1 pieces, the lair mouth and S3's 15 band-1 pieces")
 	check_eq(kit.landmarks(0, 3), PackedStringArray(["landmark_shed_husk"]), "the shed husk is group 3's landmark")
 	check_eq(kit.rare_asset(0, "giant_husk"), "rare_giant_husk", "and the fixed rare tile's piece is the giant husk")
+	check_eq(kit.bands(), PackedInt32Array([0, 1]), "bands 0 and 1")
+	check_eq(kit.landmark_groups_by_band, {0: [2, 2, 1, 1], 1: [2, 2, 1, 1]}, "[2, 2, 1, 1] models a group in each band")
+	check_eq(kit.landmarks(1, 2), PackedStringArray(["landmark_b1_diatom_chain"]), "band 1's group 2")
+	check_eq(kit.rare_asset(1, "sunbeam_well"), "rare_sunbeam_well", "band 1's fixed rare piece")
+	check_eq(kit.rare_asset(0, "sunbeam_well"), "", "which band 0 has not")
+	check_eq(kit.fitting(1.4, 1), PackedStringArray(["shell_b1_glass_dome", "shell_b1_spined_drum"]), "band 1's fp_l shells (D-93)")
+
+
+## S3G8b (BP3-15): the writer's output is the file on disk, and every band-0 entry and marker is the
+## one main had at e3-base, compared one by one (landmark.groups and the note changed).
+func test_the_kit_is_the_writers_and_band_0_is_mains() -> void:
+	var out := []
+	var code := OS.execute("python3", ["-I", ProjectSettings.globalize_path(WRITER), "--check"], out, true)
+	check_eq(code, 0, "write_kit.py --check: %s" % "".join(out).strip_edges())
+	var text := FileAccess.get_file_as_string(PlacementKit.DEFAULT_PATH)
+	check(text.ends_with("}\n") and not text.ends_with("\n\n"), "the file ends in one newline")
+	var shipped: Dictionary = JSON.parse_string(text)
+	var main: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(BAND0_MAIN))
+	var by_id := {}
+	for a: Dictionary in shipped.assets:
+		by_id[a.id] = a
+	for a: Dictionary in main.assets:
+		check(by_id.has(a.id), "%s is still in the kit" % a.id)
+		check(by_id.get(a.id) == a, "%s is main's entry, key for key" % a.id)
+		check(int(a.band) == (-1 if a.kind == "marker" else 0), "%s: main's band (markers -1, the rest 0)" % a.id)
+	var order := []
+	for a: Dictionary in shipped.assets:
+		order.append(a.id)
+	var main_order: Array = main.assets.map(func(a: Dictionary) -> String: return a.id)
+	check_eq(order.slice(0, main_order.size()), main_order, "main's entries come first, in main's order")
+	for a: Dictionary in shipped.assets.slice(main_order.size()):
+		check_eq(int(a.band), 1, "%s after them is band 1" % a.id)
 
 
 func test_each_rule_has_a_failing_case() -> void:
@@ -85,7 +127,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		# Rule 1: ids, kinds and bands.
 		[_with("shell_s_pill", "id", "Shell_s_pill"), "placement_kit.assets[0].id: 'Shell_s_pill' does not match", 1],
 		[_with("shell_l_wide", "id", "shell_l_bell"), "placement_kit.assets[6].id: 'shell_l_bell' is repeated", 1],
-		[_with("shell_l_wide", "band", 1), "placement_kit.assets[6].band: 1;", 1],
+		[_with("shell_l_wide", "band", 2), "placement_kit.assets[6].band: 2;", 1],
 		[_with("shell_l_wide", "band", -1), "placement_kit.assets[6].band: -1;", 1],
 		[_with("marker_origin_arrow", "band", 0), ".band: 0;", 1],
 		# Rule 3: scale ranges.
@@ -107,6 +149,7 @@ func test_each_rule_has_a_failing_case() -> void:
 		[_with("landmark_arch", "dressings", _dressings([1.0, 1.0])), ".dressings: a landmark has exactly 3 (2)", 1],
 		[_with("landmark_arch", "dressings", _dressings([1.0, 1.0, 1.2])), ".dressings[2].scale: 1.2 is outside", 1],
 		[_with("landmark_spire", "group", 3), "placement_kit.landmark.groups: band 0's landmarks per group are [2, 2, 0, 2]", 1],
+		[_with("landmark_spire", "band", 1), "placement_kit.landmark.groups: band 0's landmarks per group are [2, 2, 0, 1]", 5],
 		# Rule 6: rare pieces.
 		[_with("rare_shell_cathedral", "rare_kind", "giant_husk"), ".rare_kind: 'giant_husk' is empty or repeated", 1],
 		[_with("rare_giant_husk", "colliders", [{"center": [0.0, 0.0], "radius": 0.5}]), "placement_kit.assets[%d].colliders[0].radius: 0.5 is outside" % husk_i, 1],
@@ -148,6 +191,22 @@ func test_each_rule_has_a_failing_case() -> void:
 		for p in problems:
 			found = found or p.begins_with(c[1]) or p.contains(c[1])
 		check(found and problems.size() == c[2], "one case gives %d problem(s), one containing '%s': %s" % [c[2], c[1], problems])
+
+
+## S3G8: landmark.groups is an object of bands; a list (S1's form) is refused, and so is a band with
+## pieces but no counts, or counts for a band with no pieces.
+func test_the_landmark_groups_are_per_band() -> void:
+	var listed := _fixture()
+	listed.landmark.groups = [2, 2, 1, 1]
+	var problems := PlacementKit.from_dict(listed).validate()
+	check(problems.size() == 1 and problems[0].begins_with("placement_kit.landmark.groups: must be an object of bands"), "a list: %s" % problems)
+	var extra := _fixture()
+	extra.landmark.groups["1"] = [2, 2, 1, 1]
+	check_eq(PlacementKit.from_dict(extra).validate(), PackedStringArray(["placement_kit.landmark.groups: band 1's landmarks per group are [0, 0, 0, 0], not [2, 2, 1, 1]"]),
+		"counts for a band with no pieces")
+	var word := _fixture()
+	word.landmark.groups["one"] = [2, 2, 1, 1]
+	check_eq(PlacementKit.from_dict(word).validate(), PackedStringArray(["placement_kit.landmark.groups.one: a band must be a whole number"]), "a band that is not a number")
 
 
 func test_the_classes_must_be_exactly_the_s1_classes() -> void:

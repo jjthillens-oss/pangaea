@@ -366,6 +366,13 @@ func test_a_look_swaps_the_mesh_and_each_item_draws_at_its_own_radius() -> void:
 		"the algae ball's mesh is drawn from now on (and eaten)")
 	plants.set_look("no_such_look")
 	check_eq(plants.look, "algae_ball", "an unknown look is ignored")
+	# S3G40 (view): the glass flake at size 3 and the bead cluster at 4, each at its recorded radius.
+	for look in ["glass_flake", "bead_cluster"]:
+		plants.set_look(look)
+		check(plants.look == look and FoodView.look_mesh(look) != null and plants.multimesh.mesh == FoodView.look_mesh(look),
+			"the %s's mesh is drawn from now on" % look)
+		check_near(_scale_of(plants, "p1"), 1.0, 1e-6, "%s: an item at 0.18 draws at the mesh's own size" % look)
+		check(FoodView.warm_up_meshes().has(FoodView.look_mesh(look)), "the start fade warms the %s (T4.6)" % look)
 	plants.free()
 	var meat := _food_view("meat")
 	check_eq(meat.look, "carrion", "carrion starts as carrion")
@@ -381,9 +388,11 @@ func test_morsels_are_drawn_by_their_creatures_not_here() -> void:
 	var items: Array[Dictionary] = [
 		{"id": "c1", "kind": "meat", "position": Vector2(0.0, 0.0), "radius": 0.3, "source": "initial", "age": 0.0, "lifetime": 120.0},
 		{"id": "m1", "kind": "meat", "position": Vector2(1.0, 0.0), "radius": 0.2, "source": "morsel", "age": 0.0, "lifetime": 30.0},
-		{"id": "c2", "kind": "meat", "position": Vector2(2.0, 0.0), "radius": 0.3, "source": "rammer", "age": 0.0, "lifetime": 120.0}]
+		{"id": "c2", "kind": "meat", "position": Vector2(2.0, 0.0), "radius": 0.3, "source": "rammer", "age": 0.0, "lifetime": 120.0},
+		{"id": "s1", "kind": "meat", "position": Vector2(3.0, 0.0), "radius": 0.3, "source": "morsel_site", "age": 0.0,
+			"lifetime": 120.0, "species": "rammer"}]
 	meat.sync(items, 1.0)
-	check_eq(meat.shown_count(), 2, "two drawn: the morsel is not")
+	check_eq(meat.shown_count(), 2, "two drawn: neither the morsel nor the morsel site's item (S3G17 view)")
 	check_eq(meat.snapshot().keys(), ["c1", "c2"], "and it is not in what was drawn")
 	meat.free()
 

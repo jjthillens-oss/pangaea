@@ -22,6 +22,11 @@ extends Node
 ## (headless, %Fade dips instead); under it k is 1 and the camera at its zoom from frame 0, and the
 ## swell is halved.
 ##
+## A band-up (S3, s3-view 4, V3-1, V3-2): begin() gives the containers with set_retire_profile the
+## band-up profile (their leftovers sink BAND_UP_SINK_TM and fade over BAND_UP_RETIRE_S), an in-band
+## growth S2's; the pool hands the old band's landmarks to the OldBandLayer. cancel() tells each
+## container with cancel_growth first, so the hand-off can still fade (s3-view 4.2, Cancel).
+##
 ## The clock is the pool's draw time (V-1): the first advance() after begin() is t = 0, so the beat
 ## stops while the pool is paused and is the same at any frame rate. Everything is closed-form in t;
 ## no Tween runs.
@@ -42,6 +47,9 @@ const NOW_FOOD_S := 3.0
 const NOW_FOOD_MAX := 3
 ## Leftover pieces sink and fade over this, from the settle (>= MIN_FADE_S).
 const RETIRE_S := 1.2
+## A band-up's leftovers (V3-1, D-111): they sink to -3 tm and fade over the whole beat.
+const BAND_UP_SINK_TM := 3.0
+const BAND_UP_RETIRE_S := 2.0
 const OLD_FOOD_FADE_S := 0.6
 const GLITTER_DEPTH_TM := -3.0
 const GLITTER_SINK_S := 2.0
@@ -161,6 +169,10 @@ func begin(event: Dictionary, reduce_motion: bool) -> void:
 	_meat = _pool.carrion_view.snapshot()
 	_expired.clear()
 	_creature_haze.clear()
+	var band_up := is_band_up(_from, _to)
+	for c in _pool.growth_containers():
+		if c.has_method(&"set_retire_profile"):
+			c.call(&"set_retire_profile", BAND_UP_SINK_TM if band_up else SINK_TM, BAND_UP_RETIRE_S if band_up else RETIRE_S)
 	_running = true
 	if _reduced:
 		_show_still(_snapshot())
@@ -298,6 +310,9 @@ func glitter() -> Array[StillInstances]:
 func cancel() -> void:
 	if not _running:
 		return
+	for c in _pool.growth_containers():
+		if c.has_method(&"cancel_growth"):
+			c.call(&"cancel_growth")
 	_t = END_S
 	_step(true)
 
@@ -311,11 +326,16 @@ static func preblur(amount: float) -> ShaderMaterial:
 
 
 ## How far the leftovers have sunk and faded at beat time t, 0 to 1, from the settle at `settled_t`
-## (before the settle, 0).
-static func retire_share(t_s: float, settled_t: float) -> float:
+## (before the settle, 0), over `retire_s` (a container's profile; S2's RETIRE_S by default).
+static func retire_share(t_s: float, settled_t: float, retire_s := RETIRE_S) -> float:
 	if settled_t < 0.0:
 		return 0.0
-	return smoothstep(0.0, 1.0, (t_s - settled_t) / RETIRE_S)
+	return smoothstep(0.0, 1.0, (t_s - settled_t) / retire_s)
+
+
+## Whether a growth from size `from` to `to` crosses a band (2 to 3: band 0 to band 1).
+static func is_band_up(from: int, to: int) -> bool:
+	return WorldConfig.band_of(from) != WorldConfig.band_of(to)
 
 
 ## How far a fresh piece has come in at beat time t, 0 to 1.

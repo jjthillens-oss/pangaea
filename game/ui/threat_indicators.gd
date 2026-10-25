@@ -34,7 +34,8 @@ const MARK_BAR_SHARE := 0.26        ## the bar's (and the dot's) width, as a sha
 const MARK_GAP_PX := 8.0
 const MARK_OUTLINE_PX := 3.0
 ## The glyph for each behavior; anything else gets the jaw.
-const GLYPHS := {"ambush": "jaw", "territorial": "star"}
+## S3's hazard (the stinger veil) never engages, so it never gets an arrow; "warning" stands ready.
+const GLYPHS := {"ambush": "jaw", "territorial": "star", "hazard": "warning"}
 
 var pool: PoolScene
 ## The arrows drawn now, in creature order: {"id", "species", "glyph", "position" (the badge's

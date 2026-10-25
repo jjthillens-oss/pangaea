@@ -1,0 +1,83 @@
+{
+	"base_commit": "a9afd3b2b19d94910c095cf10b2b8d7773b672d9",
+	"content": "res://game/data/world_cell.json",
+	"overrides": {
+		"sizes.max_in_build": 2,
+		"switches.landmark_return": false
+	},
+	"overrides_note": "an override applies only where its key exists (landmark_return is absent on e3-base)",
+	"runs": [
+		{
+			"name": "swim_hunter_s1",
+			"body": "hunter",
+			"seed": 6101,
+			"driver": "swim",
+			"start_size": 1,
+			"hashes": {
+				"600": "3184722391",
+				"3600": "1553967114",
+				"18000": "3630666180"
+			}
+		},
+		{
+			"name": "swim_hunter_s2",
+			"body": "hunter",
+			"seed": 6101,
+			"driver": "swim",
+			"start_size": 2,
+			"hashes": {
+				"600": "2135154386",
+				"3600": "1890607406",
+				"18000": "3760965288"
+			}
+		},
+		{
+			"name": "swim_racer_s1",
+			"body": "racer",
+			"seed": 6101,
+			"driver": "swim_overdriven",
+			"start_size": 1,
+			"hashes": {
+				"600": "3551786301",
+				"3600": "60766624",
+				"18000": "2186704962"
+			}
+		},
+		{
+			"name": "swim_racer_s2",
+			"body": "racer",
+			"seed": 6101,
+			"driver": "swim_overdriven",
+			"start_size": 2,
+			"hashes": {
+				"600": "1395397041",
+				"3600": "2863446657",
+				"18000": "3287448354"
+			}
+		},
+		{
+			"name": "circle_hunter_s1",
+			"body": "hunter",
+			"seed": 6102,
+			"driver": "circle",
+			"start_size": 1,
+			"hashes": {
+				"600": "4003282442",
+				"3600": "344407834",
+				"18000": "4076368288"
+			}
+		},
+		{
+			"name": "circle_hunter_s2",
+			"body": "hunter",
+			"seed": 6102,
+			"driver": "circle",
+			"start_size": 2,
+			"hashes": {
+				"600": "3004348884",
+				"3600": "701575055",
+				"18000": "496437157"
+			}
+		}
+	]
+}
