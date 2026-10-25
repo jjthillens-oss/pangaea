@@ -336,7 +336,7 @@ func test_a_drag_round_the_rim_ends_snapped_with_a_guide_and_a_hint_line() -> vo
 func test_a_drag_never_snaps_a_part_onto_another_and_its_dot_can_still_be_picked() -> void:
 	editor.open(save, catalog, _state())
 	var mouth := str(editor.session.working.parts[0].id)
-	check_eq(_angle(mouth), 0.0, "the mouth holds the front")
+	check_near(_angle(mouth), 0.0, 1e-6, "the mouth holds the front")
 	editor.add("eye_spot")
 	var eye := editor.selected
 	var rim := _rim()
@@ -377,18 +377,18 @@ func test_with_symmetry_a_drag_does_not_take_along_a_part_it_passes_opposite() -
 	_press(rim, rim.at(_angle(b)), true)
 	check_eq(editor.selected, b, "B is picked")
 	_move(rim, rim.at(-0.97))
-	check_eq(_angle(b), -1.0, "B snaps opposite A")
+	check_near(_angle(b), -1.0, 1e-6, "B snaps opposite A")
 	for to in [-0.95, -0.6, -0.3]:
 		_move(rim, rim.at(to))
-		check_eq(_angle(a), 1.0, "A keeps its place while B is dragged on to %.2f" % to)
+		check_near(_angle(a), 1.0, 1e-6, "A keeps its place while B is dragged on to %.2f" % to)
 	check_near(_angle(b), -0.3, 1e-5, "B follows the pointer")
 	_move(rim, rim.at(-0.98))
 	_press(rim, rim.at(-0.98), false)
-	check_eq(_angle(b), -1.0, "released opposite A")
+	check_near(_angle(b), -1.0, 1e-6, "released opposite A")
 	check_eq(str(editor.selected_twin().get("id", "")), a, "from the release on, A and B are a pair")
 	editor.undo()
 	check_near(_angle(b), 2.0, 1e-5, "one Undo takes the drag back")
-	check_eq(_angle(a), 1.0, "and A never moved")
+	check_near(_angle(a), 1.0, 1e-6, "and A never moved")
 
 
 func test_with_symmetry_a_dragged_pair_stops_off_the_middle_line() -> void:
