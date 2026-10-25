@@ -74,12 +74,12 @@ func test_a_shore_rises_once_and_never_for_a_lineage_ashore() -> void:
 	check(problems.is_empty(), "a save with a shore is valid: %s" % [problems])
 
 	var ashore := _save(42)
-	ashore.era = ShoreLink.TO_ERA
+	ashore.era = "terrestrial"
 	check(not ShoreLink.in_water(ashore), "a lineage ashore is not in the water")
 	check(not ShoreLink.raise(ashore, 1.0, 1.0, 4), "no shore rises for it")
 	check(ashore.world_changes.is_empty(), "nothing recorded")
-	ashore.era = "aquatic"
-	check(not ShoreLink.raise(ashore, 1.0, 1.0, 4), "nor for any era past the microscopic")
+	ashore.era = ShoreLink.TO_ERA
+	check(not ShoreLink.raise(ashore, 1.0, 1.0, 4), "nor in the sea: the pool's sea edge is the cell's alone")
 
 
 func test_the_shore_s_point_and_distance_are_absolute_am() -> void:
@@ -119,7 +119,7 @@ func test_the_offer_opens_within_4_tm_and_again_only_past_6_tm() -> void:
 	check(not ShoreLink.in_reach(INF, 4) and ShoreLink.out_of_reach(INF, 4), "INF (no shore): never in reach")
 
 
-func test_crossing_moves_the_lineage_ashore_with_a_copy_of_its_first_creature() -> void:
+func test_crossing_moves_the_cell_into_the_sea_then_ashore_with_a_copy_of_its_first_creature() -> void:
 	var save := _save()
 	save.genome.generation = 3
 	save.adaptation_points = 64
@@ -128,15 +128,22 @@ func test_crossing_moves_the_lineage_ashore_with_a_copy_of_its_first_creature() 
 	var lineage := save.lineage_id
 	var genome := JSON.stringify(save.genome.to_dict())
 	var history := save.lineage_history.size()
-	var creature := CreatureRules.from_cell(save.genome)
-	var before := ShoreLink.cross(save, creature)
+	check_eq(ShoreLink.event_of(save).event, "entered_the_sea", "event_of names the link out of the pool")
+	var before := ShoreLink.cross(save)
 	check_eq(before, {"era": "microscopic", "history_size": history, "creature": {}}, "what it replaced")
-	check_eq(save.era, "terrestrial", "the era")
-	check(not ShoreLink.in_water(save), "out of the water")
+	check_eq(save.era, "aquatic", "the era")
+	check(not ShoreLink.in_water(save), "out of the pool")
 	check_eq(save.lineage_history.size(), history + 1, "one lineage event")
-	var event := {"generation": 3, "genome_id": save.genome.genome_id, "event": "came_ashore"}
+	var event := {"generation": 3, "genome_id": save.genome.genome_id, "event": "entered_the_sea"}
+	check_eq(save.lineage_history[-1], event, "entered_the_sea with the genome's generation and id")
+	check_eq(save.creature, {}, "no land creature in the sea")
+	# From the sea, ashore with the first creature.
+	var creature := CreatureRules.from_cell(save.genome)
+	before = ShoreLink.cross(save, {"creature": creature})
+	check_eq(before, {"era": "aquatic", "history_size": history + 1, "creature": {}}, "what the second replaced")
+	check_eq(save.era, "terrestrial", "ashore")
+	event = {"generation": 3, "genome_id": save.genome.genome_id, "event": "came_ashore"}
 	check_eq(save.lineage_history[-1], event, "came_ashore with the genome's generation and id")
-	check_eq(save.lineage_history[-1], ShoreLink.event_of(save), "event_of's")
 	check_eq(save.lineage_history[0].event, "founded", "the founding kept")
 	check_eq(save.creature, creature, "the first creature")
 	# A deep copy: changing the caller's dictionary (its body too) leaves the save's alone.
@@ -152,7 +159,7 @@ func test_crossing_moves_the_lineage_ashore_with_a_copy_of_its_first_creature() 
 	check_eq(save.world_seed, 41, "the world seed")
 	check_eq(_shores(save).size(), 1, "the shore stays in the world changes")
 	var state := _state(save)
-	check_eq(ShoreLink.cross(save, CreatureRules.new_creature()), {}, "a lineage ashore cannot cross again")
+	check_eq(ShoreLink.cross(save, {"creature": CreatureRules.new_creature()}), {}, "no way on from land yet")
 	check_eq(_state(save), state, "and nothing changed")
 
 
@@ -164,8 +171,8 @@ func test_undo_puts_back_the_era_the_history_and_the_creature() -> void:
 	save.creature = preview
 	check(ShoreLink.raise(save, 1.0, 2.0, 4), "the shore rose")
 	var state := _state(save)
-	var before := ShoreLink.cross(save, CreatureRules.from_cell(save.genome))
-	check(not before.is_empty() and save.era == "terrestrial", "crossed")
+	var before := ShoreLink.cross(save)
+	check(not before.is_empty() and save.era == "aquatic", "crossed")
 	ShoreLink.undo(save, before)
 	check_eq(save.era, "microscopic", "the era")
 	check_eq(save.lineage_history.size(), 1, "the history's length: the founding alone")
@@ -173,8 +180,8 @@ func test_undo_puts_back_the_era_the_history_and_the_creature() -> void:
 	check_eq(_state(save), state, "the whole save as it was")
 	ShoreLink.undo(save, {})
 	check_eq(_state(save), state, "undoing nothing changes nothing")
-	check(not ShoreLink.cross(save, CreatureRules.from_cell(save.genome)).is_empty(), "and it can cross again")
-	check_eq(save.lineage_history.size(), 2, "with one came_ashore")
+	check(not ShoreLink.cross(save).is_empty(), "and it can cross again")
+	check_eq(save.lineage_history.size(), 2, "with one entered_the_sea")
 
 
 func test_the_first_creature_is_the_starter_in_the_cell_s_hue() -> void:
@@ -235,7 +242,7 @@ func test_the_shore_arrow_names_the_shore() -> void:
 	var arrow := StarvingArrow.new()
 	arrow.label_format = PoolScene.SHORE_ARROW_LABEL
 	arrow.distance_m = 12.4
-	check_eq(arrow.label_text(), "Shore 12 m", "not food")
+	check_eq(arrow.label_text(), "Open sea 12 m", "not food")
 	check(not PoolScene.SHORE_ARROW_COLOR.is_equal_approx(StarvingArrow.COLOR), "nor the food arrow's colour")
 	arrow.free()
 
@@ -391,29 +398,29 @@ func test_a_ring_paid_after_a_checkpoint_move_in_the_same_tick_still_raises_the_
 	check(loaded.ok and not ShoreLink.shore_of(loaded.save).is_empty(), "and the file holds it")
 
 
-## GameSession.cross_ashore: the cell saved at the shore, the checkpoint, the lineage ashore, and the session counts
-## it saved (a quit during the crawl asks nothing). Without a shore nothing changes and the reason comes back.
-func test_crossing_ashore_through_the_session_leaves_nothing_unsaved() -> void:
+## GameSession.cross_to_sea: the cell saved at the sea's edge, the checkpoint, the lineage in the sea, and the session
+## counts it saved (a quit during the fade asks nothing). Without a sea edge nothing changes and the reason comes back.
+func test_crossing_to_sea_through_the_session_leaves_nothing_unsaved() -> void:
 	var session := _shipped(4406)
 	if session.sim == null or session.sim.growth == null:
 		return
 	var sim := session.sim
 	var top := sim.world.max_size
 	check(sim.debug_set_size(top), "the cell at the top, size %d" % top)
-	var refused := session.cross_ashore()
+	var refused := session.cross_to_sea()
 	check(not refused.ok and not refused.errors.is_empty(), "refused without a shore: %s" % [refused.errors])
 	check_eq(sim.save.era, ShoreLink.FROM_ERA, "still in the water")
 	check(session.raise_shore(), "the shore rises")
 	var points := sim.save.adaptation_points
-	var result := session.cross_ashore()
+	var result := session.cross_to_sea()
 	check(result.ok, "the lineage crosses: %s" % [result.errors])
-	check_eq(sim.save.era, ShoreLink.TO_ERA, "ashore in the sim's save")
+	check_eq(sim.save.era, ShoreLink.TO_ERA, "in the sea in the sim's save")
 	check(not session.dirty, "nothing unsaved after the crossing")
 	var loaded := session.persistence.load_from(slot)
 	check(loaded.ok and loaded.save.era == ShoreLink.TO_ERA and loaded.save.adaptation_points == points,
-		"the slot is ashore with the same points")
-	var cp := session.persistence.load_from(EraTransition.checkpoint_path(slot))
-	check(cp.ok and cp.save.era == ShoreLink.FROM_ERA, "the checkpoint holds the cell in the water")
+		"the slot is in the sea with the same points")
+	var cp := session.persistence.load_from(EraTransition.checkpoint_path(slot, ShoreLink.TO_ERA))
+	check(cp.ok and cp.save.era == ShoreLink.FROM_ERA, "the checkpoint holds the cell in the pool")
 
 
 func test_crossing_through_the_session_keeps_a_creature_shaped_in_the_water() -> void:
@@ -428,7 +435,7 @@ func test_crossing_through_the_session_keeps_a_creature_shaped_in_the_water() ->
 	shaped["history"] = [{"generation": 1}]
 	sim.save.creature = shaped
 	check(session.raise_shore(), "the shore rises")
-	check(session.cross_ashore().ok, "the lineage crosses")
+	check(session.cross_to_sea().ok, "the lineage crosses")
 	check_eq(sim.save.creature.get("generation"), 2, "with the creature it shaped")
 	var loaded := session.persistence.load_from(slot)
 	check(loaded.ok and loaded.save.creature.get("generation") == 2, "on disk too")

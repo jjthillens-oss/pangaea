@@ -229,16 +229,15 @@ func after_events(events: Array) -> Dictionary:
 	return save_now() if wanted else {}
 
 
-## "Crawl ashore" (the cell-to-creature link): saves the cell at the shore, then EraTransition.cross with the
-## lineage's creature (CreatureRules.ashore: the one it shaped in the preview, else one from the cell). On success the lineage is ashore on disk and in the sim's
-## save, and the session counts it saved, so a quit during the crawl asks nothing. Returns cross's {"ok", "errors",
-## "checkpoint"}, or the save's error with ok false.
-func cross_ashore() -> Dictionary:
+## "Swim out to sea" (the cell-to-sea link): saves the cell at the sea's edge, then EraTransition.cross into the
+## aquatic era (the aquatic block stays as it is, so the Aquatic stage builds the first fish from the cell's parts). On
+## success the lineage is in the sea on disk and in the sim's save, and the session counts it saved, so a quit during
+## the fade asks nothing. Returns cross's {"ok", "errors", "checkpoint"}, or the save's error with ok false.
+func cross_to_sea() -> Dictionary:
 	var saved := save_now()
 	if not saved.ok:
 		return {"ok": false, "errors": PackedStringArray([str(saved.error)]), "checkpoint": ""}
-	var creature := CreatureRules.ashore(sim.save.creature, sim.save.genome)
-	var result := EraTransition.cross(sim.save, slot, persistence, creature)
+	var result := EraTransition.cross(sim.save, slot, persistence)
 	if result.ok:
 		_mark_saved()
 	return result
