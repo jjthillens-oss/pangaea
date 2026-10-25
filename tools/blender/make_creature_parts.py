@@ -3196,9 +3196,12 @@ def build_spike():
             "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
 
 
-def _wet_skin_material(name, scale=90.0, rough=0.28):
-    """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet."""
+def _wet_skin_material(name, scale=90.0, rough=0.28, mottle=True):
+    """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet.
+    `mottle=False` gives the plain version for a surface whose UVs stretch (a closing lid): an even tone, no bump."""
     sh = sf.Shader(name)
+    if not mottle:
+        return sh.out("#CCCCCC", rough)
     mottle = sh.remap(sh.noise(scale, 2.0), 0.35, 0.65)
     pebble = sh.remap(sh.voronoi(scale * 6.0, 0.9), 0.3, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.12, 0.0004)
@@ -4104,9 +4107,10 @@ def build_eye_bulge():
     centre = Vector((0.0, 0.0, R * 1.05))
     axis = Vector((0.0, 0.0, 1.0))
     sclera = _sclera_material("M_EyeBulgeBallProc")
-    # The iris runs down to 108 degrees, just above the mound's lip (about 115), so only a thin cream rim shows.
-    iris_half = math.radians(108.0)
-    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, iris_half, math.radians(34.0), slit=0.11,
+    # The iris runs down to 116 degrees, past the mound's lip (about 115), so no pale collar shows between them;
+    # the sclera below is tinted a dark olive so any sliver that peeks out reads as shadowed skin, not a washer.
+    iris_half = math.radians(116.0)
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, iris_half, math.radians(40.0), slit=0.15,
                               slit_axis=(0.0, 1.0, 0.0))
     ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=24)
     sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
@@ -4125,12 +4129,20 @@ def build_eye_bulge():
             u = min(1.0, z / top)
             r = max(R * 0.95, R * (1.55 - 0.6 * math.sin(u * math.pi / 2) ** 0.7))
         prof.append((z, r))
-    lv, lf, _ = bc.revolve(prof, 24)
+    lv, lf, lbands = bc.revolve(prof, 24)
+    # revolve winds its faces inward for a rising profile; the mound is an open skirt, so flip them by hand (an
+    # inward mound lit its back face and showed a diagonal shading crease on the front).
+    lf = [tuple(reversed(f)) for f in lf]
     mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
-    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat], parent=ball, fix_normals=False)
-    mound_mat.name = "M_EyeBulgeMound"
-    baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#D9D2A8")),
-                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=512)
+    # The rings the blink rolls over the ball (above `low`) take a plain wet-skin lid material with no mottle, so
+    # the UVs stretching as the lid closes have nothing to streak.
+    lid_mat = _wet_skin_material("M_EyeBulgeLidProc", scale=140.0, mottle=False)
+    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat, lid_mat], [1 if b >= 4 else 0 for b in lbands],
+                           parent=ball, fix_normals=False)
+    mound_mat.name, lid_mat.name = "M_EyeBulgeMound", "M_EyeBulgeLid"
+    baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#4A4A2C")),
+                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E")),
+                  "M_EyeBulgeLid": sf.tint(_lin("#79A458"))}, size=512)
     pts = _check_pivot("eye_bulge", BULGE_SINK)
     foot = _footprint(pts, z_max=0.02)
 
@@ -4159,7 +4171,7 @@ def build_eye_bulge():
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
             "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 3, **baked}
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9, "M_EyeBulgeLid": 0.9}, "revision": 4, **baked}
 
 
 HAND_FROG_T = tuple(i / 8 for i in range(9))
