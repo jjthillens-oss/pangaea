@@ -9,7 +9,8 @@ extends SceneTree
 ##       body and name are the slot's, every body is drawn and the entry card holds the sim. Then, through the
 ##       stage's own actions: Share with nothing carried and an order with no band are refused in words and spend
 ##       nothing; Sing backs the wary loner away; each band member joins after the signal that fits its mood (a
-##       fruit picked by touch for the hungry one). Follow is acknowledged and the band keeps up over a 10 m walk;
+##       fruit picked by touch for the hungry one). Follow is acknowledged and the band keeps up over a 10 m walk,
+##       each member at its place beside the player and on screen clear of the HUD, walking and stopped;
 ##       an Investigate past the field's edge is acknowledged, then reported as unreachable within the order's
 ##       timeout; Assist feeds the nest until the group task is done; the hunter watches a band that stands
 ##       together, the scout warns and the hunter disengages; Retreat sends the band to the nest; the player
@@ -27,8 +28,8 @@ const SETTLE_FRAMES := 3
 const BODY_PRESET := "raptor"
 const CREATURE_NAME := "Smoke Walker"
 const CAST := ["b1", "b2", "b3"]
-## Slack on the band's follow distance, as the sim tests allow (members queue behind each other).
-const FOLLOW_SLACK_M := 2.0
+## Slack on a follower's distance from its own place beside the player (band.slots_m) once the band has stopped.
+const FOLLOW_SLACK_M := 1.5
 
 var main: Main
 var stage: SocialStage
@@ -219,13 +220,22 @@ func _follow() -> void:
 		walked = _ground(sim.player()["position"]).distance_to(start)
 		if walked >= 10.0:
 			break
+	_band_in_view("walking with the band")
 	_move = Vector2.ZERO
 	await _frames(90)
 	_check(walked >= 10.0, "the player walks 10 m (%.1f m)" % walked)
-	var limit := float(tuning["band"]["follow_m"]) + FOLLOW_SLACK_M
-	for id in CAST:
-		_check(_gap(id) <= limit and sim.individual(id)["state"] == "follow",
-				"%s keeps up (%.1f m, %s)" % [id, _gap(id), sim.individual(id)["state"]])
+	var slots: Array = tuning["band"]["slots_m"]
+	var me := _ground(sim.player()["position"])
+	var forward := Vector2(-sin(float(sim.player()["yaw"])), -cos(float(sim.player()["yaw"])))
+	var right := Vector2(-forward.y, forward.x)
+	for i in CAST.size():
+		var id: String = CAST[i]
+		var off: Array = slots[i]
+		var slot := me + right * float(off[0]) + forward * float(off[1])
+		var miss := _ground(sim.individual(id)["position"]).distance_to(slot)
+		_check(miss <= FOLLOW_SLACK_M and sim.individual(id)["state"] == "follow",
+				"%s keeps up, at its place beside the player (%.1f m from it, %s)" % [id, miss, sim.individual(id)["state"]])
+	_band_in_view("with the band stopped")
 	_tags_clear("with the band following")
 
 
@@ -398,6 +408,26 @@ func _leave_and_return(slot: String) -> void:
 	stage.leave_dialog.choose("leave")
 	await _frames(SETTLE_FRAMES)
 	_check(main.social_stage == null and main.screen == main.start_screen, "Back to title leaves")
+
+
+## Every following member is on screen, its body clear of the HUD's glass (the dock, the captions, the cards), with
+## the default camera: the band is seen, not hidden under the dock.
+func _band_in_view(when: String) -> void:
+	var covered := stage.hud.covered_rects()
+	var camera := stage.world.camera
+	var view := Rect2(Vector2.ZERO, stage.tags.size)
+	var bad := []
+	for id in CAST:
+		var p: Vector3 = stage.sim.individual(id)["position"]
+		var at := p + Vector3(0.0, 0.4, 0.0)
+		var screen := camera.unproject_position(at)
+		var hidden := camera.is_position_behind(at) or not view.has_point(screen)
+		for r: Rect2 in covered:
+			if r.has_point(screen):
+				hidden = true
+		if hidden:
+			bad.append("%s at %s" % [id, screen.round()])
+	_check(bad.is_empty(), "%s, every member shows clear of the HUD (%d panels): %s" % [when, covered.size(), bad])
 
 
 ## No tag that shows sits on the HUD's glass (the captions, the dock, the cards).

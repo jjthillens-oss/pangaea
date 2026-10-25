@@ -7,7 +7,7 @@ extends SceneTree
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --audio-driver Dummy --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --script res://tools/godot/social_shots.gd \
 ##     -- --out=DIR [--slot=PATH] [--suffix=_1280] [--only=entry,recognition,...] [--title]
-## The shots: entry, refusal (Share with empty hands, refused in words), recognition, response, band_follow,
+## The shots: entry, refusal (Share with empty hands, refused in words), recognition, response, band_walk, band_follow,
 ## orders_menu, order_ack (Assist chosen in the menu and acknowledged), task_carry (a carrier bringing fruit to the
 ## nest), task_done and hunter. sim.place() (tests and tools only)
 ## moves the player between beats so the script stays short; every answer, join and order comes from the sim.
@@ -95,12 +95,10 @@ func _run() -> void:
 	await _frames(10)
 	_move = way * 0.8
 	await _frames(200)
+	# Walking, with the default camera behind the player (no orbit): each member keeps its place beside the player.
+	await _shot("band_walk")
 	_move = Vector2.ZERO
-	await _frames(50)
-	# The band trails between the camera and the player: orbit to a front three-quarter view, as the right stick does.
-	stage.world.camera_yaw = float(stage.sim.player()["yaw"]) + PI * 0.75
-	stage.world.snap_camera()
-	await _frames(4)
+	await _frames(90)
 	await _shot("band_follow")
 
 	stage.open_menu()
@@ -153,14 +151,14 @@ func _run() -> void:
 	stage.sim.place(SocialSim.PLAYER_ID, at, atan2(-6.0, 10.0))
 	stage.world.camera_yaw = atan2(-6.0, 10.0)
 	stage.world.snap_camera()
-	await _frames(240)
-	# Look from the player towards the hunter (an orbit, as the right stick does), so both are mid-screen.
+	await _frames(150)
+	# Walk a few steps towards the hunter: the default camera swings in behind the player by itself (no orbit).
 	var hp: Vector3 = stage.sim.hunter()["position"]
 	var me: Vector3 = stage.sim.player()["position"]
-	var look := Vector2(hp.x - me.x, hp.z - me.z)
-	stage.world.camera_yaw = atan2(-look.x, -look.y)
-	stage.world.snap_camera()
-	await _frames(3)
+	_move = Vector2(hp.x - me.x, hp.z - me.z).normalized() * 0.6
+	await _frames(90)
+	_move = Vector2.ZERO
+	await _frames(20)
 	print("social_shots: hunter ", stage.sim.hunter()["state"], " captions ", stage.hud.caption_texts())
 	await _shot("hunter")
 	quit()

@@ -51,6 +51,51 @@ func test_a_follower_keeps_within_follow_distance() -> void:
 	check(worst <= follow_m + float(tuning["band"]["spacing_m"]) + 0.5, "stays within follow distance (%.2f m)" % worst)
 
 
+## With a slot (its own place beside the leader) a follower walks to it and stands there, so two followers of one
+## leader keep apart instead of meeting at the same point behind it.
+func test_followers_keep_their_slots_beside_the_leader() -> void:
+	var spacing := float(tuning["band"]["spacing_m"])
+	var slots: Array = tuning["band"]["slots_m"]
+	var leader := Vector2.ZERO
+	var forward := Vector2(1.0, 0.0)
+	var right := Vector2(-forward.y, forward.x)
+	var bodies := [Vector2(-10.0, 4.0), Vector2(-9.0, -5.0)]
+	var memories := [CompanionBrain.fresh_memory(Vector2(0.0, -1.0)), CompanionBrain.fresh_memory(Vector2(0.0, -1.0))]
+	var worst_slot := 0.0
+	var states := []
+	for tick in 1500:
+		if tick < 900:
+			leader += forward * 2.0 / 60.0
+		for k in 2:
+			var off: Array = slots[k]
+			var slot: Vector2 = leader + right * float(off[0]) + forward * float(off[1])
+			var out := CompanionBrain.decide(_companion({"order": {"name": "follow", "ticks_left": -1},
+					"leader": _seen(bodies[k], leader), "slot": _seen(bodies[k], slot)}), memories[k], tuning)
+			bodies[k] += (out["heading"] as Vector2) * 3.0 * float(out["throttle"]) / 60.0
+			if tick > 600 and tick < 900:
+				worst_slot = maxf(worst_slot, (bodies[k] as Vector2).distance_to(slot))
+			if tick == 1499:
+				states.append(out["state"])
+				check_near(float(out["throttle"]), 0.0, 0.0001, "follower %d stands still at its slot" % k)
+				check((bodies[k] as Vector2).distance_to(slot) <= CompanionBrain.SLOT_M + 0.05, "follower %d is at its slot" % k)
+	check(worst_slot <= spacing, "walking, each keeps near its slot (worst %.2f m)" % worst_slot)
+	check_eq(states, ["follow", "follow"], "both follow")
+	check((bodies[0] as Vector2).distance_to(bodies[1]) >= spacing, "and they stand apart (%.2f m)"
+			% (bodies[0] as Vector2).distance_to(bodies[1]))
+
+
+## "lost" is said for each separation, not once per order: after catching up, a second separation is reported too.
+func test_a_follower_reports_each_time_it_loses_the_leader() -> void:
+	var lost_m := float(tuning["band"]["lost_m"])
+	var memory := CompanionBrain.fresh_memory(Vector2(0.0, -1.0))
+	var reports := []
+	for dist in [3.0, lost_m + 5.0, lost_m + 6.0, 20.0, 3.0, 2.5, lost_m + 4.0, lost_m + 8.0]:
+		var out := CompanionBrain.decide(_companion({"order": {"name": "follow", "ticks_left": -1},
+				"leader": {"dir": Vector2(1.0, 0.0), "dist": dist}}), memory, tuning)
+		reports.append(String((out["report"] as Dictionary).get("kind", "")))
+	check_eq(reports, ["", "lost", "", "", "", "", "lost", ""], "lost once per separation")
+
+
 func test_wait_holds_until_another_order() -> void:
 	var memory := CompanionBrain.fresh_memory(Vector2(0.0, -1.0))
 	var wait := {"name": "wait", "target_dir": Vector2(0.0, 1.0), "target_dist": 0.2, "ticks_left": -1}

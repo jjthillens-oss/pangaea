@@ -66,7 +66,7 @@ What Spore does (playthrough notes, Creature 0:10 to 0:50 and Tribal 0:51 to 1:3
 | A stance before any interaction: one button to make friends, one to make dinner | Approaching an individual shows its tag and the two answers with their bindings: **Friend** (a signal, R / pad B) or **Foe** (a bite, F / pad X). The stance is chosen per press, so nothing is left armed (Bible §19) |
 | Sing, dance, charm and pose in front of another species to impress it | Four signals: **Sing**, **Display** (the dance), **Share** (a gift) and **Calm** (the pose). The player reads the individual first and picks the one that fits (section 4). No rhythm game |
 | A goal card: "Impress 3 to ally" | A goal card: "Befriend the band 1 / 3", then "Feed the nest 2 / 6" |
-| Allies follow and join a pack of at most three | Companions join a band of at most three (PROPOSED cap), follow by default and take orders (section 7). A full band says so: "Band full: dismiss one first" |
+| Allies follow and join a pack of at most three | Companions join a band of at most three (PROPOSED cap), follow by default and take orders (section 7). Each follower keeps its own place beside the player (left, right, outer left; PROPOSED `band.slots_m`), level with it, so the band stands apart and stays in view above the HUD. A full band says so: "Your band is full (3): dismiss one first" |
 | Pack hunts | Assist sends the band's fighters at your foe; together they drive off the hunter (section 8). Hunting prey as a band is in the full stage, not the slice |
 | Your nest, and other species' nests you walk to | Your nest (home, retreat point, faint respawn) and the band's den (where its members live before they join and go back to when dismissed) |
 | Mating at the nest opens the editor | Kept: mating at the nest opens the same creature editor, now with a reach and cost preview for signals (section 9). Not in the slice |
@@ -91,8 +91,8 @@ What Spore does (playthrough notes, Creature 0:10 to 0:50 and Tribal 0:51 to 1:3
 - **Orders that answer (§8).** Follow, wait, investigate, retreat and assist, plus dismiss. Every order is either
   acknowledged or refused with a reason, reports progress or inability, can be cancelled by a new order, and times out.
 - **Relationships that forgive (§8).** Trust combines recent memories, which fade, with a slow persistent reputation.
-  One accidental bump never makes an individual or a band hostile; repeated harm makes an individual hostile for a
-  while, then it listens again. This replaces the creature stage's "a bitten creature stops listening for the rest
+  One accidental bump never makes an individual or a band hostile; repeated harm makes an individual, or after many
+  bites its whole group, hostile for a while, then it listens again. This replaces the creature stage's "a bitten creature stops listening for the rest
   of its life" for Social (section 5).
 - **Roles from anatomy (§8, §12).** Scout, defender and forager come from the body, each with a visible cost.
 - **Percepts-only AI (§13).** Companions and the hunter decide from what they perceive (directions, distances,
@@ -165,7 +165,10 @@ crested strider befriends display-loving individuals in fewer signals, a hopper'
 
 - **Identity.** A stable id (`b1`, `b2`, ...) sorted for every loop, a name from an original syllable list drawn
   from the world seed's name stream, a preset body, a disposition and a home site.
-- **Needs.** Hunger rises from its start value to full over 180 s and drops when the individual eats at a bush.
+- **Needs.** Hunger rises from its start value to full over 180 s and drops by 0.5 for each fruit the individual
+  eats: at a bush (a non-member), as a gift, or as a band member when the band's fruit reaches the nest (each
+  delivered fruit feeds the hungriest member, ties by id; a gatherer still carrying fruit when the round ends eats
+  it).
   Fear rises with a threat's closeness and fades over 6 s. Needs drive the mood word and the fitting signal.
 - **Memory.** At most 8 entries `{kind, tick, scale}`. Each kind has a weight and a lifetime; an entry's weight fades
   linearly to nothing over its lifetime and then drops out. When full, the weakest entry goes first, then the oldest
@@ -173,10 +176,17 @@ crested strider befriends display-loving individuals in fewer signals, a hopper'
   *bitten*, *bumped*, *helped* (the band fed the nest or drove off the hunter together), *parted* (dismissed).
 - **Trust** = disposition base (warm 1, curious 0, wary -1) + the faded memory weights + half the group's
   reputation, clamped to -10 .. 10.
-- **Reputation** is per group (the band, the loner). Each event moves it by a quarter of the memory weight, and no
-  single event moves it more than 0.5. It does not fade: it is the persistent half of the relationship (Bible §8). A
-  group refuses everything only at -5, which takes at least ten capped bad events.
-- **No single-collision war.** A bump is a -0.5 memory that lasts 10 s and moves reputation by 0.125. A bite is a -4
+- **Reputation** is per group (the band, the loner). Only kindness (*kind*, *gift*, *calm*, *listened*, *helped*)
+  and harm (*bitten*) move it; a startle, a bump or a parting is the individual's own short memory and never touches
+  the group's. Each event moves it by a quarter of the memory weight, and no single event moves it more than 0.5. A
+  good reputation stays: it is the persistent half of the relationship (Bible §8). A bad one is forgiven, drifting
+  back toward 0 at 0.02 a second.
+- **A group's refusal is bounded too.** When bites take a group's reputation to -5 (at least ten of them), the
+  whole group refuses everything for 120 s ("They won't listen: you hurt them", with the seconds left; caption
+  "The band won't listen to you for 120 s"). Then it listens again ("The band listens to you again"), its reputation
+  lifted to no worse than -2.5 and still being forgiven. Pressing the wrong signal at a wary individual, however
+  often, never turns its group against the player.
+- **No single-collision war.** A bump is a -0.5 memory that lasts 10 s and leaves reputation alone. A bite is a -4
   memory for 90 s. Three bites within 60 s make that individual hostile for 120 s ("It won't listen: you hurt it",
   with the seconds left); then it listens again, and its memories fade on their own. Nothing is "for life".
 

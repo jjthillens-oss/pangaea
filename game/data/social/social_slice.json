@@ -82,8 +82,17 @@
 		}
 	},
 	"hostile": {"bites": 3, "window_s": 60.0, "lasts_s": 120.0},
-	"reputation": {"rate": 0.25, "step_cap": 0.5, "hostile_at": -5.0, "weight": 0.5, "min": -10.0, "max": 10.0},
-	"band": {"cap": 3, "follow_m": 4.0, "spacing_m": 2.0, "lost_m": 30.0},
+	"reputation": {
+		"_note": "Only harm (bitten) and kindness move a group's reputation; startles, bumps and partings stay individual memories. A bad reputation drifts back toward 0 (forgive_per_s); at hostile_at the group refuses for hostile_s and then listens again at no worse than truce.",
+		"rate": 0.25, "step_cap": 0.5, "hostile_at": -5.0, "weight": 0.5, "min": -10.0, "max": 10.0,
+		"moved_by": ["kind", "gift", "calm", "listened", "helped", "bitten"],
+		"forgive_per_s": 0.02, "hostile_s": 120.0, "truce": -2.5
+	},
+	"band": {
+		"_note": "slots_m: each member's place beside the walking player, [right, forward] m in its frame, by its place in the band (level with the player, so the band stays in view above the HUD and members keep spacing_m apart).",
+		"cap": 3, "follow_m": 4.0, "spacing_m": 2.0, "lost_m": 30.0,
+		"slots_m": [[-3.0, -0.5], [3.0, -0.5], [-5.5, 0.5]]
+	},
 	"orders": {
 		"order": ["follow", "wait", "investigate", "retreat", "assist"],
 		"investigate_m": 12.0,

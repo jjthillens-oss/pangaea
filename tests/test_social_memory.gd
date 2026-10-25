@@ -71,7 +71,7 @@ func test_one_accidental_bump_never_makes_an_individual_or_the_band_hostile() ->
 		check_near(SocialMemory.trust(memory, 1000 + _life("bumped"), base, 0.0, tuning), base, 0.0001,
 				"%s: and it is forgotten" % disposition)
 	var rep := SocialMemory.reputation_after(0.0, SocialMemory.event_weight("bumped", tuning), tuning)
-	check_near(rep, _weight("bumped") * float(tuning["reputation"]["rate"]), 0.0001, "a bump nudges reputation")
+	check_near(rep, 0.0, 0.0001, "a bump never moves reputation")
 	check(not SocialMemory.group_hostile(rep, tuning), "the band is not hostile after a bump")
 	# Even many bumps in a row never make an individual hostile (only bites count) nor, quickly, the band.
 	var memory := []
@@ -144,3 +144,30 @@ func test_help_outlasts_a_bump() -> void:
 	check(SocialMemory.feeling(memory, later, tuning) > 0.0, "the feeling is still good")
 	check(SocialMemory.feeling(memory, 0, tuning) > 0.0, "even at the moment of the bump")
 	check(_life("helped") > _life("bumped"), "help is remembered longer")
+
+
+## Only harm and kindness move a group's reputation; a bad one is forgiven with time, and a group's refusal lasts
+## reputation.hostile_t, after which it listens again at no worse than reputation.truce.
+func test_a_groups_bad_reputation_is_forgiven_and_its_refusal_ends() -> void:
+	var r: Dictionary = tuning["reputation"]
+	for kind in ["startled", "bumped", "parted"]:
+		check_eq(SocialMemory.event_weight(kind, tuning), 0.0, "%s never moves reputation" % kind)
+	check(SocialMemory.event_weight("bitten", tuning) < 0.0, "a bite lowers it")
+	for kind in ["kind", "gift", "calm", "listened", "helped"]:
+		check(SocialMemory.event_weight(kind, tuning) > 0.0, "%s raises it" % kind)
+	var hz := float(tuning["tick_hz"])
+	var per_s := float(r["forgive_per_s"])
+	check_near(SocialMemory.forgiven(-3.0, int(hz) * 10, tuning), -3.0 + per_s * 10.0, 0.0001, "ten seconds forgive a little")
+	check_near(SocialMemory.forgiven(-0.01, int(hz) * 600, tuning), 0.0, 0.0001, "never past 0")
+	check_near(SocialMemory.forgiven(3.0, int(hz) * 600, tuning), 3.0, 0.0001, "a good reputation stays")
+	var at := float(r["hostile_at"])
+	var step := SocialMemory.event_weight("bitten", tuning)
+	var before := at + 0.25
+	var after := SocialMemory.reputation_after(before, step, tuning)
+	check_eq(SocialMemory.group_hostile_after(before, after, 1000, tuning), 1000 + int(r["hostile_t"]),
+			"a bite that reaches hostile_at: the group refuses for hostile_t")
+	check_eq(SocialMemory.group_hostile_after(at - 1.0, at - 0.5, 1000, tuning), 0, "a kind act never starts a refusal")
+	check_eq(SocialMemory.group_hostile_after(0.0, -0.5, 1000, tuning), 0, "a bite far from the mark does not")
+	check_near(SocialMemory.truce(float(r["min"]), tuning), float(r["truce"]), 0.0001, "the worst reputation is lifted to the truce")
+	check(float(r["truce"]) > at, "and the truce is above the mark")
+	check_near(SocialMemory.truce(-1.0, tuning), -1.0, 0.0001, "a better one is kept")

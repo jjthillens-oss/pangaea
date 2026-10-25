@@ -59,7 +59,8 @@ const RESPONSES: Array[String] = ["fits", "ok", "unsure", "startles", "busy"]
 ## the actor's cooldown is over; for Share, a body that can carry and a fruit carried; within range; for Display, the
 ## actor stands within signals.display.view_cone_deg of where the target faces.
 ## actor:  {position: Vector2, cooldown_t: int, carrying: int, traits: SocialTraits.of(...)}
-## target: {position: Vector2, heading: Vector2, traits, hostile_left_t: int, group_hostile: bool}
+## target: {position: Vector2, heading: Vector2, traits, hostile_left_t: int, group_hostile_left_t: int (the ticks
+## its group still refuses everything; or group_hostile: bool without a time)}
 static func check_signal(kind: String, actor: Dictionary, target: Dictionary, tuning: Dictionary) -> Dictionary:
 	if not SIGNALS.has(kind):
 		return _refuse("Unknown signal", 0.0)
@@ -68,6 +69,10 @@ static func check_signal(kind: String, actor: Dictionary, target: Dictionary, tu
 	if left > 0:
 		var secs := ceili(float(left) / float(tuning.get("tick_hz", TICKS_PER_SECOND)))
 		return _refuse("It won't listen: you hurt it (%d s)" % secs, range_m)
+	var group_left := int(target.get("group_hostile_left_t", 0))
+	if group_left > 0:
+		var group_secs := ceili(float(group_left) / float(tuning.get("tick_hz", TICKS_PER_SECOND)))
+		return _refuse("They won't listen: you hurt them (%d s)" % group_secs, range_m)
 	if bool(target.get("group_hostile", false)):
 		return _refuse("They won't listen: you hurt them too often", range_m)
 	if int(actor.get("cooldown_t", 0)) > 0:

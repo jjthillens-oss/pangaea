@@ -455,12 +455,14 @@ func _cover(covered: bool) -> void:
 
 
 ## The Social stage preview's button, last under Preview, styled like the Creature stage button. A third stage button
-## would push the column into the hint line at 1080 px, so the spacer under the tagline goes and the column's gaps
-## tighten (20 to 12 px).
+## would push the column into the hint line at 1080 px, so the column's gaps tighten a little (20 to 10 px), the
+## spacer under the tagline shrinks (40 to 12 px, so the tagline still stands apart from Continue) and the main
+## buttons sit 8 px apart instead of 10.
 func _add_social_button() -> void:
 	var left := main_view.get_node("Left") as VBoxContainer
-	left.get_node("Gap").visible = false
-	left.add_theme_constant_override("separation", 12)
+	(left.get_node("Gap") as Control).custom_minimum_size.y = 12.0
+	left.add_theme_constant_override("separation", 10)
+	(left.get_node("Buttons") as VBoxContainer).add_theme_constant_override("separation", 8)
 	social_button = Button.new()
 	social_button.name = "SocialButton"
 	social_button.text = SOCIAL_TEXT

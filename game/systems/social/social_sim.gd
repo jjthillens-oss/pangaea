@@ -16,7 +16,8 @@ extends RefCounted
 ##
 ## Tick order (tests depend on it):
 ##  1. tiers: each actor within tiers.far_m of the player is near, else far ("tier" event on a change);
-##  2. timers: cooldowns; the player recovers at the nest after a faint, its health regenerates;
+##  2. timers: cooldowns; the player recovers at the nest after a faint; a bad group reputation is forgiven a little
+##     and a group whose hostility is over listens again; the player's health regenerates;
 ##  3. the player's intent: dismiss, then the order, then the signal (each a one-tick press);
 ##  4. the player moves (not while fainted), clamped to the field;
 ##  5. needs and senses: hunger rises, fear fades and rises with the hunter's closeness, a band scout that first
@@ -42,10 +43,11 @@ extends RefCounted
 ## - orders: "ack" {who, order, words} or "order_refused" {who, order, reason} for each member, then "arrived" {who,
 ##   order}, "found" {who, what}, "cannot" {who, order, reason}, "done" {who, order}, "lost" {who}; "dismissed" {who,
 ##   name}; "left" {who, name, reason} (a member that turned hostile);
-## - the task: "picked" {who, bush}, "ate" {who, bush}, "delivered" {who, count, total}, "learned" {who, route},
-##   "task_done" {round, count};
+## - the task: "picked" {who, bush}, "ate" {who, bush} (bush "" for fruit shared at the nest or eaten from the mouth
+##   when a round ends), "delivered" {who, count, total}, "learned" {who, route}, "task_done" {round, count};
 ## - the hunter: "hunter_state" {state, why}, "warned" {who, name}, "hit" {target, by, damage}, "drove_off" {why};
-## - bites and bumps: "bit" {by, target}, "hostile" {who, name, seconds}, "bumped" {who, name};
+## - bites and bumps: "bit" {by, target}, "hostile" {who, name, seconds}, "bumped" {who, name}; a group:
+##   "group_hostile" {group, seconds} (bites took its reputation to reputation.hostile_at), "group_listens" {group};
 ## - the leader: "fainted" {band}, "recovered" {};
 ## - "tier" {who, tier}.
 
@@ -106,6 +108,8 @@ var hunter_c: Dictionary
 var bushes: Array = []
 ## Group ("band", "loner") -> reputation (SocialMemory.reputation_after).
 var reputation := {}
+## Group -> the tick until which it refuses everything (0: it listens).
+var group_until := {}
 ## The group task (feed the nest): {round, delivered, goal, rounds_done, helpers (ids, in id order)}.
 var task := {}
 
@@ -245,6 +249,7 @@ func tick(intent: Dictionary) -> Array:
 		c["bite_cooldown"] = maxi(0, int(c["bite_cooldown"]) - 1)
 	if me["fainted"] and tick_count >= int(me["faint_until"]):
 		_recover(events)
+	_forgive(events)
 	if not me["fainted"] and float(me["health"]) > 0.0:
 		me["health"] = minf(float(me["stats"]["max_health"]),
 				float(me["health"]) + float(tuning["player"]["health_regen_per_s"]) * DT)
@@ -420,6 +425,9 @@ func _percepts(c: Dictionary, elapsed: int) -> Dictionary:
 	p["nest"] = _seen_site(at, sites["nest"])
 	if c["member"] and not me["fainted"]:
 		p["leader"] = _seen(at, _g(me))
+		var slot: Variant = _slot_of(c)
+		if slot != null:
+			p["slot"] = _seen(at, slot)
 	var order: Dictionary = c["order"]
 	c["gathering"] = false
 	if not order.is_empty():
@@ -449,6 +457,31 @@ func _percepts(c: Dictionary, elapsed: int) -> Dictionary:
 	if not c["member"] and not me["fainted"] and _dist(c, me) <= float(c["traits"]["sight_m"]):
 		p["visitor"] = _seen(at, _g(me))
 	return p
+
+
+## A member's own place beside the walking player (band.slots_m, [right, forward] metres in the player's frame, by
+## its place in the band): so followers stand apart, spacing_m or more, and level with the player instead of in a
+## line behind it. null for a non-member or a member past the slots.
+func _slot_of(c: Dictionary) -> Variant:
+	var slots: Array = tuning["band"]["slots_m"]
+	var i := band().find(String(c["id"]))
+	if i < 0 or i >= slots.size():
+		return null
+	var forward := Rules.forward(me["yaw"])
+	var right := Vector2(-forward.y, forward.x)
+	var off: Array = slots[i]
+	var spot := _g(me) + right * float(off[0]) + forward * float(off[1])
+	var clamped: Vector3 = Rules.clamp_to_field(Vector3(spot.x, 0.0, spot.y), half_size, float(c["stats"]["body_radius_m"]))
+	return Vector2(clamped.x, clamped.z)
+
+
+## A member's own spot at the nest when the band retreats there: on a ring of band.spacing_m * 1.25 round its centre,
+## by its place in the band, so the band waits there side by side.
+func _nest_spot(c: Dictionary) -> Vector2:
+	var i := maxi(0, band().find(String(c["id"])))
+	var cap := maxi(1, int(tuning["band"]["cap"]))
+	var angle := TAU * float(i) / float(cap)
+	return sites["nest"]["position"] + Vector2(sin(angle), cos(angle)) * float(tuning["band"]["spacing_m"]) * 1.25
 
 
 func _ticks_left(order: Dictionary) -> int:
@@ -540,7 +573,7 @@ func _order(name: String, events: Array) -> void:
 			"investigate":
 				_set_order(c, name, "", spot, tick_count + int(tuning["orders"]["timeout_t"]))
 			"retreat":
-				_set_order(c, name, "", sites["nest"]["position"])
+				_set_order(c, name, "", _nest_spot(c))
 			_:
 				_set_order(c, name, String(check["mode"]))
 		if check["ok"]:
@@ -708,7 +741,7 @@ func _player_bite(fresh: bool, events: Array) -> void:
 		hunter_c["nerve"] = maxi(0, int(hunter_c["nerve"]) - int(tuning["bite"]["nerve_cost"]))
 		_fight_until = tick_count + _fight_t
 		return
-	_remember(best, SocialMemory.BITTEN, 1.0)
+	_remember(best, SocialMemory.BITTEN, 1.0, events)
 	best["fear"] = minf(1.0, float(best["fear"]) + float(tuning["bite"]["fear"]))
 	var was := hostile_left(best) > 0
 	best["hostile_until"] = maxi(int(best["hostile_until"]), SocialMemory.hostile_after(best["memory"], tick_count, tuning))
@@ -741,7 +774,7 @@ func _faint(events: Array) -> void:
 	me["faint_until"] = tick_count + int(tuning["player"]["faint_t"])
 	for c in cast:
 		if c["member"]:
-			_set_order(c, "retreat", "", sites["nest"]["position"])
+			_set_order(c, "retreat", "", _nest_spot(c))
 			c["order"]["by_faint"] = true
 	events.append({"kind": "fainted", "band": Array(band())})
 
@@ -791,8 +824,7 @@ func _food(events: Array) -> void:
 			c["carrying"] = int(c["carrying"]) + 1
 			events.append({"kind": "picked", "who": c["id"], "bush": b["id"]})
 		else:
-			c["hunger"] = maxf(0.0, float(c["hunger"]) - float(tuning["needs"]["eat_drop"]))
-			events.append({"kind": "ate", "who": c["id"], "bush": b["id"]})
+			_eat(c, 1, b["id"], events)
 	# Deliveries.
 	for c in cast:
 		if not c["member"] or int(c["carrying"]) <= 0 or not _in_nest(c):
@@ -804,6 +836,7 @@ func _food(events: Array) -> void:
 			task["helpers"].append(c["id"])
 			task["helpers"].sort()
 		events.append({"kind": "delivered", "who": c["id"], "count": count, "total": task["delivered"]})
+		_feed_band(count, events)
 		var route: Dictionary = c["learned"].get(GROVE_ROUTE, {"uses": 0, "inherited": false, "idle": 0})
 		var knew := _knows_route(c)
 		route["uses"] = int(route["uses"]) + 1
@@ -815,6 +848,26 @@ func _food(events: Array) -> void:
 	for b in bushes:
 		if not b["ripe"] and tick_count >= int(b["regrow_at"]):
 			b["ripe"] = true
+
+
+## The fruit brought to the nest feeds the band: each one goes to the hungriest member (ties by id) that is not
+## full, and lowers its hunger by needs.eat_drop.
+func _feed_band(count: int, events: Array) -> void:
+	for i in count:
+		var hungriest := {}
+		for c in cast:
+			if c["member"] and float(c["hunger"]) > 0.0 and (hungriest.is_empty() or float(c["hunger"]) > float(hungriest["hunger"])):
+				hungriest = c
+		if hungriest.is_empty():
+			return
+		_eat(hungriest, 1, "", events)
+
+
+## An individual eats `count` fruit (from `bush`, or "" for fruit at the nest or in its mouth): its hunger falls by
+## needs.eat_drop each.
+func _eat(c: Dictionary, count: int, bush: String, events: Array) -> void:
+	c["hunger"] = maxf(0.0, float(c["hunger"]) - float(tuning["needs"]["eat_drop"]) * count)
+	events.append({"kind": "ate", "who": c["id"], "bush": bush})
 
 
 func _pick(b: Dictionary) -> void:
@@ -841,6 +894,11 @@ func _task_done(events: Array) -> void:
 			_remember(c, "helped", 1.0)
 	for c in cast:
 		if c["member"] and String((c["order"] as Dictionary).get("name", "")) == "assist" and not in_fight():
+			# A gatherer still on its way with fruit eats what it carries: the round is over, and nothing it holds
+			# slips into the next one.
+			if int(c["carrying"]) > 0:
+				_eat(c, int(c["carrying"]), "", events)
+				c["carrying"] = 0
 			events.append({"kind": "done", "who": c["id"], "order": "assist"})
 			_set_order(c, "follow")
 	task["rounds_done"] = int(task["rounds_done"]) + 1
@@ -935,7 +993,7 @@ func _maybe_join(c: Dictionary, events: Array) -> void:
 		return
 	var cap := int(tuning["band"]["cap"])
 	if band().size() >= cap:
-		events.append({"kind": "refused", "action": "join", "who": c["id"], "reason": "Your band is full (%d)" % cap})
+		events.append({"kind": "refused", "action": "join", "who": c["id"], "reason": "Your band is full (%d): dismiss one first" % cap})
 		return
 	c["member"] = true
 	c["befriended"] = true
@@ -959,12 +1017,40 @@ func _dismiss(id: String, events: Array) -> void:
 	events.append({"kind": "dismissed", "who": id, "name": c["name"]})
 
 
-## A memory of `kind` for the individual, and the event's capped step in its group's reputation.
-func _remember(c: Dictionary, kind: String, scale: float) -> void:
+## A memory of `kind` for the individual, and the event's capped step in its group's reputation (only the kinds in
+## reputation.moved_by move it). A bad step that takes the group to reputation.hostile_at makes it refuse everything
+## for reputation.hostile_t ("group_hostile").
+func _remember(c: Dictionary, kind: String, scale: float, events: Array = []) -> void:
 	c["memory"] = SocialMemory.add(c["memory"], kind, tick_count, tuning, scale)
 	var group := String(c["group"])
-	reputation[group] = SocialMemory.reputation_after(float(reputation.get(group, 0.0)),
-			SocialMemory.event_weight(kind, tuning, scale), tuning)
+	var before := float(reputation.get(group, 0.0))
+	var after := SocialMemory.reputation_after(before, SocialMemory.event_weight(kind, tuning, scale), tuning)
+	reputation[group] = after
+	var until := SocialMemory.group_hostile_after(before, after, tick_count, tuning)
+	if until > 0:
+		var was := group_hostile_left(group) > 0
+		group_until[group] = maxi(int(group_until.get(group, 0)), until)
+		if not was:
+			events.append({"kind": "group_hostile", "group": group, "seconds": ceili(float(until - tick_count) / float(TICKS_PER_SECOND))})
+
+
+## The ticks a group still refuses everything (0: it listens).
+func group_hostile_left(group: String) -> int:
+	return maxi(0, int(group_until.get(group, 0)) - tick_count)
+
+
+## A bad reputation is forgiven a tick at a time; a group whose hostility is over listens again ("group_listens"),
+## its reputation lifted to at least reputation.truce.
+func _forgive(events: Array) -> void:
+	var groups := reputation.keys()
+	groups.sort()
+	for group in groups:
+		reputation[group] = SocialMemory.forgiven(float(reputation[group]), 1, tuning)
+		var until := int(group_until.get(group, 0))
+		if until > 0 and tick_count >= until:
+			group_until[group] = 0
+			reputation[group] = SocialMemory.truce(float(reputation[group]), tuning)
+			events.append({"kind": "group_listens", "group": group})
 
 
 func _actor() -> Dictionary:
@@ -974,7 +1060,7 @@ func _actor() -> Dictionary:
 
 func _signal_target(c: Dictionary) -> Dictionary:
 	return {"position": _g(c), "heading": Rules.forward(c["yaw"]), "traits": c["traits"],
-			"hostile_left_t": hostile_left(c), "group_hostile": SocialMemory.group_hostile(float(reputation[c["group"]]), tuning)}
+			"hostile_left_t": hostile_left(c), "group_hostile_left_t": group_hostile_left(String(c["group"]))}
 
 
 func _respond_target(c: Dictionary) -> Dictionary:
@@ -984,7 +1070,7 @@ func _respond_target(c: Dictionary) -> Dictionary:
 
 func _order_companion(c: Dictionary) -> Dictionary:
 	return {"role": c["role"], "fear": float(c["fear"]), "trust": trust_of(c),
-			"hostile": hostile_left(c) > 0 or SocialMemory.group_hostile(float(reputation[c["group"]]), tuning),
+			"hostile": hostile_left(c) > 0 or group_hostile_left(String(c["group"])) > 0,
 			"member": c["member"], "home_name": c["home"]}
 
 
@@ -1109,7 +1195,7 @@ func _view(c: Dictionary) -> Dictionary:
 	var trust := trust_of(c)
 	var shown := {"hunger": float(c["hunger"]), "fear": float(c["fear"]), "disposition": c["disposition"],
 			"trust": trust, "traits": c["traits"], "member": c["member"], "hostile_left_t": hostile_left(c),
-			"group_hostile": SocialMemory.group_hostile(float(reputation[c["group"]]), tuning)}
+			"group_hostile": group_hostile_left(String(c["group"])) > 0}
 	return {"id": c["id"], "name": c["name"], "preset": c["preset"], "role": c["role"], "disposition": c["disposition"],
 			"group": c["group"], "home": c["home"], "position": c["position"], "yaw": c["yaw"], "state": c["state"],
 			"tier": c["tier"], "member": c["member"], "befriended": c["befriended"],
@@ -1231,7 +1317,8 @@ func place(id: String, at: Vector2, yaw: float) -> void:
 ## Plain data in a fixed order: ground vectors as [x, z] pairs, lists in id order.
 func snapshot() -> Dictionary:
 	var out := {"tick": tick_count, "world_seed": world_seed, "target": _target, "band": Array(band()),
-			"reputation": _sorted(reputation), "task": task.duplicate(true), "in_fight": in_fight(),
+			"reputation": _sorted(reputation), "group_until": _sorted(group_until), "task": task.duplicate(true),
+			"in_fight": in_fight(),
 			"player": _body_snapshot(me), "individuals": [], "hunter": _body_snapshot(hunter_c), "bushes": []}
 	out["player"].merge({"fainted": me["fainted"], "carrying": me["carrying"], "cooldown_t": me["cooldown_t"]}, true)
 	for c in cast:
@@ -1271,7 +1358,7 @@ static func _sorted(d: Dictionary) -> Dictionary:
 
 ## Who the individuals are and what they remember, as plain data: {record: RECORD_KIND, world_seed, tick,
 ## individuals: [{id, name, preset, role, member, befriended, memory, hostile_until, learned}] in id order,
-## reputation, task}. Positions, needs and orders are not kept: a reloaded band gathers round the player.
+## reputation, group_until, task}. Positions, needs and orders are not kept: a reloaded band gathers round the player.
 func to_record() -> Dictionary:
 	var people := []
 	for c in cast:
@@ -1279,11 +1366,11 @@ func to_record() -> Dictionary:
 				"befriended": c["befriended"], "memory": (c["memory"] as Array).duplicate(true),
 				"hostile_until": c["hostile_until"], "learned": (c["learned"] as Dictionary).duplicate(true)})
 	return {"record": RECORD_KIND, "world_seed": world_seed, "tick": tick_count, "individuals": people,
-			"reputation": _sorted(reputation), "task": task.duplicate(true)}
+			"reputation": _sorted(reputation), "group_until": _sorted(group_until), "task": task.duplicate(true)}
 
 
 ## A world rebuilt from to_record(): the same seed's world with the recorded names, members, memories, hostility,
-## learned routes, reputation and task, at the recorded tick; members stand round the player at its start and
+## learned routes, reputation, group hostility and task, at the recorded tick; members stand round the player at its start and
 ## follow. null for a record of another kind.
 static func from_record(record: Dictionary, player_body: Dictionary, p_tuning: Dictionary, p_data: Dictionary) -> SocialSim:
 	if String(record.get("record", "")) != RECORD_KIND:
@@ -1320,6 +1407,9 @@ static func from_record(record: Dictionary, player_body: Dictionary, p_tuning: D
 	var rep: Dictionary = record["reputation"]
 	for group in rep:
 		sim.reputation[String(group)] = float(rep[group])
+	var until: Dictionary = record.get("group_until", {})
+	for group in until:
+		sim.group_until[String(group)] = int(until[group])
 	var t: Dictionary = record["task"]
 	var helpers := []
 	for id in t["helpers"]:

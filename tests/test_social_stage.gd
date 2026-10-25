@@ -255,6 +255,32 @@ func test_the_hint_names_the_bindings() -> void:
 	InputPrompts.device = was
 
 
+## The individual the player faces carries the two answers on its own tag, with their bindings (plan section 2:
+## friend or foe before any interaction); no other tag does.
+func test_the_target_tag_offers_friend_and_foe() -> void:
+	var was := InputPrompts.device
+	InputPrompts.device = "keys"
+	var sim := _sim()
+	var c: Dictionary = sim.individual("b1")
+	var at := Vector2(c["position"].x, c["position"].z) + Vector2(-sin(c["yaw"]), -cos(c["yaw"])) * 4.0
+	var to := Vector2(c["position"].x, c["position"].z) - at
+	sim.place(SocialSim.PLAYER_ID, at, atan2(-to.x, -to.y))
+	sim.tick({})
+	var tags := SocialTags.new()
+	_nodes.append(tags)
+	tags.sim = sim
+	check_eq(sim.target_id(), "b1", "the strider is the target")
+	var line := tags.answer_line("b1")
+	var friend := InputPrompts.names_for(&"creature_social", "keys")
+	var foe := InputPrompts.names_for(&"creature_bite", "keys")
+	check(line.contains("Friend") and line.contains("Foe"), "the target's tag offers both answers: %s" % line)
+	check(not friend.is_empty() and line.contains(friend[0]) and not foe.is_empty() and line.contains(foe[0]),
+			"with their keys (%s, %s): %s" % [friend, foe, line])
+	check_eq(tags.answer_line("b2"), "", "another individual's tag does not")
+	check_eq(tags.answer_line(String(sim.hunter()["id"])), "", "nor does the hunter's")
+	InputPrompts.device = was
+
+
 func test_every_shown_event_has_words() -> void:
 	var names := {"b1": "Ama", "player": "You", "h1": "The hunter"}
 	var events := [{"kind": "refused", "action": "sing", "who": "b1", "reason": "Too far: come within 6 m"},
@@ -272,7 +298,8 @@ func test_every_shown_event_has_words() -> void:
 			{"kind": "hit", "target": "player", "by": "h1", "damage": 5.0}, {"kind": "hit", "target": "b1", "by": "h1", "damage": 0.0},
 			{"kind": "drove_off", "why": "group"}, {"kind": "bit", "by": "player", "target": "b1"},
 			{"kind": "hostile", "who": "b1", "name": "Ama", "seconds": 40}, {"kind": "bumped", "who": "b1", "name": "Ama"},
-			{"kind": "fainted", "band": ["b1"]}, {"kind": "recovered"}]
+			{"kind": "fainted", "band": ["b1"]}, {"kind": "recovered"},
+			{"kind": "group_hostile", "group": "band", "seconds": 120}, {"kind": "group_listens", "group": "band"}]
 	for e in events:
 		var text := SocialHud.event_text(e, names)
 		check(not text.is_empty(), "%s has words" % e["kind"])

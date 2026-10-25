@@ -8,6 +8,8 @@ extends RefCounted
 ## Percepts (every direction is a unit Vector2 on the ground, x along +X and y along +Z; {} means none):
 ##   leader:     {dir, dist} of the one this companion follows (band members only; {} when it has fainted, or for a
 ##               non-member)
+##   slot:       {dir, dist} of its own place beside the leader while it follows (band.slots_m), or {}: it keeps that
+##               place instead of walking straight at the leader, so the band stands apart and level with the leader
 ##   order:      {name, target_dir, target_dist, ticks_left, mode} the order it is carrying out, or {}. ticks_left
 ##               is the time the order has left (-1: no limit); mode is "fight" or "gather" for assist.
 ##   threat:     {dir, dist} of a predator in sight, or {}
@@ -22,7 +24,8 @@ extends RefCounted
 ## The decision: {state, heading: Vector2, throttle: 0..1, bite: bool, report: {} or {kind, ...}}. States: idle,
 ## forage, follow, wait, investigate, retreat, assist, flee, socialize, recover, return. Reports, once per order:
 ## "arrived" (at the spot or the nest), "cannot" {reason} (an investigation without progress for orders.stuck_t or out
-## of time), "lost" (the leader is further than band.lost_m), "done" (an order ran out of time).
+## of time), "lost" (the leader is further than band.lost_m; said again after each separation once it has caught up
+## within band.follow_m + band.spacing_m), "done" (an order ran out of time).
 ## Every order ends: by its own end state, its timeout, or when the leader is gone (then it goes home and waits).
 
 const STATES: Array[String] = ["idle", "forage", "follow", "wait", "investigate", "retreat", "assist", "flee",
@@ -31,6 +34,8 @@ const WALK := 0.45
 const IDLE_WANDER := 0.15
 ## Getting this much closer to the spot counts as progress for an investigation.
 const PROGRESS_M := 0.25
+## A follower this close to its slot stands still.
+const SLOT_M := 0.5
 ## A welcomed individual steps up to this distance and stops.
 const CLOSE_M := 2.0
 ## A wary non-member keeps a stranger at least this far away; a curious one turns to face it within VISIT_M.
@@ -98,24 +103,42 @@ static func _choose(p: Dictionary, memory: Dictionary, tuning: Dictionary) -> Di
 	return _live_at_home(p, tuning)
 
 
-## Follow: keep within band.follow_m of the leader; past band.lost_m it says "lost" and goes home.
+## Follow: keep its slot beside the leader (or, without one, within band.follow_m of it); past band.lost_m it says
+## "lost" and goes home, and once it has caught up again a later separation is reported again.
 static func _follow(p: Dictionary, memory: Dictionary, tuning: Dictionary) -> Dictionary:
 	var leader: Dictionary = p.get("leader", {})
 	if leader.is_empty():
 		return _go_home(p, tuning)
 	var band: Dictionary = tuning["band"]
 	var dist := float(leader["dist"])
-	var dir: Vector2 = leader["dir"]
 	if dist > float(band["lost_m"]):
 		var out := _go_home(p, tuning)
 		if not memory["reported"]:
 			memory["reported"] = true
 			out["report"] = {"kind": "lost"}
 		return out
+	if dist <= float(band["follow_m"]) + float(band["spacing_m"]):
+		memory["reported"] = false
+	return _keep_up(p, "follow", tuning)
+
+
+## Walks to its slot beside the leader (faster the further it is, standing still within SLOT_M and facing the way
+## the leader is), or without a slot toward the leader until within band.follow_m.
+static func _keep_up(p: Dictionary, moving_state: String, tuning: Dictionary) -> Dictionary:
+	var leader: Dictionary = p["leader"]
+	var band: Dictionary = tuning["band"]
+	var spacing := float(band["spacing_m"])
+	var slot: Dictionary = p.get("slot", {})
+	if not slot.is_empty():
+		var to_slot := float(slot["dist"])
+		if to_slot > SLOT_M:
+			return _act(moving_state, slot["dir"], clampf(to_slot / spacing, 0.35, 1.0))
+		return _act("follow", leader["dir"], 0.0)
+	var dist := float(leader["dist"])
 	var follow_m := float(band["follow_m"])
 	if dist > follow_m:
-		return _act("follow", dir, 1.0 if dist > follow_m + float(band["spacing_m"]) else 0.6)
-	return _act("follow", dir, 0.0)
+		return _act(moving_state, leader["dir"], 1.0 if dist > follow_m + spacing else 0.6)
+	return _act("follow", leader["dir"], 0.0)
 
 
 ## Walk to the order's spot and stand there (wait, retreat).
@@ -160,9 +183,7 @@ static func _come_back(p: Dictionary, tuning: Dictionary) -> Dictionary:
 	var leader: Dictionary = p.get("leader", {})
 	if leader.is_empty():
 		return _go_home(p, tuning)
-	if float(leader["dist"]) > float(tuning["band"]["follow_m"]):
-		return _act("return", leader["dir"], 1.0)
-	return _act("follow", leader["dir"], 0.0)
+	return _keep_up(p, "return", tuning)
 
 
 ## Assist: a fighter on a fight goes for the foe and bites within reach; everyone else gathers fruit for the nest.

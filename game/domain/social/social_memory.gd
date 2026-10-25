@@ -10,9 +10,12 @@ extends RefCounted
 ## smallest faded weight by size, good or bad), then the oldest, ties broken by kind.
 ##
 ## Trust = disposition base + the faded weights + reputation * reputation.weight, clamped to trust.min .. trust.max.
-## Reputation belongs to a group (the band, the loner). Each event moves it by reputation.rate times the event's
-## weight, never by more than reputation.step_cap, and it does not fade. A group refuses everything only at
-## reputation.hostile_at. An individual turns hostile for hostile.lasts_t after hostile.bites bites within
+## Reputation belongs to a group (the band, the loner). Only the kinds in reputation.moved_by move it (the kind
+## answers, gifts and help, and bites): a startle, a bump or a parting stays the individual's own memory. Each event
+## moves it by reputation.rate times the event's weight, never by more than reputation.step_cap; a bad reputation is
+## forgiven, drifting back toward 0 at reputation.forgive_per_s, and a good one stays. A group whose reputation falls
+## to reputation.hostile_at refuses everything for reputation.hostile_t and then listens again, its reputation lifted
+## to at least reputation.truce. An individual turns hostile for hostile.lasts_t after hostile.bites bites within
 ## hostile.window_t, and listens again afterwards: nothing is "for life".
 
 const BITTEN := "bitten"
@@ -110,12 +113,44 @@ static func reputation_after(reputation: float, weight: float, tuning: Dictionar
 	return clampf(reputation + step, float(r["min"]), float(r["max"]))
 
 
-## The weight one event of `kind` carries into reputation_after (weight * scale; 0 for an unknown kind).
+## The weight one event of `kind` carries into reputation_after (weight * scale; 0 for an unknown kind, and for a
+## kind that is not in reputation.moved_by: a startle, a bump or a parting never moves a group's reputation).
 static func event_weight(kind: String, tuning: Dictionary, scale: float = 1.0) -> float:
 	var kinds: Dictionary = tuning["memory"]["kinds"]
-	return float(kinds[kind]["weight"]) * scale if kinds.has(kind) else 0.0
+	if not kinds.has(kind) or not moves_reputation(kind, tuning):
+		return 0.0
+	return float(kinds[kind]["weight"]) * scale
 
 
-## Whether a group with this reputation refuses everything (at or below reputation.hostile_at).
+## Whether an event of `kind` moves its group's reputation (reputation.moved_by).
+static func moves_reputation(kind: String, tuning: Dictionary) -> bool:
+	return (tuning["reputation"]["moved_by"] as Array).has(kind)
+
+
+## Whether a group with this reputation is at or below reputation.hostile_at (the mark that starts its hostility).
 static func group_hostile(reputation: float, tuning: Dictionary) -> bool:
 	return reputation <= float(tuning["reputation"]["hostile_at"])
+
+
+## The tick until which a group refuses everything after one event took its reputation from `before` to `after` at
+## `tick`: tick + reputation.hostile_t when the event was bad and left it at or below reputation.hostile_at; else 0.
+## Keep the larger of this and any hostility the group already has.
+static func group_hostile_after(before: float, after: float, tick: int, tuning: Dictionary) -> int:
+	if after < before and group_hostile(after, tuning):
+		return tick + int(tuning["reputation"]["hostile_t"])
+	return 0
+
+
+## A bad reputation after `ticks` ticks of forgiveness: it drifts back toward 0 at reputation.forgive_per_s (never
+## past 0). A good reputation stays.
+static func forgiven(reputation: float, ticks: int, tuning: Dictionary) -> float:
+	if reputation >= 0.0 or ticks <= 0:
+		return reputation
+	var r: Dictionary = tuning["reputation"]
+	var hz := float(tuning.get("tick_hz", 60))
+	return minf(0.0, reputation + float(r["forgive_per_s"]) * float(ticks) / hz)
+
+
+## A group's reputation when its hostility ends: at least reputation.truce, so it listens again.
+static func truce(reputation: float, tuning: Dictionary) -> float:
+	return maxf(reputation, float(tuning["reputation"]["truce"]))

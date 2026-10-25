@@ -26,7 +26,7 @@ const CAPTION_FADE_S := 0.6
 const CAPTION_LINES := 3
 ## Events that must not be pushed off the caption by routine ones in the same tick: they are captioned last.
 const KEY_EVENTS := ["task_done", "joined", "befriended", "left", "hostile", "fainted", "recovered", "hit", "warned",
-		"drove_off"]
+		"drove_off", "group_hostile", "group_listens"]
 const MARK := "▸ "
 const DONE := "✓ "
 const SIGNAL_WORDS := {"sing": "Sing", "display": "Display", "share": "Share", "calm": "Calm"}
@@ -526,6 +526,11 @@ static func names_of(p_sim: SocialSim) -> Dictionary:
 
 
 ## An event in words for the caption ("" for one that needs none). `names`: names_of().
+## A group's name in a caption: "The band", else "The loner".
+static func group_name(group: String) -> String:
+	return "The band" if group == "band" else "The loner"
+
+
 static func event_text(e: Dictionary, names: Dictionary = {}) -> String:
 	var who := String(names.get(String(e.get("who", "")), e.get("name", e.get("who", ""))))
 	match String(e.get("kind", "")):
@@ -583,6 +588,10 @@ static func event_text(e: Dictionary, names: Dictionary = {}) -> String:
 			return "%s won't trust you for %d s" % [String(e.get("name", who)), int(e.get("seconds", 0))]
 		"bumped":
 			return "You bump into %s; it knows it was an accident" % String(e.get("name", who))
+		"group_hostile":
+			return "%s won't listen to you for %d s" % [group_name(String(e.get("group", ""))), int(e.get("seconds", 0))]
+		"group_listens":
+			return "%s listens to you again" % group_name(String(e.get("group", "")))
 		"fainted":
 			return "You faint! Your band waits for you at the nest"
 		"recovered":

@@ -4,7 +4,9 @@ extends Control
 ## individual and the hunter, projected from the world with the camera, reading "Name · role · mood" (the mood is
 ## the word the player reads the individual by: hungry, wary, scared, curious, warm, at ease or hostile) and, under
 ## it, the trust word and the latest answer to a signal for a few seconds. The individual the player's signals go to
-## carries a "▸" mark. Words carry everything, so nothing relies on colour alone. Tags ignore the mouse.
+## carries a "▸" mark and a third line with the two answers it can be given and their bindings ("R  Friend · F  Foe",
+## from InputPrompts, so it follows rebinding and the device in use). Words carry everything, so nothing relies on
+## colour alone. Tags ignore the mouse.
 
 const THEME := preload("res://game/ui/theme/pangaea_theme.tres")
 const MARK := "▸ "
@@ -22,7 +24,7 @@ var world: SocialWorld
 ## Returns the screen rects (global) a tag must not cover, such as SocialHud.covered_rects: a tag that would overlap
 ## one is hidden, so the HUD's words never sit on top of a tag's.
 var keep_clear: Callable
-## id -> {panel, top, bottom}
+## id -> {panel, top, bottom, answers}
 var tags := {}
 var _responses := {}
 
@@ -58,8 +60,15 @@ func _make_tag(id: String) -> Dictionary:
 	bottom.add_theme_font_size_override("font_size", 18)
 	bottom.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(bottom)
+	var answers := Label.new()
+	answers.name = "Answers"
+	answers.theme_type_variation = &"SmallLabel"
+	answers.add_theme_font_size_override("font_size", 16)
+	answers.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	answers.visible = false
+	box.add_child(answers)
 	add_child(panel)
-	return {"panel": panel, "top": top, "bottom": bottom}
+	return {"panel": panel, "top": top, "bottom": bottom, "answers": answers}
 
 
 ## Keeps the latest answer to a signal per individual.
@@ -90,6 +99,14 @@ func tag_lines(id: String) -> PackedStringArray:
 	if _responses.has(id):
 		bottom += " · " + String(_responses[id]["words"])
 	return PackedStringArray([top, bottom])
+
+
+## The answers line on the target's tag: Friend (the selected signal's press) and Foe (the bite), with the bindings
+## of the device in use; "" for any other tag.
+func answer_line(id: String) -> String:
+	if sim == null or id != sim.target_id():
+		return ""
+	return InputPrompts.hint_line([[&"creature_social", "Friend"], [&"creature_bite", "Foe"]])
 
 
 static func hunter_word(state: String) -> String:
@@ -125,6 +142,9 @@ func refresh(delta: float) -> void:
 		var lines := tag_lines(id)
 		tag["top"].text = lines[0]
 		tag["bottom"].text = lines[1]
+		var answers := answer_line(id)
+		tag["answers"].text = answers
+		tag["answers"].visible = not answers.is_empty()
 		# unproject_position gives the canvas's own coordinates (the stretch's design size), which this full-rect
 		# Control under an untransformed CanvasLayer shares.
 		var screen := camera.unproject_position(at)

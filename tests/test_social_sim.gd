@@ -255,6 +255,8 @@ static func _reservations_ok(sim: SocialSim) -> String:
 func test_a_group_task_feeds_the_nest_and_no_bush_is_picked_twice() -> void:
 	var sim := _with_band(["b1", "b2", "b3"])
 	var regrow := int(_tuning["grove"]["regrow_t"])
+	for id in sim.band():
+		sim._individual_of(id)["hunger"] = 1.0
 	var acks := _of_kind(sim.tick({"order": "assist"}), "ack")
 	check_eq(acks.size(), 3, "each member acknowledges Assist")
 	for a in acks:
@@ -301,6 +303,11 @@ func test_a_group_task_feeds_the_nest_and_no_bush_is_picked_twice() -> void:
 	check_eq(_of_kind(events, "done").size(), 3, "every gatherer's Assist ends")
 	for id in sim.band():
 		check_eq(sim.individual(id)["order"], "follow", "%s follows again" % id)
+		check_eq(int(sim.individual(id)["carrying"]), 0, "%s carries nothing into the next round" % id)
+		check(float(sim.individual(id)["hunger"]) < float(_tuning["fit"]["hungry_at"]),
+				"%s was fed by the fruit it helped bring (hunger %.2f)" % [id, sim.individual(id)["hunger"]])
+		check(sim.individual(id)["mood"] != "hungry", "%s no longer reads hungry" % id)
+	check(_of_kind(events, "ate").size() >= int(_tuning["task"]["fruit_goal"]), "the band ate the fruit")
 	check(_of_kind(events, "learned").size() >= 1, "a carrier learned the grove route")
 	_run(sim, regrow + 2)
 	for id in last_pick:
@@ -533,9 +540,9 @@ func test_one_bump_never_turns_the_band_hostile() -> void:
 	check_eq(_of_kind(events, "hostile").size() + _of_kind(events, "left").size(), 0, "nothing hostile")
 	var after := sim.individual("b2")
 	check(float(after["trust"]) >= trust_before - 0.6, "a bump is a mild memory (%.2f -> %.2f)" % [trust_before, after["trust"]])
-	check_near(float(sim.reputation["band"]), rep_before - 0.125, 0.0001, "and a capped, small reputation step")
+	check_near(float(sim.reputation["band"]), rep_before, 0.0001, "a bump never moves the band's reputation")
 	check(after["mood"] != "hostile", "it is not hostile")
-	check(not SocialMemory.group_hostile(float(sim.reputation["band"]), _tuning), "nor is its group")
+	check_eq(sim.group_hostile_left("band"), 0, "nor is its group")
 	check_eq(Array(sim.band()), ["b2"], "it stays in the band")
 	var acks := _of_kind(sim.tick({"order": "wait"}), "ack")
 	check_eq(acks.size(), 1, "and still takes orders")
@@ -551,3 +558,112 @@ func test_one_bump_never_turns_the_band_hostile() -> void:
 	check(bump_entries <= 1, "one bump memory at most")
 	check_near(bump_weight, 0.0, 0.000001, "the bump has faded to nothing")
 	check(float(sim.individual("b2")["trust"]) >= trust_before - 0.1, "and its trust comes back (%.2f)" % sim.individual("b2")["trust"])
+
+
+## A startle is the individual's memory alone: pressing the wrong signal at the wary monkey again and again never
+## turns its group against the player (plan section 5: failures cost nothing).
+func test_startles_never_turn_a_group_against_the_player() -> void:
+	var sim := _sim()
+	var cooldown := int(_tuning["signals"]["cooldown_t"])
+	var startles := 0
+	for i in 25:
+		_stand_before(sim, "b3", 4.0)
+		for e in _of_kind(sim.tick({"signal": "sing"}), "response"):
+			if e["response"] == "startles":
+				startles += 1
+		_run(sim, cooldown)
+	check(startles >= 20, "the wary monkey was startled %d times" % startles)
+	check(float(sim.reputation["band"]) >= 0.0,
+			"startles never lower the band's reputation (%.2f; the few Sings it listened to raise it)" % sim.reputation["band"])
+	var kinds := []
+	for e in sim.to_record()["individuals"]:
+		if e["id"] == "b3":
+			for m in e["memory"]:
+				kinds.append(m["kind"])
+	check(kinds.has("startled"), "the startles stay the monkey's own memory (%s)" % [kinds])
+	check_eq(sim.group_hostile_left("band"), 0, "the band never refuses for startles")
+	for id in ["b1", "b2", "b3"]:
+		_stand_before(sim, id, 3.0)
+		var p := sim.preview_signal("calm")
+		check(bool(p["ok"]), "%s still listens to Calm (%s)" % [id, p.get("reason", "")])
+
+
+## Bites are harm: enough of them turn the group against the player, for reputation.hostile_t and not for good. Then
+## it listens again, its reputation lifted to reputation.truce and forgiven further with time (Bible section 8: no
+## permanent war).
+func test_bites_make_a_group_refuse_for_a_while_then_it_listens_again() -> void:
+	var sim := _sim()
+	var bite_cd := int(_tuning["bite"]["cooldown_t"])
+	var r: Dictionary = _tuning["reputation"]
+	var events := []
+	var bites := 0
+	while _of_kind(events, "group_hostile").is_empty() and bites < 30:
+		_stand_before(sim, "b2", 0.6)
+		var out := sim.tick({"bite": true})
+		bites += _of_kind(out, "bit").size()
+		events.append_array(out)
+		events.append_array(_run(sim, bite_cd + 1))
+	var turned := _of_kind(events, "group_hostile")
+	check_eq(turned.size(), 1, "the band turned against the player once, after %d bites" % bites)
+	check(bites >= 10, "and only after ten bites or more (%d)" % bites)
+	check_eq(String(turned[0]["group"]), "band", "it was the band")
+	check(sim.group_hostile_left("band") > 0, "the band refuses for a while")
+	_stand_before(sim, "b1", 3.0)
+	var refused := sim.preview_signal("calm")
+	check(not bool(refused["ok"]) and String(refused["reason"]).begins_with("They won't listen: you hurt them ("),
+			"even the unbitten strider refuses, with the time left: %s" % refused.get("reason", ""))
+	check(sim.group_hostile_left("band") <= int(r["hostile_t"]), "for at most reputation.hostile_t")
+	var later := _run(sim, sim.group_hostile_left("band") + 1)
+	check_eq(_of_kind(later, "group_listens").size(), 1, "then the band listens again")
+	check_eq(sim.group_hostile_left("band"), 0, "its hostility is over")
+	check(float(sim.reputation["band"]) >= float(r["truce"]) - 0.0001,
+			"its reputation is lifted to the truce (%.2f)" % sim.reputation["band"])
+	_stand_before(sim, "b1", 3.0)
+	check(bool(sim.preview_signal("calm")["ok"]), "the strider takes Calm again")
+	var at_truce := float(sim.reputation["band"])
+	_run(sim, 600)
+	check(float(sim.reputation["band"]) > at_truce, "and a bad reputation keeps being forgiven (%.2f -> %.2f)"
+			% [at_truce, sim.reputation["band"]])
+	check(float(sim.reputation["band"]) <= 0.0, "back toward 0, never past it")
+
+
+## Followers keep their own places beside the player (band.slots_m): level with it rather than in a line behind it
+## (where the camera would put them under the HUD), and at least band.spacing_m apart once the band stops.
+func test_followers_keep_their_places_beside_the_player_and_apart() -> void:
+	var sim := _with_band(["b1", "b2", "b3"])
+	var spacing := float(_tuning["band"]["spacing_m"])
+	var worst_apart := INF
+	var worst_behind := -INF
+	# Away from the hunter's beat (north-east of the nest), so no one runs from it.
+	for phase in [[Vector2(0.0, 1.0), 300], [Vector2.ZERO, 300], [Vector2(-1.0, 0.0), 240], [Vector2.ZERO, 300]]:
+		_run(sim, int(phase[1]), {"move": phase[0]})
+		if phase[0] != Vector2.ZERO:
+			continue
+		var me := _ground(sim.player()["position"])
+		var forward := Vector2(-sin(float(sim.player()["yaw"])), -cos(float(sim.player()["yaw"])))
+		var ids := Array(sim.band())
+		for i in ids.size():
+			var at := _ground(sim.individual(ids[i])["position"])
+			check_eq(sim.individual(ids[i])["state"], "follow", "%s follows" % ids[i])
+			worst_behind = maxf(worst_behind, -(at - me).dot(forward))
+			for j in range(i + 1, ids.size()):
+				worst_apart = minf(worst_apart, at.distance_to(_ground(sim.individual(ids[j])["position"])))
+	check(worst_apart >= spacing, "stopped followers stand at least spacing_m apart (closest %.2f m)" % worst_apart)
+	check(worst_behind <= 1.5, "and level with the player, not trailing behind it (furthest back %.2f m)" % worst_behind)
+
+
+## Retreat sends each member to its own spot at the nest, so the band waits there side by side.
+func test_a_retreating_band_waits_at_the_nest_side_by_side() -> void:
+	var sim := _with_band(["b1", "b2", "b3"])
+	_run(sim, 240, {"move": Vector2(1.0, 0.0)})
+	var acks := _of_kind(sim.tick({"order": "retreat"}), "ack")
+	check_eq(acks.size(), 3, "each member acknowledges Retreat")
+	_run(sim, 900)
+	var ids := Array(sim.band())
+	var radius := float(_tuning["nest"]["radius_m"])
+	for i in ids.size():
+		var at := _ground(sim.individual(ids[i])["position"])
+		check(at.length() <= radius, "%s waits in the nest (%.1f m from its centre)" % [ids[i], at.length()])
+		for j in range(i + 1, ids.size()):
+			var apart := at.distance_to(_ground(sim.individual(ids[j])["position"]))
+			check(apart >= float(_tuning["band"]["spacing_m"]), "%s and %s stand apart (%.2f m)" % [ids[i], ids[j], apart])
