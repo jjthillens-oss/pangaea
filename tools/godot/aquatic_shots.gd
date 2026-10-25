@@ -8,7 +8,8 @@ extends SceneTree
 ## Views: nest_start (the spawn frame), nest_far (looking back at the nest from about 25 m), reef_west and reef_east
 ## (the reef shelters), twilight_ledge (the ledge shelter), fallen_giant, deep_vents, editor (the fin and tail
 ## editor as it opens) and editor_tails (one editor frame per tail in the rules, the fish held side-on:
-## editor_tail_<id>.png; with --close, a close side view of the fish only: tail_<id>.png).
+## editor_tail_<id>.png; with --close, close views of the fish only at tail strength 3: tail_<id>_<angle>.png, then
+## fins_<n>_<angle>.png for the side fin steps and dorsal_<n>_<angle>.png for the back fin steps).
 
 const StageScript := preload("res://game/scenes/aquatic/aquatic_stage.gd")
 ## view -> [player position, heading]. Heading 0 faces -Z (down the route), PI faces back to the shore.
@@ -79,23 +80,49 @@ func _tails() -> void:
 	var editor: Control = stage.open_editor()
 	await _frames(10)
 	editor.set_process(false)
-	for tail in stage.rules.body.tails:
-		editor.call("set_choice", "tail", String(tail))
-		var holder: Node3D = editor.get("rig_holder")
-		holder.rotation = Vector3(0.0, -PI * 0.5, 0.0)
-		if close:
-			var cam := editor.get("viewport").get_camera_3d() as Camera3D
-			cam.position = Vector3(0.0, 0.95, 1.9)
-			cam.look_at(Vector3(0.0, 0.85, 0.0), Vector3.UP)
-		await _frames(20)
-		if close:
-			var img: Image = (editor.get("viewport") as SubViewport).get_texture().get_image()
-			img.save_png(out_dir.path_join("tail_%s.png" % tail))
-			print("aquatic_shots: wrote ", out_dir.path_join("tail_%s.png" % tail))
-		else:
+	var holder: Node3D = editor.get("rig_holder")
+	holder.rotation = Vector3(0.0, -PI * 0.5, 0.0)
+	if close:
+		# The tails at full strength, then the fin steps and the dorsal, each from the angles that show them.
+		editor.set("points", 99)
+		editor.call("step", "tail_size", 3)
+		for tail in stage.rules.body.tails:
+			editor.call("set_choice", "tail", String(tail))
+			await _close_shots(editor, "tail_%s" % tail, ["side", "rear", "top"])
+		editor.call("set_choice", "tail", "fluke")
+		for fins in [1, 2, 3]:
+			editor.call("step", "fins", fins - int(editor.get("body").fins))
+			await _close_shots(editor, "fins_%d" % fins, ["front", "top"])
+		for dorsal in [0, 1, 2]:
+			editor.call("step", "dorsal", dorsal - int(editor.get("body").dorsal))
+			await _close_shots(editor, "dorsal_%d" % dorsal, ["side", "front"])
+	else:
+		for tail in stage.rules.body.tails:
+			editor.call("set_choice", "tail", String(tail))
+			holder.rotation = Vector3(0.0, -PI * 0.5, 0.0)
+			await _frames(20)
 			await _shot("editor_tail_%s" % tail)
 	editor.call("cancel_edit")
 	await _frames(4)
+
+
+## Close views of the editor's fish (it faces +X, side-on to the camera): only the plinth viewport is saved.
+func _close_shots(editor: Control, name: String, angles: Array) -> void:
+	var viewport := editor.get("viewport") as SubViewport
+	var cam := viewport.get_camera_3d()
+	var places := {
+		"side": [Vector3(0.0, 0.95, 1.9), Vector3(0.0, 0.85, 0.0)],
+		"rear": [Vector3(-1.6, 1.6, 1.15), Vector3(-0.35, 0.85, 0.0)],
+		"front": [Vector3(1.4, 1.5, 1.35), Vector3(0.15, 0.85, 0.0)],
+		"top": [Vector3(0.0, 2.7, 0.05), Vector3(0.0, 0.85, 0.0)],
+	}
+	for angle in angles:
+		cam.position = places[angle][0]
+		cam.look_at(places[angle][1], Vector3.UP)
+		await _frames(12)
+		var path := out_dir.path_join("%s_%s.png" % [name, angle])
+		viewport.get_texture().get_image().save_png(path)
+		print("aquatic_shots: wrote ", path)
 
 
 func _frames(n: int) -> void:

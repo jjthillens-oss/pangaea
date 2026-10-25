@@ -239,6 +239,44 @@ func test_fish_bodies_are_legal_creature_descriptions() -> void:
 					check(problems.is_empty(), "%s %s %s: %s" % [tail, sense, mouth, problems])
 
 
+## The fish are drawn with recorded creature parts, told apart by their handles (AquaticBody.TAIL_ART,
+## PECTORAL_HANDLES). A handle is set by its index (H1_, H2_, ...), so a reorder of these parts' handles in
+## part_rules.json would silently change what every fish looks like: this pins the order the art mapping assumes.
+func test_fish_part_handles_keep_their_meaning() -> void:
+	var part_rules: Dictionary = CreatureData.part_rules()
+	var expected := {"tail_fluke": ["H1_Span", "H2_Beat"], "fin": ["H1_Height", "H2_Sweep", "H3_Ripple"],
+			"dorsal_spine": ["H1_Height", "H2_Rake"]}
+	for type in expected:
+		check(part_rules.has(type), "%s is a recorded part" % type)
+		if not part_rules.has(type):
+			continue
+		var keys := []
+		for h in part_rules[type].handles:
+			keys.append(String(h.key))
+		check_eq(keys.slice(0, expected[type].size()), expected[type], "%s handle order" % type)
+	# Every tail's pieces use a recorded part with no more handles than it has, and the tails look different.
+	var seen := {}
+	for tail in rules.body.tails:
+		check(AquaticBody.TAIL_ART.has(tail), "%s has its art" % tail)
+		var art: Array = AquaticBody.TAIL_ART.get(tail, [])
+		for piece in art:
+			var handles: Array = part_rules[piece.part].handles
+			check(piece.handles.size() <= handles.size(), "%s: %s takes at most %d handles" % [tail, piece.part, handles.size()])
+		var key := JSON.stringify(art.map(func(p): return [p.part, p.roll, p.handles, p.ring]))
+		check(not seen.has(key), "%s is drawn unlike %s" % [tail, seen.get(key, "")])
+		seen[key] = tail
+	# The pectorals change shape with each fin step, and the spine plate shows exactly when the dorsal stings.
+	var min_dorsal := int(rules.body.spines.min_dorsal)
+	for dorsal in range(int(rules.body.ranges.dorsal[0]), int(rules.body.ranges.dorsal[1]) + 1):
+		var body := AquaticBody.DARTER.duplicate()
+		body.dorsal = dorsal
+		var spines := 0
+		for p in AquaticBody.to_description(body).parts:
+			spines += 1 if String(p.type) == "dorsal_spine" else 0
+		var stings: bool = AquaticBody.stats(body, rules.body).spines
+		check_eq(spines, 1 if stings else 0, "dorsal %d: a spine plate exactly when it stings (min %d)" % [dorsal, min_dorsal])
+
+
 ## The distance a body covers in its first second from still with a full burst, in the sim itself (aquatic-r2).
 func _dash_1s(body: Dictionary) -> float:
 	var sim := _sim(body)

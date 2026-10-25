@@ -25,6 +25,26 @@ const HOVERER := {"length": 1, "girth": 2, "tail": "ribbon", "tail_size": 1, "fi
 		"sense": "eyes", "mouth": "both", "hue": 0.55}
 
 
+## How each tail is drawn (aquatic-r2, PROPOSED art mapping onto recorded parts; fish-only tail parts are an open
+## issue): per piece, the part, where it sits on the spine (u, ring), its roll, its scale (scale + per_size x
+## tail_size, per mille) and its handles. A fin's blade lies along its up (the skin normal) and the head direction, so
+## at roll 0 a fin on the tail cap or the back stands upright along the body, as a fish's does. Fluke: the plain
+## flat blade. Lunate: the blade at full span, a wide crescent for cruising. Ribbon: a small upright tail fin and a
+## long rippling fin under the belly that does the work. Paddle: a broad forked fan of two tall lobes for the sprint.
+## Whip: one long raked, rippling upper lobe with a low keel fin under the tail stalk.
+const TAIL_ART := {
+	"fluke": [{"part": "tail_fluke", "u": 1000, "ring": 0, "roll": 0, "scale": 550, "per_size": 180, "handles": []}],
+	"ribbon": [{"part": "fin", "u": 1000, "ring": 0, "roll": 0, "scale": 480, "per_size": 150, "handles": [300, 0, 1000]},
+			{"part": "fin", "u": 700, "ring": 500, "roll": 0, "scale": 380, "per_size": 120, "handles": [0, 600, 1000]}],
+	"lunate": [{"part": "tail_fluke", "u": 1000, "ring": 0, "roll": 0, "scale": 600, "per_size": 190, "handles": [1000, 0]}],
+	"paddle": [{"part": "fin", "u": 1000, "ring": 0, "elev": 35, "roll": 0, "scale": 500, "per_size": 170, "handles": [1000, 0, 0]},
+			{"part": "fin", "u": 1000, "ring": 500, "elev": 35, "roll": 0, "scale": 500, "per_size": 170, "handles": [1000, 0, 0]}],
+	"whip": [{"part": "fin", "u": 1000, "ring": 0, "elev": 40, "roll": 0, "scale": 600, "per_size": 190, "handles": [0, 1000, 600]},
+			{"part": "fin", "u": 820, "ring": 500, "roll": 0, "scale": 300, "per_size": 110, "handles": [0, 1000, 600]}],
+}
+## The pectoral fins at each fin step: plain, then taller and raked, then a long wing-swept fin.
+const PECTORAL_HANDLES := [[0, 0, 0], [500, 300, 0], [1000, 1000, 0]]
+
 ## The body's problems against the rules (empty when legal): a missing key, a number out of range, an unknown choice.
 static func validate(body: Dictionary, rules: Dictionary) -> PackedStringArray:
 	var out := PackedStringArray()
@@ -174,8 +194,12 @@ static func edit_cost(before: Dictionary, after: Dictionary, editor_rules: Dicti
 
 ## The creature stage's body description of a fish (drawn by SpineRig with its parts): a spine of seven vertebrae
 ## along -Z, longer with length and fatter with girth, and its parts: the tail at the spine's end, a pair of
-## pectoral fins, the dorsal fin, eyes, the sense part and the mouth. Only part types already recorded are used.
-static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
+## pectoral fins, the dorsal fin (with a spine plate in front of it once the dorsal is big enough to sting a biter,
+## `min_dorsal`, the rules' spines.min_dorsal), eyes, the sense part and the mouth. Only part types already recorded
+## are used; each tail is told apart by its part and handles (TAIL_ART). Handles are per mille in the part's handle
+## order (tail_fluke [H1_Span, H2_Beat], fin [H1_Height, H2_Sweep, H3_Ripple], dorsal_spine [H1_Height, H2_Rake]);
+## tests/test_aquatic_sim.gd pins that order.
+static func to_description(body: Dictionary, scale_m := 1.0, min_dorsal := 1) -> RefCounted:
 	var desc = BodyDescription.create()
 	var length := int(body.get("length", 2))
 	var girth := int(body.get("girth", 1))
@@ -187,14 +211,20 @@ static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
 		var t := float(i) / float(profile.size() - 1)
 		var z := int(round(-half + 2.0 * half * t))
 		desc.add_vertebra(Vector3i(0, 0, z), maxi(18, int(round(r0 * profile[i]))))
-	var tail_type := "tail_fluke" if String(body.get("tail", "fluke")) == "fluke" else "fin"
-	desc.add_part(tail_type, _anchor(1000, 0, 0 if tail_type == "tail_fluke" else 0, 550 + 180 * int(body.get("tail_size", 1)), false, 0, 0 if tail_type == "tail_fluke" else 90))
+	var tail_size := int(body.get("tail_size", 1))
+	var art: Array = TAIL_ART.get(String(body.get("tail", "fluke")), TAIL_ART.fluke)
+	for piece in art:
+		var p: Dictionary = piece
+		desc.add_part(String(p.part), _anchor(int(p.u), int(p.ring), int(p.get("elev", 0)), int(p.scale) + int(p.per_size) * tail_size,
+				false, 0, int(p.roll), p.handles))
 	var fins := int(body.get("fins", 1))
 	if fins > 0:
-		desc.add_part("fin", _anchor(300, 250, 0, 380 + 200 * fins, true, -30, 0))
+		desc.add_part("fin", _anchor(300, 250, 0, 380 + 200 * fins, true, -30, 0, PECTORAL_HANDLES[mini(fins, 3) - 1]))
 	var dorsal := int(body.get("dorsal", 0))
 	if dorsal > 0:
-		desc.add_part("fin", _anchor(420, 0, 0, 380 + 260 * dorsal, false, 0, 90))
+		desc.add_part("fin", _anchor(420, 0, 0, 380 + 260 * dorsal, false, 0, 0, [0, 500, 0]))
+	if dorsal >= min_dorsal and dorsal > 0:
+		desc.add_part("dorsal_spine", _anchor(300, 0, 0, 420 + 160 * dorsal, false, 0, 0, [0, 600]))
 	desc.add_part("eye_round", _anchor(110, 180, 0, 520 + 40 * girth, true, 0, 0))
 	match String(body.get("sense", "eyes")):
 		"barbels":
@@ -206,9 +236,9 @@ static func to_description(body: Dictionary, scale_m := 1.0) -> RefCounted:
 	return desc
 
 
-static func _anchor(u: int, ring: int, elev: int, scale: int, mirror: bool, turn: int, roll: int) -> Dictionary:
+static func _anchor(u: int, ring: int, elev: int, scale: int, mirror: bool, turn: int, roll: int, handles := []) -> Dictionary:
 	return {"host": "spine", "u": u, "ring": ring, "elev": elev, "height": 0, "turn": turn, "tilt": 0, "roll": roll,
-			"scale": scale, "handles": [], "mirror": mirror}
+			"scale": scale, "handles": handles.duplicate(), "mirror": mirror}
 
 
 static func _pick(table: Array, count: int) -> Variant:
