@@ -1,15 +1,20 @@
 extends SceneTree
-## Art review shots of a preset creature (game/data/creature/presets.json) built the way the editor builds it: the
-## SpineRig skin, the parts placed by the anchor resolver, and the skin shader in the preset's colour, pattern and
-## covering (fur shells included). Run under Xvfb (docs/TOOLCHAIN.md):
+## Art review shots of a preset creature (game/data/creature/presets.json) in the creature editor scene
+## (game/scenes/creature/creature_editor.tscn, driven through setup() like its tests): the SpineRig skin, the parts
+## placed by the anchor resolver, and the skin shader in the preset's colour, pattern and covering (fur shells
+## included), in the editor's own room and lights. --scene=bare builds the same body on a plain ground plane under
+## neutral lights instead. Run under Xvfb (docs/TOOLCHAIN.md):
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --rendering-method gl_compatibility \
 ##     --rendering-driver opengl3 --resolution 1600x900 --fixed-fps 60 --script res://tools/godot/part_on_body_shot.gd \
 ##     -- --preset=monkey --out=DIR [--focus=muzzle_primate] [--handles=wing_dragon:H1_Fold:1000,...] [--covering=N]
-##     [--shells=N] [--views=gameplay,front,close,side,back] [--prefix=NAME] [--shadow]
-## Views: "gameplay" is the creature world's camera distance (2.4 x the body length, 2.6-12 m, fov 50, 16 degrees
-## up), from the front three-quarter; "front" the same distance straight on; "close" and "side" frame the --focus
-## part (or the head when there is none) from its own side and from +X; "back" is the world's default behind-the-
-## creature view. Files are <prefix>_<view>.png (prefix defaults to the preset name). The key light casts no
+##     [--shells=N] [--views=editor,gameplay,front,close,side,back] [--prefix=NAME] [--shadow] [--scene=bare]
+##     [--no-floor] [--zoom=F]
+## Views: "editor" is the editor's own camera with its HUD and handle dots (editor scene only); "gameplay" is the
+## creature world's camera distance (2.4 x the body length, 2.6-12 m, fov 50, 16 degrees up) from the front
+## three-quarter; "front" the same distance straight on; "back" the world's default view from behind; "close" and
+## "side" frame the --focus part (or the head when there is none) from its own side and from +X, --zoom times
+## closer. --no-floor hides the editor's floor pad in the views other than "editor" (the frog feet sit under it).
+## Files are <prefix>_<view>.png (prefix defaults to the preset name). In the bare scene the key light casts no
 ## shadow unless --shadow (Compatibility overexposes a shadowed light).
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -18,6 +23,7 @@ const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
 const Look := preload("res://game/scenes/creature/creature_look.gd")
 const BodyField := preload("res://game/domain/creature/body_field.gd")
 const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
+const EDITOR_SCENE := "res://game/scenes/creature/creature_editor.tscn"
 
 const DISTANCE_PER_BODY_M := 2.4    # creature_world.gd CAMERA_DISTANCE_PER_BODY_M
 const DISTANCE_MIN_M := 2.6
@@ -32,8 +38,11 @@ var focus := ""
 var handles := {}           # part type -> {key: value 0..1}
 var covering := -1
 var shells := -1
-var views: Array = ["gameplay", "close", "side"]
+var views: Array = ["editor", "gameplay", "close", "side"]
 var shadow := false
+var bare := false
+var no_floor := false
+var zoom := 1.0
 
 
 func _initialize() -> void:
@@ -60,6 +69,12 @@ func _initialize() -> void:
 			views = Array(arg.trim_prefix("--views=").split(",", false))
 		elif arg == "--shadow":
 			shadow = true
+		elif arg == "--scene=bare":
+			bare = true
+		elif arg == "--no-floor":
+			no_floor = true
+		elif arg.begins_with("--zoom="):
+			zoom = float(arg.trim_prefix("--zoom="))
 	if prefix == "":
 		prefix = preset_name
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -67,28 +82,43 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var world := Node3D.new()
-	root.add_child(world)
-	_lights(world)
 	var desc: RefCounted = CreatureData.preset_body(preset_name)
-	var rules := CreatureData.rules()
-	var orientations := CreatureData.part_orientations(CreatureData.part_rules())
-	var skin := SkinCpu.build_within(desc, int(rules["gameplay_divisions"]), int(rules["gameplay_triangle_budget"]))
 	var box: AABB = desc.bounds_m()
-	var rig = SpineRig.new()
-	world.add_child(rig)
-	rig.position = Vector3(0.0, -box.position.y, 0.0)
-	var stored := String(desc.extra.get(Look.SKIN_COLOR_KEY, ""))
-	var color := Color.html(stored) if Color.html_is_valid(stored) else Color(0.6, 0.6, 0.6)
-	rig.setup(desc, skin, color)
-	rig.add_parts(AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
-	var look := Look.look_of(desc.extra)
-	if covering >= 0:
-		look[Look.COVERING_KEY] = covering
-	var params := Look.shader_params(color, look)
-	if shells >= 0:
-		params["fur_shells"] = shells
-	rig.use_skin_shader(params)
+	var rig: Node3D
+	var cam: Camera3D
+	var ui: CanvasItem = null
+	var handles_node: Node3D = null
+	var editor_cam: Camera3D = null
+	var floor_node: Node3D = null
+	if bare:
+		var world := Node3D.new()
+		root.add_child(world)
+		_lights(world)
+		rig = _bare_rig(world, desc)
+		_ground(world)
+		cam = Camera3D.new()
+		world.add_child(cam)
+		cam.current = true
+	else:
+		var ed: Node = load(EDITOR_SCENE).instantiate()
+		ed.threaded = false
+		root.add_child(ed)
+		await process_frame
+		ed.setup(desc, 1000)
+		if covering >= 0:
+			ed.set_skin_covering(covering)
+		rig = ed.rig
+		editor_cam = ed.camera
+		# The editor places its own camera every frame, so the other views use a camera of their own.
+		cam = Camera3D.new()
+		ed.add_child(cam)
+		ui = ed.get_node("UI/Hud")
+		handles_node = ed.handle_root
+		floor_node = ed.floor_disc
+		if shells >= 0:
+			var params: Dictionary = ed._shader_params()
+			params["fur_shells"] = shells
+			rig.use_skin_shader(params)
 	for e in rig.part_nodes:
 		var node: Node3D = e["node"]
 		var type := String(node.name).get_slice("_p_", 0)
@@ -99,23 +129,10 @@ func _run() -> void:
 				var idx: int = (mi as MeshInstance3D).find_blend_shape_by_name(key)
 				if idx >= 0:
 					(mi as MeshInstance3D).set_blend_shape_value(idx, handles[type][key])
-	var ground := MeshInstance3D.new()
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(40, 40)
-	ground.mesh = plane
-	var gm := StandardMaterial3D.new()
-	gm.albedo_color = Color(0.42, 0.45, 0.4)
-	gm.roughness = 1.0
-	ground.material_override = gm
-	world.add_child(ground)
-	var cam := Camera3D.new()
-	world.add_child(cam)
-	cam.current = true
-	cam.fov = FOV
 	for f in 3:
 		await process_frame
-	var body_box: AABB = box
-	body_box.position.y = 0.0
+	cam.fov = FOV
+	var body_box: AABB = rig.mesh_instance.global_transform * rig.mesh_instance.get_aabb()
 	var centre := body_box.get_center()
 	var dist := clampf(DISTANCE_PER_BODY_M * box.size.z, DISTANCE_MIN_M, DISTANCE_MAX_M)
 	var pitch := deg_to_rad(PITCH_DEG)
@@ -123,17 +140,25 @@ func _run() -> void:
 	print("part_on_body_shot %s: body %.2f m long, camera %.2f m, focus %s at %s size %.3f" % [preset_name, box.size.z,
 			dist, focus, target.get_center(), target.size.length()])
 	for view in views:
+		if ui:
+			ui.visible = view == "editor"
+			handles_node.visible = view == "editor"
+			floor_node.visible = view == "editor" or not no_floor
 		match view:
+			"editor":
+				editor_cam.current = true
 			"gameplay", "front", "back":
+				cam.current = true
 				var yaw: float = {"gameplay": deg_to_rad(215.0), "front": PI, "back": 0.0}[view]
 				var dir := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
 				cam.look_at_from_position(centre + dir * dist, centre, Vector3.UP)
 			"close", "side":
+				cam.current = true
 				var c := target.get_center()
 				var side := 1.0 if c.x >= -0.01 else -1.0
 				var dir := Vector3(0.75 * side, 0.4, -0.75) if view == "close" else Vector3(side, 0.08, 0.0)
 				var r := maxf(target.size.length() * 0.5, 0.04)
-				cam.look_at_from_position(c + dir.normalized() * (r / tan(deg_to_rad(FOV * 0.5)) * 2.6), c, Vector3.UP)
+				cam.look_at_from_position(c + dir.normalized() * (r / tan(deg_to_rad(FOV * 0.5)) * 1.2 + 0.15) / zoom, c, Vector3.UP)
 		for f in 24:
 			await process_frame
 		await RenderingServer.frame_post_draw
@@ -151,15 +176,52 @@ func _focus_box(rig: Node3D, type: String) -> AABB:
 			continue
 		if String(node.name).ends_with("_twin") and not first:
 			continue
+		# The rest vertices (a mesh's AABB also spans its blend shapes, which can be far bigger than the part).
 		for mi in node.find_children("*", "MeshInstance3D", true, false):
-			var b: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
-			out = b if first else out.merge(b)
-			first = false
+			var t: Transform3D = (mi as MeshInstance3D).global_transform
+			for si in (mi as MeshInstance3D).mesh.get_surface_count():
+				for v: Vector3 in (mi as MeshInstance3D).mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+					out = AABB(t * v, Vector3.ZERO) if first else out.expand(t * v)
+					first = false
 		break
 	if first:
 		var aabb: AABB = rig.mesh_instance.global_transform * rig.mesh_instance.get_aabb()
 		out = AABB(aabb.position, Vector3(aabb.size.x, aabb.size.y, aabb.size.z * 0.25))
 	return out
+
+
+## The body as the editor builds it (SpineRig, anchored parts, skin shader), standing on y = 0.
+func _bare_rig(world: Node3D, desc: RefCounted) -> Node3D:
+	var rules := CreatureData.rules()
+	var orientations := CreatureData.part_orientations(CreatureData.part_rules())
+	var skin := SkinCpu.build_within(desc, int(rules["gameplay_divisions"]), int(rules["gameplay_triangle_budget"]))
+	var rig = SpineRig.new()
+	world.add_child(rig)
+	rig.position = Vector3(0.0, -(desc.bounds_m() as AABB).position.y, 0.0)
+	var stored := String(desc.extra.get(Look.SKIN_COLOR_KEY, ""))
+	var color := Color.html(stored) if Color.html_is_valid(stored) else Color(0.6, 0.6, 0.6)
+	rig.setup(desc, skin, color)
+	rig.add_parts(AnchorResolver.resolve_all(desc, BodyField.from_description(desc), orientations), orientations)
+	var look := Look.look_of(desc.extra)
+	if covering >= 0:
+		look[Look.COVERING_KEY] = covering
+	var params := Look.shader_params(color, look)
+	if shells >= 0:
+		params["fur_shells"] = shells
+	rig.use_skin_shader(params)
+	return rig
+
+
+func _ground(world: Node3D) -> void:
+	var ground := MeshInstance3D.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(40, 40)
+	ground.mesh = plane
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = Color(0.42, 0.45, 0.4)
+	gm.roughness = 1.0
+	ground.material_override = gm
+	world.add_child(ground)
 
 
 func _lights(world: Node3D) -> void:
