@@ -1569,3 +1569,15 @@ the owner approves milestones. It amends the 2026-10-22 studio operating model e
   routine runs and 3 task briefs a day and 2 active builder threads. The $250 cloud credit is nearly spent.
 - **Routines**: daily plan 06:00, nightly build 09:17, playtest capture 11:00, weekly report Sunday 18:00 (UTC).
 Impact: no code, schema or scope change. Rubric thresholds and the backlog order are PROPOSED tuning.
+
+## 2026-10-25 · A fully aquatic lineage can stay underwater through later eras (CONFIRMED direction; content PROPOSED)
+The owner asked on 2026-10-25 at 05:25 UTC whether cities and the later eras could be underwater, and said "I do think
+we should do that". So a lineage that never goes ashore keeps playing underwater through Social, Tribal and
+Civilization (underwater settlements and cities), as an alternative to the land route. This answers the Bible §26 open
+question on non-terrestrial routes and follows Bible §4: never force a land body on a fully aquatic lineage, and
+"alternative paths require bounded content plans; seven eras do not authorize seven full campaigns per body plan".
+- **Era count, names and the save schema are unchanged.** The route is a variant inside each era, sharing that era's
+  systems (relationships, settlement, diplomacy) with aquatic habitats, buildings and vehicles.
+- **Scheduled after the four-week vertical slice** (backlog features U-01 to U-04); it does not change the current
+  roadmap. Each era's underwater variant needs a bounded content plan the owner approves before it is built.
+- Details (what an underwater city needs, Interstellar from the sea, how a mixed lineage chooses) are PROPOSED.

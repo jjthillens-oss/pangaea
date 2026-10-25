@@ -91,6 +91,8 @@ The owner's past calls, as precedents. When a new question resembles one, follow
 - **Continue rebuilds the world from its seed**; no full sim snapshot. Saves hold seed, lineage, genome,
   discoveries, relationships, location and persistent world changes. (2026-10-24 00:07; Bible §18.)
 - **Every save schema version is the owner's call** (v3, v5 approved). (Tier 3.)
+- **A fully aquatic lineage may stay underwater** through Social, Tribal and Civilization (underwater cities), as
+  a bounded variant of each era, never forced ashore. Built after the vertical slice. (2026-10-25 05:25; Bible §4.)
 - **An era change is a transaction** with a pre-transition checkpoint and a player choice. (Bible §4, §18.)
 
 ### How the studio works
