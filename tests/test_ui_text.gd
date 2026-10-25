@@ -356,7 +356,8 @@ func test_the_growth_line_and_the_ladder_line_fit_their_panels_at_the_largest_te
 
 func test_the_hud_words_sized_in_code_follow_the_text_size() -> void:
 	# A per-node or drawn font size is not scaled by SettingsService.apply_text_scale, so these scale
-	# themselves: the ring's digit, the ladder strip's captions and the world overlay's words.
+	# themselves: the ring's digit, the ladder strip's captions and the world overlay's words. The
+	# status card widens with the text size too.
 	var old := SettingsService.shared()
 	var service := SettingsService.new("user://test_ui_text/settings.cfg")
 	SettingsService.set_shared(service)
@@ -365,6 +366,14 @@ func test_the_hud_words_sized_in_code_follow_the_text_size() -> void:
 		check_eq(MeterRing.font_size(), roundi(MeterRing.FONT_SIZE * pct / 100.0), "the ring's digit at %d%%" % pct)
 		check_eq(LadderStrip.caption_size(), roundi(LadderStrip.CAPTION_SIZE * pct / 100.0), "the strip's captions at %d%%" % pct)
 		check_eq(Hud.WorldOverlay.font_size(), roundi(Hud.WorldOverlay.FONT_SIZE * pct / 100.0), "the overlay's words at %d%%" % pct)
+		check_eq(Hud.status_width(), roundf(Hud.STATUS_W * (1.0 + Hud.STATUS_GROW * (pct / 100.0 - 1.0))),
+			"the status card's width at %d%%" % pct)
+	# At the largest text size the card (x 32 on, at the 1920 x 1080 base) still ends ui_smoke's 16 px clear
+	# of the widest centered banner or message.
+	var largest: int = GameSettings.SPEC["accessibility/text_scale"]["options"].max()
+	service.set_value("accessibility/text_scale", largest)
+	check(32.0 + Hud.status_width() + 16.0 <= (1920.0 - Hud.CENTER_MAX_W) / 2.0,
+		"at %d%% the %d px status card ends clear of the center (x %d)" % [largest, Hud.status_width(), (1920.0 - Hud.CENTER_MAX_W) / 2.0])
 	# Back to 100%, which also puts the shared theme's sizes back.
 	service.set_value("accessibility/text_scale", 100)
 	SettingsService.set_shared(old)
