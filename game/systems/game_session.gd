@@ -162,7 +162,6 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	if not founded.ok:
 		return {"ok": false, "errors": founded.errors, "saved": false}
 	var save: SaveGame = founded.save
-	EraTransition.forget(slot)   # a checkpoint from the lineage this one replaces is not this one's to go back to
 	if world != null:
 		save.player["position"] = PlaneSpace.to_save_abs(world.home.spawn[0], world.home.spawn[1])
 	else:
@@ -174,6 +173,10 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	var result_errors := PackedStringArray()
 	if not written.ok:
 		result_errors.append(written.error)
+	else:
+		# A checkpoint from the lineage this one replaces is not this one's to go back to. Only once the new lineage
+		# is written: while the slot still holds the old one, its way back to the water stays.
+		EraTransition.forget(slot)
 	return {"ok": true, "errors": result_errors, "saved": written.ok}
 
 
@@ -227,14 +230,15 @@ func after_events(events: Array) -> Dictionary:
 
 
 ## "Crawl ashore" (the cell-to-creature link): saves the cell at the shore, then EraTransition.cross with the
-## lineage's first creature (CreatureRules.from_cell). On success the lineage is ashore on disk and in the sim's
+## lineage's creature (CreatureRules.ashore: the one it shaped in the preview, else one from the cell). On success the lineage is ashore on disk and in the sim's
 ## save, and the session counts it saved, so a quit during the crawl asks nothing. Returns cross's {"ok", "errors",
 ## "checkpoint"}, or the save's error with ok false.
 func cross_ashore() -> Dictionary:
 	var saved := save_now()
 	if not saved.ok:
 		return {"ok": false, "errors": PackedStringArray([str(saved.error)]), "checkpoint": ""}
-	var result := EraTransition.cross(sim.save, slot, persistence, CreatureRules.from_cell(sim.save.genome))
+	var creature := CreatureRules.ashore(sim.save.creature, sim.save.genome)
+	var result := EraTransition.cross(sim.save, slot, persistence, creature)
 	if result.ok:
 		_mark_saved()
 	return result

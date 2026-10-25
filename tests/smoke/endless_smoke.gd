@@ -914,9 +914,18 @@ func _shore_continue() -> void:
 	_check(main.start_screen != null and main.start_screen.water_button.visible, "back at the title, it is offered still")
 	var driver := Driver.new()
 	main.intent_provider = driver
-	var back := main.back_to_water()
+	var confirm := main.start_screen.confirm
+	main.start_screen.water_button.pressed.emit()
+	_check(confirm.is_open() and confirm.cancel_choice == "cancel" and confirm.choice_ids().has("water"),
+		"'%s' asks first, and Esc stays on land (%s)" % [StartScreen.WATER_TEXT, confirm.choice_ids()])
+	confirm.choose("cancel")
+	await _frames(2)
+	_check(main.screen == main.start_screen and main.pool == null, "Stay on land keeps the title")
+	main.start_screen.water_button.pressed.emit()
+	confirm.choose("water")
+	await _frames(2)
 	var pool := main.pool
-	_check(back.ok and pool != null and pool.is_endless(), "Back to the water opens the sea (%s)" % [back.errors])
+	_check(pool != null and pool.is_endless(), "Back to the water opens the sea (%s)" % [main.last_run])
 	if pool == null or not pool.is_endless():
 		return
 	var sim := pool.sim

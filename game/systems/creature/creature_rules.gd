@@ -59,6 +59,21 @@ static func from_cell(genome: Genome) -> Dictionary:
 	return creature
 
 
+## The creature a lineage takes ashore: the one it already has (shaped in the creature stage preview while it was in
+## the water, so the points spent on it are not lost), else from_cell's. A kept body with no skin of its own takes the
+## cell's.
+static func ashore(creature: Dictionary, genome: Genome) -> Dictionary:
+	var cell := from_cell(genome)
+	if creature.is_empty():
+		return cell
+	var out := creature.duplicate(true)
+	var body = out.get("body")
+	var cell_body: Dictionary = cell["body"]
+	if body is Dictionary and not body.has(SKIN_COLOR_KEY) and cell_body.has(SKIN_COLOR_KEY):
+		body[SKIN_COLOR_KEY] = cell_body[SKIN_COLOR_KEY]
+	return out
+
+
 ## The skin a cell of hue `hue` (0 to 1) gives its first creature: that hue, softened to sit among the editor's swatches.
 static func cell_skin(hue: float) -> Color:
 	return Color.from_hsv(fposmod(hue, 1.0), CELL_SKIN_SATURATION, CELL_SKIN_VALUE)

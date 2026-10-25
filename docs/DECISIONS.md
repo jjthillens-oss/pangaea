@@ -1462,12 +1462,16 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   creature is the starter quadruped with the cell's hue as its skin (`from_cell`: the genome's
   `appearance.hue` at saturation 0.55 and value 0.8, as `"#rrggbb"` in the body's `skin_color`,
   agreed with the Creature stage thread), and the editor still offers the presets on a first visit.
+  A lineage that already shaped a creature in the title's creature stage preview keeps it, with the
+  cell's skin only when it has none of its own (`CreatureRules.ashore`), so no spent point is lost.
   The crawl is a 1.2 s fade to sand with "Your lineage crawls onto land", then the creature editor
   opens under it with the banner "Your lineage came ashore. Shape its first land body: every
   adaptation point it earned in the water comes with it."
 - **Going back**: Continue on a lineage that is ashore opens the creature stage. The title shows
-  "Back to the water" while the checkpoint is there: it writes the checkpoint back as the slot (the
-  save ashore becomes the slot's `.bak`) and continues the cell at the shore, which can cross again
+  "Back to the water" while the checkpoint is there (also when the slot no longer loads, so the cell
+  is not lost with it). It asks first, Cancel focused, as what the lineage did on land is lost:
+  it writes the checkpoint back as the slot (the save ashore becomes the slot's `.bak` until the next
+  save) and continues the cell at the shore, which can cross again
   once it has swum out of the reach and back (a run that starts in the reach never opens the offer
   at once).
   The continue card says "On land" for a lineage ashore.

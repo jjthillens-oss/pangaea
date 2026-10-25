@@ -173,11 +173,15 @@ func show_start() -> void:
 	_set_screen(start_screen)
 
 
-## Whether the title offers "Back to the water": the slot's lineage is ashore and its checkpoint is there.
+## Whether the title offers "Back to the water": the slot's checkpoint is there and its lineage is ashore, or its
+## save is there but will not load (back_to_water then skips the lineage check, so the cell is not lost with it).
 func _water_offered() -> bool:
+	if not EraTransition.has_checkpoint(session.slot):
+		return false
 	var peek := session.peek_slot()
-	return bool(peek.ok) and str(peek.summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA \
-			and EraTransition.has_checkpoint(session.slot)
+	if not bool(peek.ok):
+		return bool(peek.exists)
+	return str(peek.summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA
 
 
 ## Opens the creature stage preview as the screen, on the session's lineage slot (save schema v3: the creature
@@ -338,10 +342,17 @@ func cross_to_land() -> Dictionary:
 		_alert("Could not go ashore", result.errors)
 		if pool != null:
 			pool.decline_shore()
-			pool.set_paused(false)
+			# The run goes on once the alert is read, not under it.
+			if not alert.chosen.is_connected(_unpause_after_alert):
+				alert.chosen.connect(_unpause_after_alert, CONNECT_ONE_SHOT)
 		return result
 	_play_crawl()
 	return result
+
+
+func _unpause_after_alert(_choice: String) -> void:
+	if pool != null:
+		pool.set_paused(false)
 
 
 ## The crawl's fade: in, then the creature stage opens under it with the arrival banner, then out.
@@ -489,6 +500,8 @@ func delete_slot(n: int) -> Error:
 	# screen that is still open on top.
 	if err == OK and start_screen != null and SaveSlots.number_of(session.slot) == n:
 		start_screen.setup(session.peek_slot(), session.catalog, n)
+	if start_screen != null:
+		start_screen.set_water_offer(_water_offered())
 	if slot_picker != null:
 		slot_picker.show_slots(SaveSlots.peek_all(), SaveSlots.number_of(session.slot))
 	if err != OK:

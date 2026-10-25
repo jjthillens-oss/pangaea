@@ -14,8 +14,10 @@ const OUTLINE_PX := 3.0
 const PULSE_HZ := 1.0
 const PULSE_SHARE := 0.15
 const COLOR := Color(1.0, 0.83, 0.42)
-## The arrow's and its label's colour (the shore's arrow is another StarvingArrow in its own colour).
+## The arrow's and its label's colour, and the label with the distance in m (the shore's arrow is another
+## StarvingArrow in its own colour and words).
 var color := COLOR
+var label_format := "Food %d m"
 const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
 ## The label at 100% text size; it follows the Text size setting (Bible 19), as the theme does.
 const FONT_SIZE := 22
@@ -86,7 +88,7 @@ static func font_size() -> int:
 
 
 func label_text() -> String:
-	return "Food %d m" % roundi(distance_m)
+	return label_format % roundi(distance_m)
 
 
 ## The distance label's box on screen. It sits behind the arrow along its axis, clear of the

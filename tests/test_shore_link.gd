@@ -213,6 +213,33 @@ func test_a_genome_without_a_numeric_hue_gives_the_plain_starter() -> void:
 	check_eq(CreatureRules.new().validate(fresh), PackedStringArray(), "which passes the body rules")
 
 
+func test_a_lineage_takes_ashore_the_creature_it_already_shaped() -> void:
+	var save := _save()
+	save.genome.appearance["hue"] = 0.3
+	check_eq(CreatureRules.ashore({}, save.genome), CreatureRules.from_cell(save.genome), "none yet: the cell's")
+	var shaped := CreatureRules.new_creature()
+	shaped["generation"] = 3
+	shaped["history"] = [{"generation": 2}]
+	var kept := CreatureRules.ashore(shaped, save.genome)
+	check_eq(kept.generation, 3, "the shaped one is kept")
+	check_eq(kept.history, [{"generation": 2}], "with its history")
+	check_eq((kept.body as Dictionary).get("skin_color"), "#" + CreatureRules.cell_skin(0.3).to_html(false),
+		"a body with no skin of its own takes the cell's")
+	check(not (shaped.body as Dictionary).has("skin_color"), "the one passed in is not changed")
+	(shaped.body as Dictionary)["skin_color"] = "#112233"
+	check_eq((CreatureRules.ashore(shaped, save.genome).body as Dictionary).get("skin_color"), "#112233",
+		"a skin the player chose stays")
+
+
+func test_the_shore_arrow_names_the_shore() -> void:
+	var arrow := StarvingArrow.new()
+	arrow.label_format = PoolScene.SHORE_ARROW_LABEL
+	arrow.distance_m = 12.4
+	check_eq(arrow.label_text(), "Shore 12 m", "not food")
+	check(not PoolScene.SHORE_ARROW_COLOR.is_equal_approx(StarvingArrow.COLOR), "nor the food arrow's colour")
+	arrow.free()
+
+
 # --- The session raises the shore (GameSession.after_events and raise_shore) ---
 
 
@@ -387,3 +414,21 @@ func test_crossing_ashore_through_the_session_leaves_nothing_unsaved() -> void:
 		"the slot is ashore with the same points")
 	var cp := session.persistence.load_from(EraTransition.checkpoint_path(slot))
 	check(cp.ok and cp.save.era == ShoreLink.FROM_ERA, "the checkpoint holds the cell in the water")
+
+
+func test_crossing_through_the_session_keeps_a_creature_shaped_in_the_water() -> void:
+	var session := _shipped(4407)
+	if session.sim == null or session.sim.growth == null:
+		return
+	var sim := session.sim
+	check(sim.debug_set_size(sim.world.max_size), "the cell at the top")
+	# As the title's creature stage preview leaves it: a shaped creature on a lineage still in the water.
+	var shaped := CreatureRules.new_creature()
+	shaped["generation"] = 2
+	shaped["history"] = [{"generation": 1}]
+	sim.save.creature = shaped
+	check(session.raise_shore(), "the shore rises")
+	check(session.cross_ashore().ok, "the lineage crosses")
+	check_eq(sim.save.creature.get("generation"), 2, "with the creature it shaped")
+	var loaded := session.persistence.load_from(slot)
+	check(loaded.ok and loaded.save.creature.get("generation") == 2, "on disk too")

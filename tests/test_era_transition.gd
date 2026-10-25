@@ -39,11 +39,13 @@ func after_each() -> void:
 	_clear()
 
 
-## Empties the test folder, after the folder a test made at the checkpoint's path (SaveFolder.clear removes files).
+## Empties the test folder, after the folders tests made at the checkpoint's and the temporary file's paths
+## (SaveFolder.clear removes files).
 func _clear() -> void:
 	var cp := EraTransition.checkpoint_path(SaveFolder.path("era_slot.json"))
-	if DirAccess.dir_exists_absolute(cp):
-		DirAccess.remove_absolute(cp)
+	for dir in [cp, SaveFolder.path("era_slot.json") + PersistenceService.TEMP_SUFFIX]:
+		if DirAccess.dir_exists_absolute(dir):
+			DirAccess.remove_absolute(dir)
 	SaveFolder.clear()
 
 
@@ -345,6 +347,22 @@ func test_a_new_lineage_on_the_slot_forgets_the_old_one_s_checkpoint() -> void:
 	check(started.ok and started.saved, "a new lineage: %s" % [started.errors])
 	check(not EraTransition.has_checkpoint(slot), "the old lineage's checkpoint is gone")
 	check_eq(_files(), ["era_slot.json", "era_slot.json.bak"], "the new lineage and the old as its backup")
+
+
+func test_a_new_lineage_whose_first_save_fails_keeps_the_old_one_s_checkpoint() -> void:
+	var save := _lineage()
+	check(EraTransition.cross(save, slot, persistence, CreatureRules.from_cell(save.genome)).ok, "crossed")
+	# A folder in the slot's temporary file's place: the new lineage's first write fails, so the slot keeps the old.
+	var tmp := slot + PersistenceService.TEMP_SUFFIX
+	check_eq(DirAccess.make_dir_absolute(tmp), OK, "a folder where the temporary file goes")
+	var started := GameSession.new(slot).start_new("grazer", 3)
+	DirAccess.remove_absolute(tmp)
+	check(started.ok and not started.saved, "the run starts unsaved: %s" % [started.errors])
+	check(EraTransition.has_checkpoint(slot), "the old lineage keeps its way back to the water")
+	var on_disk := _load(slot, "the slot")
+	if on_disk != null:
+		check_eq(on_disk.lineage_id, save.lineage_id, "the slot still holds the old lineage")
+		check_eq(on_disk.era, "terrestrial", "ashore")
 
 
 func test_peek_names_the_slot_s_era() -> void:

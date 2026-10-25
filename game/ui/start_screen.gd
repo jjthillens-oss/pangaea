@@ -30,6 +30,11 @@ const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
 ## The cell-to-creature link: the button that brings back the cell from before the lineage came ashore, and the
 ## card's note on a lineage that is ashore.
 const WATER_TEXT := "Back to the water"
+## Its confirmation (Cancel has focus): going back gives up what the lineage did on land.
+const WATER_TITLE := "Go back to the water?"
+const WATER_CONFIRM_TEXT := ("Your lineage goes back to the cell it was at the shore. What it did on land is lost: "
+	+ "its land body, its generations ashore and the points it spent there.")
+const STAY_ON_LAND_TEXT := "Stay on land"
 const ON_LAND_TEXT := "On land"
 ## Where the camera slides on each view (TitleWorld.frame): the hero right of the menu, and on the
 ## picker up and further right, above its plate and clear of the cards.
@@ -133,7 +138,7 @@ func _ready() -> void:
 	creature_button.add_sibling(water_button)
 	MenuBounce.pill(water_button)
 	MenuBounce.attach(water_button)
-	water_button.pressed.connect(func(): water_requested.emit())
+	water_button.pressed.connect(request_water)
 	resized.connect(fit_backdrop)
 	fit_backdrop()
 	start_button.pressed.connect(request_start)
@@ -242,6 +247,12 @@ func request_start() -> void:
 		new_requested.emit(selected_body)
 
 
+## "Back to the water": asks first, as the land progress goes. Cancel has focus, as in request_start.
+func request_water() -> void:
+	confirm.open(WATER_TITLE, WATER_CONFIRM_TEXT, [["water", WATER_TEXT, true], ["cancel", STAY_ON_LAND_TEXT]],
+		"cancel", "cancel")
+
+
 ## The body cards, in BodyText.ORDER.
 func body_cards() -> Array[BodyCard]:
 	var out: Array[BodyCard] = []
@@ -338,6 +349,8 @@ func _on_card_pressed(body: String) -> void:
 func _on_confirm(choice: String) -> void:
 	if choice == "start":
 		new_requested.emit(selected_body)
+	elif choice == "water":
+		water_requested.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
