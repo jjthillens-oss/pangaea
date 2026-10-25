@@ -1,8 +1,10 @@
 extends TestCase
 ## Editor-ease in the cell editor (game/ui/cell_editor.gd, game/ui/editor_ease/; docs/proposals/editor-ease.md):
-## one Undo takes back one action, a whole drag round the rim included (Bible 12 undo and redo).
+## one Undo takes back one action, a whole drag round the rim included, and Undo, Redo and Back name the keys
+## bound to them (Bible 12 undo and redo; Bible 19 inputs shown from the bindings).
 
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
+const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 
 var catalog: PartCatalog
 var save: SaveGame
@@ -146,3 +148,23 @@ func test_undo_steps_group_and_drop_redo_like_the_session() -> void:
 	steps.note(s.move_part(eye, 2.0).ok)
 	check(not steps.redo(s) and not s.can_redo(), "a new step drops the redo, as the session does")
 
+
+func test_undo_redo_and_back_name_their_bindings() -> void:
+	editor.open(save, catalog, _state())
+	var undo := editor.find_child("Undo", true, false) as Button
+	var redo := editor.find_child("Redo", true, false) as Button
+	check_eq(undo.text, "Undo", "the button keeps its name")
+	check(undo.disabled and undo.tooltip_text == CellEditor.NO_UNDO_TIP, "nothing to undo: " + undo.tooltip_text)
+	check(redo.disabled and redo.tooltip_text == CellEditor.NO_REDO_TIP, "nothing to redo: " + redo.tooltip_text)
+	editor.add("cilia")
+	var undo_keys := ShortcutText.label(&"ui_undo")
+	check(not undo_keys.is_empty(), "undo has a binding")
+	check(undo.tooltip_text.contains(undo_keys), "the Undo tooltip names %s: %s" % [undo_keys, undo.tooltip_text])
+	editor.undo()
+	var redo_keys := ShortcutText.label(&"ui_redo")
+	check(redo.tooltip_text.contains(redo_keys), "the Redo tooltip names %s: %s" % [redo_keys, redo.tooltip_text])
+	var line := (editor.find_child("KeyLine", true, false) as Label).text
+	for pair: Array in CellEditor.KEY_LINE:
+		var names := ShortcutText.for_action(pair[0])
+		if not names.is_empty():
+			check(line.contains("%s  %s" % [names[0], pair[1]]), "the key line has %s: %s" % [pair[1], line])

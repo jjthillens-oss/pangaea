@@ -12,12 +12,19 @@ extends Control
 ##
 ## It only edits a working copy: the save changes only in commit(), and only when Lineage accepts.
 ## Editor-ease (docs/proposals/editor-ease.md): one Undo takes back one action (a whole drag round the rim is
-## one).
+## one), and Undo, Redo and Back name the keys bound to them.
 
 signal closed(committed: bool)
 
 const PREVIEW_SCENE := preload("res://game/ui/cell_preview.tscn")
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
+const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
+## The words on the editor's key line and its Undo and Redo tooltips; the keys come from the bindings.
+const KEY_LINE := [[&"ui_undo", "undo"], [&"ui_redo", "redo"], [&"ui_cancel", "back"]]
+const UNDO_TIP := "Undo the last change"
+const REDO_TIP := "Redo the change you undid"
+const NO_UNDO_TIP := "Nothing to undo"
+const NO_REDO_TIP := "Nothing to redo"
 ## [label, Phenotype field, higher is better, format]
 const STATS := [
 	["Speed", "speed", true, "%.1f"],
@@ -75,6 +82,8 @@ var _part_info: Label
 var _warning: Label
 var _test_pool: TestPool
 var _steps := UndoSteps.new()      ## the session steps in each action, so one Undo takes back one action
+var _keys: Label                   ## the key line: the bindings of undo, redo and back
+var _keys_generation := -1         ## InputPrompts.generation the key line was written for
 
 
 func _init() -> void:
@@ -294,6 +303,7 @@ func _refresh() -> void:
 	_warning.text = chase_warning(p.phenotype.speed)
 	_undo.disabled = not session.can_undo()
 	_redo.disabled = not session.can_redo()
+	_show_bindings()
 	_show_selected()
 	for child in _stats.get_children():
 		_stats.remove_child(child)
@@ -307,6 +317,19 @@ func _refresh() -> void:
 		if line[3] != null:
 			value.add_theme_color_override(&"font_color", BETTER if line[3] else WORSE)
 		_stats.add_child(value)
+
+
+## The key line and the Undo and Redo tooltips, from the bindings of the device in use (Bible 19).
+func _show_bindings() -> void:
+	_keys_generation = InputPrompts.generation
+	_keys.text = ShortcutText.hint_line(KEY_LINE)
+	_undo.tooltip_text = ShortcutText.with_binding(UNDO_TIP, &"ui_undo") if not _undo.disabled else NO_UNDO_TIP
+	_redo.tooltip_text = ShortcutText.with_binding(REDO_TIP, &"ui_redo") if not _redo.disabled else NO_REDO_TIP
+
+
+func _process(_delta: float) -> void:
+	if session != null and visible and InputPrompts.generation != _keys_generation:
+		_show_bindings()   # the player switched between keys and a controller
 
 
 ## Swims the working body round the test dish (IB-03); Back returns here with nothing changed.
@@ -473,6 +496,10 @@ func _build() -> void:
 	_points = Label.new()
 	_points.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(_points)
+	_keys = Label.new()
+	_keys.name = "KeyLine"
+	_keys.modulate = Color(1, 1, 1, 0.6)
+	bottom.add_child(_keys)
 	_button(bottom, "Test drive", test_drive).name = "TestDrive"
 	_undo = _button(bottom, "Undo", undo)
 	_redo = _button(bottom, "Redo", redo)

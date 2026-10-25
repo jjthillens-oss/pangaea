@@ -8,9 +8,9 @@ extends SceneTree
 ##     -- --out=DIR [--text-scale=130] [--only=creature|cell]
 ## Writes creature_idle, creature_hover_eye (the pointer resting on the Eye tool), creature_tool_eye (the Eye tool
 ## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), cell_idle,
-## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror) and
-## cell_drag_snap (a part dragged round the rim, held near the front). Uses its own settings under
-## user://editor_ease_shots/, never the player's.
+## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror),
+## cell_undo_tip (the pointer resting on Undo after that edit) and cell_drag_snap (a part dragged round the rim,
+## held near the front). Uses its own settings under user://editor_ease_shots/, never the player's.
 
 const ROOT := "user://editor_ease_shots"
 const CREATURE_EDITOR := "res://game/scenes/creature/creature_editor.tscn"
@@ -104,6 +104,10 @@ func _cell() -> void:
 		editor.mirror_selected()
 	await _frames(20)
 	await _shot("cell_pair")
+
+	await _hover(editor.find_child("Undo", true, false) as Control)
+	await _shot("cell_undo_tip")
+	_hover_away()
 
 	# Drag the selected eye spot round the rim and hold it a little right of the front.
 	var rim: Control = editor.find_children("*", "Control", true, false).filter(
