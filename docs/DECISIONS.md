@@ -788,6 +788,18 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · Creature head shape dials in the editor (PROPOSED; IMPLEMENTED)
+Joshua (23:40) asked for more head shape options. The creature editor's stats panel gets five sliders: snout
+(1.0x to 2.0x), skull width and skull height (0.6x to 1.6x; ranges agreed with the art thread), jaw and brow ridge
+(0 to 100%). They are free, and a slider drag is one undo step.
+
+- **Storage.** A `head_shape` block in the body's extra dictionary (per mille, whole-number floats, left out when
+  neutral), which the codec keeps as an unknown key: no save schema or body version change. Ranges are in
+  `game/data/creature/body_rules.json` "head_shape"; `validate()` refuses values outside them.
+- **Shape.** The vertebrae do not move. `BodyField` scales the head end of the first spine capsule and adds up to four
+  capsules around vertebra 0 (`game/domain/creature/head_shape.gd`) on bone 0, so the skin (CPU and GPU), the part
+  anchors, picking and the bounds follow. A part on the head end rides out to the snout tip.
+
 ## 2026-10-24 · Creature weapons add to the bite (PROPOSED; IMPLEMENTED)
 
 - Weapon-role parts (claws, horns, spikes, tusks, tail spikes, club tails, quills) add 2 attack each at scale 1
