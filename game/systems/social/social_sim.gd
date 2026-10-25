@@ -1142,6 +1142,14 @@ func task_state() -> Dictionary:
 			"rounds_done": int(task["rounds_done"])}
 
 
+## The grove as the scene draws it: [{id, position (Vector2), ripe}] in id order.
+func bush_states() -> Array:
+	var out := []
+	for b in bushes:
+		out.append({"id": b["id"], "position": b["position"], "ripe": b["ripe"]})
+	return out
+
+
 ## The id of the individual the player's signals go to now ("" for none).
 func target_id() -> String:
 	return _target
