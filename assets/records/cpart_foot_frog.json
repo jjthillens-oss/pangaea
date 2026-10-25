@@ -14,10 +14,10 @@
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.106,
-    "y_forward": 0.126,
-    "z_up": 0.045
+    "y_forward": 0.118,
+    "z_up": 0.042
   },
-  "triangles": 2371,
+  "triangles": 2361,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -88,7 +88,7 @@
         "default_permille": 0
       }
     ],
-    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.022 m) meets the limb tip."
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
   },
   "paint_mix": {
     "M_FootFrogSkin": 0.9,
@@ -99,7 +99,7 @@
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
     "triangles_before": 4034,
-    "triangles_after": 2371
+    "triangles_after": 2361
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
