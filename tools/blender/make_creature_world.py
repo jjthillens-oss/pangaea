@@ -799,11 +799,18 @@ EXTERNAL = {
     "creature_meat_chunk": {"M_MeatFlesh": "M_MeatFlesh"},
 }
 # asset id -> per-mesh and per-node import options, written into the same `_subresources` block as the materials:
-#   "meshes": {"<glTF mesh name>": {"generate/lods": False}}   (e.g. for card meshes, whose LODs eat the cards)
-#   "nodes": {"PATH:<node path from the scene root>": {"mesh_instance/cast_shadow": 0,
-#                                                     "mesh_instance/visibility_range_end": 55.0}}
-# Godot 4.7.2 keys a node by "PATH:" plus its path below the imported scene's root and a mesh by its glTF mesh name.
+#   "meshes": {"<asset id>_<glTF mesh name>": {"generate/lods": 2}}   (e.g. for card meshes, whose LODs eat the cards)
+#   "nodes": {"PATH:<node path below the scene root>": {"mesh_instance/cast_shadow": 0,
+#                                                      "mesh_instance/visibility_range_end": 55.0}}
+# Checked on Godot 4.7.2 with a reimported probe copy of the meat chunk: "PATH:MeatChunk" set the node's cast_shadow
+# to 0 and visibility_range_end to 55; the mesh key is the GLB's file name, "_", then the glTF mesh name
+# ("<id>_MeatChunk_mesh"), and "generate/lods" is an enum (0 project default, 1 enable, 2 disable): 2 took the
+# mesh from 3 LOD levels to none, while a bare "MeatChunk_mesh" key or the value false did nothing.
 IMPORT_OPTIONS = {}
+# Godot writes these back into every mesh entry it matches; writing them too keeps a rerun byte for byte the same.
+MESH_IMPORT_DEFAULTS = {"generate/lightmap_uv": 0, "generate/shadow_meshes": 0, "lods/normal_merge_angle": 20.0,
+                        "save_to_file/enabled": False, "save_to_file/fallback_path": "", "save_to_file/path": ""}
+MESH_ENUM_OPTIONS = ("generate/lightmap_uv", "generate/lods", "generate/shadow_meshes")
 TINTED = {
     "M_BushLeaf": ("The fruit bush's leaf core under its leaf cards", "creature_fruit_bush", "CreatureFruitBush", CORE_TINT),
     "M_BushFruit": ("The fruit bush's fruit material", "creature_fruit_bush", "CreatureFruitBush", "#E8A040"),
@@ -847,9 +854,15 @@ def _subresources_block(materials, options):
         groups["materials"] = {m: {"use_external/enabled": True,
                                    "use_external/fallback_path": f"res://assets/export/{t}.tres",
                                    "use_external/path": f"res://assets/export/{t}.tres"} for m, t in materials.items()}
-    for group in ("meshes", "nodes"):
-        if options.get(group):
-            groups[group] = options[group]
+    if options.get("meshes"):
+        groups["meshes"] = {}
+        for mesh, opts in options["meshes"].items():
+            for key in MESH_ENUM_OPTIONS:
+                if key in opts and (isinstance(opts[key], bool) or opts[key] not in (0, 1, 2)):
+                    raise ValueError(f"{mesh}: {key} is an enum (0 project default, 1 enable, 2 disable), not {opts[key]!r}")
+            groups["meshes"][mesh] = {**MESH_IMPORT_DEFAULTS, **opts}
+    if options.get("nodes"):
+        groups["nodes"] = options["nodes"]
     if not groups:
         return "_subresources={}"
     parts = []
