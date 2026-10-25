@@ -104,10 +104,44 @@ def build_geometry():
         path = []
         for j in range(6):
             a = start + sweep * j / 5
-            r = radius + 0.017 * math.sin(3 * a + i)
-            z = z_base + 0.012 * math.sin(2 * a + i)
+            r = radius + 0.030 * math.sin(3 * a + i)
+            z = z_base + 0.020 * math.sin(2 * a + i)
             path.append((0.95 * r * math.cos(a), 0.85 * r * math.sin(a), z))
         woven_strip(path, RNG.uniform(0.016, 0.026), i % 3 if i % 5 == 0 else i % 2)
+
+    # Short diagonals lock the rim bands together and interrupt the tidy
+    # concentric reading. Their ends disappear into adjacent larger fibers.
+    for i in range(9):
+        a = 2 * math.pi * i / 9 + RNG.uniform(-0.18, 0.18)
+        path = []
+        for j, r in enumerate((0.32, 0.39, 0.44)):
+            theta = a + (j - 1) * 0.22
+            path.append((0.95 * r * math.cos(theta),
+                         0.85 * r * math.sin(theta),
+                         0.16 + 0.025 * j + 0.008 * math.sin(i + j)))
+        woven_strip(path, RNG.uniform(0.009, 0.015), i % 3)
+
+    # Loose shorter fibers cross the recessed inner well at changing radii.
+    # A few darker underside ties show beneath the shallow sidewall.
+    for i in range(9):
+        a = 2 * math.pi * i / 9 + RNG.uniform(-0.20, 0.20)
+        path = []
+        for j in range(4):
+            theta = a + 0.25 * j
+            r = 0.17 + 0.045 * j + 0.012 * math.sin(i + j)
+            z = 0.075 + 0.022 * j + 0.006 * math.cos(i - j)
+            path.append((0.95 * r * math.cos(theta),
+                         0.85 * r * math.sin(theta), z))
+        woven_strip(path, RNG.uniform(0.006, 0.010), 2 if i % 3 else 1)
+    for i in range(4):
+        a = 2 * math.pi * (i + 0.35) / 4
+        path = []
+        for j, r in enumerate((0.24, 0.30, 0.36)):
+            theta = a + 0.12 * j
+            path.append((0.95 * r * math.cos(theta),
+                         0.85 * r * math.sin(theta),
+                         0.075 + 0.018 * j))
+        woven_strip(path, 0.007, 2)
 
     # A few outward stalks puncture the silhouette. They do not form a uniform fringe.
     for i, a in enumerate((0.2, 0.9, 1.55, 2.28, 3.4, 4.45, 5.16, 5.72)):
@@ -117,7 +151,7 @@ def build_geometry():
         path = [
             (0.95 * 0.36 * math.cos(a), 0.85 * 0.36 * math.sin(a), z0),
             (0.95 * 0.44 * math.cos(a + 0.08), 0.85 * 0.44 * math.sin(a + 0.08), z0 + 0.055),
-            (0.95 * reach * math.cos(a + 0.17), 0.85 * reach * math.sin(a + 0.17), z0 + RNG.uniform(0.07, 0.17)),
+            (0.95 * reach * math.cos(a + 0.17), 0.85 * reach * math.sin(a + 0.17), z0 + RNG.uniform(0.035, 0.085)),
         ]
         woven_strip(path, 0.008 + 0.002 * (i % 3), 2, sides=3)
 
@@ -228,6 +262,11 @@ def main():
     nest.data.materials.clear()
     for mat in final_mats:
         nest.data.materials.append(mat)
+    # Blender clamps polygon material indices while a mesh has no slots.
+    # Assign them after creating the final slots so the dark inner web and
+    # contrasting pale fibers survive GLB export.
+    for polygon, material_index in zip(nest.data.polygons, FACE_MATS):
+        polygon.material_index = material_index
     bpy.ops.wm.save_as_mainfile(filepath=str(OUT / "nest-straw.blend"))
     for view in ("threequarter", "top"):
         render(OUT / f"material-{view}.png", cameras[view])
