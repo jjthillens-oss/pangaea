@@ -8,7 +8,8 @@ changes need his approval and a `docs/DECISIONS.md` entry before any production 
 - **Author:** design analyst, Pangaea research team
 - **Inputs:** `docs/bible/GENESIS_Master_Developer_Bible_v0.1.pdf` (v0.1, read as text), `docs/DECISIONS.md`,
   `docs/milestones/M0.md`, `docs/milestones/M1.md`, `docs/research/community-wants.md` (cited as "theme N"),
-  and `docs/research/open-source-scout.md` (cited as "OSS"). Both briefs were being corrected by a skeptic at the
+  `docs/research/open-source-scout.md` (cited as "OSS") and, from 2026-10-25, `docs/research/mod-wishes.md`
+  (cited as "mod wishes N"; items IB-30 to IB-33). Both briefs were being corrected by a skeptic at the
   time of writing; theme numbers and names below match the versions read on 2026-10-22.
 
 ## How items were derived
@@ -75,6 +76,10 @@ item proposes a different shape that fits the Bible's exclusions, and says so.
 | IB-26 | Peaceful parity: a grazer or filter-feeder line has a viable non-violent path in every era | 12 Freedom of path, 16 Social | M3 onward, §8, §27 | Refinement of a proposal | H | M | Peaceful path becomes the easy path | IB-18 |
 | IB-27 | Carry and drag: food and prey can be moved by mouth or grasping parts, so anatomy sets what can be hauled | 6 Cut features, 17 Combat | M3, §12, §14 | Refinement of a proposal | M | M | Physics jitter | IB-14 |
 | IB-28 | Every exported GLB checked by glTF-Validator in `tools/check.sh` and CI (dev-only tool) | none directly; protects 2 Editors | M2, §16, §22 | Within current scope (tool approval needed) | M | L | Pre-release validator versions | OSS: glTF-Validator |
+| IB-30 | Supported body scale range: a lineage can grow toward giant or shrink toward tiny over generations, with real consequences for feeding, speed, threat and what it can carry | 7 Body design, 12 Freedom; mod wishes 7 | M3, §7, §12 | Refinement of a proposal | H | M | Rig families must deform at both extremes | IB-14, IB-15, approved reshaping boundary |
+| IB-31 | Sharing that degrades gracefully: an exported creature carries its part list and opens with visible placeholders when a part is missing, never a refusal | 8 Sharing; mod wishes 11 | After M3 with IB-09, §18 | Refinement of a proposal | M | L | Placeholder bodies look broken | IB-09 (needs the D4 decision) |
+| IB-32 | Authored terrain variety: each habitat is built from a small set of Blender landforms (river, canyon, island, plateau) composed per seed, so worlds feel different to walk on | 15 Richer worlds; mod wishes 12 | M2 habitat, M3, §7, §15, §16 | Within current scope (needs the §15 procedural boundary) | M | M | Boundary for runtime placement not yet approved | OSS: ProtonScatter candidate; art team |
+| IB-33 | Colour and material freedom: exact colour entry, per-region palettes and pattern layers in the editor, within the biome saturation discipline of §15 | 2 Editors; mod wishes 3 | M2 benchmark, M3 editor, §15 | Within current scope | M | L | Breaks art cohesion if unbounded | M2 material family |
 | IB-29 | Online gallery of creatures (a Sporepedia-like service) | 8 Sharing | Not scheduled, §2 exclusions | Conflicts with Bible exclusion | H | H | Live service, moderation, network | Separate owner approval |
 
 ## Item notes
@@ -202,6 +207,26 @@ be carried. Smallest slice: in M3, one carry interaction in the resolver with a 
 **IB-28 GLB validation.** Every exported asset is checked by Khronos glTF-Validator before Godot import. Smallest
 slice: one CI step on the sample cell GLB. Needs approval as a dev-only tool.
 
+**IB-30 Body scale range.** The most-made "play as something else" mods let players be a giant, half a giant, or
+tiny, and pick up smaller creatures (`mod-wishes.md` wish 7). GENESIS can answer that originally: a lineage's size
+is a trait with costs (energy, turning, exposure) and payoffs (reach, intimidation, carrying). Smallest slice: in M3,
+two size tiers for one rig family with the phenotype service scaling speed, bite reach and energy use.
+
+**IB-31 Graceful sharing.** Three independent mod sources warn that custom parts broke sharing with vanilla players,
+and creators advertise "vanilla compatible" as a feature (wish 11). Whatever shape IB-09 takes, a shared creature
+file should list the parts it needs and open with marked placeholders when one is missing. Smallest slice: a save
+fixture with an unknown part id that loads with a placeholder and a warning, not an error.
+
+**IB-32 Authored terrain variety.** "25 New Planets" and the adventure packs exist because players found Spore's
+terrain samey (wish 12). GENESIS habitats can be composed from a small set of Blender-authored landforms placed per
+seed, inside the procedural-placement boundary §15 asks us to define. Smallest slice: the M2 habitat built from four
+landform pieces, two seeds compared side by side.
+
+**IB-33 Colour and material freedom.** Nine colour, paint and texture mods (wish 3) say players wanted exact colour
+control and more pattern options. Within the §15 saturation discipline, the editor can offer hex entry, three colour
+regions and a pattern layer. Smallest slice: hex entry plus two regions on the M2 benchmark creature's material
+family.
+
 **IB-29 Online gallery.** Listed so the demand is recorded. It is a live service (excluded by §2) and needs network
 calls (barred by `CLAUDE.md` without approval), accounts and moderation. Not recommended for the initial production scope; IB-09 is the offline alternative.
 
@@ -293,6 +318,8 @@ caps where they land in M1.
 | IB-24 | The discovery journal is required (§19); notes are text. | M1 step 6 or M3 |
 | IB-25 | Lineage history already exists; this is a view of it. | M1 step 4 or M3 |
 | IB-28 | Dev-only check that fits §16 and §22. The tool itself still needs a yes as a dependency (CLAUDE.md). | M2 |
+| IB-32 | Habitat art is M2 work already; this only asks that landforms be modular. The runtime placement boundary still needs the §15 approval. | M2 |
+| IB-33 | Editor colour controls are inside the editor scope; §15 bounds them. | M2 benchmark, M3 editor |
 
 Items IB-01, IB-08, IB-18, IB-26 and IB-27 refine proposed era mechanics. They need no scope approval, but they
 belong in the relevant milestone brief so Joshua approves them along with that brief. IB-01 may also need a save

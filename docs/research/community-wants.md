@@ -263,6 +263,22 @@ incremental approach (§23, §24).
 
 ---
 
+## What modders built (added 2026-10-25)
+
+`mod-wishes.md` ranks what players changed in Spore through mods, from public mod descriptions only. It
+confirms the ranking here from a different angle and sharpens two themes:
+
+- **Theme 2 (editors) is even stronger among committed players.** About half of the indexed mods lift editor
+  limits, add parts or add colours. Players wanted the existing editor with its ceilings removed, not a new one.
+- **Theme 4 (space stage) was fixed by players first.** Mods that remove eco-disasters and raids, shrink the hostile
+  empire, remove ammo limits and cut cargo grind predate and outnumber mods that extend the middle stages.
+- **New signal: body scale.** "Play as a giant", shrink and grow mods ask for a different body in the same world,
+  which this brief's review-based themes did not surface (now IB-30).
+- **New signal: sharing fragility.** Custom parts broke sharing with vanilla players; creators advertise "vanilla
+  compatible" (now IB-31).
+
+The mod scene is small, so it says more about what the dedicated players valued than about how many want it.
+
 ## Relevance to GENESIS
 
 This section maps themes to the Bible. It notes alignment and conflict only; it does not propose scope changes.
@@ -404,5 +420,6 @@ was seen.
 ### Known gaps for a follow-up pass
 
 - Direct r/Spore and r/truegaming top-of-all-time threads, with vote counts.
+- Done 2026-10-25: mod-based evidence, see `mod-wishes.md`.
 - Transcripts of long-form YouTube video essays.
 - A sample of recent negative Spore Steam reviews, coded by theme.
