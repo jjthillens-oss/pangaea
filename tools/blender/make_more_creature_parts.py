@@ -198,7 +198,7 @@ REVIEW = {
                            "web membrane with fine veins, near-black glossy leather pads, ivory claws.",
         "gate3_neutral_light": "pass: under the neutral white rig the web reads as a darker membrane between lit toes, "
                                "the pads stay dark without crushing and the claws bright without clipping.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: editor floor only, shared by every foot (not this art): the editor's floor disc sits at the body's bounds while the resolver stands every ground part 0.09 x scale below its limb tip, so the lowest few centimetres of every foot (existing ones too) sink through the floor in the editor; in the world the walker lifts each tip by that height and the soles stand on the ground. On the angler (both webbed feet swapped in memory, after_angler_foot_otter.jpg) the feet load, sit on the limb tips at the angler's scale 900 with toes toward the head, but their soles are 2.1 cm under the floor, hiding the pads and the web's lower edge. With the floor lowered to the soles (review-only --floor-at-soles, soles_angler_foot_otter.jpg) each reads in the close and side views as an otter's foot: five plump fanned toes, ivory claws, black glossy pads under the tips and a pale web between the toes. At the world camera's distance the feet are small pale paws with light claw tips; the web reads only from the close view."},
     "cpart_foot_pillar": {
         "gate1_shape": "pass: a wide round column (0.145 x 0.16 m, slightly longer front to back) flaring to a thick "
                        "padded sole with a rounded rim, the toes' swellings round the front base under five broad "
@@ -214,7 +214,7 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the grazing light shows the creases and the toe "
                                "swellings, the sole band stays dark without crushing, the nails bright without "
                                "clipping.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "needs revision: editor floor only, shared by every foot (not this art): the editor's floor disc sits at the body's bounds while the resolver stands every ground part 0.09 x scale below its limb tip, so the lowest few centimetres of every foot (existing ones too) sink through the floor in the editor; in the world the walker lifts each tip by that height and the soles stand on the ground. On the tortoise (both feet swapped in memory, after_tortoise_foot_pillar.jpg) the feet load, sit on the limb tips at the column's width with the nails toward the head, but the soles are 4.5 cm under the floor, hiding the sole band and the toenails, so the feet read as plain wrinkled stumps. With the floor lowered to the soles (review-only --floor-at-soles, soles_tortoise_foot_pillar.jpg) they read as elephant feet from every view: wrinkled grey columns, ivory toenails round the front, a dark sole at the base; the nails show as pale dots even at the world camera's distance."},
     "cpart_antler_branched": {
         "gate1_shape": "pass: from the side a deer's antler - a ridged beam rising from a furred pedicle through a "
                        "knobbly burr ring, sweeping up and back and turning forward at the top, with brow, bez and "
@@ -230,7 +230,7 @@ REVIEW = {
                            "white).",
         "gate3_neutral_light": "pass: under the neutral white rig the gutters and burr knobs read by grazing light, "
                                "the pedicle's fur stays brown without crushing, no clipping on the pale tips.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "pass: on the longneck (a mirrored pair added at u 55, ring 90, scale 1300 in memory, after_longneck_antler_branched.jpg) the pair loads, seats on the head at the burr without floating or deep clipping, mirrors correctly and is in scale, and reads as branched antlers at the world camera's distance and in the close and side views. Under the editor room's blue light the bone reads grey-tan with paler tips and a brown pedicle. On this head, which is pitched up, the beam's backward sweep lays the antlers back nearly level with the tines upright, like a caribou's; the tilt control or H3_Sweep changes that."},
     "cpart_antler_palmate": {
         "gate1_shape": "pass: a moose's palmate antler - a short beam from a furred pedicle and knobbly burr running "
                        "out sideways into a broad flat palm, cupped forward and rising up and in, its upper edge and "
@@ -245,7 +245,7 @@ REVIEW = {
                            "pedicle. The first two bakes read as an even sandy cream with no pale points.",
         "gate3_neutral_light": "pass: under the neutral white rig the palm's broad face shows its gutters and the ribs "
                                "into the points without clipping; the burr's knobs read by grazing light.",
-        "gate4_godot": G4_PENDING},
+        "gate4_godot": "pass: on the boar (a mirrored pair added at u 125, ring 90, scale 1000 in memory, after_boar_antler_palmate.jpg) the pair loads, seats on the head with the burr knob at each base without floating or deep clipping, mirrors correctly and is in scale, and reads as moose antlers - broad cupped palms with a fringe of points - at the world camera's distance and in the close and side views; the bone reads pale grey-cream under the editor room's blue light."},
 }
 
 
