@@ -21,7 +21,8 @@ const LIMB_END_TOO := "or click a limb (near its tip, the last %d%%, it goes on 
 const LIMB_TOO := "or click a limb to put it on the limb"
 const LIMB_TWIN := "a mirrored limb gets a pair"
 const ON_PARTS := "It can also sit on another part"
-const LIMB_TOOL := "Click the body: a limb grows from the nearest vertebra; off the middle line it comes as a mirrored pair; drag to pull its tip"
+const LIMB_TOOL := "Click the body: a limb grows from the nearest vertebra; off the middle line it comes as a " \
+		+ "mirrored pair; drag to pull its tip"
 const LIMB_TOOL_ALONE := "Click the body: a limb grows from the nearest vertebra, alone; drag to pull its tip"
 
 

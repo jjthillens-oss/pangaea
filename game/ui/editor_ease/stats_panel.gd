@@ -3,8 +3,9 @@ extends VBoxContainer
 ## its value now, and its change since the visit began, "▲ +0.4 m/s" (better), "▼ -3" (worse) or "+0.12 m" (a
 ## plain change: a longer body is a choice, not an upgrade). Better and worse are a shape and a colour, never colour
 ## alone (Bible 19). The body's counts (legs, limbs, parts, bones) share two lines, "4 legs · 4 limbs" and
-## "10 parts · 26 bones (+1)", so the panel still fits at the largest text size. Under them a legend and the selection. Every
-## label takes its size from the game theme, so the table follows the text-size setting. No class_name: preload it.
+## "10 parts · 26 bones (+1)", so the panel still fits at the largest text size. Under them a legend and the
+## selection. Every label takes its size from the game theme, so the table follows the text-size setting. No
+## class_name: preload it.
 
 const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
 
@@ -78,7 +79,8 @@ func show_rows(rows: Array, selected: String) -> void:
 		_rows[String(row["key"])] = row
 		if COUNT_KEYS.has(row["key"]):
 			var change := String(row.get("change", ""))
-			counts.append("%s %s%s" % [row["text"], String(row["name"]).to_lower(), "" if change.is_empty() else " (%s)" % change])
+			var moved := "" if change.is_empty() else " (%s)" % change
+			counts.append("%s %s%s" % [row["text"], String(row["name"]).to_lower(), moved])
 		else:
 			table.append(row)
 	var keys := PackedStringArray()

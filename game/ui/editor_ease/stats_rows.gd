@@ -61,7 +61,8 @@ static func compare(now: Array, baseline: Array) -> Array:
 		r["sense"] = int(SENSE.get(r["key"], 0))
 		r["change"] = ""
 		if r["key"] != "" and before.has(r["key"]) and before[r["key"]]["text"] != r["text"]:
-			r["delta"] = snappedf(float(r["number"]) - float(before[r["key"]]["number"]), pow(10.0, -int(r["decimals"])))
+			var step := pow(10.0, -int(r["decimals"]))
+			r["delta"] = snappedf(float(r["number"]) - float(before[r["key"]]["number"]), step)
 			r["change"] = change_text(r)
 		out.append(r)
 	return out

@@ -4,7 +4,8 @@ extends SceneTree
 ## is looked up with has_method, so the script runs on a base without them (the BEFORE frames) and with them.
 ## Run under Xvfb (docs/TOOLCHAIN.md):
 ##   xvfb-run -a -s "-screen 0 1920x1080x24" GODOT --path . --audio-driver Dummy --rendering-method gl_compatibility \
-##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 --script res://tools/godot/editor_ease_shots.gd \
+##     --rendering-driver opengl3 --resolution 1920x1080 --fixed-fps 60 \
+##     --script res://tools/godot/editor_ease_shots.gd \
 ##     -- --out=DIR [--text-scale=130] [--only=creature|cell]
 ## Writes creature_idle, creature_hover_eye (the pointer resting on the Eye tool), creature_tool_eye (the Eye tool
 ## chosen), creature_edited (two vertebrae added and one undone, so Redo is live and the stats moved), and where
@@ -12,8 +13,8 @@ extends SceneTree
 ## creature_undo_tip (the pointer resting on Undo) and creature_tool_foot (the Foot tool chosen), cell_idle,
 ## cell_hover_cilia (the pointer resting on the Cilia tile), cell_pair (an eye spot and its mirror),
 ## cell_undo_tip (the pointer resting on Undo after that edit) and cell_drag_snap (a part dragged round the rim,
-## held just right of the front, beside the mouth that holds the middle line there). Where the editor-ease APIs exist it also writes cell_stat_help (the pointer resting on a
-## stat's name) and cell_pair_drag (a mirrored pair dragged towards the front with Symmetry on). Uses its own
+## held just right of the front, beside the mouth that holds the middle line there). Where the editor-ease APIs
+## exist it also writes cell_stat_help (the pointer resting on a stat's name) and cell_pair_drag (a mirrored pair dragged towards the front with Symmetry on). Uses its own
 ## settings under user://editor_ease_shots/, never the player's.
 
 const ROOT := "user://editor_ease_shots"

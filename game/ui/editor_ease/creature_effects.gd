@@ -29,6 +29,9 @@ const ROLE_WORDS := {
 }
 const ROLE_UNKNOWN := "Changes the creature's look"
 const NO_STAT_CHANGE := "No change to bite, sight, charm or speed: it changes the look"
+const SIGHT_STOPS := "Sight stops at %.0f m"
+const DISPLAY_CAP := "Charm counts when you sing to befriend; only the first %d display organs count"
+const WEAPON_CAP := "Only your %d largest weapons count"
 const NEEDS_MOUTH := "Needs a mouth to bite with: add a mouth first"
 const STRENGTH_NOTE := "Heavier bodies bite harder"
 const LOCKED := "Find it in the world to use it"
@@ -131,12 +134,13 @@ static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionar
 		lines.append([NO_STAT_CHANGE, "note"])
 	if role == Stats.MOUTH_ROLE and not rows.is_empty():
 		lines.append([STRENGTH_NOTE, "note"])
-	if role == Stats.EYE_ROLE and info.has("sight_max_m") and float(fx["pair"].get("sight_m", 0.0)) >= float(info["sight_max_m"]):
-		lines.append(["Sight stops at %.0f m" % float(info["sight_max_m"]), "note"])
+	var pair_sight := float(fx["pair"].get("sight_m", 0.0))
+	if role == Stats.EYE_ROLE and info.has("sight_max_m") and pair_sight >= float(info["sight_max_m"]):
+		lines.append([SIGHT_STOPS % float(info["sight_max_m"]), "note"])
 	if role == Stats.DISPLAY_ROLE and info.has("display_cap"):
-		lines.append(["Charm counts when you sing to befriend; only the first %d display organs count" % int(info["display_cap"]), "note"])
+		lines.append([DISPLAY_CAP % int(info["display_cap"]), "note"])
 	if role == Stats.WEAPON_ROLE and info.has("weapon_cap") and bool(now.get("has_mouth", false)):
-		lines.append(["Only your %d largest weapons count" % int(info["weapon_cap"]), "note"])
+		lines.append([WEAPON_CAP % int(info["weapon_cap"]), "note"])
 	match mode:
 		"one":
 			lines.append([PRICE_ONE % price, ""])
@@ -146,7 +150,10 @@ static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionar
 			lines.append([PRICE_BOTH % [price, 2 * price], ""])
 	if info.has("points") and info.has("cost"):
 		var left := int(info["points"]) - int(info["cost"]) - (2 * price if mode == "pair" else price)
-		lines.append([LEAVES % [left, int(info["points"])] if left >= 0 else SHORT % -left, "note" if left >= 0 else "worse"])
+		if left >= 0:
+			lines.append([LEAVES % [left, int(info["points"])], "note"])
+		else:
+			lines.append([SHORT % -left, "worse"])
 	if info.has("parts") and info.has("part_count_max") and int(info["parts"]) >= int(info["part_count_max"]):
 		lines.append([FULL % int(info["part_count_max"]), "worse"])
 	if not where.is_empty():

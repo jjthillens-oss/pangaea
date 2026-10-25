@@ -51,7 +51,18 @@ const SNAP_HINTS := {
 	"pair_edge": "A mirrored pair keeps off the middle line",
 	"taken": "Another part holds that spot, so it does not snap there",
 }
-const SYMMETRY_TIP := "When on, a part off the middle line comes with a mirrored twin, and the two move, change and go together"
+const SYMMETRY_TIP := "When on, a part off the middle line comes with a mirrored twin, and the two move, change " \
+		+ "and go together"
+## The Symmetry toggle's text in each state (the state in words, not by colour alone: Bible 19).
+const SYMMETRY_TEXT := {true: "Symmetry: on", false: "Symmetry: off"}
+## What the editor says about a mirrored pair: the status line, a refusal, the selection line and Upgrade.
+const PAIR_TEXT := {
+	"no_room": "No room for its pair: %s",
+	"has_pair": "It already has its pair",
+	"selected": " · a mirrored pair",
+	"upgrade": "Upgrade both · %d",
+	"upgrade_tip": "Upgrades the part and its twin: 2 × %d points",
+}
 ## [label, Phenotype field, higher is better, format]
 const STATS := [
 	["Speed", "speed", true, "%.1f"],
@@ -190,7 +201,7 @@ func add(type_id: String) -> Dictionary:
 	if result.ok:
 		selected = str(result.part_id)
 		if pair and not twin.ok:
-			_status.text = "No room for its pair: %s" % twin.reason
+			_status.text = PAIR_TEXT.no_room % twin.reason
 		_refresh()
 	return result
 
@@ -213,7 +224,7 @@ func remove_selected() -> Dictionary:
 ## Adds a mirrored copy of the selected part. With symmetry on, a part that already has its twin is refused.
 func mirror_selected() -> Dictionary:
 	if not selected_twin().is_empty():
-		var refused := {"ok": false, "reason": "It already has its pair"}
+		var refused := {"ok": false, "reason": PAIR_TEXT.has_pair}
 		_after(refused)
 		return refused
 	var result := session.mirror_part(selected)
@@ -274,7 +285,7 @@ func set_symmetry(on: bool) -> void:
 	symmetry = on
 	if _symmetry_button != null:
 		_symmetry_button.set_pressed_no_signal(on)
-		_symmetry_button.text = "Symmetry: on" if on else "Symmetry: off"
+		_symmetry_button.text = SYMMETRY_TEXT[on]
 	_refresh()
 
 
@@ -461,7 +472,8 @@ static func stat_help(label: String, catalog: PartCatalog) -> String:
 	for spec: Array in STATS:
 		if spec[0] == label and catalog.caps.has(spec[1]):
 			var cap := float(catalog.caps[spec[1]])
-			return text % ("%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap)
+			var shown := "%d%%" % roundi(cap * 100.0) if spec[1] == "defense" else str(spec[3]).get_slice("/", 0) % cap
+			return text % shown
 	return text.get_slice(" At most", 0).get_slice(", up to", 0)
 
 
@@ -574,7 +586,8 @@ func show_part_card(type_id: String) -> void:
 	var tile := find_child("Add_" + type_id, true, false) as Control
 	if tile != null and _palette != null:
 		var tile_rect := tile.get_global_rect()
-		var beside := Rect2(Vector2(_palette.get_global_rect().end.x, tile_rect.position.y), Vector2(0, tile_rect.size.y))
+		var beside := Rect2(Vector2(_palette.get_global_rect().end.x, tile_rect.position.y),
+				Vector2(0, tile_rect.size.y))
 		_card.place_beside(beside, get_global_rect())
 
 
@@ -653,7 +666,7 @@ func _show_selected() -> void:
 	_selected_label.text = "%s, level %d" % [type_id.capitalize(), level] if catalog.can_level(type_id) \
 		else type_id.capitalize()
 	if paired:
-		_selected_label.text += " · a mirrored pair"
+		_selected_label.text += PAIR_TEXT.selected
 	if not catalog.can_level(type_id):
 		_upgrade.text = "Upgrade"
 		_upgrade.disabled = true
@@ -662,8 +675,8 @@ func _show_selected() -> void:
 		_upgrade.disabled = true
 	elif paired:
 		var each := catalog.upgrade_cost(type_id, level)
-		_upgrade.text = "Upgrade both · %d" % (2 * each)
-		_upgrade.tooltip_text = "Upgrades the part and its twin: 2 × %d points" % each
+		_upgrade.text = PAIR_TEXT.upgrade % (2 * each)
+		_upgrade.tooltip_text = PAIR_TEXT.upgrade_tip % each
 		_upgrade.disabled = false
 	else:
 		_upgrade.text = "Upgrade · %d" % catalog.upgrade_cost(type_id, level)
@@ -762,7 +775,7 @@ func _build() -> void:
 	_symmetry_button.name = "Symmetry"
 	_symmetry_button.theme_type_variation = &"DockButton"
 	_symmetry_button.toggle_mode = true
-	_symmetry_button.text = "Symmetry: off"   # the state in words, not by colour alone (Bible 19)
+	_symmetry_button.text = SYMMETRY_TEXT[false]   # the state in words, not by colour alone (Bible 19)
 	_symmetry_button.tooltip_text = SYMMETRY_TIP
 	_symmetry_button.toggled.connect(set_symmetry)
 	tools.add_child(_symmetry_button)
@@ -1014,7 +1027,8 @@ class RimView:
 
 	## A diamond outline round `q`, `r` from its centre to each corner.
 	func _diamond(q: Vector2, r: float, color: Color) -> void:
-		var pts := PackedVector2Array([q + Vector2(0, -r), q + Vector2(r, 0), q + Vector2(0, r), q + Vector2(-r, 0), q + Vector2(0, -r)])
+		var pts := PackedVector2Array([q + Vector2(0, -r), q + Vector2(r, 0), q + Vector2(0, r), q + Vector2(-r, 0),
+				q + Vector2(0, -r)])
 		draw_polyline(pts, color, 2.0, true)
 
 	## A ring of short dashes round `q`.

@@ -57,11 +57,14 @@ const STAT_HELP := {
 	"limbs": "Every leg and arm; a mirrored limb counts twice.",
 	"parts": "Parts worn; a mirrored pair counts twice.",
 	"bones": "Vertebrae and limb joints.",
-	"change": "How each stat moved since you came into the editor (or started from a preset): ▲ better, ▼ worse, a bare sign for a change that is neither.",
-	"counts": "Legs reach the ground (a creature needs them to walk). Limbs are every leg and arm, parts every part worn, a mirrored one counting twice. Bones are the vertebrae and limb joints.",
+	"change": "How each stat moved since you came into the editor (or started from a preset): ▲ better, ▼ worse, "
+		+ "a bare sign for a change that is neither.",
+	"counts": "Legs reach the ground (a creature needs them to walk). Limbs are every leg and arm, parts every part "
+		+ "worn, a mirrored one counting twice. Bones are the vertebrae and limb joints.",
 	"speed": "Top running speed, from the legs' length; very heavy bodies run slower.",
 	"health": "From the body's mass: %s per kg.",
-	"bite": "Damage per bite: each mouth, plus your largest weapons, times strength (heavier bodies bite harder). No mouth, no bite.",
+	"bite": "Damage per bite: each mouth, plus your largest weapons, times strength (heavier bodies bite harder). "
+		+ "No mouth, no bite.",
 	"sight": "How far it sees: %s m, plus %s m per eye, %s m at most.",
 }
 
@@ -137,7 +140,8 @@ func on_setup(tools: Array, costs: Dictionary, _roles: Dictionary) -> void:
 			b.mouse_entered.connect(_on_tool_entered.bind(String(type)))
 			b.mouse_exited.connect(_on_tool_exited.bind(String(type)))
 	hide_card()
-	symmetry_button.visible = hud.has_signal("symmetry_toggled") and not hud.symmetry_toggled.get_connections().is_empty()
+	var connected := hud.has_signal("symmetry_toggled") and not hud.symmetry_toggled.get_connections().is_empty()
+	symmetry_button.visible = connected
 
 
 ## Called at the end of the HUD's set_tool(): `type` is the tool now in use ("" for none).
@@ -199,7 +203,8 @@ func card_for(type: String) -> Dictionary:
 	var body := working_body()
 	if body == null:
 		body = _reference_body()
-	var fx := Effects.effects(body, type, rules, _data["gait"], _data["tuning"], _data["body_rules"], _data["ref_size_m"])
+	var fx := Effects.effects(body, type, rules, _data["gait"], _data["tuning"], _data["body_rules"],
+			_data["ref_size_m"])
 	var tuning: Dictionary = _data["tuning"]
 	var info := {
 		"price": int((_costs.get("part", {}) as Dictionary).get(type, _costs.get("part_default", 0))),
@@ -401,7 +406,8 @@ func _snap_width() -> float:
 	var middle := hud.get_global_rect().get_center().x
 	if palette == null or side == null or palette.size.x <= 0.0 or side.size.x <= 0.0:
 		return SNAP_HINT_WIDTH
-	var room := minf(middle - palette.get_global_rect().end.x, side.get_global_rect().position.x - middle) - SNAP_HINT_GAP
+	var left := middle - palette.get_global_rect().end.x
+	var room := minf(left, side.get_global_rect().position.x - middle) - SNAP_HINT_GAP
 	return clampf(2.0 * room - 48.0, 240.0, SNAP_HINT_WIDTH)   # 48: the pill's own padding
 
 
@@ -449,7 +455,8 @@ func _reference_body() -> RefCounted:
 func _points() -> Dictionary:
 	var editor: Node = hud.owner if hud != null else null
 	var session: Variant = editor.get("session") if editor != null else null
-	if session is Object and (session as Object).has_method("cost") and (session as Object).get("available_points") != null:
+	var live := session is Object and (session as Object).has_method("cost")
+	if live and (session as Object).get("available_points") != null:
 		return {"points": int(session.available_points), "cost": int(session.cost())}
 	return {}
 

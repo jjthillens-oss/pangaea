@@ -106,7 +106,8 @@ func _place() -> void:
 	var x := _anchor.end.x + GAP
 	if x + size.x > _bounds.end.x - GAP:
 		x = _anchor.position.x - GAP - size.x
-	var y := clampf(_anchor.position.y, _bounds.position.y + GAP, maxf(_bounds.position.y + GAP, _bounds.end.y - GAP - size.y))
+	var top := _bounds.position.y + GAP
+	var y := clampf(_anchor.position.y, top, maxf(top, _bounds.end.y - GAP - size.y))
 	global_position = Vector2(x, y)
 
 
