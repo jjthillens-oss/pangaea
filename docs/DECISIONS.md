@@ -808,6 +808,20 @@ covering toggles under the swatches: Smooth, Fur, Scales, Wet. The choice rides 
 or schema change. It reaches the skin shader as its int `covering` uniform, which the art thread owns. Like the swatch
 it is free and outside undo. Presets and rivals wear the covering their body carries; a random first design draws one.
 
+## 2026-10-24 · Creature gait follows limb proportions: bound and knuckle-walk (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for walking that follows leg sizes and hands, frogs more frog-like and monkeys more monkey-like.
+- Bound: a four-legged body whose hind legs are at least 1.5 times as long as its front legs bounds at run speed
+  instead of trotting. Each pair moves together, the front pair lands first and the hind pair pushes off last, then
+  every foot is off the ground. The body dips once per cycle and pitches nose down on landing, nose up in flight.
+  Tuning: `game/data/creature/gait_table.json` (bound_*, the run band's long_hind_pattern).
+- A body that bounds sits on folded hind legs (hips at 0.4 of their length), about level, like a frog, instead of
+  standing front-down on straight hind legs.
+- Long arms: a hanging limb whose root sits no higher than 1.2 limb lengths above the ground is a front leg, so an
+  ape knuckle-walks, leaning onto its arms. Short arms still hang. Legs are ordered front to back by hip position.
+- Short legs set the pace: speed and stride scale with the lowest standing hip, and no hip stands above 0.82 of its
+  leg, so feet stay in reach. Even legs walk, trot and run exactly as before.
+
 ## 2026-10-24 · Creature head shape dials in the editor (PROPOSED; IMPLEMENTED)
 Joshua (23:40) asked for more head shape options. The creature editor's stats panel gets five sliders: snout
 (1.0x to 2.0x), skull width and skull height (0.6x to 1.6x; ranges agreed with the art thread), jaw and brow ridge
@@ -837,6 +851,7 @@ Joshua (23:40) asked for more head shape options. The creature editor's stats pa
   ape knuckle-walks, leaning onto its arms. Short arms still hang. Legs are ordered front to back by hip position.
 - Short legs set the pace: speed and stride scale with the lowest standing hip, and no hip stands above 0.82 of its
   leg, so feet stay in reach. Even legs walk, trot and run exactly as before.
+
 
 ## 2026-10-24 · Creature legs of different lengths tilt the body (PROPOSED; IMPLEMENTED)
 
