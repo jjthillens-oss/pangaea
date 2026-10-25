@@ -1,0 +1,27 @@
+{
+  "id": "mus_beautiful_forest",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_beautiful_forest.ogg",
+  "purpose": "An orchestral forest piece: the creature stage's calm playlist (the first steps on land).",
+  "role": "creature_calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 70.0,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Beautiful Forest [Orchestra]",
+      "author": "nene",
+      "url": "https://opengameart.org/content/beautiful-forest-orchestra",
+      "download": "https://opengameart.org/sites/default/files/beautiful_forest_16bit_44.1khz_1.ogg",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2022-06-26"
+    }
+  ]
+}

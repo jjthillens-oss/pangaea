@@ -1,0 +1,27 @@
+{
+  "id": "mus_underwater_world",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_underwater_world.mp3",
+  "purpose": "A lush instrumental ambient piece, swimming among the fishes: the Aquatic stage's calm playlist.",
+  "role": "aquatic_calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 150.54,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Underwater World",
+      "author": "Indieteur",
+      "url": "https://opengameart.org/content/underwater-world",
+      "download": "https://opengameart.org/sites/default/files/Underwater%20World_0.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2017-02-27"
+    }
+  ]
+}

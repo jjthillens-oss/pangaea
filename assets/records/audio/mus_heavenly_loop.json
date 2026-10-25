@@ -1,0 +1,27 @@
+{
+  "id": "mus_heavenly_loop",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_heavenly_loop.ogg",
+  "purpose": "A seamless dreamy loop: an editor track.",
+  "role": "editor",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 33.65,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Heavenly Loop",
+      "author": "isaiah658",
+      "url": "https://opengameart.org/content/heavenly-loop",
+      "download": "https://opengameart.org/sites/default/files/Heavenly%20Loop_0.ogg",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2017-08-11"
+    }
+  ]
+}

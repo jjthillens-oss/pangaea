@@ -1,0 +1,27 @@
+{
+  "id": "mus_determined_pursuit",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_determined_pursuit.ogg",
+  "purpose": "Frantic strings, horns and drums, looped: the creature stage's danger layer while something hunts you.",
+  "role": "creature_danger",
+  "bus": "Music",
+  "loop": true,
+  "length_s": 108.0,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Determined Pursuit (epic orchestra loop)",
+      "author": "Emma_MA",
+      "url": "https://opengameart.org/content/determined-pursuit-epic-orchestra-loop",
+      "download": "https://opengameart.org/sites/default/files/determined_pursuit_loop.wav",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "re-encoded from the WAV to Ogg Vorbis q5; no other change",
+      "uploaded": "2017-01-25"
+    }
+  ]
+}

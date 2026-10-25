@@ -1,0 +1,27 @@
+{
+  "id": "mus_at_home",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_at_home.ogg",
+  "purpose": "A short calm orchestral piece: the creature stage's calm playlist (near the nest).",
+  "role": "creature_calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 74.32,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "At Home - Orchestral",
+      "author": "Wolfgang_",
+      "url": "https://opengameart.org/content/at-home-orchestral",
+      "download": "https://opengameart.org/sites/default/files/cinematic-calm.wav",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "re-encoded from the WAV to Ogg Vorbis q5 to keep the repo small; no other change",
+      "uploaded": "2020-08-14"
+    }
+  ]
+}

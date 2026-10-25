@@ -1,0 +1,27 @@
+{
+  "id": "mus_fantasy_orchestral",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M2 stage music, awaiting owner listen",
+  "category": "music",
+  "export_path": "assets/audio/music/mus_fantasy_orchestral.mp3",
+  "purpose": "A melodic orchestral theme, serene to a closing swell: the creature stage's calm playlist.",
+  "role": "creature_calm",
+  "bus": "Music",
+  "loop": false,
+  "length_s": 191.69,
+  "used_by": "game/scenes/audio/soundtrack.gd",
+  "license": "CC0 1.0 (public domain dedication)",
+  "third_party_sources": [
+    {
+      "name": "Fantasy Orchestral Theme",
+      "author": "Joth",
+      "url": "https://opengameart.org/content/fantasy-orchestral-theme",
+      "download": "https://opengameart.org/sites/default/files/FantasyOrchestralTheme_1.mp3",
+      "license": "CC0 1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "modified": "none",
+      "uploaded": "2016-10-04"
+    }
+  ]
+}
