@@ -140,7 +140,7 @@ func on_setup(tools: Array, costs: Dictionary, _roles: Dictionary) -> void:
 			b.mouse_entered.connect(_on_tool_entered.bind(String(type)))
 			b.mouse_exited.connect(_on_tool_exited.bind(String(type)))
 	hide_card()
-	var connected := hud.has_signal("symmetry_toggled") and not hud.symmetry_toggled.get_connections().is_empty()
+	var connected: bool = hud.has_signal("symmetry_toggled") and not hud.symmetry_toggled.get_connections().is_empty()
 	symmetry_button.visible = connected
 
 
@@ -458,7 +458,7 @@ func _reference_body() -> RefCounted:
 func _points() -> Dictionary:
 	var editor: Node = hud.owner if hud != null else null
 	var session: Variant = editor.get("session") if editor != null else null
-	var live := session is Object and (session as Object).has_method("cost")
+	var live: bool = session is Object and (session as Object).has_method("cost")
 	if live and (session as Object).get("available_points") != null:
 		return {"points": int(session.available_points), "cost": int(session.cost())}
 	return {}
