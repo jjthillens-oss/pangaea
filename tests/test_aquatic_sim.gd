@@ -5,7 +5,21 @@ const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 ## differently, every depth hazard warns before it harms, species stay in their niches, mating opens the editor and
 ## a commit makes the next generation, the cell lineage arrives in the body, and the sim is deterministic.
 
+## The slice's own content (PR #192): the golden species run keeps to it, so content appended to the rules later
+## (aquatic-r2 steps 6 and 7) never changes the run.
+const SLICE_SPECIES := ["grazer", "shoal"]
+const SLICE_SHELTERS := ["shelter_reef_west", "shelter_reef_east", "shelter_ledge"]
+const SLICE_SITES := ["plankton_bay", "plankton_shelf", "algae_west", "algae_east", "vents"]
+## The md5 of the golden species run (_golden_species_run: its snapshot, animals and events, floats rounded to 1e-4),
+## recorded on the hard-wired grazer and shoal code before aquatic-r2's data-driven species refactor. The refactored
+## code must play the slice's species exactly as that code did. Content added later that changes this run must be
+## kept out of it in _slice_rules(), not re-recorded.
+const GOLDEN_SPECIES_RUN := "d18070185c5d87f0f55f275f61c39892"
+
 var rules: Dictionary
+var _golden_sim: AquaticSim
+var _golden_log: Array = []
+var _golden_states := {}
 
 
 func before_each() -> void:
@@ -400,6 +414,130 @@ func test_the_editor_preview_and_the_water_agree() -> void:
 				sim.step(pair[0])
 			check(absf(float(sim.player.speed) - float(pair[1])) <= float(pair[1]) * 0.02,
 					"%s: the %s speed swum (%.2f) is the stat (%.2f)" % [label, pair[2], float(sim.player.speed), float(pair[1])])
+
+
+## The rules cut back to the slice's species, shelters and feeding sites.
+func _slice_rules() -> Dictionary:
+	var r: Dictionary = rules.duplicate(true)
+	var species := {}
+	for id in SLICE_SPECIES:
+		species[id] = r.species[id]
+	r.species = species
+	if r.has("species_order"):
+		r.species_order = SLICE_SPECIES.duplicate()
+	r.world.shelters = (r.world.shelters as Array).filter(func(s): return String(s.id) in SLICE_SHELTERS)
+	r.world.feeding = (r.world.feeding as Array).filter(func(s): return String(s.id) in SLICE_SITES)
+	return r
+
+
+func _golden_step(intent: AquaticSim.Intent) -> void:
+	_golden_sim.step(intent)
+	for e in _golden_sim.take_events():
+		_golden_log.append([int(e.tick), String(e.type), String(e.get("species", "")), String(e.get("standing", ""))])
+	for a in _golden_sim.animals:
+		_golden_states["%s:%s" % [a.species, a.state]] = true
+
+
+## Puts the fish 1 m from `a`, facing it.
+func _face(sim: AquaticSim, a: Dictionary) -> void:
+	sim.player.pos = a.pos + Vector3(0.0, 0.0, 1.0)
+	sim.player.heading = AquaticSim.forward_of(0.0).signed_angle_to(a.pos - sim.player.pos, Vector3.UP)
+
+
+static func _rounded(v: Variant) -> Variant:
+	if v is float:
+		return snappedf(v, 0.0001)
+	if v is Array or v is PackedStringArray:
+		var out := []
+		for x in v:
+			out.append(_rounded(x))
+		return out
+	if v is Dictionary:
+		var d := {}
+		for k in v:
+			d[k] = _rounded(v[k])
+		return d
+	return v
+
+
+## A scripted 80 s run of the darter on the slice's content that goes through every species rule: a call nobody hears,
+## three spaced calls (one too fast each time) that befriend the grazers and one after, the friends following on the
+## reef, the lancer finding the fish among them (the ally warning, the grazers hiding, the chase and the sting), a bite
+## that makes the grazers foes and has them flee, two bites that catch a fish of the shoal, and fifty seconds of
+## swimming in which it respawns. Returns {"md5", "types", "states", "relations"}.
+func _golden_species_run() -> Dictionary:
+	var sim := AquaticSim.new(_slice_rules(), 7, AquaticBody.DARTER)
+	_golden_sim = sim
+	_golden_log = []
+	_golden_states = {}
+	var call := AquaticSim.Intent.new()
+	call.signal_call = true
+	var bite := AquaticSim.Intent.new()
+	bite.bite = true
+	for i in 600:
+		_golden_step(AquaticSim.Intent.new(1.0, 0.3 * sin(i * 0.02), -0.25))
+	sim.player.pos = sim.nest_pos() + Vector3(0.0, 1.0, 0.0)
+	_golden_step(call)
+	var g: Dictionary = sim.animals[0]
+	for k in 3:
+		sim.player.pos = g.pos + Vector3(0.0, 1.0, 2.0)
+		_golden_step(call)
+		_golden_step(call)
+		for i in AquaticSim.TICK_HZ:
+			sim.player.pos = g.pos + Vector3(0.0, 1.0, 2.0)
+			_golden_step(AquaticSim.Intent.new())
+	_golden_step(call)
+	sim.player.pos = Vector3(-10.0, -16.0, -56.0)
+	for i in 300:
+		_golden_step(AquaticSim.Intent.new(0.3, 0.2, 0.0))
+	sim.player.pos = Vector3(-6.0, -26.0, -96.0)
+	for a in sim.animals:
+		if a.species == "grazer":
+			a.pos = sim.player.pos + Vector3(float(int(String(a.id).right(2))) - 3.0, 1.0, 3.0)
+	sim.lancer.pos = sim.player.pos + Vector3(0.0, 0.0, -10.0)
+	for i in 480:
+		_golden_step(AquaticSim.Intent.new())
+	for a in sim.animals:
+		if a.species == "grazer" and a.alive:
+			_face(sim, a)
+			break
+	_golden_step(bite)
+	for i in 120:
+		_golden_step(AquaticSim.Intent.new())
+	var prey: Dictionary = {}
+	for a in sim.animals:
+		if a.species == "shoal" and a.alive:
+			prey = a
+			break
+	for k in 2:
+		for i in 31:
+			_face(sim, prey)
+			_golden_step(bite if i == 0 else AquaticSim.Intent.new())
+	for i in 3000:
+		_golden_step(AquaticSim.Intent.new(0.6, 0.4 * sin(i * 0.013), 0.15 * cos(i * 0.007)))
+	var animals := []
+	for a in sim.animals:
+		animals.append([a.id, a.hp, a.respawn_at, a.heading, AquaticSim._arr(a.target)])
+	var run := {"snapshot": sim.snapshot(), "animals": animals, "events": _golden_log, "meals": sim.meals,
+			"deaths": sim.deaths, "lancer": [sim.lancer.state, sim.lancer.until, sim.lancer.cooldown_until]}
+	var types := {}
+	for e in _golden_log:
+		types[e[1]] = true
+	return {"md5": JSON.stringify(_rounded(run), "", true).md5_text(), "types": types, "states": _golden_states,
+			"relations": sim.relations.duplicate(true)}
+
+
+## aquatic-r2 step 5: the species rules became data (rules.species_order and per-species flags); this run, recorded on
+## the hard-wired code before that, proves the grazers and the shoal still play exactly as they did.
+func test_the_slice_species_play_as_recorded() -> void:
+	var run := _golden_species_run()
+	for type in ["signal_unheard", "signal_too_fast", "signal_answered", "relation", "ally_warning", "lancer_pursue",
+			"stung", "bit", "killed"]:
+		check(run.types.has(type), "the run goes through '%s': %s" % [type, run.types.keys()])
+	for state in ["grazer:wander", "grazer:follow", "grazer:hide", "grazer:flee", "shoal:wander", "shoal:flee"]:
+		check(run.states.has(state), "the run sees %s: %s" % [state, run.states.keys()])
+	check_eq(String(run.relations.grazer.standing), "foe", "the bitten grazers end as foes")
+	check_eq(String(run.md5), GOLDEN_SPECIES_RUN, "the slice's species play as recorded before the refactor")
 
 
 func test_the_world_is_deterministic() -> void:
