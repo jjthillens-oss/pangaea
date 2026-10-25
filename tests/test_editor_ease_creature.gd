@@ -54,7 +54,7 @@ func open_editor(body_name := "s1_quadruped", points := POINTS) -> CreatureEdito
 
 func test_the_hud_has_one_ease_node_and_the_tools_are_reachable() -> void:
 	open_hud()
-	check(hud.ease != null and hud.ease.get_script() == Ease, "the HUD made its editor-ease node")
+	check(hud.editor_ease != null and hud.editor_ease.get_script() == Ease, "the HUD made its editor-ease node")
 	check_eq(hud.find_children("EditorEase", "", false, false).size(), 1, "exactly one, as a child of the HUD")
 	hud.wire()
 	check_eq(hud.find_children("EditorEase", "", false, false).size(), 1, "a second wire() makes no second one")
@@ -130,7 +130,7 @@ func test_stat_lines_parse_into_rows_and_compare_with_a_shape_and_a_sign() -> vo
 func test_the_stats_panel_replaces_the_text_block_and_unknown_lines_stay_readable() -> void:
 	open_hud()
 	hud.set_stats(PackedStringArray(["Length  1.31 m", "Mass  73.9 kg", "Selected  -"]))
-	var panel: Control = hud.ease.stats
+	var panel: Control = hud.editor_ease.stats
 	check(panel.visible and not hud.stats_text.visible, "the table shows and the old text block hides")
 	check(panel.get_index() < hud.stats_text.get_index(), "the table sits where the text was, before it")
 	check_eq(panel.row_texts(), PackedStringArray(["Length 1.31 m", "Mass 73.9 kg"]), "a row per stat")
@@ -144,7 +144,7 @@ func test_the_stats_panel_replaces_the_text_block_and_unknown_lines_stay_readabl
 
 func test_the_editor_stats_show_changes_since_the_visit_began() -> void:
 	open_editor()
-	var panel: Control = editor.hud.ease.stats
+	var panel: Control = editor.hud.editor_ease.stats
 	for key in ["length", "mass", "speed", "health", "bite", "sight", "legs", "limbs", "parts", "bones"]:
 		check(not panel.row(key).is_empty(), "the %s stat is shown" % key)
 	for word in ["legs", "limbs", "parts", "bones"]:
@@ -175,7 +175,7 @@ func test_the_selection_is_named_in_words() -> void:
 	editor.choose_tool("eye")
 	var r: Dictionary = editor.click_skin(editor.screen_of(back_point(desc)))
 	check(r["ok"], "an eye added: %s" % r.get("reason", ""))
-	var label: Label = editor.hud.ease.stats.selected_label
+	var label: Label = editor.hud.editor_ease.stats.selected_label
 	var eye: Dictionary = editor.working_body().parts.filter(func(p): return p["id"] == editor.selected["id"])[0]
 	check_eq(label.text, "Selected: eye" + (" (a pair)" if eye["mirror"] else ""), "the new eye by its name")
 	editor.choose_tool("")
@@ -198,7 +198,7 @@ func test_hovering_a_tool_opens_the_part_card_in_place_of_the_engine_tooltip() -
 	var eye := hud.tool_button("eye")
 	eye.tooltip_text = "Eye, 10 points"   # as set_tool_icon writes it
 	eye.mouse_entered.emit()
-	var card: Control = hud.ease.card
+	var card: Control = hud.editor_ease.card
 	check(card.visible, "the card opens on hover")
 	var price := int((CreatureData.editor_costs()["part"] as Dictionary).get("eye", CreatureData.editor_costs()["part_default"]))
 	var texts: PackedStringArray = card.texts()
@@ -245,7 +245,7 @@ func test_the_card_tells_what_each_kind_of_part_does() -> void:
 				check(_card_has(texts, "Sight"), "a %s adds sight" % type)
 	hud.set_locked({"eye": true})
 	hud.tool_button("eye").mouse_entered.emit()
-	check(_card_has(hud.ease.card.texts(), Effects.LOCKED), "a locked part says where to find it")
+	check(_card_has(hud.editor_ease.card.texts(), Effects.LOCKED), "a locked part says where to find it")
 
 
 ## Bible 14: the card's preview asks the same rules as the action. An eye added by a real click, and a mirrored pair
@@ -258,10 +258,10 @@ func test_the_card_predicts_the_sight_an_eye_really_gives() -> void:
 	var fx := Effects.effects(editor.working_body(), "eye", rules, CreatureData.gait_table(), tuning, CreatureData.rules(), size)
 	editor.hud.tool_button("eye").mouse_entered.emit()
 	var predicted := PackedStringArray()
-	for t in editor.hud.ease.card.texts():
+	for t in editor.hud.editor_ease.card.texts():
 		if t.begins_with("Sight") or t.begins_with(Effects.PAIR_LABEL):
 			predicted.append(t)
-	check_eq(predicted.size(), 2, "the card shows one eye's and a pair's sight (%s)" % ", ".join(editor.hud.ease.card.texts()))
+	check_eq(predicted.size(), 2, "the card shows one eye's and a pair's sight (%s)" % ", ".join(editor.hud.editor_ease.card.texts()))
 	check(predicted[0].contains("%.0f m" % float(fx["one"]["sight_m"])) and predicted[1].contains("%.0f m" % float(fx["pair"]["sight_m"])),
 			"the card's numbers are the effects' (%s)" % ", ".join(predicted))
 	editor.choose_tool("eye")
@@ -282,18 +282,18 @@ func test_the_card_predicts_the_sight_an_eye_really_gives() -> void:
 
 func test_a_stat_name_explains_itself_on_the_card() -> void:
 	open_editor()
-	var panel: Control = editor.hud.ease.stats
+	var panel: Control = editor.hud.editor_ease.stats
 	var tuning := CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json")
 	panel.stat_entered.emit("sight", panel)
-	var texts: PackedStringArray = editor.hud.ease.card.texts()
-	check(editor.hud.ease.card.visible and texts[0] == "Sight", "the card names the stat")
+	var texts: PackedStringArray = editor.hud.editor_ease.card.texts()
+	check(editor.hud.editor_ease.card.visible and texts[0] == "Sight", "the card names the stat")
 	check(_card_has(texts, "%d m at most" % int(tuning["sight"]["max_m"])), "with the stage's own numbers (%s)" % ", ".join(texts))
 	panel.stat_exited.emit("sight")
-	check(not editor.hud.ease.card.visible, "and closes")
+	check(not editor.hud.editor_ease.card.visible, "and closes")
 	panel.stat_entered.emit(panel.COUNTS_KEY, panel.counts_label)
-	check_eq(editor.hud.ease.card.texts()[0], "Legs, limbs, parts, bones", "the counts line explains itself too")
+	check_eq(editor.hud.editor_ease.card.texts()[0], "Legs, limbs, parts, bones", "the counts line explains itself too")
 	panel.stat_entered.emit(panel.CHANGE_KEY, panel)
-	check(_card_has(editor.hud.ease.card.texts(), "since you came into the editor"), "and the CHANGE header says what it counts from")
+	check(_card_has(editor.hud.editor_ease.card.texts(), "since you came into the editor"), "and the CHANGE header says what it counts from")
 
 
 func test_every_part_has_a_placement_hint() -> void:
@@ -334,33 +334,33 @@ func test_the_hint_says_what_a_click_will_do_about_pairs() -> void:
 
 func test_the_placement_line_follows_the_tool_and_hides_for_none_and_the_test_drive() -> void:
 	open_hud()
-	var row: Control = hud.ease.snap_hint
+	var row: Control = hud.editor_ease.snap_hint
 	check(row.get_parent() == hud.get_node("Bottom") and row.get_index() < hud.get_node("Bottom/DockCenter").get_index(),
 			"the line sits just above the dock")
 	var pill_bg := (row.get_child(0) as Control).get_theme_stylebox(&"panel") as StyleBoxFlat
 	check(pill_bg != null and pill_bg.bg_color.a >= 0.95, "the pill is opaque enough to read over the creature")
 	check(not row.visible, "hidden with no tool")
 	hud.set_tool("eye")
-	check(row.visible and hud.ease.snap_label.text.begins_with("Eye  ·  Click the head or body"), "the eye's line (%s)" % hud.ease.snap_label.text)
+	check(row.visible and hud.editor_ease.snap_label.text.begins_with("Eye  ·  Click the head or body"), "the eye's line (%s)" % hud.editor_ease.snap_label.text)
 	hud.set_tool("limb")
-	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(), "the limb tool's line")
+	check_eq(hud.editor_ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(), "the limb tool's line")
 	hud.set_test_drive(true)
-	hud.ease._process(0.0)
+	hud.editor_ease._process(0.0)
 	check(not row.visible, "hidden during the test drive")
 	hud.set_test_drive(false)
-	hud.ease._process(0.0)
+	hud.editor_ease._process(0.0)
 	check(row.visible, "back after it")
 	hud.set_tool("")
 	check(not row.visible, "hidden again with no tool")
 	hud.tool_button("eye").mouse_entered.emit()
-	check(_card_has(hud.ease.card.texts(), PlacementHint.creature(CreatureData.part_rules()["eye"])), "the card says where it goes too")
+	check(_card_has(hud.editor_ease.card.texts(), PlacementHint.creature(CreatureData.part_rules()["eye"])), "the card says where it goes too")
 
 
 func test_the_symmetry_toggle_shows_only_when_the_editor_listens() -> void:
 	hud = HUD_SCENE.instantiate()
 	(Engine.get_main_loop() as SceneTree).root.add_child(hud)
 	hud.wire()
-	var button: Button = hud.ease.symmetry_button
+	var button: Button = hud.editor_ease.symmetry_button
 	check(button.get_parent() == hud.get_node("%Mirror").get_parent() and button.get_index() == hud.get_node("%Mirror").get_index() + 1,
 			"the toggle sits after Mirror in the dock")
 	hud.setup(["eye"], CreatureData.editor_costs(), [Color.RED])
@@ -381,7 +381,7 @@ func test_the_symmetry_toggle_shows_only_when_the_editor_listens() -> void:
 
 func test_the_editor_does_not_listen_to_symmetry_yet_so_the_toggle_stays_hidden() -> void:
 	open_editor()
-	check_eq(editor.hud.ease.symmetry_button.visible, not editor.hud.symmetry_toggled.get_connections().is_empty(),
+	check_eq(editor.hud.editor_ease.symmetry_button.visible, not editor.hud.symmetry_toggled.get_connections().is_empty(),
 			"the toggle shows exactly when the editor connects it (GitHub issue #204)")
 
 
@@ -396,13 +396,13 @@ func test_the_placement_line_and_the_card_follow_the_symmetry_switch() -> void:
 	var rules := CreatureData.part_rules()
 	hud.set_symmetry(true)
 	hud.set_tool("eye")
-	check(hud.ease.snap_label.text.contains("mirrored pair"), "on: a pair further out (%s)" % hud.ease.snap_label.text)
+	check(hud.editor_ease.snap_label.text.contains("mirrored pair"), "on: a pair further out (%s)" % hud.editor_ease.snap_label.text)
 	hud.set_symmetry(false)
-	check_eq(hud.ease.snap_label.text, "Eye  ·  " + PlacementHint.creature(rules["eye"], false), "off: the line changes at once")
-	check(hud.ease.snap_label.text.contains("alone") and not hud.ease.snap_label.text.contains("mirrored pair"), "off: alone")
+	check_eq(hud.editor_ease.snap_label.text, "Eye  ·  " + PlacementHint.creature(rules["eye"], false), "off: the line changes at once")
+	check(hud.editor_ease.snap_label.text.contains("alone") and not hud.editor_ease.snap_label.text.contains("mirrored pair"), "off: alone")
 	hud.tool_button("eye").mouse_entered.emit()
-	check(not _card_has(hud.ease.card.texts(), Effects.PAIR_LABEL), "off: the card shows no pair (%s)" % ", ".join(hud.ease.card.texts()))
+	check(not _card_has(hud.editor_ease.card.texts(), Effects.PAIR_LABEL), "off: the card shows no pair (%s)" % ", ".join(hud.editor_ease.card.texts()))
 	hud.set_tool("limb")
-	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(false), "off: a limb comes alone")
-	hud.ease.symmetry_button.button_pressed = true
-	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(true), "pressing the toggle switches the line back")
+	check_eq(hud.editor_ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(false), "off: a limb comes alone")
+	hud.editor_ease.symmetry_button.button_pressed = true
+	check_eq(hud.editor_ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(true), "pressing the toggle switches the line back")

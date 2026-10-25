@@ -79,7 +79,7 @@ func _creature() -> void:
 	editor.undo()
 	await _frames(30)
 	await _shot("creature_edited")
-	var ease: Node = hud.get("ease")
+	var ease: Node = hud.get("editor_ease")
 	if ease != null and ease.get("stats") != null:
 		var label: Control = ease.stats.grid.get_child(0)
 		for i in range(0, ease.stats.grid.get_child_count(), ease.stats.grid.columns):
