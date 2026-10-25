@@ -342,6 +342,11 @@ func _build_snap_hint() -> void:
 	var pill := PanelContainer.new()
 	pill.theme_type_variation = &"PillPanel"
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The theme's pill is 62% opaque: over the creature's legs its text was hard to read, so it is as opaque as the card.
+	var glass := PartCard.GAME_THEME.get_stylebox(&"panel", &"PillPanel").duplicate() as StyleBox
+	if glass is StyleBoxFlat:
+		glass.bg_color.a = maxf(glass.bg_color.a, PartCard.OPACITY)
+	pill.add_theme_stylebox_override(&"panel", glass)
 	snap_label = Label.new()
 	snap_label.name = "Text"
 	snap_label.theme_type_variation = &"CaptionLabel"

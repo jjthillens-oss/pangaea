@@ -337,6 +337,8 @@ func test_the_placement_line_follows_the_tool_and_hides_for_none_and_the_test_dr
 	var row: Control = hud.ease.snap_hint
 	check(row.get_parent() == hud.get_node("Bottom") and row.get_index() < hud.get_node("Bottom/DockCenter").get_index(),
 			"the line sits just above the dock")
+	var pill_bg := (row.get_child(0) as Control).get_theme_stylebox(&"panel") as StyleBoxFlat
+	check(pill_bg != null and pill_bg.bg_color.a >= 0.95, "the pill is opaque enough to read over the creature")
 	check(not row.visible, "hidden with no tool")
 	hud.set_tool("eye")
 	check(row.visible and hud.ease.snap_label.text.begins_with("Eye  ·  Click the head or body"), "the eye's line (%s)" % hud.ease.snap_label.text)
