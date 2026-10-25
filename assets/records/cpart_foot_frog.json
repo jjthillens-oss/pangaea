@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a thick slanted ankle on a fleshy sole with a heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
+  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle on a fleshy sole with a sunk heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_foot_frog.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_foot_frog.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 4,
+  "revision": 5,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.105,
-    "y_forward": 0.133,
-    "z_up": 0.046
+    "x": 0.106,
+    "y_forward": 0.126,
+    "z_up": 0.045
   },
-  "triangles": 1073,
+  "triangles": 2371,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -88,7 +88,7 @@
         "default_permille": 0
       }
     ],
-    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.03 m) meets the limb tip."
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.022 m) meets the limb tip."
   },
   "paint_mix": {
     "M_FootFrogSkin": 0.9,
@@ -99,7 +99,7 @@
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
     "triangles_before": 4034,
-    "triangles_after": 1073
+    "triangles_after": 2371
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

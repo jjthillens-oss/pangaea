@@ -3357,10 +3357,10 @@ def build_foot_frog():
     # The fleshy sole: wider at the front where the toes leave it, with a separate plump heel pad.
     bc.append(verts, fcs, *_blob(sole_c, 0.022, 0.028, 0.0105, power=0.85,
                                  shape=lambda n: (0.72 + 0.28 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
-    bc.append(verts, fcs, *_blob(Vector((0.0, -0.02, 0.008)), 0.014, 0.013, 0.009, power=0.9))
+    bc.append(verts, fcs, *_blob(Vector((0.0, -0.014, 0.0085)), 0.016, 0.014, 0.0085, power=0.9))   # sunk into the sole, no collar
     # A thick ankle slanting down and forward from behind, flaring into the sole.
     # Short (half the old height) and tapering: narrow where the limb meets it, flaring wide into the sole.
-    apath = [Vector(p) for p in ((0.0, -0.03, 0.04), (0.0, -0.025, 0.033), (0.0, -0.019, 0.025), (0.0, -0.012, 0.018), (0.0, -0.005, 0.0125), (0.0, 0.0, 0.009))]
+    apath = [Vector(p) for p in ((0.0, -0.022, 0.04), (0.0, -0.018, 0.033), (0.0, -0.013, 0.025), (0.0, -0.008, 0.018), (0.0, -0.003, 0.0125), (0.0, 0.002, 0.009))]
     av, af, _ = _tube(apath, lambda i, a: (0.0105, 0.0118, 0.0135, 0.0158, 0.0175, 0.016)[i], 18)
     bc.append(verts, fcs, av, af)
     ts = [k / 8 for k in range(9)]
@@ -3400,21 +3400,21 @@ def build_foot_frog():
             p = p - (a.lerp(b, 0.5) - sole_c).normalized() * sag
             return Vector((p.x, p.y, max(0.0035, p.z + 0.0012)))
         _membrane(wv, wf, point, 6, 6, thickness=0.0022, facing=Vector((0.0, 0.0, 1.0)))
-    web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.35)
+    web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.6)
     web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
     web_mat.name = "M_FootFrogWeb"
     objs = [foot, pads, web]
     baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#5E9A44")), "M_FootFrogPad": sf.tint(_lin("#E2D6A2")),
-                                         "M_FootFrogWeb": sf.tint(_lin("#4E7A36"))})
+                                         "M_FootFrogWeb": sf.tint(_lin("#2C4A1E"))}, keep=("Pads",))
     pts = _check_pivot("foot_frog", 0.0, ground=True)
     reach = max(math.hypot(p.x, p.y) for p in pts)
     handles = _foot_handles(objs, 8.0, 0.01, 0.3)   # capped so the outer toes stay near 40 degrees
     rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
     rules["handles"] = handles
-    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.03 m) meets the limb tip."
-    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a thick slanted ankle on a fleshy sole with a heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.022 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a short tapered ankle on a fleshy sole with a sunk heel pad, five knuckled toes fanned forward with a broad dark-green web nearly to the tips and broad pale sticky disc pads, smooth wet skin.",
             "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 4, **baked}
+            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 5, **baked}
 
 
 def build_foot_primate():
