@@ -21,7 +21,8 @@ identity (close-up), 3 neutral lighting, 4 export and Godot verification at game
   creature editor scene (`game/scenes/creature/creature_editor.tscn`, driven through `setup()`), with the preset's
   colour, pattern and covering. Views: `editor` (the editor's own camera and HUD), `gameplay` (the creature world's
   camera distance, 2.4 x the body length, 2.6 to 12 m, fov 50, from the front three-quarter), `close` and `side` (on
-  the part).
+  the part). `--mark=<part type>:<material>:<#colour>` (diagnostic) paints one material flat and unlit, to find which
+  faces make a band or a highlight.
 - The round ear's head-sphere shots: `tools/ear_round_shots.gd`. The fur fixture: `tools/covering_shots.gd --only=fur`.
 - All Godot frames are the Compatibility renderer under Xvfb (it overexposes a shadowed sun, `docs/TOOLCHAIN.md`).
 - Evidence (before and after pairs) is in `docs/evidence/credit-creature-parts/`.
@@ -32,7 +33,7 @@ identity (close-up), 3 neutral lighting, 4 export and Godot verification at game
 | --- | --- | --- |
 | cpart_foot_frog (rev 5) | ankle and heel | Gray front and three-quarter: the ankle is a straight tube with a flat top and a crease ring where it enters the sole; the heel is a separate lump behind it. On the hopper in the editor the frog feet sit under the floor pad (placement, not the part); `--no-floor` shows them. |
 | cpart_hand_frog (rev 2) | (finish) | Gray: faceted round toe discs, a flat-ended wrist stub. |
-| cpart_eye_bulge (rev 4) | cream band | Godot close: a faceted iris ball and a thin dark line at the lid lip; no cream band shows under the neutral capture light, so the band needs the body frames in the editor's light to confirm. |
+| cpart_eye_bulge (rev 4) | cream band | Godot close: a faceted iris ball and a thin dark line at the lid lip; no cream band shows under the neutral capture light. On the hopper in the editor's light: a pale cream-green flat ledge round each ball, which is the lid band (confirmed with `--mark`, see the revision 5 section). |
 | cpart_ear_round (rev 4) | rim facets and crease | Head-sphere front and three-quarter: straight segments along the outline and a crease line inside the rolled rim. |
 | cpart_muzzle_primate (rev 3) | side profile | Gray side: a flat slab with a box-shaped muzzle table and a brow of the same height, a slot between them. On the monkey it sits small under the eyes. |
 | cpart_wing_dragon (rev 1) | fold lift-off (found by the scout) | Godot front and side at H1_Fold 500 and 1000: the root leaves the ground plane; at 1000 the folded bundle hovers above it with membrane shreds below. On the dragon preset the folded wings float above the back. |
@@ -82,6 +83,44 @@ unchanged.
 
 Evidence: `ear_round_head_before_after.jpg` (head sphere, top before, bottom after), `ear_round_gray_before_after.jpg`
 and `ear_round_monkey_before_after_perk.jpg` (monkey close: before, after, after with both handles at 1000).
+
+## cpart_eye_bulge, revision 5 (IMPLEMENTED)
+
+Cause of the cream band, confirmed before rebuilding: on the hopper preset close up in the editor scene,
+`tools/godot/part_on_body_shot.gd --mark=eye_bulge:M_EyeBulgeLid:#ff2020,eye_bulge:M_EyeBulgeMound:#2040ff` paints the
+lid band red and the mound blue. The pale ring is exactly the red lid band: the eight rows from `low` up to the lip
+make a wide, near-flat ledge round the ball in a lighter tint (#79A458) at a flat 0.8 grey, so in the editor's key
+light it reads as a pale cream-green ring between the iris and the mound. The back of the lip, which the scout
+suspected (seen through a 1.6 mm gap), shows in Blender as a dark ring, not as the band. The same frames showed the
+skirt below the skin as a straight cylinder, so on the hopper's rounded head the mound stood off as a wall with a hard
+corner, and the 24-segment ball outline was visibly faceted.
+
+Change: the lid takes the mound's tint (#6E9A4E) at a flat 0.72 grey, a little darker than the mound's mottle, so it
+reads as skin folding round the ball. Six lid rows hug the ball up to a rounded lip at 1.08 ball radii, and one last
+row tucks the lip's edge inside the ball (0.972 radii), so there is no gap and no back face to see. The skirt below
+the skin tucks in under the widest ring at the skin line, so the mound's edge curves into a rounded head. There are 32
+segments round (was 24) and six iris rows (was four). H1_Blink closes the same round dome; H2_Bulge now stretches only
+the ball above the lip (the top still rises a third of a radius), so it never pulls away from the lid. Triangles: 1152
+of 1200 (was 960). Dimensions (0.13 x 0.13 x 0.11 m), footprint, sink, pivot, handle keys, sockets (none) and material
+names are unchanged; `part_rules.json` is unchanged. `_eye_ball` and `_wet_skin_material` gained optional parameters
+whose defaults keep every other part's output.
+
+| Gate | Status | Observation |
+| --- | --- | --- |
+| 1 shape | pass | Blender gray front, side and three-quarter: the ball sits in one rounded mound, the lid hugs it to a rounded lip with no gap (before: a black ring between ball and lip), and the skirt tapers under the skin. Godot captures: H1_Blink 500 rolls a clean green lid over the lower ball; 1000 closes a round dome with no pinhole; H2_Bulge 1000 shows no gap at the lid. Remaining: the ball's top outline still shows mild facets close up (rows 19 degrees apart, was 29); one more row would go over the budget. |
+| 2 materials | pass | Glossy bronze iris with the slit pupil; the lid an even green band in the mound's colour (no pale ring); the mound mottled wet skin (Blender material views, the baked albedo, Godot). |
+| 3 lighting | pass | Neutral Blender review light and the neutral Godot capture; no bloom. |
+| 4 Godot | pass | Imported; on the hopper preset in the editor view, at the world's gameplay distance and close, the pale ledge is gone and the mound's edge curves into the head in shadow; blinked shut, it is a round green dome. |
+
+Still open, outside this part: the mound stands off the hopper's narrow head as a rounded collar (scale 1300 on a
+strongly curved head), and parts keep their baked colours, so the mound is a lighter green than the hopper's body.
+`paint_mix` is not read by game code, so matching the body colour would be a `creature_look` change, which other
+agents own.
+
+Evidence: `eye_bulge_band_cause_marked.jpg` (the hopper close up, plain and with the lid red and the mound blue),
+`eye_bulge_hopper_before_after.jpg` (close and side, before left, after right),
+`eye_bulge_editor_gameplay_before_after.jpg`, `eye_bulge_gray_before_after.jpg` (gray front and side, material
+three-quarter) and `eye_bulge_blink_bulge_after.jpg` (Godot at rest, H1_Blink 500 and 1000, H2_Bulge 1000).
 
 ## Known issues
 

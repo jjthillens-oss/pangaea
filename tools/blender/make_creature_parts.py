@@ -2123,15 +2123,17 @@ def build_barbels():
 
 # --- Set 7: more eyes and mouths ------------------------------------------------------------------------
 
-def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28):
+def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28, iris_rows=4, back_rows=6):
     """An eyeball revolved round +Z with a ring of its own exactly at the iris edge, so the iris is a second
     material on the same mesh with a true circular edge (a separate iris shell made the bake ray-cast hit the
-    ball underneath). Faces inside `iris_half` (radians from +Z) take `iris`, the rest `sclera`."""
-    thetas = sorted(set([iris_half * k / 4 for k in range(5)] + [iris_half + (math.pi - iris_half) * k / 6 for k in range(7)]))
+    ball underneath). Faces inside `iris_half` (radians from +Z) take `iris`, the rest `sclera`. `iris_rows` and
+    `back_rows` are the bands on either side of the iris edge."""
+    thetas = sorted(set([iris_half * k / iris_rows for k in range(iris_rows + 1)]
+                        + [iris_half + (math.pi - iris_half) * k / back_rows for k in range(back_rows + 1)]))
     prof = [(radius * math.cos(t), radius * math.sin(t) if 0.0 < t < math.pi - 1e-9 else 0.0) for t in thetas]
     rv, rf, bands = bc.revolve(prof, segs)
     verts = [tuple(centre + Vector(v)) for v in _up(rv)]
-    face_mats = [1 if b < 4 else 0 for b in bands]
+    face_mats = [1 if b < iris_rows else 0 for b in bands]
     obj = bc.mesh_object(name, verts, rf, [sclera, iris], face_mats)
     return obj
 
@@ -3199,12 +3201,13 @@ def build_spike():
             "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
 
 
-def _wet_skin_material(name, scale=90.0, rough=0.28, mottle=True):
+def _wet_skin_material(name, scale=90.0, rough=0.28, mottle=True, flat="#CCCCCC"):
     """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet.
-    `mottle=False` gives the plain version for a surface whose UVs stretch (a closing lid): an even tone, no bump."""
+    `mottle=False` gives the plain version for a surface whose UVs stretch (a closing lid): an even tone (`flat`),
+    no bump."""
     sh = sf.Shader(name)
     if not mottle:
-        return sh.out("#CCCCCC", rough)
+        return sh.out(flat, rough)
     mottle = sh.remap(sh.noise(scale, 2.0), 0.35, 0.65)
     pebble = sh.remap(sh.voronoi(scale * 6.0, 0.9), 0.3, 0.05)
     sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.12, 0.0004)
@@ -4218,79 +4221,137 @@ def _frog_disc_material(name):
     return sh.out(_grey(sh, sh.math("SUBTRACT", 0.95, sh.math("MULTIPLY", pits, 0.15)), 0.8), 0.18)
 
 
+# The bulge eye's mound and lid profile, (height, radius) in ball radii, from under the skin up (revision 5). The
+# skirt below the skin tucks in and the widest ring sits at the skin line, so on a rounded head the mound curves
+# down into the skin instead of standing off it as a wall; it rises over a soft shoulder to `low`, then six lid
+# rows hug the ball up to a rounded lip, and a last row tucks the lip edge under the ball's surface, so there is
+# no gap and no back face to see between lid and ball.
+BULGE_MOUND = ((-0.567, 1.0), (-0.28, 1.36), (0.0, 1.55), (0.13, 1.49), (0.25, 1.37))
+BULGE_LID = ((0.34, 1.25), (0.42, 1.15), (0.49, 1.08), (0.555, 1.03), (0.605, 1.0))
+BULGE_LIP = (math.radians(113.0), 1.08)      # the lip's angle from the ball's top and distance from its centre
+BULGE_TUCK = (math.radians(109.0), 0.972)    # the lip's edge, inside the ball
+
+
 def build_eye_bulge():
     """A frog's eye: a big glossy ball, mostly bronze iris with a wide horizontal pupil, sitting high on a raised
     mound of wet skin that hugs its lower half. Placed on the side of the head (+Y to the head), the pupil's long
-    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out."""
+    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out.
+    Revision 5: the lid is the mound's own green (a lighter, flat lid band read as a pale cream ring round the
+    ball), its lip tucks under the ball, the skirt curves into the skin, and 32 segments round (24 showed
+    facets on the ball's outline up close)."""
     R = BULGE_R
     centre = Vector((0.0, 0.0, R * 1.05))
-    axis = Vector((0.0, 0.0, 1.0))
     sclera = _sclera_material("M_EyeBulgeBallProc")
-    # The iris runs down to 116 degrees, past the mound's lip (about 115), so no pale collar shows between them;
-    # the sclera below is tinted a dark olive so any sliver that peeks out reads as shadowed skin, not a washer.
+    # The iris runs down to 116 degrees, past the lid's tucked edge (109), so no sclera shows above the lid.
     iris_half = math.radians(116.0)
-    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, iris_half, math.radians(40.0), slit=0.15,
-                              slit_axis=(0.0, 1.0, 0.0))
-    ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=24)
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, Vector((0.0, 0.0, 1.0)), iris_half, math.radians(40.0),
+                              slit=0.15, slit_axis=(0.0, 1.0, 0.0))
+    ball = _eye_ball("EyeBulge", centre, R, iris_half, sclera, iris_mat, segs=32, iris_rows=6, back_rows=2)
     sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
-    # The mound: a skirt flaring into the skin, rising only to a low lip well below the ball's equator, so the ball sits high and round on it.
-    prof = []
-    top = centre.z - 0.42 * R
-    low = centre.z - 0.8 * R
-    z0 = -(BULGE_SINK - 0.0012)
-    # Five rings up the skirt, then eight between `low` and the lip: the blink rolls those eight over the ball,
-    # and they need to be dense enough to close on a round dome rather than a faceted cone.
-    zs = [z0 + (low - z0) * i / 5 for i in range(5)] + [low + (top - low) * i / 8 for i in range(9)]
-    for z in zs:
-        if z <= 0.0:
-            r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
-        else:
-            u = min(1.0, z / top)
-            r = max(R * 0.95, R * (1.55 - 0.6 * math.sin(u * math.pi / 2) ** 0.7))
-        prof.append((z, r))
-    lv, lf, lbands = bc.revolve(prof, 24)
+
+    def on_ball(th, rad):
+        return (centre.z / R + rad * math.cos(th), rad * math.sin(th))
+
+    rows = list(BULGE_MOUND) + list(BULGE_LID) + [on_ball(*BULGE_LIP), on_ball(*BULGE_TUCK)]
+    prof = [(z * R, r * R) for z, r in rows]
+    low = prof[len(BULGE_MOUND) - 1][0]
+    lip_z = prof[-2][0]
+    lid_z = [z for z, _ in prof[len(BULGE_MOUND) - 1:-1]]      # low, the lid rows, the lip
+    lv, lf, lbands = bc.revolve(prof, 32)
     # revolve winds its faces inward for a rising profile; the mound is an open skirt, so flip them by hand (an
     # inward mound lit its back face and showed a diagonal shading crease on the front).
     lf = [tuple(reversed(f)) for f in lf]
     mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
-    # The rings the blink rolls over the ball (above `low`) take a plain wet-skin lid material with no mottle, so
-    # the UVs stretching as the lid closes have nothing to streak.
-    lid_mat = _wet_skin_material("M_EyeBulgeLidProc", scale=140.0, mottle=False)
-    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat, lid_mat], [1 if b >= 4 else 0 for b in lbands],
-                           parent=ball, fix_normals=False)
+    # The rows the blink rolls over the ball (above `low`) take a plain wet-skin lid material with no mottle, so
+    # the UVs stretching as the lid closes have nothing to streak. Same tint as the mound and a touch darker, so
+    # the lid reads as skin folding round the ball, not as a pale band.
+    lid_mat = _wet_skin_material("M_EyeBulgeLidProc", scale=140.0, mottle=False, flat="#B8B8B8")
+    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat, lid_mat],
+                           [1 if b >= len(BULGE_MOUND) - 1 else 0 for b in lbands], parent=ball, fix_normals=False)
     mound_mat.name, lid_mat.name = "M_EyeBulgeMound", "M_EyeBulgeLid"
     baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#4A4A2C")),
                   "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E")),
-                  "M_EyeBulgeLid": sf.tint(_lin("#79A458"))}, size=512)
+                  "M_EyeBulgeLid": sf.tint(_lin("#6E9A4E"))}, size=512)
     pts = _check_pivot("eye_bulge", BULGE_SINK)
     foot = _footprint(pts, z_max=0.02)
+    th_low = math.atan2(prof[len(BULGE_MOUND) - 1][1], low - centre.z)
+    n_lid = len(lid_z) - 1
 
     def blink(co):
+        """The closed lid: the rows above `low` spread evenly in angle from `low` to the pole, easing onto one
+        sphere just outside the ball, so the shut lid is a round dome. The lip stays a sub-millimetre ring (an exact
+        collapse to a point made duplicate vertices that crashed the glTF import) and the tucked edge closes just
+        under it, inside the dome."""
         if co.z <= low + 1e-6:
             return co
-        k = min(1.0, (co.z - low) / (top - low))
         d = co - centre
         phi = math.atan2(d.y, d.x)
-        th_low = math.atan2(math.hypot(d.x, d.y), low - centre.z)
-        # The rings spread evenly in angle from `low` to the pole, easing onto one sphere just outside the ball, so
-        # the closed lid is a round dome. The top ring stays a sub-millimetre ring (an exact collapse to a point made
-        # duplicate vertices that crashed the glTF import).
-        th = th_low * (1.0 - k) + 0.004 * k
-        s = bc.smoothstep(min(1.0, k * 2.0))
-        rad = d.length + (1.07 * R - d.length) * s
+        if co.z > lip_z + 1e-6:
+            th, rad = 0.002, 1.0 * R
+        else:
+            i = next(j for j in range(1, len(lid_z)) if co.z <= lid_z[j] + 1e-6)
+            k = (i - 1 + (co.z - lid_z[i - 1]) / max(1e-9, lid_z[i] - lid_z[i - 1])) / n_lid
+            th = th_low * (1.0 - k) + 0.004 * k
+            s = bc.smoothstep(min(1.0, k * 2.0))
+            rad = d.length + (1.07 * R - d.length) * s
         return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
 
+    top = centre.z + R
+
     def bulge(co):
-        return Vector((co.x, co.y, co.z + 0.25 * R * max(0.0, co.z) / (R * 1.55)))
+        # Only the ball above the lip stretches out (its top rises a third of a radius, as before), so the ball
+        # never pulls away from the lid's tucked edge.
+        return Vector((co.x, co.y, co.z + 0.33 * R * max(0.0, co.z - lip_z) / (top - lip_z)))
 
     handles = _shape_keys(mound, [("H1_Blink", blink, "the mound's lip rolls up over the ball and shuts")])
     handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
     rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "forward_cone", ["spine", "part"], 60, 45)
     rules["handles"] = handles
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
-    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
+    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin whose lid hugs the ball; blinks on a shape key.",
             "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9, "M_EyeBulgeLid": 0.9}, "revision": 4, **baked}
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9, "M_EyeBulgeLid": 0.9}, "revision": 5,
+            "review_notes": EYE_BULGE_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+EYE_BULGE_REVIEW = {
+    "revision": 5,
+    "cause": "The cream band was the lid band itself (M_EyeBulgeLid, the eight rows from `low` up to the lip): a "
+             "wide, near-flat ledge round the ball in a lighter tint (#79A458) with a flat 0.8 grey, so under the "
+             "editor's key light it read as a pale cream-green ring between the iris and the mound. Confirmed on "
+             "the hopper preset close up with tools/godot/part_on_body_shot.gd --mark (the lid painted red, the "
+             "mound blue). The back of the lip, seen through the 1.6 mm gap, showed as a dark ring in Blender but "
+             "not as the band.",
+    "change": "The lid takes the mound's tint (#6E9A4E) and a flat 0.72 grey, a little darker than the mound's mottle, "
+              "so it reads as skin folding round the ball. The profile is rebuilt: six lid rows hug the ball up to a "
+              "rounded lip at 1.08 ball radii, and a last row tucks the lip's edge inside the ball (0.972 radii), "
+              "so there is no gap and no back face to see. The skirt below the skin tucks in (1.0 radii at the "
+              "bottom) under a widest ring at the skin line, so on a rounded head the mound curves into the skin "
+              "instead of standing off it as a wall. 32 segments round the ball and mound (was 24) and six iris "
+              "rows (was four), so the outline is less faceted. H1_Blink closes the same dome (rows spread evenly "
+              "from `low` to the pole on 1.07 radii; the tucked edge closes under the lip inside the dome); "
+              "H2_Bulge now stretches only the ball above the lip (its top still rises a third of a radius), so it "
+              "never pulls away from the lid. 1152 of 1200 triangles (was 960); dimensions, footprint, sink, pivot, "
+              "handle keys, sockets (none), iris and materials' names unchanged.",
+    "gate1_shape": "pass: gray front, side and 3/4 (Blender) show the ball seated in one rounded mound, the lid "
+                   "hugging the ball to a rounded lip with no gap (before: a black ring between ball and lip), and "
+                   "the skirt tapering under the skin. Godot captures: H1_Blink 500 rolls a clean green lid over "
+                   "the lower ball, 1000 closes a round dome with no pinhole, H2_Bulge 1000 shows no gap at the "
+                   "lid. Remaining: the ball's top outline still shows mild facets close up (rows 19 degrees "
+                   "apart, was 29); one more row would go over the budget.",
+    "gate2_materials": "pass: glossy bronze iris with the slit pupil, the lid an even green band of the mound's "
+                       "colour (no pale ring), the mound mottled wet skin, in the Blender material views, the baked "
+                       "albedo and Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral "
+                      "Godot capture (tools/godot/capture_part.gd); no bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); on the hopper preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) in the editor view, at the world's gameplay distance and "
+                   "close, the pale ledge is gone and the mound's edge curves into the head in shadow; blinked shut "
+                   "it is a round green dome. The mound still stands off the hopper's narrow head as a rounded "
+                   "collar (scale 1300 on a strongly curved head), and parts keep their baked colours, so it is a "
+                   "lighter green than the hopper's body (paint_mix is not read by game code).",
+}
 
 
 HAND_FROG_T = tuple(i / 8 for i in range(9))

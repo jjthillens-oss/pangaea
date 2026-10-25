@@ -8,14 +8,15 @@ extends SceneTree
 ##     --rendering-driver opengl3 --resolution 1600x900 --fixed-fps 60 --script res://tools/godot/part_on_body_shot.gd \
 ##     -- --preset=monkey --out=DIR [--focus=muzzle_primate] [--handles=wing_dragon:H1_Fold:1000,...] [--covering=N]
 ##     [--shells=N] [--views=editor,gameplay,front,close,side,back] [--prefix=NAME] [--shadow] [--scene=bare]
-##     [--no-floor] [--zoom=F]
+##     [--no-floor] [--zoom=F] [--mark=eye_bulge:M_EyeBulgeLid:#ff0000,...]
 ## Views: "editor" is the editor's own camera with its HUD and handle dots (editor scene only); "gameplay" is the
 ## creature world's camera distance (2.4 x the body length, 2.6-12 m, fov 50, 16 degrees up) from the front
 ## three-quarter; "front" the same distance straight on; "back" the world's default view from behind; "close" and
 ## "side" frame the --focus part (or the head when there is none) from its own side and from +X, --zoom times
 ## closer. --no-floor hides the editor's floor pad in the views other than "editor" (the frog feet sit under it).
 ## Files are <prefix>_<view>.png (prefix defaults to the preset name). In the bare scene the key light casts no
-## shadow unless --shadow (Compatibility overexposes a shadowed light).
+## shadow unless --shadow (Compatibility overexposes a shadowed light). --mark (diagnostic) paints every surface of
+## that part type whose material has that name a flat unlit colour, to find which faces make a highlight or a band.
 
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const SkinCpu := preload("res://game/systems/creature/skin_cpu.gd")
@@ -43,6 +44,7 @@ var shadow := false
 var bare := false
 var no_floor := false
 var zoom := 1.0
+var marks := []             # [part type, material name, colour]
 
 
 func _initialize() -> void:
@@ -75,6 +77,10 @@ func _initialize() -> void:
 			no_floor = true
 		elif arg.begins_with("--zoom="):
 			zoom = float(arg.trim_prefix("--zoom="))
+		elif arg.begins_with("--mark="):
+			for triple in arg.trim_prefix("--mark=").split(",", false):
+				var t := triple.split(":")
+				marks.append([t[0], t[1], Color(t[2])])
 	if prefix == "":
 		prefix = preset_name
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -129,6 +135,8 @@ func _run() -> void:
 				var idx: int = (mi as MeshInstance3D).find_blend_shape_by_name(key)
 				if idx >= 0:
 					(mi as MeshInstance3D).set_blend_shape_value(idx, handles[type][key])
+	for m in marks:
+		_mark(rig, m[0], m[1], m[2])
 	for f in 3:
 		await process_frame
 	cam.fov = FOV
@@ -164,6 +172,27 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(out_dir.path_join("%s_%s.png" % [prefix, view]))
 	quit()
+
+
+func _mark(rig: Node3D, type: String, material_name: String, colour: Color) -> void:
+	var flat := StandardMaterial3D.new()
+	flat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flat.albedo_color = colour
+	flat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var hits := 0
+	for e in rig.part_nodes:
+		var node: Node3D = e["node"]
+		if not String(node.name).begins_with(type + "_"):
+			continue
+		for mi in node.find_children("*", "MeshInstance3D", true, false):
+			var mesh: Mesh = (mi as MeshInstance3D).mesh
+			for si in mesh.get_surface_count():
+				var mat := mesh.surface_get_material(si)
+				var surface_name := (mesh as ArrayMesh).surface_get_name(si) if mesh is ArrayMesh else ""
+				if (mat and mat.resource_name == material_name) or surface_name == material_name:
+					(mi as MeshInstance3D).set_surface_override_material(si, flat)
+					hits += 1
+	print("part_on_body_shot mark %s %s: %d surfaces" % [type, material_name, hits])
 
 
 ## The world bounds of the parts of `type` (all copies), or of the body's front fifth (the head) when there is none.
