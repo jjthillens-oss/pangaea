@@ -125,6 +125,35 @@ Evidence: `eye_bulge_band_cause_marked.jpg` (the hopper close up, plain and with
 `eye_bulge_editor_gameplay_before_after.jpg`, `eye_bulge_gray_before_after.jpg` (gray front and side, material
 three-quarter) and `eye_bulge_blink_bulge_after.jpg` (Godot at rest, H1_Blink 500 and 1000, H2_Bulge 1000).
 
+## cpart_foot_frog, revision 6 (IMPLEMENTED)
+
+Cause: revision 5 was three separate closed pieces, an ankle tube with a flat top, a sole blob and a heel blob. The
+gray views and the hopper showed a crease ring where the ankle entered the sole, a heel lump stuck on behind it with
+its own seam, and a flat ankle top with a hard rim. The web's free edge was two open layers 4.4 mm apart, which showed
+as dark slits between the toes from the front and three-quarter.
+
+Change: the ankle, heel and sole are one closed lofted surface (`FROG_FOOT_KEYS` and `_frog_foot_body` in the
+generator). Each ring runs between a back-or-bottom outline point and a front-or-top one, so the side outline is
+drawn directly: the back of the ankle runs down into a heel that bulges about 3 mm back and down, the sole lies flat
+on the ground and widens to 20 mm half width under the toe roots, and the front of the ankle turns into the instep
+along one concave curve. The rings were checked not to cross before the build. The ankle top rounds over through two
+shrinking rings. The decimation holds the loft within 0.35 mm (`_points_fit`; at the default 0.8 mm the heel's outline
+was polygonal). The web's free edge is closed with rim faces. Toes, web shape, pads, materials, the handles, the ankle
+top where the limb meets it (z 0.04 m, y -0.013 m), the footprint (0.098 m) and sink (0) are unchanged. 2498 of 2500
+triangles (was 2361; the pads alone are 1600); 0.106 x 0.12 x 0.042 m (was 0.106 x 0.118 x 0.042: the heel reaches 2 mm
+further back). A second build reproduced the committed GLB and record byte for byte.
+
+| Gate | Status | Observation |
+| --- | --- | --- |
+| 1 shape | pass | Blender gray side, back, three-quarter and front (`tools/blender/render_part_review.py --views=side,back,threequarter,front --dist=1.1`): one smooth form from a rounded ankle top down into the heel and along the sole, with no crease ring, no separate heel lump and no slit along the web's edge (before: all three). H1_Spread and H2_Long at 1000 move only the toes, web and front of the sole. Remaining: straight from behind, the heel's lower corners show two or three flat segments (2 triangles of budget left); H1_Spread and H2_Long stretch the outer pads into ovals, as `_foot_handles` does for every foot (not changed here). |
+| 2 materials | pass (unchanged) | Wet green skin, pale glossy disc pads and the darker green web read apart in the Blender material view and in Godot. |
+| 3 lighting | pass | Neutral Blender review light and the neutral Godot capture; no bloom. |
+| 4 Godot | pass | Imported; the Godot capture shows the heel and ankle as one rounded form. On the hopper preset (bare scene side view, and the editor scene close up with `--no-floor`) the ankle flows into the heel and sole where revision 5 showed a seam ring; at the world's gameplay distance the feet read as green feet with pale pads. The hopper's hind legs end above the feet (placement, see Known issues). |
+
+Evidence: `foot_frog_gray_before_after.jpg` (gray side, back, three-quarter and front, before on top),
+`foot_frog_hopper_before_after.jpg` (the hopper's foot, bare scene side and editor close, before on top) and
+`foot_frog_material_handles_after.jpg` (material three-quarter, H1_Spread 1000, H2_Long 1000).
+
 ## cpart_muzzle_primate, revision 4 (IMPLEMENTED)
 
 Cause: revision 3's snout was a superellipse plateau, a flat top 19 mm high from y -23 to -8 mm with steep steps at
