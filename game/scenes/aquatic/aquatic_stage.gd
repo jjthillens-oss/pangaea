@@ -227,9 +227,9 @@ func open_shore_offer() -> Control:
 	var text := Label.new()
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text.add_theme_font_size_override("font_size", 23)
-	text.text = ("Your lobe fins can carry you out of the water. On land your line walks, and its fins become legs; "
-			+ "the sea is kept as a checkpoint you can go back to. Or stay: the sea is a path of its own, and your line "
-			+ "keeps evolving here.")
+	text.text = ("Your lobe fins can carry you out of the water and become legs. The fins you keep come with you: "
+			+ "they slow you on land until you trade them away. The sea stays reachable: it is kept as a checkpoint you "
+			+ "can go back to. Or stay: the sea is a path of its own, and your line keeps evolving here.")
 	box.add_child(text)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
