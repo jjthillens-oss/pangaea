@@ -136,6 +136,37 @@ REVIEW = {
                                "stand out against the dark disc, the throat stays dark without crushing the disc; "
                                "no clipping.",
         "gate4_godot": G4_PENDING},
+    "cpart_mouth_fangs": {
+        "gate1_shape": "pass: a short, wide, low snout of lips (13.1 cm across, 6.5 cm deep, standing 7.5 cm out of "
+                       "the skin) resting a little open over a shorter lower jaw; face-on (gray_top, the in-game "
+                       "front) it reads as a wide lens of a mouth with two long fangs hanging from the upper jaw's "
+                       "front in front of the chin and curving back, and the forked tongue between the lips; from "
+                       "the side the mouth line is a dark slot with the fangs crossing it at the tip. H1_Open drops "
+                       "the lower jaw about 34 degrees and swings the fangs forward to strike; H2_Tongue flicks the "
+                       "tongue about 4 cm out and spreads its fork. Iterated: the first icosphere jaws were 1518 "
+                       "triangles, so the jaws are lathed domes with rings crowded at the lip edge (909 now).",
+        "gate2_materials": "pass: three finishes - teal skin of domed snake scales with crisp grooves (larger plates "
+                           "and a slightly paler tone along the mouth line, which reads only faintly in the gap's "
+                           "shade), ivory fangs with fine lengthwise streaks, and a dark plum wet mouth and tongue "
+                           "(low chroma, LAB hue 334, clear of the threat pink). Iterated: the first scale shader "
+                           "read as cracked mud.",
+        "gate3_neutral_light": "pass: under the neutral white rig the scales' domes catch soft highlights, the fangs "
+                               "stay bright without clipping and the tongue's fork reads against the sky; the mouth "
+                               "slot is dark but not crushed.",
+        "gate4_godot": G4_PENDING},
+    "cpart_eye_turret": {
+        "gate1_shape": "pass: a smooth, slightly convex cone 8.4 cm across and 6 cm out of the skin with a round "
+                       "aperture at its tip (gray_top), the ball sitting just inside it. H1_Blink puckers the "
+                       "aperture shut, H2_Reach stretches the turret about 2.2 cm taller with the ball riding up "
+                       "inside. Iterated: the first turret read as a beehive dome whose geometric ridges decimated "
+                       "into irregular terraces and whose aperture was a hexagon; the ridges are now in the normal "
+                       "map and the cone is decimated at a tighter 0.3 mm tolerance (668 triangles).",
+        "gate2_materials": "pass: two finishes - turquoise skin of small domed granular tubercles in concentric ring "
+                           "bands, and through the aperture a glossy gold iris ring round a black pupil (the crop of "
+                           "mat_threequarter shows both). Iterated: the first scale shader read as cracked mud.",
+        "gate3_neutral_light": "pass: under the neutral rig the ring bands and tubercles read by soft grazing light, "
+                               "the gold ring is visible inside the shadowed aperture; no clipping.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -1087,15 +1118,24 @@ def build_mouth_fangs():
         _mp_append(tverts, tfaces, v, f)
     tverts = [tuple(_rot_x(Vector(v), FANGS_HINGE, FANGS_REST_DROP)) for v in tverts]
 
+    # Domed scales with crisp grooves: small ones over the snout, large pale lip plates along the mouth line.
     lip = sf.Shader("M_FangsLipProc")
-    small = lip.remap(lip.voronoi(300.0, 0.55, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)
-    big = lip.remap(lip.voronoi(105.0, 0.35, feature="DISTANCE_TO_EDGE", vector=mp._stretched(lip, (0.55, 1.6, 1.0))),
-                    0.0, 0.05)
-    line = lip.remap(lip.math("ABSOLUTE", lip.math("ADD", lip.axis("Y"), 0.004)), 0.015, 0.006)   # the lip plates
-    groove = lip.math("ADD", lip.math("MULTIPLY", small, lip.math("SUBTRACT", 1.0, line)), lip.math("MULTIPLY", big, line))
-    lip.bump(groove, 0.45, 0.0008)
-    lip_mat = lip.out(_grey(lip, lip.math("ADD", lip.math("MULTIPLY", groove, 0.3), lip.math("MULTIPLY", line, 0.18)),
-                            0.5), 0.48)
+    line = lip.remap(lip.math("ABSOLUTE", lip.math("ADD", lip.axis("Y"), 0.004)), 0.022, 0.012)   # lips and chin
+
+    def scales(scale, stretch):
+        vec = mp._stretched(lip, stretch)
+        dome = lip.remap(lip.voronoi(scale, 0.45, vector=vec), 0.55, 0.05)
+        groove = lip.remap(lip.voronoi(scale, 0.45, vector=vec, feature="DISTANCE_TO_EDGE"), 0.0, 0.06)
+        return lip.math("MULTIPLY", groove, lip.math("ADD", 0.45, lip.math("MULTIPLY", dome, 0.55)))
+
+    small, big = scales(150.0, (1.0, 1.0, 1.0)), scales(62.0, (0.6, 1.5, 1.0))
+    height = lip.math("ADD", lip.math("MULTIPLY", small, lip.math("SUBTRACT", 1.0, line)), lip.math("MULTIPLY", big, line))
+    lip.bump(height, 0.5, 0.0012)
+    # The grey detail only darkens the tint, so the snout's scales sit darker and the lip plates near full tint.
+    body_fac = lip.math("ADD", 0.12, lip.math("MULTIPLY", height, 0.3))
+    lip_mat = lip.out(_grey(lip, lip.math("ADD", lip.math("MULTIPLY", body_fac, lip.math("SUBTRACT", 1.0, line)),
+                                          lip.math("MULTIPLY", lip.math("ADD", 0.82, lip.math("MULTIPLY", height, 0.18)),
+                                                   line)), 0.4), 0.42)
     mouth = sf.Shader("M_FangsMouthProc")
     folds = mouth.noise(180.0, 2.0)
     mouth.bump(folds, 0.25, 0.0005)
@@ -1165,15 +1205,18 @@ def build_mouth_fangs():
 # named after the part type, and kept whole in the bake so the iris edge stays a clean ring.
 
 
-def _mp_eye_ball(name, centre, radius, iris_half, mats, segs=24, iris_bands=3, sclera_bands=(0.15, 0.35, 0.6, 1.0)):
+def _mp_eye_ball(name, centre, radius, iris_half, mats, segs=24, iris_bands=3, sclera_bands=(0.15, 0.35, 0.6, 1.0),
+                 floor=None):
     """An eyeball revolved round +Z with a ring exactly at the iris edge (as cp._eye_ball), but with fewer rings on
     the hidden back half, which the lids and the skin cover. mats is [sclera, iris] (faces inside iris_half take
-    the second), or a single material for the whole ball."""
+    the second), or a single material for the whole ball. `floor` flattens the buried bottom at that z."""
     thetas = [iris_half * k / iris_bands for k in range(iris_bands + 1)]
     thetas += [iris_half + (math.pi - iris_half) * f for f in sclera_bands]
     prof = [(radius * math.cos(t), radius * math.sin(t) if 0.0 < t < math.pi - 1e-9 else 0.0) for t in thetas]
     rv, rf, bands = bc.revolve(prof, segs)
-    verts = [tuple(centre + Vector(v)) for v in cp._up(rv)]
+    verts = [centre + Vector(v) for v in cp._up(rv)]
+    if floor is not None:
+        verts = [Vector((v.x, v.y, max(floor, v.z))) for v in verts]
     face_mats = [1 if b < iris_bands else 0 for b in bands] if len(mats) > 1 else None
     return bc.mesh_object(name, verts, rf, list(mats), face_mats)
 
@@ -1194,22 +1237,24 @@ def _mp_resample(points, n):
 
 
 TURRET_SINK = 0.025
-TURRET_BALL_R = 0.026
-TURRET_BALL = Vector((0.0, 0.0, 0.031))
-# The turret's outside as (r, z), from under the skin up the cone to the shoulder of the aperture; then the lip.
-TURRET_OUTSIDE = ((0.0405, -0.0235), (0.0418, -0.006), (0.0421, 0.006), (0.0410, 0.016), (0.0385, 0.026),
-                  (0.0346, 0.0355), (0.0296, 0.0435), (0.0238, 0.0500), (0.0178, 0.0550), (0.0128, 0.0583),
-                  (0.0098, 0.0598))
-TURRET_LIP = ((0.0085, 0.0601), (0.0077, 0.0594), (0.0076, 0.0580), (0.0080, 0.0565))
-TURRET_APERTURE = 0.0085
+TURRET_BALL_R = 0.021
+TURRET_BALL = Vector((0.0, 0.0, 0.0355))
+# The turret's outside as (r, z), from under the skin up a slightly convex cone to the aperture; then the lip, which
+# rolls in and down to hug the ball, so the pupil sits just inside the opening.
+TURRET_OUTSIDE = ((0.0405, -0.0235), (0.0418, -0.006), (0.0421, 0.004), (0.0408, 0.012), (0.0378, 0.020),
+                  (0.0340, 0.028), (0.0298, 0.036), (0.0252, 0.044), (0.0200, 0.051), (0.0158, 0.0553),
+                  (0.0124, 0.0585))
+TURRET_LIP = ((0.0108, 0.0596), (0.0096, 0.0590), (0.0092, 0.0575), (0.0095, 0.0556))
+TURRET_APERTURE = 0.0108
+TURRET_TOLERANCE = 0.0003      # a tighter decimation than the default, so the cone and the aperture stay round
 
 
 def _turret_close(r):
     """How far a point at radius r near the aperture moves in when the eye shuts: the lip almost to the axis, the
-    shoulder less, nothing past 1.8 cm, so the cone puckers shut without folding."""
+    shoulder less, nothing past 2 cm, so the cone puckers shut without folding."""
     if r <= TURRET_APERTURE:
         return 0.9 * r
-    return 0.9 * TURRET_APERTURE * (1.0 - _mp_smooth(r, TURRET_APERTURE, 0.0178))
+    return 0.9 * TURRET_APERTURE * (1.0 - _mp_smooth(r, TURRET_APERTURE, 0.02))
 
 
 def build_eye_turret():
@@ -1217,32 +1262,32 @@ def build_eye_turret():
     granular scales, its skin fused over the ball so only a small aperture at the tip shows a gold-ringed, glossy
     black pupil. H1_Blink draws the aperture shut, H2_Reach stretches the turret about 2 cm further out (the ball
     riding up inside it)."""
-    samples = _mp_resample(TURRET_OUTSIDE, 30)
-    outside = []
-    for k, ((r, z), d) in enumerate(samples):
-        (r0, z0), (r1, z1) = samples[max(0, k - 1)][0], samples[min(len(samples) - 1, k + 1)][0]
-        n = Vector((z1 - z0, -(r1 - r0)))
-        n = n.normalized() if n.length > 0 else Vector((1.0, 0.0))
-        ridge = 0.0007 * math.cos(2.0 * math.pi * d / 0.0072) * _mp_smooth(z, 0.0, 0.01) * (1.0 - _mp_smooth(z, 0.054, 0.059))
-        outside.append((r + n.x * ridge, z + n.y * ridge))
+    # The concentric ridges of scales are in the shader (so the normal map carries them evenly); the mesh is smooth.
+    outside = [p for p, _ in _mp_resample(TURRET_OUTSIDE, 22)]
     profile = outside + list(TURRET_LIP)
-    verts, faces, _ = _mp_lathe(len(profile), lambda i, a: profile[i], 30)
-    ball_mat = cp._iris_material("M_EyeTurretBallProc", TURRET_BALL, Vector((0.0, 0.0, 1.0)), math.radians(18.0),
-                                 math.radians(9.5))
-    ball = _mp_eye_ball("EyeTurret", TURRET_BALL, TURRET_BALL_R, math.radians(18.0), [ball_mat], segs=24, iris_bands=4,
-                        sclera_bands=(0.2, 0.5, 1.0))
+    verts, faces, _ = _mp_lathe(len(profile), lambda i, a: profile[i], 32)
+    # The ball shows only through the aperture (about 27 degrees of it): a gold iris ring round a glossy black pupil.
+    ball_mat = cp._iris_material("M_EyeTurretBallProc", TURRET_BALL, Vector((0.0, 0.0, 1.0)), math.radians(30.0),
+                                 math.radians(13.0))
+    ball = _mp_eye_ball("EyeTurret", TURRET_BALL, TURRET_BALL_R, math.radians(30.0), [ball_mat], segs=24, iris_bands=4,
+                        sclera_bands=(0.4, 1.0))
+    # Granular scales: small domed tubercles with crisp gaps, in bands that follow the concentric ridges.
     sh = sf.Shader("M_EyeTurretScaleProc")
-    cells = sh.remap(sh.voronoi(420.0, 0.6, feature="DISTANCE_TO_EDGE"), 0.0, 0.1)        # granular scales
-    rings = sh.remap(sh.math("SINE", sh.math("MULTIPLY", sh.axis("Z"), 2.0 * math.pi / 0.0072)), -0.2, 0.9)
+    dome = sh.remap(sh.voronoi(330.0, 0.5), 0.55, 0.05)
+    gap = sh.remap(sh.voronoi(330.0, 0.5, feature="DISTANCE_TO_EDGE"), 0.0, 0.07)
+    grains = sh.math("MULTIPLY", gap, sh.math("ADD", 0.4, sh.math("MULTIPLY", dome, 0.6)))
     mottle = sh.remap(sh.noise(55.0, 2.0), 0.4, 0.62)
-    sh.bump(sh.math("ADD", sh.math("MULTIPLY", cells, 0.7), sh.math("MULTIPLY", rings, 0.3)), 0.45, 0.0008)
-    scale_mat = sh.out(_grey(sh, sh.math("ADD", sh.math("ADD", 0.42, sh.math("MULTIPLY", cells, 0.33)),
+    ridges = sh.remap(sh.math("SINE", sh.math("MULTIPLY", sh.axis("Z"), 2.0 * math.pi / 0.0068)), -0.6, 1.0)
+    shoulder = sh.remap(sh.axis("Z"), 0.004, 0.012)                  # no ridges where it meets the skin
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", grains, 0.55), sh.math("MULTIPLY", sh.math("MULTIPLY", ridges, shoulder),
+                                                                       0.45)), 0.5, 0.0011)
+    scale_mat = sh.out(_grey(sh, sh.math("ADD", sh.math("ADD", 0.3, sh.math("MULTIPLY", grains, 0.45)),
                                          sh.math("MULTIPLY", mottle, 0.25)), 0.5), 0.55)
     cone = bc.mesh_object("EyeTurretCone", verts, faces, [scale_mat], parent=ball, fix_normals=False)
     ball_mat.name, scale_mat.name = "M_EyeTurretBall", "M_EyeTurretScale"
     baked = _bake_parts([ball, cone], "PartEyeTurret", {"M_EyeTurretBall": sf.tint(cp._lin("#D9A030")),
                                                        "M_EyeTurretScale": sf.tint(cp._lin("#3A9C94"))},
-                        keep=("EyeTurret",))
+                        tolerance=TURRET_TOLERANCE, keep=("EyeTurret",))
     pts = cp._check_pivot("eye_turret", TURRET_SINK)
     foot = cp._footprint(pts, z_max=0.006)
     apex = TURRET_BALL.z + TURRET_BALL_R
@@ -1277,119 +1322,120 @@ def build_eye_turret():
 
 LASHED_R = 0.05
 LASHED_SINK = 0.03
-LASHED_C = Vector((0.0, 0.0, 0.021))
-LASHED_UPPER_EDGE = math.radians(27.0)     # the upper lid's margin, from +Z toward +Y (it covers the iris's top)
-LASHED_LOWER_EDGE = math.radians(50.0)
-LASHED_BLINK = math.radians(82.0)          # the upper lid comes down past the lower lid's margin
+LASHED_C = Vector((0.0, 0.0, 0.008))      # the ball's back half is in the skin, like an eye in its socket
+# The lid is one ring round an almond opening: its margin's polar angle (from +Z, about the ball's centre) is
+# LASHED_TOP at the top (it covers the top of the iris), LASHED_BOTTOM at the bottom and LASHED_CORNER at the two
+# corners (+-X); behind, the ring runs back to LASHED_BACK, under the skin.
+LASHED_TOP = math.radians(30.0)
+LASHED_BOTTOM = math.radians(52.0)
+LASHED_CORNER = math.radians(80.0)
+LASHED_BACK = math.radians(105.0)
+LASHED_SEGS = 48
+LASHED_BLINK = math.radians(94.0)         # the upper lid swings down on the corners' hinge to meet the lower lid
 LASHED_LASHES = 7
 
 
-def _sphere_x(a, phi, rho):
-    """A point on a sphere about LASHED_C, by its angle a toward +-X and phi round the X axis from +Z toward +Y."""
-    return LASHED_C + Vector((math.sin(a), math.cos(a) * math.sin(phi), math.cos(a) * math.cos(phi))) * rho
+def _lashed_margin(psi):
+    """The margin's polar angle at azimuth psi (round +Z from +X; the upper lid is 0 < psi < pi)."""
+    s_ = math.sin(psi)
+    end = LASHED_TOP if s_ >= 0.0 else LASHED_BOTTOM
+    return LASHED_CORNER + (end - LASHED_CORNER) * abs(s_) ** 0.8
 
 
-def _lashed_lid(sign, edge, r_in, thick, thick_back, rows, body=7, rim=5, inner=5, back=math.radians(172.0)):
-    """One eyelid as a closed slab on a sphere about the ball: for each angle a (rows, from -88 to 88 degrees, the
-    eye's corners) a loop from the back of its outer face forward to a rounded margin at `edge`, and back along its
-    inner face. sign is +1 for the upper lid, -1 for the lower. The lid swells from thick_back behind to `thick` at
-    its margin. Each end is closed with a small fan at the corner. Returns verts and faces."""
+def _lashed_lid_loop(psi):
+    """The lid's cross-section at azimuth psi as (polar angle, radius) pairs: from the back of its outer face
+    forward to a rounded margin and back along its inner face, ending where it began (the seam is under the skin).
+    The upper lid is heavy (about 1 cm thick at its margin), the lower one thin."""
+    up = max(0.0, math.sin(psi))
+    thick, thick_back = 0.0045 + 0.0062 * up ** 1.5, 0.003
+    r_in = LASHED_R * (1.03 + 0.015 * up)
     rim_r = 0.5 * thick
     rho_mid = r_in + rim_r
-    phi_rim = edge + rim_r / rho_mid
+    th_rim = _lashed_margin(psi) + rim_r / rho_mid
     loop = []
-    for k in range(body):
-        phi = back + (phi_rim - back) * k / body
-        w = _mp_smooth(phi, back, phi_rim)
-        loop.append((phi, r_in + thick_back + (thick - thick_back) * w ** 1.6))
-    for k in range(rim + 1):
-        th = math.pi * k / rim
-        loop.append((phi_rim - (rim_r / rho_mid) * math.sin(th), rho_mid + rim_r * math.cos(th)))
-    for k in range(1, inner + 1):
-        loop.append((phi_rim + (back - phi_rim) * k / inner, r_in))
-    m = len(loop)
-    verts, faces, ring_ix = [], [], []
-    a_max = math.radians(88.0)
-    for i in range(rows + 1):
-        a = -a_max + 2.0 * a_max * i / rows
-        ring_ix.append(list(range(len(verts), len(verts) + m)))
-        for phi, rho in loop:
-            verts.append(_sphere_x(a, sign * phi, rho))
-    for i in range(rows):
-        for j in range(m):
-            k = (j + 1) % m
-            faces.append((ring_ix[i][j], ring_ix[i][k], ring_ix[i + 1][k], ring_ix[i + 1][j]))
-    for ring in (ring_ix[0], ring_ix[-1]):
-        centre = sum((verts[j] for j in ring), Vector()) / m
-        c = len(verts)
-        verts.append(centre)
-        for j in range(m):
-            faces.append((ring[j], ring[(j + 1) % m], c))
-    clamp = -LASHED_SINK + 0.0012
-    return [tuple(Vector((v.x, v.y, max(clamp, v.z)))) for v in verts], faces
+    for k in range(5):
+        th = LASHED_BACK + (th_rim - LASHED_BACK) * k / 5
+        loop.append((th, r_in + thick_back + (thick - thick_back) * _mp_smooth(th, LASHED_BACK, th_rim) ** 1.6))
+    for k in range(7):
+        ph = math.pi * k / 6
+        loop.append((th_rim - (rim_r / rho_mid) * math.sin(ph), rho_mid + rim_r * math.cos(ph)))
+    for k in range(1, 4):
+        loop.append((th_rim + (LASHED_BACK - th_rim) * k / 3, r_in))
+    loop.append(loop[0])
+    return loop
 
 
-def _lashed_phi(co):
-    d = co - LASHED_C
-    return math.atan2(d.y, d.z)
+def _lashed_point(theta, psi, rho):
+    return LASHED_C + Vector((math.sin(theta) * math.cos(psi), math.sin(theta) * math.sin(psi), math.cos(theta))) * rho
+
+
+LASHED_HINGE = Vector((0.0, 0.0, LASHED_C.z + LASHED_R * 1.08 * math.cos(LASHED_CORNER)))   # through both corners
 
 
 def _lashed_blink(co, rigid=False):
-    phi = _lashed_phi(co)
-    if phi >= 0.0:
-        w = 1.0 if rigid else 1.0 - _mp_smooth(phi, math.radians(100.0), math.radians(168.0))
-        return _rot_x(co, LASHED_C, LASHED_BLINK * w)
-    w = 1.0 - _mp_smooth(-phi, math.radians(75.0), math.radians(160.0))
-    return _rot_x(co, LASHED_C, -math.radians(7.0) * w)
+    """The upper lid (and its lashes) swing down on a hinge through the eye's two corners; the lower lid rises a
+    little. Each lid's back, under the skin, stays put."""
+    d = co - LASHED_C
+    theta = math.atan2(math.hypot(d.x, d.y), d.z)
+    w = 1.0 if rigid else 1.0 - _mp_smooth(theta, math.radians(72.0), math.radians(103.0))
+    if d.y >= 0.0:
+        return _rot_x(co, LASHED_HINGE, LASHED_BLINK * w)
+    return _rot_x(co, LASHED_HINGE, -math.radians(7.0) * w)
 
 
 def build_eye_lashed():
-    """A big expressive eye: a white ball 10 cm across with a wide chestnut iris and a large pupil, under a heavy
-    rolled upper lid that covers the top of the iris, over a thin lower lid; the upper lid's margin carries a
-    fringe of seven bold, tapered, upcurled lashes, longest in the middle. H1_Blink brings the upper lid and its
-    lashes down over the ball to meet the lower lid (which rises a little); H2_Bulge pushes the ball out."""
+    """A big expressive eye: a white ball 10 cm across, set in the skin to about its middle, with a wide chestnut
+    iris and a large pupil, seen through an almond opening in one lid ring that runs back into the skin like a
+    socket: heavy and rolled above (covering the top of the iris), thin below, the two meeting smoothly at the
+    corners. The upper margin carries seven bold, flat, tapered lashes reaching forward and flicking up, longest
+    in the middle. H1_Blink swings the upper lid and its lashes down on a hinge through the corners to meet the
+    lower lid (which rises a little); H2_Bulge pushes the ball out."""
     axis = Vector((0.0, 0.0, 1.0))
     sclera = cp._sclera_material("M_EyeLashedBallProc")
     iris_mat = cp._iris_material("M_EyeLashedIrisProc", LASHED_C, axis, math.radians(44.0), math.radians(21.0))
-    ball = _mp_eye_ball("EyeLashed", LASHED_C, LASHED_R, math.radians(44.0), [sclera, iris_mat], segs=26)
-    uv_, uf = _lashed_lid(1.0, LASHED_UPPER_EDGE, LASHED_R * 1.035, 0.0105, 0.004, 20)
-    lv_, lf = _lashed_lid(-1.0, LASHED_LOWER_EDGE, LASHED_R * 1.03, 0.0048, 0.003, 16, body=5, rim=4, inner=4)
-    lid_v, lid_f = list(uv_), list(uf)
-    _mp_append(lid_v, lid_f, lv_, lf)
+    ball = _mp_eye_ball("EyeLashed", LASHED_C, LASHED_R, math.radians(44.0), [sclera, iris_mat], segs=24,
+                        floor=-LASHED_SINK + 0.0005)
+    loops = [_lashed_lid_loop(2.0 * math.pi * j / LASHED_SEGS) for j in range(LASHED_SEGS)]
 
-    # The lashes, rooted on the outer front of the upper lid's margin: each leaves the lid forward and curls up
-    # and back, the outer ones fanning toward the corners.
-    rim_r = 0.5 * 0.0105
-    rho_mid = LASHED_R * 1.035 + rim_r
-    th = 0.75
-    phi_root = LASHED_UPPER_EDGE + rim_r / rho_mid - (rim_r / rho_mid) * math.sin(th)
-    rho_root = rho_mid + rim_r * math.cos(th) - 0.0012
+    def lid_at(i, psi):
+        th, rho = loops[round(psi * LASHED_SEGS / (2.0 * math.pi)) % LASHED_SEGS][i]
+        return rho * math.sin(th), LASHED_C.z + rho * math.cos(th)
+
+    lid_v, lid_f, _ = _mp_lathe(len(loops[0]), lid_at, LASHED_SEGS)
+    clamp = -LASHED_SINK + 0.0012
+    lid_v = [(x, y, max(clamp, z)) for x, y, z in lid_v]
+
+    # The lashes, rooted on the outer front of the upper lid's margin: each reaches forward off the margin and
+    # flicks up at its tip (not back over the lid, where they read as claws), the outer ones fanning to the corners.
     lash_v, lash_f, lash_tips = [], [], []
     for n in range(LASHED_LASHES):
-        a = math.radians(-60.0 + 120.0 * n / (LASHED_LASHES - 1))
-        root = _sphere_x(a, phi_root, rho_root)
+        psi = math.radians(38.0 + 104.0 * n / (LASHED_LASHES - 1))
+        loop = _lashed_lid_loop(psi)
+        th_root, rho_root = loop[5 + 2]                      # on the rim, just out from its front
+        root = _lashed_point(th_root, psi, rho_root - 0.0012)
         d = (root - LASHED_C).normalized()
-        e_phi = Vector((0.0, math.cos(phi_root), -math.sin(phi_root)))
-        e_a = Vector((math.cos(a), -math.sin(a) * math.sin(phi_root), -math.sin(a) * math.cos(phi_root)))
-        length = 0.034 * (0.66 + 0.34 * math.cos(1.3 * a))
+        e_th = Vector((math.cos(th_root) * math.cos(psi), math.cos(th_root) * math.sin(psi), -math.sin(th_root)))
+        e_psi = Vector((-math.sin(psi), math.cos(psi), 0.0))
+        fan = -e_psi * (0.65 * math.cos(psi))
+        length = 0.032 * (0.75 + 0.25 * math.sin(psi) ** 2)
         path, p, steps = [], root.copy(), 5
         for k in range(steps):
             path.append(p.copy())
-            beta = math.radians(8.0 + 72.0 * ((k + 0.5) / steps) ** 1.4)
-            heading = (d * math.cos(beta) + e_phi * math.sin(beta) + e_a * (0.3 * math.sin(a))).normalized()
-            p = p + heading * (length / steps)
+            beta = math.radians(6.0 + 56.0 * ((k + 0.5) / steps) ** 1.4)
+            p = p + (d * math.cos(beta) + e_th * math.sin(beta) + fan).normalized() * (length / steps)
         path.append(p.copy())
         lash_tips.append(p)
-        half_w = [0.0027 * (1.0 - k / steps) ** 0.7 for k in range(steps)] + [0.0]
-        half_t = [0.0011 * (1.0 - k / steps) ** 0.7 for k in range(steps)] + [0.0]
-        v, f = _mp_spike(path, half_w, half_t, 4, hint=-e_phi)
+        # Bold flat petals: wide at the root and tapering to a point, as a cartoon lash reads at a distance.
+        half_w = [0.0042 * (1.0 - k / steps) ** 0.6 for k in range(steps)] + [0.0]
+        half_t = [0.0015 * (1.0 - k / steps) ** 0.6 for k in range(steps)] + [0.0]
+        v, f = _mp_spike(path, half_w, half_t, 4, hint=e_th)
         _mp_append(lash_v, lash_f, v, f)
 
     lid_mat = cp._lid_material("M_EyeLashedLidProc")
     lash = sf.Shader("M_EyeLashedLashProc")
     sheen = lash.noise(300.0, 2.0, vector=mp._stretched(lash, (3.0, 3.0, 3.0)))
     lash_mat = lash.out(_grey(lash, lash.remap(sheen, 0.3, 0.7, 0.8, 1.0), 0.75), 0.3)
-    lid = bc.mesh_object("EyeLashedLid", lid_v, lid_f, [lid_mat], parent=ball)
+    lid = bc.mesh_object("EyeLashedLid", lid_v, lid_f, [lid_mat], parent=ball, fix_normals=False)
     lashes = bc.mesh_object("EyeLashedLashes", lash_v, lash_f, [lash_mat], parent=ball)
     sclera.name, iris_mat.name, lid_mat.name, lash_mat.name = ("M_EyeLashedBall", "M_EyeLashedIris",
                                                                "M_EyeLashedLid", "M_EyeLashedLash")
@@ -1399,21 +1445,22 @@ def build_eye_lashed():
                         keep=("EyeLashed", "EyeLashedLashes"))      # the iris ring and the thin lashes stay whole
     pts = cp._check_pivot("eye_lashed", LASHED_SINK)
     foot = cp._footprint(pts, z_max=0.02)
-    mp._check(min(t.y for t in lash_tips) > LASHED_C.y + 0.02, "eye_lashed: every lash curls up above the ball")
+    mp._check(min(t.y for t in lash_tips) > LASHED_C.y + 0.03, "eye_lashed: every lash flicks up above the ball")
 
     def bulge(co):
         return Vector((co.x, co.y, co.z + 0.2 * LASHED_R * max(0.0, co.z) / (LASHED_R * 1.42)))
 
-    handles = cp._shape_keys(lid, [("H1_Blink", _lashed_blink, "the heavy upper lid comes down over the ball to meet "
-                                                                "the lower lid, which rises a little")])
+    handles = cp._shape_keys(lid, [("H1_Blink", _lashed_blink, "the heavy upper lid and its lashes swing down over the "
+                                                                "ball to meet the lower lid, which rises a little")])
     cp._shape_keys(lashes, [("H1_Blink", lambda co: _lashed_blink(co, rigid=True), "")])
     handles += cp._shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 20% further out")])
     rules = _rules("eye_lashed", round(foot + 0.001, 3), LASHED_SINK, "forward_cone", ["spine", "part"], 60, 45)
     rules["handles"] = handles
-    rules["handles_note"] = ("H1_Blink is on EyeLashedLid and EyeLashedLashes (the lashes ride the upper lid's "
-                             "margin down); H2_Bulge is on the ball, EyeLashed. Both are 0 to 1000 per mille.")
+    rules["handles_note"] = ("H1_Blink is on EyeLashedLid and EyeLashedLashes with the same name (the upper lid and "
+                             "its lashes swing down together on a hinge through the eye's corners); H2_Bulge is on "
+                             "the ball, EyeLashed. Both are 0 to 1000 per mille.")
     return {"purpose": "Creature eye part (PROPOSED): a big expressive eye with a chestnut iris under a heavy upper "
-                       "lid fringed with bold upcurled lashes; blinks and bulges on shape keys.",
+                       "lid fringed with five bold upcurled lashes; blinks and bulges on shape keys.",
             "category": "part", "part_type": "eye_lashed", "convention": "creature_art_contract v1",
             "part_rules": rules, "paint_mix": {"M_EyeLashedBall": 0.0, "M_EyeLashedIris": 0.0, "M_EyeLashedLid": 0.9,
                                                "M_EyeLashedLash": 0.2}, "revision": 1, **baked}
