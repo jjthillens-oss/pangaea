@@ -90,8 +90,8 @@ func test_each_dial_moves_the_skin_and_leaves_the_vertebrae() -> void:
 	var base := {"fwd": reach(plain, fwd), "side": reach(plain, side), "up": reach(plain, up), "down": reach(plain, -up),
 			"brow": reach(plain, fwd + up)}
 	var cases := [
-		[{"snout": 2000}, "fwd", 1.6], [{"width": 1600}, "side", 1.4], [{"width": 600}, "side", -0.7],
-		[{"height": 1600}, "up", 1.4], [{"height": 600}, "up", -0.7], [{"jaw": 1000}, "down", 1.3],
+		[{"snout": 2000}, "fwd", 1.6], [{"width": 1600}, "side", 1.4], [{"width": 600}, "side", -0.75],
+		[{"height": 1600}, "up", 1.4], [{"height": 600}, "up", -0.75], [{"jaw": 1000}, "down", 1.3],
 		[{"brow": 1000}, "brow", 1.15],
 	]
 	for c in cases:
