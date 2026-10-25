@@ -35,11 +35,17 @@ about real-world feasibility, and it is open to owner review.
 
 ## B. Era 2 Aquatic (adds to §6)
 
-Already specified in `docs/stages/aquatic-plan.md`; its first slice is IMPLEMENTED. The addendum adds one
-requirement: before the shore offer, the stage must also present the **deep route**. Going deeper is the aquatic
-counterpart of going ashore. It needs a demonstrated capability (depth holding or senses in the dark), a survivable
-destination (a lit reef shelf or vent field), and a choice. Declining the shore keeps all current content playable
-with no penalty.
+Already specified in `docs/stages/aquatic-plan.md`; its first slice is IMPLEMENTED, and its section 7a (on the
+Aquatic stage thread's branch at the time of writing) builds the shore exit: the shore is never forced, a fish
+whose body meets the crawl rule is offered "Crawl onto land?", declining writes the lineage history event
+`stayed_in_the_sea` once, going ashore writes `came_ashore`, and later eras read which path the lineage took.
+
+PROPOSED addition, on top of that: a **deep route** offer as a second choice beside the shore. It has its own
+demonstrated capability (depth holding or senses in the dark), its own survivable destination (a lit reef shelf or
+vent field) and its own history event (proposed name `went_deep`, in the same family as the two above). Taking it
+leads into the era-3 aquatic variant in section C; declining either offer keeps all current content playable with
+no penalty. Nothing in this paragraph is built, and the Aquatic stage thread will not build it before the owner
+approves this addendum.
 
 ## C. Era 3 Terrestrial, aquatic variant (adds to §7)
 
