@@ -13,8 +13,8 @@ from mathutils import Vector
 
 OUT = Path(__file__).resolve().parent
 EXPORT_NAME = "Pale_Fillet_Cluster"
-RING_COUNT = 13
-SIDES = 20
+RING_COUNT = 12
+SIDES = 18
 
 
 def reset():
@@ -51,8 +51,8 @@ def fillet(export, name, center_x, center_y, angle, length, max_width, height,
         t = i / (RING_COUNT - 1)
         # The long, blunt shoulder is at local +Y; the opposite end pinches.
         local_y = (t - 0.5) * length
-        shoulder = math.sin(math.pi * (0.15 + 0.80 * t))
-        taper = 0.27 + 0.71 * (t ** 0.58)
+        shoulder = math.sin(math.pi * (0.11 + 0.72 * t))
+        taper = 0.45 + 0.50 * (t ** 0.58)
         width = max_width * shoulder * taper
         for j in range(SIDES):
             a = 2 * math.pi * j / SIDES
@@ -64,7 +64,7 @@ def fillet(export, name, center_x, center_y, angle, length, max_width, height,
             lateral += 0.012 * math.sin(3.0 * t + seed) * math.sin(a)
             x = center_x + lateral * ca - local_y * sa
             y = center_y + lateral * sa + local_y * ca
-            verts.append((x, y, max(0.016, z)))
+            verts.append((x, y, max(0.0, z - 0.024)))
     for i in range(RING_COUNT - 1):
         for j in range(SIDES):
             n = (j + 1) % SIDES
@@ -75,16 +75,24 @@ def fillet(export, name, center_x, center_y, angle, length, max_width, height,
             faces.extend(((a, b, d), (b, c, d)))
             # A narrow warm edge below the broad body, not a graphic seam.
             face_material.extend((1 if j >= 11 and j <= 16 else 0,) * 2)
+    # Cap at the actual oriented ring centers; guessed cap points make tears.
     bottom = len(verts)
-    verts.append((center_x - 0.12 * math.sin(angle), center_y - 0.45 * length, 0.035))
+    low_y = -0.5 * length
+    low_lateral = twist
+    verts.append((center_x + low_lateral * ca - low_y * sa,
+                  center_y + low_lateral * sa + low_y * ca,
+                  0.001 + 0.55 * height))
     top = len(verts)
-    verts.append((center_x + 0.12 * math.sin(angle), center_y + 0.45 * length, 0.095))
+    high_y = 0.5 * length
+    verts.append((center_x - high_y * sa,
+                  center_y + high_y * ca,
+                  0.001 + 0.55 * height))
     for j in range(SIDES):
         n = (j + 1) % SIDES
         faces.append((bottom, n, j))
         faces.append((top, (RING_COUNT - 1) * SIDES + j,
                       (RING_COUNT - 1) * SIDES + n))
-        face_material.extend((1, 0))
+        face_material.extend((0, 0))
     mesh = bpy.data.meshes.new(name + "_mesh")
     mesh.from_pydata(verts, [], faces)
     mesh.materials.append(top_material)
@@ -135,35 +143,13 @@ def main():
     warm = material("M_Quiet_Warmth", (0.76, 0.47, 0.43), 0.60)
     cream = material("M_Fold_Cream", (0.87, 0.70, 0.62), 0.72)
     objects = [
-        fillet(export, "Left_broad", -0.24, -0.08, -0.21, 0.99, 0.295, 0.14,
+        fillet(export, "Left_broad", -0.20, -0.08, -0.13, 0.91, 0.31, 0.145,
                -0.020, rose, cream, 1.0),
-        fillet(export, "Middle_fold", 0.05, 0.055, 0.05, 0.87, 0.215, 0.16,
+        fillet(export, "Middle_fold", 0.02, 0.045, 0.035, 0.83, 0.245, 0.165,
                0.006, blush, cream, 2.2),
-        fillet(export, "Right_round", 0.295, 0.025, 0.27, 0.78, 0.215, 0.135,
+        fillet(export, "Right_round", 0.24, 0.025, 0.16, 0.79, 0.225, 0.14,
                0.023, warm, cream, 3.6),
     ]
-    # A shallow fold above the middle/right boundary, rounded and non-graphic.
-    seam_curve = bpy.data.curves.new("Pale_fold_curve", "CURVE")
-    seam_curve.dimensions = "3D"
-    seam_curve.bevel_depth = 0.012
-    seam_curve.bevel_resolution = 2
-    spline = seam_curve.splines.new("BEZIER")
-    spline.bezier_points.add(3)
-    for bp, co in zip(spline.bezier_points, [
-        (0.18, -0.30, 0.15), (0.22, -0.12, 0.19),
-        (0.25, 0.12, 0.20), (0.29, 0.31, 0.17),
-    ]):
-        bp.co = co
-        bp.handle_left_type = "AUTO"
-        bp.handle_right_type = "AUTO"
-    fold = bpy.data.objects.new("Soft_cream_fold", seam_curve)
-    export.objects.link(fold)
-    bpy.context.view_layer.objects.active = fold
-    fold.select_set(True)
-    bpy.ops.object.convert(target="MESH")
-    fold.select_set(False)
-    fold.data.materials.append(cream)
-    objects.append(fold)
 
     gray = material("REVIEW_Gray", (0.62, 0.60, 0.57), 0.69)
     cam = camera(review, "REVIEW_Camera", (2.2, -3.8, 3.2), (0, 0, 0.08), 2.0)

@@ -54,4 +54,20 @@ func _review() -> void:
 		quit(3)
 		return
 	print("Pale food Godot view: %dx%d" % [pixels.get_width(), pixels.get_height()])
+	camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+	camera.fov = 45.0
+	camera.position = Vector3(0.0, 11.47, 8.03)
+	camera.look_at(Vector3(0.0, 0.10, 0.0))
+	for _frame in 8:
+		await process_frame
+	var gameplay := root.get_texture().get_image()
+	if gameplay == null or gameplay.is_empty():
+		push_error("Gameplay view did not render")
+		quit(4)
+		return
+	var gameplay_error := gameplay.save_png("res://godot_gameplay.png")
+	if gameplay_error != OK:
+		push_error("Could not save gameplay view: %s" % error_string(gameplay_error))
+		quit(5)
+		return
 	quit()
