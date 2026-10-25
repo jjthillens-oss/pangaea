@@ -178,11 +178,14 @@ func test_slow_a_straight_swim_passes_a_live_site_every_minute() -> void:
 			if float(r.site_gap) > worst:
 				worst = r.site_gap
 				worst_at = "seed %d at %s" % [i + 1, r.site_at]
+		for id in met:
+			check(species.live_at(id, size), "size %d: the swims meet %s, which does not live at that size" % [size, id])
 		if met.keys().any(func(id: String) -> bool: return species.entry_size(id) == 2):
 			threats_at.append(size)
 		print("test-layout-gates: size %d: longest stretch without a live site in view %.1f s (%s); met %s" % [size, worst, worst_at, met.keys()])
-	# The sites met are those live at the size: the size-2 threats at size 2, and only there.
-	check_eq(threats_at, [2], "the sizes whose swims meet a size-2 threat")
+	# The sites met are those live at the size: the size-2 threats from size 2 on (the Lurker and the
+	# elder rammer live on at 3 and 4), never at size 1.
+	check(not threats_at.is_empty() and threats_at[0] == 2, "the sizes whose swims meet a size-2 threat start at 2: %s" % [threats_at])
 
 
 func test_slow_no_tile_repeats_its_edge_neighbour() -> void:

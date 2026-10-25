@@ -16,6 +16,9 @@ the creature view animates them as it does that body.
   glowing eyes set forward along its lunge and faint glowing spots down the back. Nodes as the ambush hunter.
 - creature_veil_body: on the ambush hunter's body. A tall lilac bell with radial canals and a pale rim,
   small dark eyes under a soft brow; the engine draws its stinging threads. Nodes as the ambush hunter.
+- creature_elder_ambush_body: the ambush hunter grown old (S3, size 3). Higher-backed and heavier, a
+  weathered umber hide crusted with pale lichen and two rows of old knobs down the back, smaller ember eyes
+  sunk deeper under the brow. Nodes as the ambush hunter.
 
 Each is built by make_m1_production.py's own threat pass (finer body for the normal map, reduction
 within the colour and frame contracts, one baked texture set) with the base body's constants swapped
@@ -37,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import blockout_common as bc  # noqa: E402  (imports bpy first)
 import make_m1_threats as mt  # noqa: E402
 import make_m1_production as mp  # noqa: E402
+from mathutils import Vector  # noqa: E402
 
 GENERATOR = "tools/blender/make_endless_threats.py"
 REVIEW_STATE = mp.REVIEW_STATE
@@ -208,6 +212,46 @@ build_deep_lurker = _variant(
     mp.build_creature_ambush_body, DEEP_LURKER,
     "S3 Deep lurker body (role: ambush, size 4's channel lunger): a long, low deep-navy body with pale flecks and pale cyan eyes set forward along its lunge, under a heavy brow. Body only; its parts come from the part GLBs.",
     "M_DeepLurkerBody", "creature_ambush_body")
+ELDER_AMBUSH = {
+    "AMBUSH_TOP": 0.135, "AMBUSH_HEAD": 0.04, "AMBUSH_TAIL_THIN": 0.02, "AMBUSH_BOTTOM": 0.11,
+    "AMBUSH_EYE": (0.155, 0.25, 0.075),  # a little smaller and closer set than the M1 hunter's
+    "AMBUSH_EYE_SINK": 0.045,            # sunk deeper under the brow: heavy-lidded
+    "AMBUSH_BACK": "#4A3B24",            # weathered umber, darker than the M1 hunter's olive
+    "AMBUSH_MOTTLE": "#231C14",
+    "AMBUSH_FLECK": "#8A7A52",
+    "AMBUSH_BROW": "#2A2117",
+    "MINERAL_AMBER": "#E8853A",          # ember: deeper and redder than the M1 hunter's amber
+    "AMBUSH_EYE_GLOW": 0.5,
+}
+ELDER_LICHEN = "#B9B48C"                 # pale sage crusts of age on the back
+# Two rows of old knobs down the back, (x, y, height): a little uneven, as age leaves them.
+ELDER_KNOBS = [(sx * x, y, h) for sx in (-1.0, 1.0) for x, y, h in
+               ((0.12, 0.08, 0.018), (0.15, -0.07, 0.022), (0.16, -0.22, 0.018), (0.14, -0.35, 0.013))]
+
+
+def _elder_ambush_top(x, y):
+    h = _base_ambush_top(x, y)
+    for kx, ky, kh in ELDER_KNOBS:
+        h += kh * mt.gauss((x - kx) ** 2 + (y - ky) ** 2, 0.032)
+    return h
+
+
+_base_ambush_color = mt._ambush_color
+
+
+def _elder_ambush_color(p):
+    color = _base_ambush_color(p)
+    if p.z > 0.0:
+        # Lichen: soft pale crusts on the upper back, slow next to the vertex spacing like the mottles.
+        crust = bc.smoothstep((mt.noise.noise(p * 6.0 + Vector((3.1, 8.7, -1.9))) - 0.25) / 0.3)
+        color = mt._mix(color, mt.linear(ELDER_LICHEN), 0.45 * crust * bc.smoothstep(p.z / 0.08))
+    return color
+
+
+build_elder_ambush = _variant(
+    mp.build_creature_ambush_body, ELDER_AMBUSH,
+    "S3 elder ambush hunter body (role: ambush, size 3's lie-in-wait hunter beside the richest food): the M1 ambush hunter grown old, higher-backed and heavier, a weathered umber hide crusted with pale lichen and two rows of old knobs down its back, smaller ember eyes sunk deep under a heavy brow. Body only; its parts come from the part GLBs.",
+    "M_ElderAmbushBody", "creature_ambush_body", top=_elder_ambush_top, color=_elder_ambush_color)
 build_veil = _variant(
     mp.build_creature_ambush_body, VEIL,
     "S3 stinger veil body (role: passive hazard, size 3): a tall lilac bell with ten darker radial canals and a pale rim, small dark eyes under a soft brow. The engine draws its stinging threads. Built on the ambush hunter's body code, so its nodes and material names are the ambush hunter's.",
@@ -221,6 +265,7 @@ ASSETS = {
     "creature_elder_warden_body": (build_elder_warden, 4000, "M_RammerBody", "M_ElderWardenBody", "Rammer"),
     "creature_deep_lurker_body": (build_deep_lurker, 4000, "M_AmbushBody", "M_DeepLurkerBody", "AmbushHunter"),
     "creature_veil_body": (build_veil, 4000, "M_AmbushBody", "M_VeilBody", "AmbushHunter"),
+    "creature_elder_ambush_body": (build_elder_ambush, 4000, "M_AmbushBody", "M_ElderAmbushBody", "AmbushHunter"),
 }
 
 TRES = """[gd_resource type="StandardMaterial3D" load_steps=4 format=3]

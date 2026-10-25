@@ -132,7 +132,7 @@ func test_the_kit_follows_the_placement_rules() -> void:
 	check(not kit.is_empty(), "the kit parses")
 	check_eq(kit.get("footprint_classes"), CLASSES, "footprint classes")
 	var ids := {}
-	var groups := [0, 0, 0, 0]
+	var groups := {}   # band String -> models per group (S3: landmark.groups is per band)
 	var rare_kinds := {}
 	var id_re := RegEx.create_from_string("^[a-z][a-z0-9_]{2,40}$")
 	var tint_re := RegEx.create_from_string("^#[0-9A-F]{6}$")
@@ -146,7 +146,10 @@ func test_the_kit_follows_the_placement_rules() -> void:
 		check_eq(a.keys().size(), keys.size(), "%s: exact key set" % id)
 		for k in keys:
 			check(a.has(k), "%s has %s" % [id, k])
-		check_eq(int(a.band), -1 if a.kind == "marker" else 0, "%s: band" % id)
+		if a.kind == "marker":
+			check_eq(int(a.band), -1, "%s: band" % id)
+		else:
+			check(int(a.band) == 0 or int(a.band) == 1, "%s: band 0 or 1 (%s)" % [id, a.band])
 		var lo: float = a.scale[0]
 		var hi: float = a.scale[1]
 		check(lo >= 0.5 and lo <= hi and hi <= 2.0 and hi / lo <= 2.0, "%s: scale %s" % [id, a.scale])
@@ -174,38 +177,44 @@ func test_the_kit_follows_the_placement_rules() -> void:
 				check_eq(float(a.footprint_radius_m), float(kit.landmark.collide_radius_bu), "%s: footprint is the collider" % id)
 				check(lo >= 0.9 and hi <= 1.1, "%s: landmark scale within 0.9 to 1.1" % id)
 				check(int(a.group) >= 0 and int(a.group) < 4, "%s: group" % id)
-				groups[int(a.group)] += 1
+				if not groups.has(str(int(a.band))):
+					groups[str(int(a.band))] = [0, 0, 0, 0]
+				groups[str(int(a.band))][int(a.group)] += 1
 				check_eq(a.dressings.size(), 3, "%s: three dressings" % id)
 				for d: Dictionary in a.dressings:
 					check(d.scale >= lo and d.scale <= hi, "%s: dressing %s scale inside the range" % [id, d.id])
 			"rare":
-				check(not rare_kinds.has(a.rare_kind), "%s: rare kind unique" % id)
-				rare_kinds[a.rare_kind] = true
+				check(not rare_kinds.has("%d/%s" % [int(a.band), a.rare_kind]), "%s: rare kind unique in its band" % id)
+				rare_kinds["%d/%s" % [int(a.band), a.rare_kind]] = true
 				check(lo == 1.0 and hi == 1.0, "%s: rare scale is 1" % id)
 				for c: Dictionary in a.colliders:
 					check(c.radius >= 0.6 and c.radius <= MAX_COLLIDER_R, "%s: collider radius %s" % [id, c.radius])
 			"marker":
 				check(lo == 1.0 and hi == 1.0, "%s: marker scale is 1" % id)
-	check_eq(groups, kit.landmark.groups.map(func(g): return int(g)), "landmark group sizes")
+	var want_groups := {}
+	for band: String in kit.landmark.groups:
+		want_groups[band] = kit.landmark.groups[band].map(func(g): return int(g))
+	check_eq(groups, want_groups, "landmark group sizes per band")
 	for marker in ["marker_checkpoint_column", "marker_origin_arrow"]:
 		check(ids.has(marker), "%s is in the kit" % marker)
 	for rock in HOME_ROCKS:
 		check(ids.has(rock) and ids[rock].kind == "shell" and not ids[rock].pickable and float(ids[rock].footprint_radius_m) == 1.0
 			and ids[rock].scale == [0.8, 1.5], "%s is a home-block shell, not pickable" % rock)
-	# Coverage: every radius in every class fits at least two pickable shells.
-	for cls: String in CLASSES:
-		var bounds: Array = CLASSES[cls]
-		for step in 13:
-			var r: float = lerpf(bounds[0], bounds[1], step / 12.0)
-			if step == 12 and cls != "fp_l":
-				r -= 1e-4
-			var fits := 0
-			for a: Dictionary in kit.assets:
-				if a.kind == "shell" and a.pickable:
-					var s: float = r / float(a.footprint_radius_m)
-					if s >= a.scale[0] - 1e-6 and s <= a.scale[1] + 1e-6:
-						fits += 1
-			check(fits >= 2, "%s radius %.3f fits %d pickable shells" % [cls, r, fits])
+	# Coverage: in each band, every radius in every class fits at least two pickable shells.
+	for band in [0, 1]:
+		for cls: String in CLASSES:
+			var bounds: Array = CLASSES[cls]
+			for step in 13:
+				var r: float = lerpf(bounds[0], bounds[1], step / 12.0)
+				if step == 12 and cls != "fp_l":
+					r -= 1e-4
+				var fits := 0
+				for a: Dictionary in kit.assets:
+					if a.kind == "shell" and a.pickable and int(a.band) == band:
+						var s: float = r / float(a.footprint_radius_m)
+						if s >= a.scale[0] - 1e-6 and s <= a.scale[1] + 1e-6:
+							fits += 1
+				check(fits >= 2, "band %d %s radius %.3f fits %d pickable shells" % [band, cls, r, fits])
 
 
 func test_every_kit_piece_meets_the_art_contract() -> void:

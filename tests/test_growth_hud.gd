@@ -530,7 +530,7 @@ func test_the_pool_reads_the_idea_context() -> void:
 	var keys := ctx.keys()
 	keys.sort()
 	check_eq(keys, ["alive_s", "beat_t", "has_jaw", "in_home_tile", "meat_only", "meter_share", "near_smaller", "rimmed_in_view",
-		"size", "starving"], "the context's keys (s2-view 7.5)")
+		"size", "starving", "veil_in_view"], "the context's keys (s2-view 7.5, s3-view 11)")
 	var p := sim.phenotype
 	check_eq([ctx.size, ctx.has_jaw, ctx.meat_only, ctx.starving], [1, p.can_eat("meat"), p.diets == PackedStringArray(["meat"]), false],
 		"the size and the body")
@@ -611,3 +611,122 @@ func _hud(pool: PoolScene, memory: UserSettings = null, save := Callable()) -> H
 	hud.bind(pool)
 	pool.camera = camera
 	return hud
+
+
+# --- S3 (s3-view 11; S3G27 HUD) ---
+
+## The places line (D-133) reads the size shown: the old size's count through a beat until its chord.
+func test_places_text() -> void:
+	check_eq(GrowthHud.places_text(3, 10), "Places found at this size: 3 of 10", "the words (D-116)")
+	var g := FakeGrowth.new()
+	g.places = {1: Vector2i(1, 6), 2: Vector2i(0, 4)}
+	var pool := FakeGrowthEvents.open_pool(FakeEvents.endless_session(FakeEvents.SEED, PackedFloat64Array(), true), g)
+	var hud := _hud(pool)
+	check(hud.places_line.visible, "shown in the growing sea")
+	check_eq(hud.places_line.text, "Places found at this size: 1 of 6", "size 1's count")
+	_grow_to_2(pool)
+	g.fill(1)
+	var real := pool.sim.growth
+	real.meter = real.ring(1)
+	real.full_since = pool.sim.tick
+	real.due = true
+	FakeEvents.frame(pool)
+	check(pool.growth_beat.running(), "a growth beat runs")
+	while pool.growth_beat.t() < GrowthBeat.CHORD_S:
+		hud.refresh()
+		check_eq(hud.places_line.text, "Places found at this size: 1 of 6", "%.2f s: still size 1's count" % pool.growth_beat.t())
+		FakeEvents.frame(pool)
+		hud._process(FakeEvents.DT)
+	hud.refresh()
+	check_eq(hud.places_line.text, "Places found at this size: 0 of 4", "size 2's count from the chord")
+	hud.free()
+	pool.free()
+	var m1 := FakeGrowthEvents.open_pool(FakeEvents.pool_session(), null)
+	var hud1 := _hud(m1)
+	check(not hud1.places_line.visible, "no places line in the M1 pool")
+	hud1.free()
+	m1.free()
+
+
+## V3-18: a hazard that stops being a threat stops stinging; a hunter still ignores you.
+func test_hazard_phrase() -> void:
+	check_eq(LadderStrip.phrase("stinger veils", "threat", "rival", "hazard"), "stinger veils stop stinging", "the veil")
+	check_eq(LadderStrip.phrase("rammers", "threat", "rival"), "rammers ignore you", "a hunter")
+	check_eq(LadderStrip.phrase("stinger veils", "threat", "prey", "hazard"), "stinger veils flee from you", "other changes as before")
+	var catalog := SpeciesCatalog.load_from()
+	var ladder: Dictionary = GhostLayer.shipped().data
+	var entries := LadderStrip.entries_for(PackedStringArray(["veil"]), PackedStringArray(), 3, catalog, ladder)
+	check_eq(entries[0].get("behavior"), "hazard", "entries carry the species' behaviour")
+	check_eq([entries[0].role, entries[0].next_role], ["threat", "rival"], "the veil stings at 3, not at 4")
+	check_eq(LadderStrip.preview_line(entries, false, 3, ladder), LadderStrip.PREVIEW_PREFIX + "stinger veils stop stinging",
+		"the preview at 3 words the veil so")
+	# The line shows MAX_PHRASES phrases in PHRASE_ORDER: "stop" after "ignore", before "morsels".
+	var veil := {"role": "threat", "next_role": "rival", "plural": "stinger veils", "behavior": "hazard"}
+	var rammers := {"role": "threat", "next_role": "rival", "plural": "rammers", "behavior": "ram"}
+	var grazers := {"role": "prey", "next_role": "morsel", "plural": "grazers", "behavior": ""}
+	check_eq(LadderStrip.preview_line([veil, rammers] as Array[Dictionary], false, 2, ladder),
+		LadderStrip.PREVIEW_PREFIX + "rammers ignore you; stinger veils stop stinging", "after ignore")
+	check_eq(LadderStrip.preview_line([grazers, veil] as Array[Dictionary], false, 2, ladder),
+		LadderStrip.PREVIEW_PREFIX + "stinger veils stop stinging; grazers become morsels", "before morsels")
+
+
+## V3-15 (S3G41 HUD): at the top of this build, size 4, the preview names the engulfer.
+func test_preview_at_four() -> void:
+	var ladder: Dictionary = GhostLayer.shipped().data
+	check_eq(LadderStrip.preview_line([] as Array[Dictionary], true, 4, ladder), "Coming in a later build: the engulfer", "at size 4")
+
+
+## V3-19: the veil hint shows with a veil that can sting in view, and is followed 10 s after it showed
+## when a veil was in view since and nothing stung the cell; followed, it never shows again.
+func test_veil_hint() -> void:
+	check_eq(IdeaHints.text_of("veil_threads"), "Threads sting: swim around them", "the words (D-116)")
+	var veil := {"veil_in_view": true}
+	var ideas := IdeaHints.new()
+	ideas.observe({})
+	check_eq(ideas.step(0.0), "", "no veil, no hint")
+	ideas.observe(veil)
+	check_eq(ideas.step(1.0), "veil_threads", "a veil in view")
+	ideas.observe(veil)
+	ideas.on_event({"type": "hit", "target": "c7", "attacker": CreatureField.PLAYER_ID, "kind": "sting"}, {}, veil)
+	ideas.on_event({"type": "hit", "target": CreatureField.PLAYER_ID, "attacker": "c7", "kind": "bite"}, {}, veil)
+	check_eq(ideas.step(10.9), "", "gone after 6 s")
+	check(not ideas.is_followed("veil_threads"), "not followed before 10 s")
+	ideas.step(11.0)
+	check(ideas.is_followed("veil_threads"), "10 s past it without a sting: followed")
+	for t in [200.0, 400.0, 1000.0]:
+		ideas.observe(veil)
+		check_eq(ideas.step(t), "", "never again (%.0f s)" % t)
+	# A sting since it showed: not followed, and it comes back after REPEAT_S.
+	var stung := IdeaHints.new()
+	stung.observe(veil)
+	check_eq(stung.step(0.0), "veil_threads", "shown")
+	stung.observe(veil)
+	stung.on_event({"type": "hit", "target": CreatureField.PLAYER_ID, "attacker": "c7", "kind": "sting"}, {}, veil)
+	stung.step(20.0)
+	check(not stung.is_followed("veil_threads"), "stung since it showed: not followed")
+	stung.observe(veil)
+	check_eq(stung.step(IdeaHints.REPEAT_S), "veil_threads", "back after three minutes")
+	stung.observe(veil)
+	stung.step(IdeaHints.REPEAT_S + IdeaHints.VEIL_FOLLOW_S)
+	check(stung.is_followed("veil_threads"), "then passed without a sting: followed")
+	# No veil in view after it showed: not followed.
+	var lost := IdeaHints.new()
+	lost.observe(veil)
+	check_eq(lost.step(0.0), "veil_threads", "shown")
+	lost.observe({})
+	lost.step(30.0)
+	check(not lost.is_followed("veil_threads"), "the veil went out of view at once: not followed")
+	# The pool: a veil at size 3 is in view and can sting; none at size 1.
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	var sim := pool.sim
+	sim.debug_set_ai_frozen(true)
+	FakeEvents.frame(pool)
+	check(not pool.hint_context().veil_in_view, "no veil at size 1")
+	check(sim.debug_set_size(3), "the dev's size 3")
+	FakeEvents.frame(pool)
+	var c := sim.motion.position
+	check(sim.debug_spawn_creature("veil", c + Vector2(sim.phenotype.radius + 6.0, 0.0), 0.0), "a veil close by")
+	for i in 3:
+		FakeEvents.frame(pool)
+	check(pool.hint_context().veil_in_view, "a veil in view at size 3")
+	pool.free()

@@ -39,6 +39,10 @@ class FakeGrowth extends RefCounted:
 	var blocker := ""
 	var due := false
 	var beat_until := -1
+	var places := {}   ## size -> Vector2i(found, total), S3's places line
+
+	func places_found(n: int) -> Vector2i:
+		return places.get(n, Vector2i.ZERO)
 
 	func ring(n: int) -> float:
 		return RINGS[n - 1] if n >= 1 and n <= RINGS.size() else 0.0

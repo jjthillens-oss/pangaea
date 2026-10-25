@@ -26,6 +26,15 @@ extends RefCounted
 ## (D-60). Reach discs are the species' lengths times k (WorldConfig.k_of, D-39, D-69); a two-post
 ## site carries `posts` and reaches over their union disc (D-82). Every shell, set-piece and landmark
 ## `scale` is x s, as its radius is (BP-16). At a band's first size every chunk is S1's, byte for byte.
+##
+## S3 (docs/s3: spine 5.5, s3-sim 3.11, D-94 to D-97, D-104, D-128, D-138): each band has its own
+## arrangement (its region order and fixed rare kind, WorldConfig.arrangement_of); a site is placed by
+## its ladder role at the size (TileCatalog.site_role): a threat, rival or prey site as a creature site,
+## a morsel site as food in `morsel_sites`, any other not at all; an elder Warden's site and its two
+## meadows carry one `bloom` phase hashed from the placed site id; band 1 and up has the cradle where
+## band 0 has its home block. The quarter prefilter runs at every band's first size (D-96). Pure
+## helpers give the old band's pieces (landmark_piece, rare_piece, old_pool_pieces) exactly where its
+## chunks put them, for the scene below a band-up (D-110). Band 0's chunks are unchanged.
 
 const HOME := "home"
 const RARE := "rare"
@@ -41,6 +50,11 @@ static var STR_RARE := WorldHash.str32("rare")
 static var STR_LANDMARK := WorldHash.str32("landmark")
 static var STR_SHELL := WorldHash.str32("shell")
 static var STR_HOME := WorldHash.str32("home")
+static var STR_CRADLE := WorldHash.str32("cradle")
+static var STR_BLOOM := WorldHash.str32("bloom")
+## The roles a placed site may have; anything else ("ghost", "haze", "") is not placed.
+const CREATURE_ROLES: PackedStringArray = ["threat", "rival", "prey"]
+const MORSEL := "morsel"
 
 var content: WorldContent
 var species: SpeciesCatalog
@@ -84,6 +98,14 @@ var _fit_memo := {}
 var _disc_memo := {}
 ## "<tile id>/<o>" -> the tile's objects in its oriented frame (_framed): content.derived's too.
 var _frame_memo := {}
+## band -> {order, drift_index, fixed_kind} (band 0's are the fields above).
+var _band_memo := {}
+## n -> {species -> its ladder role at n as a placed site ("" when not placed)}.
+var _role_memo := {}
+## species -> whether its habit blooms (post_switch "bloom").
+var _blooming := {}
+## "<band>/<tile id or cradle>/<n>" -> {zone id -> [slot, site id, species]}: the bloom meadows live at n.
+var _bloom_memo := {}
 
 
 static func create(p_content: WorldContent, p_species: SpeciesCatalog, p_world_seed: int) -> WorldGen:
@@ -99,7 +121,7 @@ func setup(p_content: WorldContent, p_species: SpeciesCatalog, p_world_seed: int
 	species = p_species
 	world_seed = p_world_seed
 	gen_version = p_content.config.gen_version if p_content != null and p_content.config != null else 1
-	for memo in [_tile_memo, _lattice_memo, _cell_memo, _rare_memo]:
+	for memo in [_tile_memo, _lattice_memo, _cell_memo, _rare_memo, _band_memo, _role_memo, _bloom_memo, _blooming]:
 		memo.clear()
 	_ids_memo = {}
 	_rare_kinds_memo = {}
@@ -150,8 +172,15 @@ func clear_memo() -> void:
 	_disc_memo.clear()
 	_fit_memo.clear()
 	_frame_memo.clear()
+	_band_memo.clear()
+	_role_memo.clear()
+	_bloom_memo.clear()
+	_blooming.clear()
 	if content != null:
 		content.derived.erase("home")
+		for b in content.cradles:
+			content.derived.erase("cradle/%d" % b)
+			content.derived.erase("cradle/%d/second" % b)
 
 
 ## The chunk (cx, cy) at size n: every object whose centre lies in it, in absolute tm (float64),
@@ -176,7 +205,10 @@ func chunk(n: int, cx: int, cy: int) -> WorldChunk:
 			var info := _tile_ref(b, tx, ty)
 			if info.region == HOME:
 				if not home_done:
-					_emit_home(out, n, b, s)
+					if b == 0:
+						_emit_home(out, n, b, s)
+					else:
+						_emit_cradle(out, n, b, s)
 					home_done = true
 				continue
 			var t: Dictionary = content.tiles.tiles.get(info.id, {})
@@ -198,26 +230,33 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 	var cx := TileCatalog.HALF_TILE_BU * (2 * tx + 1)
 	var cy := TileCatalog.HALF_TILE_BU * (2 * ty + 1)
 	var prefix := "%d_%d_%d" % [b, tx, ty]
-	# At size 1 a chunk is one quarter of the tile: only the objects that may lie in it are tried.
+	# Each object's id is its kind's prefix and its own id ("s_<prefix>_<id>"), joined once per object.
+	var shell_prefix := "s_" + prefix + "_"
+	# At a band's first size a chunk is one quarter of the tile: only the objects that may lie in it
+	# are tried (D-96).
 	var quarter := -1
-	if n == 1:
-		quarter = 1 << ((out.key.x - 2 * tx) + 2 * (out.key.y - 2 * ty))
+	var qi := -1
+	if WorldConfig.bu_to_tm(n) == 1.0:
+		qi = (out.key.x - 2 * tx) + 2 * (out.key.y - 2 * ty)
+		quarter = 1 << qi
 	var second := WorldConfig.is_second_size(n)
+	# _in(out, x, y), inline: the shells, zones and sites loops run per object.
+	var c: float = content.config.chunk_tm
+	var kx := out.key.x
+	var ky := out.key.y
 	# Shells: a kit asset that fits the slot, a yaw and a dressing per slot from the slot's hash.
 	var shell_key := -1
-	for e in f.shells:
-		if quarter > 0 and e.q & quarter == 0:
-			continue
+	for e in (f.shells if qi < 0 else f.shells_q[qi]):
 		var sh: Dictionary = t.shells[e.k]
 		if second and sh.at_second_size == "sink":
 			continue
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
-		if not _in(out, x, y):
+		if floori(x / c) != kx or floori(y / c) != ky:
 			continue
 		if shell_key < 0:
 			shell_key = _key(b, tx, ty, STR_SHELL)
-		_append_shell(out, "s_%s_%s" % [prefix, sh.id], x, y, float(sh.radius), s, WorldHash.mix32(shell_key, e.k), b,
+		_append_shell(out, shell_prefix + sh.id, x, y, float(sh.radius), s, WorldHash.mix32(shell_key, e.k), b,
 			sh.yaw_deg, o)
 	# The landmark, when this tile is its cell's pick.
 	for e in f.anchor:
@@ -245,35 +284,51 @@ func _emit_tile(out: WorldChunk, t: Dictionary, info: Dictionary, n: int, b: int
 		if (quarter < 0 or e.q & quarter != 0) and _in(out, x, y):
 			out.places.append({"id": "p_%s" % prefix, "kind": t.rare, "x": x, "y": y, "tile": tile, "yaw_deg": yaw,
 				"mirror": (o >> 2) & 1 == 1})
-	for e in f.zones:
-		if quarter > 0 and e.q & quarter == 0:
-			continue
+	var blooms := {}
+	var bloom_tried := false
+	var zone_prefix := "z_" + prefix + "_"
+	var site_prefix := "t_" + prefix + "_"
+	for e in (f.zones if qi < 0 else f.zones_q[qi]):
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
 		var z: Dictionary = t.zones[e.k]
-		if _in(out, x, y) and not (second and z.at_second_size == "drop"):
-			out.zones.append({"id": "z_%s_%s" % [prefix, z.id], "x": x, "y": y, "radius": float(z.radius) * s,
-				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate), "tile": tile, "region": info.region})
+		if floori(x / c) == kx and floori(y / c) == ky and not (second and z.at_second_size == "drop"):
+			var zone := {"id": zone_prefix + z.id, "x": x, "y": y, "radius": float(z.radius) * s,
+				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate), "tile": tile, "region": info.region}
+			if not bloom_tried:
+				bloom_tried = true
+				blooms = _blooms("%d/%s/%d" % [b, t.id, n], t.sites, n)
+			if blooms.has(z.id):
+				_mark_bloom(zone, blooms, z.id, site_prefix)
+			out.zones.append(zone)
 	if not bool(content.config.switches.get("generated_creatures", true)):
 		return
-	for e in f.sites:
-		if quarter > 0 and e.q & quarter == 0:
-			continue
+	for e in (f.sites if qi < 0 else f.sites_q[qi]):
 		var site: Dictionary = t.sites[e.k]
 		var x: float = (cx + e.x) * s
 		var y: float = (cy + e.y) * s
-		if not (site.sizes as Array).has(n) or not _in(out, x, y):
+		if floori(x / c) != kx or floori(y / c) != ky:
 			continue
-		var discs := _site_discs("%d/%s/%s" % [b, t.id, site.id], site, TileCatalog._zone(t, site.territory_zone),
-			_k(site.species, n), TileCatalog._zone(t, str(site.get("post_b", {}).get("territory_zone", ""))))
-		out.sites.append(_placed_site("t_%s_%s" % [prefix, site.id], site, discs, x, y, cx, cy, o, s, tile))
+		var role := _role(site.species, n) if (site.sizes as Array).has(n) else ""
+		if role.is_empty():
+			continue
+		if role == MORSEL:
+			out.morsel_sites.append(_morsel_site("m_%s_%s" % [prefix, site.id], "%s/%s" % [t.id, site.id], site.species, x, y, n, tile))
+			continue
+		var discs: Variant = _disc_memo.get(e.disc_key)   # no default: a {} would be built per site
+		if discs == null:
+			discs = _site_discs(e.disc_key, site, e.zone, _k(site.species, n), e.zone_b)
+		var placed := _placed_site(site_prefix + site.id, site, discs, x, y, cx, cy, o, s, tile)
+		_mark_site_bloom(placed)
+		out.sites.append(placed)
 
 
 ## A tile's objects in its oriented frame (bu from the tile centre, float64), memoised per tile and
 ## orientation: for shells, zones, sites, set-piece colliders, the landmark anchor and the place,
 ## a list of {k (list index), x, y, q}, where q marks the quarters of the tile (the chunks at size
 ## 1) the point may lie in. A point within FRAME_EPS of a centre line is marked on both sides, and
-## chunk() still tests every point exactly.
+## chunk() still tests every point exactly. "shells_q", "zones_q" and "sites_q" hold the same entries
+## by quarter; a site's entry also carries its disc memo key and its territory zones.
 func _framed(t: Dictionary, o: int) -> Dictionary:
 	var memo_key := "%s/%d" % [t.id, o]
 	if _frame_memo.has(memo_key):
@@ -284,7 +339,13 @@ func _framed(t: Dictionary, o: int) -> Dictionary:
 	for k in t.zones.size():
 		f.zones.append(_framed_point(k, t.zones[k].center[0], t.zones[k].center[1], o))
 	for k in t.sites.size():
-		f.sites.append(_framed_point(k, t.sites[k].home[0], t.sites[k].home[1], o))
+		# The site's disc memo key and territory zones, so a chunk needs no format or zone search.
+		var site: Dictionary = t.sites[k]
+		var e := _framed_point(k, site.home[0], site.home[1], o)
+		e["disc_key"] = "%d/%s/%s" % [t.band, t.id, site.id]
+		e["zone"] = TileCatalog._zone(t, site.territory_zone)
+		e["zone_b"] = TileCatalog._zone(t, str(site.get("post_b", {}).get("territory_zone", "")))
+		f.sites.append(e)
 	if t.landmark_anchor.size() == 2:
 		f.anchor.append(_framed_point(0, t.landmark_anchor[0], t.landmark_anchor[1], o))
 	if not t.set_piece.is_empty() and t.set_piece.center.size() == 2:
@@ -299,6 +360,15 @@ func _framed(t: Dictionary, o: int) -> Dictionary:
 			e["r"] = float(c.radius)
 			f.pieces.append(e)
 		f.place.append(_framed_point(0, piece.center[0], piece.center[1], o))
+	# The shells, zones and sites by quarter (bit i of q), in list order, so a chunk at a band's first
+	# size walks only its own quarter's.
+	for list_name in ["shells", "zones", "sites"]:
+		var by_q := [[], [], [], []]
+		for e in f[list_name]:
+			for i in 4:
+				if e.q & (1 << i) != 0:
+					by_q[i].append(e)
+		f[list_name + "_q"] = by_q
 	_frame_memo[memo_key] = f
 	return f
 
@@ -321,7 +391,7 @@ func _framed_point(k: int, x: float, y: float, o: int) -> Dictionary:
 func _emit_home(out: WorldChunk, n: int, b: int, s: float) -> void:
 	var home := content.home
 	var index := _home_index()
-	var at: Dictionary = index.chunks.get(out.key, {}) if n == 1 else index.all
+	var at: Dictionary = index.chunks.get(out.key, {}) if WorldConfig.bu_to_tm(n) == 1.0 else index.all
 	var second := WorldConfig.is_second_size(n)
 	var ring_key := -1
 	for i in at.get("shells", []):
@@ -401,6 +471,162 @@ func _home_index() -> Dictionary:
 func _home_tile(x: float, y: float) -> Vector2i:
 	var t: float = content.config.tile_bu
 	return Vector2i(floori(x / t), floori(y / t))
+
+
+## The cradle of band b at the home tiles (D-138), at its own origin, orientation 0: its hashed
+## shells ("s_c_<id>"), zones ("z_c_<id>", region home, tile its quadrant, bloom marks) and sites by
+## role ("t_c_<id>" creature sites, "m_c_<id>" morsel sites) when generated creatures are on.
+func _emit_cradle(out: WorldChunk, n: int, b: int, s: float) -> void:
+	var cradle := content.cradle_of(b)
+	if cradle == null:
+		return
+	var index := _cradle_index(b, s)
+	var at: Dictionary = index.chunks.get(out.key, {})
+	var second := WorldConfig.is_second_size(n)
+	var shell_key := -1
+	for i in at.get("shells", []):
+		var sh: Dictionary = cradle.shells[i]
+		if second and sh.at_second_size == "sink":
+			continue
+		var x: float = sh.center[0] * s
+		var y: float = sh.center[1] * s
+		if not _in(out, x, y):
+			continue
+		if shell_key < 0:
+			shell_key = _key(b, 0, 0, STR_CRADLE)
+		_append_shell(out, "s_c_%s" % sh.id, x, y, float(sh.radius), s, WorldHash.mix32(shell_key, i), b, sh.yaw_deg, 0)
+	var blooms := _blooms("%d/cradle/%d" % [b, n], cradle.sites, n)
+	for i in at.get("zones", []):
+		var z: Dictionary = cradle.zones[i]
+		var x: float = z.center[0] * s
+		var y: float = z.center[1] * s
+		if _in(out, x, y) and not (second and z.at_second_size == "drop"):
+			var zone := {"id": "z_c_%s" % z.id, "x": x, "y": y, "radius": float(z.radius) * s,
+				"capacity": _capacity(z, second), "growth_rate": float(z.growth_rate),
+				"tile": CradleBlock.quadrant_of(z.center[0], z.center[1]), "region": HOME}
+			_mark_bloom(zone, blooms, z.id, "t_c_")
+			out.zones.append(zone)
+	if not bool(content.config.switches.get("generated_creatures", true)):
+		return
+	var block := cradle._block()
+	for i in at.get("sites", []):
+		var site: Dictionary = cradle.sites[i]
+		var role := _role(site.species, n) if (site.sizes as Array).has(n) else ""
+		var x: float = site.home[0] * s
+		var y: float = site.home[1] * s
+		if role.is_empty() or not _in(out, x, y):
+			continue
+		var tile := CradleBlock.quadrant_of(site.home[0], site.home[1])
+		if role == MORSEL:
+			out.morsel_sites.append(_morsel_site("m_c_%s" % site.id, "cradle/%s" % site.id, site.species, x, y, n, tile))
+			continue
+		var discs := _site_discs("%d/cradle/%s" % [b, site.id], site, TileCatalog._zone(block, site.territory_zone),
+			_k(site.species, n), TileCatalog._zone(block, str(site.post_b.get("territory_zone", ""))))
+		var placed := _placed_site("t_c_%s" % site.id, site, discs, x, y, 0.0, 0.0, 0, s, tile)
+		_mark_site_bloom(placed)
+		out.sites.append(placed)
+
+
+## The cradle's lists indexed by the chunk each item's point lies in at scale s (bu_to_tm of a size of
+## band b), once per content, band and scale; "all" lists every index.
+func _cradle_index(b: int, s := 1.0) -> Dictionary:
+	var memo_key := "cradle/%d" % b if s == 1.0 else "cradle/%d/second" % b
+	if content.derived.has(memo_key):
+		return content.derived[memo_key]
+	var cradle := content.cradle_of(b)
+	var c: float = content.config.chunk_tm
+	var index := {"chunks": {}, "all": {"shells": [], "zones": [], "sites": []}}
+	for list_name in ["shells", "zones", "sites"]:
+		var list: Array = cradle.get(list_name)
+		for i in list.size():
+			var p: PackedFloat64Array = list[i].home if list_name == "sites" else list[i].center
+			var key := Vector2i(floori(p[0] * s / c), floori(p[1] * s / c))
+			if not index.chunks.has(key):
+				index.chunks[key] = {"shells": [], "zones": [], "sites": []}
+			index.chunks[key][list_name].append(i)
+			index.all[list_name].append(i)
+	content.derived[memo_key] = index
+	return index
+
+
+## A species' role as a placed site at size n (TileCatalog.site_role without the site's sizes):
+## threat, rival, prey or morsel, else "" (not placed). Without a species catalog every site is a
+## creature site, as before S3.
+func _role(species_id: String, n: int) -> String:
+	if species == null:
+		return "threat"
+	var at_n: Variant = _role_memo.get(n)
+	if at_n == null:
+		at_n = {}
+		_role_memo[n] = at_n
+	if not at_n.has(species_id):
+		var role := ""
+		if species.species.has(species_id) and n >= species.entry_size(species_id):
+			role = Relationships.ladder_role(species.entry_size(species_id), n, species.radius_at(species_id, n),
+				species.share_tolerance())
+			if not (CREATURE_ROLES.has(role) or role == MORSEL):
+				role = ""
+		at_n[species_id] = role
+	return at_n[species_id]
+
+
+## A morsel site's record (spine 5.6, s3-sim 3.11): food, not a creature. r is the species' radius at
+## n (tm); the item is r, at most growth.remnants.morsel_max_radius_tm, and holds carcass.energy x r /
+## the player's radius (X3-23).
+func _morsel_site(id: String, key: String, species_id: String, x: float, y: float, n: int, tile: Vector2i) -> Dictionary:
+	var r := species.radius_at(species_id, n)
+	var energy := float(species.species[species_id].get("carcass", {}).get("energy", 0.0))
+	return {"id": id, "key": key, "species": species_id, "x": x, "y": y, "tile": tile,
+		"radius": minf(r, content.tiles.morsel_max_radius_tm), "energy": energy * r / Relationships.PLAYER_RADIUS}
+
+
+## The bloom meadows of `sites` live at n (D-104, D-128): {zone id -> [slot, site id, species]}, slot 0 the
+## site's territory_zone and slot 1 its post_b's, for each site whose habit blooms and that is a
+## creature site at n. Memoised under `memo_key`.
+func _blooms(memo_key: String, sites: Array, n: int) -> Dictionary:
+	if _bloom_memo.has(memo_key):
+		return _bloom_memo[memo_key]
+	var out := {}
+	if species != null:
+		for site in sites:
+			if not (site.sizes as Array).has(n) or not CREATURE_ROLES.has(_role(site.species, n)) \
+					or str(species.habit_of(site.species).get("post_switch", "")) != "bloom":
+				continue
+			out[str(site.territory_zone)] = [0, site.id, site.species]
+			var zone_b := str(site.get("post_b", {}).get("territory_zone", ""))
+			if not zone_b.is_empty():
+				out[zone_b] = [1, site.id, site.species]
+	_bloom_memo[memo_key] = out
+	return out
+
+
+## The bloom phase of a placed site: {offset_ticks, cycle_ticks}, the offset hashed from the placed
+## id (X3-12), so two placements of one tile bloom out of step.
+func _bloom_phase(placed_id: String, species_id: String) -> Dictionary:
+	var cycle := CreatureBrain.ticks(species.habit_of(species_id).bloom_cycle_s)
+	var h := WorldHash.hash_ints(PackedInt64Array([world_seed, gen_version, WorldHash.str32(placed_id), STR_BLOOM]))
+	return {"offset_ticks": h % cycle, "cycle_ticks": cycle}
+
+
+## Marks a placed zone record with its meadow's bloom {slot, offset_ticks, cycle_ticks} when `blooms`
+## names it; the phase is its site's (placed id `site_prefix` + the site id).
+func _mark_bloom(zone: Dictionary, blooms: Dictionary, zone_id: String, site_prefix: String) -> void:
+	if not blooms.has(zone_id):
+		return
+	var meadow: Array = blooms[zone_id]
+	var phase := _bloom_phase(site_prefix + str(meadow[1]), str(meadow[2]))
+	zone["bloom"] = {"slot": int(meadow[0]), "offset_ticks": phase.offset_ticks, "cycle_ticks": phase.cycle_ticks}
+
+
+## Gives a placed creature site whose habit blooms its bloom phase.
+func _mark_site_bloom(placed: Dictionary) -> void:
+	if species == null:
+		return
+	var sp: String = placed.species
+	if not _blooming.has(sp):
+		_blooming[sp] = str(species.habit_of(sp).get("post_switch", "")) == "bloom"
+	if _blooming[sp]:
+		placed["bloom"] = _bloom_phase(placed.id, sp)
 
 
 func _emit_landmark(out: WorldChunk, lm: Dictionary, b: int, lx: int, ly: int, o: int, x: float, y: float, s: float,
@@ -495,32 +721,56 @@ func _capacity(z: Dictionary, second: bool) -> float:
 ## placed and oriented like the home (the first post is the home), its reach the union disc.
 func _placed_site(id: String, site: Dictionary, discs: Dictionary, x: float, y: float, cx: float, cy: float, o: int,
 		s: float, tile: Vector2i) -> Dictionary:
-	var territory := _placed_disc(discs.territory, cx, cy, o, s)
-	var reach := _placed_disc(discs.reach, cx, cy, o, s)
+	# The discs and headings turned to orientation o, kept with the site's discs (a chunk only places them).
+	var turned: Variant = discs.get("turned")
+	if turned == null:
+		turned = [null, null, null, null, null, null, null, null]
+		discs["turned"] = turned
+	if turned[o] == null:
+		turned[o] = _turned_site(site, discs, o)
+	var d: Dictionary = turned[o]
+	var territory := _at(d.territory, cx, cy, s)
+	var reach := _at(d.reach, cx, cy, s)
 	var chunks: Array[Vector2i] = []
 	if not reach.is_empty():
 		chunks = disc_chunks(reach.x, reach.y, reach.radius, content.config.chunk_tm)
 	var sizes: Array[int] = []
 	sizes.assign(site.sizes)
-	var heading := orient_heading(float(site.heading), o)
+	var heading: float = d.heading
 	var out := {"id": id, "species": site.species, "x": x, "y": y, "heading": heading,
 		"territory": territory, "reach": reach, "chunks": chunks, "sizes": sizes, "tile": tile}
 	if discs.has("posts"):
-		var post: Dictionary = site.post_b
-		var p := orient_point(post.home[0], post.home[1], o)
+		var p: PackedFloat64Array = d.post_home
 		out["posts"] = [{"x": x, "y": y, "heading": heading, "territory": territory},
-			{"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "heading": orient_heading(float(post.heading), o),
-				"territory": _placed_disc(discs.posts[1], cx, cy, o, s)}]
+			{"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "heading": d.post_heading, "territory": _at(d.post_territory, cx, cy, s)}]
 	return out
 
 
-## A disc ({center: Vector2, radius} bu in the tile's frame, or {}) oriented and placed: {x, y,
-## radius} in absolute tm, or {}.
-static func _placed_disc(disc: Dictionary, cx: float, cy: float, o: int, s: float) -> Dictionary:
+## A site's discs ([x, y, radius] bu in the tile's frame turned to orientation o, or [] for none), its
+## heading and, for two posts, the second post's home, heading and territory, turned the same way.
+static func _turned_site(site: Dictionary, discs: Dictionary, o: int) -> Dictionary:
+	var out := {"territory": _turned_disc(discs.territory, o), "reach": _turned_disc(discs.reach, o),
+		"heading": orient_heading(float(site.heading), o)}
+	if discs.has("posts"):
+		var post: Dictionary = site.post_b
+		out["post_home"] = orient_point(post.home[0], post.home[1], o)
+		out["post_heading"] = orient_heading(float(post.heading), o)
+		out["post_territory"] = _turned_disc(discs.posts[1], o)
+	return out
+
+
+static func _turned_disc(disc: Dictionary, o: int) -> PackedFloat64Array:
 	if disc.is_empty():
-		return {}
+		return PackedFloat64Array()
 	var p := orient_point(disc.center.x, disc.center.y, o)
-	return {"x": (cx + p[0]) * s, "y": (cy + p[1]) * s, "radius": float(disc.radius) * s}
+	return PackedFloat64Array([p[0], p[1], float(disc.radius)])
+
+
+## A turned disc placed at the tile centre (cx, cy) bu and scaled by s: {x, y, radius} tm, or {}.
+static func _at(d: PackedFloat64Array, cx: float, cy: float, s: float) -> Dictionary:
+	if d.is_empty():
+		return {}
+	return {"x": (cx + d[0]) * s, "y": (cy + d[1]) * s, "radius": d[2] * s}
 
 
 ## Every chunk whose square a disc touches (the nearest point of the square closer than r), sorted
@@ -594,7 +844,7 @@ func rare_of_block(band: int, bx: int, by: int) -> Dictionary:
 
 func _rare_of_block(band: int, bx: int, by: int) -> Dictionary:
 	if bx == 0 and by == 0:
-		return {"tile": _fixed_tile, "kind": _fixed_kind, "orientation": 0}
+		return {"tile": _fixed_tile, "kind": _band_arr(band).fixed_kind, "orientation": 0}
 	var h := _key(band, bx, by, STR_RARE)
 	if not _rare_kinds_memo.has(band):
 		_rare_kinds_memo[band] = content.tiles.rare_kinds(band)
@@ -644,15 +894,118 @@ func _landmark_of_cell(band: int, lx: int, ly: int) -> Dictionary:
 	return {"tile": candidates[WorldHash.pick(h, candidates.size())], "model": model, "dressing": dressing, "h": h}
 
 
+# --- the old band's pieces (S3, D-110): pure, in absolute bu of their band ---
+
+## The landmark of cell (lx, ly) in band b where its chunks place it, or {} when the cell has none:
+## {id "a_<b>_<lx>_<ly>", model, dressing, x_bu, y_bu, yaw_deg, scale, collide_r_bu, tile}. At a size n
+## of the band, x_bu and y_bu x bu_to_tm(n) are the chunk's anchor (and landmark shell) position, the
+## yaw is the shell's, and scale x bu_to_tm(n) its scale (S3G29).
+func landmark_piece(band: int, lx: int, ly: int) -> Dictionary:
+	var lm := _cell(band, lx, ly)
+	if lm.is_empty():
+		return {}
+	var info := _tile_ref(band, lm.tile.x, lm.tile.y)
+	var t: Dictionary = content.tiles.tiles.get(info.id, {})
+	if t.is_empty() or t.landmark_anchor.size() != 2:
+		return {}
+	var o: int = info.orientation
+	var p := orient_point(t.landmark_anchor[0], t.landmark_anchor[1], o)
+	var model: Dictionary = content.kit.assets.get(lm.model, {})
+	var dressing := {}
+	for d in model.get("dressings", []):
+		if d.id == lm.dressing:
+			dressing = d
+	var h := WorldHash.mix32(lm.h, 3)
+	var yaw := 360.0 * WorldHash.unit(h)
+	if model.get("yaw_rule", "") == "steps_90":
+		yaw = orient_yaw_deg(90.0 * WorldHash.pick(h, 4), o)
+	return {"id": "a_%d_%d_%d" % [band, lx, ly], "model": lm.model, "dressing": lm.dressing,
+		"x_bu": TileCatalog.HALF_TILE_BU * (2 * lm.tile.x + 1) + p[0], "y_bu": TileCatalog.HALF_TILE_BU * (2 * lm.tile.y + 1) + p[1],
+		"yaw_deg": yaw, "scale": float(dressing.get("scale", 1.0)), "collide_r_bu": content.kit.collide_radius_bu, "tile": lm.tile}
+
+
+## The rare place of 6 x 6 block (bx, by) in band b where its chunks place it, or {}: {id
+## "p_<b>_<tx>_<ty>", kind, asset, x_bu, y_bu, yaw_deg, mirror, orientation, tile}, as landmark_piece.
+func rare_piece(band: int, bx: int, by: int) -> Dictionary:
+	var rare := rare_of_block(band, bx, by)
+	if str(rare.kind).is_empty() or is_home_tile(rare.tile.x, rare.tile.y):
+		return {}
+	var t: Dictionary = content.tiles.rare_tile(band, rare.kind)
+	if t.is_empty() or t.set_piece.is_empty() or t.set_piece.center.size() != 2:
+		return {}
+	var o: int = rare.orientation
+	var p := orient_point(t.set_piece.center[0], t.set_piece.center[1], o)
+	return {"id": "p_%d_%d_%d" % [band, rare.tile.x, rare.tile.y], "kind": rare.kind, "asset": t.set_piece.asset,
+		"x_bu": TileCatalog.HALF_TILE_BU * (2 * rare.tile.x + 1) + p[0], "y_bu": TileCatalog.HALF_TILE_BU * (2 * rare.tile.y + 1) + p[1],
+		"yaw_deg": orient_yaw_deg(float(t.set_piece.yaw_deg), o), "mirror": (o >> 2) & 1 == 1, "orientation": o, "tile": rare.tile}
+
+
+## Band 0's home block as its chunks draw it at size 1: the M1 pool's rocks, then the ring shells,
+## each {id, asset, x_bu, y_bu, r_bu, yaw_deg, scale} (the cradle draws them sunk, D-95; C3V-8).
+func old_pool_pieces() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if content == null or content.home == null:
+		return out
+	var index := _home_index()
+	var ring_key := _key(0, 0, 0, STR_HOME)
+	var drawn := WorldChunk.new()
+	for i in content.home.shells.size():
+		var sh: Dictionary = content.home.shells[i]
+		if sh.fixed:
+			out.append({"id": sh.id, "asset": sh.asset, "x_bu": float(sh.x), "y_bu": float(sh.y), "r_bu": float(sh.r),
+				"yaw_deg": float(sh.yaw_deg), "scale": float(sh.scale)})
+			continue
+		_append_shell(drawn, "s_h_%s" % sh.id, sh.x, sh.y, float(sh.r), 1.0, WorldHash.mix32(ring_key, index.ring_k[i]), 0,
+			sh.yaw_range, 0)
+		var d: Dictionary = drawn.shells.back()
+		out.append({"id": d.id, "asset": d.asset, "x_bu": d.x, "y_bu": d.y, "r_bu": d.r, "yaw_deg": d.yaw_deg, "scale": d.scale})
+	return out
+
+
+## The landmark cells (cell_tiles x cell_tiles tiles of tile_bu) whose squares meet `rect_bu`, sorted
+## by (y, x).
+static func landmark_cells_touching(rect_bu: Rect2, cell_tiles: int, tile_bu: float) -> Array[Vector2i]:
+	return _squares_touching(rect_bu, cell_tiles * tile_bu, 0.0)
+
+
+## The rare blocks (block_tiles x block_tiles tiles from tile first_tile) whose squares meet `rect_bu`,
+## sorted by (y, x).
+static func rare_blocks_touching(rect_bu: Rect2, block_tiles: int, first_tile: int, tile_bu: float) -> Array[Vector2i]:
+	return _squares_touching(rect_bu, block_tiles * tile_bu, first_tile * tile_bu)
+
+
+static func _squares_touching(rect: Rect2, side: float, origin: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for j in range(floori((rect.position.y - origin) / side), floori((rect.end.y - origin) / side) + 1):
+		for i in range(floori((rect.position.x - origin) / side), floori((rect.end.x - origin) / side) + 1):
+			out.append(Vector2i(i, j))
+	return out
+
+
 ## The final region of an ordinary tile (B-11): the raw region, except that a raw drift tile whose
 ## column or row is m mod (m + 1), with m = max_drift_run, is sunlit. It reads the tile's own
 ## coordinates only, so it is route-independent, and every run of m + 1 tiles along a row or column
 ## holds one such column or row, so no row or column holds more than m final drift tiles running.
 func _region(band: int, tx: int, ty: int) -> String:
 	var r := _raw(band, tx, ty)
-	if r == _drift_index and (posmod(tx, _drift_run + 1) == _drift_run or posmod(ty, _drift_run + 1) == _drift_run):
+	var arr := _band_arr(band)
+	if r == arr.drift_index and (posmod(tx, _drift_run + 1) == _drift_run or posmod(ty, _drift_run + 1) == _drift_run):
 		return SUNLIT
-	return _order[r]
+	return arr.order[r]
+
+
+## Band b's region order, drift index (-1: no drift, so no swap) and fixed rare kind, from
+## WorldConfig.arrangement_of (S3): band 0's are the fields setup() read, so its tiles are S1's.
+func _band_arr(band: int) -> Dictionary:
+	if not _band_memo.has(band):
+		if band == 0 or content == null or content.config == null:
+			_band_memo[band] = {"order": _order, "drift_index": _drift_index, "fixed_kind": _fixed_kind}
+		else:
+			var a := content.config.arrangement_of(band)
+			var order := PackedStringArray(a.get("region_order", []))
+			_band_memo[band] = {"order": order, "drift_index": order.find(DRIFT),
+				"fixed_kind": str(a.get("fixed_rare", {}).get("kind", ""))}
+	return _band_memo[band]
 
 
 ## The raw region index into region_order: value noise (smoothstep between lattice values every

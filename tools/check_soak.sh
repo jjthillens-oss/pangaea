@@ -4,11 +4,12 @@
 # ticks and, as the endless world lands, the long swims, seams and samples. S1 sign-off needs it
 # green on the final commit.
 # Usage: tools/check_soak.sh [path-to-godot] [--only=a,b | --skip=a,b]
-# The runner flags may come without the Godot path. CI runs it twice, in parallel with
+# The runner flags may come without the Godot path. CI runs it three times, in parallel with
 # test-and-export (S1 build plan B-14): job soak-a with --only=test_endless_gates,test_endless_cost
-# (the endless gates and cost cases), job soak-b with --skip= the same two files (everything else,
-# so a new soak file lands there without a list edit). A name that matches no file fails the run,
-# as does a run in which nothing ran (tests/run_tests.gd).
+# (the endless gates and cost cases), job soak-c with --only=test_threat_fuzz (S3G13 and D-117's
+# four-seed runs, S3), job soak-b with --skip= those three files (everything else, so a new soak
+# file lands there without a list edit). A name that matches no file fails the run, as does a run
+# in which nothing ran (tests/run_tests.gd).
 # Each soak run has a 3600 s limit (tools/bounded.sh), inside CI's 75-minute job timeout, so a hang
 # fails with the output so far. A job that measures over 60 minutes moves its longest samples to a
 # nightly workflow (B-14).

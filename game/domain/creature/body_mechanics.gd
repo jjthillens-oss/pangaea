@@ -4,12 +4,21 @@ extends RefCounted
 ##
 ## Body-local axes: +X right, +Y up, -Z forward. The body origin sits on the ground under the body centre, so a hip
 ## at (x, 0, z) in the body data is at (x, hip_height, z) here.
+##
+## Uneven legs (owner direction 2026-10-24: walking must follow leg sizes, like an ape on long arms or a frog on long
+## hind legs): every leg stands at stance_height_ratio of its own length. A line through those heights along the body
+## gives hip_height (its height at the hips' centre) and rest_pitch, the body's standing tilt (positive lifts the
+## front), within MAX_REST_PITCH_DEG. Legs keep their hips in the untilted body frame; the planner tilts the body.
 
 const EPS := 1e-9
+## The steepest standing tilt uneven legs give a body (PROPOSED; a gorilla knuckle-walks at about 20 degrees).
+const MAX_REST_PITCH_DEG := 30.0
 
 var name := ""
 var table: RefCounted
 var hip_height := 0.0
+## The body's standing tilt about +X from uneven legs (radians, positive lifts the front); see the header.
+var rest_pitch := 0.0
 ## One entry per leg: {side: -1 left / +1 right, k: index front to back on its side, hip: Vector3, upper: float,
 ## lower: float, length: float, reach: float, rest: Vector3 (foot rest point on the ground), pole: Vector3 (which
 ## way the knee points, body-local, in leg lengths from the hip)}.
@@ -29,10 +38,8 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 	var m = load("res://game/domain/creature/body_mechanics.gd").new()
 	m.name = body_name
 	m.table = gait_table
-	var min_len := INF
-	for leg in body["legs"]:
-		min_len = minf(min_len, float(leg["upper"]) + float(leg["lower"]))
-	m.hip_height = gait_table.stance_height_ratio * min_len
+	_fit_stance(m, body["legs"], gait_table.stance_height_ratio)
+	var tilt := Basis(Vector3.RIGHT, m.rest_pitch)
 	var counts := {-1: 0, 1: 0}
 	for leg in body["legs"]:
 		var side := -1 if String(leg["side"]) == "L" else 1
@@ -47,7 +54,7 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 			"lower": float(leg["lower"]),
 			"length": length,
 			"reach": gait_table.reach_margin * length,
-			"rest": Vector3(hip.x + side * gait_table.foot_splay_ratio * length, 0.0, hip.z),
+			"rest": _rest_point(hip, tilt, m.hip_height, side * gait_table.foot_splay_ratio * length),
 			"pole": _pole_direction(String(leg.get("knee", "forward")), side),
 		})
 		counts[side] += 1
@@ -61,6 +68,39 @@ static func create(body_name: String, body: Dictionary, gait_table: RefCounted) 
 			* gait_table.rel_stride(gait_table.fr_top()))
 	m.angular_accel_max = m.accel_max / m.hip_radius_max
 	return m
+
+
+## Sets m.hip_height and m.rest_pitch from the legs' standing heights (ratio x length) by a least-squares line over
+## the hips' z (see the header). Even legs, or legs all at one z, give no tilt.
+static func _fit_stance(m: RefCounted, legs: Array, ratio: float) -> void:
+	var n := float(legs.size())
+	if n == 0.0:
+		return
+	var mz := 0.0
+	var mh := 0.0
+	for leg in legs:
+		mz += float((leg["hip"] as Array)[2])
+		mh += ratio * (float(leg["upper"]) + float(leg["lower"]))
+	mz /= n
+	mh /= n
+	var szz := 0.0
+	var szh := 0.0
+	for leg in legs:
+		var dz := float((leg["hip"] as Array)[2]) - mz
+		szz += dz * dz
+		szh += dz * (ratio * (float(leg["upper"]) + float(leg["lower"])) - mh)
+	var slope := szh / szz if szz > EPS else 0.0
+	# Height at the hips' centre (z = 0 by construction of the gait origin), and the tilt: height grows towards -Z
+	# (the front) when the slope is negative.
+	m.hip_height = mh - slope * mz
+	var limit := deg_to_rad(MAX_REST_PITCH_DEG)
+	m.rest_pitch = clampf(atan(-slope), -limit, limit)
+
+
+## A foot's rest point on the ground under its hip as the tilted body carries it, `splay` out to the side.
+static func _rest_point(hip: Vector3, tilt: Basis, hip_height: float, splay: float) -> Vector3:
+	var posed := tilt * (hip - Vector3(0.0, hip_height, 0.0))
+	return Vector3(posed.x + splay, 0.0, posed.z)
 
 
 ## "forward" and "back" knees point along the body, a little below the hip; "out" knees point sideways and up, like

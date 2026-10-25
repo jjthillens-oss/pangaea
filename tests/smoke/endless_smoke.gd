@@ -36,6 +36,18 @@ extends SceneTree
 ##   -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json
 ##       A new process continues that slot at size 2: the same absolute place within 1e-6 am, the
 ##       same checkpoint, algae balls, the badge, the same near ghosts, and the camera at rest.
+##   -- --phase=band_up --world=endless --slot=user://smoke/band_up.json --seed=4247
+##       S3 (docs/s3/s3-view.md 16.2; S3G43): a new omnivore, still and hidden, is put at size 2 at
+##       tick BAND_UP_SIZE_TICK and filled and forced at BAND_UP_FORCE_TICK: one grew from band 0 to
+##       band 1, size 3, the badge, band 1's pieces only, nothing left under Handoff, the old band
+##       drawn in at most 8 calls, the beat over, glass flakes and no place found yet. The debug
+##       panel's Go to cradle shows the cradle, its caption at full alpha, the cradle's toast once
+##       in the run and the beacon's top at size 3. A second fill and force: size 4, bead clusters,
+##       the engulfer preview and size 4's near ghosts. It saves and writes BAND_UP_EXPECT_PATH.
+##   -- --phase=band_up_continue --world=endless --slot=user://smoke/band_up.json
+##       A new process continues that slot at size 4: the same place within 1e-6 am, bead
+##       clusters, the old band ready and drawn in at most 8 calls (with instances when the first
+##       run had any), the cradle shown, the preview line and the places line as saved.
 ##
 ## Every phase plays on its own settings (SETTINGS_PATH, deleted first and never saved) and the
 ## player memory beside the slot; the S1 phases set the growth trigger to press and never press, so
@@ -80,6 +92,20 @@ const GROW_SETTLE_FRAMES := 30      ## at most this many more for the beat's las
 const BADGE_SIZE_2 := "Size 2 · about 32 µm"
 const SIZE_2_LOOK := "algae_ball"
 const CAMERA_TOLERANCE := 1e-3
+# S3's band-up (s3-view 16.2).
+const BAND_UP_EXPECT_PATH := "user://smoke/band_up_expect.json"
+const BAND_UP_SIZE_TICK := 30
+const BAND_UP_FORCE_TICK := 120
+const BAND_UP_CAP_TICKS := 600      ## the forced growth comes on the tick after the force
+const BAND_UP_FRAMES := 360
+const CRADLE_FRAMES := 120
+const OLD_BAND_MAX_CALLS := 8
+const BEACON_TOP_3 := -4.965        ## HomeBeacon.TOP_BU / 1.6^2
+const BEACON_TOLERANCE := 0.01
+const SIZE_3_LOOK := "glass_flake"
+const SIZE_4_LOOK := "bead_cluster"
+const PREVIEW_AT_4 := "Coming in a later build: the engulfer"
+const NEAR_AT_4: Array = ["engulfer", "lancer"]
 
 
 ## The intent provider: `bot` swims (null holds still), and the dev calls are keyed on sim.tick:
@@ -92,6 +118,9 @@ class Driver:
 	var record_tick := -1
 	var on_record: Callable
 	var fill_tick := -1                 ## S2: the ring is filled this many ticks after the first
+	var size_tick := -1                 ## S3: debug_set_size(size_to) this many ticks after the first
+	var size_to := 0
+	var force_tick := -1                ## S3: fill and force this many ticks after the first
 	var _next_refill := 0
 
 	func _init(p_bot: RefCounted = null) -> void:
@@ -107,6 +136,11 @@ class Driver:
 			_next_refill = (floori(float(t) / REFILL_TICKS) + 1) * REFILL_TICKS
 		if t == fill_tick:
 			sim.debug_fill_meter(1.0)
+		if t == size_tick:
+			sim.debug_set_size(size_to)
+		if t == force_tick:
+			sim.debug_fill_meter(1.0)
+			sim.debug_force_growth()
 		if sim.tick == record_tick and on_record.is_valid():
 			on_record.call(sim)
 			on_record = Callable()
@@ -153,8 +187,13 @@ func _initialize() -> void:
 			await _grow()
 		"grow_continue":
 			await _grow_continue()
+		"band_up":
+			await _band_up()
+		"band_up_continue":
+			await _band_up_continue()
 		_:
-			_check(false, "--phase is endless_out, endless_continue, fps, grow or grow_continue (got '%s')" % phase)
+			_check(false, "--phase is endless_out, endless_continue, fps, grow, grow_continue, band_up or band_up_continue (got '%s')"
+				% phase)
 	_finished = true
 	_report()
 
@@ -550,7 +589,159 @@ func _grow_continue() -> void:
 	_end()
 
 
+# band_up (S3)
+
+func _band_up() -> void:
+	_begin("band up")
+	var flags := RunFlags.current()
+	_remove_slot(flags.slot)
+	DirAccess.remove_absolute(BAND_UP_EXPECT_PATH)
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	var driver := Driver.new()
+	driver.size_tick = BAND_UP_SIZE_TICK
+	driver.size_to = 2
+	driver.force_tick = BAND_UP_FORCE_TICK
+	main.intent_provider = driver
+	var started := main.start_new(BODY)
+	var pool := main.pool
+	_check(started.ok and pool != null and pool.is_endless() and pool.growth() != null and pool.sim.world.max_size == 4,
+		"a new %s lineage opens the growing sea, top size 4 (%s)" % [BODY, started])
+	if pool == null or pool.growth() == null:
+		return
+	_watch(pool)
+	var sim := pool.sim
+	var hud := main.hud
+	# The cradle's toasts shown in the run: each rise in the count on screen is a new one.
+	var cradle_toasts := {"shown": 0, "on_screen": 0}
+	var count_toasts := func() -> void:
+		var now := hud.toast_texts().count(Hud.CRADLE_TOAST)
+		cradle_toasts.shown += maxi(now - int(cradle_toasts.on_screen), 0)
+		cradle_toasts.on_screen = now
+	var ticks := await _ticks_until(sim, func() -> bool:
+		count_toasts.call()
+		return int(_events.get("grew", 0)) >= 1, BAND_UP_CAP_TICKS)
+	_check(int(_events.get("grew", 0)) >= 1, "the cell grew %d ticks in (cap %d)" % [ticks, BAND_UP_CAP_TICKS])
+	for frame in BAND_UP_FRAMES:
+		await process_frame
+		count_toasts.call()
+	var extra := await _frames_until(func() -> bool: return not pool.growth_beat.running(), GROW_SETTLE_FRAMES)
+	var grew := _log.filter(func(e: Dictionary) -> bool: return e.type == "grew")
+	var bands := grew.map(func(e: Dictionary) -> Array: return [e.get("band_from"), e.get("band_to")])
+	_check(grew.size() == 1 and int(grew[0].get("band_from", -1)) == 0 and int(grew[0].get("band_to", -1)) == 1,
+		"one grew, band 0 to band 1 (%s)" % [bands])
+	_check(sim.size() == 3, "the sea is at size 3 (%d)" % sim.size())
+	var labels: PackedStringArray = sim.world.content.config.ladder.labels
+	var badge := "Size 3 · " + labels[2]
+	_check(hud.size_badge.text == badge, "the badge reads '%s' (%s)" % [badge, hud.size_badge.text])
+	var stray := pool.landmarks.pieces().filter(func(p: Node3D) -> bool:
+		return not (str(p.name).begins_with("a_1_") or str(p.name).begins_with("p_1_")))
+	_check(stray.is_empty(), "every landmark piece is band 1's (%d others: %s)" % [stray.size(), stray.map(func(p: Node3D) -> String: return str(p.name))])
+	var handoff := pool.old_band.get_node_or_null("Handoff")
+	_check(handoff != null and handoff.get_child_count() == 0, "nothing is left under Handoff (%d)" % (handoff.get_child_count() if handoff != null else -1))
+	var calls := pool.old_band.draw_calls()
+	_check(calls >= 0 and calls <= OLD_BAND_MAX_CALLS, "the old band draws in %d calls (at most %d)" % [calls, OLD_BAND_MAX_CALLS])
+	_check(not pool.growth_beat.active(), "the beat is over (%d more frames)" % extra)
+	_check(pool.plankton_view.look == SIZE_3_LOOK, "the plants are %s (%s)" % [SIZE_3_LOOK, pool.plankton_view.look])
+	var places: Vector2i = sim.growth.places_found(3)
+	_check(hud.places_line.visible and hud.places_line.text == GrowthHud.places_text(0, places.y) and places.y == 10,
+		"the places line reads '%s' (%s)" % [GrowthHud.places_text(0, 10), hud.places_line.text])
+	_end()
+
+	_begin("go to cradle")
+	_check(main.debug_panel != null and main.debug_panel.run("go_to_cradle"), "the debug panel's Go to cradle applies")
+	for frame in CRADLE_FRAMES:
+		await process_frame
+		count_toasts.call()
+	var cradle := pool.cradle
+	_check(cradle != null and cradle.visible, "the cradle shows")
+	if cradle != null:
+		_check(cradle.caption().text == "Your lineage began here" and is_equal_approx(cradle.caption().modulate.a, 1.0),
+			"its caption reads 'Your lineage began here' at full alpha (%s, %.2f)" % [cradle.caption().text, cradle.caption().modulate.a])
+	_check(int(cradle_toasts.shown) == 1, "the cradle's toast showed once in the run (%d)" % int(cradle_toasts.shown))
+	var top := _box_in(pool.beacon, pool).end.y
+	_check(absf(top - BEACON_TOP_3) <= BEACON_TOLERANCE, "the beacon's top is at %.3f (%.3f)" % [BEACON_TOP_3, top])
+	_end()
+
+	_begin("size 4")
+	driver.force_tick = sim.tick - driver.first_tick + 1
+	var before := int(_events.get("grew", 0))
+	ticks = await _ticks_until(sim, func() -> bool: return int(_events.get("grew", 0)) > before, BAND_UP_CAP_TICKS)
+	await _frames(BAND_UP_FRAMES)
+	await _frames_until(func() -> bool: return not pool.growth_beat.running(), GROW_SETTLE_FRAMES)
+	_check(sim.size() == 4, "the sea is at size 4 (%d, %d ticks)" % [sim.size(), ticks])
+	_check(pool.plankton_view.look == SIZE_4_LOOK, "the plants are %s (%s)" % [SIZE_4_LOOK, pool.plankton_view.look])
+	_check(hud.ladder_strip.preview_text() == PREVIEW_AT_4, "the strip reads '%s' (%s)" % [PREVIEW_AT_4, hud.ladder_strip.preview_text()])
+	_check(Array(pool.ghosts.near_species(4)) == NEAR_AT_4, "size 4's near ghosts are %s (%s)" % [NEAR_AT_4, pool.ghosts.near_species(4)])
+	_end()
+
+	_begin("save")
+	var saved := main.save_now()
+	_check(saved.ok, "the run saves (%s)" % [saved])
+	var found := sim.growth.places_found(4)
+	var expect := {
+		"position_am": Array(sim.absolute_position_am()),
+		"checkpoint_am": Array(sim.world.checkpoint_am),
+		"size": sim.size(),
+		"places": [found.x, found.y],
+		"old_band_instances": pool.old_band.instances().size(),
+	}
+	var file := FileAccess.open(BAND_UP_EXPECT_PATH, FileAccess.WRITE)
+	_check(file != null, "wrote %s" % BAND_UP_EXPECT_PATH)
+	if file != null:
+		file.store_string(JSON.stringify(expect, "\t", true, true))
+		file.close()
+	_end()
+
+
+func _band_up_continue() -> void:
+	_begin("band up continue")
+	var expect: Variant = JSON.parse_string(FileAccess.get_file_as_string(BAND_UP_EXPECT_PATH))
+	_check(expect is Dictionary, "band_up left %s" % BAND_UP_EXPECT_PATH)
+	if not expect is Dictionary:
+		return
+	await _open_main()
+	if not _slot_is_safe():
+		return
+	main.intent_provider = Driver.new()
+	var result := main.continue_run()
+	var pool := main.pool
+	_check(result.ok and pool != null and pool.is_endless(), "Continue opens the sea (%s)" % [result])
+	if pool == null or not pool.is_endless():
+		return
+	var sim := pool.sim
+	_check(sim.size() == 4 and int(expect.size) == 4, "at size 4 (%d)" % sim.size())
+	var at := sim.absolute_position_am()
+	var want: Array = expect.position_am
+	_check(absf(at[0] - float(want[0])) <= POSITION_TOLERANCE_TM and absf(at[1] - float(want[1])) <= POSITION_TOLERANCE_TM,
+		"the cell is back at its absolute place within 1e-6 am (%.9f, %.9f; saved %.9f, %.9f)" % [at[0], at[1], want[0], want[1]])
+	await _frames(CRADLE_FRAMES)
+	_check(pool.plankton_view.look == SIZE_4_LOOK, "the plants are %s (%s)" % [SIZE_4_LOOK, pool.plankton_view.look])
+	var calls := pool.old_band.draw_calls()
+	_check(pool.old_band.ready_to_draw() and calls <= OLD_BAND_MAX_CALLS,
+		"the old band is ready and draws in %d calls (at most %d)" % [calls, OLD_BAND_MAX_CALLS])
+	if int(expect.old_band_instances) > 0:
+		_check(not pool.old_band.instances().is_empty(), "the old band has instances, as the first run did (%d)" % int(expect.old_band_instances))
+	_check(pool.cradle != null and pool.cradle.visible, "the cradle shows")
+	_check(main.hud.ladder_strip.preview_text() == PREVIEW_AT_4, "the strip reads '%s' (%s)" % [PREVIEW_AT_4, main.hud.ladder_strip.preview_text()])
+	var places: Array = expect.places
+	var line := GrowthHud.places_text(int(places[0]), int(places[1]))
+	_check(main.hud.places_line.text == line, "the places line reads '%s' (%s)" % [line, main.hud.places_line.text])
+	_end()
+
+
 # helpers
+
+## A node's box in the pool's frame (its own transform up to the pool times its meshes' box).
+static func _box_in(node: Node3D, pool: Node) -> AABB:
+	var t := Transform3D.IDENTITY
+	var n: Node = node
+	while n != pool and n is Node3D:
+		t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return t * CradleView.aabb_under(node)
+
 
 ## Every phase plays on SETTINGS_PATH, deleted first and never saved; the S1 phases set the growth
 ## trigger to press and never press, so they play as S1 did.
@@ -560,7 +751,7 @@ func _use_own_settings(phase: String) -> void:
 		DirAccess.remove_absolute(SETTINGS_PATH)
 	var settings := SettingsService.new(SETTINGS_PATH)
 	SettingsService.set_shared(settings)
-	if not phase.begins_with("grow"):
+	if not phase.begins_with("grow") and not phase.begins_with("band_up"):
 		settings.set_value("gameplay/growth_trigger", "press")
 
 

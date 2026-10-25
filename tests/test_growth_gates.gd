@@ -41,6 +41,16 @@ extends TestCase
 ##    chase_close_tm nearer such a rammer than chase_window_ticks before on some tick (the chase
 ##    rule's own test, so counting the fleeing bodies the cell cannot hurt would block it there).
 ## Each waits on the S2 seams it reads (Gates.s2_missing).
+##
+## S3G23 (S3 T0.5b, BP3-11; D-115), soak: pacing to size 4 on the shipped world at its size-4 top
+## (WorldChecks, until I-3 flips the shipped file). ForageBot (wary) on the grazer and the omnivore,
+## 6 seeds each, from home with growth on (auto): over the 12 runs the median second growth (to size
+## 3) is at most 9.5 minutes and the median third (to size 4) at most 16. A run with no such growth by
+## PACE_CAP_S counts PACE_CAP_S. Each body's medians are printed. The medians pool the two bodies, as
+## S2's first-growth gate pools its bots. The forager unjams (band 1's cracks jam a ForageBot, as in
+## the S3 threat runners). Measured 2026-10-24: second 385.6 s, third 944.2 s (grazer 772, omnivore
+## 1,137: an omnivore that only grazes sits under the drain floor at size 3); the mutation "ring at
+## size 3 set to 400" gives 1,320.
 
 const ForageBot := preload("res://game/dev/forage_bot.gd")
 const HuntBot := preload("res://game/dev/hunt_bot.gd")
@@ -93,10 +103,17 @@ const ARRIVE_GRACE_TICKS := 600   ## the parked bot's ticks to stop once it has 
 const PARK_SEARCH_RINGS := 8
 const PURSUE_TICKS := 600         ## after the park, the grazer swims at a rammer fleeing it this long
 const TPS := 60.0
+const WorldChecks := preload("res://tests/world_checks.gd")
+const PACE_SEEDS: Array[int] = [621, 622, 623, 624, 625, 626]
+const PACE_BODIES: PackedStringArray = ["grazer", "omnivore"]
+const PACE_SECOND_MAX_S := 570.0      ## the median second growth: at most 9.5 minutes
+const PACE_THIRD_MAX_S := 960.0       ## the median third: at most 16
+const PACE_CAP_S := 1320.0            ## a run stops at 22 minutes; a growth it never made counts this
 
 var catalog: PartCatalog
 var layout: PoolLayout
 var species: SpeciesCatalog
+var _top4: WorldContent
 
 
 func before_each() -> void:
@@ -357,6 +374,61 @@ func test_soak_dying_on_purpose_never_grows_a_cell_faster_than_foraging() -> voi
 			foraging.append(minf(forage.grew_s, CAP_S))
 	print("test-growth-gates: median first growth dying %s, foraging %s" % [_s(median(dying)), _s(median(foraging))])
 	check(median(dying) >= median(foraging), "dying on purpose is no faster (%s against %s)" % [_s(median(dying)), _s(median(foraging))])
+
+
+func test_soak_a_forager_grows_to_three_within_9_5_minutes_and_to_four_within_16() -> void:
+	var seconds: Array[float] = []
+	var thirds: Array[float] = []
+	for body in PACE_BODIES:
+		var mine_2: Array[float] = []
+		var mine_3: Array[float] = []
+		for seed_value in PACE_SEEDS:
+			var run := _pace_run(body, seed_value)
+			print("test-growth-gates: pacing %s seed %d: size 2 at %s, 3 at %s, 4 at %s; %d deaths (%s), %d meals" % [
+				body, seed_value, _s(run.at[2]), _s(run.at[3]), _s(run.at[4]), run.deaths, run.causes, run.meals])
+			mine_2.append(minf(run.at[3], PACE_CAP_S))
+			mine_3.append(minf(run.at[4], PACE_CAP_S))
+		print("test-growth-gates: pacing %s: median second growth %s, third %s" % [body, _s(median(mine_2)), _s(median(mine_3))])
+		seconds.append_array(mine_2)
+		thirds.append_array(mine_3)
+	print("test-growth-gates: pacing over %d runs: median second growth %s (max %s), third %s (max %s)" % [seconds.size(),
+		_s(median(seconds)), _s(seconds.max()), _s(median(thirds)), _s(thirds.max())])
+	check(median(seconds) <= PACE_SECOND_MAX_S, "the median second growth is within 9.5 minutes (%s)" % _s(median(seconds)))
+	check(median(thirds) <= PACE_THIRD_MAX_S, "the median third growth is within 16 minutes (%s)" % _s(median(thirds)))
+
+
+## One pacing run: a wary ForageBot `body` lineage of `seed_value` from home on the size-4 world,
+## growth on, until it reaches size 4 or PACE_CAP_S. Returns {"at": {2: s, 3: s, 4: s} (INF for a
+## growth not made), "deaths", "causes", "meals"}.
+func _pace_run(body: String, seed_value: int) -> Dictionary:
+	if _top4 == null:
+		_top4 = WorldContent.load_from(WorldChecks.shipped_world_at(4), layout, species)
+	_top4.config.switches["growth"] = true
+	var r := Lineage.found(seed_value, "test+dev", catalog, body)
+	r.save.player["position"] = PlaneSpace.to_save(Vector2(0.0, 9.0))
+	var sim := PoolSim.create(r.save, catalog, layout, species, _top4)
+	sim.drain_events()
+	var bot = ForageBot.new()
+	bot.avoid_threats = true
+	bot.unjam = true   # as the S3 runners' forager (test_threat_fuzz._s3_bot): band 1's cracks jam it
+	var out := {"at": {2: INF, 3: INF, 4: INF}, "deaths": 0, "causes": {}, "meals": 0}
+	var dead := {}
+	for i in int(PACE_CAP_S * TPS):
+		Gates.continue_after_death(sim, dead)
+		sim.step(bot.next_intent(sim))
+		for e in sim.drain_events():
+			match str(e.type):
+				"grew":
+					if not is_finite(float(out.at.get(sim.size(), 0.0))):
+						out.at[sim.size()] = (i + 1) / TPS
+				"died":
+					out.deaths += 1
+					out.causes[e.cause] = int(out.causes.get(e.cause, 0)) + 1
+				"ate":
+					out.meals += 1
+		if sim.size() >= 4:
+			break
+	return out
 
 
 func test_slow_a_parked_grazer_at_size_two_finds_its_calm_window_within_30_s() -> void:

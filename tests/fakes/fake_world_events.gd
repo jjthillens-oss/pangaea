@@ -75,6 +75,27 @@ static func shipped_session(seed_value := SEED, at := PackedFloat64Array()) -> G
 	return session
 
 
+## The shipped world at build top `top` (WorldChecks.shipped_world_at), loaded once a run per top.
+static var _at_top := {}
+
+
+## An endless session on the shipped world with its build top at `top` (S3: sizes 3 and 4 reachable
+## before I-3 flips the shipped file), growth on, a new omnivore lineage at the home spawn. Nothing
+## is saved.
+static func shipped_session_at_top(top: int, seed_value := SEED) -> GameSession:
+	var session := GameSession.new(SLOT)
+	if not _at_top.has(top):
+		var WorldChecks: GDScript = load("res://tests/world_checks.gd")
+		_at_top[top] = WorldContent.load_from(WorldChecks.shipped_world_at(top), session.layout, session.species)
+	var content: WorldContent = _at_top[top]
+	content.config.switches["growth"] = true
+	session.world = content
+	var founded := Lineage.found(seed_value, "test+dev", session.catalog, "omnivore")
+	founded.save.player["position"] = PlaneSpace.to_save_abs(content.home.spawn[0], content.home.spawn[1])
+	session.sim = PoolSim.create(founded.save, session.catalog, session.layout, session.species, content)
+	return session
+
+
 ## The session's pool, built as main builds it but outside the tree (the test runner has none): set
 ## up, then readied as the tree readies it (children first), which builds it. `provider` swims for
 ## the cell (a still cell by default). Art's ambience, mounted during the pool's ready, is not

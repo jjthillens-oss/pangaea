@@ -47,7 +47,7 @@ for r in ["rock_a", "rock_b", "rock_c"]:
 kit = {"schema_version": 1, "status": "PROPOSED",
        "note": "The smallest kit the endless world's rules accept, for the T1 tests: real GLBs, fixture records.",
        "footprint_classes": {"fp_s": [0.6, 0.9], "fp_m": [0.9, 1.2], "fp_l": [1.2, 1.5]},
-       "landmark": {"anchor_radius_bu": 3.0, "collide_radius_bu": 2.0, "groups": [2, 2, 1, 1]},
+       "landmark": {"anchor_radius_bu": 3.0, "collide_radius_bu": 2.0, "groups": {"0": [2, 2, 1, 1]}},
        "assets": assets}
 base = os.path.join(wt, "tests/fixtures/world")
 with open(os.path.join(base, "kit_min.json"), "w") as f:
