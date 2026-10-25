@@ -125,12 +125,16 @@ def _grey(sh, fac, lo):
 ROLE = {
     "eye": "eye", "eye_stalk": "eye", "compound_eye": "eye", "eye_slit": "eye", "eye_round": "eye", "eye_cluster": "eye",
     "beak": "mouth", "mandibles": "mouth", "maw": "mouth", "proboscis": "mouth", "jaw": "mouth", "bill": "mouth",
-    "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand",
-    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot",
+    "hand": "hand", "hand_paw": "hand", "hand_pincer": "hand", "hand_tentacle": "hand", "hand_primate": "hand",
+    "foot": "foot", "hoof": "foot", "flipper": "foot", "foot_webbed": "foot", "foot_paw": "foot", "foot_talon": "foot", "foot_frog": "foot", "foot_primate": "foot",
+    "eye_bulge": "eye", "hand_frog": "hand", "throat_sac": "detail",
     "claw": "weapon", "horn": "weapon", "tusk": "weapon", "tail_spikes": "weapon", "club_tail": "weapon", "quills": "weapon",
-    "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
+    "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon", "horn_swept": "weapon",
     "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
+    "gill_fan": "detail", "lure": "detail", "barbels": "detail", "ear_round": "detail", "muzzle_primate": "detail",
+    "wing_dragon": "detail", "dorsal_spine": "detail",
     "gill_fan": "detail", "lure": "detail", "barbels": "detail",
+    "ear_pointed": "detail", "tail_bushy": "detail", "mane": "detail",
 }
 
 
@@ -2129,7 +2133,7 @@ def _eye_ball(name, centre, radius, iris_half, sclera, iris, segs=28):
     return obj
 
 
-def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0):
+def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0, slit_axis=(0.0, 1.0, 0.0)):
     """Greyscale iris detail for a cap: radial fibres, a dark limbal ring at the edge and a dark pupil, round
     (`pupil` its half-angle in radians) or, with `slit` > 0, a slit that narrow (in the ball's unit units) across y."""
     sh = sf.Shader(name)
@@ -2142,7 +2146,7 @@ def _iris_material(name, centre, axis, half_angle, pupil, slit=0.0):
     detail = sh.math("ADD", sh.remap(fibres, 0.3, 0.7, 0.55, 0.95), sh.math("MULTIPLY", flecks, -0.1))
     base = sh.mix(limbal, (0.22, 0.22, 0.22, 1.0), sh.mix(detail, (0.5, 0.5, 0.5, 1.0), (0.95, 0.95, 0.95, 1.0)))
     if slit > 0.0:
-        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, (0.0, 1.0, 0.0)))
+        across = sh.math("ABSOLUTE", sh.vmath("DOT_PRODUCT", n, tuple(slit_axis)))
         hole = sh.math("MULTIPLY", sh.remap(across, slit + 0.015, slit), sh.remap(facing, math.cos(pupil) - 0.02, math.cos(pupil)))
     else:
         hole = sh.remap(facing, math.cos(pupil) - 0.004, math.cos(pupil) + 0.004)
@@ -3184,6 +3188,1093 @@ def build_spike():
             "paint_mix": {"M_SpikePlate": 0.7, "M_Spike": 0.05}, "revision": 1, **baked}
 
 
+def _wet_skin_material(name, scale=90.0, rough=0.28):
+    """Smooth amphibian skin: broad soft mottling and a faint fine pebble, low roughness so it reads wet."""
+    sh = sf.Shader(name)
+    mottle = sh.remap(sh.noise(scale, 2.0), 0.35, 0.65)
+    pebble = sh.remap(sh.voronoi(scale * 6.0, 0.9), 0.3, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.12, 0.0004)
+    return sh.out(_grey(sh, sh.math("ADD", 0.55, sh.math("MULTIPLY", mottle, 0.45)), 0.6), rough)
+
+
+def _leather_material(name):
+    """Primate palm and finger leather: fine creases across the knuckles and a soft pore grain."""
+    sh = sf.Shader(name)
+    creases = sh.remap(sh.noise(220.0, 2.0, vector=mp._stretched(sh, (0.25, 1.0, 6.0))), 0.42, 0.58)
+    pores = sh.remap(sh.voronoi(420.0, 0.8), 0.2, 0.05)
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", creases, 0.7), sh.math("MULTIPLY", pores, 0.3)), 0.3, 0.0006)
+    return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", creases, 0.28)), 0.75), 0.62)
+
+
+def _fur_material(name, scale=520.0, along=(6.0, 6.0, 0.35)):
+    """Short dense fur: fine strands stretched along one axis, broken into clumps, rough and matte."""
+    sh = sf.Shader(name)
+    strands = sh.noise(scale, 2.5, vector=mp._stretched(sh, along))
+    clumps = sh.remap(sh.noise(scale * 0.12, 2.0), 0.3, 0.7)
+    sh.bump(sh.math("MULTIPLY", strands, sh.math("ADD", 0.5, clumps)), 0.6, 0.0012)
+    return sh.out(_grey(sh, sh.math("ADD", 0.5, sh.math("MULTIPLY", sh.math("MULTIPLY", strands, clumps), 0.5)), 0.5), 0.88)
+
+
+def _pad_material(name, rough=0.4):
+    """A soft adhesive pad or nose leather: a fine tight pebble, smoother than the skin around it."""
+    sh = sf.Shader(name)
+    pebble = sh.remap(sh.voronoi(900.0, 0.9), 0.3, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pebble), 0.18, 0.0003)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 1.0, sh.math("MULTIPLY", pebble, 0.2)), 0.8), rough)
+
+
+def _blob(centre, rx, ry, rz, sub=3, power=1.0, shape=None):
+    """An icosphere pushed toward a rounded box (power < 1) and scaled; shape(n) -> (sx, sy, dy) tapers it."""
+    unit, faces = bc.icosphere(sub)
+    verts = []
+    for co in unit:
+        n = Vector(co).normalized()
+        p = Vector([math.copysign(abs(c) ** power, c) for c in n])
+        sx, sy, dy = shape(n) if shape else (1.0, 1.0, 0.0)
+        verts.append(tuple(centre + Vector((p.x * rx * sx, p.y * ry * sy + dy, p.z * rz))))
+    return verts, list(faces)
+
+
+def _bump(t, at, w=0.05):
+    return math.exp(-((t - at) / w) ** 2)
+
+
+PRIMATE_T = (0.0, 0.12, 0.24, 0.3, 0.36, 0.44, 0.52, 0.6, 0.66, 0.72, 0.8, 0.88, 0.93, 0.97, 1.0)
+
+
+def _primate_finger_r(t, r0):
+    """A long finger: thickest at the knuckle, swelling at the two joints (0.36, 0.66), tapering to a
+    flattened rounded tip."""
+    r = r0 * (1.0 - 0.3 * t) * (1.0 + 0.16 * _bump(t, 0.36) + 0.13 * _bump(t, 0.66))
+    if t > 0.84:
+        r *= math.sqrt(max(0.0, 1.0 - ((t - 0.84) / 0.16) ** 2))
+    return r
+
+
+def _flat_nails(tips, back, flat=0.35, length=0.011, width=0.005):
+    """Flat primate nails laid on the back of each tip; `back` is the unit vector out of the nail side."""
+    nv, nf = [], []
+    for tip, d, r in tips:
+        base = tip + back * (r * 0.75)
+        v, f = _nail(base, d, length, width)
+        squashed = []
+        for p in v:
+            p = Vector(p)
+            h = (p - base).dot(back)
+            squashed.append(tuple(p - back * (h * (1.0 - flat))))
+        bc.append(nv, nf, squashed, f)
+    return nv, nf
+
+
+HAND_PRIMATE_KNUCKLE = 0.074
+
+
+def build_hand_primate():
+    """A monkey's hand on the end of the limb (+Z out along it, the palm toward +Y): a long squarish palm,
+    narrow at the wrist, four long jointed fingers of graded length resting in a slight curl, flat nails, a
+    short opposable thumb set low on the side, and a fur cuff at the wrist. H1_Grip curls the fingers around
+    a branch and folds the thumb across, H2_Spread fans them."""
+    verts, fcs = [], []
+
+    def palm_shape(n):
+        # Narrower at the wrist; the palm (+Y) face hollows a little between the thenar and outer pads.
+        return (0.8 + 0.2 * (n.z + 1.0) / 2.0, 1.0, -0.004 * max(0.0, n.y) * (1.0 - n.x * n.x))
+
+    bc.append(verts, fcs, *_blob(Vector((0.0, 0.0, 0.042)), 0.034, 0.014, 0.04, power=0.72, shape=palm_shape))
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.008, -0.008, -0.024)], lambda i, a: 0.02 + 0.003 * i, 16)
+    bc.append(verts, fcs, wv, wf)
+    tips = []
+    # (x, length, radius, knuckle z): the little finger shortest and set lowest, the middle longest.
+    for fx, length, r0, kz in ((-0.025, 0.05, 0.0072, 0.07), (-0.0085, 0.066, 0.008, 0.077),
+                               (0.0085, 0.072, 0.0083, 0.079), (0.025, 0.064, 0.008, 0.075)):
+        base = Vector((fx, 0.001, kz - 0.008))
+        path = [base + Vector((fx * 0.16 * t, 0.012 * t * t * length / 0.07, (length + 0.008) * t * (1.0 - 0.05 * t))) for t in PRIMATE_T]
+        v, f, _ = _tube(path, lambda i, a, r0=r0: _primate_finger_r(PRIMATE_T[i], r0), 12)
+        bc.append(verts, fcs, v, f)
+        d = (path[-1] - path[-4]).normalized()
+        tips.append((path[-4], d, _primate_finger_r(PRIMATE_T[-4], r0)))
+    # The thumb leaves the palm low on +X and points up and across toward the palm, so the grip can oppose it.
+    tpath = [Vector((0.028, 0.004, 0.022)) + Vector((0.022 * t, 0.018 * t * t + 0.004 * t, 0.034 * t)) for t in PRIMATE_T]
+    v, f, _ = _tube(tpath, lambda i, a: _primate_finger_r(PRIMATE_T[i], 0.0098), 12)
+    bc.append(verts, fcs, v, f)
+    skin = _leather_material("M_HandPrimateSkinProc")
+    hand = bc.mesh_object("HandPrimate", verts, fcs, [skin])
+    skin.name = "M_HandPrimateSkin"
+    td = (tpath[-1] - tpath[-4]).normalized()
+    tback = Vector((1.0, -0.6, 0.0)).normalized()
+    nv, nf = _flat_nails(tips, Vector((0.0, -1.0, 0.0)))
+    v, f = _flat_nails([(tpath[-4], td, _primate_finger_r(PRIMATE_T[-4], 0.0098))], tback)
+    bc.append(nv, nf, v, f)
+    nail_mat = _nail_material("M_HandPrimateNailProc")
+    nails = bc.mesh_object("Nails", nv, nf, [nail_mat], parent=hand)
+    nail_mat.name = "M_HandPrimateNail"
+    # A fur cuff where the furred limb meets the bare hand; closed at its top so it reads as a ruff.
+    cuff_path = [Vector((0.0, 0.0, z)) for z in (-0.01, 0.0, 0.008, 0.016, 0.022)]
+    cv, cf, _ = _tube(cuff_path, lambda i, a: (0.026, 0.0275, 0.027, 0.023, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
+    fur_mat = _fur_material("M_HandPrimateFurProc")
+    cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=hand)
+    fur_mat.name = "M_HandPrimateFur"
+    objs = [hand, nails, cuff]
+    baked = _bake(objs, "PartHandPrimate", {"M_HandPrimateSkin": sf.tint(_lin("#5E4A40")), "M_HandPrimateNail": sf.tint(_lin("#2A2320")),
+                                            "M_HandPrimateFur": sf.tint(_lin("#6E5A46"))})
+    pts = _check_pivot("hand_primate", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+    k0 = HAND_PRIMATE_KNUCKLE
+
+    def grip(co):
+        if co.z > k0 and co.x < 0.036:
+            dz = co.z - k0
+            ang = math.radians(95.0) * min(1.0, dz / 0.075)
+            return Vector((co.x, co.y + dz * math.sin(ang) * 0.8, k0 + dz * math.cos(ang) * 0.8 + dz * 0.2))
+        if co.x > 0.03 and co.z < k0:
+            k = min(1.0, (co.x - 0.03) / 0.024)
+            return Vector((co.x - 0.022 * k, co.y + 0.016 * k, co.z + 0.008 * k))
+        return co
+
+    def spread(co):
+        if co.z > k0:
+            co.x *= 1.0 + 0.5 * min(1.0, (co.z - k0) / 0.075)
+        return co
+
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 95 degrees around a branch, the thumb opposes"),
+                                 ("H2_Spread", spread, "fingers fan 50% wider at the tips")])
+    for o in (nails, cuff):
+        _shape_keys(o, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
+    rules = _hand_rules("hand_primate", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a monkey's hand, a long squarish leathery palm, four long jointed fingers of graded length with flat nails, a low opposable thumb and a fur cuff; grips on a shape key.",
+            "category": "part", "part_type": "hand_primate", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandPrimateSkin": 0.35, "M_HandPrimateNail": 0.0, "M_HandPrimateFur": 0.9}, "revision": 2, **baked}
+
+
+def build_foot_frog():
+    """A tree frog's foot standing on its sole: a slim ankle coming down from behind onto a flat narrow
+    sole, five long slender knuckled toes fanned forward, a short web at their roots, and a broad round
+    sticky disc at each tip in a paler, glossier pad skin. H1_Spread splays the toes, H2_Long lengthens them."""
+    verts, fcs = [], []
+    sole_c = Vector((0.0, 0.002, 0.008))
+    bc.append(verts, fcs, *_blob(sole_c, 0.017, 0.026, 0.0075, power=0.9,
+                                 shape=lambda n: (0.75 + 0.25 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
+    apath = [Vector(p) for p in ((0.0, -0.036, 0.075), (0.0, -0.03, 0.05), (0.0, -0.02, 0.028), (0.0, -0.01, 0.014), (0.0, -0.002, 0.006))]
+    av, af, _ = _tube(apath, lambda i, a: (0.0115, 0.011, 0.0102, 0.0095, 0.006)[i], 16)
+    bc.append(verts, fcs, av, af)
+    ts = [k / 8 for k in range(9)]
+    paths, discs = [], []
+    for ang, length in ((-58.0, 0.042), (-30.0, 0.058), (-6.0, 0.072), (18.0, 0.082), (44.0, 0.06)):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        start = sole_c + d * 0.012 + Vector((0.0, 0.0, -0.001))
+        # The toes arch up off the ground between the sole and the disc, as a frog's do.
+        path = [start + d * (length * t) + Vector((0.0, 0.0, 0.006 * math.sin(math.pi * t) - 0.003 * t)) for t in ts]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0052 * (1.0 - 0.3 * ts[i]) * (1.0 + 0.2 * _bump(ts[i], 0.45, 0.07) + 0.2 * _bump(ts[i], 0.75, 0.07)), 10)
+        bc.append(verts, fcs, tv, tf)
+        paths.append(path)
+        discs.append((path[-1] + d * 0.004, d))
+    skin = _wet_skin_material("M_FootFrogSkinProc")
+    foot = bc.mesh_object("FootFrog", _ground(verts), fcs, [skin])
+    skin.name = "M_FootFrogSkin"
+    pv, pf = [], []
+    for c, d in discs:
+        side = Vector((d.y, -d.x, 0.0))
+        r = 0.0088
+        dv, df = _blob(Vector((0.0, 0.0, 0.0)), 1.0, 1.0, 1.0, sub=2)
+        bc.append(pv, pf, [tuple(c + Vector((0.0, 0.0, 0.0042)) + side * (x * r) + d * (y * r * 0.92) + Vector((0.0, 0.0, z * r * 0.5 - (0.0012 if z < 0 else 0.0)))) for x, y, z in dv], df)
+    pad_mat = _pad_material("M_FootFrogPadProc", 0.3)
+    pads = bc.mesh_object("Pads", _ground(pv), pf, [pad_mat], parent=foot)
+    pad_mat.name = "M_FootFrogPad"
+    wv, wf = [], []
+    for left, right in zip(paths[:-1], paths[1:]):
+        def point(s_, c, left=left, right=right):
+            i = s_ * 3.0          # the web reaches the first joint: 3/8 of the toe
+            k = min(len(left) - 2, int(i))
+            f = i - k
+            a = left[k].lerp(left[k + 1], f)
+            b = right[k].lerp(right[k + 1], f)
+            p = a.lerp(b, c)
+            sag = 0.006 * s_ ** 2 * math.sin(math.pi * c)
+            p = p - (a.lerp(b, 0.5) - sole_c).normalized() * sag
+            return Vector((p.x, p.y, max(0.003, p.z)))
+        _membrane(wv, wf, point, 5, 4, thickness=0.0008, facing=Vector((0.0, 0.0, 1.0)))
+    web_mat = _wet_skin_material("M_FootFrogWebProc", scale=160.0, rough=0.35)
+    web = bc.mesh_object("Web", wv, wf, [web_mat], parent=foot, fix_normals=False)
+    web_mat.name = "M_FootFrogWeb"
+    objs = [foot, pads, web]
+    baked = _bake(objs, "PartFootFrog", {"M_FootFrogSkin": sf.tint(_lin("#6F9A4C")), "M_FootFrogPad": sf.tint(_lin("#D2C48E")),
+                                         "M_FootFrogWeb": sf.tint(_lin("#A6B878"))})
+    pts = _check_pivot("foot_frog", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+    handles = _foot_handles(objs, 14.0, 0.01, 0.3)
+    rules = _rules("foot_frog", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
+    return {"purpose": "Creature foot part (PROPOSED): a tree frog's foot, a slim ankle on a narrow sole, five long knuckled toes fanned forward with a short root web and broad pale sticky disc pads, smooth wet skin.",
+            "category": "part", "part_type": "foot_frog", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootFrogSkin": 0.9, "M_FootFrogPad": 0.3, "M_FootFrogWeb": 0.8}, "revision": 2, **baked}
+
+
+def build_foot_primate():
+    """A monkey's foot standing on its sole: a long leathery sole narrow at the heel, four long jointed toes
+    forward with flat nails, a thick big toe set far back on the inside (-X) and splayed out sideways so it
+    can close against the others, and a fur cuff at the ankle. H1_Spread splays the toes, H2_Long lengthens
+    them, H3_Grasp curls the toes down and swings the big toe across under them."""
+    verts, fcs = [], []
+    bc.append(verts, fcs, *_blob(Vector((0.002, -0.006, 0.016)), 0.026, 0.05, 0.016, power=0.8,
+                                 shape=lambda n: (0.72 + 0.28 * (n.y + 1.0) / 2.0, 1.0, 0.0)))
+    apath = [Vector(p) for p in ((0.0, -0.036, 0.075), (0.0, -0.034, 0.055), (0.0, -0.03, 0.036), (0.0, -0.024, 0.02))]
+    av, af, _ = _tube(apath, lambda i, a: (0.017, 0.0175, 0.019, 0.02)[i], 16)
+    bc.append(verts, fcs, av, af)
+    tips = []
+    for bx, by, length, r0, ang in ((-0.002, 0.036, 0.05, 0.0076, -3.0), (0.011, 0.038, 0.054, 0.0077, 3.0),
+                                    (0.023, 0.034, 0.048, 0.0071, 10.0), (0.033, 0.026, 0.038, 0.0064, 20.0)):
+        d = Vector((math.sin(math.radians(ang)), math.cos(math.radians(ang)), 0.0))
+        base = Vector((bx, by, 0.012))
+        # Long toes that rise a little off the ground at the knuckles and curl their tips down to grip.
+        path = [base + d * (length * t) + Vector((0.0, 0.0, 0.005 * math.sin(math.pi * t) - 0.011 * t ** 3)) for t in PRIMATE_T]
+        v, f, _ = _tube(path, lambda i, a, r0=r0: _primate_finger_r(PRIMATE_T[i], r0), 12)
+        bc.append(verts, fcs, v, f)
+        tips.append((path[-4], (path[-1] - path[-4]).normalized(), _primate_finger_r(PRIMATE_T[-4], r0)))
+    hd = Vector((-math.sin(math.radians(62.0)), math.cos(math.radians(62.0)), 0.0))
+    hside = Vector((hd.y, -hd.x, 0.0))                 # toward the other toes once the hallux closes
+    hpath = [Vector((-0.018, -0.002, 0.013)) + hd * (0.044 * t) + hside * (0.006 * t * t) + Vector((0.0, 0.0, 0.002 * math.sin(math.pi * t))) for t in PRIMATE_T]
+    v, f, _ = _tube(hpath, lambda i, a: _primate_finger_r(PRIMATE_T[i], 0.0102), 12)
+    bc.append(verts, fcs, v, f)
+    tips.append((hpath[-4], (hpath[-1] - hpath[-4]).normalized(), _primate_finger_r(PRIMATE_T[-4], 0.0102)))
+    skin = _leather_material("M_FootPrimateSkinProc")
+    foot = bc.mesh_object("FootPrimate", _ground(verts), fcs, [skin])
+    skin.name = "M_FootPrimateSkin"
+    nv, nf = _flat_nails(tips, Vector((0.0, 0.0, 1.0)), length=0.01)
+    nail_mat = _nail_material("M_FootPrimateNailProc")
+    nails = bc.mesh_object("Nails", _ground(nv), nf, [nail_mat], parent=foot)
+    nail_mat.name = "M_FootPrimateNail"
+    cuff_path = [Vector((0.0, -0.036 + 0.0015 * k, z)) for k, z in enumerate((0.08, 0.072, 0.064, 0.056, 0.05))]
+    cv, cf, _ = _tube(cuff_path, lambda i, a: (0.02, 0.0215, 0.022, 0.02, 0.0)[i] * (1.0 + 0.04 * math.sin(7 * a)), 20)
+    fur_mat = _fur_material("M_FootPrimateFurProc")
+    cuff = bc.mesh_object("Cuff", cv, cf, [fur_mat], parent=foot)
+    fur_mat.name = "M_FootPrimateFur"
+    objs = [foot, nails, cuff]
+    baked = _bake(objs, "PartFootPrimate", {"M_FootPrimateSkin": sf.tint(_lin("#5A463C")), "M_FootPrimateNail": sf.tint(_lin("#2A2320")),
+                                            "M_FootPrimateFur": sf.tint(_lin("#6E5A46"))})
+    pts = _check_pivot("foot_primate", 0.0, ground=True)
+    reach = max(math.hypot(p.x, p.y) for p in pts)
+
+    def spread(co):
+        if co.y > 0.03:
+            a = math.radians(10.0) * max(-1.0, min(1.0, co.x / 0.02))
+            return Matrix.Rotation(-a, 3, "Z") @ co
+        return co
+
+    def long_(co):
+        if co.y > 0.03:
+            co.y = 0.03 + (co.y - 0.03) * 1.25
+        return co
+
+    def grasp(co):
+        if co.y > 0.03 and co.x > -0.016:
+            k = min(1.0, (co.y - 0.03) / 0.05)
+            pivot = Vector((0.0, 0.03, 0.012))
+            return pivot + Matrix.Rotation(math.radians(-80.0) * k, 3, "X") @ (co - pivot)
+        if co.x < -0.022 and co.y > -0.01:
+            pivot = Vector((-0.018, -0.002, co.z))
+            return pivot + Matrix.Rotation(math.radians(-75.0), 3, "Z") @ (co - pivot)
+        return co
+
+    keys = [("H1_Spread", spread, "toes splayed a further 10 degrees"), ("H2_Long", long_, "toes 25% longer"),
+            ("H3_Grasp", grasp, "toes curl 80 degrees down and the big toe swings across to close on a branch")]
+    handles = _shape_keys(foot, keys)
+    for o in (nails, cuff):
+        _shape_keys(o, [(k, fn, "") for k, fn, _ in keys])
+    rules = _rules("foot_primate", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15, chiral=True)
+    rules["capabilities"] = ["grasper"]
+    rules["handles"] = handles
+    rules["pivot_note"] = "Ground part: the sole sits on the pivot; the ankle top (z 0.08 m, y -0.036 m) meets the limb tip. Right foot: the big toe is on the inside (-X)."
+    return {"purpose": "Creature foot part (PROPOSED): a monkey's grasping foot, a long leathery sole, four long toes with flat nails, a thick opposable big toe splayed to the inside and a fur cuff; grasps on a shape key.",
+            "category": "part", "part_type": "foot_primate", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_FootPrimateSkin": 0.35, "M_FootPrimateNail": 0.0, "M_FootPrimateFur": 0.9}, "revision": 1, **baked}
+
+
+EAR_U = Vector((0.0, -0.42, 0.91)).normalized()     # up the ear, out of the skin and leaning back
+EAR_V = Vector((1.0, 0.0, 0.0))                      # across the ear
+EAR_N = EAR_U.cross(EAR_V).normalized()     # the ear's face: forward (+Y) and out
+EAR_SINK = 0.006
+
+
+def build_ear_round():
+    """A monkey's rounded ear standing out from the side of the head: a thin cupped flap a little taller than
+    wide, a thick rolled rim (helix) open at the bottom where the ear meets the head, a soft inner ridge round
+    a deep bowl, and a fur tuft at its root. H1_Perk tips it forward, H2_Size scales it."""
+    if EAR_N.y < 0:
+        raise RuntimeError("ear face must point forward")
+    centre_u, R = 0.03, 0.029
+    rings, segs = 8, 32
+
+    def surf(rho, phi, side):
+        u = centre_u + R * 1.12 * rho * math.sin(phi)
+        v = R * rho * math.cos(phi)
+        attach = max(0.0, -math.sin(phi)) * rho                 # the lower edge, where the ear meets the head, is flatter
+        cup = 0.0045 * (1.0 - rho * rho) * (1.0 - 0.6 * attach) - 0.003 * max(0.0, (rho - 0.75) / 0.25) ** 2
+        return EAR_U * u + EAR_V * v - EAR_N * cup + EAR_N * (0.0016 * side)
+
+    verts, fcs = [], []
+    for side in (1.0, -1.0):
+        base = len(verts)
+        verts.append(tuple(surf(0.0, 0.0, side)))
+        for r in range(1, rings + 1):
+            for s in range(segs):
+                verts.append(tuple(surf(r / rings, 2 * math.pi * s / segs, side)))
+        for s in range(segs):
+            fcs.append((base, base + 1 + s, base + 1 + (s + 1) % segs))
+        for r in range(1, rings):
+            a, b = base + 1 + (r - 1) * segs, base + 1 + r * segs
+            for s in range(segs):
+                t = (s + 1) % segs
+                fcs.append((a + s, b + s, b + t, a + t))
+    outer_f, outer_b = 1 + (rings - 1) * segs, len(verts) // 2 + 1 + (rings - 1) * segs
+    for s in range(segs):
+        t = (s + 1) % segs
+        fcs.append((outer_f + s, outer_f + t, outer_b + t, outer_b + s))
+    # The helix: a rolled rim from the front lower edge over the top and down the back, open at the root.
+    phis = [math.radians(-55.0 + 290.0 * k / 24) for k in range(25)]
+    rim = [surf(0.97, p, 0.0) + EAR_N * 0.0012 for p in phis]
+    hv, hf, _ = _tube(rim, lambda i, a: 0.0026 * min(1.0, 0.35 + 0.65 * math.sin(math.pi * i / 24) ** 0.5), 10)
+    bc.append(verts, fcs, hv, hf)
+    # The antihelix: a soft ridge inside the rim round the upper bowl.
+    ridge = [surf(0.62, math.radians(25.0 + 130.0 * k / 12), 1.0) for k in range(13)]
+    rv, rf, _ = _tube(ridge, lambda i, a: 0.0024 * math.sin(math.pi * (0.1 + 0.8 * i / 12)), 8)
+    bc.append(verts, fcs, rv, rf)
+    skin = _skin_material("M_EarRoundSkinProc", scale=300.0, lo=0.8, rough=0.55)
+    ear = bc.mesh_object("EarRound", verts, fcs, [skin])
+    skin.name = "M_EarRoundSkin"
+    tv, tf = _blob(Vector((0.0, -0.013, 0.002)), 0.024, 0.011, 0.0055, power=0.9)
+    fur_mat = _fur_material("M_EarRoundFurProc", along=(6.0, 0.4, 6.0))
+    tuft = bc.mesh_object("Tuft", tv, tf, [fur_mat], parent=ear)
+    fur_mat.name = "M_EarRoundFur"
+    objs = [ear, tuft]
+    baked = _bake(objs, "PartEarRound", {"M_EarRoundSkin": sf.tint(_lin("#A27B68")), "M_EarRoundFur": sf.tint(_lin("#7A6652"))})
+    pts = _check_pivot("ear_round", EAR_SINK + 0.002)
+    foot = _footprint(pts)
+
+    def perk(co):
+        return Matrix.Rotation(math.radians(25.0), 3, "X") @ co
+
+    def size(co):
+        return Vector((co.x * 1.3, co.y * 1.3, co.z * 1.3)) if co.z > 0.0 else co
+
+    handles = _shape_keys(ear, [("H1_Perk", perk, "the ear tips 25 degrees forward"), ("H2_Size", size, "the ear 30% larger")])
+    _shape_keys(tuft, [("H1_Perk", perk, ""), ("H2_Size", size, "")])
+    rules = _rules("ear_round", round(foot + 0.001, 3), EAR_SINK + 0.002, "normal", ["spine"], 45, 35, centerline="forbidden")
+    rules["handles"] = handles
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's rounded cupped ear with a rolled rim open at the root, an inner ridge round a deep bowl and a fur tuft at its base.",
+            "category": "part", "part_type": "ear_round", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EarRoundSkin": 0.4, "M_EarRoundFur": 0.9}, "revision": 1, **baked}
+
+
+def _torus(major, minor, segs, sides, z=0.001, wobble=0.0):
+    """A closed ring round +Z (no seam): `segs` around, `sides` round the tube, its minor radius wobbling a little."""
+    verts, faces = [], []
+    for i in range(segs):
+        a = 2 * math.pi * i / segs
+        for j in range(sides):
+            b = 2 * math.pi * j / sides
+            r = minor * (1.0 + wobble * math.sin(5 * a + 3 * b))
+            rr = major + r * math.cos(b)
+            verts.append((rr * math.cos(a), rr * math.sin(a), z + r * math.sin(b)))
+    for i in range(segs):
+        for j in range(sides):
+            i2, j2 = (i + 1) % segs, (j + 1) % sides
+            faces.append((i * sides + j, i2 * sides + j, i2 * sides + j2, i * sides + j2))
+    return verts, faces
+
+
+MUZZLE_SINK = 0.008
+
+
+def build_muzzle_primate():
+    """A monkey's face plate, mounted on the front of the head (+Z out of the face, +Y up toward the brow): a
+    broad bare shallow dome, a heavy brow ridge across the top, a short flat snout below with a dark nose pad
+    and two nostrils opening forward and down, a full upper lip over a mouth line, all framed by a ring of fur.
+    H1_Snout pushes the snout out, H2_Brow makes the brow heavier."""
+    verts, fcs = [], []
+    bc.append(verts, fcs, *_blob(Vector((0.0, 0.0, 0.004)), 0.044, 0.042, 0.012, power=0.85))
+    bc.append(verts, fcs, *_blob(Vector((0.0, -0.014, 0.017)), 0.022, 0.02, 0.02, power=0.9,
+                                 shape=lambda n: (1.0 - 0.15 * max(0.0, n.y), 1.0, 0.0)))
+    brow = [Vector((x, 0.021 + 0.005 * abs(math.sin(math.pi * x / 0.042)), 0.013 - 0.008 * (x / 0.042) ** 2 - 0.002 * math.exp(-(x / 0.008) ** 2)))
+            for x in (-0.042 + 0.084 * k / 16 for k in range(17))]
+    bv, bf, _ = _tube(brow, lambda i, a: 0.0072 * math.sin(math.pi * (0.04 + 0.92 * i / 16)) ** 0.6 * (1.0 + 0.25 * math.sin(a)), 12)
+    bc.append(verts, fcs, bv, bf)
+    lip = [Vector((x, -0.023 + 0.004 * (x / 0.016) ** 2, 0.035 - 0.007 * (x / 0.016) ** 2)) for x in (-0.016 + 0.032 * k / 10 for k in range(11))]
+    lv, lf, _ = _tube(lip, lambda i, a: 0.003 * math.sin(math.pi * (0.05 + 0.9 * i / 10)) ** 0.5, 10)
+    bc.append(verts, fcs, lv, lf)
+    skin = _skin_material("M_MuzzlePrimateSkinProc", scale=260.0, lo=0.82, rough=0.55)
+    face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin])
+    skin.name = "M_MuzzlePrimateSkin"
+    nv, nf = _blob(Vector((0.0, -0.006, 0.0345)), 0.0085, 0.006, 0.0038, power=0.85,
+                   shape=lambda n: (1.0 - 0.2 * max(0.0, n.y), 1.0, 0.0))
+    nose_mat = _pad_material("M_MuzzlePrimateNoseProc", 0.35)
+    nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
+    nose_mat.name = "M_MuzzlePrimateNose"
+    # The nostrils and the mouth line: near-black recesses set into the nose pad and under the lip.
+    hv, hf = [], []
+    for sx in (-1.0, 1.0):
+        bc.append(hv, hf, *_blob(Vector((sx * 0.0037, -0.0095, 0.0365)), 0.0019, 0.0013, 0.0016, sub=2))
+    mouth = [Vector((x, -0.0265 + 0.004 * (x / 0.015) ** 2, 0.0325 - 0.007 * (x / 0.015) ** 2)) for x in (-0.015 + 0.03 * k / 10 for k in range(11))]
+    mv, mf, _ = _tube(mouth, lambda i, a: 0.0014 * math.sin(math.pi * (0.05 + 0.9 * i / 10)) ** 0.5, 8)
+    bc.append(hv, hf, mv, mf)
+    hole_sh = sf.Shader("M_MuzzlePrimateCavityProc")
+    hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
+    holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face)
+    hole_mat.name = "M_MuzzlePrimateCavity"
+    rv, rf = _torus(0.047, 0.0085, 24, 8, wobble=0.12)
+    fur_mat = _fur_material("M_MuzzlePrimateFurProc")
+    fur = bc.mesh_object("FurRing", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in rv], rf, [fur_mat], parent=face)
+    fur_mat.name = "M_MuzzlePrimateFur"
+    objs = [face, nose, holes, fur]
+    baked = _bake(objs, "PartMuzzlePrimate", {"M_MuzzlePrimateSkin": sf.tint(_lin("#B98478")), "M_MuzzlePrimateNose": sf.tint(_lin("#7A5450")),
+                                              "M_MuzzlePrimateCavity": sf.tint(_lin("#140F0E")), "M_MuzzlePrimateFur": sf.tint(_lin("#857260"))})
+    pts = _check_pivot("muzzle_primate", MUZZLE_SINK)
+    foot = _footprint(pts)
+
+    def snout(co):
+        if co.y < 0.0 and co.z > 0.008:
+            k = min(1.0, -co.y / 0.02) * min(1.0, (co.z - 0.008) / 0.012)
+            co.z += 0.014 * k
+        return co
+
+    def brow_(co):
+        if co.y > 0.014 and co.z > 0.004:
+            co.z += 0.005 * min(1.0, (co.y - 0.014) / 0.01)
+        return co
+
+    keys = [("H1_Snout", snout, "the snout and nose pushed 14 mm further out"), ("H2_Brow", brow_, "the brow ridge 5 mm heavier")]
+    handles = _shape_keys(face, keys)
+    for o in (nose, holes, fur):
+        _shape_keys(o, [(k, fn, "") for k, fn, _ in keys])
+    rules = _rules("muzzle_primate", round(foot + 0.001, 3), MUZZLE_SINK, "forward_cone", ["spine"], 30, 25, centerline="required")
+    rules["handles"] = handles
+    rules["pivot_note"] = "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
+    return {"purpose": "Creature detail part (PROPOSED): a monkey's face plate, a bare shallow dome with a heavy brow ridge, a short flat snout with a dark nose pad and nostrils, a full upper lip and a fur frame.",
+            "category": "part", "part_type": "muzzle_primate", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_MuzzlePrimateSkin": 0.4, "M_MuzzlePrimateNose": 0.0, "M_MuzzlePrimateCavity": 0.0, "M_MuzzlePrimateFur": 0.9}, "revision": 1, **baked}
+
+
+# --- Dragon set: wing, swept horn, dorsal spine ------------------------------------------------------
+
+DWING_SPAN = 0.42
+DWING_SINK = 0.018
+
+
+def build_wing_dragon():
+    """A big chunky dragon wing in the skin's YZ plane: a thick arm out along +Z to a knuckled wrist, a hooked
+    thumb claw at the wrist pointing forward (+Y), four stout finger struts fanning back toward the tail, and a
+    leathery membrane whose trailing edge scallops deeply between them. Chiral: the right-hand piece cups
+    toward -X. H1_Fold furls the fingers back against the arm, H2_Flap bends the outer wing toward -X."""
+    root, body_trail = Vector((0.0, 0.04, -DWING_SINK)), Vector((0.0, -0.16, -DWING_SINK))
+    wrist = Vector((0.0, 0.015, 0.19))
+    tips = [Vector((0.0, 0.0, DWING_SPAN)), Vector((0.0, -0.13, 0.38)), Vector((0.0, -0.23, 0.29)), Vector((0.0, -0.27, 0.15))]
+    verts, fcs, face_mats = [], [], []
+
+    def cup(p):
+        d = (p - wrist).length
+        return p + Vector((-0.025 * math.sin(min(1.0, d / 0.24) * math.pi), 0.0, 0.0))
+
+    def bone(a, b, r0, r1, bend, mat=1):
+        path = []
+        for k in range(11):
+            t = k / 10
+            path.append(cup(a.lerp(b, t)) + (b - a).cross(Vector((1.0, 0.0, 0.0))).normalized() * bend * math.sin(math.pi * t))
+
+        def rad(i, ang):
+            if i == 10:
+                return 0.0
+            t = i / 10
+            knuckle = 1.0 + 0.35 * math.exp(-((t - 0.5) / 0.08) ** 2)
+            end = math.sqrt(max(0.0, 1.0 - ((t - 0.85) / 0.15) ** 2)) if t > 0.85 else 1.0
+            return (r0 + (r1 - r0) * t) * knuckle * end
+        v, f, _ = _tube(path, rad, 10)
+        bc.append(verts, fcs, v, f)
+        face_mats.extend([mat] * (len(fcs) - len(face_mats)))
+        return path
+
+    bone(root, wrist, 0.02, 0.015, 0.0)
+    for k, tip in enumerate(tips):
+        bone(wrist, tip, 0.012, 0.007 - 0.001 * k, 0.012)
+    unit, ufaces = bc.icosphere(2)
+    bc.append(verts, fcs, [tuple(cup(wrist) + Vector(co).normalized() * 0.022) for co in unit], ufaces)
+    face_mats.extend([1] * (len(fcs) - len(face_mats)))
+    # Thumb claw: a short hooked horn off the wrist, forward (+Y) and up, then hooking down at the tip.
+    tpath = []
+    for k in range(9):
+        t = k / 8
+        a = 1.3 * t
+        tpath.append(cup(wrist) + Vector((-0.004, 0.012 + 0.05 * math.sin(a), 0.01 + 0.048 * (1 - math.cos(a)) - 0.012 * t ** 3)))
+    v, f, _ = _tube(tpath, lambda i, a: 0.0 if i == 8 else 0.011 * (1.0 - i / 8) ** 0.9, 12)
+    bc.append(verts, fcs, v, f)
+    face_mats.extend([2] * (len(fcs) - len(face_mats)))
+    mverts, mfcs = [], []
+    # Membrane (its own object, so the bones' normal bake never sees it): fans between neighbouring fingers, then the inner panel from the last finger back to the body.
+    for k in range(3):
+        a, b = tips[k], tips[k + 1]
+
+        def fan(s, c, a=a, b=b):
+            q = a.lerp(b, c)
+            return cup(wrist + (q - wrist) * s * (1.0 - 0.34 * math.sin(math.pi * c) * s ** 3))
+        _membrane(mverts, mfcs, fan, 7, 7, thickness=0.0025)
+
+    def inner(s, c):
+        c = c * (1.0 - 0.3 * math.sin(math.pi * s) * c ** 3)
+        top = wrist.lerp(tips[3], c)
+        bottom = root.lerp(body_trail, c)
+        return cup(bottom.lerp(top, s))
+    _membrane(mverts, mfcs, inner, 9, 9, thickness=0.0025)
+    mem = sf.Shader("M_WingDragonMembraneProc")
+    veins = mem.remap(mem.voronoi(45.0, 0.9, feature="DISTANCE_TO_EDGE"), 0.0, 0.05)
+    mem.bump(mem.math("SUBTRACT", 1.0, veins), 0.35, 0.001)
+    mem_mat = mem.out(_grey(mem, mem.math("ADD", 0.7, mem.math("MULTIPLY", veins, 0.3)), 0.7), 0.55)
+    mats = [_scale_material("M_WingDragonBoneProc", 240.0), _horn_material("M_WingDragonClawProc", 0.0, 0.6)]
+    wing = bc.mesh_object("WingDragon", verts, fcs, mats, [m - 1 for m in face_mats])
+    membrane = bc.mesh_object("Membrane", mverts, mfcs, [mem_mat], fix_normals=False, parent=wing)
+    mem_mat.name, mats[0].name, mats[1].name = "M_WingDragonMembrane", "M_WingDragonBone", "M_WingDragonClaw"
+    baked = _bake([wing, membrane], "PartWingDragon", {"M_WingDragonMembrane": sf.tint(_lin("#B5584A")),
+                                             "M_WingDragonBone": sf.tint(_lin("#5E7A4C")),
+                                             "M_WingDragonClaw": sf.tint(_lin("#E8DCC0"))}, tolerance=0.0003)
+    pts = _check_pivot("wing_dragon", DWING_SINK + 0.02)
+    foot = max(abs(p.y) for p in pts if p.z <= 0.01)
+    mp._check(sum(p.x for p in pts) < 0, "wing_dragon: cups toward -X (the right-hand piece ships)")
+
+    def fold(co):
+        if co.z > 0.03 and co.y < 0.03:
+            k = min(1.0, (co.z - 0.03) / 0.35)
+            co.y -= 0.14 * k
+            co.z -= 0.17 * k * k
+            co.x -= 0.02 * k
+        return co
+
+    def flap(co):
+        k = max(0.0, co.z) / DWING_SPAN
+        co.x -= 0.14 * k * k
+        return co
+
+    handles = _shape_keys(wing, [("H1_Fold", fold, "fingers and membrane furled back and down toward the tail"),
+                                 ("H2_Flap", flap, "the outer wing bent toward -X for the downstroke")])
+    _shape_keys(membrane, [("H1_Fold", fold, ""), ("H2_Flap", flap, "")])
+    rules = _rules("wing_dragon", round(foot, 3), DWING_SINK + 0.02, "normal", ["spine", "limb"], 30, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature wing part (PROPOSED): a big dragon wing, a thick knuckled arm, a hooked thumb claw, four stout finger struts and a deeply scalloped leathery membrane, right-hand piece (mirrored for the left).",
+            "category": "part", "part_type": "wing_dragon", "convention": "creature_art_contract v1",
+            "part_rules": rules, "paint_mix": {"M_WingDragonMembrane": 0.75, "M_WingDragonBone": 0.85, "M_WingDragonClaw": 0.0},
+            "revision": 1, **baked}
+
+
+def build_horn_swept():
+    """A long dragon horn: a broad oval base rising from the skin, sweeping back (-Y) in a long arc and drifting
+    a little out (+X) so a pair clears the head, with raised growth ridges fading to a blunt upturned point.
+    Chiral. H1_Length lengthens the sweep, H2_Curl curls the tip further up."""
+    steps = 40
+    path = [Vector((0.0, 0.0, -0.018))]
+    for i in range(steps + 1):
+        t = i / steps
+        a = 1.45 * t
+        path.append(Vector((0.018 * t * t, -0.19 * (1 - math.cos(a)) / (1 - math.cos(1.45)), 0.004 + 0.13 * math.sin(a) / math.sin(1.45) + 0.02 * t ** 4)))
+    total = len(path) - 1
+
+    def radius_at(i, a):
+        if i == total:
+            return 0.0
+        t = max(0.0, (i - 1) / (total - 1))
+        ridge = 1.0 + 0.1 * max(0.0, math.cos(2.0 * math.pi * 9.0 * t)) ** 2 * (1.0 - t)
+        oval = 1.0 - 0.15 * math.sin(a) ** 2
+        tip = math.sqrt(max(0.0, 1.0 - ((t - 0.88) / 0.12) ** 2)) if t > 0.88 else 1.0
+        return (0.026 * (1.0 - t) ** 0.8 + 0.004) * ridge * oval * tip
+
+    verts, faces, _ = _tube(path, radius_at, 18)
+    mat = _horn_material("M_HornSweptProc", 0.0, 0.7)
+    horn = bc.mesh_object("HornSwept", verts, faces, [mat])
+    mat.name = "M_HornSwept"
+    baked = _bake([horn], "PartHornSwept", {"M_HornSwept": sf.tint(_lin("#D9C9A0"))})
+    pts = _check_pivot("horn_swept", 0.02)
+    foot = _footprint(pts)
+    mp._check(sum(p.x for p in pts) > 0, "horn_swept: drifts out to +X (the right-hand side ships)")
+
+    def length(co):
+        if co.z > 0.0:
+            co.y *= 1.35
+            co.z *= 1.1
+        return co
+
+    def curl(co):
+        k = max(0.0, -co.y) / 0.19
+        co.z += 0.05 * k ** 3
+        co.y += 0.02 * k ** 3
+        return co
+
+    handles = _shape_keys(horn, [("H1_Length", length, "the sweep 35% longer"), ("H2_Curl", curl, "the tip curled further up")])
+    rules = _rules("horn_swept", round(foot + 0.001, 3), 0.02, "normal", ["spine", "part"], 60, 40, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    return {"purpose": "Creature horn part (PROPOSED): a long ridged dragon horn sweeping back from the brow to a blunt upturned point, drifting out to the right (mirrored for the left; place in pairs).",
+            "category": "part", "part_type": "horn_swept", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HornSwept": 0.1}, "revision": 1, **baked}
+
+
+def build_dorsal_spine():
+    """A dragon's dorsal plate: a thick, rounded triangular blade in the YZ plane, longer at its base, raked back
+    (-Y) to a blunt point, with growth ridges, set on a low oval scaly scute. Symmetric, so a row of them runs
+    down the spine. H1_Height raises it, H2_Rake rakes it further back."""
+    steps = 18
+    ts = [(i / steps) ** 1.25 for i in range(steps + 1)]
+    path = [Vector((0.0, -0.03 * t ** 1.5, -0.012 + 0.122 * t)) for t in ts]
+
+    def radius_at(i, a):
+        if i == steps:
+            return 0.0
+        t = ts[i]
+        ay = (0.05 * (1.0 - t) ** 1.1 + 0.004) * (1.0 + 0.04 * math.cos(2.0 * math.pi * 5.0 * t))
+        ax = 0.013 * (1.0 - t) ** 0.6 + 0.0035
+        c, s = math.cos(a), math.sin(a)
+        return 1.0 / math.sqrt((c / ay) ** 2 + (s / ax) ** 2)
+
+    verts, faces, _ = _tube(path, radius_at, 24)
+    face_mats = [1] * len(faces)
+    unit, ufaces = bc.icosphere(3)
+    bc.append(verts, faces, [tuple(Vector((n.x * 0.028, n.y * 0.062, max(-0.014, n.z * 0.008)))) for n in (Vector(co).normalized() for co in unit)], ufaces)
+    face_mats.extend([0] * len(ufaces))
+    mats = [_scale_material("M_DorsalScuteProc", 260.0), _horn_material("M_DorsalPlateProc", 220.0, 0.72)]
+    spine = bc.mesh_object("DorsalSpine", verts, faces, mats, face_mats)
+    mats[0].name, mats[1].name = "M_DorsalScute", "M_DorsalPlate"
+    baked = _bake([spine], "PartDorsalSpine", {"M_DorsalScute": sf.tint(_lin("#5E7A4C")), "M_DorsalPlate": sf.tint(_lin("#E0B860"))})
+    pts = _check_pivot("dorsal_spine", 0.015)
+    foot = _footprint(pts)
+
+    def height(co):
+        if co.z > 0.008:
+            co.z = 0.008 + (co.z - 0.008) * 1.5
+        return co
+
+    def rake(co):
+        k = max(0.0, co.z) / 0.11
+        co.y -= 0.04 * k * k
+        return co
+
+    handles = _shape_keys(spine, [("H1_Height", height, "the plate 50% taller"), ("H2_Rake", rake, "the plate raked further back")])
+    rules = _rules("dorsal_spine", round(foot + 0.001, 3), 0.015, "normal", ["spine", "part"], 30, 30)
+    rules["handles"] = handles
+    return {"purpose": "Creature detail part (PROPOSED): a thick rounded triangular dorsal plate raked back on a scaly scute, for a row down a dragon's back or tail.",
+            "category": "part", "part_type": "dorsal_spine", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_DorsalScute": 0.85, "M_DorsalPlate": 0.3}, "revision": 1, **baked}
+
+
+# --- Set "amphibian": frog eye, frog hand, throat sac ----------------------------------------------
+
+BULGE_R = 0.042
+BULGE_SINK = 0.025
+
+
+def _pad_material(name):
+    """The sticky toe discs: paler, glossier and finely pitted, so they read apart from the skin."""
+    sh = sf.Shader(name)
+    pits = sh.remap(sh.voronoi(900.0, 0.8), 0.25, 0.05)
+    sh.bump(sh.math("SUBTRACT", 0.0, pits), 0.2, 0.0003)
+    return sh.out(_grey(sh, sh.math("SUBTRACT", 0.95, sh.math("MULTIPLY", pits, 0.15)), 0.8), 0.18)
+
+
+def build_eye_bulge():
+    """A frog's eye: a big glossy ball, mostly bronze iris with a wide horizontal pupil, sitting high on a raised
+    mound of wet skin that hugs its lower half. Placed on the side of the head (+Y to the head), the pupil's long
+    axis runs along Y, i.e. level. H1_Blink rolls the mound's lip up over the ball, H2_Bulge pushes the ball out."""
+    R = BULGE_R
+    centre = Vector((0.0, 0.0, R * 1.05))
+    axis = Vector((0.0, 0.0, 1.0))
+    sclera = _sclera_material("M_EyeBulgeBallProc")
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, math.radians(86.0), math.radians(30.0), slit=0.16,
+                              slit_axis=(1.0, 0.0, 0.0))
+    ball = _eye_ball("EyeBulge", centre, R, math.radians(86.0), sclera, iris_mat, segs=24)
+    sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
+    # The mound: a skirt flaring into the skin, rising to a rolled lip just above the ball's equator.
+    prof = []
+    steps = 12
+    top = centre.z + 0.06 * R
+    for i in range(steps + 1):
+        t = i / steps
+        z = -(BULGE_SINK - 0.0012) + (top + BULGE_SINK - 0.0012) * t
+        if z <= 0.0:
+            r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
+        else:
+            u = min(1.0, z / top)
+            r = max(R * 1.04, R * (1.55 - 0.51 * math.sin(u * math.pi / 2) ** 0.8))
+        prof.append((z, r))
+    lv, lf, _ = bc.revolve(prof, 24)
+    mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
+    mound = bc.mesh_object("Lid", _up(lv), lf, [mound_mat], parent=ball, fix_normals=False)
+    mound_mat.name = "M_EyeBulgeMound"
+    baked = _bake([ball, mound], "PartEyeBulge", keep=("EyeBulge", "Lid"), tints={"M_EyeBulgeBall": sf.tint(_lin("#D9D2A8")),
+                  "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=256)
+    pts = _check_pivot("eye_bulge", BULGE_SINK)
+    foot = _footprint(pts, z_max=0.02)
+    low = centre.z - 0.6 * R
+
+    def blink(co):
+        if co.z <= low:
+            return co
+        k = min(1.0, (co.z - low) / (top - low))
+        d = co - centre
+        theta = math.atan2(math.hypot(d.x, d.y), d.z)
+        phi = math.atan2(d.y, d.x)
+        th = theta * (1.0 - 0.94 * k ** 1.5)
+        rad = d.length + max(0.0, 1.07 * R - d.length) * k
+        return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
+
+    def bulge(co):
+        return Vector((co.x, co.y, co.z + 0.25 * R * max(0.0, co.z) / (R * 1.55)))
+
+    handles = _shape_keys(mound, [("H1_Blink", blink, "the mound's lip rolls up over the ball and shuts")])
+    handles += _shape_keys(ball, [("H2_Bulge", bulge, "the ball pushed 25% further out")])
+    rules = _rules("eye_bulge", round(foot + 0.001, 3), BULGE_SINK, "forward_cone", ["spine", "part"], 60, 45)
+    rules["handles"] = handles
+    rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
+    return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
+            "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 1, **baked}
+
+
+HAND_FROG_T = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+HAND_FROG_KNUCKLE = 0.046
+
+
+def build_hand_frog():
+    """A frog's hand on the end of the limb (+Z out along it, palm toward +Y): a small rounded palm and four
+    slender splayed fingers, each ending in a round flat sticky disc, in smooth wet skin. H1_Grip curls the
+    fingers in toward the palm, H2_Spread fans them."""
+    unit, faces = bc.icosphere(3)
+    verts, fcs = [], []
+    bc.append(verts, fcs, [tuple(Vector((n.x * 0.027, n.y * 0.0105, 0.03 + n.z * 0.021))) for n in (Vector(co).normalized() for co in unit)], faces)
+    wv, wf = mp._sweep([Vector((0, 0, z)) for z in (0.012, 0.0, -0.012, -0.024)], lambda i, a: 0.0105 + 0.0012 * i, 14)
+    bc.append(verts, fcs, wv, wf)
+    disc_unit, disc_faces = bc.icosphere(2)
+    pv, pf = [], []
+    for ang, length in ((-34.0, 0.04), (-11.0, 0.052), (11.0, 0.055), (34.0, 0.044)):
+        d = Vector((math.sin(math.radians(ang)), 0.0, math.cos(math.radians(ang))))
+        start = Vector((0.0, 0.0, 0.03)) + d * 0.018
+        path = [start + d * (length * t) + Vector((0.0, 0.003 * math.sin(math.pi * t), 0.0)) for t in HAND_FROG_T]
+        tv, tf, _ = _tube(path, lambda i, a: 0.0056 * (1.0 - 0.3 * i / 5) * (1.0 + 0.12 * math.exp(-((i - 2.5) / 0.6) ** 2)), 10)
+        bc.append(verts, fcs, tv, tf)
+        c = path[-1] + d * 0.003
+        r = 0.0098
+        side = Vector((d.z, 0.0, -d.x))
+        # A round disc, flat across the finger's width, its pad face toward the palm side.
+        bc.append(pv, pf, [tuple(c + side * (n.x * r) + d * (n.z * r * 0.9) + Vector((0.0, n.y * r * 0.35 + 0.0015, 0.0))) for n in (Vector(co).normalized() for co in disc_unit)], disc_faces)
+    skin = _wet_skin_material("M_HandFrogSkinProc", scale=120.0)
+    hand = bc.mesh_object("HandFrog", verts, fcs, [skin])
+    skin.name = "M_HandFrogSkin"
+    pad_mat = _pad_material("M_HandFrogPadProc")
+    pads = bc.mesh_object("Pads", pv, pf, [pad_mat], parent=hand)
+    pad_mat.name = "M_HandFrogPad"
+    baked = _bake([hand, pads], "PartHandFrog", {"M_HandFrogSkin": sf.tint(_lin("#7FA35A")), "M_HandFrogPad": sf.tint(_lin("#D6CFA0"))})
+    pts = _check_pivot("hand_frog", 0.025)
+    foot = _footprint(pts, z_max=0.02)
+
+    def grip(co):
+        if co.z > HAND_FROG_KNUCKLE:
+            dz = co.z - HAND_FROG_KNUCKLE
+            k = min(1.0, dz / 0.05)
+            ang = math.radians(80.0) * k
+            return Vector((co.x * (1.0 - 0.3 * k), co.y + dz * math.sin(ang) * 0.85, HAND_FROG_KNUCKLE + dz * math.cos(ang) * 0.85 + dz * 0.15))
+        return co
+
+    def spread(co):
+        if co.z > HAND_FROG_KNUCKLE:
+            co.x *= 1.0 + 0.45 * min(1.0, (co.z - HAND_FROG_KNUCKLE) / 0.05)
+        return co
+
+    handles = _shape_keys(hand, [("H1_Grip", grip, "fingers curl 80 degrees in toward the palm"),
+                                 ("H2_Spread", spread, "fingers fan 45% wider at the tips")])
+    _shape_keys(pads, [("H1_Grip", grip, ""), ("H2_Spread", spread, "")])
+    rules = _hand_rules("hand_frog", foot)
+    rules["handles"] = handles
+    return {"purpose": "Creature hand part (PROPOSED): a frog's hand, a small palm and four slender splayed fingers ending in round sticky disc pads, smooth wet skin; grips on a shape key.",
+            "category": "part", "part_type": "hand_frog", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_HandFrogSkin": 0.9, "M_HandFrogPad": 0.2}, "revision": 1, **baked}
+
+
+SAC_SINK = 0.02
+SAC_REST_C = Vector((0.0, 0.0, 0.005))
+SAC_REST_AX = Vector((0.046, 0.04, 0.02))
+SAC_FULL_C = Vector((0.0, 0.0, 0.04))
+SAC_FULL_R = 0.056
+
+
+def _sac_material(name):
+    """The vocal sac's thin skin: very wet, faint folds and a paler throat colour."""
+    sh = sf.Shader(name)
+    folds = sh.remap(sh.noise(160.0, 2.0, vector=mp._stretched(sh, (1.0, 0.2, 1.0))), 0.4, 0.6)
+    pebble = sh.remap(sh.voronoi(500.0, 0.9), 0.3, 0.05)
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", folds, 0.7), sh.math("MULTIPLY", pebble, -0.3)), 0.2, 0.0005)
+    return sh.out(_grey(sh, sh.math("ADD", 0.72, sh.math("MULTIPLY", folds, 0.25)), 0.75), 0.2)
+
+
+def build_throat_sac():
+    """A frog's vocal sac under the chin: at rest a soft flattened pouch of thin wet skin, sunk into the throat;
+    H1_Inflate blows it up into a big round balloon (the croak), H2_Wide spreads it sideways."""
+    unit, faces = bc.icosphere(4)
+    verts = []
+    for co in unit:
+        n = Vector(co).normalized()
+        verts.append(tuple(SAC_REST_C + Vector((n.x * SAC_REST_AX.x, n.y * SAC_REST_AX.y, n.z * SAC_REST_AX.z))))
+    mat = _sac_material("M_ThroatSacProc")
+    sac = bc.mesh_object("ThroatSac", verts, faces, [mat])
+    mat.name = "M_ThroatSac"
+    baked = _bake([sac], "PartThroatSac", {"M_ThroatSac": sf.tint(_lin("#E6D9A8"))}, tolerance=0.00015)
+    pts = _check_pivot("throat_sac", SAC_SINK)
+    foot = _footprint(pts, z_max=0.005)
+
+    def inflate(co):
+        d = co - SAC_REST_C
+        n = Vector((d.x / SAC_REST_AX.x, d.y / SAC_REST_AX.y, d.z / SAC_REST_AX.z)).normalized()
+        full = SAC_FULL_C + n * SAC_FULL_R
+        if n.z < -0.1:                       # the root stays in the throat
+            s = min(1.0, max(0.0, (-0.1 - n.z) / 0.6))
+            full.z = full.z + (min(full.z, co.z) - full.z) * s * s * (3 - 2 * s)
+        return full
+
+    def wide(co):
+        return Vector((co.x * 1.35, co.y, co.z))
+
+    handles = _shape_keys(sac, [("H1_Inflate", inflate, "the pouch blown up into a 0.11 m balloon"),
+                                ("H2_Wide", wide, "the sac 35% wider sideways")])
+    rules = _rules("throat_sac", round(foot + 0.001, 3), SAC_SINK, "normal", ["spine"], 30, 30, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the underside of the throat, behind the jaw."
+    return {"purpose": "Creature display part (PROPOSED): a frog's vocal sac, a flat pouch of pale wet skin under the chin that inflates into a round balloon on a shape key.",
+            "category": "part", "part_type": "throat_sac", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ThroatSac": 0.5}, "revision": 1, **baked}
+
+
+# --- Fur parts (mammal set): tufted clumps over a core, strand grain baked to the normal map -------
+
+def _fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
+    """Matte fur: fine streaks stretched along the strands (the low-frequency axis of `along`), clumped breakup."""
+    sh = sf.Shader(name)
+    strands = sh.noise(260.0, 2.0, vector=mp._stretched(sh, along))
+    clumps = sh.remap(sh.noise(45.0, 2.0), 0.35, 0.65)
+    sh.bump(strands, 0.35, 0.0007)
+    fac = sh.math("ADD", sh.math("MULTIPLY", sh.remap(strands, 0.3, 0.7), 0.6), sh.math("MULTIPLY", clumps, 0.4))
+    return sh.out(_grey(sh, fac, lo), rough)
+
+
+def _tuft(verts, fcs, base, d, length, r0, bend=Vector((0.0, 0.0, 0.0)), sides=5):
+    """One soft fur clump from `base` along `d`, sagging toward `bend` at its tip: full through the middle,
+    then a short rounded taper, so it reads as a lock of fur rather than a spine."""
+    ts = (0.0, 0.3, 0.6, 0.85, 1.0)
+    prof = (0.85, 1.0, 0.8, 0.45, 0.0)
+    path = [base + d * (length * t) + bend * (length * t * t) for t in ts]
+    v, f, _ = _tube(path, lambda i, a: r0 * prof[i] * (1.0 + 0.1 * math.sin(3 * a)), sides)
+    bc.append(verts, fcs, v, f)
+
+
+EAR_H = 0.1
+
+
+def build_ear_pointed():
+    """A tall pointed mammal ear (fox, wolf, cat): a cupped shell opening forward (+Y), furred on the back and
+    rim, pale bare skin inside, with a fur tuft at the tip and a pale fringe in the cup. H1_Tall lengthens it,
+    H2_Droop folds the tip back toward the tail."""
+    import random
+    rnd = random.Random(7)
+    cols, rows = 12, 10
+    verts, fcs, mats, grid_o, grid_i = [], [], [], [], []
+    for r in range(rows + 1):
+        v = r / rows
+        ro, ri = [], []
+        width = 0.034 * (1.0 - v) ** 0.85 * (0.75 + 0.25 * math.sin(math.pi * min(1.0, v * 1.6 + 0.2)))
+        for c in range(cols + 1):
+            u = c / cols * 2.0 - 1.0
+            x = width * u
+            z = -0.012 + (EAR_H + 0.012) * v
+            back = -0.006 - 0.012 * v * v               # the ear leans back a little as it rises
+            cup = 0.022 * (1.0 - u * u) * (1.0 - v) ** 0.7
+            th = 0.004 * (1.0 - v) + 0.0012
+            ro.append(len(verts))
+            verts.append((x, back - cup * 0.6, z))
+            ri.append(len(verts))
+            verts.append((x * 0.98, back + th - cup * 0.35, z))
+        grid_o.append(ro)
+        grid_i.append(ri)
+    for r in range(rows):
+        for c in range(cols):
+            a, b, d, e = grid_o[r][c], grid_o[r][c + 1], grid_o[r + 1][c], grid_o[r + 1][c + 1]
+            fcs.append((a, d, e, b))
+            mats.append(0)
+            a, b, d, e = grid_i[r][c], grid_i[r][c + 1], grid_i[r + 1][c], grid_i[r + 1][c + 1]
+            fcs.append((a, b, e, d))
+            mats.append(1)
+    for r in range(rows):                 # the furred rim joins the two layers on both edges
+        for c in (0, cols):
+            o0, o1, i0, i1 = grid_o[r][c], grid_o[r + 1][c], grid_i[r][c], grid_i[r + 1][c]
+            fcs.append((o0, i0, i1, o1) if c == 0 else (o0, o1, i1, i0))
+            mats.append(0)
+    for c in range(cols):
+        o0, o1, i0, i1 = grid_o[0][c], grid_o[0][c + 1], grid_i[0][c], grid_i[0][c + 1]
+        fcs.append((o0, o1, i1, i0))
+        mats.append(0)
+    # Closed tufts go on their own piece so their normals can be made outward (the shell is wound by hand).
+    tv, tf = [], []
+    tip = Vector(verts[grid_o[rows][cols // 2]])
+    for k in range(3):
+        _tuft(tv, tf, tip + Vector(((k - 1) * 0.003, 0.0, -0.014)), Vector(((k - 1) * 0.3, -0.2, 1.0)).normalized(), 0.024, 0.004)
+    for k in range(7):
+        u = (k / 6.0) * 1.4 - 0.7
+        p = Vector((u * 0.022, -0.012 + 0.006 * (1.0 - u * u), 0.002 + 0.004 * rnd.random()))
+        _tuft(tv, tf, p, Vector((u * 0.5, 0.15, 1.0)).normalized(), 0.022 + 0.008 * rnd.random(), 0.0036, bend=Vector((0, 0.25, 0)), sides=6)
+    fur = _fur_material("M_EarFurProc", 0.5)
+    skin = _skin_material("M_EarSkinProc", 260.0, 0.82, 0.6)
+    tuft = _fur_material("M_EarTuftProc", 0.7)
+    ear = bc.mesh_object("EarPointed", verts, fcs, [fur, skin], mats, fix_normals=False)
+    tufts = bc.mesh_object("Tufts", tv, tf, [tuft], parent=ear)
+    fur.name, skin.name, tuft.name = "M_EarFur", "M_EarSkin", "M_EarTuft"
+    baked = _bake([ear, tufts], "PartEarPointed", {"M_EarFur": sf.tint(_lin("#9A6A44")), "M_EarSkin": sf.tint(_lin("#D9A79A")),
+                                                   "M_EarTuft": sf.tint(_lin("#E8DDCC"))}, tolerance=0.0003)
+    pts = _check_pivot("ear_pointed", 0.015)
+    foot = _footprint(pts)
+
+    def tall(co):
+        if co.z > 0.0:
+            co.z *= 1.35
+        return co
+
+    def droop(co):
+        if co.z > 0.04:
+            k = min(1.0, (co.z - 0.04) / 0.08)
+            pivot = Vector((0.0, 0.0, 0.04))
+            return Matrix.Rotation(math.radians(-55.0) * k, 3, "X") @ (co - pivot) + pivot
+        return co
+
+    handles = _shape_keys(ear, [("H1_Tall", tall, "the ear 35% taller"), ("H2_Droop", droop, "the upper half folded 55 degrees back toward the tail")])
+    _shape_keys(tufts, [("H1_Tall", tall, ""), ("H2_Droop", droop, "")])
+    rules = _rules("ear_pointed", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 40, 35, centerline="forbidden")
+    rules["handles"] = handles
+    rules["placement_note"] = "On the head, the cup opening toward the head direction (+Y); mirrored for the left ear."
+    return {"purpose": "Creature detail part (PROPOSED): a tall pointed furred mammal ear, a cupped shell with a pale bare inside, an inner fringe and a tip tuft.",
+            "category": "part", "part_type": "ear_pointed", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EarFur": 0.9, "M_EarSkin": 0.15, "M_EarTuft": 0.2}, "revision": 1, **baked}
+
+
+TAIL_LEN = 0.34
+
+
+def _tail_path(t):
+    """The tail's spine from the cap (+Z out), arching gently: as a fox or monkey carries it."""
+    return Vector((0.0, -0.05 * math.sin(math.pi * t) + 0.02 * t, TAIL_LEN * t - 0.01))
+
+
+def _tail_r(t):
+    return 0.016 + 0.024 * math.sin(math.pi * min(1.0, t * 0.85)) ** 1.2 * (1.0 - 0.6 * max(0.0, t - 0.8) / 0.2)
+
+
+def build_tail_bushy():
+    """A bushy furred tail for the spine's tail cap (+Z out along it): a slim root swelling into a full brush of
+    overlapping tufts swept toward the tip, the last fifth paler. H1_Curl curls it up over the back,
+    H2_Fluff makes the brush fuller."""
+    import random
+    rnd = random.Random(11)
+    ts = [i / 14 for i in range(15)]
+    path = [_tail_path(t) for t in ts]
+    core_v, core_f, _ = _tube(path, lambda i, a: 0.0 if i == 14 else _tail_r(ts[i]) * 0.7, 10)
+    verts, fcs = list(core_v), list(core_f)
+    mats = [0] * len(fcs)
+    for n in range(62):
+        t = 0.06 + 0.92 * (n + rnd.random() * 0.5) / 62
+        p = _tail_path(t)
+        tan = (_tail_path(min(1.0, t + 0.02)) - _tail_path(max(0.0, t - 0.02))).normalized()
+        a = n * 2.39996 + rnd.random() * 0.4
+        side = tan.cross(Vector((1.0, 0.0, 0.0))).normalized()
+        up = tan.cross(side).normalized()
+        radial = side * math.cos(a) + up * math.sin(a)
+        base = p + radial * (_tail_r(t) * 0.5)
+        d = (tan * 1.6 + radial * 0.55).normalized()
+        length = _tail_r(t) * (1.3 + 0.4 * rnd.random()) + 0.012
+        nb = len(fcs)
+        _tuft(verts, fcs, base, d, length, max(0.006, _tail_r(t) * 0.42), bend=tan * 0.3)
+        mats.extend([1 if t > 0.8 else 0] * (len(fcs) - nb))
+    fur = _fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
+    tipm = _fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
+    tail = bc.mesh_object("TailBushy", verts, fcs, [fur, tipm], mats)
+    fur.name, tipm.name = "M_TailFur", "M_TailTip"
+    baked = _bake([tail], "PartTailBushy", {"M_TailFur": sf.tint(_lin("#A8683A")), "M_TailTip": sf.tint(_lin("#EDE6DA"))}, tolerance=0.0006)
+    pts = _check_pivot("tail_bushy", 0.015)
+    foot = _footprint(pts)
+
+    def curl(co):
+        if co.z <= 0.02:
+            return co
+        k = min(1.0, (co.z - 0.02) / (TAIL_LEN - 0.02))
+        return Matrix.Rotation(math.radians(70.0) * k, 3, "X") @ co
+
+    def fluff(co):
+        if co.z > 0.03:
+            c = _tail_path(max(0.0, min(1.0, (co.z + 0.01) / TAIL_LEN)))
+            return Vector((co.x * 1.35, c.y + (co.y - c.y) * 1.35, co.z))
+        return co
+
+    handles = _shape_keys(tail, [("H1_Curl", curl, "the tail curled 70 degrees up toward the head over the back"),
+                                 ("H2_Fluff", fluff, "the brush 35% fuller across")])
+    rules = _rules("tail_bushy", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 25, 30, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1), like tail_fluke."
+    return {"purpose": "Creature tail part (PROPOSED): a bushy furred tail, a slim root swelling into a brush of swept tufts with a pale tip.",
+            "category": "part", "part_type": "tail_bushy", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_TailFur": 0.9, "M_TailTip": 0.2}, "revision": 1, **baked}
+
+
+MANE_SINK = 0.025
+
+
+def build_mane():
+    """A shaggy mane for the neck and shoulders (+Z off the back, +Y toward the head): a furred pad under
+    rows of long layered locks that sweep back and fall to both sides, longest at the front. H1_Raise bristles
+    it up, H2_Length lengthens it."""
+    import random
+    rnd = random.Random(23)
+    unit, ufaces = bc.icosphere(2)
+    verts = [(n.x * 0.09, n.y * 0.11, -0.01 + max(n.z, -0.25) * 0.06) for n in (Vector(co).normalized() for co in unit)]
+    fcs = list(ufaces)
+    mats = [0] * len(fcs)
+    for row in range(5):
+        y = 0.085 - row * 0.04
+        size = 1.0 - row * 0.1
+        for k in range(9):
+            u = (k + 0.5 * (row % 2)) / 8.0 * 2.0 - 1.0
+            if abs(u) > 1.0:
+                continue
+            x = u * 0.08 * (1.0 - 0.15 * row / 5)
+            base = Vector((x, y, 0.035 * (1.0 - u * u) * (1.0 - 0.12 * row)))
+            d = Vector((u * 0.8, -0.5, 0.9 - 0.3 * abs(u))).normalized()
+            length = (0.085 + 0.03 * rnd.random()) * size
+            nb = len(fcs)
+            _tuft(verts, fcs, base, d, length, 0.016 * size, bend=Vector((u * 0.4, -0.3, -0.7)))
+            mats.extend([1 if (row + k) % 3 == 0 else 0] * (len(fcs) - nb))
+    pad = _fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
+    lock = _fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
+    mane = bc.mesh_object("Mane", verts, fcs, [pad, lock], mats)
+    pad.name, lock.name = "M_ManeFur", "M_ManeLock"
+    baked = _bake([mane], "PartMane", {"M_ManeFur": sf.tint(_lin("#6B4A2E")), "M_ManeLock": sf.tint(_lin("#8E6640"))}, tolerance=0.0006)
+    pts = _check_pivot("mane", MANE_SINK)
+    foot = _footprint(pts)
+
+    def raise_(co):
+        if co.z > 0.0:
+            return Vector((co.x * 0.85, co.y * 0.9 + 0.01, co.z * 1.4))
+        return co
+
+    def length(co):
+        if co.z > 0.012:
+            return Vector((co.x * 1.3, co.y * 1.15, co.z * 1.1))
+        return co
+
+    handles = _shape_keys(mane, [("H1_Raise", raise_, "the mane bristled up 40%"), ("H2_Length", length, "the locks 30% longer and wider")])
+    rules = _rules("mane", round(foot + 0.001, 3), MANE_SINK, "normal", ["spine"], 20, 25, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "On the neck or shoulders; the locks fall back (-Y) and down both sides."
+    return {"purpose": "Creature detail part (PROPOSED): a shaggy layered fur mane, long locks sweeping back and down both sides from a furred pad.",
+            "category": "part", "part_type": "mane", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ManeFur": 0.9, "M_ManeLock": 0.75}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -3228,6 +4319,20 @@ ASSETS = {
     "cpart_horn_ram": (build_horn_ram, 1200),
     "cpart_horn_nose": (build_horn_nose, 1200),
     "cpart_spike": (build_spike, 1200),
+    "cpart_hand_primate": (build_hand_primate, 2500),
+    "cpart_foot_frog": (build_foot_frog, 2500),
+    "cpart_foot_primate": (build_foot_primate, 2500),
+    "cpart_ear_round": (build_ear_round, 1200),
+    "cpart_muzzle_primate": (build_muzzle_primate, 1200),
+    "cpart_wing_dragon": (build_wing_dragon, 2500),
+    "cpart_horn_swept": (build_horn_swept, 1200),
+    "cpart_dorsal_spine": (build_dorsal_spine, 1200),
+    "cpart_eye_bulge": (build_eye_bulge, 1200),
+    "cpart_hand_frog": (build_hand_frog, 2500),
+    "cpart_throat_sac": (build_throat_sac, 1200),
+    "cpart_ear_pointed": (build_ear_pointed, 1200),
+    "cpart_tail_bushy": (build_tail_bushy, 2500),
+    "cpart_mane": (build_mane, 2500),
 }
 
 
