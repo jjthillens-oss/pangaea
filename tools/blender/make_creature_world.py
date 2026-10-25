@@ -798,6 +798,12 @@ EXTERNAL = {
     "creature_fruit_bush": {"M_BushLeaf": "M_BushLeaf", "M_BushCards": "M_BushCards", "M_BushFruit": "M_BushFruit"},
     "creature_meat_chunk": {"M_MeatFlesh": "M_MeatFlesh"},
 }
+# asset id -> per-mesh and per-node import options, written into the same `_subresources` block as the materials:
+#   "meshes": {"<glTF mesh name>": {"generate/lods": False}}   (e.g. for card meshes, whose LODs eat the cards)
+#   "nodes": {"PATH:<node path from the scene root>": {"mesh_instance/cast_shadow": 0,
+#                                                     "mesh_instance/visibility_range_end": 55.0}}
+# Godot 4.7.2 keys a node by "PATH:" plus its path below the imported scene's root and a mesh by its glTF mesh name.
+IMPORT_OPTIONS = {}
 TINTED = {
     "M_BushLeaf": ("The fruit bush's leaf core under its leaf cards", "creature_fruit_bush", "CreatureFruitBush", CORE_TINT),
     "M_BushFruit": ("The fruit bush's fruit material", "creature_fruit_bush", "CreatureFruitBush", "#E8A040"),
@@ -819,6 +825,75 @@ def _set_import_param(path, key, value):
         f.write(new)
 
 
+def _import_value(value):
+    """A Python value in the .import file's Variant text: true/false, ints, floats with a point, quoted strings."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        text = repr(value)
+        return text if any(c in text for c in ".en") else text + ".0"
+    if isinstance(value, str):
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    raise TypeError(f"no .import text for {value!r}")
+
+
+def _subresources_block(materials, options):
+    """The whole `_subresources={...}` value for one asset, keys sorted as Godot writes them back, so a second run
+    over a file Godot has since rewritten leaves it unchanged."""
+    groups = {}
+    if materials:
+        groups["materials"] = {m: {"use_external/enabled": True,
+                                   "use_external/fallback_path": f"res://assets/export/{t}.tres",
+                                   "use_external/path": f"res://assets/export/{t}.tres"} for m, t in materials.items()}
+    for group in ("meshes", "nodes"):
+        if options.get(group):
+            groups[group] = options[group]
+    if not groups:
+        return "_subresources={}"
+    parts = []
+    for group in sorted(groups):
+        entries = []
+        for name in sorted(groups[group]):
+            fields = ",\n".join(f'"{k}": {_import_value(v)}' for k, v in sorted(groups[group][name].items()))
+            entries.append(f'"{name}": {{\n{fields}\n}}')
+        parts.append(f'"{group}": {{\n' + ",\n".join(entries) + "\n}")
+    return "_subresources={\n" + ",\n".join(parts) + "\n}"
+
+
+def _replace_subresources(text, block):
+    """`text` (a .glb.import) with its whole `_subresources={...}` value replaced by `block`. Scans for the brace that
+    closes the opening one, skipping braces inside quoted strings, so an already-mapped file (nested braces) is
+    replaced whole; the regex this replaces stopped at the first inner brace and left two stray `}` lines."""
+    key = "_subresources="
+    start = text.find(key)
+    if start < 0:
+        raise RuntimeError("no _subresources line; run godot --headless --import first")
+    i = start + len(key)
+    if text[i] != "{":
+        raise RuntimeError(f"_subresources is not a dictionary at offset {i}")
+    depth, in_string, escaped = 0, False, False
+    for j in range(i, len(text)):
+        c = text[j]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[:start] + block + text[j + 1:]
+    raise RuntimeError("unbalanced braces in _subresources")
+
+
 def map_materials():
     """Writes the engine materials and points each .glb.import at them; marks the field's normal tiles as normal
     maps. Run after `godot --headless --import` has written the .import files (then import once more)."""
@@ -832,18 +907,16 @@ def map_materials():
     r, g, b = (round(int(CARD_TINT.lstrip("#")[i:i + 2], 16) / 255.0, 3) for i in (0, 2, 4))
     with open(os.path.join(export, "M_BushCards.tres"), "w") as f:
         f.write(CARDS_TRES.format(hex=CARD_TINT, atlas=CARD_ATLAS, r=r, g=g, b=b))
-    for asset_id, mats in EXTERNAL.items():
+    for asset_id in sorted(set(EXTERNAL) | set(IMPORT_OPTIONS)):
+        mats = EXTERNAL.get(asset_id, {})
+        options = IMPORT_OPTIONS.get(asset_id, {})
         path = os.path.join(export, f"{asset_id}.glb.import")
         with open(path) as f:
             text = f.read()
-        entries = ",\n".join('"{m}": {{\n"use_external/enabled": true,\n"use_external/fallback_path": "res://assets/export/{t}.tres",\n'
-                              '"use_external/path": "res://assets/export/{t}.tres"\n}}'.format(m=m, t=t) for m, t in mats.items())
-        mapping = "_subresources={\n\"materials\": {\n" + entries + "\n}\n}"
-        text = re.sub(r"_subresources=\{.*?\n\}(?=\n|$)", mapping, text, flags=re.S) if "_subresources={\n" in text \
-            else text.replace("_subresources={}", mapping)
         with open(path, "w") as f:
-            f.write(text)
-        print("mapped", ", ".join(f"{m} -> {t}" for m, t in mats.items()), "in", os.path.basename(path))
+            f.write(_replace_subresources(text, _subresources_block(mats, options)))
+        counts = "".join(f"; {len(options[g])} {g}" for g in ("meshes", "nodes") if options.get(g))
+        print("mapped", (", ".join(f"{m} -> {t}" for m, t in mats.items()) or "no materials") + counts, "in", os.path.basename(path))
     for name in ("T_CreatureField_Turf_Normal", "T_CreatureField_Earth_Normal"):
         _set_import_param(os.path.join(TILE_DIR, f"{name}.png.import"), "compress/normal_map", 1)
         print("normal map:", name)
