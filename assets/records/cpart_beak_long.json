@@ -104,10 +104,10 @@
     "triangles_after": 342
   },
   "review_notes": {
-    "gate1_shape": "unverified: not reviewed yet",
-    "gate2_materials": "unverified: not reviewed yet",
-    "gate3_neutral_light": "unverified: not reviewed yet",
-    "gate4_godot": "unverified: not reviewed yet"
+    "gate1_shape": "pass: a slender gently decurved bill about 0.23 m out of the skin with a rounded probe tip and a fleshy gape bulge at the root; the upper mandible overhangs the lower by about 1 cm and the seam reads as a crease; handles move both mandibles together (H1_Length, H2_Curve) or the lower alone (H3_Open) without tearing.",
+    "gate2_materials": "pass: a saturated orange horn with lengthwise streaks, a darker probe tip, the closing seam and the nostril groove painted as two dark lines along each side; a separate pink fleshy gape at the root.",
+    "gate3_neutral_light": "pass: even neutral light, a narrow highlight along the culmen, no clipping; the groove and seam lines stay visible in the side and close views.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
