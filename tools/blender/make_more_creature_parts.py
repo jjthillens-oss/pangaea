@@ -231,6 +231,21 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the gutters and burr knobs read by grazing light, "
                                "the pedicle's fur stays brown without crushing, no clipping on the pale tips.",
         "gate4_godot": G4_PENDING},
+    "cpart_antler_palmate": {
+        "gate1_shape": "pass: a moose's palmate antler - a short beam from a furred pedicle and knobbly burr running "
+                       "out sideways into a broad flat palm, cupped forward and rising up and in, its upper edge and "
+                       "far end drawn out into a fringe of eight flat blunt points with low ribs leading into them, and "
+                       "a brow tine reaching forward off the beam (0.263 x 0.11 x 0.283 m); broad from the front and "
+                       "back, a thin plate edge-on from the side. H1_Span broadens the palm, H2_Tilt raises it, "
+                       "without tearing. In a scratch geometry preview the first draft was a balloon on a thin neck "
+                       "with thorn-like spikes, then showed a star of creases where the point lobes reached the "
+                       "palm's centre (the lobes now grow from the outer part only).",
+        "gate2_materials": "pass: two finishes - antler bone (tan with gutters and fine knobs, darker and pearled at "
+                           "the burr, pale cream points from the per-vertex Tip weight) over short brown fur on the "
+                           "pedicle. The first two bakes read as an even sandy cream with no pale points.",
+        "gate3_neutral_light": "pass: under the neutral white rig the palm's broad face shows its gutters and the ribs "
+                               "into the points without clipping; the burr's knobs read by grazing light.",
+        "gate4_godot": G4_PENDING},
 }
 
 

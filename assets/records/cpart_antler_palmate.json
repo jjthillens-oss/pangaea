@@ -1,0 +1,109 @@
+{
+  "id": "cpart_antler_palmate",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature antler part (PROPOSED): a moose's palmate antler, a short beam opening into a broad cupped palm fringed with flat blunt points, and a brow tine (mirrored at bake for the left).",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_antler_palmate.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_antler_palmate.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.263,
+    "y_forward": 0.11,
+    "z_up": 0.283
+  },
+  "triangles": 1698,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartAntlerPalmate_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartAntlerPalmate_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartAntlerPalmate_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_AntlerPalmate",
+    "M_AntlerPalmatePedicle"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "AntlerPalmate",
+    "AntlerPalmatePedicle"
+  ],
+  "part_type": "antler_palmate",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "antler_palmate",
+    "footprint_radius_m": 0.025,
+    "sink_depth_m": 0.02,
+    "chiral": true,
+    "orientation": "normal",
+    "turn_limit_deg": 60,
+    "tilt_limit_deg": 40,
+    "centerline": "forbidden",
+    "hosts": [
+      "spine",
+      "part"
+    ],
+    "role": "weapon",
+    "handles": [
+      {
+        "key": "H1_Span",
+        "meaning": "the palm and its points 25% broader and longer",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Tilt",
+        "meaning": "the palm raised 22 degrees",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "The keys are on AntlerPalmate (beam, palm and points); the pedicle (AntlerPalmatePedicle) stays put under the burr."
+  },
+  "paint_mix": {
+    "M_AntlerPalmate": 0.05,
+    "M_AntlerPalmatePedicle": 0.85
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 6952,
+    "triangles_after": 1698
+  },
+  "review_notes": {
+    "gate1_shape": "pass: a moose's palmate antler - a short beam from a furred pedicle and knobbly burr running out sideways into a broad flat palm, cupped forward and rising up and in, its upper edge and far end drawn out into a fringe of eight flat blunt points with low ribs leading into them, and a brow tine reaching forward off the beam (0.263 x 0.11 x 0.283 m); broad from the front and back, a thin plate edge-on from the side. H1_Span broadens the palm, H2_Tilt raises it, without tearing. In a scratch geometry preview the first draft was a balloon on a thin neck with thorn-like spikes, then showed a star of creases where the point lobes reached the palm's centre (the lobes now grow from the outer part only).",
+    "gate2_materials": "pass: two finishes - antler bone (tan with gutters and fine knobs, darker and pearled at the burr, pale cream points from the per-vertex Tip weight) over short brown fur on the pedicle. The first two bakes read as an even sandy cream with no pale points.",
+    "gate3_neutral_light": "pass: under the neutral white rig the palm's broad face shows its gutters and the ribs into the points without clipping; the burr's knobs read by grazing light.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}
