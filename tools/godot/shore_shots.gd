@@ -50,6 +50,7 @@ const FOOT_RIM_M := 2.6
 ##   move    a teleport to the shore point + at, facing north
 ##   offer   a move, then wait for the "Swim out to sea?" notice over the paused pool
 ##   stay    answer the notice "Stay in the pool", then a move
+##   threats a move, then size 4's threats (THREATS, AI frozen) let in on the shelf and the ramp
 const SHOTS: Array[Dictionary] = [
 	{"name": "01_risen", "do": "risen", "what": "Right after the rise: the toast and the warm arrow, the shore 20 tm off screen"},
 	{"name": "01b_rising_1s", "do": "wait", "frames": 55, "what": "1 s into the rise: the bank coming up out of the deep"},
@@ -62,7 +63,15 @@ const SHOTS: Array[Dictionary] = [
 	{"name": "06_east", "do": "move", "at": Vector2(6.0, 0.0), "what": "6 tm east: the landing's flank side-on"},
 	{"name": "07_zoom10", "do": "move", "at": Vector2(0.0, 4.6), "zoom": 10.0, "what": "The reach edge at the closest zoom"},
 	{"name": "08_zoom20", "do": "move", "at": Vector2(0.0, 4.6), "zoom": 20.0, "what": "The reach edge at the farthest zoom"},
+	{"name": "09_threats_on_bank", "do": "threats", "at": Vector2(0.0, 4.6), "zoom": 14.0, "what": "Size 4's threats on the shelf and the ramp round the cell: each body against the sand behind it"},
 ]
+## 09's bodies: size 4's lineup threats (look_probe.gd S3_LINEUP[4]) at these offsets from the shore point (tm,
+## x east, y south), on the shelf (y about 0) and down the ramp (y 7 to 10). An offset with no room moves 1 tm east,
+## at most 3 times.
+const THREATS := [["deep_lurker", Vector2(-4.5, 0.5)], ["elder_warden", Vector2(4.5, 0.5)], ["veil", Vector2(0.0, -1.5)],
+	["warden", Vector2(-4.5, 7.5)], ["lurker", Vector2(4.5, 7.5)], ["elder_rammer", Vector2(0.0, 9.5)]]
+## A body's core, as a share of its radius, for its reading (look_probe.gd BODY_CORE).
+const BODY_CORE := 0.5
 
 
 ## Swims nowhere: the cell holds still, its energy kept full so a long run never starves it.
@@ -135,6 +144,8 @@ func _initialize() -> void:
 		var readings := _readings(img)
 		if shot.name == "05_on_shelf":
 			readings.merge(await _behind_cell())
+		if str(shot.do) == "threats":
+			readings.merge(await _threat_readings(img))
 		print("readings %s %s" % [shot.name, JSON.stringify(readings)])
 		var sim := main.pool.sim
 		var at := sim.absolute_position_am()
@@ -204,6 +215,22 @@ func _stage(shot: Dictionary) -> bool:
 				await process_frame
 			await _play(SETTLE_FRAMES)
 			return main.shore_notice != null and main.shore_notice.is_open()
+		"threats":
+			if not _move(shot.at):
+				return false
+			pool.camera.distance = clampf(float(shot.zoom), pool.camera.zoom_min, pool.camera.zoom_max)
+			await _play(ZOOM_FRAMES)
+			var sim := pool.sim
+			var shore_local := sim.world.local_of_abs(_shore_am[0], _shore_am[1])
+			var let_in := 0
+			for t: Array in THREATS:
+				for i in 4:
+					if sim.debug_spawn_creature(str(t[0]), shore_local + t[1] + Vector2(float(i), 0.0), -PI / 2.0):
+						let_in += 1
+						break
+			print("threats let in: %d of %d" % [let_in, THREATS.size()])
+			await _play(SETTLE_FRAMES)
+			return let_in > 0
 		"stay":
 			if main.shore_notice == null:
 				return false
@@ -267,6 +294,40 @@ func _behind_cell() -> Dictionary:
 		"foot_west_rim": _box_reading(img, cam.unproject_position(shore + sand + Vector3(-FOOT_RIM_M, 0.0, 0.0)), 20.0),
 		"foot_east_rim": _box_reading(img, cam.unproject_position(shore + sand + Vector3(FOOT_RIM_M, 0.0, 0.0)), 20.0),
 	}
+
+
+## Each threat on screen: its body's core against the same pixels with the cell and every creature hidden
+## for a frame (look_probe.gd's _creature_readings, over the sand here). {"threats": [...], "threat_min_dL"}.
+func _threat_readings(full: Image) -> Dictionary:
+	var pool := main.pool
+	var cam: Camera3D = pool.camera
+	pool.cell_view.visible = false
+	pool.creature_layer.visible = false
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var bare := root.get_texture().get_image()
+	bare.convert(Image.FORMAT_RGB8)
+	pool.cell_view.visible = true
+	pool.creature_layer.visible = true
+	bare.save_png(out_dir.path_join("09_threats_on_bank_hidden.png"))
+	var out := []
+	var least := INF
+	for c in pool.sim.creatures.creatures:
+		var view := pool.creature_layer.view_of(c.id)
+		if view == null or cam.is_position_behind(view.global_position):
+			continue
+		var at := cam.unproject_position(view.global_position)
+		if not Rect2(Vector2.ZERO, Vector2(SIZE)).has_point(at):
+			continue
+		var core := BODY_CORE * _radius_px(cam, view.global_position, view.radius)
+		var body := _box_reading(full, at, core, true)
+		var behind := _box_reading(bare, at, core, true)
+		if body.has("off_screen") or behind.has("off_screen"):
+			continue
+		var dl := snappedf(float(body.L) - float(behind.L), 0.1)
+		least = minf(least, absf(dl))
+		out.append({"species": c.species_id, "body": body, "behind": behind, "dL": dl})
+	return {"threats": out, "threat_min_dL": least if is_finite(least) else null}
 
 
 ## A square box of half-size `half` px (or, with `disc`, the disc of that radius) around `at`.
