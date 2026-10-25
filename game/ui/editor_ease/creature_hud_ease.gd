@@ -7,6 +7,8 @@ extends Node
 ## actions). No class_name: the HUD preloads it.
 
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
+const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
+const StatsPanel := preload("res://game/ui/editor_ease/stats_panel.gd")
 
 const UNDO_WORDS := "Undo the last change"
 const REDO_WORDS := "Redo the change you undid"
@@ -23,6 +25,12 @@ const DOCK_TIPS := {
 }
 
 var hud: Control
+## The stats table, in the Stats panel just before the editor's own stat text (which it hides once the lines parse).
+var stats: VBoxContainer
+## The rows the changes are measured from: the first stats after a new visit or a new editor session.
+var _baseline: Array = []
+var _baseline_pending := true
+var _baseline_session := 0
 var _can_undo := false
 var _can_redo := false
 ## InputPrompts.generation the Undo / Redo tooltips were written for.
@@ -41,11 +49,15 @@ func attach(owner_hud: Control) -> void:
 		if b != null:
 			b.tooltip_text = DOCK_TIPS[button_name]
 	_write_undo_tips()
+	stats = StatsPanel.new()
+	var box: Node = hud.stats_text.get_parent()
+	box.add_child(stats)
+	box.move_child(stats, hud.stats_text.get_index())
 
 
 ## Called at the end of the HUD's setup() (a new visit): the palette's buttons were just made again.
 func on_setup(_tools: Array, _costs: Dictionary, _roles: Dictionary) -> void:
-	pass
+	_baseline_pending = true
 
 
 ## Called at the end of the HUD's set_tool(): `type` is the tool now in use ("" for none).
@@ -53,9 +65,59 @@ func on_tool(_type: String) -> void:
 	pass
 
 
-## Called at the end of the HUD's set_stats(), with the editor's stat lines.
-func on_stats(_lines: PackedStringArray) -> void:
-	pass
+## Called at the end of the HUD's set_stats(), with the editor's stat lines. The first lines after a new visit, or
+## after the editor starts a new session (a preset, a random creature, Done), are the baseline the changes count from.
+func on_stats(lines: PackedStringArray) -> void:
+	var parsed := StatsRows.parse(lines)
+	var session_id := _session_id()
+	if _baseline_pending or session_id != _baseline_session:
+		_baseline = parsed["rows"]
+		_baseline_pending = false
+		_baseline_session = session_id
+	stats.show_rows(StatsRows.compare(parsed["rows"], _baseline), selection_words(String(parsed["selected"])))
+	var any := false
+	for row: Dictionary in parsed["rows"]:
+		any = any or not row.get("raw", false)
+	stats.visible = any
+	hud.stats_text.visible = not any
+
+
+## The selection in words from the editor's "part p3" / "vertebra v2" / "joint j4": "eye (a mirrored pair)",
+## "vertebra 3 of 9 from the head", "limb joint". The editor's own words when the body cannot be read.
+func selection_words(text: String) -> String:
+	var kind := text.get_slice(" ", 0)
+	var id := text.get_slice(" ", 1) if text.contains(" ") else ""
+	var body := working_body()
+	if body == null or id.is_empty():
+		return text
+	match kind:
+		"part", "turn":
+			for p in body.parts:
+				if String(p["id"]) == id:
+					var type := String(p["type"]).capitalize().to_lower()
+					return type + " (a mirrored pair)" if bool(p["mirror"]) else type
+		"vertebra":
+			var i: int = body.vertebra_index(id)
+			if i >= 0:
+				return "vertebra %d of %d from the head" % [i + 1, body.vertebrae.size()]
+		"joint":
+			return "limb joint"
+	return text
+
+
+## The body being edited, read only: the editor's working body when the HUD sits in a live editor, else null.
+func working_body() -> RefCounted:
+	var editor: Node = hud.owner if hud != null else null
+	if editor != null and editor.has_method("working_body") and editor.get("session") != null:
+		return editor.working_body()
+	return null
+
+
+## The editor session's object id (0 without one), so a new session (preset, random, Done) resets the baseline.
+func _session_id() -> int:
+	var editor: Node = hud.owner if hud != null else null
+	var session: Variant = editor.get("session") if editor != null else null
+	return (session as Object).get_instance_id() if session is Object else 0
 
 
 ## Called at the end of the HUD's set_undo_redo().

@@ -9,6 +9,7 @@ const EDITOR_SCENE := preload("res://game/scenes/creature/creature_editor.tscn")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const Ease := preload("res://game/ui/editor_ease/creature_hud_ease.gd")
+const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
 
 const POINTS := 150
 
@@ -91,3 +92,86 @@ func test_the_editor_drives_the_undo_tooltips() -> void:
 	editor.undo()
 	check(editor.hud.redo_button.tooltip_text.begins_with(Ease.REDO_WORDS), "after an undo Redo is live")
 	check_eq(editor.hud.undo_button.tooltip_text, Ease.NOTHING_TO_UNDO, "and Undo has nothing left")
+
+
+## A body point inside the back between the fifth and sixth vertebrae, as tests/test_creature_editor_scene.gd aims.
+static func back_point(desc: RefCounted, up := 0.7) -> Vector3:
+	return (desc.position_m(4) + desc.position_m(5)) * 0.5 + Vector3(0.0, up * desc.radius_m(4), 0.0)
+
+
+func test_stat_lines_parse_into_rows_and_compare_with_a_shape_and_a_sign() -> void:
+	var lines := PackedStringArray(["Length  1.31 m", "Legs  4   ·   limbs  4", "Speed  3.7 m/s   ·   health  132",
+			"a line the editor may add", "Selected  part p3"])
+	var parsed := StatsRows.parse(lines)
+	var names := PackedStringArray()
+	for row: Dictionary in parsed["rows"]:
+		names.append(row["name"])
+	check_eq(names, PackedStringArray(["Length", "Legs", "Limbs", "Speed", "Health", "a line the editor may add"]),
+			"one row per stat, two on a line split apart, an unknown line kept raw")
+	check_eq(parsed["selected"], "part p3", "the selection is split off")
+	check(bool(parsed["rows"][5].get("raw", false)), "the unknown line is a raw row")
+	var later := StatsRows.parse(PackedStringArray(["Length  1.45 m", "Legs  4   ·   limbs  4",
+			"Speed  3.4 m/s   ·   health  140"]))
+	var rows := StatsRows.compare(later["rows"], parsed["rows"])
+	var changes := {}
+	for row: Dictionary in rows:
+		changes[row["key"]] = row["change"]
+	check_eq(changes["length"], "+0.14 m", "a longer body is a plain change: a sign, no better/worse mark")
+	check_eq(changes["legs"], "", "an unchanged stat shows nothing")
+	check_eq(changes["speed"], "▼ -0.3 m/s", "slower is worse: a down triangle and the sign")
+	check_eq(changes["health"], "▲ +8", "more health is better: an up triangle")
+
+
+func test_the_stats_panel_replaces_the_text_block_and_unknown_lines_stay_readable() -> void:
+	open_hud()
+	hud.set_stats(PackedStringArray(["Length  1.31 m", "Mass  73.9 kg", "Selected  -"]))
+	var panel: Control = hud.ease.stats
+	check(panel.visible and not hud.stats_text.visible, "the table shows and the old text block hides")
+	check(panel.get_index() < hud.stats_text.get_index(), "the table sits where the text was, before it")
+	check_eq(panel.row_texts(), PackedStringArray(["Length 1.31 m", "Mass 73.9 kg"]), "a row per stat")
+	check_eq(panel.selected_label.text, "Selected: nothing", "no selection in words")
+	hud.set_stats(PackedStringArray(["Length  1.40 m", "Mass  73.9 kg", "Selected  -"]))
+	check_eq(panel.row("length")["change"], "+0.09 m", "the change since the first stats of the visit")
+	hud.set_stats(PackedStringArray(["something new"]))
+	check(not panel.visible and hud.stats_text.visible and hud.stats_text.text == "something new",
+			"lines it cannot read leave the editor's own text showing")
+
+
+func test_the_editor_stats_show_changes_since_the_visit_began() -> void:
+	open_editor()
+	var panel: Control = editor.hud.ease.stats
+	for key in ["length", "mass", "speed", "bite", "sight"]:
+		check(not panel.row(key).is_empty(), "a %s row" % key)
+	check(panel.row_texts().size() >= 10, "every stat on its own row (%d)" % panel.row_texts().size())
+	for t in panel.row_texts():
+		check(not t.contains("▲") and not t.contains("▼") and not t.contains("+"), "no change marks on arrival (%s)" % t)
+	editor.insert_after_selected()
+	var length: Dictionary = panel.row("length")
+	check_eq(length["value"], "%.2f m" % float(editor.session.preview()["phenotype"]["length_m"]),
+			"the Length row shows the editor's length")
+	check(length["change"].begins_with("+"), "a vertebra more makes it longer (%s)" % length["change"])
+	check(not length["change"].contains("▲") and not length["change"].contains("▼"), "length is a plain change")
+	editor.undo()
+	for t in panel.row_texts():
+		check(not t.contains("▲") and not t.contains("▼") and not t.contains("+"), "no change marks after the undo (%s)" % t)
+	editor.offer_presets(true)
+	editor.start_from_preset(CreatureData.preset_names()[0])
+	for t in panel.row_texts():
+		check(not t.contains("▲") and not t.contains("▼") and not t.contains("+"), "a preset starts the count afresh (%s)" % t)
+
+
+func test_the_selection_is_named_in_words() -> void:
+	open_editor()
+	var desc = editor.working_body()
+	editor.choose_tool("eye")
+	var r: Dictionary = editor.click_skin(editor.screen_of(back_point(desc)))
+	check(r["ok"], "an eye added: %s" % r.get("reason", ""))
+	var label: Label = editor.hud.ease.stats.selected_label
+	var eye: Dictionary = editor.working_body().parts.filter(func(p): return p["id"] == editor.selected["id"])[0]
+	check_eq(label.text, "Selected: eye" + (" (a mirrored pair)" if eye["mirror"] else ""), "the new eye by its name")
+	editor.choose_tool("")
+	var v_id := String(desc.vertebrae[2]["id"])
+	editor.press(editor.handle_screen("vertebra", v_id))
+	editor.release()
+	check(editor.selected.get("id", "") == v_id, "the third vertebra's handle picked")
+	check_eq(label.text, "Selected: vertebra 3 of %d from the head" % desc.vertebrae.size(), "a vertebra by its place")
