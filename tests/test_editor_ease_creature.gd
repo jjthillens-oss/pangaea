@@ -14,6 +14,7 @@ const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
 const Picking := preload("res://game/domain/creature/editor_picking.gd")
 const Stats := preload("res://game/domain/creature/creature_stats.gd")
+const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
 
 const POINTS := 150
 
@@ -198,7 +199,7 @@ func test_hovering_a_tool_opens_the_part_card_in_place_of_the_engine_tooltip() -
 	var price := int((CreatureData.editor_costs()["part"] as Dictionary).get("eye", CreatureData.editor_costs()["part_default"]))
 	var texts: PackedStringArray = card.texts()
 	check_eq(texts[0], "Eye · %d points" % price, "its title names the part and its price")
-	check(_card_has(texts, "%d points" % (2 * price)), "and the price of a mirrored pair (%s)" % ", ".join(texts))
+	check(_card_has(texts, "a mirrored pair %d" % (2 * price)), "and the price of a mirrored pair (%s)" % ", ".join(texts))
 	check(_card_has(texts, "Sight"), "an eye's card shows the sight it adds")
 	check_eq(eye.tooltip_text, "", "the engine's tooltip, which covered the tool's name, is not shown")
 	check_eq(card.mouse_filter, Control.MOUSE_FILTER_IGNORE, "the card never takes the mouse")
@@ -285,3 +286,61 @@ func test_a_stat_name_explains_itself_on_the_card() -> void:
 	check(_card_has(texts, "%d m at most" % int(tuning["sight"]["max_m"])), "with the stage's own numbers (%s)" % ", ".join(texts))
 	panel.stat_exited.emit("sight")
 	check(not editor.hud.ease.card.visible, "and closes")
+
+
+func test_every_part_has_a_placement_hint() -> void:
+	var rules := CreatureData.part_rules()
+	check(rules.size() > 0, "part rules to check")
+	for type in rules:
+		check(not PlacementHint.creature(rules[type]).is_empty(), "%s has a hint" % type)
+	check(not PlacementHint.limb_tool().is_empty(), "the limb tool has a hint")
+	check_eq(PlacementHint.snap_degrees(), roundi(Picking.MIDDLE_SNAP * 0.36), "the snap angle is the editor's own")
+
+
+## The hint's words about one or a pair are what EditorPicking does with a click at the side and near the middle.
+func test_the_hint_says_what_a_click_will_do_about_pairs() -> void:
+	var rules := CreatureData.part_rules()
+	var desc: RefCounted = CreatureData.body("s1_quadruped")
+	var side := {"host": "spine", "u": 200, "ring": 250, "elev": 0}
+	var near_middle := {"host": "spine", "u": 200, "ring": Picking.MIDDLE_SNAP - 5, "elev": 0}
+	var seen := {}
+	for type in rules:
+		var rule: Dictionary = rules[type]
+		var centerline := String(rule.get("centerline", ""))
+		if not (rule["hosts"] as Array).has("spine") or seen.has(centerline):
+			continue
+		seen[centerline] = true
+		var hint := PlacementHint.creature(rule)
+		var at_side: bool = Picking.anchor_for_part(desc, rule, side)["mirror"]
+		var at_middle: bool = Picking.anchor_for_part(desc, rule, near_middle)["mirror"]
+		match centerline:
+			"required":
+				check(hint.contains("never a pair") and not at_side and not at_middle, "%s: one, never a pair" % type)
+			"forbidden":
+				check(hint.contains("mirrored pair") and at_side and at_middle, "%s: always a pair" % type)
+			"allowed":
+				check(hint.contains("%d°" % PlacementHint.snap_degrees()) and at_side and not at_middle,
+						"%s: a pair at the side, one near the middle line" % type)
+	check_eq(seen.size(), 3, "a part of each middle-line rule was checked (%s)" % str(seen.keys()))
+
+
+func test_the_placement_line_follows_the_tool_and_hides_for_none_and_the_test_drive() -> void:
+	open_hud()
+	var row: Control = hud.ease.snap_hint
+	check(row.get_parent() == hud.get_node("Bottom") and row.get_index() < hud.get_node("Bottom/DockCenter").get_index(),
+			"the line sits just above the dock")
+	check(not row.visible, "hidden with no tool")
+	hud.set_tool("eye")
+	check(row.visible and hud.ease.snap_label.text.begins_with("Eye  ·  Click the head or body"), "the eye's line (%s)" % hud.ease.snap_label.text)
+	hud.set_tool("limb")
+	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(), "the limb tool's line")
+	hud.set_test_drive(true)
+	hud.ease._process(0.0)
+	check(not row.visible, "hidden during the test drive")
+	hud.set_test_drive(false)
+	hud.ease._process(0.0)
+	check(row.visible, "back after it")
+	hud.set_tool("")
+	check(not row.visible, "hidden again with no tool")
+	hud.tool_button("eye").mouse_entered.emit()
+	check(_card_has(hud.ease.card.texts(), PlacementHint.creature(CreatureData.part_rules()["eye"])), "the card says where it goes too")

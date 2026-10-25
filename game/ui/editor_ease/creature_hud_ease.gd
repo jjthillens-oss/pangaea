@@ -9,6 +9,7 @@ extends Node
 ## - A stats table with each stat's change since the visit began, marked ▲ better / ▼ worse (shape and colour).
 ## - A part card on hover with what the part does by the world's own stats rule (Bible 12, 14), in place of the
 ##   default tooltip, and a stat's meaning on the card when the pointer rests on its name.
+## - A placement line for the chosen tool (where it goes, when it snaps to the middle line, when it comes as a pair).
 ## No class_name: the HUD preloads it.
 
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
@@ -16,8 +17,11 @@ const StatsRows := preload("res://game/ui/editor_ease/stats_rows.gd")
 const StatsPanel := preload("res://game/ui/editor_ease/stats_panel.gd")
 const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
 const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
+const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 
+## The placement line's width: it wraps rather than run under the palette and the stats panels beside the dock.
+const SNAP_HINT_WIDTH := 660.0
 ## The body a card measures against when the HUD runs without an editor (the editor's own REFERENCE_BODY).
 const REFERENCE_BODY := "s1_quadruped"
 const UNDO_WORDS := "Undo the last change"
@@ -52,6 +56,9 @@ var hud: Control
 var stats: VBoxContainer
 ## The part card, a child of the HUD drawn over the 3D view.
 var card: PanelContainer
+## The placement line above the dock, and its label.
+var snap_hint: Control
+var snap_label: Label
 ## The rows the changes are measured from: the first stats after a new visit or a new editor session.
 var _baseline: Array = []
 var _baseline_pending := true
@@ -64,6 +71,8 @@ var _keys_generation := -1
 var _data := {}
 var _costs := {}
 var _reference: RefCounted
+var _tool := ""
+var _driving := false
 ## The tool (or "stat:<key>") the card shows, or "" when it is hidden.
 var _shown := ""
 
@@ -89,6 +98,7 @@ func attach(owner_hud: Control) -> void:
 	card = PartCard.new()
 	card.z_index = 10
 	hud.add_child(card)
+	_build_snap_hint()
 
 
 ## Called at the end of the HUD's setup() (a new visit): the palette's buttons were just made again.
@@ -108,8 +118,9 @@ func on_setup(tools: Array, costs: Dictionary, _roles: Dictionary) -> void:
 
 
 ## Called at the end of the HUD's set_tool(): `type` is the tool now in use ("" for none).
-func on_tool(_type: String) -> void:
-	pass
+func on_tool(type: String) -> void:
+	_tool = type
+	_refresh_hint()
 
 
 ## Called at the end of the HUD's set_stats(), with the editor's stat lines. The first lines after a new visit, or
@@ -142,7 +153,7 @@ func on_undo_redo(can_undo: bool, can_redo: bool) -> void:
 func card_for(type: String) -> Dictionary:
 	if type == "":
 		return Effects.select_card()
-	var where := ""
+	var where := hint_for(type)
 	if type == "limb":
 		var limb: Button = hud.tool_button("limb")
 		return Effects.limb_card(int(limb.get_meta("price", 0)) if limb != null else 0, where)
@@ -186,6 +197,16 @@ func show_card(type: String) -> void:
 func hide_card() -> void:
 	card.hide()
 	_shown = ""
+
+
+## The placement line for a tool: "" for no tool, the limb tool's, or "<Part>: <hint>" from the part's rule.
+func hint_for(type: String) -> String:
+	if type == "":
+		return ""
+	if type == "limb":
+		return PlacementHint.limb_tool()
+	var rules: Dictionary = _data.get("part_rules", {})
+	return PlacementHint.creature(rules[type]) if rules.has(type) else ""
 
 
 ## The selection in words from the editor's "part p3" / "vertebra v2" / "joint j4": "eye (a mirrored pair)",
@@ -237,6 +258,10 @@ func _process(_delta: float) -> void:
 		return
 	if InputPrompts.generation != _keys_generation:
 		_write_undo_tips()
+	var driving: bool = hud.test_drive_button != null and hud.test_drive_button.button_pressed
+	if driving != _driving:
+		_driving = driving
+		_refresh_hint()
 
 
 ## "Undo the last change (Ctrl+Z)" from the bindings for the device in use, or "Nothing to undo" while disabled.
@@ -272,6 +297,41 @@ func _on_stat_entered(key: String, label: Control) -> void:
 func _on_stat_exited(key: String) -> void:
 	if _shown == "stat:" + key:
 		hide_card()
+
+
+## The placement line row, above the dock: a pill with a caption, hidden for no tool and during the test drive.
+func _build_snap_hint() -> void:
+	var bottom := hud.get_node_or_null("Bottom") as Control
+	var dock := hud.get_node_or_null("Bottom/DockCenter") as Control
+	snap_hint = CenterContainer.new()
+	snap_hint.name = "SnapHint"
+	snap_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pill := PanelContainer.new()
+	pill.theme_type_variation = &"PillPanel"
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	snap_label = Label.new()
+	snap_label.name = "Text"
+	snap_label.theme_type_variation = &"CaptionLabel"
+	snap_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	snap_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	snap_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	snap_label.custom_minimum_size = Vector2(SNAP_HINT_WIDTH, 0)
+	pill.add_child(snap_label)
+	snap_hint.add_child(pill)
+	snap_hint.visible = false
+	if bottom != null and dock != null:
+		bottom.add_child(snap_hint)
+		bottom.move_child(snap_hint, dock.get_index())
+	else:
+		hud.add_child(snap_hint)
+
+
+func _refresh_hint() -> void:
+	var text := hint_for(_tool)
+	if not text.is_empty():
+		text = "%s  ·  %s" % [_tool.capitalize(), text]
+	snap_label.text = text
+	snap_hint.visible = not text.is_empty() and not _driving
 
 
 func _load_data() -> void:

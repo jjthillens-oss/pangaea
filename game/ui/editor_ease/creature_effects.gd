@@ -34,12 +34,12 @@ const STRENGTH_NOTE := "Heavier bodies bite harder"
 const LOCKED := "Find it in the world to use it"
 const PAIR_LABEL := "as a pair"
 const TITLE := "%s · %d points"
-const PRICE_ONE := "%d points"
-const PRICE_PAIR := "A mirrored pair %d points"
-const PRICE_BOTH := "One %d points · a mirrored pair %d points"
+const PRICE_ONE := "Price %d"
+const PRICE_PAIR := "Price %d for the mirrored pair"
+const PRICE_BOTH := "Price %d · a mirrored pair %d"
 const LEAVES := "Leaves %d of your %d points"
 const SHORT := "%d points more than you have"
-const REFUND := "Taking off a part you came in with gives back %d%% of its price"
+const REFUND := "A part you came in with refunds %d%% when taken off"
 const FULL := "No free part slots (%d at most)"
 const SELECT_TITLE := "Select"
 const SELECT_LINES := [
@@ -51,7 +51,7 @@ const LIMB_LINES := [
 	"Grows a leg or an arm of three joints from the nearest vertebra",
 	"Legs set the speed: Test drive shows the walk",
 ]
-const LIMB_PRICE := "A mirrored pair %d points · one on the middle line %d"
+const LIMB_PRICE := "Price %d for a mirrored pair · %d for one on the middle line"
 
 
 ## {now, one, pair, scale}: CreatureStats.of the body as it is, with one more `type` part, and with a mirrored pair
