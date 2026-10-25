@@ -10,14 +10,14 @@
   "export_path": "assets/export/cpart_eye_bulge.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.13,
-    "y_forward": 0.13,
+    "x": 0.129,
+    "y_forward": 0.129,
     "z_up": 0.11
   },
-  "triangles": 864,
+  "triangles": 816,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -99,7 +99,7 @@
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
     "triangles_before": 1008,
-    "triangles_after": 864
+    "triangles_after": 816
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -3882,14 +3882,14 @@ def build_eye_bulge():
     centre = Vector((0.0, 0.0, R * 1.05))
     axis = Vector((0.0, 0.0, 1.0))
     sclera = _sclera_material("M_EyeBulgeBallProc")
-    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, math.radians(86.0), math.radians(30.0), slit=0.16,
-                              slit_axis=(1.0, 0.0, 0.0))
+    iris_mat = _iris_material("M_EyeBulgeIrisProc", centre, axis, math.radians(86.0), math.radians(30.0), slit=0.2,
+                              slit_axis=(0.0, 1.0, 0.0))
     ball = _eye_ball("EyeBulge", centre, R, math.radians(86.0), sclera, iris_mat, segs=24)
     sclera.name, iris_mat.name = "M_EyeBulgeBall", "M_EyeBulgeIris"
-    # The mound: a skirt flaring into the skin, rising to a rolled lip just above the ball's equator.
+    # The mound: a skirt flaring into the skin, rising only to a low lip well below the ball's equator, so the ball sits high and round on it.
     prof = []
     steps = 12
-    top = centre.z + 0.06 * R
+    top = centre.z - 0.42 * R
     for i in range(steps + 1):
         t = i / steps
         z = -(BULGE_SINK - 0.0012) + (top + BULGE_SINK - 0.0012) * t
@@ -3897,7 +3897,7 @@ def build_eye_bulge():
             r = R * 1.45 + 0.1 * R * (z + BULGE_SINK) / BULGE_SINK
         else:
             u = min(1.0, z / top)
-            r = max(R * 1.04, R * (1.55 - 0.51 * math.sin(u * math.pi / 2) ** 0.8))
+            r = max(R * 0.95, R * (1.55 - 0.6 * math.sin(u * math.pi / 2) ** 0.7))
         prof.append((z, r))
     lv, lf, _ = bc.revolve(prof, 24)
     mound_mat = _wet_skin_material("M_EyeBulgeMoundProc", scale=140.0)
@@ -3907,7 +3907,7 @@ def build_eye_bulge():
                   "M_EyeBulgeIris": sf.tint(_lin("#B07A2E")), "M_EyeBulgeMound": sf.tint(_lin("#6E9A4E"))}, size=256)
     pts = _check_pivot("eye_bulge", BULGE_SINK)
     foot = _footprint(pts, z_max=0.02)
-    low = centre.z - 0.6 * R
+    low = centre.z - 0.8 * R
 
     def blink(co):
         if co.z <= low:
@@ -3916,7 +3916,7 @@ def build_eye_bulge():
         d = co - centre
         theta = math.atan2(math.hypot(d.x, d.y), d.z)
         phi = math.atan2(d.y, d.x)
-        th = theta * (1.0 - 0.94 * k ** 1.5)
+        th = theta * (1.0 - 0.996 * k ** 1.5)  # the top ring closes to a sub-millimetre point (an exact collapse crashes the glTF import)
         rad = d.length + max(0.0, 1.07 * R - d.length) * k
         return centre + Vector((math.sin(th) * math.cos(phi), math.sin(th) * math.sin(phi), math.cos(th))) * rad
 
@@ -3930,7 +3930,7 @@ def build_eye_bulge():
     rules["handles_note"] = "H1 is on Lid, H2 on EyeBulge; both are 0 to 1000 per mille."
     return {"purpose": "Creature eye part (PROPOSED): a frog's eye, a big glossy bronze ball with a horizontal pupil set high on a raised mound of wet skin; blinks on a shape key.",
             "category": "part", "part_type": "eye_bulge", "convention": "creature_art_contract v1", "part_rules": rules,
-            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 1, **baked}
+            "paint_mix": {"M_EyeBulgeBall": 0.0, "M_EyeBulgeIris": 0.0, "M_EyeBulgeMound": 0.9}, "revision": 2, **baked}
 
 
 HAND_FROG_T = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
