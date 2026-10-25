@@ -260,6 +260,67 @@ def _unwrap_weighted(objs_weights, margin=0.008, angle=60.0):
 
 
 ISOLATE_LIFT = 400.0    # metres an isolated piece is moved up while the set bakes, out of every other piece's AO
+GUTTER_FILL_PX = 48     # baked colours are pushed this far out of their UV islands into the empty texture
+
+
+def _uv_coverage(objs, size):
+    """Which texels of a size x size texture the objects' UV triangles cover (row 0 at v = 0, as Blender stores)."""
+    mask = np.zeros((size, size), dtype=bool)
+    for obj in objs:
+        mesh = obj.data
+        mesh.calc_loop_triangles()
+        uv = np.empty(len(mesh.loops) * 2, dtype=np.float32)            # foreach_get needs the property's own types
+        mesh.uv_layers.active.data.foreach_get("uv", uv)
+        uv = uv.astype(np.float64).reshape(-1, 2) * size - 0.5
+        loops = np.empty(len(mesh.loop_triangles) * 3, dtype=np.int32)
+        mesh.loop_triangles.foreach_get("loops", loops)
+        for a, b, c in uv[loops].reshape(-1, 3, 2):
+            x0, y0 = np.floor(np.minimum(np.minimum(a, b), c)).astype(int) - 1
+            x1, y1 = np.ceil(np.maximum(np.maximum(a, b), c)).astype(int) + 1
+            x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, size - 1), min(y1, size - 1)
+            if x1 < x0 or y1 < y0:
+                continue
+            ys, xs = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+            d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(d) < 1e-12:
+                continue
+            l1 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / d
+            l2 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / d
+            inside = (l1 >= -0.02) & (l2 >= -0.02) & (1.0 - l1 - l2 >= -0.02)
+            mask[y0:y1 + 1, x0:x1 + 1] |= inside
+    return mask
+
+
+def _fill_gutters(objs, names, size):
+    """Pushes each baked image's island colours out into the empty texture between UV islands (GUTTER_FILL_PX texels,
+    then the mean colour), so mipmaps of small islands (a polyp, an egg's horn) are not darkened by the black gutter."""
+    covered = _uv_coverage(objs, size)
+    for name in names:
+        img = bpy.data.images.get(name)
+        if img is None:
+            continue
+        px = np.empty(size * size * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        px = px.reshape(size, size, 4)
+        known = covered.copy()
+        rgb = np.where(known[..., None], px[..., :3], 0.0)
+        for _ in range(GUTTER_FILL_PX):
+            if known.all():
+                break
+            total = np.zeros_like(rgb)
+            count = np.zeros((size, size), dtype=np.float32)
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+                k = np.roll(known, (dy, dx), axis=(0, 1))
+                total += np.roll(rgb, (dy, dx), axis=(0, 1)) * k[..., None]
+                count += k
+            grow = ~known & (count > 0)
+            rgb[grow] = total[grow] / count[grow][:, None]
+            known |= grow
+        rgb[~known] = rgb[covered].mean(axis=0)
+        px[..., :3] = rgb
+        img.pixels.foreach_set(px.ravel())
+        img.update()
+        img.pack()
 
 
 def _bake_pieces(pieces, texture, size, isolate=()):
@@ -283,6 +344,7 @@ def _bake_pieces(pieces, texture, size, isolate=()):
         o.location.z += ISOLATE_LIFT
     bpy.context.view_layer.update()
     textures = sf.bake_set([o for o, _, _ in pieces], texture, size, normal=True, highs=highs)
+    _fill_gutters([o for o, _, _ in pieces], [f"T_{texture}_{kind}" for kind in ("Albedo", "ORM", "Normal")], size)
     for o in lifted:
         o.location.z -= ISOLATE_LIFT
     bpy.context.view_layer.update()
@@ -643,8 +705,10 @@ def build_nest():
     mp._check(min(p.z for p in b_pts) <= foot.z - 0.25, "nest: the beacon's base reaches under its foot")
     for obj, (deg, r) in zip(clutches, CLUTCHES):
         mp._check(1.0 <= math.hypot(obj.location.x, obj.location.y) <= 2.2, f"nest: {obj.name} lies on the dish")
-    pieces = [(mound, 0.008, 1.0), (rim, 0.007, 1.15), (polyps, 0.0015, 1.6), (beacon, 0.006, 1.3), (detail, 0.0015, 1.5)] \
-        + [(c, 0.003, 2.2) for c in clutches]
+    # Texel weights: the mound's gravel is seen close at the spawn, so it gets more of the shared texture; the
+    # polyps' islands stay big enough not to vanish into the gutter in the mipmaps.
+    pieces = [(mound, 0.008, 1.6), (rim, 0.007, 1.0), (polyps, 0.0015, 1.2), (beacon, 0.006, 1.0), (detail, 0.0015, 1.0)] \
+        + [(c, 0.003, 1.6) for c in clutches]
     baked = _bake_pieces(pieces, "AquaticNest", 1024, isolate=clutches)
     pts = bc.world_vertices()
     mp._check(min(p.z for p in pts) >= -NEST_SKIRT - 0.01, "nest: the skirt ends %.2f m under the pivot" % NEST_SKIRT)
