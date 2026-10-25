@@ -12,8 +12,9 @@ extends Control
 ##                  creature stands at the nest and Bite dims while it recharges. They never act; the keys do.
 ##                  Above the dock, the controls line, named from the bindings for the device in use (InputPrompts),
 ##                  for KEYS_HINT_S each time the world opens (bind) and again when the device in use changes. When
-##                  it goes, a small line in the dock takes its place and stays: the keys the chips do not name
-##                  (move, orbit and the way back to the editor), so they never leave the screen (PROPOSED). The
+##                  it fades, a small line in the dock fades in and stays: the keys the chips do not name
+##                  (move, orbit and the way back to the editor), so they never leave the screen (PROPOSED). Its
+##                  row is always laid out (alpha 0 while the full line is up), so the dock never jumps. The
 ##                  creature world has no pause menu (Escape goes back to the editor), and the pool's pause menu
 ##                  lists only the cell's controls, so this line is where they stay. A rebinding (made in the
 ##                  settings, outside this world) shows the next time the world opens.
@@ -149,7 +150,8 @@ func _process(delta: float) -> void:
 		_keys_t -= delta
 		_hint_panel.modulate.a = clampf(_keys_t / KEYS_FADE_S, 0.0, 1.0)
 		_hint_panel.visible = _keys_t > 0.0
-		_ways_text.visible = not _hint_panel.visible
+		# The dock's key line keeps its row (so the dock never changes height) and fades in as the full line fades out.
+		_ways_text.modulate.a = 1.0 - _hint_panel.modulate.a if _hint_panel.visible else 1.0
 
 
 func refresh() -> void:
@@ -194,7 +196,7 @@ func _refresh_hints() -> void:
 	_keys_t = KEYS_HINT_S
 	_hint_panel.visible = true
 	_hint_panel.modulate.a = 1.0
-	_ways_text.visible = false
+	_ways_text.modulate.a = 0.0   # hidden but laid out, so the dock keeps one height
 	_build_chips(pairs)
 	refresh()
 

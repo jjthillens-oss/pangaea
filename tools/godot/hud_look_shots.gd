@@ -153,8 +153,11 @@ func _creature() -> void:
 	await _tooltip(stage)
 	stage.enter_world()
 	await _frames(90)
-	await _shot("creature_world")
 	var world: CreatureWorld = stage.world_scene()
+	if world != null:
+		print("creature_world keys line visible ", world.hud._hint_panel.visible, " dock line alpha ",
+			world.hud._ways_text.modulate.a, " dock ", world.hud.get_node("%Dock").get_global_rect())
+	await _shot("creature_world")
 	if world == null:
 		push_error("hud_look_shots: the creature world did not open")
 		return
@@ -179,7 +182,8 @@ func _creature() -> void:
 	await _frames(2)
 	world.hud.refresh()
 	print("creature_away keys line visible ", world.hud._hint_panel.visible, " dock line visible ",
-		world.hud._ways_text.is_visible_in_tree(), " '", world.hud._ways_text.text, "'")
+		world.hud._ways_text.is_visible_in_tree(), " alpha ", world.hud._ways_text.modulate.a, " dock ",
+		world.hud.get_node("%Dock").get_global_rect(), " '", world.hud._ways_text.text, "'")
 	await _shot("creature_away")
 	world.clear_intent()
 

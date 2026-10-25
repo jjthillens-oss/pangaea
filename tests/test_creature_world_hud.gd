@@ -145,8 +145,11 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 	var hud: Control = made[0]
 	var panel: Control = hud.get_node("%HintPanel")
 	var ways: Label = hud.get_node("%WaysText")
+	var dock: Control = hud.get_node("%Dock")
+	var dock_h := dock.get_combined_minimum_size().y
 	check(panel.visible, "the controls line shows when the world opens")
-	check(not ways.visible, "the dock's key line waits while the controls line is up")
+	check(not _shown(ways), "the dock's key line waits while the controls line is up")
+	check(ways.visible, "but keeps its row, so the dock does not jump when it comes in")
 	var t := 0.0
 	var keys_s: float = hud.get_script().KEYS_HINT_S
 	while t < keys_s - 1.0:
@@ -158,7 +161,9 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 		t += 0.1
 	check(not panel.visible, "gone after %.0f s" % keys_s)
 	check("Bite" in hud._hint_text.text and "Evolve" in hud._hint_text.text, "its words stay (%s)" % hud._hint_text.text)
-	check(hud.get_node("%Dock").visible, "the dock stays")
+	check(dock.visible, "the dock stays")
+	check(is_equal_approx(dock.get_combined_minimum_size().y, dock_h),
+		"the dock keeps its height (%.0f, was %.0f)" % [dock.get_combined_minimum_size().y, dock_h])
 	_check_ways(hud, "after the controls line goes")
 	# A real device change (InputPrompts.note, as main reports every event) brings the line back for the pad. The
 	# game gives ui_cancel its controller button at start (SettingsService.apply_bindings, UI_PAD); so does this.
@@ -171,7 +176,7 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 	check_eq(InputPrompts.device, "pad", "the pad is the device in use")
 	hud._process(DT)
 	check(panel.visible and is_equal_approx(panel.modulate.a, 1.0), "back when the device changes")
-	check(not ways.visible, "the dock's key line waits again")
+	check(not _shown(ways), "the dock's key line waits again")
 	check("Right stick  Orbit" in hud._hint_text.text, "the controls line names the pad (%s)" % hud._hint_text.text)
 	t = 0.0
 	while t < keys_s + 0.2:
@@ -180,13 +185,18 @@ func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_
 	_check_ways(hud, "on the pad")
 	# Each time the world opens the line shows again.
 	hud.bind(made[1])
-	check(panel.visible and not ways.visible, "back when the world opens again")
+	check(panel.visible and not _shown(ways), "back when the world opens again")
+
+
+## Seen: in the tree's visible chain and not faded out.
+func _shown(item: CanvasItem) -> bool:
+	return item.visible and item.modulate.a > 0.01
 
 
 ## The dock's key line is up, alone, and names the move keys, the orbit and the way back for the device in use.
 func _check_ways(hud: Control, when: String) -> void:
 	var ways: Label = hud.get_node("%WaysText")
-	var shown := ways.visible
+	var shown := ways.visible and is_equal_approx(ways.modulate.a, 1.0)
 	var up := ways.get_parent()
 	while up != hud:
 		shown = shown and (up as CanvasItem).visible

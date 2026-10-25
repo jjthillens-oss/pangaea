@@ -169,7 +169,7 @@ theme_override_constants/separation = 8
 
 [node name="WaysText" type="Label" parent="Frame/Bottom/Dock/DockBox"]
 unique_name_in_owner = true
-visible = false
+modulate = Color(1, 1, 1, 0)
 layout_mode = 2
 theme_type_variation = &"CaptionLabel"
 text = "WASD  Move   ·   Middle drag  Orbit   ·   Escape  Back to the editor"
