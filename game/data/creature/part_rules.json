@@ -330,7 +330,7 @@
 		},
 		"ear_round": {
 			"type": "ear_round",
-			"footprint_radius_m": 0.029,
+			"footprint_radius_m": 0.023,
 			"sink_depth_m": 0.008,
 			"chiral": false,
 			"orientation": "normal",
