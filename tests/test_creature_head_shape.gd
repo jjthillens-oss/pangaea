@@ -21,8 +21,15 @@ func before_each() -> void:
 	rules = CreatureData.rules()
 
 
-func shaped(shape: Dictionary, preset := "prowler") -> RefCounted:
+## A preset's body with its own head shape taken off, so the dials start from neutral.
+func plain_body(preset: String) -> RefCounted:
 	var desc = CreatureData.preset_body(preset)
+	desc.extra.erase(HeadShape.KEY)
+	return desc
+
+
+func shaped(shape: Dictionary, preset := "prowler") -> RefCounted:
+	var desc = plain_body(preset)
 	HeadShape.store(desc.extra, shape)
 	return desc
 
@@ -44,7 +51,7 @@ func test_the_ranges_come_from_the_body_rules() -> void:
 
 
 func test_a_neutral_shape_stores_nothing_and_changes_nothing() -> void:
-	var desc = CreatureData.preset_body("prowler")
+	var desc = plain_body("prowler")
 	var before := BodyCodec.encode(desc)
 	var field_before = BodyField.from_description(desc)
 	HeadShape.store(desc.extra, HeadShape.DEFAULTS)
@@ -83,15 +90,15 @@ func test_validation_refuses_values_outside_the_ranges() -> void:
 
 
 func test_each_dial_moves_the_skin_and_leaves_the_vertebrae() -> void:
-	var plain := CreatureData.preset_body("prowler")
+	var plain := plain_body("prowler")
 	var fwd: Vector3 = (plain.position_m(0) - plain.position_m(1)).normalized()
 	var side := Vector3.RIGHT
 	var up := Vector3.UP
 	var base := {"fwd": reach(plain, fwd), "side": reach(plain, side), "up": reach(plain, up), "down": reach(plain, -up),
 			"brow": reach(plain, fwd + up)}
 	var cases := [
-		[{"snout": 2000}, "fwd", 1.6], [{"width": 1600}, "side", 1.4], [{"width": 600}, "side", -0.7],
-		[{"height": 1600}, "up", 1.4], [{"height": 600}, "up", -0.7], [{"jaw": 1000}, "down", 1.3],
+		[{"snout": 2000}, "fwd", 1.6], [{"width": 1600}, "side", 1.4], [{"width": 600}, "side", -0.75],
+		[{"height": 1600}, "up", 1.4], [{"height": 600}, "up", -0.75], [{"jaw": 1000}, "down", 1.3],
 		[{"brow": 1000}, "brow", 1.15],
 	]
 	for c in cases:
@@ -120,7 +127,7 @@ func test_head_capsules_ride_on_the_head_bone_and_paint_as_the_head_end() -> voi
 
 
 func test_head_parts_follow_the_skin() -> void:
-	var plain := CreatureData.preset_body("prowler")
+	var plain := plain_body("prowler")
 	var desc := shaped({"snout": 2000, "width": 1500, "height": 700})
 	var orientations := CreatureData.part_orientations()
 	var before := AnchorResolver.resolve_all(plain, BodyField.from_description(plain), orientations)
@@ -173,7 +180,7 @@ func test_to_dict_does_not_share_the_block() -> void:
 
 
 func test_the_session_sets_dials_with_undo_and_refusals_at_no_cost() -> void:
-	var s = Session.new(CreatureData.preset_body("monkey"), rules, CreatureData.part_rules(),
+	var s = Session.new(plain_body("monkey"), rules, CreatureData.part_rules(),
 			CreatureData.editor_costs(), 10)
 	var start := BodyCodec.encode(s.working)
 	check_eq(s.head_shape(), HeadShape.DEFAULTS, "a preset starts neutral")
@@ -205,7 +212,7 @@ func test_the_dials_are_cosmetic_and_leave_mass_and_stats_alone() -> void:
 	var maxed := {"snout": 2000, "width": 1600, "height": 600, "jaw": 1000, "brow": 1000}
 	var tall := {"snout": 1000, "width": 600, "height": 1600, "jaw": 0, "brow": 0}
 	for preset in ["monkey", "prowler"]:
-		var plain = CreatureData.preset_body(preset)
+		var plain = plain_body(preset)
 		var base: Dictionary = CreatureStats.of(plain, part_rules, table, tuning)
 		var base_editor: Dictionary = Session.stats(plain)
 		for shape in [maxed, tall]:

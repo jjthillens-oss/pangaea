@@ -788,6 +788,26 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+## 2026-10-24 · The twelve preset creatures read as their archetypes (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for the default creatures to look like what they are, the dragon most of all, and still
+  belong in a Spore-like world. `tools/make_creature_presets.py` redraws all twelve on parts that already exist:
+  the dragon has a long neck, swept horns, big wings, a row of back spikes, a spiked tail and heavy legs; the monkey
+  has a big round head with a short muzzle, long arms it knuckle-walks on (the uneven-leg tilt stands it about 20
+  degrees front-up) and a curling tail; the hopper is squat, with eyes on top, webbed feet and long hind legs folded
+  in a Z. The others get distinct outlines: a rhino-horned beetle, a domed tortoise, a spider-bodied stalker, a
+  maned boar, a cat-like prowler, an S-necked strider.
+- `--report` prints each preset's legs as the gait planner reads them and the tilt they give. Folded legs keep
+  their knee-to-toe piece rigid, so their gait length is short and a frog does not tip onto its nose.
+- No save, schema or part changes. Screenshots: `screenshots/creature-stage/archetypes/presets_*`.
+
+## 2026-10-25 · Creature skin covering picker (PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 23:40) asked for monkeys with fur and frogs that read as frogs. The editor's palette gains four
+covering toggles under the swatches: Smooth, Fur, Scales, Wet. The choice rides in the body's extra keys as
+`skin_covering` (a whole-number float 0..3, smooth when missing or out of range; `creature_look.gd`), so no save field
+or schema change. It reaches the skin shader as its int `covering` uniform, which the art thread owns. Like the swatch
+it is free and outside undo. Presets and rivals wear the covering their body carries; a random first design draws one.
+
 ## 2026-10-24 · Creature gait follows limb proportions: bound and knuckle-walk (PROPOSED; IMPLEMENTED)
 
 - Joshua (23:40) asked for walking that follows leg sizes and hands, frogs more frog-like and monkeys more monkey-like.
