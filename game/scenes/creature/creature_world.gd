@@ -13,9 +13,15 @@ extends Node3D
 ## the asset as baked; a bare bush takes BUSH_BARE_TINT and no Fruit instance). Rival skins are built once at setup
 ## on the CPU builder, at their preview grid clamped to RIVAL_SKIN_DIVISIONS_MAX; rivals beyond RIVAL_LOD_M only move
 ## their bodies, their legs are not solved. No audio.
+##
+## Part pickups (PROPOSED, domain/creature/part_unlocks.gd): each part the lineage has not found yet that the sim lays
+## out is drawn as the part's own model, turning slowly over a pale gold light column so it can be seen across the
+## field (the column is a functional marker, assets/records/placeholders/inventory.json "creature_part_pickup"). The
+## creature walks over one to take it: a notice names it and part_found is emitted for the stage to record.
 
 signal evolve_requested(points: int)
 signal died(cause: String)
+signal part_found(type: String)
 
 const Sim := preload("res://game/systems/creature/creature_world_sim.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -26,6 +32,7 @@ const AnchorResolver := preload("res://game/domain/creature/anchor_resolver.gd")
 const WalkerRig := preload("res://game/scenes/creature/walker_rig.gd")
 const SpineRig := preload("res://game/scenes/creature/spine_rig.gd")
 const Look := preload("res://game/scenes/creature/creature_look.gd")
+const PartLibrary := preload("res://game/scenes/creature/part_library.gd")
 
 const PLAYER_SKIN_DIVISIONS_MAX := 48
 const RIVAL_SKIN_DIVISIONS_MAX := 32
@@ -40,6 +47,15 @@ const MATE_BEAT_S := 2.5
 const MATE_WALK_SHARE := 0.6
 const MATE_NOTICE := "A mate answers your call"
 const DEATH_NOTICE := "You were %s. Back at the nest; %d points lost."
+const FOUND_PART_NOTICE := "New part: %s. It is in the editor now"
+## A pickup's model is scaled so its longest side is this long, turns at this rate and bobs this high over the ground.
+const PICKUP_SIZE_M := 0.7
+const PICKUP_TURN_RAD_S := 1.2
+const PICKUP_HOVER_M := 0.6
+const PICKUP_BOB_M := 0.12
+const PICKUP_COLUMN_HEIGHT_M := 7.0
+const PICKUP_COLUMN_RADIUS_M := 0.3
+const PICKUP_COLUMN_COLOR := Color(1.0, 0.86, 0.45, 0.22)
 ## Camera (PROPOSED): behind and above, the distance from the body length (Spore-close: the creature fills a good
 ## part of the frame), orbit by the right stick or a middle-drag. The eye never goes under the field: it is held at
 ## least CAMERA_GROUND_CLEARANCE_M over the plane whatever the pitch.
@@ -111,9 +127,16 @@ var _rivals_node: Node3D
 var _bush_mm: MultiMeshInstance3D
 var _fruit_mm: MultiMeshInstance3D
 var _meat_mm: MultiMeshInstance3D
+## The part types the lineage has not found (the stage's PartUnlocks.locked), set before setup(); the sim lays out
+## pickups for some of them.
+var locked_parts: Array = []
+## Pickup id -> its Node3D (the model and the column).
+var pickup_nodes := {}
+var _pickup_t := 0.0
 
 
-## Builds the field for `body_dict` (a codec dictionary) at `world_seed`, with `points` to start.
+## Builds the field for `body_dict` (a codec dictionary) at `world_seed`, with `points` to start, and pickups for
+## some of locked_parts (set it first).
 func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	var t0 := Time.get_ticks_msec()
 	# Resolved here, not @onready: a headless test adds the scene before the tree's first frame readies it.
@@ -122,10 +145,12 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 	_rivals_node = $Rivals
 	tuning = Sim.load_tuning()
 	data = Sim.load_data()
+	data["locked_parts"] = locked_parts.duplicate()
 	sim = Sim.new(body_dict, world_seed, tuning, data)
 	sim.points = points
 	_build_ground()
 	_build_food()
+	_build_pickups()
 	var t1 := Time.get_ticks_msec()
 	_build_player()
 	var t2 := Time.get_ticks_msec()
@@ -135,7 +160,8 @@ func setup(body_dict: Dictionary, world_seed: int, points: int) -> void:
 		# A species wears its preset's colour; a body without one takes the palette's next.
 		var rival_color: Color = skin_color_of(r["body"]) if (r["body"].extra as Dictionary).has(SKIN_COLOR_KEY) \
 				else PALETTE[rival_rigs.size() % PALETTE.size()]
-		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color, Look.rival_pattern(rival_rigs.size() + 1))
+		var rig := _build_rig(r["id"], r["body"], RIVAL_SKIN_DIVISIONS_MAX, rival_color,
+				Look.rival_pattern(rival_rigs.size() + 1, r["body"].extra))
 		skin_ms += Time.get_ticks_msec() - s
 		_rivals_node.add_child(rig)
 		rival_rigs[r["id"]] = rig
@@ -195,6 +221,7 @@ func _process(delta: float) -> void:
 	_orbit(delta)
 	_follow_camera(delta)
 	_draw_food()
+	_animate_pickups(delta)
 
 
 func _input(event: InputEvent) -> void:
@@ -255,6 +282,13 @@ func _on_event(e: Dictionary) -> void:
 		"earned":
 			hud.flash_points(int(e["points"]))
 			hud.refresh()
+		"found_part":
+			var node: Node3D = pickup_nodes.get(_pickup_id_of(String(e["part"])))
+			if node != null:
+				node.visible = false
+			notice = FOUND_PART_NOTICE % String(e["part"]).capitalize()
+			hud.show_notice(notice)
+			part_found.emit(String(e["part"]))
 
 
 func _build_ground() -> void:
@@ -278,6 +312,86 @@ func _build_food() -> void:
 	_meat_mm = _multimesh("Meat", _mesh_of(MEAT_SCENE, MEAT_MESH_NAME), MEAT_INSTANCES_MAX)
 	add_child(_meat_mm)
 	_draw_food()
+
+
+## One node per pickup: the part's model, sized to PICKUP_SIZE_M and lifted over the ground, above a light column.
+func _build_pickups() -> void:
+	var root := Node3D.new()
+	root.name = "Pickups"
+	add_child(root)
+	var column_mat := StandardMaterial3D.new()
+	column_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	column_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	column_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	column_mat.albedo_color = PICKUP_COLUMN_COLOR
+	column_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var column_mesh := CylinderMesh.new()
+	column_mesh.top_radius = PICKUP_COLUMN_RADIUS_M * 0.4
+	column_mesh.bottom_radius = PICKUP_COLUMN_RADIUS_M
+	column_mesh.height = PICKUP_COLUMN_HEIGHT_M
+	column_mesh.cap_top = false
+	column_mesh.cap_bottom = false
+	for k in sim.pickups:
+		var node := Node3D.new()
+		node.name = String(k["id"])
+		node.position = k["position"]
+		var column := MeshInstance3D.new()
+		column.name = "Column"
+		column.mesh = column_mesh
+		column.material_override = column_mat
+		column.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		column.position = Vector3(0.0, PICKUP_COLUMN_HEIGHT_M * 0.5, 0.0)
+		node.add_child(column)
+		var spin := Node3D.new()
+		spin.name = "Spin"
+		spin.position = Vector3(0.0, PICKUP_HOVER_M, 0.0)
+		node.add_child(spin)
+		var model: Node3D = PartLibrary.instance(String(k["part"]))
+		if model != null:
+			model.name = "Part"
+			var box := _bounds_of(model)
+			var longest := box.get_longest_axis_size()
+			var s := PICKUP_SIZE_M / longest if longest > 1e-4 else 1.0
+			model.scale = Vector3.ONE * s
+			model.position = -box.get_center() * s
+			spin.add_child(model)
+		node.visible = not k["taken"]
+		root.add_child(node)
+		pickup_nodes[String(k["id"])] = node
+
+
+func _animate_pickups(delta: float) -> void:
+	_pickup_t += delta
+	for id in pickup_nodes:
+		var spin: Node3D = (pickup_nodes[id] as Node3D).get_node("Spin")
+		spin.rotation.y = _pickup_t * PICKUP_TURN_RAD_S
+		spin.position.y = PICKUP_HOVER_M + PICKUP_BOB_M * sin(_pickup_t * 2.0)
+
+
+func _pickup_id_of(part: String) -> String:
+	for k in sim.pickups:
+		if k["part"] == part:
+			return String(k["id"])
+	return ""
+
+
+## The merged mesh bounds of a part scene in its own space (before it is placed).
+static func _bounds_of(root: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	var stack: Array = [[root, Transform3D.IDENTITY]]
+	while not stack.is_empty():
+		var item: Array = stack.pop_back()
+		var n: Node = item[0]
+		var xf: Transform3D = item[1]
+		if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+			var b: AABB = xf * (n as MeshInstance3D).mesh.get_aabb()
+			out = b if first else out.merge(b)
+			first = false
+		for c in n.get_children():
+			if c is Node3D:
+				stack.append([c, xf * (c as Node3D).transform])
+	return out
 
 
 ## Bushes draw one instance each, white while ripe and BUSH_BARE_TINT while bare; the Fruit instances are packed at
@@ -345,7 +459,7 @@ static func _multimesh(node_name: String, mesh: Mesh, count: int) -> MultiMeshIn
 func _build_player() -> void:
 	var body = sim.body_of(Sim.PLAYER_ID)
 	var color := skin_color_of(body)
-	var pattern: Dictionary = Look.pattern_of(body.extra)
+	var pattern: Dictionary = Look.look_of(body.extra)
 	if sim.player()["has_legs"]:
 		player_rig = _build_rig(Sim.PLAYER_ID, body, PLAYER_SKIN_DIVISIONS_MAX, color, pattern)
 	else:

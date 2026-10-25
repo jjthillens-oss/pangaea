@@ -8,6 +8,10 @@ extends Node
 ##   editor.back_requested  -> saved, then exit_requested (Main shows the title)
 ##   world.evolve_requested -> the points go into the state, saved, then the editor opens
 ##   world.died             -> saved
+##   world.part_found       -> a "found_part" event in the save's lineage history, saved
+## Part unlocks (PROPOSED, domain/creature/part_unlocks.gd): the editor greys out and refuses the part types the
+## lineage has not found (locked_parts), the world lays out pickups for some of them, and committing a body records
+## its still-locked parts (a preset's) as found.
 ## Escape in the world goes back to the editor; in the editor it asks the editor to go back (the title), unless the
 ## editor took the key itself; on the missing-scenes notice it exits.
 ##
@@ -18,9 +22,15 @@ extends Node
 signal exit_requested
 
 const BodyCodec := preload("res://game/domain/creature/body_codec.gd")
+const PartUnlocks := preload("res://game/domain/creature/part_unlocks.gd")
+const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 const EDITOR_SCENE_PATH := "res://game/scenes/creature/creature_editor.tscn"
 const WORLD_SCENE_PATH := "res://game/scenes/creature/creature_world.tscn"
 const MISSING_TEXT := "Creature stage scenes missing"
+## The arrival banner after the lineage came ashore (the cell-to-creature link): how long it stays, and its fade.
+const ARRIVAL_S := 7.0
+const ARRIVAL_FADE_S := 1.0
+const ARRIVAL_FONT_SIZE := 30
 
 ## The stage's working view of the save: {"name", "body", "points", "world_seed", "generation", "history"}.
 ## save_now() writes it back into `save` (points into adaptation_points, the rest into save.creature).
@@ -124,6 +134,8 @@ func open_editor() -> void:
 	_add_screen(editor)
 	if editor.has_method("setup"):
 		editor.call("setup", BodyCodec.from_dict(state["body"]), int(state["points"]))
+	if editor.has_method("set_locked_parts"):
+		editor.call("set_locked_parts", locked_parts())
 	# A creature's first design may start from a preset creature (owner playtest, 2026-10-24).
 	if editor.has_method("offer_presets"):
 		editor.call("offer_presets", int(state["generation"]) == 1 and (state["history"] as Array).is_empty())
@@ -140,6 +152,8 @@ func enter_world() -> void:
 		_show_missing()
 		return
 	_add_screen(world)
+	if "locked_parts" in world:
+		world.set("locked_parts", locked_parts())
 	if world.has_method("setup"):
 		world.call("setup", state["body"], int(state["world_seed"]), int(state["points"]))
 	var hud = world.get("hud")
@@ -147,6 +161,8 @@ func enter_world() -> void:
 		hud.call("set_title", String(state["name"]), int(state["generation"]))
 	_connect(world, "evolve_requested", _on_world_evolve)
 	_connect(world, "died", _on_world_died)
+	if world.has_signal("part_found"):
+		world.connect("part_found", _on_world_part_found)
 
 
 ## Writes the state to the store, with the points the world's sim holds when the world is up (so a quit from the
@@ -168,6 +184,34 @@ func save_now() -> Error:
 func sync_from_world() -> void:
 	if _mode == "world" and world != null:
 		_take_points(_world_points())
+
+
+## The banner Main shows when the lineage has just come ashore: `text` across the top of the screen over whichever
+## screen is up, fading out after ARRIVAL_S. Returns its label (tests).
+func show_arrival(text: String) -> Label:
+	var layer := CanvasLayer.new()
+	layer.name = "Arrival"
+	layer.layer = 12
+	add_child(layer)
+	var label := Label.new()
+	label.name = "Text"
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", ARRIVAL_FONT_SIZE)
+	label.add_theme_constant_override("outline_size", 8)
+	label.add_theme_color_override("font_outline_color", UiPalette.KEYLINE)
+	label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	label.offset_top = 96.0
+	label.offset_left = 160.0
+	label.offset_right = -160.0
+	layer.add_child(label)
+	var tween := label.create_tween()
+	tween.tween_interval(ARRIVAL_S)
+	tween.tween_property(label, "modulate:a", 0.0, ARRIVAL_FADE_S)
+	tween.tween_callback(layer.queue_free)
+	return label
 
 
 ## Leaves the stage: saves, then asks Main for the title.
@@ -199,7 +243,21 @@ func press_escape() -> void:
 		back()
 
 
+## The part types this lineage has not found, for the state's body (PartUnlocks.locked over every part type in the
+## part rules, the starter parts in the stage tuning and the save's lineage history).
+func locked_parts() -> Array:
+	var history: Array = save.lineage_history if save != null else []
+	var starters: Array = (_tuning().get("pickups", {}) as Dictionary).get("starter_parts", [])
+	return PartUnlocks.locked(CreatureData.part_rules().keys(), starters, history, state.get("body", {}))
+
+
+static func _tuning() -> Dictionary:
+	return CreatureData.read_json(CreatureData.DATA_DIR + "/creature_stage.json")
+
+
 func _on_editor_done(body_dict: Dictionary, points_left: int) -> void:
+	if save != null:
+		save.lineage_history.append_array(PartUnlocks.commit_events(body_dict, locked_parts(), int(state["generation"])))
 	state["body"] = body_dict.duplicate(true)
 	state["points"] = points_left
 	save_now()
@@ -219,6 +277,13 @@ func _on_world_evolve(points: int) -> void:
 	state["generation"] = int(state["generation"]) + 1
 	save_now()
 	open_editor()
+
+
+## The world reports a part picked up: the find goes into the lineage history and is saved at once.
+func _on_world_part_found(type: String) -> void:
+	if save != null:
+		save.lineage_history.append(PartUnlocks.event(type, int(state["generation"])))
+	save_now()
 
 
 ## The world reports a death: the sim has already taken its share of the points; keep what is left.

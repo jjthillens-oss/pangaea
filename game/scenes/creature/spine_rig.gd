@@ -168,6 +168,9 @@ func add_parts(placements: Array, orientations: Dictionary, free_ground := false
 		part_nodes.append({"node": node, "entry": e, "ground": ground, "scale": float(part["scale"]) / 1000.0})
 
 
+const FUR_SHELLS := 6
+
+
 ## Uses the art team's creature skin shader on the body, sized by its length. Returns false if it is missing.
 func use_skin_shader(params := {}) -> bool:
 	var shader: Shader = load("res://game/scenes/creature/part_library.gd").skin_shader()
@@ -177,6 +180,27 @@ func use_skin_shader(params := {}) -> bool:
 	mat.shader = shader
 	mat.set_shader_parameter("body_length_m", body_length_m())
 	for k in params:
-		mat.set_shader_parameter(k, params[k])
+		if k != "fur_shells":
+			mat.set_shader_parameter(k, params[k])
+	var shells := int(params.get("fur_shells", FUR_SHELLS))   # 0 turns fur shells off (cheap mode)
+	if int(params.get("covering", 0)) == 1 and shells > 0:
+		# Fur: chain shell passes (the shader's shell_layer; docs/art/creature_art_contract.md 2.4a).
+		var last := mat
+		for layer in range(1, shells + 1):
+			var shell := mat.duplicate() as ShaderMaterial
+			shell.next_pass = null
+			shell.set_shader_parameter("shell_layer", layer)
+			shell.set_shader_parameter("shell_count", shells)
+			last.next_pass = shell
+			last = shell
 	mesh_instance.material_override = mat
 	return true
+
+
+## Sets a skin shader parameter on the body material and every fur shell pass, so the shells never drift.
+func set_skin_param(param: String, value) -> void:
+	var m := mesh_instance.material_override as ShaderMaterial
+	while m != null:
+		if param != "shell_layer":
+			m.set_shader_parameter(param, value)
+		m = m.next_pass as ShaderMaterial

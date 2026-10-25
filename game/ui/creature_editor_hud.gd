@@ -3,8 +3,9 @@ extends Control
 ## The creature editor's panels (creature stage plan section 4, PROPOSED): the part palette on the left (one tool
 ## per part type in the art records with its cost, the limb tool, and a "no tool" state), the points and the stats
 ## on the right with the Undo / Redo / Delete / Insert / Mirror buttons, the Test drive toggle and Done and Back,
-## eight skin colour swatches, the head shape sliders (snout, skull width and height, jaw, brow; built in code by
-## setup_head_shape, under the stats), a refusal line at the bottom and a hint line naming the keys. It only presents:
+## eight skin colour swatches, the four skin covering toggles (Smooth, Fur, Scales, Wet), the head shape sliders
+## (snout, skull width and height, jaw, brow; built in code by setup_head_shape, under the stats), a refusal line at
+## the bottom and a hint line naming the keys. It only presents:
 ## every button emits a signal and CreatureEditor calls the same method the key would. The space between the
 ## panels lets the mouse through to the 3D view.
 
@@ -13,6 +14,8 @@ signal tool_chosen(type: String)
 signal action(name: String)
 signal test_drive_toggled(on: bool)
 signal color_chosen(color: Color)
+## A covering button: an index into the covering names setup() was given (creature_look.gd COVERINGS).
+signal covering_chosen(covering: int)
 signal preset_chosen(preset_name: String)
 ## The "Random creature" button beside the presets.
 signal random_requested
@@ -25,6 +28,8 @@ const TOOL_BUTTON_FONT_PX := 22
 ## A part tool with its picture (set_tool_icon): name and price under the picture, three to a row.
 const ICON_BUTTON_FONT_PX := 15
 const ICON_COLUMNS := 3
+## A locked tool (a part not found yet) is drawn this faded.
+const LOCKED_TOOL_MODULATE := Color(1, 1, 1, 0.35)
 const SWATCH_PX := 40
 ## The head shape sliders, in order: {key (HeadShape field), title, kind ("scale": shown as 1.40x, "amount": 0..100%)}.
 const HEAD_SLIDERS := [
@@ -55,6 +60,7 @@ var _tool_buttons := {}   ## tool type -> Button
 var _roles := {}   ## part type -> part role
 var _group := ButtonGroup.new()
 var _swatches: Array[Button] = []
+var _coverings: Array[Button] = []
 var _preset_title: Label
 var _preset_menu: OptionButton
 var _preset_sep: HSeparator
@@ -68,6 +74,8 @@ var _head_values := {}   ## head field -> Label
 
 var tools_grid: GridContainer
 var swatch_row: HBoxContainer
+## The covering toggles, built by setup() under its own caption after the swatches.
+var covering_row: HBoxContainer
 var points_text: Label
 var cost_text: Label
 var stats_text: Label
@@ -115,8 +123,10 @@ func wire() -> void:
 
 
 ## Builds the palette: `tools` are the part types in order, `costs` the editor costs (CreatureData.editor_costs()),
-## `colors` the skin swatches, `roles` part type -> part role (for the category tabs).
-func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {}) -> void:
+## `colors` the skin swatches, `roles` part type -> part role (for the category tabs), `coverings` the covering
+## button labels in the shader's order.
+func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {},
+		coverings: Array = ["Smooth", "Fur", "Scales", "Wet"]) -> void:
 	_roles = roles
 	for c in tools_grid.get_children():
 		c.free()
@@ -152,6 +162,39 @@ func setup(tools: Array, costs: Dictionary, colors: Array, roles: Dictionary = {
 		b.pressed.connect(func(): color_chosen.emit(color))
 		swatch_row.add_child(b)
 		_swatches.append(b)
+	_build_coverings(coverings)
+
+
+## The "SKIN COVERING" caption and its row of toggles, placed after the swatches once and refilled on each setup.
+func _build_coverings(names: Array) -> void:
+	if covering_row == null:
+		var box := swatch_row.get_parent()
+		var title := Label.new()
+		title.name = "CoveringTitle"
+		title.theme_type_variation = &"CaptionLabel"
+		title.text = "SKIN COVERING"
+		covering_row = HBoxContainer.new()
+		covering_row.name = "Coverings"
+		covering_row.add_theme_constant_override("separation", 6)
+		box.add_child(title)
+		box.add_child(covering_row)
+		box.move_child(title, swatch_row.get_index() + 1)
+		box.move_child(covering_row, swatch_row.get_index() + 2)
+	for c in covering_row.get_children():
+		c.free()
+	_coverings.clear()
+	var group := ButtonGroup.new()
+	for i in names.size():
+		var b := Button.new()
+		b.text = String(names[i])
+		b.focus_mode = Control.FOCUS_NONE
+		b.toggle_mode = true
+		b.button_group = group
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(func(): covering_chosen.emit(i))
+		covering_row.add_child(b)
+		_coverings.append(b)
+	set_covering(0)
 
 
 func _add_tool(type: String, label: String, price: int) -> void:
@@ -167,6 +210,7 @@ func _add_tool(type: String, label: String, price: int) -> void:
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.pressed.connect(func(): tool_chosen.emit(type))
+	b.set_meta("order", _tool_buttons.size())
 	tools_grid.add_child(b)
 	_tool_buttons[type] = b
 
@@ -243,6 +287,12 @@ func set_tool(type: String) -> void:
 func set_color(color: Color) -> void:
 	for b in _swatches:
 		b.set_pressed_no_signal(b.tooltip_text == color.to_html(false))
+
+
+## Shows covering `index` as the pressed toggle without emitting covering_chosen.
+func set_covering(index: int) -> void:
+	for i in _coverings.size():
+		_coverings[i].set_pressed_no_signal(i == index)
 
 
 func set_points(points: int, cost: int, affordable: bool) -> void:
@@ -348,6 +398,38 @@ func show_presets(on: bool) -> void:
 
 ## Gives a part tool its picture (PartIcons): the picture on top, the name and price under it, and the palette goes
 ## to ICON_COLUMNS columns. Select and Limb keep their text.
+## Greys out and disables the tools of the part types in `types` (a set: type -> true), the parts the lineage has not
+## found in the world yet, and moves them after the open ones; every other tool is enabled, in palette order.
+func set_locked(types: Dictionary) -> void:
+	var buttons: Array = []
+	for t in _tool_buttons:
+		var b: Button = _tool_buttons[t]
+		var is_locked := types.has(t)
+		b.set_meta("locked", is_locked)
+		b.disabled = is_locked
+		b.modulate = LOCKED_TOOL_MODULATE if is_locked else Color.WHITE
+		b.tooltip_text = _tooltip_of(b)
+		buttons.append(b)
+	buttons.sort_custom(func(a: Button, b: Button) -> bool:
+		var la := int(bool(a.get_meta("locked")))
+		var lb := int(bool(b.get_meta("locked")))
+		return la < lb if la != lb else int(a.get_meta("order")) < int(b.get_meta("order")))
+	for i in buttons.size():
+		tools_grid.move_child(buttons[i], i)
+
+
+## Whether a part type's tool is locked (set_locked).
+func is_locked(type: String) -> bool:
+	var b: Button = _tool_buttons.get(type)
+	return b != null and bool(b.get_meta("locked", false))
+
+
+static func _tooltip_of(b: Button) -> String:
+	if bool(b.get_meta("locked", false)):
+		return "%s: find it in the world to use it" % String(b.get_meta("label"))
+	return "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+
+
 func set_tool_icon(type: String, texture: Texture2D) -> void:
 	var b: Button = _tool_buttons.get(type)
 	if b == null:
@@ -359,7 +441,7 @@ func set_tool_icon(type: String, texture: Texture2D) -> void:
 	b.add_theme_font_size_override("font_size", ICON_BUTTON_FONT_PX)
 	b.text = "%s %d" % [String(b.get_meta("label")), int(b.get_meta("price"))]
 	b.clip_text = true
-	b.tooltip_text = "%s, %d points" % [String(b.get_meta("label")), int(b.get_meta("price"))]
+	b.tooltip_text = _tooltip_of(b)
 	tools_grid.columns = ICON_COLUMNS
 
 

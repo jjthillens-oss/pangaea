@@ -142,6 +142,7 @@ func peek_slot() -> Dictionary:
 			"saved_at_unix": save.saved_at_unix,
 			"world_seed": save.world_seed,
 			"genome": save.genome,
+			"era": save.era,
 		}
 	return result
 
@@ -172,6 +173,10 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	var result_errors := PackedStringArray()
 	if not written.ok:
 		result_errors.append(written.error)
+	else:
+		# A checkpoint from the lineage this one replaces is not this one's to go back to. Only once the new lineage
+		# is written: while the slot still holds the old one, its way back to the water stays.
+		EraTransition.forget(slot)
 	return {"ok": true, "errors": result_errors, "saved": written.ok}
 
 
@@ -207,11 +212,50 @@ func save_now() -> Dictionary:
 ## Call with each tick's drained events (PoolSim.drain_events): a tick whose events hold "grew", or a
 ## landmark's "checkpoint_moved" (S3, D-132), is saved at once, so the growth or the new return point
 ## survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s result when it saved, else {}.
+##
+## The cell-to-creature link (ShoreLink): the first ring paid at the build's top size raises the shore, and that
+## tick is saved too, so the shore stands where it rose after a reload. Every event is read before the one save:
+## a landmark's checkpoint_moved comes before a ring_paid in the same tick (the world steps before growth).
 func after_events(events: Array) -> Dictionary:
+	var wanted := false
 	for event in events:
-		if event is Dictionary and (event.get("type") == "grew" or event.get("type") == "checkpoint_moved"):
-			return save_now()
-	return {}
+		if not event is Dictionary:
+			continue
+		var type: Variant = event.get("type")
+		if type == "grew" or type == "checkpoint_moved":
+			wanted = true
+		elif type == "ring_paid" and raise_shore():
+			wanted = true
+	return save_now() if wanted else {}
+
+
+## "Crawl ashore" (the cell-to-creature link): saves the cell at the shore, then EraTransition.cross with the
+## lineage's creature (CreatureRules.ashore: the one it shaped in the preview, else one from the cell). On success the lineage is ashore on disk and in the sim's
+## save, and the session counts it saved, so a quit during the crawl asks nothing. Returns cross's {"ok", "errors",
+## "checkpoint"}, or the save's error with ok false.
+func cross_ashore() -> Dictionary:
+	var saved := save_now()
+	if not saved.ok:
+		return {"ok": false, "errors": PackedStringArray([str(saved.error)]), "checkpoint": ""}
+	var creature := CreatureRules.ashore(sim.save.creature, sim.save.genome)
+	var result := EraTransition.cross(sim.save, slot, persistence, creature)
+	if result.ok:
+		_mark_saved()
+	return result
+
+
+## Raises the shore (ShoreLink.raise) RISE_AHEAD_TM up the screen from the cell, on the first clear point the
+## rule C1 spiral finds there for twice the cell's radius, in the endless world at the build's top size. False when
+## it has risen already, the lineage is ashore, or there is no world or no top.
+func raise_shore() -> bool:
+	if sim == null or sim.world == null or sim.growth == null or sim.dead:
+		return false
+	if not Growth.at_top(sim.size(), sim.world.max_size) or not ShoreLink.shore_of(sim.save).is_empty():
+		return false
+	var ahead := sim.motion.position + ShoreLink.RISE_DIRECTION * ShoreLink.RISE_AHEAD_TM
+	var at := PoolSim.clear_point_on(sim.arena, ahead, sim.phenotype.radius * 2.0)
+	var am := sim.world.abs_of_local(at)
+	return ShoreLink.raise(sim.save, am[0], am[1], sim.size())
 
 
 ## Applies the cell's death to the lineage, once: Lineage.apply_death takes a quarter of the

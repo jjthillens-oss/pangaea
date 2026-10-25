@@ -330,7 +330,7 @@
 		},
 		"ear_round": {
 			"type": "ear_round",
-			"footprint_radius_m": 0.029,
+			"footprint_radius_m": 0.023,
 			"sink_depth_m": 0.008,
 			"chiral": false,
 			"orientation": "normal",
@@ -610,7 +610,7 @@
 		},
 		"foot_frog": {
 			"type": "foot_frog",
-			"footprint_radius_m": 0.109,
+			"footprint_radius_m": 0.098,
 			"sink_depth_m": 0.0,
 			"chiral": false,
 			"orientation": "ground",
@@ -624,7 +624,7 @@
 			"handles": [
 				{
 					"key": "H1_Spread",
-					"meaning": "toes splayed a further 14 degrees",
+					"meaning": "toes splayed a further 8 degrees",
 					"default_permille": 0
 				},
 				{
@@ -633,7 +633,7 @@
 					"default_permille": 0
 				}
 			],
-			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.013 m) meets the limb tip."
 		},
 		"foot_paw": {
 			"type": "foot_paw",
@@ -838,7 +838,7 @@
 		},
 		"hand_frog": {
 			"type": "hand_frog",
-			"footprint_radius_m": 0.025,
+			"footprint_radius_m": 0.027,
 			"sink_depth_m": 0.025,
 			"chiral": false,
 			"orientation": "normal",
@@ -855,12 +855,12 @@
 			"handles": [
 				{
 					"key": "H1_Grip",
-					"meaning": "fingers curl 80 degrees in toward the palm",
+					"meaning": "fingers curl about 95 degrees in toward the palm at two joints; pads ride on the tips",
 					"default_permille": 0
 				},
 				{
 					"key": "H2_Spread",
-					"meaning": "fingers fan 45% wider at the tips",
+					"meaning": "fingers fan 45% wider",
 					"default_permille": 0
 				}
 			]
@@ -1253,7 +1253,7 @@
 		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",
-			"footprint_radius_m": 0.058,
+			"footprint_radius_m": 0.055,
 			"sink_depth_m": 0.008,
 			"chiral": false,
 			"orientation": "forward_cone",
@@ -1267,16 +1267,16 @@
 			"handles": [
 				{
 					"key": "H1_Snout",
-					"meaning": "the snout and nose pushed 14 mm further out",
+					"meaning": "the muzzle and nose pad pushed 12 mm further out",
 					"default_permille": 0
 				},
 				{
 					"key": "H2_Brow",
-					"meaning": "the brow ridge 5 mm heavier",
+					"meaning": "the brow ridge 4 mm heavier and lower",
 					"default_permille": 0
 				}
 			],
-			"pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
+			"pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
 		},
 		"proboscis": {
 			"type": "proboscis",

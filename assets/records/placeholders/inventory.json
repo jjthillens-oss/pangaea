@@ -2,7 +2,22 @@
   "schema_version": 1,
   "status": "PROPOSED",
   "note": "Everything in game/ that is drawn or played without a recorded asset. Placeholders stand in for production assets and name the milestone that removes them. Functional entries are particles, UI and debug drawing, which Bible 15 does not count as placeholders. tests/test_placeholders.gd fails when a primitive, code-built, saved or referenced mesh in game/**/*.gd, .tscn or .tres, or a binary resource or model file anywhere in game/, is not listed here by type and file, and when a placeholder's asset_id has a record in assets/records.",
-  "placeholders": [],
+  "placeholders": [
+    {
+      "id": "shore_light",
+      "kind": "model",
+      "asset_id": "shore_piece",
+      "remove_by": "M2",
+      "description": "The shore of the cell-to-creature link (docs/DECISIONS.md 'Cell to creature link'): an open CylinderMesh shaft of warm additive light standing where the shore rose, and a flat CylinderMesh disc of sand colour on the swim plane as wide as the offer's reach (ShoreLink.REACH_TM). It stands in for art's shore piece; the reach disc may stay as the offer's cue when the piece comes.",
+      "types": [
+        "CylinderMesh"
+      ],
+      "files": [
+        "game/scenes/pool/shore_view.gd"
+      ],
+      "node": "Pool/Shore"
+    }
+  ],
   "functional": [
     {
       "id": "eat_fx_quads",
@@ -256,6 +271,18 @@
         "game/scenes/creature/creature_world.gd"
       ],
       "node": "CreatureWorld/Heart"
+    },
+    {
+      "id": "creature_part_pickup",
+      "kind": "ui",
+      "description": "The light column over a part pickup in the creature world: an open, unshaded, additive pale gold CylinderMesh that marks where a part the lineage has not found lies, so it can be seen across the field. A status sign drawn in the 3D view, like the mating heart; the part itself is the art team's model.",
+      "types": [
+        "CylinderMesh"
+      ],
+      "files": [
+        "game/scenes/creature/creature_world.gd"
+      ],
+      "node": "CreatureWorld/Pickups/Column"
     },
     {
       "id": "editor_test_dish",

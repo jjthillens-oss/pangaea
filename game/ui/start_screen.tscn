@@ -68,7 +68,7 @@ layout_mode = 2
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_constants/separation = 18
+theme_override_constants/separation = 10
 
 [node name="ContinueButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
@@ -79,21 +79,29 @@ text = "Continue"
 [node name="NewButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"TitleMenuButton"
+alignment = 0
 text = "New lineage"
 
 [node name="SlotsButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"TitleMenuButton"
+alignment = 0
 text = "Save slots"
 
 [node name="SettingsButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"TitleMenuButton"
+alignment = 0
 text = "Settings"
 
 [node name="QuitButton" type="Button" parent="MainView/Left/Buttons"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"TitleMenuButton"
+alignment = 0
 text = "Quit"
 
 [node name="Preview" type="VBoxContainer" parent="MainView/Left"]
@@ -111,6 +119,8 @@ text = "Preview"
 [node name="CreatureButton" type="Button" parent="MainView/Left/Preview"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"TitleMenuButton"
+alignment = 0
 text = "Creature stage"
 
 [node name="AquaticButton" type="Button" parent="MainView/Left/Preview"]
@@ -124,7 +134,7 @@ custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 8
-theme_type_variation = &"NameplatePanel"
+theme_type_variation = &"GlassPanel"
 
 [node name="Box" type="VBoxContainer" parent="MainView/ContinueCard"]
 layout_mode = 2

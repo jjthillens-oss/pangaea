@@ -788,6 +788,57 @@ the levels:
 - **Save.** No new field: the points already save as `adaptation_points`. `CreatureLevels` and the creature `xp` key
   are removed; a save written with `xp` still loads, and the key is dropped on the next save.
 
+
+## 2026-10-25 · Creature parts are found in the world (PROPOSED; IMPLEMENTED)
+Spore's creature stage hands out new parts as the creature explores; the coordinator gave this thread world part
+pickups (2026-10-25) under Joshua's "Spore but better" direction.
+
+- **Starter set.** A new lineage can use 17 starter parts (`creature_stage.json` "pickups" "starter_parts":
+  basic mouths, eyes, feet, hands, claws, horns, spikes, a crest, a fin, a fluke, feelers). The other part types are
+  greyed out in the editor's palette, sorted after the open ones, and refused as a tool until found.
+- **Pickups.** Each world visit lays out 4 of the lineage's unfound parts away from the nest, drawn from their own
+  seeded stream so the rest of the field is unchanged. Each is the part's own model turning over a pale gold light
+  column. Walking over one finds it: a notice names it, it is worth 3 points, and it is in the editor from then on.
+- **Save.** No new key and no schema change: a find is a lineage event, `{"event": "found_part", "part",
+  "creature_generation", "source"}` in `lineage_history` (Bible section 18: the lineage history records
+  discoveries). A part on the body is always usable, and committing a preset or random body records its unfound
+  parts as finds with source "preset".
+- Rules: `game/domain/creature/part_unlocks.gd`; tests: `tests/test_creature_part_unlocks.gd`.
+
+## 2026-10-24 · The twelve preset creatures read as their archetypes (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for the default creatures to look like what they are, the dragon most of all, and still
+  belong in a Spore-like world. `tools/make_creature_presets.py` redraws all twelve on parts that already exist:
+  the dragon has a long neck, swept horns, big wings, a row of back spikes, a spiked tail and heavy legs; the monkey
+  has a big round head with a short muzzle, long arms it knuckle-walks on (the uneven-leg tilt stands it about 20
+  degrees front-up) and a curling tail; the hopper is squat, with eyes on top, webbed feet and long hind legs folded
+  in a Z. The others get distinct outlines: a rhino-horned beetle, a domed tortoise, a spider-bodied stalker, a
+  maned boar, a cat-like prowler, an S-necked strider.
+- `--report` prints each preset's legs as the gait planner reads them and the tilt they give. Folded legs keep
+  their knee-to-toe piece rigid, so their gait length is short and a frog does not tip onto its nose.
+- No save, schema or part changes. Screenshots: `screenshots/creature-stage/archetypes/presets_*`.
+
+## 2026-10-25 · Creature skin covering picker (PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 23:40) asked for monkeys with fur and frogs that read as frogs. The editor's palette gains four
+covering toggles under the swatches: Smooth, Fur, Scales, Wet. The choice rides in the body's extra keys as
+`skin_covering` (a whole-number float 0..3, smooth when missing or out of range; `creature_look.gd`), so no save field
+or schema change. It reaches the skin shader as its int `covering` uniform, which the art thread owns. Like the swatch
+it is free and outside undo. Presets and rivals wear the covering their body carries; a random first design draws one.
+
+## 2026-10-24 · Creature gait follows limb proportions: bound and knuckle-walk (PROPOSED; IMPLEMENTED)
+
+- Joshua (23:40) asked for walking that follows leg sizes and hands, frogs more frog-like and monkeys more monkey-like.
+- Bound: a four-legged body whose hind legs are at least 1.5 times as long as its front legs bounds at run speed
+  instead of trotting. Each pair moves together, the front pair lands first and the hind pair pushes off last, then
+  every foot is off the ground. The body dips once per cycle and pitches nose down on landing, nose up in flight.
+  Tuning: `game/data/creature/gait_table.json` (bound_*, the run band's long_hind_pattern).
+- A body that bounds sits on folded hind legs (hips at 0.4 of their length), about level, like a frog, instead of
+  standing front-down on straight hind legs.
+- Long arms: a hanging limb whose root sits no higher than 1.2 limb lengths above the ground is a front leg, so an
+  ape knuckle-walks, leaning onto its arms. Short arms still hang. Legs are ordered front to back by hip position.
+- Short legs set the pace: speed and stride scale with the lowest standing hip, and no hip stands above 0.82 of its
+  leg, so feet stay in reach. Even legs walk, trot and run exactly as before.
+
 ## 2026-10-24 · Creature head shape dials in the editor (PROPOSED; IMPLEMENTED)
 Joshua (23:40) asked for more head shape options. The creature editor's stats panel gets five sliders: snout
 (1.0x to 2.0x), skull width and skull height (0.6x to 1.6x; ranges agreed with the art thread), jaw and brow ridge
@@ -1443,3 +1494,62 @@ Joshua answered four cards at 16:47 to 16:48 UTC.
 
 ## 2026-10-25 · Save schema v5: the Aquatic stage's progress (CONFIRMED; IMPLEMENTED)
 Joshua chose "Yes, add aquatic saves (v5)" on 2026-10-25 02:48 (aquatic plan decision 2). Save v5 adds one top-level key, `aquatic`: `{}` until the lineage swims in the Aquatic stage, then the fish's body (AquaticBody), generation, history of parents, discovered zones and sites, relations per species (standing and rapport), meals, position, heading, energy and health. Points stay in `adaptation_points`. The v4 -> v5 migration adds the empty block and changes nothing else; every v4 key is unchanged. PersistenceService checks the block's body against `game/data/aquatic/aquatic_rules.json` on every load and save, so a fish that breaks the rules is refused like a bad creature. The stage writes the slot on a new generation, a find, a relation change, a death, on leaving and on closing the window, re-reading the slot first so the cell's and creature's data are kept; a slot that will not load is never written, and an empty slot gets a new lineage. The `era` field is not changed by the Aquatic stage: when the cell stage leads into the sea is still plan decision 3. Reason: Bible §18 (lineage, discoveries and relationships persist). Impact: a build before v5 refuses a v5 save as newer. Tests: `tests/test_persistence.gd` (v5 section), `tests/test_aquatic_sim.gd`, the aquatic smoke's reload check.
+
+## 2026-10-25 · Cell to creature link: the cell crawls onto land (Bible section 4; PROPOSED; IMPLEMENTED)
+
+Joshua said "Go" (2026-10-25 01:23 UTC) to the studio's proposal: "the cell crawls onto land and the
+creature editor opens, which joins the two stages into one game." This is the first era transition
+in the game, built to the Bible's transition contract (section 4) and its transaction rule (section
+18). Code: `ShoreLink` (`game/domain/shore_link.gd`, the rules on the save), `EraTransition`
+(`game/systems/era_transition.gd`, the writes), `ShoreView` (`game/scenes/pool/shore_view.gd`),
+`GameSession.raise_shore`, the pool's `shore_reached`, Main's `open_shore_offer`, `cross_to_land` and
+`back_to_water`, and `CreatureRules.from_cell`.
+
+- **Demonstrated capability**: the shore rises the first time the lineage fills its ring at the
+  build's top size (the first `ring_paid` at size 4), so a lineage must reach the top and fill it
+  once. The toast says "A shore has risen up ahead. Swim into its light to crawl onto land."
+- **A survivable destination**: the shore stands 20 tm up the screen from where the cell was (inside
+  the loaded 3 x 3 chunks), on the first clear point the rule C1 spiral finds there for twice the
+  cell's radius. It is a shaft of warm light with a sand disc as wide as its 4 tm reach, and a warm
+  arrow (a second `StarvingArrow`) points to it from the cell while it is out of reach. The shaft and
+  disc are primitive meshes until art makes the shore piece (art follow-up).
+- **A player choice**: swimming into the reach pauses the pool under "Crawl onto land?", which says
+  what unlocks (legs, walking, the creature editor), what changes (a land world, its food) and what
+  stays (the lineage, its history, the points, the checkpoint). "Stay in the water" plays on; the
+  offer opens again only after the cell has swum out past 1.5 times the reach and back. Nothing
+  forces the crossing, so aquatic play goes on as long as the player likes.
+- **Saved as a transaction with a checkpoint**: "Crawl ashore" saves the slot (the cell at the
+  shore), writes the same save as `<slot>.pre-terrestrial` (the checkpoint, through the usual temp,
+  verify and backup path), then writes the lineage ashore: era `terrestrial`, a `came_ashore`
+  lineage event (generation and genome id) and the lineage's first creature. A failed last write
+  undoes the move in memory and the slot still holds the cell; the order of the writes is the safe
+  equivalent of a pending transaction, so `pending_transactions` stays empty. No key is added: the
+  shore is a `world_changes` entry `{"kind": "shore", "x_am", "y_am", "size"}` (an array v4 leaves
+  to its readers), and the era and creature fields are v4's own. Deleting a slot, or founding a new
+  lineage in it, removes the checkpoint.
+- **The same lineage continues**: lineage id, genome, lineage history, adaptation points (one pool
+  for both stages, as before), discoveries, world seed and the shore carry over unchanged. The first
+  creature is the starter quadruped with the cell's hue as its skin (`from_cell`: the genome's
+  `appearance.hue` at saturation 0.55 and value 0.8, as `"#rrggbb"` in the body's `skin_color`,
+  agreed with the Creature stage thread), and the editor still offers the presets on a first visit.
+  A lineage that already shaped a creature in the title's creature stage preview keeps it, with the
+  cell's skin only when it has none of its own (`CreatureRules.ashore`), so no spent point is lost.
+  The crawl is a 1.2 s fade to sand with "Your lineage crawls onto land", then the creature editor
+  opens under it with the banner "Your lineage came ashore. Shape its first land body: every
+  adaptation point it earned in the water comes with it."
+- **Going back**: Continue on a lineage that is ashore opens the creature stage. The title shows
+  "Back to the water" while the checkpoint is there (also when the slot no longer loads, so the cell
+  is not lost with it). It asks first, Cancel focused, as what the lineage did on land is lost:
+  it writes the checkpoint back as the slot (the save ashore becomes the slot's `.bak` until the next
+  save) and continues the cell at the shore, which can cross again
+  once it has swum out of the reach and back (a run that starts in the reach never opens the offer
+  at once).
+  The continue card says "On land" for a lineage ashore.
+- **Open for Joshua (era boundaries need owner approval)**: the Bible puts the Aquatic era between
+  Microscopic and Terrestrial. This link goes from the cell stage to the creature stage that exists
+  now; when Aquatic is built it slots in between (the cell's top size would lead to the aquatic
+  stage, and its shore to land). The contract's three carry-over tests are only partly met until
+  then: the earlier local activity that stays playable is the cell itself, through the checkpoint;
+  the adaptation that still matters is the shared point pool (the creature world has no diets, so
+  the cell's diet does not carry yet); the relationship that persists waits for the creature world's
+  species records.

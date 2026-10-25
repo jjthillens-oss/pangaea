@@ -3,10 +3,17 @@ extends RefCounted
 ## are, their two-bone lengths and which way their knees bend. Pure rules: no scene or file access.
 ##
 ## A limb is a leg when it has a knee (3 or more joints), its tip hangs below its first joint by more than a quarter of
-## the limb's length, and the tip reaches down to within a quarter of its length of the lowest tip (so a biped's
-## hanging arms are not legs). Two-joint stubs need a one-bone solver, which is not built. The IK treats a leg
+## the limb's length, and either the tip reaches down to within a quarter of its length of the lowest tip, or the limb
+## is long enough to reach the ground from where it hangs: its root no higher above the lowest tip than
+## ARM_REACH_RATIO times its length (owner direction 2026-10-24: walking follows limb sizes). So an ape's long arms
+## are front legs it knuckle-walks on, and a biped's short hanging arms are not legs: the walker hangs them
+## (scenes/creature/arm_pose.gd). Two-joint stubs need a one-bone solver, which is not built. The IK treats a leg
 ## as two bones: hip (joint 0) to knee (joint 1), and knee to the tip as one rigid piece, so a toe or extra joint keeps
 ## its rest shape. The gait origin is the centre of the hips; `centre` is that point in description space.
+
+## How far above the ground a hanging limb's root may sit, in limb lengths, for the limb to count as a leg (PROPOSED):
+## a little over one, because a body leans onto long arms (body_mechanics.gd tilts it up to 30 degrees).
+const ARM_REACH_RATIO := 1.2
 
 
 ## Returns {body: Dictionary in data/test_bodies.json form, centre: Vector3, legs: Array of limb_chains() indices}.
@@ -24,7 +31,9 @@ static func from_description(desc: RefCounted) -> Dictionary:
 		for k in pts.size() - 1:
 			length += pts[k].distance_to(pts[k + 1])
 		var tip_y := pts[pts.size() - 1].y
-		if pts.size() >= 3 and pts[0].y - tip_y > 0.25 * length and tip_y - lowest < 0.25 * length:
+		var planted := tip_y - lowest < 0.25 * length
+		var reaches := pts[0].y - lowest <= ARM_REACH_RATIO * length
+		if pts.size() >= 3 and pts[0].y - tip_y > 0.25 * length and (planted or reaches):
 			legs.append(c)
 	var centre := Vector3.ZERO
 	for c in legs:
