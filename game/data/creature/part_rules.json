@@ -624,7 +624,7 @@
 			"handles": [
 				{
 					"key": "H1_Spread",
-					"meaning": "toes splayed a further 14 degrees",
+					"meaning": "toes splayed a further 8 degrees",
 					"default_permille": 0
 				},
 				{
@@ -633,7 +633,7 @@
 					"default_permille": 0
 				}
 			],
-			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.074 m, y -0.052 m) meets the limb tip."
+			"pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.04 m, y -0.03 m) meets the limb tip."
 		},
 		"foot_paw": {
 			"type": "foot_paw",
