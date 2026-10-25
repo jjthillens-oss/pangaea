@@ -100,7 +100,7 @@ alpha; judge the leaves on the beauty row and in the engine.
 
 Built by `tools/blender/creature_flora.py` through `tools/blender/make_creature_world.py` (its `ASSETS` lists them, so the CLAUDE.md
 command builds them too). Original designs. Two placement rules come with them, because the creature sim has no
-obstacles yet (open issue B): **cover** (the grass tuft, the fern, the flowers and the pebbles) stands under 0.45 m
+obstacles yet (issue #210, filed for the sim owner): **cover** (the grass tuft, the fern, the flowers and the pebbles) stands under 0.45 m
 and may go anywhere inside the walls except the nest's 8 m clearing; **boulders** (and the trees to come) stand only
 outside the walls, on the berm and the hills (`max(|x|, |z|) >= 80.5 m`). `tests/test_creature_world_art.gd`
 checks both on the kit itself and, once the scatter lands, on every dressing mesh in the field GLB.
