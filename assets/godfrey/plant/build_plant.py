@@ -61,15 +61,15 @@ def make_fronds(mats):
         az = math.radians(degrees)
         radial = Vector((math.cos(az), math.sin(az), 0.0))
         sideways = Vector((-radial.y, radial.x, 0.0))
-        lean = 0.14 + 0.16 * (blade % 4) / 3.0
+        lean = 0.20 + 0.28 * (blade % 4) / 3.0
         phase = blade * 1.71
         base = len(vertices)
         for row in range(11):
             t = row / 10.0
             # Three broad lobes offset differently per leaf; no rectangular cards.
-            envelope = max(0.035, math.sin(math.pi * t) ** 0.72)
-            lobes = 1.0 + 0.13 * math.sin(5.5 * math.pi * t + phase)
-            width = (0.075 + 0.083 * (blade % 3)) * envelope * lobes
+            envelope = max(0.035, math.sin(math.pi * t) ** 0.38)
+            lobes = 1.0 + 0.22 * math.sin(5.5 * math.pi * t + phase)
+            width = (0.16 + 0.075 * (blade % 3)) * envelope * lobes
             center = (
                 radial * (0.055 + lean * t * t + 0.035 * math.sin(2.8 * t + phase))
                 + sideways * (0.035 * math.sin(3.1 * t + phase))
@@ -176,9 +176,9 @@ def render_views(camera, model, gray=False):
 def main():
     clear_scene()
     mats = [
-        material("Tideleaf_wine", (0.24, 0.074, 0.085), 0.8),
-        material("Tideleaf_rose", (0.34, 0.12, 0.13), 0.78),
-        material("Tideleaf_copper", (0.29, 0.105, 0.085), 0.82),
+        material("Tideleaf_wine", (0.15, 0.025, 0.04), 0.8),
+        material("Tideleaf_rose", (0.24, 0.055, 0.07), 0.78),
+        material("Tideleaf_copper", (0.18, 0.04, 0.035), 0.82),
     ]
     hold = material("Tideleaf_holdfast_mauve", (0.17, 0.09, 0.1), 0.9)
     model = [make_fronds(mats), make_holdfast(hold)]
