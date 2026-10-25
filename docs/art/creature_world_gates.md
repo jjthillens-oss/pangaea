@@ -96,7 +96,7 @@ the berm at 20 m they read small: they need grouping with trees and each other (
 Built by `tools/blender/creature_flora.py`; see "The trees" in `docs/art/creature_world_dressing.md`. Godot frames:
 `tools/godot/world_dressing_shot.gd -- --trees --bare-field` (both trees on the turf at about 12 m and from under
 each crown, set inside the walls for this review only, then on the berm past the east wall from 20 m inside and
-from the nest), Compatibility on llvmpipe in the stage's own light; and the trees in the game itself, on the berm,
+from the nest), Compatibility on llvmpipe and Forward+ on lavapipe in the stage's own light; and the trees in the game itself, on the berm,
 in the field's scatter (below). Evidence: `docs/evidence/credit-creature-world-art/trees_pair.jpg`,
 `trees_close.jpg` and `trees_crown_shadow.jpg`.
 
@@ -111,12 +111,12 @@ two-sided cards (1 184). Materials: `M_CreatureTreeUmbrella` (baked Albedo, ORM,
 | 1 Shape | pass | `docs/art/renders/production/creature_tree_umbrella_gates.jpg` (grey front, side, three-quarter, top; grazing key): a bottle trunk swelling low and narrowing to a fork, five buttress roots flaring into the ground, four limbs and a leader joining the trunk in smooth unions (the skin modifier; no tube poking through another), and five domed pads that stack into a broad, scalloped parasol. From the side the pads read as separate layers with shade between them; from above as a five-lobed crown. |
 | 2 Materials | pass | Beauty, close-up and unlit: plated bark whose grooves run up the trunk with a slight spiral, dark warm grey-brown with paler weathered plates; the leaf sprays read as clusters of rounded leaves with a mid-rib, teal-green, the finer bluer spray mixed in. No dark fringe on the cut-outs. Hue: 0.00% of the atlas's and the bark's chromatic texels near a reserved hue; means: canopy L 46.5 C 28 h 166, bark L 23 C 7 h 65 (the test prints them). |
 | 3 Neutral lighting | pass | The bark's albedo is base colour plus the shared 30% occlusion darkening; the cards carry no light, only a per-card brightness jitter (0.74 to 1.0, the fringe darker). Shade on the crown comes from its normals in the scene. |
-| 4 Export and Godot | pass (Compatibility) | `trees_pair.jpg` (12 m), `trees_close.jpg` (under the crown, 4 m): the parasol silhouette, the bottle trunk and the plated bark hold at both distances; the crown casts a dappled cut-out shadow. The first engine frames showed the crown in black and mint blotches; `trees_crown_shadow.jpg` (an A/B in one pose) shows received shadows were only a small part of it (the canopy now receives none), and the rest was the crown's own shaded side seen against the light, which the canopy's backlight now lights a dim leaf green (frames below). On the berm at 20 to 100 m (the field frames below) it is the skyline's main shape. Import: the canopy mesh keeps no LODs (the test reads the mapping, the twin sheets and that both sheets share one normal). Forward+ not rendered for the trees (lavapipe frames were spent on the field). |
+| 4 Export and Godot | pass | `trees_pair.jpg` (12 m; Compatibility left, Forward+ right), `trees_close.jpg` (under the crown, 4 m, Compatibility): the parasol silhouette, the bottle trunk and the plated bark hold at both distances; the crown casts a dappled cut-out shadow. The first engine frames showed the crown in black and mint blotches; `trees_crown_shadow.jpg` (an A/B in one pose) shows received shadows were only a small part of it (the canopy now receives none), and the rest was the crown's own shaded side seen against the light, which the canopy's backlight now lights a dim leaf green (frames below). On the berm at 20 to 100 m (the field frames below) it is the skyline's main shape. In Forward+ the crown is a natural leaf green with darker shoulders under the bright pad tops. Import: the canopy mesh keeps no LODs (the test reads the mapping, the twin sheets and that both sheets share one normal). |
 
 Remaining: (1) the bark is darker than painted (mean L 23): in deep shade the trunk is nearly black-brown; (2) the
 pads' undersides show see-through gaps to the cards above from right under the tree (only seen if a creature ever
 stands under one, which the walls prevent today); (3) in Compatibility the lit sprays go pale mint (the renderer's
-overexposed shadowed sun, docs/TOOLCHAIN.md); Forward+ will be greener.
+overexposed shadowed sun, docs/TOOLCHAIN.md); Forward+ is greener (`trees_pair.jpg`, right).
 
 ### creature_tree_lantern
 
@@ -129,11 +129,11 @@ error 8.2 cm, at the hub where the six stalks meet), canopy 44 two-sided cards (
 | 1 Shape | pass (rev 2 of the build) | `docs/art/renders/production/creature_tree_lantern_gates.jpg`: a slender trunk rising in a slow curve with three small root flares, a domed cap, and a dense curtain that falls from the cap's rim like a lampshade, hem about 2 m off the ground. The first build failed this gate (its frames were not kept): 28 strips of three thin fronds flaring out almost flat from a small cap read as a sparse palm and would thin to nothing far off, and the decimation cut the pods into faceted diamonds on thick, ringed stalks. Rev 2: thirty strips of four fuller fronds leaving the rim 50 degrees down, a cap of fourteen arching fronds, round pods kept out of the reduction, fine pale stalks. |
 | 2 Materials | pass | Pale grey-tan bark with dark ring scars every 19 cm; turquoise fronds lighter toward their tips; pale lilac-cream pods. Hue: 0.00% near a reserved hue; the wood set's mean is near neutral (L 46, C 3.4). |
 | 3 Neutral lighting | pass | As the umbrella's: baked base colour with occlusion only; shade from the crown normals. |
-| 4 Export and Godot | pass (Compatibility) | `trees_pair.jpg`, `trees_close.jpg`: at 12 m a lampshade crown on a slim trunk, from under it the pods hang inside the shade like lanterns; on the berm (the field frames) the curtain keeps a solid bell outline. |
+| 4 Export and Godot | pass | `trees_pair.jpg` (both renderers), `trees_close.jpg` (right, Forward+): at 12 m a lampshade crown on a slim trunk, from under it the pods hang inside the shade like lanterns; on the berm (the field frames) the curtain keeps a solid bell outline. |
 
 Remaining: (1) the cap sits a little apart from the curtain's top, so from above a ring of gap shows (the game's
 camera does not look down on the berm's trees); (2) the pods hide inside the curtain except from below or close by;
-(3) Forward+ not rendered.
+(3) the curtain's fronds are one card texture repeated 30 times; from close by, the same four-frond strip shows.
 
 ## creature_field_ground, rev 3 (field rev 2b: the scatter, 2026-10-25)
 
