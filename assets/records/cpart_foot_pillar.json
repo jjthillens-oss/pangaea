@@ -1,0 +1,112 @@
+{
+  "id": "cpart_foot_pillar",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature foot part (PROPOSED): an elephant's pillar foot, a wide wrinkled column on a thick padded sole with five broad rounded toenails round the front.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_foot_pillar.blend",
+  "generator_script": "tools/blender/make_more_creature_parts.py",
+  "export_path": "assets/export/cpart_foot_pillar.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.145,
+    "y_forward": 0.16,
+    "z_up": 0.102
+  },
+  "triangles": 1698,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartFootPillar_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartFootPillar_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartFootPillar_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_FootPillarNail",
+    "M_FootPillarSkin",
+    "M_FootPillarSole"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "FootPillar",
+    "FootPillarNails",
+    "FootPillarSole"
+  ],
+  "part_type": "foot_pillar",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "foot_pillar",
+    "footprint_radius_m": 0.087,
+    "sink_depth_m": 0.0,
+    "chiral": false,
+    "orientation": "ground",
+    "turn_limit_deg": 25,
+    "tilt_limit_deg": 15,
+    "centerline": "allowed",
+    "hosts": [
+      "limb_end"
+    ],
+    "role": "foot",
+    "handles": [
+      {
+        "key": "H1_Wide",
+        "meaning": "the base up to 25% wider, most at the sole",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Nails",
+        "meaning": "the toenails 35% bigger and standing out further",
+        "default_permille": 0
+      }
+    ],
+    "handles_note": "H1_Wide is on FootPillar, FootPillarSole and FootPillarNails (the sole and nails ride on the widening base); H2_Nails is on FootPillarNails only.",
+    "pivot_note": "Ground part: the sole sits on the pivot; the column is 0.05 m across at the ankle (z 0.09 m), where the limb tip meets it, and closes over its top in a shoulder inside the limb."
+  },
+  "paint_mix": {
+    "M_FootPillarSkin": 0.9,
+    "M_FootPillarNail": 0.05,
+    "M_FootPillarSole": 0.2
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0008,
+    "triangles_before": 10336,
+    "triangles_after": 1698
+  },
+  "review_notes": {
+    "gate1_shape": "pass: a wide round column (0.145 x 0.16 m, slightly longer front to back) flaring to a thick padded sole with a rounded rim, the toes' swellings round the front base under five broad half-moon toenails that rest on the sole's rim, a rounded shoulder closing over the top inside the limb. H1_Wide spreads the base (sole and nails ride on it), H2_Nails enlarges the nails; neither tears. In a scratch geometry preview the first draft's nails were round coins halfway up the column; the first build's sole shared the column's mesh and its material border decimated into a sawtooth of dark triangles (mat_side), so the sole is now its own closed mesh tucked inside the column and the border is a clean intersection line.",
+    "gate2_materials": "pass: three finishes - matt grey skin with wavy horizontal creases over a fine cracked grid, a dark rubbery sole band with crack lines, ivory nails with horizontal growth lines and a soft sheen.",
+    "gate3_neutral_light": "pass: under the neutral white rig the grazing light shows the creases and the toe swellings, the sole band stays dark without crushing, the nails bright without clipping.",
+    "gate4_godot": "unverified: not yet seen in the creature editor (more_parts_shots.gd)"
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_more_creature_parts.py, with helpers from tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

@@ -199,6 +199,22 @@ REVIEW = {
         "gate3_neutral_light": "pass: under the neutral white rig the web reads as a darker membrane between lit toes, "
                                "the pads stay dark without crushing and the claws bright without clipping.",
         "gate4_godot": G4_PENDING},
+    "cpart_foot_pillar": {
+        "gate1_shape": "pass: a wide round column (0.145 x 0.16 m, slightly longer front to back) flaring to a thick "
+                       "padded sole with a rounded rim, the toes' swellings round the front base under five broad "
+                       "half-moon toenails that rest on the sole's rim, a rounded shoulder closing over the top inside "
+                       "the limb. H1_Wide spreads the base (sole and nails ride on it), H2_Nails enlarges the nails; "
+                       "neither tears. In a scratch geometry preview the first draft's nails were round coins halfway "
+                       "up the column; the first build's sole shared the column's mesh and its material border "
+                       "decimated into a sawtooth of dark triangles (mat_side), so the sole is now its own closed "
+                       "mesh tucked inside the column and the border is a clean intersection line.",
+        "gate2_materials": "pass: three finishes - matt grey skin with wavy horizontal creases over a fine cracked "
+                           "grid, a dark rubbery sole band with crack lines, ivory nails with horizontal growth lines "
+                           "and a soft sheen.",
+        "gate3_neutral_light": "pass: under the neutral white rig the grazing light shows the creases and the toe "
+                               "swellings, the sole band stays dark without crushing, the nails bright without "
+                               "clipping.",
+        "gate4_godot": G4_PENDING},
 }
 
 
@@ -1677,38 +1693,46 @@ def _pillar_wrinkle(a, z):
     return 0.0006 * w ** 3 * _mp_smooth(z, 0.026, 0.036) * (1.0 - _mp_smooth(z, 0.086, 0.093))
 
 
+def _pillar_lathe(rows, seg=72):
+    """A closed lathe round the pillar's oval, capped at both ends: rows of (z, inset, fixed radius or None)."""
+    verts, faces, rings = [], [], []
+    for z, inset, r_fixed in rows:
+        ring = []
+        for j in range(seg):
+            a = 2.0 * math.pi * j / seg - math.pi
+            r = r_fixed if r_fixed is not None else _pillar_r(z) + _pillar_lobe(a, z) - _pillar_wrinkle(a, z) - inset
+            ring.append(len(verts))
+            verts.append((r * math.sin(a), r * math.cos(a) * PILLAR_Y + PILLAR_FWD, z))
+        rings.append(ring)
+    lo, hi = len(verts), len(verts) + 1
+    verts.append((0.0, PILLAR_FWD, rows[0][0]))
+    verts.append((0.0, PILLAR_FWD, rows[-1][0] + 0.0003))
+    for j in range(seg):
+        k = (j + 1) % seg
+        faces.append((lo, rings[0][k], rings[0][j]))
+        for i in range(len(rows) - 1):
+            faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
+        faces.append((rings[-1][j], rings[-1][k], hi))
+    return verts, faces
+
+
 def build_foot_pillar():
     """An elephant's pillar foot standing on its sole: a wide round column of wrinkled grey skin flaring to a thick
     padded sole with a rounded rim, five broad rounded toenails round the front on the toes' swellings, and a rounded
     shoulder closing over the top inside the limb's tip. H1_Wide spreads the base, H2_Nails enlarges the nails."""
-    seg = 72
-    zs = [0.0, 0.0012, 0.003, 0.0055, 0.008, 0.0095, PILLAR_SOLE]
+    # Two closed lathes, so the skin-to-sole border is a clean intersection line rather than a material border that
+    # the decimation would saw into teeth: the sole (the ground up to PILLAR_SOLE, then tucked inside the column) and
+    # the column (from just inside the sole up to the ankle and over its rounded shoulder).
+    sole_rows = [(z, 0.0, None) for z in (0.0, 0.0012, 0.003, 0.0055, 0.008, 0.0095, PILLAR_SOLE)]
+    sole_rows += [(0.0125, 0.0025, None), (0.0135, 0.009, None)]
+    col_rows = [(0.0095, 0.0016, None), (PILLAR_SOLE, 0.0, None)]
     z = PILLAR_SOLE
     while z < FOOT_ANKLE - 1e-6:
         z = min(FOOT_ANKLE, z + 0.0015)
-        zs.append(z)
-    rows = [(z, None) for z in zs] + [(z, r) for z, r in PILLAR_DOME]
-    verts, faces, face_mats, rings = [], [], [], []
-    for z, r_fixed in rows:
-        ring = []
-        for j in range(seg):
-            a = 2.0 * math.pi * j / seg - math.pi
-            r = r_fixed if r_fixed is not None else _pillar_r(z) + _pillar_lobe(a, z) - _pillar_wrinkle(a, z)
-            ring.append(len(verts))
-            verts.append((r * math.sin(a), r * math.cos(a) * PILLAR_Y + PILLAR_FWD, z))
-        rings.append(ring)
-    sole_c, top_c = len(verts), len(verts) + 1
-    verts.append((0.0, PILLAR_FWD, 0.0))
-    verts.append((0.0, PILLAR_FWD, PILLAR_DOME[-1][0] + 0.0003))
-    for j in range(seg):
-        k = (j + 1) % seg
-        faces.append((sole_c, rings[0][k], rings[0][j]))
-        face_mats.append(1)
-        for i in range(len(rows) - 1):
-            faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
-            face_mats.append(1 if rows[i + 1][0] <= PILLAR_SOLE + 1e-9 else 0)
-        faces.append((rings[-1][j], rings[-1][k], top_c))
-        face_mats.append(0)
+        col_rows.append((z, 0.0, None))
+    col_rows += [(z, 0.0, r) for z, r in PILLAR_DOME]
+    verts, faces = _pillar_lathe(col_rows)
+    sole_v, sole_f = _pillar_lathe(sole_rows)
 
     nail_v, nail_f, nail_frames = [], [], []
     for deg in PILLAR_NAILS:
@@ -1743,10 +1767,11 @@ def build_foot_pillar():
     nh = nail.math("ADD", nail.math("MULTIPLY", ridges, 0.25), ngrain)
     nail.bump(nh, 0.3, 0.0008)
     nail_mat = nail.out(_grey(nail, nail.remap(nh, 0.0, 0.9), 0.78), 0.42)
-    foot = bc.mesh_object("FootPillar", verts, faces, [skin_mat, sole_mat], face_mats)
+    foot = bc.mesh_object("FootPillar", verts, faces, [skin_mat])
+    sole_obj = bc.mesh_object("FootPillarSole", sole_v, sole_f, [sole_mat], parent=foot)
     nails = bc.mesh_object("FootPillarNails", nail_v, nail_f, [nail_mat], parent=foot)
     skin_mat.name, sole_mat.name, nail_mat.name = "M_FootPillarSkin", "M_FootPillarSole", "M_FootPillarNail"
-    baked = _bake_parts([foot, nails], "PartFootPillar", {"M_FootPillarSkin": sf.tint(cp._lin("#8E8782")),
+    baked = _bake_parts([foot, sole_obj, nails], "PartFootPillar", {"M_FootPillarSkin": sf.tint(cp._lin("#8E8782")),
                                                           "M_FootPillarSole": sf.tint(cp._lin("#4A4440")),
                                                           "M_FootPillarNail": sf.tint(cp._lin("#DCD2BF"))})
     pts = cp._check_pivot("foot_pillar", 0.0, ground=True)
@@ -1762,12 +1787,13 @@ def build_foot_pillar():
         return c + (co - c) * 1.35 + n * 0.0015
 
     handles = cp._shape_keys(foot, [("H1_Wide", wide, "the base up to 25% wider, most at the sole")])
+    cp._shape_keys(sole_obj, [("H1_Wide", wide, "")])
     handles += cp._shape_keys(nails, [("H1_Wide", wide, ""),
                                       ("H2_Nails", big_nails, "the toenails 35% bigger and standing out further")])[1:]
     rules = _rules("foot_pillar", round(reach + 0.001, 3), 0.0, "ground", ["limb_end"], 25, 15)
     rules["handles"] = handles
-    rules["handles_note"] = ("H1_Wide is on FootPillar and FootPillarNails (the nails ride on the widening base); "
-                             "H2_Nails is on FootPillarNails only.")
+    rules["handles_note"] = ("H1_Wide is on FootPillar, FootPillarSole and FootPillarNails (the sole and nails ride on "
+                             "the widening base); H2_Nails is on FootPillarNails only.")
     rules["pivot_note"] = ("Ground part: the sole sits on the pivot; the column is 0.05 m across at the ankle (z 0.09 m), "
                            "where the limb tip meets it, and closes over its top in a shoulder inside the limb.")
     return {"purpose": "Creature foot part (PROPOSED): an elephant's pillar foot, a wide wrinkled column on a thick "
@@ -1832,8 +1858,8 @@ def _mp_beam_r(s, a, length, r_base, r_tip, burr_s, close=True):
     r *= 1.0 + 0.05 * math.cos(5.0 * a + 2.5 * t) * (1.0 - 0.7 * t)
     if close and t > 0.9:
         r *= math.sqrt(max(0.0, 1.0 - ((t - 0.9) / 0.1) ** 2))
-    knobs = 1.0 + 0.3 * math.sin(11.0 * a) * math.sin(4.0 * a + 1.3)
-    return r + 0.0068 * math.exp(-((s - burr_s) / 0.0042) ** 2) * knobs
+    knobs = 1.0 + 0.4 * math.sin(13.0 * a) * math.sin(5.0 * a + 1.3)
+    return r + 0.0088 * math.exp(-((s - burr_s) / 0.005) ** 2) * knobs
 
 
 def _mp_tine(root, d0, length, r0, bend, up=Vector((0.0, 0.0, 1.0)), steps=12, sides=14):
@@ -1866,18 +1892,40 @@ def _mp_tine(root, d0, length, r0, bend, up=Vector((0.0, 0.0, 1.0)), steps=12, s
     return v, f, path
 
 
-def _mp_antler_material(name, lo=0.6, pearl_top=0.12, tip_from=0.06, tip_to=0.3):
-    """Antler bone: fine gutters along the beam, pearled knobs toward the base fading out by pearl_top, darker and
-    rougher low down and paler and smoother toward the tips (by height)."""
+def _mp_antler_material(name, lo=0.36, pearl_top=0.12, height_from=0.03, height_to=0.25):
+    """Antler bone: dark and pearled with knobs toward the base (fading out by pearl_top), lighter up the beam, with
+    shallow gutters running along it, and pale, smoother polished tips where the mesh's "Tip" attribute (0 to 1, set
+    per vertex by _mp_tip_weights, stored sRGB-encoded by bc.mesh_object) rises."""
     sh = sf.Shader(name)
-    gutter = sh.noise(55.0, 3.0, vector=mp._stretched(sh, (6.0, 6.0, 0.25)))
-    pearl = sh.remap(sh.voronoi(300.0, 0.9), 0.3, 0.05)
-    knobs = sh.math("MULTIPLY", pearl, sh.remap(sh.axis("Z"), pearl_top, 0.025))
-    sh.bump(sh.math("ADD", sh.math("MULTIPLY", gutter, 0.7), sh.math("MULTIPLY", knobs, 0.8)), 0.45, 0.0012)
-    tip = sh.remap(sh.axis("Z"), tip_from, tip_to)
-    fac = sh.math("ADD", sh.math("MULTIPLY", sh.remap(gutter, 0.3, 0.7), 0.45), sh.math("MULTIPLY", tip, 0.55))
-    fac = sh.math("SUBTRACT", fac, sh.math("MULTIPLY", knobs, 0.2))
-    return sh.out(_grey(sh, fac, lo), sh.remap(sh.axis("Z"), tip_from, tip_to, 0.72, 0.45))
+    tip = sh.math("POWER", sh.node("ShaderNodeVertexColor", layer_name="Tip").outputs["Color"], 2.2)
+    gutter = sh.noise(70.0, 3.0, vector=mp._stretched(sh, (7.0, 7.0, 0.25)))
+    ridge = sh.remap(gutter, 0.42, 0.62)                        # 0 down the gutters, 1 along the ridges
+    pearl = sh.remap(sh.voronoi(260.0, 0.9), 0.32, 0.05)        # 1 on the knobs
+    knobs = sh.math("MULTIPLY", sh.math("MULTIPLY", pearl, sh.remap(sh.axis("Z"), pearl_top, 0.02)),
+                    sh.math("SUBTRACT", 1.0, tip))
+    sh.bump(sh.math("ADD", sh.math("MULTIPLY", ridge, 0.6), sh.math("MULTIPLY", knobs, 0.9)), 0.6, 0.0015)
+    fac = sh.math("ADD", 0.22, sh.math("MULTIPLY", sh.remap(sh.axis("Z"), height_from, height_to), 0.38))
+    fac = sh.math("ADD", fac, sh.math("MULTIPLY", ridge, 0.18))
+    fac = sh.math("ADD", sh.math("SUBTRACT", fac, sh.math("MULTIPLY", knobs, 0.1)), sh.math("MULTIPLY", tip, 0.6))
+    return sh.out(_grey(sh, fac, lo), sh.math("SUBTRACT", 0.74, sh.math("MULTIPLY", tip, 0.4)))
+
+
+def _mp_tip_weights(verts, path, tip_from, tip_to, first=0):
+    """For the tube vertices verts[first:] built along `path`: each one's weight toward the tube's tip (0 below
+    tip_from of the way along, 1 past tip_to), for an antler material's pale tips."""
+    cum = _mp_arc_length(path)
+    out = []
+    for v in verts[first:]:
+        v = Vector(v)
+        i = min(range(len(path)), key=lambda j: (path[j] - v).length_squared)
+        out.append(_mp_smooth(cum[i] / cum[-1], tip_from, tip_to))
+    return out
+
+
+def _mp_drop_tip(obj):
+    attr = obj.data.color_attributes.get("Tip")
+    if attr is not None:
+        obj.data.color_attributes.remove(attr)       # baked into the albedo; the export does not need it
 
 
 def _mp_antler_handles_rot(pivot, axis, angle):
@@ -1910,19 +1958,22 @@ def build_antler_branched():
     length = cum[-1]
     burr_s = next(cum[i] for i, p in enumerate(path) if p.z >= ANTLER_BURR.z)
     verts, faces, _ = cp._tube(path, lambda i, a: _mp_beam_r(cum[i], a, length, 0.0185, 0.0078, burr_s), 18)
+    tips = _mp_tip_weights(verts, path, 0.8, 0.97)
     for share, d0, tlen, r0, bend in BRANCHED_TINES:
         i = min(range(len(cum)), key=lambda j: abs(cum[j] - share * length))
-        tv, tf, _ = _mp_tine(path[i], Vector(d0), tlen, r0, bend)
+        tv, tf, tpath = _mp_tine(path[i], Vector(d0), tlen, r0, bend)
+        tips += _mp_tip_weights(tv, tpath, 0.45, 0.92)
         bc.append(verts, faces, tv, tf)
     ped_v, ped_f = _mp_pedicle(0.021)
 
     bone = _mp_antler_material("M_AntlerBranchedProc")
     fur = _mp_fur_material("M_AntlerBranchedPedicleProc", lo=0.6)
-    antler = bc.mesh_object("AntlerBranched", verts, faces, [bone])
+    antler = bc.mesh_object("AntlerBranched", verts, faces, [bone], vertex_colors=("Tip", [(w, w, w) for w in tips]))
     pedicle = bc.mesh_object("AntlerBranchedPedicle", ped_v, ped_f, [fur], parent=antler)
     bone.name, fur.name = "M_AntlerBranched", "M_AntlerBranchedPedicle"
-    baked = _bake_parts([antler, pedicle], "PartAntlerBranched", {"M_AntlerBranched": sf.tint(cp._lin("#A98B63")),
+    baked = _bake_parts([antler, pedicle], "PartAntlerBranched", {"M_AntlerBranched": sf.tint(cp._lin("#D2BC94")),
                                                                   "M_AntlerBranchedPedicle": sf.tint(cp._lin("#6E5646"))})
+    _mp_drop_tip(antler)
     pts = cp._check_pivot("antler_branched", ANTLER_SINK)
     foot = cp._footprint(pts)
     mean_x = sum(p.x for p in pts) / len(pts)
@@ -2018,6 +2069,7 @@ def build_antler_palmate():
         return PALM_R * max(0.0, 1.0 - 0.32 * (i - bsteps)) if i < len(beam_path) - 1 else 0.0
 
     verts, faces, _ = cp._tube(beam_path, beam_r, 18)
+    tips = [0.0] * len(verts)
     W0 = Vector((0.0, -0.3, 1.0)).normalized()
     W = (W0 - U * W0.dot(U)).normalized()
     N = W.cross(U)                                          # forward and a little up: the cupped face
@@ -2040,12 +2092,14 @@ def build_antler_palmate():
             base, lobes = _palm_outline(phi)
             rr = base * rho + lobes * _mp_smooth(rho, 0.55, 0.995)     # the points grow from the outer part only
             x, y = math.cos(phi) * rr, math.sin(phi) * rr
+            tips.append(_mp_smooth((rr - base) / lobes, 0.35, 0.9) if lobes > 0.012 else 0.0)
             ring.append(len(verts))
             verts.append(tuple(palm_at(x, y, _palm_th(phi) * nn + _palm_cup(x, y, phi))))
         rings.append(ring)
     back_c, front_c = len(verts), len(verts) + 1
     verts.append(tuple(palm_at(0.0, 0.0, -PALM_TH + _palm_cup(0.0, 0.0, 0.0))))
     verts.append(tuple(palm_at(0.0, 0.0, PALM_TH + _palm_cup(0.0, 0.0, 0.0))))
+    tips += [0.0, 0.0]
     for j in range(KP):
         k = (j + 1) % KP
         faces.append((back_c, rings[0][k], rings[0][j]))
@@ -2053,17 +2107,19 @@ def build_antler_palmate():
             faces.append((rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]))
         faces.append((rings[-1][j], rings[-1][k], front_c))
     bi = min(range(bsteps + 1), key=lambda j: abs(cum[j] - 0.4 * blen))
-    tv, tf, _ = _mp_tine(beam_path[bi], Vector((0.35, 1.0, 0.3)), 0.066, 0.0105, 0.5)       # the brow tine
+    tv, tf, tpath = _mp_tine(beam_path[bi], Vector((0.35, 1.0, 0.3)), 0.066, 0.0105, 0.5)       # the brow tine
+    tips += _mp_tip_weights(tv, tpath, 0.45, 0.92)
     bc.append(verts, faces, tv, tf)
     ped_v, ped_f = _mp_pedicle(0.023)
 
-    bone = _mp_antler_material("M_AntlerPalmateProc", lo=0.62, pearl_top=0.08, tip_from=0.08, tip_to=0.27)
+    bone = _mp_antler_material("M_AntlerPalmateProc", lo=0.42, pearl_top=0.09, height_from=0.06, height_to=0.24)
     fur = _mp_fur_material("M_AntlerPalmatePedicleProc", lo=0.6)
-    antler = bc.mesh_object("AntlerPalmate", verts, faces, [bone])
+    antler = bc.mesh_object("AntlerPalmate", verts, faces, [bone], vertex_colors=("Tip", [(w, w, w) for w in tips]))
     pedicle = bc.mesh_object("AntlerPalmatePedicle", ped_v, ped_f, [fur], parent=antler)
     bone.name, fur.name = "M_AntlerPalmate", "M_AntlerPalmatePedicle"
-    baked = _bake_parts([antler, pedicle], "PartAntlerPalmate", {"M_AntlerPalmate": sf.tint(cp._lin("#BBA582")),
+    baked = _bake_parts([antler, pedicle], "PartAntlerPalmate", {"M_AntlerPalmate": sf.tint(cp._lin("#D6C3A0")),
                                                                  "M_AntlerPalmatePedicle": sf.tint(cp._lin("#6E5646"))})
+    _mp_drop_tip(antler)
     pts = cp._check_pivot("antler_palmate", ANTLER_SINK)
     foot = cp._footprint(pts)
     mean_x = sum(p.x for p in pts) / len(pts)
