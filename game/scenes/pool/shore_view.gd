@@ -1,25 +1,31 @@
 class_name ShoreView
 extends Node3D
-## The shore (the cell-to-creature link, ShoreLink): art's shore piece (assets/records/shore_piece.json,
-## docs/art/shore_piece.md). A sand landing that rises out of the deep toward its crest in the north, wholly below
-## the swim band (it has no collider), with giant grains half sunk along its brink; a shaft of shallow-water light
-## standing on it ("Swim into its light"); and a light ring on the swim plane at the offer's reach
-## (ShoreLink.REACH_TM), so the place to crawl out reads from far off and the spot where the offer opens reads up
-## close. Authored at cell size 4 in tm, the pivot on the shore point. The pool places it from the save every frame
-## (place()), in the plane's local frame: it is world_rebuilt, so a rebase needs nothing more.
+## The pool's sea edge (ShoreLink's first link, microscopic to aquatic): art's shore piece
+## (assets/records/shore_piece.json, docs/art/shore_piece.md). A sandbar at the pool's mouth that rises out of the
+## deep toward its crest in the north, wholly below the swim band (it has no collider), with giant grains half sunk
+## along its brink; a shaft of shallow-water light standing on it and pooling on the sand ("Swim into its light");
+## and a light ring on the swim plane at the offer's reach (ShoreLink.REACH_TM), so the way out to sea reads from
+## far off and the spot where the offer opens reads up close. Authored at cell size 4 in tm, the pivot on the shore
+## point. The pool places it from the save every frame (place()), in the plane's local frame: it is world_rebuilt,
+## so a rebase needs nothing more. When the shore rises during play (rise()), the piece comes up out of the deep
+## over RISE_S instead of appearing under the cell at once.
 
 const SCENE := "res://assets/export/shore_piece.glb"
-## The light's engine material (additive, unshaded, fog-free), mapped onto Shaft and Reach in the .glb.import.
+## The light's engine material (additive, unshaded, fog-free), mapped onto Shaft, Reach and Glow in the .glb.import.
 const LIGHT_MATERIAL := "res://assets/export/M_ShoreLight.tres"
 ## The nodes that draw with it.
-const LIGHT_NODES: Array[StringName] = [&"Shaft", &"Reach"]
+const LIGHT_NODES: Array[StringName] = [&"Shaft", &"Reach", &"Glow"]
 ## The reach ring's mid radius as authored (the record's reach_radius_m); the view scales it to ShoreLink.REACH_TM.
 const AUTHORED_REACH_M := 4.0
 const PULSE_HZ := 0.5
 const PULSE_SHARE := 0.25
+## rise(): the piece starts this far down (m, under the 43 m bank's own -20 m skirt, deep in the fog) and comes up
+## over RISE_S seconds of play, easing out; the light comes on with it.
+const RISE_DEPTH_M := 16.0
+const RISE_S := 3.0
 ## M_ShoreLight's gains are the light's look in Forward+. Compatibility tonemaps each additive layer before it blends
 ## (docs/TOOLCHAIN.md), so the dim shaft and the bright ring drift apart there: the view scales them by this (x the
-## shaft, y the ring), as ZoneLights.strength_for() does for its patches. Measured at the pulse's top at the reach
+## shaft and the glow, y the ring), as ZoneLights.strength_for() does for its patches. Measured at the pulse's top at the reach
 ## edge and on the shore point (docs/art/shore_piece.md, Gate 4): the shaft matches within 4 L*, the ring reads about
 ## 3 L* brighter in Compatibility.
 const RENDERER_GAIN_COMPATIBILITY := Vector2(1.0, 0.9)
@@ -28,6 +34,8 @@ var _model: Node3D
 ## This view's own copy of M_ShoreLight: pulse() sets its strength, never the shared file's.
 var _light: ShaderMaterial
 var _t := 0.0
+## rise()'s progress, 0 to 1 (1: at rest, where a new view and a loaded save start).
+var _rise := 1.0
 
 
 func _init() -> void:
@@ -71,10 +79,33 @@ func place(local: Vector2) -> void:
 	visible = true
 
 
-## Advances the pulse by `delta` seconds (the pool passes 0 while paused).
+## The shore rose during play (the pool's shore_risen): the piece drops to RISE_DEPTH_M and pulse() brings it up.
+func rise() -> void:
+	_rise = 0.0
+	pulse(0.0)
+
+
+## Advances the pulse, and a rise, by `delta` seconds (the pool passes 0 while paused).
 func pulse(delta: float) -> void:
 	_t += delta
-	_light.set_shader_parameter(&"strength", 1.0 + PULSE_SHARE * sin(TAU * PULSE_HZ * _t))
+	if _rise < 1.0:
+		_rise = minf(1.0, _rise + delta / RISE_S)
+		_apply_rise()
+	_light.set_shader_parameter(&"strength", rise_share() * rise_share() * (1.0 + PULSE_SHARE * sin(TAU * PULSE_HZ * _t)))
+
+
+## How far up the piece has come, 0 (just risen, RISE_DEPTH_M down) to 1 (at rest), eased out.
+func rise_share() -> float:
+	return 1.0 - pow(1.0 - _rise, 3.0)
+
+
+## Whether a rise is still under way.
+func rising() -> bool:
+	return _rise < 1.0
+
+
+func _apply_rise() -> void:
+	_model.position.y = -RISE_DEPTH_M * (1.0 - rise_share())
 
 
 ## The light's current strength (this view's copy of M_ShoreLight).

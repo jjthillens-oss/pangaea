@@ -3,7 +3,7 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "The shore (cell-to-creature link): a sand landing seen from above at cell size 4, rising out of the deep toward its crest in the north, with giant sand grains half sunk along its south brink, a shaft of shallow-water light where the cell crawls out and a light ring on the swim plane at the reach. No collision: everything solid lies below the swim band.",
+  "purpose": "The pool's sea edge (ShoreLink, microscopic to aquatic): the sandbar at the pool's mouth that the cell swims over into the open sea, seen from above at cell size 4, rising out of the deep toward its crest in the north, with giant sand grains half sunk along its south brink, a shaft of shallow-water light that pools on the sand where the cell swims out, and a light ring on the swim plane at the reach. No collision: everything solid lies below the swim band.",
   "category": "landmark",
   "source_blend": "assets/source/blender/shore_piece.blend",
   "generator_script": "tools/blender/make_shore_piece.py",
@@ -17,7 +17,7 @@
     "y_forward": 41.655,
     "z_up": 24.5
   },
-  "triangles": 5158,
+  "triangles": 5446,
   "triangle_budget": 6000,
   "textures": [
     {
@@ -56,6 +56,7 @@
   "animations": [],
   "sockets": [],
   "nodes": [
+    "Glow",
     "Reach",
     "Shaft",
     "ShoreBank"
@@ -69,7 +70,8 @@
   "engine_material": "res://assets/export/M_ShoreLight.tres",
   "light_nodes": [
     "Shaft",
-    "Reach"
+    "Reach",
+    "Glow"
   ],
   "yaw_rule": "fixed",
   "authored_at_size": 4,
@@ -82,13 +84,20 @@
   "light_weight": {
     "Shaft": [
       0.45,
+      0.0,
       0.0
     ],
     "Reach": [
       1.0,
+      1.0,
+      0.0
+    ],
+    "Glow": [
+      1.0,
+      0.0,
       1.0
     ],
-    "meaning": "COLOR_0 raw: red the part's strength, green 0 shaft / 1 ring"
+    "meaning": "COLOR_0 raw: red the part's strength, green 1 the ring, blue 1 the glow (else the shaft)"
   },
   "grains": 28,
   "fragments": 2,

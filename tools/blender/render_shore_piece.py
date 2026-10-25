@@ -38,9 +38,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lookdev as ld  # noqa: E402
 
 DEFAULT_BLEND = os.path.join(ld.ROOT, "assets", "source", "blender", "shore_piece.blend")
-DEFAULT_OUT = "/home/user/xdg/shore/scratch/gates"
+DEFAULT_OUT = os.path.join(ld.ROOT, "builds", "shore_piece", "gates")   # builds/ is gitignored
 SCALE = 0.04                    # about 33 m of landing becomes 1.3 units under the 1 m review rig
-LIGHT_NODES = ("Shaft", "Reach")
+LIGHT_NODES = ("Shaft", "Reach", "Glow")
 FOOD, THREAT = "#CFE86A", "#D9466B"
 
 

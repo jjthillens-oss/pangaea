@@ -513,6 +513,7 @@ func _update_shore(delta: float) -> void:
 		return
 	if not _shore_seen:
 		_shore_seen = true
+		shore.rise()
 		shore_risen.emit()
 	var local := sim.world.local_of_abs(p[0], p[1])
 	shore.place(local)

@@ -1,7 +1,8 @@
-"""The shore piece (asset id shore_piece, docs/art/shore_piece.md): the sand landing where the
-cell-to-creature link ends, in Blender. All of it is PROPOSED design, awaiting the owner's look review.
+"""The shore piece (asset id shore_piece, docs/art/shore_piece.md): the sandbar at the pool's mouth, where the
+cell swims out of the pool into the open sea (ShoreLink's first link, the sea edge), in Blender. All of it is
+PROPOSED design, awaiting the owner's look review.
 
-Three nodes, the pivot on the shore point on the swim plane (Blender z = 0), front +Y = north:
+Four nodes, the pivot on the shore point on the swim plane (Blender z = 0), front +Y = north:
 
 - ShoreBank: a sand landing wholly below the swim band (no vertex above SAND_TOP_M, -1.6 m), seen
   from above at cell size 4 (1 m = 1 tm at the size shown). A lobed shelf with a spit to the south-east
@@ -11,21 +12,26 @@ Three nodes, the pivot on the shore point on the swim plane (Blender z = 0), fro
   cell is about one grain across) lie half sunk along the south brink and spill down the ramp, with
   two broken glass valve fragments for the micro world. One baked material, M_ShorePiece (albedo,
   ORM, normal at 1024 px), from a procedural shader: a wet-to-dry ramp by height, ripple marks
-  along the contours, mineral flecks, smooth grains and glassy fragments.
-- Shaft: an open cone of light standing on the landing, from the sand to +4.5 m (the toast says
-  "Swim into its light"). UV v runs 0 at the bottom to 1 at the top.
+  along the contours, mineral flecks, frosted grains and glassy fragments.
+- Shaft: an open cone of light standing on the landing, its foot seated on the sand, up to +4.5 m (the
+  toast says "Swim into its light"). UV v runs 0 at the bottom to 1 at the top.
+- Glow: the pool of light the shaft lays on the sand, a disc that follows the shelf a few cm above it,
+  so the inside of the shaft's foot reads lit rather than as a dark hole. UV v runs 0 at the centre to 1
+  at the rim.
 - Reach: a flat annulus on the swim plane (z -0.05) centred on ShoreLink.REACH_TM (4 m), where the
   offer opens. UV v runs 0 inside to 1 outside.
 
-Shaft and Reach are engine-drawn: their material M_ShoreLight maps (in the .glb.import, with
+Shaft, Reach and Glow are engine-drawn: their material M_ShoreLight maps (in the .glb.import, with
 --import) to assets/export/M_ShoreLight.tres, an additive, unshaded, fog-free shader. COLOR_0 (the
 LightWeight attribute, stored as raw values) tells the parts apart: red is the part's strength,
 green 0 for the shaft (brightest on the sand, fading upward and toward its silhouette) and 1 for the
-ring (a soft band across v). glTF flips v; the shader flips it back.
+ring (a soft band across v), blue 1 for the glow (brightest in the middle, soft at the rim). glTF
+flips v; the shader flips it back.
 
 Run (with the bpy module, or blender --background --python):
   python tools/blender/make_shore_piece.py              build, bake, write the .blend, GLB, record and M_ShoreLight.tres
-  python tools/blender/make_shore_piece.py --rough      geometry and procedural shader only, saved to --out (no repo writes)
+  python tools/blender/make_shore_piece.py --rough      geometry and procedural shader only, saved to --out (default
+                                                        builds/shore_piece/, which Git ignores; no tracked writes)
   python tools/blender/make_shore_piece.py --root=DIR   as the default, but every output goes under DIR instead of the repo
   python tools/blender/make_shore_piece.py --import     after `godot --headless --import`: map M_ShoreLight in the .glb.import
   python tools/blender/make_shore_piece.py --light      rewrite only M_ShoreLight.tres (light tuning; no bake, no export)
@@ -55,7 +61,7 @@ PROVENANCE = ("Authored procedurally in Blender by tools/blender/make_shore_piec
 BUDGET = 6000
 TEXTURE_PX = 1024
 SEED = 4248
-ROUGH_OUT = "/home/user/xdg/shore/scratch/shore_piece_rough.blend"
+ROUGH_OUT = os.path.join(bc.ROOT, "builds", "shore_piece", "shore_piece_rough.blend")   # builds/ is gitignored
 
 # --- Contract numbers (the record carries them; tests/test_shore_piece.gd reads the record) -----------------
 SAND_TOP_M = -1.6          # the landing's top: under the ambience contract's decor-free band (-1.5 to +0.5)
@@ -64,11 +70,13 @@ REACH_M = 4.0              # ShoreLink.REACH_TM: the reach ring's mid radius
 REACH_HALF_WIDTH = 0.3     # the ring spans 3.7 to 4.3 m
 REACH_Z = -0.05
 SHAFT_TOP_M = 4.5
-SHAFT_BOTTOM_M = SAND_TOP_M
 SHAFT_R_TOP, SHAFT_R_BOTTOM = 1.8, 2.8
+LIGHT_LIFT_M = 0.04        # the shaft's foot and the glow sit this far above the sand (they follow ground())
+GLOW_R = SHAFT_R_BOTTOM    # the glow fills the shaft's foot
 SKIRT_BOTTOM_M = -20.0
 SHAFT_WEIGHT = 0.45        # LightWeight red: the shaft draws dimmer than the ring
 RING_WEIGHT = 1.0
+GLOW_WEIGHT = 1.0
 LIGHT_TINT = "#FFD486"     # warm sunlight through shallow water: LAB h 82.9, 31.5 degrees from the food green
 # M_ShoreLight's look in Forward+ (the shipped renderer). ShoreView scales the two gains for Compatibility, which
 # tonemaps each additive layer before it blends (docs/TOOLCHAIN.md), so dim and bright layers drift apart there.
@@ -78,6 +86,8 @@ SHAFT_FADE = 0.4           # the shaft fades from this share of its height (from
 SHAFT_EDGE = 1.5           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
 NEAR_TOP = 0.6             # the wall toward the camera is gone above this share of the shaft's height (it would
                            # light the cell standing in the shaft); the far wall carries the column
+GLOW_GAIN = 0.10           # the glow's strength (times LightWeight red, and the shaft's renderer gain)
+GLOW_CORE = 0.45           # the glow is even out to this share of its radius, then falls softly to 0 at the rim
 # The pool's sun and ambient light the sand at about 1.9 times its albedo on screen (Gate 4, docs/art/shore_piece.md):
 # the baked albedo is scaled once so the shelf reads L* 36 to 48 behind the cell, under the coral cell.
 ALBEDO_GAIN = 0.27
@@ -469,19 +479,22 @@ def _strip_attributes(obj):
 
 
 def build_light(mat):
-    """The Shaft (open cone) and the Reach ring, with LightWeight as raw COLOR_0 values."""
+    """The Shaft (open cone, its foot on the sand), the Reach ring and the Glow on the sand, with LightWeight
+    as raw COLOR_0 values."""
     seg = 24
-    heights = [SHAFT_BOTTOM_M + (SHAFT_TOP_M - SHAFT_BOTTOM_M) * i / 4 for i in range(5)]
+    rows = 5
     verts, faces, uvs = [], [], []
-    for z in heights:
-        f = (z - SHAFT_BOTTOM_M) / (SHAFT_TOP_M - SHAFT_BOTTOM_M)
+    for i in range(rows):
+        f = i / (rows - 1)
         r = SHAFT_R_BOTTOM + (SHAFT_R_TOP - SHAFT_R_BOTTOM) * f
         for j in range(seg + 1):                       # a duplicated seam column so u runs 0 to 1
             a = math.tau * j / seg
-            verts.append((r * math.cos(a), r * math.sin(a), z))
+            x, y = r * math.cos(a), r * math.sin(a)
+            bottom = ground(SHAFT_R_BOTTOM * math.cos(a), SHAFT_R_BOTTOM * math.sin(a)) + LIGHT_LIFT_M
+            verts.append((x, y, bottom + (SHAFT_TOP_M - bottom) * f))
             uvs.append((j / seg, f))
     cols = seg + 1
-    for i in range(len(heights) - 1):
+    for i in range(rows - 1):
         for j in range(seg):
             faces.append((i * cols + j, i * cols + j + 1, (i + 1) * cols + j + 1, (i + 1) * cols + j))
     shaft = bc.mesh_object("Shaft", verts, faces, [mat], fix_normals=False)
@@ -503,7 +516,28 @@ def build_light(mat):
     reach = bc.mesh_object("Reach", verts, faces, [mat], fix_normals=False)
     _per_vertex_uv(reach, uvs)
     _weight(reach, (RING_WEIGHT, 1.0, 0.0))
-    return shaft, reach
+
+    # The glow: a fan of rings out to the shaft's foot, each vertex on the sand plus the lift.
+    seg = 32
+    fracs = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    verts, faces, uvs = [(0.0, 0.0, ground(0.0, 0.0) + LIGHT_LIFT_M)], [], [(0.5, 0.0)]
+    for i, t in enumerate(fracs[1:]):
+        for j in range(seg + 1):
+            a = math.tau * j / seg
+            x, y = GLOW_R * t * math.cos(a), GLOW_R * t * math.sin(a)
+            verts.append((x, y, ground(x, y) + LIGHT_LIFT_M))
+            uvs.append((j / seg, t))
+    cols = seg + 1
+    for j in range(seg):
+        faces.append((0, 1 + j, 1 + j + 1))
+    for i in range(len(fracs) - 2):
+        for j in range(seg):
+            a0, b0 = 1 + i * cols + j, 1 + (i + 1) * cols + j
+            faces.append((a0, b0, b0 + 1, a0 + 1))
+    glow = bc.mesh_object("Glow", verts, faces, [mat], fix_normals=False)
+    _per_vertex_uv(glow, uvs)
+    _weight(glow, (GLOW_WEIGHT, 0.0, 1.0))
+    return shaft, reach, glow
 
 
 def _per_vertex_uv(obj, uvs):
@@ -571,9 +605,9 @@ def sand_shader():
                     sh.remap(sh.noise(2.0, 1.0, vector=sh.vmath("ADD", sh.pos, (3.0, 9.0, 0.0))), 0.55, 0.7))
     sand = sh.mix(sh.math("MULTIPLY", amber, 0.8), sand, "#9A7444")
 
-    # Grains: quartz cream (most), amber feldspar, umber; faint frosting and inclusions.
+    # Grains: matte, frosted quartz cream (most), amber feldspar, a few umber; faint frosting and inclusions.
     g_mottle = sh.noise(3.5, 3.0, 0.6)
-    grain = sh.ramp(tone, [(0.0, "#A3967D"), (0.5, "#A89A80"), (0.52, "#9E7A4F"), (0.8, "#A27D51"), (0.82, "#5D4A3A"), (1.0, "#625040")])
+    grain = sh.ramp(tone, [(0.0, "#ADA089"), (0.6, "#B2A48B"), (0.62, "#9E7A4F"), (0.9, "#A27D51"), (0.92, "#5D4A3A"), (1.0, "#625040")])
     grain = sh.mix(sh.math("MULTIPLY", sh.math("SUBTRACT", g_mottle, 0.5), 0.5), grain, "#FFFFFF", "OVERLAY")
     # Glass: a pale grey-green silica with radial ribs and rings of pores from the valve's centre.
     angle = sh.math("ARCTAN2", ly, lx)
@@ -590,7 +624,7 @@ def sand_shader():
 
     rough_sand = sh.remap(dry, 0.0, 1.0, 0.6, 0.9)
     rough = sh.math("ADD", sh.math("MULTIPLY", sh.math("SUBTRACT", 1.0, sh.math("MAXIMUM", is_grain, is_glass)), rough_sand),
-                    sh.math("ADD", sh.math("MULTIPLY", is_grain, 0.42), sh.math("MULTIPLY", is_glass, 0.16)))
+                    sh.math("ADD", sh.math("MULTIPLY", is_grain, 0.58), sh.math("MULTIPLY", is_glass, 0.16)))
 
     # Relief: ripples (about 0.04 m), swells (about 0.05 m), sand texture; smooth grains; glass ribs.
     h_sand = sh.math("ADD", sh.math("MULTIPLY", crest_f, 1.0), sh.math("MULTIPLY", swell, sh.math("MULTIPLY", rip_fade, 0.6)))
@@ -649,16 +683,26 @@ def _checks(bank, stats):
     mid = radii[len(radii) // 2]
     k._check(abs(mid - REACH_M) <= 0.01, f"shore_piece: reach mid radius {mid}")
     k._check(all(abs(v.co.z - REACH_Z) < 1e-5 for v in reach.data.vertices), "shore_piece: the reach ring is not flat at -0.05")
+    for name in ("Glow", "Shaft"):
+        for v in bpy.data.objects[name].data.vertices:
+            if name == "Shaft" and math.hypot(v.co.x, v.co.y) < SHAFT_R_BOTTOM - 1e-4:
+                continue                                 # only the shaft's foot sits on the sand
+            lift = v.co.z - ground(v.co.x, v.co.y)
+            k._check(abs(lift - LIGHT_LIFT_M) < 1e-4, f"shore_piece: {name} sits {lift:.3f} m above the sand at "
+                     f"({v.co.x:.2f}, {v.co.y:.2f}), not {LIGHT_LIFT_M}")
+    k._check(max(v.co.z for v in bpy.data.objects["Glow"].data.vertices) <= SOLID_MAX_M,
+             "shore_piece: the glow rises into the swim band")
     tris = bc.triangle_count()
     k._check(tris <= BUDGET, f"shore_piece: {tris} triangles is over {BUDGET}")
 
 
 def fields(stats, textures):
     return {
-        "purpose": ("The shore (cell-to-creature link): a sand landing seen from above at cell size 4, rising out of the deep "
-                    "toward its crest in the north, with giant sand grains half sunk along its south brink, a shaft of "
-                    "shallow-water light where the cell crawls out and a light ring on the swim plane at the reach. No "
-                    "collision: everything solid lies below the swim band."),
+        "purpose": ("The pool's sea edge (ShoreLink, microscopic to aquatic): the sandbar at the pool's mouth that the "
+                    "cell swims over into the open sea, seen from above at cell size 4, rising out of the deep toward its "
+                    "crest in the north, with giant sand grains half sunk along its south brink, a shaft of shallow-water "
+                    "light that pools on the sand where the cell swims out, and a light ring on the swim plane at the "
+                    "reach. No collision: everything solid lies below the swim band."),
         "category": "landmark", "kind": "shore",
         "pivot": "the shore point on the swim plane (Godot y = 0); the shelf's crest lies about 1.8 m north (-Z)",
         "reach_radius_m": REACH_M,
@@ -666,14 +710,14 @@ def fields(stats, textures):
         "bottom_m": SKIRT_BOTTOM_M,
         "top_m": SHAFT_TOP_M,
         "engine_material": "res://assets/export/M_ShoreLight.tres",
-        "light_nodes": ["Shaft", "Reach"],
+        "light_nodes": ["Shaft", "Reach", "Glow"],
         "yaw_rule": "fixed",
         "authored_at_size": 4,
         "units": "1 m = 1 tm at the size shown",
         "dressings": [], "scale_range": [1.0, 1.0],
         "vertex_colors_attribute": "LightWeight",
-        "light_weight": {"Shaft": [SHAFT_WEIGHT, 0.0], "Reach": [RING_WEIGHT, 1.0],
-                         "meaning": "COLOR_0 raw: red the part's strength, green 0 shaft / 1 ring"},
+        "light_weight": {"Shaft": [SHAFT_WEIGHT, 0.0, 0.0], "Reach": [RING_WEIGHT, 1.0, 0.0], "Glow": [GLOW_WEIGHT, 0.0, 1.0],
+                         "meaning": "COLOR_0 raw: red the part's strength, green 1 the ring, blue 1 the glow (else the shaft)"},
         "grains": stats["grains"], "fragments": stats["fragments"],
         "texel_px_per_m": stats["texel_px_per_m"],
         "dependencies": [],
@@ -684,13 +728,15 @@ def fields(stats, textures):
 SHORE_LIGHT_TRES = """[gd_resource type="ShaderMaterial" load_steps=2 format=3]
 
 [sub_resource type="Shader" id="Shader_shore_light"]
-code = "// The shore's light (shore_piece: the Shaft and the Reach ring), additive and unlit, no fog.
-// Written by tools/blender/make_shore_piece.py. COLOR_0 (LightWeight, raw) tells the parts apart:
-// red is the part's strength, green 0 for the shaft and 1 for the ring. glTF flips UV v, so v below
-// runs as authored in Blender: up the shaft from the sand (0) to its top (1), across the ring from
-// inside (0) to outside (1). The shaft is brightest where it stands on the sand and fades upward and
-// toward its silhouette; the ring is a soft band. The gains are the Forward+ look; the view scales them
-// for Compatibility (renderer_gain: x shaft, y ring) and pulses a duplicate's strength, never this file.
+code = "// The shore's light (shore_piece: the Shaft, the Reach ring and the Glow on the sand), additive and
+// unlit, no fog. Written by tools/blender/make_shore_piece.py. COLOR_0 (LightWeight, raw) tells the
+// parts apart: red is the part's strength, green 1 for the ring, blue 1 for the glow, else the shaft.
+// glTF flips UV v, so v below runs as authored in Blender: up the shaft from the sand (0) to its top
+// (1), across the ring from inside (0) to outside (1), out across the glow from its centre (0) to its
+// rim (1). The shaft is brightest where it stands on the sand and fades upward and toward its
+// silhouette; the ring is a soft band; the glow is even in the middle and soft at the rim. The gains
+// are the Forward+ look; the view scales them for Compatibility (renderer_gain: x the shaft and the
+// glow, y the ring) and pulses a duplicate's strength, never this file.
 shader_type spatial;
 render_mode unshaded, blend_add, cull_disabled, depth_draw_never, fog_disabled, shadows_disabled;
 
@@ -700,6 +746,8 @@ uniform float ring_gain = {ring_gain};
 uniform float shaft_fade = {shaft_fade};
 uniform float shaft_edge = {shaft_edge};
 uniform float near_top = {near_top};
+uniform float glow_gain = {glow_gain};
+uniform float glow_core = {glow_core};
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
 uniform float strength = 1.0;
 
@@ -722,8 +770,10 @@ void fragment() {{
 	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
 	float shaft = smoothstep(0.0, 0.05, v) * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
+	float glow = 1.0 - smoothstep(glow_core, 1.0, v);
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
-	ALBEDO = tint.rgb * (strength * COLOR.r * mix(shaft * g.x, band * g.y, COLOR.g));
+	float part = mix(mix(shaft * g.x, band * g.y, COLOR.g), glow * glow_gain * renderer_gain.x, COLOR.b);
+	ALBEDO = tint.rgb * (strength * COLOR.r * part);
 }}
 "
 
@@ -737,6 +787,8 @@ shader_parameter/ring_gain = {ring_gain}
 shader_parameter/shaft_fade = {shaft_fade}
 shader_parameter/shaft_edge = {shaft_edge}
 shader_parameter/near_top = {near_top}
+shader_parameter/glow_gain = {glow_gain}
+shader_parameter/glow_core = {glow_core}
 shader_parameter/renderer_gain = Vector2(1, 1)
 shader_parameter/strength = 1.0
 """
@@ -748,7 +800,8 @@ def write_light_material():
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(SHORE_LIGHT_TRES.format(r=r, g=g, b=b, shaft_gain=SHAFT_GAIN, ring_gain=RING_GAIN, shaft_fade=SHAFT_FADE,
-                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP))
+                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP, glow_gain=GLOW_GAIN,
+                                        glow_core=GLOW_CORE))
     print("wrote", path)
 
 
@@ -773,7 +826,7 @@ def map_light_material():
 
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
-    parser = argparse.ArgumentParser(description="Build the shore piece (sand landing, light shaft and reach ring).")
+    parser = argparse.ArgumentParser(description="Build the shore piece (the sandbar, its light shaft and glow, the reach ring).")
     parser.add_argument("--rough", action="store_true", help="geometry and procedural shader only, saved to --out")
     parser.add_argument("--out", default=ROUGH_OUT, help="the rough .blend path")
     parser.add_argument("--root", default="", help="write the outputs under this folder instead of the repository")
