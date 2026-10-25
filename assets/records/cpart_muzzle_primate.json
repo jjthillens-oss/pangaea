@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature detail part (PROPOSED): a monkey's face plate, a bare shallow dome with a heavy brow ridge, a short flat snout with a dark nose pad and nostrils, a full upper lip and a fur frame.",
+  "purpose": "Creature detail part (PROPOSED): a monkey's face plate, a flat face plane with open eye-socket hollows under an overhanging brow ridge, a short squared muzzle with a broad dark nose pad, nostrils and a mouth line, framed by locks of fur.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_muzzle_primate.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_muzzle_primate.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.111,
-    "y_forward": 0.111,
-    "z_up": 0.046
+    "x": 0.091,
+    "y_forward": 0.104,
+    "z_up": 0.03
   },
-  "triangles": 952,
+  "triangles": 911,
   "triangle_budget": 1200,
   "textures": [
     {
@@ -59,7 +59,7 @@
   "sockets": [],
   "nodes": [
     "Cavities",
-    "FurRing",
+    "FurFrame",
     "MuzzlePrimate",
     "Nose"
   ],
@@ -67,7 +67,7 @@
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "muzzle_primate",
-    "footprint_radius_m": 0.058,
+    "footprint_radius_m": 0.057,
     "sink_depth_m": 0.008,
     "chiral": false,
     "orientation": "forward_cone",
@@ -81,16 +81,16 @@
     "handles": [
       {
         "key": "H1_Snout",
-        "meaning": "the snout and nose pushed 14 mm further out",
+        "meaning": "the muzzle and nose pad pushed 12 mm further out",
         "default_permille": 0
       },
       {
         "key": "H2_Brow",
-        "meaning": "the brow ridge 5 mm heavier",
+        "meaning": "the brow ridge 4 mm heavier and lower",
         "default_permille": 0
       }
     ],
-    "pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
+    "pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
   },
   "paint_mix": {
     "M_MuzzlePrimateSkin": 0.4,
@@ -101,8 +101,8 @@
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 2278,
-    "triangles_after": 952
+    "triangles_before": 2564,
+    "triangles_after": 911
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

@@ -1253,7 +1253,7 @@
 		},
 		"muzzle_primate": {
 			"type": "muzzle_primate",
-			"footprint_radius_m": 0.058,
+			"footprint_radius_m": 0.057,
 			"sink_depth_m": 0.008,
 			"chiral": false,
 			"orientation": "forward_cone",
@@ -1267,16 +1267,16 @@
 			"handles": [
 				{
 					"key": "H1_Snout",
-					"meaning": "the snout and nose pushed 14 mm further out",
+					"meaning": "the muzzle and nose pad pushed 12 mm further out",
 					"default_permille": 0
 				},
 				{
 					"key": "H2_Brow",
-					"meaning": "the brow ridge 5 mm heavier",
+					"meaning": "the brow ridge 4 mm heavier and lower",
 					"default_permille": 0
 				}
 			],
-			"pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow."
+			"pivot_note": "Skin-mounted on the front of the head: +Z out of the face, +Y up toward the brow. The eye sockets at x = +-15.5 mm, y = +9 mm are open hollows for eye parts."
 		},
 		"proboscis": {
 			"type": "proboscis",
