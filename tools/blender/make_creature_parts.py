@@ -3589,32 +3589,68 @@ MZ_RX, MZ_RY = 0.044, 0.048
 MZ_EYES = ((-0.0155, 0.009), (0.0155, 0.009))
 
 
-def _mz_height(x, y):
-    """The face plate's surface: a nearly flat face plane, two open eye-socket hollows under the brow, and a
-    short squared muzzle below that rises to a flat nose pad; the rim rolls back into the skin."""
-    r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
-    z = 0.006 - 0.003 * r2
+def _smooth(e0, e1, v):
+    t = min(1.0, max(0.0, (v - e0) / (e1 - e0)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _mz_brow_y(x):
+    """The brow crest line: arched up over each socket, dipping between them over the nose bridge."""
+    return 0.0205 + 0.0035 * math.exp(-((abs(x) - 0.0155) / 0.009) ** 2) - 0.003 * (x / 0.034) ** 2
+
+
+def _mz_muzzle(x, y):
+    """0..1 plateau of the squared muzzle block (a superellipse with steep sides)."""
+    m = ((x / 0.0185) ** 4 + ((y + 0.016) / 0.0145) ** 4) ** 0.25
+    return 1.0 - _smooth(0.72, 1.1, m)
+
+
+def _mz_socket(x, y):
+    """(depth 0..1, rim 0..1) of the nearer eye socket."""
+    best = (0.0, 0.0)
     for ex, ey in MZ_EYES:
-        d2 = ((x - ex) / 0.0095) ** 2 + ((y - ey) / 0.0085) ** 2
-        z -= 0.0075 * math.exp(-d2 * 1.6)
-    m = ((x / 0.019) ** 4 + ((y + 0.015) / 0.015) ** 4) ** 0.25          # a squared muzzle
-    z += 0.013 * max(0.0, 1.0 - m ** 3) ** 0.7
-    edge = max(0.0, (math.sqrt(r2) - 0.8) / 0.2)
+        d = math.sqrt(((x - ex) / 0.0098) ** 2 + ((y - ey) / 0.0088) ** 2)
+        cur = (1.0 - _smooth(0.55, 1.0, d), math.exp(-((d - 1.12) / 0.16) ** 2))
+        best = max(best, cur)
+    return best
+
+
+def _mz_height(x, y):
+    """The face plate's surface as one height field: a gently domed face plane, two deep eye sockets with a
+    raised rim, a heavy brow ridge fused into the plate above them, and a squared muzzle block below that
+    stands well proud of the face with a flat front; the rim rolls back into the skin."""
+    r2 = (x / MZ_RX) ** 2 + (y / MZ_RY) ** 2
+    z = 0.006 - 0.0035 * r2
+    deep, rim = _mz_socket(x, y)
+    z += 0.0015 * rim - 0.0115 * deep
+    by = _mz_brow_y(x)
+    xm = 1.0 - _smooth(0.032, 0.040, abs(x))
+    z += 0.0115 * xm * math.exp(-((y - by) / 0.0058) ** 2) if y < by else 0.0115 * xm * math.exp(-((y - by) / 0.009) ** 2)
+    z += 0.0135 * _mz_muzzle(x, y)
+    z -= 0.0025 * math.exp(-(x / 0.004) ** 2) * _smooth(-0.005, 0.0, y) * (1.0 - _smooth(0.012, 0.018, y))  # nose-bridge groove
+    edge = max(0.0, (math.sqrt(r2) - 0.86) / 0.14)
     return z - (z + MUZZLE_SINK * 0.9) * edge ** 2
+
+
+def _mz_overhang(x, y, z):
+    """Pull the brow's lower face down over the sockets so the ridge really overhangs them."""
+    by = _mz_brow_y(x)
+    w = math.exp(-((y - by) / 0.006) ** 2) * (1.0 - _smooth(0.032, 0.040, abs(x)))
+    return (x, y - 0.004 * w * _smooth(0.004, 0.012, z), z)
 
 
 def build_muzzle_primate():
     """A monkey's face plate, mounted on the front of the head (+Z out of the face, +Y up toward the brow): a
-    flat bare face plane with two open eye-socket hollows (room for eye parts), a heavy brow ridge that
-    overhangs them, a short squared muzzle with a broad dark nose pad and two nostrils, a mouth line across the
-    muzzle, and locks of fur framing the face edge. H1_Snout pushes the muzzle out, H2_Brow makes the brow heavier."""
-    rings, segs = 13, 40
+    bare face plane with two deep eye sockets (room for eye parts), a heavy brow ridge fused into the plate that
+    overhangs them, a squared muzzle block with a broad dark nose pad and two nostrils, a mouth line across the
+    muzzle, and locks of fur growing from the face edge. H1_Snout pushes the muzzle out, H2_Brow makes the brow heavier."""
+    rings, segs = 18, 48
     verts, fcs = [(0.0, 0.0, _mz_height(0.0, 0.0))], []
     for r in range(1, rings + 1):
         for s in range(segs):
             a = 2 * math.pi * s / segs
             x, y = MZ_RX * r / rings * math.cos(a), MZ_RY * r / rings * math.sin(a)
-            verts.append((x, y, _mz_height(x, y)))
+            verts.append(_mz_overhang(x, y, _mz_height(x, y)))
     for s in range(segs):
         fcs.append((0, 1 + s, 1 + (s + 1) % segs))
     for r in range(1, rings):
@@ -3622,21 +3658,20 @@ def build_muzzle_primate():
         for s in range(segs):
             t = (s + 1) % segs
             fcs.append((a0 + s, b0 + s, b0 + t, a0 + t))
-    # The brow ridge: a thick bar arching over each socket, pushed forward so it overhangs the hollows.
-    brow = []
-    for k in range(17):
-        x = -0.032 + 0.064 * k / 16
-        arch = 0.0035 * math.exp(-((abs(x) - 0.0155) / 0.009) ** 2)
-        brow.append(Vector((x, 0.0195 + arch - 0.002 * (x / 0.032) ** 2,
-                            0.0085 + 0.0015 * math.exp(-((abs(x) - 0.0155) / 0.01) ** 2) - 0.004 * (x / 0.032) ** 4)))
-    bv, bf, _ = _tube(brow, lambda i, a: 0.0058 * math.sin(math.pi * (0.06 + 0.88 * i / 16)) ** 0.45 * (1.0 + 0.2 * math.sin(a)), 10)
-    bc.append(verts, fcs, bv, bf)
+    # Faces deep in the sockets take the dark cavity material, so the hollows read as holes, not shading.
+    face_mats = []
+    for f in fcs:
+        cx = sum(verts[i][0] for i in f) / len(f)
+        cy = sum(verts[i][1] for i in f) / len(f)
+        face_mats.append(1 if _mz_socket(cx, cy)[0] > 0.6 else 0)
     skin = _skin_material("M_MuzzlePrimateSkinProc", scale=260.0, lo=0.82, rough=0.55)
-    face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin])
+    hole_sh = sf.Shader("M_MuzzlePrimateCavityProc")
+    hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
+    face = bc.mesh_object("MuzzlePrimate", [(x, y, max(z, -MUZZLE_SINK)) for x, y, z in verts], fcs, [skin, hole_mat], face_mats)
     skin.name = "M_MuzzlePrimateSkin"
     # The nose pad: broad, flat and dark across the top of the muzzle.
     top = _mz_height(0.0, -0.011)
-    nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0008)), 0.0105, 0.0062, 0.0032, sub=2, power=0.7,
+    nv, nf = _blob(Vector((0.0, -0.0105, top - 0.0012)), 0.0105, 0.0062, 0.0026, sub=2, power=0.7,
                    shape=lambda n: (1.0 - 0.25 * max(0.0, -n.y), 1.0, 0.0))
     nose_mat = _pad_material("M_MuzzlePrimateNoseProc")
     nose = bc.mesh_object("Nose", nv, nf, [nose_mat], parent=face)
@@ -3652,8 +3687,6 @@ def build_muzzle_primate():
         mouth.append(Vector((x, y, _mz_height(x, y) + 0.0002)))
     mv, mf, _ = _tube(mouth, lambda i, a: 0.0011 * math.sin(math.pi * (0.05 + 0.9 * i / 8)) ** 0.5, 5)
     bc.append(hv, hf, mv, mf)
-    hole_sh = sf.Shader("M_MuzzlePrimateCavityProc")
-    hole_mat = hole_sh.out(_grey(hole_sh, hole_sh.remap(hole_sh.noise(400.0, 2.0), 0.3, 0.7), 0.85), 0.9)
     holes = bc.mesh_object("Cavities", hv, hf, [hole_mat], parent=face)
     hole_mat.name = "M_MuzzlePrimateCavity"
     # The fur frame: a thick scalloped ruff over the crown and down the cheeks, tapering out at the jaw so the
@@ -3666,8 +3699,9 @@ def build_muzzle_primate():
         c, s = math.cos(a), math.sin(a)
         lobe = 0.5 + 0.5 * math.cos(lobes * (a - math.pi / 2))
         w = math.sin(math.pi * i / (n - 1)) ** 0.6 * (0.75 + 0.25 * s)
-        out = 0.93 + 0.08 * lobe * w
-        path.append(Vector((out * MZ_RX * c, out * MZ_RY * s, -0.001 + 0.0045 * w)))
+        out = 0.9 + 0.07 * lobe * w
+        px, py = out * MZ_RX * c, out * MZ_RY * s
+        path.append(Vector((px, py, _mz_height(px, py) + 0.0025 * w)))
         rad.append(max(0.0008, w * (0.0065 + 0.0035 * lobe)))
     tv, tf, _ = _tube(path, lambda i, a: rad[i] * (1.0 - 0.15 * max(0.0, math.sin(a))), 7)
     fur_mat = _fur_material("M_MuzzlePrimateFurProc", lo=0.5, along=(7.0, 7.0, 0.35))
@@ -3680,10 +3714,10 @@ def build_muzzle_primate():
     foot = _footprint(pts)
 
     def snout(co):
-        k = max(0.0, 1.0 - (((co.x / 0.022) ** 2 + ((co.y + 0.016) / 0.018) ** 2) ** 0.5))
-        if co.z > 0.004 and k > 0.0:
-            co.z += 0.012 * min(1.0, k * 2.0)
-            co.y -= 0.004 * min(1.0, k * 2.0)
+        # The whole squared block moves out together (a plateau mask), so it stays a block, not a cone.
+        k = _mz_muzzle(co.x, co.y + 0.002) if co.z > 0.0 else 0.0
+        co.z += 0.012 * k
+        co.y -= 0.003 * k
         return co
 
     def brow_(co):
