@@ -13,7 +13,7 @@ and verified. Unless a line says otherwise, everything below is PROPOSED.
 > shore: replace the shore_light placeholder (game/scenes/pool/shore_view.gd, asset_id shore_piece) with a sand bank
 > or landing seen from above at cell size 4, and remove its placeholder inventory entry.
 
-The production rules apply too: a `.blend` in `assets/source/blender/`, a GLB in `assets/export/`, a record in
+The production rules apply too: a Blender source in `assets/source/blender/`, a GLB in `assets/export/`, a record in
 `assets/records/`, and no engine primitives left in game code (`tests/test_assets.gd`, `tests/test_placeholders.gd`).
 
 ## Gameplay function
@@ -89,10 +89,10 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
   - fine mineral flecks;
   - grains smooth (roughness about 0.3), in quartz-cream, amber feldspar and umber, distinct from the sand.
 - **Light (shaft and ring): one engine material, `assets/export/M_ShoreLight.tres`**, mapped in the
-  `.glb.import` like `M_CheckpointColumn.tres`: unshaded, `blend_add`, `cull_disabled`, `depth_draw_never`,
+  GLB's import file like `assets/export/M_CheckpointColumn.tres`: unshaded, `blend_add`, `cull_disabled`, `depth_draw_never`,
   `fog_disabled`, `shadows_disabled`. `test_assets` allows one `engine_material` per record, so the two parts share
   it and a per-vertex weight (`COLOR_0` from a `LightWeight` attribute) sets each part's strength. The pulse sets a
-  duplicate's `strength`, never the shared `.tres`.
+  duplicate's `strength`, never the shared material file.
 - **Palette (sand albedo):** LAB hue 70 to 85°, chroma 15 to 30, linear luminance at most 0.40 everywhere (the
   below-plane rule, `tests/test_s2_assets.gd`: pieces wholly below the plane keep albedo luminance at or under 0.40).
 
@@ -106,8 +106,8 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
   Reserved hues: food #CFE86A (h 114.4°) and threat #D9466B (h 11.1°), with a 25° gap rule. The sand (h 70 to 85°)
   keeps at least 29° from food and 59° from threat; the light tint (82.9°) keeps 31.5° from food. The coral player
   cell is #E9744F (L* 62.0, h 44.0°).
-- No outside sources by default. If a CC0 scan is used (Poly Haven or ambientCG), it lives under
-  `assets/source/textures/cc0/<name>/` and is logged in the record's `dependencies`.
+- No outside sources by default. If a CC0 scan is used (Poly Haven or ambientCG), it lives in its own folder under
+  `assets/source/textures/cc0/` and is logged in the record's `dependencies`.
 
 ## Budget
 
@@ -121,11 +121,11 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
 
 - Builder: `tools/blender/make_shore_piece.py`, its own script (lead decision), patterned on
   `tools/blender/make_endless_extras.py` and using the shared helpers (`blockout_common`, `surfacing`, `lookdev`)
-  without editing them. It writes the `.blend`, GLB, record and `M_ShoreLight.tres`; `--import` maps the light
+  without editing them. It writes the Blender source, the GLB, the record and the light material; `--import` maps the light
   material in `assets/export/shore_piece.glb.import` after a Godot import.
 - Gate renders: `tools/blender/render_shore_piece.py` into `/home/user/xdg/shore/scratch/gates` (outside Git).
 - In-game frames: `tools/godot/shore_shots.gd` (size 4, seed 4248, open sea or `--home`).
-- The record, the `shore_view.gd` swap and the inventory entry removal land in **one commit**, because
+- The record, the `game/scenes/pool/shore_view.gd` swap and the inventory entry removal land in **one commit**, because
   `test_placeholders` fails on a placeholder whose asset has a record and on an unlisted primitive.
 
 ## Acceptance criteria
