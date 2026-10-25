@@ -1554,6 +1554,35 @@ in the game, built to the Bible's transition contract (section 4) and its transa
   the cell's diet does not carry yet); the relationship that persists waits for the creature world's
   species records.
 
+## 2026-10-25 · Studio operating model v2: the director's office, approval tiers and budget (CONFIRMED)
+The owner approved the autonomous studio proposal (https://claude.ai/artifact/WJyS6LkaodmVRfmhBCbmwz) on
+2026-10-25 at 05:09 UTC ("Exactly. Let's do it this way. I approve."). Claude runs as creative and game director;
+the owner approves milestones. It amends the 2026-10-22 studio operating model entry.
+- **The director's office** (`docs/director/`): the handbook (non-negotiables, Spore pillars per stage, case law),
+  visual, design and feel rubrics that a reviewer other than the builder scores, the backlog of Bible M2 to M5 exit
+  evidence (`docs/director/backlog.json`), a progress log and the Bible §21 templates.
+- **Three approval tiers**: agents decide code, tuning and drop-in swaps; looks, feel, pacing and HUD go into a weekly
+  Sunday batch after merging; scope, era, save schema, pipeline, money, dependencies, Spore pillars, Bible departures,
+  the M2 benchmark and anything public always go to the owner.
+- **Budget**: 10% of weekly usage a day from Wednesday to Monday, solo work only; the owner keeps 5 to 10%;
+  Tuesday, the last day before the Wednesday 06:00 UTC reset, is ultracode day, from a fixed job list. At most 3
+  routine runs and 3 task briefs a day and 2 active builder threads. The $250 cloud credit is nearly spent.
+- **Routines**: daily plan 06:00, nightly build 09:17, playtest capture 14:10 (moved from 11:00 to follow the nightly build, which lands about 13:20), weekly report Sunday 18:10 (UTC).
+Impact: no code, schema or scope change. Rubric thresholds and the backlog order are PROPOSED tuning.
+
+## 2026-10-25 · A fully aquatic lineage can stay underwater through later eras (CONFIRMED direction; content PROPOSED)
+The owner asked on 2026-10-25 at 05:25 UTC whether cities and the later eras could be underwater, and said "I do think
+we should do that". So a lineage that never goes ashore keeps playing underwater through Social, Tribal and
+Civilization (underwater settlements and cities), as an alternative to the land route. This answers the Bible §26 open
+question on non-terrestrial routes and follows Bible §4: never force a land body on a fully aquatic lineage, and
+"alternative paths require bounded content plans; seven eras do not authorize seven full campaigns per body plan".
+- **Era count, names and the save schema are unchanged.** The route is a variant inside each era, sharing that era's
+  systems (relationships, settlement, diplomacy) with aquatic habitats, buildings and vehicles.
+- **Scheduled after the four-week vertical slice** (backlog features U-01 to U-04); it does not change the current
+  roadmap. Each era's underwater variant needs a bounded content plan the owner approves before it is built.
+- Details (what an underwater city needs, Interstellar from the sea, how a mixed lineage chooses) are PROPOSED.
+- 05:42 UTC: the owner approved the full aquatic path addendum (`docs/bible/addendum-aquatic-path.md`, PR #198); its section J decisions 2 to 5 stay open.
+
 ## 2026-10-25: One continuous game, pool to sea to land (Joshua)
 
 Joshua: "we want to make sure that you level up out of the spore world, the original world, to the aquatic". The cell-to-creature link (#189) becomes a chain of two links (ShoreLink.LINKS): the cell's top-size shore is now the sea edge, microscopic to aquatic (event `entered_the_sea`, checkpoint `<slot>.pre-aquatic`); the Aquatic stage's shore leads aquatic to terrestrial (event `came_ashore`, checkpoint `<slot>.pre-terrestrial`). EraTransition.cross takes the link out of the save's era; restore and has_checkpoint name the era the checkpoint leads into. Continue opens the stage of the slot's era. The title's way back restores the checkpoint from before the slot's last crossing ("Back to the pool" from the sea, "Back to the water" from land). Slots that crossed straight onto land under #189 keep their `.pre-terrestrial` checkpoint, which still holds the cell, and go back the same way. Into the sea the aquatic block stays empty, so AquaticLineage builds the first fish from the cell's parts. The Aquatic stage owns its shore offer and the fish-to-creature conversion (AquaticLineage.to_creature); main.arrive_ashore() opens the creature stage after that crossing.

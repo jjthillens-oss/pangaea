@@ -1,0 +1,599 @@
+{
+ "status": "Feature list CONFIRMED as the working backlog (owner approval 2026-10-25); order and wording PROPOSED. Agents change only 'passes' and 'evidence'; only the director adds, removes or reorders features (docs/director/README.md).",
+ "owners": {
+  "director": "project coordinator",
+  "engineering": "thread 'Spore-style evolution game'",
+  "creature": "thread 'Creature stage'",
+  "aquatic": "thread 'Build the Aquatic stage'",
+  "art": "thread 'Build fur and creature archetype parts'",
+  "menus": "thread 'Modernize Spore-style menus'",
+  "audio": "thread 'Score lush music and stage audio'",
+  "godfrey": "godfrey-task issues"
+ },
+ "features": [
+  {
+   "id": "T-01",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-social-stage from its tip, open the PR, merge when green (furthest along at 05:20)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-02",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-aquatic-r2 from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-03",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "menus",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-hud from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-04",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "menus",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-editor-ease from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-05",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-creature-parts from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-06",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-creature-world-art from its tip, open the PR, merge when green",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-07",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-shore from its tip, open the PR, merge when green (blockout only at 05:20)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "T-08",
+   "milestone": "takeover",
+   "bible": "\u00a721",
+   "tier": 1,
+   "owner": "art",
+   "status": "Credit session takeover (owner 2026-10-25 05:47: credit down to $55). When the credit session stops, the owner finishes from the branch tip, opens the PR and merges when green. Counts toward the 2-builder cap; the daily plan starts these before new features.",
+   "feature": "Finish claude/credit-more-parts from its tip, open the PR, merge when green (scaffold only at 05:20)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "D-01",
+   "milestone": "harness",
+   "bible": "\u00a721, \u00a728",
+   "tier": 1,
+   "owner": "director",
+   "feature": "Director's office in the repo: handbook, rubrics, backlog, progress log, templates",
+   "evidence": [
+    "docs/director/README.md",
+    "docs/director/HANDBOOK.md"
+   ],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "D-02",
+   "milestone": "harness",
+   "bible": "\u00a722",
+   "tier": 1,
+   "owner": "engineering",
+   "feature": "Playtest capture: one script plays each stage's smoke flow under xvfb and writes frames at gameplay camera plus a metrics JSON (time to first part, editor visits, threat encounters, deaths)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M2-01",
+   "milestone": "M2",
+   "bible": "\u00a715",
+   "tier": 3,
+   "owner": "art",
+   "feature": "Visual reference package: creature turnaround, three compatible variants, habitat composition, material sphere sheet, scale lineup, lighting test, with clay and beauty renders",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M2-02",
+   "milestone": "M2",
+   "bible": "\u00a715, \u00a722",
+   "tier": 3,
+   "owner": "art",
+   "feature": "In-engine benchmark scene and comparison frames at gameplay camera, 1920x1080, Forward+ on the RTX 5070; owner approval recorded in DECISIONS.md",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "M2-01"
+   ]
+  },
+  {
+   "id": "M2-03",
+   "milestone": "M2",
+   "bible": "\u00a715, \u00a724",
+   "tier": 1,
+   "owner": "art",
+   "feature": "Placeholder inventory down to functional systems only; every gameplay mesh in the cell, aquatic and creature stages scores 3+ on every visual rubric axis",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M2-04",
+   "milestone": "M2",
+   "bible": "\u00a722",
+   "tier": 3,
+   "owner": "engineering",
+   "feature": "Performance budget set and measured: 60 fps at 1080p on the baseline PC in the worst-case scene of each stage; minimum spec proposed",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M3-01",
+   "milestone": "M3",
+   "bible": "\u00a712, \u00a723",
+   "tier": 1,
+   "owner": "creature",
+   "feature": "Same-scenario comparisons: three creature body plans run the same seeded scenario and show distinct strengths and costs (speed, reach, defence, stamina)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M3-02",
+   "milestone": "M3",
+   "bible": "\u00a712, \u00a725",
+   "tier": 1,
+   "owner": "creature",
+   "feature": "Reliable locomotion at extreme supported proportions: no foot sliding or invalid poses across the presets and random creatures (gait tests plus frames)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M3-03",
+   "milestone": "M3",
+   "bible": "\u00a75, \u00a76",
+   "tier": 1,
+   "owner": "engineering",
+   "feature": "Cell and aquatic body choices show the same tradeoff discipline: a heavier body is slower and tougher, measured in the balance lab",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M4-01",
+   "milestone": "M4",
+   "bible": "\u00a74, \u00a718",
+   "tier": 3,
+   "owner": "aquatic",
+   "feature": "Cell top size exits into the Aquatic stage through EraTransition with a .pre-aquatic checkpoint (era boundary needs owner approval)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M4-02",
+   "milestone": "M4",
+   "bible": "\u00a74, \u00a718",
+   "tier": 1,
+   "owner": "aquatic",
+   "feature": "Aquatic shore exit reuses ShoreLink and EraTransition into the creature stage with a .pre-terrestrial checkpoint",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M4-03",
+   "milestone": "M4",
+   "bible": "\u00a718, \u00a722",
+   "tier": 1,
+   "owner": "engineering",
+   "feature": "One save carries a lineage from cell to sea to land: lineage id, genome, generation, discoveries and relationships survive both transitions, a save, a reload and a death",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "M4-01",
+    "M4-02"
+   ]
+  },
+  {
+   "id": "M4-04",
+   "milestone": "M4",
+   "bible": "\u00a722",
+   "tier": 1,
+   "owner": "engineering",
+   "feature": "Windows acceptance scenario for the continuity run: fresh start, cell to land, save, exit, reload, death recovery; exported and launched on the owner's PC",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "M4-03"
+   ]
+  },
+  {
+   "id": "M5-01",
+   "milestone": "M5",
+   "bible": "\u00a78",
+   "tier": 2,
+   "owner": "creature",
+   "feature": "Social foundation: a companion with a persistent identity (name, temperament, memory of the player)",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M5-02",
+   "milestone": "M5",
+   "bible": "\u00a78",
+   "tier": 2,
+   "owner": "creature",
+   "feature": "Communication and dancing: sing, dance, charm and pose build a relationship; friend-or-foe stance before every interaction",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "M5-03",
+   "milestone": "M5",
+   "bible": "\u00a78, \u00a723",
+   "tier": 1,
+   "owner": "creature",
+   "feature": "One group task with allies and a persistent relationship scenario that survives save, reload and recovery checks",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "M5-01",
+    "M5-02"
+   ]
+  },
+  {
+   "id": "Q-01",
+   "milestone": "quality",
+   "bible": "\u00a720",
+   "tier": 2,
+   "owner": "audio",
+   "feature": "Lush stage music and effects for the cell, aquatic and creature stages that pass the feel rubric's feedback axis",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "Q-02",
+   "milestone": "quality",
+   "bible": "\u00a719",
+   "tier": 2,
+   "owner": "menus",
+   "feature": "Small HUD in every stage: goals top left, abilities bottom centre, one progress bar; feel rubric HUD axis 4+",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "Q-03",
+   "milestone": "quality",
+   "bible": "\u00a727",
+   "tier": 1,
+   "owner": "director",
+   "feature": "Friend playtest: 3 to 5 players play the Windows build and answer five questions; findings filed as backlog items",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "U-01",
+   "milestone": "after slice",
+   "bible": "\u00a74, \u00a726",
+   "tier": 1,
+   "owner": "director",
+   "feature": "Aquatic path addendum docs/bible/addendum-aquatic-path.md (PR #198) recorded as CONFIRMED and merged",
+   "evidence": [],
+   "passes": false,
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "deps": []
+  },
+  {
+   "id": "U-02",
+   "milestone": "after slice",
+   "bible": "\u00a74, \u00a78",
+   "tier": 1,
+   "owner": "aquatic",
+   "feature": "A fully aquatic lineage is never forced ashore: the Aquatic stage offers continuing into the Social era underwater, with the era gate explained",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "U-03",
+   "milestone": "M4.5 (after the vertical slice, ahead of the M5 aquatic variant)",
+   "bible": "\u00a74, \u00a79",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "feature": "Reef spike before M5: one reef settlement, three modules, a vent hearth, a food pen, three workers pathing in 3D, one camera; a 10-minute soak with no stuck worker; the settlement shell is one air bubble on the reef",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-01"
+   ]
+  },
+  {
+   "id": "U-04",
+   "milestone": "M5 aquatic",
+   "bible": "\u00a78",
+   "tier": 2,
+   "owner": "creature",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "feature": "Aquatic Social variant: an underwater signal set and a swimmer-and-wader companion task",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-01"
+   ]
+  },
+  {
+   "id": "U-05",
+   "milestone": "M6 aquatic",
+   "bible": "\u00a79",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "feature": "Reef settlement that shares the land settlement's module code",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-03"
+   ]
+  },
+  {
+   "id": "U-06",
+   "milestone": "M7 aquatic",
+   "bible": "\u00a710",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "feature": "Current routes between a reef and a tideline settlement, and one shore-people agreement",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-05"
+   ]
+  },
+  {
+   "id": "U-07",
+   "milestone": "M8 aquatic",
+   "bible": "\u00a711",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED direction (owner approved the aquatic path addendum 2026-10-25 05:42 UTC); content PROPOSED until built; addendum section J decisions 2 to 5 still open",
+   "feature": "Water-filled ship module set and ocean suitability in planet survey",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-06"
+   ]
+  },
+  {
+   "id": "R-01",
+   "milestone": "research",
+   "bible": "\u00a726",
+   "tier": 3,
+   "owner": "director",
+   "status": "PROPOSED; innovation backlog IB-30 to IB-33 (PR #191), each needs the owner's yes before entering the build backlog",
+   "feature": "Triage innovation backlog items IB-30 to IB-33 into milestones once PR #191 merges",
+   "evidence": [
+    "docs/research/innovation-backlog.md"
+   ],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "U-08",
+   "milestone": "M6 aquatic",
+   "bible": "\u00a79, addendum A2",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Bubble cities: from the Tribal era, underwater settlements are air bubbles on or in the reef that land creatures can enter and leave; bubble air and light are managed resources",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-03"
+   ]
+  },
+  {
+   "id": "U-09",
+   "milestone": "M6 to M7 aquatic",
+   "bible": "\u00a710, addendum A2",
+   "tier": 2,
+   "owner": "aquatic",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Submarines: an underwater vehicle module set, crude from Tribal and proper from Civilization; the only way back into the sea for a lineage that reshaped for legs",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-01"
+   ]
+  },
+  {
+   "id": "U-10",
+   "milestone": "M3",
+   "bible": "\u00a712, addendum A2",
+   "tier": 1,
+   "owner": "creature",
+   "status": "CONFIRMED rule (owner 2026-10-25 05:43 UTC, addendum section A2); content and numbers PROPOSED until built",
+   "feature": "Land and water movement costs in the phenotype service: fins slow a body on land and legs slow it in water (tuning data), with same-scenario tests",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-01",
+   "milestone": "quality",
+   "stage": "all",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Charm layer: shared secondary motion (breathing, blink, squash) for every rigged body",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-02",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 2,
+   "owner": "art",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Land ground kit and landmarks for the creature world",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-03",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Warm key light with dusk and night profiles that keep creature contrast",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-04",
+   "milestone": "quality",
+   "stage": "terrestrial",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "creature",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Pickup marker: shape, bob and ground ring, no light beam",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-05",
+   "milestone": "quality",
+   "stage": "M4.5",
+   "bible": "\u00a715, \u00a720",
+   "tier": 2,
+   "owner": "art",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Reef dressing set and caustic pass, inside the reef spike (U-03)",
+   "evidence": [],
+   "passes": false,
+   "deps": [
+    "U-03"
+   ]
+  },
+  {
+   "id": "S-06",
+   "milestone": "quality",
+   "stage": "aquatic",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "aquatic",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Swim body wave and idle bob",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-07",
+   "milestone": "quality",
+   "stage": "menus, editors",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "menus",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Title and plinth idle, part-landing sound and wobble",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-08",
+   "milestone": "quality",
+   "stage": "audio",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "audio",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Land ambience bed and editor sounds",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  },
+  {
+   "id": "S-09",
+   "milestone": "quality",
+   "stage": "microscopic",
+   "bible": "\u00a715, \u00a720",
+   "tier": 1,
+   "owner": "engineering",
+   "status": "PROPOSED (style cross-reference, PR #202 section 7)",
+   "feature": "Ambience scene in every review capture",
+   "evidence": [],
+   "passes": false,
+   "deps": []
+  }
+ ]
+}
