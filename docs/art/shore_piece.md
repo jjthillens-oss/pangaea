@@ -107,22 +107,29 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
     east-west (parallel to the shore in the north) and bend to follow the brink on the south half; they fade below
     about -3 m and on faces steeper than about 30° (normal and a little albedo);
   - heavy-mineral flecks gathered in the ripple troughs, and a few amber feldspar flecks;
-  - grains frosted-smooth (roughness 0.42; 0.3 read as wet beads in the Gate 2 close-up), in quartz cream, amber
-    feldspar and umber, distinct from the sand;
+  - grains frosted and matte (roughness 0.58; 0.3 read as wet beads in the Gate 2 close-up, and 0.42 still as
+    glossy pebbles in game), mostly in pale quartz cream, then amber feldspar and a few umber (8%), distinct from the
+    sand;
   - the glass valves: a pale grey-green silica (roughness 0.16) with radial ribs and rings of pores.
   The shader reads three helper attributes (`Ripple`, `Mask`, `Local`) that the build removes after the bake.
-- **Light (shaft and ring): one engine material, `assets/export/M_ShoreLight.tres`**, mapped in the
+- **Light (shaft, ring and glow): one engine material, `assets/export/M_ShoreLight.tres`**, mapped in the
   GLB's import file like `assets/export/M_CheckpointColumn.tres`: unshaded, `blend_add`, `cull_disabled`, `depth_draw_never`,
-  `fog_disabled`, `shadows_disabled`. `test_assets` allows one `engine_material` per record, so the two parts share
+  `fog_disabled`, `shadows_disabled`. `test_assets` allows one `engine_material` per record, so the three parts share
   it and a per-vertex weight (`COLOR_0` from a `LightWeight` attribute, raw values) tells them apart: red is the
-  part's strength (shaft 0.45, ring 1.0), green 0 for the shaft and 1 for the ring (a soft band across UV v). The
-  builder writes that material file (tint #FFD486) with the light's Forward+ look as uniforms, tuned in Gate 4:
+  part's strength (shaft 0.45, ring 1.0, glow 1.0), green 1 for the ring (a soft band across UV v), blue 1 for the
+  glow (a pool of light on the sand), else the shaft. The builder writes that material file (tint #FFD486) with the
+  light's Forward+ look as uniforms, tuned in Gate 4:
   `shaft_gain` 0.85 and `ring_gain` 0.35; the shaft fades from the sand up from `shaft_fade` 0.4 of its height to its
   top and toward its silhouette as facing^`shaft_edge` 1.5; and its wall toward the camera fades out from the sand up
   to `near_top` 0.6 of its height, because that wall stands between the camera and a cell in the light (it lifted the
-  cell 4 to 10 L*), so the far wall carries the column. `ShoreView` sets `renderer_gain` (x the shaft, y the ring) to
-  (1.0, 0.9) in Compatibility, where the ring reads about 3 L* brighter, and pulses a duplicate's `strength` (0.75 to
-  1.25 at 0.5 Hz), never the shared material file.
+  cell 4 to 10 L*), so the far wall carries the column. The walls also fade in from the sand over `shaft_foot` 0.25 of
+  the height: walls bright down to the sand outlined the foot as a disc. The **glow** (`Glow`, a 32-segment disc of r
+  2.8 m, the shaft's foot, following the shelf 4 cm above the sand, as is the shaft's bottom ring) lights the sand
+  itself: `glow_gain` 0.12, even out to `glow_core` 0.5 of its radius, then softly to 0 at the rim. Before it, the
+  open-topped shaft left the sand inside its foot darker than the lit walls round it, a dark disc where the toast
+  says to swim into the light (review round 1). `ShoreView` sets `renderer_gain` (x the shaft and the glow, y the
+  ring) to (1.0, 0.9) in Compatibility, where the ring reads about 3 L* brighter, and pulses a duplicate's `strength`
+  (0.75 to 1.25 at 0.5 Hz), never the shared material file.
 - **Palette (sand albedo):** LAB hue 70 to 85°, chroma 15 to 30, linear luminance at most 0.40 everywhere (the
   below-plane rule, `tests/test_s2_assets.gd`: pieces wholly below the plane keep albedo luminance at or under 0.40).
 
@@ -137,14 +144,16 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
   | shelf | #A88F6B | #5B4D38 | 33.6 | 14.9 | 79.8° | 0.078 |
   | dry crest (top stop) | #B39A76 | #62533E | 36.3 | 14.7 | 80.1° | 0.092 |
   | amber feldspar grain | #A27D51 | #584329 | 29.9 | 19.8 | 73.5° | 0.062 |
-  | quartz grain | #A89A80 | #5B5344 | 35.8 | 10.1 | 86.8° (27.6° from food) | 0.089 |
+  | quartz grain | #B2A48B | #61594B | 38.2 | 9.6 | 86.2° (28.2° from food) | 0.102 |
   | glass valve (highlight) | #9DA8A5 | #555B5A | 38.3 | 2.9 | 177.4° | 0.102 |
   | light tint | #FFD486 | (engine) | 87.0 | 44.4 | 82.9° | (additive) |
 
-  Baked albedo audit (`tools/blender/render_shore_piece.py --audit`, final bake): linear luminance max 0.093, p99
+  Baked albedo audit (`tools/blender/render_shore_piece.py --audit`, final bake): linear luminance max 0.105, p99
   0.084, median 0.019 over the whole atlas (unused texels included); chroma-12+ texels (32% of all) at hue 76.1 to
   80.8° (p5 to p95); 0.00% of texels within 25° of the food hue and 0.00% of the threat hue (limit 2% each).
-  `tests/test_shore_piece.gd` checks the median luminance and the hue shares on the imported texture.
+  `tests/test_shore_piece.gd` checks the hue shares on the imported texture and pins the tuned exposure: p99 linear
+  luminance at most 0.40 (the below-plane rule) and at most 0.12, median at most 0.05, so a rebake without
+  `ALBEDO_GAIN` (median about 0.12, L* 65 to 78 in game, brighter than the cell) fails.
 
   Reserved hues: food #CFE86A (h 114.4°) and threat #D9466B (h 11.1°), with a 25° gap rule. The sand (h 70 to 85°)
   keeps at least 29° from food and 59° from threat; the light tint (82.9°) keeps 31.5° from food. The coral player
@@ -154,10 +163,10 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
 
 ## Budget
 
-- Triangles at most 6000 (landmark class), target 4500 to 5500. As built: 5158 (bank 2408 on a 56-segment polar
-  grid, grains about 1870 with wholly buried faces dropped, valves 432, shaft 192, ring 256).
+- Triangles at most 6000 (landmark class), target 4500 to 5500. As built: 5446 (bank 2408 on a 56-segment polar
+  grid, grains about 1870 with wholly buried faces dropped, valves 432, shaft 192, ring 256, glow 288).
 - Textures: three at 1024 px (albedo sRGB; ORM and normal non-colour). 2048 only if the Gate 4 close-ups blur.
-- Draw calls: two surfaces (sand, light).
+- Draw calls: two materials (sand, light) over four meshes.
 - UVs: no whole-piece smart project (it would give most texels to the fogged skirt). As built: a planar top-down UV
   for the shelf and the slopes down to about -6.7 m (83% of the atlas, 33.5 px per m), the skirt below on a strip by
   angle and depth (bottom right), and the grains and valves in their own square tiles (bottom left; a grain maps by
@@ -184,11 +193,14 @@ Rig family: none. A static piece, no animation; the pulse is a shader uniform.
 - Regenerating: `python3 tools/blender/make_shore_piece.py`, `godot --headless --import`, `make_shore_piece.py
   --import`, `godot --headless --import` (the mapping then survives every later re-import, checked in chunk 3).
 - In game (IMPLEMENTED): `game/scenes/pool/shore_view.gd` instantiates the GLB as `Model` under `Shore`, turns
-  shadows off on every part, gives `Shaft` and `Reach` one duplicate of `M_ShoreLight` (with the renderer's gains) as
-  their override, and scales `Reach` by `ShoreLink.REACH_TM / 4.0` (1 today). `place()` and `pulse()` keep their API;
-  no primitive is left in the file. `game/scenes/pool/pool.gd` adds `ShoreView.warm_up_meshes()` to the start fade's
-  warm-up in endless mode only. `tests/test_shore_piece.gd` covers the record, the swim band, the ring, the light, the
-  view and the warm-up.
+  shadows off on every part, gives `Shaft`, `Reach` and `Glow` one duplicate of `M_ShoreLight` (with the renderer's
+  gains) as their override, and scales `Reach` by `ShoreLink.REACH_TM / 4.0` (1 today). `place()` and `pulse()` keep
+  their API; no primitive is left in the file. `rise()` (new) drops the model to `RISE_DEPTH_M` 40 m, wholly under the
+  pool's opaque Backdrop (y -40), and `pulse()` brings it up over `RISE_S` 3 s of play (smoothstep), the light's
+  strength following the square of the rise; a paused pool holds it. `game/scenes/pool/pool.gd` calls `rise()` when
+  it emits `shore_risen` (a shore that rose in this session; a save loaded with the shore up shows it at rest) and
+  adds `ShoreView.warm_up_meshes()` to the start fade's warm-up in endless mode only. `tests/test_shore_piece.gd`
+  covers the record, the swim band, the ring, the glow on the sand, the light, the view, the rise and the warm-up.
 - The record, the `game/scenes/pool/shore_view.gd` swap and the inventory entry removal land in **one commit**, because
   `test_placeholders` fails on a placeholder whose asset has a record and on an unlisted primitive.
 
@@ -210,34 +222,52 @@ In game, `gl_compatibility` at 1920x1080, zoom 14, size 4 (`tools/godot/shore_sh
 
 ### Results on the final export (Gate 4, IMPLEMENTED unless marked)
 
-Compatibility readings from the final run of `tools/godot/shore_shots.gd` (open sea; the light's pulse at each shot
-in brackets), Forward+ (lavapipe) for 02, 03 and 05:
+Compatibility readings from the final run of `tools/godot/shore_shots.gd` on the merged branch (main ad64c950, the
+sea edge; the light's pulse at each shot in the after table), Forward+ (lavapipe) for 03 and 05:
 
 1. **Met, with a note.** In 02 the cell is already over the long south ramp (the ramp runs about 16 m out from the
    brink, then the skirt), so the bank does not "emerge from the fog at the top"; it reads as a rippled slope rising
-   to the lit crest and the ring at the top edge. Sand ahead of the cell L* 40.2 (Forward+ 40.6).
-2. **Partly met.** Sand under the cell with the cell hidden (05): L* 47.0 (Forward+ 47.3), in the 36 to 48 window,
-   and 14 to 24 above the fluid (L* 23 to 33). The sand 1.8 tm north of the cell lies in the shaft's lit foot: L*
-   65.8 (Forward+ 68.0). **Not met:** the cell is only 6.4 L* above the sand under it, not 15: the coral cell reads
-   L* 53.4 in Compatibility (54.0 to 54.5 in Forward+), not the 62 the criterion assumed, and the sand cannot sit 15 below
-   that and 8 above the fluid. The cell stays the clearest thing in its neighbourhood by hue and chroma: CIE76 35.1
-   between the cell (C 45, h 43°) and the sand under it (C 14, h 79°), 37.3 against the plain sand in 06. For the
-   owner's look review.
-3. **Met.** The ring reads in front of the cell in 03. At the pulse's top (1.25) it peaks at L* 75.4 on the shore
-   point (05) in Compatibility and 75.4 in Forward+; the swept peaks were 71.4 to 75.4 (Compatibility, with its 0.9
-   factor) and 73.2 to 75.4 (Forward+).
-4. **Met.** The shaft reads as a column of light rising from the landing (03, 07, 08), not as a solid; the "Crawl onto
-   land?" dialog (04) is legible over the dimmed bank. The cell in the light is not lit by it (cell L* 53.4 in every
-   shot, 05 included).
-5. **Met.** Build check and `test_nothing_solid_enters_the_swim_band`: the highest solid vertex is -1.577 m.
+   to the lit crest and the ring at the top edge. Sand ahead of the cell L* 41.1.
+2. **Partly met; not met inside the light (for the owner's look review).** Plain sand reads L* 43 to 51 (06 beside
+   the cell 43.3; the foot's rims in 05 47.9 to 48.7), inside 36 to 48 or just over it and 14 to 24 above the fluid.
+   The coral cell reads L* 53.4 in both renderers, not the 62 the criterion assumed, so it cannot sit 15 above the
+   sand and the sand 8 above the fluid at once. On the shore point (05) the cell now stands in the pool of light the
+   review asked for: the sand under it (cell hidden) reads L* 54.4 in Compatibility and 59.3 in Forward+, level with
+   or above the cell. The cell leads there by hue and chroma (C 45, h 43°, against the lit sand's C about 25, h 80°;
+   before the glow, CIE76 35.1 against the unlit sand). The cell itself is never lit: L* 53.4 in every shot and both
+   renderers.
+3. **Met.** The ring reads in front of the cell in 03 (L* 70.1; Forward+ 72.4). Its peak at the pulse's top (1.25)
+   stays at L* 75.4 (round 2; the ring is unchanged since), and 75.1 in 06 at pulse 1.22.
+4. **Met.** The shaft reads as a column of light rising from the landing (03, 07, 08), not as a solid. The sand inside
+   its foot reads lit, not as a dark disc: across the foot's middle in 05 (cell hidden) it reads L* 54 to 56 against
+   48 to 50 outside it (Forward+ 59 to 60 against 49 to 51), where the open-topped shaft left 46 to 48 inside against
+   48 to 50 at its rim; in 03 the foot reads 74 to 79 across its middle. The "Swim out to sea?" dialog (04) is legible
+   over the dimmed bank.
+5. **Met.** Build check and `test_nothing_solid_enters_the_swim_band`: the highest solid vertex is -1.577 m; the glow
+   tops out at -1.56 m and `test_the_glow_lies_on_the_sand_in_the_shafts_foot` keeps it under the swim band.
 6. **Met.** 0.00% of chroma-12+ texels near food or threat (audit and `test_the_sand_keeps_dim_and_clear_of_reserved_hues`).
 7. **Met (PROPOSED judgement).** No clipping side-on (06). With `--home` the shore rises 18 tm north of the home
-   spawn: the cradle ring lies half-buried at the foot of the south ramp (the sand runs through its bowl), which reads
-   as a drift; the home beacon stands on the shelf west of the ring, so the ring's west reading there (L* 74 to 82, h
-   259 to 269°) is the beacon's blue, not the ring. Kit pieces (diatom columns, a shell) stand on the bank where the
-   world placed them.
-8. **Met.** Zoom 10 (07): the grains read as large pebbles, ring and lit foot in frame. Zoom 20 (08): the whole
-   landing with the column of light rising over the crest.
+   spawn: the cradle ring lies half-buried at the foot of the south ramp (the sand runs through its bowl) and kit
+   columns stand out of the ramp, which reads as a drift but half swallows the home landmark: for the owner's look
+   review. The home beacon stands on the shelf west of the ring.
+8. **Met.** Zoom 10 (07): frosted grains, the ring and the lit foot. Zoom 20 (08): the whole landing with the column
+   of light over the crest and the pool of light inside the ring.
+
+Two checks added in review round 1 (PROPOSED):
+
+- **The rise (01 to 01d).** The shore rises 20 tm ahead and its skirt reaches under the cell, so the piece comes up
+  from 40 m down (under the opaque Backdrop) over 3 s instead of appearing at once. 01 (0.08 s): open fluid round the
+  cell, L* 36.0 ahead of it, as on the placeholder; 01b (1 s): 36.4, nothing yet; 01c (2 s): the bank's pale fogged
+  shape and the ring coming up, 38.3; 01d (3.2 s): at rest, 32.5. The first try (16 m down) still drew the bank as a
+  pale silhouette in the fog in its first frame, since the fog is paler than the Backdrop.
+- **Threats on the bank (09).** Size 4's lineup threats let in on the shelf and the ramp (AI frozen), each body's
+  core against the same pixels with the cell and the creatures hidden: deep lurker dL* 1.0 (CIE76 22.0), elder warden
+  -4.4 (42.7), stinger veil 4.1 (48.2, in the light), warden 15.1 (38.0), lurker 4.1 (22.5), elder rammer 10.3 (18.4).
+  So on the sand five of six fall under the 15 dL* that `tools/godot/look_probe.gd`'s gates ask of bodies over the fluid. The
+  violet and blue bodies (h 280 to 303°) read on the khaki sand (h 66 to 82°) by hue and outline, not by value; the
+  elder rammer (a dull coral body, h 39°, low on the dark ramp) leads by 10.3 L* and has the lowest CIE76 of the six.
+  The tell lanes need the AI and were not measured here. For the owner's look review: a darker or more saturated sand would buy
+  value contrast for the lighter bodies and cost it for the darker ones.
 
 ## Target contract
 
@@ -250,7 +280,7 @@ There is no reference image, so the contract is against this brief.
 | Ripples along the contours | Contour-following ripple bands in normal and albedo | Grazing-light gray and the in-game frame show bands parallel to the crest, not noise |
 | Crest edge | Break of slope at the crest line | Front and side grays show a distinct edge, not a pillow |
 | Giant grains | Squashed, sunk grains with their own UV strip and finish | Close-up: grains distinct from sand; none floating, none above -1.55 m |
-| Shallow-water light | Additive shaft plus the reach ring, one engine material | In game: a soft column over the landing and a ring at 4 tm on the plane |
+| Shallow-water light | Additive shaft, a glow on the sand in its foot and the reach ring, one engine material | In game: a soft column over the landing, its foot lit on the sand (not a dark disc) and a ring at 4 tm on the plane |
 
 ## Gate report
 
@@ -259,9 +289,9 @@ Each gate is pass, needs revision or unverified, with an observable reason, afte
 | Gate | Result | Evidence and reason |
 | --- | --- | --- |
 | 1 Shape (neutral gray front, side, three-quarter, game camera, grazing light) | pass (Blender, final export) | [gate1_gray_sheet.jpg](../evidence/credit-shore/gate1_gray_sheet.jpg), re-rendered from the committed `assets/source/blender/shore_piece.blend`: front, side, three-quarter, south, plan, game camera at the shore point and 10 m south, grazing. The side view shows the long straight south ramp, the flat shelf and the steeper north face behind the crest. The plan shows a lobed outline with the south-east spit and the west notch, not a disc. At the game camera the shelf, the brink curve on the west and the north crest edge against the deep all read. Grains sit half sunk, none floating. The first three shape passes were a gumdrop (a flat top on a rounded mound, walls all round) and were revised. In the side views the deep skirt below about -10 m is still a broad rounded mound; in game it lies in the fog and reads as a dim slope, not a wall (Gate 4 frames 01 and 02). |
-| 2 Materials with identity (close-up) | pass (Blender, final export) | [gate2_material_closeup.jpg](../evidence/credit-shore/gate2_material_closeup.jpg) (crest, grains and valve, game camera), re-rendered from the final bake. Matte sand with sharp-crested east-west ripple marks and sparse flecks; frosted grains in quartz, feldspar and umber tones, distinct from the sand; the glass valve reads as a broken porous glass plate; the ramp darkens with depth. Since Gate 4 round 1 the whole albedo carries `ALBEDO_GAIN` 0.27, so under the review rig the sand reads olive-khaki and the grains read as glossy pebbles rather than pale beads; the chunk 2 (unscaled) sheets are in Git history at 38341dad. Albedo audit as in the palette section: max luminance 0.093, no reserved hues. The base colour carries only `bake_set`'s 30% AO darkening, no directional light. |
-| 3 Neutral lighting | pass, with a noted difference (Blender, final export) | [gate3_neutral_sheet.jpg](../evidence/credit-shore/gate3_neutral_sheet.jpg): the shared review rig (`lookdev.review_lighting`: warm key, cool fill, teal rim, fixed AgX exposure), final bake. Nothing clips; the shelf and ramp keep their ripples and the grains their highlights. The difference: with the exposure-matched albedo the deep skirt goes near-black-green in the three-quarter view under the rig's teal rim and cool fill, so the review rig no longer shows the slope's tone well. That is the rig's exposure, set for a 1 m creature; in the pool's own light (Gate 4) the skirt reads as a dim fogged slope. In the grazing view a 9° sun over the gray with the baked normal map shows ripples parallel to the crest, with no noise and no loops. The light shaft and ring show here only as a Blender preview; their engine look is Gate 4's. |
-| 4 Export and Godot at gameplay distance (the real pool at size 4, approaching and at the shore) | pass, with acceptance criterion 2's L* gap open (above) | Export: 5158 triangles (budget 6000), two surfaces (`M_ShorePiece` with three 1024 px textures; `M_ShoreLight` engine material), 42.9 x 41.7 x 24.5 m, pivot on the shore point, faces -Z. Imported: `Shaft` and `Reach` draw with `res://assets/export/M_ShoreLight.tres` (the `.glb.import` mapping survived four re-imports), `COLOR_0` arrives raw (0.447 and 1.0), the bank's top is -1.577 m, the ring lies at y -0.05 from r 3.7 to 4.3. Frames: [after_02_approach.jpg](../evidence/credit-shore/after_02_approach.jpg), [after_03_reach_edge.jpg](../evidence/credit-shore/after_03_reach_edge.jpg), [after_04_offer.jpg](../evidence/credit-shore/after_04_offer.jpg), [after_05_on_shelf.jpg](../evidence/credit-shore/after_05_on_shelf.jpg), [after_08_zoom20.jpg](../evidence/credit-shore/after_08_zoom20.jpg), [after_home_02_approach.jpg](../evidence/credit-shore/after_home_02_approach.jpg), [gate4_godot_game.jpg](../evidence/credit-shore/gate4_godot_game.jpg) (`tools/godot/capture_asset.gd`, the game camera over the pool's fluid). Round 1 (the export as chunk 2 baked it) read the sand at L* 65 to 78 and the ring at 95 to 99, with no visible shaft (its fade ran upside down after glTF's v flip); rounds 1 and 2 fixed the albedo exposure, the shader's v and the light's gains (commits 63f2188e, 66121703). Readings: the results above. The three largest remaining differences: (1) the sand reads khaki-tan, paler than the fluid and palest on the crest, but not "pale sand" in absolute terms, the price of keeping it under the cell; (2) the shaft is a hollow tube: the sand inside its foot, seen through the open top, stays darker than the lit walls around it, a soft disc most visible at the capture tool's low close-up; (3) the grains read as glossy pebbles and show polygon facets at zoom 10 and closer. |
+| 2 Materials with identity (close-up) | pass (Blender, final export) | [gate2_material_closeup.jpg](../evidence/credit-shore/gate2_material_closeup.jpg) (valve and grains, crest, game camera), re-rendered from the final bake (review round 1). Matte sand with sharp-crested east-west ripple marks and sparse flecks; frosted grains, mostly pale quartz with amber feldspar and a few umber, distinct from the sand; the glass valve reads as a broken porous glass plate; the ramp darkens with depth. Since Gate 4 round 1 the whole albedo carries `ALBEDO_GAIN` 0.27, so under the review rig the sand reads olive-khaki; review round 1 raised the grains' roughness from 0.42 to 0.58 and paled the quartz, so they read less like glossy beans (still smooth pebbles at the close-up). The chunk 2 (unscaled) sheets are in Git history at 38341dad. Albedo audit as in the palette section: max luminance 0.105, no reserved hues. The base colour carries only `bake_set`'s 30% AO darkening, no directional light. |
+| 3 Neutral lighting | pass, with a noted difference (Blender, final export) | [gate3_neutral_sheet.jpg](../evidence/credit-shore/gate3_neutral_sheet.jpg): the shared review rig (`lookdev.review_lighting`: warm key, cool fill, teal rim, fixed AgX exposure), final bake. Nothing clips; the shelf and ramp keep their ripples and the grains their highlights. The difference: with the exposure-matched albedo the deep skirt goes near-black-green in the three-quarter view under the rig's teal rim and cool fill, so the review rig no longer shows the slope's tone well. That is the rig's exposure, set for a 1 m creature; in the pool's own light (Gate 4) the skirt reads as a dim fogged slope. In the grazing view a 9° sun over the gray with the baked normal map shows ripples parallel to the crest, with no noise and no loops. The light (shaft, ring and glow) shows here only as a Blender preview; its engine look is Gate 4's. |
+| 4 Export and Godot at gameplay distance (the real pool at size 4, approaching and at the shore) | pass, with acceptance criterion 2 open (above) and three remaining differences (below) | Export: 5446 triangles (budget 6000), two materials over four meshes (`M_ShorePiece` with three 1024 px textures; `M_ShoreLight` engine material on `Shaft`, `Reach` and `Glow`), 42.9 x 41.7 x 24.5 m, pivot on the shore point, faces -Z. Imported: the three light nodes draw with `res://assets/export/M_ShoreLight.tres` (the `.glb.import` mapping survived every re-import; `test_the_light_adds_unshaded_without_fog`), the bank's top is -1.577 m, the ring lies at y -0.05 from r 3.7 to 4.3. Frames on the merged branch (main ad64c950, the sea edge): [after_01_rise_sheet.jpg](../evidence/credit-shore/after_01_rise_sheet.jpg), [after_02_approach.jpg](../evidence/credit-shore/after_02_approach.jpg), [after_03_reach_edge.jpg](../evidence/credit-shore/after_03_reach_edge.jpg), [after_04_offer.jpg](../evidence/credit-shore/after_04_offer.jpg), [after_05_on_shelf.jpg](../evidence/credit-shore/after_05_on_shelf.jpg), [after_07_zoom10.jpg](../evidence/credit-shore/after_07_zoom10.jpg), [after_08_zoom20.jpg](../evidence/credit-shore/after_08_zoom20.jpg), [after_09_threats_on_bank.jpg](../evidence/credit-shore/after_09_threats_on_bank.jpg), [after_home_02_approach.jpg](../evidence/credit-shore/after_home_02_approach.jpg), [gate4_godot_game.jpg](../evidence/credit-shore/gate4_godot_game.jpg) (`tools/godot/capture_asset.gd`, the game camera over the pool's fluid). Round 1 (the export as chunk 2 baked it) read the sand at L* 65 to 78 and the ring at 95 to 99, with no visible shaft (its fade ran upside down after glTF's v flip); rounds 1 and 2 fixed the albedo exposure, the shader's v and the light's gains (commits 63f2188e, 66121703). Review round 1 found the open-topped shaft's foot reading as a dark disc inside the ring where the toast says to swim into the light, and the bank popping in under the cell: a glow on the sand, the shaft's walls fading in from the sand and its foot seated on the sand fixed the first (swept in Compatibility: glow 0.06 to 0.15 with the walls bright to the sand still outlined the foot; walls fading over 0.25 to 0.35 of the height with glow 0.10 to 0.14 did not), and `ShoreView.rise()` the second. Readings: the results above. The three largest remaining differences: (1) the sand reads khaki-tan, paler than the fluid and palest on the crest, but not "pale sand" in absolute terms, the price of keeping it near the cell's value; (2) the grains still show polygon facets in silhouette at the capture tool's low close-up and at zoom 10 (more segments would cost the rest of the triangle budget), and the bank's outline against the fluid at the crest shows the 56-segment grid's kinks; (3) inside the light, the sand under a cell on the shore point reads level with (Compatibility) or 6 L* above (Forward+) the cell, which then leads by hue and chroma only (criterion 2). |
 
 ## Before frames (the placeholder)
 
@@ -275,7 +305,7 @@ L* is CIE L* of a box median from the script's readings.
 | 01 risen | The toast "A shore has risen up ahead..." and the warm arrow "Shore 20 m" at the top edge; the shore is off screen. | fluid around the cell L* 36 |
 | 02 approach, 10 tm south ([jpg](../evidence/credit-shore/before_02_approach.jpg)) | The shaft's top is already on screen at the top edge as a white blob behind the message panel. No bank. | fluid L* 30 to 36 |
 | 03 reach edge, 4.6 tm ([jpg](../evidence/credit-shore/before_03_reach_edge.jpg)) | A pale translucent cylinder with a disc; the disc's edge runs just north of the cell. Reads as a glass column, not ground. | north of the cell L* 89 |
-| 04 offer, 3 tm ([jpg](../evidence/credit-shore/before_04_offer.jpg)) | "Crawl onto land?" over the dimmed pool; legible. | dimmed |
+| 04 offer, 3 tm ([jpg](../evidence/credit-shore/before_04_offer.jpg)) | "Crawl onto land?" (base 2ffc1218's offer, before main's sea edge) over the dimmed pool; legible. | dimmed |
 | 05 at the shore point ([jpg](../evidence/credit-shore/before_05_on_shelf.jpg)) | The additive shaft clips to pure white around the cell, which washes to L* 76.5 (53.4 elsewhere). Nothing reads as sand. | behind the cell, cell hidden, L* 100 (clipped) |
 | 06 east, 6 tm | The cylinder and disc side-on: a large translucent pale shape. | |
 | 07 zoom 10 | The shaft clips white across the top half. | north of the cell L* 98.7 |
@@ -288,18 +318,21 @@ cradle's rim in Gate 4.
 
 ## After frames (the shore piece)
 
-The same tool, seed, offsets and renderer on the final export (tuning round 2, base main 71c61fe5), Compatibility
-unless named; the light's pulse strength at each shot in brackets.
+The same tool, seed, offsets and renderer on the final export, on the branch merged with main ad64c950 (the sea
+edge: the toast "The open sea lies up ahead. Swim into its light to leave the pool.", the arrow "Open sea N m", the
+offer "Swim out to sea?"), Compatibility unless named; the light's pulse strength at each shot in brackets. The HUD's
+message panel and the arrow's label overlap at the top centre in 01 to 03; that is the HUD's layout on main (the
+before frames show it too), not this piece.
 
 | Frame | What it shows | Readings (L*) |
 | --- | --- | --- |
-| 01 risen (1.09) | The toast and the "Shore 20 m" arrow; the bank's south skirt already lies under the cell, dim in the fog. | fluid 25.3, ahead of the cell 32.5 |
-| 02 approach, 10 tm south (1.10) ([jpg](../evidence/credit-shore/after_02_approach.jpg)) | The cell over the rippled south ramp, which rises to the paler crest; the ring and the shaft's foot at the top edge, partly behind the message panel. | sand ahead 40.2, ring 66.1; Forward+ sand 40.6, ring 69.2, cell 54.5 |
-| 03 reach edge, 4.6 tm (0.77) ([jpg](../evidence/credit-shore/after_03_reach_edge.jpg)) | The ring just ahead of the cell; the column of light rising from the landing behind it. | ring 61.2, sand 1.8 tm ahead (the shaft's foot) 59.6; Forward+ ring 66.1, 63.6 |
-| 04 offer, 3 tm (0.77) ([jpg](../evidence/credit-shore/after_04_offer.jpg)) | "Crawl onto land?" over the dimmed bank; legible. | dimmed |
-| 05 on the shore point (1.25) ([jpg](../evidence/credit-shore/after_05_on_shelf.jpg)) | The cell inside the ring, standing in the shaft's lit foot without being lit by it. | cell 53.4, sand under it (hidden) 47.0, sand 1.8 tm north 65.8, ring 75.4; Forward+ cell 54.0, under 47.3, north 68.0, ring 75.4 |
-| 06 east, 6 tm (0.83) | The bank's flank and the ring side-on; no clipping. | plain sand 43.3, ring 65.6 |
-| 07 zoom 10 (0.99) | Large grains, the ring and the lit foot. | ring 71.9 |
-| 08 zoom 20 (1.19) ([jpg](../evidence/credit-shore/after_08_zoom20.jpg)) | The whole landing, the ring, and the column of light over the crest. | ring 60.3 |
-| home 02 ([jpg](../evidence/credit-shore/after_home_02_approach.jpg)) | `--home`: the cradle ring half-buried at the foot of the ramp, the bank running through its bowl. | |
-
+| 01 to 01d, the rise ([jpg](../evidence/credit-shore/after_01_rise_sheet.jpg)) | 0.08 s: open fluid, no bank; 1 s: nothing yet; 2 s: the bank's pale fogged shape and the ring coming up; 3.2 s: the bank at rest under the cell. | ahead of the cell 36.0, 36.4, 38.3, 32.5 |
+| 02 approach, 10 tm south (0.99) ([jpg](../evidence/credit-shore/after_02_approach.jpg)) | The cell over the rippled south ramp, which rises to the paler crest; the ring at the top edge, partly behind the message panel. | sand ahead 41.1, ring 64.2 |
+| 03 reach edge, 4.6 tm (1.19) ([jpg](../evidence/credit-shore/after_03_reach_edge.jpg)) | The ring just ahead of the cell; the column of light rising from a lit patch of sand inside it. | ring 70.1, the foot across its middle 74 to 79; Forward+ ring 72.4, foot 75 to 77 |
+| 04 offer, 3 tm (1.18) ([jpg](../evidence/credit-shore/after_04_offer.jpg)) | "Swim out to sea?" ("Swim out to sea", "Stay in the pool") over the dimmed bank; legible. | dimmed |
+| 05 on the shore point (0.76) ([jpg](../evidence/credit-shore/after_05_on_shelf.jpg)) | The cell inside the ring, in the pool of light on the sand, not lit by it. | cell 53.4, sand under it (hidden) 54.4, the foot's middle 54 to 56 against 48 to 50 outside, ring 63.7; Forward+ cell 53.4, under 59.3, middle 59 to 60 against 49 to 51, ring 68.0 |
+| 06 east, 6 tm (1.22) | The bank's flank, the lit foot and the ring side-on; no clipping. | plain sand 43.3, ring 75.1 |
+| 07 zoom 10 (0.92) ([jpg](../evidence/credit-shore/after_07_zoom10.jpg)) | Frosted grains, the ring and the lit foot under the column. | ring 70.1, foot 61.7 |
+| 08 zoom 20 (0.89) ([jpg](../evidence/credit-shore/after_08_zoom20.jpg)) | The whole landing, the ring with the pool of light inside it, and the column over the crest. | ring 56.4, foot 59.6 |
+| 09 threats on the bank (1.23) ([jpg](../evidence/credit-shore/after_09_threats_on_bank.jpg)) | Size 4's six lineup threats on the shelf and the ramp, read by hue against the khaki sand. | dL* 1.0 to 15.1, CIE76 18.4 to 48.2 (results, above) |
+| home 02 ([jpg](../evidence/credit-shore/after_home_02_approach.jpg)) | `--home`: the cradle ring half-buried at the foot of the ramp, the bank running through its bowl, kit columns standing out of the ramp. | |
