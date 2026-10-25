@@ -11,10 +11,13 @@ extends Control
 ## leaves the body as it was. Either way `closed` reports whether a new generation was born.
 ##
 ## It only edits a working copy: the save changes only in commit(), and only when Lineage accepts.
+## Editor-ease (docs/proposals/editor-ease.md): one Undo takes back one action (a whole drag round the rim is
+## one).
 
 signal closed(committed: bool)
 
 const PREVIEW_SCENE := preload("res://game/ui/cell_preview.tscn")
+const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 ## [label, Phenotype field, higher is better, format]
 const STATS := [
 	["Speed", "speed", true, "%.1f"],
@@ -71,6 +74,7 @@ var _part_buttons: Array[Button] = []
 var _part_info: Label
 var _warning: Label
 var _test_pool: TestPool
+var _steps := UndoSteps.new()      ## the session steps in each action, so one Undo takes back one action
 
 
 func _init() -> void:
@@ -92,6 +96,7 @@ func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: 
 	state = p_state
 	chase = p_chase
 	session = EditorSession.new(save.genome, catalog, save.adaptation_points)
+	_steps.reset()
 	selected = ""
 	_status.text = ""
 	_refresh()
@@ -103,6 +108,7 @@ func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: 
 ## in the widest gap). Returns EditorSession's {"ok", "reason"}.
 func add(type_id: String) -> Dictionary:
 	var result := session.add_part(type_id, free_angle(type_id))
+	_steps.note(result.ok)
 	_after(result)
 	if result.ok:
 		selected = str(session.working.parts[-1].id)
@@ -112,6 +118,7 @@ func add(type_id: String) -> Dictionary:
 
 func remove_selected() -> Dictionary:
 	var result := session.remove_part(selected)
+	_steps.note(result.ok)
 	if result.ok:
 		selected = ""
 	_after(result)
@@ -120,6 +127,7 @@ func remove_selected() -> Dictionary:
 
 func mirror_selected() -> Dictionary:
 	var result := session.mirror_part(selected)
+	_steps.note(result.ok)
 	_after(result)
 	return result
 
@@ -129,6 +137,7 @@ func resize_selected(step: float) -> Dictionary:
 	if part.is_empty():
 		return {"ok": false, "reason": "no part selected"}
 	var result := session.scale_part(selected, float(part.scale) + step)
+	_steps.note(result.ok)
 	_after(result)
 	return result
 
@@ -136,14 +145,25 @@ func resize_selected(step: float) -> Dictionary:
 ## Raises the selected part a level (S4.5): stronger, a little heavier and dearer to run.
 func upgrade_selected() -> Dictionary:
 	var result := session.upgrade_part(selected)
+	_steps.note(result.ok)
 	_after(result)
 	return result
 
 
 func move_selected(angle: float) -> Dictionary:
 	var result := session.move_part(selected, wrapf(angle, -PI, PI))
+	_steps.note(result.ok)
 	_after(result)
 	return result
+
+
+## A gesture (a drag round the rim) starts: every op until end_gesture() is one Undo step.
+func begin_gesture() -> void:
+	_steps.begin_group()
+
+
+func end_gesture() -> void:
+	_steps.end_group()
 
 
 ## Mate: commits the working body through Lineage. Returns its {"ok", "errors"}.
@@ -160,13 +180,16 @@ func cancel() -> void:
 	closed.emit(false)
 
 
+## Takes back the last action: one add, change or removal, or a whole drag round the rim.
 func undo() -> void:
-	session.undo()
+	_rim.stop_drag()   # an Undo in mid-drag ends the drag: the next move is not part of the undone one
+	_steps.undo(session)
 	_refresh()
 
 
 func redo() -> void:
-	session.redo()
+	_rim.stop_drag()
+	_steps.redo(session)
 	_refresh()
 
 
@@ -592,13 +615,21 @@ class RimView:
 			if event.pressed:
 				editor.selected = _nearest(event.position)
 				_dragging = editor.selected != ""
+				if _dragging:
+					editor.begin_gesture()   # the whole drag is one Undo step
 				editor._refresh()
 			else:
-				_dragging = false
+				stop_drag()
 			accept_event()
 		elif event is InputEventMouseMotion and _dragging:
 			editor.move_selected(angle_of(event.position))
 			accept_event()
+
+	## Ends a drag in progress, closing its Undo step.
+	func stop_drag() -> void:
+		if _dragging:
+			_dragging = false
+			editor.end_gesture()
 
 	func _nearest(p: Vector2) -> String:
 		var best := ""
