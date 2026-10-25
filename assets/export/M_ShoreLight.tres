@@ -20,6 +20,7 @@ uniform float shaft_fade = 0.4;
 uniform float shaft_edge = 1.5;
 uniform float near_top = 0.6;
 uniform float shaft_foot = 0.25;
+uniform float far_foot = 0.04;
 uniform float glow_gain = 0.12;
 uniform float glow_core = 0.7;
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
@@ -30,7 +31,9 @@ varying float near_side;
 void vertex() {
 	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
 	// camera and whatever is in the light, so it fades out from the sand up to near_top (v) and the
-	// far wall carries the column.
+	// far wall carries the column. The near wall also fades in from the sand over shaft_foot, so its
+	// foot draws no outline across the glow; the far wall rises behind the glow's rim on screen and
+	// fades in over far_foot only, so no unlit band is left between them.
 	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	vec2 out_dir = VERTEX.xz;
 	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
@@ -42,7 +45,8 @@ void fragment() {
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
 	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
-	float shaft = smoothstep(0.0, shaft_foot, v) * rise * near_cut * pow(facing, shaft_edge);
+	float foot = smoothstep(0.0, max(mix(far_foot, shaft_foot, near_side), 0.001), v);
+	float shaft = foot * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
 	float glow = 1.0 - smoothstep(glow_core, 1.0, v);
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
@@ -62,6 +66,7 @@ shader_parameter/shaft_fade = 0.4
 shader_parameter/shaft_edge = 1.5
 shader_parameter/near_top = 0.6
 shader_parameter/shaft_foot = 0.25
+shader_parameter/far_foot = 0.04
 shader_parameter/glow_gain = 0.12
 shader_parameter/glow_core = 0.7
 shader_parameter/renderer_gain = Vector2(1, 1)

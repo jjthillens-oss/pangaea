@@ -89,8 +89,10 @@ SHAFT_FADE = 0.4           # the shaft fades from this share of its height (from
 SHAFT_EDGE = 1.5           # the shaft fades toward its silhouette as facing^SHAFT_EDGE
 NEAR_TOP = 0.6             # the wall toward the camera is gone above this share of the shaft's height (it would
                            # light the cell standing in the shaft); the far wall carries the column
-SHAFT_FOOT = 0.25          # the shaft's walls fade in over this share of its height from the sand (the glow lights
+SHAFT_FOOT = 0.25          # the near wall fades in over this share of its height from the sand (the glow lights
                            # the sand itself; walls bright down to the sand outline the foot as a disc)
+FAR_FOOT = 0.04            # the far wall fades in over only this share: it stands behind the glow's rim on screen,
+                           # and a far wall that also faded in over SHAFT_FOOT left an unlit band between them
 GLOW_GAIN = 0.12           # the glow's strength (times LightWeight red, and the shaft's renderer gain)
 GLOW_CORE = 0.7            # the glow is even out to this share of its radius (2.24 m), then falls softly to 0 at
                            # the rim; at the shaft's foot (2.8 m) it is still at about 0.38
@@ -490,8 +492,8 @@ def build_light(mat):
     normals are continuous all the way round: the shader scales the shaft by its facing, and a seam split into
     two columns gave each side a one-sided normal and a hard edge at azimuth 0. u runs 0 to 1 per face corner
     (the closing face's corners take u = 1), so the exporter splits only the UV seam, with one shared normal."""
-    seg = 24
-    rows = 5
+    seg = 48                                           # the silhouette's last vertex faces the camera by at most
+    rows = 5                                           # sin(180/seg): 24 left a 2 L* edge in Forward+
     verts = []
     for i in range(rows):
         f = i / (rows - 1)
@@ -782,6 +784,7 @@ uniform float shaft_fade = {shaft_fade};
 uniform float shaft_edge = {shaft_edge};
 uniform float near_top = {near_top};
 uniform float shaft_foot = {shaft_foot};
+uniform float far_foot = {far_foot};
 uniform float glow_gain = {glow_gain};
 uniform float glow_core = {glow_core};
 uniform vec2 renderer_gain = vec2(1.0, 1.0);
@@ -792,7 +795,9 @@ varying float near_side;
 void vertex() {{
 	// 1 on the shaft's side toward the camera, 0 on the far side: the near wall stands between the
 	// camera and whatever is in the light, so it fades out from the sand up to near_top (v) and the
-	// far wall carries the column.
+	// far wall carries the column. The near wall also fades in from the sand over shaft_foot, so its
+	// foot draws no outline across the glow; the far wall rises behind the glow's rim on screen and
+	// fades in over far_foot only, so no unlit band is left between them.
 	vec3 eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
 	vec2 out_dir = VERTEX.xz;
 	near_side = length(out_dir) > 0.0001 && length(eye.xz) > 0.0001
@@ -804,7 +809,8 @@ void fragment() {{
 	float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
 	float rise = 1.0 - smoothstep(shaft_fade, 1.0, v);
 	float near_cut = mix(1.0, 1.0 - smoothstep(0.0, near_top, v), near_side);
-	float shaft = smoothstep(0.0, shaft_foot, v) * rise * near_cut * pow(facing, shaft_edge);
+	float foot = smoothstep(0.0, max(mix(far_foot, shaft_foot, near_side), 0.001), v);
+	float shaft = foot * rise * near_cut * pow(facing, shaft_edge);
 	float band = 1.0 - smoothstep(0.0, 1.0, abs(v * 2.0 - 1.0));
 	float glow = 1.0 - smoothstep(glow_core, 1.0, v);
 	vec2 g = vec2(shaft_gain, ring_gain) * renderer_gain;
@@ -824,6 +830,7 @@ shader_parameter/shaft_fade = {shaft_fade}
 shader_parameter/shaft_edge = {shaft_edge}
 shader_parameter/near_top = {near_top}
 shader_parameter/shaft_foot = {shaft_foot}
+shader_parameter/far_foot = {far_foot}
 shader_parameter/glow_gain = {glow_gain}
 shader_parameter/glow_core = {glow_core}
 shader_parameter/renderer_gain = Vector2(1, 1)
@@ -837,7 +844,7 @@ def write_light_material():
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         f.write(SHORE_LIGHT_TRES.format(r=r, g=g, b=b, shaft_gain=SHAFT_GAIN, ring_gain=RING_GAIN, shaft_fade=SHAFT_FADE,
-                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP, shaft_foot=SHAFT_FOOT, glow_gain=GLOW_GAIN,
+                                        shaft_edge=SHAFT_EDGE, near_top=NEAR_TOP, shaft_foot=SHAFT_FOOT, far_foot=FAR_FOOT, glow_gain=GLOW_GAIN,
                                         glow_core=GLOW_CORE))
     print("wrote", path)
 
