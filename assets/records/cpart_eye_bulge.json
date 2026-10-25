@@ -10,7 +10,7 @@
   "export_path": "assets/export/cpart_eye_bulge.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 3,
+  "revision": 4,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.129,
@@ -51,6 +51,7 @@
   "materials": [
     "M_EyeBulgeBall",
     "M_EyeBulgeIris",
+    "M_EyeBulgeLid",
     "M_EyeBulgeMound"
   ],
   "rig_family": null,
@@ -93,7 +94,8 @@
   "paint_mix": {
     "M_EyeBulgeBall": 0.0,
     "M_EyeBulgeIris": 0.0,
-    "M_EyeBulgeMound": 0.9
+    "M_EyeBulgeMound": 0.9,
+    "M_EyeBulgeLid": 0.9
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
