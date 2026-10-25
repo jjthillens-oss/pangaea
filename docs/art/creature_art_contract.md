@@ -137,6 +137,21 @@ Coats and cross bands follow `spine_u` and the folded ring value. Spots, cells a
 | `ANIM_PHASE` | Float, set by the gait runtime per frame. Parts and skin may use it for ripple, beat or breathing |
 | `damage`, `ripeness` | Floats 0–1 that reuse the M1 cell's meanings, so the same game feedback reads the same way |
 
+### 2.4a Covering uniforms (PROPOSED look, IMPLEMENTED in the shader; for the Creature stage thread to wire)
+
+Single pass, no shells or fins: relief is a screen-space bump of a rest-space height field, faded where it would alias. The defaults (`covering = 0`) leave the existing look unchanged.
+
+| Uniform | Type, range, default | Meaning |
+|---|---|---|
+| `covering` | int 0–3, 0 | 0 default, 1 fur, 2 scales, 3 smooth-wet |
+| `covering_strength` | float 0–1, 1.0 | Blend from the default look (0) to the full covering (1) |
+| `fur_length` | float 0–1, 0.5 | Fur: clump size, fuzz rim width, root darkening |
+| `fur_density` | float 20–400, 220 | Fur: strands per body length |
+| `scale_size` | float 8–120, 45 | Scales: scales per body length |
+| `wet_gloss` | float 0–1, 0.8 | Smooth-wet: gloss and clearcoat (clearcoat needs Forward+) |
+
+`tools/covering_shots.gd` renders one body in each covering for review.
+
 ### 2.5 Colour rules
 
 - Paint colours are free for players.
