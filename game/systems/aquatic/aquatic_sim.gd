@@ -20,6 +20,11 @@ const KIN_ID := "kin"
 const BITE_COOLDOWN := 30   ## ticks
 const STARVE_DRAIN := 2.0   ## health per second with no energy left
 const VERTICAL_RESPONSE := 3.0   ## per second: how fast vertical speed reaches its target
+## The route's rock walls (the sea floor asset's, tools/blender/make_aquatic_world.py): the floor rises WALL_HEIGHT
+## over WALL_SPAN from |x| = WALL_START.
+const WALL_START := 36.0
+const WALL_SPAN := 16.0
+const WALL_HEIGHT := 16.0
 
 ## One tick's input. thrust, turn and rise are -1..1; bite, signal and interact are presses on this tick.
 class Intent:
@@ -142,6 +147,15 @@ func floor_y(z: float) -> float:
 	return float(pts[pts.size() - 1][1])
 
 
+## The floor's height at (x, z): the profile plus the side walls.
+func floor_at(x: float, z: float) -> float:
+	return floor_y(z) + wall_rise(x)
+
+
+static func wall_rise(x: float) -> float:
+	return WALL_HEIGHT * smoothstep(0.0, 1.0, clampf((absf(x) - WALL_START) / WALL_SPAN, 0.0, 1.0))
+
+
 ## The zone (rules.world.zones entry) at a position, by its depth.
 func zone_at(pos: Vector3) -> Dictionary:
 	var zones: Array = rules.world.zones
@@ -157,7 +171,7 @@ func _clamp_to_water(pos: Vector3) -> Vector3:
 	var w: Dictionary = rules.world
 	pos.x = clampf(pos.x, -float(w.half_width), float(w.half_width))
 	pos.z = clampf(pos.z, float(w.end_z), float(w.shore_z))
-	pos.y = clampf(pos.y, floor_y(pos.z) + float(w.floor_margin), -float(w.surface_margin))
+	pos.y = clampf(pos.y, floor_at(pos.x, pos.z) + float(w.floor_margin), -float(w.surface_margin))
 	return pos
 
 
@@ -183,7 +197,7 @@ func _build_food() -> void:
 			var r := sqrt(_rng_food.randf()) * float(site.spread)
 			var p := centre + Vector3(cos(a) * r, (_rng_food.randf() - 0.5) * 3.0, sin(a) * r)
 			if String(site.kind) != "plankton":
-				p.y = floor_y(p.z) + 0.6
+				p.y = floor_at(p.x, p.z) + 0.6
 			n += 1
 			food.append({"id": "food_%03d" % n, "kind": String(site.kind), "site": String(site.id),
 					"pos": _clamp_to_water(p), "alive": true, "regrow_at": 0})
