@@ -7,6 +7,7 @@ Status: PROPOSED research. Nothing here is approved design until `docs/DECISIONS
 - `open-source-scout.md` — open source we could legally use, with a license log. Adopting any dependency needs owner approval.
 - `mod-wishes.md` — what Spore players added or fixed through mods and why, ranked and mapped to Bible eras. Public descriptions only; no mod code or files.
 - `pcg-talk-lessons.md` — PROPOSED notes from Kate Compton's GDC talk on procedural generation, with proposed actions for Pangaea.
+- `style-crossref.md` — per-stage keep/drift/fix audit of the build against the Spore feeling (mood reference only), with proposed rules for `docs/director/rubrics/visual.md`.
 - `innovation-backlog.md` — ideas mapped to Bible milestones.
 - `spore/` — Spore engineering research: legal boundaries, published sources, creature creator analysis, procedural animation spec, gameplay measurements. Observation and published papers only; no Spore files.
 - `digests/` — daily digests of new community discussion and new free or permissive tools.
