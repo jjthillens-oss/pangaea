@@ -804,6 +804,7 @@ pickups (2026-10-25) under Joshua's "Spore but better" direction.
   discoveries). A part on the body is always usable, and committing a preset or random body records its unfound
   parts as finds with source "preset".
 - Rules: `game/domain/creature/part_unlocks.gd`; tests: `tests/test_creature_part_unlocks.gd`.
+
 ## 2026-10-24 · The twelve preset creatures read as their archetypes (PROPOSED; IMPLEMENTED)
 
 - Joshua (23:40) asked for the default creatures to look like what they are, the dragon most of all, and still
