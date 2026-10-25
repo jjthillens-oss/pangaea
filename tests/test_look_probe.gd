@@ -5,6 +5,7 @@ extends TestCase
 ## with the plan and with today's measured look.
 
 const LookProbe := preload("res://tools/godot/look_probe.gd")
+const FakeEvents := preload("res://tests/fakes/fake_world_events.gd")
 const FOOD_HEX := "CFE86A"              ## docs/art/ART_DIRECTION.md: food-only glow...
 const THREAT_HEX := "D9466B"            ## ...and threat-only pink
 ## Today's readings (m1-threats at ecb1eee on llvmpipe, docs/TOOLCHAIN.md "Look probe") by renderer:
@@ -218,7 +219,8 @@ func test_today_s_look_passes_its_baseline_gates_in_both_renderers_and_fails_the
 func test_the_growth_gates_are_s2_view_12_3() -> void:
 	var by_path := {}
 	for gate: Dictionary in LookProbe.GATES.growth:
-		by_path[gate.path] = gate
+		if ["lineup_s1", "lineup_s2", "hatch"].has(str(gate.path).get_slice(".", 0)):
+			by_path[gate.path] = gate
 	var want := {
 		"hatch.median_dE": [null, 2.0],
 		"lineup_s1.ink.ambush_hunter": [1.0, 1.0], "lineup_s1.ink.rammer": [1.0, 1.0],
@@ -239,13 +241,66 @@ func test_the_growth_gates_are_s2_view_12_3() -> void:
 			check_eq(by_path[path].get("min"), want[path][0], "%s min" % path)
 			check_eq(by_path[path].get("max"), want[path][1], "%s max" % path)
 	check_eq(LookProbe.LOOK_WORLDS.growth, "endless", "measured in the endless sea")
-	check_eq(str(LookProbe.GROWTH_SCENES), str(["lineup_s1", "lineup_s2", "hatch"]), "its scenes")
+	check_eq(str(LookProbe.GROWTH_SCENES), str(["lineup_s1", "lineup_s2", "hatch", "lineup_s3", "lineup_s4", "hatch_band_up"]),
+		"its scenes, S3's after S2's")
 	for scene in LookProbe.GROWTH_SCENES:
 		check(LookProbe.ENDLESS_SCENES.has(scene), "%s is an endless scene" % scene)
 		check_eq(LookProbe.body_for(scene), "omnivore", "%s starts an omnivore, so the rim shows" % scene)
 	check_eq(LookProbe.body_for("lineup"), LookProbe.BODY, "the other scenes keep the grazer")
 	check_eq(str(LookProbe.LINEUP_NEAR[1]), str(["lurker", "elder_rammer", "veil", "warden"]), "size 1's near ghosts")
 	check_eq(str(LookProbe.LINEUP_NEAR[2]), str(["veil", "warden", "deep_lurker", "elder_warden"]), "size 2's")
+
+
+## S3's rows in the growth set (s3-view 15): every reading with its bound, the scenes staged at the
+## cradle with the omnivore, and S3's near ghosts.
+func test_the_growth_gates_carry_s3_view_15() -> void:
+	var by_path := {}
+	for gate: Dictionary in LookProbe.GATES.growth:
+		if ["lineup_s3", "lineup_s4", "hatch_band_up"].has(str(gate.path).get_slice(".", 0)):
+			by_path[gate.path] = gate
+	var want := {
+		"lineup_s3.veil.ink": [1.0, null], "lineup_s3.veil.width_px": [24.0, null], "lineup_s3.veil.thread_dE": [15.0, null],
+		"lineup_s3.ink.warden": [1.0, null], "lineup_s3.rim.rammer": [1.0, null], "lineup_s3.rim.ambush_hunter": [1.0, null],
+		"lineup_s3.rim.lurker": [null, 0.0],
+		"lineup_s4.veil.ink": [null, 0.0], "lineup_s4.veil.neutral_gap": [25.0, null],
+		"lineup_s4.ink.deep_lurker": [1.0, null], "lineup_s4.ink.elder_warden": [1.0, null],
+		"lineup_s4.rim.morsel_ambush_hunter": [1.0, null], "lineup_s4.rim.morsel_rammer": [1.0, null],
+		"lineup_s4.preview_ok": [1.0, null],
+		"hatch_band_up.median_dE": [null, 2.0], "hatch_band_up.old_band_draw_calls": [null, 8.0],
+	}
+	for n in [3, 4]:
+		for species: String in LookProbe.LINEUP_NEAR[n]:
+			want["lineup_s%d.near.%s.cell_multiple" % [n, species]] = [1.4, null]
+	check_eq(by_path.size(), want.size(), "one gate per reading (%d)" % want.size())
+	for path: String in want:
+		check(by_path.has(path), "the growth set reads %s" % path)
+		if by_path.has(path):
+			check_eq(by_path[path].get("min"), want[path][0], "%s min" % path)
+			check_eq(by_path[path].get("max"), want[path][1], "%s max" % path)
+	for scene in ["lineup_s3", "lineup_s4", "hatch_band_up"]:
+		check(LookProbe.ENDLESS_SCENES.has(scene) and LookProbe.SCENES.has(scene), "%s is an endless scene" % scene)
+		check_eq(LookProbe.body_for(scene), "omnivore", "%s starts an omnivore" % scene)
+	check_eq(str(LookProbe.LINEUP_NEAR[3]), str(["deep_lurker", "elder_warden", "engulfer"]), "size 3's near ghosts")
+	check_eq(str(LookProbe.LINEUP_NEAR[4]), str(["engulfer", "lancer"]), "size 4's")
+	check_eq(LookProbe.S3_NEAR_SPOTS[2], Vector2(0.0, -14.0), "the third stands straight ahead")
+	check_eq(LookProbe.S4_PREVIEW, "Coming in a later build: the engulfer", "the preview line at 4")
+	# The cradle's view point: (0, 18) bu, (0, 46.08) am at band 1, (0, 18) tm at 3 and (0, 11.25) at 4.
+	var sim := FakeEvents.shipped_session_at_top(4).sim
+	check(LookProbe.cradle_view_point_tm(sim, 3).is_equal_approx(Vector2(0.0, 18.0)), "size 3: (0, 18) tm")
+	check(LookProbe.cradle_view_point_tm(sim, 4).is_equal_approx(Vector2(0.0, 11.25)), "size 4: (0, 11.25) tm")
+	check_eq(LookProbe.cradle_view_point_tm(sim, 2), Vector2.INF, "no cradle at band 0")
+
+
+## The neutral gap: the mean hue distance from the threat hue over the colours with enough chroma.
+func test_the_neutral_gap_averages_chromatic_pixels() -> void:
+	var pink := Color(THREAT_HEX)
+	var grey := Color(0.6, 0.6, 0.62)
+	check_eq(LookProbe.neutral_gap(PackedColorArray([pink, pink]), THREAT_HEX, 12.0), 0.0, "the threat pink itself: 0")
+	check_eq(LookProbe.neutral_gap(PackedColorArray([grey]), THREAT_HEX, 12.0), 180.0, "no chroma: 180")
+	var food := Color(FOOD_HEX)
+	var gap := LookProbe.hue_gap(LookProbe.hue(LookProbe.lab(food)), LookProbe.hue(LookProbe.lab(pink)))
+	check_near(LookProbe.neutral_gap(PackedColorArray([pink, food, grey]), THREAT_HEX, 12.0), snappedf(gap / 2.0, 0.1), 0.051,
+		"the grey left out, pink and food averaged")
 
 
 ## Ink and rim are read as the share (or count) of pixels near a hue with enough chroma.

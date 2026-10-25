@@ -45,10 +45,16 @@
       "body_rect": [0.066, 0.113, 0.934, 0.887], "plural": "stinger veils", "haze": "res://assets/export/ambience/T_Haze_veil.png"},
     "warden": {"entry_size": 3, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_warden.png",
       "body_rect": [0.193, 0.191, 0.807, 0.791], "plural": "Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"},
+    "elder_ambush": {"entry_size": 3, "radius_tm": 0.75, "texture": "res://assets/export/ambience/T_Ghost_elder_ambush.png",
+      "body_rect": [0.066, 0.084, 0.934, 0.895], "plural": "elder hunters", "haze": "res://assets/export/ambience/T_Haze_ambush.png"},
     "deep_lurker": {"entry_size": 4, "radius_tm": 0.78, "texture": "res://assets/export/ambience/T_Ghost_deep_lurker.png",
       "body_rect": [0.066, 0.100, 0.934, 0.887], "plural": "Deep lurkers", "haze": "res://assets/export/ambience/T_Haze_lurker.png"},
     "elder_warden": {"entry_size": 4, "radius_tm": 0.65, "texture": "res://assets/export/ambience/T_Ghost_elder_warden.png",
-      "body_rect": [0.234, 0.225, 0.766, 0.752], "plural": "elder Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"}
+      "body_rect": [0.234, 0.225, 0.766, 0.752], "plural": "elder Wardens", "haze": "res://assets/export/ambience/T_Haze_warden.png"},
+    "engulfer": {"entry_size": 5, "radius_tm": 0.85, "texture": "res://assets/export/ambience/T_Ghost_engulfer.png",
+      "body_rect": [0.061, 0.107, 0.889, 0.846], "plural": "engulfers", "haze": ""},
+    "lancer": {"entry_size": 6, "radius_tm": 0.70, "texture": "res://assets/export/ambience/T_Ghost_lancer.png",
+      "body_rect": [0.385, 0.145, 0.615, 0.834], "plural": "lancers", "haze": ""}
   },
   "names": {
     "ambush_hunter": {"plural": "ambush hunters", "haze": "res://assets/export/ambience/T_Haze_ambush.png"},
@@ -57,7 +63,9 @@
   "food_haze": {
     "plankton": "res://assets/export/ambience/T_Haze_plankton.png",
     "algae_ball": "res://assets/export/ambience/T_Haze_algae_ball.png",
-    "carrion": "res://assets/export/ambience/T_Haze_carrion.png"
+    "carrion": "res://assets/export/ambience/T_Haze_carrion.png",
+    "glass_flake": "res://assets/export/ambience/T_Haze_glass_flake.png",
+    "bead_cluster": "res://assets/export/ambience/T_Haze_bead_cluster.png"
   },
-  "preview_at_top": {"2": "the stinger veil"}
+  "preview_at_top": {"2": "the stinger veil", "4": "the engulfer"}
 }

@@ -19,7 +19,7 @@ var initial: Array[Vector2] = []
 ## {"enabled", "interim", "interval_s", "jitter_s", "max_live", "placement"}
 var supply := {}
 ## Insertion-ordered: [{"id", "kind": "meat", "position", "radius", "energy", "points", "age",
-## "lifetime", "source"}]
+## "lifetime", "source"}], and "species" and "site" for an S3 morsel site's item.
 var items: Array[Dictionary] = []
 var next_number := 1
 ## Sim time of the next interim arrival; INF while the supply is off.
@@ -53,10 +53,11 @@ func place_initial(arena: PoolArena) -> void:
 
 ## Adds a carrion item. Energy defaults to the data's value; points default to the data's rate
 ## (points per energy), so a smaller carcass is worth fewer points. Radius and lifetime default to
-## the field's (S2: a remnant's carcass and a morsel have their own, D-50, D-66). Returns the item,
-## or {} when the position or energy is not usable.
+## the field's (S2: a remnant's carcass and a morsel have their own, D-50, D-66). `extra` may give
+## "species" and "site" (S3: a morsel site's item), which the item and its carrion_spawned event carry.
+## Returns the item, or {} when the position or energy is not usable.
 func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: int = -1, p_radius: float = NAN,
-		p_lifetime: float = NAN) -> Dictionary:
+		p_lifetime: float = NAN, extra := {}) -> Dictionary:
 	var e := energy if is_nan(p_energy) else p_energy
 	if not position.is_finite() or not is_finite(e) or e <= 0.0:
 		return {}
@@ -74,8 +75,26 @@ func spawn(position: Vector2, source: String, p_energy: float = NAN, p_points: i
 	}
 	next_number += 1
 	items.append(item)
-	events.append({"type": "carrion_spawned", "source": source, "food_id": item.id, "position": position})
+	var event := {"type": "carrion_spawned", "source": source, "food_id": item.id, "position": position}
+	for key in ["species", "site"]:
+		if extra.has(key):
+			item[key] = str(extra[key])
+			event[key] = str(extra[key])
+	events.append(event)
 	return item
+
+
+## Takes an item out for `reason` (S3: "unloaded", a morsel site's item whose ground unloaded):
+## carrion_expired {food_id, position, reason}. Returns the item, or {} (and no event) when there is
+## none.
+func expire(id: String, reason: String) -> Dictionary:
+	for i in items.size():
+		if items[i].id == id:
+			var item: Dictionary = items[i]
+			items.remove_at(i)
+			events.append({"type": "carrion_expired", "food_id": id, "position": item.position, "reason": reason})
+			return item
+	return {}
 
 
 ## Ages and expires items, then runs the interim supply. `now` is sim time.

@@ -1,0 +1,12 @@
+config_version=5
+
+[application]
+config/name="PROPOSED Tribal Village"
+run/main_scene="res://village.tscn"
+
+[display]
+window/size/viewport_width=1000
+window/size/viewport_height=620
+
+[rendering]
+renderer/rendering_method="gl_compatibility"

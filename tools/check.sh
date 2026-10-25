@@ -28,6 +28,12 @@
 #             plankton look and the slot's autosave on the growth are checked, then it saves
 #   grow_continue: a new process continues that slot at size 2, at the same place and checkpoint,
 #             with the same look, badge, near ghosts and camera
+#   band_up:  (S3) a new omnivore at size 2 is filled and forced into band 1 (size 3): the band-up's
+#             badge, band 1's pieces, the old band in at most 8 calls, glass flakes, the places line;
+#             Go to cradle shows the cradle, its caption, its toast once and the beacon's top; a
+#             second growth to size 4 (bead clusters, the engulfer preview), then it saves
+#   band_up_continue: a new process continues that slot at size 4 with the old band ready, the
+#             cradle, the preview and the places line as saved
 #   creature_build: the creature stage (--creature) on its own store under user://smoke/: the editor
 #             grows a pair of neck limbs, adds a maw, eyes and feet, picks a swatch and Done enters
 #             the world (the body, colour, points and title); the player eats the nearest fruit, bites
@@ -74,6 +80,8 @@ bounded 120 "$GODOT" --headless --fixed-fps 30 --resolution 1280x720 --path . --
 bounded 120 "$GODOT" --headless --fixed-fps 144 --resolution 1920x1080 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=fps --world=endless --seed=4245 --slot=user://smoke/fps144.json --compare=user://smoke/fps_30.json 2>&1 | tee builds/smoke/fps144.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow --world=endless --slot=user://smoke/grow.json --seed=4246 2>&1 | tee builds/smoke/grow.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=grow_continue --world=endless --slot=user://smoke/grow.json 2>&1 | tee builds/smoke/grow_continue.log
+bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=band_up --world=endless --slot=user://smoke/band_up.json --seed=4247 2>&1 | tee builds/smoke/band_up.log
+bounded 120 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/endless_smoke.gd -- --phase=band_up_continue --world=endless --slot=user://smoke/band_up.json 2>&1 | tee builds/smoke/band_up_continue.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=build --creature --slot=user://smoke/creature.json --seed=4242 2>&1 | tee builds/smoke/creature_build.log
 bounded 300 "$GODOT" --headless --fixed-fps 60 --path . --script res://tests/smoke/creature_smoke.gd -- --phase=reload --creature --slot=user://smoke/creature.json 2>&1 | tee builds/smoke/creature_reload.log
 if grep -E "SCRIPT ERROR|^ERROR:" builds/smoke/*.log; then

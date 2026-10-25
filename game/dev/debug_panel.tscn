@@ -105,6 +105,27 @@ layout_mode = 2
 theme_type_variation = &"DebugButton"
 text = "Size 2"
 
+[node name="Size3" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Size 3"
+
+[node name="Size4" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Size 4"
+
+[node name="GoToCradle" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"DebugButton"
+text = "Go to cradle"
+
 [node name="ReadyToMate" type="Button" parent="Root/Panel/Scroll/Box/Commands"]
 unique_name_in_owner = true
 visible = false

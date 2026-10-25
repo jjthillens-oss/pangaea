@@ -20,6 +20,12 @@ extends Node3D
 ## LIMP_DELAY_S), a morsel (drawn where its carrion item lies, fading out when it is eaten or rots)
 ## or haze (it fades out). A creature removed by the growth or a remnant that swims off fades out
 ## where it was; one removed for any other reason goes at once.
+##
+## Morsel sites (S3, s3-view 9.1, V3-13): their carrion items ("morsel_site") are drawn here, not by
+## the FoodView: one baked body per species (body and parts in M_Morsel), one MultiMesh per species
+## under MorselSites, and a rim MultiMesh beside it while the cell can eat meat. A new item grows in
+## over MORSEL_IN_S; one that goes without being eaten (rot, trim, unload) shrinks out over
+## MORSEL_OUT_S; an eaten one goes at once, since the swallow ghost carries it (morsel_mesh_for).
 
 ## The moment after a growth's start when relations change and remnants go limp (GrowthBeat's
 ## RELATIONS_S) and how long the limp look takes to fade in.
@@ -31,6 +37,16 @@ const LEAVE_S := 0.6
 const FADING_REMOVALS: PackedStringArray = ["growth", "remnant_left"]
 
 const VIEW_SCENE := preload("res://game/scenes/pool/creature_view.tscn")
+const MORSEL_SOURCE := "morsel_site"
+const MORSEL_IN_S := 0.6
+const MORSEL_OUT_S := 0.6
+const MORSEL_MATERIAL := preload("res://assets/export/M_Morsel.tres")
+const MORSEL_RIM_SHADER := preload("res://game/scenes/pool/morsel_rim.gdshader")
+## The bodies that first come at sizes 3 and 4 (warm_up_meshes), and the species whose bake stands for
+## every morsel (each bake has the same vertex format).
+const WARM_UP_BODIES: PackedStringArray = ["creature_veil_body", "creature_warden_body", "creature_elder_ambush_body",
+	"creature_deep_lurker_body", "creature_elder_warden_body"]
+const WARM_UP_MORSEL := "rammer"
 
 var sim: PoolSim
 var catalog: PartCatalog
@@ -40,6 +56,13 @@ var world_space: WorldSpace
 var _views := {}   ## creature id -> CreatureView, live creatures only
 var _remnant_views := {}   ## remnant id -> CreatureView (S2)
 var _morsel_views := {}    ## carrion item id -> CreatureView (S2)
+## Morsel-site items drawn now (S3): food id -> {species, position, radius, yaw, first_seen, gone_at
+## (-1 while the item is in the sim)}.
+var _sites := {}
+var _sites_root: Node3D
+var _morsel_meshes := {}   ## species id -> the baked body
+static var _warm_up: Array[Mesh] = []
+var _morsel_radii := {}    ## species id -> its phenotype's radius (a morsel's q is its radius over it)
 
 
 ## Starts drawing `p_sim`'s creatures: a view for each one alive now, placed at its current tick.
@@ -64,6 +87,8 @@ func clear() -> void:
 	_views.clear()
 	_remnant_views.clear()
 	_morsel_views.clear()
+	_sites.clear()
+	_sites_root = null
 
 
 ## The cell's size now (the world's; 1 in the pool).
@@ -160,6 +185,48 @@ func views_in_view(camera: Camera3D, screen: Vector2) -> Array[CreatureView]:
 	return out
 
 
+## How many views on a `screen`-sized view of `camera` have threads that can sting the cell (S3,
+## V3-19: the veil hint's context).
+func inked_veils_in_view(camera: Camera3D, screen: Vector2) -> int:
+	var count := 0
+	for view in views_in_view(camera, screen):
+		if view.threads != null and view.threads.inked():
+			count += 1
+	return count
+
+
+## What the start fade draws once so S3's creatures show without a first-use compile (T4.6,
+## s3-view 13): the meshes of the bodies that first come at sizes 3 and 4, the veil threads' unit
+## mesh in the threat ink and in the neutral, the capsule outline, and a baked morsel in M_Morsel
+## and in the morsel rim (drawn in play as MultiMeshes of that bake).
+static func warm_up_meshes() -> Array[Mesh]:
+	if not _warm_up.is_empty():
+		return _warm_up
+	for asset in WARM_UP_BODIES:
+		_warm_up.append_array(CreatureView.body_meshes(asset))
+	var threads := VeilThreadsView.new()
+	for can_sting: bool in [true, false]:
+		threads.set_ink(can_sting)
+		var rig := VeilThreadsView.unit_mesh().duplicate() as Mesh
+		rig.surface_set_material(0, threads.rig_material().duplicate() as Material)
+		_warm_up.append(rig)
+	var outline := PlaneMesh.new()
+	outline.material = threads.outline_material().duplicate() as Material
+	_warm_up.append(outline)
+	threads.free()
+	var bake := bake_morsel(SpeciesCatalog.load_from(), WARM_UP_MORSEL, PartCatalog.load_from())
+	var rim := ShaderMaterial.new()
+	rim.shader = MORSEL_RIM_SHADER
+	rim.set_shader_parameter("color", CreatureView.RIM_COLOR)
+	rim.set_shader_parameter("grow", CreatureView.RIM_GROW_TM)
+	for material: Material in [MORSEL_MATERIAL, rim]:
+		var copy := bake.duplicate() as Mesh
+		if copy.get_surface_count() > 0:
+			copy.surface_set_material(0, material)
+			_warm_up.append(copy)
+	return _warm_up
+
+
 ## The live creature's view, or null.
 func view_of(id: String) -> CreatureView:
 	return _views.get(id)
@@ -242,6 +309,8 @@ func on_event(event: Dictionary) -> void:
 			if morsel != null:
 				_morsel_views.erase(morsel.morsel_id)
 				_let_go(morsel)
+			if str(event.type) == "ate":
+				_sites.erase(str(event.get("food_id", "")))   # the swallow ghost carries it
 		"creature_noticed":
 			if event.get("target") == CreatureField.PLAYER_ID and _views.has(id):
 				_views[id].show_marker()
@@ -259,6 +328,10 @@ func on_event(event: Dictionary) -> void:
 			var target: CreatureView = _views.get(target_id, _remnant_views.get(target_id))
 			if target != null:
 				target.hurt()
+			if str(event.get("kind", "")) == "sting":
+				var veil := view_of(str(event.get("attacker", "")))
+				if veil != null and veil.threads != null:
+					veil.threads.flash()
 
 
 ## Draws every live creature `fraction` of the way from the sim's previous tick to its current one
@@ -276,6 +349,7 @@ func sync(fraction: float) -> void:
 		view.show_motion(c.motion, fraction)
 		view.show_brain(c.brain, sim.tick, fraction)
 	_sync_converted(fraction)
+	_sync_morsel_sites(sim.now() - (1.0 - fraction) * PoolSim.DT)
 
 
 ## Pauses or resumes every view's own animation (flashes, fades, the wag).
@@ -316,6 +390,180 @@ func _sync_converted(fraction: float) -> void:
 			_let_go(view)
 		else:
 			view.position = PlaneSpace.to_world(item.position)
+
+
+## The morsel-site items drawn now (their food ids, shrinking ones included).
+func morsel_site_ids() -> PackedStringArray:
+	var out := PackedStringArray()
+	for id in _sites:
+		out.append(id)
+	return out
+
+
+## How morsel-site item `food_id` was drawn last (its instance transform), or the identity.
+func morsel_site_transform(food_id: String) -> Transform3D:
+	return _sites.get(food_id, {}).get("drawn", Transform3D.IDENTITY)
+
+
+## The baked morsel body of `species_id` (cached): body and parts in one surface, in M_Morsel.
+func morsel_mesh(species_id: String) -> Mesh:
+	if not _morsel_meshes.has(species_id):
+		_morsel_meshes[species_id] = bake_morsel(sim.species, species_id, catalog)
+		_morsel_radii[species_id] = sim.species.phenotype(species_id, catalog).radius
+	return _morsel_meshes[species_id]
+
+
+## The swallow ghost's mesh for carrion item `food_id`: its baked body when it is a morsel-site item
+## drawn here, else null (the FoodView's mesh).
+func morsel_mesh_for(food_id: String) -> Mesh:
+	var site: Dictionary = _sites.get(food_id, {})
+	return null if site.is_empty() else morsel_mesh(str(site.species))
+
+
+## A creature view of `species_id` built at q 1, its Model's meshes merged into one surface placed
+## as the view draws them (vertex colour kept, white where a mesh has none, for M_Morsel), and
+## the view freed.
+static func bake_morsel(species: SpeciesCatalog, species_id: String, p_catalog: PartCatalog) -> ArrayMesh:
+	var view: CreatureView = VIEW_SCENE.instantiate()
+	view.build(species, species_id, p_catalog, "", 1.0)
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for node in view.get_node(^"Pivot/Model").find_children("*", "MeshInstance3D", true, false):
+		var mi := node as MeshInstance3D
+		if mi.mesh == null or not mi.visible:
+			continue
+		var t := Transform3D.IDENTITY
+		var n: Node = mi
+		while n != view:
+			t = (n as Node3D).transform * t
+			n = n.get_parent()
+		var nb := t.basis.inverse().transposed()
+		for surface in mi.mesh.get_surface_count():
+			if mi.mesh.surface_get_primitive_type(surface) != Mesh.PRIMITIVE_TRIANGLES:
+				continue
+			var arrays := mi.mesh.surface_get_arrays(surface)
+			var sv: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var sn: Variant = arrays[Mesh.ARRAY_NORMAL]
+			var sc: Variant = arrays[Mesh.ARRAY_COLOR]
+			var su: Variant = arrays[Mesh.ARRAY_TEX_UV]
+			var si: Variant = arrays[Mesh.ARRAY_INDEX]
+			var base := vertices.size()
+			for i in sv.size():
+				vertices.append(t * sv[i])
+				normals.append((nb * (sn as PackedVector3Array)[i]).normalized() if sn != null else Vector3.UP)
+				colors.append((sc as PackedColorArray)[i] if sc != null else Color.WHITE)
+				uvs.append((su as PackedVector2Array)[i] if su != null else Vector2.ZERO)
+			if si != null:
+				for i in (si as PackedInt32Array):
+					indices.append(base + i)
+			else:
+				for i in sv.size():
+					indices.append(base + i)
+	view.free()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	if not vertices.is_empty():
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## Draws the morsel-site items at sim time `now`: every item in the sim, and the ones that went
+## without being eaten until they have shrunk out.
+func _sync_morsel_sites(now: float) -> void:
+	if sim.carrion == null:
+		return
+	var seen := {}
+	for item in sim.carrion.items:
+		if item.get("source", "") != MORSEL_SOURCE:
+			continue
+		var id := str(item.id)
+		seen[id] = true
+		var site: Dictionary = _sites.get(id, {})
+		if site.is_empty():
+			site = {"species": str(item.get("species", "")), "first_seen": now, "gone_at": -1.0,
+				"yaw": WorldHash.unit(WorldHash.str32(id)) * TAU}
+			_sites[id] = site
+		site.position = item.position
+		site.radius = float(item.radius)
+	for id in _sites.keys():
+		var site: Dictionary = _sites[id]
+		if seen.has(id):
+			continue
+		if float(site.gone_at) < 0.0:
+			site.gone_at = now
+		elif now - float(site.gone_at) >= MORSEL_OUT_S:
+			_sites.erase(id)
+	if _sites.is_empty() and _sites_root == null:
+		return
+	if _sites_root == null:
+		_sites_root = Node3D.new()
+		_sites_root.name = "MorselSites"
+		add_child(_sites_root)
+	var by_species := {}
+	for id in _sites:
+		var species_id := str(_sites[id].species)
+		if not by_species.has(species_id):
+			by_species[species_id] = PackedStringArray()
+		by_species[species_id].append(id)
+	var rimmed := sim.phenotype != null and sim.phenotype.can_eat("meat")
+	for child in _sites_root.get_children():
+		var species_id := str(child.name).trim_suffix("__rim")
+		if not by_species.has(species_id) or (str(child.name).ends_with("__rim") and not rimmed):
+			(child as MultiMeshInstance3D).multimesh.instance_count = 0
+	for species_id: String in by_species:
+		var ids: PackedStringArray = by_species[species_id]
+		var body := _site_multimesh(species_id, false)
+		var rim := _site_multimesh(species_id, true) if rimmed else null
+		for mm in [body, rim]:
+			if mm != null and mm.instance_count != ids.size():
+				mm.instance_count = ids.size()
+		var r := float(_morsel_radii.get(species_id, 1.0))
+		for i in ids.size():
+			var site: Dictionary = _sites[ids[i]]
+			var shown := smoothstep(0.0, MORSEL_IN_S, now - float(site.first_seen))
+			if float(site.gone_at) >= 0.0:
+				shown *= 1.0 - clampf((now - float(site.gone_at)) / MORSEL_OUT_S, 0.0, 1.0)
+			var s := maxf(float(site.radius) / maxf(r, 1e-6) * shown, 1e-4)
+			var t := Transform3D(Basis(Vector3.UP, float(site.yaw)).scaled(Vector3.ONE * s), PlaneSpace.to_world(site.position))
+			site.drawn = t
+			body.set_instance_transform(i, t)
+			if rim != null:
+				rim.set_instance_transform(i, t)
+				rim.set_instance_custom_data(i, Color(shown, 0.0, 0.0, 0.0))
+
+
+## The MultiMesh drawing `species_id`'s morsel-site items (or their rim), made on first use.
+func _site_multimesh(species_id: String, rim: bool) -> MultiMesh:
+	var key := species_id + ("__rim" if rim else "")
+	var mmi := _sites_root.get_node_or_null(NodePath(key)) as MultiMeshInstance3D
+	if mmi == null:
+		mmi = MultiMeshInstance3D.new()
+		mmi.name = key
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = rim
+		mm.mesh = morsel_mesh(species_id)
+		mmi.multimesh = mm
+		if rim:
+			var material := ShaderMaterial.new()
+			material.shader = MORSEL_RIM_SHADER
+			material.set_shader_parameter("color", CreatureView.RIM_COLOR)
+			material.set_shader_parameter("grow", CreatureView.RIM_GROW_TM)
+			mmi.material_override = material
+		else:
+			mmi.material_override = MORSEL_MATERIAL
+		_sites_root.add_child(mmi)
+	return mmi.multimesh
 
 
 ## A view no longer drawn from the sim fades out where it is; WorldSpace moves it until it frees itself.

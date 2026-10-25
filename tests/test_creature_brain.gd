@@ -1754,3 +1754,161 @@ func test_union_disc_is_the_smallest_disc_holding_both() -> void:
 	check(Vector2(u.center).is_equal_approx(Vector2(0.9, 1.2)), "its centre 1.5 along the line: %s" % [u.center])
 	for disc in [c, d]:
 		check_near(Vector2(disc.center).distance_to(u.center) + float(disc.radius), float(u.radius), 1e-5, "it touches each from inside")
+
+
+# --- S3: the hazard (s3-sim 3.1, D-100, D-120, D-124; S3G11, S3G11b) ---
+
+const HAZARD_SPECIES := "res://tests/fixtures/creatures_hazard_test.json"
+const HAZARD_HASH := 0x5EED_1234
+
+
+## The fixture's veil-shaped hazard at `home`, drifting from tick 0 with its phases from `h`.
+func _hazard(home := Vector2.ZERO, h := HAZARD_HASH) -> Critter:
+	var cat := SpeciesCatalog.load_from(HAZARD_SPECIES)
+	var block: Dictionary = cat.species.hazard_test
+	var c := Critter.new()
+	c.mem = CreatureBrain.create("hazard", cat.brain_config("hazard_test"), home, 0.0, {}, 11, 0)
+	CreatureBrain.set_drift(c.mem, h)
+	c.mem.ignore_all_until = 0
+	c.m = Locomotion.MotionState.new(home, 0.0)
+	c.p = _derive(block.parts.map(func(p: Dictionary) -> Array: return [p.type, p.angle]), float(block.body_size))
+	return c
+
+
+## S3G11: a hazard on its path keeps within 0.5 m of drift_goal(tick) after 120 ticks (the steady lag is
+## about 0.2 m, D-120). One spawned at home, up to r x sqrt(2) from its path's point, swims onto it first.
+func test_a_hazard_drifts_and_keeps_within_half_a_metre_of_its_path() -> void:
+	var c := _hazard(Vector2(3.0, -2.0))
+	check_eq(c.label(), "drift", "it starts drifting")
+	check_eq(c.mem.drift_period, Vector2i(2220, 3180), "the periods in ticks")
+	check_eq(c.mem.drift_phase, Vector2i(HAZARD_HASH % 2220, WorldHash.mix32(HAZARD_HASH, 1) % 3180), "the phases (D-124)")
+	c.m.position = CreatureBrain.drift_goal(c.mem, 0)
+	var worst := 0.0
+	var widest := 0.0
+	for t in 4000:
+		_tick(c, t, [])
+		if t >= 120:
+			worst = maxf(worst, c.m.position.distance_to(CreatureBrain.drift_goal(c.mem, t)))
+		widest = maxf(widest, c.m.position.distance_to(c.mem.home))
+	check(worst <= 0.5, "within 0.5 m of drift_goal after 120 ticks (%.3f)" % worst)
+	check(widest > 2.5, "it goes round its path (%.2f m from home)" % widest)
+	check_eq(c.label(), "drift", "still drifting")
+	check(c.events.is_empty(), "nothing to say (%s)" % [c.events])
+	check_eq(CreatureBrain.next_deadline(c.mem), CreatureBrain.NEVER, "no deadline while drifting")
+	for h in [1, 77, 4242, HAZARD_HASH]:
+		var home := _hazard(Vector2.ZERO, h)
+		var on := -1
+		var after := 0.0
+		for t in 2400:
+			_tick(home, t, [])
+			var d := home.m.position.distance_to(CreatureBrain.drift_goal(home.mem, t))
+			if on < 0 and d <= 0.5:
+				on = t
+			elif on >= 0 and t >= on + 120:
+				after = maxf(after, d)
+		check(on >= 0 and on <= 1200, "from home it reaches its path within 20 s (hash %d: tick %d)" % [h, on])
+		check(after <= 0.5, "and keeps to it (hash %d: %.3f)" % [h, after])
+
+
+func test_the_drift_path_is_the_hashs_whatever_brain_asks_and_moves_with_home() -> void:
+	var a := _hazard()
+	var b := _hazard()
+	var other := _hazard(Vector2.ZERO, HAZARD_HASH + 1)
+	var r := 3.0
+	var same := true
+	var differs := false
+	for t in range(0, 20000, 37):
+		var p := CreatureBrain.drift_goal(a.mem, t)
+		same = same and p == CreatureBrain.drift_goal(b.mem, t)
+		differs = differs or p != CreatureBrain.drift_goal(other.mem, t)
+		check(absf(p.x) <= r + 1e-9 and absf(p.y) <= r + 1e-9, "inside the square at %d" % t)
+	check(same, "a respawned or reloaded brain with the same hash rejoins the same path")
+	check(differs, "another hash is another path")
+	check_eq(CreatureBrain.drift_goal(a.mem, 1000 + 2220 * 3180), CreatureBrain.drift_goal(a.mem, 1000), "it repeats")
+	var before := CreatureBrain.drift_goal(a.mem, 777)
+	a.mem.home -= Vector2(32.0, -64.0)   # a rebase shifts home (WorldStream.rebase)
+	check_eq(CreatureBrain.drift_goal(a.mem, 777), before - Vector2(32.0, -64.0), "the path moves with home")
+
+
+func test_a_hazard_never_notices_or_engages_the_cell_beside_it() -> void:
+	var c := _hazard()
+	for t in 900:
+		var cell := c.m.position + Vector2.from_angle(c.m.heading) * 1.2
+		var d := _tick(c, t, [_percept(c, "player", cell)])
+		check(not d.strike, "never strikes")
+		if c.label() != "drift" or not c.mem.target.is_empty():
+			check(false, "left its drift at %d: %s, target '%s'" % [t, c.label(), c.mem.target])
+			break
+	check(c.events.is_empty(), "no notice, chase or tell (%s)" % [c.events])
+	check(not CreatureBrain.is_engaged_with(c.mem, "player"), "never engaged")
+
+
+func test_a_bitten_hazard_flees_restarts_on_another_bite_then_drifts_again() -> void:
+	var c := _hazard()
+	for t in 200:
+		_tick(c, t, [])
+	var at := c.m.position + Vector2(0.6, 0.0)
+	CreatureBrain.on_hurt(c.mem, {"id": "player", "position": at, "radius": 0.5}, 200)
+	_tick(c, 200, [_percept(c, "player", at)])
+	check_eq(c.label(), "flee", "a bite makes it flee whatever its health (D-100)")
+	check_eq(c.of("creature_fled").size(), 1, "and says so")
+	check(c.m.velocity.x < 0.0 or c.mem.flee_from == at, "away from the biter")
+	for t in range(201, 300):
+		_tick(c, t, [])
+	CreatureBrain.on_hurt(c.mem, {"id": "player", "position": c.m.position + Vector2(0.6, 0.0), "radius": 0.5}, 300)
+	_tick(c, 300, [])
+	check_eq(c.mem.state_tick, 300, "a second bite restarts the flee")
+	var flee_ticks := int(c.mem.cfg.flee_ticks)
+	for t in range(301, 300 + flee_ticks + 10):
+		_tick(c, t, [])
+	check_eq(c.label(), "drift", "the flee runs out back into DRIFT, not home")
+	check_eq(c.of("creature_fled").size(), 2, "one event a bite")
+	check(c.of("creature_noticed").is_empty(), "it never noticed the biter")
+
+
+func test_rule_3_still_makes_a_hazard_flee_and_a_forced_return_drifts() -> void:
+	var c := _hazard()
+	_tick(c, 0, [])
+	c.mem.wake = true
+	_tick(c, 1, [_percept(c, "big", c.m.position + Vector2(2.0, 0.0), {"radius": c.p.radius * 1.5})])
+	check_eq(c.label(), "flee", "a feared body is fled on sight")
+	CreatureBrain.force_return(c.mem, "big", 0, 2)
+	check_eq(c.label(), "drift", "a forced return drifts")
+
+
+func test_the_threads_trail_behind_and_only_a_hazard_has_them() -> void:
+	var c := _hazard()
+	var cap := CreatureBrain.thread_capsule(c.mem, Vector2(1.0, 2.0), 0.0, 0.8)
+	check_eq(cap.keys(), ["a", "b", "r"], "a capsule")
+	check(cap.a.distance_to(Vector2(0.2, 2.0)) < 1e-6 and cap.b.distance_to(Vector2(-2.2, 2.0)) < 1e-6,
+		"from the rim backwards, threads.length_m long (%s)" % [cap])
+	check_eq(cap.r, 0.35, "threads.radius_m thick")
+	var turned := CreatureBrain.thread_capsule(c.mem, Vector2.ZERO, PI / 2.0, 1.0)
+	check(turned.b.distance_to(Vector2(0.0, -3.4)) < 1e-6, "behind its heading")
+	check_eq(CreatureBrain.thread_capsule(_ambush().mem, Vector2.ZERO, 0.0, 1.0), {}, "none for an ambush hunter")
+	check_eq(CreatureBrain.thread_capsule(_rammer().mem, Vector2.ZERO, 0.0, 1.0), {}, "none for a rammer")
+
+
+func test_drift_and_bloom_keys_are_written_only_when_they_mean_something() -> void:
+	var hazard := _hazard().mem.to_dict()
+	check_eq(hazard.drift_period, [2220, 3180], "a hazard writes its periods")
+	check(hazard.has("drift_phase"), "and its phases")
+	check(not hazard.has("bloom_cycle"), "no bloom")
+	var plain := _rammer().mem.to_dict()
+	for key in ["drift_phase", "drift_period", "bloom_offset", "bloom_cycle"]:
+		check(not plain.has(key), "a rammer leaves %s out" % key)
+	var r := _rammer()
+	r.mem.bloom_cycle = 5400
+	r.mem.bloom_offset = 12
+	var bloom := r.mem.to_dict()
+	check_eq([bloom.bloom_offset, bloom.bloom_cycle], [12, 5400], "a bloom schedule is written")
+
+
+## S3G11b's brain part: a drifting hazard is calm (it may sleep), a fleeing one is not.
+func test_a_drifting_hazard_is_calm() -> void:
+	var c := _hazard()
+	check(CreatureBrain.CALM.has("drift/"), "CALM has drift/ (D-120)")
+	check(CreatureBrain.is_calm(c.mem), "drifting is calm")
+	CreatureBrain.on_hurt(c.mem, {"id": "player", "position": Vector2(0.5, 0.0), "radius": 0.5}, 0)
+	_tick(c, 0, [])
+	check(not CreatureBrain.is_calm(c.mem), "fleeing is not")

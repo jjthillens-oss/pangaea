@@ -1,0 +1,6 @@
+; Isolated, headless research prototype. The game does not load this project.
+config_version=5
+
+[application]
+config/name="Species Naming Prototype"
+config/features=PackedStringArray("4.7")

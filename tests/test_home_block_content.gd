@@ -182,8 +182,11 @@ func _content() -> WorldContent:
 
 
 ## The sizes this build runs.
+## The home block's sizes: band 0's within the build (from S3 the build reaches band 1, where the
+## cradle is home).
 func _sizes() -> Array:
-	return range(_content().config.size_start, _content().config.max_size_in_build + 1)
+	return range(_content().config.size_start, _content().config.max_size_in_build + 1).filter(
+		func(n: int) -> bool: return WorldConfig.band_of(n) == 0)
 
 
 ## Items a full zone shows (PlanktonField.max_count, capped per zone by the world file).

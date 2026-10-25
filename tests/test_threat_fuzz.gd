@@ -217,12 +217,14 @@ func test_invariant_14_fails_a_creature_below_its_size_that_engages_the_cell() -
 
 ## Invariant 14 on one tick at the cell's `size`: what broke it, as text. `known` maps every body id
 ## seen this tick (creatures before and after the step, and remnants) to its species, so a creature
-## gone in the tick is still judged.
-static func broken_14(sim: PoolSim, size: int, events: Array, known: Dictionary, where: String) -> PackedStringArray:
+## gone in the tick is still judged. With `records`, q is the field's record's (D-117 (a): the pool's
+## veil is its entry record, q 1); else the catalog's at `size`. A sting is a hit (D-141).
+static func broken_14(sim: PoolSim, size: int, events: Array, known: Dictionary, where: String,
+		records := false) -> PackedStringArray:
 	var out := PackedStringArray()
 	var p := CreatureField.PLAYER_ID
 	for c: CreatureField.Creature in sim.creatures.creatures:
-		if c.brain != null and c.brain.target == p and _below(sim, c.species_id, size):
+		if c.brain != null and c.brain.target == p and _below(sim, c.species_id, size, records):
 			out.append("%s: %s (%s) at q < 1 holds the cell as its target in %s/%s" % [where, c.id, c.species_id, c.brain.state, c.brain.phase])
 	for e in events:
 		var type := str(e.get("type", ""))
@@ -233,14 +235,16 @@ static func broken_14(sim: PoolSim, size: int, events: Array, known: Dictionary,
 			who = str(e.get("attacker", ""))
 		if who.is_empty() or not known.has(who):
 			continue
-		if _below(sim, str(known[who]), size):
+		if _below(sim, str(known[who]), size, records):
 			out.append("%s: %s (%s) at q < 1: %s on the cell" % [where, who, known[who], type])
 	return out
 
 
-static func _below(sim: PoolSim, species_id: String, size: int) -> bool:
+static func _below(sim: PoolSim, species_id: String, size: int, records := false) -> bool:
 	if not sim.species.has_species(species_id):
 		return false
+	if records:
+		return float(sim.creatures.record_of(species_id).get("q", 1.0)) < 1.0 - Q_SLACK
 	return sim.species.q_of(species_id, size) < 1.0 - Q_SLACK
 
 
@@ -379,3 +383,304 @@ func _fuzz(seed_value: int, body: String, start: Vector2) -> Dictionary:
 	var counts := _fz.counts
 	counts.visits = bot.visits
 	return counts
+
+
+# --- S3 (T0.3, D-117, D-141): the q < 1 pairs at sizes 2 to 4 (S3G13) and invariant 15's runs in the
+# pool (D-117 a) and at the sunbeam well (D-117 b) (S3G14) ---
+
+const ThreadPass := preload("res://game/dev/thread_pass.gd")
+const WorldChecks := preload("res://tests/world_checks.gd")
+const S3_SEEDS: Array[int] = [401, 402, 403, 404]
+const S3_TICKS := 5 * 60 * 60
+## The bots of every S3 run, each with its body (the kiter bites, so it has a jaw).
+const S3_BOTS := {"kiter": "hunter", "evade": "omnivore"}
+## S3G13 (s3-sim 3.12): the species below the cell's size at each size that the runner pairs it with.
+const S3_PAIRS := {2: ["ambush_hunter", "rammer"], 3: ["ambush_hunter", "rammer", "lurker", "elder_rammer"],
+	4: ["lurker", "elder_rammer", "veil", "warden"]}
+## S3G13's non-vacuity: a hazard pair's run touches the threads this often; any other pair has the
+## cell in its creature's senses this often over its eight runs.
+const MIN_CAPSULE_CONTACT_TICKS := 60
+const S3_MIN_SENSED := 600
+## S3G13: the cell keeps within this share of its pair's sight (at its size) of a creature of it (_tether).
+const PAIR_TETHER_SIGHT_SHARE := 0.6
+const SUNBEAM_WELL := "sunbeam_well"   ## D-117 (b): the band-1 rare place a veil and a Warden share
+const WELL_SEARCH_CHUNKS := 12          ## how far round home (chunks) the runner looks for it
+const WELL_LOAD_TICKS := 30             ## steps at the well before its sites are read
+
+var _top4: WorldContent
+
+
+## A new lineage of `body` at home on the shipped world at its size-4 top (WorldChecks, until I-3
+## flips the shipped file). Growth is on (set_size needs the top), and the runner's bots never press
+## Grow (_s3_bot), so the cell stays at the size the runner sets.
+func _top4_sim(body: String, seed_value: int) -> PoolSim:
+	if _top4 == null:
+		_top4 = WorldContent.load_from(WorldChecks.shipped_world_at(4), layout, species)
+	_top4.config.switches["growth"] = true
+	var r := Lineage.found(seed_value, "test+dev", catalog, body)
+	r.save.player["position"] = PlaneSpace.to_save_abs(_top4.home.spawn[0], _top4.home.spawn[1])
+	var sim := PoolSim.create(r.save, catalog, layout, species, _top4)
+	sim.grace_until = sim.tick
+	sim.drain_events()
+	return sim
+
+
+## A bot for an S3 run: `bot_name` ("kiter" or "evade"), wrapped in a ThreadPass when `threads` (with
+## its striker passes too when `strikers`); a press player who never presses (EvadeBot.GrowthKeys),
+## so the cell never grows. Returns {"bot", "events": whether its next_intent takes the last step's events, "pass"}.
+func _s3_bot(bot_name: String, seed_value: int, threads: bool, strikers := false) -> Dictionary:
+	var bot: Variant
+	var with_events := bot_name == "evade"
+	if bot_name == "kiter":
+		bot = KiterBot.new(seed_value)
+		bot.bite_visits = true
+	else:
+		bot = EvadeBot.new()
+		var forage = ForageBot.new()
+		forage.keys.trigger = ""
+		forage.unjam = true
+		bot.base = func(s: PoolSim) -> SimIntent: return forage.next_intent(s)
+	bot.keys.trigger = "press"
+	bot.keys.press = false
+	if not threads:
+		return {"bot": bot, "events": with_events, "pass": null}
+	var p = ThreadPass.new(bot, with_events)
+	p.strikers = strikers
+	return {"bot": p, "events": true, "pass": p}
+
+
+## One S3 run of S3_TICKS on `sim` (already set up), checked every tick by `fz` and invariant 14
+## (by the field's records with `records`, as the pool's entry-record veil needs). With `stay` (abs
+## am) each respawn is followed by a dev teleport back there, checked as its own step. With `tether`
+## (a species) the cell keeps near the nearest living creature of it (_tether). Returns {"broken",
+## "contact", "stings", "strike_hits", "strikes", "deaths", "counts"}; adds to `pairs` (_tally).
+func _s3_run(fz: Variant, sim: PoolSim, b: Dictionary, where: String, pairs: Dictionary, records := false,
+		stay := PackedFloat64Array(), tether := "") -> Dictionary:
+	fz.start_run()
+	var out := {"broken": PackedStringArray(), "contact": 0, "stings": 0, "strike_hits": 0, "strikes": 0, "deaths": 0,
+		"counts": {}}
+	var dead := {}
+	var events: Array[Dictionary] = []
+	for i in S3_TICKS:
+		var back := Gates.continue_after_death(sim, dead, fz)
+		events.append_array(back)
+		if not stay.is_empty() and back.any(func(e: Dictionary) -> bool: return e.type == "respawned"):
+			var was_tp: Dictionary = fz.before(sim)
+			check(sim.debug_teleport_abs(stay[0], stay[1]), "%s: back after the respawn" % where)
+			var tp := sim.drain_events()
+			fz.after(sim, tp, sim.tick, "%s tick %d (back)" % [where, sim.tick], was_tp)
+			events.append_array(tp)
+		var t: int = sim.tick
+		var was: Dictionary = fz.before(sim)
+		var known := _species_of(sim)
+		var intent: SimIntent = b.bot.next_intent(sim, events) if b.events else b.bot.next_intent(sim)
+		if not tether.is_empty():
+			_tether(sim, intent, tether)
+		sim.step(intent)
+		events = sim.drain_events()
+		var at := "%s tick %d" % [where, t]
+		fz.after(sim, events, t, at, was)
+		known.merge(_species_of(sim))
+		var size := sim.size()
+		out.broken.append_array(broken_14(sim, size, events, known, at, records))
+		_tally(sim, size, events, known, pairs)
+		for e in events:
+			if e.type == "died":
+				out.deaths += 1
+	if b.pass != null:
+		out.contact = b.pass.capsule_contact_ticks
+	out.stings = int(fz.counts.stings)
+	out.strike_hits = int(fz.counts.strike_hits_on_cell)
+	out.strikes = int(fz.counts.strikes)
+	out.counts = fz.counts.duplicate()
+	return out
+
+
+## S3G13's tether: while the cell lives and is farther from the nearest living creature of `sp` than
+## PAIR_TETHER_SIGHT_SHARE of that species' sight, the bot's move becomes full throttle toward it
+## (routed round rocks), so the pair keeps the cell in its senses. Alone the bots part from it: the
+## evader forages away, the kiter circles whatever is nearest and starves every 25 s or so at sizes 2
+## to 4, and each respawn is back at home. The bot is still asked every tick, so its own bookkeeping
+## runs on. Tethered, either bot starves now and then; that is part of the run.
+static func _tether(sim: PoolSim, intent: SimIntent, sp: String) -> void:
+	if sim.dead:
+		return
+	var at := Vector2.INF
+	var best := INF
+	for c: CreatureField.Creature in sim.creatures.creatures:
+		if c.species_id != sp or not c.state.is_alive():
+			continue
+		var d := sim.motion.position.distance_to(c.motion.position)
+		if d < best:
+			best = d
+			at = c.motion.position
+	if at.is_finite() and best > PAIR_TETHER_SIGHT_SHARE * float(sim.creatures.record_of(sp).sight):
+		var way := sim.arena.route_point(sim.motion.position, at, sim.phenotype.radius)
+		intent.move = (way - sim.motion.position).normalized()
+
+
+## S3G13 (D-141, X3-16): at sizes 2 to 4 no creature below the cell's size engages it, for each q < 1
+## pair (set_size, then the species spawned 6 tm from the cell) under the kiter and the evader on
+## four seeds of 5 minutes, every invariant on every tick; a veil at 4 never stings though the cell
+## swims through its threads at least MIN_CAPSULE_CONTACT_TICKS each run. The cell is tethered to
+## the pair's species (_tether): untethered, the first CI run met each pair on 71 to 217 ticks.
+func test_soak_at_sizes_two_to_four_no_creature_below_the_cell_engages_it() -> void:
+	var fz := FuzzInvariants.new(species, layout)
+	var broken := PackedStringArray()
+	for size: int in S3_PAIRS:
+		var pairs := {}
+		for sp: String in S3_PAIRS[size]:
+			pairs[sp] = {"sensed": 0, "bitten": 0}
+		for sp: String in S3_PAIRS[size]:
+			var hazard: bool = species.species[sp].has("hazard")
+			for bot_name: String in S3_BOTS:
+				for seed_value in S3_SEEDS:
+					var sim := _top4_sim(S3_BOTS[bot_name], seed_value)
+					check(sim.debug_set_size(size), "size %d" % size)
+					sim.drain_events()
+					check(sim.debug_spawn_creature(sp, sim.motion.position + Vector2(6.0, 0.0), PI), "%s spawned" % sp)
+					sim.drain_events()
+					var where := "%s at %d, %s seed %d" % [sp, size, bot_name, seed_value]
+					var run := _s3_run(fz, sim, _s3_bot(bot_name, seed_value, hazard), where, pairs, false,
+						PackedFloat64Array(), sp)
+					broken.append_array(run.broken)
+					print("test-threat-fuzz: S3G13 %s: %d deaths, %d stings, %d capsule-contact ticks" % [where, run.deaths,
+						run.stings, run.contact])
+					if hazard:
+						check(int(run.contact) >= MIN_CAPSULE_CONTACT_TICKS, "%s: %d capsule-contact ticks (at least %d)" % [
+							where, run.contact, MIN_CAPSULE_CONTACT_TICKS])
+		print("test-threat-fuzz: S3G13 size %d pairs: %s" % [size, pairs])
+		for sp: String in S3_PAIRS[size]:
+			if not species.species[sp].has("hazard"):
+				check(int(pairs[sp].sensed) >= S3_MIN_SENSED, "(%s, %d) sensed the cell on %d ticks (at least %d)" % [
+					sp, size, pairs[sp].sensed, S3_MIN_SENSED])
+	check_eq(str(fz.report()), "", "every invariant on every tick at sizes 2 to 4")
+	check(broken.is_empty(), "invariant 14 broken %d times; first: %s" % [broken.size(), broken[0] if not broken.is_empty() else ""])
+
+
+## D-117 (a): the pool arena with the veil as itself (use_entry_record), spawned 6 m from a rammer
+## site's home; the kiter and the evader, each in a ThreadPass, for `seeds` of 5 minutes: invariants 1
+## to 11, 14 and 15 on every tick, and over each seed's two runs at least one sting and one strike hit.
+func _pool_veil_runs(seeds: Array[int]) -> void:
+	var fz := FuzzInvariants.new(species, layout)
+	var broken := PackedStringArray()
+	var home: Vector2 = species.sites_of("rammer")[0].home
+	for seed_value in seeds:
+		var stings := 0
+		var strikes := 0
+		for bot_name: String in S3_BOTS:
+			var r := Lineage.found(seed_value, "test+dev", catalog, S3_BOTS[bot_name])
+			r.save.player["position"] = PlaneSpace.to_save(layout.spawn)
+			var sim := PoolSim.create(r.save, catalog, layout, species)
+			sim.grace_until = sim.tick
+			sim.creatures.use_entry_record("veil")
+			check(sim.debug_spawn_creature("veil", home + Vector2(6.0, 0.0), 0.0), "a veil by the rammers")
+			sim.drain_events()
+			var where := "pool veil, %s seed %d" % [bot_name, seed_value]
+			var run := _s3_run(fz, sim, _s3_bot(bot_name, seed_value, true), where, {}, true)
+			broken.append_array(run.broken)
+			stings += int(run.stings)
+			strikes += int(run.strike_hits)
+			print("test-threat-fuzz: D-117 (a) %s: %d stings, %d strike hits, %d capsule-contact ticks, %d deaths" % [where,
+				run.stings, run.strike_hits, run.contact, run.deaths])
+		check(stings >= 1 and strikes >= 1, "pool seed %d: a sting and a strike hit over the two bots (%d, %d)" % [seed_value,
+			stings, strikes])
+	check_eq(str(fz.report()), "", "invariants 1 to 11 and 15 on every tick in the pool")
+	check(broken.is_empty(), "invariant 14 broken %d times; first: %s" % [broken.size(), broken[0] if not broken.is_empty() else ""])
+
+
+func test_slow_a_veil_in_the_pool_keeps_invariant_15_on_one_seed() -> void:
+	_pool_veil_runs([S3_SEEDS[0]] as Array[int])
+
+
+func test_soak_a_veil_in_the_pool_keeps_invariant_15_on_four_seeds() -> void:
+	_pool_veil_runs(S3_SEEDS)
+
+
+## D-117 (b): the real WorldGen at size 3, the cell teleported to the sunbeam well, then between the
+## Warden's and the veil's sites there (_well_spot) and back there after each respawn; the same bots
+## and invariants as (a), the ThreadPass with its striker passes (the bots keep clear of the Warden's
+## ground by themselves), and the same floor: a sting and a strike hit per seed over the two bots. The world is the shipped one at its
+## size-4 top (_top4_sim), not the band-1 fixture D-117 names: that fixture's tiles are FakeWorldGen's
+## and break the real kit's rules, while the shipped world's band 1 fixes its rare kind to the well.
+func _well_runs(seeds: Array[int]) -> void:
+	var fz := FuzzInvariants.new(species, layout)
+	var broken := PackedStringArray()
+	for seed_value in seeds:
+		var stings := 0
+		var strikes := 0
+		var hits := 0
+		for bot_name: String in S3_BOTS:
+			var sim := _top4_sim(S3_BOTS[bot_name], seed_value)
+			check(sim.debug_set_size(3), "size 3")
+			var well := _well_am(sim)
+			check(well.size() == 2, "seed %d: a sunbeam well within %d chunks of home" % [seed_value, WELL_SEARCH_CHUNKS])
+			if well.size() != 2:
+				return
+			check(sim.debug_teleport_abs(well[0], well[1]), "to the well")
+			for t in WELL_LOAD_TICKS:
+				sim.step(SimIntent.new())
+			var spot := _well_spot(sim)
+			check(spot.size() == 2, "seed %d: a Warden's and a veil's site by the well" % seed_value)
+			if spot.size() != 2:
+				return
+			check(sim.debug_teleport_abs(spot[0], spot[1]), "between them")
+			sim.drain_events()
+			var where := "sunbeam well, %s seed %d" % [bot_name, seed_value]
+			var run := _s3_run(fz, sim, _s3_bot(bot_name, seed_value, true, true), where, {}, false, spot)
+			broken.append_array(run.broken)
+			stings += int(run.stings)
+			strikes += int(run.strikes)
+			hits += int(run.strike_hits)
+			print("test-threat-fuzz: D-117 (b) %s: %d stings, %d strikes, %d strike hits, %d capsule-contact ticks, %d deaths" % [
+				where, run.stings, run.strikes, run.strike_hits, run.contact, run.deaths])
+		check(stings >= 1 and hits >= 1, "well seed %d: a sting and a strike hit over the two bots (%d, %d; %d strikes)" % [
+			seed_value, stings, hits, strikes])
+	check_eq(str(fz.report()), "", "every invariant on every tick at the well")
+	check(broken.is_empty(), "invariant 14 broken %d times; first: %s" % [broken.size(), broken[0] if not broken.is_empty() else ""])
+
+
+## The midpoint (absolute am) of the reach centres of the loaded Warden site and veil site nearest the
+## cell, which the well's tile places side by side; empty without both.
+static func _well_spot(sim: PoolSim) -> PackedFloat64Array:
+	var w := sim.world
+	var best := {}
+	for id in w.sites:
+		var s: Dictionary = w.sites[id]
+		var sp := str(s.get("species", ""))
+		if sp != "warden" and sp != "veil" or not s.has("reach"):
+			continue
+		var at: Vector2 = s.reach.center
+		if not best.has(sp) or at.distance_to(sim.motion.position) < (best[sp] as Vector2).distance_to(sim.motion.position):
+			best[sp] = at
+	if best.size() != 2:
+		return PackedFloat64Array()
+	return w.abs_of_local((best.warden + best.veil) * 0.5)
+
+
+## The nearest sunbeam well's place (absolute am) at the sim's size, within WELL_SEARCH_CHUNKS chunks
+## of home; empty with none.
+static func _well_am(sim: PoolSim) -> PackedFloat64Array:
+	var w := sim.world
+	var n := w.size
+	var k := WorldConfig.tm_to_am(n)
+	var best := PackedFloat64Array()
+	var best_d := INF
+	for cy in range(-WELL_SEARCH_CHUNKS, WELL_SEARCH_CHUNKS + 1):
+		for cx in range(-WELL_SEARCH_CHUNKS, WELL_SEARCH_CHUNKS + 1):
+			for p in w.gen.chunk(n, cx, cy).places:
+				if str(p.kind) != SUNBEAM_WELL:
+					continue
+				var d := Vector2(float(p.x), float(p.y)).length()
+				if d < best_d:
+					best_d = d
+					best = PackedFloat64Array([float(p.x) * k, float(p.y) * k])
+	return best
+
+
+func test_slow_a_veil_and_a_warden_at_the_sunbeam_well_keep_invariant_15_on_one_seed() -> void:
+	_well_runs([S3_SEEDS[0]] as Array[int])
+
+
+func test_soak_a_veil_and_a_warden_at_the_sunbeam_well_keep_invariant_15_on_four_seeds() -> void:
+	_well_runs(S3_SEEDS)

@@ -401,9 +401,11 @@ func test_each_posts_disc_is_checked_as_well_as_the_union() -> void:
 	check(not Array(problems).any(func(p: String) -> bool: return p.contains("site 'rl' union:")), "the union's circle is clear: %s" % [problems])
 
 
-## Rule 4 refuses a ring site at a size where its species is haze: a band-1 block (sizes 3 and 4) with
-## a speck (a rammer of body size 1.0, entry 1) at 3 and 4: a morsel at 3, haze at 4.
-func test_rule_4_refuses_a_size_where_the_species_is_haze() -> void:
+## Rule 4's haze clause can only bite at band 1 and up (a species entering at 1 is prey or better at
+## 2), and since D-94 (S3 T3.4) the home block is band 0's: a band-1 block, such as one with a speck
+## (a rammer of body size 1.0, entry 1) at 3 and 4, is refused as it reads. The band's home tiles are
+## the cradle, which refuses that speck at 4 (test_cradle_block).
+func test_a_band_1_home_block_is_refused_for_the_cradle() -> void:
 	var data: Dictionary = WorldChecks.s2_species_data()
 	data.species["speck"] = data.species.rammer.duplicate(true)
 	data.species.speck.body_size = 1.0
@@ -411,5 +413,4 @@ func test_rule_4_refuses_a_size_where_the_species_is_haze() -> void:
 	var problems := _problems(func(d: Dictionary) -> void:
 		d.band = 1
 		d.sites = [{"id": "a", "species": "speck", "home": [0.0, -50.0], "heading": 0.0, "territory_zone": "n", "sizes": [3, 4]}], speck)
-	check(Array(problems).has("home_min: rule 4: site 'a': 'speck' is haze at size 4, so it cannot be live there"), "%s" % [problems])
-	check(not Array(problems).any(func(p: String) -> bool: return p.contains("haze at size 3")), "a morsel at 3")
+	check_eq(problems, PackedStringArray(["home_min.band: the home block is band 0's; band 1 and up have a cradle (D-94)"]), "refused")

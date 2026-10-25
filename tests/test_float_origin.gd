@@ -30,6 +30,8 @@ const STATIC := {
 	"_next_events": "chunk_loaded payloads prepared for the next size's chunks: every position Vector2.ZERO until the load places it",
 	"_next_zones": "zone records prepared for the next size's chunks: every centre Vector2.ZERO until the load places it, beside their absolute places",
 	"_next_sites": "site records prepared for the next size's chunks: every local place Vector2.ZERO until the load derives it",
+	"_landmark_points": "absolute, rebuilt from chunks: each anchor's return point in am (S3 D-132b)",
+	"_morsel_loaded": "absolute, rebuilt from chunks: the loaded morsel sites' places in tm (S3 D-129)",
 	"_retired": "what the growth tick let go of (the old chunks, plankton list, arena and tables), held only to be freed after the beat: never read",
 }
 ## S2G10: what the growth tick builds again from the next size's chunks or starts over, so the
