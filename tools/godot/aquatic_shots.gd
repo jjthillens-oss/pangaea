@@ -71,7 +71,7 @@ func _run() -> void:
 			var sim: AquaticSim = stage.sim
 			sim.relations.cleaner.standing = "friend"
 			sim.player.health = float(sim.player.stats.max_health) * 0.4
-			await _hold(sim.home_of("cleaner") + Vector3(0.0, 0.0, 1.5), 0.0, 4.0)
+			await _hold(sim.home_of("cleaner") + Vector3(0.0, 0.0, 1.5), -1.4, 4.0)
 			await _shot(view)
 		elif view == "glowfins_lured":
 			# A deep-rated lure body waits by the glowfins' home; they come to its lure.

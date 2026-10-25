@@ -32,7 +32,7 @@ const SPECIES := {
 			"sense": "eyes", "mouth": "filter", "hue": 0.54}, "scale_m": 0.5, "sat": 0.4, "val": 1.0, "pattern": 5,
 			"look": {"coat_pattern": 3, "detail_pattern": 0}, "shader": {"stage_look": 0}},
 	"cleaner": {"body": {"length": 1, "girth": 1, "tail": "ribbon", "tail_size": 2, "fins": 0, "dorsal": 1, "bladder": 1,
-			"sense": "barbels", "mouth": "filter", "hue": 0.6}, "scale_m": 0.55, "sat": 0.85, "val": 0.95, "pattern": 6,
+			"sense": "barbels", "mouth": "filter", "hue": 0.6}, "scale_m": 0.65, "sat": 0.85, "val": 0.95, "pattern": 6,
 			"look": {"coat_pattern": 2, "detail_pattern": 1}},
 	"glowfin": {"body": {"length": 2, "girth": 2, "tail": "paddle", "tail_size": 2, "fins": 0, "dorsal": 0, "bladder": 3,
 			"sense": "lure", "mouth": "jaw", "hue": 0.78}, "scale_m": 0.7, "sat": 0.5, "val": 1.0, "pattern": 7,
