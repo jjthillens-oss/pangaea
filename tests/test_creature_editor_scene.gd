@@ -152,6 +152,28 @@ func test_the_skin_colour_rides_in_the_body() -> void:
 	check(editor.undo() == false, "a colour is not an undo step")
 
 
+func test_the_skin_covering_rides_in_the_body_and_reaches_the_shader() -> void:
+	open()
+	var Look = load("res://game/scenes/creature/creature_look.gd")
+	(editor.hud.covering_row.get_child(1) as Button).pressed.emit()
+	check_eq(editor.skin_covering, 1, "the Fur toggle sets the covering")
+	check(editor.working_body().extra.get(Look.COVERING_KEY) is float
+			and int(editor.working_body().extra[Look.COVERING_KEY]) == 1, "the working body carries skin_covering")
+	var mat := editor.rig.mesh_instance.material_override as ShaderMaterial if editor.rig else null
+	if mat != null:
+		check_eq(int(mat.get_shader_parameter("covering")), 1, "the preview's shader gets it")
+	editor.set_skin_covering(9)
+	check_eq(editor.skin_covering, 0, "an unknown covering is smooth")
+	check((editor.hud.covering_row.get_child(0) as Button).button_pressed, "and the HUD follows")
+	editor.set_skin_covering(3)
+	check(editor.undo() == false, "a covering is not an undo step")
+	var got := {}   # filled in place: a lambda captures a local by value
+	editor.done_requested.connect(func(body: Dictionary, _p: int): got.merge(body))
+	var done := editor.finish()
+	check(done["ok"], "Done commits it: %s" % done.get("reason", ""))
+	check_eq(int(got.get(Look.COVERING_KEY, -1)), 3, "the body Done hands on carries the wet covering")
+
+
 func test_the_test_drive_walks_the_quadruped_and_refuses_a_legless_body() -> void:
 	open()
 	var r: Dictionary = editor.test_drive(true)

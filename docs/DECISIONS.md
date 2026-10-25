@@ -801,6 +801,13 @@ the levels:
   their knee-to-toe piece rigid, so their gait length is short and a frog does not tip onto its nose.
 - No save, schema or part changes. Screenshots: `screenshots/creature-stage/archetypes/presets_*`.
 
+## 2026-10-25 · Creature skin covering picker (PROPOSED; IMPLEMENTED)
+Joshua (2026-10-24 23:40) asked for monkeys with fur and frogs that read as frogs. The editor's palette gains four
+covering toggles under the swatches: Smooth, Fur, Scales, Wet. The choice rides in the body's extra keys as
+`skin_covering` (a whole-number float 0..3, smooth when missing or out of range; `creature_look.gd`), so no save field
+or schema change. It reaches the skin shader as its int `covering` uniform, which the art thread owns. Like the swatch
+it is free and outside undo. Presets and rivals wear the covering their body carries; a random first design draws one.
+
 ## 2026-10-24 · Creature head shape dials in the editor (PROPOSED; IMPLEMENTED)
 Joshua (23:40) asked for more head shape options. The creature editor's stats panel gets five sliders: snout
 (1.0x to 2.0x), skull width and skull height (0.6x to 1.6x; ranges agreed with the art thread), jaw and brow ridge
