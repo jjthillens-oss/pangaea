@@ -3947,26 +3947,31 @@ def build_wing_dragon():
 
     # H1_Fold, bat-style: every finger swings about the wrist to lie back down along the forearm, the four struts
     # converging into a tight bundle. Each finger turns rigidly inside a narrow band around it, and the membrane
-    # between two fingers takes up the squeeze by pleating out of the plane, alternately toward -X and +X.
-    fing = [math.degrees(math.atan2(t.z - wrist.z, t.y - wrist.y)) for t in tips]
+    # between two fingers takes up the squeeze by pleating out of the plane, alternately toward -X and +X. The
+    # arm and the inner panel's body edge stay where they are (only the fingers draw in toward the wrist), and the
+    # fold fades out over the 6 cm above the root, so the folded wing stays rooted in the skin
+    # (tests/test_creature_parts.gd test_every_handle_at_full_keeps_the_part_on_the_skin).
+    # Polar angles run 0..360 like theta in fold(): the last finger points back past 180 degrees.
+    fing = [math.degrees(math.atan2(t.z - wrist.z, t.y - wrist.y)) % 360.0 for t in tips]
     targets = [236.0, 244.0, 252.0, 260.0]
     band = 3.5
 
     def turn(theta):
-        """Degrees of rotation for a point at polar angle theta (degrees, about the wrist in YZ), and its pleat."""
+        """Degrees of rotation for a point at polar angle theta (degrees, about the wrist in YZ), its pleat, and how
+        far it lies from the last finger toward the arm (0 on the fingers, 1 on the arm)."""
         if theta < fing[0] - band:
             lo = fing[0] - band - 30.0
-            return (targets[0] - fing[0]) * max(0.0, (theta - lo) / 30.0), 0.0
+            return (targets[0] - fing[0]) * max(0.0, (theta - lo) / 30.0), 0.0, 0.0
         for i in range(4):
             if abs(theta - fing[i]) <= band:
-                return targets[i] - fing[i], 0.0
+                return targets[i] - fing[i], 0.0, 0.0
             if i < 3 and fing[i] + band < theta < fing[i + 1] - band:
                 u = (theta - fing[i] - band) / (fing[i + 1] - fing[i] - 2 * band)
                 r = (targets[i] - fing[i]) * (1 - u) + (targets[i + 1] - fing[i + 1]) * u
-                return r, (-1.0 if i % 2 == 0 else 1.0) * math.sin(math.pi * u)
+                return r, (-1.0 if i % 2 == 0 else 1.0) * math.sin(math.pi * u), 0.0
         arm = 277.0
         u = min(1.0, (theta - fing[3] - band) / (arm - fing[3] - band))
-        return (targets[3] - fing[3]) * (1 - u), -0.5 * math.sin(math.pi * u)
+        return (targets[3] - fing[3]) * (1 - u), -0.5 * math.sin(math.pi * u), u
 
     def fold(co):
         dy, dz = co.y - wrist.y, co.z - wrist.z
@@ -3975,10 +3980,10 @@ def build_wing_dragon():
             return co
         theta = math.degrees(math.atan2(dz, dy)) % 360.0
         w = min(1.0, max(0.0, (d - 0.02) / 0.04))
-        w = w * w * (3 - 2 * w)
-        rot, pleat = turn(theta)
+        w = w * w * (3 - 2 * w) * bc.smoothstep((co.z + DWING_SINK) / 0.06)
+        rot, pleat, arm_u = turn(theta)
         a = math.radians(theta + rot * w)
-        dd = d * (1.0 - 0.38 * w)
+        dd = d * (1.0 - 0.38 * w * (1.0 - arm_u))
         co.y, co.z = wrist.y + dd * math.cos(a), wrist.z + dd * math.sin(a)
         co.x += w * (0.09 * min(1.0, d / 0.3) * pleat - 0.015)
         return co
@@ -3996,7 +4001,32 @@ def build_wing_dragon():
     return {"purpose": "Creature wing part (PROPOSED): a big dragon wing, a thick knuckled arm, a hooked thumb claw, four stout finger struts and a deeply scalloped leathery membrane, right-hand piece (mirrored for the left).",
             "category": "part", "part_type": "wing_dragon", "convention": "creature_art_contract v1",
             "part_rules": rules, "paint_mix": {"M_WingDragonMembrane": 0.75, "M_WingDragonBone": 0.85, "M_WingDragonClaw": 0.0},
-            "revision": 1, **baked}
+            "revision": 2, "review_notes": WING_DRAGON_REVIEW, **baked}
+
+
+# Finish gates (docs/art/creature_parts_gates.md), kept here because the export rewrites the whole record.
+WING_DRAGON_REVIEW = {
+    "revision": 2,
+    "change": "H1_Fold keeps the root on the skin: the fold fades out over the 6 cm above the root, only the "
+              "fingers draw in toward the wrist (the arm and the inner panel's body edge stay), and the last "
+              "finger's polar angle is taken in 0..360 like the folded points' (it was -172 degrees, so finger 4 "
+              "and the panel between fingers 3 and 4 turned past their fold targets). Rest shape, H2_Flap, "
+              "materials and bake are unchanged from revision 1.",
+    "gate1_shape": "pass: gray side and 3/4 at H1_Fold 0, 500 and 1000 (Blender) and Godot front and side on a "
+                   "ground plane show the arm standing on the ground at every fold; the fingers bundle back down "
+                   "along the forearm with the membrane pleated between them; no tear or finger through the "
+                   "membrane. At 1000 the inner panel's body edge stays along the skin as a narrow sliver, as a "
+                   "bat's flank membrane does (PROPOSED). Folded GLB y min: bones -0.0238, membrane -0.0186; the "
+                   "sunk root vertices stay at or below -0.012.",
+    "gate2_materials": "pass (unchanged): membrane red-brown with fine raised veins, scaly green bone, cream claw "
+                       "read apart in the material close-up and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral "
+                      "Godot capture (tools/godot/capture_part.gd); judged without bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the dragon preset in the creature editor scene "
+                   "(tools/godot/part_on_body_shot.gd) at the world's gameplay distance and close, open and at "
+                   "H1_Fold 1000, the folded wings sit rooted on the back; tests/test_creature_parts.gd "
+                   "test_every_handle_at_full_keeps_the_part_on_the_skin passes for it.",
+}
 
 
 def build_horn_swept():

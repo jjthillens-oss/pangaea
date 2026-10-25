@@ -10,7 +10,7 @@
   "export_path": "assets/export/cpart_wing_dragon.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
     "x": 0.068,
@@ -93,6 +93,14 @@
     "M_WingDragonMembrane": 0.75,
     "M_WingDragonBone": 0.85,
     "M_WingDragonClaw": 0.0
+  },
+  "review_notes": {
+    "revision": 2,
+    "change": "H1_Fold keeps the root on the skin: the fold fades out over the 6 cm above the root, only the fingers draw in toward the wrist (the arm and the inner panel's body edge stay), and the last finger's polar angle is taken in 0..360 like the folded points' (it was -172 degrees, so finger 4 and the panel between fingers 3 and 4 turned past their fold targets). Rest shape, H2_Flap, materials and bake are unchanged from revision 1.",
+    "gate1_shape": "pass: gray side and 3/4 at H1_Fold 0, 500 and 1000 (Blender) and Godot front and side on a ground plane show the arm standing on the ground at every fold; the fingers bundle back down along the forearm with the membrane pleated between them; no tear or finger through the membrane. At 1000 the inner panel's body edge stays along the skin as a narrow sliver, as a bat's flank membrane does (PROPOSED). Folded GLB y min: bones -0.0238, membrane -0.0186; the sunk root vertices stay at or below -0.012.",
+    "gate2_materials": "pass (unchanged): membrane red-brown with fine raised veins, scaly green bone, cream claw read apart in the material close-up and in Godot.",
+    "gate3_lighting": "pass: neutral Blender review lighting (tools/blender/render_part_review.py) and the neutral Godot capture (tools/godot/capture_part.gd); judged without bloom.",
+    "gate4_godot": "pass: imported (Compatibility renderer); the dragon preset in the creature editor scene (tools/godot/part_on_body_shot.gd) at the world's gameplay distance and close, open and at H1_Fold 1000, the folded wings sit rooted on the back; tests/test_creature_parts.gd test_every_handle_at_full_keeps_the_part_on_the_skin passes for it."
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
