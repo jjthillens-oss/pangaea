@@ -12,19 +12,22 @@ extends Control
 ##
 ## It only edits a working copy: the save changes only in commit(), and only when Lineage accepts.
 ## Editor-ease (docs/proposals/editor-ease.md): one Undo takes back one action (a whole drag round the rim is
-## one), and Undo, Redo and Back name the keys bound to them.
+## one), and Undo, Redo and Back name the keys bound to them. The Symmetry toggle (PROPOSED, off by default and
+## kept in memory only) adds, moves, sizes, upgrades and removes a part and its mirrored twin as one action.
 
 signal closed(committed: bool)
 
 const PREVIEW_SCENE := preload("res://game/ui/cell_preview.tscn")
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
+const CellSymmetry := preload("res://game/ui/editor_ease/cell_symmetry.gd")
 ## The words on the editor's key line and its Undo and Redo tooltips; the keys come from the bindings.
 const KEY_LINE := [[&"ui_undo", "undo"], [&"ui_redo", "redo"], [&"ui_cancel", "back"]]
 const UNDO_TIP := "Undo the last change"
 const REDO_TIP := "Redo the change you undid"
 const NO_UNDO_TIP := "Nothing to undo"
 const NO_REDO_TIP := "Nothing to redo"
+const SYMMETRY_TIP := "When on, a part off the middle line comes with a mirrored twin, and the two move, change and go together"
 ## [label, Phenotype field, higher is better, format]
 const STATS := [
 	["Speed", "speed", true, "%.1f"],
@@ -66,6 +69,9 @@ var save: SaveGame
 var state: ActorState
 var selected := ""                 ## the selected part's id, "" for none
 var chase := {}                    ## {"speed", "name"}: the fastest hunter here; {} for none
+## Editor-ease symmetry (PROPOSED default off): parts off the middle line are added, moved, sized, upgraded and
+## removed with their mirrored twin. Kept in memory only, never in the save or the settings.
+var symmetry := false
 
 var _preview: CellPreview
 var _rim: RimView
@@ -84,6 +90,7 @@ var _test_pool: TestPool
 var _steps := UndoSteps.new()      ## the session steps in each action, so one Undo takes back one action
 var _keys: Label                   ## the key line: the bindings of undo, redo and back
 var _keys_generation := -1         ## InputPrompts.generation the key line was written for
+var _symmetry_button: Button
 
 
 func _init() -> void:
@@ -115,26 +122,49 @@ func open(p_save: SaveGame, catalog: PartCatalog, p_state: ActorState, p_chase: 
 
 ## Adds a part of `type_id` where it fits best (mouths at the front, propulsion at the back, the rest
 ## in the widest gap). Returns EditorSession's {"ok", "reason"}.
+## With symmetry on, a part off the middle line comes with its mirrored twin, both one Undo step; when the twin does
+## not fit, the part stays single and the status line says why.
 func add(type_id: String) -> Dictionary:
-	var result := session.add_part(type_id, free_angle(type_id))
+	var angle := place_angle(type_id)
+	var pair := symmetry and not CellSymmetry.is_central(angle)
+	var opened := _open_group(pair)
+	var result := session.add_part(type_id, angle)
 	_steps.note(result.ok)
+	var twin := {}
+	if result.ok and pair:
+		twin = session.mirror_part(str(session.working.parts[-1].id))
+		_steps.note(twin.ok)
+	_close_group(opened)
 	_after(result)
 	if result.ok:
-		selected = str(session.working.parts[-1].id)
+		selected = str(result.part_id)
+		if pair and not twin.ok:
+			_status.text = "No room for its pair: %s" % twin.reason
 		_refresh()
 	return result
 
 
+## Removes the selected part (and with symmetry on, its twin).
 func remove_selected() -> Dictionary:
+	var twin := selected_twin()
+	var opened := _open_group(not twin.is_empty())
 	var result := session.remove_part(selected)
 	_steps.note(result.ok)
+	if result.ok and not twin.is_empty():
+		_steps.note(session.remove_part(str(twin.id)).ok)
+	_close_group(opened)
 	if result.ok:
 		selected = ""
 	_after(result)
 	return result
 
 
+## Adds a mirrored copy of the selected part. With symmetry on, a part that already has its twin is refused.
 func mirror_selected() -> Dictionary:
+	if not selected_twin().is_empty():
+		var refused := {"ok": false, "reason": "It already has its pair"}
+		_after(refused)
+		return refused
 	var result := session.mirror_part(selected)
 	_steps.note(result.ok)
 	_after(result)
@@ -145,25 +175,77 @@ func resize_selected(step: float) -> Dictionary:
 	var part := _part(selected)
 	if part.is_empty():
 		return {"ok": false, "reason": "no part selected"}
-	var result := session.scale_part(selected, float(part.scale) + step)
+	var twin := selected_twin()
+	var scale := float(part.scale) + step
+	var opened := _open_group(not twin.is_empty())
+	var result := session.scale_part(selected, scale)
 	_steps.note(result.ok)
+	if result.ok and not twin.is_empty():
+		_steps.note(session.scale_part(str(twin.id), scale).ok)
+	_close_group(opened)
 	_after(result)
 	return result
 
 
-## Raises the selected part a level (S4.5): stronger, a little heavier and dearer to run.
+## Raises the selected part a level (S4.5): stronger, a little heavier and dearer to run. With symmetry on, its twin
+## too, at twice the price.
 func upgrade_selected() -> Dictionary:
+	var twin := selected_twin()
+	var opened := _open_group(not twin.is_empty())
 	var result := session.upgrade_part(selected)
 	_steps.note(result.ok)
+	if result.ok and not twin.is_empty():
+		_steps.note(session.upgrade_part(str(twin.id)).ok)
+	_close_group(opened)
 	_after(result)
 	return result
 
 
+## Moves the selected part to `angle`. With symmetry on, its twin goes to the mirrored angle, and the pair keeps
+## off the middle line (CellSymmetry.off_line).
 func move_selected(angle: float) -> Dictionary:
-	var result := session.move_part(selected, wrapf(angle, -PI, PI))
+	var twin := selected_twin()
+	var target := wrapf(angle, -PI, PI)
+	if not twin.is_empty():
+		target = CellSymmetry.off_line(target, float(_part(selected).angle))
+	var opened := _open_group(not twin.is_empty())
+	var result := session.move_part(selected, target)
 	_steps.note(result.ok)
+	if result.ok and not twin.is_empty():
+		_steps.note(session.move_part(str(twin.id), CellSymmetry.mirrored(target)).ok)
+	_close_group(opened)
 	_after(result)
 	return result
+
+
+## Turns symmetry on or off (in memory only). The toggle shows the state without acting on it again.
+func set_symmetry(on: bool) -> void:
+	symmetry = on
+	if _symmetry_button != null:
+		_symmetry_button.set_pressed_no_signal(on)
+		_symmetry_button.text = "Symmetry: on" if on else "Symmetry: off"
+	_refresh()
+
+
+## The selected part's mirrored twin while symmetry is on (CellSymmetry.twin_of); {} otherwise.
+func selected_twin() -> Dictionary:
+	if not symmetry or session == null:
+		return {}
+	return CellSymmetry.twin_of(session.working.parts, _part(selected))
+
+
+## Opens an Undo group for an action of several session steps, unless one is open already (a drag). Returns
+## whether it opened one, for _close_group().
+func _open_group(several: bool) -> bool:
+	if not several or _steps.in_group():
+		return false
+	_steps.begin_group()
+	return true
+
+
+func _close_group(opened: bool) -> void:
+	if opened:
+		_steps.end_group()
 
 
 ## A gesture (a drag round the rim) starts: every op until end_gesture() is one Undo step.
@@ -225,6 +307,31 @@ func free_angle(type_id: String) -> float:
 		if b - a > best_gap:
 			best_gap = b - a
 			best = wrapf((a + b) / 2.0, -PI, PI)
+	return best
+
+
+## Where add() puts a part of `type_id`: free_angle(), or with symmetry on, a mouth at the front, a tail at the back
+## when it is free, and anything else where both it and its twin have room: the middle of the widest gap on one
+## side, with the parts of both sides folded onto it.
+func place_angle(type_id: String) -> float:
+	if not symmetry:
+		return free_angle(type_id)
+	match session.catalog.category_of(type_id):
+		"mouth":
+			return 0.0
+		"propulsion":
+			if _part_at(PI).is_empty():
+				return PI
+	var folded: Array[float] = [0.0, PI]
+	for p in session.working.parts:
+		folded.append(absf(wrapf(float(p.angle), -PI, PI)))
+	folded.sort()
+	var best_gap := -1.0
+	var best := PI / 2.0
+	for i in folded.size() - 1:
+		if folded[i + 1] - folded[i] > best_gap:
+			best_gap = folded[i + 1] - folded[i]
+			best = (folded[i] + folded[i + 1]) / 2.0
 	return best
 
 
@@ -354,10 +461,12 @@ func chase_warning(speed: float) -> String:
 		str(chase.get("name", "hunter")), hunter, speed]
 
 
-## Names the selected part and its level, and prices its next level on the Upgrade button.
+## Names the selected part and its level, and prices its next level on the Upgrade button (with symmetry on and a
+## twin, both parts' price: the pair upgrades together).
 func _show_selected() -> void:
 	var part := _part(selected)
 	var catalog := session.catalog
+	_upgrade.tooltip_text = ""
 	if part.is_empty():
 		_selected_label.text = "Pick a part on the rim"
 		_upgrade.text = "Upgrade"
@@ -365,14 +474,22 @@ func _show_selected() -> void:
 		return
 	var type_id := str(part.type)
 	var level := Genome.level_of(part)
+	var paired := not selected_twin().is_empty()
 	_selected_label.text = "%s, level %d" % [type_id.capitalize(), level] if catalog.can_level(type_id) \
 		else type_id.capitalize()
+	if paired:
+		_selected_label.text += " · a mirrored pair"
 	if not catalog.can_level(type_id):
 		_upgrade.text = "Upgrade"
 		_upgrade.disabled = true
 	elif level >= catalog.max_level:
 		_upgrade.text = "Top level"
 		_upgrade.disabled = true
+	elif paired:
+		var each := catalog.upgrade_cost(type_id, level)
+		_upgrade.text = "Upgrade both · %d" % (2 * each)
+		_upgrade.tooltip_text = "Upgrades the part and its twin: 2 × %d points" % each
+		_upgrade.disabled = false
 	else:
 		_upgrade.text = "Upgrade · %d" % catalog.upgrade_cost(type_id, level)
 		_upgrade.disabled = false
@@ -459,6 +576,14 @@ func _build() -> void:
 	var tools := HBoxContainer.new()
 	tools.alignment = BoxContainer.ALIGNMENT_CENTER
 	middle.add_child(tools)
+	_symmetry_button = Button.new()
+	_symmetry_button.name = "Symmetry"
+	_symmetry_button.toggle_mode = true
+	_symmetry_button.text = "Symmetry: off"   # the state in words, not by colour alone (Bible 19)
+	_symmetry_button.tooltip_text = SYMMETRY_TIP
+	_symmetry_button.toggled.connect(set_symmetry)
+	tools.add_child(_symmetry_button)
+	tools.add_child(VSeparator.new())
 	for spec in [["Mirror", mirror_selected], ["Smaller", resize_selected.bind(-SCALE_STEP)],
 			["Bigger", resize_selected.bind(SCALE_STEP)], ["Upgrade", upgrade_selected], ["Remove", remove_selected]]:
 		var b := Button.new()
@@ -469,6 +594,7 @@ func _build() -> void:
 		if spec[0] == "Upgrade":
 			_upgrade = b
 	_status = Label.new()
+	_status.name = "Status"
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.add_theme_color_override(&"font_color", WORSE)
 	middle.add_child(_status)
@@ -612,16 +738,28 @@ class RimView:
 		if editor == null or editor.session == null:
 			return
 		draw_arc(center(), radius(), 0.0, TAU, 64, Color(0.6, 0.9, 1.0, 0.8), 2.0, true)
+		if editor.symmetry:
+			# The mirror line, front to back, dashed: the parts on one side mirror the other's.
+			draw_dashed_line(at(0.0) + Vector2(0, -24), at(PI) + Vector2(0, 24), Color(0.8, 0.95, 1.0, 0.5), 2.0, 10.0)
+		var twin := editor.selected_twin()
 		for p in editor.session.working.parts:
 			var q := at(float(p.angle))
 			var r := DOT * float(p.scale)
 			draw_circle(q, r, _color(editor.session.catalog.category_of(str(p.type))))
 			if str(p.id) == editor.selected:
 				draw_arc(q, r + 4.0, 0.0, TAU, 24, Color.WHITE, 2.0, true)
+			elif not twin.is_empty() and str(p.id) == str(twin.id):
+				_dashed_ring(q, r + 4.0, Color.WHITE)   # the selected part's twin: dashed, not by colour alone
 			# One small pip outside the dot for each level above the first.
 			var out := (q - center()).normalized()
 			for i in Genome.level_of(p) - 1:
 				draw_circle(q + out * (r + 9.0 + 7.0 * i), 2.5, Color.WHITE)
+
+	## A ring of short dashes round `q`.
+	func _dashed_ring(q: Vector2, r: float, color: Color) -> void:
+		for i in 8:
+			var a := TAU * i / 8.0
+			draw_arc(q, r, a, a + TAU / 16.0, 4, color, 2.0, true)
 
 	func _color(category: String) -> Color:
 		match category:

@@ -1,10 +1,12 @@
 extends TestCase
 ## Editor-ease in the cell editor (game/ui/cell_editor.gd, game/ui/editor_ease/; docs/proposals/editor-ease.md):
-## one Undo takes back one action, a whole drag round the rim included, and Undo, Redo and Back name the keys
-## bound to them (Bible 12 undo and redo; Bible 19 inputs shown from the bindings).
+## one Undo takes back one action, a whole drag round the rim included; Undo, Redo and Back name the keys bound to
+## them; and with Symmetry on a part and its twin are added, changed and removed as one (Bible 12 undo, redo and
+## mirroring; Bible 19 inputs shown from the bindings, states in words).
 
 const UndoSteps := preload("res://game/ui/editor_ease/undo_steps.gd")
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
+const Sym := preload("res://game/ui/editor_ease/cell_symmetry.gd")
 
 var catalog: PartCatalog
 var save: SaveGame
@@ -168,3 +170,106 @@ func test_undo_redo_and_back_name_their_bindings() -> void:
 		var names := ShortcutText.for_action(pair[0])
 		if not names.is_empty():
 			check(line.contains("%s  %s" % [names[0], pair[1]]), "the key line has %s: %s" % [pair[1], line])
+
+
+func _parts_of(type_id: String) -> Array:
+	return editor.session.working.parts.filter(func(p: Dictionary) -> bool: return str(p.type) == type_id)
+
+
+func test_symmetry_is_off_by_default_and_an_add_is_one_part() -> void:
+	editor.open(save, catalog, _state())
+	check(not editor.symmetry, "off by default (PROPOSED)")
+	check_eq((editor.find_child("Symmetry", true, false) as Button).text, "Symmetry: off", "the toggle says so in words")
+	editor.add("eye_spot")
+	check_eq(_parts_of("eye_spot").size(), 1, "one eye spot")
+
+
+func test_with_symmetry_a_part_and_its_twin_are_added_changed_and_removed_as_one() -> void:
+	editor.open(save, catalog, _state())
+	var toggle := editor.find_child("Symmetry", true, false) as Button
+	toggle.button_pressed = true   # the player's toggle
+	check(editor.symmetry and toggle.text == "Symmetry: on", "on: " + toggle.text)
+	check(editor.add("eye_spot").ok, "added")
+	var eyes := _parts_of("eye_spot")
+	check_eq(eyes.size(), 2, "an eye spot and its twin")
+	check(absf(sin(float(eyes[0].angle))) > 0.5, "off the middle line (%.2f)" % eyes[0].angle)
+	check_near(float(eyes[1].angle), -float(eyes[0].angle), 1e-6, "at the mirrored angle")
+	check_eq(editor.session.cost(), 2 * catalog.cost_of("eye_spot"), "the pair costs two eye spots")
+	check_eq(str(editor.selected_twin().id), str(eyes[1].id), "the selected part knows its twin")
+	editor.undo()
+	check_eq(_parts_of("eye_spot").size(), 0, "one Undo takes both off")
+	editor.redo()
+	check_eq(_parts_of("eye_spot").size(), 2, "one Redo puts both back")
+	editor.selected = str(_parts_of("eye_spot")[0].id)
+	check(editor.move_selected(1.0).ok, "moved")
+	check_near(_angle(editor.selected), 1.0, 1e-6, "to the angle")
+	check_near(float(editor.selected_twin().angle), -1.0, 1e-6, "and the twin to its mirror")
+	check(editor.resize_selected(CellEditor.SCALE_STEP).ok, "bigger")
+	for p: Dictionary in _parts_of("eye_spot"):
+		check_eq(float(p.scale), 1.0 + CellEditor.SCALE_STEP, "both bigger")
+	var upgrade := editor.find_child("Upgrade", true, false) as Button
+	var price := catalog.upgrade_cost("eye_spot", 1)
+	check(upgrade.text.ends_with(str(2 * price)), "the Upgrade button shows the pair's price: " + upgrade.text)
+	var cost_before := editor.session.cost()
+	check(editor.upgrade_selected().ok, "upgraded")
+	for p: Dictionary in _parts_of("eye_spot"):
+		check_eq(Genome.level_of(p), 2, "both a level up")
+	check_eq(editor.session.cost() - cost_before, 2 * price, "and both are paid for")
+	editor.undo()
+	check_eq(Genome.level_of(_parts_of("eye_spot")[1]), 1, "one Undo takes back both upgrades")
+	editor.redo()
+	check(not editor.mirror_selected().ok, "a part that has its twin is not mirrored again")
+	check(editor.remove_selected().ok, "removed")
+	check_eq(_parts_of("eye_spot").size(), 0, "with its twin")
+	editor.undo()
+	check_eq(_parts_of("eye_spot").size(), 2, "and one Undo brings both back")
+
+
+func test_with_symmetry_a_mouth_stays_single_and_a_pair_keeps_off_the_middle_line() -> void:
+	editor.open(save, catalog, _state())
+	editor.set_symmetry(true)
+	editor.add("mouth_jaw")
+	check_eq(_parts_of("mouth_jaw").size(), 1, "a mouth on the middle line has no twin")
+	check(editor.selected_twin().is_empty(), "and none is selected")
+	editor.add("cilia")
+	var cilia := editor.selected
+	check_eq(_parts_of("cilia").size(), 2, "cilia off the middle line come as a pair")
+	editor.move_selected(0.01)
+	check_near(_angle(cilia), Sym.PAIR_EDGE, 1e-6, "a pair stops just off the front")
+	check_near(float(editor.selected_twin().angle), -Sym.PAIR_EDGE, 1e-6, "and so does its twin")
+	editor.move_selected(-1.2)
+	check_near(_angle(cilia), -1.2, 1e-6, "across the line it goes to the other side")
+	check_near(float(editor.selected_twin().angle), 1.2, 1e-6, "and the twin comes over to this one")
+
+
+func test_with_symmetry_a_twin_that_does_not_fit_leaves_one_part_and_says_why() -> void:
+	editor.open(save, catalog, _state())
+	editor.set_symmetry(true)
+	editor.add("eye_spot")
+	var result := editor.add("eye_spot")
+	check(result.ok, "the third eye spot fits")
+	check_eq(_parts_of("eye_spot").size(), catalog.max_count_of("eye_spot"), "but not its twin")
+	var status := (editor.find_child("Status", true, false) as Label).text
+	check(status.begins_with("No room for its pair") and status.contains("limit"), "the status line says why: " + status)
+	editor.undo()
+	check_eq(_parts_of("eye_spot").size(), 2, "one Undo takes the single back")
+
+
+func test_twins_are_found_by_type_size_level_and_mirrored_angle() -> void:
+	var parts := [
+		{"id": "p1", "type": "eye_spot", "angle": 1.0, "scale": 1.0},
+		{"id": "p2", "type": "eye_spot", "angle": -1.0 + 0.01, "scale": 1.0},
+		{"id": "p3", "type": "cilia", "angle": -1.0, "scale": 1.0},
+		{"id": "p4", "type": "eye_spot", "angle": -1.0, "scale": 1.5},
+		{"id": "p5", "type": "eye_spot", "angle": 0.02, "scale": 1.0},
+		{"id": "p6", "type": "eye_spot", "angle": -0.02, "scale": 1.0},
+	]
+	check_eq(str(Sym.twin_of(parts, parts[0]).get("id", "")), "p2", "same type and size, near the mirror")
+	check_eq(str(Sym.twin_of(parts, parts[2]).get("id", "")), "", "no other cilia")
+	check(Sym.twin_of(parts, parts[4]).is_empty(), "a part on the middle line has no twin")
+	parts[1].level = 2
+	check(Sym.twin_of(parts, parts[0]).is_empty(), "nor does one at another level")
+	check_near(Sym.off_line(0.01, 1.0), Sym.PAIR_EDGE, 1e-9, "front, right side")
+	check_near(Sym.off_line(-0.01, -2.0), -Sym.PAIR_EDGE, 1e-9, "front, left side")
+	check_near(Sym.off_line(PI - 0.01, 2.0), PI - Sym.PAIR_EDGE, 1e-9, "back, right side")
+	check_near(Sym.off_line(1.0, -2.0), 1.0, 1e-9, "off the line it is left alone")
