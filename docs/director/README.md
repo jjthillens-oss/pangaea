@@ -42,7 +42,7 @@ The weekly plan resets Wednesday 06:00 UTC.
 - **Tuesday is ultracode day**: whatever is left (about 30% plus anything unspent). Monday's plan names the jobs,
   usually the week's hardest multi-track build or a milestone review sweep. It runs from a fixed list, merges what
   is green and stops before the Wednesday reset.
-- At most 3 routine runs a day, 3 task briefs a day and 2 active builder threads. Nothing re-schedules itself or
+- Routine runs: the daily plan, the playtest capture and the research digest each day, plus the Sunday report. At most 3 task briefs a day and 2 active builder threads. Nothing re-schedules itself or
   loops overnight. The owner keeps extra usage off, so the cap stops work instead of billing.
 - The $250 cloud credit is nearly spent (25 Oct); what is left only finishes open `claude/credit-*` branches.
 - Agents cannot read the usage meter reliably. Each run logs what it ran in `docs/director/progress.md`; the owner's usage
@@ -52,10 +52,11 @@ The weekly plan resets Wednesday 06:00 UTC.
 
 | Routine | When (UTC) | Job |
 | --- | --- | --- |
-| Daily plan | 06:00 daily | Read `docs/director/progress.md`, `docs/director/backlog.json`, the git log, last night's build and the playtest scores. Write up to 3 task briefs, send them to the owning threads or as `godfrey-task` issues (keep 3 open), post a 5-line plan in project chat. Check the budget pace. |
+| Daily plan | 06:10 daily | Read `docs/director/progress.md`, `docs/director/backlog.json`, the git log, last night's build and the playtest scores. Write up to 3 task briefs, send them to the owning threads or as `godfrey-task` issues (keep 3 open), post a 5-line plan in project chat. Check the budget pace. |
 | Nightly build | 09:17 daily | `.github/workflows/nightly.yml` (GitHub Actions, no Claude usage) |
-| Playtest capture | 11:00 daily | Run the scripted smokes under xvfb, capture frames at gameplay camera, score them against the rubrics as a separate reviewer, file failures as issues, log scores. |
-| Weekly report | Sunday 18:00 | One Artifact page: build link, merges, rubric trends, the Tier 2 batch, Tier 3 cards, next week's plan, usage against budget. |
+| Research digest | 13:47 daily | Community signals and permissive tools; opens a PR for the owner |
+| Nightly copy and playtest capture | 11:10 daily | Run the scripted smokes under xvfb, copy the nightly zip to the project builds folder, capture frames at gameplay camera, score them against the rubrics as a separate reviewer, file failures as issues, log scores. |
+| Weekly report | Sunday 18:10 | One Artifact page: build link, merges, rubric trends, the Tier 2 batch, Tier 3 cards, next week's plan, usage against budget. |
 
 ## Every session
 
