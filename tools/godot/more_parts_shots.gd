@@ -21,6 +21,8 @@ extends SceneTree
 ##   new type}}: the preset's parts, with swapped types (their handles reset to rest), plus these, so a new part is
 ##   seen on a real body. It changes the bodies in memory only, never presets.json. Without it the bodies are the
 ##   unmodified presets.
+## --cone-fix-preview (review only) turns the forward_cone parts (mouths and eyes) on the rig the way the proposed
+##   frame fix would, to check they read right once it lands; use a distinct --set name for those frames.
 
 const EDITOR_SCENE := "res://game/scenes/creature/creature_editor.tscn"
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
@@ -44,6 +46,7 @@ var mode := "palette"
 var set_name := "before"
 var presets: Array = DEFAULT_PRESETS.duplicate()
 var showcase_path := ""
+var cone_fix_preview := false
 var editor: Node
 
 
@@ -59,6 +62,8 @@ func _initialize() -> void:
 			presets = Array(arg.trim_prefix("--presets=").split(",", false))
 		elif arg.begins_with("--showcase="):
 			showcase_path = arg.trim_prefix("--showcase=")
+		elif arg == "--cone-fix-preview":
+			cone_fix_preview = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -113,6 +118,8 @@ func _creatures() -> void:
 			body.parts.append((p as Dictionary).duplicate(true))
 		editor.setup(body, POINTS)
 		editor.handle_root.visible = false
+		if cone_fix_preview:
+			_preview_cone_fix()
 		await _frames(6)
 		var desc: RefCounted = editor.working_body()
 		var length: float = (desc.bounds_m() as AABB).get_longest_axis_size()
@@ -126,6 +133,21 @@ func _creatures() -> void:
 		await _view(head, CLOSE_SHARE * distance, 2.3, 0.25, shot_name + "_close")
 		await _view(head, SIDE_SHARE * distance, PI / 2.0, 0.03, shot_name + "_side")
 		print("creature ", entry["name"], " length ", snappedf(length, 0.01), " parts ", desc.parts.size())
+
+
+## Review only (--cone-fix-preview; game code is not changed): turns every forward_cone part on the editor's rig so
+## its authored outward axis (local +Y, Blender +Z) points along the look direction (the cone frame's -Z) and its
+## authored upper side (local -Z, Blender +Y) faces body up (+Y). That is a half turn about (0, 1, -1), which also
+## mirrors x, harmless for these centreline parts. It previews the frame fix proposed in the orientation issue.
+func _preview_cone_fix() -> void:
+	var fix := Basis(Vector3(-1.0, 0.0, 0.0), Vector3(0.0, 0.0, -1.0), Vector3(0.0, -1.0, 0.0))
+	var types := {}
+	for part in editor.working_body().parts:
+		types[part["id"]] = part["type"]
+	for p in editor.rig.part_nodes:
+		if editor.orientations.get(types.get(p["entry"]["part"], ""), "") == "forward_cone":
+			var node: Node3D = p["node"]
+			node.transform.basis = node.transform.basis * fix
 
 
 ## The bodies to show: the showcase file's entries, or else the presets as they are.
