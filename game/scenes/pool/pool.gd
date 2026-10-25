@@ -65,9 +65,15 @@ signal giant_pass_started
 signal mate_requested
 ## S3 (V3-16): every scene a band-up may draw is loaded and its meshes warmed.
 signal preload_finished
+## The cell-to-creature link (ShoreLink): the shore rose while this pool was up (not one already in the save).
+signal shore_risen
+## The cell swam into the shore's reach: whoever offers the crossing calls decline_shore() on "Stay in the water".
+signal shore_reached
 
 const KIN_VIEW_SCENE := "res://game/scenes/pool/player_cell_view.tscn"
 const KIN_PULSE := 0.05      ## the kin's swell while the cell could mate with it
+## The shore's arrow (the cell-to-creature link): the shaft's warm light.
+const SHORE_ARROW_COLOR := Color(1.0, 0.9, 0.62)
 const KIN_PULSE_HZ := 0.8
 const STEP_COST_WINDOW := 120   ## ticks averaged for step_cost_usec()
 ## The idea hints' "near a smaller body": a surface gap of at most this (tm, s2-view 7.5).
@@ -131,6 +137,13 @@ var old_band_enabled := true
 ## The cradle round home from band 1 and the home beacon (S3, s3-view 6); endless mode only, else null.
 var cradle: CradleView
 var beacon: HomeBeacon
+## The shore and the arrow to it (ShoreLink), endless mode only, else null. The shore is placed from the save every
+## frame, hidden until it rises and once the lineage is ashore.
+var shore: ShoreView
+var shore_arrow: StarvingArrow
+var _shore_seen := false        ## a shore was in the save (at setup, or since it rose)
+var _shore_offered := false     ## shore_reached was sent and not answered yet
+var _shore_declined := false    ## "Stay in the water": no offer until the cell has swum out of reach
 ## S3's preload (V3-16): the paths still loading on worker threads, the scenes in, whether every one
 ## is in and warmed, and every mesh the warm-ups drew (the start fade's and the late one's).
 var _preload_pending := PackedStringArray()
@@ -322,6 +335,7 @@ func _build() -> void:
 			old_band.focus_am = sim.world.abs_of_local(sim.motion.position)
 			old_band.set_band(WorldConfig.band_of(sim_size()), sim_size())
 		_build_cradle()
+		_build_shore()
 	else:
 		rim_node.visible = true
 		rocks.build_pool(session.layout)
@@ -462,6 +476,78 @@ func _build_cradle() -> void:
 	add_child(beacon)
 	world_space.register(beacon)
 	beacon.place(sim.world, sim_size())
+
+
+## The shore and its arrow (the cell-to-creature link): made once, hidden until the shore is in the save.
+func _build_shore() -> void:
+	if shore == null:
+		shore = ShoreView.new()
+		shore.add_to_group(&"world_rebuilt")   # placed from the save every frame: a rebase needs nothing
+		add_child(shore)
+	if shore_arrow == null:
+		shore_arrow = StarvingArrow.new()
+		shore_arrow.name = "ShoreArrow"
+		shore_arrow.color = SHORE_ARROW_COLOR
+		shore_arrow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		ui.add_child(shore_arrow)
+		ui.move_child(shore_arrow, starving_arrow.get_index())
+	_shore_seen = not ShoreLink.point_am(sim.save).is_empty()
+	_shore_offered = false
+	_shore_declined = false
+	_update_shore(0.0)
+
+
+## Places the shore from the save, points its arrow and sends shore_risen and shore_reached (see there). The offer
+## waits while paused, dead or in a growth beat, and opens again after a decline only once the cell has swum out.
+func _update_shore(delta: float) -> void:
+	if shore == null:
+		return
+	var p := ShoreLink.point_am(sim.save)
+	if p.is_empty() or not ShoreLink.in_water(sim.save):
+		shore.visible = false
+		shore_arrow.visible = false
+		return
+	if not _shore_seen:
+		_shore_seen = true
+		shore_risen.emit()
+	var local := sim.world.local_of_abs(p[0], p[1])
+	shore.place(local)
+	shore.pulse(0.0 if paused else delta)
+	var n := sim_size()
+	var d := ShoreLink.distance_am(sim.save, sim.absolute_position_am())
+	var reach := ShoreLink.in_reach(d, n)
+	_point_shore_arrow(local, reach)
+	if paused or sim.dead or sim.respawn_pending or growth_beat.running():
+		return
+	if _shore_declined and ShoreLink.out_of_reach(d, n):
+		_shore_declined = false
+	if reach and not _shore_declined and not _shore_offered:
+		_shore_offered = true
+		shore_reached.emit()
+
+
+## The answer to shore_reached was "Stay in the water".
+func decline_shore() -> void:
+	_shore_offered = false
+	_shore_declined = true
+
+
+func _point_shore_arrow(local: Vector2, reach: bool) -> void:
+	if reach or paused:
+		shore_arrow.visible = false
+		return
+	var cell_at := cell_view.position
+	var shore_at := PlaneSpace.to_world(local, 0.0)
+	var cell_px := camera.unproject_position(cell_at)
+	var cell_radius_px := camera.unproject_position(cell_at + Vector3.RIGHT * sim.phenotype.radius).distance_to(cell_px)
+	var toward := cell_at + (shore_at - cell_at).normalized()
+	var shore_px := Vector2.INF
+	if not camera.is_position_behind(shore_at):
+		var q := camera.unproject_position(shore_at)
+		if shore_arrow.get_rect().has_point(q):
+			shore_px = q
+	shore_arrow.point(cell_px, camera.unproject_position(toward) - cell_px, shore_px, cell_at.distance_to(shore_at),
+			cell_radius_px)
 
 
 ## The containers that follow the growth beat's contract (apply_growth, retire_chunk, settle_growth,
@@ -892,6 +978,7 @@ func _process(delta: float) -> void:
 	_apply_scale_view()
 	feedback.update_zones(sim.region, sim.plankton, delta, PlaneSpace.to_plane(cell_view.position), sim.phenotype.radius)
 	_update_starving(delta)
+	_update_shore(delta)
 	_update_target_ring()
 
 

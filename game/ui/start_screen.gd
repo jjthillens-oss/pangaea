@@ -19,12 +19,18 @@ signal slots_requested
 signal settings_requested
 ## The creature stage preview (creature-stage plan): Main opens it with open_creature_stage().
 signal creature_requested
+## "Back to the water": the lineage came ashore and its checkpoint from before is there (set_water_offer).
+signal water_requested
 
 const CARD_SCENE := preload("res://game/ui/body_card.tscn")
 const REPLACE_TEXT := "This replaces your current lineage. The previous save is kept as a backup until your next save."
 const BACKUP_TEXT := "Your last save could not be read; continuing from the backup."
 const UNREADABLE_TEXT := "Your save could not be read, so Continue is off. Nothing was deleted."
 const NO_SAVE_TEXT := "No saved lineage yet. Choose New lineage to found one."
+## The cell-to-creature link: the button that brings back the cell from before the lineage came ashore, and the
+## card's note on a lineage that is ashore.
+const WATER_TEXT := "Back to the water"
+const ON_LAND_TEXT := "On land"
 ## Where the camera slides on each view (TitleWorld.frame): the hero right of the menu, and on the
 ## picker up and further right, above its plate and clear of the cards.
 const MAIN_FRAME := Vector2(-1.15, 0.0)
@@ -85,6 +91,8 @@ var picker_preview: PlayerCellView:
 @onready var _picked_name: Label = %PickedName
 @onready var _picked_diet: Label = %PickedDiet
 @onready var _build_label: Label = %BuildLabel
+## "Back to the water" (the cell-to-creature link): beside the creature stage button, shown by set_water_offer.
+var water_button: Button
 
 
 ## Shows the slot summary and the starting bodies. Call it before or after the screen enters the tree.
@@ -118,6 +126,14 @@ func _ready() -> void:
 	slots_button.pressed.connect(func(): slots_requested.emit())
 	settings_button.pressed.connect(func(): settings_requested.emit())
 	creature_button.pressed.connect(func(): creature_requested.emit())
+	water_button = Button.new()
+	water_button.name = "WaterButton"
+	water_button.text = WATER_TEXT
+	water_button.visible = false
+	creature_button.add_sibling(water_button)
+	MenuBounce.pill(water_button)
+	MenuBounce.attach(water_button)
+	water_button.pressed.connect(func(): water_requested.emit())
 	resized.connect(fit_backdrop)
 	fit_backdrop()
 	start_button.pressed.connect(request_start)
@@ -279,6 +295,12 @@ func _build_cards() -> void:
 		selected_body = _cards.keys()[0]
 
 
+## Shows "Back to the water" when `on` (main: the slot's lineage came ashore and its checkpoint is there).
+func set_water_offer(on: bool) -> void:
+	if water_button != null:
+		water_button.visible = on
+
+
 func _fill_continue_card() -> void:
 	var ok := bool(peek.get("ok", false))
 	_saved_genome = null
@@ -294,6 +316,8 @@ func _fill_continue_card() -> void:
 		_card_name.text = BodyText.body_name(summary.body)
 		_card_tag.text = "Lineage %s" % summary.lineage_tag
 		_card_progress.text = "Generation %d · %s" % [summary.generation, Hud.points_line(summary.adaptation_points)]
+		if str(summary.get("era", ShoreLink.FROM_ERA)) != ShoreLink.FROM_ERA:
+			_card_progress.text += " · " + ON_LAND_TEXT
 		_card_saved.text = "Saved %s" % local_time_text(summary.saved_at_unix)
 		_saved_genome = summary.genome
 		_saved_phenotype = Phenotype.derive(summary.genome, catalog)

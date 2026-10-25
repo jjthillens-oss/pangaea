@@ -142,6 +142,7 @@ func peek_slot() -> Dictionary:
 			"saved_at_unix": save.saved_at_unix,
 			"world_seed": save.world_seed,
 			"genome": save.genome,
+			"era": save.era,
 		}
 	return result
 
@@ -161,6 +162,7 @@ func start_new(body: String, seed_value: int = -1) -> Dictionary:
 	if not founded.ok:
 		return {"ok": false, "errors": founded.errors, "saved": false}
 	var save: SaveGame = founded.save
+	EraTransition.forget(slot)   # a checkpoint from the lineage this one replaces is not this one's to go back to
 	if world != null:
 		save.player["position"] = PlaneSpace.to_save_abs(world.home.spawn[0], world.home.spawn[1])
 	else:
@@ -207,11 +209,33 @@ func save_now() -> Dictionary:
 ## Call with each tick's drained events (PoolSim.drain_events): a tick whose events hold "grew", or a
 ## landmark's "checkpoint_moved" (S3, D-132), is saved at once, so the growth or the new return point
 ## survives a quit or a crash (S2 D-75; plan E). Returns save_now()'s result when it saved, else {}.
+##
+## The cell-to-creature link (ShoreLink): the first ring paid at the build's top size raises the shore, and that
+## tick is saved too, so the shore stands where it rose after a reload.
 func after_events(events: Array) -> Dictionary:
+	var raised := false
 	for event in events:
-		if event is Dictionary and (event.get("type") == "grew" or event.get("type") == "checkpoint_moved"):
+		if not event is Dictionary:
+			continue
+		if event.get("type") == "grew" or event.get("type") == "checkpoint_moved":
 			return save_now()
-	return {}
+		if event.get("type") == "ring_paid" and raise_shore():
+			raised = true
+	return save_now() if raised else {}
+
+
+## Raises the shore (ShoreLink.raise) RISE_AHEAD_TM up the screen from the cell, on the first clear point the
+## rule C1 spiral finds there for twice the cell's radius, in the endless world at the build's top size. False when
+## it has risen already, the lineage is ashore, or there is no world or no top.
+func raise_shore() -> bool:
+	if sim == null or sim.world == null or sim.growth == null or sim.dead:
+		return false
+	if not Growth.at_top(sim.size(), sim.world.max_size) or not ShoreLink.shore_of(sim.save).is_empty():
+		return false
+	var ahead := sim.motion.position + ShoreLink.RISE_DIRECTION * ShoreLink.RISE_AHEAD_TM
+	var at := PoolSim.clear_point_on(sim.arena, ahead, sim.phenotype.radius * 2.0)
+	var am := sim.world.abs_of_local(at)
+	return ShoreLink.raise(sim.save, am[0], am[1], sim.size())
 
 
 ## Applies the cell's death to the lineage, once: Lineage.apply_death takes a quarter of the

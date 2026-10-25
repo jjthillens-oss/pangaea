@@ -14,6 +14,8 @@ const OUTLINE_PX := 3.0
 const PULSE_HZ := 1.0
 const PULSE_SHARE := 0.15
 const COLOR := Color(1.0, 0.83, 0.42)
+## The arrow's and its label's colour (the shore's arrow is another StarvingArrow in its own colour).
+var color := COLOR
 const OUTLINE := Color(UiPalette.KEYLINE, 0.85)
 ## The label at 100% text size; it follows the Text size setting (Bible 19), as the theme does.
 const FONT_SIZE := 22
@@ -124,7 +126,7 @@ func _draw() -> void:
 		arrow_position - fwd * s * 0.9 - side * s * 0.6])
 	var outline := points.duplicate()
 	outline.append(points[0])
-	draw_colored_polygon(points, COLOR)
+	draw_colored_polygon(points, color)
 	draw_polyline(outline, OUTLINE, OUTLINE_PX, true)
 	var font := get_theme_default_font()
 	var text := label_text()
@@ -132,4 +134,4 @@ func _draw() -> void:
 	var outline_px := roundi(LABEL_OUTLINE_PX * size_px / float(FONT_SIZE))
 	var baseline := label_rect().position + Vector2(0.0, font.get_ascent(size_px))
 	draw_string_outline(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, outline_px, OUTLINE)
-	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, COLOR)
+	draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, color)
