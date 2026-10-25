@@ -131,6 +131,7 @@ ROLE = {
     "claw_scythe": "weapon", "claw_rake": "weapon", "horn_ram": "weapon", "horn_nose": "weapon", "spike": "weapon",
     "fin": "detail", "crest": "detail", "tail_fluke": "detail", "wing": "detail", "antenna": "detail", "frill": "detail",
     "gill_fan": "detail", "lure": "detail", "barbels": "detail",
+    "ear_pointed": "detail", "tail_bushy": "detail", "mane": "detail",
 }
 
 
@@ -3312,6 +3313,236 @@ def build_foot_frog():
             "paint_mix": {"M_FootFrogSkin": 0.9}, "revision": 1, **baked}
 
 
+# --- Fur parts (mammal set): tufted clumps over a core, strand grain baked to the normal map -------
+
+def _fur_material(name, lo=0.55, along=(7.0, 7.0, 0.35), rough=0.88):
+    """Matte fur: fine streaks stretched along the strands (the low-frequency axis of `along`), clumped breakup."""
+    sh = sf.Shader(name)
+    strands = sh.noise(260.0, 2.0, vector=mp._stretched(sh, along))
+    clumps = sh.remap(sh.noise(45.0, 2.0), 0.35, 0.65)
+    sh.bump(strands, 0.35, 0.0007)
+    fac = sh.math("ADD", sh.math("MULTIPLY", sh.remap(strands, 0.3, 0.7), 0.6), sh.math("MULTIPLY", clumps, 0.4))
+    return sh.out(_grey(sh, fac, lo), rough)
+
+
+def _tuft(verts, fcs, base, d, length, r0, bend=Vector((0.0, 0.0, 0.0)), sides=5):
+    """One soft fur clump from `base` along `d`, sagging toward `bend` at its tip: full through the middle,
+    then a short rounded taper, so it reads as a lock of fur rather than a spine."""
+    ts = (0.0, 0.3, 0.6, 0.85, 1.0)
+    prof = (0.85, 1.0, 0.8, 0.45, 0.0)
+    path = [base + d * (length * t) + bend * (length * t * t) for t in ts]
+    v, f, _ = _tube(path, lambda i, a: r0 * prof[i] * (1.0 + 0.1 * math.sin(3 * a)), sides)
+    bc.append(verts, fcs, v, f)
+
+
+EAR_H = 0.1
+
+
+def build_ear_pointed():
+    """A tall pointed mammal ear (fox, wolf, cat): a cupped shell opening forward (+Y), furred on the back and
+    rim, pale bare skin inside, with a fur tuft at the tip and a pale fringe in the cup. H1_Tall lengthens it,
+    H2_Droop folds the tip back toward the tail."""
+    import random
+    rnd = random.Random(7)
+    cols, rows = 12, 10
+    verts, fcs, mats, grid_o, grid_i = [], [], [], [], []
+    for r in range(rows + 1):
+        v = r / rows
+        ro, ri = [], []
+        width = 0.034 * (1.0 - v) ** 0.85 * (0.75 + 0.25 * math.sin(math.pi * min(1.0, v * 1.6 + 0.2)))
+        for c in range(cols + 1):
+            u = c / cols * 2.0 - 1.0
+            x = width * u
+            z = -0.012 + (EAR_H + 0.012) * v
+            back = -0.006 - 0.012 * v * v               # the ear leans back a little as it rises
+            cup = 0.022 * (1.0 - u * u) * (1.0 - v) ** 0.7
+            th = 0.004 * (1.0 - v) + 0.0012
+            ro.append(len(verts))
+            verts.append((x, back - cup * 0.6, z))
+            ri.append(len(verts))
+            verts.append((x * 0.98, back + th - cup * 0.35, z))
+        grid_o.append(ro)
+        grid_i.append(ri)
+    for r in range(rows):
+        for c in range(cols):
+            a, b, d, e = grid_o[r][c], grid_o[r][c + 1], grid_o[r + 1][c], grid_o[r + 1][c + 1]
+            fcs.append((a, d, e, b))
+            mats.append(0)
+            a, b, d, e = grid_i[r][c], grid_i[r][c + 1], grid_i[r + 1][c], grid_i[r + 1][c + 1]
+            fcs.append((a, b, e, d))
+            mats.append(1)
+    for r in range(rows):                 # the furred rim joins the two layers on both edges
+        for c in (0, cols):
+            o0, o1, i0, i1 = grid_o[r][c], grid_o[r + 1][c], grid_i[r][c], grid_i[r + 1][c]
+            fcs.append((o0, i0, i1, o1) if c == 0 else (o0, o1, i1, i0))
+            mats.append(0)
+    for c in range(cols):
+        o0, o1, i0, i1 = grid_o[0][c], grid_o[0][c + 1], grid_i[0][c], grid_i[0][c + 1]
+        fcs.append((o0, o1, i1, i0))
+        mats.append(0)
+    # Closed tufts go on their own piece so their normals can be made outward (the shell is wound by hand).
+    tv, tf = [], []
+    tip = Vector(verts[grid_o[rows][cols // 2]])
+    for k in range(3):
+        _tuft(tv, tf, tip + Vector(((k - 1) * 0.003, 0.0, -0.014)), Vector(((k - 1) * 0.3, -0.2, 1.0)).normalized(), 0.024, 0.004)
+    for k in range(7):
+        u = (k / 6.0) * 1.4 - 0.7
+        p = Vector((u * 0.022, -0.012 + 0.006 * (1.0 - u * u), 0.002 + 0.004 * rnd.random()))
+        _tuft(tv, tf, p, Vector((u * 0.5, 0.15, 1.0)).normalized(), 0.022 + 0.008 * rnd.random(), 0.0036, bend=Vector((0, 0.25, 0)), sides=6)
+    fur = _fur_material("M_EarFurProc", 0.5)
+    skin = _skin_material("M_EarSkinProc", 260.0, 0.82, 0.6)
+    tuft = _fur_material("M_EarTuftProc", 0.7)
+    ear = bc.mesh_object("EarPointed", verts, fcs, [fur, skin], mats, fix_normals=False)
+    tufts = bc.mesh_object("Tufts", tv, tf, [tuft], parent=ear)
+    fur.name, skin.name, tuft.name = "M_EarFur", "M_EarSkin", "M_EarTuft"
+    baked = _bake([ear, tufts], "PartEarPointed", {"M_EarFur": sf.tint(_lin("#9A6A44")), "M_EarSkin": sf.tint(_lin("#D9A79A")),
+                                                   "M_EarTuft": sf.tint(_lin("#E8DDCC"))}, tolerance=0.0003)
+    pts = _check_pivot("ear_pointed", 0.015)
+    foot = _footprint(pts)
+
+    def tall(co):
+        if co.z > 0.0:
+            co.z *= 1.35
+        return co
+
+    def droop(co):
+        if co.z > 0.04:
+            k = min(1.0, (co.z - 0.04) / 0.08)
+            pivot = Vector((0.0, 0.0, 0.04))
+            return Matrix.Rotation(math.radians(-55.0) * k, 3, "X") @ (co - pivot) + pivot
+        return co
+
+    handles = _shape_keys(ear, [("H1_Tall", tall, "the ear 35% taller"), ("H2_Droop", droop, "the upper half folded 55 degrees back toward the tail")])
+    _shape_keys(tufts, [("H1_Tall", tall, ""), ("H2_Droop", droop, "")])
+    rules = _rules("ear_pointed", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 40, 35, centerline="forbidden", chiral=True)
+    rules["handles"] = handles
+    rules["placement_note"] = "On the head, the cup opening toward the head direction (+Y); mirrored for the left ear."
+    return {"purpose": "Creature detail part (PROPOSED): a tall pointed furred mammal ear, a cupped shell with a pale bare inside, an inner fringe and a tip tuft.",
+            "category": "part", "part_type": "ear_pointed", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_EarFur": 0.9, "M_EarSkin": 0.15, "M_EarTuft": 0.2}, "revision": 1, **baked}
+
+
+TAIL_LEN = 0.34
+
+
+def _tail_path(t):
+    """The tail's spine from the cap (+Z out), arching gently: as a fox or monkey carries it."""
+    return Vector((0.0, -0.05 * math.sin(math.pi * t) + 0.02 * t, TAIL_LEN * t - 0.01))
+
+
+def _tail_r(t):
+    return 0.016 + 0.024 * math.sin(math.pi * min(1.0, t * 0.85)) ** 1.2 * (1.0 - 0.6 * max(0.0, t - 0.8) / 0.2)
+
+
+def build_tail_bushy():
+    """A bushy furred tail for the spine's tail cap (+Z out along it): a slim root swelling into a full brush of
+    overlapping tufts swept toward the tip, the last fifth paler. H1_Curl curls it up over the back,
+    H2_Fluff makes the brush fuller."""
+    import random
+    rnd = random.Random(11)
+    ts = [i / 14 for i in range(15)]
+    path = [_tail_path(t) for t in ts]
+    core_v, core_f, _ = _tube(path, lambda i, a: 0.0 if i == 14 else _tail_r(ts[i]) * 0.7, 10)
+    verts, fcs = list(core_v), list(core_f)
+    mats = [0] * len(fcs)
+    for n in range(62):
+        t = 0.06 + 0.92 * (n + rnd.random() * 0.5) / 62
+        p = _tail_path(t)
+        tan = (_tail_path(min(1.0, t + 0.02)) - _tail_path(max(0.0, t - 0.02))).normalized()
+        a = n * 2.39996 + rnd.random() * 0.4
+        side = tan.cross(Vector((1.0, 0.0, 0.0))).normalized()
+        up = tan.cross(side).normalized()
+        radial = side * math.cos(a) + up * math.sin(a)
+        base = p + radial * (_tail_r(t) * 0.5)
+        d = (tan * 1.6 + radial * 0.55).normalized()
+        length = _tail_r(t) * (1.3 + 0.4 * rnd.random()) + 0.012
+        nb = len(fcs)
+        _tuft(verts, fcs, base, d, length, max(0.006, _tail_r(t) * 0.42), bend=tan * 0.3)
+        mats.extend([1 if t > 0.8 else 0] * (len(fcs) - nb))
+    fur = _fur_material("M_TailFurProc", 0.5, (6.0, 6.0, 0.4))
+    tipm = _fur_material("M_TailTipProc", 0.75, (6.0, 6.0, 0.4))
+    tail = bc.mesh_object("TailBushy", verts, fcs, [fur, tipm], mats)
+    fur.name, tipm.name = "M_TailFur", "M_TailTip"
+    baked = _bake([tail], "PartTailBushy", {"M_TailFur": sf.tint(_lin("#A8683A")), "M_TailTip": sf.tint(_lin("#EDE6DA"))}, tolerance=0.0006)
+    pts = _check_pivot("tail_bushy", 0.015)
+    foot = _footprint(pts)
+
+    def curl(co):
+        if co.z <= 0.02:
+            return co
+        k = min(1.0, (co.z - 0.02) / (TAIL_LEN - 0.02))
+        return Matrix.Rotation(math.radians(70.0) * k, 3, "X") @ co
+
+    def fluff(co):
+        if co.z > 0.03:
+            c = _tail_path(max(0.0, min(1.0, (co.z + 0.01) / TAIL_LEN)))
+            return Vector((co.x * 1.35, c.y + (co.y - c.y) * 1.35, co.z))
+        return co
+
+    handles = _shape_keys(tail, [("H1_Curl", curl, "the tail curled 70 degrees up toward the head over the back"),
+                                 ("H2_Fluff", fluff, "the brush 35% fuller across")])
+    rules = _rules("tail_bushy", round(foot + 0.001, 3), 0.015, "normal", ["spine"], 25, 30, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "Meant for the tail cap (spine_u = 1), like tail_fluke."
+    return {"purpose": "Creature tail part (PROPOSED): a bushy furred tail, a slim root swelling into a brush of swept tufts with a pale tip.",
+            "category": "part", "part_type": "tail_bushy", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_TailFur": 0.9, "M_TailTip": 0.2}, "revision": 1, **baked}
+
+
+MANE_SINK = 0.025
+
+
+def build_mane():
+    """A shaggy mane for the neck and shoulders (+Z off the back, +Y toward the head): a furred pad under
+    rows of long layered locks that sweep back and fall to both sides, longest at the front. H1_Raise bristles
+    it up, H2_Length lengthens it."""
+    import random
+    rnd = random.Random(23)
+    unit, ufaces = bc.icosphere(2)
+    verts = [(n.x * 0.09, n.y * 0.11, -0.01 + max(n.z, -0.25) * 0.06) for n in (Vector(co).normalized() for co in unit)]
+    fcs = list(ufaces)
+    mats = [0] * len(fcs)
+    for row in range(5):
+        y = 0.085 - row * 0.04
+        size = 1.0 - row * 0.1
+        for k in range(9):
+            u = (k + 0.5 * (row % 2)) / 8.0 * 2.0 - 1.0
+            if abs(u) > 1.0:
+                continue
+            x = u * 0.08 * (1.0 - 0.15 * row / 5)
+            base = Vector((x, y, 0.035 * (1.0 - u * u) * (1.0 - 0.12 * row)))
+            d = Vector((u * 0.8, -0.5, 0.9 - 0.3 * abs(u))).normalized()
+            length = (0.085 + 0.03 * rnd.random()) * size
+            nb = len(fcs)
+            _tuft(verts, fcs, base, d, length, 0.016 * size, bend=Vector((u * 0.4, -0.3, -0.7)))
+            mats.extend([1 if (row + k) % 3 == 0 else 0] * (len(fcs) - nb))
+    pad = _fur_material("M_ManeFurProc", 0.45, (6.0, 0.4, 6.0))
+    lock = _fur_material("M_ManeLockProc", 0.62, (6.0, 0.4, 6.0))
+    mane = bc.mesh_object("Mane", verts, fcs, [pad, lock], mats)
+    pad.name, lock.name = "M_ManeFur", "M_ManeLock"
+    baked = _bake([mane], "PartMane", {"M_ManeFur": sf.tint(_lin("#6B4A2E")), "M_ManeLock": sf.tint(_lin("#8E6640"))}, tolerance=0.0006)
+    pts = _check_pivot("mane", MANE_SINK)
+    foot = _footprint(pts)
+
+    def raise_(co):
+        if co.z > 0.0:
+            return Vector((co.x * 0.85, co.y * 0.9 + 0.01, co.z * 1.4))
+        return co
+
+    def length(co):
+        if co.z > 0.012:
+            return Vector((co.x * 1.3, co.y * 1.15, co.z * 1.1))
+        return co
+
+    handles = _shape_keys(mane, [("H1_Raise", raise_, "the mane bristled up 40%"), ("H2_Length", length, "the locks 30% longer and wider")])
+    rules = _rules("mane", round(foot + 0.001, 3), MANE_SINK, "normal", ["spine"], 20, 25, centerline="required")
+    rules["handles"] = handles
+    rules["placement_note"] = "On the neck or shoulders; the locks fall back (-Y) and down both sides."
+    return {"purpose": "Creature detail part (PROPOSED): a shaggy layered fur mane, long locks sweeping back and down both sides from a furred pad.",
+            "category": "part", "part_type": "mane", "convention": "creature_art_contract v1", "part_rules": rules,
+            "paint_mix": {"M_ManeFur": 0.9, "M_ManeLock": 0.75}, "revision": 1, **baked}
+
+
 # asset id -> (builder, triangle budget): contract section 1.4 (small 400, medium 1200, large 2500).
 ASSETS = {
     "cpart_beak": (build_beak, 1200),
@@ -3358,6 +3589,9 @@ ASSETS = {
     "cpart_spike": (build_spike, 1200),
     "cpart_hand_primate": (build_hand_primate, 2500),
     "cpart_foot_frog": (build_foot_frog, 2500),
+    "cpart_ear_pointed": (build_ear_pointed, 1200),
+    "cpart_tail_bushy": (build_tail_bushy, 2500),
+    "cpart_mane": (build_mane, 2500),
 }
 
 

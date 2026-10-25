@@ -1,0 +1,101 @@
+{
+  "id": "cpart_mane",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "Creature detail part (PROPOSED): a shaggy layered fur mane, long locks sweeping back and down both sides from a furred pad.",
+  "category": "part",
+  "source_blend": "assets/source/blender/cpart_mane.blend",
+  "generator_script": "tools/blender/make_creature_parts.py",
+  "export_path": "assets/export/cpart_mane.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 0.387,
+    "y_forward": 0.238,
+    "z_up": 0.099
+  },
+  "triangles": 1620,
+  "triangle_budget": 2500,
+  "textures": [
+    {
+      "name": "T_PartMane_Albedo",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "sRGB",
+      "packing": "greyscale albedo detail (baked AO darkens crevices), times each material's base colour"
+    },
+    {
+      "name": "T_PartMane_ORM",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_PartMane_Normal",
+      "size": [
+        512,
+        512
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_ManeFur",
+    "M_ManeLock"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Mane"
+  ],
+  "part_type": "mane",
+  "convention": "creature_art_contract v1",
+  "part_rules": {
+    "type": "mane",
+    "footprint_radius_m": 0.207,
+    "sink_depth_m": 0.025,
+    "chiral": false,
+    "orientation": "normal",
+    "turn_limit_deg": 20,
+    "tilt_limit_deg": 25,
+    "centerline": "required",
+    "hosts": [
+      "spine"
+    ],
+    "role": "detail",
+    "handles": [
+      {
+        "key": "H1_Raise",
+        "meaning": "the mane bristled up 40%",
+        "default_permille": 0
+      },
+      {
+        "key": "H2_Length",
+        "meaning": "the locks 30% longer and wider",
+        "default_permille": 0
+      }
+    ],
+    "placement_note": "On the neck or shoulders; the locks fall back (-Y) and down both sides."
+  },
+  "paint_mix": {
+    "M_ManeFur": 0.9,
+    "M_ManeLock": 0.75
+  },
+  "reduction": {
+    "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
+    "tolerance_m": 0.0006,
+    "triangles_before": 1800,
+    "triangles_after": 1620
+  },
+  "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
+}

@@ -28,6 +28,7 @@ ROWS = [
     ["cpart_hand", "cpart_hand_paw", "cpart_hand_pincer", "cpart_hand_tentacle"],
     ["cpart_claw", "cpart_claw_scythe", "cpart_claw_rake", "cpart_horn", "cpart_horn_ram", "cpart_horn_nose", "cpart_spike", "cpart_tusk"],
     ["cpart_fin", "cpart_crest", "cpart_frill", "cpart_wing", "cpart_tail_fluke", "cpart_tail_spikes", "cpart_club_tail", "cpart_quills"],
+    ["cpart_ear_pointed", "cpart_tail_bushy", "cpart_mane"],
 ]
 SPACING_X = 0.42
 SPACING_Y = 0.5
