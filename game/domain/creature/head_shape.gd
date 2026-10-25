@@ -19,22 +19,30 @@ const DEFAULTS := {"snout": 1000, "width": 1000, "height": 1000, "jaw": 0, "brow
 const DEFAULT_RANGES := {"snout": [1000, 2000], "width": [600, 1600], "height": [600, 1600], "jaw": [0, 1000],
 		"brow": [0, 1000]}
 
+## A tall skull's top end is this much of the head radius, so it domes instead of ending in a cylinder.
+const SKULL_TOP := 0.85
 ## Shape tuning, in head radii (the first vertebra's radius times the core scale).
-## The snout reaches SNOUT_REACH x (snout - 1) forward from the head centre; its radius tapers from SNOUT_BASE to SNOUT_TIP.
+## The snout reaches SNOUT_REACH x (snout - 1) plain head radii forward from the head centre (its length does not
+## shrink with a narrow skull); its radius tapers from SNOUT_BASE to SNOUT_TIP head radii.
 const SNOUT_REACH := 1.6
 const SNOUT_BASE := 0.8
 const SNOUT_TIP := 0.55
 const SNOUT_DROP := 0.12   ## the tip sits this far (per unit of reach) below the head axis
-## The jaw hangs JAW_DROP + JAW_DROP_DEPTH x jaw below the centre, with radius JAW_R + JAW_R_DEPTH x jaw.
-const JAW_DROP := 0.35
-const JAW_DROP_DEPTH := 0.35
+## The jaw hangs JAW_DROP + JAW_DROP_DEPTH x jaw below the centre, with radius JAW_R + JAW_R_DEPTH x jaw, and reaches
+## JAW_FRONT head radii forward plus JAW_ALONG of the snout.
+const JAW_DROP := 0.4
+const JAW_DROP_DEPTH := 0.45
 const JAW_R := 0.45
-const JAW_R_DEPTH := 0.2
-## The brow sits forward and up of the centre, pushed out by BROW_OUT x brow, with radius BROW_R + BROW_R_DEPTH x brow.
-const BROW_AT := 0.8
-const BROW_OUT := 0.35
-const BROW_R := 0.25
-const BROW_R_DEPTH := 0.15
+const JAW_R_DEPTH := 0.3
+const JAW_FRONT := 0.55
+const JAW_ALONG := 0.85
+## The brow sits BROW_FORWARD (+ BROW_OUT x brow) head radii forward of the centre, BROW_UP of the way to the skull
+## top, with radius BROW_R + BROW_R_DEPTH x brow.
+const BROW_FORWARD := 0.6
+const BROW_OUT := 0.3
+const BROW_UP := 0.6
+const BROW_R := 0.28
+const BROW_R_DEPTH := 0.17
 ## The ridge spans this much of the head's half width on each side.
 const BROW_SPAN := 0.55
 
@@ -131,24 +139,27 @@ static func geometry(desc: RefCounted) -> Dictionary:
 	var core := minf(w, h)
 	var rc := core * r0
 	var caps := []
-	# Width and height: a bar across the head along the longer axis, as thick as the shorter.
+	# Width and height: a bar across the head along the longer axis, as thick as the shorter. A tall skull grows
+	# mostly upwards and narrows a little at the top.
+	var top := rc
 	if w > h:
 		var half := (w - h) * r0
 		caps.append([c - right * half, c + right * half, rc, rc])
 	elif h > w:
 		var half := (h - w) * r0
-		caps.append([c - up * (0.5 * half), c + up * (1.5 * half), rc, rc])
-	var reach := SNOUT_REACH * (s - 1.0) * rc
+		caps.append([c - up * (0.5 * half), c + up * (1.5 * half), rc, SKULL_TOP * rc])
+		top = 1.5 * half + SKULL_TOP * rc
+	var reach := SNOUT_REACH * (s - 1.0) * r0
 	if reach > 0.0:
 		var tip := c + f * reach - up * (SNOUT_DROP * reach)
 		caps.append([c, tip, SNOUT_BASE * rc, SNOUT_TIP * rc])
 	if jaw > 0.0:
 		var drop := (JAW_DROP + JAW_DROP_DEPTH * jaw) * rc
 		var jr := (JAW_R + JAW_R_DEPTH * jaw) * rc
-		var front := c + f * (0.45 * rc + 0.8 * reach) - up * (drop * 0.75 + SNOUT_DROP * reach)
-		caps.append([c - up * drop - f * (0.2 * rc), front, jr, jr * 0.85])
+		var front := c + f * (JAW_FRONT * rc + JAW_ALONG * reach) - up * (drop * 0.7 + SNOUT_DROP * reach)
+		caps.append([c - up * drop - f * (0.2 * rc), front, jr, jr * 0.8])
 	if brow > 0.0:
-		var at := c + (f + up).normalized() * ((BROW_AT + BROW_OUT * brow) * 0.7 * rc)
+		var at := c + f * ((BROW_FORWARD + BROW_OUT * brow) * rc) + up * (BROW_UP * top)
 		var span := BROW_SPAN * w * r0
 		var br := (BROW_R + BROW_R_DEPTH * brow) * rc
 		caps.append([at - right * span, at + right * span, br, br])

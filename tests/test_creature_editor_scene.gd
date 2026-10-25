@@ -383,3 +383,27 @@ func _random_body(seed_value: int) -> Dictionary:
 	var out: Dictionary = editor.working_body().to_dict()
 	out["color"] = editor.skin_color.to_html(false)
 	return out
+
+
+func test_the_head_shape_sliders_edit_the_body_as_one_undo_step_at_no_cost() -> void:
+	open()
+	var start := text()
+	var hud := editor.hud
+	check(hud.head_slider("snout") != null and hud.head_slider("snout").value == 1000.0, "the sliders show the body")
+	hud.head_slider("snout").drag_started.emit()
+	for v in [1200, 1400, 1600]:
+		hud.head_slider("snout").value_changed.emit(float(v))   # as the slider does when dragged
+	hud.head_slider("snout").drag_ended.emit(true)
+	check_eq(int(editor.working_body().extra["head_shape"]["snout"]), 1600, "the drag sets the snout")
+	check_eq(editor.session.cost(), 0, "the head costs nothing")
+	var r: Dictionary = editor.set_head_shape("width", 1700)
+	check(not r["ok"] and editor.refusal_text != "" and hud.head_slider("width").value == 1000.0,
+			"a width past 1.6x is refused and the slider goes back")
+	check(editor.undo() and text() == start, "one undo takes the whole drag back")
+	check_eq(hud.head_slider("snout").value, 1000.0, "and the slider follows")
+	editor.set_head_shape("height", 1400)
+	var got := []
+	editor.done_requested.connect(func(body: Dictionary, _p: int): got.append(body))
+	editor.finish()
+	check(got.size() == 1 and int(BodyCodec.from_dict(got[0]).extra["head_shape"]["height"]) == 1400,
+			"Done hands the head shape on in the body")
