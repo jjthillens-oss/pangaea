@@ -24,7 +24,7 @@ signal head_shape_changed(key: String, value: int)
 ## A head shape slider drag began (true) or ended (false), so the editor makes the drag one undo step.
 signal head_shape_drag(started: bool)
 ## Editor-ease: the Symmetry toggle (on: new parts and limbs off the middle line come as mirrored pairs). The toggle
-## shows only when something is connected to this at setup() (GitHub issue A asks the editor to connect it).
+## shows only when something is connected to this at setup() (GitHub issue #204 asks the editor to connect it).
 signal symmetry_toggled(on: bool)
 
 const TOOL_BUTTON_FONT_PX := 22
@@ -90,8 +90,8 @@ var test_drive_button: Button
 var undo_button: Button
 var redo_button: Button
 var _wired := false
-## Editor-ease (game/ui/editor_ease/creature_hud_ease.gd): the tooltips, stats panel, part card and placement hint,
-## built in code by one child node; the hooks below only forward to it.
+## Editor-ease (game/ui/editor_ease/creature_hud_ease.gd): the tooltips, stats table, part card, placement line and
+## Symmetry toggle, built in code by one child node; the hooks below only forward to it.
 const EditorEase := preload("res://game/ui/editor_ease/creature_hud_ease.gd")
 var ease: Node
 

@@ -2,7 +2,7 @@ extends RefCounted
 ## Editor-ease (docs/proposals/editor-ease.md): the creature editor's stat lines as rows, and each row's change
 ## since the visit began. The editor sends text lines (CreatureEditor._refresh_hud: "Length  1.31 m",
 ## "Legs  4   ·   limbs  4", "Selected  part p3"); a line holds one or more "name  value" segments. Pure text work:
-## no scene, no editor access. GitHub issue C asks the editor for the numbers themselves; until then the panel reads
+## no scene, no editor access. An issue asks the editor for the numbers themselves; until then the panel reads
 ## the text it already gets. No class_name: preload it.
 
 ## Between two stats on one line, as the editor writes them.

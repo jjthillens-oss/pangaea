@@ -5,12 +5,14 @@ extends Node
 ## only presents, reading the body being edited (hud.owner.working_body()) where a card needs it, guarded so the HUD
 ## also works alone.
 ## - Undo and Redo name the keys bound to ui_undo / ui_redo (Bible 19: inputs shown from the bindings); the editor's
-##   other keys are hardcoded today, so their buttons say what they do in plain words (GitHub issue B).
+##   other keys are hardcoded today, so their buttons say what they do in plain words (an issue asks the editor for
+##   input actions).
 ## - A stats table with each stat's change since the visit began, marked ▲ better / ▼ worse (shape and colour).
 ## - A part card on hover with what the part does by the world's own stats rule (Bible 12, 14), in place of the
 ##   default tooltip, and a stat's meaning on the card when the pointer rests on its name.
 ## - A placement line for the chosen tool (where it goes, when it snaps to the middle line, when it comes as a pair).
-## - A Symmetry toggle that shows only once the editor listens to it (GitHub issue A).
+## - A Symmetry toggle that shows only once the editor listens to it (GitHub issue #204); while it shows, the
+##   placement line and the card follow it.
 ## No class_name: the HUD preloads it.
 
 const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
@@ -21,8 +23,11 @@ const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
 const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 
-## The placement line's width: it wraps rather than run under the palette and the stats panels beside the dock.
+## The placement line's widest: it wraps rather than run under the palette and the stats panels beside the dock,
+## and narrows further when larger text widens those panels.
 const SNAP_HINT_WIDTH := 660.0
+## The space kept between the placement line and the panels beside it.
+const SNAP_HINT_GAP := 16.0
 ## The body a card measures against when the HUD runs without an editor (the editor's own REFERENCE_BODY).
 const REFERENCE_BODY := "s1_quadruped"
 const UNDO_WORDS := "Undo the last change"
@@ -51,11 +56,16 @@ const STAT_HELP := {
 	"limbs": "Every leg and arm; a mirrored limb counts twice.",
 	"parts": "Parts worn; a mirrored pair counts twice.",
 	"bones": "Vertebrae and limb joints.",
+	"change": "How each stat moved since you came into the editor (or started from a preset): ▲ better, ▼ worse, a bare sign for a change that is neither.",
+	"counts": "Legs reach the ground (a creature needs them to walk). Limbs are every leg and arm, parts every part worn, a mirrored one counting twice. Bones are the vertebrae and limb joints.",
 	"speed": "Top running speed, from the legs' length; very heavy bodies run slower.",
 	"health": "From the body's mass: %s per kg.",
 	"bite": "Damage per bite: each mouth, plus your largest weapons, times strength (heavier bodies bite harder). No mouth, no bite.",
 	"sight": "How far it sees: %s m, plus %s m per eye, %s m at most.",
 }
+
+## The card's title for a help key that is not one stat.
+const HELP_TITLES := {"counts": "Legs, limbs, parts, bones", "change": "Change"}
 
 var hud: Control
 ## The stats table, in the Stats panel just before the editor's own stat text (which it hides once the lines parse).
@@ -163,6 +173,13 @@ func on_undo_redo(can_undo: bool, can_redo: bool) -> void:
 func show_symmetry(on: bool) -> void:
 	symmetry_button.set_pressed_no_signal(on)
 	_write_symmetry(on)
+	_refresh_hint()
+
+
+## Whether a new part or limb off the middle line comes as a mirrored pair: what the Symmetry toggle shows while the
+## editor listens to it, and always true otherwise (the editor mirrors today).
+func mirrored() -> bool:
+	return not symmetry_button.visible or symmetry_button.button_pressed
 
 
 ## The card for a tool ("" Select, "limb" or a part type): {title, lines}, the same the hover shows.
@@ -172,7 +189,7 @@ func card_for(type: String) -> Dictionary:
 	var where := hint_for(type)
 	if type == "limb":
 		var limb: Button = hud.tool_button("limb")
-		return Effects.limb_card(int(limb.get_meta("price", 0)) if limb != null else 0, where)
+		return Effects.limb_card(int(limb.get_meta("price", 0)) if limb != null else 0, where, mirrored())
 	var rules: Dictionary = _data.get("part_rules", {})
 	if not rules.has(type):
 		return {"title": type.capitalize(), "lines": [[Effects.ROLE_UNKNOWN, ""]]}
@@ -194,7 +211,7 @@ func card_for(type: String) -> Dictionary:
 	if tuning.has("weapon"):
 		info["weapon_cap"] = int(tuning["weapon"]["cap"])
 	info.merge(_points())
-	return Effects.card(type, rules[type], fx, info, where)
+	return Effects.card(type, rules[type], fx, info, where, mirrored())
 
 
 ## Shows the card for `type` beside the palette, level with its button.
@@ -220,12 +237,12 @@ func hint_for(type: String) -> String:
 	if type == "":
 		return ""
 	if type == "limb":
-		return PlacementHint.limb_tool()
+		return PlacementHint.limb_tool(mirrored())
 	var rules: Dictionary = _data.get("part_rules", {})
-	return PlacementHint.creature(rules[type]) if rules.has(type) else ""
+	return PlacementHint.creature(rules[type], mirrored()) if rules.has(type) else ""
 
 
-## The selection in words from the editor's "part p3" / "vertebra v2" / "joint j4": "eye (a mirrored pair)",
+## The selection in words from the editor's "part p3" / "vertebra v2" / "joint j4": "eye (a pair)",
 ## "vertebra 3 of 9 from the head", "limb joint". The editor's own words when the body cannot be read.
 func selection_words(text: String) -> String:
 	var kind := text.get_slice(" ", 0)
@@ -238,7 +255,7 @@ func selection_words(text: String) -> String:
 			for p in body.parts:
 				if String(p["id"]) == id:
 					var type := String(p["type"]).capitalize().to_lower()
-					return type + " (a mirrored pair)" if bool(p["mirror"]) else type
+					return type + " (a pair)" if bool(p["mirror"]) else type
 		"vertebra":
 			var i: int = body.vertebra_index(id)
 			if i >= 0:
@@ -305,7 +322,7 @@ func _on_stat_entered(key: String, label: Control) -> void:
 	var help := stat_help(key)
 	if help.is_empty():
 		return
-	card.show_lines(key.capitalize(), [[help, ""]])
+	card.show_lines(String(HELP_TITLES.get(key, key.capitalize())), [[help, ""]])
 	_shown = "stat:" + key
 	card.place_beside(label.get_global_rect(), _bounds())
 
@@ -347,7 +364,19 @@ func _refresh_hint() -> void:
 	if not text.is_empty():
 		text = "%s  ·  %s" % [_tool.capitalize(), text]
 	snap_label.text = text
+	snap_label.custom_minimum_size.x = _snap_width()
 	snap_hint.visible = not text.is_empty() and not _driving
+
+
+## The placement line's width: centred on the HUD, clear of the palette on the left and the stats on the right.
+func _snap_width() -> float:
+	var palette := hud.get_node_or_null("Palette") as Control
+	var side := hud.get_node_or_null("Stats") as Control
+	var middle := hud.get_global_rect().get_center().x
+	if palette == null or side == null or palette.size.x <= 0.0 or side.size.x <= 0.0:
+		return SNAP_HINT_WIDTH
+	var room := minf(middle - palette.get_global_rect().end.x, side.get_global_rect().position.x - middle) - SNAP_HINT_GAP
+	return clampf(2.0 * room - 48.0, 240.0, SNAP_HINT_WIDTH)   # 48: the pill's own padding
 
 
 func _build_symmetry() -> void:
@@ -360,6 +389,7 @@ func _build_symmetry() -> void:
 	symmetry_button.visible = false
 	symmetry_button.toggled.connect(func(on: bool):
 		_write_symmetry(on)
+		_refresh_hint()
 		hud.symmetry_toggled.emit(on))
 	_write_symmetry(false)
 	var mirror := hud.get_node_or_null("%Mirror") as Control

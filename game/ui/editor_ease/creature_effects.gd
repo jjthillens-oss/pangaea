@@ -68,11 +68,14 @@ static func effects(body: RefCounted, type: String, part_rules: Dictionary, gait
 
 
 ## Whether a part with this rule comes as one, as a mirrored pair, or either: "one", "pair" or "both". A part for a
-## limb's end follows the limb (a mirrored limb has a twin end), so it is "both".
-static func modes(rule: Dictionary) -> String:
+## limb's end follows the limb (a mirrored limb has a twin end), so it is "both". With the editor's symmetry off
+## (`mirrored` false) a part on the body comes alone.
+static func modes(rule: Dictionary, mirrored := true) -> String:
 	var hosts: Array = rule.get("hosts", [])
 	if not hosts.has("spine"):
 		return "both"
+	if not mirrored:
+		return "one"
 	match String(rule.get("centerline", "allowed")):
 		"required":
 			return "one"
@@ -103,13 +106,15 @@ static func stat_lines(fx: Dictionary, mode: String) -> Array:
 	return out
 
 
-## The card for a part tool: {title, lines} (PartCard.show_lines). `info` carries {price, pair_price, refund_rate,
-## points, cost (this visit's so far), locked, parts, part_count_max, sight_max_m, display_cap, weapon_cap}; a key
-## it lacks leaves its line out. `where` is the placement line ("" for none).
-static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionary, where := "") -> Dictionary:
+## The card for a part tool: {title, lines} (PartCard.show_lines). `info` carries {price, refund_rate, points,
+## cost (this visit's so far), locked, parts, part_count_max, sight_max_m, display_cap, weapon_cap}; a key it lacks
+## leaves its line out. `where` is the placement line ("" for none); `mirrored` false when the editor's symmetry is
+## off. A blocking line (locked, too few points, no free slot) is marked "worse", as the cell editor's card does.
+static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionary, where := "",
+		mirrored := true) -> Dictionary:
 	var label := type.capitalize()
 	var price := int(info.get("price", 0))
-	var mode := modes(rule)
+	var mode := modes(rule, mirrored)
 	var role := String(rule.get("role", ""))
 	var lines: Array = []
 	if bool(info.get("locked", false)):
@@ -150,11 +155,11 @@ static func card(type: String, rule: Dictionary, fx: Dictionary, info: Dictionar
 
 
 ## The limb tool's card: a pair of three-joint limbs costs `pair_price` (the palette's price), one half of it.
-static func limb_card(pair_price: int, where := "") -> Dictionary:
+static func limb_card(pair_price: int, where := "", mirrored := true) -> Dictionary:
 	var lines: Array = []
 	for line in LIMB_LINES:
 		lines.append([line, ""])
-	lines.append([LIMB_PRICE % [pair_price, pair_price / 2], ""])
+	lines.append([LIMB_PRICE % [pair_price, pair_price / 2] if mirrored else PRICE_ONE % (pair_price / 2), ""])
 	if not where.is_empty():
 		lines.append([where, "note"])
 	return {"title": LIMB_TITLE % pair_price, "lines": lines}

@@ -145,9 +145,11 @@ func test_the_stats_panel_replaces_the_text_block_and_unknown_lines_stay_readabl
 func test_the_editor_stats_show_changes_since_the_visit_began() -> void:
 	open_editor()
 	var panel: Control = editor.hud.ease.stats
-	for key in ["length", "mass", "speed", "bite", "sight"]:
-		check(not panel.row(key).is_empty(), "a %s row" % key)
-	check(panel.row_texts().size() >= 10, "every stat on its own row (%d)" % panel.row_texts().size())
+	for key in ["length", "mass", "speed", "health", "bite", "sight", "legs", "limbs", "parts", "bones"]:
+		check(not panel.row(key).is_empty(), "the %s stat is shown" % key)
+	for word in ["legs", "limbs", "parts", "bones"]:
+		check(panel.counts_label.text.contains(word), "the counts line names the %s" % word)
+	check_eq(panel.grid.get_child_count(), 3 * 7, "a header and a row each for length, mass, speed, health, bite and sight")
 	for t in panel.row_texts():
 		check(not t.contains("▲") and not t.contains("▼") and not t.contains("+"), "no change marks on arrival (%s)" % t)
 	editor.insert_after_selected()
@@ -156,6 +158,8 @@ func test_the_editor_stats_show_changes_since_the_visit_began() -> void:
 			"the Length row shows the editor's length")
 	check(length["change"].begins_with("+"), "a vertebra more makes it longer (%s)" % length["change"])
 	check(not length["change"].contains("▲") and not length["change"].contains("▼"), "length is a plain change")
+	check(panel.counts_label.text.contains("bones (+1)"), "the counts lines show the bone more (%s)" % panel.counts_label.text)
+	check_eq(panel.counts_label.text.split("\n").size(), 2, "legs and limbs on one line, parts and bones on the next")
 	editor.undo()
 	for t in panel.row_texts():
 		check(not t.contains("▲") and not t.contains("▼") and not t.contains("+"), "no change marks after the undo (%s)" % t)
@@ -173,7 +177,7 @@ func test_the_selection_is_named_in_words() -> void:
 	check(r["ok"], "an eye added: %s" % r.get("reason", ""))
 	var label: Label = editor.hud.ease.stats.selected_label
 	var eye: Dictionary = editor.working_body().parts.filter(func(p): return p["id"] == editor.selected["id"])[0]
-	check_eq(label.text, "Selected: eye" + (" (a mirrored pair)" if eye["mirror"] else ""), "the new eye by its name")
+	check_eq(label.text, "Selected: eye" + (" (a pair)" if eye["mirror"] else ""), "the new eye by its name")
 	editor.choose_tool("")
 	var v_id := String(desc.vertebrae[2]["id"])
 	editor.press(editor.handle_screen("vertebra", v_id))
@@ -286,6 +290,10 @@ func test_a_stat_name_explains_itself_on_the_card() -> void:
 	check(_card_has(texts, "%d m at most" % int(tuning["sight"]["max_m"])), "with the stage's own numbers (%s)" % ", ".join(texts))
 	panel.stat_exited.emit("sight")
 	check(not editor.hud.ease.card.visible, "and closes")
+	panel.stat_entered.emit(panel.COUNTS_KEY, panel.counts_label)
+	check_eq(editor.hud.ease.card.texts()[0], "Legs, limbs, parts, bones", "the counts line explains itself too")
+	panel.stat_entered.emit(panel.CHANGE_KEY, panel)
+	check(_card_has(editor.hud.ease.card.texts(), "since you came into the editor"), "and the CHANGE header says what it counts from")
 
 
 func test_every_part_has_a_placement_hint() -> void:
@@ -372,4 +380,27 @@ func test_the_symmetry_toggle_shows_only_when_the_editor_listens() -> void:
 func test_the_editor_does_not_listen_to_symmetry_yet_so_the_toggle_stays_hidden() -> void:
 	open_editor()
 	check_eq(editor.hud.ease.symmetry_button.visible, not editor.hud.symmetry_toggled.get_connections().is_empty(),
-			"the toggle shows exactly when the editor connects it (GitHub issue A)")
+			"the toggle shows exactly when the editor connects it (GitHub issue #204)")
+
+
+## While the editor listens to the Symmetry toggle, the placement line and the card follow it: off, a part off the
+## middle line comes alone and the card shows no pair.
+func test_the_placement_line_and_the_card_follow_the_symmetry_switch() -> void:
+	hud = HUD_SCENE.instantiate()
+	(Engine.get_main_loop() as SceneTree).root.add_child(hud)
+	hud.wire()
+	hud.symmetry_toggled.connect(func(_on: bool): pass)
+	hud.setup(["eye", "antenna"], CreatureData.editor_costs(), [Color.RED])
+	var rules := CreatureData.part_rules()
+	hud.set_symmetry(true)
+	hud.set_tool("eye")
+	check(hud.ease.snap_label.text.contains("mirrored pair"), "on: a pair further out (%s)" % hud.ease.snap_label.text)
+	hud.set_symmetry(false)
+	check_eq(hud.ease.snap_label.text, "Eye  ·  " + PlacementHint.creature(rules["eye"], false), "off: the line changes at once")
+	check(hud.ease.snap_label.text.contains("alone") and not hud.ease.snap_label.text.contains("mirrored pair"), "off: alone")
+	hud.tool_button("eye").mouse_entered.emit()
+	check(not _card_has(hud.ease.card.texts(), Effects.PAIR_LABEL), "off: the card shows no pair (%s)" % ", ".join(hud.ease.card.texts()))
+	hud.set_tool("limb")
+	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(false), "off: a limb comes alone")
+	hud.ease.symmetry_button.button_pressed = true
+	check_eq(hud.ease.snap_label.text, "Limb  ·  " + PlacementHint.limb_tool(true), "pressing the toggle switches the line back")
