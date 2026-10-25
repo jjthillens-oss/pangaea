@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, four long splayed toes ending in round sticky disc pads, smooth wet skin.",
+  "purpose": "Creature foot part (PROPOSED): a tree frog's foot, a slim ankle on a narrow sole, five long knuckled toes fanned forward with a short root web and broad pale sticky disc pads, smooth wet skin.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_foot_frog.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_foot_frog.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.145,
-    "y_forward": 0.147,
-    "z_up": 0.075
+    "x": 0.119,
+    "y_forward": 0.15,
+    "z_up": 0.077
   },
-  "triangles": 620,
+  "triangles": 781,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -49,19 +49,23 @@
     }
   ],
   "materials": [
-    "M_FootFrogSkin"
+    "M_FootFrogPad",
+    "M_FootFrogSkin",
+    "M_FootFrogWeb"
   ],
   "rig_family": null,
   "animations": [],
   "sockets": [],
   "nodes": [
-    "FootFrog"
+    "FootFrog",
+    "Pads",
+    "Web"
   ],
   "part_type": "foot_frog",
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "foot_frog",
-    "footprint_radius_m": 0.117,
+    "footprint_radius_m": 0.109,
     "sink_depth_m": 0.0,
     "chiral": false,
     "orientation": "ground",
@@ -84,16 +88,18 @@
         "default_permille": 0
       }
     ],
-    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m) meets the limb tip."
+    "pivot_note": "Ground part: the sole sits on the pivot; the ankle top (z 0.075 m, y -0.036 m) meets the limb tip."
   },
   "paint_mix": {
-    "M_FootFrogSkin": 0.9
+    "M_FootFrogSkin": 0.9,
+    "M_FootFrogPad": 0.3,
+    "M_FootFrogWeb": 0.8
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 1140,
-    "triangles_after": 620
+    "triangles_before": 2034,
+    "triangles_after": 781
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }

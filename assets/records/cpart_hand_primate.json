@@ -3,21 +3,21 @@
   "owner": "Joshua Jake",
   "status": "PROPOSED",
   "review_state": "production rev 1 - M1, awaiting owner look review",
-  "purpose": "Creature hand part (PROPOSED): a monkey's hand, a long flat leathery palm, four long jointed fingers with flat nails and a low opposable thumb; grips on a shape key.",
+  "purpose": "Creature hand part (PROPOSED): a monkey's hand, a long squarish leathery palm, four long jointed fingers of graded length with flat nails, a low opposable thumb and a fur cuff; grips on a shape key.",
   "category": "part",
   "source_blend": "assets/source/blender/cpart_hand_primate.blend",
   "generator_script": "tools/blender/make_creature_parts.py",
   "export_path": "assets/export/cpart_hand_primate.glb",
   "export_format": "GLB",
   "dependencies": [],
-  "revision": 1,
+  "revision": 2,
   "blender_version": "5.2.2 LTS",
   "dimensions_m": {
-    "x": 0.095,
-    "y_forward": 0.054,
-    "z_up": 0.18
+    "x": 0.088,
+    "y_forward": 0.055,
+    "z_up": 0.171
   },
-  "triangles": 884,
+  "triangles": 932,
   "triangle_budget": 2500,
   "textures": [
     {
@@ -49,6 +49,7 @@
     }
   ],
   "materials": [
+    "M_HandPrimateFur",
     "M_HandPrimateNail",
     "M_HandPrimateSkin"
   ],
@@ -56,6 +57,7 @@
   "animations": [],
   "sockets": [],
   "nodes": [
+    "Cuff",
     "HandPrimate",
     "Nails"
   ],
@@ -63,7 +65,7 @@
   "convention": "creature_art_contract v1",
   "part_rules": {
     "type": "hand_primate",
-    "footprint_radius_m": 0.033,
+    "footprint_radius_m": 0.037,
     "sink_depth_m": 0.025,
     "chiral": false,
     "orientation": "normal",
@@ -92,13 +94,14 @@
   },
   "paint_mix": {
     "M_HandPrimateSkin": 0.35,
-    "M_HandPrimateNail": 0.0
+    "M_HandPrimateNail": 0.0,
+    "M_HandPrimateFur": 0.9
   },
   "reduction": {
     "method": "Blender collapse decimation within a surface tolerance; full-detail shading baked to the normal map",
     "tolerance_m": 0.0008,
-    "triangles_before": 1840,
-    "triangles_after": 884
+    "triangles_before": 2480,
+    "triangles_after": 932
   },
   "provenance": "Authored procedurally in Blender by tools/blender/make_creature_parts.py; no external or generated meshes. Textures baked in Blender from procedural shaders."
 }
