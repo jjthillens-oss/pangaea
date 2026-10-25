@@ -121,16 +121,10 @@ static func strength_factor(mass: float, tuning: Dictionary) -> float:
 	return clampf(pow(mass / float(st["ref_kg"]), float(st["mass_power"])), float(st["min"]), float(st["max"]))
 
 
-## Mass from the capsule volumes of the body field (each capsule as a cone frustum), at `kg_per_m3`.
+## Mass from the capsule volumes of the body field (each capsule as a cone frustum), at `kg_per_m3`. The head
+## shape dials are cosmetic and leave it unchanged (BodyField.body_volume_m3).
 static func mass_kg(body: RefCounted, kg_per_m3: float) -> float:
-	var field = BodyField.from_description(body)
-	var volume := 0.0
-	for k in field.capsule_count():
-		var h: float = field.a[k].distance_to(field.b[k])
-		var ra: float = field.ra[k]
-		var rb: float = field.rb[k]
-		volume += PI / 3.0 * h * (ra * ra + ra * rb + rb * rb)
-	return volume * kg_per_m3
+	return BodyField.from_description(body).body_volume_m3() * kg_per_m3
 
 
 ## The attack the weapon-role parts add before strength (see WEAPON_ROLE). Without a "weapon" tuning block, 0.

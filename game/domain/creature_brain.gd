@@ -10,10 +10,13 @@ extends RefCounted
 ## strike, glide) at their exact tick and steers from memory only, dead-reckoning the last percept.
 ## So a tell always lasts exactly its tick count, whatever the think schedule.
 ##
-## Two behaviors:
+## Three behaviors:
 ## - "ambush" lurks at home. It watches prey it notices and strikes prey that comes into its window
 ##   in front; when hungry, or when the prey hurt it, it pursues within its leash.
 ## - "territorial" rests in and patrols a territory and charges intruders.
+## - "hazard" (S3, D-120) drifts a fixed path round home (drift_goal) trailing stinging threads
+##   (thread_capsule; PoolSim stings, the brain never attacks). It never notices, chases or attacks;
+##   a hurt always makes it flee (D-100), rule 3 still does, and a flee ends back in DRIFT.
 ## Every attack goes notice -> chase/aim -> a tell whose heading locks at its start (at a capped
 ## lead point) -> a burst and a glide along that line, with no homing -> recover. Every pursuit
 ## gives up (lost, timer, leash, left_territory, unreachable, target_gone) and every navigation goal
@@ -28,7 +31,8 @@ extends RefCounted
 ## other only from a CALM state with no target, by the M1 return path: the Lurker when it has rested
 ## its dwell with the cell out of sight (out_of_sight), the elder rammer when the cell is nearer the
 ## other post's zone by the hysteresis (nearer_cell). Its leash disc is then the union of the two
-## posts' discs (D-82). A brain with no posts never reads the habit.
+## posts' discs (D-82). A brain with no posts never reads the habit. S3's elder Warden (bloom, D-128)
+## moves to whichever post's meadow is blooming (bloom_post), under the same guards.
 ##
 ## The sim's side of the contract (CreatureField and PoolSim):
 ## - self_view: {"id", "species", "position", "heading", "velocity", "speed_now", "radius", "speed",
@@ -52,6 +56,7 @@ const DT := 1.0 / 60.0
 
 const AMBUSH := "ambush"
 const TERRITORIAL := "territorial"
+const HAZARD := "hazard"
 
 # States and phases; the debug panel shows "state/phase".
 const REST := "rest"
@@ -74,6 +79,7 @@ const TELL := "tell"
 const STRIKE := "strike"
 const GLIDE := "glide"
 const RECOVER := "recover"
+const DRIFT := "drift"            ## a hazard's only resting state (D-120)
 
 # drive() modes. "turn" and "tell" brake (steer with no input) and turn toward "face".
 const MODE_STEER := "steer"
@@ -84,14 +90,17 @@ const MODE_GLIDE := "glide"
 
 const NEVER := 1 << 60
 
-# habit.post_switch values (D-23).
+# habit.post_switch values (D-23; bloom S3, D-128).
 const OUT_OF_SIGHT := "out_of_sight"
 const NEARER_CELL := "nearer_cell"
+const BLOOM := "bloom"
 
 ## The calm (state/phase) labels (S1 3.11, D-62): resting, patrolling and foraging, never watching,
 ## noticing, chasing, attacking, fleeing or going home. A post move starts only from one of these, and
-## WorldStream sleeps only creatures in one. is_calm() tests it without building the key.
-const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true}
+## WorldStream sleeps only creatures in one. is_calm() tests it without building the key. S3 adds a
+## hazard's drift (D-120).
+const CALM := {"rest/lurk": true, "rest/": true, "wander/patrol": true, "forage/seek": true, "forage/eat": true,
+	"drift/": true}
 
 ## How many events brains have emitted so far, every brain of every sim together: a creature field
 ## that took every event and finds this unchanged knows no brain holds a new one.
@@ -142,7 +151,7 @@ const WORLD_LENGTHS := {"feed_reach": 0.25, "bite_reach": 0.3, "ram_reach": 0.35
 	"route_clearance": 0.1}
 ## What each cfg key measures (D-25), by its path in config()'s dictionary ("attack.burst_speed"):
 ## "length" and "speed" are multiplied by q at another size (scale_cfg); "time", "rate", "share",
-## "count", "angle", "text" and "flag" are kept. The list is closed: key_kind() of a key missing here
+## "count", "angle", "text", "flag" and "damage" are kept. The list is closed: key_kind() of a key missing here
 ## is "", which the classification walk in tests/test_brain_sources.gd refuses.
 const KEY_KINDS := {
 	"species_id": "text", "behavior": "text", "post_switch": "text", "engage_rule": "flag",
@@ -167,7 +176,13 @@ const KEY_KINDS := {
 	"attack.start_min_m": "length", "attack.start_max_m": "length", "attack.standoff_m": "length",
 	"attack.lead_cap_m": "length", "attack.reach": "length", "attack.travel": "length",
 	"attack.burst_speed": "speed", "attack.knockback": "speed",
+	# A hazard's drift and threads (S3, D-124): its cfg paths, in ticks where the data has seconds.
+	"drift.radius_m": "length", "drift.period_ticks": "time", "threads.count": "count",
+	"threads.length_m": "length", "threads.radius_m": "length", "threads.damage": "damage",
+	"threads.cooldown_ticks": "time", "threads.knockback": "speed",
 }
+## ticks: a drifting hazard steers at its path this far ahead, so it keeps up with it (D-120).
+const DRIFT_LOOKAHEAD_TICKS := 30
 ## Random goal tries (each must be clear of rocks) before falling back to home.
 const GOAL_TRIES := 12
 ## rad: a striking creature is blocked by a rock it touches within this of its heading (60 degrees).
@@ -219,6 +234,12 @@ class Memory:
 	var post_since := 0
 	var leash_center := Vector2.INF  ## the union of the two posts' leash discs (D-82), when posts are set
 	var leash_r := 0.0
+	## A hazard's drift path (set_drift, D-124): the two sines' phases and periods in ticks.
+	var drift_phase := Vector2i.ZERO
+	var drift_period := Vector2i.ONE
+	## The bloom habit's schedule (set_bloom, D-128); a cycle of 0 is none.
+	var bloom_offset := 0
+	var bloom_cycle := 0
 	var wake := false                ## think on the next tick whatever the schedule
 	var trace := false               ## emit creature_state on every state change (debug)
 	var rng := RandomNumberGenerator.new()
@@ -277,6 +298,12 @@ class Memory:
 			out["leash_center"] = CreatureBrain._pair(leash_center)
 		if leash_r != 0.0:
 			out["leash_r"] = leash_r
+		if behavior == CreatureBrain.HAZARD:
+			out["drift_phase"] = [drift_phase.x, drift_phase.y]
+			out["drift_period"] = [drift_period.x, drift_period.y]
+		if bloom_cycle > 0:
+			out["bloom_offset"] = bloom_offset
+			out["bloom_cycle"] = bloom_cycle
 		return out
 
 
@@ -320,7 +347,7 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary, rela
 	var prey_share := float(species.get("prey_max_radius_share", InteractionResolver.BITE_SIZE_LIMIT))
 	if rules.get("prey_share", false):
 		prey_share = float(relationships.prey_share)
-	return {
+	var out := {
 		"species_id": species_id, "behavior": str(species.get("behavior", "")),
 		"think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("think_hz", 10.0)))),
 		"engaged_think_ticks": maxi(1, roundi(TICKS_PER_SECOND / float(ai.get("engaged_think_hz", 20.0)))),
@@ -361,6 +388,16 @@ static func config(species_id: String, species: Dictionary, ai: Dictionary, rela
 		"post_hysteresis_m": float(habit.get("post_hysteresis_m", POST_HYSTERESIS_M)),
 		"attack": a,
 	}
+	if species.has("hazard"):
+		# S3 (D-124): a hazard's drift path and threads; no other species carries these keys.
+		var drift: Dictionary = species.hazard.drift
+		var threads: Dictionary = species.hazard.threads
+		out["drift"] = {"radius_m": float(drift.radius_m),
+			"period_ticks": [ticks(drift.period_s[0]), ticks(drift.period_s[1])]}
+		out["threads"] = {"count": int(threads.count), "length_m": float(threads.length_m),
+			"radius_m": float(threads.radius_m), "damage": float(threads.damage),
+			"cooldown_ticks": ticks(threads.cooldown_s), "knockback": float(threads.knockback)}
+	return out
 
 
 ## The cfg of a creature drawn at q times its entry-size self (S2, plan B.6): every "length" and
@@ -422,11 +459,14 @@ static func made(behavior: String, cfg: Dictionary, home: Vector2, home_heading:
 	return mem
 
 
-## The rest of create, once, at the spawn tick: settling until cfg.settle_ticks from now, at rest.
+## The rest of create, once, at the spawn tick: settling until cfg.settle_ticks from now, at rest (a
+## hazard drifting).
 static func start(mem: Memory, tick: int) -> void:
 	mem.ignore_all_until = tick + int(mem.cfg.settle_ticks)
 	mem.state_tick = tick
-	if mem.behavior == AMBUSH:
+	if mem.behavior == HAZARD:
+		_enter(mem, DRIFT, "", tick)
+	elif mem.behavior == AMBUSH:
 		_enter(mem, REST, LURK, tick)
 	else:
 		_rest(mem, tick)
@@ -449,6 +489,50 @@ static func set_posts(mem: Memory, posts: Array) -> void:
 	mem.leash_r = float(disc.radius)
 
 
+## A hazard's place on its drift path at `tick` (spine 5.8, D-124): home plus drift.radius_m times two
+## independent sines, so the path fills the square [-r, r]^2 round home. posmod keeps the argument
+## exact over long runs. Pure: the same memory and tick give the same point wherever it is asked.
+static func drift_goal(mem: Memory, tick: int) -> Vector2:
+	var r := float(mem.cfg.drift.radius_m)
+	var period := mem.drift_period
+	return mem.home + r * Vector2(
+		sin(TAU * float(posmod(tick + mem.drift_phase.x, period.x)) / float(period.x)),
+		sin(TAU * float(posmod(tick + mem.drift_phase.y, period.y)) / float(period.y)))
+
+
+## A hazard's threads trailing behind its body (D-119): the capsule from its rim behind it to
+## threads.length_m farther back, {"a", "b", "r"}; {} for any other brain.
+static func thread_capsule(mem: Memory, position: Vector2, heading: float, radius: float) -> Dictionary:
+	if mem.behavior != HAZARD:
+		return {}
+	var h := Vector2.from_angle(heading)
+	return {"a": position - h * radius, "b": position - h * (radius + float(mem.cfg.threads.length_m)),
+		"r": float(mem.cfg.threads.radius_m)}
+
+
+## A hazard's drift phases from the hash `h` (D-124), right after create(): the same site's hash
+## gives the same path whatever the spawn count, so a respawn or a reload rejoins it.
+static func set_drift(mem: Memory, h: int) -> void:
+	var span: Array = mem.cfg.drift.period_ticks
+	mem.drift_period = Vector2i(maxi(int(span[0]), 1), maxi(int(span[1]), 1))
+	mem.drift_phase = Vector2i(posmod(h, mem.drift_period.x), posmod(WorldHash.mix32(h, 1), mem.drift_period.y))
+
+
+## The bloom habit's schedule (D-128), right after set_posts(): the placed site's bloom offset and
+## cycle in ticks, which its two meadows share, so the brain and both meadows agree.
+static func set_bloom(mem: Memory, offset_ticks: int, cycle_ticks: int) -> void:
+	mem.bloom_offset = offset_ticks
+	mem.bloom_cycle = cycle_ticks
+
+
+## The post whose meadow blooms at `tick` (D-128): slot 0 for the first half of each cycle, slot 1
+## for the second; 0 with no schedule. The cycle is even (5,400 ticks), so the halves are exact.
+static func bloom_post(mem: Memory, tick: int) -> int:
+	if mem.bloom_cycle <= 0:
+		return 0
+	return posmod(floori(float(tick + mem.bloom_offset) / float(mem.bloom_cycle / 2)), 2)
+
+
 ## The disc the sim clamps the body to after every move: (home, leash) for an ambush brain,
 ## (territory center, territory radius + leash) for a territorial one, and the union of its two posts'
 ## discs for a brain with posts. {"center", "radius"}.
@@ -468,6 +552,8 @@ static func is_calm(mem: Memory) -> bool:
 		return mem.phase == SEEK or mem.phase == EAT
 	if state == REST:
 		return mem.phase == LURK or mem.phase == ""
+	if state == DRIFT:
+		return mem.phase == ""
 	return state == WANDER and mem.phase == PATROL
 
 
@@ -560,6 +646,9 @@ static func next_deadline(mem: Memory) -> int:
 static func think(mem: Memory, self_view: Dictionary, percepts: Array, food: Array, tick: int, arena: PoolArena) -> void:
 	mem.wake = false
 	_remember(mem, percepts, tick)
+	if mem.behavior == HAZARD:
+		_think_hazard(mem, self_view, percepts, tick)
+		return
 	# A hurt during a strike waits for the strike to end; the strike always completes.
 	if mem.pain and not is_striking(mem):
 		mem.pain = false
@@ -598,6 +687,9 @@ static func drive(mem: Memory, self_view: Dictionary, tick: int, arena: PoolAren
 		_advance_attack(mem, self_view, tick)
 	var speeds: Dictionary = mem.cfg.speeds
 	match mem.state:
+		DRIFT:
+			return _seek(mem, self_view, drift_goal(mem, tick + DRIFT_LOOKAHEAD_TICKS), float(speeds.wander), arena, true,
+				keep)
 		REST:
 			if mem.phase == WATCH and mem.seen.has(mem.target):
 				return _turn(mem, _face(self_view, _reckon(mem, mem.target, tick)), speeds.wander)
@@ -778,7 +870,9 @@ static func force_return(mem: Memory, forget_id: String, ignore_until: int, tick
 	mem.food_id = ""
 	mem.return_fails = 0
 	mem.stuck = false
-	if mem.behavior == AMBUSH:
+	if mem.behavior == HAZARD:
+		_enter(mem, DRIFT, "", tick)
+	elif mem.behavior == AMBUSH:
 		_enter(mem, REST, LURK, tick)
 	else:
 		_rest(mem, tick)
@@ -1000,8 +1094,26 @@ static func _think_attack(mem: Memory, me: Dictionary, tick: int) -> void:
 		_after_engagement(mem, tick)
 
 
+## A hazard's think (D-120): a hurt always makes it flee (D-100), restarting a flee; rule 3 as for
+## any brain; a flee runs out back into DRIFT. Nothing else: it never notices, chases or attacks.
+static func _think_hazard(mem: Memory, me: Dictionary, percepts: Array, tick: int) -> void:
+	if mem.pain:
+		mem.pain = false
+		if mem.seen.has(mem.attacker):
+			mem.flee_from = _reckon(mem, mem.attacker, tick)
+			_enter(mem, FLEE, "", tick)
+			mem.state_tick = tick
+			_emit(mem, {"type": "creature_fled", "from": mem.attacker})
+			return
+	if _answer_fear(mem, me, percepts, tick):
+		return
+	if mem.state == FLEE:
+		_think_flee(mem, tick)
+
+
 ## Flees the body it fears while it still senses it (D-63), else what hurt it, until the flee time
-## (restarted by every hurt and every sight of a feared body) runs out; then it swims home.
+## (restarted by every hurt and every sight of a feared body) runs out; then it swims home (a hazard
+## drifts again).
 static func _think_flee(mem: Memory, tick: int) -> void:
 	var from := mem.fear_of if mem.seen.has(mem.fear_of) else mem.attacker
 	if mem.seen.has(from):
@@ -1009,7 +1121,10 @@ static func _think_flee(mem: Memory, tick: int) -> void:
 	if tick - mem.state_tick >= int(mem.cfg.flee_ticks):
 		mem.flee_from = Vector2.INF
 		mem.fear_of = ""
-		_enter(mem, WANDER, RETURN_HOME, tick)
+		if mem.behavior == HAZARD:
+			_enter(mem, DRIFT, "", tick)
+		else:
+			_enter(mem, WANDER, RETURN_HOME, tick)
 
 
 ## Answers a hurt (pain), never during a strike: below the flee share, or hurt by a body above its
@@ -1070,7 +1185,8 @@ static func _answer_fear(mem: Memory, me: Dictionary, percepts: Array, tick: int
 ## A habit's post move (D-23), from a CALM state with no target (think checks both): out_of_sight
 ## when it has rested post_rest_ticks, at this post at least as long, and the cell is not among its
 ## percepts; nearer_cell when the cell (wherever it is, D-59) is nearer the other post's zone centre
-## than this one's by more than post_hysteresis_m. It takes the other post and swims there by the M1
+## than this one's by more than post_hysteresis_m; bloom when the other post's meadow is the one
+## blooming (bloom_post, D-128). It takes the other post and swims there by the M1
 ## return path at wander speed, emitting creature_post_move {post, from, to}. Returns true when it moved.
 static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
 	var cfg := mem.cfg
@@ -1088,6 +1204,9 @@ static func _post_switch(mem: Memory, me: Dictionary, tick: int) -> bool:
 			if not cell.is_finite() or here.is_empty() or there.is_empty():
 				return false
 			if not (cell.distance_to(there.center) < cell.distance_to(here.center) - float(cfg.post_hysteresis_m)):
+				return false
+		BLOOM:
+			if bloom_post(mem, tick) == mem.post:
 				return false
 		_:
 			return false

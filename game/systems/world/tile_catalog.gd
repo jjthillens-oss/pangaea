@@ -8,6 +8,16 @@ extends RefCounted
 ## pairs (PackedFloat64Array): a tile becomes absolute only in WorldGen, in float64. validate() runs
 ## the per-tile rules at the identity orientation and one size, and only the cheap ones; the heavy
 ## gates (every orientation, seams, reach, the food bound) live in tests/world_checks.gd.
+##
+## S3 (spine 5.3, s3-sim 3.11): band 1's regions and rare kinds, and which sites are live as what
+## (site_role, D-97): a threat, rival or prey site is a creature site, a morsel site is food (it
+## counts against MAX_MORSEL_SITES, not the creature caps). Tile rules 9 to 12 hold at band 1 and
+## up: prey or morsel at both sizes (9), the morsel cap (10), a Deep lurker's channel (11, D-137)
+## and room round a hazard's home (12, D-137); D-135 caps a band-1 tile's shells and zones.
+##
+## A tile dict may carry "half_bu" and "frame" (CradleBlock's whole block: 64.0, "block"): the edge
+## tests of rules 2, 3 and 6 then measure from that half-width and name that frame. Every file tile
+## has neither, so its rules are S1's.
 
 const FILE_KEYS: PackedStringArray = ["schema_version", "status", "note", "id", "band", "region", "set", "rare",
 	"landmark_anchor", "set_piece", "shells", "zones", "sites"]
@@ -21,14 +31,33 @@ const POST_KEYS: PackedStringArray = ["home", "heading"]
 const POST_OPTIONAL: PackedStringArray = ["territory_zone"]
 const SET_PIECE_KEYS: PackedStringArray = ["asset", "center", "yaw_deg"]
 const RARE := "rare"
+## Band 0's regions (S1); each band's are WorldConfig.regions_of(band).
 const REGIONS: PackedStringArray = ["sunlit", "reef", "drift"]
 const SETS := 2
 const TILES_PER_SET := 3
-## Band 0's rare kinds (rule 1). The fixed rare tile of world_cell.json names one of them.
-const BAND0_RARE_KINDS: PackedStringArray = ["giant_husk", "shell_cathedral"]
-## Rule 7: the behaviours of a threat (a threat at size n is also of entry size n: the ladder's
-## "threat" role, Relationships.ladder_role).
-const THREAT_BEHAVIORS: PackedStringArray = ["ambush", "territorial"]
+## Each band's rare kinds (rule 1). The fixed rare tile of each band's arrangement names one of them.
+const RARE_KINDS_BY_BAND := {0: ["giant_husk", "shell_cathedral"],
+	1: ["fallen_lattice", "shed_shell", "sponge_grove", "sunbeam_well"]}
+## Rule 7: the behaviours of a threat (a site whose site_role is "threat": the ladder's role at its
+## species' entry size).
+const THREAT_BEHAVIORS: PackedStringArray = ["ambush", "territorial", "hazard"]
+## The site roles that are creatures (D-97); "morsel" is food.
+const CREATURE_ROLES: PackedStringArray = ["threat", "rival", "prey"]
+## Rule 10: morsel sites per tile at any size.
+const MAX_MORSEL_SITES := 3
+## Rule 11 (D-137): a channel lane is flanked at a station when a shell collider's edge lies within
+## CHANNEL_FLANK_M (tm) on each side, and at least CHANNEL_FLANK_SHARE of the stations, every
+## CHANNEL_STATION_BU along the lane, are flanked.
+const CHANNEL_FLANK_M := 3.0
+const CHANNEL_FLANK_SHARE := 0.6
+const CHANNEL_STATION_BU := 0.25
+## D-135, band 1 and up: shells and zones per tile, and zones live at the band's second size (keep
+## or thin) at most.
+const MAX_SHELLS_B1 := 18
+const MAX_ZONES_B1 := 12
+const MAX_ZONES_SECOND_SIZE_B1 := 6
+## D-147: an elder Warden's meadows (the bloom habit's zones) are 5 to 6 bu round.
+const BLOOM_ZONE_R := [5.0, 6.0]
 const LOCAL_ID_PATTERN := "^[a-z][a-z0-9]{0,7}$"
 ## The ids WorldGen gives a tile's landmark collider (lm) and set-piece colliders (r<k>).
 const LANDMARK_ID := "lm"
@@ -67,7 +96,8 @@ const SECOND_SIZE_OUTGROWN_SET := 0
 const MIN_THREAT_BEHAVIORS := 2
 ## D-61: how far apart a two-post site's homes lie, in the species' own tm (q = 1), by its habit's
 ## post_switch: the Lurker's 4 to 6 tm, the elder rammer's 6.0 to 10.5 tm. Times k_of in bu.
-const POST_SPACING_TM := {"out_of_sight": [4.0, 6.0], "nearer_cell": [6.0, 10.5]}
+## S3's bloom (D-147): 13 to 16.5 bu apart at band 1, k 1.6, so 8.125 to 10.3125 tm.
+const POST_SPACING_TM := {"out_of_sight": [4.0, 6.0], "nearer_cell": [6.0, 10.5], "bloom": [8.125, 10.3125]}
 ## D-61: a move between the posts at wander speed takes at most this share of nav_timeout_s, so it
 ## never times out on the way.
 const POST_TRAVEL_NAV_SHARE := 0.8
@@ -85,6 +115,9 @@ var load_problems := PackedStringArray()
 var tiles := {}
 ## The bands read, ascending.
 var bands: Array[int] = []
+## tm: a morsel site's radius at most (world_cell.json growth.remnants.morsel_max_radius_tm, which
+## WorldContent sets here before validate; this is the shipped value).
+var morsel_max_radius_tm := 0.225
 
 
 ## Every *.json in each band's directory ({"0": "res://game/data/tiles/b0"}), in file-name order.
@@ -135,8 +168,9 @@ func add_tile(data: Variant, band: int, file_id: String) -> void:
 	t.region = WorldConfig.text_at(w, data, "region", problems)
 	t.rare = WorldConfig.text_at(w, data, "rare", problems)
 	var is_rare: bool = t.region == RARE
-	if data.has("region") and not (REGIONS.has(t.region) or is_rare):
-		problems.append("%s.region: '%s' is not one of %s, %s" % [w, t.region, ", ".join(REGIONS), RARE])
+	var regions := WorldConfig.regions_of(band)
+	if data.has("region") and not (regions.has(t.region) or is_rare):
+		problems.append("%s.region: '%s' is not one of %s, %s" % [w, t.region, ", ".join(regions), RARE])
 	if data.has("rare") and is_rare == str(t.rare).is_empty():
 		problems.append("%s.rare: a rare tile names its kind; an ordinary tile has \"\"" % w)
 	# What only an ordinary tile has (a set and a landmark anchor), and what only a rare one has.
@@ -204,6 +238,17 @@ func rare_tile(band: int, kind: String) -> Dictionary:
 	return {}
 
 
+## What a site is at the cell's size n (D-97): "threat", "rival", "prey" or "morsel" when n is one
+## of its sizes and Relationships.ladder_role says so (at the species' radius there, radius_at),
+## else "" (not live: not one of its sizes, or its species is a ghost or haze there).
+static func site_role(species: SpeciesCatalog, site: Dictionary, n: int) -> String:
+	var sp := str(site.species)
+	if not (site.sizes as Array).has(n) or not species.species.has(sp) or n < species.entry_size(sp):
+		return ""
+	var role := Relationships.ladder_role(species.entry_size(sp), n, species.radius_at(sp, n), species.share_tolerance())
+	return role if role in ["threat", "rival", "prey", "morsel"] else ""
+
+
 ## The circles a tile's sites and zones live among, in the tile's identity frame ({id, center:
 ## Vector2, radius} bu): its shells, then its landmark collider (lm) or its set piece's colliders
 ## (r<k>: the record's colliders turned by the piece's yaw_deg, then moved to its centre). A set
@@ -247,18 +292,22 @@ static func yaw_point(x: float, y: float, yaw_deg: float) -> PackedFloat64Array:
 ## size's: the species live there (SpeciesCatalog.live_at) with radii at_size(id, size).phenotype
 ## .radius / bu_to_tm(size) bu, the colliders there (colliders_at), reach discs with k (D-39, D-69)
 ## and every fairness length in bu (its tm / bu_to_tm(size)). At a band's first size every value is
-## S1's, bit for bit. A rule broken at a band's second size says so ("rule 6 at size 2").
+## S1's, bit for bit. A rule broken at a band's second size says so ("rule 6 at size 2"). Only the
+## tiles of the size's band are checked (S3: band 0's at sizes 1 and 2, band 1's at 3 and 4).
 func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCatalog, size: int = 1) -> PackedStringArray:
 	var errors := PackedStringArray(load_problems)
 	if not errors.is_empty():
 		return errors
 	var radii := radii_at(species, part_catalog, size)
-	for band in bands:
-		_check_counts(band, errors)
+	var band_here := WorldConfig.band_of(size)
+	if bands.has(band_here):
+		_check_counts(band_here, errors)
 	var behaviors := {}
 	var smallest := {}
 	for id in WorldConfig._sorted(tiles.keys()):
 		var t: Dictionary = tiles[id]
+		if int(t.band) != band_here:
+			continue
 		var colliders := colliders_of(t, kit)
 		var there := colliders_at(t, colliders, size)
 		_check_shells(t, kit, colliders, errors)
@@ -267,15 +316,21 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 			_check_set_piece(t, kit, colliders, errors)
 		else:
 			_check_anchor(t, kit, species, radii, there, size, errors)
-		_check_sites(t, species, radii, kit, there, part_catalog, size, errors)
+		_check_sites(t, species, radii, kit, there, part_catalog, size, errors, morsel_max_radius_tm)
 		_check_content(t, species, size, behaviors, smallest, errors)
-	for band in bands:
-		var covered: Array = WorldConfig._sorted(behaviors.get(band, {}).keys())
+	if bands.has(band_here):
+		var covered: Array = WorldConfig._sorted(behaviors.get(band_here, {}).keys())
 		if covered.size() < MIN_THREAT_BEHAVIORS:
 			errors.append("tiles b%d: rule 7: the live threats at size %d are %s; they need %d behaviours"
-				% [band, size, covered, MIN_THREAT_BEHAVIORS])
-	# Rule 8: each live species' strike lane fits the smallest live territory of the tiles, at the size
-	# (the q-scaled lane and leash, the territory in tm, D-70).
+				% [band_here, size, covered, MIN_THREAT_BEHAVIORS])
+	check_strike_room("tiles", species, radii, smallest, part_catalog, size, errors)
+	return errors
+
+
+## Rule 8: each live species' strike lane fits the smallest live territory (`smallest`, bu, by species,
+## as _check_content gathers it), at the size (the q-scaled lane and leash, the territory in tm, D-70).
+static func check_strike_room(w: String, species: SpeciesCatalog, radii: Dictionary, smallest: Dictionary,
+		part_catalog: PartCatalog, size: int, errors: PackedStringArray) -> void:
 	for id in species.species_ids():
 		if not radii.has(id):
 			continue
@@ -283,8 +338,7 @@ func validate(species: SpeciesCatalog, kit: PlacementKit, part_catalog: PartCata
 				else CreatureBrain.DEFAULT_TERRITORY_M * species.q_of(id, size)
 		var text := species.strike_room_problem(id, territory, "species '%s'" % id, part_catalog, size)
 		if not text.is_empty():
-			errors.append("tiles: rule 8: %s" % text)
-	return errors
+			errors.append("%s: rule 8: %s" % [w, text])
 
 
 ## The species live at `size` (SpeciesCatalog.live_at), each with its body radius there in the bu of
@@ -321,9 +375,9 @@ static func _rule_at(rule: int, t: Dictionary, size: int) -> String:
 
 # --- the rules ---
 
-## Rule 1: 6 tiles per region, 3 in each set, and one rare tile per rare kind.
+## Rule 1: 6 tiles per region of the band, 3 in each set, and one rare tile per rare kind.
 func _check_counts(band: int, errors: PackedStringArray) -> void:
-	for region in REGIONS:
+	for region in WorldConfig.regions_of(band):
 		var per_set := []
 		for set_index in SETS:
 			per_set.append(ids_of(band, region, set_index).size())
@@ -337,13 +391,14 @@ func _check_counts(band: int, errors: PackedStringArray) -> void:
 	for kind in WorldConfig._sorted(counts.keys()):
 		if counts[kind] != 1:
 			errors.append("tiles b%d: rule 1: the rare kind '%s' has %d tiles; it needs 1" % [band, kind, counts[kind]])
-	if band == 0 and rare_kinds(band) != BAND0_RARE_KINDS:
-		errors.append("tiles b0: rule 1: the rare kinds are %s, not %s" % [rare_kinds(band), BAND0_RARE_KINDS])
+	if RARE_KINDS_BY_BAND.has(band) and Array(rare_kinds(band)) != RARE_KINDS_BY_BAND[band]:
+		errors.append("tiles b%d: rule 1: the rare kinds are %s, not %s" % [band, rare_kinds(band), RARE_KINDS_BY_BAND[band]])
 
 
 ## Rule 2: shell radii and kit fit, edges, overlaps, tunnelling at the second size, yaw ranges.
 static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dictionary], errors: PackedStringArray) -> void:
 	var w: String = t.where
+	var half := _half(t)
 	var for_tunnel: Array[Dictionary] = []
 	for s in t.shells:
 		var r := float(s.radius)
@@ -354,8 +409,8 @@ static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dic
 		elif kit.fitting(r, t.band).size() < PlacementKit.MIN_PICKABLE_PER_CLASS:
 			errors.append("%s: rule 2: shell '%s' radius %s fits %s; it needs %d kit shells"
 				% [w, s.id, r, kit.fitting(r, t.band), PlacementKit.MIN_PICKABLE_PER_CLASS])
-		if absf(c[0]) + r > SHELL_EDGE_BU or absf(c[1]) + r > SHELL_EDGE_BU:
-			errors.append("%s: rule 2: shell '%s' at %s comes within %s bu of the tile's edge" % [w, s.id, c, HALF_TILE_BU - SHELL_EDGE_BU])
+		if absf(c[0]) + r > half - (HALF_TILE_BU - SHELL_EDGE_BU) or absf(c[1]) + r > half - (HALF_TILE_BU - SHELL_EDGE_BU):
+			errors.append("%s: rule 2: shell '%s' at %s comes within %s bu of the %s's edge" % [w, s.id, c, HALF_TILE_BU - SHELL_EDGE_BU, _frame(t)])
 		var yaw: PackedFloat64Array = s.yaw_deg
 		if not (yaw.size() == 2 and 0.0 <= yaw[0] and yaw[0] <= yaw[1] and yaw[1] <= 360.0):
 			errors.append("%s: rule 2: shell '%s' yaw_deg %s needs 0 <= lo <= hi <= 360" % [w, s.id, yaw])
@@ -380,6 +435,7 @@ static func _check_shells(t: Dictionary, kit: PlacementKit, colliders: Array[Dic
 ## collider or its set piece's colliders; PoolLayout.zone_problems, B-3), and static #33.
 static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: PackedStringArray) -> void:
 	var w: String = t.where
+	var half := _half(t)
 	for z in t.zones:
 		var c: PackedFloat64Array = z.center
 		var r := float(z.radius)
@@ -387,8 +443,8 @@ static func _check_zones(t: Dictionary, colliders: Array[Dictionary], errors: Pa
 			errors.append("%s: rule 3: zone '%s' needs %s <= radius <= %s and a positive capacity and growth rate"
 				% [w, z.id, MIN_ZONE_R, MAX_ZONE_R])
 			continue
-		if absf(c[0]) + r > ZONE_EDGE_BU or absf(c[1]) + r > ZONE_EDGE_BU:
-			errors.append("%s: rule 3: zone '%s' at %s comes within %s bu of the tile's edge" % [w, z.id, c, HALF_TILE_BU - ZONE_EDGE_BU])
+		if absf(c[0]) + r > half - (HALF_TILE_BU - ZONE_EDGE_BU) or absf(c[1]) + r > half - (HALF_TILE_BU - ZONE_EDGE_BU):
+			errors.append("%s: rule 3: zone '%s' at %s comes within %s bu of the %s's edge" % [w, z.id, c, HALF_TILE_BU - ZONE_EDGE_BU, _frame(t)])
 		if not ZONE_SECOND_SIZE.has(z.at_second_size):
 			errors.append("%s: rule 3: zone '%s' at_second_size '%s' is not one of %s" % [w, z.id, z.at_second_size, ", ".join(ZONE_SECOND_SIZE)])
 		var yield_rate := float(z.growth_rate) * float(z.capacity) * (YIELD_SHARE + EcologyRegion.REGROW_FLOOR)
@@ -451,7 +507,8 @@ static func _check_set_piece(t: Dictionary, kit: PlacementKit, colliders: Array[
 ## (Relationships.can_attack_player): every live one at a band's first size, the band's own threats at
 ## its second (the M1 species are rivals and prey there).
 static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictionary, kit: PlacementKit,
-		there: Array[Dictionary], part_catalog: PartCatalog, size: int, errors: PackedStringArray) -> void:
+		there: Array[Dictionary], part_catalog: PartCatalog, size: int, errors: PackedStringArray,
+		morsel_max_r_tm := 0.225) -> void:
 	var w: String = t.where
 	var first := 2 * int(t.band) + 1
 	var s := WorldConfig.bu_to_tm(size)
@@ -479,13 +536,19 @@ static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictiona
 					errors.append("%s: '%s' is haze at size %d, so it cannot be live there" % [where, site.species, n])
 		if not site.get("post_b", {}).is_empty():
 			_check_post_b(where, t, site, species, part_catalog, errors)
-		if sizes.has(size) and radii.has(site.species):
+		if radii.has(site.species) and site_role(species, site, size) != "":
 			live.append(site)
 	for i in live.size():
 		var site: Dictionary = live[i]
 		var where := "%s: %s: site '%s'" % [w, rule, site.id]
 		var r := float(radii[site.species])
 		var home := _vec(site.home)
+		var morsel := site_role(species, site, size) == "morsel"
+		if morsel:
+			# A morsel site is food (D-97): a clear home inside the tile at the morsel's radius, and the gap.
+			r = minf(species.radius_at(site.species, size), morsel_max_r_tm) / s
+			if absf(home.x) + r > _half(t) or absf(home.y) + r > _half(t):
+				errors.append("%s home %s is not inside the %s" % [where, site.home, _frame(t)])
 		if not arena.is_clear(home, r):
 			errors.append("%s home %s is not clear" % [where, site.home])
 		var min_gap := float(species.spawning.min_gap_m) / s
@@ -493,6 +556,8 @@ static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictiona
 			var gap := home.distance_to(_vec(live[j].home))
 			if gap < min_gap:
 				errors.append("%s is %.2f bu from site '%s'; sites keep %.1f apart" % [where, gap, live[j].id, min_gap])
+		if morsel:
+			continue
 		var territorial := species.behavior_of(site.species) == "territorial"
 		var zone := _zone(t, site.territory_zone)
 		if territorial and not _zone_there(where, "territory_zone", site.territory_zone, zone, t, size, errors):
@@ -527,6 +592,63 @@ static func _check_sites(t: Dictionary, species: SpeciesCatalog, radii: Dictiona
 		for d in discs:
 			_check_disc(t, "site '%s'%s" % [site.id, d.label], where + d.label, d.disc, d.homes, r, s, rule, species, kit,
 				scaled, attacks, errors)
+		if species.behavior_of(site.species) == "hazard":
+			_check_hazard_room(t, site, species, r, s, size, there, errors)
+		if bool(species.habit_of(site.species).get("channel", false)) and species.q_of(site.species, size) == 1.0:
+			_check_channel(t, site, species, r, s, size, there, errors)
+
+
+## Rule 12 (D-137): no collider within the hazard's leash plus its body of its home, the collider's
+## own radius added (in bu at the size: (leash_m x q + R) / bu_to_tm), so its drift and a flee never
+## meet a shell.
+static func _check_hazard_room(t: Dictionary, site: Dictionary, species: SpeciesCatalog, r: float, s: float, size: int,
+		there: Array[Dictionary], errors: PackedStringArray) -> void:
+	var home := _vec(site.home)
+	var room := float(species.brain_config(site.species).leash_m) * species.q_of(site.species, size) / s + r
+	for c in there:
+		var gap: float = home.distance_to(c.center) - float(c.radius)
+		if gap < room:
+			errors.append("%s: %s: site '%s': '%s' lies %.2f bu from the hazard's home; it needs %.2f (its leash and body)"
+				% [t.where, _rule_at(12, t, size), site.id, c.id, gap, room])
+
+
+## Rule 11 (D-137): a channel lair's strike lane, from its home along its heading for start_max_m
+## plus the strike's travel and as wide as CreatureBrain.strike_lane's, hits no collider, and at
+## least CHANNEL_FLANK_SHARE of its stations have a collider edge within CHANNEL_FLANK_M of them on
+## each side (left and right of the heading).
+## Lengths in bu at the size (tm / bu_to_tm); the site is at q = 1.
+static func _check_channel(t: Dictionary, site: Dictionary, species: SpeciesCatalog, r: float, s: float, size: int,
+		there: Array[Dictionary], errors: PackedStringArray) -> void:
+	var where := "%s: %s: site '%s'" % [t.where, _rule_at(11, t, size), site.id]
+	var cfg := species.brain_config(site.species)
+	var lane := CreatureBrain.strike_lane(cfg.attack, r * s, PoolLayout.CELL_RADIUS, Vector2.ZERO, 0.0)
+	var length := (float(cfg.attack.start_max_m) + float(cfg.attack.travel)) / s
+	var half := float(lane.half_width) / s
+	var home := _vec(site.home)
+	var along := Vector2.from_angle(float(site.heading))
+	var tip := home + along * length
+	for c in there:
+		var center: Vector2 = c.center
+		var to_lane := center.distance_to(Geometry2D.get_closest_point_to_segment(center, home, tip)) - float(c.radius)
+		if to_lane < half:
+			errors.append("%s: '%s' lies %.2f bu from its channel's lane; the lane is %.2f wide each side" % [where, c.id, to_lane, half])
+	var flank := CHANNEL_FLANK_M / s
+	var stations := maxi(1, floori(length / CHANNEL_STATION_BU) + 1)
+	var flanked := 0
+	for k in stations:
+		var p := home + along * minf(k * CHANNEL_STATION_BU, length)
+		var left := false
+		var right := false
+		for c in there:
+			var rel: Vector2 = Vector2(c.center) - p
+			if rel.length() - float(c.radius) <= flank:
+				var side := along.cross(rel)
+				left = left or side > 0.0
+				right = right or side < 0.0
+		flanked += 1 if left and right else 0
+	if float(flanked) < CHANNEL_FLANK_SHARE * stations:
+		errors.append("%s: %d of its channel's %d stations are flanked on both sides within %.2f bu; it needs %d%%"
+			% [where, flanked, stations, flank, roundi(CHANNEL_FLANK_SHARE * 100.0)])
 
 
 ## One reach disc of a live site (`label` names it in rules 9 and 10, `where` elsewhere): inside the
@@ -542,8 +664,8 @@ static func _check_disc(t: Dictionary, label: String, where: String, disc: Dicti
 	var reach := float(disc.radius)
 	var margin := float(fair.leash_band_margin_m) / s
 	var inset := reach + r + margin
-	if absf(c.x) + inset > HALF_TILE_BU or absf(c.y) + inset > HALF_TILE_BU:
-		errors.append("%s reach disc at %s, r %.2f, comes within %.2f bu of the tile's edge" % [where, c, reach, r + margin])
+	if absf(c.x) + inset > _half(t) or absf(c.y) + inset > _half(t):
+		errors.append("%s reach disc at %s, r %.2f, comes within %.2f bu of the %s's edge" % [where, c, reach, r + margin, _frame(t)])
 	for home: PackedFloat64Array in homes:
 		if _vec(home).distance_to(c) + r > reach:
 			errors.append("%s home %s is not inside its reach disc at %s, r %.2f" % [where, home, c, reach])
@@ -585,6 +707,18 @@ static func _check_post_b(where: String, t: Dictionary, site: Dictionary, specie
 	if spacing.size() == 2 and (apart < float(spacing[0]) * k or apart > float(spacing[1]) * k):
 		errors.append("%s: its posts are %.2f bu apart; a '%s' habit keeps them %.2f to %.2f bu (%.1f to %.1f tm at q = 1)"
 			% [where, apart, habit.post_switch, float(spacing[0]) * k, float(spacing[1]) * k, spacing[0], spacing[1]])
+	if str(habit.get("post_switch", "")) == "bloom":
+		# D-147: the elder Warden's two meadows, 5 to 6 bu round, do not overlap.
+		var za := _zone(t, site.territory_zone)
+		var zb := _zone(t, zone_b)
+		for z in [za, zb]:
+			if not z.is_empty() and (float(z.radius) < BLOOM_ZONE_R[0] or float(z.radius) > BLOOM_ZONE_R[1]):
+				errors.append("%s: meadow '%s' has radius %.2f bu; a bloom habit's meadows are %.1f to %.1f"
+					% [where, z.id, float(z.radius), BLOOM_ZONE_R[0], BLOOM_ZONE_R[1]])
+		if not za.is_empty() and not zb.is_empty():
+			var between := _vec(za.center).distance_to(_vec(zb.center)) - float(za.radius) - float(zb.radius)
+			if between < 0.0:
+				errors.append("%s: its meadows '%s' and '%s' overlap by %.2f bu" % [where, za.id, zb.id, -between])
 	var wander := species.phenotype(id, part_catalog).speed * float(species.species[id].speeds.wander)
 	var allowed := POST_TRAVEL_NAV_SHARE * float(species.brain_config(id).get("nav_timeout_ticks", 0)) * CreatureBrain.DT
 	if wander > 0.0 and apart / k / wander > allowed:
@@ -607,53 +741,77 @@ static func post_path_problems(a: Vector2, b: Vector2, half_width: float, collid
 
 
 ## Rule 7: a zone in every tile (one not dropped at the band's second size), threats where they
-## belong, the band's behaviours and density. A threat at `size` is a site live there whose species
-## has a threat behaviour and entry size `size` (the ladder's "threat"; the M1 species are rivals and
-## prey at size 2). At the second size a sunlit or reef tile of SECOND_SIZE_OUTGROWN_SET needs only a
-## live site; every other non-drift tile (a rare one's set is -1) needs a threat at each size. Also
-## gathers rule 8's smallest live territory per species, bu (both posts' zones).
+## belong, the band's behaviours and density; rules 9 and 10 and D-135 at band 1 and up. A threat at
+## `size` is a site whose site_role there is "threat" and whose species has a threat behaviour.
+## Band 0 keeps S2's second size: a sunlit or reef tile of SECOND_SIZE_OUTGROWN_SET needs only a live
+## creature site there. Otherwise every ordinary tile not of the band's transit region
+## (WorldConfig.transit_of: band 0's drift; band 1 has none), and every rare tile, needs a threat at
+## each size, and a transit tile has none. Creature roles count against MAX_SITES_FIRST_SIZE and
+## MAX_SITES_SECOND_SIZE, morsel roles against MAX_MORSEL_SITES (D-97). Also gathers rule 8's smallest
+## live territory per species, bu (both posts' zones).
 static func _check_content(t: Dictionary, species: SpeciesCatalog, size: int, behaviors: Dictionary,
 		smallest: Dictionary, errors: PackedStringArray) -> void:
 	var w: String = t.where
-	var first := 2 * int(t.band) + 1
+	var band := int(t.band)
+	var first := 2 * band + 1
 	if t.zones.is_empty():
 		errors.append("%s: rule 7: a tile needs at least one zone" % w)
 	elif size == first + 1 and t.zones.all(func(z: Dictionary) -> bool: return z.at_second_size == "drop"):
 		errors.append("%s: rule 7 at size %d: every zone is dropped; a tile keeps or thins one" % [w, size])
 	var threats := 0
 	var live := 0
-	var at_first := 0
-	var at_second := 0
+	var creatures := [0, 0]      # creature sites at the band's first and second sizes
+	var morsels := [0, 0]
+	var food := [false, false]   # rule 9: a prey or morsel site at each size
 	var any_threat := false
 	for s in t.sites:
 		var behavior := species.behavior_of(s.species)
 		var threat := THREAT_BEHAVIORS.has(behavior)
 		any_threat = any_threat or threat
-		at_first += 1 if s.sizes.has(first) else 0
-		at_second += 1 if s.sizes.has(first + 1) else 0
-		if not s.sizes.has(size):
+		for i in 2:
+			var role := site_role(species, s, first + i)
+			if role in CREATURE_ROLES:
+				creatures[i] += 1
+			elif role == "morsel":
+				morsels[i] += 1
+			food[i] = food[i] or role == "prey" or role == "morsel"
+		var here := site_role(species, s, size)
+		if not (here in CREATURE_ROLES):
 			continue
 		live += 1
-		if threat and species.entry_size(s.species) == size:
+		if threat and here == "threat":
 			threats += 1
-			if not behaviors.has(t.band):
-				behaviors[t.band] = {}
-			behaviors[t.band][behavior] = true
+			if not behaviors.has(band):
+				behaviors[band] = {}
+			behaviors[band][behavior] = true
 		if behavior == "territorial":
 			for zone_id in [s.territory_zone, s.get("post_b", {}).get("territory_zone", "")]:
 				var zone := _zone(t, zone_id)
 				if not zone.is_empty():
 					smallest[s.species] = minf(float(smallest.get(s.species, INF)), float(zone.radius))
-	if t.region == "drift" and any_threat:
-		errors.append("%s: rule 7: a drift tile has no threat site" % w)
-	elif t.region != "drift" and size == first + 1 and int(t.set) == SECOND_SIZE_OUTGROWN_SET:
+	var transit := WorldConfig.transit_of(band)
+	if not transit.is_empty() and t.region == transit and any_threat:
+		errors.append("%s: rule 7: a %s tile has no threat site" % [w, transit])
+	elif band == 0 and t.region != transit and size == first + 1 and int(t.set) == SECOND_SIZE_OUTGROWN_SET:
 		if live == 0:
 			errors.append("%s: rule 7: a %s tile of set %d needs a live site at size %d" % [w, t.region, t.set, size])
-	elif t.region != "drift" and threats == 0:
+	elif t.region != transit and threats == 0:
 		errors.append("%s: rule 7: a %s tile needs a live threat site at size %d" % [w, t.region, size])
-	if at_first > MAX_SITES_FIRST_SIZE or at_second > MAX_SITES_SECOND_SIZE:
+	if creatures[0] > MAX_SITES_FIRST_SIZE or creatures[1] > MAX_SITES_SECOND_SIZE:
 		errors.append("%s: rule 7: %d sites are live at size %d and %d at size %d; at most %d and %d"
-			% [w, at_first, first, at_second, first + 1, MAX_SITES_FIRST_SIZE, MAX_SITES_SECOND_SIZE])
+			% [w, creatures[0], first, creatures[1], first + 1, MAX_SITES_FIRST_SIZE, MAX_SITES_SECOND_SIZE])
+	if band < 1:
+		return
+	if t.region != RARE and not (food[0] and food[1]):
+		errors.append("%s: rule 9: a tile needs a prey or morsel site at both sizes (at %d: %s, at %d: %s)"
+			% [w, first, food[0], first + 1, food[1]])
+	if morsels[0] > MAX_MORSEL_SITES or morsels[1] > MAX_MORSEL_SITES:
+		errors.append("%s: rule 10: %d and %d morsel sites at sizes %d and %d; at most %d"
+			% [w, morsels[0], morsels[1], first, first + 1, MAX_MORSEL_SITES])
+	var second_zones: int = t.zones.filter(func(z: Dictionary) -> bool: return z.at_second_size != "drop").size()
+	if t.shells.size() > MAX_SHELLS_B1 or t.zones.size() > MAX_ZONES_B1 or second_zones > MAX_ZONES_SECOND_SIZE_B1:
+		errors.append("%s: D-135: %d shells, %d zones and %d live at size %d; at most %d, %d and %d"
+			% [w, t.shells.size(), t.zones.size(), second_zones, first + 1, MAX_SHELLS_B1, MAX_ZONES_B1, MAX_ZONES_SECOND_SIZE_B1])
 
 
 # --- reading ---
@@ -712,6 +870,15 @@ static func read_site(w: String, d: Dictionary, problems: PackedStringArray) -> 
 static func _pair(w: String, d: Dictionary, key: String, problems: PackedStringArray) -> PackedFloat64Array:
 	var p := WorldConfig.pair_at(w, d, key, problems)
 	return p if p.size() == 2 else PackedFloat64Array([0.0, 0.0])
+
+
+## The half-width the edge tests measure from, and the frame's name in their messages (see the top).
+static func _half(t: Dictionary) -> float:
+	return float(t.get("half_bu", HALF_TILE_BU))
+
+
+static func _frame(t: Dictionary) -> String:
+	return str(t.get("frame", "tile"))
 
 
 static func _vec(p: PackedFloat64Array) -> Vector2:

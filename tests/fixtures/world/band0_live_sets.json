@@ -1,0 +1,179 @@
+{
+  "note": "BP3-18: the band-0 live site ids per tile and the home block at sizes 1 and 2, by S2's rule (sizes has n and SpeciesCatalog.live_at). Written by tools/godot/record_band0_live_sets.gd.",
+  "tiles": {
+    "drift_a": {
+      "1": [],
+      "2": []
+    },
+    "drift_b": {
+      "1": [],
+      "2": []
+    },
+    "drift_c": {
+      "1": [],
+      "2": []
+    },
+    "drift_d": {
+      "1": [],
+      "2": []
+    },
+    "drift_e": {
+      "1": [],
+      "2": []
+    },
+    "drift_f": {
+      "1": [],
+      "2": []
+    },
+    "giant_husk": {
+      "1": [
+        "la",
+        "lb"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "reef_a": {
+      "1": [
+        "la",
+        "lb",
+        "lc"
+      ],
+      "2": [
+        "la"
+      ]
+    },
+    "reef_b": {
+      "1": [
+        "ma",
+        "la",
+        "lb"
+      ],
+      "2": [
+        "la"
+      ]
+    },
+    "reef_c": {
+      "1": [
+        "la",
+        "lb",
+        "lc"
+      ],
+      "2": [
+        "la"
+      ]
+    },
+    "reef_d": {
+      "1": [
+        "la",
+        "lb"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "reef_e": {
+      "1": [
+        "ma",
+        "la"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "reef_f": {
+      "1": [
+        "la",
+        "lb"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "shell_cathedral": {
+      "1": [
+        "ma",
+        "mb"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "sunlit_a": {
+      "1": [
+        "ma",
+        "mb",
+        "la"
+      ],
+      "2": [
+        "ma"
+      ]
+    },
+    "sunlit_b": {
+      "1": [
+        "ma",
+        "mb",
+        "la"
+      ],
+      "2": [
+        "ma"
+      ]
+    },
+    "sunlit_c": {
+      "1": [
+        "ma",
+        "mb",
+        "mc"
+      ],
+      "2": [
+        "ma"
+      ]
+    },
+    "sunlit_d": {
+      "1": [
+        "ma",
+        "mb"
+      ],
+      "2": [
+        "lk"
+      ]
+    },
+    "sunlit_e": {
+      "1": [
+        "ma",
+        "la"
+      ],
+      "2": [
+        "er"
+      ]
+    },
+    "sunlit_f": {
+      "1": [
+        "ma",
+        "mb"
+      ],
+      "2": [
+        "er"
+      ]
+    }
+  },
+  "home": {
+    "1": [
+      "lair_se",
+      "lair_sw",
+      "lair_s",
+      "terr_n_a",
+      "terr_n_b",
+      "terr_nw",
+      "terr_ne"
+    ],
+    "2": [
+      "lair_s",
+      "terr_nw",
+      "terr_ne",
+      "rl",
+      "re"
+    ]
+  }
+}

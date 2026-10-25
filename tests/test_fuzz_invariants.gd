@@ -1,7 +1,9 @@
 extends TestCase
 ## FuzzInvariants through growth (S2 T2.6b, build plan BP-2, gate S2G39), on FakeWorldGen at sizes 1
 ## and 2: a forced growth and a dev size change and back run clean tick by tick, and hand-built events
-## that break invariants 12 and 13 the way only a growing world can are caught.
+## that break invariants 12 and 13 the way only a growing world can are caught. S3 (T0.2, D-141):
+## hand-built stings and strike hits that break invariant 15, morsel items that break 12 (S3G17c,
+## S3G17d), a creature at a landmark checkpoint (3) and a hazard off its drift path (7).
 ##
 ## The forced growth comes far from the world's origin (so the size-2 view set holds zones the size-1
 ## one did not), with the cell far from the frame's origin (a dev rebase the tick before) and a
@@ -305,6 +307,15 @@ func test_a_remnant_or_a_post_at_300_tm_fails_13() -> void:
 		f.after(sim, [] as Array[Dictionary], sim.tick, what, f.before(sim))
 		check(f.bad.has(13) and str(f.bad[13].first).contains(what), "%s at 300 tm fails 13: %s" % [what, f.report()])
 		_restore_13(sim, rem, site, post_brain, keep)
+	var arena := sim.arena as ChunkArena   # the colliders, scanned in one loop
+	check(arena != null and not arena._centers.is_empty(), "loaded colliders")
+	if arena != null and not arena._centers.is_empty():
+		var at := arena._centers[arena._centers.size() / 2]
+		arena._centers[arena._centers.size() / 2] = far
+		var fc := FuzzInvariants.new(sim.species, layout)
+		fc.after(sim, [] as Array[Dictionary], sim.tick, "a collider", fc.before(sim))
+		check(fc.bad.has(13) and str(fc.bad[13].first).contains("a collider at 300.0 tm"), "a collider at 300 tm fails 13: %s" % fc.report())
+		arena._centers[arena._centers.size() / 2] = at
 
 
 # --- helpers ---
@@ -442,3 +453,302 @@ func _restore_13(sim: PoolSim, rem: RemnantField.Remnant, site: String, c: Creat
 	if c != null:
 		c.brain.posts[1].home = keep[4]
 		c.brain.leash_center = keep[5]
+
+
+# --- S3 (T0.2): invariant 15, 12's morsel clauses, 3 at a landmark checkpoint, 7's hazard form ---
+
+const B1_WORLD := "res://tests/fixtures/world/world_b1_min.json"
+
+var _shipped: SpeciesCatalog
+
+
+## The band-1 fixture world (sizes to 4) on the fake generator, the shipped species, growth on, a
+## site per 2 x 2 chunks, at `size`; its events drained.
+func _b1(size: int) -> PoolSim:
+	if _shipped == null:
+		_shipped = SpeciesCatalog.load_from()
+	var sim := FakeWorldGen.endless_sim(SEED, catalog, layout, _shipped, FakeWorldGen.fixture_content(B1_WORLD),
+		PackedFloat64Array(), 2, true)
+	check(sim.debug_set_size(size), "size %d" % size)
+	sim.drain_events()
+	return sim
+
+
+static func _sting(engaged := [], damage := 5.0) -> Dictionary:
+	return {"type": "hit", "attacker": "c_veil", "target": CreatureField.PLAYER_ID, "kind": "sting", "damage": damage,
+		"engaged": engaged}
+
+
+static func _strike_hit() -> Dictionary:
+	return {"type": "hit", "attacker": "c_ram", "target": CreatureField.PLAYER_ID, "kind": "ram", "damage": 5.0}
+
+
+## Invariant 15 over `ticks` (tick -> the events of that tick, in tick order) on a new checker: whether
+## it broke, and the report.
+func _fifteen(sim: PoolSim, ticks: Dictionary) -> Array:
+	var fz := FuzzInvariants.new(sim.species, layout)
+	var order := ticks.keys()
+	order.sort()
+	for t: int in order:
+		var events: Array[Dictionary] = []
+		events.assign(ticks[t])
+		fz.check_15(sim, events, t, "tick %d" % t)
+	return [fz.bad.has(15), fz.report()]
+
+
+## S3G14b (BP3-4): (c) reads the sting's own `engaged`, the token holders when it landed. With "c7"
+## on the token before the step, a sting with engaged [] passes and the same sting with ["c7"] fails.
+func test_invariant_15_c_reads_the_stings_engaged() -> void:
+	var sim := _b1(3)
+	sim.creatures.engaged_on_player = PackedStringArray(["c7"])
+	check_eq(_fifteen(sim, {100: [_sting([])]})[0], false, "engaged [] passes")
+	var got := _fifteen(sim, {100: [_sting(["c7"])]})
+	check(got[0] and str(got[1]).contains("(c)"), "engaged [c7] fails (c): %s" % got[1])
+	sim.creatures.engaged_on_player = PackedStringArray()
+
+
+## D-141 (a): with the veil's 1.25 s cooldown at most 2 stings land in any 120 ticks; stings a cooldown
+## apart pass, a scripted train of 3 in a window fails, and so does a sting at the damage limit.
+func test_invariant_15_a_a_sting_train_or_a_heavy_sting_fails() -> void:
+	var sim := _b1(3)
+	var cd := CreatureBrain.ticks(float(_shipped.species.veil.hazard.threads.cooldown_s))
+	var fz := FuzzInvariants.new(sim.species, layout)
+	check_eq([cd, fz._sting_cap], [75, 2], "a 75-tick cooldown: 2 in a window")
+	check_eq(_fifteen(sim, {0: [_sting()], cd: [_sting()], 2 * cd: [_sting()], 3 * cd: [_sting()]})[0], false,
+		"a sting each cooldown passes")
+	var got := _fifteen(sim, {0: [_sting()], 40: [_sting()], 80: [_sting()]})
+	check(got[0] and str(got[1]).contains("3 stings"), "three in 81 ticks fail (a): %s" % got[1])
+	var limit := fz._damage_limit(sim)
+	check(limit > 5.0, "the veil's 5 is under the limit (%.2f)" % limit)
+	got = _fifteen(sim, {0: [_sting([], limit)]})
+	check(got[0] and str(got[1]).contains("dealt"), "a sting at the limit fails (a): %s" % got[1])
+
+
+## D-141 (b): a sting 100 ticks after a strike hit fails, and a strike hit 100 ticks after a sting;
+## 120 ticks apart passes. A debug set_size clears the windows (BP3-20); a respawn does not.
+func test_invariant_15_b_a_sting_near_a_strike_hit_fails() -> void:
+	var sim := _b1(3)
+	var got := _fifteen(sim, {0: [_strike_hit()], 100: [_sting()]})
+	check(got[0] and str(got[1]).contains("after a strike hit"), "a sting 100 ticks after a strike hit fails: %s" % got[1])
+	got = _fifteen(sim, {0: [_sting()], 100: [_strike_hit()]})
+	check(got[0] and str(got[1]).contains("after a sting"), "a strike hit 100 ticks after a sting fails: %s" % got[1])
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 120: [_sting()]})[0], false, "120 ticks apart passes")
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 100: [{"type": "debug", "command": "set_size", "to": 3}, _sting()]})[0],
+		false, "a set_size cut between them passes")
+	check_eq(_fifteen(sim, {0: [_strike_hit()], 100: [{"type": "respawned"}, _sting()]})[0], true, "a respawn is no cut")
+
+
+## S3G17c: at size 4 a morsel site's item spawning in view or within spawn_safe_m of the cell fails 12,
+## one out of view passes, and so does any other carrion in view (a kill's); an item expiring
+## "unloaded" in view fails 12 too.
+func test_a_morsel_item_appearing_or_unloading_in_view_fails_12() -> void:
+	var sim := _b1(4)
+	sim.step(SimIntent.new())
+	sim.drain_events()
+	var near := sim.motion.position + Vector2(5.0, 0.0)
+	var far := sim.motion.position + Vector2(200.0, 0.0)
+	var cases := {   # name -> [the event, fails 12]
+		"a morsel in view": [{"type": "carrion_spawned", "source": "morsel_site", "food_id": "c_hand", "position": near}, true],
+		"a morsel out of view": [{"type": "carrion_spawned", "source": "morsel_site", "food_id": "c_hand", "position": far}, false],
+		"a kill's carrion in view": [{"type": "carrion_spawned", "source": "creature_death", "food_id": "c_hand", "position": near}, false],
+		"unloaded in view": [{"type": "carrion_expired", "food_id": "c_hand", "position": near, "reason": "unloaded"}, true],
+		"unloaded out of view": [{"type": "carrion_expired", "food_id": "c_hand", "position": far, "reason": "unloaded"}, false],
+	}
+	for name: String in cases:
+		var c: Array = cases[name]
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var was := fuzz.before(sim)
+		var events: Array[Dictionary] = [c[0]]
+		fuzz.after(sim, events, sim.tick, name, was)
+		check_eq(fuzz.bad.has(12), c[1], "%s: %s" % [name, fuzz.report()])
+		if c[1] and fuzz.bad.has(12):
+			check(str(fuzz.bad[12].first).contains("c_hand"), "the failure names it: %s" % fuzz.bad[12].first)
+
+
+## S3G17d: after every step morsel_claims() equals the morsel-site entries holding an item: a size-4
+## run with its morsel sites loaded is clean, and a claim count off by one fails 12.
+func test_a_morsel_claim_count_that_drifts_fails_12() -> void:
+	var sim := _b1(4)
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	for t in WorldStream.MORSEL_PASS_TICKS * 2:
+		_step(sim, fuzz, "size 4 tick %d" % t)
+	check(not sim.world._morsel_loaded.is_empty(), "morsel sites loaded (%d)" % sim.world._morsel_loaded.size())
+	check_eq(fuzz.report(), "", "clean")
+	sim.world._claims += 1
+	var was := fuzz.before(sim)
+	fuzz.after(sim, [] as Array[Dictionary], sim.tick, "drifted", was)
+	check(fuzz.bad.has(12) and str(fuzz.bad[12].first).contains("S3G17d"), "a drifted count fails 12: %s" % fuzz.report())
+	sim.world._claims -= 1
+
+
+## D-141's invariant 3: a rammer (q < 1 at 4) within respawn_clear_m of the checkpoint fails 3, unless
+## the run's last checkpoint change was a landmark's; a growth ends that.
+func test_at_a_landmark_checkpoint_invariant_3_counts_only_q_one() -> void:
+	var sim := _b1(4)
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.checkpoint().position + Vector2(2.0, 0.0), 0.0), "a rammer by the checkpoint")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	c.debug = false   # a data creature (invariant 3 skips dev spawns)
+	sim.drain_events()
+	check(sim.species.q_of("rammer", 4) < 1.0, "the rammer is below the cell at 4")
+	var cases := [   # [name, events, fails 3]
+		["no landmark", [], true],
+		["a landmark checkpoint", [{"type": "checkpoint_moved", "reason": "landmark", "anchor": "a_f_lm"}], false],
+	]
+	for case: Array in cases:
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var was := fuzz.before(sim)
+		var events: Array[Dictionary] = []
+		events.assign(case[1])
+		fuzz.after(sim, events, sim.tick, case[0], was)
+		check_eq(fuzz.bad.has(3), case[2], "%s: %s" % [case[0], fuzz.report()])
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var events: Array[Dictionary] = [{"type": "checkpoint_moved", "reason": "landmark", "anchor": "a_f_lm"}]
+	fuzz.after(sim, events, sim.tick, "landmark", fuzz.before(sim))
+	fuzz.after(sim, _growth_events(sim, []), sim.tick, "then a growth", fuzz.before(sim))
+	check(fuzz.bad.has(3), "a growth ends the landmark form: %s" % fuzz.report())
+	c.debug = true
+
+
+## D-141's invariant 7 hazard form: a veil spawned at its home, off its path, is given the ticks it
+## needs to join it (_drift_settle_ticks: more than DRIFT_SETTLE_TICKS here) and then stays within
+## 1.0 x q tm of its drift goal (checked on every tick after); one pushed 5 tm off then fails.
+func test_a_drifting_hazard_keeps_to_its_path_and_one_pushed_off_fails_7() -> void:
+	var sim := _b1(3)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 3)
+	var settle := FuzzInvariants._drift_settle_ticks(c, gap)
+	check(settle > FuzzInvariants.DRIFT_SETTLE_TICKS, "spawned off its path: %d settle ticks for %.2f tm" % [settle, gap])
+	for t in settle + 120:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(int(fuzz.counts.drift_checks) >= 60, "drift checked on %d ticks" % fuzz.counts.drift_checks)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	check_eq(c.brain.state, CreatureBrain.DRIFT, "still drifting")
+	var was := fuzz.before(sim)
+	var t := sim.tick
+	sim.step(SimIntent.new())
+	c.motion.position += Vector2(5.0, 0.0)
+	fuzz.after(sim, sim.drain_events(), t, "pushed", was)
+	check(fuzz.bad.has(7) and str(fuzz.bad[7].first).contains("drift goal"), "pushed 5 tm off fails 7: %s" % fuzz.report())
+
+
+## Invariant 7's hazard form, two entries the first CI soak met (PR #164): a veil at rest just inside
+## the bound (a sleeper woken 0.98 tm off at size 3) is given the ground its goal gains while it gets
+## up, and a veil a respawn moves home (the "respawned" event's relocated) starts a new entry, so it
+## is not failed off its path for the move.
+func test_a_veil_at_rest_gets_up_first_and_one_the_respawn_moves_home_starts_afresh_7() -> void:
+	var sim := _b1(3)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	check_eq(c.motion.velocity, Vector2.ZERO, "at rest")
+	var inside := FuzzInvariants._drift_settle_ticks(c, -0.02)
+	check(inside > FuzzInvariants.DRIFT_SETTLE_TICKS, "at rest 0.02 tm inside: %d settle ticks" % inside)
+	check_eq(FuzzInvariants._drift_settle_ticks(c, -5.0), FuzzInvariants.DRIFT_SETTLE_TICKS, "far inside")
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 3)
+	for t in FuzzInvariants._drift_settle_ticks(c, gap) + 60:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	var was := fuzz.before(sim)
+	var t := sim.tick
+	sim.step(SimIntent.new())
+	c.motion.place(c.motion.position + Vector2(5.0, 0.0), c.motion.heading)   # as _clear_checkpoint moves it home
+	var events := sim.drain_events()
+	events.append({"type": "respawned", "relocated": [c.id]})
+	fuzz.after(sim, events, t, "moved home", was)
+	check(not fuzz.bad.has(7), "moved home by a respawn: a new entry: %s" % fuzz.report())
+
+
+## Invariant 7's hazard form and a body in the way: a veil the cell touches 2 tm off its path is not
+## held to the bound, and once they part it is a new entry with its settle ticks to come back.
+func test_a_hazard_a_body_holds_off_its_path_starts_afresh_when_they_part_7() -> void:
+	var sim := _b1(4)
+	check(sim.debug_spawn_creature("veil", sim.motion.position + Vector2(14.0, 0.0), 0.0), "a veil")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	var fuzz := FuzzInvariants.new(sim.species, layout)
+	var gap := c.motion.position.distance_to(CreatureBrain.drift_goal(c.brain, sim.tick)) - sim.species.q_of("veil", 4)
+	for t in FuzzInvariants._drift_settle_ticks(c, gap) + 60:
+		_step(sim, fuzz, "drift tick %d" % t)
+	check(not fuzz.bad.has(7), "on its path: %s" % fuzz.report())
+	var touch := c.phenotype.radius + sim.phenotype.radius
+	for parted in [false, true]:
+		var was := fuzz.before(sim)
+		var t := sim.tick
+		sim.step(SimIntent.new())
+		var goal := CreatureBrain.drift_goal(c.brain, t)
+		c.motion.place(goal + Vector2(0.0, 2.0), c.motion.heading)   # 2 tm off, as the cell's body slid it
+		sim.motion.place(c.motion.position + Vector2(0.0, touch + (3.0 if parted else 0.0)), 0.0)
+		fuzz.after(sim, sim.drain_events(), t, "parted" if parted else "touching", was)
+		check(not fuzz.bad.has(7), "%s: %s" % ["parted: a new entry" if parted else "touching", fuzz.report()])
+
+
+## Invariant 1 at a leash edge (PoolSim._contacts): from size 2 a clamp to the leash that lands in a
+## rock is taken back, so the body stays where the tick began; at size 1 the clamp alone, bit for bit.
+func test_a_clamp_to_the_leash_into_a_rock_is_taken_back_from_size_2_1() -> void:
+	for size in [1, 2]:
+		var sim := _b1(size)
+		sim.debug_set_ai_frozen(true)
+		check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(6.0, 0.0), PI), "a rammer")
+		var c: CreatureField.Creature = sim.creatures.creatures.back()
+		sim.drain_events()
+		var mem := c.brain
+		var r := c.phenotype.radius
+		var territorial := mem.behavior == CreatureBrain.TERRITORIAL
+		var lr := (mem.territory_r if territorial else 0.0) + float(mem.cfg.leash_m)
+		var found := false
+		for rock in sim.arena.rocks:
+			if rock.center.distance_to(sim.motion.position) < 2.0 * lr + 4.0:
+				continue   # clear of the cell, so no separation push
+			for i in 16:
+				var n := Vector2.from_angle(TAU * i / 16.0)
+				var center: Vector2 = rock.center - n * lr   # the leash edge runs through the rock's center
+				if not sim.arena.is_clear(center, r):
+					continue
+				if territorial:
+					mem.territory_center = center
+				else:
+					mem.home = center
+				c.motion.place(center + n * (lr + 1.0), 0.0)   # past the leash, toward the rock
+				c.motion.prev_position = center
+				sim._contacts()
+				if size == 1:
+					check(not sim.arena.is_clear(c.motion.position, r), "size 1: clamped into the rock")
+				else:
+					check_eq(c.motion.position, center, "size 2: taken back to where the tick began")
+					check_eq(c.motion.velocity, Vector2.ZERO, "and stopped")
+				found = true
+				break
+			if found:
+				break
+		check(found, "size %d: a rock with a clear point a leash away" % size)
+
+
+## Invariant 4's lane origin: a strike 0.7 tm from the origin its tell's lane showed fails, unless the
+## cell touched the creature in its tell (the cell leaning on it pushed it there, and is in its reach).
+func test_a_strike_off_its_lane_origin_fails_4_unless_the_cell_leaned_on_it() -> void:
+	var sim := _b1(3)
+	sim.debug_set_ai_frozen(true)
+	check(sim.debug_spawn_creature("rammer", sim.motion.position + Vector2(6.0, 0.0), PI), "a rammer")
+	var c: CreatureField.Creature = sim.creatures.creatures.back()
+	sim.drain_events()
+	c.brain.state = CreatureBrain.ATTACK
+	c.brain.phase = "tell"
+	var tell := int(c.brain.cfg.attack.tell_ticks)
+	var origin := c.motion.position
+	var lane := {"origin": origin, "heading": PI, "travel": 2.0, "length": 3.0, "half_width": 1.0}
+	for lean in [false, true]:
+		var fuzz := FuzzInvariants.new(sim.species, layout)
+		var t := sim.tick
+		fuzz.take_events(sim, [{"type": "creature_tell", "id": c.id, "target": "player", "lane": lane}] as Array[Dictionary], t, "tell")
+		var gap := c.phenotype.radius + sim.phenotype.radius if lean else 5.0
+		sim.motion.position = origin - Vector2(gap, 0.0)
+		fuzz.after(sim, [] as Array[Dictionary], t, "in the tell", fuzz.before(sim))
+		fuzz.take_events(sim, [{"type": "creature_strike", "id": c.id, "target": "player", "kind": "bite", "heading": PI,
+			"position": origin + Vector2(0.0, 0.7)}] as Array[Dictionary], t + tell, "strike")
+		var off: bool = fuzz.bad.has(4) and str(fuzz.bad[4].first).contains("off its lane's origin")
+		check_eq(off, not lean, "leaning %s: %s" % [lean, fuzz.report()])

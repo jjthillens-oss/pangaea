@@ -1,0 +1,121 @@
+{
+	"adaptation_points": 16,
+	"build_id": "0.0.2-m1+dev",
+	"checkpoint": {
+		"heading": 1.25,
+		"size": 4,
+		"x_am": 358.912,
+		"y_am": 23.04
+	},
+	"creature": {},
+	"discoveries": [
+		{
+			"id": "plankton",
+			"size": 1,
+			"type": "food"
+		},
+		{
+			"id": "carrion",
+			"size": 1,
+			"type": "food"
+		},
+		{
+			"id": "giant_husk",
+			"size": 1,
+			"type": "place"
+		},
+		{
+			"id": "algae_ball",
+			"size": 2,
+			"type": "food"
+		},
+		{
+			"id": "landmark_arch",
+			"size": 2,
+			"type": "landmark"
+		},
+		{
+			"id": "glass_flake",
+			"size": 3,
+			"type": "food"
+		},
+		{
+			"id": "sunbeam_well",
+			"size": 3,
+			"type": "place"
+		},
+		{
+			"id": "bead_cluster",
+			"size": 4,
+			"type": "food"
+		},
+		{
+			"id": "landmark_b1_foram_spiral",
+			"size": 4,
+			"type": "landmark"
+		}
+	],
+	"era": "microscopic",
+	"gen_version": 1,
+	"genome": {
+		"appearance": {
+			"hue": 0.45,
+			"pattern": "plain"
+		},
+		"generation": 1,
+		"genome_id": "genome_45cb4014c2b9b956",
+		"lineage_id": "lineage_bea44787855be820",
+		"next_part_number": 4,
+		"parent_genome_id": "",
+		"parts": [
+			{
+				"angle": 0.35,
+				"id": "part_1",
+				"scale": 1.0,
+				"type": "mouth_filter"
+			},
+			{
+				"angle": -0.35,
+				"id": "part_2",
+				"scale": 1.0,
+				"type": "mouth_jaw"
+			},
+			{
+				"angle": 3.14159,
+				"id": "part_3",
+				"scale": 1.0,
+				"type": "flagellum"
+			}
+		],
+		"schema_version": 1
+	},
+	"growth": {
+		"meter": 52.5,
+		"size": 4
+	},
+	"lineage_history": [
+		{
+			"event": "founded",
+			"generation": 1,
+			"genome_id": "genome_45cb4014c2b9b956"
+		}
+	],
+	"lineage_id": "lineage_bea44787855be820",
+	"pending_transactions": [],
+	"player": {
+		"energy": null,
+		"health": null,
+		"position": [
+			375.5,
+			0.0,
+			30.25
+		]
+	},
+	"relationships": [],
+	"saved_at_unix": 1792856631,
+	"schema_version": 4,
+	"settlements": [],
+	"spawn": null,
+	"world_changes": [],
+	"world_seed": 3033
+}

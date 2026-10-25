@@ -82,7 +82,7 @@ static func _chain_anchor(desc: RefCounted, field: RefCounted, p: Vector3, limb_
 	var best := -1
 	var best_d := INF
 	var best_raw := 0.0
-	for k in field.capsule_count():
+	for k in field.shape_from:
 		if int(field.limb[k]) != limb_id:
 			continue
 		if first < 0:

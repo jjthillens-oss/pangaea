@@ -15,7 +15,9 @@ extends TestCase
 ## convention:
 ##   - a material's colours are its Color uniforms and its texture uniforms (as the material sets
 ##     them, else as the shader's code declares them), times a float uniform `brightness` when it
-##     has one, and any literal colour its shader writes to ALBEDO or EMISSION
+##     has one, its textures also times a Color uniform `tint` when it has one (S3: the shader draws
+##     texture x tint, as a standard material draws its albedo texture times its albedo), and any
+##     literal colour its shader writes to ALBEDO or EMISSION
 ##     (a vec3 or vec4 of numbers in the assignment, or in a constant or local variable it reads);
 ##     a standard material's are its albedo, emission and albedo texture (times the albedo, as it
 ##     draws), its albedo times each vertex colour of the mesh when vertex_color_use_as_albedo is
@@ -344,12 +346,13 @@ func _color_sets(m: Material, geo: GeometryInstance3D = null) -> Array[Dictionar
 	var sm := m as ShaderMaterial
 	var names := _uniform_names(sm)
 	var brightness := float(_param(sm, "brightness")) if names.has("brightness") else 1.0
+	var tint: Variant = _param(sm, "tint") if names.has("tint") else null
 	for uniform_name in names:
 		var v: Variant = _param(sm, uniform_name)
 		if v is Color:
 			out.append(_flat(uniform_name, v, brightness))
 		elif v is Texture2D:
-			out.append(_texture_colors(uniform_name, v, brightness))
+			out.append(_texture_colors(uniform_name, v, brightness, tint if tint is Color else Color.WHITE))
 	var literal := _literal_colors(sm.shader)
 	if not literal.is_empty():
 		out.append({"what": "literal colour in the shader", "colors": literal, "painting": false})
@@ -1016,6 +1019,115 @@ func test_decor_keeps_clear_of_the_food_and_threat_hues() -> void:
 		return
 	_check_hues(_nodes(ambience, "GeometryInstance3D"))
 	ambience.get_parent().free()
+
+
+## S3's veil threads (s3-view 8.2; S3G32 F part): inked, they are exactly the threat colour, since they
+## are what stings; neutral, once the cell has outgrown them, they keep HUE_GAP from food and threat.
+func test_veil_thread_colours_are_the_threat_ink_or_clear_of_both() -> void:
+	var colors := VeilThreadsView.ink_colors()
+	var ink: Color = colors.ink
+	check_eq(ink.to_html(false), RESERVED.threat.to_html(false), "inked threads are the threat colour")
+	var neutral := LookProbe.lab(colors.neutral)
+	var chroma := Vector2(neutral.y, neutral.z).length()
+	if chroma >= MIN_CHROMA:
+		for reserved: String in RESERVED:
+			var gap := LookProbe.hue_gap(LookProbe.hue(neutral), LookProbe.hue(LookProbe.lab(RESERVED[reserved])))
+			check(gap >= HUE_GAP, "neutral threads %s are %.0f degrees of LAB hue from the %s colour, at least %.0f" % [
+				(colors.neutral as Color).to_html(false), gap, reserved, HUE_GAP])
+	var threads := VeilThreadsView.new()
+	for m: ShaderMaterial in [threads.rig_material(), threads.outline_material()]:
+		check(m.get_shader_parameter("ink_color") == ink and m.get_shader_parameter("neutral_color") == colors.neutral,
+			"%s draws art's two thread colours" % m.shader.resource_path.get_file())
+	threads.free()
+
+
+## S3's haze of older sizes (s3-view 9.3, V3-14; S3G32 F part) keeps the decor rules at sizes 3 and 4:
+## its band, which its material names, lies within (-3.4, -2.6) under the plane band and holds every
+## item; it casts no shadow, draws under the lane, fades with the fog, keeps clear of the food and
+## threat hues and is too faint to lift the fluid.
+func test_older_haze_rows() -> void:
+	var session := FakeEvents.endless_session()
+	for n in [3, 4]:
+		var haze := OlderHaze.new()
+		haze.setup(GhostLayer.shipped().data, WorldConfig.load_from().ladder.food_looks, 7)
+		haze.set_size(n)
+		haze.refresh(session.sim.world, session.sim.motion.position)
+		var geo := haze.items()
+		check(geo != null and geo.multimesh.instance_count > 0, "size %d: the haze draws" % n)
+		if geo == null:
+			haze.free()
+			continue
+		var h := _heights(geo, haze)
+		check(h.band and h.low >= OlderHaze.HEIGHT_RANGE.x - 1e-4 and h.high <= OlderHaze.HEIGHT_RANGE.y + 1e-4 and h.high < PLANE_BAND.x,
+			"size %d: its band (%.2f, %.2f) within (%.1f, %.1f), under %.1f" % [n, h.low, h.high, OlderHaze.HEIGHT_RANGE.x, OlderHaze.HEIGHT_RANGE.y, PLANE_BAND.x])
+		var outside := 0
+		for t: Transform3D in geo.transforms:
+			if t.origin.y < OlderHaze.HEIGHT_RANGE.x - 1e-4 or t.origin.y > OlderHaze.HEIGHT_RANGE.y + 1e-4:
+				outside += 1
+		check(outside == 0, "size %d: every item within its band (%d outside)" % [n, outside])
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "size %d: no shadow" % n)
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "size %d: draws under the lane" % n)
+			check(_blend_and_fog(m).fog, "size %d: keeps the engine's fog" % n)
+		_check_hues([geo])
+		_check_pale([geo], haze)
+		haze.free()
+
+
+## S3's cradle and beacon (s3-view 6.6; S3G32 F part) keep the decor rules at size 3: the beacon, the
+## ring, the dish and the glitter lie under the plane band, cast no shadow, draw under the lane, keep
+## clear of the food and threat hues, and keep under MAX_LUMA_BELOW, the see-through glitter faint.
+## The old band's MultiMeshes carry instance colours this runner cannot read: test_old_band checks
+## their colours and depths from the layer's own records (S3G29).
+func test_s3_decor_rows() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.shipped_session_at_top(4))
+	pool.sim.debug_set_size(3)
+	FakeEvents.frame(pool)
+	var cradle := pool.cradle
+	var geos: Array = []
+	for root: Node in [pool.beacon, cradle.ring()]:
+		geos.append_array(root.find_children("*", "GeometryInstance3D", true, false))
+	geos.append_array(cradle.dish().values())
+	geos.append(cradle.glitter())
+	check(geos.size() >= 4, "the beacon, the ring, the dish and the glitter draw (%d)" % geos.size())
+	for geo: GeometryInstance3D in geos:
+		var h := _heights(geo, pool)
+		if h.known:
+			check(h.high <= PLANE_BAND.x + 1e-4, "%s: its top %.2f under the plane band (%.1f)" % [geo.name, h.high, PLANE_BAND.x])
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "%s: no shadow" % geo.name)
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "%s: draws under the lane" % geo.name)
+	for t: Transform3D in cradle.glitter_transforms():
+		check_near(t.origin.y, CradleView.GLITTER_Y_TM, 1e-5, "a glitter sprite at its depth")
+		check(t.basis.get_scale().x < LARGE_M, "a glitter sprite is small")
+	_check_hues(geos)
+	_check_pale(geos, pool)
+	pool.free()
+
+
+## S3's bloom tint (s3-view 7.4, V3-11; S3G32 F part): the disc lies under the plane band, casts no
+## shadow, takes no fog, draws under the lane, keeps clear of the food and threat hues, and at the
+## larger renderer alpha (Compatibility's) stays faint: luminance x alpha at most MAX_LUMA_ALPHA.
+func test_bloom_disc_rows() -> void:
+	var lights := ZoneLights.new()
+	lights.add_chunk(Vector2i.ZERO, [{"id": "z", "region": "veil_garden", "center": Vector2.ZERO, "radius": 6.0,
+		"bloom": {"slot": 0, "offset_ticks": 0, "cycle_ticks": 5400}}])
+	var discs := lights.bloom_discs()
+	check_eq(discs.size(), 1, "a bloom meadow draws a bloom disc")
+	for geo: GeometryInstance3D in discs:
+		var h := _heights(geo, lights)
+		check(h.known and h.high <= PLANE_BAND.x + 1e-4, "its top %.2f under the plane band" % h.high)
+		check_eq(geo.cast_shadow, GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "no shadow")
+		for m in _materials(geo):
+			check(m.render_priority < CreatureView.LANE_PRIORITY, "draws under the lane")
+			check(not _blend_and_fog(m).fog, "takes no fog, as the sunlit patches")
+			var top := 0.0
+			for c in _colors(m, geo):
+				top = maxf(top, _luma(c) * c.a)
+			var alpha := maxf(ZoneLights.BLOOM_ALPHA, ZoneLights.BLOOM_ALPHA_COMPATIBILITY)
+			check(top * alpha <= MAX_LUMA_ALPHA + 1e-4, "luminance x alpha %.3f at most %.2f" % [top * alpha, MAX_LUMA_ALPHA])
+		_check_hues([geo])
+	lights.free()
 
 
 ## Every colour `geos` draw keeps HUE_GAP from the reserved hues: flat colours one by one, a painting

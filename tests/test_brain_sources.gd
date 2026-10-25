@@ -20,7 +20,7 @@ const FOREIGN_ALLOWED: PackedStringArray = ["InteractionResolver.BITE_SIZE_LIMIT
 const OWN_DEFAULTS: PackedStringArray = ["ARRIVE_HOME_M", "HOME_SLACK_M", "ARRIVE_GOAL_M", "FACE_AT_STANDOFF_M",
 	"LEASH_GIVE_UP_M", "FORAGE_PATROL_M", "PATROL_INSET_M", "DEFAULT_TERRITORY_M", "FLEE_LOOKAHEAD_M", "FLEE_EDGE_M",
 	"APPROACH_WAIT_MPS", "POST_HYSTERESIS_M"]
-const KINDS: PackedStringArray = ["length", "speed", "time", "rate", "share", "count", "angle", "text", "flag"]
+const KINDS: PackedStringArray = ["length", "speed", "time", "rate", "share", "count", "angle", "text", "flag", "damage"]
 const BrainTests := preload("res://tests/test_creature_brain.gd")
 ## Every relationship rule on, as creatures_m1.json's block (spine 4.2).
 const RELATIONSHIPS := {"rules": {"prey_share": true, "intruder_share": true, "fear": true, "no_engage_above": true,
@@ -154,7 +154,8 @@ func test_world_lengths_equal_the_resolver_and_arena_constants() -> void:
 ## brain tests' blocks with no relationships, with every rule on and with a habit.
 func _configs() -> Dictionary:
 	var out := {}
-	for path in [SpeciesCatalog.DEFAULT_PATH, "res://tests/fixtures/creatures_test.json"]:
+	for path in [SpeciesCatalog.DEFAULT_PATH, "res://tests/fixtures/creatures_test.json",
+			"res://tests/fixtures/creatures_hazard_test.json"]:
 		var cat := SpeciesCatalog.load_from(path)
 		check(not cat.configs.is_empty(), "%s builds configs" % path.get_file())
 		for id in cat.configs:
