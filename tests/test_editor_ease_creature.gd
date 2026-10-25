@@ -67,6 +67,9 @@ func test_undo_and_redo_name_their_bindings_and_say_when_there_is_nothing() -> v
 	open_hud()
 	hud.set_undo_redo(false, false)
 	check_eq(hud.undo_button.tooltip_text, Ease.NOTHING_TO_UNDO, "a disabled Undo says why")
+	for b: Control in [hud.undo_button, hud.get_node("%Done")]:
+		var tip := b.get_theme_stylebox(&"panel", &"TooltipPanel") as StyleBoxFlat
+		check(tip != null and tip.bg_color.a >= 0.95, "%s's tooltip is in the game's glass" % b.name)
 	check_eq(hud.redo_button.tooltip_text, Ease.NOTHING_TO_REDO, "a disabled Redo says why")
 	hud.set_undo_redo(true, true)
 	var undo_keys := ShortcutText.label(&"ui_undo")

@@ -158,6 +158,8 @@ func test_undo_redo_and_back_name_their_bindings() -> void:
 	var undo := editor.find_child("Undo", true, false) as Button
 	var redo := editor.find_child("Redo", true, false) as Button
 	check_eq(undo.text, "Undo", "the button keeps its name")
+	var tip := undo.get_theme_stylebox(&"panel", &"TooltipPanel") as StyleBoxFlat
+	check(tip != null and tip.bg_color.a >= 0.95, "its tooltip is in the game's glass, not Godot's default look")
 	check(undo.disabled and undo.tooltip_text == CellEditor.NO_UNDO_TIP, "nothing to undo: " + undo.tooltip_text)
 	check(redo.disabled and redo.tooltip_text == CellEditor.NO_REDO_TIP, "nothing to redo: " + redo.tooltip_text)
 	editor.add("cilia")

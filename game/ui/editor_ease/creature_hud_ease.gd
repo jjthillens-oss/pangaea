@@ -21,6 +21,7 @@ const StatsPanel := preload("res://game/ui/editor_ease/stats_panel.gd")
 const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
 const Effects := preload("res://game/ui/editor_ease/creature_effects.gd")
 const PlacementHint := preload("res://game/ui/editor_ease/placement_hint.gd")
+const TooltipTheme := preload("res://game/ui/editor_ease/tooltip_theme.gd")
 const CreatureData := preload("res://game/systems/creature/creature_data.gd")
 
 ## The placement line's widest: it wraps rather than run under the palette and the stats panels beside it, and
@@ -102,6 +103,8 @@ func _init() -> void:
 ## Called once from the HUD's wire(), when its scene nodes are found.
 func attach(owner_hud: Control) -> void:
 	hud = owner_hud
+	for panel in ["Palette", "Stats", "Bottom"]:
+		TooltipTheme.apply(hud.get_node_or_null(panel) as Control)   # tooltips in glass, not Godot's default look
 	for button_name in DOCK_TIPS:
 		var b := hud.get_node_or_null("%" + button_name) as Control
 		if b != null:

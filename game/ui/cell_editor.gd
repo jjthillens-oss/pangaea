@@ -35,6 +35,7 @@ const ShortcutText := preload("res://game/ui/editor_ease/shortcut_text.gd")
 const CellSymmetry := preload("res://game/ui/editor_ease/cell_symmetry.gd")
 const CellEffects := preload("res://game/ui/editor_ease/cell_effects.gd")
 const PartCard := preload("res://game/ui/editor_ease/part_card.gd")
+const TooltipTheme := preload("res://game/ui/editor_ease/tooltip_theme.gd")
 ## The words on the editor's key line and its Undo and Redo tooltips; the keys come from the bindings.
 const KEY_LINE := [[&"ui_undo", "undo"], [&"ui_redo", "redo"], [&"ui_cancel", "back"]]
 const UNDO_TIP := "Undo the last change"
@@ -678,6 +679,7 @@ func _build() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.theme = GAME_THEME   # the editor's panels only: the dim and the test dish keep their own look
+	theme = TooltipTheme.get_theme()   # tooltips in glass, not Godot's default look (pangaea_theme has none)
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 32)
 	add_child(margin)
