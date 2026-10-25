@@ -12,3 +12,8 @@ one-line summary each.
 - 2026-10-25 06:11 daily plan: reviews and merges day (usage ~44%+ at 02:53, likely ahead of pace). Builders: cell (#199
   M4-01) and aquatic (#200 M4-02). Open PRs to land: #196-#202. Credit branches last pushed 05:18; T-01..T-08 takeover
   not yet triggered. No new features.
+- 2026-10-25 14:40 playtest capture on ad64c95: nightly 4 green, copied to the project builds folder (36 merges since
+  685bb0d). 20/20 smokes pass, no engine errors. Visual means (Compatibility): cell 3.67 fail (checklist 3, 9),
+  creature world 2.33 fail (3, 5, 7, 11), aquatic 2.67 fail (3, 7), title 4.33 pass, editor about 4. Filed #212, #213,
+  #214. Feel and design unscored until D-02 (scripted gameplay capture). Frames and score sheet in the project files
+  under `pangaea/playtest/2026-10-25/`. Usage about 3% of the week.
