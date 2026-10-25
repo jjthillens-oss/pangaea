@@ -374,6 +374,7 @@ func test_the_hud_words_sized_in_code_follow_the_text_size() -> void:
 static func _type_of(node: Control, base: StringName) -> StringName:
 	return node.theme_type_variation if node.theme_type_variation != &"" else base
 
+
 func test_the_death_notice_says_whether_the_death_was_saved() -> void:
 	var failed := {"attempted": true, "ok": false, "error": "Could not save to user://saves/slot_1.json: Can't open file."}
 	var text := Main.death_text("killed", 3, "", failed)
