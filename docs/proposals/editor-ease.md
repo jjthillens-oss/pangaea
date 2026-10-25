@@ -205,7 +205,30 @@ asks tell the editor to do the same.
   the palette and the stats panel holds the creature, and the 380 px card does not fit beside it); a stat's help
   card covers part of the head. In the cell editor it covers the dish's left edge. At 130% text the cards are
   taller and also reach the dock or the buttons under the dish.
+- The creature placement line stays open while a tool is chosen. At 130% text it wraps to four lines and covers the
+  creature's feet (it is 97% opaque so its text stays readable over the legs). At 100% it sits below the feet.
 - The new strings are not translatable yet (no `tr()` until #172 merges).
+
+## Evidence
+
+Rendered with `tools/godot/editor_ease_shots.gd` under xvfb with the compatibility renderer (see `docs/TOOLCHAIN.md`).
+The BEFORE frames come from main (2ffc1218) before this pass; the AFTER frames from this branch after merging main
+ad64c950. Each pair shows the same pose. All are in `docs/evidence/credit-editor-ease/`.
+
+| Pose | Before | After |
+| --- | --- | --- |
+| Creature editor at rest | `docs/evidence/credit-editor-ease/before_creature_idle.jpg` | `docs/evidence/credit-editor-ease/after_creature_idle.jpg` |
+| Pointer on the Eye tool | `docs/evidence/credit-editor-ease/before_creature_hover_eye.jpg` | `docs/evidence/credit-editor-ease/after_creature_hover_eye.jpg` |
+| Eye tool chosen | `docs/evidence/credit-editor-ease/before_creature_tool_eye.jpg` | `docs/evidence/credit-editor-ease/after_creature_tool_eye.jpg` |
+| Two vertebrae added, one undone | `docs/evidence/credit-editor-ease/before_creature_edited.jpg` | `docs/evidence/credit-editor-ease/after_creature_edited.jpg` |
+| Cell editor at rest | `docs/evidence/credit-editor-ease/before_cell_idle.jpg` | `docs/evidence/credit-editor-ease/after_cell_idle.jpg` |
+| Pointer on the Cilia tile | `docs/evidence/credit-editor-ease/before_cell_hover_cilia.jpg` | `docs/evidence/credit-editor-ease/after_cell_hover_cilia.jpg` |
+| An eye spot and its mirror | `docs/evidence/credit-editor-ease/before_cell_pair.jpg` | `docs/evidence/credit-editor-ease/after_cell_pair.jpg` |
+| A part dragged near the front of the rim | `docs/evidence/credit-editor-ease/before_cell_drag_snap.jpg` | `docs/evidence/credit-editor-ease/after_cell_drag_snap.jpg` |
+
+AFTER only: `after_creature_stat_help.jpg`, `after_creature_undo_tip.jpg`, `after_cell_stat_help.jpg`,
+`after_cell_undo_tip.jpg` and `after_cell_pair_drag.jpg`; the layout checks at 130% text (`*_text130.jpg`) and at
+1280x720 (`*_1280x720.jpg`). Native tooltips (Undo, Redo) are captured because the script hovers with a real pointer.
 
 ## Files
 
