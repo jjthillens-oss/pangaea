@@ -170,4 +170,22 @@ Each gate is pass, needs revision or unverified, with an observable reason, afte
 ## Before frames (the placeholder)
 
 Rendered with `tools/godot/shore_shots.gd` on the placeholder, base main 2ffc1218 (the HUD before the hud job's
-restyle), `gl_compatibility`, 1920x1080, zoom 14 unless named, seed 4248, open sea.
+restyle), `gl_compatibility`, 1920x1080, zoom 14 unless named, seed 4248, grazer. The shore rose at (600.0, 518.1) am
+in open sea (the cell moved to (600, 600) am first); with `--home` it rose at (0.0, -72.9) am, by the cradle.
+L* is CIE L* of a box median from the script's readings.
+
+| Frame | What it shows | Readings |
+| --- | --- | --- |
+| 01 risen | The toast "A shore has risen up ahead..." and the warm arrow "Shore 20 m" at the top edge; the shore is off screen. | fluid around the cell L* 36 |
+| 02 approach, 10 tm south ([jpg](../evidence/credit-shore/before_02_approach.jpg)) | The shaft's top is already on screen at the top edge as a white blob behind the message panel. No bank. | fluid L* 30 to 36 |
+| 03 reach edge, 4.6 tm ([jpg](../evidence/credit-shore/before_03_reach_edge.jpg)) | A pale translucent cylinder with a disc; the disc's edge runs just north of the cell. Reads as a glass column, not ground. | north of the cell L* 89 |
+| 04 offer, 3 tm ([jpg](../evidence/credit-shore/before_04_offer.jpg)) | "Crawl onto land?" over the dimmed pool; legible. | dimmed |
+| 05 at the shore point ([jpg](../evidence/credit-shore/before_05_on_shelf.jpg)) | The additive shaft clips to pure white around the cell, which washes to L* 76.5 (53.4 elsewhere). Nothing reads as sand. | behind the cell, cell hidden, L* 100 (clipped) |
+| 06 east, 6 tm | The cylinder and disc side-on: a large translucent pale shape. | |
+| 07 zoom 10 | The shaft clips white across the top half. | north of the cell L* 98.7 |
+| 08 zoom 20 | A glowing cylinder above a disc. | north of the cell L* 100 |
+
+What the placeholder gets wrong, and what the piece must fix: no ground or landform at all; the shaft's additive
+walls clip to white in this renderer and wash out the cell; the disc reads as glass, not sand. The `--home` run
+shows the cradle ring filling the south of the frame at 10 tm, so the landing's skirt must be checked against the
+cradle's rim in Gate 4.
