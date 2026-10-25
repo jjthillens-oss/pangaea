@@ -122,7 +122,7 @@
 							185,
 							580
 						],
-						"r": 26
+						"r": 28
 					}
 				],
 				"limbs": [
@@ -199,7 +199,7 @@
 									20,
 									-400
 								],
-								"r": 26
+								"r": 28
 							}
 						]
 					}
@@ -302,7 +302,13 @@
 					"p": 7,
 					"v": 12
 				},
-				"skin_color": "#4fc08a"
+				"skin_color": "#4fc08a",
+				"head_shape": {
+					"brow": 300,
+					"jaw": 300,
+					"snout": 1250
+				},
+				"skin_covering": 2
 			}
 		},
 		"dragon": {
@@ -601,7 +607,7 @@
 					},
 					{
 						"id": "p_5",
-						"type": "horn",
+						"type": "horn_swept",
 						"host": "spine",
 						"u": 85,
 						"ring": 60,
@@ -610,13 +616,13 @@
 						"turn": 0,
 						"tilt": -35,
 						"roll": 0,
-						"scale": 1900,
+						"scale": 1700,
 						"handles": [],
 						"mirror": true
 					},
 					{
 						"id": "p_6",
-						"type": "wing",
+						"type": "wing_dragon",
 						"host": "spine",
 						"u": 380,
 						"ring": 140,
@@ -625,13 +631,13 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 3400,
+						"scale": 2600,
 						"handles": [],
 						"mirror": true
 					},
 					{
 						"id": "p_7",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 154,
 						"ring": 0,
@@ -646,7 +652,7 @@
 					},
 					{
 						"id": "p_8",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 217,
 						"ring": 0,
@@ -661,7 +667,7 @@
 					},
 					{
 						"id": "p_9",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 280,
 						"ring": 0,
@@ -676,7 +682,7 @@
 					},
 					{
 						"id": "p_10",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 533,
 						"ring": 0,
@@ -691,7 +697,7 @@
 					},
 					{
 						"id": "p_11",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 616,
 						"ring": 0,
@@ -706,7 +712,7 @@
 					},
 					{
 						"id": "p_12",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 699,
 						"ring": 0,
@@ -721,7 +727,7 @@
 					},
 					{
 						"id": "p_13",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 782,
 						"ring": 0,
@@ -736,7 +742,7 @@
 					},
 					{
 						"id": "p_14",
-						"type": "spike",
+						"type": "dorsal_spine",
 						"host": "spine",
 						"u": 862,
 						"ring": 0,
@@ -771,7 +777,14 @@
 					"p": 16,
 					"v": 16
 				},
-				"skin_color": "#c84b3c"
+				"skin_color": "#c84b3c",
+				"head_shape": {
+					"brow": 700,
+					"jaw": 450,
+					"snout": 1500,
+					"width": 1100
+				},
+				"skin_covering": 2
 			}
 		},
 		"monkey": {
@@ -965,7 +978,7 @@
 				"parts": [
 					{
 						"id": "p_1",
-						"type": "hand",
+						"type": "hand_primate",
 						"host": "l_1:end",
 						"u": 500,
 						"ring": 0,
@@ -974,13 +987,13 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 1300,
+						"scale": 1500,
 						"handles": [],
 						"mirror": true
 					},
 					{
 						"id": "p_2",
-						"type": "foot_paw",
+						"type": "foot_primate",
 						"host": "l_2:end",
 						"u": 500,
 						"ring": 0,
@@ -989,7 +1002,7 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 1150,
+						"scale": 1200,
 						"handles": [],
 						"mirror": true
 					},
@@ -1010,6 +1023,21 @@
 					},
 					{
 						"id": "p_4",
+						"type": "muzzle_primate",
+						"host": "spine",
+						"u": 0,
+						"ring": 0,
+						"elev": 40,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1300,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_5",
 						"type": "eye_round",
 						"host": "spine",
 						"u": 61,
@@ -1022,15 +1050,36 @@
 						"scale": 850,
 						"handles": [],
 						"mirror": true
+					},
+					{
+						"id": "p_6",
+						"type": "ear_round",
+						"host": "spine",
+						"u": 122,
+						"ring": 260,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1700,
+						"handles": [],
+						"mirror": true
 					}
 				],
 				"next": {
 					"j": 9,
 					"l": 3,
-					"p": 5,
+					"p": 7,
 					"v": 11
 				},
-				"skin_color": "#a8703a"
+				"skin_color": "#a8703a",
+				"head_shape": {
+					"brow": 550,
+					"height": 1150,
+					"width": 1100
+				},
+				"skin_covering": 1
 			}
 		},
 		"beetle": {
@@ -1323,7 +1372,11 @@
 					"p": 8,
 					"v": 8
 				},
-				"skin_color": "#2e4a6b"
+				"skin_color": "#2e4a6b",
+				"head_shape": {
+					"height": 800,
+					"width": 1250
+				}
 			}
 		},
 		"longneck": {
@@ -1625,15 +1678,34 @@
 						"scale": 700,
 						"handles": [],
 						"mirror": false
+					},
+					{
+						"id": "p_6",
+						"type": "ear_pointed",
+						"host": "spine",
+						"u": 63,
+						"ring": 230,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 900,
+						"handles": [],
+						"mirror": true
 					}
 				],
 				"next": {
 					"j": 9,
 					"l": 3,
-					"p": 6,
+					"p": 7,
 					"v": 15
 				},
-				"skin_color": "#4f8f6a"
+				"skin_color": "#4f8f6a",
+				"head_shape": {
+					"height": 900,
+					"snout": 1300
+				}
 			}
 		},
 		"tortoise": {
@@ -1925,7 +1997,12 @@
 					"p": 9,
 					"v": 10
 				},
-				"skin_color": "#5f6b7a"
+				"skin_color": "#5f6b7a",
+				"head_shape": {
+					"brow": 400,
+					"snout": 1100
+				},
+				"skin_covering": 2
 			}
 		},
 		"boar": {
@@ -2176,7 +2253,22 @@
 					},
 					{
 						"id": "p_6",
-						"type": "crest",
+						"type": "ear_pointed",
+						"host": "spine",
+						"u": 133,
+						"ring": 220,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1100,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_7",
+						"type": "mane",
 						"host": "spine",
 						"u": 421,
 						"ring": 0,
@@ -2185,22 +2277,7 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 1200,
-						"handles": [],
-						"mirror": false
-					},
-					{
-						"id": "p_7",
-						"type": "crest",
-						"host": "spine",
-						"u": 598,
-						"ring": 0,
-						"elev": 0,
-						"height": 0,
-						"turn": 0,
-						"tilt": 0,
-						"roll": 0,
-						"scale": 950,
+						"scale": 1100,
 						"handles": [],
 						"mirror": false
 					}
@@ -2211,7 +2288,14 @@
 					"p": 8,
 					"v": 9
 				},
-				"skin_color": "#a8664e"
+				"skin_color": "#a8664e",
+				"head_shape": {
+					"brow": 500,
+					"jaw": 350,
+					"snout": 1600,
+					"width": 1150
+				},
+				"skin_covering": 1
 			}
 		},
 		"stalker": {
@@ -2556,7 +2640,11 @@
 					"p": 8,
 					"v": 10
 				},
-				"skin_color": "#a86fd6"
+				"skin_color": "#a86fd6",
+				"head_shape": {
+					"height": 850
+				},
+				"skin_covering": 1
 			}
 		},
 		"hopper": {
@@ -2705,7 +2793,7 @@
 				"parts": [
 					{
 						"id": "p_1",
-						"type": "foot_webbed",
+						"type": "hand_frog",
 						"host": "l_1:end",
 						"u": 500,
 						"ring": 0,
@@ -2714,13 +2802,13 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 800,
+						"scale": 1300,
 						"handles": [],
 						"mirror": true
 					},
 					{
 						"id": "p_2",
-						"type": "foot_webbed",
+						"type": "foot_frog",
 						"host": "l_2:end",
 						"u": 500,
 						"ring": 0,
@@ -2750,7 +2838,7 @@
 					},
 					{
 						"id": "p_4",
-						"type": "eye_round",
+						"type": "eye_bulge",
 						"host": "spine",
 						"u": 150,
 						"ring": 120,
@@ -2762,15 +2850,36 @@
 						"scale": 1300,
 						"handles": [],
 						"mirror": true
+					},
+					{
+						"id": "p_5",
+						"type": "throat_sac",
+						"host": "spine",
+						"u": 150,
+						"ring": 500,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1200,
+						"handles": [],
+						"mirror": false
 					}
 				],
 				"next": {
 					"j": 8,
 					"l": 3,
-					"p": 5,
+					"p": 6,
 					"v": 7
 				},
-				"skin_color": "#7fbf4f"
+				"skin_color": "#7fbf4f",
+				"head_shape": {
+					"height": 700,
+					"jaw": 250,
+					"width": 1450
+				},
+				"skin_covering": 3
 			}
 		},
 		"strider": {
@@ -3016,12 +3125,16 @@
 					"p": 7,
 					"v": 11
 				},
-				"skin_color": "#e6e1c8"
+				"skin_color": "#e6e1c8",
+				"head_shape": {
+					"height": 1100,
+					"snout": 1150
+				}
 			}
 		},
 		"prowler": {
 			"title": "Prowler",
-			"blurb": "A lithe cat-like hunter with a frilled mane, soft paws and a long, low stride.",
+			"blurb": "A lithe cat-like hunter with a shaggy mane, a bushy tail and a long, low stride.",
 			"body": {
 				"body_version": 3,
 				"plan": "spine",
@@ -3279,7 +3392,22 @@
 					},
 					{
 						"id": "p_5",
-						"type": "frill",
+						"type": "ear_pointed",
+						"host": "spine",
+						"u": 69,
+						"ring": 230,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1300,
+						"handles": [],
+						"mirror": true
+					},
+					{
+						"id": "p_6",
+						"type": "mane",
 						"host": "spine",
 						"u": 159,
 						"ring": 0,
@@ -3288,7 +3416,22 @@
 						"turn": 0,
 						"tilt": 0,
 						"roll": 0,
-						"scale": 2100,
+						"scale": 1500,
+						"handles": [],
+						"mirror": false
+					},
+					{
+						"id": "p_7",
+						"type": "tail_bushy",
+						"host": "spine",
+						"u": 1000,
+						"ring": 0,
+						"elev": 0,
+						"height": 0,
+						"turn": 0,
+						"tilt": 0,
+						"roll": 0,
+						"scale": 1500,
 						"handles": [],
 						"mirror": false
 					}
@@ -3296,10 +3439,16 @@
 				"next": {
 					"j": 9,
 					"l": 3,
-					"p": 6,
+					"p": 8,
 					"v": 12
 				},
-				"skin_color": "#c8873a"
+				"skin_color": "#c8873a",
+				"head_shape": {
+					"brow": 350,
+					"snout": 1250,
+					"width": 1100
+				},
+				"skin_covering": 1
 			}
 		},
 		"angler": {
@@ -3573,7 +3722,12 @@
 					"p": 9,
 					"v": 8
 				},
-				"skin_color": "#3f6f8f"
+				"skin_color": "#3f6f8f",
+				"head_shape": {
+					"jaw": 650,
+					"width": 1350
+				},
+				"skin_covering": 3
 			}
 		}
 	}

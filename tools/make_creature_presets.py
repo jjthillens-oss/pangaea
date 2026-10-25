@@ -30,6 +30,15 @@ class Body:
         self.vertebrae = []
         self.limbs = []
         self.parts = []
+        self.head = {}
+        self.covering = 0
+
+    def look(self, covering=0, **head):
+        """covering: 0 smooth, 1 fur, 2 scales, 3 wet (creature_look.gd); head: the head shape dials in per mille
+        (domain/creature/head_shape.gd: snout, width, height, jaw, brow), only the ones off their default."""
+        self.covering = covering
+        self.head = head
+        return self
 
     def spine(self, *points):
         """points: (y, z, r) from the head to the tail."""
@@ -86,26 +95,32 @@ class Body:
 
     def to_dict(self):
         joints = sum(len(l["joints"]) for l in self.limbs)
-        return {"title": self.title, "blurb": self.blurb, "body": {
+        out = {"title": self.title, "blurb": self.blurb, "body": {
             "body_version": 3, "plan": "spine", "reference_length_mm": self.length_mm, "generator": "skin-1",
             "vertebrae": self.vertebrae, "limbs": self.limbs, "parts": self.parts,
             "next": {"j": joints + 1, "l": len(self.limbs) + 1, "p": len(self.parts) + 1,
                      "v": len(self.vertebrae) + 1},
             "skin_color": self.skin}}
+        if self.head:
+            out["body"]["head_shape"] = {k: self.head[k] for k in sorted(self.head)}
+        if self.covering:
+            out["body"]["skin_covering"] = self.covering
+        return out
 
 
 def raptor():
     b = Body("raptor", "Raptor", "A fast hunter on two long legs, with little clawed arms and a balancing tail.", 1400,
              "#4fc08a")
     b.spine((300, -580, 45), (285, -490, 62), (240, -400, 52), (190, -300, 82), (150, -170, 110), (145, -40, 112),
-            (150, 90, 92), (160, 220, 66), (170, 350, 48), (180, 470, 36), (185, 580, 26))
+            (150, 90, 92), (160, 220, 66), (170, 350, 48), (180, 470, 36), (185, 580, 28))
     b.limb(6, (100, 90, -40, 75), (140, -110, -150, 58), (125, -330, -10, 40), (125, -420, -70, 34),
            end="foot_talon", end_scale=900)
-    b.limb(4, (75, 150, -300, 36), (115, 70, -330, 30), (115, 20, -400, 26), end="claw_scythe", end_scale=800)
+    b.limb(4, (75, 150, -300, 36), (115, 70, -330, 30), (115, 20, -400, 28), end="claw_scythe", end_scale=800)
     b.part("jaw", u=0, ring=500, elev=20, scale=950)
     b.part("eye_slit", u=b.u(2), ring=170, scale=800, mirror=True)
     b.part("crest", u=b.u(3), ring=0, scale=700)
     b.part("quills", u=b.u(5), ring=0, scale=650)
+    b.look(2, snout=1250, jaw=300, brow=300)
     return b
 
 
@@ -120,11 +135,12 @@ def dragon():
            end="foot_talon", end_scale=1200)
     b.part("jaw", u=0, ring=500, elev=15, scale=1050)
     b.part("eye_slit", u=b.u(2), ring=190, scale=850, mirror=True)
-    b.part("horn", u=b.u(3) - 10, ring=60, scale=1900, mirror=True, tilt=-35)
-    b.part("wing", u=b.u(7) + 25, ring=140, scale=3400, mirror=True)
+    b.part("horn_swept", u=b.u(3) - 10, ring=60, scale=1700, mirror=True, tilt=-35)
+    b.part("wing_dragon", u=b.u(7) + 25, ring=140, scale=2600, mirror=True)
     for v, sc in ((4, 650), (5, 700), (6, 800), (9, 900), (10, 850), (11, 750), (12, 650), (13, 550)):
-        b.part("spike", u=b.u(v), ring=0, scale=sc)
+        b.part("dorsal_spine", u=b.u(v), ring=0, scale=sc)
     b.part("tail_spikes", u=1000, ring=0, scale=1500)
+    b.look(2, snout=1500, jaw=450, brow=700, width=1100)
     return b
 
 
@@ -134,11 +150,14 @@ def monkey():
     b.spine((330, -440, 66), (430, -370, 165), (400, -250, 76), (380, -150, 140), (350, -30, 128), (320, 90, 104),
             (330, 190, 40), (400, 270, 32), (500, 300, 28), (580, 250, 24))
     b.limb(4, (120, 400, -150, 66), (210, 200, -200, 56), (220, -20, -160, 46), (220, -70, -180, 42),
-           end="hand", end_scale=1300)
-    b.limb(6, (100, 290, 90, 76), (150, 170, 20, 60), (140, -20, 100, 48), (140, -70, 50, 44), end="foot_paw",
-           end_scale=1150)
+           end="hand_primate", end_scale=1500)
+    b.limb(6, (100, 290, 90, 76), (150, 170, 20, 60), (140, -20, 100, 48), (140, -70, 50, 44), end="foot_primate",
+           end_scale=1200)
     b.part("maw", u=0, ring=500, elev=30, scale=650)
+    b.part("muzzle_primate", u=0, ring=0, elev=40, scale=1300)
     b.part("eye_round", u=b.u(2) // 2, ring=130, scale=850, mirror=True)
+    b.part("ear_round", u=b.u(2), ring=260, scale=1700, mirror=True)
+    b.look(1, height=1150, width=1100, brow=550)
     return b
 
 
@@ -155,6 +174,7 @@ def beetle():
     b.part("horn_nose", u=b.u(2), ring=0, scale=1500, tilt=20)
     b.part("compound_eye", u=b.u(2) - 20, ring=210, scale=900, mirror=True)
     b.part("antenna", u=b.u(2) - 40, ring=110, scale=1400, mirror=True)
+    b.look(0, width=1250, height=800)
     return b
 
 
@@ -171,6 +191,8 @@ def longneck():
     b.part("beak", u=0, ring=500, elev=20, scale=800)
     b.part("eye_round", u=b.u(2), ring=180, scale=650, mirror=True)
     b.part("horn_nose", u=b.u(2) + 10, ring=0, scale=700)
+    b.part("ear_pointed", u=b.u(2) + 20, ring=230, scale=900, mirror=True)
+    b.look(0, snout=1300, height=900)
     return b
 
 
@@ -186,6 +208,7 @@ def tortoise():
     for v, sc in ((5, 900), (6, 950), (7, 800)):
         b.part("spike", u=b.u(v), ring=0, scale=sc)
     b.part("club_tail", u=1000, ring=0, scale=1800)
+    b.look(2, snout=1100, brow=400)
     return b
 
 
@@ -201,8 +224,9 @@ def boar():
     b.part("maw", u=0, ring=500, elev=20, scale=1100)
     b.part("tusk", u=b.u(1) + 20, ring=380, scale=1600, mirror=True)
     b.part("eye", u=b.u(2), ring=170, scale=650, mirror=True)
-    b.part("crest", u=b.u(4), ring=0, scale=1200)
-    b.part("crest", u=b.u(5), ring=0, scale=950)
+    b.part("ear_pointed", u=b.u(2) + 20, ring=220, scale=1100, mirror=True)
+    b.part("mane", u=b.u(4), ring=0, scale=1100)
+    b.look(1, snout=1600, width=1150, jaw=350, brow=500)
     return b
 
 
@@ -217,6 +241,7 @@ def stalker():
     b.part("mandibles", u=0, ring=500, elev=25, scale=1100)
     b.part("eye_stalk", u=b.u(2), ring=80, scale=1400, mirror=True)
     b.part("eye_cluster", u=b.u(1) + 20, ring=0, scale=800)
+    b.look(1, height=850)
     return b
 
 
@@ -224,11 +249,13 @@ def hopper():
     b = Body("hopper", "Hopper", "A wide mouth, big eyes on top, short front legs and long folded hind legs.", 700,
              "#7fbf4f")
     b.spine((150, -380, 90), (170, -300, 140), (160, -190, 165), (140, -60, 165), (120, 60, 145), (100, 160, 95))
-    b.limb(2, (110, 170, -220, 50), (150, 30, -250, 42), (150, -110, -240, 36), end="foot_webbed", end_scale=800)
+    b.limb(2, (110, 170, -220, 50), (150, 30, -250, 42), (150, -110, -240, 36), end="hand_frog", end_scale=1300)
     b.limb(5, (140, 80, 70, 92), (220, 40, -20, 80), (250, 50, 290, 54), (250, -110, 80, 46),
-           end="foot_webbed", end_scale=1500)
+           end="foot_frog", end_scale=1500)
     b.part("maw", u=0, ring=500, elev=25, scale=1000)
-    b.part("eye_round", u=b.u(2), ring=120, scale=1300, mirror=True)
+    b.part("eye_bulge", u=b.u(2), ring=120, scale=1300, mirror=True)
+    b.part("throat_sac", u=b.u(2), ring=500, scale=1200)
+    b.look(3, width=1450, height=700, jaw=250)
     return b
 
 
@@ -244,11 +271,12 @@ def strider():
     b.part("crest", u=b.u(2) + 15, ring=0, scale=800)
     b.part("wing", u=b.u(7), ring=210, scale=1200, mirror=True)
     b.part("tail_fluke", u=1000, ring=0, scale=1300)
+    b.look(0, snout=1150, height=1100)
     return b
 
 
 def prowler():
-    b = Body("prowler", "Prowler", "A lithe cat-like hunter with a frilled mane, soft paws and a long, low stride.",
+    b = Body("prowler", "Prowler", "A lithe cat-like hunter with a shaggy mane, a bushy tail and a long, low stride.",
              1500, "#c8873a")
     b.spine((300, -580, 70), (300, -500, 95), (275, -400, 70), (250, -300, 112), (235, -170, 116), (230, -40, 104),
             (240, 90, 106), (255, 200, 60), (285, 320, 40), (330, 440, 32), (360, 550, 28))
@@ -258,7 +286,10 @@ def prowler():
            end_scale=1200)
     b.part("maw", u=0, ring=500, elev=25, scale=1050)
     b.part("eye_slit", u=b.u(2), ring=160, scale=1000, mirror=True)
-    b.part("frill", u=b.u(3), ring=0, scale=2100)
+    b.part("ear_pointed", u=b.u(2), ring=230, scale=1300, mirror=True)
+    b.part("mane", u=b.u(3), ring=0, scale=1500)
+    b.part("tail_bushy", u=1000, ring=0, scale=1500)
+    b.look(1, snout=1250, width=1100, brow=350)
     return b
 
 
@@ -275,6 +306,7 @@ def angler():
     b.part("fin", u=450, ring=0, scale=1300)
     b.part("gill_fan", u=b.u(3), ring=250, scale=900, mirror=True)
     b.part("tail_fluke", u=1000, ring=0, scale=1100)
+    b.look(3, width=1350, jaw=650)
     return b
 
 
