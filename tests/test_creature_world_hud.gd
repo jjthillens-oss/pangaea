@@ -1,9 +1,10 @@
 extends TestCase
 ## The creature world HUD's dock and goal card (game/ui/creature_world_hud.gd, the hud job's glass look) against a
 ## stub world that only answers sim.player() and sim.points: the display-only ability chips are named by their bound
-## keys and follow a rebind, Evolve lights only at the nest, Bite dims while it recharges and is left out without a
-## mouth, nothing in the HUD takes the mouse or focus, the goal line follows the nest, and the controls line times
-## out and comes back when the bindings change.
+## keys and show a rebinding the next time the world opens, Evolve lights only at the nest, Bite dims while it
+## recharges and is left out without a mouth, nothing in the HUD takes the mouse or focus, the goal line follows the
+## nest, and the controls line times out, leaving the move, orbit and way-out keys in the dock, and comes back on a
+## device change and each time the world opens.
 
 const HUD_SCENE := "res://game/ui/creature_world_hud.tscn"
 const THEME := "res://game/ui/theme/pangaea_theme.tres"
@@ -27,16 +28,25 @@ class StubWorld:
 
 var _nodes: Array[Node] = []
 var _saved_bite: Array[InputEvent] = []
+var _saved_device := "keys"
+var _saved_cancel: Array[InputEvent] = []
 
 
 func before_each() -> void:
 	_saved_bite = InputMap.action_get_events(&"creature_bite")
+	_saved_device = InputPrompts.device
+	InputPrompts.device = "keys"
+	_saved_cancel = InputMap.action_get_events(&"ui_cancel")
 
 
 func after_each() -> void:
 	InputMap.action_erase_events(&"creature_bite")
 	for event in _saved_bite:
 		InputMap.action_add_event(&"creature_bite", event)
+	InputMap.action_erase_events(&"ui_cancel")
+	for event in _saved_cancel:
+		InputMap.action_add_event(&"ui_cancel", event)
+	InputPrompts.device = _saved_device
 	InputPrompts.generation += 1
 	for node in _nodes:
 		if is_instance_valid(node):
@@ -61,8 +71,9 @@ func _chips(hud: Control) -> Array:
 	return (hud.get_node("%Abilities") as Node).get_children().filter(func(c: Node): return not c.is_queued_for_deletion())
 
 
-func test_the_chips_name_the_bound_keys_and_follow_a_rebind() -> void:
-	var hud: Control = make()[0]
+func test_the_chips_name_the_bound_keys_and_a_rebind_shows_when_the_world_opens() -> void:
+	var made := make()
+	var hud: Control = made[0]
 	var chips := _chips(hud)
 	check_eq(chips.map(func(c: Button): return String(c.name)), ["Bite", "Sing", "Evolve"], "one chip per ability")
 	for pair in [[&"creature_bite", "Bite"], [&"creature_social", "Sing"], [&"creature_evolve", "Evolve"]]:
@@ -75,13 +86,13 @@ func test_the_chips_name_the_bound_keys_and_follow_a_rebind() -> void:
 	var dimmed := theme.get_stylebox(&"disabled", &"HudChip") as StyleBoxFlat
 	check(dimmed != null and dimmed.border_width_top >= 1 and dimmed.border_color.a >= 0.5,
 		"a recharging chip keeps a visible rim (%s)" % dimmed)
-	# Rebind the bite to G: the chip and the controls line follow on the next frame, with no stale chip left.
+	# Rebind the bite to G (in the game the settings menu does this, outside the world): the chip and the controls
+	# line show it the next time the world opens, as creature_world binds the HUD, with no stale chip left.
 	InputMap.action_erase_events(&"creature_bite")
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_G
 	InputMap.action_add_event(&"creature_bite", key)
-	InputPrompts.generation += 1
-	hud._process(DT)
+	hud.bind(made[1])
 	var bite: Button = hud._chips[&"creature_bite"]
 	check_eq(bite.text, "G  Bite", "the rebound chip")
 	check("G  Bite" in hud._hint_text.text, "the rebound controls line (%s)" % hud._hint_text.text)
@@ -129,10 +140,13 @@ func test_nothing_in_the_hud_takes_the_mouse_or_focus() -> void:
 		check(control.focus_mode == Control.FOCUS_NONE, "%s takes no focus" % hud.get_path_to(control))
 
 
-func test_the_controls_line_times_out_and_comes_back_when_the_bindings_change() -> void:
-	var hud: Control = make()[0]
+func test_the_controls_line_times_out_and_the_dock_keeps_the_move_orbit_and_way_out_keys() -> void:
+	var made := make()
+	var hud: Control = made[0]
 	var panel: Control = hud.get_node("%HintPanel")
+	var ways: Label = hud.get_node("%WaysText")
 	check(panel.visible, "the controls line shows when the world opens")
+	check(not ways.visible, "the dock's key line waits while the controls line is up")
 	var t := 0.0
 	var keys_s: float = hud.get_script().KEYS_HINT_S
 	while t < keys_s - 1.0:
@@ -145,6 +159,42 @@ func test_the_controls_line_times_out_and_comes_back_when_the_bindings_change() 
 	check(not panel.visible, "gone after %.0f s" % keys_s)
 	check("Bite" in hud._hint_text.text and "Evolve" in hud._hint_text.text, "its words stay (%s)" % hud._hint_text.text)
 	check(hud.get_node("%Dock").visible, "the dock stays")
-	InputPrompts.generation += 1
+	_check_ways(hud, "after the controls line goes")
+	# A real device change (InputPrompts.note, as main reports every event) brings the line back for the pad. The
+	# game gives ui_cancel its controller button at start (SettingsService.apply_bindings, UI_PAD); so does this.
+	if InputPrompts.names_for(&"ui_cancel", "pad").is_empty():
+		InputMap.action_add_event(&"ui_cancel", InputCodes.to_event(SettingsService.UI_PAD["ui_cancel"]))
+	var button := InputEventJoypadButton.new()
+	button.button_index = JOY_BUTTON_A
+	button.pressed = true
+	InputPrompts.note(button)
+	check_eq(InputPrompts.device, "pad", "the pad is the device in use")
 	hud._process(DT)
-	check(panel.visible and is_equal_approx(panel.modulate.a, 1.0), "back when the bindings or the device change")
+	check(panel.visible and is_equal_approx(panel.modulate.a, 1.0), "back when the device changes")
+	check(not ways.visible, "the dock's key line waits again")
+	check("Right stick  Orbit" in hud._hint_text.text, "the controls line names the pad (%s)" % hud._hint_text.text)
+	t = 0.0
+	while t < keys_s + 0.2:
+		hud._process(0.1)
+		t += 0.1
+	_check_ways(hud, "on the pad")
+	# Each time the world opens the line shows again.
+	hud.bind(made[1])
+	check(panel.visible and not ways.visible, "back when the world opens again")
+
+
+## The dock's key line is up, alone, and names the move keys, the orbit and the way back for the device in use.
+func _check_ways(hud: Control, when: String) -> void:
+	var ways: Label = hud.get_node("%WaysText")
+	var shown := ways.visible
+	var up := ways.get_parent()
+	while up != hud:
+		shown = shown and (up as CanvasItem).visible
+		up = up.get_parent()
+	check(shown and not hud.get_node("%HintPanel").visible, "%s the dock shows its key line (%s)" % [when, ways.visible])
+	var move: String = hud.get_script().move_name()
+	var back := InputPrompts.names_for(&"ui_cancel")
+	var orbit := "Right stick" if InputPrompts.device == "pad" else "Middle drag"
+	check(not move.is_empty() and not back.is_empty(), "%s the move and back actions are bound" % when)
+	for words in ["%s  Move" % move, "%s  Orbit" % orbit, "%s  Back to the editor" % (back[0] if not back.is_empty() else "?")]:
+		check(words in ways.text, "%s the dock names '%s' (%s)" % [when, words, ways.text])

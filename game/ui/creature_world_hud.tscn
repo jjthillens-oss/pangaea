@@ -128,24 +128,29 @@ size_flags_horizontal = 4
 mouse_filter = 2
 theme_type_variation = &"HudGlass"
 
-[node name="DockRow" type="HBoxContainer" parent="Frame/Bottom/Dock"]
+[node name="DockBox" type="VBoxContainer" parent="Frame/Bottom/Dock"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="DockRow" type="HBoxContainer" parent="Frame/Bottom/Dock/DockBox"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 22
 
-[node name="Vitals" type="VBoxContainer" parent="Frame/Bottom/Dock/DockRow"]
+[node name="Vitals" type="VBoxContainer" parent="Frame/Bottom/Dock/DockBox/DockRow"]
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="HealthText" type="Label" parent="Frame/Bottom/Dock/DockRow/Vitals"]
+[node name="HealthText" type="Label" parent="Frame/Bottom/Dock/DockBox/DockRow/Vitals"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"HudValueLabel"
 text = "Health 30 / 30"
 
-[node name="HealthBar" type="ProgressBar" parent="Frame/Bottom/Dock/DockRow/Vitals"]
+[node name="HealthBar" type="ProgressBar" parent="Frame/Bottom/Dock/DockBox/DockRow/Vitals"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(280, 12)
 layout_mode = 2
@@ -155,9 +160,17 @@ max_value = 30.0
 value = 30.0
 show_percentage = false
 
-[node name="Abilities" type="HBoxContainer" parent="Frame/Bottom/Dock/DockRow"]
+[node name="Abilities" type="HBoxContainer" parent="Frame/Bottom/Dock/DockBox/DockRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 8
+
+[node name="WaysText" type="Label" parent="Frame/Bottom/Dock/DockBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"CaptionLabel"
+text = "WASD  Move   ·   Middle drag  Orbit   ·   Escape  Back to the editor"
+horizontal_alignment = 1

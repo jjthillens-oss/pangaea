@@ -11,8 +11,12 @@ extends Control
 ##                  Evolve, each named by its bound key). The chips only show state: Evolve lights while the
 ##                  creature stands at the nest and Bite dims while it recharges. They never act; the keys do.
 ##                  Above the dock, the controls line, named from the bindings for the device in use (InputPrompts),
-##                  for KEYS_HINT_S after the world opens and again after the device or a binding changes; then
-##                  only the dock stays, its chips still naming the ability keys (PROPOSED).
+##                  for KEYS_HINT_S each time the world opens (bind) and again when the device in use changes. When
+##                  it goes, a small line in the dock takes its place and stays: the keys the chips do not name
+##                  (move, orbit and the way back to the editor), so they never leave the screen (PROPOSED). The
+##                  creature world has no pause menu (Escape goes back to the editor), and the pool's pause menu
+##                  lists only the cell's controls, so this line is where they stay. A rebinding (made in the
+##                  settings, outside this world) shows the next time the world opens.
 ## Labels and chips refresh at 10 Hz; the bar every frame. The HUD and every control in it ignore the mouse, so the
 ## orbit drag reaches the camera.
 
@@ -40,6 +44,8 @@ var _notice_panel: PanelContainer
 var _notice_text: Label
 var _hint_text: Label
 var _hint_panel: PanelContainer
+## The keys the chips do not name (move, orbit, the way out), shown in the dock once the controls line goes.
+var _ways_text: Label
 var _goal_text: Label
 var _abilities: HBoxContainer
 ## The display-only ability chips by action, rebuilt with the hint line.
@@ -63,6 +69,7 @@ func _resolve() -> void:
 	_notice_text = %NoticeText
 	_hint_text = %HintText
 	_hint_panel = %HintPanel
+	_ways_text = %WaysText
 	_goal_text = %GoalText
 	_abilities = %Abilities
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -142,6 +149,7 @@ func _process(delta: float) -> void:
 		_keys_t -= delta
 		_hint_panel.modulate.a = clampf(_keys_t / KEYS_FADE_S, 0.0, 1.0)
 		_hint_panel.visible = _keys_t > 0.0
+		_ways_text.visible = not _hint_panel.visible
 
 
 func refresh() -> void:
@@ -175,9 +183,18 @@ func _refresh_hints() -> void:
 		line = "%s  Move" % move + ("   ·   " + line if not line.is_empty() else "")
 	var orbit := "Right stick  Orbit" if InputPrompts.device == "pad" else "Middle drag  Orbit"
 	_hint_text.text = line + "   ·   " + orbit if not line.is_empty() else orbit
+	var ways := PackedStringArray()
+	if not move.is_empty():
+		ways.append("%s  Move" % move)
+	ways.append(orbit)
+	var back := InputPrompts.hint_line([[&"ui_cancel", "Back to the editor"]])
+	if not back.is_empty():
+		ways.append(back)
+	_ways_text.text = "   ·   ".join(ways)
 	_keys_t = KEYS_HINT_S
 	_hint_panel.visible = true
 	_hint_panel.modulate.a = 1.0
+	_ways_text.visible = false
 	_build_chips(pairs)
 	refresh()
 
