@@ -236,7 +236,7 @@ func test_dying_five_times_in_a_row_always_returns_the_cell_to_a_fair_checkpoint
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(slot))
 	var keys := data.keys()
 	keys.sort()
-	check_eq(keys, SessionTests.SAVE_KEYS, "the save has exactly the 20 v4 keys")
+	check_eq(keys, SessionTests.SAVE_KEYS, "the save has exactly the 21 v5 keys")
 
 
 func test_quitting_at_the_death_notice_does_not_skip_the_death_unless_save_on_death_is_off() -> void:
