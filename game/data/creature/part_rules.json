@@ -86,6 +86,70 @@
 				}
 			]
 		},
+		"beak_hooked": {
+			"type": "beak_hooked",
+			"footprint_radius_m": 0.037,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Open",
+					"meaning": "the lower mandible dropped 26 degrees at the gape",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Hook",
+					"meaning": "the hook's outer half curled 22 degrees further under",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Length",
+					"meaning": "the beak 30% longer past the cere",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on BeakHooked and BeakHookedLower with the same names; the runtime sets them together. H1_Open moves only the lower mandible, H2_Hook only the upper."
+		},
+		"beak_long": {
+			"type": "beak_long",
+			"footprint_radius_m": 0.027,
+			"sink_depth_m": 0.02,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Length",
+					"meaning": "the bill 35% longer above the skin",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Curve",
+					"meaning": "the decurve about 30 degrees deeper at the tip",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Open",
+					"meaning": "the lower mandible dropped 16 degrees at the gape",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on BeakLong and BeakLongLower with the same names; the runtime sets them together. H3_Open moves only the lower mandible."
+		},
 		"bill": {
 			"type": "bill",
 			"footprint_radius_m": 0.032,
@@ -1467,6 +1531,68 @@
 				}
 			],
 			"placement_note": "Meant for the underside of the throat, behind the jaw."
+		},
+		"trunk": {
+			"type": "trunk",
+			"footprint_radius_m": 0.054,
+			"sink_depth_m": 0.03,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"capabilities": [
+				"grasper"
+			],
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the outer half coiled about 100 degrees further under, to grip",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Raise",
+					"meaning": "the trunk lifted forward and up, its tip turned skyward",
+					"default_permille": 0
+				},
+				{
+					"key": "H3_Length",
+					"meaning": "the trunk 30% longer past the face",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "All three keys are on Trunk and TrunkTip with the same names; the runtime sets them together. The grip pad and its fingers move rigidly with the trunk's end."
+		},
+		"trunk_short": {
+			"type": "trunk_short",
+			"footprint_radius_m": 0.046,
+			"sink_depth_m": 0.025,
+			"chiral": false,
+			"orientation": "forward_cone",
+			"turn_limit_deg": 40,
+			"tilt_limit_deg": 30,
+			"centerline": "required",
+			"hosts": [
+				"spine"
+			],
+			"role": "mouth",
+			"handles": [
+				{
+					"key": "H1_Curl",
+					"meaning": "the snout's end turned about 50 degrees further down over the lip",
+					"default_permille": 0
+				},
+				{
+					"key": "H2_Length",
+					"meaning": "the snout 35% longer past the face",
+					"default_permille": 0
+				}
+			],
+			"handles_note": "Both keys are on TrunkShort and TrunkShortNose with the same names; the runtime sets them together. The nose pad moves rigidly with the snout's end; the lip (TrunkShortLip) has no keys and stays put."
 		},
 		"tusk": {
 			"type": "tusk",

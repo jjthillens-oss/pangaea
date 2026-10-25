@@ -15,7 +15,12 @@ a cpart_ record with a role, then regenerate part_rules.json with tools/make_par
 | --- | --- |
 | `tools/blender/make_more_creature_parts.py` | Builds the 20 parts. It imports the helpers of `tools/blender/make_creature_parts.py` and never edits that file; the helpers defined there twice (`_smooth`, `_pad_material`, `_fur_material`) are copied here with an `_mp` prefix. Run: `python3 tools/blender/make_more_creature_parts.py [--only cpart_<id>[,...]]`, then `godot --headless --path . --import` and `python3 tools/make_part_rules.py`. |
 | `tools/blender/render_more_parts_gates.py` | Gate 1-3 renders of one exported GLB: gray front, side, back, three-quarter and top views and one per handle under a neutral white rig with a grazing light; material three-quarter, side and close-up under the same rig; the art look under `lookdev.review_lighting`; and a labelled contact sheet. Run: `python3 tools/blender/render_more_parts_gates.py cpart_<id> <out_dir>`. |
-| `tools/godot/more_parts_shots.gd` | Gate 4 frames in the real creature editor: `--mode=palette` saves one frame per palette tab; `--mode=creatures` opens presets (or a `--showcase` JSON of presets plus parts) and saves, with the HUD and handles hidden, the world camera's distance and pitch from behind (`_game`) and the front (`_front`), a head close-up (`_close`) and a level head profile (`_side`). |
+| `tools/godot/more_parts_shots.gd` | Gate 4 frames in the real creature editor: `--mode=palette` saves one frame per palette tab; `--mode=creatures` opens presets (or a `--showcase` JSON of presets plus parts, with an optional `swap` of part types done in memory only) and saves, with the HUD and handles hidden, the world camera's distance and pitch from behind (`_game`) and the front (`_front`), a head close-up (`_close`) and a level head profile (`_side`). |
+
+The handle views set each `H<n>_` key on every mesh of the part at once, as the runtime does (a part such as the
+hooked beak keeps its lower mandible in a child mesh with the same key names). Gate notes live in the generator's
+`REVIEW` table; `python3 tools/blender/make_more_creature_parts.py --notes-only --only <ids>` copies them into the
+records without rebuilding the meshes.
 
 ## The twenty parts and their roles
 
@@ -80,6 +85,15 @@ observation behind it). The same notes are in each record's `review_notes`.
 
 | Id | Gate 1 shape | Gate 2 materials | Gate 3 neutral light | Gate 4 Godot, on a body | Triangles / budget |
 | --- | --- | --- | --- | --- | --- |
+| beak_hooked | pass: deep keeled upper mandible arcing into a pointed hook over a shorter lower one; cere a clean raised band | pass: slate horn darkening to a near-black hook, saturated yellow cere with a nostril each side | pass: no clipping, hook underside readable | see below | 1152 / 1200 |
+| beak_long | pass: slender decurved bill, rounded probe tip, gape bulge; upper overhangs lower by about 1 cm | pass: orange streaked horn with seam and nostril-groove lines, pink gape | pass: highlight along the culmen, lines stay visible | see below | 342 / 1200 |
+| trunk | pass: tapering S-curve hanging and turning forward, flatter underneath, two-fingered grip pad | pass: cool grey ring-wrinkled crackled skin against a warm-brown pebbled pad with two nostrils | pass: grazing light shows the rings, pad readable | see below | 2303 / 2500 |
+| trunk_short | pass: broad snout tapering and drooping over a tucked lower lip; domed oval nose pad with two flared nostril lobes | pass: fine grey folded skin against a near-black glossy nose pad with dark nostrils | pass: folds and gloss read, mouth crease shadowed | see below | 964 / 1200 |
+
+Iterations that the sheets caught (Gate 1 needs revision, then fixed): the first hooked beak splayed its mandibles
+apart with a V gap and read as a horn, with a sawtooth cere edge and a second nostril pair mirrored onto the lower
+jaw; the first long bill's nostril groove did not survive decimation and was not visible; the first tapir snout's lip
+floated free of the snout and its round nose pad stuck out of the oval tube in a ragged crown.
 
 ## Issues
 
