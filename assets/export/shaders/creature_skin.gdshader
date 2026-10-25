@@ -41,7 +41,7 @@ uniform float wet_gloss : hint_range(0.0, 1.0) = 0.8;    // smooth-wet: 1 is a w
 // next_pass with shell_layer 1..shell_count, each pushed out along the normal and alpha-tested into strands.
 uniform int shell_layer = 0;                           // 0 = the skin itself; >0 = a fur shell (discarded unless fur)
 uniform int shell_count = 6;
-uniform float fur_height_m : hint_range(0.0, 0.1) = 0.022; // shell height at fur_length 1, in metres
+uniform float fur_height_m : hint_range(0.0, 0.1) = 0.06; // shell height at fur_length 1, in metres
 
 varying vec4 skin;     // spine_u, ring_v, limb_id, limb_t
 varying vec3 rest_pos; // rest-pose body-space position, x folded so both sides match, scaled to the body
@@ -130,20 +130,24 @@ float fur_strand(vec3 p, float h) {
 	vec3 o = hash33(c) * 0.5 + 0.25;
 	float d = length(fract(p) - o);
 	float len = 0.45 + 0.55 * hash13(c + 3.1);
-	return (h < len) ? step(d, 0.3 * (1.0 - h / len)) : 0.0;   // no floor: the strand thins to nothing, no stacked discs
+	return (h < len) ? step(d, 0.42 * (1.0 - h / len)) : 0.0;   // no floor: the strand thins to nothing, no stacked discs
 }
 
 void fragment() {
 	if (shell_layer > 0) {
 		if (covering != 1 || covering_strength <= 0.0) { discard; }
 		float h = float(shell_layer) / float(max(shell_count, 1));
-		vec3 fp = rest_pos * fur_density * 0.45 + vec3(float(pattern_seed) * 1.7);
+		// Silhouette only: face-on shell fragments read as specks, so shells fade out where N.V is high.
+		float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+		float rim_keep = 1.0 - smoothstep(0.3, 0.55, facing);
+		if (rim_keep <= 0.0) { discard; }
+		vec3 fp = rest_pos * fur_density * 0.3 + vec3(float(pattern_seed) * 1.7);
 		if (skin.z > 0.5) {
 			fp.y += h * 0.6;   // limb strands hang down the limb (rest space +y up, so the sample point climbs)
 		} else {
 			fp.z += h * 0.6;   // body strands lean back along the body
 		}
-		if (fur_strand(fp, h / max(covering_strength, 0.01)) < 0.5) { discard; }
+		if (fur_strand(fp, h / max(covering_strength, 0.01) / max(rim_keep, 0.01)) < 0.5) { discard; }
 	}
 	float u = skin.x;
 	float v = skin.y;
@@ -253,7 +257,7 @@ void fragment() {
 
 	if (shell_layer > 0) {
 		float sh = float(shell_layer) / float(max(shell_count, 1));
-		col *= mix(0.9, 1.1, sh);   // mild depth shading only: shells darker than the skin read as spots
+		col *= mix(1.0, 1.08, sh);   // no root darkening: darker shells read as spots
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
