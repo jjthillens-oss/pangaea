@@ -1,0 +1,106 @@
+{
+  "id": "shore_piece",
+  "owner": "Joshua Jake",
+  "status": "PROPOSED",
+  "review_state": "production rev 1 - M1, awaiting owner look review",
+  "purpose": "The pool's sea edge (ShoreLink, microscopic to aquatic): the sandbar at the pool's mouth that the cell swims over into the open sea, seen from above at cell size 4, rising out of the deep toward its crest in the north, with giant sand grains half sunk along its south brink, a shaft of shallow-water light that pools on the sand where the cell swims out, and a light ring on the swim plane at the reach. No collision: everything solid lies below the swim band.",
+  "category": "landmark",
+  "source_blend": "assets/source/blender/shore_piece.blend",
+  "generator_script": "tools/blender/make_shore_piece.py",
+  "export_path": "assets/export/shore_piece.glb",
+  "export_format": "GLB",
+  "dependencies": [],
+  "revision": 1,
+  "blender_version": "5.2.2 LTS",
+  "dimensions_m": {
+    "x": 42.866,
+    "y_forward": 41.655,
+    "z_up": 24.5
+  },
+  "triangles": 5638,
+  "triangle_budget": 6000,
+  "textures": [
+    {
+      "name": "T_ShorePiece_Albedo",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "sRGB",
+      "packing": "albedo RGB (baked AO darkens crevices)"
+    },
+    {
+      "name": "T_ShorePiece_ORM",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "R occlusion, G roughness, B metallic"
+    },
+    {
+      "name": "T_ShorePiece_Normal",
+      "size": [
+        1024,
+        1024
+      ],
+      "colorspace": "Non-Color",
+      "packing": "tangent-space normal (OpenGL, +Y up)"
+    }
+  ],
+  "materials": [
+    "M_ShoreLight",
+    "M_ShorePiece"
+  ],
+  "rig_family": null,
+  "animations": [],
+  "sockets": [],
+  "nodes": [
+    "Glow",
+    "Reach",
+    "Shaft",
+    "ShoreBank"
+  ],
+  "kind": "shore",
+  "pivot": "the shore point on the swim plane (Godot y = 0); the shelf's crest lies about 1.8 m north (-Z)",
+  "reach_radius_m": 4.0,
+  "sand_top_m": -1.577,
+  "bottom_m": -20.0,
+  "top_m": 4.5,
+  "engine_material": "res://assets/export/M_ShoreLight.tres",
+  "light_nodes": [
+    "Shaft",
+    "Reach",
+    "Glow"
+  ],
+  "yaw_rule": "fixed",
+  "authored_at_size": 4,
+  "units": "1 m = 1 tm at the size shown",
+  "dressings": [],
+  "scale_range": [
+    1.0,
+    1.0
+  ],
+  "light_weight": {
+    "Shaft": [
+      0.45,
+      0.0,
+      0.0
+    ],
+    "Reach": [
+      1.0,
+      1.0,
+      0.0
+    ],
+    "Glow": [
+      1.0,
+      0.0,
+      1.0
+    ],
+    "meaning": "COLOR_0 raw: red the part's strength, green 1 the ring, blue 1 the glow (else the shaft)"
+  },
+  "grains": 28,
+  "fragments": 2,
+  "texel_px_per_m": 33.5,
+  "provenance": "Authored procedurally in Blender by tools/blender/make_shore_piece.py; no external or generated meshes. Textures baked in Blender from procedural shaders. No outside sources."
+}

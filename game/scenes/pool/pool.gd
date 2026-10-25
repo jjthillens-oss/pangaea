@@ -513,6 +513,7 @@ func _update_shore(delta: float) -> void:
 		return
 	if not _shore_seen:
 		_shore_seen = true
+		shore.rise()
 		shore_risen.emit()
 	var local := sim.world.local_of_abs(p[0], p[1])
 	shore.place(local)
@@ -914,6 +915,8 @@ func warm_up_meshes() -> Array[Mesh]:
 	out.append_array(OlderHaze.warm_up_meshes())
 	out.append_array(OldBandLayer.warm_up_meshes())
 	out.append_array(CradleView.warm_up_meshes())
+	if is_endless():
+		out.append_array(ShoreView.warm_up_meshes())
 	return out
 
 
