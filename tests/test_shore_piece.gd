@@ -297,6 +297,41 @@ func test_a_shore_that_rises_in_play_comes_up_out_of_the_deep() -> void:
 	view.free()
 
 
+## The pool, not just the view: a shore that rises during play comes up out of the deep, and a save opened with the
+## shore already up shows it at rest (pool.gd calls rise() only for a shore it saw rise). The pools are paused: a
+## paused pool still updates its shore (and holds the rise), and it skips the shore arrow, whose camera projection
+## needs a pool inside the tree.
+func test_the_pool_raises_only_a_shore_that_rises_in_play() -> void:
+	var pool := FakeEvents.open_pool(FakeEvents.endless_session())
+	pool.paused = true
+	FakeEvents.frame(pool)
+	check(pool.shore != null, "the endless pool has a shore view")
+	if pool.shore != null:
+		check(not pool.shore.visible and not pool.shore.rising(), "no shore shows before it rises")
+		var at := pool.sim.absolute_position_am()
+		check(ShoreLink.raise(pool.sim.save, at[0], at[1] - 20.0, 4), "the shore rises in play")
+		FakeEvents.frame(pool)
+		var model := pool.shore.find_child("Model", false, false) as Node3D
+		check(pool.shore.visible and pool.shore.rising(), "the pool starts the rise for a shore that rose in play")
+		if model != null:
+			check_near(model.position.y, -ShoreView.RISE_DEPTH_M, 1e-4, "it starts RISE_DEPTH_M down, not under the cell")
+	pool.free()
+
+	var session := FakeEvents.endless_session()
+	var start := session.sim.absolute_position_am()
+	check(ShoreLink.raise(session.sim.save, start[0], start[1] - 20.0, 4), "a save with the shore already up")
+	var loaded := FakeEvents.open_pool(session)
+	loaded.paused = true
+	FakeEvents.frame(loaded)
+	check(loaded.shore != null, "the loaded pool has a shore view")
+	if loaded.shore != null:
+		check(loaded.shore.visible and not loaded.shore.rising(), "a loaded save shows its shore at rest, not rising")
+		var at_rest := loaded.shore.find_child("Model", false, false) as Node3D
+		if at_rest != null:
+			check_near(at_rest.position.y, 0.0, 1e-6, "the loaded shore stands at rest")
+	loaded.free()
+
+
 func test_the_sand_keeps_dim_and_clear_of_reserved_hues() -> void:
 	var image := (load(ALBEDO) as Texture2D).get_image()
 	image.clear_mipmaps()
